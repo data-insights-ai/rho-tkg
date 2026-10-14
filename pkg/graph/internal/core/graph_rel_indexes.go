@@ -9,30 +9,29 @@ import (
 
 // --- Relationship property indexes (K3b) ---
 //
-// The relationship mirror of graph_indexes.go's CreateProperty / DeleteProperty,
-// keyed by rel type instead of label. Backed by the optional
-// store.RelPropertyIndexCapability; the tiered store implements it but declines
-// index creation with store.ErrRelPropertyIndexUnsupported (rel values are
-// scattered across timestamp-routed event shards, so a shard-local index cannot
-// answer them). RelsByTypeAndProperty still works on every backend via the
-// graph-layer type-scan fallback.
+// Rel mirror of CreateProperty / DeleteProperty, keyed by rel type, backed by
+// store.RelPropertyIndexCapability. The tiered store declines creation with
+// store.ErrRelPropertyIndexUnsupported (rel values are scattered across
+// timestamp-routed shards); RelsByTypeAndProperty still works everywhere via the
+// graph-layer type scan.
 
-// CreateRelProperty creates a relationship property index on the given rel type
-// and property key. Resolves or creates the rel-type token so the index applies
-// to future matching relationships. Returns store.ErrIndexExists if the index
-// already exists, store.ErrRelPropertyIndexUnsupported on the tiered store.
+// CreateRelProperty creates a relationship property index on (rel type,
+// property key), resolving or creating the rel-type token. Returns
+// store.ErrIndexExists, or store.ErrRelPropertyIndexUnsupported on the tiered store.
 func (i *IndexOps) CreateRelProperty(typeName, propertyKey string) error {
 	return i.CreateRelPropertyWithOptions(typeName, propertyKey, storepkg.PropertyIndexOptions{})
 }
 
 // CreateRelPropertyWithOptions is CreateRelProperty with
-// storepkg.PropertyIndexOptions (round 4 R2), the relationship mirror of
-// CreatePropertyWithOptions: zero options are CreateRelProperty exactly;
-// non-zero options without storepkg.RelPropertyIndexOptionsCapability return
+// storepkg.PropertyIndexOptions; zero options equal CreateRelProperty. Non-zero
+// options without storepkg.RelPropertyIndexOptionsCapability return
 // ErrCapabilityNotSupported before anything is created.
 func (i *IndexOps) CreateRelPropertyWithOptions(typeName, propertyKey string, opts storepkg.PropertyIndexOptions) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
+		return err
+	}
+	if err := storepkg.ValidatePropertyIndexOptions(opts); err != nil {
 		return err
 	}
 	return c.readUnderRLock(func() error {
@@ -80,9 +79,8 @@ func (i *IndexOps) CreateRelPropertyWithOptions(typeName, propertyKey string, op
 	})
 }
 
-// DeleteRelProperty removes a relationship property index.
-// Resolves the rel-type name to a token. Returns store.ErrIndexNotFound if the
-// index does not exist.
+// DeleteRelProperty removes a relationship property index; store.ErrIndexNotFound
+// if none.
 func (i *IndexOps) DeleteRelProperty(typeName, propertyKey string) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
@@ -109,16 +107,13 @@ func (i *IndexOps) DeleteRelProperty(typeName, propertyKey string) error {
 
 // --- Relationship-type temporal indexes (BACKLOG 21c) ---
 //
-// The relationship mirror of graph_indexes.go's CreateTemporal / DeleteTemporal,
-// keyed by rel type instead of label. Backed by the optional
-// store.RelTypeTemporalIndexCapability. Memory and badger implement it;
-// sharded and tiered build it on every shard (backlog 10). A store without
-// it makes CreateRelTemporal return storepkg.ErrCapabilityNotSupported.
+// Rel mirror of CreateTemporal / DeleteTemporal via
+// store.RelTypeTemporalIndexCapability (memory, badger; sharded and tiered build
+// it on every shard, backlog 10). Without it CreateRelTemporal returns
+// storepkg.ErrCapabilityNotSupported.
 
-// CreateRelTemporal creates a temporal interval index on relationships with the
-// given rel type. Resolves or creates the rel-type token so the index applies
-// to future matching relationships. Returns storepkg.ErrTemporalIndexExists if
-// an index already exists for this rel type.
+// CreateRelTemporal creates a temporal interval index on relationships of the rel
+// type, resolving or creating the token. Returns storepkg.ErrTemporalIndexExists.
 func (i *IndexOps) CreateRelTemporal(typeName string) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
@@ -158,8 +153,8 @@ func (i *IndexOps) CreateRelTemporal(typeName string) error {
 	})
 }
 
-// DeleteRelTemporal removes a temporal index for the given rel type.
-// Returns storepkg.ErrTemporalIndexNotFound if the index does not exist.
+// DeleteRelTemporal removes a rel type's temporal index;
+// storepkg.ErrTemporalIndexNotFound if none.
 func (i *IndexOps) DeleteRelTemporal(typeName string) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
@@ -182,12 +177,10 @@ func (i *IndexOps) DeleteRelTemporal(typeName string) error {
 }
 
 // restoreNewRelTypeIndexOnError is the rel-type mirror of
-// restoreNewLabelIndexOnError — it reconciles a freshly-allocated rel-type
-// token with the outcome of the index create it was allocated for. On success
-// it persists the registry; on failure it best-effort-drops the partial index
-// and rolls the token back. The registry lock is HELD on entry iff the token
-// was freshly allocated (snapshot != nil); this method always releases it in
-// that case (via restoreNewRelTypeOnError).
+// restoreNewLabelIndexOnError: on success it persists the registry, on failure it
+// best-effort-drops the partial index and rolls the token back. The registry lock
+// is held on entry iff the token was freshly allocated (snapshot != nil) and is
+// always released here (via restoreNewRelTypeOnError).
 func (c *Core) restoreNewRelTypeIndexOnError(snapshot []string, allocated bool, typeName string, err error, cleanup func() error, notFound, exists error) error {
 	if err != nil && cleanup != nil {
 		if !allocated && exists != nil && errors.Is(err, exists) {

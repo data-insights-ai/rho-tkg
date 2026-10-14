@@ -83,6 +83,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   migrates. Tests `TestUpdateValidToClosesTheVersion` (incl. WithTx batch and ingest units),
   `TestTxUpdateValidToClosesLikeCloseVersion` (four backends, twin stores); `TestDocValues_ExpiredNodeStillCounted`
   now gives its expired node a start before the close.
+## [4.52.2] - 2026-10-14
+
+### Added
+
+- **Integrity-hash switch; binary hashes readable** (backlog 61, René from ai-soc's 232 B per edge of hashes):
+  `Config.DisableIntegrityHashes` (default false = hashes on, today's behaviour) computes and stores no integrity
+  hash — `Hash`, `PrevHash`, `FromNodeHash`, `ToNodeHash` stay empty, resident and on disk; author, signature and
+  authorization are unaffected — for development and quick tests. Every write path hashes through one switch
+  (`core/integrity_switch.go`); with it set, `Hash().VerifyNodeChain` / `VerifyRelChain` and `Tier().VerifyShard`
+  return the new `ErrIntegrityDisabled` (never "valid"), `Config.RelSegments` is refused with it, an import or
+  replica apply verifies and drops the hashes it carries, and an on-graph refuses an off-graph's export
+  (`ErrCorruptExport`). The setting is persisted with the store (MetaKV `integrity_hashes`, kept across
+  `Admin().Reset()`); a reopen of a store with rows under the other setting fails `New` with the new
+  `ErrIntegrityModeMismatch` and writes nothing (without the key, the rows decide: hashed rows make an on-store,
+  unhashed rows an off-store; a store without rows takes the configured setting). The key is written durably
+  (new `MetaSetDurable` on the tiered and sharded stores) and only by a `New` that passed every check.
+  Readers now also accept integrity
+  hashes stored as 32 raw bytes (row fv 4) and badger store marker 4, handing out the same 64-hex strings; this
+  release still writes hex and marker 3 (see Deprecated). One hex/bytes conversion (`pkg/internal/hash32`) now
+  serves the wire, the compact frozen rows and the segments. Relationship row, 20,000 rels of four properties:
+  366.9 B raw / 251.2 B Snappy (hex), 270.9 / 151.8 B (binary writer), 158.9 / 43.5 B (hashes off). Test
+  `TestIntegritySwitch` (memory, badger, tiered: hashes present and a tampered row detected; off: no hash on any
+  row before and after a reopen, sentinel; reopen both ways; legacy store; Reset; a store written by the binary
+  writer read and extended; segments; import both ways; bytes on disk), `TestWireBinaryHashRoundTripAndLegacyHex`;
+  evidence `tasks/evidence/integrity-switch/`.
+
+
+- **Elements property indexes** (backlog 63, sigma-tkgd R6): `PropertyIndexOptions{Elements: true}` indexes each
+  scalar element of a list value, so `ByLabelAndProperty(label, key, x, opts)` / `ByTypeAndProperty` on the index
+  mean "the list contains x" at current, `TxPin`, `TxAt`+`ValidAt` and interval reads and on the named `*At` /
+  `*During` doors. One key path: `types.ForEachIndexableElementKey` (scalar = one-element list, duplicates once,
+  nil / empty / nested elements add nothing, scalar rules per element, `[]byte` a blob) feeds the index writes, the
+  create backfill, the badger open rebuild and the per-element membership sidecar records (memory and badger, live
+  and build); every match test of those doors is `HasPropertyIndexKey(key, elements, target)`, so an element an
+  update removed matches at an earlier pin and not after. The index keeps no ordered view: range, prefix and
+  `RangeCardinality` decline on it as without an index. Refused with the new `ErrElementsIndexUnsupported`:
+  Elements with RangeCounts, an Elements index on a unique-constrained key, `CreateUnique` / `GetOrCreateByKey` on
+  an Elements-indexed key (checked again under the constraint's install lock), `ByLabelAndProperties` and
+  `CreateComposite` over one. Memory, badger (definition key `el`; the open image carries its element entries),
+  sharded, and tiered on reference labels (tiered now implements `store.PropertyIndexOptionsCapability` on the
+  reference shard and still refuses RangeCounts with `ErrCapabilityNotSupported`; the event shards — a node with an
+  event primary label and the reference label — and the archive hold no copy of the index and answer with the same
+  match through badger's new `NodesByLabelContainingProperty`, filtered during the fetch); relationship indexes on
+  memory, badger and sharded. Badger `PropertyIndexOnDisk` refuses it at create and refuses to open a store holding
+  an Elements definition (`ErrCapabilityNotSupported`; the shared disk keyspace keys scalars only).
+  **Format marker:** a badger directory that persists an Elements definition is stamped store format 5
+  (`storeutil.ElementsStoreFormatVersion`; 4 is reserved for the integrity-hash format, backlog 61), so a binary
+  before this release refuses it with `ErrWireFormatVersionUnsupported` instead of loading the index plain and
+  keying scalars only (which a re-upgrade would then trust). This binary opens markers up to 5; a store without
+  Elements keeps marker 3. Dropping the Elements indexes does not lower the marker: once stamped, the store stays
+  closed to older binaries.
+  Write cost of a row with 5 supports (`BenchmarkPropertyIndexElementsWrite`, host load ~79, ns noisy): memory
+  33 vs 22 allocs and 2,721 vs 1,885 B per row against a plain index on a scalar key of the same row (no index: 17
+  allocs, 1,321 B); badger 68 vs 57 allocs, 6.6 vs 5.8 KB. Test `TestPropertyIndexElementsContains`; evidence
+  `tasks/evidence/property-elements/`.
 
 ### Fixed
 
@@ -94,6 +149,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Test `TestRowDoorsAgreeWithResolverOnAnUntimedUpdate`; evidence `tasks/evidence/valid-from-source/`.
 
 ### Deprecated
+
+- **Hex integrity hashes on disk** (backlog 61): from v4.52.3 stores are written with binary hashes (marker 4);
+  opening such a store needs v4.52.2 or later. Why: a hash as 64 hex characters costs 66 bytes on disk, as raw
+  bytes 34 — about 100 B per edge (a relationship row carries three: 366.9 → 270.9 B raw, 251.2 → 151.8 B Snappy).
+  Not only stores: from v4.52.3 every row in an export file and in the change feed carries the binary hashes
+  (row fv 4), so an import, a restore or a replica running a release before v4.52.2 refuses those rows
+  (`ErrWireFormatVersionUnsupported`); upgrade readers and replicas to v4.52.2 or later first. Releases from this
+  one on read both forms; nothing changes for callers (the hashes are handed out as the same 64-hex strings).
+
 
 - **The start of a row without a valid-from changes in v4.52.3** (backlog 62, sigma-tkgd observation 2026-10-14).
   Today an untimed create starts at its ID's mint instant (snowflake wall clock) and an untimed update at its

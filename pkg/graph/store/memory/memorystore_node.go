@@ -17,10 +17,9 @@ func (ms *Store) PutNode(n *types.Node) error {
 	return ms.putNodeRouted(n, 0)
 }
 
-// PutNodeScoped mirrors PutNode but routes the change-log record into the
-// store.ScopedTxChangeLog buffer named by token instead of the eager pending
-// log. token == 0 is exactly PutNode. See memorystore_changelog_scoped.go
-// (BACKLOG 11f Batch A — foundation only).
+// PutNodeScoped is PutNode with the change-log record routed into the
+// store.ScopedTxChangeLog buffer named by token; token == 0 is PutNode
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) PutNodeScoped(n *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.PutNode(n)
@@ -34,10 +33,9 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	// This is the INSERT path, so a successful write is an append and the label's
-	// cached column can be extended rather than rebuilt (R3). `inserted` stays nil on
-	// every error return, and a nil poisons — an error path must never leave a
-	// phantom append behind.
+	// INSERT path: a successful write is an append, so the label's cached column
+	// extends instead of rebuilding. `inserted` stays nil on every error return;
+	// nil poisons, so an error path never leaves a phantom append.
 	var inserted *types.Node
 	defer func() { ms.bumpNodeEpochAppend(inserted) }()
 
@@ -222,11 +220,9 @@ func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	return ms.removeNodeLabelTokenRouted(nid, tok, updatedNode, 0)
 }
 
-// RemoveNodeLabelTokenScoped mirrors RemoveNodeLabelToken but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// RemoveNodeLabelToken. See memorystore_changelog_scoped.go (BACKLOG 11f
-// Batch F — foundation only).
+// RemoveNodeLabelTokenScoped is RemoveNodeLabelToken with the record routed
+// into the ScopedTxChangeLog buffer named by token; token == 0 is the
+// unscoped form (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) RemoveNodeLabelTokenScoped(nid types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.RemoveNodeLabelToken(nid, tok, updatedNode)
@@ -294,11 +290,9 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	return ms.addNodeLabelTokenRouted(nid, tok, updatedNode, 0)
 }
 
-// AddNodeLabelTokenScoped mirrors AddNodeLabelToken but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly AddNodeLabelToken.
-// See memorystore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
-// only).
+// AddNodeLabelTokenScoped is AddNodeLabelToken with the record routed into
+// the ScopedTxChangeLog buffer named by token; token == 0 is the unscoped
+// form (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) AddNodeLabelTokenScoped(nid types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.AddNodeLabelToken(nid, tok, updatedNode)
@@ -366,10 +360,9 @@ func (ms *Store) ReplaceNode(n *types.Node) error {
 	return ms.replaceNodeRouted(n, 0)
 }
 
-// ReplaceNodeScoped mirrors ReplaceNode but routes the change-log record
-// into the store.ScopedTxChangeLog buffer named by token instead of the
-// eager pending log. token == 0 is exactly ReplaceNode. See
-// memorystore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+// ReplaceNodeScoped is ReplaceNode with the record routed into the
+// ScopedTxChangeLog buffer named by token; token == 0 is ReplaceNode
+// (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) ReplaceNodeScoped(n *types.Node, token uint64) error {
 	if token == 0 {
 		return ms.ReplaceNode(n)
@@ -432,11 +425,9 @@ func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
 	return ms.deleteNodeCascadeRouted(nid, 0)
 }
 
-// DeleteNodeCascadeScoped mirrors DeleteNodeCascade but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly DeleteNodeCascade.
-// See memorystore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
-// only).
+// DeleteNodeCascadeScoped is DeleteNodeCascade with the record routed into
+// the ScopedTxChangeLog buffer named by token; token == 0 is the unscoped
+// form (memorystore_changelog_scoped.go, backlog 11f).
 func (ms *Store) DeleteNodeCascadeScoped(nid types.NodeID, token uint64) error {
 	if token == 0 {
 		return ms.DeleteNodeCascade(nid)
@@ -451,10 +442,9 @@ func (ms *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	defer ms.bumpNodeEpoch()
-	// The cascade removes every connected relationship (adjacency changes),
-	// not just the node — bumpRelEpoch too, or a concurrent X5
-	// expand-aggregation column reader's staleness gate would pass despite
-	// adjacency having changed mid-scan (BACKLOG 17a).
+	// The cascade changes adjacency, so bumpRelEpoch too: otherwise a concurrent
+	// expand-aggregation column reader's staleness gate passes mid-scan
+	// (backlog 17a).
 	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
@@ -482,10 +472,9 @@ func (ms *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 		relIDs[relID] = struct{}{}
 	}
 
-	// Capture the rel IDs whose CURRENT ROW actually exists BEFORE deleting:
-	// CascadedRelIDs is defined as the rel rows the cascade removes (orphan-only
-	// adjacency entries are purged but not "removed rows"), matching the badger
-	// backend so the change-log record is identical across backends.
+	// Capture the rel IDs whose current row exists BEFORE deleting:
+	// CascadedRelIDs is the removed rel rows (orphan adjacency entries excluded),
+	// identical to badger's change-log record.
 	cascaded := make([]int64, 0, len(relIDs))
 	for relID := range relIDs {
 		if _, ok := ms.rels[relID]; ok {
@@ -586,14 +575,9 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 	return nil
 }
 
-// PutNodesBatchPreEncoded satisfies store.PreEncodedPutCapability. The memory
-// backend holds live *types.Node objects and never serializes an entity row, so
-// the pre-encoded buffers are irrelevant here — it delegates to PutNodesBatch.
-// Byte-identity is trivially preserved: memory produces no persisted entity
-// bytes, and its change feed uses the same UNTOKENIZED encode on both paths. The
-// method exists so the ingest applier can exercise the capability path uniformly
-// across the native backends (the badger arm is where the encode is actually
-// skipped).
+// PutNodesBatchPreEncoded satisfies store.PreEncodedPutCapability. Memory
+// persists no entity bytes, so the pre-encoded buffers are ignored and it
+// delegates to PutNodesBatch.
 func (ms *Store) PutNodesBatchPreEncoded(nodes []*types.Node, _ [][]byte) error {
 	return ms.PutNodesBatch(nodes)
 }

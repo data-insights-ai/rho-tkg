@@ -9,13 +9,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestRelHistoryCountByType (round 5 request 7, sigma-tkgd C4s): how many
-// relationships of one type have history rows, so a host can bound a
-// type's valid-time window by its current adjacency while ANOTHER type has
-// history (the store-wide HistoryCounts.Rels cannot tell). Two-phase across
-// an update, a close, a delete (the deleted relationship keeps its history)
-// and writes to another type; an unknown type is 0; stores without the
-// per-type answer report ok=false, never a substitute count.
+// TestRelHistoryCountByType: how many relationships of one type have history rows
+// (HistoryCounts.Rels cannot tell types apart), across an update, close, delete
+// (keeps its history) and writes to another type; unknown type is 0; stores
+// without the per-type answer report ok=false, never a substitute count.
 func TestRelHistoryCountByType(t *testing.T) {
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()

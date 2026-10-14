@@ -877,6 +877,19 @@ func (ts *Store) MetaSet(key string, value []byte) error {
 	return ts.refShard.MetaSet(key, value)
 }
 
+// MetaSetDurable is MetaSet made durable before it returns (the reference
+// shard's write-ahead log is fsynced): for a meta entry that must not be lost
+// while rows written after it to an event shard survive a power loss.
+func (ts *Store) MetaSetDurable(key string, value []byte) error {
+	if ts == nil {
+		return ErrNilStore
+	}
+	if ts.refShard == nil {
+		return ErrStoreClosed
+	}
+	return ts.refShard.MetaSetDurable(key, value)
+}
+
 // SavePropertyKeyRegistry delegates to the reference shard. Property keys
 // are shared across event + reference shards (they index the same Property
 // type), so a single canonical registry stored on refShard is sufficient.

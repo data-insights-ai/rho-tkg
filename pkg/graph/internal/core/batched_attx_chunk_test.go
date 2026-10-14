@@ -9,11 +9,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestAtTxByIDsAcrossChunks — 600 positions over 300 distinct IDs (more than
-// effScanChunk distinct IDs; each ID repeated 300 positions later, so a
-// duplicate's first occurrence is in another chunk), half updated after the
-// pin plus unknown IDs: element-wise NodeAtTx / RelAtTx. Memory and badger
-// (the read snapshot is released and reopened between chunks).
+// TestAtTxByIDsAcrossChunks: 600 positions over 300 distinct IDs (more than
+// effScanChunk; duplicates land in another chunk), half updated after the pin, plus
+// unknown IDs, equal NodeAtTx / RelAtTx. Memory and badger (snapshot reopened per chunk).
 func TestAtTxByIDsAcrossChunks(t *testing.T) {
 	t.Parallel()
 	for _, b := range txbBackends()[:2] {
@@ -64,8 +62,7 @@ func TestAtTxByIDsAcrossChunks(t *testing.T) {
 	}
 }
 
-// batFaultStore fails the current-row or history read of one armed ID with a
-// store error other than not-found.
+// batFaultStore fails the current-row or history read of one armed ID with a non-not-found error.
 type batFaultStore struct {
 	storepkg.MandatoryStore
 	failCurrent, failHistory int64
@@ -101,10 +98,8 @@ func (s *batFaultStore) GetRelHistory(id types.RelID) ([]*types.Relationship, er
 	return s.MandatoryStore.GetRelHistory(id)
 }
 
-// TestAtTxByIDsStoreFaultFailsCall — a member's store error other than
-// not-found (on its current-row read or on its history read) fails the call
-// with that error, as the per-ID door does, instead of becoming a nil
-// element; with nothing armed the same batch answers.
+// TestAtTxByIDsStoreFaultFailsCall: a member's non-not-found store error (current
+// row or history read) fails the call, as the per-ID door does; unarmed, it answers.
 func TestAtTxByIDsStoreFaultFailsCall(t *testing.T) {
 	t.Parallel()
 	for _, rel := range []bool{false, true} {

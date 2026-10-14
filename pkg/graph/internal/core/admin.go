@@ -218,6 +218,9 @@ func (a *AdminOps) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
 // Returns ErrNotTieredStore if the store does not support shard-level
 // verification.
 func (c *Core) verifyShardLocked(shardName string) (*tiered.VerifyResult, error) {
+	if c.hashesOff {
+		return nil, ErrIntegrityDisabled
+	}
 	if ts, ok := c.store.(tieredAdminStore); ok {
 		return ts.VerifyShard(lockedHashVerifier{c: c}, shardName)
 	}
@@ -271,7 +274,8 @@ func (a *AdminOps) Reset() error {
 		// what Clear may have taken, then report the original failure.
 		return errors.Join(err,
 			c.restoreIDSlotLeaseAfterReset(leaseBytes),
-			c.restoreInstantFloorAfterReset())
+			c.restoreInstantFloorAfterReset(),
+			c.restoreIntegrityModeAfterReset())
 	}
 	return c.reapCoreStateForClear(leaseBytes)
 }
@@ -307,6 +311,7 @@ func (c *Core) reapCoreStateForClear(leaseBytes []byte) error {
 	errs := []error{
 		c.restoreIDSlotLeaseAfterReset(leaseBytes),
 		c.restoreInstantFloorAfterReset(),
+		c.restoreIntegrityModeAfterReset(),
 	}
 
 	// And no short-circuit: each step below wipes an INDEPENDENT key, so

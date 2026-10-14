@@ -10,30 +10,16 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Capability accessors — type-assert the store field against an optional
-// capability and surface ErrCapabilityNotSupported (with a diagnostic
-// message) when the underlying backend does not implement it.
-//
-// Core's `store` field is typed as MandatoryStore so out-of-tree backends
-// that satisfy only the mandatory capabilities can still be plugged in;
-// their consumers must accept ErrCapabilityNotSupported on the optional
-// surfaces. In-tree backends (memory.Store, badger.Store, tiered.Store)
-// satisfy every capability, so these assertions always succeed in the
-// reference configuration.
+// Capability accessors type-assert the store against an optional capability and
+// return ErrCapabilityNotSupported (with a diagnostic) when the backend lacks it.
+// The store field is a MandatoryStore so out-of-tree backends can plug in;
+// in-tree backends satisfy every capability.
 
-// propertyIndexCap resolves the DDL+query-bundled PropertyIndexCapability
-// (CreatePropertyIndex/DropPropertyIndex/NodesByLabelAndProperty all live on
-// one interface). It applies the SAME wrapper-promotion guard
-// propertyQueryCapability (core.go) already applies to the identical
-// interface for query acceleration — BACKLOG 14c: without it, a concrete
-// wrapper that merely inherits the interface via embedding (never declaring
-// NodesByLabelAndProperty itself) could still successfully CreatePropertyIndex
-// (the call is promoted straight through to the embedded native store) while
-// every query against that same wrapper falls back to the graph scan (guarded,
-// since the wrapper doesn't declare the query method) — a permanently inert
-// index the graph forever pays to maintain but never consults. Guarding here
-// too means such a wrapper gets ErrCapabilityNotSupported for DDL as well,
-// consistent with the query side refusing to trust it.
+// propertyIndexCap resolves PropertyIndexCapability (DDL and query on one
+// interface) with the same wrapper-promotion guard as propertyQueryCapability
+// (core.go; backlog 14c): a wrapper that only inherits the interface by embedding
+// could create an index its queries never consult, so it gets
+// ErrCapabilityNotSupported for DDL too.
 func (c *Core) propertyIndexCap() (storepkg.PropertyIndexCapability, error) {
 	cap, ok := c.store.(storepkg.PropertyIndexCapability)
 	if !ok {
@@ -46,9 +32,8 @@ func (c *Core) propertyIndexCap() (storepkg.PropertyIndexCapability, error) {
 	return cap, nil
 }
 
-// relPropertyIndexCap mirrors propertyIndexCap for the relationship-side
-// RelPropertyIndexCapability (BACKLOG 14c) — same rationale, same guard,
-// same identical-interface pairing with relPropertyQueryCapability.
+// relPropertyIndexCap mirrors propertyIndexCap for RelPropertyIndexCapability
+// (backlog 14c), paired with relPropertyQueryCapability.
 func (c *Core) relPropertyIndexCap() (storepkg.RelPropertyIndexCapability, error) {
 	cap, ok := c.store.(storepkg.RelPropertyIndexCapability)
 	if !ok {
@@ -101,29 +86,20 @@ func (c *Core) highFrequencyIndexCap() (storepkg.HighFrequencyIndexCapability, e
 	return cap, nil
 }
 
-// nodesByLabelAndProperty answers the (label-token, property-key, value)
-// query whether or not the underlying store implements the accelerated
-// property-query capability. Exact in-tree stores and direct external
-// implementations use NodesByLabelAndProperty. Concrete wrappers that merely
-// inherit an in-tree method intentionally fall back to a label scan so wrapper
-// NodesByLabel overrides remain visible. Every in-tree backend already applies
-// the same scan-and-filter internally when no property index covers
-// (label, key); replicating it here ensures out-of-tree mandatory-only
-// backends still get the correct semantics — the optional capability is index
-// management/acceleration, not query correctness.
+// nodesByLabelAndProperty answers the (label-token, property-key, value) query
+// with or without the accelerated capability. Exact in-tree stores and direct
+// external implementations use NodesByLabelAndProperty; concrete wrappers that
+// inherit it fall back to a label scan so their NodesByLabel overrides stay
+// visible. The capability is acceleration, not query correctness.
 //
-// Empty-key contract: `indexpkg.PropertyValueKey` returns "" for
-// values it cannot canonicalise (slices, maps, nested structs without a
-// custom `HashableValue` etc.). The in-tree backends (and the property
-// index itself) treat such queries as "no matches"; the graph-layer
-// fallback must do the same — otherwise every candidate whose stored
-// value is also unindexable canonicalises to "" and matches falsely.
+// Empty-key contract: indexpkg.PropertyValueKey returns "" for values it cannot
+// canonicalise (slices, maps, structs without HashableValue). Such queries match
+// nothing, as in the in-tree backends; otherwise every unindexable stored value
+// would also canonicalise to "" and match falsely.
 func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	wantKey := indexpkg.PropertyValueKey(value)
 	if wantKey == "" {
-		// The query value itself is not canonicalisable — by contract,
-		// no matches. Mirrors memory.Store / badger.Store internal
-		// guards before their fallback scans.
+		// The query value is not canonicalisable: no matches, as in memory/badger.
 		return nil, nil
 	}
 	if c.propertyQuery != nil {
@@ -132,17 +108,19 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 			return nil, err
 		}
 		if !c.propertyQueryTrust {
-			if err := validateNodesByLabelAndProperty(tok, key, wantKey, opts, nodes); err != nil {
+			elements, err := c.nodeIndexElements(tok, key)
+			if err != nil {
+				return nil, err
+			}
+			if err := validateNodesByLabelAndProperty(tok, key, wantKey, elements, opts, nodes); err != nil {
 				return nil, err
 			}
 			nodes = copyNodeRows(nodes)
 		}
 		return nodes, nil
 	}
-	// Fallback: label scan + property filter. Pagination is applied
-	// after filtering since the property predicate can drop arbitrary
-	// elements; pre-filter Limit would over-count. The cursor can still
-	// be pushed into the label scan because filtering preserves ID order.
+	// Fallback: label scan + filter. Limit is applied after filtering; the cursor can
+	// still go into the scan because filtering preserves ID order.
 	pageOpts := opts
 	pageOpts.Limit = 0
 	candidates, err := c.store.NodesByLabel(tok, pageOpts)
@@ -154,18 +132,16 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 			return nil, err
 		}
 	}
+	elements, err := c.nodeIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]*types.Node, 0, len(candidates))
 	for _, n := range candidates {
-		gotKey, found := n.IndexablePropertyValueKey(key)
-		if !found || gotKey == "" {
-			// Stored value is also unindexable; refuse to claim
-			// equality through the empty sentinel.
-			continue
+		// HasPropertyIndexKey never matches through the empty key of an unindexable value.
+		if n.HasPropertyIndexKey(key, elements, wantKey) {
+			out = append(out, n)
 		}
-		if gotKey != wantKey {
-			continue
-		}
-		out = append(out, n)
 	}
 	out = storeutil.PaginateNodes(out, opts.After, opts.Limit)
 	if !c.storeRowsTrust {
@@ -175,12 +151,9 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 }
 
 // nodesByLabelAndProperties answers the (label-token, values map) composite
-// equality query whether or not the underlying store implements the
-// accelerated CompositePropertyIndexCapability. Mirrors
-// nodesByLabelAndProperty's structure exactly (same trust-boundary shape,
-// same "index acceleration, never the sole source of correctness"
-// contract) — see its doc comment for the empty-key rationale,
-// which applies here per-component via indexpkg.NodeMatchesAllProperties.
+// equality query with or without CompositePropertyIndexCapability; same shape as
+// nodesByLabelAndProperty (see its empty-key note, which applies per component
+// via indexpkg.NodeMatchesAllProperties).
 func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if c.compositeQuery != nil {
 		nodes, err := c.compositeQuery.NodesByLabelAndProperties(tok, values, opts)
@@ -195,12 +168,7 @@ func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts
 		}
 		return nodes, nil
 	}
-	// Mandatory fallback: label scan + post-filter over every declared pair.
-	// Every in-tree backend already applies the same scan-and-filter
-	// internally when no composite index covers the requested key set;
-	// replicating it here ensures a MandatoryStore-only backend (or one that
-	// simply omits the optional capability) still gets correct, if
-	// unaccelerated, results.
+	// Fallback: label scan + post-filter over every declared pair.
 	pageOpts := opts
 	pageOpts.Limit = 0
 	candidates, err := c.store.NodesByLabel(tok, pageOpts)

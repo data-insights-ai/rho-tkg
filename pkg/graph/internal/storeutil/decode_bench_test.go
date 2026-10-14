@@ -1,6 +1,7 @@
 package storeutil
 
 import (
+	"encoding/hex"
 	"fmt"
 	"reflect"
 	"testing"
@@ -74,6 +75,13 @@ func TestHandDecodeMatchesReflection(t *testing.T) {
 		}
 		if err := SafeUnmarshal(data, &refl); err != nil {
 			t.Fatalf("p=%d reflection: %v", p, err)
+		}
+		// Reflection reads a binary hash (BinaryHashWireFormatVersion) as its
+		// 32 raw bytes; the hand decoder returns the canonical hex string.
+		for _, f := range []*string{&refl.Hash, &refl.PrevHash} {
+			if len(*f) == 32 {
+				*f = hex.EncodeToString([]byte(*f))
+			}
 		}
 		if !reflect.DeepEqual(NodeWire(refl), hand) {
 			t.Fatalf("p=%d mismatch:\n refl=%+v\n hand=%+v", p, NodeWire(refl), hand)

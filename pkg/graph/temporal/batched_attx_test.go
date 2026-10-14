@@ -21,12 +21,9 @@ func (s *temporalOpsSpy) RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.In
 	return s.relRows, s.err
 }
 
-// TestAtTxByIDsWrappers — rule 1 for the backlog-57 wrappers: a nil API and a
-// typed-nil Ops return ErrNilGraph without calling anything; a ready API
-// forwards ids, validAt and txAt verbatim (not swapped) and returns the Ops'
-// rows (same slice, nil elements kept) and error (errors.Is) unchanged. The
-// semantics are tested against NodeAtTx / RelAtTx in internal/core
-// (TestNodesAtTxByIDsMatchesNodeAtTx).
+// TestAtTxByIDsWrappers: a nil API and typed-nil Ops return ErrNilGraph; a ready
+// API forwards ids, validAt, txAt verbatim and returns the Ops' rows and error
+// unchanged. Semantics: TestNodesAtTxByIDsMatchesNodeAtTx (internal/core).
 func TestAtTxByIDsWrappers(t *testing.T) {
 	t.Parallel()
 	nodeIDs, relIDs := []types.NodeID{3, 1, 3}, []types.RelID{7, 5}

@@ -29,10 +29,9 @@ func (ts *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 		return n, err
 	}
 
-	// If the live entity is on this shard, the local ErrVersionNotFound is
-	// authoritative — no need to wake other shards (incl. cold ones).
-	// Reference entities are the exception: archive/restore can leave history
-	// in refArchive while the restored live row is back on refShard.
+	// A live entity on this shard makes the local ErrVersionNotFound
+	// authoritative, except reference entities: archive/restore can leave history
+	// in refArchive while the live row is back on refShard.
 	liveHere, err := nodeRowLive(shard, nid)
 	if err != nil {
 		return nil, err
@@ -203,14 +202,9 @@ func (ts *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 	return trimNodeHistoryPage(mergeNodeHistorySources(sources), limit), nil
 }
 
-// AllNodeHistoryIDs returns the IDs of all nodes that have version history
-// entries across the reference shard, the reference archive (when present),
-// and every event shard.
-//
-// Implemented as a thin wrapper over AllNodeHistoryIDsFrom — pages 64K IDs at
-// a time so the in-flight ID slice stays bounded even on graphs with deep
-// history. Eliminates the parallel-merge transient (~400MB on 52-shard
-// year-long graphs) that the previous goroutine fan-out produced.
+// AllNodeHistoryIDs returns the IDs of all nodes with version history across
+// the reference shard, archive (if any) and every event shard. A wrapper over
+// AllNodeHistoryIDsFrom, paging 64K IDs at a time to keep the ID slice bounded.
 func (ts *Store) AllNodeHistoryIDs() ([]types.NodeID, error) {
 	const pageSize = 65536
 	var (
@@ -240,26 +234,12 @@ func (ts *Store) AllNodeHistoryIDs() ([]types.NodeID, error) {
 // AllRelHistoryIDs returns the IDs of all relationships with version history
 // entries. See AllNodeHistoryIDs for the implementation rationale.
 
-// AllNodeHistoryIDsFrom is the bounded-RAM, cursor-paginated history-ID scan
-// for TieredStore.
-//
-// Implementation strategy:
-//
-//   - Probe the reference shard, the reference archive (if any), and each
-//     event shard SEQUENTIALLY via checkout/checkin. Only one shard's
-//     iterator is open at any time.
-//   - Each per-shard call passes (after, limit) through to the underlying
-//     BadgerStore.AllNodeHistoryIDsFrom, so each shard returns at most
-//     `limit` IDs. The dedup `seen` set is therefore bounded by the IDs
-//     returned in the current call (across shards), not by the total
-//     graph size.
-//   - Accumulated IDs are sorted ascending after merging and trimmed to
-//     `limit`. Cross-shard duplicates (same ID in archive and event shard,
-//     possible after archive-then-update) collapse to one occurrence.
-//
-// The previous parallel goroutine fan-out has been removed: it held all
-// shard slices in RAM simultaneously and dedup'd via a final map keyed on
-// the entire population — both transients have been eliminated.
+// AllNodeHistoryIDsFrom is the bounded-RAM, cursor-paginated history-ID scan.
+// Shards (reference, archive, each event shard) are probed SEQUENTIALLY via
+// checkout/checkin, one open iterator at a time, each passing (after, limit)
+// down so the dedup set is bounded by the IDs of this call. Results are
+// sorted ascending and trimmed to limit; cross-shard duplicates (e.g.
+// archive-then-update) collapse.
 func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.NodeID, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -335,19 +315,12 @@ func (ts *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 	return rawToNodeIDs(raw), nil
 }
 
-// forEachHistoryShard probes shards that may own history after the live entity
-// index has been deleted. Reference entity history lives on the reference
-// shard even when timestamp fallback selects an event shard; cross-shard
-// relationship history lives with the relationship entity shard.
-//
-// Probes refShard, refArchive (if present), and ALL event shards (hot, warm,
-// and cold). Cold shards must be included: a cross-shard event→event
-// relationship's history is written to the start-node's home shard, which may
-// have transitioned warm→cold via `ColdAfter` demotion after the relationship
-// was deleted. Skipping cold shards here would silently lose deleted-rel
-// history once the start-node's shard ages out. Cold shards opened only for
-// this read are closed after their callback returns so broad scans do not
-// accumulate one Badger handle per historical shard.
+// forEachHistoryShard probes the shards that may own history after the live
+// entity index is deleted: refShard, refArchive (if present) and ALL event
+// shards. Cold shards must be included: a cross-shard relationship's history
+// lives on the start node's shard, which may have gone cold after the delete.
+// Cold shards opened only for this read are closed after the callback so
+// broad scans do not accumulate Badger handles.
 func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (bool, error)) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -366,11 +339,9 @@ func (ts *Store) forEachHistoryShard(skip *BadgerStore, fn func(*BadgerStore) (b
 		refCheckin()
 	}
 
-	// Pin the archive via checkoutArchive (incrementing archiveActiveReqs)
-	// so the callback sees a stable handle even if Close / closeIdleShards
-	// races. checkoutArchive lazy-opens on cold start when the catalog
-	// records an archive but the pointer is nil. The checkin must wrap
-	// the callback invocation so the pin is released on every exit path.
+	// Pin via checkoutArchive (lazy-opens on cold start) so the callback sees a
+	// stable handle despite Close / closeIdleShards; checkin wraps the callback on
+	// every exit path.
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return archiveErr
@@ -482,12 +453,9 @@ func (ts *Store) forEachNodeHistoryIDByDepth(depth ShardDepth, fn func(types.Nod
 				}
 			}
 		}
-		// Bound observation to the maxRaw snapshot computed before this scan
-		// started. A concurrent writer can add a new history ID between the
-		// maxNodeHistoryIDByDepth call and this iteration; without this prune,
-		// the late ID would be observed here but not reflected in maxRaw, and
-		// callers that pair this iteration with maxRaw-based reasoning would
-		// see a result set that exceeds the snapshot upper bound.
+		// Bound observation to the maxRaw snapshot taken before the scan: a
+		// concurrent writer may add a history ID after maxNodeHistoryIDByDepth, which
+		// would exceed the snapshot upper bound.
 		if id.SnowflakeID() > maxRaw {
 			return true
 		}
@@ -841,12 +809,10 @@ func trimNodeHistoryPage(history []*types.Node, limit int) []*types.Node {
 }
 
 // ForEachDeletedNodeID iterates IDs that have history rows but no current
-// row. Streaming: probes ts.GetNode INSIDE the history-iteration callback —
-// shard locks/checkouts are released across callback invocations (see the
-// pagination shape in forEachNodeHistoryIDAll / forEachNodeHistoryIDByDepth),
-// so the GetNode probe re-routes safely without holding the iterator's shard
-// handles. Yields only IDs whose current row is absent; live entities are
-// skipped without buffering the full history set.
+// row. Streaming: ts.GetNode is probed INSIDE the history callback, safe
+// because shard checkouts are released across callbacks (see
+// forEachNodeHistoryIDAll / forEachNodeHistoryIDByDepth); live entities are
+// skipped without buffering.
 func (ts *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
 	return ts.ForEachDeletedNodeIDByDepth(DepthAll, fn)
 }

@@ -5,9 +5,7 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// HasPropertyIndex satisfies the optional
-// store.PropertyIndexIntrospectionCapability (BACKLOG 21b). Unregistered
-// labels return false, not an error.
+// HasPropertyIndex satisfies store.PropertyIndexIntrospectionCapability (BACKLOG 21b).
 func (ms *Store) HasPropertyIndex(labelToken uint16, propertyKey string) (bool, error) {
 	if ms == nil {
 		return false, ErrNilStore
@@ -27,10 +25,8 @@ func (ms *Store) HasPropertyIndex(labelToken uint16, propertyKey string) (bool, 
 	return ok, nil
 }
 
-// HasTemporalIndex satisfies the optional
-// store.TemporalIndexIntrospectionCapability (BACKLOG 21b). Reports the
-// interval-index KIND specifically — a high-frequency index on the same
-// label does not count (see store.TemporalIndexIntrospectionCapability doc).
+// HasTemporalIndex satisfies store.TemporalIndexIntrospectionCapability (BACKLOG 21b);
+// the interval kind only, a high-frequency index on the label does not count.
 func (ms *Store) HasTemporalIndex(labelToken uint16) (bool, error) {
 	if ms == nil {
 		return false, ErrNilStore
@@ -47,10 +43,8 @@ func (ms *Store) HasTemporalIndex(labelToken uint16) (bool, error) {
 	return ok, nil
 }
 
-// VectorIndexInfo satisfies the optional
-// store.VectorIndexIntrospectionCapability (BACKLOG 21b): the declared
-// dims/metric/engine/tuning of the vector index on (labelToken,
-// propertyKey), or (zero value, false, nil) if none exists.
+// VectorIndexInfo satisfies store.VectorIndexIntrospectionCapability (BACKLOG 21b):
+// the declared config of the vector index, or (zero, false, nil).
 func (ms *Store) VectorIndexInfo(labelToken uint16, propertyKey string) (storecontract.VectorIndexInfo, bool, error) {
 	if ms == nil {
 		return storecontract.VectorIndexInfo{}, false, ErrNilStore
@@ -73,10 +67,8 @@ func (ms *Store) VectorIndexInfo(labelToken uint16, propertyKey string) (storeco
 	return vectorIndexInfoOf(vi), true, nil
 }
 
-// vectorIndexInfoOf snapshots an *indexpkg.VectorIndex's declared
-// configuration into the public store.VectorIndexInfo shape. Shared by every
-// backend that stores the SAME indexpkg.VectorIndex type directly
-// (memory/badger/tiered — see CLAUDE.md "Vector Indexes").
+// vectorIndexInfoOf snapshots an *indexpkg.VectorIndex's declared configuration;
+// shared by every backend that stores that type directly.
 func vectorIndexInfoOf(vi *indexpkg.VectorIndex) storecontract.VectorIndexInfo {
 	return storecontract.VectorIndexInfo{
 		Dims:   vi.Dims,
@@ -90,9 +82,7 @@ func vectorIndexInfoOf(vi *indexpkg.VectorIndex) storecontract.VectorIndexInfo {
 	}
 }
 
-// HasRelPropertyIndex satisfies the optional
-// store.RelPropertyIndexIntrospectionCapability (BACKLOG 21b). Unregistered
-// relationship types return false, not an error.
+// HasRelPropertyIndex satisfies store.RelPropertyIndexIntrospectionCapability (BACKLOG 21b).
 func (ms *Store) HasRelPropertyIndex(relTypeToken uint16, propertyKey string) (bool, error) {
 	if ms == nil {
 		return false, ErrNilStore
@@ -117,8 +107,8 @@ var (
 	_ storecontract.RelPropertyIndexOptionsCapability = (*Store)(nil)
 )
 
-// PropertyIndexOptions returns the options the index on (labelToken,
-// propertyKey) was created with; ok=false when there is none.
+// PropertyIndexOptions returns the options the index on (labelToken, propertyKey)
+// was created with; ok=false when there is none.
 func (ms *Store) PropertyIndexOptions(labelToken uint16, propertyKey string) (storecontract.PropertyIndexOptions, bool, error) {
 	if ms == nil {
 		return storecontract.PropertyIndexOptions{}, false, ErrNilStore
@@ -132,7 +122,7 @@ func (ms *Store) PropertyIndexOptions(labelToken uint16, propertyKey string) (st
 		return storecontract.PropertyIndexOptions{}, false, err
 	}
 	idx, ok := ms.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}]
-	return storecontract.PropertyIndexOptions{RangeCounts: idx.RangeCounts()}, ok, nil
+	return storecontract.PropertyIndexOptions{RangeCounts: idx.RangeCounts(), Elements: idx.Elements()}, ok, nil
 }
 
 // RelPropertyIndexOptions is the relationship mirror of PropertyIndexOptions.
@@ -149,5 +139,5 @@ func (ms *Store) RelPropertyIndexOptions(relTypeToken uint16, propertyKey string
 		return storecontract.PropertyIndexOptions{}, false, err
 	}
 	idx, ok := ms.relPropertyIndexes[indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}]
-	return storecontract.PropertyIndexOptions{RangeCounts: idx.RangeCounts()}, ok, nil
+	return storecontract.PropertyIndexOptions{RangeCounts: idx.RangeCounts(), Elements: idx.Elements()}, ok, nil
 }

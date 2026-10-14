@@ -65,10 +65,8 @@ type Store struct {
 
 	// Label index: labelToken → set of node IDs.
 	labelIdx map[uint16]map[types.NodeID]struct{}
-	// labelOrder / typeOrder keep the scanned labels' and types' members in
-	// ascending ID order for the streaming scans (storeutil.MemberOrder),
-	// maintained by addNodeLabelIndex / removeNodeLabelIndex and
-	// addRelTypeIndex / removeRelTypeIndex under mu.
+	// labelOrder / typeOrder: members in ascending ID order for streaming scans
+	// (storeutil.MemberOrder); maintained with the label/type index under mu.
 	labelOrder storeutil.MemberOrder[types.NodeID]
 	typeOrder  storeutil.MemberOrder[types.RelID]
 
@@ -99,13 +97,10 @@ type Store struct {
 	// RAM-only mirror of propertyIndexes (K3b); rebuilt from current rels at open.
 	relPropertyIndexes map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex
 
-	// Composite property indexes — (label, declared ordered key tuple) →
-	// concatenated per-component value key → set of node IDs. RAM-only, v1
-	// equality-only (see docs/query-planners.md "Composite property
-	// indexes"). compositeIndexesByLabel is the label->definitions secondary
-	// index node-mutation maintenance needs (a node carries a label, not a
-	// specific composite key tuple, so maintenance must enumerate every
-	// definition registered on each label the node carries).
+	// Composite property indexes: (label, key tuple) -> value key -> node IDs.
+	// RAM-only, equality-only (docs/query-planners.md "Composite property
+	// indexes"). compositeIndexesByLabel lets node mutation enumerate the
+	// definitions registered on each label the node carries.
 	compositeIndexes        map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex
 	compositeIndexesByLabel map[uint16][]indexpkg.CompositeIndexKey
 
@@ -114,48 +109,34 @@ type Store struct {
 	// surface used by property equality indexes and planner pruning.
 	propertyKeyCounts map[uint16]map[string]int
 
-	// Property-key type-class counts — label+property → per-class node counts
-	// (types.PropertyTypeClass order). Unlike propertyKeyCounts this covers
-	// EVERY property value (non-indexable ones classify as ClassOther), so
-	// present+missing partitions the label exactly. Maintained on the SAME
-	// node-mutation doors as propertyKeyCounts (same call — see
-	// adjustNodePropertyKeyCounts); backs the optional
-	// store.NodePropertyTypeClassCountsCapability.
+	// Property-key type-class counts: label+property -> per-class node counts.
+	// Covers every value (non-indexable ones are ClassOther), so present+missing
+	// partitions the label. Maintained with propertyKeyCounts
+	// (adjustNodePropertyKeyCounts); backs NodePropertyTypeClassCountsCapability.
 	propertyTypeClassCounts map[uint16]map[string]*[types.NumPropertyTypeClasses]int64
 
-	// relPropertyTypeClassCounts is the RELATIONSHIP mirror (BACKLOG 5B): exact
-	// per-(relTypeToken, propertyKey) rel counts by class, maintained on the same rel
-	// mutation doors as the rel property index. The memory store holds live rels, so
-	// the delete path decrements with the old rel directly, as badger's delete seam
-	// does (backlog 53). Backs the optional
-	// store.RelPropertyTypeClassCountsCapability.
+	// relPropertyTypeClassCounts: relationship mirror (backlog 5B), per
+	// (relTypeToken, propertyKey). Delete decrements with the live old rel
+	// (backlog 53). Backs RelPropertyTypeClassCountsCapability.
 	relPropertyTypeClassCounts map[uint16]map[string]*[types.NumPropertyTypeClasses]int64
 
-	// Property-key NDV + exact min/max stats — label+property → accumulator.
-	// Maintained on the SAME node-mutation doors as propertyKeyCounts (see
-	// adjustNodePropertyKeyCounts in memorystore_property_key_counts.go);
-	// backs the optional store.NodePropertyStatsCapability.
+	// Property-key NDV and exact min/max stats: label+property -> accumulator.
+	// Maintained with propertyKeyCounts; backs NodePropertyStatsCapability.
 	propertyStats map[uint16]map[string]*indexpkg.PropertyStatsAccumulator
 
-	// relPropertyKeyCounts / relPropertyStats are the RELATIONSHIP mirror of
-	// propertyKeyCounts / propertyStats (BACKLOG 21a), following the same
-	// live-object-at-delete shape as relPropertyTypeClassCounts above: the
-	// memory store holds live rels, so the delete path decrements with the
-	// old rel directly, as badger's delete seam does (backlog 53). Maintained
-	// on the same rel-mutation doors
-	// as relPropertyTypeClassCounts (see adjustRelPropertyKeyCounts in
-	// memorystore_rel_property_stats.go); backs the optional
-	// store.RelPropertyStatsCapability.
+	// relPropertyKeyCounts / relPropertyStats: relationship mirror of
+	// propertyKeyCounts / propertyStats (backlog 21a), maintained with
+	// relPropertyTypeClassCounts (adjustRelPropertyKeyCounts); backs
+	// RelPropertyStatsCapability.
 	relPropertyKeyCounts map[uint16]map[string]int
 	relPropertyStats     map[uint16]map[string]*indexpkg.PropertyStatsAccumulator
 
 	// Temporal indexes — labelToken → interval index for temporal push-down.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
-	// Relationship-type temporal indexes (BACKLOG 21c) — relType → interval
-	// index, the rel-side mirror of temporalIndexes. Independent map: a
-	// label token and a rel-type token are different registries and may
-	// numerically collide, so these must never share temporalIndexes.
+	// Relationship-type temporal indexes (backlog 21c): rel-side mirror of
+	// temporalIndexes. A separate map: label and rel-type tokens are different
+	// registries and may collide numerically.
 	relTypeTemporalIndexes map[uint16]*indexpkg.TemporalIndex
 
 	// High-frequency indexes — labelToken → time-bucketed index for O(1) insertion.
@@ -168,27 +149,19 @@ type Store struct {
 	// Meta KV — schema-version marker and other graph-layer bookkeeping.
 	metaKV map[string][]byte
 
-	// X5 DocValues: cached per-label columnar snapshots (labelToken -> immutable
-	// LabelDocValues), and a global node-mutation epoch bumped on EVERY node write
-	// so a cached column can detect staleness. The epoch is deliberately coarse
-	// (any node mutation invalidates every column): a per-label counter is an
-	// optimization, but a single missed mutation path would silently serve a stale
-	// aggregate, so correctness picks the impossible-to-under-fire
-	// global counter. atomic so ForEachDocValues can read it without the lock.
+	// X5 DocValues: cached per-label columnar snapshots plus a global node
+	// mutation epoch bumped on EVERY node write. Deliberately coarse: a missed
+	// mutation path with a per-label counter would serve stale aggregates.
+	// Atomic so ForEachDocValues reads it without the lock.
 	nodeEpoch atomic.Uint64
-	// relEpoch is a DISTINCT generation counter bumped on every relationship write
-	// (add/replace/delete/batch). The X5 expand-aggregation column path reads
-	// ADJACENCY (not just node membership), so its staleness re-check (Gate 2) must
-	// see edge mutations too — nodeEpoch alone would wave through a torn aggregate
-	// from a concurrent edge insert. Kept separate from nodeEpoch so node-only
-	// scan/projection column caches do not rebuild on edge-heavy writes.
+	// relEpoch: separate generation counter bumped on every relationship write.
+	// The expand-aggregation column path reads adjacency, so its staleness
+	// re-check must see edge mutations; kept apart from nodeEpoch so node-only
+	// column caches do not rebuild on edge writes.
 	relEpoch atomic.Uint64
-	// relTypeEpochs / relEpochCoarse (round 5 request 9) are the per-type
-	// freshness stamp RelMutationEpochForType returns: a type's stripe plus a
-	// coarse term. A write door that holds the relationship bumps only its
-	// type's stripe (bumpRelEpochForType); every other door bumps the coarse
-	// term and so every type (bumpRelEpoch), as badger stripes it. relEpoch
-	// itself still moves on every relationship write.
+	// relTypeEpochs / relEpochCoarse: per-type stamp for RelMutationEpochForType
+	// (type stripe plus coarse term). Doors holding the relationship bump only
+	// their stripe (bumpRelEpochForType); all others bump the coarse term.
 	relTypeEpochs  [relTypeEpochStripes]atomic.Uint64
 	relEpochCoarse atomic.Uint64
 	// maxNodeOrdinal / maxRelOrdinal: the last dense ordinal handed out
@@ -204,22 +177,17 @@ type Store struct {
 	// relColumns is the rel-type keyed sibling of docColumns, carrying endpoint
 	// columns alongside properties. Stamped with the store-wide relEpoch.
 	relColumns map[uint16]*indexpkg.DocValues[types.RelID]
-	// docColumnsMulti caches columns for a LABEL INTERSECTION (multi-label
-	// patterns like (p:A:B)), keyed by the order-independent token-tuple key
-	// (indexpkg.MultiLabelKey). Same epoch-validated immutable-snapshot model as
-	// docColumns; separate map so the single-label path stays keyed by uint16.
+	// docColumnsMulti: columns for a label intersection, keyed by the
+	// order-independent indexpkg.MultiLabelKey. Same epoch-validated model as
+	// docColumns.
 	docColumnsMulti map[string]*indexpkg.LabelDocValues
-	// docOrdinals keeps the node ordinals of a docColumns / docColumnsMulti
-	// snapshot's rows, read on the first ForEachDocValues(Multi)Ordinal of
-	// that snapshot (round 6 request 11) and valid while it is: a node keeps
-	// its ordinal while it has a current row. Guarded by mu.
+	// docOrdinals: node ordinals of a docColumns / docColumnsMulti snapshot's
+	// rows, valid while that snapshot is. Guarded by mu.
 	docOrdinals docOrdinalCache
 
-	// Change-log (op-log) — opt-in via WithChangeLog. logEnabled gates all record
-	// production. logSeq is the monotonic LSN, changeLog the ordered in-RAM record
-	// slice; both are guarded by ms.mu (every mutation door holds it), so LSN
-	// assignment and append are atomic and totally ordered. Not durable — a
-	// parity/testing facility (see memorystore_changelog.go).
+	// Change-log (op-log), opt-in via WithChangeLog. logSeq (monotonic LSN) and
+	// changeLog are guarded by ms.mu so LSN assignment and append are atomic.
+	// Not durable (memorystore_changelog.go).
 	logEnabled bool
 	logSeq     uint64
 	changeLog  []storecontract.ChangeRecord
@@ -229,56 +197,39 @@ type Store struct {
 	// fail closed with ErrCapabilityNotSupported. Opt-in via WithoutPlannerStats.
 	disablePlannerStats bool
 
-	// Per-transaction change-log scope (store.TxChangeLogScope), parallel to the
-	// badger backend. While scopeActive (toggled by the core's SetLogDivert under
-	// its exclusive write lock), logChangeLocked buffers the record into scopeLog
-	// (LSN zero) WITHOUT advancing logSeq; CommitLogScope splices them into
-	// changeLog with contiguous LSNs minted at commit; DiscardLogScope drops them
-	// (a rolled-back tx emits nothing). All under ms.mu.
+	// Per-transaction change-log scope (store.TxChangeLogScope). While
+	// scopeActive (set by SetLogDivert under the core's exclusive lock),
+	// logChangeLocked buffers into scopeLog without advancing logSeq;
+	// CommitLogScope splices with LSNs minted at commit, DiscardLogScope drops
+	// them. All under ms.mu.
 	scopeActive bool
 	scopeLog    []storecontract.ChangeRecord
 
-	// Scoped (multi-token) change-log buffers — store.ScopedTxChangeLog
-	// (BACKLOG 11f Batch A, foundation only; nothing wires a nonzero token
-	// into a tx yet). Unlike scopeActive/scopeLog above (a single implicit
-	// buffer requiring provable exclusion of every other writer for its
-	// entire open duration), each scope here is independently addressed by
-	// its token, so multiple scopes can be open concurrently with no shared
-	// "which scope is active" flag to race on. Both fields guarded by ms.mu.
+	// Scoped change-log buffers (store.ScopedTxChangeLog, backlog 11f Batch A,
+	// foundation only). Each scope is addressed by token, so several can be open
+	// concurrently with no shared active flag. Guarded by ms.mu.
 	scopedTokenSeq uint64
 	scopedLogs     map[uint64][]storecontract.ChangeRecord
 
-	// transaction-time membership sidecars (store.LabelTxMembershipCapability /
-	// RelTypeTxMembershipCapability). labelTxMembers maps a label token to the set
-	// of node IDs that EVER carried it (current OR any historical version), each
-	// tagged with a lower bound on the transaction time of its earliest
-	// acquisition; relTypeTxMembers is the rel-type mirror. Both are APPEND-ONLY
-	// (removal/delete never drops a member) and nil until lazily built on the first
-	// ForEach*TxMember call (mirrors the badger relValidIdx / OPT15 precedent), so a
-	// graph that never runs a pinned label/type scan pays nothing. All under ms.mu.
+	// Transaction-time membership sidecars (Label/RelTypeTxMembershipCapability):
+	// node IDs that EVER carried a label (current or historical), tagged with a
+	// lower bound of the earliest acquisition tx time; relTypeTxMembers mirrors
+	// it. Append-only; nil until the first ForEach*TxMember call. Under ms.mu.
 	labelTxMembers   map[uint16]map[types.NodeID]types.Instant
 	relTypeTxMembers map[uint16]map[types.RelID]types.Instant
 
-	// property membership sidecars (backlog 8,
-	// store.RelPropertyTxMembershipCapability / NodePropertyTxMembershipCapability):
-	// one per declared property index a temporal lookup asked for, built lazily
-	// and recorded at the row seams (memorystore_propertytxmembers.go). Built
-	// count and summed build time feed PropertyTxMembershipStats. All under ms.mu.
+	// Property membership sidecars (backlog 8): one per declared property index
+	// a temporal lookup asked for, built lazily, recorded at the row seams
+	// (memorystore_propertytxmembers.go). Under ms.mu.
 	relPropTxMembers  map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyTxMembers[types.RelID]
 	nodePropTxMembers map[indexpkg.PropertyIndexKey]*indexpkg.PropertyTxMembers[types.NodeID]
 	propTxBuilds      int64
 	propTxBuildTime   time.Duration
 
-	// belief watermarks (store.NodeBeliefWatermarkCapability /
-	// RelBeliefWatermarkCapability, BACKLOG 10c). nodeBeliefWatermark maps a
-	// node ID to the MAXIMUM TxFrom ever recorded across its whole version
-	// chain (current + every history row); relBeliefWatermark mirrors it for
-	// relationships. Lazily built on first use (same nil-until-built shape as
-	// labelTxMembers above), maintained incrementally thereafter at every
-	// door that persists a current or history row. See
-	// store.NodeBeliefWatermarkCapability's doc comment for the invariant
-	// this restores (BACKLOG 10b's removed current-row-only fast path, made
-	// safe instead of assumed). All under ms.mu.
+	// Belief watermarks (Node/RelBeliefWatermarkCapability, backlog 10c): max
+	// TxFrom across an ID's whole version chain. Lazily built (nil until first
+	// use), maintained at every door that persists a current or history row.
+	// Invariant: see NodeBeliefWatermarkCapability. Under ms.mu.
 	nodeBeliefWatermark map[types.NodeID]types.Instant
 	relBeliefWatermark  map[types.RelID]types.Instant
 
@@ -287,11 +238,10 @@ type Store struct {
 	relValidEnds  indexpkg.ValidEndIndex
 	nodeValidEnds indexpkg.ValidEndIndex
 
-	// History stamps (store.HistoryStampsCapability, backlog 30,
-	// memorystore_history_stamps.go): per ID, the cached fold of its history
-	// rows' newest TxFrom / TxTo-or-DeletedAt with the row count it was
-	// computed at. Writers hold ms.mu exclusively; readers share it and take
-	// histStampsMu for these two maps.
+	// History stamps (HistoryStampsCapability, backlog 30,
+	// memorystore_history_stamps.go): per ID, cached fold of history rows'
+	// newest TxFrom / TxTo-or-DeletedAt plus the row count it was computed at.
+	// Writers hold ms.mu exclusively; readers share it and take histStampsMu.
 	histStampsMu   sync.RWMutex
 	nodeHistStamps map[types.NodeID]histStampsEntry
 	relHistStamps  map[types.RelID]histStampsEntry
@@ -319,13 +269,10 @@ type Store struct {
 	segCommitFloor  types.Instant          // newest transaction stamp of the rows loaded from segDir (memorystore_commit_floor.go)
 }
 
-// bumpNodeEpoch marks every cached DocValues column potentially stale. Called by
-// every node-mutation path (add/replace/label-change/delete/batch). A spurious
-// bump (on a no-op or errored mutation) is safe — it only forces a rebuild.
-// bumpNodeEpoch invalidates every cached column AND poisons the append record.
-// POISON IS THE DEFAULT: a write path that does not explicitly opt in via
-// bumpNodeEpochAppend keeps exactly today's rebuild behaviour, so no site has to be
-// audited and none can opt in by omission. See memorystore_append_delta.go.
+// bumpNodeEpoch invalidates every cached DocValues column and poisons the
+// append record. Poison is the default: only a path that opts in via
+// bumpNodeEpochAppend keeps the append delta (memorystore_append_delta.go).
+// A spurious bump only forces a rebuild.
 func (ms *Store) bumpNodeEpoch() {
 	ms.bumpNodeEpochRaw()
 	ms.appendDelta.poisoned = true
@@ -336,10 +283,9 @@ func (ms *Store) bumpNodeEpoch() {
 // two append-aware helpers call it.
 func (ms *Store) bumpNodeEpochRaw() { ms.nodeEpoch.Add(1) }
 
-// bumpRelEpoch marks the adjacency view stale for the X5 expand-aggregation column
-// path. Called by every relationship-mutation path. A spurious bump is safe. It
-// also moves every type's RelMutationEpochForType (the coarse term): the default
-// door for a write that does not name its type.
+// bumpRelEpoch marks the adjacency view stale and moves every type's
+// RelMutationEpochForType (coarse term): the default for a write that does
+// not name its type. A spurious bump is safe.
 func (ms *Store) bumpRelEpoch() {
 	ms.relEpoch.Add(1)
 	ms.relEpochCoarse.Add(1)
@@ -351,8 +297,7 @@ func (ms *Store) bumpRelEpoch() {
 const relTypeEpochStripes = 256
 
 // bumpRelEpochForTypes is bumpRelEpoch for a write whose relationships are
-// all in hand: relEpoch moves, and of the per-type stamps only those of the
-// relationships' types. A nil relationship or token 0 (an unregistered type)
+// in hand: only their types' stamps move. A nil relationship or token 0
 // falls back to the coarse bump.
 func (ms *Store) bumpRelEpochForTypes(rels ...*types.Relationship) {
 	for _, r := range rels {
@@ -562,10 +507,9 @@ func (ms *Store) Close() error {
 	ms.mu.Lock()
 	ms.closed = true
 	ms.mu.Unlock()
-	// ADR-0011: a seal in flight (background or explicit) sees closed at its
-	// install and discards its segment; wait for it so no work outlives the
-	// store. Then release the segment files (S3): a mapping a lock-free scan
-	// still holds is unmapped when that scan returns.
+	// ADR-0011: wait for an in-flight seal (it sees closed and discards its
+	// segment) so no work outlives the store, then release segment files; a
+	// mapping a lock-free scan holds is unmapped when that scan returns.
 	ms.sealers.Wait()
 	ms.mu.Lock()
 	ms.releaseSegmentDirLocked()
@@ -573,10 +517,9 @@ func (ms *Store) Close() error {
 	return nil
 }
 
-// checkOpenLocked returns ErrStoreClosed after Close has run.
-// Caller must hold ms.mu for either reading or writing. It also initializes the
-// zero-value Store before any map access; sync.Once makes the initialization
-// safe even when several readers reach the lifecycle gate together.
+// checkOpenLocked returns ErrStoreClosed after Close. Caller holds ms.mu
+// (read or write). Also initializes the zero-value Store; sync.Once makes
+// that safe for concurrent readers.
 func (ms *Store) checkOpenLocked() error {
 	if ms == nil {
 		return ErrNilStore

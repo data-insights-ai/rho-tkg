@@ -12,26 +12,19 @@ import (
 )
 
 // ByTypeAndProperty returns relationships matching the rel type and property
-// value — the relationship mirror of NodeOps.ByLabelAndProperty. Resolves the
-// type name to a token; returns nil if the type is not registered.
+// value (rel mirror of NodeOps.ByLabelAndProperty); nil if the type is not
+// registered.
 //
-// Without a temporal filter, the call falls through to the store-level rel
-// property index for O(matches) lookup when the backend implements
-// RelPropertyIndexCapability; otherwise the graph layer falls back to a
-// type-scan + property filter over the mandatory RelationshipsByType surface
-// (so the query works on every backend, including the tiered store, which
-// declines rel-property-index CREATION). When opts carries a temporal filter,
-// the candidates are the rels currently matching type+property united with the
-// rels whose rows ever carried the value (the store's property membership
-// sidecar for a declared index, backlog 8; else every known history ID); each
-// candidate is resolved to its version overlapping the requested time and the
-// predicate re-checked against that version, so a rel whose type and property
-// held at the requested time is included even if a later version no longer
-// matches.
+// Without a temporal filter it uses the store rel property index when the backend
+// implements RelPropertyIndexCapability, else a type scan + filter over
+// RelationshipsByType (so it works on every backend, including tiered). With a
+// temporal filter the candidates are the current matches plus the rels whose rows
+// ever carried the value (membership sidecar, backlog 8; else every known history
+// ID), each re-checked at its version at the requested time.
 //
-// DECLARED view under a temporal filter: each relationship's own asserted
-// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
-// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
+// DECLARED view under a temporal filter: each relationship's own asserted validity
+// only, NOT masked by endpoint validity. Use Temporal().Snapshot / NeighborsAt /
+// OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) ByTypeAndProperty(typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -88,13 +81,13 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 		return nil, err
 	}
 
+	elements, err := c.relIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	var result []*types.Relationship
 	pred := func(r *types.Relationship) bool {
-		if !r.HasTypeTokenRaw(tok) {
-			return false
-		}
-		gotKey, found := r.IndexablePropertyValueKey(key)
-		return found && gotKey == targetKey
+		return r.HasTypeTokenRaw(tok) && r.HasPropertyIndexKey(key, elements, targetKey)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, opts, func(id types.RelID) error {
@@ -116,12 +109,8 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 }
 
 // relsByTypeAndProperty answers the (rel-type-token, property-key, value) query
-// whether or not the store implements the accelerated rel property index. Exact
-// in-tree stores and direct external implementations use
-// RelationshipsByTypeAndProperty; wrappers and mandatory-only backends fall back
-// to a type scan + property filter (the optional capability is index
-// management/acceleration, not query correctness). Mirror of
-// nodesByLabelAndProperty; see its empty-key contract note.
+// with or without the accelerated index: RelationshipsByTypeAndProperty where
+// implemented, else type scan + filter. Mirror of nodesByLabelAndProperty.
 func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	wantKey := indexpkg.PropertyValueKey(value)
 	if wantKey == "" {
@@ -134,7 +123,11 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 			return nil, err
 		}
 		if !c.relPropertyQueryTrust {
-			if err := validateRelsByTypeAndProperty(tok, key, wantKey, opts, rels); err != nil {
+			elements, err := c.relIndexElements(tok, key)
+			if err != nil {
+				return nil, err
+			}
+			if err := validateRelsByTypeAndProperty(tok, key, wantKey, elements, opts, rels); err != nil {
 				return nil, err
 			}
 			rels = copyRelationshipRows(rels)
@@ -154,16 +147,15 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 			return nil, err
 		}
 	}
+	elements, err := c.relIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]*types.Relationship, 0, len(candidates))
 	for _, r := range candidates {
-		gotKey, found := r.IndexablePropertyValueKey(key)
-		if !found || gotKey == "" {
-			continue
+		if r.HasPropertyIndexKey(key, elements, wantKey) {
+			out = append(out, r)
 		}
-		if gotKey != wantKey {
-			continue
-		}
-		out = append(out, r)
 	}
 	out = storeutil.PaginateRels(out, opts.After, opts.Limit)
 	if !c.storeRowsTrust {
@@ -172,11 +164,10 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 	return out, nil
 }
 
-// relPropertyCurrentIDs returns the IDs of the relationships whose CURRENT row
-// matches (type, key = value): the seed of the named temporal property doors.
-// A current rel that does not match now and has no other row can match at no
-// time, so seeding with the matches instead of the whole type loses nothing;
-// every other candidate comes from history (forEachRelPropertyCandidateID).
+// relPropertyCurrentIDs returns the IDs of relationships whose CURRENT row matches
+// (type, key = value), the seed of the temporal property doors. A current rel that
+// does not match now and has no other row can match at no time; the rest come from
+// history (forEachRelPropertyCandidateID).
 func (c *Core) relPropertyCurrentIDs(tok uint16, key string, value any) ([]types.RelID, error) {
 	current, err := c.relsByTypeAndProperty(tok, key, value, storepkg.QueryOpts{})
 	if err != nil {

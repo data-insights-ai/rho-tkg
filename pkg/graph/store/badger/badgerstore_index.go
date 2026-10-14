@@ -17,24 +17,18 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// CreatePropertyIndex creates a property index for the given label token and property key.
-// Three-phase approach to prevent blocking concurrent reads/writes during slow I/O:
-//
-//	Phase 1 (write Lock): Install an empty live index so concurrent PutNode/ReplaceNode
-//	writes are captured immediately. Snapshot existing node IDs.
-//	Phase 2 (no lock): Prefetch node data to build a backfill set.
-//	Phase 3 (write Lock): Merge backfill entries into the live index, skipping IDs
-//	that were already handled by concurrent writes during Phase 2.
-//
-// Returns ErrIndexExists if the index already exists.
+// CreatePropertyIndex creates a property index for the label token and property key.
+// Writes during the build are captured (live index installed under the write
+// lock; backfill prefetched without a lock, then merged skipping IDs already
+// written). Returns ErrIndexExists if the index already exists.
 func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
 	return bs.CreatePropertyIndexWithOptions(labelToken, propertyKey, storecontract.PropertyIndexOptions{})
 }
 
 // CreatePropertyIndexWithOptions is CreatePropertyIndex with
-// storecontract.PropertyIndexOptions (round 4 R2). The options persist with
-// the definition. RangeCounts needs the RAM index: with PropertyIndexOnDisk it
-// is refused (ErrCapabilityNotSupported).
+// storecontract.PropertyIndexOptions, persisted with the definition. RangeCounts and
+// Elements need the RAM index: with PropertyIndexOnDisk they return
+// ErrCapabilityNotSupported (the disk keyspace is shared by every label indexing the key).
 func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -45,8 +39,14 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return err
 	}
+	if err := storecontract.ValidatePropertyIndexOptions(opts); err != nil {
+		return err
+	}
 	if bs.propIdxOnDisk && opts.RangeCounts {
 		return fmt.Errorf("graph: create property index: range counts need the RAM index, not PropertyIndexOnDisk: %w", storecontract.ErrCapabilityNotSupported)
+	}
+	if bs.propIdxOnDisk && opts.Elements {
+		return fmt.Errorf("graph: create property index: an elements index needs the RAM index, not PropertyIndexOnDisk: %w", storecontract.ErrCapabilityNotSupported)
 	}
 	if bs.propIdxOnDisk {
 		if _, ok := bs.propKeyTokenFor(propertyKey); !ok {
@@ -62,7 +62,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		bs.idxMu.Unlock()
 		return ErrIndexExists
 	}
-	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts)
+	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts, opts.Elements)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.propertyIndexes[key] = liveIdx
 	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
@@ -73,11 +73,9 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	}
 	bs.idxMu.Unlock()
 
-	// Phase 2: Fetch node data OUTSIDE any lock. Builds a backfill index for
-	// nodes that existed before Phase 1 without the defensive copy required by
-	// the public GetNode boundary. Disk mode collects writeOps instead of
-	// populating a RAM PropertyIndex's Entries map.
-	backfill := indexpkg.NewPropertyIndex()
+	// Phase 2: fetch node data outside any lock, without the public GetNode defensive
+	// copy. Disk mode collects writeOps instead of populating the RAM Entries map.
+	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
 	var diskOps []writeOp
 	for _, nid := range nids {
 		n, err := bs.prefetchNode(nid)
@@ -91,22 +89,18 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: create property index: %w", err)
 		}
-		valueKey, found := n.IndexablePropertyValueKey(propertyKey)
-		if !found {
-			continue
-		}
 		if bs.propIdxOnDisk {
-			if op, ok := bs.propertyIndexDiskOp(propertyKey, valueKey, nid.SnowflakeID(), writeOpSet); ok {
-				diskOps = append(diskOps, op)
+			if valueKey, found := n.IndexablePropertyValueKey(propertyKey); found {
+				if op, ok := bs.propertyIndexDiskOp(propertyKey, valueKey, nid.SnowflakeID(), writeOpSet); ok {
+					diskOps = append(diskOps, op)
+				}
 			}
 			continue
 		}
-		backfill.AddKey(nid.SnowflakeID(), valueKey)
+		backfill.AddEntityKeys(nid.SnowflakeID(), propertyKey, n.ForEachPropertyIndexKey)
 	}
 
-	// Phase 3: Merge backfill into live index under write Lock.
-	// Skip entries for IDs already handled by concurrent writes during Phase 2,
-	// and entries for nodes deleted during Phase 2.
+	// Phase 3: merge backfill under the write lock, skipping IDs written or deleted during Phase 2.
 	bs.idxMu.Lock()
 	if err := requirePropertyIndexCurrentForCreate(bs.propertyIndexes, key, liveIdx); err != nil {
 		bs.idxMu.Unlock()
@@ -175,10 +169,8 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 		bs.propTxGen++
 	}
 
-	// Disk mode: on-disk rows are shared across every definition indexing the
-	// SAME PropertyKey (regardless of label — see badgerstore_property_disk.go's
-	// file doc comment), so only physically purge them once no OTHER active
-	// definition still references propertyKey.
+	// Disk mode: rows are shared by every definition indexing the same PropertyKey
+	// (see badgerstore_property_disk.go), so purge only when no other definition uses it.
 	var purgeOps []writeOp
 	var purgeErr error
 	if bs.propIdxOnDisk {
@@ -204,20 +196,18 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 	return bs.flushIfNeeded()
 }
 
-// propIdxDef is the serialization format for property index definitions.
-// RangeCounts (round 4 R2) is written only when set, so a plain index's
-// definition stays byte-identical; a binary without the field skips it and
-// loads the index plain (its range counts then walk).
+// propIdxDef is the serialized property index definition. RangeCounts and Elements
+// (backlog 63) are written only when set, so plain definitions stay byte-identical; an
+// older binary skips them and loads the index plain.
 type propIdxDef struct {
 	LabelToken  uint16 `msgpack:"l"`
 	PropertyKey string `msgpack:"p"`
 	RangeCounts bool   `msgpack:"rc,omitempty"`
+	Elements    bool   `msgpack:"el,omitempty"`
 }
 
-// vectorIdxDef is the serialization format for vector index definitions.
-// UseBruteForce/M/EfConstruction/EfSearch are additive: a def
-// written before these fields existed decodes them to zero, which is
-// exactly "default HNSW with default tuning" — backward compatible.
+// vectorIdxDef is the serialized vector index definition. The tuning fields are
+// additive: absent decodes to zero = default HNSW.
 type vectorIdxDef struct {
 	LabelToken     uint16         `msgpack:"l"`
 	PropertyKey    string         `msgpack:"p"`
@@ -266,9 +256,8 @@ var temporalCreateBeforeFoldHook func()
 // after the Phase 2 fetch, before the Phase 3 merge takes idxMu.
 var temporalCreatePhase2Hook func()
 
-// CreateTemporalIndex creates a temporal index on nodes with the given label token.
-// Three-phase approach (same as CreatePropertyIndex) for safe concurrent operation.
-// Returns ErrTemporalIndexExists if the index already exists.
+// CreateTemporalIndex creates a temporal index on nodes with the label token
+// (three-phase, like CreatePropertyIndex). Returns ErrTemporalIndexExists if present.
 func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -335,15 +324,10 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 		temporalCreatePhase2Hook()
 	}
 
-	// Phase 3: Merge backfill into live index under write Lock. The index stays
-	// Building (readers skip it) until the history fold below is in: a
-	// published envelope of current rows alone would prune a node by a past
-	// row (backlog 56). An ID written since Phase 1 gets its fetched row by
-	// Extend (a union: the write folded its own row, and an older row is still
-	// a row the ID had). The disk row is written unless a write since Phase 1
-	// added or removed it (DiskWritten: its row is newer than the fetch, or
-	// the ID left the label); a write that left disk untouched
-	// (PutNodeVersion) left the fetched current row current.
+	// Phase 3: merge backfill under the write lock. The index stays Building (readers
+	// skip it) until the history fold below is in; current rows alone would let the
+	// envelope prune a node by a past row (backlog 56). Disk row is written unless a
+	// write since Phase 1 added/removed it (DiskWritten).
 	bs.idxMu.Lock()
 	if err := requireTemporalIndexCurrentForCreate(bs.temporalIndexes, labelToken, liveTI); err != nil {
 		bs.idxMu.Unlock()
@@ -376,11 +360,9 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 		temporalCreateBeforeFoldHook()
 	}
 
-	// Phase 4: read, without the lock, the history of the Phase 1 members —
-	// a superset of the IDs Phase 3 covered. A fresh snapshot would miss a
-	// member that left the label (or was deleted) since, leaving it covered by
-	// its current row alone (backlog 56 review); GetNodeHistory reads a
-	// deleted node's history too.
+	// Phase 4: read history, without the lock, of the Phase 1 members (a superset of
+	// Phase 3's IDs): a fresh snapshot would miss a member that left the label or was
+	// deleted since (backlog 56).
 	foldIDs, folds, err := bs.nodeHistoryFolds(labelToken, nids)
 	if err != nil {
 		bs.idxMu.Lock()
@@ -389,10 +371,8 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 		return err
 	}
 
-	// Phase 5: fold and publish. An ID written since Phase 1 that Phase 4 did
-	// not read (created, re-created, given the label or a PutNodeVersion after
-	// the Phase 1 snapshot) has its history folded here, under the lock, so no write lands
-	// between that read and the publish.
+	// Phase 5: fold and publish. IDs written since Phase 1 that Phase 4 did not read
+	// are folded here under the lock, so no write lands between read and publish.
 	bs.idxMu.Lock()
 	if err := requireTemporalIndexCurrentForCreate(bs.temporalIndexes, labelToken, liveTI); err != nil {
 		bs.idxMu.Unlock()
@@ -425,9 +405,8 @@ type temporalFoldEntry struct {
 	from, to types.Instant
 }
 
-// nodeHistoryFolds reads the history of ids without idxMu (GetNodeHistory
-// never re-enters it) and returns the IDs read and every history row's
-// bounds; an ID with no node and no history is skipped.
+// nodeHistoryFolds reads history of ids without idxMu and returns the IDs read
+// and every history row's bounds; IDs with no node and no history are skipped.
 func (bs *Store) nodeHistoryFolds(tok uint16, ids []types.NodeID) (map[snowflake.ID]struct{}, []temporalFoldEntry, error) {
 	read := make(map[snowflake.ID]struct{}, len(ids))
 	var folds []temporalFoldEntry
@@ -452,11 +431,9 @@ func (bs *Store) nodeHistoryFolds(tok uint16, ids []types.NodeID) (map[snowflake
 }
 
 // abortTemporalCreateLocked removes a create's unpublished index and, under
-// TemporalIndexOnDisk, the 0x0B rows its backfill and the writes during the
-// build added: with no definition they would be read again by a later create
-// of the label at the next crash reopen (duplicate entries). A purge that
-// fails is left to the open-time purge of undefined labels. An index replaced
-// meanwhile owns the prefix and is left alone. Caller holds idxMu.Lock.
+// TemporalIndexOnDisk, its 0x0B rows: with no definition a later create of the
+// label would read them again after a crash reopen. A failed purge is left to the
+// open-time purge. A replaced index owns the prefix and is left alone. Caller holds idxMu.Lock.
 func (bs *Store) abortTemporalCreateLocked(labelToken uint16, ti *indexpkg.TemporalIndex) {
 	if bs.temporalIndexes[labelToken] != ti {
 		return
@@ -473,20 +450,15 @@ func (bs *Store) abortTemporalCreateLocked(labelToken uint16, ti *indexpkg.Tempo
 }
 
 // foldTemporalHistoryEnvelopes folds every history version's valid-time bounds
-// into the per-node ENVELOPE of each temporal index in tokens (sound superset).
-// The current-version rebuild records only each node's latest version; this
-// pass adds the historical versions via Extend, so a past interval that
-// differs from the current one stays covered by the envelope. Called after
-// loadIndexes (all tokens); tolerant of nodes deleted concurrently.
+// into the per-node envelope of each temporal index in tokens (sound superset);
+// the current-version rebuild covers only the latest row. Tolerant of concurrent deletes.
 func (bs *Store) foldTemporalHistoryEnvelopes(tokens []uint16) error {
 	for _, tok := range tokens {
 		bs.idxMu.RLock()
 		ti, ok := bs.temporalIndexes[tok]
 		var ids []types.NodeID
 		if ok {
-			// Through the snapshot helper, not labelIdx: under LabelIndexOnDisk
-			// the map is empty and the fold silently dropped every history
-			// envelope (backlog 54 found it).
+			// Via the snapshot helper, not labelIdx: under LabelIndexOnDisk the map is empty (backlog 54).
 			var err error
 			if ids, err = bs.labelNodeIDsSnapshotLocked(tok); err != nil {
 				bs.idxMu.RUnlock()
@@ -515,10 +487,9 @@ func (bs *Store) foldTemporalHistoryEnvelopes(tokens []uint16) error {
 	return nil
 }
 
-// foldNodeHistoryLocked extends ti by every history row of id; the RAM history
-// presence set answers "has none" without a read. Caller holds idxMu.Lock (lock
-// order idxMu -> presence buildMu -> wbMu; the history read takes only wbMu and
-// a read transaction).
+// foldNodeHistoryLocked extends ti by every history row of id; the RAM presence
+// set answers "has none" without a read. Caller holds idxMu.Lock (order idxMu ->
+// presence buildMu -> wbMu).
 func (bs *Store) foldNodeHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.ID) error {
 	has, err := bs.hasHistory(&bs.histNodePresence, storepkg.KeyHistNode, id, bs.probeHistoryPresence)
 	if err != nil || !has {
@@ -551,12 +522,9 @@ func (bs *Store) nodeHasTemporalIndexLocked(n *types.Node) bool {
 	return false
 }
 
-// extendNodeVersionTemporalLocked folds a PutNodeVersion row into the index of
-// each of its labels that covers id (its envelope then holds every row of id)
-// or is still Building (the create folds the history of every ID written
-// meanwhile). An uncovered ID stays uncovered and is never pruned: extending
-// it here would vouch for this one row while its other rows stay outside.
-// Caller holds idxMu.Lock.
+// extendNodeVersionTemporalLocked folds a PutNodeVersion row into each label's
+// index that covers id or is still Building. An uncovered ID stays uncovered
+// (never pruned): extending would vouch for this one row only. Caller holds idxMu.Lock.
 func (bs *Store) extendNodeVersionTemporalLocked(n *types.Node, id snowflake.ID) {
 	from, to := indexpkg.NodeTemporalBounds(id, n.Temporal())
 	for i := 0; i < n.LabelTokenCount(); i++ {
@@ -570,16 +538,12 @@ func (bs *Store) extendNodeVersionTemporalLocked(n *types.Node, id snowflake.ID)
 	}
 }
 
-// foldRecreatedNodeHistoryLocked is called by a node create door, and by a
-// label-add door (backlog 56), before it adds n: for every label of n whose published temporal index does not cover
-// id, id may be a deleted node whose history is still on disk (deleted before
-// the index was built, or before a reopen rebuilt it), and the new row alone
-// would make the envelope vouch for less than the ID holds. Its history is
-// folded first (RAM envelope only, as foldTemporalHistoryEnvelopes does). A
-// Building index needs nothing: the create's ID is live when the create's
-// history fold runs. The presence set answers "no history" without a read.
-// Caller holds idxMu.Lock (lock order idxMu -> presence buildMu -> wbMu; the
-// history read takes only wbMu and a read transaction).
+// foldRecreatedNodeHistoryLocked runs before a node create / label-add door adds
+// n (backlog 56): for each label whose published temporal index does not cover
+// id, a deleted node's history may still be on disk and the new row alone would
+// make the envelope vouch for less than the ID holds, so it is folded first (RAM
+// envelope only). A Building index needs nothing. Caller holds idxMu.Lock (order
+// idxMu -> presence buildMu -> wbMu).
 func (bs *Store) foldRecreatedNodeHistoryLocked(n *types.Node, id snowflake.ID) error {
 	var hist []*types.Node
 	read := false
@@ -666,9 +630,7 @@ func (bs *Store) DropTemporalIndex(labelToken uint16) error {
 	}
 
 	delete(bs.temporalIndexes, labelToken)
-	// A TemporalIndex definition is exclusively keyed by labelToken (only one
-	// can ever exist per label — see purgeTemporalIndexDiskEntriesLocked's doc
-	// comment), so purging the whole labelToken prefix is always safe.
+	// A TemporalIndex is keyed exclusively by labelToken, so purging the whole prefix is safe.
 	purgeOps, purgeErr := bs.purgeTemporalIndexDiskEntriesLocked(labelToken)
 	bs.persistTemporalIndexDefs()
 	if len(purgeOps) > 0 {
@@ -681,12 +643,10 @@ func (bs *Store) DropTemporalIndex(labelToken uint16) error {
 	return bs.flushIfNeeded()
 }
 
-// CreateHighFrequencyIndex creates a time-bucketed high-frequency index on nodes
-// with the given label token. Only one temporal index type can exist per label —
-// returns ErrInvalidTemporalIndexConfig if bucketSize is not a positive whole
-// millisecond and
-// returns ErrTemporalIndexExists if a temporalIndex or highFrequencyIndex already
-// exists for this label.
+// CreateHighFrequencyIndex creates a time-bucketed index on nodes with the label
+// token. One temporal index type per label: ErrInvalidTemporalIndexConfig if
+// bucketSize is not a positive whole millisecond; ErrTemporalIndexExists if a
+// temporalIndex or highFrequencyIndex exists for the label.
 func (bs *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -870,22 +830,17 @@ func (bs *Store) persistHighFrequencyIndexDefs() {
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.HighFrequencyIndexDefsKey, value: data})
 }
 
-// CreateVectorIndex creates a vector similarity index for nodes with the given label token,
-// on the given property key, expecting vectors of length dims. The index
-// defaults to the approximate HNSW engine; use CreateVectorIndexWithOptions
-// for the brute-force escape hatch or HNSW tuning.
-// Scans existing nodes to populate the index. Returns ErrVectorIndexExists on duplicate.
-// Definitions are persisted and entries are rebuilt from node properties on startup.
+// CreateVectorIndex creates a vector index for the label token and property key
+// for vectors of length dims (approximate HNSW by default; see
+// CreateVectorIndexWithOptions). Scans existing nodes; definitions persist and
+// entries rebuild on startup. Returns ErrVectorIndexExists on duplicate.
 func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
 	return bs.CreateVectorIndexWithOptions(labelToken, propertyKey, dims, metric, storecontract.VectorIndexOptions{})
 }
 
-// CreateVectorIndexWithOptions is CreateVectorIndex with additional control
-// over the search engine (opts.UseBruteForce) and HNSW tuning (opts.M /
-// EfConstruction / EfSearch). A zero-value opts is identical to
-// CreateVectorIndex (documented HNSW defaults). The chosen engine/tuning is
-// persisted alongside Dims/Metric so a restart rebuilds the SAME engine
-// (see vectorIdxDef) rather than silently reverting to the default.
+// CreateVectorIndexWithOptions is CreateVectorIndex with control over the engine
+// (opts.UseBruteForce) and HNSW tuning; zero opts equals CreateVectorIndex. The
+// choice persists (see vectorIdxDef) so a restart rebuilds the same engine.
 func (bs *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey string, dims int, metric DistanceMetric, opts storecontract.VectorIndexOptions) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -950,9 +905,7 @@ func (bs *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey str
 		backfill = append(backfill, vectorBackfillEntry{id: nid.SnowflakeID(), vec: vec})
 	}
 
-	// Phase 3: Merge backfill under the store lock. Concurrent writes that
-	// happened during Phase 2 already updated the live placeholder, so do not
-	// overwrite those newer vectors with stale backfill rows.
+	// Phase 3: merge backfill under the store lock without overwriting newer vectors from concurrent writes.
 	bs.idxMu.Lock()
 	if err := indexpkg.RequireVectorIndexCurrentForCreate(bs.vectorIndexes, key, vi); err != nil {
 		bs.idxMu.Unlock()
@@ -1003,17 +956,12 @@ func (bs *Store) DropVectorIndex(labelToken uint16, propertyKey string) error {
 	return bs.flushIfNeeded()
 }
 
-// SearchNearestNodes returns the k nodes with vectors closest to query
-// under the index defined for labelToken+propertyKey.
-// Results are ordered by ascending distance (closest first).
-// Returns ErrVectorIndexNotFound if no index exists.
-// Returns ErrDimensionMismatch if query length differs from the index's dims.
-// Returns ErrInvalidVectorValue if query contains NaN or infinity.
-// Returns nil, nil if the index exists but has no entries.
-//
-// After and Limit are applied to the distance-ordered result. Depth has no
-// meaning for this single-tier backend. Temporal filtering is applied before
-// heap selection so ineligible candidates cannot occupy top-k slots.
+// SearchNearestNodes returns the k nodes closest to query under the index for
+// labelToken+propertyKey, ascending by distance. Errors: ErrVectorIndexNotFound,
+// ErrDimensionMismatch (query length), ErrInvalidVectorValue (NaN/Inf). Returns
+// nil, nil for an empty index. After and Limit apply to the distance order; Depth
+// is meaningless here. Temporal filtering precedes heap selection so ineligible
+// candidates cannot occupy top-k slots.
 func (bs *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -1109,13 +1057,10 @@ func (bs *Store) vectorTemporalFilter(key indexpkg.VectorIndexKey, dims int, opt
 	}, func() error { return filterErr }
 }
 
-// SearchNearestFiltered is the package-internal entry point used by the
-// Graph layer to perform vector search with an eligibility filter applied
-// BEFORE the k-cut. The filter is combined with current-row shape validation
-// before the vector index heap selection.
-//
-// Returns raw snowflake.IDs in ascending distance order; the caller is
-// responsible for resolving entities (current or historical version).
+// SearchNearestFiltered is the package-internal entry point for the Graph layer:
+// the eligibility filter (combined with current-row shape validation) applies
+// before the k-cut. Returns raw snowflake.IDs by ascending distance; the caller
+// resolves entities.
 func (bs *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -1176,7 +1121,10 @@ func (bs *Store) persistPropertyIndexDefs() {
 		if idx == nil || idx.Mutated != nil {
 			continue
 		}
-		defs = append(defs, propIdxDef{LabelToken: key.LabelToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts()})
+		defs = append(defs, propIdxDef{LabelToken: key.LabelToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts(), Elements: idx.Elements()})
+		if idx.Elements() {
+			bs.raiseFormatMarkerLocked(storepkg.ElementsStoreFormatVersion)
+		}
 	}
 	if len(defs) == 0 {
 		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.PropIndexDefsKey})

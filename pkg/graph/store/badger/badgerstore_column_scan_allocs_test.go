@@ -7,12 +7,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// The columnar scans read the cached snapshot's arrays; a scan's allocations
-// are its batch buffers, not a value per row (sigma-tkgd round 6 request 10:
-// the relationship scan boxed each row's ID for the valid-time filter,
-// 1,049,588 allocations a run of StarCandidatesSkewedCold badger). Both the
-// unfiltered scan and the valid-time filtered one are held to a bound that
-// does not grow with the rows.
+// Columnar scans read the cached snapshot's arrays; allocations must be batch
+// buffers, not a value per row (the rel scan once boxed each row's ID for the
+// valid-time filter). Filtered and unfiltered scans are held to a bound that does
+// not grow with the rows.
 
 const (
 	allocScanRows  = 4096
@@ -128,11 +126,9 @@ func TestScanNodeColumns_AllocationsDoNotGrowWithRows(t *testing.T) {
 	}
 }
 
-// minAllocsPerRun is the smallest of several testing.AllocsPerRun samples.
-// AllocsPerRun counts every malloc in the process, so goroutines left by
-// earlier tests in the package (badger flushers and compactors) add noise
-// under load; the scan's own count is the floor, and the minimum filters
-// that additive noise without loosening the bound.
+// minAllocsPerRun is the smallest of several testing.AllocsPerRun samples:
+// AllocsPerRun counts every process malloc (leftover badger goroutines add noise
+// under load); the minimum filters that without loosening the bound.
 func minAllocsPerRun(scan func()) float64 {
 	best := testing.AllocsPerRun(5, scan)
 	for i := 0; i < 4 && best > allocScanBound; i++ {

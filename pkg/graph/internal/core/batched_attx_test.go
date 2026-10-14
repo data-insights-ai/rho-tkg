@@ -11,9 +11,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Backlog 57 (sigma-tkgd R1): NodesAtTxByIDs / RelsAtTxByIDs answer, per
-// element of ids, exactly what NodeAtTx / RelAtTx answers for that ID (nil
-// where the per-ID door returns not-found or no version valid at validAt).
+// Backlog 57: NodesAtTxByIDs / RelsAtTxByIDs answer, per element, exactly what
+// NodeAtTx / RelAtTx answers for that ID (nil on not-found / no version valid).
 // The per-ID door is the oracle; every backend.
 
 // batKit is one entity kind's doors for the oracle test; rows render to a
@@ -164,12 +163,9 @@ func batRelKit(t *testing.T, g *Core) batKit {
 	}
 }
 
-// TestNodesAtTxByIDsMatchesNodeAtTx — element-wise equality with NodeAtTx /
-// RelAtTx over a grid of (validAt, txAt) on: an entity updated after a pin
-// (the history version answers at that pin), a deleted entity, a re-imported
-// ID (two lives), an entity created after a pin, an unknown ID, duplicates,
-// validAt before every row; plus empty input and the call-level errors (pin
-// 0 / negative, pin above the commit clock, invalid ID, closed graph).
+// TestNodesAtTxByIDsMatchesNodeAtTx: element-wise equality with NodeAtTx / RelAtTx
+// over a (validAt, txAt) grid (updated, deleted, re-imported, created-after-pin,
+// unknown, duplicate IDs), plus empty input and the call-level errors.
 func TestNodesAtTxByIDsMatchesNodeAtTx(t *testing.T) {
 	t.Parallel()
 	for _, b := range txbBackends() {
@@ -192,9 +188,8 @@ func TestNodesAtTxByIDsMatchesNodeAtTx(t *testing.T) {
 	}
 }
 
-// TestRelsAtTxByIDsMatchesRelAtTx names the relationship half of the oracle
-// (rule 2); the shared grid runs it in TestNodesAtTxByIDsMatchesNodeAtTx's
-// "/rels" subtests, so this one runs the memory backend alone.
+// TestRelsAtTxByIDsMatchesRelAtTx names the relationship half of the oracle (the
+// shared grid runs it in the "/rels" subtests); this one runs memory alone.
 func TestRelsAtTxByIDsMatchesRelAtTx(t *testing.T) {
 	t.Parallel()
 	g := txbBackends()[0].open(t, false)
@@ -263,8 +258,7 @@ func batOracleGrid(t *testing.T, g *Core, clk *testClock, k batKit) {
 	if answered == 0 || nils == 0 {
 		t.Fatalf("grid degenerate: answered %d, nil %d", answered, nils)
 	}
-	// At p1 the update was not yet recorded: a history row answers, not the
-	// current one.
+	// At p1 the update was not yet recorded: a history row answers.
 	hist, err := k.batch([]int64{updated}, p4, p1)
 	if err != nil {
 		t.Fatalf("history probe: %v", err)
@@ -329,11 +323,9 @@ func batOne(t *testing.T, k batKit, id int64, validAt, txAt types.Instant) strin
 	return s
 }
 
-// TestAtTxByIDsGatesAsPerIDDoor — compaction and retention gates: a member
-// the per-ID door refuses (ErrHistoryCompacted below a compacted chain's
-// knowledge, ErrRetentionExpired below a watermark) fails the call with the
-// same sentinel; a pin every member answers at returns rows. Memory
-// (compaction and retention are core-level).
+// TestAtTxByIDsGatesAsPerIDDoor: a member the per-ID door refuses
+// (ErrHistoryCompacted, ErrRetentionExpired) fails the call with the same sentinel;
+// a pin every member answers at returns rows. Memory (core-level gates).
 func TestAtTxByIDsGatesAsPerIDDoor(t *testing.T) {
 	t.Parallel()
 	g := txbBackends()[0].open(t, false)

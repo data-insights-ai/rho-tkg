@@ -19,21 +19,15 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship-type temporal indexes (BACKLOG 21c) — the rel-side mirror of
-// badgerstore_index.go's CreateTemporalIndex/DropTemporalIndex, keyed by
-// rel-type token instead of label token. See the relTypeTemporalIndexes field
-// doc comment (badgerstore.go) for the RAM-only / not-persisted-across-reopen
-// scope decision.
-//
-// Create is CreateTemporalIndex's 3-phase mutated-set install (backlog 22): a
-// Building index is installed with the ID snapshot, so every write during the
-// build already folds its row into it and records the ID; the build runs
-// without the lock; the recorded IDs are re-read in full; then the build is
-// merged in and the index published.
+// Relationship-type temporal indexes (BACKLOG 21c): the rel-side mirror of
+// CreateTemporalIndex/DropTemporalIndex, keyed by rel-type token (RAM-only scope:
+// see the relTypeTemporalIndexes field doc in badgerstore.go). Create installs a
+// Building index with the ID snapshot so writes during the build fold into it
+// (backlog 22); the build runs unlocked, recorded IDs are re-read in full, then
+// merged and published.
 
-// relTemporalBuildsTotal counts relationship temporal index builds across
-// every store in the process, including short-lived ones such as a recovery
-// probe (RelTemporalIndexBuildsTotalForTest).
+// relTemporalBuildsTotal counts rel temporal index builds across every store in
+// the process (RelTemporalIndexBuildsTotalForTest).
 var relTemporalBuildsTotal atomic.Int64
 
 // relTemporalBuildSeeks counts the iterator seeks the build does, across every
@@ -44,12 +38,10 @@ var relTemporalBuildSeeks atomic.Int64
 // folds: (id, history version), -1 for the current row.
 var relTemporalBuildFoldHook func(id snowflake.ID, version int64)
 
-// CreateRelTemporalIndex creates a temporal interval index on relationships
-// with the given rel-type token. Scans existing relationships of that type
-// (current + history, folding both into the per-rel valid-time ENVELOPE — the
-// same sound-superset construction CreateTemporalIndex uses) to populate the
-// index. Returns ErrTemporalIndexExists if an index already exists for this
-// rel type.
+// CreateRelTemporalIndex creates a temporal interval index on relationships of the
+// rel-type token, folding current rows and history into the per-rel valid-time
+// envelope (sound superset, as CreateTemporalIndex). Returns
+// ErrTemporalIndexExists if one exists for the type.
 func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -63,9 +55,8 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 		return fmt.Errorf("graph: create relationship temporal index: %w", err)
 	}
 
-	// Phase 1: install a Building index and snapshot the type's IDs. From here
-	// every write of the type extends the live index and records its ID
-	// (Extend marks Mutated); readers skip a Building index.
+	// Phase 1: install a Building index and snapshot the type's IDs; from here every
+	// write extends it and records its ID (Extend marks Mutated); readers skip it.
 	bs.idxMu.Lock()
 	if _, exists := bs.relTypeTemporalIndexes[relType]; exists {
 		bs.idxMu.Unlock()
@@ -91,11 +82,8 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 		return fail(err)
 	}
 
-	// Phase 3a: take the IDs written so far and re-read every row of each
-	// (current row and whole history, deleted ones included) without the lock.
-	// A write before the re-read is in what it reads; a write after it folds
-	// its new row into the live index itself, and its previous row is one the
-	// re-read or an earlier tracked write already folded.
+	// Phase 3a: take the IDs written so far and re-read every row of each (current and
+	// history, deleted too) without the lock. Later writes fold their own rows.
 	bs.idxMu.Lock()
 	written := slices.Collect(maps.Keys(live.Mutated))
 	live.Mutated = make(map[snowflake.ID]struct{})
@@ -105,13 +93,10 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 		return fail(err)
 	}
 
-	// Phase 3b: merge (a union, so the order against the live writes does
-	// not matter) and publish. An ID first written after the Phase 3a take
-	// whose earlier rows Phase 2 did not read (it had no current row when the
-	// walk reached it: deleted, history kept) has only that write's row in the
-	// live index: its history is folded here, under the lock, so no write can
-	// land between the read and the publish. A current row such an ID has was
-	// made during the build and folded by its write.
+	// Phase 3b: merge (a union, order against live writes does not matter) and
+	// publish. An ID first written after the 3a take whose earlier rows Phase 2 did
+	// not read has its history folded here under the lock, so no write lands between
+	// read and publish.
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 	if err := requireTemporalIndexCurrentForCreate(bs.relTypeTemporalIndexes, relType, live); err != nil {
@@ -138,10 +123,9 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 	return nil
 }
 
-// foldRelHistoryLocked extends ti by every history row of id; the RAM history
-// presence set answers "has none" without a read. Caller holds idxMu.Lock (lock
-// order idxMu -> presence buildMu -> wbMu; the history read takes only wbMu and
-// a read transaction).
+// foldRelHistoryLocked extends ti by every history row of id; the RAM presence set
+// answers "has none" without a read. Caller holds idxMu.Lock (order idxMu ->
+// presence buildMu -> wbMu).
 func (bs *Store) foldRelHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.ID) error {
 	has, err := bs.hasHistory(&bs.histRelPresence, storepkg.KeyHistRel, id, bs.probeHistoryPresence)
 	if err != nil || !has {
@@ -160,13 +144,10 @@ func (bs *Store) foldRelHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.I
 	return nil
 }
 
-// foldRecreatedRelHistoryLocked is called by a create door before it adds r:
-// when the published index of r's type does not cover id, id may be a deleted
-// relationship whose history is still on disk (deleted before the index was
-// built, or before a reopen rebuilt it), and the new row alone would make the
-// envelope vouch for less than the ID holds. Its history is folded first — the
-// rule PutRelVersion keeps by leaving such an ID uncovered. A Building index
-// needs nothing: the create records the ID and the build reads its rows.
+// foldRecreatedRelHistoryLocked runs before a create door adds r: if the published
+// index of r's type does not cover id, a deleted rel's history may be on disk and
+// the new row alone would make the envelope vouch for less, so it is folded first
+// (PutRelVersion leaves such an ID uncovered). A Building index needs nothing.
 // Caller holds idxMu.Lock.
 func (bs *Store) foldRecreatedRelHistoryLocked(r *types.Relationship, id snowflake.ID) error {
 	ti := bs.relTypeTemporalIndexes[r.TypeToken().Value()]
@@ -182,9 +163,8 @@ func (bs *Store) foldRecreatedRelHistoryLocked(r *types.Relationship, id snowfla
 	return nil
 }
 
-// relTemporalRowsOf folds every row of ids — the current one if any and the
-// whole history, also of a deleted relationship — into a fresh envelope index.
-// Point reads: ids are the relationships written during a create.
+// relTemporalRowsOf folds every row of ids (current and whole history, also of
+// deleted rels) into a fresh envelope index by point reads.
 func (bs *Store) relTemporalRowsOf(ids []snowflake.ID) (*indexpkg.TemporalIndex, error) {
 	ti := indexpkg.NewTemporalIndex()
 	for _, id := range ids {
@@ -209,29 +189,17 @@ func (bs *Store) relTemporalRowsOf(ids []snowflake.ID) (*indexpkg.TemporalIndex,
 	return ti, nil
 }
 
-// buildRelTypeTemporalIndex folds the current row and every history version
-// of rids into a fresh envelope index. A relationship deleted meanwhile is
-// skipped, its history too.
-//
-// Backlog 10(a): one read transaction and two forward walks — one over the
-// relationship rows (KeyRel), one over the relationship history (KeyHistRel)
-// — visiting rids in key order, instead of a point read plus a history prefix
-// scan (two transactions) per relationship. A walk steps with Next and seeks
-// only past a gap of more than relWalkMaxSteps foreign keys, so a dense type
-// costs one seek per range and a sparse one at most one seek per relationship.
-//
-// Snapshot rules (both reproduced as unsound prunes when broken):
-//   - The cache answers before the row walk, as prefetchRelScan does, so the
-//     walk follows scanSnapshot's rule: a flush that commits and evicts a row
-//     after the transaction opened leaves the snapshot without its latest
-//     version. The flush epoch is read before the transaction opens; a cache
-//     miss or a history fold under a changed epoch re-pins (new transaction,
-//     new walks). One transaction unless a flush lands mid-build.
+// buildRelTypeTemporalIndex folds the current row and every history version of
+// rids into a fresh envelope index; rels deleted meanwhile are skipped.
+// Backlog 10(a): one read transaction and two forward walks (KeyRel, KeyHistRel)
+// over rids in key order, seeking only past gaps of more than relWalkMaxSteps keys.
+// Snapshot rules (breaking either gives unsound prunes):
+//   - The cache answers before the row walk, so the walk follows scanSnapshot's
+//     rule: the flush epoch is read before the transaction opens, and a cache miss
+//     or history fold under a changed epoch re-pins (new transaction and walks).
 //   - Buffered history writes are snapshotted before the first transaction
-//     (lesson 64) and win over committed rows; a second snapshot after the
-//     walk is folded too, so a version an update moved into history during
-//     the build is not lost (widening is sound). Other writes during the
-//     build are backlog 22.
+//     (lesson 64) and win over committed rows; a second snapshot after the walk is
+//     folded too (widening is sound).
 func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.TemporalIndex, error) {
 	bs.relTemporalBuilds.Add(1)
 	relTemporalBuildsTotal.Add(1)
@@ -296,9 +264,8 @@ func relBuildFold(ti *indexpkg.TemporalIndex, id snowflake.ID, version int64, r 
 // before it seeks instead.
 const relWalkMaxSteps = 32
 
-// relBuildSnap is the build's read snapshot: one transaction and its two
-// walks, re-pinned when the relationship cache's flush epoch moved (see
-// scanSnapshot for the rule). One goroutine only.
+// relBuildSnap is the build's read snapshot (one transaction, two walks), re-pinned
+// when the cache flush epoch moved (see scanSnapshot). One goroutine only.
 type relBuildSnap struct {
 	db         *badgerv4.DB
 	epoch      func() uint64
@@ -366,9 +333,8 @@ func (w *relBuildWalk) seekTo(target []byte) {
 	w.it.Seek(target)
 }
 
-// relBuildCurrent resolves id's current row as prefetchRelScan does — the
-// cache first, then the type's membership, then the row — with the row read
-// from the walk after the miss. ok=false: the relationship is gone.
+// relBuildCurrent resolves id's current row as prefetchRelScan does (cache, type
+// membership, then the walk). ok=false: the relationship is gone.
 func (bs *Store) relBuildCurrent(snap *relBuildSnap, id snowflake.ID) (*types.Relationship, bool, error) {
 	switch v, status := bs.relCache.GetNoPromote(id); status {
 	case indexpkg.CacheHit:
@@ -413,9 +379,8 @@ type relBuildPendingRow struct {
 	del bool
 }
 
-// pendingRelHistoryRows snapshots the buffered history writes of ids (sorted)
-// in one pass over the write buffers, newer winning per key as in
-// pendingHistoryVersionOverlay.
+// pendingRelHistoryRows snapshots the buffered history writes of ids (sorted) in
+// one pass, newer winning per key as in pendingHistoryVersionOverlay.
 func (bs *Store) pendingRelHistoryRows(ids []snowflake.ID) map[snowflake.ID]map[uint64]relBuildPendingRow {
 	out := make(map[snowflake.ID]map[uint64]relBuildPendingRow)
 	bs.rangePending(func(k string, op writeOp) {
@@ -441,9 +406,9 @@ func (bs *Store) pendingRelHistoryRows(ids []snowflake.ID) map[snowflake.ID]map[
 	return out
 }
 
-// foldRelBuildHistory extends id's envelope by every history row: the walk's
-// committed rows not shadowed by a buffered write, then the buffered rows.
-// Only the temporal block is decoded (a delta carries it verbatim).
+// foldRelBuildHistory extends id's envelope by every history row: committed walk
+// rows not shadowed by a buffered write, then the buffered rows. Only the
+// temporal block is decoded.
 func (bs *Store) foldRelBuildHistory(ti *indexpkg.TemporalIndex, snap *relBuildSnap, id snowflake.ID, pending map[uint64]relBuildPendingRow) error {
 	extend := func(version uint64, raw []byte) error {
 		hv, err := bs.historyRelTemporal(id, version, raw)
@@ -479,9 +444,9 @@ func (bs *Store) foldRelBuildHistory(ti *indexpkg.TemporalIndex, snap *relBuildS
 	return nil
 }
 
-// persistRelTypeTemporalIndexDefs writes the indexed rel-type tokens
-// (ascending) to RelTypeTemporalIndexDefsKey, or deletes the key when none is
-// left. Caller holds the idxMu write lock. Mirror of persistTemporalIndexDefs.
+// persistRelTypeTemporalIndexDefs writes the indexed rel-type tokens (ascending)
+// to RelTypeTemporalIndexDefsKey, deleting the key when none is left. Caller holds
+// idxMu.Lock.
 func (bs *Store) persistRelTypeTemporalIndexDefs() {
 	tokens := make([]uint16, 0, len(bs.relTypeTemporalIndexes))
 	for tok, ti := range bs.relTypeTemporalIndexes {
@@ -502,10 +467,9 @@ func (bs *Store) persistRelTypeTemporalIndexDefs() {
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelTypeTemporalIndexDefsKey, value: data})
 }
 
-// loadRelTypeTemporalIndexes rebuilds the persisted rel-type temporal indexes
-// at open, after loadIndexes built the type index: each from the type's
-// current rows and their history, as CreateRelTemporalIndex builds it — or,
-// after a clean close, from the open image without reading a row.
+// loadRelTypeTemporalIndexes rebuilds the persisted indexes at open, after the
+// type index: from current rows and history as CreateRelTemporalIndex does, or
+// from the open image after a clean close.
 func (bs *Store) loadRelTypeTemporalIndexes(img *openImage) error {
 	var tokens []uint16
 	err := bs.view(func(txn *badgerv4.Txn) error {
@@ -533,9 +497,8 @@ func (bs *Store) loadRelTypeTemporalIndexes(img *openImage) error {
 			continue
 		}
 		if entries, ok := img.takeRelTemporal(tok); ok {
-			// The runtime envelope keeps deleted relationships (append-only,
-			// see deleteRelByInfo); the open keeps the type's current members,
-			// as buildRelTypeTemporalIndex would.
+			// The runtime envelope keeps deleted rels (append-only, see deleteRelByInfo); the
+			// open keeps the type's current members, as buildRelTypeTemporalIndex would.
 			members := make(map[types.RelID]struct{}, len(rids))
 			for _, rid := range rids {
 				members[rid] = struct{}{}
@@ -562,9 +525,8 @@ func (bs *Store) loadRelTypeTemporalIndexes(img *openImage) error {
 	return nil
 }
 
-// discardRelTypeTemporalIndexDefs deletes the persisted rel-type temporal
-// index definitions without building them (Config.DropRelTemporalIndexesAtOpen).
-// A read-only open leaves the key alone; it only skips the rebuild.
+// discardRelTypeTemporalIndexDefs deletes the persisted definitions without
+// building (Config.DropRelTemporalIndexesAtOpen). A read-only open leaves the key.
 func (bs *Store) discardRelTypeTemporalIndexDefs() error {
 	if bs.readOnly {
 		return nil
@@ -597,12 +559,9 @@ func (bs *Store) DropRelTemporalIndex(relType uint16) error {
 	return nil
 }
 
-// maintainRelTypeTemporalIndexesAdd / Remove are the write-path maintenance
-// entry points every rel-mutation door calls, mirroring
-// maintainRelPropertyIndexesAdd/Remove. RAM-only, no disk ops (the data is
-// rebuilt on open; only the definitions are persisted). Caller must
-// already hold bs.idxMu (every existing maintainRelPropertyIndexes* call site
-// does).
+// maintainRelTypeTemporalIndexesAdd / Remove are the write-path hooks every
+// rel-mutation door calls (like maintainRelPropertyIndexes*). RAM-only; caller
+// holds bs.idxMu.
 func (bs *Store) maintainRelTypeTemporalIndexesAdd(r *types.Relationship, id snowflake.ID) {
 	indexpkg.AddRelToTemporalIndexes(bs.relTypeTemporalIndexes, r, id)
 }
@@ -611,20 +570,15 @@ func (bs *Store) maintainRelTypeTemporalIndexesRemove(r *types.Relationship, id 
 	indexpkg.RemoveRelFromTemporalIndexes(bs.relTypeTemporalIndexes, r, id)
 }
 
-// maintainRelTypeTemporalIndexesPurge removes a relationship from every
-// rel-type temporal envelope. Exact erasure and the retention purge doors
-// (PurgeRelationshipByInfo, PurgeAdjacentRelsForNode) call it — there every row
-// of the relationship, history included, is gone. A plain delete keeps the
-// envelope (append-only): the history stays and the envelope stays a sound
-// superset of it.
+// maintainRelTypeTemporalIndexesPurge removes a relationship from every rel-type
+// envelope. Used by exact erasure and retention purge doors, where all rows are
+// gone; a plain delete keeps the envelope (append-only, sound superset).
 func (bs *Store) maintainRelTypeTemporalIndexesPurge(id snowflake.ID) {
 	indexpkg.PurgeRelFromAllTemporalIndexes(bs.relTypeTemporalIndexes, id)
 }
 
-// PruneRelTypeTemporalCandidates implements
-// store.RelTypeTemporalCandidateCapability (BACKLOG 21c, the rel-side mirror
-// of PruneTemporalCandidates). See that method's doc comment for the
-// sound-superset contract.
+// PruneRelTypeTemporalCandidates implements store.RelTypeTemporalCandidateCapability
+// (BACKLOG 21c); see PruneTemporalCandidates for the sound-superset contract.
 func (bs *Store) PruneRelTypeTemporalCandidates(relType uint16, ids []types.RelID, opts QueryOpts) ([]types.RelID, bool) {
 	if bs == nil {
 		return ids, false

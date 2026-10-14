@@ -19,10 +19,8 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	if err := validateQueryOpts(opts); err != nil {
 		return nil, err
 	}
-	// Nodes route by primary-label class, but label queries ask for membership:
-	// a reference-primary node may carry an event extra label, and an
-	// event-primary node may carry a reference extra label. Query every relevant
-	// tier instead of treating the requested label class as an ownership shard.
+	// Label queries ask for membership, not ownership: a reference-primary node
+	// may carry an event extra label and vice versa, so query every relevant tier.
 	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
 	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
@@ -117,11 +115,8 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 		return nil, err
 	}
 
-	// refArchive parity: archived rels (migrated together with their
-	// reference endpoints) carry the same type token. Depth-gated to
-	// DepthAll — archive is the coldest tier of reference data and must
-	// not surface in DepthHot/DepthWarm queries. Mirrors NodesByLabel /
-	// AllRelationships gating policy.
+	// refArchive parity: archived rels carry the same type token; DepthAll only
+	// (as NodesByLabel / AllRelationships).
 	var archiveRels []*types.Relationship
 	if opts.Depth == DepthAll {
 		ts.refArchiveGapHook()
@@ -200,6 +195,10 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 		return nil, err
 	}
 	refNodes, err := ref.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+	var elemOpts storecontract.PropertyIndexOptions
+	if err == nil {
+		elemOpts, _, err = ref.PropertyIndexOptions(labelToken, key)
+	}
 	refCheckin()
 	if err != nil {
 		return nil, err
@@ -213,7 +212,7 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 			return nil, archiveErr
 		}
 		if archive != nil {
-			archiveNodes, err = archive.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+			archiveNodes, err = shardNodesByLabelAndProperty(archive, elemOpts.Elements, labelToken, key, value, stripDepth(opts))
 			archiveCheckin()
 			if err != nil {
 				return nil, err
@@ -238,7 +237,7 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 			return
 		}
 		defer release()
-		results[i].nodes, results[i].err = store.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
+		results[i].nodes, results[i].err = shardNodesByLabelAndProperty(store, elemOpts.Elements, labelToken, key, value, stripDepth(opts))
 	})
 
 	var slices [][]*types.Node
@@ -259,4 +258,16 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 
 	merged := mergeNodeSlices(slices)
 	return applyNodePagination(merged, opts), nil
+}
+
+// shardNodesByLabelAndProperty is one archive or event shard's part of a
+// property lookup. Those shards hold no copy of the reference shard's property
+// index, so for an Elements index (backlog 63) — a node with an event primary
+// label and a reference label lives on an event shard, an archived node in the
+// archive — they answer with the same "contains" match.
+func shardNodesByLabelAndProperty(store *BadgerStore, elements bool, labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+	if elements {
+		return store.NodesByLabelContainingProperty(labelToken, key, value, opts)
+	}
+	return store.NodesByLabelAndProperty(labelToken, key, value, opts)
 }

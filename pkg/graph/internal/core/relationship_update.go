@@ -9,7 +9,6 @@ import (
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -251,7 +250,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	stampAppendedRow(tm, now)
 
 	relTypeName := c.relTypeUnlocked(current)
-	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)
+	hash, err := c.relContentHash(current, relTypeName)
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: compute relationship hash: %w", err)
 	}
@@ -547,7 +546,7 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	}
 
 	relTypeName := c.relTypeUnlocked(current)
-	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)
+	hash, err := c.relContentHash(current, relTypeName)
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: compute relationship hash: %w", err)
 	}

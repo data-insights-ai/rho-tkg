@@ -1093,6 +1093,10 @@ func (c *Core) nodesByLabelPropertyAtLocked(label, key string, value any, at typ
 	if err != nil {
 		return nil, err
 	}
+	elements, err := c.nodeIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	var result []*types.Node
 	if err := c.forEachNodePropertyCandidateID(tok, map[string]string{key: targetKey}, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.NodeID) error {
 		n, err := c.nodeAtLocked(id, at)
@@ -1102,10 +1106,7 @@ func (c *Core) nodesByLabelPropertyAtLocked(label, key string, value any, at typ
 			}
 			return err
 		}
-		if !n.HasLabelTokenRaw(tok) {
-			return nil
-		}
-		if valueKey, found := n.IndexablePropertyValueKey(key); found && valueKey == targetKey {
+		if n.HasLabelTokenRaw(tok) && n.HasPropertyIndexKey(key, elements, targetKey) {
 			result = append(result, n)
 		}
 		return nil
@@ -1191,12 +1192,12 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 			candIDs = kept
 		}
 	}
+	elements, err := c.nodeIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	pred := func(n *types.Node) bool {
-		if !n.HasLabelTokenRaw(tok) {
-			return false
-		}
-		gotKey, found := n.IndexablePropertyValueKey(key)
-		return found && gotKey == targetKey
+		return n.HasLabelTokenRaw(tok) && n.HasPropertyIndexKey(key, elements, targetKey)
 	}
 	var result []*types.Node
 	for _, id := range candIDs {
@@ -1294,6 +1295,10 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 	if err != nil {
 		return nil, err
 	}
+	elements, err := c.relIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	var result []*types.Relationship
 	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
@@ -1303,10 +1308,7 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 			}
 			return err
 		}
-		if !r.HasTypeTokenRaw(tok) {
-			return nil
-		}
-		if valueKey, found := r.IndexablePropertyValueKey(key); found && valueKey == targetKey {
+		if r.HasTypeTokenRaw(tok) && r.HasPropertyIndexKey(key, elements, targetKey) {
 			result = append(result, r)
 		}
 		return nil
@@ -1694,12 +1696,12 @@ func (c *Core) relsByTypePropertyDuringLocked(relType, key string, value any, st
 	if err != nil {
 		return nil, err
 	}
+	elements, err := c.relIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	pred := func(r *types.Relationship) bool {
-		if !r.HasTypeTokenRaw(tok) {
-			return false
-		}
-		gotKey, found := r.IndexablePropertyValueKey(key)
-		return found && gotKey == targetKey
+		return r.HasTypeTokenRaw(tok) && r.HasPropertyIndexKey(key, elements, targetKey)
 	}
 	var result []*types.Relationship
 	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end}, func(id types.RelID) error {

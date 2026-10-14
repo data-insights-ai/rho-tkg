@@ -17,12 +17,10 @@ import (
 
 // --- Property indexes ---
 
-// NodeRangeCardinality returns the COUNT of the label's nodes whose numeric
-// propertyKey value lies within [min, max] (per the inclusivity flags), summed
-// from the property index's sorted per-value bucket sizes (R1) — O(distinct
-// values in range), no node scan. exact=false declines (no usable index /
-// poisoned by an integer past 2^53) and the caller scans-and-counts. Mirrors the
-// badger store's method so both backends answer `count(p) WHERE p.k > x` identically.
+// NodeRangeCardinality counts the label's nodes whose numeric propertyKey
+// value lies in [min, max], summed from the property index's sorted buckets
+// (no node scan). exact=false declines (no usable index, or poisoned by an
+// integer past 2^53) and the caller scans. Mirrors the badger method.
 func (ms *Store) NodeRangeCardinality(labelToken uint16, propertyKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error) {
 	if ms == nil {
 		return 0, false, ErrNilStore
@@ -40,22 +38,16 @@ func (ms *Store) NodeRangeCardinality(labelToken uint16, propertyKey string, min
 	return count, exact, nil
 }
 
-// CreatePropertyIndex creates a property index for the given label token and property key.
-// Three-phase approach (mirrors the badger backend and CLAUDE.md's documented pattern) so
-// scanning a large existing label does not hold the store's single mutex — and therefore
-// block every concurrent read/write — for the whole scan (BACKLOG 17h):
+// CreatePropertyIndex creates a property index for the label token and key;
+// ErrIndexExists if it exists. Three phases so a large label scan does not
+// hold the store mutex (backlog 17h; same shape as badger):
 //
-//	Phase 1 (Lock): install an empty live index so concurrent PutNode/ReplaceNode writes are
-//	captured immediately via Mutated tracking. Snapshot the label's current node IDs.
-//	Phase 2 (brief per-row RLock, never held across the scan): read each snapshotted node's
-//	current value. Safe because every stored *types.Node is a frozen, immutable-once-cached
-//	copy (storedNode) — a concurrent write always REPLACES the map entry rather than
-//	mutating a row in place, so a stale pointer read under a since-released lock can never
-//	tear.
-//	Phase 3 (Lock): merge the backfill into the live index, skipping IDs a concurrent write
-//	already handled (Mutated) or that were deleted during Phase 2.
-//
-// Returns ErrIndexExists if the index already exists.
+//	1 (Lock): install an empty live index capturing concurrent writes via
+//	  Mutated; snapshot the label's node IDs.
+//	2 (brief per-row RLock): read each node's current value. Safe because
+//	  stored nodes are frozen and writes REPLACE the map entry, so a stale
+//	  pointer never tears.
+//	3 (Lock): merge the backfill, skipping IDs Mutated or deleted meanwhile.
 func (ms *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
 	return ms.CreatePropertyIndexWithOptions(labelToken, propertyKey, storecontract.PropertyIndexOptions{})
 }
@@ -67,10 +59,9 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		return ErrNilStore
 	}
 
-	// Phase 1. checkOpenLocked before argument validation — a closed store
-	// must report ErrStoreClosed even for otherwise-invalid arguments (the
-	// lifecycle-before-validation contract every index door shares, pinned
-	// by TestMemoryStoreIndexAPIsCheckLifecycleBeforeValidation).
+	// Phase 1. checkOpenLocked before argument validation: a closed store
+	// reports ErrStoreClosed even for invalid arguments (pinned by
+	// TestMemoryStoreIndexAPIsCheckLifecycleBeforeValidation).
 	ms.mu.Lock()
 	if err := ms.checkOpenLocked(); err != nil {
 		ms.mu.Unlock()
@@ -84,19 +75,23 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		ms.mu.Unlock()
 		return err
 	}
+	if err := storecontract.ValidatePropertyIndexOptions(opts); err != nil {
+		ms.mu.Unlock()
+		return err
+	}
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	if _, exists := ms.propertyIndexes[key]; exists {
 		ms.mu.Unlock()
 		return ErrIndexExists
 	}
-	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts)
+	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts, opts.Elements)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	ms.propertyIndexes[key] = liveIdx
 	nids := ms.labelNodeIDsSnapshotLocked(labelToken)
 	ms.mu.Unlock()
 
 	// Phase 2.
-	backfill := indexpkg.NewPropertyIndex()
+	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
 	for _, nid := range nids {
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
@@ -105,9 +100,7 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		if !ok {
 			continue // deleted between snapshot and fetch
 		}
-		if valueKey, found := n.IndexablePropertyValueKey(propertyKey); found {
-			backfill.AddKey(nid.SnowflakeID(), valueKey)
-		}
+		backfill.AddEntityKeys(nid.SnowflakeID(), propertyKey, n.ForEachPropertyIndexKey)
 	}
 
 	// Phase 3.
@@ -147,12 +140,9 @@ func (ms *Store) labelNodeIDsSnapshotLocked(labelToken uint16) []types.NodeID {
 	return nids
 }
 
-// requirePropertyIndexCurrentForCreate mirrors the badger backend's
-// identically-named helper (badgerstore_index.go) — the index-creation
-// Phase 3 "is my just-installed placeholder still the live index" check,
-// shared shape across both backends' 3-phase index-creation doors. Memory has
-// no phase-2 fatal-I/O-error path (a map lookup cannot fail), so unlike
-// badger there is no companion delete-on-fatal-error helper.
+// requirePropertyIndexCurrentForCreate: Phase 3 check that the placeholder is
+// still the live index (mirrors badger's helper). No fatal-error companion:
+// a map lookup cannot fail.
 func requirePropertyIndexCurrentForCreate(idxs map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex, key indexpkg.PropertyIndexKey, expected *indexpkg.PropertyIndex) error {
 	current := idxs[key]
 	if current == expected {
@@ -195,21 +185,10 @@ func (ms *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 
 // --- Composite property indexes ---
 
-// CreateCompositePropertyIndex creates a composite property index over the
-// declared, ORDER-PRESERVING keys (2..4) for the given label token. Returns
-// ErrIndexExists if an index for the exact same (labelToken, ordered keys)
-// already exists — a different key ORDER for the same key SET is a distinct
-// definition. Three-phase approach (BACKLOG 17h, mirrors CreatePropertyIndex
-// and badger's proven CreateCompositePropertyIndex) so scanning a large
-// existing label does not hold ms.mu for the whole scan:
-//
-//	Phase 1 (Lock): register an empty live index (captures concurrent writes
-//	via Mutated) and snapshot the label's current node IDs.
-//	Phase 2 (brief per-row RLock, never held across the scan): read each
-//	snapshotted node's current row into a separate backfill index.
-//	Phase 3 (Lock): merge backfill into the live index, skipping IDs a
-//	concurrent write already handled (Mutated) or that were deleted during
-//	Phase 2.
+// CreateCompositePropertyIndex creates a composite index over 2..4
+// ORDER-PRESERVING keys for the label token. ErrIndexExists for the same
+// (labelToken, ordered keys); a different order of the same keys is a
+// distinct definition. Three phases as in CreatePropertyIndex (backlog 17h).
 func (ms *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) error {
 	if ms == nil {
 		return ErrNilStore
@@ -318,11 +297,9 @@ func (ms *Store) DropCompositePropertyIndex(labelToken uint16, keys []string) er
 	return nil
 }
 
-// NodesByLabelAndProperties returns nodes matching labelToken whose current
-// row matches EVERY (key, value) pair in values (AND-conjunction, equality
-// only — v1 has no partial-prefix or range semantics). Uses a matching
-// composite index if one exists whose declared key SET equals values' keys;
-// falls back to a label scan + post-filter otherwise.
+// NodesByLabelAndProperties returns nodes of labelToken whose current row
+// matches EVERY (key, value) pair (AND, equality only). Uses a composite
+// index whose key SET equals values' keys, else label scan + filter.
 func (ms *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]any, opts QueryOpts) ([]*types.Node, error) {
 	if ms == nil {
 		return nil, ErrNilStore
@@ -407,10 +384,9 @@ func (ms *Store) nodesByLabelPropertiesFromIDs(labelToken uint16, values map[str
 	return result
 }
 
-// addNodeToCompositeIndexesLocked/removeNodeFromCompositeIndexesLocked are
-// the composite-index counterparts every node-mutation door calls alongside
-// indexpkg.AddNodeToPropertyIndexes/RemoveNodeFromPropertyIndexes (same call
-// sites — grep both together).
+// addNodeToCompositeIndexesLocked / removeNodeFromCompositeIndexesLocked
+// are called at the same sites as indexpkg.AddNodeToPropertyIndexes /
+// RemoveNodeFromPropertyIndexes; keep both together.
 func (ms *Store) addNodeToCompositeIndexesLocked(n *types.Node, rawID snowflake.ID) {
 	indexpkg.AddNodeToCompositeIndexes(ms.compositeIndexes, ms.compositeIndexesByLabel, n, rawID)
 }
@@ -440,31 +416,16 @@ func validateCompositeQueryValues(values map[string]any) error {
 // --- Temporal indexes ---
 
 // CreateTemporalIndex creates a temporal interval index on nodes with the
-// given label token. Returns ErrTemporalIndexExists if an index already
-// exists for this label (temporal or high-frequency — only one kind per
-// label). Three-phase approach (BACKLOG 17h, mirrors CreatePropertyIndex and
-// badger's proven CreateTemporalIndex) so scanning a large existing label
-// does not hold ms.mu for the whole scan:
+// label token; ErrTemporalIndexExists if the label already has a temporal or
+// high-frequency index. Three phases as in CreatePropertyIndex (backlog 17h)
+// with two differences:
 //
-//	Phase 1 (Lock): install an empty live index (Building=true, Mutated
-//	tracking) and snapshot the label's current node IDs.
-//	Phase 2 (brief per-row RLock, never held across the scan): for each
-//	snapshotted node ID, read its CURRENT row AND its history rows together
-//	under the SAME RLock (so the two views cannot tear relative to each
-//	other — unlike badger, which folds history in a separate deferred pass
-//	because its I/O-bound GetNodeHistory cannot run under idxMu; memory has
-//	no such constraint, so it merges current+history in one Phase 2 pass).
-//	Every node's CURRENT version AND every history version's bounds are
-//	folded into the node's per-ID ENVELOPE (B4 sound superset): a past
-//	version whose valid interval differs from the current one must still be
-//	covered, so the core resolver's predicate-anywhere candidate narrowing
-//	never misses it.
-//	Phase 3 (Lock): for each snapshotted node still alive and not touched by
-//	a concurrent write during Phase 2 (Mutated), Extend the live index with
-//	EVERY interval collected for that node (current + history) — Extend's
-//	union-into-existing-entry semantics correctly merge multiple intervals
-//	for the same ID into one envelope, exactly like the pre-3-phase code's
-//	inline current-then-history Extend sequence.
+//	2: each node's current row AND history rows are read under the SAME RLock
+//	   (no tearing) and folded into the per-ID ENVELOPE, so a past version with
+//	   a different valid interval is still covered and the resolver's
+//	   predicate-anywhere narrowing never misses it.
+//	3: Extend the live index with every interval collected for each node still
+//	   alive and not Mutated; Extend unions into the existing entry.
 func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 	if ms == nil {
 		return ErrNilStore
@@ -573,10 +534,9 @@ func (ms *Store) foldNodeHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.
 }
 
 // addNodeToTemporalIndexesLocked extends the envelope of every label of n by
-// its row. A published index that does not cover id yet (a re-created node, or
-// a label added back to a live node) first gets id's history: the new row
-// alone would make the envelope vouch for less than the ID holds (backlog 56).
-// Caller holds ms.mu (write).
+// its row. A published index that does not cover id yet first gets id's
+// history, else the envelope would vouch for less than the ID holds
+// (backlog 56). Caller holds ms.mu (write).
 func (ms *Store) addNodeToTemporalIndexesLocked(n *types.Node, id snowflake.ID) {
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		ti := ms.temporalIndexes[n.LabelTokenRawAt(i)]
@@ -645,11 +605,9 @@ func (ms *Store) DropTemporalIndex(labelToken uint16) error {
 
 // --- Relationship-type temporal indexes (BACKLOG 21c) ---
 
-// CreateRelTemporalIndex creates a temporal interval index on relationships with
-// the given rel-type token. Scans existing relationships of that type to
-// populate the index. Returns ErrTemporalIndexExists if an index already
-// exists for this rel type. The rel-side mirror of CreateTemporalIndex — see
-// that method's doc comment for the envelope-fold rationale.
+// CreateRelTemporalIndex creates a temporal interval index on relationships
+// of the rel-type token, scanning existing ones; ErrTemporalIndexExists if
+// present. Rel-side mirror of CreateTemporalIndex (envelope fold).
 func (ms *Store) CreateRelTemporalIndex(relType uint16) error {
 	if ms == nil {
 		return ErrNilStore
@@ -716,15 +674,11 @@ func (ms *Store) DropRelTemporalIndex(relType uint16) error {
 
 // --- High-frequency indexes ---
 
-// CreateHighFrequencyIndex creates a time-bucketed high-frequency index on
-// nodes with the given label token. Only one temporal index type can exist
-// per label — returns ErrInvalidTemporalIndexConfig if bucketSize is not a
-// positive whole millisecond and returns ErrTemporalIndexExists if a
-// temporalIndex or highFrequencyIndex already exists for this label.
-// Three-phase approach (BACKLOG 17h, mirrors CreatePropertyIndex and badger's
-// proven CreateHighFrequencyIndex) so scanning a large existing label does
-// not hold ms.mu for the whole scan; see CreatePropertyIndex's doc comment
-// for the general phase shape.
+// CreateHighFrequencyIndex creates a time-bucketed index on nodes with the
+// label token. ErrInvalidTemporalIndexConfig if bucketSize is not a positive
+// whole millisecond; ErrTemporalIndexExists if the label already has a
+// temporal or high-frequency index. Three phases as in CreatePropertyIndex
+// (backlog 17h).
 func (ms *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
 	if ms == nil {
 		return ErrNilStore
@@ -832,26 +786,19 @@ func (ms *Store) DropHighFrequencyIndex(labelToken uint16) error {
 	return nil
 }
 
-// CreateVectorIndex creates a vector similarity index for nodes with the given label token,
-// on the given property key, expecting vectors of length dims. The index
-// defaults to the approximate HNSW engine; use CreateVectorIndexWithOptions
-// for the brute-force escape hatch or HNSW tuning.
-// Scans existing nodes with that label to populate the index. Returns ErrVectorIndexExists on duplicate.
+// CreateVectorIndex creates a vector similarity index for the label token and
+// property key, expecting vectors of length dims, and populates it from
+// existing nodes. Defaults to approximate HNSW (CreateVectorIndexWithOptions
+// for brute force or tuning). ErrVectorIndexExists on duplicate.
 func (ms *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
 	return ms.CreateVectorIndexWithOptions(labelToken, propertyKey, dims, metric, storecontract.VectorIndexOptions{})
 }
 
-// CreateVectorIndexWithOptions is CreateVectorIndex with additional control
-// over the search engine (opts.UseBruteForce) and HNSW tuning (opts.M /
-// EfConstruction / EfSearch). A zero-value opts is identical to
-// CreateVectorIndex (documented HNSW defaults). Three-phase approach
-// (BACKLOG 17h, mirrors CreatePropertyIndex and badger's proven
-// CreateVectorIndexWithOptions) so scanning a large existing label does not
-// hold ms.mu for the whole scan; see CreatePropertyIndex's doc comment for
-// the general phase shape. While the index is being backfilled it is
-// installed but "Building" (vi.IsBuilding()) — SearchNearestNodes/
-// SearchNearestFiltered decline it as ErrVectorIndexNotFound until Phase 3
-// completes, mirroring badger.
+// CreateVectorIndexWithOptions is CreateVectorIndex with control over the
+// engine (opts.UseBruteForce) and HNSW tuning (M / EfConstruction /
+// EfSearch); zero opts equals CreateVectorIndex. Three phases as in
+// CreatePropertyIndex (backlog 17h). While backfilling, the index is
+// "Building" and searches decline it as ErrVectorIndexNotFound until Phase 3.
 func (ms *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey string, dims int, metric DistanceMetric, opts storecontract.VectorIndexOptions) error {
 	if ms == nil {
 		return ErrNilStore
@@ -962,16 +909,11 @@ func (ms *Store) DropVectorIndex(labelToken uint16, propertyKey string) error {
 	return nil
 }
 
-// SearchNearestNodes returns the k nodes with vectors closest to query
-// under the index defined for labelToken+propertyKey.
-// Results are ordered by ascending distance (closest first).
-// Returns ErrVectorIndexNotFound if no index exists.
-// Returns ErrDimensionMismatch if query length differs from the index's dims.
-// Returns ErrInvalidVectorValue if query contains NaN or infinity.
-// Returns nil, nil if the index exists but has no entries.
-//
-// Temporal filters and After/Limit are applied to the distance-ordered result.
-// Depth has no meaning for this single-tier backend beyond enum validation.
+// SearchNearestNodes returns the k nodes closest to query under the index for
+// labelToken+propertyKey, ascending distance. Errors: ErrVectorIndexNotFound
+// (no index), ErrDimensionMismatch (query length), ErrInvalidVectorValue
+// (NaN/Inf). nil, nil if the index is empty. Temporal filters and After/Limit
+// apply to the distance-ordered result; Depth is only validated.
 func (ms *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error) {
 	if ms == nil {
 		return nil, ErrNilStore
@@ -1079,13 +1021,10 @@ func (ms *Store) vectorTemporalFilter(vi *indexpkg.VectorIndex, key indexpkg.Vec
 	}, nil
 }
 
-// SearchNearestFiltered is the package-internal entry point used by the
-// Graph layer to perform vector search with an eligibility filter applied
-// BEFORE the k-cut. The filter is combined with current-row shape validation
-// before the vector index heap selection.
-//
-// Returns raw snowflake.IDs in ascending distance order; the caller is
-// responsible for resolving entities (current or historical version).
+// SearchNearestFiltered is the Graph layer's vector search with an
+// eligibility filter applied BEFORE the k-cut (combined with current-row
+// shape validation). Returns raw snowflake.IDs by ascending distance; the
+// caller resolves entities.
 func (ms *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
 	if ms == nil {
 		return nil, ErrNilStore
@@ -1152,12 +1091,10 @@ func (ms *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, qu
 	return ids, nil
 }
 
-// NodesByLabelAndProperty returns nodes matching the label and property value,
-// with optional pagination and temporal filtering. Uses the property index if
-// one exists; falls back to label scan + property filter.
-// Results are sorted by snowflake.ID for deterministic output. Rows are the
-// store's shared FROZEN entries, as for every plural read (through v4.41 this
-// door, NodesByLabelAndProperties and SearchNearestNodes deep-copied).
+// NodesByLabelAndProperty returns nodes matching label and property value,
+// with pagination and temporal filtering. Uses the property index if present,
+// else label scan + filter. Sorted by snowflake.ID. Rows are the store's
+// shared FROZEN entries, as for every plural read.
 func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
 	if ms == nil {
 		return nil, ErrNilStore
@@ -1194,7 +1131,7 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 			return nil, nil
 		}
 		storepkg.SortNodeIDs(ids)
-		return ms.nodesByLabelPropertyFromIDs(labelToken, propKey, targetKey, ids, opts), nil
+		return ms.nodesByLabelPropertyFromIDs(labelToken, propKey, targetKey, idx.Elements(), ids, opts), nil
 	}
 
 	// Fallback: label scan + property filter.
@@ -1215,10 +1152,10 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		return nil, nil
 	}
 	storepkg.SortNodeIDs(matchIDs)
-	return ms.nodesByLabelPropertyFromIDs(labelToken, propKey, targetKey, matchIDs, opts), nil
+	return ms.nodesByLabelPropertyFromIDs(labelToken, propKey, targetKey, false, matchIDs, opts), nil
 }
 
-func (ms *Store) nodesByLabelPropertyFromIDs(labelToken uint16, propKey, targetKey string, ids []types.NodeID, opts QueryOpts) []*types.Node {
+func (ms *Store) nodesByLabelPropertyFromIDs(labelToken uint16, propKey, targetKey string, elements bool, ids []types.NodeID, opts QueryOpts) []*types.Node {
 	ids = storepkg.PaginateNodeIDs(ids, opts.After, 0)
 	if len(ids) == 0 {
 		return nil
@@ -1235,7 +1172,7 @@ func (ms *Store) nodesByLabelPropertyFromIDs(labelToken uint16, propKey, targetK
 			if !n.HasLabelTokenRaw(labelToken) {
 				continue
 			}
-			if valueKey, found := n.IndexablePropertyValueKey(propKey); !found || valueKey != targetKey {
+			if !n.HasPropertyIndexKey(propKey, elements, targetKey) {
 				continue
 			}
 			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {

@@ -193,7 +193,13 @@ type Core struct {
 	// pre-consolidation "_, ok := c.store.(X) → !ok" decline, byte-for-byte.
 	// Resolved once here instead of at ~23 scattered call sites (the largest
 	// ad-hoc-assert sprawl STAGE 0 identified).
-	metaKV                storepkg.MetaKVCapability
+	metaKV storepkg.MetaKVCapability
+	// hashesOff is Config.DisableIntegrityHashes (backlog 61): no content
+	// hash is computed or stored (integrity_switch.go).
+	hashesOff bool
+	// integrityModeStamp: New persists the setting once every check passed
+	// (resolveIntegrityMode / persistIntegrityMode).
+	integrityModeStamp    bool
 	historyCompaction     storepkg.HistoryCompactionCapability
 	retentionPurge        storepkg.RetentionPurgeCapability
 	retentionPurgeValidTo storepkg.RetentionPurgeByValidToCapability
@@ -627,6 +633,19 @@ var (
 	// explicitly enabled, mirroring ErrRetentionPurgeDisabled.
 	ErrResetDisabled = errors.New("graph: reset is disabled (set Config.AllowReset to enable g.Admin().Reset)")
 
+	// ErrIntegrityDisabled is returned by the integrity doors (Verify*Chain)
+	// of a graph opened with Config.DisableIntegrityHashes: it holds no hashes,
+	// so there is nothing to verify, and the answer is not "valid". New also
+	// returns it for Config.RelSegments with hashes off (a segment's stored
+	// witness is built over the rows' hashes).
+	ErrIntegrityDisabled = errors.New("graph: integrity hashes are disabled (Config.DisableIntegrityHashes)")
+
+	// ErrIntegrityModeMismatch is returned by New when the store was written
+	// under the other Config.DisableIntegrityHashes setting. The setting is
+	// persisted with the store; a store holding rows from before the setting
+	// existed was written with hashes on. A store is never mixed.
+	ErrIntegrityModeMismatch = errors.New("graph: store was written under the other integrity-hash setting (Config.DisableIntegrityHashes)")
+
 	// ErrCommitNotDurable is returned by GraphTx.Commit, Batch.Execute and the
 	// strong ingest applier under Config.DurableCommit when the group committed
 	// (it is visible, cannot be rolled back, and its change-log records are
@@ -991,6 +1010,21 @@ type Config struct {
 	// RelSegments and a backend with store.RelSegmentDirCapability (memory);
 	// otherwise New fails closed. Whitespace-only is rejected.
 	SegmentDir string
+
+	// DisableIntegrityHashes turns the integrity hashes off (backlog 61):
+	// no content hash is computed and none is stored, resident or on disk —
+	// Hash, PrevHash, FromNodeHash and ToNodeHash stay empty on every row
+	// (provenance fields are unaffected). For development and quick tests;
+	// production keeps the default false (hashes on, tamper evidence through
+	// g.Hash().VerifyNodeChain / VerifyRelChain). With it set, the Verify*Chain
+	// doors return ErrIntegrityDisabled, Config.RelSegments is refused with
+	// ErrIntegrityDisabled, an import or replica apply drops the hashes its
+	// records carry (verifying any it gets), and an on-graph refuses an
+	// export written by an off-graph (ErrCorruptExport, no hash). The setting
+	// is persisted with the store at the first open; reopening under the other
+	// setting fails with ErrIntegrityModeMismatch (a store holding rows from
+	// before this field existed is an on-store).
+	DisableIntegrityHashes bool
 }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
@@ -1804,6 +1838,11 @@ func New(config Config) (*Core, error) {
 	if config.Store != nil && isNilInterfaceValue(config.Store) {
 		return nil, ErrNilStore
 	}
+	if config.DisableIntegrityHashes && len(config.RelSegments) > 0 {
+		// A segment stores no per-row hash: its witness is the block roots
+		// over the rows' hashes, recomputed on every decode (ADR-0011 §4.3).
+		return nil, fmt.Errorf("graph: RelSegments needs integrity hashes: %w", ErrIntegrityDisabled)
+	}
 
 	nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID*2,
 		snowflake.WithEpoch(snowflakeEpoch),
@@ -1886,6 +1925,7 @@ func New(config Config) (*Core, error) {
 		allowRetentionPurge: config.AllowRetentionPurge,
 		allowReset:          config.AllowReset,
 		allowExactErasure:   config.AllowExactErasure,
+		hashesOff:           config.DisableIntegrityHashes,
 		replSource:          config.ReplicationSource,
 	}
 	c.Nodes = &NodeOps{c: c}
@@ -2052,6 +2092,15 @@ func New(config Config) (*Core, error) {
 	c.storeRowsTrust = isExactNativeStore(store)
 	c.nativeAdjacency = nativeAdjacencyReadsValidateNodeExistence(store)
 
+	// Backlog 61: the store's integrity-hash setting must equal the configured
+	// one, before anything writes a row (integrity_switch.go).
+	if err := c.resolveIntegrityMode(); err != nil {
+		if config.Store == nil {
+			_ = store.Close()
+		}
+		return nil, err
+	}
+
 	// Registry rehydration for caller-injected stores. The Core-
 	// constructed badger.Store path above already loads registries; the
 	// inject path also has to. Without this, opening an
@@ -2175,6 +2224,14 @@ func New(config Config) (*Core, error) {
 	// commit floor (persisted with the rows, backlog 44) is what covers them.
 	// After the segment directory: its sealed rows are part of the floor.
 	if err := c.seedCommitFloor(); err != nil {
+		if config.Store == nil {
+			_ = store.Close()
+		}
+		return nil, err
+	}
+
+	// Last: a New that failed above has persisted no integrity-hash setting.
+	if err := c.persistIntegrityMode(); err != nil {
 		if config.Store == nil {
 			_ = store.Close()
 		}

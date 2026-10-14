@@ -20,49 +20,35 @@ var (
 	_ storecontract.PropertyTxMembershipStatsCapability = (*Store)(nil)
 )
 
-// Property membership sidecars (backlog 8, badger arm):
-// store.RelPropertyTxMembershipCapability / NodePropertyTxMembershipCapability.
+// Property membership sidecars (backlog 8, badger arm): one
+// indexpkg.PropertyTxMembers per declared property index a temporal lookup asked
+// for (value key -> rels/nodes whose rows ever carried it, with the lowest
+// TxFrom). RAM-only append-only supersets; the chain resolver stays the authority.
 //
-// One indexpkg.PropertyTxMembers per DECLARED property index a temporal
-// lookup asked for: value key -> every rel (node) whose rows ever carried the
-// value under the type (label), with the lowest TxFrom of those rows. RAM-only
-// append-only sound supersets; the core chain resolver stays the authority.
+// Every door writing a current row records via maintain*IndexesAdd under
+// idxMu.Lock, every history row next to its belief-watermark bump. A sidecar in
+// relPropTx / nodePropTx is tracking; built marks it readable.
 //
-// Recording. Every door that writes a current row calls
-// maintainRelPropertyIndexesAdd / maintainPropertyIndexesAdd under idxMu.Lock;
-// both record into the sidecars. Every door that writes a history row records
-// it next to its belief-watermark bump (the demoted row of a *WithHistory
-// door, a delete tombstone, PutRelVersion / PutNodeVersion through
-// enqueueVersionAgainstLazyBuilds). A sidecar present in relPropTx / nodePropTx
-// is TRACKING (doors record into it); built marks it readable.
-//
-// Lazy build without blocking writers (the history-presence protocol, lessons
-// 63, 64, 74): under its own build mutex (one per sidecar) the build turns tracking on under
-// idxMu.Lock and reads the invalidation generation, releases idxMu, captures
-// the write-buffer overlay, then scans the committed current and history
-// keyspaces in one badger view. A row written before tracking was on is in the
-// overlay or the view (its door appended its op inside the same idxMu section
-// that would have recorded it); a row written after is recorded by its door.
-// Merging the scan is a union with a per-member minimum, so the order of the
-// scan and the concurrent records does not matter. The build installs its scan
-// only if the generation and the sidecar are unchanged; Clear, an index drop,
-// retention purge and exact erasure drop the sidecars and move the
-// generation, so a scan that straddles them is discarded and redone.
+// Lazy build without blocking writers (lessons 63, 64, 74): under a per-sidecar
+// build mutex the build turns tracking on under idxMu.Lock, reads the invalidation
+// generation, releases idxMu, captures the write-buffer overlay, then scans
+// committed current and history rows in one view. The merge is a union with
+// per-member minimum, so scan and concurrent records commute. The result installs
+// only if generation and sidecar are unchanged; Clear, index drop, retention purge
+// and exact erasure drop the sidecars and move the generation.
 type propTxSidecar[ID comparable] struct {
 	members *indexpkg.PropertyTxMembers[ID]
 	built   bool
 }
 
-// propTxBuildAttempts bounds the rescans of a build that keeps losing to an
-// invalidation (lesson 24). On exhaustion the lookup reports
-// ErrIndexNotFound and the caller takes the full-history fold.
+// propTxBuildAttempts bounds rescans of a build that keeps losing to an
+// invalidation (lesson 24); then the lookup reports ErrIndexNotFound (full fold).
 const propTxBuildAttempts = 4
 
 // recordRelRowLocked records one relationship row a door writes (current or
-// history) into every lazily built membership sidecar: the K1 rel-type set and
-// the property sets. Every row, not only creates: a row's TxFrom lowers the
-// member's first-TxFrom bound (an unstamped row makes it 0), so a door that
-// rewrites or demotes a row must be seen too. Caller holds idxMu (write).
+// history) into every built membership sidecar (K1 rel-type set and property
+// sets). Every row, not only creates: a row's TxFrom lowers the member's bound.
+// Caller holds idxMu (write).
 func (bs *Store) recordRelRowLocked(r *types.Relationship) {
 	bs.recordRelTypeMemberLocked(r)
 	bs.recordRelPropTxLocked(r)
@@ -84,7 +70,7 @@ func (bs *Store) recordRelPropTxLocked(r *types.Relationship) {
 	tok := r.TypeToken().Value()
 	id := r.ID()
 	tx := relTxFrom(r)
-	r.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+	r.ForEachIndexKey(indexpkg.RelElementsOf(bs.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
 		if sc := bs.relPropTx[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; sc != nil {
 			sc.members.Record(valueKey, id, tx)
 		}
@@ -102,7 +88,7 @@ func (bs *Store) recordNodePropTxLocked(n *types.Node) {
 	tx := nodeTxFrom(n)
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		label := n.LabelTokenRawAt(i)
-		n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+		n.ForEachIndexKey(indexpkg.ElementsOf(bs.propertyIndexes, label), func(propertyKey, valueKey string) bool {
 			if sc := bs.nodePropTx[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}]; sc != nil {
 				sc.members.Record(valueKey, id, tx)
 			}
@@ -218,8 +204,8 @@ type propTxBuildKey struct {
 	key   string
 }
 
-// propTxBuildLock returns the build mutex of one sidecar (created on first use;
-// one per (type|label, key) ever looked up, so bounded by the declared indexes).
+// propTxBuildLock returns the build mutex of one sidecar (created on first use,
+// bounded by the declared indexes).
 func (bs *Store) propTxBuildLock(k propTxBuildKey) *sync.Mutex {
 	if mu, ok := bs.propTxBuildMus.Load(k); ok {
 		return mu.(*sync.Mutex)
@@ -228,9 +214,8 @@ func (bs *Store) propTxBuildLock(k propTxBuildKey) *sync.Mutex {
 	return mu.(*sync.Mutex)
 }
 
-// buildRelPropTx builds the sidecar for key (see the file comment). It
-// returns nil when the sidecar is built (by this call or a racing one) and
-// ErrIndexNotFound when the index went away.
+// buildRelPropTx builds the sidecar for key (see the file comment): nil when built
+// (by this call or a racing one), ErrIndexNotFound when the index went away.
 func (bs *Store) buildRelPropTx(key indexpkg.RelPropertyIndexKey) error {
 	mu := bs.propTxBuildLock(propTxBuildKey{token: key.RelTypeToken, key: key.PropertyKey})
 	mu.Lock()
@@ -254,12 +239,13 @@ func (bs *Store) buildRelPropTx(key indexpkg.RelPropertyIndexKey) error {
 			bs.relPropTx[key] = sc // tracking from here on
 		}
 		gen := bs.propTxGen
+		elements := bs.relPropertyIndexes[key].Elements()
 		bs.idxMu.Unlock()
 
 		start := time.Now()
 		scratch := indexpkg.NewPropertyTxMembers[types.RelID]()
 		err := bs.scanPropTxRows(storepkg.KeyRel, storepkg.KeyHistRel, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
-			return bs.recordRelRowPropTx(scratch, key, id, hist, version, raw, local)
+			return bs.recordRelRowPropTx(scratch, key, elements, id, hist, version, raw, local)
 		})
 		if err != nil {
 			return fmt.Errorf("graph: build relationship property membership: %w", err)
@@ -306,12 +292,13 @@ func (bs *Store) buildNodePropTx(key indexpkg.PropertyIndexKey) error {
 			bs.nodePropTx[key] = sc
 		}
 		gen := bs.propTxGen
+		elements := bs.propertyIndexes[key].Elements()
 		bs.idxMu.Unlock()
 
 		start := time.Now()
 		scratch := indexpkg.NewPropertyTxMembers[types.NodeID]()
 		err := bs.scanPropTxRows(storepkg.KeyNode, storepkg.KeyHistNode, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
-			return bs.recordNodeRowPropTx(scratch, key, id, hist, version, raw, local)
+			return bs.recordNodeRowPropTx(scratch, key, elements, id, hist, version, raw, local)
 		})
 		if err != nil {
 			return fmt.Errorf("graph: build node property membership: %w", err)
@@ -334,11 +321,10 @@ func (bs *Store) buildNodePropTx(key indexpkg.PropertyIndexKey) error {
 	return fmt.Errorf("graph: build node property membership: raced %d invalidations: %w", propTxBuildAttempts, ErrIndexNotFound)
 }
 
-// recordRelRowPropTx decodes one stored rel row (current or history, full or
-// delta) and records its value for key when the row has key's type and
-// carries the property. Decoding goes through the same checked wire path as
-// every read, so the value key equals the one the property index computes.
-func (bs *Store) recordRelRowPropTx(m *indexpkg.PropertyTxMembers[types.RelID], key indexpkg.RelPropertyIndexKey, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+// recordRelRowPropTx decodes one stored rel row (current or history, full or delta)
+// through the checked wire path, so the value key equals the index's, and records
+// it when the row has key's type and the property.
+func (bs *Store) recordRelRowPropTx(m *indexpkg.PropertyTxMembers[types.RelID], key indexpkg.RelPropertyIndexKey, elements bool, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
 	var w storepkg.RelWire
 	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
 		d, err := storepkg.DecodeRelHistoryDelta(raw)
@@ -369,15 +355,16 @@ func (bs *Store) recordRelRowPropTx(m *indexpkg.PropertyTxMembers[types.RelID], 
 	if r.ID().SnowflakeID() != id {
 		return fmt.Errorf("%w: relationship wire id %d does not match key %d", ErrInvalidStoreMutation, r.ID().SnowflakeID(), id)
 	}
-	if vk, found := r.IndexablePropertyValueKey(key.PropertyKey); found {
+	r.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
 		m.Record(vk, r.ID(), relTxFrom(r))
-	}
+		return true
+	})
 	return nil
 }
 
-// recordNodeRowPropTx is recordRelRowPropTx for node rows: the row must carry
+// recordNodeRowPropTx is recordRelRowPropTx for node rows; the row must carry
 // key's label itself.
-func (bs *Store) recordNodeRowPropTx(m *indexpkg.PropertyTxMembers[types.NodeID], key indexpkg.PropertyIndexKey, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+func (bs *Store) recordNodeRowPropTx(m *indexpkg.PropertyTxMembers[types.NodeID], key indexpkg.PropertyIndexKey, elements bool, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
 	var w storepkg.NodeWire
 	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
 		d, err := storepkg.DecodeNodeHistoryDelta(raw)
@@ -408,9 +395,10 @@ func (bs *Store) recordNodeRowPropTx(m *indexpkg.PropertyTxMembers[types.NodeID]
 	if n.ID().SnowflakeID() != id {
 		return fmt.Errorf("%w: node wire id %d does not match key %d", ErrInvalidStoreMutation, n.ID().SnowflakeID(), id)
 	}
-	if vk, found := n.IndexablePropertyValueKey(key.PropertyKey); found {
+	n.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
 		m.Record(vk, n.ID(), nodeTxFrom(n))
-	}
+		return true
+	})
 	return nil
 }
 
@@ -426,13 +414,11 @@ func nodeWireHasLabel(w *storepkg.NodeWire, label uint16) bool {
 	return false
 }
 
-// scanPropTxRows visits every stored row of one entity kind: the current rows
-// (curKind, 9-byte keys) and the history rows (histKind, 17-byte keys). The
-// write-buffer overlay is captured FIRST and the badger view opened after it
-// (lessons 64, 74); a buffered op masks its committed key per key (a delete
-// hides the row, a set replaces it). A history delta resolves its interval
-// anchor from the overlay, then from the anchors already seen in the same
-// entity's committed rows (keys are version-ordered), then from the view.
+// scanPropTxRows visits every stored row of one entity kind: current rows (curKind)
+// and history rows (histKind). The write-buffer overlay is captured FIRST, then the
+// badger view opened (lessons 64, 74); a buffered op masks its committed key. A
+// history delta resolves its anchor from the overlay, then earlier committed rows
+// of the same entity, then the view.
 func (bs *Store) scanPropTxRows(curKind, histKind byte, visit func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error) error {
 	overlay := make(map[string]writeOp)
 	bs.rangePending(func(k string, op writeOp) {

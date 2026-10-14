@@ -8,7 +8,6 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -603,7 +602,7 @@ func moveToEnd[T comparable](rows []T, hashes []string, target T) bool {
 // final) and sets its integrity metadata with PrevHash = prevHash, the hash of
 // the row it corrects.
 func (c *Core) hashAppendedNodeRow(row *types.Node, prevHash string) error {
-	hash, err := integrity.ComputeNodeHashChecked(row, c.nodeLabelsUnlocked(row))
+	hash, err := c.nodeContentHash(row, c.nodeLabelsUnlocked(row))
 	if err != nil {
 		return fmt.Errorf("graph: cascade compute hash: %w", err)
 	}
@@ -614,7 +613,7 @@ func (c *Core) hashAppendedNodeRow(row *types.Node, prevHash string) error {
 // hashAppendedRelRow mirrors hashAppendedNodeRow for relationships, refreshing
 // the endpoint hashes as well.
 func (c *Core) hashAppendedRelRow(row *types.Relationship, prevHash string) error {
-	hash, err := integrity.ComputeRelHashChecked(row, c.relTypeUnlocked(row))
+	hash, err := c.relContentHash(row, c.relTypeUnlocked(row))
 	if err != nil {
 		return fmt.Errorf("graph: cascade compute rel hash: %w", err)
 	}

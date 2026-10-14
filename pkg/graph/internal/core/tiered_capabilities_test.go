@@ -16,16 +16,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestTieredTxMembershipAndValidEndMatchBadger (backlog 58, sigma-tkgd R2):
-// the same writes, updates, deletes, valid-time closes and history on a
-// badger store and on a disk tiered store whose rows spread over the
-// reference shard, three event shards (two rotations), the archive
-// (ArchiveNode) and, in the last phase, a cold shard closed on disk. Both
-// graphs run on one test clock, so their stamps agree; entities are compared
-// by name. The tiered store must implement the tx-membership, property
-// membership and valid-end capabilities, answer them as badger does (the
-// valid-end candidates: a superset of what streams that drops the deleted
-// relationship), and the core doors driven by them must answer as on badger.
+// TestTieredTxMembershipAndValidEndMatchBadger (backlog 58): the same writes,
+// updates, deletes, valid-time closes and history on badger and on a disk tiered
+// store (reference shard, event shards, archive, a closed cold shard) must give
+// the same tx-membership, property-membership and valid-end capability answers
+// (candidates: a superset of what streams) and the same core door answers.
 func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 	ctx := context.Background()
 	bg, err := New(Config{BadgerInMemory: true})
@@ -190,8 +185,7 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 		return out
 	}
 
-	// capabilities renders graph i's store capability answers (name -> first
-	// tx tick); valid-end candidates are checked against what streams.
+	// capabilities renders graph i's capability answers (name -> first tx tick).
 	capabilities := func(i int, phase string, propertyDeclines bool) map[string]string {
 		g := graphs[i]
 		out := map[string]string{}
@@ -289,8 +283,7 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 		return out
 	}
 
-	// validEnds checks graph i's valid-end candidates at (pin, vf): a superset
-	// of what the bounded door streams; returns the candidate names.
+	// validEnds checks graph i's valid-end candidates at (pin, vf) are a superset of what streams.
 	validEnds := func(i int, phase string, pin, vf types.Instant) []string {
 		g := graphs[i]
 		c, ok := g.store.(storepkg.RelValidEndCapability)
@@ -428,8 +421,7 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 		t.Errorf("tiered ByType(LINK, DepthHot) = %v, want [r5]", hotRelNames)
 	}
 
-	// The first event shard goes cold and is closed on disk: the fan-out
-	// reopens it (as the history fold does), never answers without it.
+	// The first event shard goes cold and is closed on disk: the fan-out reopens it.
 	var first *tiered.EventShard
 	ts.MuForTest().Lock()
 	for _, es := range ts.EventShardsForTest() {

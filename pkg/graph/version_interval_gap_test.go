@@ -10,19 +10,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestSetNodeVersionIntervalOverGapAppendsPiece is the sigma-tkgd R8 guard: a
-// valid-time correction over an interval disjoint from every existing piece
-// (a GAP) appends one new piece and leaves the earlier piece untouched.
-// Node valid [10,20) with s=old; SetNodeVersionInterval[WithTx] over [30,40)
-// with s=new. At every transaction pin: [10,20) answers s=old, 25 and 45
-// answer nothing; [30,40) answers s=new from the correction's TxFrom on and
-// nothing before it; History holds both pieces; all of it survives a reopen.
-//
-// Catches: a gap correction that closes, re-stamps or rewrites the earlier
-// piece (old props lost at an earlier pin, or s=new leaking into [10,20)); a
-// gap piece taking the current slot or left open-ended (25 or 45 answers); a
-// resumption row invented after 40; a piece that is not persisted or not
-// rebuilt on reopen (badger, tiered, sharded on disk).
+// TestSetNodeVersionIntervalOverGapAppendsPiece: a valid-time correction over an
+// interval disjoint from every existing piece (a GAP) appends one new piece and
+// leaves the earlier one untouched. Node valid [10,20) s=old, corrected over
+// [30,40) s=new: at every pin [10,20) answers old, 25 and 45 nothing, [30,40) new
+// from the correction's TxFrom on; History holds both pieces; survives a reopen.
 func TestSetNodeVersionIntervalOverGapAppendsPiece(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -117,10 +109,8 @@ func TestSetNodeVersionIntervalOverGapAppendsPiece(t *testing.T) {
 					if _, err := g.Temporal().NodeAtTx(id, vf1, t1-1); !errors.Is(err, graphpkg.ErrNoVersionValidAt) && !errors.Is(err, graphpkg.ErrNodeNotFound) {
 						t.Fatalf("%s: NodeAtTx before creation: %v", step, err)
 					}
-					// The chain keeps both pieces: the earlier one is still the
-					// current row, byte for byte (same version, same stamps), and
-					// the gap piece is a history row (History excludes the current
-					// row, see Nodes().HasHistory).
+					// The earlier piece is still the current row byte for byte; the gap piece is a
+					// history row (History excludes the current row).
 					cur, err := g.Nodes().Get(ctx, id)
 					if err != nil {
 						t.Fatalf("%s: Get: %v", step, err)

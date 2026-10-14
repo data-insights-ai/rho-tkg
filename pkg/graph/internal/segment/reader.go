@@ -3,7 +3,6 @@ package segment
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/internal/hash32"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -1004,11 +1004,11 @@ func (s *Segment) verifyGroups(g0, g1 int) error {
 		if i/b != cur {
 			flush()
 		}
-		h, err := hex.DecodeString(r.Integrity().Hash)
-		if err != nil {
-			return corrupt("row", "row %d hash: %v", i, err)
+		var h [32]byte
+		if !hash32.Decode(r.Integrity().Hash, &h) {
+			return corrupt("row", "row %d hash is not 64 lowercase hex", i)
 		}
-		leaf = append(leaf, h...)
+		leaf = append(leaf, h[:]...)
 		return nil
 	})
 	if err != nil {

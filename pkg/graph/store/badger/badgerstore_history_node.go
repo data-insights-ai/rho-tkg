@@ -13,20 +13,16 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Node-history methods.
-// Helpers shared between node and rel paths stay in badgerstore_history.go;
-// rel-history methods live in badgerstore_history_rel.go.
+// Node-history methods. Helpers shared with rels: badgerstore_history.go; rel
+// history: badgerstore_history_rel.go.
 
 func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
 	return bs.removeNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, 0)
 }
 
-// RemoveNodeLabelTokenWithHistoryScoped mirrors RemoveNodeLabelTokenWithHistory
-// but routes the change-log record into the store.ScopedTxChangeLog buffer
-// named by token instead of the eager pending log. token == 0 is exactly
-// RemoveNodeLabelTokenWithHistory. See badgerstore_changelog_scoped.go
-// (BACKLOG 11f Batch D — foundation only).
+// RemoveNodeLabelTokenWithHistoryScoped is RemoveNodeLabelTokenWithHistory with the
+// change-log record routed to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) RemoveNodeLabelTokenWithHistoryScoped(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node, token uint64) error {
 	if token == 0 {
@@ -61,9 +57,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 		return err
 	}
 
-	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// If the prefetched row is stale by the time the lock is acquired, fall back
-	// to the locked current row before cleaning secondary indexes.
+	// Prefetch before the write lock; if stale at lock time, use the locked current row.
 	oldInfo, prefetchErr := bs.prefetchNodeDeleteInfo(nid)
 
 	bs.idxMu.Lock()
@@ -163,11 +157,8 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	return bs.addNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, 0)
 }
 
-// AddNodeLabelTokenWithHistoryScoped mirrors AddNodeLabelTokenWithHistory but
-// routes the change-log record into the store.ScopedTxChangeLog buffer named
-// by token instead of the eager pending log. token == 0 is exactly
-// AddNodeLabelTokenWithHistory. See badgerstore_changelog_scoped.go (BACKLOG
-// 11f Batch D — foundation only).
+// AddNodeLabelTokenWithHistoryScoped is AddNodeLabelTokenWithHistory with the
+// change-log record routed to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) AddNodeLabelTokenWithHistoryScoped(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node, token uint64) error {
 	if token == 0 {
@@ -202,9 +193,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 		return err
 	}
 
-	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// If the prefetched row is stale by the time the lock is acquired, fall back
-	// to the locked current row before cleaning secondary indexes.
+	// Prefetch before the write lock; if stale at lock time, use the locked current row.
 	oldInfo, prefetchErr := bs.prefetchNodeDeleteInfo(nid)
 
 	bs.idxMu.Lock()
@@ -305,11 +294,8 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	return bs.replaceNodeWithHistoryRouted(current, prevVersion, prevState, 0)
 }
 
-// ReplaceNodeWithHistoryScoped mirrors ReplaceNodeWithHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// ReplaceNodeWithHistory. See badgerstore_changelog_scoped.go (BACKLOG 11f
-// Batch B — foundation only).
+// ReplaceNodeWithHistoryScoped is ReplaceNodeWithHistory with the change-log
+// record routed to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) ReplaceNodeWithHistoryScoped(current *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error {
 	if token == 0 {
 		return bs.ReplaceNodeWithHistory(current, prevVersion, prevState)
@@ -346,9 +332,7 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 		return err
 	}
 
-	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
-	// If the prefetched row is stale by the time the lock is acquired, fall back
-	// to the locked current row before cleaning secondary indexes.
+	// Prefetch before the write lock; if stale at lock time, use the locked current row.
 	oldInfo, prefetchErr := bs.prefetchNodeDeleteInfo(nid)
 
 	bs.idxMu.Lock()
@@ -431,11 +415,8 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	return bs.deleteNodeWithHistoryRouted(nid, prevNodeVersion, nodeTombstone, relTombstones, 0)
 }
 
-// DeleteNodeWithHistoryScoped mirrors DeleteNodeWithHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// DeleteNodeWithHistory. See badgerstore_changelog_scoped.go (BACKLOG 11f
-// Batch C — foundation only).
+// DeleteNodeWithHistoryScoped is DeleteNodeWithHistory with the change-log record
+// routed to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) DeleteNodeWithHistoryScoped(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone, token uint64) error {
 	if token == 0 {
 		return bs.DeleteNodeWithHistory(nid, prevNodeVersion, nodeTombstone, relTombstones)
@@ -475,9 +456,8 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 			data: data,
 		})
 	}
-	// Build the with-history delete record (node tombstone + rel tombstones +
-	// cascaded rel IDs) before taking the lock, so a marshal error aborts before
-	// any op is enqueued.
+	// Build the delete record (node + rel tombstones, cascaded rel IDs) before the
+	// lock so a marshal error aborts before any op is enqueued.
 	delPayload, err := bs.nodeDeleteWithHistoryPayload(id, nodeTombstone, relTombstones)
 	if err != nil {
 		return fmt.Errorf("graph: encode change-log: %w", err)
@@ -606,10 +586,8 @@ func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 	return bs.putNodeVersionRouted(nid, version, n, 0)
 }
 
-// PutNodeVersionScoped mirrors PutNodeVersion but routes the change-log
-// record into the store.ScopedTxChangeLog buffer named by token instead of
-// the eager pending log. token == 0 is exactly PutNodeVersion. See
-// badgerstore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+// PutNodeVersionScoped is PutNodeVersion with the change-log record routed to the
+// ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) PutNodeVersionScoped(nid types.NodeID, version uint32, n *types.Node, token uint64) error {
 	if token == 0 {
 		return bs.PutNodeVersion(nid, version, n)
@@ -635,11 +613,9 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
 	key := storepkg.HistNodeKey(id, uint64(version))
-	// A historical version may carry a label the current row no longer has, and
-	// may carry a TxFrom that raises the belief watermark (the cascade's
-	// bounded-correction append door — BACKLOG 10c). The op and its record are
-	// enqueued together under one wbMu critical section (appendOpsLoggedRouted)
-	// for snapshot atomicity.
+	// A historical version may carry a label the current row lacks and a TxFrom that
+	// raises the belief watermark (BACKLOG 10c). Op and record are enqueued under one
+	// wbMu section (appendOpsLoggedRouted) for snapshot atomicity.
 	err = bs.enqueueVersionAgainstLazyBuilds(
 		func() bool {
 			return bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() || len(bs.nodePropTx) > 0 || bs.nodeHasTemporalIndexLocked(n)
@@ -671,10 +647,8 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 	id := nid.SnowflakeID()
 	key := storepkg.HistNodeKey(id, uint64(version))
 
-	// Check the write buffer (pending + the snapshot a concurrent flush is
-	// mid-committing) for an unflushed write. Consulting only `pending` would
-	// miss a row parked in `flushing` during the commit window and wrongly
-	// return ErrVersionNotFound for a version that was just written.
+	// Check pending and the snapshot a flush is mid-committing (`flushing`): pending
+	// alone would miss a parked row and return ErrVersionNotFound for a just-written version.
 	op, found := bs.lookupPending(string(key))
 
 	if found {
@@ -688,9 +662,8 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 		return n.DeepCopy(), nil
 	}
 
-	// Fall through to Badger. Copy the raw value out of the View before
-	// reconstruction: a delta reconstruct point-reads the interval anchor via a
-	// separate read txn, which is cleaner done outside the current one.
+	// Copy the raw value out of the View first: delta reconstruction point-reads the
+	// anchor via a separate read txn.
 	var raw []byte
 	err := bs.view(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(key)
@@ -761,17 +734,9 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 	expectedID := storepkg.ParseIDFromKey(prefix, 1)
 
 	// Snapshot the write-buffer overlay (flushing ++ pending) BEFORE opening the
-	// Badger View. Ordering matters: a concurrent flush() commits a parked row to
-	// Badger and THEN clears `flushing`, so a row is in `flushing` until strictly
-	// after it lands in Badger. If we scanned Badger first (at snapshot time Ts)
-	// and read the overlay second (at Tr > Ts), a flush that committed the row in
-	// (Ts, Tr) would leave it in NEITHER view — invisible to the older Badger
-	// snapshot AND to the already-cleared `flushing` — a dropped in-flight row
-	// (load-dependent: a descheduled flush goroutine widens the window). Capturing
-	// the overlay first (at Ta) and opening the View second (Tb >= Ta) closes the
-	// window: any row committed after Ta was still in `flushing` at Ta and is in
-	// the snapshot; any row committed before Ta is durable and in the View. See
-	// lesson 64.
+	// Badger View. flush() commits a row to Badger and only then clears `flushing`;
+	// overlay-after-View could drop a row committed in between from both views
+	// (lesson 64).
 	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	// Collect from Badger.
@@ -810,10 +775,9 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 		bs.historyScanTestHook()
 	}
 
-	// Merge the pre-scan overlay snapshot (authoritative — it is strictly newer
-	// than any committed Badger state): a delete masks a scanned row, a set
-	// overwrites it. History version keys are append-only-immutable, so an
-	// overlay set and a scanned row for the same key carry identical bytes.
+	// Merge the pre-scan overlay (authoritative, newer than committed state): a delete
+	// masks a scanned row, a set overwrites it. History version keys are immutable, so
+	// overlay and scan bytes agree for the same key.
 	for k := range overlayDeletes {
 		delete(entries, k)
 	}
@@ -945,9 +909,8 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 	if len(collected) == 0 {
 		return nil, nil
 	}
-	// Reconstruct after the scan closes: a delta whose interval anchor precedes
-	// startVersion is not in the collected window, so it is point-read; anchors
-	// inside the window are served from the collected rows.
+	// Reconstruct after the scan closes: a delta whose anchor precedes startVersion is
+	// point-read; anchors inside the window come from the collected rows.
 	anchorCache := make(map[uint64][]byte, len(collected))
 	for i := range collected {
 		anchorCache[collected[i].version] = collected[i].raw
@@ -972,11 +935,8 @@ func (bs *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	return bs.truncateNodeHistoryRouted(nid, keepVersions, 0)
 }
 
-// TruncateNodeHistoryScoped mirrors TruncateNodeHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// TruncateNodeHistory. See badgerstore_changelog_scoped.go (BACKLOG 11f
-// Batch F — foundation only).
+// TruncateNodeHistoryScoped is TruncateNodeHistory with the change-log record
+// routed to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) TruncateNodeHistoryScoped(nid types.NodeID, keepVersions int, token uint64) error {
 	if token == 0 {
 		return bs.TruncateNodeHistory(nid, keepVersions)
@@ -1005,11 +965,8 @@ func (bs *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error 
 	return bs.trimNodeHistoryFromRouted(nid, minVersion, 0)
 }
 
-// TrimNodeHistoryFromScoped mirrors TrimNodeHistoryFrom but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// TrimNodeHistoryFrom. See badgerstore_changelog_scoped.go (BACKLOG 11f
-// Batch F — foundation only).
+// TrimNodeHistoryFromScoped is TrimNodeHistoryFrom with the change-log record
+// routed to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) TrimNodeHistoryFromScoped(nid types.NodeID, minVersion uint32, token uint64) error {
 	if token == 0 {
 		return bs.TrimNodeHistoryFrom(nid, minVersion)
@@ -1078,13 +1035,10 @@ func (bs *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 	}
 }
 
-// ForEachDeletedNodeID iterates IDs that have history rows but no current
-// row. Same iteration shape as ForEachNodeHistoryID with an inline O(1)
-// in-memory presence check via HasNodeID; the resulting cost is one extra
-// map lookup per history ID, no additional Badger reads. Callbacks are
-// invoked outside Badger transactions.
-// Once the RAM history-presence set is built (forEachPresentHistoryID) the IDs
-// come from it, in ascending order, instead of a scan of the history keyspace.
+// ForEachDeletedNodeID iterates IDs that have history rows but no current row
+// (inline HasNodeID check, no extra Badger reads). Once the RAM history-presence
+// set is built (forEachPresentHistoryID) IDs come from it in ascending order.
+// Callbacks run outside Badger transactions.
 func (bs *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
@@ -1131,9 +1085,8 @@ func (bs *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
 	}
 }
 
-// MaxNodeHistoryID returns the highest node ID with version history visible to
-// this store. It includes pending buffered writes and the persisted Badger key
-// space, and returns zero when no node history exists.
+// MaxNodeHistoryID returns the highest node ID with version history, including
+// pending buffered writes; zero when there is none.
 func (bs *Store) MaxNodeHistoryID() (types.NodeID, error) {
 	if err := bs.checkOpen(); err != nil {
 		return 0, err
@@ -1195,9 +1148,7 @@ func (bs *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 				continue
 			}
 			if _, deleted := pendingDeletes[string(key)]; deleted {
-				// Only this version row is masked — the same id may still be
-				// emitted via one of its other (unmasked) version rows, so
-				// step to the next row rather than skipping the whole id.
+				// Only this version row is masked; the id may still be emitted via another row, so step to the next row.
 				it.Next()
 				continue
 			}
@@ -1232,11 +1183,8 @@ func (bs *Store) AllNodeHistoryIDsFrom(after types.NodeID, limit int) ([]types.N
 					return nil
 				}
 			}
-			// This id is decided — SKIP its remaining version rows with one
-			// Seek to the next id's first possible key instead of Next-ing
-			// through every row. Makes the scan O(distinct IDs), not O(total
-			// version rows) — the depth-dependent cost the pinned adjacency
-			// door's deleted-entity fold.
+			// Id decided: Seek past its remaining version rows so the scan is O(distinct IDs),
+			// not O(version rows).
 			next := historyIDSeekKey(storepkg.KeyHistNode, id)
 			if next == nil {
 				break // id is the max snowflake ID — no successor exists.

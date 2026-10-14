@@ -65,6 +65,7 @@ var (
 var (
 	ErrIndexExists                = storepkg.ErrIndexExists
 	ErrIndexNotFound              = storepkg.ErrIndexNotFound
+	ErrElementsIndexUnsupported   = storepkg.ErrElementsIndexUnsupported
 	ErrTemporalIndexExists        = storepkg.ErrTemporalIndexExists
 	ErrTemporalIndexNotFound      = storepkg.ErrTemporalIndexNotFound
 	ErrVectorIndexExists          = storepkg.ErrVectorIndexExists
@@ -162,6 +163,9 @@ var (
 	ErrInvalidPurgePolicy             = core.ErrInvalidPurgePolicy
 	// Admin.Reset safety valve (BACKLOG 13d).
 	ErrResetDisabled = core.ErrResetDisabled
+	// Config.DisableIntegrityHashes (backlog 61).
+	ErrIntegrityDisabled     = core.ErrIntegrityDisabled
+	ErrIntegrityModeMismatch = core.ErrIntegrityModeMismatch
 	// Config.DurableCommit (backlog 11).
 	ErrCommitNotDurable = core.ErrCommitNotDurable
 	// Exact legal erasure.

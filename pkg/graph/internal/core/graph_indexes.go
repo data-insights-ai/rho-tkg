@@ -17,14 +17,18 @@ func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 	return i.CreatePropertyWithOptions(label, propertyKey, storepkg.PropertyIndexOptions{})
 }
 
-// CreatePropertyWithOptions is CreateProperty with storepkg.PropertyIndexOptions
-// (round 4 R2: RangeCounts). Zero options are CreateProperty exactly. Non-zero
-// options need storepkg.PropertyIndexOptionsCapability; a store without it
-// (tiered, wrappers) returns ErrCapabilityNotSupported before anything is
-// created, rather than creating a plain index.
+// CreatePropertyWithOptions is CreateProperty with storepkg.PropertyIndexOptions.
+// Zero options equal CreateProperty. Non-zero options need
+// storepkg.PropertyIndexOptionsCapability, else ErrCapabilityNotSupported before
+// anything is created. Elements is refused with ErrElementsIndexUnsupported
+// together with RangeCounts or on a key under a unique constraint (docs/api.md
+// "Indexes").
 func (i *IndexOps) CreatePropertyWithOptions(label, propertyKey string, opts storepkg.PropertyIndexOptions) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
+		return err
+	}
+	if err := storepkg.ValidatePropertyIndexOptions(opts); err != nil {
 		return err
 	}
 	return c.readUnderRLock(func() error {
@@ -33,6 +37,11 @@ func (i *IndexOps) CreatePropertyWithOptions(label, propertyKey string, opts sto
 		}
 		if err := c.validateIndexPropertyKey(propertyKey); err != nil {
 			return err
+		}
+		if opts.Elements {
+			if err := c.refuseUniqueKey(label, propertyKey); err != nil {
+				return err
+			}
 		}
 		cap, err := c.propertyIndexCap()
 		if err != nil {
@@ -98,13 +107,10 @@ func (i *IndexOps) DeleteProperty(label, propertyKey string) error {
 	})
 }
 
-// CreateComposite creates a composite property index over the declared,
-// ORDER-PRESERVING keys (2..4) under one label — EQUALITY-only in v1, see
-// docs/query-planners.md "Composite property indexes" for planner guidance
-// on when this beats a single-key index + post-filter. Resolves or creates
-// the label token. Returns storepkg.ErrIndexExists if a composite index for
-// the exact same (label, ordered key list) already exists — a different key
-// ORDER for the same key SET is a distinct definition.
+// CreateComposite creates a composite property index over 2..4 declared,
+// ORDER-PRESERVING keys under one label (EQUALITY-only; docs/query-planners.md
+// "Composite property indexes"). Returns storepkg.ErrIndexExists for the exact
+// same (label, ordered keys); another order of the same set is a distinct definition.
 func (i *IndexOps) CreateComposite(label string, keys []string) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
@@ -120,6 +126,14 @@ func (i *IndexOps) CreateComposite(label string, keys []string) error {
 		for _, k := range keys {
 			if err := c.validateIndexPropertyKey(k); err != nil {
 				return err
+			}
+		}
+		// Equality on every key would give an Elements-indexed key a second meaning (backlog 63).
+		if tok, ok := c.labels.Lookup(label); ok {
+			for _, k := range keys {
+				if err := c.refuseNodeElementsIndex(tok, k, "composite index"); err != nil {
+					return err
+				}
 			}
 		}
 		cap, err := c.compositeIndexCap()
@@ -152,9 +166,8 @@ func (i *IndexOps) CreateComposite(label string, keys []string) error {
 	})
 }
 
-// DeleteComposite removes a composite property index declared over the
-// exact ordered keys. Returns storepkg.ErrIndexNotFound if no such
-// definition exists.
+// DeleteComposite removes the composite index declared over exactly these ordered
+// keys; storepkg.ErrIndexNotFound if none.
 func (i *IndexOps) DeleteComposite(label string, keys []string) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
@@ -179,14 +192,11 @@ func (i *IndexOps) DeleteComposite(label string, keys []string) error {
 	})
 }
 
-// ListComposites returns the DECLARED, ORDER-PRESERVING key tuple of every
-// composite index registered under label (one entry per definition; distinct
-// orderings of the same key set are distinct definitions and are both
-// listed). Unregistered labels return an empty slice, not an error. The
-// returned slices are caller-owned copies. O(definitions on the label) —
-// cheap enough to call per query plan; a caller that caches the answer
-// revalidates it with InventoryEpoch. Backends without composite-index introspection
-// (wrappers) return storepkg.ErrCapabilityNotSupported.
+// ListComposites returns the declared, ORDER-PRESERVING key tuple of every
+// composite index under label (distinct orderings are listed separately), as
+// caller-owned copies; unregistered labels give an empty slice. Cheap per query
+// plan; callers that cache revalidate with InventoryEpoch. Backends without
+// introspection return storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) ListComposites(label string) ([][]string, error) {
 	c := i.c
 	var out [][]string
@@ -216,18 +226,14 @@ func (i *IndexOps) ListComposites(label string) ([][]string, error) {
 	return out, nil
 }
 
-// HasComposite reports whether a composite index definition exists on label
-// whose declared key SET equals keys (ORDER-INSENSITIVE, duplicates in keys
-// ignored) — exactly the match rule the NodesByLabelAndProperties query door
-// uses to decide index-vs-label-scan, so a planner can prove the accelerated
-// path exists BEFORE routing a multi-property equality match through it.
-// Unregistered labels return false. Backends without composite-index
-// introspection return storepkg.ErrCapabilityNotSupported.
+// HasComposite reports whether a composite index on label has a key SET equal to
+// keys (ORDER-INSENSITIVE, duplicates ignored) - the match rule
+// NodesByLabelAndProperties uses for index-vs-label-scan. Unregistered labels
+// return false; backends without introspection return
+// storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) HasComposite(label string, keys []string) (bool, error) {
-	// Deliberately laxer than ValidateCompositeIndexKeys: a planner may probe
-	// with ANY key set from a query (1 key, 5 keys, duplicates) — sizes no
-	// definition can have simply answer false. Individual keys still validate
-	// (shadow keys rejected the same way everywhere else).
+	// Laxer than ValidateCompositeIndexKeys: a planner may probe any key set; sizes no
+	// definition can have answer false. Individual keys still validate.
 	if len(keys) == 0 {
 		return false, fmt.Errorf("%w: HasComposite requires at least one key", storepkg.ErrInvalidStoreMutation)
 	}
@@ -260,12 +266,10 @@ func (i *IndexOps) HasComposite(label string, keys []string) (bool, error) {
 	return false, nil
 }
 
-// HasProperty reports whether a property index exists on (label,
-// propertyKey) (BACKLOG 21b) — a planner existence door mirroring
-// HasComposite for single-key property indexes, so a query planner can prove
-// the accelerated path exists before routing a single-property predicate.
-// Unregistered labels return false. Backends without property-index
-// introspection return storepkg.ErrCapabilityNotSupported.
+// HasProperty reports whether a property index exists on (label, propertyKey)
+// (backlog 21b); the single-key mirror of HasComposite. Unregistered labels
+// return false; backends without introspection return
+// storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) HasProperty(label, propertyKey string) (bool, error) {
 	c := i.c
 	var out bool
@@ -298,11 +302,9 @@ func (i *IndexOps) HasProperty(label, propertyKey string) (bool, error) {
 	return out, nil
 }
 
-// HasTemporal reports whether a temporal interval index exists on label
-// (BACKLOG 21b). Reports the interval-index KIND specifically — a
-// high-frequency index on the same label does not count. Unregistered
-// labels return false. Backends without temporal-index introspection return
-// storepkg.ErrCapabilityNotSupported.
+// HasTemporal reports whether a temporal interval index exists on label (backlog
+// 21b); a high-frequency index does not count. Unregistered labels return false;
+// backends without introspection return storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) HasTemporal(label string) (bool, error) {
 	c := i.c
 	var out bool
@@ -332,13 +334,10 @@ func (i *IndexOps) HasTemporal(label string) (bool, error) {
 	return out, nil
 }
 
-// VectorIndexInfo returns the declared configuration (dims, metric, engine,
-// HNSW tuning) of the vector index on (label, propertyKey), or (zero value,
-// false) if none exists (BACKLOG 21b) — lets a planner validate a query
-// vector's dimensionality and know the search engine BEFORE issuing
-// SearchNearest, rather than discovering a mismatch as a runtime error.
-// Unregistered labels return (zero value, false). Backends without
-// vector-index introspection return storepkg.ErrCapabilityNotSupported.
+// VectorIndexInfo returns the declared configuration (dims, metric, engine, HNSW
+// tuning) of the vector index on (label, propertyKey), or (zero, false) if none
+// (backlog 21b), so a planner can validate a query vector before SearchNearest.
+// Backends without introspection return storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) VectorIndexInfo(label, propertyKey string) (storepkg.VectorIndexInfo, bool, error) {
 	c := i.c
 	var (
@@ -374,10 +373,8 @@ func (i *IndexOps) VectorIndexInfo(label, propertyKey string) (storepkg.VectorIn
 }
 
 // HasRelProperty reports whether a relationship property index exists on
-// (typeName, propertyKey) (BACKLOG 21b) — the rel-side mirror of
-// HasProperty. Unregistered relationship types return false. Backends
-// without rel-property-index introspection return
-// storepkg.ErrCapabilityNotSupported.
+// (typeName, propertyKey) (backlog 21b); the rel-side mirror of HasProperty.
+// Backends without introspection return storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) HasRelProperty(typeName, propertyKey string) (bool, error) {
 	c := i.c
 	var out bool
@@ -410,10 +407,9 @@ func (i *IndexOps) HasRelProperty(typeName, propertyKey string) (bool, error) {
 	return out, nil
 }
 
-// CreateTemporal creates a temporal index on nodes with the given label.
-// Accelerates temporal queries (ValidAt/interval filter) for that label.
-// Returns storepkg.ErrTemporalIndexExists if the index already exists.
-// Resolves or creates the label token so the index applies to future matching nodes.
+// CreateTemporal creates a temporal index on nodes with the given label,
+// resolving or creating the label token. Returns storepkg.ErrTemporalIndexExists
+// if it already exists.
 func (i *IndexOps) CreateTemporal(label string) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
@@ -478,16 +474,12 @@ func (i *IndexOps) DeleteTemporal(label string) error {
 
 // --- High-frequency indexes ---
 
-// CreateHighFrequency creates a time-bucketed high-frequency temporal index
-// on nodes with the given label. The bucketSize parameter controls the time
-// width of each bucket (e.g., time.Hour).
-// Designed for high-write-rate scenarios (thousands of event writes/sec).
-// Only one temporal index type (temporal or high-frequency) can exist per label.
-// Resolves or creates the label token so the index applies to future matching nodes.
-// Returns storepkg.ErrInvalidTemporalIndexConfig if bucketSize is not a
-// positive whole millisecond.
-// Returns storepkg.ErrTemporalIndexExists if any temporal index already exists for this label.
-// In-memory indexes are rebuilt from current store state when this method runs.
+// CreateHighFrequency creates a time-bucketed temporal index on label for
+// high-write-rate events; bucketSize is the bucket width (e.g. time.Hour). One
+// temporal index type (temporal or high-frequency) per label. Resolves or creates
+// the label token and rebuilds in-memory indexes from current state. Returns
+// storepkg.ErrInvalidTemporalIndexConfig if bucketSize is not a positive whole
+// millisecond, storepkg.ErrTemporalIndexExists if any temporal index exists.
 func (i *IndexOps) CreateHighFrequency(label string, bucketSize time.Duration) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
@@ -555,25 +547,18 @@ func (i *IndexOps) DeleteHighFrequency(label string) error {
 
 // --- Vector indexes ---
 
-// CreateVector creates a vector similarity index on the given label and property key.
-// dims is the expected vector dimension. metric selects the distance function.
-// The index defaults to the approximate HNSW engine (see
-// CLAUDE.md "Vector Indexes"); use CreateVectorWithOptions for the
-// brute-force escape hatch or HNSW tuning.
-// Resolves or creates the label token so the index applies to future matching nodes.
-// Returns ErrVectorIndexExists if the index already exists.
+// CreateVector creates a vector index on (label, propertyKey) with dims and
+// metric, defaulting to the HNSW engine (CLAUDE.md "Vector Indexes"); see
+// CreateVectorWithOptions for brute force or tuning. Resolves or creates the
+// label token. Returns ErrVectorIndexExists if it exists.
 func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
 	return i.CreateVectorWithOptions(label, propertyKey, dims, metric, storepkg.VectorIndexOptions{})
 }
 
-// CreateVectorWithOptions is CreateVector with additional control over the
-// search engine (opts.UseBruteForce) and HNSW tuning (opts.M /
-// EfConstruction / EfSearch). A zero-value opts is identical to
-// CreateVector (documented HNSW defaults). A backend that does not
-// implement storepkg.VectorIndexOptionsCapability falls back to
-// CreateVectorIndex (opts silently unavailable — the same "optional
-// acceleration" contract as FilteredVectorSearchCapability); every in-tree
-// backend (memory/badger/tiered) implements it.
+// CreateVectorWithOptions is CreateVector with the engine (opts.UseBruteForce)
+// and HNSW tuning (opts.M / EfConstruction / EfSearch); zero opts equal
+// CreateVector. A backend without storepkg.VectorIndexOptionsCapability falls
+// back to CreateVectorIndex and drops opts; in-tree backends implement it.
 func (i *IndexOps) CreateVectorWithOptions(label, propertyKey string, dims int, metric storepkg.DistanceMetric, opts storepkg.VectorIndexOptions) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
