@@ -173,6 +173,13 @@ type DocValues[T EntityID] struct {
 	validFrom   []int64
 	validTo     []int64
 	hasTemporal bool
+	// effFrom is the EFFECTIVE start per row (storeutil.EntityValidFrom: an
+	// unset ValidFrom is the row's TxFrom), the start every valid-time filter
+	// and the zone map use; nil when it equals validFrom on every row (a builder
+	// that reports the effective start as validFrom). A builder that reports the
+	// RAW stored ValidFrom (badger: ColumnBatch.ValidFrom is the stored value)
+	// supplies both (backlog 62).
+	effFrom []int64
 
 	// Zone map: per-block min/max of validFrom/validTo over zoneBlockSize ordinals,
 	// so a valid-time predicate can skip whole blocks on metadata alone instead of
@@ -213,6 +220,27 @@ func (l *DocValues[T]) ValidFrom() []int64 { return l.validFrom }
 // nil when the snapshot has no temporal columns. Immutable; callers must not write
 // to it.
 func (l *DocValues[T]) ValidTo() []int64 { return l.validTo }
+
+// EffectiveValidFrom is the ordinal-aligned start a valid-time filter uses
+// (see effFrom), or nil when the snapshot has no temporal columns. Immutable.
+func (l *DocValues[T]) EffectiveValidFrom() []int64 {
+	if l.effFrom != nil {
+		return l.effFrom
+	}
+	return l.validFrom
+}
+
+// setEff records row ord's effective start, allocating effFrom (a copy of
+// validFrom so far) on the first row whose effective start differs.
+func (l *DocValues[T]) setEff(ord int, eff int64) {
+	if l.effFrom == nil {
+		if eff == l.validFrom[ord] {
+			return
+		}
+		l.effFrom = slices.Clone(l.validFrom)
+	}
+	l.effFrom[ord] = eff
+}
 
 // BlockCanMatch reports whether the ordinal block starting at `start` can contain
 // any row matching the half-open query window [qFrom, qTo). A false means the whole
@@ -553,13 +581,13 @@ func (c *docColumn) boxedDict() []any {
 // because every existing caller names it.
 func BuildLabelDocValues(epoch uint64, nodeIDs []types.NodeID, propKeys []string,
 	getProp func(types.NodeID, string) (any, bool),
-	getTemporal func(types.NodeID) (validFrom, validTo int64, ok bool)) *LabelDocValues {
+	getTemporal func(types.NodeID) (validFrom, validTo, effFrom int64, ok bool)) *LabelDocValues {
 	return BuildDocValues(epoch, nodeIDs, propKeys, getProp, getTemporal)
 }
 
 func BuildDocValues[T EntityID](epoch uint64, entityIDs []T, propKeys []string,
 	getProp func(T, string) (any, bool),
-	getTemporal func(T) (validFrom, validTo int64, ok bool)) *DocValues[T] {
+	getTemporal func(T) (validFrom, validTo, effFrom int64, ok bool)) *DocValues[T] {
 
 	ids := slices.Clone(entityIDs)
 	slices.SortFunc(ids, func(a, b T) int {
@@ -576,8 +604,9 @@ func BuildDocValues[T EntityID](epoch uint64, entityIDs []T, propKeys []string,
 		for ord, id := range ids {
 			// A node with no metadata keeps (0,0) — the same shape as an unbounded
 			// entity, which is why the column pair alone is not a membership filter.
-			if f, t, ok := getTemporal(id); ok {
+			if f, t, eff, ok := getTemporal(id); ok {
 				l.validFrom[ord], l.validTo[ord] = f, t
+				l.setEff(ord, eff)
 			}
 		}
 		l.buildZoneMap()

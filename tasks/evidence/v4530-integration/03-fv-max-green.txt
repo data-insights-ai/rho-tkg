@@ -1,0 +1,2 @@
+--- PASS: TestVoidRowWithBinaryHash_FormatVersionIsMax (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.002s

@@ -6,7 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-func extBenchSetup(n int) ([]types.NodeID, []types.NodeID, func(types.NodeID, string) (any, bool), func(types.NodeID) (int64, int64, bool)) {
+func extBenchSetup(n int) ([]types.NodeID, []types.NodeID, func(types.NodeID, string) (any, bool), func(types.NodeID) (int64, int64, int64, bool)) {
 	base := make([]types.NodeID, n)
 	for i := range base {
 		base[i] = types.NodeID(i + 1)
@@ -20,7 +20,7 @@ func extBenchSetup(n int) ([]types.NodeID, []types.NodeID, func(types.NodeID, st
 		stored[i] = int64(i)
 	}
 	gp := func(id types.NodeID, _ string) (any, bool) { return stored[int(id)], true }
-	gt := func(id types.NodeID) (int64, int64, bool) { return int64(id) * 10, 0, true }
+	gt := func(id types.NodeID) (int64, int64, int64, bool) { return int64(id) * 10, 0, int64(id) * 10, true }
 	return base, add, gp, gt
 }
 

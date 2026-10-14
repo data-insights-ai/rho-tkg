@@ -248,7 +248,7 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 			}
 		},
 		func() error {
-			return bs.appendOpsLoggedRouted(storecontract.ChangeRelHistoryVersion, logPayload, token, ops...)
+			return bs.appendOpsLoggedRoutedRaising(voidRowMarker(r.Temporal()), storecontract.ChangeRelHistoryVersion, logPayload, token, ops...)
 		},
 	)
 	if err != nil {

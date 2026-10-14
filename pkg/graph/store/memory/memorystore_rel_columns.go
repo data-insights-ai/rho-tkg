@@ -105,19 +105,17 @@ func (ms *Store) buildRelColumnsLocked(typeToken uint16, keys []string,
 		}
 		return r.GetProperty(key)
 	}
-	getTemporal := func(id types.RelID) (int64, int64, bool) {
+	getTemporal := func(id types.RelID) (int64, int64, int64, bool) {
 		r := ms.rels[id]
 		if r == nil {
-			return 0, 0, false
+			return 0, 0, 0, false
 		}
-		f, t, has := r.ValidRange()
-		// An unset ValidFrom resolves to the entity's MINT time, not the epoch.
-		// Storing the raw 0 would make a columnar reader disagree with every
-		// row-path valid-time filter on exactly those edges (Pattern 38).
-		if !has || f == 0 {
-			f = storeutil.SnowflakeInstant(id.SnowflakeID())
-		}
-		return int64(f), int64(t), true
+		// The effective start (storeutil.RelValidFrom), not the raw 0: a raw 0
+		// would make a columnar reader disagree with every row-path valid-time
+		// filter on exactly those edges (Pattern 38).
+		_, t, _ := r.ValidRange()
+		f := int64(storeutil.RelValidFrom(r))
+		return f, int64(t), f, true
 	}
 
 	col := indexpkg.BuildDocValues(cur, ids, keys, getProp, getTemporal)

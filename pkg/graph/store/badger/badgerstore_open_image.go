@@ -54,7 +54,11 @@ func openImageChunkKey(i int) []byte {
 // force several chunks.
 var openImageChunkBytes = 512 * 1024
 
-const openImageMagic = "TKGOI\x01"
+// openImageMagic's last byte is the image format. 2 (v4.53.0): the temporal
+// envelopes start an untimed row at its TxFrom (backlog 62); an image of format 1
+// holds mint-keyed envelopes, which can start after the row (a TxFrom backfill)
+// and prune it, so the open rebuilds instead of trusting it.
+const openImageMagic = "TKGOI\x02"
 
 const (
 	imgSecNodeProp byte = iota + 1

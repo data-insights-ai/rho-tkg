@@ -271,7 +271,9 @@ func (o *segOracle) step(r *rand.Rand) {
 		// (the delete keeps the recorded close).
 		i := r.Intn(len(o.liveHOP))
 		id := o.liveHOP[i]
-		now, err := o.primary.Temporal().PeekTx()
+		// NowTx, not PeekTx: the close must follow the version's start, its
+		// TxFrom (backlog 62), which PeekTx can equal.
+		now, err := o.primary.Temporal().NowTx()
 		if err != nil {
 			o.t.Fatal(err)
 		}

@@ -80,8 +80,12 @@ func SelectAsOf[T TemporalRow](history []T, pin types.Instant) (T, bool) {
 // caller's concern, applied to a copy where required.
 func SelectAsOfWithCurrent[T TemporalRow](history []T, current T, hasCurrent bool, pin types.Instant) (T, bool) {
 	var zero T
-	// desc: history newest version first (the order the badger scan visits).
-	desc := slices.Clone(history)
+	// desc: history newest version first (the order the badger scan visits),
+	// without void rows: an excise's void piece records absence over a valid
+	// span, not a state of the entity, so it is never an as-of answer (it
+	// never holds the current slot and carries no TxTo or DeletedAt, so no
+	// other rule reads it either).
+	desc := slices.DeleteFunc(slices.Clone(history), func(h T) bool { return IsVoid(h.Temporal()) })
 	slices.SortStableFunc(desc, func(a, b T) int { return cmp.Compare(b.Version(), a.Version()) })
 
 	if hasCurrent {
@@ -197,3 +201,7 @@ func retractedAtTxTime(tm *types.TemporalMetadata, pin types.Instant) bool {
 	}
 	return tm.DeletedAt != 0 && tm.DeletedAt <= pin
 }
+
+// IsVoid reports whether a row's temporal block marks a void piece of an
+// excise (types.TemporalMetadata.Void).
+func IsVoid(tm *types.TemporalMetadata) bool { return tm != nil && tm.Void }

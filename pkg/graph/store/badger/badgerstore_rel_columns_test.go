@@ -181,8 +181,8 @@ func TestRelColumns_EndpointColumnsAlwaysBuilt(t *testing.T) {
 // with no valid-time metadata read as eternal through memory and as [mint, +inf)
 // through Badger.
 //
-// The fallback now lives in effectiveValidFrom, applied where filtering happens, so
-// the filter behaviour below is unchanged.
+// The effective start lives in its own column (DocValues.EffectiveValidFrom), read
+// where filtering happens.
 func TestRelColumns_UnsetValidFromReportsRaw(t *testing.T) {
 	bs := rcStore(t)
 	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 0, 0) // ValidFrom deliberately unset
@@ -194,25 +194,36 @@ func TestRelColumns_UnsetValidFromReportsRaw(t *testing.T) {
 	if got := snap.ValidFrom()[0]; got != 0 {
 		t.Fatalf("ValidFrom() = %d, want 0: the reported column is the entity's "+
 			"STORED validity, the same value ValidRange() and tkg_valid_from give. "+
-			"The mint-time fallback belongs to the filter (effectiveValidFrom), not "+
+			"The effective start belongs to the filter (EffectiveValidFrom), not "+
 			"to this array — see the memory backend, which has always reported raw",
 			got)
 	}
 }
 
-// TestRelColumns_UnsetValidFromFiltersFromMintTime is the OTHER half, and the one
-// the replaced test's rationale was actually about: a valid-time filter must still
-// treat an unset ValidFrom as the mint time, so the columnar path answers exactly
-// as the row path does.
-func TestRelColumns_UnsetValidFromFiltersFromMintTime(t *testing.T) {
-	if got := effectiveValidFrom(0, types.RelID(100).SnowflakeID()); got == 0 {
-		t.Fatal("effectiveValidFrom(0) returned 0; an entity with no ValidFrom is " +
-			"valid from its mint time, which is what storeutil.MatchesTemporalFilter " +
-			"applies on the row path")
+// TestRelColumns_UnsetValidFromFiltersFromTxFrom is the OTHER half: a valid-time
+// filter treats an unset ValidFrom as the row's effective start —
+// storeutil.EntityValidFrom: its TxFrom (backlog 62), the mint instant only for a
+// row without one — so the columnar path answers exactly as the row path does.
+func TestRelColumns_UnsetValidFromFiltersFromTxFrom(t *testing.T) {
+	bs := rcStore(t)
+	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 0, 0) // no ValidFrom, no TxFrom (legacy)
+	r := types.NewRelationship(types.RelID(101), rcType, types.NodeID(1), types.NodeID(2))
+	r.SetTemporal(&types.TemporalMetadata{TxFrom: 7_000})
+	if err := bs.PutRelationship(r); err != nil {
+		t.Fatal(err)
 	}
-	// An explicit bound is never overridden.
-	if got := effectiveValidFrom(5, types.RelID(100).SnowflakeID()); got != 5 {
-		t.Fatalf("effectiveValidFrom(5) = %d, want 5: an explicit bound is the answer", got)
+	snap, _, ok, _ := bs.RelColumnSnapshot(rcType, nil)
+	if !ok {
+		t.Fatal("declined")
+	}
+	want := map[types.RelID]int64{100: int64(types.RelID(100).MintInstant()), 101: 7_000}
+	for ord, id := range snap.IDs() {
+		if got := snap.ValidFrom()[ord]; got != 0 {
+			t.Errorf("rel %d: reported ValidFrom = %d, want the stored 0", id, got)
+		}
+		if got := snap.EffectiveValidFrom()[ord]; got != want[id] {
+			t.Errorf("rel %d: EffectiveValidFrom = %d, want %d", id, got, want[id])
+		}
 	}
 }
 

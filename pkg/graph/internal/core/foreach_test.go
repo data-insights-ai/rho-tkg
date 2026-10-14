@@ -3,11 +3,8 @@ package core
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
-
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // ─── Graph-level: temporal queries still work ─────────────────────────────────
@@ -33,7 +30,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	// vStart <= t (inclusive) means querying at the same millisecond
 	// as the node's snowflake-derived ValidFrom still matches — no
 	// wall-clock sleep needed (R5-F10).
-	now := types.Instant(time.Now().UnixMilli())
+	now := txNow(t, g) // a row starts at its TxFrom (backlog 62)
 
 	// GetNodesValidAt should find Alice.
 	nodes, err := g.Temporal.NodesAt(now)
@@ -56,7 +53,7 @@ func TestGraph_ForEachBasedTemporalQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddRelationship: %v", err)
 	}
-	now2 := types.Instant(time.Now().UnixMilli())
+	now2 := txNow(t, g)
 
 	// GetRelationshipsValidAt should find the rel.
 	rels, err := g.Temporal.RelsAt(now2)

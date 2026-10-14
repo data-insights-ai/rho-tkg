@@ -421,11 +421,12 @@ func TestTxBackfillNode_OrderValidStart(t *testing.T) {
 			for _, d := range doors() {
 				base := txbWall() - 2*txbHour
 				n := txbBackfillNodeAt(t, g, "Ref", base, map[string]any{"w": int64(1)})
+				// A derived valid-from is the backfilled TxFrom (backlog 62).
 				derived := g.nodeValidFrom(n)
-				if derived <= base+50 {
-					t.Fatalf("fixture: derived valid-from %d not above %d", derived, base+50)
+				if derived != base {
+					t.Fatalf("fixture: derived valid-from %d, want the backfilled TxFrom %d", derived, base)
 				}
-				for _, at := range []types.Instant{base + 50, derived} {
+				for _, at := range []types.Instant{base - 50, derived} {
 					phase := fmt.Sprintf("%s t=%d derived=%d", d.name, at, derived)
 					before := snapHood(t, g, n.ID())
 					assertNodeTxOrderRefusal(t, g, n.ID(), phase, before, d.run(t, g, n.ID(), at), fmt.Sprint(derived))
@@ -459,13 +460,15 @@ func TestTxBackfillNode_OrderValidStart(t *testing.T) {
 					t.Fatalf("fixture: TxFrom=%d UpdatedAt=%d; want %d, %d", tm.TxFrom, tm.UpdatedAt, x, x+100)
 				}
 				clk.at.Store(int64(x + 1000))
-				for _, at := range []types.Instant{x + 50, x + 100} {
-					phase := fmt.Sprintf("%s t=%d UpdatedAt=%d", d.name, at, x+100)
-					before := snapHood(t, g, f.id, f.rels()...)
-					assertNodeTxOrderRefusal(t, g, f.id, phase, before, d.run(t, g, f.id, at), fmt.Sprint(x+100))
-				}
-				if err := d.run(t, g, f.id, x+101); err != nil {
-					t.Fatalf("%s(UpdatedAt+1): %v", d.name, err)
+				// The version starts at its TxFrom (x, backlog 62: one start
+				// rule); an in-place write records nothing in transaction time,
+				// so its UpdatedAt does not move the start. At x: refused; in
+				// (TxFrom, UpdatedAt]: accepted.
+				phase := fmt.Sprintf("%s t=%d TxFrom=%d", d.name, x, x)
+				before := snapHood(t, g, f.id, f.rels()...)
+				assertNodeTxOrderRefusal(t, g, f.id, phase, before, d.run(t, g, f.id, x), fmt.Sprint(x))
+				if err := d.run(t, g, f.id, x+50); err != nil {
+					t.Fatalf("%s(TxFrom+50, before UpdatedAt): %v", d.name, err)
 				}
 			}
 		})

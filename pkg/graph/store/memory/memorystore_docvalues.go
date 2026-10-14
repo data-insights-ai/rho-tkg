@@ -328,17 +328,15 @@ func (ms *Store) buildColumnsLocked(set map[types.NodeID]struct{}, requested []s
 		}
 		return n.GetProperty(key)
 	}
-	getTemporal := func(id types.NodeID) (int64, int64, bool) {
+	getTemporal := func(id types.NodeID) (int64, int64, int64, bool) {
 		n, ok := ms.nodes[id]
 		if !ok {
-			return 0, 0, false
+			return 0, 0, 0, false
 		}
-		f, t, has := n.ValidRange()
-		// See core/docvalues.go: an unset ValidFrom resolves to the mint time.
-		if !has || f == 0 {
-			f = storeutil.SnowflakeInstant(id.SnowflakeID())
-		}
-		return int64(f), int64(t), true
+		// See core/docvalues.go: the effective start, one rule.
+		_, t, _ := n.ValidRange()
+		f := int64(storeutil.NodeValidFrom(n))
+		return f, int64(t), f, true
 	}
 	ms.columnRebuilds.Add(1)
 	return indexpkg.BuildLabelDocValues(cur, ids, keys, getProp, getTemporal)
@@ -364,16 +362,14 @@ func (ms *Store) refreshLabelColumnsLocked(token uint16, set map[types.NodeID]st
 					}
 					return n.GetProperty(key)
 				}
-				getTemporal := func(id types.NodeID) (int64, int64, bool) {
+				getTemporal := func(id types.NodeID) (int64, int64, int64, bool) {
 					n, present := ms.nodes[id]
 					if !present {
-						return 0, 0, false
+						return 0, 0, 0, false
 					}
-					f, t, has := n.ValidRange()
-					if !has || f == 0 {
-						f = storeutil.SnowflakeInstant(id.SnowflakeID())
-					}
-					return int64(f), int64(t), true
+					_, t, _ := n.ValidRange()
+					f := int64(storeutil.NodeValidFrom(n))
+					return f, int64(t), f, true
 				}
 				if ext := old.Extend(cur, added, getProp, getTemporal); ext != nil {
 					ms.clearAppendDeltaFor(token)

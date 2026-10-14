@@ -329,7 +329,7 @@ type Store struct {
 	labelOnDisk           bool                                          // answer label snapshots from the persisted keyspace
 	adjOnDisk             bool                                          // answer adjacency snapshots from the persisted keyspaces
 	propIdxOnDisk         bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
-	formatMarker          uint16                                        // store-level format marker on disk (raiseFormatMarkerLocked; guarded by idxMu)
+	formatMarker          uint16                                        // store-level format marker (raiseFormatMarkerPendingLocked; guarded by wbMu)
 	temporalIdxOnDisk     bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
 	disablePlannerStats   bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
 	openImageSuppressed   atomic.Bool                                   // the open's index-key repair failed: Close writes no image (badgerstore_index_repair.go)
@@ -1094,15 +1094,18 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			}
 		}
 		if bs.temporalIdxOnDisk {
-			_, merr := txn.Get(storepkg.TemporalIndexOnDiskBuiltKey)
-			switch {
-			case merr == nil:
-				temporalIdxNeedsBuild = false
-			case errors.Is(merr, badgerv4.ErrKeyNotFound):
-				temporalIdxNeedsBuild = true
-			default:
-				return fmt.Errorf("graph: read temporal-index-on-disk marker: %w", merr)
+			// Trusted only when built under the TxFrom start (v2 marker) and no
+			// older release rebuilt it since (that rebuild writes the v1 marker
+			// and keys rows by the mint start, leaving v2 in place) — backlog 62.
+			v2, err := metaKeyPresent(txn, storepkg.TemporalIndexOnDiskBuiltKey)
+			if err != nil {
+				return fmt.Errorf("graph: read temporal-index-on-disk marker: %w", err)
 			}
+			v1, err := metaKeyPresent(txn, storepkg.TemporalIndexOnDiskBuiltV1Key)
+			if err != nil {
+				return fmt.Errorf("graph: read temporal-index-on-disk marker: %w", err)
+			}
+			temporalIdxNeedsBuild = !v2 || v1
 		}
 
 		nodeEntityIDs := make(map[types.NodeID]struct{})
@@ -1861,7 +1864,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			return err
 		}
 	}
-	if bs.temporalIdxOnDisk && temporalIdxNeedsBuild {
+	if bs.temporalIdxOnDisk && temporalIdxNeedsBuild && !bs.readOnly {
 		if err := bs.commitTemporalIndexOnDiskBackfill(temporalIdxBackfillOps); err != nil {
 			return err
 		}
@@ -2076,7 +2079,9 @@ func (bs *Store) Clear() (err error) {
 	bs.relPropertyIndexes = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex)
 	// The wipe below may drop the format marker: the next Elements definition
 	// re-raises it rather than trusting the cached value.
+	bs.wbMu.Lock()
 	bs.formatMarker = 0
+	bs.wbMu.Unlock()
 	// Rows written after the wipe carry binary hashes (backlog 61): the
 	// wiped marker is stamped again once the wipe has succeeded.
 	defer func() {

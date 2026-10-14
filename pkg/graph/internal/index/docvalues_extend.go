@@ -41,7 +41,7 @@ import (
 // A nil return is always safe: the caller falls back to a full rebuild.
 func (l *DocValues[T]) Extend(epoch uint64, newIDs []T,
 	getProp func(T, string) (any, bool),
-	getTemporal func(T) (validFrom, validTo int64, ok bool)) *DocValues[T] {
+	getTemporal func(T) (validFrom, validTo, effFrom int64, ok bool)) *DocValues[T] {
 
 	if l == nil || len(newIDs) == 0 {
 		return nil
@@ -91,10 +91,14 @@ func (l *DocValues[T]) Extend(epoch uint64, newIDs []T,
 	if l.hasTemporal {
 		out.validFrom = append(slices.Clone(l.validFrom), make([]int64, len(added))...)
 		out.validTo = append(slices.Clone(l.validTo), make([]int64, len(added))...)
+		if l.effFrom != nil {
+			out.effFrom = append(slices.Clone(l.effFrom), make([]int64, len(added))...)
+		}
 		out.hasTemporal = true
 		for i, id := range added {
-			if f, t, ok := getTemporal(id); ok {
+			if f, t, eff, ok := getTemporal(id); ok {
 				out.validFrom[oldN+i], out.validTo[oldN+i] = f, t
+				out.setEff(oldN+i, eff)
 			}
 		}
 		out.extendZoneMap(l, oldN)
@@ -141,11 +145,12 @@ func (l *DocValues[T]) extendZoneMap(src *DocValues[T], oldN int) {
 func (l *DocValues[T]) computeZoneBlock(b, n int) {
 	lo := b * zoneBlockSize
 	hi := min(lo+zoneBlockSize, n)
-	minF, maxF := l.validFrom[lo], l.validFrom[lo]
+	from := l.EffectiveValidFrom()
+	minF, maxF := from[lo], from[lo]
 	var minT, maxT int64
 	open, seenClosed := false, false
 	for ord := lo; ord < hi; ord++ {
-		f, t := l.validFrom[ord], l.validTo[ord]
+		f, t := from[ord], l.validTo[ord]
 		minF, maxF = min(minF, f), max(maxF, f)
 		if t == 0 {
 			open = true

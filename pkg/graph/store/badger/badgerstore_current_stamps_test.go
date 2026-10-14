@@ -213,11 +213,11 @@ func TestCurrentStamps_StoredRowForms(t *testing.T) {
 			var newer []byte
 			if k.name == "node" {
 				w := storeutil.NodeToWire(curNode(a, 3, 5, 0, 0))
-				w.FormatVersion = storeutil.BinaryHashWireFormatVersion + 1
+				w.FormatVersion = storeutil.VoidWireFormatVersion + 1
 				newer, err = storeutil.MarshalNodeWireStruct(w)
 			} else {
 				w := storeutil.RelToWire(curRel(a, 3, 5, 0, 0))
-				w.FormatVersion = storeutil.BinaryHashWireFormatVersion + 1
+				w.FormatVersion = storeutil.VoidWireFormatVersion + 1
 				newer, err = storeutil.MarshalRelWireStruct(w)
 			}
 			if err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -243,7 +244,7 @@ func (c *Core) relAdjacencyCandidateIDsSorted(nodeID types.NodeID, dirs adjDirs,
 // one-row chain of a first version (version 0) without a delete stamp answers
 // the probe. For such a row resolveRelChain reduces to: no row dropped by the
 // transaction-time filter (tx is 0) or as a retracted life, no life cap, the
-// bounds [valid-from or the ID's mint instant, valid-to or open)
+// bounds [effective valid-from (storeutil.RelValidFrom), valid-to or open)
 // (relVersionBounds of a chain's only row), then the point or overlap test of
 // resolveRelVersionAtCapped / resolveRelChainDuring. ok=false for any other
 // row: the caller runs the resolver. TestSingleVersionAdjacencyMatchesResolver
@@ -255,10 +256,8 @@ func (s singleVersionAdjacencyResolver) firstVersionCovers(r *types.Relationship
 	if _, _, deletedAt := r.TxStamps(); deletedAt != 0 {
 		return false, false
 	}
-	vStart, vEnd, _ := r.ValidRange()
-	if vStart == 0 {
-		vStart = r.ID().MintInstant()
-	}
+	_, vEnd, _ := r.ValidRange()
+	vStart := storeutil.RelValidFrom(r)
 	switch s.probe.kind {
 	case probePoint:
 		t := s.probe.validAt

@@ -1117,13 +1117,14 @@ func (bs *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, qu
 // Caller must hold bs.idxMu write lock.
 func (bs *Store) persistPropertyIndexDefs() {
 	var defs []propIdxDef
+	var marker uint16 // ElementsStoreFormatVersion when an Elements definition is persisted
 	for key, idx := range bs.propertyIndexes {
 		if idx == nil || idx.Mutated != nil {
 			continue
 		}
 		defs = append(defs, propIdxDef{LabelToken: key.LabelToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts(), Elements: idx.Elements()})
 		if idx.Elements() {
-			bs.raiseFormatMarkerLocked(storepkg.ElementsStoreFormatVersion)
+			marker = storepkg.ElementsStoreFormatVersion
 		}
 	}
 	if len(defs) == 0 {
@@ -1135,7 +1136,7 @@ func (bs *Store) persistPropertyIndexDefs() {
 		slog.Error("graph: persist property index defs: marshal failed", "error", err)
 		return // index still works in-memory; will retry on next change
 	}
-	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.PropIndexDefsKey, value: data})
+	bs.appendOpsRaising(marker, writeOp{opType: writeOpSet, key: storepkg.PropIndexDefsKey, value: data})
 }
 
 // persistVectorIndexDefs serializes the current vector index definitions to Badger.

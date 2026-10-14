@@ -590,11 +590,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 
 	// 4b. Cascade timeline edits — node, then rel.
 	for _, pc := range b.nodeCascades {
-		_, err := b.g.cascadeNodeVersionInterval(context.Background(), pc.id, pc.validFrom, pc.validTo, pc.props, pc.at)
+		_, err := b.g.cascadeNode(context.Background(), pc.id, pc.validFrom, pc.validTo, pc.props, pc.at, pc.void)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
-				Op:  cascadeOpName("Node", pc.at),
+				Op:  cascadeOpName("Node", pc.at, pc.void),
 				ID:  types.EntityID(pc.id),
 				Err: err,
 			})
@@ -604,11 +604,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		}
 	}
 	for _, pc := range b.relCascades {
-		_, err := b.g.cascadeRelVersionInterval(context.Background(), pc.id, pc.validFrom, pc.validTo, pc.props, pc.at)
+		_, err := b.g.cascadeRel(context.Background(), pc.id, pc.validFrom, pc.validTo, pc.props, pc.at, pc.void)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{
-				Op:  cascadeOpName("Rel", pc.at),
+				Op:  cascadeOpName("Rel", pc.at, pc.void),
 				ID:  types.EntityID(pc.id),
 				Err: err,
 			})

@@ -347,20 +347,18 @@ func (c *Core) buildAsOfColumns(label string, propKeys []string, txAt types.Inst
 			}
 			return nd.GetProperty(key)
 		}
-		getTemporal := func(id types.NodeID) (int64, int64, bool) {
+		getTemporal := func(id types.NodeID) (int64, int64, int64, bool) {
 			nd, present := byID[id]
 			if !present {
-				return 0, 0, false
+				return 0, 0, 0, false
 			}
-			f, t, ok := nd.ValidRange()
-			// EntityValidFrom's rule: an unset ValidFrom means the entity is valid
-			// from its MINT time, not from the epoch. Storing the raw 0 would make a
+			// The effective start (storeutil.NodeValidFrom: an unset ValidFrom is
+			// the row's TxFrom, not the epoch). Storing the raw 0 would make a
 			// columnar reader disagree with every row-path filter on exactly those
 			// nodes (Pattern 38).
-			if !ok || f == 0 {
-				f = storeutil.SnowflakeInstant(id.SnowflakeID())
-			}
-			return int64(f), int64(t), true
+			_, t, _ := nd.ValidRange()
+			f := int64(storeutil.NodeValidFrom(nd))
+			return f, int64(t), f, true
 		}
 		col = indexpkg.BuildLabelDocValues(epoch, ids, buildKeys, getProp, getTemporal)
 		return nil

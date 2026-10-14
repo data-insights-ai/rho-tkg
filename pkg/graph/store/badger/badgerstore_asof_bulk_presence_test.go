@@ -225,7 +225,7 @@ func TestBulkAsOfPresence_EquivalentAcrossStates(t *testing.T) {
 				for e := 0; e < n; e++ {
 					id := k.id(base + e)
 					ids = append(ids, id)
-					for _, v := range genCascadeAsofChain(rng) {
+					for _, v := range genCascadeAsofChain(rng, rng) {
 						k.put(t, bs, id, v.version, v.txFrom, v.current)
 					}
 				}

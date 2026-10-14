@@ -1,9 +1,7 @@
 package badger
 
 import (
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
-	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -99,6 +97,9 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 	}
 
 	ids, vf, vt := col.IDs(), col.ValidFrom(), col.ValidTo()
+	// The filter reads the effective start (an unset ValidFrom is the row's
+	// TxFrom, backlog 62); the batch reports the stored one (vf).
+	eff := col.EffectiveValidFrom()
 	ords := bs.labelColumnOrdinals(token, col)
 	batch := newColumnBatch(len(props))
 	for i, v := range views {
@@ -124,7 +125,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 			}
 		} else {
 			for ord := start; ord < end; ord++ {
-				if !validTimeMatches(effectiveValidFrom(vf[ord], ids[ord].SnowflakeID()), vt[ord], qFrom, qTo) {
+				if !validTimeMatches(eff[ord], vt[ord], qFrom, qTo) {
 					continue
 				}
 				batch.IDs = append(batch.IDs, ids[ord])
@@ -178,30 +179,6 @@ func validTimeMatches(f, t, start, end int64) bool {
 		return true
 	}
 	return f < end && (t == 0 || t > start)
-}
-
-// effectiveValidFrom is the valid-from a FILTER must use: an entity that carries
-// no ValidFrom is treated as valid from its MINT time, which is the rule
-// storeutil.MatchesTemporalFilter applies on the row path and the one every
-// non-columnar door already agrees on.
-//
-// SEPARATE FROM THE REPORTED COLUMN, deliberately. The doc-values builder stores
-// the RAW bound, because ColumnBatch.ValidFrom is handed to callers as the
-// entity's stored validity and must mean the same thing it means through
-// ValidRange() and the tkg_valid_from shadow key. Folding the fallback into the
-// stored array made those two questions share one answer, and a columnar reader
-// then saw [mint, +inf) where the memory backend saw eternal.
-//
-// Applying it here keeps the filter's behaviour bit-identical to before.
-//
-// It takes the snowflake ID, not an interface over the entity ID: converting a
-// NodeID or RelID to an interface boxed it, one allocation per filtered row
-// (sigma-tkgd round 6 request 10).
-func effectiveValidFrom(f int64, id snowflake.ID) int64 {
-	if f != 0 {
-		return f
-	}
-	return int64(storeutil.SnowflakeInstant(id))
 }
 
 // unfilteredWindow reports whether every row of [start, end) passes the valid-time

@@ -3,16 +3,11 @@ package types
 import "github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout"
 
 // MintInstant returns the instant this node ID was minted, in Unix
-// milliseconds: the derived valid-from of a node row that carries no explicit
-// ValidFrom (TemporalMetadata.ValidFrom == 0 means unset, and the derived start
-// is the ID's mint instant). It is exactly the start the graph's resolver
-// applies on every temporal read, so a consumer that reads a row without its
-// derived start (an unpinned read, a column scan) can apply the same rule
-// without decoding snowflake bits itself.
-//
-// Changes in v4.52.3 (backlog 62): the graph then starts a row without a
-// valid-from at its TxFrom, so this instant is the derived start only of a
-// legacy row that carries no TxFrom.
+// milliseconds (the snowflake wall clock). Since v4.53.0 (backlog 62) the graph
+// starts a row without a valid-from at its TxFrom, so this instant is the
+// derived start only of a legacy row that carries neither a ValidFrom nor a
+// TxFrom; to tell an untimed create from its first segment, compare the
+// segment's start with the first version's TxFrom (Node.TxStamps).
 //
 // The result depends only on the ID and the package-level epoch and layout
 // (48-bit microseconds since 2026-01-01 UTC, floored to milliseconds), which

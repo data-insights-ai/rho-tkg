@@ -6,6 +6,93 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Valid-time excise: `Temporal().ExciseNodeValidity(ctx, id, a, b)` / `ExciseRelValidity`** (backlog 64, sigma R7,
+  v4.53.0). Ends an entity's validity over `[a, b)` and keeps it outside: reads with a valid instant in `[a, b)`
+  answer `ErrNoVersionValidAt` (point, label, property and interval doors, effective timelines), reads outside keep
+  their answers, pins before the call see the unsplit version. Works on the current version (open or closed), a
+  historical one and across several; a later `SetNodeVersionInterval` over the hole fills it again. Append-only,
+  one transaction instant for every row, under the entity lock: the cascade kernel writes void pieces
+  (`types.TemporalMetadata.Void`) over the parts of `[a, b)` where a version was valid and the usual resumption
+  from `b`. A void row never holds the current slot and never answers `NodeAsOf` / `RelAsOf`; `History()` returns
+  it marked (`Temporal().Void`), so a consumer reading raw History intervals must skip void rows. Twins: `*WithTx` (caller instant, the `SetNodeVersionIntervalWithTx` rules), `GraphTx` and
+  `BatchBuilder` (the batch `*WithTx` twin refuses the whole unit). Refusals, nothing written: `b == 0`, `a <= 0`,
+  `a >= b` (`ErrInvalidTimeRange`), no version valid in `[a, b)` (`ErrNoVersionValidAt`), unknown
+  (`ErrNodeNotFound` / `ErrRelNotFound`) or deleted (`ErrEntityDeleted`). No existing mechanism modelled absence
+  over a bounded interval (a retraction ends a whole life, a delete tombstone ends the life at its instant,
+  `CloseVersion` closes only the open current row), so the flag is new. Format: a void row is written at row
+  format version 5 (`storeutil.VoidWireFormatVersion`, key `vd`) and the badger store marker is raised to 6
+  (`VoidStoreFormatVersion`) in the batch that writes the first void row; a store without an excise keeps its
+  marker (4 under the binary-hash writer, 5 with an Elements definition). One monotonic tracker serves all three
+  markers (`raiseFormatMarkerPendingLocked`, under `wbMu`, in the section that appends the row or definition), so
+  an Elements definition written after a void row in one flush cannot lower 6 to 5; a row's format version is the
+  highest its features need (void 5 > binary hash 4 > retracted 3). An older binary refuses such a store at open and fails such a row closed (export, change feed, replica) with
+  `ErrWireFormatVersionUnsupported`; it must not skip the key, since it would read the piece as a valid version.
+  Tests `TestExciseNodeValidity` / `TestExciseRelValidity` (memory,
+  badger, tiered, sharded on disk with reopen), `TestExciseNodeValidityWithTx`, `TestExciseNodeValidityTxAndBatch`,
+  `TestVoidRow_FormatVersion5`, `TestVoidRowWithBinaryHash_FormatVersionIsMax`, `TestVoidRowRaisesStoreFormatMarker`,
+  `TestFormatMarkerOneTrackerAcrossFeatures`, the bitemporal oracle harness with the
+  excise op; evidence `tasks/evidence/excise/`.
+
+### Changed
+
+- **Integrity hashes written as 32 raw bytes** (backlog 61, step 2; deprecated in v4.52.2): the writer stores each
+  canonical hash as its 32 raw bytes (row fv 4) and a writable open raises the badger store marker to 4 (a store
+  with a higher marker keeps it); callers still get the same 64-hex strings. A relationship row of the measured
+  shape: 366.9 → 270.9 B raw, 251.2 → 151.8 B Snappy. A store this release opens writable can be opened only by
+  v4.52.2 or later; exports and change feeds carry row fv 4, so readers and replicas need v4.52.2 or later first.
+
+- **A row without a valid-from is valid from its `TxFrom`** (backlog 62, deprecated in v4.52.2; sigma-tkgd
+  observation). One start rule, `storeutil.EntityValidFrom`: explicit `ValidFrom`, else `TxFrom`, else (a legacy
+  row without one) `UpdatedAt`, else the ID's mint instant — for an untimed create (was: its mint instant) and an
+  untimed later version (was: its `UpdatedAt`) alike. One instant now sees one write burst in commit order: a
+  create written after an update is no longer valid before it (the commit clock runs ahead of the snowflake wall
+  clock under bursts; batch and ingest mint IDs before they stamp `TxFrom`), and an `AddWithTx` backfill is valid
+  from its backfilled `TxFrom`, before its mint. Every valid-time door reads it: `NodeAt` / `RelAt`, `NodeAtTx` /
+  `RelAtTx`, `NodesAt[Tx]`, `ByLabel` / `ByType` with `ValidAt`, `NodeMatchesValidTime` / `RelMatchesValidTime`,
+  `NodeInterval` / `RelInterval` (`RelateNodes` / `RelateRels`), the effective timelines (first `ValidFrom` = the
+  first version's `TxFrom`) and their scans, the store push-down, the temporal index envelopes and the column scans'
+  valid-time filter (badger: the snapshot carries an effective-start column next to the reported raw
+  `ColumnBatch.ValidFrom`, which stays the stored value). The resolver's separate `UpdatedAt` start for later
+  versions and the mint fallbacks in the first-version shortcuts and column builders are folded into it; a later
+  version after `UpdateInPlace` starts at its `TxFrom`, no longer at the in-place write's `UpdatedAt`. Consequences
+  a caller can see: a read at wall-clock "now" right after a create can miss it (the commit clock runs ahead of
+  the wall clock under bursts; updates already behaved so): read "now" via `g.Temporal().NowTx()` or at the write's
+  `TxFrom`; an `Update` with a `tkg_valid_from` at or before the current version's `TxFrom` is
+  `ErrValidFromBeforePrevious` (was: before its mint); a temporal constraint compares against the endpoint's
+  `TxFrom`. The caller-instant order gates and the update instant use the same start (`nodeValidFrom`; the
+  separate `UpdatedAt`-based `nodeCurrentVersionStart` is gone), so an `UpdateWithTx` / `DeleteWithTx` at a `t` in
+  (`TxFrom`, `UpdatedAt`] after an `UpdateInPlace` is accepted (was: refused; an in-place write records nothing in
+  transaction time), and a plain update after a later version with a future `tkg_valid_from` is stamped after that
+  start, as one after a future-dated create already was. Persisted derived starts: the open image is format 2 and the 0x0B temporal-index keyspace marker is
+  `temporal_index_on_disk_built_v2`, so the first open rebuilds envelopes keyed by the mint start (an envelope
+  starting after the row would prune it); the old marker is deleted, so an older release rebuilds too. The keyspace is trusted only when the v2 marker is present and the old one absent (after a downgrade an older release rebuilds it mint-keyed and writes the old marker, leaving v2 in place); a read-only open rebuilds it in RAM without writing. Persisted
+  column blobs are format 2. The HOP segment header's `valid_from` min/max stores the raw value and is not read for
+  pruning: unchanged. Consumer adaptation (sigma-tkgd `tyla/source/graph/effective.go:99/104`): an untimed create's
+  first segment starts at the first version's `TxFrom` (`TxStamps`), no longer at `MintInstant()`. Tests
+  `TestUntimedRowsStartAtTxFrom`, `TestOneBurstReadsConsistentlyAtOneInstant` (four backends),
+  `TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt`, `TestRelColumns_UnsetValidFromFiltersFromTxFrom`; evidence
+  `tasks/evidence/valid-from-source/`.
+- **An update that sets only `tkg_valid_to` closes the version** (backlog 65, deprecated in v4.52.2). `Update` and
+  its `GraphTx`, batch, ingest and `*WithTx` twins treat a `tkg_valid_to` without `tkg_valid_from` as
+  `CloseVersion` does, through one helper (`checkNodeClose` / `checkRelClose` + `stampClose`: the version must be
+  open, the end must follow its start, the temporal constraints must hold): the version keeps its start and ends at
+  `tkg_valid_to`; an end at or before that start is `ErrInvalidTimeRange` and writes nothing (was: copied unchecked
+  onto a new version starting at the update instant, so a past end wrote an empty row and the entity stayed
+  valid). `UpdateInPlace` refuses an end at or before the row's start. `CloseVersion` stamps the version's start on
+  the closing row (was: the closing row started at the close instant, so `CloseVersion(t)` with `t` before the close
+  instant left the entity valid until the close was written). This is also the close inside a transaction sigma-tkgd
+  asked for (R9): `GraphTx.UpdateNode` / `UpdateRelationship(id, {tkg_valid_to: t})` answers as
+  `CloseVersion(id, t)`, no new door. The caller-instant pre-flight of a Batch / ingest unit runs the same close
+  check, so a unit with one refused close writes nothing. Side effect: a closed untimed version now carries its
+  start as a stored `ValidFrom`, so the raw `tkg_valid_from` shadow, `ValidRange()` and `ColumnBatch.ValidFrom`
+  of such a row read that start instead of 0. On an external store without `MetaKVCapability` (the bitemporal
+  migration never runs) a close of a version with an explicit valid-from equal to its predecessor's is read by
+  the legacy inherited-valid-from heuristic as inherited and starts at the close's `TxFrom`; every in-tree store
+  migrates. Tests `TestUpdateValidToClosesTheVersion` (incl. WithTx batch and ingest units),
+  `TestTxUpdateValidToClosesLikeCloseVersion` (four backends, twin stores); `TestDocValues_ExpiredNodeStillCounted`
+  now gives its expired node a start before the close.
 ## [4.52.2] - 2026-10-14
 
 ### Added
@@ -140,6 +227,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   no longer drops the node from the membership answers and valid-end candidates, nor an `ArchiveNode` from the
   property door; a shard error joined with the property door's off-reference finding is returned, no longer
   turned into `ErrIndexNotFound`. Test `TestTxMembersFanoutListsNodeRestoredMidRead`.
+
+### Changed
+
 
 ### Fixed
 

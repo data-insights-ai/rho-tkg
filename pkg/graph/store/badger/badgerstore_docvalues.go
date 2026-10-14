@@ -442,7 +442,7 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 // reads so the build still completes correctly.
 func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 	func(types.NodeID, string) (any, bool),
-	func(types.NodeID) (int64, int64, bool),
+	func(types.NodeID) (int64, int64, int64, bool),
 ) {
 	sorted := append([]types.NodeID(nil), ids...)
 	storepkg.SortNodeIDs(sorted)
@@ -477,17 +477,14 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 					return nil, false
 				}
 				return nd.GetProperty(key)
-			}, func(id types.NodeID) (int64, int64, bool) {
+			}, func(id types.NodeID) (int64, int64, int64, bool) {
 				nd, gerr := bs.GetNode(id)
 				if gerr != nil || nd == nil {
-					return 0, 0, false
+					return 0, 0, 0, false
 				}
-				f, t, ok := nd.ValidRange()
-				if !ok {
-					return 0, 0, false
-				}
-				// RAW, not effective — see the note on getTemporal below.
-				return int64(f), int64(t), true
+				// RAW and effective — see the note on getTemporal below.
+				f, t, _ := nd.ValidRange()
+				return int64(f), int64(t), int64(storepkg.NodeValidFrom(nd)), true
 			}
 	}
 	// Both closures read the SAME materialised map, so the value columns and the
@@ -498,15 +495,12 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 				return nil, false // deleted between the membership snapshot and the scan
 			}
 			return nd.GetProperty(key)
-		}, func(id types.NodeID) (int64, int64, bool) {
+		}, func(id types.NodeID) (int64, int64, int64, bool) {
 			nd := mat[id]
 			if nd == nil {
-				return 0, 0, false
+				return 0, 0, 0, false
 			}
-			f, t, ok := nd.ValidRange()
-			if !ok {
-				return 0, 0, false
-			}
+			f, t, _ := nd.ValidRange()
 			// RAW ValidFrom, NOT the snowflake-effective one.
 			//
 			// These bounds are REPORTED to the caller as ColumnBatch.ValidFrom, and
@@ -518,11 +512,12 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 			// an entity with no valid-time metadata read as Eternal through the
 			// memory store and as [mint, +inf) through Badger.
 			//
-			// The mint-time fallback is still right for FILTERING, and it has moved
-			// to where filtering happens (effectiveValidFrom, applied in
-			// validTimeMatches). Separating them keeps the row-path predicate
-			// identical while letting the reported column mean what it says.
-			return int64(f), int64(t), true
+			// FILTERING uses the effective start (storeutil.NodeValidFrom: an unset
+			// ValidFrom is the row's TxFrom, backlog 62), carried as the snapshot's
+			// third column (DocValues.EffectiveValidFrom) and read by the column
+			// scan's filter and the zone map. Separating them keeps the row-path
+			// predicate identical while letting the reported column mean what it says.
+			return int64(f), int64(t), int64(storepkg.NodeValidFrom(nd)), true
 		}
 }
 

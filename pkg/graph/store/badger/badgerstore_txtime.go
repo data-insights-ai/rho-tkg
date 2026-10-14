@@ -465,6 +465,16 @@ func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, e
 	retracted := func(tm *types.TemporalMetadata) bool {
 		return tm != nil && ((tm.TxTo != 0 && tm.TxTo <= txTime) || (tm.DeletedAt != 0 && tm.DeletedAt <= txTime))
 	}
+	// void: an excise's void piece is never an as-of answer and the rule
+	// reads as if it were absent (storeutil.SelectAsOfWithCurrent). It
+	// carries no TxTo, so only a row without one is decoded.
+	void := func(version uint64, val []byte, tt int64) (bool, error) {
+		if tt != 0 {
+			return false, nil
+		}
+		tm, err := temporal(version, val)
+		return storepkg.IsVoid(tm), err
+	}
 
 	if cur != nil && cur.TxFrom > 0 && cur.TxFrom <= txTime && cur.TxTo == 0 {
 		if curVersion == math.MaxUint32 {
@@ -492,6 +502,9 @@ func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, e
 			if tt != 0 && tt >= tf {
 				earlierLife = true
 				return true, nil
+			}
+			if v, err := void(version, val, tt); err != nil || v {
+				return false, err
 			}
 			switch {
 			case len(run) == 0:
@@ -537,11 +550,19 @@ func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, e
 			if tf == 0 || types.Instant(tf) > txTime {
 				return false, nil // recorded after the pin — keep scanning older versions
 			}
+			if v, err := void(version, val, tt); err != nil || v {
+				return false, err
+			}
 			run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
 			newestTxFrom = tf
 			return false, nil
 		}
 		if inRun && tf == newestTxFrom {
+			if v, err := void(version, val, tt); err != nil {
+				return false, err
+			} else if v {
+				return false, nil
+			}
 			run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
 		} else {
 			inRun = false

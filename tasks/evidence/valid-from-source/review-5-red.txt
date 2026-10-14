@@ -1,0 +1,21 @@
+--- FAIL: TestTxBackfillRel_OrderValidStart (0.20s)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/memory/updated_at_above_tx_from (0.00s)
+        tx_backfill_rel_doors_test.go:399: DeleteWithTx(TxFrom+50, before UpdatedAt): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791993840002 is not after the recorded version start 1791993840052
+    --- FAIL: TestTxBackfillRel_OrderValidStart/badger/updated_at_above_tx_from (0.03s)
+        tx_backfill_rel_doors_test.go:399: DeleteWithTx(TxFrom+50, before UpdatedAt): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791993840041 is not after the recorded version start 1791993840091
+    --- FAIL: TestTxBackfillRel_OrderValidStart/sharded/updated_at_above_tx_from (0.00s)
+        tx_backfill_rel_doors_test.go:399: DeleteWithTx(TxFrom+50, before UpdatedAt): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791993840091 is not after the recorded version start 1791993840141
+    --- FAIL: TestTxBackfillRel_OrderValidStart/tiered/updated_at_above_tx_from (0.04s)
+        tx_backfill_rel_doors_test.go:399: DeleteWithTx(TxFrom+50, before UpdatedAt): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791993840195 is not after the recorded version start 1791993840245
+--- FAIL: TestTxBackfillNode_OrderValidStart (0.23s)
+    --- FAIL: TestTxBackfillNode_OrderValidStart/memory/updated_at_above_tx_from (0.00s)
+        tx_backfill_node_doors_test.go:471: standalone/DeleteWithTx(TxFrom+50, before UpdatedAt): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791993840001 is not after the recorded version start 1791993840051
+    --- FAIL: TestTxBackfillNode_OrderValidStart/badger/updated_at_above_tx_from (0.03s)
+        tx_backfill_node_doors_test.go:471: standalone/DeleteWithTx(TxFrom+50, before UpdatedAt): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791993840038 is not after the recorded version start 1791993840088
+    --- FAIL: TestTxBackfillNode_OrderValidStart/sharded/updated_at_above_tx_from (0.05s)
+        tx_backfill_node_doors_test.go:471: standalone/DeleteWithTx(TxFrom+50, before UpdatedAt): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791993840198 is not after the recorded version start 1791993840248
+    --- FAIL: TestTxBackfillNode_OrderValidStart/tiered/updated_at_above_tx_from (0.01s)
+        tx_backfill_node_doors_test.go:471: standalone/DeleteWithTx(TxFrom+50, before UpdatedAt): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791993840229 is not after the recorded version start 1791993840279
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.311s
+FAIL

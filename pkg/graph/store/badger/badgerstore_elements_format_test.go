@@ -20,7 +20,7 @@ func TestElementsIndexStampsFormatMarker(t *testing.T) {
 	}{
 		{"plain", func(bs *Store) error {
 			return bs.CreatePropertyIndexWithOptions(1, "v", storecontract.PropertyIndexOptions{RangeCounts: true})
-		}, storepkg.StoreFormatVersion},
+		}, openStampVersion()},
 		{"node elements", func(bs *Store) error { return bs.CreatePropertyIndexWithOptions(1, "v", elements) }, storepkg.ElementsStoreFormatVersion},
 		{"rel elements", func(bs *Store) error { return bs.CreateRelPropertyIndexWithOptions(1, "v", elements) }, storepkg.ElementsStoreFormatVersion},
 	} {
@@ -52,10 +52,10 @@ func TestElementsIndexStampsFormatMarker(t *testing.T) {
 			}
 			// A reader that predates Elements.
 			prev := maxReadableStoreFormatVersion
-			maxReadableStoreFormatVersion = storepkg.StoreFormatVersion
+			maxReadableStoreFormatVersion = openStampVersion()
 			defer func() { maxReadableStoreFormatVersion = prev }()
 			bs, err = New(Config{Dir: dir})
-			if c.want == storepkg.StoreFormatVersion {
+			if c.want == openStampVersion() {
 				if err != nil {
 					t.Fatalf("older reader on a store without Elements: %v", err)
 				}

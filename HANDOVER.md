@@ -10,7 +10,7 @@ History (what shipped, why) is in `CHANGELOG.md` and git, not here.
 1. **v4.52.2 released 2026-10-14** (61 step 1, 63, 62/65 phase A, docs). Next tag v4.53.0 (R7 is a new door; minor allowed for new features, René 2026-10-14): 61 step 2 (branch backlog-61-step-2), 62/65 phase B (branch backlog-62-65-phase-b), R7 excise (64, building on phase B).
 2. **sigma Derived write-back (todo row 33):** R6 = backlog 63 `PropertyIndexOptions{Elements: true}` (building); R7 = backlog 64 `ExciseNodeValidity` (+ rel mirror), starts after 62 (both touch the resolver); R8 done (guard test).
 3. **Integrity-hash switch (row 31, backlog 61):** building; notify ai-soc when it ships.
-4. **One valid-from source (row 32, backlog 62) + Update-with-valid_to closes like CloseVersion (backlog 65):** deprecation in v4.52.2, change in v4.52.3; building.
+4. **One valid-from source (row 32, backlog 62) + Update-with-valid_to closes like CloseVersion (backlog 65):** deprecation in v4.52.2, change in v4.53.0; building.
 5. **Parked** (no consumer asking): backlog 0–5, 7, 10b, 13, 16, 20, 23, 25, 26, 31, 37, 39, 40, 45–47; tiered write doors without moveMu (store-level only).
 
 Status of running jobs: `scratchpad/status.txt` (session scratchpad). Decisions René made 2026-10-14: todo rows 29 (cleanup, v5 façade waits for Markus, no issue-#11 post, patch only) and 31.

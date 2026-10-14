@@ -1,0 +1,14 @@
+=== RUN   TestTxUpdateValidToClosesLikeCloseVersion
+=== PAUSE TestTxUpdateValidToClosesLikeCloseVersion
+=== CONT  TestTxUpdateValidToClosesLikeCloseVersion
+=== RUN   TestTxUpdateValidToClosesLikeCloseVersion/memory
+=== RUN   TestTxUpdateValidToClosesLikeCloseVersion/badger
+=== RUN   TestTxUpdateValidToClosesLikeCloseVersion/tiered
+=== RUN   TestTxUpdateValidToClosesLikeCloseVersion/sharded
+--- PASS: TestTxUpdateValidToClosesLikeCloseVersion (0.05s)
+    --- PASS: TestTxUpdateValidToClosesLikeCloseVersion/memory (0.00s)
+    --- PASS: TestTxUpdateValidToClosesLikeCloseVersion/badger (0.04s)
+    --- PASS: TestTxUpdateValidToClosesLikeCloseVersion/tiered (0.01s)
+    --- PASS: TestTxUpdateValidToClosesLikeCloseVersion/sharded (0.01s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.064s

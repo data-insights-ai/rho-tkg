@@ -18,12 +18,12 @@ func zoneBuild(n int, clustered bool) *LabelDocValues {
 		ids[i] = types.NodeID(i + 1)
 	}
 	gp := func(id types.NodeID, _ string) (any, bool) { return int64(id), true }
-	gt := func(id types.NodeID) (int64, int64, bool) {
+	gt := func(id types.NodeID) (int64, int64, int64, bool) {
 		i := int64(id)
 		if clustered {
-			return i * 10, i*10 + 5, true
+			return i * 10, i*10 + 5, i * 10, true
 		}
-		return (i * 7919) % int64(n*10), ((i * 7919) % int64(n*10)) + 5, true
+		return (i * 7919) % int64(n*10), ((i * 7919) % int64(n*10)) + 5, (i * 7919) % int64(n*10), true
 	}
 	return BuildLabelDocValues(1, ids, []string{"v"}, gp, gt)
 }

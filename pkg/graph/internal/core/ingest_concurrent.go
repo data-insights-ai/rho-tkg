@@ -433,15 +433,15 @@ func (c *Core) applyConcurrentUpdatesAndDeletes(
 	}
 
 	for _, pc := range g.nodeCascades {
-		if _, err := c.cascadeNodeVersionInterval(ctx, pc.id, pc.validFrom, pc.validTo, pc.props, pc.at); err != nil {
-			fail(cascadeOpName("Node", pc.at), types.EntityID(pc.id), err)
+		if _, err := c.cascadeNode(ctx, pc.id, pc.validFrom, pc.validTo, pc.props, pc.at, pc.void); err != nil {
+			fail(cascadeOpName("Node", pc.at, pc.void), types.EntityID(pc.id), err)
 		} else {
 			emit(eventspkg.EventNodeUpdate, types.EntityID(pc.id), c.now(), eventspkg.PriorityNormal)
 		}
 	}
 	for _, pc := range g.relCascades {
-		if _, err := c.cascadeRelVersionInterval(ctx, pc.id, pc.validFrom, pc.validTo, pc.props, pc.at); err != nil {
-			fail(cascadeOpName("Rel", pc.at), types.EntityID(pc.id), err)
+		if _, err := c.cascadeRel(ctx, pc.id, pc.validFrom, pc.validTo, pc.props, pc.at, pc.void); err != nil {
+			fail(cascadeOpName("Rel", pc.at, pc.void), types.EntityID(pc.id), err)
 		} else {
 			emit(eventspkg.EventRelUpdate, types.EntityID(pc.id), c.now(), eventspkg.PriorityNormal)
 		}

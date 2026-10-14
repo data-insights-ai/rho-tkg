@@ -1,0 +1,11 @@
+# go test ./pkg/graph/internal/core/ -run 'TestBitemporalOracle' -count=1 -v (full iteration count, not -short)
+--- PASS: TestBitemporalOracle_BadgerCommitWindow (0.43s)
+--- PASS: TestBitemporalOracleHarness (21.43s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	21.893s
+
+# harness op mix (memory arm, the 200 full-harness seeds x 18 ops): 314 excises applied, 198 refused (ErrNoVersionValidAt / range)
+# mutations (each run with -short, reverted after):
+#   chain_resolver.go: node During/Relate mask dropped (mask := nil)      -> FAIL TestBitemporalOracle_BadgerCommitWindow iter=2 seed=762335780454
+#   temporal.go: cascade-arm void winner answered (best == nil only)     -> FAIL TestBitemporalOracle_BadgerCommitWindow iter=1 seed=762335780453
+#   badgerstore_txtime.go: native as-of void skip off                    -> FAIL TestBadgerAsOfCascadeShapesEquivalentToSelectAsOf

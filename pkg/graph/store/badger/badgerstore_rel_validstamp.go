@@ -71,7 +71,7 @@ func (bs *Store) setRelValidStampLocked(rid types.RelID, r *types.Relationship) 
 }
 
 // relValidStampFor computes a rel's effective valid interval (EntityValidFrom
-// resolves the snowflake fallback; vt==0 is open-ended).
+// resolves an unset ValidFrom to the row's TxFrom; vt==0 is open-ended).
 func relValidStampFor(rid types.RelID, r *types.Relationship) relValidStamp {
 	tm := r.Temporal()
 	vf := storepkg.EntityValidFrom(rid.SnowflakeID(), tm)

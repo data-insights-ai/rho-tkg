@@ -7,7 +7,7 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // [ValidFrom, ValidTo) the node's state, as recorded at the pin, is Node —
 // the row NodeAtTx(id, t, pin) returns for every t in it. ValidTo == 0 is
 // open-ended. ValidFrom is never 0: a row without a recorded valid-from starts
-// at its derived start (the ID's mint instant for the first row).
+// at its derived start (the row's TxFrom, backlog 62).
 //
 // Node is a shared frozen row like the rows of the other plural reads: it
 // rejects mutation; call DeepCopy to get a mutable copy. Adjacent segments of
