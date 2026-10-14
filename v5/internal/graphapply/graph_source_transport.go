@@ -76,9 +76,15 @@ func (e graphRetentionWireError) Error() string {
 	return "graphapply: retained source no longer admitted"
 }
 func (e graphRetentionWireError) Is(target error) bool {
-	return e.status == 1 && target == errGraphPinExpired || e.status == 2 && target == errGraphPinReleased || (graphWireError{e.mask}).Is(target)
+	return e.status == 1 && target == errGraphPinExpired || e.status == 2 && target == errGraphPinReleased || e.status == 3 && (target == errGraphHistoryExpired || target == raftlog.ErrApplicationExpired) || (graphWireError{e.mask}).Is(target)
 }
 func graphRetentionStatus(err error) byte {
+	// Only the authenticated graph/native classification produced after exact
+	// certificate lookup may cross this door. A raw caller index or an ordinary
+	// native refusal is not graph-history expiry authority.
+	if errors.Is(err, errGraphHistoryExpired) && errors.Is(err, raftlog.ErrApplicationExpired) {
+		return 3
+	}
 	if errors.Is(err, errGraphPinExpired) {
 		return 1
 	}
@@ -86,6 +92,10 @@ func graphRetentionStatus(err error) byte {
 		return 2
 	}
 	return 0
+}
+
+func graphRetentionStatusAllowed(id raftlog.ApplicationSemanticContractID, status byte) bool {
+	return (status == 1 || status == 2) && retainedGraphAgreement(id) || status == 3 && id == collectedGraphSemanticContractID()
 }
 
 func encodeGraphWireResponse(r graphWireResponse) ([]byte, error) {
@@ -100,7 +110,7 @@ func encodeGraphWireResponse(r graphWireResponse) ([]byte, error) {
 		return nil, errInvalid
 	}
 	status := graphRetentionStatus(r.err)
-	if status != 0 && r.peer.scope.semantic != retainedGraphSemanticContractID() {
+	if status != 0 && !graphRetentionStatusAllowed(r.peer.scope.semantic, status) {
 		return nil, errInvalid
 	}
 	version := byte(1)
@@ -157,7 +167,7 @@ func decodeGraphWireResponse(wire []byte) (graphWireResponse, error) {
 		return graphWireResponse{}, err
 	}
 	if version == 2 {
-		if status < 1 || status > 2 || r.peer.scope.semantic != retainedGraphSemanticContractID() || len(r.body) != 0 {
+		if !graphRetentionStatusAllowed(r.peer.scope.semantic, status) || len(r.body) != 0 {
 			return graphWireResponse{}, errCorrupt
 		}
 		r.err = graphRetentionWireError{mask, status}

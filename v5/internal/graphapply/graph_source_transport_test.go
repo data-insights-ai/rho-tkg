@@ -675,7 +675,7 @@ func TestRemoteGraphSourceDirectDataAdmissionAndOwnerExpiry(t *testing.T) {
 	}
 	owner, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	source, _ := authenticatedNativeSourceFixture(t, owner)
+	source, transport := authenticatedNativeSourceFixture(t, owner)
 	defer source.Close()
 	if row, found, err := source.Get(t.Context(), []byte("missing"), -1); !errors.Is(err, errLimit) || found || len(row.Key)+len(row.Value) != 0 {
 		t.Fatal("negative maximum published data", row, found, err)
@@ -699,5 +699,88 @@ func TestRemoteGraphSourceDirectDataAdmissionAndOwnerExpiry(t *testing.T) {
 	}
 	if err := source.Close(); err != nil {
 		t.Fatal("prepaid owner cleanup", err)
+	}
+	// These are inert codec guards, not fabricated expiry evidence. Production
+	// status3 originates only after the actual stored GSC/floor authentication.
+	base := graphWireResponse{peer: transport.Peer(), issuer: [16]byte{1}, kind: sourceCertifiedOpen, sequence: 1, nonce: [16]byte{2}}
+	for _, agreement := range []raftlog.ApplicationSemanticContractID{retainedGraphSemanticContractID(), collectedGraphSemanticContractID()} {
+		for _, cause := range []error{errGraphPinExpired, errGraphPinReleased} {
+			r := base
+			r.peer.scope.semantic, r.err = agreement, cause
+			wire, err := encodeGraphWireResponse(r)
+			if err != nil {
+				t.Fatal("inherited pin classification", err)
+			}
+			decoded, err := decodeGraphWireResponse(wire)
+			if err != nil || !bytes.Equal(wire[:4], []byte{'G', 'S', 'R', 2}) || !errors.Is(decoded.err, cause) || errors.Is(decoded.err, graphstore.ErrSourceUnavailable) || len(decoded.body) != 0 {
+				t.Fatal("pin classification changed", decoded, err)
+			}
+		}
+	}
+	expired := base
+	expired.peer.scope.semantic = collectedGraphSemanticContractID()
+	expired.err = errors.Join(errGraphHistoryExpired, raftlog.ErrApplicationExpired)
+	wire, err := encodeGraphWireResponse(expired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeGraphWireResponse(wire)
+	if err != nil || !errors.Is(decoded.err, errGraphHistoryExpired) || !errors.Is(decoded.err, raftlog.ErrApplicationExpired) || errors.Is(decoded.err, errGraphPinExpired) || errors.Is(decoded.err, graphstore.ErrSourceUnavailable) || len(decoded.body) != 0 {
+		t.Fatal("known graph/native expiry lost", decoded, err)
+	}
+	if graphRetentionStatus(raftlog.ErrApplicationExpired) != 0 || graphRetentionStatus(errGraphHistoryExpired) != 0 {
+		t.Fatal("unbound cause manufactured authenticated graph expiry")
+	}
+	for _, agreement := range []raftlog.ApplicationSemanticContractID{certifiedGraphSemanticContractID(), retainedGraphSemanticContractID()} {
+		expired.peer.scope.semantic = agreement
+		if _, err := encodeGraphWireResponse(expired); !errors.Is(err, errInvalid) {
+			t.Fatal("old agreement encoded collected expiry", err)
+		}
+		scope, err := encodeAllocationScope(expired.peer.scope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		invalid, err := boundedEncoding(graphSourceFrameBytes, func(w *boundedWriter) {
+			w.add([]byte{'G', 'S', 'R', 2})
+			w.field(scope)
+			w.u64(expired.peer.voter)
+			w.add(expired.issuer[:])
+			w.tag(expired.kind)
+			w.u64(expired.sequence)
+			w.add(expired.nonce[:])
+			w.u16(0)
+			w.tag(3)
+			w.field(nil)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := decodeGraphWireResponse(invalid); !errors.Is(err, errCorrupt) {
+			t.Fatal("old agreement decoded collected expiry", err)
+		}
+	}
+	// Pin-free ordinary replies retain the original GSR1 frame byte for byte.
+	base.err = graphstore.ErrSourceUnavailable
+	actual, err := encodeGraphWireResponse(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := encodeAllocationScope(base.peer.scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := boundedEncoding(graphSourceFrameBytes, func(w *boundedWriter) {
+		w.add([]byte{'G', 'S', 'R', 1})
+		w.field(scope)
+		w.u64(base.peer.voter)
+		w.add(base.issuer[:])
+		w.tag(base.kind)
+		w.u64(base.sequence)
+		w.add(base.nonce[:])
+		w.u16(1 << 10)
+		w.field(nil)
+	})
+	if err != nil || !bytes.Equal(actual, legacy) {
+		t.Fatal("ordinary GSR1 wire changed", err)
 	}
 }
