@@ -490,7 +490,8 @@ func (a *API) RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*
 // For every valid instant t the segment containing t holds the row
 // NodeAtTx(id, t, pin) returns; none contains t where NodeAtTx answers
 // ErrNoVersionValidAt. ValidFrom is the effective start, never 0 (the ID's
-// mint instant for a row without a recorded valid-from); a deleted node's last
+// mint instant for a row without a recorded valid-from; from v4.52.3 its
+// TxFrom, backlog 62 — see NodeMatchesValidTime); a deleted node's last
 // segment ends at the delete instant; a node created after the pin returns
 // nil, nil. Segments may share a row pointer; DeepCopy before mutating.
 //
@@ -801,6 +802,11 @@ func (a *API) DiffCallback(t1, t2 types.Instant, h DiffHandlers) error {
 }
 
 // NodeInterval returns the interval [valid_from, valid_to) for n.
+//
+// Deprecated: the start this method gives a row without a valid-from changes in
+// v4.52.3 (backlog 62): such a row is then valid from its TxFrom, no longer
+// from its ID's mint instant; why and how to adapt: NodeMatchesValidTime. The
+// method itself stays; this marker is removed again in v4.52.3.
 func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -810,6 +816,11 @@ func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) 
 }
 
 // RelInterval returns the interval [valid_from, valid_to) for r.
+//
+// Deprecated: the start this method gives a row without a valid-from changes in
+// v4.52.3 (backlog 62): such a row is then valid from its TxFrom, no longer
+// from its ID's mint instant; why and how to adapt: NodeMatchesValidTime. The
+// method itself stays; this marker is removed again in v4.52.3.
 func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -824,6 +835,19 @@ func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err 
 // the RelMatchesValidTime path. Returns false (no match) on a not-ready graph
 // or nil node — a post-filter consumer treats either as "excluded", which is
 // the safe default. See core.TempOps.NodeMatchesValidTime.
+//
+// Deprecated: the start this method gives a row without a valid-from changes in
+// v4.52.3 (backlog 62); the method itself stays. Why: today an untimed create
+// starts at its ID's mint instant (snowflake wall clock) and an untimed update
+// at its transaction time, two clocks that disagree under write bursts and
+// tx backfill, so no single instant sees one burst consistently. From v4.52.3
+// every row without a valid-from (version 0 and later) is valid from its
+// TxFrom, on every valid-time door (NodeAt / RelAt, the scans, the effective
+// timelines, RelateNodes / RelateRels); only a legacy row without a TxFrom
+// keeps the mint instant. A consumer that detects an untimed create by
+// "first segment ValidFrom == MintInstant()" detects it from v4.52.3 by
+// "ValidFrom == TxFrom of the first version" (types.Node.TxStamps).
+// This marker is removed again in v4.52.3.
 func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool {
 	ops, err := a.ready()
 	if err != nil {
@@ -838,6 +862,11 @@ func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool 
 // the node path. Returns false (no match) on a not-ready graph or nil rel — a
 // post-filter consumer treats either as "excluded", which is the safe default.
 // See core.TempOps.RelMatchesValidTime.
+//
+// Deprecated: the start this method gives a row without a valid-from changes in
+// v4.52.3 (backlog 62): such a row is then valid from its TxFrom, no longer
+// from its ID's mint instant; why and how to adapt: NodeMatchesValidTime. The
+// method itself stays; this marker is removed again in v4.52.3.
 func (a *API) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {
 	ops, err := a.ready()
 	if err != nil {
@@ -846,7 +875,9 @@ func (a *API) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts
 	return ops.RelMatchesValidTime(r, opts)
 }
 
-// RelateNodes returns the Allen relation between the validity intervals of x and y.
+// RelateNodes returns the Allen relation between the validity intervals of x and y
+// (as NodeInterval: a row without a valid-from starts at its TxFrom from v4.52.3,
+// backlog 62).
 func (a *API) RelateNodes(x, y *types.Node) (types.AllenRelation, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -855,7 +886,8 @@ func (a *API) RelateNodes(x, y *types.Node) (types.AllenRelation, error) {
 	return ops.RelateNodes(x, y)
 }
 
-// RelateRels returns the Allen relation between the validity intervals of x and y.
+// RelateRels returns the Allen relation between the validity intervals of x and y
+// (as RelInterval; the start changes in v4.52.3, see RelateNodes).
 func (a *API) RelateRels(x, y *types.Relationship) (types.AllenRelation, error) {
 	ops, err := a.ready()
 	if err != nil {

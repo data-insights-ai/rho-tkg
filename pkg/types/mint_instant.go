@@ -10,6 +10,10 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout"
 // derived start (an unpinned read, a column scan) can apply the same rule
 // without decoding snowflake bits itself.
 //
+// Changes in v4.52.3 (backlog 62): the graph then starts a row without a
+// valid-from at its TxFrom, so this instant is the derived start only of a
+// legacy row that carries no TxFrom.
+//
 // The result depends only on the ID and the package-level epoch and layout
 // (48-bit microseconds since 2026-01-01 UTC, floored to milliseconds), which
 // every graph in a process shares; it does not consult any graph's Config. It

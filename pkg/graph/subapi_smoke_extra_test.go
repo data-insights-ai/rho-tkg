@@ -353,10 +353,10 @@ func TestSubAPISmoke_TemporalAllWrappers(t *testing.T) {
 		t.Fatalf("re-fetch r2: %v", err)
 	}
 
-	if _, _, err := g.Temporal().NodeInterval(aClosed); err != nil {
+	if _, _, err := g.Temporal().NodeInterval(aClosed); err != nil { //nolint:staticcheck // behaviour notice, backlog 62
 		t.Errorf("NodeInterval: %v", err)
 	}
-	if _, _, err := g.Temporal().RelInterval(rClosed); err != nil {
+	if _, _, err := g.Temporal().RelInterval(rClosed); err != nil { //nolint:staticcheck // behaviour notice, backlog 62
 		t.Errorf("RelInterval: %v", err)
 	}
 	if _, err := g.Temporal().RelateNodes(aClosed, bClosed); err != nil {

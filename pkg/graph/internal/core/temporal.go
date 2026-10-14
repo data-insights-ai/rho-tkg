@@ -212,11 +212,12 @@ func (c *Core) isNodeValidAt(n *types.Node, t types.Instant) bool {
 
 // NodeMatchesValidTime reports whether n passes the valid-time filter in opts
 // (ValidAt point, ValidStart/ValidEnd interval, or no filter), using the SAME
-// canonical storeutil.MatchesTemporalFilter predicate the store push-down and
-// RelMatchesValidTime use. Exposed so a consumer that already holds a
-// materialized node (e.g. a query engine post-filtering a traversal) decides
-// validity with effective valid-from (snowflake fallback when ValidFrom==0) —
-// never the raw shadow value. This is the NODE mirror of RelMatchesValidTime
+// canonical predicate (storeutil.MatchesTemporalFilterFrom) the store push-down
+// and RelMatchesValidTime use, with the row's start taken as the chain resolver
+// takes it (nodeSortValidFrom: explicit ValidFrom, else a later version's
+// UpdatedAt, else the ID's mint instant — backlog 62). Exposed so a consumer
+// that already holds a materialized node (e.g. a query engine post-filtering a
+// traversal) decides validity as NodeAt does — never from the raw shadow value. This is the NODE mirror of RelMatchesValidTime
 // (rule 17: two structural mirrors, same shape); a frozen node (returned by
 // any plural/scan read, see the Defensive Copying design rule) is read-only
 // here so it is accepted exactly like a mutable one. A nil node never matches.
@@ -224,22 +225,22 @@ func (t *TempOps) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) b
 	if n == nil {
 		return false
 	}
-	return storeutil.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts)
+	return storeutil.MatchesTemporalFilterFrom(t.c.nodeSortValidFrom(n), n.Temporal(), opts)
 }
 
 // RelMatchesValidTime reports whether r passes the valid-time filter in opts
 // (ValidAt point, ValidStart/ValidEnd interval, or no filter), using the SAME
 // canonical storeutil.MatchesTemporalFilter predicate the store push-down uses.
 // Exposed so a consumer that already holds a materialized relationship (e.g. a
-// query engine post-filtering a traversal) decides validity with effective
-// valid-from (snowflake fallback when ValidFrom==0) — never the raw shadow
-// value — keeping relationship valid-time semantics identical to the node path
-// and the store. A nil relationship never matches.
+// query engine post-filtering a traversal) decides validity with the start the
+// chain resolver gives the row (relSortValidFrom, see NodeMatchesValidTime) —
+// never the raw shadow value — keeping relationship valid-time semantics
+// identical to the node path and RelAt. A nil relationship never matches.
 func (t *TempOps) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {
 	if r == nil {
 		return false
 	}
-	return storeutil.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
+	return storeutil.MatchesTemporalFilterFrom(t.c.relSortValidFrom(r), r.Temporal(), opts)
 }
 
 // resolveNodeVersionAt finds the version valid at time t from a pre-built chain.

@@ -233,6 +233,12 @@ func (a *API) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 }
 
 // Update updates a relationship's properties honoring ctx.
+//
+// Changes in v4.52.3 (backlog 65): an update that sets tkg_valid_to without
+// tkg_valid_from closes the current version as CloseVersion does — the version
+// keeps its start and ends at tkg_valid_to — and an end at or before that start
+// returns ErrInvalidTimeRange. Until then the end is copied onto a new version
+// that starts at the update instant, unchecked.
 func (a *API) Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -258,6 +264,9 @@ func (a *API) UpdateWithTx(ctx context.Context, id types.RelID, updates map[stri
 }
 
 // UpdateInPlace updates a relationship in place honoring ctx (no version branch).
+//
+// Changes in v4.52.3 (backlog 65): a tkg_valid_to at or before the row's
+// effective start returns ErrInvalidTimeRange (today it is stored unchecked).
 func (a *API) UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
