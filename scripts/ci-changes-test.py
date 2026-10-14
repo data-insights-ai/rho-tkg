@@ -211,6 +211,7 @@ class RealGitSelection(unittest.TestCase):
 
     def test_reviewed_paired_fixture_types_have_finite_real_parent_scope(self):
         fixtures = {
+            "native_graph_cost_grants_harness_test.go": {"TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks", "TestNativeGraphCostMultipleGrantsSmallActualProcesses"},
             "paired_graph_fault_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry"},
             "paired_graph_snapshot_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts"},
             "prepared_lock_p06_harness_test.go": {"TestPreparedLockP06FirstYESLeaderKillOriginalRecovery"},
