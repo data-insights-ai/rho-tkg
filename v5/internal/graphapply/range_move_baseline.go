@@ -61,7 +61,7 @@ func (m *declaredMaterializer) rangeMoveCatalogBaseline(q *reader, cfg genesisAl
 	}
 	d, s := progress.descriptor, progress.imported
 	_, _, manifestDigest := progress.transferSummary()
-	if d.Spec.Publication != intent.publication || d.Spec.From.Partition != intent.source.partition || d.Spec.From.Epoch != intent.epoch || d.Spec.To.Partition != intent.target.partition || d.Spec.To.Epoch != intent.epoch+1 || d.Configuration != configuration || d.Declaration != m.declaration.Digest() || d.DefaultAxis != cfg.defaultAxis || d.Target.Binding != m.binding || s.FutureRoot.Namespace() != (graphstore.Namespace{Graph: intent.publication.Graph, Partition: m.ns.partition}) || s.Rows+progress.replay.rows != status.rows || s.Bytes+progress.replay.bytes != status.size || status.digest != manifestDigest {
+	if d.Spec.Publication != intent.publication || d.Spec.From.Partition != intent.source.partition || d.Spec.From.Epoch != intent.epoch || d.Spec.To.Partition != intent.target.partition || d.Spec.To.Epoch != intent.epoch+1 || d.Configuration != configuration || d.Declaration != m.declaration.Digest() || d.DefaultAxis != cfg.defaultAxis || d.Target.Binding != m.binding || s.FutureRoot.Namespace() != (graphstore.Namespace{Graph: intent.publication.Graph, Partition: m.ns.partition}) || s.Rows+progress.replay.rows+progress.retentionRows != status.rows || s.Bytes+progress.replay.bytes+uint64(len(progress.retention)) != status.size || status.digest != manifestDigest {
 		return nil, errCorrupt
 	}
 	completed := s.Sequence + s.PreparationSteps + progress.replay.sequence

@@ -14,14 +14,24 @@ import (
 )
 
 // This agreement extends every retained/P05/range/certified/cross capability.
-// Its profile constructor stays withheld until fresh transport/handoff wiring is
-// complete. These native floor commands do not retire graph logical key families.
+// Transport and retained-source handoff keep the original keeper authority.
+// These native floor commands do not retire graph logical key families.
 func collectedGraphSemanticContractID() raftlog.ApplicationSemanticContractID {
 	base := retainedGraphSemanticContractID()
 	return raftlog.ApplicationSemanticContractID(sha256.Sum256(append(base[:], []byte("native-retention=authenticated-sparse-plan-v1\x00source=current-plan-anchor-v1\x00originals=immutable-controls-v1\x00handoff=resolved-fence-retained-lineage-v1\x00")...)))
 }
 func retainedGraphAgreement(id raftlog.ApplicationSemanticContractID) bool {
 	return id == retainedGraphSemanticContractID() || id == collectedGraphSemanticContractID()
+}
+
+// A fresh AS7 native store is required; old directories/agreements are never
+// reopened or silently upgraded. Transport and retained-source handoff share
+// this exact immutable capability chain.
+func newCollectedGraphMaterializer(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits) (*declaredMaterializer, error) {
+	if s == nil || s.ApplicationRetention().Version != 1 || s.ApplicationRecovery().Version != 2 || s.ApplicationControls().Version != 1 {
+		return nil, errInvalid
+	}
+	return newDeclaredMaterializerWithAgreement(s, n, d, l, collectedGraphSemanticContractID())
 }
 func (m *declaredMaterializer) collectsHistory() bool {
 	return m != nil && m.SemanticContractID() == collectedGraphSemanticContractID()

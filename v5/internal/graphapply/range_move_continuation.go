@@ -86,6 +86,20 @@ func (m *declaredMaterializer) stageRangeMoveContinuation(q *reader, command ran
 				return raftlog.ApplicationBatch{}, errors.Join(errInvalid, err)
 			}
 			progress.descriptor = descriptor
+			if m.collectsHistory() {
+				packet, present, e := readMoveRetainedLineage(q, move, false)
+				if e != nil || !present {
+					return raftlog.ApplicationBatch{}, errors.Join(errCorrupt, e)
+				}
+				if e := checkMoveRetainedBinding(packet, intent, move, current.intent, root, floor, true); e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				progress.retention, e = encodeMoveRetainedLineage(packet, q.arena)
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				progress.retentionRows = uint64(len(packet.owners) + 1)
+			}
 			status.floor = max(floor, command.proofs[0].floor)
 		} else {
 			if current.phase != rangeMoveDescribe || command.sequence != current.sequence+1 || len(command.data) != 0 {

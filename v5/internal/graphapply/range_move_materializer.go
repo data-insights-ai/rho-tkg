@@ -149,21 +149,45 @@ func (m *declaredMaterializer) moveReservation(r rangeMoveIntent) (raftlog.Appli
 	move := rangeMoveID(namespace{r.source.graph, r.source.partition}, r.id)
 	reservation := raftlog.ApplicationRecoveryReservation{ID: rangeMoveRecoveryID(m.ns, move), Digest: sha256.Sum256(wire)}
 	add := func(phase uint32, command, bytes, rows int) {
-		reservation.Credits = append(reservation.Credits, raftlog.ApplicationRecoveryCredit{Phase: phase, CommandBytes: command, RetainedBytes: uint64(bytes), RetainedRecords: uint64(rows)}) // #nosec G115 -- all call sites use positive fixed credits or validated pageBytes<=1MiB; computed bytes<=17MiB and rows<=128.
+		reservation.Credits = append(reservation.Credits, raftlog.ApplicationRecoveryCredit{Phase: phase, CommandBytes: command, RetainedBytes: uint64(bytes), RetainedRecords: uint64(rows)}) // #nosec G115 -- all call sites use positive fixed credits or validated pageBytes<=1MiB; computed bytes<=18MiB and rows<=128.
 	}
-	add(1, 4096, 8192, 16) // fixed captured source/target root and floor
+	if m.collectsHistory() {
+		// Complete <=16-owner capture, separate bounded native controls, and the
+		// repeated authentic RS2 envelope spend existing retained/log quotas.
+		add(1, 4096, rangeMoveRetentionBytes+(128<<10), 32)
+	} else {
+		add(1, 4096, 8192, 16)
+	} // legacy captured root/floor bytes unchanged
 	if m.ns.partition == r.source.partition {
 		for sequence := range r.maxPages + 1 {
-			add(uint32(100+sequence), 8192, 256<<10, 16)
+			retained := 256 << 10
+			if m.collectsHistory() {
+				retained = 1 << 20
+			} // GMP3+both cursors+receipt+RS2
+			add(uint32(100+sequence), 8192, retained, 16)
 		}
 	} else {
 		for sequence := range r.maxPages + 1 {
-			add(uint32(1200+sequence), min((1<<20)-2048, r.pageBytes+8192), (256<<10)+16*r.pageBytes+16384, 128)
+			if sequence == 0 && m.collectsHistory() {
+				add(1200, (1<<20)-2048, 2<<20, 128)
+			} else {
+				retained := (256 << 10) + 16*r.pageBytes + 16384
+				if m.collectsHistory() {
+					retained += 1 << 20
+				}
+				add(uint32(1200+sequence), min((1<<20)-2048, r.pageBytes+8192), retained, 128)
+			}
 		}
 	}
-	add(2500, 8192, 256<<10, 16)  // stream/root sealing
-	add(2501, 8192, 8192, 16)     // immutable handoff decision
-	add(2502, 8192, 256<<10, 128) // placement + complete root activation
+	if m.collectsHistory() {
+		add(2500, 8192, (1<<20)+(128<<10), 16) // complete GMP3 plus native RS2
+		add(2501, 8192, 128<<10, 16)
+		add(2502, 8192, (256<<10)+(128<<10), 128)
+	} else {
+		add(2500, 8192, 256<<10, 16)
+		add(2501, 8192, 8192, 16)
+		add(2502, 8192, 256<<10, 128)
+	}
 	if m.ns.partition == r.target.partition {
 		for sequence := range r.maxPages {
 			add(uint32(3000+sequence), 8192, (256<<10)+16*r.pageBytes+16384, 128)
@@ -171,7 +195,11 @@ func (m *declaredMaterializer) moveReservation(r rangeMoveIntent) (raftlog.Appli
 	}
 	// Both success and a pre-COMMIT abort consume the SAME highest final phase.
 	// RetireBefore removes unused stage/undo phases on the actual final install.
-	add(5001, 8192, 8192, 16)
+	terminal := 8192
+	if m.collectsHistory() {
+		terminal = 128 << 10
+	}
+	add(5001, 8192, terminal, 16)
 	return reservation, nil
 }
 
@@ -485,6 +513,11 @@ func (m *declaredMaterializer) stageRangeMove(q *reader, entry replica.Entry, bu
 			return raftlog.ApplicationBatch{}, err
 		}
 		controls := []raftlog.ApplicationControlPut{{Key: rangeMoveControlKey(m.ns, move, 'C'), Value: capture}}
+		lineage, e := m.captureMoveRetainedLineage(q, move, digest, configuration, status.floor)
+		if e != nil {
+			return raftlog.ApplicationBatch{}, e
+		}
+		controls = append(controls, lineage...)
 		return finish(status, true, controls)
 	}
 	return m.stageRangeMoveContinuation(q, c, intent, current, status, budget)
@@ -493,6 +526,9 @@ func (m *declaredMaterializer) stageRangeMove(q *reader, entry replica.Entry, bu
 func (m *declaredMaterializer) checkRangeMoveState(q *reader) error {
 	if !m.rangeMoves() {
 		return nil
+	}
+	if err := m.checkMoveRetainedLineages(q); err != nil {
+		return err
 	}
 	move, err := readRangeMoveActive(q)
 	if err != nil || move == ([16]byte{}) {

@@ -36,7 +36,7 @@ func encodeGraphMoveSourceInfo(i graphMoveSourceInfo) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !i.scope.valid() || i.scope.semantic != rangeMoveSemanticContractID() || i.moveID == ([16]byte{}) || i.intentHash == ([32]byte{}) || (i.manifestIndex == 0) != (i.manifestHash == ([32]byte{})) || i.manifestIndex != 0 && i.manifestIndex < i.root.Index || i.nonce == ([16]byte{}) || i.cookie.issuer != i.readID.session || i.cookie.issuer == ([16]byte{}) || i.cookie.sequence == 0 || i.cookie.secret == ([16]byte{}) || i.readID.sequence == 0 || i.root.Generation == 0 || i.root.Index == 0 || len(i.root.Image) != 172 || sha256.Sum256(i.root.Image) != i.root.ImageHash || i.limits.Rows < 1 || i.limits.Rows > 4096 || i.limits.Bytes < 1 || i.limits.Bytes > 64<<20 || i.lifetime <= 0 || i.lifetime > time.Minute {
+	if !i.scope.valid() || !rangeMoveGraphAgreement(i.scope.semantic) || i.moveID == ([16]byte{}) || i.intentHash == ([32]byte{}) || (i.manifestIndex == 0) != (i.manifestHash == ([32]byte{})) || i.manifestIndex != 0 && i.manifestIndex < i.root.Index || i.nonce == ([16]byte{}) || i.cookie.issuer != i.readID.session || i.cookie.issuer == ([16]byte{}) || i.cookie.sequence == 0 || i.cookie.secret == ([16]byte{}) || i.readID.sequence == 0 || i.root.Generation == 0 || i.root.Index == 0 || len(i.root.Image) != 172 || sha256.Sum256(i.root.Image) != i.root.ImageHash || i.limits.Rows < 1 || i.limits.Rows > 4096 || i.limits.Bytes < 1 || i.limits.Bytes > 64<<20 || i.lifetime <= 0 || i.lifetime > time.Minute {
 		return nil, errInvalid
 	}
 	return boundedEncoding(4096, func(w *boundedWriter) {
@@ -252,7 +252,7 @@ func (s *graphSourceServer) openMove(ctx context.Context, proof rangeMoveProof) 
 }
 
 func (e *graphAuthenticatedEndpoint) openMoveSource(ctx context.Context, move [16]byte) (*remoteGraphSource, error) {
-	if e == nil || ctx == nil || move == ([16]byte{}) || e.peer.scope.semantic != rangeMoveSemanticContractID() {
+	if e == nil || ctx == nil || move == ([16]byte{}) || !rangeMoveGraphAgreement(e.peer.scope.semantic) {
 		return nil, errInvalid
 	}
 	cleanup, err := e.budget.cleanup()

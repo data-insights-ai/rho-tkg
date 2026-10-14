@@ -653,6 +653,15 @@ func (m *declaredMaterializer) pinPublication(q *reader, c graphPinCommand, h gr
 	if err != nil {
 		return manifest, graphPinPart{}, 0, err
 	}
+	if m.collectsHistory() {
+		move, e := readRangeMoveActive(q)
+		if e != nil {
+			return manifest, graphPinPart{}, 0, e
+		}
+		if move != ([16]byte{}) {
+			return manifest, graphPinPart{}, pinPending, nil
+		}
+	}
 	configuration, err := cfg.digest()
 	if err != nil {
 		return manifest, graphPinPart{}, 0, err
@@ -665,7 +674,7 @@ func (m *declaredMaterializer) pinPublication(q *reader, c graphPinCommand, h gr
 		return manifest, p, pinStale, nil
 	}
 	if err := m.checkPinSource(q, p, h); err != nil {
-		if errors.Is(err, errGraphPinExpired) {
+		if errors.Is(err, errGraphPinExpired) || errors.Is(err, errGraphHistoryExpired) && errors.Is(err, raftlog.ErrApplicationExpired) {
 			return manifest, p, pinExpired, nil
 		}
 		return manifest, p, 0, err
@@ -871,7 +880,10 @@ func (m *declaredMaterializer) stageRetainedPin(q *reader, entry replica.Entry, 
 		}
 		if status != pinApplied {
 			result.status = status
-			return finish(false, true)
+			// A missing participant held behind a fresh handoff can complete the
+			// SAME partial original after Finish. No pending GPX/owner/bank is
+			// invented; installed originals were recovered before this predicate.
+			return finish(false, status != pinPending)
 		}
 
 		purpose, err = m.retainedPinPurpose(q, c, entry.Data)

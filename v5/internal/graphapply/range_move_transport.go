@@ -123,7 +123,7 @@ func decodeRangeMoveAuthorityBody(wire []byte) (rangeMoveAuthority, error) {
 	p.scope = readAllocationScope(&decoder{b: scope})
 	p.observation.scope = p.scope
 	p.question, err = decodeRangeMoveQuery(query)
-	if err != nil || p.question.page != 0 || !p.scope.valid() || p.scope.semantic != rangeMoveSemanticContractID() || p.id.session == ([16]byte{}) || p.id.sequence == 0 || p.observation.root.Index != p.observation.index || p.observation.configuration == ([32]byte{}) || p.observation.sourceRows > p.question.sourceRows || p.observation.sourceBytes < 172 || p.observation.sourceBytes > p.question.sourceBytes || p.observation.ownedBytes > p.question.outputBytes {
+	if err != nil || p.question.page != 0 || !p.scope.valid() || !rangeMoveGraphAgreement(p.scope.semantic) || p.id.session == ([16]byte{}) || p.id.sequence == 0 || p.observation.root.Index != p.observation.index || p.observation.configuration == ([32]byte{}) || p.observation.sourceRows > p.question.sourceRows || p.observation.sourceBytes < 172 || p.observation.sourceBytes > p.question.sourceBytes || p.observation.ownedBytes > p.question.outputBytes {
 		return rangeMoveAuthority{}, errors.Join(errCorrupt, err)
 	}
 	if len(status) == 0 {
@@ -175,7 +175,7 @@ func (e *graphAuthenticatedEndpoint) move(ctx context.Context, id [16]byte) (aut
 }
 
 func (e *graphAuthenticatedEndpoint) moveQuestion(ctx context.Context, q rangeMoveQuery) (authority rangeMoveAuthority, err error) {
-	if e == nil || e.budget == nil || e.peer.scope.semantic != rangeMoveSemanticContractID() || q.page != 0 {
+	if e == nil || e.budget == nil || !rangeMoveGraphAgreement(e.peer.scope.semantic) || q.page != 0 {
 		return authority, errInvalid
 	}
 	nonce, err := graphReadNonce()

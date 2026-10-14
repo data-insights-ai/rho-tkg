@@ -28,6 +28,7 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 		return raftlog.ApplicationBatch{}, err
 	}
 	var progress rangeMoveProgress
+	var lineageControls []raftlog.ApplicationControlPut
 	if c.sequence == 0 && c.phase == rangeMoveImport {
 		if current.phase != rangeMoveCapture {
 			return raftlog.ApplicationBatch{}, errInvalid
@@ -57,7 +58,17 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 		if err != nil {
 			return raftlog.ApplicationBatch{}, err
 		}
-		progress = rangeMoveProgress{descriptor: descriptor, imported: new(state), graphPages: manifest.graphPages, replay: rangeMoveReplayStart(), replayEnd: manifest.replay}
+		progress = rangeMoveProgress{descriptor: descriptor, imported: new(state), graphPages: manifest.graphPages, replay: rangeMoveReplayStart(), replayEnd: manifest.replay, retention: manifest.retention, retentionRows: manifest.retentionRows}
+		if m.collectsHistory() {
+			packet, e := decodeMoveRetainedLineage(manifest.retention, q.arena)
+			if e != nil || packet.scope != intent.source || packet.move != current.move || packet.intent != current.intent {
+				return raftlog.ApplicationBatch{}, errors.Join(errInvalid, e)
+			}
+			lineageControls, e = moveRetentionControls(q, current.move, true, packet)
+			if e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+		}
 		status.floor, status.digest = max(source.floor, floor), digest
 	} else {
 		wire, present, err := q.getBounded(rangeMoveProgressKey(m.ns, current.move), 1<<20)
@@ -132,7 +143,7 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 				return raftlog.ApplicationBatch{}, err
 			}
 			progress.imported = new(effects.Next)
-			status.sequence, status.rows, status.size = c.sequence, effects.Next.Rows+progress.replay.rows, effects.Next.Bytes+progress.replay.bytes
+			status.sequence, status.rows, status.size = c.sequence, effects.Next.Rows+progress.replay.rows+progress.retentionRows, effects.Next.Bytes+progress.replay.bytes+uint64(len(progress.retention))
 			encoded, err := encodeRangeMoveProgress(progress, q.arena)
 			if err != nil {
 				return raftlog.ApplicationBatch{}, err
@@ -153,7 +164,7 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 				return raftlog.ApplicationBatch{}, err
 			}
 			progress.imported = new(state)
-			status.rows, status.size = state.Rows+progress.replay.rows, state.Bytes+progress.replay.bytes
+			status.rows, status.size = state.Rows+progress.replay.rows+progress.retentionRows, state.Bytes+progress.replay.bytes+uint64(len(progress.retention))
 		default:
 			return raftlog.ApplicationBatch{}, errInvalid
 		}
@@ -165,7 +176,7 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 	if err := q.put(rangeMoveProgressKey(m.ns, current.move), encoded); err != nil {
 		return raftlog.ApplicationBatch{}, err
 	}
-	return m.finishMovePage(q, status, nil, budget)
+	return m.finishMovePage(q, status, lineageControls, budget)
 }
 
 func rangeMoveSourceDecision(c rangeMoveCommand, intent rangeMoveIntent, digest [32]byte) (rangeMoveStatus, error) {

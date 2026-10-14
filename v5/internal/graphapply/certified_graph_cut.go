@@ -310,6 +310,12 @@ func (m *declaredMaterializer) stageGraphCut(q *reader, entry replica.Entry, bud
 			}
 			round, index, image, e := selectGraphRoundPredecessor(q, configuration, c.round, m.collectsHistory())
 			if e != nil {
+				// This is an uncertified internal round, not a stored GSC. Known
+				// collected predecessor expiry refuses closure without poisoning
+				// committed apply or manufacturing an expired certificate.
+				if m.collectsHistory() && errors.Is(e, errGraphHistoryExpired) && errors.Is(e, raftlog.ErrApplicationExpired) {
+					return refuse(graphCutStale)
+				}
 				if errors.Is(e, errLimit) || errors.Is(e, raftlog.ErrLimit) || errors.Is(e, graphstore.ErrResourceLimit) {
 					return refuse(graphCutLimit)
 				}

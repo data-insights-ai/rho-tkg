@@ -1,6 +1,7 @@
 package graphapply
 
 import (
+	"bytes"
 	"errors"
 	"math"
 
@@ -56,6 +57,22 @@ func (m *declaredMaterializer) stageRangeMoveActivation(q *reader, c rangeMoveCo
 		return raftlog.ApplicationBatch{}, errors.Join(errInvalid, err)
 	}
 	_, _, digest := progress.transferSummary()
+	if m.collectsHistory() {
+		packet, e := decodeMoveRetainedLineage(progress.retention, q.arena)
+		if e != nil || packet.scope != intent.source || packet.move != current.move || packet.intent != current.intent {
+			return raftlog.ApplicationBatch{}, errors.Join(errInvalid, e)
+		}
+		if m.scope() == intent.target {
+			shadow, present, e := readMoveRetainedLineage(q, current.move, true)
+			if e != nil || !present {
+				return raftlog.ApplicationBatch{}, errors.Join(errCorrupt, e)
+			}
+			wire, e := encodeMoveRetainedLineage(shadow, q.arena)
+			if e != nil || !bytes.Equal(wire, progress.retention) {
+				return raftlog.ApplicationBatch{}, errors.Join(errCorrupt, e)
+			}
+		}
+	}
 	decision, err := rangeMoveSourceDecision(c, intent, digest)
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err

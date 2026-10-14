@@ -9,15 +9,20 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
-// Explicit test-only fresh binding, not an exported/profile constructor. Reuse
-// the existing six-voter packet pump without a second oracle or child processes.
+// Reuse the existing six-voter packet pump with the explicit fresh constructor,
+// without a second oracle or child processes.
 func collectedGraphNetwork(t *testing.T) *allocationTestNetwork {
+	t.Helper()
+	return collectedGraphNetworkWithPolicy(t, nil)
+}
+func collectedGraphNetworkWithPolicy(t *testing.T, adjust func(*raftlog.ApplicationPolicy)) *allocationTestNetwork {
 	t.Helper()
 	r := partitionCodecRequest(t, 1, defaultMaterializerLimits())
 	n := &allocationTestNetwork{t: t, d: r.declaration, pending: make(map[[16]byte]allocationProof)}
@@ -29,13 +34,16 @@ func collectedGraphNetwork(t *testing.T) *allocationTestNetwork {
 			p.MaxInstallWrites = 256
 			p.RetainedApplicationRecords = 8192
 			p.RetainedApplicationBytes = 16 << 20
+			if adjust != nil {
+				adjust(&p)
+			}
 			control, recovery, retention := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 2}, raftlog.ApplicationRetentionConfig{Version: 1}
 			contract, err := raftlog.ApplicationContractForPolicyWithRetention(p, control, recovery, retention)
 			if err != nil {
 				t.Fatal(err)
 			}
 			part, _ := n.d.Partition(partition)
-			cfg := raftlog.Config{Dir: filepath.Join(t.TempDir(), fmt.Sprintf("gc-%d-%d", partition, id)), Create: true, Application: p, Controls: control, Recovery: recovery, Retention: retention, SemanticContractID: collectedGraphSemanticContractID(), Replication: raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}}, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.d.Graph()), Partition: partition, Group: part.Group}, Contract: contract, Limits: raftlog.DefaultApplicationTransferLimits()}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: 32 << 20, MaxRecords: 16384}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}}
+			cfg := raftlog.Config{Dir: filepath.Join(t.TempDir(), fmt.Sprintf("gc-%d-%d", partition, id)), Create: true, Application: p, Controls: control, Recovery: recovery, Retention: retention, SemanticContractID: collectedGraphSemanticContractID(), Replication: raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}}, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.d.Graph()), Partition: partition, Group: part.Group}, Contract: contract, Limits: raftlog.DefaultApplicationTransferLimits()}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: max(32<<20, 2*p.RetainedApplicationBytes), MaxRecords: max(16384, 2*p.RetainedApplicationRecords)}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}}
 			n.configs[g][member] = cfg
 			s, err := raftlog.Open(cfg)
 			if err != nil {
@@ -49,7 +57,7 @@ func collectedGraphNetwork(t *testing.T) *allocationTestNetwork {
 			if err := graphstore.BootstrapBoundOwnership(s, s.ApplicationBinding(), n.d, [3]uint64{1, 2, 3}); err != nil {
 				t.Fatal(err)
 			}
-			m, err := newDeclaredMaterializerWithAgreement(s, namespace{idalloc.GraphID(n.d.Graph()), partition}, n.d, defaultMaterializerLimits(), collectedGraphSemanticContractID())
+			m, err := newCollectedGraphMaterializer(s, namespace{idalloc.GraphID(n.d.Graph()), partition}, n.d, defaultMaterializerLimits())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -209,6 +217,24 @@ func TestCollectedGraphRetentionNativeStageOriginalAndCurrentSource(t *testing.T
 	if _, found, err := h.GraphRetentionOriginal(t.Context(), proposal); err != nil || found {
 		t.Fatal("unapplied bytes invented original", found, err)
 	}
+	// The follower genuinely validates this new GPL1 while the old source is
+	// still retained. Hold its real proposal until the floor and collection;
+	// authenticated expiry must be a normal installed refusal, not apply error.
+	expiredManifest := manifest
+	expiredManifest.request = [16]byte(n.requestID())
+	expiredWire, e := encodeGraphPinManifest(expiredManifest)
+	if e != nil {
+		t.Fatal(e)
+	}
+	expiredCommand := pinCommandFor(expiredManifest, expiredWire, h.machine.scope(), pinPublish, expiredManifest.request, 0)
+	expiredProposal, e := n.hosts[0][1].retainedPinProposal(expiredCommand)
+	if e != nil {
+		t.Fatal(e)
+	}
+	expiredHeld, e := n.hosts[0][1].Submit(expiredProposal)
+	if e != nil || len(expiredHeld.packets) != 1 || expiredHeld.packets[0].From != 2 || expiredHeld.packets[0].To != 1 {
+		t.Fatal("genuine pre-floor GPL1 proposal", expiredHeld, e)
+	}
 	// This exercises Host Submit -> ordinary recovery classification -> actual
 	// Raft persistence -> Stage -> opaque native installation on all three voters.
 	event, err := h.Submit(proposal)
@@ -279,6 +305,61 @@ func TestCollectedGraphRetentionNativeStageOriginalAndCurrentSource(t *testing.T
 		if err := voter.machine.Restore(index, image); err != nil {
 			t.Fatal("semantic anchor/ledger restore", err)
 		}
+	}
+	imageBefore, e := h.machine.store.ApplicationView(h.driver.Applied())
+	if e != nil {
+		t.Fatal(e)
+	}
+	beforeExpiry, e := imageBefore.RootBounded(t.Context(), 172)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e := imageBefore.Close(); e != nil {
+		t.Fatal(e)
+	}
+	expiredEvent, e := h.Step(expiredHeld.packets[0])
+	if e != nil {
+		t.Fatal(e)
+	}
+	n.pump(0, expiredEvent)
+	body, e := h.machine.store.ApplicationRecord(t.Context(), h.driver.Applied(), true, 256)
+	if e != nil {
+		t.Fatal(e)
+	}
+	expiredResult, e := decodeGraphPinResult(body)
+	if e != nil || expiredResult.status != pinExpired || expiredResult.publication != 0 {
+		t.Fatal("queued expired GPL1 poisoned apply or installed owner", expiredResult, e)
+	}
+	q, e := graphRetentionReader(h, t.Context())
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, present, e := readPinOwner(q, expiredManifest.id()); e != nil || present {
+		t.Fatal("expired request invented owner", e)
+	}
+	if e := h.machine.checkRetainedPinRoster(q, true); e != nil {
+		t.Fatal("expired request invented terminal bank", e)
+	}
+	if q.base.ImageHash != beforeExpiry.ImageHash || !bytes.Equal(q.base.Image, beforeExpiry.Image) {
+		t.Fatal("expiry changed graph image")
+	}
+	if e := q.view.Close(); e != nil {
+		t.Fatal(e)
+	}
+	if cdc, e := h.machine.store.ApplicationRecord(t.Context(), h.driver.Applied(), false, 256); e != nil || len(cdc) != 0 {
+		t.Fatal("expiry emitted business CDC", e)
+	}
+	expiredEvent, e = h.Submit(expiredProposal)
+	if e != nil {
+		t.Fatal(e)
+	}
+	n.pump(0, expiredEvent)
+	body, e = h.machine.store.ApplicationRecord(t.Context(), h.driver.Applied(), true, 256)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if replay, e := decodeGraphPinResult(body); e != nil || replay != expiredResult {
+		t.Fatal("expired original replay changed outcome", replay, e)
 	}
 	// Reopen an actual follower directory under the SAME fresh agreement. Local
 	// immutable-original recovery needs no old issuer handle or new proposal.
@@ -352,6 +433,16 @@ func TestCollectedGraphRetentionNativeStageOriginalAndCurrentSource(t *testing.T
 	if got, found, err := h.GraphRetentionOriginal(t.Context(), proposal); err != nil || !found || got != original {
 		t.Fatal("duplicate original changed", got, found, err)
 	}
+	gap := freshCut.certificates[0].round + 1
+	gapFence, e := h.PrepareGraphFence(gap)
+	if e != nil {
+		t.Fatal(e)
+	}
+	gapEvent, e := h.Submit(gapFence)
+	if e != nil {
+		t.Fatal(e)
+	}
+	n.pump(0, gapEvent)
 	// Genuine later business installs have their own immutable PLM. They must
 	// stop selecting the earlier GC anchor even though its control remains live.
 	crossEdgeFixture(t, n)
@@ -382,6 +473,86 @@ func TestCollectedGraphRetentionNativeStageOriginalAndCurrentSource(t *testing.T
 	}
 	if err := later.Close(); err != nil {
 		t.Fatal(err)
+	}
+	// The gap has no GSC and its actual older noncurrent PLM source was already
+	// collected. A committed certify request must install Stale, never a partial
+	// certificate or an application error, while stored-cut At stays Expired.
+	gapCertificate, e := h.PrepareGraphCertificate(gap)
+	if e != nil {
+		t.Fatal(e)
+	}
+	gapEvent, e = h.Submit(gapCertificate)
+	if e != nil {
+		t.Fatal(e)
+	}
+	n.pump(0, gapEvent)
+	gapBody, e := h.machine.store.ApplicationRecord(t.Context(), h.driver.Applied(), true, 256)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if result, e := decodeGraphCutResult(gapBody); e != nil || result.status != graphCutStale || result.phase != graphCutCertify {
+		t.Fatal("expired internal predecessor poisoned apply", result, e)
+	}
+	gapView, e := h.machine.store.ApplicationView(h.driver.Applied())
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, present, e := gapView.Get(t.Context(), graphCertificateKey(h.machine.ns, gap), 512); e != nil || present {
+		t.Fatal("stale internal closure installed GSC", e)
+	}
+	if e := gapView.Close(); e != nil {
+		t.Fatal(e)
+	}
+	if cdc, e := h.machine.store.ApplicationRecord(t.Context(), h.driver.Applied(), false, 256); e != nil || len(cdc) != 0 {
+		t.Fatal("stale closure emitted CDC", e)
+	}
+	// The original16MiB/8192-record GC fixture cannot fund both forward and
+	// undo32-page handoff credits. The genuine Host/Driver returns a durable
+	// terminal limit without installing a Fence, capture or lineage controls.
+	intent, e := h.PrepareRangeMove(t.Context(), n.requestID(), 1, 8, 32, 64, 8<<10)
+	if e != nil {
+		t.Fatal(e)
+	}
+	intentWire, e := encodeRangeMoveIntent(intent)
+	if e != nil {
+		t.Fatal(e)
+	}
+	output, e := graphstate.NewOutputBudget(h.machine.limits.outputBytes)
+	if e != nil {
+		t.Fatal(e)
+	}
+	fence, e := h.prepareRangeMoveCommand(intentWire, rangeMoveFence, 3, 0, nil, nil, output)
+	if e != nil {
+		t.Fatal(e)
+	}
+	event, e = h.Submit(fence)
+	if e != nil {
+		t.Fatal(e)
+	}
+	n.pump(0, event)
+	refused, e := h.machine.store.ApplicationRecord(t.Context(), h.driver.Applied(), true, 256)
+	if e != nil {
+		t.Fatal(e)
+	}
+	status, e := decodeRangeMoveStatus(refused)
+	if e != nil || status.phase != rangeMoveAbort || status.result != rangeMoveLimit {
+		t.Fatal("intrinsically unpayable handoff was not refused", status, e)
+	}
+	q, e = graphRetentionReader(h, t.Context())
+	if e != nil {
+		t.Fatal(e)
+	}
+	active, e := readRangeMoveActive(q)
+	if e != nil || active != ([16]byte{}) {
+		t.Fatal("limit installed admission fence", e)
+	}
+	for _, key := range [][]byte{rangeMoveControlKey(q.ns, status.move, 'C'), rangeMoveRetentionKey(q.ns, status.move, false, 0)} {
+		if _, present, e := crossControl(q, key, rangeMoveRetentionHeaderBytes); e != nil || present {
+			t.Fatal("limit wrote partial capture/lineage", present, e)
+		}
+	}
+	if e := q.view.Close(); e != nil {
+		t.Fatal(e)
 	}
 	altered := command
 	altered.floors.data--
