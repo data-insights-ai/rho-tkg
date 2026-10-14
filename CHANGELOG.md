@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Tiered tx-membership sidecars and valid-end acceleration** (backlog 58, sigma-tkgd R2): the tiered store now
+  implements `LabelTxMembership`, `RelTypeTxMembership`, `LabelTxMemberLookup`, `RelTypeTxMemberLookup`,
+  `NodePropertyTxMembership`, `RelPropertyTxMembership`, `RelValidEnd` and `NodeValidEnd`
+  (`store/tiered/tieredstore_tx_members.go`). Each fans out to the reference shard, the archive and every event
+  shard (a closed cold shard is opened, as the DepthAll history fold it replaces opens it) and unions the per-shard
+  badger answers: each entity once with the lowest first transaction time; a valid-end candidate listed by several
+  shards takes the highest stamp and bound. `RefineRelValidEnd` / `RefineNodeValidEnd` are no-ops: an entity's rows
+  can span shards (ArchiveNode, a re-import), so an entity with a loose fold (a valid-time close) is read on every
+  call. `ForEachNodePropertyTxMember` answers from the reference shard's sidecar and declines with
+  `ErrIndexNotFound` when the archive or an event shard ever held a node with the label; `ForEachRelPropertyTxMember`
+  always declines (tiered has no rel property index). The core now uses the label and type membership sidecars for
+  DepthAll reads only (a depth-scoped read on tiered keeps the depth fold), and `Stats.RelHistoryCountByType` answers
+  on tiered (was ok=false). `ForEachRelEffectiveByTypeFrom` on tiered, 2,000 relationships over two event shards,
+  10 live: 2,000 → 10 timelines read, ~490 ms → ~11.5 µs per scan. Test `TestTieredTxMembershipAndValidEndMatchBadger`
+  (badger vs tiered with rotation, archive and a closed cold shard: capability answers and the core doors equal),
+  bench `BenchmarkTieredRelEffectiveByTypeFrom`; evidence `tasks/evidence/tiered-capabilities/`.
+
 ### Changed
 
 - **Tiered event-shard routing is a binary search** (backlog 59): `timestampToEventShardEntry` and the write-path depth filter scanned every event shard per ID. The store now keeps `shardIndex`, the shards sorted by `timeStart` (windows do not overlap), rebuilt under `ts.mu` on every insert or delete of an event shard (open, rotation, purge drop and re-link), and routes with `sort.Search`; same hot-shard fallback for ids in a gap or outside all windows. 700 shards: 3301 ns to 33 ns per lookup; 28 shards: 170 ns to 22 ns.

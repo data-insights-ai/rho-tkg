@@ -42,7 +42,7 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
 | 56 | MEDIUM | Node temporal envelope holes: `PutNodeVersion`, `CreateTemporalIndex` publish-before-fold window, label add on a live node, memory re-create | done (Unreleased Fixed); all cases red, all fixed |
 | 57 | FEATURE (sigma R1) | Batched point read at (validAt, txAt): `NodesAtTxByIDs` / `RelsAtTxByIDs` | open; building |
-| 58 | FEATURE (sigma R2) | Tiered: tx-membership sidecars (label/type, property value) and `*From` valid-end acceleration | open; after 59 |
+| 58 | FEATURE (sigma R2) | Tiered: tx-membership sidecars (label/type, property value) and `*From` valid-end acceleration | DONE (Unreleased) |
 | 59 | PERF (sigma R3) | Tiered event-shard routing by mint instant: binary search instead of a linear window scan | done (Unreleased Changed); 700 shards 3301 -> 33 ns/op, evidence `tasks/evidence/shard-routing/` |
 | 52 | HIGH (ai-soc) | Durable commit under SyncWrites costs one fsync per mutation | in progress, v4.51.3 |
 | 53 | HIGH (ai-soc) | Relationship planner-stat memos hold one RAM entry per relationship | in progress, v4.51.3 |
@@ -327,9 +327,9 @@ no budget; reopen only if a consumer reports memory pressure; then design a per-
 
 *FEATURE* — sigma-tkgd R1 (2026-10-14, design sigma-tkgd `tasks/history-via-rho-design.md`): sigma reads up to ~100 old rows per cut at one pin; `NodesEffectiveByIDs`/`RelsEffectiveByIDs` return whole timelines. Add `temporal.API.NodesAtTxByIDs(ids, validAt, txAt) ([]*types.Node, error)` and `RelsAtTxByIDs`: results aligned to ids, nil where `NodeAtTx` would return not-found or no row valid at validAt; call-level errors as `NodeAtTx` (pin checks, retention, compaction). Additive.
 
-### 58. Tiered: tx-membership sidecars and valid-end acceleration
+### 58. Tiered: tx-membership sidecars and valid-end acceleration — DONE (Unreleased)
 
-*FEATURE* — sigma-tkgd R2: the label/type and property-value tx-membership sidecars and the `ForEach*EffectiveBy*From` valid-end acceleration exist on memory and badger only (`capabilities.go:366-437`); tiered answers through unbounded candidates. Fan out per shard as the other tiered capabilities do.
+*FEATURE* — sigma-tkgd R2: done (CHANGELOG [Unreleased] Added, `store/tiered/tieredstore_tx_members.go`, evidence `tasks/evidence/tiered-capabilities/`). Every shard's badger answer unioned; refine is a no-op on tiered; the node property form declines when the label has members off the reference shard, the rel property form always declines.
 
 ### 59. Tiered event-shard routing by mint instant
 

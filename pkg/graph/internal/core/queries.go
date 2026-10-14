@@ -508,14 +508,15 @@ func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, op
 	// carried ANY label)); otherwise fold by depth. The chain resolver
 	// (findNodeVersionForOpts) stays the correctness authority — both the K1
 	// sidecar and the B4 envelope prune below are sound supersets, so any
-	// over-included candidate is rejected there. Tiered / wrapped stores decline
-	// both capabilities and take the full fold.
+	// over-included candidate is rejected there. Wrapped stores decline the
+	// sidecar and take the full fold; a depth-scoped read on tiered keeps the
+	// depth fold (the sidecar answers for every shard).
 	var candIDs []types.NodeID
 	gather := func(id types.NodeID) error {
 		candIDs = append(candIDs, id)
 		return nil
 	}
-	if c.labelTxMembers != nil {
+	if c.labelTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
 		if err := c.forEachLabelTxCandidate(tok, currentIDs, opts, gather); err != nil {
 			return nil, err
 		}
@@ -654,7 +655,7 @@ func (c *Core) relTypeCandidatesFrom(tok uint16, currentIDs []types.RelID, opts 
 		candIDs = append(candIDs, id)
 		return nil
 	}
-	if c.relTypeTxMembers != nil {
+	if c.relTypeTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
 		if err := c.forEachRelTypeTxCandidate(tok, currentIDs, opts, gather); err != nil {
 			return nil, err
 		}

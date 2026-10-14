@@ -84,7 +84,8 @@ type Core struct {
 	// transaction-time membership sidecars: scope a pinned label/type scan's
 	// candidate set to the label/type's ever-members (O(matches)) instead of the
 	// whole node/rel-history fold (O(everything ever)). nil = store declines
-	// (tiered), so the query falls back to the full-history candidate fold.
+	// (sharded, wrappers), so the query falls back to the full-history
+	// candidate fold; tiered answers DepthAll reads only (membershipSidecarUsable).
 	labelTxMembers   storepkg.LabelTxMembershipCapability
 	relTypeTxMembers storepkg.RelTypeTxMembershipCapability
 	// labelTxLookup / relTypeTxLookup are the point forms of the K1
@@ -95,7 +96,9 @@ type Core struct {
 	// lookup (ByTypeAndProperty / ByLabelAndProperty(ies) and the named
 	// *PropertyAt / *PropertyDuring doors) to the value's ever-members for a
 	// declared index instead of the whole history fold. nil = store declines
-	// (tiered, wrappers): the fold, same answers.
+	// (wrappers): the fold, same answers. Tiered's node form declines per call
+	// (store.ErrIndexNotFound) when the label has members off its reference
+	// shard; its rel form always declines (no rel property index).
 	relPropTxMembers  storepkg.RelPropertyTxMembershipCapability
 	nodePropTxMembers storepkg.NodePropertyTxMembershipCapability
 	// chainLoadTestHook, when set (tests only), is called once per candidate a
@@ -140,7 +143,7 @@ type Core struct {
 	// reads the rows (memberIDsCapability).
 	memberIDs storepkg.MemberIDsCapability
 	// valid-end indexes (backlog 51, effective_validfrom.go): the candidates
-	// of the valid-end bounded scans. nil = store declines (tiered, sharded,
+	// of the valid-end bounded scans. nil = store declines (sharded,
 	// wrappers): the unbounded door's candidates, same answers.
 	relValidEnds  storepkg.RelValidEndCapability
 	nodeValidEnds storepkg.NodeValidEndCapability
@@ -1453,9 +1456,9 @@ func depthHistoryIterationCapability(store storepkg.MandatoryStore) storepkg.Dep
 
 // labelTxMembershipCapability resolves the K1 transaction-time label-membership
 // sidecar. Only the exact native single-shard backends (memory, badger) own a
-// coherent whole-store membership index; a wrapper that merely EMBEDS a native
-// store, or the multi-shard tiered store, is forced to nil so the query falls
-// back to the correct (if unaccelerated) full-history candidate fold.
+// coherent whole-store membership index (tiered: the union of its shards'); a
+// wrapper that merely EMBEDS a native store is forced to nil so the query
+// falls back to the correct (if unaccelerated) full-history candidate fold.
 func labelTxMembershipCapability(store storepkg.MandatoryStore) storepkg.LabelTxMembershipCapability {
 	cap, ok := store.(storepkg.LabelTxMembershipCapability)
 	if !ok {

@@ -48,13 +48,13 @@ func (s *StatOps) HistoryCounts() (storepkg.HistoryCounts, bool, error) {
 // RelHistoryCountByType returns how many relationships of one type have
 // history rows (round 5 request 7): the relationships with history that ever
 // carried the type, from the store's history IDs and the point form of its
-// rel-type membership sidecar (store.RelTypeTxMemberLookupCapability, which
-// the core wires for memory and badger only). A relationship's type is
+// rel-type membership sidecar (store.RelTypeTxMemberLookupCapability: memory,
+// badger, tiered). A relationship's type is
 // immutable, so this is exact unless an ID was reused across types (it then
 // counts for each type it carried: an upper bound, never an undercount, so a
 // 0 always means no relationship of the type has history). O(relationships
 // with history) map lookups per call. An unknown type is 0. ok=false when the
-// store states no per-type answer (sharded, tiered, external stores): never a
+// store states no per-type answer (sharded, external stores): never a
 // substitute count. Errors: a malformed type name, ErrGraphClosed, a store
 // error.
 func (s *StatOps) RelHistoryCountByType(typeName string) (int, bool, error) {

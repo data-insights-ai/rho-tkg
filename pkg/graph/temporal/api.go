@@ -595,8 +595,10 @@ func (a *API) ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, f
 // ever-members' temporal fields once (and builds the K1 membership sidecar if
 // no pinned scan did), every write of the type after that is folded, writes
 // of other types change nothing (RAM; tracked again on the first call after a
-// reopen). Tiered and sharded answer the same through the unbounded door's
-// candidates (not accelerated).
+// reopen). Tiered keeps the index per shard and unions the shards' candidates
+// (a closed cold shard is opened; an entity whose rows bound its end loosely,
+// such as a valid-time close, is read on every call). Sharded answers the
+// same through the unbounded door's candidates (not accelerated).
 func (a *API) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error {
 	ops, err := a.ready()
 	if err != nil {

@@ -1,0 +1,24 @@
+# backlog 58: go test -run XXX -bench BenchmarkTieredRelEffectiveByTypeFrom -benchtime=2s -count=3 ./pkg/graph/internal/core/
+# 2,000 SEEN rels over two event shards (one rotation), 1,990 deleted before validFrom, 10 live; reads/op = timelines read
+
+## before (base 5d57a132 + bench file only: tiered takes the unbounded candidates)
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkTieredRelEffectiveByTypeFrom-32    	       5	 477671455 ns/op	      2000 reads/op
+BenchmarkTieredRelEffectiveByTypeFrom-32    	       5	 503845014 ns/op	      2000 reads/op
+BenchmarkTieredRelEffectiveByTypeFrom-32    	       4	 506549674 ns/op	      2000 reads/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	19.674s
+
+## after (tiered RelValidEndCandidates)
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkTieredRelEffectiveByTypeFrom-32    	  206095	     11155 ns/op	        10.00 reads/op
+BenchmarkTieredRelEffectiveByTypeFrom-32    	  217831	     11462 ns/op	        10.00 reads/op
+BenchmarkTieredRelEffectiveByTypeFrom-32    	  208518	     11883 ns/op	        10.00 reads/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	12.564s
