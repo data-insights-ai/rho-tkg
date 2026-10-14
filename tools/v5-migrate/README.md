@@ -57,17 +57,18 @@ global source watermark families or perform import. Per-type retention, state
 column cuts and zero temporal ordinals have explicit consumer obligations in
 [PLAN §8a](../../docs/v5/PLAN.md); full V6 remains open.
 
-The current source selection is v4.51.6/main `a77b1301`, with the same local
-replacements and unchanged preflight code/tests. Its narrow reader qualification
-is pending; the v4.51.5 receipt above remains immutable. Sequential relationship
-temporal-index rebuild, concurrent build installation and re-created-ID history
-folding have new source obligations in PLAN §8a. These preflight functions read
-per-entity effective timelines, raw history/current rows and chain verification;
-they neither create nor prune temporal indexes. Re-run the existing ten narrow
-module gates on the exact merged reader with a fresh receipt before qualifying
-it. Indexed selector/build and upstream backlog56 node-envelope gaps require
-separate proofs; no new index, retention or destination-import acceptance follows
-from the existing per-entity preflight cases.
+The current source selection is v4.51.7/main `9e9f0e0a`, with unchanged local
+replacements and preflight code/tests. v4.51.6/main `a77b1301` was source-reconciled
+only; current reader qualification is pending and the v4.51.5 receipt above
+remains immutable. PLAN §8a records relationship rebuild/re-create obligations
+from v4.51.6 and the v4.51.7 node-envelope/history/label/build and derived disk-row
+fixes. Upstream selected tests are source evidence, not local reader acceptance.
+These preflight functions use per-entity effective timelines, raw history/current
+rows and chain verification; they neither create nor prune temporal indexes.
+Re-run the existing ten narrow module targets against the approved merged reader
+using an absolute Go1.26.9 path, then record a fresh exact-source receipt. Indexed
+selector/build, retention refusal and destination-import proofs remain separate;
+no broader acceptance follows from the existing per-entity preflight cases.
 
 The caller quiesces source writes, imports, retention and DDL across a call,
 supplies capture/reader identity and evidence, and designates an explicit v5

@@ -48,9 +48,11 @@ func (bs *Store) maintainTemporalIndexDiskAdd(n *types.Node, id snowflake.ID) []
 	labelCount := n.LabelTokenCount()
 	for i := 0; i < labelCount; i++ {
 		tok := n.LabelTokenRawAt(i)
-		if _, ok := bs.temporalIndexes[tok]; !ok {
+		ti, ok := bs.temporalIndexes[tok]
+		if !ok {
 			continue
 		}
+		markTemporalDiskWritten(ti, id)
 		ops = append(ops, writeOp{
 			opType: writeOpSet,
 			key:    storepkg.TemporalIndexEntryKey(tok, from, id),
@@ -58,6 +60,15 @@ func (bs *Store) maintainTemporalIndexDiskAdd(n *types.Node, id snowflake.ID) []
 		})
 	}
 	return ops
+}
+
+// markTemporalDiskWritten records that a write maintained id's on-disk row of
+// ti while ti's create backfills (see TemporalIndex.DiskWritten). Caller
+// holds idxMu.
+func markTemporalDiskWritten(ti *indexpkg.TemporalIndex, id snowflake.ID) {
+	if ti != nil && ti.DiskWritten != nil {
+		ti.DiskWritten[id] = struct{}{}
+	}
 }
 
 // maintainTemporalIndexDiskRemove is the Remove counterpart of
@@ -74,9 +85,11 @@ func (bs *Store) maintainTemporalIndexDiskRemove(n *types.Node, id snowflake.ID)
 	labelCount := n.LabelTokenCount()
 	for i := 0; i < labelCount; i++ {
 		tok := n.LabelTokenRawAt(i)
-		if _, ok := bs.temporalIndexes[tok]; !ok {
+		ti, ok := bs.temporalIndexes[tok]
+		if !ok {
 			continue
 		}
+		markTemporalDiskWritten(ti, id)
 		ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.TemporalIndexEntryKey(tok, from, id)})
 	}
 	return ops
@@ -92,6 +105,9 @@ func (bs *Store) maintainTemporalIndexDiskRemove(n *types.Node, id snowflake.ID)
 func (bs *Store) maintainTemporalIndexDiskPurge(id snowflake.ID) []writeOp {
 	if !bs.temporalIdxOnDisk || len(bs.temporalIndexes) == 0 {
 		return nil
+	}
+	for _, ti := range bs.temporalIndexes {
+		markTemporalDiskWritten(ti, id)
 	}
 	var ops []writeOp
 	// Purge any unflushed SET for this ID under a tracked label FIRST — before
@@ -209,6 +225,55 @@ func (bs *Store) commitTemporalIndexOnDiskBackfill(ops []writeOp) error {
 	}
 	if err := wb.Flush(); err != nil {
 		return fmt.Errorf("graph: temporal-index-on-disk backfill: %w", err)
+	}
+	return nil
+}
+
+// purgeUndefinedTemporalDiskRows deletes, at open, the 0x0B rows of every
+// label with no temporal index definition: rows a create wrote before it died
+// unpublished (crash, or a failed purge on its error path). A later create of
+// that label would otherwise leave two rows for one node, and the next crash
+// reopen's fast path would load both (a node returned twice by a temporal
+// ByLabel read). One seek per label present in the keyspace. Runs during
+// New(), after the index definitions are loaded.
+func (bs *Store) purgeUndefinedTemporalDiskRows() error {
+	var dels [][]byte
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		it.Seek([]byte{storepkg.KeyTemporalIndex})
+		for it.Valid() {
+			key := it.Item().Key()
+			if key[0] != storepkg.KeyTemporalIndex || len(key) < 3 {
+				return nil
+			}
+			tok := binary.BigEndian.Uint16(key[1:3])
+			if _, defined := bs.temporalIndexes[tok]; defined {
+				if tok == 0xFFFF {
+					return nil
+				}
+				it.Seek(storepkg.TemporalIndexTokenPrefix(tok + 1))
+				continue
+			}
+			dels = append(dels, it.Item().KeyCopy(nil))
+			it.Next()
+		}
+		return nil
+	})
+	if err != nil || len(dels) == 0 {
+		return err
+	}
+	wb := bs.db.NewWriteBatch()
+	defer wb.Cancel()
+	for _, k := range dels {
+		if err := wb.Delete(k); err != nil {
+			return fmt.Errorf("graph: purge undefined temporal-index rows: %w", err)
+		}
+	}
+	if err := wb.Flush(); err != nil {
+		return fmt.Errorf("graph: purge undefined temporal-index rows: %w", err)
 	}
 	return nil
 }

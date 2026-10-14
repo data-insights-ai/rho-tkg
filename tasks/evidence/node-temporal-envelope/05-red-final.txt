@@ -1,0 +1,41 @@
+# 05-red-final: base 181d0d22 + test seam temporalCreatePhase2Hook (no behaviour change).
+# Finding 1 = TestNodeTemporalEnvelope_PutNodeVersionDuringBuildOnDisk, finding 3 = TestNodeTemporalEnvelope_LabelLostDuringBuildOnDisk (badger);
+# finding 2 = TestMemoryNodeTemporalEnvelope_ConcurrentPutNodeVersionDuringCreate (memory, -race; red 7 of 7 runs).
+$ go test -count=1 -run 'TestNodeTemporalEnvelope_PutNodeVersionDuringBuildOnDisk|TestNodeTemporalEnvelope_LabelLostDuringBuildOnDisk' -v ./pkg/graph/store/badger/
+=== RUN   TestNodeTemporalEnvelope_PutNodeVersionDuringBuildOnDisk
+    badgerstore_node_temporal_envelope_final_test.go:69: NodesByLabel(7, ValidAt 5500) = [], want [8050]
+    badgerstore_node_temporal_envelope_final_test.go:71: prune at 5500 kept [] (ok=true), want [8050]: it holds a row valid there
+--- FAIL: TestNodeTemporalEnvelope_PutNodeVersionDuringBuildOnDisk (0.15s)
+=== RUN   TestNodeTemporalEnvelope_LabelLostDuringBuildOnDisk
+    badgerstore_node_temporal_envelope_final_test.go:103: NodesByLabel(7, ValidAt 5800) = [8051 8051], want [8051] once
+--- FAIL: TestNodeTemporalEnvelope_LabelLostDuringBuildOnDisk (0.20s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.375s
+FAIL
+
+$ go test -race -count=1 -run TestMemoryNodeTemporalEnvelope_ConcurrentPutNodeVersionDuringCreate -v ./pkg/graph/store/memory/
+=== RUN   TestMemoryNodeTemporalEnvelope_ConcurrentPutNodeVersionDuringCreate
+==================
+WARNING: DATA RACE
+Write at 0x00c0001dcd50 by goroutine 10:
+  runtime.mapassign_fast32()
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory.(*Store).putNodeHistoryRowLocked()
+      pkg/graph/store/memory/memorystore_history_stamps.go:48 +0x1e4
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory.(*Store).putNodeVersionRouted()
+      pkg/graph/store/memory/memorystore_history.go:408 +0x193
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory.(*Store).PutNodeVersion()
+      pkg/graph/store/memory/memorystore_history.go:379 +0x16f
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory.TestMemoryNodeTemporalEnvelope_ConcurrentPutNodeVersionDuringCreate.func1()
+      pkg/graph/store/memory/memorystore_node_temporal_envelope_final_test.go:38 +0x10a
+
+Previous read at 0x00c0001dcd50 by goroutine 9:
+  runtime.mapIterStart()
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory.(*Store).CreateTemporalIndex()
+      pkg/graph/store/memory/memorystore_index.go:520 +0xaae
+  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory.TestMemoryNodeTemporalEnvelope_ConcurrentPutNodeVersionDuringCreate()
+      pkg/graph/store/memory/memorystore_node_temporal_envelope_final_test.go:49 +0x54e
+[... goroutine creation frames truncated ...]
+--- FAIL: TestMemoryNodeTemporalEnvelope_ConcurrentPutNodeVersionDuringCreate (0.03s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.048s
+FAIL

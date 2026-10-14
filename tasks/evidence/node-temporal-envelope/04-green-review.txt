@@ -1,0 +1,20 @@
+--- PASS: TestNodeTemporalEnvelope_MemberLeavesBeforeFold (0.01s)
+    --- PASS: TestNodeTemporalEnvelope_MemberLeavesBeforeFold/remove-label (0.00s)
+    --- PASS: TestNodeTemporalEnvelope_MemberLeavesBeforeFold/delete (0.01s)
+--- PASS: TestNodeTemporalEnvelope_RecreateDuringBuild (0.00s)
+--- PASS: TestNodeTemporalEnvelope_PlainAddLabelOnLiveNode (0.05s)
+--- PASS: TestNodeTemporalEnvelope_OnDiskOrphanRowsAfterFailedCreate (0.29s)
+--- PASS: TestNodeTemporalEnvelope_PutNodeVersionCovered (0.03s)
+--- PASS: TestNodeTemporalEnvelope_CreatePruneBeforeHistoryFold (0.03s)
+--- PASS: TestNodeTemporalEnvelope_LabelReAddOnLiveNode (0.04s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.537s
+--- PASS: TestMemoryNodeTemporalEnvelope_PutNodeVersionDuringCreate (0.00s)
+--- PASS: TestMemoryNodeTemporalEnvelope_PlainAddLabelOnLiveNode (0.00s)
+--- PASS: TestMemoryNodeTemporalEnvelope_PutNodeVersionCovered (0.00s)
+--- PASS: TestMemoryNodeTemporalEnvelope_UpdateDuringCreate (0.00s)
+--- PASS: TestMemoryNodeTemporalEnvelope_LabelReAddOnLiveNode (0.00s)
+--- PASS: TestMemoryNodeTemporalEnvelope_RecreateDeletedNode (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.020s
+
+# go vet ./pkg/graph/store/...: ok
+# go test -short -race -count=1 badger memory tiered: ok (265s / 277s / 157s)
