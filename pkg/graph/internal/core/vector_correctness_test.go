@@ -978,7 +978,7 @@ func testBatchIndexMaintenance(t *testing.T, g *Core) {
 	}
 
 	// Both must appear in temporal query (ValidAt = now).
-	now := types.Instant(time.Now().UnixMilli())
+	now := txNow(t, g) // a row starts at its TxFrom (backlog 62)
 	temporal, err := g.Nodes.ByLabel(label, storepkg.QueryOpts{ValidAt: now})
 	if err != nil {
 		t.Fatalf("temporal query: %v", err)

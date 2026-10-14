@@ -1,0 +1,10 @@
+=== RUN   TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt
+=== PAUSE TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt
+=== CONT  TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt
+=== RUN   TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt/keepV2=false
+=== RUN   TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt/keepV2=true
+--- PASS: TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt (0.36s)
+    --- PASS: TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt/keepV2=false (0.14s)
+    --- PASS: TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt/keepV2=true (0.22s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.384s

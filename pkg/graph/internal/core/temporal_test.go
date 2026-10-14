@@ -18,6 +18,19 @@ func nowMs() types.Instant {
 	return types.Instant(time.Now().UnixMilli())
 }
 
+// txNow reserves a commit-clock instant after every write so far: the instant
+// to read "now" at. A row without a valid-from starts at its TxFrom (backlog
+// 62), and the commit clock runs ahead of the wall clock under a burst or the
+// test clock (wall + 1 s), so a wall-clock nowMs() can land before a fresh row.
+func txNow(t testing.TB, g *Core) types.Instant {
+	t.Helper()
+	at, err := g.Temporal.NowTx()
+	if err != nil {
+		t.Fatalf("NowTx: %v", err)
+	}
+	return at
+}
+
 // --- Point-in-time tests ---
 
 func TestGetNodesValidAt_Empty(t *testing.T) {
@@ -211,7 +224,7 @@ func TestGetRelsValidAt_Mixed(t *testing.T) {
 	r2Current.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceRelationship(r2Current)
 
-	rels, err := g.Temporal.RelsAt(nowMs())
+	rels, err := g.Temporal.RelsAt(txNow(t, g))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -245,7 +258,7 @@ func TestGetNodesByLabelValidAt_Filtered(t *testing.T) {
 	ec.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(ec)
 
-	nodes, err := g.Temporal.NodesByLabelAt("Person", nowMs())
+	nodes, err := g.Temporal.NodesByLabelAt("Person", txNow(t, g))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -433,7 +446,7 @@ func TestGetRelsValidDuring_OpenEnded(t *testing.T) {
 	// Rel without explicit ValidTo — open-ended.
 	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 
-	now := nowMs()
+	now := txNow(t, g)
 	rels, err := g.Temporal.RelsDuring(now-1000, now+1000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -452,7 +465,7 @@ func TestGetNodeAt_CurrentVersion(t *testing.T) {
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	// Query at current time — should return the (only) version.
-	result, err := g.Temporal.NodeAt(n.ID(), nowMs())
+	result, err := g.Temporal.NodeAt(n.ID(), txNow(t, g))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -603,7 +616,7 @@ func TestGetNeighborsValidAt_AllValid(t *testing.T) {
 	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 	g.Rels.Add(context.Background(), "KNOWS", c, a, nil)
 
-	neighbors, err := g.Temporal.NeighborsAt(a.ID(), nowMs())
+	neighbors, err := g.Temporal.NeighborsAt(a.ID(), txNow(t, g))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -628,7 +641,7 @@ func TestGetNeighborsValidAt_SomeExpired(t *testing.T) {
 	cCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(cCurrent)
 
-	neighbors, err := g.Temporal.NeighborsAt(a.ID(), nowMs())
+	neighbors, err := g.Temporal.NeighborsAt(a.ID(), txNow(t, g))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -737,7 +750,7 @@ func TestGetNeighborsValidAt_RelExpired(t *testing.T) {
 	rCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceRelationship(rCurrent)
 
-	neighbors, err := g.Temporal.NeighborsAt(a.ID(), nowMs())
+	neighbors, err := g.Temporal.NeighborsAt(a.ID(), txNow(t, g))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -772,7 +785,7 @@ func TestSnapshot_CurrentTime(t *testing.T) {
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 
-	snap, err := g.Temporal.Snapshot(nowMs())
+	snap, err := g.Temporal.Snapshot(txNow(t, g))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -818,7 +831,7 @@ func TestSnapshot_DanglingRelExcluded(t *testing.T) {
 	bCurrent.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
 	_ = g.store.ReplaceNode(bCurrent)
 
-	snap, err := g.Temporal.Snapshot(nowMs())
+	snap, err := g.Temporal.Snapshot(txNow(t, g))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -839,7 +852,7 @@ func TestSnapshot_SortedResults(t *testing.T) {
 	n2, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	n3, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
-	snap, err := g.Temporal.Snapshot(nowMs())
+	snap, err := g.Temporal.Snapshot(txNow(t, g))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1076,7 +1089,7 @@ func TestGetNodeAt_DeletedEntity(t *testing.T) {
 	// Record a time when the node existed. nowMs() is wall-clock; the
 	// test clock is wall + 1s so the subsequent Delete's ValidTo is
 	// strictly greater than validTime (R5-F10).
-	validTime := nowMs()
+	validTime := txNow(t, g)
 
 	// Delete the node (creates tombstone with DeletedAt/ValidTo).
 	if err := g.Nodes.Delete(context.Background(), id); err != nil {
@@ -1127,7 +1140,7 @@ func TestGetNodesValidAt_DeletedNode(t *testing.T) {
 	// Also add a node that stays alive.
 	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 
-	validTime := nowMs()
+	validTime := txNow(t, g)
 
 	// Delete Alice.
 	if err := g.Nodes.Delete(context.Background(), id); err != nil {
@@ -1227,7 +1240,7 @@ func TestGetRelAt_DeletedEntity(t *testing.T) {
 	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, map[string]any{"weight": int64(1)})
 	rid := r.ID()
 
-	validTime := nowMs()
+	validTime := txNow(t, g)
 
 	if err := g.Rels.Delete(context.Background(), rid); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
@@ -1270,7 +1283,7 @@ func TestGetRelationshipsValidAt_DeletedRel(t *testing.T) {
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 
-	validTime := nowMs()
+	validTime := txNow(t, g)
 
 	// Delete the relationship via cascade (delete node a).
 	if err := g.Nodes.Delete(context.Background(), a.ID()); err != nil {
@@ -1305,7 +1318,7 @@ func TestSnapshot_IncludesDeletedNodes(t *testing.T) {
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
 	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
 
-	snapshotTime := nowMs()
+	snapshotTime := txNow(t, g)
 
 	// Delete Alice — cascades to the KNOWS relationship.
 	if err := g.Nodes.Delete(context.Background(), a.ID()); err != nil {

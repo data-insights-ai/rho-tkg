@@ -477,7 +477,7 @@ func (c *Core) nodeCurrentAnswersAt(current *types.Node, validAt, txAt types.Ins
 	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
 		return false
 	}
-	if validAt < c.nodeSortValidFrom(current) {
+	if validAt < c.nodeValidFrom(current) {
 		return false
 	}
 	if c.nodeBeliefWatermark == nil {
@@ -502,7 +502,7 @@ func (c *Core) relCurrentAnswersAt(current *types.Relationship, validAt, txAt ty
 	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
 		return false
 	}
-	if validAt < c.relSortValidFrom(current) {
+	if validAt < c.relValidFrom(current) {
 		return false
 	}
 	if c.relBeliefWatermark == nil {

@@ -1,0 +1,238 @@
+--- FAIL: TestUntimedRowsStartAtTxFrom (0.00s)
+    --- FAIL: TestUntimedRowsStartAtTxFrom/memory (0.01s)
+        valid_from_txfrom_test.go:95: add NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: add NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: add NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: add NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: add ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: add NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: add NodeEffectiveTimeline first ValidFrom = [{1791984276591 0 0x5964f50b740}] (<nil>), want TxFrom 1791984336592
+        valid_from_txfrom_test.go:95: backfill NodeAt(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:99: backfill NodeAtTx(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:106: backfill NodesAt(TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:113: backfill NodesAtTx(TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:120: backfill ByLabel(ValidAt TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:123: backfill NodeMatchesValidTime(TxFrom+0) = false, want true
+        valid_from_txfrom_test.go:128: backfill NodeEffectiveTimeline first ValidFrom = [{1791984276592 0 0x5964f618960}] (<nil>), want TxFrom 1791984246591
+        valid_from_txfrom_test.go:95: batch NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: batch NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: batch NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: batch NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: batch ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: batch NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: batch NodeEffectiveTimeline first ValidFrom = [{1791984276592 0 0x5964f68b140}] (<nil>), want TxFrom 1791984336595
+        valid_from_txfrom_test.go:95: ingest NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: ingest NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: ingest NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: ingest NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: ingest ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: ingest NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: ingest NodeEffectiveTimeline first ValidFrom = [{1791984276592 0 0x5964efae7e0}] (<nil>), want TxFrom 1791984336597
+        valid_from_txfrom_test.go:146: RelAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:150: RelAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:157: ByType(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:160: RelMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:165: RelEffectiveTimeline first ValidFrom = [{1791984276597 0 0x5964efaea80}] (<nil>), want TxFrom 1791984336599
+        valid_from_txfrom_test.go:146: RelAt(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:150: RelAtTx(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:157: ByType(ValidAt TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:160: RelMatchesValidTime(TxFrom+0) = false, want true
+        valid_from_txfrom_test.go:165: RelEffectiveTimeline first ValidFrom = [{1791984276597 0 0x5964efaecc0}] (<nil>), want TxFrom 1791984256591
+        valid_from_txfrom_test.go:182: NodeInterval start = 1791984276599 (<nil>), want TxFrom 1791984336603
+        valid_from_txfrom_test.go:185: RelateNodes(untimed, [TxFrom, end)) = FinishedBy (<nil>), want equals
+    --- FAIL: TestUntimedRowsStartAtTxFrom/badger (0.03s)
+        valid_from_txfrom_test.go:95: add NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: add NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: add NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: add NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: add ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: add NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: add NodeEffectiveTimeline first ValidFrom = [{1791984276604 0 0x59670443860}] (<nil>), want TxFrom 1791984336605
+        valid_from_txfrom_test.go:95: backfill NodeAt(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:99: backfill NodeAtTx(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:106: backfill NodesAt(TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:113: backfill NodesAtTx(TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:120: backfill ByLabel(ValidAt TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:123: backfill NodeMatchesValidTime(TxFrom+0) = false, want true
+        valid_from_txfrom_test.go:128: backfill NodeEffectiveTimeline first ValidFrom = [{1791984276604 0 0x5967046cea0}] (<nil>), want TxFrom 1791984246604
+        valid_from_txfrom_test.go:95: batch NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: batch NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: batch NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: batch NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: batch ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: batch NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: batch NodeEffectiveTimeline first ValidFrom = [{1791984276604 0 0x5967047c8a0}] (<nil>), want TxFrom 1791984336608
+        valid_from_txfrom_test.go:95: ingest NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: ingest NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: ingest NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: ingest NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: ingest ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: ingest NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: ingest NodeEffectiveTimeline first ValidFrom = [{1791984276605 0 0x596809f2060}] (<nil>), want TxFrom 1791984336610
+        valid_from_txfrom_test.go:146: RelAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:150: RelAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:157: ByType(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:160: RelMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:165: RelEffectiveTimeline first ValidFrom = [{1791984276605 0 0x5964f2310e0}] (<nil>), want TxFrom 1791984336612
+        valid_from_txfrom_test.go:146: RelAt(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:150: RelAtTx(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:157: ByType(ValidAt TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:160: RelMatchesValidTime(TxFrom+0) = false, want true
+        valid_from_txfrom_test.go:165: RelEffectiveTimeline first ValidFrom = [{1791984276605 0 0x5964f231320}] (<nil>), want TxFrom 1791984256604
+        valid_from_txfrom_test.go:182: NodeInterval start = 1791984276614 (<nil>), want TxFrom 1791984336616
+        valid_from_txfrom_test.go:185: RelateNodes(untimed, [TxFrom, end)) = FinishedBy (<nil>), want equals
+    --- FAIL: TestUntimedRowsStartAtTxFrom/sharded (0.04s)
+        valid_from_txfrom_test.go:95: add NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: add NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: add NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: add NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: add ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: add NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: add NodeEffectiveTimeline first ValidFrom = [{1791984276611 0 0x59675d2cd20}] (<nil>), want TxFrom 1791984336612
+        valid_from_txfrom_test.go:95: backfill NodeAt(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:99: backfill NodeAtTx(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:106: backfill NodesAt(TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:113: backfill NodesAtTx(TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:120: backfill ByLabel(ValidAt TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:123: backfill NodeMatchesValidTime(TxFrom+0) = false, want true
+        valid_from_txfrom_test.go:128: backfill NodeEffectiveTimeline first ValidFrom = [{1791984276611 0 0x59675d38f60}] (<nil>), want TxFrom 1791984246611
+        valid_from_txfrom_test.go:95: batch NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: batch NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: batch NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: batch NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: batch ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: batch NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: batch NodeEffectiveTimeline first ValidFrom = [{1791984276611 0 0x59675d3f7a0}] (<nil>), want TxFrom 1791984336615
+        valid_from_txfrom_test.go:95: ingest NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: ingest NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: ingest NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: ingest NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: ingest ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: ingest NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: ingest NodeEffectiveTimeline first ValidFrom = [{1791984276611 0 0x59680a9a3c0}] (<nil>), want TxFrom 1791984336617
+        valid_from_txfrom_test.go:146: RelAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:150: RelAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:157: ByType(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:160: RelMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:165: RelEffectiveTimeline first ValidFrom = [{1791984276611 0 0x59680a9aa20}] (<nil>), want TxFrom 1791984336619
+        valid_from_txfrom_test.go:146: RelAt(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:150: RelAtTx(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:157: ByType(ValidAt TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:160: RelMatchesValidTime(TxFrom+0) = false, want true
+        valid_from_txfrom_test.go:165: RelEffectiveTimeline first ValidFrom = [{1791984276612 0 0x59680a9aea0}] (<nil>), want TxFrom 1791984256611
+        valid_from_txfrom_test.go:182: NodeInterval start = 1791984276614 (<nil>), want TxFrom 1791984336623
+        valid_from_txfrom_test.go:185: RelateNodes(untimed, [TxFrom, end)) = FinishedBy (<nil>), want equals
+    --- FAIL: TestUntimedRowsStartAtTxFrom/tiered (0.05s)
+        valid_from_txfrom_test.go:95: add NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: add NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: add NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: add NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: add ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: add NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: add NodeEffectiveTimeline first ValidFrom = [{1791984276618 0 0x596870fb920}] (<nil>), want TxFrom 1791984336619
+        valid_from_txfrom_test.go:95: backfill NodeAt(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:99: backfill NodeAtTx(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:106: backfill NodesAt(TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:113: backfill NodesAtTx(TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:120: backfill ByLabel(ValidAt TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:123: backfill NodeMatchesValidTime(TxFrom+0) = false, want true
+        valid_from_txfrom_test.go:128: backfill NodeEffectiveTimeline first ValidFrom = [{1791984276618 0 0x596872099e0}] (<nil>), want TxFrom 1791984246618
+        valid_from_txfrom_test.go:95: batch NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: batch NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: batch NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: batch NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: batch ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: batch NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: batch NodeEffectiveTimeline first ValidFrom = [{1791984276618 0 0x59687215aa0}] (<nil>), want TxFrom 1791984336622
+        valid_from_txfrom_test.go:95: ingest NodeAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:99: ingest NodeAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:106: ingest NodesAt(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:113: ingest NodesAtTx(TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:120: ingest ByLabel(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:123: ingest NodeMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:128: ingest NodeEffectiveTimeline first ValidFrom = [{1791984276618 0 0x59687223b60}] (<nil>), want TxFrom 1791984336624
+        valid_from_txfrom_test.go:146: RelAt(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:150: RelAtTx(TxFrom-1) valid = true (<nil>), want false
+        valid_from_txfrom_test.go:157: ByType(ValidAt TxFrom-1) lists it = true, want false
+        valid_from_txfrom_test.go:160: RelMatchesValidTime(TxFrom-1) = true, want false
+        valid_from_txfrom_test.go:165: RelEffectiveTimeline first ValidFrom = [{1791984276618 0 0x5968722c0c0}] (<nil>), want TxFrom 1791984336626
+        valid_from_txfrom_test.go:146: RelAt(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:150: RelAtTx(TxFrom+0) valid = false (graph: no version valid at the given time), want true
+        valid_from_txfrom_test.go:157: ByType(ValidAt TxFrom+0) lists it = false, want true
+        valid_from_txfrom_test.go:160: RelMatchesValidTime(TxFrom+0) = false, want true
+        valid_from_txfrom_test.go:165: RelEffectiveTimeline first ValidFrom = [{1791984276618 0 0x5968722c480}] (<nil>), want TxFrom 1791984256618
+        valid_from_txfrom_test.go:182: NodeInterval start = 1791984276621 (<nil>), want TxFrom 1791984336630
+        valid_from_txfrom_test.go:185: RelateNodes(untimed, [TxFrom, end)) = FinishedBy (<nil>), want equals
+--- FAIL: TestUpdateValidToClosesTheVersion (0.07s)
+    --- FAIL: TestUpdateValidToClosesTheVersion/memory (0.01s)
+        update_valid_to_test.go:46: node Update: err = <nil>, want ErrInvalidTimeRange
+        update_valid_to_test.go:48: rel Update: err = <nil>, want ErrInvalidTimeRange
+        update_valid_to_test.go:50: node UpdateInPlace: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:52: rel UpdateInPlace: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:54: node Update, end == start: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:55: tx node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:59: tx rel: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:73: batch node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:74: batch rel: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:81: ingest node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:83: node history rows = 1 after refused updates, want 0
+        update_valid_to_test.go:86: rel history rows = 1 after refused updates, want 0
+        update_valid_to_test.go:91: node close at 20000: graph: entity already closed
+    --- FAIL: TestUpdateValidToClosesTheVersion/badger (0.01s)
+        update_valid_to_test.go:46: node Update: err = <nil>, want ErrInvalidTimeRange
+        update_valid_to_test.go:48: rel Update: err = <nil>, want ErrInvalidTimeRange
+        update_valid_to_test.go:50: node UpdateInPlace: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:52: rel UpdateInPlace: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:54: node Update, end == start: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:55: tx node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:59: tx rel: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:73: batch node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:74: batch rel: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:81: ingest node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:83: node history rows = 1 after refused updates, want 0
+        update_valid_to_test.go:86: rel history rows = 1 after refused updates, want 0
+        update_valid_to_test.go:91: node close at 20000: graph: entity already closed
+    --- FAIL: TestUpdateValidToClosesTheVersion/tiered (0.03s)
+        update_valid_to_test.go:46: node Update: err = <nil>, want ErrInvalidTimeRange
+        update_valid_to_test.go:48: rel Update: err = <nil>, want ErrInvalidTimeRange
+        update_valid_to_test.go:50: node UpdateInPlace: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:52: rel UpdateInPlace: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:54: node Update, end == start: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:55: tx node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:59: tx rel: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:73: batch node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:74: batch rel: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:81: ingest node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:83: node history rows = 1 after refused updates, want 0
+        update_valid_to_test.go:86: rel history rows = 1 after refused updates, want 0
+        update_valid_to_test.go:91: node close at 20000: graph: entity already closed
+    --- FAIL: TestUpdateValidToClosesTheVersion/sharded (0.03s)
+        update_valid_to_test.go:46: node Update: err = <nil>, want ErrInvalidTimeRange
+        update_valid_to_test.go:48: rel Update: err = <nil>, want ErrInvalidTimeRange
+        update_valid_to_test.go:50: node UpdateInPlace: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:52: rel UpdateInPlace: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:54: node Update, end == start: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:55: tx node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:59: tx rel: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:73: batch node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:74: batch rel: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:81: ingest node: err = graph: entity already closed, want ErrInvalidTimeRange
+        update_valid_to_test.go:83: node history rows = 1 after refused updates, want 0
+        update_valid_to_test.go:86: rel history rows = 1 after refused updates, want 0
+        update_valid_to_test.go:91: node close at 20000: graph: entity already closed
+--- FAIL: TestOneBurstReadsConsistentlyAtOneInstant (0.12s)
+    --- FAIL: TestOneBurstReadsConsistentlyAtOneInstant/memory (0.00s)
+        valid_from_txfrom_test.go:229: at 1791984276592 (update -60000, create -60002): a (created after b's update) is valid, b is still v=0
+        valid_from_txfrom_test.go:229: at 1791984336591 (update -1, create -3): a (created after b's update) is valid, b is still v=0
+    --- FAIL: TestOneBurstReadsConsistentlyAtOneInstant/badger (0.01s)
+        valid_from_txfrom_test.go:229: at 1791984276604 (update -60001, create -60003): a (created after b's update) is valid, b is still v=0
+        valid_from_txfrom_test.go:229: at 1791984336604 (update -1, create -3): a (created after b's update) is valid, b is still v=0
+    --- FAIL: TestOneBurstReadsConsistentlyAtOneInstant/tiered (0.01s)
+        valid_from_txfrom_test.go:229: at 1791984276619 (update -60001, create -60003): a (created after b's update) is valid, b is still v=0
+        valid_from_txfrom_test.go:229: at 1791984336619 (update -1, create -3): a (created after b's update) is valid, b is still v=0
+    --- FAIL: TestOneBurstReadsConsistentlyAtOneInstant/sharded (0.08s)
+        valid_from_txfrom_test.go:229: at 1791984276699 (update -60001, create -60003): a (created after b's update) is valid, b is still v=0
+        valid_from_txfrom_test.go:229: at 1791984336699 (update -1, create -3): a (created after b's update) is valid, b is still v=0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.173s
+FAIL

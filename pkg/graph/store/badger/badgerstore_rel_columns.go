@@ -2,6 +2,7 @@ package badger
 
 import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -136,7 +137,7 @@ func (bs *Store) buildRelColumns(typeToken uint16, requested []string) (col *ind
 // type: a relationship's endpoints are structure, not properties.
 func (bs *Store) bulkRelGetters(ids []types.RelID) (
 	func(types.RelID, string) (any, bool),
-	func(types.RelID) (int64, int64, bool),
+	func(types.RelID) (int64, int64, int64, bool),
 ) {
 	mat := make(map[types.RelID]*types.Relationship, len(ids))
 	// ONE badger View with one shared iterator, not one transaction per edge. The
@@ -169,19 +170,15 @@ func (bs *Store) bulkRelGetters(ids []types.RelID) (
 		}
 		return r.GetProperty(key)
 	}
-	getTemporal := func(id types.RelID) (int64, int64, bool) {
+	getTemporal := func(id types.RelID) (int64, int64, int64, bool) {
 		r := mat[id]
 		if r == nil {
-			return 0, 0, false
+			return 0, 0, 0, false
 		}
-		f, t, ok := r.ValidRange()
-		if !ok {
-			return 0, 0, false
-		}
-		// RAW, like the node side. The mint-time fallback belongs to the FILTER
-		// (effectiveValidFrom), not to the reported column — see the long note in
-		// badgerstore_docvalues.go.
-		return int64(f), int64(t), true
+		// RAW, like the node side, plus the effective start the FILTER uses
+		// (storeutil.RelValidFrom) — see the long note in badgerstore_docvalues.go.
+		f, t, _ := r.ValidRange()
+		return int64(f), int64(t), int64(storepkg.RelValidFrom(r)), true
 	}
 	return getProp, getTemporal
 }

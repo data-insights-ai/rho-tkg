@@ -9,29 +9,24 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Item 36: the public mint-instant derivation is exactly the instant the
-// resolver treats as the start of a row with no explicit valid-from. Two-phase
-// (rule 15): the row is invisible one ms before MintInstant and visible at it,
-// on every backend, for node and relationship, via Add and AddWithTx.
+// Item 36: the public mint-instant derivation decodes the wall-clock instant
+// the ID was minted at, for Add and AddWithTx, node and relationship, on every
+// backend. Since backlog 62 it is no longer the resolver's start of a row
+// without a valid-from (that is the row's TxFrom: TestUntimedRowsStartAtTxFrom),
+// only of a legacy row without a TxFrom.
 
 func mintGraphs() []storeBackend {
 	return allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true })
 }
 
-func assertStartsAtMint(t *testing.T, what string, mint types.Instant, lo, hi time.Time, atBefore, atMint func() (bool, error)) {
+func assertMintInWindow(t *testing.T, what string, mint types.Instant, lo, hi time.Time) {
 	t.Helper()
 	if mint < types.Instant(lo.UnixMilli()-1) || mint > types.Instant(hi.UnixMilli()+1) {
 		t.Fatalf("%s: MintInstant %d outside the wall-clock window [%d, %d] (epoch or us/ms unit error)", what, mint, lo.UnixMilli(), hi.UnixMilli())
 	}
-	if found, err := atBefore(); err != nil || found {
-		t.Fatalf("%s: visible one ms before the mint instant (found=%v err=%v)", what, found, err)
-	}
-	if found, err := atMint(); err != nil || !found {
-		t.Fatalf("%s: not visible at the mint instant (found=%v err=%v)", what, found, err)
-	}
 }
 
-func TestMintInstant_MatchesResolverStartForAddAndAddWithTx_AllBackends(t *testing.T) {
+func TestMintInstant_DecodesTheWallClockMint_AllBackends(t *testing.T) {
 	ctx := context.Background()
 	for _, b := range mintGraphs() {
 		t.Run(b.name, func(t *testing.T) {
@@ -58,40 +53,11 @@ func TestMintInstant_MatchesResolverStartForAddAndAddWithTx_AllBackends(t *testi
 				t.Fatalf("Rels.AddWithTx: %v", err)
 			}
 			hi := time.Now()
-
-			for _, n := range []*types.Node{plain, backfilled} {
-				n := n
-				mint := n.ID().MintInstant()
-				pin := n.Temporal().TxFrom
-				assertStartsAtMint(t, "node NodeAt", mint, lo, hi,
-					func() (bool, error) {
-						got, err := g.Temporal().NodeAt(n.ID(), mint-1)
-						return got != nil && err == nil, nil
-					},
-					func() (bool, error) { got, err := g.Temporal().NodeAt(n.ID(), mint); return got != nil, err })
-				assertStartsAtMint(t, "node NodeAtTx", mint, lo, hi,
-					func() (bool, error) {
-						got, err := g.Temporal().NodeAtTx(n.ID(), mint-1, pin)
-						return got != nil && err == nil, nil
-					},
-					func() (bool, error) { got, err := g.Temporal().NodeAtTx(n.ID(), mint, pin); return got != nil, err })
+			for _, n := range []*types.Node{plain, peer, backfilled} {
+				assertMintInWindow(t, "node", n.ID().MintInstant(), lo, hi)
 			}
 			for _, r := range []*types.Relationship{rel, relBF} {
-				r := r
-				mint := r.ID().MintInstant()
-				pin := r.Temporal().TxFrom
-				assertStartsAtMint(t, "rel RelAt", mint, lo, hi,
-					func() (bool, error) {
-						got, err := g.Temporal().RelAt(r.ID(), mint-1)
-						return got != nil && err == nil, nil
-					},
-					func() (bool, error) { got, err := g.Temporal().RelAt(r.ID(), mint); return got != nil, err })
-				assertStartsAtMint(t, "rel RelAtTx", mint, lo, hi,
-					func() (bool, error) {
-						got, err := g.Temporal().RelAtTx(r.ID(), mint-1, pin)
-						return got != nil && err == nil, nil
-					},
-					func() (bool, error) { got, err := g.Temporal().RelAtTx(r.ID(), mint, pin); return got != nil, err })
+				assertMintInWindow(t, "rel", r.ID().MintInstant(), lo, hi)
 			}
 			// Later IDs from the same generator never mint earlier (monotone).
 			if peer.ID().MintInstant() < plain.ID().MintInstant() || backfilled.ID().MintInstant() < peer.ID().MintInstant() {

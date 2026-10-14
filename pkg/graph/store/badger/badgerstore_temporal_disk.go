@@ -5,6 +5,7 @@ package badger
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -202,9 +203,41 @@ func (bs *Store) purgeTemporalIndexDiskEntriesLocked(labelToken uint16) ([]write
 // mid-backfill leaves either NO rows and no marker (retried on the next
 // open) or ALL rows and the marker (never a half-built keyspace a later
 // open trusts as complete). Mirrors commitPropertyIndexOnDiskBackfill.
+//
+// Rows keyed by an older start rule (the mint start, backlog 62) are deleted in
+// the same batch: every 0x0B key the rebuild did not write again goes, so a
+// node's row is never left twice under two starts.
 func (bs *Store) commitTemporalIndexOnDiskBackfill(ops []writeOp) error {
+	keep := make(map[string]struct{}, len(ops))
+	for _, op := range ops {
+		keep[string(op.key)] = struct{}{}
+	}
+	var stale [][]byte
+	if err := bs.db.View(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		prefix := []byte{storepkg.KeyTemporalIndex}
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			if _, ok := keep[string(it.Item().Key())]; !ok {
+				stale = append(stale, it.Item().KeyCopy(nil))
+			}
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("graph: temporal-index-on-disk backfill: scan stale rows: %w", err)
+	}
 	wb := bs.db.NewWriteBatch()
 	defer wb.Cancel()
+	for _, k := range stale {
+		if err := wb.Delete(k); err != nil {
+			return fmt.Errorf("graph: temporal-index-on-disk backfill: %w", err)
+		}
+	}
+	if err := wb.Delete(storepkg.TemporalIndexOnDiskBuiltV1Key); err != nil {
+		return fmt.Errorf("graph: temporal-index-on-disk backfill: %w", err)
+	}
 	for _, op := range ops {
 		if err := wb.SetEntry(badgerv4.NewEntry(op.key, op.value)); err != nil {
 			return fmt.Errorf("graph: temporal-index-on-disk backfill: %w", err)
@@ -276,4 +309,17 @@ func (bs *Store) purgeUndefinedTemporalDiskRows() error {
 		return fmt.Errorf("graph: purge undefined temporal-index rows: %w", err)
 	}
 	return nil
+}
+
+// metaKeyPresent reports whether key exists (a presence-only marker).
+func metaKeyPresent(txn *badgerv4.Txn, key []byte) (bool, error) {
+	_, err := txn.Get(key)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, badgerv4.ErrKeyNotFound):
+		return false, nil
+	default:
+		return false, err
+	}
 }

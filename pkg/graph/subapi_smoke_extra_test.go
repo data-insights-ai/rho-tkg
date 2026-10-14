@@ -249,7 +249,9 @@ func TestSubAPISmoke_TemporalAllWrappers(t *testing.T) {
 	b, _ := g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"name": "B", "age": int64(40)})
 	r, _ := g.Rels().Add(context.Background(), "KNOWS", a, b, map[string]any{"since": int64(2025)})
 
-	now := types.Instant(time.Now().UnixMilli())
+	// The last write's TxFrom: every row above starts at or before it (a row
+	// without a valid-from starts at its TxFrom, backlog 62).
+	now := r.Temporal().TxFrom
 	earlier := now - 1
 	later := now + 1
 	txNow := r.Temporal().TxFrom
@@ -353,10 +355,10 @@ func TestSubAPISmoke_TemporalAllWrappers(t *testing.T) {
 		t.Fatalf("re-fetch r2: %v", err)
 	}
 
-	if _, _, err := g.Temporal().NodeInterval(aClosed); err != nil { //nolint:staticcheck // behaviour notice, backlog 62
+	if _, _, err := g.Temporal().NodeInterval(aClosed); err != nil {
 		t.Errorf("NodeInterval: %v", err)
 	}
-	if _, _, err := g.Temporal().RelInterval(rClosed); err != nil { //nolint:staticcheck // behaviour notice, backlog 62
+	if _, _, err := g.Temporal().RelInterval(rClosed); err != nil {
 		t.Errorf("RelInterval: %v", err)
 	}
 	if _, err := g.Temporal().RelateNodes(aClosed, bClosed); err != nil {

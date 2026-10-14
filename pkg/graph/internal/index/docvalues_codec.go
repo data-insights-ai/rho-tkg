@@ -27,7 +27,7 @@ import (
 
 // columnBlobVersion is the encoding version of ONE persisted column blob. It is
 // local to this cache and unrelated to the store's wire-format version.
-const columnBlobVersion uint8 = 1
+const columnBlobVersion uint8 = 2 // 2: effective starts (backlog 62)
 
 var (
 	// ErrColumnBlobUnreadable means a persisted column could not be decoded and the
@@ -198,6 +198,12 @@ func EncodeColumns[T EntityID](l *DocValues[T]) []byte {
 		w.u8(1)
 		w.i64s(l.validFrom)
 		w.i64s(l.validTo)
+		if l.effFrom != nil {
+			w.u8(1)
+			w.i64s(l.effFrom)
+		} else {
+			w.u8(0)
+		}
 	} else {
 		w.u8(0)
 	}
@@ -257,6 +263,12 @@ func DecodeColumns[T EntityID](blob []byte, mk func(int64) T) (*DocValues[T], er
 		out.hasTemporal = true
 		out.validFrom = r.i64s()
 		out.validTo = r.i64s()
+		if r.u8() == 1 {
+			out.effFrom = r.i64s()
+			if len(out.effFrom) != n {
+				return nil, ErrColumnBlobUnreadable
+			}
+		}
 		if r.err != nil || len(out.validFrom) != n || len(out.validTo) != n {
 			return nil, ErrColumnBlobUnreadable
 		}

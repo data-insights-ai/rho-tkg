@@ -8,6 +8,7 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -254,7 +255,7 @@ func (s singleVersionNodeResolver) resolve(cur *types.Node, pred func(*types.Nod
 
 // firstVersionCovers is singleVersionAdjacencyResolver.firstVersionCovers for
 // a node: a first version (version 0) without a delete stamp answers the
-// probe by its bounds [valid-from or the ID's mint instant, valid-to or open).
+// probe by its bounds [effective valid-from (storeutil.NodeValidFrom), valid-to or open).
 // ok=false for any other row: the caller runs the resolver.
 // TestSingleVersionNodeMatchesResolver holds the two equal.
 func (s singleVersionNodeResolver) firstVersionCovers(n *types.Node) (covered, ok bool) {
@@ -264,10 +265,8 @@ func (s singleVersionNodeResolver) firstVersionCovers(n *types.Node) (covered, o
 	if _, _, deletedAt := n.TxStamps(); deletedAt != 0 {
 		return false, false
 	}
-	vStart, vEnd, _ := n.ValidRange()
-	if vStart == 0 {
-		vStart = n.ID().MintInstant()
-	}
+	_, vEnd, _ := n.ValidRange()
+	vStart := storeutil.NodeValidFrom(n)
 	switch s.probe.kind {
 	case probePoint:
 		t := s.probe.validAt

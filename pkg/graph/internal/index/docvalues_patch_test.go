@@ -14,12 +14,12 @@ import (
 // presence, representation (uniform int, uniform float, mixed, dictionary
 // order), validity and zone-map decisions.
 
-func patchTemporal(shift map[types.NodeID]int64) func(types.NodeID) (int64, int64, bool) {
-	return func(id types.NodeID) (int64, int64, bool) {
+func patchTemporal(shift map[types.NodeID]int64) func(types.NodeID) (int64, int64, int64, bool) {
+	return func(id types.NodeID) (int64, int64, int64, bool) {
 		if id%7 == 0 {
-			return 0, 0, false // no metadata
+			return 0, 0, 0, false // no metadata
 		}
-		return int64(id)*10 + shift[id], int64(id)*10 + 5 + shift[id], true
+		return int64(id)*10 + shift[id], int64(id)*10 + 5 + shift[id], int64(id)*10 + shift[id], true
 	}
 }
 

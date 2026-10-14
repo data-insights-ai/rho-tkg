@@ -47,12 +47,21 @@ func TestRowDoorsAgreeWithResolverOnAnUntimedUpdate(t *testing.T) {
 	if _, err := g.Temporal.AdvanceClock(now + 60_000); err != nil {
 		t.Fatal(err)
 	}
+	// An untimed later version with a valid end (for NodeInterval): the update,
+	// then the end set in place (an update carrying tkg_valid_to alone is a
+	// close that keeps the version's start, backlog 65).
 	end := now + 120_000
-	n1, err := g.Nodes.Update(ctx, a.ID(), map[string]any{"v": int64(1), "tkg_valid_to": end})
+	if _, err := g.Nodes.Update(ctx, a.ID(), map[string]any{"v": int64(1)}); err != nil {
+		t.Fatal(err)
+	}
+	n1, err := g.Nodes.UpdateInPlace(ctx, a.ID(), map[string]any{"tkg_valid_to": end})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r1, err := g.Rels.Update(ctx, r0.ID(), map[string]any{"v": int64(1), "tkg_valid_to": end})
+	if _, err := g.Rels.Update(ctx, r0.ID(), map[string]any{"v": int64(1)}); err != nil {
+		t.Fatal(err)
+	}
+	r1, err := g.Rels.UpdateInPlace(ctx, r0.ID(), map[string]any{"tkg_valid_to": end})
 	if err != nil {
 		t.Fatal(err)
 	}

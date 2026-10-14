@@ -82,6 +82,9 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 	}
 
 	ids, vf, vt := col.IDs(), col.ValidFrom(), col.ValidTo()
+	// The filter reads the effective start (an unset ValidFrom is the row's
+	// TxFrom, backlog 62); the batch reports the stored one (vf).
+	eff := col.EffectiveValidFrom()
 	ords, startOrds, endOrds := bs.relColumnOrdinals(token, col, startView.Ints, endView.Ints)
 	batch := newRelColumnBatch(len(props))
 	for i, v := range views {
@@ -113,7 +116,7 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 			}
 		} else {
 			for ord := start; ord < end; ord++ {
-				if !validTimeMatches(effectiveValidFrom(vf[ord], ids[ord].SnowflakeID()), vt[ord], qFrom, qTo) {
+				if !validTimeMatches(eff[ord], vt[ord], qFrom, qTo) {
 					continue
 				}
 				batch.IDs = append(batch.IDs, ids[ord])

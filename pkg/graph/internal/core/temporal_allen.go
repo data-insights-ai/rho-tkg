@@ -7,8 +7,7 @@ import (
 
 // NodeInterval returns the effective [start, end) for a node. start is the
 // row's explicit ValidFrom, else the start the chain resolver gives the row
-// (nodeSortValidFrom: a later version's UpdatedAt, a first version's mint
-// instant — backlog 62).
+// (nodeValidFrom: its TxFrom — backlog 62).
 //
 // NodeInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid),
 // because Allen's algebra requires finite intervals.
@@ -21,7 +20,7 @@ func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err err
 		if err := storepkg.ValidateNodeID(n.ID()); err != nil {
 			return err
 		}
-		start = c.nodeSortValidFrom(n)
+		start = c.nodeValidFrom(n)
 		tm := n.Temporal()
 		if tm == nil || tm.ValidTo == 0 {
 			return types.ErrOpenInterval
@@ -36,7 +35,7 @@ func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err err
 }
 
 // RelInterval returns the effective [start, end) for a relationship; start
-// as NodeInterval's (relSortValidFrom).
+// as NodeInterval's (relValidFrom).
 //
 // RelInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid).
 func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
@@ -48,7 +47,7 @@ func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, 
 		if err := storepkg.ValidateRelID(r.ID()); err != nil {
 			return err
 		}
-		start = c.relSortValidFrom(r)
+		start = c.relValidFrom(r)
 		tm := r.Temporal()
 		if tm == nil || tm.ValidTo == 0 {
 			return types.ErrOpenInterval

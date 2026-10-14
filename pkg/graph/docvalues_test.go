@@ -114,8 +114,10 @@ func TestDocValues_ExpiredNodeStillCounted(t *testing.T) {
 	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
 		ctx := context.Background()
 		live, _ := g.Nodes().Add(ctx, []string{"P"}, map[string]any{"age": int64(1)})
-		exp, _ := g.Nodes().Add(ctx, []string{"P"}, map[string]any{"age": int64(2)})
-		// Close the valid interval in the past — expired but not deleted.
+		exp, _ := g.Nodes().Add(ctx, []string{"P"}, map[string]any{"age": int64(2), "tkg_valid_from": int64(500)})
+		// Close the valid interval in the past — expired but not deleted. The
+		// version starts at 500 (a close keeps its start and must end after it,
+		// backlog 65).
 		if _, err := g.Nodes().Update(ctx, exp.ID(), map[string]any{"tkg_valid_to": int64(1000)}); err != nil {
 			t.Fatalf("close valid_to: %v", err)
 		}

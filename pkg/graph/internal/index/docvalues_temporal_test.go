@@ -18,9 +18,9 @@ func tbuild(n int, ranges func(i int) (int64, int64)) *LabelDocValues {
 		ids[i] = types.NodeID(i + 1)
 	}
 	getProp := func(id types.NodeID, _ string) (any, bool) { return int64(id), true }
-	getTemporal := func(id types.NodeID) (int64, int64, bool) {
+	getTemporal := func(id types.NodeID) (int64, int64, int64, bool) {
 		f, t := ranges(int(id) - 1)
-		return f, t, true
+		return f, t, f, true
 	}
 	return BuildLabelDocValues(1, ids, []string{"v"}, getProp, getTemporal)
 }
@@ -146,11 +146,11 @@ func TestTemporal_NodeWithoutMetadataIsNotClaimedValid(t *testing.T) {
 	ids := []types.NodeID{1, 2}
 	l := BuildLabelDocValues(1, ids, []string{"v"},
 		func(types.NodeID, string) (any, bool) { return int64(1), true },
-		func(id types.NodeID) (int64, int64, bool) {
+		func(id types.NodeID) (int64, int64, int64, bool) {
 			if id == 1 {
-				return 500, 600, true
+				return 500, 600, 500, true
 			}
-			return 0, 0, false // no metadata
+			return 0, 0, 0, false // no metadata
 		})
 	if got := l.ValidFrom()[1]; got != 0 {
 		t.Errorf("node without metadata got validFrom %d, want 0", got)

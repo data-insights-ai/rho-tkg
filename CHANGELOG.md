@@ -6,6 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A row without a valid-from is valid from its `TxFrom`** (backlog 62, deprecated in v4.52.2; sigma-tkgd
+  observation). One start rule, `storeutil.EntityValidFrom`: explicit `ValidFrom`, else `TxFrom`, else (a legacy
+  row without one) `UpdatedAt`, else the ID's mint instant — for an untimed create (was: its mint instant) and an
+  untimed later version (was: its `UpdatedAt`) alike. One instant now sees one write burst in commit order: a
+  create written after an update is no longer valid before it (the commit clock runs ahead of the snowflake wall
+  clock under bursts; batch and ingest mint IDs before they stamp `TxFrom`), and an `AddWithTx` backfill is valid
+  from its backfilled `TxFrom`, before its mint. Every valid-time door reads it: `NodeAt` / `RelAt`, `NodeAtTx` /
+  `RelAtTx`, `NodesAt[Tx]`, `ByLabel` / `ByType` with `ValidAt`, `NodeMatchesValidTime` / `RelMatchesValidTime`,
+  `NodeInterval` / `RelInterval` (`RelateNodes` / `RelateRels`), the effective timelines (first `ValidFrom` = the
+  first version's `TxFrom`) and their scans, the store push-down, the temporal index envelopes and the column scans'
+  valid-time filter (badger: the snapshot carries an effective-start column next to the reported raw
+  `ColumnBatch.ValidFrom`, which stays the stored value). The resolver's separate `UpdatedAt` start for later
+  versions and the mint fallbacks in the first-version shortcuts and column builders are folded into it; a later
+  version after `UpdateInPlace` starts at its `TxFrom`, no longer at the in-place write's `UpdatedAt`. Consequences
+  a caller can see: a read at wall-clock "now" right after a create can miss it (the commit clock runs ahead of
+  the wall clock under bursts; updates already behaved so): read "now" via `g.Temporal().NowTx()` or at the write's
+  `TxFrom`; an `Update` with a `tkg_valid_from` at or before the current version's `TxFrom` is
+  `ErrValidFromBeforePrevious` (was: before its mint); a temporal constraint compares against the endpoint's
+  `TxFrom`. The caller-instant order gates and the update instant use the same start (`nodeValidFrom`; the
+  separate `UpdatedAt`-based `nodeCurrentVersionStart` is gone), so an `UpdateWithTx` / `DeleteWithTx` at a `t` in
+  (`TxFrom`, `UpdatedAt`] after an `UpdateInPlace` is accepted (was: refused; an in-place write records nothing in
+  transaction time), and a plain update after a later version with a future `tkg_valid_from` is stamped after that
+  start, as one after a future-dated create already was. Persisted derived starts: the open image is format 2 and the 0x0B temporal-index keyspace marker is
+  `temporal_index_on_disk_built_v2`, so the first open rebuilds envelopes keyed by the mint start (an envelope
+  starting after the row would prune it); the old marker is deleted, so an older release rebuilds too. The keyspace is trusted only when the v2 marker is present and the old one absent (after a downgrade an older release rebuilds it mint-keyed and writes the old marker, leaving v2 in place); a read-only open rebuilds it in RAM without writing. Persisted
+  column blobs are format 2. The HOP segment header's `valid_from` min/max stores the raw value and is not read for
+  pruning: unchanged. Consumer adaptation (sigma-tkgd `tyla/source/graph/effective.go:99/104`): an untimed create's
+  first segment starts at the first version's `TxFrom` (`TxStamps`), no longer at `MintInstant()`. Tests
+  `TestUntimedRowsStartAtTxFrom`, `TestOneBurstReadsConsistentlyAtOneInstant` (four backends),
+  `TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt`, `TestRelColumns_UnsetValidFromFiltersFromTxFrom`; evidence
+  `tasks/evidence/valid-from-source/`.
+- **An update that sets only `tkg_valid_to` closes the version** (backlog 65, deprecated in v4.52.2). `Update` and
+  its `GraphTx`, batch, ingest and `*WithTx` twins treat a `tkg_valid_to` without `tkg_valid_from` as
+  `CloseVersion` does, through one helper (`checkNodeClose` / `checkRelClose` + `stampClose`: the version must be
+  open, the end must follow its start, the temporal constraints must hold): the version keeps its start and ends at
+  `tkg_valid_to`; an end at or before that start is `ErrInvalidTimeRange` and writes nothing (was: copied unchecked
+  onto a new version starting at the update instant, so a past end wrote an empty row and the entity stayed
+  valid). `UpdateInPlace` refuses an end at or before the row's start. `CloseVersion` stamps the version's start on
+  the closing row (was: the closing row started at the close instant, so `CloseVersion(t)` with `t` before the close
+  instant left the entity valid until the close was written). This is also the close inside a transaction sigma-tkgd
+  asked for (R9): `GraphTx.UpdateNode` / `UpdateRelationship(id, {tkg_valid_to: t})` answers as
+  `CloseVersion(id, t)`, no new door. The caller-instant pre-flight of a Batch / ingest unit runs the same close
+  check, so a unit with one refused close writes nothing. Side effect: a closed untimed version now carries its
+  start as a stored `ValidFrom`, so the raw `tkg_valid_from` shadow, `ValidRange()` and `ColumnBatch.ValidFrom`
+  of such a row read that start instead of 0. On an external store without `MetaKVCapability` (the bitemporal
+  migration never runs) a close of a version with an explicit valid-from equal to its predecessor's is read by
+  the legacy inherited-valid-from heuristic as inherited and starts at the close's `TxFrom`; every in-tree store
+  migrates. Tests `TestUpdateValidToClosesTheVersion` (incl. WithTx batch and ingest units),
+  `TestTxUpdateValidToClosesLikeCloseVersion` (four backends, twin stores); `TestDocValues_ExpiredNodeStillCounted`
+  now gives its expired node a start before the close.
+
 ### Fixed
 
 - **A later version without a valid-from got a third start on the materialized-row doors** (backlog 62).
@@ -75,6 +128,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   no longer drops the node from the membership answers and valid-end candidates, nor an `ArchiveNode` from the
   property door; a shard error joined with the property door's off-reference finding is returned, no longer
   turned into `ErrIndexNotFound`. Test `TestTxMembersFanoutListsNodeRestoredMidRead`.
+
+### Changed
+
 
 ### Fixed
 

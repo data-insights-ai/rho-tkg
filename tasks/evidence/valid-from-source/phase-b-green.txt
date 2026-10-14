@@ -1,0 +1,57 @@
+=== RUN   TestUpdateValidToClosesTheVersion
+=== PAUSE TestUpdateValidToClosesTheVersion
+=== RUN   TestUntimedRowsStartAtTxFrom
+=== PAUSE TestUntimedRowsStartAtTxFrom
+=== RUN   TestOneBurstReadsConsistentlyAtOneInstant
+=== PAUSE TestOneBurstReadsConsistentlyAtOneInstant
+=== CONT  TestUpdateValidToClosesTheVersion
+=== RUN   TestUpdateValidToClosesTheVersion/memory
+=== CONT  TestOneBurstReadsConsistentlyAtOneInstant
+=== RUN   TestOneBurstReadsConsistentlyAtOneInstant/memory
+=== CONT  TestUntimedRowsStartAtTxFrom
+=== RUN   TestUntimedRowsStartAtTxFrom/memory
+=== RUN   TestOneBurstReadsConsistentlyAtOneInstant/badger
+=== PAUSE TestUntimedRowsStartAtTxFrom/memory
+=== RUN   TestUntimedRowsStartAtTxFrom/badger
+=== PAUSE TestUntimedRowsStartAtTxFrom/badger
+=== RUN   TestUntimedRowsStartAtTxFrom/tiered
+=== PAUSE TestUntimedRowsStartAtTxFrom/tiered
+=== RUN   TestUntimedRowsStartAtTxFrom/sharded
+=== PAUSE TestUntimedRowsStartAtTxFrom/sharded
+=== CONT  TestUntimedRowsStartAtTxFrom/memory
+=== CONT  TestUntimedRowsStartAtTxFrom/tiered
+=== CONT  TestUntimedRowsStartAtTxFrom/badger
+=== RUN   TestUpdateValidToClosesTheVersion/badger
+=== CONT  TestUntimedRowsStartAtTxFrom/sharded
+=== RUN   TestUpdateValidToClosesTheVersion/tiered
+=== RUN   TestOneBurstReadsConsistentlyAtOneInstant/tiered
+--- PASS: TestUntimedRowsStartAtTxFrom (0.00s)
+    --- PASS: TestUntimedRowsStartAtTxFrom/memory (0.00s)
+    --- PASS: TestUntimedRowsStartAtTxFrom/badger (0.01s)
+    --- PASS: TestUntimedRowsStartAtTxFrom/tiered (0.02s)
+    --- PASS: TestUntimedRowsStartAtTxFrom/sharded (0.02s)
+=== RUN   TestUpdateValidToClosesTheVersion/sharded
+=== RUN   TestOneBurstReadsConsistentlyAtOneInstant/sharded
+--- PASS: TestUpdateValidToClosesTheVersion (0.08s)
+    --- PASS: TestUpdateValidToClosesTheVersion/memory (0.00s)
+    --- PASS: TestUpdateValidToClosesTheVersion/badger (0.00s)
+    --- PASS: TestUpdateValidToClosesTheVersion/tiered (0.02s)
+    --- PASS: TestUpdateValidToClosesTheVersion/sharded (0.06s)
+--- PASS: TestOneBurstReadsConsistentlyAtOneInstant (0.09s)
+    --- PASS: TestOneBurstReadsConsistentlyAtOneInstant/memory (0.00s)
+    --- PASS: TestOneBurstReadsConsistentlyAtOneInstant/badger (0.01s)
+    --- PASS: TestOneBurstReadsConsistentlyAtOneInstant/tiered (0.07s)
+    --- PASS: TestOneBurstReadsConsistentlyAtOneInstant/sharded (0.01s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.139s
+=== RUN   TestRelColumns_UnsetValidFromReportsRaw
+--- PASS: TestRelColumns_UnsetValidFromReportsRaw (0.00s)
+=== RUN   TestRelColumns_UnsetValidFromFiltersFromTxFrom
+--- PASS: TestRelColumns_UnsetValidFromFiltersFromTxFrom (0.01s)
+=== RUN   TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt
+=== PAUSE TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt
+=== CONT  TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt
+--- PASS: TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt (0.25s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.296s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.697s

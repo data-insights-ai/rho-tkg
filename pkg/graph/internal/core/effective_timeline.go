@@ -79,14 +79,14 @@ type chainKernel[T interface {
 var (
 	nodeKernel = &chainKernel[*types.Node]{
 		rowAtTx:   nodeRowAtTx,
-		sortVF:    (*Core).nodeSortValidFrom,
+		sortVF:    (*Core).nodeValidFrom,
 		sortChain: (*Core).sortNodeChainForResolve,
 		ownBounds: (*Core).nodeOwnBounds,
 		posBounds: (*Core).nodeVersionBounds,
 	}
 	relKernel = &chainKernel[*types.Relationship]{
 		rowAtTx:   relRowAtTx,
-		sortVF:    (*Core).relSortValidFrom,
+		sortVF:    (*Core).relValidFrom,
 		sortChain: (*Core).sortRelChainForResolve,
 		ownBounds: (*Core).relOwnBounds,
 		posBounds: (*Core).relVersionBounds,
@@ -301,7 +301,7 @@ func (c *Core) relEffectivePieces(chain []*types.Relationship, pin types.Instant
 // containing t holds the row NodeAtTx(id, t, pin) returns, and no segment
 // contains t when NodeAtTx answers ErrNoVersionValidAt. ValidFrom is the
 // effective start, never 0 (a row without a recorded valid-from starts at the
-// ID's mint instant, or at its UpdatedAt for a later version); a deleted
+// row's TxFrom — storeutil.EntityValidFrom, backlog 62); a deleted
 // node's last segment ends at the delete instant.
 //
 // Rows are shared frozen pointers (DeepCopy to mutate). A node created after

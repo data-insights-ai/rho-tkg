@@ -91,7 +91,7 @@ type oracleEntity struct {
 }
 
 // effVF is a VERSION's effective valid-from used to ORDER it within the chain
-// and as its tile start. Mirrors the engine's nodeSortValidFrom (temporal.go):
+// and as its tile start. Mirrors the engine's nodeValidFrom (temporal.go):
 // explicit ValidFrom, else a non-genesis row's UpdatedAt, else the snowflake
 // fallback. (Contract: "effective valid-from of that version".)
 func (e *oracleEntity) effVF(r oracleRow) types.Instant {

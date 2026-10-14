@@ -7,17 +7,57 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// EntityValidFrom derives the effective valid-from time for an entity.
-// Uses explicit ValidFrom if set on TemporalMetadata, otherwise the ID's mint
-// instant: the same single function (idlayout.MintInstantMillis) behind the
-// public types.NodeID.MintInstant / types.RelID.MintInstant, so a consumer that
-// applies "0 = unset, the start is the mint instant" agrees with the resolver
-// by construction.
+// EntityValidFrom is THE start rule for a row (backlog 62): its explicit
+// ValidFrom, else its UntimedValidFrom. Every valid-time door — the chain
+// resolver, the store push-down, the temporal index envelopes, the column
+// filters — takes a row's start from here, so a create and a later version
+// without a valid-from start on one clock.
 func EntityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
 	if tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
+	return UntimedValidFrom(id, tm)
+}
+
+// UntimedValidFrom is the start of a row without a valid-from: its TxFrom (the
+// commit instant, or a backfilled tkg_tx_from), for a create and a later
+// version alike. A legacy row without a TxFrom falls back to its UpdatedAt
+// (a later version), then to the ID's mint instant. The chain resolver uses it
+// directly where it must ignore an inherited legacy ValidFrom.
+func UntimedValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
+	if tm != nil {
+		if tm.TxFrom != 0 {
+			return tm.TxFrom
+		}
+		if tm.UpdatedAt != 0 {
+			return tm.UpdatedAt
+		}
+	}
 	return types.Instant(idlayout.MintInstantMillis(id))
+}
+
+// NodeValidFrom is EntityValidFrom for a materialized node without copying
+// its metadata (Temporal() copies on a frozen row): one allocation-free read
+// of ValidFrom and TxFrom, the metadata only for a legacy row without a TxFrom.
+func NodeValidFrom(n *types.Node) types.Instant {
+	if vf, _, _ := n.ValidRange(); vf != 0 {
+		return vf
+	}
+	if tx, _, _ := n.TxStamps(); tx != 0 {
+		return tx
+	}
+	return UntimedValidFrom(n.ID().SnowflakeID(), n.Temporal())
+}
+
+// RelValidFrom is NodeValidFrom for a relationship.
+func RelValidFrom(r *types.Relationship) types.Instant {
+	if vf, _, _ := r.ValidRange(); vf != 0 {
+		return vf
+	}
+	if tx, _, _ := r.TxStamps(); tx != 0 {
+		return tx
+	}
+	return UntimedValidFrom(r.ID().SnowflakeID(), r.Temporal())
 }
 
 // SnowflakeInstant returns the IMMUTABLE mint-time of a snowflake ID as a
@@ -61,9 +101,8 @@ func MatchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts sto
 }
 
 // MatchesTemporalFilterFrom is MatchesTemporalFilter with the row's effective
-// valid-from already resolved (from), for a caller that knows more about the
-// row than its metadata — the core's materialized-row doors, which start a
-// later version without a valid-from where the chain resolver starts it.
+// valid-from already resolved (from), for a caller that resolved it without
+// copying the row's metadata (NodeValidFrom / RelValidFrom).
 func MatchesTemporalFilterFrom(from types.Instant, tm *types.TemporalMetadata, opts storepkg.QueryOpts) bool {
 	var to types.Instant
 	if tm != nil {
@@ -94,7 +133,7 @@ func HasTemporalFilter(opts storepkg.QueryOpts) bool {
 }
 
 // MatchesPointInTime checks: from <= t AND (to == 0 OR to > t), with from
-// derived via EntityValidFrom (explicit ValidFrom, else snowflake fallback).
+// derived via EntityValidFrom.
 //
 // This function and MatchesInterval are the CANONICAL entity-level temporal
 // predicates. The store backends use them for query push-down and the core

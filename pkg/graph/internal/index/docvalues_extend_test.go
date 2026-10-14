@@ -17,8 +17,8 @@ func extProps(vals map[types.NodeID]any) func(types.NodeID, string) (any, bool) 
 	}
 }
 
-func extTemporal(id types.NodeID) (int64, int64, bool) {
-	return int64(id) * 10, int64(id)*10 + 5, true
+func extTemporal(id types.NodeID) (int64, int64, int64, bool) {
+	return int64(id) * 10, int64(id)*10 + 5, int64(id) * 10, true
 }
 
 // dump flattens a snapshot to a comparable form: ids, presence, typed values,

@@ -32,7 +32,7 @@ import (
 // The receiver is never mutated.
 func (l *DocValues[T]) Patch(epoch uint64, changed []T,
 	getProp func(T, string) (any, bool),
-	getTemporal func(T) (validFrom, validTo int64, ok bool)) *DocValues[T] {
+	getTemporal func(T) (validFrom, validTo, effFrom int64, ok bool)) *DocValues[T] {
 
 	if l == nil || len(changed) == 0 {
 		return nil
@@ -68,12 +68,20 @@ func (l *DocValues[T]) Patch(epoch uint64, changed []T,
 		out.hasTemporal = true
 		out.validFrom = slices.Clone(l.validFrom)
 		out.validTo = slices.Clone(l.validTo)
+		if l.effFrom != nil {
+			out.effFrom = slices.Clone(l.effFrom)
+		}
 		for i, id := range rowIDs {
-			f, t, ok := getTemporal(id)
+			f, t, eff, ok := getTemporal(id)
 			if !ok {
-				f, t = 0, 0
+				f, t, eff = 0, 0, 0
 			}
 			out.validFrom[ords[i]], out.validTo[ords[i]] = f, t
+			if out.effFrom != nil {
+				out.effFrom[ords[i]] = eff
+			} else {
+				out.setEff(ords[i], eff)
+			}
 		}
 		out.patchZoneMap(l, ords)
 	}

@@ -263,7 +263,19 @@ var PropertyIndexOnDiskBuiltKey = MetaKey("property_index_on_disk_built")
 // PropertyIndexOnDiskBuiltKey pattern exactly. Subsequent opens with the
 // flag still on trust the keyspace (kept in sync by ongoing write-path
 // maintenance) and stream straight from it instead.
-var TemporalIndexOnDiskBuiltKey = MetaKey("temporal_index_on_disk_built")
+//
+// The name carries the start rule the rows were keyed with: v2 = the TxFrom start
+// of backlog 62 (an untimed row starts at its TxFrom). A keyspace built under the
+// older marker (TemporalIndexOnDiskBuiltV1Key) keys an untimed row by its mint
+// instant, an envelope start that can lie after the row's start (a TxFrom
+// backfill), which would prune a valid node; the open rebuilds it.
+var TemporalIndexOnDiskBuiltKey = MetaKey("temporal_index_on_disk_built_v2")
+
+// TemporalIndexOnDiskBuiltV1Key is the marker of a keyspace keyed by the mint
+// start (before v4.52.3). The rebuild deletes it, so an older release that
+// opens the store afterwards rebuilds its own keyspace instead of trusting rows
+// keyed by the TxFrom start.
+var TemporalIndexOnDiskBuiltV1Key = MetaKey("temporal_index_on_disk_built")
 
 // LastLSNKey is the Badger key for the durable change-log watermark: a single
 // big-endian uint64 holding the highest LSN committed to the change-log. It is

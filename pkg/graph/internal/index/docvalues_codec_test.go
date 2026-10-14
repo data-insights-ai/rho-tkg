@@ -20,13 +20,13 @@ func codecBuild(t *testing.T, vals map[types.NodeID]any, temporal bool) *LabelDo
 		ids = append(ids, id)
 	}
 	gp := func(id types.NodeID, _ string) (any, bool) { v, ok := vals[id]; return v, ok }
-	var gt func(types.NodeID) (int64, int64, bool)
+	var gt func(types.NodeID) (int64, int64, int64, bool)
 	if temporal {
-		gt = func(id types.NodeID) (int64, int64, bool) {
+		gt = func(id types.NodeID) (int64, int64, int64, bool) {
 			if int64(id)%3 == 0 {
-				return int64(id) * 10, 0, true // open-ended
+				return int64(id) * 10, 0, int64(id) * 10, true // open-ended
 			}
-			return int64(id) * 10, int64(id)*10 + 7, true
+			return int64(id) * 10, int64(id)*10 + 7, int64(id) * 10, true
 		}
 	}
 	return BuildLabelDocValues(1, ids, []string{"v"}, gp, gt)
