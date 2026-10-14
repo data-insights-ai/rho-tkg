@@ -1387,6 +1387,10 @@ func (w *world) runPointProbe(backend string, seed uint64, snap *snapshot, p pro
 		if gm := nodeSetVer(gotBL); !nodeMapsEqual(oracleByLabel[l], gm) {
 			w.harnessFail(backend, seed, p, "Nodes.ByLabel("+l+")", fmtNodeVer(oracleByLabel[l]), fmtNodeVer(gm))
 		}
+		// CountByLabelAt is len(ByLabel) (round 6 request 12 put it in the oracle).
+		if n, err := g.Nodes.CountByLabelAt(l, storepkg.QueryOpts{ValidAt: p.validAt, TxAt: p.txAt}); err != nil || n != len(oracleByLabel[l]) {
+			w.harnessFail(backend, seed, p, "Nodes.CountByLabelAt("+l+")", fmt.Sprint(len(oracleByLabel[l])), fmt.Sprint(n, err))
+		}
 	}
 
 	// NodeAtTx per node (strong per-entity check).
@@ -1451,6 +1455,9 @@ func (w *world) runPointProbe(backend string, seed uint64, snap *snapshot, p pro
 		}
 		if gm := relSetVer(gotBT); !relMapsEqual(oracleByType[ty], gm) {
 			w.harnessFail(backend, seed, p, "Rels.ByType("+ty+")", fmtRelVer(oracleByType[ty]), fmtRelVer(gm))
+		}
+		if n, err := g.Rels.CountByTypeAt(ty, storepkg.QueryOpts{ValidAt: p.validAt, TxAt: p.txAt}); err != nil || n != len(oracleByType[ty]) {
+			w.harnessFail(backend, seed, p, "Rels.CountByTypeAt("+ty+")", fmt.Sprint(len(oracleByType[ty])), fmt.Sprint(n, err))
 		}
 	}
 
@@ -1537,6 +1544,9 @@ func (w *world) runIntervalProbe(backend string, seed uint64, snap *snapshot, p 
 		if gm := nodeSetVer(gotBL); !nodeKeysEqual(oracleByLabel[l], gm) {
 			w.harnessFail(backend, seed, p, "Nodes.ByLabel("+l+",interval)", fmtNodeVer(oracleByLabel[l]), fmtNodeVer(gm))
 		}
+		if n, err := g.Nodes.CountByLabelAt(l, storepkg.QueryOpts{ValidStart: p.s, ValidEnd: p.e, TxAt: p.txAt}); err != nil || n != len(oracleByLabel[l]) {
+			w.harnessFail(backend, seed, p, "Nodes.CountByLabelAt("+l+",interval)", fmt.Sprint(len(oracleByLabel[l])), fmt.Sprint(n, err))
+		}
 	}
 
 	// --- Rels ---
@@ -1586,6 +1596,9 @@ func (w *world) runIntervalProbe(backend string, seed uint64, snap *snapshot, p 
 		}
 		if gm := relSetVer(gotBT); !relKeysEqual(oracleByType[ty], gm) {
 			w.harnessFail(backend, seed, p, "Rels.ByType("+ty+",interval)", fmtRelVer(oracleByType[ty]), fmtRelVer(gm))
+		}
+		if n, err := g.Rels.CountByTypeAt(ty, storepkg.QueryOpts{ValidStart: p.s, ValidEnd: p.e, TxAt: p.txAt}); err != nil || n != len(oracleByType[ty]) {
+			w.harnessFail(backend, seed, p, "Rels.CountByTypeAt("+ty+",interval)", fmt.Sprint(len(oracleByType[ty])), fmt.Sprint(n, err))
 		}
 	}
 }

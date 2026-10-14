@@ -224,6 +224,9 @@ func (bs *Store) HasOrdinals() bool { return bs != nil && bs.ords != nil && !bs.
 type columnOrdinalCache struct {
 	nodes map[uint16]snapshotOrdinals[types.NodeID]
 	rels  map[uint16]snapshotOrdinals[types.RelID]
+	// multi: a label intersection's snapshot, by its cache key (round 6
+	// request 11, ForEachDocValuesMultiOrdinal).
+	multi map[string]snapshotOrdinals[types.NodeID]
 }
 
 type snapshotOrdinals[T indexpkg.EntityID] struct {
@@ -257,6 +260,30 @@ func (bs *Store) labelColumnOrdinals(token uint16, col *indexpkg.LabelDocValues)
 		bs.colOrds.nodes = make(map[uint16]snapshotOrdinals[types.NodeID])
 	}
 	bs.colOrds.nodes[token] = snapshotOrdinals[types.NodeID]{col: col, ords: ords}
+	bs.docMu.Unlock()
+	return ords
+}
+
+// multiColumnOrdinals is labelColumnOrdinals for a label intersection's
+// snapshot, keyed by the intersection's cache key.
+func (bs *Store) multiColumnOrdinals(key string, col *indexpkg.LabelDocValues) []uint32 {
+	bs.docMu.Lock()
+	c, ok := bs.colOrds.multi[key]
+	bs.docMu.Unlock()
+	if ok && (c.col == col || indexpkg.SameIDs(c.col, col)) {
+		if c.col != col {
+			bs.docMu.Lock()
+			bs.colOrds.multi[key] = snapshotOrdinals[types.NodeID]{col: col, ords: c.ords}
+			bs.docMu.Unlock()
+		}
+		return c.ords
+	}
+	ords := bs.ords.nodeOrdinals(col.IDs(), make([]uint32, 0, col.Len()))
+	bs.docMu.Lock()
+	if bs.colOrds.multi == nil {
+		bs.colOrds.multi = make(map[string]snapshotOrdinals[types.NodeID])
+	}
+	bs.colOrds.multi[key] = snapshotOrdinals[types.NodeID]{col: col, ords: ords}
 	bs.docMu.Unlock()
 	return ords
 }

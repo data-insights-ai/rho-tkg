@@ -205,13 +205,13 @@ func TestRelColumns_UnsetValidFromReportsRaw(t *testing.T) {
 // treat an unset ValidFrom as the mint time, so the columnar path answers exactly
 // as the row path does.
 func TestRelColumns_UnsetValidFromFiltersFromMintTime(t *testing.T) {
-	if got := effectiveValidFrom(0, types.RelID(100)); got == 0 {
+	if got := effectiveValidFrom(0, types.RelID(100).SnowflakeID()); got == 0 {
 		t.Fatal("effectiveValidFrom(0) returned 0; an entity with no ValidFrom is " +
 			"valid from its mint time, which is what storeutil.MatchesTemporalFilter " +
 			"applies on the row path")
 	}
 	// An explicit bound is never overridden.
-	if got := effectiveValidFrom(5, types.RelID(100)); got != 5 {
+	if got := effectiveValidFrom(5, types.RelID(100).SnowflakeID()); got != 5 {
 		t.Fatalf("effectiveValidFrom(5) = %d, want 5: an explicit bound is the answer", got)
 	}
 }

@@ -1,0 +1,9 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test [github.com/data-insights-ai/rho-tkg/v4/pkg/graph.test]
+pkg/graph/docvalues_ordinals_test.go:84:30: g.Nodes().ForEachDocValuesMultiOrdinal undefined (type *nodes.API has no field or method ForEachDocValuesMultiOrdinal)
+pkg/graph/docvalues_ordinals_test.go:86:30: g.Nodes().ForEachDocValuesOrdinal undefined (type *nodes.API has no field or method ForEachDocValuesOrdinal)
+pkg/graph/docvalues_ordinals_test.go:171:30: g.Nodes().ForEachDocValuesOrdinal undefined (type *nodes.API has no field or method ForEachDocValuesOrdinal)
+pkg/graph/docvalues_ordinals_test.go:174:30: g.Nodes().ForEachDocValuesMultiOrdinal undefined (type *nodes.API has no field or method ForEachDocValuesMultiOrdinal)
+pkg/graph/docvalues_ordinals_test.go:198:29: g.Nodes().ForEachDocValuesOrdinal undefined (type *nodes.API has no field or method ForEachDocValuesOrdinal)
+pkg/graph/docvalues_ordinals_test.go:201:29: g.Nodes().ForEachDocValuesMultiOrdinal undefined (type *nodes.API has no field or method ForEachDocValuesMultiOrdinal)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph [build failed]
+FAIL

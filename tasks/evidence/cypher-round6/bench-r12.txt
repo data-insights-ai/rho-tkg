@@ -1,0 +1,40 @@
+== before round 1 load { 26.85 28.05 36.61 }
+BenchmarkLabelScanAt/memory/off/foreach 	       3	 278864181 ns/op	145830997 B/op	 1680870 allocs/op
+BenchmarkLabelScanAt/memory/off/count   	       3	 252208944 ns/op	130595272 B/op	 1441417 allocs/op
+BenchmarkLabelScanAt/memory/idx/foreach 	       3	 134406083 ns/op	76372728 B/op	  483229 allocs/op
+BenchmarkLabelScanAt/memory/idx/count   	       3	 135326667 ns/op	61137002 B/op	  243776 allocs/op
+BenchmarkLabelScanAt/badger/off/foreach 	       3	3117251125 ns/op	1655505768 B/op	24651153 allocs/op
+BenchmarkLabelScanAt/badger/off/count   	       3	2478760500 ns/op	1507931192 B/op	22495154 allocs/op
+BenchmarkLabelScanAt/badger/idx/foreach 	       3	1464396139 ns/op	846344941 B/op	11291292 allocs/op
+BenchmarkLabelScanAt/badger/idx/count   	       3	 970345820 ns/op	697334605 B/op	 9117918 allocs/op
+  peak 1566.047 "completed"
+== after round 1 load { 22.11 26.80 35.72 }
+BenchmarkLabelScanAt/memory/off/foreach 	       3	  74944083 ns/op	12011088 B/op	      12 allocs/op
+BenchmarkLabelScanAt/memory/off/count   	       3	  77325778 ns/op	12001584 B/op	       9 allocs/op
+BenchmarkLabelScanAt/memory/idx/foreach 	       3	  79321222 ns/op	14411338 B/op	      13 allocs/op
+BenchmarkLabelScanAt/memory/idx/count   	       3	  77994195 ns/op	14401840 B/op	      10 allocs/op
+BenchmarkLabelScanAt/badger/off/foreach 	       3	 883576667 ns/op	500521016 B/op	 6453936 allocs/op
+BenchmarkLabelScanAt/badger/off/count   	       3	 766796347 ns/op	500513706 B/op	 6453911 allocs/op
+BenchmarkLabelScanAt/badger/idx/foreach 	       3	1083468625 ns/op	503689752 B/op	 6456448 allocs/op
+BenchmarkLabelScanAt/badger/idx/count   	       3	 957901444 ns/op	503669208 B/op	 6456397 allocs/op
+  peak 1702.5 "completed"
+== before round 2 load { 22.15 26.44 35.33 }
+BenchmarkLabelScanAt/memory/off/foreach 	       3	 355344861 ns/op	145830997 B/op	 1680870 allocs/op
+BenchmarkLabelScanAt/memory/off/count   	       3	 290208167 ns/op	130595272 B/op	 1441417 allocs/op
+BenchmarkLabelScanAt/memory/idx/foreach 	       3	 191799264 ns/op	76372728 B/op	  483229 allocs/op
+BenchmarkLabelScanAt/memory/idx/count   	       3	 711083444 ns/op	61137002 B/op	  243776 allocs/op
+BenchmarkLabelScanAt/badger/off/foreach 	       3	3069853528 ns/op	1655269808 B/op	24650280 allocs/op
+BenchmarkLabelScanAt/badger/off/count   	       3	3073584653 ns/op	1507821621 B/op	22494574 allocs/op
+BenchmarkLabelScanAt/badger/idx/foreach 	       3	1276829278 ns/op	846231560 B/op	11290664 allocs/op
+BenchmarkLabelScanAt/badger/idx/count   	       3	 901336764 ns/op	697119194 B/op	 9116568 allocs/op
+  peak 1354.375 "completed"
+== after round 2 load { 24.02 26.59 34.89 }
+BenchmarkLabelScanAt/memory/off/foreach 	       3	  73346597 ns/op	12011088 B/op	      12 allocs/op
+BenchmarkLabelScanAt/memory/off/count   	       3	  74224486 ns/op	12001584 B/op	       9 allocs/op
+BenchmarkLabelScanAt/memory/idx/foreach 	       3	  75713528 ns/op	14411338 B/op	      13 allocs/op
+BenchmarkLabelScanAt/memory/idx/count   	       3	  75998180 ns/op	14401840 B/op	      10 allocs/op
+BenchmarkLabelScanAt/badger/off/foreach 	       3	 633288250 ns/op	500516728 B/op	 6453845 allocs/op
+BenchmarkLabelScanAt/badger/off/count   	       3	 626382611 ns/op	500506754 B/op	 6453843 allocs/op
+BenchmarkLabelScanAt/badger/idx/foreach 	       3	 705319222 ns/op	503687197 B/op	 6456468 allocs/op
+BenchmarkLabelScanAt/badger/idx/count   	       3	 779726972 ns/op	503686293 B/op	 6456500 allocs/op
+  peak 1469.438 "completed"

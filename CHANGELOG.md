@@ -28,6 +28,70 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (badger vs tiered with rotation, archive and a closed cold shard: capability answers and the core doors equal),
   bench `BenchmarkTieredRelEffectiveByTypeFrom`; evidence `tasks/evidence/tiered-capabilities/`.
 
+## [4.52.0] - 2026-10-14
+
+Minor release, the sigma-tkgd store requests, round 6 (new public API): badger column scans without a per-row
+allocation; `Nodes().ForEachDocValuesOrdinal` / `ForEachDocValuesMultiOrdinal` hand out each row's node ordinal
+(memory, badger, sharded; others report unsupported; ordinals kept lazily with the snapshot, 4 B per row on memory,
+no write cost); label and type reads at a valid-time point or interval answer entities without history from the row
+already read, stream in blocks of 1,024 and no longer sort. Fixed: `CountByLabelAt` / `CountByTypeAt` over a
+valid-time interval over-counted. A temporal `ForEachByLabel` answers each node as of a moment during the scan
+(within the door's documented relaxed isolation). Additive.
+
+### Fixed
+
+- **`CountByLabelAt` / `CountByTypeAt` over a valid-time interval over-counted** (found by round 6 request 12 putting
+  both doors into the bitemporal oracle harness): their current-row shortcut called a current row that answers the
+  point query at the first instant of the interval it covers a match, where `ByLabel` / `ByType` (the chain
+  resolver) found none, e.g. 5 against 4 (`tasks/evidence/cypher-round6/red-r12-count-interval-on-main.txt`, seeds
+  of `TestBitemporalOracleHarness`, `TestTxBackfillOracle_CrossBackend`, `TestReImportLifeOracle`,
+  `TestEffectiveScans_MatchPerEntityTimeline`, memory and badger). The shortcut is gone; an interval count now
+  equals `len(ByLabel)` / `len(ByType)`. The harness checks both counts at every point and interval probe.
+
+### Added
+
+- **`g.Nodes().ForEachDocValuesOrdinal` / `ForEachDocValuesMultiOrdinal`** (sigma-tkgd round 6 request 11): the
+  rows, order and `gen` of `ForEachDocValues` / `ForEachDocValuesMulti` with each node's dense ordinal beside its
+  ID, so a consumer marks and reads back rows by ordinal (an array) instead of by ID. The ordinals of a snapshot's
+  rows are read once, on the first ordinal read of that snapshot, and kept with it (badger shares the cache of
+  `ScanNodeColumns`; memory reads them under the lock that took the snapshot). Memory, badger, sharded; `ok=false`
+  where the plain door declines and where the store numbers no node (tiered, external stores, badger
+  `DisableOrdinals`). No write cost; memory 4 B per row of a snapshot read through these doors. 100,000 nodes, one
+  column: `ForEachDocValues` plus a `Lend` per row for the ordinal 6.5 ms (memory) / 255 ms (badger) -> 0.64 /
+  0.69 ms. Tests `TestForEachDocValuesOrdinal` (every backend, two-phase), `TestStoreForEachDocValuesOrdinal`,
+  `TestForEachDocValuesOrdinalDeclinesWithoutOrdinals`; bench `BenchmarkDocValuesOrdinals`.
+
+### Changed
+
+- **A label (type) read at a valid-time coordinate answers a node (relationship) without history from the row it
+  read, streams and sorts nothing** (sigma-tkgd round 6 request 12; EnvelopePruneLarge: 5.02 of 5.02 s in
+  `ByLabel` at the coordinate). `ByLabel` / `ByType`, `ForEachByLabel` / `ForEachByType` and `CountByLabelAt` /
+  `CountByTypeAt` under a temporal filter gather their candidates in ascending ID order (the current members merged
+  with the ever-members or the history fold, no hash set), pair each with its current row in one forward walk and
+  answer an entity the store states has no history rows (`store.HistoryPresenceCapability`) from that row under a
+  pure valid-time filter (point or interval; the chain resolver over the one-row chain, round 5 request 6's rule),
+  instead of reading it again and loading its chain; other entities, `TxAt` and `TxPin` keep the full resolution.
+  The answers are the resolver's and come in ascending ID order with or without `NoSort`, so nothing is sorted.
+  `ForEachByLabel` / `ForEachByType` with a temporal filter no longer materialize `ByLabel`: they resolve 1,024
+  candidates per hold of the graph read lock and call `fn` with no lock held (an early stop resolves no further;
+  each entity is answered as of a moment between the call and its chunk). No write cost. 300,000 :Event nodes,
+  ValidAt 5000, `NoSort` (`BenchmarkLabelScanAt`, 1 CPU, before/after interleaved): memory `ForEachByLabel`
+  279-355 -> 73-75 ms, 1,680,870 -> 12 allocations; badger 3.07-3.12 s -> 0.63-0.88 s (the rest is the label's
+  current-row read); with the label's temporal index memory 134-192 -> 76-79 ms, badger 1.28-1.46 s -> 0.71-1.08
+  s; `CountByLabelAt` likewise. Tests `TestLabelReadAtAgreesWithTheResolver` (every backend, oracle =
+  `findNodeVersionForOpts` per node, two-phase, point and interval, NoSort, pagination),
+  `TestLabelReadAtReadsNoHistoryNodeTwice`, `TestForEachByLabelAtStreams`, `TestSingleVersionNodeMatchesResolver`,
+  `TestTypeReadAtAgreesWithTheResolver`.
+- **Badger column scans allocate nothing per row** (sigma-tkgd round 6 request 10). `ScanRelColumns` and
+  `ScanNodeColumns` on the columnar path converted each row's ID to an interface to derive a missing valid-from,
+  one allocation per row whether or not a valid-time filter was set (1,049,588 allocations a run of sigma-tkgd's
+  StarCandidatesSkewedCold badger). The derivation now takes the snowflake ID, and without a filter a block's IDs,
+  ordinals, endpoints and validity are copied as runs from the snapshot. Same rows, same order. 262,144
+  relationships of one type, no property, snapshot built: 4.0-10.2 ms, 262,158 allocations, 2.3 MB -> 0.53-0.98 ms,
+  13 allocations, 0.21 MB (load 220-300). Tests `TestScanRelColumns_AllocationsDoNotGrowWithRows`,
+  `TestScanNodeColumns_AllocationsDoNotGrowWithRows`; bench `BenchmarkRelEndpointColumnScan`; evidence
+  `tasks/evidence/cypher-round6/`.
+
 ## [4.51.8] - 2026-10-14
 
 ### Added

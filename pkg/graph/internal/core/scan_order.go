@@ -8,7 +8,7 @@ import storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 // and on badger with its RAM label index. False on badger with
 // LabelIndexOnDisk, on tiered, sharded and external stores (whose scans
 // collect, and sort unless NoSort is set) and for a scan with a temporal filter
-// (which takes ByLabel's materializing path). A query planner charges a scan's
+// (which collects its candidates, in ID order without a sort). A query planner charges a scan's
 // sort only where this is false. The answer does not depend on whether the
 // label exists. Errors: a malformed label name, ErrGraphClosed.
 func (n *NodeOps) ScanKeepsOrder(label string) (bool, error) {

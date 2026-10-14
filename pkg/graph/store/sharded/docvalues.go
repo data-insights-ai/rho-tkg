@@ -171,6 +171,57 @@ func (s *Store) ForEachDocValuesMulti(labelTokens []uint16, propKeys []string,
 	})
 }
 
+// ForEachDocValuesOrdinal is ForEachDocValues with each row's node ordinal
+// (round 6 request 11): every slot numbers its nodes from the shared
+// allocator, so a slot's ordinals are the store's. Same order and decline
+// contract.
+func (s *Store) ForEachDocValuesOrdinal(labelToken uint16, propKeys []string,
+	fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	if s == nil {
+		return 0, false, ErrNilStore
+	}
+	stopped := false
+	return s.foldDocValues([]uint16{labelToken}, func(_ int, shard *badger.Store) (bool, error) {
+		if stopped {
+			return true, nil
+		}
+		_, shardOK, err := shard.ForEachDocValuesOrdinal(labelToken, propKeys, func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool {
+			if !fn(id, ordinal, vals, present) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		return shardOK, err
+	})
+}
+
+// ForEachDocValuesMultiOrdinal is ForEachDocValuesMulti with each row's node
+// ordinal, as ForEachDocValuesOrdinal.
+func (s *Store) ForEachDocValuesMultiOrdinal(labelTokens []uint16, propKeys []string,
+	fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	if s == nil {
+		return 0, false, ErrNilStore
+	}
+	if len(labelTokens) == 0 {
+		return 0, false, nil
+	}
+	stopped := false
+	return s.foldDocValuesServingEmpty(labelTokens, true, func(_ int, shard *badger.Store) (bool, error) {
+		if stopped {
+			return true, nil
+		}
+		_, shardOK, err := shard.ForEachDocValuesMultiOrdinal(labelTokens, propKeys, func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool {
+			if !fn(id, ordinal, vals, present) {
+				stopped = true
+				return false
+			}
+			return true
+		})
+		return shardOK, err
+	})
+}
+
 // DocValuesSnapshot returns a point-lookup and by-position reader over
 // labelToken's members on every slot: Row routes an ID to its own slot's
 // snapshot (no probing of the others), Len/RowAt read the slots' rows

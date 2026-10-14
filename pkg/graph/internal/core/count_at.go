@@ -1,8 +1,6 @@
 package core
 
 import (
-	"errors"
-
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -135,59 +133,39 @@ func (c *Core) countNodesByLabelLocked(label string, opts storepkg.QueryOpts) (i
 	if err != nil {
 		return 0, err
 	}
-	rows := make(map[types.NodeID]*types.Node, len(current))
-	for _, nd := range current {
-		rows[nd.ID()] = nd
-	}
-	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
-	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
+	// The candidates in ascending ID order with their current rows
+	// (label_scan_at.go): a node without history rows is decided on its row.
+	scan := c.newNodeLabelScanAt(tok, current, opts)
 	count := pagedCount{after: opts.After, limit: opts.Limit}
-	for _, id := range candIDs {
-		matched, err := c.nodeMatchesAt(id, rows[id], resolveOpts, pred)
+	for _, id := range skipAfter(candIDs, opts.After) {
+		n, err := scan.resolve(id)
 		if err != nil {
 			return 0, err
 		}
-		if matched {
+		if n != nil {
 			count.add(types.EntityID(id))
+			if opts.Limit > 0 && count.n >= opts.Limit {
+				break
+			}
 		}
 	}
 	return count.total(), nil
 }
 
-// nodeMatchesAt reports whether findNodeVersionForOpts(id, opts, pred) finds a
-// version. current is the node's current row when the caller read it carrying
-// the label (nil otherwise); where that row alone decides — under the same
-// conditions findNodeVersionForOpts' own current-row shortcuts use — the
-// answer is pred(current) with no further read. Every other case runs
-// findNodeVersionForOpts itself.
-func (c *Core) nodeMatchesAt(id types.NodeID, current *types.Node, opts storepkg.QueryOpts, pred func(*types.Node) bool) (bool, error) {
-	if current != nil {
-		decided, matched, err := c.nodeCurrentDecides(id, current, opts, pred)
-		if err != nil || decided {
-			return matched, err
-		}
-	}
-	_, err := c.findNodeVersionForOpts(id, opts, pred)
-	if err != nil {
-		if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
-// nodeCurrentDecides is nodeMatchesAt's current-row arm, in
-// findNodeVersionForOpts' precedence (TxPin, ValidAt, interval):
+// nodeCurrentDecides reports whether a label read's current row alone
+// decides what findNodeVersionForOpts(id, opts, pred) finds (decided) and
+// whether that is the current row (matched), in findNodeVersionForOpts'
+// precedence:
 //   - TxPin: nodeAsOfLocked's current-row answer (no store as-of door, the
 //     row recorded by the pin and not superseded), after its compaction and
 //     retention checks;
-//   - ValidAt: nodeAtLockedTx's (nodeCurrentAnswersAt), after its checks;
-//   - ValidStart/ValidEnd: a match exists when the current row satisfies pred
-//     and alone answers the point query at the first instant of the interval
-//     it covers, since an interval read finds any version valid somewhere in
-//     the interval. A current row that does not satisfy pred decides nothing
-//     (an older version may).
+//   - ValidAt: nodeAtLockedTx's (nodeCurrentAnswersAt), after its checks.
+//
+// An interval read decides nothing here: the arm that called a current row
+// answering the point query at the first instant of the interval it covers a
+// match over-counted CountByLabelAt / CountByTypeAt against the bitemporal
+// oracle (round 6 request 12). A node without history rows is decided from
+// its row by singleVersionNodes instead.
 func (c *Core) nodeCurrentDecides(id types.NodeID, current *types.Node, opts storepkg.QueryOpts, pred func(*types.Node) bool) (decided, matched bool, err error) {
 	switch {
 	case opts.TxPin != 0:
@@ -216,11 +194,6 @@ func (c *Core) nodeCurrentDecides(id types.NodeID, current *types.Node, opts sto
 		if c.nodeCurrentAnswersAt(current, opts.ValidAt, opts.TxAt) {
 			return true, pred(current), nil
 		}
-	case opts.ValidStart > 0 && opts.ValidEnd > 0:
-		at := max(opts.ValidStart, c.nodeSortValidFrom(current))
-		if at < opts.ValidEnd && pred(current) && c.nodeCurrentAnswersAt(current, at, opts.TxAt) {
-			return true, true, nil
-		}
 	}
 	return false, false, nil
 }
@@ -242,41 +215,21 @@ func (c *Core) countRelsByTypeLocked(typeName string, opts storepkg.QueryOpts) (
 	if err != nil {
 		return 0, err
 	}
-	rows := make(map[types.RelID]*types.Relationship, len(current))
-	for _, rel := range current {
-		rows[rel.ID()] = rel
-	}
-	pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
-	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
+	scan := c.newRelTypeScanAt(tok, current, opts)
 	count := pagedCount{after: opts.After, limit: opts.Limit}
-	for _, id := range candIDs {
-		matched, err := c.relMatchesAt(id, rows[id], resolveOpts, pred)
+	for _, id := range skipAfter(candIDs, opts.After) {
+		r, err := scan.resolve(id)
 		if err != nil {
 			return 0, err
 		}
-		if matched {
+		if r != nil {
 			count.add(types.EntityID(id))
+			if opts.Limit > 0 && count.n >= opts.Limit {
+				break
+			}
 		}
 	}
 	return count.total(), nil
-}
-
-// relMatchesAt is nodeMatchesAt for relationships.
-func (c *Core) relMatchesAt(id types.RelID, current *types.Relationship, opts storepkg.QueryOpts, pred func(*types.Relationship) bool) (bool, error) {
-	if current != nil {
-		decided, matched, err := c.relCurrentDecides(id, current, opts, pred)
-		if err != nil || decided {
-			return matched, err
-		}
-	}
-	_, err := c.findRelVersionForOpts(id, opts, pred)
-	if err != nil {
-		if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }
 
 // relCurrentDecides is nodeCurrentDecides for relationships (relAsOfLocked's
@@ -308,11 +261,6 @@ func (c *Core) relCurrentDecides(id types.RelID, current *types.Relationship, op
 		}
 		if c.relCurrentAnswersAt(current, opts.ValidAt, opts.TxAt) {
 			return true, pred(current), nil
-		}
-	case opts.ValidStart > 0 && opts.ValidEnd > 0:
-		at := max(opts.ValidStart, c.relSortValidFrom(current))
-		if at < opts.ValidEnd && pred(current) && c.relCurrentAnswersAt(current, at, opts.TxAt) {
-			return true, true, nil
 		}
 	}
 	return false, false, nil

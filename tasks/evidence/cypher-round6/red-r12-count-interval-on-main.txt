@@ -1,0 +1,53 @@
+        bitemporaloracle_test.go:1243: MISMATCH [Nodes.CountByLabelAt(A,interval)] seed=47645253160 backend=memory
+            probe: interval[1791976436844,1791976460946) txAt=1791976460946
+            oracle: 4
+            door:   5 <nil>
+            op log (16):
+--
+        bitemporaloracle_test.go:1243: MISMATCH [Nodes.CountByLabelAt(B,interval)] seed=13621 backend=memory
+            probe: interval[1791981014102,1791981020002) txAt=0
+            oracle: 1
+            door:   2 <nil>
+            op log (48):
+--
+        bitemporaloracle_test.go:1243: MISMATCH [Nodes.CountByLabelAt(B,interval)] seed=13621 backend=badger
+            probe: interval[1791976461146,1791981027998) txAt=1791982048000
+            oracle: 1
+            door:   2 <nil>
+            op log (48):
+--
+        bitemporaloracle_test.go:1243: MISMATCH [Nodes.CountByLabelAt(A,interval)] seed=8064282 backend=memory
+            probe: interval[1791981020445,1791981048727) txAt=1791982054000
+            oracle: 3
+            door:   4 <nil>
+            op log (53):
+--
+        bitemporaloracle_test.go:1243: MISMATCH [Nodes.CountByLabelAt(B,interval)] seed=8064287 backend=memory
+            probe: interval[1791981011891,1791981018998) txAt=0
+            oracle: 2
+            door:   3 <nil>
+            op log (31):
+--
+        bitemporaloracle_test.go:1243: MISMATCH [Nodes.CountByLabelAt(A,interval)] seed=8064299 backend=memory
+            probe: interval[1791981004070,1791981035998) txAt=0
+            oracle: 5
+            door:   6 <nil>
+            op log (42):
+--
+        bitemporaloracle_test.go:1243: MISMATCH [Nodes.CountByLabelAt(C,interval)] seed=3674622 backend=memory
+            probe: interval[1791976461835,1791976461839) txAt=0
+            oracle: 2
+            door:   3 <nil>
+            op log (32):
+--
+        bitemporaloracle_test.go:1243: MISMATCH [Nodes.CountByLabelAt(C,interval)] seed=3674622 backend=badger
+            probe: interval[1791976473865,1791976474239) txAt=0
+            oracle: 2
+            door:   3 <nil>
+            op log (32):
+--
+        bitemporaloracle_test.go:1243: MISMATCH [Rels.CountByTypeAt(S,interval)] seed=3674624 backend=memory
+            probe: interval[1791976476564,1791976476642) txAt=0
+            oracle: 2
+            door:   3 <nil>
+            op log (30):

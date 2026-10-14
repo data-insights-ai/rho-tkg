@@ -301,6 +301,21 @@ func (l *DocValues[T]) HasAll(propKeys []string) bool {
 // Returns false if any requested key is not a usable column (caller must check
 // HasAll first; this is a defensive guard).
 func (l *DocValues[T]) ForEachRow(propKeys []string, fn func(id T, vals []any, present []bool) bool) bool {
+	return l.forEachRow(propKeys, func(_ int, id T, vals []any, present []bool) bool { return fn(id, vals, present) })
+}
+
+// ForEachRowOrdinal is ForEachRow with each row's entity ordinal beside its ID:
+// ords is aligned with IDs() (ords[row] is the ordinal of IDs()[row]; the
+// store reads them for this snapshot). Returns false, calling fn for no row, if
+// len(ords) differs from Len() or a requested key is not a usable column.
+func (l *DocValues[T]) ForEachRowOrdinal(propKeys []string, ords []uint32, fn func(id T, ordinal uint32, vals []any, present []bool) bool) bool {
+	if len(ords) != len(l.ids) {
+		return false
+	}
+	return l.forEachRow(propKeys, func(row int, id T, vals []any, present []bool) bool { return fn(id, ords[row], vals, present) })
+}
+
+func (l *DocValues[T]) forEachRow(propKeys []string, fn func(row int, id T, vals []any, present []bool) bool) bool {
 	cols := make([]*docColumn, len(propKeys))
 	for i, k := range propKeys {
 		c, ok := l.cols[k]
@@ -320,7 +335,7 @@ func (l *DocValues[T]) ForEachRow(propKeys []string, fn func(id T, vals []any, p
 			present[i] = true
 			vals[i] = c.valueAt(ord)
 		}
-		if !fn(id, vals, present) {
+		if !fn(ord, id, vals, present) {
 			return false
 		}
 	}

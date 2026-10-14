@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
@@ -174,11 +175,14 @@ type nodeLabelScanner interface {
 // blocked nor observed atomically (deleted rows are skipped, new rows are
 // not seen). Rows are shared frozen pointers; fn must not mutate them.
 //
-// Temporal-filter queries and non-native stores route through the
-// materializing ByLabel path (history-aware version walking needs the full
-// machinery), so streaming currently applies to the plain current-state
-// scan — exactly the shape whose materialization cost scales with label
-// cardinality.
+// A temporal-filter query streams too (round 6 request 12): ByLabel's answers
+// in ascending ID order (with or without NoSort; nothing is sorted), the
+// candidates resolved labelScanAtChunk at a time under the graph read lock
+// and handed to fn with no lock held, so a caller that stops early resolves
+// no further; each entity is answered as of a moment between the call and
+// its chunk's resolution. An entity without history rows is answered from
+// the row the label scan read (label_scan_at.go). A non-native store routes
+// a current-state scan through the materializing ByLabel path.
 func (n *NodeOps) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -194,8 +198,14 @@ func (n *NodeOps) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(
 		return err
 	}
 
+	if hasTemporalFilter(opts) {
+		// Streamed in ascending ID order, labelScanAtChunk candidates per
+		// hold of the read lock, fn called with no lock held (round 6
+		// request 12, label_scan_at.go).
+		return c.forEachNodeByLabelAt(label, opts, fn)
+	}
 	scanner, native := c.store.(nodeLabelScanner)
-	if !native || !c.storeRowsTrust || hasTemporalFilter(opts) {
+	if !native || !c.storeRowsTrust {
 		nodes, err := n.ByLabel(label, opts)
 		if err != nil {
 			return err
@@ -511,16 +521,13 @@ func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, op
 	// over-included candidate is rejected there. Wrapped stores decline the
 	// sidecar and take the full fold; a depth-scoped read on tiered keeps the
 	// depth fold (the sidecar answers for every shard).
-	var candIDs []types.NodeID
-	gather := func(id types.NodeID) error {
-		candIDs = append(candIDs, id)
-		return nil
-	}
-	if c.labelTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
-		if err := c.forEachLabelTxCandidate(tok, currentIDs, opts, gather); err != nil {
-			return nil, err
-		}
-	} else if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, gather); err != nil {
+	//
+	// The candidates come in ascending ID order (round 6 request 12): the
+	// current members (the stores hand them out sorted) merged with the IDs
+	// the gather adds, so a read pairs each candidate with its current row in
+	// one forward walk and never sorts its answers (label_scan_at.go).
+	candIDs, err := c.nodeLabelCandidatesSorted(tok, currentIDs, opts)
+	if err != nil {
 		return nil, err
 	}
 
@@ -534,9 +541,45 @@ func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, op
 	if c.temporalCandidates != nil {
 		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, opts); ok {
 			candIDs = kept
+			if !slices.IsSorted(candIDs) {
+				slices.Sort(candIDs)
+			}
 		}
 	}
 	return candIDs, nil
+}
+
+// nodeLabelCandidatesSorted is the candidate gather of nodeLabelCandidatesFrom
+// in ascending ID order: the K1 ever-members (pruned by the transaction-time
+// pin: an ever-member whose label arrived after the pin cannot match) or the history fold by depth,
+// united with currentIDs.
+func (c *Core) nodeLabelCandidatesSorted(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts) ([]types.NodeID, error) {
+	if !slices.IsSorted(currentIDs) {
+		currentIDs = slices.Sorted(slices.Values(currentIDs))
+	}
+	var extra []types.NodeID
+	add := func(id types.NodeID) {
+		if !inSorted(currentIDs, id) {
+			extra = append(extra, id)
+		}
+	}
+	if c.labelTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
+		pinTx := effectiveTxPin(opts)
+		if err := c.labelTxMembers.ForEachLabelTxMember(tok, func(id types.NodeID, firstTx types.Instant) bool {
+			if pinTx == 0 || firstTx == 0 || firstTx <= pinTx {
+				add(id)
+			}
+			return true
+		}); err != nil {
+			return nil, err
+		}
+	} else if err := c.forEachNodeHistoryIDByDepth(opts.Depth, func(id types.NodeID) bool {
+		add(id)
+		return true
+	}); err != nil {
+		return nil, err
+	}
+	return sortedCandidates(currentIDs, extra), nil
 }
 
 // nodesByLabelLocked is the lock-free body of NodeOps.ByLabel. Callers must
@@ -556,27 +599,7 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 		}
 		return nodes, err
 	}
-	_, candIDs, err := c.nodeLabelCandidatesAt(tok, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	var result []*types.Node
-	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
-	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
-	for _, id := range candIDs {
-		n, err := c.findNodeVersionForOpts(id, resolveOpts, pred)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-				continue
-			}
-			return nil, err
-		}
-		result = append(result, n)
-	}
-	storeutil.SortNodesByID(result)
-	result = storeutil.PaginateNodes(result, opts.After, opts.Limit)
-	return result, nil
+	return c.nodesByLabelTemporalLocked(tok, opts)
 }
 
 // ByType returns relationships with the given type (resolved from string),
@@ -650,16 +673,9 @@ func (c *Core) relTypeCandidatesFrom(tok uint16, currentIDs []types.RelID, opts 
 
 	// scope the candidate set to the type's ever-members when the store owns
 	// the transaction-time rel-type-membership sidecar (see nodesByLabelLocked).
-	var candIDs []types.RelID
-	gather := func(id types.RelID) error {
-		candIDs = append(candIDs, id)
-		return nil
-	}
-	if c.relTypeTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
-		if err := c.forEachRelTypeTxCandidate(tok, currentIDs, opts, gather); err != nil {
-			return nil, err
-		}
-	} else if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, gather); err != nil {
+	// Ascending ID order, as nodeLabelCandidatesFrom.
+	candIDs, err := c.relTypeCandidatesSorted(tok, currentIDs, opts)
+	if err != nil {
 		return nil, err
 	}
 
@@ -671,9 +687,42 @@ func (c *Core) relTypeCandidatesFrom(tok uint16, currentIDs []types.RelID, opts 
 	if c.relTypeTemporalCandidates != nil {
 		if kept, ok := c.relTypeTemporalCandidates.PruneRelTypeTemporalCandidates(tok, candIDs, opts); ok {
 			candIDs = kept
+			if !slices.IsSorted(candIDs) {
+				slices.Sort(candIDs)
+			}
 		}
 	}
 	return candIDs, nil
+}
+
+// relTypeCandidatesSorted is nodeLabelCandidatesSorted for a relationship type.
+func (c *Core) relTypeCandidatesSorted(tok uint16, currentIDs []types.RelID, opts storepkg.QueryOpts) ([]types.RelID, error) {
+	if !slices.IsSorted(currentIDs) {
+		currentIDs = slices.Sorted(slices.Values(currentIDs))
+	}
+	var extra []types.RelID
+	add := func(id types.RelID) {
+		if !inSorted(currentIDs, id) {
+			extra = append(extra, id)
+		}
+	}
+	if c.relTypeTxMembers != nil && c.membershipSidecarUsable(opts.Depth) {
+		pinTx := effectiveTxPin(opts)
+		if err := c.relTypeTxMembers.ForEachRelTypeTxMember(tok, func(id types.RelID, firstTx types.Instant) bool {
+			if pinTx == 0 || firstTx == 0 || firstTx <= pinTx {
+				add(id)
+			}
+			return true
+		}); err != nil {
+			return nil, err
+		}
+	} else if err := c.forEachRelHistoryIDByDepth(opts.Depth, func(id types.RelID) bool {
+		add(id)
+		return true
+	}); err != nil {
+		return nil, err
+	}
+	return sortedCandidates(currentIDs, extra), nil
 }
 
 // relsByTypeLocked is the lock-free body of RelOps.ByType.
@@ -691,27 +740,7 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 		}
 		return rels, err
 	}
-	_, candIDs, err := c.relTypeCandidatesAt(tok, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	var result []*types.Relationship
-	pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
-	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
-	for _, id := range candIDs {
-		r, err := c.findRelVersionForOpts(id, resolveOpts, pred)
-		if err != nil {
-			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
-				continue
-			}
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	storeutil.SortRelsByID(result)
-	result = storeutil.PaginateRels(result, opts.After, opts.Limit)
-	return result, nil
+	return c.relsByTypeTemporalLocked(tok, opts)
 }
 
 // relTypeScanner is the OPTIONAL store capability behind
@@ -733,11 +762,14 @@ type relTypeScanner interface {
 // blocked nor observed atomically (deleted rows are skipped, new rows are
 // not seen). Rows are shared frozen pointers; fn must not mutate them.
 //
-// Temporal-filter queries and non-native stores route through the
-// materializing ByType path (history-aware version walking needs the full
-// machinery), so streaming currently applies to the plain current-state
-// scan — exactly the shape whose materialization cost scales with type
-// cardinality.
+// A temporal-filter query streams too (round 6 request 12): ByType's answers
+// in ascending ID order (with or without NoSort; nothing is sorted), the
+// candidates resolved labelScanAtChunk at a time under the graph read lock
+// and handed to fn with no lock held, so a caller that stops early resolves
+// no further; each entity is answered as of a moment between the call and
+// its chunk's resolution. An entity without history rows is answered from
+// the row the type scan read (label_scan_at.go). A non-native store routes
+// a current-state scan through the materializing ByType path.
 //
 // DECLARED view under a temporal filter: each relationship's own asserted
 // validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
@@ -757,8 +789,11 @@ func (r *RelOps) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func
 		return err
 	}
 
+	if hasTemporalFilter(opts) {
+		return c.forEachRelByTypeAt(typeName, opts, fn)
+	}
 	scanner, native := c.store.(relTypeScanner)
-	if !native || !c.storeRowsTrust || hasTemporalFilter(opts) {
+	if !native || !c.storeRowsTrust {
 		rels, err := r.ByType(typeName, opts)
 		if err != nil {
 			return err

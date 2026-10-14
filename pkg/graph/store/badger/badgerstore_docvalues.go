@@ -46,34 +46,64 @@ func (bs *Store) RelMutationEpoch() uint64 {
 // column.
 func (bs *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	col, gen, ok, err := bs.labelDocColumns(labelToken, propKeys)
+	if err != nil || !ok {
+		return gen, false, err
+	}
+	col.ForEachRow(propKeys, fn)
+	return gen, true, nil
+}
+
+// ForEachDocValuesOrdinal is ForEachDocValues with each row's node ordinal
+// beside its ID (sigma-tkgd round 6 request 11), the ordinal a point read of
+// the node carries. The ordinals of a snapshot's rows are read once per
+// snapshot and kept with it (labelColumnOrdinals, shared with
+// ScanNodeColumns). ok=false, fn not called, when the store numbers no node
+// (DisableOrdinals) or ForEachDocValues would decline.
+func (bs *Store) ForEachDocValuesOrdinal(labelToken uint16, propKeys []string,
+	fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	if bs != nil && !bs.HasOrdinals() {
+		return 0, false, bs.checkOpen()
+	}
+	col, gen, ok, err := bs.labelDocColumns(labelToken, propKeys)
+	if err != nil || !ok {
+		return gen, false, err
+	}
+	col.ForEachRowOrdinal(propKeys, bs.labelColumnOrdinals(labelToken, col), fn)
+	return gen, true, nil
+}
+
+// labelDocColumns is the snapshot ForEachDocValues reads: fresh for the
+// label's epoch and holding every requested key. ok=false (gen as known) when
+// the door declines.
+func (bs *Store) labelDocColumns(labelToken uint16, propKeys []string) (col *indexpkg.LabelDocValues, gen uint64, ok bool, err error) {
 	if bs == nil {
-		return 0, false, ErrStoreClosed
+		return nil, 0, false, ErrStoreClosed
 	}
 	if err := bs.checkOpen(); err != nil {
-		return 0, false, err
+		return nil, 0, false, err
 	}
 	if bs.labelOnDisk {
-		return 0, false, nil // membership not materialized in RAM → fall back
+		return nil, 0, false, nil // membership not materialized in RAM → fall back
 	}
 
 	cur := bs.labelEpoch(labelToken) // per-label epoch: survives unrelated-label writes (BACKLOG 4b)
 	bs.docMu.Lock()
-	col := bs.docColumns[labelToken]
+	col = bs.docColumns[labelToken]
 	bs.docMu.Unlock()
 
 	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
 		built, declined := bs.buildLabelColumns(labelToken, propKeys)
 		if declined {
-			return 0, false, nil // empty/over-cap label → fall back
+			return nil, 0, false, nil // empty/over-cap label → fall back
 		}
 		col = built
 	}
 
 	if !col.HasAll(propKeys) {
-		return col.Epoch(), false, nil
+		return nil, col.Epoch(), false, nil
 	}
-	col.ForEachRow(propKeys, fn)
-	return col.Epoch(), true, nil
+	return col, col.Epoch(), true, nil
 }
 
 // DocValuesSnapshot returns a RANDOM-ACCESS point-lookup handle over a single
@@ -122,35 +152,61 @@ func (bs *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap t
 // empty intersection is served (ok=true, no rows; round 5 request 3).
 func (bs *Store) ForEachDocValuesMulti(toks []uint16, propKeys []string,
 	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	col, _, gen, ok, err := bs.multiDocColumns(toks, propKeys)
+	if err != nil || !ok {
+		return gen, false, err
+	}
+	col.ForEachRow(propKeys, fn)
+	return gen, true, nil
+}
+
+// ForEachDocValuesMultiOrdinal is ForEachDocValuesMulti with each row's node
+// ordinal (round 6 request 11), as ForEachDocValuesOrdinal. An intersection
+// snapshot's ordinals are kept with it like a label's.
+func (bs *Store) ForEachDocValuesMultiOrdinal(toks []uint16, propKeys []string,
+	fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	if bs != nil && !bs.HasOrdinals() {
+		return 0, false, bs.checkOpen()
+	}
+	col, key, gen, ok, err := bs.multiDocColumns(toks, propKeys)
+	if err != nil || !ok {
+		return gen, false, err
+	}
+	col.ForEachRowOrdinal(propKeys, bs.multiColumnOrdinals(key, col), fn)
+	return gen, true, nil
+}
+
+// multiDocColumns is labelDocColumns for a label intersection; key is the
+// intersection's cache key.
+func (bs *Store) multiDocColumns(toks []uint16, propKeys []string) (col *indexpkg.LabelDocValues, key string, gen uint64, ok bool, err error) {
 	if bs == nil {
-		return 0, false, ErrStoreClosed
+		return nil, "", 0, false, ErrStoreClosed
 	}
 	if err := bs.checkOpen(); err != nil {
-		return 0, false, err
+		return nil, "", 0, false, err
 	}
 	if bs.labelOnDisk {
-		return 0, false, nil // membership not materialized in RAM → fall back
+		return nil, "", 0, false, nil // membership not materialized in RAM → fall back
 	}
 
 	cur := bs.multiLabelEpoch(toks) // monotonic sum of member per-label epochs (BACKLOG 4b)
-	key := indexpkg.MultiLabelKey(toks)
+	key = indexpkg.MultiLabelKey(toks)
 	bs.docMu.Lock()
-	col := bs.docColumnsMulti[key]
+	col = bs.docColumnsMulti[key]
 	bs.docMu.Unlock()
 
 	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
 		built, declined := bs.buildMultiColumns(toks, key, propKeys)
 		if declined {
-			return 0, false, nil // empty intersection / over-cap → fall back
+			return nil, "", 0, false, nil // over-cap → fall back
 		}
 		col = built
 	}
 
 	if !col.HasAll(propKeys) {
-		return col.Epoch(), false, nil
+		return nil, "", col.Epoch(), false, nil
 	}
-	col.ForEachRow(propKeys, fn)
-	return col.Epoch(), true, nil
+	return col, key, col.Epoch(), true, nil
 }
 
 // buildMultiColumns builds a fresh immutable snapshot over a label intersection,

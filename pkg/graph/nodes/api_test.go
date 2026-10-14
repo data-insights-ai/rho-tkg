@@ -777,3 +777,35 @@ func TestAPIRetractDoorsForwardVerbatim(t *testing.T) {
 		}
 	}
 }
+
+func (s *nodeOpsSpy) ForEachDocValuesOrdinal(label string, _ []string, _ func(types.NodeID, uint32, []any, []bool) bool) (uint64, bool, error) {
+	s.record("ForEachDocValuesOrdinal")
+	s.lastLabel = label
+	return 3, true, s.err
+}
+
+func (s *nodeOpsSpy) ForEachDocValuesMultiOrdinal(labels []string, _ []string, _ func(types.NodeID, uint32, []any, []bool) bool) (uint64, bool, error) {
+	s.record("ForEachDocValuesMultiOrdinal")
+	if len(labels) > 0 {
+		s.lastLabel = labels[0]
+	}
+	return 4, true, s.err
+}
+
+func TestForEachDocValuesOrdinalForwards(t *testing.T) {
+	var nilAPI *API
+	fn := func(types.NodeID, uint32, []any, []bool) bool { return true }
+	if _, _, err := nilAPI.ForEachDocValuesOrdinal("A", nil, fn); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ForEachDocValuesOrdinal: %v", err)
+	}
+	if _, _, err := nilAPI.ForEachDocValuesMultiOrdinal([]string{"A"}, nil, fn); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ForEachDocValuesMultiOrdinal: %v", err)
+	}
+	spy := &nodeOpsSpy{}
+	if gen, ok, err := New(spy).ForEachDocValuesOrdinal("A", nil, fn); gen != 3 || !ok || err != nil || spy.lastLabel != "A" {
+		t.Fatalf("ForEachDocValuesOrdinal = %d %v %v (label %q)", gen, ok, err, spy.lastLabel)
+	}
+	if gen, ok, err := New(spy).ForEachDocValuesMultiOrdinal([]string{"B", "C"}, nil, fn); gen != 4 || !ok || err != nil || spy.lastLabel != "B" {
+		t.Fatalf("ForEachDocValuesMultiOrdinal = %d %v %v (label %q)", gen, ok, err, spy.lastLabel)
+	}
+}

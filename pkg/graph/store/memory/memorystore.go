@@ -209,6 +209,11 @@ type Store struct {
 	// (indexpkg.MultiLabelKey). Same epoch-validated immutable-snapshot model as
 	// docColumns; separate map so the single-label path stays keyed by uint16.
 	docColumnsMulti map[string]*indexpkg.LabelDocValues
+	// docOrdinals keeps the node ordinals of a docColumns / docColumnsMulti
+	// snapshot's rows, read on the first ForEachDocValues(Multi)Ordinal of
+	// that snapshot (round 6 request 11) and valid while it is: a node keeps
+	// its ordinal while it has a current row. Guarded by mu.
+	docOrdinals docOrdinalCache
 
 	// Change-log (op-log) — opt-in via WithChangeLog. logEnabled gates all record
 	// production. logSeq is the monotonic LSN, changeLog the ordered in-RAM record
@@ -496,6 +501,7 @@ func (ms *Store) Clear() error {
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 	ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
 	ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
+	ms.docOrdinals = docOrdinalCache{}
 	ms.labelTxMembers = nil            // drop the lazy membership sidecar; rebuilt on next pinned scan
 	ms.relTypeTxMembers = nil          // rel-type mirror
 	ms.dropPropertyTxMembersLocked()   // property sidecars; rebuilt on next temporal lookup

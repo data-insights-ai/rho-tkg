@@ -1078,59 +1078,6 @@ func effectiveTxPin(opts storepkg.QueryOpts) types.Instant {
 	return opts.TxAt
 }
 
-// forEachLabelTxCandidate streams the K1 label-membership candidate set for tok
-// into fn: the label's ever-members (a sound superset of the nodes whose
-// belief-state version at the pin carries the label), pruned by the
-// firstTxFrom lower bound against the effective transaction-time pin. It unions
-// currentIDs as a defensive safety net so a maintenance gap in the sidecar can
-// never drop a currently-labelled node. fn is called once per unique candidate.
-func (c *Core) forEachLabelTxCandidate(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
-	pinTx := effectiveTxPin(opts)
-	seen := make(map[types.NodeID]struct{}, len(currentIDs))
-	if err := c.labelTxMembers.ForEachLabelTxMember(tok, func(id types.NodeID, firstTx types.Instant) bool {
-		if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
-			return true // label acquired strictly after the pin — cannot match
-		}
-		seen[id] = struct{}{}
-		return true
-	}); err != nil {
-		return err
-	}
-	for _, id := range currentIDs {
-		seen[id] = struct{}{}
-	}
-	for id := range seen {
-		if err := fn(id); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// forEachRelTypeTxCandidate is the rel-type mirror of forEachLabelTxCandidate.
-func (c *Core) forEachRelTypeTxCandidate(tok uint16, currentIDs []types.RelID, opts storepkg.QueryOpts, fn func(types.RelID) error) error {
-	pinTx := effectiveTxPin(opts)
-	seen := make(map[types.RelID]struct{}, len(currentIDs))
-	if err := c.relTypeTxMembers.ForEachRelTypeTxMember(tok, func(id types.RelID, firstTx types.Instant) bool {
-		if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
-			return true
-		}
-		seen[id] = struct{}{}
-		return true
-	}); err != nil {
-		return err
-	}
-	for _, id := range currentIDs {
-		seen[id] = struct{}{}
-	}
-	for id := range seen {
-		if err := fn(id); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // membershipSidecarUsable reports whether a temporal read with this depth may
 // take its candidates from a membership sidecar (label/type or property
 // value): the sidecars answer for the whole store, so a depth-scoped read on
@@ -1563,7 +1510,7 @@ func (c *Core) getRelVersionDuring(id types.RelID, start, end types.Instant) (*t
 // by property value under label tok when no property membership sidecar
 // constrains it: currentIDs (the current matches) united with the node
 // history IDs that ever carried tok (the K1 label sidecar's point form),
-// pruned by the effective transaction-time pin like forEachLabelTxCandidate.
+// pruned by the effective transaction-time pin like nodeLabelCandidatesSorted.
 // A node without history has only its current row, so it matches only if it
 // is a current match; a node with history can match only through a version
 // carrying tok, which makes it an ever-member. Before round 5 (request 8)
