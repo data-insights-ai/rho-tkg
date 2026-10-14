@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Badger batch relationship create reads its endpoints through one snapshot** (sigma-tkgd round 7 request 1:
+  `GraphTx.AddRelationships` was slower than one `AddRelationship` per binding, 4,862 against 4,011 ms for five
+  statements of 50,000 bindings). Cause: `PutRelationshipsBatch` checks that every endpoint row is live and
+  decodes (the contract a corrupt endpoint row fails), and a batch's endpoints had mostly left the node cache
+  (a bulk statement writes all starts, then all ends, then the relationships), so it opened one badger read
+  transaction per endpoint; one by one, each relationship follows its two nodes and finds them cached. Now the
+  check (`ensureNodeRowsLive`, also behind `OutgoingRelationshipsForNodes` / `IncomingRelationshipsForNodes`)
+  answers cache hits under one lock and reads the misses in key order through one forward iterator of a
+  re-pinning scan snapshot, without filling the cache; the error is still the one of the first failing endpoint
+  in the batch's order. The shared scan snapshot reaches a target at most four keys ahead with `Next` instead of
+  `Seek` (consecutive IDs), which every bulk row read through it (`forEachNodeBulk`, `forEachRelBulk`) gets too.
+  Same answers; no write-path cost. Measured (`BenchmarkTxCreateRelationshipsSizes`, sigma-tkgd's statement shape,
+  one CPU, medians of four interleaved rounds, time inside the relationship calls per relationship): badger 5 x
+  50,000 13.9 -> 9.6 us (one by one 15.0 us), 1 x 50,000 11.4 -> 8.4 us, 10,000 3.6 -> 3.4 us, 1,000 2.2 -> 2.1 us;
+  the whole statement in bulk now beats binding by binding (5 x 50,000: 18.9 against 20.6 us per binding, before
+  23.6). Memory unchanged (batch 1.5-2.3 us against one by one 1.7-2.2 us, within the load's spread). Evidence
+  `tasks/evidence/cypher-round7/r1-*`.
+
+### Fixed
+
+- **Badger batch creates keep the belief watermark** (found with round 7 request 1): `PutNodesBatch` and
+  `PutRelationshipsBatch` did not bump the belief-watermark sidecar as `PutNode` / `PutRelationship` and the
+  memory store's batch doors do, so once the sidecar was built, a batch-created entity had no watermark and its
+  point reads lost the current-row fast path (answers were right, by the slow path). Test
+  `TestBatchPutsBumpBeliefWatermarks`.
+
 ## [4.52.2] - 2026-10-14
 
 ### Added

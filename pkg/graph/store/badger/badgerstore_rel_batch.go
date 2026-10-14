@@ -120,6 +120,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		bs.relCache.Put(rd.id, rd.frozen)
 		bs.relIDs[rd.rid] = struct{}{}
 		bs.bumpRelRevLocked(rd.rid)
+		bs.bumpRelBeliefWatermarkLocked(rd.rid, relTxFrom(r)) // BACKLOG 10c, as PutRelationship
 
 		bs.addTypeIdxLocked(rd.relType, rd.rid)
 
