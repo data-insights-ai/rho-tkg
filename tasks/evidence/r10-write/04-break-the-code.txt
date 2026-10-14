@@ -39,3 +39,6 @@ CAUGHT: the tx snapshot keeps every row up to the top (keepTo for trim) by TestE
 CAUGHT: a rollback leaves the demoted current row in history by TestEffectiveHeadWrite_TwinDifferential
 CAUGHT: a rollback without the trim keeps the demoted current row by TestEffectiveHeadWrite_TwinDifferential
 CAUGHT: the snapshot probes only current+1 (dense versions) by TestEffectiveHeadWrite_TwinDifferential, TestTxRollbackKeepsRowsAboveCompactionGap
+# backlog 70 (allocator exact across a compaction gap), after the rebase onto v4.55.0:
+CAUGHT: the allocator probes only current+1 (backlog 70, before the fix) by TestEffectiveHeadWrite_TwinDifferential, TestTxRollbackAppendsAboveCompactionGap, TestVersionAllocatorAboveCompactionGap
+CAUGHT: the rel allocator probes only current+1 by TestTxRollbackAppendsAboveCompactionGap, TestVersionAllocatorAboveCompactionGap

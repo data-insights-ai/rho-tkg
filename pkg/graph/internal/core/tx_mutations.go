@@ -678,53 +678,16 @@ func (tx *GraphTx) deletedRelHistorySnapshot(id types.RelID, rel *types.Relation
 // row at or above version, so it is a sound snapshot only when there is none:
 // a row at version would be lost, and so would a cascade row above the
 // current version (a bounded SetVersionInterval that left the current row in
-// place, backlog 19) — the snapshot then takes the full-copy path. The answer
-// is exact, not the dense-version probe of version+1 (nodeHasHistoryAbove):
-// history compaction trims the oldest rows, which after bounded corrections
-// lie directly above the current row, and the rollback trim then removed the
-// rows above that gap (backlog 68b twin). One page read of at most one row
-// (memory, badger: the rollback-trim stores).
+// place, backlog 19) — the snapshot then takes the full-copy path. Exact
+// across a compaction gap above the current row (nodeHasHistoryFrom, backlog
+// 70): one page read of at most one row on the rollback-trim stores.
 func (tx *GraphTx) nodeHistoryAtOrAbove(id types.NodeID, version uint32) (bool, error) {
-	if pager := historyVersionPageCapability(tx.g.store); pager != nil {
-		rows, err := tx.g.nodeHistoryVersionsFrom(pager, id, version, 1)
-		return len(rows) > 0, err
-	}
-	history, err := tx.g.getNodeHistory(id)
-	if err != nil {
-		return false, err
-	}
-	for _, h := range history {
-		if h.Version() >= version {
-			return true, nil
-		}
-	}
-	return false, nil
+	return tx.g.nodeHasHistoryFrom(id, version)
 }
 
 // relHistoryAtOrAbove mirrors nodeHistoryAtOrAbove for relationships.
 func (tx *GraphTx) relHistoryAtOrAbove(id types.RelID, version uint32) (bool, error) {
-	var history []*types.Relationship
-	var err error
-	if pager := historyVersionPageCapability(tx.g.store); pager != nil {
-		history, err = tx.g.relHistoryVersionsFrom(pager, id, version, 1)
-	} else {
-		history, err = tx.g.getRelHistory(id)
-	}
-	if errors.Is(err, storepkg.ErrSlotNotLocal) {
-		// A Model-A foreign-incoming stub (ADR-0010): its rel-ID slot is foreign, so
-		// a slot-routed history read fails closed. The stub is adjacency-only — its
-		// version history's authority is the START machine — so it has no local
-		// history version to snapshot for rollback.
-		return false, nil
-	} else if err != nil {
-		return false, err
-	}
-	for _, h := range history {
-		if h.Version() >= version {
-			return true, nil
-		}
-	}
-	return false, nil
+	return tx.g.relHasHistoryFrom(id, version)
 }
 
 func (tx *GraphTx) materializeDeletedNodeHistoryLocked(id types.NodeID) error {

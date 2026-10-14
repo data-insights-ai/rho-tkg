@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Backlog 68b (sigma R10, the write side): a correction of an entity whose
@@ -162,6 +163,187 @@ func TestTxRollbackKeepsRowsAboveCompactionGap(t *testing.T) {
 			}
 			if after := versions(); fmt.Sprint(after) != fmt.Sprint(before) {
 				t.Fatalf("rollback: history %v, before the tx %v", after, before)
+			}
+		})
+	}
+}
+
+// compactionGap builds node versions v0 (current) and v1..v3 (bounded
+// corrections), then compacts to KeepVersions 1: history [3], a gap at v1.
+func compactionGap(t *testing.T, g *Core) types.NodeID {
+	t.Helper()
+	ctx := context.Background()
+	n, err := g.Nodes.Add(ctx, []string{"H"}, map[string]any{"a": int64(0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		if _, err := g.Temporal.SetNodeVersionInterval(ctx, n.ID(), 1000, 2000, map[string]any{"a": int64(i + 1)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := g.Admin.CompactHistoryNodes(ctx, RetentionPolicy{KeepVersions: 1}); err != nil {
+		if errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+			t.Skip("no history compaction")
+		}
+		t.Fatal(err)
+	}
+	if v := historyVersions(t, g, n.ID()); fmt.Sprint(v) != "[3]" {
+		t.Fatalf("after compaction: history %v, want [3]", v)
+	}
+	return n.ID()
+}
+
+func historyVersions(t *testing.T, g *Core, id types.NodeID) []uint32 {
+	t.Helper()
+	h, err := g.store.GetNodeHistory(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []uint32
+	for _, r := range h {
+		out = append(out, r.Version())
+	}
+	return out
+}
+
+// relCompactionGap mirrors compactionGap for a relationship.
+func relCompactionGap(t *testing.T, g *Core) types.RelID {
+	t.Helper()
+	ctx := context.Background()
+	s, err := g.Nodes.Add(ctx, []string{"H"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := g.Nodes.Add(ctx, []string{"H"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.Rels.AddByID(ctx, "LINK", s.ID(), e.ID(), map[string]any{"a": int64(0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rid := r.ID()
+	for i := range 3 {
+		if _, err := g.Temporal.SetRelVersionInterval(ctx, rid, 1000, 2000, map[string]any{"a": int64(i + 1)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := g.Admin.CompactHistoryRels(ctx, RetentionPolicy{KeepVersions: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if v := relHistoryVersions(t, g, rid); fmt.Sprint(v) != "[3]" {
+		t.Fatalf("rel after compaction: history %v, want [3]", v)
+	}
+	return rid
+}
+
+func relHistoryVersions(t *testing.T, g *Core, id types.RelID) []uint32 {
+	t.Helper()
+	h, err := g.store.GetRelHistory(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []uint32
+	for _, r := range h {
+		out = append(out, r.Version())
+	}
+	return out
+}
+
+// Backlog 70: every appending door allocates one above the highest version
+// stored, also across a compaction gap directly above the current row (the
+// allocator probed only current+1 and wrote v1 beside v3).
+func TestVersionAllocatorAboveCompactionGap(t *testing.T) {
+	ctx := context.Background()
+	for _, be := range r10AllBackends(t) {
+		t.Run(be.name, func(t *testing.T) {
+			g, err := New(be.cfg())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = g.Close() })
+			id := compactionGap(t, g)
+			u, err := g.Nodes.Update(ctx, id, map[string]any{"a": int64(7)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if u.Version() != 4 {
+				t.Errorf("Update after the gap: version %d, want 4 (history %v)", u.Version(), historyVersions(t, g, id))
+			}
+			if err := g.Nodes.CloseVersion(ctx, id, g.peekNow()+10); err != nil {
+				t.Fatal(err)
+			}
+			if cur, _ := g.store.GetNode(id); cur.Version() != 5 {
+				t.Errorf("CloseVersion after the gap: version %d, want 5", cur.Version())
+			}
+			rid := relCompactionGap(t, g)
+			r, err := g.Rels.Update(ctx, rid, map[string]any{"a": int64(7)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if r.Version() != 4 {
+				t.Errorf("rel Update after the gap: version %d, want 4", r.Version())
+			}
+		})
+	}
+}
+
+// Backlog 70 under 68b's rollback snapshot: with a head entry (top v3) a
+// GraphTx that appends twice must write v4 and v5, so the rollback trim above
+// v3 removes them (the allocator wrote v1 and v2, and v1 survived).
+func TestTxRollbackAppendsAboveCompactionGap(t *testing.T) {
+	for _, be := range r10AllBackends(t) {
+		t.Run(be.name, func(t *testing.T) {
+			g, err := New(be.cfg())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = g.Close() })
+			id := compactionGap(t, g)
+			if _, err := g.Temporal.NodeEffectiveTimeline(id, g.peekNow()); err != nil {
+				t.Fatal(err)
+			}
+			tx, err := g.BeginTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := range 2 {
+				if _, err := tx.UpdateNode(id, map[string]any{"a": int64(10 + i)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := tx.Rollback(); err != nil {
+				t.Fatal(err)
+			}
+			cur, err := g.store.GetNode(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if h := historyVersions(t, g, id); cur.Version() != 0 || fmt.Sprint(h) != "[3]" {
+				t.Fatalf("rollback: current v%d history %v, want v0 [3]", cur.Version(), h)
+			}
+			rid := relCompactionGap(t, g)
+			if _, err := g.Temporal.RelEffectiveTimeline(rid, g.peekNow()); err != nil {
+				t.Fatal(err)
+			}
+			if tx, err = g.BeginTx(); err != nil {
+				t.Fatal(err)
+			}
+			for i := range 2 {
+				if _, err := tx.UpdateRelationship(rid, map[string]any{"a": int64(10 + i)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := tx.Rollback(); err != nil {
+				t.Fatal(err)
+			}
+			rcur, err := g.store.GetRelationship(rid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if h := relHistoryVersions(t, g, rid); rcur.Version() != 0 || fmt.Sprint(h) != "[3]" {
+				t.Fatalf("rel rollback: current v%d history %v, want v0 [3]", rcur.Version(), h)
 			}
 		})
 	}

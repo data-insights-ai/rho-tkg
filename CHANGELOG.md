@@ -36,6 +36,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Versions are allocated above every stored row, also across a compaction gap** (backlog 70, found by the 68b
+  twin; memory, badger, tiered). History compaction trims the oldest history rows, which after bounded corrections
+  lie directly above the current row; the version allocator of every appending door (Update, CloseVersion, label
+  changes, property CAS, nodes and relationships) and the core as-of fast paths probed only version current+1, so
+  the next write took a version below surviving rows (an Update after `KeepVersions: 1` wrote v1 beside v3), and a
+  GraphTx that appended twice to such an entity and rolled back kept a row (68b's snapshot trims above the
+  chain's top). `nodeHasHistoryAbove` / `relHasHistoryAbove` are exact: the point read of current+1, and only
+  when it misses one history page read of at most one row (a seek on badger; the memory page read for one row is
+  one pass, no slice). The stores' own bulk as-of fast paths still probe current+1. Tests:
+  `TestVersionAllocatorAboveCompactionGap`, `TestTxRollbackAppendsAboveCompactionGap` (nodes and relationships;
+  red: `tasks/evidence/r10-write/10-red-allocator-gap.txt`), the 68b twin now with deletes, closes and this
+  shape inside a GraphTx.
+
 - **GraphTx rollback kept the pre-transaction rows above a compaction gap** (found by the 68b twin; memory,
   badger). History compaction trims the oldest history rows, which after bounded corrections lie directly above
   the current row; the rollback snapshot probed only version current+1 (dense versions), took the trim path, and

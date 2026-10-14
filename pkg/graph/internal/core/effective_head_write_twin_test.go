@@ -52,7 +52,7 @@ func TestEffectiveHeadWrite_TwinDifferential(t *testing.T) {
 	if n, err := strconv.Atoi(os.Getenv("HEAD_TWIN_SEEDS")); err == nil && n > 0 {
 		seeds = n
 	}
-	var planned, rollbacks, demotes uint64
+	var planned, rollbacks, demotes, gaps uint64
 	for _, be := range r10AllBackends(t) {
 		for s := range seeds {
 			seed := uint64(0x68b0 + s)
@@ -69,6 +69,7 @@ func TestEffectiveHeadWrite_TwinDifferential(t *testing.T) {
 				planned += tw.a.headWrites.Load()
 				rollbacks += uint64(tw.ops["rollback"])
 				demotes += uint64(tw.ops["tx demote"])
+				gaps += uint64(tw.ops["gap"])
 				if tw.b.headWrites.Load() != 0 {
 					t.Fatalf("graph B planned %d corrections from the entry", tw.b.headWrites.Load())
 				}
@@ -76,8 +77,8 @@ func TestEffectiveHeadWrite_TwinDifferential(t *testing.T) {
 		}
 	}
 	t.Logf("%d corrections planned from the entry, %d rollbacks, %d tx demotes", planned, rollbacks, demotes)
-	if planned == 0 || rollbacks == 0 || demotes == 0 {
-		t.Fatalf("the generator never exercised the write side: %d planned, %d rollbacks, %d demotes", planned, rollbacks, demotes)
+	if planned == 0 || rollbacks == 0 || demotes == 0 || gaps == 0 {
+		t.Fatalf("the generator never exercised the write side: %d planned, %d rollbacks, %d demotes, %d compaction gaps", planned, rollbacks, demotes, gaps)
 	}
 }
 
@@ -238,8 +239,10 @@ func (tw *headTwin) step(step int) {
 			_, err := g.Temporal.SetNodeVersionIntervalWithTx(ctx, nid, a, b, p, at)
 			return err
 		})
+	case op < 48:
+		tw.txStep(rel, nid, rid, false)
 	case op < 58:
-		tw.txStep(rel, nid, rid)
+		tw.gapStep(rel, nid, rid)
 	case op < 66:
 		if b == 0 {
 			b = a + 100
@@ -318,7 +321,8 @@ func (tw *headTwin) step(step int) {
 // txStep runs one GraphTx of one to four mutations on one entity (and, one
 // time in four, a second entity), then commits or rolls back; a rollback
 // must leave A's rows byte-identical to before the tx, and a rewrite follows.
-func (tw *headTwin) txStep(rel bool, nid types.NodeID, rid types.RelID) {
+// appendsOnly: two appending writes (backlog 70's shape after gapStep).
+func (tw *headTwin) txStep(rel bool, nid types.NodeID, rid types.RelID, appendsOnly bool) {
 	ctx := context.Background()
 	commit := tw.rng.IntN(2) == 0
 	type txOp struct {
@@ -326,10 +330,18 @@ func (tw *headTwin) txStep(rel bool, nid types.NodeID, rid types.RelID) {
 		fn   func(tx *GraphTx) error
 	}
 	var ops []txOp
-	for range 1 + tw.rng.IntN(4) {
+	n := 1 + tw.rng.IntN(4)
+	if appendsOnly {
+		n, commit = 2, tw.rng.IntN(4) == 0 // the rollback is the case at stake
+	}
+	for range n {
 		a, b := tw.sigmaInterval()
 		p := tw.props()
-		switch k := tw.rng.IntN(10); {
+		k := tw.rng.IntN(13)
+		if appendsOnly {
+			k = 5 + 6*tw.rng.IntN(2) // Update, or a close by tkg_valid_to
+		}
+		switch {
 		case k < 5:
 			// Open-ended after bounded corrections: the current row moves
 			// into history below the rows the tx keeps.
@@ -363,6 +375,24 @@ func (tw *headTwin) txStep(rel bool, nid types.NodeID, rid types.RelID) {
 		case k < 9:
 			lbl := fmt.Sprintf("L%d", tw.rng.IntN(2))
 			ops = append(ops, txOp{"AddNodeLabel " + lbl, func(tx *GraphTx) error { return tx.AddNodeLabel(nid, lbl) }})
+		case k < 10:
+			ops = append(ops, txOp{"Delete", func(tx *GraphTx) error {
+				if rel {
+					return tx.DeleteRelationship(rid)
+				}
+				return tx.DeleteNode(nid)
+			}})
+		case k < 12:
+			// A close: Update with only tkg_valid_to ends the current version.
+			end := map[string]any{"tkg_valid_to": int64(a + 3000)}
+			ops = append(ops, txOp{fmt.Sprintf("close at %d", a+3000), func(tx *GraphTx) error {
+				if rel {
+					_, err := tx.UpdateRelationship(rid, end)
+					return err
+				}
+				_, err := tx.UpdateNode(nid, end)
+				return err
+			}})
 		default:
 			ops = append(ops, txOp{fmt.Sprintf("other entity SetVersionInterval [%d,%d)", a, b), func(tx *GraphTx) error {
 				if rel {
@@ -634,4 +664,60 @@ func dumpDiff(a, b string) string {
 		}
 	}
 	return sb.String()
+}
+
+// gapStep is backlog 70's shape: three bounded corrections of one validity,
+// history compaction to one row (a version gap directly above the current
+// row), a head read, then a GraphTx of two appending writes, rolled back
+// three times in four.
+func (tw *headTwin) gapStep(rel bool, nid types.NodeID, rid types.RelID) {
+	ctx := context.Background()
+	for i := range 3 {
+		p := tw.props()
+		tw.last = fmt.Sprintf("gap: SetVersionInterval [1000,2000) #%d rel=%v", i, rel)
+		_ = tw.both(func(g *Core) error {
+			if rel {
+				_, err := g.Temporal.SetRelVersionInterval(ctx, rid, 1000, 2000, p)
+				return err
+			}
+			_, err := g.Temporal.SetNodeVersionInterval(ctx, nid, 1000, 2000, p)
+			return err
+		})
+	}
+	tw.last = "gap: Compact KeepVersions 1"
+	_ = tw.both(func(g *Core) error {
+		if _, err := g.Admin.CompactHistoryNodes(ctx, RetentionPolicy{KeepVersions: 1}); err != nil {
+			return err
+		}
+		_, err := g.Admin.CompactHistoryRels(ctx, RetentionPolicy{KeepVersions: 1})
+		return err
+	})
+	tw.check("gap: after compaction")
+	if cur := tw.currentVersion(tw.a, rel, nid, rid); cur != 0 || !tw.historyHas(tw.a, rel, nid, rid, 0) {
+		if !tw.historyHas(tw.a, rel, nid, rid, cur+1) {
+			if above, err := tw.hasAbove(rel, nid, rid, cur+1); err == nil && above {
+				tw.ops["gap"]++ // a row above a missing current+1
+				if os.Getenv("HEAD_TWIN_DEBUG") != "" {
+					var top uint32
+					var ok bool
+					if rel {
+						r, _ := tw.a.store.GetRelationship(rid)
+						top, ok = tw.a.relHeadTop(rid, r)
+					} else {
+						n, _ := tw.a.store.GetNode(nid)
+						top, ok = tw.a.nodeHeadTop(nid, n)
+					}
+					tw.t.Logf("gap: rel=%v cur v%d head top %d %v", rel, cur, top, ok)
+				}
+			}
+		}
+	}
+	tw.txStep(rel, nid, rid, true)
+}
+
+func (tw *headTwin) hasAbove(rel bool, nid types.NodeID, rid types.RelID, v uint32) (bool, error) {
+	if rel {
+		return tw.a.relHasHistoryFrom(rid, v)
+	}
+	return tw.a.nodeHasHistoryFrom(nid, v)
 }
