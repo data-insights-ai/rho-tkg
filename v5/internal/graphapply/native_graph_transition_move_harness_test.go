@@ -140,8 +140,8 @@ func (o *nativeLogicalTransitionOwner) prepareMove(caller context.Context, famil
 // Reassociation is permitted only by this opted-in child after its actual
 // operation/worker/source lanes drained. Preserve every retained move run and
 // original factory value; no decoded recipe or result supplies a new intent.
-func nativeTransitionMoveReconnect(ctx context.Context, h *allocationHost, old *crossProcessCoordinator, sessions *graphProcessCertifiedSessions, move *rangeMoveCoordinator, server *graphSourceServer, r processRequest, workers, queued int, active bool) (*crossProcessCoordinator, error) {
-	if move == nil || move.base != old || workers != 0 || queued != 0 || active {
+func nativeTransitionMoveReconnect(ctx context.Context, h *allocationHost, old *crossProcessCoordinator, sessions *graphProcessCertifiedSessions, move *rangeMoveCoordinator, server *graphSourceServer, r processRequest, workers, queued int, active bool, retainRuns ...bool) (*crossProcessCoordinator, error) {
+	if move == nil || move.base != old || workers != 0 || queued != 0 || active || len(retainRuns) > 1 {
 		return old, errInvalid
 	}
 	move.mu.Lock()
@@ -150,6 +150,13 @@ func nativeTransitionMoveReconnect(ctx context.Context, h *allocationHost, old *
 			move.mu.Unlock()
 			return old, errRangeMovePending
 		}
+	}
+	if len(retainRuns) == 1 && retainRuns[0] {
+		// NCR1 retains the SAME base, including its certified engine, publisher
+		// references and private runs. Hold move admission until all ordinary
+		// source/session/RPC gates and route replacements have been validated.
+		defer move.mu.Unlock()
+		return pairedGraphFaultReconnect(ctx, h, old, sessions, nil, server, r, workers, queued, active, true)
 	}
 	move.mu.Unlock()
 	next, err := pairedGraphFaultReconnect(ctx, h, old, sessions, nil, server, r, workers, queued, active)

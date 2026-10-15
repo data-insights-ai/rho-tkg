@@ -2359,7 +2359,11 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 						e = o.family.ctx.Err()
 						break
 					}
-					coordinator, e = pairedGraphFaultReconnect(retainedContext, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil, true)
+					if moveCoordinator != nil {
+						coordinator, e = nativeTransitionMoveReconnect(retainedContext, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil, true)
+					} else {
+						coordinator, e = pairedGraphFaultReconnect(retainedContext, h, coordinator, certifiedSessions, nil, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil, true)
+					}
 				} else if logicalTransitions != nil && o.family != nil && moveCoordinator != nil {
 					coordinator, e = nativeTransitionMoveReconnect(ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil)
 				} else {

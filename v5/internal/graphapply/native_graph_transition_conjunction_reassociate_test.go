@@ -9,7 +9,83 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 )
+
+func TestNativeConjunctionRetainedMoveKeepsSameIdleOriginalAndPublisher(t *testing.T) {
+	n := collectedGraphNetworkWithRecovery(t, nil, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4})
+	_, publisher, _, wires := retainedPublisherFromNetwork(t, n)
+	c := publisher.coordinator
+	h := c.host
+	move, err := newRangeMoveCoordinatorOn(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent, err := h.PreparePooledRangeMove(t.Context(), n.requestID(), 1, 8, 64, 32, 16<<10, rangeMovePools{2 << 20, 8 << 20, 8 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := encodeRangeMoveIntent(intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resume := rangeMoveResume{scope: intent.source, request: intent.id, move: rangeMoveID(h.machine.ns, intent.id), intent: sha256.Sum256(wire)}
+	run, err := move.claim(resume, wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The real factory's private intent remains owned locally; no descriptor
+	// decoding or new source/operation budget can replace it during reassociation.
+	run.busy = false
+	backing := &run.intent[0]
+	relay := &graphProcessChildRelay{ctx: t.Context(), pending: make(map[uint64]chan graphProcessPumpReply)}
+	for _, part := range []uint64{3, 8} {
+		voter := uint64(1)
+		if part == 8 {
+			voter = 4
+		}
+		c.transports[part] = &graphProcessChildTransport{peer: graphPeerIdentity{scope: mustProcessScope(h, part), voter: voter}, owner: relay}
+	}
+	streamA, streamB := c.streams[3], c.streams[8]
+	server := wires[0].service.sources
+	sessions := &graphProcessCertifiedSessions{owners: make(map[uint64]graphProcessCertifiedOwner)}
+	r := processRequest{op: processPairedReconnect, data: allocationP08Words(2, 4)}
+	// The exact old child dispatch refuses nonnil move even while it is idle.
+	if got, err := pairedGraphFaultReconnect(t.Context(), h, c, sessions, move, server, r, 0, 0, false, true); got != c || !errors.Is(err, errInvalid) {
+		t.Fatal("ordinary route silently admitted a move owner", err)
+	}
+	call := func(ctx context.Context, workers int) (*crossProcessCoordinator, error) {
+		return nativeTransitionMoveReconnect(ctx, h, c, sessions, move, server, r, workers, 0, false, true)
+	}
+	run.busy = true
+	if got, err := call(t.Context(), 0); got != c || !errors.Is(err, errRangeMovePending) {
+		t.Fatal("active move rerouted", err)
+	}
+	run.busy = false
+	if got, err := call(t.Context(), 1); got != c || !errors.Is(err, errInvalid) {
+		t.Fatal("active worker rerouted", err)
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if got, err := call(canceled, 0); got != c || !errors.Is(err, context.Canceled) {
+		t.Fatal("expired owner rerouted", err)
+	}
+	relay.pending[1] = make(chan graphProcessPumpReply, 1)
+	if got, err := call(t.Context(), 0); got != c || !errors.Is(err, errInvalid) {
+		t.Fatal("pending RPC rerouted", err)
+	}
+	delete(relay.pending, 1)
+	if got, err := call(t.Context(), 0); err != nil || got != c {
+		t.Fatal("idle retained move refused", err)
+	}
+	if move.base != c || publisher.coordinator != c || move.runs[resume.move] != run || run.resume != resume || &run.intent[0] != backing || !bytes.Equal(run.intent, wire) || c.transports[3].Peer().voter != 2 || c.streams[3] == streamA || c.streams[8] != streamB {
+		t.Fatal("reassociation replaced private original/base/publisher or unchanged stream")
+	}
+	legacy, err := nativeTransitionMoveReconnect(t.Context(), h, c, sessions, move, server, r, 0, 0, false)
+	if err != nil || legacy == c || move.base != legacy {
+		t.Fatal("legacy move reassociation behavior changed", err)
+	}
+}
 
 func TestNativeP06ReplacementUsesUnusedRemoteServiceForExactOldCut(t *testing.T) {
 	n, _, ops, claims, wires := coordinatorNativeFixture(t)
