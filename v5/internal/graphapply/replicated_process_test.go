@@ -444,7 +444,7 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 	// Coverage is an explicit P05 qualification lane. Each incarnation owns a
 	// separate profile, including a reopen in the same graph directory.
 	conditional, childCover := false, false
-	durableProfile, contentionProfile, edgeProfile, feedProfile, selectorsProfile, createUpdateProfile := false, false, false, false, false, false
+	durableProfile, contentionProfile, edgeProfile, feedProfile, selectorsProfile, createUpdateProfile, feedRetainedProfile := false, false, false, false, false, false, false
 	var workloadRun string
 	for _, entry := range p.cmd.Env {
 		name, value, _ := strings.Cut(entry, "=")
@@ -459,6 +459,8 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 			edgeProfile = value == "1"
 		case "RHO_GRAPH_FEED_PROCESS":
 			feedProfile = value == "1"
+		case "RHO_GRAPH_FEED_RETAINED_PROCESS":
+			feedRetainedProfile = value == "1"
 		case "RHO_GRAPH_SELECTORS_PROCESS":
 			selectorsProfile = value == "1"
 		case "RHO_GRAPH_CREATE_UPDATE_PROCESS":
@@ -469,7 +471,7 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 			childCover = value == "1"
 		}
 	}
-	p.durableColumns = durableProfile || contentionProfile || edgeProfile || feedProfile || selectorsProfile || createUpdateProfile
+	p.durableColumns = durableProfile || contentionProfile || edgeProfile || feedProfile || selectorsProfile || createUpdateProfile || feedRetainedProfile
 	if contentionProfile {
 		raw, err := hex.DecodeString(workloadRun)
 		if err != nil || len(raw) != 16 || hex.EncodeToString(raw) != workloadRun {
@@ -1935,13 +1937,20 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	if feed {
 		agreement, materializer = retainedFeedSemanticContractID(), newRetainedFeedMaterializer
 	}
+	feedRetained, err := nativeFeedRetainedProcessProfile(cost)
+	if err != nil {
+		t.Fatal("retained-only feed profile", err)
+	}
+	if feedRetained {
+		agreement, materializer = retainedOnlyFeedSemanticContractID(), newRetainedOnlyFeedMaterializer
+	}
 	controls, recovery := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 1}
-	if retention || durableColumns || workload != nil || feed {
+	if retention || durableColumns || workload != nil || feed || feedRetained {
 		recovery.Version = 2
 	}
 	var nativeRetention raftlog.ApplicationRetentionConfig
 	contract, err := raftlog.ApplicationContractForPolicyWithRecovery(p, controls, recovery)
-	if durableColumns || workload != nil || feed {
+	if durableColumns || workload != nil || feed || feedRetained {
 		nativeRetention.Version = 1
 		contract, err = raftlog.ApplicationContractForPolicyWithRetention(p, controls, recovery, nativeRetention)
 	}

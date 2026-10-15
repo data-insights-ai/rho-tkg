@@ -19,7 +19,7 @@ func nativeGraphCostBlockSize(s nativeGraphCostSpec) (uint64, error) {
 	}
 	block := min(s.homeCount(), idalloc.MaxBlockSize)
 	if raw := os.Getenv("RHO_GRAPH_COST_BLOCK_SIZE"); raw != "" {
-		if s.Version == 4 || s.Version == 5 || s.Version == 6 || s.Version == 9 {
+		if s.Version == 4 || s.Version == 5 || s.Version == 6 || s.Version == 7 || s.Version == 9 {
 			return 0, errInvalid
 		} // fresh full-family bound fixes actual block geometry before effects
 		var err error
@@ -28,7 +28,7 @@ func nativeGraphCostBlockSize(s nativeGraphCostSpec) (uint64, error) {
 			return 0, errors.Join(errInvalid, err)
 		}
 	}
-	if block < 2 || block > min(s.homeCount(), idalloc.MaxBlockSize) || s.Version != 4 && s.Version != 5 && s.Version != 6 && s.Version != 9 && s.homeCount() > 2*block {
+	if block < 2 || block > min(s.homeCount(), idalloc.MaxBlockSize) || s.Version != 4 && s.Version != 5 && s.Version != 6 && s.Version != 7 && s.Version != 9 && s.homeCount() > 2*block {
 		return 0, errLimit
 	}
 	return block, nil
@@ -37,6 +37,9 @@ func nativeGraphCostBlockSize(s nativeGraphCostSpec) (uint64, error) {
 // Input correspondence only, not a reservation or authority. HOME blocks are
 // requested before remote2 so the existing graph-qualified fixture IDs agree.
 func nativeGraphCostGrantPlan(s nativeGraphCostSpec, block, partition, sequence uint64) (first, count uint64, err error) {
+	if s.Version == 7 {
+		return nativeFeedRetainedGrantPlan(s, block, partition, sequence)
+	}
 	if s.Version == 9 {
 		if err := nativeCreateUpdateValidate(s); err != nil {
 			return 0, 0, err
@@ -130,7 +133,7 @@ func nativeGraphCostInstallGrants(t *testing.T, n *certifiedProcessNetwork, s na
 	if partition == 3 && block != 0 {
 		grants = (s.homeCount() + block - 1) / block
 	}
-	if s.Version != 4 && s.Version != 5 && s.Version != 6 && s.Version != 9 && grants > 2 {
+	if s.Version != 4 && s.Version != 5 && s.Version != 6 && s.Version != 7 && s.Version != 9 && grants > 2 {
 		t.Fatal("cost setup exceeds two HOME blocks")
 	}
 	for sequence := uint64(1); sequence <= grants; sequence++ {

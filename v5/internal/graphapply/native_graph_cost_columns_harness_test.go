@@ -1260,6 +1260,21 @@ func nativeGraphCostColumnReadPair(t *testing.T, clients [2]*nativeGraphCostColu
 // Fixed V2 cost semantics are validated without a whole-degree map. Genuine
 // prefix/original uniqueness is provided by the source-bound frame stream; the
 // existing raw CDC checkpoint joins authenticate request cardinality separately.
+func nativeScalarGuardedPresenceRow(s nativeGraphCostSpec, row nativeColumnRow) (int, error) {
+	if s.Version != 7 && s.Version != 9 || row.Kind != 2 || row.Component != 1 || row.Owner < 7 || (row.Owner-7)%2 != 0 {
+		return 0, errCorrupt
+	}
+	fact := (row.Owner - 7) / 2
+	if fact >= s.Facts {
+		return 0, errCorrupt
+	}
+	owner, life, target, targetLife := s.edge(fact)
+	if row.Owner != owner || row.Life != 0 || row.Name != "" || row.Type != "edge" || row.Mode != 1 || row.Source != 1 || row.Target != target || row.SourceLife != 2 || row.TargetLife != targetLife || row.After.Handle != life || row.After.Value != 0 || row.After.Provenance != 4+s.Facts+fact || !row.Before.Present || row.Before.Null || row.Before.Handle != life || row.Before.Value != 0 || row.Before.Provenance != 4+fact || row.Before.Revision == 0 || row.After.Revision <= row.Before.Revision {
+		return 0, errCorrupt
+	}
+	return 0, nil
+}
+
 func nativeGraphCostColumnRow(spec nativeGraphCostSpec, row nativeColumnRow) (int, error) {
 	if len(row.Axis) == 0 || len(row.Scope) == 0 || !row.After.Present || row.After.Null || row.After.Revision == 0 {
 		return 0, errCorrupt
@@ -1290,6 +1305,9 @@ func nativeGraphCostColumnRow(spec nativeGraphCostSpec, row nativeColumnRow) (in
 		return 0, errCorrupt
 	}
 	if row.Component == byte(graphstate.Presence) {
+		if spec.Version == 7 && row.Before.Present {
+			return nativeFeedRetainedPresenceRow(spec, row)
+		}
 		if spec.Version == 9 && row.Before.Present {
 			return nativeCreateUpdatePresenceRow(spec, row)
 		}

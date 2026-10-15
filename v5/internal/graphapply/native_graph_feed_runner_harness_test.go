@@ -261,6 +261,10 @@ func nativeScalarWorkloadNetwork(t *testing.T, spec nativeGraphCostSpec, env []s
 	return n
 }
 func nativeFeedCut(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, mode graphReadMode, at graphCut) graphCut {
+	return nativeScalarWorkloadCut(t, ctx, n, mode, at, retainedFeedSemanticContractID())
+}
+
+func nativeScalarWorkloadCut(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, mode graphReadMode, at graphCut, semantic raftlog.ApplicationSemanticContractID) graphCut {
 	t.Helper()
 	body, err := encodeGraphE15ReadRequest(graphE15ReadRequest{mode: mode, cut: at})
 	if err != nil {
@@ -275,7 +279,7 @@ func nativeFeedCut(t *testing.T, ctx context.Context, n *certifiedProcessNetwork
 		t.Fatal("native complete cut", err)
 	}
 	for _, cert := range cut.certificates {
-		if cert.scope.semantic != retainedFeedSemanticContractID() {
+		if cert.scope.semantic != semantic {
 			t.Fatal("feed cut agreement")
 		}
 	}
@@ -327,6 +331,10 @@ func (d *nativeFeedDriver) phase(t *testing.T, phase uint64, from uint64, attemp
 // the common scalar dispatcher; actual factories/proposals/native originals
 // retain their profile-specific validation and semantic scope.
 func nativeScalarWorkloadPhase(t *testing.T, parent context.Context, n *certifiedProcessNetwork, spec nativeGraphCostSpec, admissions *nativeGraphCostAdmissions, started time.Time, phase, from uint64, attempts, completed *json.Encoder, census *[32]uint64) (last nativeGraphCostSample) {
+	return nativeScalarWorkloadPhaseRange(t, parent, n, spec, admissions, started, phase, from, spec.Facts, attempts, completed, census)
+}
+
+func nativeScalarWorkloadPhaseRange(t *testing.T, parent context.Context, n *certifiedProcessNetwork, spec nativeGraphCostSpec, admissions *nativeGraphCostAdmissions, started time.Time, phase, from, end uint64, attempts, completed *json.Encoder, census *[32]uint64) (last nativeGraphCostSample) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(parent)
 	type job struct {
@@ -387,7 +395,6 @@ func nativeScalarWorkloadPhase(t *testing.T, parent context.Context, n *certifie
 			}
 		}
 	}()
-	end := spec.Facts
 	if phase <= 3 {
 		end = from + 1
 	}
@@ -610,6 +617,10 @@ func nativeFeedPoints(t *testing.T, ctx context.Context, n *certifiedProcessNetw
 // is sealed but unacknowledged. The unchanged hub owns every other process and
 // queue; the replacement gets no copied peer/read/pin capability from the parent.
 func nativeFeedReplaceClient(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, s nativeFeedSpec, a nativeFeedAdmission, stream *json.Encoder) {
+	nativeScalarWorkloadReplaceClient(t, ctx, n, stream, func() ([]string, error) { return nativeFeedChildEnv(s, a, true) })
+}
+
+func nativeScalarWorkloadReplaceClient(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, stream *json.Encoder, childEnv func() ([]string, error)) {
 	t.Helper()
 	if err := drainGraphProcessMuxes(ctx, n.all); err != nil {
 		t.Fatal(err)
@@ -630,7 +641,7 @@ func nativeFeedReplaceClient(t *testing.T, ctx context.Context, n *certifiedProc
 		t.Fatal("actual feed client SIGKILL/reap", waitErr)
 	}
 	hub := prior.mux.hub
-	env, err := nativeFeedChildEnv(s, a, true)
+	env, err := childEnv()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -673,6 +684,10 @@ func nativeFeedReplaceClient(t *testing.T, ctx context.Context, n *certifiedProc
 	n.read(t, 1, observeConfiguration, 0)
 }
 func nativeFeedRestart(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, s nativeFeedSpec, a nativeFeedAdmission, stream *json.Encoder) nativeWorkloadTransportReceipt {
+	return nativeScalarWorkloadRestart(t, ctx, n, stream, func() ([]string, error) { return nativeFeedChildEnv(s, a, true) }, func() { nativeFeedAttach(t, n, s, a) })
+}
+
+func nativeScalarWorkloadRestart(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, stream *json.Encoder, childEnv func() ([]string, error), attach func()) nativeWorkloadTransportReceipt {
 	t.Helper()
 	if err := drainGraphProcessMuxes(ctx, n.all); err != nil {
 		t.Fatal(err)
@@ -690,14 +705,14 @@ func nativeFeedRestart(t *testing.T, ctx context.Context, n *certifiedProcessNet
 		t.Fatal("six native process owners not reaped")
 	}
 	receipt := old.workload.receipt(old)
-	env, err := nativeFeedChildEnv(s, a, true)
+	env, err := childEnv()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for id := uint64(1); id <= 6; id++ {
 		n.all[id] = startGraphProcess(t, filepath.Join(n.dir, fmt.Sprint(id)), id, env...)
 	}
-	nativeFeedAttach(t, n, s, a)
+	attach()
 	for id := uint64(1); id <= 6; id++ {
 		restored, err := nativeGraphCostExchange(ctx, n.all[id], processRequest{op: processStateOp})
 		if err != nil {

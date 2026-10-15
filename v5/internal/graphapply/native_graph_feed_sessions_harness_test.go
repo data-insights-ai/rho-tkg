@@ -68,13 +68,20 @@ func nativeFeedInputWire(q nativeFeedInput) ([]byte, error) {
 	return append([]byte(nativeFeedMarker), body...), nil
 }
 func nativeFeedInputDecode(r processRequest) (q nativeFeedInput, err error) {
-	if r.op != processCostObserve || r.index != 0 || r.entity != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 || !bytes.HasPrefix(r.data, []byte(nativeFeedMarker)) || len(r.data) > 64<<10+len(nativeFeedMarker) {
+	return nativeScalarFeedInputDecode(r, nativeFeedMarker, false)
+}
+
+func nativeScalarFeedInputDecode(r processRequest, marker string, retainedOnly bool) (q nativeFeedInput, err error) {
+	if r.op != processCostObserve || r.index != 0 || r.entity != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 || !bytes.HasPrefix(r.data, []byte(marker)) || len(r.data) > 64<<10+len(marker) {
 		return q, errInvalid
 	}
-	if err = nativeFeedDecodeJSON(r.data[len(nativeFeedMarker):], &q); err != nil {
+	if err = nativeFeedDecodeJSON(r.data[len(marker):], &q); err != nil {
 		return q, err
 	}
 	body, e := nativeFeedInputWire(q)
+	if e == nil && marker != nativeFeedMarker {
+		body = append([]byte(marker), body[len(nativeFeedMarker):]...)
+	}
 	if e != nil || !bytes.Equal(body, r.data) {
 		return q, errors.Join(errInvalid, e)
 	}
@@ -83,7 +90,11 @@ func nativeFeedInputDecode(r processRequest) (q nativeFeedInput, err error) {
 	}
 	switch q.Action {
 	case "records":
-		if q.Through == 0 || q.From == 0 || q.From > q.Through || len(q.Boundary) == 0 || q.Request != ([16]byte{}) || len(q.Original)+len(q.Token) != 0 || q.Digest != ([32]byte{}) {
+		if q.Through == 0 || q.From == 0 || q.From > q.Through || len(q.Boundary) == 0 || q.Request != ([16]byte{}) || (!retainedOnly && len(q.Original) != 0) || len(q.Token) != 0 || q.Digest != ([32]byte{}) {
+			return q, errInvalid
+		}
+	case "retain":
+		if !retainedOnly || q.Request == ([16]byte{}) || len(q.Original)+len(q.Token)+len(q.Boundary) != 0 || q.Digest != ([32]byte{}) || q.From != 0 {
 			return q, errInvalid
 		}
 	case "begin":
@@ -214,20 +225,24 @@ func (s *nativeFeedSessions) close() error {
 	return err
 }
 func (s *nativeFeedSessions) snapshotPage(ctx context.Context, from uint64) (out nativeFeedReply, err error) {
+	return s.snapshotScalarPage(ctx, from, s.spec.cost(), s.admission.BudgetSeconds)
+}
+
+func (s *nativeFeedSessions) snapshotScalarPage(ctx context.Context, from uint64, cost nativeGraphCostSpec, budgetSeconds uint64) (out nativeFeedReply, err error) {
 	defer func() {
 		if err != nil && s.snapshot != nil {
 			err = errors.Join(err, s.snapshot.Close())
 			s.snapshot = nil
 		}
 	}()
-	if from != s.snapshotNext || from >= s.spec.Facts {
+	if from != s.snapshotNext || from >= cost.Facts {
 		return out, errInvalid
 	}
 	// A read lease never changes its cut. A bounded page may renew its transient
 	// sources through OpenSnapshot under the SAME durable pin, spending another
 	// native operation grant; continuation stays private to this actual owner.
 	if s.snapshot == nil {
-		if s.snapshotStarts >= s.spec.Facts/16+s.admission.BudgetSeconds/60+16 {
+		if s.snapshotStarts >= cost.Facts/16+budgetSeconds/60+16 {
 			return out, errLimit
 		}
 		s.snapshotStarts++
@@ -240,7 +255,7 @@ func (s *nativeFeedSessions) snapshotPage(ctx context.Context, from uint64) (out
 	if err != nil {
 		return out, err
 	}
-	end := min(from+16, s.spec.Facts)
+	end := min(from+16, cost.Facts)
 	out.Points = make([]nativeFeedPoint, 0, end-from)
 	s.coordinator.host.mu.Lock()
 	cfg, err := s.coordinator.host.currentConfiguration()
@@ -257,7 +272,7 @@ func (s *nativeFeedSessions) snapshotPage(ctx context.Context, from uint64) (out
 		return out, err
 	}
 	for fact := from; fact < end; fact++ {
-		id, _, _, _ := s.spec.cost().edge(fact)
+		id, _, _, _ := cost.edge(fact)
 		entity, err := view.Entity(ctx, graphstate.EntityID(id))
 		if err != nil {
 			return out, err
@@ -282,7 +297,7 @@ func (s *nativeFeedSessions) snapshotPage(ctx context.Context, from uint64) (out
 		out.Points = append(out.Points, nativeFeedPoint{fact, row})
 	}
 	s.snapshotNext = end
-	out.Next, out.EOF = end, end == s.spec.Facts
+	out.Next, out.EOF = end, end == cost.Facts
 	// Keep the first genuine lease held across the parent's update race. Other
 	// pages release promptly and bound cumulative work by a16-row admission.
 	if from != 0 || out.EOF {
@@ -299,6 +314,12 @@ func (s *nativeFeedSessions) serve(ctx context.Context, r processRequest) (wire 
 	if err != nil {
 		return nil, err
 	}
+	return s.serveDecoded(ctx, r, q, nativeFeedPolicy(s.spec.cost(), s.admission.DeadlineUnixNanos), nativeFeedCutDecode, s.ctx, s.spec.cost(), s.admission.BudgetSeconds)
+}
+
+// Exact-profile wrappers admit framing, policy and lifetime before entering the
+// shared owner. They do not turn workload coordinates into native authority.
+func (s *nativeFeedSessions) serveDecoded(ctx context.Context, r processRequest, q nativeFeedInput, policy retainedFeedPolicy, decodeCut func([]byte) (graphCut, error), lifetime context.Context, cost nativeGraphCostSpec, budgetSeconds uint64) (wire []byte, err error) {
 	defer func() {
 		if err == nil {
 			return
@@ -329,7 +350,7 @@ func (s *nativeFeedSessions) serve(ctx context.Context, r processRequest) (wire 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err = errors.Join(ctx.Err(), s.ctx.Err()); err != nil {
+	if err = errors.Join(ctx.Err(), lifetime.Err()); err != nil {
 		return nil, err
 	}
 	started := time.Now()
@@ -343,7 +364,7 @@ func (s *nativeFeedSessions) serve(ctx context.Context, r processRequest) (wire 
 		if s.owner != nil {
 			return nil, errLimit
 		}
-		s.owner, err = beginRetainedFeed(s.ctx, publisher, requestID(q.Request), graphReadRequest{mode: graphReadFresh}, 100, nativeFeedPolicy(s.spec.cost(), s.admission.DeadlineUnixNanos))
+		s.owner, err = beginRetainedFeed(s.ctx, publisher, requestID(q.Request), graphReadRequest{mode: graphReadFresh}, 100, policy)
 		if err == nil {
 			out.Original, err = s.owner.Original()
 		}
@@ -414,11 +435,11 @@ func (s *nativeFeedSessions) serve(ctx context.Context, r processRequest) (wire 
 			}
 			h.mu.Unlock()
 		case "snapshot":
-			out, err = s.snapshotPage(ctx, q.From)
+			out, err = s.snapshotScalarPage(ctx, q.From, cost, budgetSeconds)
 			out.Version, out.Action = 1, q.Action
 		case "page":
 			var boundary graphCut
-			boundary, err = nativeFeedCutDecode(q.Boundary)
+			boundary, err = decodeCut(q.Boundary)
 			if err == nil {
 				var d retainedFeedDelivery
 				d, err = s.owner.Page(ctx, q.Request, boundary)
@@ -436,6 +457,8 @@ func (s *nativeFeedSessions) serve(ctx context.Context, r processRequest) (wire 
 			if err == nil {
 				out.Completed, err = nativeFeedCutWire(cut)
 			}
+		case "retain":
+			err = s.owner.ToRetainedOnly(ctx, q.Request)
 		case "release":
 			err = s.owner.Release(ctx)
 		case "expire":

@@ -217,18 +217,10 @@ func nativeCreateUpdateCheckPoint(s nativeFeedSpec, p nativeFeedPoint, value int
 }
 
 func nativeCreateUpdatePresenceRow(s nativeGraphCostSpec, row nativeColumnRow) (int, error) {
-	if s.Version != 9 || row.Kind != 2 || row.Component != 1 || row.Owner < 7 || (row.Owner-7)%2 != 0 {
+	if s.Version != 9 {
 		return 0, errCorrupt
 	}
-	fact := (row.Owner - 7) / 2
-	if fact >= s.Facts {
-		return 0, errCorrupt
-	}
-	owner, life, target, targetLife := s.edge(fact)
-	if row.Owner != owner || row.Life != 0 || row.Name != "" || row.Type != "edge" || row.Mode != 1 || row.Source != 1 || row.Target != target || row.SourceLife != 2 || row.TargetLife != targetLife || row.After.Handle != life || row.After.Value != 0 || row.After.Provenance != 4+s.Facts+fact || !row.Before.Present || row.Before.Null || row.Before.Handle != life || row.Before.Value != 0 || row.Before.Provenance != 4+fact || row.Before.Revision == 0 || row.After.Revision <= row.Before.Revision {
-		return 0, errCorrupt
-	}
-	return 0, nil
+	return nativeScalarGuardedPresenceRow(s, row)
 }
 
 func (d *nativeCreateUpdateDriver) retry() error {

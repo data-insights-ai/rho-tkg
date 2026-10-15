@@ -67,6 +67,10 @@ type nativeRetentionOwner struct {
 	closeError                                 error
 	sequence, calls, pages, rows, work, output uint64
 	rowGrant, byteGrant                        uint64
+	maxCalls, maxPages                         uint64
+	ordinaryCalls, collectionCalls             uint64
+	collectRows, collectBytes                  int
+	freshCollection                            bool
 	base                                       nativeRetentionReceipt
 }
 
@@ -81,8 +85,19 @@ func newNativeRetentionOwner(h *allocationHost, batch *nativeBatchOwner) (*nativ
 	if h == nil || h.machine == nil || h.driver == nil || batch == nil || batch.nativeState == nil || batch.ctx.Err() != nil || h.machine.SemanticContractID() != durableColumnGraphSemanticContractID() || h.machine.store.ApplicationRetention().Version != 1 {
 		return nil, errInvalid
 	}
-	ctx, cancel := context.WithCancel(batch.ctx)
-	o := &nativeRetentionOwner{ctx: ctx, cancel: cancel, h: h, base: nativeRetentionReceipt{Version: 1, Profile: nativeRetentionProfile, Run: batch.state.Run, Member: batch.state.Member, PID: batch.state.PID, DeadlineUnixNanos: batch.state.DeadlineUnixNanos}}
+	base := nativeRetentionReceipt{Version: 1, Profile: nativeRetentionProfile, Run: batch.state.Run, Member: batch.state.Member, PID: batch.state.PID, DeadlineUnixNanos: batch.state.DeadlineUnixNanos}
+	return newNativeRetentionOwnerFor(batch.ctx, h, base, 128, 64, 16, 1<<20, false)
+}
+
+// Only exact admitted constructors enter this shared native owner. The fresh
+// workload supplies its own immutable finite ledger; no D/VFS receipt or copied
+// caller state is turned into Store, plan, original or view authority.
+func newNativeRetentionOwnerFor(parent context.Context, h *allocationHost, base nativeRetentionReceipt, calls, pages uint64, rows, bytes int, fresh bool) (*nativeRetentionOwner, error) {
+	if parent == nil || h == nil || h.machine == nil || h.driver == nil || calls == 0 || pages == 0 || pages > calls || rows < 1 || bytes < 1 {
+		return nil, errInvalid
+	}
+	ctx, cancel := context.WithCancel(parent)
+	o := &nativeRetentionOwner{ctx: ctx, cancel: cancel, h: h, base: base, maxCalls: calls, maxPages: pages, collectRows: rows, collectBytes: bytes, freshCollection: fresh}
 	if _, err := io.ReadFull(rand.Reader, o.base.Cookie[:]); err != nil {
 		cancel()
 		return nil, err
@@ -107,7 +122,15 @@ func newNativeRetentionOwner(h *allocationHost, batch *nativeBatchOwner) (*nativ
 		}
 		o.byteGrant += 8 * uint64(n)
 	}
-	if o.rowGrant > math.MaxUint64/128 || o.byteGrant > math.MaxUint64/128 {
+	fundedCalls := calls
+	if fresh {
+		fundedCalls = calls - pages
+	}
+	if fundedCalls == 0 || o.rowGrant > math.MaxUint64/fundedCalls || o.byteGrant > math.MaxUint64/fundedCalls || uint64(bytes) > math.MaxUint64/pages || uint64(rows) > math.MaxUint64/pages || calls > math.MaxUint64/(2*processFrameBytes+2*nativeRetentionReceiptBytes) {
+		cancel()
+		return nil, errLimit
+	}
+	if fresh && (!nativeColumnAdd(o.byteGrant*fundedCalls, uint64(bytes)*pages) || !nativeColumnAdd(o.rowGrant*fundedCalls, uint64(rows)*pages)) {
 		cancel()
 		return nil, errLimit
 	}
@@ -211,12 +234,32 @@ func (o *nativeRetentionOwner) event(wire []byte) (response processResponse, eve
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.calls >= 128 {
+	if o.calls >= o.maxCalls {
 		return response, event, errLimit
 	}
+	if o.freshCollection {
+		if c.Action == "collect" {
+			if o.collectionCalls >= o.maxPages {
+				return response, event, errLimit
+			}
+			o.collectionCalls++
+		} else {
+			if o.ordinaryCalls >= o.maxCalls-o.maxPages {
+				return response, event, errLimit
+			}
+			o.ordinaryCalls++
+		}
+	}
 	o.calls++
-	o.rows += o.rowGrant
-	o.work += o.byteGrant
+	rows, bytes := o.rowGrant, o.byteGrant
+	if o.freshCollection && c.Action == "collect" {
+		rows, bytes = uint64(o.collectRows), uint64(o.collectBytes)
+	}
+	if !nativeColumnAdd(o.rows, rows) || !nativeColumnAdd(o.work, bytes) || !nativeColumnAdd(o.output, 2*processFrameBytes+2*nativeRetentionReceiptBytes) {
+		return response, event, errLimit
+	}
+	o.rows += rows
+	o.work += bytes
 	o.output += 2*processFrameBytes + 2*nativeRetentionReceiptBytes
 	if err := o.ctx.Err(); err != nil {
 		return response, event, errors.Join(replica.ErrUnavailable, err)
@@ -324,11 +367,11 @@ func (o *nativeRetentionOwner) event(wire []byte) (response processResponse, eve
 		if o.result.status != graphRetentionApplied || o.result.id != sha256.Sum256(o.original) {
 			return response, event, errInvalid
 		}
-		if o.pages >= 64 {
+		if o.pages >= o.maxPages {
 			return response, event, errLimit
 		}
 		o.pages++
-		r.Progress, r.Work, err = s.CollectApplicationRetention(o.ctx, o.result.id, raftlog.ReadBudget{Rows: 16, Bytes: 1 << 20})
+		r.Progress, r.Work, err = s.CollectApplicationRetention(o.ctx, o.result.id, raftlog.ReadBudget{Rows: o.collectRows, Bytes: o.collectBytes})
 	case "current", "anchor":
 		if o.view != nil {
 			return response, event, errLimit
