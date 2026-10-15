@@ -26,6 +26,7 @@ type nativeColumnSource struct {
 	stop                     func() bool
 	closeErr                 error
 	owner                    [16]byte
+	retention                *nativeColumnRetentionLease
 	coordinator              *crossProcessCoordinator
 	meter                    *nativeColumnTransportMeter
 	hosts                    [2]*allocationHost
@@ -237,6 +238,12 @@ func (s *nativeColumnSource) generation(id [16]byte) (nativeColumnGeneration, er
 		return nativeColumnGeneration{}, errInvalid
 	}
 	g := nativeColumnGeneration{ID: id, Binding: s.digest, Coverage: s.binding.Coverage}
+	if s.retention != nil {
+		if id != s.retention.id {
+			return g, errInvalid
+		}
+		g.Pin = s.retention.digest
+	}
 	for n := range 2 {
 		var err error
 		g.Sources[n].Initial, err = encodeGraphCertificate(s.initial[n])
@@ -248,6 +255,9 @@ func (s *nativeColumnSource) generation(id [16]byte) (nativeColumnGeneration, er
 			return g, err
 		}
 		g.Sources[n].Generation = s.roots[n].Generation
+		if s.retention != nil {
+			g.Sources[n].Generation = s.retention.generations[n]
+		}
 	}
 	return g, nil
 }
@@ -271,6 +281,9 @@ func (s *nativeColumnSource) Close() error {
 			s.closeErr = errors.Join(s.closeErr, v.Close())
 			s.views[i] = nil
 		}
+	}
+	if s.retention != nil {
+		s.retention.detach(s.owner)
 	}
 	return s.closeErr
 }
@@ -381,6 +394,12 @@ func (s *nativeColumnSource) frame(ctx context.Context, group int, index uint64)
 	}
 	if out.Outcome == nil || out.CDC == nil {
 		return out, errCorrupt
+	}
+	if bytes.HasPrefix(out.Outcome, []byte("GPO\x01")) || bytes.HasPrefix(out.Outcome, []byte("GGO\x01")) {
+		if s.binding.Version != 2 || h.machine.SemanticContractID() != durableColumnGraphSemanticContractID() {
+			return out, errInvalid
+		}
+		return s.retainedMetadataFrame(ctx, group, out)
 	}
 	var bound outcome
 	switch {

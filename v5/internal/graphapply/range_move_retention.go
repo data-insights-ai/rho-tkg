@@ -91,7 +91,7 @@ func decodeMoveRetainedOwner(wire []byte, scope allocationScope, index uint64) (
 }
 
 func encodeMoveRetentionHeader(p rangeMoveRetainedLineage, output *graphstate.OutputBudget) ([]byte, error) {
-	if output == nil || !p.scope.valid() || p.scope.semantic != collectedGraphSemanticContractID() || p.move == ([16]byte{}) || p.intent == ([32]byte{}) || p.configuration == ([32]byte{}) || p.root.Index == 0 || len(p.root.Image) != 172 || sha256.Sum256(p.root.Image) != p.root.ImageHash || len(p.owners) != len(p.head.owners) || len(p.owners) > maxGraphPins {
+	if output == nil || !p.scope.valid() || !collectedGraphAgreement(p.scope.semantic) || p.move == ([16]byte{}) || p.intent == ([32]byte{}) || p.configuration == ([32]byte{}) || p.root.Index == 0 || len(p.root.Image) != 172 || sha256.Sum256(p.root.Image) != p.root.ImageHash || len(p.owners) != len(p.head.owners) || len(p.owners) > maxGraphPins {
 		return nil, errInvalid
 	}
 	if err := output.Reserve(8192 + 256*len(p.owners)); err != nil {
@@ -169,7 +169,7 @@ func decodeMoveRetentionHeader(wire []byte) (p rangeMoveRetainedLineage, sums []
 			return p, nil, errCorrupt
 		}
 	}
-	if d.err != nil || len(d.b) != 0 || !p.scope.valid() || p.scope.semantic != collectedGraphSemanticContractID() || p.move == ([16]byte{}) || p.intent == ([32]byte{}) || p.configuration == ([32]byte{}) || p.root.Index == 0 || len(p.root.Image) != 172 || sha256.Sum256(p.root.Image) != p.root.ImageHash || (len(p.planCommand) == 0) != (len(p.planResult) == 0) {
+	if d.err != nil || len(d.b) != 0 || !p.scope.valid() || !collectedGraphAgreement(p.scope.semantic) || p.move == ([16]byte{}) || p.intent == ([32]byte{}) || p.configuration == ([32]byte{}) || p.root.Index == 0 || len(p.root.Image) != 172 || sha256.Sum256(p.root.Image) != p.root.ImageHash || (len(p.planCommand) == 0) != (len(p.planResult) == 0) {
 		return p, nil, errors.Join(errCorrupt, d.err)
 	}
 	if len(p.planCommand) != 0 {
@@ -499,7 +499,7 @@ func (m *declaredMaterializer) checkMoveRetainedLineages(q *reader) error {
 
 func checkMoveRetentionDescriptor(p rangeMoveRetainedLineage, d graphstore.RangeMoveDescriptor) error {
 	b := d.Source.Binding
-	if p.scope.semantic != collectedGraphSemanticContractID() || b.SemanticContractID != p.scope.semantic || b.Identity.Graph != [16]byte(p.scope.graph) || b.Identity.Partition != p.scope.partition || b.Identity.Group != p.scope.group || d.Declaration != p.scope.declaration || d.Configuration != p.configuration || d.Source.Index != p.root.Index || d.Source.ImageHash != p.root.ImageHash || !bytes.Equal(d.Source.Image[:], p.root.Image) {
+	if !collectedGraphAgreement(p.scope.semantic) || b.SemanticContractID != p.scope.semantic || b.Identity.Graph != [16]byte(p.scope.graph) || b.Identity.Partition != p.scope.partition || b.Identity.Group != p.scope.group || d.Declaration != p.scope.declaration || d.Configuration != p.configuration || d.Source.Index != p.root.Index || d.Source.ImageHash != p.root.ImageHash || !bytes.Equal(d.Source.Image[:], p.root.Image) {
 		return errCorrupt
 	}
 	return nil

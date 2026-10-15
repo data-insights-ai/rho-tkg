@@ -23,6 +23,9 @@ func collectedGraphNetwork(t *testing.T) *allocationTestNetwork {
 	return collectedGraphNetworkWithPolicy(t, nil)
 }
 func collectedGraphNetworkWithPolicy(t *testing.T, adjust func(*raftlog.ApplicationPolicy)) *allocationTestNetwork {
+	return collectedGraphNetworkWithAgreement(t, adjust, collectedGraphSemanticContractID())
+}
+func collectedGraphNetworkWithAgreement(t *testing.T, adjust func(*raftlog.ApplicationPolicy), agreement raftlog.ApplicationSemanticContractID) *allocationTestNetwork {
 	t.Helper()
 	r := partitionCodecRequest(t, 1, defaultMaterializerLimits())
 	n := &allocationTestNetwork{t: t, d: r.declaration, pending: make(map[[16]byte]allocationProof)}
@@ -43,7 +46,7 @@ func collectedGraphNetworkWithPolicy(t *testing.T, adjust func(*raftlog.Applicat
 				t.Fatal(err)
 			}
 			part, _ := n.d.Partition(partition)
-			cfg := raftlog.Config{Dir: filepath.Join(t.TempDir(), fmt.Sprintf("gc-%d-%d", partition, id)), Create: true, Application: p, Controls: control, Recovery: recovery, Retention: retention, SemanticContractID: collectedGraphSemanticContractID(), Replication: raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}}, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.d.Graph()), Partition: partition, Group: part.Group}, Contract: contract, Limits: raftlog.DefaultApplicationTransferLimits()}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: max(32<<20, 2*p.RetainedApplicationBytes), MaxRecords: max(16384, 2*p.RetainedApplicationRecords)}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}}
+			cfg := raftlog.Config{Dir: filepath.Join(t.TempDir(), fmt.Sprintf("gc-%d-%d", partition, id)), Create: true, Application: p, Controls: control, Recovery: recovery, Retention: retention, SemanticContractID: agreement, Replication: raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}}, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.d.Graph()), Partition: partition, Group: part.Group}, Contract: contract, Limits: raftlog.DefaultApplicationTransferLimits()}, Generations: raftlog.ApplicationGenerationLimits{MaxBytes: max(32<<20, 2*p.RetainedApplicationBytes), MaxRecords: max(16384, 2*p.RetainedApplicationRecords)}, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}}
 			n.configs[g][member] = cfg
 			s, err := raftlog.Open(cfg)
 			if err != nil {
@@ -57,7 +60,7 @@ func collectedGraphNetworkWithPolicy(t *testing.T, adjust func(*raftlog.Applicat
 			if err := graphstore.BootstrapBoundOwnership(s, s.ApplicationBinding(), n.d, [3]uint64{1, 2, 3}); err != nil {
 				t.Fatal(err)
 			}
-			m, err := newCollectedGraphMaterializer(s, namespace{idalloc.GraphID(n.d.Graph()), partition}, n.d, defaultMaterializerLimits())
+			m, err := newDeclaredMaterializerWithAgreement(s, namespace{idalloc.GraphID(n.d.Graph()), partition}, n.d, defaultMaterializerLimits(), agreement)
 			if err != nil {
 				t.Fatal(err)
 			}

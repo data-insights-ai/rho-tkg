@@ -185,8 +185,10 @@ func (r *retainedPinRequest) Original() ([]byte, error) {
 }
 func pinCommandFor(manifest graphPinManifest, wire []byte, scope allocationScope, phase byte, action [16]byte, feed uint64) graphPinCommand {
 	c := graphPinCommand{scope: scope, issuer: manifest.issuer, action: action, id: manifest.id(), digest: sha256.Sum256(wire), phase: phase, feedStart: feed}
-	if phase == pinPublish {
-		c.action = manifest.request
+	if phase == pinPublish || phase == pinIssue || phase == pinCancelIssue {
+		if phase == pinPublish {
+			c.action = manifest.request
+		}
 		c.manifest = wire
 		c.epoch = manifest.epoch
 	}
@@ -268,6 +270,9 @@ func (r *retainedPinRequest) Publish(ctx context.Context) (token retainedPinToke
 			if e != nil {
 				return token, errors.Join(errRetainedPinPending, e)
 			}
+			if observed.issued.index != 0 {
+				authenticated = true
+			}
 			if observed.result.index != 0 {
 				authenticated = true
 				installed[i] = observed.result.status == pinApplied && observed.result.publication != 0
@@ -297,6 +302,9 @@ func (r *retainedPinRequest) Publish(ctx context.Context) (token retainedPinToke
 		if result.status == pinExpired {
 			return token, errGraphPinExpired
 		}
+		if result.status == pinReleased {
+			return token, errGraphPinReleased
+		}
 		if result.status != pinApplied || result.publication == 0 {
 			return token, errors.Join(errRetainedPinPending, replica.ErrUnavailable)
 		}
@@ -324,6 +332,154 @@ func (r *retainedPinRequest) Publish(ctx context.Context) (token retainedPinToke
 	token = retainedPinToken{manifest: owned(r.manifest), publications: publications}
 	return token, nil
 }
+
+// The dependency prepass supplies genuine native indexes. Re-encoding spends
+// the SAME original invocation allowance; this helper grants no authority.
+func (r *retainedPinRequest) columnFeeds(feed [2]uint64) error {
+	if r == nil || r.self != r {
+		return errInvalid
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.born || r.closed || len(r.definition.parts) != 2 || r.definition.publisher.semantic != durableColumnGraphSemanticContractID() {
+		return errInvalid
+	}
+	if err := r.invocation.arena.Reserve(4096 + 8*len(r.manifest)); err != nil {
+		return outputBudgetFailure(err)
+	}
+	for g := range 2 {
+		if feed[g] == 0 || feed[g] > r.definition.parts[g].certificate.sourceIndex+1 {
+			return errInvalid
+		}
+	}
+	for g := range 2 {
+		r.definition.parts[g].feedStart = feed[g]
+		lineage, err := pinLineage(r.definition.parts[g])
+		if err != nil {
+			return err
+		}
+		r.definition.parts[g].lineage = lineage
+	}
+	wire, err := encodeGraphPinManifest(r.definition)
+	if err == nil {
+		r.manifest = wire
+	}
+	return err
+}
+
+// Issuance is durable creation intent, never a live token. A recovered recipe
+// first reacquires the exact native cut on this invocation ledger; local journal
+// bytes cannot bless a reclaimed source or a made-up issuer/certificate.
+func (r *retainedPinRequest) Issue(ctx context.Context, p *retainedPinPublisher) error {
+	if r == nil || r.self != r || ctx == nil || !p.valid() {
+		return errInvalid
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m := r.definition
+	if r.closed || m.publisher.semantic != durableColumnGraphSemanticContractID() {
+		return errInvalid
+	}
+	endpoint := r.invocation.endpoints[m.publisher.partition]
+	if endpoint == nil || endpoint.peer.scope != m.publisher {
+		return errGraphCutScope
+	}
+	observed, err := endpoint.retainedPinRead(ctx, r.manifest)
+	if err != nil {
+		return errors.Join(errRetainedPinPending, err)
+	}
+	if observed.cancelled || observed.status == pinReleased {
+		return errGraphPinReleased
+	}
+	if observed.status == pinExpired {
+		return errGraphPinExpired
+	}
+	if observed.issued.index != 0 {
+		return nil
+	}
+	if !r.born {
+		cut := graphCut{certificates: make([]graphCertificate, len(m.parts))}
+		if err := r.invocation.arena.Reserve(4096 + 1024*len(m.parts)); err != nil {
+			return outputBudgetFailure(err)
+		}
+		for i, part := range m.parts {
+			cut.certificates[i] = part.certificate
+		}
+		engine := &certifiedReadCoordinator{declaration: p.coordinator.host.machine.declaration}
+		read, err := engine.openBackend(ctx, graphReadRequest{mode: graphReadAt, cut: cut}, nil, &remoteCertifiedGraphBackend{coordinator: p.coordinator, endpoints: r.invocation.endpoints, budget: r.invocation.budget, arena: r.invocation.arena})
+		if err != nil {
+			return err
+		}
+		if err := read.Close(); err != nil {
+			return err
+		}
+	}
+	result, err := endpoint.submitRetainedPin(ctx, pinCommandFor(m, r.manifest, m.publisher, pinIssue, pinTerminalAction(m, r.manifest, pinIssue), 0), r.invocation.budget)
+	if err != nil {
+		return errors.Join(errRetainedPinPending, err)
+	}
+	if result.status == pinReleased {
+		return errGraphPinReleased
+	}
+	if result.status == pinExpired {
+		return errGraphPinExpired
+	}
+	if result.status != pinApplied {
+		return errors.Join(errRetainedPinPending, replica.ErrUnavailable)
+	}
+	return nil
+}
+
+// Every participant receives an actual ordered cancellation fence. Completed
+// absence alone is never terminal. Existing owners spend their original Close
+// alternative first; a publication racing that observation makes Cancel Pending.
+func (r *retainedPinRequest) CancelIssue(ctx context.Context) error {
+	if r == nil || r.self != r || ctx == nil {
+		return errInvalid
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m := r.definition
+	if m.publisher.semantic != durableColumnGraphSemanticContractID() {
+		return errInvalid
+	}
+	if r.closed {
+		return nil
+	}
+	var combined error
+	for i, part := range m.parts {
+		if r.completed[i] {
+			continue
+		}
+		endpoint := r.invocation.endpoints[part.certificate.scope.partition]
+		observed, err := endpoint.retainedPinRead(ctx, r.manifest)
+		if err != nil {
+			combined = errors.Join(combined, err)
+			continue
+		}
+		if observed.owner.publication != 0 && observed.owner.terminal == 0 {
+			close := pinCommandFor(m, r.manifest, endpoint.peer.scope, pinClose, pinTerminalAction(m, r.manifest, pinClose), 0)
+			result, err := endpoint.submitRetainedPin(ctx, close, r.invocation.cleanup[part.certificate.scope.partition])
+			if err != nil || result.publication == 0 || result.status != pinApplied && result.status != pinReleased && result.status != pinExpired {
+				combined = errors.Join(combined, replica.ErrUnavailable, err)
+				continue
+			}
+		}
+		cancel := pinCommandFor(m, r.manifest, endpoint.peer.scope, pinCancelIssue, pinTerminalAction(m, r.manifest, pinCancelIssue), 0)
+		result, err := endpoint.submitRetainedPin(ctx, cancel, r.invocation.budget)
+		if err != nil || result.status != pinReleased {
+			combined = errors.Join(combined, replica.ErrUnavailable, err)
+			continue
+		}
+		r.completed[i] = true
+	}
+	if combined != nil {
+		return errors.Join(errRetainedPinPending, combined)
+	}
+	r.closed = true
+	return nil
+}
+
 func encodeRetainedPinToken(token retainedPinToken) ([]byte, error) {
 	manifest, err := decodeGraphPinManifest(token.manifest)
 	if err != nil || len(token.publications) != len(manifest.parts) {
@@ -536,3 +692,29 @@ func (p *retainedPinPublisher) Open(ctx context.Context, token retainedPinToken)
 }
 
 var _ certifiedGraphBackend = (*retainedPinReadBackend)(nil)
+
+// An interrupted prepass has no native issuance yet. Only the genuine held
+// initial/final native sources can admit repeating that prepass; a journal copy
+// or decoded GPM alone cannot mark a recovered request born.
+func (r *retainedPinRequest) bindUnissuedColumnSource(source *nativeColumnSource) error {
+	if r == nil || r.self != r || source == nil {
+		return errInvalid
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	if err := source.check(source.ctx); err != nil {
+		return err
+	}
+	if r.closed || r.born || len(r.definition.parts) != 2 || source.binding.Version != 2 || r.definition.publisher.semantic != durableColumnGraphSemanticContractID() {
+		return errInvalid
+	}
+	for g, part := range r.definition.parts {
+		if part.certificate != source.initial[g] || source.initial[g].sourceIndex > source.final[g].sourceIndex {
+			return errInvalid
+		}
+	}
+	r.born = true
+	return nil
+}

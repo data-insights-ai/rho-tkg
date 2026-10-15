@@ -68,7 +68,7 @@ func newDeclaredMaterializerBinding(s *raftlog.Store, n namespace, d graphstore.
 	if err := l.validate(); err != nil {
 		return nil, err
 	}
-	if agreement == collectedGraphSemanticContractID() && (s.ApplicationRetention().Version != 1 || s.ApplicationRecovery().Version != 2 || s.ApplicationControls().Version != 1) {
+	if collectedGraphAgreement(agreement) && (s.ApplicationRetention().Version != 1 || s.ApplicationRecovery().Version != 2 || s.ApplicationControls().Version != 1) {
 		return nil, errInvalid
 	}
 	entry, found := d.Partition(n.partition)

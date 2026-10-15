@@ -3,6 +3,7 @@ package graphapply
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"sync"
@@ -21,20 +22,30 @@ type nativeColumnStore struct {
 	db             *pebble.DB
 	binding        nativeColumnBinding
 	digest         [32]byte
+	retained       map[[16]byte][16]byte // exact registered transient source -> generation
 }
 
 func openNativeColumnStore(dir string, fs vfs.FS, create bool, source *nativeColumnSource) (store *nativeColumnStore, err error) {
 	if dir == "" || source == nil || source.binding.Policy.validate() != nil {
 		return nil, errInvalid
 	}
+	return openNativeColumnStoreBinding(dir, fs, create, source.binding, source.digest)
+}
+
+// Binding metadata is inert. Durable reopen authenticates its native original
+// before constructing a source or allowing any derived data read.
+func openNativeColumnStoreBinding(dir string, fs vfs.FS, create bool, binding nativeColumnBinding, digest [32]byte) (store *nativeColumnStore, err error) {
+	if dir == "" || binding.Policy.validate() != nil || create && binding.Version == 0 {
+		return nil, errInvalid
+	}
 	if fs == nil {
 		fs = vfs.Default
 	}
-	db, err := pebble.Open(dir, &pebble.Options{FS: fs, ErrorIfExists: create, ErrorIfNotExists: !create, CacheSize: source.binding.Policy.CacheBytes, MemTableSize: source.binding.Policy.MemTableBytes, MemTableStopWritesThreshold: 2, MaxOpenFiles: 32, FormatMajorVersion: pebble.FormatMinSupported, MaxManifestFileSize: 1 << 20})
+	db, err := pebble.Open(dir, &pebble.Options{FS: fs, ErrorIfExists: create, ErrorIfNotExists: !create, CacheSize: binding.Policy.CacheBytes, MemTableSize: binding.Policy.MemTableBytes, MemTableStopWritesThreshold: 2, MaxOpenFiles: 32, FormatMajorVersion: pebble.FormatMinSupported, MaxManifestFileSize: 1 << 20})
 	if err != nil {
 		return nil, err
 	}
-	s := &nativeColumnStore{db: db, binding: source.binding, digest: source.digest}
+	s := &nativeColumnStore{db: db, binding: binding, digest: digest}
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, db.Close())
@@ -58,6 +69,16 @@ func openNativeColumnStore(dir string, fs vfs.FS, create bool, source *nativeCol
 		actual, e := s.get([]byte("binding"), nativeColumnMetadataBytes)
 		if e != nil {
 			return nil, e
+		}
+		if binding.Version == 0 {
+			var retained nativeColumnBinding
+			if err := nativeColumnDecodeMetadata(actual, &retained); err != nil {
+				return nil, err
+			}
+			if retained.Version != 2 || retained.TerminalAttempts != nativeColumnTerminalAttempts || retained.Policy != binding.Policy {
+				return nil, errInvalid
+			}
+			s.binding, s.digest, wire = retained, sha256.Sum256(actual), actual
 		}
 		if !bytes.Equal(actual, wire) {
 			return nil, errInvalid
@@ -99,7 +120,7 @@ func (s *nativeColumnStore) Close() error {
 	if s.closed {
 		return nil
 	}
-	if s.active {
+	if s.active || len(s.retained) != 0 {
 		return errLimit
 	}
 	s.closed = true
@@ -228,6 +249,9 @@ func (s *nativeColumnStore) ensure(id [16]byte, source *nativeColumnSource) (nat
 	}
 	prior, err := s.progress(id)
 	if err == nil {
+		if err := s.liveRetention(id, source); err != nil {
+			return nativeColumnProgress{}, err
+		}
 		if !nativeColumnSame(prior.Generation, gen) {
 			return nativeColumnProgress{}, errInvalid
 		}
@@ -235,6 +259,9 @@ func (s *nativeColumnStore) ensure(id [16]byte, source *nativeColumnSource) (nat
 	}
 	if !errors.Is(err, pebble.ErrNotFound) {
 		return nativeColumnProgress{}, err
+	}
+	if s.binding.Version == 2 {
+		return nativeColumnProgress{}, errNativeColumnIncomplete
 	}
 	l, err := s.ledger()
 	if err != nil {
@@ -395,6 +422,9 @@ func (s *nativeColumnStore) existing(id [16]byte, source *nativeColumnSource) (n
 		return nativeColumnProgress{}, errNativeColumnIncomplete
 	}
 	if err != nil {
+		return nativeColumnProgress{}, err
+	}
+	if err := s.liveRetention(id, source); err != nil {
 		return nativeColumnProgress{}, err
 	}
 	if !nativeColumnSame(p.Generation, gen) {

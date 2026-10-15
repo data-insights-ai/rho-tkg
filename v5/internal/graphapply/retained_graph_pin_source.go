@@ -26,6 +26,8 @@ type retainedPinObservation struct {
 	index, epoch        uint64
 	configuration       [32]byte
 	result              graphPinResult
+	issued              graphPinResult
+	cancelled           bool
 	owner               graphPinOwner
 	manifest            []byte
 	status              byte
@@ -74,7 +76,7 @@ func encodeRetainedPinObservation(o retainedPinObservation) ([]byte, error) {
 			return nil, e
 		}
 		if o.result.index == 0 {
-			if o.status != pinPending || o.result != (graphPinResult{}) || o.owner != (graphPinOwner{}) {
+			if (o.status != pinPending && !(o.scope.semantic == durableColumnGraphSemanticContractID() && (o.cancelled && o.status == pinReleased || o.issued.index != 0 && o.status == pinExpired))) || o.result != (graphPinResult{}) || o.owner != (graphPinOwner{}) {
 				return nil, errInvalid
 			}
 		} else {
@@ -98,8 +100,28 @@ func encodeRetainedPinObservation(o retainedPinObservation) ([]byte, error) {
 	} else if o.result != (graphPinResult{}) || o.owner != (graphPinOwner{}) || o.status != pinApplied {
 		return nil, errInvalid
 	}
+	version := byte(1)
+	var issued []byte
+	if o.scope.semantic == durableColumnGraphSemanticContractID() {
+		version = 2
+		if o.issued.index != 0 {
+			manifest, e := decodeGraphPinManifest(o.manifest)
+			if e != nil || o.scope != manifest.publisher || o.issued.phase != pinIssue || o.issued.status != pinApplied || o.issued.id != manifest.id() || o.issued.digest != sha256.Sum256(o.manifest) || o.issued.action != pinTerminalAction(manifest, o.manifest, pinIssue) || o.issued.index > o.index {
+				return nil, errors.Join(errInvalid, e)
+			}
+			issued, err = encodeGraphPinResult(o.issued)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if o.cancelled && o.status != pinReleased && o.status != pinExpired {
+			return nil, errInvalid
+		}
+	} else if o.issued != (graphPinResult{}) || o.cancelled {
+		return nil, errInvalid
+	}
 	return boundedEncoding(graphPinManifestBytes+2048, func(w *boundedWriter) {
-		w.add([]byte{'G', 'P', 'I', 1})
+		w.add([]byte{'G', 'P', 'I', version})
 		w.add(appendAllocationScope(nil, o.scope))
 		w.add(o.read.session[:])
 		w.u64(o.read.sequence)
@@ -114,10 +136,22 @@ func encodeRetainedPinObservation(o retainedPinObservation) ([]byte, error) {
 		w.field(result)
 		w.field(owner)
 		w.field(o.manifest)
+		if version == 2 {
+			w.field(issued)
+			if o.cancelled {
+				w.tag(1)
+			} else {
+				w.tag(0)
+			}
+		}
 	})
 }
 func decodeRetainedPinObservation(wire []byte) (retainedPinObservation, error) {
-	body, err := graphBody(wire, "GPI\x01", graphPinManifestBytes+2048)
+	version, magic := byte(1), "GPI\x01"
+	if bytes.HasPrefix(wire, []byte("GPI\x02")) {
+		version, magic = 2, "GPI\x02"
+	}
+	body, err := graphBody(wire, magic, graphPinManifestBytes+2048)
 	if err != nil {
 		return retainedPinObservation{}, err
 	}
@@ -131,10 +165,28 @@ func decodeRetainedPinObservation(wire []byte) (retainedPinObservation, error) {
 	o.output = c.count(64<<20, 0)
 	result, owner := c.field(256), c.field(128)
 	o.manifest = c.field(graphPinManifestBytes)
+	var issuance []byte
+	if version == 2 {
+		issuance = c.field(256)
+		flag := c.tag()
+		if flag > 1 {
+			return retainedPinObservation{}, errCorrupt
+		}
+		o.cancelled = flag == 1
+	}
 	if c.err != nil || len(c.b) != 0 {
 		return retainedPinObservation{}, errors.Join(errCorrupt, c.err)
 	}
 	o.scope = readAllocationScope(&decoder{b: scope})
+	if version == 2 && o.scope.semantic != durableColumnGraphSemanticContractID() || version == 1 && o.scope.semantic == durableColumnGraphSemanticContractID() {
+		return retainedPinObservation{}, errInvalid
+	}
+	if len(issuance) > 0 {
+		o.issued, err = decodeGraphPinResult(issuance)
+		if err != nil {
+			return retainedPinObservation{}, err
+		}
+	}
 	if len(result) > 0 {
 		o.result, err = decodeGraphPinResult(result)
 		if err != nil {
@@ -261,6 +313,16 @@ func (m *declaredMaterializer) observeRetainedPin(ctx context.Context, question 
 	if err != nil {
 		return out, err
 	}
+	if m.SemanticContractID() == durableColumnGraphSemanticContractID() {
+		out.issued, err = readPinIssuance(&q, manifest, question.manifest)
+		if err != nil {
+			return out, err
+		}
+		out.cancelled, err = pinIssuedCancellation(&q, command.id, command.digest, command.issuer)
+		if err != nil {
+			return out, err
+		}
+	}
 	result, found, err := pinActionOriginal(&q, command, wire)
 	if err != nil {
 		return out, err
@@ -269,6 +331,11 @@ func (m *declaredMaterializer) observeRetainedPin(ctx context.Context, question 
 		// Genuine completed absence is explicit pending, never publication or
 		// permission to resurrect an unknown original from caller-supplied bytes.
 		out.status, out.manifest = pinPending, owned(question.manifest)
+		if out.cancelled {
+			out.status = pinReleased
+		} else if out.issued.index != 0 && head.epoch >= manifest.expires {
+			out.status = pinExpired
+		}
 		return out, nil
 	}
 	out.result, out.manifest = result, owned(question.manifest)

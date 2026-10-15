@@ -41,6 +41,8 @@ const (
 	pinExpire             byte = 4
 	pinClose              byte = 5
 	pinAdvanceEpoch       byte = 6
+	pinIssue              byte = 7
+	pinCancelIssue        byte = 8
 	pinApplied            byte = 1
 	pinPending            byte = 2
 	pinStale              byte = 3
@@ -194,7 +196,7 @@ func decodeGraphPinManifest(wire []byte) (graphPinManifest, error) {
 	return m, nil
 }
 func (c graphPinCommand) valid() bool {
-	if !c.scope.valid() || !retainedGraphAgreement(c.scope.semantic) || c.issuer == ([16]byte{}) || c.action == ([16]byte{}) || c.phase < 1 || c.phase > 6 {
+	if !c.scope.valid() || !retainedGraphAgreement(c.scope.semantic) || c.issuer == ([16]byte{}) || c.action == ([16]byte{}) || c.phase < 1 || c.phase > pinCancelIssue {
 		return false
 	}
 	if c.phase == pinAdvanceEpoch {
@@ -203,9 +205,12 @@ func (c graphPinCommand) valid() bool {
 	if c.id == ([32]byte{}) || c.digest == ([32]byte{}) || c.expectedEpoch != 0 {
 		return false
 	}
-	if c.phase == pinPublish {
+	if c.phase >= pinIssue && c.scope.semantic != durableColumnGraphSemanticContractID() {
+		return false
+	}
+	if c.phase == pinPublish || c.phase == pinIssue || c.phase == pinCancelIssue {
 		m, err := decodeGraphPinManifest(c.manifest)
-		return err == nil && m.id() == c.id && m.issuer == c.issuer && m.request == c.action && sha256.Sum256(c.manifest) == c.digest && c.epoch == m.epoch && c.feedStart == 0
+		return err == nil && (c.phase < pinIssue || m.publisher.semantic == c.scope.semantic) && m.id() == c.id && m.issuer == c.issuer && (c.phase == pinPublish && m.request == c.action || (c.phase == pinIssue || c.phase == pinCancelIssue) && pinTerminalAction(m, c.manifest, c.phase) == c.action) && sha256.Sum256(c.manifest) == c.digest && c.epoch == m.epoch && c.feedStart == 0
 	}
 	return len(c.manifest) == 0 && (c.phase == pinAdvanceFeed) == (c.feedStart != 0) && (c.phase == pinExpire || c.epoch == 0)
 }
@@ -256,7 +261,7 @@ func isGraphPinWire(wire []byte) bool {
 	return len(wire) >= 4 && bytes.Equal(wire[:4], []byte{'G', 'P', 'L', 1})
 }
 func encodeGraphPinResult(r graphPinResult) ([]byte, error) {
-	if r.index == 0 || r.phase < 1 || r.phase > 6 || r.status < 1 || r.status > 5 {
+	if r.index == 0 || r.phase < 1 || r.phase > pinCancelIssue || r.status < 1 || r.status > 5 {
 		return nil, errInvalid
 	}
 	return boundedEncoding(256, func(w *boundedWriter) {
@@ -461,6 +466,15 @@ func (m *declaredMaterializer) checkPinSource(q *reader, p graphPinPart, h graph
 			return err
 		}
 	}
+	if m.SemanticContractID() == durableColumnGraphSemanticContractID() {
+		plan, _, _, err := activeGraphRetention(q)
+		if err != nil {
+			return err
+		}
+		if plan.ID != ([32]byte{}) && p.feedStart < plan.OutcomeFloor {
+			return errors.Join(errGraphPinExpired, raftlog.ErrApplicationExpired)
+		}
+	}
 	// Validate graph meaning from the actual retained certificate's complete
 	// image, then compare that image hash and real feed position to native frames.
 	decoded, err := graphstore.DecodeRoot(c.image[:])
@@ -601,6 +615,9 @@ func (m *declaredMaterializer) retainedPinPurpose(q *reader, c graphPinCommand, 
 		reservation := pinReservation(m.scope(), c.id, c.digest)
 		return raftlog.ApplicationRecoveryPurpose{TerminalReserve: &reservation}, nil
 	}
+	if c.phase == pinIssue || c.phase == pinCancelIssue {
+		return raftlog.ApplicationRecoveryPurpose{}, nil
+	}
 	if c.phase != pinRelease && c.phase != pinExpire && c.phase != pinClose {
 		return raftlog.ApplicationRecoveryPurpose{}, nil
 	}
@@ -623,6 +640,7 @@ func (m *declaredMaterializer) retainedPinPurpose(q *reader, c graphPinCommand, 
 			return raftlog.ApplicationRecoveryPurpose{}, errInvalid
 		}
 	}
+
 	// An unapplied Publish may precede this command in the same Ready. This is
 	// only its canonical capacity recipe: Store must bind a genuine applied or
 	// queued TerminalReserve; Stage then validates its immutable owner/issuer.
@@ -670,11 +688,21 @@ func (m *declaredMaterializer) pinPublication(q *reader, c graphPinCommand, h gr
 	if !found || p.certificate.configuration != configuration {
 		return manifest, p, 0, errInvalid
 	}
+	if c.scope.semantic == durableColumnGraphSemanticContractID() {
+		if cancelled, e := pinIssuedCancellation(q, c.id, c.digest, c.issuer); e != nil {
+			return manifest, p, 0, e
+		} else if cancelled {
+			return manifest, p, pinReleased, nil
+		}
+	}
+	if m.SemanticContractID() == durableColumnGraphSemanticContractID() && h.epoch >= manifest.expires {
+		return manifest, p, pinExpired, nil
+	}
 	if h.epoch != manifest.epoch {
 		return manifest, p, pinStale, nil
 	}
 	if err := m.checkPinSource(q, p, h); err != nil {
-		if errors.Is(err, errGraphPinExpired) || errors.Is(err, errGraphHistoryExpired) && errors.Is(err, raftlog.ErrApplicationExpired) {
+		if errors.Is(err, errGraphPinExpired) || m.SemanticContractID() == durableColumnGraphSemanticContractID() && errors.Is(err, raftlog.ErrApplicationExpired) || errors.Is(err, errGraphHistoryExpired) && errors.Is(err, raftlog.ErrApplicationExpired) {
 			return manifest, p, pinExpired, nil
 		}
 		return manifest, p, 0, err
@@ -757,7 +785,12 @@ func (h *allocationHost) preflightRetainedPin(c graphPinCommand, wire []byte) (e
 	if c.phase == pinAdvanceEpoch {
 		return nil
 	}
-	if c.phase == pinPublish {
+	if c.phase == pinCancelIssue {
+		if err := m.bindPinCancellation(&q, c); err != nil {
+			return err
+		}
+	}
+	if c.phase == pinPublish || c.phase == pinIssue {
 		_, _, _, err := m.pinPublication(&q, c, head)
 		return err
 	}
@@ -766,9 +799,12 @@ func (h *allocationHost) preflightRetainedPin(c graphPinCommand, wire []byte) (e
 		return err
 	}
 	if !found {
+		if c.phase == pinCancelIssue {
+			return nil
+		}
 		return replica.ErrUnavailable
 	}
-	if owner.terminal != 0 {
+	if owner.terminal != 0 || c.phase == pinCancelIssue {
 		return nil
 	}
 	if !slices.Contains(head.owners, c.id) {
@@ -873,6 +909,51 @@ func (m *declaredMaterializer) stageRetainedPin(q *reader, entry replica.Entry, 
 		}
 		return finish(true, true)
 	}
+	if c.phase == pinIssue {
+		manifest, _, status, err := m.pinPublication(q, c, h)
+		if err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+		result.status = status
+		if status != pinApplied {
+			return finish(false, status != pinPending)
+		}
+		if manifest.publisher != c.scope {
+			return raftlog.ApplicationBatch{}, errInvalid
+		}
+		if err := reserveComposer(q, 1024+4*len(c.manifest)); err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+		puts = append(puts, raftlog.ApplicationControlPut{Key: graphPinIssueKey(q.ns, c.id), Value: owned(c.manifest)})
+		return finish(false, true)
+	}
+	if c.phase == pinCancelIssue {
+		if err := m.bindPinCancellation(q, c); err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+		owner, _, found, err := m.pinKnownOwner(q, c)
+		if err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+		if found && owner.terminal == 0 {
+			result.status = pinPending
+			return finish(false, false)
+		}
+		if err := reserveComposer(q, 4096); err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+		tombstone, err := encodePinCancellation(c)
+		if err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+		puts = append(puts, raftlog.ApplicationControlPut{Key: graphPinCancelKey(q.ns, c.id), Value: tombstone})
+		result.status = pinReleased
+		if found {
+			result.publication, result.feedStart = owner.publication, owner.feedStart
+		}
+		return finish(false, true)
+	}
+
 	if c.phase == pinPublish {
 		_, p, status, err := m.pinPublication(q, c, h)
 		if err != nil {
@@ -981,4 +1062,92 @@ func (h *allocationHost) retainedPinProposal(c graphPinCommand) (allocationPropo
 		return allocationProposal{}, err
 	}
 	return allocationProposal{target: c.scope, wire: wire}, nil
+}
+
+// Durable-column intent is an explicitly new immutable contract. The original
+// collected/retained IDs and constructors are never silently upgraded.
+func durableColumnGraphSemanticContractID() raftlog.ApplicationSemanticContractID {
+	base := collectedGraphSemanticContractID()
+	return raftlog.ApplicationSemanticContractID(sha256.Sum256(append(base[:], []byte("durable-columns=exact-native-issuance-v1\x00intent-cancel=ordered-tombstone-v1\x00original-outcome-footprint=feed-min-v1\x00")...)))
+}
+func collectedGraphAgreement(id raftlog.ApplicationSemanticContractID) bool {
+	return id == collectedGraphSemanticContractID() || id == durableColumnGraphSemanticContractID()
+}
+func newDurableColumnGraphMaterializer(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits) (*declaredMaterializer, error) {
+	if s == nil || s.ApplicationRetention().Version != 1 || s.ApplicationRecovery().Version != 2 || s.ApplicationControls().Version != 1 {
+		return nil, errInvalid
+	}
+	return newDeclaredMaterializerWithAgreement(s, n, d, l, durableColumnGraphSemanticContractID())
+}
+func graphPinIssueKey(n namespace, id [32]byte) []byte  { return append(recordKey(n, 28), id[:]...) }
+func graphPinCancelKey(n namespace, id [32]byte) []byte { return append(recordKey(n, 29), id[:]...) }
+func encodePinCancellation(c graphPinCommand) ([]byte, error) {
+	if c.phase != pinCancelIssue || c.scope.semantic != durableColumnGraphSemanticContractID() || !c.valid() {
+		return nil, errInvalid
+	}
+	return boundedEncoding(128, func(w *boundedWriter) {
+		w.add([]byte("GPK\x01"))
+		w.add(c.id[:])
+		w.add(c.digest[:])
+		w.add(c.issuer[:])
+	})
+}
+func pinIssuedCancellation(q *reader, id, digest [32]byte, issuer [16]byte) (bool, error) {
+	row, found, err := crossControl(q, graphPinCancelKey(q.ns, id), 128)
+	if err != nil || !found {
+		return false, err
+	}
+	body, err := graphBody(row.Value, "GPK\x01", 128)
+	if err != nil || len(body) != 80 || !bytes.Equal(body[:32], id[:]) || !bytes.Equal(body[32:64], digest[:]) || !bytes.Equal(body[64:], issuer[:]) {
+		return false, errors.Join(errInvalid, err)
+	}
+	return true, nil
+}
+func readPinIssuance(q *reader, manifest graphPinManifest, wire []byte) (graphPinResult, error) {
+	if manifest.publisher.partition != q.ns.partition {
+		return graphPinResult{}, nil
+	}
+	row, found, err := crossControl(q, graphPinIssueKey(q.ns, manifest.id()), graphPinManifestBytes)
+	if err != nil || !found {
+		return graphPinResult{}, err
+	}
+	if !bytes.Equal(row.Value, wire) {
+		return graphPinResult{}, errInvalid
+	}
+	command := pinCommandFor(manifest, wire, manifest.publisher, pinIssue, pinTerminalAction(manifest, wire, pinIssue), 0)
+	encoded, err := encodeGraphPinCommand(command)
+	if err != nil {
+		return graphPinResult{}, err
+	}
+	original, found, err := pinActionOriginal(q, command, encoded)
+	if err != nil || !found || original.status != pinApplied || original.index != row.Index {
+		return graphPinResult{}, errors.Join(errCorrupt, err)
+	}
+	return original, nil
+}
+
+// Cancellation carries the complete original body on every participant. It
+// authenticates current immutable meaning/configuration, not old data liveness.
+// A terminal owner/original remains recoverable after protected data expires.
+func (m *declaredMaterializer) bindPinCancellation(q *reader, c graphPinCommand) error {
+	manifest, err := decodeGraphPinManifest(c.manifest)
+	if err != nil || c.phase != pinCancelIssue || !c.valid() {
+		return errors.Join(errInvalid, err)
+	}
+	if err := m.bindPinManifest(manifest); err != nil {
+		return err
+	}
+	part, found := pinPart(manifest, m.ns.partition)
+	if !found || part.certificate.scope != m.scope() {
+		return errInvalid
+	}
+	cfg, err := m.initialized(q)
+	if err != nil {
+		return err
+	}
+	configuration, err := cfg.digest()
+	if err != nil || configuration != part.certificate.configuration {
+		return errors.Join(errInvalid, err)
+	}
+	return nil
 }

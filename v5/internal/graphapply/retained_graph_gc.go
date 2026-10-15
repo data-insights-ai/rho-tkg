@@ -21,7 +21,7 @@ func collectedGraphSemanticContractID() raftlog.ApplicationSemanticContractID {
 	return raftlog.ApplicationSemanticContractID(sha256.Sum256(append(base[:], []byte("native-retention=authenticated-sparse-plan-v1\x00source=current-plan-anchor-v1\x00originals=immutable-controls-v1\x00handoff=resolved-fence-retained-lineage-v1\x00")...)))
 }
 func retainedGraphAgreement(id raftlog.ApplicationSemanticContractID) bool {
-	return id == retainedGraphSemanticContractID() || id == collectedGraphSemanticContractID()
+	return id == retainedGraphSemanticContractID() || collectedGraphAgreement(id)
 }
 
 // A fresh AS7 native store is required; old directories/agreements are never
@@ -34,7 +34,7 @@ func newCollectedGraphMaterializer(s *raftlog.Store, n namespace, d graphstore.O
 	return newDeclaredMaterializerWithAgreement(s, n, d, l, collectedGraphSemanticContractID())
 }
 func (m *declaredMaterializer) collectsHistory() bool {
-	return m != nil && m.SemanticContractID() == collectedGraphSemanticContractID()
+	return m != nil && collectedGraphAgreement(m.SemanticContractID())
 }
 
 var errGraphHistoryExpired = errors.New("graphapply: authenticated graph history below retained floor")
@@ -72,7 +72,7 @@ func isGraphRetentionWire(b []byte) bool {
 	return len(b) >= 4 && bytes.Equal(b[:4], []byte{'G', 'G', 'C', 1})
 }
 func encodeGraphRetentionCommand(c graphRetentionCommand) ([]byte, error) {
-	if !c.scope.valid() || c.scope.semantic != collectedGraphSemanticContractID() || c.issuer == ([16]byte{}) || c.request == ([16]byte{}) || c.configuration == ([32]byte{}) {
+	if !c.scope.valid() || !collectedGraphAgreement(c.scope.semantic) || c.issuer == ([16]byte{}) || c.request == ([16]byte{}) || c.configuration == ([32]byte{}) {
 		return nil, errInvalid
 	}
 	for _, floor := range []uint64{c.floors.root, c.floors.data, c.floors.feed, c.floors.outcome, c.floors.recovery, c.floors.certificate} {
@@ -379,6 +379,9 @@ func (m *declaredMaterializer) graphRetentionCeiling(q *reader, configuration [3
 		cap.data = min(cap.data, source)
 		cap.feed = min(cap.feed, owner.feedStart)
 		cap.outcome = min(cap.outcome, source)
+		if m.SemanticContractID() == durableColumnGraphSemanticContractID() {
+			cap.outcome = min(cap.outcome, owner.feedStart)
+		}
 		cap.recovery = min(cap.recovery, source)
 		cap.certificate = min(cap.certificate, part.certificate.index)
 	}

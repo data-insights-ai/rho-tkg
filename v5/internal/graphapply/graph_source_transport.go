@@ -95,7 +95,7 @@ func graphRetentionStatus(err error) byte {
 }
 
 func graphRetentionStatusAllowed(id raftlog.ApplicationSemanticContractID, status byte) bool {
-	return (status == 1 || status == 2) && retainedGraphAgreement(id) || status == 3 && id == collectedGraphSemanticContractID()
+	return (status == 1 || status == 2) && retainedGraphAgreement(id) || status == 3 && collectedGraphAgreement(id)
 }
 
 func encodeGraphWireResponse(r graphWireResponse) ([]byte, error) {

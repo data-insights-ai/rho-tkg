@@ -3,6 +3,7 @@ package graphapply
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -95,6 +96,7 @@ const (
 	nativeColumnsRead
 	nativeColumnsNext
 	nativeColumnsClose
+	nativeColumnsRetire
 )
 
 type nativeGraphCostColumnCookie struct {
@@ -108,6 +110,7 @@ type nativeGraphCostColumnRequest struct {
 	Create, Cached, Fill bool
 	Cookie               nativeGraphCostColumnCookie
 	Sequence             uint64
+	RetainedExpires      uint64 `json:",omitzero"` // explicit fresh durable profile; zero preserves legacy requests
 }
 type nativeGraphCostColumnReceipt struct {
 	Cookie                          nativeGraphCostColumnCookie
@@ -188,10 +191,10 @@ func nativeGraphCostColumnDecode(r processRequest) (q nativeGraphCostColumnReque
 			return q, errInvalid
 		}
 	} else {
-		if q.Cookie.Owner == 0 || q.Cookie.Request == ([16]byte{}) || len(q.Initial)+len(q.Final) != 0 || q.Generation != ([16]byte{}) || q.Create || q.Action < nativeColumnsPublish || q.Action > nativeColumnsClose {
+		if q.RetainedExpires != 0 || q.Cookie.Owner == 0 || q.Cookie.Request == ([16]byte{}) || len(q.Initial)+len(q.Final) != 0 || q.Generation != ([16]byte{}) || q.Create || q.Action < nativeColumnsPublish || q.Action > nativeColumnsRetire {
 			return q, errInvalid
 		}
-		if q.Action == nativeColumnsClose {
+		if q.Action == nativeColumnsClose || q.Action == nativeColumnsRetire {
 			if q.Sequence != 0 {
 				return q, errInvalid
 			}
@@ -314,22 +317,59 @@ func (s *nativeGraphCostColumnSessions) open(ctx context.Context, q nativeGraphC
 	stop := context.AfterFunc(ctx, cancel)
 	defer stop()
 	started := time.Now()
-	source, err := newPartitionNativeColumnSource(ownerCtx, s.coordinator, initial, final, policy)
-	if err != nil {
-		cancel()
-		return nil, err
+	var source *nativeColumnSource
+	var store *nativeColumnStore
+	if q.RetainedExpires == 0 {
+		source, err = newPartitionNativeColumnSource(ownerCtx, s.coordinator, initial, final, policy)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
 	}
 	storeDir := filepath.Join(s.dir, "native-columns")
+	if q.RetainedExpires != 0 {
+		storeDir = filepath.Join(storeDir, hex.EncodeToString(q.Generation[:]))
+	}
 	_, statErr := os.Stat(storeDir)
 	create := errors.Is(statErr, os.ErrNotExist)
 	if statErr != nil && !create || q.Create && !create {
 		cancel()
-		return nil, errors.Join(errInvalid, statErr, source.Close())
+		if source != nil {
+			return nil, errors.Join(errInvalid, statErr, source.Close())
+		}
+		return nil, errors.Join(errInvalid, statErr)
 	}
-	store, err := openNativeColumnStore(storeDir, vfs.Default, create, source)
+	if q.RetainedExpires != 0 {
+		if create {
+			store, source, err = createDurablePartitionNativeColumns(ownerCtx, storeDir, vfs.Default, s.coordinator, q.Generation, initial, final, policy, q.RetainedExpires)
+		} else {
+			store, source, err = reopenDurablePartitionNativeColumns(ownerCtx, storeDir, vfs.Default, s.coordinator, q.Generation, policy)
+		}
+		if err == nil {
+			r, e := store.retentionRecord(q.Generation)
+			if e != nil {
+				err = e
+			} else {
+				m, e := decodeGraphPinManifest(r.Original)
+				first, e1 := source.cutPair(initial)
+				last, e2 := source.cutPair(final)
+				if e != nil || e1 != nil || e2 != nil || m.expires != q.RetainedExpires || first != source.initial || last != source.final {
+					err = errors.Join(errInvalid, e, e1, e2)
+				}
+			}
+		}
+	} else {
+		store, err = openNativeColumnStore(storeDir, vfs.Default, create, source)
+	}
 	if err != nil {
 		cancel()
-		return nil, errors.Join(err, source.Close())
+		if source != nil {
+			err = errors.Join(err, source.Close())
+		}
+		if store != nil {
+			err = errors.Join(err, store.Close())
+		}
+		return nil, err
 	}
 	o := &nativeGraphCostColumnOwner{gate: newGraphRequestGate(), source: source, store: store, generation: q.Generation, cacheDir: filepath.Join(s.dir, "native-column-cache"), cookie: nativeGraphCostColumnCookie{number, source.owner}, started: started, cancel: cancel, closeDone: make(chan struct{})}
 	defer func() {
@@ -388,6 +428,29 @@ func (s *nativeGraphCostColumnSessions) serve(ctx context.Context, r processRequ
 	s.mu.Unlock()
 	if o == nil || o.cookie != q.Cookie {
 		return nil, errInvalid
+	}
+	if q.Action == nativeColumnsRetire {
+		if o.store.binding.Version != 2 {
+			return nil, errInvalid
+		}
+		if err := o.gate.lock(ctx); err != nil {
+			return nil, err
+		}
+		o.cancel()
+		err := o.source.Close()
+		if err == nil {
+			p, e := newRetainedPinPublisher(s.coordinator)
+			if e != nil {
+				err = e
+			} else {
+				err = o.store.Retire(ctx, o.generation, p)
+			}
+		}
+		o.gate.unlock()
+		if err != nil {
+			return nil, err
+		}
+		q.Action = nativeColumnsClose
 	}
 	if q.Action == nativeColumnsClose {
 		if err := o.close(ctx); err != nil {

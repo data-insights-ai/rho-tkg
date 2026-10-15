@@ -41,13 +41,14 @@ func (p nativeColumnPolicy) validate() error {
 }
 
 type nativeColumnBinding struct {
-	Version        uint8
-	Layout         string
-	Agreement      [32]byte
-	Coverage       byte      // Bit0/bit1 are explicit local-prefix coverage, never omitted-source EOF.
-	Peers          [2][]byte // Complete actual authenticated scope and configured voter association.
-	Configurations [2][]byte // Complete actual graph genesis, schema and Q/ms axis.
-	Policy         nativeColumnPolicy
+	TerminalAttempts uint8 `json:",omitzero"` // explicit v2 finite terminal policy; v1 bytes unchanged
+	Version          uint8
+	Layout           string
+	Agreement        [32]byte
+	Coverage         byte      // Bit0/bit1 are explicit local-prefix coverage, never omitted-source EOF.
+	Peers            [2][]byte // Complete actual authenticated scope and configured voter association.
+	Configurations   [2][]byte // Complete actual graph genesis, schema and Q/ms axis.
+	Policy           nativeColumnPolicy
 }
 
 type nativeColumnBoundary struct {
@@ -59,6 +60,7 @@ type nativeColumnGeneration struct {
 	Coverage byte
 	Binding  [32]byte
 	Sources  [2]nativeColumnBoundary
+	Pin      [32]byte `json:",omitzero"` // v2 exact durable original; absent in every v1 encoding.
 }
 type nativeColumnCell struct {
 	Present, Null        bool

@@ -24,7 +24,7 @@ type rangeMoveProgress struct {
 
 func encodeRangeMoveProgress(p rangeMoveProgress, output *graphstate.OutputBudget) ([]byte, error) {
 	version := byte(2)
-	if p.descriptor.Source.Binding.SemanticContractID == collectedGraphSemanticContractID() {
+	if collectedGraphAgreement(p.descriptor.Source.Binding.SemanticContractID) {
 		packet, err := decodeMoveRetainedLineage(p.retention, output)
 		if err != nil {
 			return nil, err
@@ -130,7 +130,7 @@ func decodeRangeMoveProgress(wire []byte, output *graphstate.OutputBudget) (rang
 			return rangeMoveProgress{}, outputBudgetFailure(e)
 		}
 		p.retention, p.retentionRows = owned(retained), uint64(len(packet.owners)+1)
-	} else if p.descriptor.Source.Binding.SemanticContractID == collectedGraphSemanticContractID() {
+	} else if collectedGraphAgreement(p.descriptor.Source.Binding.SemanticContractID) {
 		return rangeMoveProgress{}, errCorrupt
 	}
 	if len(cursor) != 0 {
