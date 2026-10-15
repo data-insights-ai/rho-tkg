@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -47,6 +48,12 @@ func (c *Core) checkRelWithinEndpoints(r *types.Relationship, startNode, endNode
 // isStart=true means startNode; false means endNode (controls which error is returned).
 func (c *Core) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Instant, node *types.Node, isStart bool) error {
 	nodeFrom := c.nodeValidFrom(node)
+	if relFrom < nodeFrom {
+		// The endpoint is valid from where its current life starts, not only
+		// from its current row: after an update the earlier versions still
+		// answer NodeAt (also from -inf under UntimedUnbounded, backlog 73).
+		nodeFrom = c.nodeCurrentLifeStart(node, nodeFrom)
+	}
 
 	var nodeTo types.Instant
 	if tm := node.Temporal(); tm != nil {
@@ -130,6 +137,42 @@ func (c *Core) checkNodeCloseRelWithinEndpoints(id types.NodeID, current *types.
 		}
 	}
 	return nil
+}
+
+// nodeCurrentLifeStart is where node's current life starts in valid time:
+// the start (storeutil.EntityValidFrom, both untimed modes) of the first
+// version recorded after the last hard delete its chain holds (a re-imported
+// ID's earlier life does not count; a void row claims nothing), or current,
+// node's own start, when that is earlier or the chain cannot be read.
+func (c *Core) nodeCurrentLifeStart(node *types.Node, current types.Instant) types.Instant {
+	if node.Version() == 0 {
+		return current
+	}
+	history, err := c.getNodeHistory(node.ID())
+	if err != nil || len(history) == 0 {
+		return current
+	}
+	var lastDelete types.Instant
+	for _, h := range history {
+		if tm := h.Temporal(); tm != nil && tm.DeletedAt > lastDelete {
+			lastDelete = tm.DeletedAt
+		}
+	}
+	var first *types.Node
+	var firstTM *types.TemporalMetadata
+	for _, h := range history {
+		tm := h.Temporal()
+		if tm == nil || tm.Void || (lastDelete != 0 && tm.TxFrom <= lastDelete) {
+			continue
+		}
+		if first == nil || h.Version() < first.Version() {
+			first, firstTM = h, tm
+		}
+	}
+	if first == nil {
+		return current
+	}
+	return min(storeutil.EntityValidFrom(first.ID().SnowflakeID(), firstTM), current)
 }
 
 func nodeWithValidTo(n *types.Node, validTo types.Instant) *types.Node {

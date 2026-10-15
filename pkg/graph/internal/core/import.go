@@ -497,6 +497,9 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 			if hdr.RelCount < 0 {
 				return fmt.Errorf("%w: negative relationship count %d", ErrCorruptExport, hdr.RelCount)
 			}
+			if err := c.checkImportUntimedModeLocked(hdr.UntimedUnbounded, rollback); err != nil {
+				return err
+			}
 			header = hdr
 			seenRecords.reserve(hdr)
 			rollback.reserve(hdr)
@@ -647,6 +650,9 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 		if err := c.importNodeRetentionLocked(header.NodeRetention); err != nil {
 			return err
 		}
+	}
+	if err := c.adoptImportUntimedModeLocked(header.UntimedUnbounded); err != nil {
+		return err
 	}
 	if header.SnapshotLSN > 0 {
 		current, err := c.appliedLSNLocked()

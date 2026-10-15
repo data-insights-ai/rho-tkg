@@ -336,6 +336,41 @@ func (bs *Store) MetaSetDurable(key string, value []byte) error {
 	return nil
 }
 
+// MetaSetDurableRaising is MetaSetDurable that also raises the store-level
+// format marker to marker (store.MetaFormatMarkerCapability, backlog 73) and
+// replicates the entry: the entry, the marker raise (the one tracker,
+// raiseFormatMarkerPendingLocked) and a ChangeMeta change-log record land in
+// the pending batch in one wbMu section, and a durable flush then commits that
+// batch with every write buffered before it (an InMemory store flushes). So
+// the entry is never on disk before the rows written ahead of it on this
+// store, and a replica applies it in LSN order. A marker at or below the
+// store's keeps it.
+func (bs *Store) MetaSetDurableRaising(key string, value []byte, marker uint16) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
+	if marker > maxReadableStoreFormatVersion {
+		return fmt.Errorf("%w: format marker %d above the readable %d", storecontract.ErrInvalidStoreMutation, marker, maxReadableStoreFormatVersion)
+	}
+	payload, err := storepkg.MarshalChangeBody(storepkg.MetaBody{Key: key, Value: value})
+	if err != nil {
+		return fmt.Errorf("graph: meta %q change record: %w", key, err)
+	}
+	val := append([]byte(nil), value...)
+	if err := bs.appendOpsLoggedRoutedRaising(marker, storecontract.ChangeMeta, payload, 0,
+		writeOp{opType: writeOpSet, key: storepkg.MetaKey(key), value: val}); err != nil {
+		return err
+	}
+	if bs.inMemory {
+		return bs.Flush()
+	}
+	if err := bs.DurableFlush(); err != nil {
+		return fmt.Errorf("graph: durable meta %q: %w", key, err)
+	}
+	bs.metaSyncs.Add(1)
+	return nil
+}
+
 // ForEachMetaName calls fn with the name (MetaKey's argument) of every meta
 // entry whose name starts with prefix, in key order. An error from fn stops
 // the walk and is returned.

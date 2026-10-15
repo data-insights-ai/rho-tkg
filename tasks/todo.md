@@ -1,4 +1,4 @@
-# todo — v4 main ledger (state 2026-10-15, main at v4.55.3 = latest tag; FOCUS: stabilize and fully understand ai-soc)
+# todo — v4 main ledger (state 2026-10-15, main at v4.56.0 = latest tag; FOCUS: stabilize and fully understand ai-soc)
 
 The first read is `HANDOVER.md` (next steps). **Open work is ONE list: the open table of `tasks/backlog.md`** (specs below the table). What shipped is `CHANGELOG.md`; the rules are `tasks/lessons.md` (digest at the top). This file keeps the user requests with their state and one line per release. Older wave ledgers (per-step red tests, merges, reviews, the v4.51.3 to v4.51.5 batches, the CI race fix) are in history: `git log -p -- tasks/todo.md`.
 
@@ -50,7 +50,7 @@ The first read is `HANDOVER.md` (next steps). **Open work is ONE list: the open 
 | 40 | ai-soc-main 2026-10-15 cost note: "memory NodesByLabelAndProperties with a composite index copies and sorts every node id of the value key on each call (memorystore_index.go:333 SortNodeIDs); paging 1,024 at a time costs relation-size²/1,024 — minutes per bar relation on whole BA. If the composite index could keep its ids sorted (as the paged scan's ordered view does), every caller would gain" | done, v4.55.3: sorted postings (backlog 72), 1M walk in pages of 1,024 85.4 s to 0.50 s, B/member composite 37.8 to 8-12, creation faster | bench at 1M ids, page 1,024 |
 | 40b | sigma-tkgd round 8 (user-approved 2026-10-15 with the target-IR waves; release needs the user's OK): (1) statistics door for the numeric bounds of a property per label and per relationship type (min, max, numeric-only, null-free; exact and cheap from the ordered index, ok=false where not exact), optionally the valid-time hull per label/type; (2) range reads and counts at a pin (ValidStart 1, ValidEnd MaxInt64, TxAt) from the property index, as equality; (3) exact O(1) count of current members with explicit valid time and per label/type whether any member has history at a pin; (4) label/type scan restricted to an ordinal bitset, current and at a pin | done, v4.55.2 (Markus, minor): (1) `Stats().PropertyBounds` / `RelPropertyBounds` (valid-time hull not built, backlog 71), (2) temporal range doors from the membership sidecar + `RangeCardinalityAt`, (3) `Stats().LabelTimeStats` / `RelTypeTimeStats`, (4) `ForEachByLabelOrdinals` / `ForEachByTypeOrdinals` | `tasks/evidence/cypher-round8/` |
 | 41 | René 2026-10-15: "Are the open items in todo.md and todo.md up2date and consolidated? If not use a sonnet agent for this" | in progress — Sonnet agent: todo.md + backlog.md rewritten in place, closed rows to pointers, open queue = backlog open table (lesson 84) | diff + one open list |
-| 42 | René 2026-10-15: "clean up the untimed row rule.. discuss with sigma and ai SOC what should be the default. In rho tkg this should be an option" | in progress — ask sigma + ai-soc for the default; Opus agent builds Config option (TxFrom \| unbounded), persisted per store, default unchanged until the consumers answer | option + tests + consumer answers |
+| 42 | René 2026-10-15: "clean up the untimed row rule.. discuss with sigma and ai SOC what should be the default. In rho tkg this should be an option" | built + reviewed (5 findings fixed) + merged f027372f: Config.UntimedValidStart, sigma + ai-soc chose Unbounded (first version only), legacy stores open as TxFrom, explicit one-way conversion, marker 7; default for new stores flips to Unbounded in the next minor after the Deprecated notice; ships v4.56.0 | unbounded), persisted per store, default unchanged until the consumers answer | option + tests + consumer answers |
 
 ## Releases (one line each; all gates `make ci-docker` exit 0, consumers build + vet)
 
@@ -85,6 +85,7 @@ The first read is `HANDOVER.md` (next steps). **Open work is ONE list: the open 
 | v4.55.1 | d3870cce | 68b GraphTx corrections + rollback from the head entry (sigma R10 write side), backlog 70 exact version allocation, as-of above a compaction gap, rollback-after-compaction data loss fixed |
 | v4.55.2 | 259105ad | **Markus**: sigma-tkgd round 8 (`PropertyBounds`, range reads and `RangeCardinalityAt` at a pin, `LabelTimeStats`, scans by ordinal bitset) |
 | v4.55.3 | 2a72753d | sorted postings for property/composite indexes (72, ai-soc cost note), Eternal() doc fix |
+| v4.56.0 | a08c0d52 | Config.UntimedValidStart (73, René + sigma + ai-soc: Unbounded first version, explicit conversion, marker 7), endpoint constraint over the current life, Reset keeps schema_version |
 
 
 ## Open work

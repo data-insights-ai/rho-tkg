@@ -121,6 +121,9 @@ func (o *IOOps) ExportSince(w io.Writer, since tkgio.Cursor) error {
 
 // exportSinceLocked writes the delta stream. Caller holds c.mu.Lock.
 func (c *Core) exportSinceLocked(w io.Writer, since tkgio.Cursor, to, epoch uint64) error {
+	if err := c.checkUntimedComplete("export since"); err != nil {
+		return err
+	}
 	hdr := exportHeader{
 		Version:    exportFormatVersionDelta,
 		ExportedAt: time.Now().UnixMilli(),
@@ -129,6 +132,8 @@ func (c *Core) exportSinceLocked(w io.Writer, since tkgio.Cursor, to, epoch uint
 		FromEpoch:  since.Epoch,
 		ToLSN:      to,
 		ToEpoch:    epoch,
+
+		UntimedUnbounded: c.untimedUnbounded.Load(),
 	}
 	if err := marshalAndWrite(w, exportTagHeader, &hdr); err != nil {
 		return fmt.Errorf("export since: header: %w", err)

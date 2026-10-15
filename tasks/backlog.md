@@ -116,10 +116,14 @@ must be refreshed for these contracts during V4/V6; their older pins and all
 historical receipts remain unchanged. The main integration changes no V2 engine
 or comparison paths. No compile, test, measurement or CI run accompanies it:
 the owner's implementation-first sequence below remains in force.
-The later main ledger/handover cleanup at `09806210` is integrated without
-changing that v4.55.3 code baseline or V5 implementation. Its untimed-row option
-is an upstream work item, not an implemented migration contract; reconcile the
-actual persisted policy if that source change lands before the V4/V6 cutoff.
+Main `1b0a50a3`, including release `a08c0d52`/v4.56.0, is now source-integrated
+without runtime qualification. Its persisted `Config.UntimedValidStart` keeps
+untimed first-version policy separate from explicit validity; conversion is
+one-way and resumable, marker 7 fences older writers, `ChangeMeta` replicates
+the mode and export `uu` carries it. V4/V6 source-delta mapping and importer
+qualification must preserve those policies, interrupted-conversion refusals,
+current endpoint-life bounds and Reset migration markers. Earlier source pins
+and receipts remain historical. No V2 runtime or CI gate was run for this merge.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
@@ -267,8 +271,8 @@ all A–F exit requirements; implementation status never implies acceptance.
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (integrated main is `09806210`; its code baseline remains
-   `2a72753d`/v4.55.3),
+   cutoff (integrated main is `1b0a50a3`, including release
+   `a08c0d52`/v4.56.0),
    review relevant handover/consumer/CI deltas and integrate required changes.
    The effective-page, history-epoch/head-cache, correction/rollback fast-path
    and compaction-gap version-allocation contracts belong in that source/consumer
@@ -1911,6 +1915,7 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 69 (FEATURE, ai-soc) — `RelsEffectivePage` / `NodesEffectivePage` | `[4.55.0]` Added; evidence `tasks/evidence/paged-effective/` |
 | Item 70 (MEDIUM) — version allocation below surviving rows after a compaction gap; rollback-after-compaction data loss | `[4.55.1]` Fixed; evidence `tasks/evidence/r10-write/` |
 | Item 72 (PERF, ai-soc) — sorted postings for property/composite indexes, 1M walk 85 s to 0.5 s | `[4.55.3]` Changed |
+| Item 73 (FEATURE, René, sigma-tkgd, ai-soc) — `Config.UntimedValidStart`: untimed first version from TxFrom (default) or -inf, `Admin().SetUntimedValidStart` one-way conversion, marker 7 | `[Unreleased]` Added + Deprecated (default for new stores becomes `UntimedUnbounded` next minor); evidence `tasks/evidence/untimed-mode/` |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 

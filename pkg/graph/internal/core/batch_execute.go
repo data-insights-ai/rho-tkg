@@ -57,7 +57,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	b.done = true
 	// Caller-instant node and relationship ops: refuse the whole batch, before
 	// any write, when one of them would be refused (batch_callertx_preflight.go).
-	if err := b.g.precheckCallerTxOps(b.callerTxUnit()); err != nil {
+	err := b.g.precheckCallerTxOps(b.callerTxUnit())
+	if err == nil {
+		err = b.g.precheckQueuedUntimedCreates(b.nodes, b.rels)
+	}
+	if err != nil {
 		b.g.mu.Unlock()
 		b.g.txMu.Unlock()
 		b.mu.Unlock()
@@ -251,12 +255,16 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			// queue time) stamps the caller's transaction time instead (§4.1);
 			// the event timestamp below still uses the real commit clock.
 			txNow := b.g.now()
-			for _, pn := range b.nodes {
+			for i := range b.nodes {
+				pn := &b.nodes[i]
 				ts := txNow
 				if pn.backfillTxFrom != 0 {
 					ts = pn.backfillTxFrom
 				}
 				pn.temporal.TxFrom = ts
+				if b.g.stampQueuedUntimedStart(pn.temporal) {
+					pn.wireBody, pn.logBody = nil, nil // queued before a conversion: re-encode
+				}
 				pn.node.SetTemporal(pn.temporal)
 			}
 
@@ -476,6 +484,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				ts = pr.backfillTxFrom
 			}
 			pr.temporal.TxFrom = ts
+			b.g.stampQueuedUntimedStart(pr.temporal)
 			pr.rel.SetTemporal(pr.temporal)
 
 			if startNode != nil || endNode != nil {

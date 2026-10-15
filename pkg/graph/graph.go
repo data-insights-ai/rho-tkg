@@ -230,6 +230,19 @@ type IDSlotLeaseRecord = store.IDSlotLeaseRecord
 // Config aliases core.Config for the public API.
 type Config = core.Config
 
+// UntimedValidStart aliases core.UntimedValidStart — Config.UntimedValidStart,
+// where an entity's first version without a valid-from starts (backlog 73).
+type UntimedValidStart = core.UntimedValidStart
+
+// The untimed valid-start modes: UntimedFromTxFrom (the default) starts an
+// entity's first version without a valid-from at its TxFrom, UntimedUnbounded
+// at -inf (types.UnboundedValidFrom). A later version without a valid-from
+// starts at its TxFrom under both.
+const (
+	UntimedFromTxFrom = core.UntimedFromTxFrom
+	UntimedUnbounded  = core.UntimedUnbounded
+)
+
 // ValidationLimits aliases core.ValidationLimits for the public API.
 type ValidationLimits = core.ValidationLimits
 

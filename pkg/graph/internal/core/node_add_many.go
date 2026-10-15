@@ -198,6 +198,9 @@ func (c *Core) prepareNodeCreate(props map[string]any, pn *preparedNodeCreate) e
 	if err != nil {
 		return err
 	}
+	if validFrom, err = c.untimedStart(validFrom, true); err != nil { // a generated ID: a first version
+		return err
+	}
 	txFromOverride, err = c.resolveBackfillTxFrom(txFromOverride)
 	if err != nil {
 		return err

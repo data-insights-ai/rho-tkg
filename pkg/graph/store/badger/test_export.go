@@ -264,3 +264,13 @@ func ReadTxnsTotalForTest() int64 { return readTxnsTotal.Load() }
 // OpenReadTxnsForTest reports the snapshot read transactions open in this
 // process right now (backlog 55's seam). Not for production use.
 func OpenReadTxnsForTest() int64 { return openReadTxns.Load() }
+
+// SetMaxReadableStoreFormatVersionForTest makes this process read store
+// markers up to v only, playing an older release's open (backlog 73's seam),
+// and returns the function that restores the cap. Not concurrency-safe: call
+// it from a test that runs alone. Not for production use.
+func SetMaxReadableStoreFormatVersionForTest(v uint16) (restore func()) {
+	prev := maxReadableStoreFormatVersion
+	maxReadableStoreFormatVersion = v
+	return func() { maxReadableStoreFormatVersion = prev }
+}

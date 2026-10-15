@@ -1,7 +1,7 @@
-# HANDOVER — rho-tkg v4 line (2026-10-15, main = tag v4.55.3)
+# HANDOVER — rho-tkg v4 line (2026-10-15, main = tag v4.56.0)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). Latest tag `v4.55.3`; main = tag. Read in this order: this file, `tasks/lessons.md` (digest at the top),
+database). Latest tag `v4.56.0`; main = tag. Read in this order: this file, `tasks/lessons.md` (digest at the top),
 `tasks/todo.md` (user requests, releases table), `tasks/backlog.md` (open table, then specs), `CHANGELOG.md` top.
 What shipped and why is in `CHANGELOG.md` and git, not here.
 
@@ -12,7 +12,7 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
    `Unbounded` (first version only). Persisted per store; existing stores open as `TxFrom`; switching is an explicit admin
    conversion. Both sigma and ai-soc chose `Unbounded`. The default for new stores flips to `Unbounded` in the next minor
    release, after a `// Deprecated:` notice and CHANGELOG Deprecated entry.
-2. **Consumer status:** ai-soc PIN17 (v4.55.1) is running; PIN18 (v4.55.3 plus sigma's Derived-read patch) is next. sigma adopts
+2. **v4.56.0 released 2026-10-15:** Config.UntimedValidStart (todo row 42); both consumers set UntimedUnbounded; the default for new stores flips in v4.57.0. **Consumer status:** ai-soc PIN17 (v4.55.1) is running; PIN18 (v4.55.3 plus sigma's Derived-read patch) is next. sigma adopts
    v4.55.x in its next patch.
 3. **Open work:** the open table of `tasks/backlog.md` (one list; parked rows are marked there).
 
@@ -50,10 +50,11 @@ V0/V1 are accepted and V2 remains open. Exact finite source/test receipts live u
 `docs/v5/HANDOVER.md` is external review, reconciled against PLAN, not permission to reduce those
 gates or push/merge main. `docs/v5-analysis.md` §5 keeps the 45-family consumer mapping; immutable
 sigma/ai-soc inventories and current v4 source deltas are in `docs/v5/reference/consumer-*.json`.
-The selected reader is now main `2a72753d`/v4.55.3, source-integrated and unqualified.
-Main's later ledger cleanup at `09806210` is integrated; the code baseline is
-unchanged. Its planned untimed-row option must be reconciled from actual source
-before consumer/migration acceptance if it lands in the selected baseline.
+The selected reader is now main release `a08c0d52`/v4.56.0, source-integrated
+and unqualified, including its later ledger commit `1b0a50a3`. The persisted
+`Config.UntimedValidStart` policy, explicit conversion, store marker 7, replicated
+`ChangeMeta` and export `uu` header must be carried into V4/V6 mapping and
+reader/importer qualification; older receipts cover none of these additions.
 This changes the v4 row/store format, implicit valid-from rule, void pieces,
 indexes and read APIs, including sorted equality/composite postings with keyset
 page push-down. Existing consumer manifests still describe older source;

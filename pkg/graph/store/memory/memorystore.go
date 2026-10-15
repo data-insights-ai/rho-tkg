@@ -4,6 +4,7 @@
 package memory
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -500,6 +501,28 @@ func (ms *Store) MetaGet(key string) ([]byte, error) {
 	out := make([]byte, len(v))
 	copy(out, v)
 	return out, nil
+}
+
+// MetaSetDurableRaising implements store.MetaFormatMarkerCapability: a memory
+// store has no format marker and nothing to make durable, so it is MetaSet
+// that also appends a ChangeMeta change-log record, so a replica applies the
+// entry in LSN order (backlog 73).
+func (ms *Store) MetaSetDurableRaising(key string, value []byte, _ uint16) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	payload, err := storeutil.MarshalChangeBody(storeutil.MetaBody{Key: key, Value: value})
+	if err != nil {
+		return fmt.Errorf("graph: meta %q change record: %w", key, err)
+	}
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	ms.metaKV[key] = append([]byte(nil), value...)
+	ms.logChangeLocked(storecontract.ChangeMeta, payload)
+	return nil
 }
 
 // MetaSet stores value under key, overwriting any previous value.

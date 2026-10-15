@@ -136,6 +136,9 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	if err := life.checkCallerTx(txFromOverride); err != nil {
 		return nil, err
 	}
+	if validFrom, err = c.untimedStart(validFrom, life.version == 0); err != nil {
+		return nil, err
+	}
 
 	var fromHash, toHash string
 	if c.constraints.Len() > 0 {

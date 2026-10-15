@@ -1,0 +1,43 @@
+--- FAIL: TestEndpointConstraintCoversCurrentLife (0.00s)
+    --- FAIL: TestEndpointConstraintCoversCurrentLife/unbounded/memory (0.00s)
+        untimed_final_review_test.go:186: rel at tx1-1 from an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_final_review_test.go:189: rel at tx1-1 to an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before end node is valid
+        untimed_final_review_test.go:213: rel at the timed first version's start: graph: temporal constraint violated: graph: relationship starts before start node is valid
+    --- FAIL: TestEndpointConstraintCoversCurrentLife/txfrom/memory (0.00s)
+        untimed_final_review_test.go:186: rel at tx1-1 from an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_final_review_test.go:189: rel at tx1-1 to an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before end node is valid
+        untimed_final_review_test.go:213: rel at the timed first version's start: graph: temporal constraint violated: graph: relationship starts before start node is valid
+    --- FAIL: TestEndpointConstraintCoversCurrentLife/unbounded/badger (0.00s)
+        untimed_final_review_test.go:186: rel at tx1-1 from an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_final_review_test.go:189: rel at tx1-1 to an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before end node is valid
+        untimed_final_review_test.go:213: rel at the timed first version's start: graph: temporal constraint violated: graph: relationship starts before start node is valid
+    --- FAIL: TestEndpointConstraintCoversCurrentLife/txfrom/badger (0.00s)
+        untimed_final_review_test.go:186: rel at tx1-1 from an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_final_review_test.go:189: rel at tx1-1 to an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before end node is valid
+        untimed_final_review_test.go:213: rel at the timed first version's start: graph: temporal constraint violated: graph: relationship starts before start node is valid
+    --- FAIL: TestEndpointConstraintCoversCurrentLife/txfrom/tiered (0.01s)
+        untimed_final_review_test.go:186: rel at tx1-1 from an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_final_review_test.go:189: rel at tx1-1 to an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before end node is valid
+        untimed_final_review_test.go:213: rel at the timed first version's start: graph: temporal constraint violated: graph: relationship starts before start node is valid
+    --- FAIL: TestEndpointConstraintCoversCurrentLife/unbounded/tiered (0.01s)
+        untimed_final_review_test.go:186: rel at tx1-1 from an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_final_review_test.go:189: rel at tx1-1 to an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before end node is valid
+        untimed_final_review_test.go:213: rel at the timed first version's start: graph: temporal constraint violated: graph: relationship starts before start node is valid
+    --- FAIL: TestEndpointConstraintCoversCurrentLife/txfrom/sharded (0.01s)
+        untimed_final_review_test.go:186: rel at tx1-1 from an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_final_review_test.go:189: rel at tx1-1 to an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before end node is valid
+        untimed_final_review_test.go:213: rel at the timed first version's start: graph: temporal constraint violated: graph: relationship starts before start node is valid
+    --- FAIL: TestEndpointConstraintCoversCurrentLife/unbounded/sharded (0.01s)
+        untimed_final_review_test.go:186: rel at tx1-1 from an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_final_review_test.go:189: rel at tx1-1 to an endpoint updated at tx1: graph: temporal constraint violated: graph: relationship starts before end node is valid
+        untimed_final_review_test.go:213: rel at the timed first version's start: graph: temporal constraint violated: graph: relationship starts before start node is valid
+--- FAIL: TestUntimedConversionCutShortFailsClosed (0.12s)
+    untimed_final_review_test.go:90: Export after a cut-short conversion: err = <nil>, want ErrUntimedModeMismatch
+    untimed_final_review_test.go:93: tx Export after a cut-short conversion: err = <nil>, want ErrUntimedModeMismatch
+    untimed_final_review_test.go:96: ExportSince after a cut-short conversion: err = <nil>, want ErrUntimedModeMismatch
+    untimed_final_review_test.go:99: untimed node create after a cut-short conversion: err = <nil>, want ErrUntimedModeMismatch
+    untimed_final_review_test.go:102: untimed rel create after a cut-short conversion: err = <nil>, want ErrUntimedModeMismatch
+    untimed_final_review_test.go:110: batch untimed create after a cut-short conversion: err = <nil>, want ErrUntimedModeMismatch
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.140s
+FAIL

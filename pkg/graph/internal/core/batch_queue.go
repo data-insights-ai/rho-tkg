@@ -68,6 +68,11 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 	if err != nil {
 		return nil, err
 	}
+	// A generated ID: a first version. Re-checked at commit
+	// (stampQueuedUntimedStart) for a conversion in between.
+	if validFrom, err = b.g.untimedStart(validFrom, true); err != nil {
+		return nil, err
+	}
 	txFromOverride, err = b.g.resolveBackfillTxFrom(txFromOverride)
 	if err != nil {
 		return nil, err
@@ -234,6 +239,11 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
 	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
 	if err != nil {
+		return nil, err
+	}
+	// A generated ID: a first version. Re-checked at commit
+	// (stampQueuedUntimedStart) for a conversion in between.
+	if validFrom, err = b.g.untimedStart(validFrom, true); err != nil {
 		return nil, err
 	}
 	txFromOverride, err = b.g.resolveBackfillTxFrom(txFromOverride)

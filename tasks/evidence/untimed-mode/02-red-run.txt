@@ -1,0 +1,41 @@
+--- FAIL: TestUntimedValidStartModes (0.00s)
+    --- FAIL: TestUntimedValidStartModes/txfrom/memory (0.00s)
+        untimed_valid_start_test.go:214: excise: graph: no version valid at the given time: excise [2000, 3000): no version is valid there
+    --- FAIL: TestUntimedValidStartModes/convert/memory (0.00s)
+        untimed_valid_start_test.go:71: created after conversion: NodeAt(far) valid = false (graph: no version valid at the given time), want true
+        untimed_valid_start_test.go:71: created after conversion: ByLabel(U, ValidAt far) lists it = false, want true
+    --- FAIL: TestUntimedValidStartModes/unbounded/memory (0.00s)
+        untimed_valid_start_test.go:214: excise: graph: no version valid at the given time: excise [2000, 3000): no version is valid there
+    --- FAIL: TestUntimedValidStartModes/unbounded/badger (0.01s)
+        untimed_valid_start_test.go:214: excise: graph: no version valid at the given time: excise [2000, 3000): no version is valid there
+    --- FAIL: TestUntimedValidStartModes/txfrom/badger (0.01s)
+        untimed_valid_start_test.go:214: excise: graph: no version valid at the given time: excise [2000, 3000): no version is valid there
+    --- FAIL: TestUntimedValidStartModes/txfrom/tiered (0.01s)
+        untimed_valid_start_test.go:214: excise: graph: no version valid at the given time: excise [2000, 3000): no version is valid there
+    --- FAIL: TestUntimedValidStartModes/unbounded/tiered (0.01s)
+        untimed_valid_start_test.go:214: excise: graph: no version valid at the given time: excise [2000, 3000): no version is valid there
+    --- FAIL: TestUntimedValidStartModes/unbounded/sharded (0.01s)
+        untimed_valid_start_test.go:214: excise: graph: no version valid at the given time: excise [2000, 3000): no version is valid there
+    --- FAIL: TestUntimedValidStartModes/txfrom/sharded (0.01s)
+        untimed_valid_start_test.go:214: excise: graph: no version valid at the given time: excise [2000, 3000): no version is valid there
+    --- FAIL: TestUntimedValidStartModes/convert/badger (0.87s)
+        untimed_valid_start_test.go:576: created after conversion: NodeAt(far) valid = false (graph: no version valid at the given time), want true
+        untimed_valid_start_test.go:576: created after conversion: ByLabel(U, ValidAt far) lists it = false, want true
+    --- FAIL: TestUntimedValidStartModes/reopen/badger (1.30s)
+        untimed_valid_start_test.go:537: reopened unbounded: NodeAt(far) valid = false (graph: no version valid at the given time), want true
+        untimed_valid_start_test.go:537: reopened unbounded: ByLabel(U, ValidAt far) lists it = false, want true
+    --- FAIL: TestUntimedValidStartModes/convert/sharded (1.43s)
+        untimed_valid_start_test.go:576: created after conversion: NodeAt(far) valid = false (graph: no version valid at the given time), want true
+        untimed_valid_start_test.go:576: created after conversion: ByLabel(U, ValidAt far) lists it = false, want true
+    --- FAIL: TestUntimedValidStartModes/convert/tiered (2.05s)
+        untimed_valid_start_test.go:576: created after conversion: NodeAt(far) valid = false (graph: no version valid at the given time), want true
+        untimed_valid_start_test.go:576: created after conversion: ByLabel(U, ValidAt far) lists it = false, want true
+    --- FAIL: TestUntimedValidStartModes/reopen/sharded (2.31s)
+        untimed_valid_start_test.go:537: reopened unbounded: NodeAt(far) valid = false (graph: no version valid at the given time), want true
+        untimed_valid_start_test.go:537: reopened unbounded: ByLabel(U, ValidAt far) lists it = false, want true
+    --- FAIL: TestUntimedValidStartModes/reopen/tiered (2.81s)
+        untimed_valid_start_test.go:537: reopened unbounded: NodeAt(far) valid = false (graph: no version valid at the given time), want true
+        untimed_valid_start_test.go:537: reopened unbounded: ByLabel(U, ValidAt far) lists it = false, want true
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	2.936s
+FAIL

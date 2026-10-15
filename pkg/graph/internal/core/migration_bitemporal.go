@@ -82,6 +82,23 @@ func (c *Core) runBitemporalMigration(meta storepkg.MetaKVCapability) error {
 	return nil
 }
 
+// restoreSchemaVersionAfterReset re-persists schema_version after Admin.Reset()
+// or a replica's ChangeClear apply wiped the MetaKV keyspace
+// (reapPolicyPreserve): every row written after the Clear is current-format, so
+// the migration must not run over them at the next open (it would read a close
+// row's copied start as an inherited legacy ValidFrom and clear it). A graph
+// that never migrated (no MetaKV, or a failed best-effort run) writes nothing.
+// Caller holds c.mu.Lock.
+func (c *Core) restoreSchemaVersionAfterReset() error {
+	if c.metaKV == nil || !c.bitemporalMigrated {
+		return nil
+	}
+	if err := c.metaKV.MetaSet(schemaVersionKey, []byte(bitemporalSchemaVersion)); err != nil {
+		return fmt.Errorf("graph: restore schema_version after reset: %w", err)
+	}
+	return nil
+}
+
 func (c *Core) migrateNodeHistoryClearInheritedValidFrom() error {
 	var ids []types.NodeID
 	if err := c.store.ForEachNodeHistoryID(func(id types.NodeID) bool {
@@ -115,8 +132,8 @@ func (c *Core) migrateNodeHistoryClearInheritedValidFrom() error {
 		for i := 1; i < len(chain); i++ {
 			v := chain[i]
 			tm := v.Temporal()
-			if tm == nil || tm.ValidFrom == 0 || tm.UpdatedAt == 0 {
-				continue
+			if tm == nil || tm.ValidFrom == 0 || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
+				continue // -inf is never an inherited legacy start (backlog 73): a close copies it
 			}
 			prev := chain[i-1]
 			if v.Version() != prev.Version()+1 {
@@ -178,8 +195,8 @@ func (c *Core) migrateRelHistoryClearInheritedValidFrom() error {
 		for i := 1; i < len(chain); i++ {
 			v := chain[i]
 			tm := v.Temporal()
-			if tm == nil || tm.ValidFrom == 0 || tm.UpdatedAt == 0 {
-				continue
+			if tm == nil || tm.ValidFrom == 0 || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
+				continue // -inf is never an inherited legacy start (backlog 73): a close copies it
 			}
 			prev := chain[i-1]
 			if v.Version() != prev.Version()+1 {

@@ -1,0 +1,32 @@
+--- FAIL: TestUntimedUnboundedEndpointConstraint (0.00s)
+    --- FAIL: TestUntimedUnboundedEndpointConstraint/memory (0.00s)
+        untimed_review_test.go:50: Rels().Add untimed between updated unbounded endpoints: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:60: batch AddRelationship: graph: batch execution had failed operations: 1 failed operation(s)
+        untimed_review_test.go:66: tx AddRelationship: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:77: ingest close (concurrent=false): graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:77: ingest close (concurrent=true): graph: concurrent ingest AddRelationship (813443211711316992): graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:84: DryRunValidate untimed rel: [{Ref:untimed Kind:temporal Err:graph: temporal constraint violated: graph: relationship starts before start node is valid}] (<nil>), want no violation
+    --- FAIL: TestUntimedUnboundedEndpointConstraint/badger (0.00s)
+        untimed_review_test.go:50: Rels().Add untimed between updated unbounded endpoints: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:60: batch AddRelationship: graph: batch execution had failed operations: 1 failed operation(s)
+        untimed_review_test.go:66: tx AddRelationship: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:77: ingest close (concurrent=false): graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:77: ingest close (concurrent=true): graph: concurrent ingest AddRelationship (813443211754865664): graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:84: DryRunValidate untimed rel: [{Ref:untimed Kind:temporal Err:graph: temporal constraint violated: graph: relationship starts before start node is valid}] (<nil>), want no violation
+    --- FAIL: TestUntimedUnboundedEndpointConstraint/tiered (0.01s)
+        untimed_review_test.go:50: Rels().Add untimed between updated unbounded endpoints: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:60: batch AddRelationship: graph: batch execution had failed operations: 1 failed operation(s)
+        untimed_review_test.go:66: tx AddRelationship: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:77: ingest close (concurrent=false): graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:77: ingest close (concurrent=true): graph: concurrent ingest AddRelationship (813443211774198784): graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:84: DryRunValidate untimed rel: [{Ref:untimed Kind:temporal Err:graph: temporal constraint violated: graph: relationship starts before start node is valid}] (<nil>), want no violation
+    --- FAIL: TestUntimedUnboundedEndpointConstraint/sharded (0.01s)
+        untimed_review_test.go:50: Rels().Add untimed between updated unbounded endpoints: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:60: batch AddRelationship: graph: batch execution had failed operations: 1 failed operation(s)
+        untimed_review_test.go:66: tx AddRelationship: graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:77: ingest close (concurrent=false): graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:77: ingest close (concurrent=true): graph: concurrent ingest AddRelationship (813443211778032640): graph: temporal constraint violated: graph: relationship starts before start node is valid
+        untimed_review_test.go:84: DryRunValidate untimed rel: [{Ref:untimed Kind:temporal Err:graph: temporal constraint violated: graph: relationship starts before start node is valid}] (<nil>), want no violation
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.012s
+FAIL
