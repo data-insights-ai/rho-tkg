@@ -19,6 +19,7 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parent
+WATCHDOG = ROOT / "process_watchdog.py"
 sys.path.insert(0, str(ROOT))
 from comparison_spool import Policy, Spool, u64
 import native_contention_check as native
@@ -54,7 +55,8 @@ def preflight(spec, transport, seconds, memory_mib, engine="native-raft"):
 
 
 def executables(binary, watchdog):
-    require(binary is not None and watchdog is not None, "actual native binary/watchdog required")
+    watchdog = WATCHDOG if watchdog is None else watchdog
+    require(binary is not None, "actual native binary required")
     binary, watchdog = Path(binary).resolve(strict=True), Path(watchdog).resolve(strict=True)
     require(binary.is_file() and os.access(binary, os.X_OK) and watchdog.is_file(), "actual executable native binary and process-tree watchdog required")
     return binary, watchdog
@@ -100,6 +102,7 @@ def execute(spec, transport, output, binary, watchdog, seconds, memory_mib, poli
     for name in ("RHO_GRAPH_COST_SPEC", "RHO_GRAPH_COST_BLOCK_SIZE", "RHO_GRAPH_RANGE_PROCESS", "RHO_GRAPH_CONDITIONAL_PROCESS", "RHO_GRAPH_RETENTION_PROCESS", "RHO_GRAPH_DURABLE_COLUMN_PROCESS", "RHO_GRAPH_NATIVE_FAULT_PROCESS", "RHO_GRAPH_FAULT_FAMILY_PROCESS", "RHO_GRAPH_DURABLE_MODEL", "RHO_GRAPH_DECISION_FAULT_PROCESS"):
         env[name] = ""
     command = [sys.executable, str(watchdog), "--rss-mib", str(memory_mib), "--seconds", str(seconds),
+               "--deadline-unix-nanos", str(deadline),
                "--report", str(destination/"watchdog.json"), "--", str(binary), "-test.run=^TestNativeContentionWorkloadCell$",
                "-test.count=1", "-test.v", f"-test.timeout={seconds+30}s"]
     request = {"version": 1, "format": native.FORMAT, "spec": spec, "run": run, "transport": shaped,
@@ -126,6 +129,7 @@ def execute(spec, transport, output, binary, watchdog, seconds, memory_mib, poli
         require(completed.returncode == meter["exit_code"] == 0 and meter["reason"] == "completed"
                 and meter["wall_limit_s"] == seconds and meter["rss_limit_mib"] == memory_mib
                 and meter["command"] == command[command.index("--")+1:]
+                and meter["deadline_unix_nanos"] == deadline and meter["all_owned_exited"] is True
                 and type(meter["peak_tree_rss_mib"]) in (int, float) and math.isfinite(meter["peak_tree_rss_mib"])
                 and 0 < meter["peak_tree_rss_mib"] <= memory_mib, "genuine completed owned process-tree admission/cleanup receipt")
         hashes = hash_artifacts(artifact_directory, spec["layout"])
@@ -196,7 +200,7 @@ def main():
     sub = parser.add_subparsers(dest="mode", required=True)
     run = sub.add_parser("run")
     run.add_argument("--spec", required=True); run.add_argument("--transport", choices=TRANSPORTS, required=True)
-    run.add_argument("--output", required=True); run.add_argument("--binary", required=True); run.add_argument("--watchdog", required=True)
+    run.add_argument("--output", required=True); run.add_argument("--binary", required=True); run.add_argument("--watchdog", default=str(WATCHDOG))
     run.add_argument("--seconds", type=int, required=True); run.add_argument("--memory-mib", type=int, required=True)
     paired = sub.add_parser("compare")
     paired.add_argument("--native", required=True); paired.add_argument("--fdb", required=True); paired.add_argument("--output", required=True)

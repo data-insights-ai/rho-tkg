@@ -739,6 +739,7 @@ type graphProcessPumpCall struct {
 	proposal       allocationProposal
 	id             allocationReadID
 	reply          chan graphProcessPumpReply
+	transition     *nativeLogicalTransitionTicket
 }
 
 // advanceGraphProcessPumpQueue isolates the dispatcher queue transition; the
@@ -830,9 +831,10 @@ type graphProcessPumpReply struct {
 	err        error
 }
 type graphProcessChildPump struct {
-	ctx      context.Context
-	calls    chan *graphProcessPumpCall
-	canceled chan *graphProcessPumpCall
+	ctx        context.Context
+	calls      chan *graphProcessPumpCall
+	canceled   chan *graphProcessPumpCall
+	transition *nativeLogicalTransitionOwner
 }
 
 func (p *graphProcessChildPump) wait(c *graphProcessPumpCall) (graphProcessPumpReply, error) {
@@ -881,7 +883,27 @@ func (p *graphProcessChildPump) Request(ctx context.Context, q crossRequestQuest
 	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceRequestLookup, request: q})
 	return r.request, e
 }
-func (p *graphProcessChildPump) Submit(ctx context.Context, q allocationProposal) ([]byte, error) {
+func (p *graphProcessChildPump) Submit(ctx context.Context, q allocationProposal) (wire []byte, err error) {
+	if p.transition != nil {
+		ticket, actual := p.transition.begin(ctx, q)
+		if actual != nil {
+			return nil, actual
+		}
+		if ticket != nil {
+			defer func() { ticket.finish(err) }()
+			if ticket.receipt.Control.Side == "before-submit" {
+				if err = ticket.hold(); err != nil {
+					return nil, err
+				}
+			}
+			var reply graphProcessPumpReply
+			reply, err = p.wait(&graphProcessPumpCall{ctx: ticket.ctx, kind: sourceSubmit, proposal: q, transition: ticket})
+			if err == nil && ticket.receipt.Control.Side == "after-applied" {
+				err = ticket.hold()
+			}
+			return reply.body, err
+		}
+	}
 	r, e := p.wait(&graphProcessPumpCall{ctx: ctx, kind: sourceSubmit, proposal: q})
 	return r.body, e
 }
@@ -1212,6 +1234,24 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	defer p08.close()
 	writer := &graphProcessChildWriter{incarnation: o.incarnation}
 	pump := &graphProcessChildPump{ctx: ctx, calls: make(chan *graphProcessPumpCall, processSourcePending), canceled: make(chan *graphProcessPumpCall, processSourcePending)}
+	var logicalTransitions *nativeLogicalTransitionOwner
+	switch os.Getenv("RHO_GRAPH_TRANSITION_PROCESS") {
+	case "", "off":
+	case "1":
+		member, parseErr := strconv.ParseUint(os.Getenv("RHO_GRAPH_PROCESS_ID"), 10, 64)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		var openErr error
+		logicalTransitions, openErr = newNativeLogicalTransitionOwner(ctx, h, member)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		pump.transition = logicalTransitions
+		defer logicalTransitions.close()
+	default:
+		t.Fatal("unknown native live transition profile")
+	}
 	server, err := newGraphSourceServer(ctx, h, defaultGraphSourceLimits(h.machine.limits))
 	if err != nil {
 		t.Fatal(err)
@@ -1475,6 +1515,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			event, err = h.ReadGraphCut(c.cut)
 		case sourceSubmit:
 			c.baseline = h.driver.Applied()
+			if c.transition != nil {
+				c.transition.proofBaseline = c.baseline
+			}
 			event, err = h.Submit(c.proposal)
 		}
 		if err != nil {
@@ -1487,6 +1530,16 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	pollSubmit := func() error {
 		if active == nil || active.kind != sourceSubmit {
 			return nil
+		}
+		if active.transition != nil {
+			observed, err := logicalTransitions.poll(h, active)
+			if err != nil {
+				finish(active, graphProcessPumpReply{err: err})
+				return nil
+			}
+			if !observed {
+				return nil
+			}
 		}
 		if isGraphPinWire(active.proposal.wire) {
 			next, scanned, body, operationErr, eventErr := pollGraphProcessPinSubmission(active.ctx, h, active.proposal, active.baseline, active.scanned)
@@ -1549,6 +1602,11 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	isSourceClose := func(r processRequest) bool {
 		if o.cost != nil && o.cost.Version == 4 && nativeGraphEdgeUniqueColumnClose(r) {
 			return true
+		}
+		if logicalTransitions != nil && r.op == processNativeTransitionControl {
+			if c, err := decodeNativeLogicalTransitionControl(r.data); err == nil && (c.Action == "release" || c.Action == "close") {
+				return true
+			}
 		}
 		if contention != nil && r.op == processCostObserve && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
 			if q, err := decodeNativeContentionInput(r.data); err == nil {
@@ -1619,6 +1677,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			out := processResponse{}
 			var e error
 			switch r.op {
+			case processNativeTransitionControl:
+				if r.index != 0 || r.entity != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
+					e = errInvalid
+				} else {
+					out.aux, e = logicalTransitions.serve(workerCtx, r.data)
+				}
 			case processP05Open, processP05Observe, processP05Coordinate, processP05Resume, processP05Close:
 				out.aux, e = p05.serve(workerCtx, r)
 			case processSourceServe:
@@ -2113,7 +2177,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					}
 					paused = nil
 				}
-			case processP05Open, processP05Observe, processP05Coordinate, processP05Resume, processP05Close, processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail, processCertifiedIndexObserve, processLifecycleObserve, processPairedPendingOpen, processCostObserve:
+			case processNativeTransitionControl, processP05Open, processP05Observe, processP05Coordinate, processP05Resume, processP05Close, processSourceServe, processSourceCoordinate, processSourceObserve, processSourceCertifiedOpen, processSourceCertifiedObserve, processSourceCertifiedClose, processRangeRun, processRangeResume, processRangeCertifiedDetail, processCertifiedIndexObserve, processLifecycleObserve, processPairedPendingOpen, processCostObserve:
 				if pause && r.op == processSourceServe && !isSourceClose(r) {
 					if len(paused) >= processSourceWorkers {
 						e = errLimit

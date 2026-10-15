@@ -12,6 +12,21 @@ SPEC.loader.exec_module(C)
 
 
 class NativeTransitionGuards(unittest.TestCase):
+    def test_logical_recipe_refuses_foreign_or_unfunded_native_phase(self):
+        valid = dict(Version=1, Seed=37, Phase=3, Partition=8, Side="after-applied", Actions=[dict(Member=1, Ticks=2)])
+        self.assertEqual(C.recipe(valid), (3, 8, "after-applied", valid["Actions"]))
+        for update in ({"Partition": 3}, {"Phase": 5}, {"Actions": [dict(Member=7, Ticks=1)]},
+                       {"Actions": [dict(Member=1, Ticks=3)]*6}, {"Actions": "not-actions"},
+                       {"Seed": True}, {"Side": "after-submit"}):
+            with self.subTest(update=update), self.assertRaises(ValueError):
+                C.recipe({**valid, **update})
+        with self.assertRaises(C.SemanticFailure) as failure:
+            C.semantic(False, "atomic-edge-state")
+        self.assertEqual(failure.exception.code, "atomic-edge-state")
+        with self.assertRaises(ValueError) as refusal:
+            C.require(False, "missing actual source")
+        self.assertNotIsInstance(refusal.exception, C.SemanticFailure)
+
     def receipt(self):
         empty = list(hashlib.sha256(b"").digest())
         return dict(Version=1, Profile=C.C.PROFILE, Cookie=[1] + [0]*15,

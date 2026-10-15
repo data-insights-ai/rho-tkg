@@ -143,7 +143,7 @@ def check(data):
     return check_history(data, startup=case == "directory-sync-during-reopen")
 
 
-def check_history(data, *, startup=False, process_check=processes):
+def check_history(data, *, startup=False, process_check=processes, semantic_require=require):
     """Shared complete original/prefix/serial checks after strict case admission.
 
     A fresh embedding must authenticate its own actual process/IO grammar. It
@@ -152,7 +152,8 @@ def check_history(data, *, startup=False, process_check=processes):
     case = data["Case"]
     scopes, old_round = P.cut(data["Before"])
     for key in ("Retained", "Reopened"):
-        require(data[key] == data["Before"], "old cut substituted current state")
+        if semantic_require is require:
+            require(data[key] == data["Before"], "old cut substituted current state")
     source, manifest, tx, digest, coordinator = None, P.raw(data["Manifest"]), None, None, None
     if not startup:
         source = P.pgq(P.raw(data["Original"]))
@@ -253,9 +254,12 @@ def check_history(data, *, startup=False, process_check=processes):
             P.resumed(data["PendingCaller"],scopes,source["request"],tx,P.business_hash(P.raw(data["Original"]),coordinator),1,b"")
     else:
         require(initial==current,"startup fault changed useful graph")
+    if semantic_require is not require:
+        for key in ("Retained", "Reopened"):
+            semantic_require(data[key] == data["Before"], "old-cut:" + key)
     observations=[{"event":key,"scope":["A","B"],"round":P.cut(data[key])[1],"values":P.projected(data[key])} for key in ("Before","Retained","Recovered","Reopened")]
     witness,detail=P.oracle()({"initial":initial,"transactions":transactions},set(transactions),rounds,observations,[{"event":"final","scope":["A","B"],"values":current}])
-    require(witness is not None,"independent exact serial/cut witness: "+str(detail))
+    semantic_require(witness is not None,"independent exact serial/cut witness: "+str(detail))
     process_check(data["Processes"] or [],data["IO"],case)
     events=data["PacketEvents"] or []
     require(bool(events)==case.startswith("packet-"),"matched packet inventory")

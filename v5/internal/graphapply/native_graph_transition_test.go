@@ -1,12 +1,20 @@
 package graphapply
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
 func TestNativeStorageTransitionSelectorsKeepGuaranteesAndFiniteOwnership(t *testing.T) {
@@ -62,6 +70,148 @@ func TestNativeStorageTransitionSelectorsKeepGuaranteesAndFiniteOwnership(t *tes
 	if _, err := owner.control(wire); !errors.Is(err, errInvalid) {
 		t.Fatal("pending arm owner replaced", err)
 	}
+}
+
+func nativeTransitionIndependentCheck(t *testing.T, artifact string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", "native_transition_check.py"), artifact)
+	var diagnostics processStderr
+	command.Stdout, command.Stderr = &diagnostics, &diagnostics
+	if err := command.Run(); err != nil {
+		body, _ := diagnostics.state()
+		t.Fatal("independent actual-source transition check", err, body)
+	}
+	if _, full := diagnostics.state(); full {
+		t.Fatal("independent checker diagnostic bound")
+	}
+}
+
+func TestNativeTransactionTransitionsUseActualTypedCallsAndAppliedEntries(t *testing.T) {
+	for _, phase := range []byte{1, 2, 3, 4} {
+		for _, partition := range []uint64{3, 8} {
+			if (phase == 1 || phase == 3) && partition != 8 {
+				continue
+			}
+			for _, side := range []string{"before-submit", "after-applied"} {
+				t.Run(fmt.Sprintf("phase%d-p%d-%s", phase, partition, side), func(t *testing.T) {
+					artifact := nativeLogicalCrossCase(t, nativeTransitionRecipe{Version: 1, Seed: 20261015, Phase: phase, Partition: partition, Side: side}, "")
+					nativeTransitionIndependentCheck(t, artifact)
+				})
+			}
+		}
+	}
+}
+
+func TestNativeTransitionOwnerCloseCancelsGenuineCallWithoutDecisionOrAuthorityImport(t *testing.T) {
+	n, coordinator, ops, claims, _ := coordinatorNativeFixture(t)
+	id := n.requestID()
+	owner, err := newNativeLogicalTransitionOwner(t.Context(), coordinator.host, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.close()
+	call := func(c nativeLogicalTransitionControl) ([]byte, error) {
+		wire, err := json.Marshal(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return owner.serve(t.Context(), wire)
+	}
+	tx := crossTransactionID(coordinator.host.machine.ns, id)
+	arm := nativeLogicalTransitionControl{Version: 1, Action: "arm", Cookie: owner.cookie, Sequence: 1, Family: "cross", Phase: 3, Side: "before-submit", Identity: tx, Partition: coordinator.host.machine.ns.partition}
+	if _, err := call(arm); err != nil {
+		t.Fatal(err)
+	}
+	unrelated, err := coordinator.host.PreparePartitionGraphOperations(n.requestID(), []graphstate.Operation{{Kind: graphstate.AddLabel, Owner: 1, Life: 2, Scope: ops[0].Scope, Name: "unrelated-native-command"}}, 38, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket, err := owner.begin(t.Context(), unrelated); err != nil || ticket != nil || !owner.armed || owner.work != 0 || owner.attempts != 0 {
+		t.Fatal("armed diagnostic changed genuine nonmatching submission", err)
+	}
+	coordinator.beforeDecision = func(ctx context.Context, _ crossTransaction, proposal allocationProposal) error {
+		ticket, err := owner.begin(ctx, proposal)
+		if err != nil || ticket == nil {
+			return errors.Join(errInvalid, err)
+		}
+		err = ticket.hold()
+		ticket.finish(err)
+		return err
+	}
+	type result struct {
+		value crossProcessResult
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() { value, err := coordinator.Run(t.Context(), id, ops, 37, claims); done <- result{value, err} }()
+	wire, err := call(nativeLogicalTransitionControl{Version: 1, Action: "await", Cookie: owner.cookie, Sequence: 1})
+	var receipt nativeLogicalTransitionReceipt
+	if err != nil || json.Unmarshal(wire, &receipt) != nil || receipt.State != "reached" || receipt.Index != 0 || len(receipt.EntryData) != 0 {
+		t.Fatal("before-submit observation became native durability", err)
+	}
+	foreign := owner.cookie
+	foreign[0] ^= 1
+	if _, err := call(nativeLogicalTransitionControl{Version: 1, Action: "release", Cookie: foreign, Sequence: 1}); !errors.Is(err, replica.ErrUnavailable) {
+		t.Fatal("foreign live owner", err)
+	}
+	owner.close()
+	owner.close()
+	var pending crossProcessResult
+	select {
+	case actual := <-done:
+		pending = actual.value
+		if !errors.Is(actual.err, context.Canceled) || !errors.Is(actual.err, errCrossProcessPending) || actual.value.decision != (crossStatus{}) {
+			t.Fatal("closed genuine call became decided", actual.err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("live call kept after owner cancellation")
+	}
+	if _, _, err := coordinator.host.machine.observeCrossTransaction(crossQuery{tx: tx, phase: crossDecide}, coordinator.host.driver.Applied()); !errors.Is(err, replica.ErrUnavailable) {
+		t.Fatal("owner close synthesized ABORT", err)
+	}
+	if _, err := call(arm); !errors.Is(err, replica.ErrUnavailable) {
+		t.Fatal("closed owner rearmed", err)
+	}
+	if ticket, err := owner.begin(t.Context(), unrelated); err != nil || ticket != nil {
+		t.Fatal("closed diagnostic changed unrelated native submission", err)
+	}
+	coordinator.beforeDecision = nil
+	recovered, err := coordinator.Run(t.Context(), id, ops, 37, claims)
+	if err != nil || !recovered.decision.commit || recovered.resume != pending.resume {
+		t.Fatal("same original recovery after lost gate", err)
+	}
+}
+
+// Explicit finite replay entry. Ordinary CI selects the compact parents above;
+// the external recorded runner supplies its own real binary/run/resource owner.
+func TestNativeTransitionRecordedReplayCell(t *testing.T) {
+	input := os.Getenv("RHO_GRAPH_TRANSITION_RECIPE")
+	if input == "" {
+		t.Skip("explicit recorded transition replay cell")
+	}
+	if len(input) > 4096 {
+		t.Fatal("recipe frame admission")
+	}
+	var recipe nativeTransitionRecipe
+	d := json.NewDecoder(bytes.NewReader([]byte(input)))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&recipe); err != nil || !recipe.valid() {
+		t.Fatal("recorded recipe", err)
+	}
+	canonical, err := json.Marshal(recipe)
+	if err != nil || string(canonical) != input {
+		t.Fatal("canonical recorded recipe", err)
+	}
+	output := os.Getenv("RHO_GRAPH_TRANSITION_OUTPUT")
+	if output == "" {
+		t.Fatal("missing owned replay output directory")
+	}
+	if err := os.Mkdir(output, 0700); err != nil {
+		t.Fatal(err)
+	}
+	_ = nativeLogicalCrossCase(t, recipe, output)
 }
 
 // These are separate actual VFS cases during a genuine pending cross write.

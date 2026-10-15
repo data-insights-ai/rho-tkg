@@ -8,6 +8,11 @@ import native_workload_cell as cell
 
 
 class NativeWorkloadCellGuards(unittest.TestCase):
+    def test_repository_monitor_default_keeps_binary_explicit(self):
+        self.assertEqual(cell.WATCHDOG, Path(cell.__file__).with_name("process_watchdog.py"))
+        with self.assertRaises(ValueError):
+            cell.executables(None, None)
+
     def test_owned_transport_and_paired_nonlocal_refuse_before_effects(self):
         spec = {"version": 1, "family": "contention-empty-range", "facts": 20, "crossPercent": 50, "writers": 32, "layout": "kv"}
         for transport, delay in cell.TRANSPORTS.items():
