@@ -499,10 +499,19 @@ the immutable request body. Move reservation also requires the caller's captured
 epoch, fencing delayed A1 requests after A1-to-B2-to-A3 ownership reuse. Atomic
 freeze/activation retain the genuine source owner and metadata; funded cancel
 releases that same owner. The freeze is conservative across the whole graph.
-The finite one-writer core and its authored SDK guards are unexecuted. Full
-handoff census, allocation lineage, target process replacement, retained feed/GC
-and matrix-family wiring remain implementation work; stable shared-KV keys do
-not establish physical replica transfer.
+The finite one-writer core and its authored SDK guards are unexecuted. The
+fresh Cost8/catalog2 prerequisite at `011b978f` adds explicitly bounded matrix
+admission, native HOME block reservations/high-water, one-use cursor installation
+and actual local issuance. Lost installation cannot recreate a cursor; native
+closure burns its uncertain suffix and transfer waits for durable session drain.
+Committed IDs retain first-use provenance. Successor resolution preserves an
+existing COMMIT or records a fenced ABORT only with both originals absent in the
+same native transaction. Already-funded move/grant cleanup has eight bounded
+admissions and an immutable deadline ceiling after ordinary run expiry; it
+cannot authorize new allocations or writes. Catalog1 caps remain unchanged.
+These authored guards are unexecuted. Full handoff/cost census, target process
+replacement, retained feed/GC and matrix-family wiring remain implementation
+work; stable shared-KV keys do not establish physical replica transfer.
 The FDB cross-edge family is source-integrated at `78f11fc8`: distinct contenders
 share one scalar uniqueness claim, endpoint close/reopen masks the old life,
 and closing/replaying the old canonical relation preserves the replacement claim.
