@@ -12,7 +12,17 @@ import (
 )
 
 func TestNativeP06ReplacementUsesUnusedRemoteServiceForExactOldCut(t *testing.T) {
-	n, c, ops, claims, wires := coordinatorNativeFixture(t)
+	n, _, ops, claims, wires := coordinatorNativeFixture(t)
+	// coordinatorTestWire's fault injector accepts cross commands only. This
+	// read-focused guard also submits real cut commands, so use its underlying
+	// native transports from the outset, before either stream has been used.
+	c, err := newCrossProcessCoordinator(n.hosts[0][0], map[uint64]graphPeerWireTransport{
+		3: wires[0].nativeGraphTestTransport,
+		8: wires[1].nativeGraphTestTransport,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	before, err := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)
 	if err != nil {
 		t.Fatal(err)

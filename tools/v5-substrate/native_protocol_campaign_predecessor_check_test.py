@@ -22,14 +22,15 @@ def seal(magic, value):
     return wire+hashlib.sha256(wire).digest()
 
 
-def process(aux=b"", *, sequence=9, packets=()):
+def process(aux=b"", *, sequence=9, packets=(), handles=(), image=b""):
     # Exact process response shape, explicitly NOT a real process observation.
-    wire = bytes([7])*16+bytes(28*8+32+32)+u64(0)+struct.pack(">I", 0)
+    wire = bytes([7])*16+bytes(28*8+32+32)+u64(0)+struct.pack(">I", len(handles))
+    wire += b"".join(u64(value) for value in handles)
     wire += field(aux)+b"\1"+u64(sequence)+u64(0)+bytes(3)+field(b"")
     wire += struct.pack(">I", len(packets))
     for sender, receiver, payload in packets:
         wire += u64(sender)+u64(receiver)+b"\0"+field(payload)
-    wire += struct.pack(">I", 0)+field(b"")*3+b"\0"+u64(0)+struct.pack(">I", 0)+field(b"")
+    wire += struct.pack(">I", 0)+field(image)+field(b"")*2+b"\0"+u64(0)+struct.pack(">I", 0)+field(b"")
     return wire
 
 
@@ -104,7 +105,7 @@ class PredecessorChecks(unittest.TestCase):
             payload=b"RP\1\0"+scope[:40]+scope[88:120]+struct.pack(">I",len(message))+message
             packets.append((1,to,payload))
         event=dict(Action="reorder", From=1, To=2, Ordinal=1, Bytes=len(packets[0][2]), SHA256=list(hashlib.sha256(packets[0][2]).digest()), ConfiguredDelayMillis=0, ObservedDelayNanos=0)
-        evidence=dict(TickResponse=base64.b64encode(process(sequence=9,packets=packets)).decode(), AfterState=base64.b64encode(process(sequence=10)).decode(), Spec=dict(Mode="reorder"), Voter=1, Packets=[event])
+        evidence=dict(TickResponse=base64.b64encode(process(sequence=9,packets=packets)).decode(), AfterState=base64.b64encode(process(sequence=10,handles=(0,0),image=bytes(172))).decode(), Spec=dict(Mode="reorder"), Voter=1, Packets=[event])
         state=dict(incarnation=bytes([7])*16, sequence=8, stats=[0,0,2])
         tick, after=C.tick_program(evidence,{3:scope},state)
         self.assertEqual((len(tick["packets"]),after["sequence"]),(2,10))
@@ -114,6 +115,14 @@ class PredecessorChecks(unittest.TestCase):
         self.refused(C.tick_program,evidence,{3:scope},{**state,"incarnation":bytes([8])*16})
         bad={**evidence,"TickResponse":base64.b64encode(process(sequence=9,packets=packets[:1])).decode()}
         self.refused(C.tick_program,bad,{3:scope},state)
+        # State's two fields are worker/relay counts, not SnapshotSend handles.
+        bounded={**evidence,"AfterState":base64.b64encode(process(sequence=10,handles=(5,16),image=bytes(172))).decode()}
+        C.tick_program(bounded,{3:scope},state)
+        for handles,image in (((),bytes(172)),((1,),bytes(172)),((6,0),bytes(172)),((0,17),bytes(172)),((0,0),bytes(171))):
+            bad={**evidence,"AfterState":base64.b64encode(process(sequence=10,handles=handles,image=image)).decode()}
+            self.refused(C.tick_program,bad,{3:scope},state)
+        for key,wire in (("AfterState",process(sequence=10,handles=(0,0),image=bytes(172),packets=packets)),("AfterState",process(b"unexpected offers",sequence=10,handles=(0,0),image=bytes(172))),("TickResponse",process(sequence=9,packets=packets,handles=(1,)))):
+            self.refused(C.tick_program,{**evidence,key:base64.b64encode(wire).decode()},{3:scope},state)
 
 
 if __name__ == "__main__":

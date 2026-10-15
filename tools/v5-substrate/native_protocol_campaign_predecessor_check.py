@@ -64,7 +64,7 @@ def read_question(wire):
 def cached_reply(request,reply,duplicate,scopes,partition,voter,selected,originals):
     kind,sequence,nonce,tx,phase=read_question(request)
     first=H.source_reply(reply)
-    require(first["kind"]==kind and first["sequence"]==sequence and first["nonce"]==nonce and first["scope"]==scopes[partition] and first["voter"]==voter,"configured predecessor endpoint, scope and complete correlation")
+    require(partition in scopes and first["kind"]==kind and first["sequence"]==sequence and first["nonce"]==nonce and first["scope"]==scopes[partition] and first["voter"]==voter,"configured predecessor endpoint, scope and complete correlation")
     g=P.Cursor(P.body(first["body"],b"GSE\1"))
     scope=P.body(g.field(156),b"APS\1")
     issuer,read_sequence=g.take(16),g.number()
@@ -82,7 +82,11 @@ def cached_reply(request,reply,duplicate,scopes,partition,voter,selected,origina
 def tick_program(e,scopes,selected_state):
     tick,after=(F.process(P.raw(e[k])) for k in ("TickResponse","AfterState"))
     require(tick["code"]==tick["mask"]==after["code"]==after["mask"]==0 and tick["incarnation"]==after["incarnation"]==selected_state["incarnation"] and selected_state["sequence"]<tick["sequence"]<after["sequence"],"real same configured leader Tick and later completed pipe state")
-    require(1<=len(tick["packets"])<=2 and not tick["handles"] and not tick["reads"] and not after["handles"] and not after["reads"] and not after["packets"],"at most two genuinely emitted predecessor frames")
+    require(1<=len(tick["packets"])<=2 and not tick["handles"] and not tick["reads"] and not after["reads"] and not after["packets"],"at most two genuinely emitted predecessor frames")
+    # This response is the paired source child's processStateOp, not Offers:
+    # handles is [workers+paused, relay.pending]. Its constructor admits two
+    # normal workers, one terminal worker, two paused calls and sixteen relays.
+    require(len(after["handles"])==2 and after["handles"][0]<=5 and after["handles"][1]<=16 and len(after["image"])==172 and not after["aux"] and not after["outcome"] and not after["changes"],"exact bounded paired worker/relay census and checkpoint, no snapshot/result authority")
     require(e["Spec"]["Mode"]!="reorder" or len(tick["packets"])==2,"reorder needs a real next frame")
     frames=[]
     for row in tick["packets"]:

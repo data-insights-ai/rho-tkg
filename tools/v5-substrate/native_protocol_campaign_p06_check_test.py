@@ -16,11 +16,11 @@ def u64(value):return struct.pack(">Q",value)
 def field(value):return struct.pack(">I",len(value))+value
 
 
-def process(sequence,packets=()):
-    wire=bytes([7])*16+bytes(28*8+32+32)+u64(0)+struct.pack(">I",0)
+def process(sequence,packets=(),*,handles=(),image=b""):
+    wire=bytes([7])*16+bytes(28*8+32+32)+u64(0)+struct.pack(">I",len(handles))+b"".join(u64(value) for value in handles)
     wire+=field(b"")+b"\1"+u64(sequence)+u64(0)+bytes(3)+field(b"")+struct.pack(">I",len(packets))
     for sender,receiver,payload in packets:wire+=u64(sender)+u64(receiver)+b"\0"+field(payload)
-    return wire+struct.pack(">I",0)+field(b"")*3+b"\0"+u64(0)+struct.pack(">I",0)+field(b"")
+    return wire+struct.pack(">I",0)+field(image)+field(b"")*2+b"\0"+u64(0)+struct.pack(">I",0)+field(b"")
 
 
 class P06ProgramChecks(unittest.TestCase):
@@ -66,7 +66,7 @@ class P06ProgramChecks(unittest.TestCase):
             packets.append((1,to,payload));frames.append(dict(From=1,To=to,Snapshot=False,Payload=base64.b64encode(payload).decode()))
         event=dict(Action="reorder",From=1,To=2,Ordinal=1,Bytes=len(packets[0][2]),SHA256=list(hashlib.sha256(packets[0][2]).digest()),ConfiguredDelayMillis=0,ObservedDelayNanos=0)
         program=dict(Spec=dict(Message="reorder"),Frames=frames,Packets=[event],FrameCandidates=2,TickResponse=base64.b64encode(process(9,packets)).decode(),MessageFrom=1,MessageTo=2)
-        wrapper=dict(Mechanism="emitted-predecessor-tick-packets",AfterPredecessor=base64.b64encode(process(10)).decode())
+        wrapper=dict(Mechanism="emitted-predecessor-tick-packets",AfterPredecessor=base64.b64encode(process(10,handles=(0,0),image=bytes(172))).decode())
         state=dict(incarnation=bytes([7])*16,sequence=8,stats=[0,0,2])
         N.packets(wrapper,program,{3:scope},state,1,1)
         self.refused(N.packets,{**wrapper,"Mechanism":"selected-command-native-packets"},program,{3:scope},state,1,1)
