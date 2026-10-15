@@ -31,6 +31,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and deletes of the extremes, label changes, a backfilled index; declines), `TestPropertyBoundsFlags`,
   `TestPropertyBoundsDeclines`, `TestPropertyBoundsAfterReopen`, `TestPropertyBoundsUnderWriters`,
   `TestNumericBoundsMatchesScan`, store tests; evidence `tasks/evidence/cypher-round8/r1-*`.
+- **Numeric range reads at a temporal coordinate from the property index** (sigma-tkgd round 8 request 2, sources:
+  a range over every valid-time version as recorded at a pin, `ValidStart: 1, ValidEnd: MaxInt64, TxAt: pin`).
+  `Nodes().ForEachByLabelPropertyRange` / `Rels().ForEachByTypePropertyRange` under a temporal `opts` folded every
+  label (type) member; with a declared property index on the pair they now take as candidates the entities whose
+  rows ever carried a value in the range (the index's membership sidecar, pruned by the transaction-time pin, as
+  `ByLabelAndProperty` does for one value), resolve them with the label read's resolver and apply the same value
+  test: the same answers in the same order (each entity's resolved version, backlog 16 unchanged), from the
+  entities that can match. New `Nodes().RangeCardinalityAt` / `Rels().RangeCardinalityAt(…, opts)` count those
+  versions within the bounds per the inclusivity flags (a float32 widened, NaN never) with `exact=true` where the
+  sidecar serves; `exact=false` declines (no temporal filter, invalid opts, NaN bound, no index, tiered, sharded,
+  external stores, depth-scoped tiered reads, unknown label). `RangeCardinality` is unchanged (declines at a
+  coordinate). New optional store capabilities `store.NodePropertyTxMemberRangeCapability` /
+  `store.RelPropertyTxMemberRangeCapability` (memory, badger): the sidecar opens a numeric view of its values at
+  its first range read (lazy, one sort key and value-key reference per distinct numeric value, kept by the
+  sidecar's existing record step; sidecars no range read asked for and stores without a sidecar pay nothing, the
+  plain write path is unchanged). 50,000 nodes with two versions each, 500 in range (`BenchmarkRangeAtPin`, one
+  CPU, load 38-44): memory 59 ms (fold) -> 0.66-1.6 ms, badger 308-389 ms -> 1.45-2.2 ms; the count 0.45-0.84 ms
+  memory / 1.46-1.57 ms badger (before: declined, the caller folded). Tests `TestRangeAtFromSidecar` (every
+  backend, against `ByLabel` / `ByType` filtered by the fold's test, at pinned all-valid-time, `TxPin`, `ValidAt`
+  with and without `TxAt` and window coordinates, through value updates, values first written after the numeric
+  view opened, label changes and deletes), `TestPropertyTxMembersInRange`, store tests; evidence
+  `tasks/evidence/cypher-round8/r2-*`.
 
 ## [4.55.1] - 2026-10-15
 

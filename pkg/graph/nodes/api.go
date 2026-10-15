@@ -46,6 +46,7 @@ type Ops interface {
 	ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	RangeCardinalityAt(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
 	ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
 	CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error)
@@ -542,6 +543,26 @@ func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin,
 		return 0, false, err
 	}
 	return ops.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// RangeCardinalityAt is RangeCardinality at a temporal coordinate (round 8
+// request 2): the number of versions ForEachByLabelPropertyRange returns under
+// opts (each node's version ByLabel resolves) whose value, a float32 widened
+// to float64, lies within [min, max] per the inclusivity flags (NaN never;
+// After and Limit ignored). Counted from the declared property index's
+// membership sidecar: only the nodes whose rows ever carried a value in the
+// range are resolved, no label fold. exact=false with no error declines (the
+// caller folds and counts): no temporal filter in opts (use RangeCardinality),
+// invalid opts, a NaN bound, no property index on (label, propKey), a store
+// without store.NodePropertyTxMemberRangeCapability (tiered, sharded, external
+// stores), a depth-scoped read on a store with depth-aware history, an
+// unknown label.
+func (a *API) RangeCardinalityAt(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.RangeCardinalityAt(label, propKey, min, max, inclMin, inclMax, opts)
 }
 
 // ForEachIDByLabelPropertyRangeOrdered streams (ID, value) of the label's

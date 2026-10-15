@@ -1,0 +1,25 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: Apple M4 Max
+BenchmarkRangeAtPin/memory/fold         	      19	  58999327 ns/op	42226293 B/op	  700064 allocs/op
+BenchmarkRangeAtPin/memory/fold         	      30	  58549364 ns/op	41977338 B/op	  700035 allocs/op
+BenchmarkRangeAtPin/memory/fold         	      30	  59246679 ns/op	41977337 B/op	  700035 allocs/op
+BenchmarkRangeAtPin/memory/sidecar      	    1467	    857637 ns/op	  469204 B/op	    7185 allocs/op
+BenchmarkRangeAtPin/memory/sidecar      	    1716	    661598 ns/op	  449432 B/op	    7048 allocs/op
+BenchmarkRangeAtPin/memory/sidecar      	    3571	   1576804 ns/op	  449432 B/op	    7048 allocs/op
+BenchmarkRangeAtPin/memory/count        	    1470	    835297 ns/op	  440136 B/op	    7040 allocs/op
+BenchmarkRangeAtPin/memory/count        	    4161	    464443 ns/op	  440136 B/op	    7040 allocs/op
+BenchmarkRangeAtPin/memory/count        	    4143	    446587 ns/op	  440136 B/op	    7040 allocs/op
+BenchmarkRangeAtPin/badger/fold         	       3	 389394236 ns/op	334988210 B/op	 4920336 allocs/op
+BenchmarkRangeAtPin/badger/fold         	       4	 324656302 ns/op	293092758 B/op	 4319721 allocs/op
+BenchmarkRangeAtPin/badger/fold         	       4	 308313614 ns/op	293092556 B/op	 4319717 allocs/op
+BenchmarkRangeAtPin/badger/sidecar      	     516	   2155071 ns/op	 1929630 B/op	   28313 allocs/op
+BenchmarkRangeAtPin/badger/sidecar      	     802	   1494429 ns/op	 1507453 B/op	   23048 allocs/op
+BenchmarkRangeAtPin/badger/sidecar      	     826	   1452616 ns/op	 1507453 B/op	   23048 allocs/op
+BenchmarkRangeAtPin/badger/count        	     799	   1457621 ns/op	 1498157 B/op	   23040 allocs/op
+BenchmarkRangeAtPin/badger/count        	     804	   1552929 ns/op	 1498158 B/op	   23040 allocs/op
+BenchmarkRangeAtPin/badger/count        	     751	   1568266 ns/op	 1498158 B/op	   23040 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	31.639s
+limit: {"command": ["go", "test", "-run", "^$", "-bench", "BenchmarkRangeAtPin", "-count", "3", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 1800.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 1114.891, "elapsed_s": 34.233, "exit_code": 0, "reason": "completed"}

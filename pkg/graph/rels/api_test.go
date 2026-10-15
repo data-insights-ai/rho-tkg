@@ -963,3 +963,8 @@ func TestAPIRetractDoorsForwardVerbatim(t *testing.T) {
 		}
 	}
 }
+
+func (s *relOpsSpy) RangeCardinalityAt(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	s.record("RangeCardinalityAt")
+	return 0, false, s.err
+}
