@@ -33,7 +33,7 @@ func rangeMoveSpanSemanticContractID() raftlog.ApplicationSemanticContractID {
 	return raftlog.ApplicationSemanticContractID(sha256.Sum256(append(base[:], []byte("range-move=compact-recovery-spans-v1\x00retention=immutable-native-reference-v1\x00replay=bounded-original-batches32-v1\x00")...)))
 }
 func rangeMoveSpans(id raftlog.ApplicationSemanticContractID) bool {
-	return id == rangeMoveSpanSemanticContractID()
+	return id == rangeMoveSpanSemanticContractID() || rangeMoveGraphBatches(id)
 }
 func rangeMovePageLimit(id raftlog.ApplicationSemanticContractID) int {
 	if rangeMoveSpans(id) {

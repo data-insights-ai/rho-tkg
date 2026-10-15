@@ -283,7 +283,7 @@ func (m *declaredMaterializer) rangeMoveRecovery(q *reader, c rangeMoveCommand, 
 		if e != nil {
 			return raftlog.ApplicationRecoveryPurpose{}, e
 		}
-		if found && bytes.HasPrefix(wire, []byte("GMP\x04")) {
+		if found && (bytes.HasPrefix(wire, []byte("GMP\x04")) || bytes.HasPrefix(wire, []byte("GMP\x05"))) {
 			p, e := decodeRangeMoveProgress(wire, q.arena)
 			if e != nil {
 				return raftlog.ApplicationRecoveryPurpose{}, e

@@ -90,7 +90,19 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 			var replayWrites []raftlog.KV
 			if c.data[0] == 0 && len(c.data) == 1 {
 				effects, work, err = graphstore.AdvanceRangeMoveImportPreparation(q.ctx, q.view, progress.descriptor, *progress.imported, m.limits.catalog, m.limits.graph, headroom, q.arena)
-			} else if c.data[0] == 1 {
+			} else if c.data[0] == 4 && rangeMoveGraphBatches(m.SemanticContractID()) {
+				batch, e := graphstore.DecodeRangeMoveBatch(c.data[1:], q.arena, intent.pageBytes)
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				effects, work, err = graphstore.StageRangeMoveBatch(q.ctx, q.view, progress.descriptor, *progress.imported, batch, m.limits.catalog, m.limits.graph, headroom, q.arena)
+				if err == nil {
+					progress.graphApplied++
+					if progress.graphApplied > progress.graphPages || effects.Next.Complete != (progress.graphApplied == progress.graphPages) {
+						return raftlog.ApplicationBatch{}, errInvalid
+					}
+				}
+			} else if c.data[0] == 1 && !rangeMoveGraphBatches(m.SemanticContractID()) {
 				page, e := graphstore.DecodeRangeMovePage(c.data[1:], q.arena)
 				if e != nil {
 					return raftlog.ApplicationBatch{}, e

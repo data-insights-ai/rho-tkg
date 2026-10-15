@@ -505,7 +505,11 @@ func (op *rangeMoveInvocation) importPage(ctx context.Context, source, target ra
 		replayPages = progress.replayPages
 		manifestPages = manifest.replayPages
 	}
-	pageSequence := state.Sequence + replayPages + 1
+	graphPages := state.Sequence
+	if rangeMoveGraphBatches(op.intent.source.semantic) {
+		graphPages = progress.graphApplied
+	}
+	pageSequence := graphPages + replayPages + 1
 	if pageSequence > manifest.graphPages+manifestPages {
 		return errCorrupt
 	}

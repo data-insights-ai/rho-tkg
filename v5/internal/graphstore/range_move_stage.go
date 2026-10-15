@@ -157,59 +157,73 @@ func StageRangeMovePage(ctx context.Context, target *raftlog.ApplicationView, d 
 	if err != nil {
 		return RangeMovePageEffects{}, PageWork{}, err
 	}
+	next, err := stageRangeMovePageIn(p, d, prior, page)
+	if err != nil {
+		return RangeMovePageEffects{}, p.work, err
+	}
+	return rangeMovePageResult(p, base, next)
+}
+
+// One private reducer serves the historical single page and fresh batches.
+// The caller owns the shared stage, arena and final effects publication.
+func stageRangeMovePageIn(p *pageStage, d RangeMoveDescriptor, prior RangeMoveImportState, page RangeMovePage) (RangeMoveImportState, error) {
+	if !prior.PreparationComplete || prior.Complete || prior.Sealed || !rangeMoveValidPage(page) || !rangeMoveCursorEqual(page.Before, prior.Cursor) {
+		return RangeMoveImportState{}, ErrInvalid
+	}
+	var err error
 	next := prior
 	if page.Kind == 0 && !page.Complete {
 		if prior.fragmentOffset != 0 || !rangeMoveScanProgress(page) {
-			return RangeMovePageEffects{}, p.work, ErrInvalid
+			return RangeMoveImportState{}, ErrInvalid
 		}
 		next.Cursor = page.Next
 		next.Sequence = page.Next.Sequence
-		return rangeMovePageResult(p, base, next)
+		return next, nil
 	}
 	if page.Complete {
 		if prior.fragmentOffset > 0 || page.Next.Rows != prior.Rows || page.Next.Bytes != prior.Bytes || page.Next.Digest != prior.Digest {
-			return RangeMovePageEffects{}, p.work, ErrInvalid
+			return RangeMoveImportState{}, ErrInvalid
 		}
 		next.Cursor = page.Next
 		next.Sequence = page.Next.Sequence
 		next.Complete = true
-		return rangeMovePageResult(p, base, next)
+		return next, nil
 	}
 	if int(page.RecordBytes) > rangeMoveRecordLimit(p.q.c.limits, p.limits) || len(page.Key) > rangeMoveMaxCursorBytes {
-		return RangeMovePageEffects{}, p.work, ErrResourceLimit
+		return RangeMoveImportState{}, ErrResourceLimit
 	}
 	if page.Offset == 0 {
 		if prior.fragmentOffset != 0 {
-			return RangeMovePageEffects{}, p.work, ErrInvalid
+			return RangeMoveImportState{}, ErrInvalid
 		}
 	} else if prior.fragmentKind != page.Kind || !bytes.Equal(prior.fragmentKey, page.Key) || prior.fragmentBytes != page.RecordBytes || prior.fragmentOffset != page.Offset {
-		return RangeMovePageEffects{}, p.work, ErrInvalid
+		return RangeMoveImportState{}, ErrInvalid
 	}
 	length := int(page.Offset) + len(page.Payload)
 	var record []byte
 	if page.RecordDone {
 		if err = p.q.arena.Reserve(256 + length + len(page.Key)); err != nil {
-			return RangeMovePageEffects{}, p.work, callerError(err)
+			return RangeMoveImportState{}, callerError(err)
 		}
 		record = make([]byte, length)
 		offset := 0
 		if prior.fragmentOffset > 0 {
 			if prior.fragmentStart == 0 || prior.fragmentStart > prior.Sequence || prior.Sequence-prior.fragmentStart >= uint64(p.q.maxRows) { // #nosec G115 -- resolved caller/page budgets establish positive maxRows<=1<<20 before importer construction.
-				return RangeMovePageEffects{}, p.work, ErrResourceLimit
+				return RangeMoveImportState{}, ErrResourceLimit
 			}
 			for sequence := prior.fragmentStart; sequence <= prior.Sequence; sequence++ {
 				fragment, found, e := p.get(rangeMoveFragmentKey(p.root.namespace, d.binding(), sequence))
 				if e != nil {
-					return RangeMovePageEffects{}, p.work, e
+					return RangeMoveImportState{}, e
 				}
 				if !found || len(fragment) == 0 || len(fragment) > int(page.Offset)-offset {
-					return RangeMovePageEffects{}, p.work, ErrCorrupt
+					return RangeMoveImportState{}, ErrCorrupt
 				}
 				copy(record[offset:], fragment)
 				offset += len(fragment)
 			}
 			if offset != int(page.Offset) {
-				return RangeMovePageEffects{}, p.work, ErrCorrupt
+				return RangeMoveImportState{}, ErrCorrupt
 			}
 		}
 		copy(record[int(page.Offset):], page.Payload)
@@ -217,10 +231,10 @@ func StageRangeMovePage(ctx context.Context, target *raftlog.ApplicationView, d 
 
 	if page.RecordDone {
 		if page.Next.Rows != prior.Rows+1 || uint64(len(page.Key)+length+17) > math.MaxUint64-prior.Bytes || page.Next.Bytes != prior.Bytes+uint64(len(page.Key)+length+17) || page.Next.Digest != rangeMoveRowDigest(prior.Digest, page.Kind, page.Key, record) { // #nosec G115 -- validated key<=128KiB and record length<=rangeMoveRecordLimit<=16MiB; sum is positive and fits native int.
-			return RangeMovePageEffects{}, p.work, ErrInvalid
+			return RangeMoveImportState{}, ErrInvalid
 		}
 		if err = rangeMoveInstallRow(p, d, &next, page.Kind, page.Key, record); err != nil {
-			return RangeMovePageEffects{}, p.work, err
+			return RangeMoveImportState{}, err
 		}
 		next.fragmentOffset = 0
 		next.fragmentStart = 0
@@ -229,13 +243,13 @@ func StageRangeMovePage(ctx context.Context, target *raftlog.ApplicationView, d 
 		next.fragmentKind = 0
 	} else {
 		if page.Next.Rows != prior.Rows || page.Next.Bytes != prior.Bytes || page.Next.Digest != prior.Digest || int(page.Next.Offset) != length || !bytes.Equal(page.Next.Key, page.Key) {
-			return RangeMovePageEffects{}, p.work, ErrInvalid
+			return RangeMoveImportState{}, ErrInvalid
 		}
 		if prior.fragmentOffset == 0 {
 			next.fragmentStart = page.Next.Sequence
 		}
 		if err = p.q.put(rangeMoveFragmentKey(p.root.namespace, d.binding(), page.Next.Sequence), page.Payload); err != nil {
-			return RangeMovePageEffects{}, p.work, err
+			return RangeMoveImportState{}, err
 		}
 		next.fragmentOffset = uint32(length) // #nosec G115 -- record bounded before accumulation.
 		next.fragmentKey = exactCopy(page.Key)
@@ -244,7 +258,7 @@ func StageRangeMovePage(ctx context.Context, target *raftlog.ApplicationView, d 
 	}
 	next.Cursor = page.Next
 	next.Sequence, next.Rows, next.Bytes, next.Digest = page.Next.Sequence, page.Next.Rows, page.Next.Bytes, page.Next.Digest
-	return rangeMovePageResult(p, base, next)
+	return next, nil
 }
 
 // A complete logical catalog record/physical leaf is bounded independently of

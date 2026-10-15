@@ -89,6 +89,9 @@ func (s *graphSourceServer) moveFrozenPage(ctx context.Context, request graphSou
 	var page []byte
 	switch receipt.Value[0] {
 	case 1:
+		if rangeMoveGraphBatches(s.host.machine.SemanticContractID()) {
+			return nil, errInvalid
+		}
 		before, e := graphstore.DecodeRangeMoveCursor(receipt.Value[1:], arena)
 		if e != nil {
 			return nil, e
@@ -104,6 +107,25 @@ func (s *graphSourceServer) moveFrozenPage(ctx context.Context, request graphSou
 			return nil, err
 		}
 		page, err = graphstore.EncodeRangeMovePage(p, arena)
+	case 4:
+		if !rangeMoveGraphBatches(s.host.machine.SemanticContractID()) {
+			return nil, errInvalid
+		}
+		before, e := graphstore.DecodeRangeMoveCursor(receipt.Value[1:], arena)
+		if e != nil {
+			return nil, e
+		}
+		limits := l.graph
+		limits.MaxSourceRows = min(limits.MaxSourceRows, q.limits.readRows-q.rows)
+		limits.MaxSourceBytes = min(limits.MaxSourceBytes, q.limits.readBytes-q.bytes)
+		if limits.MaxSourceRows < 1 || limits.MaxSourceBytes < 1 {
+			return nil, errLimit
+		}
+		batch, work, e := graphstore.ExportRangeMoveBatch(ctx, lease.view, progress.descriptor, before, raftlog.ReadBudget{Rows: intent.pageRows, Bytes: intent.pageBytes}, l.catalog, limits, arena)
+		if err := errors.Join(e, chargeGraphWork(&q, work)); err != nil {
+			return nil, err
+		}
+		page, err = graphstore.EncodeRangeMoveBatch(batch, arena, intent.pageBytes)
 	case 3:
 		if !rangeMoveSpans(s.host.machine.SemanticContractID()) {
 			return nil, errInvalid
@@ -230,12 +252,7 @@ func (s *remoteGraphSource) moveFrozenPage(ctx context.Context, sequence uint64)
 	data := c.field(1 << 20)
 	actual, e := decodeRangeMoveQuery(query)
 	q.nonce = response.nonce
-	if c.err != nil || len(c.b) != 0 || e != nil || actual != q || intent != s.move.intentHash || index != s.move.manifestIndex || image != s.move.manifestHash || kind < 1 || kind > func() byte {
-		if q.spans {
-			return 3
-		}
-		return 2
-	}() || q.spans && kind == 2 || rows > q.sourceRows || nativeBytes > q.sourceBytes || owned > q.outputBytes {
+	if c.err != nil || len(c.b) != 0 || e != nil || actual != q || intent != s.move.intentHash || index != s.move.manifestIndex || image != s.move.manifestHash || !moveBodyKindValid(s.move.scope.semantic, kind) || rows > q.sourceRows || nativeBytes > q.sourceBytes || owned > q.outputBytes {
 		return nil, errors.Join(errInvalid, c.err, e)
 	}
 	b.mu.Lock()

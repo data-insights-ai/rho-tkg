@@ -22,6 +22,7 @@ type rangeMoveProgress struct {
 	imported            *graphstore.RangeMoveImportState
 	replay, replayEnd   rangeMoveReplayCursor
 	graphPages          uint64
+	graphApplied        uint64 // GMP5 only: installed graph envelopes, not logical RMC sequence
 	undoNext, undoTotal uint64
 }
 
@@ -42,6 +43,9 @@ func encodeRangeMoveProgress(p rangeMoveProgress, output *graphstate.OutputBudge
 			return nil, errInvalid
 		}
 		version = 4
+		if rangeMoveGraphBatches(p.descriptor.Source.Binding.SemanticContractID) {
+			version = 5
+		}
 	} else if collectedGraphAgreement(p.descriptor.Source.Binding.SemanticContractID) {
 		packet, err := decodeMoveRetainedLineage(p.retention, output)
 		if err != nil {
@@ -100,9 +104,12 @@ func encodeRangeMoveProgress(p rangeMoveProgress, output *graphstate.OutputBudge
 		if version == 3 {
 			w.field(p.retention)
 		}
-		if version == 4 {
+		if version >= 4 {
 			p.emitReference(w)
 			w.u64(p.replayPages)
+			if version == 5 {
+				w.u64(p.graphApplied)
+			}
 			if p.inlineRetention {
 				w.tag(1)
 				w.field(p.retention)
@@ -125,6 +132,9 @@ func decodeRangeMoveProgress(wire []byte, output *graphstate.OutputBudget) (rang
 	if bytes.HasPrefix(wire, []byte("GMP\x04")) {
 		version, magic = 4, "GMP\x04"
 	}
+	if bytes.HasPrefix(wire, []byte("GMP\x05")) {
+		version, magic = 5, "GMP\x05"
+	}
 	body, err := graphBody(wire, magic, (1<<20)-128)
 	if err != nil {
 		return rangeMoveProgress{}, err
@@ -136,21 +146,24 @@ func decodeRangeMoveProgress(wire []byte, output *graphstate.OutputBudget) (rang
 	undoNext, undoTotal := c.u64(), c.u64()
 	var retained []byte
 	var reference moveRetentionReference
-	var replayPages uint64
+	var replayPages, graphApplied uint64
 	inline := byte(0)
 	if version == 3 {
 		retained = c.field(rangeMoveRetentionBytes)
 	}
-	if version == 4 {
+	if version >= 4 {
 		reference = readMoveReference(&c)
 		replayPages = c.u64()
+		if version == 5 {
+			graphApplied = c.u64()
+		}
 		inline = c.tag()
 		retained = c.field(rangeMoveRetentionBytes)
 	}
-	if c.err != nil || len(c.b) != 0 || inline > 1 || version == 4 && (inline == 1) != (len(retained) != 0) {
+	if c.err != nil || len(c.b) != 0 || inline > 1 || version >= 4 && (inline == 1) != (len(retained) != 0) {
 		return rangeMoveProgress{}, errors.Join(errCorrupt, c.err)
 	}
-	p := rangeMoveProgress{reference: reference, replayPages: replayPages, inlineRetention: inline == 1, undoNext: undoNext, undoTotal: undoTotal, graphPages: graphPages}
+	p := rangeMoveProgress{graphApplied: graphApplied, reference: reference, replayPages: replayPages, inlineRetention: inline == 1, undoNext: undoNext, undoTotal: undoTotal, graphPages: graphPages}
 	p.replay, err = decodeRangeMoveReplayCursor(replay, output)
 	if err != nil {
 		return rangeMoveProgress{}, err
@@ -163,7 +176,7 @@ func decodeRangeMoveProgress(wire []byte, output *graphstate.OutputBudget) (rang
 	if err != nil {
 		return rangeMoveProgress{}, err
 	}
-	if version == 4 {
+	if version >= 4 {
 		if !rangeMoveSpans(p.descriptor.Source.Binding.SemanticContractID) || !p.reference.valid(p.descriptor) || !p.inlineRetention && len(wire) > rangeMoveSpanProgressBytes {
 			return rangeMoveProgress{}, errCorrupt
 		}
@@ -213,26 +226,29 @@ func decodeRangeMoveProgress(wire []byte, output *graphstate.OutputBudget) (rang
 		}
 		p.imported = new(state)
 	}
-	if (version == 4) != rangeMoveSpans(p.descriptor.Source.Binding.SemanticContractID) {
+	if (version >= 4) != rangeMoveSpans(p.descriptor.Source.Binding.SemanticContractID) || (version == 5) != rangeMoveGraphBatches(p.descriptor.Source.Binding.SemanticContractID) {
 		return rangeMoveProgress{}, errCorrupt
 	}
 	limit := uint64(rangeMovePageLimit(p.descriptor.Source.Binding.SemanticContractID))
 	replayLimit := limit
-	if version == 4 {
+	if version >= 4 {
 		replayLimit *= rangeMoveSpanBatchRows
 	}
 	if p.imported != nil && p.cursor.Binding != ([32]byte{}) || p.undoNext > p.undoTotal || p.undoTotal > limit || p.graphPages > limit || p.replay.sequence > replayLimit || p.replayEnd.sequence > replayLimit || p.descriptor.Rows > math.MaxUint64-p.manifestReplay().rows || p.descriptor.Rows+p.manifestReplay().rows > math.MaxUint64-p.retentionRows || p.descriptor.Bytes > math.MaxUint64-p.manifestReplay().bytes || p.descriptor.Bytes+p.manifestReplay().bytes > math.MaxUint64-p.retainedBytes() {
 
 		return rangeMoveProgress{}, errCorrupt
 	}
-	if version == 4 && (p.graphPages+p.replayPages > limit || p.replayPages > limit || p.replayPages > p.replay.sequence || p.replay.sequence > rangeMoveSpanBatchRows*p.replayPages) {
+	if version >= 4 && (p.graphPages+p.replayPages > limit || p.replayPages > limit || p.replayPages > p.replay.sequence || p.replay.sequence > rangeMoveSpanBatchRows*p.replayPages) {
 		return rangeMoveProgress{}, errCorrupt
 	}
 	if p.imported == nil {
-		if p.graphPages != p.cursor.Sequence || p.replayEnd.family != 0 || p.replay.family != 0 && !p.descriptor.Sealed {
+		if !rangeMoveGraphBatches(p.descriptor.Source.Binding.SemanticContractID) && p.graphPages != p.cursor.Sequence || version == 5 && (p.graphApplied != 0 || !moveGraphCountValid(p.graphPages, p.cursor.Sequence)) || p.replayEnd.family != 0 || p.replay.family != 0 && !p.descriptor.Sealed {
 			return rangeMoveProgress{}, errCorrupt
 		}
 	} else if !p.descriptor.Sealed || !p.replayEnd.complete || p.replay.sequence > p.replayEnd.sequence || p.replay.rows > p.replayEnd.rows || p.replay.bytes > p.replayEnd.bytes {
+		return rangeMoveProgress{}, errCorrupt
+	}
+	if version == 5 && p.imported != nil && (!moveGraphCountValid(p.graphApplied, p.imported.Sequence) || p.graphApplied > p.graphPages || p.imported.Complete != (p.graphApplied == p.graphPages)) {
 		return rangeMoveProgress{}, errCorrupt
 	}
 	return p, nil

@@ -116,17 +116,33 @@ func (m *declaredMaterializer) stageRangeMoveContinuation(q *reader, command ran
 
 			var before []byte
 			if !progress.descriptor.Sealed {
-				page, err := m.exportMoveGraphPage(q, progress, progress.cursor, intent)
-				if err != nil {
-					return raftlog.ApplicationBatch{}, err
+				var page graphstore.RangeMovePage
+				var err error
+				if rangeMoveGraphBatches(m.SemanticContractID()) {
+					batch, e := m.exportMoveGraphBatch(q, progress, progress.cursor, intent)
+					if e != nil {
+						return raftlog.ApplicationBatch{}, e
+					}
+					page = batch.Pages[len(batch.Pages)-1]
+					cursor, e := graphstore.EncodeRangeMoveCursor(batch.Pages[0].Before, q.arena)
+					if e != nil {
+						return raftlog.ApplicationBatch{}, e
+					}
+					before = append([]byte{4}, cursor...)
+					progress.graphPages++
+				} else {
+					page, err = m.exportMoveGraphPage(q, progress, progress.cursor, intent)
+					if err != nil {
+						return raftlog.ApplicationBatch{}, err
+					}
+					cursor, e := graphstore.EncodeRangeMoveCursor(page.Before, q.arena)
+					if e != nil {
+						return raftlog.ApplicationBatch{}, e
+					}
+					before = append([]byte{1}, cursor...)
+					progress.graphPages = page.Next.Sequence
 				}
-				cursor, err := graphstore.EncodeRangeMoveCursor(page.Before, q.arena)
-				if err != nil {
-					return raftlog.ApplicationBatch{}, err
-				}
-				before = append([]byte{1}, cursor...)
 				progress.cursor = page.Next
-				progress.graphPages = page.Next.Sequence
 				if page.Complete {
 					progress.descriptor, err = graphstore.SealRangeMoveDescriptor(progress.descriptor, page.Next, q.arena)
 					if err != nil {

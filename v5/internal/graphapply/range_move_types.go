@@ -60,7 +60,7 @@ func (r rangeMoveIntent) valid() bool {
 		r.publication.Validate() == nil && [16]byte(r.publication.Graph) == [16]byte(r.source.graph) &&
 		r.epoch >= r.publication.InitialEpoch && r.epoch < math.MaxUint64 &&
 		r.maxPages > 0 && r.maxPages <= rangeMovePageLimit(r.source.semantic) && r.pageRows > 0 && r.pageRows <= 256 &&
-		r.pageBytes > 0 && r.pageBytes <= 1<<20 && (!rangeMoveSpans(r.source.semantic) || r.pageRows <= 32 && r.pageBytes <= 64<<10)
+		r.pageBytes > 0 && r.pageBytes <= 1<<20 && (!rangeMoveGraphBatches(r.source.semantic) || r.pageBytes >= 8192) && (!rangeMoveSpans(r.source.semantic) || r.pageRows <= 32 && r.pageBytes <= 64<<10)
 }
 
 func encodeRangeMoveIntent(r rangeMoveIntent) ([]byte, error) {
