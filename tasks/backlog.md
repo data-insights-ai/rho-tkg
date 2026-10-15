@@ -1203,23 +1203,32 @@ graph intact; actual Close, same-directory sender restart, stale send-handle
 refusal and complete retry/activation precede the same original/history/CDC
 oracle. Leader attribution uses actual leader-only ReadIndex calls rather than
 the hard-state vote field. All seven source hashes and six complete existing
-parents were checked with pinned formatting and whitespace. Neither package
-has compiled or executed yet.
+parents were checked with pinned formatting and whitespace. The first integrated
+qualification checkpoint is recorded below.
 
 The finite source-closure audit found no additional package beyond these
-integrated state/sender changes and their final CI associations. One Sol
-6.1/high lane owns that final two-file association update; the other lanes are
-available for concrete compiler/runtime corrections. Source integration ends
-after that update, followed by one compiled checkpoint, focused correctness
-qualification, measurements and the required engine decision. New campaigns
-are not required merely because the integrated source remains unexecuted.
+integrated state/sender changes and their final CI associations. Those final
+associations are integrated at `099c846c`, closing source expansion. Three Sol
+6.1/high lanes now own concrete failures from the first process runs: P06's
+old-cut source admission after a second replacement, state elected-layout
+bootstrap/delivery, and snapshot-sender refusal/election ordering. New campaigns
+are not required merely because other integrated source remains unexecuted.
 CI selection/dependency associations are source-integrated at `4c336669` for
 the integrated protocol core, leader/message program, Ready companion and
 pooled-state parents/guards, including their private Go attachments and
 transitive Python/data dependencies. Existing workflow/run budgets are unchanged.
 The two selector files and complete current parents passed source/hash and
-whitespace review; no selector/test/CI execution ran. The integrated P06,
-state-program and snapshot-loss parents still need their final associations.
+whitespace review. The final P06/state/sender associations are integrated above.
+The [first integrated checkpoint](evidence/v2-integrated-checkpoint-20261016/receipt.json)
+records the initial compiler failures and corrections. All twelve v5 packages
+compile at `8daa85b6`; the compile-only command runs no test cases. Root execution
+passes 24 compact Python guards, three Go guards, the new state-bootstrap guard,
+the corrected CI selection case and the two corrected signature callers.
+The selected P06/state/sender process cases still fail; their exact logs and
+cleanup observations are retained. The parent/child state agreement mismatch
+is corrected at `db9da14b`, and its direct guard passes, but the elected-layout
+case now reaches a stopped-child Step refusal. No process-family acceptance,
+measurement, engine selection or V2 closure follows from this checkpoint.
 FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing
 authority; these prefixes do not establish physical server placement. Source
@@ -1235,7 +1244,7 @@ bootstrap agreement binds state/retained-source validation. Old Recovery3
 fixtures retain their agreement. The native transfer workload and independent
 checker are source-integrated at `0ea16cc2`, `d70dee0a` and `d907d096`.
 Shared graph batching, recovery byte pools and range-move pool admission are
-source-integrated above. These sources remain uncompiled and runtime-unqualified;
+source-integrated above. These sources compile but remain runtime-unqualified;
 the pooled-state counterpart is integrated above. A complete
 static 1M workload bound is not a prerequisite to authoring its driver. Preserve
 all required matrix cells and their capacity gates: safe resource refusal does

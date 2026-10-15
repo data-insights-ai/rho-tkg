@@ -1,0 +1,17 @@
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/assertion	0.194s [no tests to run]
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	0.398s [no tests to run]
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/graphstate	0.202s [no tests to run]
+# github.com/data-insights-ai/rho-tkg/v5/internal/graphstore [github.com/data-insights-ai/rho-tkg/v5/internal/graphstore.test]
+internal/graphstore/range_move_batch_test.go:175:26: assignment mismatch: 3 variables but target.GetControl returns 4 values
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphstore [build failed]
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/idalloc	0.190s [no tests to run]
+# github.com/data-insights-ai/rho-tkg/v5/internal/raftlog [github.com/data-insights-ai/rho-tkg/v5/internal/raftlog.test]
+internal/raftlog/application_terminal_credit_test.go:98:15: assignment mismatch: 2 variables but recoveryFits returns 1 value
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/raftlog [build failed]
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/replica	0.298s [no tests to run]
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/state	0.192s [no tests to run]
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/timeblock	0.190s [no tests to run]
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/txnproto	0.289s [no tests to run]
+ok  	github.com/data-insights-ai/rho-tkg/v5/pkg/temporal	0.200s [no tests to run]
+ok  	github.com/data-insights-ai/rho-tkg/v5/pkg/types	0.188s [no tests to run]
+FAIL

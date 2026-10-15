@@ -1,0 +1,240 @@
+{
+  "admission_note": "Initial four guard wrapper attempts refused before spawning because /var/tmp was not canonical; reran with /private/var/tmp. Original refusal logs remain local; they are not test failures.",
+  "binaries": {
+    "graphapply-8daa85b6.test": {
+      "commit": "8daa85b6c9c7146946ec6d7be6ebdcfd59c3a032",
+      "sha256": "145f42389df1ba2cac9ba322a3dc06ec34187d1202ae02e1ebf809037d17ee88"
+    },
+    "graphapply.test": {
+      "commit": "f6ac4bc5f849b8add7cd8197eaa04875c45a117c",
+      "sha256": "172cc147f3d0ec43a115f86ff3f13099603d50e493a21398a35c62a272bffb66"
+    }
+  },
+  "compile": {
+    "current": "all 12 v5 packages compile; go test -run ^$ -vet=off ./... exited 0; no test cases run by this command",
+    "first": "failed; corrected fixture identifiers, types, error/snapshot access and two test-caller signatures"
+  },
+  "current_compile_commit": "8daa85b6c9c7146946ec6d7be6ebdcfd59c3a032",
+  "environment": {
+    "GOFLAGS": "-p=1",
+    "GOMAXPROCS": 2,
+    "GOMEMLIMIT": "2GiB",
+    "GOTOOLCHAIN": "local",
+    "GOWORK": "off",
+    "clean_environment": true
+  },
+  "files_sha256": {
+    "ci-selection-fixed.log": "e8e9851dac2a2818b5f207a493e32ae7e8ba12fcb5256f8b5c368a8d60ef11ed",
+    "ci-selection-run1.log": "ed8237ad2bedb3677dd792b2cc51cd89041ecdfca80faf7587c7df1a1b2ab8b8",
+    "compile-all-errors.log": "09a880e31a7fbb778546390994d99d8104a53c3c11da013a7e2afa0a09bdb71a",
+    "compile-fixed.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "compile.log": "7863fd5cdb6de95e5a8009adcebf514a88e073ff147d7812b3171cd5b698bd0f",
+    "go-guards.log": "1be78057f0ff046971e1607503655596e99e355b6cfb9ded52bea4497c269b6c",
+    "module-compile-fixed.log": "a9132c54a829a856eb5a027575084749dd6f953fb897a39a6e101f42a7fbad61",
+    "module-compile.log": "d9f29c166c9cbf4fc23183171f9fb6fda3465f7bf541e54070222f0288aebc4d",
+    "p06-guard-run1.log": "56e03afda220e7ba78bbcecf9a2e53a0149cfc3e311fa10bbd01b25e8e5ba671",
+    "p06-process.log": "f55c5f301ac2a19b28b2835e1152254c82c4f30c46ce8d0e5756b613a374135d",
+    "sender-guard-run1.log": "d41f3c846ddc49b0edee5f0cc7d1f92afb009ffd88a2bdac06fe9b8c1e024766",
+    "sender-process.log": "4dee484f166534080826906961a06c25fe10327649b61c7d54ca70e70331150f",
+    "signature-callers-fixed.log": "c51225224e55e76023f4388fb12ecee7bd766852e90e23eefa044d8c43b0c6e6",
+    "state-guard-run1.log": "c6b9b1f09add0403cc07e90bfdf272129b1ddfa2f8f7675ea8218862f2516371",
+    "state-process-fixed.log": "02304f70ba9e436a8bbe1f6fa8f315bdc5a79d0fda5bd7fd4fb11fb05508a3ea",
+    "state-process.log": "29c176c8202131eb3ffb305079e1ca5fd28de54d06a943d38b4997f8e10a2b23"
+  },
+  "remaining": "Three narrowly scoped process-fixture corrections, then required full correctness qualification, measurements, engine decision and final coordinated gates. V2 unaccepted; V3-V7 open.",
+  "reports": {
+    "ci-selection-fixed": {
+      "all_owned_exited": true,
+      "command": [
+        "/opt/homebrew/bin/python3",
+        "-B",
+        "scripts/ci-changes-test.py",
+        "RealGitSelection.test_reviewed_paired_fixture_types_have_finite_real_parent_scope"
+      ],
+      "disk": null,
+      "elapsed_nanos": 188723375,
+      "exit_code": 0,
+      "forced_cleanup": false,
+      "peak_tree_rss_mib": 62.375,
+      "reason": "completed"
+    },
+    "ci-selection-run1": {
+      "all_owned_exited": true,
+      "command": [
+        "/opt/homebrew/bin/python3",
+        "-B",
+        "scripts/ci-changes-test.py"
+      ],
+      "disk": null,
+      "elapsed_nanos": 8286265667,
+      "exit_code": 1,
+      "forced_cleanup": false,
+      "peak_tree_rss_mib": 110.984375,
+      "reason": "command-failed"
+    },
+    "go-guards": {
+      "all_owned_exited": true,
+      "command": [
+        "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply.test",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=45s",
+        "-test.run=^(TestNativeP06ProgramsPreserveExactExistingSemanticInventory|TestNativeProtocolStateProgramsKeepNativeIdentityAndCausalWindows|TestNativeSnapshotSenderLossRequiresExactReapedProcessAndApplicableBoundary)$"
+      ],
+      "disk": null,
+      "elapsed_nanos": 677513250,
+      "exit_code": 0,
+      "forced_cleanup": false,
+      "peak_tree_rss_mib": 24.703125,
+      "reason": "completed"
+    },
+    "p06-guard-run1": {
+      "all_owned_exited": true,
+      "command": [
+        "/opt/homebrew/bin/python3",
+        "-B",
+        "tools/v5-substrate/native_protocol_campaign_p06_check_test.py"
+      ],
+      "disk": null,
+      "elapsed_nanos": 253335417,
+      "exit_code": 0,
+      "forced_cleanup": false,
+      "peak_tree_rss_mib": 62.875,
+      "reason": "completed"
+    },
+    "p06-process": {
+      "all_owned_exited": true,
+      "command": [
+        "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply.test",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=240s",
+        "-test.run=^TestNativeP06ExistingTransitionsWithActualLeaderAndMessagePrograms$/^rotated$/^reorder$/^p06-co3-committrue-decide-k1-before$"
+      ],
+      "disk": {
+        "allocatedBytes": 1605632,
+        "directories": 8,
+        "logicalBytes": 1363252,
+        "names": 49
+      },
+      "elapsed_nanos": 4562094708,
+      "exit_code": 1,
+      "forced_cleanup": false,
+      "peak_tree_rss_mib": 245.578125,
+      "reason": "command-failed"
+    },
+    "sender-guard-run1": {
+      "all_owned_exited": true,
+      "command": [
+        "/opt/homebrew/bin/python3",
+        "-B",
+        "tools/v5-substrate/native_fault_family_check_test.py"
+      ],
+      "disk": null,
+      "elapsed_nanos": 149721875,
+      "exit_code": 0,
+      "forced_cleanup": false,
+      "peak_tree_rss_mib": 58.640625,
+      "reason": "completed"
+    },
+    "sender-process": {
+      "all_owned_exited": true,
+      "command": [
+        "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply.test",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=480s",
+        "-test.run=^TestNativeSnapshotSenderLossDuringImportKeepsWholeOriginalAndOldCut$/^(before|after)$"
+      ],
+      "disk": {
+        "allocatedBytes": 2494464,
+        "directories": 15,
+        "logicalBytes": 2142850,
+        "names": 96
+      },
+      "elapsed_nanos": 7478414791,
+      "exit_code": 1,
+      "forced_cleanup": false,
+      "peak_tree_rss_mib": 239.625,
+      "reason": "command-failed"
+    },
+    "state-guard-run1": {
+      "all_owned_exited": true,
+      "command": [
+        "/opt/homebrew/bin/python3",
+        "-B",
+        "tools/v5-substrate/native_protocol_campaign_state_program_check_test.py"
+      ],
+      "disk": null,
+      "elapsed_nanos": 466428542,
+      "exit_code": 0,
+      "forced_cleanup": false,
+      "peak_tree_rss_mib": 76.375,
+      "reason": "completed"
+    },
+    "state-process": {
+      "all_owned_exited": true,
+      "command": [
+        "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply.test",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=360s",
+        "-test.run=^TestNativeProtocolPooledStateLeaderAndMessagePrograms$/^rotated$/^reorder$/^move-phase1-p3-page0-kind1-before$"
+      ],
+      "disk": {
+        "allocatedBytes": 122880,
+        "directories": 8,
+        "logicalBytes": 87460,
+        "names": 43
+      },
+      "elapsed_nanos": 411812542,
+      "exit_code": 1,
+      "forced_cleanup": false,
+      "peak_tree_rss_mib": 186.375,
+      "reason": "command-failed"
+    },
+    "state-process-fixed": {
+      "all_owned_exited": true,
+      "command": [
+        "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-8daa85b6.test",
+        "-test.v",
+        "-test.count=1",
+        "-test.timeout=360s",
+        "-test.run=^TestNativeProtocol(StateStartBindsParentAndChildAgreement|PooledStateLeaderAndMessagePrograms)$/^rotated$/^reorder$/^move-phase1-p3-page0-kind1-before$"
+      ],
+      "disk": {
+        "allocatedBytes": 716800,
+        "directories": 8,
+        "logicalBytes": 570708,
+        "names": 43
+      },
+      "elapsed_nanos": 2067288542,
+      "exit_code": 1,
+      "forced_cleanup": false,
+      "peak_tree_rss_mib": 219.296875,
+      "reason": "command-failed"
+    }
+  },
+  "retained_local_raw_root": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO",
+  "root_guard_results": {
+    "corrected_CI_selection_case": 1,
+    "go_inert": 3,
+    "python": {
+      "p06": 4,
+      "sender": 14,
+      "state": 6
+    },
+    "signature_tests": 2,
+    "state_bootstrap": 1
+  },
+  "root_process_results": {
+    "p06": "rotated/reorder Decide-before fails immutable-source access after second replacement; all 8 incarnations reaped",
+    "sender": "before/after first Append both reach same-directory restart, then stale-invalid assertion fails; all 8 incarnations per case reaped",
+    "state_after_bootstrap_fix": "bootstrap guard passes; actual elected-layout seed reaches Step 2->1 refusal (stopped/reopen); all 6 reaped",
+    "state_initial": "selected parent agreement admission failed; all 6 reaped"
+  },
+  "schema_version": 1,
+  "scope": "First integrated V2 compile and focused diagnostic checkpoint. Not phase, correctness, cost, engine-selection or release acceptance.",
+  "source_writing_closed_at": "099c846cb775759068aa16fab72d633e463f7f76",
+  "toolchain": "Go 1.26.9"
+}

@@ -1,0 +1,17 @@
+=== RUN   TestNativeSnapshotSenderLossDuringImportKeepsWholeOriginalAndOldCut
+=== RUN   TestNativeSnapshotSenderLossDuringImportKeepsWholeOriginalAndOldCut/before
+    native_graph_snapshot_sender_test.go:289: paired SIGKILL voter3 pid9884 reaped=true
+    native_graph_snapshot_sender_test.go:171: paired SIGKILL voter1 pid9881 reaped=true
+    native_graph_snapshot_sender_test.go:181: paired authenticated origin2 fresh A peer3; B peer4 unchanged
+    native_graph_snapshot_sender_test.go:219: restarted process acquired old sender authority graphapply: remote source operation refused remote tag=1: graphapply: invalid input
+    paired_graph_fault_harness_test.go:413: paired cleanup: incarnations=8 all-reaped=true successful=6 intentional-kills=2 calls=3844 bootstrapPackets=257 admitted=397312
+=== RUN   TestNativeSnapshotSenderLossDuringImportKeepsWholeOriginalAndOldCut/after
+    native_graph_snapshot_sender_test.go:289: paired SIGKILL voter3 pid10055 reaped=true
+    native_graph_snapshot_sender_test.go:171: paired SIGKILL voter1 pid10053 reaped=true
+    native_graph_snapshot_sender_test.go:181: paired authenticated origin2 fresh A peer3; B peer4 unchanged
+    native_graph_snapshot_sender_test.go:219: restarted process acquired old sender authority graphapply: remote source operation refused remote tag=1: graphapply: invalid input
+    paired_graph_fault_harness_test.go:413: paired cleanup: incarnations=8 all-reaped=true successful=6 intentional-kills=2 calls=3845 bootstrapPackets=257 admitted=397312
+--- FAIL: TestNativeSnapshotSenderLossDuringImportKeepsWholeOriginalAndOldCut (7.41s)
+    --- FAIL: TestNativeSnapshotSenderLossDuringImportKeepsWholeOriginalAndOldCut/before (3.72s)
+    --- FAIL: TestNativeSnapshotSenderLossDuringImportKeepsWholeOriginalAndOldCut/after (3.69s)
+FAIL

@@ -1,0 +1,25 @@
+.............................FDB recorded-source check: main.go d7c8a3407bdd78174fc67a404f73d17b0460ddd641450027f0f92cbd534291a7 tools/v5-substrate/fdb/evidence/qualified.json
+Recorded external source check only; no FDB execution, new fault/cost or engine acceptance claimed.
+Focused v5 normal go test -short -count=1 -json -timeout=10m m/internal/replica
+Focused v5 race go test -short -count=1 -json -timeout=10m -race m/internal/replica
+Focused v5 coverage go test -short -count=1 -json -timeout=10m -covermode=atomic -coverprofile=/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/tmp/tmpy6i5iwgq/out/coverage-0.out m/internal/replica
+..fatal: git cat-file: could not get object info
+.....F............
+======================================================================
+FAIL: test_reviewed_paired_fixture_types_have_finite_real_parent_scope (__main__.RealGitSelection.test_reviewed_paired_fixture_types_have_finite_real_parent_scope) (fixture='paired_graph_snapshot_harness_test.go')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-history-clean-20261012/scripts/ci-changes-test.py", line 497, in test_reviewed_paired_fixture_types_have_finite_real_parent_scope
+    self.assertEqual(set(names), parents | set(CI.GRAPH_COMPAT))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Items in the first set but not the second:
+'TestNativeStateImportSyncBoundariesRecoverGenuineSourceAndRetainedCut'
+'TestNativeFaultFamilySnapshotInterruptionAndAtomicKVPublicationRecoverWholeCut'
+'TestNativePairedGraphSnapshotChunkKeepsLegacyRestrictionAndOwnedBounds'
+'TestNativePairedGraphSnapshotOwnersRefuseConstructorlessAndMismatchedEvents'
+
+----------------------------------------------------------------------
+Ran 49 tests in 8.138s
+
+FAILED (failures=1)
+Focused checks passed; scoped coverage is diagnostic, not the full-module/release coverage gate.

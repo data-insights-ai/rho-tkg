@@ -1,0 +1,12 @@
+=== RUN   TestNativeProtocolPooledStateLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder/move-phase1-p3-page0-kind1-before
+    native_graph_protocol_campaign_state_program_test.go:29: certified process durable directories /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/state-artifacts/rho-certified-process-442518584
+    native_graph_protocol_campaign_state_harness_test.go:828: actual explicitly selected state agreement graphapply: invalid input
+        graphapply: invalid input
+    native_graph_protocol_campaign_state_harness_test.go:753: E17 counted phase ledger: maximum=48128 pages=128 public=0/16 nativeVoter=0/4
+    native_graph_protocol_campaign_state_harness_test.go:765: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=41 packets=32 maxFrame=1135/633 maxQueueBytes=700/700
+--- FAIL: TestNativeProtocolPooledStateLeaderAndMessagePrograms (0.32s)
+    --- FAIL: TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder (0.32s)
+        --- FAIL: TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder/move-phase1-p3-page0-kind1-before (0.32s)
+FAIL

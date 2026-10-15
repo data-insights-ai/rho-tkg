@@ -1,0 +1,13 @@
+# github.com/data-insights-ai/rho-tkg/v5/internal/graphapply [github.com/data-insights-ai/rho-tkg/v5/internal/graphapply.test]
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:147:6: nativeSelectorsQuery redeclared in this block
+	internal/graphapply/native_graph_selectors_process_test.go:40:6: other declaration of nativeSelectorsQuery
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:182:28: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:400:71: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:476:68: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:480:77: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_late_correction_harness_test.go:177:83: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_contention_harness_test.go:946:88: cannot use owner (variable of type uint64) as graphstate.EntityID value in struct literal
+internal/graphapply/native_graph_contention_harness_test.go:1008:114: cannot use owner (variable of type uint64) as graphstate.EntityID value in struct literal
+internal/graphapply/native_graph_contention_test.go:327:10: no new variables on left side of :=
+internal/graphapply/native_graph_contention_test.go:327:13: cannot use nativeGraphCostColumnRequest{…} (value of struct type nativeGraphCostColumnRequest) as *retainedPinRequest value in assignment
+internal/graphapply/native_graph_contention_test.go:327:10: too many errors

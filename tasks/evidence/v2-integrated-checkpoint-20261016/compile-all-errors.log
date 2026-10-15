@@ -1,0 +1,41 @@
+# github.com/data-insights-ai/rho-tkg/v5/internal/graphapply [github.com/data-insights-ai/rho-tkg/v5/internal/graphapply.test]
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:147:6: nativeSelectorsQuery redeclared in this block
+	internal/graphapply/native_graph_selectors_process_test.go:40:6: other declaration of nativeSelectorsQuery
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:182:28: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:230:213: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:354:12: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:400:71: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:476:68: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:480:77: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_sessions_harness_test.go:621:22: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_late_correction_harness_test.go:177:83: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_contention_harness_test.go:946:88: cannot use owner (variable of type uint64) as graphstate.EntityID value in struct literal
+internal/graphapply/native_graph_contention_harness_test.go:1008:114: cannot use owner (variable of type uint64) as graphstate.EntityID value in struct literal
+internal/graphapply/native_graph_contention_test.go:327:10: no new variables on left side of :=
+internal/graphapply/native_graph_contention_test.go:327:13: cannot use nativeGraphCostColumnRequest{…} (value of struct type nativeGraphCostColumnRequest) as *retainedPinRequest value in assignment
+internal/graphapply/native_graph_contention_test.go:328:49: cannot use request (variable of type *retainedPinRequest) as nativeGraphCostColumnRequest value in argument to columnOwner.next
+internal/graphapply/native_graph_contention_test.go:343:49: cannot use request (variable of type *retainedPinRequest) as nativeGraphCostColumnRequest value in argument to columnOwner.next
+internal/graphapply/native_graph_contention_test.go:347:10: request.Sequence undefined (type *retainedPinRequest has no field or method Sequence)
+internal/graphapply/native_graph_contention_test.go:348:48: cannot use request (variable of type *retainedPinRequest) as nativeGraphCostColumnRequest value in argument to columnOwner.next
+internal/graphapply/native_graph_contention_test.go:353:45: request.Cookie undefined (type *retainedPinRequest has no field or method Cookie)
+internal/graphapply/native_graph_contention_test.go:357:11: request.Sequence undefined (type *retainedPinRequest has no field or method Sequence)
+internal/graphapply/native_graph_contention_test.go:358:46: cannot use request (variable of type *retainedPinRequest) as nativeGraphCostColumnRequest value in argument to columnOwner.next
+internal/graphapply/native_graph_contention_test.go:363:28: request.Sequence undefined (type *retainedPinRequest has no field or method Sequence)
+internal/graphapply/native_graph_immutable_columns_harness_test.go:84:15: undefined: errUnavailable
+internal/graphapply/native_graph_selectors_test.go:114:19: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_test.go:115:145: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_test.go:116:133: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_selectors_test.go:212:24: nativeSelectorsQuery (function) is not a type
+internal/graphapply/native_graph_transfer_artifact_harness_test.go:461:1: missing return
+internal/graphapply/native_graph_transition_conjunction_first_prepare_test.go:346:75: diagnostics.String undefined (type processStderr has no field or method String)
+internal/graphapply/native_graph_transition_conjunction_initial_test.go:233:78: diagnostics.String undefined (type processStderr has no field or method String)
+internal/graphapply/native_graph_transition_conjunction_reassociate_test.go:41:61: unknown field kind in struct literal of type graphReadRequest
+internal/graphapply/native_graph_transition_retention_harness_test.go:271:40: bytes.Equal undefined (type uint64 has no field or method Equal)
+internal/graphapply/native_graph_transition_retention_harness_test.go:275:25: bytes.Clone undefined (type uint64 has no field or method Clone)
+internal/graphapply/native_graph_transition_retention_harness_test.go:290:23: bytes.Clone undefined (type uint64 has no field or method Clone)
+internal/graphapply/native_graph_transition_retention_harness_test.go:291:24: bytes.Clone undefined (type uint64 has no field or method Clone)
+internal/graphapply/native_graph_transition_retention_harness_test.go:306:23: bytes.Clone undefined (type uint64 has no field or method Clone)
+internal/graphapply/native_graph_transition_retention_harness_test.go:328:23: bytes.Clone undefined (type uint64 has no field or method Clone)
+internal/graphapply/native_graph_transition_retention_harness_test.go:410:26: bytes.Equal undefined (type uint64 has no field or method Equal)
+internal/graphapply/native_graph_transition_retention_test.go:291:91: cannot use oldHome.image (variable of type [172]byte) as []byte value in argument to bytes.Equal
+internal/graphapply/native_graph_cost_test.go:6:2: "crypto/sha256" imported and not used

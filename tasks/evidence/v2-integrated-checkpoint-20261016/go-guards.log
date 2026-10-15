@@ -1,0 +1,7 @@
+=== RUN   TestNativeP06ProgramsPreserveExactExistingSemanticInventory
+--- PASS: TestNativeP06ProgramsPreserveExactExistingSemanticInventory (0.00s)
+=== RUN   TestNativeProtocolStateProgramsKeepNativeIdentityAndCausalWindows
+--- PASS: TestNativeProtocolStateProgramsKeepNativeIdentityAndCausalWindows (0.00s)
+=== RUN   TestNativeSnapshotSenderLossRequiresExactReapedProcessAndApplicableBoundary
+--- PASS: TestNativeSnapshotSenderLossRequiresExactReapedProcessAndApplicableBoundary (0.00s)
+PASS

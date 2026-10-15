@@ -1,0 +1,34 @@
+=== RUN   TestNativeProtocolPooledStateLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder/move-phase1-p3-page0-kind1-before
+    native_graph_protocol_campaign_state_program_test.go:29: certified process durable directories /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/state-fixed-artifacts/rho-certified-process-1164971804
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=1 identity=f0e13d859313c00c000000000000000a index=3 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=8 kind=1 identity=f0e13d859313c00c0000000000000018 index=3 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=2 identity=f0e13d859313c00c000000000000001d index=4 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=3 identity=f0e13d859313c00c000000000000002b index=5 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=3 identity=f0e13d859313c00c0000000000000039 index=6 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=3 identity=f0e13d859313c00c0000000000000047 index=7 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=3 identity=f0e13d859313c00c0000000000000055 index=8 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=4 identity=f0e13d859313c00c000000000000006c index=9 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=5 identity=f0e13d859313c00c000000000000007a index=10 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=4 identity=f0e13d859313c00c000000000000008c index=11 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=5 identity=f0e13d859313c00c000000000000009a index=12 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=4 target=3 kind=2 identity=4e07814acdd6801c0000000000000017 index=13 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=3 identity=f0e13d859313c00c00000000000000b1 index=14 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=8 kind=3 identity=f0e13d859313c00c00000000000000bb index=4 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=4 target=3 kind=3 identity=4e07814acdd6801c0000000000000025 index=15 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=3 identity=f0e13d859313c00c00000000000000c9 index=16 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=8 kind=3 identity=f0e13d859313c00c00000000000000d7 index=5 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=3 kind=4 identity=f0e13d859313c00c00000000000000e0 index=17 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: actual certified child operation: actor=1 target=8 kind=5 identity=f0e13d859313c00c00000000000000ee index=6 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:828: child 25947 RPC op=3 index=0 entity=0 packet=2->1: graphapply: remote source operation refused code=1 causes=10 detail=graphapply: invalid input
+        replica: stopped; reopen required
+        graphapply: invalid input
+    native_graph_protocol_campaign_state_harness_test.go:753: E17 counted phase ledger: maximum=48128 pages=128 public=0/16 nativeVoter=0/4
+    native_graph_protocol_campaign_state_harness_test.go:765: certified cleanup: reaped=6 successfully-reaped=6 of6; calls=521 packets=275 maxFrame=2591/2661 maxQueueBytes=3452/3557
+--- FAIL: TestNativeProtocolPooledStateLeaderAndMessagePrograms (1.51s)
+    --- FAIL: TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder (1.51s)
+        --- FAIL: TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder/move-phase1-p3-page0-kind1-before (1.50s)
+=== RUN   TestNativeProtocolStateStartBindsParentAndChildAgreement
+--- PASS: TestNativeProtocolStateStartBindsParentAndChildAgreement (0.00s)
+FAIL

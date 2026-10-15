@@ -1,0 +1,15 @@
+=== RUN   TestNativeP06ExistingTransitionsWithActualLeaderAndMessagePrograms
+=== RUN   TestNativeP06ExistingTransitionsWithActualLeaderAndMessagePrograms/rotated/reorder/p06-co3-committrue-decide-k1-before
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_protocol_campaign_p06_test.go:75: paired SIGKILL voter2 pid6735 reaped=true
+    native_graph_protocol_campaign_p06_test.go:75: paired elected actual leader1 round10 while2 down
+    native_graph_protocol_campaign_p06_test.go:75: paired actual healthy quorum leader1 applied32
+    native_graph_protocol_campaign_p06_test.go:75: paired elected actual leader2 round10 while1 down
+    native_graph_transition_conjunction_harness_test.go:382: fresh fixture actual native RPC 40 graphapply: remote source operation refused
+        remote tag=1: graphstore: immutable source unavailable
+        graphapply: remote source operation refused
+    paired_graph_fault_harness_test.go:413: paired cleanup: incarnations=8 all-reaped=true successful=6 intentional-kills=2 calls=6189 bootstrapPackets=424 admitted=397312
+--- FAIL: TestNativeP06ExistingTransitionsWithActualLeaderAndMessagePrograms (4.48s)
+    --- FAIL: TestNativeP06ExistingTransitionsWithActualLeaderAndMessagePrograms/rotated/reorder/p06-co3-committrue-decide-k1-before (4.47s)
+FAIL
