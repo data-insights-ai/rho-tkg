@@ -512,8 +512,17 @@ Each family/transport matrix contains 360 fresh cells; the complete eight-family
 four-transport matrix contains 11,520 cells per engine.
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
 No new cell, guard or runtime gate has run. The native transfer/retained-pins
-driver remains implementation work. FDB feed business accounting is source-integrated at
-`4218c9a7`: an explicit optional extension joins create/update phase walls,
+driver remains implementation work. Its compact recovery prerequisite is
+source-integrated at `e9f3322`: explicitly selected recovery3/retention1/Contract6
+uses at most eight disjoint exact-next credit spans, with checked aggregate
+application/log bytes and records. RS3/RY5/RQ3 and AS8/AD7 carry the same remaining
+capacity through queued replay, old roots, portable snapshots and receiver reopen;
+TB1 terminal funding stays separate. Actual terminal installation alone retires
+unused suffixes. Recovery1/2 and older formats remain unchanged; no quota ceiling
+was raised. All 22 frozen blobs and 19 complete parents were verified. Its guards
+are authored only; graph transfer formats and the actual workload remain pending.
+FDB feed business accounting is source-integrated at `4218c9a7`: an explicit
+optional extension joins create/update phase walls,
 including each seed and complete worker drain, to raw begin/end markers and
 useful originals. Same-clock queued-start/worker-stop samples supply complete
 operation percentiles through the bounded spool. Historical helpers keep the

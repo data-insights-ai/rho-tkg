@@ -125,8 +125,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   snapshots retain reservation history and prepared locks. Transaction identities
   include the graph, coordinator and original retry key; pending-install admission
   charges recovery envelopes, and prepared snapshot contracts retain the recovery
-  policy. Broader fault/ownership evidence and full V2 acceptance remain
-  open in `tasks/backlog.md`.
+  policy. A fresh recovery3/retention1/Contract6 profile stores at most eight
+  disjoint exact-next credit spans, checking aggregate application/log growth
+  before admission. RS3/RY5/RQ3 and AS8/AD7 preserve their remaining capacity and
+  the separate TB1 terminal bank through replay and snapshot transfer. Only
+  actual terminal installation retires unused suffixes; existing recovery1/2
+  formats and quota ceilings remain unchanged. Runtime qualification, broader
+  fault/ownership evidence and full V2 acceptance remain open in `tasks/backlog.md`.
 
 - Added checked partition-local v5 graph mutations on declared partitions,
   preserving node/relationship interpretation, native axes and opaque descriptor
