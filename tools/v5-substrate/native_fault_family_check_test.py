@@ -63,6 +63,24 @@ class NativeFaultFamilyGuards(unittest.TestCase):
         for bad in (wire[:-1],wire+b"x",wire[:24]+b"\x0e"+wire[25:]):
             with self.assertRaises(ValueError): F.sender_stale_request(base64.b64encode(bad).decode(),reply,7)
 
+    def test_sender_local_publication_keeps_cut_binding_distinct_from_import_audit(self):
+        # Inert state-binding guard only. Full native manifest/packet/chunk
+        # authentication remains mandatory in snapshot_sender before this door.
+        sender = dict(code=0,mask=0,stats=[0]*28,applied=31,image=b"published-image",cut=bytes(32),manifest=bytes(32))
+        sender["stats"][1] = 31
+        manifest = dict(index=31,image=b"published-image",cut=b"p"*32)
+        receiver = dict(applied=29)
+        F.sender_published_source(sender,manifest,receiver)
+        for mutate in (lambda s,m,r:s.update(code=3),lambda s,m,r:s.update(mask=1<<7),
+                       lambda s,m,r:s["stats"].__setitem__(1,30),lambda s,m,r:s.update(applied=32),
+                       lambda s,m,r:s.update(image=b"current-image"),lambda s,m,r:r.update(applied=31),
+                       lambda s,m,r:m.update(cut=bytes(32)),lambda s,m,r:m.update(index=30),
+                       lambda s,m,r:s["stats"].__setitem__(5,31),lambda s,m,r:s.update(cut=m["cut"]),
+                       lambda s,m,r:s.update(manifest=b"imported-audit")):
+            s,m,r=copy.deepcopy(sender),copy.deepcopy(manifest),copy.deepcopy(receiver)
+            mutate(s,m,r)
+            with self.assertRaises(ValueError): F.sender_published_source(s,m,r)
+
     def test_label_cdc_scope_uses_its_one_based_axis_and_rejects_absent_or_foreign_axis(self):
         # Inert primary-codec bytes exercise only this parser. They are not a
         # native artifact, process result, authority or passing source witness.

@@ -939,6 +939,18 @@ def sender_leader_read(configuration, state, request):
             and configuration["incarnation"] == state["incarnation"] and configuration["sequence"] < state["sequence"] and configuration["applied"] <= state["applied"], "actual sender leader-only ReadIndex and exact process ordering")
 
 
+def sender_published_source(sender, manifest, receiver):
+    # processStats.cut/manifest are ApplicationActivationAudit: a locally
+    # republished Base explicitly reports zero, even for a genuine publication.
+    # The published cut is authenticated independently by snapshot_manifest's
+    # full cut hash, the actual MsgSnap descriptor and every imported chunk.
+    require(sender["code"] == sender["mask"] == 0 and sender["stats"][5] == 0 and
+            sender["cut"] == sender["manifest"] == bytes(32), "locally published donor must have no imported-activation audit")
+    require(type(manifest["cut"]) is bytes and len(manifest["cut"]) == 32 and any(manifest["cut"]) and
+            sender["stats"][1] == sender["applied"] == manifest["index"] and sender["image"] == manifest["image"] and
+            receiver["applied"] < manifest["index"], "published sender source must exceed actual lagged receiver")
+
+
 def snapshot_sender(data, scopes, records):
     e = data["SnapshotSender"]
     require(type(e) is dict and set(e) == SENDER_FIELDS and type(e["Version"]) is int and e["Version"] == 1, "finite sender evidence grammar")
@@ -1017,7 +1029,7 @@ def snapshot_sender(data, scopes, records):
             require(len(attempts) == 1 and not current["final"] and send_owner == e["SenderOwner"] and (phase == "before-append" or current["sequence"] == 1), "selected sender-loss did not interrupt first nonfinal page")
             if response is not None: require(response["sequence"] < partial["sequence"], "Append ACK must precede sender-loss partial-state assertion")
     require(activated and abandoned and len(attempts) == 2 and attempts[1]["final"] and not attempts[0]["final"], "missing complete independent retry EOF")
-    require(sender_before["code"] == sender_before["mask"] == 0 and sender_before["stats"][1] == first_manifest["index"] and sender_before["cut"] == first_manifest["cut"] and sender_before["image"] == first_manifest["image"] and before["applied"] < first_manifest["index"], "published sender source must exceed actual lagged receiver")
+    sender_published_source(sender_before, first_manifest, before)
     m = P.Cursor(P.body(P.raw(data["Manifest"]), b"GCM\1")); m.take(16); coordinator = m.number()
     descriptor = C.decision_manifest(P.raw(data["Original"]), P.raw(data["Manifest"]), coordinator, scopes, data["Before"])
     phases, _ = originals(data, records, {descriptor["tx"]:descriptor})
