@@ -32,6 +32,20 @@ func (p graphOwnerCensusPolicy) validate() error {
 	return nil
 }
 
+// A head range is materialized by the native SDK BEFORE encoded HeadBytes is
+// enforced. Charge every possible delivered 64KiB value, not just accepted
+// heads. Per pass: eleven bounded range classes, at most HeadRows generations
+// (progress/owners points plus key-only jump), and64 fixed/validation points.
+// Sixteen windows conservatively cover those ranges/generation probes. Both
+// admission/effect transactions may invoke their callback up to16 times.
+// GetKey is charged as a full key/value slot rather than claiming cheap RSS.
+func censusPageAllowance(p graphOwnerCensusPolicy) (rows, bytes uint64) {
+	heads := uint64(16*(p.HeadRows+1) + 64)
+	rows = (2*heads + uint64(p.PageRows) + 12) * graphCostParallelCallbacks
+	bytes = rows * ((64 << 10) + 1024)
+	return rows, bytes // p.validate bounds keep both products below uint64 max.
+}
+
 type graphOwnerCensusOriginal struct {
 	Request string
 	Move    graphOwnerMove
@@ -731,11 +745,7 @@ func (c *graphOwnerCatalog) CensusPage(ctx context.Context, a graphOwnerAuthorit
 			return false, err
 		}
 		p := c.binding.Transfer.Census
-		rows := uint64(4*p.HeadRows+p.PageRows+64) * graphCostParallelCallbacks
-		// SDK GetRange delivers its admitted row window before PageBytes can
-		// reject output. Charge the complete maximum delivered native window,
-		// including prefix/own-record skips, rather than just emitted bytes.
-		work := uint64(4*p.HeadBytes+4*p.HeadRows*1024+(p.PageRows+12)*((64<<10)+1024)+(256<<10)) * graphCostParallelCallbacks
+		rows, work := censusPageAllowance(*p)
 		if progress.Calls == p.MaxCalls || rows > p.MaxWorkRows-progress.WorkRows || work > p.MaxWorkBytes-progress.WorkBytes {
 			return false, errLimit
 		}

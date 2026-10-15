@@ -15,6 +15,19 @@ func TestGraphOwnerCensusAdmissionAndClosedClasses(t *testing.T) {
 	if err := p.validate(); err != nil {
 		t.Fatal(err)
 	}
+	rows, work := censusPageAllowance(p)
+	// Delivered native ranges, two head passes and full callback retries all
+	// count, even when the accepted encoded head inventory is only48KiB.
+	windows := uint64(16*(p.HeadRows+1) + 64)
+	if rows != (2*windows+uint64(p.PageRows)+12)*graphCostParallelCallbacks || work != rows*((64<<10)+1024) || work <= uint64(4*p.HeadBytes+4*p.HeadRows*1024+p.PageBytes)*graphCostParallelCallbacks {
+		t.Fatal("native head values omitted from prepaid SDK work", rows, work)
+	}
+	more := p
+	more.HeadRows++
+	moreRows, moreWork := censusPageAllowance(more)
+	if moreRows <= rows || moreWork <= work {
+		t.Fatal("larger delivered head windows undercharged", moreRows, moreWork)
+	}
 	for _, change := range []func(*graphOwnerCensusPolicy){
 		func(p *graphOwnerCensusPolicy) { p.HeadRows = 513 },
 		func(p *graphOwnerCensusPolicy) { p.HeadBytes = 64 << 10 },
