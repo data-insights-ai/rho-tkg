@@ -279,8 +279,11 @@ all A–F exit requirements; implementation status never implies acceptance.
    reconciliation. The latest additive delta also includes numeric property
    bounds, range reads/counts at a pin, label/type time statistics and scans
    restricted by ordinal bitsets. No v5 implementation or shared CI file changed
-   in that latest delta; `Eternal()` still requires the valid-time filter because
-   an implicit-valid member starts at its `TxFrom`. The upstream handover is not release evidence.
+   in that latest delta. Under `UntimedFromTxFrom`, `Eternal()` alone still
+   cannot remove the valid-time filter; `UntimedUnbounded` instead stores an
+   explicit -inf first-version start. Preserve the selected persisted mode,
+   including its upgrade and conversion rules. The upstream handover is not
+   release evidence.
    Preserve historical qualification rather than relabelling it as current.
    On the final integrated revision run full phase CI/race/coverage/security and
    the complete V2 requirement/evidence audit once; repeat only gates invalidated
