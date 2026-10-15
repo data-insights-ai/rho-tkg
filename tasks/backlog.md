@@ -14,7 +14,7 @@ concurrency edge / perf cliff / contract inconsistency. LOW = smell / doc drift.
 TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
-**Remaining open work (verified against the code at v4.51.2, 2026-10-12):** no reproduced CRITICAL item. In progress in the v4.51.3 batch: 52-55 (ai-soc, sigma) and the post-release review findings F1-F6 (`tasks/todo.md`). On hold: 41, 28, 21. Open items, one line each (full text below):
+**Open work (verified against code, CHANGELOG and git at v4.55.3, 2026-10-15):** no reproduced CRITICAL item. This table is the ONE open-work list; `tasks/todo.md` points here. Items consumers asked for are built when they ask; the rest is parked. Closed items are one line in the Closed table below.
 
 | # | Type / severity | Item | Status |
 |---|---|---|---|
@@ -25,11 +25,10 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 4 | HIGH? / MEDIUM? (traced, not reproduced) | Temporal semantics review 2026-09-24: traced findings | open; each needs a failing two-phase test first; code unchanged at the cited sites (`resolveOpenEndInstant`, `validInstantAfter` in `core/temporal.go`) |
 | 5 | MEDIUM (perf) | P7 row compaction follow-ups | open; options (a)-(d) unbuilt (P7 itself shipped in v4.40.0) |
 | 7 | FEATURE (limitation) | Caller-instant delete of a row with a scheduled close | open; `DeleteWithTx` refuses `ValidTo >= t` with `ErrTxOrder` (R8, v4.44.0) |
-| 10 | FEATURE | Tiered store: remaining work after composite + rel temporal indexes | indexes shipped in v4.45.0; (a) sequential-scan rebuild done (Unreleased, ≈ 4× vs the per-rel build); (b) rel property indexes / node `TemporalCandidateCapability` on tiered open |
+| 10 | FEATURE | Tiered store: remaining work after composite + rel temporal indexes | open: (b) rel property indexes (`CreateRelPropertyIndex` declines on tiered) and node `TemporalCandidateCapability`; (a) done v4.51.6 |
 | 13 | MEDIUM | Ingest applier attributes group errors by numeric entity id, not by kind | open; `groupApplyError` still keys `idToGroup` by `types.EntityID` (`core/ingest.go`) |
 | 16 | MEDIUM (contract) | Range folds under an interval: predicate-anywhere or value at the resolved version? | open; decision pending; behaviour documented in the v4.44.0 CHANGELOG |
 | 20 | LOW (TEST-GAP, perf) | Effective-read cost: RelAtTx benchmark targets unmeasured | fixes 1a (v4.44.1), 1b (v4.46.0), 1c (v4.47.0), 2a (v4.46.0) shipped; only the RelAtTx benchmarks remain |
-| 22 | MEDIUM (reproduced) | Badger rel temporal index create races concurrent writes | done (Unreleased): 3-phase mutated-set install |
 | 23 | LOW (perf, unmeasured) | `changeFeedPage` prefetches past its page | open; `PrefetchValues = true`, no `opts.Prefix` (`badgerstore_changelog.go:648-659`) |
 | 25 | MEDIUM | A future close followed by a delete changes the answer at an earlier pin | open; `stampDeleteTombstone` still clamps (`core/temporal.go:133-137`) |
 | 26 | LOW (known limit) | Old chains with collided versions keep answering in the old version order | open; schedule only if a consumer holds such chains |
@@ -38,29 +37,9 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 39 | LOW (not tested) | Per-entity compaction stubs survive `Admin().Reset` | open; `reapCompactionForReset` still leaves the stubs (`core/compaction.go:285`) |
 | 40 | LOW (cosmetic) | A cascade resumption may end at an earlier life's own bound | open |
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
-| 46 | LOW (stale comments) | Code comments that contradict the code or cite ADRs no longer in `docs/adr/` | open; found by the doc reviews 2026-10-10 |
+| 46 | LOW (stale comments) | Code comments that cite ADRs no longer in `docs/adr/` or old lesson/B-numbers | open; still stale: `tieredstore_property_stats.go:19`, `bench/ingest_pipeline_test.go:13,101` (ADR-0005/0006), `badgerstore_property_stats.go:38` (lesson 62 vs 63), `store/store.go:30` and `docs/architecture.md` (B-numbers), `effective_timeline.go` header |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
-| 56 | MEDIUM | Node temporal envelope holes: `PutNodeVersion`, `CreateTemporalIndex` publish-before-fold window, label add on a live node, memory re-create | done (Unreleased Fixed); all cases red, all fixed |
-| 57 | FEATURE (sigma R1) | Batched point read at (validAt, txAt): `NodesAtTxByIDs` / `RelsAtTxByIDs` | done (Unreleased Added); badger -29% per 100 IDs, memory parity |
-| 58 | FEATURE (sigma R2) | Tiered: tx-membership sidecars (label/type, property value) and `*From` valid-end acceleration | DONE (Unreleased) |
-| 59 | PERF (sigma R3) | Tiered event-shard routing by mint instant: binary search instead of a linear window scan | done (Unreleased Changed); 700 shards 3301 -> 33 ns/op, evidence `tasks/evidence/shard-routing/` |
-| 60 | LOW (store-level only: graph Archive/Restore hold `c.mu.Lock`) | Tiered ref-then-archive readers outside moveMu straddle an ArchiveNode/RestoreNode | DONE (Unreleased): 16 scan doors and the point reads (GetNode, GetRelationship, Lend*, *ByIDs, adjacency, degree, current stamps) and NodePropertyStats/NDV hold moveMu's read side across ref+archive (route+read); ArchiveNode/RestoreNode use the unlocked route. Not a bug: DocValues folds (NodeMutationEpoch, Gate 2), history-ID scans (dedup), history point reads/walks (rows stay put, walks fall back to every shard; guard cases, no lock). Not covered: write doors route without moveMu (fenced by the graph's c.mu.Lock) |
-| 61 | FEATURE (René, ai-soc) | Integrity-hash switch (default on) and one binary hash path | DONE: step 1 in v4.52.2 (switch, binary hashes readable, Deprecated), step 2 (writer binary, marker 4) Unreleased Changed → v4.54.0; evidence `tasks/evidence/integrity-switch/` |
-| 62 | SEMANTICS (sigma observation) | One valid-from source for untimed rows: TxFrom (today creates use the mint instant, updates TxFrom) | DONE (Unreleased): phase A → v4.52.2 (third answer fixed, Deprecated markers + notes), phase B → v4.54.0 (one start rule `storeutil.EntityValidFrom` = ValidFrom, else TxFrom; persisted envelopes rebuilt; evidence `tasks/evidence/valid-from-source/`) |
-| 63 | FEATURE (sigma R6) | Membership by rel ID: list properties are not indexed (propertyslice.go:353); recommended: one indexed support node per (Derived, relID), no rho change; fallback `PropertyIndexOptions{Elements: true}` | done (Unreleased Added): `PropertyIndexOptions{Elements: true}` on memory, badger, sharded, tiered ref labels; evidence `tasks/evidence/property-elements/` |
-| 64 | FEATURE (sigma R7) | Valid-time excise [a,b): new door `Temporal().ExciseNodeValidity` with void pieces (no existing composition: CloseVersion only on the open current row) | DONE (Unreleased Added, v4.54.0): `ExciseNodeValidity` / `ExciseRelValidity` + `*WithTx`, `GraphTx` and `BatchBuilder` twins; void pieces (`TemporalMetadata.Void`, row fv 5, store marker 6); evidence `tasks/evidence/excise/` |
-| 65 | SEMANTICS (traced) | `Update` with only `tkg_valid_to` copies the end onto the new row unchecked (node_update.go:224-233, relationship_update.go:~219; UpdateInPlace too); tests use it as "expire" (docvalues_test.go:120, retention_purge_validto_test.go:63). Chosen: consolidate with CloseVersion — such an update closes the version as CloseVersion does (rejects t <= valid-from); deprecation ritual together with 62 | DONE (Unreleased): phase A → v4.52.2 (Deprecated notes), phase B → v4.54.0 (close via `checkCloseAfterStart`, shared with CloseVersion; CloseVersion keeps the version start) |
-| 66 | FEATURE (sigma round 7, low: Tyla lazy graph sources, not needed by sigma's current release) | Property-index range walks and exact range counts at a transaction pin (`TxAt` / `TxPin`), like `ForEachByLabelPropertyRangeOrdered` and `RangeCardinality` at current state | open, not built in round 7: the pinned doors fold every label member today (Stage B, O(N log N)); the tx-membership sidecar (backlog 8) is keyed by equality value, so an index answer at a pin needs an ordered view of (value, ID, TxFrom/TxTo) per index (memory and write cost per index write: opt-in per index, as `RangeCounts`). Design first |
-| 67 | FEATURE (sigma round 7, low) | Per label: no current node carries an explicit `tkg_valid_from` / `tkg_valid_to` (rows stated eternal without reading them) | DONE (Unreleased, round 8 request 3): `Stats().LabelTimeStats` / `RelTypeTimeStats` (lazy explicit-valid count against the label epoch, `LastEnded` under the history generation) |
-| 68 | PERF (sigma R10) | `NodeEffectiveTimeline(id, pin)` cost O(history versions) for a node whose versions keep superseding one validity (10 facts: 0.37 ms at 1 version, 10 ms at 300) | DONE (4.55.0): head-pin answer per entity kept under `store.HistoryEpochCapability` and extended by corrections (`internal/core/effective_head.go`); 300 versions: memory 150-230 us -> 0.4 us, badger 190-210 us -> 3 us; evidence `tasks/evidence/r10/`. 68b DONE (Unreleased Changed): a correction with a valid head entry plans from the entry plus one point read per base row, and the GraphTx rollback snapshot is the current row plus the entry's top version (`internal/core/effective_head_write.go`); sigma's cut per fact at 300 versions (read then GraphTx correction, warm): memory 0.28-0.35 ms -> 6 us, badger 1.9-2.0 ms -> 16-24 us; evidence `tasks/evidence/r10-write/` |
-| 69 | FEATURE (ai-soc) | Effective scan keyset-paged by ID and filtered by a rel/node property equality (`estate`) from an index, at a tx pin and an optional valid instant or interval, over every type | DONE (Unreleased Added): `Temporal().RelsEffectivePage` / `NodesEffectivePage`; candidates from the backlog-8 property membership sidecar with an ordered view per value (store `Rel/NodePropertyTxMemberPageCapability`: memory, badger, sharded), types merged in ID order; unindexed types and tiered gather per page; evidence `tasks/evidence/paged-effective/` |
-| 70 | MEDIUM (found by the 68b twin) | Version allocation below surviving rows after a compaction gap above the current row | DONE (Unreleased Fixed): `nodeHasHistoryAbove` / `relHasHistoryAbove` exact; evidence `tasks/evidence/r10-write/10-red-allocator-gap.txt` |
 | 71 | FEATURE (sigma round 8, optional) | Valid-time hull per label / relationship type: earliest valid-from and latest valid-to of the current entities, exact and cheap | open, not built in round 8. No structure holds it exactly: a temporal index keeps per-ID envelopes that only widen (`Extend` unions, `Remove` is a no-op, deletes and excises leave them), so its hull is an upper bound over history, and only where a temporal index exists. Exact needs a per-label ordered multiset of valid-from and valid-to (a write cost on every node write: opt-in per label, as `TrackRelTypeDegrees`) or a walk. Design first |
-| 72 | PERF (ai-soc 2026-10-15) | Equality pages copy and sort the whole value key per call: memory `NodesByLabelAndProperties` with a composite index (memorystore_index.go:333 `SortNodeIDs`), likewise `NodesByLabelAndProperty`, `RelationshipsByTypeAndProperty` on memory and badger, and the numeric/string ordered pages per tied value; a walk in pages of 1,024 cost key-size squared / 1,024 | DONE (Unreleased Changed): every ID set of the property, rel property and composite indexes and the numeric buckets is one `index.IDPostings` (the sortedChunks of the ordered views, kept sorted at write time; the duplicate string buckets dropped); pages seek `After` and read their rows (badger: batches under `idxMu`); sharded and tiered push the page into each shard. Walk of 1,000,000 IDs in pages of 1,024: 85.4 s -> 0.50 s; B/member at 1M: composite 37.8 -> 8.1 (shuffled 12.2), property 75.5 -> 16.1 int / 8.1 string; write unchanged (1.7 us). Not changed: label/type scans (`labelIdx` maps), badger `PropertyIndexOnDisk`; evidence `tasks/evidence/sorted-postings/` |
-| 52 | HIGH (ai-soc) | Durable commit under SyncWrites costs one fsync per mutation | in progress, v4.51.3 |
-| 53 | HIGH (ai-soc) | Relationship planner-stat memos hold one RAM entry per relationship | in progress, v4.51.3 |
-| 54 | HIGH (ai-soc) | Badger open walks every current row (open linear in history) | in progress, v4.51.3 |
-| 55 | MEDIUM (ai-soc, sigma) | Effective scans read one relationship per Badger transaction | in progress, v4.51.3 |
 
 ---
 
@@ -230,9 +209,7 @@ test passes.
 
 ### 10. Tiered store: remaining work after composite + rel temporal indexes
 
-*FEATURE* — indexes shipped in v4.45.0; (a) sequential-scan rebuild DONE (Unreleased); (b) rel property indexes / node `TemporalCandidateCapability` on tiered open.
-
-Composite and relationship temporal indexes on tiered shipped in v4.45.0 (ai-soc request 3; per-shard fan-out anchored by the reference shard; rel temporal 156 B/relationship, composite 310 B/node; the rel temporal index lives on reference + hot + warm shards only, cold demotion frees it, `PromoteColdShardsAtOpen` rebuilds it; ≈ 5.8–9.2 GB per indexed type at `ColdAfter` = 1 day). (a) DONE (Unreleased): the build was one point read plus one history prefix scan per relationship (0.018–0.021 M rels/s in the field, 29–54 min per day shard on a crash reopen or a cold-to-warm promotion); it is now one read transaction with two forward walks (rows, history) in ID order — 200,000 relationships with history, reopened store: 78,919 → 304,166 rels/s (3.9×, host load ≈ 15; 3.9–4.5× over three runs), `tasks/evidence/rel-temporal-rebuild/03-bench.txt`; field shard times not re-measured; backlog 22 (create races writes) fixed alongside. Remaining: (b) relationship property indexes (`CreateRelPropertyIndex` declines, `store/tiered/tieredstore_write.go`) and the node-side `TemporalCandidateCapability` are still declined on tiered.
+*FEATURE* — (a) sequential-scan rebuild done in v4.51.6. Open: (b) relationship property indexes (`CreateRelPropertyIndex` declines on tiered, `store/tiered/tieredstore_write.go:181`) and the node-side `TemporalCandidateCapability`. Composite and rel temporal indexes shipped in v4.45.0 (rel temporal index lives on reference + hot + warm shards; ~5.8-9.2 GB per indexed type at `ColdAfter` = 1 day).
 
 ### 13. Ingest applier attributes group errors by numeric entity id, not by kind
 
@@ -251,12 +228,6 @@ Composite and relationship temporal indexes on tiered shipped in v4.45.0 (ai-soc
 *LOW (TEST-GAP, perf)* — open; only the RelAtTx benchmarks remain (everything else in the sigma request shipped, see Closed).
 
 Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs plain hot row, cold row + 1 µs, ≤ 6 µs cascaded via the skeleton path (2.0 / 9.5 / 18.5 µs at v4.43.0, sigma-tkgd stream "effective"). No such benchmark exists in the tree. Add it (ReportAllocs, bench-gate; profile first: 0.15 µs of the 2.0 µs is the row read) and measure on the current release before deciding whether any work remains. Original spec: `git log -- tasks/handover-effective-read-cost-20261009.md`.
-
-### 22. Badger rel temporal index create races concurrent writes
-
-*MEDIUM (reproduced 2026-10-14)* — DONE (Unreleased): `CreateRelTemporalIndex` installs a Building index (writes fold in and record their IDs), builds unlocked, re-reads the recorded IDs' rows, merges and publishes; red tests `TestCreateRelTemporalIndex_WriteBetweenSnapshotAndInstall` and `_UpdateMidBuildHistoryFlushedLate` (`tasks/evidence/rel-temporal-rebuild/06-red-22.txt`).
-
-**Badger rel temporal index create races concurrent writes** (MEDIUM, pre-existing, NOT reproduced — read from code, review of backlog 10, 2026-10-09). `CreateRelTemporalIndex` (`store/badger/badgerstore_reltype_temporal_index.go`, the create body) snapshots the type's relationship IDs under `idxMu`, builds the envelope index unlocked and installs it; a relationship created or updated in the gap is not folded in, because `ExtendRelInTemporalIndexes` returns early while no index exists — lesson 74's lazy-build rule. A missed new relationship is merely uncovered (kept); a missed update of a covered one can leave its envelope short of a row, i.e. an unsound prune. On tiered this now runs against the hot shard while it ingests. Red test first with a write-generation guard (lesson 63): write between snapshot and install, then prune at the written row's interval; fix with the 3-phase mutated-set install `CreateTemporalIndex` uses. The header comment was corrected (it claimed the scan held `idxMu`).
 
 ### 23. `changeFeedPage` prefetches past its page
 
@@ -316,12 +287,9 @@ scan); the inventory test fails when an exported error is missing from `errors.g
 
 ### 46. Code comments that contradict the code or cite ADRs that no longer exist
 
-*LOW (stale comments)* — found by the doc reviews (groups C, D, 2026-10-10).
+*LOW (stale comments)* — found by the doc reviews 2026-10-10. Fixed since: the "88 bytes" note in `pkg/types/node.go`, the lane range in `ingest_lanes.go`.
 
-`pkg/types/node.go:30` says "88 bytes" (the struct is 96 B, `pkg/types/layout_test.go`); `pkg/graph/internal/core/ingest_lanes.go:79-80`
-says the lane range is [0,127] (it is 0-15); `pkg/graph/store/tiered/tieredstore_property_stats.go:19` and `bench/ingest_pipeline_test.go`
-cite ADR-0005 / ADR-0006, which are no longer in `docs/adr/` (recover with `git log --all -- docs/adr/`, or rewrite the comment to state the
-rule itself); the header of `pkg/graph/internal/core/effective_timeline.go` (~lines 10-20) describes resolving each piece with the point resolver, but the code (`effectivePieces`, ~line 115) uses one max-heap sweep. Also stale lesson citations: `pkg/graph/store/badger/badgerstore_property_stats.go:38` cites lesson 62 for the write-generation guard (it is lesson 63); `pkg/graph/store/store.go:30` and the `B33`/`B7`/`B36` citations in `docs/architecture.md` use an old B-numbering that no longer exists in `tasks/lessons.md`. Comment-only change; the docs-consistency tests must stay green.
+Still stale: ADR-0005 / ADR-0006 citations (`pkg/graph/store/tiered/tieredstore_property_stats.go:19`, `bench/ingest_pipeline_test.go:13,101`; recover with `git log --all -- docs/adr/` or state the rule); `pkg/graph/store/badgerstore_property_stats.go:38` cites lesson 62 (it is 63); old B-numbering in `pkg/graph/store/store.go:30` and `docs/architecture.md`; the `effective_timeline.go` header describes a point resolver, the code (`effectivePieces`) uses one max-heap sweep.
 
 ### 47. Claims that need a real check before they become work
 
@@ -332,21 +300,9 @@ transaction-time membership; verify whether the named door can use K1 at all (a 
 before filing a fix. (b) "A RAM budget for the property sidecars": v4.48.0 measured 25-30 B per posting (97-117 B near-unique) and defined
 no budget; reopen only if a consumer reports memory pressure; then design a per-store budget that drops a sidecar and falls back to the fold.
 
-### 56. Node temporal envelope holes — DONE (Unreleased)
+### 71. Valid-time hull per label / relationship type (sigma round 8, optional)
 
-*MEDIUM* — every case went red (`tasks/evidence/node-temporal-envelope/01-red.txt`) and is fixed (`02-green.txt`, CHANGELOG [Unreleased] Fixed). (a) `PutNodeVersion` never extended the node temporal index — badger red, memory red: fixed (a covered or Building index takes the row). (b) Badger `CreateTemporalIndex` published before its history fold — red: fixed (stays Building until the fold, late writers' history folded at the publish); memory has no such window but skipped IDs written during its scan — red: fixed (refolds their live rows). (c) Label added back to a live node — badger red, memory red: fixed (add-label doors fold history into an uncovered index). (d) Memory re-create of a deleted node with history — red: fixed.
-
-### 57. Batched point read at (validAt, txAt) — DONE (Unreleased)
-
-*FEATURE* — sigma-tkgd R1 (2026-10-14, design sigma-tkgd `tasks/history-via-rho-design.md`): sigma reads up to ~100 old rows per cut at one pin; `NodesEffectiveByIDs`/`RelsEffectiveByIDs` return whole timelines. Add `temporal.API.NodesAtTxByIDs(ids, validAt, txAt) ([]*types.Node, error)` and `RelsAtTxByIDs`: results aligned to ids, nil where `NodeAtTx` would return not-found or no row valid at validAt; call-level errors as `NodeAtTx` (pin checks, retention, compaction). Additive. **Done:** both doors (CHANGELOG [Unreleased] Added); each ID runs the per-ID gates and body, one read lock per 256 IDs, one store read snapshot per call; a pin is required (`txAt <= 0` → `ErrInvalidTimeRange`, as the effective by-IDs doors). Red `tasks/evidence/batched-attx/01-red.txt`, green `02-green.txt`, bench `03-bench.txt` (100 IDs, half from history: badger 293 → 207 µs, memory 48 → 47 µs). `GetNodesByIDs` is not used: it fails the whole batch on one missing ID and badger answers it with one read per ID anyway; the read snapshot is the batch win.
-
-### 58. Tiered: tx-membership sidecars and valid-end acceleration — DONE (Unreleased)
-
-*FEATURE* — sigma-tkgd R2: done (CHANGELOG [Unreleased] Added, `store/tiered/tieredstore_tx_members.go`, evidence `tasks/evidence/tiered-capabilities/`). Every shard's badger answer unioned; refine is a no-op on tiered; the node property form declines when the label has members off the reference shard, the rel property form always declines.
-
-### 59. Tiered event-shard routing by mint instant
-
-*PERF* — sigma-tkgd R3: `timestampToEventShardEntry` (`store/tiered/tieredstore_routing.go:59`) scans every event shard per ID. Binary search over the shard windows (sorted, non-overlapping) under the same lock; same fallback.
+*FEATURE* — open, not built in round 8. No structure holds it exactly: a temporal index keeps per-ID envelopes that only widen (`Extend` unions, `Remove` is a no-op), so its hull is an upper bound over history and exists only where a temporal index exists. Exact needs a per-label ordered multiset of valid-from and valid-to (write cost on every node write: opt-in per label, as `TrackRelTypeDegrees`) or a walk. Design first.
 
 ## v5
 
@@ -423,6 +379,24 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 43 (FEATURE, ai-soc) — retraction: `Retract` / `RetractWithTx` on every write door, "this was never true" | `[4.49.1]` Added "Retraction: a way to say this was never true"; evidence `tasks/evidence/retraction/` |
 | Item 33 (MEDIUM, perf) — badger effective scans read each candidate row once (`store.MemberIDsCapability`) | `[4.51.1]` Changed; evidence `tasks/evidence/badger-read-cost/` |
 | Item 42 (FEATURE, perf) — `store.CurrentStampsCapability`, the current-row half of `LatestStamps` | `[4.51.1]` Added; evidence `tasks/evidence/badger-read-cost/` |
+| Item 22 (MEDIUM) — badger rel temporal index create raced concurrent writes | `[4.51.6]` Fixed (3-phase mutated-set install); evidence `tasks/evidence/rel-temporal-rebuild/` |
+| Item 10(a) (PERF) — sequential-scan rel temporal index rebuild, 3.9-4.5x | `[4.51.6]` Changed; evidence `tasks/evidence/rel-temporal-rebuild/` |
+| Item 56 (MEDIUM) — node temporal envelope holes (`PutNodeVersion`, publish-before-fold, label add, memory re-create) | `[4.51.7]` Fixed; evidence `tasks/evidence/node-temporal-envelope/` |
+| Item 57 (FEATURE, sigma R1) — `NodesAtTxByIDs` / `RelsAtTxByIDs` | `[4.51.8]` Added |
+| Item 59 (PERF, sigma R3) — tiered event-shard routing by binary search | `[4.51.8]` Changed; evidence `tasks/evidence/shard-routing/` |
+| Item 58 (FEATURE, sigma R2) — tiered tx-membership sidecars + valid-end acceleration | `[4.52.1]` Added; evidence `tasks/evidence/tiered-capabilities/` |
+| Item 60 (LOW) — tiered ref-then-archive readers outside moveMu | `[4.52.1]` Fixed (16 scan doors + point reads under moveMu's read side); evidence `tasks/evidence/tiered-move-readers/` |
+| Item 61 (FEATURE, René, ai-soc) — integrity-hash switch (default on), one binary hash path | `[4.52.2]` step 1, `[4.54.0]` step 2 (writer, marker 4); evidence `tasks/evidence/integrity-switch/` |
+| Item 62 (SEMANTICS, sigma) — one valid-from source for untimed rows | `[4.52.2]` phase A (Deprecated), `[4.54.0]` phase B (`storeutil.EntityValidFrom`); evidence `tasks/evidence/valid-from-source/`; option for the rule: todo row 42 |
+| Item 63 (FEATURE, sigma R6) — `PropertyIndexOptions{Elements: true}` | `[4.52.2]` Added; evidence `tasks/evidence/property-elements/` |
+| Item 64 (FEATURE, sigma R7) — `ExciseNodeValidity` / `ExciseRelValidity` | `[4.54.0]` Added (void pieces, marker 6); evidence `tasks/evidence/excise/` |
+| Item 65 (SEMANTICS) — `Update` with only `tkg_valid_to` closes like `CloseVersion` | `[4.52.2]` phase A, `[4.54.0]` phase B |
+| Item 66 (FEATURE, sigma round 7) — property-index range walks and counts at a tx pin | `[4.55.2]` Added (Markus, round 8 request 2: `RangeCardinalityAt`, sidecar numeric view); evidence `tasks/evidence/cypher-round8/r2-*` |
+| Item 67 (FEATURE, sigma) — per label/type explicit-valid-time statement | `[4.55.2]` Added (`Stats().LabelTimeStats` / `RelTypeTimeStats`) |
+| Item 68 / 68b (PERF, sigma R10) — `NodeEffectiveTimeline` O(segments), write side from the head entry | `[4.55.0]` read side, `[4.55.1]` write side; evidence `tasks/evidence/r10/`, `r10-write/` |
+| Item 69 (FEATURE, ai-soc) — `RelsEffectivePage` / `NodesEffectivePage` | `[4.55.0]` Added; evidence `tasks/evidence/paged-effective/` |
+| Item 70 (MEDIUM) — version allocation below surviving rows after a compaction gap; rollback-after-compaction data loss | `[4.55.1]` Fixed; evidence `tasks/evidence/r10-write/` |
+| Item 72 (PERF, ai-soc) — sorted postings for property/composite indexes, 1M walk 85 s to 0.5 s | `[4.55.3]` Changed |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 
