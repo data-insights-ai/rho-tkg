@@ -583,7 +583,7 @@ func decodeRetainedFeedCursor(wire []byte) (retainedFeedCursor, error) {
 }
 
 func encodeRetainedFeedCommand(c retainedFeedCommand) ([]byte, error) {
-	transition := c.phase == feedRetainOnly && c.scope.semantic == retainedOnlyFeedSemanticContractID()
+	transition := c.phase == feedRetainOnly && retainedOnlyFeedAgreement(c.scope.semantic)
 	if !c.scope.valid() || !retainedFeedAgreement(c.scope.semantic) || c.issuer == ([16]byte{}) || c.action == ([16]byte{}) || c.phase < feedInitialize || c.phase > feedRetainOnly || c.phase == feedRetainOnly && !transition || (c.phase == feedInitialize || c.phase == feedAdmitOperation || transition) != (len(c.page) == 0) || len(c.page) > retainedFeedMaxBytes {
 		return nil, errInvalid
 	}

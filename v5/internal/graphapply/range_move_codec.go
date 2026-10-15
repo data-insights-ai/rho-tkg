@@ -18,7 +18,7 @@ type rangeMoveCommand struct {
 }
 
 func isRangeMoveWire(wire []byte) bool {
-	return len(wire) >= 4 && bytes.Equal(wire[:4], []byte{'G', 'M', 'Q', 1})
+	return len(wire) >= 4 && (bytes.Equal(wire[:4], []byte{'G', 'M', 'Q', 1}) || bytes.Equal(wire[:4], []byte{'G', 'M', 'Q', 2}))
 }
 
 func encodeRangeMoveCommand(c rangeMoveCommand) ([]byte, error) {
@@ -30,7 +30,11 @@ func encodeRangeMoveCommand(c rangeMoveCommand) ([]byte, error) {
 		return nil, errInvalid
 	}
 	return boundedEncoding(1<<20, func(w *boundedWriter) {
-		w.add([]byte{'G', 'M', 'Q', 1})
+		version := byte(1)
+		if rangeMoveSpans(intent.source.semantic) {
+			version = 2
+		}
+		w.add([]byte{'G', 'M', 'Q', version})
 		w.add(appendAllocationScope(nil, c.scope))
 		w.tag(byte(c.phase))
 		w.u64(c.sequence)
@@ -38,6 +42,10 @@ func encodeRangeMoveCommand(c rangeMoveCommand) ([]byte, error) {
 		w.field(c.data)
 		w.u32(len(c.proofs))
 		for _, p := range c.proofs {
+			if p.format != rangeMoveStatusFormat(intent.source.semantic) {
+				w.err = errInvalid
+				return
+			}
 			wire, err := encodeRangeMoveStatus(p)
 			if err != nil {
 				w.err = err
@@ -49,7 +57,11 @@ func encodeRangeMoveCommand(c rangeMoveCommand) ([]byte, error) {
 }
 
 func decodeRangeMoveCommand(wire []byte) (rangeMoveCommand, error) {
-	body, err := graphBody(wire, "GMQ\x01", 1<<20)
+	magic := "GMQ\x01"
+	if bytes.HasPrefix(wire, []byte("GMQ\x02")) {
+		magic = "GMQ\x02"
+	}
+	body, err := graphBody(wire, magic, 1<<20)
 	if err != nil {
 		return rangeMoveCommand{}, err
 	}
@@ -118,6 +130,9 @@ func rangeMoveObservationHash(o rangeMoveObservation) [32]byte {
 		// Hash absent status fields too. No mutation may borrow the stamp merely
 		// because the phase still denotes absence.
 		w := boundedWriter{max: 256, b: make([]byte, 0, 256)}
+		if s.format != 0 {
+			w.tag(s.format)
+		}
 		w.add(appendNamespace(nil, s.ns))
 		w.add(s.move[:])
 		w.add(s.intent[:])

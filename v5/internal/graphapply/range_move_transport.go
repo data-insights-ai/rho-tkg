@@ -1,6 +1,7 @@
 package graphapply
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -15,7 +16,11 @@ func encodeRangeMoveQuery(q rangeMoveQuery) ([]byte, error) {
 		return nil, errInvalid
 	}
 	return boundedEncoding(160, func(w *boundedWriter) {
-		w.add([]byte{'G', 'M', 'Y', 2})
+		version := byte(2)
+		if q.spans {
+			version = 3
+		}
+		w.add([]byte{'G', 'M', 'Y', version})
 		w.add(q.move[:])
 		w.add(q.nonce[:])
 		w.u64(q.page)
@@ -25,17 +30,36 @@ func encodeRangeMoveQuery(q rangeMoveQuery) ([]byte, error) {
 		w.u64(q.origin)
 		w.tag(q.family)
 		w.add(q.record[:])
+		if q.spans {
+			if q.lineage {
+				w.tag(1)
+			} else {
+				w.tag(0)
+			}
+		}
 	})
 }
 
 func decodeRangeMoveQuery(wire []byte) (rangeMoveQuery, error) {
-	body, err := graphBody(wire, "GMY\x02", 160)
+	magic := "GMY\x02"
+	if bytes.HasPrefix(wire, []byte("GMY\x03")) {
+		magic = "GMY\x03"
+	}
+	body, err := graphBody(wire, magic, 160)
 	if err != nil {
 		return rangeMoveQuery{}, err
 	}
 	c := graphCursor{b: body}
 	q := rangeMoveQuery{move: c.array(), nonce: c.array(), page: c.u64(), sourceRows: c.count(1<<20, 0), sourceBytes: c.count(64<<20, 0), outputBytes: c.count(64<<20, 0)}
 	q.origin, q.family, q.record = c.u64(), c.tag(), c.array()
+	if magic == "GMY\x03" {
+		q.spans = true
+		flag := c.tag()
+		if flag > 1 {
+			c.err = errCorrupt
+		}
+		q.lineage = flag == 1
+	}
 	if c.err != nil || len(c.b) != 0 || !q.valid() {
 		return rangeMoveQuery{}, errors.Join(errCorrupt, c.err)
 	}
@@ -123,7 +147,7 @@ func decodeRangeMoveAuthorityBody(wire []byte) (rangeMoveAuthority, error) {
 	p.scope = readAllocationScope(&decoder{b: scope})
 	p.observation.scope = p.scope
 	p.question, err = decodeRangeMoveQuery(query)
-	if err != nil || p.question.page != 0 || !p.scope.valid() || !rangeMoveGraphAgreement(p.scope.semantic) || p.id.session == ([16]byte{}) || p.id.sequence == 0 || p.observation.root.Index != p.observation.index || p.observation.configuration == ([32]byte{}) || p.observation.sourceRows > p.question.sourceRows || p.observation.sourceBytes < 172 || p.observation.sourceBytes > p.question.sourceBytes || p.observation.ownedBytes > p.question.outputBytes {
+	if err != nil || p.question.spans != rangeMoveSpans(p.scope.semantic) || p.question.page != 0 || !p.scope.valid() || !rangeMoveGraphAgreement(p.scope.semantic) || p.id.session == ([16]byte{}) || p.id.sequence == 0 || p.observation.root.Index != p.observation.index || p.observation.configuration == ([32]byte{}) || p.observation.sourceRows > p.question.sourceRows || p.observation.sourceBytes < 172 || p.observation.sourceBytes > p.question.sourceBytes || p.observation.ownedBytes > p.question.outputBytes {
 		return rangeMoveAuthority{}, errors.Join(errCorrupt, err)
 	}
 	if len(status) == 0 {
@@ -132,13 +156,13 @@ func decodeRangeMoveAuthorityBody(wire []byte) (rangeMoveAuthority, error) {
 		}
 	} else {
 		p.observation.status, err = decodeRangeMoveStatus(status)
-		if err != nil || p.observation.status.ns != (namespace{p.scope.graph, p.scope.partition}) || p.observation.status.move != p.question.move || p.observation.status.index > p.observation.index || sha256.Sum256(intent) != p.observation.status.intent {
+		if err != nil || p.observation.status.ns != (namespace{p.scope.graph, p.scope.partition}) || p.observation.status.move != p.question.move || p.observation.status.index > p.observation.index || p.observation.status.format != rangeMoveStatusFormat(p.scope.semantic) || sha256.Sum256(intent) != p.observation.status.intent {
 			return rangeMoveAuthority{}, errors.Join(errCorrupt, err)
 		}
 		p.observation.intent, p.observation.progress = owned(intent), owned(progress)
 		if len(decision) != 0 {
 			p.observation.decision, err = decodeRangeMoveStatus(decision)
-			if err != nil || p.observation.decision.move != p.question.move || p.observation.decision.intent != p.observation.status.intent || p.observation.decision.phase != rangeMoveDecide || p.observation.decision.round == 0 {
+			if err != nil || p.observation.decision.move != p.question.move || p.observation.decision.intent != p.observation.status.intent || p.observation.decision.phase != rangeMoveDecide || p.observation.decision.round == 0 || p.observation.decision.format != rangeMoveStatusFormat(p.scope.semantic) {
 				return rangeMoveAuthority{}, errors.Join(errCorrupt, err)
 			}
 		}
@@ -188,6 +212,7 @@ func (e *graphAuthenticatedEndpoint) moveQuestion(ctx context.Context, q rangeMo
 	if q.origin != 0 {
 		responseCeiling = graphSourceFrameBytes
 	}
+	q.spans = rangeMoveSpans(e.peer.scope.semantic)
 	q.nonce = nonce
 	e.budget.mu.Lock()
 	q.sourceRows = min(1<<20, e.budget.maxRows-e.budget.rows)
@@ -260,7 +285,7 @@ func (e *graphAuthenticatedEndpoint) submitMove(ctx context.Context, proposal al
 		return rangeMoveStatus{}, err
 	}
 	status, err := decodeRangeMoveStatus(r.body)
-	if err != nil || status.ns != (namespace{e.peer.scope.graph, e.peer.scope.partition}) || status.move != rangeMoveID(namespace{intent.source.graph, intent.source.partition}, intent.id) || status.intent != sha256.Sum256(command.intent) {
+	if err != nil || status.ns != (namespace{e.peer.scope.graph, e.peer.scope.partition}) || status.move != rangeMoveID(namespace{intent.source.graph, intent.source.partition}, intent.id) || status.intent != sha256.Sum256(command.intent) || status.format != rangeMoveStatusFormat(e.peer.scope.semantic) {
 		return rangeMoveStatus{}, errors.Join(errInvalid, err)
 	}
 	switch status.result {

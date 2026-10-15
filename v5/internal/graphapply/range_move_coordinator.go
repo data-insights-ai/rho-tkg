@@ -395,6 +395,21 @@ func (op *rangeMoveInvocation) advance(ctx context.Context, source, target range
 			return false, op.step(ctx, from, rangeMoveDescribe, s.sequence+1, nil, nil, source)
 		}
 		if t.phase == rangeMoveCapture {
+			if rangeMoveSpans(op.intent.source.semantic) {
+				actual, e := op.endpoints[from].moveQuestion(ctx, rangeMoveQuery{move: op.run.resume.move, lineage: true})
+				if e != nil {
+					return false, e
+				}
+				hydrated, e := op.progress(actual)
+				if e != nil {
+					return false, e
+				}
+				rows, size, digest := hydrated.transferSummary()
+				if !actual.validSeal() || actual.observation.status.intent != op.run.resume.intent || actual.observation.status.rows != rows || actual.observation.status.size != size || actual.observation.status.digest != digest || actual.observation.status != source.observation.status || !hydrated.inlineRetention {
+					return false, errInvalid
+				}
+				progress = hydrated
+			}
 			wire, err := encodeRangeMoveProgress(progress, op.output)
 			if err != nil {
 				return false, err
@@ -484,8 +499,14 @@ func (op *rangeMoveInvocation) importPage(ctx context.Context, source, target ra
 	if !state.PreparationComplete {
 		return op.step(ctx, op.intent.target.partition, rangeMoveImport, next, []byte{0}, nil, source)
 	}
-	pageSequence := state.Sequence + progress.replay.sequence + 1
-	if pageSequence > manifest.graphPages+manifest.replay.sequence {
+	replayPages := progress.replay.sequence
+	manifestPages := manifest.replay.sequence
+	if rangeMoveSpans(op.intent.source.semantic) {
+		replayPages = progress.replayPages
+		manifestPages = manifest.replayPages
+	}
+	pageSequence := state.Sequence + replayPages + 1
+	if pageSequence > manifest.graphPages+manifestPages {
 		return errCorrupt
 	}
 

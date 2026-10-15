@@ -35,7 +35,7 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 		}
 		manifest, err := decodeRangeMoveProgress(c.data, q.arena)
 		descriptor := manifest.descriptor
-		if err != nil || !manifest.transferComplete() || manifest.imported != nil || descriptor.Spec.Publication != intent.publication || descriptor.Spec.From.Partition != intent.source.partition || descriptor.Spec.From.Epoch != intent.epoch || descriptor.Spec.To.Partition != intent.target.partition || descriptor.Spec.To.Epoch != intent.epoch+1 || descriptor.Declaration != m.declaration.Digest() || descriptor.Target.Binding != m.binding {
+		if err != nil || rangeMoveSpans(m.SemanticContractID()) && (!manifest.inlineRetention || len(manifest.retention) == 0) || !manifest.transferComplete() || manifest.imported != nil || descriptor.Spec.Publication != intent.publication || descriptor.Spec.From.Partition != intent.source.partition || descriptor.Spec.From.Epoch != intent.epoch || descriptor.Spec.To.Partition != intent.target.partition || descriptor.Spec.To.Epoch != intent.epoch+1 || descriptor.Declaration != m.declaration.Digest() || descriptor.Target.Binding != m.binding {
 			return raftlog.ApplicationBatch{}, errors.Join(errInvalid, err)
 		}
 		rows, size, digest := manifest.transferSummary()
@@ -58,7 +58,7 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 		if err != nil {
 			return raftlog.ApplicationBatch{}, err
 		}
-		progress = rangeMoveProgress{descriptor: descriptor, imported: new(state), graphPages: manifest.graphPages, replay: rangeMoveReplayStart(), replayEnd: manifest.replay, retention: manifest.retention, retentionRows: manifest.retentionRows}
+		progress = rangeMoveProgress{descriptor: descriptor, imported: new(state), graphPages: manifest.graphPages, replay: rangeMoveReplayStart(), replayEnd: manifest.replay, retention: manifest.retention, retentionRows: manifest.retentionRows, reference: manifest.reference}
 		if m.collectsHistory() {
 			packet, e := decodeMoveRetainedLineage(manifest.retention, q.arena)
 			if e != nil || packet.scope != intent.source || packet.move != current.move || packet.intent != current.intent {
@@ -96,7 +96,22 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 					return raftlog.ApplicationBatch{}, e
 				}
 				effects, work, err = graphstore.StageRangeMovePage(q.ctx, q.view, progress.descriptor, *progress.imported, page, m.limits.catalog, m.limits.graph, headroom, q.arena)
-			} else if c.data[0] == 2 {
+			} else if c.data[0] == 3 && rangeMoveSpans(m.SemanticContractID()) {
+				if !progress.imported.Complete || progress.replay.complete {
+					return raftlog.ApplicationBatch{}, errInvalid
+				}
+				batch, e := decodeMoveReplayBatch(c.data[1:], q.arena, intent.pageBytes)
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				start := len(q.writes)
+				progress.replay, err = stageMoveReplayBatch(q, namespace{intent.source.graph, intent.source.partition}, m.ns, current.move, batch, progress.replay)
+				replayWrites = q.writes[start:]
+				if err == nil {
+					progress.replayPages++
+				}
+				effects.Base, effects.Next = q.base, *progress.imported
+			} else if c.data[0] == 2 && !rangeMoveSpans(m.SemanticContractID()) {
 				if !progress.imported.Complete || progress.replay.complete {
 					return raftlog.ApplicationBatch{}, errInvalid
 				}
@@ -135,7 +150,7 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 				}
 			}
 			undoWrites := effects.Writes
-			if c.data[0] == 2 {
+			if c.data[0] == 2 || c.data[0] == 3 {
 				undoWrites = replayWrites
 			}
 			undo, err := encodeRangeMoveUndo(q, undoWrites)
@@ -143,7 +158,7 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 				return raftlog.ApplicationBatch{}, err
 			}
 			progress.imported = new(effects.Next)
-			status.sequence, status.rows, status.size = c.sequence, effects.Next.Rows+progress.replay.rows+progress.retentionRows, effects.Next.Bytes+progress.replay.bytes+uint64(len(progress.retention))
+			status.sequence, status.rows, status.size = c.sequence, effects.Next.Rows+progress.replay.rows+progress.retentionRows, effects.Next.Bytes+progress.replay.bytes+progress.retainedBytes()
 			encoded, err := encodeRangeMoveProgress(progress, q.arena)
 			if err != nil {
 				return raftlog.ApplicationBatch{}, err
@@ -164,7 +179,7 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 				return raftlog.ApplicationBatch{}, err
 			}
 			progress.imported = new(state)
-			status.rows, status.size = state.Rows+progress.replay.rows+progress.retentionRows, state.Bytes+progress.replay.bytes+uint64(len(progress.retention))
+			status.rows, status.size = state.Rows+progress.replay.rows+progress.retentionRows, state.Bytes+progress.replay.bytes+progress.retainedBytes()
 		default:
 			return raftlog.ApplicationBatch{}, errInvalid
 		}

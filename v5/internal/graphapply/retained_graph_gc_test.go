@@ -26,6 +26,9 @@ func collectedGraphNetworkWithPolicy(t *testing.T, adjust func(*raftlog.Applicat
 	return collectedGraphNetworkWithAgreement(t, adjust, collectedGraphSemanticContractID())
 }
 func collectedGraphNetworkWithAgreement(t *testing.T, adjust func(*raftlog.ApplicationPolicy), agreement raftlog.ApplicationSemanticContractID) *allocationTestNetwork {
+	return collectedGraphNetworkWithRecovery(t, adjust, agreement, raftlog.ApplicationRecoveryConfig{Version: 2})
+}
+func collectedGraphNetworkWithRecovery(t *testing.T, adjust func(*raftlog.ApplicationPolicy), agreement raftlog.ApplicationSemanticContractID, recovery raftlog.ApplicationRecoveryConfig) *allocationTestNetwork {
 	t.Helper()
 	r := partitionCodecRequest(t, 1, defaultMaterializerLimits())
 	n := &allocationTestNetwork{t: t, d: r.declaration, pending: make(map[[16]byte]allocationProof)}
@@ -40,7 +43,7 @@ func collectedGraphNetworkWithAgreement(t *testing.T, adjust func(*raftlog.Appli
 			if adjust != nil {
 				adjust(&p)
 			}
-			control, recovery, retention := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 2}, raftlog.ApplicationRetentionConfig{Version: 1}
+			control, retention := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRetentionConfig{Version: 1}
 			contract, err := raftlog.ApplicationContractForPolicyWithRetention(p, control, recovery, retention)
 			if err != nil {
 				t.Fatal(err)

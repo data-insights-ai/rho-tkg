@@ -135,16 +135,30 @@ func (m *declaredMaterializer) stageRangeMoveContinuation(q *reader, command ran
 					progress.replay = rangeMoveReplayStart()
 				}
 			} else {
-				page, err := m.exportMoveReplay(q, progress, progress.replay, intent)
-				if err != nil {
-					return raftlog.ApplicationBatch{}, err
+				if rangeMoveSpans(m.SemanticContractID()) {
+					batch, e := m.exportMoveBatch(q, progress, intent)
+					if e != nil {
+						return raftlog.ApplicationBatch{}, e
+					}
+					cursor, e := encodeRangeMoveReplayCursor(batch.pages[0].before, q.arena)
+					if e != nil {
+						return raftlog.ApplicationBatch{}, e
+					}
+					before = append([]byte{3}, cursor...)
+					progress.replay = batch.pages[len(batch.pages)-1].next
+					progress.replayPages++
+				} else {
+					page, err := m.exportMoveReplay(q, progress, progress.replay, intent)
+					if err != nil {
+						return raftlog.ApplicationBatch{}, err
+					}
+					cursor, err := encodeRangeMoveReplayCursor(page.before, q.arena)
+					if err != nil {
+						return raftlog.ApplicationBatch{}, err
+					}
+					before = append([]byte{2}, cursor...)
+					progress.replay = page.next
 				}
-				cursor, err := encodeRangeMoveReplayCursor(page.before, q.arena)
-				if err != nil {
-					return raftlog.ApplicationBatch{}, err
-				}
-				before = append([]byte{2}, cursor...)
-				progress.replay = page.next
 			}
 			status.floor = current.floor
 			status.rows, status.size, status.digest = progress.transferSummary()

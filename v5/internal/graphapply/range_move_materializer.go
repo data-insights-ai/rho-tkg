@@ -1,6 +1,7 @@
 package graphapply
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 
@@ -142,6 +143,9 @@ func (m *declaredMaterializer) moveOwnsRecovery(q *reader, reservation raftlog.A
 }
 
 func (m *declaredMaterializer) moveReservation(r rangeMoveIntent) (raftlog.ApplicationRecoveryReservation, error) {
+	if rangeMoveSpans(m.SemanticContractID()) {
+		return m.spanMoveReservation(r)
+	}
 	wire, err := encodeRangeMoveIntent(r)
 	if err != nil {
 		return raftlog.ApplicationRecoveryReservation{}, err
@@ -206,6 +210,9 @@ func (m *declaredMaterializer) moveReservation(r rangeMoveIntent) (raftlog.Appli
 // Intrinsic feasibility uses immutable store quotas, never this invocation's
 // consumed budget or current free space. A missing free quota remains retryable.
 func (m *declaredMaterializer) moveReservationFits(r raftlog.ApplicationRecoveryReservation) bool {
+	if rangeMoveSpans(m.SemanticContractID()) {
+		return m.spanMoveFits(r)
+	}
 	p, l := m.store.ApplicationLimits(), m.store.Limits()
 	if _, _, err := raftlog.ApplicationRecoveryRootOverhead(len(r.Credits)); err != nil {
 		return false
@@ -234,6 +241,9 @@ func rangeMoveCommandReplayed(c rangeMoveCommand, current rangeMoveStatus) bool 
 }
 
 func rangeMoveCredit(c rangeMoveCommand) uint32 {
+	if rangeMoveSpans(c.scope.semantic) {
+		return moveSpanCredit(c)
+	}
 	switch c.phase {
 	case rangeMoveCapture:
 		return 1
@@ -265,8 +275,23 @@ func (m *declaredMaterializer) rangeMoveRecovery(q *reader, c rangeMoveCommand, 
 	if err != nil {
 		return raftlog.ApplicationRecoveryPurpose{}, err
 	}
-	if present && current.intent != sha256.Sum256(c.intent) {
+	if present && (current.intent != sha256.Sum256(c.intent) || current.format != rangeMoveStatusFormat(m.SemanticContractID())) {
 		return raftlog.ApplicationRecoveryPurpose{}, errInvalid
+	}
+	if present && rangeMoveSpans(m.SemanticContractID()) {
+		wire, found, e := q.getBounded(rangeMoveProgressKey(m.ns, move), rangeMoveSpanProgressBytes)
+		if e != nil {
+			return raftlog.ApplicationRecoveryPurpose{}, e
+		}
+		if found && bytes.HasPrefix(wire, []byte("GMP\x04")) {
+			p, e := decodeRangeMoveProgress(wire, q.arena)
+			if e != nil {
+				return raftlog.ApplicationRecoveryPurpose{}, e
+			}
+			if e = m.checkMoveReference(q, move, p); e != nil {
+				return raftlog.ApplicationRecoveryPurpose{}, e
+			}
+		}
 	}
 	if c.phase == rangeMoveFence {
 		if present {
@@ -312,7 +337,7 @@ func (m *declaredMaterializer) rangeMoveRecovery(q *reader, c rangeMoveCommand, 
 		return raftlog.ApplicationRecoveryPurpose{}, err
 	}
 	use := raftlog.ApplicationRecoveryUse{ID: rangeMoveRecoveryID(m.ns, move), Digest: sha256.Sum256(c.intent), CommandDigest: sha256.Sum256(wire), Phase: phase}
-	if phase == 5001 {
+	if phase == 5001 || phase == moveSpanTerminal {
 		use.RetireBefore = phase
 	}
 	return raftlog.ApplicationRecoveryPurpose{Use: &use}, nil
@@ -365,7 +390,7 @@ func (m *declaredMaterializer) stageRangeMove(q *reader, entry replica.Entry, bu
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err
 	}
-	status := rangeMoveStatus{ns: m.ns, move: move, intent: digest, phase: c.phase, index: entry.Index, sequence: c.sequence, result: rangeMoveApplied}
+	status := rangeMoveStatus{format: rangeMoveStatusFormat(m.SemanticContractID()), ns: m.ns, move: move, intent: digest, phase: c.phase, index: entry.Index, sequence: c.sequence, result: rangeMoveApplied}
 	finish := func(next rangeMoveStatus, publish bool, controls []raftlog.ApplicationControlPut) (raftlog.ApplicationBatch, error) {
 		wire, err := encodeRangeMoveStatus(next)
 		if err != nil {

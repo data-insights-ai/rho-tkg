@@ -180,7 +180,7 @@ func (s *graphPeerService) serve(ctx context.Context, wire []byte) ([]byte, erro
 			err = errInvalid
 			break
 		}
-		q := rangeMoveQuery{move: r.tx, nonce: r.nonce, sourceRows: 128, sourceBytes: 128 << 10, outputBytes: 512 << 10}
+		q := rangeMoveQuery{spans: rangeMoveSpans(s.host.machine.SemanticContractID()), move: r.tx, nonce: r.nonce, sourceRows: 128, sourceBytes: 128 << 10, outputBytes: 512 << 10}
 		var reply rangeMoveReply
 		reply, err = pump.Move(ctx, q)
 		if err == nil {

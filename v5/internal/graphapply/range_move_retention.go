@@ -438,7 +438,12 @@ func (m *declaredMaterializer) checkMoveRetainedLineages(q *reader) error {
 					if e != nil {
 						return e
 					}
-					if !bytes.Equal(packet, progress.retention) {
+					if rangeMoveSpans(m.SemanticContractID()) {
+						if e = progress.bindRetention(p, packet); e != nil {
+							return e
+						}
+					}
+					if !progress.retainedMatches(packet) {
 						return errCorrupt
 					}
 					decision, hasDecision, e := crossControl(q, rangeMoveControlKey(q.ns, status.move, 'D'), 256)
@@ -475,7 +480,10 @@ func (m *declaredMaterializer) checkMoveRetainedLineages(q *reader) error {
 				return e
 			}
 			packet, e := encodeMoveRetainedLineage(shadow, q.arena)
-			if e != nil || !bytes.Equal(packet, progress.retention) || shadow.scope != intent.source || shadow.move != status.move || shadow.intent != status.intent {
+			if e == nil && rangeMoveSpans(m.SemanticContractID()) {
+				e = progress.bindRetention(shadow, packet)
+			}
+			if e != nil || !progress.retainedMatches(packet) || shadow.scope != intent.source || shadow.move != status.move || shadow.intent != status.intent {
 				return errors.Join(errCorrupt, e)
 			}
 			if status.phase == rangeMoveActivate || status.phase == rangeMoveFinish {

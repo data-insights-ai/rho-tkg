@@ -19,11 +19,11 @@ func retainedOnlyFeedSemanticContractID() raftlog.ApplicationSemanticContractID 
 }
 
 func retainedFeedAgreement(id raftlog.ApplicationSemanticContractID) bool {
-	return id == retainedFeedSemanticContractID() || id == retainedOnlyFeedSemanticContractID()
+	return id == retainedFeedSemanticContractID() || retainedOnlyFeedAgreement(id)
 }
 
 func retainedFeedOutcomeFor(id raftlog.ApplicationSemanticContractID, wire []byte) bool {
-	return retainedFeedAgreement(id) && bytes.HasPrefix(wire, []byte("GFO\x01")) || id == retainedOnlyFeedSemanticContractID() && bytes.HasPrefix(wire, []byte("GFO\x02"))
+	return retainedFeedAgreement(id) && bytes.HasPrefix(wire, []byte("GFO\x01")) || retainedOnlyFeedAgreement(id) && bytes.HasPrefix(wire, []byte("GFO\x02"))
 }
 
 func newRetainedOnlyFeedMaterializer(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits) (*declaredMaterializer, error) {
@@ -95,7 +95,7 @@ func feedLocalPosition(m graphPinManifest, partition uint64, positions []uint64)
 // never opens an active-bank historical view for an incoming snapshot.
 func (m *declaredMaterializer) feedRetention(q *reader, manifest graphPinManifest) (retainedFeedRetention, bool, error) {
 	var zero retainedFeedRetention
-	if m.SemanticContractID() != retainedOnlyFeedSemanticContractID() {
+	if !retainedOnlyFeedAgreement(m.SemanticContractID()) {
 		return zero, false, nil
 	}
 	wire, found, err := q.getBounded(retainedFeedRetentionKey(m.ns, manifest.id()), 512)
@@ -249,7 +249,7 @@ func (m *declaredMaterializer) feedPayloadSource(q *reader, manifest graphPinMan
 // collection. Generic certified At follows actual GC floors, not this mode bit.
 // Partial/unknown installs retain their originals and retry the SAME request.
 func (o *retainedFeedOwner) ToRetainedOnly(ctx context.Context, request [16]byte) error {
-	if !o.valid() || ctx == nil || request == ([16]byte{}) || o.publisher.coordinator.host.machine.SemanticContractID() != retainedOnlyFeedSemanticContractID() {
+	if !o.valid() || ctx == nil || request == ([16]byte{}) || !retainedOnlyFeedAgreement(o.publisher.coordinator.host.machine.SemanticContractID()) {
 		return errInvalid
 	}
 	o.mu.Lock()

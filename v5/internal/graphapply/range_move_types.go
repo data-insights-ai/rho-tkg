@@ -59,8 +59,8 @@ func (r rangeMoveIntent) valid() bool {
 		r.source.semantic == r.target.semantic && rangeMoveGraphAgreement(r.source.semantic) &&
 		r.publication.Validate() == nil && [16]byte(r.publication.Graph) == [16]byte(r.source.graph) &&
 		r.epoch >= r.publication.InitialEpoch && r.epoch < math.MaxUint64 &&
-		r.maxPages > 0 && r.maxPages <= 1024 && r.pageRows > 0 && r.pageRows <= 256 &&
-		r.pageBytes > 0 && r.pageBytes <= 1<<20
+		r.maxPages > 0 && r.maxPages <= rangeMovePageLimit(r.source.semantic) && r.pageRows > 0 && r.pageRows <= 256 &&
+		r.pageBytes > 0 && r.pageBytes <= 1<<20 && (!rangeMoveSpans(r.source.semantic) || r.pageRows <= 32 && r.pageBytes <= 64<<10)
 }
 
 func encodeRangeMoveIntent(r rangeMoveIntent) ([]byte, error) {
@@ -72,7 +72,11 @@ func encodeRangeMoveIntent(r rangeMoveIntent) ([]byte, error) {
 		return nil, err
 	}
 	return boundedEncoding(1024, func(w *boundedWriter) {
-		w.add([]byte{'G', 'M', 'I', 1})
+		version := byte(1)
+		if rangeMoveSpans(r.source.semantic) {
+			version = 2
+		}
+		w.add([]byte{'G', 'M', 'I', version})
 		w.add(r.id[:])
 		w.add(appendAllocationScope(nil, r.source))
 		w.add(appendAllocationScope(nil, r.target))
@@ -85,7 +89,11 @@ func encodeRangeMoveIntent(r rangeMoveIntent) ([]byte, error) {
 }
 
 func decodeRangeMoveIntent(wire []byte) (rangeMoveIntent, error) {
-	body, err := graphBody(wire, "GMI\x01", 1024)
+	magic := "GMI\x01"
+	if bytes.HasPrefix(wire, []byte("GMI\x02")) {
+		magic = "GMI\x02"
+	}
+	body, err := graphBody(wire, magic, 1024)
 	if err != nil {
 		return rangeMoveIntent{}, err
 	}
@@ -94,20 +102,22 @@ func decodeRangeMoveIntent(wire []byte) (rangeMoveIntent, error) {
 	left, right := c.take(120), c.take(120)
 	publication := c.field(256)
 	r.epoch = c.u64()
-	r.maxPages, r.pageRows, r.pageBytes = c.count(1024, 0), c.count(256, 0), c.count(1<<20, 0)
+	r.maxPages, r.pageRows, r.pageBytes = c.count(rangeMoveSpanMaxPages, 0), c.count(256, 0), c.count(1<<20, 0)
 	if c.err != nil || len(c.b) != 0 {
 		return rangeMoveIntent{}, errors.Join(errCorrupt, c.err)
 	}
 	r.source = readAllocationScope(&decoder{b: left})
 	r.target = readAllocationScope(&decoder{b: right})
 	r.publication, err = graphstore.DecodeRangePublication(publication)
-	if err != nil || !r.valid() {
+	canonical, e := encodeRangeMoveIntent(r)
+	if err != nil || e != nil || !r.valid() || !bytes.Equal(canonical, wire) {
 		return rangeMoveIntent{}, errors.Join(errCorrupt, err)
 	}
 	return r, nil
 }
 
 type rangeMoveStatus struct {
+	format               byte // zero is exact historical GMO1; two is fresh spans only.
 	ns                   namespace
 	move                 [16]byte
 	intent               [32]byte
@@ -119,11 +129,15 @@ type rangeMoveStatus struct {
 }
 
 func encodeRangeMoveStatus(s rangeMoveStatus) ([]byte, error) {
-	if !s.ns.valid() || s.move == ([16]byte{}) || s.intent == ([32]byte{}) || s.phase < rangeMoveFence || s.phase > rangeMoveAbort || s.index == 0 || s.result < rangeMoveApplied || s.result > rangeMoveLimit || s.sequence > 1024 {
+	if !s.ns.valid() || s.move == ([16]byte{}) || s.intent == ([32]byte{}) || s.phase < rangeMoveFence || s.phase > rangeMoveAbort || s.index == 0 || s.result < rangeMoveApplied || s.result > rangeMoveLimit || s.format != 0 && s.format != 2 || s.sequence > uint64(rangeMoveStatusPageLimit(s.format)) {
 		return nil, errInvalid
 	}
 	return boundedEncoding(256, func(w *boundedWriter) {
-		w.add([]byte{'G', 'M', 'O', 1})
+		version := byte(1)
+		if s.format == 2 {
+			version = 2
+		}
+		w.add([]byte{'G', 'M', 'O', version})
 		w.add(appendNamespace(nil, s.ns))
 		w.add(s.move[:])
 		w.add(s.intent[:])
@@ -137,13 +151,20 @@ func encodeRangeMoveStatus(s rangeMoveStatus) ([]byte, error) {
 }
 
 func decodeRangeMoveStatus(wire []byte) (rangeMoveStatus, error) {
-	body, err := graphBody(wire, "GMO\x01", 256)
+	magic := "GMO\x01"
+	if bytes.HasPrefix(wire, []byte("GMO\x02")) {
+		magic = "GMO\x02"
+	}
+	body, err := graphBody(wire, magic, 256)
 	if err != nil {
 		return rangeMoveStatus{}, err
 	}
 	c := graphCursor{b: body}
 	ns := c.take(24)
 	s := rangeMoveStatus{move: c.array()}
+	if magic == "GMO\x02" {
+		s.format = 2
+	}
 	copy(s.intent[:], c.take(32))
 	s.phase, s.result = rangeMovePhase(c.tag()), c.tag()
 	s.index, s.floor, s.round, s.sequence, s.rows, s.size = c.u64(), c.u64(), c.u64(), c.u64(), c.u64(), c.u64()

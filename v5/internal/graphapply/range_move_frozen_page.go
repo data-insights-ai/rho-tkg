@@ -71,7 +71,7 @@ func (s *graphSourceServer) moveFrozenPage(ctx context.Context, request graphSou
 		return nil, errors.Join(errCorrupt, err)
 	}
 	progress, err := decodeRangeMoveProgress(wire, arena)
-	if err != nil || !progress.transferComplete() || progress.imported != nil || question.page > progress.graphPages+progress.replay.sequence {
+	if err != nil || !progress.transferComplete() || progress.imported != nil || question.spans != rangeMoveSpans(s.host.machine.SemanticContractID()) || question.page > progress.graphPages+progress.replayPageCount() {
 		return nil, errors.Join(errInvalid, err)
 	}
 	intentRecord, present, err := crossControl(&q, rangeMoveControlKey(q.ns, question.move, 'I'), 1024)
@@ -104,7 +104,26 @@ func (s *graphSourceServer) moveFrozenPage(ctx context.Context, request graphSou
 			return nil, err
 		}
 		page, err = graphstore.EncodeRangeMovePage(p, arena)
+	case 3:
+		if !rangeMoveSpans(s.host.machine.SemanticContractID()) {
+			return nil, errInvalid
+		}
+		before, e := decodeRangeMoveReplayCursor(receipt.Value[1:], arena)
+		if e != nil {
+			return nil, e
+		}
+		frozen := q
+		frozen.view, frozen.base = lease.view, lease.info.root
+		batch, e := exportMoveReplayBatch(&frozen, q.ns, before, intent.pageBytes, intent.pageRows)
+		q.rows, q.bytes = frozen.rows, frozen.bytes
+		if e != nil {
+			return nil, e
+		}
+		page, err = encodeMoveReplayBatch(batch, arena, intent.pageBytes)
 	case 2:
+		if rangeMoveSpans(s.host.machine.SemanticContractID()) {
+			return nil, errInvalid
+		}
 		before, e := decodeRangeMoveReplayCursor(receipt.Value[1:], arena)
 		if e != nil {
 			return nil, e
@@ -146,7 +165,7 @@ func (s *graphSourceServer) moveFrozenPage(ctx context.Context, request graphSou
 }
 
 func (s *remoteGraphSource) moveFrozenPage(ctx context.Context, sequence uint64) (page []byte, err error) {
-	if s == nil || ctx == nil || s.move == nil || sequence == 0 || sequence > 1024 {
+	if s == nil || ctx == nil || s.move == nil || sequence == 0 || sequence > uint64(rangeMovePageLimit(s.move.scope.semantic)) {
 		return nil, errInvalid
 	}
 	if err := s.mu.lock(ctx); err != nil {
@@ -165,7 +184,7 @@ func (s *remoteGraphSource) moveFrozenPage(ctx context.Context, sequence uint64)
 	if time.Now().After(s.deadline) {
 		return nil, graphstore.ErrSourceUnavailable
 	}
-	q := rangeMoveQuery{move: s.move.moveID, page: sequence, nonce: [16]byte{1}}
+	q := rangeMoveQuery{spans: rangeMoveSpans(s.move.scope.semantic), move: s.move.moveID, page: sequence, nonce: [16]byte{1}}
 	b := s.endpoint.budget
 	const framing = graphSourceFrameBytes + 2048
 	b.mu.Lock()
@@ -211,7 +230,12 @@ func (s *remoteGraphSource) moveFrozenPage(ctx context.Context, sequence uint64)
 	data := c.field(1 << 20)
 	actual, e := decodeRangeMoveQuery(query)
 	q.nonce = response.nonce
-	if c.err != nil || len(c.b) != 0 || e != nil || actual != q || intent != s.move.intentHash || index != s.move.manifestIndex || image != s.move.manifestHash || kind < 1 || kind > 2 || rows > q.sourceRows || nativeBytes > q.sourceBytes || owned > q.outputBytes {
+	if c.err != nil || len(c.b) != 0 || e != nil || actual != q || intent != s.move.intentHash || index != s.move.manifestIndex || image != s.move.manifestHash || kind < 1 || kind > func() byte {
+		if q.spans {
+			return 3
+		}
+		return 2
+	}() || q.spans && kind == 2 || rows > q.sourceRows || nativeBytes > q.sourceBytes || owned > q.outputBytes {
 		return nil, errors.Join(errInvalid, c.err, e)
 	}
 	b.mu.Lock()

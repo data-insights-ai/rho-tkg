@@ -38,7 +38,7 @@ func (m *declaredMaterializer) feedEnvelope(f retainedFeedFrame, arena *graphsta
 	}
 	if bytes.HasPrefix(f.changes, []byte("GML\x01")) {
 		status, err := decodeRangeMoveStatus(f.outcome)
-		if err != nil || status.ns != m.ns || status.index != f.index || status.round != f.round || status.phase != rangeMoveActivate || status.result != rangeMoveApplied {
+		if err != nil || status.ns != m.ns || status.index != f.index || status.round != f.round || status.phase != rangeMoveActivate || status.result != rangeMoveApplied || status.format != rangeMoveStatusFormat(m.SemanticContractID()) {
 			return empty, errors.Join(errInvalid, err)
 		}
 		intent, err := decodeRangeMoveIntent(f.intent)
@@ -344,7 +344,7 @@ func (m *declaredMaterializer) feedNativeFrame(q *reader, index uint64, maximum 
 			if s.index < index {
 				original = s.index
 			}
-		case bytes.HasPrefix(out.outcome, []byte("GMO\x01")):
+		case moveStatusWireFor(m.SemanticContractID(), out.outcome):
 			s, e := decodeRangeMoveStatus(out.outcome)
 			if e != nil || s.ns != m.ns || s.index > index {
 				return errors.Join(errCorrupt, e)
@@ -448,7 +448,7 @@ func (m *declaredMaterializer) feedNativeFrame(q *reader, index uint64, maximum 
 						return errors.Join(errCorrupt, e, e2)
 					}
 					out.originalOutcome = wire
-				case bytes.HasPrefix(out.outcome, []byte("GMO\x01")):
+				case moveStatusWireFor(m.SemanticContractID(), out.outcome):
 					s, e := decodeRangeMoveStatus(out.outcome)
 					if e != nil {
 						return e

@@ -28,7 +28,11 @@ func newDeclaredSnapshotAuditor(s *raftlog.Store, n namespace, d graphstore.Owne
 	if s == nil || !n.valid() || idalloc.GraphID(d.Graph()) != n.graph || agreement != declaredSemanticContractID() && agreement != graphGenesisSemanticContractID() && !partitionGraphAgreement(agreement) {
 		return nil, errInvalid
 	}
-	if crossGraphAgreement(agreement) && (s.ApplicationControls().Version != 1 || s.ApplicationRecovery().Version != 1) {
+	if rangeMoveSpans(agreement) {
+		if s.ApplicationControls().Version != 1 || s.ApplicationRecovery().Version != 3 || s.ApplicationRetention().Version != 1 {
+			return nil, errInvalid
+		}
+	} else if crossGraphAgreement(agreement) && (s.ApplicationControls().Version != 1 || s.ApplicationRecovery().Version != 1) {
 		return nil, errInvalid
 	}
 	if err := l.validate(); err != nil {
@@ -49,7 +53,13 @@ func newDeclaredSnapshotAuditor(s *raftlog.Store, n namespace, d graphstore.Owne
 	if policy.MaxImageBytes > l.sourceBytes {
 		return nil, errLimit
 	}
-	contract, err := raftlog.ApplicationContractForPolicyWithRecovery(policy, s.ApplicationControls(), s.ApplicationRecovery())
+	var contract raftlog.ApplicationContract
+	var err error
+	if rangeMoveSpans(agreement) {
+		contract, err = raftlog.ApplicationContractForPolicyWithRetention(policy, s.ApplicationControls(), s.ApplicationRecovery(), s.ApplicationRetention())
+	} else {
+		contract, err = raftlog.ApplicationContractForPolicyWithRecovery(policy, s.ApplicationControls(), s.ApplicationRecovery())
+	}
 	if err != nil {
 		return nil, err
 	}

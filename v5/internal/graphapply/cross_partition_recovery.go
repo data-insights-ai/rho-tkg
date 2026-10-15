@@ -68,6 +68,9 @@ func (m *declaredMaterializer) crossRecovery(q *reader, r crossCommand, manifest
 	}
 	if r.phase == crossRegister || r.phase == crossPrepare && m.ns.partition != manifest.coordinator {
 		reservation, err := m.crossReservation(manifest, r.phase)
+		if err == nil && rangeMoveSpans(m.SemanticContractID()) {
+			reservation = spanCrossReservation(reservation)
+		}
 		return raftlog.ApplicationRecoveryPurpose{Reserve: &reservation}, err
 	}
 	// This is a capacity recipe, not applied registration authority. A follower
@@ -83,6 +86,12 @@ func (m *declaredMaterializer) crossRecovery(q *reader, r crossCommand, manifest
 	}
 	if r.phase == crossResolve && len(r.proofs) == 1 && !r.proofs[0].commit {
 		use.RetireBefore = uint32(crossResolve)
+	}
+	if rangeMoveSpans(m.SemanticContractID()) {
+		use.RetireBefore = 0
+		if r.phase == crossResolve {
+			use.RetireBefore = uint32(crossResolve)
+		}
 	}
 	return raftlog.ApplicationRecoveryPurpose{Use: &use}, nil
 }

@@ -12,6 +12,8 @@ import (
 )
 
 type rangeMoveQuery struct {
+	spans                                bool
+	lineage                              bool
 	move                                 [16]byte
 	nonce                                [16]byte
 	page                                 uint64
@@ -23,7 +25,7 @@ type rangeMoveQuery struct {
 
 func (q rangeMoveQuery) valid() bool {
 	lookupValid := q.origin == 0 && q.family == 0 && q.record == ([16]byte{}) || q.origin != 0 && (rangeMoveReplayDataTag(q.family) || rangeMoveReplayControlTag(q.family)) && q.record != ([16]byte{}) && q.page == 0
-	return lookupValid && q.move != ([16]byte{}) && q.nonce != ([16]byte{}) && q.page <= 1024 && q.sourceRows > 0 && q.sourceRows <= 1<<20 && q.sourceBytes > 0 && q.sourceBytes <= 64<<20 && q.outputBytes > 0 && q.outputBytes <= 64<<20
+	return lookupValid && q.move != ([16]byte{}) && q.nonce != ([16]byte{}) && q.page <= uint64(rangeMoveQueryPageLimit(q.spans)) && (!q.lineage || q.spans && q.page == 0 && q.origin == 0) && q.sourceRows > 0 && q.sourceRows <= 1<<20 && q.sourceBytes > 0 && q.sourceBytes <= 64<<20 && q.outputBytes > 0 && q.outputBytes <= 64<<20
 }
 
 type pendingRangeMoveRead struct {
@@ -59,6 +61,8 @@ type rangeMoveReply struct {
 	err      error
 }
 
+// The unique local pending ID retains the COMPLETE question, including fresh
+// profile/hydration flags; GMR1 never grants authority independently of that slot.
 func encodeRangeMoveReadContext(id allocationReadID, q rangeMoveQuery) []byte {
 	w := boundedWriter{max: 160, b: make([]byte, 0, 128)}
 	w.add([]byte{'G', 'M', 'R', 1})
@@ -91,7 +95,7 @@ func (h *allocationHost) ReadRangeMove(ctx context.Context, q rangeMoveQuery) (a
 	if h.unavailableLocked() {
 		return allocationEvent{}, replica.ErrStopped
 	}
-	if h.machine == nil || !h.machine.rangeMoves() || h.driver == nil {
+	if h.machine == nil || !h.machine.rangeMoves() || h.driver == nil || q.spans != rangeMoveSpans(h.machine.SemanticContractID()) {
 		return allocationEvent{}, errInvalid
 	}
 	if h.sequence == math.MaxUint64 || h.pendingReadCount() >= 16 {
@@ -134,7 +138,7 @@ func (h *allocationHost) completeRangeMoveRead(wire []byte, index uint64) (range
 }
 
 func (m *declaredMaterializer) observeRangeMove(ctx context.Context, question rangeMoveQuery, index uint64) (observation rangeMoveObservation, err error) {
-	if ctx == nil || !question.valid() || question.page != 0 || !m.rangeMoves() {
+	if ctx == nil || !question.valid() || question.page != 0 || !m.rangeMoves() || question.spans != rangeMoveSpans(m.SemanticContractID()) {
 		return observation, errInvalid
 	}
 	if question.sourceBytes < 172 || question.outputBytes < 172 {
@@ -186,7 +190,7 @@ func (m *declaredMaterializer) observeRangeMove(ctx context.Context, question ra
 	}
 	if present {
 		observation.status, err = decodeRangeMoveStatus(statusWire)
-		if err != nil || observation.status.ns != m.ns || observation.status.move != question.move || observation.status.index > index {
+		if err != nil || observation.status.ns != m.ns || observation.status.move != question.move || observation.status.index > index || observation.status.format != rangeMoveStatusFormat(m.SemanticContractID()) {
 			return observation, errors.Join(errCorrupt, err)
 		}
 		intent, found, err := crossControl(&q, rangeMoveControlKey(m.ns, question.move, 'I'), 1024)
@@ -203,7 +207,7 @@ func (m *declaredMaterializer) observeRangeMove(ctx context.Context, question ra
 		}
 		if found {
 			observation.decision, err = decodeRangeMoveStatus(decision.Value)
-			if err != nil || observation.decision.move != question.move || observation.decision.intent != observation.status.intent || observation.decision.phase != rangeMoveDecide || observation.decision.round == 0 {
+			if err != nil || observation.decision.move != question.move || observation.decision.intent != observation.status.intent || observation.decision.phase != rangeMoveDecide || observation.decision.round == 0 || observation.decision.format != rangeMoveStatusFormat(m.SemanticContractID()) {
 				return observation, errors.Join(errCorrupt, err)
 			}
 		}
@@ -212,6 +216,20 @@ func (m *declaredMaterializer) observeRangeMove(ctx context.Context, question ra
 			return observation, err
 		}
 
+	}
+	if question.lineage {
+		progress, e := decodeRangeMoveProgress(observation.progress, q.arena)
+		if e != nil || !progress.transferComplete() || progress.imported != nil || m.ns.partition != progress.descriptor.Spec.From.Partition {
+			return observation, errors.Join(errInvalid, e)
+		}
+		if e = m.hydrateMoveRetention(&q, question.move, &progress); e != nil {
+			return observation, e
+		}
+		progress.inlineRetention = true
+		observation.progress, e = encodeRangeMoveProgress(progress, q.arena)
+		if e != nil {
+			return observation, e
+		}
 	}
 	if question.origin != 0 {
 		if question.origin != m.ns.partition {
@@ -230,10 +248,10 @@ func (m *declaredMaterializer) observeRangeMove(ctx context.Context, question ra
 }
 
 func checkRangeMoveProof(p rangeMoveProof) error {
-	if p.owner == nil || p.owner.machine == nil || !p.owner.machine.rangeMoves() || !p.question.valid() || p.question.page != 0 || p.id.session != p.owner.session || p.id.sequence == 0 || p.id.sequence > p.owner.issuedReads.Load() || p.observation.scope != p.owner.machine.scope() || p.observation.index == 0 || p.observation.root.Index != p.observation.index || len(p.observation.root.Image) != 172 || sha256.Sum256(p.observation.root.Image) != p.observation.root.ImageHash || p.observation.configuration == ([32]byte{}) {
+	if p.owner == nil || p.owner.machine == nil || !p.owner.machine.rangeMoves() || !p.question.valid() || p.question.spans != rangeMoveSpans(p.observation.scope.semantic) || p.question.page != 0 || p.id.session != p.owner.session || p.id.sequence == 0 || p.id.sequence > p.owner.issuedReads.Load() || p.observation.scope != p.owner.machine.scope() || p.observation.index == 0 || p.observation.root.Index != p.observation.index || len(p.observation.root.Image) != 172 || sha256.Sum256(p.observation.root.Image) != p.observation.root.ImageHash || p.observation.configuration == ([32]byte{}) {
 		return errInvalid
 	}
-	if p.observation.status.phase != 0 && (p.observation.status.move != p.question.move || p.observation.status.index > p.observation.index || sha256.Sum256(p.observation.intent) != p.observation.status.intent) {
+	if p.observation.status.phase != 0 && (p.observation.status.move != p.question.move || p.observation.status.index > p.observation.index || p.observation.status.format != rangeMoveStatusFormat(p.observation.scope.semantic) || sha256.Sum256(p.observation.intent) != p.observation.status.intent) {
 		return errInvalid
 	}
 	if p.observation.sourceRows < 0 || p.observation.sourceRows > p.question.sourceRows || p.observation.sourceBytes < 172 || p.observation.sourceBytes > p.question.sourceBytes || p.observation.ownedBytes < 0 || p.observation.ownedBytes > p.question.outputBytes || p.observation.status.phase == 0 && (len(p.observation.intent) != 0 || len(p.observation.progress) != 0) {

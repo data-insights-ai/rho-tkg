@@ -58,6 +58,9 @@ func (m *declaredMaterializer) stageRangeMoveActivation(q *reader, c rangeMoveCo
 	}
 	_, _, digest := progress.transferSummary()
 	if m.collectsHistory() {
+		if e := m.hydrateMoveRetention(q, current.move, &progress); e != nil {
+			return raftlog.ApplicationBatch{}, e
+		}
 		packet, e := decodeMoveRetainedLineage(progress.retention, q.arena)
 		if e != nil || packet.scope != intent.source || packet.move != current.move || packet.intent != current.intent {
 			return raftlog.ApplicationBatch{}, errors.Join(errInvalid, e)
