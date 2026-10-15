@@ -1134,10 +1134,19 @@ reproduced, independently classified semantic failure admits optional-action
 deletion. Late resource/source refusals override earlier verdicts; missing final
 measurements remain missing evidence. Guards are authored, not executed. This
 finite component does not close fault applicability, sustained soak or B/C/D.
+Sustained fixed-seed execution is source-integrated at `5d07c0ce` in the same
+controller. Explicit admission preserves old 16-trial defaults and bounds the
+fresh mode to 64 trials under one original deadline and cumulative resource
+grant. Six causal cases precede recorded fresh-cohort replay pairs; both the
+requested successful-round count and active duration must complete. Eleven
+trial slots protect failure replay and bounded deletion. Exhaustion and late
+cleanup refusal cannot pass. Source review and whitespace checks passed;
+guards and sustained execution remain unexecuted. Fresh-cohort repetition does
+not establish long-lived-store endurance or full D acceptance.
 
 Current worker lanes: Sol 6.1/high for remaining B/C/D program implementation;
-Sol 6.1/high for a focused remaining D source-gap inventory after integrating
-the bounded exploration/replay controller; Sol 6.1/high for the native transfer workload
+Sol 6.1/high for the completed sustained controller and the next native
+comparison handoff; Sol 6.1/high for the native transfer workload
 implementation. FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing
 authority; these prefixes do not establish physical server placement. Source
