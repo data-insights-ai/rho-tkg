@@ -790,15 +790,23 @@ exact observation, self-kill and recover the same directory. The independent
 checker joins the actual AS5 stream, complete EOF, original request/prefix and
 old/current serial witnesses. Physical-clear targets come from the same live
 Begin observation and acknowledged import owner. Initialization is explicitly
-unsupported by this finite recipe. Retention-reader and the broader applicable
+unsupported by this finite recipe. Broader applicable
 protocol/message/leader/conflict combinations remain implementation work;
 no runtime qualification or whole-D closure is implied.
 Actual publication composition is source-integrated at `cb483e5c`: before/after
 Commit(Sync) self-kill/reap and same-directory recovery assert the exact native
 compaction boundary, immutable request and local old cut before catch-up.
 Application checkpoint persistence already co-installs with the native entry;
-this does not invent a second graph checkpoint Sync. Retention-reader and the
-broader applicable combinations remain open. No new guard or process case ran.
+this does not invent a second graph checkpoint Sync. Retained-reader/GC
+composition is source-integrated at `dd83b824`: a genuine reader acquired after
+proposal and before quorum installation survives the committed floor and blocks
+physical collection. After Close, before/after GC-page Sync interruption,
+self-kill and same-directory recovery authenticate the same installed original
+and native cursor through physical EOF. Old roots then expire while current
+state and semantic anchors remain exact. This finite recipe claims member1's
+physical collection and the all-A committed floor; broader applicable
+protocol/message/leader/conflict combinations remain open. No new guard or
+process case ran.
 
 Native snapshot-to-feed ownership is source-integrated at `4868f0f7`. One genuine
 issued pin retains the snapshot and full-vector feed; complete original-round
@@ -857,14 +865,23 @@ fresh-claim join at `edec78fa`, before raw source verification. Existing selecto
 wrappers retain their exact semantics. Reservation, installation, application
 claims and cursor issuance remain distinct costs; neither planned numeric IDs
 nor artifact hashes establish cursor issuance. These checker guards are authored,
-not executed. A separate selector launcher mismatch remains to fix: its controller
-exports `RHO_GRAPH_WORKLOAD_OUTPUT`, while its parent requires
-`RHO_GRAPH_PROCESS_ARTIFACT` and an owned directory.
+not executed. Selector artifact bootstrap is corrected at `b8b3f141`: the
+controller owns a fresh absolute engine directory and supplies the same path to
+both output variables; existing or linked destinations refuse. Exact family cut
+decoding is corrected at `09dd9653`: selectors admit their durable-column
+agreement and ordered one/two-participant scopes; raw export uses its exact
+admitted agreement and two participants. Cost5 retains its original decoder
+contract. Ordinary nonunique property Set does not require remote endpoint lives
+(SEM06); matched create/update rows require a present relationship and endpoint
+life coverage at every percentage in both engines. Native workload integration
+uses genuine planned checks while preserving ordinary Set. Count actual read/write
+participants, not empty cross-protocol manifests or endpoint placement, before
+accepting any affected scalar cost row.
 
-Current worker lanes: Sol 6.1/high for the native retained-only feed workload/GC
-adapter, installed-grant proof reuse and remaining native workload families;
-Sol 6.1/high for actual retention-reader storage transitions,
-then broader protocol/message/leader/conflict composition;
+Current worker lanes: Sol 6.1/high for exact family cut decoding, then the native
+retained-only feed workload/GC adapter and remaining native workload families;
+Sol 6.1/high for the finite applicable protocol/storage/message/leader/conflict
+composition registry and driver;
 Sol 6.1/high for the native create/update counterpart and source-grounded
 FDB accounting follow-ups. These packages
 are in implementation and do not add accepted runtime evidence. The
