@@ -833,3 +833,13 @@ func TestForEachDocValuesOrdinalForwards(t *testing.T) {
 		t.Fatalf("ForEachDocValuesMultiOrdinal = %d %v %v (label %q)", gen, ok, err, spy.lastLabel)
 	}
 }
+
+func (s *nodeOpsSpy) RangeCardinalityAt(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	s.record("RangeCardinalityAt")
+	return 0, false, s.err
+}
+
+func (s *nodeOpsSpy) ForEachByLabelOrdinals(label string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	s.record("ForEachByLabelOrdinals")
+	return s.err
+}

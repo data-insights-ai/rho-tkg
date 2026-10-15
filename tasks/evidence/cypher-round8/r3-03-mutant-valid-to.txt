@@ -1,0 +1,12 @@
+--- FAIL: TestMemberTimeStats (0.01s)
+    --- FAIL: TestMemberTimeStats/memory (0.00s)
+        member_time_stats_test.go:181: valid-to only: LabelTimeStats = {Members:7 ExplicitValid:2 LastEnded:1792027275573}, want {Members:7 ExplicitValid:3 LastEnded:1792027275573}
+    --- FAIL: TestMemberTimeStats/badger (0.00s)
+        member_time_stats_test.go:181: valid-to only: LabelTimeStats = {Members:7 ExplicitValid:2 LastEnded:1792027275575}, want {Members:7 ExplicitValid:3 LastEnded:1792027275575}
+    --- FAIL: TestMemberTimeStats/tiered (0.00s)
+        member_time_stats_test.go:181: valid-to only: LabelTimeStats = {Members:7 ExplicitValid:2 LastEnded:1792027275577}, want {Members:7 ExplicitValid:3 LastEnded:1792027275577}
+    --- FAIL: TestMemberTimeStats/sharded (0.00s)
+        member_time_stats_test.go:181: valid-to only: LabelTimeStats = {Members:7 ExplicitValid:2 LastEnded:1792027275581}, want {Members:7 ExplicitValid:3 LastEnded:1792027275581}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.335s
+FAIL

@@ -37,6 +37,10 @@ type PropertyTxMembers[ID cmp.Ordered] struct {
 	values   map[string]txPostings[ID]
 	postings int64
 	ordered  map[string]*sortedChunks[ID]
+	// numeric, nil until OrderNumeric opens it (round 8 request 2): the
+	// value keys by numeric sort key, so MembersInRange visits the values of
+	// a range instead of every value. Record keeps it once open.
+	numeric *numericValueView
 }
 
 type txPostings[ID cmp.Ordered] struct {
@@ -82,6 +86,9 @@ func (m *PropertyTxMembers[ID]) Record(vk string, id ID, tx types.Instant) {
 		m.values[vk] = txPostings[ID]{id: id, tx: tx}
 		m.postings++
 		m.orderNew(vk, id)
+		if m.numeric != nil {
+			m.numeric.add(vk)
+		}
 		return
 	case p.id == id:
 		if merged := MergeFirstTx(p.tx, tx); merged != p.tx {

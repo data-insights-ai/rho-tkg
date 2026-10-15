@@ -156,6 +156,7 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 			}
 			ms.dropExAdjRowsLocked(relID, rows) // nothing of it is left to find (backlog 50)
 			delete(ms.relHistory, relID)        // purge the rel's whole history too
+			ms.histGen.Add(1)                   // a history row removed (LabelTimeStats cache)
 			ms.relHistoryRemovedLocked(relID)
 			// Nothing of the relationship is left for its rel-type temporal
 			// envelope to cover (a plain delete keeps it; a purge does not).
@@ -185,6 +186,7 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		}
 		delete(ms.nodes, nid)
 		delete(ms.nodeHistory, nid) // purge the node's whole history too
+		ms.histGen.Add(1)           // a history row removed (LabelTimeStats cache)
 		ms.nodeHistoryRemovedLocked(nid)
 		nodesPurged++
 		purgedIDs = append(purgedIDs, nid)

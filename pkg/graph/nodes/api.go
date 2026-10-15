@@ -46,6 +46,8 @@ type Ops interface {
 	ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	RangeCardinalityAt(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	ForEachByLabelOrdinals(label string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
 	ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
 	CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error)
@@ -542,6 +544,46 @@ func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin,
 		return 0, false, err
 	}
 	return ops.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// RangeCardinalityAt is RangeCardinality at a temporal coordinate (round 8
+// request 2): the number of versions ForEachByLabelPropertyRange returns under
+// opts (each node's version ByLabel resolves) whose value, a float32 widened
+// to float64, lies within [min, max] per the inclusivity flags (NaN never;
+// After and Limit ignored). Counted from the declared property index's
+// membership sidecar: only the nodes whose rows ever carried a value in the
+// range are resolved, no label fold. exact=false with no error declines (the
+// caller folds and counts): no temporal filter in opts (use RangeCardinality),
+// invalid opts, a NaN bound, no property index on (label, propKey), a store
+// without store.NodePropertyTxMemberRangeCapability (tiered, sharded, external
+// stores), a depth-scoped read on a store with depth-aware history, an
+// unknown label.
+func (a *API) RangeCardinalityAt(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.RangeCardinalityAt(label, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// ForEachByLabelOrdinals streams the nodes ForEachByLabel(label, opts)
+// streams, restricted to the ID set given as a bitset over dense ordinals
+// (round 8 request 4): bit k of set[k/64] selects the node whose current
+// ordinal is k (n.Ordinal(); size the set from MaxOrdinal), current or at a
+// temporal coordinate, ascending ID order, fn false stops, After and Limit
+// as for ForEachByLabel. A node without a current row has no ordinal and is
+// never selected, at a pin too. Where the store tells ordinals from RAM and
+// lists members (badger, sharded) only the selected rows are read and, at a
+// coordinate, only the selected candidates resolved; memory filters its
+// in-RAM rows. Same isolation and frozen-row contract as ForEachByLabel.
+// Errors: those of ForEachByLabel, store.ErrCapabilityNotSupported on a
+// store without ordinals (tiered, badger DisableOrdinals).
+func (a *API) ForEachByLabelOrdinals(label string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByLabelOrdinals(label, set, opts, fn)
 }
 
 // ForEachIDByLabelPropertyRangeOrdered streams (ID, value) of the label's

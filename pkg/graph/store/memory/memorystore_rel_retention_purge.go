@@ -136,6 +136,7 @@ func (ms *Store) purgeRelLocked(id types.RelID) error {
 		}
 	}
 	delete(ms.relHistory, id)
+	ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 	ms.relHistoryRemovedLocked(id)
 	delete(ms.relBeliefWatermark, id)
 	indexpkg.PurgeRelFromAllTemporalIndexes(ms.relTypeTemporalIndexes, id.SnowflakeID())

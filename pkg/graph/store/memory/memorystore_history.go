@@ -553,6 +553,7 @@ func (ms *Store) truncateNodeHistoryRouted(nid types.NodeID, keepVersions int, t
 
 	if keepVersions == 0 {
 		delete(ms.nodeHistory, nid)
+		ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 		return ms.logHistoryTruncateRoutedLocked(storecontract.ChangeNodeHistoryTruncate, nid.SnowflakeID(), false, 0, token)
 	}
 
@@ -569,6 +570,7 @@ func (ms *Store) truncateNodeHistoryRouted(nid types.NodeID, keepVersions int, t
 	// Delete all but the most recent keepVersions.
 	for _, v := range versions[:len(versions)-keepVersions] {
 		delete(inner, v)
+		ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 	}
 	return ms.logHistoryTruncateRoutedLocked(storecontract.ChangeNodeHistoryTruncate, nid.SnowflakeID(), false, int64(keepVersions), token)
 }
@@ -767,6 +769,7 @@ func (ms *Store) truncateRelHistoryRouted(rid types.RelID, keepVersions int, tok
 
 	if keepVersions == 0 {
 		delete(ms.relHistory, rid)
+		ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 		return ms.logHistoryTruncateRoutedLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), false, 0, token)
 	}
 
@@ -782,6 +785,7 @@ func (ms *Store) truncateRelHistoryRouted(rid types.RelID, keepVersions int, tok
 
 	for _, v := range versions[:len(versions)-keepVersions] {
 		delete(inner, v)
+		ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 	}
 	return ms.logHistoryTruncateRoutedLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), false, int64(keepVersions), token)
 }
@@ -1260,11 +1264,13 @@ func (ms *Store) trimNodeHistoryFromRouted(nid types.NodeID, minVersion uint32, 
 	for version := range inner {
 		if version >= minVersion {
 			delete(inner, version)
+			ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 			deleted = true
 		}
 	}
 	if len(inner) == 0 {
 		delete(ms.nodeHistory, nid)
+		ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 	}
 	if !deleted {
 		return nil
@@ -1307,11 +1313,13 @@ func (ms *Store) trimRelHistoryFromRouted(rid types.RelID, minVersion uint32, to
 	for version := range inner {
 		if version >= minVersion {
 			delete(inner, version)
+			ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 			deleted = true
 		}
 	}
 	if len(inner) == 0 {
 		delete(ms.relHistory, rid)
+		ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 	}
 	if !deleted {
 		return nil

@@ -44,6 +44,10 @@ type Ops interface {
 	RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error)
 	PropertyNDV(label, propertyKey string) (storepkg.PropertyNDV, error)
 	RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV, error)
+	PropertyBounds(label, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error)
+	RelPropertyBounds(typeName, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error)
+	LabelTimeStats(label string) (storepkg.MemberTimeStats, bool, error)
+	RelTypeTimeStats(typeName string) (storepkg.MemberTimeStats, bool, error)
 	RelCountByType(typeName string) (int, error)
 	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
 	TrackRelTypeDegrees(typeName string) error
@@ -295,6 +299,64 @@ func (a *API) RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV
 		return storepkg.PropertyNDV{}, err
 	}
 	return ops.RelPropertyNDV(typeName, propertyKey)
+}
+
+// PropertyBounds returns the smallest and largest numeric value of
+// propertyKey over label's current nodes (store.PropertyBounds: Min, Max, a
+// stored value at each, and the exact type-class partition with Missing, so
+// NumericOnly and NullFree) read at one moment, O(1) from the property
+// index's first and last key and maintained counters. ok=false with no error
+// where it cannot be stated exactly, never answered by a walk: no property
+// index on the pair, an index being built, an Elements index, an integer of
+// magnitude past 2^53 in the index, badger PropertyIndexOnDisk, planner
+// statistics disabled, tiered, sharded and external stores, an unknown label,
+// a temporal opts. Read-only: no write cost. Errors: a malformed label or
+// key, ErrGraphClosed.
+func (a *API) PropertyBounds(label, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyBounds{}, false, err
+	}
+	return ops.PropertyBounds(label, propertyKey, opts)
+}
+
+// RelPropertyBounds is the relationship mirror of PropertyBounds over a
+// relationship type's property index (memory and badger).
+func (a *API) RelPropertyBounds(typeName, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyBounds{}, false, err
+	}
+	return ops.RelPropertyBounds(typeName, propertyKey, opts)
+}
+
+// LabelTimeStats returns store.MemberTimeStats for label: current members,
+// those whose row carries an explicit valid time (tkg_valid_from or
+// tkg_valid_to), and LastEnded, the latest transaction instant a row of an
+// entity whose rows ever carried the label was ended (HistoryAfter(pin):
+// whether a read pinned there may see a non-current version; Eternal: neither).
+// No write cost: the explicit count is counted on the first call after a
+// write to the label (one pass over its current rows) and then served in O(1)
+// against the label's mutation epoch; LastEnded is O(1) on a store without
+// node history rows, else one RAM stamp lookup per ever-member. exact=false
+// when writers kept moving the epoch across three counts, or the store keeps
+// no epoch (tiered, external stores: counted per call). An unknown label is
+// zero stats. Errors: a malformed label, ErrGraphClosed.
+func (a *API) LabelTimeStats(label string) (storepkg.MemberTimeStats, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.MemberTimeStats{}, false, err
+	}
+	return ops.LabelTimeStats(label)
+}
+
+// RelTypeTimeStats is LabelTimeStats for a relationship type.
+func (a *API) RelTypeTimeStats(typeName string) (storepkg.MemberTimeStats, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.MemberTimeStats{}, false, err
+	}
+	return ops.RelTypeTimeStats(typeName)
 }
 
 // RelCountByType returns the count of relationships of the given type.

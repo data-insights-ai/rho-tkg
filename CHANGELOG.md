@@ -6,6 +6,90 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Planned as the next patch of the latest tag, v4.55.2 (sigma-tkgd round 8, additive doors only; released after the
+user's OK).
+
+### Added
+
+- **`Stats().PropertyBounds` / `Stats().RelPropertyBounds`: the numeric bounds of a property per label and per
+  relationship type** (sigma-tkgd round 8 request 1, statistics). `PropertyBounds(label, key, opts)` /
+  `RelPropertyBounds(type, key, opts)` return `(store.PropertyBounds, ok, err)`: `Min` / `Max` (the ordered index's
+  first and last numeric key: integers up to 2^53 and float64 as themselves, ±Inf included, a float32 by its
+  shortest decimal rendering, NaN left out), `MinValue` / `MaxValue` (a stored value at each in its stored type;
+  where several numeric types share the key the first of float64, float32, int64, int, int32, int16, int8, uint64,
+  uint, uint32, uint16, uint8) and `Classes`, the exact type-class partition of the same entities with `Missing`;
+  methods `HasNumeric`, `NumericOnly` (no string, bool, list or map; NaN counts as a number) and `NullFree` (no
+  entity without the key). The index, the class counters and the label (type) count are read under one store lock
+  (memory: the store lock; badger: `idxMu`), so the parts agree under concurrent writers. O(1): no row and no index
+  entry walked. `ok=false`, no error, where the bounds cannot be stated exactly (never answered by a walk): no
+  property index on the pair, an index being built, an Elements index, an index holding an integer of magnitude
+  past 2^53, badger `PropertyIndexOnDisk` (nodes), planner statistics disabled, tiered, sharded and external
+  stores, an unknown label or type, a temporal `opts`. Memory and badger (new optional store capabilities
+  `store.NodePropertyBoundsCapability` / `store.RelPropertyBoundsCapability`). Read-only, no write cost (no write
+  path changed). 300,000 nodes (`BenchmarkPropertyBounds`, one CPU, load 27-29): the read 0.69-0.71 us memory /
+  0.83-0.89 us badger; an Update that moves the maximum plus the read 3.9-6.5 us memory / 8.0-11.5 us badger,
+  against `PropertyStats`' exact Max after the same write (a rescan of the label) 49-137 ms memory / 0.98-1.47 s
+  badger. The valid-time hull per label or type was not built: no structure holds it exactly without a per-write
+  cost (backlog 71). Tests `TestPropertyBounds` (every backend against a brute-force pass through creates, updates
+  and deletes of the extremes, label changes, a backfilled index; declines), `TestPropertyBoundsFlags`,
+  `TestPropertyBoundsDeclines`, `TestPropertyBoundsAfterReopen`, `TestPropertyBoundsUnderWriters`,
+  `TestNumericBoundsMatchesScan`, store tests; evidence `tasks/evidence/cypher-round8/r1-*`.
+- **Numeric range reads at a temporal coordinate from the property index** (sigma-tkgd round 8 request 2, sources:
+  a range over every valid-time version as recorded at a pin, `ValidStart: 1, ValidEnd: MaxInt64, TxAt: pin`).
+  `Nodes().ForEachByLabelPropertyRange` / `Rels().ForEachByTypePropertyRange` under a temporal `opts` folded every
+  label (type) member; with a declared property index on the pair they now take as candidates the entities whose
+  rows ever carried a value in the range (the index's membership sidecar, pruned by the transaction-time pin, as
+  `ByLabelAndProperty` does for one value), resolve them with the label read's resolver and apply the same value
+  test: the same answers in the same order (each entity's resolved version, backlog 16 unchanged), from the
+  entities that can match. New `Nodes().RangeCardinalityAt` / `Rels().RangeCardinalityAt(…, opts)` count those
+  versions within the bounds per the inclusivity flags (a float32 widened, NaN never) with `exact=true` where the
+  sidecar serves; `exact=false` declines (no temporal filter, invalid opts, NaN bound, no index, tiered, sharded,
+  external stores, depth-scoped tiered reads, unknown label). `RangeCardinality` is unchanged (declines at a
+  coordinate). New optional store capabilities `store.NodePropertyTxMemberRangeCapability` /
+  `store.RelPropertyTxMemberRangeCapability` (memory, badger): the sidecar opens a numeric view of its values at
+  its first range read (lazy, one sort key and value-key reference per distinct numeric value, kept by the
+  sidecar's existing record step; sidecars no range read asked for and stores without a sidecar pay nothing, the
+  plain write path is unchanged). 50,000 nodes with two versions each, 500 in range (`BenchmarkRangeAtPin`, one
+  CPU, load 38-44): memory 59 ms (fold) -> 0.66-1.6 ms, badger 308-389 ms -> 1.45-2.2 ms; the count 0.45-0.84 ms
+  memory / 1.46-1.57 ms badger (before: declined, the caller folded). Tests `TestRangeAtFromSidecar` (every
+  backend, against `ByLabel` / `ByType` filtered by the fold's test, at pinned all-valid-time, `TxPin`, `ValidAt`
+  with and without `TxAt` and window coordinates, through value updates, values first written after the numeric
+  view opened, label changes and deletes), `TestPropertyTxMembersInRange`, store tests; evidence
+  `tasks/evidence/cypher-round8/r2-*`.
+- **`Stats().LabelTimeStats` / `Stats().RelTypeTimeStats`: explicit valid time and ended rows per label and type**
+  (sigma-tkgd round 8 request 3, sources: declare a source's rows eternal at bind without scanning; backlog 67).
+  `(store.MemberTimeStats{Members, ExplicitValid, LastEnded}, exact, err)`: the current members, those whose row
+  carries `tkg_valid_from` or `tkg_valid_to`, and the latest `TxTo` / `DeletedAt` over the history rows of the
+  entities whose rows ever carried the label (type); `HistoryAfter(pin)` = `LastEnded > pin` (a read pinned there
+  may see a non-current version), `Eternal()` = neither. Lazy, no write cost on the plain path: the explicit count
+  is counted at the first call after a write to the label (one pass over its current rows) and served in O(1)
+  against the label's (type's) mutation epoch; `LastEnded` is O(1) without history rows of the kind
+  (`HistoryCountCapability`), else recomputed once per history change over the ever-members with history (label
+  membership sidecar, RAM presence check, history stamps; no row read on memory and badger) and cached under the
+  store's new history generation (`HistoryGeneration()`: memory one atomic add per history row write or removal,
+  badger the existing history-key epochs). 100,000 nodes (`BenchmarkLabelTimeStats`, load 65-73): cached reads
+  120-280 ns, after a write 23-75 ms memory / 110-220 ms badger; plain memory Update unchanged within noise (30
+  allocs, 2,675 B both; `BenchmarkMemoryUpdateWritePath`, `tasks/evidence/cypher-round8/r3-06-write-path.txt`).
+  `exact=false` when writers kept moving the epoch across three counts or the store keeps no epoch (tiered:
+  counted per call). Tests `TestMemberTimeStats` (every backend, against a fold over every row through untimed
+  creates, explicit valid-from, valid-to only, closing valid-to, updates, deletes, label moves, writes to other
+  labels and types; cached and recounted), store tests for `HistoryGeneration`; evidence
+  `tasks/evidence/cypher-round8/r3-*`.
+- **`Nodes().ForEachByLabelOrdinals` / `Rels().ForEachByTypeOrdinals`: label and type scans restricted to an ordinal
+  bitset** (sigma-tkgd round 8 request 4, the dynamic-filter wave: `NodesEffectiveByIDs` takes an ID list). `(label,
+  set []uint64, opts, fn)` streams the rows `ForEachByLabel` / `ForEachByType` stream under `opts`, current or at any
+  temporal coordinate, for the entities whose current ordinal is in the bitset (bit k of `set[k/64]`), ascending ID
+  order, `After` / `Limit` as for the scan; an entity without a current row has no ordinal and is never selected.
+  New optional store capability `store.OrdinalLookupCapability` (`NodeOrdinalsOf` / `RelOrdinalsOf`: memory, badger;
+  ordinals from RAM under one lock) and helper `store.OrdinalSetHas`: where the store also lists a label's members
+  (badger, sharded) only the selected rows are lent, and at a coordinate only the selected candidates are resolved.
+  `store.ErrCapabilityNotSupported` without ordinals (tiered, badger `DisableOrdinals`). Read-only, no write cost.
+  100,000 nodes, 1% selected (`BenchmarkForEachByOrdinals`, one CPU): badger current 95 ms (scan and filter) ->
+  11 ms, badger `TxPin` 360-404 ms -> 18 ms, memory `TxPin` 43 ms -> 21 ms, memory current unchanged (1.0 ms). Tests
+  `TestForEachByOrdinals` (memory, badger, sharded against the filtered scan at current, `After`/`Limit`, `TxPin`,
+  `ValidAt` and all-valid-time-at-a-pin coordinates through updates, deletes and label moves; tiered refused), store
+  tests; evidence `tasks/evidence/cypher-round8/r4-*`.
+
 ## [4.55.1] - 2026-10-15
 
 ### Changed

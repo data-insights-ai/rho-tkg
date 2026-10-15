@@ -82,7 +82,9 @@ func (c *Core) scanRelColumnsTemporalLocked(names []string, props []string, opts
 // inclMin / inclMax say: the door's contract is over-selection with fn
 // re-checking, and an exclusive float64 comparison could drop an int64 past
 // 2^53 that rounds onto the bound. After applies by ID (ID order); Limit bounds
-// the rows emitted, as on the index path.
+// the rows emitted, as on the index path. With a declared index on (label,
+// propKey) the versions come from the membership sidecar's range candidates
+// (range_at.go), the same answers from the entities that can match.
 func forEachNodeInRangeTemporal(c *Core, label, propKey string, min, max float64,
 	opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 
@@ -91,7 +93,7 @@ func forEachNodeInRangeTemporal(c *Core, label, propKey string, min, max float64
 	var nodes []*types.Node
 	if err := c.readUnderRLock(func() error {
 		var e error
-		nodes, e = c.nodesByLabelLocked(label, gopts)
+		nodes, e = c.nodesInRangeAtLocked(label, propKey, min, max, gopts)
 		return e
 	}); err != nil {
 		return err
@@ -126,7 +128,7 @@ func forEachRelInRangeTemporal(c *Core, typeName, propKey string, min, max float
 	var rels []*types.Relationship
 	if err := c.readUnderRLock(func() error {
 		var e error
-		rels, e = c.relsByTypeLocked(typeName, gopts)
+		rels, e = c.relsInRangeAtLocked(typeName, propKey, min, max, gopts)
 		return e
 	}); err != nil {
 		return err

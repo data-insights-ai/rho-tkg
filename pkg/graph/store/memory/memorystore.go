@@ -259,6 +259,9 @@ type Store struct {
 	// memorystore_history_epoch.go): count-checked watch tables.
 	nodeHistEpochs storeutil.HistoryEpochs[types.NodeID]
 	relHistEpochs  storeutil.HistoryEpochs[types.RelID]
+	// histGen moves at every history row write and removal (and Clear): the
+	// freshness stamp of the cached LastEnded of Stats().LabelTimeStats.
+	histGen atomic.Uint64
 
 	// ADR-0011 S2: declared bulk relationship types and their in-RAM column
 	// segments (see memorystore_segments.go). All nil/zero until a type is
@@ -441,6 +444,7 @@ func (ms *Store) Clear() error {
 	ms.exOutIdx, ms.exInIdx = nil, nil
 	ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
+	ms.histGen.Add(1) // every history row removed (LabelTimeStats cache)
 	ms.nodeHistTop, ms.relHistTop = nil, nil
 	ms.histStampsMu.Lock()
 	ms.nodeHistStamps, ms.relHistStamps = nil, nil
