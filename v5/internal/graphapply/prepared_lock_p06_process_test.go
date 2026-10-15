@@ -52,7 +52,7 @@ func TestPreparedLockP06FirstYESLeaderKillOriginalRecovery(t *testing.T) {
 				p06BindBusiness(t, original, manifest)
 				f.packetDrain()
 				for id := uint64(1); id <= 3; id++ {
-					r := f.n.all[id].call(t, processRequest{op: processEntryRecord, index: vote.index})
+					r := f.call(f.n.all[id], processRequest{op: processEntryRecord, index: vote.index})
 					if !bytes.Equal(r.outcome, p06ReplyBody(t, boundary.Reply)) || len(r.changes) != 0 {
 						t.Fatal("first YES is not the complete original on every A voter", id)
 					}
@@ -88,7 +88,7 @@ func TestPreparedLockP06FirstYESLeaderKillOriginalRecovery(t *testing.T) {
 				}
 				stopCapture := p06CaptureRecovery(f, recoverer, manifest.tx)
 				defer stopCapture()
-				r := f.n.all[recoverer].call(t, processRequest{op: processSourceCoordinate, data: original.wire})
+				r := f.call(f.n.all[recoverer], processRequest{op: processSourceCoordinate, data: original.wire})
 				result, err := decodeGraphProcessCoordinatorResult(r)
 				if err != nil || result.decision.phase != crossDecide || result.decision.commit != commit || result.resume.tx != manifest.tx || result.resume.request != manifest.request.id || result.decision.digest != manifest.digest {
 					t.Fatal("successor did not settle retained original", result, err)

@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -232,88 +231,13 @@ func nativeBatchCrossCase(t *testing.T, phase byte, partition uint64, kind raftl
 	if partition == 8 {
 		member, successor = 4, 5
 	}
-	target := f.n.all[member]
-	dir := filepath.Join(f.n.dir, fmt.Sprint(member))
 	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, deadline))
 	defer cancel()
-	owner, err := nativeBatchCall(ctx, target, nativeBatchControl{Version: 1, Action: "inspect"})
-	if err != nil || owner.State != "idle" || owner.Run != run || owner.DeadlineUnixNanos > deadline {
+	gate, err := newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: 5, Partition: partition, Member: member, Phase: crossPhase(phase), Kind: kind, Side: side}, run, deadline)
+	if err != nil {
 		t.Fatal("genuine bounded batch owner", err)
 	}
-	var mu sync.Mutex
-	var selected []byte
-	var arm nativeBatchReceipt
-	var receiptReads uint64
-	readExpected := func(expected nativeBatchReceipt) (nativeBatchReceipt, error) {
-		mu.Lock()
-		if receiptReads >= 129 {
-			mu.Unlock()
-			return nativeBatchReceipt{}, errLimit
-		}
-		receiptReads++ // Prepay64KiB per8KiB file/decode/canonical check.
-		mu.Unlock()
-		return nativeBatchRead(dir, expected)
-	}
-	hub := target.mux.hub
-	hub.mu.Lock()
-	if hub.beforeRelay != nil || hub.failedStep != nil {
-		hub.mu.Unlock()
-		t.Fatal("batch recipe owner already installed")
-	}
-	hub.beforeRelay = func(callCtx context.Context, origin, part uint64, request []byte) error {
-		if origin != 5 || part != partition {
-			return nil
-		}
-		command, cross, err := nativeFaultPhase(request)
-		if err != nil || !cross || byte(command.phase) != phase {
-			return err
-		}
-		mu.Lock()
-		defer mu.Unlock()
-		if selected != nil {
-			return nil
-		}
-		q, err := decodeGraphSourceRequest(request)
-		if err != nil {
-			return err
-		}
-		p, err := decodeGraphSourceProposal(q.command)
-		if err != nil || len(p.wire) == 0 || len(p.wire) > nativeLogicalTransitionBodyBytes {
-			return errors.Join(errLimit, err)
-		}
-		control := nativeBatchControl{Version: 1, Action: "arm", Cookie: owner.Cookie, Sequence: 1, Kind: kind, Side: side, CommandSHA256: sha256.Sum256(p.wire)}
-		actual, err := nativeBatchCall(callCtx, target, control)
-		if err != nil || actual.State != "armed" || actual.Control != control || actual.Run != run {
-			return errors.Join(errCorrupt, err)
-		}
-		// Fixed one-command observation was admitted before the actual send.
-		selected = make([]byte, len(p.wire))
-		copy(selected, p.wire)
-		arm = actual
-		return nil
-	}
-	hub.failedStep = func(job graphProcessPacketJob, actual error) bool {
-		if actual == nil || job.packet.To != member || hub.peer(member).p != target {
-			return false
-		}
-		mu.Lock()
-		expected := arm
-		mu.Unlock()
-		if expected.Sequence == 0 {
-			return false
-		}
-		// A background/election Step error alone is insufficient. Only this
-		// exact target's previously fsynced selected batch can retire delivery.
-		if _, err := readExpected(expected); err != nil {
-			return false
-		}
-		f.mu.Lock()
-		f.down[member] = true
-		f.mu.Unlock()
-		return true
-	}
-	hub.mu.Unlock()
-	clear := sync.OnceFunc(func() { hub.mu.Lock(); hub.beforeRelay, hub.failedStep = nil, nil; hub.mu.Unlock() })
+	clear := gate.close
 	defer clear()
 	call, stopCall := f.beginRun(5, proposal)
 	defer stopCall()
@@ -329,13 +253,7 @@ func nativeBatchCrossCase(t *testing.T, phase byte, partition uint64, kind raftl
 		t.Fatal("unmatched native batch selector or retained caller")
 	}
 	stopCall()
-	mu.Lock()
-	actualArm, selectedCommand := arm, selected
-	mu.Unlock()
-	if actualArm.Sequence == 0 {
-		t.Fatal("no actual selected source command")
-	}
-	receipt, err := readExpected(actualArm)
+	actualArm, receipt, selectedCommand, _, err := gate.evidence()
 	if err != nil {
 		t.Fatal("unmatched/exhausted/failed native batch cannot qualify", err)
 	}
@@ -358,9 +276,7 @@ func nativeBatchCrossCase(t *testing.T, phase byte, partition uint64, kind raftl
 	}
 	through := f.indexes()
 	name := fmt.Sprintf("batch-cross-%d-p%d-k%d-%s", phase, partition, kind, side)
-	mu.Lock()
-	reads := receiptReads
-	mu.Unlock()
+	reads := gate.readCount()
 	artifact := nativeBatchArtifact{nativeFaultArtifact: nativeFaultArtifact{Version: 3, Profile: nativeBatchProfile, Case: name, Original: proposal.wire, Manifest: command.manifest, PendingCaller: pending, Before: old, Retained: retained, Recovered: recovered, Reopened: reopened, Processes: []pairedFaultProcess{failed, rejoined}, From: from, Through: through, Records: p06Records(f, from, through)}, Phase: phase, Partition: partition, Kind: kind, Side: side, SelectedCommand: selectedCommand, Arm: actualArm, Batch: receipt, Run: run, DeadlineUnixNanos: deadline, ReceiptReads: reads, ReceiptGrantBytes: reads * 65536}
 	header := artifact
 	header.Records = nil

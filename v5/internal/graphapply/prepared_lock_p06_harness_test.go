@@ -104,8 +104,15 @@ func p06FirstYESGate(f *pairedGraphFaultNetwork, actor uint64) (<-chan pairedFau
 	hub.mu.Unlock()
 	return entered, sync.OnceFunc(func() { hub.mu.Lock(); hub.afterRelay = nil; hub.mu.Unlock() })
 }
-func p06PrepareBoundary(t *testing.T, boundary pairedFaultBoundary, coordinator uint64) (allocationProposal, crossStatus, crossManifest) {
+func p06PrepareBoundary(t *testing.T, boundary pairedFaultBoundary, coordinator uint64, voters ...uint64) (allocationProposal, crossStatus, crossManifest) {
 	t.Helper()
+	voter := uint64(1)
+	if len(voters) > 1 || len(voters) == 1 && (voters[0] < 1 || voters[0] > 3) {
+		t.Fatal("actual first Prepare voter")
+	}
+	if len(voters) == 1 {
+		voter = voters[0]
+	}
 	proposal := p06SourceProposal(t, boundary.Request)
 	command, _, err := decodeCrossCommand(proposal.wire, defaultMaterializerLimits())
 	if err != nil || command.phase != crossPrepare || command.ns.partition != 3 {
@@ -121,7 +128,7 @@ func p06PrepareBoundary(t *testing.T, boundary pairedFaultBoundary, coordinator 
 	}
 	reply, err := decodeGraphWireResponse(boundary.Reply)
 	request, requestErr := decodeGraphSourceRequest(boundary.Request)
-	if err != nil || requestErr != nil || reply.err != nil || reply.peer.voter != 1 || reply.peer.scope.partition != 3 || reply.sequence != request.sequence || reply.nonce != request.nonce {
+	if err != nil || requestErr != nil || reply.err != nil || reply.peer.voter != voter || reply.peer.scope.partition != 3 || reply.sequence != request.sequence || reply.nonce != request.nonce {
 		t.Fatal("first YES authenticated source correlation", err, requestErr)
 	}
 	vote, err := decodeCrossStatus(reply.body)
@@ -213,7 +220,7 @@ func p06CheckRecoveryPhases(t *testing.T, phases []p06Phase, original allocation
 	}
 }
 func p06LocalProposal(f *pairedGraphFaultNetwork, actor, kind, owner uint64, data []byte) allocationProposal {
-	r := f.n.all[actor].call(f.t, processRequest{op: processCertifiedAction, entity: kind, index: owner, data: data})
+	r := f.call(f.n.all[actor], processRequest{op: processCertifiedAction, entity: kind, index: owner, data: data})
 	p, err := decodeCertifiedProcessProposal(r.aux)
 	if err != nil {
 		f.t.Fatal(err)
@@ -235,15 +242,15 @@ func p06Submit(f *pairedGraphFaultNetwork, actor uint64, proposal allocationProp
 	}
 	f.mu.Unlock()
 	defer func() { group.blocked = prior }()
-	group.event(t, actor, processRequest{op: processPropose, data: wire})
+	f.groupEvent(group, actor, processRequest{op: processPropose, data: wire})
 	f.drain()
-	state := f.n.all[actor].call(t, processRequest{op: processStateOp})
-	r := f.n.all[actor].call(t, processRequest{op: processEntryRecord, index: state.applied})
+	state := f.call(f.n.all[actor], processRequest{op: processStateOp})
+	r := f.call(f.n.all[actor], processRequest{op: processEntryRecord, index: state.applied})
 	for id, voter := range group.nodes {
 		if group.blocked[id] {
 			continue
 		}
-		got := voter.call(t, processRequest{op: processEntryRecord, index: state.applied})
+		got := f.call(voter, processRequest{op: processEntryRecord, index: state.applied})
 		if !bytes.Equal(got.outcome, r.outcome) || !bytes.Equal(got.changes, r.changes) {
 			t.Fatal("original voter record differs", id)
 		}
@@ -251,14 +258,14 @@ func p06Submit(f *pairedGraphFaultNetwork, actor uint64, proposal allocationProp
 	return p06LocalRecord{proposal.target.partition, state.applied, bytes.Clone(proposal.wire), bytes.Clone(r.outcome), bytes.Clone(r.changes)}
 }
 func p06SubmitLocal(f *pairedGraphFaultNetwork, actor uint64, proposal allocationProposal, want reason) p06LocalRecord {
-	before := f.n.all[actor].call(f.t, processRequest{op: processStateOp})
+	before := f.call(f.n.all[actor], processRequest{op: processStateOp})
 	r := p06Submit(f, actor, proposal)
 	ns, _ := certifiedProcessNamespace(actor)
 	o, err := decodePartitionGraphOutcome(r.Outcome, ns)
 	if err != nil || o.reason != want || o.disposition != applied || o.hash != sha256.Sum256(proposal.wire) || o.index != r.Index {
 		f.t.Fatal("local original outcome", o, err)
 	}
-	after := f.n.all[actor].call(f.t, processRequest{op: processStateOp})
+	after := f.call(f.n.all[actor], processRequest{op: processStateOp})
 	if want != reasonNone && (len(r.CDC) != 0 || !bytes.Equal(before.image, after.image)) {
 		f.t.Fatal("prepared-lock refusal changed root/CDC")
 	}
@@ -289,10 +296,10 @@ func p06ReplayPhase(f *pairedGraphFaultNetwork, proposal allocationProposal, tx 
 	if proposal.target.partition == 8 {
 		actor = f.n.leaders[1]
 	}
-	before := f.n.all[actor].call(f.t, processRequest{op: processStateOp})
+	before := f.call(f.n.all[actor], processRequest{op: processStateOp})
 	r := p06Submit(f, actor, proposal)
 	status, err := decodeCrossStatus(r.Outcome)
-	after := f.n.all[actor].call(f.t, processRequest{op: processStateOp})
+	after := f.call(f.n.all[actor], processRequest{op: processStateOp})
 	if err != nil || status.tx != tx || status.phase != crossResolve || status.index >= r.Index || len(r.CDC) != 0 || !bytes.Equal(before.image, after.image) {
 		f.t.Fatal("phase duplicate lost original or duplicated effect", status, err)
 	}
@@ -300,11 +307,16 @@ func p06ReplayPhase(f *pairedGraphFaultNetwork, proposal allocationProposal, tx 
 }
 func p06Observe(f *pairedGraphFaultNetwork, actor uint64, mode graphReadMode, cut graphCut) p06Observation {
 	handle, actual := f.open(actor, mode, cut)
-	raw := nativeLifecycleRead(f.t, f.n, actor, handle, 0)
-	f.n.all[actor].call(f.t, processRequest{op: processSourceCertifiedClose, index: handle})
+	if f.parent != nil {
+		defer f.cleanupCertifiedHandle(f.n.all[actor], &handle)
+	}
+	raw := f.lifecycleRead(actor, handle, 0)
+	f.call(f.n.all[actor], processRequest{op: processSourceCertifiedClose, index: handle})
+	handle = 0
 	handle, _ = f.open(actor, graphReadAt, actual)
-	raw.Census = nativeLifecycleRead(f.t, f.n, actor, handle, 2).Census
-	f.n.all[actor].call(f.t, processRequest{op: processSourceCertifiedClose, index: handle})
+	raw.Census = f.lifecycleRead(actor, handle, 2).Census
+	f.call(f.n.all[actor], processRequest{op: processSourceCertifiedClose, index: handle})
+	handle = 0
 	view, err := lifecycleNormalizeView(raw, f.trace.IdentityMapping, f.trace.OperationMapping)
 	if err != nil {
 		f.t.Fatal(err)
@@ -346,7 +358,7 @@ func p06Records(f *pairedGraphFaultNetwork, from, through [2]uint64) []lifecycle
 			f.t.Fatal("P06 record range exceeds finite cell")
 		}
 		for index := from[group] + 1; index <= through[group]; index++ {
-			r := f.n.all[leader].call(f.t, processRequest{op: processEntryRecord, index: index})
+			r := f.call(f.n.all[leader], processRequest{op: processEntryRecord, index: index})
 			partition := uint64(3)
 			if group == 1 {
 				partition = 8

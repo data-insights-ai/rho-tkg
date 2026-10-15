@@ -178,6 +178,7 @@ func decodePairedProcessChunk(b []byte) (raftlog.ApplicationSnapshotChunk, error
 
 func (f *pairedGraphFaultNetwork) snapshotPage() {
 	f.t.Helper()
+	f.requireActive()
 	f.snapshotPages++
 	if f.snapshotPages > processDeliveries {
 		f.t.Fatal("paired cumulative snapshot page bound", f.snapshotPages)
@@ -190,19 +191,19 @@ func (f *pairedGraphFaultNetwork) snapshotPage() {
 func (f *pairedGraphFaultNetwork) snapshotCatchup(leader uint64, sealed map[uint64]bool) {
 	f.t.Helper()
 	donor := f.n.all[leader]
-	offers := donor.call(f.t, processRequest{op: processOffers})
+	offers := f.call(donor, processRequest{op: processOffers})
 	for _, owner := range offers.handles {
 		if sealed[owner] {
 			continue
 		}
 		for {
 			f.snapshotPage()
-			built := donor.call(f.t, processRequest{op: processBuild, index: owner})
+			built := f.call(donor, processRequest{op: processBuild, index: owner})
 			if built.ready {
 				break
 			}
 		}
-		donor.call(f.t, processRequest{op: processSeal, index: owner})
+		f.call(donor, processRequest{op: processSeal, index: owner})
 		sealed[owner] = true
 	}
 	group := f.n.group(leader)
@@ -241,7 +242,36 @@ func (f *pairedGraphFaultNetwork) transferSnapshot(leader uint64, send processSn
 		f.t.Fatal("paired snapshot receiver still down", send.packet.To)
 	}
 	donor, receiver := f.n.all[leader], f.n.all[send.packet.To]
-	wire := donor.call(f.t, processRequest{op: processManifest, index: send.owner}).aux
+	var knownOwner uint64
+	finished := false
+	senderFinished := false
+	if f.parent != nil {
+		defer func() {
+			if finished {
+				return
+			}
+			// Only an actually returned Begin handle may be closed. Cleanup
+			// survives caller expiry; it never invents a successful import/ACK.
+			f.mu.Lock()
+			reaped := f.down[send.packet.To] && receiver.closed && receiver.cmd.ProcessState != nil
+			f.mu.Unlock()
+			if knownOwner != 0 && !reaped {
+				if _, err := f.cleanupExchange(receiver, processRequest{op: processImportClose, index: knownOwner}); err != nil {
+					f.t.Error("interrupted actual import cleanup", err)
+				}
+			}
+			if !senderFinished {
+				feedback, err := f.cleanupExchange(donor, processRequest{op: processFeedback, index: send.owner, entity: 0})
+				if err != nil {
+					f.t.Error("interrupted actual sender failure feedback", err)
+				} else {
+					group := f.n.group(leader)
+					group.enqueue(f.t, feedback) // Actual packets only; expiry never fakes delivery.
+				}
+			}
+		}()
+	}
+	wire := f.call(donor, processRequest{op: processManifest, index: send.owner}).aux
 	spec := partitionCodecRequest(f.t, 1, defaultMaterializerLimits())
 	ns, _ := certifiedProcessNamespace(leader)
 	part, _ := spec.declaration.Partition(ns.partition)
@@ -255,25 +285,29 @@ func (f *pairedGraphFaultNetwork) transferSnapshot(leader uint64, send processSn
 	}
 	abandon := func() {
 		group := f.n.group(leader)
-		group.enqueue(f.t, donor.call(f.t, processRequest{op: processFeedback, index: send.owner, entity: 0}))
-		group.drain(f.t)
+		feedback := f.call(donor, processRequest{op: processFeedback, index: send.owner, entity: 0})
+		senderFinished = true
+		group.enqueue(f.t, feedback)
+		f.drainGroup(group)
+		finished = knownOwner == 0
 	}
 	if (f.nativeSnapshotState == "before-begin" || f.nativeSnapshotState == "before-close") && !f.nativeSnapshotNotice(nativeFaultSnapshotBoundary{Phase: "before-begin", Donor: leader, Receiver: send.packet.To, Manifest: wire, Packet: send.packet}) {
 		abandon()
 		return // A lost Begin response supplies NO import handle.
 	}
-	started := receiver.call(f.t, processRequest{op: processBeginImport, data: wire})
+	started := f.call(receiver, processRequest{op: processBeginImport, data: wire})
 	if len(started.handles) != 1 || len(started.aux) != 32 {
 		f.t.Fatal("paired exact receiver import owner")
 	}
 	owner := started.handles[0]
+	knownOwner = owner
 	if f.nativeSnapshotState != "" && !f.nativeSnapshotNotice(nativeFaultSnapshotBoundary{Phase: "after-begin", Donor: leader, Receiver: send.packet.To, Owner: owner, Manifest: wire, Packet: send.packet, Response: started}) {
 		abandon()
 		return
 	}
 	for {
 		f.snapshotPage()
-		page := donor.call(f.t, processRequest{op: processNext, index: send.owner})
+		page := f.call(donor, processRequest{op: processNext, index: send.owner})
 		chunk, err := decodePairedProcessChunk(page.aux)
 		if err != nil || chunk.Version != manifest.Version || chunk.CutID != manifest.CutID || !bytes.Equal(chunk.ManifestID[:], started.aux) || chunk.Visited > 64 || chunk.VisitedBytes > 256<<10 {
 			f.t.Fatal("paired actual snapshot page bounds/identity", err)
@@ -282,7 +316,7 @@ func (f *pairedGraphFaultNetwork) transferSnapshot(leader uint64, send processSn
 			abandon()
 			return
 		}
-		appended := receiver.call(f.t, processRequest{op: processAppend, index: owner, data: page.aux})
+		appended := f.call(receiver, processRequest{op: processAppend, index: owner, data: page.aux})
 		if !f.nativeSnapshotNotice(nativeFaultSnapshotBoundary{Phase: "after-append", Donor: leader, Receiver: send.packet.To, Owner: owner, Manifest: wire, Chunk: page.aux, Packet: send.packet, Response: appended}) {
 			abandon()
 			return
@@ -295,8 +329,8 @@ func (f *pairedGraphFaultNetwork) transferSnapshot(leader uint64, send processSn
 		abandon()
 		return
 	}
-	receiver.call(f.t, processRequest{op: processVerify, index: owner})
-	prepared := receiver.call(f.t, processRequest{op: processPrepare, index: owner})
+	f.call(receiver, processRequest{op: processVerify, index: owner})
+	prepared := f.call(receiver, processRequest{op: processPrepare, index: owner})
 	if prepared.stats[statPrepared] != 1 || prepared.stats[statImport] != 1 || prepared.stats[statVerified] != 1 {
 		f.t.Fatal("paired genuine dormant prepared owner missing")
 	}
@@ -308,7 +342,7 @@ func (f *pairedGraphFaultNetwork) transferSnapshot(leader uint64, send processSn
 		abandon()
 		return
 	}
-	activated := receiver.call(f.t, processRequest{op: processActivate, index: owner, packet: send.packet})
+	activated := f.call(receiver, processRequest{op: processActivate, index: owner, packet: send.packet})
 	if activated.stats[statCheckpoint] != manifest.Index || activated.stats[statAuditIndex] != manifest.Index || activated.cutID != manifest.CutID || !bytes.Equal(activated.manifestID[:], started.aux) {
 		f.t.Fatal("paired actual Raft Ready activation mismatch")
 	}
@@ -318,10 +352,18 @@ func (f *pairedGraphFaultNetwork) transferSnapshot(leader uint64, send processSn
 	// Actual receiver activation is proved before sender feedback; receiver ACK
 	// packets stay held until feedback on the still-pending exact sender owner.
 	group := f.n.group(leader)
-	group.enqueue(f.t, donor.call(f.t, processRequest{op: processFeedback, index: send.owner, entity: 1}))
+	feedback := f.call(donor, processRequest{op: processFeedback, index: send.owner, entity: 1})
+	senderFinished = true
+	group.enqueue(f.t, feedback)
 	group.enqueue(f.t, activated)
-	group.drain(f.t)
-	receiver.call(f.t, processRequest{op: processImportClose, index: owner})
+	f.drainGroup(group)
+	if f.parent == nil {
+		f.call(receiver, processRequest{op: processImportClose, index: owner})
+	} else if _, err := f.cleanupExchange(receiver, processRequest{op: processImportClose, index: owner}); err != nil {
+		f.t.Fatal("actual completed import cleanup", err)
+	}
+	knownOwner, finished = 0, true
+	f.requireActive()
 	f.t.Logf("paired actual AS5 snapshot sender%d receiver%d index%d cumulativePages%d", leader, send.packet.To, manifest.Index, f.snapshotPages)
 }
 

@@ -279,6 +279,8 @@ type pairedFaultTrace struct {
 type pairedGraphFaultNetwork struct {
 	t                     *testing.T
 	n                     *certifiedProcessNetwork
+	parent                context.Context             // Optional, immutable before fresh fixture publication.
+	conjunctionGate       *nativeConjunctionBatchGate // At most one; guarded by mu.
 	mu                    sync.Mutex
 	down                  map[uint64]bool
 	dropped               [][2]uint64
@@ -300,6 +302,16 @@ type pairedGraphFaultNetwork struct {
 
 func newPairedGraphFaultNetwork(t *testing.T) *pairedGraphFaultNetwork {
 	t.Helper()
+	return newPairedGraphFaultNetworkWithParent(t, nil)
+}
+
+func newPairedGraphFaultNetworkWithParent(t *testing.T, parent context.Context) *pairedGraphFaultNetwork {
+	t.Helper()
+	if parent != nil {
+		if _, bounded := parent.Deadline(); !bounded || parent.Err() != nil {
+			t.Fatal("fresh fixture requires its original live absolute deadline")
+		}
+	}
 	// Bootstrap/grant implementation is reused byte-for-byte, while cleanup and
 	// read admission belong to this fault cohort rather than legacy lifecycle.
 	dir, err := os.MkdirTemp(os.Getenv("RHO_GRAPH_PROCESS_ARTIFACT"), "rho-paired-graph-fault-")
@@ -308,7 +320,9 @@ func newPairedGraphFaultNetwork(t *testing.T) *pairedGraphFaultNetwork {
 	}
 	n := &certifiedProcessNetwork{all: make(map[uint64]*graphProcess), dir: dir, leaders: [2]uint64{1, 4}}
 	f := &pairedGraphFaultNetwork{t: t, n: n, down: make(map[uint64]bool), intentionalKills: make(map[*graphProcess]bool), noops: make(map[[2]uint64]*pairedFaultNoOp), trace: pairedFaultTrace{SchemaVersion: 1, FixtureID: "graph-fault-local-v1", Engine: "native-raft", IdentityMapping: lifecycleIDs(), NormalizationRules: []string{"Actual original request/TxID/round correspondence; no equal numeric cross-engine clocks", "Native precommit may retain YES/registration and pending Fresh; unknown caller is not observer authority", "Complete raw per-operation outcomes/CDC and decoded AllScope retained", "Same-cut entity census1..32; empty labels and five endpoint queries only"}, RawCounts: make(map[string]any), Scope: "Paired local functional graph fault comparison only; no physical-host/power-loss/cost or fullV2 acceptance"}}
+	f.parent = parent
 	for id := uint64(1); id <= 6; id++ {
+		f.requireActive()
 		n.all[id] = startGraphProcess(t, filepath.Join(dir, fmt.Sprint(id)), id, "RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1", "RHO_GRAPH_LIFECYCLE_PROCESS=1", "RHO_GRAPH_PAIRED_PROCESS=1")
 		f.incarnations = append(f.incarnations, n.all[id])
 	}
@@ -354,32 +368,32 @@ func newPairedGraphFaultNetwork(t *testing.T) *pairedGraphFaultNetwork {
 		t.Logf("paired cleanup: incarnations=%d all-reaped=%t successful=%d intentional-kills=%d calls=%d bootstrapPackets=%d admitted=%d", len(f.incarnations), allReaped, success, len(f.intentionalKills), calls, packets, allowance)
 	})
 	for g, id := range []uint64{1, 4} {
-		n.groups[g].event(t, id, processRequest{op: processCampaign})
+		f.groupEvent(n.groups[g], id, processRequest{op: processCampaign})
 	}
-	n.action(t, 1, certifiedInitialize, 3, nil)
-	n.read(t, 1, observeConfiguration, 0)
-	n.action(t, 1, certifiedInitialize, 8, nil)
+	f.bootstrapAction(1, certifiedInitialize, 3, nil)
+	f.bootstrapRead(1, observeConfiguration, 0)
+	f.bootstrapAction(1, certifiedInitialize, 8, nil)
 	for _, r := range []struct{ actor, id, partition uint64 }{{1, 1, 3}, {4, 2, 8}} {
-		n.read(t, r.actor, observeConfiguration, 0)
-		n.action(t, r.actor, certifiedBeginRecipient, r.id, nil)
-		n.read(t, 1, observeRecipient, r.id)
-		n.action(t, 1, certifiedRecipientTransition, 3, []byte{byte(fenceDeclaredRecipient)})
+		f.bootstrapRead(r.actor, observeConfiguration, 0)
+		f.bootstrapAction(r.actor, certifiedBeginRecipient, r.id, nil)
+		f.bootstrapRead(1, observeRecipient, r.id)
+		f.bootstrapAction(1, certifiedRecipientTransition, 3, []byte{byte(fenceDeclaredRecipient)})
 		if r.partition != 3 {
-			n.action(t, 1, certifiedRecipientTransition, r.partition, []byte{byte(fenceDeclaredRecipient)})
+			f.bootstrapAction(1, certifiedRecipientTransition, r.partition, []byte{byte(fenceDeclaredRecipient)})
 		}
-		n.read(t, r.actor, observeRecipient, r.id)
-		n.action(t, r.actor, certifiedRecipientTransition, 3, []byte{byte(acknowledgeDeclaredHome)})
-		n.read(t, 1, observeRecipient, r.id)
-		n.action(t, 1, certifiedRecipientTransition, 3, []byte{byte(activateDeclaredRecipient)})
-		n.read(t, 1, observeRecipient, r.id)
-		n.action(t, 1, certifiedRecipientTransition, r.partition, []byte{byte(publishDeclaredRecipient)})
-		n.read(t, r.actor, observeRecipient, r.id)
-		n.action(t, r.actor, certifiedOpenRecipient, 0, nil)
-		n.read(t, 1, observeRecipient, r.id)
-		n.read(t, 1, observeAllocator, 0)
-		n.action(t, 1, certifiedReserve, 0, nil)
-		n.group(1).event(t, 1, processRequest{op: processCertifiedRead, entity: uint64(observeGrant)})
-		n.action(t, 1, certifiedInstallGrant, r.partition, nil)
+		f.bootstrapRead(r.actor, observeRecipient, r.id)
+		f.bootstrapAction(r.actor, certifiedRecipientTransition, 3, []byte{byte(acknowledgeDeclaredHome)})
+		f.bootstrapRead(1, observeRecipient, r.id)
+		f.bootstrapAction(1, certifiedRecipientTransition, 3, []byte{byte(activateDeclaredRecipient)})
+		f.bootstrapRead(1, observeRecipient, r.id)
+		f.bootstrapAction(1, certifiedRecipientTransition, r.partition, []byte{byte(publishDeclaredRecipient)})
+		f.bootstrapRead(r.actor, observeRecipient, r.id)
+		f.bootstrapAction(r.actor, certifiedOpenRecipient, 0, nil)
+		f.bootstrapRead(1, observeRecipient, r.id)
+		f.bootstrapRead(1, observeAllocator, 0)
+		f.bootstrapAction(1, certifiedReserve, 0, nil)
+		f.groupEvent(n.group(1), 1, processRequest{op: processCertifiedRead, entity: uint64(observeGrant)})
+		f.bootstrapAction(1, certifiedInstallGrant, r.partition, nil)
 	}
 	return f
 }
@@ -414,22 +428,26 @@ func (f *pairedGraphFaultNetwork) live() map[uint64]*graphProcess {
 }
 func (f *pairedGraphFaultNetwork) drain() {
 	f.t.Helper()
-	ctx, cancel := context.WithTimeout(f.t.Context(), 10*time.Second)
+	f.requireActive()
+	ctx, cancel := f.operationContext(10 * time.Second)
 	defer cancel()
 	if err := drainGraphProcessMuxes(ctx, f.live()); err != nil {
 		f.t.Fatal("paired live-owner drain", err)
 	}
+	f.requireActive()
 }
 func (f *pairedGraphFaultNetwork) packetDrain() {
 	f.t.Helper()
+	f.requireActive()
 	hub := f.n.all[4].mux.hub
-	ctx, cancel := context.WithTimeout(f.t.Context(), 10*time.Second)
+	ctx, cancel := f.operationContext(10 * time.Second)
 	defer cancel()
 	for {
 		hub.mu.Lock()
 		idle := hub.packetBytes == 0 && hub.inFlight == 0 && len(hub.packets) == 0
 		hub.mu.Unlock()
 		if idle {
+			f.requireActive()
 			return
 		}
 		select {
@@ -449,7 +467,7 @@ func (f *pairedGraphFaultNetwork) open(actor uint64, mode graphReadMode, cut gra
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	r := f.n.all[actor].call(f.t, processRequest{op: processSourceCertifiedOpen, data: wire})
+	r := f.call(f.n.all[actor], processRequest{op: processSourceCertifiedOpen, data: wire})
 	handle, actual, err := decodeGraphE15ReadToken(r.aux)
 	if err != nil || len(actual.certificates) != 2 {
 		f.t.Fatal("paired actual certified cut", err)
@@ -464,24 +482,32 @@ func (f *pairedGraphFaultNetwork) open(actor uint64, mode graphReadMode, cut gra
 func (f *pairedGraphFaultNetwork) observe(actor uint64, mode graphReadMode, cut graphCut, compact bool) pairedFaultObservation {
 	f.t.Helper()
 	handle, actual := f.open(actor, mode, cut)
+	if f.parent != nil {
+		defer f.cleanupCertifiedHandle(f.n.all[actor], &handle)
+	}
 	selector := uint64(0)
 	if compact {
 		selector = 1
 	}
-	response := f.n.all[actor].call(f.t, processRequest{op: processLifecycleObserve, index: handle, entity: selector})
+	response := f.call(f.n.all[actor], processRequest{op: processLifecycleObserve, index: handle, entity: selector})
 	raw, decodeErr := decodeNativeLifecycleObservation(response.aux)
 	if decodeErr != nil {
 		f.t.Fatal(decodeErr)
 	}
 	f.lastObservationRaw = bytes.Clone(response.aux)
-	f.n.all[actor].call(f.t, processRequest{op: processSourceCertifiedClose, index: handle})
+	f.call(f.n.all[actor], processRequest{op: processSourceCertifiedClose, index: handle})
+	handle = 0
 	if !compact {
 		h, c := f.open(actor, graphReadAt, actual)
+		if f.parent != nil {
+			defer f.cleanupCertifiedHandle(f.n.all[actor], &h)
+		}
 		if !reflect.DeepEqual(c, actual) {
 			f.t.Fatal("paired census cut changed")
 		}
-		census := nativeLifecycleRead(f.t, f.n, actor, h, 2)
-		f.n.all[actor].call(f.t, processRequest{op: processSourceCertifiedClose, index: h})
+		census := f.lifecycleRead(actor, h, 2)
+		f.call(f.n.all[actor], processRequest{op: processSourceCertifiedClose, index: h})
+		h = 0
 		raw.Census = census.Census
 	}
 	view, err := lifecycleNormalizeView(raw, f.trace.IdentityMapping, f.trace.OperationMapping)
@@ -507,18 +533,18 @@ func pairedFaultCut(c lifecycleRawCut) (graphCut, error) {
 }
 func (f *pairedGraphFaultNetwork) indexes() [2]uint64 {
 	f.t.Helper()
-	return [2]uint64{f.n.all[f.n.leaders[0]].call(f.t, processRequest{op: processStateOp}).applied, f.n.all[f.n.leaders[1]].call(f.t, processRequest{op: processStateOp}).applied}
+	return [2]uint64{f.call(f.n.all[f.n.leaders[0]], processRequest{op: processStateOp}).applied, f.call(f.n.all[f.n.leaders[1]], processRequest{op: processStateOp}).applied}
 }
 func (f *pairedGraphFaultNetwork) records(from [2]uint64) []pairedFaultRecord {
 	f.t.Helper()
 	var out []pairedFaultRecord
 	for g, leader := range f.n.leaders {
-		end := f.n.all[leader].call(f.t, processRequest{op: processStateOp}).applied
+		end := f.call(f.n.all[leader], processRequest{op: processStateOp}).applied
 		if end < from[g] || end-from[g] > 128 {
 			f.t.Fatal("paired record range", from, end)
 		}
 		for index := from[g] + 1; index <= end; index++ {
-			r := f.n.all[leader].call(f.t, processRequest{op: processLifecycleRecord, index: index})
+			r := f.call(f.n.all[leader], processRequest{op: processLifecycleRecord, index: index})
 			var record pairedFaultRecord
 			if err := json.Unmarshal(r.aux, &record); err != nil {
 				f.t.Fatal(err)
@@ -544,7 +570,7 @@ func (f *pairedGraphFaultNetwork) records(from [2]uint64) []pairedFaultRecord {
 				if dead {
 					continue
 				}
-				v := p.call(f.t, processRequest{op: processEntryRecord, index: index})
+				v := f.call(p, processRequest{op: processEntryRecord, index: index})
 				if !bytes.Equal(v.outcome, record.Outcome) || !bytes.Equal(v.changes, record.CDC) {
 					f.t.Fatal("paired complete voter outcome/CDC", id, index)
 				}
@@ -589,7 +615,7 @@ func (f *pairedGraphFaultNetwork) complete(name string, p allocationProposal, re
 }
 func (f *pairedGraphFaultNetwork) run(actor uint64, p allocationProposal) crossProcessResult {
 	f.t.Helper()
-	r := f.n.all[actor].call(f.t, processRequest{op: processSourceCoordinate, data: p.wire})
+	r := f.call(f.n.all[actor], processRequest{op: processSourceCoordinate, data: p.wire})
 	result, err := decodeGraphProcessCoordinatorResult(r)
 	f.lastCoordinateRaw = bytes.Clone(r.aux)
 	if err != nil || !result.decision.commit {
@@ -601,6 +627,7 @@ func (f *pairedGraphFaultNetwork) run(actor uint64, p allocationProposal) crossP
 func (f *pairedGraphFaultNetwork) kill(id uint64, role string) pairedFaultProcess {
 	f.t.Helper()
 	f.packetDrain()
+	f.requireActive()
 	p := f.n.all[id]
 	before := fmt.Sprintf("voter%d/pid%d/%x", id, p.cmd.Process.Pid, p.incarnation)
 	if err := p.cmd.Process.Signal(syscall.SIGKILL); err != nil {
@@ -637,6 +664,7 @@ func (f *pairedGraphFaultNetwork) replaceBeforeHeal(id uint64, before func(*grap
 		f.t.Fatal("paired replacing unreaped owner")
 	}
 	f.packetDrain()
+	f.requireActive()
 	hub := prior.mux.hub
 	env := []string{"RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1", "RHO_GRAPH_LIFECYCLE_PROCESS=1", "RHO_GRAPH_PROCESS_REOPEN=1", "RHO_GRAPH_PAIRED_PROCESS=1"}
 	if f.n.rangeMoves {
@@ -667,7 +695,7 @@ func (f *pairedGraphFaultNetwork) replaceBeforeHeal(id uint64, before func(*grap
 	for range processSourceWorkers {
 		hub.wg.Go(mux.relayLoop)
 	}
-	state := replacement.call(f.t, processRequest{op: processStateOp})
+	state := f.call(replacement, processRequest{op: processStateOp})
 	startup, e := encodeProcessResponse(state)
 	if e != nil {
 		f.t.Fatal(e)
@@ -696,7 +724,7 @@ func (f *pairedGraphFaultNetwork) replaceBeforeHeal(id uint64, before func(*grap
 		}
 		return pairedFaultProcess{EventID: f.event(), Action: "reopen-interrupted", Role: "replica", Member: id, Instance: pairedGraphFaultInstance(id, replacement), PreviousInstance: pairedGraphFaultInstance(id, prior), Volume: filepath.Join(f.n.dir, fmt.Sprint(id)), Raw: raw}
 	}
-	recovered, e := encodeProcessResponse(replacement.call(f.t, processRequest{op: processStateOp}))
+	recovered, e := encodeProcessResponse(f.call(replacement, processRequest{op: processStateOp}))
 	if e != nil {
 		f.t.Fatal(e)
 	}
@@ -749,7 +777,7 @@ func (f *pairedGraphFaultNetwork) proposal(stage int) allocationProposal {
 		}
 		input = binary.BigEndian.AppendUint64(nil, value)
 	}
-	r := f.n.all[actor].call(f.t, processRequest{op: processCertifiedAction, entity: action, index: uint64(stage), data: input})
+	r := f.call(f.n.all[actor], processRequest{op: processCertifiedAction, entity: action, index: uint64(stage), data: input})
 	p, err := decodeCertifiedProcessProposal(r.aux)
 	if err != nil {
 		f.t.Fatal("paired genuine source-produced proposal", err)
@@ -796,11 +824,11 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64) {
 	defer func() { group.dropPacket = priorFilter }()
 	sealed := make(map[uint64]bool)
 	for round := range 32 {
-		group.event(f.t, leader, processRequest{op: processTick})
-		group.event(f.t, leader, processRequest{op: processCertifiedRead, entity: uint64(observeConfiguration)})
+		f.groupEvent(group, leader, processRequest{op: processTick})
+		f.groupEvent(group, leader, processRequest{op: processCertifiedRead, entity: uint64(observeConfiguration)})
 		f.drain()
 		f.snapshotCatchup(leader, sealed)
-		base := f.n.all[leader].call(f.t, processRequest{op: processStateOp, entity: 1})
+		base := f.call(f.n.all[leader], processRequest{op: processStateOp, entity: 1})
 		if round == 31 {
 			f.t.Logf("paired heal final leader%d applied%d ready%t generation%d checkpoint%d term%d commit%d image%x", leader, base.applied, base.ready, base.stats[statGeneration], base.stats[statCheckpoint], base.stats[statTerm], base.stats[statCommit], base.image)
 			f.t.Logf("paired heal final leader%d actual raft state%s", leader, base.aux)
@@ -813,7 +841,7 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64) {
 			if dead {
 				continue
 			}
-			s := p.call(f.t, processRequest{op: processStateOp, entity: 1})
+			s := f.call(p, processRequest{op: processStateOp, entity: 1})
 			if round == 31 {
 				f.t.Logf("paired heal final voter%d applied%d ready%t generation%d checkpoint%d term%d commit%d image%x", id, s.applied, s.ready, s.stats[statGeneration], s.stats[statCheckpoint], s.stats[statTerm], s.stats[statCommit], s.image)
 				f.t.Logf("paired heal final voter%d actual raft state%s", id, s.aux)
@@ -856,11 +884,11 @@ func (f *pairedGraphFaultNetwork) elect(prior, next uint64) {
 	for round := range 64 {
 		for id := range group.nodes {
 			if id != prior {
-				group.event(f.t, id, processRequest{op: processTick})
+				f.groupEvent(group, id, processRequest{op: processTick})
 			}
 		}
-		group.event(f.t, next, processRequest{op: processCampaign})
-		ctx, cancel := context.WithTimeout(f.t.Context(), 10*time.Second)
+		f.groupEvent(group, next, processRequest{op: processCampaign})
+		ctx, cancel := f.operationContext(10 * time.Second)
 		out, err := f.n.all[next].exchange(ctx, processRequest{op: processCertifiedRead, entity: uint64(observeConfiguration)})
 		cancel()
 		err = errors.Join(err, processResponseError(out))
@@ -871,8 +899,8 @@ func (f *pairedGraphFaultNetwork) elect(prior, next uint64) {
 			f.t.Fatal("paired actual candidate ReadIndex", err)
 		}
 		group.enqueue(f.t, out)
-		group.drain(f.t)
-		if !f.n.all[next].call(f.t, processRequest{op: processStateOp}).ready {
+		f.drainGroup(group)
+		if !f.call(f.n.all[next], processRequest{op: processStateOp}).ready {
 			f.t.Fatal("paired elected own read incomplete")
 		}
 		if next <= 3 {
@@ -889,7 +917,7 @@ func (f *pairedGraphFaultNetwork) reconnect(actor, target uint64) {
 	f.t.Helper()
 	f.drain()
 	f.packetDrain()
-	r := f.n.all[target].call(f.t, processRequest{op: processPairedConnections, entity: actor})
+	r := f.call(f.n.all[target], processRequest{op: processPairedConnections, entity: actor})
 	c := graphCursor{b: r.aux}
 	present, sessions := c.tag(), c.u64()
 	if c.err != nil || len(c.b) != 0 || present != 0 || sessions != 0 {
@@ -897,7 +925,7 @@ func (f *pairedGraphFaultNetwork) reconnect(actor, target uint64) {
 	}
 	// Pipe association and parent route change together, only after all owners are
 	// quiescent. Existing B transport/sequence is retained inside the child.
-	f.n.all[actor].call(f.t, processRequest{op: processPairedReconnect, data: allocationP08Words(target, 4)})
+	f.call(f.n.all[actor], processRequest{op: processPairedReconnect, data: allocationP08Words(target, 4)})
 	hub := f.n.all[actor].mux.hub
 	hub.mu.Lock()
 	if hub.relayTargets == nil {
@@ -952,7 +980,8 @@ func (f *pairedGraphFaultNetwork) gate(actor uint64, after bool) (<-chan pairedF
 	}
 }
 func (f *pairedGraphFaultNetwork) beginRun(actor uint64, p allocationProposal) (<-chan graphProcessAnswer, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(f.t.Context(), 20*time.Second)
+	f.requireActive()
+	ctx, cancel := f.operationContext(20 * time.Second)
 	ch := make(chan graphProcessAnswer, 1)
 	go func() {
 		r, e := f.n.all[actor].exchange(ctx, processRequest{op: processSourceCoordinate, data: p.wire})
@@ -962,6 +991,18 @@ func (f *pairedGraphFaultNetwork) beginRun(actor uint64, p allocationProposal) (
 }
 func (f *pairedGraphFaultNetwork) awaitBoundary(ch <-chan pairedFaultBoundary) pairedFaultBoundary {
 	f.t.Helper()
+	if f.parent != nil {
+		ctx, cancel := f.operationContext(10 * time.Second)
+		defer cancel()
+		select {
+		case boundary := <-ch:
+			f.requireActive()
+			return boundary
+		case <-ctx.Done():
+			f.t.Fatal("actual fault boundary exceeded original deadline", ctx.Err())
+			return pairedFaultBoundary{}
+		}
+	}
 	select {
 	case b := <-ch:
 		return b
@@ -972,6 +1013,25 @@ func (f *pairedGraphFaultNetwork) awaitBoundary(ch <-chan pairedFaultBoundary) p
 }
 func (f *pairedGraphFaultNetwork) unknown(ch <-chan graphProcessAnswer) []byte {
 	f.t.Helper()
+	if f.parent != nil {
+		ctx, cancel := f.operationContext(10 * time.Second)
+		defer cancel()
+		select {
+		case actual := <-ch:
+			f.requireActive()
+			if actual.err == nil {
+				f.t.Fatal("killed caller unexpectedly received completion", actual.response)
+			}
+			wire, err := json.Marshal(map[string]any{"error": actual.err.Error(), "Sequence": actual.response.sequence, "Code": actual.response.code, "CauseMask": actual.response.causeMask, "Detail": actual.response.detail, "ResponseBody": actual.response.aux})
+			if err != nil {
+				f.t.Fatal(err)
+			}
+			return wire
+		case <-ctx.Done():
+			f.t.Fatal("killed caller exceeded original deadline", ctx.Err())
+			return nil
+		}
+	}
 	select {
 	case a := <-ch:
 		if a.err == nil {
@@ -992,7 +1052,7 @@ func (f *pairedGraphFaultNetwork) replay(actor uint64, name string, p allocation
 	before := f.observe(actor, graphReadFresh, graphCut{}, false)
 	before.RawRecords = f.inventory(base)
 	from := f.indexes()
-	r := f.n.all[actor].call(f.t, processRequest{op: processSourceCoordinate, data: p.wire})
+	r := f.call(f.n.all[actor], processRequest{op: processSourceCoordinate, data: p.wire})
 	result, err := decodeGraphProcessCoordinatorResult(r)
 	if err != nil || result.decision != expected.decision {
 		f.t.Fatal("paired original replay result identity", name, result, expected, err)
@@ -1092,7 +1152,7 @@ func (f *pairedGraphFaultNetwork) reopenAll() []pairedFaultProcess {
 	f.heal(1)
 	f.heal(4)
 	for id := uint64(1); id <= 6; id++ {
-		startup, e := encodeProcessResponse(fresh[id].call(f.t, processRequest{op: processStateOp}))
+		startup, e := encodeProcessResponse(f.call(fresh[id], processRequest{op: processStateOp}))
 		if e != nil {
 			f.t.Fatal(e)
 		}
@@ -1154,7 +1214,7 @@ func (f *pairedGraphFaultNetwork) pending() pairedFaultIntermediate {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(f.t.Context(), 10*time.Second)
+	ctx, cancel := f.operationContext(10 * time.Second)
 	defer cancel()
 	r, transport := f.n.all[6].exchange(ctx, processRequest{op: processPairedPendingOpen, data: wire})
 	result, err := pairedGraphFaultPendingReply(r, transport, f.n.all[6].incarnation)
@@ -1204,7 +1264,7 @@ func (f *pairedGraphFaultNetwork) changed(p allocationProposal, base [2]uint64) 
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	produced := f.n.all[4].call(f.t, processRequest{op: processP08ChangedGraph, data: wire})
+	produced := f.call(f.n.all[4], processRequest{op: processP08ChangedGraph, data: wire})
 	changed, err := decodeCertifiedProcessProposal(produced.aux)
 	if err != nil || bytes.Equal(changed.wire, p.wire) {
 		f.t.Fatal("genuine changed valid payload", err)
@@ -1212,7 +1272,7 @@ func (f *pairedGraphFaultNetwork) changed(p allocationProposal, base [2]uint64) 
 	before := f.observe(4, graphReadFresh, graphCut{}, false)
 	before.RawRecords = f.inventory(base)
 	from := f.indexes()
-	ctx, cancel := context.WithTimeout(f.t.Context(), 10*time.Second)
+	ctx, cancel := f.operationContext(10 * time.Second)
 	response, exchangeErr := f.n.all[4].exchange(ctx, processRequest{op: processSourceCoordinate, data: changed.wire})
 	cancel()
 	actual := errors.Join(exchangeErr, processResponseError(response))
