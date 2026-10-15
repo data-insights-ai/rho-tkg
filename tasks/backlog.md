@@ -512,6 +512,15 @@ cannot authorize new allocations or writes. Catalog1 caps remain unchanged.
 These authored guards are unexecuted. Full handoff/cost census, target process
 replacement, retained feed/GC and matrix-family wiring remain implementation
 work; stable shared-KV keys do not establish physical replica transfer.
+The fresh FDB feed3 prerequisite at `29f00cbe` authenticates snapshot Close and
+the complete token-reader inventory before atomically relinquishing its physical
+pin. Native retained-feed identities and funded cleanup then use the existing
+complete Page/ACK reducer after physical history collection. Snapshot reopening
+explicitly refuses after this irreversible transition. The old feed formats
+retain their physical-pin contract. Its direct guards are authored only; this
+does not qualify process replacement, the transfer workload or matched costs.
+Native currently retains snapshot C with its feed: equivalent retention must be
+established before an engine comparison can claim parity or equal-retention cost.
 The FDB cross-edge family is source-integrated at `78f11fc8`: distinct contenders
 share one scalar uniqueness claim, endpoint close/reopen masks the old life,
 and closing/replaying the old canonical relation preserves the replacement claim.
