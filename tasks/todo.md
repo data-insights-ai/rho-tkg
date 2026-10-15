@@ -1,4 +1,4 @@
-# todo — v4 main ledger (state 2026-10-15, main at v4.56.0 = latest tag; FOCUS: stabilize and fully understand ai-soc)
+# todo — v4 main ledger (state 2026-10-15, main at v4.56.1 = latest tag; FOCUS: stabilize and fully understand ai-soc)
 
 The first read is `HANDOVER.md` (next steps). **Open work is ONE list: the open table of `tasks/backlog.md`** (specs below the table). What shipped is `CHANGELOG.md`; the rules are `tasks/lessons.md` (digest at the top). This file keeps the user requests with their state and one line per release. Older wave ledgers (per-step red tests, merges, reviews, the v4.51.3 to v4.51.5 batches, the CI race fix) are in history: `git log -p -- tasks/todo.md`.
 
@@ -88,6 +88,7 @@ The first read is `HANDOVER.md` (next steps). **Open work is ONE list: the open 
 | v4.55.2 | 259105ad | **Markus**: sigma-tkgd round 8 (`PropertyBounds`, range reads and `RangeCardinalityAt` at a pin, `LabelTimeStats`, scans by ordinal bitset) |
 | v4.55.3 | 2a72753d | sorted postings for property/composite indexes (72, ai-soc cost note), Eternal() doc fix |
 | v4.56.0 | a08c0d52 | Config.UntimedValidStart (73, René + sigma + ai-soc: Unbounded first version, explicit conversion, marker 7), endpoint constraint over the current life, Reset keeps schema_version |
+| v4.56.1 | (tag) | one-pass property sidecar build in the open image (74, ai-soc), effective pages pruned by the temporal envelope (75, ai-soc), envelope fold on re-create/re-type |
 
 
 ## Open work

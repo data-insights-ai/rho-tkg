@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.56.1] - 2026-10-15
+
 ### Changed
 
 - **A paged effective door with a valid filter prunes its candidates by the valid-time envelope index** (ai-soc 2026-10-15;
@@ -33,8 +35,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   that wrote a row of the old type made that envelope vouch for one version. It now extends covered (or building) IDs only.
   Tests: `TestEffectivePage_ReimportedIDEnvelope`, re-imports of deleted
   IDs (same or another type, envelope indexes declared mid-history) in `TestEffectivePage_ValidPruneDifferential`.
+  Each `CreateRelTemporal` declare scans its type once; later clean reopens restore the envelopes from the open image.
 
-- **One scan builds every declared property membership sidecar; a clean close keeps them** (ai-soc; backlog 74). ai-soc's
+- **One scan builds every declared property membership sidecar; a clean close keeps them** (ai-soc; backlog 74; badger and sharded — the memory store still builds each sidecar on its own). ai-soc's
   first `RelsEffectivePage` after an open waited about 3 minutes (503 meanwhile): the page asks every relationship type,
   and each declared `(type, key)` sidecar was built lazily by its own full scan of the current and history rows
   (`buildRelPropTx`, 123 of 259 s CPU, 29 types). Now the first lookup of a kind (relationship or node) starts one build
