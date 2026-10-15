@@ -342,7 +342,7 @@ floor predecessors and data anchors, co-sync namespace debits and a separately
 accounted resumable cursor, and retire a publication only when represented rows
 are deleted. Same-index sparse republication keeps the genuine term/hash and
 changes the cut identity without business or CDC progress. Durable column-owner
-process wiring remains V2 implementation work; logical-page reclamation remains
+process wiring is source-integrated below; logical-page reclamation remains
 V3/V6 work under PLAN §8, as detailed below. All
 these new sources await execution. The bounded captured-view plan accessor is
 source-integrated at `3fcf9591`; it grants no anchor or deletion authority.
@@ -386,9 +386,16 @@ generation ID. Explicit retirement closes live owners and orders authenticated
 cancellation fences against delayed publication. Four terminal exchanges are
 prepaid in the persisted policy; spent uncertain attempts are not refunded, and
 exhaustion preserves retiring state with an explicit limit refusal. Legacy
-contracts/bytes stay unchanged. The two native guard parents are authored only;
-genuine OS-child profile selection, process interruption wiring and execution
-remain open. This does not retire graph logical key families or immutable originals.
+contracts/bytes stay unchanged. The two native guard parents are authored only.
+Genuine OS-child selection and interruption wiring are source-integrated at
+`feb661e9`: six same-directory child restarts preserve exact originals/tokens;
+partial retirement resumes the existing generation with spent attempts intact.
+The authored parent separately checks local retired-generation refusal and the
+actual original token's refusal by native keepers. Retirement uses ordinary
+dispatch so nested terminal cleanup can use its reserved lane; fresh response
+codes are accepted only by the explicit new profile. Its bounded correctness
+policy is not a benchmark capacity claim. Compilation and all runtime guards
+remain pending. This does not retire graph logical key families or immutable originals.
 `ab650bbc` also refuses a replacement plan
 while native collection has unfinished cursor progress. Fresh initialization preserves retention
 configuration and prepays/publishes its actual recovery-root census at
@@ -412,8 +419,8 @@ at `84225cc0`: exact raw originals, binary typed rows, initial/old/final cuts,
 sealed prefixes and actual cache bytes/ledgers share the existing finite spool.
 Owned native disk accounting streams directory entries at `fb5156b3`, retaining
 checked logical-byte/POSIX-block totals without a whole cache-file inventory.
-Durable pin-backed ownership is source-integrated above; its OS-child wiring and
-source-GC qualification remain open.
+Durable pin-backed ownership and its OS-child wiring are source-integrated above;
+source-GC qualification remains open.
 Native cost replay export/comparison is source-integrated at `2f46278f`: a later
 entry keeps its actual prefix/root and empty current CDC, joins the authentic
 earlier original frames, and is excluded from duplicate business folding only
