@@ -191,7 +191,12 @@ all A–F exit requirements; implementation status never implies acceptance.
    affected statics; [root review](evidence/v2-p01-outside-scope-20261014/root-review.json)
    verifies its 71 archive members and 77 original external hashes. This is a
    six-disk-voter in-process component, not an OS-process fault or independently
-   streamed serial-history proof. The
+   streamed serial-history proof. The OS-child source bridge at `58d74561` adds
+   genuine A-only Fresh/After reads with B holding the immutable decision while
+   A retains YES, unavailable-authority refusal, same-original recovery and
+   old-certificate At reads after same-directory cohort replacement. Its complete
+   native-prefix/literal/serial checker is authored, not executed; this does not
+   extend the older acceptance receipt. The
    [finite P04/cost-response checkpoint](evidence/v2-p04-cost-response-20261014/receipt.json)
    is integrated with its frozen qualification; the [clone-only follow-up](evidence/v2-p04-clone-followup-20261014/receipt.json)
    is closed by [hosted qualification at `5cc915c7`](evidence/v2-p04-clone-followup-20261014/hosted-5cc915c7.json):
