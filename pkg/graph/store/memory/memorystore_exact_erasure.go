@@ -123,6 +123,7 @@ func (ms *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 		}
 		ms.dropExAdjRelEverywhereLocked(rid) // backlog 50: no trace of an erased relationship
 		delete(ms.relHistory, rid)
+		ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 		ms.relHistoryRemovedLocked(rid)
 		delete(ms.relBeliefWatermark, rid)
 		indexpkg.PurgeRelFromAllTemporalIndexes(ms.relTypeTemporalIndexes, rid.SnowflakeID())
@@ -162,6 +163,7 @@ func (ms *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 		indexpkg.PurgeNodeFromAllHighFrequencyIndexes(ms.hfIndexes, raw)
 		indexpkg.PurgeNodeFromAllVectorIndexesExact(ms.vectorIndexes, raw)
 		delete(ms.nodeHistory, nid)
+		ms.histGen.Add(1) // a history row removed (LabelTimeStats cache)
 		ms.nodeHistoryRemovedLocked(nid)
 		delete(ms.nodeBeliefWatermark, nid)
 		for tok, members := range ms.labelTxMembers {

@@ -57,6 +57,7 @@ type Core struct {
 	laneSlots             []uint8
 	store                 storepkg.MandatoryStore
 	relDegrees            relDegreeCache   // StatOps.RelTypeDegreeStats, keyed on the relationship epochs
+	memberTime            memberTimeCache  // StatOps.LabelTimeStats / RelTypeTimeStats explicit-valid counts, keyed on the mutation epochs
 	relDegreeTrack        relDegreeTracker // StatOps.TrackRelTypeDegrees: maintained counts of opted-in types
 	generatedCreate       generatedcreate.Capability
 	endpointHash          storepkg.EndpointIntegrityHashCapability

@@ -58,6 +58,7 @@ func (ms *Store) putNodeHistoryRowLocked(nid types.NodeID, v uint32, row *types.
 		ms.nodeValidEnds.NoteRow(int64(nid), vr)
 	}
 	ms.nodeHistEpochs.Note(nid, len(inner))
+	ms.histGen.Add(1)
 	f, t, d := row.TxStamps()
 	ms.histStampsMu.Lock()
 	ms.nodeHistStamps = noteHistStamps(ms.nodeHistStamps, nid, before, len(inner), overwrite, f, t, d)
@@ -88,6 +89,7 @@ func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row *types.Re
 		ms.relValidEnds.NoteRow(int64(rid), vr)
 	}
 	ms.relHistEpochs.Note(rid, len(inner))
+	ms.histGen.Add(1)
 	f, t, d := row.TxStamps()
 	ms.histStampsMu.Lock()
 	ms.relHistStamps = noteHistStamps(ms.relHistStamps, rid, before, len(inner), overwrite, f, t, d)

@@ -590,3 +590,39 @@ func TestPropertyBoundsForwards(t *testing.T) {
 		t.Fatalf("RelPropertyBounds error = %v", err)
 	}
 }
+
+func (s *statsOpsSpy) LabelTimeStats(label string) (storepkg.MemberTimeStats, bool, error) {
+	s.propertyNDVArgs = append(s.propertyNDVArgs, "time:"+label)
+	return storepkg.MemberTimeStats{Members: 3, ExplicitValid: 1}, true, s.propertyStatsErr
+}
+
+func (s *statsOpsSpy) RelTypeTimeStats(typeName string) (storepkg.MemberTimeStats, bool, error) {
+	s.propertyNDVArgs = append(s.propertyNDVArgs, "reltime:"+typeName)
+	return storepkg.MemberTimeStats{Members: 2, LastEnded: 9}, true, s.propertyStatsErr
+}
+
+// TestTimeStatsForwards: both wrappers forward the target and the answer; a
+// nil API fails closed; an ops error comes back.
+func TestTimeStatsForwards(t *testing.T) {
+	var nilAPI *API
+	if _, _, err := nilAPI.LabelTimeStats("L"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil LabelTimeStats error = %v", err)
+	}
+	if _, _, err := nilAPI.RelTypeTimeStats("R"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelTypeTimeStats error = %v", err)
+	}
+	ops := &statsOpsSpy{}
+	if st, ok, err := New(ops).LabelTimeStats("L"); err != nil || !ok || st.Members != 3 || st.ExplicitValid != 1 {
+		t.Fatalf("LabelTimeStats = %+v, %v, %v", st, ok, err)
+	}
+	if st, ok, err := New(ops).RelTypeTimeStats("R"); err != nil || !ok || st.LastEnded != 9 || !st.HistoryAfter(8) || st.HistoryAfter(9) {
+		t.Fatalf("RelTypeTimeStats = %+v, %v, %v", st, ok, err)
+	}
+	if want := []string{"time:L", "reltime:R"}; !slices.Equal(ops.propertyNDVArgs, want) {
+		t.Fatalf("args = %v", ops.propertyNDVArgs)
+	}
+	opErr := errors.New("boom")
+	if _, _, err := New(&statsOpsSpy{propertyStatsErr: opErr}).LabelTimeStats("L"); !errors.Is(err, opErr) {
+		t.Fatalf("LabelTimeStats error = %v", err)
+	}
+}

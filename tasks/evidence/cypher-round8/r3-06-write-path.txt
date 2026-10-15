@@ -1,0 +1,18 @@
+before-r3 BenchmarkMemoryUpdateWritePath 	   20000	      3441 ns/op	    2675 B/op	      30 allocs/op
+before-r3 BenchmarkMemoryUpdateWritePath 	   20000	     12947 ns/op	    2675 B/op	      30 allocs/op
+before-r3 limit: {"command": ["go", "test", "-run", "^$", "-bench", "BenchmarkMemoryUpdateWritePath", "-benchtime", "20000x", "-count", "2", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 600.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 1080.625, "elapsed_s": 17.299, "exit_code": 0, "reason": "completed"}
+rho-tkg-r8 BenchmarkMemoryUpdateWritePath 	   20000	      2874 ns/op	    2675 B/op	      30 allocs/op
+rho-tkg-r8 BenchmarkMemoryUpdateWritePath 	   20000	     34560 ns/op	    2675 B/op	      30 allocs/op
+rho-tkg-r8 limit: {"command": ["go", "test", "-run", "^$", "-bench", "BenchmarkMemoryUpdateWritePath", "-benchtime", "20000x", "-count", "2", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 600.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 1138.141, "elapsed_s": 14.775, "exit_code": 0, "reason": "completed"}
+before-r3 BenchmarkMemoryUpdateWritePath 	   20000	      6334 ns/op	    2675 B/op	      30 allocs/op
+before-r3 BenchmarkMemoryUpdateWritePath 	   20000	     16017 ns/op	    2675 B/op	      30 allocs/op
+before-r3 limit: {"command": ["go", "test", "-run", "^$", "-bench", "BenchmarkMemoryUpdateWritePath", "-benchtime", "20000x", "-count", "2", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 600.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 476.953, "elapsed_s": 3.127, "exit_code": 0, "reason": "completed"}
+rho-tkg-r8 BenchmarkMemoryUpdateWritePath 	   20000	     15737 ns/op	    2675 B/op	      30 allocs/op
+rho-tkg-r8 BenchmarkMemoryUpdateWritePath 	   20000	     15952 ns/op	    2675 B/op	      30 allocs/op
+rho-tkg-r8 limit: {"command": ["go", "test", "-run", "^$", "-bench", "BenchmarkMemoryUpdateWritePath", "-benchtime", "20000x", "-count", "2", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 600.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 422.297, "elapsed_s": 2.585, "exit_code": 0, "reason": "completed"}
+before-r3 BenchmarkMemoryUpdateWritePath 	   20000	     10920 ns/op	    2675 B/op	      30 allocs/op
+before-r3 BenchmarkMemoryUpdateWritePath 	   20000	     13237 ns/op	    2675 B/op	      30 allocs/op
+before-r3 limit: {"command": ["go", "test", "-run", "^$", "-bench", "BenchmarkMemoryUpdateWritePath", "-benchtime", "20000x", "-count", "2", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 600.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 428.891, "elapsed_s": 2.846, "exit_code": 0, "reason": "completed"}
+rho-tkg-r8 BenchmarkMemoryUpdateWritePath 	   20000	      2838 ns/op	    2675 B/op	      30 allocs/op
+rho-tkg-r8 BenchmarkMemoryUpdateWritePath 	   20000	      3718 ns/op	    2675 B/op	      30 allocs/op
+rho-tkg-r8 limit: {"command": ["go", "test", "-run", "^$", "-bench", "BenchmarkMemoryUpdateWritePath", "-benchtime", "20000x", "-count", "2", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 600.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 400.219, "elapsed_s": 2.212, "exit_code": 0, "reason": "completed"}

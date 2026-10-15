@@ -1,0 +1,10 @@
+--- FAIL: TestMemberTimeStats (0.02s)
+    --- FAIL: TestMemberTimeStats/memory (0.00s)
+        member_time_stats_test.go:169: closing valid-to: LabelTimeStats = {Members:6 ExplicitValid:2 LastEnded:1792028982128}, want {Members:6 ExplicitValid:2 LastEnded:1792028982132}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.362s
+--- FAIL: TestMemoryStoreHistoryGeneration (0.00s)
+    memorystore_history_generation_test.go:34: did not move at history writes
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.316s
+FAIL

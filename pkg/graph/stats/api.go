@@ -46,6 +46,8 @@ type Ops interface {
 	RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV, error)
 	PropertyBounds(label, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error)
 	RelPropertyBounds(typeName, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error)
+	LabelTimeStats(label string) (storepkg.MemberTimeStats, bool, error)
+	RelTypeTimeStats(typeName string) (storepkg.MemberTimeStats, bool, error)
 	RelCountByType(typeName string) (int, error)
 	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
 	TrackRelTypeDegrees(typeName string) error
@@ -326,6 +328,35 @@ func (a *API) RelPropertyBounds(typeName, propertyKey string, opts storepkg.Quer
 		return storepkg.PropertyBounds{}, false, err
 	}
 	return ops.RelPropertyBounds(typeName, propertyKey, opts)
+}
+
+// LabelTimeStats returns store.MemberTimeStats for label: current members,
+// those whose row carries an explicit valid time (tkg_valid_from or
+// tkg_valid_to), and LastEnded, the latest transaction instant a row of an
+// entity whose rows ever carried the label was ended (HistoryAfter(pin):
+// whether a read pinned there may see a non-current version; Eternal: neither).
+// No write cost: the explicit count is counted on the first call after a
+// write to the label (one pass over its current rows) and then served in O(1)
+// against the label's mutation epoch; LastEnded is O(1) on a store without
+// node history rows, else one RAM stamp lookup per ever-member. exact=false
+// when writers kept moving the epoch across three counts, or the store keeps
+// no epoch (tiered, external stores: counted per call). An unknown label is
+// zero stats. Errors: a malformed label, ErrGraphClosed.
+func (a *API) LabelTimeStats(label string) (storepkg.MemberTimeStats, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.MemberTimeStats{}, false, err
+	}
+	return ops.LabelTimeStats(label)
+}
+
+// RelTypeTimeStats is LabelTimeStats for a relationship type.
+func (a *API) RelTypeTimeStats(typeName string) (storepkg.MemberTimeStats, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.MemberTimeStats{}, false, err
+	}
+	return ops.RelTypeTimeStats(typeName)
 }
 
 // RelCountByType returns the count of relationships of the given type.

@@ -53,6 +53,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with and without `TxAt` and window coordinates, through value updates, values first written after the numeric
   view opened, label changes and deletes), `TestPropertyTxMembersInRange`, store tests; evidence
   `tasks/evidence/cypher-round8/r2-*`.
+- **`Stats().LabelTimeStats` / `Stats().RelTypeTimeStats`: explicit valid time and ended rows per label and type**
+  (sigma-tkgd round 8 request 3, sources: declare a source's rows eternal at bind without scanning; backlog 67).
+  `(store.MemberTimeStats{Members, ExplicitValid, LastEnded}, exact, err)`: the current members, those whose row
+  carries `tkg_valid_from` or `tkg_valid_to`, and the latest `TxTo` / `DeletedAt` over the history rows of the
+  entities whose rows ever carried the label (type); `HistoryAfter(pin)` = `LastEnded > pin` (a read pinned there
+  may see a non-current version), `Eternal()` = neither. Lazy, no write cost on the plain path: the explicit count
+  is counted at the first call after a write to the label (one pass over its current rows) and served in O(1)
+  against the label's (type's) mutation epoch; `LastEnded` is O(1) without history rows of the kind
+  (`HistoryCountCapability`), else recomputed once per history change over the ever-members with history (label
+  membership sidecar, RAM presence check, history stamps; no row read on memory and badger) and cached under the
+  store's new history generation (`HistoryGeneration()`: memory one atomic add per history row write or removal,
+  badger the existing history-key epochs). 100,000 nodes (`BenchmarkLabelTimeStats`, load 65-73): cached reads
+  120-280 ns, after a write 23-75 ms memory / 110-220 ms badger; plain memory Update unchanged within noise (30
+  allocs, 2,675 B both; `BenchmarkMemoryUpdateWritePath`, `tasks/evidence/cypher-round8/r3-06-write-path.txt`).
+  `exact=false` when writers kept moving the epoch across three counts or the store keeps no epoch (tiered:
+  counted per call). Tests `TestMemberTimeStats` (every backend, against a fold over every row through untimed
+  creates, explicit valid-from, valid-to only, closing valid-to, updates, deletes, label moves, writes to other
+  labels and types; cached and recounted), store tests for `HistoryGeneration`; evidence
+  `tasks/evidence/cypher-round8/r3-*`.
 
 ## [4.55.1] - 2026-10-15
 

@@ -44,3 +44,13 @@ func (ms *Store) RelHistoryEpoch(id types.RelID) (uint64, error) {
 	}
 	return ms.relHistEpochs.Epoch(id, len(ms.relHistory[id])), nil
 }
+
+// HistoryGeneration moves at every node or relationship history row write
+// and removal and at Clear (round 8 request 3): a stamp under which a fold
+// over history rows stays valid. O(1).
+func (ms *Store) HistoryGeneration() uint64 {
+	if ms == nil {
+		return 0
+	}
+	return ms.histGen.Load()
+}

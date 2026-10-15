@@ -1,0 +1,25 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: Apple M4 Max
+BenchmarkLabelTimeStats/memory/eternal         	     200	    117660 ns/op	    4018 B/op	       0 allocs/op
+BenchmarkLabelTimeStats/memory/eternal         	     200	     32671 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLabelTimeStats/memory/eternal         	     200	       277.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLabelTimeStats/memory/history         	     200	    358750 ns/op	   44521 B/op	       2 allocs/op
+BenchmarkLabelTimeStats/memory/history         	     200	     21227 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLabelTimeStats/memory/history         	     200	       259.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLabelTimeStats/memory/write+read      	     200	  75071644 ns/op	 4016336 B/op	      34 allocs/op
+BenchmarkLabelTimeStats/memory/write+read      	     200	  26003263 ns/op	 4016335 B/op	      34 allocs/op
+BenchmarkLabelTimeStats/memory/write+read      	     200	  22775973 ns/op	 4016381 B/op	      34 allocs/op
+BenchmarkLabelTimeStats/badger/eternal         	     200	    455865 ns/op	  428864 B/op	    6298 allocs/op
+BenchmarkLabelTimeStats/badger/eternal         	     200	       135.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLabelTimeStats/badger/eternal         	     200	       136.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLabelTimeStats/badger/history         	     200	   1056935 ns/op	  745659 B/op	   10449 allocs/op
+BenchmarkLabelTimeStats/badger/history         	     200	       148.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLabelTimeStats/badger/history         	     200	       121.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLabelTimeStats/badger/write+read      	     200	 114290061 ns/op	87403272 B/op	 1259912 allocs/op
+BenchmarkLabelTimeStats/badger/write+read      	     200	 109468216 ns/op	87403209 B/op	 1259918 allocs/op
+BenchmarkLabelTimeStats/badger/write+read      	     200	 222496401 ns/op	87404602 B/op	 1259947 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	116.419s
+limit: {"command": ["go", "test", "-run", "^$", "-bench", "BenchmarkLabelTimeStats", "-benchtime", "200x", "-count", "3", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 1800.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 1052.609, "elapsed_s": 127.32, "exit_code": 0, "reason": "completed"}

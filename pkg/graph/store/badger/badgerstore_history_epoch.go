@@ -33,3 +33,11 @@ func (bs *Store) RelHistoryEpoch(id types.RelID) (uint64, error) {
 	}
 	return bs.histRelEpochs.Epoch(id.SnowflakeID(), -1), nil
 }
+
+// HistoryGeneration moves whenever a node or relationship history key enters
+// the write buffer (written or deleted) and at Clear, as the HistoryCounts
+// cache's epochs do (round 8 request 3): a stamp under which a fold over
+// history rows stays valid. O(1).
+func (bs *Store) HistoryGeneration() uint64 {
+	return bs.histNodeEpoch.Load() + bs.histRelEpoch.Load()
+}
