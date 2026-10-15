@@ -235,7 +235,7 @@ func (h *harness) graphCostParallelOriginal(x transaction, body []byte, pair [2]
 		if o.Reason != "" || o.Round == 0 || o.Sequence == 0 || o.Sequence > h.config.Limits.Transactions || o.Round <= x.Dependency {
 			return outcome{}, errInvalid
 		}
-	} else if o.Round != 0 || o.Sequence != 0 || (o.Reason != "generation" && o.Reason != "revision" && o.Reason != "endpoint-life" && o.Reason != "edge-identity" && o.Reason != "graph-shape") {
+	} else if o.Round != 0 || o.Sequence != 0 || (o.Reason != "generation" && o.Reason != "revision" && o.Reason != "endpoint-life" && o.Reason != "edge-identity" && o.Reason != "graph-shape" && !(h.config.Cost.Version == 4 && o.Reason == "unique")) {
 		return outcome{}, errInvalid
 	}
 	return o, nil

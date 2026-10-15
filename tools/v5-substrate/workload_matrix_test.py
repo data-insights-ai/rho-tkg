@@ -56,6 +56,9 @@ class WorkloadMatrixGuards(unittest.TestCase):
         feed = {**selectors, "family": "snapshot-to-feed"}
         self.assertEqual(matrix.preflight(feed, run), feed)
         self.assertTrue(next(matrix.matrix(("snapshot-to-feed",), ("local",)))["implemented"])
+        edges = {**spec, "family": "cross-edge-endpoint-uniqueness"}
+        self.assertEqual(matrix.preflight(edges, run), edges)
+        self.assertTrue(next(matrix.matrix((edges["family"],), ("local",)))["implemented"])
         for changed, nonce in (({**spec, "family": "snapshot-selectors"}, run), ({**spec, "family": "snapshot-to-feed"}, run), ({**spec, "family": "transfer-retained-pins"}, run), (spec, "00" * 16), ({**spec, "writers": True}, run)):
             with self.assertRaises(ValueError):
                 matrix.preflight(changed, nonce)

@@ -124,7 +124,7 @@ def main():
                            for directory in sorted(out.glob("source-history-*")) if directory.is_dir()
                            for p in sorted(directory.rglob("*")) if p.is_file()})
         scopes = {
-            "workload-cell": "one physical host, four logical FDB zones; explicitly selected fresh contention/RMW/empty-ID-range, authenticated Fresh/Stable/After/At or snapshot-to-retained-feed workload, 1/8/32 callers, actual original/source/column artifacts and owned same-container SDK child replacement for feed; local transport only, no native parity/full matrix/RTT/capacity acceptance",
+            "workload-cell": "one physical host, four logical FDB zones; explicitly selected fresh contention/RMW/empty-ID-range, effective edge uniqueness/endpoint-life ABA, authenticated Fresh/Stable/After/At or snapshot-to-retained-feed workload, 1/8/32 callers, actual original/source/column artifacts and owned same-container SDK child replacement for feed; local transport only, no native parity/full matrix/RTT/capacity acceptance",
             "source-history-faults": "one physical host; genuine source-history SDK owner and partial-collector SIGKILL/replacement, same retained owner Close and durable cursor resume; five COMMIT originals only, no ABORT/server-loss/power-loss/matrix/capacity acceptance",
             "static": "pinned compilation/static tools; no cluster or fault schedule",
             "lifecycle-trace": "one physical host, four logical FDB zones; lifecycle trace, no external kill schedule",

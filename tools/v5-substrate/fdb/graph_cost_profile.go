@@ -31,6 +31,9 @@ func graphCostLimit(c config) limits {
 	if c.Cost.Version == 3 {
 		return graphSelectorsLimit(c.Cost)
 	}
+	if c.Cost.Version == 4 {
+		return graphEdgeUniqueLimit(c.Cost)
+	}
 	if c.Cost.Version == 2 {
 		return graphContentionLimit(c.Cost)
 	}
@@ -60,6 +63,9 @@ func validGraphCostProfile(c config) bool {
 	if c.Cost.Version == 3 {
 		return validGraphSelectorsConfig(c)
 	}
+	if c.Cost.Version == 4 {
+		return validGraphEdgeUniqueConfig(c)
+	}
 	if c.Cost.Version == 2 {
 		return validGraphContentionConfig(c)
 	}
@@ -72,6 +78,14 @@ func validGraphCostProfile(c config) bool {
 	return c.Nodes == [2]uint64{n[0].Node, n[2].Node}
 }
 func (c config) graphNodeOwner(id uint64) uint8 {
+	if c.Cost.Version == 4 {
+		for _, n := range graphEdgeUniqueNodes(c.Cost) {
+			if n.Node == id {
+				return n.Owner
+			}
+		}
+		return 2
+	}
 	if c.Cost != (graphCostProfile{}) {
 		for _, n := range c.Cost.nodes() {
 			if n.Node == id {
@@ -89,6 +103,9 @@ func (c config) graphNodeOwner(id uint64) uint8 {
 	return 2
 }
 func (h *harness) validateGraphCostLifecycle(x transaction) error {
+	if h.config.Cost.Version == 4 {
+		return h.validateGraphEdgeUniqueShape(x)
+	}
 	if h.config.Cost.Version == 2 {
 		return h.validateGraphContention(x)
 	}

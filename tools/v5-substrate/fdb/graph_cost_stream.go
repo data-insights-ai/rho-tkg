@@ -157,6 +157,9 @@ func (s *graphCostStream) finish(rows [2]uint64) (graphCostStreamEnd, error) {
 }
 
 func (h *harness) graphCostValidateRaw(row graphCostRawRow, history bool, round uint64) error {
+	if h != nil && h.config.Cost.Version == 4 {
+		return h.graphEdgeUniqueValidateRaw(row, history, round)
+	}
 	if row.Group > 1 {
 		return errInvalid
 	}

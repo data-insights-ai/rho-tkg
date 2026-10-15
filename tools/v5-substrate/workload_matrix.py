@@ -29,7 +29,7 @@ FAMILIES = {
 FACTS, CROSS, WRITERS, LAYOUTS = (10_000, 100_000, 1_000_000), (0, 10, 50, 100), (1, 8, 32), ("kv", "columns")
 TRANSPORTS = {"local": 0, "rtt-1ms": 1, "rtt-20ms": 20, "rtt-100ms": 100}
 ENGINES = ("foundationdb", "native-raft", "paired")
-IMPLEMENTED = ("contention-empty-range", "snapshot-selectors", "snapshot-to-feed")
+IMPLEMENTED = ("contention-empty-range", "snapshot-selectors", "snapshot-to-feed", "cross-edge-endpoint-uniqueness")
 
 
 def require(condition, message):
@@ -125,10 +125,11 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     destination.mkdir(mode=0o700, parents=False, exist_ok=False)
     selector = spec["family"] in ("snapshot-selectors", "snapshot-to-feed")
     feed = spec["family"] == "snapshot-to-feed"
-    originals = 3 + 2 * spec["facts"] * 64 if selector else 3 + spec["facts"] // 2 + 64 * spec["facts"] + spec["facts"] // 2 * max(2, spec["writers"])
+    edge_unique = spec["family"] == "cross-edge-endpoint-uniqueness"
+    originals = 7 + 258 * spec["facts"] if edge_unique else 3 + 2 * spec["facts"] * 64 if selector else 3 + spec["facts"] // 2 + 64 * spec["facts"] + spec["facts"] // 2 * max(2, spec["writers"])
     request = {"cell": cell, "run": run, "spoolPolicy": {"max_disk_bytes": spool_disk, "cache_bytes": spool_cache, "grantOrigin": grant_origin},
-               "nativeAdmission": {"maxOriginals": originals, "logicalGraphBytes": (64 << 20) + spec["facts"] * ((64 if selector else 128) << 10) + originals * 2048,
-                                   "retainedVersions": 3 + 6 * spec["facts"], "capacityQualified": False}, "deadlineSeconds": seconds,
+               "nativeAdmission": {"maxOriginals": originals, "logicalGraphBytes": (64 << 20) + spec["facts"] * ((256 if edge_unique else 64 if selector else 128) << 10) + originals * 2048,
+                                   "retainedVersions": 7 + 11 * spec["facts"] if edge_unique else 3 + 6 * spec["facts"], "capacityQualified": False}, "deadlineSeconds": seconds,
                "deploymentProfile": profile, "admissionMiB": memory}
     if feed:
         pages = 3 + 2 * spec["facts"]
@@ -161,14 +162,16 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     # Import the private family oracle only after the actual run; it joins all
     # originals/raw EOFs/cache bytes under one finite spool policy.
     sys.path.insert(0, str(ROOT / "fdb"))
-    if feed:
+    if edge_unique:
+        import fdb_edge_unique_check as checker
+    elif feed:
         import fdb_feed_check as checker
     elif selector:
         import fdb_selectors_check as checker
     else:
         import fdb_contention_check as checker
     proof = checker.verify(artifacts, destination, policy)
-    prefix = "graph-workload-feed-v1-" if feed else "graph-workload-selectors-v1-" if selector else "graph-workload-contention-v1-"
+    prefix = "graph-workload-edge-unique-v1-" if edge_unique else "graph-workload-feed-v1-" if feed else "graph-workload-selectors-v1-" if selector else "graph-workload-contention-v1-"
     require(proof["spec"] == spec and proof["runGraph"] == prefix + spec["layout"] + "-" + run, "fresh run/native binding/result agreement")
     with (destination / "verified.json").open("x") as out:
         json.dump({"requestSHA256": hashlib.sha256((destination / "request.json").read_bytes()).hexdigest(), "artifacts": str(artifacts), "proof": proof,

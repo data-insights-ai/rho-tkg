@@ -57,10 +57,13 @@ func newGraphColumnStoreContext(ctx context.Context, h *harness, p graphColumnPo
 			return nil, err
 		}
 	}
-	if h == nil || p.validate() != nil || !validGraphCostProfile(h.config) {
+	if !graphColumnProfile(h, p) {
 		return nil, errInvalid
 	}
 	binding := graphColumnBinding{Version: 1, Layout: graphColumnLayout, Schema: "node-presence;edge-life-bound;property-p:i64;canonical-original:v1", Config: h.config, Scope: h.config.CostScope, Policy: p}
+	if h.config.Cost.Version == 4 {
+		binding.Version, binding.Layout, binding.Schema = 2, graphColumnEdgeUniqueLayout, "node-life-create-close;edge-life-bound-create-close;property-p:i64:effective-unique;canonical-original:v1"
+	}
 	body, err := wire(binding)
 	if err != nil {
 		return nil, err

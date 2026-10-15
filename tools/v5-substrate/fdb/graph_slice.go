@@ -42,6 +42,9 @@ func validGraphConfig(c config) bool {
 	return c.CostScope == (lifecycleScope{}) && (c.Nodes == [2]uint64{} || c.Nodes[0] != 0 && c.Nodes[1] != 0 && c.Nodes[0] != c.Nodes[1])
 }
 func (c config) validEndpoint(e endpoint) bool {
+	if c.Cost.Version == 4 {
+		return graphEdgeUniqueEndpoint(c, e)
+	}
 	if c.Cost != (graphCostProfile{}) {
 		for _, node := range c.Cost.nodes() {
 			if e == node {
@@ -105,6 +108,9 @@ func graphReadKeys(command graphCommand) [2][]string {
 	return keys
 }
 func (h *harness) validateGraphShape(x transaction) error {
+	if h.config.Cost.Version == 4 {
+		return h.validateGraphEdgeUniqueShape(x)
+	}
 	if x.GraphChange == nil {
 		if h.config.Nodes != [2]uint64{} {
 			for _, p := range x.Participants {
@@ -206,6 +212,9 @@ func (h *harness) nativeLives(tr fdb.ReadTransaction, e endpoint) (int, bool, er
 	return live, matched, nil
 }
 func (h *harness) checkGraphNative(tr fdb.ReadTransaction, x transaction) (string, error) {
+	if h.config.Cost.Version == 4 {
+		return h.checkGraphEdgeUniqueNative(tr, x)
+	}
 	if h.config.Cost.Version == 5 {
 		if err := h.graphFeedWorkloadBindingIn(tr); err != nil {
 			return "", err

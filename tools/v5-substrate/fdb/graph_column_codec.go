@@ -11,6 +11,7 @@ import (
 // it is neither a generic graph planner nor the V3 engine format. Numeric
 // columns are contiguous and unsigned identities are never converted to int64.
 const graphColumnLayout = "scalar-cross-edge-i64-columns-v1"
+const graphColumnEdgeUniqueLayout = "effective-unique-edge-life-i64-columns-v1"
 const graphColumnHeader = 8 + 32 + 32 + 8 + 32 + 2
 const graphColumnNumeric = 11
 
@@ -21,13 +22,34 @@ type graphColumnPolicy struct {
 	ChunkRows, ChunkBytes                       int
 	MaxChunks, MaxGenerations, MaxRetainedBytes uint64
 	MaxWorkRows, MaxWorkBytes                   uint64
+	Version                                     uint8 `json:",omitzero"`
 }
 
 func (p graphColumnPolicy) validate() error {
+	if p.Version == 1 {
+		if p.ChunkRows < 1 || p.ChunkRows > 32 || p.ChunkBytes < 1024 || p.ChunkBytes > 64<<10 || p.MaxChunks < 1 || p.MaxChunks > 1_000_000 || p.MaxGenerations < 1 || p.MaxGenerations > 1024 || p.MaxRetainedBytes < 8192 || p.MaxRetainedBytes > 1<<40 || p.MaxWorkRows < 1 || p.MaxWorkRows > 3_000_007 || p.MaxWorkBytes < uint64(p.ChunkBytes) || p.MaxWorkBytes > 1<<40 {
+			return errInvalid
+		}
+		return nil
+	}
+	if p.Version != 0 {
+		return errInvalid
+	}
 	if p.ChunkRows < 1 || p.ChunkRows > 32 || p.ChunkBytes < 1024 || p.ChunkBytes > 64<<10 || p.MaxChunks < 1 || p.MaxChunks > 1_000_000 || p.MaxGenerations < 1 || p.MaxGenerations > 1024 || p.MaxRetainedBytes < 8192 || p.MaxRetainedBytes > 1<<40 || p.MaxWorkRows < 1 || p.MaxWorkRows > 2_000_003 || p.MaxWorkBytes < uint64(p.ChunkBytes) || p.MaxWorkBytes > 1<<40 {
 		return errInvalid
 	}
 	return nil
+}
+
+// A policy version cannot opt an ordinary agreement into fresh row semantics.
+func graphColumnProfile(h *harness, p graphColumnPolicy) bool {
+	return h != nil && p.validate() == nil && validGraphCostProfile(h.config) && (h.config.Cost.Version == 4 && p.Version == 1 || h.config.Cost.Version != 4 && p.Version == 0)
+}
+func graphColumnMagic(p graphColumnPolicy) string {
+	if p.Version == 1 {
+		return "RHOCLM02"
+	}
+	return "RHOCLM01"
 }
 
 type graphColumnBinding struct {
@@ -46,7 +68,7 @@ type graphColumnGeneration struct {
 }
 
 type graphColumnRow struct {
-	Kind                                                        uint8 // 1=node presence, 2=edge create+property, 3=edge property update.
+	Kind                                                        uint8 // 1=node presence, 2=edge create+property, 3=edge property update; fresh only:4=node close,5=edge close.
 	Owner, Life, SourceNode, SourceLife, TargetNode, TargetLife uint64
 	Value                                                       int64
 	ValueID, Provenance, Round, Sequence                        uint64
@@ -77,6 +99,18 @@ func (h *harness) graphColumnRow(original []byte) (graphColumnRow, error) {
 	switch command.Kind {
 	case "node-create":
 		row.Kind, row.Owner, row.Life, row.Value = 1, command.Node.Node, command.Node.Life, 1
+	case "node-close":
+		if h.config.Cost.Version != 4 {
+			return graphColumnRow{}, errInvalid
+		}
+		row.Kind, row.Owner, row.Life = 4, command.Node.Node, command.Node.Life
+	case "edge-close":
+		if h.config.Cost.Version != 4 || m.Definition != nil {
+			return graphColumnRow{}, errInvalid
+		}
+		e := command.Edge
+		row.Kind, row.Owner, row.Life = 5, e.ID, m.EdgeLife
+		row.SourceNode, row.SourceLife, row.TargetNode, row.TargetLife = e.Source.Node, e.Source.Life, e.Target.Node, e.Target.Life
 	case "edge-create", "edge-update":
 		if m.Definition == nil || m.Definition.Kind != "i64" {
 			return graphColumnRow{}, errInvalid
@@ -111,7 +145,7 @@ func graphColumnGenerationHash(g graphColumnGeneration) ([32]byte, error) {
 // Original bytes live once per logical group in a bounded arena. Offsets and
 // lengths are canonical consecutive spans; no alias survives this owned decode.
 func encodeGraphColumnChunk(h *harness, g graphColumnGeneration, ordinal uint64, previous [32]byte, rows []graphColumnRow, p graphColumnPolicy) ([]byte, error) {
-	if h == nil || p.validate() != nil || len(rows) < 1 || len(rows) > p.ChunkRows {
+	if !graphColumnProfile(h, p) || len(rows) < 1 || len(rows) > p.ChunkRows {
 		return nil, errInvalid
 	}
 	generation, err := graphColumnGenerationHash(g)
@@ -136,7 +170,7 @@ func encodeGraphColumnChunk(h *harness, g graphColumnGeneration, ordinal uint64,
 		return nil, errLimit
 	}
 	body := make([]byte, size)
-	copy(body, "RHOCLM01")
+	copy(body, graphColumnMagic(p))
 	copy(body[8:40], g.Binding[:])
 	copy(body[40:72], generation[:])
 	binary.BigEndian.PutUint64(body[72:80], ordinal)
@@ -160,14 +194,14 @@ func encodeGraphColumnChunk(h *harness, g graphColumnGeneration, ordinal uint64,
 }
 
 func decodeGraphColumnChunk(h *harness, g graphColumnGeneration, ordinal uint64, previous [32]byte, body []byte, p graphColumnPolicy) ([]graphColumnRow, error) {
-	if h == nil || p.validate() != nil || len(body) < graphColumnHeader || len(body) > p.ChunkBytes {
+	if !graphColumnProfile(h, p) || len(body) < graphColumnHeader || len(body) > p.ChunkBytes {
 		return nil, errInvalid
 	}
 	generation, err := graphColumnGenerationHash(g)
 	if err != nil {
 		return nil, err
 	}
-	if string(body[:8]) != "RHOCLM01" || !bytes.Equal(body[8:40], g.Binding[:]) || !bytes.Equal(body[40:72], generation[:]) || binary.BigEndian.Uint64(body[72:80]) != ordinal || !bytes.Equal(body[80:112], previous[:]) {
+	if string(body[:8]) != graphColumnMagic(p) || !bytes.Equal(body[8:40], g.Binding[:]) || !bytes.Equal(body[40:72], generation[:]) || binary.BigEndian.Uint64(body[72:80]) != ordinal || !bytes.Equal(body[80:112], previous[:]) {
 		return nil, errMismatch
 	}
 	n := int(binary.BigEndian.Uint16(body[112:114]))
