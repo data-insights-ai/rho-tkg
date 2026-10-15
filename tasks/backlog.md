@@ -492,12 +492,24 @@ bind persisted inputs to the immutable first decision, complete typed CDC,
 same-original retries and replacement state. The optional observation seam owns
 prepaid detached copies; cancellation never supplies a vote or decision.
 Its process parents and independent prefix/serial checker remain unexecuted.
-Old-leader schedules, unequal
-ticks/clock jumps, quorum/domain loss, torn/power-loss images, snapshot
-publication and corrupt pages remain implementation work. All eight declared
+The composed-D family is source-integrated at `a2091976`: old-leader packets,
+directed loss, unequal ticks, quorum/logical-domain loss, permanent lease expiry
+across clock rollback, interrupted snapshot activation and genuine OPTIONS
+rename failure use the actual graph/replica paths. A separately bounded VFS
+model preserves synchronized file bytes and directory-name identities; recovery
+selects the sealed post-reap image, while pre-kill capture records lineage only.
+Required active WAL/manifest corruption is checked through native Open refusal
+and same-image repair. These are authored model cases, not physical power-loss
+evidence or measured costs. Six OS-child conflict/fence/real-transfer causal
+cases retain exact originals, business CDC and both activation-lineage CDC
+records; the existing native-host fence-first stale-original case is separately
+attributed. The checker requires that declared finite inventory and does not
+claim exhaustive arbitrary orderings. Direct FS/lifetime/copy and negative
+grammar guards are authored only. Compilation, execution, broader P01-P09
+transition composition, seeded soak and qualification remain open. The remaining
 cost workload dispatches and RTT/matrix integration also remain open; a finite
-packet delay is not a measured RTT profile. Qualification follows full source
-integration; this package does not close B or D.
+packet delay is not a measured RTT profile. This source package does not close
+B or D.
 
 Worker lanes: Sol 6.1/high for native protocol recovery and durable pins/GC,
 then C/D; Sol 6.1/high for native column/fault-workload implementation (bounded
