@@ -25,13 +25,23 @@ S = module("protocol_state_native_state", "native_transition_state_check.py")
 R = module("protocol_state_retention", "native_transition_retention_check.py")
 M = module("protocol_state_move", "native_transition_move_check.py")
 G = module("protocol_state_feed", "native_feed_check.py")
+X = module("protocol_state_pooled", "native_transfer_check.py")
 T, P, F = B.T, B.P, S.F
 require, integer, fixed = T.require, T.integer, T.fixed
 PROFILE = "native-protocol-owned-state-transition-v1"
 SEMANTIC = hashlib.sha256(hashlib.sha256(G.AGREEMENT + b"feed-retention=irreversible-rolling-ack-anchor-v1\0snapshot-reopen=authenticated-expired-v1\0payload-anchor=exact-plm-round-image-v1\0").digest() + b"range-move=compact-recovery-spans-v1\0retention=immutable-native-reference-v1\0replay=bounded-original-batches32-v1\0").digest()
+POOLED_PROFILE = "native-protocol-owned-pooled-state-transition-v1"
+POOLED_SEMANTIC = hashlib.sha256(hashlib.sha256(SEMANTIC + b"graph=bounded-native-rmp-batches32-component8-family-boundary-v1\0progress=gmp5-native-graph-count-v1\0").digest() + b"range-move=hard-pooled-retained-v1\0undo=before-image-debt-v1\0capacity=nonterminal-exact-original-v1\0").digest()
 HEADER = set("Version Profile Recipe Run DeadlineUnixNanos Arm Batch StateArm State Command Intent Calls GC BeforeGC AfterGC Before Retained Reopened Processes Original Token Business BusinessReplay BusinessAfterGC LostRequest LostReply From Through Records ReceiptReads ReceiptGrantBytes Refusals ChangedCaller ChangedReply AllocatorBefore AllocatorAfter".split())
 CONTROL = set("Version Cookie Sequence Action Request Original Token Boundary Digest".split())
 REPLY = set("Version Profile Cookie Run Sequence Calls TerminalCalls GrantedWork Member PID DeadlineUnixNanos Action Result Original Token Page Digest Snapshot Completed".split())
+
+
+def state_profile(a):
+    fresh = type(a.get("Version")) is int and a["Version"] == 2
+    require((fresh and a.get("Profile") == POOLED_PROFILE and set(a) == HEADER | {"Pooled"}) or
+            (type(a.get("Version")) is int and a["Version"] == 1 and a.get("Profile") == PROFILE and set(a) == HEADER), "explicit state agreement/version; no inferred upgrade")
+    return (POOLED_PROFILE, POOLED_SEMANTIC) if fresh else (PROFILE, SEMANTIC)
 
 
 def recipe(r):
@@ -55,7 +65,7 @@ def recipe(r):
 
 def load(path):
     total, digest, header, footer = 0, hashlib.sha256(), None, None
-    rows, calls, gc = [], [], []
+    rows, calls, gc, pooled = [], [], [], []
     with path.open("rb") as stream:
         while line := stream.readline((512 << 10)+1):
             total += len(line)
@@ -65,41 +75,53 @@ def load(path):
             if header is None:
                 require(set(row) == {"Type", "Artifact"} and row["Type"] == "header", "state header")
                 header = row["Artifact"]
-                require(type(header) is dict and set(header) == HEADER and all(header[k] is None for k in ("Records", "Calls", "GC")), "owned streamed proof grammar")
+                require(type(header) is dict, "owned streamed proof object")
+                require(set(header) == (HEADER | {"Pooled"} if type(header.get("Version")) is int and header["Version"] == 2 else HEADER), "exact selected state stream header")
+                require(all(header[k] is None for k in ("Records", "Calls", "GC")), "owned streamed proof grammar")
+                if header["Version"] == 2:
+                    state_profile(header)
+                    p = header["Pooled"]
+                    require(type(p) is dict and set(p) == {"Version", "Semantic", "Frames"} and type(p["Version"]) is int and p["Version"] == 1 and fixed(p["Semantic"], 32) == POOLED_SEMANTIC and p["Frames"] is None, "fresh native pooled stream header")
             elif row.get("Type") == "record":
                 require(set(row) == {"Type", "Record"} and len(rows) < 512, "bounded native prefix"); rows.append(row["Record"])
+            elif row.get("Type") == "pooled":
+                require(header["Version"] == 2 and set(row) == {"Type", "Sequence", "Frame"} and type(row["Sequence"]) is int and row["Sequence"] == len(pooled) < 128, "bounded exact pooled frame order")
+                pooled.append(row["Frame"])
             elif row.get("Type") in ("call", "gc"):
                 kind = row["Type"]; target = calls if kind == "call" else gc; field = "Call" if kind == "call" else "Receipt"
                 require(set(row) == {"Type", "Sequence", field} and type(row["Sequence"]) is int and row["Sequence"] == len(target) < (416 if kind == "call" else 2304), "exact bounded owner row sequence")
                 target.append(row[field])
             else:
-                require(set(row) == {"Type", "Rows", "Calls", "GC", "Through", "PayloadSHA256"} and row["Type"] == "footer" and all(type(row[k]) is int and row[k] == len(v) for k, v in (("Rows", rows), ("Calls", calls), ("GC", gc))) and row["PayloadSHA256"] == digest.hexdigest(), "exact state EOF/hash/census")
+                extra = {"Pooled"} if header["Version"] == 2 else set()
+                require(set(row) == {"Type", "Rows", "Calls", "GC", "Through", "PayloadSHA256"} | extra and row["Type"] == "footer" and all(type(row[k]) is int and row[k] == len(v) for k, v in (("Rows", rows), ("Calls", calls), ("GC", gc))) and row["PayloadSHA256"] == digest.hexdigest(), "exact state EOF/hash/census")
+                if extra: require(type(row["Pooled"]) is int and row["Pooled"] == len(pooled), "pooled stream complete EOF census")
                 footer = row
             if footer is None: digest.update(line)
     require(header is not None and footer is not None and footer["Through"] == header["Through"], "missing/foreign complete EOF")
     header.update(Records=rows, Calls=calls, GC=gc)
+    if header["Version"] == 2: header["Pooled"]["Frames"] = pooled
     return header
 
 
-def cut(read):
+def cut(read, semantic=SEMANTIC):
     scopes, round_, values = F.range_read(read)
-    require(set(scopes) == {3, 8} and all(scope[88:120] == SEMANTIC for scope in scopes.values()), "exact existing span semantic/full scope")
+    require(set(scopes) == {3, 8} and all(scope[88:120] == semantic for scope in scopes.values()), "exact selected native semantic/full scope")
     M.census(read)
     return scopes, round_, values
 
 
-def definition(encoded, deadline):
+def definition(encoded, deadline, semantic=SEMANTIC):
     wire = P.raw(encoded); c = P.Cursor(P.body(wire, b"GFD\1")); manifest = c.field(32768)
     policy = (c.number(4), c.number(4), c.number(), c.number(), c.number(4), c.number(4), c.number(4), c.number()); c.end()
     require(policy == (65536, 256, 64, 512, 16384, 16 << 20, 32 << 20, deadline), "same fixed original feed work/deadline")
     c = P.Cursor(P.body(manifest, b"GPM\1")); scope, issuer, request = c.take(120), c.take(16), c.take(16)
     epoch, expires, count = c.number(), c.number(), c.number(4)
-    require(scope[88:] == SEMANTIC and int.from_bytes(scope[16:24], "big") in (3, 8) and any(issuer) and any(request) and epoch == 0 and expires == 1 and count == 2, "genuine complete original manifest/issuer")
+    require(scope[88:] == semantic and int.from_bytes(scope[16:24], "big") in (3, 8) and any(issuer) and any(request) and epoch == 0 and expires == 1 and count == 2, "genuine complete original manifest/issuer")
     parts = {}
     for part in (3, 8):
         cert, start, lineage = c.field(512), c.number(), c.take(32)
         cert_body = P.body(cert, b"GSC\1")
-        require(len(cert_body) == 356 and cert_body[88:120] == SEMANTIC and int.from_bytes(cert_body[16:24], "big") == part and start == int.from_bytes(cert_body[176:184], "big")+1 and lineage == hashlib.sha256(b"rho-tkg:retained-pin-source-lineage:v1\0"+cert+struct.pack(">Q", start)).digest(), "actual native certificate/data/feed lineage")
+        require(len(cert_body) == 356 and cert_body[88:120] == semantic and int.from_bytes(cert_body[16:24], "big") == part and start == int.from_bytes(cert_body[176:184], "big")+1 and lineage == hashlib.sha256(b"rho-tkg:retained-pin-source-lineage:v1\0"+cert+struct.pack(">Q", start)).digest(), "actual native certificate/data/feed lineage")
         parts[part] = dict(scope=cert_body[:120], certificate=cert, source=int.from_bytes(cert_body[176:184], "big"), index=int.from_bytes(cert_body[160:168], "big"), start=start)
     c.end()
     return dict(wire=wire, manifest=manifest, scope=scope, issuer=issuer, request=request, id=hashlib.sha256(b"rho-tkg:retained-graph-pin:v1\0"+scope+issuer+request).digest(), digest=hashlib.sha256(manifest).digest(), parts=parts)
@@ -119,11 +141,11 @@ def original_cell(wire, axis, kind, value=None):
     return dict(present=True, null=False, handle=handle, revision=revision, provenance=provenance, kind=kind, i64=0 if value is None else value)
 
 
-def snapshot(value, d, before):
+def snapshot(value, d, before, semantic=SEMANTIC):
     require(type(value) is dict and set(value) == {"Cut", "Facts", "Entities"}, "actual held snapshot projection grammar")
     require(type(value["Cut"]) is dict and set(value["Cut"]) == {"Certificates"}
             and [P.raw(x) for x in value["Cut"]["Certificates"]] == [d["parts"][p]["certificate"] for p in (3, 8)], "held C is actual Original capture, not an independent Fresh")
-    _, _, native = cut(before)
+    _, _, native = cut(before) if semantic == SEMANTIC else cut(before, semantic)
     facts = value["Facts"]
     require(type(facts) is list and len(facts) == 32, "held snapshot full actual entity census")
     for owner, fact in enumerate(facts, 1):
@@ -166,6 +188,10 @@ def snapshot(value, d, before):
 def selected(command, r, scopes):
     family, phase, part, page, _, _ = recipe(r)
     if family == "move":
+        if scopes[part][88:] == POOLED_SEMANTIC:
+            value = pooled_command(command)
+            require(value["scope"] == scopes[part] and (value["phase"], value["sequence"]) == (phase, page), "canonical actual pooled phase/page")
+            return value["intent"]["digest"]
         c = P.Cursor(P.body(command, b"GMQ\2")); scope, actual, sequence = c.take(120), c.number(1), c.number()
         intent, payload = c.field(1024), c.field((1 << 20)-2048)
         for _ in range(integer(c.number(4), 2)): move_status(c.field(256))
@@ -186,12 +212,359 @@ def selected(command, r, scopes):
     return request
 
 
-def move_status(wire):
+def move_status(wire, semantic=SEMANTIC):
+    if semantic == POOLED_SEMANTIC:
+        return G.column.pooled_move_status(G.raw, wire)
     c = P.Cursor(P.body(wire, b"GMO\2")); graph, part, move, intent = c.take(16), c.number(), c.take(16), c.take(32)
     phase, result = c.number(1), c.number(1)
     index, floor, round_, sequence, rows, size = (c.number() for _ in range(6)); digest = c.take(32); c.end()
     require(graph == P.GRAPH and part in (3, 8) and any(move) and any(intent) and 1 <= phase <= 9 and 1 <= result <= 4 and index > 0, "actual immutable GMO2")
     return dict(partition=part, move=move, intent=intent, phase=phase, result=result, index=index, floor=floor, round=round_, sequence=sequence, rows=rows, size=size, digest=digest)
+
+
+def pooled_command(wire):
+    require(X.AGREEMENT == POOLED_SEMANTIC, "owning pooled codec agreement is the selected native profile")
+    return X.move_command(wire)
+
+
+def pool_control(value, key, root_index):
+    require(type(value) is dict and set(value) == {"Found", "Key", "Index", "Value"}
+            and type(value["Found"]) is bool and P.raw(value["Key"]) == key, "actual exact native control key/presence")
+    at, wire = integer(value["Index"], root_index), P.raw(value["Value"])
+    require((at > 0 if value["Found"] else at == 0 and not wire), "missing control cannot invent empty original/index")
+    return (at, wire) if value["Found"] else None
+
+
+def pool_undo(wire, *, fence=False):
+    c = P.Cursor(P.body(wire, b"GMU\1" if fence else b"GMU\2"))
+    require(len(wire) <= (1 << 20)-2048, "bounded actual before-image")
+    bound = 0 if fence else integer(c.number(), 1 << 40, 1)
+    rows, keys = [], set()
+    for _ in range(integer(c.number(4), 128)):
+        key, value, deleted = c.field(65536), c.field(1 << 20), c.number(1)
+        require(key and len(key)+len(value) <= 1 << 20 and deleted in (0, 1) and (not deleted or not value)
+                and key not in keys, "complete before-image KVs, no duplicate native write key")
+        keys.add(key); rows.append((key, value, deleted))
+    c.end()
+    # Every before-image byte and native escaped key/version frame must fit the
+    # independently funded bound. Native policy also includes progress/status,
+    # immutable retry control, outcome, root and maximum RS4/TB1 overhead.
+    require(fence or bound >= sum(len(k)+k.count(0)+47+len(v) for k, v, _ in rows), "undo bound cannot discount actual before-image growth")
+    return bound, rows
+
+
+def pool_undo_bound(wire, command):
+    bound, rows = pool_undo(wire)
+    ns = command["scope"][:24]; move = command["intent"]["move"]
+    progress_key, status_key = [b"ga"+bytes((tag,))+ns+move for tag in (19, 18)]
+    retry_key = b"GMV\1"+ns+move+struct.pack(">I", 0x40000000)
+    # Exact moveUndoBoundWithPolicy: base root/outcome frames (135+172+231),
+    # progress padded to32KiB, GMO3 status231, GM/V hash+status263, native RS4
+    # with all8 spans and16 TB1 owners (3024+45), plus2*retry-key padding.
+    cost = lambda k, value_bytes: len(k)+k.count(0)+47+value_bytes
+    expected = (135+172+231 + sum(cost(k,len(v)) for k,v,_ in rows)
+                +cost(progress_key,32768)+cost(status_key,231)+cost(retry_key,263)
+                +3069+2*len(retry_key))
+    require(bound == expected and len(rows)+7 <= 128 and bound <= command["intent"]["pools"][2], "exact native before-image/status/control/maximum RS4-TB1 bound and independent undo grant")
+    return bound
+
+
+def pool_progress(wire, command):
+    if wire.startswith(b"GMC\1"):
+        c = P.Cursor(P.body(wire, b"GMC\1")); scope, floor = c.take(120), c.number()
+        generation, index, hash_, image = c.number(), c.number(), c.take(32), c.field(172); c.end()
+        require(scope == command["scope"] and generation > 0 and index > 0 and len(image) == 172 and hashlib.sha256(image).digest() == hash_, "actual capture progress, not fabricated zero-debt GMP")
+        return dict(imported=False, next=0, total=0, debt=0, graph=0, applied=0, replay=0)
+    require(len(wire) <= 32768, "bounded compact pooled progress")
+    c = P.Cursor(P.body(wire, b"GMP\6"))
+    descriptor, source, imported = c.field(16384), c.field(129 << 10), c.field((1 << 20)-1024)
+    replay, end = c.field(129 << 10), c.field(129 << 10)
+    graph, next_, total = c.number(), c.number(), c.number()
+    key, header, packet, size, rows = c.field(52), c.take(32), c.take(32), c.number(), c.number()
+    replay_pages, applied, debt = c.number(), c.number(), c.number()
+    inline, retention = c.number(1), c.field(1 << 20); c.end()
+    intent = command["intent"]
+    require(key == b"GMH\1"+P.GRAPH+struct.pack(">Q", 3)+intent["move"]+bytes(8)
+            and any(header) and any(packet) and 0 < size <= 320 << 10 and 1 <= rows <= 17
+            and inline in (0, 1) and bool(retention) == bool(inline), "exact immutable retained-reference identity")
+    d = P.Cursor(P.body(descriptor, b"RMD\1"))
+    publication, from_, to = d.field(256), d.field(256), d.field(256)
+    require(publication == intent["publication"], "progress binds actual HOME publication")
+    for wire_, part_, epoch_ in ((from_,3,intent["epoch"]),(to,8,intent["epoch"]+1)):
+        ownership = P.body(wire_, b"ROF\1")
+        require(len(ownership) == 73 and ownership[:16] == P.GRAPH and struct.unpack_from(">3Q",ownership,16) == (intent["range"],part_,epoch_)
+                and ownership[40:72] == P.body(publication,b"RPB\1")[56:88] and ownership[72] == 0, "actual unfenced source/successor placement descriptor")
+    for scope in (intent["source"], intent["target"]):
+        graph_, part, group, semantic = d.take(16), d.number(), d.take(16), d.take(32)
+        generation, index, image, hash_ = d.number(), d.number(), d.take(172), d.take(32)
+        require(graph_+struct.pack(">Q", part) == scope[:24] and group == scope[24:40] and semantic == POOLED_SEMANTIC
+                and generation == 0 and index > 0 and hashlib.sha256(image).digest() == hash_, "actual graphstore capture has generation0, exact source/target roots")
+        G.column.root(G.raw, image, part)
+    declaration, configuration, axis = d.take(32), d.take(32), d.field(1024)
+    d.number(); d.number(); d.take(32); sealed = d.number(1); d.end()
+    require(from_ and to and any(declaration) and any(configuration) and axis and sealed in (0, 1), "complete actual descriptor")
+    for cursor_wire in (replay, end):
+        if P.body(cursor_wire, b"GEC\1") != bytes(82): X.replay_cursor(cursor_wire)
+    require(not (source and imported) and 0 <= next_ <= total <= intent["pages"] and graph+replay_pages <= intent["pages"]
+            and applied <= graph and debt <= intent["pools"][2], "actual accepted graph/replay/undo counters")
+    if source: P.body(source, b"RMC\1")
+    if imported: P.body(imported, b"RMS\1")
+    else: require(next_ == total == debt == applied == 0, "source progress cannot create target undo debt")
+    require(next_ != total or debt == 0, "completed undo leaves no debt")
+    return dict(imported=bool(imported), next=next_, total=total, debt=debt, graph=graph, applied=applied, replay=replay_pages)
+
+
+def pool_exchange(item):
+    require(type(item) is dict and set(item) == {"Origin", "Partition", "Request", "Reply", "Before", "After"}, "actual complete pooled Submit observation")
+    require(integer(item["Origin"], 6, 1) and item["Partition"] in (3, 8), "real source caller/partition")
+    c = P.Cursor(P.body(P.raw(item["Request"]), b"GSQ\1"))
+    kind, sequence, nonce = c.number(1), c.number(), c.take(16)
+    cookie, maximum, rows = c.take(40), c.number(4), c.number(4)
+    keys = [c.field(65536) for _ in range(3)]
+    certified, tx, phase = c.field(1 << 20), c.take(16), c.number(1); c.end()
+    require(kind == 8 and sequence > 0 and any(nonce) and not any(cookie) and 0 < maximum <= 2 << 20
+            and rows == phase == 0 and not any(tx) and not any(keys), "actual sourceSubmit, no synthetic command receipt")
+    c = P.Cursor(P.body(certified, b"GSC\1"))
+    scope, command = P.body(c.field(256), b"APS\1"), c.field(1 << 20); c.end()
+    parsed = pooled_command(command)
+    require(scope == parsed["scope"] and int.from_bytes(scope[16:24], "big") == item["Partition"], "actual certified target scope")
+    if item["Reply"] is None:
+        return command, parsed, b"" # Actual transport-unknown; the native after-proof decides what installed.
+    c = P.Cursor(P.body(P.raw(item["Reply"]), b"GSR\1"))
+    actual, member, issuer = P.body(c.field(256), b"APS\1"), c.number(), c.take(16)
+    reply_kind, reply_sequence, reply_nonce, mask = c.number(1), c.number(), c.take(16), c.number(2)
+    result = c.field((2 << 20)-512); c.end()
+    require(actual == scope and member == (1 if item["Partition"] == 3 else 4) and any(issuer)
+            and (reply_kind, reply_sequence, reply_nonce) == (kind, sequence, nonce), "authenticated source reply association")
+    require(not mask or not result, "unavailable submit supplies no invented original")
+    if result:
+        status = move_status(result, POOLED_SEMANTIC)
+        require(status["move"] == parsed["intent"]["move"] and status["intent"] == parsed["intent"]["digest"] and status["partition"] == item["Partition"], "exact submitted immutable original")
+    return command, parsed, result
+
+
+def pool_observation(item, command, parsed, a):
+    require(type(item) is dict and set(item) == {"Member", "Input", "Response"}, "actual move-proof owner call")
+    part = int.from_bytes(parsed["scope"][16:24], "big")
+    require(item["Member"] == (1 if part == 3 else 4), "proof executes at actual native leader")
+    q = item["Input"]
+    require(type(q) is dict and set(q) == CONTROL and q["Action"] == "move-proof" and type(q["Version"]) is int and q["Version"] == 1
+            and P.raw(q["Original"]) == command and not P.raw(q["Token"]) and fixed(q["Request"], 16) == bytes(16) and fixed(q["Digest"], 32) == bytes(32), "proof binds actual complete command, no minted authority")
+    integer(q["Sequence"], 416, 1); fixed(q["Cookie"], 16, True)
+    require(len(command) <= 32 << 10, "actual proof command input cap")
+    response = R.response(item["Response"]); r = T.decoded(response["aux"])
+    require(response["code"] == response["mask"] == 0 and type(r) is dict and set(r) == REPLY and r["Profile"] == PROFILE
+            and type(r["Version"]) is int and r["Version"] == 1 and r["Action"] == q["Action"] and r["Sequence"] == q["Sequence"]
+            and r["Cookie"] == q["Cookie"] and r["Member"] == item["Member"] and fixed(r["Run"], 16, True) == fixed(a["Run"], 16, True)
+            and r["DeadlineUnixNanos"] == a["DeadlineUnixNanos"] and r["Result"] == "applied" and r["Snapshot"] is None, "same successful bounded native proof owner/run/deadline")
+    page = P.raw(r["Page"]); require(len(page) <= 64 << 10, "actual bounded proof Page")
+    require(fixed(r["Digest"], 32, True) == hashlib.sha256(page).digest(), "owned proof digest binds exact complete Page")
+    p = T.decoded(page)
+    names = "Version CommandSHA256 Scope RootIndex Root Frame PreviousRoot IntentControl OriginalControl DecisionControl StatusFound Status ProgressFound Progress UndoIndices Undo Rows Bytes Output Complete".split()
+    require(type(p) is dict and set(p) == set(names) and type(p["Version"]) is int and p["Version"] == 1 and p["Complete"] is True
+            and fixed(p["CommandSHA256"], 32, True) == hashlib.sha256(command).digest()
+            and P.raw(p["Scope"]) == parsed["scope"], "same-view complete requested proof; not whole-prefix EOF")
+    root_index = integer(p["RootIndex"], minimum=1)
+    G.column.root(G.raw, fixed(p["Root"], 172), part)
+    require(integer(p["Rows"], 256) > 0 and integer(p["Bytes"], 16 << 20) > 0 and integer(p["Output"], 32 << 20) > 0, "actual prepaid bounded native control/read/output work, separate from direct historical reads")
+    ns = P.GRAPH+struct.pack(">Q", part)
+    base = b"GM"; move = parsed["intent"]["move"]
+    controls = {}
+    for field, tag in (("IntentControl", b"I"), ("DecisionControl", b"D")):
+        controls[field] = pool_control(p[field], base+tag+b"\1"+ns+move, root_index)
+    phase, seq = parsed["phase"], parsed["sequence"]
+    credit = {2:1, 3:0x10000000+seq, 4:0x20000000+seq, 5:0x30000000, 6:0x30000001, 7:0x30000002, 8:0xf0000000, 9:0xf0000000 if seq == 0 else 0x40000000+seq-1}.get(phase)
+    intent_original = phase in (1,9) and p["OriginalControl"]["Found"] and P.raw(p["OriginalControl"]["Key"]) == base+b"I\1"+ns+move
+    original_key = base+b"I\1"+ns+move if intent_original else base+b"V\1"+ns+move+struct.pack(">I", 0 if phase == 1 else credit)
+    controls["OriginalControl"] = pool_control(p["OriginalControl"], original_key, root_index)
+    if controls["IntentControl"] is not None: require(controls["IntentControl"][1] == parsed["original"], "observed durable original cannot substitute intent")
+    if controls["DecisionControl"] is not None:
+        decision = move_status(controls["DecisionControl"][1], POOLED_SEMANTIC)
+        require(decision["partition"] == 3 and decision["phase"] == 6 and decision["result"] == 1 and decision["move"] == move
+                and decision["intent"] == parsed["intent"]["digest"] and (part != 3 or decision["index"] == controls["DecisionControl"][0]), "actual source decision or authenticated target copy, no synthetic terminal")
+    for flag, field in (("StatusFound", "Status"), ("ProgressFound", "Progress")):
+        require(type(p[flag]) is bool and (p[flag] or not P.raw(p[field])), "absent mutable state is explicit")
+    status = move_status(P.raw(p["Status"]), POOLED_SEMANTIC) if p["StatusFound"] else None
+    if status is not None:
+        require(status["partition"] == part and status["move"] == move and status["intent"] == parsed["intent"]["digest"] and status["index"] <= root_index, "same native mutable status/intent/root")
+    progress = pool_progress(P.raw(p["Progress"]), parsed) if p["ProgressFound"] else dict(imported=False, next=0, total=0, debt=0, graph=0, applied=0, replay=0)
+    indices = p["UndoIndices"]
+    require(type(indices) is list and 1 <= len(indices) <= 4 and indices[0] == 0 and indices == sorted(set(integer(v, parsed["intent"]["pages"]) for v in indices))
+            and (not P.raw(q["Boundary"]) or P.raw(q["Boundary"]) == b"".join(struct.pack(">Q", v) for v in indices))
+            and type(p["Undo"]) is list and len(p["Undo"]) == len(indices), "exact bounded requested undo-key set")
+    if not P.raw(q["Boundary"]):
+        expected = {0}
+        if parsed["phase"] == 4 and parsed["sequence"] > 0: expected.add(parsed["sequence"])
+        if status is not None and status["phase"] == 4 and status["sequence"] > 0: expected.add(status["sequence"])
+        if progress["total"]: expected.add(progress["total"])
+        if progress["next"] < progress["total"]: expected.add(progress["total"]-progress["next"])
+        require(indices == sorted(expected), "native automatic probe selects current/next exact keys, not caller-chosen omissions")
+    undo = {}
+    for seq, value in zip(indices, p["Undo"]):
+        observed = pool_control(value, base+b"U\1"+ns+move+struct.pack(">Q", seq), root_index)
+        undo[seq] = observed
+        if observed is not None:
+            require(len(observed[1]) <= 16 << 10, "actual bounded GMU diagnostic read")
+            if seq == 0: pool_undo(observed[1], fence=True)
+            else: pool_undo_bound(observed[1], parsed)
+    frame = p["Frame"]
+    require((frame is not None) == (controls["OriginalControl"] is not None), "exact requested original, no current-status substitution")
+    if frame is not None:
+        require(type(frame) is dict and set(frame) == set("Partition Index Root Outcome CDC Registration OriginalOutcome OriginalCDC Rows".split()), "complete genuine native original frame")
+        integer(frame["Index"], root_index, 1)
+        require(frame["Partition"] == part and frame["Index"] == controls["OriginalControl"][0] and frame["Index"] <= root_index
+                and not frame["Rows"], "actual first original frame and zero business rows")
+        original = move_status(P.raw(frame["Outcome"]), POOLED_SEMANTIC)
+        require(original["index"] == frame["Index"], "proof reads first install, not later replay index")
+        expected = parsed["original"] if intent_original else hashlib.sha256(command).digest()+P.raw(frame["Outcome"])
+        require(controls["OriginalControl"][1] == expected, "actual immutable GM/I or GM/V command original")
+        registration = P.Cursor(P.body(P.raw(frame["Registration"]), b"NCM1"))
+        for field in ("IntentControl", "OriginalControl", "DecisionControl"):
+            key_, at_, value_ = registration.field(1024), registration.number(), registration.field(2048)
+            if field != "DecisionControl" or key_:
+                require(controls[field] is not None and (key_,at_,value_) == (P.raw(p[field]["Key"]),*controls[field]), "same-view control observation joins actual original registration")
+            else:
+                require(at_ == 0 and not value_ and (controls[field] is None or controls[field][0] > frame["Index"]), "only actual later decision is excluded from first-original metadata")
+        registration.end()
+    return dict(proof=p, reply=r, status=status, progress=progress, undo=undo, frame=frame, controls=controls)
+
+
+def pool_transition(command, before, after, inventory):
+    """Debt is a live prefix; consumed immutable GMUs need not be deleted."""
+    frame = after["frame"]
+    if frame is None: return
+    if before["frame"] is not None:
+        require(before["proof"]["Progress"] == after["proof"]["Progress"], "SAME original cannot consume import/undo twice")
+        return
+    require(before["proof"]["RootIndex"] < frame["Index"] <= after["proof"]["RootIndex"], "new original is installed between these actual views")
+    status = move_status(P.raw(frame["Outcome"]), POOLED_SEMANTIC)
+    p, q = before["progress"], after["progress"]
+    if status["result"] == 5:
+        require(before["proof"]["Progress"] == after["proof"]["Progress"], "capacity refusal cannot accept attempted page/undo debt")
+        return
+    if int.from_bytes(command["scope"][16:24], "big") != 8: return
+    phase, seq = command["phase"], command["sequence"]
+    if phase == 4 and status["result"] == 1:
+        if seq == 0:
+            require(q["total"] == q["next"] == q["debt"] == 0, "initial target/fence undo is separately funded")
+        else:
+            require(seq in inventory and q["total"] == p["total"]+1 == seq and q["next"] == p["next"]
+                    and q["debt"] == p["debt"]+pool_undo_bound(inventory[seq][1], command), "one accepted Import adds exactly its independently funded before-image")
+    elif phase == 9:
+        if seq == 0:
+            require(p["next"] == p["total"] and p["debt"] == q["debt"] == 0, "terminal routing/fence rollback cannot skip outstanding undo")
+        else:
+            original = p["total"]-p["next"]
+            require(original in inventory and q["total"] == p["total"] and q["next"] == p["next"]+1 == seq
+                    and q["debt"]+pool_undo_bound(inventory[original][1], command) == p["debt"], "actual exact-next reverse tail consumes debt once, not its retained control")
+
+
+def pooled(a, rows):
+    p = a["Pooled"]
+    require(type(p) is dict and set(p) == {"Version", "Semantic", "Frames"} and type(p["Version"]) is int and p["Version"] == 1
+            and fixed(p["Semantic"], 32) == POOLED_SEMANTIC and type(p["Frames"]) is list and len(p["Frames"]) <= 128, "finite actual pooled submit inventory")
+    has_move = a["Recipe"]["Family"] == "move" or a["Recipe"]["Family"] == "pin" and a["Recipe"]["Phase"] == 2
+    require(bool(p["Frames"]) == has_move, "actual move trace required only where real move runs")
+    # The fixture cap128 bounds both original joins and the live undo inventory;
+    # this is not a graph-size cache or a replacement executor.
+    originals, live, calls, observed_outcomes, commands, installed, unknown = {}, {}, list(a["Calls"]), {}, set(), set(), []
+    class Evidence:
+        def lookup(self, namespace, key):
+            require((namespace, key) in originals, "missing actual earlier command/original")
+            return originals[namespace, key]
+    evidence = Evidence()
+    for item in p["Frames"]:
+        wire, command, result = pool_exchange(item)
+        commands.add(wire)
+        if item["Reply"] is None:
+            require(a["Recipe"]["Family"] == "move" and wire == P.raw(a["Command"]), "missing reply only belongs to actual selected native kill command; never success authority")
+            unknown.append(wire)
+        before, after = [pool_observation(item[name], wire, command, a) for name in ("Before", "After")]
+        calls.extend((item["Before"], item["After"]))
+        require(before["proof"]["UndoIndices"] == after["proof"]["UndoIndices"]
+                and before["proof"]["RootIndex"] <= after["proof"]["RootIndex"], "same observed keys and monotone native view")
+        require(P.raw(item["After"]["Input"]["Boundary"]) == b"".join(struct.pack(">Q",v) for v in before["proof"]["UndoIndices"]), "after read cannot silently select another native key window")
+        part, move = item["Partition"], command["intent"]["move"]
+        active = live.setdefault((part, move), {})
+        for which, observed in (("before", before), ("after", after)):
+            progress, status = observed["progress"], observed["status"]
+            if which == "after":
+                for seq, actual in observed["undo"].items():
+                    if seq == 0: continue
+                    prior = active.get(seq)
+                    if actual is None:
+                        require(seq > progress["total"]-progress["next"], "live before-image cannot disappear")
+                    elif prior is None:
+                        require(command["phase"] == 4 and command["sequence"] == seq == progress["total"]
+                                and observed["frame"] is not None and actual[0] == observed["frame"]["Index"]
+                                and move_status(P.raw(observed["frame"]["Outcome"]), POOLED_SEMANTIC)["result"] == 1, "only accepted actual Import adds GMU debt")
+                        active[seq] = actual
+                    else: require(actual == prior, "immutable undo before-image/index changed")
+            for seq, actual in observed["undo"].items():
+                if seq and actual is not None: require(active.get(seq) == actual, "observed undo native key differs from complete captured prefix")
+            expected = range(1, progress["total"]-progress["next"]+1)
+            require(all(seq in active for seq in expected) and sum(pool_undo_bound(active[seq][1], command) for seq in expected) == progress["debt"], "complete live accepted-prefix undo sum; historical GMUs may remain after undo/COMMIT")
+            if status is not None and progress["imported"] and status["phase"] in (4, 5, 7): require(progress["total"] == status["sequence"], "refused attempted Import excluded from accepted total")
+            frame = observed["frame"]
+            if frame is not None:
+                key = struct.pack(">QQ", part, frame["Index"])
+                actual = rows.get((part, frame["Index"]))
+                require(actual is not None and all(actual[k] == frame[k] for k in ("Outcome", "CDC")), "actual first native original/CDC prefix join")
+                originals[b"move-command", key] = wire
+                G.column.pooled_move_frame(G.raw, frame, fixed(observed["proof"]["PreviousRoot"], 172), POOLED_SEMANTIC, evidence)
+                encoded_frame = G.raw.go_json(frame)
+                previous = originals.get((b"frame", key))
+                require(previous is None or previous == encoded_frame, "reopen/SAME immutable move frame changed")
+                originals[b"frame", key] = encoded_frame
+                observed_outcomes[part, frame["Index"]] = P.raw(frame["Outcome"])
+                installed.add(wire)
+        pool_transition(command, before, after, active)
+        if result:
+            returned = move_status(result, POOLED_SEMANTIC)
+            previous = observed_outcomes.get((part, returned["index"]))
+            require(previous is None or previous == result, "same returned original cannot change bytes")
+            observed_outcomes[part, returned["index"]] = result
+            if after["frame"] is None:
+                status = move_status(result, POOLED_SEMANTIC)
+                require(status["phase"] == command["phase"] == 1 and status["result"] in (2, 3)
+                        and before["status"] == after["status"] and before["progress"] == after["progress"], "uninstalled fence refusal creates no original/debt authority")
+            else: require(P.raw(after["frame"]["Outcome"]) == result, "actual source reply is requested installed original")
+        if before["frame"] is not None: require(before["frame"] == after["frame"], "SAME command replay cannot refresh index/bytes")
+    if a["Recipe"]["Family"] == "move": require(P.raw(a["Command"]) in commands, "actual native Sync selector is one captured submitted original")
+    require(all(command in installed for command in unknown), "unknown selected attempt needs subsequent SAME installed original, native kill/reopen proof remains mandatory")
+    for (part, index), row in rows.items():
+        outcome = P.raw(row["Outcome"])
+        if not outcome.startswith(b"GMO"): continue
+        require(outcome.startswith(b"GMO\3"), "fresh native prefix cannot silently mix old move authority")
+        status = move_status(outcome, POOLED_SEMANTIC)
+        require(status["partition"] == part and 0 < status["index"] <= index and observed_outcomes.get((part,status["index"])) == outcome, "complete actual GMO3 prefix joins captured exact command original, no erased phase")
+        if status["index"] != index: require(not P.raw(row["CDC"]), "SAME native move application cannot publish another activation")
+    owners = {}
+    for item in calls:
+        response = R.response(item["Response"]); r = T.decoded(response["aux"]); q = item["Input"]
+        require(type(r) is dict and set(r) == REPLY and r["Profile"] == PROFILE and r["Member"] == item["Member"]
+                and fixed(r["Run"], 16, True) == fixed(a["Run"], 16, True) and r["DeadlineUnixNanos"] == a["DeadlineUnixNanos"], "all actual owner calls retain original lifetime")
+        integer(r["PID"], minimum=1)
+        key = item["Member"], r["PID"], response["incarnation"]
+        sequence = integer(r["Sequence"], 416)
+        require(sequence == q["Sequence"] and r["Action"] == q["Action"] and (q["Action"] == "inspect" or q["Cookie"] == r["Cookie"]), "actual owner call association")
+        fixed(r["Cookie"], 16, True)
+        spent = integer(r["Calls"],384)+integer(r["TerminalCalls"],32)
+        entries = owners.setdefault(key, {})
+        require(spent not in entries or entries[spent] == (q,r), "SAME cached call cannot change reply or retire a second grant")
+        entries[spent] = q,r
+    for entries in owners.values():
+        require(sorted(entries) == list(range(1, len(entries)+1)), "complete proof/feed/inspect spent-work roster, no erased expensive call")
+        calls_ = terminals = sequence = 0
+        cookie = None
+        for _,r in (entries[i] for i in sorted(entries)):
+            terminal = r["Action"] in ("snapshot-close", "close", "release", "expire", "cancel", "pin-close")
+            calls_ += not terminal; terminals += terminal
+            if r["Action"] != "inspect": sequence += 1
+            require(r["Sequence"] == (0 if r["Action"] == "inspect" else sequence) and (cookie is None or cookie == r["Cookie"]), "inspect spends work without advancing operation sequence; one native owner cookie")
+            cookie = r["Cookie"]
+            require(r["Calls"] == calls_ <= 384 and r["TerminalCalls"] == terminals <= 32
+                    and r["GrantedWork"] == (calls_+terminals)*(4*(64 << 20)+2*(2 << 20)), "same finite no-refund proof/feed work pool")
 
 
 def batch(a, scopes):
@@ -243,22 +616,25 @@ def prefix(a):
 
 
 def check_calls(a, d, rows):
+    _, semantic = state_profile(a)
     owners, pages, acks, chain, business_pages = {}, {}, set(), [], {}
     for item in a["Calls"]:
-        require(type(item) is dict and set(item) == {"Member", "Input", "Response"} and item["Member"] in (2, 5), "actual owner pipe")
+        require(type(item) is dict and set(item) == {"Member", "Input", "Response"}
+                and (item["Member"] in (2, 5) or semantic == POOLED_SEMANTIC and item["Member"] in (1, 4) and item["Input"]["Action"] == "inspect"), "actual feed owner or pooled proof owner inspection")
         q = item["Input"]; require(type(q) is dict and set(q) == CONTROL and type(q["Version"]) is int and q["Version"] == 1, "canonical private owner control")
         response = R.response(item["Response"]); reply = T.decoded(response["aux"])
         require(type(reply) is dict and set(reply) == REPLY and reply["Profile"] == PROFILE and type(reply["Version"]) is int and reply["Version"] == 1 and reply["Member"] == item["Member"] and fixed(reply["Run"], 16, True) == fixed(a["Run"], 16, True) and reply["DeadlineUnixNanos"] == a["DeadlineUnixNanos"] and reply["Action"] == q["Action"] and reply["Sequence"] == q["Sequence"], "actual original owner/operation/deadline")
-        key = item["Member"], reply["PID"]; last = owners.get(key, (0, 0, 0, 0))
+        key = (item["Member"], reply["PID"]) if semantic == SEMANTIC else (item["Member"], reply["PID"], response["incarnation"])
+        last = owners.get(key, (0, 0, 0, 0))
         sequence, calls, terminals, work = (integer(reply[k], 416 if k == "Sequence" else 384 if k == "Calls" else 32 if k == "TerminalCalls" else 1 << 42) for k in ("Sequence", "Calls", "TerminalCalls", "GrantedWork"))
         require(calls >= last[1] and terminals >= last[2] and work >= last[3] and work == (calls+terminals)*(4*(64 << 20)+2*(2 << 20)), "same owner finite no-refund grants")
-        if q["Action"] != "inspect": require(sequence == last[0]+1 and q["Cookie"] == reply["Cookie"], "actual owner sequence/cookie")
+        if q["Action"] != "inspect": require((sequence == last[0]+1 if semantic == SEMANTIC else sequence > last[0]) and q["Cookie"] == reply["Cookie"], "actual owner sequence/cookie")
         owners[key] = sequence, calls, terminals, work
         if response["code"] != 0:
             require(reply["Result"] in ("pending-or-unavailable", "invalid", "limit", "expired", "released") and reply["Snapshot"] is None, "truthful refusal no fake snapshot")
             continue
         require(reply["Result"] == "applied", "success relabelled refusal")
-        if q["Action"] == "snapshot": snapshot(reply["Snapshot"], d, a["Before"])
+        if q["Action"] == "snapshot": snapshot(reply["Snapshot"], d, a["Before"]) if semantic == SEMANTIC else snapshot(reply["Snapshot"], d, a["Before"], semantic)
         if q["Action"] == "page":
             page = G.page(P.raw(reply["Page"])); request = fixed(q["Request"], 16, True)
             require(page["request"] == request and page["pin"] == d["id"] and hashlib.sha256(P.raw(reply["Page"])).digest() == fixed(reply["Digest"], 32, True), "actual complete page original/digest")
@@ -280,7 +656,7 @@ def check_calls(a, d, rows):
                 require(key_ in rows and P.raw(rows[key_]["Outcome"]) == frame["Outcome"] and P.raw(rows[key_]["CDC"]) == frame["CDC"], "Page comes from actual retained native original")
             if page["kind"] == 3:
                 require(len(page["frames"]) == 2 and page["frames"][0]["CDC"] == page["frames"][1]["CDC"] and page["frames"][0]["Decision"] == page["frames"][1]["Decision"] and page["frames"][0]["Intent"] == page["frames"][1]["Intent"], "both exact move activation lineages")
-                for f in page["frames"]: F.move_changes(f["CDC"], move_status(f["Outcome"]))
+                for f in page["frames"]: F.move_changes(f["CDC"], move_status(f["Outcome"], semantic))
         if q["Action"] == "ack":
             request = fixed(q["Request"], 16, True)
             require(request in pages and fixed(q["Digest"], 32, True) == hashlib.sha256(pages[request]).digest(), "SAME ACK joins real pending page")
@@ -341,7 +717,8 @@ def business(a, scopes, rows):
             logical = e.field(); e.end(); body = P.body(logical, b"GCD"+bytes((5,)))
             require(body[:16] == P.GRAPH and int.from_bytes(body[16:24], "big") == part, "actual complete K business namespace")
             if part == 3:
-                _, _, native = cut(a["Before"])
+                _, semantic = state_profile(a)
+                _, _, native = cut(a["Before"]) if semantic == SEMANTIC else cut(a["Before"], semantic)
                 seen = set(); k_label_changes(logical, part, lost["round"], bytes.fromhex(native["A/fact/1"]["axis"]), seen)
                 require(seen == {1}, "literal K healthy label exact owner")
         else: require(not changes, "non-Resolve K emitted CDC")
@@ -399,7 +776,6 @@ def reclaimed(before, after):
 
 
 def gc(a, d):
-
     require(len(a["BeforeGC"] or []) == len(a["AfterGC"] or []) == 6 and a["GC"], "actual six-voter GC inventory")
     before = [R.response(x) for x in a["BeforeGC"]]; after = [R.response(x) for x in a["AfterGC"]]
     reclaimed(before, after)
@@ -422,11 +798,13 @@ def gc(a, d):
 
 
 def check(a):
-    require(type(a) is dict and set(a) == HEADER and type(a["Version"]) is int and a["Version"] == 1 and a["Profile"] == PROFILE, "fresh D-only state grammar")
+    require(type(a) is dict, "D-only state object")
+    _, semantic = state_profile(a)
     family, _, part, _, _, _ = recipe(a["Recipe"])
     fixed(a["Run"], 16, True); integer(a["DeadlineUnixNanos"], (1 << 63)-1, 1)
     require(integer(a["ReceiptReads"], 129)*(64 << 10) == integer(a["ReceiptGrantBytes"], 129*(64 << 10)), "finite receipt read/decode grants remain retired")
     rows = prefix(a)
+    if semantic == POOLED_SEMANTIC: pooled(a, rows)
     if family == "allocation":
         # This supplement attributes exact native Sync; accepted P08 issuance,
         # stale recipient and exhaustion schedules remain separately accepted.
@@ -436,10 +814,10 @@ def check(a):
         e = batch(a, scopes); processes(a, a["Batch"])
         require(R.response(a["Business"])["outcome"] and R.response(a["BusinessReplay"])["outcome"], "actual durable recovered allocation original")
         return
-    d = definition(a["Original"], a["DeadlineUnixNanos"])
-    scopes, _, _ = cut(a["Before"])
+    d = definition(a["Original"], a["DeadlineUnixNanos"], semantic)
+    scopes, _, _ = cut(a["Before"], semantic)
     if family != "publication-race":
-        cut(a["Retained"]); cut(a["Reopened"])
+        cut(a["Retained"], semantic); cut(a["Reopened"], semantic)
         require(a["Before"] == a["Retained"] == a["Reopened"], "full original C exact set/revisions survive native loss/GC")
         business(a, scopes, rows)
         refusals(a, rows)

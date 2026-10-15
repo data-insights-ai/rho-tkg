@@ -55,7 +55,186 @@ def snapshot_sample():
     return value, d, rows
 
 
+def sealed(body): return body+hashlib.sha256(body).digest()
+
+
+def field(body): return struct.pack(">I", len(body))+body
+
+
+def pooled_sample():
+    u = lambda n: struct.pack(">Q", n)
+    source = C.P.GRAPH+u(3)+b"g"*16+u(1)+u(1)+b"d"*32+C.POOLED_SEMANTIC
+    target = source[:16]+u(8)+source[24:]
+    publication = sealed(b"RPB\1"+C.P.GRAPH+struct.pack(">5Q",1,1,32,3,1)+b"c"*32+u(3)+u(2))
+    intent = sealed(b"GMI\3"+b"r"*16+source+target+field(publication)+struct.pack(">QIII3Q",1,128,8,16384,1<<20,1<<20,1<<20))
+    command = sealed(b"GMQ\3"+source+b"\1"+u(0)+field(intent)+field(b"")+struct.pack(">I",0))
+    return command, C.pooled_command(command)
+
+
+def native_response(aux, root):
+    u = lambda n: struct.pack(">Q", n)
+    body = (b"i"*16+bytes(28*8+64)+u(1)+bytes(4)+field(aux)+b"\1"+u(1)+u(1)+bytes(3)+field(b"")
+            +bytes(8)+field(root)+field(b"")+field(b"")+b"\0"+u(0)+bytes(4)+field(b""))
+    return encoded(body)
+
+
 class NativeProtocolStateGuard(unittest.TestCase):
+    def test_explicit_pooled_profile_stream_census_cannot_upgrade_historical_artifact(self):
+        header = {name: None for name in C.HEADER}
+        header.update(Version=2, Profile=C.POOLED_PROFILE, Through=[0,0],
+                      Pooled=dict(Version=1, Semantic=list(C.POOLED_SEMANTIC), Frames=None))
+        C.state_profile(header)
+        for mutate in (lambda v:v.update(Version=1), lambda v:v.update(Profile=C.PROFILE), lambda v:v.pop("Pooled")):
+            bad = copy.deepcopy(header); mutate(bad)
+            with self.assertRaises(ValueError): C.state_profile(bad)
+        first = (json.dumps(dict(Type="header",Artifact=header),separators=(",",":"))+"\n").encode()
+        footer = dict(Type="footer",Rows=0,Calls=0,GC=0,Pooled=0,Through=[0,0],PayloadSHA256=hashlib.sha256(first).hexdigest())
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"state.jsonl"
+            last=lambda v:(json.dumps(v,separators=(",",":"))+"\n").encode()
+            path.write_bytes(first+last(footer)); self.assertEqual(C.load(path)["Pooled"]["Frames"],[])
+            for bad in (dict(footer,Pooled=True),dict(footer,Pooled=1),{k:v for k,v in footer.items() if k!="Pooled"}):
+                path.write_bytes(first+last(bad))
+                with self.assertRaises(ValueError): C.load(path)
+
+    def test_owning_pooled_command_and_first_describe_refusal_identity(self):
+        command, parsed = pooled_sample()
+        self.assertEqual((parsed["phase"],parsed["sequence"]),(1,0))
+        def status(failed_sequence=0):
+            return sealed(b"GMO\3"+C.P.GRAPH+struct.pack(">Q",3)+parsed["intent"]["move"]+parsed["intent"]["digest"]
+                          +bytes((2,5))+struct.pack(">6Q",11,1,0,0,0,0)+bytes(32)+b"\3"+struct.pack(">Q",failed_sequence)+hashlib.sha256(command).digest())
+        actual=C.move_status(status(),C.POOLED_SEMANTIC)
+        self.assertEqual((actual["phase"],actual["sequence"],actual["failedPhase"],actual["failedSequence"]),(2,0,3,0))
+        for wire in (status(1),status()[:-1],sealed(b"GMO\2"+status()[4:-32])):
+            with self.assertRaises(ValueError): C.move_status(wire,C.POOLED_SEMANTIC)
+        with self.assertRaises(ValueError): C.move_status(status())
+        with self.assertRaises(ValueError): C.pooled_command(sealed(b"GMQ\2"+command[4:-32]))
+
+    def test_actual_submit_reply_nonce_scope_and_unknown_stay_distinct(self):
+        wire,command=pooled_sample();u=lambda n:struct.pack(">Q",n);nonce=b"n"*16
+        scope=sealed(b"APS\1"+command["scope"])
+        proposal=sealed(b"GSC\1"+field(scope)+field(wire))
+        request=sealed(b"GSQ\1"+b"\10"+u(1)+nonce+bytes(40)+struct.pack(">II",1<<20,0)+field(b"")*3+field(proposal)+bytes(17))
+        result=sealed(b"GMO\3"+C.P.GRAPH+u(3)+command["intent"]["move"]+command["intent"]["digest"]
+                      +bytes((1,1))+struct.pack(">6Q",11,1,0,0,0,0)+bytes(32)+b"\0"+u(0)+bytes(32))
+        def reply(nonce_=nonce,mask=0,body=result):
+            return encoded(sealed(b"GSR\1"+field(scope)+u(1)+b"i"*16+b"\10"+u(1)+nonce_+struct.pack(">H",mask)+field(body)))
+        item=dict(Origin=2,Partition=3,Request=encoded(request),Reply=reply(),Before=None,After=None)
+        self.assertEqual(C.pool_exchange(item)[2],result)
+        self.assertEqual(C.pool_exchange(dict(item,Reply=None))[2],b"") # Not an installed-result verdict.
+        for bad in (dict(item,Reply=reply(b"x"*16)),dict(item,Reply=reply(mask=1)),dict(item,Partition=8)):
+            with self.assertRaises(ValueError): C.pool_exchange(bad)
+
+    def test_actual_native_control_missing_and_exact_undo_full_bound(self):
+        _, command = pooled_sample(); key=b"actual\0key"
+        missing=dict(Found=False,Key=encoded(key),Index=0,Value=None)
+        self.assertIsNone(C.pool_control(missing,key,5))
+        for bad in (dict(missing,Found=True),dict(missing,Index=1),dict(missing,Value=encoded(b"invented"))):
+            with self.assertRaises(ValueError): C.pool_control(bad,key,5)
+        rows=[(b"ga\0k",b"old",0),(b"ga\0z",b"",1)]
+        ns=command["scope"][:24]; move=command["intent"]["move"]
+        keys=[b"ga"+bytes((tag,))+ns+move for tag in (19,18)]
+        vk=b"GMV\1"+ns+move+struct.pack(">I",0x40000000)
+        cost=lambda k,n:len(k)+k.count(0)+47+n
+        bound=135+172+231+sum(cost(k,len(v)) for k,v,_ in rows)+cost(keys[0],32768)+cost(keys[1],231)+cost(vk,263)+3069+2*len(vk)
+        def undo(values=rows,total=bound):
+            return sealed(b"GMU\2"+struct.pack(">QI",total,len(values))+b"".join(field(k)+field(v)+bytes((d,)) for k,v,d in values))
+        self.assertEqual(C.pool_undo_bound(undo(),command),bound)
+        self.assertEqual(C.pool_undo_bound(undo(rows[::-1]),command),bound)
+        for wire in (undo(total=bound-1),undo([rows[0],rows[0]]),undo([(b"x",b"nonempty tombstone",1)]),undo()[:-1]):
+            with self.assertRaises(ValueError): C.pool_undo_bound(wire,command)
+
+    def test_capture_and_compact_progress_keep_native_generation_and_placement_distinct(self):
+        _,command=pooled_sample();u=lambda n:struct.pack(">Q",n);i=command["intent"]
+        root=lambda p:sealed(b"GR\3\1"+C.P.GRAPH+u(p)+bytes(112))
+        capture=sealed(b"GMC\1"+command["scope"]+u(1)+u(1)+u(2)+hashlib.sha256(root(3)).digest()+field(root(3)))
+        self.assertEqual(C.pool_progress(capture,command)["debt"],0)
+        def progress(generation=0):
+            configuration=C.P.body(i["publication"],b"RPB\1")[56:88]
+            ownership=lambda p,e:sealed(b"ROF\1"+C.P.GRAPH+u(i["range"])+u(p)+u(e)+configuration+b"\0")
+            captured=lambda scope,p:scope[:40]+scope[88:]+u(generation)+u(2)+root(p)+hashlib.sha256(root(p)).digest()
+            descriptor=sealed(b"RMD\1"+field(i["publication"])+field(ownership(3,1))+field(ownership(8,2))
+                              +captured(i["source"],3)+captured(i["target"],8)+b"d"*32+configuration+field(b"inert-codec-axis")+u(0)+u(0)+b"h"*32+b"\1")
+            graph_cursor=sealed(b"RMC\1"+b"b"*32+b"\1"+bytes(8)+b"\0"+bytes(320+48)+b"h"*32)
+            empty_replay=sealed(b"GEC\1"+bytes(82))
+            reference=b"GMH\1"+C.P.GRAPH+u(3)+i["move"]+bytes(8)
+            return sealed(b"GMP\6"+field(descriptor)+field(graph_cursor)+field(b"")+field(empty_replay)+field(empty_replay)
+                          +bytes(24)+field(reference)+b"h"*32+b"p"*32+u(10)+u(1)+bytes(24)+b"\0"+field(b""))
+        self.assertEqual(C.pool_progress(progress(),command)["debt"],0)
+        with self.assertRaises(ValueError):C.pool_progress(progress(1),command)
+        for wire in (capture[:-1],progress()[:-1],sealed(b"GMP\5"+progress()[4:-32])):
+            with self.assertRaises(ValueError):C.pool_progress(wire,command)
+
+    def test_proof_observation_is_actual_same_scope_owner_and_command_not_status_summary(self):
+        wire, command=pooled_sample();root=sealed(b"GR\3\1"+C.P.GRAPH+struct.pack(">Q",3)+bytes(112))
+        run=[1]*16;cookie=[2]*16
+        q=dict(Version=1,Cookie=cookie,Sequence=1,Action="move-proof",Request=[0]*16,
+               Original=encoded(wire),Token=None,Boundary=None,Digest=[0]*32)
+        missing=lambda k:dict(Found=False,Key=encoded(k),Index=0,Value=None)
+        ns=C.P.GRAPH+struct.pack(">Q",3);move=command["intent"]["move"]
+        proof=dict(Version=1,CommandSHA256=list(hashlib.sha256(wire).digest()),Scope=encoded(command["scope"]),RootIndex=1,
+                   Root=list(root),Frame=None,PreviousRoot=[0]*172,IntentControl=missing(b"GMI\1"+ns+move),
+                   OriginalControl=missing(b"GMV\1"+ns+move+bytes(4)),DecisionControl=missing(b"GMD\1"+ns+move),StatusFound=False,Status=None,
+                   ProgressFound=False,Progress=None,UndoIndices=[0],Undo=[missing(b"GMU\1"+ns+move+bytes(8))],Rows=1,Bytes=1,Output=1,Complete=True)
+        reply=dict(Version=1,Profile=C.PROFILE,Cookie=cookie,Run=run,Sequence=1,Calls=1,TerminalCalls=0,
+                   GrantedWork=4*(64<<20)+2*(2<<20),Member=1,PID=99,DeadlineUnixNanos=100,Action="move-proof",Result="applied",
+                   Original=None,Token=None,Page=None,Digest=[0]*32,Snapshot=None,Completed=None)
+        def item(p):
+            page=json.dumps(p,separators=(",",":")).encode()
+            r=dict(reply,Page=encoded(page),Digest=list(hashlib.sha256(page).digest()))
+            return dict(Member=1,Input=q,Response=native_response(json.dumps(r,separators=(",",":")).encode(),root))
+        a=dict(Run=run,DeadlineUnixNanos=100)
+        C.pool_observation(item(proof),wire,command,a)
+        for mutate in (lambda p:p.update(Complete=False),lambda p:p.update(CommandSHA256=[3]*32),
+                       lambda p:p.update(Frame={}),lambda p:p.update(UndoIndices=[1]),lambda p:p.update(StatusFound=True)):
+            bad=copy.deepcopy(proof);mutate(bad)
+            with self.assertRaises((ValueError,KeyError)): C.pool_observation(item(bad),wire,command,a)
+
+    def test_live_debt_prefix_survives_retained_consumed_original_and_same_replay(self):
+        _, command=pooled_sample();command=dict(command,scope=command["intent"]["target"],phase=4,sequence=1)
+        ns=command["scope"][:24];move=command["intent"]["move"]
+        pk,sk=[b"ga"+bytes((tag,))+ns+move for tag in (19,18)];vk=b"GMV\1"+ns+move+struct.pack(">I",0x40000000)
+        cost=lambda k,n:len(k)+k.count(0)+47+n
+        bound=135+172+231+cost(pk,32768)+cost(sk,231)+cost(vk,263)+3069+2*len(vk)
+        undo=sealed(b"GMU\2"+struct.pack(">QI",bound,0));inventory={1:(11,undo)}
+        def frame(phase,index):
+            out=sealed(b"GMO\3"+C.P.GRAPH+struct.pack(">Q",8)+move+command["intent"]["digest"]+bytes((phase,1))
+                       +struct.pack(">6Q",index,1,0,1,0,0)+bytes(32)+b"\0"+struct.pack(">Q",0)+bytes(32))
+            return dict(Index=index,Outcome=encoded(out))
+        before=dict(frame=None,progress=dict(total=0,next=0,debt=0),proof=dict(RootIndex=10,Progress=None))
+        after=dict(frame=frame(4,11),progress=dict(total=1,next=0,debt=bound),proof=dict(RootIndex=11,Progress="actual-import"))
+        C.pool_transition(command,before,after,inventory)
+        bad=copy.deepcopy(after);bad["progress"]["debt"]-=1
+        with self.assertRaises(ValueError):C.pool_transition(command,before,bad,inventory)
+        prior=dict(after,frame=None,proof=dict(RootIndex=12,Progress="actual-import"))
+        undone=dict(frame=frame(9,13),progress=dict(total=1,next=1,debt=0),proof=dict(RootIndex=13,Progress="actual-undo"))
+        abort=dict(command,phase=9,sequence=1)
+        C.pool_transition(abort,prior,undone,inventory)
+        self.assertEqual(inventory[1],(11,undo)) # Reverse install retires debt, never claims physical GMU deletion.
+        C.pool_transition(abort,undone,copy.deepcopy(undone),inventory)
+        changed=copy.deepcopy(undone);changed["proof"]["Progress"]="refilled"
+        with self.assertRaises(ValueError):C.pool_transition(abort,undone,changed,inventory)
+        bad=copy.deepcopy(undone);bad["progress"]["next"]=2
+        with self.assertRaises(ValueError):C.pool_transition(abort,prior,bad,inventory)
+
+    def test_inspect_is_retired_work_not_an_operation_sequence_or_free_restart(self):
+        run,cookie=[1]*16,[2]*16;grant=4*(64<<20)+2*(2<<20)
+        q=dict(Version=1,Cookie=[0]*16,Sequence=0,Action="inspect",Request=[0]*16,
+               Original=None,Token=None,Boundary=None,Digest=[0]*32)
+        reply=dict(Version=1,Profile=C.PROFILE,Cookie=cookie,Run=run,Sequence=0,Calls=1,TerminalCalls=0,
+                   GrantedWork=grant,Member=2,PID=99,DeadlineUnixNanos=100,Action="inspect",Result="applied",
+                   Original=None,Token=None,Page=None,Digest=[0]*32,Snapshot=None,Completed=None)
+        def call(question,r):return dict(Member=2,Input=question,Response=native_response(json.dumps(r,separators=(",",":")).encode(),b""))
+        first=call(q,reply)
+        next_q=dict(q,Action="begin",Sequence=1,Cookie=cookie,Request=[3]*16)
+        second=call(next_q,dict(reply,Action="begin",Sequence=1,Calls=2,GrantedWork=2*grant))
+        a=dict(Recipe=dict(Family="allocation"),Run=run,DeadlineUnixNanos=100,Calls=[first,second],
+               Pooled=dict(Version=1,Semantic=list(C.POOLED_SEMANTIC),Frames=[]))
+        C.pooled(a,{})
+        C.pooled(dict(a,Calls=[first,second,second]),{}) # Exact cached control replay spends no second grant.
+        for calls in ([second],[first,call(next_q,dict(reply,Action="begin",Sequence=1,Calls=2,GrantedWork=grant))]):
+            with self.assertRaises(ValueError): C.pooled(dict(a,Calls=calls),{})
+
     def test_actual_139_selector_grammar_rejects_unreachable_or_nominal_inputs(self):
         valid = dict(Family="pin", Phase=7, Partition=3, Page=0, Kind=1, Side="after")
         C.recipe(valid)
