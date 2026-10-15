@@ -505,9 +505,12 @@ four-transport matrix contains 11,520 cells per engine.
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
 No new cell, guard or runtime gate has run. Native create/update,
 immutable-columns, late-correction and transfer/retained-pins drivers remain
-implementation work. FDB's remaining accounting follow-ups, cross-engine
-allocator/retention matching, full matrix qualification and the engine decision
-remain open.
+implementation work. FDB feed accounting still needs create/update phase wall
+times covering the seed and complete worker drain, plus complete-operation
+percentiles joined to actual originals. Existing scan and feed-call durations
+remain separate; parallel operation durations cannot supply phase throughput.
+Cross-engine allocator/retention matching, full matrix qualification and the
+engine decision remain open.
 The create/update family keeps a strict-local 0% baseline and explicitly named
 mixed/cross 10/50/100% variants, as clarified in the substrate reference.
 Nonzero rows must join actual multi-participant business read/write footprints;
@@ -821,13 +824,19 @@ without emitting duplicate business changes. Its authored guard distinguishes
 that new retry from an expired historical frame. Source integration is not
 runtime qualification.
 
-Unread native feed pages still require historical frame/payload roots. The new
-feed-only variant must protect a genuine rolling ACK predecessor and unread
-prefix; removing C's cap alone is unsound. A private unchanged-participant
-payload re-anchor requires the immutable PLM round and full image to equal the
-authenticated ACK anchor. It cannot confer snapshot, original-result or routing
-authority. Report its conservative native history and any additional generic
-At availability as actual cost/behavior; do not claim FDB's physical reclamation.
+Native retained-only feed ownership is source-integrated at `411f7069`.
+Its fresh agreement installs an irreversible transition and protects a genuine
+rolling ACK predecessor plus the unread native prefix. New token snapshot opens
+refuse; held native views still prevent physical deletion. A private
+unchanged-participant payload re-anchor requires the immutable PLM round and
+full image to equal the authenticated ACK anchor; it grants no snapshot,
+original-result or routing authority. Authored guards cover partial/lost
+transition recovery, immutable retry refusal, held-view collection barriers,
+actual GC, incoming-bank audit, reopen and the next unread before/after values.
+Ordinary predecessor error coordinates and older feed formats remain unchanged.
+The OS-child workload/GC adapter remains implementation work. Report conservative
+native retention and any additional generic At availability as actual cost and
+behavior; this does not claim FDB's physical reclamation or runtime qualification.
 
 The native selector family is source-integrated at `330aaf89`: fourteen actual
 Fresh/Stable/After/At, scoped-refusal and same-token reopen observations join
@@ -850,8 +859,8 @@ install originals. The selector implementation now supplies that bounded join;
 the feed follow-up must reuse it before comparative qualification. Neither
 expected numeric IDs nor an artifact hash establishes cursor issuance.
 
-Current worker lanes: Sol 6.1/high for native retained-only feed ownership/GC
-and remaining native workload families;
+Current worker lanes: Sol 6.1/high for the native retained-only feed workload/GC
+adapter, installed-grant proof reuse and remaining native workload families;
 Sol 6.1/high for actual retention-reader storage transitions,
 then broader protocol/message/leader/conflict composition;
 Sol 6.1/high for the native create/update counterpart and source-grounded
