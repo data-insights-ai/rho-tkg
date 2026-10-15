@@ -246,6 +246,9 @@ func (f *pairedGraphFaultNetwork) transferSnapshot(leader uint64, send processSn
 	ns, _ := certifiedProcessNamespace(leader)
 	part, _ := spec.declaration.Partition(ns.partition)
 	binding := raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(ns.graph), Partition: ns.partition, Group: part.Group}, SemanticContractID: certifiedGraphSemanticContractID()}
+	if f.n.rangeMoves {
+		binding.SemanticContractID = rangeMoveSemanticContractID()
+	}
 	manifest, err := raftlog.DecodeApplicationSnapshotManifestForBinding(wire, 172, binding)
 	if err != nil || manifest.Version != 5 {
 		f.t.Fatal("paired actual AS5 manifest", err, manifest.Version)

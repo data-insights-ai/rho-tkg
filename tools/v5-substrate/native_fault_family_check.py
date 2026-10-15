@@ -664,7 +664,7 @@ def placement(encoded):
     p.end()
     owner_id, partition, epoch, owner_config, fenced = o.number(), o.number(), o.number(), o.take(32), o.number(1)
     o.end()
-    require(rid == owner_id == 1 and first == 1 and last == 16 and initial_partition == source == 3 and initial_epoch > 0 and index > 0 and config == owner_config and any(config) and partition in (3, 8) and epoch >= initial_epoch and fenced <= 1, "immutable reservation vs mutable placement")
+    require(rid == owner_id == 1 and first == last == 1 and initial_partition == source == 3 and initial_epoch > 0 and index > 0 and config == owner_config and any(config) and partition in (3, 8) and epoch >= initial_epoch and fenced <= 1, "immutable split reservation vs mutable placement")
     return publication, dict(partition=partition, epoch=epoch, config=config, fenced=fenced)
 
 

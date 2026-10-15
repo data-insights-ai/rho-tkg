@@ -90,9 +90,11 @@ type nativeLogicalTransitionOwner struct {
 	closed                                   bool
 	sequence, controls, attempts             uint64
 	work, maxWork, decodeGrant, captureGrant uint64
+	prepareGrant                             uint64
 	ticket                                   *nativeLogicalTransitionTicket
 	changed                                  chan struct{}
 	awaiting                                 bool
+	preparedMove                             *nativeTransitionPreparedMove
 }
 
 func newNativeLogicalTransitionOwner(ctx context.Context, h *allocationHost, member uint64) (*nativeLogicalTransitionOwner, error) {
@@ -109,7 +111,15 @@ func newNativeLogicalTransitionOwner(ctx context.Context, h *allocationHost, mem
 	// never an allocation or a claim of measured native work/RSS.
 	decodeGrant := uint64(4096 + 16*nativeLogicalTransitionBodyBytes)
 	captureGrant := 1026*uint64(65536+16*limits.MaxEntryBytes) + uint64(16384+8*p.MaxImageBytes+6*p.MaxChangeBytes+6*p.MaxOutcomeBytes)
-	maximum := 16 * (128*decodeGrant + captureGrant)
+	prepareGrant := uint64(0)
+	if h.machine.rangeMoves() {
+		l := h.machine.limits
+		prepareGrant = 16384 + 8*uint64(l.allocation.readBytes) + 4*uint64(l.outputBytes) + 256*uint64(l.allocation.readRows)
+	}
+	maximum := 16*(128*decodeGrant+captureGrant) + prepareGrant
+	if prepareGrant != 0 {
+		maximum += 64 * 8192
+	}
 	if maximum == 0 || maximum > 1<<50 {
 		return nil, errLimit
 	}
@@ -123,7 +133,7 @@ func newNativeLogicalTransitionOwner(ctx context.Context, h *allocationHost, mem
 	}
 	ownerCtx, stopTTL := context.WithTimeout(base, time.Minute)
 	cancel := func() { stopTTL(); stopBase() }
-	o := &nativeLogicalTransitionOwner{ctx: ownerCtx, cancel: cancel, host: h, member: member, decodeGrant: decodeGrant, captureGrant: captureGrant, maxWork: maximum, changed: make(chan struct{}, 1)}
+	o := &nativeLogicalTransitionOwner{ctx: ownerCtx, cancel: cancel, host: h, member: member, decodeGrant: decodeGrant, captureGrant: captureGrant, prepareGrant: prepareGrant, maxWork: maximum, changed: make(chan struct{}, 1)}
 	o.deadline, _ = ownerCtx.Deadline()
 	if _, err := io.ReadFull(rand.Reader, o.cookie[:]); err != nil {
 		cancel()
@@ -676,6 +686,13 @@ func nativeLogicalTransitionCall(t *testing.T, p *graphProcess, c nativeLogicalT
 func nativeLogicalTransitionWrite(t *testing.T, directory string, artifact nativeLogicalTransitionArtifact) string {
 	t.Helper()
 	path := filepath.Join(directory, "native-transition-"+artifact.Case+".jsonl")
+	header := artifact
+	header.Records = nil
+	return nativeTransitionWriteRows(t, path, header, artifact.Records, artifact.Through)
+}
+
+func nativeTransitionWriteRows(t *testing.T, path string, header any, records []lifecycleRawRecord, through [2]uint64) string {
+	t.Helper()
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		t.Fatal(err)
@@ -702,16 +719,14 @@ func nativeLogicalTransitionWrite(t *testing.T, directory string, artifact nativ
 			t.Fatal("transition artifact write", err)
 		}
 	}
-	header := artifact
-	header.Records = nil
 	write(struct {
 		Type     string
-		Artifact nativeLogicalTransitionArtifact
+		Artifact any
 	}{"header", header}, true)
-	if len(artifact.Records) > 512 {
+	if len(records) > 512 {
 		t.Fatal("transition complete prefix bound")
 	}
-	for _, record := range artifact.Records {
+	for _, record := range records {
 		write(struct {
 			Type   string
 			Record lifecycleRawRecord
@@ -722,7 +737,7 @@ func nativeLogicalTransitionWrite(t *testing.T, directory string, artifact nativ
 		Rows          int
 		Through       [2]uint64
 		PayloadSHA256 string
-	}{"footer", len(artifact.Records), artifact.Through, hex.EncodeToString(digest.Sum(nil))}, false)
+	}{"footer", len(records), through, hex.EncodeToString(digest.Sum(nil))}, false)
 	if err := errors.Join(file.Sync(), file.Close()); err != nil {
 		t.Fatal(err)
 	}

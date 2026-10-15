@@ -1680,6 +1680,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processNativeTransitionControl:
 				if r.index != 0 || r.entity != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
 					e = errInvalid
+				} else if bytes.HasPrefix(r.data, []byte(nativeTransitionMovePrepareMarker)) {
+					out.aux, e = logicalTransitions.prepareMove(workerCtx, o.family, o.incarnation, r)
 				} else {
 					out.aux, e = logicalTransitions.serve(workerCtx, r.data)
 				}
@@ -1965,7 +1967,11 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processPairedConnections:
 				response.aux, e = pairedGraphFaultConnections(r.entity, services, server)
 			case processPairedReconnect:
-				coordinator, e = pairedGraphFaultReconnect(ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil)
+				if logicalTransitions != nil && o.family != nil && moveCoordinator != nil {
+					coordinator, e = nativeTransitionMoveReconnect(ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil)
+				} else {
+					coordinator, e = pairedGraphFaultReconnect(ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil)
+				}
 				if e == nil {
 					certifiedSessions.coordinator = coordinator
 					incidents.coordinator = coordinator

@@ -89,7 +89,8 @@ class Planning(unittest.TestCase):
                                  [[sys.executable,"-B","tools/v5-substrate/native_fault_schedule_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_fault_family_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_transition_check_test.py"],
-                                  [sys.executable,"-B","tools/v5-substrate/native_transition_replay_test.py"]])
+                                  [sys.executable,"-B","tools/v5-substrate/native_transition_replay_test.py"],
+                                  [sys.executable,"-B","tools/v5-substrate/native_transition_move_check_test.py"]])
 
     def test_owned_watchdog_selection_is_private_and_once(self):
         for paths in [[path] for path in CI.PROCESS_INPUTS] + [list(CI.PROCESS_INPUTS)]:
@@ -306,6 +307,7 @@ class RealGitSelection(unittest.TestCase):
             "native_graph_fault_schedule_harness_test.go": set(CI.FAULT_PARENTS),
             "native_graph_transition_harness_test.go": set(CI.FAULT_PARENTS),
             "native_graph_transition_replay_harness_test.go": set(CI.FAULT_PARENTS),
+            "native_graph_transition_move_harness_test.go": set(CI.FAULT_PARENTS),
         }
         for name, parents in fixtures.items():
             with self.subTest(fixture=name):

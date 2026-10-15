@@ -637,7 +637,11 @@ func (f *pairedGraphFaultNetwork) replaceBeforeHeal(id uint64, before func(*grap
 	}
 	f.packetDrain()
 	hub := prior.mux.hub
-	replacement := startGraphProcess(f.t, filepath.Join(f.n.dir, fmt.Sprint(id)), id, "RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1", "RHO_GRAPH_LIFECYCLE_PROCESS=1", "RHO_GRAPH_PROCESS_REOPEN=1", "RHO_GRAPH_PAIRED_PROCESS=1")
+	env := []string{"RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1", "RHO_GRAPH_LIFECYCLE_PROCESS=1", "RHO_GRAPH_PROCESS_REOPEN=1", "RHO_GRAPH_PAIRED_PROCESS=1"}
+	if f.n.rangeMoves {
+		env = append(env, "RHO_GRAPH_RANGE_PROCESS=1")
+	}
+	replacement := startGraphProcess(f.t, filepath.Join(f.n.dir, fmt.Sprint(id)), id, env...)
 	f.t.Cleanup(func() {
 		if !replacement.closed {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -771,6 +775,9 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64) {
 			ns, _ := certifiedProcessNamespace(leader)
 			part, _ := spec.declaration.Partition(ns.partition)
 			binding := raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(spec.declaration.Graph()), Partition: ns.partition, Group: part.Group}, SemanticContractID: certifiedGraphSemanticContractID()}
+			if f.n.rangeMoves {
+				binding.SemanticContractID = rangeMoveSemanticContractID()
+			}
 			raw, err := replica.DecodeApplicationPacket(binding, packet, processFrameBytes)
 			message := &pb.Message{}
 			if err == nil {
@@ -830,6 +837,9 @@ func (f *pairedGraphFaultNetwork) elect(prior, next uint64) {
 	ns, _ := certifiedProcessNamespace(next)
 	part, _ := spec.declaration.Partition(ns.partition)
 	binding := raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(ns.graph), Partition: ns.partition, Group: part.Group}, SemanticContractID: certifiedGraphSemanticContractID()}
+	if f.n.rangeMoves {
+		binding.SemanticContractID = rangeMoveSemanticContractID()
+	}
 	group.dropPacket = func(packet replica.Packet) bool {
 		raw, err := replica.DecodeApplicationPacket(binding, packet, processFrameBytes)
 		if err != nil {

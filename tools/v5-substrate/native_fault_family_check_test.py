@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Compact fail-closed grammar guards; no synthetic native qualification run."""
 import hashlib
+import base64
 import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import struct
 import unittest
 
 SPEC = importlib.util.spec_from_file_location("native_fault_family", Path(__file__).with_name("native_fault_family_check.py"))
@@ -13,6 +15,21 @@ SPEC.loader.exec_module(F)
 
 
 class NativeFaultFamilyGuards(unittest.TestCase):
+    def test_range_profile_split_publication_ends_at_one_not_sixteen(self):
+        def sealed(magic, body):
+            wire = magic+body
+            return wire+hashlib.sha256(wire).digest()
+        configuration = b"c"*32
+        owner = sealed(b"ROF\1", F.P.GRAPH+struct.pack(">3Q", 1, 3, 2)+configuration+b"\0")
+        def frame(last):
+            publication = sealed(b"RPB\1", F.P.GRAPH+struct.pack(">5Q", 1, 1, last, 3, 1)+configuration+struct.pack(">2Q", 3, 1))
+            return base64.b64encode(struct.pack(">I", len(publication))+publication+struct.pack(">I", len(owner))+owner).decode()
+        _, actual = F.placement(frame(1))
+        self.assertEqual(actual["partition"], 3)
+        self.assertEqual(actual["epoch"], 2)
+        with self.assertRaises(ValueError):
+            F.placement(frame(16))
+
     def test_profile_and_declared_inventory_do_not_relabel_old_or_partial_cases(self):
         for profile, case in ((F.C.PROFILE, "old-leader-packet"), (F.PROFILE, "metadata-only")):
             with self.assertRaises(ValueError):
