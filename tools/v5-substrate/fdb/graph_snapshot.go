@@ -163,6 +163,9 @@ func newSnapshotLifetime(r *graphHistoryRead, p graphSnapshotCleanupPolicy) *gra
 func (l *graphSnapshotLifetime) work() graphSnapshotWork {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.ownedClose != nil {
+		return graphSnapshotWork{CleanupRows: l.allowance.work.CleanupRows, CleanupBytes: l.allowance.work.CleanupBytes, CleanupCallbacks: l.allowance.work.CleanupCallbacks}
+	}
 	return graphSnapshotWork{CleanupRows: l.allowance.work.Rows, CleanupBytes: l.allowance.work.Bytes, CleanupCallbacks: l.allowance.work.Callbacks}
 }
 func (l *graphSnapshotLifetime) close() error {
