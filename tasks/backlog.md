@@ -741,8 +741,16 @@ recovery and held old cuts join the complete prefix and independent checker.
 Only an all-zero response with an actual pipe-loss cause and the expected
 persisted receipt can drop a failed Step delivery; native refusals, corruption,
 limits and caller expiry still propagate. Hash/event work, serialized receipts
-and parent receipt reads have separate finite grants. Checkpoint/publication/
-activation/import/retention identities and broader P01–P09 leader/message/conflict
+and parent receipt reads have separate finite grants. The state-batch seam at
+`922ebf69` adds actual initialization/checkpoint/publication, import-page/seal/
+retirement, activation and reclamation/cleanup identities, with exact complete
+before/after metadata and batch commitments. Each observation follows one actual
+atomic batch; import chunks and deletion pages retain distinct commits. Native
+source/cut/manifest/plan coordinates grant no graph certificate or ACK authority.
+Nil/default filesystems keep ordinary commits; optional diagnostics prepay their
+encoding, hashing and by-value output. Authored guards compare exact prior/post
+metadata and retain old data through activation, collection and dormant cleanup.
+Reusable process wiring and broader applicable P01–P09 leader/message/conflict
 composition remain in implementation. None of these new guards ran.
 
 Native snapshot-to-feed ownership is source-integrated at `4868f0f7`. One genuine
