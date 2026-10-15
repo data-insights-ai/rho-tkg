@@ -115,8 +115,8 @@ def indexes(directory,end,spool):
             "businessParticipants":{"setupTransactionsExcluded":3,"logicalRemoteEdgeIntentPercent":p["crossPercent"],"usefulTransactions":useful,"actualSinglePartition":participants[0],"actualCrossPartition":participants[1],"scope":"authentic native read/effect participants; physical SDK/server messages are separate transport evidence"}}
 
 
-def verify(directory,spool_directory,policy=None):
-    return shared.verify(directory,spool_directory,policy,FAMILY)
+def verify(directory,spool_directory,policy=None,*,shared_spool=None):
+    return shared.verify(directory,spool_directory,policy,FAMILY,shared_spool=shared_spool)
 
 
 if __name__=="__main__":

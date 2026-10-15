@@ -60,6 +60,14 @@ def cross(s, fact):
     return (fact+1)*s["crossPercent"]//100 > fact*s["crossPercent"]//100
 
 
+def _scalar_updates(s):
+    return s["facts"]//2 if s["family"]=="late-correction-old-index" else s["facts"]
+
+
+def _scalar_value(s,value,fact):
+    return 5 if s["family"]=="late-correction-old-index" and value==6 and fact>=_scalar_updates(s) else value
+
+
 def operation(s, q):
     fields(q, "Dataset Phase Fact Ordinal")
     phase, fact = q["Phase"], integer(q["Fact"])
@@ -67,7 +75,7 @@ def operation(s, q):
         integer(fact, 0, 2); ordinal = fact+1
     else:
         require(phase in ("create", "update"), "fixed native feed operation phase")
-        integer(fact, 0, s["facts"]-1)
+        integer(fact, 0, (_scalar_updates(s) if phase=="update" else s["facts"])-1)
         ordinal = 4+fact+(s["facts"] if phase == "update" else 0)
     require(array(q["Dataset"], 32) == digest(b"\1"+struct.pack(">QQ", s["facts"], s["crossPercent"])+b"graph-v2")
             and integer(q["Ordinal"], 1) == ordinal, "immutable native logical operation")
@@ -96,6 +104,7 @@ def attempts(directory, end, spool):
 
 def _scalar_attempts(directory, end, spool):
     s, total, extra = end["spec"], 0, 0
+    useful=s["facts"]+_scalar_updates(s)+3
     for a in lines(directory/"attempts.jsonl", 16*s["facts"]+4):
         fields(a, "Operation Engine ClientID AttemptOrdinal PreviousRequest Request Transaction BodySHA256 BusinessSHA256 DecisionDigest OriginalIndex Round Classification Error SubmitInvocations Proposal Manifest Outcome CDC")
         phase, fact, ordinal = operation(s, a["Operation"])
@@ -138,7 +147,7 @@ def _scalar_attempts(directory, end, spool):
         if prior is None: spool.insert(b"attempt-last",u64(ordinal),encoded(a))
         else: spool.replace(b"attempt-last",u64(ordinal),prior,encoded(a))
         total += 1
-    require(2*s["facts"]+3 <= total <= integer(end["OriginalCaptures"],total,16*s["facts"]+3)
+    require(useful <= total <= integer(end["OriginalCaptures"],total,16*s["facts"]+3)
             and extra == integer(end["ExtraInvocations"],0,64), "finite actual original capture/SAME retry ledger")
     counts, completed = [0]*32, 0
     for record in lines(directory/"operations.jsonl",2*s["facts"]+4):
@@ -154,9 +163,9 @@ def _scalar_attempts(directory, end, spool):
                 "complete queued logical-operation latency includes all retries/waits")
         spool.insert(b"latency",u64(elapsed)+u64(ordinal),b"1")
         spool.insert(b"completed",u64(ordinal),encoded(sample));counts[client]+=1;completed+=1
-    require(completed == 2*s["facts"]+3 and counts == end["Completed"] and all(counts[i] > 0 for i in range(s["writers"])),"exact admitted client census")
+    require(completed == useful and counts == end["Completed"] and all(counts[i] > 0 for i in range(s["writers"])),"exact admitted client census")
     expected = [0]*32
-    for ordinal in range(1,2*s["facts"]+4):
+    for ordinal in range(1,useful+1):
         spool.lookup(b"completed",u64(ordinal));expected[(ordinal-1)%s["writers"]]+=1
     require(expected == counts, "wrong-client/omitted/duplicate useful operation")
 
@@ -409,7 +418,7 @@ def sources(directory,end,spool):
 
 
 def _scalar_sources(directory,end,spool,decode_cut,frame_ceiling,*,guarded_updates=False):
-    require(not guarded_updates or end["spec"]["family"] in ("partition-local-create-update","immutable-columns"),"fresh guarded-update source profile only")
+    require(not guarded_updates or end["spec"]["family"] in ("partition-local-create-update","immutable-columns","late-correction-old-index"),"fresh guarded-update source profile only")
     first=decode_cut(end["Initial"]);stages=("before-stop","reopened-replayed")
     stage,group,after,previous=0,0,first[0]["sourceIndex"],first[0]["image"]
     counts=[0,0]
@@ -439,7 +448,8 @@ def _scalar_sources(directory,end,spool,decode_cut,frame_ceiling,*,guarded_updat
             if group==2:stage,group=stage+1,0
             after,previous=first[group]["sourceIndex"],first[group]["image"]
         else:require(p["Frames"],"physical source made no progress")
-    require(stage==2 and group==0 and counts==end["SourceRows"] and sum(counts)==3+(4 if guarded_updates else 3)*end["spec"]["facts"],"complete raw/typed two-cohort prefix including every guarded presence revision")
+    expected=3+2*end["spec"]["facts"]+(2 if guarded_updates else 1)*_scalar_updates(end["spec"])
+    require(stage==2 and group==0 and counts==end["SourceRows"] and sum(counts)==expected,"complete raw/typed two-cohort prefix including every guarded presence revision")
     for tx,wire in spool.walk(b"terminal"):
         a=decoded(wire);m=codec.manifest(blob(a["Manifest"]));d=codec.status(blob(a["Outcome"]))
         require(spool.lookup(b"phase",u64(3)+tx+b"\3")==blob(a["Outcome"]),"no orphan/missing retained decision")
@@ -691,7 +701,7 @@ def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut,*,initi
         require((directory/"columns.jsonl").stat().st_size==0,"KV invented derived generation work");return
     expected={"old-seal/native","old-seal/fill","old-seal/cached","final-seal/native","final-seal/fill","final-seal/cached","old-after-update",
               "reopened-0-false","reopened-0-true","reopened-1-false","reopened-1-true"}
-    immutable=end["spec"]["family"]=="immutable-columns"
+    immutable=end["spec"]["family"] in ("immutable-columns","late-correction-old-index")
     if immutable:
         require(initial_cuts is None and expected_stages is None and generation_for_stage is None,"Cost10 has a fixed independently verified generation schedule")
         expected|={"scan-points-0","scan-points-1"}

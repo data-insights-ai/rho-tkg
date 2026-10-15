@@ -29,6 +29,9 @@ type nativeGraphCostSpec struct {
 }
 
 func (s nativeGraphCostSpec) validate() error {
+	if s.Version == 11 {
+		return nativeLateCorrectionValidate(s)
+	}
 	if s.Version == 10 {
 		return nativeImmutableColumnsValidate(s)
 	}
@@ -92,6 +95,13 @@ func (s nativeGraphCostSpec) edge(i uint64) (uint64, uint64, uint64, uint64) {
 	return 7 + 2*i, 8 + 2*i, target, targetLife
 }
 func (s nativeGraphCostSpec) deliveries() int {
+	if s.Version == 11 {
+		frames, err := nativeLateCorrectionFrames(s)
+		if err != nil || frames > uint64(^uint(0)>>1)/1024 {
+			return 0
+		}
+		return int(frames * 1024) // #nosec G115 -- checked numeric grant.
+	}
 	if s.Version == 10 {
 		frames, err := nativeImmutableColumnsFrames(s)
 		if err != nil || frames > uint64(^uint(0)>>1)/1024 {
@@ -140,6 +150,9 @@ func (s nativeGraphCostSpec) deliveries() int {
 func nativeGraphCostProfile(s *nativeGraphCostSpec, init *declaredInitCommand, l *raftlog.Limits, p *raftlog.ApplicationPolicy, generations *raftlog.ApplicationGenerationLimits) error {
 	if s == nil {
 		return nil
+	}
+	if s.Version == 11 {
+		return nativeLateCorrectionProfile(*s, init, l, p, generations)
 	}
 	if s.Version == 10 {
 		return nativeImmutableColumnsProfile(*s, init, l, p, generations)
@@ -235,7 +248,10 @@ func nativeGraphCostProposal(o *certifiedProcessOwners, r processRequest, id req
 			provenance = 4 + o.cost.Facts + i
 		}
 		set := graphstate.Operation{Kind: graphstate.Set, Owner: graphstate.EntityID(edge), Life: graphstate.LifeID(life), Scope: scope, Name: "p", Value: graphstate.I64(value), ValueID: graphstate.ValueID(valueID)}
-		if (o.cost.Version == 9 || o.cost.Version == 7 || o.cost.Version == 10) && r.index == 5 {
+		if (o.cost.Version == 9 || o.cost.Version == 7 || o.cost.Version == 10 || o.cost.Version == 11) && r.index == 5 {
+			if o.cost.Version == 11 && i >= o.cost.Facts/2 {
+				return allocationProposal{}, errInvalid
+			}
 			ops = nativeScalarGuardedUpdate(ops, set)
 		} else {
 			ops = append(ops, set)

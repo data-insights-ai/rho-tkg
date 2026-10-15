@@ -47,8 +47,10 @@ COST_FIXTURES = {
     "native_graph_cost_parallel_harness_test.go", "native_graph_cost_runner_test.go",
 }
 IMMUTABLE_PARENTS = ["TestNativeImmutableColumnsFreshProfileAndExactProbePredecessor", "TestNativeGraphImmutableColumnsWorkloadCell"]
+CORRECTION_PARENTS = ["TestNativeLateCorrectionHalfCohortAndHistoricalAdmission", "TestNativeGraphLateCorrectionWorkloadCell"]
 COST_PARENTS = [
     *IMMUTABLE_PARENTS,
+    *CORRECTION_PARENTS,
     "TestNativeGraphCostSmallActualProcesses", "TestNativeGraphCostProfileAndRouting",
     "TestNativeGraphCostAckPollMarkerRequiresCostChildAndKeepsDefaultDiagnostics",
     "TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks",
@@ -132,13 +134,15 @@ FIXTURE_COMPAT = {
                    ["TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell", "TestNativeFeedRetainedAdmissionWireAndCleanupStayProfileBound"]),
     "native_graph_feed_retained_runner_harness_test.go": ["TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell"],
     **dict.fromkeys(("native_graph_immutable_columns_harness_test.go", "native_graph_immutable_columns_process_test.go"), IMMUTABLE_PARENTS),
+    "native_graph_immutable_columns_harness_test.go": [*IMMUTABLE_PARENTS,*CORRECTION_PARENTS],
+    **dict.fromkeys(("native_graph_late_correction_harness_test.go","native_graph_late_correction_process_test.go"),CORRECTION_PARENTS),
     **dict.fromkeys(("native_graph_create_update_harness_test.go", "native_graph_create_update_process_test.go"),
-                   ["TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *IMMUTABLE_PARENTS]),
+                   ["TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *IMMUTABLE_PARENTS,*CORRECTION_PARENTS]),
     **dict.fromkeys(("native_graph_selectors_harness_test.go", "native_graph_selectors_sessions_harness_test.go", "native_graph_selectors_runner_harness_test.go"),
                    ["TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell",
-                    "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *IMMUTABLE_PARENTS]),
+                    "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *IMMUTABLE_PARENTS,*CORRECTION_PARENTS]),
     "native_graph_feed_runner_harness_test.go": ["TestNativeGraphSnapshotFeedWorkloadCell", "TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell",
-                                               "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateWorkloadCell", *IMMUTABLE_PARENTS],
+                                               "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateWorkloadCell", *IMMUTABLE_PARENTS,*CORRECTION_PARENTS],
     "native_graph_cost_columns_harness_test.go": [*COST_PARENTS, *WORKLOAD_PARENTS],
     "native_graph_contention_harness_test.go": WORKLOAD_PARENTS,
     "native_graph_contention_runner_test.go": WORKLOAD_PARENTS,
@@ -168,7 +172,7 @@ FIXTURE_COMPAT = {
     "remote_certified_process_test.go": ["TestRemoteE15CertifiedReadClosesDelayedBAndRetainsOldCut", "TestNativeScopeReadDoorPreservesLegacyBytesAndRejectsForeignScopeShapes", "TestNativeP01OutsideDataScopeFreshAndAfterResolveOrRefuseActualCoordinator"],
     "native_graph_columns_retention_test.go": ["TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement", "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation"],
     "native_graph_columns_process_harness_test.go": ["TestNativeColumnsDurableOSChildCreateReopenAndRetire"],
-    "replicated_process_test.go": ["TestReplicatedProcessProtocolBoundaries", "TestReplicatedProcessShutdownReapsFailedCloseRPC", *FAULT_PARENTS, *WORKLOAD_PARENTS, *IMMUTABLE_PARENTS],
+    "replicated_process_test.go": ["TestReplicatedProcessProtocolBoundaries", "TestReplicatedProcessShutdownReapsFailedCloseRPC", *FAULT_PARENTS, *WORKLOAD_PARENTS, *IMMUTABLE_PARENTS,*CORRECTION_PARENTS],
     "graph_source_process_test.go": ["TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput", "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts", *COST_PARENTS, *FAULT_PARENTS, *WORKLOAD_PARENTS],
 }
 WORKLOAD_INPUTS = {"tools/v5-substrate/native_contention_check.py", "tools/v5-substrate/native_contention_check_test.py",
@@ -180,6 +184,12 @@ IMMUTABLE_INPUTS = {"tools/v5-substrate/native_immutable_columns_check.py", "too
                     "tools/v5-substrate/native_immutable_columns_check_test.py", "tools/v5-substrate/native_create_update_check.py",
                     "tools/v5-substrate/native_create_update_cell.py", "tools/v5-substrate/native_selectors_check.py",
                     "tools/v5-substrate/native_feed_check.py", "tools/v5-substrate/fdb_columns_check.py", "tools/v5-substrate/fdb_columns_check_test.py"}
+CORRECTION_INPUTS = {"tools/v5-substrate/native_late_correction_check.py","tools/v5-substrate/native_late_correction_cell.py",
+                     "tools/v5-substrate/native_late_correction_check_test.py","tools/v5-substrate/native_create_update_check.py",
+                     "tools/v5-substrate/native_create_update_cell.py","tools/v5-substrate/native_selectors_check.py",
+                     "tools/v5-substrate/native_feed_check.py","tools/v5-substrate/native_immutable_columns_check.py",
+                     "tools/v5-substrate/fdb_columns_check.py","tools/v5-substrate/fdb_correction_check.py",
+                     "tools/v5-substrate/fdb_correction_check_test.py","tools/v5-substrate/fdb_selectors_check.py"}
 FAULT_INPUTS = {"tools/v5-substrate/native_fault_schedule_check.py", "tools/v5-substrate/native_fault_schedule_check_test.py",
                 "tools/v5-substrate/native_transition_conjunction_check.py", "tools/v5-substrate/native_transition_conjunction_check_test.py",
                 "tools/v5-substrate/native_transition_retention_check.py", "tools/v5-substrate/native_transition_retention_check_test.py",
@@ -578,6 +588,8 @@ def cdc(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_create_update_check_test.py"], cwd=ROOT, check=True)
     if IMMUTABLE_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_immutable_columns_check_test.py"], cwd=ROOT, check=True)
+    if CORRECTION_INPUTS.intersection(paths):
+        subprocess.run([sys.executable,"-B","tools/v5-substrate/native_late_correction_check_test.py"],cwd=ROOT,check=True)
     if COST_CDC_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"], cwd=ROOT, check=True)
         if {"tools/v5-substrate/cost-cell.py", "tools/v5-substrate/native_columns_check.py", "tools/v5-substrate/cost_cell_test.py"}.intersection(paths):

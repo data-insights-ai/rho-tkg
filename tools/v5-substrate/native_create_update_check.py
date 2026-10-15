@@ -20,9 +20,10 @@ STAGES=("old-fresh","same-pin-old-after-update","fresh-current","reopened-old","
 
 
 def shape(s, family=FAMILY):
-    require(family in (FAMILY,"immutable-columns"),"explicit implemented guarded scalar family")
+    require(family in (FAMILY,"immutable-columns","late-correction-old-index"),"explicit implemented guarded scalar family")
     fields(s,"version family facts crossPercent writers layout")
     require(integer(s["version"],1,1) and s["family"]==family and integer(s["facts"],20,1_000_000)%20==0 and integer(s["crossPercent"]) in (0,10,50,100) and integer(s["writers"]) in (1,8,32) and s["facts"]>s["writers"] and s["layout"] in ("kv","columns"),"fresh native guarded scalar dimensions")
+    require(family!="late-correction-old-index" or s["facts"]//2>s["writers"],"seed plus real half-correction job per admitted caller")
     return s
 
 
@@ -68,11 +69,12 @@ def proposal(a,s,spool):
 
 
 def business(directory,end,spool):
-    s=end["spec"];n=s["facts"]
-    require(end["SetupTransactions"]==3 and end["RowSemantics"]==("strict-partition-local-create-update" if s["crossPercent"]==0 else "mixed-or-cross-partition-create-update") and end["BusinessFootprint"]=="complete actual graph operation/read/write/claim footprint under authenticated installed ranges; setup excluded" and end["Coordination"]=="local Submit for one business partition; cross Run for multi-participant business; actual manifest participants/empty control coordination reported separately","actual row semantics; setup and coordination separate")
+    s=end["spec"];n=s["facts"];updates=scalar._scalar_updates(s)
+    semantics="late-scalar-correction-first-half" if s["family"]=="late-correction-old-index" else "strict-partition-local-create-update" if s["crossPercent"]==0 else "mixed-or-cross-partition-create-update"
+    require(end["SetupTransactions"]==3 and end["RowSemantics"]==semantics and end["BusinessFootprint"]=="complete actual graph operation/read/write/claim footprint under authenticated installed ranges; setup excluded" and end["Coordination"]=="local Submit for one business partition; cross Run for multi-participant business; actual manifest participants/empty control coordination reported separately","actual row semantics; setup and coordination separate")
     phases=end["BusinessPhases"]
     require(type(phases) is list and len(phases)==2,"two actual complete phase walls")
-    for name,p in zip(("create","update"),phases,strict=True):phase(p,n,s["crossPercent"],end["TotalNanos"]);require(p["Phase"]==name,"ordered actual phases")
+    for name,p in zip(("create","update"),phases,strict=True):phase(p,n if name=="create" else updates,s["crossPercent"],end["TotalNanos"]);require(p["Phase"]==name,"ordered actual phases")
     require(phases[0]["StopNanos"]<=phases[1]["StartNanos"] and sum(p["WallNanos"] for p in phases)==end["BusinessNanos"],"actual business walls, never sum of parallel operation latency")
     counts={name:{"single":0,"multi":0,"attempts":0,"aborted":0,"protocolParticipantInstalls":0} for name in ("create","update")}
     for a in lines(directory/"attempts.jsonl",16*n+4):
@@ -91,17 +93,18 @@ def business(directory,end,spool):
         require(p["StartNanos"]<=operation["StartNanos"]<operation["StopNanos"]<=p["StopNanos"] and operation["ElapsedNanos"]<=p["WallNanos"],"every original includes its actual queue/retry/wait inside the measured phase")
         spool.lookup(b"business-useful",u64(ordinal))
         spool.insert(b"business-latency-"+phase_.encode(),u64(operation["ElapsedNanos"])+u64(ordinal),b"1");timing[phase_]+=1
-    require(end["LogicalCross"]==sum(c["multi"] for c in counts.values()) and end["LogicalLocal"]==sum(c["single"] for c in counts.values()) and end["LogicalCross"]+end["LogicalLocal"]==2*n,"reported ratio joins actual original business footprint, setup excluded")
+    require(end["LogicalCross"]==sum(c["multi"] for c in counts.values()) and end["LogicalLocal"]==sum(c["single"] for c in counts.values()) and end["LogicalCross"]+end["LogicalLocal"]==n+updates,"reported ratio joins actual original business footprint, setup excluded")
     result=[]
     for p in phases:
         name=p["Phase"];c=counts[name]
-        require((c["single"],c["multi"])==(p["SingleParticipant"],p["MultiParticipant"]) and timing[name]==n,"observed source counter independently matches actual originals")
+        useful=n if name=="create" else updates
+        require((c["single"],c["multi"])==(p["SingleParticipant"],p["MultiParticipant"]) and timing[name]==useful,"observed source counter independently matches actual originals")
         percentiles={};position=0
         for position,(coordinate,_) in enumerate(spool.walk(b"business-latency-"+name.encode()),1):
             for q in (50,95,99):
-                if position==(q*n+99)//100:percentiles[f"p{q}Nanos"]=int.from_bytes(coordinate[:8],"big")
-        require(position==n and len(percentiles)==3,"complete original-bound useful latency census")
-        result.append({**p,**c,**percentiles,"usefulTransactionsPerSecond":n*1_000_000_000/p["WallNanos"]})
+                if position==(q*useful+99)//100:percentiles[f"p{q}Nanos"]=int.from_bytes(coordinate[:8],"big")
+        require(position==useful and len(percentiles)==3,"complete original-bound useful latency census")
+        result.append({**p,**c,**percentiles,"usefulTransactionsPerSecond":useful*1_000_000_000/p["WallNanos"]})
     return result
 
 
@@ -119,9 +122,10 @@ def verify(directory,spool_directory,policy,*,binary_sha=None,expected_spec=None
 
 
 def _verify(directory,spool_directory,policy,*,binary_sha=None,expected_spec=None,expected_run=None,expected_deadline=None,expected_seconds=None,shared_spool=None,family=FAMILY):
-    require(family in (FAMILY,"immutable-columns"),"explicit implemented guarded scalar oracle")
-    immutable=family=="immutable-columns"
-    format_="native-immutable-columns-workload-v1" if immutable else FORMAT
+    require(family in (FAMILY,"immutable-columns","late-correction-old-index"),"explicit implemented guarded scalar oracle")
+    immutable=family in ("immutable-columns","late-correction-old-index")
+    correction=family=="late-correction-old-index"
+    format_="native-late-correction-workload-v1" if correction else "native-immutable-columns-workload-v1" if immutable else FORMAT
     directory=Path(directory).resolve(strict=True)
     with (directory/"result.json").open("rb") as stream:body=stream.read(LINE+1)
     require(body.endswith(b"\n") and len(body)<=LINE,"bounded complete native result")
@@ -156,8 +160,12 @@ def _verify(directory,spool_directory,policy,*,binary_sha=None,expected_spec=Non
         additional={}
         if immutable:
             import native_immutable_columns_check as columns
-            additional=columns.observations(directory,end,spool)
+            additional=columns._observations(directory,end,spool,family=family)
         else:require("ImmutableColumns" not in end,"fresh column observations cannot relabel old9")
+        if correction:
+            import native_late_correction_check as corrected
+            additional.update(corrected.indexes(directory,end,spool))
+        else:require("Correction" not in end,"fresh half-correction cannot relabel prior formats")
         scope="genuine native local Submit versus explicit mixed/cross variants, complete original/source/voter/old-current/column/cache/reopen joins; setup excluded; planned installed-grant IDs, not Recipient.Next; no efficiency/capacity/full-matrix or nonlocal engine-parity acceptance"
         if immutable:scope+="; KV is source-scan reference; actual immutable derived bytes retained/counted, no physical derived-GC claim"
         return {"format":format_,"family":family,"spec":s,"run":a["Run"],"logicalAnswersSHA256":answer,"retentionContract":end["RetentionContract"],"transport":selected,"rowSemantics":end["RowSemantics"],"businessTiming":business_timing,"sourceTiming":read_timings(timing),"spool":spool.report(),**additional,"scope":scope}

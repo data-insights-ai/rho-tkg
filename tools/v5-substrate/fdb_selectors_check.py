@@ -939,7 +939,7 @@ def selector_timings(spool):
             "scope": "actual Open retry/wait, Scan through EOF including artifact callbacks, and separate fixed scan-based Points; finite per-cell samples, no indexed/per-key latency claim"}
 
 
-def logical_answers(end, spool):
+def logical_answers(end, spool, *, final_updates=None):
     """Normalize only complete authenticated old/final selector observations.
 
     Native physical revisions remain exact in each engine's own proof; typed
@@ -947,12 +947,14 @@ def logical_answers(end, spool):
     """
     answer = hashlib.sha256()
     n = end["Spec"]["facts"]
+    require(final_updates is None or end["Spec"]["family"]=="late-correction-old-index" and type(final_updates) is int and final_updates==n//2,"only the actual half-correction schedule may select unchanged create originals")
     for namespace, offset, observation in ((b"fdb-old", 0, b"old-fresh"), (b"fdb-current", n, b"fresh-current")):
         for fact in range(n):
-            original = decoded(spool.lookup(b"fdb-operation", u64(4+offset+fact)))
+            selected=0 if offset and final_updates is not None and fact>=final_updates else offset
+            original = decoded(spool.lookup(b"fdb-operation", u64(4+selected+fact)))
             tx = original["Tx"]
             edge, lifecycle = tx["GraphChange"]["Edge"], tx["Lifecycle"]
-            _, _, effects, _ = codec.fdb_contract(end["Spec"], 4+offset+fact)
+            _, _, effects, _ = codec.fdb_contract(end["Spec"], 4+selected+fact)
             scalar = None
             for group in sorted(effects):
                 for effect in effects[group]:

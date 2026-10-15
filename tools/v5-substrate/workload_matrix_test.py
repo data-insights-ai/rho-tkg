@@ -7,6 +7,28 @@ import workload_matrix as matrix
 
 
 class WorkloadMatrixGuards(unittest.TestCase):
+    def test_native_half_correction_full_dimensions_and_local_pair_boundary(self):
+        family="late-correction-old-index"
+        spec={"version":1,"family":family,"facts":80,"crossPercent":50,"writers":32,"layout":"columns"}
+        for transport in matrix.TRANSPORTS:self.assertEqual(matrix.preflight(spec,"01"*16,"native-raft",transport),spec)
+        self.assertEqual(matrix.preflight(spec,"01"*16,"paired","local"),spec)
+        for transport in ("rtt-1ms","rtt-20ms","rtt-100ms"):
+            with self.assertRaises(ValueError):matrix.preflight(spec,"01"*16,"paired",transport)
+        with self.assertRaises(ValueError):matrix.preflight(spec|{"facts":40},"01"*16,"native-raft","local")
+        cells=list(matrix.matrix((family,),tuple(matrix.TRANSPORTS),("native-raft",)))
+        self.assertEqual(len(cells),1440)
+        self.assertTrue(all(c["implemented"] and c["workload"]["version"]==1 for c in cells))
+        self.assertEqual({c["workload"]["facts"] for c in cells},set(matrix.FACTS))
+        self.assertEqual({c["workload"]["crossPercent"] for c in cells},set(matrix.CROSS))
+        self.assertEqual({c["workload"]["writers"] for c in cells},set(matrix.WRITERS))
+        self.assertEqual({c["workload"]["layout"] for c in cells},set(matrix.LAYOUTS))
+        self.assertEqual({c["repetition"] for c in cells},set(range(1,6)))
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/"absent"
+            unsupported=next(c for c in cells if c["transport"]["targetRTTMillis"]==100)
+            with self.assertRaises(ValueError):matrix.execute(unsupported|{"engine":"paired"},output,1800,"small",4096,1<<30,8<<20)
+            self.assertFalse(output.exists())
+
     def test_native_immutable_columns_actual_route_and_local_pair_only(self):
         spec={"version":1,"family":"immutable-columns","facts":40,"crossPercent":50,"writers":32,"layout":"columns"}
         for transport in matrix.TRANSPORTS:self.assertEqual(matrix.preflight(spec,"01"*16,"native-raft",transport),spec)

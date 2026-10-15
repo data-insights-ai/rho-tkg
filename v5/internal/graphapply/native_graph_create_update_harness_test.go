@@ -153,6 +153,9 @@ func nativeCreateUpdateAttach(t *testing.T, n *certifiedProcessNetwork, s native
 	if s.Family == nativeImmutableColumnsFamily {
 		frames, err = nativeImmutableColumnsFrames(nativeImmutableColumnsCost(s))
 	}
+	if s.Family == nativeLateCorrectionFamily {
+		frames, err = nativeLateCorrectionFrames(nativeLateCorrectionCost(s))
+	}
 	if err != nil || frames > (1<<41)/1024 || frames > uint64(^uint(0)>>1)/1024 {
 		t.Fatal("finite actual source/transport frame grant", err)
 	}
@@ -207,6 +210,9 @@ func nativeCreateUpdateCount(s nativeSelectorsSpec, phase *nativeCreateUpdatePha
 }
 
 func nativeCreateUpdateCheckPoint(s nativeFeedSpec, p nativeFeedPoint, value int64) error {
+	if s.Family == nativeLateCorrectionFamily {
+		value = nativeScalarCorrectedValue(nativeGraphCostSpec{11, s.Facts, s.CrossPercent, s.Writers}, value, p.Fact)
+	}
 	id, life, target, _ := s.cost().edge(p.Fact)
 	r := p.Entity
 	presence := 4 + p.Fact

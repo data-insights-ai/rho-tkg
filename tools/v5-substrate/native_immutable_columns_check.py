@@ -31,7 +31,7 @@ def metadata(record,expected_key):
 
 def points(actual,end,generation,spool):
     require(type(actual) is list and len(actual)==3,"fixed complete column probes")
-    n=end["spec"]["facts"];value=5+generation
+    n=end["spec"]["facts"]
     for index,(probe,owner) in enumerate(zip(actual,(7,7+2*(n-1),5),strict=True)):
         fields(probe,"Owner Found Presence Property")
         require(probe["Owner"]==owner and type(probe["Found"]) is bool and probe["Found"]==(index<2),"actual probe identity/phantom")
@@ -40,7 +40,8 @@ def points(actual,end,generation,spool):
             empty.update(Name="",Type="",Axis=None,Scope=None,Before=codec.ZERO,After=codec.ZERO)
             require(probe["Presence"]==probe["Property"]==empty,"phantom is exact empty typed row, not current fallback")
             continue
-        ordinal=4+(owner-7)//2+generation*n
+        value=scalar._scalar_value(end["spec"],5+generation,(owner-7)//2)
+        ordinal=4+(owner-7)//2+(n if value==6 else 0)
         for name,component in (("Presence",1),("Property",3)):
             row=decoded(spool.lookup(b"row",u64(ordinal)+u64(owner)+bytes([component])))
             require(probe[name]==row and row["After"]["Present"] and row["After"]["Provenance"]==ordinal and row["After"]["Handle"]==(owner+1 if component==1 else value),"complete exact original native predecessor/life/scope/provenance bound probe")
@@ -78,6 +79,12 @@ def held_refusal(frame,end,spool):
 
 
 def observations(directory,end,spool):
+    return _observations(directory,end,spool)
+
+
+def _observations(directory,end,spool,*,family=FAMILY):
+    require(family in (FAMILY,"late-correction-old-index") and end["spec"]["family"]==family,"exact native immutable or half-correction column schedule")
+    format_="native-late-correction-workload-v1" if family=="late-correction-old-index" else FORMAT
     summary=end["ImmutableColumns"]
     fields(summary,"Version Access Publications Scans ScanPoints HeldRetireRefusals SHA256 DerivedRetention")
     expected=(2,11,2,2) if end["spec"]["layout"]=="columns" else (0,0,0,0)
@@ -92,7 +99,7 @@ def observations(directory,end,spool):
             footer=True;continue
         seal.update(encoded(frame)+b"\n")
         if not started:
-            require(frame=={"Type":"header","Format":FORMAT,"Spec":end["spec"],"AdmissionSHA256":end["AdmissionSHA256"]},"exact fresh observation admission")
+            require(frame=={"Type":"header","Format":format_,"Spec":end["spec"],"AdmissionSHA256":end["AdmissionSHA256"]},"exact fresh observation admission")
             started=True;continue
         require(end["spec"]["layout"]=="columns","KV source reference cannot invent column operations")
         kind=frame.get("Type");require(kind in counts,"unknown native column operation")
@@ -102,7 +109,8 @@ def observations(directory,end,spool):
         stage=frame["Stage"];generation=int(stage.startswith(("final-","reopened-1","scan-points-1")))
         require(frame["Access"]==ACCESS and frame["Cut"]==end["Final" if generation else "Old"] and frame["Generation"]==end["ColumnManifests"][generation][0]["Generation"]["ID"],"actual immutable cut/generation, not KV labels")
         n=end["spec"]["facts"]
-        require(frame["Rows"]==[3+n+generation*n,n,generation*n] and type(frame["Cached"]) is type(frame["Fill"]) is bool,"actual complete typed lifecycle census including guarded presence revision")
+        updates=scalar._scalar_updates(end["spec"]) if generation else 0
+        require(frame["Rows"]==[3+n+updates,n,updates] and type(frame["Cached"]) is type(frame["Fill"]) is bool,"actual complete typed lifecycle census including guarded presence revision")
         integer(frame["Nanos"],1,end["TotalNanos"])
         if kind=="Publish":
             require(counts[kind]<2 and stage==("old-seal","final-seal")[counts[kind]] and not frame["Cached"] and not frame["Fill"] and "Points" not in frame,"two complete real publisher operations")

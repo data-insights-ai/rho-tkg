@@ -133,6 +133,7 @@ def point(s, entity, value, spool, *, guarded_updates=False):
     else:
         fact=(identity-7)//2
         require(identity==7+2*fact and 0<=fact<s["facts"],"unexpected relationship identity")
+        value=scalar._scalar_value(s,value,fact)
         scalar.point(s,{"Fact":fact,"Entity":entity},value,spool,guarded_updates=guarded_updates)
 
 
@@ -153,14 +154,15 @@ def authenticate_cut(selected,end,spool):
 
 
 def reads(directory,end,spool,*,family=FAMILY):
-    require(family in (FAMILY,"partition-local-create-update","immutable-columns"),"explicit implemented source observation schedule")
+    require(family in (FAMILY,"partition-local-create-update","immutable-columns","late-correction-old-index"),"explicit implemented source observation schedule")
     stages=STAGES if family==FAMILY else ("old-fresh","same-pin-old-after-update","fresh-current","reopened-old","reopened-final")
     modes=MODES if family==FAMILY else (1,0,1,0,0)
     queries=16 if family==FAMILY else 5
     s=end["spec"];stage_index=-1;current=None;owners={};last_call=0;previous_trace=None;extra=0
     completed=set();published={};timings=[];observations={};query_count=0
     ceiling=frames(s) if family==FAMILY else (16*s["facts"]+3)*10+64*10+4096
-    bound=queries*((s["facts"]+15)//16+end["Admission"]["BudgetSeconds"]//60+16)+4*((ceiling+3)//4)+64
+    passes=9 if family=="late-correction-old-index" else queries
+    bound=passes*((s["facts"]+15)//16+end["Admission"]["BudgetSeconds"]//60+16)+4*((ceiling+3)//4)+64
     for trace in lines(directory/"reads.jsonl",bound*8+256):
         if trace.get("Type")=="observation-timing":
             fields(trace,"Type Stage OpenNanos ScanNanos PointsNanos ScopeRefusalNanos Rows")
@@ -181,6 +183,8 @@ def reads(directory,end,spool,*,family=FAMILY):
             stage_index+=1;current=stage
             observations[stage]={"scan":0,"points":False,"scope":False,"scanNanos":0,"openNanos":0,"pointNanos":0,"scopeNanos":0}
         q,r=trace["Input"],trace["Reply"];action=q["Action"];call=integer(trace["Call"],1);attempt=integer(trace["Attempt"],1,8)
+        require(family=="late-correction-old-index" or "Index" not in r,"fresh index metadata cannot relabel ordinary selector replies")
+        if family=="late-correction-old-index" and not trace.get("Error"):require((action=="index")==("Index" in r),"exact source-index reply class")
         integer(trace["AttemptNanos"],1);integer(trace["OperationNanos"],trace["AttemptNanos"])
         if call==last_call:
             require(previous_trace is not None and previous_trace.get("Error") and q==previous_trace["Input"] and attempt==previous_trace["Attempt"]+1,"SAME retry changed original/query bytes")
@@ -241,8 +245,12 @@ def reads(directory,end,spool,*,family=FAMILY):
                 pin(owner["original"],r["Token"],owner["cut"],spool);owner["token"]=r["Token"]
                 published[owner["identity"]]=owner["hash"]
                 if stage=="old-fresh":require(r["Token"]==end["OldToken"],"actual original old token")
-                if stage=="after-current" or family in ("partition-local-create-update","immutable-columns") and stage=="fresh-current":require(r["Token"]==end["FinalToken"],"actual original final token")
+                if stage=="after-current" or family in ("partition-local-create-update","immutable-columns","late-correction-old-index") and stage=="fresh-current":require(r["Token"]==end["FinalToken"],"actual original final token")
                 o["openNanos"]+=trace["OperationNanos"]
+            elif action=="index":
+                require(family=="late-correction-old-index","fresh index door only")
+                import native_late_correction_check as correction
+                correction.index_page(trace,end,spool,owner,o)
             elif action in ("scan","points"):
                 seq=integer(q["Sequence"],1);require(r["Sequence"]==seq,"actual private sequence")
                 if seq==owner["sequence"]:
@@ -259,17 +267,19 @@ def reads(directory,end,spool,*,family=FAMILY):
                     require(not scoped and not owner["eof"] and len(r["Points"] or [])==len(r["Candidates"] or []),"posting/hydration mismatch or scan after EOF")
                     for entity,candidate in zip(r["Points"] or [],r["Candidates"] or [],strict=True):
                         fact=o["scan"];require(value!=0 and candidate==entity["id"]==7+2*fact,"posting exact-set order/phantom/omission")
-                        point(s,entity,value,spool,guarded_updates=family in ("partition-local-create-update","immutable-columns"));spool.insert(b"selector-row/"+stage.encode(),u64(fact),encoded(entity));o["scan"]+=1
+                        point(s,entity,value,spool,guarded_updates=family in ("partition-local-create-update","immutable-columns","late-correction-old-index"));spool.insert(b"selector-row/"+stage.encode(),u64(fact),encoded(entity));o["scan"]+=1
                     require(type(r["EOF"]) is bool and (r["EOF"] or r["Points"]),"nonprogress native cursor")
                     owner["eof"]=r["EOF"];o["scanNanos"]+=trace["OperationNanos"]
                     if r["EOF"]:require(o["scan"]==(0 if value==0 else s["facts"]),"complete posting EOF exact cardinality")
                 else:
                     ids=([1 if stage.endswith("-3") else 2*s["facts"]+7] if scoped else [1,3,2*s["facts"]+7,7,7+2*(s["facts"]-1),6+2*s["facts"]])
                     require(q["IDs"]==ids and len(r["Points"] or [])==len(ids) and (scoped and o["scope"] or not scoped and owner["eof"]),"fixed complete points/scope proof")
-                    for identity,entity in zip(ids,r["Points"],strict=True):require(identity==entity["id"],"point reordered");point(s,entity,value,spool,guarded_updates=family in ("partition-local-create-update","immutable-columns"))
+                    for identity,entity in zip(ids,r["Points"],strict=True):require(identity==entity["id"],"point reordered");point(s,entity,value,spool,guarded_updates=family in ("partition-local-create-update","immutable-columns","late-correction-old-index"))
                     require(not o["points"],"duplicate point completion");o["points"]=True;o["pointNanos"]+=trace["OperationNanos"]
+                    if family=="late-correction-old-index":o["pointWork"]=r["Work"]
             elif action in ("close","release"):
                 require(o["points"] and "timing" in o and (scoped or owner["eof"]),"source closed before complete observation/timing")
+                if family=="late-correction-old-index" and stage in ("same-pin-old-after-update","fresh-current"):require(o.get("index",{}).get("endpoint")==3,"all three native endpoint index EOFs required before Close")
                 if action=="release" and not scoped:
                     for cert in owner["cut"]:spool.lookup(b"pin-terminal",u64(cert["partition"])+owner["identity"]+owner["hash"])
                 del owners[q["Handle"]];completed.add(stage)
@@ -310,8 +320,9 @@ def logical_answers(end,spool,*,guarded_updates=False):
     answer=hashlib.sha256();s=end["spec"]
     for value,stage in ((5,"old-fresh"),(6,"fresh-current")):
         for fact in range(s["facts"]):
-            point(s,decoded(spool.lookup(b"selector-row/"+stage.encode(),u64(fact))),value,spool,guarded_updates=guarded_updates)
-            ordinal=4+fact+(s["facts"] if value==6 else 0)
+            selected=scalar._scalar_value(s,value,fact)
+            point(s,decoded(spool.lookup(b"selector-row/"+stage.encode(),u64(fact))),selected,spool,guarded_updates=guarded_updates)
+            ordinal=4+fact+(s["facts"] if selected==6 else 0)
             row=decoded(spool.lookup(b"row",u64(ordinal)+u64(7+2*fact)+b"\3"))
             coordinates=(fact,row["Owner"],row["Life"],row["Source"],row["Target"],row["SourceLife"],row["TargetLife"],row["After"]["Handle"])
             answer.update(b"edge-i64-lifebound-v1\0"+b"".join(u64(v) for v in coordinates)+struct.pack(">q",row["After"]["Value"])+u64(row["After"]["Provenance"]))

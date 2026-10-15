@@ -28,6 +28,7 @@ type nativeCreateUpdateResult struct {
 	SetupTransactions                             uint64
 	BusinessPhases                                [2]nativeCreateUpdatePhase
 	ImmutableColumns                              *nativeImmutableColumnsEnd `json:",omitempty"`
+	Correction                                    *nativeLateCorrectionEnd   `json:",omitzero"`
 }
 
 // Genuine workload parent, not an in-process semantic substitute. The fixed
@@ -39,9 +40,9 @@ func TestNativeGraphCreateUpdateWorkloadCell(t *testing.T) {
 	nativeScalarCreateUpdateWorkload(t, nativeCreateUpdateFamily)
 }
 
-// Two explicit scalar schedules share genuine factories/originals/source and
+// Explicit scalar schedules share genuine factories/originals/source and
 // lifecycle reducers. Cost9's wrapper remains its existing literal schedule;
-// Cost10 alone adds publication/read/probe observations and a held column owner.
+// Cost10/11 add publication/read/probe observations and a held column owner.
 func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 	t.Helper()
 	var spec nativeSelectorsSpec
@@ -53,6 +54,9 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 	case nativeImmutableColumnsFamily:
 		spec, err = nativeImmutableColumnsSpecFromEnv()
 		format, prefix = nativeImmutableColumnsFormat, "rho-native-immutable-columns-"
+	case nativeLateCorrectionFamily:
+		spec, err = nativeLateCorrectionSpecFromEnv()
+		format, prefix = nativeLateCorrectionFormat, "rho-native-late-correction-"
 	default:
 		t.Fatal("unsupported scalar source family")
 	}
@@ -65,6 +69,9 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 	admission, digest, err := nativeCreateUpdateAdmissionFromEnv(spec)
 	if family == nativeImmutableColumnsFamily {
 		admission, digest, err = nativeImmutableColumnsAdmissionFromEnv(spec)
+	}
+	if family == nativeLateCorrectionFamily {
+		admission, digest, err = nativeLateCorrectionAdmissionFromEnv(spec)
 	}
 	if err != nil {
 		t.Fatal(err)
@@ -102,11 +109,14 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 	if family == nativeImmutableColumnsFamily {
 		p = nativeImmutableColumnsCost(spec)
 	}
+	if family == nativeLateCorrectionFamily {
+		p = nativeLateCorrectionCost(spec)
+	}
 	n := nativeScalarWorkloadNetwork(t, p, env, prefix, durableColumnGraphSemanticContractID(), grants, func(n *certifiedProcessNetwork) { nativeCreateUpdateAttach(t, n, spec, admission) })
 	result := nativeCreateUpdateResult{nativeSelectorsResult: nativeSelectorsResult{Version: 1, Format: format, Engine: "native-raft", Spec: spec, Admission: admission, AdmissionSHA256: digest, Directory: n.dir, ArtifactDirectory: output, ProcessInstances: 12, RetentionContract: "snapshot-C-retained-full-prefix-v1"}, SetupTransactions: 3, BusinessFootprint: "complete actual graph operation/read/write/claim footprint under authenticated installed ranges; setup excluded", Coordination: "local Submit for one business partition; cross Run for multi-participant business; actual manifest participants/empty control coordination reported separately"}
 	var columnObserver *nativeImmutableColumnsObservations
-	if family == nativeImmutableColumnsFamily {
-		columnObserver, err = newNativeImmutableColumnsObservations(output, spec, digest)
+	if family == nativeImmutableColumnsFamily || family == nativeLateCorrectionFamily {
+		columnObserver, err = newNativeScalarColumnObservations(output, spec, digest)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,9 +130,25 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 	if spec.CrossPercent != 0 {
 		result.RowSemantics = "mixed-or-cross-partition-create-update"
 	}
+	var correction *nativeLateCorrectionIndexes
+	if family == nativeLateCorrectionFamily {
+		result.RowSemantics = "late-scalar-correction-first-half"
+		correction, err = newNativeLateCorrectionIndexes(output, spec, digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := correction.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+	}
 	result.FramesCeiling, err = nativeCreateUpdateFrames(p)
 	if family == nativeImmutableColumnsFamily {
 		result.FramesCeiling, err = nativeImmutableColumnsFrames(p)
+	}
+	if family == nativeLateCorrectionFamily {
+		result.FramesCeiling, err = nativeLateCorrectionFrames(p)
 	}
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +184,11 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 	admissions.originals, admissions.same = 64, 8
 	admissions.extra, admissions.beginOriginal = driver.retry, driver.beginOriginal
 	phase := func(number, from uint64) {
-		nativeScalarWorkloadPhase(t, ctx, n, p, admissions, started, number, from, attempts, operations, &result.Completed)
+		if family == nativeLateCorrectionFamily && number == 5 {
+			nativeScalarWorkloadPhaseRange(t, ctx, n, p, admissions, started, number, from, spec.Facts/2, attempts, operations, &result.Completed)
+		} else {
+			nativeScalarWorkloadPhase(t, ctx, n, p, admissions, started, number, from, attempts, operations, &result.Completed)
+		}
 	}
 	for setup := uint64(1); setup <= 3; setup++ {
 		phase(setup, setup-1)
@@ -176,6 +206,9 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 		index := 0
 		if client.stage == "fresh-current" {
 			index = 1
+		}
+		if family == nativeLateCorrectionFamily {
+			return nativeLateCorrectionCount(spec, &result.BusinessPhases[index], &scanSequence[index], q, r)
 		}
 		return nativeCreateUpdateCount(spec, &result.BusinessPhases[index], &scanSequence[index], q, r)
 	}
@@ -203,12 +236,18 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 	}
 	sequence = 0
 	nativeSelectorsObserve(t, client, spec, held.Handle, 5, &sequence, nativeCreateUpdateCheckPoint)
+	if correction != nil {
+		correction.observe(t, client, held.Handle, old, &sequence)
+	}
 	client.invoke(nativeSelectorsInput{Action: "close", Handle: held.Handle}, nil)
 	client.stage = "fresh-current"
 	current, final := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 3), Mode: graphReadFresh})
 	result.Final, result.FinalToken = current.Cut, current.Token
 	sequence = 0
 	nativeSelectorsObserve(t, client, spec, current.Handle, 6, &sequence, nativeCreateUpdateCheckPoint)
+	if correction != nil {
+		correction.observe(t, client, current.Handle, final, &sequence)
+	}
 	client.invoke(nativeSelectorsInput{Action: "close", Handle: current.Handle}, nil)
 	if spec.Layout == "columns" {
 		if columnObserver != nil {
@@ -237,7 +276,11 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 		})
 	}
 	result.SourceRows = source("before-stop")
-	if result.SourceRows[0]+result.SourceRows[1] != 3+4*spec.Facts {
+	rows := 3 + 4*spec.Facts
+	if family == nativeLateCorrectionFamily {
+		rows = 3 + 3*spec.Facts
+	}
+	if result.SourceRows[0]+result.SourceRows[1] != rows {
 		t.Fatal("complete native scalar CDC census")
 	}
 	result.Transport = append(result.Transport, nativeCreateUpdateRestart(t, ctx, n, spec, admission, processes))
@@ -290,7 +333,11 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 	}
 	result.OriginalCaptures, result.ExtraInvocations, result.QueryExtraInvocations = driver.originals, driver.extra, client.extra
 	for _, phase := range result.BusinessPhases {
-		if phase.SingleParticipant+phase.MultiParticipant != spec.Facts || phase.MultiParticipant*100 != spec.Facts*spec.CrossPercent {
+		useful := spec.Facts
+		if family == nativeLateCorrectionFamily && phase.Phase == "update" {
+			useful /= 2
+		}
+		if phase.SingleParticipant+phase.MultiParticipant != useful || phase.MultiParticipant != useful*spec.CrossPercent/100 {
 			t.Fatal("observed full business footprint differs from admitted transaction fraction")
 		}
 		result.LogicalCross += phase.MultiParticipant
@@ -309,6 +356,14 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 		}
 		result.ImmutableColumns = &summary
 		result.Scope = "genuine native immutable publication/native+binary cache scans and batched scan-based typed probes, held old column reader across guarded updates, actual held-reader Retire refusal then authenticated Close/Retire/keeper refusal and physical same-directory restart; KV is source-scan reference; all retained derived bytes remain counted, no native physical derived-GC/source-GC or measurement/capacity/nonlocal parity acceptance"
+	}
+	if correction != nil {
+		summary, err := correction.finish()
+		if err != nil {
+			t.Fatal(err)
+		}
+		result.Correction = &summary
+		result.Scope += "; actual first-half scalar corrections append at new cut; complete old/current out/in5/6/phantom7 incident-source scans under same retained query owner, not value-index latency; unchanged cohort remains5"
 	}
 	if err := open("result.json").Encode(result); err != nil {
 		t.Fatal(err)

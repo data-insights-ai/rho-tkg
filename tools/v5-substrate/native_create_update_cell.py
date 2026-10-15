@@ -31,6 +31,9 @@ def preflight(spec,transport,seconds,memory_mib,engine="native-raft"):
 
 def _oracle(family):
     if family==native.FAMILY:return native
+    if family=="late-correction-old-index":
+        import native_late_correction_check as correction
+        return correction
     require(family=="immutable-columns","explicit native guarded scalar family")
     import native_immutable_columns_check as columns
     return columns
@@ -48,8 +51,9 @@ def _preflight(spec,transport,seconds,memory_mib,engine="native-raft",*,family=n
 def hash_artifacts(directory,layout,*,family=native.FAMILY):
     require(layout in ("kv","columns"),"explicit actual derived layout")
     _oracle(family)
-    expected=ARTIFACTS|{"column-observations.jsonl"} if family=="immutable-columns" else ARTIFACTS
-    prefix="rho-native-immutable-columns-" if family=="immutable-columns" else "rho-native-create-update-"
+    expected=ARTIFACTS|{"column-observations.jsonl"} if family in ("immutable-columns","late-correction-old-index") else ARTIFACTS
+    if family=="late-correction-old-index":expected|={"indexes.jsonl"}
+    prefix="rho-native-late-correction-" if family=="late-correction-old-index" else "rho-native-immutable-columns-" if family=="immutable-columns" else "rho-native-create-update-"
     found={};roots=0
     with os.scandir(directory) as entries:
         for entry in entries:
@@ -92,9 +96,10 @@ def _execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,*,r
          "RHO_GRAPH_WORKLOAD_SECONDS":str(seconds),"RHO_GRAPH_WORKLOAD_DEADLINE":str(deadline),"RHO_GRAPH_WORKLOAD_TRANSPORT":json.dumps(shaped,separators=(",",":")),"RHO_GRAPH_WORKLOAD_OUTPUT":str(engine),"GOMAXPROCS":"2","GOMEMLIMIT":"2GiB","GOWORK":"off","GOTOOLCHAIN":"local"}
     for name in ("RHO_GRAPH_COST_SPEC","RHO_GRAPH_COST_BLOCK_SIZE","RHO_GRAPH_EDGE_TRANSPORT_PROFILE","RHO_GRAPH_CREATE_UPDATE_PROCESS","RHO_GRAPH_SELECTORS_PROCESS","RHO_GRAPH_FEED_PROCESS","RHO_GRAPH_EDGE_UNIQUE_PROCESS","RHO_GRAPH_RANGE_PROCESS","RHO_GRAPH_CONDITIONAL_PROCESS","RHO_GRAPH_RETENTION_PROCESS","RHO_GRAPH_DURABLE_COLUMN_PROCESS","RHO_GRAPH_NATIVE_FAULT_PROCESS","RHO_GRAPH_FAULT_FAMILY_PROCESS","RHO_GRAPH_DURABLE_MODEL","RHO_GRAPH_DECISION_FAULT_PROCESS","RHO_GRAPH_LIFECYCLE_PROCESS","RHO_GRAPH_NATIVE_FAULT_FAMILY","RHO_GRAPH_STATE_RETENTION_PROCESS"):
         env[name]=""
-    if family=="immutable-columns":
+    if family in ("immutable-columns","late-correction-old-index"):
         env["RHO_GRAPH_IMMUTABLE_COLUMNS_PROCESS"]=env["RHO_GRAPH_FEED_RETAINED_PROCESS"]=""
-    parent="TestNativeGraphImmutableColumnsWorkloadCell" if family=="immutable-columns" else "TestNativeGraphCreateUpdateWorkloadCell"
+    if family=="late-correction-old-index":env["RHO_GRAPH_LATE_CORRECTION_PROCESS"]=""
+    parent="TestNativeGraphLateCorrectionWorkloadCell" if family=="late-correction-old-index" else "TestNativeGraphImmutableColumnsWorkloadCell" if family=="immutable-columns" else "TestNativeGraphCreateUpdateWorkloadCell"
     command=[sys.executable,str(watchdog),"--rss-mib",str(memory_mib),"--seconds",str(seconds),"--deadline-unix-nanos",str(deadline),"--report",str(output/"watchdog.json"),"--",str(binary),f"-test.run=^{parent}$","-test.count=1","-test.v",f"-test.timeout={seconds+30}s"]
     request={"version":1,"format":oracle.FORMAT,"spec":spec,"run":run,"transport":shaped,"seconds":seconds,"deadlineUnixNanos":deadline,"aggregateRSSMiB":memory_mib,"command":command,"binarySHA256":digest(binary),"watchdogSHA256":digest(watchdog),"retentionContract":"snapshot-C-retained-full-prefix-v1","spoolPolicy":{"max_disk_bytes":policy.max_disk_bytes,"cache_bytes":policy.cache_bytes,"max_key_bytes":policy.max_key_bytes,"max_value_bytes":policy.max_value_bytes}}
     with (output/"request.json").open("x") as out:json.dump(request,out,indent=2);out.write("\n")
@@ -123,6 +128,8 @@ def _compare(native_directory,fdb_directory,spool_directory,policy,*,family=nati
     oracle=_oracle(family)
     if family==native.FAMILY:
         import fdb_create_update_check as fdb
+    elif family=="late-correction-old-index":
+        import fdb_correction_check as fdb
     else:
         import fdb_columns_check as fdb
     native_directory,fdb_directory=Path(native_directory).resolve(strict=True),Path(fdb_directory).resolve(strict=True)
@@ -131,16 +138,19 @@ def _compare(native_directory,fdb_directory,spool_directory,policy,*,family=nati
     require(receipt["format"]==request["format"]==oracle.FORMAT and receipt["completedCell"] is True and receipt["exit"]==0 and receipt["requestSHA256"]==digest(native_directory/"request.json") and receipt["spec"]==request["spec"] and receipt["run"]==request["run"] and receipt["binarySHA256"]==request["binarySHA256"] and request["transport"]=={"kind":"local","targetRTTMillis":0,"jitterMillis":0,"seed":20261009} and receipt["processTreeSHA256"]==digest(native_directory/"watchdog.json") and receipt["processTree"]==bounded_json(native_directory/"watchdog.json",65536) and receipt["artifacts"]==hash_artifacts(native_directory/"engine",request["spec"]["layout"],family=family),"unchanged actual local native source and owned cleanup")
     fdb_receipt=bounded_json(fdb_directory/"receipt.json")
     require(fdb_receipt["success"] is True and fdb_receipt["exit"]==fdb_receipt["cleanup_exit"]==0 and fdb_receipt["mode"]=="workload-cell","actual FDB owned launcher/cleanup")
-    stem="fdb-columns-" if family=="immutable-columns" else "fdb-create-update-"
+    stem="fdb-correction-" if family=="late-correction-old-index" else "fdb-columns-" if family=="immutable-columns" else "fdb-create-update-"
     required={stem+name for name in ("result.json","attempts.jsonl","events.jsonl","latency.jsonl","history.jsonl","current.jsonl","cdc.jsonl")}
     if request["spec"]["layout"]=="columns":required.add(stem+"columns.jsonl")
+    if family=="late-correction-old-index":required.add(stem+"indexes.jsonl")
     require(required<=fdb_receipt["sha256"].keys(),"complete actual FDB family sources bound by launcher")
     for name,checksum in fdb_receipt["sha256"].items():require("/" not in name and name!="receipt.json" and digest(fdb_directory/name)==checksum,"changed/foreign FDB family artifact")
     with Spool(spool_directory,policy) as spool:
         native_proof=oracle.verify(native_directory/"engine",spool_directory,policy,binary_sha=request["binarySHA256"],expected_spec=request["spec"],expected_run=request["run"],expected_deadline=request["deadlineUnixNanos"],expected_seconds=request["seconds"],shared_spool=common.NamespacedSpool(spool,b"native/"))
         fdb_proof=fdb.verify(fdb_directory,spool_directory,policy,shared_spool=common.NamespacedSpool(spool,b"fdb/"))
-        require(native_proof["spec"]==fdb_proof["spec"] and native_proof["logicalAnswersSHA256"]==fdb_proof["logicalAnswersSHA256"] and native_proof["retentionContract"]==fdb_proof["retentionContract"]=="snapshot-C-retained-full-prefix-v1" and (family=="immutable-columns" or native_proof["rowSemantics"]==fdb_proof["rowSemantics"]),"complete actual typed old/current/endpoint-life/definition/provenance parity")
+        require(native_proof["spec"]==fdb_proof["spec"] and native_proof["logicalAnswersSHA256"]==fdb_proof["logicalAnswersSHA256"] and native_proof["retentionContract"]==fdb_proof["retentionContract"]=="snapshot-C-retained-full-prefix-v1" and (family!=native.FAMILY or native_proof["rowSemantics"]==fdb_proof["rowSemantics"]),"complete actual typed old/current/endpoint-life/definition/provenance parity")
         ledger=spool.report()
+    if family=="late-correction-old-index":
+        return {"version":1,"family":family,"spec":request["spec"],"equal":True,"logicalAnswersSHA256":native_proof["logicalAnswersSHA256"],"retentionContract":"snapshot-C-retained-full-prefix-v1","nativeIndexTiming":native_proof["indexTiming"],"FDBIndexTiming":fdb_proof["indexTiming"],"nativeBusinessTiming":native_proof["businessTiming"],"FDBBusinessParticipants":fdb_proof["businessParticipants"],"spool":ledger,"scope":"complete independent actual local old/current corrected-half/unchanged-half and out/in5/6/phantom7 source predicates; scan-based selection, no value-index latency; native additional presence rows/remote-read versus FDB incoming-write and retained-derived byte costs separate, no efficiency/nonlocal/capacity/full-matrix acceptance"}
     if family=="immutable-columns":
         return {"version":1,"family":family,"spec":request["spec"],"equal":True,"logicalAnswersSHA256":native_proof["logicalAnswersSHA256"],"retentionContract":"snapshot-C-retained-full-prefix-v1","nativeColumnTiming":native_proof["columnTiming"],"FDBColumnTiming":fdb_proof["columnTiming"],"spool":ledger,"scope":"independent complete local typed immutable-column/source-reference answers; native extra guarded presence rows and retained derived chunks counted; FDB derived GC and native journal/pin retirement differ; no equal physical-retention/capacity/efficiency/nonlocal/full-matrix acceptance"}
     return {"version":1,"family":native.FAMILY,"spec":request["spec"],"equal":True,"logicalAnswersSHA256":native_proof["logicalAnswersSHA256"],"retentionContract":"snapshot-C-retained-full-prefix-v1","nativeBusinessTiming":native_proof["businessTiming"],"FDBBusinessTiming":fdb_proof["businessPhases"],"spool":ledger,"scope":"actual local retained-C complete logical create/update parity after both independent native/raw EOF oracles; native planned installed-grant IDs and fixed FDB declarations are not equivalent allocator issuance; replication/retention/resource costs separate, no efficiency/nonlocal/capacity/full-matrix acceptance"}

@@ -239,7 +239,7 @@ def metadata(end,spool,header):
 
 def verify(directory,spool_directory,policy=None,family=FAMILY,*,shared_spool=None):
     require(family in (FAMILY,"late-correction-old-index","partition-local-create-update"),"explicit implemented scalar family")
-    require(shared_spool is None or family in (FAMILY,"partition-local-create-update"),"shared complete-answer join only for explicit implemented matched families")
+    require(shared_spool is None or family in (FAMILY,"partition-local-create-update","late-correction-old-index"),"shared complete-answer join only for explicit implemented matched families")
     stem="fdb-create-update" if family=="partition-local-create-update" else "fdb-correction" if family=="late-correction-old-index" else "fdb-columns"
     directory=Path(directory).resolve(strict=True)
     with (directory/(stem+"-result.json")).open("rb") as stream:
@@ -262,6 +262,8 @@ def verify(directory,spool_directory,policy=None,family=FAMILY,*,shared_spool=No
             # callback that could return an empty proof for missing index EOF.
             import fdb_correction_check as correction
             additional=correction.indexes(directory,end,spool)
+            if shared_spool is not None:
+                additional.update(logicalAnswersSHA256=source.logical_answers(end,spool,final_updates=end["Spec"]["facts"]//2),retentionContract="snapshot-C-retained-full-prefix-v1")
         if family=="partition-local-create-update":
             import fdb_create_update_check as workload
             additional=workload.business(directory,end,spool)

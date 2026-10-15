@@ -27,6 +27,14 @@ class CorrectionOracleGuards(unittest.TestCase):
             with Spool(directory,policy) as spool,self.assertRaises(ValueError):check.indexes(Path(directory),end,spool)
         with self.assertRaises(ValueError):check.shared.validate_result({"Version":1},"unknown-family")
         with self.assertRaises(ValueError):check.shared.verify("absent","absent",family="unimplemented")
+        # A caller spool grants storage, never permission to skip the complete
+        # SDK original/source/index/column EOF oracle before normalization.
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);scratch=root/"scratch";scratch.mkdir()
+            (root/"fdb-correction-result.json").write_bytes(b'{"Version":1,"Format":"fdb-late-correction-old-index-v1"}\n')
+            with Spool(scratch,Policy(4<<20,64<<10,4096,512<<10)) as spool,self.assertRaises((ValueError,KeyError)):
+                check.verify(root,scratch,shared_spool=spool)
+        with self.assertRaises(ValueError):check.source.logical_answers({"Spec":{"family":"immutable-columns","facts":80}},None,final_updates=40)
 
 
 if __name__=="__main__":unittest.main()

@@ -827,9 +827,12 @@ func nativeScalarReadColumns(t *testing.T, clients [2]*nativeGraphEdgeUniqueColu
 	updates := uint64(0)
 	if pair.Updated && feedCutEqual(at, pair.Final) {
 		updates = s.Facts
+		if s.Version == 11 {
+			updates /= 2
+		}
 	}
 	presence := 3 + s.Facts
-	if s.Version == 9 || s.Version == 10 {
+	if s.Version == 9 || s.Version == 10 || s.Version == 11 {
 		presence += updates
 	}
 	if census != ([3]uint64{presence, s.Facts, updates}) {

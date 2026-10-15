@@ -1261,11 +1261,14 @@ func nativeGraphCostColumnReadPair(t *testing.T, clients [2]*nativeGraphCostColu
 // prefix/original uniqueness is provided by the source-bound frame stream; the
 // existing raw CDC checkpoint joins authenticate request cardinality separately.
 func nativeScalarGuardedPresenceRow(s nativeGraphCostSpec, row nativeColumnRow) (int, error) {
-	if s.Version != 7 && s.Version != 9 && s.Version != 10 || row.Kind != 2 || row.Component != 1 || row.Owner < 7 || (row.Owner-7)%2 != 0 {
+	if s.Version != 7 && s.Version != 9 && s.Version != 10 && s.Version != 11 || row.Kind != 2 || row.Component != 1 || row.Owner < 7 || (row.Owner-7)%2 != 0 {
 		return 0, errCorrupt
 	}
 	fact := (row.Owner - 7) / 2
 	if fact >= s.Facts {
+		return 0, errCorrupt
+	}
+	if s.Version == 11 && fact >= s.Facts/2 {
 		return 0, errCorrupt
 	}
 	owner, life, target, targetLife := s.edge(fact)
@@ -1305,6 +1308,9 @@ func nativeGraphCostColumnRow(spec nativeGraphCostSpec, row nativeColumnRow) (in
 		return 0, errCorrupt
 	}
 	if row.Component == byte(graphstate.Presence) {
+		if spec.Version == 11 && row.Before.Present {
+			return nativeScalarGuardedPresenceRow(spec, row)
+		}
 		if spec.Version == 10 && row.Before.Present {
 			return nativeScalarGuardedPresenceRow(spec, row)
 		}
@@ -1326,6 +1332,9 @@ func nativeGraphCostColumnRow(spec nativeGraphCostSpec, row nativeColumnRow) (in
 		return 1, nil
 	}
 	if row.After.Handle == 6 && row.After.Value == 6 && row.After.Provenance == 4+fact+spec.Facts && row.Before.Present && !row.Before.Null && row.Before.Handle == 5 && row.Before.Value == 5 && row.Before.Provenance == 4+fact && row.Before.Revision > 0 && row.After.Revision > row.Before.Revision {
+		if spec.Version == 11 && fact >= spec.Facts/2 {
+			return 0, errCorrupt
+		}
 		return 2, nil
 	}
 	return 0, errCorrupt

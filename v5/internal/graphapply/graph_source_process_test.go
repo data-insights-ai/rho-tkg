@@ -1514,6 +1514,31 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			}
 		}()
 	}
+	if o.cost != nil && o.cost.Version == 11 {
+		spec, e := nativeLateCorrectionSpecFromEnv()
+		if e != nil {
+			t.Fatal(e)
+		}
+		admission, digest, e := nativeLateCorrectionAdmissionFromEnv(spec)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var stopColumns context.CancelFunc
+		columns.ctx, stopColumns = context.WithDeadline(ctx, time.Unix(0, admission.DeadlineUnixNanos))
+		defer stopColumns()
+		columns.policyProvider = func() (nativeColumnPolicy, error) {
+			return nativeLateCorrectionColumnPolicy(h, spec, admission, digest)
+		}
+		selectors, e = newNativeLateCorrectionSessions(columns.ctx, coordinator, pump.Cut)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer func() {
+			if e := selectors.close(); e != nil {
+				t.Error(e)
+			}
+		}()
+	}
 	defer func() {
 		if err := columns.close(); err != nil {
 			t.Error(err)
@@ -1779,7 +1804,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				return true
 			}
 		}
-		if o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10) && nativeGraphEdgeUniqueColumnClose(r) {
+		if o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10 || o.cost.Version == 11) && nativeGraphEdgeUniqueColumnClose(r) {
 			return true
 		}
 		if logicalTransitions != nil && r.op == processNativeTransitionControl {
@@ -1913,7 +1938,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					e = errInvalid
 				} else if selectors != nil && bytes.HasPrefix(r.data, []byte(nativeSelectorsMarker)) {
 					out.aux, e = selectors.serve(workerCtx, r)
-				} else if o.cost.Version == 10 && bytes.HasPrefix(r.data, []byte(nativeImmutableColumnsControl)) {
+				} else if (o.cost.Version == 10 || o.cost.Version == 11) && bytes.HasPrefix(r.data, []byte(nativeImmutableColumnsControl)) {
 					out.aux, e = nativeImmutableColumnsRetireIdle(workerCtx, columns, r)
 				} else if feedRetained != nil && bytes.HasPrefix(r.data, []byte(nativeFeedRetainedMarker)) {
 					out.aux, e = feedRetained.serve(workerCtx, r)
@@ -1921,7 +1946,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					out.aux, e = feed.serve(workerCtx, r)
 				} else if contention != nil && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
 					out.aux, e = contention.serve(workerCtx, r)
-				} else if (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10) && bytes.HasPrefix(r.data, []byte(nativeEdgeColumns)) {
+				} else if (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10 || o.cost.Version == 11) && bytes.HasPrefix(r.data, []byte(nativeEdgeColumns)) {
 					out.aux, e = nativeGraphEdgeUniqueColumnServe(workerCtx, columns, r)
 				} else if bytes.HasPrefix(r.data, []byte(nativeColumnsMarker)) {
 					out.aux, e = columns.serve(workerCtx, r)
@@ -2030,7 +2055,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		if retentionState != nil && r.op == processNativeFaultControl && bytes.HasPrefix(r.data, []byte(nativeRetentionMarker)) && errors.Is(err, raftlog.ErrApplicationExpired) {
 			response.code = 9 // Fresh native retained-history refusal; legacy codes unchanged.
 		}
-		if code := nativeFeedProfileResponseCode(r, feed != nil, o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10), err); code != 0 {
+		if code := nativeFeedProfileResponseCode(r, feed != nil, o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10 || o.cost.Version == 11), err); code != 0 {
 			response.code = code
 		}
 		if feedRetained != nil {

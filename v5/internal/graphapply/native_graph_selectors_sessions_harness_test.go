@@ -40,7 +40,8 @@ type nativeSelectorsReply struct {
 	Charged              nativeColumnWork
 	Starts, Calls        uint64
 	Nanos                int64
-	Failure              byte `json:",omitzero"` // actual scope refusal, never an empty answer or source authority
+	Failure              byte                            `json:",omitzero"` // actual scope refusal, never an empty answer or source authority
+	Index                *nativeLateCorrectionIndexReply `json:",omitzero"` // exact fresh11 only; historical bytes unchanged
 }
 
 type nativeSelectorsRemoteError struct {
@@ -102,8 +103,8 @@ func nativeSelectorsInputDecode(r processRequest) (q nativeSelectorsInput, err e
 		} else if q.Local != ([16]byte{}) || q.Transaction != ([16]byte{}) || q.Coordinator != 0 {
 			return q, errInvalid
 		}
-	case "publish", "scan", "points", "close", "release":
-		if q.Handle == 0 || q.Request != ([16]byte{}) || q.Mode != 0 || len(q.Cut)+len(q.Original)+len(q.Token)+len(q.Partitions) != 0 || q.Local != ([16]byte{}) || q.Transaction != ([16]byte{}) || q.Coordinator != 0 || (q.Action == "scan" || q.Action == "points") != (q.Sequence > 0) || q.Action != "points" && len(q.IDs) != 0 || q.Action == "points" && len(q.IDs) == 0 {
+	case "publish", "scan", "points", "index", "close", "release":
+		if q.Handle == 0 || q.Request != ([16]byte{}) || q.Mode != 0 || len(q.Cut)+len(q.Original)+len(q.Token)+len(q.Partitions) != 0 || q.Local != ([16]byte{}) || q.Transaction != ([16]byte{}) || q.Coordinator != 0 || (q.Action == "scan" || q.Action == "points" || q.Action == "index") != (q.Sequence > 0) || q.Action != "points" && len(q.IDs) != 0 || q.Action == "points" && len(q.IDs) == 0 {
 			return q, errInvalid
 		}
 	case "reopen":
@@ -160,6 +161,7 @@ type nativeSelectorsQuery struct {
 	lastInput    [32]byte
 	lastReply    []byte
 	work         graphstore.PageWork
+	correction   *nativeLateCorrectionIndexCursor // exact fresh11 continuation, never caller authority
 }
 type nativeSelectorsSessions struct {
 	mu            sync.Mutex
@@ -449,6 +451,10 @@ func nativeSelectorsEntity(ctx context.Context, view graphstate.ReadView, h *all
 // C through original keepers. Export/Import carries only a genuine native
 // cursor; neither an ID from the caller nor elapsed time advances it.
 func (s *nativeSelectorsSessions) page(ctx context.Context, owner *nativeSelectorsQuery, ids []uint64, scan bool) (out nativeSelectorsReply, next graphstore.PartitionIncidentContinuation, err error) {
+	return s.pagePredicate(ctx, owner, ids, scan, owner.predicate, owner.continuation, owner.hasCursor, owner.eof)
+}
+
+func (s *nativeSelectorsSessions) pagePredicate(ctx context.Context, owner *nativeSelectorsQuery, ids []uint64, scan bool, predicate graphstate.IncidentPredicate, continuation graphstore.PartitionIncidentContinuation, hasCursor, eof bool) (out nativeSelectorsReply, next graphstore.PartitionIncidentContinuation, err error) {
 	var read *certifiedGraphRead
 	if len(owner.token.manifest) == 0 {
 		if scan || owner.initial == nil {
@@ -477,12 +483,12 @@ func (s *nativeSelectorsSessions) page(ctx context.Context, owner *nativeSelecto
 		return out, next, err
 	}
 	if scan {
-		if owner.eof {
+		if eof {
 			return out, next, errInvalid
 		}
 		// Authentic endpoint absence yields exact-empty; it is not a skipped
 		// range or an assumed empty dataset inferred from family dimensions.
-		endpoint, e := view.Entity(ctx, owner.predicate.Endpoint)
+		endpoint, e := view.Entity(ctx, predicate.Endpoint)
 		if e != nil {
 			return out, next, e
 		}
@@ -495,13 +501,13 @@ func (s *nativeSelectorsSessions) page(ctx context.Context, owner *nativeSelecto
 			return out, next, errInvalid
 		}
 		var cursor graphstate.Cursor
-		if owner.hasCursor {
-			cursor, err = full.ImportIncidentContinuation(ctx, owner.predicate, owner.continuation)
+		if hasCursor {
+			cursor, err = full.ImportIncidentContinuation(ctx, predicate, continuation)
 			if err != nil {
 				return out, next, err
 			}
 		}
-		page, e := full.IncidentRelationshipsChunk(ctx, owner.predicate, cursor, graphstate.ReadBudget{Rows: 512, Bytes: 1 << 20}, 16)
+		page, e := full.IncidentRelationshipsChunk(ctx, predicate, cursor, graphstate.ReadBudget{Rows: 512, Bytes: 1 << 20}, 16)
 		if e != nil || page.View != full.Identity() || len(page.Entities) > 16 || page.Complete && page.Next != 0 || !page.Complete && page.Next == 0 {
 			return out, next, errors.Join(errInvalid, e)
 		}
@@ -512,7 +518,7 @@ func (s *nativeSelectorsSessions) page(ctx context.Context, owner *nativeSelecto
 		}
 		out.EOF = page.Complete
 		if !page.Complete {
-			next, err = full.ExportIncidentContinuation(ctx, owner.predicate, page.Next)
+			next, err = full.ExportIncidentContinuation(ctx, predicate, page.Next)
 			if err != nil {
 				return out, next, err
 			}
@@ -602,6 +608,9 @@ func (s *nativeSelectorsSessions) serve(ctx context.Context, r processRequest) (
 	if err != nil {
 		return nil, err
 	}
+	if q.Action == "index" && (s.spec.Family != nativeLateCorrectionFamily || nativeLateCorrectionValidate(nativeLateCorrectionCost(s.spec)) != nil) {
+		return nil, errInvalid
+	}
 	defer func() {
 		if err != nil && errors.Is(err, graphstore.ErrScopeUnavailable) {
 			// Only this canonical fresh request receives a scope classifier.
@@ -653,6 +662,9 @@ func (s *nativeSelectorsSessions) serve(ctx context.Context, r processRequest) (
 		if s.spec.Family == nativeImmutableColumnsFamily {
 			valid = nativeImmutableColumnsValidate(nativeImmutableColumnsCost(s.spec))
 		}
+		if s.spec.Family == nativeLateCorrectionFamily {
+			valid = nativeLateCorrectionValidate(nativeLateCorrectionCost(s.spec))
+		}
 		if s.spec.Family == nativeCreateUpdateFamily {
 			valid = nativeCreateUpdateValidate(nativeCreateUpdateCost(s.spec))
 		}
@@ -676,7 +688,7 @@ func (s *nativeSelectorsSessions) serve(ctx context.Context, r processRequest) (
 		switch q.Action {
 		case "publish":
 			out.Token, err = s.publish(operation, owner)
-		case "scan", "points":
+		case "scan", "points", "index":
 			hash := sha256.Sum256(r.data)
 			if q.Sequence == owner.sequence {
 				if owner.lastInput != hash || len(owner.lastReply) == 0 {
@@ -688,7 +700,12 @@ func (s *nativeSelectorsSessions) serve(ctx context.Context, r processRequest) (
 				return nil, errInvalid
 			}
 			var next graphstore.PartitionIncidentContinuation
-			out, next, err = s.page(operation, owner, q.IDs, q.Action == "scan")
+			var correction *nativeLateCorrectionIndexCursor
+			if q.Action == "index" {
+				out, correction, err = s.correctionIndexPage(operation, owner)
+			} else {
+				out, next, err = s.page(operation, owner, q.IDs, q.Action == "scan")
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -707,6 +724,9 @@ func (s *nativeSelectorsSessions) serve(ctx context.Context, r processRequest) (
 			owner.sequence, owner.lastInput, owner.lastReply = q.Sequence, hash, bytes.Clone(wire)
 			if q.Action == "scan" {
 				owner.continuation, owner.hasCursor, owner.eof = next, !out.EOF, out.EOF
+			}
+			if q.Action == "index" {
+				owner.correction = correction
 			}
 			return wire, nil
 		case "close", "release":

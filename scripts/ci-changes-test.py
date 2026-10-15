@@ -126,6 +126,7 @@ class Planning(unittest.TestCase):
                 CI.cdc(paths)
                 expected=[[sys.executable,"-B","tools/v5-substrate/native_create_update_check_test.py"]]
                 if CI.IMMUTABLE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_immutable_columns_check_test.py"])
+                if CI.CORRECTION_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_late_correction_check_test.py"])
                 self.assertEqual([call.args[0] for call in run.call_args_list],expected)
 
     def test_immutable_columns_dependency_guard_is_once_and_never_runs_go(self):
@@ -135,6 +136,16 @@ class Planning(unittest.TestCase):
                 expected=[]
                 if CI.CREATE_UPDATE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_create_update_check_test.py"])
                 expected.append([sys.executable,"-B","tools/v5-substrate/native_immutable_columns_check_test.py"])
+                if CI.CORRECTION_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_late_correction_check_test.py"])
+                self.assertEqual([call.args[0] for call in run.call_args_list],expected)
+
+    def test_half_correction_guard_dependencies_are_private_once_and_never_go(self):
+        for paths in [[p] for p in CI.CORRECTION_INPUTS]+[list(CI.CORRECTION_INPUTS)]:
+            with self.subTest(paths=paths),patch.object(CI.subprocess,"run") as run:
+                CI.cdc(paths);expected=[]
+                if CI.CREATE_UPDATE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_create_update_check_test.py"])
+                if CI.IMMUTABLE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_immutable_columns_check_test.py"])
+                expected.append([sys.executable,"-B","tools/v5-substrate/native_late_correction_check_test.py"])
                 self.assertEqual([call.args[0] for call in run.call_args_list],expected)
 
     def test_full_cdc_action_runs_only_its_exact_replay_without_reference_or_go(self):
@@ -332,6 +343,8 @@ class RealGitSelection(unittest.TestCase):
                        "TestNativeP06TerminalSelectorsCannotImportAuthorityOrInventStepReply"):
             self.assertIn(parent, CI.FAULT_PARENTS)
         fixtures = {
+            "native_graph_late_correction_harness_test.go": set(CI.CORRECTION_PARENTS),
+            "native_graph_late_correction_process_test.go": set(CI.CORRECTION_PARENTS),
             "native_graph_feed_retained_harness_test.go": {"TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell", "TestNativeFeedRetainedAdmissionWireAndCleanupStayProfileBound"},
             "native_graph_feed_retained_sessions_harness_test.go": {"TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell", "TestNativeFeedRetainedAdmissionWireAndCleanupStayProfileBound"},
             "native_graph_feed_retained_runner_harness_test.go": {"TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell"},
@@ -364,6 +377,8 @@ class RealGitSelection(unittest.TestCase):
             "native_graph_transition_scope_harness_test.go": set(CI.FAULT_PARENTS),
             "remote_certified_process_test.go": {"TestRemoteE15CertifiedReadClosesDelayedBAndRetainsOldCut", "TestNativeScopeReadDoorPreservesLegacyBytesAndRejectsForeignScopeShapes", "TestNativeP01OutsideDataScopeFreshAndAfterResolveOrRefuseActualCoordinator"},
         }
+        for name in ("native_graph_immutable_columns_harness_test.go","native_graph_create_update_harness_test.go","native_graph_create_update_process_test.go","native_graph_selectors_harness_test.go","native_graph_selectors_sessions_harness_test.go","native_graph_selectors_runner_harness_test.go","native_graph_feed_runner_harness_test.go"):
+            fixtures[name]|=set(CI.CORRECTION_PARENTS)
         for name, parents in fixtures.items():
             with self.subTest(fixture=name):
                 path = self.directory / name
@@ -393,7 +408,7 @@ class RealGitSelection(unittest.TestCase):
                    "TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor",
                    "TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass",
                    "TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement",
-                   "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation", *CI.IMMUTABLE_PARENTS}
+                   "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation", *CI.IMMUTABLE_PARENTS,*CI.CORRECTION_PARENTS}
         for fixture in ("native_graph_cost_test.go", "native_graph_cost_harness_test.go",
                         "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go",
                         "native_graph_cost_incident_harness_test.go", "native_graph_cost_columns_harness_test.go",
@@ -610,7 +625,7 @@ class CurrentRepository(unittest.TestCase):
     def test_checked_compatibility_names_exist_in_current_sources(self):
         directory = CI.ROOT / "v5/internal/graphapply"
         names = set().union(*(CI.parent_names(p) for p in directory.glob("*_test.go")))
-        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) <= names)
+        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) | set(CI.CORRECTION_PARENTS) <= names)
         self.assertIn("TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements", CI.GRAPH_COMPAT)
 
     def test_explicit_cost_cell_is_short_guarded_before_profile(self):

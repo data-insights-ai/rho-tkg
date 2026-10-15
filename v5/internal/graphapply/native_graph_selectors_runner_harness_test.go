@@ -89,6 +89,9 @@ func (c *nativeSelectorsClient) invoke(q nativeSelectorsInput, expected error) (
 			if reply.Version != 1 || reply.Action != q.Action || reply.Failure != 0 {
 				c.t.Fatal("missing completed native query reply")
 			}
+			if (q.Action == "index") != (reply.Index != nil) {
+				c.t.Fatal("fresh index metadata cannot relabel an ordinary read")
+			}
 			if c.observed != nil {
 				if err := c.observed(q, reply); err != nil {
 					c.t.Fatal("actual completed observation refused", err)

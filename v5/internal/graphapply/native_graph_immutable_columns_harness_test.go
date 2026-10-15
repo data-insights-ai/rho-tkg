@@ -45,7 +45,7 @@ func nativeImmutableColumnsRetireInput(q nativeImmutableColumnsRetireQuestion) (
 // retire request's prior reader Close. A real held source must refuse; labels
 // or a timeout do not supply that outcome. It cannot target a foreign owner.
 func nativeImmutableColumnsRetireIdle(ctx context.Context, s *nativeGraphCostColumnSessions, r processRequest) ([]byte, error) {
-	if ctx == nil || s == nil || s.spec == nil || s.spec.Version != 10 || s.coordinator == nil || r.op != processCostObserve || r.index != 0 || r.entity != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 || len(r.data) > 1024 || !bytes.HasPrefix(r.data, []byte(nativeImmutableColumnsControl)) {
+	if ctx == nil || s == nil || s.spec == nil || s.spec.Version != 10 && s.spec.Version != 11 || s.coordinator == nil || r.op != processCostObserve || r.index != 0 || r.entity != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 || len(r.data) > 1024 || !bytes.HasPrefix(r.data, []byte(nativeImmutableColumnsControl)) {
 		return nil, errInvalid
 	}
 	var q nativeImmutableColumnsRetireQuestion
@@ -252,6 +252,8 @@ func nativeScalarCreateUpdateChildEnv(s nativeSelectorsSpec, a nativeSelectorsAd
 		return nativeCreateUpdateChildEnv(s, a, reopen)
 	case nativeImmutableColumnsFamily:
 		return nativeImmutableColumnsChildEnv(s, a, reopen)
+	case nativeLateCorrectionFamily:
+		return nativeLateCorrectionChildEnv(s, a, reopen)
 	default:
 		return nil, errInvalid
 	}
@@ -287,6 +289,21 @@ func newNativeImmutableColumnsObservations(directory string, spec nativeSelector
 	if spec.Family != nativeImmutableColumnsFamily || nativeImmutableColumnsValidate(nativeImmutableColumnsCost(spec)) != nil || admission == ([32]byte{}) {
 		return nil, errInvalid
 	}
+	return newNativeScalarColumnObservations(directory, spec, admission)
+}
+func newNativeScalarColumnObservations(directory string, spec nativeSelectorsSpec, admission [32]byte) (*nativeImmutableColumnsObservations, error) {
+	format := nativeImmutableColumnsFormat
+	if spec.Family == nativeLateCorrectionFamily {
+		if nativeLateCorrectionValidate(nativeLateCorrectionCost(spec)) != nil {
+			return nil, errInvalid
+		}
+		format = nativeLateCorrectionFormat
+	} else if spec.Family != nativeImmutableColumnsFamily || nativeImmutableColumnsValidate(nativeImmutableColumnsCost(spec)) != nil {
+		return nil, errInvalid
+	}
+	if admission == ([32]byte{}) {
+		return nil, errInvalid
+	}
 	f, err := os.OpenFile(filepath.Join(directory, "column-observations.jsonl"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err
@@ -296,7 +313,7 @@ func newNativeImmutableColumnsObservations(directory string, spec nativeSelector
 		Type, Format    string
 		Spec            nativeSelectorsSpec
 		AdmissionSHA256 [32]byte
-	}{"header", nativeImmutableColumnsFormat, spec, admission})
+	}{"header", format, spec, admission})
 	if err != nil {
 		return nil, errors.Join(err, o.Close())
 	}
@@ -338,8 +355,12 @@ func (o *nativeImmutableColumnsObservations) published(t *testing.T, stage strin
 	}
 	rows := [3]uint64{3 + o.spec.Facts, o.spec.Facts, 0}
 	if pair.Updated {
-		rows[0] += o.spec.Facts
-		rows[2] = o.spec.Facts
+		updates := o.spec.Facts
+		if o.spec.Family == nativeLateCorrectionFamily {
+			updates /= 2
+		}
+		rows[0] += updates
+		rows[2] = updates
 	}
 	if err := o.write(nativeImmutableColumnsEvent{Type: "Publish", Stage: stage, Access: nativeImmutableColumnsAccess, Generation: pair.ID, Cut: cut, Rows: rows, Nanos: time.Since(began).Nanoseconds()}); err != nil {
 		t.Fatal(err)
@@ -450,7 +471,11 @@ type nativeImmutableColumnsProbes struct {
 }
 
 func newNativeImmutableColumnsProbes(s nativeGraphCostSpec) (*nativeImmutableColumnsProbes, error) {
-	if err := nativeImmutableColumnsValidate(s); err != nil {
+	err := nativeImmutableColumnsValidate(s)
+	if s.Version == 11 {
+		err = nativeLateCorrectionValidate(s)
+	}
+	if err != nil {
 		return nil, err
 	}
 	return &nativeImmutableColumnsProbes{spec: s, points: [3]nativeImmutableColumnsPoint{{Owner: 7}, {Owner: 7 + 2*(s.Facts-1)}, {Owner: 5}}}, nil
@@ -494,8 +519,9 @@ func (p *nativeImmutableColumnsProbes) complete(value int64) ([3]nativeImmutable
 			continue
 		}
 		fact := (point.Owner - 7) / 2
-		ordinal := 4 + fact + boolUint(value == 6)*p.spec.Facts
-		if !point.Found || point.Presence.After.Handle != point.Owner+1 || point.Presence.After.Provenance != ordinal || point.Property.After.Value != value || point.Property.After.Handle != uint64(value) || point.Property.After.Provenance != ordinal {
+		selected := nativeScalarCorrectedValue(p.spec, value, fact)
+		ordinal := 4 + fact + boolUint(selected == 6)*p.spec.Facts
+		if !point.Found || point.Presence.After.Handle != point.Owner+1 || point.Presence.After.Provenance != ordinal || point.Property.After.Value != selected || point.Property.After.Handle != uint64(selected) || point.Property.After.Provenance != ordinal {
 			return [3]nativeImmutableColumnsPoint{}, errCorrupt
 		}
 	}
