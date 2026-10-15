@@ -116,7 +116,7 @@ func feedEnvelopeEqual(a, b retainedFeedEnvelope) bool {
 }
 
 func (m *declaredMaterializer) checkFeedPageShape(p retainedFeedPage, arena *graphstate.OutputBudget) error {
-	if m == nil || arena == nil {
+	if m == nil || arena == nil || !validFeedPageIdentity(p) {
 		return errInvalid
 	}
 	var first retainedFeedEnvelope

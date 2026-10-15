@@ -3,6 +3,7 @@ package graphapply
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"io"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
 // One authored native guard parent. These genuine six-voter operations are not
@@ -208,6 +210,101 @@ func retainedFeedPagesAndACK(t *testing.T) {
 	delivery, err := recovered.Page(t.Context(), id, boundary)
 	if err != nil || !delivery.replay || delivery.digest != pending.digest {
 		t.Fatal("same native page replay", err)
+	}
+	// Canonical framing cannot turn a frame-free page into business evidence.
+	// Build the adversarial bytes from a valid protocol page so Host and Stage
+	// independently refuse the malformed identity, before owner/control effects.
+	protocol := delivery.page
+	protocol.request = [16]byte(n.requestID())
+	protocol.kind, protocol.tx, protocol.round = 0, [16]byte{}, 0
+	protocol.frames, protocol.payloads = nil, nil
+	protocol.next = append([]uint64(nil), protocol.from...)
+	protocolWire, err := encodeRetainedFeedPage(protocol, policy.pageBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	protocolBody, err := graphBody(protocolWire, "GFP\x01", policy.pageBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	position := graphCursor{b: protocolBody, maxOwnedBytes: 8*len(protocolWire) + 4096}
+	position.take(16 + 8 + 32 + 32)
+	readFeedVector(&position)
+	readFeedVector(&position)
+	readFeedCut(&position)
+	readFeedCut(&position)
+	position.take(len(protocol.from) * (8 + 172 + 1))
+	if position.err != nil {
+		t.Fatal(position.err)
+	}
+	identityOffset := len(protocolBody) - len(position.b)
+	for _, identity := range []struct {
+		kind  byte
+		tx    [16]byte
+		round uint64
+	}{{feedLocalEnvelope, [16]byte{1}, 1}, {feedCrossEnvelope, [16]byte{1}, 1}, {feedMoveEnvelope, [16]byte{1}, 1}, {feedLocalEnvelope, [16]byte{}, 1}, {feedLocalEnvelope, [16]byte{1}, 0}, {0, [16]byte{1}, 0}, {0, [16]byte{}, 1}} {
+		bad := protocol
+		bad.kind, bad.tx, bad.round = identity.kind, identity.tx, identity.round
+		if identity.kind != 0 && (identity.tx == ([16]byte{}) || identity.round == 0) {
+			// Keep actual frames here so the one-zero refusal cannot pass merely
+			// because the separate empty-business-frame check rejected it first.
+			if len(delivery.page.frames) == 0 {
+				t.Fatal("fixture supplied no authentic frame for one-zero guard")
+			}
+			bad.frames = delivery.page.frames
+		}
+		if _, err := encodeRetainedFeedPage(bad, policy.pageBytes); !errors.Is(err, errInvalid) {
+			t.Fatal("invalid business identity encoded", identity, err)
+		}
+		arena, err := graphstate.NewOutputBudget(h.machine.limits.outputBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = h.machine.checkFeedPageShape(bad, arena); !errors.Is(err, errInvalid) {
+			t.Fatal("frame-free or partial identity passed shape", identity, err)
+		}
+		framed := bad
+		framed.kind, framed.tx, framed.round = 0, [16]byte{}, 0
+		framedWire, err := encodeRetainedFeedPage(framed, policy.pageBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		framedBody, err := graphBody(framedWire, "GFP\x01", policy.pageBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := bytes.Clone(framedBody)
+		body[identityOffset] = identity.kind
+		copy(body[identityOffset+1:identityOffset+17], identity.tx[:])
+		binary.BigEndian.PutUint64(body[identityOffset+17:identityOffset+25], identity.round)
+		command := recovered.command(recovered.pin.invocation.endpoints[3], feedSealPage, protocol.request, seal(body))
+		wire, err := encodeRetainedFeedCommand(command)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before, err := h.machine.store.ApplicationUsage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		beforeApplied := h.driver.Applied()
+		h.mu.Lock()
+		err = h.preflightRetainedFeed(command, wire)
+		h.mu.Unlock()
+		if !errors.Is(err, errInvalid) {
+			t.Fatal("preflight admitted empty business", identity, err)
+		}
+		if _, err = h.Submit(allocationProposal{target: h.machine.scope(), wire: wire}); !errors.Is(err, errInvalid) {
+			t.Fatal("Host admitted empty business", identity, err)
+		}
+		limits := h.machine.store.ApplicationLimits()
+		batch, err := h.machine.Stage(replica.Entry{Index: beforeApplied + 1, Generation: h.machine.store.ApplicationGeneration(), Data: wire}, raftlog.ApplicationBudget{Writes: limits.MaxInstallWrites, Bytes: limits.MaxInstallBytes, ImageBytes: limits.MaxImageBytes, ChangeBytes: limits.MaxChangeBytes, OutcomeBytes: limits.MaxOutcomeBytes})
+		if !errors.Is(err, errInvalid) || len(batch.Writes)+len(batch.ControlPuts)+len(batch.Outcome)+len(batch.Changes) != 0 {
+			t.Fatal("Stage admitted malformed business identity/effects", identity, err)
+		}
+		after, err := h.machine.store.ApplicationUsage()
+		if err != nil || after != before || h.driver.Applied() != beforeApplied {
+			t.Fatal("refused page changed native ownership", before, after, err)
+		}
 	}
 	changedPage := delivery.page
 	changedPage.eof = !changedPage.eof

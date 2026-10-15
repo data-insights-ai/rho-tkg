@@ -396,11 +396,18 @@ func readFeedPayload(c *graphCursor) retainedFeedPayload {
 	return p
 }
 
+func validFeedPageIdentity(p retainedFeedPage) bool {
+	if p.kind == 0 {
+		return p.tx == ([16]byte{}) && p.round == 0
+	}
+	return p.kind <= feedMoveEnvelope && p.tx != ([16]byte{}) && p.round > 0 && len(p.frames) > 0
+}
+
 func encodeRetainedFeedPage(p retainedFeedPage, maximum int) ([]byte, error) {
 	if len(p.priorCut.certificates) != len(p.from) {
 		return nil, errInvalid
 	}
-	if maximum < 4096 || maximum > retainedFeedMaxBytes || p.request == ([16]byte{}) || p.original == ([32]byte{}) || p.sequence == 0 || len(p.from) == 0 || len(p.from) > maxGraphPins || len(p.from) != len(p.next) || len(p.boundary.certificates) != len(p.from) || len(p.tips) != len(p.from) || len(p.future) != len(p.from) || len(p.frames) > maxGraphPins || len(p.payloads) > maxGraphPins || p.kind > feedMoveEnvelope || (p.kind == 0) != (p.tx == ([16]byte{}) && p.round == 0) {
+	if maximum < 4096 || maximum > retainedFeedMaxBytes || p.request == ([16]byte{}) || p.original == ([32]byte{}) || p.sequence == 0 || len(p.from) == 0 || len(p.from) > maxGraphPins || len(p.from) != len(p.next) || len(p.boundary.certificates) != len(p.from) || len(p.tips) != len(p.from) || len(p.future) != len(p.from) || len(p.frames) > maxGraphPins || len(p.payloads) > maxGraphPins || !validFeedPageIdentity(p) {
 		return nil, errInvalid
 	}
 	for i, n := range p.from {
