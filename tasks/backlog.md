@@ -497,8 +497,8 @@ recovery API; neither this quota nor the correction is runtime qualification.
 The dispatcher schedules all eight families and local/1/20/100ms profiles.
 FDB has local source drivers for contention, selectors, snapshot-to-feed and
 cross-edge uniqueness; its fresh snapshot-to-feed transport adapter also covers
-local/1/20/100ms. Native has the contention family. Unsupported semantics or
-transport refuse before effects.
+local/1/20/100ms. Native has the contention source driver and a local native/
+paired cross-edge driver. Unsupported semantics or transport refuse before effects.
 Each selected-family matrix contains 360 fresh cells;
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
 No new cell, guard or runtime gate has run. The other four FDB family drivers,
@@ -511,7 +511,16 @@ views and native/binary-cache columns. The review follow-up at `e76eef12` binds
 every writer's exact ordinal assignments and streams complete-operation timing,
 including same-original/replan waits, into bounded percentile calculations.
 Setup, business and diagnostic durations remain separate. Its adversarial guards
-are authored only; all runtime qualification and native family parity remain open.
+are authored only; all runtime qualification and native parity acceptance remain open.
+The native cross-edge source and local paired controller are integrated at
+`e48ebc13`: frozen empty-range/old-close originals, actual endpoint-life ABA,
+complete voter/CDC/index histories, native/cache columns and same-directory restart
+join one bounded independent oracle. Exact caller assignments and original/body
+joins prevent incomplete or misclassified traces from passing. Streamed timings
+include admission and same-original/replan waits. The repository watchdog and
+focused CI mappings are being supplied separately; this adapter is local-only.
+Its guards are unexecuted, and directed RTT, other native families and the full
+matrix remain open.
 The FDB snapshot-to-feed source is integrated at `5c14f42c`/`bb867775`:
 Its fresh owned transport adapter is source-integrated at `7f4a4fb8`: actual
 receiver-ingress delay setup, probes, same-deadline client replacement, cleanup
