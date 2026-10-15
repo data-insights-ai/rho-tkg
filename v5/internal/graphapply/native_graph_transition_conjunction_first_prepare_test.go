@@ -343,7 +343,11 @@ func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe, 
 	var diagnostics processStderr
 	check.Stdout, check.Stderr = &diagnostics, &diagnostics
 	if err := check.Run(); err != nil {
-		t.Fatal("first Prepare independent raw/serial bridge", err, diagnostics.String())
+		body, _ := diagnostics.state()
+		t.Fatal("first Prepare independent raw/serial bridge", err, body)
+	}
+	if _, overflow := diagnostics.state(); overflow {
+		t.Fatal("bounded first Prepare checker diagnostics")
 	}
 }
 

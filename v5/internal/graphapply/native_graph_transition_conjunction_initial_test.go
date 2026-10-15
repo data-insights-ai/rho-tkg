@@ -230,7 +230,11 @@ func nativeP06InitialRegisterCase(t *testing.T, recipe nativeP06ConjunctionRecip
 	var diagnostics processStderr
 	check.Stdout, check.Stderr = &diagnostics, &diagnostics
 	if err := check.Run(); err != nil {
-		t.Fatal("initial Register independent raw/serial bridge", err, diagnostics.String())
+		body, _ := diagnostics.state()
+		t.Fatal("initial Register independent raw/serial bridge", err, body)
+	}
+	if _, overflow := diagnostics.state(); overflow {
+		t.Fatal("bounded initial Register checker diagnostics")
 	}
 }
 

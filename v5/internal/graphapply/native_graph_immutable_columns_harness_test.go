@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
 const nativeImmutableColumnsFamily = "immutable-columns"
@@ -81,7 +82,7 @@ func nativeImmutableColumnsRetireIdle(ctx context.Context, s *nativeGraphCostCol
 	held := o.store.retained[o.source.owner] == o.generation
 	o.store.mu.Unlock()
 	if !held {
-		return nil, errUnavailable
+		return nil, replica.ErrUnavailable
 	}
 	observed := nativeImmutableColumnsRetireObservation{Cookie: o.cookie, Generation: o.generation, Source: o.source.owner, Binding: o.store.binding}
 	keys := [4][]byte{nativeColumnKey(o.generation, "progress"), nativeColumnKey(o.generation, "manifest"), nativeColumnRetentionKey(o.generation), []byte("ledger")}

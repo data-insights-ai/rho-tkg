@@ -488,6 +488,12 @@ class RealGitSelection(unittest.TestCase):
         for name in fixtures.keys() & CI.TRANSFER_FIXTURES:fixtures[name]|=set(CI.TRANSFER_PARENTS)
         for name in fixtures.keys() & CI.PROTOCOL_FIXTURE_COMPAT.keys():fixtures[name]|=set(CI.PROTOCOL_FIXTURE_COMPAT[name])
         for name in fixtures.keys() & CI.PROTOCOL_EXTENSION_FIXTURE_COMPAT.keys():fixtures[name]|=set(CI.PROTOCOL_EXTENSION_FIXTURE_COMPAT[name])
+        fixtures["paired_graph_snapshot_harness_test.go"] |= {
+            "TestNativePairedGraphSnapshotChunkKeepsLegacyRestrictionAndOwnedBounds",
+            "TestNativePairedGraphSnapshotOwnersRefuseConstructorlessAndMismatchedEvents",
+            "TestNativeStateImportSyncBoundariesRecoverGenuineSourceAndRetainedCut",
+            "TestNativeFaultFamilySnapshotInterruptionAndAtomicKVPublicationRecoverWholeCut",
+        }
         for name in fixtures.keys() & CI.SNAPSHOT_SENDER_FIXTURES:fixtures[name]|=set(CI.SNAPSHOT_SENDER_PARENTS)
         for name, parents in fixtures.items():
             with self.subTest(fixture=name):

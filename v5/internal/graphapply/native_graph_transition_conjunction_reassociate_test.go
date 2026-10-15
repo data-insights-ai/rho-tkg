@@ -38,7 +38,7 @@ func TestNativeConjunctionRetainedRoutingRequiresFreshCanonicalIdleOwner(t *test
 
 func TestNativeConjunctionSameCoordinatorRetainsGenuineUnknownRegisterAndStreams(t *testing.T) {
 	n, c, ops, claims, wires := coordinatorNativeFixture(t)
-	read, err := c.OpenCertified(t.Context(), graphReadRequest{kind: graphReadFresh}, []uint64{3, 8})
+	read, err := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, []uint64{3, 8})
 	if err != nil {
 		t.Fatal(err)
 	}
