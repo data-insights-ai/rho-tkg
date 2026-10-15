@@ -76,6 +76,16 @@ class NativeFeedGuards(unittest.TestCase):
         self.assertNotEqual(check.request(admission,"page",1),check.request(admission,"page",2))
         self.assertNotEqual(check.request(admission,"page",1),check.request(admission,"feed-owner",1))
 
+    def test_transfer_operation_requires_explicit_native_dataset_version(self):
+        spec={**self.spec,"version":2,"family":"transfer-retained-pins"}
+        q={"Dataset":list(hashlib.sha256(b"\x0c"+struct.pack(">QQ",40,50)+b"graph-v2").digest()),"Phase":"update","Fact":1,"Ordinal":45}
+        self.assertEqual(check.operation(spec,q,version=12),("update",1,45))
+        with self.assertRaises(ValueError):check.operation(spec,q)
+        with self.assertRaises(ValueError):check.operation(self.spec,q,version=12)
+        with patch.object(check,"_scalar_attempts",return_value="legacy") as helper:
+            self.assertEqual(check.attempts("directory",{"spec":self.spec},"spool"),"legacy")
+            helper.assert_called_once_with("directory",{"spec":self.spec},"spool")
+
     def test_empty_and_half_zero_business_pages_refuse(self):
         # Canonical grammar guards use only inert codec fixtures. Genuine native
         # authority/process evidence is exclusively the separate workload parent.

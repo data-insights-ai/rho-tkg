@@ -68,7 +68,7 @@ def _scalar_value(s,value,fact):
     return 5 if s["family"]=="late-correction-old-index" and value==6 and fact>=_scalar_updates(s) else value
 
 
-def operation(s, q):
+def operation(s, q, *, version=1):
     fields(q, "Dataset Phase Fact Ordinal")
     phase, fact = q["Phase"], integer(q["Fact"])
     if phase == "setup":
@@ -77,7 +77,8 @@ def operation(s, q):
         require(phase in ("create", "update"), "fixed native feed operation phase")
         integer(fact, 0, (_scalar_updates(s) if phase=="update" else s["facts"])-1)
         ordinal = 4+fact+(s["facts"] if phase == "update" else 0)
-    require(array(q["Dataset"], 32) == digest(b"\1"+struct.pack(">QQ", s["facts"], s["crossPercent"])+b"graph-v2")
+    require(type(version) is int and version in (1,12) and (version==1 or s["version"]==2 and s["family"]=="transfer-retained-pins"),"exact scalar operation version")
+    require(array(q["Dataset"], 32) == digest(bytes([version])+struct.pack(">QQ", s["facts"], s["crossPercent"])+b"graph-v2")
             and integer(q["Ordinal"], 1) == ordinal, "immutable native logical operation")
     return phase, fact, ordinal
 
@@ -102,19 +103,20 @@ def attempts(directory, end, spool):
     return _scalar_attempts(directory, end, spool)
 
 
-def _scalar_attempts(directory, end, spool, *, business_only=False):
+def _scalar_attempts(directory, end, spool, *, business_only=False, operation_version=1, placement=None, coordinated=None, manifest_decode=None, manifest_check=None):
     s, total, extra = end["spec"], 0, 0
     useful=s["facts"]+_scalar_updates(s)+3
     for a in lines(directory/"attempts.jsonl", 16*s["facts"]+4):
         fields(a, "Operation Engine ClientID AttemptOrdinal PreviousRequest Request Transaction BodySHA256 BusinessSHA256 DecisionDigest OriginalIndex Round Classification Error SubmitInvocations Proposal Manifest Outcome CDC")
-        phase, fact, ordinal = operation(s, a["Operation"])
+        phase, fact, ordinal = operation(s, a["Operation"],version=operation_version)
         client, number = integer(a["ClientID"], 0, s["writers"]-1), integer(a["AttemptOrdinal"], 1, 64)
         require(client == (ordinal-1) % s["writers"] and a["Engine"] == "native-raft" and a["Error"] == "", "actual independently assigned caller/terminal result")
         req, previous, tx = [array(a[k], 16) for k in ("Request", "PreviousRequest", "Transaction")]
         proposal, out, cdc = blob(a["Proposal"]), blob(a["Outcome"]), codec.optional(a["CDC"])
         require(any(req) and digest(proposal) == array(a["BodySHA256"], 32), "exact frozen business request/body")
         part = raw.native_parallel_proposal(proposal, req, ordinal)
-        require(part == (8 if phase == "setup" and fact == 2 else 3), "actual proposal logical owner")
+        actual_parts=placement(phase,fact) if placement is not None else ([8] if phase=="setup" and fact==2 else [3,8] if phase!="setup" and cross(s,fact) else [3])
+        require(actual_parts in ([3],[8],[3,8]) and part==actual_parts[0],"actual proposal processing owner")
         prior = spool.find(b"attempt-last", u64(ordinal))
         if prior is None:
             require(number == 1 and not any(previous), "first immutable original")
@@ -122,15 +124,16 @@ def _scalar_attempts(directory, end, spool, *, business_only=False):
             old = decoded(prior)
             require(old["Classification"] in ("authoritative-conflict", "authoritative-abort") and number == old["AttemptOrdinal"]+1
                     and previous == array(old["Request"],16) and req != previous and client == old["ClientID"], "only authenticated terminal refusal permits linked new original")
-        remote = phase != "setup" and cross(s, fact)
+        remote = coordinated(phase,fact) if coordinated is not None else len(actual_parts)>1
         index = integer(a["OriginalIndex"], 1)
         if remote:
-            m = codec.manifest(blob(a["Manifest"])); st = codec.status(out)
+            m = (codec.manifest if manifest_decode is None else manifest_decode)(blob(a["Manifest"])); st = codec.status(out)
             require(m["tx"] == tx and m["digest"] == array(a["DecisionDigest"],32) and m["coordinator"] == 3
                     and st["phase"] == 3 and st["part"] == part and st["tx"] == tx.hex() and st["index"] == index and not cdc
                     and st["digest"] == m["digest"].hex() and st["round"] == integer(a["Round"])
+                    and set(actual_parts)<=set(m["floors"])
                     and st["commit"] == (a["Classification"] == "commit") and a["Classification"] in ("commit","authoritative-abort"), "actual complete native COMMIT/ABORT decision")
-            raw.native_parallel_manifest(blob(a["Manifest"]), req, tx, m["digest"], proposal)
+            (raw.native_parallel_manifest if manifest_check is None else manifest_check)(blob(a["Manifest"]), req, tx, m["digest"], proposal)
             business = bytearray(proposal[:-32]); business[3] = 1
             require(array(a["BusinessSHA256"],32) == digest(bytes(business)+digest(business)), "frozen original business normalization")
             put(spool,b"terminal",tx,encoded(a))
@@ -152,12 +155,12 @@ def _scalar_attempts(directory, end, spool, *, business_only=False):
     counts, completed = [0]*32, 0
     for record in lines(directory/"operations.jsonl",2*s["facts"]+4):
         fields(record,"Sample StartNanos StopNanos ElapsedNanos")
-        sample = record["Sample"];phase,fact,ordinal = operation(s,sample["operation"])
+        sample = record["Sample"];phase,fact,ordinal = operation(s,sample["operation"],version=operation_version)
         a = decoded(spool.lookup(b"useful",u64(ordinal)))
         client = integer(sample["clientID"],0,s["writers"]-1)
         require(client == (ordinal-1)%s["writers"] == a["ClientID"] and sample["clientAttempts"] == a["AttemptOrdinal"]
                 and sample["phase"] == phase and sample["fact"] == fact and type(sample["cross"]) is bool
-                and sample["cross"] == (phase != "setup" and cross(s,fact)), "completed useful operation joins full retained original and actual caller")
+                and sample["cross"] == (len(placement(phase,fact))>1 if placement is not None else phase != "setup" and cross(s,fact)), "completed useful operation joins full retained original and actual caller")
         start,stop,elapsed = [integer(record[k],0,(1<<63)-1) for k in ("StartNanos","StopNanos","ElapsedNanos")]
         require(stop-start == elapsed > 0 and stop <= end["TotalNanos"] and 0 <= integer(sample["admissionNanos"]) <= elapsed,
                 "complete queued logical-operation latency includes all retries/waits")
@@ -178,31 +181,42 @@ def claims(directory,end,spool):
     return _scalar_claims(directory,end,spool)
 
 
-def _scalar_grants(directory,end,spool,semantic,decode_cut):
+def _scalar_grants(directory,end,spool,semantic,decode_cut,*,transfer=False):
     """Authenticate native reservation and installed range before any claims.
 
     The scalar fixture uses explicit IDs backed by actual stored grant
     references, not Recipient.Next cursors. No cursor counter is inferred from
     these receipts; every PGO claim below must name this exact installed grant.
     """
-    reserved={};installed={};roots={};indexes={};begun={};global_sequence=0;next_id=1
+    require(not transfer or end["spec"]["version"]==2 and end["spec"]["family"]=="transfer-retained-pins","fresh transfer allocation join only")
+    reserved={};installed={};roots={};indexes={};begun={};global_sequence=0;next_id=1;last_authority=None
+    initial_roots={};initial=decode_cut(end["Initial"]) if transfer else None
+    replacement=None;stale_reservations=0
     for row in lines(directory/"grants.jsonl",64):
         fields(row,"Actor Action Index Proposal Outcome CDC Root")
-        action=integer(row["Action"],1,5);integer(row["Actor"],1,4)
+        action=integer(row["Action"],1,16 if transfer else 5);integer(row["Actor"],1,4)
         p=cursor(blob(row["Proposal"]));scope=checked(p.field(256),b"APS\1",156);command=p.field(1<<20);p.done()
         require(scope[:16].hex()==raw.GRAPH and scope[88:]==semantic,"bootstrap exact graph/semantic")
         part=int.from_bytes(scope[16:24],"big");require(part in (3,8),"bootstrap actual native partition")
         index=integer(row["Index"],1);require(index>indexes.get(part,0),"bootstrap original index reordered")
         indexes[part]=index;image=blob(row["Root"]);column.root(raw,image,part);roots[part]=image
+        if transfer and index<=initial[0 if part==3 else 1]["sourceIndex"]:initial_roots[part]=image
         out=checked(blob(row["Outcome"]),b"GRO\2",120)
-        require(out[1:25]==scope[:24] and out[41:73]==digest(command) and out[73:81]==u64(index) and out[81] in (1,4) and out[82:]==bytes(2),"actual immutable bootstrap original/hash/index")
+        stale=transfer and action==4 and out[82:]==b"\0\2"
+        require(out[1:25]==scope[:24] and out[41:73]==digest(command) and out[73:81]==u64(index)
+                and out[81] in (1,4) and (out[82:]==bytes(2) or stale),"actual immutable bootstrap original/hash/index")
+        if transfer:put(spool,b"allocation-original",u64(part)+u64(index),encoded(row))
         if action==1:
             require(out[0]==8 and row["CDC"] is not None and blob(row["CDC"]),"genuine initialized native namespace")
             continue
         c=cursor(checked(command,b"AQP\1",1<<20));kind=c.number(1);namespace=c.take(24);request=c.take(16);configuration=c.take(32)
         require(namespace==scope[:24] and request==out[25:41] and kind==out[0] and not blob(row["CDC"]),"canonical native allocation control original")
         session=sequence=count=None
-        if kind==10:
+        if transfer and kind==9:
+            replacement=c.take(24)
+            require(action==16 and part==3 and last_authority is not None and any(replacement[:16])
+                    and int.from_bytes(replacement[16:],"big")==int.from_bytes(last_authority[16:],"big")+1,"actual immutable allocator service successor")
+        elif kind==10:
             session=c.take(40);home,previous=c.number(),c.number()
             require(action==2 and session[0] in (1,2) and session[1:16]==bytes(15) and any(session[16:32]) and int.from_bytes(session[32:],"big")==1
                     and home==(3 if session[0]==1 else 8) and previous==0,"genuine original recipient/home/incarnation")
@@ -217,6 +231,12 @@ def _scalar_grants(directory,end,spool,semantic,decode_cut):
         require(source[:16]==scope[:16] and source[88:]==semantic and observed_index>0 and observed_config==configuration and epoch>0 and any(effect),"actual completed native allocation observation")
         if kind==15:
             require(observed_kind==3 and source==scope and begun.get(3 if session[0]==1 else 8)==session,"reservation binds active exact recipient")
+            if stale:
+                require(replacement is not None and stale_reservations==0 and session==begun[3]
+                        and sequence==(6+2*end["spec"]["facts"]+(1<<20)-1)//(1<<20)+1 and count==2,
+                        "exact captured old-authority reservation is fenced, never a new allocation")
+                stale_reservations+=1
+                continue
             key=session+u64(sequence);require(key not in reserved,"duplicate reservation cannot allocate a second range")
             reserved[key]={"session":session,"sequence":sequence,"count":count,"index":index,"configuration":configuration,"scope":scope}
         elif kind==16:
@@ -235,22 +255,31 @@ def _scalar_grants(directory,end,spool,semantic,decode_cut):
                     and graph==reservation_graph==scope[:16] and gcount==allocation_count==r["count"] and any(authority[:16]) and int.from_bytes(authority[16:],"big")>0,
                     "installed native grant differs from its exact original reservation")
             home=3 if gsession[0]==1 else 8
-            require(part==home and begun.get(home)==gsession and allocation_sequence==global_sequence+1 and first==next_id and last-first+1==gcount,
+            successor=transfer and home==3 and gsequence==(6+2*end["spec"]["facts"]+(1<<20)-1)//(1<<20)+1
+            expected_sequence=1 if successor else global_sequence+1
+            if transfer:
+                require(last_authority is None or (int.from_bytes(authority[16:],"big")==int.from_bytes(last_authority[16:],"big")+1 if successor else authority==last_authority),"actual successor allocator epoch, never range-owner relabel")
+                if successor:require(authority==replacement and stale_reservations==1,"successor install follows actual service move and stale original refusal")
+                last_authority=authority
+            require(part==home and begun.get(home)==gsession and allocation_sequence==expected_sequence and first==next_id and last-first+1==gcount,
                     "actual allocator high water/range and recipient home")
             expected_count=min(1<<20,6+2*end["spec"]["facts"]-(gsequence-1)*(1<<20)) if home==3 else 2
+            if transfer and home==3 and gsequence==(6+2*end["spec"]["facts"]+(1<<20)-1)//(1<<20)+1:expected_count=2
             require(gcount==expected_count and gsequence==(sum(v["home"]==home for v in installed.values())+1),"complete bounded multi-block range shape")
             require(publication==graph+u64(first)+u64(first)+u64(last)+u64(home)+scope[40:48]+configuration+u64(3)+u64(grant_index)
                     and owner==graph+u64(first)+u64(home)+scope[40:48]+configuration+b"\0","actual native range publication/owner")
-            installed[key]={"home":home,"first":first,"last":last,"index":index};global_sequence+=1;next_id=last+1
+            installed[key]={"home":home,"first":first,"last":last,"index":index};global_sequence=allocation_sequence if transfer else global_sequence+1;next_id=last+1
+            if transfer:installed[key].update(authority=authority.hex(),allocationSequence=allocation_sequence,publication=publication.hex(),configuration=configuration.hex())
             spool.insert(b"installed-grant",key,encoded(installed[key]))
-    require(len(installed)==len(reserved)==(6+2*end["spec"]["facts"]+(1<<20)-1)//(1<<20)+1
-            and next_id==9+2*end["spec"]["facts"] and set(begun)=={3,8},"complete authentic HOME+remote range issuance")
-    for cert in decode_cut(end["Initial"]):require(roots[cert["partition"]]==cert["image"],"initial certificate differs from actual bootstrap native root")
+    require(len(installed)==len(reserved)==(6+2*end["spec"]["facts"]+(1<<20)-1)//(1<<20)+1+int(transfer)
+            and next_id==9+2*end["spec"]["facts"]+2*int(transfer) and set(begun)=={3,8},"complete authentic HOME+remote range issuance")
+    for cert in decode_cut(end["Initial"]):require((initial_roots if transfer else roots)[cert["partition"]]==cert["image"],"initial certificate differs from actual bootstrap native root")
+    if transfer:require(replacement is not None and stale_reservations==1,"missing genuine allocator authority transfer/stale original")
 
 
-def _scalar_claims(directory,end,spool):
+def _scalar_claims(directory,end,spool,*,operation_version=1):
     for a in lines(directory/"attempts.jsonl",16*end["spec"]["facts"]+4):
-        phase,fact,ordinal=operation(end["spec"],a["Operation"])
+        phase,fact,ordinal=operation(end["spec"],a["Operation"],version=operation_version)
         proposal=blob(a["Proposal"]);raw.native_parallel_proposal(proposal,array(a["Request"],16),ordinal)
         inner=checked(proposal[145:-32],b"PGO\1",1<<20)
         owner=(1,3,2*end["spec"]["facts"]+7)[fact] if phase=="setup" else 7+2*fact
@@ -281,9 +310,9 @@ def native_cell(c, component):
     return dict(zip(column.CELL,(bool(present),False,handle,handle if component == 3 and present else 0,revision,provenance)))
 
 
-def logical(frame, terminal, previous, spool, *, guarded_updates=False):
+def logical(frame, terminal, previous, spool, *, guarded_updates=False, operation_version=1, placement=None):
     s,a = terminal["spec"],terminal["attempt"]
-    phase,fact,ordinal = operation(s,a["Operation"])
+    phase,fact,ordinal = operation(s,a["Operation"],version=operation_version)
     out,cdc = blob(frame["Outcome"]),blob(frame["CDC"])
     envelope=cursor(checked(cdc,b"GCE\1")); require(envelope.number(1)==6,"native logical command kind")
     tx,hash_,index=envelope.take(16),envelope.take(32),envelope.number()
@@ -318,7 +347,7 @@ def logical(frame, terminal, previous, spool, *, guarded_updates=False):
     node=phase=="setup";part=frame["Partition"];remote=2*s["facts"]+7
     owner=(1,3,remote)[fact] if node else 7+2*fact
     life=owner+1;target=remote if cross(s,fact) else 3
-    local=part==(8 if node and fact==2 else 3)
+    local=part==((placement(phase,fact)[0]) if placement is not None else (8 if node and fact==2 else 3))
     expected_keys=([(owner,0,1,"")] if node else [(owner,0,1,""),(owner,life,3,"p")] if phase=="create" else [(owner,life,3,"p"),(owner,0,1,"")] if guarded_updates else [(owner,life,3,"p")]) if local else []
     expected_entities=[(owner,1 if node else 2,1,b"" if node else b"edge",0 if node else 1,0 if node else target,0 if node else 1,3 if node else 6,1 if node else 2)] if local and phase!="update" else []
     expected_lives=[(owner,life,0 if node else 2,0 if node else target+1)] if local and phase!="update" else []
@@ -344,7 +373,7 @@ def result_index(out):
     return None
 
 
-def authenticate_frame(frame, previous, s, spool, fresh, *, guarded_updates=False):
+def authenticate_frame(frame, previous, s, spool, fresh, *, guarded_updates=False, logical_check=None, manifest_decode=None):
     fields(frame,"Partition Index Root Outcome CDC Registration OriginalOutcome OriginalCDC Rows")
     part,index=integer(frame["Partition"]),integer(frame["Index"],1)
     require(part in (3,8) and frame["Outcome"] is not None and frame["CDC"] is not None,"missing native original is not empty")
@@ -364,7 +393,7 @@ def authenticate_frame(frame, previous, s, spool, fresh, *, guarded_updates=Fals
     require(not codec.optional(frame["OriginalOutcome"]) and not codec.optional(frame["OriginalCDC"]),"fresh native record borrowed replay sidecars")
     terminal=None
     if out.startswith(b"GCS\1"):
-        st,m=codec.status(out),codec.manifest(reg)
+        st,m=codec.status(out),(codec.manifest if manifest_decode is None else manifest_decode)(reg)
         require(st["part"]==part and st["index"]==index and bytes.fromhex(st["tx"])==m["tx"] and bytes.fromhex(st["digest"])==m["digest"],"actual native phase/registration")
         a=decoded(spool.lookup(b"terminal",m["tx"]))
         require(blob(a["Manifest"])==reg,"source Register roster equals genuine caller terminal roster")
@@ -377,7 +406,9 @@ def authenticate_frame(frame, previous, s, spool, fresh, *, guarded_updates=Fals
         if a["Classification"]=="commit":terminal=a
     if terminal is not None:
         require(cdc and original==index,"business effects occur at first native installation only")
-        if fresh:logical(frame,{"spec":s,"attempt":terminal},previous,spool,guarded_updates=guarded_updates)
+        if fresh:
+            if logical_check is None:logical(frame,{"spec":s,"attempt":terminal},previous,spool,guarded_updates=guarded_updates)
+            else:logical_check(frame,{"spec":s,"attempt":terminal},previous,spool)
         return
     require(not frame["Rows"] and image==previous,"protocol/refusal cannot alter business state")
     if out.startswith(b"GCS\1") or out.startswith(b"GRO\4"):

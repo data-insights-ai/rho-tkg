@@ -514,3 +514,80 @@ def cache_terminal(api,directory,g,ledger,spool):
             else:
                 api.require(spool.find(b"native-column-cache",bytes([g])+entry.name.encode()) is not None,"native undeclared cached chunk")
     api.require(observed == files+2 and charged == ledger["Charged"],"native complete cache EOF/name/byte ledger")
+
+
+def pooled_move_status(api,wire):
+    """Fresh GMO3 only. Capacity refusal remains active, never a COMMIT."""
+    c=Cursor(api,checked_body(api,wire,b"GMO\3",256))
+    graph,part,move,intent=c.take(16),c.number(),c.take(16),c.take(32)
+    phase,result=c.number(1),c.number(1)
+    index,floor,round_,sequence,rows,size=[c.number() for _ in range(6)]
+    hash_=c.take(32);failed_phase,failed_sequence,failed_command=c.number(1),c.number(),c.take(32);c.done()
+    api.require(graph.hex()==api.GRAPH and part in (3,8) and any(move) and any(intent) and 1<=phase<=9 and 1<=result<=5 and index>0 and sequence<=1<<24,"canonical pooled move original")
+    follows=(phase==2 and sequence==0 and failed_phase==3 and failed_sequence==0 or phase in (3,4) and failed_phase==phase and failed_sequence==sequence+1)
+    api.require((result==5 and follows and any(failed_command) and failed_sequence<=1<<24) or result!=5 and failed_phase==failed_sequence==0 and not any(failed_command),"exact nonterminal attempted phase/refusal identity")
+    return dict(partition=part,move=move,intent=intent,phase=phase,result=result,index=index,floor=floor,round=round_,sequence=sequence,rows=rows,size=size,digest=hash_,failedPhase=failed_phase,failedSequence=failed_sequence,failedCommand=failed_command)
+
+
+def pooled_move_intent(api,wire,semantic):
+    c=Cursor(api,checked_body(api,wire,b"GMI\3",1024))
+    request,source,target=c.take(16),c.take(120),c.take(120)
+    publication=checked_body(api,c.field(256),b"RPB\1",256)
+    epoch=c.number();pages,rows,bytes_=[c.number(4) for _ in range(3)]
+    pools=[c.number() for _ in range(3)];c.done()
+    api.require(any(request) and source[:16].hex()==api.GRAPH and source[16:24]==struct.pack(">Q",3) and target[16:24]==struct.pack(">Q",8)
+                and source[:16]==target[:16] and source[48:]==target[48:] and source[88:]==semantic
+                and len(publication)==104 and publication[:16]==source[:16] and 0<epoch<(1<<64)-1
+                and 1<=pages<=1<<24 and 1<=rows<=32 and 8192<=bytes_<=65536 and 65536<pools[0]<=1<<40 and 65536<pools[1]<=1<<40 and 0<pools[2]<=1<<40,"exact fresh source/target/publication/pool binding")
+    rid,first,last,home,initial_epoch=struct.unpack_from(">QQQQQ",publication,16)
+    api.require(0<rid and 0<first<=last and home==3 and 0<initial_epoch<=epoch and any(publication[56:88]),"actual immutable HOME range publication")
+    return dict(request=request,source=source,target=target,publication=publication,range=rid,first=first,last=last,epoch=epoch,pages=pages,rows=rows,bytes=bytes_,pools=pools,
+                move=hashlib.sha256(b"rho-tkg:range-move-id:v1\0"+source[:24]+request).digest()[:16],digest=hashlib.sha256(wire).digest())
+
+
+def pooled_move_frame(api,frame,previous,semantic,spool):
+    """Authenticate I/V/D plus the actual complete command; movement has zero rows."""
+    wire=api.raw_bytes(frame["Outcome"]);s=pooled_move_status(api,wire)
+    api.require(s["partition"]==frame["Partition"] and s["index"]<=frame["Index"] and not frame["Rows"],"move record namespace/original/zero-business census")
+    c=Cursor(api,checked_body(api,api.raw_bytes(frame["Registration"]),b"NCM1",32768))
+    records=[(c.field(1024),c.number(),c.field(2048)) for _ in range(3)];c.done()
+    (ik,ii,iv),(vk,vi,vv),(dk,di,dv)=records
+    intent=pooled_move_intent(api,iv,semantic)
+    prefix=b"GM";ns=bytes.fromhex(api.GRAPH)+struct.pack(">Q",s["partition"])
+    api.require(ik==prefix+b"I\1"+ns+s["move"] and 0<ii<=s["index"] and intent["move"]==s["move"] and intent["digest"]==s["intent"],"actual same immutable intent control")
+    phase,sequence=(s["failedPhase"],s["failedSequence"]) if s["result"]==5 else (s["phase"],s["sequence"])
+    command=spool.lookup(b"move-command",struct.pack(">QQ",s["partition"],s["index"]))
+    cmd=Cursor(api,checked_body(api,command,b"GMQ\3",1<<20))
+    scope,command_phase,command_sequence=cmd.take(120),cmd.number(1),cmd.number()
+    command_intent=cmd.field(1024);cmd.field((1<<20)-2048)
+    proof_count=cmd.number(4);api.require(proof_count<=2,"bounded exact command proofs")
+    for _ in range(proof_count):pooled_move_status(api,cmd.field(256))
+    cmd.done()
+    api.require(scope==(intent["source"] if s["partition"]==3 else intent["target"]) and (command_phase,command_sequence)==(phase,sequence)
+                and command_intent==iv,"actual command scope/immutable phase/intent, not caller selected hash")
+    command_hash=hashlib.sha256(command).digest()
+    if vk==ik:
+        api.require(vi==ii==s["index"] and vv==iv and phase in (1,9),"only native uncredited fence/terminal original uses I")
+    else:
+        credit={2:1,3:0x10000000+sequence,4:0x20000000+sequence,5:0x30000000,6:0x30000001,7:0x30000002,8:0xf0000000,9:0xf0000000 if sequence==0 else 0x40000000+sequence-1}.get(phase)
+        api.require(credit is not None and vk==prefix+b"V\1"+ns+s["move"]+struct.pack(">I",credit) and vi==s["index"] and vv==command_hash+wire,"GM/V exact full GMQ3 hash, phase and first-install index")
+    api.require(s["result"]!=5 or s["failedCommand"]==command_hash,"refusal is the SAME attempted command, not a later status")
+    cdc=api.raw_bytes(frame["CDC"])
+    if s["index"]<frame["Index"]:
+        api.require(not cdc and api.raw_bytes(frame["OriginalOutcome"])==wire and array(api,frame["Root"],172)==previous,"SAME move replay cannot publish another lineage/data root")
+        first=json.loads(spool.lookup(b"frame",struct.pack(">QQ",s["partition"],s["index"])),object_pairs_hook=api.pairs)
+        api.require(api.raw_bytes(frame["OriginalCDC"]) in (b"",api.raw_bytes(first["CDC"])) and api.raw_bytes(first["Outcome"])==wire,"exact retained first move original even below ACK floor")
+    elif cdc:
+        c=Cursor(api,checked_body(api,cdc,b"GML\1",256))
+        api.require(c.take(16)==s["move"] and c.take(32)==s["intent"],"lineage immutable move/intent")
+        rid,source,target,old,new,round_=[c.number() for _ in range(6)];hash_=c.take(32);c.done()
+        api.require(s["phase"]==7 and s["result"]==1 and (rid,source,target,old,new,round_,hash_)==(intent["range"],3,8,intent["epoch"],intent["epoch"]+1,s["round"],s["digest"]) and round_>0
+                    and dk==prefix+b"D\1"+ns+s["move"] and 0<di<=s["index"] and pooled_move_status(api,dv)["phase"]==6,"genuine both-owner activation, not business GCD")
+        decision=pooled_move_status(api,dv)
+        api.require(decision["partition"]==3 and (di==decision["index"] if s["partition"]==3 else di==s["index"])
+                    and decision["move"]==s["move"] and decision["intent"]==s["intent"] and decision["round"]==s["round"] and decision["result"]==1,
+                    "activation exact source COMMIT; target control copy has its genuine target install index")
+    else:
+        api.require(s["phase"]!=7 or s["result"]!=1,"activation cannot omit GML")
+        api.require(array(api,frame["Root"],172)==previous,"nonactivation control changed graph state")
+    return s,intent
