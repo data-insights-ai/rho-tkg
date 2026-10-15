@@ -1126,11 +1126,18 @@ wire encoding. Complete P03/P05 traces use separately admitted bounded sidecars;
 the main stream retains its full original-prefix census and EOF. All 16 frozen
 blobs and 11 current parents were verified with pinned parser/format and whitespace
 only. No compilation, execution or B/D acceptance is claimed. Broader actual
-leader/message/conflict conjunctions and the exploration/seed controller remain open.
+leader/message/conflict conjunctions remain open. The bounded composed
+exploration/replay controller is source-integrated at `73d18533`: all six real
+causal recipes precede one or two recorded seeds and fresh exact replays under
+one 16-trial, original-deadline and cumulative resource allowance. Only a
+reproduced, independently classified semantic failure admits optional-action
+deletion. Late resource/source refusals override earlier verdicts; missing final
+measurements remain missing evidence. Guards are authored, not executed. This
+finite component does not close fault applicability, sustained soak or B/C/D.
 
 Current worker lanes: Sol 6.1/high for remaining B/C/D program implementation;
-Sol 6.1/high for the bounded exploration/seed/replay controller proposal after
-freezing transfer pairing; Sol 6.1/high for the native transfer workload
+Sol 6.1/high for a focused remaining D source-gap inventory after integrating
+the bounded exploration/replay controller; Sol 6.1/high for the native transfer workload
 implementation. FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing
 authority; these prefixes do not establish physical server placement. Source
