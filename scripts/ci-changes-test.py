@@ -87,7 +87,8 @@ class Planning(unittest.TestCase):
                 CI.cdc(paths)
                 self.assertEqual([call.args[0] for call in run.call_args_list],
                                  [[sys.executable,"-B","tools/v5-substrate/native_fault_schedule_check_test.py"],
-                                  [sys.executable,"-B","tools/v5-substrate/native_fault_family_check_test.py"]])
+                                  [sys.executable,"-B","tools/v5-substrate/native_fault_family_check_test.py"],
+                                  [sys.executable,"-B","tools/v5-substrate/native_transition_check_test.py"]])
 
     def test_native_workload_inputs_select_only_their_compact_private_guards(self):
         for paths in [[path] for path in CI.WORKLOAD_INPUTS] + [list(CI.WORKLOAD_INPUTS)]:
@@ -295,6 +296,7 @@ class RealGitSelection(unittest.TestCase):
             "coordinator_loss_p03_harness_test.go": {"TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"},
             "prepare_fence_p02_harness_test.go": {"TestPrepareFenceP02ActualOrderingAcrossElection"},
             "native_graph_fault_schedule_harness_test.go": set(CI.FAULT_PARENTS),
+            "native_graph_transition_harness_test.go": set(CI.FAULT_PARENTS),
         }
         for name, parents in fixtures.items():
             with self.subTest(fixture=name):

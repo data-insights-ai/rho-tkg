@@ -1937,8 +1937,9 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 		}
 		faultFS = fault
 		if kind := os.Getenv("RHO_GRAPH_NATIVE_FAULT_START"); kind != "" {
-			if create || kind != "directory-sync" && kind != "options-rename" {
-				t.Fatal("startup fault requires same-directory reopen directory Sync or actual OPTIONS rename")
+			_, _, transition := nativeTransitionSelector(kind)
+			if create || kind != "directory-sync" && kind != "options-rename" && !transition {
+				t.Fatal("startup fault requires same-directory reopen with an admitted actual native IO selector")
 			}
 			arm, encodeErr := json.Marshal(nativeFaultControl{Version: 1, Action: "arm", Cookie: fault.state.Cookie, Sequence: 1, Kind: kind, Nth: 1})
 			if encodeErr != nil {

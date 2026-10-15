@@ -44,8 +44,9 @@ type nativeFaultIO struct {
 	InputSHA256   [32]byte
 	WrittenSHA256 [32]byte
 	Error         string
-	Destination   string `json:",omitempty"`
-	Offset        int64  `json:",omitempty"`
+	Destination   string              `json:",omitempty"`
+	Offset        int64               `json:",omitempty"`
+	Transition    *nativeTransitionIO `json:",omitempty"`
 }
 
 type nativeFaultReceipt struct {
@@ -154,7 +155,8 @@ func nativeFaultKind(kind string) bool {
 	case "short-write", "write-eio", "write-enospc", "file-sync", "directory-sync", "torn-wal-kill", "options-rename":
 		return true
 	default:
-		return false
+		_, _, ok := nativeTransitionSelector(kind)
+		return ok
 	}
 }
 
@@ -165,7 +167,8 @@ func (f *nativeFaultFS) match(path string, directory bool, operation string, inp
 		return "", false, nil
 	}
 	wal := strings.HasSuffix(path, ".log")
-	matched := operation == "write" && wal && (f.state.Kind == "short-write" || f.state.Kind == "write-eio" || f.state.Kind == "write-enospc" || f.state.Kind == "torn-wal-kill") || operation == "sync" && (directory && f.state.Kind == "directory-sync" || !directory && wal && f.state.Kind == "file-sync") || operation == "rename" && f.state.Kind == "options-rename"
+	synchronizing := operation == "sync" || operation == "sync-data" || operation == "sync-to"
+	matched := operation == "write" && wal && (f.state.Kind == "short-write" || f.state.Kind == "write-eio" || f.state.Kind == "write-enospc" || f.state.Kind == "torn-wal-kill") || synchronizing && (directory && f.state.Kind == "directory-sync" || !directory && wal && f.state.Kind == "file-sync") || operation == "rename" && f.state.Kind == "options-rename" || nativeTransitionMatches(f.state.Kind, path, directory, operation)
 	if !matched {
 		return "", false, nil
 	}
@@ -178,7 +181,11 @@ func (f *nativeFaultFS) match(path string, directory bool, operation string, inp
 		return "", false, nil
 	}
 	f.pending, f.state.Armed, f.state.Matched = true, false, true
-	f.state.IO = nativeFaultIO{Kind: operation, Path: rel, Directory: directory, Requested: uint64(len(input)), InputSHA256: sha256.Sum256(input)}
+	receiptOperation := operation
+	if synchronizing && (f.state.Kind == "file-sync" || f.state.Kind == "directory-sync") {
+		receiptOperation = "sync"
+	}
+	f.state.IO = nativeFaultIO{Kind: receiptOperation, Path: rel, Directory: directory, Requested: uint64(len(input)), InputSHA256: sha256.Sum256(input)}
 	return f.state.Kind, true, nil
 }
 
@@ -192,8 +199,8 @@ func (f *nativeFaultFS) complete(written []byte, operation error) error {
 	f.state.IO.Error = operation.Error()
 	f.pending = false
 	body, err := json.Marshal(f.state)
-	if err != nil {
-		return err
+	if err != nil || len(body) >= 4096 {
+		return errors.Join(errLimit, err)
 	}
 	// A diagnostic file cannot become a graph publication/commit marker. Its
 	// exclusive sequence name keeps every matched actual injection reviewable.
@@ -236,7 +243,16 @@ func (f *nativeFaultFS) wrap(path string, directory bool, file vfs.File, err err
 	return &nativeFaultFile{File: file, owner: f, path: path, directory: directory}, nil
 }
 func (f *nativeFaultFS) Create(path string, category vfs.DiskWriteCategory) (vfs.File, error) {
-	file, err := f.FS.Create(path, category)
+	var file vfs.File
+	var err error
+	matched, _, transitionErr := f.transitionCall(path, false, "create", func() (bool, error) { file, err = f.FS.Create(path, category); return false, err })
+	if matched || transitionErr != nil {
+		if file != nil {
+			transitionErr = errors.Join(transitionErr, file.Close())
+		}
+		return nil, transitionErr
+	}
+	file, err = f.FS.Create(path, category)
 	return f.wrap(path, false, file, err)
 }
 func (f *nativeFaultFS) Unwrap() vfs.FS { return f.FS }
@@ -281,7 +297,7 @@ func (f *nativeFaultFS) Rename(oldname, newname string) error {
 	if err != nil || rel == ".." || filepath.IsAbs(rel) || strings.Contains(rel, string(os.PathSeparator)) || len(rel) > 1024 {
 		return errors.Join(errInvalid, err)
 	}
-	_, matched, err := f.match(oldname, false, "rename", nil)
+	kind, matched, err := f.match(oldname, false, "rename", nil)
 	if err != nil || !matched {
 		if err != nil {
 			return err
@@ -291,6 +307,13 @@ func (f *nativeFaultFS) Rename(oldname, newname string) error {
 	f.mu.Lock()
 	f.state.IO.Destination = rel
 	f.mu.Unlock()
+	if _, side, ok := nativeTransitionSelector(kind); ok {
+		if side == "before" {
+			return f.transitionStop(kind, nil, false, false, nil)
+		}
+		actual := f.FS.Rename(oldname, newname)
+		return f.transitionStop(kind, nil, true, false, actual)
+	}
 	return errors.Join(syscall.EIO, f.complete(nil, syscall.EIO))
 }
 
@@ -301,6 +324,16 @@ func (f *nativeFaultFile) write(input []byte, offset int64, write func([]byte) (
 	}
 	if !matched {
 		return write(input)
+	}
+	if _, side, ok := nativeTransitionSelector(kind); ok {
+		if side == "before" {
+			return 0, f.owner.transitionStop(kind, nil, false, false, nil)
+		}
+		n, actual := write(input)
+		if n < 0 || n > len(input) {
+			return 0, errCorrupt
+		}
+		return n, f.owner.transitionStop(kind, input[:n], true, false, actual)
 	}
 	var n int
 	switch kind {
@@ -346,26 +379,42 @@ func (f *nativeFaultFile) WriteAt(input []byte, offset int64) (int, error) {
 	defer f.writeMu.Unlock()
 	return f.write(input, offset, func(part []byte) (int, error) { return f.File.WriteAt(part, offset) })
 }
-func (f *nativeFaultFile) sync(call func() error) error {
-	_, matched, err := f.owner.match(f.path, f.directory, "sync", nil)
+func (f *nativeFaultFile) sync(operation string, call func() (bool, error)) (bool, error) {
+	kind, matched, err := f.owner.match(f.path, f.directory, operation, nil)
 	if err != nil || !matched {
 		if err != nil {
-			return err
+			return false, err
 		}
 		return call()
 	}
-	return errors.Join(syscall.EIO, f.owner.complete(nil, syscall.EIO))
+	if _, side, ok := nativeTransitionSelector(kind); ok {
+		if side == "before" {
+			return false, f.owner.transitionStop(kind, nil, false, false, nil)
+		}
+		full, actual := call()
+		// SyncTo(false,nil) queues work without a guarantee. It is recorded but
+		// cannot qualify an after-synchronization durability boundary.
+		return full, f.owner.transitionStop(kind, nil, true, full && actual == nil, actual)
+	}
+	return false, errors.Join(syscall.EIO, f.owner.complete(nil, syscall.EIO))
 }
-func (f *nativeFaultFile) Sync() error     { return f.sync(f.File.Sync) }
-func (f *nativeFaultFile) SyncData() error { return f.sync(f.File.SyncData) }
+func (f *nativeFaultFile) Sync() error {
+	_, err := f.sync("sync", func() (bool, error) { err := f.File.Sync(); return err == nil, err })
+	return err
+}
+func (f *nativeFaultFile) SyncData() error {
+	_, err := f.sync("sync-data", func() (bool, error) { err := f.File.SyncData(); return !f.directory && err == nil, err })
+	return err
+}
 func (f *nativeFaultFile) SyncTo(length int64) (bool, error) {
-	full := false
-	err := f.sync(func() error {
-		var err error
-		full, err = f.File.SyncTo(length)
+	return f.sync("sync-to", func() (bool, error) { return f.File.SyncTo(length) })
+}
+func (f *nativeFaultFile) Close() error {
+	matched, _, err := f.owner.transitionCall(f.path, f.directory, "close", func() (bool, error) { return false, f.File.Close() })
+	if matched || err != nil {
 		return err
-	})
-	return full, err
+	}
+	return f.File.Close()
 }
 
 // All delays/holds derive from this fixed owner context. A consumer's cancel
@@ -1033,15 +1082,16 @@ func nativeFaultReap(t *testing.T, p *graphProcess, member uint64, dir string, r
 		t.Fatal("native failure missing OS process state", p.closeErr)
 	}
 	status, ok := p.cmd.ProcessState.Sys().(syscall.WaitStatus)
-	torn := receipt.Kind == "torn-wal-kill"
-	if !ok || torn && (!status.Signaled() || status.Signal() != syscall.SIGKILL) || !torn && (status.Signaled() || p.cmd.ProcessState.ExitCode() != 1) {
-		t.Fatal("native matched IO did not cause actual failure exit", p.closeErr, status)
-	}
 	if startup {
 		if p.mux != nil {
 			t.Fatal("startup failure unexpectedly acquired IPC authority")
 		}
 		receipt = readNativeFaultStartupIO(t, dir, member, uint64(p.cmd.Process.Pid))
+	}
+	_, _, transition := nativeTransitionSelector(receipt.Kind)
+	torn := receipt.Kind == "torn-wal-kill" || transition
+	if !ok || torn && (!status.Signaled() || status.Signal() != syscall.SIGKILL) || !torn && (status.Signaled() || p.cmd.ProcessState.ExitCode() != 1) {
+		t.Fatal("native matched IO did not cause actual failure exit", p.closeErr, status)
 	}
 	stderr, overflow := p.stderr.state()
 	stdout, outputOverflow := output.state()
@@ -1073,6 +1123,9 @@ func nativeFaultReap(t *testing.T, p *graphProcess, member uint64, dir string, r
 	action := "native-io-failure"
 	if torn {
 		action = "native-torn-prefix-kill"
+	}
+	if transition {
+		action = "native-storage-transition-kill"
 	}
 	return pairedFaultProcess{Action: action, Role: "replica", Member: member, Instance: instance, Volume: dir, Reaped: true, Raw: raw}
 }
@@ -1129,7 +1182,8 @@ func readNativeFaultStartupIO(t *testing.T, dir string, member, pid uint64) nati
 			}
 			actualDirectory := receipt.Kind == "directory-sync" && receipt.IO.Directory && receipt.IO.Kind == "sync" && receipt.IO.Path == "." && receipt.IO.Destination == ""
 			actualRename := receipt.Kind == "options-rename" && !receipt.IO.Directory && receipt.IO.Kind == "rename" && strings.HasPrefix(receipt.IO.Destination, "OPTIONS-") && !strings.ContainsAny(receipt.IO.Destination, "/\\") && receipt.IO.Path != "."
-			if found.Cookie != ([16]byte{}) || nativeFaultIOPath(dir, receipt.Cookie, receipt.Sequence) != filepath.Join(dir, entry.Name()) || receipt.Profile != nativeFaultProfile || receipt.Version != 1 || receipt.Sequence != 1 || !receipt.Matched || receipt.Armed || !actualDirectory && !actualRename || receipt.IO.Error != syscall.EIO.Error() {
+			transition := nativeTransitionReceiptValid(receipt)
+			if found.Cookie != ([16]byte{}) || nativeFaultIOPath(dir, receipt.Cookie, receipt.Sequence) != filepath.Join(dir, entry.Name()) || receipt.Profile != nativeFaultProfile || receipt.Version != 1 || receipt.Sequence != 1 || !receipt.Matched || receipt.Armed || !actualDirectory && !actualRename && !transition || !transition && receipt.IO.Error != syscall.EIO.Error() {
 				t.Fatal("startup receipt not exact native publication operation", receipt)
 			}
 			found = receipt
