@@ -17,8 +17,19 @@ SPEC.loader.exec_module(CI)
 
 
 class Planning(unittest.TestCase):
+    def with_protocol(self, paths, expected):
+        for inputs, guard in (
+            (CI.PROTOCOL_CORE_INPUTS, "native_protocol_campaign_check_test.py"),
+            (CI.PROTOCOL_PROGRAM_INPUTS, "native_protocol_campaign_program_check_test.py"),
+            (CI.PROTOCOL_PREDECESSOR_INPUTS, "native_protocol_campaign_predecessor_check_test.py"),
+            (CI.PROTOCOL_STATE_INPUTS, "native_protocol_campaign_state_check_test.py"),
+        ):
+            if inputs.intersection(paths):
+                expected = expected + [[sys.executable, "-B", "tools/v5-substrate/" + guard]]
+        return expected
+
     def with_guarded(self, paths, expected):
-        return expected + ([[sys.executable,"-B","tools/v5-substrate/native_guarded_scalar_test.py"]] if CI.GUARDED_INPUTS.intersection(paths) else []) + ([[sys.executable,"-B","tools/v5-substrate/paired_workload_check_test.py"]] if CI.PAIR_INPUTS.intersection(paths) else []) + ([[sys.executable,"-B","tools/v5-substrate/native_transfer_check_test.py"]] if CI.TRANSFER_INPUTS.intersection(paths) else [])
+        return self.with_protocol(paths, expected + ([[sys.executable,"-B","tools/v5-substrate/native_guarded_scalar_test.py"]] if CI.GUARDED_INPUTS.intersection(paths) else []) + ([[sys.executable,"-B","tools/v5-substrate/paired_workload_check_test.py"]] if CI.PAIR_INPUTS.intersection(paths) else []) + ([[sys.executable,"-B","tools/v5-substrate/native_transfer_check_test.py"]] if CI.TRANSFER_INPUTS.intersection(paths) else []))
     def docs_action(self, paths):
         with patch.object(sys, "argv", ["ci-changes.py", "docs", "--base", "fixture"]), patch.object(CI, "changed_paths", return_value=paths):
             CI.main()
@@ -58,7 +69,7 @@ class Planning(unittest.TestCase):
                 if {"tools/v5-substrate/compare-cost-cdc.py", "tools/v5-substrate/fdb_retention_check.py", "tools/v5-substrate/fdb_retention_check_test.py"}.intersection(paths):
                     expected.append([sys.executable, "-B", "tools/v5-substrate/fdb_retention_check_test.py"])
                 if CI.TRANSFER_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_transfer_check_test.py"])
-                self.assertEqual([c.args[0] for c in run.call_args_list], expected)
+                self.assertEqual([c.args[0] for c in run.call_args_list], self.with_protocol(paths, expected))
                 self.assertTrue(all(c.kwargs == {"cwd":CI.ROOT,"check":True} for c in run.call_args_list))
                 p = CI.plan(paths)
                 self.assertEqual(p["matrix"]["include"], [])
@@ -89,7 +100,7 @@ class Planning(unittest.TestCase):
             with self.subTest(paths=paths), patch.object(CI.subprocess,"run") as run:
                 CI.cdc(paths)
                 self.assertEqual([call.args[0] for call in run.call_args_list],
-                                 [[sys.executable,"-B","tools/v5-substrate/native_transition_retention_check_test.py"],
+                                 self.with_protocol(paths, [[sys.executable,"-B","tools/v5-substrate/native_transition_retention_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_transition_publication_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_transition_state_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_transition_batch_check_test.py"],
@@ -107,7 +118,35 @@ class Planning(unittest.TestCase):
                                   [sys.executable,"-B","tools/v5-substrate/native_transition_namespace_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_transition_composed_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_transition_composed_replay_test.py"],
-                                  [sys.executable,"-B","tools/v5-substrate/native_transition_scope_check_test.py"]])
+                                  [sys.executable,"-B","tools/v5-substrate/native_transition_scope_check_test.py"]]))
+
+    def test_protocol_private_guard_dependencies_are_finite_once_and_never_run_go(self):
+        groups = (
+            (CI.PROTOCOL_CORE_INPUTS, "native_protocol_campaign_check_test.py"),
+            (CI.PROTOCOL_PROGRAM_INPUTS, "native_protocol_campaign_program_check_test.py"),
+            (CI.PROTOCOL_PREDECESSOR_INPUTS, "native_protocol_campaign_predecessor_check_test.py"),
+            (CI.PROTOCOL_STATE_INPUTS, "native_protocol_campaign_state_check_test.py"),
+        )
+        for inputs, guard in groups:
+            for paths in [[path] for path in sorted(inputs)] + [sorted(inputs) * 2]:
+                with self.subTest(guard=guard, paths=paths), patch.object(CI.subprocess, "run") as run:
+                    CI.cdc(paths)
+                    commands = [call.args[0] for call in run.call_args_list]
+                    self.assertEqual(commands.count([sys.executable, "-B", "tools/v5-substrate/" + guard]), 1)
+                    self.assertEqual(commands[-len(self.with_protocol(paths, [])):], self.with_protocol(paths, []))
+                    self.assertTrue(all(len(c) == 3 and c[:2] == [sys.executable, "-B"] and c[-1].endswith("_test.py") for c in commands))
+                    self.assertTrue(all(c.kwargs == {"cwd": CI.ROOT, "check": True} for c in run.call_args_list))
+        self.assertIn("tools/v5-substrate/native_transfer_check.py", CI.PROTOCOL_STATE_INPUTS)
+        self.assertIn("tools/v5-substrate/native_columns_check.py", CI.PROTOCOL_STATE_INPUTS)
+        self.assertIn("tools/v5-substrate/fdb/compare-lifecycle.py", CI.PROTOCOL_PROGRAM_INPUTS)
+        self.assertIn("tools/v5-substrate/native_transition_certificate_check.py", CI.PROTOCOL_CORE_INPUTS)
+        self.assertIn("tools/v5-substrate/native_transition_cut_check.py", CI.PROTOCOL_CORE_INPUTS)
+        self.assertIn("tools/v5-substrate/compare-graph-fault.py", CI.PROTOCOL_CORE_INPUTS)
+        self.assertIn("tools/v5-substrate/graph-fault-local-v1.json", CI.PROTOCOL_CORE_INPUTS)
+        self.assertIn("tools/v5-substrate/native_protocol_campaign_program_check.py", CI.PROTOCOL_PREDECESSOR_INPUTS)
+        with patch.object(CI.subprocess, "run") as run:
+            CI.cdc(["tools/v5-substrate/README.md", "v5/internal/graphapply/unrelated_test.go"])
+            run.assert_not_called()
 
     def test_owned_watchdog_selection_is_private_and_once(self):
         for paths in [[path] for path in CI.PROCESS_INPUTS] + [list(CI.PROCESS_INPUTS)]:
@@ -424,6 +463,7 @@ class RealGitSelection(unittest.TestCase):
             fixtures[name]|=set(CI.CORRECTION_PARENTS)
         for name in fixtures.keys() & CI.GUARDED_FIXTURES:fixtures[name]|=set(CI.GUARDED_PARENTS)
         for name in fixtures.keys() & CI.TRANSFER_FIXTURES:fixtures[name]|=set(CI.TRANSFER_PARENTS)
+        for name in fixtures.keys() & CI.PROTOCOL_FIXTURE_COMPAT.keys():fixtures[name]|=set(CI.PROTOCOL_FIXTURE_COMPAT[name])
         for name, parents in fixtures.items():
             with self.subTest(fixture=name):
                 path = self.directory / name
@@ -485,10 +525,31 @@ class RealGitSelection(unittest.TestCase):
         path = self.directory / "graph_source_process_test.go"
         path.write_text("package graphapply\ntype graphProcessHub struct{}\n")
         selected = set(CI.graph_selection(self.directory, [path], {path: [("type", "graphProcessHub")]}))
-        self.assertEqual(selected, set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.GRAPH_COMPAT) |
+        self.assertEqual(selected, set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.GRAPH_COMPAT) | set(CI.PROTOCOL_PARENTS) |
                          {"TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput",
                           "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts"})
         self.assertNotIn("TestNativeGraphCostCell", selected)
+
+    def test_protocol_private_helpers_and_types_keep_exact_whole_parent_consumers(self):
+        for name, parents in CI.PROTOCOL_FIXTURE_COMPAT.items():
+            for kind, definition, source in (("func", "privateProtocolOwner", "func privateProtocolOwner() {}"),
+                                             ("type", "protocolOwner", "type protocolOwner struct{}")):
+                with self.subTest(name=name, kind=kind):
+                    path = self.directory / name
+                    path.write_text("package graphapply\n" + source + "\n")
+                    (self.directory / "unreviewed_test.go").write_text("package graphapply\nfunc TestUnreviewed(t *testing.T) { privateProtocolOwner() }\n")
+                    selected = set(CI.graph_selection(self.directory, [path], {path: [(kind, definition)]}))
+                    self.assertEqual(selected, set(CI.FIXTURE_COMPAT[name]) | set(CI.GRAPH_COMPAT))
+                    self.assertTrue(set(parents) <= selected)
+                    self.assertNotIn("TestUnreviewed", selected)
+                    self.assertNotIn("TestNativeGraphCostCell", selected)
+        self.assertEqual(len(CI.PROTOCOL_PARENTS), 31)
+        self.assertEqual(len(set(CI.PROTOCOL_PARENTS)), 31)
+        self.assertIn("TestNativeProtocolPooledStateTransitionsKeepActualUndoOriginals",
+                      CI.PROTOCOL_FIXTURE_COMPAT["native_graph_protocol_campaign_state_harness_test.go"])
+        self.assertIn("TestNativeProtocolReadyLossWithServiceAndPredecessorMessages",
+                      CI.PROTOCOL_FIXTURE_COMPAT["native_graph_transition_conjunction_harness_test.go"])
+        self.assertTrue(set(CI.PROTOCOL_CORE_PARENTS) <= set(CI.FIXTURE_COMPAT["native_graph_transition_batch_harness_test.go"]))
 
     def test_transfer_fixtures_keep_real_pooled_parents_and_short_workload(self):
         for name in CI.TRANSFER_FIXTURES:
@@ -690,7 +751,7 @@ class CurrentRepository(unittest.TestCase):
     def test_checked_compatibility_names_exist_in_current_sources(self):
         directory = CI.ROOT / "v5/internal/graphapply"
         names = set().union(*(CI.parent_names(p) for p in directory.glob("*_test.go")))
-        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) | set(CI.CORRECTION_PARENTS) | set(CI.TRANSFER_PARENTS) <= names)
+        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) | set(CI.CORRECTION_PARENTS) | set(CI.TRANSFER_PARENTS) | set(CI.PROTOCOL_PARENTS) <= names)
         self.assertIn("TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements", CI.GRAPH_COMPAT)
 
     def test_explicit_cost_cell_is_short_guarded_before_profile(self):

@@ -152,6 +152,47 @@ WORKLOAD_PARENTS = [
     "TestNativeWorkloadTransportOwnsFiniteQueueAndCancelsHeldFrames",
     "TestNativeWorkloadTransportRejectsUnfundedProfilesAndOrdersReadyFrames",
 ]
+PROTOCOL_RECIPE_PARENTS = [
+    "TestNativeProtocolPendingDiagnosticPreservesOrdinaryP05AndRefusesJoinedErrors",
+    "TestNativeProtocolConditionalBootstrapMatchesActualExplicitChildAgreement",
+    "TestNativeProtocolLiveP06RegistryKeepsFirstCallAndRecoveryCausalityDistinct",
+    "TestNativeProtocolP01RegistryPreservesScopeAndActualParticipantOccurrences",
+    "TestNativeProtocolP03RegistrySeparatesPreDecisionAndQuorumLossCausality",
+    "TestNativeProtocolP03PartialRegistrySeparatesLiveInstallFromRecoveryOutage",
+    "TestNativeProtocolP05RegistryKeepsEveryActualDependencyMutation",
+    "TestNativeProtocolP04RegistryDoesNotInventUnpreparedParticipantOrWireAuthority",
+    "TestNativeProtocolPlanningCaptureSpendsBoundedSourceCopiesWithoutCreatingReplies",
+    "TestNativeProtocolP02LiveRegistryDoesNotRelabelPersistenceStageOrRecovery",
+    "TestNativeProtocolFenceSelectorRequiresActualCutFamilyAndWholeScope",
+    "TestNativeProtocolReplyHoldKeepsOneLiveContextAndSpentDiagnosticGrant",
+]
+PROTOCOL_CASE_PARENTS = [
+    "TestNativeProtocolP01ScopeAUsesActualParticipantStorageBatches",
+    "TestNativeProtocolP02ActualApplyFloorsStraddleHeldPrepareAcrossNativeBatches",
+    "TestNativeProtocolFirstLiveP06UsesActualAuthorityReplyAndOriginalContext",
+    "TestNativeProtocolP03KeepsDurableDecisionThroughApplicableNativeTransitions",
+    "TestNativeProtocolP03PartialInstallKeepsUnavailableAndOriginalRecoveryDistinct",
+    "TestNativeProtocolP05DependencyScenariosKeepActualNativeOccurrences",
+    "TestNativeProtocolP04QueuedOriginalsKeepFrozenIdentityAtActualNativeBoundaries",
+]
+PROTOCOL_PROGRAM_PARENTS = [
+    "TestNativeProtocolCampaignLeaderAndMessagePrograms",
+    "TestNativeProtocolFrozenProgramPreservesActualQueueMemberAndFollower",
+    "TestNativeProtocolLocalFenceMessageApplicabilityPreservesNativeEmissionOrder",
+    "TestNativeProtocolProgramRejectsNominalLayoutAndRetainsOriginalOwner",
+    "TestNativeProtocolStateRecoverySelectionRejectsUnboundPooledProfile",
+    "TestNativeProtocolPacketBindingUsesActualBootstrapAgreement",
+]
+PROTOCOL_STATE_PARENTS = [
+    "TestNativeProtocolStateInventoryAndOwnedDoorRefuseNominalAuthority",
+    "TestNativeProtocolStateP07P08P09ExactStableTransitions",
+    "TestNativeProtocolPooledStateTransitionsKeepActualUndoOriginals",
+    "TestNativeProtocolPooledProofDoorKeepsCanonicalBoundedNativeKeys",
+]
+PROTOCOL_PREDECESSOR_PARENTS = [
+    "TestNativeProtocolPredecessorProgramsKeepExactReadyInventory",
+    "TestNativeProtocolReadyLossWithServiceAndPredecessorMessages",
+]
 FIXTURE_COMPAT = {
     **dict.fromkeys(("native_graph_transition_conjunction_initial_test.go", "native_graph_transition_conjunction_first_prepare_test.go"), PREPARED_CONJUNCTION_PARENTS),
     **dict.fromkeys(COST_FIXTURES, COST_PARENTS),
@@ -225,6 +266,37 @@ TRANSFER_FIXTURES = {
 }
 for _fixture in TRANSFER_FIXTURES:
     FIXTURE_COMPAT[_fixture] = [*FIXTURE_COMPAT.get(_fixture, []), *TRANSFER_PARENTS]
+# These are actual consumers of the shared native owners/private attachments.
+# Whole parent selection preserves each existing short-mode/program admission;
+# it neither adds variants nor changes the runner's 10-minute hard bound.
+PROTOCOL_PARENTS = [*PROTOCOL_RECIPE_PARENTS, *PROTOCOL_CASE_PARENTS, *PROTOCOL_PROGRAM_PARENTS,
+                    *PROTOCOL_STATE_PARENTS, *PROTOCOL_PREDECESSOR_PARENTS]
+PROTOCOL_CORE_PARENTS = [*PROTOCOL_RECIPE_PARENTS, *PROTOCOL_CASE_PARENTS, *PROTOCOL_PROGRAM_PARENTS, *PROTOCOL_PREDECESSOR_PARENTS]
+PROTOCOL_FIXTURE_COMPAT = {
+    **dict.fromkeys(("native_graph_protocol_campaign_harness_test.go", "native_graph_protocol_campaign_adapters_test.go"), PROTOCOL_CORE_PARENTS),
+    "native_graph_protocol_campaign_test.go": PROTOCOL_RECIPE_PARENTS,
+    "native_graph_protocol_campaign_program_harness_test.go": PROTOCOL_PARENTS,
+    "native_graph_protocol_campaign_program_test.go": PROTOCOL_PROGRAM_PARENTS,
+    **dict.fromkeys(("native_graph_protocol_campaign_predecessor_harness_test.go", "native_graph_protocol_campaign_predecessor_test.go"), PROTOCOL_PREDECESSOR_PARENTS),
+    **dict.fromkeys(("native_graph_protocol_campaign_state_harness_test.go", "native_graph_protocol_campaign_state_test.go"),
+                   [*PROTOCOL_STATE_PARENTS, "TestNativeProtocolStateRecoverySelectionRejectsUnboundPooledProfile"]),
+    **dict.fromkeys(("graph_source_process_test.go", "replicated_process_test.go", "paired_graph_fault_harness_test.go"), PROTOCOL_PARENTS),
+    **dict.fromkeys(("native_graph_transition_batch_harness_test.go", "native_graph_transition_harness_test.go",
+                    "native_graph_fault_schedule_harness_test.go", "native_graph_fault_family_harness_test.go",
+                    "native_graph_transition_conjunction_initial_test.go"), PROTOCOL_CORE_PARENTS),
+    **dict.fromkeys(("native_graph_transition_state_harness_test.go", "native_graph_transition_retention_harness_test.go",
+                    "native_graph_transition_move_harness_test.go", "native_graph_transition_pin_harness_test.go"), PROTOCOL_STATE_PARENTS),
+    "native_graph_transition_conjunction_harness_test.go": [PROTOCOL_PROGRAM_PARENTS[0], PROTOCOL_CASE_PARENTS[2], PROTOCOL_RECIPE_PARENTS[2], *PROTOCOL_PREDECESSOR_PARENTS],
+    "native_graph_transition_scope_harness_test.go": [PROTOCOL_PROGRAM_PARENTS[0], PROTOCOL_CASE_PARENTS[0], PROTOCOL_RECIPE_PARENTS[3]],
+    "native_graph_fault_decision_harness_test.go": [PROTOCOL_PROGRAM_PARENTS[0], PROTOCOL_CASE_PARENTS[6], PROTOCOL_RECIPE_PARENTS[7]],
+    "historical_dependency_p05_test.go": [PROTOCOL_PROGRAM_PARENTS[0], PROTOCOL_CASE_PARENTS[5], PROTOCOL_RECIPE_PARENTS[6]],
+    "native_graph_fault_schedule_test.go": [PROTOCOL_PROGRAM_PARENTS[0], PROTOCOL_CASE_PARENTS[4], PROTOCOL_RECIPE_PARENTS[5], *PROTOCOL_PREDECESSOR_PARENTS],
+    "coordinator_loss_p03_harness_test.go": [PROTOCOL_PROGRAM_PARENTS[0], PROTOCOL_CASE_PARENTS[3], PROTOCOL_RECIPE_PARENTS[4], *PROTOCOL_PREDECESSOR_PARENTS],
+    "prepare_fence_p02_harness_test.go": [PROTOCOL_PROGRAM_PARENTS[0], PROTOCOL_CASE_PARENTS[1], PROTOCOL_RECIPE_PARENTS[9], PROTOCOL_RECIPE_PARENTS[10], *PROTOCOL_PREDECESSOR_PARENTS],
+    "prepared_lock_p06_harness_test.go": [PROTOCOL_PROGRAM_PARENTS[0], PROTOCOL_CASE_PARENTS[2], PROTOCOL_RECIPE_PARENTS[2], *PROTOCOL_PREDECESSOR_PARENTS],
+}
+for _fixture, _parents in PROTOCOL_FIXTURE_COMPAT.items():
+    FIXTURE_COMPAT[_fixture] = [*FIXTURE_COMPAT.get(_fixture, []), *_parents]
 TRANSFER_INPUTS = {
     "tools/v5-substrate/native_transfer_cell.py", "tools/v5-substrate/native_transfer_check.py",
     "tools/v5-substrate/native_transfer_check_test.py", "tools/v5-substrate/native_feed_check.py",
@@ -274,6 +346,54 @@ FAULT_INPUTS = {"tools/v5-substrate/native_fault_schedule_check.py", "tools/v5-s
                 "tools/v5-substrate/native_transition_check.py", "tools/v5-substrate/native_transition_check_test.py",
                 "tools/v5-substrate/native_fault_family_check.py", "tools/v5-substrate/native_fault_family_check_test.py",
                 "tools/v5-substrate/check-p06-history.py", "docs/v5/reference/independent/protocol/oracle.py"}
+# Exact owning checker imports, plus the Go adapters which produce their wire.
+# Replay controllers are not imported by these checkers and are not swept in.
+PROTOCOL_CORE_INPUTS = {
+    "tools/v5-substrate/"+name for name in (
+        "native_protocol_campaign_check.py", "native_protocol_campaign_check_test.py",
+        "native_transition_initial_check.py", "native_transition_conjunction_check.py",
+        "native_transition_batch_check.py", "native_transition_check.py",
+        "native_fault_schedule_check.py", "native_fault_family_check.py", "native_transition_scope_check.py",
+        "native_transition_certificate_check.py", "native_transition_cut_check.py", "compare-graph-fault.py",
+        "graph-fault-local-v1.json", "fdb/compare-lifecycle.py",
+        "check-p02-history.py", "check-p03-history.py", "check-p05-history.py", "check-p06-history.py")
+} | {"docs/v5/reference/independent/protocol/oracle.py"}
+PROTOCOL_CORE_INPUTS |= {"v5/internal/graphapply/"+name for name in (
+    "native_graph_protocol_campaign_harness_test.go", "native_graph_protocol_campaign_adapters_test.go",
+    "native_graph_protocol_campaign_test.go")}
+PROTOCOL_PROGRAM_INPUTS = PROTOCOL_CORE_INPUTS | {
+    "tools/v5-substrate/native_protocol_campaign_program_check.py",
+    "tools/v5-substrate/native_protocol_campaign_program_check_test.py",
+    "v5/internal/graphapply/native_graph_protocol_campaign_program_harness_test.go",
+    "v5/internal/graphapply/native_graph_protocol_campaign_program_test.go",
+}
+PROTOCOL_PREDECESSOR_INPUTS = PROTOCOL_PROGRAM_INPUTS | {
+    "tools/v5-substrate/native_protocol_campaign_predecessor_check.py",
+    "tools/v5-substrate/native_protocol_campaign_predecessor_check_test.py",
+    "v5/internal/graphapply/native_graph_protocol_campaign_predecessor_harness_test.go",
+    "v5/internal/graphapply/native_graph_protocol_campaign_predecessor_test.go",
+}
+PROTOCOL_STATE_INPUTS = {
+    "tools/v5-substrate/"+name for name in (
+        "native_protocol_campaign_state_check.py", "native_protocol_campaign_state_check_test.py",
+        "native_transition_batch_check.py", "native_transition_state_check.py", "native_transition_retention_check.py",
+        "native_transition_move_check.py", "native_transition_check.py", "native_fault_family_check.py",
+        "native_fault_schedule_check.py", "native_feed_check.py", "native_transfer_check.py", "native_columns_check.py",
+        "native_feed_retained_check.py", "native_create_update_check.py", "native_selectors_check.py",
+        "native_edge_unique_check.py", "compare-cost-cdc.py", "comparison_spool.py", "fdb_retention_check.py",
+        "check-p05-history.py", "check-p06-history.py")
+}
+PROTOCOL_STATE_INPUTS.add("docs/v5/reference/independent/protocol/oracle.py")
+PROTOCOL_CORE_INPUTS |= {"v5/internal/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
+                         if set(PROTOCOL_RECIPE_PARENTS + PROTOCOL_CASE_PARENTS).intersection(parents)}
+PROTOCOL_STATE_INPUTS |= {"v5/internal/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
+                          if set(PROTOCOL_STATE_PARENTS).intersection(parents)}
+PROTOCOL_PROGRAM_INPUTS |= {"v5/internal/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
+                            if PROTOCOL_PROGRAM_PARENTS[0] in parents}
+PROTOCOL_PROGRAM_INPUTS |= PROTOCOL_CORE_INPUTS
+PROTOCOL_PREDECESSOR_INPUTS |= {"v5/internal/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
+                                if set(PROTOCOL_PREDECESSOR_PARENTS).intersection(parents)}
+PROTOCOL_PREDECESSOR_INPUTS |= PROTOCOL_PROGRAM_INPUTS
 PAIR_INPUTS = {"tools/v5-substrate/paired_workload_check.py", "tools/v5-substrate/paired_workload_cell.py",
                "tools/v5-substrate/paired_workload_check_test.py", "tools/v5-substrate/fdb/fdb_contention_check.py",
                "tools/v5-substrate/fdb/fdb_contention_check_test.py", "tools/v5-substrate/workload_matrix.py",
@@ -398,6 +518,9 @@ def graph_selection(directory, changed, definitions):
         # Only actually edited top-level helper functions get consumer lookup.
         # Shared types/methods require a reviewed finite fixture guard list.
         helpers = {name for kind, name in edited if kind == "func" and name not in parent_names(path)}
+        if helpers and path.name in PROTOCOL_FIXTURE_COMPAT:
+            tests |= set(FIXTURE_COMPAT[path.name])
+            helpers = set()
         if helpers and path.name in ("native_graph_transition_conjunction_initial_test.go", "native_graph_transition_conjunction_first_prepare_test.go"):
             tests |= set(FIXTURE_COMPAT[path.name])
             helpers = set()
@@ -713,6 +836,14 @@ def cdc(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/paired_workload_check_test.py"], cwd=ROOT, check=True)
     if TRANSFER_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transfer_check_test.py"], cwd=ROOT, check=True)
+    if PROTOCOL_CORE_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_protocol_campaign_check_test.py"], cwd=ROOT, check=True)
+    if PROTOCOL_PROGRAM_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_protocol_campaign_program_check_test.py"], cwd=ROOT, check=True)
+    if PROTOCOL_PREDECESSOR_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_protocol_campaign_predecessor_check_test.py"], cwd=ROOT, check=True)
+    if PROTOCOL_STATE_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_protocol_campaign_state_check_test.py"], cwd=ROOT, check=True)
 
 
 def focused_dispatch_base(event, kind, head):
