@@ -106,3 +106,38 @@ func TestNativeProtocolStateProgramsKeepNativeIdentityAndCausalWindows(t *testin
 		t.Fatal("accepted issuance source attribution changed", allocation)
 	}
 }
+
+func TestNativeProtocolStateStartBindsParentAndChildAgreement(t *testing.T) {
+	// The parent is an ordinary test process, not an already selected replica.
+	// Starting the fixture must bind every required role before it validates
+	// its first genuine proposal; child-only extraEnv cannot repair this parent.
+	t.Setenv("RHO_GRAPH_CERTIFIED_PROCESS", "")
+	t.Setenv("RHO_GRAPH_SOURCE_PROCESS", "")
+	t.Setenv("RHO_GRAPH_PROTOCOL_STATE_RECOVERY", "4")
+	ctx, run, deadline := nativeProtocolStateStart(t)
+	if run == ([16]byte{}) || ctx.Err() != nil {
+		t.Fatal("state start lost original admission", ctx.Err())
+	}
+	if actual, ok := ctx.Deadline(); !ok || actual.UnixNano() != deadline {
+		t.Fatal("parent acquired a different deadline")
+	}
+	if selected, err := nativeProtocolStateProfileFromEnv(); err != nil || !selected {
+		t.Fatal("parent and child profile selection disagree", selected, err)
+	}
+	if agreement, err := nativeProtocolStateAgreement(); err != nil || agreement != rangeMovePooledSemanticContractID() {
+		t.Fatal("parent cannot validate actual pooled child bootstrap", err)
+	}
+	// The correction supplies missing admission, rather than weakening the
+	// selector: either omitted base role must still refuse the pooled contract.
+	for _, key := range []string{"RHO_GRAPH_CERTIFIED_PROCESS", "RHO_GRAPH_SOURCE_PROCESS"} {
+		t.Setenv(key, "")
+		if agreement, err := nativeProtocolStateAgreement(); !errors.Is(err, errInvalid) || agreement != ([32]byte{}) {
+			t.Fatal("missing actual base role admitted", key, err)
+		}
+		t.Setenv(key, "1")
+	}
+	t.Setenv("RHO_GRAPH_PROTOCOL_STATE_RECOVERY", "")
+	if agreement, err := nativeProtocolStateAgreement(); err != nil || agreement != rangeMoveSpanSemanticContractID() {
+		t.Fatal("literal Recovery3 agreement changed", err)
+	}
+}
