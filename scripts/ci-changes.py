@@ -121,6 +121,11 @@ WORKLOAD_PARENTS = [
 ]
 FIXTURE_COMPAT = {
     **dict.fromkeys(COST_FIXTURES, COST_PARENTS),
+    **dict.fromkeys(("native_graph_create_update_harness_test.go", "native_graph_create_update_process_test.go"),
+                   ["TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"]),
+    **dict.fromkeys(("native_graph_selectors_harness_test.go", "native_graph_selectors_sessions_harness_test.go", "native_graph_selectors_runner_harness_test.go"),
+                   ["TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell",
+                    "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"]),
     "native_graph_cost_columns_harness_test.go": [*COST_PARENTS, *WORKLOAD_PARENTS],
     "native_graph_contention_harness_test.go": WORKLOAD_PARENTS,
     "native_graph_contention_runner_test.go": WORKLOAD_PARENTS,
@@ -155,6 +160,8 @@ FIXTURE_COMPAT = {
 WORKLOAD_INPUTS = {"tools/v5-substrate/native_contention_check.py", "tools/v5-substrate/native_contention_check_test.py",
                    "tools/v5-substrate/native_workload_cell.py", "tools/v5-substrate/native_workload_cell_test.py",
                    "tools/v5-substrate/workload_matrix.py", "tools/v5-substrate/workload_matrix_test.py"}
+CREATE_UPDATE_INPUTS = {"tools/v5-substrate/native_create_update_check.py", "tools/v5-substrate/native_create_update_cell.py",
+                        "tools/v5-substrate/native_create_update_check_test.py"}
 FAULT_INPUTS = {"tools/v5-substrate/native_fault_schedule_check.py", "tools/v5-substrate/native_fault_schedule_check_test.py",
                 "tools/v5-substrate/native_transition_retention_check.py", "tools/v5-substrate/native_transition_retention_check_test.py",
                 "tools/v5-substrate/native_transition_publication_check.py", "tools/v5-substrate/native_transition_publication_check_test.py",
@@ -543,6 +550,8 @@ def docs(paths):
 
 
 def cdc(paths):
+    if CREATE_UPDATE_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_create_update_check_test.py"], cwd=ROOT, check=True)
     if COST_CDC_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/compare_cost_cdc_test.py"], cwd=ROOT, check=True)
         if {"tools/v5-substrate/cost-cell.py", "tools/v5-substrate/native_columns_check.py", "tools/v5-substrate/cost_cell_test.py"}.intersection(paths):

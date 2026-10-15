@@ -67,6 +67,10 @@ func nativeSelectorsAdmissionFromEnv(s nativeSelectorsSpec) (a nativeSelectorsAd
 	if nativeSelectorsValidate(s.cost()) != nil {
 		return a, digest, errInvalid
 	}
+	return nativeScalarReadAdmissionFromEnv(s, nativeSelectorsFamily)
+}
+
+func nativeScalarReadAdmissionFromEnv(s nativeSelectorsSpec, family string) (a nativeSelectorsAdmission, digest [32]byte, err error) {
 	deadline, err := nativeGraphEdgeUniqueDeadlineFromEnv()
 	if err != nil {
 		return a, digest, err
@@ -97,7 +101,7 @@ func nativeSelectorsAdmissionFromEnv(s nativeSelectorsSpec) (a nativeSelectorsAd
 	if seconds*1000 <= floor {
 		return a, digest, errLimit
 	}
-	a = nativeSelectorsAdmission{1, nativeSelectorsFamily, run, s, transport, seconds, floor, deadline.UnixNano(), [16]byte(declaration.Graph()), declaration.TopologyEpoch(), declaration.Digest(), binary}
+	a = nativeSelectorsAdmission{1, family, run, s, transport, seconds, floor, deadline.UnixNano(), [16]byte(declaration.Graph()), declaration.TopologyEpoch(), declaration.Digest(), binary}
 	body, err := json.Marshal(a)
 	return a, sha256.Sum256(body), err
 }
@@ -145,6 +149,12 @@ func nativeSelectorsGrantPlan(s nativeGraphCostSpec, block, partition, sequence 
 	if nativeSelectorsValidate(s) != nil || block < 2 || block > idalloc.MaxBlockSize || sequence == 0 {
 		return 0, 0, errInvalid
 	}
+	return nativeScalarReadGrantPlan(s, block, partition, sequence)
+}
+func nativeScalarReadGrantPlan(s nativeGraphCostSpec, block, partition, sequence uint64) (uint64, uint64, error) {
+	if block < 2 || block > idalloc.MaxBlockSize || sequence == 0 {
+		return 0, 0, errInvalid
+	}
 	if partition == 3 {
 		if sequence > (s.homeCount()+block-1)/block {
 			return 0, 0, errInvalid
@@ -162,7 +172,16 @@ func nativeSelectorsProfile(s nativeGraphCostSpec, init *declaredInitCommand, l 
 		return errInvalid
 	}
 	frames, err := nativeSelectorsFrames(s)
-	if err != nil || frames > (^uint64(0)-65536)/260 || frames > (^uint64(0)-(64<<20))/(64<<10) {
+	if err != nil {
+		return errLimit
+	}
+	return nativeScalarReadProfile(s, frames, init, l, p, g)
+}
+func nativeScalarReadProfile(s nativeGraphCostSpec, frames uint64, init *declaredInitCommand, l *raftlog.Limits, p *raftlog.ApplicationPolicy, g *raftlog.ApplicationGenerationLimits) error {
+	if init == nil || l == nil || p == nil || g == nil || p.MaxInstallWrites != 256 || p.MaxImageBytes != 172 {
+		return errInvalid
+	}
+	if frames > (^uint64(0)-65536)/260 || frames > (^uint64(0)-(64<<20))/(64<<10) {
 		return errLimit
 	}
 	retainedBytes, retainedRecords := min(uint64(64<<20)+frames*(64<<10), uint64(1<<39)), uint64(65536)+260*frames
@@ -189,33 +208,46 @@ func nativeSelectorsReadAllowance(s nativeSelectorsSpec, a nativeSelectorsAdmiss
 	if nativeSelectorsValidate(s.cost()) != nil || a.Spec != s || a.DeadlineUnixNanos <= 0 || a.BudgetSeconds == 0 || a.BudgetSeconds > 365*24*60*60 {
 		return nativeSelectorsReadPolicy{}, errInvalid
 	}
-	l := defaultMaterializerLimits()
 	frames, err := nativeSelectorsFrames(s.cost())
 	if err != nil {
 		return nativeSelectorsReadPolicy{}, err
 	}
+	return nativeScalarReadAllowance(s.Facts, a.BudgetSeconds, a.DeadlineUnixNanos, frames, nativeSelectorsQueries)
+}
+func nativeScalarReadAllowance(facts, seconds uint64, deadline int64, frames, queries uint64) (nativeSelectorsReadPolicy, error) {
+	if facts < 20 || facts > 1_000_000 || seconds == 0 || seconds > 365*24*60*60 || deadline <= 0 || queries == 0 || queries > nativeSelectorsQueries {
+		return nativeSelectorsReadPolicy{}, errInvalid
+	}
+	l := defaultMaterializerLimits()
 	// Two complete physical cohorts also export all native records in pages of
 	// four, independently of the semantic query scans. These are not discarded
 	// from resource admission merely because they are diagnostic rather than
 	// business latency. Actual payload/work is reported separately from grants.
-	starts := uint64(nativeSelectorsQueries)*((s.Facts+15)/16+a.BudgetSeconds/60+16) + 4*((frames+3)/4) + 64
+	starts := queries*((facts+15)/16+seconds/60+16) + 4*((frames+3)/4) + 64
 	unit := nativeColumnRetentionWork(l)
 	grant, err := unit.scaled(starts)
 	if err != nil {
 		return nativeSelectorsReadPolicy{}, err
 	}
-	return nativeSelectorsReadPolicy{Queries: nativeSelectorsQueries, Starts: starts, Calls: starts * 8, Rows: grant.Records, Bytes: grant.Bytes, Output: grant.OutputBytes, RPCs: grant.RPCs, WireBytes: grant.WireBytes, DeadlineUnixNanos: a.DeadlineUnixNanos}, nil
+	return nativeSelectorsReadPolicy{Queries: queries, Starts: starts, Calls: starts * 8, Rows: grant.Records, Bytes: grant.Bytes, Output: grant.OutputBytes, RPCs: grant.RPCs, WireBytes: grant.WireBytes, DeadlineUnixNanos: deadline}, nil
 }
 
 func nativeSelectorsColumnPolicy(h *allocationHost, s nativeSelectorsSpec, a nativeSelectorsAdmission, digest [32]byte) (nativeColumnPolicy, error) {
 	if h == nil || h.machine == nil || h.machine.SemanticContractID() != durableColumnGraphSemanticContractID() || a.Spec != s || digest == ([32]byte{}) {
 		return nativeColumnPolicy{}, errInvalid
 	}
-	p := nativeColumnPolicy{Version: 1, Admission: digest, ChunkRecords: 16, ChunkRows: 16, ChunkBytes: 64 << 10, FrameBytes: 32 << 10, MaxGenerations: 2, MaxChunks: 1 << 40, MaxRetainedBytes: 1 << 62, MaxWorkRecords: ^uint64(0), MaxWorkBytes: ^uint64(0), MaxDecodedRows: ^uint64(0), MaxOutputBytes: ^uint64(0), MaxRPCs: ^uint64(0), MaxWireBytes: ^uint64(0), CacheBytes: 2 << 20, MemTableBytes: 1 << 20, Lifetime: time.Minute}
+	p := nativeScalarReadColumnDefaults(digest)
 	frames, err := nativeSelectorsFrames(s.cost())
 	if err != nil {
 		return p, err
 	}
+	return nativeScalarReadColumnPolicy(h, frames, a.BudgetSeconds, digest)
+}
+func nativeScalarReadColumnDefaults(digest [32]byte) nativeColumnPolicy {
+	return nativeColumnPolicy{Version: 1, Admission: digest, ChunkRecords: 16, ChunkRows: 16, ChunkBytes: 64 << 10, FrameBytes: 32 << 10, MaxGenerations: 2, MaxChunks: 1 << 40, MaxRetainedBytes: 1 << 62, MaxWorkRecords: ^uint64(0), MaxWorkBytes: ^uint64(0), MaxDecodedRows: ^uint64(0), MaxOutputBytes: ^uint64(0), MaxRPCs: ^uint64(0), MaxWireBytes: ^uint64(0), CacheBytes: 2 << 20, MemTableBytes: 1 << 20, Lifetime: time.Minute}
+}
+func nativeScalarReadColumnPolicy(h *allocationHost, frames, seconds uint64, digest [32]byte) (nativeColumnPolicy, error) {
+	p := nativeScalarReadColumnDefaults(digest)
 	opening, page, err := nativeColumnLimitAllowance(h.machine.store.ApplicationLimits(), h.machine.limits, p)
 	if err != nil {
 		return p, err
@@ -229,7 +261,7 @@ func nativeSelectorsColumnPolicy(h *allocationHost, s nativeSelectorsSpec, a nat
 		return p, err
 	}
 	const passes = 8
-	failed := uint64(32) + a.BudgetSeconds/60 + 4
+	failed := uint64(32) + seconds/60 + 4
 	if frames > (^uint64(0)-failed)/passes-1 {
 		return p, errLimit
 	}
@@ -237,7 +269,7 @@ func nativeSelectorsColumnPolicy(h *allocationHost, s nativeSelectorsSpec, a nat
 	if err != nil {
 		return p, err
 	}
-	starts := a.BudgetSeconds/60 + 13
+	starts := seconds/60 + 13
 	captures, err := opening.scaled(8*starts + 4*passes)
 	if err != nil {
 		return p, err

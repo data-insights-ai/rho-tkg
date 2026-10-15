@@ -40,7 +40,7 @@ def require(condition, message):
 def implemented(family, engine, transport, owned=False):
     return (family in IMPLEMENTED and (family != "transfer-retained-pins" or owned) and (transport == "local" or owned) if engine == "foundationdb" else
             family == "contention-empty-range" and (engine == "native-raft" or engine == "paired" and transport == "local")
-            or family in ("cross-edge-endpoint-uniqueness", "snapshot-to-feed", "snapshot-selectors") and (engine == "native-raft" or engine == "paired" and transport == "local"))
+            or family in ("cross-edge-endpoint-uniqueness", "snapshot-to-feed", "snapshot-selectors", "partition-local-create-update") and (engine == "native-raft" or engine == "paired" and transport == "local"))
 
 
 def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("foundationdb",), owned=False):
@@ -147,6 +147,8 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
             import native_feed_cell as native
         elif spec["family"] == "snapshot-selectors":
             import native_selectors_cell as native
+        elif spec["family"] == "partition-local-create-update":
+            import native_create_update_cell as native
         else:
             import native_workload_cell as native
         native.preflight(spec, transport, seconds, memory, cell["engine"])
@@ -278,6 +280,8 @@ def execute_matrix(args):
             import native_feed_cell as native
         elif args.family == "snapshot-selectors":
             import native_selectors_cell as native
+        elif args.family == "partition-local-create-update":
+            import native_create_update_cell as native
         else:
             import native_workload_cell as native
         native.preflight({"version": 1, "family": args.family, "facts": 1_000_000, "crossPercent": 100, "writers": 32, "layout": "columns"}, args.transport, seconds, args.admission_mib, args.engine)

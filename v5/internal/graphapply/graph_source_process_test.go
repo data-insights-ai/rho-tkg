@@ -1431,6 +1431,29 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			}
 		}()
 	}
+	if o.cost != nil && o.cost.Version == 9 {
+		spec, e := nativeCreateUpdateSpecFromEnv()
+		if e != nil {
+			t.Fatal(e)
+		}
+		admission, digest, e := nativeCreateUpdateAdmissionFromEnv(spec)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var stopCreateUpdate context.CancelFunc
+		columns.ctx, stopCreateUpdate = context.WithDeadline(ctx, time.Unix(0, admission.DeadlineUnixNanos))
+		defer stopCreateUpdate()
+		columns.policyProvider = func() (nativeColumnPolicy, error) { return nativeCreateUpdateColumnPolicy(h, spec, admission, digest) }
+		selectors, e = newNativeCreateUpdateSessions(columns.ctx, coordinator, pump.Cut)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer func() {
+			if e := selectors.close(); e != nil {
+				t.Error(e)
+			}
+		}()
+	}
 	defer func() {
 		if err := columns.close(); err != nil {
 			t.Error(err)
@@ -1693,7 +1716,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				return true
 			}
 		}
-		if o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6) && nativeGraphEdgeUniqueColumnClose(r) {
+		if o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 9) && nativeGraphEdgeUniqueColumnClose(r) {
 			return true
 		}
 		if logicalTransitions != nil && r.op == processNativeTransitionControl {
@@ -1831,7 +1854,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					out.aux, e = feed.serve(workerCtx, r)
 				} else if contention != nil && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
 					out.aux, e = contention.serve(workerCtx, r)
-				} else if (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6) && bytes.HasPrefix(r.data, []byte(nativeEdgeColumns)) {
+				} else if (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 9) && bytes.HasPrefix(r.data, []byte(nativeEdgeColumns)) {
 					out.aux, e = nativeGraphEdgeUniqueColumnServe(workerCtx, columns, r)
 				} else if bytes.HasPrefix(r.data, []byte(nativeColumnsMarker)) {
 					out.aux, e = columns.serve(workerCtx, r)
@@ -1940,7 +1963,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		if retentionState != nil && r.op == processNativeFaultControl && bytes.HasPrefix(r.data, []byte(nativeRetentionMarker)) && errors.Is(err, raftlog.ErrApplicationExpired) {
 			response.code = 9 // Fresh native retained-history refusal; legacy codes unchanged.
 		}
-		if code := nativeFeedProfileResponseCode(r, feed != nil, o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6), err); code != 0 {
+		if code := nativeFeedProfileResponseCode(r, feed != nil, o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 9), err); code != 0 {
 			response.code = code
 		}
 		if selectors != nil && r.op == processCostObserve {

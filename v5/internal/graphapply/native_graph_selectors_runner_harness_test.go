@@ -32,6 +32,8 @@ type nativeSelectorsClient struct {
 	next      uint64
 	extra     int
 	openNanos int64
+	// Optional fresh-family observation only; no decision/source authority.
+	observed func(nativeSelectorsInput, nativeSelectorsReply) error
 }
 
 type nativeSelectorsTiming struct {
@@ -86,6 +88,11 @@ func (c *nativeSelectorsClient) invoke(q nativeSelectorsInput, expected error) (
 		if actual == nil {
 			if reply.Version != 1 || reply.Action != q.Action || reply.Failure != 0 {
 				c.t.Fatal("missing completed native query reply")
+			}
+			if c.observed != nil {
+				if err := c.observed(q, reply); err != nil {
+					c.t.Fatal("actual completed observation refused", err)
+				}
 			}
 			return reply
 		}

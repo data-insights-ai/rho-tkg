@@ -792,7 +792,11 @@ func nativeFeedReadColumns(t *testing.T, clients [2]*nativeGraphEdgeUniqueColumn
 	if pair.Updated && feedCutEqual(at, pair.Final) {
 		updates = s.Facts
 	}
-	if census != ([3]uint64{3 + s.Facts, s.Facts, updates}) {
+	presence := 3 + s.Facts
+	if s.Version == 9 {
+		presence += updates
+	}
+	if census != ([3]uint64{presence, s.Facts, updates}) {
 		t.Fatal("complete native typed scalar row census", census)
 	}
 }

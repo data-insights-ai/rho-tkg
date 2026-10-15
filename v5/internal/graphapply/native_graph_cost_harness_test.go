@@ -29,6 +29,9 @@ type nativeGraphCostSpec struct {
 }
 
 func (s nativeGraphCostSpec) validate() error {
+	if s.Version == 9 {
+		return nativeCreateUpdateValidate(s)
+	}
 	if s.Version == 6 {
 		return nativeSelectorsValidate(s)
 	}
@@ -83,6 +86,13 @@ func (s nativeGraphCostSpec) edge(i uint64) (uint64, uint64, uint64, uint64) {
 	return 7 + 2*i, 8 + 2*i, target, targetLife
 }
 func (s nativeGraphCostSpec) deliveries() int {
+	if s.Version == 9 {
+		frames, err := nativeCreateUpdateFrames(s)
+		if err != nil || frames > uint64(^uint(0)>>1)/1024 {
+			return 0
+		}
+		return int(frames * 1024) // #nosec G115 -- checked native int bound; numeric allowance only.
+	}
 	if s.Version == 6 {
 		frames, err := nativeSelectorsFrames(s)
 		if err != nil || frames > uint64(^uint(0)>>1)/1024 {
@@ -110,6 +120,9 @@ func (s nativeGraphCostSpec) deliveries() int {
 func nativeGraphCostProfile(s *nativeGraphCostSpec, init *declaredInitCommand, l *raftlog.Limits, p *raftlog.ApplicationPolicy, generations *raftlog.ApplicationGenerationLimits) error {
 	if s == nil {
 		return nil
+	}
+	if s.Version == 9 {
+		return nativeCreateUpdateProfile(*s, init, l, p, generations)
 	}
 	if s.Version == 6 {
 		return nativeSelectorsProfile(*s, init, l, p, generations)
@@ -195,7 +208,12 @@ func nativeGraphCostProposal(o *certifiedProcessOwners, r processRequest, id req
 			value, valueID = 6, 6
 			provenance = 4 + o.cost.Facts + i
 		}
-		ops = append(ops, graphstate.Operation{Kind: graphstate.Set, Owner: graphstate.EntityID(edge), Life: graphstate.LifeID(life), Scope: scope, Name: "p", Value: graphstate.I64(value), ValueID: graphstate.ValueID(valueID)})
+		set := graphstate.Operation{Kind: graphstate.Set, Owner: graphstate.EntityID(edge), Life: graphstate.LifeID(life), Scope: scope, Name: "p", Value: graphstate.I64(value), ValueID: graphstate.ValueID(valueID)}
+		if o.cost.Version == 9 && r.index == 5 {
+			ops = nativeScalarGuardedUpdate(ops, set)
+		} else {
+			ops = append(ops, set)
+		}
 		if i == 0 {
 			claims = append(claims, freshBinding{role: valueBinding, id: valueID})
 		}

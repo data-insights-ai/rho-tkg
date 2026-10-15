@@ -205,6 +205,16 @@ func newNativeSelectorsSessions(ctx context.Context, c *crossProcessCoordinator,
 	if err != nil {
 		return nil, err
 	}
+	return newNativeScalarQuerySessions(ctx, c, localRead, spec, a, digest, policy)
+}
+func newNativeScalarQuerySessions(ctx context.Context, c *crossProcessCoordinator, localRead func(context.Context, graphCutQuery) (graphCutReply, error), spec nativeSelectorsSpec, a nativeSelectorsAdmission, digest [32]byte, policy nativeSelectorsReadPolicy) (*nativeSelectorsSessions, error) {
+	if ctx == nil || c == nil || c.host == nil || c.host.machine == nil || c.host.machine.SemanticContractID() != durableColumnGraphSemanticContractID() || localRead == nil || [16]byte(c.host.machine.ns.graph) != a.Graph || c.host.machine.declaration.Digest() != a.Declaration || c.host.machine.declaration.TopologyEpoch() != a.Topology || a.Spec != spec || policy.DeadlineUnixNanos != a.DeadlineUnixNanos {
+		return nil, errInvalid
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok || deadline.UnixNano() != a.DeadlineUnixNanos {
+		return nil, errInvalid
+	}
 	cleanup, cancelCleanup := context.WithDeadline(context.WithoutCancel(ctx), deadline.Add(30*time.Second))
 	return &nativeSelectorsSessions{ctx: ctx, cleanup: cleanup, cancelCleanup: cancelCleanup, coordinator: c, localRead: localRead, spec: spec, admission: a, digest: digest, policy: policy, owners: make(map[uint64]*nativeSelectorsQuery)}, nil
 }
@@ -639,7 +649,11 @@ func (s *nativeSelectorsSessions) serve(ctx context.Context, r processRequest) (
 	var out nativeSelectorsReply
 	switch q.Action {
 	case "records":
-		if nativeSelectorsValidate(s.spec.cost()) != nil || s.coordinator.host.machine.SemanticContractID() != durableColumnGraphSemanticContractID() {
+		valid := nativeSelectorsValidate(s.spec.cost())
+		if s.spec.Family == nativeCreateUpdateFamily {
+			valid = nativeCreateUpdateValidate(nativeCreateUpdateCost(s.spec))
+		}
+		if valid != nil || s.coordinator.host.machine.SemanticContractID() != durableColumnGraphSemanticContractID() {
 			return nil, errInvalid
 		}
 		if err = s.fund(operation); err != nil {

@@ -13,11 +13,17 @@ class WorkloadMatrixGuards(unittest.TestCase):
             spec={"version":1,"family":family,"facts":40,"crossPercent":cross,"writers":32,"layout":"columns"}
             self.assertEqual(matrix.preflight(spec,"01"*16),spec)
             self.assertEqual(matrix.preflight(spec|{"version":2},"01"*16,"foundationdb","rtt-100ms"),spec|{"version":2})
-            for engine in ("native-raft","paired"):
-                with self.assertRaises(ValueError):matrix.preflight(spec,"01"*16,engine)
+            for transport in matrix.TRANSPORTS:
+                self.assertEqual(matrix.preflight(spec,"01"*16,"native-raft",transport),spec)
+                if transport=="local":self.assertEqual(matrix.preflight(spec,"01"*16,"paired",transport),spec)
+                else:
+                    with self.assertRaises(ValueError):matrix.preflight(spec,"01"*16,"paired",transport)
         cells=list(matrix.matrix((family,),tuple(matrix.TRANSPORTS),owned=True))
         self.assertEqual(len(cells),1440)
         self.assertTrue(all(c["implemented"] and c["workload"]["version"]==2 for c in cells))
+        native=list(matrix.matrix((family,),tuple(matrix.TRANSPORTS),("native-raft",)))
+        self.assertEqual(len(native),1440)
+        self.assertTrue(all(c["implemented"] and c["workload"]["version"]==1 for c in native))
         with self.assertRaises(ValueError):matrix.preflight(spec|{"facts":20},"01"*16)
     def test_native_selectors_complete_dimensions_and_local_pairing(self):
         spec={"version":1,"family":"snapshot-selectors","facts":40,"crossPercent":0,"writers":32,"layout":"columns"}

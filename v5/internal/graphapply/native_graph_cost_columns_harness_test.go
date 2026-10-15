@@ -1290,6 +1290,9 @@ func nativeGraphCostColumnRow(spec nativeGraphCostSpec, row nativeColumnRow) (in
 		return 0, errCorrupt
 	}
 	if row.Component == byte(graphstate.Presence) {
+		if spec.Version == 9 && row.Before.Present {
+			return nativeCreateUpdatePresenceRow(spec, row)
+		}
 		if row.Life != 0 || row.Name != "" || row.After.Handle != life || row.After.Provenance != 4+fact || row.Before != (nativeColumnCell{}) {
 			return 0, errCorrupt
 		}

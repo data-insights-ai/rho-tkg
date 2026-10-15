@@ -128,8 +128,8 @@ def business(directory,end,spool):
     return {"rowSemantics":value["RowSemantics"],"businessPhases":output,"businessScope":"setup3 excluded; actual business read/write participants, one ordinary global FDB commit path; complete phase wall, never sum of parallel operation latencies"}
 
 
-def verify(directory,spool_directory,policy=None):
-    return common.verify(directory,spool_directory,policy,family=FAMILY)
+def verify(directory,spool_directory,policy=None,*,shared_spool=None):
+    return common.verify(directory,spool_directory,policy,family=FAMILY,shared_spool=shared_spool)
 
 
 if __name__=="__main__":

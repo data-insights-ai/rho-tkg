@@ -119,6 +119,13 @@ class Planning(unittest.TestCase):
                     [sys.executable, "-B", "tools/v5-substrate/native_workload_cell_test.py"],
                     [sys.executable, "-B", "tools/v5-substrate/workload_matrix_test.py"]])
 
+    def test_create_update_inputs_select_only_their_authored_private_guard(self):
+        for paths in [[p] for p in CI.CREATE_UPDATE_INPUTS] + [list(CI.CREATE_UPDATE_INPUTS)]:
+            with self.subTest(paths=paths), patch.object(CI.subprocess,"run") as run:
+                CI.cdc(paths)
+                self.assertEqual([call.args[0] for call in run.call_args_list],
+                                 [[sys.executable,"-B","tools/v5-substrate/native_create_update_check_test.py"]])
+
     def test_full_cdc_action_runs_only_its_exact_replay_without_reference_or_go(self):
         with patch.object(sys, "argv", ["ci-changes.py", "cdc", "--base", "fixture"]), \
              patch.object(CI, "changed_paths", return_value=["docs/v5/PLAN.md", "tools/v5-substrate/cost-cell.py"]), \
@@ -310,6 +317,11 @@ class RealGitSelection(unittest.TestCase):
 
     def test_reviewed_paired_fixture_types_have_finite_real_parent_scope(self):
         fixtures = {
+            "native_graph_create_update_harness_test.go": {"TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"},
+            "native_graph_create_update_process_test.go": {"TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"},
+            "native_graph_selectors_harness_test.go": {"TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"},
+            "native_graph_selectors_sessions_harness_test.go": {"TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"},
+            "native_graph_selectors_runner_harness_test.go": {"TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"},
             "paired_graph_fault_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry"},
             "paired_graph_snapshot_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts"},
             "prepared_lock_p06_harness_test.go": {"TestPreparedLockP06FirstYESLeaderKillOriginalRecovery"},

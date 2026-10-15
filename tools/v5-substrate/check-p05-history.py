@@ -281,7 +281,7 @@ def projected(observation):
     return result
 
 
-def operations(wire):
+def operations(wire, *, allow_present_correction=False):
     """Bounded original codec inspection, not planning or predicate evaluation."""
     c = Cursor(body(pgq(wire)["inner"], b"PGO\1"))
     c.take(41); c.number(); provenance = c.number()
@@ -299,8 +299,9 @@ def operations(wire):
         record = (c.number(), c.number(1), c.number(4), c.field(), c.number(), c.number(), c.number(1), c.number(1), c.number(1))
         binding = tuple(c.number() for _ in range(4))
         name, scalar, scalar_axis, value, present = c.field(), c.field(), c.number(4), c.number(), c.number(1)
-        require(scalar_axis == 0 and present == 0, "fixture scalar/operation flags")
+        require(scalar_axis == 0 and (present == 0 or allow_present_correction and kind == 5 and present == 1), "fixture scalar/operation flags")
         ops.append(dict(kind=kind, owner=owner, life=life, scope=scope, record=record, binding=binding, name=name, scalar=scalar, value=value))
+        if allow_present_correction:ops[-1]["present"]=present
     claims = c.number(4); require(claims <= 6, "fixture finite fresh claims")
     c.take(65 * claims); c.end()
     return provenance, ops

@@ -64,8 +64,15 @@ func nativeSelectorsQuery(t *testing.T, c *nativeSelectorsClient, q nativeSelect
 	return r, cut
 }
 
-func nativeSelectorsObserve(t *testing.T, c *nativeSelectorsClient, s nativeSelectorsSpec, handle uint64, expected int64, sequence *uint64) {
+func nativeSelectorsObserve(t *testing.T, c *nativeSelectorsClient, s nativeSelectorsSpec, handle uint64, expected int64, sequence *uint64, checks ...func(nativeFeedSpec, nativeFeedPoint, int64) error) {
 	t.Helper()
+	check := nativeFeedCheckPoint
+	if len(checks) > 1 || len(checks) == 1 && checks[0] == nil {
+		t.Fatal("one explicit fresh point validator required")
+	}
+	if len(checks) == 1 {
+		check = checks[0]
+	}
 	started := time.Now()
 	var count uint64
 	for {
@@ -75,7 +82,7 @@ func nativeSelectorsObserve(t *testing.T, c *nativeSelectorsClient, s nativeSele
 			t.Fatal("posting candidate/hydration omission")
 		}
 		for i, p := range r.Points {
-			if expected == 0 || p.ID != 7+2*count || r.Candidates[i] != p.ID || nativeFeedCheckPoint(nativeFeedSpec{Facts: s.Facts, CrossPercent: s.CrossPercent}, nativeFeedPoint{Fact: count, Entity: p}, expected) != nil {
+			if expected == 0 || p.ID != 7+2*count || r.Candidates[i] != p.ID || check(nativeFeedSpec{Facts: s.Facts, CrossPercent: s.CrossPercent}, nativeFeedPoint{Fact: count, Entity: p}, expected) != nil {
 				t.Fatal("complete native posting scan differs at exact cut", count, p)
 			}
 			count++

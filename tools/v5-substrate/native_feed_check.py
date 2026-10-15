@@ -272,7 +272,7 @@ def native_cell(c, component):
     return dict(zip(column.CELL,(bool(present),False,handle,handle if component == 3 and present else 0,revision,provenance)))
 
 
-def logical(frame, terminal, previous, spool):
+def logical(frame, terminal, previous, spool, *, guarded_updates=False):
     s,a = terminal["spec"],terminal["attempt"]
     phase,fact,ordinal = operation(s,a["Operation"])
     out,cdc = blob(frame["Outcome"]),blob(frame["CDC"])
@@ -310,7 +310,7 @@ def logical(frame, terminal, previous, spool):
     owner=(1,3,remote)[fact] if node else 7+2*fact
     life=owner+1;target=remote if cross(s,fact) else 3
     local=part==(8 if node and fact==2 else 3)
-    expected_keys=([(owner,0,1,"")] if node else [(owner,0,1,""),(owner,life,3,"p")] if phase=="create" else [(owner,life,3,"p")]) if local else []
+    expected_keys=([(owner,0,1,"")] if node else [(owner,0,1,""),(owner,life,3,"p")] if phase=="create" else [(owner,life,3,"p"),(owner,0,1,"")] if guarded_updates else [(owner,life,3,"p")]) if local else []
     expected_entities=[(owner,1 if node else 2,1,b"" if node else b"edge",0 if node else 1,0 if node else target,0 if node else 1,3 if node else 6,1 if node else 2)] if local and phase!="update" else []
     expected_lives=[(owner,life,0 if node else 2,0 if node else target+1)] if local and phase!="update" else []
     require(entities==expected_entities and lives==expected_lives and values==([5 if phase=="create" else 6] if local and not node and fact==0 else [])
@@ -320,7 +320,7 @@ def logical(frame, terminal, previous, spool):
         fields(actual," ".join(column.ROW));require((actual["Owner"],actual["Life"],actual["Component"],actual["Name"])==(owner,life,component,name)
             and actual["Before"]==before and actual["After"]==after and blob(actual["Axis"])==axis and blob(actual["Scope"])==scope,"typed raw cell/dictionary correspondence")
         require(after["Present"] and after["Revision"]>before["Revision"] and after["Provenance"]==ordinal and after["Handle"]==(owner+1 if component==1 else 5 if phase=="create" else 6),"exact intended native replacement")
-        if phase=="update":require(before["Present"] and before["Handle"]==5 and before["Provenance"]==4+fact,"actual5->6 before-image")
+        if phase=="update":require(before["Present"] and before["Handle"]==(owner+1 if component==1 and guarded_updates else 5) and before["Provenance"]==4+fact,"actual5->6/guarded-presence before-image")
         else:require(not before["Present"],"new row invented old state")
         require(actual["Kind"]==(1 if node else 2) and actual["Mode"]==(0 if node else 1) and actual["Interpretation"]==(3 if node else 6) and actual["Role"]==(1 if node else 2)
             and actual["Type"]==("" if node else "edge") and (actual["Source"],actual["Target"],actual["SourceLife"],actual["TargetLife"])==((0,0,0,0) if node else (1,target,2,target+1)),"actual immutable life/endpoint descriptor")
@@ -335,7 +335,7 @@ def result_index(out):
     return None
 
 
-def authenticate_frame(frame, previous, s, spool, fresh):
+def authenticate_frame(frame, previous, s, spool, fresh, *, guarded_updates=False):
     fields(frame,"Partition Index Root Outcome CDC Registration OriginalOutcome OriginalCDC Rows")
     part,index=integer(frame["Partition"]),integer(frame["Index"],1)
     require(part in (3,8) and frame["Outcome"] is not None and frame["CDC"] is not None,"missing native original is not empty")
@@ -368,7 +368,7 @@ def authenticate_frame(frame, previous, s, spool, fresh):
         if a["Classification"]=="commit":terminal=a
     if terminal is not None:
         require(cdc and original==index,"business effects occur at first native installation only")
-        if fresh:logical(frame,{"spec":s,"attempt":terminal},previous,spool)
+        if fresh:logical(frame,{"spec":s,"attempt":terminal},previous,spool,guarded_updates=guarded_updates)
         return
     require(not frame["Rows"] and image==previous,"protocol/refusal cannot alter business state")
     if out.startswith(b"GCS\1") or out.startswith(b"GRO\4"):
@@ -408,7 +408,8 @@ def sources(directory,end,spool):
     return _scalar_sources(directory,end,spool,cut,frames(end["spec"]))
 
 
-def _scalar_sources(directory,end,spool,decode_cut,frame_ceiling):
+def _scalar_sources(directory,end,spool,decode_cut,frame_ceiling,*,guarded_updates=False):
+    require(not guarded_updates or end["spec"]["family"]=="partition-local-create-update","fresh guarded-update source profile only")
     first=decode_cut(end["Initial"]);stages=("before-stop","reopened-replayed")
     stage,group,after,previous=0,0,first[0]["sourceIndex"],first[0]["image"]
     counts=[0,0]
@@ -426,7 +427,7 @@ def _scalar_sources(directory,end,spool,decode_cut,frame_ceiling):
                 require(v=={"Member":1+3*group+i,"Index":f["Index"],"Outcome":f["Outcome"],"CDC":f["CDC"]},"actual voter original/CDC mismatch")
             key=u64(part)+u64(f["Index"]);value=encoded(f);old=spool.find(b"frame",key)
             require(old is None or old==value,"physical reopen changed exact retained source frame")
-            authenticate_frame(f,previous,end["spec"],spool,old is None)
+            authenticate_frame(f,previous,end["spec"],spool,old is None,guarded_updates=guarded_updates)
             if old is None:
                 spool.insert(b"frame",key,value);spool.insert(b"original",key,digest(blob(f["Outcome"]))+digest(blob(f["CDC"])))
                 counts[group]+=len(f["Rows"] or [])
@@ -438,7 +439,7 @@ def _scalar_sources(directory,end,spool,decode_cut,frame_ceiling):
             if group==2:stage,group=stage+1,0
             after,previous=first[group]["sourceIndex"],first[group]["image"]
         else:require(p["Frames"],"physical source made no progress")
-    require(stage==2 and group==0 and counts==end["SourceRows"] and sum(counts)==3+3*end["spec"]["facts"],"complete raw/typed two-cohort prefix")
+    require(stage==2 and group==0 and counts==end["SourceRows"] and sum(counts)==3+(4 if guarded_updates else 3)*end["spec"]["facts"],"complete raw/typed two-cohort prefix including every guarded presence revision")
     for tx,wire in spool.walk(b"terminal"):
         a=decoded(wire);m=codec.manifest(blob(a["Manifest"]));d=codec.status(blob(a["Outcome"]))
         require(spool.lookup(b"phase",u64(3)+tx+b"\3")==blob(a["Outcome"]),"no orphan/missing retained decision")
@@ -453,13 +454,14 @@ def _scalar_sources(directory,end,spool,decode_cut,frame_ceiling):
     return counts
 
 
-def point(s,p,value,spool):
+def point(s,p,value,spool,*,guarded_updates=False):
     fields(p,"Fact Entity");fact=integer(p["Fact"],0,s["facts"]-1);r=p["Entity"]
     target=2*s["facts"]+7 if cross(s,fact) else 3
     require(r["id"]==7+2*fact and r["found"] is True and r["effective"] is True and r["kind"]==2 and r["type"]=="edge" and r["mode"]==1
             and r["source"]==1 and r["target"]==target and r["effectiveLife"]==8+2*fact and r["labels"]==[],"exact snapshot endpoint/life, no phantom entity")
     create=4+fact;ordinal=create+(s["facts"] if value==6 else 0);owner=7+2*fact
-    for name,component,at,kind in (("presence",1,create,"life"),("property",3,ordinal,"i64")):
+    presence=ordinal if guarded_updates and value==6 else create
+    for name,component,at,kind in (("presence",1,presence,"life"),("property",3,ordinal,"i64")):
         cell=r[name];fields(cell,"present null handle revision provenance kind i64")
         expected=decoded(spool.lookup(b"row",u64(at)+u64(owner)+bytes([component])))["After"]
         actual={"Present":cell["present"],"Null":cell["null"],"Handle":integer(cell["handle"],1),

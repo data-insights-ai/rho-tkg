@@ -7,6 +7,7 @@ Fresh/Stable/After observations borrowed from a selector receipt. All graph-size
 state occupies one caller-granted disposable comparison spool.
 """
 import hashlib
+from contextlib import nullcontext
 import json
 from pathlib import Path
 import sys
@@ -236,8 +237,9 @@ def metadata(end,spool,header):
         require(spool.lookup(b"selection-metadata",name.encode())==spool.lookup(b"barrier-metadata",phase.encode()),"actual opening metadata at exact generation barrier")
 
 
-def verify(directory,spool_directory,policy=None,family=FAMILY):
+def verify(directory,spool_directory,policy=None,family=FAMILY,*,shared_spool=None):
     require(family in (FAMILY,"late-correction-old-index","partition-local-create-update"),"explicit implemented scalar family")
+    require(shared_spool is None or family=="partition-local-create-update","shared complete-answer join is explicit to the fresh create/update family")
     stem="fdb-create-update" if family=="partition-local-create-update" else "fdb-correction" if family=="late-correction-old-index" else "fdb-columns"
     directory=Path(directory).resolve(strict=True)
     with (directory/(stem+"-result.json")).open("rb") as stream:
@@ -246,7 +248,7 @@ def verify(directory,spool_directory,policy=None,family=FAMILY):
     end=decoded(body[:-1]);validate_result(end,family)
     require(policy is not None or end["Spec"]["facts"]<1_000_000 and end["Spec"]["writers"]!=32,"large cell requires explicit finite comparison grant")
     policy=source.POLICY if policy is None else policy
-    with source.Spool(spool_directory,policy) as spool:
+    with (nullcontext(shared_spool) if shared_spool is not None else source.Spool(spool_directory,policy)) as spool:
         updates=end["Spec"]["facts"]//2 if family=="late-correction-old-index" else None
         source.attempts(directory,end,spool,stem+"-attempts.jsonl",stem.removeprefix("fdb-"),updates)
         header=source.source_fold(directory,end,spool,stem,updates)
@@ -263,6 +265,8 @@ def verify(directory,spool_directory,policy=None,family=FAMILY):
         if family=="partition-local-create-update":
             import fdb_create_update_check as workload
             additional=workload.business(directory,end,spool)
+            if shared_spool is not None:
+                additional.update(logicalAnswersSHA256=source.logical_answers(end,spool),retentionContract="snapshot-C-retained-full-prefix-v1")
         transport=raw.transport.verify(directory,end["Transport"]["Policy"],spool) if end["Version"]==2 else None
         # Fixed <=14 column calls and six source calls, not per-row samples.
         samples=[decoded(value) for _,value in spool.walk(b"column-timing")]
