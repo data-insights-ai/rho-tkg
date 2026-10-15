@@ -152,6 +152,9 @@ type graphSnapshotLifetime struct {
 	allowance             graphSnapshotOpening
 	deadline              time.Time
 	busy, closing, closed bool
+	// Fresh feed owners may carry a durable prepaid cleanup ticket. Nil keeps
+	// historical selector cleanup and its encoded authority unchanged.
+	ownedClose func() (graphSnapshotWork, error)
 }
 
 func newSnapshotLifetime(r *graphHistoryRead, p graphSnapshotCleanupPolicy) *graphSnapshotLifetime {
@@ -175,6 +178,15 @@ func (l *graphSnapshotLifetime) close() error {
 		return &graphSnapshotReadPending{l, errHistoryInUse}
 	}
 	l.closing = true
+	if l.ownedClose != nil {
+		work, err := l.ownedClose()
+		l.allowance.work = work
+		if err != nil {
+			return &graphSnapshotReadPending{l, err}
+		}
+		l.closed = true
+		return nil
+	}
 	if l.deadline.IsZero() {
 		l.deadline = time.Now().Add(time.Duration(l.policy.Millis) * time.Millisecond)
 	}
@@ -441,6 +453,22 @@ func (s *graphHistoryRetention) OpenGraphSnapshot(ctx context.Context, q graphSn
 	if err := ctx.Err(); err != nil {
 		return nil, errors.Join(err, lifetime.close())
 	}
+	return s.finishGraphSnapshot(ctx, r, selected, opening, lifetime)
+}
+
+// Feed callers reach this only AFTER their exact factory identity, shared pin
+// and cursor have been natively published. This grants no acquisition itself.
+func (s *graphHistoryRetention) observeGraphSnapshot(ctx context.Context, r *graphHistoryRead, q graphSnapshotRequest, p graphSnapshotPolicy, work graphSnapshotWork, lifetime *graphSnapshotLifetime) (*graphSnapshot, error) {
+	if s == nil || r == nil || ctx == nil || p.validate() != nil || q.validate() != nil {
+		return nil, errInvalid
+	}
+	if lifetime == nil {
+		lifetime = newSnapshotLifetime(r, p.Cleanup)
+	}
+	return s.finishGraphSnapshot(ctx, r, graphSnapshotSelection{Request: q, Selected: r.id.Cut}, &graphSnapshotOpening{policy: p, work: work}, lifetime)
+}
+
+func (s *graphHistoryRetention) finishGraphSnapshot(ctx context.Context, r *graphHistoryRead, selected graphSnapshotSelection, opening *graphSnapshotOpening, lifetime *graphSnapshotLifetime) (*graphSnapshot, error) {
 	// An acknowledged acquisition is not replaced by submitted owner bytes.
 	// Observe the exact durable owner/certificate/config/control records before
 	// returning a usable session, and keep the genuine identity on cleanup loss.
@@ -489,7 +517,7 @@ func (s *graphHistoryRetention) OpenGraphSnapshot(ctx context.Context, q graphSn
 		return nil, errors.Join(observeErr, lifetime.close())
 	}
 	selected = observed
-	return &graphSnapshot{owner: r, policy: p, selection: selected, work: opening.work, lifetime: lifetime}, nil
+	return &graphSnapshot{owner: r, policy: opening.policy, selection: selected, work: opening.work, lifetime: lifetime}, nil
 }
 
 func (s *graphHistoryRetention) snapshotReceiptIn(tr fdb.ReadTransaction, x transaction, body []byte) (graphCostParallelProof, error) {

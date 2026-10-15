@@ -39,6 +39,14 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) == 2 && (os.Args[1] == "feed-client-hold" || os.Args[1] == "feed-client-resume") {
+		db, err := openDB()
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		return runGraphFeedChild(db, os.Args[1] == "feed-client-resume")
+	}
 	if len(os.Args) == 2 && os.Args[1] == "workload-cell" {
 		raw := os.Getenv("RHO_GRAPH_WORKLOAD_SPEC")
 		if len(raw) == 0 || len(raw) > 1024 {
@@ -49,6 +57,18 @@ func run() error {
 		}
 		if err := json.Unmarshal([]byte(raw), &family); err != nil {
 			return errInvalid
+		}
+		if family.Family == graphFeedWorkloadFamily {
+			spec, run, err := graphFeedWorkloadSpecFromEnv()
+			if err != nil {
+				return err
+			}
+			db, err := openDB()
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			return runGraphFeedWorkload(db, spec, run)
 		}
 		if family.Family == graphSelectorsFamily {
 			spec, run, err := graphSelectorsSpecFromEnv()

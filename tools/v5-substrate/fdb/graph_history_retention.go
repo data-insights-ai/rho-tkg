@@ -732,20 +732,7 @@ func (r *graphHistoryRead) open(ctx context.Context, token graphHistoryToken) er
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		o, found, err := r.s.owner(tr, token.Request)
-		if err != nil {
-			return nil, err
-		}
-		if !found {
-			return nil, errUnavailable
-		}
-		if o.Kind != "pin" || !sameCertificate(o.Cut, token.Cut) || !historySecret(o.Secret, token.Secret) {
-			return nil, errMismatch
-		}
-		if o.State != historyActive {
-			return nil, errHistoryExpired
-		}
-		return nil, r.s.acquireIn(tr, r.id)
+		return nil, r.openIn(tr, token)
 	})
 	if err != nil {
 		err = graphHistoryCommitError(err)
@@ -758,6 +745,33 @@ func (r *graphHistoryRead) open(ctx context.Context, token graphHistoryToken) er
 		return errors.Join(err, historyReadCleanup(r))
 	}
 	return nil
+}
+
+// Pin authentication and owner acquisition share the native transaction. The
+// historical open wrapper retains its existing IO; fresh feed publication can
+// atomically install a pin, this SAME reader and its original cursor.
+func (r *graphHistoryRead) openIn(tr fdb.Transaction, token graphHistoryToken) error {
+	if r == nil || r.s == nil || !historyOwnerValid(r.id) || r.id.Kind != "read" || r.id.State != historyActive || !sameCertificate(r.id.Cut, token.Cut) || r.id.PinRequest != token.Request {
+		return errInvalid
+	}
+	body, err := wire(token)
+	if err != nil || sha256.Sum256(body) != r.id.PinDigest {
+		return errors.Join(errMismatch, err)
+	}
+	o, found, err := r.s.owner(tr, token.Request)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return errUnavailable
+	}
+	if o.Kind != "pin" || !sameCertificate(o.Cut, token.Cut) || !historySecret(o.Secret, token.Secret) {
+		return errMismatch
+	}
+	if o.State != historyActive {
+		return errHistoryExpired
+	}
+	return r.s.acquireIn(tr, r.id)
 }
 
 func (r *graphHistoryRead) check(tr fdb.ReadTransaction) error {

@@ -206,6 +206,11 @@ func (h *harness) nativeLives(tr fdb.ReadTransaction, e endpoint) (int, bool, er
 	return live, matched, nil
 }
 func (h *harness) checkGraphNative(tr fdb.ReadTransaction, x transaction) (string, error) {
+	if h.config.Cost.Version == 5 {
+		if err := h.graphFeedWorkloadBindingIn(tr); err != nil {
+			return "", err
+		}
+	}
 	if h.config.Cost.Version == 3 {
 		if err := h.graphSelectorsBindingIn(tr); err != nil {
 			return "", err

@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Authored offline guards only; synthetic bytes are never SDK/feed evidence."""
+import base64
+import copy
+import hashlib
+from pathlib import Path
+import tempfile
+import unittest
+
+import fdb_feed_check as check
+from comparison_spool import Policy, Spool, SpoolError
+
+
+def b64(body):
+    return base64.b64encode(body).decode()
+
+
+def fixture():
+    c = {"Graph": "guard-feed", "Topology": 1, "Epochs": [7, 11]}
+    cut = {"Graph": c["Graph"], "Topology": 1, "Epochs": [7, 11], "Scope": "AAE=", "Round": 2, "Groups": [1, 0]}
+    final = cut | {"Round": 4, "Groups": [3, 0]}
+    end = {"Config": c, "Old": cut, "Final": final, "Spec": {"facts": 20}, "Binding": {"Read": {}},
+           "Feed": {"Token": {"Original": [9] * 32}, "Original": {"Policy": {"PageRows": 8, "PageBytes": 64 << 10}}}}
+    rows, old = [], []
+    for i in range(2):
+        logical = f"edge/guard-{i}"
+        before = {"Value": 5, "Version": 1, "Round": 2, "Deleted": False, "TxID": f"create-{i}"}
+        after = before | {"Value": 6, "Version": 2, "Round": 3 + i, "TxID": f"update-{i}"}
+        outcome = {"Commit": True, "Round": 3 + i, "Digest": [i + 1] * 32, "ID": f"update-{i}", "Request": f"request/update-{i}", "Reason": "", "Coordinator": 0, "Sequence": i + 2}
+        group = {"Tx": {"ID": outcome["ID"], "Request": outcome["Request"]}, "Outcome": outcome,
+                 "Writes": [{"Group": 0, "Key": logical, "Before": before, "After": after}]}
+        row = {"Group": 0, "Key": b64(check.prefix(c) + f'changes/{i + 2:016x}/'.encode() + outcome["Request"].encode().hex().encode()), "Value": b64(check.go_json(group)),
+               "IDKey": b64(check.key(c, 0, "id", outcome["ID"])), "IDValue": b64(check.go_json(outcome)),
+               "RequestKey": b64(check.key(c, 0, "request", outcome["Request"])), "RequestValue": b64(check.go_json(outcome))}
+        rows.append(row)
+        old.append((check.key(c, 0, "current", logical), check.go_json(before)))
+    page = {"Version": 1, "Request": "page-0", "Original": [9] * 32, "From": [1, 0], "Next": [3, 0], "Boundary": final,
+            "Last": check.decoded(check.blob(rows[-1]["Value"]))["Outcome"], "Rows": rows, "EOF": True}
+    return end, {"Page": page, "Record": {"Key": b64(check.feed_key(c, "page/workload", "page-0")), "Value": b64(check.go_json(page))}, "Replay": False}, old
+
+
+def seed(spool, delivery, old):
+    zero = {"Commit": False, "Round": 0, "Digest": [0] * 32, "ID": "", "Request": "", "Reason": "", "Coordinator": 0, "Sequence": 0}
+    spool.insert(b"feed-control-state", b"last", check.go_json(zero))
+    for key, value in old:
+        spool.insert(b"feed-replica", key, value)
+    for row in delivery["Page"]["Rows"]:
+        body = check.blob(row["Value"])
+        outcome = check.decoded(body)["Outcome"]
+        spool.insert(b"native-cdc", check.blob(row["Key"]), body)
+        spool.insert(b"feed-sequence", b"\0" + check.u64(outcome["Sequence"]), body)
+        spool.insert(b"attempt-id", check.blob(row["IDKey"]), check.blob(row["IDValue"]))
+        spool.insert(b"attempt-request", check.blob(row["RequestKey"]), check.blob(row["RequestValue"]))
+
+
+class FeedOracleGuards(unittest.TestCase):
+    def test_complete_exact_page_and_explicit_same_original_replay(self):
+        end, delivery, old = fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            with Spool(directory, Policy(4 << 20, 64 << 10, 4096, 512 << 10)) as spool:
+                seed(spool, delivery, old)
+                page, fresh = check.feed_page(delivery, end, spool, [1, 0])
+                self.assertTrue(fresh)
+                self.assertEqual(page["Next"], [3, 0])
+                replay, fresh = check.feed_page(delivery | {"Replay": True}, end, spool)
+                self.assertFalse(fresh)
+                self.assertEqual(replay, page)
+                with self.assertRaises(ValueError):
+                    check.feed_page(delivery, end, spool)  # Duplicate must declare replay.
+                changed = copy.deepcopy(delivery)
+                changed["Replay"] = True
+                changed["Page"]["Next"] = [2, 0]
+                changed["Record"]["Value"] = b64(check.go_json(changed["Page"]))
+                with self.assertRaises(ValueError):
+                    check.feed_page(changed, end, spool)
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_equal_count_wrong_before_pair_order_boundary_and_truncation(self):
+        end, delivery, old = fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            changes = []
+            wrong = copy.deepcopy(delivery)
+            group = check.decoded(check.blob(wrong["Page"]["Rows"][0]["Value"]))
+            group["Writes"][0]["Before"]["Value"] = 99
+            wrong["Page"]["Rows"][0]["Value"] = b64(check.go_json(group))
+            changes.append(wrong)
+            wrong = copy.deepcopy(delivery)
+            wrong["Page"]["Rows"][0]["RequestValue"] = b64(b"foreign-original")
+            changes.append(wrong)
+            wrong = copy.deepcopy(delivery)
+            wrong["Page"]["Rows"].reverse()
+            changes.append(wrong)
+            wrong = copy.deepcopy(delivery)
+            wrong["Page"]["Rows"][1] = copy.deepcopy(wrong["Page"]["Rows"][0])
+            changes.append(wrong)
+            wrong = copy.deepcopy(delivery)
+            wrong["Page"]["Boundary"]["Groups"] = [4, 0]
+            changes.append(wrong)
+            for changed in changes:
+                changed["Record"]["Value"] = b64(check.go_json(changed["Page"]))
+                with Spool(directory, Policy(4 << 20, 64 << 10, 4096, 512 << 10)) as spool:
+                    seed(spool, delivery, old)
+                    with self.assertRaises((ValueError, SpoolError)):
+                        check.feed_page(changed, end, spool, [1, 0])
+            missing = Path(directory) / "partial.jsonl"
+            missing.write_bytes(b'{"Type":"feed-page"}')
+            with self.assertRaises(ValueError):
+                list(check.lines(missing, 1))
+            with self.assertRaises(ValueError):
+                check.child_input({}, end)
+
+
+if __name__ == "__main__":
+    unittest.main()
