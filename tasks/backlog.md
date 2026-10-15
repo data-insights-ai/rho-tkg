@@ -548,7 +548,15 @@ parents were verified, with pinned parser/format and whitespace checks only.
 Actual transfer and capacity remain open: import plus undo reservation bytes
 must also fit the unchanged 1 TiB ceiling. A conservative upper bound must
 include actual packing, ordinary retained state, the completed first move and
-the second move's active reservations before the driver grows. At 1M, HOME issuance also
+the second move's active reservations before the driver grows. Source review
+rules out smaller page grants alone for the mandatory 1M/100%-cross shape:
+full rewritten index paths enter both the retained manifest and local kernel.
+Those R/K records alone have a conservative 32,734,243,584-byte lower bound
+after the first 262,144 creates. Current per-page import/undo credits already
+reserve more than 1 TiB for those bytes at either 16 or 32 KiB, before graph
+pages and other retained state. Resolve this reservation/representation cost
+without raising ceilings or discarding originals before adding the workload.
+At 1M, HOME issuance also
 spans two actual range publications, both of which must move under distinct
 original identities before the driver claims the full routing transition.
 FDB feed business accounting is source-integrated at `4218c9a7`: an explicit
