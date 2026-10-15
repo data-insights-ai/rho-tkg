@@ -537,8 +537,18 @@ composition and matrix qualification remain open. Source feasibility review
 found that graph content still emits one logical record per page: at 1M facts,
 even the first HOME range at 100% cross has at least 5,097,148 graph pages before
 preparation/history. Import plus undo would exceed the hard 10M retained-log
-entry ceiling. A fresh bounded graph batch with genuine shared staging is
-required; larger caller grants alone cannot solve it. At 1M, HOME issuance also
+entry ceiling. Bounded graph batching is now source-integrated at `6b1eea94`:
+an explicit further agreement uses RMB1 envelopes and GMP5 progress, separating
+logical cursor positions from native import/undo counts. One shared stage sees
+earlier tree and fragment writes; source page/graph work and output allowances
+accumulate across the batch. Packing separates record families, limits component
+envelopes to eight subpages and all envelopes to 32/64 KiB; the existing
+128-write undo ceiling remains. All 13 frozen blobs and nine complete current
+parents were verified, with pinned parser/format and whitespace checks only.
+Actual transfer and capacity remain open: import plus undo reservation bytes
+must also fit the unchanged 1 TiB ceiling. A conservative upper bound must
+include actual packing, ordinary retained state, the completed first move and
+the second move's active reservations before the driver grows. At 1M, HOME issuance also
 spans two actual range publications, both of which must move under distinct
 original identities before the driver claims the full routing transition.
 FDB feed business accounting is source-integrated at `4218c9a7`: an explicit

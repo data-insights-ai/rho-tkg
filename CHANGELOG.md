@@ -21,10 +21,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   fresh agreement adds compact recovery-credit spans and immutable native lineage
   references, with at most 32 original-history subframes per 64 KiB page. Its
   caller-declared page grant is bounded by 2^24 and checked against unchanged
-  aggregate store/log quotas before fencing. Partial records continue only after
-  their predecessor fragments are installed; duplicate original bytes coalesce
+  aggregate store/log quotas before fencing. Original-history fragments continue
+  only after their predecessors are installed; duplicate original bytes coalesce
   while conflicting payloads refuse. These are finite internal limits, not
-  arbitrary-size rebalance or performance claims; new guards remain unexecuted.
+  arbitrary-size rebalance or performance claims. A further explicit agreement
+  groups bounded graph subpages into one native import with shared staged reads
+  and cumulative work budgets. Native batch counts remain separate from logical
+  cursors; family packing and the existing 128-write undo limit bound each step.
+  New guards remain unexecuted and large-transfer capacity remains unqualified.
   Logical-group retirement, retention/GC, broader fault evidence and full V2
   remain open.
 
