@@ -153,14 +153,14 @@ def authenticate_cut(selected,end,spool):
         require(cert["image"]==actual,"selector certificate does not name its actual retained native root")
 
 
-def reads(directory,end,spool,*,family=FAMILY):
+def reads(directory,end,spool,*,family=FAMILY,guarded_updates=False,frame_ceiling=None):
     require(family in (FAMILY,"partition-local-create-update","immutable-columns","late-correction-old-index"),"explicit implemented source observation schedule")
     stages=STAGES if family==FAMILY else ("old-fresh","same-pin-old-after-update","fresh-current","reopened-old","reopened-final")
     modes=MODES if family==FAMILY else (1,0,1,0,0)
     queries=16 if family==FAMILY else 5
     s=end["spec"];stage_index=-1;current=None;owners={};last_call=0;previous_trace=None;extra=0
     completed=set();published={};timings=[];observations={};query_count=0
-    ceiling=frames(s) if family==FAMILY else (16*s["facts"]+3)*10+64*10+4096
+    ceiling=(frames(s) if family==FAMILY else (16*s["facts"]+3)*10+64*10+4096) if frame_ceiling is None else integer(frame_ceiling,1,(1<<39)//260)
     passes=9 if family=="late-correction-old-index" else queries
     bound=passes*((s["facts"]+15)//16+end["Admission"]["BudgetSeconds"]//60+16)+4*((ceiling+3)//4)+64
     for trace in lines(directory/"reads.jsonl",bound*8+256):
@@ -267,14 +267,14 @@ def reads(directory,end,spool,*,family=FAMILY):
                     require(not scoped and not owner["eof"] and len(r["Points"] or [])==len(r["Candidates"] or []),"posting/hydration mismatch or scan after EOF")
                     for entity,candidate in zip(r["Points"] or [],r["Candidates"] or [],strict=True):
                         fact=o["scan"];require(value!=0 and candidate==entity["id"]==7+2*fact,"posting exact-set order/phantom/omission")
-                        point(s,entity,value,spool,guarded_updates=family in ("partition-local-create-update","immutable-columns","late-correction-old-index"));spool.insert(b"selector-row/"+stage.encode(),u64(fact),encoded(entity));o["scan"]+=1
+                        point(s,entity,value,spool,guarded_updates=guarded_updates or family in ("partition-local-create-update","immutable-columns","late-correction-old-index"));spool.insert(b"selector-row/"+stage.encode(),u64(fact),encoded(entity));o["scan"]+=1
                     require(type(r["EOF"]) is bool and (r["EOF"] or r["Points"]),"nonprogress native cursor")
                     owner["eof"]=r["EOF"];o["scanNanos"]+=trace["OperationNanos"]
                     if r["EOF"]:require(o["scan"]==(0 if value==0 else s["facts"]),"complete posting EOF exact cardinality")
                 else:
                     ids=([1 if stage.endswith("-3") else 2*s["facts"]+7] if scoped else [1,3,2*s["facts"]+7,7,7+2*(s["facts"]-1),6+2*s["facts"]])
                     require(q["IDs"]==ids and len(r["Points"] or [])==len(ids) and (scoped and o["scope"] or not scoped and owner["eof"]),"fixed complete points/scope proof")
-                    for identity,entity in zip(ids,r["Points"],strict=True):require(identity==entity["id"],"point reordered");point(s,entity,value,spool,guarded_updates=family in ("partition-local-create-update","immutable-columns","late-correction-old-index"))
+                    for identity,entity in zip(ids,r["Points"],strict=True):require(identity==entity["id"],"point reordered");point(s,entity,value,spool,guarded_updates=guarded_updates or family in ("partition-local-create-update","immutable-columns","late-correction-old-index"))
                     require(not o["points"],"duplicate point completion");o["points"]=True;o["pointNanos"]+=trace["OperationNanos"]
                     if family=="late-correction-old-index":o["pointWork"]=r["Work"]
             elif action in ("close","release"):
@@ -345,12 +345,16 @@ def selector_timings(samples):
 
 
 def verify(directory,spool_directory,policy,*,binary_sha=None,expected_spec=None,expected_run=None,expected_deadline=None,expected_seconds=None,shared_spool=None):
+    return _verify_selectors(directory,spool_directory,policy,binary_sha=binary_sha,expected_spec=expected_spec,expected_run=expected_run,expected_deadline=expected_deadline,expected_seconds=expected_seconds,shared_spool=shared_spool)
+
+
+def _verify_selectors(directory,spool_directory,policy,*,binary_sha=None,expected_spec=None,expected_run=None,expected_deadline=None,expected_seconds=None,shared_spool=None,_shape=shape,_format=FORMAT,_frames=frames,guarded_updates=False):
     directory=Path(directory).resolve(strict=True)
     with (directory/"result.json").open("rb") as source:body=source.read(LINE+1)
     require(body.endswith(b"\n") and len(body)<=LINE,"bounded complete native terminal result")
-    end=decoded(body[:-1]);s=shape(end["spec"]);a=end["Admission"]
+    end=decoded(body[:-1]);s=_shape(end["spec"]);a=end["Admission"]
     integer(a["Version"],1,1);integer(a["Topology"],1);integer(a["DeadlineUnixNanos"],1,(1<<63)-1)
-    require(integer(end["version"],1,1) and end["format"]==FORMAT and end["engine"]=="native-raft" and end["FramesCeiling"]==frames(s)
+    require(integer(end["version"],2 if guarded_updates else 1,2 if guarded_updates else 1) and end["format"]==_format and end["engine"]=="native-raft" and end["FramesCeiling"]==_frames(s)
             and end["RetentionContract"]=="snapshot-C-retained-full-prefix-v1","exact source family/retention/finite stage admission")
     require(a["Version"]==1 and a["Family"]==FAMILY and a["Spec"]==s and digest(encoded(a))==array(end["AdmissionSHA256"],32)
             and integer(a["BudgetSeconds"],1,MAX_SECONDS)*1000>integer(a["CausalMinimumMillis"]) and a["CausalMinimumMillis"]==5*a["Transport"]["targetRTTMillis"],"immutable actual graph/binary/run/budget/transport")
@@ -371,17 +375,18 @@ def verify(directory,spool_directory,policy,*,binary_sha=None,expected_spec=None
     selected=codec.owned_transport(end["Transport"],{"version":1,"family":codec.FAMILY,"facts":s["facts"],"crossPercent":s["crossPercent"],"writers":s["writers"],"layout":s["layout"]})
     require(selected==a["Transport"],"same actual scheduler before/after restart")
     for cohort in end["Transport"]:
-        require(all(cohort[n]["Admitted"]<=frames(s)*1024 for n in ("Raft","SourceRequest","SourceReply"))
-                and all(cohort[n]["AttemptedFrames"]<=frames(s)*1024 for n in ("PipeReads","PipeWrites")),"exact selectors frame grants")
+        require(all(cohort[n]["Admitted"]<=_frames(s)*1024 for n in ("Raft","SourceRequest","SourceReply"))
+                and all(cohort[n]["AttemptedFrames"]<=_frames(s)*1024 for n in ("PipeReads","PipeWrites")),"exact selectors frame grants")
     with (nullcontext(shared_spool) if shared_spool is not None else Spool(spool_directory,policy)) as spool:
         grants(directory,end,spool);claims(directory,end,spool)
-        scalar._scalar_attempts(directory,end,spool)
-        scalar._scalar_sources(directory,end,spool,cut,frames(s))
-        timing=reads(directory,end,spool)
-        scalar._scalar_columns(directory,end,spool,cut,frames(s),end["Old"])
+        if guarded_updates:scalar._scalar_attempts(directory,end,spool,business_only=True)
+        else:scalar._scalar_attempts(directory,end,spool)
+        scalar._scalar_sources(directory,end,spool,cut,_frames(s),guarded_updates=guarded_updates)
+        timing=reads(directory,end,spool,guarded_updates=True,frame_ceiling=_frames(s)) if guarded_updates else reads(directory,end,spool)
+        scalar._scalar_columns(directory,end,spool,cut,_frames(s),end["Old"])
         processes(directory,end,spool)
-        answer=logical_answers(end,spool)
-        count=2*s["facts"]+3;latency={}
+        answer=logical_answers(end,spool,guarded_updates=guarded_updates)
+        count=2*s["facts"]+(0 if guarded_updates else 3);latency={}
         for index,(key,_) in enumerate(spool.walk(b"latency"),1):
             for percentile in (50,95,99):
                 if index==(count*percentile+99)//100:latency[f"p{percentile}Nanos"]=int.from_bytes(key[:8],"big")

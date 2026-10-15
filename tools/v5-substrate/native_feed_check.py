@@ -102,7 +102,7 @@ def attempts(directory, end, spool):
     return _scalar_attempts(directory, end, spool)
 
 
-def _scalar_attempts(directory, end, spool):
+def _scalar_attempts(directory, end, spool, *, business_only=False):
     s, total, extra = end["spec"], 0, 0
     useful=s["facts"]+_scalar_updates(s)+3
     for a in lines(directory/"attempts.jsonl", 16*s["facts"]+4):
@@ -161,7 +161,7 @@ def _scalar_attempts(directory, end, spool):
         start,stop,elapsed = [integer(record[k],0,(1<<63)-1) for k in ("StartNanos","StopNanos","ElapsedNanos")]
         require(stop-start == elapsed > 0 and stop <= end["TotalNanos"] and 0 <= integer(sample["admissionNanos"]) <= elapsed,
                 "complete queued logical-operation latency includes all retries/waits")
-        spool.insert(b"latency",u64(elapsed)+u64(ordinal),b"1")
+        if not business_only or phase!="setup":spool.insert(b"latency",u64(elapsed)+u64(ordinal),b"1")
         spool.insert(b"completed",u64(ordinal),encoded(sample));counts[client]+=1;completed+=1
     require(completed == useful and counts == end["Completed"] and all(counts[i] > 0 for i in range(s["writers"])),"exact admitted client census")
     expected = [0]*32
@@ -418,7 +418,7 @@ def sources(directory,end,spool):
 
 
 def _scalar_sources(directory,end,spool,decode_cut,frame_ceiling,*,guarded_updates=False):
-    require(not guarded_updates or end["spec"]["family"] in ("partition-local-create-update","immutable-columns","late-correction-old-index"),"fresh guarded-update source profile only")
+    require(not guarded_updates or (end["spec"]["family"] in ("partition-local-create-update","immutable-columns","late-correction-old-index") or end["spec"]["version"]==2 and end["spec"]["family"] in ("snapshot-to-feed","snapshot-selectors")),"fresh guarded-update source profile only")
     first=decode_cut(end["Initial"]);stages=("before-stop","reopened-replayed")
     stage,group,after,previous=0,0,first[0]["sourceIndex"],first[0]["image"]
     counts=[0,0]
@@ -483,13 +483,13 @@ def point(s,p,value,spool,*,guarded_updates=False):
     return fact
 
 
-def points(directory,end,spool):
+def points(directory,end,spool,*,guarded_updates=False):
     counts={name:0 for name in ("old-after-update","final","reopened-old","reopened-final")}
     for r in lines(directory/"points.jsonl",4*end["spec"]["facts"]+1):
         stage=r["Stage"];require(stage in counts,"actual old/current/reopened point phase")
         expected=end["Snapshot"] if stage.endswith("old") or stage=="old-after-update" else end["Final"]
         require(r["Cut"]==expected,"point substituted requested certificate")
-        fact=point(end["spec"],r["Point"],5 if expected==end["Snapshot"] else 6,spool)
+        fact=point(end["spec"],r["Point"],5 if expected==end["Snapshot"] else 6,spool,guarded_updates=guarded_updates)
         spool.insert(b"point",stage.encode()+u64(fact),b"1");counts[stage]+=1
     require(all(n==end["spec"]["facts"] for n in counts.values()),"complete exact point census")
 
@@ -582,7 +582,7 @@ def payload_catalog(reply,s,fact):
             and reply["Schemas"]==[{"Name":"p","Owner":2,"Type":4,"Cardinality":1,"Unique":0}],"complete exact original-root entity/life/schema/value payload, no current substitution")
 
 
-def feed(directory,end,spool):
+def feed(directory,end,spool,*,guarded_updates=False):
     original,manifest,issuer,pin,positions=definition(end)
     token=cursor(checked(blob(end["Token"]),b"GFT\1",65536))
     require(token.field(32768)==original,"token changed original feed definition")
@@ -616,7 +616,7 @@ def feed(directory,end,spool):
             require(q["From"]==snapshot_next and a["Next"]==min(snapshot_next+16,end["spec"]["facts"])
                     and len(a["Points"])==a["Next"]-snapshot_next and a["EOF"] is (a["Next"]==end["spec"]["facts"]),"exact held snapshot-C pagination")
             for offset,p in enumerate(a["Points"]):
-                fact=point(end["spec"],p,5,spool);require(fact==snapshot_next+offset,"snapshot omission/duplication");spool.insert(b"snapshot-point",u64(fact),b"1")
+                fact=point(end["spec"],p,5,spool,guarded_updates=guarded_updates);require(fact==snapshot_next+offset,"snapshot omission/duplication");spool.insert(b"snapshot-point",u64(fact),b"1")
             snapshot_next=a["Next"]
         elif action=="page":
             wire=blob(a["Page"]);hash_=digest(wire);p=page(wire)
@@ -661,9 +661,22 @@ def feed(directory,end,spool):
                         b=raw.fixed_body(f["Outcome"],b"GRO\4",120)
                         require(digest(b"rho-tkg:cross-transaction-id:v1\0"+bytes.fromhex(raw.GRAPH)+u64(part)+b[25:41])[:16]==p["tx"],"actual local business request-qualified envelope identity")
                     for row in source["Rows"] or []:
-                        fact=(row["Owner"]-7)//2;require(row["Component"]==3 and row["Name"]=="p" and row["Before"]["Value"]==5 and row["After"]["Value"]==6,"only authentic post-C5->6 update")
-                        spool.insert(b"feed-update",u64(fact),encoded(row))
-                        require(business_fact is None,"one complete fixed useful transaction per native business envelope");business_fact=fact
+                        fact=(row["Owner"]-7)//2
+                        if guarded_updates:
+                            require(0<=fact<end["spec"]["facts"] and business_fact in (None,fact),"complete single useful guarded transaction, no collateral effect")
+                            ordinal=4+end["spec"]["facts"]+fact
+                            require(encoded(row)==spool.lookup(b"row",u64(ordinal)+u64(row["Owner"])+bytes([row["Component"]])),"feed row equals actual authenticated original")
+                            if row["Component"]==3:
+                                require(row["Name"]=="p" and row["Before"]["Value"]==5 and row["After"]["Value"]==6,"actual Set5->6")
+                                spool.insert(b"feed-update",u64(fact),encoded(row))
+                            else:
+                                require(row["Component"]==1 and row["Name"]=="" and row["Before"]["Handle"]==row["After"]["Handle"]==row["Owner"]+1,"actual same-life endpoint guard presence")
+                                spool.insert(b"feed-presence",u64(fact),encoded(row))
+                            business_fact=fact
+                        else:
+                            require(row["Component"]==3 and row["Name"]=="p" and row["Before"]["Value"]==5 and row["After"]["Value"]==6,"only authentic post-C5->6 update")
+                            spool.insert(b"feed-update",u64(fact),encoded(row))
+                            require(business_fact is None,"one complete fixed useful transaction per native business envelope");business_fact=fact
             for group in range(2):require(p["next"][group]==covered.get(group,positions[group]),"omitted participant advanced cursor")
             if p["kind"]==2:require(set(covered)=={0,1},"half transaction published")
             require(p["kind"] in (0,1,2),"this family has no manufactured move event")
@@ -686,6 +699,8 @@ def feed(directory,end,spool):
     require(newpages==end["Pages"] and business==end["BusinessPages"]==end["spec"]["facts"] and progress==end["ProgressPages"]
             and snapshot_next==end["spec"]["facts"] and replays>=3 and opened>=2 and released,"complete genuine snapshot/feed/loss/replay/terminal lifecycle")
     for fact in range(end["spec"]["facts"]):spool.lookup(b"snapshot-point",u64(fact));spool.lookup(b"feed-update",u64(fact))
+    if guarded_updates:
+        for fact in range(end["spec"]["facts"]):spool.lookup(b"feed-presence",u64(fact))
     last=page(spool.lookup(b"feed-page",spool.lookup(b"feed-sequence",u64(sequence))))
     require(last["eof"]==1,"no completed final feed boundary")
     for part in (3,8):spool.lookup(b"pin-terminal",u64(part)+pin+digest(manifest))
@@ -816,12 +831,16 @@ def processes(directory,end,spool):
 
 
 def verify(directory,spool_directory,policy,*,binary_sha=None,expected_spec=None,expected_run=None,expected_deadline=None,expected_seconds=None,shared_spool=None):
+    return _verify_feed(directory,spool_directory,policy,binary_sha=binary_sha,expected_spec=expected_spec,expected_run=expected_run,expected_deadline=expected_deadline,expected_seconds=expected_seconds,shared_spool=shared_spool)
+
+
+def _verify_feed(directory,spool_directory,policy,*,binary_sha=None,expected_spec=None,expected_run=None,expected_deadline=None,expected_seconds=None,shared_spool=None,_shape=shape,_format=FORMAT,_frames=frames,guarded_updates=False):
     directory=Path(directory).resolve(strict=True)
     with (directory/"result.json").open("rb") as source:body=source.read(LINE+1)
     require(body.endswith(b"\n") and len(body)<=LINE,"bounded complete native terminal result")
-    end=decoded(body[:-1]);s=shape(end["spec"]);a=end["Admission"]
-    require(integer(end["version"],1,1) and end["format"]==FORMAT and end["engine"]=="native-raft" and end["RetentionContract"]=="snapshot-C-plus-feed-v1"
-            and end["FramesCeiling"]==frames(s) and end["PageCeiling"]==32*s["facts"]+256,"exact source family/finite admission/retention profile")
+    end=decoded(body[:-1]);s=_shape(end["spec"]);a=end["Admission"]
+    require(integer(end["version"],2 if guarded_updates else 1,2 if guarded_updates else 1) and end["format"]==_format and end["engine"]=="native-raft" and end["RetentionContract"]=="snapshot-C-plus-feed-v1"
+            and end["FramesCeiling"]==_frames(s) and end["PageCeiling"]==32*s["facts"]+256,"exact source family/finite admission/retention profile")
     require(a["Version"]==1 and a["Family"]==FAMILY and a["Spec"]==s and digest(encoded(a))==array(end["AdmissionSHA256"],32)
             and integer(a["BudgetSeconds"],1,MAX_SECONDS)*1000>integer(a["CausalMinimumMillis"])
             and a["CausalMinimumMillis"]==5*a["Transport"]["targetRTTMillis"],"immutable actual graph/binary/run/budget/transport binding")
@@ -843,12 +862,18 @@ def verify(directory,spool_directory,policy,*,binary_sha=None,expected_spec=None
     selected=codec.owned_transport(end["Transport"],{"version":1,"family":codec.FAMILY,"facts":s["facts"],"crossPercent":s["crossPercent"],"writers":s["writers"],"layout":s["layout"]})
     require(selected==a["Transport"],"same actual two-cohort scheduler after restart")
     for cohort in end["Transport"]:
-        require(all(cohort[name]["Admitted"]<=frames(s)*1024 for name in ("Raft","SourceRequest","SourceReply"))
-                and all(cohort[name]["AttemptedFrames"]<=frames(s)*1024 for name in ("PipeReads","PipeWrites")),"exact feed family transport grant, not another family's upper bound")
+        require(all(cohort[name]["Admitted"]<=_frames(s)*1024 for name in ("Raft","SourceRequest","SourceReply"))
+                and all(cohort[name]["AttemptedFrames"]<=_frames(s)*1024 for name in ("PipeReads","PipeWrites")),"exact feed family transport grant, not another family's upper bound")
     with (nullcontext(shared_spool) if shared_spool is not None else Spool(spool_directory,policy)) as spool:
         grants(directory,end,spool);claims(directory,end,spool)
-        attempts(directory,end,spool);sources(directory,end,spool);points(directory,end,spool);feed_counts=feed(directory,end,spool);columns(directory,end,spool);processes(directory,end,spool)
-        count=2*s["facts"]+3;ranks={"p50Nanos":(count*50+99)//100,"p95Nanos":(count*95+99)//100,"p99Nanos":(count*99+99)//100};latency={}
+        if guarded_updates:
+            require(s["version"]==2 and s["family"]==FAMILY,"fresh guarded feed format only")
+            _scalar_attempts(directory,end,spool,business_only=True);_scalar_sources(directory,end,spool,cut,_frames(s),guarded_updates=True)
+            points(directory,end,spool,guarded_updates=True);feed_counts=feed(directory,end,spool,guarded_updates=True)
+            _scalar_columns(directory,end,spool,cut,_frames(s),end["Snapshot"]);processes(directory,end,spool)
+        else:
+            attempts(directory,end,spool);sources(directory,end,spool);points(directory,end,spool);feed_counts=feed(directory,end,spool);columns(directory,end,spool);processes(directory,end,spool)
+        count=2*s["facts"]+(0 if guarded_updates else 3);ranks={"p50Nanos":(count*50+99)//100,"p95Nanos":(count*95+99)//100,"p99Nanos":(count*99+99)//100};latency={}
         for index,(key,_) in enumerate(spool.walk(b"latency"),1):
             for name,rank in ranks.items():
                 if index==rank:latency[name]=int.from_bytes(key[:8],"big")

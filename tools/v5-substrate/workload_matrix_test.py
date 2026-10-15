@@ -7,6 +7,24 @@ import workload_matrix as matrix
 
 
 class WorkloadMatrixGuards(unittest.TestCase):
+    def test_explicit_guarded_endpoint_profiles_preserve_old_defaults(self):
+        for family in ("snapshot-to-feed","snapshot-selectors"):
+            ordinary=list(matrix.matrix((family,),("local",),("native-raft",)))
+            self.assertTrue(all(c["workload"]["version"]==1 for c in ordinary))
+            fresh=list(matrix.matrix((family,),tuple(matrix.TRANSPORTS),("native-raft",),guarded_endpoints=True))
+            self.assertEqual(len(fresh),1440);self.assertTrue(all(c["implemented"] and c["workload"]["version"]==2 for c in fresh))
+            self.assertEqual({c["workload"]["facts"] for c in fresh},set(matrix.FACTS))
+            self.assertEqual({c["workload"]["crossPercent"] for c in fresh},set(matrix.CROSS))
+            self.assertEqual({c["workload"]["writers"] for c in fresh},set(matrix.WRITERS))
+            self.assertEqual({c["workload"]["layout"] for c in fresh},set(matrix.LAYOUTS))
+            paired=list(matrix.matrix((family,),("local",),("paired",),guarded_endpoints=True))
+            self.assertEqual(len(paired),360)
+            for c in paired:matrix.preflight(c["workload"],"01"*16,"paired","local")
+            for delay in ("rtt-1ms","rtt-20ms","rtt-100ms"):
+                with self.assertRaises(ValueError):matrix.preflight(paired[0]["workload"],"01"*16,"paired",delay)
+        with self.assertRaises(ValueError):list(matrix.matrix(("snapshot-to-feed",),("local",),("native-raft",),retained_only=True,guarded_endpoints=True))
+        with self.assertRaises(ValueError):list(matrix.matrix(("immutable-columns",),("local",),("native-raft",),guarded_endpoints=True))
+
     def test_native_half_correction_full_dimensions_and_local_pair_boundary(self):
         family="late-correction-old-index"
         spec={"version":1,"family":family,"facts":80,"crossPercent":50,"writers":32,"layout":"columns"}

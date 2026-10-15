@@ -121,6 +121,9 @@ func nativeSelectorsChildEnv(s nativeSelectorsSpec, a nativeSelectorsAdmission, 
 		return nil, err
 	}
 	env := []string{"RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1", "RHO_GRAPH_SELECTORS_PROCESS=1", "RHO_GRAPH_FEED_PROCESS=", "RHO_GRAPH_NATIVE_WORKLOAD=", "RHO_GRAPH_DURABLE_COLUMN_PROCESS=", "RHO_GRAPH_EDGE_UNIQUE_PROCESS=", "RHO_GRAPH_RANGE_PROCESS=", "RHO_GRAPH_CONDITIONAL_PROCESS=", "RHO_GRAPH_RETENTION_PROCESS=", "RHO_GRAPH_NATIVE_FAULT_FAMILY=", "RHO_GRAPH_COST_SPEC=" + string(cost), "RHO_GRAPH_WORKLOAD_SPEC=" + string(spec), "RHO_GRAPH_WORKLOAD_RUN=" + a.Run, "RHO_GRAPH_WORKLOAD_SECONDS=" + strconv.FormatUint(a.BudgetSeconds, 10), "RHO_GRAPH_WORKLOAD_DEADLINE=" + strconv.FormatInt(a.DeadlineUnixNanos, 10), "RHO_GRAPH_WORKLOAD_TRANSPORT=" + string(transport)}
+	if s.Version == 2 && s.Family == nativeSelectorsFamily {
+		env[2] = "RHO_GRAPH_SELECTORS_PROCESS=2"
+	}
 	if reopen {
 		env = append(env, "RHO_GRAPH_PROCESS_REOPEN=1")
 	}
@@ -129,6 +132,9 @@ func nativeSelectorsChildEnv(s nativeSelectorsSpec, a nativeSelectorsAdmission, 
 func nativeSelectorsAttach(t *testing.T, n *certifiedProcessNetwork, s nativeSelectorsSpec, a nativeSelectorsAdmission) {
 	t.Helper()
 	frames, err := nativeSelectorsFrames(s.cost())
+	if s.Version == 2 && s.Family == nativeSelectorsFamily {
+		frames, err = nativeGuardedScalarFrames(s.cost())
+	}
 	if err != nil || frames > (1<<41)/1024 || frames > uint64(^uint(0)>>1)/1024 {
 		t.Fatal("finite actual native/source frame grants", err)
 	}
@@ -182,7 +188,7 @@ func (d *nativeSelectorsDriver) beginOriginal() error {
 }
 func (d *nativeSelectorsDriver) phase(t *testing.T, phase, from uint64, attempts, completed *json.Encoder, census *[32]uint64) nativeGraphCostSample {
 	t.Helper()
-	if nativeSelectorsValidate(d.spec.cost()) != nil {
+	if nativeSelectorsValidate(d.spec.cost()) != nil && !(d.spec.Version == 2 && d.spec.Family == nativeSelectorsFamily && nativeGuardedScalarValidate(d.spec.cost()) == nil) {
 		t.Fatal("unadmitted scalar family")
 	}
 	return nativeScalarWorkloadPhase(t, d.ctx, d.n, d.spec.cost(), d.admissions, d.started, phase, from, attempts, completed, census)

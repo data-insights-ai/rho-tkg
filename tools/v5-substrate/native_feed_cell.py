@@ -51,7 +51,12 @@ def hash_artifacts(directory,layout):
 
 
 def execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,*,run=None):
-    shaped=preflight(spec,transport,seconds,memory_mib);policy.validate()
+    return _execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,run=run)
+
+
+def _execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,*,run=None,_format=native.FORMAT,_verify=native.verify,_preflight=preflight,_test="TestNativeGraphSnapshotFeedWorkloadCell"):
+
+    shaped=_preflight(spec,transport,seconds,memory_mib);policy.validate()
     require(policy.max_key_bytes==4096 and policy.max_value_bytes==native.LINE,"bounded original/page verifier shape")
     binary,watchdog=executables(binary,watchdog)
     run=secrets.token_hex(16) if run is None else run
@@ -59,17 +64,17 @@ def execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,*,ru
     deadline=time.time_ns()+seconds*1_000_000_000
     require(0<deadline<(1<<63) and 32*seconds*1_000_000_000<(1<<63),"checked cumulative caller/time arithmetic")
     output=Path(output).resolve();output.mkdir(mode=0o700,parents=False,exist_ok=False);engine=output/"engine"
-    env={**os.environ,"RHO_GRAPH_NATIVE_WORKLOAD":native.FORMAT,"RHO_GRAPH_WORKLOAD_SPEC":json.dumps(spec,separators=(",",":")),"RHO_GRAPH_WORKLOAD_RUN":run,
+    env={**os.environ,"RHO_GRAPH_NATIVE_WORKLOAD":_format,"RHO_GRAPH_WORKLOAD_SPEC":json.dumps(spec,separators=(",",":")),"RHO_GRAPH_WORKLOAD_RUN":run,
          "RHO_GRAPH_WORKLOAD_SECONDS":str(seconds),"RHO_GRAPH_WORKLOAD_DEADLINE":str(deadline),"RHO_GRAPH_WORKLOAD_TRANSPORT":json.dumps(shaped,separators=(",",":")),
          "RHO_GRAPH_WORKLOAD_OUTPUT":str(engine),"GOMAXPROCS":"2","GOMEMLIMIT":"2GiB","GOWORK":"off","GOTOOLCHAIN":"local"}
     for name in ("RHO_GRAPH_COST_SPEC","RHO_GRAPH_COST_BLOCK_SIZE","RHO_GRAPH_EDGE_TRANSPORT_PROFILE","RHO_GRAPH_FEED_PROCESS","RHO_GRAPH_EDGE_UNIQUE_PROCESS","RHO_GRAPH_RANGE_PROCESS","RHO_GRAPH_CONDITIONAL_PROCESS","RHO_GRAPH_RETENTION_PROCESS","RHO_GRAPH_DURABLE_COLUMN_PROCESS","RHO_GRAPH_NATIVE_FAULT_PROCESS","RHO_GRAPH_FAULT_FAMILY_PROCESS","RHO_GRAPH_DURABLE_MODEL","RHO_GRAPH_DECISION_FAULT_PROCESS","RHO_GRAPH_LIFECYCLE_PROCESS","RHO_GRAPH_NATIVE_FAULT_FAMILY"):
         env[name]=""
-    command=[sys.executable,str(watchdog),"--rss-mib",str(memory_mib),"--seconds",str(seconds),"--deadline-unix-nanos",str(deadline),"--report",str(output/"watchdog.json"),"--",str(binary),"-test.run=^TestNativeGraphSnapshotFeedWorkloadCell$","-test.count=1","-test.v",f"-test.timeout={seconds+30}s"]
-    request={"version":1,"format":native.FORMAT,"spec":spec,"run":run,"transport":shaped,"seconds":seconds,"deadlineUnixNanos":deadline,"aggregateRSSMiB":memory_mib,
+    command=[sys.executable,str(watchdog),"--rss-mib",str(memory_mib),"--seconds",str(seconds),"--deadline-unix-nanos",str(deadline),"--report",str(output/"watchdog.json"),"--",str(binary),"-test.run=^"+_test+"$","-test.count=1","-test.v",f"-test.timeout={seconds+30}s"]
+    request={"version":1,"format":_format,"spec":spec,"run":run,"transport":shaped,"seconds":seconds,"deadlineUnixNanos":deadline,"aggregateRSSMiB":memory_mib,
              "command":command,"binarySHA256":digest(binary),"watchdogSHA256":digest(watchdog),"retentionContract":"snapshot-C-plus-feed-v1",
              "spoolPolicy":{"max_disk_bytes":policy.max_disk_bytes,"cache_bytes":policy.cache_bytes,"max_key_bytes":policy.max_key_bytes,"max_value_bytes":policy.max_value_bytes}}
     with (output/"request.json").open("x") as out:json.dump(request,out,indent=2);out.write("\n")
-    receipt={"version":1,"format":native.FORMAT,"requestSHA256":digest(output/"request.json"),"binarySHA256":request["binarySHA256"],"spec":spec,"run":run,"exit":None,"completedCell":False,"artifacts":{},"proof":None}
+    receipt={"version":1,"format":_format,"requestSHA256":digest(output/"request.json"),"binarySHA256":request["binarySHA256"],"spec":spec,"run":run,"exit":None,"completedCell":False,"artifacts":{},"proof":None}
     started=time.monotonic_ns()
     try:
         with (output/"stdout.txt").open("xb") as out,(output/"stderr.txt").open("xb") as err:
@@ -80,7 +85,7 @@ def execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,*,ru
                 and 0<meter["peak_tree_rss_mib"]<=memory_mib,"actual terminal bounded aggregate native process tree")
         receipt["processTree"],receipt["processTreeSHA256"]=meter,digest(output/"watchdog.json")
         receipt["artifacts"]=hash_artifacts(engine,spec["layout"])
-        receipt["proof"]=native.verify(engine,output,policy,binary_sha=request["binarySHA256"],expected_spec=spec,expected_run=run,expected_deadline=deadline,expected_seconds=seconds)
+        receipt["proof"]=_verify(engine,output,policy,binary_sha=request["binarySHA256"],expected_spec=spec,expected_run=run,expected_deadline=deadline,expected_seconds=seconds)
         require(receipt["proof"]["transport"]==shaped,"actual traffic counters match immutable admitted scheduler")
         receipt["completedCell"]=True
     finally:

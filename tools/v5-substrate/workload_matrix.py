@@ -43,7 +43,7 @@ def implemented(family, engine, transport, owned=False):
             or family in ("cross-edge-endpoint-uniqueness", "snapshot-to-feed", "snapshot-selectors", "partition-local-create-update", "immutable-columns", "late-correction-old-index") and (engine == "native-raft" or engine == "paired" and transport == "local"))
 
 
-def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("foundationdb",), owned=False, retained_only=False):
+def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("foundationdb",), owned=False, retained_only=False, guarded_endpoints=False):
     """11520 cells/engine across all8 families and local+3 RTT profiles.
 
     Five repetitions are independent fresh databases, not repeat queries on one
@@ -51,8 +51,9 @@ def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("fou
     """
     require(all(f in FAMILIES for f in families) and all(t in TRANSPORTS for t in transports) and all(e in ENGINES for e in engines), "unknown canonical workload dimension")
     require(not retained_only or tuple(families)==("snapshot-to-feed",) and all(e in ENGINES for e in engines) and (not any(e!="native-raft" for e in engines) or owned) and ("paired" not in engines or tuple(transports)==("local",)),"retained-only requires genuine owned FDB adapter and local-only complete pairing")
+    require(not guarded_endpoints or not retained_only and all(f in ("snapshot-to-feed","snapshot-selectors") for f in families) and all(e in ("native-raft","paired") for e in engines),"explicit fresh native guarded-endpoint families, ordinary defaults unchanged")
     for engine, family, facts, cross, writers, layout, transport, repetition in itertools.product(engines, families, FACTS, CROSS, WRITERS, LAYOUTS, transports, range(1, 6)):
-        yield {"version": 1, "engine": engine, "workload": {"version": 3 if retained_only else 2 if owned and engine=="foundationdb" and family in IMPLEMENTED else 1, "family": family, "facts": facts, "crossPercent": cross, "writers": writers, "layout": layout},
+        yield {"version": 1, "engine": engine, "workload": {"version": 3 if retained_only else 2 if guarded_endpoints else 2 if owned and engine=="foundationdb" and family in IMPLEMENTED else 1, "family": family, "facts": facts, "crossPercent": cross, "writers": writers, "layout": layout},
                "transport": {"kind": "local" if transport == "local" else "injected-rtt", "targetRTTMillis": TRANSPORTS[transport], "jitterMillis": 0, "seed": 20261009},
                "repetition": repetition, "implemented": implemented(family, engine, transport, owned),
                "scope": "schedule only; missing family semantics/real directed shaping refuse execution, not accepted skips"}
@@ -61,8 +62,9 @@ def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("fou
 def preflight(spec, run, engine="foundationdb", transport="local"):
     require(type(spec) is dict and set(spec) == {"version", "family", "facts", "crossPercent", "writers", "layout"}, "explicit fresh workload schema")
     retained = type(spec["version"]) is int and spec["version"]==3 and spec["family"]=="snapshot-to-feed" and engine in ENGINES and (engine!="paired" or transport=="local")
+    guarded = type(spec["version"]) is int and spec["version"]==2 and spec["family"] in ("snapshot-to-feed","snapshot-selectors") and engine in ("native-raft","paired") and (engine!="paired" or transport=="local")
     fresh = type(spec["version"]) is int and spec["version"] == 2 and spec["family"] in IMPLEMENTED and engine == "foundationdb"
-    require(type(spec["version"]) is int and (spec["version"] == 1 and (engine != "foundationdb" or transport == "local") or fresh or retained) and engine in ENGINES and transport in TRANSPORTS
+    require(type(spec["version"]) is int and (spec["version"] == 1 and (engine != "foundationdb" or transport == "local") or fresh or retained or guarded) and engine in ENGINES and transport in TRANSPORTS
             and implemented(spec["family"], engine, transport, fresh or retained and engine=="foundationdb"), "family/engine/real transport driver not implemented")
     require(type(spec["facts"]) is int and 20 <= spec["facts"] <= 1_000_000 and spec["facts"] % 20 == 0 and type(spec["crossPercent"]) is int and spec["crossPercent"] in CROSS and type(spec["writers"]) is int and spec["writers"] in WRITERS and spec["layout"] in LAYOUTS, "fresh family shape")
     require(spec["family"] not in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns", "transfer-retained-pins", "partition-local-create-update") or spec["facts"] >= spec["writers"] + 1, "seed plus one genuine initial job per independent caller")
@@ -98,7 +100,7 @@ def transport_options(args):
     values = (args.transport_queue_packets,args.transport_sample_millis,args.transport_max_samples,args.transport_artifact_bytes)
     require(args.fdb_owned_transport or all(v is None for v in values), "transport grants require explicit fresh FDB adapter")
     if not args.fdb_owned_transport: return None
-    require((args.engine == "foundationdb" or args.engine=="paired" and args.family=="snapshot-to-feed" and getattr(args,"feed_retention","snapshot-C")=="retained-only" and args.transport=="local") and args.family in IMPLEMENTED and all(v is not None for v in values), "fresh implemented-family transport requires all four finite output/packet grants")
+    require((args.engine == "foundationdb" or args.engine=="paired" and (args.family=="snapshot-to-feed" and getattr(args,"feed_retention","snapshot-C")=="retained-only" or args.family in ("snapshot-to-feed","snapshot-selectors") and getattr(args,"guarded_endpoints",False)) and args.transport=="local") and args.family in IMPLEMENTED and all(v is not None for v in values), "fresh implemented-family transport requires all four finite output/packet grants")
     return dict(zip(("QueuePackets","SampleMillis","MaxSamples","MaxArtifactBytes"),values,strict=True))
 
 
@@ -124,7 +126,8 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
                       {"kind": "local" if name == "local" else "injected-rtt", "targetRTTMillis": delay, "jitterMillis": 0, "seed": 20261009}), "unsupported")
     run = secrets.token_hex(16) if run_override is None else run_override
     retained=cell["workload"]["version"]==3 and cell["workload"]["family"]=="snapshot-to-feed"
-    require(owned_options is None or (cell["engine"] == "foundationdb" or retained and cell["engine"]=="paired" and transport=="local") and cell["workload"]["family"] in IMPLEMENTED, "no nominal paired/unsupported-family FDB shaping")
+    guarded=cell["engine"]!="foundationdb" and cell["workload"]["version"]==2 and cell["workload"]["family"] in ("snapshot-to-feed","snapshot-selectors")
+    require(owned_options is None or (cell["engine"] == "foundationdb" or (retained or guarded) and cell["engine"]=="paired" and transport=="local") and cell["workload"]["family"] in IMPLEMENTED, "no nominal paired/unsupported-family FDB shaping")
     actual_cell = cell if owned_options is None else {**cell,"workload":{**cell["workload"],"version":3 if retained else 2}}
     spec = preflight(actual_cell["workload"], run, cell["engine"], transport)
     transfer=spec["family"]=="transfer-retained-pins"
@@ -161,7 +164,9 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
         paired.execute(spec,transport,Path(output).absolute(),native_binary,watchdog,seconds,memory,policy,profile=profile,owned_options=owned_options,owner_grant=retained_policy,run=run)
         return
     if cell["engine"] != "foundationdb":
-        if spec["family"] == "cross-edge-endpoint-uniqueness":
+        if guarded:
+            import native_guarded_scalar_cell as native
+        elif spec["family"] == "cross-edge-endpoint-uniqueness":
             import native_edge_unique_cell as native
         elif spec["family"] == "snapshot-to-feed":
             if spec["version"]==3:import native_feed_retained_cell as native
@@ -176,7 +181,7 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
             import native_late_correction_cell as native
         else:
             import native_workload_cell as native
-        native.preflight(spec, transport, seconds, memory, cell["engine"])
+        native.preflight(spec, transport, seconds, memory, cell["engine"], **({"owned_fdb":owned_options is not None} if guarded else {}))
         native_binary, watchdog = native.executables(native_binary, watchdog)
         # The fresh edge adapter supplies the actual bounded workload owner
         # also at0ms. Legacy direct local-v1 execution remains available and
@@ -184,7 +189,8 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
         native_options = {"owned_transport": True} if spec["family"] == "cross-edge-endpoint-uniqueness" else {}
         # Verify both local adapters before either engine starts. Unsupported
         # FDB shaping never turns into a nominally paired RTT result.
-        if cell["engine"] == "paired": preflight(spec, run, "foundationdb", transport)
+        fdb_spec={**spec,"version":2 if owned_options is not None else 1} if guarded else spec
+        if cell["engine"] == "paired": preflight(fdb_spec, run, "foundationdb", transport)
         destination = Path(output)
         if cell["engine"] == "native-raft":
             native.execute(spec, transport, destination, native_binary, watchdog, seconds, memory, policy, run=run, **native_options)
@@ -193,7 +199,8 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
         else:
             destination.mkdir(mode=0o700, parents=False, exist_ok=False)
             native.execute(spec, transport, destination / "native", native_binary, watchdog, seconds, memory, policy, run=run, **native_options)
-            execute({**cell, "engine": "foundationdb"}, destination / "fdb", seconds, profile, memory, spool_disk, spool_cache, grant_origin)
+            if guarded:execute({**cell,"engine":"foundationdb","workload":fdb_spec},destination/"fdb",seconds,profile,memory,spool_disk,spool_cache,grant_origin,owned_options=owned_options,run_override=run)
+            else:execute({**cell, "engine": "foundationdb"}, destination / "fdb", seconds, profile, memory, spool_disk, spool_cache, grant_origin)
             fdb = native.bounded_json(destination / "fdb/verified.json")
             proof = native.compare(destination / "native", fdb["artifacts"], destination, policy)
             artifacts = {"native": str(destination / "native/engine"), "foundationdb": fdb["artifacts"]}
@@ -288,6 +295,8 @@ def execute_matrix(args):
     # Refuse absent semantics/shaping for the WHOLE selection before admitting
     # any database/build. Never silently skip unsupported cells from a matrix.
     retained=getattr(args,"feed_retention","snapshot-C")=="retained-only"
+    guarded=getattr(args,"guarded_endpoints",False)
+    require(not guarded or not retained and args.engine in ("native-raft","paired") and args.family in ("snapshot-to-feed","snapshot-selectors"),"guarded endpoints is an explicit fresh native selection")
     require(not retained or args.family=="snapshot-to-feed" and (args.engine=="native-raft" and not args.fdb_owned_transport or args.engine=="foundationdb" and args.fdb_owned_transport or args.engine=="paired" and args.transport=="local" and args.fdb_owned_transport),"explicit real retained-only adapter required")
     options = transport_options(args)
     require(implemented(args.family, args.engine, args.transport, options is not None), "selected matrix family/engine/transport implementation is absent")
@@ -307,7 +316,9 @@ def execute_matrix(args):
     from comparison_spool import Policy
     Policy(disk, cache, 4096, 512 << 10).validate()
     if args.engine != "foundationdb":
-        if args.family == "cross-edge-endpoint-uniqueness":
+        if guarded:
+            import native_guarded_scalar_cell as native
+        elif args.family == "cross-edge-endpoint-uniqueness":
             import native_edge_unique_cell as native
         elif args.family == "snapshot-to-feed":
             if retained:import native_feed_retained_cell as native
@@ -322,7 +333,7 @@ def execute_matrix(args):
             import native_late_correction_cell as native
         else:
             import native_workload_cell as native
-        native.preflight({"version": 3 if retained else 1, "family": args.family, "facts": 1_000_000, "crossPercent": 100, "writers": 32, "layout": "columns"}, args.transport, seconds, args.admission_mib, "native-raft" if retained else args.engine)
+        native.preflight({"version": 3 if retained else 2 if guarded else 1, "family": args.family, "facts": 1_000_000, "crossPercent": 100, "writers": 32, "layout": "columns"}, args.transport, seconds, args.admission_mib, "native-raft" if retained else args.engine, **({"owned_fdb":options is not None} if guarded else {}))
         if retained and args.engine=="paired":
             import feed_retained_pair as paired
             paired.preflight({"version":3,"family":args.family,"facts":1_000_000,"crossPercent":100,"writers":32,"layout":"columns"},args.transport,seconds,args.admission_mib,Policy(disk,cache,4096,512<<10),options,retained_grant)
@@ -331,10 +342,10 @@ def execute_matrix(args):
     root.mkdir(mode=0o700, parents=False, exist_ok=False)
     count = 0
     with (root / "schedule.jsonl").open("x") as schedule:
-        for cell in matrix((args.family,), (args.transport,), (args.engine,), owned=options is not None,retained_only=retained):
+        for cell in matrix((args.family,), (args.transport,), (args.engine,), owned=options is not None,retained_only=retained,guarded_endpoints=guarded):
             schedule.write(json.dumps(cell, separators=(",", ":")) + "\n")
     with (root / "completed.jsonl").open("x") as completed:
-        for cell in matrix((args.family,), (args.transport,), (args.engine,), owned=options is not None,retained_only=retained):
+        for cell in matrix((args.family,), (args.transport,), (args.engine,), owned=options is not None,retained_only=retained,guarded_endpoints=guarded):
             destination = root / f"cell-{count:04d}"
             execute(cell, destination, seconds, args.deployment_profile, args.admission_mib, disk, cache, origin, args.native_binary, args.watchdog, options, grant, retained_grant)
             completed.write(json.dumps({"cell": count, "repetition": cell["repetition"], "verified": str(destination / "verified.json")}) + "\n")
@@ -381,6 +392,7 @@ def main():
     campaign.add_argument("--spool-disk-bytes", type=int)
     campaign.add_argument("--spool-cache-bytes", type=int)
     for command in (run, campaign):
+        command.add_argument("--guarded-endpoints",action="store_true",help="fresh native Cost13 feed/14 selectors; ordinary direct profiles remain unchanged")
         command.add_argument("--feed-retention",choices=("snapshot-C","retained-only"),default="snapshot-C",help="fresh retained-only v3; owned FDB and local paired minimum contract are explicit, physical retention differs")
         command.add_argument("--native-binary")
         command.add_argument("--watchdog")
@@ -402,9 +414,10 @@ def main():
     elif args.mode == "run-matrix":
         execute_matrix(args)
     else:
-        cell = next(cell for cell in matrix((args.family,), (args.transport,), (args.engine,)) if
+        cell = next(cell for cell in matrix((args.family,), (args.transport,), (args.engine,),guarded_endpoints=args.guarded_endpoints) if
                     (cell["workload"]["facts"], cell["workload"]["crossPercent"], cell["workload"]["writers"], cell["workload"]["layout"], cell["repetition"]) ==
                     (args.facts, args.cross, args.writers, args.layout, args.repetition))
+        require(not args.guarded_endpoints or getattr(args,"feed_retention","snapshot-C")=="snapshot-C","guarded retained-C and retained-only are distinct profiles")
         if getattr(args,"feed_retention","snapshot-C")=="retained-only":
             require(args.family=="snapshot-to-feed" and (args.engine=="native-raft" and not args.fdb_owned_transport or args.engine=="foundationdb" and args.fdb_owned_transport or args.engine=="paired" and args.transport=="local" and args.fdb_owned_transport),"retained-only requires exact fresh native/FDB adapter before effects")
             cell={**cell,"workload":{**cell["workload"],"version":3}}

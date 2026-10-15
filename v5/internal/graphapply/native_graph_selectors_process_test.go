@@ -34,6 +34,7 @@ type nativeSelectorsResult struct {
 	PersistedFileBytes, AllocatedFileBytes                 uint64
 	SetupNanos, BusinessNanos, DiagnosticNanos, TotalNanos int64
 	RetentionContract, Scope                               string
+	BusinessPhases                                         *[2]nativeGuardedScalarPhase `json:",omitzero"`
 }
 
 func nativeSelectorsQuery(t *testing.T, c *nativeSelectorsClient, q nativeSelectorsInput) (nativeSelectorsReply, graphCut) {
@@ -67,6 +68,9 @@ func nativeSelectorsQuery(t *testing.T, c *nativeSelectorsClient, q nativeSelect
 func nativeSelectorsObserve(t *testing.T, c *nativeSelectorsClient, s nativeSelectorsSpec, handle uint64, expected int64, sequence *uint64, checks ...func(nativeFeedSpec, nativeFeedPoint, int64) error) {
 	t.Helper()
 	check := nativeFeedCheckPoint
+	if s.Version == 2 && s.Family == nativeSelectorsFamily {
+		check = nativeGuardedScalarCheckPoint
+	}
 	if len(checks) > 1 || len(checks) == 1 && checks[0] == nil {
 		t.Fatal("one explicit fresh point validator required")
 	}
@@ -75,6 +79,10 @@ func nativeSelectorsObserve(t *testing.T, c *nativeSelectorsClient, s nativeSele
 	}
 	started := time.Now()
 	var count uint64
+	pointSpec := nativeFeedSpec{Facts: s.Facts, CrossPercent: s.CrossPercent}
+	if s.Version == 2 && s.Family == nativeSelectorsFamily {
+		pointSpec.Version, pointSpec.Family = s.Version, s.Family
+	}
 	for {
 		*sequence++
 		r := c.invoke(nativeSelectorsInput{Action: "scan", Handle: handle, Sequence: *sequence}, nil)
@@ -82,7 +90,7 @@ func nativeSelectorsObserve(t *testing.T, c *nativeSelectorsClient, s nativeSele
 			t.Fatal("posting candidate/hydration omission")
 		}
 		for i, p := range r.Points {
-			if expected == 0 || p.ID != 7+2*count || r.Candidates[i] != p.ID || check(nativeFeedSpec{Facts: s.Facts, CrossPercent: s.CrossPercent}, nativeFeedPoint{Fact: count, Entity: p}, expected) != nil {
+			if expected == 0 || p.ID != 7+2*count || r.Candidates[i] != p.ID || check(pointSpec, nativeFeedPoint{Fact: count, Entity: p}, expected) != nil {
 				t.Fatal("complete native posting scan differs at exact cut", count, p)
 			}
 			count++
@@ -169,6 +177,17 @@ func TestNativeGraphSnapshotSelectorsWorkloadCell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	runNativeSnapshotSelectorsWorkload(t, spec, admission, digest)
+}
+
+func runNativeSnapshotSelectorsWorkload(t *testing.T, spec nativeSelectorsSpec, admission nativeSelectorsAdmission, digest [32]byte) {
+	t.Helper()
+	var err error
+	guarded := spec.Version == 2 && spec.Family == nativeSelectorsFamily
+	format, version := nativeSelectorsFormat, 1
+	if guarded {
+		format, version = nativeGuardedSelectorsFormat, 2
+	}
 	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, admission.DeadlineUnixNanos))
 	defer cancel()
 	started := time.Now()
@@ -192,8 +211,12 @@ func TestNativeGraphSnapshotSelectorsWorkloadCell(t *testing.T) {
 	reads, sources, processes, columns := open("reads.jsonl"), open("sources.jsonl"), open("processes.jsonl"), open("columns.jsonl")
 	n := nativeSelectorsNetwork(t, spec, admission, grants)
 	client := &nativeSelectorsClient{t: t, ctx: ctx, n: n, stream: reads, stage: "initial-empty-fresh"}
-	result := nativeSelectorsResult{Version: 1, Format: nativeSelectorsFormat, Engine: "native-raft", Spec: spec, Admission: admission, AdmissionSHA256: digest, Directory: n.dir, ArtifactDirectory: output, ProcessInstances: 12, RetentionContract: "snapshot-C-retained-full-prefix-v1"}
+	result := nativeSelectorsResult{Version: version, Format: format, Engine: "native-raft", Spec: spec, Admission: admission, AdmissionSHA256: digest, Directory: n.dir, ArtifactDirectory: output, ProcessInstances: 12, RetentionContract: "snapshot-C-retained-full-prefix-v1"}
 	result.FramesCeiling, err = nativeSelectorsFrames(spec.cost())
+	if guarded {
+		result.FramesCeiling, err = nativeGuardedScalarFrames(spec.cost())
+		result.BusinessPhases = new([2]nativeGuardedScalarPhase)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,8 +243,15 @@ func TestNativeGraphSnapshotSelectorsWorkloadCell(t *testing.T) {
 	for phase := uint64(1); phase <= 3; phase++ {
 		driver.phase(t, phase, phase-1, attempts, operations, &result.Completed)
 	}
+	if guarded {
+		result.SetupNanos = time.Since(started).Nanoseconds()
+		businessStarted = time.Now()
+	}
 	driver.phase(t, 4, 0, attempts, operations, &result.Completed)
 	result.BusinessNanos = time.Since(businessStarted).Nanoseconds()
+	if guarded {
+		result.BusinessPhases[0] = nativeGuardedScalarPhaseStop("create", businessStarted, started, spec.Facts)
+	}
 	var scoped [2]graphCut
 	for group, part := range []uint64{3, 8} {
 		client.stage = fmt.Sprintf("old-scope-fresh-%d", part)
@@ -240,6 +270,10 @@ func TestNativeGraphSnapshotSelectorsWorkloadCell(t *testing.T) {
 	businessStarted = time.Now()
 	after := driver.phase(t, 5, 0, attempts, operations, &result.Completed)
 	result.BusinessNanos += time.Since(businessStarted).Nanoseconds()
+	if guarded {
+		result.BusinessPhases[1] = nativeGuardedScalarPhaseStop("update", businessStarted, started, spec.Facts)
+		result.BusinessNanos = result.BusinessPhases[0].WallNanos + result.BusinessPhases[1].WallNanos
+	}
 	client.stage = "stable-after-update"
 	stable, stableCut := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 6), Mode: graphReadStable})
 	if !feedCutEqual(stableCut, old) {
@@ -295,7 +329,7 @@ func TestNativeGraphSnapshotSelectorsWorkloadCell(t *testing.T) {
 		nativeGraphEdgeUniqueColumnCloseClients(oldClients)
 	}
 	result.SourceRows = nativeSelectorsSources(t, ctx, n, initial, final, "before-stop", sources)
-	if result.SourceRows[0]+result.SourceRows[1] != 3+3*spec.Facts {
+	if result.SourceRows[0]+result.SourceRows[1] != 3+(3+boolUint(guarded))*spec.Facts {
 		t.Fatal("complete native scalar before/after row census", result.SourceRows)
 	}
 	result.Transport = append(result.Transport, nativeSelectorsRestart(t, ctx, n, spec, admission, processes))

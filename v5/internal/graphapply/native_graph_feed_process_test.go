@@ -40,6 +40,7 @@ type nativeFeedResult struct {
 	PersistedFileBytes, AllocatedFileBytes                          uint64
 	SetupNanos, BusinessNanos, DiagnosticNanos, TotalNanos          int64
 	RetentionContract, Scope                                        string
+	BusinessPhases                                                  *[2]nativeGuardedScalarPhase `json:",omitzero"`
 }
 
 func nativeFeedRequest(digest [32]byte, domain string, sequence uint64) [16]byte {
@@ -88,6 +89,16 @@ func TestNativeGraphSnapshotFeedWorkloadCell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	runNativeSnapshotFeedWorkload(t, spec, admission, digest)
+}
+
+func runNativeSnapshotFeedWorkload(t *testing.T, spec nativeFeedSpec, admission nativeFeedAdmission, digest [32]byte) {
+	t.Helper()
+	guarded := spec.Version == 2
+	format, version := nativeFeedFormat, 1
+	if guarded {
+		format, version = nativeGuardedFeedFormat, 2
+	}
 	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, admission.DeadlineUnixNanos))
 	defer cancel()
 	started := time.Now()
@@ -120,8 +131,12 @@ func TestNativeGraphSnapshotFeedWorkloadCell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := nativeFeedResult{Version: 1, Format: nativeFeedFormat, Engine: "native-raft", Spec: spec, Admission: admission, AdmissionSHA256: digest, Initial: initialWire, Directory: n.dir, ArtifactDirectory: output, ProcessInstances: 13, RetentionContract: "snapshot-C-plus-feed-v1"}
+	result := nativeFeedResult{Version: version, Format: format, Engine: "native-raft", Spec: spec, Admission: admission, AdmissionSHA256: digest, Initial: initialWire, Directory: n.dir, ArtifactDirectory: output, ProcessInstances: 13, RetentionContract: "snapshot-C-plus-feed-v1"}
 	result.FramesCeiling, err = nativeFeedFrames(spec.cost())
+	if guarded {
+		result.FramesCeiling, err = nativeGuardedScalarFrames(spec.cost())
+		result.BusinessPhases = new([2]nativeGuardedScalarPhase)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,8 +152,15 @@ func TestNativeGraphSnapshotFeedWorkloadCell(t *testing.T) {
 	for phase := uint64(1); phase <= 3; phase++ {
 		driver.phase(t, phase, phase-1, attempts, operations, &result.Completed)
 	}
+	if guarded {
+		result.SetupNanos = time.Since(started).Nanoseconds()
+		businessStarted = time.Now()
+	}
 	driver.phase(t, 4, 0, attempts, operations, &result.Completed)
 	result.BusinessNanos = time.Since(businessStarted).Nanoseconds()
+	if guarded {
+		result.BusinessPhases[0] = nativeGuardedScalarPhaseStop("create", businessStarted, started, spec.Facts)
+	}
 	extra := 0
 	client := &nativeFeedClient{t: t, ctx: ctx, n: n, member: 2, stream: traces, stage: "capture", extra: &extra}
 	begin := client.call(nativeFeedInput{Action: "begin", Request: nativeFeedRequest(digest, "feed-owner", 0)})
@@ -166,6 +188,10 @@ func TestNativeGraphSnapshotFeedWorkloadCell(t *testing.T) {
 	businessStarted = time.Now()
 	driver.phase(t, 5, 0, attempts, operations, &result.Completed)
 	result.BusinessNanos += time.Since(businessStarted).Nanoseconds()
+	if guarded {
+		result.BusinessPhases[1] = nativeGuardedScalarPhaseStop("update", businessStarted, started, spec.Facts)
+		result.BusinessNanos = result.BusinessPhases[0].WallNanos + result.BusinessPhases[1].WallNanos
+	}
 	client.stage = "held-snapshot-after-update"
 	for next < spec.Facts {
 		next = nativeFeedSnapshot(t, client, spec, next)
@@ -242,7 +268,7 @@ func TestNativeGraphSnapshotFeedWorkloadCell(t *testing.T) {
 	client.stage = "before-cohort-close"
 	client.call(nativeFeedInput{Action: "close"})
 	result.SourceRows = nativeFeedSources(t, ctx, n, initial, final, "before-stop", sources)
-	if result.SourceRows[0]+result.SourceRows[1] != 3+3*spec.Facts {
+	if result.SourceRows[0]+result.SourceRows[1] != 3+(3+boolUint(guarded))*spec.Facts {
 		t.Fatal("complete real typed before/after census", result.SourceRows)
 	}
 	result.Transport = append(result.Transport, nativeFeedRestart(t, ctx, n, spec, admission, processes))

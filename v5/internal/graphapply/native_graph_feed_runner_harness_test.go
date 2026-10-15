@@ -105,6 +105,9 @@ func nativeFeedChildEnv(s nativeFeedSpec, a nativeFeedAdmission, reopen bool) ([
 		return nil, err
 	}
 	env := []string{"RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1", "RHO_GRAPH_FEED_PROCESS=1", "RHO_GRAPH_NATIVE_WORKLOAD=", "RHO_GRAPH_DURABLE_COLUMN_PROCESS=", "RHO_GRAPH_EDGE_UNIQUE_PROCESS=", "RHO_GRAPH_COST_SPEC=" + string(cost), "RHO_GRAPH_WORKLOAD_SPEC=" + string(spec), "RHO_GRAPH_WORKLOAD_RUN=" + a.Run, "RHO_GRAPH_WORKLOAD_SECONDS=" + strconv.FormatUint(a.BudgetSeconds, 10), "RHO_GRAPH_WORKLOAD_DEADLINE=" + strconv.FormatInt(a.DeadlineUnixNanos, 10), "RHO_GRAPH_WORKLOAD_TRANSPORT=" + string(transport)}
+	if s.Version == 2 {
+		env[2] = "RHO_GRAPH_FEED_PROCESS=2"
+	}
 	if reopen {
 		env = append(env, "RHO_GRAPH_PROCESS_REOPEN=1")
 	}
@@ -113,6 +116,9 @@ func nativeFeedChildEnv(s nativeFeedSpec, a nativeFeedAdmission, reopen bool) ([
 func nativeFeedAttach(t *testing.T, n *certifiedProcessNetwork, s nativeFeedSpec, a nativeFeedAdmission) {
 	t.Helper()
 	frames, err := nativeFeedFrames(s.cost())
+	if s.Version == 2 {
+		frames, err = nativeGuardedScalarFrames(s.cost())
+	}
 	if err != nil || frames > (1<<41)/1024 || frames > uint64(^uint(0)>>1)/1024 {
 		t.Fatal("checked native feed packet grant", err)
 	}
@@ -568,6 +574,10 @@ func nativeScalarWorkloadSources(t *testing.T, ctx context.Context, n *certified
 }
 func nativeFeedPoints(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, s nativeFeedSpec, at graphCut, stage string, stream *json.Encoder) {
 	t.Helper()
+	check := nativeFeedCheckPoint
+	if s.Version == 2 && s.Family == nativeFeedFamily {
+		check = nativeGuardedScalarCheckPoint
+	}
 	for first := uint64(0); first < s.Facts; first += 16 {
 		wire, err := nativeFeedCutWire(at)
 		if err != nil {
@@ -595,7 +605,7 @@ func nativeFeedPoints(t *testing.T, ctx context.Context, n *certifiedProcessNetw
 			if stage == "old-after-update" || stage == "reopened-old" {
 				value = 5
 			}
-			if nativeFeedCheckPoint(s, nativeFeedPoint{fact, point}, value) != nil || point.Property.Revision > at.certificates[0].sourceRound || point.Presence.Revision > at.certificates[0].sourceRound {
+			if check(s, nativeFeedPoint{fact, point}, value) != nil || point.Property.Revision > at.certificates[0].sourceRound || point.Presence.Revision > at.certificates[0].sourceRound {
 				t.Fatal("exact-cut point shape/round", fact)
 			}
 			if err := stream.Encode(struct {
@@ -832,7 +842,7 @@ func nativeScalarReadColumns(t *testing.T, clients [2]*nativeGraphEdgeUniqueColu
 		}
 	}
 	presence := 3 + s.Facts
-	if s.Version == 9 || s.Version == 10 || s.Version == 11 {
+	if s.Version == 9 || s.Version == 10 || s.Version == 11 || s.Version == 13 || s.Version == 14 {
 		presence += updates
 	}
 	if census != ([3]uint64{presence, s.Facts, updates}) {

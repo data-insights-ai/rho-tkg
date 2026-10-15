@@ -188,6 +188,9 @@ type nativeFeedSessions struct {
 	snapshot       *certifiedGraphRead
 	snapshotNext   uint64
 	snapshotStarts uint64
+	cleanup        context.Context // fresh13 only, absolute original deadline plus30s
+	cancelCleanup  context.CancelFunc
+	cleanupCalls   uint64
 }
 
 func newNativeFeedSessions(ctx context.Context, c *crossProcessCoordinator, cost *nativeGraphCostSpec) (*nativeFeedSessions, error) {
@@ -213,6 +216,9 @@ func (s *nativeFeedSessions) close() error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.cancelCleanup != nil {
+		defer s.cancelCleanup()
+	}
 	var err error
 	if s.snapshot != nil {
 		err = s.snapshot.Close()
@@ -345,11 +351,27 @@ func (s *nativeFeedSessions) serveDecoded(ctx context.Context, r processRequest,
 			err = errors.Join(err, encoded)
 		}
 	}()
+	if cost.Version == 13 && !nativeGuardedFeedTerminalAction(q.Action) {
+		if err = errors.Join(ctx.Err(), lifetime.Err()); err != nil {
+			return nil, err
+		}
+		operation, cancel := context.WithCancel(lifetime)
+		stop := context.AfterFunc(ctx, cancel)
+		defer func() { stop(); cancel() }()
+		ctx = operation
+	}
 	if q.Action == "records" {
 		return nativeFeedRecords(ctx, s.coordinator.host, q)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if cost.Version == 13 && nativeGuardedFeedTerminalAction(q.Action) {
+		if s.cleanup == nil || s.cleanupCalls >= nativeGuardedFeedCleanupCalls {
+			return nil, errLimit
+		}
+		s.cleanupCalls++ // uncertain cleanup remains spent; no read/source grant
+		ctx, lifetime = s.cleanup, s.cleanup
+	}
 	if err = errors.Join(ctx.Err(), lifetime.Err()); err != nil {
 		return nil, err
 	}

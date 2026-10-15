@@ -31,6 +31,9 @@ type nativeSelectorsSpec struct {
 }
 
 func (s nativeSelectorsSpec) cost() nativeGraphCostSpec {
+	if s.Version == 2 && s.Family == nativeSelectorsFamily {
+		return nativeGraphCostSpec{Version: 14, Facts: s.Facts, CrossPercent: s.CrossPercent, Writers: s.Writers}
+	}
 	return nativeGraphCostSpec{Version: 6, Facts: s.Facts, CrossPercent: s.CrossPercent, Writers: s.Writers}
 }
 func nativeSelectorsValidate(s nativeGraphCostSpec) error {
@@ -108,8 +111,11 @@ func nativeScalarReadAdmissionFromEnv(s nativeSelectorsSpec, family string) (a n
 
 func nativeSelectorsProcessProfile(s *nativeGraphCostSpec) (bool, error) {
 	flag := os.Getenv("RHO_GRAPH_SELECTORS_PROCESS")
+	if flag == "2" {
+		return nativeGuardedScalarProcessProfile(s, false)
+	}
 	if flag == "" {
-		if s != nil && s.Version == 6 {
+		if s != nil && (s.Version == 6 || s.Version == 14) {
 			return false, errInvalid
 		}
 		return false, nil

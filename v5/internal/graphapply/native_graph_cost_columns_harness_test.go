@@ -1261,7 +1261,7 @@ func nativeGraphCostColumnReadPair(t *testing.T, clients [2]*nativeGraphCostColu
 // prefix/original uniqueness is provided by the source-bound frame stream; the
 // existing raw CDC checkpoint joins authenticate request cardinality separately.
 func nativeScalarGuardedPresenceRow(s nativeGraphCostSpec, row nativeColumnRow) (int, error) {
-	if s.Version != 7 && s.Version != 9 && s.Version != 10 && s.Version != 11 || row.Kind != 2 || row.Component != 1 || row.Owner < 7 || (row.Owner-7)%2 != 0 {
+	if s.Version != 7 && s.Version != 9 && s.Version != 10 && s.Version != 11 && s.Version != 13 && s.Version != 14 || row.Kind != 2 || row.Component != 1 || row.Owner < 7 || (row.Owner-7)%2 != 0 {
 		return 0, errCorrupt
 	}
 	fact := (row.Owner - 7) / 2
@@ -1308,6 +1308,9 @@ func nativeGraphCostColumnRow(spec nativeGraphCostSpec, row nativeColumnRow) (in
 		return 0, errCorrupt
 	}
 	if row.Component == byte(graphstate.Presence) {
+		if (spec.Version == 13 || spec.Version == 14) && row.Before.Present {
+			return nativeScalarGuardedPresenceRow(spec, row)
+		}
 		if spec.Version == 11 && row.Before.Present {
 			return nativeScalarGuardedPresenceRow(spec, row)
 		}

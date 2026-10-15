@@ -458,11 +458,11 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 		case "RHO_GRAPH_EDGE_UNIQUE_PROCESS":
 			edgeProfile = value == "1"
 		case "RHO_GRAPH_FEED_PROCESS":
-			feedProfile = value == "1"
+			feedProfile = value == "1" || value == "2"
 		case "RHO_GRAPH_FEED_RETAINED_PROCESS":
 			feedRetainedProfile = value == "1"
 		case "RHO_GRAPH_SELECTORS_PROCESS":
-			selectorsProfile = value == "1"
+			selectorsProfile = value == "1" || value == "2"
 		case "RHO_GRAPH_CREATE_UPDATE_PROCESS":
 			createUpdateProfile = value == "1"
 		case nativeImmutableColumnsProcessFlag:

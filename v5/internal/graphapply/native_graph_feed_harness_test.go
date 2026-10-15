@@ -33,6 +33,9 @@ type nativeFeedSpec struct {
 }
 
 func (s nativeFeedSpec) cost() nativeGraphCostSpec {
+	if s.Version == 2 {
+		return nativeGraphCostSpec{Version: 13, Facts: s.Facts, CrossPercent: s.CrossPercent, Writers: s.Writers}
+	}
 	return nativeGraphCostSpec{Version: 5, Facts: s.Facts, CrossPercent: s.CrossPercent, Writers: s.Writers}
 }
 func nativeFeedValidate(s nativeGraphCostSpec) error {
@@ -72,6 +75,10 @@ func nativeFeedAdmissionFromEnv(s nativeFeedSpec) (a nativeFeedAdmission, digest
 	if nativeFeedValidate(s.cost()) != nil {
 		return a, digest, errInvalid
 	}
+	return nativeScalarFeedAdmissionFromEnv(s)
+}
+
+func nativeScalarFeedAdmissionFromEnv(s nativeFeedSpec) (a nativeFeedAdmission, digest [32]byte, err error) {
 	deadline, err := nativeGraphEdgeUniqueDeadlineFromEnv()
 	if err != nil {
 		return a, digest, err
@@ -109,8 +116,11 @@ func nativeFeedAdmissionFromEnv(s nativeFeedSpec) (a nativeFeedAdmission, digest
 }
 func nativeFeedProcessProfile(s *nativeGraphCostSpec) (bool, error) {
 	flag := os.Getenv("RHO_GRAPH_FEED_PROCESS")
+	if flag == "2" {
+		return nativeGuardedScalarProcessProfile(s, true)
+	}
 	if flag == "" {
-		if s != nil && s.Version == 5 {
+		if s != nil && (s.Version == 5 || s.Version == 13) {
 			return false, errInvalid
 		}
 		return false, nil
