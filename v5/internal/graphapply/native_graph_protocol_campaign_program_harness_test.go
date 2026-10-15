@@ -156,6 +156,7 @@ type nativeProtocolProgram struct {
 	selectionPartition uint64
 	selectionFence     bool
 	successorAttempts  uint64
+	predecessor        *nativeProtocolPredecessorOwner
 }
 
 func newNativeProtocolProgram(ctx context.Context, f *pairedGraphFaultNetwork, spec nativeProtocolProgramSpec) (*nativeProtocolProgram, error) {
@@ -178,6 +179,10 @@ func newNativeProtocolProgram(ctx context.Context, f *pairedGraphFaultNetwork, s
 		return nil, err
 	}
 	p := &nativeProtocolProgram{ctx: ctx, f: f, spec: spec, output: output, evidence: nativeProtocolProgramEvidence{Profile: nativeProtocolProgramProfile, Spec: spec, DeadlineUnixNanos: deadline.UnixNano(), WorkGrant: uint64((128 + 13) * 32 * processFrameBytes), OutputGrant: 16 << 20}}
+	p.predecessor, err = nativeProtocolPredecessorFromEnv(p)
+	if err != nil {
+		return nil, err
+	}
 	f.mu.Lock()
 	if f.protocolProgram != nil || f.conjunctionGate != nil || f.protocolReplyHold != nil {
 		f.mu.Unlock()
@@ -285,6 +290,9 @@ func (p *nativeProtocolProgram) arm(selector nativeConjunctionSelector, command 
 	p.evidence.CommandSHA256 = sha256.Sum256(command)
 	p.evidence.MessageFrom, p.evidence.MessageTo = leader, to
 	p.nativeTarget = selector.Member
+	if err := p.predecessor.arm(selector, command); err != nil {
+		return err
+	}
 	if p.spec.Message != "literal" {
 		delay := 0
 		if p.spec.Message == "delay" {
@@ -380,6 +388,9 @@ func (p *nativeProtocolProgram) successor(prior, next uint64) (nativeProtocolPro
 	row := nativeProtocolProgramElection{Prior: prior, Leader: next, Configuration: p06ProcessWire(p.f.t, configuration), State: p06ProcessWire(p.f.t, state), Owner: owner}
 	if !p.closed {
 		p.evidence.Successors = append(p.evidence.Successors, row)
+		if err := p.predecessor.successor(); err != nil {
+			return nativeProtocolProgramElection{}, err
+		}
 	}
 	return row, nil
 }
@@ -498,6 +509,7 @@ func (p *nativeProtocolProgram) close() (nativeProtocolProgramEvidence, error) {
 		if !p.armed || p.ctx.Err() != nil {
 			p.terminal = errors.Join(errInvalid, p.ctx.Err())
 		}
+		p.terminal = errors.Join(p.terminal, p.predecessor.seal())
 		if p.finish != nil {
 			p.hub.mu.Lock()
 			p.hub.packetFilter = p.priorFilter
@@ -559,6 +571,9 @@ func nativeProtocolProgramStart(t *testing.T, ctx context.Context, f *pairedGrap
 	}
 	for member := uint64(1); member <= 6; member++ {
 		nativeConjunctionReconnect(f, member)
+	}
+	if err := p.predecessor.start(); err != nil {
+		t.Fatal("actual predecessor companion admission", err)
 	}
 	return p
 }
