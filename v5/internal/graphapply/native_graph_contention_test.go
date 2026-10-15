@@ -187,11 +187,11 @@ func TestNativeContentionColumnDependencyPrepassSurvivesExpiryAndReopen(t *testi
 	if err := source.retainedBinding(); err != nil {
 		t.Fatal(err)
 	}
-	request, err := publisher.Begin(t.Context(), n.requestID(), graphReadRequest{mode: graphReadAt, cut: initial}, 20)
+	pinRequest, err := publisher.Begin(t.Context(), n.requestID(), graphReadRequest{mode: graphReadAt, cut: initial}, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seed, err := request.Original()
+	seed, err := pinRequest.Original()
 	if err != nil {
 		t.Fatal(err)
 	}

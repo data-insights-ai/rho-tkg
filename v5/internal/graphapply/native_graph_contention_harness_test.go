@@ -943,7 +943,7 @@ func (s *nativeContentionSessions) freeze(ctx context.Context, q nativeContentio
 			owner = s.spec.remoteNode()
 		}
 		ops = []graphstate.Operation{{Kind: graphstate.CreateNode, Owner: graphstate.EntityID(owner), Life: graphstate.LifeID(owner + 1), Scope: window, Record: graphstate.EntityRecord{Interpretation: graphstate.InterpretationObservation, TemporalRole: graphstate.TemporalRoleValidity}}}
-		claims = []freshBinding{{role: entityBinding, id: owner}, {role: lifeBinding, owner: owner, id: owner + 1}}
+		claims = []freshBinding{{role: entityBinding, id: owner}, {role: lifeBinding, owner: graphstate.EntityID(owner), id: owner + 1}}
 	} else {
 		target, err := s.spec.target(q.Job.Phase, q.Job.Fact)
 		if err != nil {
@@ -1005,7 +1005,7 @@ func (s *nativeContentionSessions) freeze(ctx context.Context, q nativeContentio
 					return reply, errGraphReadConflict
 				}
 				ops = append(ops, graphstate.Operation{Kind: graphstate.CreateRelationship, Owner: graphstate.EntityID(owner), Life: graphstate.LifeID(life), Scope: window, Record: graphstate.EntityRecord{Type: "edge", Source: 1, Target: graphstate.EntityID(endpoint), Mode: graphstate.LifeBound, Interpretation: graphstate.InterpretationAssertedRelation, TemporalRole: graphstate.TemporalRoleOccurrenceTime}, Binding: graphstate.LifeRecord{SourceLife: 2, TargetLife: graphstate.LifeID(endpointLife)}})
-				claims = append(claims, freshBinding{role: entityBinding, id: owner}, freshBinding{role: lifeBinding, owner: owner, id: life})
+				claims = append(claims, freshBinding{role: entityBinding, id: owner}, freshBinding{role: lifeBinding, owner: graphstate.EntityID(owner), id: life})
 			}
 			valueID, err := s.spec.valueID(value)
 			if err != nil {

@@ -458,4 +458,5 @@ func nativeTransferSources(t *testing.T, ctx context.Context, n *certifiedProces
 			}
 		}
 	}
+	return rows
 }
