@@ -57,7 +57,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	b.done = true
 	// Caller-instant node and relationship ops: refuse the whole batch, before
 	// any write, when one of them would be refused (batch_callertx_preflight.go).
-	if err := b.g.precheckCallerTxOps(b.callerTxUnit()); err != nil {
+	err := b.g.precheckCallerTxOps(b.callerTxUnit())
+	if err == nil {
+		err = b.g.precheckQueuedUntimedCreates(b.nodes, b.rels)
+	}
+	if err != nil {
 		b.g.mu.Unlock()
 		b.g.txMu.Unlock()
 		b.mu.Unlock()

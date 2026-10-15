@@ -219,7 +219,11 @@ type Core struct {
 	// creates under (Config.UntimedValidStart == UntimedUnbounded, or after
 	// Admin().SetUntimedValidStart); untimedModeStamp / untimedResume are
 	// resolveUntimedMode's decisions for New (backlog 73, untimed_mode.go).
+	// untimedIncomplete mirrors the persisted "converting" key: a conversion
+	// started and did not finish, so exports and untimed creates fail closed
+	// (checkUntimedComplete).
 	untimedUnbounded      atomic.Bool
+	untimedIncomplete     atomic.Bool
 	untimedModeStamp      bool
 	untimedResume         bool
 	historyCompaction     storepkg.HistoryCompactionCapability

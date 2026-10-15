@@ -83,6 +83,9 @@ func (c *Core) applyIngestGroupConcurrent(g *ingestGroup, lane uint16) error {
 		if refused = c.precheckCallerTxOps(g.callerTxUnit()); refused != nil {
 			return
 		}
+		if refused = c.precheckQueuedUntimedCreates(g.nodes, g.rels); refused != nil {
+			return
+		}
 		unavailable := c.applyConcurrentNodeCreates(g.nodes, fail, emit)
 		c.applyConcurrentRelCreates(g.rels, unavailable, fail, emit)
 		c.applyConcurrentUpdatesAndDeletes(g, fail, emit)

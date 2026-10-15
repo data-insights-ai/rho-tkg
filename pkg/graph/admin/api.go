@@ -130,9 +130,11 @@ func (a *API) Reset() error {
 // creates take it; reopen the store with Config.UntimedValidStart =
 // UntimedUnbounded. UntimedFromTxFrom on a TxFrom store is a no-op, on an
 // unbounded one ErrUntimedModeMismatch. The graph is locked meanwhile. A
-// conversion cut short (crash, ctx, store error) stays marked unfinished: a
-// reopen under UntimedFromTxFrom fails with ErrUntimedModeMismatch, one under
-// UntimedUnbounded (or a second call) finishes it. See core.AdminOps.
+// conversion cut short (crash, ctx, store error) stays marked unfinished:
+// until it finishes, exports, imports and creates of an untimed first
+// version fail with ErrUntimedModeMismatch; a reopen under UntimedFromTxFrom
+// fails with ErrUntimedModeMismatch, one under UntimedUnbounded (or a second
+// call) finishes it. See core.AdminOps.
 func (a *API) SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) error {
 	ops, err := a.ready()
 	if err != nil {

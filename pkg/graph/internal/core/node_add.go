@@ -113,7 +113,9 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 	if err != nil {
 		return nil, err
 	}
-	validFrom = c.untimedStart(validFrom, true) // a generated ID: a first version
+	if validFrom, err = c.untimedStart(validFrom, true); err != nil { // a generated ID: a first version
+		return nil, err
+	}
 	txFromOverride, err = c.resolveBackfillTxFrom(txFromOverride)
 	if err != nil {
 		return nil, err
@@ -430,7 +432,9 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err := life.checkCallerTx(txFromOverride); err != nil {
 		return nil, err
 	}
-	validFrom = c.untimedStart(validFrom, life.version == 0)
+	if validFrom, err = c.untimedStart(validFrom, life.version == 0); err != nil {
+		return nil, err
+	}
 
 	primaryToken, extraTokens, labelSnapshot, allocatedLabels, labelsLocked, err := c.getOrCreateLabelsWithSnapshot(labels)
 	if err != nil {
