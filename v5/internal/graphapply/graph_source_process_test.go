@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
@@ -1243,6 +1244,17 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
+	retentionState, retentionStateErr := newNativeRetentionOwner(h, o.stableBatch)
+	if retentionStateErr != nil {
+		t.Fatal("fresh native retention state owner", retentionStateErr)
+	}
+	if retentionState != nil {
+		defer func() {
+			if err := retentionState.close(); err != nil {
+				t.Error("native retention reader cleanup", err)
+			}
+		}()
+	}
 	p08 := newAllocationP08Owners(ctx, h, o)
 	defer p08.close()
 	writer := &graphProcessChildWriter{incarnation: o.incarnation}
@@ -1925,6 +1937,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			response.ready = o.ready
 		}
 		response.code, response.detail = processError(err)
+		if retentionState != nil && r.op == processNativeFaultControl && bytes.HasPrefix(r.data, []byte(nativeRetentionMarker)) && errors.Is(err, raftlog.ErrApplicationExpired) {
+			response.code = 9 // Fresh native retained-history refusal; legacy codes unchanged.
+		}
 		if code := nativeFeedProfileResponseCode(r, feed != nil, o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6), err); code != 0 {
 			response.code = code
 		}
@@ -2111,6 +2126,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processNativeFaultControl:
 				if r.index != 0 || r.entity != 0 {
 					e = errInvalid
+				} else if retentionState != nil && bytes.HasPrefix(r.data, []byte(nativeRetentionMarker)) {
+					if r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
+						e = errInvalid
+					} else {
+						response, event, e = retentionState.event(r.data)
+					}
 				} else if bytes.HasPrefix(r.data, []byte(nativeBatchMarker)) {
 					if r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
 						e = errInvalid
