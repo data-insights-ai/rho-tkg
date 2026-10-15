@@ -453,11 +453,22 @@ Open/Scan/Points timings bind mode, cut and EOF cardinality, with fixed per-cell
 sample counts; write latency stays separate. Legacy wrappers/formats remain
 unchanged. The direct API and independent checker guards are authored only.
 The dispatcher schedules all eight families and local/1/20/100ms profiles, but
-executes only contention and selectors/local; unsupported semantics or transport
+executes only contention, selectors and snapshot-to-feed/local; unsupported semantics or transport
 refuse before effects. Each selected-family matrix contains 360 fresh cells;
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
-No new cell, guard or runtime gate has run. The other six FDB family drivers,
+No new cell, guard or runtime gate has run. The other five FDB family drivers,
 directed RTT, native parity, full matrix and engine decision remain open.
+The FDB snapshot-to-feed source is integrated at `5c14f42c`/`bb867775`:
+Begin journals its actual selected cut and factory intent; Publish atomically
+acquires the pin, snapshot owner and feed cursor. Bounded complete CDC pages
+replay until an exact immutable ACK advances their vectors. Independently
+reserved cleanup tickets survive ordinary quota exhaustion and recover the same
+saved owner after client loss or pin expiry. The driver includes a real
+snapshot/write race, SDK client kill/replacement, both layouts and a bounded
+independent source/page/ACK/control verifier. Source review corrected owned
+cleanup-work reporting. Normal-IO deadline propagation through shared scanners
+and column helpers, plus workload-container deadline forwarding, remains an
+explicit source follow-up; compilation, runtime and capacity remain unqualified.
 The explicitly selected FDB source-history
 collector is source-integrated at `5685b659`: durable pre-deletion admission,
 held-read/pin/reference protection, resumable bounded deletion and exact original
@@ -533,9 +544,8 @@ B or D.
 Current worker lanes: Sol 6.1/high for the native/FDB cross-edge endpoint-life
 and uniqueness family; Sol 6.1/high for native contention, real directed
 transport delay and resumable column dependencies, followed by the remaining
-C/D schedules; Sol 6.1/high for the FDB snapshot-to-feed family. Feed cleanup
-must reserve terminal capacity independently of ordinary request quotas and
-recover the same saved owner after process loss and pin expiry. These packages
+C/D schedules; Sol 6.1/high for FDB snapshot-to-feed normal-IO deadline
+propagation, followed by real owned FDB transport. These packages
 are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
