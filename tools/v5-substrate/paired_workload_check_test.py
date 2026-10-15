@@ -72,7 +72,7 @@ class OwnedPairSourceGuards(unittest.TestCase):
                         ordinal=4+fact+(s["facts"] if updated else 0);owner=7+2*fact;value=6 if updated else 5;target=3
                         row={"Owner":owner,"Life":owner+1,"Source":1,"SourceLife":2,"Target":target,"TargetLife":target+1,"Before":{"Present":updated,"Value":5 if updated else 0,"Provenance":4+fact if updated else 0},"After":{"Present":True,"Null":False,"Handle":value,"Value":value,"Provenance":ordinal}}
                         put(left,b"row",u64(ordinal)+u64(owner)+b"\3",row)
-                        put(left,b"row",u64(ordinal)+u64(owner)+b"",{"Before":{"Present":updated,"Handle":owner+1 if updated else 0,"Provenance":4+fact if updated else 0},"After":{"Present":True,"Handle":owner+1,"Provenance":ordinal}})
+                        put(left,b"row",u64(ordinal)+u64(owner)+b"\1",{"Before":{"Present":updated,"Handle":owner+1 if updated else 0,"Provenance":4+fact if updated else 0},"After":{"Present":True,"Handle":owner+1,"Provenance":ordinal}})
                         tx={"GraphChange":{"Edge":{"ID":owner,"Source":{"Node":1,"Life":2},"Target":{"Node":target,"Life":target+1}}},"Lifecycle":{"EdgeLife":owner+1,"Definition":{"Kind":"i64","ID":value,"I64":value},"Provenance":ordinal}}
                         after={"Value":value,"Deleted":False};write={"Group":0,"Key":"fixture/"+str(fact),"After":after}
                         if updated:write["Before"]={"Value":5,"Deleted":False}
