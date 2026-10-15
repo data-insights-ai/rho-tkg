@@ -11,6 +11,7 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/apple/foundationdb/bindings/go/src/fdb"
 )
@@ -53,6 +54,10 @@ type graphColumnRead struct {
 	pin             *graphColumnPinToken
 	mu              sync.Mutex
 	walking, closed bool
+	// Fresh context-owned callers retain ONE separately finite cleanup lifetime
+	// on this exact pending handle. Normal cancellation cannot spend or reset it.
+	cleanupDeadline  time.Time
+	cleanupCallbacks int
 }
 
 // An uncertain cleanup retains the caller-created owner identity for an
@@ -202,7 +207,7 @@ func (r *graphColumnRead) open(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	_, err := r.s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	_, err := r.s.writeContext(ctx, func(tr fdb.Transaction) (any, error) {
 		prior, found, err := get[graphColumnReadRecord](tr, r.key())
 		if err != nil {
 			return nil, err
@@ -319,7 +324,7 @@ func (r *graphColumnRead) Close() error {
 	if r.closed {
 		return nil
 	}
-	_, err := r.s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	_, err := r.closeNative(func(tr fdb.Transaction) (any, error) {
 		record, found, err := get[graphColumnReadRecord](tr, r.key())
 		if err != nil {
 			return nil, err
@@ -366,6 +371,36 @@ func (r *graphColumnRead) Close() error {
 		r.closed = true
 	}
 	return graphColumnCommitError(err)
+}
+
+// Called only under r.mu. Nil keeps literal historical native Close IO; fresh
+// owners never escape to that raw path after their normal run is canceled.
+func (r *graphColumnRead) closeNative(fn func(fdb.Transaction) (any, error)) (any, error) {
+	if r.s.ctx == nil {
+		return r.s.h.db.Transact(fn)
+	}
+	if r.cleanupDeadline.IsZero() {
+		r.cleanupDeadline = time.Now().Add(30 * time.Second)
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), r.cleanupDeadline)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.cleanupCallbacks >= graphCostParallelCallbacks {
+		return nil, errLimit
+	}
+	result, _, err := historyTransactContext(ctx, r.s.h.db, func() error {
+		if r.cleanupCallbacks >= graphCostParallelCallbacks {
+			return errLimit
+		}
+		r.cleanupCallbacks++
+		return nil
+	}, func(tr fdb.Transaction) (graphCostContextResult, error) {
+		value, err := fn(tr)
+		return graphCostContextResult{value}, err
+	})
+	return result.value, err
 }
 func (r *graphColumnRead) walk(ctx context.Context, at cut, cache *os.Root, emit func(graphColumnRow) error) (graphColumnManifest, error) {
 	if r == nil {
@@ -426,7 +461,7 @@ func newGraphColumnPins(s *graphColumnStore, p graphColumnPinPolicy) (*graphColu
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	_, err = s.write(func(tr fdb.Transaction) (any, error) {
 		columnBody, err := tr.Get(s.key("binding")).Get()
 		if err != nil {
 			return nil, err
@@ -647,7 +682,7 @@ func (v *graphColumnPins) pin(ctx context.Context, request, generation string, a
 	if _, err := rand.Read(secret[:]); err != nil {
 		return graphColumnPinToken{}, err
 	}
-	result, err := v.s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	result, err := v.s.writeContext(ctx, func(tr fdb.Transaction) (any, error) {
 		if _, err := v.ledger(tr); err != nil {
 			return nil, err
 		}
@@ -739,7 +774,7 @@ func (v *graphColumnPins) finish(ctx context.Context, request string, token grap
 	if expire {
 		kind = columnOwnerExpired
 	}
-	_, err := v.s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	_, err := v.s.writeContext(ctx, func(tr fdb.Transaction) (any, error) {
 		if _, err := v.ledger(tr); err != nil {
 			return nil, err
 		}
@@ -826,7 +861,7 @@ func (v *graphColumnPins) reference(ctx context.Context, request, name, generati
 		return graphColumnReference{}, err
 	}
 	intent := sha256.Sum256(body)
-	result, err := v.s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	result, err := v.s.writeContext(ctx, func(tr fdb.Transaction) (any, error) {
 		if _, err := v.ledger(tr); err != nil {
 			return nil, err
 		}
@@ -957,7 +992,7 @@ func (v *graphColumnPins) collect(ctx context.Context, id string, b graphColumnC
 		if err := ctx.Err(); err != nil {
 			return graphColumnCollectResult{}, err
 		}
-		page, err := v.s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
+		page, err := v.s.writeContext(ctx, func(tr fdb.Transaction) (any, error) {
 			if _, err := v.ledger(tr); err != nil {
 				return nil, err
 			}

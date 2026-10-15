@@ -66,7 +66,7 @@ func TestGraphFeedActualSnapshotPageAckAndRetainedOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := newGraphFeedStore(source, graphFeedPolicyFor(p))
+	store, err := newGraphFeedStore(t.Context(), source, graphFeedPolicyFor(p))
 	if err != nil {
 		t.Fatal(err)
 	}

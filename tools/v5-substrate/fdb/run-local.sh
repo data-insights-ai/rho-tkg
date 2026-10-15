@@ -326,6 +326,7 @@ if [ "$mode" = workload-cell ]; then
   python3 -c 'import time; print(time.monotonic_ns())' >"$out/workload-controller-start-nanos.txt"
   docker run -d --name "$name" --network "$tag" --memory "${client_mib}m" --cpus 0.5 \
     --env "FDB_CONNECTION_STRING=$connection" --env "RHO_GRAPH_WORKLOAD_SPEC=$RHO_GRAPH_WORKLOAD_SPEC" --env "RHO_GRAPH_WORKLOAD_RUN=$RHO_GRAPH_WORKLOAD_RUN" \
+    --env "FDB_COST_SECONDS=$workload_seconds" \
     --env FDB_COST_ARTIFACT=/evidence --mount "type=bind,source=$out,target=/evidence" "$client_image" fdb-spike workload-cell >"$out/workload-client-id.txt"
   if ! python3 -B cost_monitor.py --seconds "$workload_seconds" --output "$out/workload-process-rss.jsonl" --servers "${servers[@]}" --client "$name" >"$out/workload-monitor.stdout" 2>"$out/workload-monitor.stderr"; then
     docker logs "$name" >"$out/workload-client.stdout" 2>"$out/workload-client.stderr" || true

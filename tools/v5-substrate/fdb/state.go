@@ -211,39 +211,66 @@ func put(tr fdb.Transaction, k fdb.Key, v any) error {
 	return nil
 }
 func newHarness(db fdb.Database, c config) (*harness, error) {
+	h, err := newUninitializedHarness(db, c)
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Transact(h.initializeIn)
+	if err != nil {
+		return nil, err
+	}
+	return h, nil
+}
+func newHarnessContext(ctx context.Context, db fdb.Database, c config) (*harness, error) {
+	if ctx == nil {
+		return nil, errInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	h, err := newUninitializedHarness(db, c)
+	if err != nil {
+		return nil, err
+	}
+	_, err = graphCostWriteContext(ctx, db, h.initializeIn)
+	if err != nil {
+		return nil, err
+	}
+	return h, nil
+}
+func newUninitializedHarness(db fdb.Database, c config) (*harness, error) {
 	l := c.Limits
 	if c.Format != 2 || !validGraphConfig(c) || !validLifecycleProfile(c) || !validName(c.Graph) || c.Topology == 0 || c.Epochs[0] == 0 || c.Epochs[1] == 0 || l.Bytes < 8192 || l.Bytes > graphCostLimit(c).Bytes || l.Transactions < 1 || l.Transactions > graphCostLimit(c).Transactions || l.Versions < 1 || l.Versions > graphCostLimit(c).Versions || l.Certificates < 1 || l.Certificates > 1024 {
 		return nil, errInvalid
 	}
-	h := &harness{db, c}
-	_, e := db.Transact(func(tr fdb.Transaction) (any, error) {
-		for g := uint8(0); g < 2; g++ {
-			old, ok, e := get[config](tr, h.key(g, "meta", "config"))
-			if e != nil {
-				return nil, e
-			}
-			if ok {
-				if old != c {
-					return nil, errStale
-				}
-				if _, e = h.meta(tr, g); e != nil {
-					return nil, e
-				}
-				continue
-			}
-			if e = put(tr, h.key(g, "meta", "config"), c); e != nil {
-				return nil, e
-			}
-			if e = put(tr, h.key(g, "meta", "state"), metadata{Bytes: h.metadataReservation(g)}); e != nil {
-				return nil, e
-			}
+	return &harness{db, c}, nil
+}
+
+// One config initialization authority; historical callers keep raw/default IO.
+func (h *harness) initializeIn(tr fdb.Transaction) (any, error) {
+	c := h.config
+	for g := uint8(0); g < 2; g++ {
+		old, ok, e := get[config](tr, h.key(g, "meta", "config"))
+		if e != nil {
+			return nil, e
 		}
-		return nil, nil
-	})
-	if e != nil {
-		return nil, e
+		if ok {
+			if old != c {
+				return nil, errStale
+			}
+			if _, e = h.meta(tr, g); e != nil {
+				return nil, e
+			}
+			continue
+		}
+		if e = put(tr, h.key(g, "meta", "config"), c); e != nil {
+			return nil, e
+		}
+		if e = put(tr, h.key(g, "meta", "state"), metadata{Bytes: h.metadataReservation(g)}); e != nil {
+			return nil, e
+		}
 	}
-	return h, nil
+	return nil, nil
 }
 func (h *harness) validate(x transaction) error {
 	if !validName(x.Graph) || !validName(x.ID) || !validName(x.Request) || x.Topology == 0 || x.Coordinator > 1 || len(x.Participants) < 1 || len(x.Participants) > 2 {

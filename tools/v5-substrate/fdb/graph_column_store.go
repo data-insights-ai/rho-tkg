@@ -39,6 +39,7 @@ type graphColumnManifest struct {
 	Chain               [32]byte
 }
 type graphColumnStore struct {
+	ctx     context.Context
 	h       *harness
 	binding graphColumnBinding
 	digest  [32]byte
@@ -48,6 +49,14 @@ type graphColumnStore struct {
 // KV admission or graph metadata are rewritten. Failed uploads keep charged
 // immutable chunks/reservations; there is no expiry, GC, or capacity claim.
 func newGraphColumnStore(h *harness, p graphColumnPolicy) (*graphColumnStore, error) {
+	return newGraphColumnStoreContext(nil, h, p)
+}
+func newGraphColumnStoreContext(ctx context.Context, h *harness, p graphColumnPolicy) (*graphColumnStore, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
 	if h == nil || p.validate() != nil || !validGraphCostProfile(h.config) {
 		return nil, errInvalid
 	}
@@ -56,8 +65,8 @@ func newGraphColumnStore(h *harness, p graphColumnPolicy) (*graphColumnStore, er
 	if err != nil {
 		return nil, err
 	}
-	s := &graphColumnStore{h: &harness{db: h.db, config: h.config}, binding: binding, digest: sha256.Sum256(body)}
-	_, err = h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	s := &graphColumnStore{ctx: ctx, h: &harness{db: h.db, config: h.config}, binding: binding, digest: sha256.Sum256(body)}
+	_, err = s.write(func(tr fdb.Transaction) (any, error) {
 		for g := uint8(0); g < 2; g++ {
 			if err := h.checkConfig(tr, g); err != nil {
 				return nil, err
@@ -92,6 +101,28 @@ func newGraphColumnStore(h *harness, p graphColumnPolicy) (*graphColumnStore, er
 		return nil, graphColumnCommitError(err)
 	}
 	return s, nil
+}
+func (s *graphColumnStore) read(fn func(fdb.ReadTransaction) (any, error)) (any, error) {
+	return graphCostReadContext(s.ctx, s.h.db, fn)
+}
+func (s *graphColumnStore) write(fn func(fdb.Transaction) (any, error)) (any, error) {
+	return graphCostWriteContext(s.ctx, s.h.db, fn)
+}
+func (s *graphColumnStore) writeContext(ctx context.Context, fn func(fdb.Transaction) (any, error)) (any, error) {
+	bounded, cancel := graphCostIOContext(s.ctx, ctx)
+	defer cancel()
+	return graphCostWriteContext(bounded, s.h.db, fn)
+}
+func (s *graphColumnStore) forContext(ctx context.Context) (*graphColumnStore, func()) {
+	if s.ctx == nil {
+		return s, func() {}
+	}
+	bounded, cancel := graphCostIOContext(s.ctx, ctx)
+	// Only the ephemeral IO lifetime differs; the same immutable binding and
+	// native reducers remain authoritative. Never replace an existing owner's s.
+	own := *s
+	own.ctx = bounded
+	return &own, cancel
 }
 func (s *graphColumnStore) prefix() string          { return s.h.prefix(0) + "columns-v1/" }
 func (s *graphColumnStore) key(name string) fdb.Key { return fdb.Key(s.prefix() + name) }
@@ -182,7 +213,7 @@ func (s *graphColumnStore) progress(tr fdb.ReadTransaction, g graphColumnGenerat
 }
 
 func (s *graphColumnStore) begin(g graphColumnGeneration) error {
-	_, err := s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	_, err := s.write(func(tr fdb.Transaction) (any, error) {
 		if err := s.check(tr, g); err != nil {
 			return nil, err
 		}
@@ -327,7 +358,7 @@ func (s *graphColumnStore) upload(g graphColumnGeneration, ordinal uint64, previ
 	}
 	// Clone before retry; caller buffers cannot change native commit identity.
 	body = bytes.Clone(body)
-	_, err = s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	_, err = s.write(func(tr fdb.Transaction) (any, error) {
 		state, err := s.progress(tr, g, true)
 		if err != nil {
 			return nil, err
@@ -452,7 +483,7 @@ func (s *graphColumnStore) sealIn(tr fdb.Transaction, g graphColumnGeneration) (
 	return manifest, nil
 }
 func (s *graphColumnStore) seal(g graphColumnGeneration) (graphColumnManifest, error) {
-	result, err := s.h.db.Transact(func(tr fdb.Transaction) (any, error) { return s.sealIn(tr, g) })
+	result, err := s.write(func(tr fdb.Transaction) (any, error) { return s.sealIn(tr, g) })
 	if err != nil {
 		return graphColumnManifest{}, graphColumnCommitError(err)
 	}
@@ -483,7 +514,7 @@ func (s *graphColumnStore) manifest(id string) (graphColumnManifest, error) {
 	if s == nil || !validName(id) {
 		return graphColumnManifest{}, errInvalid
 	}
-	result, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) { return s.manifestIn(tr, id) })
+	result, err := s.read(func(tr fdb.ReadTransaction) (any, error) { return s.manifestIn(tr, id) })
 	if err != nil {
 		return graphColumnManifest{}, err
 	}
@@ -515,6 +546,8 @@ func (s *graphColumnStore) publishObserved(ctx context.Context, id string, initi
 	if err := ctx.Err(); err != nil {
 		return graphColumnManifest{}, err
 	}
+	s, cancel := s.forContext(ctx)
+	defer cancel()
 	g := graphColumnGeneration{Version: 1, ID: id, Binding: s.digest, Initial: initial.record, Cut: final.record}
 	body, err := wire(g)
 	if err != nil {
@@ -560,7 +593,7 @@ func (s *graphColumnStore) publishObserved(ctx context.Context, id string, initi
 		rows = nil
 		return nil
 	}
-	_, err = s.h.graphCostWalkChanges(initial, final, graphCostStreamPolicy{PageRows: 1, PageBytes: 64 << 10}, func(raw graphCostRawRow) error {
+	_, err = s.h.graphCostWalkChangesContext(s.ctx, initial, final, graphCostStreamPolicy{PageRows: 1, PageBytes: 64 << 10}, func(raw graphCostRawRow) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -644,6 +677,8 @@ func (s *graphColumnStore) walkOwned(ctx context.Context, id string, at cut, cac
 	if s == nil || ctx == nil || emit == nil || guard == nil {
 		return graphColumnManifest{}, errInvalid
 	}
+	s, cancel := s.forContext(ctx)
+	defer cancel()
 	m, err := s.manifest(id)
 	if err != nil {
 		return graphColumnManifest{}, err
@@ -677,7 +712,7 @@ func (s *graphColumnStore) walkOwned(ctx context.Context, id string, at cut, cac
 				return graphColumnManifest{}, err
 			}
 		}
-		result, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+		result, err := s.read(func(tr fdb.ReadTransaction) (any, error) {
 			if err := guard(tr); err != nil {
 				return nil, err
 			}
@@ -763,7 +798,7 @@ func (s *graphColumnStore) walkOwned(ctx context.Context, id string, at cut, cac
 	if err := ctx.Err(); err != nil {
 		return graphColumnManifest{}, err
 	}
-	_, err = s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+	_, err = s.read(func(tr fdb.ReadTransaction) (any, error) {
 		if err := guard(tr); err != nil {
 			return nil, err
 		}

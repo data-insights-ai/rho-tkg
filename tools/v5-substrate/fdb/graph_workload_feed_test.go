@@ -2,9 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"testing"
+	"time"
+
+	"github.com/apple/foundationdb/bindings/go/src/fdb"
 )
 
 // Authored source guards only; the complete actual process/cell path is the
@@ -34,6 +38,65 @@ func TestGraphFeedWorkloadFreshBindingAndOwnedChildGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if a, err := newGraphFeedWorkloadArtifacts(ctx, new(harness), root, graphFeedWorkloadSpec{}, graphCostStoredRecord{}, cut{}); a != nil || !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled run opened artifact handles", a, err)
+	}
+	if _, err := root.Stat("fdb-feed-attempts.jsonl"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("canceled constructor created output", err)
+	}
+	a := &graphFeedWorkloadArtifacts{ctx: ctx}
+	if err := a.event(struct{}{}); !errors.Is(err, context.Canceled) {
+		t.Fatal("artifact event detached from original canceled run", err)
+	}
+	// A zero database is deliberate: already-canceled new IO must refuse before
+	// attempting SDK entry. These guards do not stand in for actual SDK evidence.
+	var db fdb.Database
+	if _, err := newHarnessContext(ctx, db, config{}); !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled config initialization entered SDK", err)
+	}
+	if _, err := graphCostReadContext(ctx, db, func(fdb.ReadTransaction) (any, error) {
+		t.Fatal("canceled read callback entered")
+		return nil, nil
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatal("read lost original cancellation", err)
+	}
+	if _, err := graphCostWriteContext(ctx, db, func(fdb.Transaction) (any, error) {
+		t.Fatal("canceled mutation callback entered")
+		return nil, nil
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatal("mutation lost original cancellation", err)
+	}
+	if bounded, stop := graphCostIOContext(nil, ctx); bounded != nil {
+		stop()
+		t.Fatal("legacy nil IO acquired a new lifetime")
+	} else {
+		stop()
+	}
+	for _, cancelRun := range []bool{false, true} {
+		run, endRun := context.WithCancel(t.Context())
+		caller, endCaller := context.WithCancel(t.Context())
+		bounded, stop := graphCostIOContext(run, caller)
+		if cancelRun {
+			endRun()
+		} else {
+			endCaller()
+		}
+		wait, endWait := context.WithTimeout(t.Context(), time.Second)
+		select {
+		case <-bounded.Done():
+			if !errors.Is(bounded.Err(), context.Canceled) {
+				t.Fatal("combined IO lost cancellation", bounded.Err())
+			}
+		case <-wait.Done():
+			t.Fatal("caller/run cancellation detached from same IO lifetime")
+		}
+		endWait()
+		stop()
+		endRun()
+		endCaller()
+	}
 	original := graphFeedChildInput{ReaderRequest: "factory-original", PageRequest: "same-page", DeadlineNanos: 123}
 	if err := feedChildWrite(root, "input.json", original); err != nil {
 		t.Fatal(err)
@@ -99,5 +162,18 @@ func TestGraphFeedOwnedCleanupWorkAndPendingHandle(t *testing.T) {
 	}
 	if err := pending.Close(); err != nil || calls != 2 || pending.Work() != want {
 		t.Fatal("cached Close consumed or reset cleanup credit", calls, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	column := &graphColumnRead{s: &graphColumnStore{ctx: ctx}, id: graphColumnOwnerID{Request: "same-column-owner", Generation: "old", Secret: [32]byte{1}}, cleanupDeadline: time.Now().Add(-time.Second)}
+	deadline := column.cleanupDeadline
+	err = columnReadCleanup(column)
+	columnPending, ok := errors.AsType[*graphColumnReadPending](err)
+	if !ok || columnPending.Owner != column || !errors.Is(err, context.DeadlineExceeded) || column.closed || column.cleanupDeadline != deadline {
+		t.Fatal("column cleanup reset deadline, lost same owner or entered raw canceled IO", err)
+	}
+	err = columnReadCleanup(columnPending.Owner)
+	if !errors.Is(err, context.DeadlineExceeded) || column.cleanupDeadline != deadline || column.cleanupCallbacks != 0 {
+		t.Fatal("pending column cleanup refreshed or spent expired credit", err)
 	}
 }

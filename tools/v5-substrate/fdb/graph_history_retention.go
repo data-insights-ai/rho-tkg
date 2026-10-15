@@ -84,6 +84,7 @@ type graphHistoryState struct {
 	CumulativeDeleted                                  [2]uint64
 }
 type graphHistoryRetention struct {
+	ctx     context.Context
 	h       *harness
 	binding graphHistoryBinding
 }
@@ -97,6 +98,14 @@ func (s *graphHistoryRetention) ownerKey(request string) fdb.Key {
 // Explicit selection only, on a fresh graph and authentic initial cut. The
 // immutable config stays untouched; source control quotas have a separate ledger.
 func newGraphHistoryRetention(h *harness, initial cut, p graphHistoryPolicy) (*graphHistoryRetention, error) {
+	return newGraphHistoryRetentionContext(nil, h, initial, p)
+}
+func newGraphHistoryRetentionContext(ctx context.Context, h *harness, initial cut, p graphHistoryPolicy) (*graphHistoryRetention, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
 	if h == nil || p.validate() != nil || !slices.Equal(initial.record.Scope, []uint8{0, 1}) || initial.record.Groups != [2]uint64{} {
 		return nil, errInvalid
 	}
@@ -109,8 +118,8 @@ func newGraphHistoryRetention(h *harness, initial cut, p graphHistoryPolicy) (*g
 	if err != nil {
 		return nil, err
 	}
-	s := &graphHistoryRetention{h: h, binding: b}
-	_, err = h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	s := &graphHistoryRetention{ctx: ctx, h: h, binding: b}
+	_, err = graphCostWriteContext(ctx, h.db, func(tr fdb.Transaction) (any, error) {
 		for g := uint8(0); g < 2; g++ {
 			if err := h.checkConfig(tr, g); err != nil {
 				return nil, err
@@ -190,7 +199,7 @@ func newGraphHistoryRetention(h *harness, initial cut, p graphHistoryPolicy) (*g
 	if err != nil {
 		return nil, graphHistoryCommitError(err)
 	}
-	observed, err := h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) { return h.historyRetentionIn(tr) })
+	observed, err := graphCostReadContext(ctx, h.db, func(tr fdb.ReadTransaction) (any, error) { return h.historyRetentionIn(tr) })
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +210,7 @@ func newGraphHistoryRetention(h *harness, initial cut, p graphHistoryPolicy) (*g
 	if !graphColumnSame(actual.binding, b) {
 		return nil, errMismatch
 	}
+	actual.ctx = ctx
 	return actual, nil
 }
 func graphHistoryCommitError(err error) error {
@@ -1715,6 +1725,8 @@ func (r *graphHistoryRead) walkPages(ctx context.Context, pageRows int, emit fun
 	if pageRows < 1 || pageRows > r.s.binding.Policy.PageRows {
 		return rows, errInvalid
 	}
+	ioctx, cancel := graphCostIOContext(r.s.ctx, ctx)
+	defer cancel()
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
@@ -1735,7 +1747,7 @@ func (r *graphHistoryRead) walkPages(ctx context.Context, pageRows int, emit fun
 		begin := fdb.Key(r.s.h.prefix(g) + "history/")
 		end := fdb.Key(fmt.Sprintf("%shistory/%016x0", r.s.h.prefix(g), r.id.Cut.Round))
 		for {
-			result, readErr := r.s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+			result, readErr := graphCostReadContext(ioctx, r.s.h.db, func(tr fdb.ReadTransaction) (any, error) {
 				if err := ctx.Err(); err != nil {
 					return nil, err
 				}
@@ -1810,7 +1822,7 @@ func (r *graphHistoryRead) walkPages(ctx context.Context, pageRows int, emit fun
 	for coordinator := uint8(0); coordinator < 2; coordinator++ {
 		sequence := uint64(0)
 		for {
-			result, readErr := r.s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+			result, readErr := graphCostReadContext(ioctx, r.s.h.db, func(tr fdb.ReadTransaction) (any, error) {
 				if err := ctx.Err(); err != nil {
 					return nil, err
 				}
@@ -1899,7 +1911,7 @@ func (r *graphHistoryRead) walkPages(ctx context.Context, pageRows int, emit fun
 			}
 		}
 	}
-	_, err = r.s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+	_, err = graphCostReadContext(ioctx, r.s.h.db, func(tr fdb.ReadTransaction) (any, error) {
 		if err := r.check(tr); err != nil {
 			return nil, err
 		}

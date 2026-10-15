@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -36,6 +37,7 @@ type graphCostStreamEnd struct {
 	Metadata     [2]metadata
 }
 type graphCostStream struct {
+	ctx      context.Context
 	h        *harness
 	from, to cut
 	policy   graphCostStreamPolicy
@@ -43,6 +45,65 @@ type graphCostStream struct {
 }
 
 func newGraphCostStream(h *harness, from, to cut, p graphCostStreamPolicy, emit func(graphCostRawRow) error) (*graphCostStream, error) {
+	return newGraphCostStreamContext(nil, h, from, to, p, emit)
+}
+
+// Nil deliberately preserves historical native retry/default IO. Fresh callers
+// supply their SAME run context; cancellation remains attached through OnError.
+type graphCostContextResult struct{ value any }
+
+// A fresh per-call cancellation can shorten, never replace/extend, the original
+// run lifetime. Nil run retains historical native IO regardless of caller ctx.
+func graphCostIOContext(run, caller context.Context) (context.Context, func()) {
+	if run == nil || caller == nil {
+		return run, func() {}
+	}
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if deadline, ok := caller.Deadline(); ok {
+		ctx, cancel = context.WithDeadline(run, deadline)
+	} else {
+		ctx, cancel = context.WithCancel(run)
+	}
+	stop := context.AfterFunc(caller, cancel)
+	if caller.Err() != nil {
+		cancel()
+	}
+	return ctx, func() { stop(); cancel() }
+}
+
+func graphCostReadContext(ctx context.Context, db fdb.Database, fn func(fdb.ReadTransaction) (any, error)) (any, error) {
+	if ctx == nil {
+		return db.ReadTransact(fn)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	result, _, err := graphCostParallelRead(ctx, db, func(tr fdb.ReadTransaction) (graphCostContextResult, error) {
+		value, err := fn(tr)
+		return graphCostContextResult{value}, err
+	})
+	return result.value, err
+}
+func graphCostWriteContext(ctx context.Context, db fdb.Database, fn func(fdb.Transaction) (any, error)) (any, error) {
+	if ctx == nil {
+		return db.Transact(fn)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	result, _, err := historyTransactContext(ctx, db, func() error { return nil }, func(tr fdb.Transaction) (graphCostContextResult, error) {
+		value, err := fn(tr)
+		return graphCostContextResult{value}, err
+	})
+	return result.value, err
+}
+func newGraphCostStreamContext(ctx context.Context, h *harness, from, to cut, p graphCostStreamPolicy, emit func(graphCostRawRow) error) (*graphCostStream, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
 	if h == nil || emit == nil || p.validate() != nil || !validGraphCostProfile(h.config) || !slices.Equal(from.record.Scope, []uint8{0, 1}) || !slices.Equal(to.record.Scope, []uint8{0, 1}) || from.record.Graph != h.config.Graph || to.record.Graph != h.config.Graph || from.record.Topology != h.config.Topology || to.record.Topology != h.config.Topology || from.record.Epochs != h.config.Epochs || to.record.Epochs != h.config.Epochs || from.record.Round == 0 || from.record.Round > to.record.Round {
 		return nil, errInvalid
 	}
@@ -52,8 +113,8 @@ func newGraphCostStream(h *harness, from, to cut, p graphCostStreamPolicy, emit 
 		}
 	}
 	from.record.Scope, to.record.Scope = slices.Clone(from.record.Scope), slices.Clone(to.record.Scope)
-	s := &graphCostStream{h: &harness{db: h.db, config: h.config}, from: from, to: to, policy: p}
-	result, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) { return s.check(tr, false) })
+	s := &graphCostStream{ctx: ctx, h: &harness{db: h.db, config: h.config}, from: from, to: to, policy: p}
+	result, err := graphCostReadContext(s.ctx, s.h.db, func(tr fdb.ReadTransaction) (any, error) { return s.check(tr, false) })
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +149,7 @@ func (s *graphCostStream) check(tr fdb.ReadTransaction, captured bool) ([2]metad
 }
 
 func (s *graphCostStream) finish(rows [2]uint64) (graphCostStreamEnd, error) {
-	_, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) { return s.check(tr, true) })
+	_, err := graphCostReadContext(s.ctx, s.h.db, func(tr fdb.ReadTransaction) (any, error) { return s.check(tr, true) })
 	if err != nil {
 		return graphCostStreamEnd{}, err
 	}
@@ -138,7 +199,7 @@ func (h *harness) graphCostValidateRaw(row graphCostRawRow, history bool, round 
 // kind is history H, current C, or original change D. No output effects or
 // cross-page counters are touched inside the retryable native callback.
 func (s *graphCostStream) page(group uint8, begin, end fdb.Key, kind byte) ([]graphCostRawRow, error) {
-	result, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+	result, err := graphCostReadContext(s.ctx, s.h.db, func(tr fdb.ReadTransaction) (any, error) {
 		if _, err := s.check(tr, true); err != nil {
 			return nil, err
 		}
@@ -218,7 +279,10 @@ func (h *harness) graphCostWalkCurrent(final cut, p graphCostStreamPolicy, emit 
 	return h.graphCostWalkRows(final, final, p, emit, false)
 }
 func (h *harness) graphCostWalkRows(from, final cut, p graphCostStreamPolicy, emit func(graphCostRawRow) error, history bool) (graphCostStreamEnd, error) {
-	s, err := newGraphCostStream(h, from, final, p, emit)
+	return h.graphCostWalkRowsContext(nil, from, final, p, emit, history)
+}
+func (h *harness) graphCostWalkRowsContext(ctx context.Context, from, final cut, p graphCostStreamPolicy, emit func(graphCostRawRow) error, history bool) (graphCostStreamEnd, error) {
+	s, err := newGraphCostStreamContext(ctx, h, from, final, p, emit)
 	if err != nil {
 		return graphCostStreamEnd{}, err
 	}
@@ -312,7 +376,10 @@ func graphCostChangeOrder(a, b outcome) int {
 }
 
 func (h *harness) graphCostWalkChanges(from, final cut, p graphCostStreamPolicy, emit func(graphCostRawRow) error) (graphCostStreamEnd, error) {
-	s, err := newGraphCostStream(h, from, final, p, emit)
+	return h.graphCostWalkChangesContext(nil, from, final, p, emit)
+}
+func (h *harness) graphCostWalkChangesContext(ctx context.Context, from, final cut, p graphCostStreamPolicy, emit func(graphCostRawRow) error) (graphCostStreamEnd, error) {
+	s, err := newGraphCostStreamContext(ctx, h, from, final, p, emit)
 	if err != nil {
 		return graphCostStreamEnd{}, err
 	}

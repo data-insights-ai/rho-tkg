@@ -151,16 +151,19 @@ type graphFeed struct {
 func (s *graphFeedStore) key(kind, name string) fdb.Key {
 	return s.source.h.key(0, "feed-v1/"+kind, name)
 }
-func newGraphFeedStore(source *graphHistoryRetention, p graphFeedPolicy) (*graphFeedStore, error) {
-	if source == nil || p.validate() != nil {
+func newGraphFeedStore(ctx context.Context, source *graphHistoryRetention, p graphFeedPolicy) (*graphFeedStore, error) {
+	if ctx == nil || source == nil || p.validate() != nil {
 		return nil, errInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	s := &graphFeedStore{source: source, binding: graphFeedBinding{1, source.h.config, source.binding, p, "full-scope;fixed-scalar-cross-edge;unfiltered-complete-before-after:v1", "Round,Coordinator,Request;independent-coordinator-sequences:v1"}}
 	body, err := wire(s.binding)
 	if err != nil {
 		return nil, err
 	}
-	_, _, err = historyTransactContext(context.Background(), source.h.db, func() error { return nil }, func(tr fdb.Transaction) (bool, error) {
+	_, _, err = historyTransactContext(ctx, source.h.db, func() error { return nil }, func(tr fdb.Transaction) (bool, error) {
 		if err := source.h.checkConfig(tr, 0); err != nil {
 			return false, err
 		}

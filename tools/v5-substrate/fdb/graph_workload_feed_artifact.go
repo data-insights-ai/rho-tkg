@@ -31,6 +31,7 @@ type graphFeedWorkloadEnd struct {
 	Feed                                                                graphFeedWorkloadSummary
 }
 type graphFeedWorkloadArtifacts struct {
+	ctx                         context.Context
 	h                           *harness
 	root                        *os.Root
 	attempts, events, latencies *os.File
@@ -44,8 +45,14 @@ type graphFeedWorkloadArtifacts struct {
 	childInput                  io.WriteCloser
 }
 
-func newGraphFeedWorkloadArtifacts(h *harness, root *os.Root, spec graphFeedWorkloadSpec, binding graphCostStoredRecord, initial cut) (*graphFeedWorkloadArtifacts, error) {
-	a := &graphFeedWorkloadArtifacts{h: h, root: root, attemptHash: sha256.New(), eventHash: sha256.New(), end: graphFeedWorkloadEnd{Version: 1, Format: graphFeedWorkloadFormat, Spec: spec, Config: h.config, Binding: graphFeedWorkloadPolicy(h.config), BindingRecord: binding, Initial: initial.record}}
+func newGraphFeedWorkloadArtifacts(ctx context.Context, h *harness, root *os.Root, spec graphFeedWorkloadSpec, binding graphCostStoredRecord, initial cut) (*graphFeedWorkloadArtifacts, error) {
+	if ctx == nil || h == nil || root == nil {
+		return nil, errInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	a := &graphFeedWorkloadArtifacts{ctx: ctx, h: h, root: root, attemptHash: sha256.New(), eventHash: sha256.New(), end: graphFeedWorkloadEnd{Version: 1, Format: graphFeedWorkloadFormat, Spec: spec, Config: h.config, Binding: graphFeedWorkloadPolicy(h.config), BindingRecord: binding, Initial: initial.record}}
 	var err error
 	a.attempts, _, err = openGraphCostArtifact(root, "fdb-feed-attempts.jsonl")
 	if err != nil {
@@ -73,6 +80,9 @@ func newGraphFeedWorkloadArtifacts(h *harness, root *os.Root, spec graphFeedWork
 	return a, nil
 }
 func (a *graphFeedWorkloadArtifacts) event(v any) error {
+	if err := a.ctx.Err(); err != nil {
+		return err
+	}
 	return selectorsJSON(io.MultiWriter(a.events, a.eventHash), v)
 }
 
@@ -309,7 +319,7 @@ func (a *graphFeedWorkloadArtifacts) Close() error {
 // Re-observing a held owner does not invent a second open sample.
 func (a *graphFeedWorkloadArtifacts) open(source *graphHistoryRetention, name string, request graphSnapshotRequest) (*graphSnapshot, error) {
 	begin := time.Now()
-	r, err := source.OpenGraphSnapshot(context.Background(), request, a.end.Binding.Read)
+	r, err := source.OpenGraphSnapshot(a.ctx, request, a.end.Binding.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +359,7 @@ func (a *graphFeedWorkloadArtifacts) observe(name string, read *graphSnapshot, w
 	}
 	var count [2]uint64
 	begin := time.Now()
-	end, err := read.Scan(context.Background(), func(row graphSnapshotRow) error {
+	end, err := read.Scan(a.ctx, func(row graphSnapshotRow) error {
 		value := want
 		if strings.HasPrefix(row.Key, "node/") {
 			value = 1
@@ -408,7 +418,7 @@ func (a *graphFeedWorkloadArtifacts) observe(name string, read *graphSnapshot, w
 	if name == "fresh-current" {
 		keys := []graphSnapshotKey{{0, edgeKey("edge", a.h.config.Cost.edge(0, 6))}, {0, edgeKey("edge", a.h.config.Cost.edge(a.h.config.Cost.Facts-1, 6))}, {0, edgeKey("edge", a.h.config.Cost.edge(a.h.config.Cost.Facts+16, 6))}}
 		begin := time.Now()
-		points, err := read.Points(context.Background(), keys)
+		points, err := read.Points(a.ctx, keys)
 		if err != nil {
 			return err
 		}
@@ -432,7 +442,7 @@ func (a *graphFeedWorkloadArtifacts) inventory(stage string, at cut) error {
 	var counts [2][2]uint64
 	var actual [2]metadata
 	var native [2]graphCostStoredRecord
-	_, _, err := graphCostParallelRead(context.Background(), a.h.db, func(tr fdb.ReadTransaction) (bool, error) {
+	_, _, err := graphCostParallelRead(a.ctx, a.h.db, func(tr fdb.ReadTransaction) (bool, error) {
 		if err := a.h.verifyCutIdentity(tr, at); err != nil {
 			return false, err
 		}
@@ -483,7 +493,7 @@ func (a *graphFeedWorkloadArtifacts) inventory(stage string, at cut) error {
 			bound := prefixRange(a.h.prefix(g) + kind + "/")
 			begin := bound.Begin
 			for {
-				rows, _, err := graphCostParallelRead(context.Background(), a.h.db, func(tr fdb.ReadTransaction) ([][2]graphCostStoredRecord, error) {
+				rows, _, err := graphCostParallelRead(a.ctx, a.h.db, func(tr fdb.ReadTransaction) ([][2]graphCostStoredRecord, error) {
 					if err := check(tr); err != nil {
 						return nil, err
 					}
@@ -544,7 +554,7 @@ func (a *graphFeedWorkloadArtifacts) inventory(stage string, at cut) error {
 			}
 		}
 	}
-	_, _, err = graphCostParallelRead(context.Background(), a.h.db, func(tr fdb.ReadTransaction) (bool, error) { return true, check(tr) })
+	_, _, err = graphCostParallelRead(a.ctx, a.h.db, func(tr fdb.ReadTransaction) (bool, error) { return true, check(tr) })
 	if err != nil {
 		return err
 	}
@@ -577,6 +587,9 @@ func (a *graphFeedWorkloadArtifacts) raw(header graphCostArtifactHeader, walk fu
 	}
 	var counts [2]uint64
 	end, err = walk(func(row graphCostRawRow) error {
+		if err := a.ctx.Err(); err != nil {
+			return err
+		}
 		if row.Group > 1 || counts[row.Group] >= header.Config.Limits.Versions {
 			return errLimit
 		}
@@ -622,7 +635,7 @@ func (a *graphFeedWorkloadArtifacts) finish(source *graphHistoryRetention) (err 
 		return err
 	}
 	policy := graphCostStreamPolicy{32, 4 << 20}
-	header, err := a.h.graphCostArtifactHeader(cut{a.end.Initial}, a.old, a.final, policy)
+	header, err := a.h.graphCostArtifactHeaderContext(a.ctx, cut{a.end.Initial}, a.old, a.final, policy)
 	if err != nil {
 		return err
 	}
@@ -631,15 +644,15 @@ func (a *graphFeedWorkloadArtifacts) finish(source *graphHistoryRetention) (err 
 		a.end.Sources[i], err = a.raw(header, func(emit func(graphCostRawRow) error) (graphCostStreamEnd, error) {
 			switch name {
 			case "history":
-				rows, err := held.owner.walk(context.Background(), emit)
+				rows, err := held.owner.walk(a.ctx, emit)
 				if err != nil {
 					return graphCostStreamEnd{}, err
 				}
 				return graphCostStreamEnd{Rows: rows, Groups: a.final.record.Groups, Metadata: header.Metadata}, nil
 			case "current":
-				return a.h.graphCostWalkCurrent(a.final, policy, emit)
+				return a.h.graphCostWalkRowsContext(a.ctx, a.final, a.final, policy, emit, false)
 			default:
-				return a.h.graphCostWalkChanges(cut{a.end.Initial}, a.final, policy, emit)
+				return a.h.graphCostWalkChangesContext(a.ctx, cut{a.end.Initial}, a.final, policy, emit)
 			}
 		})
 		if err != nil {
@@ -652,7 +665,7 @@ func (a *graphFeedWorkloadArtifacts) finish(source *graphHistoryRetention) (err 
 	if err = held.Close(); err != nil {
 		return err
 	}
-	closed, _, err := graphCostParallelRead(context.Background(), a.h.db, func(tr fdb.ReadTransaction) (graphCostStoredRecord, error) {
+	closed, _, err := graphCostParallelRead(a.ctx, a.h.db, func(tr fdb.ReadTransaction) (graphCostStoredRecord, error) {
 		raw, err := snapshotStored(tr, source.ownerKey(held.owner.id.Request), historyControlBytes)
 		if err != nil {
 			return raw, err
@@ -705,8 +718,11 @@ func (a *graphFeedWorkloadArtifacts) finish(source *graphHistoryRetention) (err 
 }
 
 func (a *graphFeedWorkloadArtifacts) columnsStart() (err error) {
+	if err := a.ctx.Err(); err != nil {
+		return err
+	}
 	policy, retention := graphCostColumnPolicies(a.h.config.Cost)
-	store, err := newGraphColumnStore(a.h, policy)
+	store, err := newGraphColumnStoreContext(a.ctx, a.h, policy)
 	if err != nil {
 		return err
 	}
@@ -761,7 +777,7 @@ func (a *graphFeedWorkloadArtifacts) columnRefusal(name, generation string, inpu
 }
 func (a *graphFeedWorkloadArtifacts) columnsFinish() (err error) {
 	l := a.column
-	ctx := context.Background()
+	ctx := a.ctx
 	if l == nil || l.held == nil {
 		return errInvalid
 	}

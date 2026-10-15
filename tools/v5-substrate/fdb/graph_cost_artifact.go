@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -39,6 +40,9 @@ type graphCostArtifactFooter struct {
 }
 
 func (h *harness) graphCostArtifactHeader(initial, old, final cut, policy graphCostStreamPolicy) (graphCostArtifactHeader, error) {
+	return h.graphCostArtifactHeaderContext(nil, initial, old, final, policy)
+}
+func (h *harness) graphCostArtifactHeaderContext(ctx context.Context, initial, old, final cut, policy graphCostStreamPolicy) (graphCostArtifactHeader, error) {
 	if !slices.Equal(old.record.Scope, []uint8{0, 1}) || old.record.Round < initial.record.Round || old.record.Round > final.record.Round {
 		return graphCostArtifactHeader{}, errInvalid
 	}
@@ -47,12 +51,12 @@ func (h *harness) graphCostArtifactHeader(initial, old, final cut, policy graphC
 			return graphCostArtifactHeader{}, errInvalid
 		}
 	}
-	s, err := newGraphCostStream(h, initial, final, policy, func(graphCostRawRow) error { return nil })
+	s, err := newGraphCostStreamContext(ctx, h, initial, final, policy, func(graphCostRawRow) error { return nil })
 	if err != nil {
 		return graphCostArtifactHeader{}, err
 	}
 	old.record.Scope = slices.Clone(old.record.Scope)
-	result, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+	result, err := graphCostReadContext(ctx, s.h.db, func(tr fdb.ReadTransaction) (any, error) {
 		if _, err := s.check(tr, true); err != nil {
 			return nil, err
 		}

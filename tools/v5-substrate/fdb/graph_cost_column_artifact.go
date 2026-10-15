@@ -58,6 +58,13 @@ type graphCostColumnLane struct {
 	closed  bool
 }
 
+func (l *graphCostColumnLane) context() context.Context {
+	if l.s.ctx != nil {
+		return l.s.ctx
+	}
+	return context.Background() // Historical lane/default IO stays unchanged.
+}
+
 // These are explicit fixture admission policies, not measured capacity/RSS
 // bounds. Work applies separately to each publication/read; fixed control and
 // configuration checks and native callback retries are outside its accounting.
@@ -117,7 +124,7 @@ func (l *graphCostColumnLane) records(keys []fdb.Key) ([]graphCostStoredRecord, 
 	if len(keys) < 1 || len(keys) > 20 {
 		return nil, errInvalid
 	}
-	result, err := l.s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+	result, err := l.s.read(func(tr fdb.ReadTransaction) (any, error) {
 		out := make([]graphCostStoredRecord, 0, len(keys))
 		for _, key := range keys {
 			body, err := tr.Get(key).Get()
@@ -193,7 +200,7 @@ func (l *graphCostColumnLane) stage(name string, generations ...string) error {
 }
 
 func (l *graphCostColumnLane) holdOld(old cut) error {
-	ctx := context.Background()
+	ctx := l.context()
 	m, err := l.s.publish(ctx, "old", l.initial, old)
 	if err != nil {
 		return err
@@ -216,7 +223,7 @@ func (l *graphCostColumnLane) holdOld(old cut) error {
 
 func (l *graphCostColumnLane) walk(owner *graphColumnRead, at cut, cache *os.Root, name string) error {
 	var count uint64
-	m, err := owner.walk(context.Background(), at, cache, func(row graphColumnRow) error {
+	m, err := owner.walk(l.context(), at, cache, func(row graphColumnRow) error {
 		if err := l.write(struct {
 			Type, Name, Generation string
 			Row                    graphColumnRow
@@ -266,7 +273,7 @@ func (l *graphCostColumnLane) chunks(owner *graphColumnRead, m graphColumnManife
 	var count, retained uint64
 	for ordinal := uint64(0); ordinal < m.Chunks; ordinal++ {
 		key := l.s.chunkKey(m.Generation.ID, ordinal)
-		result, e := l.s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+		result, e := l.s.read(func(tr fdb.ReadTransaction) (any, error) {
 			if err := owner.check(tr); err != nil {
 				return nil, err
 			}
@@ -322,7 +329,7 @@ func (l *graphCostColumnLane) chunks(owner *graphColumnRead, m graphColumnManife
 	if chain != m.Chain || count != m.Rows || retained != m.Bytes {
 		return nil, errMismatch
 	}
-	_, err = l.s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) { return nil, owner.check(tr) })
+	_, err = l.s.read(func(tr fdb.ReadTransaction) (any, error) { return nil, owner.check(tr) })
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +355,7 @@ func (l *graphCostColumnLane) export(owner *graphColumnRead, m graphColumnManife
 	// The existing point API is a bounded generation scan, NOT an index. Three
 	// selected witnesses per cut keep total work linear rather than N point scans.
 	for _, id := range [3]uint64{7, 7 + 2*(l.s.h.config.Cost.Facts-1), 5} {
-		row, found, err := l.s.point(context.Background(), m.Generation.ID, at, id)
+		row, found, err := l.s.point(l.context(), m.Generation.ID, at, id)
 		if err != nil {
 			return err
 		}
@@ -380,7 +387,7 @@ func (l *graphCostColumnLane) refusal(name string, err, expected error) error {
 }
 
 func (l *graphCostColumnLane) finish(final cut) (end graphCostColumnEnd, err error) {
-	ctx := context.Background()
+	ctx := l.context()
 	if l.held == nil {
 		return end, errInvalid
 	}
@@ -439,7 +446,7 @@ func (l *graphCostColumnLane) finish(final cut) (end graphCostColumnEnd, err err
 			return end, errors.Join(errMismatch, err)
 		}
 		key := l.s.chunkKey("old", ordinal)
-		result, err := l.s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+		result, err := l.s.read(func(tr fdb.ReadTransaction) (any, error) {
 			raw, err := tr.Get(key).Get()
 			if err != nil {
 				return nil, err
@@ -536,7 +543,7 @@ func (l *graphCostColumnLane) storage() error {
 		return nil
 	}
 	for {
-		result, err := l.s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+		result, err := l.s.read(func(tr fdb.ReadTransaction) (any, error) {
 			if err := check(tr); err != nil {
 				return nil, err
 			}
@@ -597,7 +604,7 @@ func (l *graphCostColumnLane) storage() error {
 		}
 		begin = fdb.Key(append(bytes.Clone(rows[len(rows)-1].Key), 0))
 	}
-	_, err := l.s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) { return nil, check(tr) })
+	_, err := l.s.read(func(tr fdb.ReadTransaction) (any, error) { return nil, check(tr) })
 	return err
 }
 

@@ -135,15 +135,15 @@ func runGraphFeedChild(db fdb.Database, resume bool) (err error) {
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, input.DeadlineNanos))
 	defer cancel()
-	h, err := newHarness(db, input.Config)
+	h, err := newHarnessContext(ctx, db, input.Config)
 	if err != nil {
 		return err
 	}
-	source, err := newGraphHistoryRetention(h, cut{input.Source.Initial}, input.Source.Policy)
+	source, err := newGraphHistoryRetentionContext(ctx, h, cut{input.Source.Initial}, input.Source.Policy)
 	if err != nil {
 		return err
 	}
-	store, err := newGraphFeedStore(source, input.Policy)
+	store, err := newGraphFeedStore(ctx, source, input.Policy)
 	if err != nil {
 		return err
 	}
@@ -373,23 +373,29 @@ func runGraphFeedWorkload(db fdb.Database, spec graphFeedWorkloadSpec, run strin
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(seconds)*time.Second)
 	defer cancel()
-	h, err := newHarness(db, c)
+	h, err := newHarnessContext(ctx, db, c)
 	if err != nil {
 		return err
 	}
-	binding, err := h.graphFeedWorkloadInstall()
+	binding, err := h.graphFeedWorkloadInstall(ctx)
 	if err != nil {
 		return err
 	}
-	initial, err := h.fresh([]uint8{0, 1}, nil)
+	initial, _, err := historyTransactContext(ctx, h.db, func() error { return nil }, func(tr fdb.Transaction) (cut, error) {
+		result, err := h.freshIn(tr, []uint8{0, 1}, nil)
+		if err != nil {
+			return cut{}, err
+		}
+		return result.(cut), nil
+	})
 	if err != nil {
 		return err
 	}
-	source, err := newGraphHistoryRetention(h, initial, graphFeedWorkloadPolicy(c).History)
+	source, err := newGraphHistoryRetentionContext(ctx, h, initial, graphFeedWorkloadPolicy(c).History)
 	if err != nil {
 		return err
 	}
-	store, err := newGraphFeedStore(source, graphFeedPolicyFor(c.Cost))
+	store, err := newGraphFeedStore(ctx, source, graphFeedPolicyFor(c.Cost))
 	if err != nil {
 		return err
 	}
@@ -398,7 +404,7 @@ func runGraphFeedWorkload(db fdb.Database, spec graphFeedWorkloadSpec, run strin
 		return err
 	}
 	defer func() { err = errors.Join(err, root.Close()) }()
-	a, err := newGraphFeedWorkloadArtifacts(h, root, spec, binding, initial)
+	a, err := newGraphFeedWorkloadArtifacts(ctx, h, root, spec, binding, initial)
 	if err != nil {
 		return err
 	}
@@ -686,51 +692,57 @@ func (h *harness) graphFeedWorkloadBindingIn(tr fdb.ReadTransaction) error {
 	}
 	return nil
 }
-func (h *harness) graphFeedWorkloadInstall() (graphCostStoredRecord, error) {
+func (h *harness) graphFeedWorkloadInstall(ctx context.Context) (graphCostStoredRecord, error) {
+	if h == nil || ctx == nil {
+		return graphCostStoredRecord{}, errInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return graphCostStoredRecord{}, err
+	}
 	key := h.key(0, "workload-feed-v1", "binding")
 	body, err := wire(graphFeedWorkloadPolicy(h.config))
 	if err != nil {
 		return graphCostStoredRecord{}, err
 	}
-	_, err = h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	_, _, err = historyTransactContext(ctx, h.db, func() error { return nil }, func(tr fdb.Transaction) (bool, error) {
 		for g := uint8(0); g < 2; g++ {
 			if err := h.checkConfig(tr, g); err != nil {
-				return nil, err
+				return false, err
 			}
 			m, err := h.meta(tr, g)
 			if err != nil {
-				return nil, err
+				return false, err
 			}
 			if m.Groups != 0 || m.Transactions != 0 || m.Versions != 0 || m.Certificates != 0 {
-				return nil, errUnavailable
+				return false, errUnavailable
 			}
 		}
 		prior, err := tr.Get(key).Get()
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		if len(prior) != 0 {
 			if !bytes.Equal(prior, body) {
-				return nil, errMismatch
+				return false, errMismatch
 			}
-			return nil, nil
+			return true, nil
 		}
 		m, err := h.meta(tr, 0)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		n := uint64(len(key) + len(body))
 		if n > h.config.Limits.Bytes-m.Bytes {
-			return nil, errLimit
+			return false, errLimit
 		}
 		m.Bytes += n
 		tr.Set(key, body)
-		return nil, put(tr, h.key(0, "meta", "state"), m)
+		return true, put(tr, h.key(0, "meta", "state"), m)
 	})
 	if err != nil {
 		return graphCostStoredRecord{}, graphHistoryCommitError(err)
 	}
-	stored, _, err := graphCostParallelRead(context.Background(), h.db, func(tr fdb.ReadTransaction) (graphCostStoredRecord, error) {
+	stored, _, err := graphCostParallelRead(ctx, h.db, func(tr fdb.ReadTransaction) (graphCostStoredRecord, error) {
 		if err := h.graphFeedWorkloadBindingIn(tr); err != nil {
 			return graphCostStoredRecord{}, err
 		}
