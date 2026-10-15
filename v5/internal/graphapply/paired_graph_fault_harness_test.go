@@ -324,6 +324,8 @@ type pairedGraphFaultNetwork struct {
 	parent                context.Context             // Optional, immutable before fresh fixture publication.
 	conjunctionGate       *nativeConjunctionBatchGate // At most one; guarded by mu.
 	protocolReplyHold     *nativeProtocolReplyHold    // Fresh causal hold; at most one, guarded by mu.
+	protocolProgram       *nativeProtocolProgram      // Fresh immutable causal/message owner; nil preserves old fixtures.
+	bootstrapAgreement    [32]byte                    // Actual validated bootstrap proposal; immutable after bootstrap.
 	mu                    sync.Mutex
 	down                  map[uint64]bool
 	dropped               [][2]uint64
@@ -864,10 +866,7 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64, packetOnly ...bool) {
 			spec := partitionCodecRequest(f.t, 1, defaultMaterializerLimits())
 			ns, _ := certifiedProcessNamespace(leader)
 			part, _ := spec.declaration.Partition(ns.partition)
-			binding := raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(spec.declaration.Graph()), Partition: ns.partition, Group: part.Group}, SemanticContractID: certifiedGraphSemanticContractID()}
-			if f.n.rangeMoves {
-				binding.SemanticContractID = rangeMoveSemanticContractID()
-			}
+			binding := raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(spec.declaration.Graph()), Partition: ns.partition, Group: part.Group}, SemanticContractID: f.nativeAgreement()}
 			raw, err := replica.DecodeApplicationPacket(binding, packet, processFrameBytes)
 			message := &pb.Message{}
 			if err == nil {
@@ -935,10 +934,7 @@ func (f *pairedGraphFaultNetwork) elect(prior, next uint64) {
 	spec := partitionCodecRequest(f.t, 1, defaultMaterializerLimits())
 	ns, _ := certifiedProcessNamespace(next)
 	part, _ := spec.declaration.Partition(ns.partition)
-	binding := raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(ns.graph), Partition: ns.partition, Group: part.Group}, SemanticContractID: certifiedGraphSemanticContractID()}
-	if f.n.rangeMoves {
-		binding.SemanticContractID = rangeMoveSemanticContractID()
-	}
+	binding := raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(ns.graph), Partition: ns.partition, Group: part.Group}, SemanticContractID: f.nativeAgreement()}
 	group.dropPacket = func(packet replica.Packet) bool {
 		raw, err := replica.DecodeApplicationPacket(binding, packet, processFrameBytes)
 		if err != nil {

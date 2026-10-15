@@ -101,7 +101,7 @@ def unavailable(response, mask):
             "only actual unavailable B, never invalid/limit/corrupt/empty-success")
 
 
-def lookup(boundary, scopes, original, decision):
+def lookup(boundary, scopes, original, decision, *, source_voter=4):
     require(type(boundary) is dict and set(boundary) == {"Request", "Reply"}, "actual held lookup frames")
     q = P.Cursor(P.body(P.raw(boundary["Request"]), b"GSQ\1"))
     require(q.number(1) == 6, "genuine cross original read")
@@ -111,7 +111,7 @@ def lookup(boundary, scopes, original, decision):
     q.end()
     r = P.Cursor(P.body(P.raw(boundary["Reply"]), b"GSR\1"))
     scope, voter, issuer = P.body(r.field(156), b"APS\1"), r.number(), r.take(16)
-    require(scope == scopes[8] and voter == 4 and any(issuer) and r.number(1) == 6 and r.number() == sequence and sequence > 0
+    require(scope == scopes[8] and voter == source_voter and any(issuer) and r.number(1) == 6 and r.number() == sequence and sequence > 0
             and r.take(16) == nonce and any(nonce) and r.number(2) == 0, "actual configured B source/reply correlation")
     a = P.Cursor(P.body(r.field(), b"GSE\1"))
     r.end()
@@ -254,22 +254,36 @@ def processes(rows):
     return stopped
 
 
-def check(data, *, failure_member=3, selected_processes=None):
+def program_scope_roles(context):
+    # Shape alone is not authority. The fresh program caller authenticates the
+    # actual elections/native owners/process roster before passing this value.
+    require(type(context) is dict and set(context) == {"leaders", "target"}, "explicit authenticated program role context")
+    leaders, target = context["leaders"], context["target"]
+    require(type(leaders) is tuple and leaders in ((1, 4), (2, 6)) and all(type(v) is int for v in leaders), "actual supported elected leader layout")
+    require(type(target) is int and target in range(1, 7) and target not in leaders and target not in (2, 5), "selected native target preserves caller and retained reader")
+    return leaders, target
+
+
+def check(data, *, failure_member=3, selected_processes=None, program_roles=None):
     # Fresh campaign callers first authenticate the native batch/kill roster.
     # Recheck its actual incarnation lineage here before allowing it to explain
     # a prepared reply from the selected process's earlier incarnation. Ordinary
     # check(data) retains its exact actor3/cohort-only contract.
     require(failure_member == 3 if selected_processes is None else failure_member == 2,
             "ordinary scope reader or explicit fresh campaign reader")
+    leaders, selected_target = (1, 4), None
+    if program_roles is not None:
+        require(selected_processes is not None, "fresh role context requires separately authenticated actual process loss")
+        leaders, selected_target = program_scope_roles(program_roles)
     require(type(data) is dict and set(data) == HEADER and data["Version"] == 1 and data["Profile"] == PROFILE and data["Mode"] in ("Fresh", "After"), "fresh finite P01 source profile")
     integer(data["Version"], 1, 1)
     scopes, old_round = P.cut(data["Before"])
     original = C.decision_manifest(P.raw(data["Original"]), P.raw(data["Manifest"]), 8, scopes, data["Before"])
     original["axis"] = original_input(original)
-    _, manifest, decision, outcome = P.peer_phase(P.raw(data["Decision"]["Request"]), P.raw(data["Decision"]["Reply"]), scopes, 4)
+    _, manifest, decision, outcome = P.peer_phase(P.raw(data["Decision"]["Request"]), P.raw(data["Decision"]["Reply"]), scopes, leaders[1])
     require(manifest == original["manifest"] and decision["phase"] == 3 and decision["partition"] == 8 and decision["tx"] == original["tx"] and decision["commit"] and decision["round"] > old_round, "original B durable COMMIT before A resolution")
     records, statuses = prefix(data, original, outcome)
-    lookup(data["Lookup"], scopes, original, outcome)
+    lookup(data["Lookup"], scopes, original, outcome, source_voter=leaders[1])
     unavailable(C.process_response(P.raw(data["Failure"])), data["FailureMask"])
     P.resumed(data["PendingCaller"], scopes, original["source"]["request"], original["tx"], P.business_hash(original["wire"], 8), 1, b"")
     P.resumed(data["Retry"], scopes, original["source"]["request"], original["tx"], P.business_hash(original["wire"], 8), 0, outcome)
@@ -306,7 +320,7 @@ def check(data, *, failure_member=3, selected_processes=None):
         member = integer(killed["Member"], 6, 1)
         raw, restored = T.decoded(P.raw(killed["Raw"])), T.decoded(P.raw(reopened["Raw"]))
         require(set(raw) == set("Member PID ExitCode SignalNumber Signaled Reaped Volume Stderr Receipt".split()) and
-                member in (3, 6) and killed["Action"] == "native-batch-transition-kill" and killed["Reaped"] is True and killed["Signal"] == "SIGKILL"
+                (member in (3, 6) if selected_target is None else member == selected_target) and killed["Action"] == "native-batch-transition-kill" and killed["Reaped"] is True and killed["Signal"] == "SIGKILL"
                 and raw["Member"] == raw["Receipt"]["Member"] == member and integer(raw["PID"], minimum=1) == raw["Receipt"]["PID"] and raw["Reaped"] is True and raw["Signaled"] is True
                 and raw["SignalNumber"] == 9 and raw["ExitCode"] == -1 and killed["Instance"].startswith(f'voter{member}/pid{raw["PID"]}/')
                 and raw["Volume"] == killed["Volume"], "actual selected native process death")

@@ -102,8 +102,12 @@ func nativeTransitionScopeAssert(t *testing.T, wire []byte, current bool) {
 // This bounded source case uses six genuine OS children. The existing P01
 // native-host parent remains a separate, more detailed scalar/claim witness.
 func nativeTransitionScopeCase(t *testing.T, mode graphReadMode, campaign ...nativeProtocolScopeRecipe) string {
+	return nativeTransitionScopeCaseOwned(t, mode, nil, campaign...)
+}
+
+func nativeTransitionScopeCaseOwned(t *testing.T, mode graphReadMode, program *nativeProtocolProgramSpec, campaign ...nativeProtocolScopeRecipe) string {
 	t.Helper()
-	if mode != graphReadFresh && mode != graphReadAfter || len(campaign) > 1 || len(campaign) == 1 && (!campaign[0].valid() || campaign[0].Mode != mode) {
+	if mode != graphReadFresh && mode != graphReadAfter || len(campaign) > 1 || len(campaign) == 1 && (!campaign[0].valid() || campaign[0].Mode != mode) || program != nil && (!program.valid() || len(campaign) != 1) {
 		t.Fatal("finite P01 mode")
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
@@ -136,6 +140,19 @@ func nativeTransitionScopeCase(t *testing.T, mode graphReadMode, campaign ...nat
 		f = newPairedGraphFaultNetwork(t)
 	} else {
 		f = newPairedGraphFaultNetworkWithParent(t, ctx)
+	}
+	var actualProgram *nativeProtocolProgram
+	if program != nil {
+		actualProgram, err = newNativeProtocolProgram(ctx, f, *program)
+		if err != nil {
+			t.Fatal("actual P01 causal program admission", err)
+		}
+		if err := actualProgram.elect(); err != nil {
+			t.Fatal("actual P01 leader elections", err)
+		}
+		for member := uint64(1); member <= 6; member++ {
+			nativeConjunctionReconnect(f, member)
+		}
 	}
 	reader := uint64(3)
 	if len(campaign) == 1 {
@@ -181,6 +198,12 @@ func nativeTransitionScopeCase(t *testing.T, mode graphReadMode, campaign ...nat
 		target := uint64(3)
 		if r.Partition == 8 {
 			target = 6
+		}
+		if actualProgram != nil {
+			target, err = actualProgram.target(r.Partition, 5, reader)
+			if err != nil {
+				t.Fatal("actual native target must preserve live caller and old reader", err)
+			}
 		}
 		gate, err = newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: 5, Partition: r.Partition, Member: target, Phase: r.Phase, Occurrence: 1, Kind: r.Kind, Side: r.Side}, run, deadline)
 		if err != nil {

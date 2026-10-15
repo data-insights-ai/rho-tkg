@@ -32,7 +32,7 @@ type nativeConjunctionSelector struct {
 func (s nativeConjunctionSelector) valid() bool {
 	phase := s.Phase >= crossRegister && s.Phase <= crossResolve && s.FenceScope == (allocationScope{})
 	if s.Fence {
-		phase = s.Phase == 0 && s.Partition == 3 && s.Actor == 1 && s.Member == 1 && s.Occurrence <= 1 && s.FenceScope.valid() && s.FenceScope.partition == 3
+		phase = s.Phase == 0 && s.Partition == 3 && s.Actor == s.Member && s.Member <= 3 && s.Occurrence <= 1 && s.FenceScope.valid() && s.FenceScope.partition == 3
 	}
 	return s.Actor >= 1 && s.Actor <= 6 && s.Member >= 1 && s.Member <= 6 && (s.Partition == 3 && s.Member <= 3 || s.Partition == 8 && s.Member >= 4) && phase && s.Occurrence <= 16 && (s.Kind == raftlog.StableStorageReady || s.Kind == raftlog.StableStorageApplication) && (s.Side == "before" || s.Side == "after")
 }
@@ -160,6 +160,19 @@ func (g *nativeConjunctionBatchGate) armObserved(ctx context.Context, proposal a
 	g.selected = make([]byte, len(proposal.wire))
 	copy(g.selected, proposal.wire)
 	g.arm = actual
+	if err := g.armProgram(proposal.wire); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (g *nativeConjunctionBatchGate) armProgram(command []byte) error {
+	g.f.mu.Lock()
+	program := g.f.protocolProgram
+	g.f.mu.Unlock()
+	if program != nil {
+		return program.arm(g.selector, command)
+	}
 	return nil
 }
 
@@ -227,6 +240,9 @@ func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partiti
 	g.selected = make([]byte, len(proposal.wire))
 	copy(g.selected, proposal.wire)
 	g.arm = actual
+	if err := g.armProgram(proposal.wire); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -477,6 +493,10 @@ func (f *pairedGraphFaultNetwork) bootstrapAction(actor, kind, index uint64, dat
 			f.t.Fatal("actual bootstrap voter/original or retained owner differs", id)
 		}
 	}
+	if f.bootstrapAgreement != ([32]byte{}) && f.bootstrapAgreement != proposal.target.semantic {
+		f.t.Fatal("bootstrap native agreement changed between actual originals")
+	}
+	f.bootstrapAgreement = proposal.target.semantic
 }
 
 func (f *pairedGraphFaultNetwork) lifecycleRead(actor, handle, selector uint64) nativeLifecycleObservation {

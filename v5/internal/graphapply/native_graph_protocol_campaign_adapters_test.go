@@ -74,6 +74,7 @@ type nativeProtocolBatchEvidence struct {
 	GateCandidates, GateDecodeWork  uint64
 	TargetProcesses                 []pairedFaultProcess
 	TargetReopened                  p06Observation
+	Program                         *nativeProtocolProgramEvidence `json:",omitempty"`
 }
 
 func nativeProtocolFinishBatch(t *testing.T, f *pairedGraphFaultNetwork, gate *nativeConjunctionBatchGate, old graphCut, packetOnly ...bool) nativeProtocolBatchEvidence {
@@ -100,6 +101,7 @@ func nativeProtocolFinishObservedBatch(t *testing.T, f *pairedGraphFaultNetwork,
 	if !nativeBatchFailedStepAllowed(processResponse{}, loss) {
 		t.Fatal("selected protocol voter lacks actual typed transport loss", loss)
 	}
+	program := nativeProtocolProgramFinish(t, f)
 	killed := nativeBatchReap(t, f, gate.selector.Member, receipt)
 	reads := gate.readCount()
 	gate.mu.Lock()
@@ -110,7 +112,7 @@ func nativeProtocolFinishObservedBatch(t *testing.T, f *pairedGraphFaultNetwork,
 	joined := f.replaceBeforeHeal(gate.selector.Member, func(_ *graphProcess, _ processResponse) {
 		reopened = nativeP06InitialLocalOld(f, gate.selector.Member, old)
 	}, packetOnly...)
-	return nativeProtocolBatchEvidence{Actor: gate.selector.Actor, Target: gate.selector.Member, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: loss.Error(), ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: candidates, GateDecodeWork: work, TargetProcesses: []pairedFaultProcess{killed, joined}, TargetReopened: reopened}
+	return nativeProtocolBatchEvidence{Actor: gate.selector.Actor, Target: gate.selector.Member, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: loss.Error(), ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: candidates, GateDecodeWork: work, TargetProcesses: []pairedFaultProcess{killed, joined}, TargetReopened: reopened, Program: program}
 }
 
 // The selected serving voter can be the second loss in its partition. This
@@ -148,6 +150,7 @@ func nativeProtocolFinishRecoveryBatch(t *testing.T, f *pairedGraphFaultNetwork,
 			t.Fatal("quorum reconstruction requires two distinct losses and a live original caller")
 		}
 	}
+	program := nativeProtocolProgramFinish(t, f)
 	failed := nativeBatchReap(t, f, gate.selector.Member, receipt)
 	reads := gate.readCount()
 	gate.mu.Lock()
@@ -165,7 +168,7 @@ func nativeProtocolFinishRecoveryBatch(t *testing.T, f *pairedGraphFaultNetwork,
 	joined := f.replaceBeforeHeal(gate.selector.Member, func(_ *graphProcess, _ processResponse) {
 		restoredOld = nativeP06InitialLocalOld(f, gate.selector.Member, old)
 	})
-	evidence := nativeProtocolBatchEvidence{Actor: gate.selector.Actor, Target: gate.selector.Member, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: loss.Error(), ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: candidates, GateDecodeWork: work, TargetProcesses: []pairedFaultProcess{failed, joined}, TargetReopened: restoredOld}
+	evidence := nativeProtocolBatchEvidence{Actor: gate.selector.Actor, Target: gate.selector.Member, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: loss.Error(), ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: candidates, GateDecodeWork: work, TargetProcesses: []pairedFaultProcess{failed, joined}, TargetReopened: restoredOld, Program: program}
 	return evidence, firstRejoined
 }
 
@@ -176,14 +179,28 @@ func nativeProtocolScopeWrite(t *testing.T, ctx context.Context, f *pairedGraphF
 		Profile, Case string
 		Evidence      nativeProtocolScopeEvidence
 	}{1, nativeProtocolCampaignProfile, evidence.Recipe.name(), evidence}
+	if evidence.Program != nil {
+		artifact.Version, artifact.Profile = 2, nativeProtocolProgramProfile
+	}
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, artifact.Case+".jsonl"), artifact, records, evidence.P01.Through)
-	nativeProtocolCheck(t, ctx, path)
+	if evidence.Program != nil {
+		nativeProtocolCheck(t, ctx, path, true)
+	} else {
+		nativeProtocolCheck(t, ctx, path)
+	}
 	return path
 }
 
-func nativeProtocolCheck(t *testing.T, ctx context.Context, path string) {
+func nativeProtocolCheck(t *testing.T, ctx context.Context, path string, program ...bool) {
 	t.Helper()
-	check := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", "native_protocol_campaign_check.py"), path)
+	if len(program) > 1 || len(program) == 1 && !program[0] {
+		t.Fatal("explicit fresh program checker selection")
+	}
+	script := "native_protocol_campaign_check.py"
+	if len(program) == 1 {
+		script = "native_protocol_campaign_program_check.py"
+	}
+	check := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", script), path)
 	var diagnostics processStderr
 	check.Stdout, check.Stderr = &diagnostics, &diagnostics
 	if err := check.Run(); err != nil {
@@ -265,6 +282,7 @@ type nativeProtocolPersistedFence struct {
 	Successor          uint64
 	Original           *p06LocalRecord // Only an actual committed survivor read.
 	Applied, Duplicate p06LocalRecord
+	SuccessorEvidence  *nativeProtocolProgramElection `json:",omitempty"`
 }
 
 // This is P02's genuine fence persistence/application leader-loss predecessor,
@@ -278,11 +296,21 @@ func nativeProtocolPersistFence(t *testing.T, f *pairedGraphFaultNetwork, ctx co
 		t.Fatal("P02 native fence predecessor needs actual complete old cut")
 	}
 	command, err := decodeGraphCutCommand(proposal.wire)
-	if err != nil || command.phase != graphCutFence || command.scope != old.certificates[0].scope || proposal.target != command.scope || f.n.leaders[0] != 1 {
+	leader, successor := uint64(1), uint64(2)
+	f.mu.Lock()
+	program := f.protocolProgram
+	f.mu.Unlock()
+	if program != nil {
+		leader = f.n.leaders[0]
+		if leader == 2 {
+			successor = 1
+		}
+	}
+	if err != nil || command.phase != graphCutFence || command.scope != old.certificates[0].scope || proposal.target != command.scope || f.n.leaders[0] != leader || leader != 1 && leader != 2 {
 		t.Fatal("actual P02 earlier factory/configured fence", err)
 	}
-	beforeImage := f.call(f.n.all[1], processRequest{op: processStateOp}).image
-	gate, err := newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: 1, Partition: 3, Member: 1, Kind: kind, Side: side, Fence: true, FenceScope: command.scope}, run, deadline, true)
+	beforeImage := f.call(f.n.all[leader], processRequest{op: processStateOp}).image
+	gate, err := newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: leader, Partition: 3, Member: leader, Kind: kind, Side: side, Fence: true, FenceScope: command.scope}, run, deadline, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +324,7 @@ func nativeProtocolPersistFence(t *testing.T, f *pairedGraphFaultNetwork, ctx co
 		t.Fatal("finite genuine fence Propose input", err)
 	}
 	callCtx, cancel := f.operationContext(10 * time.Second)
-	response, transport := f.n.all[1].exchange(callCtx, processRequest{op: processPropose, data: submission.Input})
+	response, transport := f.n.all[leader].exchange(callCtx, processRequest{op: processPropose, data: submission.Input})
 	contextErr := callCtx.Err()
 	cancel()
 	if contextErr != nil {
@@ -312,8 +340,15 @@ func nativeProtocolPersistFence(t *testing.T, f *pairedGraphFaultNetwork, ctx co
 			t.Fatal("P02 fence native Propose did not accept", err)
 		}
 		submission.Accepted = true // Ordinary admission; never an apply/Sync ACK.
-		f.n.group(1).enqueue(t, response)
-		f.drainGroup(f.n.group(1))
+		if program == nil {
+			f.n.group(leader).enqueue(t, response)
+			f.drainGroup(f.n.group(leader))
+		} else {
+			if err := f.n.all[leader].mux.hub.enqueue(leader, response.packets, response.handles...); err != nil {
+				t.Fatal("actual native fence messages through program hub", err)
+			}
+			f.packetDrain()
+		}
 	}
 	submission.Reply = p06ProcessWire(t, response)
 	arm, receipt, selected, _, err := gate.evidence()
@@ -333,17 +368,34 @@ func nativeProtocolPersistFence(t *testing.T, f *pairedGraphFaultNetwork, ctx co
 	if submission.Accepted && submission.StepLoss == nil || !submission.Accepted && submission.StepLoss != nil || len(submission.Transport) > 4096 {
 		t.Fatal("P02 fence Propose loss and later Step death were conflated")
 	}
-	killed := nativeBatchReap(t, f, 1, receipt)
+	var messageProgram *nativeProtocolProgramEvidence
+	if program != nil {
+		program.mu.Lock()
+		selectedProgram := program.armed
+		program.mu.Unlock()
+		if selectedProgram {
+			messageProgram = nativeProtocolProgramFinish(t, f)
+		}
+	}
+	killed := nativeBatchReap(t, f, leader, receipt)
 	reads := gate.readCount()
 	gate.close()
-	f.elect(1, 2)
+	f.elect(leader, successor)
+	var successorEvidence *nativeProtocolProgramElection
+	if program != nil {
+		observed, err := program.successor(leader, successor)
+		if err != nil {
+			t.Fatal("actual causal native successor before source reassociation", err)
+		}
+		successorEvidence = &observed
+	}
 	// Application-install selection is reached only after committed-entry
 	// validation. Read its actual survivor output; never infer it from Ready or
 	// manufacture the missing leader reply. Before/after install use SAME entry.
 	var original *p06LocalRecord
 	if kind == raftlog.StableStorageApplication {
 		index := receipt.Events[0].Index
-		stored := f.call(f.n.all[2], processRequest{op: processEntryRecord, index: index})
+		stored := f.call(f.n.all[successor], processRequest{op: processEntryRecord, index: index})
 		outcome, err := decodeGraphCutResult(stored.outcome)
 		if err != nil || outcome.phase != graphCutFence || outcome.status != graphCutApplied || outcome.round != command.round || outcome.index != index || len(stored.changes) != 0 {
 			t.Fatal("P02 successor lacks SAME committed native fence", err)
@@ -354,28 +406,28 @@ func nativeProtocolPersistFence(t *testing.T, f *pairedGraphFaultNetwork, ctx co
 	// The exact genuine proposal is revalidated by the ordinary successor Host.
 	// Control replies retain actual local indexes; no artificial original GSO is
 	// substituted when the earlier Ready entry had never committed.
-	applied := p02SubmitWhilePaused(f, 2, proposal)
+	applied := p02SubmitWhilePaused(f, successor, proposal)
 	installed, err := decodeGraphCutResult(applied.Outcome)
 	if err != nil || installed.phase != graphCutFence || installed.status != graphCutApplied || installed.round != command.round || installed.index != applied.Index || len(applied.CDC) != 0 {
 		t.Fatal("P02 successor did not genuinely establish retained fence", err)
 	}
 	f.records(from)
 	var reopened p06Observation
-	rejoined := f.replaceBeforeHeal(1, func(_ *graphProcess, _ processResponse) {
-		reopened = nativeP06InitialLocalOld(f, 1, old)
+	rejoined := f.replaceBeforeHeal(leader, func(_ *graphProcess, _ processResponse) {
+		reopened = nativeP06InitialLocalOld(f, leader, old)
 	})
-	duplicate := p02SubmitWhilePaused(f, 2, proposal)
+	duplicate := p02SubmitWhilePaused(f, successor, proposal)
 	replayed, err := decodeGraphCutResult(duplicate.Outcome)
 	if err != nil || replayed.phase != graphCutFence || replayed.status != graphCutApplied || replayed.round != command.round || replayed.index != duplicate.Index || duplicate.Index <= applied.Index || len(duplicate.CDC) != 0 {
 		t.Fatal("P02 same fence replay changed genuine floor/output", err)
 	}
-	submission.RecoveredImage = f.call(f.n.all[2], processRequest{op: processStateOp}).image
+	submission.RecoveredImage = f.call(f.n.all[successor], processRequest{op: processStateOp}).image
 	if !bytes.Equal(beforeImage, submission.RecoveredImage) {
 		t.Fatal("native fence/election/replay invented a graph effect")
 	}
 	return nativeProtocolPersistedFence{Proposal: proposal.wire, Submission: submission, Run: run, DeadlineUnixNanos: deadline, Kind: kind, Side: side,
-		nativeProtocolBatchEvidence: nativeProtocolBatchEvidence{Actor: 1, Target: 1, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: loss.Error(), ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: candidates, GateDecodeWork: work, TargetProcesses: []pairedFaultProcess{killed, rejoined}, TargetReopened: reopened},
-		Successor:                   2, Original: original, Applied: applied, Duplicate: duplicate}
+		nativeProtocolBatchEvidence: nativeProtocolBatchEvidence{Actor: leader, Target: leader, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: loss.Error(), ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: candidates, GateDecodeWork: work, TargetProcesses: []pairedFaultProcess{killed, rejoined}, TargetReopened: reopened, Program: messageProgram},
+		Successor:                   successor, Original: original, Applied: applied, Duplicate: duplicate, SuccessorEvidence: successorEvidence}
 }
 
 type nativeProtocolFenceEvidence struct {
@@ -400,13 +452,13 @@ type nativeProtocolFenceEvidence struct {
 // read is held after YES. The native target is a separate real voter. The third
 // persistence/application leader-loss ordering has its own native fence input;
 // it must not be represented by this earlier/later source-reply distinction.
-func nativeProtocolFenceCase(t *testing.T, recipe nativeProtocolFenceRecipe) {
+func nativeProtocolFenceCase(t *testing.T, recipe nativeProtocolFenceRecipe, programs ...nativeProtocolProgramSpec) {
 	t.Helper()
 	if !recipe.valid() {
 		t.Fatal("unsupported P02 live causal ordering")
 	}
 	if recipe.Schedule == "persisted-fence-before-application" {
-		nativeProtocolFenceStageCase(t, recipe)
+		nativeProtocolFenceStageCase(t, recipe, programs...)
 		return
 	}
 	artifactBudget := nativeProtocolArtifactAllowance(t)
@@ -415,6 +467,7 @@ func nativeProtocolFenceCase(t *testing.T, recipe nativeProtocolFenceRecipe) {
 	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, deadline))
 	defer cancel()
 	f := newPairedGraphFaultNetworkWithParent(t, ctx)
+	program := nativeProtocolProgramStart(t, ctx, f, programs...)
 	base := f.indexes()
 	before := nativeFaultSeed(t, f)
 	old := p06Observe(f, 2, graphReadFresh, graphCut{})
@@ -433,7 +486,7 @@ func nativeProtocolFenceCase(t *testing.T, recipe nativeProtocolFenceRecipe) {
 	tx := crossTransactionID(ns, business.request.id)
 	capture := newNativeConjunctionCapture(f, 5, tx, true)
 	defer capture.close()
-	selector := nativeProtocolReplySelector{Actor: 5, Partition: 3, Phase: crossPrepare, Transaction: tx, Peer: graphPeerIdentity{scope: oldCut.certificates[0].scope, voter: 1}}
+	selector := nativeProtocolReplySelector{Actor: 5, Partition: 3, Phase: crossPrepare, Transaction: tx, Peer: graphPeerIdentity{scope: oldCut.certificates[0].scope, voter: f.n.leaders[0]}}
 	var hold *nativeProtocolReplyHold
 	if recipe.Schedule == "delayed-A-prepare" {
 		hold, err = newNativeProtocolBeforeHold(ctx, f, selector)
@@ -448,6 +501,12 @@ func nativeProtocolFenceCase(t *testing.T, recipe nativeProtocolFenceRecipe) {
 	if recipe.Partition == 8 {
 		target = 6
 	}
+	if program != nil {
+		target, err = program.target(recipe.Partition, 5, 2)
+		if err != nil {
+			t.Fatal("actual P02 target preserves original caller and old reader", err)
+		}
+	}
 	gate, err := newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: 5, Partition: recipe.Partition, Member: target, Phase: recipe.Phase, Occurrence: 1, Kind: recipe.Kind, Side: recipe.Side}, run, deadline)
 	if err != nil {
 		t.Fatal(err)
@@ -456,9 +515,9 @@ func nativeProtocolFenceCase(t *testing.T, recipe nativeProtocolFenceRecipe) {
 	call, stop := f.beginRun(5, original)
 	defer stop()
 	boundary := f.awaitBoundary(hold.entered)
-	fences := []p06LocalRecord{p02Fence(f, 1, bound)}
+	fences := []p06LocalRecord{p02Fence(f, f.n.leaders[0], bound)}
 	if recipe.Schedule == "A-before-B-after" {
-		fences = append(fences, p02Fence(f, 4, bound))
+		fences = append(fences, p02Fence(f, f.n.leaders[1], bound))
 	}
 	hold.mu.Lock()
 	if !hold.selected || hold.closed || hold.ctx.Err() != nil {
@@ -494,7 +553,13 @@ func nativeProtocolFenceCase(t *testing.T, recipe nativeProtocolFenceRecipe) {
 	capture.sources = nil
 	planning := nativeProtocolPlanningCharge{capture.sourceOutput, capture.sourceRetained}
 	capture.mu.Unlock()
-	manifest, votes := p02Votes(f, phases, original, result.decision)
+	var manifest crossManifest
+	var votes [2]crossStatus
+	if program == nil {
+		manifest, votes = p02Votes(f, phases, original, result.decision)
+	} else {
+		manifest, votes = nativeProtocolProgramP02Votes(t, f, phases, original, result.decision)
+	}
 	p02BindSources(t, sources, manifest, nil)
 	if manifest.parts[0].floor >= bound || recipe.Schedule == "A-before-B-after" && (votes[0].floor >= bound || votes[1].floor < bound) || recipe.Schedule == "delayed-A-prepare" && votes[0].floor < bound {
 		t.Fatal("P02 genuine captured/apply-time floor ordering", votes, bound)
@@ -543,11 +608,18 @@ func nativeProtocolFenceCase(t *testing.T, recipe nativeProtocolFenceRecipe) {
 		Profile, Case string
 		Evidence      nativeProtocolFenceEvidence
 	}{1, nativeProtocolCampaignProfile, recipe.name(), evidence}
+	if native.Program != nil {
+		artifact.Version, artifact.Profile = 2, nativeProtocolProgramProfile
+	}
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, recipe.name()+".jsonl"), artifact, records, through)
-	nativeProtocolCheck(t, ctx, path)
+	if native.Program != nil {
+		nativeProtocolCheck(t, ctx, path, true)
+	} else {
+		nativeProtocolCheck(t, ctx, path)
+	}
 }
 
-func nativeProtocolFenceStageCase(t *testing.T, recipe nativeProtocolFenceRecipe) {
+func nativeProtocolFenceStageCase(t *testing.T, recipe nativeProtocolFenceRecipe, programs ...nativeProtocolProgramSpec) {
 	t.Helper()
 	if !recipe.valid() || recipe.Schedule != "persisted-fence-before-application" {
 		t.Fatal("actual persistence/application ordering required")
@@ -558,6 +630,15 @@ func nativeProtocolFenceStageCase(t *testing.T, recipe nativeProtocolFenceRecipe
 	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, deadline))
 	defer cancel()
 	f := newPairedGraphFaultNetworkWithParent(t, ctx)
+	program := nativeProtocolProgramStart(t, ctx, f, programs...)
+	if program != nil {
+		if !nativeProtocolProgramFenceReachable(recipe, program.spec) {
+			t.Fatal("local leader Ready stops before native messages are emitted; not a matched message occurrence")
+		}
+		if err := program.selectCommand(recipe.Phase, recipe.Partition, recipe.Phase == 0); err != nil {
+			t.Fatal(err)
+		}
+	}
 	base := f.indexes()
 	before := nativeFaultSeed(t, f)
 	old := p06Observe(f, 3, graphReadFresh, graphCut{})
@@ -569,8 +650,8 @@ func nativeProtocolFenceStageCase(t *testing.T, recipe nativeProtocolFenceRecipe
 	// Both genuine source factories run before source1 can die. No restarted
 	// recipient mints replacement IDs or reseals the retained business request.
 	original := f.proposal(3)
-	delayed := p06LocalProposal(f, 1, certifiedP08Close, 1, allocationP08Words(2))
-	fence := p06LocalProposal(f, 1, certifiedPrepareFence, bound, nil)
+	delayed := p06LocalProposal(f, f.n.leaders[0], certifiedP08Close, 1, allocationP08Words(2))
+	fence := p06LocalProposal(f, f.n.leaders[0], certifiedPrepareFence, bound, nil)
 	kind, side := raftlog.StableStorageApplication, "before"
 	if recipe.Phase == 0 {
 		kind, side = recipe.Kind, recipe.Side
@@ -593,6 +674,12 @@ func nativeProtocolFenceStageCase(t *testing.T, recipe nativeProtocolFenceRecipe
 		target := uint64(1) // Actual restored follower; source2 and actor3 survive.
 		if recipe.Partition == 8 {
 			target = 6
+		}
+		if program != nil {
+			target, err = program.target(recipe.Partition, 3)
+			if err != nil {
+				t.Fatal("actual post-fence native target preserves SAME original caller/source", err)
+			}
 		}
 		gate, err = newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: 3, Partition: recipe.Partition, Member: target, Phase: recipe.Phase, Occurrence: 1, Kind: recipe.Kind, Side: recipe.Side}, run, deadline)
 		if err != nil {
@@ -619,7 +706,13 @@ func nativeProtocolFenceStageCase(t *testing.T, recipe nativeProtocolFenceRecipe
 	sources, planning := capture.sources, nativeProtocolPlanningCharge{capture.sourceOutput, capture.sourceRetained}
 	capture.sources = nil
 	capture.mu.Unlock()
-	manifest, votes := p02Votes(f, phases, original, result.decision)
+	var manifest crossManifest
+	var votes [2]crossStatus
+	if program == nil {
+		manifest, votes = p02Votes(f, phases, original, result.decision)
+	} else {
+		manifest, votes = nativeProtocolProgramP02Votes(t, f, phases, original, result.decision)
+	}
 	p02BindSources(t, sources, manifest, nil)
 	if votes[0].floor < bound {
 		t.Fatal("post-fence actual Prepare sampled stale floor")
@@ -637,7 +730,7 @@ func nativeProtocolFenceStageCase(t *testing.T, recipe nativeProtocolFenceRecipe
 	f.assertView(step.After, 3)
 	pairedFaultAssertCDC(t, step, 3)
 	assertLifecycleCandidates(t, step.RawObservation, 3)
-	closed := p06SubmitLocal(f, 2, delayed, reasonNone)
+	closed := p06SubmitLocal(f, f.n.leaders[0], delayed, reasonNone)
 	round := p06LocalRound(t, closed)
 	if round <= bound || round <= result.decision.round {
 		t.Fatal("genuine delayed pre-fence local command committed below floor")
@@ -683,8 +776,15 @@ func nativeProtocolFenceStageCase(t *testing.T, recipe nativeProtocolFenceRecipe
 		Profile, Case string
 		Evidence      nativeProtocolFenceEvidence
 	}{1, nativeProtocolCampaignProfile, recipe.name(), evidence}
+	if native.Program != nil {
+		artifact.Version, artifact.Profile = 2, nativeProtocolProgramProfile
+	}
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, recipe.name()+".jsonl"), artifact, records, through)
-	nativeProtocolCheck(t, ctx, path)
+	if native.Program != nil {
+		nativeProtocolCheck(t, ctx, path, true)
+	} else {
+		nativeProtocolCheck(t, ctx, path)
+	}
 }
 
 func TestNativeProtocolP02ActualApplyFloorsStraddleHeldPrepareAcrossNativeBatches(t *testing.T) {
@@ -750,12 +850,14 @@ type nativeProtocolLiveP06Evidence struct {
 	TargetProcesses                 []pairedFaultProcess
 	TargetReopened                  p06Observation
 	Completion                      nativeP06PreparedCompletion
+	Program                         *nativeProtocolProgramEvidence `json:",omitempty"`
+	ProgramCohort                   []pairedFaultProcess           `json:",omitempty"`
 }
 
 // This adapter does not recover/restart the coordinator before the selected
 // first-B call. Its first A source reply remains held on the original service
 // callback, then is released into that SAME caller context and endpoint set.
-func nativeProtocolLiveP06Case(t *testing.T, recipe nativeProtocolLiveP06Recipe) nativeProtocolLiveP06Evidence {
+func nativeProtocolLiveP06Case(t *testing.T, recipe nativeProtocolLiveP06Recipe, programs ...nativeProtocolProgramSpec) nativeProtocolLiveP06Evidence {
 	t.Helper()
 	if !recipe.valid() {
 		t.Fatal("infeasible first-live-run P06 transition")
@@ -766,6 +868,20 @@ func nativeProtocolLiveP06Case(t *testing.T, recipe nativeProtocolLiveP06Recipe)
 	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, deadline))
 	defer cancel()
 	f := newPairedGraphFaultNetworkWithParent(t, ctx)
+	program := nativeProtocolProgramStart(t, ctx, f, programs...)
+	firstVoter, recoveryVoter, target, successor := uint64(1), uint64(2), uint64(4), uint64(6)
+	if program != nil {
+		if recipe.Kind == raftlog.StableStorageReady && program.spec.Message != "literal" {
+			t.Fatal("selected submitting B leader dies before emitting this Ready's native messages")
+		}
+		firstVoter, target = f.n.leaders[0], f.n.leaders[1]
+		if firstVoter == 2 {
+			recoveryVoter = 1
+		}
+		if target == 6 {
+			successor = 4
+		}
+	}
 	before := nativeFaultSeed(t, f)
 	old, err := pairedFaultCut(before.Cut)
 	if err != nil {
@@ -786,12 +902,12 @@ func nativeProtocolLiveP06Case(t *testing.T, recipe nativeProtocolLiveP06Recipe)
 	tx := crossTransactionID(ns, business.request.id)
 	capture := newNativeConjunctionCapture(f, actor, tx)
 	defer capture.close()
-	hold, err := newNativeProtocolReplyHold(ctx, f, nativeProtocolReplySelector{Actor: actor, Partition: 3, Phase: crossPrepare, Transaction: tx, Peer: graphPeerIdentity{scope: old.certificates[0].scope, voter: 1}})
+	hold, err := newNativeProtocolReplyHold(ctx, f, nativeProtocolReplySelector{Actor: actor, Partition: 3, Phase: crossPrepare, Transaction: tx, Peer: graphPeerIdentity{scope: old.certificates[0].scope, voter: firstVoter}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer hold.close()
-	gate, err := newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: actor, Partition: 8, Member: 4, Phase: recipe.Phase, Occurrence: 1, Kind: recipe.Kind, Side: recipe.Side}, run, deadline)
+	gate, err := newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: actor, Partition: 8, Member: target, Phase: recipe.Phase, Occurrence: 1, Kind: recipe.Kind, Side: recipe.Side}, run, deadline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -806,7 +922,7 @@ func nativeProtocolLiveP06Case(t *testing.T, recipe nativeProtocolLiveP06Recipe)
 	}
 	boundary := pairedFaultBoundary{Request: capture.requests[1].Request, Reply: capture.requests[1].Reply}
 	capture.mu.Unlock()
-	prepare, vote, manifest := p06PrepareBoundary(t, boundary, recipe.Coordinator, 1)
+	prepare, vote, manifest := p06PrepareBoundary(t, boundary, recipe.Coordinator, firstVoter)
 	submitRequest, requestErr := decodeGraphSourceRequest(boundary.Request)
 	submitReply, submitErr := decodeGraphWireResponse(boundary.Reply)
 	voteRequest, voteRequestErr := decodeGraphSourceRequest(voteRead.Request)
@@ -823,12 +939,17 @@ func nativeProtocolLiveP06Case(t *testing.T, recipe nativeProtocolLiveP06Recipe)
 			t.Fatal("first live YES lacks all actual prepared voter originals", member)
 		}
 	}
-	firstKilled := f.kill(1, "prepared-participant-leader")
-	f.elect(1, 2)
-	refused := nativeProtocolSubmitHeld(f, 2, p06LocalProposal(f, 2, certifiedP08Close, 1, allocationP08Words(2)), reasonPreparedConflict)
+	firstKilled := f.kill(firstVoter, "prepared-participant-leader")
+	f.elect(firstVoter, recoveryVoter)
+	if program != nil {
+		if _, err := program.successor(firstVoter, recoveryVoter); err != nil {
+			t.Fatal("actual A successor while SAME completed service reply remains held", err)
+		}
+	}
+	refused := nativeProtocolSubmitHeld(f, recoveryVoter, p06LocalProposal(f, recoveryVoter, certifiedP08Close, 1, allocationP08Words(2)), reasonPreparedConflict)
 	var changed *p06LocalRecord
 	if !recipe.Commit {
-		actual := nativeProtocolSubmitHeld(f, 4, p06LocalProposal(f, 4, certifiedP08Close, 17, allocationP08Words(18)), reasonNone)
+		actual := nativeProtocolSubmitHeld(f, target, p06LocalProposal(f, target, certifiedP08Close, 17, allocationP08Words(18)), reasonNone)
 		changed = &actual
 	}
 	hold.mu.Lock()
@@ -858,7 +979,8 @@ func nativeProtocolLiveP06Case(t *testing.T, recipe nativeProtocolLiveP06Recipe)
 	if !nativeBatchFailedStepAllowed(processResponse{}, targetLoss) {
 		t.Fatal("selected B native child lacks exact transport death", targetLoss)
 	}
-	failed := nativeBatchReap(t, f, 4, receipt)
+	messageProgram := nativeProtocolProgramFinish(t, f)
+	failed := nativeBatchReap(t, f, target, receipt)
 	reads := gate.readCount()
 	gate.mu.Lock()
 	gateCandidates, gateWork := gate.candidates, gate.decodeWork
@@ -874,17 +996,23 @@ func nativeProtocolLiveP06Case(t *testing.T, recipe nativeProtocolLiveP06Recipe)
 		t.Fatal("first live source census borrowed a reply or another invocation")
 	}
 	f.drain()
-	f.elect(4, 6) // Actor5 remains the SAME private coordinator owner.
+	f.elect(target, successor) // Actor5 remains the SAME private coordinator owner.
 	var targetOld p06Observation
-	rejoined := f.replaceBeforeHeal(4, func(_ *graphProcess, _ processResponse) { targetOld = nativeP06InitialLocalOld(f, 4, old) })
+	rejoined := f.replaceBeforeHeal(target, func(_ *graphProcess, _ processResponse) { targetOld = nativeP06InitialLocalOld(f, target, old) })
 	if !reflect.DeepEqual(targetOld, wantOld) {
 		t.Fatal("actual selected B replacement substituted current history")
 	}
 	nativeConjunctionReconnect(f, actor)
 	base := nativeP06ConjunctionRecipe{Coordinator: recipe.Coordinator, Commit: recipe.Commit, Kind: recipe.Kind, Side: recipe.Side}
-	completion := nativeP06CompletePrepared(t, nativeP06PreparedContinuation{f: f, Recipe: base, Actor: actor, FirstVoter: 1, RecoveryVoter: 2, Original: original, Before: wantOld, Old: old, From: from, Pending: unknown.response, FirstKilled: firstKilled,
+	completion := nativeP06CompletePrepared(t, nativeP06PreparedContinuation{f: f, Recipe: base, Actor: actor, FirstVoter: firstVoter, RecoveryVoter: recoveryVoter, Original: original, Before: wantOld, Old: old, From: from, Pending: unknown.response, FirstKilled: firstKilled,
 		Evidence: nativeP06PreparedProvenance{Boundary: boundary, Prepare: prepare, Manifest: manifest, Vote: vote}, BeforeRecoveryRefused: &refused, BeforeRecoveryChanged: changed, AllowKnownDecision: true})
-	evidence := nativeProtocolLiveP06Evidence{Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, Actor: actor, Target: 4, Successor: 6, OriginalCall: nativeP06ConjunctionAttempt{Reply: p06ProcessWire(t, unknown.response), Transport: unknown.err.Error(), Pending: true}, InitialPhases: initialRows, InitialCapture: initialCharge, Hold: holdCharge, VoteRead: voteRead, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: targetLoss.Error(), ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: gateCandidates, GateDecodeWork: gateWork, TargetProcesses: []pairedFaultProcess{failed, rejoined}, TargetReopened: targetOld, Completion: completion}
+	var programCohort []pairedFaultProcess
+	if messageProgram != nil {
+		// Actual terminal process receipts authenticate surviving native role
+		// observers too. No new Run/source/authority is acquired for this proof.
+		programCohort = f.stopAll()
+	}
+	evidence := nativeProtocolLiveP06Evidence{Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, Actor: actor, Target: target, Successor: successor, OriginalCall: nativeP06ConjunctionAttempt{Reply: p06ProcessWire(t, unknown.response), Transport: unknown.err.Error(), Pending: true}, InitialPhases: initialRows, InitialCapture: initialCharge, Hold: holdCharge, VoteRead: voteRead, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: targetLoss.Error(), ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: gateCandidates, GateDecodeWork: gateWork, TargetProcesses: []pairedFaultProcess{failed, rejoined}, TargetReopened: targetOld, Completion: completion, Program: messageProgram, ProgramCohort: programCohort}
 	nativeProtocolLiveP06Write(t, ctx, f, evidence, artifactBudget)
 	return evidence
 }
@@ -903,8 +1031,15 @@ func nativeProtocolLiveP06Write(t *testing.T, ctx context.Context, f *pairedGrap
 		Profile, Case string
 		Evidence      nativeProtocolLiveP06Evidence
 	}{1, nativeProtocolCampaignProfile, evidence.Recipe.name(), evidence}
+	if evidence.Program != nil {
+		artifact.Version, artifact.Profile = 2, nativeProtocolProgramProfile
+	}
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, artifact.Case+".jsonl"), artifact, records, evidence.Completion.P06.Through)
-	nativeProtocolCheck(t, ctx, path)
+	if evidence.Program != nil {
+		nativeProtocolCheck(t, ctx, path, true)
+	} else {
+		nativeProtocolCheck(t, ctx, path)
+	}
 }
 
 func TestNativeProtocolFirstLiveP06UsesActualAuthorityReplyAndOriginalContext(t *testing.T) {
@@ -1001,7 +1136,7 @@ func nativeProtocolTakeCapture(t *testing.T, c *nativeConjunctionCapture) ([]p06
 	return nativeP06InitialTake(t, c, count)
 }
 
-func nativeProtocolCoordinatorCase(t *testing.T, recipe nativeProtocolCoordinatorRecipe) {
+func nativeProtocolCoordinatorCase(t *testing.T, recipe nativeProtocolCoordinatorRecipe, programs ...nativeProtocolProgramSpec) {
 	t.Helper()
 	if !recipe.valid() {
 		t.Fatal("inapplicable P03 native occurrence")
@@ -1020,6 +1155,10 @@ func nativeProtocolCoordinatorCase(t *testing.T, recipe nativeProtocolCoordinato
 	defer cancel()
 	f := newPairedGraphFaultNetworkWithParent(t, ctx)
 	f.trace.Scope = "P03 actual durable-D leader loss plus selected native Ready/install; finite fresh causal program, not all-D acceptance"
+	program := nativeProtocolProgramStart(t, ctx, f, programs...)
+	if program != nil && recipe.Phase == crossResolve && recipe.Partition == recipe.Coordinator && recipe.Kind == raftlog.StableStorageReady && program.spec.Message != "literal" {
+		t.Fatal("selected serving recovery leader dies before this Ready emits native packets")
+	}
 	before := f.observe(4, graphReadFresh, graphCut{}, false)
 	f.assertView(before.View, 0)
 	f.trace.InitialCut = before.Cut
@@ -1051,6 +1190,12 @@ func nativeProtocolCoordinatorCase(t *testing.T, recipe nativeProtocolCoordinato
 	if recipe.Coordinator == 8 {
 		leader, caller, recoverer = 4, 5, 6
 	}
+	if program != nil && program.spec.Layout == "rotated" {
+		leader, caller, recoverer = 2, 3, 1
+		if recipe.Coordinator == 8 {
+			leader, caller, recoverer = 6, 5, 4
+		}
+	}
 	command, err := decodePartitionGraphCommand(proposals[4].wire, defaultMaterializerLimits())
 	if err != nil {
 		t.Fatal(err)
@@ -1066,6 +1211,12 @@ func nativeProtocolCoordinatorCase(t *testing.T, recipe nativeProtocolCoordinato
 	target := uint64(3)
 	if recipe.Partition == 8 {
 		target = 6
+	}
+	if program != nil {
+		target, err = program.target(recipe.Partition, caller)
+		if err != nil {
+			t.Fatal("actual P03 selected follower preserves held SAME caller", err)
+		}
 	}
 	if recipe.Phase != crossResolve {
 		gate, err = newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: caller, Partition: recipe.Partition, Member: target, Phase: recipe.Phase, Occurrence: 1, Kind: recipe.Kind, Side: recipe.Side}, run, deadline)
@@ -1094,6 +1245,12 @@ func nativeProtocolCoordinatorCase(t *testing.T, recipe nativeProtocolCoordinato
 		native = nativeProtocolFinishBatch(t, f, gate, old, true)
 	}
 	actualD, scope, committed := p03CommittedDecision(f, boundary, proposals[4], leader, recipe.Coordinator)
+	if program != nil {
+		// The original helper's diagnostic path admits only leaders1/4. This
+		// is the actual same child's configured durable directory, not a wire
+		// member/instance or authority replacement.
+		committed.Volume = filepath.Join(f.n.dir, fmt.Sprint(leader))
+	}
 	if actualD != decision || scope != proposal.target {
 		t.Fatal("P03 changed captured durable D")
 	}
@@ -1104,6 +1261,11 @@ func nativeProtocolCoordinatorCase(t *testing.T, recipe nativeProtocolCoordinato
 	initial, initialCharge := nativeProtocolTakeCapture(t, capture)
 	capture.close() // No live original Run remains before endpoint reassociation.
 	f.elect(leader, caller)
+	if program != nil && recipe.Phase == crossResolve {
+		if _, err := program.successor(leader, caller); err != nil {
+			t.Fatal("actual durable-D successor before selected recovery occurrence", err)
+		}
+	}
 	nativeConjunctionReconnect(f, recoverer)
 	// These reads really occur while the first leader is down, before any
 	// second-voter failure. They do not claim unavailable-quorum Fresh success.
@@ -1228,8 +1390,15 @@ func nativeProtocolCoordinatorCase(t *testing.T, recipe nativeProtocolCoordinato
 		Profile, Case string
 		Evidence      nativeProtocolCoordinatorEvidence
 	}{1, nativeProtocolCampaignProfile, recipe.name(), evidence}
+	if native.Program != nil {
+		artifact.Version, artifact.Profile = 2, nativeProtocolProgramProfile
+	}
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, recipe.name()+".jsonl"), artifact, records, evidence.Through)
-	nativeProtocolCheck(t, ctx, path)
+	if native.Program != nil {
+		nativeProtocolCheck(t, ctx, path, true)
+	} else {
+		nativeProtocolCheck(t, ctx, path)
+	}
 }
 
 func mustNativeProtocolResponse(t *testing.T, wire []byte) processResponse {
@@ -1292,6 +1461,7 @@ type nativeProtocolPartialEvidence struct {
 	Partial                              nativeFaultArtifact
 	Completed                            []byte
 	Outage                               *nativeP06ConjunctionAttempt
+	ProgramCohort                        []pairedFaultProcess `json:",omitempty"`
 }
 
 func nativeProtocolPartialRead(t *testing.T, f *pairedGraphFaultNetwork, actor uint64, mode graphReadMode, tx [16]byte, coordinator uint64) nativeFaultPartialRead {
@@ -1317,19 +1487,33 @@ func nativeProtocolPartialRead(t *testing.T, f *pairedGraphFaultNetwork, actor u
 
 func nativeProtocolPartialWrite(t *testing.T, ctx context.Context, f *pairedGraphFaultNetwork, recipe nativeProtocolPartialRecipe, run [16]byte, deadline int64, native nativeProtocolBatchEvidence, partial nativeFaultArtifact, completed []byte, outage *nativeP06ConjunctionAttempt, budget *graphstate.OutputBudget) {
 	t.Helper()
-	if !recipe.valid() || native.Actor != 6 || native.Target != recipe.selector(6).Member || budget == nil || budget.Used() != 16<<20 || budget.Remaining() != 0 {
+	actor := uint64(6)
+	if native.Program != nil && native.Program.Spec.Layout == "rotated" {
+		actor = 4
+	}
+	if !recipe.valid() || native.Actor != actor || native.Target != recipe.selector(actor).Member || budget == nil || budget.Used() != 16<<20 || budget.Remaining() != 0 {
 		t.Fatal("partial adapter lacks actual member/caller or prepaid output identity")
 	}
 	records := partial.Records
 	partial.Records = nil
-	evidence := nativeProtocolPartialEvidence{Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, nativeProtocolBatchEvidence: native, OriginalActor: 6, Reader: 2, RecoveryActor: 6, Partial: partial, Completed: completed, Outage: outage}
+	evidence := nativeProtocolPartialEvidence{Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, nativeProtocolBatchEvidence: native, OriginalActor: actor, Reader: 2, RecoveryActor: actor, Partial: partial, Completed: completed, Outage: outage}
+	if native.Program != nil {
+		evidence.ProgramCohort = f.stopAll()
+	}
 	artifact := struct {
 		Version       uint8
 		Profile, Case string
 		Evidence      nativeProtocolPartialEvidence
 	}{1, nativeProtocolCampaignProfile, recipe.name(), evidence}
+	if native.Program != nil {
+		artifact.Version, artifact.Profile = 2, nativeProtocolProgramProfile
+	}
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, recipe.name()+".jsonl"), artifact, records, partial.Through)
-	nativeProtocolCheck(t, ctx, path)
+	if native.Program != nil {
+		nativeProtocolCheck(t, ctx, path, true)
+	} else {
+		nativeProtocolCheck(t, ctx, path)
+	}
 }
 
 func TestNativeProtocolP03PartialInstallKeepsUnavailableAndOriginalRecoveryDistinct(t *testing.T) {
@@ -1405,17 +1589,19 @@ type nativeProtocolConditionalEvidence struct {
 	// occupy their ordinary source slots. Native reopen is proved by the actual
 	// process receipt; historical answers come from the unchanged P05 owner and
 	// its final genuine At, not a made-up local replacement observation.
-	TargetReopened *p06Observation
-	P05            *p05Artifact // Complete trace lives in its separately prepaid sibling.
-	From, Through  [2]uint64
-	Records        []lifecycleRawRecord
-	TraceName      string
-	TraceSHA256    [32]byte
-	TraceBytes     uint64
-	Capture        p05CampaignCaptureCharge
+	TargetReopened     *p06Observation
+	P05                *p05Artifact // Complete trace lives in its separately prepaid sibling.
+	From, Through      [2]uint64
+	Records            []lifecycleRawRecord
+	TraceName          string
+	TraceSHA256        [32]byte
+	TraceBytes         uint64
+	Capture            p05CampaignCaptureCharge
+	ProgramCohort      []pairedFaultProcess `json:",omitempty"`
+	ProgramReopenAfter uint64               `json:",omitempty"`
 }
 
-func nativeProtocolConditionalCase(t *testing.T, recipe nativeProtocolConditionalRecipe) {
+func nativeProtocolConditionalCase(t *testing.T, recipe nativeProtocolConditionalRecipe, programs ...nativeProtocolProgramSpec) {
 	t.Helper()
 	if !recipe.valid() {
 		t.Fatal("invalid P05 actual invocation/native occurrence")
@@ -1444,6 +1630,23 @@ func nativeProtocolConditionalCase(t *testing.T, recipe nativeProtocolConditiona
 		target = 6
 	}
 	hooks := &p05CampaignHooks{Parent: ctx}
+	var program *nativeProtocolProgram
+	var reopenAfter uint64
+	if len(programs) != 0 {
+		hooks.Start = func(f *pairedGraphFaultNetwork) {
+			program = nativeProtocolProgramStart(t, ctx, f, programs...)
+			if program.spec.Layout == "rotated" && recipe.Partition == 8 {
+				target = 5 // Actual follower; held conditions stay on the real leader6.
+			}
+		}
+		hooks.BeforeReopen = func(f *pairedGraphFaultNetwork, ordinal uint64) {
+			f.requireActive()
+			if recipe.Schedule != "write-skew-A-first" || !finished || ordinal == 0 || ordinal > 128 || reopenAfter != 0 {
+				t.Fatal("actual single conditional cohort/cumulative capture boundary")
+			}
+			reopenAfter = ordinal
+		}
+	}
 	hooks.Begin = func(f *pairedGraphFaultNetwork, _ uint64, _ graphCut) {
 		var err error
 		gate, err = newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: actor, Partition: recipe.Partition, Member: target, Phase: recipe.Phase, Occurrence: recipe.Operation, Kind: recipe.Kind, Side: recipe.Side}, run, deadline)
@@ -1477,6 +1680,7 @@ func nativeProtocolConditionalCase(t *testing.T, recipe nativeProtocolConditiona
 		if !nativeBatchFailedStepAllowed(processResponse{}, loss) {
 			t.Fatal("P05 native boundary was not actual typed pipe loss", loss)
 		}
+		messageProgram := nativeProtocolProgramFinish(t, f)
 		killed := nativeBatchReap(t, f, target, receipt)
 		reads := gate.readCount()
 		gate.mu.Lock()
@@ -1484,7 +1688,7 @@ func nativeProtocolConditionalCase(t *testing.T, recipe nativeProtocolConditiona
 		gate.mu.Unlock()
 		gate.close()
 		joined := f.replace(target) // No new certified source/condition authority.
-		native = nativeProtocolBatchEvidence{Actor: actor, Target: target, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: loss.Error(), ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: candidates, GateDecodeWork: work, TargetProcesses: []pairedFaultProcess{killed, joined}}
+		native = nativeProtocolBatchEvidence{Actor: actor, Target: target, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: loss.Error(), ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: candidates, GateDecodeWork: work, TargetProcesses: []pairedFaultProcess{killed, joined}, Program: messageProgram}
 		finished = true
 	}
 	hooks.Finish = func(f *pairedGraphFaultNetwork, p05 p05Artifact, base [2]uint64, charge p05CampaignCaptureCharge) {
@@ -1509,13 +1713,24 @@ func nativeProtocolConditionalCase(t *testing.T, recipe nativeProtocolConditiona
 			t.Fatal("P05 actual bounded trace write/close", n, writeErr, closeErr)
 		}
 		evidence := nativeProtocolConditionalEvidence{Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, nativeProtocolBatchEvidence: native, From: base, Through: through, Capture: charge, TraceName: name, TraceSHA256: sha256.Sum256(trace), TraceBytes: uint64(len(trace))}
+		if program != nil {
+			evidence.ProgramCohort = f.stopAll()
+			evidence.ProgramReopenAfter = reopenAfter
+		}
 		artifact := struct {
 			Version       uint8
 			Profile, Case string
 			Evidence      nativeProtocolConditionalEvidence
 		}{1, nativeProtocolCampaignProfile, recipe.name(), evidence}
+		if program != nil {
+			artifact.Version, artifact.Profile = 2, nativeProtocolProgramProfile
+		}
 		path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, recipe.name()+".jsonl"), artifact, records, through)
-		nativeProtocolCheck(t, ctx, path)
+		if program != nil {
+			nativeProtocolCheck(t, ctx, path, true)
+		} else {
+			nativeProtocolCheck(t, ctx, path)
+		}
 	}
 	p05ConditionalCase(t, recipe.Schedule, hooks)
 }
@@ -1631,22 +1846,40 @@ type nativeProtocolFrozenEvidence struct {
 	P04             nativeDecisionArtifact
 	Frozen          nativeDecisionFrozenReceipt
 	CapacityCapture nativeProtocolHoldCharge
+	ProgramCohort   []pairedFaultProcess `json:",omitempty"`
 }
 
 func nativeProtocolFrozenWrite(t *testing.T, ctx context.Context, f *pairedGraphFaultNetwork, recipe nativeProtocolFrozenRecipe, run [16]byte, deadline int64, native nativeProtocolBatchEvidence, frozen nativeDecisionFrozenReceipt, p04 nativeDecisionArtifact, charge nativeProtocolHoldCharge, budget *graphstate.OutputBudget) {
-	if !recipe.valid() || budget == nil || budget.Used() != 16<<20 || budget.Remaining() != 0 || native.Actor != recipe.selector().Actor || native.Target != recipe.selector().Member || frozen.Version != 1 || frozen.Member != 4 || frozen.Cookie != p04.Queue.Cookie || !bytes.Equal(frozen.Manifest, p04.Queue.Manifest) {
+	selector, queueMember := recipe.selector(), uint64(4)
+	if native.Program != nil {
+		selector = nativeProtocolProgramFrozenSelector(recipe, native.Program.Spec)
+		if native.Program.Spec.Layout == "rotated" {
+			queueMember = 6
+		}
+	}
+	if !recipe.valid() || budget == nil || budget.Used() != 16<<20 || budget.Remaining() != 0 || native.Actor != selector.Actor || native.Target != selector.Member || frozen.Version != 1 || frozen.Member != queueMember || frozen.Cookie != p04.Queue.Cookie || !bytes.Equal(frozen.Manifest, p04.Queue.Manifest) {
 		t.Fatal("P04 actual native/frozen owner evidence missing")
 	}
 	records := p04.Records
 	p04.Records = nil
 	evidence := nativeProtocolFrozenEvidence{Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, nativeProtocolBatchEvidence: native, P04: p04, Frozen: frozen, CapacityCapture: charge}
+	if native.Program != nil {
+		evidence.ProgramCohort = f.stopAll()
+	}
 	artifact := struct {
 		Version       uint8
 		Profile, Case string
 		Evidence      nativeProtocolFrozenEvidence
 	}{1, nativeProtocolCampaignProfile, recipe.name(), evidence}
+	if native.Program != nil {
+		artifact.Version, artifact.Profile = 2, nativeProtocolProgramProfile
+	}
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, recipe.name()+".jsonl"), artifact, records, p04.Through)
-	nativeProtocolCheck(t, ctx, path)
+	if native.Program != nil {
+		nativeProtocolCheck(t, ctx, path, true)
+	} else {
+		nativeProtocolCheck(t, ctx, path)
+	}
 }
 
 func TestNativeProtocolP04QueuedOriginalsKeepFrozenIdentityAtActualNativeBoundaries(t *testing.T) {

@@ -114,7 +114,16 @@ def io_receipt(receipt, case):
         require(op["Written"] == 0, "failed IO claimed native write")
 
 
-def processes(rows, receipt, case):
+def program_leaders(context):
+    """Shape only; the fresh wrapper first authenticates actual native roles."""
+    require(type(context) is dict and set(context) == {"leaders"} and type(context["leaders"]) is tuple and
+            context["leaders"] in ((1, 4), (2, 6)) and all(type(v) is int for v in context["leaders"]),
+            "separately authenticated actual program leader context")
+    return context["leaders"]
+
+
+def processes(rows, receipt, case, *, program_roles=None):
+    leader = 4 if program_roles is None else program_leaders(program_roles)[1]
     if receipt is None:
         if case != "partial-install-decision-loss":
             require(not rows, "unexpected process events")
@@ -122,7 +131,7 @@ def processes(rows, receipt, case):
         require(len(rows) == 2, "decision leader loss/rejoin census")
         killed, reopened = rows
         actual = json.loads(P.raw(killed["Raw"]))
-        require(killed["Action"] == "kill" and killed["Member"] == 4 and killed["Reaped"] is True and killed["Signal"] == "SIGKILL" and actual["SignalNumber"] == 9 and actual["Signaled"] is True and actual["Reaped"] is True, "actual decision-leader kill")
+        require(killed["Action"] == "kill" and killed["Member"] == leader and killed["Reaped"] is True and killed["Signal"] == "SIGKILL" and actual["SignalNumber"] == 9 and actual["Signaled"] is True and actual["Reaped"] is True, "actual decision-leader kill")
     else:
         io_receipt(receipt, case)
         require(len(rows) == (3 if case == "directory-sync-during-reopen" else 2), "native failure/reopen census")
@@ -147,13 +156,16 @@ def check(data):
     return check_history(data, startup=case == "directory-sync-during-reopen")
 
 
-def check_history(data, *, startup=False, process_check=processes, semantic_require=require):
+def check_history(data, *, startup=False, process_check=processes, semantic_require=require, program_roles=None):
     """Shared complete original/prefix/serial checks after strict case admission.
 
     A fresh embedding must authenticate its own actual process/IO grammar. It
     supplies the real capture unchanged, never substituted legacy receipts.
     """
     case = data["Case"]
+    source_voter = 1 if program_roles is None else program_leaders(program_roles)[0]
+    require(program_roles is None or case == "partial-install-decision-loss" and not startup,
+            "actual fresh role context is limited to its admitted partial semantic adapter")
     scopes, old_round = P.cut(data["Before"])
     for key in ("Retained", "Reopened"):
         if semantic_require is require:
@@ -250,7 +262,7 @@ def check_history(data, *, startup=False, process_check=processes, semantic_requ
         transactions["edge"]={"reads":[P.read_key(initial,k) for k in ("A/presence/1","B/presence/17","A/entity/3")],"writes":P.writes(initial,current,keys)}
         rounds["edge"]=decision["round"]
         if case=="partial-install-decision-loss":
-            _, actual_manifest, installed,installed_outcome=P.peer_phase(P.raw(data["InstalledA"]["Request"]),P.raw(data["InstalledA"]["Reply"]),scopes,1)
+            _, actual_manifest, installed,installed_outcome=P.peer_phase(P.raw(data["InstalledA"]["Request"]),P.raw(data["InstalledA"]["Reply"]),scopes,source_voter)
             require(actual_manifest==manifest and installed["phase"]==4 and installed["commit"] and installed["tx"]==tx and installed["round"]==decision["round"] and P.raw(records[(3,installed["index"])]["Outcome"])==installed_outcome,"actual installed A")
             phase,partition,held_manifest=P.gct(_source_command(data["WithheldB"]["Request"],scopes))
             require(phase==4 and partition==8 and held_manifest==manifest,"withheld B original")
@@ -331,11 +343,11 @@ def decision_command(wire):
     return dict(phase=phase, partition=partition, manifest=manifest, proofs=proofs, proof_wires=proof_wires, conflict=conflict)
 
 
-def decision_queue(queue, order):
+def decision_queue(queue, order, *, member=4):
     require(queue["Version"] == 1 and queue["Profile"] == DECISION_PROFILE and order in ("commit-first", "abort-first") and queue["Order"] == order, "queued finite order/profile")
     cookie = queue["Cookie"]
     require(type(cookie) is list and len(cookie) == 16 and any(cookie) and all(type(n) is int and 0 <= n <= 255 for n in cookie), "queued live owner cookie")
-    require(queue["Sequence"] == 1 and queue["Member"] == 4 and type(queue["PID"]) is int and queue["PID"] > 0 and queue["Mask"] == 3 and queue["Queued"] is True and queue["Closed"] is False, "queued genuine owner lifecycle")
+    require(member in (4, 6) and queue["Sequence"] == 1 and queue["Member"] == member and type(queue["PID"]) is int and queue["PID"] > 0 and queue["Mask"] == 3 and queue["Queued"] is True and queue["Closed"] is False, "queued genuine owner lifecycle")
     require(queue["Accepted"] == [True, True] and queue["Errors"] == [0, 0], "both genuine candidates must be admitted")
     require(1 <= queue["Controls"] <= 16 and queue["PrepaidBytes"] == 20 << 20, "queued finite default owner grant")
     applied, before, after = queue["BeforeApplied"], queue["BeforeLastIndex"], queue["AfterLastIndex"]
@@ -351,7 +363,7 @@ def decision_queue(queue, order):
     return abort, commit
 
 
-def decision_capacity(boundary, scopes, a, b, conflict):
+def decision_capacity(boundary, scopes, a, b, conflict, *, source_voter=1):
     q = P.Cursor(P.body(P.raw(boundary["Request"]), b"GSQ\1"))
     kind, sequence, nonce = q.number(1), q.number(), q.take(16)
     q.take(48)
@@ -370,7 +382,7 @@ def decision_capacity(boundary, scopes, a, b, conflict):
     r = P.Cursor(P.body(P.raw(boundary["Reply"]), b"GSR\1"))
     scope, voter, issuer = P.body(r.field(156), b"APS\1"), r.number(), r.take(16)
     require(kind == r.number(1) == 6 and sequence == r.number() and sequence > 0 and nonce == r.take(16) and any(nonce) and r.number(2) == 0 and any(issuer), "authenticated capacity correlation")
-    require(scope == target == scopes[3] and voter == 1, "configured capacity source/voter")
+    require(scope == target == scopes[3] and voter == source_voter, "configured capacity source/voter")
     answer = P.Cursor(P.body(r.field(), b"GCA\1"))
     r.end()
     actual = P.body(answer.field(512), b"GCF\1")
@@ -387,16 +399,17 @@ def decision_capacity(boundary, scopes, a, b, conflict):
     return index, prepare["proof_wires"][0]
 
 
-def decision_check(data):
+def decision_check(data, *, program_roles=None):
     order, queue = data["Case"], data["Queue"]
+    a_voter, b_voter = (1, 4) if program_roles is None else program_leaders(program_roles)
     require(data["Version"] == 2 and data["Profile"] == DECISION_PROFILE, "fresh queued version")
-    abort, commit = decision_queue(queue, order)
+    abort, commit = decision_queue(queue, order, member=b_voter)
     scopes, old_round = P.cut(data["Before"])
     require(data["Retained"] == data["Reopened"] == data["Before"], "queued old cut substituted current")
     a = decision_manifest(P.raw(data["OriginalA"]), P.raw(data["ManifestA"]), 3, scopes, data["Before"])
     b = decision_manifest(P.raw(data["OriginalB"]), P.raw(queue["Manifest"]), 8, scopes, data["Before"])
     require(P.raw(queue["Original"]) == b["wire"] and a["tx"] != b["tx"], "queued same B business original")
-    capacity_index, registration_wire = decision_capacity(data["Capacity"], scopes, a, b, abort["conflict"])
+    capacity_index, registration_wire = decision_capacity(data["Capacity"], scopes, a, b, abort["conflict"], source_voter=a_voter)
     originals = {a["tx"]: a, b["tx"]: b}
     records, phases, statuses = {}, {a["tx"]: {}, b["tx"]: {}}, {}
     for record in data["Records"]:
@@ -456,7 +469,7 @@ def decision_check(data):
     require(len(data["Pending"]) == 2, "queued pending caller census")
     for encoded in data["Pending"]:
         P.resumed(encoded, scopes, b["source"]["request"], b["tx"], P.business_hash(b["wire"], 8), 1, b"")
-    require(len(data["Duplicates"]) == 3 and [r["Actor"] for r in data["Duplicates"]] == [3, 4, 4], "same original/replacement retry census")
+    require(len(data["Duplicates"]) == 3 and [r["Actor"] for r in data["Duplicates"]] == [3, b_voter, b_voter], "same original/replacement retry census")
     for retry, original, decision_wire in zip(data["Duplicates"], (a, b, b), (decision_a, decision_b, decision_b)):
         require(P.raw(retry["Original"]) == original["wire"], "duplicate imported a replacement original")
         P.resumed(retry["Response"], scopes, original["source"]["request"], original["tx"], P.business_hash(original["wire"], original["coordinator"]), 0, decision_wire)
@@ -466,10 +479,10 @@ def decision_check(data):
             require(data["From"][offset] <= lo <= hi <= data["Through"][offset], "duplicate foreign prefix range")
             expected.extend(records[(partition, index)] for index in range(lo+1, hi+1))
         require((retry["Records"] or []) == expected and all(not P.raw(r["CDC"]) for r in expected), "duplicate incomplete prefix or repeated CDC")
-    processes(data["Processes"], None, "partial-install-decision-loss")
+    processes(data["Processes"], None, "partial-install-decision-loss", program_roles=program_roles)
     killed = json.loads(P.raw(data["Processes"][0]["Raw"]))
     restored = json.loads(P.raw(data["Processes"][1]["Raw"]))
-    require(killed["PID"] == queue["PID"] and restored["PID"] != queue["PID"] and restored["Member"] == 4, "actual owner process/replacement identity")
+    require(killed["PID"] == queue["PID"] and restored["PID"] != queue["PID"] and restored["Member"] == b_voter, "actual owner process/replacement identity")
     require(data["ReopenedCurrent"]["Native"] == data["Current"]["Native"], "replacement changed participant effects")
     initial, current = P.projected(data["Before"]), P.projected(data["Current"])
     transactions, rounds = {}, {}

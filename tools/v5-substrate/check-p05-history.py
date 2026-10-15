@@ -146,9 +146,21 @@ def result(wire, scopes):
     return dict(tx=tx, request=request, business=business, pending=pending, decision=decided)
 
 
-def frames(encoded, scopes):
+def program_source_voter(context, partition, ordinal, count):
+    """Shape/routing only, after the embedding authenticates the real cohort."""
+    require(type(context) is dict and set(context) == {"leaders", "reopen_after"} and
+            type(context["leaders"]) is tuple and context["leaders"] in ((1, 4), (2, 6)) and
+            all(type(v) is int for v in context["leaders"]) and type(context["reopen_after"]) is int and
+            0 <= context["reopen_after"] <= 128 and type(ordinal) is int and type(count) is int and
+            0 <= ordinal < count <= 128 and (context["reopen_after"] == 0 or 0 < context["reopen_after"] < count) and
+            type(partition) is int and partition in (3, 8), "actual finite source/cumulative reopen boundary")
+    leaders = (1, 4) if context["reopen_after"] and ordinal >= context["reopen_after"] else context["leaders"]
+    return leaders[0 if partition == 3 else 1]
+
+
+def frames(encoded, scopes, *, program_sources=None):
     manifests, replies, conflicts, captures = {}, [], 0, set()
-    for frame in encoded:
+    for ordinal, frame in enumerate(encoded):
         require(frame["Origin"] in range(1, 7) and frame["Partition"] in (3, 8), "frame process mapping")
         q = Cursor(body(raw(frame["Request"]), b"GSQ\1"))
         kind, sequence, nonce = q.number(1), q.number(), q.take(16)
@@ -157,7 +169,8 @@ def frames(encoded, scopes):
         command = q.field(); q.take(17); q.end()
         r = Cursor(body(raw(frame["Reply"]), b"GSR\1"))
         scope, voter, issuer = body(r.field(156), b"APS\1"), r.number(), r.take(16)
-        require(scope == scopes[frame["Partition"]] and voter == (1 if frame["Partition"] == 3 else 4) and any(issuer), "authenticated peer correspondence")
+        expected_voter = (1 if frame["Partition"] == 3 else 4) if program_sources is None else program_source_voter(program_sources, frame["Partition"], ordinal, len(encoded))
+        require(scope == scopes[frame["Partition"]] and voter == expected_voter and any(issuer), "authenticated peer correspondence")
         require(r.number(1) == kind and r.number() == sequence and r.take(16) == nonce and any(nonce), "request/reply correlation")
         mask, reply = r.number(2), r.field(); r.end()
         require(kind in (8, 10) and (not mask or not reply), "captured frame kind/error representation")
@@ -420,12 +433,14 @@ def fixture_writes(step, m, round_, schedule):
     return checked_writes(before, after, expected)
 
 
-def check(data):
+def check(data, *, program_sources=None):
     require(data["Schedule"] in SCHEDULES, "finite schedule")
     scopes, old_round, old_certificates = cut(data["Cut"])
     initial_condition = condition(raw(data["Condition"]))
     require([p[0] for p in initial_condition] == old_certificates, "captured condition/old cut identity")
-    manifests, replies, conflicts, captures = frames(data["Phases"], scopes)
+    if program_sources is not None:
+        require(bool(program_sources["reopen_after"]) == (data["Schedule"] == "write-skew-A-first"), "actual sole cohort-reopen scenario")
+    manifests, replies, conflicts, captures = frames(data["Phases"], scopes, program_sources=program_sources)
     require(set(initial_condition) <= captures, "old condition lacks exact native capture replies")
     retained, decisions = records(data["Records"], manifests)
     for s, reply in replies:

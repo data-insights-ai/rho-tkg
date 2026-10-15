@@ -754,6 +754,10 @@ func TestNativeComposedFaultQueuedCapacityDecisionsKeepFirstOriginal(t *testing.
 }
 
 func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFrozenRecipe) {
+	nativeDecisionCaseOwned(t, order, nil, campaign...)
+}
+
+func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProtocolProgramSpec, campaign ...nativeProtocolFrozenRecipe) {
 	if len(campaign) > 1 || len(campaign) == 1 && (!campaign[0].valid() || campaign[0].Order != order) {
 		t.Fatal("invalid actual P04 queued/native occurrence")
 	}
@@ -774,6 +778,22 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 		ctx, cancel = context.WithDeadline(ctx, time.Unix(0, deadline))
 		defer cancel()
 		f = newPairedGraphFaultNetworkWithParent(t, ctx)
+	}
+	var program *nativeProtocolProgram
+	aSource, bOwner := uint64(1), uint64(4)
+	if programSpec != nil {
+		if len(campaign) != 1 {
+			t.Fatal("one actual frozen-original recipe owns the program")
+		}
+		program = nativeProtocolProgramStart(t, ctx, f, *programSpec)
+		aSource, bOwner = f.n.leaders[0], f.n.leaders[1]
+	}
+	selector := func() nativeConjunctionSelector {
+		selected := campaign[0].selector()
+		if program != nil {
+			selected = nativeProtocolProgramFrozenSelector(campaign[0], program.spec)
+		}
+		return selected
 	}
 	call := func(p *graphProcess, r processRequest) processResponse { return p.call(t, r) }
 	control := func(p *graphProcess, r nativeDecisionControl) (nativeDecisionReceipt, processResponse) {
@@ -798,7 +818,7 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 		t.Fatal(err)
 	}
 	factory := func(partition uint64) allocationProposal {
-		r := call(f.n.all[1], processRequest{op: processCertifiedAction, entity: certifiedNativeDecisionBusiness, index: partition})
+		r := call(f.n.all[aSource], processRequest{op: processCertifiedAction, entity: certifiedNativeDecisionBusiness, index: partition})
 		p, err := decodeCertifiedProcessProposal(r.aux)
 		if err != nil {
 			t.Fatal(err)
@@ -830,7 +850,7 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 		if len(cut.certificates) != 2 || cut.certificates[0].scope.partition != 3 || cut.certificates[1].scope.partition != 8 {
 			t.Fatal("actual full cut scopes")
 		}
-		hold, err = newNativeProtocolBeforeHold(ctx, f, nativeProtocolReplySelector{Actor: 3, Partition: 3, Phase: crossPrepare, Transaction: txa, Peer: graphPeerIdentity{scope: cut.certificates[0].scope, voter: 1}})
+		hold, err = newNativeProtocolBeforeHold(ctx, f, nativeProtocolReplySelector{Actor: 3, Partition: 3, Phase: crossPrepare, Transaction: txa, Peer: graphPeerIdentity{scope: cut.certificates[0].scope, voter: aSource}})
 		if err == nil {
 			entered, release = hold.entered, hold.release
 			defer hold.close()
@@ -844,7 +864,7 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 	var native nativeProtocolBatchEvidence
 	var frozen nativeDecisionFrozenReceipt
 	if len(campaign) == 1 && campaign[0].Candidate == "" {
-		nativeGate, err = newNativeConjunctionBatchGate(ctx, f, campaign[0].selector(), run, deadline)
+		nativeGate, err = newNativeConjunctionBatchGate(ctx, f, selector(), run, deadline)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -855,7 +875,7 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 	var capacityCharge nativeProtocolHoldCharge
 	hub.mu.Lock()
 	hub.afterRelay = func(ctx context.Context, origin, partition uint64, request, reply []byte) error {
-		if origin != 4 || partition != 3 {
+		if origin != bOwner || partition != 3 {
 			return nil
 		}
 		if len(campaign) == 1 {
@@ -900,11 +920,11 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 	if err != nil {
 		t.Fatal(err)
 	}
-	owner, _ := control(f.n.all[4], nativeDecisionControl{Version: 1, Action: "inspect"})
-	control(f.n.all[4], nativeDecisionControl{Version: 1, Action: "arm", Cookie: owner.Cookie, Sequence: 1, Original: b.wire})
-	bCall, bCancel := f.beginRun(4, b)
+	owner, _ := control(f.n.all[bOwner], nativeDecisionControl{Version: 1, Action: "inspect"})
+	control(f.n.all[bOwner], nativeDecisionControl{Version: 1, Action: "arm", Cookie: owner.Cookie, Sequence: 1, Original: b.wire})
+	bCall, bCancel := f.beginRun(bOwner, b)
 	defer bCancel()
-	first, _ := control(f.n.all[4], nativeDecisionControl{Version: 1, Action: "wait", Cookie: owner.Cookie, Sequence: 1, Mask: 1})
+	first, _ := control(f.n.all[bOwner], nativeDecisionControl{Version: 1, Action: "wait", Cookie: owner.Cookie, Sequence: 1, Mask: 1})
 	if first.Mask != 1 || len(first.Candidates[0]) == 0 || len(first.Candidates[1]) != 0 {
 		t.Fatal("missing actual capacity candidate")
 	}
@@ -929,9 +949,9 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 		}
 	}
 	f.drain()
-	bCall, bCancel = f.beginRun(4, b)
+	bCall, bCancel = f.beginRun(bOwner, b)
 	defer bCancel()
-	both, _ := control(f.n.all[4], nativeDecisionControl{Version: 1, Action: "wait", Cookie: owner.Cookie, Sequence: 1, Mask: 3})
+	both, _ := control(f.n.all[bOwner], nativeDecisionControl{Version: 1, Action: "wait", Cookie: owner.Cookie, Sequence: 1, Mask: 3})
 	if both.Mask != 3 || !bytes.Equal(first.Candidates[0], both.Candidates[0]) || !bytes.Equal(first.Manifest, both.Manifest) {
 		t.Fatal("retained private candidate changed")
 	}
@@ -939,7 +959,7 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 	f.packetDrain()
 	if len(campaign) == 1 {
 		if campaign[0].Candidate != "" {
-			nativeGate, err = newNativeConjunctionBatchGate(ctx, f, campaign[0].selector(), run, deadline)
+			nativeGate, err = newNativeConjunctionBatchGate(ctx, f, selector(), run, deadline)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -961,32 +981,39 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 		if marshalErr != nil {
 			t.Fatal(marshalErr)
 		}
-		response := call(f.n.all[4], processRequest{op: processNativeDecisionControl, data: body})
+		response := call(f.n.all[bOwner], processRequest{op: processNativeDecisionControl, data: body})
 		if err := json.Unmarshal(response.aux, &frozen); err != nil {
 			t.Fatal(err)
 		}
 	}
-	queued, output := control(f.n.all[4], nativeDecisionControl{Version: 1, Action: "queue", Cookie: owner.Cookie, Sequence: 1, Order: order})
+	queued, output := control(f.n.all[bOwner], nativeDecisionControl{Version: 1, Action: "queue", Cookie: owner.Cookie, Sequence: 1, Order: order})
 	if queued.Accepted != ([2]bool{true, true}) || queued.Errors != ([2]uint16{}) || queued.BeforeApplied != queued.AfterApplied || queued.AfterLastIndex != queued.BeforeLastIndex+2 {
 		t.Fatal("two candidates were not actually queued before application", queued)
 	}
-	f.n.group(4).enqueue(t, output)
-	if len(campaign) == 0 {
-		f.n.group(4).drain(t)
+	if program != nil {
+		if err := hub.enqueue(bOwner, output.packets, output.handles...); err != nil {
+			t.Fatal("genuine current-leader queued entries through actual program scheduler", err)
+		}
+		f.packetDrain()
 	} else {
-		f.drainGroup(f.n.group(4))
+		f.n.group(bOwner).enqueue(t, output)
+		if len(campaign) == 0 {
+			f.n.group(bOwner).drain(t)
+		} else {
+			f.drainGroup(f.n.group(bOwner))
+		}
 	}
 	f.drain()
 	if len(campaign) == 1 && campaign[0].Candidate != "" {
 		native = nativeProtocolFinishBatch(t, f, nativeGate, cut)
 	}
-	replayed, replayOutput := control(f.n.all[4], nativeDecisionControl{Version: 1, Action: "queue", Cookie: owner.Cookie, Sequence: 1, Order: order})
+	replayed, replayOutput := control(f.n.all[bOwner], nativeDecisionControl{Version: 1, Action: "queue", Cookie: owner.Cookie, Sequence: 1, Order: order})
 	if !reflect.DeepEqual(replayed, queued) || len(replayOutput.packets) != 0 {
 		t.Fatal("queue replay repeated native admission")
 	}
 	// The next ordinary Run reads the genuine first durable D and resolves
 	// every actual participant. It never rebuilds either candidate.
-	response := call(f.n.all[4], processRequest{op: processSourceCoordinate, data: b.wire})
+	response := call(f.n.all[bOwner], processRequest{op: processSourceCoordinate, data: b.wire})
 	result, err := decodeGraphProcessCoordinatorResult(response)
 	if err != nil || result.decision.tx != txb || result.decision.commit != (order == "commit-first") {
 		t.Fatal("later candidate reversed first durable decision", err, result)
@@ -1009,7 +1036,7 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 		actor := uint64(3)
 		want := aResult.decision
 		if i == 1 {
-			actor = 4
+			actor = bOwner
 			want = result.decision
 		}
 		start := f.indexes()
@@ -1028,29 +1055,29 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 		}
 		duplicates = append(duplicates, nativeDecisionRetry{Actor: actor, Original: original.wire, Response: p06ProcessWire(t, response), From: start, Through: end, Records: tail})
 	}
-	killed := f.kill(4, "replica")
-	f.elect(4, 5)
-	rejoined := f.replace(4)
-	reopened := p06Observe(f, 4, graphReadAt, cut)
+	killed := f.kill(bOwner, "replica")
+	f.elect(bOwner, 5)
+	rejoined := f.replace(bOwner)
+	reopened := p06Observe(f, bOwner, graphReadAt, cut)
 	if !reflect.DeepEqual(old, reopened) {
 		t.Fatal("same-directory old cut changed")
 	}
-	localDecision := call(f.n.all[4], processRequest{op: processEntryRecord, index: result.decision.index})
+	localDecision := call(f.n.all[bOwner], processRequest{op: processEntryRecord, index: result.decision.index})
 	localStatus, localErr := decodeCrossStatus(localDecision.outcome)
 	if localErr != nil || localStatus != result.decision || len(localDecision.changes) != 0 {
 		t.Fatal("replacement local retained first-D differs", localErr, localStatus)
 	}
 	if len(campaign) == 0 {
-		p03Reconnect(f, 4) // Subsequent Fresh/Run require actual leader ReadIndex.
+		p03Reconnect(f, bOwner) // Subsequent Fresh/Run require actual leader ReadIndex.
 	} else {
-		nativeConjunctionReconnect(f, 4)
+		nativeConjunctionReconnect(f, bOwner)
 	}
-	reopenedCurrent := p06Observe(f, 4, graphReadFresh, graphCut{})
+	reopenedCurrent := p06Observe(f, bOwner, graphReadFresh, graphCut{})
 	if !reflect.DeepEqual(current.Native, reopenedCurrent.Native) {
 		t.Fatal("replacement changed first-decision participant effects")
 	}
 	start := f.indexes()
-	response = call(f.n.all[4], processRequest{op: processSourceCoordinate, data: b.wire})
+	response = call(f.n.all[bOwner], processRequest{op: processSourceCoordinate, data: b.wire})
 	recoveredResult, replayErr := decodeGraphProcessCoordinatorResult(response)
 	if replayErr != nil || recoveredResult.decision != result.decision {
 		t.Fatal("replacement changed same original decision", replayErr, recoveredResult)
@@ -1063,7 +1090,7 @@ func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFr
 			t.Fatal("replacement original replay emitted CDC")
 		}
 	}
-	duplicates = append(duplicates, nativeDecisionRetry{Actor: 4, Original: b.wire, Response: p06ProcessWire(t, response), From: start, Through: end, Records: tail})
+	duplicates = append(duplicates, nativeDecisionRetry{Actor: bOwner, Original: b.wire, Response: p06ProcessWire(t, response), From: start, Through: end, Records: tail})
 	through := f.indexes()
 	captureMu.Lock()
 	actualCapacity := capacity

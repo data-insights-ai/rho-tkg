@@ -902,8 +902,10 @@ func TestHistoricalDependencyP05ConditionalCrossWriteActualProcesses(t *testing.
 // condition, or proposal authority. Parent is fixed before any child starts.
 type p05CampaignHooks struct {
 	Parent        context.Context
+	Start         func(*pairedGraphFaultNetwork) // Optional fresh program, before any captured source.
 	Begin         func(*pairedGraphFaultNetwork, uint64, graphCut)
 	BeforeRecords func(*pairedGraphFaultNetwork)
+	BeforeReopen  func(*pairedGraphFaultNetwork, uint64) // Actual cumulative capture ordinal before the sole cohort stop.
 	Finish        func(*pairedGraphFaultNetwork, p05Artifact, [2]uint64, p05CampaignCaptureCharge)
 }
 
@@ -927,6 +929,9 @@ func p05ConditionalCase(t *testing.T, schedule string, hooks *p05CampaignHooks) 
 		}
 		t.Setenv("RHO_GRAPH_PROTOCOL_CAMPAIGN", nativeProtocolCampaignProfile)
 		f = newPairedGraphFaultNetworkWithParent(t, hooks.Parent)
+		if hooks.Start != nil {
+			hooks.Start(f)
+		}
 		capture = newP05CampaignCapture(f)
 		t.Cleanup(capture.close)
 		finishCapture = func() []p06Phase {
@@ -1287,7 +1292,18 @@ func p05ConditionalCase(t *testing.T, schedule string, hooks *p05CampaignHooks) 
 			f.call(f.n.all[actor], processRequest{op: processP05Close, index: changedHandle})
 		}
 		if schedule == "write-skew-A-first" {
+			if hooks != nil && hooks.BeforeReopen != nil {
+				capture.mu.Lock()
+				ordinal := uint64(len(capture.frames))
+				capture.mu.Unlock()
+				hooks.BeforeReopen(f, ordinal)
+			}
 			artifact.Processes = append(artifact.Processes, f.stopAll()...)
+			if hooks != nil && hooks.Start != nil {
+				// The genuine same-volume constructor below elects1/4. Do not
+				// retain earlier2/6 routes across replacement of all six children.
+				f.n.leaders = [2]uint64{1, 4}
+			}
 			artifact.Processes = append(artifact.Processes, p05Reopen(t, f)...)
 			if capture != nil {
 				capture.attach(f)

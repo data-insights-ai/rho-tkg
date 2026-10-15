@@ -108,7 +108,7 @@ def frozen_recipe(row):
     return f'p04-{row["Order"]}-{row["Original"]}-phase{row["Phase"]}-p{row["Partition"]}-{candidate}-k{row["Kind"]}-{row["Side"]}'
 
 
-def load(path):
+def load(path, *, program=False):
     digest, total, header, footer, records = hashlib.sha256(), 0, None, None, []
     with path.open("rb") as source:
         while line := source.readline((512 << 10)+1):
@@ -123,29 +123,31 @@ def load(path):
                 evidence = header["Evidence"]
                 require(type(evidence) is dict, "actual protocol evidence object")
                 if "P04" in evidence:
-                    require(set(evidence) == FROZEN_EVIDENCE and type(evidence["P04"]) is dict and
+                    require(set(evidence) == FROZEN_EVIDENCE | ({"Program", "ProgramCohort"} if program else set()) and type(evidence["P04"]) is dict and
                             set(evidence["P04"]) == QUEUED and evidence["P04"]["Records"] is None,
                             "actual queued-original prefix must be streamed")
                 elif "P05" in evidence:
-                    require(set(evidence) == CONDITIONAL_EVIDENCE and evidence["P05"] is None and evidence["Records"] is None,
+                    extra = ({"Program", "ProgramCohort"} | ({"ProgramReopenAfter"} if evidence["Recipe"]["Schedule"] == "write-skew-A-first" else set())) if program else set()
+                    require(set(evidence) == CONDITIONAL_EVIDENCE | extra and evidence["P05"] is None and evidence["Records"] is None,
                             "actual conditional full prefix must be streamed")
                 elif "Partial" in evidence:
-                    require(set(evidence) == PARTIAL_EVIDENCE and type(evidence["Partial"]) is dict and
+                    require(set(evidence) == PARTIAL_EVIDENCE | ({"Program", "ProgramCohort"} if program else set()) and type(evidence["Partial"]) is dict and
                             set(evidence["Partial"]) == PARTIAL and evidence["Partial"]["Records"] is None,
                             "actual partial-install prefix must be streamed")
                 elif "P03" in evidence:
-                    require(set(evidence) == COORDINATOR_EVIDENCE and evidence["P03"] is None and evidence["Records"] is None,
+                    require(set(evidence) == COORDINATOR_EVIDENCE | ({"Program"} if program else set()) and evidence["P03"] is None and evidence["Records"] is None,
                             "actual P03 full prefix must be streamed")
                 elif "P02" in evidence:
-                    require(set(evidence) in (FENCE_EVIDENCE, FENCE_EVIDENCE | {"FenceTransition"}) and type(evidence["P02"]) is dict and
+                    extra = {"Program"} if program else set()
+                    require(set(evidence) in (FENCE_EVIDENCE | extra, FENCE_EVIDENCE | {"FenceTransition"} | extra) and type(evidence["P02"]) is dict and
                             set(evidence["P02"]) == P02 and evidence["P02"]["Records"] is None,
                             "actual P02 prefix must be streamed")
                 elif "P01" in evidence:
-                    require(set(evidence) == SCOPE_EVIDENCE and type(evidence["P01"]) is dict and
+                    require(set(evidence) == SCOPE_EVIDENCE | ({"Program"} if program else set()) and type(evidence["P01"]) is dict and
                             set(evidence["P01"]) == Q.HEADER and evidence["P01"]["Records"] is None,
                             "actual P01 prefix must be streamed")
                 else:
-                    require(set(evidence) == EVIDENCE and type(evidence["Completion"]) is dict and
+                    require(set(evidence) == EVIDENCE | ({"Program", "ProgramCohort"} if program else set()) and type(evidence["Completion"]) is dict and
                             set(evidence["Completion"]) == COMPLETION and type(evidence["Completion"]["P06"]) is dict and
                             set(evidence["Completion"]["P06"]) == C.P06 and evidence["Completion"]["P06"]["Records"] is None,
                             "complete original prefix must be streamed, never inline/omitted")
@@ -165,11 +167,11 @@ def load(path):
     require(footer["Through"] == (evidence["Through"] if "P02" in evidence or "P03" in evidence or "P05" in evidence else semantic["Through"]), "foreign actual campaign EOF")
     semantic["Records"] = records
     if "P03" in evidence:
-        require(type(header["Version"]) is int and header["Version"] == 1 and header["Profile"] == PROFILE and
+        require(type(header["Version"]) is int and header["Version"] == (2 if program else 1) and header["Profile"] == ("native-protocol-causal-program-v1" if program else PROFILE) and
                 header["Case"] == coordinator_recipe(evidence["Recipe"]), "actual P03 profile before sidecar ownership")
         evidence["P03"] = coordinator_sidecar(path, evidence, total)
     elif "P05" in evidence:
-        require(type(header["Version"]) is int and header["Version"] == 1 and header["Profile"] == PROFILE and
+        require(type(header["Version"]) is int and header["Version"] == (2 if program else 1) and header["Profile"] == ("native-protocol-causal-program-v1" if program else PROFILE) and
                 header["Case"] == conditional_recipe(evidence["Recipe"]), "actual conditional profile before sidecar ownership")
         evidence["P05"] = conditional_sidecar(path, evidence, total)
         require(type(evidence["P05"]) is dict and set(evidence["P05"]) == CONDITIONAL and evidence["P05"]["Records"] == records,
@@ -263,7 +265,8 @@ def prepared_vote_read(boundary, submit, scopes, actor, voter):
                 correlation=(yes["partition"], sequence, nonce))
 
 
-def live_initial(rows, scopes, actor, coordinator, phase, manifest, tx, records, floors):
+def live_initial(rows, scopes, actor, coordinator, phase, manifest, tx, records, floors, voters=None):
+    voters = {3:1, 8:4} if voters is None else voters
     order = [(1, coordinator), (2, 3), (2, 8)] + ([(3, 8)] if phase == 3 else [])
     require(type(rows) is list and len(rows) == len(order), "actual SAME-first-run source submission inventory")
     seen, originals, selected = set(), {}, None
@@ -284,7 +287,7 @@ def live_initial(rows, scopes, actor, coordinator, phase, manifest, tx, records,
             selected = command
             continue
         _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes,
-                                                        1 if row["Partition"] == 3 else 4)
+                                                        voters[row["Partition"]])
         stored = records[status["partition"], status["index"]]
         if expected[0] == 1:
             matched = status["floor"] == 0 and P.status(P.raw(stored["Outcome"])) == dict(status, floor=floors[coordinator])
@@ -296,11 +299,12 @@ def live_initial(rows, scopes, actor, coordinator, phase, manifest, tx, records,
     return selected
 
 
-def check_scope(a):
+def check_scope(a, *, program_roles=None):
     e, r = a["Evidence"], a["Evidence"]["Recipe"]
-    require(set(e) == SCOPE_EVIDENCE and a["Case"] == scope_recipe(r), "actual P01 selected recipe grammar")
+    require(set(e) == SCOPE_EVIDENCE | ({"Program"} if program_roles is not None else set()) and a["Case"] == scope_recipe(r), "actual P01 selected recipe grammar")
     d, selected = e["P01"], P.raw(e["SelectedCommand"])
-    target = 3 if r["Partition"] == 3 else 6
+    target = (3 if r["Partition"] == 3 else 6) if program_roles is None else Q.program_scope_roles(program_roles)[1]
+    require(type(target) is int and 1 <= target <= 6 and (target <= 3) == (r["Partition"] == 3), "actual native target belongs to selected partition")
     require(type(e["Actor"]) is int and e["Actor"] == 5 and type(e["Target"]) is int and e["Target"] == target,
             "actual P01 coordinator survives its selected native follower")
     command = C.C.decision_command(selected)
@@ -313,7 +317,7 @@ def check_scope(a):
     B.processes(e["TargetProcesses"], None, a["Case"], e["Batch"])
     require(type(e["TargetTransportLoss"]) is str and 0 < len(e["TargetTransportLoss"]) <= 4096,
             "actual selected native target transport death")
-    result = Q.check(d, failure_member=2, selected_processes=e["TargetProcesses"])
+    result = Q.check(d, failure_member=2, selected_processes=e["TargetProcesses"], program_roles=program_roles)
     originals = {}
     for row in d["Records"]:
         outcome = P.raw(row["Outcome"])
@@ -344,14 +348,32 @@ BATCH_FIELDS = SCOPE_EVIDENCE - {"Recipe", "Run", "DeadlineUnixNanos", "P01"}
 PERSISTED_FENCE = BATCH_FIELDS | {"Proposal", "Submission", "Run", "DeadlineUnixNanos", "Kind", "Side", "Successor", "Original", "Applied", "Duplicate"}
 
 
-def check_persisted_fence(e, scopes, original, sources, records, bound):
+def program_fence_roles(context, recipe):
+    require(type(context) is dict and set(context) == {"initial_leaders", "leaders", "target"}, "authenticated actual persisted-fence role context")
+    initial, leaders, target = context["initial_leaders"], context["leaders"], context["target"]
+    require(type(initial) is tuple and initial in ((1, 4), (2, 6)) and all(type(v) is int for v in initial) and
+            type(leaders) is tuple and leaders == (3-initial[0], initial[1]) and all(type(v) is int for v in leaders),
+            "genuine initial leader death followed by the surviving A voter election")
+    expected = initial[0] if recipe["Partition"] == 3 else next(member for member in range(4, 7) if member != leaders[1])
+    require(type(target) is int and target == expected and recipe["Schedule"] == "persisted-fence-before-application", "actual selected native member after causal successor")
+    return initial, leaders, target
+
+
+def check_persisted_fence(e, scopes, original, sources, records, bound, *, program_roles=None):
     p, r = e["FenceTransition"], e["Recipe"]
-    require(type(p) is dict and set(p) == PERSISTED_FENCE and (p["Actor"], p["Target"], p["Successor"]) == (1, 1, 2),
+    leader, successor, extra = 1, 2, set()
+    if program_roles is not None:
+        initial, current, _ = program_fence_roles(program_roles, r)
+        leader, successor = initial[0], current[0]
+        extra = {"SuccessorEvidence"} | ({"Program"} if r["Phase"] == 0 else set())
+    require(type(p) is dict and set(p) == PERSISTED_FENCE | extra and (p["Actor"], p["Target"], p["Successor"]) == (leader, leader, successor),
             "actual local fence leader-loss/successor recipe")
     require(p["Run"] == e["Run"] and p["DeadlineUnixNanos"] == e["DeadlineUnixNanos"], "original fixed fence/run identity/deadline")
     if r["Phase"] == 0:
         require((p["Kind"], p["Side"]) == (r["Kind"], r["Side"]) and all(p[key] == e[key] for key in BATCH_FIELDS),
                 "actual selected fence receipt is not another business-phase receipt")
+        if program_roles is not None:
+            require(p["Program"] == e["Program"], "same actual local-fence message window, not another diagnostic owner")
     else:
         require((p["Kind"], p["Side"]) == (2, "before"), "actual committed pre-application fence predecessor")
         causal = p["TargetProcesses"] + e["TargetProcesses"]
@@ -364,9 +386,15 @@ def check_persisted_fence(e, scopes, original, sources, records, bound):
     c.end()
     require(wire == P.raw(p["SelectedCommand"]), "actual native fence selector/source input")
     event = C.batch_pair(p["Arm"], p["Batch"], fixed(p["Run"], 16, True), integer(p["DeadlineUnixNanos"], (1 << 63)-1, 1),
-                         1, p["Kind"], p["Side"], wire)
+                         leader, p["Kind"], p["Side"], wire)
     B.processes(p["TargetProcesses"], None, "P02-actual-local-fence", p["Batch"])
-    C.terminal_submission(p["Submission"], scopes, 3, 1, wire, event)
+    if program_roles is not None:
+        stopped = Q.processes(e["Cohort"])
+        rejoined = p["TargetProcesses"][1]
+        later = e["TargetProcesses"][0] if r["Phase"] != 0 and e["Target"] == leader else stopped[leader][0]
+        require(rejoined["Instance"] == later["Instance"] and rejoined["Volume"] == later["Volume"],
+                "actual same-volume successor/rejoin lineage before later selected loss or cohort stop")
+    C.terminal_submission(p["Submission"], scopes, 3, leader, wire, event)
     require(type(p["TargetTransportLoss"]) is str and 0 < len(p["TargetTransportLoss"]) <= 4096, "actual fence leader transport death")
     require(p["Applied"] == e["P02"]["Fences"][0] and p["Duplicate"] == e["P02"]["Fences"][1], "successor fence outputs differ from whole artifact")
     for row in (p["Applied"], p["Duplicate"]):
@@ -474,11 +502,17 @@ def fence_prefix(records, operations, local_rows, names=("node-a", "node-b", "ed
     return originals
 
 
-def check_fence(a):
+def check_fence(a, *, program_roles=None):
     e, r = a["Evidence"], a["Evidence"]["Recipe"]
     stage = r["Schedule"] == "persisted-fence-before-application"
-    require(set(e) == (FENCE_EVIDENCE | {"FenceTransition"} if stage else FENCE_EVIDENCE) and a["Case"] == fence_recipe(r), "actual P02 finite native recipe")
+    require(set(e) == (FENCE_EVIDENCE | {"FenceTransition"} if stage else FENCE_EVIDENCE) | ({"Program"} if program_roles is not None else set()) and a["Case"] == fence_recipe(r), "actual P02 finite native recipe")
     actor, co, peers = (3, 3, {3:2, 8:4}) if stage else (5, 8, {3:1, 8:4})
+    if program_roles is not None:
+        if stage:
+            initial, leaders, selected_target = program_fence_roles(program_roles, r)
+        else:
+            leaders, selected_target = Q.program_scope_roles(program_roles)
+        peers = dict(zip((3, 8), leaders))
     d = e["P02"]
     require(type(d) is dict and set(d) == P02 and d["Schedule"] == r["Schedule"] and
             d["Stage"] is None and d["Processes"] is None and d["Encounters"] is None and not P.raw(d["PendingCaller"]) and
@@ -487,7 +521,11 @@ def check_fence(a):
     records = F.prefix({"Records":d["Records"], "From":e["From"], "Through":e["Through"]})
     scopes, old_round = P.cut(d["Old"])
     native_actor = 1 if stage and r["Phase"] == 0 else actor
+    if program_roles is not None and stage and r["Phase"] == 0:
+        native_actor = initial[0]
     target = (1 if stage else 3) if r["Partition"] == 3 else 6
+    if program_roles is not None:
+        target = selected_target
     require((e["Actor"], e["Target"]) == (native_actor, target), "actual P02 source/coordinator/native-target route")
     trace = L.FAULT.lc.normalize(d)["Trace"]
     require(trace["engine"] == "native-raft" and len(trace["steps"]) == 3, "actual two nodes then useful cross-edge")
@@ -559,7 +597,7 @@ def check_fence(a):
         require(type(boundary) is dict and set(boundary) == {"Request", "Reply"} and boundary["Request"] == d["Phases"][1]["Request"] and
                 not P.raw(boundary["Reply"]), "actual SAME-call pending Prepare before effects")
     else:
-        require(prepared_vote_read(boundary, d["Phases"][1], scopes, 5, 1)["status"] == statuses[3, 2], "actual completed A authority read before B fence")
+        require(prepared_vote_read(boundary, d["Phases"][1], scopes, 5, peers[3])["status"] == statuses[3, 2], "actual completed A authority read before B fence")
     selected = P.raw(e["SelectedCommand"])
     require(selected == (P.raw(e["FenceTransition"]["Proposal"]) if stage and r["Phase"] == 0 else commands[r["Phase"], r["Partition"]]), "actual P02 selected native command")
     event = C.batch_pair(e["Arm"], e["Batch"], fixed(e["Run"], 16, True), integer(e["DeadlineUnixNanos"], (1 << 63)-1, 1), e["Target"], r["Kind"], r["Side"], selected)
@@ -598,7 +636,7 @@ def check_fence(a):
                                      writes=P.writes(initial, recovered, ("A/entity/3", "A/presence/3", "A/labels/3", "A/property/3/p", "A/life/3/4", "A/posting/1/0", "A/posting/1/2", "B/posting/17/0", "B/posting/17/18")))}
     tx_rounds = {"edge-create":decision["round"]}
     if stage:
-        check_persisted_fence(e, scopes, original, sources, records, bound)
+        check_persisted_fence(e, scopes, original, sources, records, bound, program_roles=program_roles)
         local_round = check_delayed_local(d, records, recovered, current, decision["round"], bound)
         transactions["node-close"] = dict(reads=[P.read_key(recovered, "A/presence/1")], writes=P.writes(recovered, current, ("A/presence/1",)))
         tx_rounds["node-close"] = local_round
@@ -612,7 +650,7 @@ def check_fence(a):
     return dict(case=a["Case"], serial_witness=witness, records=len(records), scope="actual finite P02 native/source/old-cut conjunction; leader/message programs remain distinct")
 
 
-def coordinator_history(e, records):
+def coordinator_history(e, records, *, program_roles=None):
     """The original six-operation oracle, with the fresh real outage ordering.
 
     No altered process rows are passed to the old P03 entry point. Its complete
@@ -659,6 +697,8 @@ def coordinator_history(e, records):
     for row in [commit, killed, rejoined, *cohort["ProcessEvidence"]]:
         M.FAULT.process_event(row, "native-raft")
     leader = 1 if co == 3 else 4
+    if program_roles is not None:
+        leader = program_coordinator_roles(program_roles, e["Recipe"])[1]
     require([row["Action"] for row in (commit, killed, rejoined)] == ["commit", "kill", "reopen"] and
             commit["Member"] == killed["Member"] == rejoined["Member"] == leader and
             commit["EventID"] < killed["EventID"] < rejoined["EventID"] and
@@ -670,7 +710,8 @@ def coordinator_history(e, records):
     captured = M.FAULT.lc.parse(P.raw(commit["Raw"]))
     require(captured["Request"] == e["Boundary"]["Request"] and captured["Response"] == e["Boundary"]["Reply"], "actual committed source reply capture")
     voters = M.FAULT.lc.parse(P.raw(captured["VoterRecords"]))
-    require([row["Member"] for row in voters] == list(range(leader, leader+3)), "all three original D voters before leader death")
+    voter_first = (1 if co == 3 else 4) if program_roles is not None else leader
+    require([row["Member"] for row in voters] == list(range(voter_first, voter_first+3)), "all three original D voters before leader death")
     decision_tx = bytes.fromhex(op["Transaction"])
     decision = originals[decision_tx, co, 3]
     decision_wire = P.raw(records[co, decision["index"]]["Outcome"])
@@ -711,11 +752,31 @@ def coordinator_history(e, records):
     return trace, context, originals, witness
 
 
-def check_coordinator(a):
+def program_coordinator_roles(context, recipe):
+    require(type(context) is dict and set(context) == {"initial_leaders", "leaders", "target"}, "authenticated P03 actual-role context")
+    initial, current = context["initial_leaders"], context["leaders"]
+    require(type(initial) is tuple and initial in ((1, 4), (2, 6)) and all(type(v) is int for v in initial), "actual P03 initial leader layout")
+    co, phase, part = recipe["Coordinator"], recipe["Phase"], recipe["Partition"]
+    group = 0 if co == 3 else 1
+    leader = initial[group]
+    caller, actor = ((2, 3) if initial == (1, 4) else (3, 1)) if co == 3 else ((5, 6) if initial == (1, 4) else (5, 4))
+    expected = list(initial)
+    if phase == 4:
+        expected[group] = caller
+    require(type(current) is tuple and current == tuple(expected) and all(type(v) is int for v in current), "actual durable-D successor precedes only selected recovery phases")
+    first = 1 if part == 3 else 4
+    target = caller if phase == 4 and part == co else next(v for v in range(first, first+3) if v != initial[0 if part == 3 else 1] and v != caller)
+    require(type(context["target"]) is int and context["target"] == target, "actual P03 caller/recoverer/selected voter remain distinct where required")
+    return initial, leader, caller, actor, target
+
+
+def check_coordinator(a, *, program_roles=None):
     e, r = a["Evidence"], a["Evidence"]["Recipe"]
-    require(set(e) == COORDINATOR_EVIDENCE and a["Case"] == coordinator_recipe(r), "actual finite P03 route")
+    require(set(e) == COORDINATOR_EVIDENCE | ({"Program"} if program_roles is not None else set()) and a["Case"] == coordinator_recipe(r), "actual finite P03 route")
     co, leader, caller, actor = r["Coordinator"], 1 if r["Coordinator"] == 3 else 4, 2 if r["Coordinator"] == 3 else 5, 3 if r["Coordinator"] == 3 else 6
     target = (caller if r["Partition"] == co else 3 if r["Partition"] == 3 else 6) if r["Phase"] == 4 else 3 if r["Partition"] == 3 else 6
+    if program_roles is not None:
+        initial_leaders, leader, caller, actor, target = program_coordinator_roles(program_roles, r)
     require((e["Actor"], e["Target"], e["RecoveryActor"]) == (actor if r["Phase"] == 4 else caller, target, actor), "actual P03 surviving coordinator and source target")
     selected = P.raw(e["SelectedCommand"])
     event = C.batch_pair(e["Arm"], e["Batch"], fixed(e["Run"], 16, True), integer(e["DeadlineUnixNanos"], (1 << 63)-1, 1), target, r["Kind"], r["Side"], selected)
@@ -724,7 +785,7 @@ def check_coordinator(a):
             integer(e["ReceiptReads"], 129, 1)*65536 == e["ReceiptGrantBytes"] and
             integer(e["GateCandidates"], 128, 1)*(4096+32*(2 << 20)) == e["GateDecodeWork"], "actual selected pipe loss and diagnostic funding")
     records = F.prefix(e)
-    trace, context, originals, witness = coordinator_history(e, records)
+    trace, context, originals, witness = coordinator_history(e, records, program_roles=program_roles)
     op = context[2]["postcommit-update"]
     tx = bytes.fromhex(op["Transaction"])
     decision = originals[tx, co, 3]
@@ -750,7 +811,7 @@ def check_coordinator(a):
     selected_rows, correlations = [], set()
     outage = r["Phase"] == 4 and r["Partition"] == co
     for rows, origin in ((initial, caller), (recovery, actor)):
-        peers = {3:(1,), 8:(4,)}
+        peers = {3:(1,), 8:(4,)} if program_roles is None else dict(zip((3, 8), ((v,) for v in initial_leaders)))
         if rows is recovery:
             peers[co] = (caller, leader) if outage else (caller,)
         for i, row in enumerate(rows):
@@ -803,14 +864,29 @@ def check_coordinator(a):
     return dict(case=a["Case"], records=len(records), serial_witness=witness, scope="P03 actual D and applicable native occurrence only; broader D remains distinct")
 
 
-def check_partial(a):
+def program_partial_roles(context, recipe):
+    require(type(context) is dict and set(context) == {"initial_leaders", "leaders", "target"}, "authenticated actual partial-install role context")
+    initial, leaders = context["initial_leaders"], context["leaders"]
+    require(type(initial) is tuple and initial in ((1, 4), (2, 6)) and all(type(v) is int for v in initial), "actual initial partial sources")
+    outage = recipe["Phase"] == 4 and recipe["Partition"] == 8
+    require(type(leaders) is tuple and leaders == (initial[0], 5 if outage else initial[1]) and all(type(v) is int for v in leaders) and
+            type(context["target"]) is int and context["target"] == (3 if recipe["Partition"] == 3 else 5),
+            "actual native member and causal B successor, no relabelled endpoint")
+    return initial, 6 if initial == (1, 4) else 4, context["target"]
+
+
+def check_partial(a, *, program_roles=None):
     e, r = a["Evidence"], a["Evidence"]["Recipe"]
-    require(set(e) == PARTIAL_EVIDENCE and a["Case"] == partial_recipe(r), "finite P03 partial-install route")
+    require(set(e) == PARTIAL_EVIDENCE | ({"Program", "ProgramCohort"} if program_roles is not None else set()) and a["Case"] == partial_recipe(r), "finite P03 partial-install route")
+    actor, source_roles = 6, None
+    if program_roles is not None:
+        initial_leaders, actor, _ = program_partial_roles(program_roles, r)
+        source_roles = dict(leaders=initial_leaders)
     d = e["Partial"]
     require(type(d) is dict and set(d) == PARTIAL and d["Version"] == 1 and d["Profile"] == C.C.PROFILE and
             d["Case"] == "partial-install-decision-loss" and d["IO"] is None and
             not d["PacketEvents"] and d["Refused"] is None and d["RefusedReplay"] is None and
-            (e["OriginalActor"], e["Reader"], e["RecoveryActor"], e["Actor"]) == (6, 2, 6, 6),
+            (e["OriginalActor"], e["Reader"], e["RecoveryActor"], e["Actor"]) == (actor, 2, actor, actor),
             "actual partial original, independent certification reader and surviving private owner")
     selected = P.raw(e["SelectedCommand"])
     command = C.C.decision_command(selected)
@@ -822,7 +898,7 @@ def check_partial(a):
     # Authenticate both real loss/reopen rosters before lending them to any
     # semantic reader. These are separate actual processes, never DTO recipes.
     B.processes(e["TargetProcesses"], None, a["Case"], e["Batch"])
-    C.C.processes(d["Processes"], None, d["Case"])
+    C.C.processes(d["Processes"], None, d["Case"], program_roles=source_roles)
     require(type(e["TargetTransportLoss"]) is str and 0 < len(e["TargetTransportLoss"]) <= 4096 and
             integer(e["ReceiptReads"], 129, 1)*65536 == e["ReceiptGrantBytes"] and
             integer(e["GateCandidates"], 128, 1)*(4096+32*(2 << 20)) == e["GateDecodeWork"], "actual native loss and separately prepaid diagnostics")
@@ -871,7 +947,11 @@ def check_partial(a):
     T.semantic(e["TargetReopened"] == d["Before"], "P03-partial-native-volume-old-cut-and-index")
     # Reuse the unchanged raw original/CDC/typed graph and independent serial
     # checker only after all fresh native/process bindings above authenticate.
-    result = C.C.check_history(d, semantic_require=T.semantic)
+    if program_roles is None:
+        result = C.C.check_history(d, semantic_require=T.semantic)
+    else:
+        result = C.C.check_history(d, semantic_require=T.semantic, program_roles=source_roles,
+                                 process_check=lambda rows, io, case: C.C.processes(rows, io, case, program_roles=source_roles))
     return dict(case=a["Case"], records=len(records), serial_witness=result["serial_witness"],
                 scope="P03 actual partial interval plus selected native transition; no full-D acceptance")
 
@@ -888,13 +968,29 @@ def conditional_charge(charge, rows):
             charge["Retained"] == headers+sum(64+n for n in lengths), "full traversal plus exact owned copies and prepaid JSON (including unretained Register-gate observations), no reset across reopen")
 
 
-def check_conditional(a):
+def program_conditional_roles(context, recipe):
+    require(type(context) is dict and set(context) == {"leaders", "target", "reopen_after"}, "authenticated actual conditional program roles")
+    leaders = C.C.program_leaders(dict(leaders=context["leaders"]))
+    actor = 4 if recipe["Schedule"] == "write-skew-B-first" else 1
+    target = 3 if recipe["Partition"] == 3 else 6 if leaders == (1, 4) else 5
+    boundary = context["reopen_after"]
+    require(type(context["target"]) is int and context["target"] == target and type(boundary) is int and
+            (1 <= boundary <= 128 if recipe["Schedule"] == "write-skew-A-first" else boundary == 0),
+            "actual surviving conditional caller/source and sole cohort capture boundary")
+    return leaders, actor, target, dict(leaders=leaders, reopen_after=boundary)
+
+
+def check_conditional(a, *, program_roles=None):
     e, r = a["Evidence"], a["Evidence"]["Recipe"]
-    require(set(e) == CONDITIONAL_EVIDENCE and a["Case"] == conditional_recipe(r), "finite actual P05 route")
+    extra = ({"Program", "ProgramCohort"} | ({"ProgramReopenAfter"} if r["Schedule"] == "write-skew-A-first" else set())) if program_roles is not None else set()
+    require(set(e) == CONDITIONAL_EVIDENCE | extra and a["Case"] == conditional_recipe(r), "finite actual P05 route")
     d = e["P05"]
     require(type(d) is dict and set(d) == CONDITIONAL and d["Schedule"] == r["Schedule"] and
             e["TargetReopened"] is None, "no invented third-source/local-history observation")
     actor, target = (4 if r["Schedule"] == "write-skew-B-first" else 1), (3 if r["Partition"] == 3 else 6)
+    sources = None
+    if program_roles is not None:
+        _, actor, target, sources = program_conditional_roles(program_roles, r)
     require((e["Actor"], e["Target"]) == (actor, target), "actual source/caller remains live while selected follower dies")
     selected = P.raw(e["SelectedCommand"])
     command = C.C.decision_command(selected)
@@ -908,7 +1004,7 @@ def check_conditional(a):
     require(e["Records"] == d["Records"], "actual P05 trace and main EOF prefix mismatch")
     prefix = F.prefix(e)
     scopes, _, _ = N.cut(d["Cut"])
-    manifests, _, _, _ = N.frames(d["Phases"], scopes)
+    manifests, _, _, _ = N.frames(d["Phases"], scopes, program_sources=sources)
     retained, decisions = N.records(d["Records"], manifests)
     require(retained == prefix and command["manifest"] in [row[0] for row in manifests.values()], "selected command belongs to actual complete retained source prefix")
     m = N.manifest(command["manifest"])
@@ -938,7 +1034,7 @@ def check_conditional(a):
         for start in starts:
             stop = next(row for row in stops if row["Member"] == start["Member"])
             require(start["PreviousInstance"] == stop["Instance"] and start["Volume"] == stop["Volume"], "actual same-volume conditional cohort")
-    result = N.check(d) # Existing exact absent/range/temporal/life literals and independent serial witness.
+    result = N.check(d, program_sources=sources) # Existing exact absent/range/temporal/life literals and independent serial witness.
     return dict(case=a["Case"], records=len(prefix), serial_witness=result["serial_witness"],
                 scope="P05 five genuine dependency scenarios plus selected native transition; source-only")
 
@@ -958,10 +1054,10 @@ def manifest_fields(wire):
     return head, parts
 
 
-def frozen_identity(receipt, d, prefix, scopes):
+def frozen_identity(receipt, d, prefix, scopes, *, member=4):
     require(type(receipt) is dict and set(receipt) == set("Version Cookie Member PID GrantBytes Manifest BeforeApplied AfterApplied BeforeLastIndex AfterLastIndex Before After Attempts".split()) and
             receipt["Version"] == 1 and receipt["Cookie"] == d["Queue"]["Cookie"] and
-            receipt["Member"] == 4 and receipt["PID"] == d["Queue"]["PID"] and receipt["Manifest"] == d["Queue"]["Manifest"],
+            receipt["Member"] == member and receipt["PID"] == d["Queue"]["PID"] and receipt["Manifest"] == d["Queue"]["Manifest"],
             "actual child retained-B frozen-identity owner")
     manifest, foreign = P.raw(receipt["Manifest"]), P.raw(d["ManifestA"])
     head, parts = manifest_fields(manifest)
@@ -1008,12 +1104,26 @@ def frozen_identity(receipt, d, prefix, scopes):
                 "actual shortened/foreign-epoch/real-kernel mutant, no arbitrary hostile substitute")
 
 
-def check_frozen(a):
+def program_frozen_roles(context, recipe):
+    require(type(context) is dict and set(context) == {"leaders", "target"}, "authenticated native frozen-owner program roles")
+    leaders = C.C.program_leaders(dict(leaders=context["leaders"]))
+    actor = 3 if recipe["Original"] == "A" else leaders[1]
+    target = (2 if recipe["Partition"] == 3 else 6) if leaders == (1, 4) else (1 if recipe["Partition"] == 3 else 4)
+    require(type(context["target"]) is int and context["target"] == target and actor != target,
+            "actual native follower loss preserves current B queue's private owner")
+    return leaders, actor, target
+
+
+def check_frozen(a, *, program_roles=None):
     e, r = a["Evidence"], a["Evidence"]["Recipe"]
-    require(set(e) == FROZEN_EVIDENCE and a["Case"] == frozen_recipe(r), "finite actual P04 native/frozen recipe")
+    require(set(e) == FROZEN_EVIDENCE | ({"Program", "ProgramCohort"} if program_roles is not None else set()) and a["Case"] == frozen_recipe(r), "finite actual P04 native/frozen recipe")
     d = e["P04"]
     require(type(d) is dict and set(d) == QUEUED and d["Case"] == r["Order"], "actual two queued original order")
     actor, target = 3 if r["Original"] == "A" else 4, 2 if r["Partition"] == 3 else 6
+    source_roles, member = None, 4
+    if program_roles is not None:
+        leaders, actor, target = program_frozen_roles(program_roles, r)
+        source_roles, member = dict(leaders=leaders), leaders[1]
     require((e["Actor"], e["Target"]) == (actor, target), "original caller and authority remain alive while a real follower dies")
     selected = P.raw(e["SelectedCommand"])
     command = C.C.decision_command(selected)
@@ -1023,14 +1133,14 @@ def check_frozen(a):
         require(selected == P.raw(d["Queue"]["Candidates"][0 if r["Candidate"] == "capacity-ABORT" else 1]), "selected Decide is actual retained private candidate, never reconstructed authority")
     event = C.batch_pair(e["Arm"], e["Batch"], fixed(e["Run"], 16, True), integer(e["DeadlineUnixNanos"], (1 << 63)-1, 1), target, r["Kind"], r["Side"], selected)
     B.processes(e["TargetProcesses"], None, a["Case"], e["Batch"])
-    C.C.processes(d["Processes"], None, "partial-install-decision-loss")
+    C.C.processes(d["Processes"], None, "partial-install-decision-loss", program_roles=source_roles)
     require(e["TargetProcesses"][1]["EventID"] < d["Processes"][0]["EventID"], "selected native process rejoins before genuine owner death/reopen")
     require(type(e["TargetTransportLoss"]) is str and 0 < len(e["TargetTransportLoss"]) <= 4096 and
             integer(e["ReceiptReads"], 129, 1)*65536 == e["ReceiptGrantBytes"] and
             integer(e["GateCandidates"], 128, 1)*(4096+32*(2 << 20)) == e["GateDecodeWork"], "actual matched native transport loss and diagnostic admission")
     prefix = F.prefix(d)
     scopes, _ = P.cut(d["Before"])
-    frozen_identity(e["Frozen"], d, prefix, scopes)
+    frozen_identity(e["Frozen"], d, prefix, scopes, member=member)
     charge, boundary = e["CapacityCapture"], d["Capacity"]
     size = len(P.raw(boundary["Request"]))+len(P.raw(boundary["Reply"]))
     require(type(charge) is dict and set(charge) == {"Candidates", "Work", "Output", "Retained"} and
@@ -1044,7 +1154,7 @@ def check_frozen(a):
         require(status["tx"] == manifest_fields(manifest)[0][0] and status["phase"] == r["Phase"] and
                 status["digest"] == hashlib.sha256(manifest).digest() and status["index"] <= event["Index"], "actual installed original/current replay joins native entry")
     T.semantic(e["TargetReopened"] == d["Before"], "P04-replacement-local-old-cut-data-index")
-    result = C.C.decision_check(d) # Full two-original/first-D/CDC/exact graph/index and serial checks.
+    result = C.C.decision_check(d, program_roles=source_roles) # Full two-original/first-D/CDC/exact graph/index and serial checks.
     return dict(case=a["Case"], records=len(prefix), serial_witness=result["serial_witness"], scope="P04 actual OS-child frozen refusals and queue order plus selected native transition; source-only")
 
 
@@ -1064,32 +1174,50 @@ def check(a):
         return check_fence(a)
     if "P01" in a["Evidence"]:
         return check_scope(a)
+    return check_live(a)
+
+
+def program_live_roles(context):
+    require(type(context) is dict and set(context) == {"initial_leaders", "leaders", "target", "successor"}, "authenticated first-live elected-role context")
+    initial, leaders = context["initial_leaders"], context["leaders"]
+    require(type(initial) is tuple and initial in ((1, 4), (2, 6)) and all(type(v) is int for v in initial) and
+            type(leaders) is tuple and leaders == (3-initial[0], initial[1]) and all(type(v) is int for v in leaders) and
+            type(context["target"]) is type(context["successor"]) is int and context["target"] == initial[1] and
+            context["successor"] == 10-initial[1], "SAME live caller survives actual A then B source leader losses")
+    return initial, leaders, context["target"], context["successor"]
+
+
+def check_live(a, *, program_roles=None):
     e = a["Evidence"]
-    require(type(e) is dict and set(e) == EVIDENCE and a["Case"] == live_recipe(e["Recipe"]), "actual causal inventory route")
+    require(type(e) is dict and set(e) == EVIDENCE | ({"Program", "ProgramCohort"} if program_roles is not None else set()) and a["Case"] == live_recipe(e["Recipe"]), "actual causal inventory route")
     r, completion = e["Recipe"], e["Completion"]
     require(type(completion) is dict and set(completion) == COMPLETION, "complete same-original recovery grammar")
     d = completion["P06"]
     co, commit, actor = r["Coordinator"], r["Commit"], 3 if r["Coordinator"] == 3 else 5
+    first, recovery_a, target, recovery_b = 1, 2, 4, 6
+    if program_roles is not None:
+        initial, leaders, target, recovery_b = program_live_roles(program_roles)
+        first, recovery_a = initial[0], leaders[0]
     require(type(d) is dict and set(d) == C.P06 and type(d["Version"]) is int and d["Version"] == 1 and
-            (d["Coordinator"], d["Commit"]) == (co, commit) and (e["Actor"], e["Target"], e["Successor"]) == (actor, 4, 6) and
-            type(completion["RecoveryBVoter"]) is int and completion["RecoveryBVoter"] == 6, "actual surviving private owner/native routes")
+            (d["Coordinator"], d["Commit"]) == (co, commit) and (e["Actor"], e["Target"], e["Successor"]) == (actor, target, recovery_b) and
+            type(completion["RecoveryBVoter"]) is int and completion["RecoveryBVoter"] == recovery_b, "actual surviving private owner/native routes")
     scopes, _ = P.cut(d["Before"])
-    first, manifest, yes, yes_wire = P.peer_phase(P.raw(d["FirstYES"]["Request"]), P.raw(d["FirstYES"]["Reply"]), scopes, 1)
-    require(first == P.raw(d["Manifest"]) and yes["partition"] == 3 and yes["phase"] == 2 and yes["yes"], "actual first A Submit YES")
+    first_manifest, manifest, yes, yes_wire = P.peer_phase(P.raw(d["FirstYES"]["Request"]), P.raw(d["FirstYES"]["Reply"]), scopes, first)
+    require(first_manifest == P.raw(d["Manifest"]) and yes["partition"] == 3 and yes["phase"] == 2 and yes["yes"], "actual first A Submit YES")
     original = C.C.decision_manifest(P.raw(d["Original"]), manifest, co, scopes, d["Before"])
     tx, digest = original["tx"], original["digest"]
     records, decision = C.phase_census(d, tx, digest, co, commit)
     require(type(e["InitialPhases"]) is list and len(e["InitialPhases"]) in (3, 4), "actual initial source rows")
     require(yes["tx"] == tx and P.raw(records[3, yes["index"]]["Outcome"]) == yes_wire and
             d["FirstYES"] == {key:e["InitialPhases"][1][key] for key in ("Request", "Reply")}, "earlier YES actual submission identity")
-    selected = live_initial(e["InitialPhases"], scopes, actor, co, r["Phase"], manifest, tx, records, original["floors"])
+    selected = live_initial(e["InitialPhases"], scopes, actor, co, r["Phase"], manifest, tx, records, original["floors"], {3:first, 8:target})
     require(selected == P.raw(e["SelectedCommand"]), "first-live native selected command differs from unanswered original")
-    observed = prepared_vote_read(e["VoteRead"], e["InitialPhases"][1], scopes, actor, 1)
+    observed = prepared_vote_read(e["VoteRead"], e["InitialPhases"][1], scopes, actor, first)
     require(observed["status"] == yes, "held original authority reply differs from actual first YES")
     run, deadline = fixed(e["Run"], 16, True), integer(e["DeadlineUnixNanos"], (1 << 63)-1, 1)
-    event = C.batch_pair(e["Arm"], e["Batch"], run, deadline, 4, r["Kind"], r["Side"], selected)
+    event = C.batch_pair(e["Arm"], e["Batch"], run, deadline, target, r["Kind"], r["Side"], selected)
     B.processes(e["TargetProcesses"], None, a["Case"], e["Batch"])
-    restored = I.first_processes(d["Processes"], 1)
+    restored = I.first_processes(d["Processes"], first)
     require(restored["applied"] >= yes["index"], "actual first YES replacement lacks local original")
     processes = [d["Processes"][0], *e["TargetProcesses"], d["Processes"][1]]
     ids = [integer(row["EventID"], minimum=1) for row in processes]
@@ -1114,12 +1242,12 @@ def check(a):
         P.resumed(wire, scopes, original["source"]["request"], tx, P.business_hash(original["wire"], co), 0, decision_wire)
         pending = actual
     if len(d["Phases"]) == 5:
-        I.recovery(d["Phases"], scopes, actor, co, {3:2, 8:6}, manifest, tx, records)
+        I.recovery(d["Phases"], scopes, actor, co, {3:recovery_a, 8:recovery_b}, manifest, tx, records)
     else:
         require(len(d["Phases"]) == 2 and r["Phase"] == 3, "known D must have two actual Resolve replies; no padded capture")
         for row, part in zip(d["Phases"], (3, 8)):
             _, command, _ = C.source_request(row, scopes, actor)
-            _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes, 2 if part == 3 else 6)
+            _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes, recovery_a if part == 3 else recovery_b)
             require((command["phase"], command["partition"]) == (4, part) and command["manifest"] == actual_manifest == manifest and
                     command["proof_wires"] == [decision_wire] and command["conflict"] is None and
                     outcome == P.raw(records[part, status["index"]]["Outcome"]) and status["tx"] == tx and
