@@ -690,7 +690,7 @@ def label_changes(logical, partition, round_, expected_axis, seen):
     seen.add(owner)
 
 
-def exploration(data, records):
+def exploration(data, records, *, semantic_require=require):
     e, case = data["Exploration"], data["Case"]
     phase = "prepared" if "prepared" in case else "registered"
     first = case.endswith("true")
@@ -701,9 +701,9 @@ def exploration(data, records):
     octets(e["MoveOwnerCookie"], 16, True)
     parsed = {name: range_read(e[name]) for name in ("Before", "Settled", "Transferred", "Held", "Reopened")}
     scopes, old_round, initial = parsed["Before"]
-    require(e["Held"] == e["Reopened"] == e["Before"] and parsed["Held"][2] == parsed["Reopened"][2] == initial, "range old cut lost native cells after conflict/transfer")
+    old_preserved = e["Held"] == e["Reopened"] == e["Before"] and parsed["Held"][2] == parsed["Reopened"][2] == initial
     current = parsed["Settled"][2]
-    require(current == parsed["Transferred"][2] and current != initial, "real transfer changed logical graph or conflict never executed")
+    transferred_preserved = current == parsed["Transferred"][2] and current != initial
     require(len(e["Originals"]) == len(e["Manifests"]) == len(e["Results"]) == 2, "exact two authentic competing originals")
     coordinators = (8, 3) if b_first else (3, 8)
     a, b = [C.decision_manifest(P.raw(source), P.raw(manifest), coordinator, scopes, {"Cut": e["Before"]["Cut"]}) for source, manifest, coordinator in zip(e["Originals"], e["Manifests"], coordinators)]
@@ -753,14 +753,20 @@ def exploration(data, records):
     after_publication, after_owner = placement(e["PlacementAfter"][0])
     require(before_publication == after_publication and after_owner == dict(before_owner, partition=8, epoch=before_owner["epoch"] + 1), "transfer altered original reservation or failed physical target activation")
     require(activation_epochs == {3: before_owner["epoch"], 8: before_owner["epoch"]}, "both genuine activation CDC originals preserve exact placement lineage")
+    require(not data["Ticks"] and not data["Network"] and not data["Clocks"] and not data["Expiry"] and not data["PacketEvents"] and not data["Processes"] and data["Model"] is None
+            and data["IO"] is None and data["Corruption"] is None and data["OpenRefusal"] is None and data["Repair"] is None and not data["CorruptArchive"]
+            and not data["Snapshot"] and data["HeldPacket"] is None and data["HeldTerm"] == 0 and not P.raw(data["LeaderBefore"]) and not P.raw(data["LeaderAfter"]), "foreign exploration diagnostics")
+    # No semantic classification precedes actual original/protocol/CDC/full
+    # transfer/placement authentication. Legacy callers retain ValueError.
+    semantic_require(old_preserved, "old-cut:composed-transfer")
+    semantic_require(transferred_preserved, "composed-transfer-state")
     expected = {k: dict(v, labels=["family-conflict"]) if k in ("A/fact/1", "B/fact/17") else v for k, v in initial.items()}
-    require(current == expected, "two-conflict exact logical/native typed footprint")
+    semantic_require(current == expected, "composed-conflict-state")
     changes = P.writes(initial, current, ("A/fact/1", "B/fact/17"))
     transactions = {"A": dict(reads=[P.read_key(initial, k) for k in ("A/fact/1", "B/fact/17")], writes=changes), "B": dict(reads=[], writes={})}
     observations = [dict(event=name, scope=["A", "B"], round=round_, values=values) for name, (_, round_, values) in parsed.items()]
     witness, detail = P.oracle()({"initial": initial, "transactions": transactions}, {"A"}, {"A": da["round"], "B": db["round"]}, observations, [dict(event="final", scope=["A", "B"], values=current)])
-    require(witness is not None, "independent two-conflict/fence/transfer serial witness: " + str(detail))
-    require(not data["Ticks"] and not data["Network"] and not data["Clocks"] and not data["Expiry"] and not data["PacketEvents"] and not data["Processes"] and data["Model"] is None, "foreign exploration diagnostics")
+    semantic_require(witness is not None, "independent exact serial/cut witness: " + str(detail))
     return witness, scopes
 
 
@@ -902,6 +908,11 @@ def snapshots(data, scopes):
 def check(data):
     require(type(data) is dict and set(data) == HEADER_KEYS, "fresh closed artifact grammar")
     require(data["Version"] == 1 and data["Profile"] == PROFILE and data["Case"] in CASES | EXPLORATIONS, "fresh finite D artifact contract")
+    return check_source(data)
+
+
+def check_source(data, *, semantic_require=require):
+    """Actual-source core; each private embedding admits its own closed format."""
     integer(data["DiskBytes"])
     integer(data["AllocatedDiskBytes"])
     require(type(data["Scope"]) is str and "explicit VFS model" in data["Scope"] and "matrix remains separate" in data["Scope"], "honest qualification boundary")
@@ -909,7 +920,7 @@ def check(data):
     records = prefix(data)
     require((data["Exploration"] is not None) == (data["Case"] in EXPLORATIONS), "actual bounded exploration inventory")
     if data["Exploration"] is not None:
-        witness, scopes = exploration(data, records)
+        witness, scopes = exploration(data, records, semantic_require=semantic_require)
     else:
         witness, scopes = ordinary(data, records)
     selected = model(data)

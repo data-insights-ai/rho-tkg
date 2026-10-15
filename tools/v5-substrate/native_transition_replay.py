@@ -24,6 +24,26 @@ MAX_SECONDS = 1800
 WATCHDOG = Path(__file__).with_name("process_watchdog.py")
 
 
+def components(profile):
+    if profile == "cross":
+        return C
+    require(profile == "composed", "exact supported fresh recorded profile")
+    spec = importlib.util.spec_from_file_location("native_recorded_composed", Path(__file__).with_name("native_transition_composed_check.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def composed_sources(watchdog):
+    directory = Path(__file__).resolve().parent
+    names = ("native_transition_replay.py", "native_transition_composed_replay.py", "native_transition_composed_check.py",
+             "native_fault_family_check.py", "native_fault_schedule_check.py", "native_transition_check.py", "check-p06-history.py")
+    result = {name: digest(directory/name) for name in names}
+    result["independent-oracle"] = digest(directory.parents[1]/"docs/v5/reference/independent/protocol/oracle.py")
+    result["owned-watchdog"] = digest(watchdog)
+    return result
+
+
 def require(value, message):
     if not value:
         raise ValueError("native recorded replay refused: " + message)
@@ -94,9 +114,19 @@ def footprint(root):
     return dict(files=files, bytes=total)
 
 
-def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline, memory_mib):
+def terminal_result(meter, wrapper_exit, profile):
+    require(profile in ("cross", "composed"), "exact fixed replay profile")
+    require(type(wrapper_exit) is int and type(meter["exit_code"]) is int, "actual integer process exit statuses")
+    completed = wrapper_exit == 0 and meter["reason"] == "completed" and meter["exit_code"] == 0
+    failed_verdict = profile == "composed" and wrapper_exit == 124 and meter["reason"] == "command-failed" and meter["exit_code"] == 1
+    return completed, failed_verdict
+
+
+def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline, memory_mib, *, profile="cross", source_hashes=None):
     require(0 <= number < MAX_TRIALS and time.time_ns() < deadline, "fixed whole-replay trial/deadline grant exhausted")
-    C.recipe(recipe)
+    if profile == "composed": require(source_hashes is not None and composed_sources(watchdog) == source_hashes, "same admitted independent checker/controller/watchdog sources")
+    checker = components(profile)
+    checker.recipe(recipe)
     require(digest(binary) == binary_sha, "actual selected binary unchanged before fresh cohort")
     path = root/f"trial-{number:02d}"
     path.mkdir(mode=0o700)
@@ -106,12 +136,17 @@ def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline,
            "GOMAXPROCS": "2", "GOMEMLIMIT": "2GiB", "RHO_GRAPH_TRANSITION_RECIPE": canonical(recipe),
            "RHO_GRAPH_TRANSITION_OUTPUT": str(path/"engine"), "RHO_GRAPH_TRANSITION_RUN": run,
            "RHO_GRAPH_TRANSITION_DEADLINE": str(deadline)}
+    env["RHO_GRAPH_COMPOSED_RECIPE"] = canonical(recipe) if profile == "composed" else ""
+    env["RHO_GRAPH_COMPOSED_OUTPUT"] = str(path/"engine") if profile == "composed" else ""
+    if profile == "composed":
+        env["RHO_GRAPH_TRANSITION_RECIPE"], env["RHO_GRAPH_TRANSITION_OUTPUT"] = "", ""
     for name in ("RHO_GRAPH_COST_SPEC", "RHO_GRAPH_NATIVE_WORKLOAD", "RHO_GRAPH_NATIVE_FAULT_PROCESS", "RHO_GRAPH_NATIVE_FAULT_START",
                  "RHO_GRAPH_RANGE_PROCESS", "RHO_GRAPH_CONDITIONAL_PROCESS", "RHO_GRAPH_RETENTION_PROCESS", "RHO_GRAPH_DURABLE_COLUMN_PROCESS",
-                 "RHO_GRAPH_FAULT_FAMILY_PROCESS", "RHO_GRAPH_DURABLE_MODEL", "RHO_GRAPH_DECISION_FAULT_PROCESS"):
+                 "RHO_GRAPH_FAULT_FAMILY_PROCESS", "RHO_GRAPH_DURABLE_MODEL", "RHO_GRAPH_DECISION_FAULT_PROCESS", "RHO_GRAPH_FEED_PROCESS"):
         env[name] = ""
     remaining = max(1, (deadline-time.time_ns()+999_999_999)//1_000_000_000)
-    actual = [str(binary), "-test.run=^TestNativeTransitionRecordedReplayCell$", "-test.count=1", "-test.v", f"-test.timeout={remaining}s"]
+    parent = "TestNativeComposedTransitionRecordedReplayCell" if profile == "composed" else "TestNativeTransitionRecordedReplayCell"
+    actual = [str(binary), "-test.run=^"+parent+"$", "-test.count=1", "-test.v", f"-test.timeout={remaining}s"]
     command = [sys.executable, str(watchdog), "--rss-mib", str(memory_mib), "--seconds", str(seconds),
                "--deadline-unix-nanos", str(deadline), "--owned-dir", str(path), "--disk-bytes", str(MAX_TRIAL_BYTES),
                "--report", str(path/"watchdog.json"), "--", *actual]
@@ -120,39 +155,54 @@ def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline,
                    seconds=seconds, aggregateRSSMiB=memory_mib, command=command,
                    admission=dict(trials=MAX_TRIALS, liveEngineProcesses=6, totalEngineCreationsPerTrial=7,
                                   actions=8, ticks=16, artifactBytes=16 << 20, trialDiskBytes=MAX_TRIAL_BYTES))
+    if profile == "composed":
+        request.update(version=2, profile=checker.PROFILE, sourceSHA256=source_hashes)
+        request["admission"].update(totalEngineCreationsPerTrial=6, duplicates=4)
     write(path/"request.json", request)
     receipt = dict(version=1, requestSHA256=digest(path/"request.json"), recipe=recipe, run=run, binarySHA256=binary_sha,
                    deadlineUnixNanos=deadline, exit=None, monitor=None, monitorSHA256=None, artifact=None,
                    artifactSHA256=None, classification="unavailable", semanticFailure=None, proof=None, disk=None)
+    if profile == "composed": receipt.update(version=2, profile=checker.PROFILE)
     try:
         with (path/"stdout.txt").open("xb") as out, (path/"stderr.txt").open("xb") as error:
             result = subprocess.run(command, env=env, stdout=out, stderr=error, check=False)
         receipt["exit"] = result.returncode
         meter = bounded_json(path/"watchdog.json")
         receipt["monitor"], receipt["monitorSHA256"] = meter, digest(path/"watchdog.json")
-        if result.returncode != 0 or meter["reason"] != "completed" or meter["exit_code"] != 0:
+        engine_exit = meter["exit_code"]
+        completed, failed_verdict = terminal_result(meter, result.returncode, profile)
+        if profile == "composed": receipt["engineExit"] = engine_exit
+        if not (completed or failed_verdict):
             receipt["classification"] = "driver-or-resource-refused"
             return receipt
         require(meter["command"] == actual and meter["deadline_unix_nanos"] == deadline and meter["wall_limit_s"] == seconds
                 and meter["rss_limit_mib"] == memory_mib and 0 < meter["peak_tree_rss_mib"] <= memory_mib
-                and meter["all_owned_exited"] is True, "actual fixed-budget process-owner terminal")
+                and meter["all_owned_exited"] is True and meter.get("forced_cleanup") is False, "actual fixed-budget process-owner terminal")
         artifact_path = None
         with os.scandir(path/"engine") as entries:
             for entry in entries:
                 require(artifact_path is None and entry.is_file(follow_symlinks=False) and not entry.is_symlink()
-                        and entry.name.startswith("native-transition-cross-"), "one genuine trial capture")
+                        and entry.name.startswith("native-composed-" if profile == "composed" else "native-transition-cross-"), "one genuine trial capture")
                 artifact_path = Path(entry.path)
         require(artifact_path is not None and digest(binary) == binary_sha, "complete trial capture/unchanged actual binary")
-        artifact = C.load(artifact_path)
-        require(artifact["Recipe"] == recipe and bytes(artifact["Run"]).hex() == run and artifact["DeadlineUnixNanos"] == deadline
-                and bytes(artifact["RecipeSHA256"]).hex() == request["recipeSHA256"], "actual fresh source/recipe/original deadline")
+        if profile == "composed": require(composed_sources(watchdog) == source_hashes, "source changed during genuine child replay")
+        artifact = checker.load(artifact_path)
+        owner = artifact["Replay"] if profile == "composed" else artifact
+        require(owner["Recipe"] == recipe and bytes(owner["Run"]).hex() == run and owner["DeadlineUnixNanos"] == deadline
+                and bytes(owner["RecipeSHA256"]).hex() == request["recipeSHA256"], "actual fresh source/recipe/original deadline")
         receipt["artifact"], receipt["artifactSHA256"] = str(artifact_path.relative_to(root)), digest(artifact_path)
         try:
-            receipt["proof"] = C.check(artifact)
-            receipt["classification"] = "passed"
-        except C.SemanticFailure as failure:
-            receipt["classification"] = "semantic-failure"
-            receipt["semanticFailure"] = dict(code=failure.code, detail=failure.detail)
+            receipt["proof"] = checker.check(artifact)
+            receipt["classification"] = "passed" if completed else "driver-or-resource-refused"
+        except checker.SemanticFailure as failure:
+            # Fresh Go preserves a complete capture, then FAILS its own
+            # independent verdict. A passing Go cell cannot hide a failed
+            # checker; an unrelated failed test plus a passing proof is refused.
+            if profile == "composed" and not failed_verdict:
+                receipt["classification"] = "source-refused"
+            else:
+                receipt["classification"] = "semantic-failure"
+                receipt["semanticFailure"] = dict(code=failure.code, detail=failure.detail)
         except (ValueError, KeyError, TypeError) as failure:
             receipt["classification"], receipt["diagnostic"] = "source-refused", str(failure)[:4096]
         return receipt
@@ -160,6 +210,11 @@ def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline,
         receipt["classification"], receipt["diagnostic"] = "source-refused", str(failure)[:4096]
         return receipt
     finally:
+        if profile == "composed":
+            try:
+                require(composed_sources(watchdog) == source_hashes, "source changed during independent semantic verdict")
+            except (OSError, ValueError) as error:
+                receipt["classification"], receipt["semanticFailure"], receipt["diagnostic"] = "source-refused", None, str(error)[:4096]
         try:
             receipt["disk"] = footprint(path)
         except (OSError, ValueError) as error:
@@ -167,9 +222,9 @@ def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline,
         write(path/"receipt.json", receipt)
 
 
-def minimize(recipe, invoke, expected_code, *, used=2, maximum=MAX_TRIALS):
+def minimize(recipe, invoke, expected_code, *, used=2, maximum=MAX_TRIALS, validator=None):
     """Single-action deletion, fresh invoke for EVERY candidate; no simulation."""
-    C.recipe(recipe)
+    (C.recipe if validator is None else validator)(recipe)
     require(2 <= used <= maximum <= MAX_TRIALS and type(expected_code) is str and expected_code, "prepaid replay/minimization pool")
     current = {**recipe, "Actions": list(recipe["Actions"] or [])}
     index, attempts, accepted, unresolved = 0, [], [], []
@@ -194,28 +249,34 @@ def minimize(recipe, invoke, expected_code, *, used=2, maximum=MAX_TRIALS):
                 minimality="single-action deletion under the fixed mandatory selector/recovery recipe; no global minimum or infinite-state claim")
 
 
-def execute(output, binary, watchdog, seconds, memory_mib, recipe):
-    C.recipe(recipe)
+def execute(output, binary, watchdog, seconds, memory_mib, recipe, *, profile="cross", deadline_unix_nanos=None):
+    checker = components(profile)
+    checker.recipe(recipe)
     require(type(seconds) is int and 1 <= seconds <= MAX_SECONDS and type(memory_mib) is int and 4096 <= memory_mib <= 1 << 20, "finite caller-selected whole-replay resources")
     binary, watchdog = Path(binary).resolve(strict=True), Path(watchdog).resolve(strict=True)
     require(binary.is_file() and os.access(binary, os.X_OK) and watchdog.is_file(), "supplied actual native binary/repository watchdog")
     destination = Path(output).absolute()
     require(destination.parent.resolve(strict=True) == destination.parent and not destination.exists(), "fresh owned output parent")
-    now = time.time_ns(); deadline = now+seconds*1_000_000_000
+    now = time.time_ns(); deadline = now+seconds*1_000_000_000 if deadline_unix_nanos is None else deadline_unix_nanos
+    require(type(deadline) is int and now < deadline <= now+seconds*1_000_000_000, "same admitted original absolute deadline")
     require(deadline <= (1 << 63)-1 and MAX_TRIALS*seconds*1_000_000_000 <= (1 << 63)-1, "checked fixed deadline/cumulative trial time")
     destination.mkdir(mode=0o700)
     binary_sha = digest(binary)
-    write(destination/"plan.json", dict(version=1, recipe=recipe, binarySHA256=binary_sha, watchdogSHA256=digest(watchdog),
+    source_hashes = composed_sources(watchdog) if profile == "composed" else None
+    plan = dict(version=1, recipe=recipe, binarySHA256=binary_sha, watchdogSHA256=digest(watchdog),
                                        seconds=seconds, deadlineUnixNanos=deadline, aggregateRSSMiB=memory_mib,
-                                       maxTrials=MAX_TRIALS, maxDiskBytes=MAX_TRIALS*MAX_TRIAL_BYTES))
+                                       maxTrials=MAX_TRIALS, maxDiskBytes=MAX_TRIALS*MAX_TRIAL_BYTES)
+    if profile == "composed": plan.update(version=2, profile=checker.PROFILE, sourceSHA256=source_hashes)
+    write(destination/"plan.json", plan)
     receipts = []
     def invoke(value, number):
         require(number == len(receipts) and len(receipts) < MAX_TRIALS, "monotone whole-query trial accounting")
-        receipt = trial(destination, number, value, binary, binary_sha, watchdog, seconds, deadline, memory_mib)
+        receipt = trial(destination, number, value, binary, binary_sha, watchdog, seconds, deadline, memory_mib, profile=profile, source_hashes=source_hashes)
         receipts.append(receipt)
         return receipt
     result = dict(version=1, planSHA256=digest(destination/"plan.json"), receipts=[], reproduced=False, minimization=None,
                   scope="fixed recorded real six-child replay; semantic-failure-only bounded deletion; source-only until executed qualification")
+    if profile == "composed": result.update(version=2, profile=checker.PROFILE)
     try:
         first = invoke(recipe, 0)
         # Replaying the recorded exact schedule always uses a NEW actual child
@@ -225,11 +286,16 @@ def execute(output, binary, watchdog, seconds, memory_mib, recipe):
         code = (first.get("semanticFailure") or {}).get("code")
         if code and again.get("classification") == "semantic-failure" and (again.get("semanticFailure") or {}).get("code") == code:
             result["reproduced"] = True
-            result["minimization"] = minimize(recipe, invoke, code)
+            result["minimization"] = minimize(recipe, invoke, code, validator=checker.recipe)
         return result
     finally:
         result["receipts"] = [{"trial": n, "receiptSHA256": digest(destination/f"trial-{n:02d}"/"receipt.json"),
                                "classification": row["classification"], "artifactSHA256": row["artifactSHA256"]} for n, row in enumerate(receipts)]
+        if profile == "composed":
+            first_two = [row["classification"] for row in receipts[:2]]
+            result["classification"] = ("passed" if first_two == ["passed", "passed"] else
+                                        "semantic-failure" if result["reproduced"] else
+                                        "semantic-failure-unreproduced" if "semantic-failure" in first_two else "source-refused")
         write(destination/"result.json", result)
 
 
@@ -241,8 +307,9 @@ def main():
     parser.add_argument("--seconds", required=True, type=int)
     parser.add_argument("--memory-mib", required=True, type=int)
     parser.add_argument("--seed", required=True, type=int)
+    parser.add_argument("--deadline-unix-nanos", type=int)
     args = parser.parse_args()
-    print(json.dumps(execute(args.output, args.binary, args.watchdog, args.seconds, args.memory_mib, seeded_recipe(args.seed)), indent=2))
+    print(json.dumps(execute(args.output, args.binary, args.watchdog, args.seconds, args.memory_mib, seeded_recipe(args.seed), deadline_unix_nanos=args.deadline_unix_nanos), indent=2))
 
 
 if __name__ == "__main__":

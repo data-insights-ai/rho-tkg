@@ -406,6 +406,7 @@ type nativeFaultFamilyArtifact struct {
 	Exploration                   *nativeFaultFamilyExploration
 	DiskBytes, AllocatedDiskBytes uint64
 	Scope                         string
+	Replay                        *nativeTransitionComposedEvidence `json:",omitempty"`
 }
 
 type nativeFaultFamilyRangeRead struct {
@@ -882,6 +883,10 @@ func writeNativeFaultFamilyArtifact(t *testing.T, f *pairedGraphFaultNetwork, ar
 		t.Fatal("all-child/model disk accounting", err)
 	}
 	path := filepath.Join(f.n.dir, "native-fault-family-"+artifact.Case+".jsonl")
+	if artifact.Replay != nil {
+		artifact.Version, artifact.Profile = 2, nativeTransitionComposedProfile
+		path = filepath.Join(os.Getenv("RHO_GRAPH_COMPOSED_OUTPUT"), "native-composed-"+artifact.Case+".jsonl")
+	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		t.Fatal(err)
@@ -915,6 +920,11 @@ func writeNativeFaultFamilyArtifact(t *testing.T, f *pairedGraphFaultNetwork, ar
 	header := artifact
 	header.Records = nil
 	header.Snapshot = nil
+	if header.Replay != nil {
+		replay := *header.Replay
+		replay.Actions = nil
+		header.Replay = &replay
+	}
 	if header.Model != nil {
 		model := *header.Model
 		model.Image = nil
@@ -924,6 +934,15 @@ func writeNativeFaultFamilyArtifact(t *testing.T, f *pairedGraphFaultNetwork, ar
 		Type     string
 		Artifact nativeFaultFamilyArtifact
 	}{"header", header}, true)
+	if artifact.Replay != nil {
+		for sequence, action := range artifact.Replay.Actions {
+			write(struct {
+				Type     string
+				Sequence int
+				Action   nativeTransitionComposedActionResult
+			}{"replay-action", sequence, action}, true)
+		}
+	}
 	if artifact.Model != nil {
 		image := artifact.Model.Image
 		if len(image) == 0 || len(image) > nativeDurableDefaultPolicy().CatalogBytes+65 {

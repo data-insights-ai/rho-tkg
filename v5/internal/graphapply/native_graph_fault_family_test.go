@@ -141,6 +141,7 @@ func TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage(t 
 }
 
 func TestNativeFaultFamilyTwoConflictingOriginalsFenceAndRealTransferExploreCausalOrders(t *testing.T) {
+	recorded := nativeTransitionComposedFromEnv(t)
 	// This finite OS-child slice complements the genuine native-host fence-first
 	// stale Register/first Prepare schedules in
 	// TestRangeMoveRejectsFirstDelayedCrossPrepareAndSettlesInertLateRegistration.
@@ -151,6 +152,9 @@ func TestNativeFaultFamilyTwoConflictingOriginalsFenceAndRealTransferExploreCaus
 				// Once A helps B to its actual ABORT, no unsettled owner remains
 				// to block a later first fence. That order is not relabelled pending.
 				if firstOriginal == 1 && !fenceFirst {
+					continue
+				}
+				if !recorded.selected(firstOriginal, phase, fenceFirst) {
 					continue
 				}
 				name := fmt.Sprintf("explore-%s-%s-fence-%t", []string{"A", "B"}[firstOriginal], phase, fenceFirst)
@@ -285,6 +289,7 @@ func TestNativeFaultFamilyTwoConflictingOriginalsFenceAndRealTransferExploreCaus
 					call, cancel := f.beginRun(heldActor, heldProposal)
 					defer cancel()
 					gate := f.awaitBoundary(entered)
+					recorded.perform(t, f, "held", [2]uint64{actorA, actorB}, [2]allocationProposal{a, b}, [2]processResponse{})
 					owner := nativeFaultFamilyCall(t, n.all[1], nativeFaultFamilyControl{Version: 1, Action: "inspect"})
 					exploration := nativeFaultFamilyExploration{Originals: [2][]byte{a.wire, b.wire}, Gate: gate, Before: before, PlacementBefore: bytes.Clone(placementBefore), MoveOwnerCookie: owner.Cookie, Order: []string{"freeze-A-B", heldName + "-" + phase}}
 					fence := func() {
@@ -345,6 +350,7 @@ func TestNativeFaultFamilyTwoConflictingOriginalsFenceAndRealTransferExploreCaus
 					exploration.Results[0] = p06ProcessWire(t, aResponse)
 					exploration.Results[1] = p06ProcessWire(t, bResponse)
 					detach()
+					recorded.perform(t, f, "settled", [2]uint64{actorA, actorB}, [2]allocationProposal{a, b}, [2]processResponse{aResponse, bResponse})
 					mu.Lock()
 					exploration.Manifests = manifests
 					mu.Unlock()
@@ -355,9 +361,7 @@ func TestNativeFaultFamilyTwoConflictingOriginalsFenceAndRealTransferExploreCaus
 						if id == 1 || id == 17 {
 							want.fact.Labels = []string{"family-conflict"}
 						}
-						if !reflect.DeepEqual(settledFacts[id], want) {
-							t.Fatal("two-conflict exact graph/typed cells differ", id)
-						}
+						nativeTransitionComposedAssert(t, recorded, reflect.DeepEqual(settledFacts[id], want), "two-conflict exact graph/typed cells differ")
 					}
 					exploration.Settled = settled
 					pendingResponse, err := decodeProcessResponse(exploration.MovePending)
@@ -377,6 +381,7 @@ func TestNativeFaultFamilyTwoConflictingOriginalsFenceAndRealTransferExploreCaus
 						t.Fatal("same owned transfer replay changed original", err)
 					}
 					exploration.MoveReplay = p06ProcessWire(t, replay)
+					recorded.perform(t, f, "transferred", [2]uint64{actorA, actorB}, [2]allocationProposal{a, b}, [2]processResponse{aResponse, bResponse})
 					foreign := moved
 					foreign.resume.request[0] ^= 0x80
 					foreign.resume.move = rangeMoveID(namespace{foreign.resume.scope.graph, foreign.resume.scope.partition}, foreign.resume.request)
@@ -407,29 +412,21 @@ func TestNativeFaultFamilyTwoConflictingOriginalsFenceAndRealTransferExploreCaus
 					handle, currentCut := graphE17Open(t, n, 2, graphReadFresh, graphCut{})
 					transferred, facts := nativeFaultFamilyRangeReadAt(t, n, 2, handle, currentCut)
 					n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: handle})
-					if !reflect.DeepEqual(facts, settledFacts) {
-						t.Fatal("real range transfer changed logical IDs, exact cells or postings")
-					}
+					nativeTransitionComposedAssert(t, recorded, reflect.DeepEqual(facts, settledFacts), "real range transfer changed logical IDs, exact cells or postings")
 					exploration.Transferred = transferred
 					graphE17AssertNativeVoters(t, n, currentCut, processRangeNativeVoterProbe, nil)
 					heldRead, heldFacts := nativeFaultFamilyRangeReadAt(t, n, 2, held, oldCut)
-					if !reflect.DeepEqual(heldFacts, oldFacts) || !reflect.DeepEqual(heldRead, before) {
-						t.Fatal("held preconflict cut substituted current after transfer")
-					}
+					nativeTransitionComposedAssert(t, recorded, reflect.DeepEqual(heldFacts, oldFacts) && reflect.DeepEqual(heldRead, before), "held preconflict cut substituted current after transfer")
 					exploration.Held = heldRead
 					n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: held})
 					heldClosed = true
 					oldHandle, reopenedCut := graphE17Open(t, n, 5, graphReadAt, oldCut)
 					reopened, reopenedFacts := nativeFaultFamilyRangeReadAt(t, n, 5, oldHandle, reopenedCut)
 					n.all[5].call(t, processRequest{op: processSourceCertifiedClose, index: oldHandle})
-					if !reflect.DeepEqual(reopenedFacts, oldFacts) || !reflect.DeepEqual(reopened, before) {
-						t.Fatal("new genuine old read lost original state after real transfer")
-					}
+					nativeTransitionComposedAssert(t, recorded, reflect.DeepEqual(reopenedFacts, oldFacts) && reflect.DeepEqual(reopened, before), "new genuine old read lost original state after real transfer")
 					exploration.Reopened = reopened
 					for _, id := range []uint64{1, 17} {
-						if !slices.Equal(settledFacts[id].fact.Labels, []string{"family-conflict"}) {
-							t.Fatal("missing exact committed label")
-						}
+						nativeTransitionComposedAssert(t, recorded, slices.Equal(settledFacts[id].fact.Labels, []string{"family-conflict"}), "missing exact committed label")
 					}
 					through := f.indexes()
 					records := p06Records(f, from, through)
@@ -438,7 +435,7 @@ func TestNativeFaultFamilyTwoConflictingOriginalsFenceAndRealTransferExploreCaus
 						t.Fatal(err)
 					}
 					nativeFaultFamilyAssertConflictCDC(t, records, aResult.decision, moved, oldOwner.Epoch-1)
-					writeNativeFaultFamilyArtifact(t, f, nativeFaultFamilyArtifact{nativeFaultArtifact: nativeFaultArtifact{Case: name, From: from, Through: through, Records: records}, Exploration: &exploration})
+					writeNativeFaultFamilyArtifact(t, f, nativeFaultFamilyArtifact{nativeFaultArtifact: nativeFaultArtifact{Case: name, From: from, Through: through, Records: records}, Exploration: &exploration, Replay: recorded.finish(t)})
 				})
 			}
 		}
