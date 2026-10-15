@@ -493,8 +493,9 @@ Its retain-all record allowance is corrected at `7d4f62c9`: each entry funds
 (260 records). The authored guard derives that extra record from the native
 recovery API; neither this quota nor the correction is runtime qualification.
 The dispatcher schedules all eight families and local/1/20/100ms profiles.
-FDB has source drivers for contention, selectors, snapshot-to-feed,
-cross-edge uniqueness, immutable columns, late correction and ownership transfer;
+FDB has source drivers for all eight families: create/update, contention,
+selectors, snapshot-to-feed, cross-edge uniqueness, immutable columns,
+late correction and ownership transfer;
 their fresh owned transport adapters cover
 local/1/20/100ms. Native has contention, cross-edge, snapshot-to-feed and selector
 source drivers across local/1/20/100ms, with local paired comparisons. Unsupported semantics
@@ -502,16 +503,22 @@ or transport refuse before effects.
 Each family/transport matrix contains 360 fresh cells; the complete eight-family,
 four-transport matrix contains 11,520 cells per engine.
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
-No new cell, guard or runtime gate has run. The remaining FDB partition-local
-family driver, and native partition-local,
-immutable-columns, late-correction and transfer/retained-pins
-drivers remain implementation work. Full matrix qualification and the engine
-decision remain open.
+No new cell, guard or runtime gate has run. Native create/update,
+immutable-columns, late-correction and transfer/retained-pins drivers remain
+implementation work. FDB's remaining accounting follow-ups, cross-engine
+allocator/retention matching, full matrix qualification and the engine decision
+remain open.
 The create/update family keeps a strict-local 0% baseline and explicitly named
 mixed/cross 10/50/100% variants, as clarified in the substrate reference.
 Nonzero rows must join actual multi-participant business read/write footprints;
 remote client/processing placement or coordination metadata cannot supply that
 percentage. Report their throughput separately from the partition-local baseline.
+The FDB driver is source-integrated at `17410187`: its immutable proposal and
+paired original joins authenticate the complete business footprint, while
+phase wall surrounds the seed plus real worker drain. Separate complete-operation
+samples supply bounded external-spool percentiles. Fixed fixture IDs claim no
+allocator issuance; old/current/raw/CDC and native/cache column observations
+remain required. Native/paired execution for this family still refuses.
 The independent reference validation remains historical at its recorded source
 digests; refresh it during the deferred correctness stage after this clarification.
 The FDB transfer prerequisite is source-integrated at `d13cc3eb`: a fresh
@@ -814,6 +821,14 @@ without emitting duplicate business changes. Its authored guard distinguishes
 that new retry from an expired historical frame. Source integration is not
 runtime qualification.
 
+Unread native feed pages still require historical frame/payload roots. The new
+feed-only variant must protect a genuine rolling ACK predecessor and unread
+prefix; removing C's cap alone is unsound. A private unchanged-participant
+payload re-anchor requires the immutable PLM round and full image to equal the
+authenticated ACK anchor. It cannot confer snapshot, original-result or routing
+authority. Report its conservative native history and any additional generic
+At availability as actual cost/behavior; do not claim FDB's physical reclamation.
+
 The native selector family is source-integrated at `330aaf89`: fourteen actual
 Fresh/Stable/After/At, scoped-refusal and same-token reopen observations join
 complete historical/current postings, typed points, all-voter raw originals and
@@ -839,8 +854,8 @@ Current worker lanes: Sol 6.1/high for native retained-only feed ownership/GC
 and remaining native workload families;
 Sol 6.1/high for actual retention-reader storage transitions,
 then broader protocol/message/leader/conflict composition;
-Sol 6.1/high for the remaining FDB partition-local workload family and
-source-grounded accounting follow-ups. These packages
+Sol 6.1/high for the native create/update counterpart and source-grounded
+FDB accounting follow-ups. These packages
 are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
