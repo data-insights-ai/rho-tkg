@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 )
@@ -20,6 +21,28 @@ type nativeTransitionIO struct {
 	ReturnError string `json:",omitempty"`
 }
 
+const nativeTransitionManifestCaller = "github.com/cockroachdb/pebble/v2/vfs/atomicfs.(*Marker).Move"
+
+// Directory handles carry no namespace name. A bounded test-only native stack
+// match distinguishes Marker.Move's real Sync from another file publisher's
+// concurrent directory Sync. Missing/inlined-unrecognized callers refuse the
+// precise cell; no generic VFS operation becomes phase/transaction authority.
+func nativeTransitionManifestFrame() string {
+	var pcs [32]uintptr
+	n := runtime.Callers(2, pcs[:])
+	frames := runtime.CallersFrames(pcs[:n])
+	for range n {
+		frame, more := frames.Next()
+		if frame.Function == nativeTransitionManifestCaller {
+			return frame.Function
+		}
+		if !more {
+			break
+		}
+	}
+	return ""
+}
+
 func nativeTransitionSelector(kind string) (operation, side string, ok bool) {
 	for _, suffix := range []string{"-before", "-after"} {
 		if !strings.HasSuffix(kind, suffix) {
@@ -27,7 +50,7 @@ func nativeTransitionSelector(kind string) (operation, side string, ok bool) {
 		}
 		operation = strings.TrimSuffix(kind, suffix)
 		switch operation {
-		case "wal-write", "wal-sync", "wal-sync-data", "wal-sync-to", "directory-sync", "options-rename", "manifest-create", "manifest-close":
+		case "wal-write", "wal-sync", "wal-sync-data", "wal-sync-to", "directory-sync", "manifest-directory-sync", "options-rename", "manifest-create", "manifest-close":
 			return operation, strings.TrimPrefix(suffix, "-"), true
 		}
 	}
@@ -49,7 +72,7 @@ func nativeTransitionMatches(kind, path string, directory bool, operation string
 		return !directory && strings.HasSuffix(name, ".log") && operation == "sync-data"
 	case "wal-sync-to":
 		return !directory && strings.HasSuffix(name, ".log") && operation == "sync-to"
-	case "directory-sync":
+	case "directory-sync", "manifest-directory-sync":
 		return directory && operation == "sync"
 	case "options-rename":
 		return !directory && operation == "rename"
@@ -112,7 +135,7 @@ func nativeTransitionReceiptValid(receipt nativeFaultReceipt) bool {
 	if !nativeTransitionMatches(receipt.Kind, receipt.IO.Path, receipt.IO.Directory, receipt.IO.Kind) {
 		return false
 	}
-	sync := operation == "wal-sync" || operation == "wal-sync-data" || operation == "wal-sync-to" || operation == "directory-sync"
+	sync := operation == "wal-sync" || operation == "wal-sync-data" || operation == "wal-sync-to" || operation == "directory-sync" || operation == "manifest-directory-sync"
 	// An actual queued SyncTo is authentic evidence, but does not complete a
 	// requested guaranteed-after-sync cell. Its controller reports unavailable.
 	if point.Guaranteed != (sync && side == "after") {
@@ -132,6 +155,13 @@ func nativeTransitionReceiptValid(receipt nativeFaultReceipt) bool {
 		return false
 	}
 	if operation == "options-rename" && (!strings.HasPrefix(receipt.IO.Destination, "OPTIONS-") || filepath.Base(receipt.IO.Destination) != receipt.IO.Destination) {
+		return false
+	}
+	if operation == "manifest-directory-sync" {
+		if !receipt.IO.Directory || receipt.IO.Path != "." || receipt.IO.Caller != nativeTransitionManifestCaller || !receipt.IO.PublicationClosed || !strings.HasPrefix(receipt.IO.Publication, "marker.manifest.") || len(receipt.IO.Publication) > 1024 || filepath.Base(receipt.IO.Publication) != receipt.IO.Publication {
+			return false
+		}
+	} else if receipt.IO.Caller != "" || receipt.IO.Publication != "" || receipt.IO.PublicationClosed {
 		return false
 	}
 	return receipt.IO.Error == "declared native storage transition SIGKILL"

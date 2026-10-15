@@ -37,16 +37,19 @@ type nativeFaultControl struct {
 }
 
 type nativeFaultIO struct {
-	Kind, Path    string
-	Directory     bool
-	Requested     uint64
-	Written       uint64
-	InputSHA256   [32]byte
-	WrittenSHA256 [32]byte
-	Error         string
-	Destination   string              `json:",omitempty"`
-	Offset        int64               `json:",omitempty"`
-	Transition    *nativeTransitionIO `json:",omitempty"`
+	Kind, Path        string
+	Directory         bool
+	Requested         uint64
+	Written           uint64
+	InputSHA256       [32]byte
+	WrittenSHA256     [32]byte
+	Error             string
+	Destination       string              `json:",omitempty"`
+	Offset            int64               `json:",omitempty"`
+	Transition        *nativeTransitionIO `json:",omitempty"`
+	Caller            string              `json:",omitempty"`
+	Publication       string              `json:",omitempty"`
+	PublicationClosed bool                `json:",omitzero"`
 }
 
 type nativeFaultReceipt struct {
@@ -71,6 +74,12 @@ type nativeFaultFS struct {
 	state   nativeFaultReceipt
 	last    nativeFaultControl
 	pending bool
+	// One exact created file identity, not a map of directory names. Storage is
+	// fixed/preowned before Open, and only the precise fresh selector uses it.
+	markerFile   *nativeFaultFile
+	markerPath   [1024]byte
+	markerLength int
+	markerClosed bool
 }
 
 func newNativeFaultFS(dir string, member uint64) (*nativeFaultFS, error) {
@@ -147,6 +156,7 @@ func (f *nativeFaultFS) control(raw []byte) ([]byte, error) {
 	f.state.Sequence, f.state.Kind, f.state.Nth = c.Sequence, c.Kind, c.Nth
 	f.state.Arms++
 	f.state.Seen, f.state.Armed, f.state.Matched, f.state.IO = 0, true, false, nativeFaultIO{}
+	f.markerFile, f.markerLength, f.markerClosed = nil, 0, false
 	return json.Marshal(f.state)
 }
 
@@ -172,12 +182,28 @@ func (f *nativeFaultFS) match(path string, directory bool, operation string, inp
 	if !matched {
 		return "", false, nil
 	}
+	var caller, publication string
+	if strings.HasPrefix(f.state.Kind, "manifest-directory-sync-") {
+		if f.markerFile == nil || !f.markerClosed || f.markerLength == 0 {
+			return "", false, nil
+		}
+		caller = nativeTransitionManifestFrame()
+		if caller == "" {
+			return "", false, nil
+		}
+		publication = string(f.markerPath[:f.markerLength])
+	}
 	rel, err := filepath.Rel(f.dir, path)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) || len(rel) > 1024 || len(input) > processFrameBytes {
 		return "", false, errors.Join(errLimit, err)
 	}
 	f.state.Seen++
 	if f.state.Seen != f.state.Nth {
+		if publication != "" {
+			// A later selected Marker.Move needs its own new created/closed
+			// file. Never carry an earlier publication across Nth matches.
+			f.markerFile, f.markerLength, f.markerClosed = nil, 0, false
+		}
 		return "", false, nil
 	}
 	f.pending, f.state.Armed, f.state.Matched = true, false, true
@@ -185,7 +211,7 @@ func (f *nativeFaultFS) match(path string, directory bool, operation string, inp
 	if synchronizing && (f.state.Kind == "file-sync" || f.state.Kind == "directory-sync") {
 		receiptOperation = "sync"
 	}
-	f.state.IO = nativeFaultIO{Kind: receiptOperation, Path: rel, Directory: directory, Requested: uint64(len(input)), InputSHA256: sha256.Sum256(input)}
+	f.state.IO = nativeFaultIO{Kind: receiptOperation, Path: rel, Directory: directory, Requested: uint64(len(input)), InputSHA256: sha256.Sum256(input), Caller: caller, Publication: publication, PublicationClosed: publication != "" && f.markerClosed}
 	return f.state.Kind, true, nil
 }
 
@@ -253,7 +279,22 @@ func (f *nativeFaultFS) Create(path string, category vfs.DiskWriteCategory) (vfs
 		return nil, transitionErr
 	}
 	file, err = f.FS.Create(path, category)
-	return f.wrap(path, false, file, err)
+	wrapped, err := f.wrap(path, false, file, err)
+	if err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	if f.state.Armed && strings.HasPrefix(f.state.Kind, "manifest-directory-sync-") && strings.HasPrefix(filepath.Base(path), "marker.manifest.") {
+		rel, e := filepath.Rel(f.dir, path)
+		if e != nil || rel != filepath.Base(path) || len(rel) > len(f.markerPath) {
+			f.mu.Unlock()
+			return nil, errors.Join(errInvalid, e, wrapped.Close())
+		}
+		f.markerFile, f.markerLength, f.markerClosed = wrapped.(*nativeFaultFile), len(rel), false
+		copy(f.markerPath[:], rel)
+	}
+	f.mu.Unlock()
+	return wrapped, nil
 }
 func (f *nativeFaultFS) Unwrap() vfs.FS { return f.FS }
 func (f *nativeFaultFS) Open(path string, options ...vfs.OpenOption) (vfs.File, error) {
@@ -414,7 +455,15 @@ func (f *nativeFaultFile) Close() error {
 	if matched || err != nil {
 		return err
 	}
-	return f.File.Close()
+	err = f.File.Close()
+	if err == nil {
+		f.owner.mu.Lock()
+		if f.owner.markerFile == f {
+			f.owner.markerClosed = true
+		}
+		f.owner.mu.Unlock()
+	}
+	return err
 }
 
 // All delays/holds derive from this fixed owner context. A consumer's cancel
