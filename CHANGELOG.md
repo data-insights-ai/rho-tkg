@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Planned as the next patch of the latest tag, v4.55.2 (sigma-tkgd round 8, additive doors only; released after the
+user's OK).
+
 ### Added
 
 - **`Stats().PropertyBounds` / `Stats().RelPropertyBounds`: the numeric bounds of a property per label and per
@@ -72,6 +75,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   creates, explicit valid-from, valid-to only, closing valid-to, updates, deletes, label moves, writes to other
   labels and types; cached and recounted), store tests for `HistoryGeneration`; evidence
   `tasks/evidence/cypher-round8/r3-*`.
+- **`Nodes().ForEachByLabelOrdinals` / `Rels().ForEachByTypeOrdinals`: label and type scans restricted to an ordinal
+  bitset** (sigma-tkgd round 8 request 4, the dynamic-filter wave: `NodesEffectiveByIDs` takes an ID list). `(label,
+  set []uint64, opts, fn)` streams the rows `ForEachByLabel` / `ForEachByType` stream under `opts`, current or at any
+  temporal coordinate, for the entities whose current ordinal is in the bitset (bit k of `set[k/64]`), ascending ID
+  order, `After` / `Limit` as for the scan; an entity without a current row has no ordinal and is never selected.
+  New optional store capability `store.OrdinalLookupCapability` (`NodeOrdinalsOf` / `RelOrdinalsOf`: memory, badger;
+  ordinals from RAM under one lock) and helper `store.OrdinalSetHas`: where the store also lists a label's members
+  (badger, sharded) only the selected rows are lent, and at a coordinate only the selected candidates are resolved.
+  `store.ErrCapabilityNotSupported` without ordinals (tiered, badger `DisableOrdinals`). Read-only, no write cost.
+  100,000 nodes, 1% selected (`BenchmarkForEachByOrdinals`, one CPU): badger current 95 ms (scan and filter) ->
+  11 ms, badger `TxPin` 360-404 ms -> 18 ms, memory `TxPin` 43 ms -> 21 ms, memory current unchanged (1.0 ms). Tests
+  `TestForEachByOrdinals` (memory, badger, sharded against the filtered scan at current, `After`/`Limit`, `TxPin`,
+  `ValidAt` and all-valid-time-at-a-pin coordinates through updates, deletes and label moves; tiered refused), store
+  tests; evidence `tasks/evidence/cypher-round8/r4-*`.
 
 ## [4.55.1] - 2026-10-15
 

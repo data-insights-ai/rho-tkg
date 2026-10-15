@@ -49,6 +49,7 @@ type Ops interface {
 	ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	RangeCardinalityAt(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	ForEachByTypeOrdinals(typeName string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ForEachIDByTypePropertyRangeOrdered(ctx context.Context, typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
 	ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
 	CountByTypePropertyValue(typeName, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error)
@@ -542,6 +543,17 @@ func (a *API) RangeCardinalityAt(typeName, propKey string, min, max float64, inc
 		return 0, false, err
 	}
 	return ops.RangeCardinalityAt(typeName, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// ForEachByTypeOrdinals is the relationship mirror of
+// nodes.API.ForEachByLabelOrdinals over ForEachByType's rows (a relationship
+// of a declared segment type on memory has no ordinal and is never selected).
+func (a *API) ForEachByTypeOrdinals(typeName string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByTypeOrdinals(typeName, set, opts, fn)
 }
 
 // ForEachIDByTypePropertyRangeOrdered is the relationship mirror of

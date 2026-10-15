@@ -838,3 +838,8 @@ func (s *nodeOpsSpy) RangeCardinalityAt(label, propKey string, min, max float64,
 	s.record("RangeCardinalityAt")
 	return 0, false, s.err
 }
+
+func (s *nodeOpsSpy) ForEachByLabelOrdinals(label string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	s.record("ForEachByLabelOrdinals")
+	return s.err
+}

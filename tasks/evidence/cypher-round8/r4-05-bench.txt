@@ -1,0 +1,31 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: Apple M4 Max
+BenchmarkForEachByOrdinals/memory/current/filter         	    1106	   1038756 ns/op	      56 B/op	       2 allocs/op
+BenchmarkForEachByOrdinals/memory/current/filter         	    1154	   1055439 ns/op	      56 B/op	       2 allocs/op
+BenchmarkForEachByOrdinals/memory/current/filter         	    1123	   1036203 ns/op	      56 B/op	       2 allocs/op
+BenchmarkForEachByOrdinals/memory/current/ordinals       	    1098	   1067426 ns/op	     112 B/op	       5 allocs/op
+BenchmarkForEachByOrdinals/memory/current/ordinals       	    1096	   1068213 ns/op	     112 B/op	       5 allocs/op
+BenchmarkForEachByOrdinals/memory/current/ordinals       	    1118	   1059694 ns/op	     112 B/op	       5 allocs/op
+BenchmarkForEachByOrdinals/memory/txpin/filter           	      24	  42976156 ns/op	37820991 B/op	  400034 allocs/op
+BenchmarkForEachByOrdinals/memory/txpin/filter           	      28	  43240714 ns/op	37623917 B/op	  400012 allocs/op
+BenchmarkForEachByOrdinals/memory/txpin/filter           	      28	  42686637 ns/op	37623918 B/op	  400012 allocs/op
+BenchmarkForEachByOrdinals/memory/txpin/ordinals         	      58	  21223887 ns/op	 4785256 B/op	    4027 allocs/op
+BenchmarkForEachByOrdinals/memory/txpin/ordinals         	      62	  21131984 ns/op	 4785256 B/op	    4027 allocs/op
+BenchmarkForEachByOrdinals/memory/txpin/ordinals         	      60	  20854186 ns/op	 4785256 B/op	    4027 allocs/op
+BenchmarkForEachByOrdinals/badger/current/filter         	      13	  95451442 ns/op	84984083 B/op	 1259854 allocs/op
+BenchmarkForEachByOrdinals/badger/current/filter         	      13	  95620465 ns/op	84984060 B/op	 1259854 allocs/op
+BenchmarkForEachByOrdinals/badger/current/filter         	      12	  95303851 ns/op	84984075 B/op	 1259854 allocs/op
+BenchmarkForEachByOrdinals/badger/current/ordinals       	     100	  11372939 ns/op	 2529750 B/op	   18049 allocs/op
+BenchmarkForEachByOrdinals/badger/current/ordinals       	     100	  11310805 ns/op	 2529752 B/op	   18049 allocs/op
+BenchmarkForEachByOrdinals/badger/current/ordinals       	     100	  11322794 ns/op	 2529752 B/op	   18049 allocs/op
+BenchmarkForEachByOrdinals/badger/txpin/filter           	       3	 404287292 ns/op	367212818 B/op	 5206652 allocs/op
+BenchmarkForEachByOrdinals/badger/txpin/filter           	       3	 360277847 ns/op	347202968 B/op	 4939614 allocs/op
+BenchmarkForEachByOrdinals/badger/txpin/filter           	       3	 365163125 ns/op	347202968 B/op	 4939614 allocs/op
+BenchmarkForEachByOrdinals/badger/txpin/ordinals         	      56	  18007141 ns/op	 3607547 B/op	   11435 allocs/op
+BenchmarkForEachByOrdinals/badger/txpin/ordinals         	      63	  18346609 ns/op	 3579848 B/op	   11029 allocs/op
+BenchmarkForEachByOrdinals/badger/txpin/ordinals         	      68	  18341750 ns/op	 3579856 B/op	   11029 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	29.370s
+limit: {"command": ["go", "test", "-run", "^$", "-bench", "BenchmarkForEachByOrdinals", "-count", "3", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 1800.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 1147.469, "elapsed_s": 32.011, "exit_code": 0, "reason": "completed"}
