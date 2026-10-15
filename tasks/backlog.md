@@ -682,10 +682,12 @@ business groups, bounded protocol-prefix progress, immutable Page/ACK replay and
 durably admitted operation ceilings share actual native authority. Snapshot
 reads retain their admitted ledger and deadline until Close. This fresh semantic
 agreement leaves older formats unchanged. The native OS-child workload and
-matrix wiring remain in implementation. A source-review follow-up must resolve
-new retries of already acknowledged post-snapshot originals after their raw
-sidecars have been collected, without treating expired historical reads as
-valid feed evidence. Source integration is not runtime qualification.
+matrix wiring remain in implementation. The source-review correction at
+`0de7a1ad` authenticates new retries against each keeper's actual acknowledged
+cursor, preserving immutable original results after raw sidecar collection
+without emitting duplicate business changes. Its authored guard distinguishes
+that new retry from an expired historical frame. Source integration is not
+runtime qualification.
 
 Current worker lanes: Sol 6.1/high for native snapshot-to-feed production
 ownership and its workload; Sol 6.1/high for remaining C/D certificate/publication
