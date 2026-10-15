@@ -33,7 +33,7 @@ MAX_SECONDS, MAX_SAMPLES, MAX_BYTES = 31_536_000, 31_536_002, 1 << 44
 FRAME, FIXED = 2 << 20, 16 << 20
 SOURCE_SHA = "bbd141ef7b5d0127cc2152843ba61f274dc32814fa3e0f13e7d07a080bef53d9"
 ROLES = ("zone0", "zone1", "zone2", "zone3", "client")
-FAMILIES = ("snapshot-to-feed", "contention-empty-range", "snapshot-selectors", "cross-edge-endpoint-uniqueness", "immutable-columns", "late-correction-old-index")
+FAMILIES = ("snapshot-to-feed", "contention-empty-range", "snapshot-selectors", "cross-edge-endpoint-uniqueness", "immutable-columns", "late-correction-old-index", "transfer-retained-pins")
 
 
 def require(condition, message):
@@ -68,7 +68,7 @@ def sha_file(path):
 def causal_minimum(spec, transport):
     n, writers = spec["facts"], spec["writers"]
     rounds = 5 + 2 * ((n - 1 + writers - 1) // writers)
-    if spec["family"] == "snapshot-to-feed":
+    if spec["family"] in ("snapshot-to-feed", "transfer-retained-pins"):
         rounds += (n + 7) // 8  # complete page ACKs, in addition to commits
     elif spec["family"] == "contention-empty-range":
         remote = n * spec["crossPercent"] // 100
@@ -91,7 +91,7 @@ def validate_input(value):
     require(type(spec) is dict and set(spec) == set("version family facts crossPercent writers layout".split()), "exact implemented family spec")
     n = integer(spec["facts"], 20, 1_000_000)
     writers = integer(spec["writers"], 1, 32)
-    require(spec["version"] == 2 and type(spec["version"]) is int and spec["family"] in FAMILIES and n % 20 == 0 and writers in (1, 8, 32) and (spec["family"] not in ("snapshot-to-feed", "snapshot-selectors", "immutable-columns") or n >= writers + 1) and type(spec["crossPercent"]) is int and spec["crossPercent"] in (0, 10, 50, 100) and spec["layout"] in ("kv", "columns"), "actual fresh implemented-family transport adapter")
+    require(spec["version"] == 2 and type(spec["version"]) is int and spec["family"] in FAMILIES and n % 20 == 0 and writers in (1, 8, 32) and (spec["family"] not in ("snapshot-to-feed", "snapshot-selectors", "immutable-columns", "transfer-retained-pins") or n >= writers + 1) and type(spec["crossPercent"]) is int and spec["crossPercent"] in (0, 10, 50, 100) and spec["layout"] in ("kv", "columns"), "actual fresh implemented-family transport adapter")
     require(type(t) is dict and set(t) == set("kind targetRTTMillis jitterMillis seed".split()) and type(t["targetRTTMillis"]) is int and type(t["jitterMillis"]) is int and type(t["seed"]) is int and t["jitterMillis"] == 0 and t["seed"] == 20261009 and (t["kind"] == "local" and t["targetRTTMillis"] == 0 or t["kind"] == "injected-rtt" and t["targetRTTMillis"] in (1, 20, 100)), "actual local or fixed injected delay")
     run = value["Run"]
     require(type(run) is str and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "same fresh run identity")
@@ -131,7 +131,21 @@ def environment_input():
     value = validate_input(json.loads(raw))
     require(value["Spec"] == json.loads(os.environ["RHO_GRAPH_WORKLOAD_SPEC"]) and value["Run"] == os.environ["RHO_GRAPH_WORKLOAD_RUN"] and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") == FORMAT and os.environ.get("RHO_GRAPH_WORKLOAD_SECONDS") == str(value["BudgetSeconds"]), "request/launcher source binding")
     require(value["ToolsDirectory"] == "@pinned-prebuild", "repository-owned pinned prebuild required")
+    if value["Spec"]["family"] == "transfer-retained-pins":
+        transfer_grant(value["Spec"])
     return value
+
+
+def transfer_grant(spec):
+    # The caller supplies the finite native storage/work profile before build
+    # or graph mutation. This is distinct from the transport evidence grant.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from fdb_transfer_check import validate_grant
+    body = os.environ.get("RHO_FDB_TRANSFER_GRANT", "")
+    require(0 < len(body) <= 16384, "explicit bounded transfer grant")
+    value = validate_grant(json.loads(body), spec)
+    require(canonical(value).decode() == body, "canonical native transfer grant")
+    return body
 
 
 class Evidence:
@@ -334,8 +348,12 @@ def family_record(record, spec, config):
     require(type(record) is dict and set(record) == {"Policy", "Record"}, "complete native transport observation")
     p = validate_policy(record["Policy"])
     require(p["Spec"] == spec, "same family/dimensions; no policy relabel")
-    stem = {"snapshot-to-feed": "feed", "contention-empty-range": "contention", "snapshot-selectors": "selectors", "cross-edge-endpoint-uniqueness": "edge-unique", "immutable-columns": "columns", "late-correction-old-index":"correction"}[spec["family"]]
-    require(config["Graph"] == f"graph-workload-{stem}-v2-{spec['layout']}-{bytes(p['Run']).hex()}", "same native graph/run admission")
+    if spec["family"] == "transfer-retained-pins":
+        expected = f"graph-owned-v3-{spec['layout']}-{bytes(p['Run']).hex()}"
+    else:
+        stem = {"snapshot-to-feed": "feed", "contention-empty-range": "contention", "snapshot-selectors": "selectors", "cross-edge-endpoint-uniqueness": "edge-unique", "immutable-columns": "columns", "late-correction-old-index":"correction"}[spec["family"]]
+        expected = f"graph-workload-{stem}-v2-{spec['layout']}-{bytes(p['Run']).hex()}"
+    require(config["Graph"] == expected, "same native graph/run admission")
     actual = record["Record"]
     require(type(actual) is dict and set(actual) == {"Key", "Value"}, "actual native policy key/value")
     key = b"g0/" + config["Graph"].encode().hex().encode() + b"/workload-transport-v2/" + b"binding".hex().encode()
@@ -376,6 +394,8 @@ def launch(value, directory, tag, image, connection, client_ip, client_mib):
         command = ["run", "-d", "--name", names[-1], "--network", tag, "--ip", client_ip, "--cap-add", "NET_ADMIN", "--memory", str(integer(int(client_mib), 1, 32768))+"m", "--cpus", "0.5", "--mount", f"type=bind,source={directory},target=/evidence", "--mount", f"type=bind,source={tool_dir},target=/owned-tools,readonly"]
         for key, content in {"FDB_CONNECTION_STRING": connection, "RHO_GRAPH_WORKLOAD_SPEC": spec, "RHO_GRAPH_WORKLOAD_RUN": value["Run"], "RHO_GRAPH_WORKLOAD_TRANSPORT": FORMAT, "RHO_GRAPH_WORKLOAD_SECONDS": str(value["BudgetSeconds"]), "RHO_GRAPH_WORKLOAD_DEADLINE": str(absolute), "FDB_COST_ARTIFACT": "/evidence"}.items():
             command += ["--env", key+"="+content]
+        if value["Spec"]["family"] == "transfer-retained-pins":
+            command += ["--env", "RHO_FDB_TRANSFER_GRANT="+transfer_grant(value["Spec"])]
         # Driver cannot mutate before genuine native namespace readback and
         # probes. The absolute deadline is set BEFORE this container is released.
         command += [image, "/bin/bash", "-c", 'while [ ! -f /evidence/transport-admission.json ]; do sleep 0.05; done; fdb-spike workload-cell > /evidence/workload-result.stdout 2>/evidence/workload-result.stderr; result=$?; printf "%s\\n" "$result" > /evidence/transport-driver-exit; while [ ! -f /evidence/transport-release ]; do sleep 0.05; done; exit "$result"']

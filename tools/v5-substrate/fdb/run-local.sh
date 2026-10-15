@@ -118,7 +118,7 @@ images+=("$source_image")
 shasum -a 256 ./*.go ./*.sh ./*.py go.mod go.sum Dockerfile .dockerignore >"$out/source-sha256.txt"
 if [ "$owned_transport" = 1 ]; then shasum -a 256 transportprobe/*.go >"$out/transport-probe-source-sha256.txt"; fi
 if [ "$mode" = workload-cell ]; then
-  shasum -a 256 ../workload_matrix.py ../comparison_spool.py ../compare-cost-cdc.py ../native_columns_check.py ../fdb_retention_check.py >"$out/workload-controller-source-sha256.txt"
+  shasum -a 256 ../workload_matrix.py ../comparison_spool.py ../compare-cost-cdc.py ../native_columns_check.py ../fdb_retention_check.py ../fdb_transfer_check.py >"$out/workload-controller-source-sha256.txt"
 fi
 git rev-parse HEAD >"$out/source-head.txt"
 git status --porcelain -- . >"$out/source-status.txt"

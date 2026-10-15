@@ -1287,119 +1287,149 @@ func (h *harness) historyColumnReferenceIn(tr fdb.Transaction, request string, b
 }
 
 func (s *graphHistoryRetention) begin(request string, target cut) error {
-	if s == nil || !validName(request) || !slices.Equal(target.record.Scope, []uint8{0, 1}) {
+	record, err := s.beginInput(request, target)
+	if err != nil {
+		return err
+	}
+	_, err = s.h.db.Transact(func(tr fdb.Transaction) (any, error) { return s.beginIn(tr, request, record) })
+	return graphHistoryCommitError(err)
+}
+
+// Fresh workload admission composes the actual caller cancellation with its
+// immutable run deadline through native Commit/OnError. The historical begin
+// wrapper above deliberately retains its literal raw/default native IO path.
+func (s *graphHistoryRetention) beginContext(ctx context.Context, request string, target cut) error {
+	if ctx == nil {
 		return errInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	record, err := s.beginInput(request, target)
+	if err != nil {
+		return err
+	}
+	run := s.ctx
+	if run == nil {
+		run = ctx // This new API always honors caller cancellation.
+	}
+	bounded, cancel := graphCostIOContext(run, ctx)
+	defer cancel()
+	_, _, err = historyTransactContext(bounded, s.h.db, func() error { return nil }, func(tr fdb.Transaction) (any, error) { return s.beginIn(tr, request, record) })
+	return graphHistoryCommitError(err)
+}
+
+func (s *graphHistoryRetention) beginInput(request string, target cut) (certificate, error) {
+	if s == nil || !validName(request) || !slices.Equal(target.record.Scope, []uint8{0, 1}) {
+		return certificate{}, errInvalid
 	}
 	body, err := wire(target.record)
 	if err != nil {
-		return err
+		return certificate{}, err
 	}
-	record, err := decode[certificate](body)
+	return decode[certificate](body)
+}
+
+func (s *graphHistoryRetention) beginIn(tr fdb.Transaction, request string, record certificate) (any, error) {
+	if err := s.h.verifyCutIdentity(tr, cut{record}); err != nil {
+		return nil, err
+	}
+	state, err := s.state(tr)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
-		if err := s.h.verifyCutIdentity(tr, cut{record}); err != nil {
-			return nil, err
-		}
-		state, err := s.state(tr)
-		if err != nil {
-			return nil, err
-		}
-		if state.Request == request {
-			if !sameCertificate(state.Target, record) {
-				return nil, errMismatch
-			}
-			return nil, nil
-		}
-		old, found, err := get[graphHistorySeal](tr, s.h.historyKey("seal/"+request))
-		if err != nil {
-			return nil, err
-		}
-		if found {
-			if old.Request != request || !sameCertificate(old.Cut, record) {
-				return nil, errMismatch
-			}
-			return nil, nil
-		}
-		if state.Phase == historyCensus || state.Phase == historyDeleting {
-			return nil, errHistoryBusy
-		}
-		if record.Round <= state.Completed.Cut.Round || record.Round < s.binding.Initial.Round {
-			return nil, errHistoryExpired
-		}
-		owners, err := tr.GetRange(prefixRange(s.ownerPrefix()), fdb.RangeOptions{Limit: int(s.binding.Policy.MaxOwners) + 1}).GetSliceWithError()
-		if err != nil {
-			return nil, err
-		}
-		if uint64(len(owners)) > s.binding.Policy.MaxOwners {
-			return nil, errLimit
-		}
-		live := uint64(0)
-		for _, raw := range owners {
-			o, err := decode[graphHistoryOwner](raw.Value)
-			if err != nil {
-				return nil, err
-			}
-			if !historyOwnerValid(o) || !bytes.Equal(raw.Key, s.ownerKey(o.Request)) {
-				return nil, errMismatch
-			}
-			if o.State == historyActive {
-				live++
-				if historyOwnerFloor(o) < record.Round {
-					return nil, errHistoryInUse
-				}
-			}
-		}
-		if live != state.Owners {
-			return nil, errUnavailable
-		}
-		next := graphHistoryState{Phase: historyCensus, Request: request, Target: record, Owners: state.Owners, Completed: state.Completed, CumulativeDeleted: state.CumulativeDeleted}
-		for g := uint8(0); g < 2; g++ {
-			if err := s.h.checkConfig(tr, g); err != nil {
-				return nil, err
-			}
-			m, err := s.h.meta(tr, g)
-			if err != nil {
-				return nil, err
-			}
-			if m.Groups != record.Groups[g] || m.Floor != record.Round {
-				return nil, errHistoryBusy
-			}
-			next.Before[g] = m
-		}
-		intentKey := s.h.historyKey("intent/" + request)
-		intentBody, err := wire(graphHistoryIntent{request, record})
-		if err != nil || len(intentBody) > historyControlBytes {
-			return nil, errors.Join(errLimit, err)
-		}
-		priorIntent, err := tr.Get(intentKey).Get()
-		if err != nil {
-			return nil, err
-		}
-		if len(priorIntent) != 0 {
+	if state.Request == request {
+		if !sameCertificate(state.Target, record) {
 			return nil, errMismatch
 		}
-		ledger, found, err := get[graphHistoryLedger](tr, s.h.historyKey("ledger"))
+		return nil, nil
+	}
+	old, found, err := get[graphHistorySeal](tr, s.h.historyKey("seal/"+request))
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		if old.Request != request || !sameCertificate(old.Cut, record) {
+			return nil, errMismatch
+		}
+		return nil, nil
+	}
+	if state.Phase == historyCensus || state.Phase == historyDeleting {
+		return nil, errHistoryBusy
+	}
+	if record.Round <= state.Completed.Cut.Round || record.Round < s.binding.Initial.Round {
+		return nil, errHistoryExpired
+	}
+	owners, err := tr.GetRange(prefixRange(s.ownerPrefix()), fdb.RangeOptions{Limit: int(s.binding.Policy.MaxOwners) + 1}).GetSliceWithError()
+	if err != nil {
+		return nil, err
+	}
+	if uint64(len(owners)) > s.binding.Policy.MaxOwners {
+		return nil, errLimit
+	}
+	live := uint64(0)
+	for _, raw := range owners {
+		o, err := decode[graphHistoryOwner](raw.Value)
 		if err != nil {
 			return nil, err
 		}
-		if !found {
-			return nil, errUnavailable
+		if !historyOwnerValid(o) || !bytes.Equal(raw.Key, s.ownerKey(o.Request)) {
+			return nil, errMismatch
 		}
-		added := uint64(len(intentKey) + len(s.h.historyKey("seal/"+request)) + 2*historyControlBytes)
-		if ledger.Records > s.binding.Policy.MaxOwners-2 || added > s.binding.Policy.MaxControlBytes-ledger.Bytes {
-			return nil, errLimit
+		if o.State == historyActive {
+			live++
+			if historyOwnerFloor(o) < record.Round {
+				return nil, errHistoryInUse
+			}
 		}
-		ledger.Records += 2
-		ledger.Bytes += added
-		if err := put(tr, s.h.historyKey("ledger"), ledger); err != nil {
+	}
+	if live != state.Owners {
+		return nil, errUnavailable
+	}
+	next := graphHistoryState{Phase: historyCensus, Request: request, Target: record, Owners: state.Owners, Completed: state.Completed, CumulativeDeleted: state.CumulativeDeleted}
+	for g := uint8(0); g < 2; g++ {
+		if err := s.h.checkConfig(tr, g); err != nil {
 			return nil, err
 		}
-		tr.Set(intentKey, intentBody)
-		return nil, s.writeState(tr, next)
-	})
-	return graphHistoryCommitError(err)
+		m, err := s.h.meta(tr, g)
+		if err != nil {
+			return nil, err
+		}
+		if m.Groups != record.Groups[g] || m.Floor != record.Round {
+			return nil, errHistoryBusy
+		}
+		next.Before[g] = m
+	}
+	intentKey := s.h.historyKey("intent/" + request)
+	intentBody, err := wire(graphHistoryIntent{request, record})
+	if err != nil || len(intentBody) > historyControlBytes {
+		return nil, errors.Join(errLimit, err)
+	}
+	priorIntent, err := tr.Get(intentKey).Get()
+	if err != nil {
+		return nil, err
+	}
+	if len(priorIntent) != 0 {
+		return nil, errMismatch
+	}
+	ledger, found, err := get[graphHistoryLedger](tr, s.h.historyKey("ledger"))
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, errUnavailable
+	}
+	added := uint64(len(intentKey) + len(s.h.historyKey("seal/"+request)) + 2*historyControlBytes)
+	if ledger.Records > s.binding.Policy.MaxOwners-2 || added > s.binding.Policy.MaxControlBytes-ledger.Bytes {
+		return nil, errLimit
+	}
+	ledger.Records += 2
+	ledger.Bytes += added
+	if err := put(tr, s.h.historyKey("ledger"), ledger); err != nil {
+		return nil, err
+	}
+	tr.Set(intentKey, intentBody)
+	return nil, s.writeState(tr, next)
 }
 
 type graphHistoryBudget struct {
@@ -1441,273 +1471,301 @@ func (s *graphHistoryRetention) collect(ctx context.Context, request string, bud
 	if err := ctx.Err(); err != nil {
 		return graphHistoryPage{}, err
 	}
-	result, err := s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		state, err := s.state(tr)
-		if err != nil {
-			return nil, err
-		}
-		if state.Request != request {
-			seal, found, err := get[graphHistorySeal](tr, s.h.historyKey("seal/"+request))
-			if err != nil {
-				return nil, err
-			}
-			if !found || seal.Request != request {
-				return nil, errMismatch
-			}
-			if err := s.h.verifyCutIdentity(tr, cut{seal.Cut}); err != nil {
-				return nil, err
-			}
-			page := graphHistoryPage{Phase: historySealed, Done: true, Seal: seal}
-			body, err := wire(page)
-			if err != nil || uint64(len(body)) > budget.OutputBytes {
-				return nil, errors.Join(errHistoryBudget, err)
-			}
-			return page, nil
-		}
-		if state.Phase == historySealed {
-			page := graphHistoryPage{Phase: historySealed, Done: true, Seal: state.Completed}
-			body, err := wire(page)
-			if err != nil || uint64(len(body)) > budget.OutputBytes {
-				return nil, errors.Join(errHistoryBudget, err)
-			}
-			return page, nil
-		}
-		if state.Phase != historyCensus && state.Phase != historyDeleting {
-			return nil, errUnavailable
-		}
-		var actual [2]metadata
-		for g := uint8(0); g < 2; g++ {
-			if err := s.h.checkConfig(tr, g); err != nil {
-				return nil, err
-			}
-			m, err := s.h.meta(tr, g)
-			if err != nil {
-				return nil, err
-			}
-			if m.Groups != state.Target.Groups[g] || m.Floor != state.Target.Round || m.Generation != state.Before[g].Generation || m.Transactions != state.Before[g].Transactions || m.Certificates != state.Before[g].Certificates || m.Versions != state.Before[g].Versions-state.Deleted[g] || m.Bytes != state.Before[g].Bytes-state.DeletedBytes[g] {
-				return nil, errMismatch
-			}
-			actual[g] = m
-		}
-		page := graphHistoryPage{Phase: state.Phase}
-		var clear []fdb.Key
-		if state.Phase == historyCensus {
-			g := state.Coordinator
-			if g >= 2 {
-				return nil, errInvalid
-			}
-			lo := state.Sequence
-			hi := state.Target.Groups[g]
-			begin := fdb.Key(fmt.Sprintf("%schanges/%016x0", s.h.prefix(g), lo))
-			end := fdb.Key(fmt.Sprintf("%schanges/%016x0", s.h.prefix(g), hi))
-			rows, err := tr.GetRange(fdb.KeyRange{Begin: begin, End: end}, fdb.RangeOptions{Limit: budget.Rows}).GetSliceWithError()
-			if err != nil {
-				return nil, err
-			}
-			for _, row := range rows {
-				if uint64(len(row.Key)+len(row.Value)) > budget.Bytes-page.WorkBytes {
-					return nil, errHistoryBudget
-				}
-				group, err := decode[changeGroup](row.Value)
-				if err != nil {
-					return nil, err
-				}
-				if err := s.h.validateChange(group); err != nil {
-					return nil, err
-				}
-				o := group.Outcome
-				if o.Coordinator != g || o.Sequence != state.Sequence+1 || o.Sequence > hi || o.Round > state.Target.Round || !bytes.Equal(row.Key, s.h.changeKey(g, o.Sequence, o.Request)) {
-					return nil, errMismatch
-				}
-				used := uint64(len(row.Key) + len(row.Value))
-				ob, err := wire(o)
-				if err != nil {
-					return nil, err
-				}
-				for _, key := range []fdb.Key{s.h.key(g, "id", o.ID), s.h.key(g, "request", o.Request)} {
-					raw, err := tr.Get(key).Get()
-					if err != nil {
-						return nil, err
-					}
-					used += uint64(len(key) + len(raw))
-					if !bytes.Equal(raw, ob) {
-						return nil, errMismatch
-					}
-				}
-				// Before admitting deletion, independently prove every original
-				// physical revision or the exact prior complete retirement lineage.
-				// Equal census counts cannot bless a missing current anchor.
-				for _, write := range group.Writes {
-					extra, err := s.h.historyRevisionIn(tr, write.Group, write.Key, write.After)
-					used += extra
-					if err != nil {
-						return nil, err
-					}
-					if used > budget.Bytes-page.WorkBytes {
-						return nil, errHistoryBudget
-					}
-				}
-				if used > budget.Bytes-page.WorkBytes {
-					return nil, errHistoryBudget
-				}
-				page.WorkRows++
-				page.WorkBytes += used
-				state.Sequence = o.Sequence
-				state.Chain = historyChain(state.Chain, row.Key, row.Value)
-				for _, write := range group.Writes {
-					if state.Originals[write.Group] == math.MaxUint64 {
-						return nil, errLimit
-					}
-					state.Originals[write.Group]++
-				}
-			}
-			if len(rows) < budget.Rows {
-				if state.Sequence != hi {
-					return nil, errUnavailable
-				}
-				state.Coordinator++
-				state.Sequence = 0
-				if state.Coordinator == 2 {
-					for g := range 2 {
-						if state.CumulativeDeleted[g] > math.MaxUint64-state.Before[g].Versions || state.Originals[g] != state.Before[g].Versions+state.CumulativeDeleted[g] {
-							return nil, errUnavailable
-						}
-					}
-					state.Phase = historyDeleting
-				}
-			}
-		} else {
-			g := state.Group
-			if g >= 2 {
-				return nil, errInvalid
-			}
-			begin := fdb.Key(s.h.prefix(g) + "history/")
-			if len(state.Cursor) != 0 {
-				begin = fdb.Key(append(bytes.Clone(state.Cursor), 0))
-			}
-			end := fdb.Key(fmt.Sprintf("%shistory/%016x0", s.h.prefix(g), state.Target.Round))
-			rows, err := tr.GetRange(fdb.KeyRange{Begin: begin, End: end}, fdb.RangeOptions{Limit: budget.Rows}).GetSliceWithError()
-			if err != nil {
-				return nil, err
-			}
-			for _, row := range rows {
-				if uint64(len(row.Key)+len(row.Value)) > budget.Bytes-page.WorkBytes {
-					return nil, errHistoryBudget
-				}
-				logical, v, err := s.h.graphHistoryRow(graphCostRawRow{Group: g, Key: row.Key, Value: row.Value}, state.Target.Round)
-				if err != nil {
-					return nil, err
-				}
-				_, originalBytes, err := s.h.historyOriginalIn(tr, g, logical, v)
-				if err != nil {
-					return nil, err
-				}
-				anchor, anchorBytes, err := s.anchorIn(tr, g, logical, state.Target.Round)
-				if err != nil {
-					return nil, err
-				}
-				used := uint64(len(row.Key)+len(row.Value)) + originalBytes + anchorBytes
-				if graphHistoryDeletionAllowed(v, anchor, state.Target.Round) {
-					extra, err := s.ancestorIn(tr, g, logical, anchor, v)
-					used += extra
-					if err != nil {
-						return nil, err
-					}
-				}
-				if page.WorkBytes > budget.Bytes || used > budget.Bytes-page.WorkBytes {
-					return nil, errHistoryBudget
-				}
-				page.WorkRows++
-				page.WorkBytes += used
-				state.Scanned[g]++
-				state.Cursor = bytes.Clone(row.Key)
-				if graphHistoryDeletionAllowed(v, anchor, state.Target.Round) {
-					deleted := uint64(len(row.Key) + len(row.Value))
-					if actual[g].Versions == 0 || actual[g].Bytes < s.h.metadataReservation(g) || deleted > actual[g].Bytes-s.h.metadataReservation(g) {
-						return nil, errMismatch
-					}
-					actual[g].Versions--
-					actual[g].Bytes -= deleted
-					state.Deleted[g]++
-					state.DeletedBytes[g] += deleted
-					page.Deleted[g]++
-					page.DeletedBytes[g] += deleted
-					clear = append(clear, fdb.Key(bytes.Clone(row.Key)))
-				} else {
-					if v != anchor {
-						return nil, errMismatch
-					}
-					state.Anchors[g]++
-				}
-			}
-			if len(rows) < budget.Rows {
-				if state.Scanned[g] != state.Before[g].Versions || state.Anchors[g] != actual[g].Versions {
-					return nil, errUnavailable
-				}
-				state.Group++
-				state.Cursor = nil
-				if state.Group == 2 {
-					state.Phase = historySealed
-					state.Completed = graphHistorySeal{Request: request, Cut: state.Target, Before: state.Before, After: actual, Originals: state.Originals, Deleted: state.Deleted, DeletedBytes: state.DeletedBytes, Anchors: state.Anchors, CensusSHA256: state.Chain}
-					for g := range 2 {
-						if state.Deleted[g] > math.MaxUint64-state.CumulativeDeleted[g] {
-							return nil, errLimit
-						}
-						state.CumulativeDeleted[g] += state.Deleted[g]
-					}
-					state.Completed.CumulativeDeleted = state.CumulativeDeleted
-					page.Done = true
-					page.Seal = state.Completed
-				}
-			}
-		}
-		if page.WorkRows > s.binding.Policy.MaxWorkRows-state.WorkRows || page.WorkBytes > s.binding.Policy.MaxWorkBytes-state.WorkBytes {
-			return nil, errLimit
-		}
-		state.WorkRows += page.WorkRows
-		state.WorkBytes += page.WorkBytes
-		body, err := wire(page)
-		if err != nil || uint64(len(body)) > budget.OutputBytes {
-			return nil, errors.Join(errHistoryBudget, err)
-		}
-		stateBody, err := wire(state)
-		if err != nil || len(stateBody) > historyControlBytes {
-			return nil, errors.Join(errLimit, err)
-		}
-		if page.Done {
-			sealBody, err := wire(state.Completed)
-			if err != nil || len(sealBody) > historyControlBytes {
-				return nil, errors.Join(errLimit, err)
-			}
-			key := s.h.historyKey("seal/" + request)
-			prior, err := tr.Get(key).Get()
-			if err != nil {
-				return nil, err
-			}
-			if len(prior) != 0 && !bytes.Equal(prior, sealBody) {
-				return nil, errMismatch
-			}
-			tr.Set(key, sealBody)
-		}
-		// All admissions and output checks precede every deletion/counter effect.
-		for _, key := range clear {
-			tr.Clear(key)
-		}
-		for g := uint8(0); g < 2; g++ {
-			if err := put(tr, s.h.key(g, "meta", "state"), actual[g]); err != nil {
-				return nil, err
-			}
-		}
-		tr.Set(s.h.historyKey("state"), stateBody)
-		return page, nil
-	})
+	result, err := s.h.db.Transact(func(tr fdb.Transaction) (any, error) { return s.collectIn(ctx, tr, request, budget) })
 	if err != nil {
 		return graphHistoryPage{}, graphHistoryCommitError(err)
 	}
 	return result.(graphHistoryPage), nil
+}
+
+// Fresh collector IO retains the same native deletion/accounting reducer while
+// attaching caller cancellation and the immutable run deadline through Commit.
+// Historical collect above keeps its literal raw/default transaction wrapper.
+func (s *graphHistoryRetention) collectContext(ctx context.Context, request string, budget graphHistoryBudget) (graphHistoryPage, error) {
+	if ctx == nil {
+		return graphHistoryPage{}, errInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return graphHistoryPage{}, err
+	}
+	if s == nil || !validName(request) || s.binding.Policy.admit(budget) != nil {
+		return graphHistoryPage{}, errInvalid
+	}
+	run := s.ctx
+	if run == nil {
+		run = ctx
+	}
+	bounded, cancel := graphCostIOContext(run, ctx)
+	defer cancel()
+	result, _, err := historyTransactContext(bounded, s.h.db, func() error { return nil }, func(tr fdb.Transaction) (any, error) { return s.collectIn(bounded, tr, request, budget) })
+	if err != nil {
+		return graphHistoryPage{}, graphHistoryCommitError(err)
+	}
+	return result.(graphHistoryPage), nil
+}
+
+func (s *graphHistoryRetention) collectIn(ctx context.Context, tr fdb.Transaction, request string, budget graphHistoryBudget) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	state, err := s.state(tr)
+	if err != nil {
+		return nil, err
+	}
+	if state.Request != request {
+		seal, found, err := get[graphHistorySeal](tr, s.h.historyKey("seal/"+request))
+		if err != nil {
+			return nil, err
+		}
+		if !found || seal.Request != request {
+			return nil, errMismatch
+		}
+		if err := s.h.verifyCutIdentity(tr, cut{seal.Cut}); err != nil {
+			return nil, err
+		}
+		page := graphHistoryPage{Phase: historySealed, Done: true, Seal: seal}
+		body, err := wire(page)
+		if err != nil || uint64(len(body)) > budget.OutputBytes {
+			return nil, errors.Join(errHistoryBudget, err)
+		}
+		return page, nil
+	}
+	if state.Phase == historySealed {
+		page := graphHistoryPage{Phase: historySealed, Done: true, Seal: state.Completed}
+		body, err := wire(page)
+		if err != nil || uint64(len(body)) > budget.OutputBytes {
+			return nil, errors.Join(errHistoryBudget, err)
+		}
+		return page, nil
+	}
+	if state.Phase != historyCensus && state.Phase != historyDeleting {
+		return nil, errUnavailable
+	}
+	var actual [2]metadata
+	for g := uint8(0); g < 2; g++ {
+		if err := s.h.checkConfig(tr, g); err != nil {
+			return nil, err
+		}
+		m, err := s.h.meta(tr, g)
+		if err != nil {
+			return nil, err
+		}
+		if m.Groups != state.Target.Groups[g] || m.Floor != state.Target.Round || m.Generation != state.Before[g].Generation || m.Transactions != state.Before[g].Transactions || m.Certificates != state.Before[g].Certificates || m.Versions != state.Before[g].Versions-state.Deleted[g] || m.Bytes != state.Before[g].Bytes-state.DeletedBytes[g] {
+			return nil, errMismatch
+		}
+		actual[g] = m
+	}
+	page := graphHistoryPage{Phase: state.Phase}
+	var clear []fdb.Key
+	if state.Phase == historyCensus {
+		g := state.Coordinator
+		if g >= 2 {
+			return nil, errInvalid
+		}
+		lo := state.Sequence
+		hi := state.Target.Groups[g]
+		begin := fdb.Key(fmt.Sprintf("%schanges/%016x0", s.h.prefix(g), lo))
+		end := fdb.Key(fmt.Sprintf("%schanges/%016x0", s.h.prefix(g), hi))
+		rows, err := tr.GetRange(fdb.KeyRange{Begin: begin, End: end}, fdb.RangeOptions{Limit: budget.Rows}).GetSliceWithError()
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			if uint64(len(row.Key)+len(row.Value)) > budget.Bytes-page.WorkBytes {
+				return nil, errHistoryBudget
+			}
+			group, err := decode[changeGroup](row.Value)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.h.validateChange(group); err != nil {
+				return nil, err
+			}
+			o := group.Outcome
+			if o.Coordinator != g || o.Sequence != state.Sequence+1 || o.Sequence > hi || o.Round > state.Target.Round || !bytes.Equal(row.Key, s.h.changeKey(g, o.Sequence, o.Request)) {
+				return nil, errMismatch
+			}
+			used := uint64(len(row.Key) + len(row.Value))
+			ob, err := wire(o)
+			if err != nil {
+				return nil, err
+			}
+			for _, key := range []fdb.Key{s.h.key(g, "id", o.ID), s.h.key(g, "request", o.Request)} {
+				raw, err := tr.Get(key).Get()
+				if err != nil {
+					return nil, err
+				}
+				used += uint64(len(key) + len(raw))
+				if !bytes.Equal(raw, ob) {
+					return nil, errMismatch
+				}
+			}
+			// Before admitting deletion, independently prove every original
+			// physical revision or the exact prior complete retirement lineage.
+			// Equal census counts cannot bless a missing current anchor.
+			for _, write := range group.Writes {
+				extra, err := s.h.historyRevisionIn(tr, write.Group, write.Key, write.After)
+				used += extra
+				if err != nil {
+					return nil, err
+				}
+				if used > budget.Bytes-page.WorkBytes {
+					return nil, errHistoryBudget
+				}
+			}
+			if used > budget.Bytes-page.WorkBytes {
+				return nil, errHistoryBudget
+			}
+			page.WorkRows++
+			page.WorkBytes += used
+			state.Sequence = o.Sequence
+			state.Chain = historyChain(state.Chain, row.Key, row.Value)
+			for _, write := range group.Writes {
+				if state.Originals[write.Group] == math.MaxUint64 {
+					return nil, errLimit
+				}
+				state.Originals[write.Group]++
+			}
+		}
+		if len(rows) < budget.Rows {
+			if state.Sequence != hi {
+				return nil, errUnavailable
+			}
+			state.Coordinator++
+			state.Sequence = 0
+			if state.Coordinator == 2 {
+				for g := range 2 {
+					if state.CumulativeDeleted[g] > math.MaxUint64-state.Before[g].Versions || state.Originals[g] != state.Before[g].Versions+state.CumulativeDeleted[g] {
+						return nil, errUnavailable
+					}
+				}
+				state.Phase = historyDeleting
+			}
+		}
+	} else {
+		g := state.Group
+		if g >= 2 {
+			return nil, errInvalid
+		}
+		begin := fdb.Key(s.h.prefix(g) + "history/")
+		if len(state.Cursor) != 0 {
+			begin = fdb.Key(append(bytes.Clone(state.Cursor), 0))
+		}
+		end := fdb.Key(fmt.Sprintf("%shistory/%016x0", s.h.prefix(g), state.Target.Round))
+		rows, err := tr.GetRange(fdb.KeyRange{Begin: begin, End: end}, fdb.RangeOptions{Limit: budget.Rows}).GetSliceWithError()
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			if uint64(len(row.Key)+len(row.Value)) > budget.Bytes-page.WorkBytes {
+				return nil, errHistoryBudget
+			}
+			logical, v, err := s.h.graphHistoryRow(graphCostRawRow{Group: g, Key: row.Key, Value: row.Value}, state.Target.Round)
+			if err != nil {
+				return nil, err
+			}
+			_, originalBytes, err := s.h.historyOriginalIn(tr, g, logical, v)
+			if err != nil {
+				return nil, err
+			}
+			anchor, anchorBytes, err := s.anchorIn(tr, g, logical, state.Target.Round)
+			if err != nil {
+				return nil, err
+			}
+			used := uint64(len(row.Key)+len(row.Value)) + originalBytes + anchorBytes
+			if graphHistoryDeletionAllowed(v, anchor, state.Target.Round) {
+				extra, err := s.ancestorIn(tr, g, logical, anchor, v)
+				used += extra
+				if err != nil {
+					return nil, err
+				}
+			}
+			if page.WorkBytes > budget.Bytes || used > budget.Bytes-page.WorkBytes {
+				return nil, errHistoryBudget
+			}
+			page.WorkRows++
+			page.WorkBytes += used
+			state.Scanned[g]++
+			state.Cursor = bytes.Clone(row.Key)
+			if graphHistoryDeletionAllowed(v, anchor, state.Target.Round) {
+				deleted := uint64(len(row.Key) + len(row.Value))
+				if actual[g].Versions == 0 || actual[g].Bytes < s.h.metadataReservation(g) || deleted > actual[g].Bytes-s.h.metadataReservation(g) {
+					return nil, errMismatch
+				}
+				actual[g].Versions--
+				actual[g].Bytes -= deleted
+				state.Deleted[g]++
+				state.DeletedBytes[g] += deleted
+				page.Deleted[g]++
+				page.DeletedBytes[g] += deleted
+				clear = append(clear, fdb.Key(bytes.Clone(row.Key)))
+			} else {
+				if v != anchor {
+					return nil, errMismatch
+				}
+				state.Anchors[g]++
+			}
+		}
+		if len(rows) < budget.Rows {
+			if state.Scanned[g] != state.Before[g].Versions || state.Anchors[g] != actual[g].Versions {
+				return nil, errUnavailable
+			}
+			state.Group++
+			state.Cursor = nil
+			if state.Group == 2 {
+				state.Phase = historySealed
+				state.Completed = graphHistorySeal{Request: request, Cut: state.Target, Before: state.Before, After: actual, Originals: state.Originals, Deleted: state.Deleted, DeletedBytes: state.DeletedBytes, Anchors: state.Anchors, CensusSHA256: state.Chain}
+				for g := range 2 {
+					if state.Deleted[g] > math.MaxUint64-state.CumulativeDeleted[g] {
+						return nil, errLimit
+					}
+					state.CumulativeDeleted[g] += state.Deleted[g]
+				}
+				state.Completed.CumulativeDeleted = state.CumulativeDeleted
+				page.Done = true
+				page.Seal = state.Completed
+			}
+		}
+	}
+	if page.WorkRows > s.binding.Policy.MaxWorkRows-state.WorkRows || page.WorkBytes > s.binding.Policy.MaxWorkBytes-state.WorkBytes {
+		return nil, errLimit
+	}
+	state.WorkRows += page.WorkRows
+	state.WorkBytes += page.WorkBytes
+	body, err := wire(page)
+	if err != nil || uint64(len(body)) > budget.OutputBytes {
+		return nil, errors.Join(errHistoryBudget, err)
+	}
+	stateBody, err := wire(state)
+	if err != nil || len(stateBody) > historyControlBytes {
+		return nil, errors.Join(errLimit, err)
+	}
+	if page.Done {
+		sealBody, err := wire(state.Completed)
+		if err != nil || len(sealBody) > historyControlBytes {
+			return nil, errors.Join(errLimit, err)
+		}
+		key := s.h.historyKey("seal/" + request)
+		prior, err := tr.Get(key).Get()
+		if err != nil {
+			return nil, err
+		}
+		if len(prior) != 0 && !bytes.Equal(prior, sealBody) {
+			return nil, errMismatch
+		}
+		tr.Set(key, sealBody)
+	}
+	// All admissions and output checks precede every deletion/counter effect.
+	for _, key := range clear {
+		tr.Clear(key)
+	}
+	for g := uint8(0); g < 2; g++ {
+		if err := put(tr, s.h.key(g, "meta", "state"), actual[g]); err != nil {
+			return nil, err
+		}
+	}
+	tr.Set(s.h.historyKey("state"), stateBody)
+	return page, nil
 }
 
 // The active owner protects physical anchors for its cut. Native reads/callback

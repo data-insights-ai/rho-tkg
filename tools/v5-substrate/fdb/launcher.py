@@ -144,6 +144,8 @@ def main():
                    "mode": mode, "scope": scopes[mode]}
         if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") == "fdb-owned-ingress-transport-v2":
             receipt["scope"] = "one host/four logical FDB zones; fresh explicitly selected contention/selectors/effective-unique/feed/immutable-columns/late-correction owned receiver-ingress transport and fixed original budget; actual configured delay, TCP connect+echo baseline/armed/after distributions, drops, all helper/engine process RSS and cgroup counters; no identical observed RTT, independent-host/LAN-WAN, native parity, remaining-family or capacity/matrix acceptance"
+            if json.loads(os.environ["RHO_GRAPH_WORKLOAD_SPEC"])["family"] == "transfer-retained-pins":
+                receipt["scope"] = "one host/four logical FDB zones; actual stable-bucket A1-to-B2 processing authority, separate source/target SDK SIGKILL/replacement, immutable COMMIT/fenced-ABORT recovery, actual Next-backed blocks, frozen native full-census handoff, retained old snapshot before release and explicit feed-only after physical history GC, owned receiver-ingress transport/fixed original budget; co-resident SDK processes are not independent machines or FDB replica roles; no native retention equivalence, whole matrix or capacity acceptance"
         (out / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     else:
         raise ValueError("unsupported launcher action")

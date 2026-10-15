@@ -19,6 +19,22 @@ class WorkloadMatrixGuards(unittest.TestCase):
         self.assertTrue(all(c["implemented"] and c["workload"]["version"]==1 for c in cells))
         self.assertEqual({c["workload"]["crossPercent"] for c in cells},{0,10,50,100})
 
+    def test_transfer_requires_real_fresh_adapter_and_explicit_native_grant(self):
+        spec={"version":2,"family":"transfer-retained-pins","facts":40,"crossPercent":50,"writers":32,"layout":"columns"}
+        for transport in matrix.TRANSPORTS:
+            self.assertEqual(matrix.preflight(spec,"01"*16,"foundationdb",transport),spec)
+            self.assertFalse(matrix.implemented(spec["family"],"native-raft",transport,True))
+            self.assertFalse(matrix.implemented(spec["family"],"paired",transport,True))
+        cells=list(matrix.matrix((spec["family"],),("rtt-100ms",),("foundationdb",),owned=True))
+        self.assertEqual(len(cells),360)
+        self.assertTrue(all(c["implemented"] and c["workload"]["version"]==2 for c in cells))
+        with tempfile.TemporaryDirectory() as directory:
+            destination=Path(directory)/"unfunded-transfer"
+            options={"QueuePackets":1024,"SampleMillis":60000,"MaxSamples":525602,"MaxArtifactBytes":1<<44}
+            with self.assertRaises(ValueError):matrix.execute(cells[0],destination,31536000,"small",4096,1<<40,8<<20,owned_options=options)
+            self.assertFalse(destination.exists())
+        with self.assertRaises(ValueError):matrix.preflight(spec|{"version":1},"01"*16)
+
     def test_native_retained_snapshot_feed_actual_route_and_nonlocal_pair_boundary(self):
         spec={"version":1,"family":"snapshot-to-feed","facts":40,"crossPercent":0,"writers":32,"layout":"columns"}
         for transport in matrix.TRANSPORTS:

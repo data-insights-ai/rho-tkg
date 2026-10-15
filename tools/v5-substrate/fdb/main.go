@@ -40,12 +40,23 @@ func main() {
 
 func run() error {
 	if os.Getenv("RHO_GRAPH_WORKLOAD_TRANSPORT") != "" {
-		if len(os.Args) != 2 || os.Args[1] != "workload-cell" && os.Args[1] != "feed-client-hold" && os.Args[1] != "feed-client-resume" {
+		if len(os.Args) != 2 || os.Args[1] != "workload-cell" && os.Args[1] != "feed-client-hold" && os.Args[1] != "feed-client-resume" && os.Args[1] != "transfer-owner-A" && os.Args[1] != "transfer-owner-B" {
 			return errInvalid
 		}
 		if _, err := graphTransportFromEnv(); err != nil {
 			return err
 		}
+	}
+	if len(os.Args) == 2 && (os.Args[1] == "transfer-owner-A" || os.Args[1] == "transfer-owner-B") {
+		if _, _, _, err := graphTransferEnvironment(); err != nil {
+			return err
+		}
+		db, err := openDB()
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		return runGraphTransferChild(db, strings.TrimPrefix(os.Args[1], "transfer-owner-"))
 	}
 	if len(os.Args) == 2 && (os.Args[1] == "feed-client-hold" || os.Args[1] == "feed-client-resume") {
 		db, err := openDB()
@@ -65,6 +76,18 @@ func run() error {
 		}
 		if err := json.Unmarshal([]byte(raw), &family); err != nil {
 			return errInvalid
+		}
+		if family.Family == graphOwnerTransferFamily {
+			_, _, _, err := graphTransferEnvironment()
+			if err != nil {
+				return err
+			}
+			db, err := openDB()
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			return runGraphTransferWorkload(db)
 		}
 		if family.Family == graphFeedWorkloadFamily {
 			spec, run, err := graphFeedWorkloadSpecFromEnv()

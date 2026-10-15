@@ -29,7 +29,7 @@ FAMILIES = {
 FACTS, CROSS, WRITERS, LAYOUTS = (10_000, 100_000, 1_000_000), (0, 10, 50, 100), (1, 8, 32), ("kv", "columns")
 TRANSPORTS = {"local": 0, "rtt-1ms": 1, "rtt-20ms": 20, "rtt-100ms": 100}
 ENGINES = ("foundationdb", "native-raft", "paired")
-IMPLEMENTED = ("contention-empty-range", "snapshot-selectors", "snapshot-to-feed", "cross-edge-endpoint-uniqueness", "immutable-columns", "late-correction-old-index")
+IMPLEMENTED = ("contention-empty-range", "snapshot-selectors", "snapshot-to-feed", "cross-edge-endpoint-uniqueness", "immutable-columns", "late-correction-old-index", "transfer-retained-pins")
 
 
 def require(condition, message):
@@ -38,7 +38,7 @@ def require(condition, message):
 
 
 def implemented(family, engine, transport, owned=False):
-    return (family in IMPLEMENTED and (transport == "local" or owned) if engine == "foundationdb" else
+    return (family in IMPLEMENTED and (family != "transfer-retained-pins" or owned) and (transport == "local" or owned) if engine == "foundationdb" else
             family == "contention-empty-range" and (engine == "native-raft" or engine == "paired" and transport == "local")
             or family in ("cross-edge-endpoint-uniqueness", "snapshot-to-feed", "snapshot-selectors") and (engine == "native-raft" or engine == "paired" and transport == "local"))
 
@@ -63,7 +63,7 @@ def preflight(spec, run, engine="foundationdb", transport="local"):
     require(type(spec["version"]) is int and (spec["version"] == 1 and (engine != "foundationdb" or transport == "local") or fresh) and engine in ENGINES and transport in TRANSPORTS
             and implemented(spec["family"], engine, transport, fresh), "family/engine/real transport driver not implemented")
     require(type(spec["facts"]) is int and 20 <= spec["facts"] <= 1_000_000 and spec["facts"] % 20 == 0 and type(spec["crossPercent"]) is int and spec["crossPercent"] in CROSS and type(spec["writers"]) is int and spec["writers"] in WRITERS and spec["layout"] in LAYOUTS, "fresh family shape")
-    require(spec["family"] not in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns") or spec["facts"] >= spec["writers"] + 1, "seed plus one genuine initial job per independent caller")
+    require(spec["family"] not in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns", "transfer-retained-pins") or spec["facts"] >= spec["writers"] + 1, "seed plus one genuine initial job per independent caller")
     require(spec["family"]!="late-correction-old-index" or spec["facts"]//2>spec["writers"],"half correction cohort funds seed plus a genuine job per caller")
     require(type(run) is str and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "explicit nonzero fresh run identity")
     return spec
@@ -100,7 +100,15 @@ def transport_options(args):
     return dict(zip(("QueuePackets","SampleMillis","MaxSamples","MaxArtifactBytes"),values,strict=True))
 
 
-def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, grant_origin="explicit-caller", native_binary=None, watchdog=None, owned_options=None):
+def transfer_grant(path, spec):
+    require(path is not None,"transfer requires explicit --transfer-grant native storage/census policy")
+    from fdb_transfer_check import validate_grant
+    with Path(path).open("rb") as source:body=source.read(16385)
+    require(0<len(body)<=16384,"bounded caller-owned transfer policy file")
+    return validate_grant(json.loads(body),spec)
+
+
+def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, grant_origin="explicit-caller", native_binary=None, watchdog=None, owned_options=None, transfer_policy=None):
     """One finite fresh run with existing launcher owned cleanup/accounting."""
     transport = next((name for name, delay in TRANSPORTS.items() if cell["transport"] ==
                       {"kind": "local" if name == "local" else "injected-rtt", "targetRTTMillis": delay, "jitterMillis": 0, "seed": 20261009}), "unsupported")
@@ -108,6 +116,11 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     require(owned_options is None or cell["engine"] == "foundationdb" and cell["workload"]["family"] in IMPLEMENTED, "no nominal paired/unsupported-family FDB shaping")
     actual_cell = cell if owned_options is None else {**cell,"workload":{**cell["workload"],"version":2}}
     spec = preflight(actual_cell["workload"], run, cell["engine"], transport)
+    transfer=spec["family"]=="transfer-retained-pins"
+    require(transfer == (transfer_policy is not None),"transfer native grant is explicit and cannot silently affect another family")
+    if transfer:
+        from fdb_transfer_check import validate_grant
+        transfer_policy=validate_grant(transfer_policy,spec)
     require(cell["engine"] != "foundationdb" or (spec["version"] == 2) == (owned_options is not None), "fresh FDB spec requires the actual owned adapter, not a nominal transport label")
     require(grant_origin in ("explicit-caller", "small-default") and (grant_origin == "explicit-caller" or spec["facts"] < 1_000_000 and spec["writers"] != 32), "large cells require explicit finite verifier grant")
     owned_input = None
@@ -164,7 +177,7 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
         return
     destination = Path(output)
     destination.mkdir(mode=0o700, parents=False, exist_ok=False)
-    selector = spec["family"] in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns", "late-correction-old-index")
+    selector = spec["family"] in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns", "late-correction-old-index", "transfer-retained-pins")
     columns = spec["family"] == "immutable-columns"
     correction = spec["family"] == "late-correction-old-index"
     feed = spec["family"] == "snapshot-to-feed"
@@ -176,7 +189,8 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
                                    "retainedVersions": 7 + 11 * spec["facts"] if edge_unique else 3+3*spec["facts"]+3*(spec["facts"]//2) if correction else 3 + 6 * spec["facts"], "capacityQualified": False}, "deadlineSeconds": seconds,
                "deploymentProfile": profile, "admissionMiB": memory}
     if owned_input is not None: request["ownedTransport"] = owned_input
-    if feed:
+    if transfer:request["transferAdmission"]={"Policy":transfer_policy,"Scope":"finite native grant; stable logical buckets versus processing owners; explicit C-retaining then feed-only history-GC phases; no matched native retention verdict"}
+    if feed or transfer:
         pages = 3 + 2 * spec["facts"]
         calls = 8 * (2 * pages + 32)
         request["feedAdmission"] = {"maxPages": pages, "pageRows": 8, "pageBytes": 64 << 10, "maxCalls": calls,
@@ -192,6 +206,7 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     require(not os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") and not os.environ.get("RHO_FDB_TRANSPORT_INPUT"), "transport authority must come from this fresh explicit request")
     if owned_input is not None:
         env.update({"RHO_GRAPH_WORKLOAD_TRANSPORT":"fdb-owned-ingress-transport-v2","RHO_FDB_TRANSPORT_INPUT":json.dumps(owned_input,separators=(",",":")),"RHO_GRAPH_WORKLOAD_SECONDS":str(seconds)})
+    if transfer:env["RHO_FDB_TRANSFER_GRANT"]=json.dumps(transfer_policy,separators=(",",":"))
     with (destination / "launcher.stdout").open("x") as out, (destination / "launcher.stderr").open("x") as error:
         # run-local owns monitored containers/volumes and its EXIT cleanup. Its
         # own finite phases are authoritative; do not timeout only the Docker CLI.
@@ -210,7 +225,9 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     # Import the private family oracle only after the actual run; it joins all
     # originals/raw EOFs/cache bytes under one finite spool policy.
     sys.path.insert(0, str(ROOT / "fdb"))
-    if correction:
+    if transfer:
+        import fdb_transfer_check as checker
+    elif correction:
         import fdb_correction_check as checker
     elif columns:
         import fdb_columns_check as checker
@@ -224,7 +241,7 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
         import fdb_contention_check as checker
     proof = checker.verify(artifacts, destination, policy)
     stem = "correction" if correction else "columns" if columns else "edge-unique" if edge_unique else "feed" if feed else "selectors" if selector else "contention"
-    prefix = f"graph-workload-{stem}-v{spec['version']}-"
+    prefix = "graph-owned-v3-" if transfer else f"graph-workload-{stem}-v{spec['version']}-"
     require(proof["spec"] == spec and proof["runGraph"] == prefix + spec["layout"] + "-" + run, "fresh run/native binding/result agreement")
     with (destination / "verified.json").open("x") as out:
         json.dump({"requestSHA256": hashlib.sha256((destination / "request.json").read_bytes()).hexdigest(), "artifacts": str(artifacts), "proof": proof,
@@ -239,6 +256,9 @@ def execute_matrix(args):
     require(implemented(args.family, args.engine, args.transport, options is not None), "selected matrix family/engine/transport implementation is absent")
     require(args.engine != "foundationdb" or args.transport == "local" or options is not None, "nonlocal FDB matrix requires explicit fresh owned transport/grants before any directory/effect")
     seconds = run_seconds(args.seconds, args.engine) if options is None else args.seconds
+    grant=None
+    require(args.transfer_grant is None or args.family=="transfer-retained-pins","native transfer grant only for explicit transfer family")
+    if args.family=="transfer-retained-pins":grant=transfer_grant(args.transfer_grant,{"version":2,"family":args.family,"facts":1_000_000,"crossPercent":100,"writers":32,"layout":"columns"})
     if options is not None:
         owned_transport_input({"version":2,"family":args.family,"facts":1_000_000,"crossPercent":100,"writers":1,"layout":"columns"}, "01"*16,
                               {"kind":"local" if args.transport=="local" else "injected-rtt","targetRTTMillis":TRANSPORTS[args.transport],"jitterMillis":0,"seed":20261009},seconds,options)
@@ -266,7 +286,7 @@ def execute_matrix(args):
     with (root / "completed.jsonl").open("x") as completed:
         for cell in matrix((args.family,), (args.transport,), (args.engine,), owned=options is not None):
             destination = root / f"cell-{count:04d}"
-            execute(cell, destination, seconds, args.deployment_profile, args.admission_mib, disk, cache, origin, args.native_binary, args.watchdog, options)
+            execute(cell, destination, seconds, args.deployment_profile, args.admission_mib, disk, cache, origin, args.native_binary, args.watchdog, options, grant)
             completed.write(json.dumps({"cell": count, "repetition": cell["repetition"], "verified": str(destination / "verified.json")}) + "\n")
             completed.flush()
             count += 1
@@ -318,12 +338,15 @@ def main():
         command.add_argument("--transport-sample-millis", type=int)
         command.add_argument("--transport-max-samples", type=int)
         command.add_argument("--transport-artifact-bytes", type=int)
+        command.add_argument("--transfer-grant", help="explicit finite native catalog/allocation/census JSON policy; transfer family only")
     args = parser.parse_args()
     if args.mode == "plan":
         for cell in matrix(engines=(args.engine,)):
             print(json.dumps(cell, separators=(",", ":")))
     elif args.mode == "preflight":
-        preflight(json.loads(args.spec), args.run)
+        spec=json.loads(args.spec)
+        require(spec.get("version")==1,"fresh version2 requires owned_transport.py preflight and native admission; ordinary launcher cannot impersonate it")
+        preflight(spec, args.run)
     elif args.mode == "run-matrix":
         execute_matrix(args)
     else:
@@ -331,7 +354,10 @@ def main():
                     (cell["workload"]["facts"], cell["workload"]["crossPercent"], cell["workload"]["writers"], cell["workload"]["layout"], cell["repetition"]) ==
                     (args.facts, args.cross, args.writers, args.layout, args.repetition))
         disk, cache, origin = comparison_grant(args.facts, args.writers, args.spool_disk_bytes, args.spool_cache_bytes)
-        execute(cell, args.output, args.seconds, args.deployment_profile, args.admission_mib, disk, cache, origin, args.native_binary, args.watchdog, transport_options(args))
+        require(args.transfer_grant is None or args.family=="transfer-retained-pins","transfer grant cannot alter another family")
+        transfer_spec={**cell["workload"],"version":2}
+        grant=transfer_grant(args.transfer_grant,transfer_spec) if args.family=="transfer-retained-pins" else None
+        execute(cell, args.output, args.seconds, args.deployment_profile, args.admission_mib, disk, cache, origin, args.native_binary, args.watchdog, transport_options(args), grant)
 
 
 if __name__ == "__main__":
