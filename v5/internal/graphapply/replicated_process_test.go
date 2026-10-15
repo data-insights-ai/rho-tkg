@@ -1574,6 +1574,7 @@ type certifiedProcessOwners struct {
 	workloadDeadline  time.Time
 	workloadAdmission nativeContentionAdmission
 	fault             *nativeFaultFS
+	stableBatch       *nativeBatchOwner
 	decisions         *nativeDecisionOwner
 	family            *nativeFaultFamilyOwner
 	host              *allocationHost
@@ -1972,6 +1973,14 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	default:
 		t.Fatal("unknown native fault process profile")
 	}
+	stableBatch, stableFS, err := nativeBatchOpen(t.Context(), os.Getenv("RHO_GRAPH_PROCESS_DIR"), id, faultFS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stableBatch != nil {
+		defer stableBatch.close()
+		faultFS = stableFS
+	}
 	s, err := raftlog.Open(raftlog.Config{Dir: os.Getenv("RHO_GRAPH_PROCESS_DIR"), FS: faultFS, Create: create, Limits: l, Application: p, Controls: controls, Recovery: recovery, Retention: nativeRetention, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.graph), Partition: n.partition, Group: part.Group}, Contract: contract, Limits: raftlog.ApplicationTransferLimits{MaxExports: 2, MaxChunkRows: 64, MaxChunkBytes: 256 << 10, MaxStagedBytes: 16 << 20, MaxStagedRecords: 8192, MaxPinnedLogicalBytes: 64 << 20}}, Generations: generations, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: voters}, SemanticContractID: agreement})
 	if err != nil {
 		if family != nil {
@@ -2000,7 +2009,7 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 			t.Error(err)
 		}
 	}()
-	o := certifiedProcessOwners{host: h, cost: cost, workload: workload, workloadRun: workloadRun, workloadDeadline: workloadDeadline, workloadAdmission: workloadAdmission, fault: fault, family: family}
+	o := certifiedProcessOwners{host: h, cost: cost, workload: workload, workloadRun: workloadRun, workloadDeadline: workloadDeadline, workloadAdmission: workloadAdmission, fault: fault, stableBatch: stableBatch, family: family}
 	if _, err := io.ReadFull(rand.Reader, o.incarnation[:]); err != nil {
 		t.Fatal(err)
 	}

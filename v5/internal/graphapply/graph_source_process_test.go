@@ -97,10 +97,13 @@ type graphProcessHub struct {
 	costStarted                      time.Time
 	idle                             chan struct{}
 	// Optional test transport schedule; protected by mu and never graph authority.
-	beforeRelay         func(context.Context, uint64, uint64, []byte) error
-	afterRelay          func(context.Context, uint64, uint64, []byte, []byte) error
-	relayTargets        map[uint64]map[uint64]uint64
-	packetFilter        func(replica.Packet) (bool, error)
+	beforeRelay  func(context.Context, uint64, uint64, []byte) error
+	afterRelay   func(context.Context, uint64, uint64, []byte, []byte) error
+	relayTargets map[uint64]map[uint64]uint64
+	packetFilter func(replica.Packet) (bool, error)
+	// Fresh diagnostic only: an actual failed Step may be dropped after exact
+	// expected-target self-kill receipt authentication. Nil keeps failure routing.
+	failedStep          func(graphProcessPacketJob, error) bool
 	nativeFaultSchedule *nativeFaultPacketScheduler
 	workload            *nativeWorkloadTransport // immutable fresh workload owner
 	workloadBytes       int                      // fixed scheduler ownership within existing queue bytes
@@ -650,6 +653,16 @@ func (h *graphProcessHub) deliverFaultScheduled(job graphProcessPacketJob, sched
 			h.costTiming.StepNanos += nanos
 			h.costTiming.StepMaxNanos = max(h.costTiming.StepMaxNanos, nanos)
 			h.mu.Unlock()
+		}
+		if err != nil {
+			h.mu.Lock()
+			failedStep := h.failedStep
+			h.mu.Unlock()
+			if failedStep != nil && nativeBatchFailedStepAllowed(r, err) && failedStep(actual, err) {
+				// Actual target loss drops this one delivery; no successful Step,
+				// packets or native result are synthesized for the origin.
+				continue
+			}
 		}
 		if err == nil {
 			err = processResponseError(r)
@@ -2059,6 +2072,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processNativeFaultControl:
 				if r.index != 0 || r.entity != 0 {
 					e = errInvalid
+				} else if bytes.HasPrefix(r.data, []byte(nativeBatchMarker)) {
+					if r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
+						e = errInvalid
+					} else {
+						response.aux, e = o.stableBatch.control(r.data)
+					}
 				} else {
 					response.aux, e = o.fault.control(r.data)
 				}

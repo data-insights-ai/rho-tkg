@@ -86,7 +86,8 @@ class Planning(unittest.TestCase):
             with self.subTest(paths=paths), patch.object(CI.subprocess,"run") as run:
                 CI.cdc(paths)
                 self.assertEqual([call.args[0] for call in run.call_args_list],
-                                 [[sys.executable,"-B","tools/v5-substrate/native_fault_schedule_check_test.py"],
+                                 [[sys.executable,"-B","tools/v5-substrate/native_transition_batch_check_test.py"],
+                                  [sys.executable,"-B","tools/v5-substrate/native_fault_schedule_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_fault_family_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_transition_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_transition_replay_test.py"],
@@ -313,6 +314,7 @@ class RealGitSelection(unittest.TestCase):
             "prepare_fence_p02_harness_test.go": {"TestPrepareFenceP02ActualOrderingAcrossElection"},
             "native_graph_fault_schedule_harness_test.go": set(CI.FAULT_PARENTS),
             "native_graph_transition_harness_test.go": set(CI.FAULT_PARENTS),
+            "native_graph_transition_batch_harness_test.go": set(CI.FAULT_PARENTS),
             "native_graph_transition_replay_harness_test.go": set(CI.FAULT_PARENTS),
             "native_graph_transition_move_harness_test.go": set(CI.FAULT_PARENTS),
             "native_graph_transition_cut_harness_test.go": set(CI.FAULT_PARENTS),
