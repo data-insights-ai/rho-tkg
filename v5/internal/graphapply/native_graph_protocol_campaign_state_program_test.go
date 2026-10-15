@@ -2,12 +2,15 @@ package graphapply
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 )
 
 func TestNativeProtocolPooledStateLeaderAndMessagePrograms(t *testing.T) {
@@ -104,6 +107,74 @@ func TestNativeProtocolStateProgramsKeepNativeIdentityAndCausalWindows(t *testin
 	}
 	if allocation != 8 {
 		t.Fatal("accepted issuance source attribution changed", allocation)
+	}
+}
+
+func TestNativeProtocolPoolProofDoesNotCancelSharedClientLifetime(t *testing.T) {
+	// An expired diagnostic operation must fail before IPC. It cannot replace
+	// the shared feed client's independently retained original context.
+	original := t.Context()
+	expired, cancel := context.WithCancel(original)
+	cancel()
+	process := &graphProcess{mux: &graphProcessMux{}}
+	network := &certifiedProcessNetwork{leaders: [2]uint64{2, 6}, all: map[uint64]*graphProcess{2: process}}
+	client := &nativeProtocolStateClient{t: t, ctx: original, n: network, member: 2, cookie: [16]byte{1}}
+	capture := &nativeProtocolPoolCapture{t: t, ctx: expired, n: network, clients: map[uint64]*nativeProtocolStateClient{2: client}, processes: map[uint64]*graphProcess{2: process}}
+	if _, err := capture.proof(original, 3, nil, nil); !errors.Is(err, context.Canceled) {
+		t.Fatal("expired proof did not refuse before native effects", err)
+	}
+	if client.ctx != original || client.ctx.Err() != nil || client.sequence != 1 {
+		t.Fatal("diagnostic replaced client lifetime or refunded failed sequence", client.ctx.Err(), client.sequence)
+	}
+}
+
+func TestNativeProtocolMoveBoundaryReportsEarlyFailureWithoutRenewingDeadline(t *testing.T) {
+	ctx := t.Context()
+	done := make(chan graphProcessAnswer, 1)
+	done <- graphProcessAnswer{err: errInvalid}
+	actual, err := nativeProtocolStateWaitMoveBoundary(ctx, make(chan struct{}), done)
+	if !errors.Is(err, errInvalid) || actual == nil || !errors.Is(actual.err, errInvalid) || ctx.Err() != nil {
+		t.Fatal("failed invocation hidden until original deadline", err)
+	}
+	lost := make(chan struct{})
+	close(lost)
+	if _, err := nativeProtocolStateWaitMoveBoundary(ctx, lost, nil); err != nil {
+		t.Fatal("actual observed loss replaced by absent caller reply", err)
+	}
+}
+
+func TestNativeProtocolPooledMoveFactoryKeepsActualIntentAndFinitePools(t *testing.T) {
+	t.Setenv("RHO_GRAPH_FAULT_FAMILY_PROCESS", "1")
+	t.Setenv("RHO_GRAPH_DURABLE_MODEL", "off")
+	n := collectedGraphNetworkWithRecovery(t, nil, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4})
+	_, _, _, _ = retainedPublisherFromNetwork(t, n)
+	owner, err := newNativeLogicalTransitionOwner(t.Context(), n.hosts[0][0], 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.close()
+	family, _, err := newNativeFaultFamilyOwner(t.Context(), t.TempDir(), 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer family.close()
+	input := nativeTransitionMovePrepare{Version: 1, Cookie: owner.cookie, FamilyCookie: family.cookie, RangeID: 1, Target: 8, Pages: graphE17AdmittedMovePages, Rows: 8, Bytes: 16 << 10}
+	body, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := processRequest{op: processNativeTransitionControl, sequence: 1, data: append([]byte(nativeTransitionMovePrepareMarker), body...)}
+	wire, err := owner.prepareMove(t.Context(), family, [16]byte{1}, request)
+	if err != nil {
+		t.Fatal("actual pooled factory admission", err)
+	}
+	if family.move == nil || family.move.source != owner.host.machine.scope() || !family.move.pools.valid(true) || family.move.pools != (rangeMovePools{2 << 20, 8 << 20, 8 << 20}) || family.moveCalls != 1 {
+		t.Fatal("pooled factory omitted exact finite grants or actual private intent")
+	}
+	original := family.move
+	replay, err := owner.prepareMove(t.Context(), family, [16]byte{1}, request)
+	if err != nil || string(replay) != string(wire) || family.move != original || family.moveCalls != 1 {
+		t.Fatal("factory replay replaced private intent or repeated admission", err)
 	}
 }
 

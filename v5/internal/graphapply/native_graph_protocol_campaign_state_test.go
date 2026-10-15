@@ -164,8 +164,14 @@ func (c *nativeProtocolPoolCapture) proof(ctx context.Context, partition uint64,
 		return nativeProtocolStateCall{}, errInvalid
 	}
 	client := c.clients[member]
-	if client == nil || c.processes[member] != c.n.all[member] {
-		client = &nativeProtocolStateClient{t: c.t, ctx: operation, n: c.n, member: member}
+	fresh := client == nil || c.processes[member] != c.n.all[member]
+	if fresh {
+		client = &nativeProtocolStateClient{t: c.t, ctx: c.ctx, n: c.n, member: member}
+	}
+	originalContext := client.ctx
+	client.ctx = operation
+	defer func() { client.ctx = originalContext }()
+	if fresh {
 		if _, err := client.call(nativeProtocolStateControl{Action: "inspect"}); err != nil {
 			return nativeProtocolStateCall{}, err
 		}
@@ -173,7 +179,6 @@ func (c *nativeProtocolPoolCapture) proof(ctx context.Context, partition uint64,
 		client.calls = nil
 		c.clients[member], c.processes[member] = client, c.n.all[member]
 	}
-	client.ctx = operation
 	priorCalls := len(client.calls)
 	_, err := client.call(nativeProtocolStateControl{Action: "move-proof", Original: command, Boundary: boundary})
 	if err != nil {
@@ -873,6 +878,36 @@ func nativeProtocolStateGraph(t *testing.T, ctx context.Context, f *pairedGraphF
 	a.Records = append(a.Records, nativeProtocolStateRecords(t, n, beforeGC, after)...)
 }
 
+func nativeProtocolStateWaitMoveBoundary(ctx context.Context, lost <-chan struct{}, done <-chan graphProcessAnswer) (*graphProcessAnswer, error) {
+	var completed *graphProcessAnswer
+	for {
+		select {
+		case <-lost:
+			return completed, nil
+		case actual := <-done:
+			completed = &actual
+			// Native loss may already be authenticated when the caller retires.
+			select {
+			case <-lost:
+				return completed, nil
+			default:
+			}
+			err := errors.Join(actual.err, processResponseError(actual.response))
+			if err == nil {
+				_, err = decodeGraphE17MoveResult(actual.response)
+			}
+			if err != nil {
+				return completed, err
+			}
+			// A successful caller may precede the selected follower's delivery.
+			// Keep its actual reply while waiting under the ORIGINAL deadline.
+			done = nil
+		case <-ctx.Done():
+			return completed, ctx.Err()
+		}
+	}
+}
+
 func nativeProtocolStateMove(t *testing.T, ctx context.Context, f *pairedGraphFaultNetwork, a *nativeProtocolStateArtifact, c *nativeProtocolStateClient) {
 	t.Helper()
 	n := f.n
@@ -909,12 +944,11 @@ func nativeProtocolStateMove(t *testing.T, ctx context.Context, f *pairedGraphFa
 		r, e := n.all[2].exchange(operation, processRequest{op: processRangeResume, data: prepared.aux})
 		done <- graphProcessAnswer{response: r, err: e}
 	}()
-	select {
-	case <-gate.lost:
-	case <-ctx.Done():
+	early, waitErr := nativeProtocolStateWaitMoveBoundary(ctx, gate.lost, done)
+	if waitErr != nil {
 		stop()
 		gate.close()
-		t.Fatal("required actual move page never matched", ctx.Err())
+		t.Fatal("move invocation failed before required actual native boundary", waitErr)
 	}
 	receipt, e := gate.read()
 	if e != nil {
@@ -929,11 +963,15 @@ func nativeProtocolStateMove(t *testing.T, ctx context.Context, f *pairedGraphFa
 	killed := nativeBatchReap(t, f, gate.owner.Member, receipt)
 	stop()
 	var pending processResponse
-	select {
-	case r := <-done:
-		pending = r.response
-	case <-ctx.Done():
-		t.Fatal("retire actual move caller", ctx.Err())
+	if early != nil {
+		pending = early.response
+	} else {
+		select {
+		case r := <-done:
+			pending = r.response
+		case <-ctx.Done():
+			t.Fatal("retire actual move caller", ctx.Err())
+		}
 	}
 	gate.close()
 	prior := n.all[gate.owner.Member]

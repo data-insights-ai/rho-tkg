@@ -108,7 +108,15 @@ func (o *nativeLogicalTransitionOwner) prepareMove(caller context.Context, famil
 	defer func() { stopOwner(); stopFamily(); cancel() }()
 	id := requestID(incarnation)
 	binary.BigEndian.PutUint64(id[8:], r.sequence)
-	intent, actual := o.host.PrepareRangeMove(ctx, id, input.RangeID, input.Target, input.Pages, input.Rows, input.Bytes)
+	var intent rangeMoveIntent
+	var actual error
+	if rangeMovePoolsEnabled(o.host.machine.SemanticContractID()) {
+		// The pooled profile requires explicit finite grants in its ORIGINAL
+		// factory value. Legacy zero-pool intents are not valid pooled authority.
+		intent, actual = o.host.PreparePooledRangeMove(ctx, id, input.RangeID, input.Target, input.Pages, input.Rows, input.Bytes, rangeMovePools{2 << 20, 8 << 20, 8 << 20})
+	} else {
+		intent, actual = o.host.PrepareRangeMove(ctx, id, input.RangeID, input.Target, input.Pages, input.Rows, input.Bytes)
+	}
 	var wire []byte
 	if actual == nil {
 		var encoded []byte
