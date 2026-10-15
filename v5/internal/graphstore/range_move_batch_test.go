@@ -172,7 +172,7 @@ func TestRangeMoveBatchOwnWritesFragmentsAndRetainedCut(t *testing.T) {
 			t.Fatal("shared native stage", err)
 		}
 		target = rangeMoveTestCommit(t, stores[1], e)
-		control, found, err := target.GetControl(t.Context(), binary.BigEndian.AppendUint64([]byte("range-move-progress"), e.Base.Index+1), raftlog.ReadBudget{Rows: 1, Bytes: 2 << 20})
+		control, found, _, err := target.GetControl(t.Context(), binary.BigEndian.AppendUint64([]byte("range-move-progress"), e.Base.Index+1), raftlog.ReadBudget{Rows: 1, Bytes: 2 << 20})
 		if err != nil || !found {
 			t.Fatal("co-committed progress", err)
 		}
