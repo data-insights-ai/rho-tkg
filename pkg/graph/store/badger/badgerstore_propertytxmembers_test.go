@@ -313,46 +313,6 @@ func TestPropTxBuild_GenerationGuardExhaustion(t *testing.T) {
 	}
 }
 
-// TestPropTxBuild_RebuildAfterReopen: the sidecars are RAM-only; a disk store
-// reopened rebuilds them from the committed keyspaces, delta rows included.
-func TestPropTxBuild_RebuildAfterReopen(t *testing.T) {
-	dir := t.TempDir()
-	open := func() *Store {
-		bs, err := New(Config{Dir: dir, HistoryDeltaEncoding: true, HistoryAnchorInterval: 2})
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-		return bs
-	}
-	bs := open()
-	ptxSetup(t, bs)
-	writeChains(t, bs)
-	if got, want := ptxRelMembers(t, bs, 1), "{100:100}"; got != want {
-		t.Fatalf("before reopen members(1) = %s, want %s", got, want)
-	}
-	if err := bs.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-	bs = open()
-	defer bs.Close()
-	st, err := bs.PropertyTxMembershipStats()
-	if err != nil {
-		t.Fatalf("stats: %v", err)
-	}
-	if st.RelSidecars != 0 || st.Builds != 0 {
-		t.Fatalf("a reopened store holds built sidecars: %+v", st)
-	}
-	if got, want := ptxRelMembers(t, bs, 1), "{100:100}"; got != want {
-		t.Fatalf("after reopen members(1) = %s, want %s", got, want)
-	}
-	if got, want := ptxNodeMembers(t, bs, 2), "{200:130}"; got != want {
-		t.Fatalf("after reopen node members(2) = %s, want %s", got, want)
-	}
-	if st, _ := bs.PropertyTxMembershipStats(); st.RelSidecars != 1 || st.NodeSidecars != 1 || st.Builds != 2 || st.BuildDuration <= 0 {
-		t.Fatalf("stats after the lazy rebuilds = %+v", st)
-	}
-}
-
 // TestPropTxBuild_CorruptRowFailsClosed: a stored row the build cannot decode
 // fails the lookup (the sidecar must be a superset; skipping the row could
 // drop a member) and leaves the sidecar unbuilt, so a later lookup after the
@@ -482,20 +442,20 @@ func TestPropTxBuild_ConcurrentWritersStress(t *testing.T) {
 	}
 }
 
-// TestPropTxBuild_OtherKeyNotBlockedByRunningBuild: one sidecar's build
-// (seconds at 1 M rows) must not hold up a lookup on another (type, key)
-// whose sidecar is built or builds on its own. Faulty implementation caught:
-// one store-wide build mutex. Key A's build is parked inside its scan; a
-// lookup on key B (built before) and a first lookup on key C (it builds)
-// must both complete while A is parked. The deadline only bounds the
-// failure; nothing waits on time on the passing path.
+// TestPropTxBuild_OtherKeyNotBlockedByRunningBuild: a build pass (seconds at
+// 1 M rows) must not hold up a lookup whose sidecar it does not build: one on
+// a built index (B) and the first one on an index declared after the pass
+// started (C, its own pass). A lookup on an index the running pass claimed
+// (D) waits for that pass instead of scanning again (backlog 74). Faulty
+// implementations caught: one store-wide build mutex (B or C waits), a second
+// scan for D. Pass A is parked inside its scan; the deadline only bounds the
+// failure.
 func TestPropTxBuild_OtherKeyNotBlockedByRunningBuild(t *testing.T) {
 	bs := newFlushParkStore(t, nil)
-	ptxSetup(t, bs)
-	for _, k := range []string{"zone", "lane"} {
-		if err := bs.CreateRelPropertyIndex(ptxT, k); err != nil {
-			t.Fatal(err)
-		}
+	putTestNode(t, bs, 1, 9, nil)
+	putTestNode(t, bs, 2, 9, nil)
+	if err := bs.CreateRelPropertyIndex(ptxT, "zone"); err != nil {
+		t.Fatal(err)
 	}
 	if err := bs.PutRelationship(ptxRel(100, 1, 0, 100)); err != nil {
 		t.Fatal(err)
@@ -503,12 +463,19 @@ func TestPropTxBuild_OtherKeyNotBlockedByRunningBuild(t *testing.T) {
 	lookup := func(key string) error {
 		return bs.ForEachRelPropertyTxMember(ptxT, key, ptxVK(1), func(types.RelID, types.Instant) bool { return true })
 	}
-	if err := lookup("zone"); err != nil { // key B built before A starts
+	if err := lookup("zone"); err != nil { // B built before A starts
 		t.Fatal(err)
+	}
+	for _, k := range []string{"seat", "dock"} { // A and D: one pass claims both
+		if err := bs.CreateRelPropertyIndex(ptxT, k); err != nil {
+			t.Fatal(err)
+		}
 	}
 	entered, release := make(chan struct{}), make(chan struct{})
 	var parked atomic.Bool // not sync.Once: Once.Do blocks the other callers
+	var scans atomic.Int64
 	bs.propTxScanTestHook = func() {
+		scans.Add(1)
 		if parked.CompareAndSwap(false, true) {
 			close(entered)
 			<-release
@@ -516,8 +483,12 @@ func TestPropTxBuild_OtherKeyNotBlockedByRunningBuild(t *testing.T) {
 	}
 	defer func() { bs.propTxScanTestHook = nil }()
 	aDone := make(chan error, 1)
-	go func() { aDone <- lookup("seat") }() // key A: parks inside its build
+	go func() { aDone <- lookup("seat") }() // A: parks inside its pass
 	<-entered
+	if err := bs.CreateRelPropertyIndex(ptxT, "lane"); err != nil { // C: declared during A's pass
+		close(release)
+		t.Fatal(err)
+	}
 	for _, key := range []string{"zone", "lane"} {
 		done := make(chan error, 1)
 		go func() { done <- lookup(key) }()
@@ -533,8 +504,16 @@ func TestPropTxBuild_OtherKeyNotBlockedByRunningBuild(t *testing.T) {
 			t.Fatalf("lookup on %s waited for the build of another key", key)
 		}
 	}
+	dDone := make(chan error, 1)
+	go func() { dDone <- lookup("dock") }() // D: waits for A's pass
 	close(release)
 	if err := <-aDone; err != nil {
 		t.Fatalf("key A lookup: %v", err)
+	}
+	if err := <-dDone; err != nil {
+		t.Fatalf("key D lookup: %v", err)
+	}
+	if n := scans.Load(); n != 2 {
+		t.Fatalf("passes A and C scanned %d times, want 2 (D is built by A's pass)", n)
 	}
 }

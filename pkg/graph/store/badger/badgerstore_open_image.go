@@ -70,6 +70,8 @@ const (
 	imgSecHF
 	imgSecVector
 	imgSecPlannerStats // badgerstore_planner_stats_deferred.go
+	imgSecRelPropTx    // built property membership sidecars (backlog 74)
+	imgSecNodePropTx
 )
 
 type imgValueIDs struct {
@@ -104,6 +106,11 @@ type openImage struct {
 	// stats holds the closing process's planner statistics; nil when the
 	// image has none (the open then defers them).
 	stats *imgPlannerStats
+	// relPropTx / nodePropTx hold the property membership sidecars the
+	// closing process had built (backlog 74); one the image lacks builds
+	// lazily.
+	relPropTx  map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyTxMembers[types.RelID]
+	nodePropTx map[indexpkg.PropertyIndexKey]*indexpkg.PropertyTxMembers[types.NodeID]
 }
 
 func newOpenImage() *openImage {
@@ -116,6 +123,8 @@ func newOpenImage() *openImage {
 		hf:               make(map[uint16][]imgHFEntry),
 		vectors:          make(map[indexpkg.VectorIndexKey][]imgVector),
 		restoredTemporal: make(map[uint16]bool),
+		relPropTx:        make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyTxMembers[types.RelID]),
+		nodePropTx:       make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyTxMembers[types.NodeID]),
 	}
 }
 
@@ -305,7 +314,42 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 	if st := bs.encodePlannerStatsLocked(); st != nil {
 		section(imgSecPlannerStats, st)
 	}
+	// Built property membership sidecars (backlog 74): derived from the rows
+	// exactly like the indexes above, so the same trust rule covers them; one
+	// tracking or claimed by a running pass is left out (built lazily).
+	for key, sc := range bs.relPropTx {
+		if sc.built && bs.relPropIndexUsableLocked(key) {
+			b := binary.BigEndian.AppendUint16(nil, key.RelTypeToken)
+			b = appendImgString(b, key.PropertyKey)
+			section(imgSecRelPropTx, appendImgPropTx(b, sc.members))
+		}
+	}
+	for key, sc := range bs.nodePropTx {
+		if sc.built && bs.nodePropIndexUsableLocked(key) {
+			b := binary.BigEndian.AppendUint16(nil, key.LabelToken)
+			b = appendImgString(b, key.PropertyKey)
+			section(imgSecNodePropTx, appendImgPropTx(b, sc.members))
+		}
+	}
 	return out
+}
+
+// appendImgPropTx renders a sidecar: the value count, then per value its key,
+// member count and (ID, first transaction time) pairs.
+func appendImgPropTx[ID ~int64](b []byte, m *indexpkg.PropertyTxMembers[ID]) []byte {
+	var n uint64
+	var body []byte
+	m.ForEachValue(func(vk string, members []indexpkg.TxMember[ID]) {
+		n++
+		body = appendImgString(body, vk)
+		body = binary.AppendUvarint(body, uint64(len(members)))
+		for _, mb := range members {
+			body = binary.AppendUvarint(body, uint64(mb.ID)) // #nosec G115 -- positive snowflake ID
+			body = binary.AppendVarint(body, int64(mb.FirstTx))
+		}
+	})
+	b = binary.AppendUvarint(b, n)
+	return append(b, body...)
 }
 
 func appendImgString(b []byte, s string) []byte {
@@ -498,6 +542,22 @@ func (r *imgReader) valueIDs() []imgValueIDs {
 	return out
 }
 
+// imgPropTx decodes appendImgPropTx's encoding.
+func imgPropTx[ID ~int64](r *imgReader) *indexpkg.PropertyTxMembers[ID] {
+	m := indexpkg.NewPropertyTxMembers[ID]()
+	for values := r.count(len(r.b)); values > 0 && r.err == nil; values-- {
+		vk := r.str()
+		if vk == "" {
+			r.fail("value key") // Record ignores an empty key: never written
+		}
+		for n := r.count(len(r.b)); n > 0 && r.err == nil; n-- {
+			id := ID(r.id())
+			m.Record(vk, id, types.Instant(r.varint()))
+		}
+	}
+	return m
+}
+
 func (r *imgReader) intervals() []indexpkg.IntervalEntry {
 	out := make([]indexpkg.IntervalEntry, r.count(len(r.b)))
 	for i := range out {
@@ -562,6 +622,12 @@ func decodeOpenImage(blob []byte) (*openImage, error) {
 			img.vectors[key] = entries
 		case imgSecPlannerStats:
 			img.stats = decodePlannerStats(&r)
+		case imgSecRelPropTx:
+			key := indexpkg.RelPropertyIndexKey{RelTypeToken: r.u16(), PropertyKey: r.str()}
+			img.relPropTx[key] = imgPropTx[types.RelID](&r)
+		case imgSecNodePropTx:
+			key := indexpkg.PropertyIndexKey{LabelToken: r.u16(), PropertyKey: r.str()}
+			img.nodePropTx[key] = imgPropTx[types.NodeID](&r)
 		default:
 			r.fail("section kind")
 		}
@@ -609,6 +675,31 @@ func (img *openImage) takeRelProp(key indexpkg.RelPropertyIndexKey) ([]imgValueI
 	v, ok := img.relProps[key]
 	delete(img.relProps, key)
 	return v, ok
+}
+
+// restoreRelPropTx / restoreNodePropTx install the image's sidecar for a
+// declared rel / node property index as built (open path, single goroutine): the doors record into it from
+// the first write on, as into one a pass built.
+func (bs *Store) restoreRelPropTx(img *openImage, key indexpkg.RelPropertyIndexKey) {
+	if img == nil || img.relPropTx[key] == nil {
+		return
+	}
+	if bs.relPropTx == nil {
+		bs.relPropTx = make(map[indexpkg.RelPropertyIndexKey]*propTxSidecar[types.RelID])
+	}
+	bs.relPropTx[key] = &propTxSidecar[types.RelID]{members: img.relPropTx[key], built: true}
+	delete(img.relPropTx, key)
+}
+
+func (bs *Store) restoreNodePropTx(img *openImage, key indexpkg.PropertyIndexKey) {
+	if img == nil || img.nodePropTx[key] == nil {
+		return
+	}
+	if bs.nodePropTx == nil {
+		bs.nodePropTx = make(map[indexpkg.PropertyIndexKey]*propTxSidecar[types.NodeID])
+	}
+	bs.nodePropTx[key] = &propTxSidecar[types.NodeID]{members: img.nodePropTx[key], built: true}
+	delete(img.nodePropTx, key)
 }
 
 func (img *openImage) takeComposite(key indexpkg.CompositeIndexKey) ([]imgValueIDs, bool) {

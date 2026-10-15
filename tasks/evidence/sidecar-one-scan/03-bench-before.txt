@@ -1,0 +1,7 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkEffectivePageFirstAfterOpen/clean-32         	       3	17918923963 ns/op	     17463 first-page-ms	       397.0 open-ms
+BenchmarkEffectivePageFirstAfterOpen/dirty-32         	       3	14354808737 ns/op	     11845 first-page-ms	      2371 open-ms
+PASS

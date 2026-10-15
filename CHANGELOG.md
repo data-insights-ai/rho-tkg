@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **One scan builds every declared property membership sidecar; a clean close keeps them** (ai-soc; backlog 74). ai-soc's
+  first `RelsEffectivePage` after an open waited about 3 minutes (503 meanwhile): the page asks every relationship type,
+  and each declared `(type, key)` sidecar was built lazily by its own full scan of the current and history rows
+  (`buildRelPropTx`, 123 of 259 s CPU, 29 types). Now the first lookup of a kind (relationship or node) starts one build
+  pass that claims every declared unbuilt sidecar of that kind and fills them all from one scan (the lazy-build rules
+  stand: tracking on under `idxMu`, write-buffer overlay captured before the view, install only if the generation did
+  not move). A lookup on a sidecar the running pass claimed waits for it; one on a built sidecar, or on an index
+  declared after the pass started, does not (the per-sidecar build mutex is gone). A clean badger `Close` writes the
+  built sidecars into the open image (sections 9 and 10, same trust rule as the indexes) and a trusted reopen restores
+  them, so the first page after a clean reopen scans nothing. Builds stay lazy: a store whose consumers never ask a
+  temporal property lookup builds and holds none. `PropertyTxMembershipStats().Builds` counts passes on badger (per
+  slot on sharded). Compatibility: v4.56.0 and older reject the new image sections and rebuild from the rows once.
+  Measured (`BenchmarkEffectivePageFirstAfterOpen`, 29 indexed types, 200,000 relationships, 50,000 history rows):
+  open to first page 15.3 s to 0.38 s after a clean close, 14.7 s to 2.8 s without an image
+  (`tasks/evidence/sidecar-one-scan/03-bench.txt`). Tests: `TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex`
+  (badger, delta, sharded), `TestPropTxBuild_OnePassScanCount`, `TestPropTxBuild_OnePassEqualsPerKeyBuild`,
+  `TestPropTxBuild_CleanReopenRestoresSidecars`, `TestPropTxBuild_OtherKeyNotBlockedByRunningBuild`,
+  `TestTieredNodePropertyTxMembersOnePass`.
+
 ## [4.56.0] - 2026-10-15
 
 ### Added
