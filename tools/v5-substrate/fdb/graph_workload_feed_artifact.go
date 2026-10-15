@@ -29,8 +29,23 @@ type graphFeedWorkloadEnd struct {
 	Columns                                                             *graphCostColumnEnd `json:",omitempty"`
 	AttemptSHA256, EventSHA256                                          string
 	Feed                                                                graphFeedWorkloadSummary
-	Transport                                                           *graphTransportRecord `json:",omitempty"`
+	Transport                                                           *graphTransportRecord        `json:",omitempty"`
+	BusinessAccounting                                                  *graphFeedBusinessAccounting `json:",omitempty"`
 }
+type graphFeedBusinessPhase struct {
+	Phase                            string
+	StartNanos, StopNanos, WallNanos int64
+	Useful                           uint64
+}
+type graphFeedBusinessAccounting struct {
+	Version                   uint8
+	Phases                    [2]graphFeedBusinessPhase
+	BusinessNanos, TotalNanos int64 // Clock after the header through source Close; footer/monitor costs stay separate.
+	Access                    string
+}
+
+const graphFeedBusinessAccess = "whole create/update phases including fact0 seed, queue/admission/replan/retry/wait, operation event callbacks and worker drain; separate diagnostic APIs; never summed parallel operation latency"
+
 type graphFeedWorkloadArtifacts struct {
 	ctx                         context.Context
 	h                           *harness
@@ -44,6 +59,100 @@ type graphFeedWorkloadArtifacts struct {
 	closed                      bool
 	firstRow                    func() error
 	childInput                  io.WriteCloser
+	accountingStarted           time.Time
+	accountingPhase             string
+	accountingPhases            int
+}
+
+// Opt-in observation only. A nil extension keeps historical helper/receipt
+// bytes and their earlier measurement scope; no graph/config authority changes.
+func (a *graphFeedWorkloadArtifacts) startBusinessAccounting() error {
+	if a == nil || a.ctx == nil || a.h == nil || a.closed || a.end.Committed != 0 || a.end.BusinessAccounting != nil {
+		return errInvalid
+	}
+	if err := a.ctx.Err(); err != nil {
+		return err
+	}
+	a.accountingStarted = time.Now()
+	a.end.BusinessAccounting = &graphFeedBusinessAccounting{Version: 1, Access: graphFeedBusinessAccess}
+	return a.event(struct {
+		Type    string
+		Version uint8
+		Access  string
+	}{"business-accounting", 1, graphFeedBusinessAccess})
+}
+func (a *graphFeedWorkloadArtifacts) businessPhase(phase string, run func() error) error {
+	if a == nil || run == nil {
+		return errInvalid
+	}
+	if a.end.BusinessAccounting == nil {
+		return run()
+	}
+	if a.accountingPhase != "" || a.accountingPhases >= 2 || phase != [2]string{"create", "update"}[a.accountingPhases] {
+		return errInvalid
+	}
+	if err := a.ctx.Err(); err != nil {
+		return err
+	}
+	before := a.end.Creates
+	if phase == "update" {
+		before = a.end.Updates
+	}
+	if before != 0 {
+		return errMismatch
+	}
+	begin := time.Now()
+	p := graphFeedBusinessPhase{Phase: phase, StartNanos: begin.Sub(a.accountingStarted).Nanoseconds()}
+	if err := a.event(struct {
+		Type, Phase string
+		StartNanos  int64
+	}{"business-phase-begin", phase, p.StartNanos}); err != nil {
+		return err
+	}
+	a.accountingPhase = phase
+	if err := run(); err != nil {
+		return err
+	}
+	stop := time.Now()
+	p.StopNanos, p.WallNanos = stop.Sub(a.accountingStarted).Nanoseconds(), stop.Sub(begin).Nanoseconds()
+	p.Useful = a.end.Creates - before
+	if phase == "update" {
+		p.Useful = a.end.Updates - before
+	}
+	if p.Useful != a.h.config.Cost.Facts || p.WallNanos <= 0 {
+		return errMismatch
+	}
+	if err := a.event(struct {
+		Type  string
+		Phase graphFeedBusinessPhase
+	}{"business-phase-end", p}); err != nil {
+		return err
+	}
+	a.end.BusinessAccounting.Phases[a.accountingPhases] = p
+	a.end.BusinessAccounting.BusinessNanos += p.WallNanos
+	a.accountingPhases++
+	a.accountingPhase = ""
+	return nil
+}
+func (a *graphFeedWorkloadArtifacts) latencyAt(phase string, fact uint64, client int, begin, end time.Time) error {
+	if a.end.BusinessAccounting == nil {
+		return a.latency(phase, fact, client, end.Sub(begin).Nanoseconds())
+	}
+	if err := a.ctx.Err(); err != nil {
+		return err
+	}
+	start, stop := begin.Sub(a.accountingStarted).Nanoseconds(), end.Sub(a.accountingStarted).Nanoseconds()
+	if start < 0 || stop <= start || phase != "setup" && phase != a.accountingPhase {
+		return errMismatch
+	}
+	return selectorsJSON(a.latencies, struct {
+		Phase                 string
+		Fact                  uint64
+		Client                int
+		Nanos                 int64
+		Access                string
+		StartNanos, StopNanos int64
+	}{phase, fact, client, end.Sub(begin).Nanoseconds(), "actual admission through business attempt/replan/verification; not selector point latency", start, stop})
 }
 
 func newGraphFeedWorkloadArtifacts(ctx context.Context, h *harness, root *os.Root, spec graphFeedWorkloadSpec, binding graphCostStoredRecord, initial cut) (*graphFeedWorkloadArtifacts, error) {
@@ -706,6 +815,12 @@ func (a *graphFeedWorkloadArtifacts) finish(source *graphHistoryRetention) (err 
 		return err
 	}
 	a.end.AttemptSHA256 = hex.EncodeToString(a.attemptHash.Sum(nil))
+	if a.end.BusinessAccounting != nil {
+		if a.accountingPhases != 2 || a.accountingPhase != "" {
+			return errMismatch
+		}
+		a.end.BusinessAccounting.TotalNanos = time.Since(a.accountingStarted).Nanoseconds()
+	}
 	a.end.EventSHA256 = hex.EncodeToString(a.eventHash.Sum(nil))
 	if err = selectorsJSON(a.attempts, struct {
 		Type                         string

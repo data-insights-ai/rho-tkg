@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"os"
 	"testing"
@@ -10,6 +12,57 @@ import (
 
 	"github.com/apple/foundationdb/bindings/go/src/fdb"
 )
+
+// Only the observation contract is exercised here. Synthetic completion counts
+// cannot establish an SDK workload, source oracle or measured performance.
+func TestGraphFeedBusinessAccountingKeepsNilLegacyAndWholePhaseBoundaries(t *testing.T) {
+	legacy := &graphFeedWorkloadArtifacts{}
+	called := false
+	if err := legacy.businessPhase("create", func() error { called = true; return nil }); err != nil || !called {
+		t.Fatal("nil timing hook changed legacy callback", err)
+	}
+	body, err := json.Marshal(legacy.end)
+	if err != nil || bytes.Contains(body, []byte("BusinessAccounting")) {
+		t.Fatal("nil extension changed historical terminal fields", err)
+	}
+	events, err := os.CreateTemp(t.TempDir(), "events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer events.Close()
+	latencies, err := os.CreateTemp(t.TempDir(), "latencies")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer latencies.Close()
+	a := &graphFeedWorkloadArtifacts{ctx: t.Context(), h: &harness{config: config{Cost: graphCostProfile{Facts: 2}}}, events: events, latencies: latencies, eventHash: sha256.New()}
+	if err := a.startBusinessAccounting(); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.startBusinessAccounting(); !errors.Is(err, errInvalid) {
+		t.Fatal("clock reset", err)
+	}
+	if err := a.businessPhase("update", func() error { t.Fatal("out-of-order phase ran"); return nil }); !errors.Is(err, errInvalid) {
+		t.Fatal("out-of-order phase admitted", err)
+	}
+	if err := a.businessPhase("create", func() error {
+		begin := time.Now()
+		a.end.Creates += 2
+		return a.latencyAt("create", 0, 0, begin, time.Now())
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.businessPhase("update", func() error { a.end.Updates += 2; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	x, y := a.end.BusinessAccounting.Phases[0], a.end.BusinessAccounting.Phases[1]
+	if x.Useful != 2 || y.Useful != 2 || x.StopNanos > y.StartNanos || x.WallNanos != x.StopNanos-x.StartNanos || y.WallNanos != y.StopNanos-y.StartNanos || a.end.BusinessAccounting.BusinessNanos != x.WallNanos+y.WallNanos {
+		t.Fatal("phase wall/count/ordering corrupted", a.end.BusinessAccounting)
+	}
+	if err := a.businessPhase("update", func() error { t.Fatal("duplicate phase ran"); return nil }); !errors.Is(err, errInvalid) {
+		t.Fatal("duplicate phase admitted", err)
+	}
+}
 
 // Authored source guards only; the complete actual process/cell path is the
 // fresh workload executable, never a reconstructed receipt or fake SDK result.

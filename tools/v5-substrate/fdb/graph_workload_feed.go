@@ -433,21 +433,26 @@ func runGraphFeedWorkload(db fdb.Database, spec graphFeedWorkloadSpec, run strin
 		return err
 	}
 	defer func() { err = errors.Join(err, a.Close()) }()
+	if err := a.startBusinessAccounting(); err != nil {
+		return err
+	}
 	apply := func(phase string, fact uint64) error {
 		begin := time.Now()
 		var output error
 		err := h.graphFeedWorkloadApply(ctx, phase, fact, 0, func(e graphCostParallelEvent) { output = errors.Join(output, a.accept(e)) })
-		return errors.Join(err, output, a.latency(phase, fact, 0, time.Since(begin).Nanoseconds()))
+		return errors.Join(err, output, a.latencyAt(phase, fact, 0, begin, time.Now()))
 	}
 	for i := uint64(0); i < 3; i++ {
 		if err := apply("setup", i); err != nil {
 			return err
 		}
 	}
-	if err := apply("create", 0); err != nil {
-		return err
-	}
-	if err := h.graphFeedWorkloadPhase(ctx, a, "create"); err != nil {
+	if err := a.businessPhase("create", func() error {
+		if err := apply("create", 0); err != nil {
+			return err
+		}
+		return h.graphFeedWorkloadPhase(ctx, a, "create")
+	}); err != nil {
 		return err
 	}
 	secret, err := newGraphFeedSecret()
@@ -491,10 +496,12 @@ func runGraphFeedWorkload(db fdb.Database, spec graphFeedWorkloadSpec, run strin
 		}{"race-first-row", original.Cut}); err != nil {
 			return err
 		}
-		if err := apply("update", 0); err != nil {
-			return err
-		}
-		if err := h.graphFeedWorkloadPhase(ctx, a, "update"); err != nil {
+		if err := a.businessPhase("update", func() error {
+			if err := apply("update", 0); err != nil {
+				return err
+			}
+			return h.graphFeedWorkloadPhase(ctx, a, "update")
+		}); err != nil {
 			return err
 		}
 		return a.event(struct {
@@ -830,8 +837,8 @@ func (h *harness) graphFeedWorkloadPhase(ctx context.Context, a *graphFeedWorklo
 	}
 	jobs := make(chan job, 32)
 	type event struct {
-		Value        graphCostParallelEvent
-		ElapsedNanos int64
+		Value      graphCostParallelEvent
+		Begin, End time.Time
 	}
 	events := make(chan event, 32)
 	phaseBegin := time.Now()
@@ -841,7 +848,7 @@ func (h *harness) graphFeedWorkloadPhase(ctx context.Context, a *graphFeedWorklo
 			perform := func(work job) {
 				fact := work.fact
 				err := h.graphFeedWorkloadApply(ctx, phase, fact, client, func(e graphCostParallelEvent) { events <- event{Value: e} })
-				events <- event{Value: graphCostParallelEvent{Client: client, Done: true, Err: err, Sample: graphCostSample{Phase: phase, Fact: fact}}, ElapsedNanos: time.Since(work.begin).Nanoseconds()}
+				events <- event{Value: graphCostParallelEvent{Client: client, Done: true, Err: err, Sample: graphCostSample{Phase: phase, Fact: fact}}, Begin: work.begin, End: time.Now()}
 			}
 			// One deterministic first job per genuine independent caller; shared
 			// queue scheduling cannot accidentally leave a declared writer unused.
@@ -870,7 +877,7 @@ func (h *harness) graphFeedWorkloadPhase(ctx context.Context, a *graphFeedWorklo
 		e := <-events
 		if e.Value.Done {
 			inflight--
-			result = errors.Join(result, e.Value.Err, a.latency(e.Value.Sample.Phase, e.Value.Sample.Fact, e.Value.Client, e.ElapsedNanos))
+			result = errors.Join(result, e.Value.Err, a.latencyAt(e.Value.Sample.Phase, e.Value.Sample.Fact, e.Value.Client, e.Begin, e.End))
 		}
 		result = errors.Join(result, a.accept(e.Value))
 	}

@@ -29,6 +29,7 @@ decoded, lines, key, prefix, raw_record = raw.decoded, raw.lines, raw.key, raw.p
 Spool, Policy, u64 = raw.Spool, raw.Policy, raw.u64
 FORMAT, FAMILY = "fdb-snapshot-feed-workload-v1", "snapshot-to-feed"
 POLICY = Policy(1 << 30, 8 << 20, 4096, 512 << 10)
+BUSINESS_ACCESS = "whole create/update phases including fact0 seed, queue/admission/replan/retry/wait, operation event callbacks and worker drain; separate diagnostic APIs; never summed parallel operation latency"
 
 
 def operation(p, value):
@@ -472,7 +473,7 @@ def columns(directory, end, spool):
 
 def validate_result(end):
     version = integer(end["Version"], 1, 2)
-    fields(end, "Version Format Spec Config Binding BindingRecord Initial Old Final Attempts Aborted Committed Setup Creates Updates Observations Clients Sources Feed AttemptSHA256 EventSHA256" + (" Columns" if "Columns" in end else "") + (" Transport" if version == 2 else ""))
+    fields(end, "Version Format Spec Config Binding BindingRecord Initial Old Final Attempts Aborted Committed Setup Creates Updates Observations Clients Sources Feed AttemptSHA256 EventSHA256" + (" Columns" if "Columns" in end else "") + (" Transport" if version == 2 else "") + (" BusinessAccounting" if "BusinessAccounting" in end else ""))
     require(end["Format"] == (FORMAT if version == 1 else "fdb-snapshot-feed-workload-v2"), "explicit fresh feed result format")
     p, c = end["Spec"], end["Config"]
     fields(p, "version family facts crossPercent writers layout")
@@ -512,18 +513,43 @@ def validate_result(end):
     require(("Columns" in end) == (p["layout"] == "columns"), "actual layout artifact required")
     for digest in (end["AttemptSHA256"], end["EventSHA256"]):
         require(type(digest) is str and len(digest) == 64 and bytes.fromhex(digest).hex() == digest, "sealed raw digest")
+    business_accounting(end)
+
+
+def business_accounting(end):
+    if "BusinessAccounting" not in end:return None
+    value=end["BusinessAccounting"]
+    fields(value,"Version Phases BusinessNanos TotalNanos Access")
+    require(integer(value["Version"],1,1) and value["Access"]==BUSINESS_ACCESS and type(value["Phases"]) is list and len(value["Phases"])==2,"explicit fresh business timing extension, never legacy throughput inference")
+    total=integer(value["TotalNanos"],1,(1<<63)-1);previous=wall=0
+    for name,p in zip(("create","update"),value["Phases"],strict=True):
+        fields(p,"Phase StartNanos StopNanos WallNanos Useful")
+        start=integer(p["StartNanos"],previous,total);stop=integer(p["StopNanos"],start+1,total)
+        require(p["Phase"]==name and integer(p["WallNanos"],1,total)==stop-start and integer(p["Useful"],1)==end["Spec"]["facts"],"whole actual phase interval includes its seed and every useful completion")
+        previous=stop;wall+=p["WallNanos"]
+    require(integer(value["BusinessNanos"],1,total)==wall,"business duration is actual two disjoint phase walls, not summed parallel operation times")
+    return value
 
 
 def latencies(directory, end, spool):
     count = 0
+    accounting=business_accounting(end)
     for row, _ in lines(directory / "fdb-feed-latency.jsonl", end["Committed"]):
-        fields(row, "Phase Fact Client Nanos Access")
+        fields(row, "Phase Fact Client Nanos Access"+(" StartNanos StopNanos" if accounting is not None else ""))
         integer(row["Nanos"], 1, (1 << 63) - 1)
         phase, fact = row["Phase"], integer(row["Fact"])
         ordinal = 1 + fact if phase == "setup" else 4 + fact + (end["Spec"]["facts"] if phase == "update" else 0)
         require(phase in ("setup", "create", "update") and fact < (3 if phase == "setup" else end["Spec"]["facts"]), "actual operation latency identity")
         original = decoded(spool.lookup(b"useful-attempt", u64(ordinal)))
         require(original["Operation"]["Phase"] == phase and original["Operation"]["Fact"] == fact and original["ClientID"] == row["Client"] and row["Access"] == "actual admission through business attempt/replan/verification; not selector point latency", "actual admission/attempt latency, no indexed read claim")
+        if accounting is not None:
+            start=integer(row["StartNanos"],0,accounting["TotalNanos"]);stop=integer(row["StopNanos"],start+1,accounting["TotalNanos"])
+            require(row["Nanos"]==stop-start,"complete actual queued-start/worker-stop duration")
+            if phase=="setup":require(stop<=accounting["Phases"][0]["StartNanos"],"setup is outside measured business phases")
+            else:
+                p=accounting["Phases"][0 if phase=="create" else 1]
+                require(p["StartNanos"]<=start<stop<=p["StopNanos"],"original-bound seed/queue/retry completion lies inside actual whole phase wall")
+            spool.insert(b"feed-business-duration/"+phase.encode(),u64(row["Nanos"])+u64(ordinal),b"1")
         spool.insert(b"latency-seen", u64(ordinal), b"1")
         count += 1
     require(count == end["Committed"], "one actual latency per useful operation including setup/seeds")
@@ -815,6 +841,7 @@ def events(directory, end, spool, header):
     race_started = race_finished = replaced = killed = points = storage_eof = source_closed = False
     source_owner = None
     inventory = {"stage": None, "done": 0}
+    accounting=business_accounting(end);business_started=False;business_active=None;business_done=0;business_counts=[0,0]
     storage_previous, storage_count, storage_bytes = None, 0, 0
     zero_outcome = {"Commit": False, "Round": 0, "Digest": [0] * 32, "ID": "", "Request": "", "Reason": "", "Coordinator": 0, "Sequence": 0}
     spool.insert(b"feed-control-state", b"last", go_json(zero_outcome))
@@ -824,17 +851,38 @@ def events(directory, end, spool, header):
         kind = frame.get("Type")
         if kind == "footer":
             require(frame == {"Type": "footer", "End": end} and digest.hexdigest() == end["EventSHA256"] and source_closed and storage_eof and active is None and inventory["stage"] is None, "complete raw feed/source event EOF")
+            require(accounting is None or business_started and business_done==2 and business_active is None,"complete genuine business timing begin/end events")
             footer = True
             continue
         digest.update(line)
         if not started:
             require(frame == {"Type": "header", "Format": end["Format"], "Spec": end["Spec"], "Config": end["Config"], "Binding": end["Binding"], "Record": end["BindingRecord"], "Initial": end["Initial"]}, "actual workload header/binding")
             started = True
+        elif kind=="business-accounting":
+            fields(frame,"Type Version Access")
+            require(accounting is not None and not business_started and committed==0 and frame=={"Type":kind,"Version":1,"Access":BUSINESS_ACCESS},"fresh observation clock before setup or workload mutation")
+            business_started=True
+        elif kind=="business-phase-begin":
+            fields(frame,"Type Phase StartNanos")
+            require(accounting is not None and business_started and business_active is None and business_done<2,"one authentic bounded business phase at a time")
+            p=accounting["Phases"][business_done]
+            require(frame["Phase"]==p["Phase"] and frame["StartNanos"]==p["StartNanos"] and committed==3+business_done*end["Spec"]["facts"] and (business_done==0 or race_started and not race_finished),"actual seed and all update commits inside the declared race/phase")
+            business_active=p["Phase"]
+        elif kind=="business-phase-end":
+            fields(frame,"Type Phase")
+            require(accounting is not None and business_done<2 and business_active is not None,"phase completion requires genuine begin")
+            p=accounting["Phases"][business_done]
+            require(frame["Phase"]==p and business_active==p["Phase"] and business_counts[business_done]==p["Useful"] and committed==3+(business_done+1)*end["Spec"]["facts"],"phase wall ends only after complete original useful census and worker drain")
+            spool.insert(b"feed-business-phase",p["Phase"].encode(),go_json(p))
+            business_done+=1;business_active=None
         elif kind == "committed":
             fields(frame, "Type Operation Original Outcome")
             ordinal, phase, _ = operation(end["Spec"], frame["Operation"])
             body = spool.lookup(b"fdb-operation", u64(ordinal))
             require(blob(frame["Original"]["Value"]) == body and frame["Outcome"] == decoded(body)["Outcome"] and (phase != "update" or race_started and not race_finished), "real useful completion strictly inside snapshot/write race")
+            if accounting is not None:
+                require(business_started and (phase=="setup" and business_active is None and business_done==0 or phase!="setup" and business_active==phase),"actual useful original belongs to exactly its running business phase")
+                if phase!="setup":business_counts[business_done]+=1
             spool.insert(b"completion-seen", u64(ordinal), b"1")
             committed += 1
         elif kind in ("originals-header", "original", "originals-eof"):
@@ -1140,6 +1188,23 @@ def timings(end, spool):
     return {"nearestRank": result, "scope": "actual API retry/wait, complete retained Scan through EOF with callback IO, separate scan-based Points and Page/ACK/replay; no indexed/per-key or external exactly-once claim"}
 
 
+def business_timings(end,spool):
+    accounting=business_accounting(end)
+    if accounting is None:return None
+    phases=[];setup=None
+    for name,count in (("setup",3),("create",end["Spec"]["facts"]),("update",end["Spec"]["facts"])):
+        values={};position=0
+        for position,(coordinate,_) in enumerate(spool.walk(b"feed-business-duration/"+name.encode()),1):
+            for percentile in (50,95,99):
+                if position==(percentile*count+99)//100:values[f"p{percentile}Nanos"]=int.from_bytes(coordinate[:8],"big")
+        require(position==count and len(values)==3,"complete original-bound operation percentiles from one finite BLOB spool")
+        if name=="setup":setup={"samples":count,**values};continue
+        p=accounting["Phases"][0 if name=="create" else 1]
+        require(spool.lookup(b"feed-business-phase",name.encode())==go_json(p),"reported phase wall joins actual raw begin/end and useful originals")
+        phases.append({**p,"samples":count,**values,"usefulTransactionsPerSecond":count*1_000_000_000/p["WallNanos"]})
+    return {"version":1,"businessNanos":accounting["BusinessNanos"],"observationWindowNanos":accounting["TotalNanos"],"phases":phases,"setup":setup,"scope":BUSINESS_ACCESS}
+
+
 def logical_answers(end, spool):
     """Digest actual typed old/final answers only after all native EOF joins.
 
@@ -1190,6 +1255,7 @@ def verify(directory, spool_directory, policy=None, *, shared_spool=None):
         columns(directory, end, spool)
         latencies(directory, end, spool)
         timing = timings(end, spool)
+        business=business_timings(end,spool)
         transport_proof = transport.verify(directory, end["Transport"]["Policy"], spool) if end["Version"] == 2 else None
         answers = logical_answers(end, spool) if shared_spool is not None else None
         report = spool.report()
@@ -1202,6 +1268,7 @@ def verify(directory, spool_directory, policy=None, *, shared_spool=None):
     if answers is not None:
         result["logicalAnswersSHA256"] = answers
         result["retentionContract"] = "snapshot-C-plus-feed-v1"
+    if business is not None:result["businessTiming"]=business
     return result
 
 
