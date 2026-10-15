@@ -92,7 +92,7 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	ms.mu.Unlock()
 
 	// Phase 2.
-	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
+	backfill := indexpkg.NewPostingsBuild(opts.Elements)
 	for _, nid := range nids {
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
@@ -110,8 +110,8 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	if err := requirePropertyIndexCurrentForCreate(ms.propertyIndexes, key, liveIdx); err != nil {
 		return err
 	}
-	for vk, idSet := range backfill.Entries {
-		for id := range idSet.All() {
+	backfill.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
@@ -122,7 +122,8 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 			// numeric view is maintained inside AddKey.
 			liveIdx.AddKey(id, vk)
 		}
-	}
+		return true
+	})
 	liveIdx.Mutated = nil // stop tracking — index creation complete
 	return nil
 }
@@ -221,7 +222,7 @@ func (ms *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 	ms.mu.Unlock()
 
 	// Phase 2.
-	backfill := indexpkg.NewCompositePropertyIndex(keys)
+	backfill := indexpkg.NewPostingsBuild(false)
 	for _, nid := range nids {
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
@@ -241,8 +242,8 @@ func (ms *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 	if err := requireCompositeIndexCurrentForCreate(ms.compositeIndexes, key, liveIdx); err != nil {
 		return err
 	}
-	for vk, idSet := range backfill.Entries {
-		for id := range idSet.All() {
+	backfill.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
@@ -251,7 +252,8 @@ func (ms *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 			}
 			liveIdx.AddKey(id, vk)
 		}
-	}
+		return true
+	})
 	liveIdx.Mutated = nil // stop tracking — index creation complete
 	return nil
 }

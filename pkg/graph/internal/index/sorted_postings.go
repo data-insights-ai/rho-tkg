@@ -2,6 +2,7 @@ package index
 
 import (
 	"iter"
+	"slices"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
@@ -63,6 +64,50 @@ func (p *IDPostings) After(after snowflake.ID) iter.Seq[snowflake.ID] {
 		p.s.forEachFrom(after, func(id snowflake.ID) bool {
 			return id == after || yield(id)
 		})
+	}
+}
+
+// PostingsBuild collects an index build's (value key, ID) pairs in any order
+// — an index backfill reads rows in label-snapshot (map) order — and hands each
+// key's IDs back sorted and distinct, so the live index is filled in ascending
+// ID order: every posting list then grows by appends into exact 512-ID chunks
+// (sortedChunks.add) instead of out-of-order inserts. Not safe for concurrent
+// use.
+type PostingsBuild struct {
+	keys     map[string][]snowflake.ID
+	elements bool
+}
+
+// NewPostingsBuild returns an empty build; elements selects per-element keys
+// for list values, as the index being built (PropertyIndex.Elements).
+func NewPostingsBuild(elements bool) *PostingsBuild {
+	return &PostingsBuild{keys: make(map[string][]snowflake.ID), elements: elements}
+}
+
+// AddKey records id under the value key vk (ignored when vk is empty).
+func (b *PostingsBuild) AddKey(id snowflake.ID, vk string) {
+	if vk != "" {
+		b.keys[vk] = append(b.keys[vk], id)
+	}
+}
+
+// AddEntityKeys records one entity's keys for propertyKey as
+// PropertyIndex.AddEntityKeys indexes them.
+func (b *PostingsBuild) AddEntityKeys(id snowflake.ID, propertyKey string, keys func(propertyKey string, elements bool, fn func(valueKey string) bool)) {
+	keys(propertyKey, b.elements, func(vk string) bool {
+		b.AddKey(id, vk)
+		return true
+	})
+}
+
+// Range calls fn with each value key and its IDs, ascending and distinct
+// (sorted in place; fn must not keep ids), until fn returns false.
+func (b *PostingsBuild) Range(fn func(vk string, ids []snowflake.ID) bool) {
+	for vk, ids := range b.keys {
+		slices.Sort(ids)
+		if !fn(vk, slices.Compact(ids)) {
+			return
+		}
 	}
 }
 

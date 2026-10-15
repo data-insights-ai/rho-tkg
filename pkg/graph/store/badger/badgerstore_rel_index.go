@@ -68,7 +68,7 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	bs.idxMu.Unlock()
 
 	// Phase 2: fetch outside any lock.
-	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
+	backfill := indexpkg.NewPostingsBuild(opts.Elements)
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)
 		if err != nil {
@@ -89,8 +89,8 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 		bs.idxMu.Unlock()
 		return err
 	}
-	for vk, idSet := range backfill.Entries {
-		for id := range idSet.All() {
+	backfill.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
@@ -99,7 +99,8 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 			}
 			liveIdx.AddKey(id, vk)
 		}
-	}
+		return true
+	})
 	liveIdx.Mutated = nil // stop tracking — index creation complete
 	bs.persistRelPropertyIndexDefs()
 	bs.idxMu.Unlock()

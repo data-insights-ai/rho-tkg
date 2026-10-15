@@ -27,8 +27,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (badger). Heap per member at 1,000,000 IDs in one key (`BenchmarkPostingsBytesPerMember`): composite 37.8 B -> 8.1 B
   (IDs written ascending) / 12.2 B (shuffled); property index 75.5 B -> 16.1 B / 24.3 B for an integer value (key and
   numeric bucket), 8.1 B / 12.2 B for a string value; one member per value 512 B -> 296 B. One row write that moves a node
-  between two keys next to a 1,000,000-ID key (`BenchmarkPostingsWrite`): 1.66-1.73 us -> 1.70-1.74 us; a bulk load in
-  shuffled ID order costs about 0.2 us per ID against 0.1 us (an insert moves up to one 1,024-ID chunk). Not changed: label
+  between two keys next to a 1,000,000-ID key (`BenchmarkPostingsWrite`): 1.66-1.73 us -> 1.70-1.74 us. Index creation (the
+  backfill) and badger's open rebuild collect each key's IDs, sort them and fill the index ascending into exact chunks
+  (`index.PostingsBuild`; an open image written before is sorted on load): over 1,000,000 nodes of one key
+  (`BenchmarkPostingsCreateIndex`) `CreatePropertyIndex` 1.39-1.47 s -> 0.70-0.71 s, `CreateCompositePropertyIndex`
+  0.81-0.82 s -> 0.68-0.71 s. Row-by-row writes in shuffled ID order cost about 0.2 us per ID against 0.1 us (an insert
+  moves up to one 1,024-ID chunk). Not changed: label
   and type scans and badger `PropertyIndexOnDisk` (nodes) still collect and sort; the temporal property doors are unchanged.
   Evidence `tasks/evidence/sorted-postings/`.
 

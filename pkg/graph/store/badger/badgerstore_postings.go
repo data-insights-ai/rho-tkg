@@ -63,3 +63,15 @@ func pagePostings[T any](bs *Store, p *indexpkg.IDPostings, opts QueryOpts, fetc
 	}
 	return out, nil
 }
+
+// fillFromBuild adds a build's postings to idx in ascending ID order per key,
+// so a rebuild that read rows in label-index (map) order still fills exact
+// chunks (backlog 72).
+func fillFromBuild(b *indexpkg.PostingsBuild, add func(id snowflake.ID, vk string)) {
+	b.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
+			add(id, vk)
+		}
+		return true
+	})
+}

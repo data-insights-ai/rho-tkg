@@ -1514,6 +1514,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					// Disk mode keeps the entries in the 0x0A keyspace, already
 					// built: nothing to read from the rows.
 				} else if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
+					build := indexpkg.NewPostingsBuild(def.Elements)
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
 						n, nerr := bs.loadNodeFromBadger(txn, rawID)
@@ -1527,7 +1528,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							continue
 						}
 						if !bs.propIdxOnDisk {
-							idx.AddEntityKeys(rawID, def.PropertyKey, n.ForEachPropertyIndexKey)
+							build.AddEntityKeys(rawID, def.PropertyKey, n.ForEachPropertyIndexKey)
 							continue
 						}
 						// Disk mode: do NOT populate idx.Entries/numBuckets (entries stay
@@ -1541,6 +1542,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							}
 						}
 					}
+					fillFromBuild(build, idx.AddKey)
 				}
 				bs.propertyIndexes[key] = idx
 			}
@@ -1576,6 +1578,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				if entries, ok := img.takeRelProp(key); ok {
 					installValueIDs(entries, idx.AddKey)
 				} else if relIDs, ok := bs.typeIdx[def.RelTypeToken]; ok {
+					build := indexpkg.NewPostingsBuild(def.Elements)
 					for relID := range relIDs {
 						rawID := relID.SnowflakeID()
 						r, rerr := bs.loadRelFromBadger(txn, rawID)
@@ -1588,8 +1591,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							}
 							continue
 						}
-						idx.AddEntityKeys(rawID, def.PropertyKey, r.ForEachPropertyIndexKey)
+						build.AddEntityKeys(rawID, def.PropertyKey, r.ForEachPropertyIndexKey)
 					}
+					fillFromBuild(build, idx.AddKey)
 				}
 				bs.relPropertyIndexes[key] = idx
 			}
@@ -1623,6 +1627,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				if entries, ok := img.takeComposite(key); ok {
 					installValueIDs(entries, idx.AddKey)
 				} else if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
+					build := indexpkg.NewPostingsBuild(false)
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
 						n, nerr := bs.loadNodeFromBadger(txn, rawID)
@@ -1636,9 +1641,10 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							continue
 						}
 						if vk, found := indexpkg.NodeCompositeValueKey(idx.Keys, n); found {
-							idx.AddKey(rawID, vk)
+							build.AddKey(rawID, vk)
 						}
 					}
+					fillFromBuild(build, idx.AddKey)
 				}
 				indexpkg.RegisterCompositeIndex(bs.compositeIndexes, bs.compositeIndexesByLabel, key, idx)
 			}

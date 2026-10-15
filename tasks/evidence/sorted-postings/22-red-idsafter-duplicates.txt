@@ -1,0 +1,5 @@
+--- FAIL: TestIDsAfterSkipsEveryCopyOfTheCursor (0.00s)
+    sorted_postings_cost_test.go:156: after 4: [4 4 7], want [7]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.004s
+FAIL

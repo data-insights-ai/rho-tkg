@@ -79,7 +79,7 @@ func (bs *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 	bs.idxMu.Unlock()
 
 	// Phase 2: Fetch node data OUTSIDE any lock.
-	backfill := indexpkg.NewCompositePropertyIndex(keys)
+	backfill := indexpkg.NewPostingsBuild(false)
 	for _, nid := range nids {
 		n, err := bs.prefetchNode(nid)
 		if err != nil {
@@ -106,8 +106,8 @@ func (bs *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 		bs.idxMu.Unlock()
 		return err
 	}
-	for vk, idSet := range backfill.Entries {
-		for id := range idSet.All() {
+	backfill.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
@@ -116,7 +116,8 @@ func (bs *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 			}
 			liveIdx.AddKey(id, vk)
 		}
-	}
+		return true
+	})
 	liveIdx.Mutated = nil // stop tracking — index creation complete
 	bs.persistCompositeIndexDefs()
 	bs.idxMu.Unlock()

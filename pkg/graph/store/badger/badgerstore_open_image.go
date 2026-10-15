@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"math"
+	"slices"
 	"strconv"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -579,8 +580,11 @@ func decodeOpenImage(blob []byte) (*openImage, error) {
 
 // ---- install helpers (open path, single goroutine) ----
 
+// installValueIDs adds each value's IDs ascending: an image written before
+// backlog 72 holds them in map order, and an ascending fill gives exact chunks.
 func installValueIDs(entries []imgValueIDs, add func(id snowflake.ID, vk string)) {
 	for _, e := range entries {
+		slices.Sort(e.ids)
 		for _, id := range e.ids {
 			add(id, e.vk)
 		}

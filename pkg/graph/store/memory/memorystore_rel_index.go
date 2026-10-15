@@ -78,7 +78,7 @@ func (ms *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	ms.mu.Unlock()
 
 	// Phase 2.
-	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
+	backfill := indexpkg.NewPostingsBuild(opts.Elements)
 	for _, rid := range rids {
 		ms.mu.RLock()
 		r, ok, err := ms.relLocked(rid)
@@ -104,18 +104,24 @@ func (ms *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	if err := requireRelPropertyIndexCurrentForCreate(ms.relPropertyIndexes, key, liveIdx); err != nil {
 		return err
 	}
-	for vk, idSet := range backfill.Entries {
-		for id := range idSet.All() {
+	var mergeErr error
+	backfill.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
 			if alive, err := ms.relExistsLocked(types.RelID(id)); err != nil {
-				return err
+				mergeErr = err
+				return false
 			} else if !alive {
 				continue // relationship deleted during Phase 2
 			}
 			liveIdx.AddKey(id, vk)
 		}
+		return true
+	})
+	if mergeErr != nil {
+		return mergeErr
 	}
 	liveIdx.Mutated = nil // stop tracking — index creation complete
 	return nil

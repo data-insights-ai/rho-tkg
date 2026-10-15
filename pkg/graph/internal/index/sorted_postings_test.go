@@ -128,6 +128,42 @@ func TestRangeCardinalityEmptyCountedIndex(t *testing.T) {
 	}
 }
 
+// PostingsBuild hands back each key's IDs sorted and distinct whatever the
+// add order (shuffled, duplicated, empty key ignored), and an index filled
+// from it in that order holds exact 512-ID chunks.
+func TestPostingsBuildSortedDistinctExactChunks(t *testing.T) {
+	b := NewPostingsBuild(false)
+	rng := rand.New(rand.NewSource(3)) // #nosec G404 -- deterministic test input
+	const n = 3 * orderedKeyChunk
+	for _, i := range rng.Perm(n) {
+		b.AddKey(snowflake.ID(i+1), "k")
+		if i%7 == 0 {
+			b.AddKey(snowflake.ID(i+1), "k") // duplicate
+		}
+	}
+	b.AddKey(99, "")
+	ci := NewCompositePropertyIndex([]string{"a", "b"})
+	keys := 0
+	b.Range(func(vk string, ids []snowflake.ID) bool {
+		keys++
+		if vk != "k" || len(ids) != n || !slices.IsSorted(ids) {
+			t.Fatalf("key %q: %d IDs, sorted %v", vk, len(ids), slices.IsSorted(ids))
+		}
+		for _, id := range ids {
+			ci.AddKey(id, vk)
+		}
+		return true
+	})
+	if keys != 1 {
+		t.Fatalf("%d keys, want 1 (empty key recorded)", keys)
+	}
+	for i, c := range ci.Entries["k"].s.chunks {
+		if len(c) != orderedKeyChunk || cap(c) != orderedKeyChunk {
+			t.Fatalf("chunk %d: len %d cap %d, want exact %d", i, len(c), cap(c), orderedKeyChunk)
+		}
+	}
+}
+
 // A nil posting list (a value key nobody holds) reads as empty.
 func TestIDPostingsNil(t *testing.T) {
 	var p *IDPostings

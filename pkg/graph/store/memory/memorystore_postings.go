@@ -1,9 +1,8 @@
 package memory
 
 import (
-	"cmp"
 	"iter"
-	"slices"
+	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -11,16 +10,12 @@ import (
 
 // idsAfter yields the IDs of an ascending ID slice above after: the label- and
 // type-scan fallbacks' candidates in the shape of an index posting list's
-// After (backlog 72), so both feed one filter loop.
+// After (backlog 72), so both feed one filter loop. It starts at the first ID
+// greater than after, so every copy of a repeated cursor ID is skipped.
 func idsAfter[T interface{ SnowflakeID() snowflake.ID }](ids []T, after types.EntityID) iter.Seq[snowflake.ID] {
 	return func(yield func(snowflake.ID) bool) {
 		a := after.SnowflakeID()
-		i, found := slices.BinarySearchFunc(ids, a, func(x T, t snowflake.ID) int {
-			return cmp.Compare(x.SnowflakeID(), t)
-		})
-		if found {
-			i++
-		}
+		i := sort.Search(len(ids), func(i int) bool { return ids[i].SnowflakeID() > a })
 		for _, id := range ids[i:] {
 			if !yield(id.SnowflakeID()) {
 				return

@@ -2,6 +2,7 @@ package memory
 
 import (
 	"runtime"
+	"slices"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -127,6 +128,36 @@ func TestPostingsPageCostIndependentOfKeySize(t *testing.T) {
 		if b > bound {
 			t.Errorf("%s: one page of %d allocates %d B over a key of %d members (bound %d B): the page copies or sorts the key", d.name, limit, b, n, bound)
 		}
+	}
+}
+
+// idsAfter starts past every copy of the cursor, before the first ID, and
+// yields nothing past the last; empty input yields nothing.
+func TestIDsAfterSkipsEveryCopyOfTheCursor(t *testing.T) {
+	ids := []types.NodeID{2, 4, 4, 4, 7}
+	cases := []struct {
+		after types.EntityID
+		want  []snowflake.ID
+	}{
+		{0, []snowflake.ID{2, 4, 4, 4, 7}},
+		{1, []snowflake.ID{2, 4, 4, 4, 7}},
+		{2, []snowflake.ID{4, 4, 4, 7}},
+		{4, []snowflake.ID{7}},
+		{5, []snowflake.ID{7}},
+		{7, nil},
+		{9, nil},
+	}
+	for _, c := range cases {
+		var got []snowflake.ID
+		for id := range idsAfter(ids, c.after) {
+			got = append(got, id)
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("after %d: %v, want %v", c.after, got, c.want)
+		}
+	}
+	for range idsAfter([]types.NodeID(nil), 3) {
+		t.Fatal("empty input yielded an ID")
 	}
 }
 

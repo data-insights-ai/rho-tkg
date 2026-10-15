@@ -67,3 +67,43 @@ func BenchmarkPostingsWrite(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkPostingsCreateIndex (backlog 72): declaring a property index and a
+// composite index over 1,000,000 existing nodes of one value key (the 3-phase
+// build: snapshot, backfill, merge). ns/op is one create; the drop is untimed.
+func BenchmarkPostingsCreateIndex(b *testing.B) {
+	const n = 1_000_000
+	ms := New()
+	for i := 0; i < n; i++ {
+		node := types.NewNode(types.NodeID(snowflake.ID(int64(i+1)<<15)), 1, nil)
+		_ = node.SetProperty("a", int64(1))
+		_ = node.SetProperty("b", "x")
+		if err := ms.PutNode(node); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.Run("property", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if err := ms.CreatePropertyIndex(1, "a"); err != nil {
+				b.Fatal(err)
+			}
+			b.StopTimer()
+			if err := ms.DropPropertyIndex(1, "a"); err != nil {
+				b.Fatal(err)
+			}
+			b.StartTimer()
+		}
+	})
+	b.Run("composite", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if err := ms.CreateCompositePropertyIndex(1, []string{"a", "b"}); err != nil {
+				b.Fatal(err)
+			}
+			b.StopTimer()
+			if err := ms.DropCompositePropertyIndex(1, []string{"a", "b"}); err != nil {
+				b.Fatal(err)
+			}
+			b.StartTimer()
+		}
+	})
+}
