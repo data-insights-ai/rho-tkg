@@ -63,10 +63,30 @@ func nativeP06InitialLocalOld(f *pairedGraphFaultNetwork, member uint64, old gra
 	// partition's source before fair heal; otherwise follower2's default source1
 	// would only establish a routed historical answer, not local recovery.
 	a, b := f.n.leaders[0], f.n.leaders[1]
+	remote := b
+	if member > 3 {
+		remote = a
+	}
+	// The replacement has no client stream. An unchanged remote voter may still
+	// retain this origin's pre-crash sequence/reply, which must not be reset.
+	// Inspect at most the three actual configured peers for an unused service;
+	// At below still authenticates the SAME stored historical certificate.
+	remote, err := nativeP06InitialRemotePeer(member, remote, func(peer uint64) ([]byte, error) {
+		f.mu.Lock()
+		dead := f.down[peer]
+		f.mu.Unlock()
+		if dead {
+			return nil, nil
+		}
+		return f.call(f.n.all[peer], processRequest{op: processPairedConnections, entity: member}).aux, nil
+	})
+	if err != nil {
+		f.t.Fatal("replacement lacks an unused historical remote service", err)
+	}
 	if member <= 3 {
-		a = member
+		a, b = member, remote
 	} else {
-		b = member
+		a, b = remote, member
 	}
 	f.call(f.n.all[member], processRequest{op: processPairedReconnect, data: allocationP08Words(a, b)})
 	// The parent multiplexer routes independently of the child's authenticated
@@ -75,6 +95,43 @@ func nativeP06InitialLocalOld(f *pairedGraphFaultNetwork, member uint64, old gra
 		f.t.Fatal("actual replacement local source route", err)
 	}
 	return p06Observe(f, member, graphReadAt, old)
+}
+
+func nativeP06InitialRemotePeer(member, leader uint64, inspect func(uint64) ([]byte, error)) (uint64, error) {
+	if member < 1 || member > 6 || leader < 1 || leader > 6 || (member <= 3) == (leader <= 3) || inspect == nil {
+		return 0, errInvalid
+	}
+	first := uint64(1)
+	if member <= 3 {
+		first = 4
+	}
+	peers := [3]uint64{leader}
+	next := 1
+	for peer := first; peer < first+3; peer++ {
+		if peer != leader {
+			peers[next] = peer
+			next++
+		}
+	}
+	for _, peer := range peers {
+		wire, err := inspect(peer)
+		if err != nil {
+			return 0, err
+		}
+		if len(wire) == 0 {
+			continue // Actual down process, not an empty successful inventory.
+		}
+		cursor := graphCursor{b: wire}
+		present := cursor.tag()
+		cursor.u64() // Closed replay slots remain spent; no counter is reset.
+		if cursor.err != nil || len(cursor.b) != 0 || present > 1 {
+			return 0, errors.Join(errCorrupt, cursor.err)
+		}
+		if present == 0 {
+			return peer, nil
+		}
+	}
+	return 0, errLimit
 }
 
 func nativeP06InitialLocalRoute(hub *graphProcessHub, member, a, b uint64) error {
