@@ -481,10 +481,11 @@ The FDB cross-edge family is source-integrated at `78f11fc8`: distinct contender
 share one scalar uniqueness claim, endpoint close/reopen masks the old life,
 and closing/replaying the old canonical relation preserves the replacement claim.
 The independent fold joins exact originals, history/current/CDC, retained At
-views and native/binary-cache columns. Review identified required follow-ons
-for strict per-writer completion census and streamed operation/business timing;
-their guards and all runtime qualification remain pending. Native family parity
-is still in implementation.
+views and native/binary-cache columns. The review follow-up at `e76eef12` binds
+every writer's exact ordinal assignments and streams complete-operation timing,
+including same-original/replan waits, into bounded percentile calculations.
+Setup, business and diagnostic durations remain separate. Its adversarial guards
+are authored only; all runtime qualification and native family parity remain open.
 The FDB snapshot-to-feed source is integrated at `5c14f42c`/`bb867775`:
 Begin journals its actual selected cut and factory intent; Publish atomically
 acquires the pin, snapshot owner and feed cursor. Bounded complete CDC pages
@@ -572,6 +573,15 @@ transition composition, seeded soak and qualification remain open. The remaining
 cost workload dispatches and RTT/matrix integration also remain open; a finite
 packet delay is not a measured RTT profile. This source package does not close
 B or D.
+
+The storage-boundary source at `bcf74578` adds before/after actual VFS selectors
+and four authored WAL Write/SyncData process cases. Receipts distinguish returned
+operations from guaranteed synchronization; queued `SyncTo` and unmatched arms
+cannot qualify a case. Same-original, complete CDC and old-cut recovery reuse the
+independent history checker after strict new process/IO admission. These cases
+do not attribute background IO to a particular Prepare/Decide or simulate power
+loss. The remaining logical-phase, namespace-publication and recorded-seed
+replay/minimization source is still in implementation; none of these guards ran.
 
 Current worker lanes: Sol 6.1/high for the native/FDB cross-edge endpoint-life
 and uniqueness family; Sol 6.1/high for the remaining C/D transition and seeded
