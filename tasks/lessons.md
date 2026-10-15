@@ -8,6 +8,7 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
 
 - Trace the cause before asking or adding; consolidate duplicate paths, notes and rules instead of layering, docs
   rewritten in place (84).
+- Keep todo.md and HANDOVER current: `scripts/check-ledger.sh` after every merge and before every release (80).
 - Act, do not offer: open work with a clear next step (consumer request, review finding, patch batch) starts now; ask only for the
   irreversible or materially different (81). Tick the ledger and doc targets at every release (80, 41).
 - Red first: a failing break-the-code test before the fix, a clean root-cause fix at the shared seam, no "known limitation" in
@@ -589,7 +590,8 @@ Detector: a second review round, a lint finding after a merge, a minor tag, a br
 Rule: a release commit updates, in the same commit, the `tasks/todo.md` user-request rows it closes, the releases table and the
 HANDOVER open-request list; every new user or consumer request gets its row before the first action on it (René 2026-10-12:
 "Are you really working towards our originally defined goal?" after request 1 stayed "not built" two releases past its ship).
-Detector: a tag newer than the last row of the releases table; a user-request row "open" whose backlog item sits under Closed.
+Detector: `scripts/check-ledger.sh` (latest tag in the releases table, the todo header and HANDOVER; no request row "open/building/in progress" whose backlog item is Closed). It runs after every merge and before every release commit; a failure blocks the commit.
+Why it broke again (2026-10-14/15, René: "Why not always keep todo.md update? This is important to not lose focus"): the ledger was updated by `sed` one-liners whose patterns silently matched nothing (HANDOVER kept "v4.52.0" for six releases), rows set "building" were never revisited when the work merged, and Markus's releases were never recorded. Edits to todo/HANDOVER are checked by the script, not trusted.
 
 ## 81. Open Work With A Clear Next Step Is Started, Not Offered
 
