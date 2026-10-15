@@ -323,7 +323,7 @@ authenticated retained-source opens, exact original-outcome recovery and
 prepaid terminal cleanup. Its compact direct guards, including the finite-quota
 correction at `23ebabc1`, are authored only. The reviewed shared process harness
 is released for distributed column integration. Source logical GC,
-fresh-profile handoff and runtime qualification remain open. The native sparse
+fresh-profile handoff fault composition and runtime qualification remain open. The native sparse
 retention configuration/contract is source-integrated at `51407447`: opt-in
 RLM9 metadata binds separate history floors and exact semantic/data anchors
 within existing quotas. AS7 publication-header/export verification is
@@ -341,8 +341,8 @@ sparse scrub are source-integrated at `cad0b51b`: bounded pages preserve exact
 floor predecessors and data anchors, co-sync namespace debits and a separately
 accounted resumable cursor, and retire a publication only when represented rows
 are deleted. Same-index sparse republication keeps the genuine term/hash and
-changes the cut identity without business or CDC progress. Graph transport,
-durable column-owner and fresh-profile handoff wiring remain implementation work; all
+changes the cut identity without business or CDC progress. Durable column-owner
+and graph reachability/reclamation wiring remain implementation work; all
 these new sources await execution. The bounded captured-view plan accessor is
 source-integrated at `3fcf9591`; it grants no anchor or deletion authority.
 The fixed-size publication identity accessor is integrated at `12b2293f`.
@@ -352,13 +352,24 @@ their captured floors and export headers. Graph floor/source/original wiring is
 integrated at `178d4537` with ordinary-credit dispatch at `fe80a2b4`:
 authenticated pin and recovery rosters bound all six requested floors, installed
 Applied/Blocked/Stale results remain immutable, original PLMs are preserved,
-and current source selection uses the genuine installed plan anchor. Its fresh
-profile constructor remains withheld pending transport and handoff wiring;
-graph logical key-family retirement is separate. These guards are authored only.
+and current source selection uses the genuine installed plan anchor.
+Graph logical key-family retirement is separate. These guards are authored only.
 Remote classification is integrated at `860f6b32`: the fresh collected profile
 preserves authenticated graph/native history expiry independently of pin
 expiry, unavailable authority and exact-empty data. Older response bytes and
 cause-bit meanings remain unchanged; old agreements reject the new status.
+Fresh-profile handoff is source-integrated at `55fa7fe`: genuine original
+logical groups retain native pin ownership and protected root/feed data, while
+the target stores an immutable, authenticated lineage snapshot. Fresh GMP3
+binds that complete packet to capture/import/activation/restore; older formats
+and configured limits stay unchanged. The fresh materializer constructor is
+now wired. Missing participants blocked by a move remain nonterminal pending,
+so the exact partial publication can finish afterward; existing originals and
+funded terminal operations still recover. Queued authenticated expiry yields
+normal pin-expired or internal-round-stale refusals without poisoning apply.
+The six-voter handoff/reopen/collection and refusal guards are authored only;
+broader process/fault composition, durable column ownership and qualification
+remain open.
 `ab650bbc` also refuses a replacement plan
 while native collection has unfinished cursor progress. Fresh initialization preserves retention
 configuration and prepays/publishes its actual recovery-root census at
