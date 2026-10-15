@@ -206,6 +206,11 @@ func (h *harness) nativeLives(tr fdb.ReadTransaction, e endpoint) (int, bool, er
 	return live, matched, nil
 }
 func (h *harness) checkGraphNative(tr fdb.ReadTransaction, x transaction) (string, error) {
+	if h.config.Cost.Version == 2 {
+		if err := h.graphContentionBindingIn(tr); err != nil {
+			return "", err
+		}
+	}
 	command := *x.GraphChange
 	if command.Kind == "node-create" {
 		live, _, err := h.nativeLives(tr, command.Node)
@@ -272,6 +277,9 @@ func (h *harness) checkGraphNative(tr fdb.ReadTransaction, x transaction) (strin
 	}
 	if prior.Deleted {
 		return "edge-identity", nil
+	}
+	if h.config.Cost.Version == 2 && command.Kind == "edge-update" && graphContentionIncrement(prior, command.Edge.Value) != nil {
+		return "revision", nil
 	}
 	for _, entry := range []struct {
 		group uint8

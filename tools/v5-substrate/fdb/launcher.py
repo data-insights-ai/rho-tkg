@@ -104,7 +104,13 @@ def main():
     elif mode == "receipt":
         directory, result, cleanup, mode = args
         out = Path(directory)
-        hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+        def workload_hash(path):
+            digest = hashlib.sha256()
+            with path.open("rb") as source:
+                while chunk := source.read(64 << 10):
+                    digest.update(chunk)
+            return digest.hexdigest()
+        hashes = {p.name: (workload_hash(p) if mode == "workload-cell" else hashlib.sha256(p.read_bytes()).hexdigest())
                   for p in sorted(out.iterdir()) if p.is_file() and p.name != "receipt.json"}
         if mode == "platform-faults":
             hashes.update({str(p.relative_to(out)): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -118,6 +124,7 @@ def main():
                            for directory in sorted(out.glob("source-history-*")) if directory.is_dir()
                            for p in sorted(directory.rglob("*")) if p.is_file()})
         scopes = {
+            "workload-cell": "one physical host, four logical FDB zones; explicit fresh contention/RMW/empty-ID-range workload with 1/8/32 native callers and complete original/source/column artifacts; local transport only, no native parity/full matrix/RTT/capacity acceptance",
             "source-history-faults": "one physical host; genuine source-history SDK owner and partial-collector SIGKILL/replacement, same retained owner Close and durable cursor resume; five COMMIT originals only, no ABORT/server-loss/power-loss/matrix/capacity acceptance",
             "static": "pinned compilation/static tools; no cluster or fault schedule",
             "lifecycle-trace": "one physical host, four logical FDB zones; lifecycle trace, no external kill schedule",

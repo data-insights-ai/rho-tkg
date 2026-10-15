@@ -6,13 +6,18 @@ exec 3>&1 # Preserve the original output channel through redirected failures.
 cd "$(dirname "$0")"
 mode=${1:-test}
 profile=${2:-small}
+if [ "$mode" = workload-cell ]; then
+  : "${RHO_GRAPH_WORKLOAD_SPEC:?explicit fresh workload specification required}"
+  : "${RHO_GRAPH_WORKLOAD_RUN:?explicit fresh run identity required}"
+  python3 -B ../workload_matrix.py preflight "$RHO_GRAPH_WORKLOAD_SPEC" "$RHO_GRAPH_WORKLOAD_RUN"
+fi
 cost_qualify=${FDB_COST_QUALIFY:-0}
 cost_layout=${RHO_GRAPH_COST_LAYOUT:-kv}
 cost_retention=${RHO_GRAPH_COST_RETENTION:-off}
 case "$cost_layout" in kv|columns) ;; *) echo 'RHO_GRAPH_COST_LAYOUT must be kv or columns' >&2; exit 2;; esac
 case "$cost_retention" in off|source-v1) ;; *) echo 'RHO_GRAPH_COST_RETENTION must be off or source-v1' >&2; exit 2;; esac
 case "$cost_qualify" in 0|1) ;; *) echo 'FDB_COST_QUALIFY must be 0 or 1' >&2; exit 2;; esac
-case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static|platform-faults|column-publication-faults|source-history-faults) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|static|platform-faults|column-publication-faults|source-history-faults] [small|large]' >&2; exit 2;; esac
+case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|workload-cell|static|platform-faults|column-publication-faults|source-history-faults) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|workload-cell|static|platform-faults|column-publication-faults|source-history-faults] [small|large]' >&2; exit 2;; esac
 runtime='foundationdb/foundationdb@sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db'
 tag="rho-v5-fdb-$(date +%s)-$$"
 out="$PWD/artifacts/$tag"
@@ -102,6 +107,9 @@ stop_client() {
 source_image="$tag-source"; client_image="$tag-client-image"
 images+=("$source_image")
 shasum -a 256 ./*.go ./*.sh ./*.py go.mod go.sum Dockerfile .dockerignore >"$out/source-sha256.txt"
+if [ "$mode" = workload-cell ]; then
+  shasum -a 256 ../workload_matrix.py ../comparison_spool.py ../compare-cost-cdc.py ../native_columns_check.py ../fdb_retention_check.py >"$out/workload-controller-source-sha256.txt"
+fi
 git rev-parse HEAD >"$out/source-head.txt"
 git status --porcelain -- . >"$out/source-status.txt"
 uname -a >"$out/host.txt"
@@ -213,7 +221,7 @@ if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = paired-tests ]
       cat /sys/fs/cgroup/memory.stat > /evidence/test-client-memory-stat.txt; exit "$result"' -- "$mode" >"$out/tests.txt" 2>&1
   capture_client "$name" tests
 fi
-if [ "$mode" != source-history-faults ] && [ "$mode" != column-publication-faults ] && [ "$mode" != platform-faults ] && [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired-tests ] && [ "$mode" != cost-cell ]; then
+if [ "$mode" != workload-cell ] && [ "$mode" != source-history-faults ] && [ "$mode" != column-publication-faults ] && [ "$mode" != platform-faults ] && [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired-tests ] && [ "$mode" != cost-cell ]; then
   prefix=fault
   if [ "$mode" = graph-fault ]; then prefix=graph-fault; fi
   if [ "$mode" = paired-graph-fault ]; then prefix=paired-fault; fi
@@ -308,6 +316,26 @@ if [ "$mode" = cost-cell ]; then
   stop_client "$name" cost-client
   capture_client "$name" cost-client
   python3 -c 'import time; print(time.monotonic_ns())' >"$out/cost-controller-end-nanos.txt"
+fi
+if [ "$mode" = workload-cell ]; then
+  workload_seconds=${FDB_COST_SECONDS:-180}
+  case "$workload_seconds" in *[!0-9]*|'') echo 'invalid finite workload deadline' >&2; exit 2;; esac
+  if [ "$workload_seconds" -lt 1 ] || [ "$workload_seconds" -gt 1800 ]; then echo 'workload deadline outside 1..1800 seconds' >&2; exit 2; fi
+  phase_deadline=$((SECONDS+workload_seconds+180))
+  name="$tag-workload"; containers+=("$name")
+  python3 -c 'import time; print(time.monotonic_ns())' >"$out/workload-controller-start-nanos.txt"
+  docker run -d --name "$name" --network "$tag" --memory "${client_mib}m" --cpus 0.5 \
+    --env "FDB_CONNECTION_STRING=$connection" --env "RHO_GRAPH_WORKLOAD_SPEC=$RHO_GRAPH_WORKLOAD_SPEC" --env "RHO_GRAPH_WORKLOAD_RUN=$RHO_GRAPH_WORKLOAD_RUN" \
+    --env FDB_COST_ARTIFACT=/evidence --mount "type=bind,source=$out,target=/evidence" "$client_image" fdb-spike workload-cell >"$out/workload-client-id.txt"
+  if ! python3 -B cost_monitor.py --seconds "$workload_seconds" --output "$out/workload-process-rss.jsonl" --servers "${servers[@]}" --client "$name" >"$out/workload-monitor.stdout" 2>"$out/workload-monitor.stderr"; then
+    docker logs "$name" >"$out/workload-client.stdout" 2>"$out/workload-client.stderr" || true
+    docker inspect "$name" >"$out/workload-failed-inspect.json" || true
+    exit 1
+  fi
+  docker logs "$name" >"$out/workload-client.stdout" 2>"$out/workload-client.stderr"
+  stop_client "$name" workload-client
+  capture_client "$name" workload-client
+  python3 -c 'import time; print(time.monotonic_ns())' >"$out/workload-controller-end-nanos.txt"
 fi
 if [ "$mode" = column-publication-faults ]; then
   phase_deadline=$((SECONDS+1800))

@@ -25,6 +25,9 @@ func (p graphCostProfile) edge(i uint64, value int64) graphEdge {
 	return graphEdge{ID: 7 + 2*i, Source: nodes[0], Target: target, Value: value}
 }
 func graphCostLimit(c config) limits {
+	if c.Cost.Version == 2 {
+		return graphContentionLimit(c.Cost)
+	}
 	if c.Cost == (graphCostProfile{}) {
 		return limits{Bytes: 16 << 20, Transactions: 1024, Versions: 65536, Certificates: 1024}
 	}
@@ -45,6 +48,9 @@ func graphCostConfig(graph string, p graphCostProfile) config {
 	return c
 }
 func validGraphCostProfile(c config) bool {
+	if c.Cost.Version == 2 {
+		return validGraphContentionConfig(c)
+	}
 	p := c.Cost
 	parallel := (p.Writers == 8 || p.Writers == 32) && (c.Graph == "graph-cost-parallel-v1" || c.Graph == "graph-cost-parallel-columns-v1" || graphCostRetainedConfig(c))
 	if p.Version != 1 || p.Facts < 1 || p.Facts > 1_000_000 || p.Writers != 1 && !parallel || p.CrossPercent != 0 && p.CrossPercent != 10 && p.CrossPercent != 50 && p.CrossPercent != 100 || c.Lifecycle != (lifecycleProfile{}) || c.CostScope != lifecycleConfig("validation").Lifecycle.Scope {
@@ -71,6 +77,9 @@ func (c config) graphNodeOwner(id uint64) uint8 {
 	return 2
 }
 func (h *harness) validateGraphCostLifecycle(x transaction) error {
+	if h.config.Cost.Version == 2 {
+		return h.validateGraphContention(x)
+	}
 	if !validGraphCostProfile(h.config) || x.GraphChange == nil || x.Lifecycle == nil {
 		return errInvalid
 	}
