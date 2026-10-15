@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -185,15 +186,15 @@ func TestUntimedConversionCrashSafe(t *testing.T) {
 	hold := time.Hour
 	open := map[string]func(dir string) (storepkg.MandatoryStore, error){
 		"badger": func(dir string) (storepkg.MandatoryStore, error) {
-			return badger.New(badger.Config{Dir: dir, FlushInterval: hold})
+			return badger.New(badger.Config{Dir: dir, FlushInterval: hold, MemTableSize: 8 << 20, ValueLogFileSize: 1 << 20})
 		},
 		"sharded": func(dir string) (storepkg.MandatoryStore, error) {
-			return sharded.New(sharded.Config{Dir: dir, BaseSlot: 0, SlotCount: 2, FlushInterval: hold})
+			return sharded.New(sharded.Config{Dir: dir, BaseSlot: 0, SlotCount: 2, FlushInterval: hold, MemTableSize: 8 << 20, ValueLogFileSize: 1 << 20})
 		},
 		// Tiered keeps the mode key on the reference shard and these rows on
 		// an event shard: the key's own flush does not cover them.
 		"tiered": func(dir string) (storepkg.MandatoryStore, error) {
-			return tiered.New(tiered.Config{DataDir: dir, ShardWindow: 7 * 24 * time.Hour, RefLabels: []string{"Ref"}, FlushInterval: hold})
+			return tiered.New(tiered.Config{DataDir: dir, ShardWindow: 7 * 24 * time.Hour, RefLabels: []string{"Ref"}, FlushInterval: hold, MemTableSize: 8 << 20, ValueLogFileSize: 1 << 20})
 		},
 	}
 	for _, name := range []string{"badger", "sharded", "tiered"} {
@@ -268,11 +269,22 @@ func uvsCopyDir(t *testing.T, src, dst string) {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o750)
 		}
-		data, err := os.ReadFile(p) // #nosec G304 -- test-owned temp directory
+		// Stream the copy: Badger preallocates its memtable and value-log files,
+		// and reading them whole held gigabytes per store (CI runner OOM).
+		in, err := os.Open(p) // #nosec G304 -- test-owned temp directory
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(target, data, 0o600)
+		defer in.Close()
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) // #nosec G304 -- test-owned temp directory
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(out, in); err != nil {
+			_ = out.Close()
+			return err
+		}
+		return out.Close()
 	})
 	if err != nil {
 		t.Fatal(err)
