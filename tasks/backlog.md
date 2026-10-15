@@ -849,9 +849,13 @@ the checker joins native entry/term/packet identity and the killed incarnation.
 Initial occurrences, leader/message variants, other P-row and applicable
 publication/import/GC conjunctions remain source gaps. All three finite profiles
 remain unexecuted; these source checkpoints do not complete P06 or D. Source
-review found that ordinary fixture reconnect rejects retained pending runs;
-a fresh-profile reassociation preserving the actual coordinator and private
-originals is in implementation before these cases can qualify.
+review found that ordinary fixture reconnect rejects retained pending runs.
+The correction is source-integrated at `0f6f10a`: fresh NCR1 routing retains the
+same coordinator, private pending manifests, certified engine and unchanged-peer
+streams, replacing routes only after all ownership and idle-work checks pass.
+Ordinary reconnect still refuses pending runs; the original fixture deadline
+and consumed source allowances remain. Three direct guards are authored, not
+executed. The affected finite profiles still require runtime qualification.
 The first actual state/process composition is source-integrated at `7081f9ff`:
 twelve import Begin/Append/seal/activation/unclaimed-retirement/physical-clear
 cells select the real native batch before or after Commit(Sync), persist its
