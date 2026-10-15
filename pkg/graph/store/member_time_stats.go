@@ -26,6 +26,8 @@ type MemberTimeStats struct {
 func (s MemberTimeStats) HistoryAfter(pin types.Instant) bool { return s.LastEnded > pin }
 
 // Eternal reports that no current member carries explicit valid time and no
-// member row was ever ended: every member is its one current row, without a
-// valid-time bound of its own.
+// member row was ever ended: every member is its one current row. Such a row is
+// valid from its TxFrom (backlog 62), not from the beginning of time, so a read
+// at valid instant t equals a read pinned at transaction time t; a consumer
+// must not drop the valid-time filter on the strength of Eternal alone.
 func (s MemberTimeStats) Eternal() bool { return s.ExplicitValid == 0 && s.LastEnded == 0 }

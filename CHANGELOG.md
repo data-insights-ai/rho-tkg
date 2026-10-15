@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`MemberTimeStats.Eternal()` docs (v4.55.2) promised members unbounded in valid time.** No code change: such a member is
+  valid from its `TxFrom` (backlog 62), so a read at valid instant t equals a read pinned at transaction time t; a
+  consumer must keep the valid-time filter. Godoc and `docs/api.md` corrected.
+
 ## [4.55.2] - 2026-10-15
 
 ### Added
