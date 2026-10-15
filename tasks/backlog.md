@@ -831,9 +831,14 @@ versioned cases preserve the original Decide recipe, bind the selected actual
 participant and original authority proofs, and authenticate all stored originals
 before terminal replay. ABORT may skip a participant already resolved after a
 lost response; an unanswered submission never becomes a successful capture.
-Initial and terminal-duplicate occurrences, leader/message variants, other P-row
-and applicable publication/import/GC conjunctions remain source gaps. These
-source checkpoints do not complete P06 or D.
+Terminal-replay conjunctions are source-integrated at `80810c3`: 48 separately
+versioned cases bind ordinary Prepare/Resolve retries to the stored terminal
+original, zero duplicate CDC and unchanged graph image. Actual lost Propose
+replies remain distinct from returned append packets followed by a failed Step;
+the checker joins native entry/term/packet identity and the killed incarnation.
+Initial occurrences, leader/message variants, other P-row and applicable
+publication/import/GC conjunctions remain source gaps. All three finite profiles
+remain unexecuted; these source checkpoints do not complete P06 or D.
 The first actual state/process composition is source-integrated at `7081f9ff`:
 twelve import Begin/Append/seal/activation/unclaimed-retirement/physical-clear
 cells select the real native batch before or after Commit(Sync), persist its
