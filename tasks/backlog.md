@@ -1107,8 +1107,21 @@ Recovery4 merely by changing a profile label. Existing accepted P08 evidence
 retains its original scope. Source/hash, pinned parser/format and whitespace
 checks passed; compilation, runtime, coverage and C acceptance remain open.
 
-Current worker lanes: Sol 6.1/high for the finite P01–P06 protocol/storage
-composition adapters and checker; Sol 6.1/high for the FoundationDB placement
+The P01–P06 native storage composition is source-integrated at `10aa770f`:
+524 finite adapter recipes bind actual original calls, native Ready/application
+boundaries and same-directory replacement to the complete serial/cut oracle.
+They cover scope-only certification, three prepare/fence orderings, durable
+decision and partial-install recovery, frozen queued originals, historical
+dependency mutations and first-live prepared-lock recovery. Conditional fixture
+bootstrap and process-error masks now match their actual child agreements and
+wire encoding. Complete P03/P05 traces use separately admitted bounded sidecars;
+the main stream retains its full original-prefix census and EOF. All 16 frozen
+blobs and 11 current parents were verified with pinned parser/format and whitespace
+only. No compilation, execution or B/D acceptance is claimed. Broader actual
+leader/message/conflict conjunctions and the exploration/seed controller remain open.
+
+Current worker lanes: Sol 6.1/high for the remaining B/C/D source inventory and
+bounded campaign proposal; Sol 6.1/high for the FoundationDB placement
 correction proposal after freezing pooled range-move admission; Sol 6.1/high for
 the native transfer workload proposal after completing the one-file P05 extraction.
 The current FDB transfer changes catalog processing ownership but retains its
