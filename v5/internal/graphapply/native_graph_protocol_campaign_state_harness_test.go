@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -12,12 +13,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
@@ -130,6 +133,17 @@ func decodeNativeProtocolStateControl(wire []byte) (nativeProtocolStateControl, 
 		if c.Request == ([16]byte{}) || c.Digest == ([32]byte{}) {
 			return c, errInvalid
 		}
+	case "move-proof":
+		base.Original, base.Boundary = c.Original, c.Boundary
+		if !bytes.HasPrefix(c.Original, []byte("GMQ\x03")) || len(c.Original) > 32<<10 || len(c.Boundary) > 32 || len(c.Boundary)%8 != 0 {
+			return c, errInvalid
+		}
+		for i := 0; i < len(c.Boundary); i += 8 {
+			n := binary.BigEndian.Uint64(c.Boundary[i:])
+			if n > 128 || i > 0 && n <= binary.BigEndian.Uint64(c.Boundary[i-8:]) {
+				return c, errInvalid
+			}
+		}
 	case "issue", "publish", "snapshot", "snapshot-close", "close", "release", "expire", "epoch", "cancel", "pin-close":
 	default:
 		return c, errInvalid
@@ -176,7 +190,11 @@ func newNativeProtocolStateOwner(ctx context.Context, c *crossProcessCoordinator
 	if err != nil || !enabled {
 		return nil, err
 	}
-	if ctx == nil || c == nil || c.host == nil || c.host.machine.SemanticContractID() != rangeMoveSpanSemanticContractID() || batch == nil || batch.nativeState == nil || batch.ctx.Err() != nil {
+	agreement, err := nativeProtocolStateAgreement()
+	if err != nil {
+		return nil, err
+	}
+	if ctx == nil || c == nil || c.host == nil || c.host.machine.SemanticContractID() != agreement || batch == nil || batch.nativeState == nil || batch.ctx.Err() != nil {
 		return nil, errInvalid
 	}
 	p, err := newRetainedPinPublisher(c)
@@ -293,11 +311,16 @@ func (o *nativeProtocolStateOwner) serve(caller context.Context, wire []byte) ([
 	}()
 	r := o.base
 	r.Action, r.Sequence = c.Action, c.Sequence
-	if c.Action != "inspect" && c.Action != "begin" && c.Action != "resume" && c.Action != "open" && c.Action != "close" && c.Action != "snapshot-close" && o.feed == nil {
+	if c.Action != "inspect" && c.Action != "begin" && c.Action != "resume" && c.Action != "open" && c.Action != "close" && c.Action != "snapshot-close" && c.Action != "move-proof" && o.feed == nil {
 		err = errInvalid
 	} else {
 		switch c.Action {
 		case "inspect":
+		case "move-proof":
+			r.Page, err = nativeProtocolStateMoveProof(operation, o.h, c)
+			if err == nil {
+				r.Digest = sha256.Sum256(r.Page)
+			}
 		case "begin":
 			if o.feed != nil || len(o.original) != 0 {
 				err = errInvalid
@@ -430,10 +453,232 @@ func (o *nativeProtocolStateOwner) serve(caller context.Context, wire []byte) ([
 	o.mu.Unlock()
 	return body, err
 }
-func nativeProtocolStateCut(wire []byte) (graphCut, error) {
-	return nativeScalarWorkloadCutDecode(wire, rangeMoveSpanSemanticContractID(), 2, 2)
+
+// Complete refers only to the SAME <=4 requested native keys, never a claimed
+// EOF census of all historical undo. None of these observations is authority.
+type nativeProtocolPoolControl struct {
+	Found bool
+	Key   []byte
+	Index uint64
+	Value []byte
 }
-func nativeProtocolStateNetwork(t *testing.T, p08 bool) *certifiedProcessNetwork {
+type nativeProtocolPoolProof struct {
+	Version                                         uint8
+	CommandSHA256                                   [32]byte
+	Scope                                           []byte
+	RootIndex                                       uint64
+	Root                                            [172]byte
+	Frame                                           *nativeColumnFrame
+	PreviousRoot                                    [172]byte
+	IntentControl, OriginalControl, DecisionControl nativeProtocolPoolControl
+	StatusFound                                     bool
+	Status                                          []byte
+	ProgressFound                                   bool
+	Progress                                        []byte
+	UndoIndices                                     []uint64
+	Undo                                            []nativeProtocolPoolControl
+	Rows, Bytes, Output                             uint64
+	Complete                                        bool
+}
+
+func nativeProtocolStateMoveProof(ctx context.Context, h *allocationHost, c nativeProtocolStateControl) (body []byte, err error) {
+	if ctx == nil || h == nil || h.machine.SemanticContractID() != rangeMovePooledSemanticContractID() || c.Action != "move-proof" {
+		return nil, errInvalid
+	}
+	command, err := decodeRangeMoveCommand(c.Original)
+	if err != nil || command.scope != h.machine.scope() {
+		return nil, errors.Join(errInvalid, err)
+	}
+	intent, err := decodeRangeMoveIntent(command.intent)
+	if err != nil || intent.maxPages > 128 {
+		return nil, errors.Join(errInvalid, err)
+	}
+	// The owner has retired its full invocation grant before this read. One
+	// output arena bounds decode/copies/encoding, and only one view is acquired.
+	arena, err := graphstate.NewOutputBudget(32 << 20)
+	if err != nil {
+		return nil, err
+	}
+	v, err := h.machine.store.ApplicationView(h.driver.Applied())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, v.Close()) }()
+	root, err := v.RootBounded(ctx, 172)
+	if err != nil || len(root.Image) != 172 {
+		return nil, errors.Join(errCorrupt, err)
+	}
+	q := reader{ctx: ctx, view: v, ns: h.machine.ns, base: root, limits: limits{readRows: 256, readBytes: 16 << 20}, arena: arena}
+	p := nativeProtocolPoolProof{Version: 1, CommandSHA256: sha256.Sum256(c.Original), Scope: appendAllocationScope(nil, command.scope), RootIndex: root.Index}
+	copy(p.Root[:], root.Image)
+	move := rangeMoveID(namespace{intent.source.graph, intent.source.partition}, intent.id)
+	control := func(key []byte, maximum int) (nativeProtocolPoolControl, error) {
+		r, found, e := crossControl(&q, key, maximum)
+		if e != nil || found && (r.Index == 0 || r.Index > root.Index || !bytes.Equal(r.Key, key)) {
+			return nativeProtocolPoolControl{}, errors.Join(errCorrupt, e)
+		}
+		out := nativeProtocolPoolControl{Found: found, Key: key}
+		if found {
+			out.Index, out.Value = r.Index, r.Value
+		}
+		return out, nil
+	}
+	p.IntentControl, err = control(rangeMoveControlKey(q.ns, move, 'I'), 1024)
+	if err != nil {
+		return nil, err
+	}
+	p.OriginalControl, err = control(movePoolOriginalKey(command), 288)
+	if err != nil {
+		return nil, err
+	}
+	if p.OriginalControl.Found && (len(p.OriginalControl.Value) < 32 || !bytes.Equal(p.OriginalControl.Value[:32], p.CommandSHA256[:])) {
+		return nil, errInvalid
+	}
+	if (command.phase == rangeMoveFence || command.phase == rangeMoveAbort) && !p.OriginalControl.Found && p.IntentControl.Found {
+		if !bytes.Equal(p.IntentControl.Value, command.intent) {
+			return nil, errCorrupt
+		}
+		// Only a genuinely uncredited native original may use I. An existing
+		// Fence I must not masquerade as a later, not-yet-installed Abort.
+		wire, e := v.ApplicationRecord(ctx, p.IntentControl.Index, true, min(64<<10, h.machine.store.ApplicationLimits().MaxPageBytes))
+		if e != nil {
+			return nil, e
+		}
+		original, e := decodeRangeMoveStatus(wire)
+		if e != nil {
+			return nil, e
+		}
+		if original.ns == q.ns && original.move == move && original.intent == sha256.Sum256(command.intent) && original.index == p.IntentControl.Index && original.phase == command.phase && original.sequence == command.sequence {
+			p.OriginalControl = p.IntentControl
+		} else if command.phase == rangeMoveFence {
+			return nil, errCorrupt
+		}
+	}
+	p.DecisionControl, err = control(rangeMoveControlKey(q.ns, move, 'D'), 256)
+	if err != nil {
+		return nil, err
+	}
+	p.Status, p.StatusFound, err = rangeMoveUndoOriginal(&q, rangeMoveStatusKey(q.ns, move))
+	if err != nil {
+		return nil, err
+	}
+	p.Progress, p.ProgressFound, err = rangeMoveUndoOriginal(&q, rangeMoveProgressKey(q.ns, move))
+	if err != nil {
+		return nil, err
+	}
+	if len(p.Status) > 256 || len(p.Progress) > rangeMoveSpanProgressBytes {
+		return nil, errLimit
+	}
+	if len(c.Boundary) != 0 {
+		for i := 0; i < len(c.Boundary); i += 8 {
+			p.UndoIndices = append(p.UndoIndices, binary.BigEndian.Uint64(c.Boundary[i:]))
+		}
+	} else {
+		// Native fence undo0 is GMU1; only accepted import GMU2 contributes
+		// to GMP6 debt. Always observe the distinct fence key explicitly.
+		p.UndoIndices = []uint64{0}
+		add := func(n uint64) {
+			if n > 0 && n <= 128 && !slices.Contains(p.UndoIndices, n) {
+				p.UndoIndices = append(p.UndoIndices, n)
+			}
+		}
+		if command.phase == rangeMoveImport {
+			add(command.sequence)
+		}
+		if p.StatusFound {
+			status, e := decodeRangeMoveStatus(p.Status)
+			if e != nil {
+				return nil, e
+			}
+			if status.phase == rangeMoveImport {
+				add(status.sequence)
+			}
+		}
+		if p.ProgressFound && movePoolProgressWire(p.Progress) {
+			progress, e := decodeRangeMoveProgress(p.Progress, arena)
+			if e != nil {
+				return nil, e
+			}
+			add(progress.undoTotal)
+			if progress.undoNext < progress.undoTotal {
+				add(progress.undoTotal - progress.undoNext)
+			}
+			if len(p.UndoIndices) > 4 {
+				return nil, errLimit
+			}
+		}
+		slices.Sort(p.UndoIndices)
+	}
+	for _, n := range p.UndoIndices {
+		u, e := control(rangeMoveUndoControlKey(q.ns, move, n), 16<<10)
+		if e != nil {
+			return nil, e
+		}
+		p.Undo = append(p.Undo, u)
+	}
+	if p.OriginalControl.Found {
+		index := p.OriginalControl.Index
+		first, e := v.RootAt(ctx, index, 172)
+		if e != nil || len(first.Image) != 172 || index < 1 {
+			return nil, errors.Join(errCorrupt, e)
+		}
+		previous, e := v.RootAt(ctx, index-1, 172)
+		if e != nil || len(previous.Image) != 172 {
+			return nil, errors.Join(errCorrupt, e)
+		}
+		f := nativeColumnFrame{Partition: q.ns.partition, Index: index}
+		copy(f.Root[:], first.Image)
+		copy(p.PreviousRoot[:], previous.Image)
+		maximum := min(64<<10, h.machine.store.ApplicationLimits().MaxPageBytes)
+		f.Outcome, err = v.ApplicationRecord(ctx, index, true, maximum)
+		if err != nil {
+			return nil, err
+		}
+		f.CDC, err = v.ApplicationRecord(ctx, index, false, maximum)
+		if err != nil || f.Outcome == nil || f.CDC == nil {
+			return nil, errors.Join(errCorrupt, err)
+		}
+		f.Registration, err = boundedEncoding(8192, func(w *boundedWriter) {
+			w.add([]byte("NCM1"))
+			for slot, r := range []nativeProtocolPoolControl{p.IntentControl, p.OriginalControl, p.DecisionControl} {
+				if r.Found && r.Index > index && slot != 2 {
+					w.err = errCorrupt
+					return
+				}
+				// A later D is still exported as actual DecisionControl above;
+				// it was not part of this earlier immutable original's frame.
+				if r.Found && r.Index <= index {
+					w.field(r.Key)
+					w.u64(r.Index)
+					w.field(r.Value)
+				} else {
+					w.field(nil)
+					w.u64(0)
+					w.field(nil)
+				}
+			}
+		})
+		if err != nil {
+			return nil, err
+		}
+		p.Frame = &f
+	}
+	p.Rows, p.Bytes, p.Output, p.Complete = uint64(q.rows), uint64(q.bytes), uint64(arena.Used()), true
+	body, err = json.Marshal(p)
+	if len(body) > 64<<10 {
+		return nil, errLimit
+	}
+	return body, err
+}
+
+func nativeProtocolStateCut(wire []byte) (graphCut, error) {
+	agreement, err := nativeProtocolStateAgreement()
+	if err != nil {
+		return graphCut{}, err
+	}
+	return nativeScalarWorkloadCutDecode(wire, agreement, 2, 2)
+}
+func nativeProtocolStateNetwork(t *testing.T, p08 bool) (*certifiedProcessNetwork, [32]byte) {
 	t.Helper()
 	rangeMoves := true
 	dir, err := os.MkdirTemp(os.Getenv("RHO_GRAPH_PROCESS_ARTIFACT"), "rho-certified-process-")
@@ -522,12 +767,13 @@ func nativeProtocolStateNetwork(t *testing.T, p08 bool) *certifiedProcessNetwork
 	for group, leader := range []uint64{1, 4} {
 		n.groups[group].event(t, leader, processRequest{op: processCampaign})
 	}
-	nativeProtocolStateAction(t, n, 1, certifiedInitialize, 3, nil)
+	var bootstrap [32]byte
+	nativeProtocolStateAction(t, n, 1, certifiedInitialize, 3, nil, &bootstrap)
 	n.read(t, 1, observeConfiguration, 0)
-	nativeProtocolStateAction(t, n, 1, certifiedInitialize, 8, nil)
+	nativeProtocolStateAction(t, n, 1, certifiedInitialize, 8, nil, &bootstrap)
 	source := uint64(1)
 	if p08 {
-		allocationP08ElectFor(t, n, rangeMoveSpanSemanticContractID(), 1, 3)
+		allocationP08ElectFor(t, n, nativeProtocolStateExpectedAgreement(t), 1, 3)
 		n.leaders[0], source = 3, 3
 		n.read(t, source, observeAllocator, 0)
 		nativeProtocolStateAction(t, n, source, certifiedP08Transfer, 0, nil)
@@ -576,9 +822,9 @@ func nativeProtocolStateNetwork(t *testing.T, p08 bool) *certifiedProcessNetwork
 		nativeProtocolStateAction(t, n, 1, certifiedCreateNode, 1, nil)
 		nativeProtocolStateAction(t, n, 4, certifiedCreateNode, 17, nil)
 	}
-	return n
+	return n, bootstrap
 }
-func nativeProtocolStateAction(t *testing.T, n *certifiedProcessNetwork, actor, kind, index uint64, data []byte) (outcome, processResponse) {
+func nativeProtocolStateAction(t *testing.T, n *certifiedProcessNetwork, actor, kind, index uint64, data []byte, bootstrap ...*[32]byte) (outcome, processResponse) {
 	t.Helper()
 	r := n.all[actor].call(t, processRequest{op: processCertifiedAction, entity: kind, index: index, data: data})
 	if kind == certifiedOpenRecipient {
@@ -596,7 +842,7 @@ func nativeProtocolStateAction(t *testing.T, n *certifiedProcessNetwork, actor, 
 		group, leader = 1, n.leaders[1]
 	}
 	ns, _ := certifiedProcessNamespace(leader)
-	agreement := rangeMoveSpanSemanticContractID()
+	agreement := nativeProtocolStateExpectedAgreement(t)
 	if proposal.target.graph != (idalloc.GraphID{1}) || proposal.target.partition != ns.partition || proposal.target.semantic != agreement {
 		t.Fatal("source proposal escaped declared process topology", proposal.target)
 	}
@@ -628,6 +874,12 @@ func nativeProtocolStateAction(t *testing.T, n *certifiedProcessNetwork, actor, 
 	}
 	if kind != certifiedCreateCrossEdge && o.reason != reasonNone {
 		t.Fatal("certified process local positive control refused", kind, o)
+	}
+	if len(bootstrap) != 0 {
+		if kind != certifiedInitialize || len(bootstrap) != 1 || bootstrap[0] == nil || *bootstrap[0] != ([32]byte{}) && *bootstrap[0] != proposal.target.semantic {
+			t.Fatal("ambiguous actual state bootstrap")
+		}
+		*bootstrap[0] = proposal.target.semantic // After the actual all-voter original/CDC/root census above.
 	}
 	t.Logf("actual certified child operation: actor=%d target=%d kind=%d identity=%x index=%d reason=%d", actor, proposal.target.partition, kind, o.identity, o.index, o.reason)
 	return o, result
@@ -687,7 +939,11 @@ func nativeProtocolStateInventory() []nativeProtocolStateRecipe {
 	return out
 }
 func (r nativeProtocolStateRecipe) matches(p allocationProposal) (bool, error) {
-	if !r.valid() || !p.target.valid() || p.target.semantic != rangeMoveSpanSemanticContractID() || p.target.partition != r.Partition {
+	agreement, err := nativeProtocolStateAgreement()
+	if err != nil {
+		return false, err
+	}
+	if !r.valid() || !p.target.valid() || p.target.semantic != agreement || p.target.partition != r.Partition {
 		return false, nil
 	}
 	switch r.Family {

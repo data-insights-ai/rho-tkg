@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -79,6 +81,244 @@ type nativeProtocolStateRefusal struct {
 	Proposal, Before, After, Record []byte
 }
 
+const nativeProtocolPooledStateProfile = "native-protocol-owned-pooled-state-transition-v1"
+
+type nativeProtocolStatePoolFrame struct {
+	Origin, Partition uint64
+	Request, Reply    []byte
+	Before, After     nativeProtocolStateCall
+}
+type nativeProtocolStatePooledEvidence struct {
+	Version  uint8
+	Semantic [32]byte
+	Frames   []nativeProtocolStatePoolFrame
+}
+
+// One fresh observation owner surrounds the original production submissions.
+// A lost service response stays absent. Its after-observation is deferred until
+// the actual recovered original can be read before the next move submission.
+type nativeProtocolPoolCapture struct {
+	mu               sync.Mutex
+	t                *testing.T
+	ctx              context.Context
+	n                *certifiedProcessNetwork
+	hub              *graphProcessHub
+	priorBefore      func(context.Context, uint64, uint64, []byte) error
+	priorAfter       func(context.Context, uint64, uint64, []byte, []byte) error
+	clients          map[uint64]*nativeProtocolStateClient
+	processes        map[uint64]*graphProcess
+	inspections      []nativeProtocolStateCall
+	frames           []nativeProtocolStatePoolFrame
+	pending          *nativeProtocolStatePoolFrame
+	spent            uint64
+	candidates, work uint64
+	terminal         error
+	output           *graphstate.OutputBudget
+}
+
+func newNativeProtocolPoolCapture(t *testing.T, ctx context.Context, n *certifiedProcessNetwork) *nativeProtocolPoolCapture {
+	t.Helper()
+	// Full diagnostic ownership is admitted before any graph/move effect;
+	// actual retention grows only with admitted complete observations.
+	if ctx.Err() != nil || nativeProtocolStateExpectedAgreement(t) != rangeMovePooledSemanticContractID() {
+		t.Fatal("actual pooled capture admission", ctx.Err())
+	}
+	output, err := graphstate.NewOutputBudget(16 << 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = output.Reserve(16 << 20); err != nil {
+		t.Fatal(err)
+	}
+	c := &nativeProtocolPoolCapture{t: t, ctx: ctx, n: n, clients: make(map[uint64]*nativeProtocolStateClient), processes: make(map[uint64]*graphProcess), output: output}
+	c.attach(n.all[1].mux.hub)
+	t.Cleanup(c.close)
+	return c
+}
+func (c *nativeProtocolPoolCapture) attach(h *graphProcessHub) {
+	c.hub = h
+	h.mu.Lock()
+	c.priorBefore, c.priorAfter = h.beforeRelay, h.afterRelay
+	h.beforeRelay, h.afterRelay = c.before, c.after
+	h.mu.Unlock()
+}
+func (c *nativeProtocolPoolCapture) close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.hub == nil {
+		return
+	}
+	c.hub.mu.Lock()
+	c.hub.beforeRelay, c.hub.afterRelay = c.priorBefore, c.priorAfter
+	c.hub.mu.Unlock()
+	c.hub = nil
+}
+func (c *nativeProtocolPoolCapture) proof(ctx context.Context, partition uint64, command, boundary []byte) (nativeProtocolStateCall, error) {
+	operation, cancel := context.WithCancel(c.ctx)
+	stop := context.AfterFunc(ctx, cancel)
+	defer func() { stop(); cancel() }()
+	member := c.n.leaders[0]
+	if partition == 8 {
+		member = c.n.leaders[1]
+	} else if partition != 3 {
+		return nativeProtocolStateCall{}, errInvalid
+	}
+	client := c.clients[member]
+	if client == nil || c.processes[member] != c.n.all[member] {
+		client = &nativeProtocolStateClient{t: c.t, ctx: operation, n: c.n, member: member}
+		if _, err := client.call(nativeProtocolStateControl{Action: "inspect"}); err != nil {
+			return nativeProtocolStateCall{}, err
+		}
+		c.inspections = append(c.inspections, client.calls...)
+		client.calls = nil
+		c.clients[member], c.processes[member] = client, c.n.all[member]
+	}
+	client.ctx = operation
+	_, err := client.call(nativeProtocolStateControl{Action: "move-proof", Original: command, Boundary: boundary})
+	if err != nil {
+		return nativeProtocolStateCall{}, err
+	}
+	if len(client.calls) != 1 {
+		return nativeProtocolStateCall{}, errCorrupt
+	}
+	call := client.calls[0]
+	client.calls = nil
+	return call, nil // Only observation storage retires; native owner counters do not reset.
+}
+func nativeProtocolPoolBoundary(call nativeProtocolStateCall) ([]byte, error) {
+	r, err := decodeProcessResponse(call.Response)
+	if err != nil {
+		return nil, err
+	}
+	var reply nativeProtocolStateReply
+	if err = nativeFeedDecodeJSON(r.aux, &reply); err != nil {
+		return nil, err
+	}
+	var proof nativeProtocolPoolProof
+	if err = nativeFeedDecodeJSON(reply.Page, &proof); err != nil || !proof.Complete || len(proof.UndoIndices) == 0 || len(proof.UndoIndices) > 4 {
+		return nil, errors.Join(errCorrupt, err)
+	}
+	var boundary []byte
+	for _, index := range proof.UndoIndices {
+		boundary = binary.BigEndian.AppendUint64(boundary, index)
+	}
+	return boundary, nil
+}
+func (c *nativeProtocolPoolCapture) finishPending(ctx context.Context, reply []byte) error {
+	if c.pending == nil {
+		return nil
+	}
+	request, err := decodeGraphSourceRequest(c.pending.Request)
+	if err != nil {
+		return err
+	}
+	proposal, err := decodeGraphSourceProposal(request.command)
+	if err != nil {
+		return err
+	}
+	boundary, err := nativeProtocolPoolBoundary(c.pending.Before)
+	if err != nil {
+		return err
+	}
+	after, err := c.proof(ctx, c.pending.Partition, proposal.wire, boundary)
+	if err != nil {
+		return err
+	}
+	c.pending.After, c.pending.Reply = after, bytes.Clone(reply)
+	body, err := json.Marshal(c.pending)
+	if err != nil || len(body)+1 > 512<<10 || uint64(len(body)+1) > (16<<20)-c.spent {
+		return errors.Join(errLimit, err)
+	}
+	c.spent += uint64(len(body) + 1)
+	c.frames = append(c.frames, *c.pending)
+	c.pending = nil
+	return nil
+}
+func (c *nativeProtocolPoolCapture) before(ctx context.Context, origin, partition uint64, wire []byte) error {
+	if c.priorBefore != nil {
+		if err := c.priorBefore(ctx, origin, partition, wire); err != nil {
+			return err
+		}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.terminal != nil {
+		return c.terminal
+	}
+	if err := errors.Join(ctx.Err(), c.ctx.Err()); err != nil {
+		return err
+	}
+	if c.candidates >= 16384 || len(wire) > processFrameBytes {
+		c.terminal = errLimit
+		return errLimit
+	}
+	c.candidates++
+	c.work += uint64(32*len(wire) + 4096) // Fixed finite whole-capture candidate/decode grant.
+	request, err := decodeGraphSourceRequest(wire)
+	if err != nil {
+		return err
+	}
+	if request.kind != sourceSubmit {
+		return nil
+	}
+	proposal, err := decodeGraphSourceProposal(request.command)
+	if err != nil {
+		return err
+	}
+	if !isRangeMoveWire(proposal.wire) {
+		return nil
+	}
+	if !bytes.HasPrefix(proposal.wire, []byte("GMQ\x03")) || len(wire) > 64<<10 || len(c.frames) >= 128 {
+		return errLimit
+	}
+	// No later move effect can pass this hook before the preceding unknown
+	// attempt has its exact immutable-original/current-control observation.
+	if err = c.finishPending(ctx, nil); err != nil {
+		c.terminal = err
+		return err
+	}
+	before, err := c.proof(ctx, partition, proposal.wire, nil)
+	if err != nil {
+		c.terminal = err
+		return err
+	}
+	owned := make([]byte, len(wire))
+	copy(owned, wire)
+	c.pending = &nativeProtocolStatePoolFrame{Origin: origin, Partition: partition, Request: owned, Before: before}
+	return nil
+}
+func (c *nativeProtocolPoolCapture) after(ctx context.Context, origin, partition uint64, wire, reply []byte) error {
+	c.mu.Lock()
+	if c.pending != nil && bytes.Equal(c.pending.Request, wire) {
+		if c.pending.Origin != origin || c.pending.Partition != partition {
+			c.terminal = errCorrupt
+		} else {
+			c.terminal = c.finishPending(ctx, reply)
+		}
+	}
+	err := c.terminal
+	c.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if c.priorAfter != nil {
+		return c.priorAfter(ctx, origin, partition, wire, reply)
+	}
+	return nil
+}
+func (c *nativeProtocolPoolCapture) finish(a *nativeProtocolStateArtifact) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.terminal != nil {
+		c.t.Fatal(c.terminal)
+	}
+	if err := c.finishPending(c.ctx, nil); err != nil {
+		c.t.Fatal("unobserved exact pooled attempt", err)
+	}
+	a.Calls = append(a.Calls, c.inspections...)
+	a.Pooled.Frames = c.frames
+}
+
 type nativeProtocolStateArtifact struct {
 	Version                                   uint8
 	Profile                                   string
@@ -102,6 +342,7 @@ type nativeProtocolStateArtifact struct {
 	Refusals                                  []nativeProtocolStateRefusal
 	ChangedCaller, ChangedReply               []byte
 	AllocatorBefore, AllocatorAfter           []byte
+	Pooled                                    *nativeProtocolStatePooledEvidence `json:",omitempty"`
 }
 
 func nativeProtocolStateStart(t *testing.T) (context.Context, [16]byte, int64) {
@@ -124,7 +365,7 @@ func nativeProtocolStatePrepare(t *testing.T, n *certifiedProcessNetwork, actor,
 	t.Helper()
 	r := n.all[actor].call(t, processRequest{op: processCertifiedAction, entity: kind, index: index, data: data})
 	p, e := decodeCertifiedProcessProposal(r.aux)
-	if e != nil || p.target.semantic != rangeMoveSpanSemanticContractID() {
+	if e != nil || p.target.semantic != nativeProtocolStateExpectedAgreement(t) {
 		t.Fatal("actual span factory", e)
 	}
 	return p
@@ -177,7 +418,7 @@ func nativeProtocolStateRestart(t *testing.T, ctx context.Context, f *pairedGrap
 		out = append(out, pairedFaultProcess{EventID: f.event(), Action: "reopen-before-campaign", Member: id, Instance: pairedGraphFaultInstance(id, all[id]), PreviousInstance: pairedGraphFaultInstance(id, prior[id]), Volume: filepath.Join(f.n.dir, fmt.Sprint(id)), Ready: true, Raw: raw, RecoveryRaw: raw})
 	}
 	for _, leader := range []uint64{1, 4} {
-		allocationP08ElectFor(t, f.n, rangeMoveSpanSemanticContractID(), 0, leader)
+		allocationP08ElectFor(t, f.n, nativeProtocolStateExpectedAgreement(t), 0, leader)
 	}
 	if ctx.Err() != nil {
 		t.Fatal(ctx.Err())
@@ -272,6 +513,64 @@ func TestNativeProtocolStateP07P08P09ExactStableTransitions(t *testing.T) {
 	}
 }
 
+func TestNativeProtocolPooledStateTransitionsKeepActualUndoOriginals(t *testing.T) {
+	for index, recipe := range nativeProtocolStateInventory() {
+		if testing.Short() && index != 0 && index != 15 && index != 31 && index != 47 && index != 67 && index != 68 && index != 99 && index != 127 && index != 128 && index != 136 && index != 138 {
+			continue
+		}
+		t.Run(fmt.Sprintf("%s-phase%d-p%d-page%d-kind%d-%s", recipe.Family, recipe.Phase, recipe.Partition, recipe.Page, recipe.Kind, recipe.Side), func(t *testing.T) {
+			t.Setenv("RHO_GRAPH_PROTOCOL_STATE_RECOVERY", "4")
+			artifact := nativeProtocolStateCase(t, recipe)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+			command := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", "native_protocol_campaign_state_check.py"), artifact)
+			var diagnostics processStderr
+			command.Stdout, command.Stderr = &diagnostics, &diagnostics
+			if e := command.Run(); e != nil {
+				body, _ := diagnostics.state()
+				t.Fatal("independent pooled original/debt/state oracle", e, body)
+			}
+			if _, overflow := diagnostics.state(); overflow {
+				t.Fatal("bounded independent diagnostics")
+			}
+		})
+	}
+}
+
+func TestNativeProtocolPooledProofDoorKeepsCanonicalBoundedNativeKeys(t *testing.T) {
+	encode := func(c nativeProtocolStateControl) []byte {
+		body, e := json.Marshal(c)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return append([]byte(nativeProtocolStateMarker), body...)
+	}
+	q := nativeProtocolStateControl{Version: 1, Cookie: [16]byte{1}, Sequence: 1, Action: "move-proof", Original: []byte("GMQ\x03")}
+	for _, indices := range [][]uint64{{0}, {1}, {0, 1, 2, 128}} {
+		q.Boundary = nil
+		for _, index := range indices {
+			q.Boundary = binary.BigEndian.AppendUint64(q.Boundary, index)
+		}
+		if got, e := decodeNativeProtocolStateControl(encode(q)); e != nil || !bytes.Equal(got.Boundary, q.Boundary) {
+			t.Fatal("canonical same native key window", e)
+		}
+		if _, e := nativeProtocolStateMoveProof(t.Context(), nil, q); !errors.Is(e, errInvalid) {
+			t.Fatal("inert command/window recreated native source", e)
+		}
+	}
+	for _, boundary := range [][]byte{{1}, make([]byte, 16), binary.BigEndian.AppendUint64(nil, 129), make([]byte, 40)} {
+		q.Boundary = boundary
+		if _, e := decodeNativeProtocolStateControl(encode(q)); !errors.Is(e, errInvalid) {
+			t.Fatal("ambiguous/truncated/oversized native window admitted", e)
+		}
+	}
+	q.Boundary = nil
+	q.Action = "close"
+	if _, e := decodeNativeProtocolStateControl(encode(q)); !errors.Is(e, errInvalid) {
+		t.Fatal("diagnostic bytes borrowed terminal cleanup lane", e)
+	}
+}
+
 func nativeProtocolStateCase(t *testing.T, recipe nativeProtocolStateRecipe) string {
 	t.Helper()
 	if !recipe.valid() {
@@ -281,10 +580,17 @@ func nativeProtocolStateCase(t *testing.T, recipe nativeProtocolStateRecipe) str
 	if recipe.Family == "allocation" {
 		t.Setenv("RHO_GRAPH_ALLOCATION_PROCESS", "1")
 	}
-	n := nativeProtocolStateNetwork(t, recipe.Family == "allocation")
-	f := &pairedGraphFaultNetwork{t: t, n: n, down: make(map[uint64]bool), intentionalKills: make(map[*graphProcess]bool)}
+	n, bootstrap := nativeProtocolStateNetwork(t, recipe.Family == "allocation")
+	f := &pairedGraphFaultNetwork{t: t, n: n, bootstrapAgreement: bootstrap, down: make(map[uint64]bool), intentionalKills: make(map[*graphProcess]bool)}
 	f.installFilter()
 	a := nativeProtocolStateArtifact{Version: 1, Profile: nativeProtocolStateProfile, Recipe: recipe, Run: run, DeadlineUnixNanos: deadline}
+	var pooled *nativeProtocolPoolCapture
+	if nativeProtocolStateExpectedAgreement(t) == rangeMovePooledSemanticContractID() {
+		f.parent = ctx
+		a.Version, a.Profile = 2, nativeProtocolPooledStateProfile
+		a.Pooled = &nativeProtocolStatePooledEvidence{Version: 1, Semantic: rangeMovePooledSemanticContractID()}
+		pooled = newNativeProtocolPoolCapture(t, ctx, n)
+	}
 	if recipe.Family == "allocation" {
 		nativeProtocolStateAllocation(t, ctx, f, &a)
 	} else {
@@ -294,6 +600,10 @@ func nativeProtocolStateCase(t *testing.T, recipe nativeProtocolStateRecipe) str
 	a.ReceiptGrantBytes = a.ReceiptReads * (64 << 10)
 	if len(a.Records) == 0 {
 		a.Records = nativeProtocolStateRecords(t, n, a.From, a.Through)
+	}
+	if pooled != nil {
+		pooled.finish(&a)
+		pooled.close()
 	}
 	if ctx.Err() != nil {
 		t.Fatal("same original campaign deadline", ctx.Err())
@@ -364,7 +674,7 @@ func nativeProtocolStateGraph(t *testing.T, ctx context.Context, f *pairedGraphF
 	n := f.n
 	a.From = [2]uint64{}
 	nativeProtocolStateSeed(t, n)
-	a.Before = nativeTransitionMoveReadFor(t, ctx, n, 2, graphReadFresh, graphCut{}, rangeMoveSpanSemanticContractID())
+	a.Before = nativeTransitionMoveReadFor(t, ctx, n, 2, graphReadFresh, graphCut{}, nativeProtocolStateExpectedAgreement(t))
 	cut, e := pairedFaultCut(a.Before.Cut)
 	if e != nil {
 		t.Fatal(e)
@@ -458,7 +768,7 @@ func nativeProtocolStateGraph(t *testing.T, ctx context.Context, f *pairedGraphF
 	}
 	a.ChangedCaller, a.ChangedReply = bytes.Clone(changedProposal.wire), p06ProcessWire(t, changedResponse)
 	if a.Recipe.Family == "pin" && (a.Recipe.Phase == pinRelease || a.Recipe.Phase == pinExpire || a.Recipe.Phase == pinClose || a.Recipe.Phase == pinAdvanceEpoch || a.Recipe.Phase == pinCancelIssue) {
-		a.Retained = nativeTransitionMoveReadFor(t, ctx, n, 2, graphReadAt, cut, rangeMoveSpanSemanticContractID())
+		a.Retained = nativeTransitionMoveReadFor(t, ctx, n, 2, graphReadAt, cut, nativeProtocolStateExpectedAgreement(t))
 	} else {
 		if len(a.Token) == 0 {
 			r := client.must(nativeProtocolStateControl{Action: "publish"})
@@ -469,7 +779,7 @@ func nativeProtocolStateGraph(t *testing.T, ctx context.Context, f *pairedGraphF
 			t.Fatal("actual same native owner lost snapshot")
 		}
 		client.must(nativeProtocolStateControl{Action: "snapshot-close"})
-		a.Retained = nativeTransitionMoveReadFor(t, ctx, n, 2, graphReadAt, cut, rangeMoveSpanSemanticContractID())
+		a.Retained = nativeTransitionMoveReadFor(t, ctx, n, 2, graphReadAt, cut, nativeProtocolStateExpectedAgreement(t))
 	}
 	if !reflect.DeepEqual(a.Before, a.Retained) {
 		t.Fatal("current substitution for original C")
@@ -501,7 +811,7 @@ func nativeProtocolStateGraph(t *testing.T, ctx context.Context, f *pairedGraphF
 		// different Page originals. No saved diagnostic bytes create a source.
 		nativeProtocolStateDrainFor(t, ctx, f, a, client, "post-collection-feed")
 	}
-	a.Reopened = nativeTransitionMoveReadFor(t, ctx, n, 2, graphReadAt, cut, rangeMoveSpanSemanticContractID())
+	a.Reopened = nativeTransitionMoveReadFor(t, ctx, n, 2, graphReadAt, cut, nativeProtocolStateExpectedAgreement(t))
 	if !reflect.DeepEqual(a.Before, a.Reopened) {
 		t.Fatal("old pinned C lost after actual eligible GC")
 	}
@@ -585,7 +895,7 @@ func nativeProtocolStateMove(t *testing.T, ctx context.Context, f *pairedGraphFa
 				t.Fatal(e)
 			}
 			return cut
-		}(), rangeMoveSpanSemanticContractID())
+		}(), nativeProtocolStateExpectedAgreement(t))
 		if !reflect.DeepEqual(a.Before, observed) {
 			t.Fatal("reopen replaced original pinned snapshot")
 		}
@@ -685,7 +995,7 @@ func nativeProtocolStatePin(t *testing.T, ctx context.Context, f *pairedGraphFau
 	var page nativeProtocolStateReply
 	request := nativeProtocolStateRequest(a.Run, "cursor-across-move", 0)
 	if a.Recipe.Phase == pinAdvanceFeed {
-		boundary := nativeScalarWorkloadCut(t, ctx, f.n, graphReadFresh, graphCut{}, rangeMoveSpanSemanticContractID())
+		boundary := nativeScalarWorkloadCut(t, ctx, f.n, graphReadFresh, graphCut{}, nativeProtocolStateExpectedAgreement(t))
 		wire, e := nativeFeedCutWire(boundary)
 		if e != nil {
 			t.Fatal(e)
@@ -794,7 +1104,7 @@ func nativeProtocolStateDrain(t *testing.T, ctx context.Context, f *pairedGraphF
 func nativeProtocolStateDrainFor(t *testing.T, ctx context.Context, f *pairedGraphFaultNetwork, a *nativeProtocolStateArtifact, c *nativeProtocolStateClient, domain string) []uint64 {
 
 	t.Helper()
-	cut := nativeScalarWorkloadCut(t, ctx, f.n, graphReadFresh, graphCut{}, rangeMoveSpanSemanticContractID())
+	cut := nativeScalarWorkloadCut(t, ctx, f.n, graphReadFresh, graphCut{}, nativeProtocolStateExpectedAgreement(t))
 	wire, e := nativeFeedCutWire(cut)
 	if e != nil {
 		t.Fatal(e)
@@ -1011,7 +1321,7 @@ func nativeProtocolStatePublicationRace(t *testing.T, ctx context.Context, f *pa
 	// mutation produces a strictly newer root which the actual plan may collect
 	// past; merely running GC would not establish this refusal condition.
 	nativeProtocolStateAction(t, f.n, 1, certifiedHealthyLabel, 1, nil)
-	current := nativeScalarWorkloadCut(t, ctx, f.n, graphReadFresh, graphCut{}, rangeMoveSpanSemanticContractID())
+	current := nativeScalarWorkloadCut(t, ctx, f.n, graphReadFresh, graphCut{}, nativeProtocolStateExpectedAgreement(t))
 	for i := range current.certificates {
 		if current.certificates[i].sourceIndex < old.certificates[i].sourceIndex {
 			t.Fatal("nonmonotone native source")
@@ -1077,6 +1387,16 @@ func nativeProtocolStateWrite(t *testing.T, path string, a nativeProtocolStateAr
 		}
 	}
 	records, calls, gc := a.Records, a.Calls, a.GC
+	var pooled []nativeProtocolStatePoolFrame
+	if a.Pooled != nil {
+		pooled = a.Pooled.Frames
+		if len(pooled) > 128 {
+			t.Fatal("finite pooled submission observations")
+		}
+		copyEvidence := *a.Pooled
+		copyEvidence.Frames = nil
+		a.Pooled = &copyEvidence
+	}
 	a.Records, a.Calls, a.GC = nil, nil, nil
 	write(struct {
 		Type     string
@@ -1105,12 +1425,29 @@ func nativeProtocolStateWrite(t *testing.T, path string, a nativeProtocolStateAr
 			Receipt  nativeRetentionReceipt
 		}{"gc", i, r}, true)
 	}
-	write(struct {
-		Type            string
-		Rows, Calls, GC int
-		Through         [2]uint64
-		PayloadSHA256   string
-	}{"footer", len(records), len(calls), len(gc), a.Through, fmt.Sprintf("%x", hash.Sum(nil))}, false)
+	for i, frame := range pooled {
+		write(struct {
+			Type     string
+			Sequence int
+			Frame    nativeProtocolStatePoolFrame
+		}{"pooled", i, frame}, true)
+	}
+	if a.Pooled != nil {
+		write(struct {
+			Type            string
+			Rows, Calls, GC int
+			Through         [2]uint64
+			PayloadSHA256   string
+			Pooled          int
+		}{"footer", len(records), len(calls), len(gc), a.Through, fmt.Sprintf("%x", hash.Sum(nil)), len(pooled)}, false)
+	} else {
+		write(struct {
+			Type            string
+			Rows, Calls, GC int
+			Through         [2]uint64
+			PayloadSHA256   string
+		}{"footer", len(records), len(calls), len(gc), a.Through, fmt.Sprintf("%x", hash.Sum(nil))}, false)
+	}
 	if e := file.Sync(); e != nil {
 		t.Fatal(e)
 	}
