@@ -723,8 +723,16 @@ cohorts replay the recipe; deletion minimization requires the same independently
 authenticated semantic failure. Missing evidence, expiry, failed cleanup and
 resource refusal cannot qualify a counterexample or deletion. This is authored
 controller/oracle wiring, not an executed soak or whole-D acceptance. The
-remaining P01–P09 clause audit and broader retained-pin/fault composition stay
-open; none of these new guards ran.
+P01–P09 source inventory identifies existing logical schedule coverage; no
+additional B/C production method gap was found in that audit. Applicable
+per-schedule storage conjunction remains in implementation. The internal seam
+at `f18f9cf9` binds Ready persistence and application installation to the actual
+unique entry, complete ordered entry-manifest hash and native batch payload
+hash. Prepaid, immutable before/after Sync observations grant no operation ACK
+or power-loss proof; unsupported/ambiguous/unfunded diagnostics leave native
+persistence unchanged, and default filesystems do no diagnostic hashing.
+Checkpoint/publication/activation mapping and graph-driver wiring remain open;
+none of these new guards ran.
 
 Native snapshot-to-feed ownership is source-integrated at `4868f0f7`. One genuine
 issued pin retains the snapshot and full-vector feed; complete original-round
