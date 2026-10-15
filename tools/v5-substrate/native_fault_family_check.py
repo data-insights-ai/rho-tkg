@@ -30,6 +30,9 @@ EXPLORATIONS = {f"explore-A-{phase}-fence-{str(first).lower()}"
                 for phase in ("registered", "prepared") for first in (False, True)}
 EXPLORATIONS |= {f"explore-B-{phase}-fence-true" for phase in ("registered", "prepared")}
 HEADER_KEYS = set("Version Profile Case Original Manifest PendingCaller InstalledA WithheldB PartialReads Before Retained Recovered Reopened Processes From Through Records PacketEvents IO Refused RefusedReplay Ticks Clocks Model Network HeldPacket HeldTerm LeaderBefore LeaderAfter Corruption OpenRefusal Repair CorruptArchive Expiry Snapshot Exploration DiskBytes AllocatedDiskBytes Scope".split())
+SENDER_PROFILE = "native-snapshot-inflight-sender-loss-v1"
+SENDER_CASES = {"snapshot-sender-before-append", "snapshot-sender-after-append"}
+SENDER_FIELDS = set("Version Run DeadlineUnixNanos Side SelectedSnapshot SenderOwner SenderBefore ReceiverBefore ReceiverPartial ReceiverAfterClose SenderReadIndex RestartedReadIndex SenderAfter SenderReadRequest RestartedReadRequest PartialOld StaleRequest StaleReply OriginalReply ReplayReply".split())
 
 
 def require(value, message):
@@ -72,7 +75,8 @@ def load(path):
             if header is None:
                 require(set(row) == {"Type", "Artifact"} and kind == "header", "header grammar")
                 header = row["Artifact"]
-                require(type(header) is dict and set(header) == HEADER_KEYS and header["Records"] is None and header["Snapshot"] is None, "fresh header grammar/inline census")
+                sender = type(header) is dict and header.get("Profile") == SENDER_PROFILE
+                require(type(header) is dict and set(header) == (HEADER_KEYS | {"SnapshotSender"} if sender else HEADER_KEYS) and header["Records"] is None and header["Snapshot"] is None, "fresh header grammar/inline census")
                 require(header["Model"] is None or header["Model"]["Image"] is None, "inline model")
             elif kind == "model-image":
                 require(phase == 0 and set(row) == {"Type", "Sequence", "Data"} and row["Sequence"] == (len(image) + 65535) // 65536, "model page sequence")
@@ -543,6 +547,8 @@ def processes(data):
         require(reopened == [1] and killed and set(killed) == {1}, "failed source same-directory recovery census")
     elif case == "logical-domain-loss":
         require(sorted(killed) == sorted(reopened) == [2, 5], "actual two-process logical-domain loss")
+    elif case in SENDER_CASES:
+        require(killed == [3, 1] and reopened == [1, 3] and len(rows) == 4 and not any(r["Action"] == "reopen-interrupted" for r in rows), "real lagged receiver plus in-flight sender loss, no receiver-loss substitution")
     elif case.startswith("snapshot-"):
         require(reopened == [3] and killed and set(killed) == {3} and sum(r["Action"] == "reopen-interrupted" for r in rows) == 1, "interrupted native snapshot receiver/rejoin")
     else:
@@ -905,7 +911,129 @@ def snapshots(data, scopes):
     require(not attempts[0]["final"] if case == "snapshot-chunk-interruption" else attempts[0]["final"] and attempts[0]["prepared"], "interruption at declared actual chunk vs atomic-KV boundary")
 
 
+def sender_stale_request(encoded, reply, owner):
+    q = P.Cursor(P.raw(encoded))
+    incarnation, sequence, op, actual_owner, entity = q.take(16), q.number(), q.number(1), q.number(), q.number()
+    require(incarnation == reply["incarnation"] and sequence == reply["sequence"] and op == 15 and actual_owner == owner > 0 and entity == 0 and not q.field(), "actual stale processNext request/reply correlation")
+    require(q.number() == q.number() == q.number(1) == 0 and not q.field(), "stale sender request invented packet authority")
+    q.end()
+    require(reply["code"] == 1 and reply["mask"] == 1 << 4 and not reply["handles"] and not reply["aux"] and not reply["outcome"] and not reply["changes"] and not reply["packets"], "old sender handle must actually refuse, not unavailable or renewed authority")
+
+
+def sender_active_root(before, partial, closed):
+    for observed in (before, partial, closed):
+        require(observed["code"] == observed["mask"] == 0 and not observed["outcome"] and not observed["changes"], "actual receiver-state diagnostic refused")
+    for observed in (partial, closed):
+        require(observed["incarnation"] == before["incarnation"] and observed["applied"] == before["applied"] and observed["image"] == before["image"] and observed["cut"] == before["cut"] and observed["stats"][1] == before["stats"][1], "partial import published a mixed/new active root")
+    require(before["stats"][23] == closed["stats"][23] == 0 and partial["stats"][23] == 1 and partial["stats"][24] == 0, "genuine live partial import then actual Close, no verified/activated claim")
+
+
+def sender_leader_read(configuration, state, request):
+    # The actual owning API uses Driver.ReadIndex, which refuses a follower.
+    # HardState.Vote (stats[3]) supports this observation; it is NOT leader ID.
+    q = P.Cursor(P.raw(request))
+    require(q.take(16) == configuration["incarnation"] and q.number() == configuration["sequence"] and q.number(1) == 29 and q.number() == 0 and q.number() == 1 and not q.field(), "exact native processCertifiedRead(observeConfiguration) request/reply")
+    require(q.number() == q.number() == q.number(1) == 0 and not q.field(), "leader ReadIndex request invented packet")
+    q.end()
+    require(configuration["code"] == configuration["mask"] == state["code"] == state["mask"] == 0 and state["ready"] == 1 and state["stats"][2] > 0 and state["stats"][3] == 1
+            and configuration["incarnation"] == state["incarnation"] and configuration["sequence"] < state["sequence"] and configuration["applied"] <= state["applied"], "actual sender leader-only ReadIndex and exact process ordering")
+
+
+def snapshot_sender(data, scopes, records):
+    e = data["SnapshotSender"]
+    require(type(e) is dict and set(e) == SENDER_FIELDS and type(e["Version"]) is int and e["Version"] == 1, "finite sender evidence grammar")
+    octets(e["Run"], 16, True)
+    integer(e["DeadlineUnixNanos"], (1 << 63)-1, 1)
+    require(e["Side"] in ("before", "after") and data["Case"] == "snapshot-sender-" + e["Side"] + "-append", "only actual in-flight boundaries")
+    rows, selected = data["Snapshot"], e["SelectedSnapshot"]
+    require(type(rows) is list and 5 <= len(rows) <= 16, "bounded sender/import observation inventory")
+    integer(selected, len(rows)-3, 1)
+    require(rows[selected]["Phase"] == e["Side"] + "-append" and rows[selected]["SenderOwner"] == integer(e["SenderOwner"], minimum=1), "selected genuine sender owner/boundary")
+    before, partial, closed = [process(P.raw(e[k])) for k in ("ReceiverBefore", "ReceiverPartial", "ReceiverAfterClose")]
+    sender_active_root(before, partial, closed)
+    require(e["PartialOld"] == data["Before"] == data["Reopened"], "partial import changed exact old graph/phantom/index set before retry")
+    sender_before, stale = process(P.raw(e["SenderBefore"])), process(P.raw(e["StaleReply"]))
+    sender_after = process(P.raw(e["SenderAfter"]))
+    sender_leader_read(process(P.raw(e["SenderReadIndex"])), sender_before, e["SenderReadRequest"])
+    sender_leader_read(process(P.raw(e["RestartedReadIndex"])), sender_after, e["RestartedReadRequest"])
+    sender_stale_request(e["StaleRequest"], stale, e["SenderOwner"])
+    events_ = data["Processes"]
+    lagged, failed, restarted, receiver = events_
+    loss, start, rejoin = [decoded(P.raw(row["Raw"])) for row in (failed, restarted, receiver)]
+    require(failed["Role"] == "snapshot-sender" and failed["Member"] == 1 and loss["Member"] == 1 and loss["PID"] > 0 and failed["Instance"].endswith("/" + sender_before["incarnation"].hex()), "actual captured sender process identity")
+    local_sender = process(P.raw(start["LocallyRestoredRaw"]))
+    local_receiver = process(P.raw(rejoin["LocallyRestoredRaw"]))
+    require(local_sender["incarnation"] == stale["incarnation"] != sender_before["incarnation"] and local_sender["sequence"]+1 == stale["sequence"] and local_sender["applied"] >= sender_before["applied"], "old sender handle attempted after actual local Restore before new offers")
+    require(sender_after["incarnation"] == stale["incarnation"] and sender_after["sequence"] > stale["sequence"] and sender_after["stats"][2] > sender_before["stats"][2], "real restarted sender leader term/identity after stale-handle refusal")
+    require(loss["Instance"] == failed["Instance"] and loss["Volume"] == failed["Volume"] == start["Volume"] and loss["ExitCode"] == -1 and loss["Success"] is False and start["Member"] == 1 and start["PID"] != loss["PID"], "exact sender SIGKILL and same-directory replacement evidence")
+    require(local_receiver == before and receiver["PreviousInstance"] == lagged["Instance"], "partial active-state assertion belongs to genuine receiver replacement")
+    attempts, current, first_manifest, activated, abandoned = [], None, None, False, False
+    for ordinal, row in enumerate(rows):
+        require(type(row) is dict and set(row) == {"Phase", "Donor", "Receiver", "Owner", "Manifest", "Chunk", "Packet", "ResponseWire", "SenderOwner"} and row["Donor"] == 1 and row["Receiver"] == 3, "actual sender snapshot diagnostic grammar")
+        owner, send_owner = integer(row["Owner"], minimum=1), integer(row["SenderOwner"], minimum=1)
+        manifest = snapshot_manifest(P.raw(row["Manifest"]), scopes)
+        if first_manifest is None: first_manifest = manifest
+        require(manifest == first_manifest, "sender restart changed actual published snapshot cut or full source")
+        packet_ = row["Packet"]
+        require(set(packet_) == {"From", "To", "Snapshot", "Payload"} and packet_["From"] == 1 and packet_["To"] == 3 and packet_["Snapshot"] is True, "actual donor MsgSnap envelope")
+        message = raft_packet(P.raw(packet_["Payload"]), scopes, 3)
+        require(message.get(1) == [7] and message.get(2) == [3] and message.get(3) == [1] and len(message.get(9, [])) == 1, "real snapshot packet sender/receiver")
+        attempt = len(attempts) + (1 if row["Phase"] == "after-begin" else 0)
+        require(attempt in (1,2) and message.get(4) == [(sender_before if attempt == 1 else sender_after)["stats"][2]], "actual initial/restarted leader term on emitted snapshot")
+        metadata = protobuf_fields(message[9][0])
+        require(set(metadata) == {1, 2} and metadata[1] == [manifest["descriptor"]] and len(metadata[2]) == 1 and protobuf_fields(metadata[2][0]) == {1:[manifest["conf"]], 2:[manifest["index"]], 3:[manifest["term"]]}, "actual descriptor/configuration/index/term")
+        phase, wire = row["Phase"], P.raw(row["ResponseWire"])
+        response = None if phase == "before-append" else process(wire)
+        if response is None:
+            require(len(wire) == 381 and not any(wire), "pre-Append fabricated ACK")
+        else:
+            require(response["incarnation"] == before["incarnation"] and response["code"] == response["mask"] == 0 and not response["outcome"] and not response["changes"], "receiver changed or snapshot diagnostic invented graph result")
+        if phase == "after-begin":
+            require(current is None and not activated and len(attempts) < 2 and response["handles"] == [owner] and response["aux"] == manifest["manifest"], "actual acknowledged Begin before sender loss/retry")
+            current = dict(owner=owner, sender=send_owner, sequence=0, after=b"", last=b"", final=False, prepared=False, rows=[0]*6, bytes=[0]*6, indexes={}, digest=manifest["seed"])
+            attempts.append(current)
+        require(current is not None and current["owner"] == owner and current["sender"] == send_owner, "snapshot operation outside actual live owner")
+        if phase == "before-append":
+            require(ordinal == selected and e["Side"] == "before" and len(attempts) == 1 and current["sequence"] == 0, "unselected pre-Append work")
+            prospective = {**current, "rows":current["rows"][:], "bytes":current["bytes"][:], "indexes":dict(current["indexes"])}
+            require(not snapshot_chunk(P.raw(row["Chunk"]), manifest, prospective), "sender killed only after complete EOF")
+        elif phase == "after-append":
+            require(not current["final"] and not current["prepared"], "Append after complete/verified import")
+            snapshot_chunk(P.raw(row["Chunk"]), manifest, current)
+        elif phase == "after-sender-close":
+            require(ordinal == selected+1 and len(attempts) == 1 and not abandoned and not current["final"] and not current["prepared"] and response["stats"][23] == 0, "actual abandoned partial owner Close")
+            require(current["sequence"] == (0 if e["Side"] == "before" else 1) and send_owner == e["SenderOwner"], "before/after first Append attribution")
+            require(response["sequence"] > partial["sequence"] and closed["sequence"] > response["sequence"], "partial read/actual cleanup/closed state ordering")
+            abandoned, current = True, None
+        elif phase == "before-activate":
+            require(abandoned and len(attempts) == 2 and current["final"] and not current["prepared"] and response["stats"][11] == response["stats"][23] == response["stats"][24] == 1, "unverified or partial retry imported state")
+            current["prepared"] = True
+        elif phase == "after-activate":
+            require(abandoned and len(attempts) == 2 and current["final"] and current["prepared"] and ordinal == len(rows)-1 and response["stats"][1] == response["stats"][5] == manifest["index"] and response["cut"] == manifest["cut"] and response["manifest"] == manifest["manifest"], "complete genuine retry Ready activation")
+            activated = True
+        else:
+            require(phase == "after-begin", "unsupported sender-loss boundary")
+        if ordinal == selected:
+            require(len(attempts) == 1 and not current["final"] and send_owner == e["SenderOwner"] and (phase == "before-append" or current["sequence"] == 1), "selected sender-loss did not interrupt first nonfinal page")
+            if response is not None: require(response["sequence"] < partial["sequence"], "Append ACK must precede sender-loss partial-state assertion")
+    require(activated and abandoned and len(attempts) == 2 and attempts[1]["final"] and not attempts[0]["final"], "missing complete independent retry EOF")
+    require(sender_before["code"] == sender_before["mask"] == 0 and sender_before["stats"][1] == first_manifest["index"] and sender_before["cut"] == first_manifest["cut"] and sender_before["image"] == first_manifest["image"] and before["applied"] < first_manifest["index"], "published sender source must exceed actual lagged receiver")
+    m = P.Cursor(P.body(P.raw(data["Manifest"]), b"GCM\1")); m.take(16); coordinator = m.number()
+    descriptor = C.decision_manifest(P.raw(data["Original"]), P.raw(data["Manifest"]), coordinator, scopes, data["Before"])
+    phases, _ = originals(data, records, {descriptor["tx"]:descriptor})
+    d = decision(phases[descriptor["tx"]], descriptor, True, P.cut(data["Before"])[1])
+    original = P.raw(records[coordinator, d["index"]]["Outcome"])
+    for name in ("OriginalReply", "ReplayReply"):
+        reply = process(P.raw(e[name]))
+        require(reply["code"] == reply["mask"] == 0, "same-original reply missing/refused")
+        P.resumed(e[name], scopes, descriptor["source"]["request"], descriptor["tx"], P.business_hash(descriptor["wire"], coordinator), 0, original)
+    require(process(P.raw(e["OriginalReply"]))["aux"] == process(P.raw(e["ReplayReply"]))["aux"], "same original must keep exact result/IDs after sender restart")
+
+
 def check(data):
+    if type(data) is dict and data.get("Profile") == SENDER_PROFILE:
+        require(set(data) == HEADER_KEYS | {"SnapshotSender"} and type(data["Version"]) is int and data["Version"] == 3 and data["Case"] in SENDER_CASES, "fresh closed sender-loss artifact")
+        return check_source(data)
     require(type(data) is dict and set(data) == HEADER_KEYS, "fresh closed artifact grammar")
     require(data["Version"] == 1 and data["Profile"] == PROFILE and data["Case"] in CASES | EXPLORATIONS, "fresh finite D artifact contract")
     return check_source(data)
@@ -928,7 +1056,10 @@ def check_source(data, *, semantic_require=require):
     corruption(data, selected)
     io(data)
     processes(data)
-    snapshots(data, scopes)
+    if data["Case"] in SENDER_CASES:
+        snapshot_sender(data, scopes, records)
+    else:
+        snapshots(data, scopes)
     return dict(case=data["Case"], records=len(records), serial_witness=witness,
                 scope="finite genuine-source D bridge; runtime qualification pending; explicit synced-image model, no physical power-loss or matrix/capacity claim")
 

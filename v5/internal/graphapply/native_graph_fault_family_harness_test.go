@@ -407,6 +407,7 @@ type nativeFaultFamilyArtifact struct {
 	DiskBytes, AllocatedDiskBytes uint64
 	Scope                         string
 	Replay                        *nativeTransitionComposedEvidence `json:",omitempty"`
+	SnapshotSender                *nativeSnapshotSenderEvidence     `json:",omitempty"`
 }
 
 type nativeFaultFamilyRangeRead struct {
@@ -534,6 +535,7 @@ type nativeFaultSnapshotBoundary struct {
 	Packet                 replica.Packet
 	Response               processResponse `json:"-"`
 	ResponseWire           []byte
+	SenderOwner            uint64 `json:",omitzero"`
 }
 
 func (f *pairedGraphFaultNetwork) nativeSnapshotNotice(boundary nativeFaultSnapshotBoundary) bool {
@@ -886,6 +888,9 @@ func writeNativeFaultFamilyArtifact(t *testing.T, f *pairedGraphFaultNetwork, ar
 	if artifact.Replay != nil {
 		artifact.Version, artifact.Profile = 2, nativeTransitionComposedProfile
 		path = filepath.Join(os.Getenv("RHO_GRAPH_COMPOSED_OUTPUT"), "native-composed-"+artifact.Case+".jsonl")
+	}
+	if artifact.SnapshotSender != nil {
+		artifact.Version, artifact.Profile = 3, nativeSnapshotSenderProfile
 	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {

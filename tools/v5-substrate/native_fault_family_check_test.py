@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compact fail-closed grammar guards; no synthetic native qualification run."""
 import hashlib
+import copy
 import base64
 import importlib.util
 import json
@@ -15,6 +16,53 @@ SPEC.loader.exec_module(F)
 
 
 class NativeFaultFamilyGuards(unittest.TestCase):
+    def test_sender_loss_has_exact_separate_profile_and_two_inflight_boundaries(self):
+        self.assertEqual(F.SENDER_CASES, {"snapshot-sender-before-append", "snapshot-sender-after-append"})
+        self.assertTrue(F.SENDER_CASES.isdisjoint(F.CASES | F.EXPLORATIONS))
+        for version, profile, case in ((1,F.PROFILE,"snapshot-sender-before-append"),
+                                       (3,F.SENDER_PROFILE,"snapshot-chunk-interruption"),
+                                       (3,F.SENDER_PROFILE,"snapshot-sender-after-activate")):
+            with self.subTest(version=version,case=case), self.assertRaises(ValueError):
+                F.check(dict(Version=version,Profile=profile,Case=case))
+
+    def test_sender_partial_import_cannot_publish_active_or_phantom_state(self):
+        before = dict(code=0,mask=0,outcome=b"",changes=b"",incarnation=b"r"*16,applied=4,image=b"old",cut=b"c"*32,stats=[0]*28)
+        before["stats"][1] = 4
+        partial, closed = copy.deepcopy(before), copy.deepcopy(before)
+        partial["stats"][23] = 1
+        F.sender_active_root(before,partial,closed)
+        for mutate in (lambda p,c:p.update(image=b"partial-new"), lambda p,c:p.update(applied=5),
+                       lambda p,c:p["stats"].__setitem__(24,1), lambda p,c:c["stats"].__setitem__(23,1),
+                       lambda p,c:c.update(incarnation=b"x"*16), lambda p,c:c["stats"].__setitem__(1,5)):
+            p,c=copy.deepcopy(partial),copy.deepcopy(closed);mutate(p,c)
+            with self.assertRaises(ValueError): F.sender_active_root(before,p,c)
+
+    def test_sender_leader_attribution_needs_actual_readindex_not_member_or_vote_label(self):
+        read = dict(code=0,mask=0,aux=b"native-configuration",incarnation=b"s"*16,sequence=2,applied=4)
+        state = dict(code=0,mask=0,ready=1,incarnation=b"s"*16,sequence=3,applied=4,stats=[0]*28)
+        state["stats"][2:4] = [1,1]
+        request = base64.b64encode(b"s"*16+struct.pack(">QBQQIQQBI",2,29,0,1,0,0,0,0,0)).decode()
+        F.sender_leader_read(read,state,request)
+        for mutate in (lambda r,s:r.update(code=3),lambda r,s:s.update(ready=0),
+                       lambda r,s:r.update(incarnation=b"x"*16),lambda r,s:r.update(sequence=4),
+                       lambda r,s:s["stats"].__setitem__(2,0)):
+            r,s=copy.deepcopy(read),copy.deepcopy(state);mutate(r,s)
+            with self.assertRaises(ValueError): F.sender_leader_read(r,s,request)
+
+    def test_sender_stale_handle_requires_exact_actual_refusal_not_replacement_authority(self):
+        # Inert process codec guard only; it is not an executed sender loss.
+        wire = b"n"*16+struct.pack(">QBQQIQQBI",2,15,7,0,0,0,0,0,0)
+        encoded = base64.b64encode(wire).decode()
+        reply = dict(incarnation=b"n"*16,sequence=2,code=1,mask=1<<4,handles=[],aux=b"",outcome=b"",changes=b"",packets=[])
+        F.sender_stale_request(encoded,reply,7)
+        for mutate in (lambda r:r.update(mask=1<<7), lambda r:r.update(code=0),
+                       lambda r:r.update(aux=b"new-handle"), lambda r:r.update(handles=[7]),
+                       lambda r:r.update(incarnation=b"o"*16), lambda r:r.update(sequence=3)):
+            bad=copy.deepcopy(reply);mutate(bad)
+            with self.assertRaises(ValueError): F.sender_stale_request(encoded,bad,7)
+        for bad in (wire[:-1],wire+b"x",wire[:24]+b"\x0e"+wire[25:]):
+            with self.assertRaises(ValueError): F.sender_stale_request(base64.b64encode(bad).decode(),reply,7)
+
     def test_label_cdc_scope_uses_its_one_based_axis_and_rejects_absent_or_foreign_axis(self):
         # Inert primary-codec bytes exercise only this parser. They are not a
         # native artifact, process result, authority or passing source witness.

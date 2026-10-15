@@ -297,6 +297,26 @@ PROTOCOL_FIXTURE_COMPAT = {
 }
 for _fixture, _parents in PROTOCOL_FIXTURE_COMPAT.items():
     FIXTURE_COMPAT[_fixture] = [*FIXTURE_COMPAT.get(_fixture, []), *_parents]
+SNAPSHOT_SENDER_PARENTS = [
+    "TestNativeSnapshotSenderLossRequiresExactReapedProcessAndApplicableBoundary",
+    "TestNativeSnapshotSenderLossDuringImportKeepsWholeOriginalAndOldCut",
+]
+SNAPSHOT_SENDER_FIXTURES = {
+    "native_graph_snapshot_sender_test.go", "paired_graph_snapshot_harness_test.go",
+    "native_graph_fault_family_harness_test.go", "paired_graph_fault_harness_test.go",
+    "graph_source_process_test.go", "replicated_process_test.go",
+    "native_graph_fault_schedule_test.go", "coordinator_loss_p03_harness_test.go",
+    "prepared_lock_p06_harness_test.go", "native_graph_transition_conjunction_harness_test.go",
+}
+FIXTURE_COMPAT["paired_graph_snapshot_harness_test.go"] = [
+    *FIXTURE_COMPAT.get("paired_graph_snapshot_harness_test.go", []),
+    "TestNativePairedGraphSnapshotChunkKeepsLegacyRestrictionAndOwnedBounds",
+    "TestNativePairedGraphSnapshotOwnersRefuseConstructorlessAndMismatchedEvents",
+    "TestNativeStateImportSyncBoundariesRecoverGenuineSourceAndRetainedCut",
+    "TestNativeFaultFamilySnapshotInterruptionAndAtomicKVPublicationRecoverWholeCut",
+]
+for _fixture in SNAPSHOT_SENDER_FIXTURES:
+    FIXTURE_COMPAT[_fixture] = [*FIXTURE_COMPAT.get(_fixture, []), *SNAPSHOT_SENDER_PARENTS]
 TRANSFER_INPUTS = {
     "tools/v5-substrate/native_transfer_cell.py", "tools/v5-substrate/native_transfer_check.py",
     "tools/v5-substrate/native_transfer_check_test.py", "tools/v5-substrate/native_feed_check.py",
@@ -411,6 +431,7 @@ PAIR_INPUTS = {"tools/v5-substrate/paired_workload_check.py", "tools/v5-substrat
                "tools/v5-substrate/fdb_selectors_check.py", "tools/v5-substrate/fdb_create_update_check.py",
                "tools/v5-substrate/fdb_columns_check.py", "tools/v5-substrate/fdb_correction_check.py"}
 PROCESS_INPUTS = {"tools/v5-substrate/process_watchdog.py", "tools/v5-substrate/process_watchdog_test.py"}
+SNAPSHOT_SENDER_INPUTS = {"v5/internal/graphapply/"+name for name in SNAPSHOT_SENDER_FIXTURES}
 # The complete-CDC replay tests consume these two frozen FDB archives directly.
 # Keep this finite dependency list in sync with compare_cost_cdc_test.py.
 COST_CDC_INPUTS = {
@@ -518,7 +539,7 @@ def graph_selection(directory, changed, definitions):
         # Only actually edited top-level helper functions get consumer lookup.
         # Shared types/methods require a reviewed finite fixture guard list.
         helpers = {name for kind, name in edited if kind == "func" and name not in parent_names(path)}
-        if helpers and path.name in PROTOCOL_FIXTURE_COMPAT:
+        if helpers and path.name in PROTOCOL_FIXTURE_COMPAT.keys() | SNAPSHOT_SENDER_FIXTURES:
             tests |= set(FIXTURE_COMPAT[path.name])
             helpers = set()
         if helpers and path.name in ("native_graph_transition_conjunction_initial_test.go", "native_graph_transition_conjunction_first_prepare_test.go"):
@@ -836,6 +857,8 @@ def cdc(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/paired_workload_check_test.py"], cwd=ROOT, check=True)
     if TRANSFER_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transfer_check_test.py"], cwd=ROOT, check=True)
+    if SNAPSHOT_SENDER_INPUTS.intersection(paths) and not FAULT_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_fault_family_check_test.py"], cwd=ROOT, check=True)
     if PROTOCOL_CORE_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_protocol_campaign_check_test.py"], cwd=ROOT, check=True)
     if PROTOCOL_PROGRAM_INPUTS.intersection(paths):

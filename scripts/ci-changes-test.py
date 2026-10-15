@@ -18,6 +18,8 @@ SPEC.loader.exec_module(CI)
 
 class Planning(unittest.TestCase):
     def with_protocol(self, paths, expected):
+        if CI.SNAPSHOT_SENDER_INPUTS.intersection(paths) and not CI.FAULT_INPUTS.intersection(paths):
+            expected = expected + [[sys.executable, "-B", "tools/v5-substrate/native_fault_family_check_test.py"]]
         for inputs, guard in (
             (CI.PROTOCOL_CORE_INPUTS, "native_protocol_campaign_check_test.py"),
             (CI.PROTOCOL_PROGRAM_INPUTS, "native_protocol_campaign_program_check_test.py"),
@@ -154,6 +156,14 @@ class Planning(unittest.TestCase):
                 CI.cdc(paths)
                 self.assertEqual([call.args[0] for call in run.call_args_list],
                                  [[sys.executable, "-B", "tools/v5-substrate/process_watchdog_test.py"]])
+
+    def test_sender_source_selects_its_existing_raw_oracle_guard_once_without_go(self):
+        for paths in [[path] for path in sorted(CI.SNAPSHOT_SENDER_INPUTS)] + [sorted(CI.SNAPSHOT_SENDER_INPUTS)+["tools/v5-substrate/native_fault_family_check.py"]]:
+            with self.subTest(paths=paths), patch.object(CI.subprocess, "run") as run:
+                CI.cdc(paths)
+                commands = [call.args[0] for call in run.call_args_list]
+                self.assertEqual(commands.count([sys.executable,"-B","tools/v5-substrate/native_fault_family_check_test.py"]),1)
+                self.assertTrue(all(command[:2] == [sys.executable,"-B"] and command[-1].endswith("_test.py") for command in commands))
 
     def test_native_workload_inputs_select_only_their_compact_private_guards(self):
         for paths in [[path] for path in CI.WORKLOAD_INPUTS] + [list(CI.WORKLOAD_INPUTS)]:
@@ -464,6 +474,7 @@ class RealGitSelection(unittest.TestCase):
         for name in fixtures.keys() & CI.GUARDED_FIXTURES:fixtures[name]|=set(CI.GUARDED_PARENTS)
         for name in fixtures.keys() & CI.TRANSFER_FIXTURES:fixtures[name]|=set(CI.TRANSFER_PARENTS)
         for name in fixtures.keys() & CI.PROTOCOL_FIXTURE_COMPAT.keys():fixtures[name]|=set(CI.PROTOCOL_FIXTURE_COMPAT[name])
+        for name in fixtures.keys() & CI.SNAPSHOT_SENDER_FIXTURES:fixtures[name]|=set(CI.SNAPSHOT_SENDER_PARENTS)
         for name, parents in fixtures.items():
             with self.subTest(fixture=name):
                 path = self.directory / name
@@ -525,7 +536,7 @@ class RealGitSelection(unittest.TestCase):
         path = self.directory / "graph_source_process_test.go"
         path.write_text("package graphapply\ntype graphProcessHub struct{}\n")
         selected = set(CI.graph_selection(self.directory, [path], {path: [("type", "graphProcessHub")]}))
-        self.assertEqual(selected, set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.GRAPH_COMPAT) | set(CI.PROTOCOL_PARENTS) |
+        self.assertEqual(selected, set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.GRAPH_COMPAT) | set(CI.PROTOCOL_PARENTS) | set(CI.SNAPSHOT_SENDER_PARENTS) |
                          {"TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput",
                           "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts"})
         self.assertNotIn("TestNativeGraphCostCell", selected)
@@ -559,6 +570,19 @@ class RealGitSelection(unittest.TestCase):
                 self.assertEqual(names,set(CI.FIXTURE_COMPAT[name])|set(CI.GRAPH_COMPAT))
                 self.assertTrue(set(CI.TRANSFER_PARENTS)<=names)
         self.assertEqual(len(CI.TRANSFER_PARENTS),6)
+
+    def test_sender_private_owner_selection_preserves_existing_parents_and_hard_scope(self):
+        for name in CI.SNAPSHOT_SENDER_FIXTURES:
+            with self.subTest(name=name):
+                path=self.directory/name;path.write_text("package graphapply\nfunc privateSenderBoundary() {}\n")
+                (self.directory/"unreviewed_test.go").write_text("package graphapply\nfunc TestUnreviewed(t *testing.T) { privateSenderBoundary() }\n")
+                selected=set(CI.graph_selection(self.directory,[path],{path:[("func","privateSenderBoundary")]}))
+                self.assertEqual(selected,set(CI.FIXTURE_COMPAT[name])|set(CI.GRAPH_COMPAT))
+                self.assertTrue(set(CI.SNAPSHOT_SENDER_PARENTS)<=selected)
+                self.assertNotIn("TestUnreviewed",selected)
+        self.assertEqual(len(CI.SNAPSHOT_SENDER_PARENTS),2)
+        self.assertIn("TestNativeStateImportSyncBoundariesRecoverGenuineSourceAndRetainedCut", CI.FIXTURE_COMPAT["paired_graph_snapshot_harness_test.go"])
+        self.assertIn("TestNativeFaultFamilySnapshotInterruptionAndAtomicKVPublicationRecoverWholeCut", CI.FIXTURE_COMPAT["paired_graph_snapshot_harness_test.go"])
 
     def test_cost_fixture_guard_preserves_changed_large_parent(self):
         fixture = self.directory / "native_graph_cost_harness_test.go"
@@ -751,7 +775,7 @@ class CurrentRepository(unittest.TestCase):
     def test_checked_compatibility_names_exist_in_current_sources(self):
         directory = CI.ROOT / "v5/internal/graphapply"
         names = set().union(*(CI.parent_names(p) for p in directory.glob("*_test.go")))
-        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) | set(CI.CORRECTION_PARENTS) | set(CI.TRANSFER_PARENTS) | set(CI.PROTOCOL_PARENTS) <= names)
+        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) | set(CI.CORRECTION_PARENTS) | set(CI.TRANSFER_PARENTS) | set(CI.PROTOCOL_PARENTS) | set(CI.SNAPSHOT_SENDER_PARENTS) <= names)
         self.assertIn("TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements", CI.GRAPH_COMPAT)
 
     def test_explicit_cost_cell_is_short_guarded_before_profile(self):
