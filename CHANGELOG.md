@@ -450,6 +450,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Internal v5 local writes now share one output budget with collected and
+  pooled initialization. Their first write no longer fails on a second budget
+  join; output-limit refusal remains atomic and retained views remain unchanged.
+
 - Internal v5 retained-source creation now checks call, owner and lease
   cancellation again after native capture and before publishing a cookie.
   Refusals return zero metadata, preserve cancellation causes and closed-owner
