@@ -95,7 +95,7 @@ func TestApplicationTerminalBankBoundIdentityProjectionAndLegacyBytes(t *testing
 	if _, err := terminalGrowth(applicationTerminalBank{tooMany}, p, l); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("alternative bound: %v", err)
 	}
-	if _, err := recoveryFits(g, p.RetainedApplicationBytes, 0, 0, 0, p, l); !errors.Is(err, ErrLimit) {
+	if err := recoveryFits(g, p.RetainedApplicationBytes, 0, 0, 0, p, l); !errors.Is(err, ErrLimit) {
 		t.Fatalf("terminal credits minted quota: %v", err)
 	}
 	fullMeta := metadata{Recovery: m}
