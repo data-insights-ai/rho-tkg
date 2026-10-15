@@ -45,6 +45,13 @@ class NativeFeedGuards(unittest.TestCase):
             self.assertEqual(check.columns("owned",end,"spool"),"columns")
             helper.assert_called_once_with("owned",end,"spool",check.cut,check.frames(self.spec),"actual-C")
 
+    def test_explicit_column_checkpoint_parameters_preserve_legacy_wrapper(self):
+        # The ordinary wrapper still supplies no fresh interval/stage overrides.
+        end={"spec":self.spec,"Snapshot":"original-C"}
+        with patch.object(check,"_scalar_columns",return_value="legacy") as shared:
+            self.assertEqual(check.columns("directory",end,"spool"),"legacy")
+            shared.assert_called_once_with("directory",end,"spool",check.cut,check.frames(self.spec),"original-C")
+
     def test_feed_claim_requires_actual_prior_installed_grant(self):
         # Inert join fixture; workload grants() alone authenticates this roster
         # from native reserve/install originals. No Recipient.Next is inferred.

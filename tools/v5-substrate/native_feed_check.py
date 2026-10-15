@@ -686,11 +686,14 @@ def columns(directory,end,spool):
     return _scalar_columns(directory,end,spool,cut,frames(end["spec"]),end["Snapshot"])
 
 
-def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut):
+def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut,*,initial_cuts=None,expected_stages=None,generation_for_stage=None):
     if end["spec"]["layout"]=="kv":
         require((directory/"columns.jsonl").stat().st_size==0,"KV invented derived generation work");return
     expected={"old-seal/native","old-seal/fill","old-seal/cached","final-seal/native","final-seal/fill","final-seal/cached","old-after-update",
               "reopened-0-false","reopened-0-true","reopened-1-false","reopened-1-true"}
+    if expected_stages is not None: expected=set(expected_stages)
+    initial_cuts=(end["Initial"],end["Initial"]) if initial_cuts is None else initial_cuts
+    require(len(initial_cuts)==2,"two exact independently authenticated generation starts")
     owners=[None,None];completed=set();sealed=set();retired=set();probed=set();cache=[None,None]
     for trace in lines(directory/"columns.jsonl",32*(frame_ceiling+end["Admission"]["BudgetSeconds"]//60+100)):
         if trace["Stage"]=="actual-keeper-retired-token":
@@ -700,7 +703,7 @@ def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut):
             probed.add((matches[0],group));continue
         stage,member,q=trace["Stage"],trace["Member"],trace["Input"]
         require(member in (1,4),"actual local derived owner")
-        group=(member-1)//3;generation=int(stage.startswith(("final-seal","reopened-1","retire-1")))
+        group=(member-1)//3;generation=int(stage.startswith(("final-seal","reopened-1","retire-1"))) if generation_for_stage is None else generation_for_stage(stage)
         m,b=end["ColumnManifests"][generation][group],end["ColumnBindings"][generation][group]
         r=trace.get("Receipt");action=integer(q["Action"],1,6)
         if r is None:require(trace.get("Error"),"unknown derived response");continue
@@ -714,9 +717,9 @@ def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut):
         final=end["Final"] if generation else old_cut
         for g in range(2):
             boundary=m["Generation"]["Sources"][g]
-            require(column.certificate(raw,boundary["Initial"])==decode_cut(end["Initial"])[g] and column.certificate(raw,boundary["Final"])==decode_cut(final)[g],"same exact generation prefix, no recreated current source")
+            require(column.certificate(raw,boundary["Initial"])==decode_cut(initial_cuts[generation])[g] and column.certificate(raw,boundary["Final"])==decode_cut(final)[g],"same exact generation prefix, no recreated current source")
         if action==1:
-            require(owners[group] is None and r["Sequence"]==0 and not r["Closed"] and q["Initial"]==end["Initial"] and q["Final"]==final,"actual immutable constructor")
+            require(owners[group] is None and r["Sequence"]==0 and not r["Closed"] and q["Initial"]==initial_cuts[generation] and q["Final"]==final,"actual immutable constructor")
             owners[group]={"r":r,"sequence":0,"cursor":None}
         else:
             owner=owners[group];require(owner is not None and q["Cookie"]==r["Cookie"]==owner["r"]["Cookie"],"same real private query owner")
@@ -735,7 +738,7 @@ def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut):
             require(r["Manifest"]==m,"full source seal");codec.retention(r["Retention"],m,spool);sealed.add((generation,group))
         elif action==3:
             require(stage in expected and (stage,group) not in completed and r["Manifest"]==m and q["At"]==final,"exact cut projected read")
-            owner["cursor"]={"ordinal":0,"chain":bytes(32),"position":decode_cut(end["Initial"])[group]["sourceIndex"],"frames":0,"rows":0,"bytes":0,"stage":stage,"cached":q["Cached"],"fill":q["Fill"]}
+            owner["cursor"]={"ordinal":0,"chain":bytes(32),"position":decode_cut(initial_cuts[generation])[group]["sourceIndex"],"frames":0,"rows":0,"bytes":0,"stage":stage,"cached":q["Cached"],"fill":q["Fill"]}
             if q["Cached"]:column.cache_manifest(raw,Path(end["Directory"]),group,m)
         elif action==4:
             c=owner["cursor"];require(c is not None and c["stage"]==stage and r["Ordinal"]==c["ordinal"] and r["Manifest"]==m and r["Cached"]==c["cached"] and r["Fill"]==c["fill"],"actual continuation/cached output")

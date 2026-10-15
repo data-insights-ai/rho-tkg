@@ -84,9 +84,12 @@ def causal_minimum(s, rtt_millis):
     return (s["facts"]+7)*rtt_millis
 
 
-def owned_transport(receipts, s):
+def owned_transport(receipts, s, *, maximum_frames=None):
     require(type(receipts) is list and len(receipts) == 2, "both actual transport process cohorts")
     selected, maximum = None, frames(s)*4096
+    if maximum_frames is not None:
+        require(type(maximum_frames) is int and 0 < maximum_frames <= 1<<41, "explicit finite native transport frame ceiling")
+        maximum = maximum_frames
     for r in receipts:
         fields(r, "Version Spec Raft SourceRequest SourceReply MaximumHeldFrames MaximumHeldBytes MetadataBytes PipeWrites PipeReads Scope")
         t = r["Spec"]

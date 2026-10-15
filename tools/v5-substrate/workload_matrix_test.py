@@ -7,6 +7,23 @@ import workload_matrix as matrix
 
 
 class WorkloadMatrixGuards(unittest.TestCase):
+    def test_retained_only_feed_v3_is_explicit_and_not_paired_or_fdb(self):
+        spec={"version":3,"family":"snapshot-to-feed","facts":40,"crossPercent":50,"writers":32,"layout":"columns"}
+        for transport in matrix.TRANSPORTS:self.assertEqual(matrix.preflight(spec,"01"*16,"native-raft",transport),spec)
+        for engine in ("paired","foundationdb"):
+            with self.assertRaises(ValueError):matrix.preflight(spec,"01"*16,engine,"local")
+        cells=list(matrix.matrix(("snapshot-to-feed",),("local",),("native-raft",),retained_only=True))
+        self.assertEqual(len(cells),360)
+        self.assertTrue(all(c["workload"]["version"]==3 and c["implemented"] for c in cells))
+        self.assertTrue(all(c["workload"]["version"]==1 for c in matrix.matrix(("snapshot-to-feed",),("local",),("native-raft",))))
+        for kwargs in ({"engines":("paired",)},{"owned":True},{"families":("snapshot-selectors",)}):
+            params={"families":("snapshot-to-feed",),"transports":("local",),"engines":("native-raft",),"retained_only":True,**kwargs}
+            with self.assertRaises(ValueError):list(matrix.matrix(**params))
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"refused"
+            with self.assertRaises(ValueError):matrix.execute({**cells[0],"engine":"paired"},path,1800,"small",4096,1<<30,8<<20)
+            self.assertFalse(path.exists())
+
     def test_create_update_local_baseline_and_explicit_cross_variants(self):
         family="partition-local-create-update"
         for cross in matrix.CROSS:
