@@ -1604,6 +1604,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			return true
 		}
 		if logicalTransitions != nil && r.op == processNativeTransitionControl {
+			if c, err := decodeNativeTransitionPinControl(r.data); err == nil && (c.Action == "close" || c.Action == "cancel") {
+				return true
+			}
 			if c, err := decodeNativeLogicalTransitionControl(r.data); err == nil && (c.Action == "release" || c.Action == "close") {
 				return true
 			}
@@ -1682,6 +1685,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					e = errInvalid
 				} else if bytes.HasPrefix(r.data, []byte(nativeTransitionMovePrepareMarker)) {
 					out.aux, e = logicalTransitions.prepareMove(workerCtx, o.family, o.incarnation, r)
+				} else if bytes.HasPrefix(r.data, []byte(nativeTransitionPinMarker)) {
+					out.aux, e = logicalTransitions.servePin(workerCtx, coordinator, o.incarnation, r)
 				} else {
 					out.aux, e = logicalTransitions.serve(workerCtx, r.data)
 				}

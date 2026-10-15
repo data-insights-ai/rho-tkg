@@ -91,10 +91,12 @@ type nativeLogicalTransitionOwner struct {
 	sequence, controls, attempts             uint64
 	work, maxWork, decodeGrant, captureGrant uint64
 	prepareGrant                             uint64
+	pinGrant                                 uint64
 	ticket                                   *nativeLogicalTransitionTicket
 	changed                                  chan struct{}
 	awaiting                                 bool
 	preparedMove                             *nativeTransitionPreparedMove
+	pin                                      *nativeTransitionPinOwner
 }
 
 func newNativeLogicalTransitionOwner(ctx context.Context, h *allocationHost, member uint64) (*nativeLogicalTransitionOwner, error) {
@@ -120,6 +122,15 @@ func newNativeLogicalTransitionOwner(ctx context.Context, h *allocationHost, mem
 	if prepareGrant != 0 {
 		maximum += 64 * 8192
 	}
+	pinGrant := uint64(0)
+	if h.machine.SemanticContractID() == durableColumnGraphSemanticContractID() {
+		l := h.machine.limits
+		if l.sourceBytes < 1 || l.outputBytes < 1 || l.sourceRows < 1 || uint64(l.sourceBytes) > 1<<40 || uint64(l.outputBytes) > 1<<40 || uint64(l.sourceRows) > 1<<40 {
+			return nil, errLimit
+		}
+		pinGrant = 65536 + 8*uint64(l.sourceBytes) + 8*uint64(l.outputBytes) + 512*uint64(l.sourceRows)
+		maximum += 16*pinGrant + 64*nativeLogicalTransitionFrameBytes
+	}
 	if maximum == 0 || maximum > 1<<50 {
 		return nil, errLimit
 	}
@@ -133,7 +144,7 @@ func newNativeLogicalTransitionOwner(ctx context.Context, h *allocationHost, mem
 	}
 	ownerCtx, stopTTL := context.WithTimeout(base, time.Minute)
 	cancel := func() { stopTTL(); stopBase() }
-	o := &nativeLogicalTransitionOwner{ctx: ownerCtx, cancel: cancel, host: h, member: member, decodeGrant: decodeGrant, captureGrant: captureGrant, prepareGrant: prepareGrant, maxWork: maximum, changed: make(chan struct{}, 1)}
+	o := &nativeLogicalTransitionOwner{ctx: ownerCtx, cancel: cancel, host: h, member: member, decodeGrant: decodeGrant, captureGrant: captureGrant, prepareGrant: prepareGrant, pinGrant: pinGrant, maxWork: maximum, changed: make(chan struct{}, 1)}
 	o.deadline, _ = ownerCtx.Deadline()
 	if _, err := io.ReadFull(rand.Reader, o.cookie[:]); err != nil {
 		cancel()
