@@ -551,6 +551,13 @@ func nativeFeedPoints(t *testing.T, ctx context.Context, n *certifiedProcessNetw
 			if err := nativeFeedDecodeJSON(response.aux, &point); err != nil {
 				t.Fatal(err)
 			}
+			value := int64(6)
+			if stage == "old-after-update" || stage == "reopened-old" {
+				value = 5
+			}
+			if nativeFeedCheckPoint(s, nativeFeedPoint{fact, point}, value) != nil || point.Property.Revision > at.certificates[0].sourceRound || point.Presence.Revision > at.certificates[0].sourceRound {
+				t.Fatal("exact-cut point shape/round", fact)
+			}
 			if err := stream.Encode(struct {
 				Stage string
 				Cut   []byte

@@ -54,7 +54,7 @@ func nativeFeedRequest(digest [32]byte, domain string, sequence uint64) [16]byte
 func nativeFeedCheckPoint(s nativeFeedSpec, p nativeFeedPoint, value int64) error {
 	id, life, target, _ := s.cost().edge(p.Fact)
 	r := p.Entity
-	if p.Fact >= s.Facts || r.ID != id || !r.Found || !r.Effective || r.Kind != byte(graphstate.Relationship) || r.Type != "edge" || r.Mode != byte(graphstate.LifeBound) || r.Source != 1 || r.Target != target || r.EffectiveLife != life || len(r.Labels) != 0 || !r.Presence.Present || r.Presence.Handle != life || !r.Property.Present || r.Property.Null || r.Property.Kind != "i64" || r.Property.I64 != value || r.Property.Handle != uint64(value) || r.Property.Provenance != 4+p.Fact+boolUint(value == 6)*s.Facts {
+	if p.Fact >= s.Facts || r.ID != id || !r.Found || !r.Effective || r.Kind != byte(graphstate.Relationship) || r.Type != "edge" || r.Mode != byte(graphstate.LifeBound) || r.Source != 1 || r.Target != target || r.EffectiveLife != life || len(r.Labels) != 0 || !r.Presence.Present || r.Presence.Null || r.Presence.Kind != "life" || r.Presence.Handle != life || r.Presence.I64 != 0 || r.Presence.Revision == 0 || r.Presence.Provenance != 4+p.Fact || !r.Property.Present || r.Property.Null || r.Property.Kind != "i64" || r.Property.I64 != value || r.Property.Handle != uint64(value) || r.Property.Revision == 0 || r.Property.Provenance != 4+p.Fact+boolUint(value == 6)*s.Facts {
 		return errCorrupt
 	}
 	return nil

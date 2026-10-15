@@ -58,5 +58,22 @@ class NativeFeedGuards(unittest.TestCase):
         check.shape(bad)
         with self.assertRaises(ValueError):check.shape({**bad,"facts":0})
 
+    def test_historical_point_joins_original_revision_and_presence(self):
+        # Inert raw-row fixtures exercise only the join. Captured source rows
+        # enter this namespace exclusively after logical() authenticates CDC.
+        def cell(handle,revision,provenance,kind):
+            return {"present":True,"null":False,"handle":handle,"revision":revision,"provenance":provenance,"kind":kind,"i64":handle if kind=="i64" else 0}
+        p={"Fact":0,"Entity":{"id":7,"found":True,"effective":True,"kind":2,"type":"edge","mode":1,
+            "source":1,"target":3,"effectiveLife":8,"labels":[],"presence":cell(8,11,4,"life"),"property":cell(5,11,4,"i64")}}
+        with tempfile.TemporaryDirectory() as path:
+            with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
+                for component,c in ((1,p["Entity"]["presence"]),(3,p["Entity"]["property"])):
+                    after=dict(zip(check.column.CELL,(True,False,c["handle"],c["i64"],c["revision"],c["provenance"])))
+                    spool.insert(b"row",u64(4)+u64(7)+bytes([component]),check.encoded({"After":after}))
+                self.assertEqual(check.point(self.spec,p,5,spool),0)
+                for name,key,value in (("property","revision",23),("presence","revision",23),("presence","provenance",44),("presence","handle",9)):
+                    changed=copy.deepcopy(p);changed["Entity"][name][key]=value
+                    with self.assertRaises(ValueError):check.point(self.spec,changed,5,spool)
+
 
 if __name__=="__main__":unittest.main()

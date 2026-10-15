@@ -342,13 +342,21 @@ def sources(directory,end,spool):
     return counts
 
 
-def point(s,p,value):
+def point(s,p,value,spool):
     fields(p,"Fact Entity");fact=integer(p["Fact"],0,s["facts"]-1);r=p["Entity"]
     target=2*s["facts"]+7 if cross(s,fact) else 3
     require(r["id"]==7+2*fact and r["found"] is True and r["effective"] is True and r["kind"]==2 and r["type"]=="edge" and r["mode"]==1
             and r["source"]==1 and r["target"]==target and r["effectiveLife"]==8+2*fact and r["labels"]==[],"exact snapshot endpoint/life, no phantom entity")
-    cell=r["property"];require(cell["present"] is True and cell["null"] is False and cell["kind"]=="i64" and cell["handle"]==cell["i64"]==value
-        and integer(cell["revision"],1) and cell["provenance"]==4+fact+(s["facts"] if value==6 else 0),"exact old/current scalar, not current-only substitution")
+    create=4+fact;ordinal=create+(s["facts"] if value==6 else 0);owner=7+2*fact
+    for name,component,at,kind in (("presence",1,create,"life"),("property",3,ordinal,"i64")):
+        cell=r[name];fields(cell,"present null handle revision provenance kind i64")
+        expected=decoded(spool.lookup(b"row",u64(at)+u64(owner)+bytes([component])))["After"]
+        actual={"Present":cell["present"],"Null":cell["null"],"Handle":integer(cell["handle"],1),
+                "Value":integer(cell["i64"]),"Revision":integer(cell["revision"],1),"Provenance":integer(cell["provenance"],1)}
+        require(cell["present"] is True and cell["null"] is False and cell["kind"]==kind and actual==expected,
+                "point cell differs from authenticated original change, including historical revision/presence")
+    require(r["presence"]["handle"]==r["effectiveLife"] and r["property"]["handle"]==r["property"]["i64"]==value,
+            "exact old/current scalar and original presence life")
     return fact
 
 
@@ -358,7 +366,7 @@ def points(directory,end,spool):
         stage=r["Stage"];require(stage in counts,"actual old/current/reopened point phase")
         expected=end["Snapshot"] if stage.endswith("old") or stage=="old-after-update" else end["Final"]
         require(r["Cut"]==expected,"point substituted requested certificate")
-        fact=point(end["spec"],r["Point"],5 if expected==end["Snapshot"] else 6)
+        fact=point(end["spec"],r["Point"],5 if expected==end["Snapshot"] else 6,spool)
         spool.insert(b"point",stage.encode()+u64(fact),b"1");counts[stage]+=1
     require(all(n==end["spec"]["facts"] for n in counts.values()),"complete exact point census")
 
@@ -485,7 +493,7 @@ def feed(directory,end,spool):
             require(q["From"]==snapshot_next and a["Next"]==min(snapshot_next+16,end["spec"]["facts"])
                     and len(a["Points"])==a["Next"]-snapshot_next and a["EOF"] is (a["Next"]==end["spec"]["facts"]),"exact held snapshot-C pagination")
             for offset,p in enumerate(a["Points"]):
-                fact=point(end["spec"],p,5);require(fact==snapshot_next+offset,"snapshot omission/duplication");spool.insert(b"snapshot-point",u64(fact),b"1")
+                fact=point(end["spec"],p,5,spool);require(fact==snapshot_next+offset,"snapshot omission/duplication");spool.insert(b"snapshot-point",u64(fact),b"1")
             snapshot_next=a["Next"]
         elif action=="page":
             wire=blob(a["Page"]);hash_=digest(wire);p=page(wire)
