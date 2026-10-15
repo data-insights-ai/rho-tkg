@@ -19,13 +19,14 @@ TRANSPORTS,MAX_SECONDS=source.TRANSPORTS,source.MAX_SECONDS
 STAGES=("old-fresh","same-pin-old-after-update","fresh-current","reopened-old","reopened-final")
 
 
-def shape(s):
+def shape(s, family=FAMILY):
+    require(family in (FAMILY,"immutable-columns"),"explicit implemented guarded scalar family")
     fields(s,"version family facts crossPercent writers layout")
-    require(integer(s["version"],1,1) and s["family"]==FAMILY and integer(s["facts"],20,1_000_000)%20==0 and integer(s["crossPercent"]) in (0,10,50,100) and integer(s["writers"]) in (1,8,32) and s["facts"]>s["writers"] and s["layout"] in ("kv","columns"),"fresh native create/update dimensions")
+    require(integer(s["version"],1,1) and s["family"]==family and integer(s["facts"],20,1_000_000)%20==0 and integer(s["crossPercent"]) in (0,10,50,100) and integer(s["writers"]) in (1,8,32) and s["facts"]>s["writers"] and s["layout"] in ("kv","columns"),"fresh native guarded scalar dimensions")
     return s
 
 
-def frames(s):return (16*shape(s)["facts"]+3)*10+64*10+4096
+def frames(s, family=FAMILY):return (16*shape(s,family)["facts"]+3)*10+64*10+4096
 
 
 def phase(p,n,cross,total):
@@ -114,12 +115,20 @@ def read_timings(samples):
 
 
 def verify(directory,spool_directory,policy,*,binary_sha=None,expected_spec=None,expected_run=None,expected_deadline=None,expected_seconds=None,shared_spool=None):
+    return _verify(directory,spool_directory,policy,binary_sha=binary_sha,expected_spec=expected_spec,expected_run=expected_run,expected_deadline=expected_deadline,expected_seconds=expected_seconds,shared_spool=shared_spool)
+
+
+def _verify(directory,spool_directory,policy,*,binary_sha=None,expected_spec=None,expected_run=None,expected_deadline=None,expected_seconds=None,shared_spool=None,family=FAMILY):
+    require(family in (FAMILY,"immutable-columns"),"explicit implemented guarded scalar oracle")
+    immutable=family=="immutable-columns"
+    format_="native-immutable-columns-workload-v1" if immutable else FORMAT
     directory=Path(directory).resolve(strict=True)
     with (directory/"result.json").open("rb") as stream:body=stream.read(LINE+1)
     require(body.endswith(b"\n") and len(body)<=LINE,"bounded complete native result")
-    end=decoded(body[:-1]);s=shape(end["spec"]);a=end["Admission"]
-    require(integer(end["version"],1,1) and end["format"]==FORMAT and end["engine"]=="native-raft" and end["FramesCeiling"]==frames(s) and end["RetentionContract"]=="snapshot-C-retained-full-prefix-v1","fresh actual native profile9 family")
-    require(integer(a["Version"],1,1) and a["Family"]==FAMILY and a["Spec"]==s and digest(encoded(a))==array(end["AdmissionSHA256"],32) and integer(a["BudgetSeconds"],1,MAX_SECONDS)*1000>integer(a["CausalMinimumMillis"]) and a["CausalMinimumMillis"]==5*a["Transport"]["targetRTTMillis"],"actual immutable native source/run/binary/budget admission")
+    end=decoded(body[:-1]);s=shape(end["spec"],family);a=end["Admission"]
+    ceiling=frames(s,family)
+    require(integer(end["version"],1,1) and end["format"]==format_ and end["engine"]=="native-raft" and end["FramesCeiling"]==ceiling and end["RetentionContract"]=="snapshot-C-retained-full-prefix-v1","fresh actual native profile9/10 family")
+    require(integer(a["Version"],1,1) and a["Family"]==family and a["Spec"]==s and digest(encoded(a))==array(end["AdmissionSHA256"],32) and integer(a["BudgetSeconds"],1,MAX_SECONDS)*1000>integer(a["CausalMinimumMillis"]) and a["CausalMinimumMillis"]==5*a["Transport"]["targetRTTMillis"],"actual immutable native source/run/binary/budget admission")
     require(type(a["Run"]) is str and len(a["Run"])==32 and bytes.fromhex(a["Run"]).hex()==a["Run"] and any(bytes.fromhex(a["Run"])) and integer(a["DeadlineUnixNanos"],1,(1<<63)-1),"same original deadline/run")
     for expected,actual in ((binary_sha,a["BinarySHA256"]),(expected_spec,s),(expected_run,a["Run"]),(expected_deadline,a["DeadlineUnixNanos"]),(expected_seconds,a["BudgetSeconds"])):require(expected is None or expected==actual,"controller/source admission mismatch")
     cuts={name:source.cut(end[name]) for name in ("Initial","Old","Final","Reopened")}
@@ -130,17 +139,25 @@ def verify(directory,spool_directory,policy,*,binary_sha=None,expected_spec=None
     require(Path(end["ArtifactDirectory"]).resolve(strict=True)==directory and Path(end["Directory"]).resolve(strict=True).parent==directory,"owned actual source directory")
     require(type(end["Completed"]) is list and len(end["Completed"])==32 and all(type(v) is int and v>=0 for v in end["Completed"]),"actual client census")
     require(all(type(end[n]) is int and end[n]>=0 for n in ("SetupNanos","BusinessNanos","DiagnosticNanos","TotalNanos","OriginalCaptures","ExtraInvocations","QueryExtraInvocations")) and end["SetupNanos"]+end["BusinessNanos"]+end["DiagnosticNanos"]==end["TotalNanos"] and end["BusinessNanos"]>0,"whole business and separate diagnostic accounting")
-    selected=codec.owned_transport(end["Transport"],{"version":1,"family":codec.FAMILY,"facts":s["facts"],"crossPercent":s["crossPercent"],"writers":s["writers"],"layout":s["layout"]})
+    transport_options={"maximum_frames":ceiling*1024} if immutable else {}
+    selected=codec.owned_transport(end["Transport"],{"version":1,"family":codec.FAMILY,"facts":s["facts"],"crossPercent":s["crossPercent"],"writers":s["writers"],"layout":s["layout"]},**transport_options)
     require(selected==a["Transport"],"actual native owned scheduler, no nominal RTT")
     for cohort in end["Transport"]:
-        require(all(cohort[n]["Admitted"]<=frames(s)*1024 for n in ("Raft","SourceRequest","SourceReply")) and all(cohort[n]["AttemptedFrames"]<=frames(s)*1024 for n in ("PipeReads","PipeWrites")),"same finite actual source/frame grants")
+        require(all(cohort[n]["Admitted"]<=ceiling*1024 for n in ("Raft","SourceRequest","SourceReply")) and all(cohort[n]["AttemptedFrames"]<=ceiling*1024 for n in ("PipeReads","PipeWrites")),"same finite actual source/frame grants")
     with (nullcontext(shared_spool) if shared_spool is not None else Spool(spool_directory,policy)) as spool:
         source.grants(directory,end,spool);source.claims(directory,end,spool)
         scalar._scalar_attempts(directory,end,spool)
-        scalar._scalar_sources(directory,end,spool,source.cut,frames(s),guarded_updates=True)
-        timing=source.reads(directory,end,spool,family=FAMILY)
-        scalar._scalar_columns(directory,end,spool,source.cut,frames(s),end["Old"])
+        scalar._scalar_sources(directory,end,spool,source.cut,ceiling,guarded_updates=True)
+        timing=source.reads(directory,end,spool,family=family)
+        scalar._scalar_columns(directory,end,spool,source.cut,ceiling,end["Old"])
         source.processes(directory,end,spool)
         business_timing=business(directory,end,spool)
         answer=source.logical_answers(end,spool,guarded_updates=True)
-        return {"format":FORMAT,"family":FAMILY,"spec":s,"run":a["Run"],"logicalAnswersSHA256":answer,"retentionContract":end["RetentionContract"],"transport":selected,"rowSemantics":end["RowSemantics"],"businessTiming":business_timing,"sourceTiming":read_timings(timing),"spool":spool.report(),"scope":"genuine native local Submit versus explicit mixed/cross variants, complete original/source/voter/old-current/column/cache/reopen joins; setup excluded; planned installed-grant IDs, not Recipient.Next; no efficiency/capacity/full-matrix or nonlocal engine-parity acceptance"}
+        additional={}
+        if immutable:
+            import native_immutable_columns_check as columns
+            additional=columns.observations(directory,end,spool)
+        else:require("ImmutableColumns" not in end,"fresh column observations cannot relabel old9")
+        scope="genuine native local Submit versus explicit mixed/cross variants, complete original/source/voter/old-current/column/cache/reopen joins; setup excluded; planned installed-grant IDs, not Recipient.Next; no efficiency/capacity/full-matrix or nonlocal engine-parity acceptance"
+        if immutable:scope+="; KV is source-scan reference; actual immutable derived bytes retained/counted, no physical derived-GC claim"
+        return {"format":format_,"family":family,"spec":s,"run":a["Run"],"logicalAnswersSHA256":answer,"retentionContract":end["RetentionContract"],"transport":selected,"rowSemantics":end["RowSemantics"],"businessTiming":business_timing,"sourceTiming":read_timings(timing),"spool":spool.report(),**additional,"scope":scope}

@@ -239,7 +239,7 @@ def metadata(end,spool,header):
 
 def verify(directory,spool_directory,policy=None,family=FAMILY,*,shared_spool=None):
     require(family in (FAMILY,"late-correction-old-index","partition-local-create-update"),"explicit implemented scalar family")
-    require(shared_spool is None or family=="partition-local-create-update","shared complete-answer join is explicit to the fresh create/update family")
+    require(shared_spool is None or family in (FAMILY,"partition-local-create-update"),"shared complete-answer join only for explicit implemented matched families")
     stem="fdb-create-update" if family=="partition-local-create-update" else "fdb-correction" if family=="late-correction-old-index" else "fdb-columns"
     directory=Path(directory).resolve(strict=True)
     with (directory/(stem+"-result.json")).open("rb") as stream:
@@ -267,6 +267,8 @@ def verify(directory,spool_directory,policy=None,family=FAMILY,*,shared_spool=No
             additional=workload.business(directory,end,spool)
             if shared_spool is not None:
                 additional.update(logicalAnswersSHA256=source.logical_answers(end,spool),retentionContract="snapshot-C-retained-full-prefix-v1")
+        elif family==FAMILY and shared_spool is not None:
+            additional.update(logicalAnswersSHA256=source.logical_answers(end,spool),retentionContract="snapshot-C-retained-full-prefix-v1")
         transport=raw.transport.verify(directory,end["Transport"]["Policy"],spool) if end["Version"]==2 else None
         # Fixed <=14 column calls and six source calls, not per-row samples.
         samples=[decoded(value) for _,value in spool.walk(b"column-timing")]

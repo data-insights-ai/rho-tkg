@@ -27,6 +27,7 @@ type nativeCreateUpdateResult struct {
 	RowSemantics, BusinessFootprint, Coordination string
 	SetupTransactions                             uint64
 	BusinessPhases                                [2]nativeCreateUpdatePhase
+	ImmutableColumns                              *nativeImmutableColumnsEnd `json:",omitempty"`
 }
 
 // Genuine workload parent, not an in-process semantic substitute. The fixed
@@ -35,11 +36,36 @@ func TestNativeGraphCreateUpdateWorkloadCell(t *testing.T) {
 	if testing.Short() || os.Getenv("RHO_GRAPH_NATIVE_WORKLOAD") != nativeCreateUpdateFormat {
 		t.Skip("explicit native create/update workload required")
 	}
-	spec, err := nativeCreateUpdateSpecFromEnv()
+	nativeScalarCreateUpdateWorkload(t, nativeCreateUpdateFamily)
+}
+
+// Two explicit scalar schedules share genuine factories/originals/source and
+// lifecycle reducers. Cost9's wrapper remains its existing literal schedule;
+// Cost10 alone adds publication/read/probe observations and a held column owner.
+func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
+	t.Helper()
+	var spec nativeSelectorsSpec
+	var err error
+	format, prefix := nativeCreateUpdateFormat, "rho-native-create-update-"
+	switch family {
+	case nativeCreateUpdateFamily:
+		spec, err = nativeCreateUpdateSpecFromEnv()
+	case nativeImmutableColumnsFamily:
+		spec, err = nativeImmutableColumnsSpecFromEnv()
+		format, prefix = nativeImmutableColumnsFormat, "rho-native-immutable-columns-"
+	default:
+		t.Fatal("unsupported scalar source family")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("RHO_GRAPH_NATIVE_WORKLOAD") != format {
+		t.Fatal("explicit scalar source format required")
+	}
 	admission, digest, err := nativeCreateUpdateAdmissionFromEnv(spec)
+	if family == nativeImmutableColumnsFamily {
+		admission, digest, err = nativeImmutableColumnsAdmissionFromEnv(spec)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,18 +94,36 @@ func TestNativeGraphCreateUpdateWorkloadCell(t *testing.T) {
 	}
 	grants, attempts, operations := open("grants.jsonl"), open("attempts.jsonl"), open("operations.jsonl")
 	reads, sources, processes, columns := open("reads.jsonl"), open("sources.jsonl"), open("processes.jsonl"), open("columns.jsonl")
-	env, err := nativeCreateUpdateChildEnv(spec, admission, false)
+	env, err := nativeScalarCreateUpdateChildEnv(spec, admission, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := nativeCreateUpdateCost(spec)
-	n := nativeScalarWorkloadNetwork(t, p, env, "rho-native-create-update-", durableColumnGraphSemanticContractID(), grants, func(n *certifiedProcessNetwork) { nativeCreateUpdateAttach(t, n, spec, admission) })
-	result := nativeCreateUpdateResult{nativeSelectorsResult: nativeSelectorsResult{Version: 1, Format: nativeCreateUpdateFormat, Engine: "native-raft", Spec: spec, Admission: admission, AdmissionSHA256: digest, Directory: n.dir, ArtifactDirectory: output, ProcessInstances: 12, RetentionContract: "snapshot-C-retained-full-prefix-v1"}, SetupTransactions: 3, BusinessFootprint: "complete actual graph operation/read/write/claim footprint under authenticated installed ranges; setup excluded", Coordination: "local Submit for one business partition; cross Run for multi-participant business; actual manifest participants/empty control coordination reported separately"}
+	if family == nativeImmutableColumnsFamily {
+		p = nativeImmutableColumnsCost(spec)
+	}
+	n := nativeScalarWorkloadNetwork(t, p, env, prefix, durableColumnGraphSemanticContractID(), grants, func(n *certifiedProcessNetwork) { nativeCreateUpdateAttach(t, n, spec, admission) })
+	result := nativeCreateUpdateResult{nativeSelectorsResult: nativeSelectorsResult{Version: 1, Format: format, Engine: "native-raft", Spec: spec, Admission: admission, AdmissionSHA256: digest, Directory: n.dir, ArtifactDirectory: output, ProcessInstances: 12, RetentionContract: "snapshot-C-retained-full-prefix-v1"}, SetupTransactions: 3, BusinessFootprint: "complete actual graph operation/read/write/claim footprint under authenticated installed ranges; setup excluded", Coordination: "local Submit for one business partition; cross Run for multi-participant business; actual manifest participants/empty control coordination reported separately"}
+	var columnObserver *nativeImmutableColumnsObservations
+	if family == nativeImmutableColumnsFamily {
+		columnObserver, err = newNativeImmutableColumnsObservations(output, spec, digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := columnObserver.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+	}
 	result.RowSemantics = "strict-partition-local-create-update"
 	if spec.CrossPercent != 0 {
 		result.RowSemantics = "mixed-or-cross-partition-create-update"
 	}
 	result.FramesCeiling, err = nativeCreateUpdateFrames(p)
+	if family == nativeImmutableColumnsFamily {
+		result.FramesCeiling, err = nativeImmutableColumnsFrames(p)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,8 +185,12 @@ func TestNativeGraphCreateUpdateWorkloadCell(t *testing.T) {
 	nativeSelectorsObserve(t, client, spec, oldQuery.Handle, 5, &sequence, nativeCreateUpdateCheckPoint)
 	client.invoke(nativeSelectorsInput{Action: "close", Handle: oldQuery.Handle}, nil)
 	var pairs [2]nativeGraphCostColumnPair
+	var heldColumns [2]*nativeGraphEdgeUniqueColumnClient
 	if spec.Layout == "columns" {
-		pairs[0] = nativeFeedPublishColumns(t, ctx, n, p, initial, old, nativeFeedRequest(digest, "old-columns", 0), "old-seal", false, &result.ColumnFailed[0], columns)
+		pairs[0] = nativeScalarPublishColumns(t, ctx, n, p, initial, old, nativeFeedRequest(digest, "old-columns", 0), "old-seal", false, &result.ColumnFailed[0], columns, columnObserver)
+		if columnObserver != nil {
+			heldColumns = nativeGraphEdgeUniqueColumnClients(t, ctx, n, &pairs[0], "old-after-update", false, &result.ColumnFailed[0], columns)
+		}
 	}
 	phaseStarted = time.Now()
 	phase(5, 0)
@@ -163,10 +211,25 @@ func TestNativeGraphCreateUpdateWorkloadCell(t *testing.T) {
 	nativeSelectorsObserve(t, client, spec, current.Handle, 6, &sequence, nativeCreateUpdateCheckPoint)
 	client.invoke(nativeSelectorsInput{Action: "close", Handle: current.Handle}, nil)
 	if spec.Layout == "columns" {
-		pairs[1] = nativeFeedPublishColumns(t, ctx, n, p, initial, final, nativeFeedRequest(digest, "final-columns", 0), "final-seal", true, &result.ColumnFailed[1], columns)
-		oldClients := nativeGraphEdgeUniqueColumnClients(t, ctx, n, &pairs[0], "old-after-update", false, &result.ColumnFailed[0], columns)
-		nativeFeedReadColumns(t, oldClients, &pairs[0], p, old, false, false)
-		nativeGraphEdgeUniqueColumnCloseClients(oldClients)
+		if columnObserver != nil {
+			columnObserver.retireRefused(t, ctx, heldColumns)
+			nativeScalarReadColumns(t, heldColumns, &pairs[0], p, old, false, false, columnObserver, false)
+			nativeGraphEdgeUniqueColumnCloseClients(heldColumns)
+		}
+		pairs[1] = nativeScalarPublishColumns(t, ctx, n, p, initial, final, nativeFeedRequest(digest, "final-columns", 0), "final-seal", true, &result.ColumnFailed[1], columns, columnObserver)
+		if columnObserver == nil {
+			oldClients := nativeGraphEdgeUniqueColumnClients(t, ctx, n, &pairs[0], "old-after-update", false, &result.ColumnFailed[0], columns)
+			nativeFeedReadColumns(t, oldClients, &pairs[0], p, old, false, false)
+			nativeGraphEdgeUniqueColumnCloseClients(oldClients)
+		}
+		if columnObserver != nil {
+			for generation := range pairs {
+				pair := &pairs[generation]
+				clients := nativeGraphEdgeUniqueColumnClients(t, ctx, n, pair, fmt.Sprintf("scan-points-%d", generation), false, &result.ColumnFailed[generation], columns)
+				nativeScalarReadColumns(t, clients, pair, p, pair.Final, false, false, columnObserver, true)
+				nativeGraphEdgeUniqueColumnCloseClients(clients)
+			}
+		}
 	}
 	source := func(stage string) [2]uint64 {
 		return nativeScalarWorkloadSources(t, ctx, n, initial, final, stage, sources, func(after, through uint64, boundary []byte) ([]byte, error) {
@@ -198,7 +261,7 @@ func TestNativeGraphCreateUpdateWorkloadCell(t *testing.T) {
 			pair := &pairs[generation]
 			for _, cached := range []bool{false, true} {
 				clients := nativeGraphEdgeUniqueColumnClients(t, ctx, n, pair, fmt.Sprintf("reopened-%d-%t", generation, cached), false, &result.ColumnFailed[generation], columns)
-				nativeFeedReadColumns(t, clients, pair, p, pair.Final, cached, false)
+				nativeScalarReadColumns(t, clients, pair, p, pair.Final, cached, false, columnObserver, false)
 				nativeGraphEdgeUniqueColumnCloseClients(clients)
 			}
 			clients := nativeGraphEdgeUniqueColumnClients(t, ctx, n, pair, fmt.Sprintf("retire-%d", generation), false, &result.ColumnFailed[generation], columns)
@@ -239,6 +302,14 @@ func TestNativeGraphCreateUpdateWorkloadCell(t *testing.T) {
 		t.Fatal("incomplete native process/timing lifecycle", ctx.Err())
 	}
 	result.Scope = "genuine native local Submit at0 and actual mixed/cross graph variants; every update is Set6 then CorrectPresent with real existing-relation and endpoint-life predicates and one extra native presence revision/CDC row; remote update business reads are distinct from owner-only logical writes and full protocol participation; complete originals/old-current/index/CDC/voter/native+cache columns/reopen; setup excluded; installed-grant planned IDs, not Recipient.Next; source-only/no runtime/capacity/matrix/efficiency acceptance"
+	if columnObserver != nil {
+		summary, err := columnObserver.finish()
+		if err != nil {
+			t.Fatal(err)
+		}
+		result.ImmutableColumns = &summary
+		result.Scope = "genuine native immutable publication/native+binary cache scans and batched scan-based typed probes, held old column reader across guarded updates, actual held-reader Retire refusal then authenticated Close/Retire/keeper refusal and physical same-directory restart; KV is source-scan reference; all retained derived bytes remain counted, no native physical derived-GC/source-GC or measurement/capacity/nonlocal parity acceptance"
+	}
 	if err := open("result.json").Encode(result); err != nil {
 		t.Fatal(err)
 	}

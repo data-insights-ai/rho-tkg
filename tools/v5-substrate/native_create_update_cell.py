@@ -26,7 +26,18 @@ def executables(binary,watchdog):return common.executables(binary,Path(__file__)
 
 
 def preflight(spec,transport,seconds,memory_mib,engine="native-raft"):
-    native.shape(spec)
+    return _preflight(spec,transport,seconds,memory_mib,engine)
+
+
+def _oracle(family):
+    if family==native.FAMILY:return native
+    require(family=="immutable-columns","explicit native guarded scalar family")
+    import native_immutable_columns_check as columns
+    return columns
+
+
+def _preflight(spec,transport,seconds,memory_mib,engine="native-raft",*,family=native.FAMILY):
+    _oracle(family).shape(spec)
     require(engine in ("native-raft","paired") and transport in native.TRANSPORTS and (engine!="paired" or transport=="local"),"paired nonlocal requires actual compatible bindings/joins")
     require(type(seconds) is int and 1<=seconds<=native.MAX_SECONDS and type(memory_mib) is int and 4096<=memory_mib<=1<<20,"explicit finite original run policy")
     require(seconds*1000>5*native.TRANSPORTS[transport],"necessary native sequential anchor/definition delay floor only")
@@ -34,18 +45,21 @@ def preflight(spec,transport,seconds,memory_mib,engine="native-raft"):
     return {"kind":"local" if transport=="local" else "injected-rtt","targetRTTMillis":native.TRANSPORTS[transport],"jitterMillis":0,"seed":20261009}
 
 
-def hash_artifacts(directory,layout):
+def hash_artifacts(directory,layout,*,family=native.FAMILY):
     require(layout in ("kv","columns"),"explicit actual derived layout")
+    _oracle(family)
+    expected=ARTIFACTS|{"column-observations.jsonl"} if family=="immutable-columns" else ARTIFACTS
+    prefix="rho-native-immutable-columns-" if family=="immutable-columns" else "rho-native-create-update-"
     found={};roots=0
     with os.scandir(directory) as entries:
         for entry in entries:
             require(not entry.is_symlink(),"foreign native artifact link")
             if entry.is_dir(follow_symlinks=False):
-                roots+=1;require(entry.name.startswith("rho-native-create-update-") and roots==1,"one actual six-voter durable directory")
+                roots+=1;require(entry.name.startswith(prefix) and roots==1,"one actual six-voter durable directory")
             else:
-                require(entry.is_file(follow_symlinks=False) and entry.name in ARTIFACTS,"foreign source artifact")
+                require(entry.is_file(follow_symlinks=False) and entry.name in expected,"foreign source artifact")
                 found[entry.name]=digest(entry.path)
-    require(found.keys()==ARTIFACTS and roots==1,"complete actual artifact inventory")
+    require(found.keys()==expected and roots==1,"complete actual artifact inventory")
     return found
 
 
@@ -61,7 +75,12 @@ def owned_output(output):
 
 
 def execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,*,run=None):
-    shaped=preflight(spec,transport,seconds,memory_mib);policy.validate()
+    return _execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,run=run)
+
+
+def _execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,*,run=None,family=native.FAMILY):
+    oracle=_oracle(family)
+    shaped=_preflight(spec,transport,seconds,memory_mib,family=family);policy.validate()
     require(policy.max_key_bytes==4096 and policy.max_value_bytes==native.LINE,"bounded original/page verifier schema")
     binary,watchdog=executables(binary,watchdog)
     run=secrets.token_hex(16) if run is None else run
@@ -69,22 +88,25 @@ def execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,*,ru
     deadline=time.time_ns()+seconds*1_000_000_000
     require(0<deadline<(1<<63) and 32*seconds*1_000_000_000<(1<<63),"checked original lifetime and aggregate caller arithmetic")
     output,engine=owned_output(output)
-    env={**os.environ,"RHO_GRAPH_NATIVE_WORKLOAD":native.FORMAT,"RHO_GRAPH_WORKLOAD_SPEC":json.dumps(spec,separators=(",",":")),"RHO_GRAPH_WORKLOAD_RUN":run,
+    env={**os.environ,"RHO_GRAPH_NATIVE_WORKLOAD":oracle.FORMAT,"RHO_GRAPH_WORKLOAD_SPEC":json.dumps(spec,separators=(",",":")),"RHO_GRAPH_WORKLOAD_RUN":run,
          "RHO_GRAPH_WORKLOAD_SECONDS":str(seconds),"RHO_GRAPH_WORKLOAD_DEADLINE":str(deadline),"RHO_GRAPH_WORKLOAD_TRANSPORT":json.dumps(shaped,separators=(",",":")),"RHO_GRAPH_WORKLOAD_OUTPUT":str(engine),"GOMAXPROCS":"2","GOMEMLIMIT":"2GiB","GOWORK":"off","GOTOOLCHAIN":"local"}
     for name in ("RHO_GRAPH_COST_SPEC","RHO_GRAPH_COST_BLOCK_SIZE","RHO_GRAPH_EDGE_TRANSPORT_PROFILE","RHO_GRAPH_CREATE_UPDATE_PROCESS","RHO_GRAPH_SELECTORS_PROCESS","RHO_GRAPH_FEED_PROCESS","RHO_GRAPH_EDGE_UNIQUE_PROCESS","RHO_GRAPH_RANGE_PROCESS","RHO_GRAPH_CONDITIONAL_PROCESS","RHO_GRAPH_RETENTION_PROCESS","RHO_GRAPH_DURABLE_COLUMN_PROCESS","RHO_GRAPH_NATIVE_FAULT_PROCESS","RHO_GRAPH_FAULT_FAMILY_PROCESS","RHO_GRAPH_DURABLE_MODEL","RHO_GRAPH_DECISION_FAULT_PROCESS","RHO_GRAPH_LIFECYCLE_PROCESS","RHO_GRAPH_NATIVE_FAULT_FAMILY","RHO_GRAPH_STATE_RETENTION_PROCESS"):
         env[name]=""
-    command=[sys.executable,str(watchdog),"--rss-mib",str(memory_mib),"--seconds",str(seconds),"--deadline-unix-nanos",str(deadline),"--report",str(output/"watchdog.json"),"--",str(binary),"-test.run=^TestNativeGraphCreateUpdateWorkloadCell$","-test.count=1","-test.v",f"-test.timeout={seconds+30}s"]
-    request={"version":1,"format":native.FORMAT,"spec":spec,"run":run,"transport":shaped,"seconds":seconds,"deadlineUnixNanos":deadline,"aggregateRSSMiB":memory_mib,"command":command,"binarySHA256":digest(binary),"watchdogSHA256":digest(watchdog),"retentionContract":"snapshot-C-retained-full-prefix-v1","spoolPolicy":{"max_disk_bytes":policy.max_disk_bytes,"cache_bytes":policy.cache_bytes,"max_key_bytes":policy.max_key_bytes,"max_value_bytes":policy.max_value_bytes}}
+    if family=="immutable-columns":
+        env["RHO_GRAPH_IMMUTABLE_COLUMNS_PROCESS"]=env["RHO_GRAPH_FEED_RETAINED_PROCESS"]=""
+    parent="TestNativeGraphImmutableColumnsWorkloadCell" if family=="immutable-columns" else "TestNativeGraphCreateUpdateWorkloadCell"
+    command=[sys.executable,str(watchdog),"--rss-mib",str(memory_mib),"--seconds",str(seconds),"--deadline-unix-nanos",str(deadline),"--report",str(output/"watchdog.json"),"--",str(binary),f"-test.run=^{parent}$","-test.count=1","-test.v",f"-test.timeout={seconds+30}s"]
+    request={"version":1,"format":oracle.FORMAT,"spec":spec,"run":run,"transport":shaped,"seconds":seconds,"deadlineUnixNanos":deadline,"aggregateRSSMiB":memory_mib,"command":command,"binarySHA256":digest(binary),"watchdogSHA256":digest(watchdog),"retentionContract":"snapshot-C-retained-full-prefix-v1","spoolPolicy":{"max_disk_bytes":policy.max_disk_bytes,"cache_bytes":policy.cache_bytes,"max_key_bytes":policy.max_key_bytes,"max_value_bytes":policy.max_value_bytes}}
     with (output/"request.json").open("x") as out:json.dump(request,out,indent=2);out.write("\n")
-    receipt={"version":1,"format":native.FORMAT,"requestSHA256":digest(output/"request.json"),"binarySHA256":request["binarySHA256"],"spec":spec,"run":run,"exit":None,"completedCell":False,"artifacts":{},"proof":None}
+    receipt={"version":1,"format":oracle.FORMAT,"requestSHA256":digest(output/"request.json"),"binarySHA256":request["binarySHA256"],"spec":spec,"run":run,"exit":None,"completedCell":False,"artifacts":{},"proof":None}
     started=time.monotonic_ns()
     try:
         with (output/"stdout.txt").open("xb") as out,(output/"stderr.txt").open("xb") as err:done=subprocess.run(command,env=env,stdout=out,stderr=err,check=False)
         receipt["exit"]=done.returncode;meter=bounded_json(output/"watchdog.json",65536)
         require(done.returncode==meter["exit_code"]==0 and meter["reason"]=="completed" and meter["wall_limit_s"]==seconds and meter["rss_limit_mib"]==memory_mib and meter["command"]==command[command.index("--")+1:] and type(meter["peak_tree_rss_mib"]) in (int,float) and math.isfinite(meter["peak_tree_rss_mib"]) and 0<meter["peak_tree_rss_mib"]<=memory_mib,"actual terminal bounded aggregate native process tree")
         receipt["processTree"],receipt["processTreeSHA256"]=meter,digest(output/"watchdog.json")
-        receipt["artifacts"]=hash_artifacts(engine,spec["layout"])
-        receipt["proof"]=native.verify(engine,output,policy,binary_sha=request["binarySHA256"],expected_spec=spec,expected_run=run,expected_deadline=deadline,expected_seconds=seconds)
+        receipt["artifacts"]=hash_artifacts(engine,spec["layout"],family=family)
+        receipt["proof"]=oracle.verify(engine,output,policy,binary_sha=request["binarySHA256"],expected_spec=spec,expected_run=run,expected_deadline=deadline,expected_seconds=seconds)
         require(receipt["proof"]["transport"]==shaped,"actual traffic counters bind the original owned delay scheduler")
         receipt["completedCell"]=True
     finally:
@@ -94,21 +116,33 @@ def execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,*,ru
 
 
 def compare(native_directory,fdb_directory,spool_directory,policy):
-    import fdb_create_update_check as fdb
+    return _compare(native_directory,fdb_directory,spool_directory,policy)
+
+
+def _compare(native_directory,fdb_directory,spool_directory,policy,*,family=native.FAMILY):
+    oracle=_oracle(family)
+    if family==native.FAMILY:
+        import fdb_create_update_check as fdb
+    else:
+        import fdb_columns_check as fdb
     native_directory,fdb_directory=Path(native_directory).resolve(strict=True),Path(fdb_directory).resolve(strict=True)
     receipt,request=bounded_json(native_directory/"receipt.json"),bounded_json(native_directory/"request.json")
-    require(receipt["completedCell"] is True and receipt["exit"]==0 and receipt["requestSHA256"]==digest(native_directory/"request.json") and receipt["spec"]==request["spec"] and receipt["run"]==request["run"] and receipt["binarySHA256"]==request["binarySHA256"] and request["transport"]=={"kind":"local","targetRTTMillis":0,"jitterMillis":0,"seed":20261009} and receipt["processTreeSHA256"]==digest(native_directory/"watchdog.json") and receipt["processTree"]==bounded_json(native_directory/"watchdog.json",65536) and receipt["artifacts"]==hash_artifacts(native_directory/"engine",request["spec"]["layout"]),"unchanged actual local native source and owned cleanup")
+    oracle.shape(request["spec"])
+    require(receipt["format"]==request["format"]==oracle.FORMAT and receipt["completedCell"] is True and receipt["exit"]==0 and receipt["requestSHA256"]==digest(native_directory/"request.json") and receipt["spec"]==request["spec"] and receipt["run"]==request["run"] and receipt["binarySHA256"]==request["binarySHA256"] and request["transport"]=={"kind":"local","targetRTTMillis":0,"jitterMillis":0,"seed":20261009} and receipt["processTreeSHA256"]==digest(native_directory/"watchdog.json") and receipt["processTree"]==bounded_json(native_directory/"watchdog.json",65536) and receipt["artifacts"]==hash_artifacts(native_directory/"engine",request["spec"]["layout"],family=family),"unchanged actual local native source and owned cleanup")
     fdb_receipt=bounded_json(fdb_directory/"receipt.json")
     require(fdb_receipt["success"] is True and fdb_receipt["exit"]==fdb_receipt["cleanup_exit"]==0 and fdb_receipt["mode"]=="workload-cell","actual FDB owned launcher/cleanup")
-    required={"fdb-create-update-"+name for name in ("result.json","attempts.jsonl","events.jsonl","latency.jsonl","history.jsonl","current.jsonl","cdc.jsonl")}
-    if request["spec"]["layout"]=="columns":required.add("fdb-create-update-columns.jsonl")
+    stem="fdb-columns-" if family=="immutable-columns" else "fdb-create-update-"
+    required={stem+name for name in ("result.json","attempts.jsonl","events.jsonl","latency.jsonl","history.jsonl","current.jsonl","cdc.jsonl")}
+    if request["spec"]["layout"]=="columns":required.add(stem+"columns.jsonl")
     require(required<=fdb_receipt["sha256"].keys(),"complete actual FDB family sources bound by launcher")
     for name,checksum in fdb_receipt["sha256"].items():require("/" not in name and name!="receipt.json" and digest(fdb_directory/name)==checksum,"changed/foreign FDB family artifact")
     with Spool(spool_directory,policy) as spool:
-        native_proof=native.verify(native_directory/"engine",spool_directory,policy,binary_sha=request["binarySHA256"],expected_spec=request["spec"],expected_run=request["run"],expected_deadline=request["deadlineUnixNanos"],expected_seconds=request["seconds"],shared_spool=common.NamespacedSpool(spool,b"native/"))
+        native_proof=oracle.verify(native_directory/"engine",spool_directory,policy,binary_sha=request["binarySHA256"],expected_spec=request["spec"],expected_run=request["run"],expected_deadline=request["deadlineUnixNanos"],expected_seconds=request["seconds"],shared_spool=common.NamespacedSpool(spool,b"native/"))
         fdb_proof=fdb.verify(fdb_directory,spool_directory,policy,shared_spool=common.NamespacedSpool(spool,b"fdb/"))
-        require(native_proof["spec"]==fdb_proof["spec"] and native_proof["logicalAnswersSHA256"]==fdb_proof["logicalAnswersSHA256"] and native_proof["retentionContract"]==fdb_proof["retentionContract"]=="snapshot-C-retained-full-prefix-v1" and native_proof["rowSemantics"]==fdb_proof["rowSemantics"],"complete actual typed old/current/endpoint-life/definition/provenance and business-locality parity")
+        require(native_proof["spec"]==fdb_proof["spec"] and native_proof["logicalAnswersSHA256"]==fdb_proof["logicalAnswersSHA256"] and native_proof["retentionContract"]==fdb_proof["retentionContract"]=="snapshot-C-retained-full-prefix-v1" and (family=="immutable-columns" or native_proof["rowSemantics"]==fdb_proof["rowSemantics"]),"complete actual typed old/current/endpoint-life/definition/provenance parity")
         ledger=spool.report()
+    if family=="immutable-columns":
+        return {"version":1,"family":family,"spec":request["spec"],"equal":True,"logicalAnswersSHA256":native_proof["logicalAnswersSHA256"],"retentionContract":"snapshot-C-retained-full-prefix-v1","nativeColumnTiming":native_proof["columnTiming"],"FDBColumnTiming":fdb_proof["columnTiming"],"spool":ledger,"scope":"independent complete local typed immutable-column/source-reference answers; native extra guarded presence rows and retained derived chunks counted; FDB derived GC and native journal/pin retirement differ; no equal physical-retention/capacity/efficiency/nonlocal/full-matrix acceptance"}
     return {"version":1,"family":native.FAMILY,"spec":request["spec"],"equal":True,"logicalAnswersSHA256":native_proof["logicalAnswersSHA256"],"retentionContract":"snapshot-C-retained-full-prefix-v1","nativeBusinessTiming":native_proof["businessTiming"],"FDBBusinessTiming":fdb_proof["businessPhases"],"spool":ledger,"scope":"actual local retained-C complete logical create/update parity after both independent native/raw EOF oracles; native planned installed-grant IDs and fixed FDB declarations are not equivalent allocator issuance; replication/retention/resource costs separate, no efficiency/nonlocal/capacity/full-matrix acceptance"}
 
 

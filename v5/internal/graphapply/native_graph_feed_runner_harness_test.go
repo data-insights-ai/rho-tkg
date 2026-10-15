@@ -746,7 +746,23 @@ func nativeScalarWorkloadRestart(t *testing.T, ctx context.Context, n *certified
 }
 
 func nativeFeedReadColumns(t *testing.T, clients [2]*nativeGraphEdgeUniqueColumnClient, pair *nativeGraphCostColumnPair, s nativeGraphCostSpec, at graphCut, cached, fill bool) {
+	nativeScalarReadColumns(t, clients, pair, s, at, cached, fill, nil, false)
+}
+
+func nativeScalarReadColumns(t *testing.T, clients [2]*nativeGraphEdgeUniqueColumnClient, pair *nativeGraphCostColumnPair, s nativeGraphCostSpec, at graphCut, cached, fill bool, observer *nativeImmutableColumnsObservations, points bool) {
 	t.Helper()
+	began := time.Now()
+	var probes *nativeImmutableColumnsProbes
+	if points {
+		if observer == nil {
+			t.Fatal("fresh column probe admission required")
+		}
+		var err error
+		probes, err = newNativeImmutableColumnsProbes(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	var census [3]uint64
 	for group, c := range clients {
 		r := c.call(nativeGraphCostColumnRequest{Action: nativeColumnsRead, At: nativeGraphCostColumnCutInput(t, at), Cached: cached, Fill: fill})
@@ -791,6 +807,11 @@ func nativeFeedReadColumns(t *testing.T, clients [2]*nativeGraphEdgeUniqueColumn
 							t.Fatal("native feed actual typed lifecycle", err)
 						}
 						census[class]++
+						if probes != nil {
+							if err := probes.accept(row); err != nil {
+								t.Fatal(err)
+							}
+						}
 						selected = append(selected, row)
 					}
 				}
@@ -808,15 +829,23 @@ func nativeFeedReadColumns(t *testing.T, clients [2]*nativeGraphEdgeUniqueColumn
 		updates = s.Facts
 	}
 	presence := 3 + s.Facts
-	if s.Version == 9 {
+	if s.Version == 9 || s.Version == 10 {
 		presence += updates
 	}
 	if census != ([3]uint64{presence, s.Facts, updates}) {
 		t.Fatal("complete native typed scalar row census", census)
 	}
+	if observer != nil {
+		observer.read(t, clients[0].stage, pair, at, cached, fill, began, census, probes)
+	}
 }
 func nativeFeedPublishColumns(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, s nativeGraphCostSpec, initial, final graphCut, id [16]byte, stage string, updated bool, failed *uint64, stream *json.Encoder) nativeGraphCostColumnPair {
+	return nativeScalarPublishColumns(t, ctx, n, s, initial, final, id, stage, updated, failed, stream, nil)
+}
+
+func nativeScalarPublishColumns(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, s nativeGraphCostSpec, initial, final graphCut, id [16]byte, stage string, updated bool, failed *uint64, stream *json.Encoder, observer *nativeImmutableColumnsObservations) nativeGraphCostColumnPair {
 	t.Helper()
+	began := time.Now()
 	pair := nativeGraphCostColumnPair{Initial: initial, Final: final, ID: id, Updated: updated}
 	clients := nativeGraphEdgeUniqueColumnClients(t, ctx, n, &pair, stage, true, failed, stream)
 	for group, c := range clients {
@@ -834,6 +863,9 @@ func nativeFeedPublishColumns(t *testing.T, ctx context.Context, n *certifiedPro
 	if err := nativeColumnJoinBoundaries(pair.Bindings, pair.Manifests); err != nil {
 		t.Fatal(err)
 	}
+	if observer != nil {
+		observer.published(t, stage, &pair, began)
+	}
 	for _, mode := range []struct {
 		name         string
 		cached, fill bool
@@ -841,7 +873,7 @@ func nativeFeedPublishColumns(t *testing.T, ctx context.Context, n *certifiedPro
 		for _, c := range clients {
 			c.stage = stage + "/" + mode.name
 		}
-		nativeFeedReadColumns(t, clients, &pair, s, final, mode.cached, mode.fill)
+		nativeScalarReadColumns(t, clients, &pair, s, final, mode.cached, mode.fill, observer, false)
 	}
 	nativeGraphEdgeUniqueColumnCloseClients(clients)
 	return pair

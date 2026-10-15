@@ -650,6 +650,9 @@ func (s *nativeSelectorsSessions) serve(ctx context.Context, r processRequest) (
 	switch q.Action {
 	case "records":
 		valid := nativeSelectorsValidate(s.spec.cost())
+		if s.spec.Family == nativeImmutableColumnsFamily {
+			valid = nativeImmutableColumnsValidate(nativeImmutableColumnsCost(s.spec))
+		}
 		if s.spec.Family == nativeCreateUpdateFamily {
 			valid = nativeCreateUpdateValidate(nativeCreateUpdateCost(s.spec))
 		}

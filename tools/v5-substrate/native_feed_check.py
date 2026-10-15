@@ -409,7 +409,7 @@ def sources(directory,end,spool):
 
 
 def _scalar_sources(directory,end,spool,decode_cut,frame_ceiling,*,guarded_updates=False):
-    require(not guarded_updates or end["spec"]["family"]=="partition-local-create-update","fresh guarded-update source profile only")
+    require(not guarded_updates or end["spec"]["family"] in ("partition-local-create-update","immutable-columns"),"fresh guarded-update source profile only")
     first=decode_cut(end["Initial"]);stages=("before-stop","reopened-replayed")
     stage,group,after,previous=0,0,first[0]["sourceIndex"],first[0]["image"]
     counts=[0,0]
@@ -691,6 +691,10 @@ def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut,*,initi
         require((directory/"columns.jsonl").stat().st_size==0,"KV invented derived generation work");return
     expected={"old-seal/native","old-seal/fill","old-seal/cached","final-seal/native","final-seal/fill","final-seal/cached","old-after-update",
               "reopened-0-false","reopened-0-true","reopened-1-false","reopened-1-true"}
+    immutable=end["spec"]["family"]=="immutable-columns"
+    if immutable:
+        require(initial_cuts is None and expected_stages is None and generation_for_stage is None,"Cost10 has a fixed independently verified generation schedule")
+        expected|={"scan-points-0","scan-points-1"}
     if expected_stages is not None: expected=set(expected_stages)
     initial_cuts=(end["Initial"],end["Initial"]) if initial_cuts is None else initial_cuts
     require(len(initial_cuts)==2,"two exact independently authenticated generation starts")
@@ -703,7 +707,8 @@ def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut,*,initi
             probed.add((matches[0],group));continue
         stage,member,q=trace["Stage"],trace["Member"],trace["Input"]
         require(member in (1,4),"actual local derived owner")
-        group=(member-1)//3;generation=int(stage.startswith(("final-seal","reopened-1","retire-1"))) if generation_for_stage is None else generation_for_stage(stage)
+        if immutable:require(stage in expected|{"old-seal","final-seal","retire-0","retire-1"},"unknown Cost10 column owner/stage")
+        group=(member-1)//3;generation=int(stage.startswith(("final-seal","reopened-1","retire-1")) or immutable and stage=="scan-points-1") if generation_for_stage is None else generation_for_stage(stage)
         m,b=end["ColumnManifests"][generation][group],end["ColumnBindings"][generation][group]
         r=trace.get("Receipt");action=integer(q["Action"],1,6)
         if r is None:require(trace.get("Error"),"unknown derived response");continue
@@ -721,6 +726,8 @@ def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut,*,initi
         if action==1:
             require(owners[group] is None and r["Sequence"]==0 and not r["Closed"] and q["Initial"]==initial_cuts[generation] and q["Final"]==final,"actual immutable constructor")
             owners[group]={"r":r,"sequence":0,"cursor":None}
+            if immutable:spool.insert(b"column-observation-open",stage.encode()+bytes([group]),encoded(r))
+            if immutable and stage=="old-after-update":spool.insert(b"column-held-cookie",bytes([group]),encoded(r["Cookie"]))
         else:
             owner=owners[group];require(owner is not None and q["Cookie"]==r["Cookie"]==owner["r"]["Cookie"],"same real private query owner")
             for name,maximum in zip(column.WORK,("MaxWorkRecords","MaxWorkBytes","MaxDecodedRows","MaxOutputBytes","MaxRPCs","MaxWireBytes"),strict=True):
@@ -736,6 +743,7 @@ def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut,*,initi
         if r["CacheLedger"]["Version"]:cache[group]=r["CacheLedger"]
         if action==2 and r["EOF"]:
             require(r["Manifest"]==m,"full source seal");codec.retention(r["Retention"],m,spool);sealed.add((generation,group))
+            if immutable:spool.insert(b"column-observation-seal",bytes([generation,group]),encoded(r))
         elif action==3:
             require(stage in expected and (stage,group) not in completed and r["Manifest"]==m and q["At"]==final,"exact cut projected read")
             owner["cursor"]={"ordinal":0,"chain":bytes(32),"position":decode_cut(initial_cuts[generation])[group]["sourceIndex"],"frames":0,"rows":0,"bytes":0,"stage":stage,"cached":q["Cached"],"fill":q["Fill"]}
@@ -746,6 +754,7 @@ def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut,*,initi
                 require(not codec.optional(r["Body"]) and not r["Rows"] and c["ordinal"]==m["Chunks"] and c["chain"]==array(m["Chain"],32)
                         and c["position"]==m["Positions"][group] and c["frames"]==m["Frames"] and c["rows"]==m["Rows"] and c["bytes"]==m["Bytes"],"complete binary source/cache EOF")
                 completed.add((stage,group));owner["cursor"]=None
+                if immutable:spool.insert(b"column-observation-eof",stage.encode()+bytes([group]),encoded(r))
             else:
                 body=blob(r["Body"]);selected=[]
                 for f in column.chunk(raw,body,m["Generation"],c["ordinal"],c["chain"],p):

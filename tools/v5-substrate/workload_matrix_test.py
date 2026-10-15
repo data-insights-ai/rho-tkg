@@ -7,6 +7,20 @@ import workload_matrix as matrix
 
 
 class WorkloadMatrixGuards(unittest.TestCase):
+    def test_native_immutable_columns_actual_route_and_local_pair_only(self):
+        spec={"version":1,"family":"immutable-columns","facts":40,"crossPercent":50,"writers":32,"layout":"columns"}
+        for transport in matrix.TRANSPORTS:self.assertEqual(matrix.preflight(spec,"01"*16,"native-raft",transport),spec)
+        self.assertEqual(matrix.preflight(spec,"01"*16,"paired","local"),spec)
+        for transport in ("rtt-1ms","rtt-20ms","rtt-100ms"):
+            with self.assertRaises(ValueError):matrix.preflight(spec,"01"*16,"paired",transport)
+        cells=list(matrix.matrix(("immutable-columns",),("rtt-100ms",),("native-raft",)))
+        self.assertEqual(len(cells),360);self.assertTrue(all(c["implemented"] and c["workload"]["version"]==1 for c in cells))
+        self.assertEqual({c["repetition"] for c in cells},set(range(1,6)))
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/"missing"
+            with self.assertRaises(ValueError):matrix.execute({**cells[0],"engine":"paired"},output,1800,"small",4096,1<<30,8<<20)
+            self.assertFalse(output.exists())
+
     def test_retained_only_feed_v3_is_explicit_and_not_paired_or_fdb(self):
         spec={"version":3,"family":"snapshot-to-feed","facts":40,"crossPercent":50,"writers":32,"layout":"columns"}
         for transport in matrix.TRANSPORTS:self.assertEqual(matrix.preflight(spec,"01"*16,"native-raft",transport),spec)

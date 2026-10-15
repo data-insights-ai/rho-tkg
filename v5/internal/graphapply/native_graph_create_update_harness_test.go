@@ -150,6 +150,9 @@ func nativeCreateUpdateChildEnv(s nativeSelectorsSpec, a nativeSelectorsAdmissio
 func nativeCreateUpdateAttach(t *testing.T, n *certifiedProcessNetwork, s nativeSelectorsSpec, a nativeSelectorsAdmission) {
 	t.Helper()
 	frames, err := nativeCreateUpdateFrames(nativeCreateUpdateCost(s))
+	if s.Family == nativeImmutableColumnsFamily {
+		frames, err = nativeImmutableColumnsFrames(nativeImmutableColumnsCost(s))
+	}
 	if err != nil || frames > (1<<41)/1024 || frames > uint64(^uint(0)>>1)/1024 {
 		t.Fatal("finite actual source/transport frame grant", err)
 	}
@@ -262,7 +265,7 @@ func nativeCreateUpdateRestart(t *testing.T, ctx context.Context, n *certifiedPr
 		t.Fatal("actual old cohort not reaped")
 	}
 	receipt := old.workload.receipt(old)
-	env, err := nativeCreateUpdateChildEnv(s, a, true)
+	env, err := nativeScalarCreateUpdateChildEnv(s, a, true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -40,6 +40,15 @@ class ImmutableColumnsOracleGuards(unittest.TestCase):
             with Spool(directory,Policy(4<<20,64<<10,4096,512<<10)) as spool,self.assertRaises(ValueError):check.events(root,partial,spool,{})
         with self.assertRaises(ValueError):check.validate_result({"Version":1,"Format":"fdb-snapshot-selectors-v1"})
 
+    def test_shared_immutable_answer_is_after_the_complete_independent_oracle(self):
+        # A shared spool grants storage only. It cannot authorize a printable
+        # header or skip native history/current/CDC/columns EOF validation.
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);scratch=root/"scratch";scratch.mkdir()
+            (root/"fdb-columns-result.json").write_bytes(b'{"Version":1,"Format":"fdb-immutable-columns-v1"}\n')
+            with Spool(scratch,Policy(4<<20,64<<10,4096,512<<10)) as spool,self.assertRaises((ValueError,KeyError)):
+                check.verify(root,scratch,shared_spool=spool)
+
 
 if __name__=="__main__":
     unittest.main()

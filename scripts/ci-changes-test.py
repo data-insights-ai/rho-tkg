@@ -124,8 +124,18 @@ class Planning(unittest.TestCase):
         for paths in [[p] for p in CI.CREATE_UPDATE_INPUTS] + [list(CI.CREATE_UPDATE_INPUTS)]:
             with self.subTest(paths=paths), patch.object(CI.subprocess,"run") as run:
                 CI.cdc(paths)
-                self.assertEqual([call.args[0] for call in run.call_args_list],
-                                 [[sys.executable,"-B","tools/v5-substrate/native_create_update_check_test.py"]])
+                expected=[[sys.executable,"-B","tools/v5-substrate/native_create_update_check_test.py"]]
+                if CI.IMMUTABLE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_immutable_columns_check_test.py"])
+                self.assertEqual([call.args[0] for call in run.call_args_list],expected)
+
+    def test_immutable_columns_dependency_guard_is_once_and_never_runs_go(self):
+        for paths in [[p] for p in CI.IMMUTABLE_INPUTS]+[list(CI.IMMUTABLE_INPUTS)]:
+            with self.subTest(paths=paths),patch.object(CI.subprocess,"run") as run:
+                CI.cdc(paths)
+                expected=[]
+                if CI.CREATE_UPDATE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_create_update_check_test.py"])
+                expected.append([sys.executable,"-B","tools/v5-substrate/native_immutable_columns_check_test.py"])
+                self.assertEqual([call.args[0] for call in run.call_args_list],expected)
 
     def test_full_cdc_action_runs_only_its_exact_replay_without_reference_or_go(self):
         with patch.object(sys, "argv", ["ci-changes.py", "cdc", "--base", "fixture"]), \
@@ -321,11 +331,14 @@ class RealGitSelection(unittest.TestCase):
             "native_graph_feed_retained_harness_test.go": {"TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell", "TestNativeFeedRetainedAdmissionWireAndCleanupStayProfileBound"},
             "native_graph_feed_retained_sessions_harness_test.go": {"TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell", "TestNativeFeedRetainedAdmissionWireAndCleanupStayProfileBound"},
             "native_graph_feed_retained_runner_harness_test.go": {"TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell"},
-            "native_graph_create_update_harness_test.go": {"TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"},
-            "native_graph_create_update_process_test.go": {"TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"},
-            "native_graph_selectors_harness_test.go": {"TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"},
-            "native_graph_selectors_sessions_harness_test.go": {"TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"},
-            "native_graph_selectors_runner_harness_test.go": {"TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell"},
+            "native_graph_immutable_columns_harness_test.go": set(CI.IMMUTABLE_PARENTS),
+            "native_graph_immutable_columns_process_test.go": set(CI.IMMUTABLE_PARENTS),
+            "native_graph_create_update_harness_test.go": {"TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *CI.IMMUTABLE_PARENTS},
+            "native_graph_create_update_process_test.go": {"TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *CI.IMMUTABLE_PARENTS},
+            "native_graph_selectors_harness_test.go": {"TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *CI.IMMUTABLE_PARENTS},
+            "native_graph_selectors_sessions_harness_test.go": {"TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *CI.IMMUTABLE_PARENTS},
+            "native_graph_selectors_runner_harness_test.go": {"TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *CI.IMMUTABLE_PARENTS},
+            "native_graph_feed_runner_harness_test.go": {"TestNativeGraphSnapshotFeedWorkloadCell", "TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateWorkloadCell", *CI.IMMUTABLE_PARENTS},
             "paired_graph_fault_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut"},
             "paired_graph_snapshot_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut"},
             "prepared_lock_p06_harness_test.go": {"TestPreparedLockP06FirstYESLeaderKillOriginalRecovery", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut"},
@@ -353,6 +366,11 @@ class RealGitSelection(unittest.TestCase):
                 path.write_text("package graphapply\ntype pairedFixture struct{}\n")
                 names = CI.graph_selection(self.directory, [path], {path: [("type", "pairedFixture")]})
                 self.assertEqual(set(names), parents | set(CI.GRAPH_COMPAT))
+                if name=="native_graph_feed_runner_harness_test.go":
+                    path.write_text("package graphapply\nfunc privateColumnReducer() {}\n")
+                    (self.directory/"unreviewed_test.go").write_text("package graphapply\nfunc TestUnreviewed(t *testing.T) { privateColumnReducer() }\n")
+                    selected=CI.graph_selection(self.directory,[path],{path:[("func","privateColumnReducer")]})
+                    self.assertEqual(set(selected),parents|set(CI.GRAPH_COMPAT))
 
     def test_shared_cost_fixtures_select_all_finite_consumers_only(self):
         parents = {"TestNativeGraphCostSmallActualProcesses", "TestNativeGraphCostProfileAndRouting",
@@ -371,7 +389,7 @@ class RealGitSelection(unittest.TestCase):
                    "TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor",
                    "TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass",
                    "TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement",
-                   "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation"}
+                   "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation", *CI.IMMUTABLE_PARENTS}
         for fixture in ("native_graph_cost_test.go", "native_graph_cost_harness_test.go",
                         "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go",
                         "native_graph_cost_incident_harness_test.go", "native_graph_cost_columns_harness_test.go",
@@ -588,7 +606,7 @@ class CurrentRepository(unittest.TestCase):
     def test_checked_compatibility_names_exist_in_current_sources(self):
         directory = CI.ROOT / "v5/internal/graphapply"
         names = set().union(*(CI.parent_names(p) for p in directory.glob("*_test.go")))
-        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) <= names)
+        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) <= names)
         self.assertIn("TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements", CI.GRAPH_COMPAT)
 
     def test_explicit_cost_cell_is_short_guarded_before_profile(self):

@@ -444,7 +444,7 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 	// Coverage is an explicit P05 qualification lane. Each incarnation owns a
 	// separate profile, including a reopen in the same graph directory.
 	conditional, childCover := false, false
-	durableProfile, contentionProfile, edgeProfile, feedProfile, selectorsProfile, createUpdateProfile, feedRetainedProfile := false, false, false, false, false, false, false
+	durableProfile, contentionProfile, edgeProfile, feedProfile, selectorsProfile, createUpdateProfile, feedRetainedProfile, immutableColumnsProfile := false, false, false, false, false, false, false, false
 	var workloadRun string
 	for _, entry := range p.cmd.Env {
 		name, value, _ := strings.Cut(entry, "=")
@@ -465,13 +465,15 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 			selectorsProfile = value == "1"
 		case "RHO_GRAPH_CREATE_UPDATE_PROCESS":
 			createUpdateProfile = value == "1"
+		case nativeImmutableColumnsProcessFlag:
+			immutableColumnsProfile = value == "1"
 		case "RHO_GRAPH_CONDITIONAL_PROCESS":
 			conditional = value == "1"
 		case "RHO_P05_CHILD_COVER":
 			childCover = value == "1"
 		}
 	}
-	p.durableColumns = durableProfile || contentionProfile || edgeProfile || feedProfile || selectorsProfile || createUpdateProfile || feedRetainedProfile
+	p.durableColumns = durableProfile || contentionProfile || edgeProfile || feedProfile || selectorsProfile || createUpdateProfile || feedRetainedProfile || immutableColumnsProfile
 	if contentionProfile {
 		raw, err := hex.DecodeString(workloadRun)
 		if err != nil || len(raw) != 16 || hex.EncodeToString(raw) != workloadRun {
@@ -1926,7 +1928,11 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	if err != nil {
 		t.Fatal("create/update profile", err)
 	}
-	durableColumns = durableColumns || edgeUnique || selectors || createUpdate
+	immutableColumns, err := nativeImmutableColumnsProcessProfile(cost)
+	if err != nil {
+		t.Fatal("immutable columns profile", err)
+	}
+	durableColumns = durableColumns || edgeUnique || selectors || createUpdate || immutableColumns
 	if durableColumns {
 		agreement, materializer = durableColumnGraphSemanticContractID(), newDurableColumnGraphMaterializer
 	}
