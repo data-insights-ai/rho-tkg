@@ -49,6 +49,11 @@ package core
 //     written before the setting existed (hashes on) and an off-store would be
 //     refused or mixed. Re-persisted from c.hashesOff, no capture needed — see
 //     restoreIntegrityModeAfterReset (integrity_switch.go).
+//   - untimedValidStartMeta (Preserve): the Config.UntimedValidStart mode the
+//     store's creates are written under (backlog 73), for the same reason:
+//     wiped, a reopen would read the store as one written before the option
+//     existed (UntimedFromTxFrom). Re-persisted from c.untimedUnbounded — see
+//     restoreUntimedModeAfterReset (untimed_mode.go).
 //   - idSlotLeaseMeta (Preserve): an EXTERNAL ORCHESTRATOR's failover hint
 //     (which snowflake slot this node is leased for) — data-independent
 //     identity, unrelated to the graph's own entities. Wiping it on a data
@@ -57,10 +62,12 @@ package core
 //     (replication.go).
 //   - uniqueForeverOwnersMeta (Reap): the durable value-ownership registry is
 //     scoped to the graph's own entities/values, which Reset just erased.
-//   - schemaVersionKey (Reap): gates a one-shot, EXPLICITLY IDEMPOTENT
-//     migration (see migration_bitemporal.go's own doc comment). Wiping it is
-//     harmless — the migration simply re-runs against the now-empty store and
-//     re-sets the flag; there is no correctness reason to preserve it.
+//   - schemaVersionKey (Preserve): gates the one-shot bitemporal migration
+//     (migration_bitemporal.go). Wiped, the next open re-ran it over the rows
+//     written after the Clear, which are current-format: it read a close row's
+//     copied start as an inherited legacy ValidFrom and cleared it (backlog 73
+//     review). Re-persisted from c.bitemporalMigrated — see
+//     restoreSchemaVersionAfterReset.
 //   - retentionMaxWatermarkMeta / retentionWatermarkKey and the relationship
 //     family retentionRelMaxWatermarkMeta / retentionRelWatermarkKey (Reap):
 //     retention watermarks describe purge progress over the graph's own
@@ -97,8 +104,9 @@ var metaKVFixedKeys = map[string]reapPolicy{
 	idSlotLeaseMeta:              reapPolicyPreserve,
 	instantFloorMeta:             reapPolicyPreserve,
 	integrityHashesMeta:          reapPolicyPreserve,
+	untimedValidStartMeta:        reapPolicyPreserve,
 	uniqueForeverOwnersMeta:      reapPolicyReap,
-	schemaVersionKey:             reapPolicyReap,
+	schemaVersionKey:             reapPolicyPreserve,
 	retentionMaxWatermarkMeta:    reapPolicyReap,
 	retentionRelMaxWatermarkMeta: reapPolicyReap,
 	uniqueConstraintsMeta:        reapPolicyReap,

@@ -1,6 +1,7 @@
 package index
 
 import (
+	"math"
 	"sync"
 	"time"
 
@@ -62,12 +63,38 @@ func (hfi *HighFrequencyIndex) BucketFor(validFrom types.Instant) int64 {
 	if hfi.bucketSize <= 0 {
 		return 0
 	}
-	delta := int64(validFrom - hfi.origin)
-	if delta < 0 {
-		// Before origin: use floor division for correct negative bucket assignment.
-		return (delta - int64(hfi.bucketSize) + 1) / int64(hfi.bucketSize)
+	// floor((validFrom - origin) / bucketSize) without forming the difference,
+	// which overflows for a start at -inf (types.UnboundedValidFrom, backlog
+	// 73) against a positive origin: the floor quotients of both operands
+	// minus a borrow from the remainders, saturated at the int64 range, so
+	// the bucket order follows the start order at every instant.
+	b := int64(hfi.bucketSize)
+	qv, rv := floorDivMod(int64(validFrom), b)
+	qo, ro := floorDivMod(int64(hfi.origin), b)
+	q := qv - qo
+	if (qo < 0 && q < qv) || (qo > 0 && q > qv) { // the subtraction wrapped
+		if qo < 0 {
+			return math.MaxInt64
+		}
+		return math.MinInt64
 	}
-	return delta / int64(hfi.bucketSize)
+	if rv < ro {
+		if q == math.MinInt64 {
+			return q
+		}
+		q--
+	}
+	return q
+}
+
+// floorDivMod is floored division: a = q*b + r with 0 <= r < b (b > 0).
+func floorDivMod(a, b int64) (q, r int64) {
+	q, r = a/b, a%b
+	if r < 0 {
+		r += b
+		q--
+	}
+	return q, r
 }
 
 // Add inserts id into the bucket for validFrom. O(1) amortized.

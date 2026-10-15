@@ -6,6 +6,14 @@ import snowflake "github.com/bds421/rho-snowflake-2026"
 // Used for all temporal fields in the graph (validity, transaction, audit).
 type Instant int64
 
+// UnboundedValidFrom is the valid-from of a row that is valid since -inf: the
+// smallest Instant. Under graph Config.UntimedValidStart = UntimedUnbounded an
+// entity's first version written without a valid-from carries it as its
+// ValidFrom (backlog 73); a caller may also pass it as tkg_valid_from. It is an
+// ordinary explicit start (ValidFrom 0 stays "unset"), so every valid-time door
+// reads it as "valid at every instant before the row's end".
+const UnboundedValidFrom Instant = -1 << 63
+
 // SnowflakeID extracts the underlying snowflake.ID from an entityID.
 // This is the bridge for pkg/graph to resolve base entity references.
 func (id EntityID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }

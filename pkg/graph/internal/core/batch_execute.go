@@ -251,12 +251,16 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			// queue time) stamps the caller's transaction time instead (§4.1);
 			// the event timestamp below still uses the real commit clock.
 			txNow := b.g.now()
-			for _, pn := range b.nodes {
+			for i := range b.nodes {
+				pn := &b.nodes[i]
 				ts := txNow
 				if pn.backfillTxFrom != 0 {
 					ts = pn.backfillTxFrom
 				}
 				pn.temporal.TxFrom = ts
+				if b.g.stampQueuedUntimedStart(pn.temporal) {
+					pn.wireBody, pn.logBody = nil, nil // queued before a conversion: re-encode
+				}
 				pn.node.SetTemporal(pn.temporal)
 			}
 
@@ -476,6 +480,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				ts = pr.backfillTxFrom
 			}
 			pr.temporal.TxFrom = ts
+			b.g.stampQueuedUntimedStart(pr.temporal)
 			pr.rel.SetTemporal(pr.temporal)
 
 			if startNode != nil || endNode != nil {

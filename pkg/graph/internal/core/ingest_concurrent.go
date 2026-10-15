@@ -171,6 +171,9 @@ func (c *Core) applyConcurrentNodeCreates(
 			ts = pn.backfillTxFrom // privileged §4.1 backfill, gated at queue time
 		}
 		pn.temporal.TxFrom = ts
+		if c.stampQueuedUntimedStart(pn.temporal) {
+			pn.wireBody, pn.logBody = nil, nil // queued before a conversion: re-encode
+		}
 		pn.node.SetTemporal(pn.temporal)
 
 		// pre-encoded buffers: tokens are real at prepare in concurrent
@@ -352,6 +355,7 @@ func (c *Core) applyConcurrentRelCreates(
 				ts = pr.backfillTxFrom
 			}
 			pr.temporal.TxFrom = ts
+			c.stampQueuedUntimedStart(pr.temporal)
 			pr.rel.SetTemporal(pr.temporal)
 
 			if startNode != nil || endNode != nil {

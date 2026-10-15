@@ -1151,3 +1151,15 @@ type DurableFlushCapability interface {
 	DurableFlushSupported() bool
 	DurableFlush() error
 }
+
+// MetaFormatMarkerCapability is OPTIONAL: a store with a store-level format
+// marker writes a meta entry durably together with a raise of that marker
+// (never a lowering), so a release that cannot honour the entry refuses the
+// store at open (backlog 73: the untimed valid-start mode raises marker 7).
+// badger writes both in one transaction on the store; tiered and sharded on
+// the shard that holds the meta keyspace (reference / anchor shard), whose
+// refusal fails the whole store's open. A marker above the store's readable
+// cap is ErrInvalidStoreMutation.
+type MetaFormatMarkerCapability interface {
+	MetaSetDurableRaising(key string, value []byte, marker uint16) error
+}

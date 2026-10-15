@@ -1,0 +1,10 @@
+--- FAIL: TestHFIndexBucketForIsMonotonicAtTheExtremes (0.00s)
+    hf_index_test.go:342: origin 0: BucketFor(-9223372036854775807) = 2562047788014 > BucketFor(-3600001) = -2
+    hf_index_test.go:342: origin 1000000: BucketFor(-9223372036854775807) = 2562047788014 > BucketFor(-3600001) = -2
+    hf_index_test.go:342: origin -1000000: BucketFor(-9223372036854775807) = 2562047788014 > BucketFor(-3600001) = -1
+    hf_index_test.go:342: origin -9223372036854775808: BucketFor(-1) = 2562047788015 > BucketFor(0) = 2562047788014
+    hf_index_test.go:342: origin -9223372036854775808: BucketFor(1) = 2562047788014 > BucketFor(3600000) = -2562047788015
+    hf_index_test.go:342: origin 9223372036854775807: BucketFor(1) = 2562047788014 > BucketFor(3600000) = -2562047788015
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.002s
+FAIL

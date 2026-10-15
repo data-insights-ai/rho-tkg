@@ -591,7 +591,7 @@ func nodeInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetada
 		return false
 	}
 	prevTM := chain[i-1].Temporal()
-	return prevTM != nil && prevTM.ValidFrom != 0 && prevTM.ValidFrom == tm.ValidFrom
+	return prevTM != nil && prevTM.ValidFrom != 0 && prevTM.ValidFrom != types.UnboundedValidFrom && prevTM.ValidFrom == tm.ValidFrom
 }
 
 // resolveRelVersionAt finds the version valid at time t from a pre-built chain.
@@ -723,7 +723,7 @@ func relInheritedValidFrom(chain []*types.Relationship, i int, tm *types.Tempora
 		return false
 	}
 	prevTM := chain[i-1].Temporal()
-	return prevTM != nil && prevTM.ValidFrom != 0 && prevTM.ValidFrom == tm.ValidFrom
+	return prevTM != nil && prevTM.ValidFrom != 0 && prevTM.ValidFrom != types.UnboundedValidFrom && prevTM.ValidFrom == tm.ValidFrom
 }
 
 // --- Private helpers for history-aware queries ---

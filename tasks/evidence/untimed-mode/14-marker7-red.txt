@@ -1,0 +1,10 @@
+--- FAIL: TestUntimedUnboundedRaisesStoreFormatMarker (1.19s)
+    --- FAIL: TestUntimedUnboundedRaisesStoreFormatMarker/badger (0.22s)
+        untimed_marker_test.go:83: a marker-6 release opened a store created unbounded: err = <nil>, want ErrWireFormatVersionUnsupported
+    --- FAIL: TestUntimedUnboundedRaisesStoreFormatMarker/tiered (0.59s)
+        untimed_marker_test.go:83: a marker-6 release opened a store created unbounded: err = <nil>, want ErrWireFormatVersionUnsupported
+    --- FAIL: TestUntimedUnboundedRaisesStoreFormatMarker/sharded (0.38s)
+        untimed_marker_test.go:83: a marker-6 release opened a store created unbounded: err = <nil>, want ErrWireFormatVersionUnsupported
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.224s
+FAIL

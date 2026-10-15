@@ -1,0 +1,13 @@
+--- FAIL: TestUntimedConversionCrashSafe (0.00s)
+    --- FAIL: TestUntimedConversionCrashSafe/tiered (6.72s)
+        untimed_review_test.go:245: crash copy: node 813453977825083392 not valid at far (graph: no version valid at the given time): the store claims UntimedUnbounded with an unconverted row
+        untimed_review_test.go:245: crash copy: node 813453978660143104 not valid at far (graph: no version valid at the given time): the store claims UntimedUnbounded with an unconverted row
+        untimed_review_test.go:245: crash copy: node 813453978661912576 not valid at far (graph: no version valid at the given time): the store claims UntimedUnbounded with an unconverted row
+        untimed_review_test.go:245: crash copy: node 813453978662076416 not valid at far (graph: no version valid at the given time): the store claims UntimedUnbounded with an unconverted row
+        untimed_review_test.go:245: crash copy: node 813453978662305792 not valid at far (graph: no version valid at the given time): the store claims UntimedUnbounded with an unconverted row
+        untimed_review_test.go:245: crash copy: node 813453978662535168 not valid at far (graph: no version valid at the given time): the store claims UntimedUnbounded with an unconverted row
+        untimed_review_test.go:245: crash copy: node 813453978662666240 not valid at far (graph: no version valid at the given time): the store claims UntimedUnbounded with an unconverted row
+        untimed_review_test.go:245: crash copy: node 813453978662797312 not valid at far (graph: no version valid at the given time): the store claims UntimedUnbounded with an unconverted row
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	7.323s
+FAIL

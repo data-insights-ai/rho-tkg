@@ -53,6 +53,7 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 	if err != nil {
 		return prep, err
 	}
+	validFrom = c.untimedStart(validFrom, true) // a generated ID: a first version
 	txFrom, err = c.resolveBackfillTxFrom(txFrom)
 	if err != nil {
 		return prep, err

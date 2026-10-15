@@ -178,6 +178,8 @@ var adminResetSentinels = []string{
 var integrityHashSentinels = []string{
 	"ErrIntegrityDisabled",
 	"ErrIntegrityModeMismatch",
+	"ErrUntimedModeMismatch",
+	"ErrInvalidUntimedValidStart",
 }
 
 // Config.DurableCommit (backlog 11)

@@ -1,0 +1,6 @@
+    --- FAIL: TestUntimedValidStartModes/unbounded/memory (0.00s)
+        untimed_valid_start_test.go:241: re-imported later life: stored ValidFrom = -9223372036854775808, want 0 (starts at its TxFrom)
+        untimed_valid_start_test.go:244: re-imported later life: valid before its TxFrom (in the gap after the delete)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.005s
+FAIL

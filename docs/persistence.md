@@ -209,8 +209,9 @@ Purpose: an older binary must refuse data it cannot read, instead of misdecoding
 | 4 | v4.54.0 on | integrity hashes stored as 32 raw bytes (backlog 61) | 4 |
 | 5 | v4.52.2 on, only with an Elements definition | an Elements property index is persisted (backlog 63) | as 3 |
 | 6 | v4.54.0 on, only after a first excise | the store holds a void row (backlog 64) | 5 for the void row |
+| 7 | v4.56.0 on, only for an `UntimedUnbounded` store | the store's untimed valid-start mode is `UntimedUnbounded`, or a conversion to it started (backlog 73); raised on the shard holding the MetaKV key (badger; tiered reference shard; sharded anchor) in one transaction with the key `untimed_valid_start` (`MetaSetDurableRaising`) | unchanged (the start is an ordinary `ValidFrom`) |
 
-One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries). A store with none of the features keeps its marker (3 or 4); `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: SPEC section 9.1a; the retraction key `rx` and the void key `vd` are keys an older reader must not skip, which is why they raise `fv`.
+One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features keeps its marker (3 or 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: SPEC section 9.1a; the retraction key `rx` and the void key `vd` are keys an older reader must not skip, which is why they raise `fv`.
 
 ## Integrity hashes
 
@@ -235,18 +236,21 @@ A store is opened by a release that reads its marker (the table above). Opening 
 | 4 | v4.52.2 and later | v4.52.1 and earlier |
 | 5 | v4.52.2 and later | v4.52.1 and earlier |
 | 6 | v4.54.0 and later | v4.53.0 and earlier |
+| 7 | v4.56.0 and later | v4.55.3 and earlier (a release that ignores `untimed_valid_start` would write `TxFrom`-start creates into an `UntimedUnbounded` store) |
 
 Rows and feeds behave alike: an `fv` above what a release reads fails that row closed in an export, a change feed or a replica (fv 3 retraction: v4.49.2 and later; fv 4 binary hashes: v4.52.2 and later; fv 5 void row: v4.54.0 and later). Upgrade readers, replicas and importers before the writer.
 
 First writable open on v4.54.0 (one-time work, no action needed):
 
 - the open image is format 2, so a store closed by an older release is rebuilt from its rows once, and a clean `Close` writes the new image (cost: the full open of the "Clean reopen" section);
-- with `TemporalIndexOnDisk`, the 0x0B keyspace is rebuilt under the marker `temporal_index_on_disk_built_v2` (envelopes of untimed rows now start at their `TxFrom`, see api.md "Valid-time start (TxFrom)"); the old marker is deleted, so an older release rebuilds it again after a downgrade; a read-only open rebuilds in RAM and writes nothing;
+- with `TemporalIndexOnDisk`, the 0x0B keyspace is rebuilt under the marker `temporal_index_on_disk_built_v2` (envelopes of untimed rows now start at their `TxFrom`, see api.md "Valid-time start (Config.UntimedValidStart)"); the old marker is deleted, so an older release rebuilds it again after a downgrade; a read-only open rebuilds in RAM and writes nothing;
 - with `ColumnsOnDisk`, persisted column blobs of the old format are not used and the columns are rebuilt on first read;
 - a writable open raises the marker to 4 (binary hashes); hex rows already on disk stay readable and are rewritten as they change;
 - v4.52.1 or earlier cannot open the store afterwards. Roll back only to v4.52.2 or v4.53.0 (they read markers 4 and 5, not 6), and only before the first excise.
 
 Consumers: untimed rows start at their `TxFrom`, an update setting only `tkg_valid_to` closes the version, and the excise doors exist; see api.md and the 4.54.0 CHANGELOG entry.
+
+Marker 7 (v4.56.0, `Config.UntimedValidStart`): a store created under `UntimedUnbounded`, or converted with `Admin().SetUntimedValidStart(ctx, UntimedUnbounded)` (raised when the conversion starts), is refused by v4.55.3 and earlier. A `UntimedFromTxFrom` store, the default and every store with rows written before the option, keeps its marker and stays readable by v4.54.0 and later. Convert only once every reader, replica and importer runs v4.56.0 or later; there is no way back short of a copy made before the conversion.
 
 ## Tiered Persistence (`tiered.Store`)
 

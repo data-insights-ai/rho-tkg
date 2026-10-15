@@ -1,0 +1,6 @@
+--- FAIL: TestImportCarriesUntimedMode (0.07s)
+    untimed_review_test.go:397: create after adopting the unbounded export: ValidFrom = 0, want UnboundedValidFrom
+    untimed_review_test.go:403: reopen txfrom after adopting an unbounded export: err = <nil>, want ErrUntimedModeMismatch
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.078s
+FAIL

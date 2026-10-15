@@ -105,6 +105,12 @@ type exportHeader struct {
 	// ImportOptions.ApplyNodeRetention is set.
 	NodeRetention map[string]int64 `msgpack:"nrw,omitempty"`
 	RelRetention  map[string]int64 `msgpack:"rrw,omitempty"`
+
+	// UntimedUnbounded says the source writes untimed first versions under
+	// Config.UntimedValidStart = UntimedUnbounded (backlog 73): its rows carry
+	// the rule, and an import must not mix them with the other one. Omitted
+	// (false) for a UntimedFromTxFrom source, so a default export is unchanged.
+	UntimedUnbounded bool `msgpack:"uu,omitempty"`
 }
 
 // IO sentinels — canonical declarations live in pkg/graph/io so external
@@ -180,10 +186,11 @@ func (c *Core) exportLocked(w io.Writer) error {
 		return fmt.Errorf("export: rel count: %w", err)
 	}
 	hdr := exportHeader{
-		Version:    exportFormatVersion,
-		ExportedAt: time.Now().UnixMilli(),
-		NodeCount:  int64(nc),
-		RelCount:   int64(rc),
+		Version:          exportFormatVersion,
+		ExportedAt:       time.Now().UnixMilli(),
+		NodeCount:        int64(nc),
+		RelCount:         int64(rc),
+		UntimedUnbounded: c.untimedUnbounded.Load(),
 	}
 	// Capture the change-log LSN UNDER the held c.mu.Lock, atomically with the
 	// entity snapshot above — so the SnapshotLSN exactly bounds what this export

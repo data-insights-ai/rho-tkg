@@ -214,7 +214,14 @@ type Core struct {
 	hashesOff bool
 	// integrityModeStamp: New persists the setting once every check passed
 	// (resolveIntegrityMode / persistIntegrityMode).
-	integrityModeStamp    bool
+	integrityModeStamp bool
+	// untimedUnbounded is the untimed valid-start mode the graph writes
+	// creates under (Config.UntimedValidStart == UntimedUnbounded, or after
+	// Admin().SetUntimedValidStart); untimedModeStamp / untimedResume are
+	// resolveUntimedMode's decisions for New (backlog 73, untimed_mode.go).
+	untimedUnbounded      atomic.Bool
+	untimedModeStamp      bool
+	untimedResume         bool
 	historyCompaction     storepkg.HistoryCompactionCapability
 	retentionPurge        storepkg.RetentionPurgeCapability
 	retentionPurgeValidTo storepkg.RetentionPurgeByValidToCapability
@@ -660,6 +667,18 @@ var (
 	// existed was written with hashes on. A store is never mixed.
 	ErrIntegrityModeMismatch = errors.New("graph: store was written under the other integrity-hash setting (Config.DisableIntegrityHashes)")
 
+	// ErrUntimedModeMismatch is returned by New when the store's rows were
+	// written under the other Config.UntimedValidStart mode (a store with rows
+	// and no persisted mode is an UntimedFromTxFrom store) or its conversion
+	// to UntimedUnbounded did not finish, and by Admin().SetUntimedValidStart
+	// for a conversion back to UntimedFromTxFrom (backlog 73).
+	ErrUntimedModeMismatch = errors.New("graph: store was written under the other untimed valid-start mode (Config.UntimedValidStart)")
+
+	// ErrInvalidUntimedValidStart is returned by New and by
+	// Admin().SetUntimedValidStart for an UntimedValidStart value that names
+	// no mode (backlog 73).
+	ErrInvalidUntimedValidStart = errors.New("graph: invalid untimed valid-start mode (Config.UntimedValidStart)")
+
 	// ErrCommitNotDurable is returned by GraphTx.Commit, Batch.Execute and the
 	// strong ingest applier under Config.DurableCommit when the group committed
 	// (it is visible, cannot be rolled back, and its change-log records are
@@ -1030,6 +1049,24 @@ type Config struct {
 	// setting fails with ErrIntegrityModeMismatch (a store holding rows from
 	// before this field existed is an on-store).
 	DisableIntegrityHashes bool
+
+	// UntimedValidStart is where an entity's first version written without a
+	// valid-from starts in valid time (backlog 73). UntimedFromTxFrom (the
+	// default, zero value) starts it at its TxFrom (backlog 62);
+	// UntimedUnbounded at -inf: the create stores ValidFrom =
+	// types.UnboundedValidFrom, so the entity is valid at every instant
+	// before its first change. A later version without a valid-from starts at
+	// its TxFrom in both modes. The mode is persisted with the store at the
+	// first open; reopening under the other mode fails with
+	// ErrUntimedModeMismatch (a store holding rows from before this field
+	// existed is an UntimedFromTxFrom store). An existing store is converted
+	// once with Admin().SetUntimedValidStart(UntimedUnbounded).
+	//
+	// Announced default change (CHANGELOG "Deprecated"): the default for NEW
+	// stores becomes UntimedUnbounded in the next minor release; existing
+	// stores keep their persisted or legacy mode. Set UntimedValidStart
+	// explicitly to keep UntimedFromTxFrom for new stores.
+	UntimedValidStart UntimedValidStart
 }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
@@ -1875,6 +1912,9 @@ func New(config Config) (*Core, error) {
 	if config.Store != nil && isNilInterfaceValue(config.Store) {
 		return nil, ErrNilStore
 	}
+	if config.UntimedValidStart > UntimedUnbounded {
+		return nil, fmt.Errorf("graph: Config.UntimedValidStart %d: %w", config.UntimedValidStart, ErrInvalidUntimedValidStart)
+	}
 	if config.DisableIntegrityHashes && len(config.RelSegments) > 0 {
 		// A segment stores no per-row hash: its witness is the block roots
 		// over the rows' hashes, recomputed on every decode (ADR-0011 §4.3).
@@ -2139,6 +2179,14 @@ func New(config Config) (*Core, error) {
 		}
 		return nil, err
 	}
+	// Backlog 73: likewise the untimed valid-start mode (untimed_mode.go).
+	c.untimedUnbounded.Store(config.UntimedValidStart == UntimedUnbounded)
+	if err := c.resolveUntimedMode(); err != nil {
+		if config.Store == nil {
+			_ = store.Close()
+		}
+		return nil, err
+	}
 
 	// Registry rehydration for caller-injected stores. The Core-
 	// constructed badger.Store path above already loads registries; the
@@ -2214,6 +2262,12 @@ func New(config Config) (*Core, error) {
 
 	c.runBitemporalMigrationBestEffort()
 	c.backfillExAdjacencyBestEffort(store)
+	if err := c.resumeUntimedConversion(); err != nil {
+		if config.Store == nil {
+			_ = store.Close()
+		}
+		return nil, err
+	}
 
 	// Rehydrate the durable unique-constraint registry (fail closed on a corrupt
 	// MetaKV blob — a constraint silently dropped at open would let a duplicate
@@ -2268,8 +2322,15 @@ func New(config Config) (*Core, error) {
 		return nil, err
 	}
 
-	// Last: a New that failed above has persisted no integrity-hash setting.
+	// Last: a New that failed above has persisted no integrity-hash setting
+	// and no untimed valid-start mode.
 	if err := c.persistIntegrityMode(); err != nil {
+		if config.Store == nil {
+			_ = store.Close()
+		}
+		return nil, err
+	}
+	if err := c.persistUntimedMode(); err != nil {
 		if config.Store == nil {
 			_ = store.Close()
 		}

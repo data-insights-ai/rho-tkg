@@ -202,6 +202,12 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 			return err
 		}
 		return c.applyRelRangePurgeLocked(body)
+	case storepkg.ChangeMeta:
+		body, err := storeutil.DecodeMeta(rec.Payload)
+		if err != nil {
+			return err
+		}
+		return c.applyMetaLocked(body)
 	case storepkg.ChangeClear:
 		// Captured BEFORE Clear (BACKLOG 13l), mirroring Admin.Reset(): a
 		// replica's id_slot_lease is data-independent orchestrator state that
@@ -567,10 +573,16 @@ func (c *Core) applyForeignIncomingLocked(body storeutil.RelPutBody, rec storepk
 		return err
 	}
 	c.noteAppliedTxFrom(r.Temporal())
-	if err := c.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID()); err != nil && !errors.Is(err, storepkg.ErrRelExists) {
-		return err
+	err = c.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID())
+	if errors.Is(err, storepkg.ErrRelExists) {
+		// A re-apply, or the primary rewrote the stub in place (the untimed
+		// valid-start conversion, backlog 73): take the record's row.
+		if fs, ok := c.store.(foreignIncomingStubs); ok {
+			return fs.ReplaceForeignIncoming(r)
+		}
+		return nil
 	}
-	return nil
+	return err
 }
 
 // applyForeignIncomingDeleteLocked removes a Model-A incoming half-edge stub on a

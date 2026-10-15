@@ -41,10 +41,12 @@ const (
 	ChangeNodeHistoryTruncate ChangeTag = 7
 	ChangeRelHistoryTruncate  ChangeTag = 8
 
-	// ChangeMeta is RESERVED for a MetaSet (schema / migration markers) record;
-	// no door emits it yet (deferred to Phase 1 — a synchronous meta write cannot
-	// share the async buffer's LSN/watermark without a non-monotonic-watermark
-	// hazard). Body = key+value (MetaBody).
+	// ChangeMeta is a replicated meta entry. Plain MetaSet does not emit it (a
+	// synchronous meta write cannot share the async buffer's LSN/watermark);
+	// MetaFormatMarkerCapability.MetaSetDurableRaising does, from the pending
+	// batch, for the one entry a replica applies: the untimed valid-start mode
+	// (backlog 73; any other key fails the apply closed). Delta exports skip
+	// it. Body = key+value (MetaBody).
 	ChangeMeta ChangeTag = 9
 
 	// ChangeClear marks a full store clear (DropAll). A replica applying it must

@@ -36,6 +36,16 @@ func (s *Store) MetaSetDurable(key string, value []byte) error {
 	return s.anchor().MetaSetDurable(key, value)
 }
 
+// MetaSetDurableRaising is MetaSetDurable raising the anchor shard's format
+// marker with the entry (store.MetaFormatMarkerCapability): the anchor opens
+// with every other shard, so its refusal fails the store's open.
+func (s *Store) MetaSetDurableRaising(key string, value []byte, marker uint16) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	return s.anchor().MetaSetDurableRaising(key, value, marker)
+}
+
 func (s *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg *registrypkg.RelTypeRegistry) error {
 	if err := s.checkOpen(); err != nil {
 		return err

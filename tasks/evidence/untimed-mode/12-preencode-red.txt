@@ -1,0 +1,8 @@
+--- FAIL: TestUntimedValidStartModes (0.00s)
+    --- FAIL: TestUntimedValidStartModes/convert/badger (0.79s)
+        untimed_valid_start_test.go:631: converted store reopened: node 813364435285835776 (queued-ingest) is an untimed first version on disk
+    --- FAIL: TestUntimedValidStartModes/convert/sharded (1.37s)
+        untimed_valid_start_test.go:631: converted store reopened: node 813364437211676672 (queued-ingest) is an untimed first version on disk
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.712s
+FAIL

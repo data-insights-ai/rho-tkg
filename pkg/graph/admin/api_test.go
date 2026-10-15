@@ -37,6 +37,9 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	if _, err := nilAPI.RelSegmentStats("HOP"); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil RelSegmentStats = %v, want ErrNilGraph", err)
 	}
+	if err := nilAPI.SetUntimedValidStart(context.Background(), UntimedUnbounded); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil SetUntimedValidStart = %v, want ErrNilGraph", err)
+	}
 
 	api := New((*adminOpsSpy)(nil))
 	if err := api.Reset(); !errors.Is(err, grapherr.ErrNilGraph) {
@@ -83,6 +86,10 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		t.Fatalf("RelSegmentStats = %+v, %v; want Segments 3", st, err)
 	}
 
+	if err := api.SetUntimedValidStart(context.Background(), UntimedUnbounded); err != nil || ops.untimedMode != UntimedUnbounded {
+		t.Fatalf("SetUntimedValidStart: %v, spy got %v", err, ops.untimedMode)
+	}
+
 	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 || ops.purgeCalls != 1 || ops.relPurgeCalls != 1 ||
 		ops.resolveExactEraseCalls != 1 || ops.exactEraseCalls != 1 || ops.segmentCalls != 2 {
 		t.Fatalf("unexpected call counts: %+v", ops)
@@ -98,6 +105,12 @@ type adminOpsSpy struct {
 	resolveExactEraseCalls int
 	exactEraseCalls        int
 	segmentCalls           int
+	untimedMode            UntimedValidStart
+}
+
+func (s *adminOpsSpy) SetUntimedValidStart(_ context.Context, mode UntimedValidStart) error {
+	s.untimedMode = mode
+	return nil
 }
 
 func (s *adminOpsSpy) SealRelSegments(relType string) error {
