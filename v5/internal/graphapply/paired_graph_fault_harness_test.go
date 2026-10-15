@@ -277,21 +277,24 @@ type pairedFaultTrace struct {
 	Scope              string                  `json:"scope"`
 }
 type pairedGraphFaultNetwork struct {
-	t                  *testing.T
-	n                  *certifiedProcessNetwork
-	mu                 sync.Mutex
-	down               map[uint64]bool
-	dropped            [][2]uint64
-	incarnations       []*graphProcess
-	intentionalKills   map[*graphProcess]bool
-	retiredBootstrap   int
-	events             uint64
-	reads              int
-	snapshotPages      int
-	lastCoordinateRaw  []byte
-	lastObservationRaw []byte
-	trace              pairedFaultTrace
-	noops              map[[2]uint64]*pairedFaultNoOp
+	t                     *testing.T
+	n                     *certifiedProcessNetwork
+	mu                    sync.Mutex
+	down                  map[uint64]bool
+	dropped               [][2]uint64
+	incarnations          []*graphProcess
+	intentionalKills      map[*graphProcess]bool
+	retiredBootstrap      int
+	events                uint64
+	reads                 int
+	snapshotPages         int
+	lastCoordinateRaw     []byte
+	lastObservationRaw    []byte
+	trace                 pairedFaultTrace
+	noops                 map[[2]uint64]*pairedFaultNoOp
+	nativeSnapshotHook    func(nativeFaultSnapshotBoundary) bool
+	nativeSnapshotArena   *graphstate.OutputBudget
+	nativeSnapshotNotices int
 }
 
 func newPairedGraphFaultNetwork(t *testing.T) *pairedGraphFaultNetwork {
@@ -621,6 +624,12 @@ func (f *pairedGraphFaultNetwork) kill(id uint64, role string) pairedFaultProces
 	return pairedFaultProcess{EventID: f.event(), Action: "kill", Role: role, Member: id, Instance: before, Reaped: true, Signal: "SIGKILL", Volume: filepath.Join(f.n.dir, fmt.Sprint(id)), Raw: raw}
 }
 func (f *pairedGraphFaultNetwork) replace(id uint64) pairedFaultProcess {
+	return f.replaceBeforeHeal(id, nil)
+}
+
+// Optional diagnostic runs through the actual replacement pipe after native
+// Restore/Ready, before any fair catch-up can import another voter's history.
+func (f *pairedGraphFaultNetwork) replaceBeforeHeal(id uint64, before func(*graphProcess, processResponse)) pairedFaultProcess {
 	f.t.Helper()
 	prior := f.n.all[id]
 	if !prior.closed || prior.cmd.ProcessState == nil {
@@ -658,11 +667,30 @@ func (f *pairedGraphFaultNetwork) replace(id uint64) pairedFaultProcess {
 	if e != nil {
 		f.t.Fatal(e)
 	}
+	if before != nil {
+		before(replacement, state)
+	}
 	leader := f.n.leaders[0]
 	if id > 3 {
 		leader = f.n.leaders[1]
 	}
 	f.heal(leader)
+	f.mu.Lock()
+	interrupted := f.down[id]
+	f.mu.Unlock()
+	if interrupted {
+		// A fresh D hook may have reaped this replacement during an actual
+		// snapshot operation. It cannot be reported as a completed Ready rejoin.
+		raw, e := json.Marshal(struct {
+			Member, PID uint64
+			Ready       bool
+			Startup     []byte
+		}{id, uint64(replacement.cmd.Process.Pid), false, startup})
+		if e != nil {
+			f.t.Fatal(e)
+		}
+		return pairedFaultProcess{EventID: f.event(), Action: "reopen-interrupted", Role: "replica", Member: id, Instance: pairedGraphFaultInstance(id, replacement), PreviousInstance: pairedGraphFaultInstance(id, prior), Volume: filepath.Join(f.n.dir, fmt.Sprint(id)), Raw: raw}
+	}
 	recovered, e := encodeProcessResponse(replacement.call(f.t, processRequest{op: processStateOp}))
 	if e != nil {
 		f.t.Fatal(e)

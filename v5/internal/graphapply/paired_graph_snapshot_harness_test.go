@@ -255,6 +255,11 @@ func (f *pairedGraphFaultNetwork) transferSnapshot(leader uint64, send processSn
 		f.t.Fatal("paired exact receiver import owner")
 	}
 	owner := started.handles[0]
+	abandon := func() {
+		group := f.n.group(leader)
+		group.enqueue(f.t, donor.call(f.t, processRequest{op: processFeedback, index: send.owner, entity: 0}))
+		group.drain(f.t)
+	}
 	for {
 		f.snapshotPage()
 		page := donor.call(f.t, processRequest{op: processNext, index: send.owner})
@@ -262,7 +267,11 @@ func (f *pairedGraphFaultNetwork) transferSnapshot(leader uint64, send processSn
 		if err != nil || chunk.Version != manifest.Version || chunk.CutID != manifest.CutID || !bytes.Equal(chunk.ManifestID[:], started.aux) || chunk.Visited > 64 || chunk.VisitedBytes > 256<<10 {
 			f.t.Fatal("paired actual snapshot page bounds/identity", err)
 		}
-		receiver.call(f.t, processRequest{op: processAppend, index: owner, data: page.aux})
+		appended := receiver.call(f.t, processRequest{op: processAppend, index: owner, data: page.aux})
+		if !f.nativeSnapshotNotice(nativeFaultSnapshotBoundary{Phase: "after-append", Donor: leader, Receiver: send.packet.To, Owner: owner, Manifest: wire, Chunk: page.aux, Packet: send.packet, Response: appended}) {
+			abandon()
+			return
+		}
 		if chunk.Final {
 			break
 		}
@@ -272,9 +281,16 @@ func (f *pairedGraphFaultNetwork) transferSnapshot(leader uint64, send processSn
 	if prepared.stats[statPrepared] != 1 || prepared.stats[statImport] != 1 || prepared.stats[statVerified] != 1 {
 		f.t.Fatal("paired genuine dormant prepared owner missing")
 	}
+	if !f.nativeSnapshotNotice(nativeFaultSnapshotBoundary{Phase: "before-activate", Donor: leader, Receiver: send.packet.To, Owner: owner, Manifest: wire, Packet: send.packet, Response: prepared}) {
+		abandon()
+		return
+	}
 	activated := receiver.call(f.t, processRequest{op: processActivate, index: owner, packet: send.packet})
 	if activated.stats[statCheckpoint] != manifest.Index || activated.stats[statAuditIndex] != manifest.Index || activated.cutID != manifest.CutID || !bytes.Equal(activated.manifestID[:], started.aux) {
 		f.t.Fatal("paired actual Raft Ready activation mismatch")
+	}
+	if !f.nativeSnapshotNotice(nativeFaultSnapshotBoundary{Phase: "after-activate", Donor: leader, Receiver: send.packet.To, Owner: owner, Manifest: wire, Packet: send.packet, Response: activated}) {
+		f.t.Fatal("completed activation cannot be withdrawn by a diagnostic")
 	}
 	// Actual receiver activation is proved before sender feedback; receiver ACK
 	// packets stay held until feedback on the still-pending exact sender owner.

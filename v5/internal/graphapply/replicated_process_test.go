@@ -111,6 +111,7 @@ const (
 	processP05Proposal
 	processNativeFaultControl
 	processNativeDecisionControl
+	processNativeFaultFamilyControl
 )
 
 // IPC IDs identify this process event only. No storage/send/prepared capability
@@ -219,7 +220,7 @@ func decodeProcessRequest(b []byte) (processRequest, error) {
 	r := processRequest{incarnation: c.array(), sequence: c.u64(), op: c.tag(), index: c.u64(), entity: c.u64()}
 	r.data = c.field(processFrameBytes)
 	r.packet = processDecodePacket(&c)
-	if r.sequence == 0 || r.op < processCampaign || r.op > processNativeDecisionControl || len(c.b) != 0 {
+	if r.sequence == 0 || r.op < processCampaign || r.op > processNativeFaultFamilyControl || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -1546,6 +1547,7 @@ type certifiedProcessOwners struct {
 	cost        *nativeGraphCostSpec
 	fault       *nativeFaultFS
 	decisions   *nativeDecisionOwner
+	family      *nativeFaultFamilyOwner
 	host        *allocationHost
 	proof       allocationProof
 	readID      allocationReadID
@@ -1632,6 +1634,8 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 	binary.BigEndian.PutUint64(id[8:], r.sequence)
 	h := o.host
 	switch r.entity {
+	case certifiedNativeFamilyBusiness:
+		return nativeFaultFamilyBusiness(o, r)
 	case certifiedNativeDecisionBusiness:
 		return nativeDecisionBusiness(o, r)
 	case certifiedPairedFaultProperty:
@@ -1859,8 +1863,15 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 		t.Fatal(err)
 	}
 	create := os.Getenv("RHO_GRAPH_PROCESS_REOPEN") != "1"
+	family, familyFS, err := newNativeFaultFamilyOwner(t.Context(), os.Getenv("RHO_GRAPH_PROCESS_DIR"), id, create)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if family != nil {
+		defer family.close()
+	}
 	var fault *nativeFaultFS
-	var faultFS vfs.FS
+	var faultFS vfs.FS = familyFS
 	switch os.Getenv("RHO_GRAPH_NATIVE_FAULT_PROCESS") {
 	case "", "off":
 	case "1":
@@ -1868,10 +1879,13 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if familyFS != nil {
+			fault.FS = familyFS
+		}
 		faultFS = fault
 		if kind := os.Getenv("RHO_GRAPH_NATIVE_FAULT_START"); kind != "" {
-			if create || kind != "directory-sync" {
-				t.Fatal("startup fault requires same-directory reopen directory Sync")
+			if create || kind != "directory-sync" && kind != "options-rename" {
+				t.Fatal("startup fault requires same-directory reopen directory Sync or actual OPTIONS rename")
 			}
 			arm, encodeErr := json.Marshal(nativeFaultControl{Version: 1, Action: "arm", Cookie: fault.state.Cookie, Sequence: 1, Kind: kind, Nth: 1})
 			if encodeErr != nil {
@@ -1886,6 +1900,9 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	}
 	s, err := raftlog.Open(raftlog.Config{Dir: os.Getenv("RHO_GRAPH_PROCESS_DIR"), FS: faultFS, Create: create, Limits: l, Application: p, Controls: controls, Recovery: recovery, Retention: nativeRetention, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.graph), Partition: n.partition, Group: part.Group}, Contract: contract, Limits: raftlog.ApplicationTransferLimits{MaxExports: 2, MaxChunkRows: 64, MaxChunkBytes: 256 << 10, MaxStagedBytes: 16 << 20, MaxStagedRecords: 8192, MaxPinnedLogicalBytes: 64 << 20}}, Generations: generations, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: voters}, SemanticContractID: agreement})
 	if err != nil {
+		if family != nil {
+			err = errors.Join(err, family.recordOpenRefusal(os.Getenv("RHO_GRAPH_PROCESS_DIR"), err))
+		}
 		t.Fatal(err)
 	}
 	if create {
@@ -1909,7 +1926,7 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 			t.Error(err)
 		}
 	}()
-	o := certifiedProcessOwners{host: h, cost: cost, fault: fault}
+	o := certifiedProcessOwners{host: h, cost: cost, fault: fault, family: family}
 	if _, err := io.ReadFull(rand.Reader, o.incarnation[:]); err != nil {
 		t.Fatal(err)
 	}

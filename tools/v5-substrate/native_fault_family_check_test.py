@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Compact fail-closed grammar guards; no synthetic native qualification run."""
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+SPEC = importlib.util.spec_from_file_location("native_fault_family", Path(__file__).with_name("native_fault_family_check.py"))
+F = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(F)
+
+
+class NativeFaultFamilyGuards(unittest.TestCase):
+    def test_profile_and_declared_inventory_do_not_relabel_old_or_partial_cases(self):
+        for profile, case in ((F.C.PROFILE, "old-leader-packet"), (F.PROFILE, "metadata-only")):
+            with self.assertRaises(ValueError):
+                F.check(dict(Version=1, Profile=profile, Case=case))
+        self.assertEqual(len(F.EXPLORATIONS), 6)
+        self.assertIn("explore-B-prepared-fence-true", F.EXPLORATIONS)
+        self.assertNotIn("explore-B-prepared-fence-false", F.EXPLORATIONS)
+
+    def test_terminal_hash_and_eof_are_mandatory_even_for_framing_only(self):
+        header = dict(Type="header", Artifact=dict.fromkeys(F.HEADER_KEYS))
+        header["Artifact"]["Through"] = [1, 1]
+        line = json.dumps(header, separators=(",", ":")).encode() + b"\n"
+        footer = dict(Type="footer", Rows=0, Through=[1, 1], PayloadSHA256=hashlib.sha256(line).hexdigest())
+        tail = json.dumps(footer, separators=(",", ":")).encode() + b"\n"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "framing-only.jsonl"
+            for bad in (line, line + tail + b"{}\n", line + tail.replace(footer["PayloadSHA256"].encode(), b"0" * 64)):
+                path.write_bytes(bad)
+                with self.assertRaises(ValueError):
+                    F.load(path)
+            path.write_bytes(line + tail)
+            self.assertEqual(F.load(path)["Records"], [])  # Framing grants no source authority.
+
+    def test_model_pages_cannot_move_after_actual_prefix(self):
+        header = dict.fromkeys(F.HEADER_KEYS)
+        header.update(Model=dict(Image=None), Through=[1, 1])
+        rows = [dict(Type="header", Artifact=header),
+                dict(Type="record", Record={}), dict(Type="model-image", Sequence=0, Data="YQ==")]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "misordered.jsonl"
+            path.write_bytes(b"".join(json.dumps(row).encode() + b"\n" for row in rows))
+            with self.assertRaises(ValueError):
+                F.load(path)
+
+    def test_fixed_arrays_and_native_names_refuse_ambiguous_ownership(self):
+        for wire in ([0] * 16, [1] * 15, [True] * 16):
+            with self.assertRaises(ValueError):
+                F.octets(wire, 16, True)
+        for path in ("../native", "/native", "x/../native", "x\\native", "."):
+            with self.assertRaises(ValueError):
+                F.safe_name(path)
+
+    def test_actual_active_manifest_uses_marker_iteration_not_filename_order(self):
+        names = {"marker.manifest.000002.MANIFEST-000003": {},
+                 "marker.manifest.000001.MANIFEST-000099": {},
+                 "MANIFEST-000003": {"Directory": False},
+                 "MANIFEST-000099": {"Directory": False}}
+        self.assertEqual(F.active_manifest(names), "MANIFEST-000003")
+        del names["MANIFEST-000003"]
+        with self.assertRaises(ValueError):
+            F.active_manifest(names)
+        with self.assertRaises(ValueError):
+            F.active_manifest({"marker.manifest.not-an-iteration.MANIFEST-000001": {}})
+
+    def test_catalog_cookie_and_policy_are_bound_before_recovery(self):
+        ledger = dict(Operations=0, Files=0, Versions=0, ShadowBytes=0, WorkBytes=0, CopyReadBytes=0, CopyWriteBytes=0)
+        image = dict(Version=1, Profile=F.MODEL, Cookie=[0] * 16, Member=1, Policy=F.POLICY, Ledger=ledger, Names=[], Files=[])
+        body = json.dumps(image, separators=(",", ":")).encode()
+        wire = body + b"\n" + hashlib.sha256(body).hexdigest().encode()
+        with self.assertRaises(ValueError):
+            F.model_image(wire, F.POLICY)
+        with self.assertRaises(ValueError):
+            F.model_image(wire, dict(F.POLICY, Files=2048))
+
+    def test_truncated_process_and_foreign_snapshot_versions_never_qualify(self):
+        with self.assertRaises(ValueError):
+            F.process(b"not-a-process")
+        with self.assertRaises(ValueError):
+            F.snapshot_manifest(b"AS\7\0", {})
+        with self.assertRaises(ValueError):
+            F.snapshot_chunk(b"\x00\x00\x00\x07", {}, {})
+        with self.assertRaises(ValueError):
+            F.protobuf_fields(b"\x20\x80")
+        with self.assertRaises(ValueError):
+            F.label_changes(b"GCD\5", 3, 1, bytes(32), set())
+
+    def test_missing_native_prefix_cannot_be_reported_as_present_empty(self):
+        data = dict(Records=[dict(Partition=3, Index=3, Outcome=None, CDC=None)], From=[1, 1], Through=[3, 1])
+        with self.assertRaises(ValueError):
+            F.prefix(data)
+
+
+if __name__ == "__main__":
+    unittest.main()

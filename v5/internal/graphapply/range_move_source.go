@@ -212,7 +212,7 @@ func (s *graphSourceServer) openMove(ctx context.Context, proof rangeMoveProof) 
 	cancel()
 	if err == nil {
 		owner, cancelOwner := context.WithTimeout(s.ctx, s.limits.lifetime)
-		lease = &graphSourceLease{view: view, read: view, moveMeta: metadata, moveID: proof.question.move, moveIntent: proof.observation.status.intent, info: graphSourceInfo{cookie: info.cookie, root: info.root, limits: info.limits, lifetime: info.lifetime}, limits: s.limits, ctx: owner, cancel: cancelOwner, deadline: time.Now().Add(s.limits.lifetime), bytes: 8192, output: 8192}
+		lease = &graphSourceLease{view: view, read: view, moveMeta: metadata, moveID: proof.question.move, moveIntent: proof.observation.status.intent, info: graphSourceInfo{cookie: info.cookie, root: info.root, limits: info.limits, lifetime: info.lifetime}, limits: s.limits, ctx: owner, cancel: cancelOwner, deadline: s.lifetimeTime().Add(s.limits.lifetime), lifetimeNow: s.lifetimeNow, bytes: 8192, output: 8192}
 		if _, err = encodeGraphMoveSourceInfo(info); err == nil && (s.limits.bytes < 8192 || s.limits.output < 8192) {
 			err = errLimit
 		}

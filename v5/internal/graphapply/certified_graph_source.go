@@ -156,7 +156,7 @@ func (s *graphSourceServer) openCertifiedCapture(ctx context.Context, cert graph
 	cancel()
 	if e == nil {
 		owner, cancelOwner := context.WithTimeout(s.ctx, s.limits.lifetime)
-		lease = &graphSourceLease{view: view, read: view, info: graphSourceInfo{cookie: info.cookie, root: info.root, limits: info.limits, lifetime: info.lifetime}, limits: s.limits, ctx: owner, cancel: cancelOwner, deadline: time.Now().Add(s.limits.lifetime), bytes: 8192, output: 8192}
+		lease = &graphSourceLease{view: view, read: view, info: graphSourceInfo{cookie: info.cookie, root: info.root, limits: info.limits, lifetime: info.lifetime}, limits: s.limits, ctx: owner, cancel: cancelOwner, deadline: s.lifetimeTime().Add(s.limits.lifetime), lifetimeNow: s.lifetimeNow, bytes: 8192, output: 8192}
 		if _, e = encodeGraphCertifiedSourceInfo(info); e == nil && (lease.bytes > s.limits.bytes || lease.output > s.limits.output) {
 			e = errLimit
 		}

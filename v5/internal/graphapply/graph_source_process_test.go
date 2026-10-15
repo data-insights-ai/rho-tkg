@@ -1170,6 +1170,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			t.Error(err)
 		}
 	}()
+	if o.family != nil {
+		server.lifetimeNow = o.family.now // Before any service, worker or lease publication.
+	}
 	services := make(map[uint64]*graphPeerService)
 	relay := &graphProcessChildRelay{writer: writer, pending: make(map[uint64]chan graphProcessPumpReply), ctx: ctx}
 	transports := make(map[uint64]graphPeerWireTransport)
@@ -1535,7 +1538,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					}
 				}
 			case processRangeRun, processRangeResume:
-				out.aux, e = graphE17RunMove(workerCtx, h, o.incarnation, moveCoordinator, r)
+				out.aux, e = o.family.moveCall(workerCtx, h, o.incarnation, moveCoordinator, r)
 			case processPairedPendingOpen:
 				out.aux, e = pairedGraphFaultPendingOpen(workerCtx, certifiedSessions, r)
 			case processCostObserve:
@@ -1747,6 +1750,18 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				event, e = h.Tick()
 			case processStep:
 				event, e = h.Step(r.packet)
+			case processPublish:
+				if o.family == nil || r.index != 0 || r.entity != 0 || len(r.data) != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
+					e = errInvalid
+				} else {
+					h.mu.Lock()
+					if h.unavailableLocked() {
+						e = replica.ErrUnavailable
+					} else {
+						e = h.machine.store.PublishSnapshot()
+					}
+					h.mu.Unlock()
+				}
 			case processOffers, processBuild, processSeal, processManifest, processNext, processFeedback, processBeginImport, processAppend, processVerify, processPrepare, processActivate, processImportClose:
 				response, event, e = pairedSnapshotProcessEvent(ctx, h, snapshots, r)
 			case processPairedConnections:
@@ -1802,6 +1817,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 							async = true
 						}
 					}
+				}
+			case processNativeFaultFamilyControl:
+				if r.index != 0 || r.entity != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
+					e = errInvalid
+				} else {
+					response.aux, e = o.family.control(r.data)
 				}
 			case processP08ChangedGraph:
 				var original allocationProposal

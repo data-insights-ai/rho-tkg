@@ -443,6 +443,9 @@ func (s *graphPeerService) captureConditional(ctx context.Context, r graphSource
 	}
 	lease.mu.Lock()
 	defer lease.mu.Unlock()
+	if lease.lifetimeNow != nil && lease.remainingLifetime(ctx) == 0 {
+		return nil, replica.ErrUnavailable
+	}
 	if lease.closed || lease.ctx.Err() != nil || lease.info.root.Index != cert.sourceIndex || !bytes.Equal(lease.info.root.Image, cert.image[:]) {
 		return nil, replica.ErrUnavailable
 	}
@@ -482,6 +485,13 @@ func (s *graphPeerService) captureConditional(ctx context.Context, r graphSource
 	if err != nil {
 		return nil, err
 	}
+	remaining := time.Duration(0)
+	if lease.lifetimeNow != nil {
+		remaining = lease.remainingLifetime(ctx)
+		if remaining == 0 {
+			return nil, replica.ErrUnavailable
+		}
+	}
 	return boundedEncoding(8192, func(w *boundedWriter) {
 		w.add([]byte{'G', 'U', 'I', 1})
 		w.tag(status)
@@ -491,7 +501,11 @@ func (s *graphPeerService) captureConditional(ctx context.Context, r graphSource
 		w.u64(part.prefix)
 		w.add(part.authority[:])
 		// #nosec G115 -- Remaining native lease lifetime is clamped nonnegative and bounded by one minute.
-		w.u64(uint64(max(time.Duration(0), time.Until(lease.deadline))))
+		if lease.lifetimeNow == nil {
+			w.u64(uint64(max(time.Duration(0), time.Until(lease.deadline))))
+		} else {
+			w.u64(uint64(remaining))
+		}
 		w.add(info.readID.session[:])
 		w.u64(info.readID.sequence)
 		w.add(info.nonce[:])

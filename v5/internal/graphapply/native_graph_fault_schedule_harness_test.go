@@ -44,6 +44,8 @@ type nativeFaultIO struct {
 	InputSHA256   [32]byte
 	WrittenSHA256 [32]byte
 	Error         string
+	Destination   string `json:",omitempty"`
+	Offset        int64  `json:",omitempty"`
 }
 
 type nativeFaultReceipt struct {
@@ -149,7 +151,7 @@ func (f *nativeFaultFS) control(raw []byte) ([]byte, error) {
 
 func nativeFaultKind(kind string) bool {
 	switch kind {
-	case "short-write", "write-eio", "write-enospc", "file-sync", "directory-sync":
+	case "short-write", "write-eio", "write-enospc", "file-sync", "directory-sync", "torn-wal-kill", "options-rename":
 		return true
 	default:
 		return false
@@ -163,7 +165,7 @@ func (f *nativeFaultFS) match(path string, directory bool, operation string, inp
 		return "", false, nil
 	}
 	wal := strings.HasSuffix(path, ".log")
-	matched := operation == "write" && wal && (f.state.Kind == "short-write" || f.state.Kind == "write-eio" || f.state.Kind == "write-enospc") || operation == "sync" && (directory && f.state.Kind == "directory-sync" || !directory && wal && f.state.Kind == "file-sync")
+	matched := operation == "write" && wal && (f.state.Kind == "short-write" || f.state.Kind == "write-eio" || f.state.Kind == "write-enospc" || f.state.Kind == "torn-wal-kill") || operation == "sync" && (directory && f.state.Kind == "directory-sync" || !directory && wal && f.state.Kind == "file-sync") || operation == "rename" && f.state.Kind == "options-rename"
 	if !matched {
 		return "", false, nil
 	}
@@ -220,6 +222,8 @@ func nativeFaultSequence(sequence uint64) string {
 
 type nativeFaultFile struct {
 	vfs.File
+	writeMu   sync.Mutex
+	offset    int64
 	owner     *nativeFaultFS
 	path      string
 	directory bool
@@ -267,7 +271,30 @@ func (f *nativeFaultFS) ReuseForWrite(oldname, newname string, category vfs.Disk
 	return f.wrap(newname, false, file, err)
 }
 
-func (f *nativeFaultFile) write(input []byte, write func([]byte) (int, error)) (int, error) {
+func (f *nativeFaultFS) Rename(oldname, newname string) error {
+	// Pebble2.1.7 Open publishes OPTIONS by this real rename. Its manifest
+	// marker instead uses Create/Close/directory Sync; no fake rename is added.
+	if !strings.HasPrefix(filepath.Base(newname), "OPTIONS-") {
+		return f.FS.Rename(oldname, newname)
+	}
+	rel, err := filepath.Rel(f.dir, newname)
+	if err != nil || rel == ".." || filepath.IsAbs(rel) || strings.Contains(rel, string(os.PathSeparator)) || len(rel) > 1024 {
+		return errors.Join(errInvalid, err)
+	}
+	_, matched, err := f.match(oldname, false, "rename", nil)
+	if err != nil || !matched {
+		if err != nil {
+			return err
+		}
+		return f.FS.Rename(oldname, newname)
+	}
+	f.mu.Lock()
+	f.state.IO.Destination = rel
+	f.mu.Unlock()
+	return errors.Join(syscall.EIO, f.complete(nil, syscall.EIO))
+}
+
+func (f *nativeFaultFile) write(input []byte, offset int64, write func([]byte) (int, error)) (int, error) {
 	kind, matched, err := f.owner.match(f.path, f.directory, "write", input)
 	if err != nil {
 		return 0, err
@@ -277,6 +304,22 @@ func (f *nativeFaultFile) write(input []byte, write func([]byte) (int, error)) (
 	}
 	var n int
 	switch kind {
+	case "torn-wal-kill":
+		if len(input) < 2 {
+			return 0, errors.Join(errInvalid, f.owner.complete(nil, errInvalid))
+		}
+		// Real native prefix write followed by a real process SIGKILL before
+		// the caller observes a result. This is a declared torn-write schedule,
+		// not evidence that the unsynced prefix survived physical power loss.
+		n, err = write(input[:len(input)/2])
+		f.owner.mu.Lock()
+		f.owner.state.IO.Offset = offset
+		f.owner.mu.Unlock()
+		torn := errors.New("declared native torn WAL prefix before SIGKILL")
+		if receiptErr := f.owner.complete(input[:n], errors.Join(torn, err)); receiptErr != nil {
+			return n, errors.Join(torn, err, receiptErr)
+		}
+		return n, errors.Join(torn, err, syscall.Kill(os.Getpid(), syscall.SIGKILL))
 	case "short-write":
 		if len(input) > 0 {
 			n, err = write(input[:len(input)-1])
@@ -292,10 +335,16 @@ func (f *nativeFaultFile) write(input []byte, write func([]byte) (int, error)) (
 	return n, errors.Join(err, f.owner.complete(input[:n], err))
 }
 func (f *nativeFaultFile) Write(input []byte) (int, error) {
-	return f.write(input, f.File.Write)
+	f.writeMu.Lock()
+	defer f.writeMu.Unlock()
+	n, err := f.write(input, f.offset, f.File.Write)
+	f.offset += int64(n)
+	return n, err
 }
 func (f *nativeFaultFile) WriteAt(input []byte, offset int64) (int, error) {
-	return f.write(input, func(part []byte) (int, error) { return f.File.WriteAt(part, offset) })
+	f.writeMu.Lock()
+	defer f.writeMu.Unlock()
+	return f.write(input, offset, func(part []byte) (int, error) { return f.File.WriteAt(part, offset) })
 }
 func (f *nativeFaultFile) sync(call func() error) error {
 	_, matched, err := f.owner.match(f.path, f.directory, "sync", nil)
@@ -352,6 +401,7 @@ type nativeFaultPacketScheduler struct {
 	closed    bool
 	terminal  error
 	held      *graphProcessPacketJob
+	matched   chan struct{} // Fresh hold schedule only; nil for existing modes.
 	charge    int
 	events    []nativeFaultPacketEvent
 }
@@ -361,7 +411,7 @@ func newNativeFaultPacketScheduler(ctx context.Context, action string, from, to,
 		return nil, errInvalid
 	}
 	switch action {
-	case "drop", "duplicate", "reorder", "partition":
+	case "drop", "duplicate", "reorder", "partition", "hold":
 		if delay != 0 {
 			return nil, errInvalid
 		}
@@ -373,7 +423,11 @@ func newNativeFaultPacketScheduler(ctx context.Context, action string, from, to,
 		return nil, errInvalid
 	}
 	owner, cancel := context.WithTimeout(ctx, 30*time.Second)
-	return &nativeFaultPacketScheduler{ctx: owner, cancel: cancel, action: action, from: from, to: to, nth: nth, delay: delay}, nil
+	schedule := &nativeFaultPacketScheduler{ctx: owner, cancel: cancel, action: action, from: from, to: to, nth: nth, delay: delay}
+	if action == "hold" {
+		schedule.matched = make(chan struct{})
+	}
+	return schedule, nil
 }
 
 func (s *nativeFaultPacketScheduler) reserve(h *graphProcessHub, cost int) error {
@@ -407,7 +461,7 @@ func (s *nativeFaultPacketScheduler) route(h *graphProcessHub, job graphProcessP
 		return jobs, 0, err
 	}
 	jobs[0], count = job, 1
-	if s.held != nil {
+	if s.held != nil && s.action != "hold" {
 		jobs[1], count = *s.held, 2
 		s.held = nil
 		s.active = true
@@ -439,12 +493,15 @@ func (s *nativeFaultPacketScheduler) route(h *graphProcessHub, job graphProcessP
 		copy(jobs[1].packet.Payload, job.packet.Payload)
 		count = 2
 		s.active = true
-	case "reorder":
+	case "reorder", "hold":
 		if err := s.reserve(h, cap(job.packet.Payload)+64); err != nil {
 			return jobs, 0, err
 		}
 		s.held = new(job)
 		count = 0
+		if s.action == "hold" {
+			close(s.matched)
+		}
 	case "delay":
 		start := time.Now()
 		timer := time.NewTimer(time.Duration(s.delay) * time.Millisecond)
@@ -460,9 +517,61 @@ func (s *nativeFaultPacketScheduler) route(h *graphProcessHub, job graphProcessP
 	return jobs, count, nil
 }
 
+// Explicit release is used only by the fresh D family after a genuine election.
+// The retained actual packet remains charged through its ordinary native Step;
+// the copied bytes carry no proof/decision authority outside that Driver path.
+func (s *nativeFaultPacketScheduler) deliverHeld(h *graphProcessHub) error {
+	if s == nil || h == nil {
+		return errInvalid
+	}
+	s.mu.Lock()
+	if s.closed || s.action != "hold" || s.held == nil || s.active || s.ctx.Err() != nil {
+		s.mu.Unlock()
+		return replica.ErrUnavailable
+	}
+	job := *s.held
+	s.held, s.active = nil, true
+	h.mu.Lock()
+	h.delivered++
+	h.inFlight++
+	full := h.delivered > h.deliveryLimit
+	h.mu.Unlock()
+	s.mu.Unlock()
+	var err error
+	if full {
+		err = errLimit
+	} else {
+		ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+		response, transport := h.peer(job.packet.To).exchange(ctx, processRequest{op: processStep, packet: job.packet})
+		err = errors.Join(transport, processResponseError(response))
+		if err == nil {
+			err = h.enqueue(job.packet.To, response.packets, response.handles...)
+		}
+		cancel()
+	}
+	s.mu.Lock()
+	s.active = false
+	if err == nil && s.ctx.Err() == nil && len(s.events) < 128 {
+		s.events = append(s.events, nativeFaultPacketEvent{Action: "release-oldleader", From: job.packet.From, To: job.packet.To, Ordinal: s.seen, Bytes: len(job.packet.Payload), SHA256: sha256.Sum256(job.packet.Payload)})
+	} else {
+		err = errors.Join(replica.ErrUnavailable, err, s.ctx.Err())
+		s.terminal = errors.Join(s.terminal, err)
+	}
+	s.release(h)
+	s.mu.Unlock()
+	h.mu.Lock()
+	h.inFlight--
+	h.mu.Unlock()
+	h.changed()
+	return err
+}
+
 func (s *nativeFaultPacketScheduler) done(h *graphProcessHub) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.action == "hold" && s.active {
+		return
+	} // Explicit release owns its charge until Step retires.
 	s.active = false
 	if s.held == nil {
 		s.release(h)
@@ -924,7 +1033,8 @@ func nativeFaultReap(t *testing.T, p *graphProcess, member uint64, dir string, r
 		t.Fatal("native failure missing OS process state", p.closeErr)
 	}
 	status, ok := p.cmd.ProcessState.Sys().(syscall.WaitStatus)
-	if !ok || status.Signaled() || p.cmd.ProcessState.ExitCode() != 1 {
+	torn := receipt.Kind == "torn-wal-kill"
+	if !ok || torn && (!status.Signaled() || status.Signal() != syscall.SIGKILL) || !torn && (status.Signaled() || p.cmd.ProcessState.ExitCode() != 1) {
 		t.Fatal("native matched IO did not cause actual failure exit", p.closeErr, status)
 	}
 	if startup {
@@ -938,8 +1048,12 @@ func nativeFaultReap(t *testing.T, p *graphProcess, member uint64, dir string, r
 	if overflow || outputOverflow {
 		t.Fatal("native failure diagnostic exceeded bound")
 	}
-	if !strings.Contains(stderr+stdout, receipt.IO.Error) {
+	if !torn && !strings.Contains(stderr+stdout, receipt.IO.Error) {
 		t.Fatal("native fatal diagnostic does not bind matched IO error", stderr, stdout, receipt.IO.Error)
+	}
+	signalNumber := 0
+	if torn {
+		signalNumber = int(status.Signal())
 	}
 	raw, err := json.Marshal(struct {
 		Member, PID            uint64
@@ -947,7 +1061,8 @@ func nativeFaultReap(t *testing.T, p *graphProcess, member uint64, dir string, r
 		Signaled, Reaped       bool
 		Volume, Stderr, Stdout string
 		Receipt                nativeFaultReceipt
-	}{member, uint64(p.cmd.Process.Pid), p.cmd.ProcessState.ExitCode(), status.Signaled(), true, dir, stderr, stdout, receipt})
+		SignalNumber           int `json:",omitempty"`
+	}{member, uint64(p.cmd.Process.Pid), p.cmd.ProcessState.ExitCode(), status.Signaled(), true, dir, stderr, stdout, receipt, signalNumber})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -955,7 +1070,11 @@ func nativeFaultReap(t *testing.T, p *graphProcess, member uint64, dir string, r
 	if p.mux != nil {
 		instance = pairedGraphFaultInstance(member, p)
 	}
-	return pairedFaultProcess{Action: "native-io-failure", Role: "replica", Member: member, Instance: instance, Volume: dir, Reaped: true, Raw: raw}
+	action := "native-io-failure"
+	if torn {
+		action = "native-torn-prefix-kill"
+	}
+	return pairedFaultProcess{Action: action, Role: "replica", Member: member, Instance: instance, Volume: dir, Reaped: true, Raw: raw}
 }
 
 func readNativeFaultIO(t *testing.T, dir string, expected nativeFaultReceipt) nativeFaultReceipt {
@@ -1008,8 +1127,10 @@ func readNativeFaultStartupIO(t *testing.T, dir string, member, pid uint64) nati
 			if receipt.Member != member || receipt.PID != pid {
 				continue
 			}
-			if found.Cookie != ([16]byte{}) || nativeFaultIOPath(dir, receipt.Cookie, receipt.Sequence) != filepath.Join(dir, entry.Name()) || receipt.Profile != nativeFaultProfile || receipt.Version != 1 || receipt.Sequence != 1 || receipt.Kind != "directory-sync" || !receipt.Matched || receipt.Armed || !receipt.IO.Directory || receipt.IO.Kind != "sync" || receipt.IO.Path != "." || receipt.IO.Error != syscall.EIO.Error() {
-				t.Fatal("startup directory-sync receipt not exact native handle", receipt)
+			actualDirectory := receipt.Kind == "directory-sync" && receipt.IO.Directory && receipt.IO.Kind == "sync" && receipt.IO.Path == "." && receipt.IO.Destination == ""
+			actualRename := receipt.Kind == "options-rename" && !receipt.IO.Directory && receipt.IO.Kind == "rename" && strings.HasPrefix(receipt.IO.Destination, "OPTIONS-") && !strings.ContainsAny(receipt.IO.Destination, "/\\") && receipt.IO.Path != "."
+			if found.Cookie != ([16]byte{}) || nativeFaultIOPath(dir, receipt.Cookie, receipt.Sequence) != filepath.Join(dir, entry.Name()) || receipt.Profile != nativeFaultProfile || receipt.Version != 1 || receipt.Sequence != 1 || !receipt.Matched || receipt.Armed || !actualDirectory && !actualRename || receipt.IO.Error != syscall.EIO.Error() {
+				t.Fatal("startup receipt not exact native publication operation", receipt)
 			}
 			found = receipt
 		}
@@ -1021,7 +1142,7 @@ func readNativeFaultStartupIO(t *testing.T, dir string, member, pid uint64) nati
 		}
 	}
 	if found.Cookie == ([16]byte{}) {
-		t.Fatal("startup arm never matched genuine directory Sync")
+		t.Fatal("startup arm never matched genuine native publication IO")
 	}
 	return found
 }

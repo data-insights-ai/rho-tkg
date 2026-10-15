@@ -48,17 +48,20 @@ type graphSourceInfo struct {
 	lifetime    time.Duration
 }
 type graphSourceLease struct {
-	mu                         sync.Mutex
-	view                       *raftlog.ApplicationView
-	moveMeta                   *raftlog.ApplicationView
-	moveID                     [16]byte
-	moveIntent                 [32]byte
-	read                       graphstore.ApplicationReadSource
-	info                       graphSourceInfo
-	limits                     graphSourceLimits
-	ctx                        context.Context
-	cancel                     context.CancelFunc
-	deadline                   time.Time
+	mu         sync.Mutex
+	view       *raftlog.ApplicationView
+	moveMeta   *raftlog.ApplicationView
+	moveID     [16]byte
+	moveIntent [32]byte
+	read       graphstore.ApplicationReadSource
+	info       graphSourceInfo
+	limits     graphSourceLimits
+	ctx        context.Context
+	cancel     context.CancelFunc
+	deadline   time.Time
+	// Optional immutable embedding clock, copied from the server at capture.
+	// It affects lifetime only; the monotone owner/caller contexts remain caps.
+	lifetimeNow                func() time.Time
 	stop                       func() bool
 	closed                     bool
 	released                   atomic.Bool
@@ -66,6 +69,9 @@ type graphSourceLease struct {
 	calls, rows, bytes, output int
 }
 type graphSourceServer struct {
+	// Installed before publication, nonblocking and immutable thereafter. Nil
+	// retains the ordinary time.Now path and original peer/wire contracts.
+	lifetimeNow func() time.Time
 	// Test latch after genuine capture and before final publication; no locks held.
 	beforePublication func(*graphSourceLease)
 	pending           int
@@ -80,6 +86,44 @@ type graphSourceServer struct {
 	slots             []*graphSourceLease
 	closed            bool
 	closeErr          error
+}
+
+func (s *graphSourceServer) lifetimeTime() time.Time {
+	if s.lifetimeNow != nil {
+		return s.lifetimeNow()
+	}
+	return time.Now()
+}
+
+func (l *graphSourceLease) lifetimeTime() time.Time {
+	if l.lifetimeNow != nil {
+		return l.lifetimeNow()
+	}
+	return time.Now()
+}
+
+// Caller owns lease.mu. Once any lifetime check expires the actual owner, a
+// later wall-clock rollback cannot revive it. Cancellation releases its views
+// through the existing AfterFunc outside the state lock.
+func (l *graphSourceLease) remainingLifetime(ctx context.Context) time.Duration {
+	if l.lifetimeNow == nil {
+		return max(time.Duration(0), time.Until(l.deadline)) // Preserve ordinary bytes/behavior.
+	}
+	remaining := min(l.limits.lifetime, l.deadline.Sub(l.lifetimeTime()))
+	for _, owner := range []context.Context{l.ctx, ctx} {
+		if owner == nil || owner.Err() != nil {
+			remaining = 0
+			continue
+		}
+		if deadline, ok := owner.Deadline(); ok {
+			remaining = min(remaining, time.Until(deadline))
+		}
+	}
+	if remaining <= 0 {
+		l.cancel()
+		return 0
+	}
+	return remaining
 }
 
 func newGraphSourceServer(ctx context.Context, h *allocationHost, l graphSourceLimits) (*graphSourceServer, error) {
@@ -173,7 +217,7 @@ func (s *graphSourceServer) open(ctx context.Context, proof allocationProof) (in
 	var lease *graphSourceLease
 	if err == nil {
 		leaseCtx, cancel := context.WithTimeout(s.ctx, s.limits.lifetime)
-		lease = &graphSourceLease{view: view, read: view, info: info, limits: s.limits, ctx: leaseCtx, cancel: cancel, deadline: time.Now().Add(s.limits.lifetime), bytes: 4096 + 2*cap(info.root.Image), output: 4096 + 2*cap(info.root.Image)}
+		lease = &graphSourceLease{view: view, read: view, info: info, limits: s.limits, ctx: leaseCtx, cancel: cancel, deadline: s.lifetimeTime().Add(s.limits.lifetime), lifetimeNow: s.lifetimeNow, bytes: 4096 + 2*cap(info.root.Image), output: 4096 + 2*cap(info.root.Image)}
 		if lease.bytes > s.limits.bytes || lease.output > s.limits.output {
 			cancel()
 			err = errLimit
@@ -356,7 +400,8 @@ func (l *graphSourceLease) begin(ctx context.Context, rows, bytes int) error {
 	if err := errors.Join(ctx.Err(), l.ctx.Err()); err != nil {
 		return errors.Join(graphstore.ErrSourceUnavailable, err)
 	}
-	if l.closed || time.Now().After(l.deadline) {
+	if l.closed || l.lifetimeTime().After(l.deadline) {
+		l.cancel()
 		return graphstore.ErrSourceUnavailable
 	}
 	if l.calls >= l.limits.calls || rows > l.limits.rows-l.rows || bytes > l.limits.bytes-l.bytes {
