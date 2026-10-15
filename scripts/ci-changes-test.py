@@ -18,7 +18,7 @@ SPEC.loader.exec_module(CI)
 
 class Planning(unittest.TestCase):
     def with_guarded(self, paths, expected):
-        return expected + ([[sys.executable,"-B","tools/v5-substrate/native_guarded_scalar_test.py"]] if CI.GUARDED_INPUTS.intersection(paths) else []) + ([[sys.executable,"-B","tools/v5-substrate/paired_workload_check_test.py"]] if CI.PAIR_INPUTS.intersection(paths) else [])
+        return expected + ([[sys.executable,"-B","tools/v5-substrate/native_guarded_scalar_test.py"]] if CI.GUARDED_INPUTS.intersection(paths) else []) + ([[sys.executable,"-B","tools/v5-substrate/paired_workload_check_test.py"]] if CI.PAIR_INPUTS.intersection(paths) else []) + ([[sys.executable,"-B","tools/v5-substrate/native_transfer_check_test.py"]] if CI.TRANSFER_INPUTS.intersection(paths) else [])
     def docs_action(self, paths):
         with patch.object(sys, "argv", ["ci-changes.py", "docs", "--base", "fixture"]), patch.object(CI, "changed_paths", return_value=paths):
             CI.main()
@@ -57,6 +57,7 @@ class Planning(unittest.TestCase):
                     expected.append([sys.executable, "-B", "tools/v5-substrate/cost_cell_test.py"])
                 if {"tools/v5-substrate/compare-cost-cdc.py", "tools/v5-substrate/fdb_retention_check.py", "tools/v5-substrate/fdb_retention_check_test.py"}.intersection(paths):
                     expected.append([sys.executable, "-B", "tools/v5-substrate/fdb_retention_check_test.py"])
+                if CI.TRANSFER_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_transfer_check_test.py"])
                 self.assertEqual([c.args[0] for c in run.call_args_list], expected)
                 self.assertTrue(all(c.kwargs == {"cwd":CI.ROOT,"check":True} for c in run.call_args_list))
                 p = CI.plan(paths)
@@ -170,6 +171,15 @@ class Planning(unittest.TestCase):
                 calls=[c.args[0] for c in run.call_args_list]
                 self.assertEqual(calls.count([sys.executable,"-B","tools/v5-substrate/paired_workload_check_test.py"]),1)
                 self.assertTrue(all(len(c)==3 and c[:2]==[sys.executable,"-B"] and c[-1].endswith("_test.py") for c in calls))
+                self.assertTrue(all(c.kwargs=={"cwd":CI.ROOT,"check":True} for c in run.call_args_list))
+
+    def test_native_transfer_dependencies_select_complete_private_guard_once(self):
+        for paths in [[p] for p in CI.TRANSFER_INPUTS]+[list(CI.TRANSFER_INPUTS)]:
+            with self.subTest(paths=paths),patch.object(CI.subprocess,"run") as run:
+                CI.cdc(paths)
+                commands=[c.args[0] for c in run.call_args_list]
+                self.assertEqual(commands.count([sys.executable,"-B","tools/v5-substrate/native_transfer_check_test.py"]),1)
+                self.assertTrue(all(len(c)==3 and c[:2]==[sys.executable,"-B"] and c[-1].endswith("_test.py") for c in commands))
                 self.assertTrue(all(c.kwargs=={"cwd":CI.ROOT,"check":True} for c in run.call_args_list))
 
     def test_full_cdc_action_runs_only_its_exact_replay_without_reference_or_go(self):
@@ -413,6 +423,7 @@ class RealGitSelection(unittest.TestCase):
         for name in ("native_graph_immutable_columns_harness_test.go","native_graph_create_update_harness_test.go","native_graph_create_update_process_test.go","native_graph_selectors_harness_test.go","native_graph_selectors_sessions_harness_test.go","native_graph_selectors_runner_harness_test.go","native_graph_feed_runner_harness_test.go"):
             fixtures[name]|=set(CI.CORRECTION_PARENTS)
         for name in fixtures.keys() & CI.GUARDED_FIXTURES:fixtures[name]|=set(CI.GUARDED_PARENTS)
+        for name in fixtures.keys() & CI.TRANSFER_FIXTURES:fixtures[name]|=set(CI.TRANSFER_PARENTS)
         for name, parents in fixtures.items():
             with self.subTest(fixture=name):
                 path = self.directory / name
@@ -442,7 +453,7 @@ class RealGitSelection(unittest.TestCase):
                    "TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor",
                    "TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass",
                    "TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement",
-                   "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation", *CI.IMMUTABLE_PARENTS,*CI.CORRECTION_PARENTS,*CI.GUARDED_PARENTS}
+                   "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation", *CI.IMMUTABLE_PARENTS,*CI.CORRECTION_PARENTS,*CI.GUARDED_PARENTS,*CI.TRANSFER_PARENTS}
         for fixture in ("native_graph_cost_test.go", "native_graph_cost_harness_test.go",
                         "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go",
                         "native_graph_cost_incident_harness_test.go", "native_graph_cost_columns_harness_test.go",
@@ -478,6 +489,15 @@ class RealGitSelection(unittest.TestCase):
                          {"TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput",
                           "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts"})
         self.assertNotIn("TestNativeGraphCostCell", selected)
+
+    def test_transfer_fixtures_keep_real_pooled_parents_and_short_workload(self):
+        for name in CI.TRANSFER_FIXTURES:
+            with self.subTest(name=name):
+                path=self.directory/name;path.write_text("package graphapply\nfunc privateTransferOwner() {}\n")
+                names=set(CI.graph_selection(self.directory,[path],{path:[("func","privateTransferOwner")]}))
+                self.assertEqual(names,set(CI.FIXTURE_COMPAT[name])|set(CI.GRAPH_COMPAT))
+                self.assertTrue(set(CI.TRANSFER_PARENTS)<=names)
+        self.assertEqual(len(CI.TRANSFER_PARENTS),6)
 
     def test_cost_fixture_guard_preserves_changed_large_parent(self):
         fixture = self.directory / "native_graph_cost_harness_test.go"
@@ -670,7 +690,7 @@ class CurrentRepository(unittest.TestCase):
     def test_checked_compatibility_names_exist_in_current_sources(self):
         directory = CI.ROOT / "v5/internal/graphapply"
         names = set().union(*(CI.parent_names(p) for p in directory.glob("*_test.go")))
-        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) | set(CI.CORRECTION_PARENTS) <= names)
+        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) | set(CI.CORRECTION_PARENTS) | set(CI.TRANSFER_PARENTS) <= names)
         self.assertIn("TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements", CI.GRAPH_COMPAT)
 
     def test_explicit_cost_cell_is_short_guarded_before_profile(self):

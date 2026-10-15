@@ -19,7 +19,7 @@ func nativeGraphCostBlockSize(s nativeGraphCostSpec) (uint64, error) {
 	}
 	block := min(s.homeCount(), idalloc.MaxBlockSize)
 	if raw := os.Getenv("RHO_GRAPH_COST_BLOCK_SIZE"); raw != "" {
-		if s.Version == 4 || s.Version == 5 || s.Version == 6 || s.Version == 7 || s.Version == 9 || s.Version == 10 || s.Version == 11 || s.Version == 13 || s.Version == 14 {
+		if s.Version == 4 || s.Version == 5 || s.Version == 6 || s.Version == 7 || s.Version == 9 || s.Version == 10 || s.Version == 11 || s.Version == 12 || s.Version == 13 || s.Version == 14 {
 			return 0, errInvalid
 		} // fresh full-family bound fixes actual block geometry before effects
 		var err error
@@ -37,6 +37,9 @@ func nativeGraphCostBlockSize(s nativeGraphCostSpec) (uint64, error) {
 // Input correspondence only, not a reservation or authority. HOME blocks are
 // requested before remote2 so the existing graph-qualified fixture IDs agree.
 func nativeGraphCostGrantPlan(s nativeGraphCostSpec, block, partition, sequence uint64) (first, count uint64, err error) {
+	if s.Version == 12 {
+		return nativeTransferGrantPlan(s, block, partition, sequence)
+	}
 	if s.Version == 13 || s.Version == 14 {
 		if err := nativeGuardedScalarValidate(s); err != nil {
 			return 0, 0, err
@@ -117,6 +120,11 @@ func nativeGraphCostGrantParameters(o *certifiedProcessOwners, data []byte) (uin
 // This local inspection constructs no quorum proof/cursor: the Host still
 // validates the complete fresh binding and current recipient at application.
 func nativeGraphCostFreshGrant(o *certifiedProcessOwners, id uint64) (grantReference, error) {
+	if o != nil && o.cost != nil && o.cost.Version == 12 {
+		// Only this genuine child-owned Acquire/Next consumed prefix is accepted.
+		// The installed-grant reference used by older cost fixtures is insufficient.
+		return o.transferAllocation.issued(id)
+	}
 	if o == nil || o.cost == nil || o.recipient == nil || o.host == nil || id == 0 {
 		return grantReference{}, errInvalid
 	}

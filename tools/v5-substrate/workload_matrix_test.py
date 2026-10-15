@@ -7,6 +7,35 @@ import workload_matrix as matrix
 
 
 class WorkloadMatrixGuards(unittest.TestCase):
+    def test_native_transfer_is_explicit_and_covers_every_required_dimension(self):
+        family="transfer-retained-pins"
+        for engine in ("native-raft","paired"):
+            paired=engine=="paired"
+            cells=list(matrix.matrix((family,),tuple(matrix.TRANSPORTS),(engine,),owned=paired,paired_owned=paired,native_transfer=True))
+            self.assertEqual(len(cells),1440)
+            self.assertTrue(all(c["implemented"] and c["workload"]["version"]==2 for c in cells))
+            for field,expected in (("facts",matrix.FACTS),("crossPercent",matrix.CROSS),("writers",matrix.WRITERS),("layout",matrix.LAYOUTS)):
+                self.assertEqual({c["workload"][field] for c in cells},set(expected))
+            self.assertEqual({c["repetition"] for c in cells},set(range(1,6)))
+        spec={"version":2,"family":family,"facts":40,"crossPercent":100,"writers":32,"layout":"columns"}
+        for transport in matrix.TRANSPORTS:self.assertEqual(matrix.preflight(spec,"01"*16,"native-raft",transport),spec)
+        for key in ("version","facts","crossPercent","writers"):
+            with self.assertRaises(ValueError):matrix.preflight(spec|{key:True},"01"*16,"native-raft","local")
+        for flag in (1,"yes",None):
+            with self.assertRaises(ValueError):list(matrix.matrix((family,),("local",),("native-raft",),native_transfer=flag))
+        with self.assertRaises(ValueError):list(matrix.matrix((family,),("local",),("paired",),native_transfer=True))
+        with self.assertRaises(ValueError):list(matrix.matrix(("immutable-columns",),("local",),("native-raft",),native_transfer=True))
+        self.assertFalse(next(matrix.matrix((family,),("local",),("native-raft",)))["implemented"])
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/"unfunded"
+            cell=next(matrix.matrix((family,),("local",),("native-raft",),native_transfer=True))
+            with self.assertRaises(ValueError):matrix.execute(cell,output,1800,"small",4096,1<<30,8<<20)
+            self.assertFalse(output.exists())
+            with self.assertRaises(ValueError):matrix.native_transfer_grant(None)
+            foreign=next(matrix.matrix(("immutable-columns",),("local",),("native-raft",)))
+            with self.assertRaises(ValueError):matrix.execute(foreign,output,1800,"small",4096,1<<30,8<<20,native_transfer_grants={})
+            self.assertFalse(output.exists())
+
     def test_explicit_owned_pair_covers_actual_delays_and_keeps_old_refusals(self):
         for family in ("contention-empty-range","cross-edge-endpoint-uniqueness","snapshot-selectors","snapshot-to-feed","partition-local-create-update","immutable-columns","late-correction-old-index"):
             guarded=family in ("snapshot-selectors","snapshot-to-feed")

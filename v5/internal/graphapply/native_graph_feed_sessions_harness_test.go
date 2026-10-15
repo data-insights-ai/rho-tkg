@@ -468,7 +468,7 @@ func (s *nativeFeedSessions) serveDecoded(ctx context.Context, r processRequest,
 				if err == nil {
 					out.Page, out.Digest, out.Replay, out.EOF = d.wire, d.digest, d.replay, d.page.eof
 					out.Schemas = d.schemas
-					if d.page.kind != 0 {
+					if d.page.kind != 0 && !(cost.Version == 12 && d.page.kind == feedMoveEnvelope) {
 						out.Catalog, err = encodeTypedGraphChanges(d.resolved, s.coordinator.host.machine.limits, true)
 					}
 				}

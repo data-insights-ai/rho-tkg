@@ -453,12 +453,32 @@ func (m *declaredMaterializer) feedNativeFrame(q *reader, index uint64, maximum 
 					if e != nil {
 						return e
 					}
-					actual, found, e := readRangeMoveStatus(at, s.move)
-					wire, e2 := encodeRangeMoveStatus(actual)
-					if e != nil || e2 != nil || !found || !bytes.Equal(wire, out.outcome) {
-						return errors.Join(errCorrupt, e, e2)
+					if rangeMovePoolsEnabled(m.SemanticContractID()) {
+						original, e := readPooledMoveOriginal(at, m.scope(), s)
+						if e != nil {
+							return e
+						}
+						if e := reserveComposer(at, 1024+4*(len(original.Key)+len(original.Value)+len(out.outcome))); e != nil {
+							return e
+						}
+						out.registration, e = boundedEncoding(maximum, func(w *boundedWriter) {
+							w.add([]byte("NCO1"))
+							w.field(original.Key)
+							w.u64(original.Index)
+							w.field(original.Value)
+						})
+						if e != nil {
+							return e
+						}
+						out.originalOutcome = owned(out.outcome)
+					} else {
+						actual, found, e := readRangeMoveStatus(at, s.move)
+						wire, e2 := encodeRangeMoveStatus(actual)
+						if e != nil || e2 != nil || !found || !bytes.Equal(wire, out.outcome) {
+							return errors.Join(errCorrupt, e, e2)
+						}
+						out.originalOutcome = wire
 					}
-					out.originalOutcome = wire
 				case bytes.HasPrefix(out.outcome, []byte("GPO\x01")), bytes.HasPrefix(out.outcome, []byte("GGO\x01")), retainedFeedOutcomeFor(m.SemanticContractID(), out.outcome):
 					// feedMetadataOriginal already authenticated the immutable native
 					// locator, complete original result and actual first-install index.

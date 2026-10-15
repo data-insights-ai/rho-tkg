@@ -445,6 +445,7 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 	// separate profile, including a reopen in the same graph directory.
 	conditional, childCover := false, false
 	durableProfile, contentionProfile, edgeProfile, feedProfile, selectorsProfile, createUpdateProfile, feedRetainedProfile, immutableColumnsProfile, lateCorrectionProfile := false, false, false, false, false, false, false, false, false
+	transferProfile := false
 	var workloadRun string
 	for _, entry := range p.cmd.Env {
 		name, value, _ := strings.Cut(entry, "=")
@@ -469,13 +470,15 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 			immutableColumnsProfile = value == "1"
 		case nativeLateCorrectionProcessFlag:
 			lateCorrectionProfile = value == "1"
+		case nativeTransferProcessFlag:
+			transferProfile = value == "1"
 		case "RHO_GRAPH_CONDITIONAL_PROCESS":
 			conditional = value == "1"
 		case "RHO_P05_CHILD_COVER":
 			childCover = value == "1"
 		}
 	}
-	p.durableColumns = durableProfile || contentionProfile || edgeProfile || feedProfile || selectorsProfile || createUpdateProfile || feedRetainedProfile || immutableColumnsProfile || lateCorrectionProfile
+	p.durableColumns = durableProfile || contentionProfile || edgeProfile || feedProfile || selectorsProfile || createUpdateProfile || feedRetainedProfile || immutableColumnsProfile || lateCorrectionProfile || transferProfile
 	if contentionProfile {
 		raw, err := hex.DecodeString(workloadRun)
 		if err != nil || len(raw) != 16 || hex.EncodeToString(raw) != workloadRun {
@@ -1578,23 +1581,24 @@ const (
 )
 
 type certifiedProcessOwners struct {
-	cost              *nativeGraphCostSpec
-	workload          *nativeContentionSpec
-	workloadRun       [16]byte
-	workloadDeadline  time.Time
-	workloadAdmission nativeContentionAdmission
-	fault             *nativeFaultFS
-	stableBatch       *nativeBatchOwner
-	decisions         *nativeDecisionOwner
-	family            *nativeFaultFamilyOwner
-	host              *allocationHost
-	proof             allocationProof
-	readID            allocationReadID
-	question          allocationQuery
-	ready             bool
-	reserve           idalloc.RecipientSession
-	recipient         *allocationRecipientHandle
-	incarnation       [16]byte
+	cost               *nativeGraphCostSpec
+	workload           *nativeContentionSpec
+	workloadRun        [16]byte
+	workloadDeadline   time.Time
+	workloadAdmission  nativeContentionAdmission
+	fault              *nativeFaultFS
+	stableBatch        *nativeBatchOwner
+	decisions          *nativeDecisionOwner
+	family             *nativeFaultFamilyOwner
+	host               *allocationHost
+	proof              allocationProof
+	readID             allocationReadID
+	question           allocationQuery
+	ready              bool
+	reserve            idalloc.RecipientSession
+	recipient          *allocationRecipientHandle
+	transferAllocation *nativeTransferAllocator
+	incarnation        [16]byte
 }
 
 func encodeCertifiedProcessProposal(p allocationProposal) ([]byte, error) {
@@ -1850,6 +1854,14 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	if profileErr != nil {
 		t.Fatal("D-only protocol state profile", profileErr)
 	}
+	pooledState := false
+	if protocolState || os.Getenv("RHO_GRAPH_PROTOCOL_STATE_RECOVERY") != "" {
+		selected, err := nativeProtocolStateAgreement()
+		if err != nil || !protocolState || selected != rangeMoveSpanSemanticContractID() && selected != rangeMovePooledSemanticContractID() {
+			t.Fatal("D-only actual recovery agreement", errors.Join(errInvalid, err))
+		}
+		pooledState = selected == rangeMovePooledSemanticContractID()
+	}
 	n, voters := certifiedProcessNamespace(id)
 	init := partitionCodecRequest(t, 1, defaultMaterializerLimits())
 	if init.declaration.Graph() != graphstate.GraphID(n.graph) {
@@ -1960,11 +1972,21 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	if feedRetained {
 		agreement, materializer = retainedOnlyFeedSemanticContractID(), newRetainedOnlyFeedMaterializer
 	}
+	transfer, err := nativeTransferProcessProfile(cost)
+	if err != nil {
+		t.Fatal("pooled transfer workload profile", err)
+	}
+	if transfer {
+		agreement, materializer = rangeMovePooledSemanticContractID(), newRangeMovePooledMaterializer
+	}
 	if protocolState {
 		agreement, materializer = rangeMoveSpanSemanticContractID(), newRangeMoveSpanMaterializer
 		l.MaxRetainedBytes, l.MaxRetainedEntries = 256<<20, 131072
 		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 256<<20, 131072
 		generations = raftlog.ApplicationGenerationLimits{MaxBytes: 512 << 20, MaxRecords: 262144}
+	}
+	if pooledState {
+		agreement, materializer = rangeMovePooledSemanticContractID(), newRangeMovePooledMaterializer
 	}
 	controls, recovery := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 1}
 	if retention || durableColumns || workload != nil || feed || feedRetained {
@@ -1978,6 +2000,10 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	}
 	if protocolState {
 		recovery.Version, nativeRetention.Version = 3, 1
+		contract, err = raftlog.ApplicationContractForPolicyWithRetention(p, controls, recovery, nativeRetention)
+	}
+	if transfer || pooledState {
+		recovery.Version, nativeRetention.Version = 4, 1
 		contract, err = raftlog.ApplicationContractForPolicyWithRetention(p, controls, recovery, nativeRetention)
 	}
 	if err != nil {

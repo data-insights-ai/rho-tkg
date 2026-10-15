@@ -454,6 +454,13 @@ func (s *nativeColumnStore) retentionDependencyPage(ctx context.Context, id [16]
 }
 
 func nativeColumnOriginalIndex(wire []byte, ns namespace) (uint64, error) {
+	if bytes.HasPrefix(wire, []byte("GMO\x03")) {
+		r, err := decodeRangeMoveStatus(wire)
+		if err != nil || r.format != 3 || r.ns != ns || r.index == 0 {
+			return 0, errors.Join(errCorrupt, err)
+		}
+		return r.index, nil
+	}
 	if isRetainedFeedOutcome(wire) {
 		r, e := decodeRetainedFeedResult(wire)
 		return r.index, e

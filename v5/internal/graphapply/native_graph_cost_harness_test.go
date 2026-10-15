@@ -29,6 +29,9 @@ type nativeGraphCostSpec struct {
 }
 
 func (s nativeGraphCostSpec) validate() error {
+	if s.Version == 12 {
+		return nativeTransferValidate(s)
+	}
 	if s.Version == 13 || s.Version == 14 {
 		return nativeGuardedScalarValidate(s)
 	}
@@ -98,6 +101,21 @@ func (s nativeGraphCostSpec) edge(i uint64) (uint64, uint64, uint64, uint64) {
 	return 7 + 2*i, 8 + 2*i, target, targetLife
 }
 func (s nativeGraphCostSpec) deliveries() int {
+	if s.Version == 12 {
+		spec, err := nativeTransferSpecFromEnv()
+		if err != nil || spec.cost() != s {
+			return 0
+		}
+		a, _, err := nativeTransferAdmissionFromEnv(spec)
+		if err != nil {
+			return 0
+		}
+		frames, err := nativeTransferFrames(s, a.Grants)
+		if err != nil || frames > uint64(^uint(0)>>1)/1024 {
+			return 0
+		}
+		return int(frames * 1024) // #nosec G115 -- checked finite work ceiling, not an allocation.
+	}
 	if s.Version == 13 || s.Version == 14 {
 		frames, err := nativeGuardedScalarFrames(s)
 		if err != nil || frames > uint64(^uint(0)>>1)/1024 {
@@ -161,6 +179,17 @@ func nativeGraphCostProfile(s *nativeGraphCostSpec, init *declaredInitCommand, l
 	if s == nil {
 		return nil
 	}
+	if s.Version == 12 {
+		spec, err := nativeTransferSpecFromEnv()
+		if err != nil || spec.cost() != *s {
+			return errors.Join(errInvalid, err)
+		}
+		a, _, err := nativeTransferAdmissionFromEnv(spec)
+		if err != nil {
+			return err
+		}
+		return nativeTransferProfile(*s, a, init, l, p, generations)
+	}
 	if s.Version == 13 || s.Version == 14 {
 		return nativeGuardedScalarProfile(*s, init, l, p, generations)
 	}
@@ -215,7 +244,13 @@ func nativeGraphCostProposal(o *certifiedProcessOwners, r processRequest, id req
 	if o != nil && o.cost != nil && o.cost.Version == 4 {
 		return nativeGraphEdgeUniqueProposal(o, r, id)
 	}
-	if o == nil || o.cost == nil || o.recipient == nil || r.index < 1 || r.index > 5 {
+	if o == nil || o.cost == nil || r.index < 1 || r.index > 5 {
+		return allocationProposal{}, errInvalid
+	}
+	// A replacement pooled target can update already-imported IDs without an
+	// allocator cursor. This exact no-new-ID path grants no fresh binding rights;
+	// claim construction below still authenticates every actual claimed ID.
+	if o.recipient == nil && !(o.cost.Version == 12 && r.index == 5 && o.host != nil && o.host.machine.SemanticContractID() == rangeMovePooledSemanticContractID() && o.host.machine.ns.partition == 8 && len(r.data) == 8 && binary.BigEndian.Uint64(r.data) > 0) {
 		return allocationProposal{}, errInvalid
 	}
 	cfg, err := o.host.currentConfiguration()
@@ -261,7 +296,7 @@ func nativeGraphCostProposal(o *certifiedProcessOwners, r processRequest, id req
 			provenance = 4 + o.cost.Facts + i
 		}
 		set := graphstate.Operation{Kind: graphstate.Set, Owner: graphstate.EntityID(edge), Life: graphstate.LifeID(life), Scope: scope, Name: "p", Value: graphstate.I64(value), ValueID: graphstate.ValueID(valueID)}
-		if (o.cost.Version == 9 || o.cost.Version == 7 || o.cost.Version == 10 || o.cost.Version == 11 || o.cost.Version == 13 || o.cost.Version == 14) && r.index == 5 {
+		if (o.cost.Version == 9 || o.cost.Version == 7 || o.cost.Version == 10 || o.cost.Version == 11 || o.cost.Version == 12 || o.cost.Version == 13 || o.cost.Version == 14) && r.index == 5 {
 			if o.cost.Version == 11 && i >= o.cost.Facts/2 {
 				return allocationProposal{}, errInvalid
 			}
@@ -366,7 +401,14 @@ func nativeGraphCostCoordinatorManifest(ctx context.Context, h *allocationHost, 
 	if ctx == nil || h == nil || h.machine == nil || h.machine.store == nil || result.resume.scope != h.machine.scope() || result.decision.ns != h.machine.ns || result.decision.tx != result.resume.tx || result.decision.phase != crossDecide || result.decision.commit && result.decision.round == 0 {
 		return nil, errInvalid
 	}
-	view, err := h.machine.store.ApplicationView(result.decision.index)
+	index := result.decision.index
+	if os.Getenv(nativeTransferProcessFlag) == "1" && h.machine.SemanticContractID() == rangeMovePooledSemanticContractID() {
+		// The immutable native D/R controls remain original-result authority
+		// after the feed ACK has made their historical raw root collectible.
+		// This is a current proof location, never a refreshed decision index.
+		index = h.driver.Applied()
+	}
+	view, err := h.machine.store.ApplicationView(index)
 	if err != nil {
 		return nil, err
 	}

@@ -341,6 +341,15 @@ func nativeScalarWorkloadPhase(t *testing.T, parent context.Context, n *certifie
 }
 
 func nativeScalarWorkloadPhaseRange(t *testing.T, parent context.Context, n *certifiedProcessNetwork, spec nativeGraphCostSpec, admissions *nativeGraphCostAdmissions, started time.Time, phase, from, end uint64, attempts, completed *json.Encoder, census *[32]uint64) (last nativeGraphCostSample) {
+	return nativeScalarWorkloadPhaseWithSubmit(t, parent, spec, started, phase, from, end, attempts, completed, census, func(ctx context.Context, fact uint64, client int, events chan<- nativeGraphCostClientEvent) (nativeGraphCostSample, error) {
+		return nativeGraphCostClientSubmit(ctx, n, spec, phase, fact, phase >= 4 && spec.cross(fact), client, admissions, events)
+	})
+}
+
+// A fresh admitted family may select a genuine physical business owner after
+// movement. Queueing, full attempt joins, caller ordinals and whole-operation
+// clocks remain the same; old wrappers pass their literal existing submitter.
+func nativeScalarWorkloadPhaseWithSubmit(t *testing.T, parent context.Context, spec nativeGraphCostSpec, started time.Time, phase, from, end uint64, attempts, completed *json.Encoder, census *[32]uint64, submit func(context.Context, uint64, int, chan<- nativeGraphCostClientEvent) (nativeGraphCostSample, error)) (last nativeGraphCostSample) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(parent)
 	type job struct {
@@ -359,7 +368,7 @@ func nativeScalarWorkloadPhaseRange(t *testing.T, parent context.Context, n *cer
 		queues[client] = make(chan job, 1)
 		workers.Go(func() {
 			for j := range queues[client] {
-				sample, err := nativeGraphCostClientSubmit(ctx, n, spec, phase, j.fact, phase >= 4 && spec.cross(j.fact), client, admissions, events)
+				sample, err := submit(ctx, j.fact, client, events)
 				stop := time.Now()
 				results <- result{nativeFeedBusiness{sample, j.queued.Sub(started).Nanoseconds(), stop.Sub(started).Nanoseconds(), stop.Sub(j.queued).Nanoseconds()}, err}
 			}
@@ -842,7 +851,7 @@ func nativeScalarReadColumns(t *testing.T, clients [2]*nativeGraphEdgeUniqueColu
 		}
 	}
 	presence := 3 + s.Facts
-	if s.Version == 9 || s.Version == 10 || s.Version == 11 || s.Version == 13 || s.Version == 14 {
+	if s.Version == 9 || s.Version == 10 || s.Version == 11 || s.Version == 12 || s.Version == 13 || s.Version == 14 {
 		presence += updates
 	}
 	if census != ([3]uint64{presence, s.Facts, updates}) {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
@@ -180,6 +181,7 @@ type nativeSelectorsSessions struct {
 	charged       nativeColumnWork
 	owners        map[uint64]*nativeSelectorsQuery
 	closed        bool
+	agreement     raftlog.ApplicationSemanticContractID // immutable exact constructor selection; zero retains old fixtures
 }
 
 // Sixteen admitted query originals, each with at most eight Close and eight
@@ -210,7 +212,14 @@ func newNativeSelectorsSessions(ctx context.Context, c *crossProcessCoordinator,
 	return newNativeScalarQuerySessions(ctx, c, localRead, spec, a, digest, policy)
 }
 func newNativeScalarQuerySessions(ctx context.Context, c *crossProcessCoordinator, localRead func(context.Context, graphCutQuery) (graphCutReply, error), spec nativeSelectorsSpec, a nativeSelectorsAdmission, digest [32]byte, policy nativeSelectorsReadPolicy) (*nativeSelectorsSessions, error) {
-	if ctx == nil || c == nil || c.host == nil || c.host.machine == nil || c.host.machine.SemanticContractID() != durableColumnGraphSemanticContractID() || localRead == nil || [16]byte(c.host.machine.ns.graph) != a.Graph || c.host.machine.declaration.Digest() != a.Declaration || c.host.machine.declaration.TopologyEpoch() != a.Topology || a.Spec != spec || policy.DeadlineUnixNanos != a.DeadlineUnixNanos {
+	return newNativeScalarQuerySessionsFor(ctx, c, localRead, spec, a, digest, policy, durableColumnGraphSemanticContractID())
+}
+
+func newNativeScalarQuerySessionsFor(ctx context.Context, c *crossProcessCoordinator, localRead func(context.Context, graphCutQuery) (graphCutReply, error), spec nativeSelectorsSpec, a nativeSelectorsAdmission, digest [32]byte, policy nativeSelectorsReadPolicy, agreement raftlog.ApplicationSemanticContractID) (*nativeSelectorsSessions, error) {
+	if agreement != durableColumnGraphSemanticContractID() && agreement != rangeMovePooledSemanticContractID() || agreement == rangeMovePooledSemanticContractID() && (spec.Family != nativeTransferFamily || spec.Version != 2 || nativeTransferValidate(nativeGraphCostSpec{12, spec.Facts, spec.CrossPercent, spec.Writers}) != nil) {
+		return nil, errInvalid
+	}
+	if ctx == nil || c == nil || c.host == nil || c.host.machine == nil || c.host.machine.SemanticContractID() != agreement || localRead == nil || [16]byte(c.host.machine.ns.graph) != a.Graph || c.host.machine.declaration.Digest() != a.Declaration || c.host.machine.declaration.TopologyEpoch() != a.Topology || a.Spec != spec || policy.DeadlineUnixNanos != a.DeadlineUnixNanos {
 		return nil, errInvalid
 	}
 	deadline, ok := ctx.Deadline()
@@ -218,7 +227,21 @@ func newNativeScalarQuerySessions(ctx context.Context, c *crossProcessCoordinato
 		return nil, errInvalid
 	}
 	cleanup, cancelCleanup := context.WithDeadline(context.WithoutCancel(ctx), deadline.Add(30*time.Second))
-	return &nativeSelectorsSessions{ctx: ctx, cleanup: cleanup, cancelCleanup: cancelCleanup, coordinator: c, localRead: localRead, spec: spec, admission: a, digest: digest, policy: policy, owners: make(map[uint64]*nativeSelectorsQuery)}, nil
+	return &nativeSelectorsSessions{ctx: ctx, cleanup: cleanup, cancelCleanup: cancelCleanup, coordinator: c, localRead: localRead, spec: spec, admission: a, digest: digest, policy: policy, owners: make(map[uint64]*nativeSelectorsQuery), agreement: agreement}, nil
+}
+
+func (s *nativeSelectorsSessions) semantic() raftlog.ApplicationSemanticContractID {
+	if s.agreement == (raftlog.ApplicationSemanticContractID{}) {
+		return durableColumnGraphSemanticContractID()
+	}
+	return s.agreement
+}
+
+func (s *nativeSelectorsSessions) cutDecode(wire []byte) (graphCut, error) {
+	if s.semantic() == durableColumnGraphSemanticContractID() {
+		return nativeSelectorsCutDecode(wire)
+	}
+	return nativeScalarWorkloadCutDecode(wire, s.semantic(), 1, 2)
 }
 
 // This workload-local prepayment is not reported as native installed work.
@@ -295,7 +318,7 @@ func (s *nativeSelectorsSessions) prepare(ctx context.Context, q nativeSelectors
 	}
 	request := graphReadRequest{mode: q.Mode}
 	if len(q.Cut) != 0 {
-		request.cut, err = nativeSelectorsCutDecode(q.Cut)
+		request.cut, err = s.cutDecode(q.Cut)
 		if err != nil {
 			return out, err
 		}
@@ -553,7 +576,7 @@ func (s *nativeSelectorsSessions) reopen(ctx context.Context, q nativeSelectorsI
 		return out, err
 	}
 	definition, err := decodeGraphPinManifest(token.manifest)
-	if err != nil || definition.publisher != s.coordinator.host.machine.scope() || definition.publisher.semantic != durableColumnGraphSemanticContractID() {
+	if err != nil || definition.publisher != s.coordinator.host.machine.scope() || definition.publisher.semantic != s.semantic() {
 		return out, errors.Join(errInvalid, err)
 	}
 	if err = s.fund(ctx); err != nil {
@@ -607,6 +630,13 @@ func (s *nativeSelectorsSessions) serve(ctx context.Context, r processRequest) (
 	q, err := nativeSelectorsInputDecode(r)
 	if err != nil {
 		return nil, err
+	}
+	return s.serveDecoded(ctx, r, q)
+}
+
+func (s *nativeSelectorsSessions) serveDecoded(ctx context.Context, r processRequest, q nativeSelectorsInput) (wire []byte, err error) {
+	if s == nil || ctx == nil {
+		return nil, errInvalid
 	}
 	if q.Action == "index" && (s.spec.Family != nativeLateCorrectionFamily || nativeLateCorrectionValidate(nativeLateCorrectionCost(s.spec)) != nil) {
 		return nil, errInvalid
@@ -671,13 +701,16 @@ func (s *nativeSelectorsSessions) serve(ctx context.Context, r processRequest) (
 		if s.spec.Family == nativeCreateUpdateFamily {
 			valid = nativeCreateUpdateValidate(nativeCreateUpdateCost(s.spec))
 		}
-		if valid != nil || s.coordinator.host.machine.SemanticContractID() != durableColumnGraphSemanticContractID() {
+		if s.spec.Family == nativeTransferFamily && s.semantic() == rangeMovePooledSemanticContractID() {
+			valid = nativeTransferValidate(nativeGraphCostSpec{12, s.spec.Facts, s.spec.CrossPercent, s.spec.Writers})
+		}
+		if valid != nil || s.coordinator.host.machine.SemanticContractID() != s.semantic() {
 			return nil, errInvalid
 		}
 		if err = s.fund(operation); err != nil {
 			return nil, err
 		}
-		return nativeScalarWorkloadRecords(operation, s.coordinator.host, q.From, q.Through, q.Cut, durableColumnGraphSemanticContractID())
+		return nativeScalarWorkloadRecords(operation, s.coordinator.host, q.From, q.Through, q.Cut, s.semantic())
 	case "prepare":
 		out, err = s.prepare(operation, q, r.data)
 	case "reopen":

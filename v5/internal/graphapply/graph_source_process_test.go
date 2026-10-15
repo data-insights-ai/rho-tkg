@@ -1481,6 +1481,38 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		}()
 	}
 	var selectors *nativeSelectorsSessions
+	var transfer *nativeTransferSessions
+	if o.cost != nil && o.cost.Version == 12 {
+		spec, e := nativeTransferSpecFromEnv()
+		if e != nil {
+			t.Fatal(e)
+		}
+		admission, digest, e := nativeTransferAdmissionFromEnv(spec)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var stopTransfer context.CancelFunc
+		columns.ctx, stopTransfer = context.WithDeadline(ctx, time.Unix(0, admission.DeadlineUnixNanos))
+		defer stopTransfer()
+		columns.policyProvider = func() (nativeColumnPolicy, error) { return nativeTransferColumnPolicy(h, spec, admission, digest) }
+		transfer, e = newNativeTransferSessions(columns.ctx, coordinator, o, pump)
+		if e != nil {
+			t.Fatal(e)
+		}
+		member, e := strconv.ParseUint(os.Getenv("RHO_GRAPH_PROCESS_ID"), 10, 64)
+		if e != nil || retentionState != nil {
+			t.Fatal("transfer must own its actual collector", e)
+		}
+		retentionState, e = newNativeTransferGC(columns.ctx, h, member, admission)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer func() {
+			if e := errors.Join(transfer.close(), retentionState.close()); e != nil {
+				t.Error(e)
+			}
+		}()
+	}
 	if o.cost != nil && o.cost.Version == 6 {
 		spec, e := nativeSelectorsSpecFromEnv()
 		if e != nil {
@@ -1855,6 +1887,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		return nil
 	}
 	isSourceClose := func(r processRequest) bool {
+		if transfer != nil && nativeTransferTerminalControl(r) {
+			return true
+		}
 		if protocolState != nil && nativeProtocolStateTerminalControl(r) {
 			return true
 		}
@@ -1873,7 +1908,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				return true
 			}
 		}
-		if o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10 || o.cost.Version == 11 || o.cost.Version == 13 || o.cost.Version == 14) && nativeGraphEdgeUniqueColumnClose(r) {
+		if o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10 || o.cost.Version == 11 || o.cost.Version == 12 || o.cost.Version == 13 || o.cost.Version == 14) && nativeGraphEdgeUniqueColumnClose(r) {
 			return true
 		}
 		if logicalTransitions != nil && r.op == processNativeTransitionControl {
@@ -1931,6 +1966,12 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			workerParent = protocolState.ctx
 			if control {
 				workerParent = protocolState.cleanup
+			}
+		}
+		if transfer != nil {
+			workerParent = transfer.ctx
+			if control {
+				workerParent = transfer.cleanup
 			}
 		}
 		workerCtx, stop := context.WithCancel(workerParent)
@@ -2014,6 +2055,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processCostObserve:
 				if o.cost == nil {
 					e = errInvalid
+				} else if transfer != nil && bytes.HasPrefix(r.data, []byte(nativeTransferMarker)) {
+					out.aux, e = transfer.serve(workerCtx, r)
 				} else if selectors != nil && bytes.HasPrefix(r.data, []byte(nativeSelectorsMarker)) {
 					out.aux, e = selectors.serve(workerCtx, r)
 				} else if (o.cost.Version == 10 || o.cost.Version == 11) && bytes.HasPrefix(r.data, []byte(nativeImmutableColumnsControl)) {
@@ -2024,7 +2067,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					out.aux, e = feed.serve(workerCtx, r)
 				} else if contention != nil && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
 					out.aux, e = contention.serve(workerCtx, r)
-				} else if (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10 || o.cost.Version == 11 || o.cost.Version == 13 || o.cost.Version == 14) && bytes.HasPrefix(r.data, []byte(nativeEdgeColumns)) {
+				} else if (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10 || o.cost.Version == 11 || o.cost.Version == 12 || o.cost.Version == 13 || o.cost.Version == 14) && bytes.HasPrefix(r.data, []byte(nativeEdgeColumns)) {
 					out.aux, e = nativeGraphEdgeUniqueColumnServe(workerCtx, columns, r)
 				} else if bytes.HasPrefix(r.data, []byte(nativeColumnsMarker)) {
 					out.aux, e = columns.serve(workerCtx, r)
@@ -2133,8 +2176,22 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		if retentionState != nil && r.op == processNativeFaultControl && bytes.HasPrefix(r.data, []byte(nativeRetentionMarker)) && errors.Is(err, raftlog.ErrApplicationExpired) {
 			response.code = 9 // Fresh native retained-history refusal; legacy codes unchanged.
 		}
-		if code := nativeFeedProfileResponseCode(r, feed != nil, o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10 || o.cost.Version == 11 || o.cost.Version == 13 || o.cost.Version == 14), err); code != 0 {
+		if code := nativeFeedProfileResponseCode(r, feed != nil, o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6 || o.cost.Version == 7 || o.cost.Version == 9 || o.cost.Version == 10 || o.cost.Version == 11 || o.cost.Version == 12 || o.cost.Version == 13 || o.cost.Version == 14), err); code != 0 {
 			response.code = code
+		}
+		if transfer != nil {
+			if _, inputErr := nativeTransferInputDecode(r); inputErr == nil {
+				if code := nativeColumnProcessErrorCode(err); code != 0 {
+					response.code = code
+				}
+			}
+			if r.op == processSourceCertifiedOpen {
+				if _, inputErr := decodeGraphE15ReadRequest(r.data); inputErr == nil {
+					if code := nativeColumnProcessErrorCode(err); code != 0 {
+						response.code = code
+					}
+				}
+			}
 		}
 		if feedRetained != nil {
 			if code := nativeFeedRetainedResponseCode(r, err); code != 0 {
@@ -2292,7 +2349,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				if e != nil {
 					break
 				}
-				if retained {
+				if transfer != nil {
+					coordinator, e = nativeTransferReconnect(transfer.ctx, h, coordinator, certifiedSessions, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil, transfer)
+				} else if retained {
 					coordinator, e = pairedGraphFaultReconnect(o.stableBatch.ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil, true)
 				} else if logicalTransitions != nil && o.family != nil && moveCoordinator != nil {
 					coordinator, e = nativeTransitionMoveReconnect(ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil)

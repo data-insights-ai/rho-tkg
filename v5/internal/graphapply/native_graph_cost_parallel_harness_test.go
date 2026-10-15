@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -168,13 +169,25 @@ func nativeGraphCostCoordinatorProofWire(ctx context.Context, h *allocationHost,
 		return nil, err
 	}
 	proof := nativeGraphCostDecisionProof{Manifest: manifest}
-	proof.Outcome, err = h.machine.store.ApplicationRecord(ctx, result.decision.index, true, 64<<10)
-	if err != nil {
-		return nil, err
-	}
-	proof.CDC, err = h.machine.store.ApplicationRecord(ctx, result.decision.index, false, 1<<20)
-	if err != nil {
-		return nil, err
+	if os.Getenv(nativeTransferProcessFlag) == "1" && h.machine.SemanticContractID() == rangeMovePooledSemanticContractID() {
+		// Manifest authenticated the exact current immutable D.Index/status and
+		// R/digest, not an approximation from the caller. Deciding never emits
+		// business CDC under this actual protocol; Resolve owns those effects.
+		// Raw decision sidecars may legitimately expire after the feed ACK.
+		proof.Outcome, err = encodeCrossStatus(result.decision)
+		proof.CDC = []byte{}
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		proof.Outcome, err = h.machine.store.ApplicationRecord(ctx, result.decision.index, true, 64<<10)
+		if err != nil {
+			return nil, err
+		}
+		proof.CDC, err = h.machine.store.ApplicationRecord(ctx, result.decision.index, false, 1<<20)
+		if err != nil {
+			return nil, err
+		}
 	}
 	original, err := decodeCrossStatus(proof.Outcome)
 	if err != nil || original != result.decision || proof.CDC == nil || len(proof.CDC) != 0 {
@@ -192,8 +205,9 @@ func nativeGraphCostCoordinatorProofWire(ctx context.Context, h *allocationHost,
 // available for real sourceServe. Local clients remain independent concurrent
 // callers; this is an explicit embedding admission, not a host capacity change.
 type nativeGraphCostAdmissions struct {
-	local chan struct{}
-	cross chan struct{}
+	local    chan struct{}
+	cross    chan struct{}
+	transfer bool // explicit Cost12 only: coordinators2/3, actual peers1/4
 	// Optional immutable fresh-family policy, installed before any workers.
 	originals, same int
 	extra           func() error
@@ -215,7 +229,7 @@ func (a *nativeGraphCostAdmissions) acquire(ctx context.Context, cross bool) (fu
 		}
 	}
 	count := 1
-	if cross {
+	if cross && !a.transfer {
 		count = nativeGraphCostLocalAdmissions
 	}
 	held := 0
@@ -290,6 +304,12 @@ func nativeGraphCostClientSubmit(parent context.Context, n *certifiedProcessNetw
 	if phase == 3 {
 		actor = 4
 	}
+	coordinateActor := actor
+	if s.Version == 12 && cross && admissions != nil && admissions.transfer {
+		// Factories keep their real acquired source1 IDs. Independent callers
+		// Run on2/3, leaving actual source peers1/4 free to serve both requests.
+		coordinateActor = 2 + uint64(client%2) // #nosec G115 -- validated caller0..31.
+	}
 	var data []byte
 	if phase >= 4 {
 		data = binary.BigEndian.AppendUint64(nil, fact)
@@ -357,7 +377,7 @@ func nativeGraphCostClientSubmit(parent context.Context, n *certifiedProcessNetw
 					}
 				}
 				attempt.SubmitInvocations++
-				response, callErr := nativeGraphCostExchange(ctx, n.all[actor], processRequest{op: processSourceCoordinate, data: proposal.wire})
+				response, callErr := nativeGraphCostExchange(ctx, n.all[coordinateActor], processRequest{op: processSourceCoordinate, data: proposal.wire})
 				var result crossProcessResult
 				var decodeErr error
 				if len(response.aux) != 0 {

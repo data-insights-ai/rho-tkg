@@ -417,6 +417,9 @@ func (s *nativeColumnSource) frame(ctx context.Context, group int, index uint64)
 	if out.Outcome == nil || out.CDC == nil {
 		return out, errCorrupt
 	}
+	if h.machine.SemanticContractID() == rangeMovePooledSemanticContractID() && bytes.HasPrefix(out.Outcome, []byte("GMO\x03")) {
+		return s.moveMetadataFrame(ctx, group, out)
+	}
 	if bytes.HasPrefix(out.Outcome, []byte("GPO\x01")) || bytes.HasPrefix(out.Outcome, []byte("GGO\x01")) || retainedFeedOutcomeFor(h.machine.SemanticContractID(), out.Outcome) {
 		if s.binding.Version != 2 || !durableColumnGraphAgreement(h.machine.SemanticContractID()) {
 			return out, errInvalid

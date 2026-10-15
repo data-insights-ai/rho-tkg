@@ -49,7 +49,16 @@ COST_FIXTURES = {
 IMMUTABLE_PARENTS = ["TestNativeImmutableColumnsFreshProfileAndExactProbePredecessor", "TestNativeGraphImmutableColumnsWorkloadCell"]
 CORRECTION_PARENTS = ["TestNativeLateCorrectionHalfCohortAndHistoricalAdmission", "TestNativeGraphLateCorrectionWorkloadCell"]
 GUARDED_PARENTS = ["TestNativeGraphGuardedScalarProfilesAndCleanup", "TestNativeGraphGuardedSnapshotFeedWorkloadCell", "TestNativeGraphGuardedSnapshotSelectorsWorkloadCell"]
+TRANSFER_PARENTS = [
+    "TestNativeTransferAdmissionKeepsHardCapsAndRequiresExplicitPools",
+    "TestNativeTransferProgressNeedsAppliedPhaseOrPage",
+    "TestNativeTransferPooledRefusalBindsActualFailedCommand",
+    "TestNativeTransferDecisionProofSurvivesActualRawACKPrefixGC",
+    "TestNativeTransferColumnsJoinPooledOriginalsAndPreserveMoveCDC",
+    "TestNativeGraphTransferWorkloadCell",
+]
 COST_PARENTS = [
+    *TRANSFER_PARENTS,
     *GUARDED_PARENTS,
     *IMMUTABLE_PARENTS,
     *CORRECTION_PARENTS,
@@ -205,6 +214,26 @@ GUARDED_FIXTURES = {
 }
 for _fixture in GUARDED_FIXTURES:
     FIXTURE_COMPAT[_fixture] = [*FIXTURE_COMPAT.get(_fixture, []), *GUARDED_PARENTS]
+# Cost12 owns real allocator cursors, pooled moves, retained feed and the SAME
+# native scheduler. Keep whole parents; its explicit workload still short-skips.
+TRANSFER_FIXTURES = {
+    "native_graph_transfer_harness_test.go", "native_graph_transfer_process_test.go",
+    "native_graph_transfer_sessions_harness_test.go", "native_graph_transfer_runner_harness_test.go",
+    "native_graph_transfer_artifact_harness_test.go", "native_graph_transfer_test.go",
+    "native_graph_feed_runner_harness_test.go", "native_graph_feed_sessions_harness_test.go",
+    "native_graph_selectors_sessions_harness_test.go", "replicated_process_test.go",
+}
+for _fixture in TRANSFER_FIXTURES:
+    FIXTURE_COMPAT[_fixture] = [*FIXTURE_COMPAT.get(_fixture, []), *TRANSFER_PARENTS]
+TRANSFER_INPUTS = {
+    "tools/v5-substrate/native_transfer_cell.py", "tools/v5-substrate/native_transfer_check.py",
+    "tools/v5-substrate/native_transfer_check_test.py", "tools/v5-substrate/native_feed_check.py",
+    "tools/v5-substrate/native_feed_check_test.py", "tools/v5-substrate/native_columns_check.py",
+    "tools/v5-substrate/native_columns_check_test.py", "tools/v5-substrate/workload_matrix.py",
+    "tools/v5-substrate/workload_matrix_test.py", "tools/v5-substrate/paired_workload_check.py",
+    "tools/v5-substrate/paired_workload_cell.py", "tools/v5-substrate/paired_workload_check_test.py",
+    "tools/v5-substrate/fdb_transfer_check.py", "tools/v5-substrate/fdb_transfer_check_test.py",
+}
 GUARDED_INPUTS = {"tools/v5-substrate/native_guarded_scalar_check.py", "tools/v5-substrate/native_guarded_scalar_cell.py",
                   "tools/v5-substrate/native_guarded_scalar_test.py", "tools/v5-substrate/native_feed_check.py",
                   "tools/v5-substrate/native_selectors_check.py", "tools/v5-substrate/native_feed_cell.py",
@@ -372,7 +401,7 @@ def graph_selection(directory, changed, definitions):
         if helpers and path.name in ("native_graph_transition_conjunction_initial_test.go", "native_graph_transition_conjunction_first_prepare_test.go"):
             tests |= set(FIXTURE_COMPAT[path.name])
             helpers = set()
-        if helpers and path.name in GUARDED_FIXTURES:
+        if helpers and path.name in GUARDED_FIXTURES | TRANSFER_FIXTURES:
             # Private lifecycle/read reducers are reached through explicit
             # profile wrappers; one textual hop misses actual consumers.
             tests |= set(FIXTURE_COMPAT[path.name])
@@ -682,6 +711,8 @@ def cdc(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_guarded_scalar_test.py"], cwd=ROOT, check=True)
     if PAIR_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/paired_workload_check_test.py"], cwd=ROOT, check=True)
+    if TRANSFER_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transfer_check_test.py"], cwd=ROOT, check=True)
 
 
 def focused_dispatch_base(event, kind, head):
