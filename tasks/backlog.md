@@ -863,9 +863,17 @@ original-result or routing authority. Authored guards cover partial/lost
 transition recovery, immutable retry refusal, held-view collection barriers,
 actual GC, incoming-bank audit, reopen and the next unread before/after values.
 Ordinary predecessor error coordinates and older feed formats remain unchanged.
-The OS-child workload/GC adapter remains implementation work. Report conservative
-native retention and any additional generic At availability as actual cost and
-behavior; this does not claim FDB's physical reclamation or runtime qualification.
+The Go OS-child workload/GC lifecycle is source-integrated at `1afd0335`:
+all six native collectors, an actual unread suffix across collection, SAME
+Page/ACK after client loss, same-directory cohort recovery and a genuine post-GC
+checkpoint column generation. C-dependent generations retire before collection;
+setup transactions remain separate from useful create/update timing. Explicit
+fresh snapshot allowances and common presence-row validation preserve the older
+profiles. The independent sparse-source checker, owned launcher/matrix route and
+matched FDB retained-only adapter remain implementation work. This Go checkpoint
+has not been compiled or executed. Report conservative native retention and any
+additional generic At availability as actual cost and behavior; this does not
+claim FDB's physical reclamation or runtime qualification.
 
 The native selector family is source-integrated at `330aaf89`: fourteen actual
 Fresh/Stable/After/At, scoped-refusal and same-token reopen observations join
