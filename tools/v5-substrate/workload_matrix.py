@@ -40,7 +40,7 @@ def require(condition, message):
 def implemented(family, engine, transport, owned=False):
     return (family in IMPLEMENTED and (transport == "local" or owned and family == "snapshot-to-feed") if engine == "foundationdb" else
             family == "contention-empty-range" and (engine == "native-raft" or engine == "paired" and transport == "local")
-            or family == "cross-edge-endpoint-uniqueness" and engine in ("native-raft", "paired") and transport == "local")
+            or family == "cross-edge-endpoint-uniqueness" and (engine == "native-raft" or engine == "paired" and transport == "local"))
 
 
 def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("foundationdb",), owned=False):
@@ -132,17 +132,21 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
             import native_workload_cell as native
         native.preflight(spec, transport, seconds, memory, cell["engine"])
         native_binary, watchdog = native.executables(native_binary, watchdog)
+        # The fresh edge adapter supplies the actual bounded workload owner
+        # also at0ms. Legacy direct local-v1 execution remains available and
+        # its original admission bytes are never upgraded in place.
+        native_options = {"owned_transport": True} if spec["family"] == "cross-edge-endpoint-uniqueness" else {}
         # Verify both local adapters before either engine starts. Unsupported
         # FDB shaping never turns into a nominally paired RTT result.
         if cell["engine"] == "paired": preflight(spec, run, "foundationdb", transport)
         destination = Path(output)
         if cell["engine"] == "native-raft":
-            native.execute(spec, transport, destination, native_binary, watchdog, seconds, memory, policy, run=run)
+            native.execute(spec, transport, destination, native_binary, watchdog, seconds, memory, policy, run=run, **native_options)
             receipt = native.bounded_json(destination / "receipt.json")
             proof, artifacts = receipt["proof"], str((destination / "engine").resolve(strict=True))
         else:
             destination.mkdir(mode=0o700, parents=False, exist_ok=False)
-            native.execute(spec, transport, destination / "native", native_binary, watchdog, seconds, memory, policy, run=run)
+            native.execute(spec, transport, destination / "native", native_binary, watchdog, seconds, memory, policy, run=run, **native_options)
             execute({**cell, "engine": "foundationdb"}, destination / "fdb", seconds, profile, memory, spool_disk, spool_cache, grant_origin)
             fdb = native.bounded_json(destination / "fdb/verified.json")
             proof = native.compare(destination / "native", fdb["artifacts"], destination, policy)

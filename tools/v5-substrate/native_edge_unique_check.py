@@ -34,6 +34,8 @@ raw = module("edge_native_raw", "compare-cost-cdc.py")
 typed = module("edge_native_typed_codec", "check-p05-history.py")
 require, integer, fields, blob, encoded = raw.require, raw.integer, raw.fields, raw.raw_bytes, raw.go_json
 FORMAT, FAMILY, LINE, MAX_SECONDS = "native-edge-endpoint-unique-v1", "cross-edge-endpoint-uniqueness", 512 << 10, 365*24*60*60
+TRANSPORT_FORMAT = "native-edge-endpoint-unique-transport-v2"
+TRANSPORTS = {"local": 0, "rtt-1ms": 1, "rtt-20ms": 20, "rtt-100ms": 100}
 ZERO = {"Present": False, "Null": False, "Handle": 0, "Value": 0, "Revision": 0, "Provenance": 0}
 
 
@@ -72,6 +74,47 @@ def shape(s):
 def frames(s):
     n = shape(s)["facts"]
     return (9*n+7)*10+3*n+2*n+4*((n+15)//16+16)+256+4*32+64*10+128
+
+
+def causal_minimum(s, rtt_millis):
+    shape(s)
+    require(type(rtt_millis) is int and rtt_millis in TRANSPORTS.values(), "actual native edge RTT profile")
+    # The N FreezeOld source captures and seven setup/life Runs form actual
+    # sequential chains. Each requires >=one remote authenticated source RTT.
+    return (s["facts"]+7)*rtt_millis
+
+
+def owned_transport(receipts, s):
+    require(type(receipts) is list and len(receipts) == 2, "both actual transport process cohorts")
+    selected, maximum = None, frames(s)*4096
+    for r in receipts:
+        fields(r, "Version Spec Raft SourceRequest SourceReply MaximumHeldFrames MaximumHeldBytes MetadataBytes PipeWrites PipeReads Scope")
+        t = r["Spec"]
+        fields(t, "kind targetRTTMillis jitterMillis seed")
+        require(integer(r["Version"], 1, 1) and integer(t["seed"], 20261009, 20261009)
+                and integer(t["jitterMillis"], 0, 0) == 0 and integer(t["targetRTTMillis"]) in TRANSPORTS.values()
+                and t["kind"] == ("local" if t["targetRTTMillis"] == 0 else "injected-rtt"), "actual fixed native owned transport")
+        require(selected is None or selected == t, "restart cannot change admitted transport")
+        selected = t
+        require(integer(r["MetadataBytes"], 32768, 32768) and integer(r["MaximumHeldFrames"], 1, 128)
+                and integer(r["MaximumHeldBytes"], 32768, 8 << 20)
+                and "not native delivery/ACK" in r["Scope"] and "no physical network claim" in r["Scope"], "bounded retained scheduler ownership and truthful delay scope")
+        half = t["targetRTTMillis"]*500000
+        for name in ("Raft", "SourceRequest", "SourceReply"):
+            l = r[name]
+            fields(l, "Admitted Completed Canceled Bytes ConfiguredNanos ObservedNanos DeviationNanos MinimumObservedNanos MaximumObservedNanos")
+            for value in l.values(): integer(value)
+            require(0 < l["Admitted"] <= maximum and l["Completed"]+l["Canceled"] == l["Admitted"]
+                    and l["Bytes"] <= l["Admitted"]*(2 << 20) and l["ConfiguredNanos"] == l["Admitted"]*half
+                    and l["MinimumObservedNanos"] <= l["MaximumObservedNanos"] <= l["ObservedNanos"]
+                    and (not l["Completed"] or l["MinimumObservedNanos"] >= half), "actual settled half-RTT/cancellation/counter union")
+        for name in ("PipeWrites", "PipeReads"):
+            l = r[name]
+            fields(l, "AttemptedFrames CompleteFrames FailedFrames PrepaidBytes ActualBytes")
+            for value in l.values(): integer(value)
+            require(0 < l["AttemptedFrames"] <= maximum and l["CompleteFrames"]+l["FailedFrames"] == l["AttemptedFrames"]
+                    and 0 < l["ActualBytes"] <= l["PrepaidBytes"] <= l["AttemptedFrames"]*((2 << 20)+4), "actual bounded parent/child framed IO including failure/Close")
+    return selected
 
 
 def cut(value):
@@ -796,7 +839,7 @@ def verify(directory, spool_directory, policy, *, binary_sha=None, expected_spec
     with (directory/"result.json").open("rb") as source: body = source.read(LINE+1)
     require(body.endswith(b"\n") and len(body) <= LINE, "bounded complete terminal native result")
     end = decoded(body[:-1]);s = shape(end["spec"])
-    require(integer(end["version"], 1, 1) and end["format"] == FORMAT and end["engine"] == "native-raft" and integer(end["FramesCeiling"], 1) == frames(s), "fresh family/result/complete issued ceiling")
+    require(integer(end["version"], 1, 1) and end["format"] in (FORMAT, TRANSPORT_FORMAT) and end["engine"] == "native-raft" and integer(end["FramesCeiling"], 1) == frames(s), "fresh family/result/complete issued ceiling")
     require(Path(end["ArtifactDirectory"]).resolve(strict=True) == directory and not Path(end["Directory"]).is_symlink()
             and Path(end["Directory"]).resolve(strict=True).parent == directory, "owned genuine durable/artifact roots")
     cuts = {name: cut(end[name]) for name in ("Initial", "Old", "Final", "BeforeStop", "Replayed")}
@@ -805,9 +848,23 @@ def verify(directory, spool_directory, policy, *, binary_sha=None, expected_spec
                 and [cuts[name][group]["sourceIndex"] for name in cuts] == sorted(cuts[name][group]["sourceIndex"] for name in cuts)
                 and cuts["Replayed"][group]["sourceIndex"] <= frames(s), "actual original scopes/configuration, monotone cuts and finite frame ceiling")
     a = end["Admission"]
-    require(integer(a["Version"], 1, 1) and a["Family"] == FAMILY and a["Spec"] == {"version": 4, **{k: s[k] for k in ("facts", "crossPercent", "writers")}}
-            and a["Transport"] == "local" and integer(a["CausalMinimumMillis"], 0, 0) == 0 and integer(a["BudgetSeconds"], 1, MAX_SECONDS)
+    shaped = end["format"] == TRANSPORT_FORMAT
+    selected = owned_transport(end["Transport"], s) if shaped else None
+    require(integer(a["Version"], 2 if shaped else 1, 2 if shaped else 1) and a["Family"] == FAMILY and a["Spec"] == {"version": 4, **{k: s[k] for k in ("facts", "crossPercent", "writers")}}
+            and a["Transport"] == (TRANSPORT_FORMAT if shaped else "local") and integer(a["BudgetSeconds"], 1, MAX_SECONDS)
             and integer(a["DeadlineUnixNanos"], 1, (1 << 63)-1), "actual immutable local family/budget/deadline admission")
+    if shaped:
+        fields(a, "Version Family Run Spec Transport BudgetSeconds CausalMinimumMillis DeadlineUnixNanos OwnedTransport Graph Topology Declaration BinarySHA256")
+        require(a["OwnedTransport"] == selected and integer(a["CausalMinimumMillis"]) == causal_minimum(s, selected["targetRTTMillis"])
+                and a["BudgetSeconds"]*1000 > a["CausalMinimumMillis"] and a["BinarySHA256"] == end["BinarySHA256"]
+                and type(a["BinarySHA256"]) is str and len(a["BinarySHA256"]) == 64 and bytes.fromhex(a["BinarySHA256"]).hex() == a["BinarySHA256"], "same actual binary, chosen original budget and necessary causal RTT floor")
+        for group in range(2):
+            scope = cuts["Initial"][group]["scope"]
+            require(array(a["Graph"], 16) == scope[:16] and integer(a["Topology"], 1) == int.from_bytes(scope[48:56], "big")
+                    and array(a["Declaration"], 32) == scope[56:88], "admitted graph/topology/declaration matches actual acquired native certificates")
+    else:
+        fields(a, "Version Family Run Spec Transport BudgetSeconds CausalMinimumMillis DeadlineUnixNanos")
+        require(integer(a["CausalMinimumMillis"], 0, 0) == 0 and "Transport" not in end, "legacy local wire profile remains exact")
     require(type(a["Run"]) is str and len(a["Run"]) == 32 and bytes.fromhex(a["Run"]).hex() == a["Run"] and any(bytes.fromhex(a["Run"])), "fresh actual run identity")
     for expected, actual in ((binary_sha, end["BinarySHA256"]), (expected_spec, s), (expected_run, a["Run"]), (expected_deadline, a["DeadlineUnixNanos"]), (expected_seconds, a["BudgetSeconds"])):
         require(expected is None or expected == actual, "actual controller source/run/budget mismatch")
@@ -844,5 +901,6 @@ def verify(directory, spool_directory, policy, *, binary_sha=None, expected_spec
                 answers.update(u64(fact)+u64(target)+u64(target_life)+struct.pack(">q", fact+5))
         require(len(latency) == 3, "all bounded spool percentile ranks")
         return {"spec": s, "run": a["Run"], "counts": counts, "logicalAnswersSHA256": answers.hexdigest(),
+                **({"transport": selected, "CausalMinimumMillis": a["CausalMinimumMillis"], "BudgetSeconds": a["BudgetSeconds"]} if shaped else {}),
                 "timing": {**latency, "logicalOperations": count, "usefulTransactionsPerSecond": end["Commits"]*1_000_000_000/end["BusinessNanos"]},
                 "scope": "one actual native source cell; complete fixed original/cell/index/CDC/column/cache/reopen joins; runtime acceptance and full matrix remain separate"}

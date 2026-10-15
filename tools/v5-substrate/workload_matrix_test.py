@@ -76,7 +76,9 @@ class WorkloadMatrixGuards(unittest.TestCase):
 
         for engine in ("native-raft", "paired"):
             self.assertEqual(matrix.preflight(edges, run, engine, "local"), edges)
-            with self.assertRaises(ValueError): matrix.preflight(edges, run, engine, "rtt-1ms")
+        for delay in ("rtt-1ms", "rtt-20ms", "rtt-100ms"):
+            self.assertEqual(matrix.preflight(edges, run, "native-raft", delay), edges)
+            with self.assertRaises(ValueError): matrix.preflight(edges, run, "paired", delay)
         for changed, nonce in (({**spec, "family": "snapshot-selectors"}, run), ({**spec, "family": "snapshot-to-feed"}, run), ({**spec, "family": "transfer-retained-pins"}, run), (spec, "00" * 16), ({**spec, "writers": True}, run)):
             with self.assertRaises(ValueError):
                 matrix.preflight(changed, nonce)

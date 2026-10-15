@@ -55,6 +55,14 @@ func nativeGraphEdgeUniqueProfile(s nativeGraphCostSpec, init *declaredInitComma
 		return err
 	}
 	init.maxBlock = block
+	if enabled, e := nativeGraphEdgeUniqueTransportEnabled(); e != nil {
+		return e
+	} else if enabled {
+		expected, e := nativeGraphEdgeUniqueTransportDeclaration()
+		if e != nil || init.declaration.Digest() != expected.Digest() {
+			return errors.Join(errInvalid, e)
+		}
+	}
 	// Explicit new family quota only. Real log/application/RS2/index/original
 	// accounting still refuses before effects; these are not RSS/capacity claims.
 	frames, err := nativeGraphEdgeUniqueFrames(s)

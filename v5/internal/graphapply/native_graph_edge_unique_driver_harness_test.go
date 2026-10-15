@@ -383,7 +383,7 @@ func newNativeGraphEdgeUniqueNetwork(t *testing.T, spec nativeGraphCostSpec, dea
 	for id := uint64(1); id <= 6; id++ {
 		n.all[id] = startGraphProcess(t, filepath.Join(dir, fmt.Sprint(id)), id, "RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1", "RHO_GRAPH_EDGE_UNIQUE_PROCESS=1", "RHO_GRAPH_NATIVE_WORKLOAD=", "RHO_GRAPH_COST_SPEC="+string(wire), "RHO_GRAPH_WORKLOAD_RUN="+os.Getenv("RHO_GRAPH_WORKLOAD_RUN"), "RHO_GRAPH_WORKLOAD_SECONDS="+strconv.FormatUint(seconds, 10), "RHO_GRAPH_WORKLOAD_DEADLINE="+strconv.FormatInt(deadline.UnixNano(), 10))
 	}
-	attachNativeColumnProcessNetwork(t, n, spec)
+	attachNativeGraphEdgeUniqueNetwork(t, n, spec, deadline)
 	t.Cleanup(func() {
 		for _, p := range n.all {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -450,6 +450,11 @@ type nativeGraphEdgeUniqueRunBinding struct {
 	Transport                          string
 	BudgetSeconds, CausalMinimumMillis uint64
 	DeadlineUnixNanos                  int64
+	OwnedTransport                     *nativeWorkloadTransportSpec `json:",omitzero"`
+	Graph                              [16]byte                     `json:",omitzero"`
+	Topology                           uint64                       `json:",omitzero"`
+	Declaration                        [32]byte                     `json:",omitzero"`
+	BinarySHA256                       string                       `json:",omitempty"`
 }
 
 func nativeGraphEdgeUniqueAdmission(spec nativeGraphCostSpec) (binding nativeGraphEdgeUniqueRunBinding, digest [32]byte, err error) {
@@ -466,11 +471,21 @@ func nativeGraphEdgeUniqueAdmission(spec nativeGraphCostSpec) (binding nativeGra
 	if e != nil || len(nonce) != 16 || hex.EncodeToString(nonce) != run || bytes.Equal(nonce, make([]byte, 16)) {
 		return binding, digest, errInvalid
 	}
+	enabled, e := nativeGraphEdgeUniqueTransportEnabled()
+	if e != nil {
+		return binding, digest, e
+	}
 	transport := os.Getenv("RHO_GRAPH_WORKLOAD_TRANSPORT")
-	if transport != "" && transport != "local" {
+	if !enabled && transport != "" && transport != "local" {
 		return binding, digest, errInvalid
 	}
 	binding = nativeGraphEdgeUniqueRunBinding{Version: 1, Family: nativeGraphEdgeUniqueFamily, Run: run, Spec: spec, Transport: "local", BudgetSeconds: seconds, DeadlineUnixNanos: deadline.UnixNano()}
+	if enabled {
+		binding, e = nativeGraphEdgeUniqueOwnedAdmission(binding)
+		if e != nil {
+			return binding, digest, e
+		}
+	}
 	body, e := json.Marshal(binding)
 	if e != nil {
 		return binding, digest, e

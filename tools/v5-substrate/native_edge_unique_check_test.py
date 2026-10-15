@@ -48,8 +48,28 @@ class NativeEdgeUniqueGuards(unittest.TestCase):
 
     def test_unsupported_transport_refuses_before_controller_effects(self):
         controller.preflight(self.spec, "local", 1800, 4096, "paired")
-        for transport, seconds, engine in (("rtt-1ms", 1800, "native-raft"), ("local", True, "native-raft"), ("local", 1801, "paired")):
+        for delay in ("rtt-1ms", "rtt-20ms", "rtt-100ms"):
+            self.assertEqual(controller.preflight(self.spec, delay, 1800, 4096)["targetRTTMillis"], checker.TRANSPORTS[delay])
+        for transport, seconds, engine in (("rtt-1ms", 1800, "paired"), ("local", True, "native-raft"), ("local", 1801, "paired"), ("rtt-100ms", 2, "native-raft")):
             with self.assertRaises(ValueError): controller.preflight(self.spec, transport, seconds, 4096, engine)
+
+    def test_owned_transport_counter_union_and_restart_identity(self):
+        # Inert scalar codec fixtures, never an observed transport receipt.
+        delay = {"Admitted": 2, "Completed": 1, "Canceled": 1, "Bytes": 20,
+                 "ConfiguredNanos": 20_000_000, "ObservedNanos": 10_000_001,
+                 "DeviationNanos": 1, "MinimumObservedNanos": 10_000_001, "MaximumObservedNanos": 10_000_001}
+        pipe = {"AttemptedFrames": 2, "CompleteFrames": 1, "FailedFrames": 1, "PrepaidBytes": 100, "ActualBytes": 80}
+        t = {"kind": "injected-rtt", "targetRTTMillis": 20, "jitterMillis": 0, "seed": 20261009}
+        receipt = {"Version": 1, "Spec": t, "Raft": delay, "SourceRequest": delay, "SourceReply": delay,
+                   "MaximumHeldFrames": 2, "MaximumHeldBytes": 33000, "MetadataBytes": 32768,
+                   "PipeWrites": pipe, "PipeReads": pipe, "Scope": "not native delivery/ACK; no physical network claim"}
+        self.assertEqual(checker.owned_transport([receipt, receipt], self.spec), t)
+        for path, value in ((('Raft', 'Completed'), 2), (('Raft', 'Admitted'), True),
+                            (('SourceReply', 'ConfiguredNanos'), 40_000_000),
+                            (('PipeReads', 'ActualBytes'), 101), (('Spec', 'targetRTTMillis'), 100)):
+            broken = copy.deepcopy(receipt);broken[path[0]][path[1]] = value
+            with self.assertRaises(ValueError): checker.owned_transport([receipt, broken], self.spec)
+        with self.assertRaises(ValueError): checker.owned_transport([receipt], self.spec)
 
 
 if __name__ == "__main__":

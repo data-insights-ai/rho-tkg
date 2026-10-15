@@ -169,7 +169,7 @@ func nativeGraphEdgeUniqueSources(t *testing.T, ctx context.Context, n *certifie
 	return rows
 }
 
-func nativeGraphEdgeUniqueRestart(t *testing.T, n *certifiedProcessNetwork, spec nativeGraphCostSpec, deadline time.Time, seconds uint64, stream, states *json.Encoder) {
+func nativeGraphEdgeUniqueRestart(t *testing.T, n *certifiedProcessNetwork, spec nativeGraphCostSpec, deadline time.Time, seconds uint64, stream, states *json.Encoder) nativeWorkloadTransportReceipt {
 	t.Helper()
 	nativeGraphCostDrain(t, n)
 	var before [6]processResponse
@@ -184,8 +184,13 @@ func nativeGraphEdgeUniqueRestart(t *testing.T, n *certifiedProcessNetwork, spec
 			t.Fatal(err)
 		}
 	}
+	oldHub := n.all[1].mux.hub
 	if nativeGraphCostStop(t, n, 1, stream) != 6 {
 		t.Fatal("original six child cohort not reaped")
+	}
+	var receipt nativeWorkloadTransportReceipt
+	if oldHub.workload != nil {
+		receipt = oldHub.workload.receipt(oldHub)
 	}
 	encoded, err := json.Marshal(spec)
 	if err != nil {
@@ -194,7 +199,7 @@ func nativeGraphEdgeUniqueRestart(t *testing.T, n *certifiedProcessNetwork, spec
 	for id := uint64(1); id <= 6; id++ {
 		n.all[id] = startGraphProcess(t, filepath.Join(n.dir, fmt.Sprint(id)), id, "RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1", "RHO_GRAPH_EDGE_UNIQUE_PROCESS=1", "RHO_GRAPH_PROCESS_REOPEN=1", "RHO_GRAPH_NATIVE_WORKLOAD=", "RHO_GRAPH_COST_SPEC="+string(encoded), "RHO_GRAPH_WORKLOAD_RUN="+os.Getenv("RHO_GRAPH_WORKLOAD_RUN"), "RHO_GRAPH_WORKLOAD_SECONDS="+strconv.FormatUint(seconds, 10), "RHO_GRAPH_WORKLOAD_DEADLINE="+strconv.FormatInt(deadline.UnixNano(), 10))
 	}
-	attachNativeColumnProcessNetwork(t, n, spec)
+	attachNativeGraphEdgeUniqueNetwork(t, n, spec, deadline)
 	for id := uint64(1); id <= 6; id++ {
 		actual, old := n.all[id].call(t, processRequest{op: processStateOp}), before[id-1]
 		if actual.incarnation == old.incarnation || actual.applied != old.applied || !bytes.Equal(actual.image, old.image) || actual.stats[statViews] != 0 || actual.stats[statPinnedBytes] != 0 || actual.stats[statGeneration] != old.stats[statGeneration] || actual.stats[statCommit] != old.stats[statCommit] {
@@ -213,6 +218,7 @@ func nativeGraphEdgeUniqueRestart(t *testing.T, n *certifiedProcessNetwork, spec
 		n.groups[group].event(t, leader, processRequest{op: processCampaign})
 		n.read(t, leader, observeConfiguration, 0)
 	}
+	return receipt
 }
 
 func nativeGraphEdgeUniqueReplay(t *testing.T, d *nativeGraphEdgeUniqueDriver, original nativeGraphEdgeUniqueAttempt, stream *json.Encoder) {

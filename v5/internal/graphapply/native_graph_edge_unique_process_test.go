@@ -69,6 +69,7 @@ type nativeGraphEdgeUniqueResult struct {
 	SetupNanos, BusinessNanos, DiagnosticNanos int64
 	OccupiedDiagnosticNanos                    int64
 	GrantReplays                               int
+	Transport                                  []nativeWorkloadTransportReceipt `json:",omitempty"`
 	Scope                                      string
 }
 
@@ -78,8 +79,13 @@ func TestNativeGraphEdgeUniqueWorkloadCell(t *testing.T) {
 	if testing.Short() {
 		t.Skip("explicit full native workload excluded from routine short gates")
 	}
-	if os.Getenv("RHO_GRAPH_NATIVE_WORKLOAD") != nativeGraphEdgeUniqueFormat {
+	format := os.Getenv("RHO_GRAPH_NATIVE_WORKLOAD")
+	if format != nativeGraphEdgeUniqueFormat && format != nativeGraphEdgeUniqueTransportFormat {
 		t.Skip("explicit fresh edge family required")
+	}
+	shaped, err := nativeGraphEdgeUniqueTransportEnabled()
+	if err != nil || shaped != (format == nativeGraphEdgeUniqueTransportFormat) {
+		t.Fatal("explicit transport profile/format mismatch", err)
 	}
 	spec, err := nativeGraphEdgeUniqueSpecFromEnv()
 	if err != nil {
@@ -127,7 +133,10 @@ func TestNativeGraphEdgeUniqueWorkloadCell(t *testing.T) {
 	winners, _ := open("winners.jsonl")
 	frozen, _ := open("frozen.jsonl")
 	closes, closeWriter := open("close-originals.jsonl")
-	result := nativeGraphEdgeUniqueResult{Version: 1, Format: nativeGraphEdgeUniqueFormat, Engine: "native-raft", Spec: spec, Admission: admission, BinarySHA256: nativeContentionExecutableSHA(t), Directory: n.dir, ArtifactDirectory: output, ProcessInstances: 12}
+	result := nativeGraphEdgeUniqueResult{Version: 1, Format: format, Engine: "native-raft", Spec: spec, Admission: admission, BinarySHA256: nativeContentionExecutableSHA(t), Directory: n.dir, ArtifactDirectory: output, ProcessInstances: 12}
+	if shaped {
+		result.Transport = make([]nativeWorkloadTransportReceipt, 2)
+	}
 	result.FramesCeiling, err = nativeGraphEdgeUniqueFrames(spec.cost())
 	if err != nil {
 		t.Fatal(err)
@@ -248,7 +257,10 @@ func TestNativeGraphEdgeUniqueWorkloadCell(t *testing.T) {
 	if result.SourceRows[0]+result.SourceRows[1] != 5*spec.Facts+7 {
 		t.Fatal("native typed CDC exact full census", result.SourceRows)
 	}
-	nativeGraphEdgeUniqueRestart(t, n, spec.cost(), deadline, admission.BudgetSeconds, processes, states)
+	firstTransport := nativeGraphEdgeUniqueRestart(t, n, spec.cost(), deadline, admission.BudgetSeconds, processes, states)
+	if shaped {
+		result.Transport[0] = firstTransport
+	}
 	nativeGraphEdgeUniquePoints(t, n, spec.cost(), winners, old, false, "reopened-old", points)
 	nativeGraphEdgeUniquePoints(t, n, spec.cost(), winners, final, true, "reopened-final", points)
 	nativeGraphEdgeUniqueReplay(t, d, last, duplicates)
@@ -280,6 +292,9 @@ func TestNativeGraphEdgeUniqueWorkloadCell(t *testing.T) {
 	}
 	result.ExtraInvocations = d.extra
 	result.Reaped = nativeGraphCostStop(t, n, 2, processes)
+	if shaped {
+		result.Transport[1] = n.all[1].mux.hub.workload.receipt(n.all[1].mux.hub)
+	}
 	for member := uint64(1); member <= 6; member++ {
 		logical, allocated, err := nativeGraphCostFileBytes(filepath.Join(n.dir, fmt.Sprint(member)))
 		if err != nil || !nativeColumnAdd(result.PersistedFileBytes, logical) || !nativeColumnAdd(result.AllocatedFileBytes, allocated) {
