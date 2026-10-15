@@ -490,6 +490,10 @@ bounded independent checker. A finite owned transport delays the real native
 Raft/source frames and records queue, framing and cancellation costs. Explicit
 chosen run budgets bind the original deadline; they are not performance promises.
 The controller supports native local/1/20/100ms and paired local FDB answers.
+Its retain-all record allowance is corrected at `7d4f62c9`: each entry funds
+256 keyed/control writes plus Root/Outcome/CDC and the enabled recovery envelope
+(260 records). The authored guard derives that extra record from the native
+recovery API; neither this quota nor the correction is runtime qualification.
 The dispatcher schedules all eight families and local/1/20/100ms profiles.
 FDB executes contention, selectors, snapshot-to-feed and cross-edge uniqueness/local; native executes
 the contention family. Unsupported semantics or transport refuse before effects.
