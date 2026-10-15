@@ -495,15 +495,15 @@ recovery API; neither this quota nor the correction is runtime qualification.
 The dispatcher schedules all eight families and local/1/20/100ms profiles.
 FDB has source drivers for contention, selectors, snapshot-to-feed,
 cross-edge uniqueness, immutable columns and late correction; their fresh owned transport adapters cover
-local/1/20/100ms. Native has contention, cross-edge and snapshot-to-feed source
-drivers across local/1/20/100ms, with local paired comparisons. Unsupported semantics
+local/1/20/100ms. Native has contention, cross-edge, snapshot-to-feed and selector
+source drivers across local/1/20/100ms, with local paired comparisons. Unsupported semantics
 or transport refuse before effects.
 Each family/transport matrix contains 360 fresh cells; the complete eight-family,
 four-transport matrix contains 11,520 cells per engine.
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
 No new cell, guard or runtime gate has run. The two remaining FDB family drivers
 (partition-local and transfer/retained-pins), and native partition-local,
-snapshot-selectors, immutable-columns, late-correction and transfer/retained-pins
+immutable-columns, late-correction and transfer/retained-pins
 drivers remain implementation work. Full matrix qualification and the engine
 decision remain open.
 The FDB transfer prerequisite is source-integrated at `d13cc3eb`: a fresh
@@ -792,18 +792,30 @@ without emitting duplicate business changes. Its authored guard distinguishes
 that new retry from an expired historical frame. Source integration is not
 runtime qualification.
 
+The native selector family is source-integrated at `330aaf89`: fourteen actual
+Fresh/Stable/After/At, scoped-refusal and same-token reopen observations join
+complete historical/current postings, typed points, all-voter raw originals and
+native column/cache generations. Independent bounded joins authenticate actual
+reservation/install originals and each fresh claim's installed grant. Whole
+Open/Scan-through-EOF/Points wall times include retries and artifact callbacks.
+The retained-C contract supports native local/1/20/100ms and paired local only.
+Normal source cancellation and terminal cleanup have separate fixed admission;
+the outer worker router still needs to classify `release` alongside `close` as
+terminal control. This source package has not been compiled or executed.
+
 The scalar native workload factory builds fresh claims from authenticated,
 installed grant references; it does not call `Recipient`/`Cursor.Next`. Keep
 reservation, installation, fresh application claims and cursor issuance distinct
 in the allocator cost comparison. Source review also found that the shared feed
 checker hashes `grants.jsonl` without independently joining its full reserve and
-install originals. The selector implementation is adding that bounded join;
+install originals. The selector implementation now supplies that bounded join;
 the feed follow-up must reuse it before comparative qualification. Neither
 expected numeric IDs nor an artifact hash establishes cursor issuance.
 
-Current worker lanes: Sol 6.1/high for the remaining native workload families,
-starting with snapshot selectors after the feed integration; Sol 6.1/high for
-graph-composed stable-storage transitions and concrete production gaps;
+Current worker lanes: Sol 6.1/high for the selector terminal-router correction,
+then native retained-only feed ownership/GC and remaining native workload families;
+Sol 6.1/high for actual publication and retention-reader storage transitions,
+then broader protocol/message/leader/conflict composition;
 Sol 6.1/high for the remaining FDB workload families, starting with the actual
 transfer process driver. These packages
 are in implementation and do not add accepted runtime evidence. The
