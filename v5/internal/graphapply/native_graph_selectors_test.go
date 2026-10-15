@@ -68,6 +68,28 @@ func TestNativeSelectorsAdmissionAndPrivateReadIdentity(t *testing.T) {
 			t.Fatal("noncanonical caller frame", err)
 		}
 	}
+	for _, action := range []string{"close", "release", "publish", "scan"} {
+		q := nativeSelectorsInput{Version: 1, Action: action, Handle: 1}
+		if action == "scan" {
+			q.Sequence = 1
+		}
+		wire, err := nativeSelectorsInputWire(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := processRequest{op: processCostObserve, data: wire}
+		if got, want := nativeSelectorsTerminalControl(r), action == "close" || action == "release"; got != want {
+			t.Fatal("canonical terminal worker classification", action, got)
+		}
+		r.data = append(wire, 'x')
+		if nativeSelectorsTerminalControl(r) {
+			t.Fatal("malformed request obtained terminal worker")
+		}
+		r = processRequest{op: processSourceServe, data: wire}
+		if nativeSelectorsTerminalControl(r) {
+			t.Fatal("ordinary source request obtained selector terminal worker")
+		}
+	}
 	for _, q := range []nativeSelectorsInput{
 		{Version: 1, Action: "scan", Handle: 1},
 		{Version: 1, Action: "scan", Handle: 1, Sequence: 1, IDs: []uint64{7}},

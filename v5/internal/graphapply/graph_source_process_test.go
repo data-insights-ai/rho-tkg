@@ -1672,11 +1672,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		return nil
 	}
 	isSourceClose := func(r processRequest) bool {
-		if selectors != nil && r.op == processCostObserve && bytes.HasPrefix(r.data, []byte(nativeSelectorsMarker)) {
-			q, err := nativeSelectorsInputDecode(r)
-			if err == nil && q.Action == "close" {
-				return true
-			}
+		if selectors != nil && nativeSelectorsTerminalControl(r) {
+			return true
 		}
 		if feed != nil && r.op == processCostObserve && bytes.HasPrefix(r.data, []byte(nativeFeedMarker)) {
 			q, err := nativeFeedInputDecode(r)

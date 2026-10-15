@@ -116,6 +116,14 @@ func nativeSelectorsInputDecode(r processRequest) (q nativeSelectorsInput, err e
 	return q, nil
 }
 
+// The declared selector client runs on member2 and its native terminal RPCs
+// target keepers1/4. Both canonical local Close and durable Release need the
+// existing control worker independently of saturated normal read workers.
+func nativeSelectorsTerminalControl(r processRequest) bool {
+	q, err := nativeSelectorsInputDecode(r)
+	return err == nil && (q.Action == "close" || q.Action == "release")
+}
+
 type nativeSelectorsQuery struct {
 	cancel       context.CancelFunc
 	request      [16]byte
