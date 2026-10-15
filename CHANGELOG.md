@@ -29,7 +29,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestUntimedValidStartModes` (memory, badger, sharded, tiered; both modes; every create door incl. `GetOrCreateByKey`;
   update, close, excise; the indexed, counting and paged doors against the per-entity fold; reopen, legacy, empty store,
   conversion, interrupted conversion), `TestHFIndexBucketForIsMonotonicAtTheExtremes`. Docs: api.md "Valid-time start
-  (Config.UntimedValidStart)".
+  (Config.UntimedValidStart)". Upgrade order: upgrade every replica, reader and importer to v4.56.0 before converting a
+  primary; an older replica stops with `unknown change tag 9`. After the primary converts, a replica configured
+  `UntimedFromTxFrom` fails its next restart with `ErrUntimedModeMismatch`: switch the replica's
+  `Config.UntimedValidStart` to `UntimedUnbounded`.
 - **Store format marker 7 for `UntimedUnbounded` stores** (backlog 73). A store created under `UntimedUnbounded`, or whose
   conversion started, raises the one marker tracker to 7 in the same transaction as its `untimed_valid_start` key (new
   optional capability `store.MetaFormatMarkerCapability`, `MetaSetDurableRaising` on badger, the tiered reference shard and
@@ -41,8 +44,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **`Config.UntimedValidStart` review fixes** (backlog 73, Opus review of 75f86596). (1) Under `ConstraintRelWithinEndpoints` an
   untimed -inf relationship compared with the endpoint's CURRENT row start, so add A, update A, add an untimed A->B failed with
-  `ErrRelBeforeStartNode` on every create door; it now compares with the endpoint's first version when that is unbounded and
-  no delete ended its life (`TestUntimedUnboundedEndpointConstraint`). (2) The conversion wrote its final mode durably before
+  `ErrRelBeforeStartNode` on every create door (`TestUntimedUnboundedEndpointConstraint`; the general fix is under Fixed:
+  the bound is the endpoint's current life). (2) The conversion wrote its final mode durably before
   the rewritten rows left the write buffer (on tiered and sharded, another shard): every shard is now flushed durably first,
   also when an open finishes a conversion (`TestUntimedConversionCrashSafe`, a crash image of the live directory on badger,
   sharded and tiered). (4) Exports carry the mode (header `uu`); an import into an empty store adopts it, into a store with rows
@@ -51,10 +54,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and a `ChangeMeta` record to one pending batch and flushes it durably; the replica applies and persists it; any other
   replicated meta key fails closed (`TestUntimedModeReplicates`). The conversion also stamps a sharded store's Model-A
   incoming stubs, and a replica applying `ChangeForeignIncoming` for an existing stub takes the record's row
-  (`TestUntimedConversionStampsForeignIncomingStubs`).
+  (`TestUntimedConversionStampsForeignIncomingStubs`). (6) Final review: a conversion cut short (ctx cancelled, a store
+  error) left the store marked converting but nothing in-process said so, so `Export` / `ExportSince` wrote `uu=false` over
+  rows partly at -inf and an empty importer adopted `UntimedFromTxFrom` with mixed rows. The graph now mirrors the mark
+  (set at open and by every write of the mode key): until the conversion finishes, `Export`, `ExportSince`, `Import`,
+  `ImportMerge` and every create of an untimed first version (standalone, tx, batch and ingest, refused before any write)
+  fail with `ErrUntimedModeMismatch`; a call on a store already unbounded is marked too
+  (`TestUntimedConversionCutShortFailsClosed`). `TestUntimedModeReplicates` now converts a node and a relationship with
+  history rows and asserts the replica's history rows equal the primary's.
 
 ### Fixed
 
+- **`ConstraintRelWithinEndpoints` holds against the endpoint's current life, not its current row** (backlog 73 final
+  review; wrong under `UntimedFromTxFrom` too). The check compared a relationship's start with the endpoint's CURRENT row
+  start, so add A, update A at `tx1`, add A->B with `tkg_valid_from = tx1-1` failed with `ErrRelBeforeStartNode` although
+  `NodeAt(A, tx1-1)` answers A; a node close checked its relationships the same way. The bound is now the start
+  (`EntityValidFrom`, both modes) of the endpoint's first version since its last delete (a re-imported ID's earlier life does
+  not count), one rule that replaces the special case for -inf. A relationship before that life starts is still refused
+  (`TestEndpointConstraintCoversCurrentLife`: memory, badger, tiered, sharded; both modes).
 - **`Admin().Reset` no longer re-arms the one-shot bitemporal migration** (backlog 73 review 3). Reset reaped
   `schema_version`, so the next open re-ran the migration over rows written after the Reset: a close row copies its version's
   start, the migration read the equal starts as an inherited legacy `ValidFrom` and cleared it, and the close row no longer
