@@ -13,6 +13,14 @@ import (
 )
 
 func TestNativeTransferAdmissionKeepsHardCapsAndRequiresExplicitPools(t *testing.T) {
+	for _, test := range []struct {
+		kind   byte
+		useful bool
+	}{{0, false}, {feedLocalEnvelope, true}, {feedCrossEnvelope, true}, {feedMoveEnvelope, false}, {255, false}} {
+		if nativeTransferUsefulPage(retainedFeedPage{kind: test.kind}) != test.useful {
+			t.Fatal("only actual local/cross business envelopes can select the unread update", test.kind)
+		}
+	}
 	for _, facts := range []uint64{40, 10000, 100000, 1000000} {
 		for _, writers := range []int{1, 8, 32} {
 			for _, cross := range []uint64{0, 10, 50, 100} {
@@ -399,6 +407,9 @@ func TestNativeTransferColumnsJoinPooledOriginalsAndPreserveMoveCDC(t *testing.T
 				if f.partition == 8 && (f.index == targetIndex || f.index <= targetIndex && f.progressNext > targetIndex) {
 					seen = true
 				}
+			}
+			if d.page.kind == feedMoveEnvelope && nativeTransferUsefulPage(d.page) {
+				t.Fatal("actual authenticated GML lineage became a useful update")
 			}
 			ack, err := owner.Ack(t.Context(), request, d.digest)
 			if err != nil {

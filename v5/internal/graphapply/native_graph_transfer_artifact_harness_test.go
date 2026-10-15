@@ -330,6 +330,12 @@ func nativeTransferDrain(c *nativeTransferClient, boundary graphCut, digest [32]
 	nativeTransferDeliver(c, boundary, digest, ordinal, result, false, false, nil)
 }
 
+// Move lineage is still emitted, counted and ACKed, but cannot satisfy the
+// useful-update stop or select the unread update held across client loss.
+func nativeTransferUsefulPage(page retainedFeedPage) bool {
+	return page.kind == feedLocalEnvelope || page.kind == feedCrossEnvelope
+}
+
 func nativeTransferDeliver(c *nativeTransferClient, boundary graphCut, digest [32]byte, ordinal *uint64, result *nativeTransferResult, stopAfterBusiness, replace bool, processes *json.Encoder) {
 	c.t.Helper()
 	wire, e := nativeFeedCutWire(boundary)
@@ -355,7 +361,7 @@ func nativeTransferDeliver(c *nativeTransferClient, boundary graphCut, digest [3
 		if !again.Replay || !bytes.Equal(again.Page, r.Page) || again.Digest != r.Digest {
 			c.t.Fatal("SAME Page changed")
 		}
-		if replace && page.kind != 0 && len(result.PendingPage) == 0 {
+		if replace && nativeTransferUsefulPage(page) && len(result.PendingPage) == 0 {
 			result.PendingRequest, result.PendingPage, result.PendingDigest = request, bytes.Clone(r.Page), r.Digest
 			nativeScalarWorkloadReplaceClient(c.t, c.ctx, c.n, processes, func() ([]string, error) { return nativeTransferChildEnv(result.Spec, result.Admission, true) })
 			result.ProcessInstances++
@@ -392,7 +398,7 @@ func nativeTransferDeliver(c *nativeTransferClient, boundary graphCut, digest [3
 		if e != nil || feedCutEqual(complete, boundary) {
 			c.t.Fatal("nonterminal page advanced complete cut", e)
 		}
-		if stopAfterBusiness && page.kind != 0 {
+		if stopAfterBusiness && nativeTransferUsefulPage(page) {
 			return
 		}
 	}
