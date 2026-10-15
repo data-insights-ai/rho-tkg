@@ -44,6 +44,8 @@ type Ops interface {
 	RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error)
 	PropertyNDV(label, propertyKey string) (storepkg.PropertyNDV, error)
 	RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV, error)
+	PropertyBounds(label, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error)
+	RelPropertyBounds(typeName, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error)
 	RelCountByType(typeName string) (int, error)
 	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
 	TrackRelTypeDegrees(typeName string) error
@@ -295,6 +297,35 @@ func (a *API) RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV
 		return storepkg.PropertyNDV{}, err
 	}
 	return ops.RelPropertyNDV(typeName, propertyKey)
+}
+
+// PropertyBounds returns the smallest and largest numeric value of
+// propertyKey over label's current nodes (store.PropertyBounds: Min, Max, a
+// stored value at each, and the exact type-class partition with Missing, so
+// NumericOnly and NullFree) read at one moment, O(1) from the property
+// index's first and last key and maintained counters. ok=false with no error
+// where it cannot be stated exactly, never answered by a walk: no property
+// index on the pair, an index being built, an Elements index, an integer of
+// magnitude past 2^53 in the index, badger PropertyIndexOnDisk, planner
+// statistics disabled, tiered, sharded and external stores, an unknown label,
+// a temporal opts. Read-only: no write cost. Errors: a malformed label or
+// key, ErrGraphClosed.
+func (a *API) PropertyBounds(label, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyBounds{}, false, err
+	}
+	return ops.PropertyBounds(label, propertyKey, opts)
+}
+
+// RelPropertyBounds is the relationship mirror of PropertyBounds over a
+// relationship type's property index (memory and badger).
+func (a *API) RelPropertyBounds(typeName, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyBounds{}, false, err
+	}
+	return ops.RelPropertyBounds(typeName, propertyKey, opts)
 }
 
 // RelCountByType returns the count of relationships of the given type.

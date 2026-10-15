@@ -1,0 +1,25 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: Apple M4 Max
+BenchmarkPropertyBounds/memory/bounds         	 1685222	       714.9 ns/op	     272 B/op	      28 allocs/op
+BenchmarkPropertyBounds/memory/bounds         	 1714633	       703.5 ns/op	     272 B/op	      28 allocs/op
+BenchmarkPropertyBounds/memory/bounds         	 1752124	       693.5 ns/op	     272 B/op	      28 allocs/op
+BenchmarkPropertyBounds/memory/write+bounds   	  449329	      3910 ns/op	    2801 B/op	      60 allocs/op
+BenchmarkPropertyBounds/memory/write+bounds   	  345664	      5366 ns/op	    2797 B/op	      60 allocs/op
+BenchmarkPropertyBounds/memory/write+bounds   	  366715	      6468 ns/op	    2855 B/op	      60 allocs/op
+BenchmarkPropertyBounds/memory/write+stats    	      25	  48956055 ns/op	 4802920 B/op	      32 allocs/op
+BenchmarkPropertyBounds/memory/write+stats    	     100	  60945018 ns/op	 4754962 B/op	      32 allocs/op
+BenchmarkPropertyBounds/memory/write+stats    	       8	 136975599 ns/op	 4803001 B/op	      33 allocs/op
+BenchmarkPropertyBounds/badger/bounds         	 1407711	       828.8 ns/op	     272 B/op	      28 allocs/op
+BenchmarkPropertyBounds/badger/bounds         	 1272478	       893.5 ns/op	     272 B/op	      28 allocs/op
+BenchmarkPropertyBounds/badger/bounds         	 1504675	       829.2 ns/op	     272 B/op	      28 allocs/op
+BenchmarkPropertyBounds/badger/write+bounds   	  127542	     11484 ns/op	    6987 B/op	      89 allocs/op
+BenchmarkPropertyBounds/badger/write+bounds   	  157963	      8037 ns/op	    4948 B/op	      90 allocs/op
+BenchmarkPropertyBounds/badger/write+bounds   	  220760	      7986 ns/op	    6174 B/op	      92 allocs/op
+BenchmarkPropertyBounds/badger/write+stats    	       1	1015198708 ns/op	656188088 B/op	 9135283 allocs/op
+BenchmarkPropertyBounds/badger/write+stats    	     100	1473646948 ns/op	599053529 B/op	 8998257 allocs/op
+BenchmarkPropertyBounds/badger/write+stats    	       2	 979282708 ns/op	605080480 B/op	 9088987 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	189.337s
+limit: {"command": ["go", "test", "-run", "^$", "-bench", "BenchmarkPropertyBounds", "-count", "3", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 1800.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 1883.125, "elapsed_s": 193.043, "exit_code": 0, "reason": "completed"}

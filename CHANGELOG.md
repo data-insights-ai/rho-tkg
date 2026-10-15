@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`Stats().PropertyBounds` / `Stats().RelPropertyBounds`: the numeric bounds of a property per label and per
+  relationship type** (sigma-tkgd round 8 request 1, statistics). `PropertyBounds(label, key, opts)` /
+  `RelPropertyBounds(type, key, opts)` return `(store.PropertyBounds, ok, err)`: `Min` / `Max` (the ordered index's
+  first and last numeric key: integers up to 2^53 and float64 as themselves, ±Inf included, a float32 by its
+  shortest decimal rendering, NaN left out), `MinValue` / `MaxValue` (a stored value at each in its stored type;
+  where several numeric types share the key the first of float64, float32, int64, int, int32, int16, int8, uint64,
+  uint, uint32, uint16, uint8) and `Classes`, the exact type-class partition of the same entities with `Missing`;
+  methods `HasNumeric`, `NumericOnly` (no string, bool, list or map; NaN counts as a number) and `NullFree` (no
+  entity without the key). The index, the class counters and the label (type) count are read under one store lock
+  (memory: the store lock; badger: `idxMu`), so the parts agree under concurrent writers. O(1): no row and no index
+  entry walked. `ok=false`, no error, where the bounds cannot be stated exactly (never answered by a walk): no
+  property index on the pair, an index being built, an Elements index, an index holding an integer of magnitude
+  past 2^53, badger `PropertyIndexOnDisk` (nodes), planner statistics disabled, tiered, sharded and external
+  stores, an unknown label or type, a temporal `opts`. Memory and badger (new optional store capabilities
+  `store.NodePropertyBoundsCapability` / `store.RelPropertyBoundsCapability`). Read-only, no write cost (no write
+  path changed). 300,000 nodes (`BenchmarkPropertyBounds`, one CPU, load 27-29): the read 0.69-0.71 us memory /
+  0.83-0.89 us badger; an Update that moves the maximum plus the read 3.9-6.5 us memory / 8.0-11.5 us badger,
+  against `PropertyStats`' exact Max after the same write (a rescan of the label) 49-137 ms memory / 0.98-1.47 s
+  badger. The valid-time hull per label or type was not built: no structure holds it exactly without a per-write
+  cost (backlog 71). Tests `TestPropertyBounds` (every backend against a brute-force pass through creates, updates
+  and deletes of the extremes, label changes, a backfilled index; declines), `TestPropertyBoundsFlags`,
+  `TestPropertyBoundsDeclines`, `TestPropertyBoundsAfterReopen`, `TestPropertyBoundsUnderWriters`,
+  `TestNumericBoundsMatchesScan`, store tests; evidence `tasks/evidence/cypher-round8/r1-*`.
+
 ## [4.55.1] - 2026-10-15
 
 ### Changed

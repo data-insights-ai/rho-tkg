@@ -1,0 +1,12 @@
+--- FAIL: TestPropertyBoundsFlags (0.01s)
+    --- FAIL: TestPropertyBoundsFlags/memory (0.00s)
+        property_bounds_test.go:421: b: NumericOnly, NullFree, HasNumeric = [true true true], want [true false true] ({Min:4 Max:4 MinValue:4 MaxValue:4 Classes:{Numeric:1 NaN:1 String:0 Bool:0 Other:0 Missing:0}})
+        property_bounds_test.go:433: d: {Min:0 Max:0 MinValue:<nil> MaxValue:<nil> Classes:{Numeric:0 NaN:0 String:0 Bool:0 Other:0 Missing:0}} ok=true err=<nil>, want no number, 3 missing
+    --- FAIL: TestPropertyBoundsFlags/badger (0.01s)
+        property_bounds_test.go:421: b: NumericOnly, NullFree, HasNumeric = [true true true], want [true false true] ({Min:4 Max:4 MinValue:4 MaxValue:4 Classes:{Numeric:1 NaN:1 String:0 Bool:0 Other:0 Missing:0}})
+        property_bounds_test.go:433: d: {Min:0 Max:0 MinValue:<nil> MaxValue:<nil> Classes:{Numeric:0 NaN:0 String:0 Bool:0 Other:0 Missing:0}} ok=true err=<nil>, want no number, 3 missing
+--- FAIL: TestPropertyBoundsAfterReopen (0.06s)
+    property_bounds_test.go:606: reopened classes = {Numeric:4 NaN:0 String:1 Bool:0 Other:0 Missing:0}, want {Numeric:4 NaN:0 String:1 Bool:0 Other:0 Missing:1}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.447s
+FAIL

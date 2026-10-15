@@ -1,0 +1,5 @@
+--- FAIL: TestNumericBoundsMatchesScan (0.00s)
+    property_index_bounds_test.go:75: counted=false step 119: [-Inf float64(-Inf), 200 uint8(200)], want [-Inf float64(-Inf), 200 float64(200)]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.406s
+FAIL
