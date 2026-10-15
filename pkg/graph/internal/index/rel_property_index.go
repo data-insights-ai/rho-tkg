@@ -13,27 +13,6 @@ type RelPropertyIndexKey struct {
 	PropertyKey  string
 }
 
-// RelIDs returns the relationship IDs matching the value as a caller-owned
-// slice (rel mirror of NodeIDs).
-func (pi *PropertyIndex) RelIDs(value any) []types.RelID {
-	if pi == nil {
-		return nil
-	}
-	vk := PropertyValueKey(value)
-	if vk == "" {
-		return nil
-	}
-	set := pi.Entries[vk]
-	if len(set) == 0 {
-		return nil
-	}
-	out := make([]types.RelID, 0, len(set))
-	for id := range set {
-		out = append(out, types.RelID(id))
-	}
-	return out
-}
-
 // RangeRelIDs is the rel mirror of RangeNodeIDs: over-selecting candidates, so
 // callers must post-filter exactly. supported=false only when the index is nil
 // or an Elements index.
@@ -101,13 +80,11 @@ func PurgeRelFromAllPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyInd
 			continue
 		}
 		for valKey, idSet := range idx.Entries {
-			delete(idSet, id)
-			if len(idSet) == 0 {
-				delete(idx.Entries, valKey)
+			if idSet.remove(id) && idSet.Len() == 0 {
+				idx.dropKey(valKey)
 			}
 		}
 		idx.purgeOrdered(id)
-		idx.purgeOrderedStr(id)
 		if idx.Mutated != nil {
 			idx.Mutated[id] = struct{}{}
 		}

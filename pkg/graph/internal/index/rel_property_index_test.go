@@ -43,7 +43,7 @@ func TestRelPropertyIndexAddRemoveLookup(t *testing.T) {
 	}
 
 	idx := indexes[RelPropertyIndexKey{RelTypeToken: knows, PropertyKey: "weight"}]
-	got := relIDSet(idx.RelIDs(int64(5)))
+	got := relIDSet(relIDsOf(idx, int64(5)))
 	want := relIDSet([]types.RelID{100, 200})
 	if len(got) != len(want) {
 		t.Fatalf("RelIDs(5) = %v, want %v", got, want)
@@ -58,13 +58,13 @@ func TestRelPropertyIndexAddRemoveLookup(t *testing.T) {
 	}
 
 	// Type-safe key: string "5" must not collide with int 5.
-	if ids := idx.RelIDs("5"); len(ids) != 0 {
+	if ids := relIDsOf(idx, "5"); len(ids) != 0 {
 		t.Fatalf("RelIDs(string \"5\") = %v, want empty (type-prefixed keys)", ids)
 	}
 
 	// Remove r1 — value bucket 5 keeps only r2.
 	RemoveRelFromPropertyIndexes(indexes, r1, r1.ID().SnowflakeID())
-	if ids := idx.RelIDs(int64(5)); len(ids) != 1 || ids[0] != 200 {
+	if ids := relIDsOf(idx, int64(5)); len(ids) != 1 || ids[0] != 200 {
 		t.Fatalf("after remove, RelIDs(5) = %v, want [200]", ids)
 	}
 }
@@ -127,7 +127,7 @@ func TestRelPropertyIndexPurge(t *testing.T) {
 // brute-force purge) cleaned idx.Entries and the numeric-ordered view
 // (purgeOrdered) but never called purgeOrderedStr — unlike its node mirror,
 // PurgeNodeFromAllPropertyIndexes, which calls both. A rel carrying a
-// STRING-valued indexed property left a stale entry in idx.strBuckets/
+// STRING-valued indexed property left a stale entry in
 // idx.strKeys after a purge, producing a phantom RangeRelIDs-string-view
 // result for a rel ID that no longer exists in the index at all (Entries is
 // clean, but the string-ordered view still thinks it's there — the exact
@@ -142,7 +142,7 @@ func TestRelPropertyIndexPurgeCleansStringOrderedView(t *testing.T) {
 	}
 	AddRelToPropertyIndexes(indexes, r, r.ID().SnowflakeID())
 
-	if len(idx.strBuckets) == 0 {
+	if idx.strKeys.n == 0 {
 		t.Fatal("setup: AddRelToPropertyIndexes did not populate the string-ordered view — test premise invalid")
 	}
 
@@ -150,11 +150,6 @@ func TestRelPropertyIndexPurgeCleansStringOrderedView(t *testing.T) {
 
 	if len(idx.Entries) != 0 {
 		t.Fatalf("after purge, Entries still has %v", idx.Entries)
-	}
-	for s, bucket := range idx.strBuckets {
-		if _, present := bucket[r.ID().SnowflakeID()]; present {
-			t.Fatalf("after purge, strBuckets[%q] still holds the purged rel — BACKLOG 16b regression", s)
-		}
 	}
 	if idx.strKeys.n != 0 {
 		t.Fatalf("after purge, strKeys.n = %d, want 0 (stale string-ordered-view entry) — BACKLOG 16b regression", idx.strKeys.n)
@@ -168,14 +163,23 @@ func TestRelPropertyIndexNilAndEmptyGuards(t *testing.T) {
 	PurgeRelFromAllPropertyIndexes(nil, 1)
 
 	var nilIdx *PropertyIndex
-	if ids := nilIdx.RelIDs(int64(1)); ids != nil {
+	if ids := relIDsOf(nilIdx, int64(1)); ids != nil {
 		t.Fatalf("nil RelIDs = %v, want nil", ids)
 	}
 
 	// Unindexable value returns nil.
 	idx := NewPropertyIndex()
 	idx.AddKey(1, PropertyValueKey(int64(1)))
-	if ids := idx.RelIDs([]int{1, 2}); ids != nil {
+	if ids := relIDsOf(idx, []int{1, 2}); ids != nil {
 		t.Fatalf("RelIDs(slice) = %v, want nil (unindexable)", ids)
 	}
+}
+
+// relIDsOf (test-only) returns value's rel IDs ascending, nil when none.
+func relIDsOf(pi *PropertyIndex, value any) []types.RelID {
+	var out []types.RelID
+	for id := range pi.Postings(value).All() {
+		out = append(out, types.RelID(id))
+	}
+	return out
 }

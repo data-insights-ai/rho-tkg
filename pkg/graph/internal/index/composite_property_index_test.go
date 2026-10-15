@@ -362,17 +362,17 @@ func TestAddAndRemoveNodeFromCompositeIndexes(t *testing.T) {
 	if !ok {
 		t.Fatal("expected ok")
 	}
-	if got := firstLastIdx.NodeIDs(vk); len(got) != 1 || got[0] != types.NodeID(rawID) {
+	if got := compositeIDs(firstLastIdx, vk); len(got) != 1 || got[0] != types.NodeID(rawID) {
 		t.Fatalf("expected node indexed under label 10, got %v", got)
 	}
 	// Node does not carry label 99 — must NOT be indexed there.
-	if got := otherLabelIdx.NodeIDs(vk); len(got) != 0 {
+	if got := compositeIDs(otherLabelIdx, vk); len(got) != 0 {
 		t.Fatalf("must NOT index a node under a label it does not carry, got %v", got)
 	}
 
 	// Remove (using the same still-full snapshot Add used) must clear the entry.
 	RemoveNodeFromCompositeIndexes(indexes, defsByLabel, n, rawID)
-	if got := firstLastIdx.NodeIDs(vk); len(got) != 0 {
+	if got := compositeIDs(firstLastIdx, vk); len(got) != 0 {
 		t.Fatalf("expected entry removed, got %v", got)
 	}
 }
@@ -401,7 +401,7 @@ func TestPartialKeyRemovalViaMutationDoorPattern(t *testing.T) {
 
 	AddNodeToCompositeIndexes(indexes, defsByLabel, old, rawID)
 	vk, _ := NodeCompositeValueKey([]string{"first", "last"}, old)
-	if got := idx.NodeIDs(vk); len(got) != 1 {
+	if got := compositeIDs(idx, vk); len(got) != 1 {
 		t.Fatalf("expected entry after Add, got %v", got)
 	}
 
@@ -414,11 +414,11 @@ func TestPartialKeyRemovalViaMutationDoorPattern(t *testing.T) {
 	RemoveNodeFromCompositeIndexes(indexes, defsByLabel, old, rawID)
 	AddNodeToCompositeIndexes(indexes, defsByLabel, updated, rawID)
 
-	if got := idx.NodeIDs(vk); len(got) != 0 {
+	if got := compositeIDs(idx, vk); len(got) != 0 {
 		t.Fatalf("deleting one component property must remove the composite entry entirely, got %v", got)
 	}
 	for _, set := range idx.Entries {
-		if _, present := set[rawID]; present {
+		if set.Has(rawID) {
 			t.Fatalf("node %d must not appear under any composite entry after losing a required key", rawID)
 		}
 	}
@@ -508,13 +508,22 @@ func TestPurgeNodeFromAllCompositeIndexes(t *testing.T) {
 
 	PurgeNodeFromAllCompositeIndexes(indexes, snowflake.ID(1))
 
-	if len(idx1.Entries["vk1"]) != 0 {
+	if idx1.Entries["vk1"].Len() != 0 {
 		t.Fatal("expected node 1 purged from idx1's vk1 bucket")
 	}
-	if got := idx1.NodeIDs("vk2"); len(got) != 1 {
+	if got := compositeIDs(idx1, "vk2"); len(got) != 1 {
 		t.Fatalf("node 2 must survive the purge of node 1, got %v", got)
 	}
-	if len(idx2.Entries["vk3"]) != 0 {
+	if idx2.Entries["vk3"].Len() != 0 {
 		t.Fatal("expected node 1 purged from idx2 too — purge sweeps EVERY composite index")
 	}
+}
+
+// compositeIDs (test-only) returns vk's node IDs ascending, nil when none.
+func compositeIDs(ci *CompositePropertyIndex, vk string) []types.NodeID {
+	var out []types.NodeID
+	for id := range ci.Postings(vk).All() {
+		out = append(out, types.NodeID(id))
+	}
+	return out
 }

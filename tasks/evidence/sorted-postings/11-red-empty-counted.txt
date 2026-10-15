@@ -1,0 +1,23 @@
+--- FAIL: TestRangeCardinalityEmptyCountedIndex (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x8 pc=0x60cee3]
+
+goroutine 7 [running]:
+testing.tRunner.func1.2({0x66a6e0, 0x8d4640})
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:1974 +0x232
+testing.tRunner.func1()
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:1977 +0x349
+panic({0x66a6e0?, 0x8d4640?})
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/runtime/panic.go:860 +0x13a
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index.(*sortedChunks[...]).countRange(0x6dea40, 0xf, 0x4024000000000000?, 0xa0, 0x1?)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-aae9a2a8a789296fb/pkg/graph/internal/index/sorted_chunks.go:400 +0xc3
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index.(*PropertyIndex).RangeCardinality(0x73f448?, 0x65?, 0x755?, 0x54?, 0x7?)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-aae9a2a8a789296fb/pkg/graph/internal/index/property_index_rangecount.go:85 +0xf6
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index.TestRangeCardinalityEmptyCountedIndex(0x22a9cd22a248)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-aae9a2a8a789296fb/pkg/graph/internal/index/sorted_postings_test.go:121 +0x85
+testing.tRunner(0x22a9cd22a248, 0x6cae68)
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0xea
+created by testing.(*T).Run in goroutine 1
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x4c5
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.004s
+FAIL

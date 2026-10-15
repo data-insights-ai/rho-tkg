@@ -22,17 +22,22 @@ import (
 // keeps a multiplicity per key — cnt[i][j] for chunks[i][j] — the total of
 // each chunk in tot, and a Fenwick tree over tot in fen, so countRange sums
 // the multiplicities of a key range from two prefix sums. A structure is in
-// counted mode from its first addCount on and is then changed through
-// addCount only; set mode (insert/remove, every other index) never touches
-// cnt, tot or fen and costs what it cost before counted mode existed.
+// counted mode from its first addCount on (chunkCounts non-nil) and is then
+// changed through addCount only; set mode (insert/remove/put, every other
+// use) never allocates the counts, so a set costs its keys plus a 40-byte
+// header (backlog 72: one per equality posting list).
 type sortedChunks[T cmp.Ordered] struct {
 	chunks [][]T
 	n      int
 
-	counted bool
-	cnt     [][]int64
-	tot     []int64
-	fen     []int64 // 1-based Fenwick tree over tot; len(tot)+1 entries
+	*chunkCounts
+}
+
+// chunkCounts is the counted-mode state of a sortedChunks.
+type chunkCounts struct {
+	cnt [][]int64
+	tot []int64
+	fen []int64 // 1-based Fenwick tree over tot; len(tot)+1 entries
 }
 
 // chunkIdx returns the index of the chunk that does or would contain k: the
@@ -52,11 +57,14 @@ func (o *sortedChunks[T]) chunkIdx(k T) int {
 	return lo
 }
 
-// insert adds a key known to be absent (callers guard via the bucket map).
+// insert adds a key known to be absent (callers guard via the bucket map or
+// has). The first chunk starts at one key and grows by append, so a set of a
+// few keys holds a few keys, not a full chunk (backlog 72: a posting list per
+// value key, most of them small).
 func (o *sortedChunks[T]) insert(k T) {
 	o.n++
 	if len(o.chunks) == 0 {
-		o.chunks = append(o.chunks, append(make([]T, 0, orderedKeyChunk), k))
+		o.chunks = [][]T{{k}}
 		return
 	}
 	ci := o.chunkIdx(k)
@@ -109,25 +117,54 @@ func (o *sortedChunks[T]) add(k T) {
 	o.insert(k)
 }
 
-// remove deletes a key if present.
-func (o *sortedChunks[T]) remove(k T) {
+// has reports whether k is stored. O(log chunks + log chunk size).
+func (o *sortedChunks[T]) has(k T) bool {
 	ci := o.chunkIdx(k)
 	if ci == len(o.chunks) {
-		return
+		return false
+	}
+	_, found := slices.BinarySearch(o.chunks[ci], k)
+	return found
+}
+
+// put adds k unless stored and reports whether it was added: add's
+// exact-chunk path for a key above every stored key (the ascending snowflake
+// write), else a membership check and insert.
+func (o *sortedChunks[T]) put(k T) bool {
+	if n := len(o.chunks); n > 0 {
+		last := o.chunks[n-1]
+		if k > last[len(last)-1] {
+			o.add(k)
+			return true
+		}
+	}
+	if o.has(k) {
+		return false
+	}
+	o.insert(k)
+	return true
+}
+
+// remove deletes a key if present and reports whether it was.
+func (o *sortedChunks[T]) remove(k T) bool {
+	ci := o.chunkIdx(k)
+	if ci == len(o.chunks) {
+		return false
 	}
 	c := o.chunks[ci]
 	pos, found := slices.BinarySearch(c, k)
 	if !found {
-		return
+		return false
 	}
 	c = append(c[:pos], c[pos+1:]...)
 	o.chunks[ci] = c
 	o.n--
 	if len(c) == 0 {
 		o.chunks = append(o.chunks[:ci], o.chunks[ci+1:]...)
-		return
+		return true
 	}
 	o.mergeIfUndersized(ci)
+	return true
 }
 
 // mergeIfUndersized merges chunk ci into an adjacent chunk when ci has
@@ -236,7 +273,9 @@ func (o *sortedChunks[T]) addCount(k T, d int64) {
 	if d == 0 {
 		return
 	}
-	o.counted = true
+	if o.chunkCounts == nil {
+		o.chunkCounts = &chunkCounts{}
+	}
 	if ci := o.chunkIdx(k); ci < len(o.chunks) {
 		if pos, found := slices.BinarySearch(o.chunks[ci], k); found {
 			if o.cnt[ci][pos]+d <= 0 {
@@ -346,9 +385,10 @@ func (o *sortedChunks[T]) mergeCountedIfUndersized(ci int) bool {
 // chunk: the counts between them. Otherwise two prefix sums, each a Fenwick
 // prefix over the chunk totals plus at most half a chunk of per-key counts:
 // O(log chunks + chunk size), independent of the range's width. A NaN bound
-// compares false with every key: 0.
+// compares false with every key: 0, as does a structure that never counted
+// (no key ever added: chunkCounts is nil).
 func (o *sortedChunks[T]) countRange(lo, hi T, inclLo, inclHi bool) int64 {
-	if unordered(lo) || unordered(hi) || lo > hi || (lo == hi && (!inclLo || !inclHi)) {
+	if o.chunkCounts == nil || unordered(lo) || unordered(hi) || lo > hi || (lo == hi && (!inclLo || !inclHi)) {
 		return 0
 	}
 	// The range is [start, end): start is the first key >= lo (> lo when

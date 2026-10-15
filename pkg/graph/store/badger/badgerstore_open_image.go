@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"math"
+	"slices"
 	"strconv"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -209,12 +210,13 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 		out = binary.AppendUvarint(out, uint64(len(payload)))
 		out = append(out, payload...)
 	}
-	appendValueIDs := func(b []byte, entries map[string]map[snowflake.ID]struct{}) []byte {
+	appendValueIDs := func(b []byte, entries map[string]*indexpkg.IDPostings) []byte {
 		b = binary.AppendUvarint(b, uint64(len(entries)))
 		for vk, ids := range entries {
 			b = appendImgString(b, vk)
-			b = binary.AppendUvarint(b, uint64(len(ids)))
-			for id := range ids {
+			b = binary.AppendUvarint(b, uint64(ids.Len())) // #nosec G115 -- a length
+			// Ascending, so the reload's AddKey fills exact chunks.
+			for id := range ids.All() {
 				b = binary.AppendUvarint(b, uint64(id)) // #nosec G115 -- positive snowflake ID
 			}
 		}
@@ -578,8 +580,11 @@ func decodeOpenImage(blob []byte) (*openImage, error) {
 
 // ---- install helpers (open path, single goroutine) ----
 
+// installValueIDs adds each value's IDs ascending: an image written before
+// backlog 72 holds them in map order, and an ascending fill gives exact chunks.
 func installValueIDs(entries []imgValueIDs, add func(id snowflake.ID, vk string)) {
 	for _, e := range entries {
+		slices.Sort(e.ids)
 		for _, id := range e.ids {
 			add(id, e.vk)
 		}

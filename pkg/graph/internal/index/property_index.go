@@ -11,19 +11,20 @@ type PropertyIndexKey struct {
 	PropertyKey string
 }
 
-// PropertyIndex stores a reverse mapping from canonical value keys to sets of node IDs.
+// PropertyIndex stores a reverse mapping from canonical value keys to the
+// sorted posting list of their entity IDs (backlog 72).
 type PropertyIndex struct {
-	Entries map[string]map[snowflake.ID]struct{}
+	Entries map[string]*IDPostings
 	Mutated map[snowflake.ID]struct{} // non-nil during index creation Phase 2
 
 	// Ordered numeric view — see property_index_range.go.
 	numKeys    sortedChunks[float64]
-	numBuckets map[float64]map[snowflake.ID]struct{}
+	numBuckets map[float64]*IDPostings
 
-	// Ordered STRING view — see property_index_string_range.go. Maintained
-	// alongside numKeys inside AddKey/removeKey.
-	strKeys    sortedChunks[string]
-	strBuckets map[string]map[snowflake.ID]struct{}
+	// Ordered STRING view — see property_index_string_range.go: the distinct
+	// string values; a value's IDs are its Entries posting list ("s:"+value).
+	// Maintained inside AddKey/removeKey.
+	strKeys sortedChunks[string]
 
 	// numImpreciseCount counts currently indexed entries whose integer
 	// magnitude exceeds 2^53 (float64 sort key may collide). While > 0,
@@ -45,7 +46,7 @@ type PropertyIndex struct {
 // NewPropertyIndex creates an empty property index.
 func NewPropertyIndex() *PropertyIndex {
 	return &PropertyIndex{
-		Entries: make(map[string]map[snowflake.ID]struct{}),
+		Entries: make(map[string]*IDPostings),
 	}
 }
 
@@ -94,15 +95,19 @@ func (pi *PropertyIndex) AddKey(id snowflake.ID, vk string) {
 		return
 	}
 	if pi.Entries == nil {
-		pi.Entries = make(map[string]map[snowflake.ID]struct{})
+		pi.Entries = make(map[string]*IDPostings)
 	}
-	if pi.Entries[vk] == nil {
-		pi.Entries[vk] = make(map[snowflake.ID]struct{})
+	set := pi.Entries[vk]
+	if set == nil {
+		set = &IDPostings{}
+		pi.Entries[vk] = set
+		if pi.orderedViews() {
+			pi.addOrderedStr(vk)
+		}
 	}
-	pi.Entries[vk][id] = struct{}{}
+	set.add(id)
 	if pi.orderedViews() {
 		pi.addOrdered(id, vk)
-		pi.addOrderedStr(id, vk)
 	}
 	if pi.Mutated != nil {
 		pi.Mutated[id] = struct{}{}
@@ -127,46 +132,32 @@ func (pi *PropertyIndex) removeKey(id snowflake.ID, vk string) {
 		return
 	}
 	if set, ok := pi.Entries[vk]; ok {
-		delete(set, id)
-		if len(set) == 0 {
-			delete(pi.Entries, vk)
+		set.remove(id)
+		if set.Len() == 0 {
+			pi.dropKey(vk)
 		}
 	}
 	if pi.orderedViews() {
 		pi.removeOrdered(id, vk)
-		pi.removeOrderedStr(id, vk)
 	}
 	if pi.Mutated != nil {
 		pi.Mutated[id] = struct{}{}
 	}
 }
 
-// Lookup returns the set of node IDs matching the given value.
-// Returns nil if no matches. The returned map is a copy; mutating it cannot
-// alter the index.
-func (pi *PropertyIndex) Lookup(value any) map[snowflake.ID]struct{} {
-	if pi == nil {
-		return nil
+// dropKey deletes the emptied value key vk, and its string from the ordered
+// string view.
+func (pi *PropertyIndex) dropKey(vk string) {
+	delete(pi.Entries, vk)
+	if pi.orderedViews() {
+		pi.removeOrderedStr(vk)
 	}
-	vk := PropertyValueKey(value)
-	if vk == "" {
-		return nil
-	}
-	set := pi.Entries[vk]
-	if len(set) == 0 {
-		return nil
-	}
-	out := make(map[snowflake.ID]struct{}, len(set))
-	for id := range set {
-		out[id] = struct{}{}
-	}
-	return out
 }
 
-// NodeIDs returns the node IDs matching the given value as a caller-owned
-// slice. It is the allocation-conscious lookup path for store query code,
-// which needs IDs but must not receive the mutable index set.
-func (pi *PropertyIndex) NodeIDs(value any) []types.NodeID {
+// Postings returns the sorted posting list of value (nil when no entity holds
+// it or the value is not indexable). The list is the index's own: the caller
+// reads it under the store's index lock and does not change it.
+func (pi *PropertyIndex) Postings(value any) *IDPostings {
 	if pi == nil {
 		return nil
 	}
@@ -174,15 +165,7 @@ func (pi *PropertyIndex) NodeIDs(value any) []types.NodeID {
 	if vk == "" {
 		return nil
 	}
-	set := pi.Entries[vk]
-	if len(set) == 0 {
-		return nil
-	}
-	out := make([]types.NodeID, 0, len(set))
-	for id := range set {
-		out = append(out, types.NodeID(id))
-	}
-	return out
+	return pi.Entries[vk]
 }
 
 // PropertyValueKey computes a canonical, type-safe string key for a property value.
@@ -246,13 +229,11 @@ func PurgeNodeFromAllPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex
 			continue
 		}
 		for valKey, idSet := range idx.Entries {
-			delete(idSet, id)
-			if len(idSet) == 0 {
-				delete(idx.Entries, valKey)
+			if idSet.remove(id) && idSet.Len() == 0 {
+				idx.dropKey(valKey)
 			}
 		}
 		idx.purgeOrdered(id)
-		idx.purgeOrderedStr(id)
 		if idx.Mutated != nil {
 			idx.Mutated[id] = struct{}{}
 		}

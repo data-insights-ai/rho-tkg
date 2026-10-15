@@ -70,8 +70,10 @@ func (s *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error {
 }
 
 // NodesByLabelAndProperty folds each shard's accelerated equality matches into
-// one globally ID-sorted, paginated result. Pagination is applied AFTER the
-// merge (per-shard folds return every match), mirroring NodesByLabel.
+// one globally ID-sorted, paginated result. Each shard answers the same page
+// (After, Limit): the global first Limit IDs above After are among the union of
+// every shard's first Limit, so the merge is cut to the page again and no shard
+// returns its whole key (backlog 72).
 func (s *Store) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
@@ -84,7 +86,7 @@ func (s *Store) NodesByLabelAndProperty(labelToken uint16, key string, value any
 	}
 	per := make([][]*types.Node, len(s.shards))
 	err := s.forEachShardErr(func(idx int, shard *badgerShard) error {
-		nodes, e := shard.NodesByLabelAndProperty(labelToken, key, value, stripPagination(opts))
+		nodes, e := shard.NodesByLabelAndProperty(labelToken, key, value, opts)
 		per[idx] = nodes
 		return e
 	})

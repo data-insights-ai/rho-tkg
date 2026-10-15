@@ -142,19 +142,19 @@ func TestCreateCompositePropertyIndex_ConcurrentMutationDuringScanIsReconciled(t
 	}
 
 	for i := int64(1); i <= 2_000; i++ {
-		if inSet(idx.NodeIDs(vkOriginal), i) {
+		if inSet(postingIDs(idx.Postings(vkOriginal)), i) {
 			t.Fatalf("deleted node %d still present in index under its original value", i)
 		}
 	}
 	for i := int64(2_001); i <= 4_000; i++ {
-		if !inSet(idx.NodeIDs(vkUpdated), i) {
+		if !inSet(postingIDs(idx.Postings(vkUpdated)), i) {
 			t.Fatalf("updated node %d missing from index under its new value", i)
 		}
-		if inSet(idx.NodeIDs(vkOriginal), i) {
+		if inSet(postingIDs(idx.Postings(vkOriginal)), i) {
 			t.Fatalf("updated node %d still present in index under its stale pre-update value", i)
 		}
 	}
-	if !inSet(idx.NodeIDs(vkOriginal), n) {
+	if !inSet(postingIDs(idx.Postings(vkOriginal)), n) {
 		t.Fatalf("untouched node %d missing from index under its original value", n)
 	}
 }

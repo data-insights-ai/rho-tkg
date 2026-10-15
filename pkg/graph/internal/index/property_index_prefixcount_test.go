@@ -49,7 +49,7 @@ func assertCountsConsistent(t *testing.T, pi *PropertyIndex) {
 		}
 		var sum int64
 		for j, k := range c {
-			if got, want := o.cnt[ci][j], int64(len(pi.numBuckets[k])); got != want || got <= 0 {
+			if got, want := o.cnt[ci][j], int64(pi.numBuckets[k].Len()); got != want || got <= 0 {
 				t.Fatalf("key %v: count %d, bucket %d", k, got, want)
 			}
 			sum += o.cnt[ci][j]
@@ -279,8 +279,8 @@ func TestRangeCardinality_PlainIndexKeepsNoCounts(t *testing.T) {
 		}
 	}
 	o := &plain.numKeys
-	if o.counted || o.cnt != nil || o.tot != nil || o.fen != nil {
-		t.Fatalf("a plain index grew counts: counted=%v cnt=%d tot=%d fen=%d", o.counted, len(o.cnt), len(o.tot), len(o.fen))
+	if o.chunkCounts != nil {
+		t.Fatalf("a plain index grew counts: cnt=%d tot=%d fen=%d", len(o.cnt), len(o.tot), len(o.fen))
 	}
 	assertCountsConsistent(t, counted)
 	for range 500 {

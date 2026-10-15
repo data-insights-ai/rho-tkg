@@ -146,8 +146,11 @@ func TestPropertyIndexStringPrefixMaintenance(t *testing.T) {
 	if got, _ := pi.PrefixNodeIDs("cat"); len(got) != 0 {
 		t.Errorf("after removing all cats: PrefixNodeIDs(cat) = %v, want empty", idset(got))
 	}
-	if _, present := pi.strBuckets["cat"]; present {
-		t.Error("strBuckets still holds an empty 'cat' bucket")
+	if _, present := pi.Entries["s:cat"]; present {
+		t.Error("Entries still holds an empty 'cat' posting list")
+	}
+	if pi.strKeys.has("cat") {
+		t.Error("strKeys still holds 'cat' after its last holder left")
 	}
 	// "car" still there.
 	if got, _ := pi.PrefixNodeIDs("ca"); !eqU64(idset(got), []uint64{3}) {

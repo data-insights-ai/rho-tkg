@@ -2,6 +2,7 @@ package memory
 
 import (
 	"fmt"
+	"iter"
 	"log/slog"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -77,7 +78,7 @@ func (ms *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	ms.mu.Unlock()
 
 	// Phase 2.
-	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
+	backfill := indexpkg.NewPostingsBuild(opts.Elements)
 	for _, rid := range rids {
 		ms.mu.RLock()
 		r, ok, err := ms.relLocked(rid)
@@ -103,18 +104,24 @@ func (ms *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	if err := requireRelPropertyIndexCurrentForCreate(ms.relPropertyIndexes, key, liveIdx); err != nil {
 		return err
 	}
-	for vk, idSet := range backfill.Entries {
-		for id := range idSet {
+	var mergeErr error
+	backfill.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
 			if alive, err := ms.relExistsLocked(types.RelID(id)); err != nil {
-				return err
+				mergeErr = err
+				return false
 			} else if !alive {
 				continue // relationship deleted during Phase 2
 			}
 			liveIdx.AddKey(id, vk)
 		}
+		return true
+	})
+	if mergeErr != nil {
+		return mergeErr
 	}
 	liveIdx.Mutated = nil // stop tracking — index creation complete
 	return nil
@@ -195,14 +202,14 @@ func (ms *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
 	if idx, ok := ms.relPropertyIndexes[key]; ok {
-		ids := idx.RelIDs(value)
-		if len(ids) == 0 {
+		// The value's sorted posting list from opts.After on (backlog 72).
+		ids := idx.Postings(value)
+		if ids.Len() == 0 {
 			return nil, nil
 		}
-		storepkg.SortRelIDs(ids)
 		elements := idx.Elements()
 		if ms.anySegmentsLocked() {
-			rows, err := ms.relsFromIDsLocked(ids, opts.After, opts.Limit, func(r *types.Relationship) bool {
+			rows, err := ms.relsFromSeqLocked(ids.After(opts.After.SnowflakeID()), opts.Limit, func(r *types.Relationship) bool {
 				if !r.HasTypeTokenRaw(relTypeToken) {
 					return false
 				}
@@ -216,7 +223,7 @@ func (ms *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 			}
 			return rows, nil
 		}
-		return ms.relsByTypePropertyFromIDs(relTypeToken, propKey, targetKey, elements, ids, opts), nil
+		return ms.relsByTypePropertyFrom(relTypeToken, propKey, targetKey, elements, ids.After(opts.After.SnowflakeID()), ids.Len(), opts), nil
 	}
 
 	// Fallback: type scan + property filter.
@@ -246,22 +253,15 @@ func (ms *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 		return nil, nil
 	}
 	storepkg.SortRelIDs(matchIDs)
-	return ms.relsByTypePropertyFromIDs(relTypeToken, propKey, targetKey, false, matchIDs, opts), nil
+	return ms.relsByTypePropertyFrom(relTypeToken, propKey, targetKey, false, idsAfter(matchIDs, opts.After), len(matchIDs), opts), nil
 }
 
-func (ms *Store) relsByTypePropertyFromIDs(relTypeToken uint16, propKey, targetKey string, elements bool, ids []types.RelID, opts QueryOpts) []*types.Relationship {
-	ids = storepkg.PaginateRelIDs(ids, opts.After, 0)
-	if len(ids) == 0 {
-		return nil
-	}
-
+// relsByTypePropertyFrom is the rel mirror of nodesByLabelPropertyFrom.
+func (ms *Store) relsByTypePropertyFrom(relTypeToken uint16, propKey, targetKey string, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Relationship {
 	hasTemporal := storepkg.HasTemporalFilter(opts)
-	capHint := len(ids)
-	if opts.Limit > 0 && opts.Limit < capHint {
-		capHint = opts.Limit
-	}
-	result := make([]*types.Relationship, 0, capHint)
-	for _, id := range ids {
+	result := make([]*types.Relationship, 0, resultCap(opts.Limit, n))
+	for raw := range ids {
+		id := types.RelID(raw)
 		if r, ok := ms.rels[id]; ok {
 			if !r.HasTypeTokenRaw(relTypeToken) {
 				continue

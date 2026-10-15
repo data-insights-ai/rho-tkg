@@ -1,8 +1,6 @@
 package index
 
 import (
-	"slices"
-
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -44,58 +42,26 @@ func prefixSuccessor(p string) (string, bool) {
 	return "", false
 }
 
-// addOrderedStr inserts id under vk's string sort key, if any.
-// Caller holds the store's write lock (same discipline as AddKey).
-func (pi *PropertyIndex) addOrderedStr(id snowflake.ID, vk string) {
-	s, ok := stringSortKey(vk)
-	if !ok {
-		return
-	}
-	if pi.strBuckets == nil {
-		pi.strBuckets = make(map[string]map[snowflake.ID]struct{})
-	}
-	bucket, exists := pi.strBuckets[s]
-	if !exists {
-		bucket = make(map[snowflake.ID]struct{})
-		pi.strBuckets[s] = bucket
+// addOrderedStr adds a new value key's string to the ordered string view, if
+// vk is a string key. Called when vk's posting list is created.
+func (pi *PropertyIndex) addOrderedStr(vk string) {
+	if s, ok := stringSortKey(vk); ok {
 		pi.strKeys.insert(s)
 	}
-	bucket[id] = struct{}{}
 }
 
-// removeOrderedStr removes id from vk's string bucket, if any.
-func (pi *PropertyIndex) removeOrderedStr(id snowflake.ID, vk string) {
-	if pi.strBuckets == nil {
-		return
-	}
-	s, ok := stringSortKey(vk)
-	if !ok {
-		return
-	}
-	bucket, exists := pi.strBuckets[s]
-	if !exists {
-		return
-	}
-	delete(bucket, id)
-	if len(bucket) == 0 {
-		delete(pi.strBuckets, s)
+// removeOrderedStr drops an emptied string value key's string from the view.
+func (pi *PropertyIndex) removeOrderedStr(vk string) {
+	if s, ok := stringSortKey(vk); ok {
 		pi.strKeys.remove(s)
 	}
 }
 
-// purgeOrderedStr removes id from every string bucket (corruption-path mirror of
-// PurgeNodeFromAllPropertyIndexes' brute-force sweep).
-func (pi *PropertyIndex) purgeOrderedStr(id snowflake.ID) {
-	if pi.strBuckets == nil {
-		return
-	}
-	for s, bucket := range pi.strBuckets {
-		delete(bucket, id)
-		if len(bucket) == 0 {
-			delete(pi.strBuckets, s)
-			pi.strKeys.remove(s)
-		}
-	}
+// strPostings returns the posting list of the string value s; buf is scratch
+// for the value key (the map lookup does not allocate).
+func (pi *PropertyIndex) strPostings(buf *[]byte, s string) *IDPostings {
+	*buf = append(append((*buf)[:0], "s:"...), s...)
+	return pi.Entries[string(*buf)]
 }
 
 // PrefixNodeIDs returns the node IDs whose string value begins with prefix, as
@@ -109,11 +75,12 @@ func (pi *PropertyIndex) PrefixNodeIDs(prefix string) (ids []types.NodeID, suppo
 		return nil, true
 	}
 	upper, hasUpper := prefixSuccessor(prefix)
+	var buf []byte
 	pi.strKeys.forEachFrom(prefix, func(k string) bool {
 		if hasUpper && k >= upper {
 			return false // past the prefix range
 		}
-		for id := range pi.strBuckets[k] {
+		for id := range pi.strPostings(&buf, k).All() {
 			ids = append(ids, types.NodeID(id))
 		}
 		return true
@@ -153,21 +120,15 @@ func (pi *PropertyIndex) prefixOrderedPage(prefix string, desc bool, after StrOr
 	upper, hasUpper := prefixSuccessor(prefix)
 
 	next = after
+	var buf []byte
 	emitKey := func(k string) bool {
-		bucket := pi.strBuckets[k]
-		if len(bucket) == 0 {
-			return true
+		// Ties by node ID ascending in asc AND desc value order: the posting
+		// list is sorted, so resuming inside a value is a seek past after.id.
+		var from snowflake.ID
+		if after.has && k == after.val {
+			from = after.id
 		}
-		kids := make([]snowflake.ID, 0, len(bucket))
-		for id := range bucket {
-			kids = append(kids, id)
-		}
-		slices.Sort(kids) // ties by node ID ascending, in asc AND desc value order
-		for _, id := range kids {
-			// Tie order is ascending in both directions: skip `id <= after.id`.
-			if after.has && k == after.val && id <= after.id {
-				continue
-			}
+		for id := range pi.strPostings(&buf, k).After(from) {
 			ids = append(ids, id)
 			if keys != nil {
 				*keys = append(*keys, k)

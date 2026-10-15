@@ -75,7 +75,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 
 	// Phase 2: fetch node data outside any lock, without the public GetNode defensive
 	// copy. Disk mode collects writeOps instead of populating the RAM Entries map.
-	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
+	backfill := indexpkg.NewPostingsBuild(opts.Elements)
 	var diskOps []writeOp
 	for _, nid := range nids {
 		n, err := bs.prefetchNode(nid)
@@ -124,8 +124,8 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		bs.idxMu.Unlock()
 		return bs.flushIfNeeded()
 	}
-	for vk, idSet := range backfill.Entries {
-		for id := range idSet {
+	backfill.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
@@ -136,7 +136,8 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 			// numeric view is maintained inside AddKey.
 			liveIdx.AddKey(id, vk)
 		}
-	}
+		return true
+	})
 	liveIdx.Mutated = nil // stop tracking — index creation complete
 	bs.persistPropertyIndexDefs()
 	bs.idxMu.Unlock()

@@ -5,6 +5,7 @@ package memory
 
 import (
 	"fmt"
+	"iter"
 	"log/slog"
 	"time"
 
@@ -91,7 +92,7 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	ms.mu.Unlock()
 
 	// Phase 2.
-	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
+	backfill := indexpkg.NewPostingsBuild(opts.Elements)
 	for _, nid := range nids {
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
@@ -109,8 +110,8 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	if err := requirePropertyIndexCurrentForCreate(ms.propertyIndexes, key, liveIdx); err != nil {
 		return err
 	}
-	for vk, idSet := range backfill.Entries {
-		for id := range idSet {
+	backfill.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
@@ -121,7 +122,8 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 			// numeric view is maintained inside AddKey.
 			liveIdx.AddKey(id, vk)
 		}
-	}
+		return true
+	})
 	liveIdx.Mutated = nil // stop tracking — index creation complete
 	return nil
 }
@@ -220,7 +222,7 @@ func (ms *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 	ms.mu.Unlock()
 
 	// Phase 2.
-	backfill := indexpkg.NewCompositePropertyIndex(keys)
+	backfill := indexpkg.NewPostingsBuild(false)
 	for _, nid := range nids {
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
@@ -240,8 +242,8 @@ func (ms *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 	if err := requireCompositeIndexCurrentForCreate(ms.compositeIndexes, key, liveIdx); err != nil {
 		return err
 	}
-	for vk, idSet := range backfill.Entries {
-		for id := range idSet {
+	backfill.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
@@ -250,7 +252,8 @@ func (ms *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 			}
 			liveIdx.AddKey(id, vk)
 		}
-	}
+		return true
+	})
 	liveIdx.Mutated = nil // stop tracking — index creation complete
 	return nil
 }
@@ -326,12 +329,13 @@ func (ms *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 		if !ok {
 			return nil, nil
 		}
-		ids := idx.NodeIDs(vk)
-		if len(ids) == 0 {
+		// The posting list is sorted (backlog 72): the page seeks past
+		// opts.After and reads only its rows, no copy or sort of the key.
+		ids := idx.Postings(vk)
+		if ids.Len() == 0 {
 			return nil, nil
 		}
-		storepkg.SortNodeIDs(ids)
-		return ms.nodesByLabelPropertiesFromIDs(labelToken, values, ids, opts), nil
+		return ms.nodesByLabelPropertiesFrom(labelToken, values, ids.After(opts.After.SnowflakeID()), ids.Len(), opts), nil
 	}
 
 	// Fallback: label scan + post-filter.
@@ -346,22 +350,17 @@ func (ms *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 		matchIDs = append(matchIDs, id)
 	}
 	storepkg.SortNodeIDs(matchIDs)
-	return ms.nodesByLabelPropertiesFromIDs(labelToken, values, matchIDs, opts), nil
+	return ms.nodesByLabelPropertiesFrom(labelToken, values, idsAfter(matchIDs, opts.After), len(matchIDs), opts), nil
 }
 
-func (ms *Store) nodesByLabelPropertiesFromIDs(labelToken uint16, values map[string]any, ids []types.NodeID, opts QueryOpts) []*types.Node {
-	ids = storepkg.PaginateNodeIDs(ids, opts.After, 0)
-	if len(ids) == 0 {
-		return nil
-	}
-
+// nodesByLabelPropertiesFrom filters the ascending candidates ids (already
+// past opts.After; n of them at most) to the label's current matches, then
+// opts' temporal filter, then at most opts.Limit.
+func (ms *Store) nodesByLabelPropertiesFrom(labelToken uint16, values map[string]any, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Node {
 	hasTemporal := storepkg.HasTemporalFilter(opts)
-	capHint := len(ids)
-	if opts.Limit > 0 && opts.Limit < capHint {
-		capHint = opts.Limit
-	}
-	result := make([]*types.Node, 0, capHint)
-	for _, id := range ids {
+	result := make([]*types.Node, 0, resultCap(opts.Limit, n))
+	for raw := range ids {
+		id := types.NodeID(raw)
 		if n, ok := ms.nodes[id]; ok {
 			if !n.HasLabelTokenRaw(labelToken) {
 				continue
@@ -1125,13 +1124,13 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propKey}
 	if idx, ok := ms.propertyIndexes[key]; ok {
-		// Indexed path: collect matching IDs, sort, then verify fetched rows before pagination limit.
-		ids := idx.NodeIDs(value)
-		if len(ids) == 0 {
+		// Indexed path: the value's sorted posting list from opts.After on
+		// (backlog 72), each row verified before the limit.
+		ids := idx.Postings(value)
+		if ids.Len() == 0 {
 			return nil, nil
 		}
-		storepkg.SortNodeIDs(ids)
-		return ms.nodesByLabelPropertyFromIDs(labelToken, propKey, targetKey, idx.Elements(), ids, opts), nil
+		return ms.nodesByLabelPropertyFrom(labelToken, propKey, targetKey, idx.Elements(), ids.After(opts.After.SnowflakeID()), ids.Len(), opts), nil
 	}
 
 	// Fallback: label scan + property filter.
@@ -1152,22 +1151,15 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		return nil, nil
 	}
 	storepkg.SortNodeIDs(matchIDs)
-	return ms.nodesByLabelPropertyFromIDs(labelToken, propKey, targetKey, false, matchIDs, opts), nil
+	return ms.nodesByLabelPropertyFrom(labelToken, propKey, targetKey, false, idsAfter(matchIDs, opts.After), len(matchIDs), opts), nil
 }
 
-func (ms *Store) nodesByLabelPropertyFromIDs(labelToken uint16, propKey, targetKey string, elements bool, ids []types.NodeID, opts QueryOpts) []*types.Node {
-	ids = storepkg.PaginateNodeIDs(ids, opts.After, 0)
-	if len(ids) == 0 {
-		return nil
-	}
-
+// nodesByLabelPropertyFrom is nodesByLabelPropertiesFrom for one key.
+func (ms *Store) nodesByLabelPropertyFrom(labelToken uint16, propKey, targetKey string, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Node {
 	hasTemporal := storepkg.HasTemporalFilter(opts)
-	capHint := len(ids)
-	if opts.Limit > 0 && opts.Limit < capHint {
-		capHint = opts.Limit
-	}
-	result := make([]*types.Node, 0, capHint)
-	for _, id := range ids {
+	result := make([]*types.Node, 0, resultCap(opts.Limit, n))
+	for raw := range ids {
+		id := types.NodeID(raw)
 		if n, ok := ms.nodes[id]; ok {
 			if !n.HasLabelTokenRaw(labelToken) {
 				continue

@@ -99,17 +99,17 @@ func (bs *Store) IndexStateDigestForTest() string {
 	})
 	for key, idx := range bs.propertyIndexes {
 		for vk, ids := range idx.Entries {
-			add("propidx %d %s %q %v", key.LabelToken, key.PropertyKey, vk, digestRawIDs(ids))
+			add("propidx %d %s %q %v", key.LabelToken, key.PropertyKey, vk, ids.AppendAfter(nil, 0, 0))
 		}
 	}
 	for key, idx := range bs.relPropertyIndexes {
 		for vk, ids := range idx.Entries {
-			add("relpropidx %d %s %q %v", key.RelTypeToken, key.PropertyKey, vk, digestRawIDs(ids))
+			add("relpropidx %d %s %q %v", key.RelTypeToken, key.PropertyKey, vk, ids.AppendAfter(nil, 0, 0))
 		}
 	}
 	for key, idx := range bs.compositeIndexes {
 		for vk, ids := range idx.Entries {
-			add("composite %d %q %q %v", key.LabelToken, key.Keys, vk, digestRawIDs(ids))
+			add("composite %d %q %q %v", key.LabelToken, key.Keys, vk, ids.AppendAfter(nil, 0, 0))
 		}
 	}
 	for tok, ti := range bs.temporalIndexes {
@@ -189,15 +189,6 @@ func digestRelIDs(set map[types.RelID]struct{}) []types.RelID {
 		out = append(out, id)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
-}
-
-func digestRawIDs[K comparable](set map[K]struct{}) []K {
-	out := make([]K, 0, len(set))
-	for id := range set {
-		out = append(out, id)
-	}
-	sort.Slice(out, func(i, j int) bool { return fmt.Sprint(out[i]) < fmt.Sprint(out[j]) })
 	return out
 }
 

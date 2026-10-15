@@ -19,15 +19,15 @@ type CompositeIndexKey struct {
 // CompositePropertyIndex stores a reverse mapping from a concatenated
 // per-component canonical value key (EncodeCompositeKeyTuple applied to each
 // declared key's types.IndexablePropertyValueKey, in DECLARED order) to the
-// set of node IDs whose current row carries an indexable value for EVERY
-// declared key. v1 is EQUALITY-only: no partial-prefix or range lookup — see
+// sorted posting list (backlog 72) of the node IDs whose current row carries
+// an indexable value for EVERY declared key. v1 is EQUALITY-only: no partial-prefix or range lookup — see
 // docs/query-planners.md "Composite property indexes".
 type CompositePropertyIndex struct {
 	// Keys is the declared, ordered component property-key list — every
 	// value key below (and every query key) is built in this same order.
 	Keys []string
 
-	Entries map[string]map[snowflake.ID]struct{}
+	Entries map[string]*IDPostings
 
 	// Mutated tracks IDs touched by a concurrent write during 3-phase
 	// creation (see badger's CreateCompositePropertyIndex). Non-nil only
@@ -43,7 +43,7 @@ func NewCompositePropertyIndex(keys []string) *CompositePropertyIndex {
 	copy(declared, keys)
 	return &CompositePropertyIndex{
 		Keys:    declared,
-		Entries: make(map[string]map[snowflake.ID]struct{}),
+		Entries: make(map[string]*IDPostings),
 	}
 }
 
@@ -146,14 +146,14 @@ func (ci *CompositePropertyIndex) AddKey(id snowflake.ID, vk string) {
 		return
 	}
 	if ci.Entries == nil {
-		ci.Entries = make(map[string]map[snowflake.ID]struct{})
+		ci.Entries = make(map[string]*IDPostings)
 	}
 	set := ci.Entries[vk]
 	if set == nil {
-		set = make(map[snowflake.ID]struct{})
+		set = &IDPostings{}
 		ci.Entries[vk] = set
 	}
-	set[id] = struct{}{}
+	set.add(id)
 	if ci.Mutated != nil {
 		ci.Mutated[id] = struct{}{}
 	}
@@ -165,8 +165,8 @@ func (ci *CompositePropertyIndex) removeKey(id snowflake.ID, vk string) {
 		return
 	}
 	if set, ok := ci.Entries[vk]; ok {
-		delete(set, id)
-		if len(set) == 0 {
+		set.remove(id)
+		if set.Len() == 0 {
 			delete(ci.Entries, vk)
 		}
 	}
@@ -175,21 +175,14 @@ func (ci *CompositePropertyIndex) removeKey(id snowflake.ID, vk string) {
 	}
 }
 
-// NodeIDs returns the node IDs matching a precomputed composite value key vk,
-// as a caller-owned slice.
-func (ci *CompositePropertyIndex) NodeIDs(vk string) []types.NodeID {
+// Postings returns the sorted posting list of a precomputed composite value
+// key vk (nil when no node holds it). The list is the index's own: the caller
+// reads it under the store's index lock and does not change it.
+func (ci *CompositePropertyIndex) Postings(vk string) *IDPostings {
 	if ci == nil || vk == "" {
 		return nil
 	}
-	set := ci.Entries[vk]
-	if len(set) == 0 {
-		return nil
-	}
-	out := make([]types.NodeID, 0, len(set))
-	for id := range set {
-		out = append(out, types.NodeID(id))
-	}
-	return out
+	return ci.Entries[vk]
 }
 
 // RegisterCompositeIndex installs key/idx into both indexes and the
@@ -318,8 +311,7 @@ func PurgeNodeFromAllCompositeIndexes(indexes map[CompositeIndexKey]*CompositePr
 			continue
 		}
 		for vk, set := range idx.Entries {
-			delete(set, id)
-			if len(set) == 0 {
+			if set.remove(id) && set.Len() == 0 {
 				delete(idx.Entries, vk)
 			}
 		}

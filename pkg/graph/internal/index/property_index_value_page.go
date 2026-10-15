@@ -49,7 +49,7 @@ func (pi *PropertyIndex) RangeOrderedValuePage(min, max float64, inclMin, inclMa
 // valueSet is one stored value and the IDs holding it.
 type valueSet struct {
 	value any
-	ids   map[snowflake.ID]struct{}
+	ids   *IDPostings
 }
 
 type valueSets []valueSet
@@ -57,7 +57,7 @@ type valueSets []valueSet
 // find returns the stored value of id among the sets.
 func (s valueSets) find(id snowflake.ID) (any, bool) {
 	for _, set := range s {
-		if _, ok := set.ids[id]; ok {
+		if set.ids.Has(id) {
 			return set.value, true
 		}
 	}
@@ -69,7 +69,7 @@ func (s valueSets) find(id snowflake.ID) (any, bool) {
 func (pi *PropertyIndex) typedSets(k float64) valueSets {
 	var out valueSets
 	add := func(v any) {
-		if set := pi.Entries[types.IndexablePropertyValueKey(v)]; len(set) > 0 {
+		if set := pi.Entries[types.IndexablePropertyValueKey(v)]; set.Len() > 0 {
 			out = append(out, valueSet{value: v, ids: set})
 		}
 	}

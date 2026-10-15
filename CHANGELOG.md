@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **perf: equality index pages read their page, not the whole value key** (ai-soc, backlog 72). `NodesByLabelAndProperties`
+  with a composite index, `NodesByLabelAndProperty` and `RelationshipsByTypeAndProperty` with a property index copied every
+  ID of the value key and sorted it on each call, so a walk in keyset pages (`After`, `Limit`) cost key size squared over the
+  page size (sigma's `ListDerived` pages 1,024 at a time: minutes per relation on whole BA). Every ID set of the property,
+  rel property and composite indexes, and the numeric ordered view's buckets, is now one posting list kept sorted by ID at
+  write time (`index.IDPostings`, the `sortedChunks` of the ordered views and the backlog-69 member pages); the string view's
+  duplicate per-value buckets are gone (it reads the value's posting list). A page seeks past `After` and reads its rows:
+  O(log n + page). Memory reads under its lock; badger copies the page's candidates in batches under `idxMu` (the first of
+  `Limit` IDs, doubling while filters drop rows) and reads rows without it; sharded and tiered pass `After` / `Limit` to every
+  shard and cut the merge (the global page lies in the union of the shards' pages) instead of returning every match per shard.
+  The ordered range and prefix pages (`RangeOrderedPage`, `PrefixOrderedPage` and their value pages) no longer sort a tied
+  value's IDs per call. Same IDs, order, pagination and valid-time filter as before (`TestSortedPostingsDifferential`:
+  random writes, replaces, label changes and deletes against the old gather-sort-cut on memory, badger and sharded, with and
+  without a valid-time filter; `TestSortedPostingsPagesAllBackends` adds tiered). Measured (one walk over a value key of n
+  IDs in pages of 1,024, memory, `BenchmarkPostingsWalk`): n=100,000 0.76 s -> 0.034 s, n=1,000,000 85.4 s -> 0.50 s;
+  bytes one page of 16 allocates over a 200,000-ID key 1.6 MB -> 0.4-0.9 KB (memory), 60,000-ID key 507 KB -> 21-24 KB
+  (badger). Heap per member at 1,000,000 IDs in one key (`BenchmarkPostingsBytesPerMember`): composite 37.8 B -> 8.1 B
+  (IDs written ascending) / 12.2 B (shuffled); property index 75.5 B -> 16.1 B / 24.3 B for an integer value (key and
+  numeric bucket), 8.1 B / 12.2 B for a string value; one member per value 512 B -> 296 B. One row write that moves a node
+  between two keys next to a 1,000,000-ID key (`BenchmarkPostingsWrite`): 1.66-1.73 us -> 1.70-1.74 us. Index creation (the
+  backfill) and badger's open rebuild collect each key's IDs, sort them and fill the index ascending into exact chunks
+  (`index.PostingsBuild`; an open image written before is sorted on load): over 1,000,000 nodes of one key
+  (`BenchmarkPostingsCreateIndex`) `CreatePropertyIndex` 1.39-1.47 s -> 0.70-0.71 s, `CreateCompositePropertyIndex`
+  0.81-0.82 s -> 0.68-0.71 s. Row-by-row writes in shuffled ID order cost about 0.2 us per ID against 0.1 us (an insert
+  moves up to one 1,024-ID chunk). Not changed: label
+  and type scans and badger `PropertyIndexOnDisk` (nodes) still collect and sort; the temporal property doors are unchanged.
+  Evidence `tasks/evidence/sorted-postings/`.
+
 ### Fixed
 
 - **`MemberTimeStats.Eternal()` docs (v4.55.2) promised members unbounded in valid time.** No code change: such a member is

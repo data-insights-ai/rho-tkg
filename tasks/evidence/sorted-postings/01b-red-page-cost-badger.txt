@@ -1,0 +1,11 @@
+=== RUN   TestPostingsPageCostIndependentOfKeySizeBadger
+    sorted_postings_cost_test.go:93: NodesByLabelAndProperties: 507043 B per page of 16 over a key of 60000
+    sorted_postings_cost_test.go:95: NodesByLabelAndProperties: one page of 16 allocates 507043 B over a key of 60000 members (bound 120000 B): the page copies or sorts the key
+    sorted_postings_cost_test.go:93: NodesByLabelAndProperty: 506735 B per page of 16 over a key of 60000
+    sorted_postings_cost_test.go:95: NodesByLabelAndProperty: one page of 16 allocates 506735 B over a key of 60000 members (bound 120000 B): the page copies or sorts the key
+    sorted_postings_cost_test.go:93: RelationshipsByTypeAndProperty: 504084 B per page of 16 over a key of 60000
+    sorted_postings_cost_test.go:95: RelationshipsByTypeAndProperty: one page of 16 allocates 504084 B over a key of 60000 members (bound 120000 B): the page copies or sorts the key
+--- FAIL: TestPostingsPageCostIndependentOfKeySizeBadger (1.31s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.324s
+FAIL

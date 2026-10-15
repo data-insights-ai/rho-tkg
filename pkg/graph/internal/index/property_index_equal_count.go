@@ -25,7 +25,7 @@ func (pi *PropertyIndex) EqualCount(value any) (count int64, exact bool) {
 	if pi == nil || pi.elements || pi.Mutated != nil {
 		return 0, false
 	}
-	size := func(v any) int64 { return int64(len(pi.Entries[types.IndexablePropertyValueKey(v)])) }
+	size := func(v any) int64 { return int64(pi.Entries[types.IndexablePropertyValueKey(v)].Len()) }
 	switch v := value.(type) {
 	case nil:
 		return 0, true
