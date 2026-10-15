@@ -297,6 +297,53 @@ PROTOCOL_FIXTURE_COMPAT = {
 }
 for _fixture, _parents in PROTOCOL_FIXTURE_COMPAT.items():
     FIXTURE_COMPAT[_fixture] = [*FIXTURE_COMPAT.get(_fixture, []), *_parents]
+# These integrated extensions call the existing semantic bodies and actual
+# process owners. Keep their finite consumers separate from the original31.
+P06_PROGRAM_PARENTS = [
+    "TestNativeP06ProgramsPreserveExactExistingSemanticInventory",
+    "TestNativeP06ExistingTransitionsWithActualLeaderAndMessagePrograms",
+]
+STATE_PROGRAM_PARENTS = [
+    "TestNativeProtocolPooledStateLeaderAndMessagePrograms",
+    "TestNativeProtocolStateProgramsKeepNativeIdentityAndCausalWindows",
+]
+P06_PROGRAM_FIXTURES = {
+    "native_graph_protocol_campaign_p06_harness_test.go", "native_graph_protocol_campaign_p06_test.go",
+    "native_graph_protocol_campaign_program_harness_test.go", "native_graph_protocol_campaign_predecessor_harness_test.go",
+    "native_graph_transition_batch_test.go", "native_graph_transition_conjunction_p06_test.go",
+    "native_graph_transition_conjunction_initial_test.go", "native_graph_transition_conjunction_first_prepare_test.go",
+    "native_graph_transition_conjunction_terminal_test.go", "native_graph_transition_conjunction_harness_test.go",
+    "native_graph_transition_batch_harness_test.go", "native_graph_transition_harness_test.go",
+    "native_graph_fault_schedule_harness_test.go", "native_graph_fault_family_harness_test.go",
+    "paired_graph_fault_harness_test.go", "graph_source_process_test.go", "replicated_process_test.go",
+    "prepared_lock_p06_harness_test.go", "coordinator_loss_p03_harness_test.go", "native_graph_fault_schedule_test.go",
+}
+STATE_PROGRAM_FIXTURES = {
+    "native_graph_protocol_campaign_state_program_harness_test.go", "native_graph_protocol_campaign_state_program_test.go",
+    "native_graph_protocol_campaign_state_harness_test.go", "native_graph_protocol_campaign_state_test.go",
+    "native_graph_protocol_campaign_program_harness_test.go", "paired_graph_fault_harness_test.go",
+    "graph_source_process_test.go", "replicated_process_test.go", "native_graph_transition_state_harness_test.go",
+    "native_graph_transition_retention_harness_test.go", "native_graph_transition_move_harness_test.go",
+    "native_graph_transition_pin_harness_test.go", "native_graph_transition_batch_harness_test.go",
+    "native_graph_transition_harness_test.go", "native_graph_fault_schedule_harness_test.go",
+    "native_graph_fault_family_harness_test.go", "native_graph_transition_conjunction_harness_test.go",
+    "prepared_lock_p06_harness_test.go", "coordinator_loss_p03_harness_test.go", "native_graph_fault_schedule_test.go",
+}
+PROTOCOL_EXTENSION_FIXTURE_COMPAT = {}
+for _fixtures, _parents in ((P06_PROGRAM_FIXTURES, P06_PROGRAM_PARENTS), (STATE_PROGRAM_FIXTURES, STATE_PROGRAM_PARENTS)):
+    for _fixture in _fixtures:
+        PROTOCOL_EXTENSION_FIXTURE_COMPAT[_fixture] = [*PROTOCOL_EXTENSION_FIXTURE_COMPAT.get(_fixture, []), *_parents]
+# Existing literal P06 parents also call the nil-default program attachment.
+PROTOCOL_EXTENSION_FIXTURE_COMPAT["native_graph_protocol_campaign_p06_harness_test.go"] += [
+    "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut",
+    "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal",
+    "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath",
+    "TestNativePreparedLockP06InitialRegisterPrecedesFirstYESAcrossSyncDeath",
+    "TestNativePreparedLockP06FirstPrepareKeepsActualUnknownAndStoredYESAcrossSyncDeath",
+    "TestNativeTransactionExactReadyAndInstallBatchesRecoverOriginalAndOldCut",
+]
+for _fixture, _parents in PROTOCOL_EXTENSION_FIXTURE_COMPAT.items():
+    FIXTURE_COMPAT[_fixture] = [*FIXTURE_COMPAT.get(_fixture, []), *_parents]
 SNAPSHOT_SENDER_PARENTS = [
     "TestNativeSnapshotSenderLossRequiresExactReapedProcessAndApplicableBoundary",
     "TestNativeSnapshotSenderLossDuringImportKeepsWholeOriginalAndOldCut",
@@ -414,6 +461,15 @@ PROTOCOL_PROGRAM_INPUTS |= PROTOCOL_CORE_INPUTS
 PROTOCOL_PREDECESSOR_INPUTS |= {"v5/internal/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
                                 if set(PROTOCOL_PREDECESSOR_PARENTS).intersection(parents)}
 PROTOCOL_PREDECESSOR_INPUTS |= PROTOCOL_PROGRAM_INPUTS
+P06_PROGRAM_INPUTS = PROTOCOL_PREDECESSOR_INPUTS | {
+    "tools/v5-substrate/native_protocol_campaign_p06_check.py",
+    "tools/v5-substrate/native_protocol_campaign_p06_check_test.py",
+    "tools/v5-substrate/native_transition_first_prepare_check.py",
+} | {"v5/internal/graphapply/"+name for name in P06_PROGRAM_FIXTURES}
+STATE_PROGRAM_INPUTS = PROTOCOL_STATE_INPUTS | PROTOCOL_PROGRAM_INPUTS | {
+    "tools/v5-substrate/native_protocol_campaign_state_program_check.py",
+    "tools/v5-substrate/native_protocol_campaign_state_program_check_test.py",
+} | {"v5/internal/graphapply/"+name for name in STATE_PROGRAM_FIXTURES}
 PAIR_INPUTS = {"tools/v5-substrate/paired_workload_check.py", "tools/v5-substrate/paired_workload_cell.py",
                "tools/v5-substrate/paired_workload_check_test.py", "tools/v5-substrate/fdb/fdb_contention_check.py",
                "tools/v5-substrate/fdb/fdb_contention_check_test.py", "tools/v5-substrate/workload_matrix.py",
@@ -539,7 +595,7 @@ def graph_selection(directory, changed, definitions):
         # Only actually edited top-level helper functions get consumer lookup.
         # Shared types/methods require a reviewed finite fixture guard list.
         helpers = {name for kind, name in edited if kind == "func" and name not in parent_names(path)}
-        if helpers and path.name in PROTOCOL_FIXTURE_COMPAT.keys() | SNAPSHOT_SENDER_FIXTURES:
+        if helpers and path.name in PROTOCOL_FIXTURE_COMPAT.keys() | PROTOCOL_EXTENSION_FIXTURE_COMPAT.keys() | SNAPSHOT_SENDER_FIXTURES:
             tests |= set(FIXTURE_COMPAT[path.name])
             helpers = set()
         if helpers and path.name in ("native_graph_transition_conjunction_initial_test.go", "native_graph_transition_conjunction_first_prepare_test.go"):
@@ -867,6 +923,10 @@ def cdc(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_protocol_campaign_predecessor_check_test.py"], cwd=ROOT, check=True)
     if PROTOCOL_STATE_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_protocol_campaign_state_check_test.py"], cwd=ROOT, check=True)
+    if P06_PROGRAM_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_protocol_campaign_p06_check_test.py"], cwd=ROOT, check=True)
+    if STATE_PROGRAM_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_protocol_campaign_state_program_check_test.py"], cwd=ROOT, check=True)
 
 
 def focused_dispatch_base(event, kind, head):

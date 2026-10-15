@@ -25,6 +25,8 @@ class Planning(unittest.TestCase):
             (CI.PROTOCOL_PROGRAM_INPUTS, "native_protocol_campaign_program_check_test.py"),
             (CI.PROTOCOL_PREDECESSOR_INPUTS, "native_protocol_campaign_predecessor_check_test.py"),
             (CI.PROTOCOL_STATE_INPUTS, "native_protocol_campaign_state_check_test.py"),
+            (CI.P06_PROGRAM_INPUTS, "native_protocol_campaign_p06_check_test.py"),
+            (CI.STATE_PROGRAM_INPUTS, "native_protocol_campaign_state_program_check_test.py"),
         ):
             if inputs.intersection(paths):
                 expected = expected + [[sys.executable, "-B", "tools/v5-substrate/" + guard]]
@@ -128,6 +130,8 @@ class Planning(unittest.TestCase):
             (CI.PROTOCOL_PROGRAM_INPUTS, "native_protocol_campaign_program_check_test.py"),
             (CI.PROTOCOL_PREDECESSOR_INPUTS, "native_protocol_campaign_predecessor_check_test.py"),
             (CI.PROTOCOL_STATE_INPUTS, "native_protocol_campaign_state_check_test.py"),
+            (CI.P06_PROGRAM_INPUTS, "native_protocol_campaign_p06_check_test.py"),
+            (CI.STATE_PROGRAM_INPUTS, "native_protocol_campaign_state_program_check_test.py"),
         )
         for inputs, guard in groups:
             for paths in [[path] for path in sorted(inputs)] + [sorted(inputs) * 2]:
@@ -146,6 +150,15 @@ class Planning(unittest.TestCase):
         self.assertIn("tools/v5-substrate/compare-graph-fault.py", CI.PROTOCOL_CORE_INPUTS)
         self.assertIn("tools/v5-substrate/graph-fault-local-v1.json", CI.PROTOCOL_CORE_INPUTS)
         self.assertIn("tools/v5-substrate/native_protocol_campaign_program_check.py", CI.PROTOCOL_PREDECESSOR_INPUTS)
+        for dependency in ("native_protocol_campaign_predecessor_check.py", "native_transition_first_prepare_check.py",
+                           "native_transition_initial_check.py", "native_transition_conjunction_check.py",
+                           "native_transition_batch_check.py", "native_transition_certificate_check.py"):
+            self.assertIn("tools/v5-substrate/"+dependency, CI.P06_PROGRAM_INPUTS)
+        for dependency in ("native_protocol_campaign_state_check.py", "native_protocol_campaign_program_check.py",
+                           "native_transfer_check.py", "native_columns_check.py", "comparison_spool.py"):
+            self.assertIn("tools/v5-substrate/"+dependency, CI.STATE_PROGRAM_INPUTS)
+        self.assertTrue(CI.PROTOCOL_PREDECESSOR_INPUTS <= CI.P06_PROGRAM_INPUTS)
+        self.assertTrue(CI.PROTOCOL_STATE_INPUTS | CI.PROTOCOL_PROGRAM_INPUTS <= CI.STATE_PROGRAM_INPUTS)
         with patch.object(CI.subprocess, "run") as run:
             CI.cdc(["tools/v5-substrate/README.md", "v5/internal/graphapply/unrelated_test.go"])
             run.assert_not_called()
@@ -474,6 +487,7 @@ class RealGitSelection(unittest.TestCase):
         for name in fixtures.keys() & CI.GUARDED_FIXTURES:fixtures[name]|=set(CI.GUARDED_PARENTS)
         for name in fixtures.keys() & CI.TRANSFER_FIXTURES:fixtures[name]|=set(CI.TRANSFER_PARENTS)
         for name in fixtures.keys() & CI.PROTOCOL_FIXTURE_COMPAT.keys():fixtures[name]|=set(CI.PROTOCOL_FIXTURE_COMPAT[name])
+        for name in fixtures.keys() & CI.PROTOCOL_EXTENSION_FIXTURE_COMPAT.keys():fixtures[name]|=set(CI.PROTOCOL_EXTENSION_FIXTURE_COMPAT[name])
         for name in fixtures.keys() & CI.SNAPSHOT_SENDER_FIXTURES:fixtures[name]|=set(CI.SNAPSHOT_SENDER_PARENTS)
         for name, parents in fixtures.items():
             with self.subTest(fixture=name):
@@ -536,13 +550,13 @@ class RealGitSelection(unittest.TestCase):
         path = self.directory / "graph_source_process_test.go"
         path.write_text("package graphapply\ntype graphProcessHub struct{}\n")
         selected = set(CI.graph_selection(self.directory, [path], {path: [("type", "graphProcessHub")]}))
-        self.assertEqual(selected, set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.GRAPH_COMPAT) | set(CI.PROTOCOL_PARENTS) | set(CI.SNAPSHOT_SENDER_PARENTS) |
+        self.assertEqual(selected, set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.GRAPH_COMPAT) | set(CI.PROTOCOL_PARENTS) | set(CI.SNAPSHOT_SENDER_PARENTS) | set(CI.P06_PROGRAM_PARENTS) | set(CI.STATE_PROGRAM_PARENTS) |
                          {"TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput",
                           "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts"})
         self.assertNotIn("TestNativeGraphCostCell", selected)
 
     def test_protocol_private_helpers_and_types_keep_exact_whole_parent_consumers(self):
-        for name, parents in CI.PROTOCOL_FIXTURE_COMPAT.items():
+        for name, parents in [*CI.PROTOCOL_FIXTURE_COMPAT.items(), *CI.PROTOCOL_EXTENSION_FIXTURE_COMPAT.items()]:
             for kind, definition, source in (("func", "privateProtocolOwner", "func privateProtocolOwner() {}"),
                                              ("type", "protocolOwner", "type protocolOwner struct{}")):
                 with self.subTest(name=name, kind=kind):
@@ -561,6 +575,13 @@ class RealGitSelection(unittest.TestCase):
         self.assertIn("TestNativeProtocolReadyLossWithServiceAndPredecessorMessages",
                       CI.PROTOCOL_FIXTURE_COMPAT["native_graph_transition_conjunction_harness_test.go"])
         self.assertTrue(set(CI.PROTOCOL_CORE_PARENTS) <= set(CI.FIXTURE_COMPAT["native_graph_transition_batch_harness_test.go"]))
+        self.assertEqual(CI.P06_PROGRAM_PARENTS, ["TestNativeP06ProgramsPreserveExactExistingSemanticInventory",
+                                                "TestNativeP06ExistingTransitionsWithActualLeaderAndMessagePrograms"])
+        self.assertEqual(CI.STATE_PROGRAM_PARENTS, ["TestNativeProtocolPooledStateLeaderAndMessagePrograms",
+                                                  "TestNativeProtocolStateProgramsKeepNativeIdentityAndCausalWindows"])
+        self.assertIn("native_graph_transition_conjunction_terminal_test.go", CI.P06_PROGRAM_FIXTURES)
+        self.assertNotIn("native_graph_protocol_campaign_state_harness_test.go", CI.P06_PROGRAM_FIXTURES)
+        self.assertNotIn("native_graph_transition_conjunction_terminal_test.go", CI.STATE_PROGRAM_FIXTURES)
 
     def test_transfer_fixtures_keep_real_pooled_parents_and_short_workload(self):
         for name in CI.TRANSFER_FIXTURES:
@@ -775,7 +796,7 @@ class CurrentRepository(unittest.TestCase):
     def test_checked_compatibility_names_exist_in_current_sources(self):
         directory = CI.ROOT / "v5/internal/graphapply"
         names = set().union(*(CI.parent_names(p) for p in directory.glob("*_test.go")))
-        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) | set(CI.CORRECTION_PARENTS) | set(CI.TRANSFER_PARENTS) | set(CI.PROTOCOL_PARENTS) | set(CI.SNAPSHOT_SENDER_PARENTS) <= names)
+        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) | set(CI.CORRECTION_PARENTS) | set(CI.TRANSFER_PARENTS) | set(CI.PROTOCOL_PARENTS) | set(CI.SNAPSHOT_SENDER_PARENTS) | set(CI.P06_PROGRAM_PARENTS) | set(CI.STATE_PROGRAM_PARENTS) <= names)
         self.assertIn("TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements", CI.GRAPH_COMPAT)
 
     def test_explicit_cost_cell_is_short_guarded_before_profile(self):
