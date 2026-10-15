@@ -646,8 +646,14 @@ entry/root/outcome/CDC evidence to same-original recovery and retained old cuts.
 Recorded-seed replay uses fresh children and only minimizes the same independent
 semantic failure; unavailable trials cannot establish a minimal case. The
 repository-owned process watchdog now supplies the workload controllers' default
-finite lifetime and cleanup owner. Namespace-publication and transfer/cut/pin
-transition parents remain in implementation; none of these guards ran.
+finite lifetime and cleanup owner. Transfer transitions are source-integrated at
+`c6594a5a`: 34 phase/participant/page/side cases retain the genuine pre-fence
+factory intent through drained authenticated leader reassociation, actual child
+loss/replacement, terminal replay, old cuts and both activation lineages. The
+fixed-profile placement checker now matches the actual split reservation ending
+at ID1. These are authored cases, not executed recovery proof. Cut/pin and
+namespace-publication transition parents, plus broader recorded-seed composition,
+remain in implementation; none of these guards ran.
 
 Current worker lanes: Sol 6.1/high for native snapshot-to-feed production
 ownership and its workload; Sol 6.1/high for remaining C/D transfer/cut/pin
