@@ -252,10 +252,9 @@ func TestNativeConjunctionSameCoordinatorRetainsGenuineUnknownRegisterAndStreams
 	}
 	manifest, digest := run.tx.manifest, sha256.Sum256(run.tx.manifest)
 	streamA, streamB := c.streams[3], c.streams[8]
-	server, err := newGraphSourceServer(t.Context(), c.host, defaultGraphSourceLimits(c.host.machine.limits))
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Retain the actual fixture's source owner and spent replay ledger; this
+	// Host cannot acquire a second server just for reconnect diagnostics.
+	server := wires[0].service.sources
 	sessions := &graphProcessCertifiedSessions{owners: make(map[uint64]graphProcessCertifiedOwner)}
 	r := processRequest{op: processPairedReconnect, data: allocationP08Words(1, 4)}
 	if same, err := pairedGraphFaultReconnect(t.Context(), c.host, c, sessions, nil, server, r, 0, 0, false); same != c || !errors.Is(err, errInvalid) {
