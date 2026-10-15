@@ -288,7 +288,7 @@ func nativeRetentionCase(t *testing.T, side string) {
 	c = control("open")
 	c.Index = oldHome.sourceIndex
 	late, _, err := call(target, c)
-	if err != nil || late.Root.Index != oldHome.sourceIndex || !bytes.Equal(late.Root.Image, oldHome.image) {
+	if err != nil || late.Root.Index != oldHome.sourceIndex || !bytes.Equal(late.Root.Image, oldHome.image[:]) {
 		t.Fatal("actual late captured old root", err)
 	}
 	n.groups[0].enqueue(t, submitted)

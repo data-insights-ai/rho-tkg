@@ -37,7 +37,7 @@ type nativeSelectorsResult struct {
 	BusinessPhases                                         *[2]nativeGuardedScalarPhase `json:",omitzero"`
 }
 
-func nativeSelectorsQuery(t *testing.T, c *nativeSelectorsClient, q nativeSelectorsInput) (nativeSelectorsReply, graphCut) {
+func nativeSelectorsOpenQuery(t *testing.T, c *nativeSelectorsClient, q nativeSelectorsInput) (nativeSelectorsReply, graphCut) {
 	t.Helper()
 	started := time.Now()
 	defer func() { c.openNanos = time.Since(started).Nanoseconds() }()
@@ -140,7 +140,7 @@ func nativeSelectorsScoped(t *testing.T, c *nativeSelectorsClient, s nativeSelec
 			t.Fatal(err)
 		}
 	}
-	r, actual := nativeSelectorsQuery(t, c, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "scoped-query", ordinal), Mode: mode, Cut: wire, Partitions: []uint64{partition}})
+	r, actual := nativeSelectorsOpenQuery(t, c, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "scoped-query", ordinal), Mode: mode, Cut: wire, Partitions: []uint64{partition}})
 	if len(actual.certificates) != 1 || actual.certificates[0].scope.partition != partition || len(r.Original)+len(r.Token) != 0 {
 		t.Fatal("scoped capture fabricated full native pin/source coverage")
 	}
@@ -222,13 +222,13 @@ func runNativeSnapshotSelectorsWorkload(t *testing.T, spec nativeSelectorsSpec, 
 	}
 	result.LogicalCross = 2 * (spec.Facts * spec.CrossPercent / 100)
 	result.LogicalLocal = 3 + 2*spec.Facts - result.LogicalCross
-	initialQuery, initial := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 1), Mode: graphReadFresh})
+	initialQuery, initial := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 1), Mode: graphReadFresh})
 	result.Initial = initialQuery.Cut
 	sequence := uint64(0)
 	nativeSelectorsObserve(t, client, spec, initialQuery.Handle, 0, &sequence)
 	client.invoke(nativeSelectorsInput{Action: "release", Handle: initialQuery.Handle}, nil)
 	client.stage = "initial-empty-stable"
-	stableEmpty, emptyCut := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 2), Mode: graphReadStable})
+	stableEmpty, emptyCut := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 2), Mode: graphReadStable})
 	if !feedCutEqual(emptyCut, initial) {
 		t.Fatal("stable empty changed native certificate")
 	}
@@ -258,7 +258,7 @@ func runNativeSnapshotSelectorsWorkload(t *testing.T, spec nativeSelectorsSpec, 
 		scoped[group] = nativeSelectorsScoped(t, client, spec, digest, graphReadFresh, graphCut{}, uint64(3+group), part)
 	}
 	client.stage = "old-fresh"
-	oldQuery, old := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 5), Mode: graphReadFresh})
+	oldQuery, old := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 5), Mode: graphReadFresh})
 	result.Old, result.OldToken = oldQuery.Cut, oldQuery.Token
 	sequence = 0
 	nativeSelectorsObserve(t, client, spec, oldQuery.Handle, 5, &sequence)
@@ -275,7 +275,7 @@ func runNativeSnapshotSelectorsWorkload(t *testing.T, spec nativeSelectorsSpec, 
 		result.BusinessNanos = result.BusinessPhases[0].WallNanos + result.BusinessPhases[1].WallNanos
 	}
 	client.stage = "stable-after-update"
-	stable, stableCut := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 6), Mode: graphReadStable})
+	stable, stableCut := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 6), Mode: graphReadStable})
 	if !feedCutEqual(stableCut, old) {
 		t.Fatal("Stable silently became current state")
 	}
@@ -290,7 +290,7 @@ func runNativeSnapshotSelectorsWorkload(t *testing.T, spec nativeSelectorsSpec, 
 		}
 	}
 	client.stage = "same-pin-old-after-update"
-	held, heldCut := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "reopen", Request: nativeFeedRequest(digest, "query", 9), Token: result.OldToken})
+	held, heldCut := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "reopen", Request: nativeFeedRequest(digest, "query", 9), Token: result.OldToken})
 	if !feedCutEqual(heldCut, old) {
 		t.Fatal("same durable old owner changed C")
 	}
@@ -298,7 +298,7 @@ func runNativeSnapshotSelectorsWorkload(t *testing.T, spec nativeSelectorsSpec, 
 	nativeSelectorsObserve(t, client, spec, held.Handle, 5, &sequence)
 	client.invoke(nativeSelectorsInput{Action: "close", Handle: held.Handle}, nil)
 	client.stage = "at-old-after-update"
-	at, _ := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 10), Mode: graphReadAt, Cut: result.Old})
+	at, _ := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 10), Mode: graphReadAt, Cut: result.Old})
 	sequence = 0
 	nativeSelectorsObserve(t, client, spec, at.Handle, 5, &sequence)
 	client.invoke(nativeSelectorsInput{Action: "release", Handle: at.Handle}, nil)
@@ -309,13 +309,13 @@ func runNativeSnapshotSelectorsWorkload(t *testing.T, spec nativeSelectorsSpec, 
 	} else {
 		afterInput.Local, result.AfterLocal = after.identity, after.identity
 	}
-	finalQuery, final := nativeSelectorsQuery(t, client, afterInput)
+	finalQuery, final := nativeSelectorsOpenQuery(t, client, afterInput)
 	result.Final, result.FinalToken = finalQuery.Cut, finalQuery.Token
 	sequence = 0
 	nativeSelectorsObserve(t, client, spec, finalQuery.Handle, 6, &sequence)
 	client.invoke(nativeSelectorsInput{Action: "close", Handle: finalQuery.Handle}, nil)
 	client.stage = "fresh-current"
-	freshQuery, freshCut := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 12), Mode: graphReadFresh})
+	freshQuery, freshCut := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 12), Mode: graphReadFresh})
 	if !feedCutEqual(freshCut, final) {
 		t.Fatal("quiescent Fresh changed complete business certificate")
 	}
@@ -335,7 +335,7 @@ func runNativeSnapshotSelectorsWorkload(t *testing.T, spec nativeSelectorsSpec, 
 	result.Transport = append(result.Transport, nativeSelectorsRestart(t, ctx, n, spec, admission, processes))
 	for index, token := range [][]byte{result.OldToken, result.FinalToken} {
 		client.stage = []string{"reopened-old", "reopened-final"}[index]
-		query, actual := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "reopen", Request: nativeFeedRequest(digest, "query", uint64(13+index)), Token: token})
+		query, actual := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "reopen", Request: nativeFeedRequest(digest, "query", uint64(13+index)), Token: token})
 		want, value := old, int64(5)
 		if index == 1 {
 			want, value = final, 6

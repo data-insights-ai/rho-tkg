@@ -251,15 +251,15 @@ func (o *nativeRetentionOwner) event(wire []byte) (response processResponse, eve
 		}
 	}
 	o.calls++
-	rows, bytes := o.rowGrant, o.byteGrant
+	rows, grantBytes := o.rowGrant, o.byteGrant
 	if o.freshCollection && c.Action == "collect" {
-		rows, bytes = uint64(o.collectRows), uint64(o.collectBytes)
+		rows, grantBytes = uint64(o.collectRows), uint64(o.collectBytes)
 	}
-	if !nativeColumnAdd(o.rows, rows) || !nativeColumnAdd(o.work, bytes) || !nativeColumnAdd(o.output, 2*processFrameBytes+2*nativeRetentionReceiptBytes) {
+	if !nativeColumnAdd(o.rows, rows) || !nativeColumnAdd(o.work, grantBytes) || !nativeColumnAdd(o.output, 2*processFrameBytes+2*nativeRetentionReceiptBytes) {
 		return response, event, errLimit
 	}
 	o.rows += rows
-	o.work += bytes
+	o.work += grantBytes
 	o.output += 2*processFrameBytes + 2*nativeRetentionReceiptBytes
 	if err := o.ctx.Err(); err != nil {
 		return response, event, errors.Join(replica.ErrUnavailable, err)

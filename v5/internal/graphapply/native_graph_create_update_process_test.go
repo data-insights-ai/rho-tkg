@@ -212,7 +212,7 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 		}
 		return nativeCreateUpdateCount(spec, &result.BusinessPhases[index], &scanSequence[index], q, r)
 	}
-	oldQuery, old := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 1), Mode: graphReadFresh})
+	oldQuery, old := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 1), Mode: graphReadFresh})
 	result.Old, result.OldToken = oldQuery.Cut, oldQuery.Token
 	sequence := uint64(0)
 	nativeSelectorsObserve(t, client, spec, oldQuery.Handle, 5, &sequence, nativeCreateUpdateCheckPoint)
@@ -230,7 +230,7 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 	result.BusinessPhases[1] = nativeCreateUpdatePhaseStop("update", phaseStarted, started)
 	result.BusinessNanos = result.BusinessPhases[0].WallNanos + result.BusinessPhases[1].WallNanos
 	client.stage = "same-pin-old-after-update"
-	held, heldCut := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "reopen", Request: nativeFeedRequest(digest, "query", 2), Token: result.OldToken})
+	held, heldCut := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "reopen", Request: nativeFeedRequest(digest, "query", 2), Token: result.OldToken})
 	if !feedCutEqual(heldCut, old) {
 		t.Fatal("same retained old owner changed C")
 	}
@@ -241,7 +241,7 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 	}
 	client.invoke(nativeSelectorsInput{Action: "close", Handle: held.Handle}, nil)
 	client.stage = "fresh-current"
-	current, final := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 3), Mode: graphReadFresh})
+	current, final := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "prepare", Request: nativeFeedRequest(digest, "query", 3), Mode: graphReadFresh})
 	result.Final, result.FinalToken = current.Cut, current.Token
 	sequence = 0
 	nativeSelectorsObserve(t, client, spec, current.Handle, 6, &sequence, nativeCreateUpdateCheckPoint)
@@ -286,7 +286,7 @@ func nativeScalarCreateUpdateWorkload(t *testing.T, family string) {
 	result.Transport = append(result.Transport, nativeCreateUpdateRestart(t, ctx, n, spec, admission, processes))
 	for index, token := range [][]byte{result.OldToken, result.FinalToken} {
 		client.stage = []string{"reopened-old", "reopened-final"}[index]
-		query, actual := nativeSelectorsQuery(t, client, nativeSelectorsInput{Action: "reopen", Request: nativeFeedRequest(digest, "query", uint64(4+index)), Token: token})
+		query, actual := nativeSelectorsOpenQuery(t, client, nativeSelectorsInput{Action: "reopen", Request: nativeFeedRequest(digest, "query", uint64(4+index)), Token: token})
 		want, value := old, int64(5)
 		if index == 1 {
 			want, value = final, 6
