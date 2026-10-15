@@ -17,6 +17,8 @@ SPEC.loader.exec_module(CI)
 
 
 class Planning(unittest.TestCase):
+    def with_guarded(self, paths, expected):
+        return expected + ([[sys.executable,"-B","tools/v5-substrate/native_guarded_scalar_test.py"]] if CI.GUARDED_INPUTS.intersection(paths) else [])
     def docs_action(self, paths):
         with patch.object(sys, "argv", ["ci-changes.py", "docs", "--base", "fixture"]), patch.object(CI, "changed_paths", return_value=paths):
             CI.main()
@@ -117,10 +119,10 @@ class Planning(unittest.TestCase):
         for paths in [[path] for path in CI.WORKLOAD_INPUTS] + [list(CI.WORKLOAD_INPUTS)]:
             with self.subTest(paths=paths), patch.object(CI.subprocess, "run") as run:
                 CI.cdc(paths)
-                self.assertEqual([call.args[0] for call in run.call_args_list], [
+                self.assertEqual([call.args[0] for call in run.call_args_list], self.with_guarded(paths, [
                     [sys.executable, "-B", "tools/v5-substrate/native_contention_check_test.py"],
                     [sys.executable, "-B", "tools/v5-substrate/native_workload_cell_test.py"],
-                    [sys.executable, "-B", "tools/v5-substrate/workload_matrix_test.py"]])
+                    [sys.executable, "-B", "tools/v5-substrate/workload_matrix_test.py"]]))
 
     def test_create_update_inputs_select_only_their_authored_private_guard(self):
         for paths in [[p] for p in CI.CREATE_UPDATE_INPUTS] + [list(CI.CREATE_UPDATE_INPUTS)]:
@@ -129,7 +131,7 @@ class Planning(unittest.TestCase):
                 expected=[[sys.executable,"-B","tools/v5-substrate/native_create_update_check_test.py"]]
                 if CI.IMMUTABLE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_immutable_columns_check_test.py"])
                 if CI.CORRECTION_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_late_correction_check_test.py"])
-                self.assertEqual([call.args[0] for call in run.call_args_list],expected)
+                self.assertEqual([call.args[0] for call in run.call_args_list],self.with_guarded(paths,expected))
 
     def test_immutable_columns_dependency_guard_is_once_and_never_runs_go(self):
         for paths in [[p] for p in CI.IMMUTABLE_INPUTS]+[list(CI.IMMUTABLE_INPUTS)]:
@@ -139,7 +141,7 @@ class Planning(unittest.TestCase):
                 if CI.CREATE_UPDATE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_create_update_check_test.py"])
                 expected.append([sys.executable,"-B","tools/v5-substrate/native_immutable_columns_check_test.py"])
                 if CI.CORRECTION_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_late_correction_check_test.py"])
-                self.assertEqual([call.args[0] for call in run.call_args_list],expected)
+                self.assertEqual([call.args[0] for call in run.call_args_list],self.with_guarded(paths,expected))
 
     def test_half_correction_guard_dependencies_are_private_once_and_never_go(self):
         for paths in [[p] for p in CI.CORRECTION_INPUTS]+[list(CI.CORRECTION_INPUTS)]:
@@ -148,7 +150,18 @@ class Planning(unittest.TestCase):
                 if CI.CREATE_UPDATE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_create_update_check_test.py"])
                 if CI.IMMUTABLE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_immutable_columns_check_test.py"])
                 expected.append([sys.executable,"-B","tools/v5-substrate/native_late_correction_check_test.py"])
-                self.assertEqual([call.args[0] for call in run.call_args_list],expected)
+                self.assertEqual([call.args[0] for call in run.call_args_list],self.with_guarded(paths,expected))
+
+    def test_guarded_scalar_inputs_select_complete_private_dependency_guards_once(self):
+        for paths in [[p] for p in CI.GUARDED_INPUTS]+[list(CI.GUARDED_INPUTS)]:
+            with self.subTest(paths=paths),patch.object(CI.subprocess,"run") as run:
+                CI.cdc(paths);expected=[]
+                if CI.CREATE_UPDATE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_create_update_check_test.py"])
+                if CI.IMMUTABLE_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_immutable_columns_check_test.py"])
+                if CI.CORRECTION_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_late_correction_check_test.py"])
+                if CI.WORKLOAD_INPUTS.intersection(paths):expected.extend([[sys.executable,"-B","tools/v5-substrate/"+name] for name in ("native_contention_check_test.py","native_workload_cell_test.py","workload_matrix_test.py")])
+                self.assertEqual([c.args[0] for c in run.call_args_list],self.with_guarded(paths,expected))
+                self.assertTrue(all(c.kwargs=={"cwd":CI.ROOT,"check":True} for c in run.call_args_list))
 
     def test_full_cdc_action_runs_only_its_exact_replay_without_reference_or_go(self):
         with patch.object(sys, "argv", ["ci-changes.py", "cdc", "--base", "fixture"]), \
@@ -390,6 +403,7 @@ class RealGitSelection(unittest.TestCase):
         }
         for name in ("native_graph_immutable_columns_harness_test.go","native_graph_create_update_harness_test.go","native_graph_create_update_process_test.go","native_graph_selectors_harness_test.go","native_graph_selectors_sessions_harness_test.go","native_graph_selectors_runner_harness_test.go","native_graph_feed_runner_harness_test.go"):
             fixtures[name]|=set(CI.CORRECTION_PARENTS)
+        for name in fixtures.keys() & CI.GUARDED_FIXTURES:fixtures[name]|=set(CI.GUARDED_PARENTS)
         for name, parents in fixtures.items():
             with self.subTest(fixture=name):
                 path = self.directory / name
@@ -419,7 +433,7 @@ class RealGitSelection(unittest.TestCase):
                    "TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor",
                    "TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass",
                    "TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement",
-                   "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation", *CI.IMMUTABLE_PARENTS,*CI.CORRECTION_PARENTS}
+                   "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation", *CI.IMMUTABLE_PARENTS,*CI.CORRECTION_PARENTS,*CI.GUARDED_PARENTS}
         for fixture in ("native_graph_cost_test.go", "native_graph_cost_harness_test.go",
                         "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go",
                         "native_graph_cost_incident_harness_test.go", "native_graph_cost_columns_harness_test.go",
@@ -435,6 +449,17 @@ class RealGitSelection(unittest.TestCase):
                 definitions = {p: CI.changed_definitions(p, base) for p in changed}
                 self.assertEqual(set(CI.graph_selection(self.directory, changed, definitions)),
                                  parents | set(CI.GRAPH_COMPAT) | (set(CI.WORKLOAD_PARENTS) if fixture == "native_graph_cost_columns_harness_test.go" else set()))
+
+    def test_guarded_scalar_profiles_select_actual_whole_parents_through_private_wrappers(self):
+        for name in CI.GUARDED_FIXTURES:
+            with self.subTest(name=name):
+                path=self.directory/name;path.write_text("package graphapply\nfunc privateGuardedLifecycle() {}\n")
+                selected=set(CI.graph_selection(self.directory,[path],{path:[("func","privateGuardedLifecycle")]}))
+                self.assertEqual(selected,set(CI.FIXTURE_COMPAT[name])|set(CI.GRAPH_COMPAT))
+                self.assertTrue(set(CI.GUARDED_PARENTS)<=selected)
+        for name in CI.COST_FIXTURES|{"graph_source_process_test.go"}:
+            self.assertTrue(set(CI.GUARDED_PARENTS)<=set(CI.FIXTURE_COMPAT[name]))
+        self.assertEqual(len(CI.PREPARED_CONJUNCTION_PARENTS),4)
 
     def test_shared_child_cost_delta_keeps_finite_cost_and_transport_consumers(self):
         path = self.directory / "graph_source_process_test.go"

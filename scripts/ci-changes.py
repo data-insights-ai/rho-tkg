@@ -48,7 +48,9 @@ COST_FIXTURES = {
 }
 IMMUTABLE_PARENTS = ["TestNativeImmutableColumnsFreshProfileAndExactProbePredecessor", "TestNativeGraphImmutableColumnsWorkloadCell"]
 CORRECTION_PARENTS = ["TestNativeLateCorrectionHalfCohortAndHistoricalAdmission", "TestNativeGraphLateCorrectionWorkloadCell"]
+GUARDED_PARENTS = ["TestNativeGraphGuardedScalarProfilesAndCleanup", "TestNativeGraphGuardedSnapshotFeedWorkloadCell", "TestNativeGraphGuardedSnapshotSelectorsWorkloadCell"]
 COST_PARENTS = [
+    *GUARDED_PARENTS,
     *IMMUTABLE_PARENTS,
     *CORRECTION_PARENTS,
     "TestNativeGraphCostSmallActualProcesses", "TestNativeGraphCostProfileAndRouting",
@@ -155,6 +157,10 @@ FIXTURE_COMPAT = {
     **dict.fromkeys(("native_graph_selectors_harness_test.go", "native_graph_selectors_sessions_harness_test.go", "native_graph_selectors_runner_harness_test.go"),
                    ["TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell",
                     "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *IMMUTABLE_PARENTS,*CORRECTION_PARENTS]),
+    "native_graph_feed_process_test.go": ["TestNativeGraphSnapshotFeedWorkloadCell"],
+    "native_graph_selectors_process_test.go": ["TestNativeGraphSnapshotSelectorsWorkloadCell"],
+    "native_graph_feed_harness_test.go": ["TestNativeFeedWorkloadAdmissionAndCompleteIdentity", "TestNativeGraphSnapshotFeedWorkloadCell"],
+    "native_graph_feed_sessions_harness_test.go": ["TestNativeFeedWorkloadAdmissionAndCompleteIdentity", "TestNativeGraphSnapshotFeedWorkloadCell"],
     "native_graph_feed_runner_harness_test.go": ["TestNativeGraphSnapshotFeedWorkloadCell", "TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell",
                                                "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateWorkloadCell", *IMMUTABLE_PARENTS,*CORRECTION_PARENTS],
     "native_graph_cost_columns_harness_test.go": [*COST_PARENTS, *WORKLOAD_PARENTS],
@@ -189,6 +195,21 @@ FIXTURE_COMPAT = {
     "replicated_process_test.go": ["TestReplicatedProcessProtocolBoundaries", "TestReplicatedProcessShutdownReapsFailedCloseRPC", *FAULT_PARENTS, *WORKLOAD_PARENTS, *IMMUTABLE_PARENTS,*CORRECTION_PARENTS],
     "graph_source_process_test.go": ["TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput", "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts", *COST_PARENTS, *FAULT_PARENTS, *WORKLOAD_PARENTS],
 }
+# Fresh13/14 share actual factories, owners and child construction. Keep whole
+# env-gated workload parents selected; short-mode skips are not family evidence.
+GUARDED_FIXTURES = {
+    "native_graph_guarded_scalar_harness_test.go", "native_graph_guarded_scalar_process_test.go", "native_graph_guarded_scalar_test.go",
+    "native_graph_feed_harness_test.go", "native_graph_feed_sessions_harness_test.go", "native_graph_feed_process_test.go",
+    "native_graph_feed_runner_harness_test.go", "native_graph_selectors_harness_test.go", "native_graph_selectors_sessions_harness_test.go",
+    "native_graph_selectors_runner_harness_test.go", "native_graph_selectors_process_test.go", "replicated_process_test.go",
+}
+for _fixture in GUARDED_FIXTURES:
+    FIXTURE_COMPAT[_fixture] = [*FIXTURE_COMPAT.get(_fixture, []), *GUARDED_PARENTS]
+GUARDED_INPUTS = {"tools/v5-substrate/native_guarded_scalar_check.py", "tools/v5-substrate/native_guarded_scalar_cell.py",
+                  "tools/v5-substrate/native_guarded_scalar_test.py", "tools/v5-substrate/native_feed_check.py",
+                  "tools/v5-substrate/native_selectors_check.py", "tools/v5-substrate/native_feed_cell.py",
+                  "tools/v5-substrate/native_selectors_cell.py", "tools/v5-substrate/workload_matrix.py",
+                  "tools/v5-substrate/workload_matrix_test.py", "tools/v5-substrate/native_create_update_check.py"}
 WORKLOAD_INPUTS = {"tools/v5-substrate/native_contention_check.py", "tools/v5-substrate/native_contention_check_test.py",
                    "tools/v5-substrate/native_workload_cell.py", "tools/v5-substrate/native_workload_cell_test.py",
                    "tools/v5-substrate/workload_matrix.py", "tools/v5-substrate/workload_matrix_test.py"}
@@ -335,9 +356,9 @@ def graph_selection(directory, changed, definitions):
         if helpers and path.name in ("native_graph_transition_conjunction_initial_test.go", "native_graph_transition_conjunction_first_prepare_test.go"):
             tests |= set(FIXTURE_COMPAT[path.name])
             helpers = set()
-        if helpers and path.name == "native_graph_feed_runner_harness_test.go":
-            # The private publication/read reducer is reached through family
-            # wrappers, so one textual caller hop misses its Cost10 parent.
+        if helpers and path.name in GUARDED_FIXTURES:
+            # Private lifecycle/read reducers are reached through explicit
+            # profile wrappers; one textual hop misses actual consumers.
             tests |= set(FIXTURE_COMPAT[path.name])
             helpers = set()
         if helpers and (path.name in COST_FIXTURES or path.name in ("graph_source_process_test.go", "remote_certified_process_test.go", "native_graph_transition_scope_harness_test.go", "native_graph_fault_schedule_harness_test.go", "native_graph_fault_decision_harness_test.go", "native_graph_fault_family_harness_test.go", "native_graph_fault_durable_fs_test.go", "native_graph_transition_harness_test.go", "native_graph_transition_batch_harness_test.go", "native_graph_transition_conjunction_harness_test.go", "native_graph_transition_state_harness_test.go", "native_graph_transition_retention_harness_test.go", "native_graph_transition_replay_harness_test.go", "native_graph_transition_move_harness_test.go", "native_graph_transition_cut_harness_test.go", "native_graph_transition_pin_harness_test.go", "native_graph_transition_certificate_harness_test.go", "native_graph_transition_namespace_harness_test.go", "native_graph_transition_composed_harness_test.go", "native_graph_contention_harness_test.go", "native_graph_contention_runner_test.go", "native_graph_workload_transport_harness_test.go")):
@@ -641,6 +662,8 @@ def cdc(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/workload_matrix_test.py"], cwd=ROOT, check=True)
     if PROCESS_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/process_watchdog_test.py"], cwd=ROOT, check=True)
+    if GUARDED_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_guarded_scalar_test.py"], cwd=ROOT, check=True)
 
 
 def focused_dispatch_base(event, kind, head):
