@@ -668,9 +668,24 @@ terminal refusal and ordered cancellation. The checker joins complete native
 prefixes, original control/business CDC, exact call identities and the independent
 serial witness. Invalid, limit, corruption and unexpected joined errors cannot
 qualify an interruption. These are authored cases, not executed recovery proof.
-New-certificate and namespace-publication boundaries, broader retained-pin/fault
-composition and recorded-seed exploration remain in implementation; none of
-these guards ran.
+First-certificate publication is source-integrated at `424756d5`: four actual
+Certify participant/side cases retain distinct empty, node-A and node-A+B cuts,
+the stored first-publication index despite repeated replies, both immutable
+business originals and same-directory old/current reads. Its independent checker
+joins the complete native prefix and serial witness. Namespace-publication
+boundaries, broader retained-pin/fault composition and recorded-seed exploration
+remain in implementation; none of these guards ran.
+
+Native snapshot-to-feed ownership is source-integrated at `4868f0f7`. One genuine
+issued pin retains the snapshot and full-vector feed; complete original-round
+business groups, bounded protocol-prefix progress, immutable Page/ACK replay and
+durably admitted operation ceilings share actual native authority. Snapshot
+reads retain their admitted ledger and deadline until Close. This fresh semantic
+agreement leaves older formats unchanged. The native OS-child workload and
+matrix wiring remain in implementation. A source-review follow-up must resolve
+new retries of already acknowledged post-snapshot originals after their raw
+sidecars have been collected, without treating expired historical reads as
+valid feed evidence. Source integration is not runtime qualification.
 
 Current worker lanes: Sol 6.1/high for native snapshot-to-feed production
 ownership and its workload; Sol 6.1/high for remaining C/D certificate/publication
