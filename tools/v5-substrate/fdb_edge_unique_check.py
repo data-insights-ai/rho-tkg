@@ -6,8 +6,10 @@ Every expected key/value follows the admitted operation recipe; observed After
 is checked against that recipe and its own retained Before, never made the model.
 """
 import hashlib
+from contextlib import nullcontext
 import importlib.util
 import json
+import struct
 from pathlib import Path
 
 _spec = importlib.util.spec_from_file_location("edge_unique_raw", Path(__file__).resolve().parent / "fdb/fdb_contention_check.py")
@@ -535,7 +537,7 @@ def views(directory,end,spool):
     require(finished==2 and active is None,"truncated At views")
 
 
-def verify(directory,spool_directory,policy=None):
+def verify(directory,spool_directory,policy=None, *, shared_spool=None):
     directory=Path(directory)
     end=decoded((directory/"fdb-workload-result.json").read_bytes().rstrip(b"\n"))
     fields(end,"version format spec Config Binding Initial Old Final Attempts Aborted Committed Completed OldMetadata FinalMetadata Sources Columns OldHeldRows Views AttemptPayloadSHA256 LatencyPayloadSHA256 LogicalOperations SetupNanos BusinessNanos DiagnosticNanos TotalNanos")
@@ -561,7 +563,7 @@ def verify(directory,spool_directory,policy=None):
     require(c["Limits"]=={"Bytes":(64<<20)+n*(256<<10)+(7+258*n)*2048,"Transactions":7+258*n,"Versions":7+11*n,"Certificates":1024},"full finite admitted schedule")
     run=c["Graph"].removeprefix("graph-workload-edge-unique-v1-"+p["layout"]+"-")
     require(len(run)==32 and bytes.fromhex(run).hex()==run and bytes.fromhex(run)!=bytes(16),"fresh nonzero run binding")
-    with Spool(spool_directory,policy or Policy(1<<30,8<<20,4096,512<<10)) as spool:
+    with (Spool(spool_directory,policy or Policy(1<<30,8<<20,4096,512<<10)) if shared_spool is None else nullcontext(shared_spool)) as spool:
         digest,header,footer,attempts,commits,aborts,replays=hashlib.sha256(),False,False,0,0,0,0
         for value,line in raw.lines(directory/"fdb-workload-attempts.jsonl",7+259*n+3):
             require(not footer,"attempt after EOF")
@@ -594,4 +596,12 @@ def verify(directory,spool_directory,policy=None):
         # decoder below, never the legacy5/6 acceptance wrapper.
         columns(directory,end,spool)
         timing = timings(directory, end, spool)
-        return {"spec":p,"runGraph":c["Graph"],"commits":commits,"aborts":aborts,"sourceVersions":11*n+7,"timing":timing,"scope":"one real family cell; matrix/native parity/transport/capacity remain separately qualified"}
+        answers = hashlib.sha256()
+        for namespace in (b"old", b"current"):
+            for fact in range(n):
+                winner = int.from_bytes(spool.lookup(b"old-winner", u64(fact)), "big")
+                e = edge(p, fact, winner if namespace == b"old" else 1-winner, namespace == b"current")
+                actual = current(spool, 0, edge_key("edge", e), namespace)
+                require(actual is not None and not actual["Deleted"] and actual["Value"] == fact+5, "actual paired effective old/current scalar")
+                answers.update(u64(fact)+u64(e["Target"]["Node"])+u64(e["Target"]["Life"])+struct.pack(">q", actual["Value"]))
+        return {"spec":p,"runGraph":c["Graph"],"commits":commits,"aborts":aborts,"sourceVersions":11*n+7,"logicalAnswersSHA256":answers.hexdigest(),"timing":timing,"scope":"one real family cell; matrix/native parity/transport/capacity remain separately qualified"}

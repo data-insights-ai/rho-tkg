@@ -59,16 +59,16 @@ func TestNativeColumnsDurableOSChildCreateReopenAndRetire(t *testing.T) {
 	}
 	fresh := func() graphCut {
 		t.Helper()
-		handle, cut := nativeGraphCostOpen(t, n, graphReadFresh, graphCut{})
+		handle, cut := nativeColumnProcessOpen(t, n, graphReadFresh, graphCut{})
 		n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: handle})
 		return cut
 	}
 	initial := fresh()
 	for phase := uint64(1); phase <= 3; phase++ {
-		nativeGraphCostSubmit(t, n, phase, 0, false)
+		nativeColumnProcessSubmit(t, n, spec, phase, 0)
 	}
 	for fact := uint64(0); fact < spec.Facts; fact++ {
-		nativeGraphCostSubmit(t, n, 4, fact, true)
+		nativeColumnProcessSubmit(t, n, spec, 4, fact)
 	}
 	pair := nativeGraphCostColumnPair{Initial: initial, Final: fresh(), ID: [16]byte{231}}
 	open := func(create bool) [2]*nativeGraphCostColumnClient {
@@ -110,7 +110,7 @@ func TestNativeColumnsDurableOSChildCreateReopenAndRetire(t *testing.T) {
 	nativeGraphCostColumnReadPair(t, clients, &pair, spec, pair.Final, false, false)
 	nativeGraphCostColumnCloseClients(clients) // transient Close must not release pins
 	for fact := uint64(0); fact < spec.Facts; fact++ {
-		nativeGraphCostSubmit(t, n, 5, fact, true)
+		nativeColumnProcessSubmit(t, n, spec, 5, fact)
 	}
 	_ = fresh()
 	restartNativeColumnProcesses(t, n, spec, stream)

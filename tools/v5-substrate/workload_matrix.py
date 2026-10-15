@@ -39,7 +39,8 @@ def require(condition, message):
 
 def implemented(family, engine, transport, owned=False):
     return (family in IMPLEMENTED and (transport == "local" or owned and family == "snapshot-to-feed") if engine == "foundationdb" else
-            family == "contention-empty-range" and (engine == "native-raft" or engine == "paired" and transport == "local"))
+            family == "contention-empty-range" and (engine == "native-raft" or engine == "paired" and transport == "local")
+            or family == "cross-edge-endpoint-uniqueness" and engine in ("native-raft", "paired") and transport == "local")
 
 
 def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("foundationdb",), owned=False):
@@ -125,7 +126,10 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
         reserve = ((owned_input["MaxSamples"]+4)*5+60)*((128<<10)+4096)+(64<<20)
         require(spool_disk>reserve,"explicit verifier disk grant cannot fund even declared transport joins; refuse before build/workload")
     if cell["engine"] != "foundationdb":
-        import native_workload_cell as native
+        if spec["family"] == "cross-edge-endpoint-uniqueness":
+            import native_edge_unique_cell as native
+        else:
+            import native_workload_cell as native
         native.preflight(spec, transport, seconds, memory, cell["engine"])
         native_binary, watchdog = native.executables(native_binary, watchdog)
         # Verify both local adapters before either engine starts. Unsupported
@@ -225,7 +229,10 @@ def execute_matrix(args):
     from comparison_spool import Policy
     Policy(disk, cache, 4096, 512 << 10).validate()
     if args.engine != "foundationdb":
-        import native_workload_cell as native
+        if args.family == "cross-edge-endpoint-uniqueness":
+            import native_edge_unique_cell as native
+        else:
+            import native_workload_cell as native
         native.preflight({"version": 1, "family": args.family, "facts": 1_000_000, "crossPercent": 100, "writers": 32, "layout": "columns"}, args.transport, seconds, args.admission_mib, args.engine)
         native.executables(args.native_binary, args.watchdog)
     root = Path(args.output)

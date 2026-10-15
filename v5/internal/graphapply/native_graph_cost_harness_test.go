@@ -29,6 +29,9 @@ type nativeGraphCostSpec struct {
 }
 
 func (s nativeGraphCostSpec) validate() error {
+	if s.Version == 4 {
+		return nativeGraphEdgeUniqueValidate(s)
+	}
 	if s.Version != 1 || s.Facts < 1 || s.Facts > 1_000_000 || (s.Writers != 1 && s.Writers != 8 && s.Writers != 32) || s.CrossPercent != 0 && s.CrossPercent != 10 && s.CrossPercent != 50 && s.CrossPercent != 100 {
 		return errInvalid
 	}
@@ -56,7 +59,12 @@ func nativeGraphCostSpecFromEnv() (*nativeGraphCostSpec, error) {
 	}
 	return &s, nil
 }
-func (s nativeGraphCostSpec) homeCount() uint64  { return 6 + 2*s.Facts }
+func (s nativeGraphCostSpec) homeCount() uint64 {
+	if s.Version == 4 {
+		return 5*s.Facts + 7
+	}
+	return 6 + 2*s.Facts
+}
 func (s nativeGraphCostSpec) remoteNode() uint64 { return s.homeCount() + 1 }
 func (s nativeGraphCostSpec) cross(i uint64) bool {
 	return (i+1)*s.CrossPercent/100 > i*s.CrossPercent/100
@@ -68,11 +76,23 @@ func (s nativeGraphCostSpec) edge(i uint64) (uint64, uint64, uint64, uint64) {
 	}
 	return 7 + 2*i, 8 + 2*i, target, targetLife
 }
-func (s nativeGraphCostSpec) deliveries() int { return int((2*s.Facts + 128) * 4096) } // #nosec G115 -- selected darwin/linux arm64 fixture, Facts<=1M, allowance<9Gi.
+func (s nativeGraphCostSpec) deliveries() int {
+	if s.Version == 4 {
+		frames, err := nativeGraphEdgeUniqueFrames(s)
+		if err != nil || frames > uint64(^uint(0)>>1)/4096 {
+			return 0
+		}
+		return int(frames * 4096) // #nosec G115 -- checked native int bound; numeric allowance, never a queue allocation.
+	}
+	return int((2*s.Facts + 128) * 4096) // #nosec G115 -- selected darwin/linux arm64 fixture, Facts<=1M, allowance<9Gi.
+}
 
 func nativeGraphCostProfile(s *nativeGraphCostSpec, init *declaredInitCommand, l *raftlog.Limits, p *raftlog.ApplicationPolicy, generations *raftlog.ApplicationGenerationLimits) error {
 	if s == nil {
 		return nil
+	}
+	if s.Version == 4 {
+		return nativeGraphEdgeUniqueProfile(*s, init, l, p, generations)
 	}
 	if err := s.validate(); err != nil {
 		return err
@@ -101,6 +121,9 @@ func (o *certifiedProcessOwners) grantParameters(data []byte) (uint64, uint64, e
 // checks dependencies and creates the original proposal. This builds no outcome.
 // index1/2/3: three anchors; index4/5 with data=i: edge create/property update.
 func nativeGraphCostProposal(o *certifiedProcessOwners, r processRequest, id requestID) (allocationProposal, error) {
+	if o != nil && o.cost != nil && o.cost.Version == 4 {
+		return nativeGraphEdgeUniqueProposal(o, r, id)
+	}
 	if o == nil || o.cost == nil || o.recipient == nil || r.index < 1 || r.index > 5 {
 		return allocationProposal{}, errInvalid
 	}

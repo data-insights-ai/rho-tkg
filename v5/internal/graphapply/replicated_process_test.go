@@ -443,7 +443,7 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 	// Coverage is an explicit P05 qualification lane. Each incarnation owns a
 	// separate profile, including a reopen in the same graph directory.
 	conditional, childCover := false, false
-	durableProfile, contentionProfile := false, false
+	durableProfile, contentionProfile, edgeProfile := false, false, false
 	var workloadRun string
 	for _, entry := range p.cmd.Env {
 		name, value, _ := strings.Cut(entry, "=")
@@ -454,13 +454,15 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 			contentionProfile = value == nativeContentionFormat
 		case "RHO_GRAPH_WORKLOAD_RUN":
 			workloadRun = value
+		case "RHO_GRAPH_EDGE_UNIQUE_PROCESS":
+			edgeProfile = value == "1"
 		case "RHO_GRAPH_CONDITIONAL_PROCESS":
 			conditional = value == "1"
 		case "RHO_P05_CHILD_COVER":
 			childCover = value == "1"
 		}
 	}
-	p.durableColumns = durableProfile || contentionProfile
+	p.durableColumns = durableProfile || contentionProfile || edgeProfile
 	if contentionProfile {
 		raw, err := hex.DecodeString(workloadRun)
 		if err != nil || len(raw) != 16 || hex.EncodeToString(raw) != workloadRun {
@@ -1704,6 +1706,9 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 		if os.Getenv("RHO_GRAPH_CONDITIONAL_PROCESS") == "1" {
 			schemas = p05Schemas()
 		}
+		if o.cost != nil && o.cost.Version == 4 {
+			schemas = nativeGraphEdgeUniqueSchemas()
+		}
 		return h.PreparePartitionInitialization(r.index, bootstrapAttemptID(id), schemas, init.maxBlock, graphGenesisBinding(t), *init.routing, o.proof)
 	case certifiedBeginRecipient:
 		if r.index < 1 || r.index > 2 {
@@ -1899,6 +1904,11 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	edgeUnique, err := nativeGraphEdgeUniqueProcessProfile(cost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	durableColumns = durableColumns || edgeUnique
 	if durableColumns {
 		agreement, materializer = durableColumnGraphSemanticContractID(), newDurableColumnGraphMaterializer
 	}

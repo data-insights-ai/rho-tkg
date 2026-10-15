@@ -51,6 +51,41 @@ func nativeColumnProcessPolicy(h *allocationHost) (nativeColumnPolicy, error) {
 	return nativeColumnGuardPolicy(), nil
 }
 
+// The fresh process parent must authenticate its own agreement. The ordinary
+// cost read helper intentionally refuses this ID and remains unchanged.
+func nativeColumnProcessOpen(t *testing.T, n *certifiedProcessNetwork, mode graphReadMode, cut graphCut) (uint64, graphCut) {
+	t.Helper()
+	wire, err := encodeGraphE15ReadRequest(graphE15ReadRequest{mode: mode, cut: cut})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := n.all[2].call(t, processRequest{op: processSourceCertifiedOpen, data: wire})
+	handle, actual, err := decodeGraphE15ReadToken(response.aux)
+	if err != nil || handle == 0 || len(actual.certificates) != 2 {
+		t.Fatal("fresh process actual certified cut", err)
+	}
+	for _, certificate := range actual.certificates {
+		if certificate.scope.semantic != durableColumnGraphSemanticContractID() {
+			t.Fatal("fresh process cut agreement")
+		}
+	}
+	return handle, actual
+}
+
+func nativeColumnProcessSubmit(t *testing.T, n *certifiedProcessNetwork, spec nativeGraphCostSpec, phase, fact uint64) nativeGraphCostSample {
+	t.Helper()
+	if spec.Version != 1 || spec.Facts > 17 || spec.Writers != 1 || spec.validate() != nil || n == nil || n.all[1] == nil || !n.all[1].durableColumns {
+		t.Fatal("fresh small process profile")
+	}
+	// A one-participant operation still runs through genuine cross authority;
+	// no legacy local-control helper silently changes the semantic agreement.
+	sample, err := nativeGraphCostClientSubmit(t.Context(), n, spec, phase, fact, true, 0, nil, nil)
+	if err != nil {
+		t.Fatal("fresh process original Submit", err)
+	}
+	return sample
+}
+
 type nativeColumnProcessRemoteError struct{ processRemoteError }
 
 func (e nativeColumnProcessRemoteError) Unwrap() error { return e.processRemoteError }
@@ -124,7 +159,7 @@ func decodeNativeColumnProcessRetirement(wire []byte) (r nativeColumnProcessRete
 }
 
 func (s *nativeGraphCostColumnSessions) recoverRetirement(ctx context.Context, id [16]byte) (body []byte, err error) {
-	policy, err := nativeColumnProcessPolicy(s.coordinator.host)
+	policy, err := s.policy()
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +194,7 @@ func (s *nativeGraphCostColumnSessions) recoverRetirement(ctx context.Context, i
 }
 
 func (s *nativeGraphCostColumnSessions) probeOriginalPin(ctx context.Context, id [16]byte, wire []byte) (body []byte, err error) {
-	policy, err := nativeColumnProcessPolicy(s.coordinator.host)
+	policy, err := s.policy()
 	if err != nil {
 		return nil, err
 	}

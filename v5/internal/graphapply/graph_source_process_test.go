@@ -1297,6 +1297,27 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	if err != nil {
 		t.Fatal(err)
 	}
+	if o.cost != nil && o.cost.Version == 4 {
+		deadline, deadlineErr := nativeGraphEdgeUniqueDeadlineFromEnv()
+		if deadlineErr != nil {
+			t.Fatal(deadlineErr)
+		}
+		var stopColumns context.CancelFunc
+		columns.ctx, stopColumns = context.WithDeadline(ctx, deadline)
+		defer stopColumns()
+		columns.policyProvider = func() (nativeColumnPolicy, error) {
+			if enabled, e := nativeGraphEdgeUniqueProcessProfile(o.cost); e != nil || !enabled {
+				return nativeColumnPolicy{}, errors.Join(errInvalid, e)
+			}
+			_, admission, e := nativeGraphEdgeUniqueAdmission(*o.cost)
+			if e != nil {
+				return nativeColumnPolicy{}, e
+			}
+			policy, e := nativeGraphEdgeUniqueColumnPolicy(h)
+			policy.Admission = admission
+			return policy, e
+		}
+	}
 	defer func() {
 		if err := columns.close(); err != nil {
 			t.Error(err)
@@ -1526,6 +1547,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		return nil
 	}
 	isSourceClose := func(r processRequest) bool {
+		if o.cost != nil && o.cost.Version == 4 && nativeGraphEdgeUniqueColumnClose(r) {
+			return true
+		}
 		if contention != nil && r.op == processCostObserve && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
 			if q, err := decodeNativeContentionInput(r.data); err == nil {
 				if q.Action == "close" || q.Action == "records-close" || q.Action == "columns" && nativeGraphCostColumnCloseControl(processRequest{op: processCostObserve, data: q.Column}) {
@@ -1600,11 +1624,27 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processSourceServe:
 				out.aux, e = service.serve(workerCtx, r.data)
 			case processSourceCoordinate:
+				if o.cost != nil && o.cost.Version == 4 && bytes.HasPrefix(r.data, []byte(nativeEdgeFreeze)) {
+					out.aux, e = nativeGraphEdgeUniqueFreezePlan(workerCtx, coordinator, r.data[len(nativeEdgeFreeze):])
+					break
+				}
+				if o.cost != nil && o.cost.Version == 4 && bytes.HasPrefix(r.data, []byte(nativeEdgeRegister)) {
+					out.aux, e = nativeGraphEdgeUniqueRegisterPlan(workerCtx, coordinator, r.data[len(nativeEdgeRegister):])
+					break
+				}
 				var original partitionGraphCommand
 				original, e = decodePartitionGraphCommand(r.data, h.machine.limits)
 				if e == nil {
 					var result crossProcessResult
 					result, e = coordinator.Run(workerCtx, original.request.id, original.request.operations, original.request.revision.Provenance(), original.request.claims)
+					if e != nil && o.cost != nil && o.cost.Version == 4 {
+						refusal, refusalErr := nativeGraphEdgeUniqueRefusalWire(coordinator, r.data, result, e)
+						if refusalErr != nil {
+							e = errors.Join(e, refusalErr)
+						} else if len(refusal) != 0 {
+							out.changes = refusal
+						}
+					}
 					if e == nil && o.cost != nil {
 						out.changes, e = nativeGraphCostCoordinatorProofWire(workerCtx, h, result)
 					}
@@ -1623,10 +1663,16 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					e = errInvalid
 				} else if contention != nil && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
 					out.aux, e = contention.serve(workerCtx, r)
+				} else if o.cost.Version == 4 && bytes.HasPrefix(r.data, []byte(nativeEdgeColumns)) {
+					out.aux, e = nativeGraphEdgeUniqueColumnServe(workerCtx, columns, r)
 				} else if bytes.HasPrefix(r.data, []byte(nativeColumnsMarker)) {
 					out.aux, e = columns.serve(workerCtx, r)
 				} else if bytes.HasPrefix(r.data, []byte(nativeIncidentMarker)) {
 					out.aux, e = incidents.serve(workerCtx, r)
+				} else if o.cost.Version == 4 && bytes.HasPrefix(r.data, []byte(nativeEdgeObserve)) {
+					out.aux, e = nativeGraphEdgeUniqueObserve(workerCtx, certifiedSessions, *o.cost, r)
+				} else if o.cost.Version == 4 && bytes.HasPrefix(r.data, []byte(nativeEdgeRecords)) {
+					out.aux, e = nativeGraphEdgeUniqueRecords(workerCtx, h, r)
 				} else if len(r.data) != 0 {
 					out.aux, e = nativeGraphCostIndexObserve(workerCtx, certifiedSessions, r)
 				} else {
