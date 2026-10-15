@@ -1142,10 +1142,20 @@ actual elections establish the original and rotated peers; delayed, reordered
 and duplicated native packets retain their configured identities. Full
 original, historical-dependency, queued-candidate and serial/cut checks use
 authenticated process/election context. All 15 final files and 11 complete
-current parents were verified. Twenty local-leader Ready recipes precede their
-own packet emission; their genuine service/predecessor companion remains in
-implementation. P07–P09 pooled-state and leader/message conjunctions also remain
-open. No compilation, execution or B/C/D acceptance is claimed. The bounded composed
+current parents were verified. That extension covers P06's first-live parent;
+its recovery, terminal-replay, initial-register, first-prepare and ordinary
+initial-batch parents retain their literal schedules and still need the
+applicable leader/message conjunctions. Twenty local-leader Ready recipes
+precede their own packet emission. Their separate service/predecessor companion
+is source-integrated at `1b598c5b`: exactly 20 recipes × two actual leader layouts
+× three delivery modes. Actual selected service delay, immediate same-service
+cached predecessor retransmission or already-emitted Tick packets precede the
+original Ready loss; no selected-command emission is fabricated. The complete
+existing semantic/original/CDC/old-cut oracle precedes the independent companion
+joins. All five frozen files, the complete current owner parent and pinned
+format/whitespace were checked. P07–P09 pooled-state and leader/message
+conjunctions also remain open. No compilation, execution or B/C/D acceptance is
+claimed. The bounded composed
 exploration/replay controller is source-integrated at `73d18533`: all six real
 causal recipes precede one or two recorded seeds and fresh exact replays under
 one 16-trial, original-deadline and cumulative resource allowance. Only a
@@ -1163,10 +1173,10 @@ cleanup refusal cannot pass. Source review and whitespace checks passed;
 guards and sustained execution remain unexecuted. Fresh-cohort repetition does
 not establish long-lived-store endurance or full D acceptance.
 
-Current worker lanes: Sol 6.1/high for remaining B/C/D program implementation;
-Sol 6.1/high for the completed sustained controller and the next native
-comparison handoff; Sol 6.1/high for the native transfer workload
-implementation. FDB retains stable
+Current worker lanes: Sol 6.1/high for the remaining P06 leader/message source;
+Sol 6.1/high for the pooled-state Go capture; Sol 6.1/high for its independent
+checker. P07–P09 leader/message composition follows the frozen state API.
+FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing
 authority; these prefixes do not establish physical server placement. Source
 review found no ownership violation requiring key relocation. Native movement
@@ -1175,12 +1185,14 @@ Pair equivalent logical answers, retained cuts/originals and authority semantics
 report each engine's actual pre/post business read/write footprint and physical
 cost separately. Do not infer equal physical participants from nominal cross
 percentage or add copies solely to imitate native placement.
-The program adapter and native driver share one explicit, still-unintegrated
-Recovery4 fixture-selector handoff; the driver owns the child edit, while the
-program owns the selector and actual state/retained-source validation. Old
-Recovery3 fixtures retain their agreement. Shared graph batching, recovery byte
-pools and range-move pool admission are source-integrated above;
-these remaining packages are not integrated or runtime-qualified. A complete
+The program adapter and native driver share the explicit Recovery4
+fixture-selector handoff integrated at `0ea16cc2` and `a0f7e0f6`; the actual
+bootstrap agreement binds state/retained-source validation. Old Recovery3
+fixtures retain their agreement. The native transfer workload and independent
+checker are source-integrated at `0ea16cc2`, `d70dee0a` and `d907d096`.
+Shared graph batching, recovery byte pools and range-move pool admission are
+source-integrated above. These sources remain uncompiled and runtime-unqualified;
+the pooled-state counterpart is still in implementation. A complete
 static 1M workload bound is not a prerequisite to authoring its driver. Preserve
 all required matrix cells and their capacity gates: safe resource refusal does
 not qualify a successful cost cell, and an incomplete upper bound proves
