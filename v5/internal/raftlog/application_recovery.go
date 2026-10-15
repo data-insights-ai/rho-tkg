@@ -27,7 +27,7 @@ type ApplicationRecoveryCredit struct {
 type ApplicationRecoveryReservation struct {
 	ID, Digest [32]byte
 	Credits    []ApplicationRecoveryCredit
-	// Spans are exclusive to explicitly configured recovery version three.
+	// Spans are exclusive to explicitly configured recovery versions3/4.
 	Spans []ApplicationRecoverySpan
 }
 
@@ -56,7 +56,7 @@ type applicationRecoveryGrowth struct {
 
 func (c ApplicationRecoveryConfig) enabled() bool { return c.Version != 0 }
 func (c ApplicationRecoveryConfig) validate() error {
-	if c.Version > 3 {
+	if c.Version > 4 {
 		return ErrInvalid
 	}
 	return nil
@@ -148,9 +148,9 @@ func (m applicationRecoveryMetadata) reserve(r ApplicationRecoveryReservation, p
 		}
 		return m, ErrLimit
 	}
-	if m.Config.Version == 3 {
+	if m.Config.Version == 3 || m.Config.Version == 4 {
 		for _, span := range r.Spans {
-			if span.Next != span.First {
+			if span.Next != span.First || span.Exhausted || span.BytePool.enabled() && (span.BytePool.RetainedRemaining != span.BytePool.RetainedLimit || span.BytePool.LogRemaining != span.BytePool.LogLimit) {
 				return m, ErrInvalid
 			}
 		}
@@ -168,7 +168,7 @@ func (m applicationRecoveryMetadata) credit(use ApplicationRecoveryUse) (Applica
 	if use.ID != m.Reservation.ID || use.Digest != m.Reservation.Digest {
 		return ApplicationRecoveryCredit{}, ErrInvalid
 	}
-	if m.Config.Version == 3 && len(m.Reservation.Spans) != 0 {
+	if m.Config.Version >= 3 && len(m.Reservation.Spans) != 0 {
 		return m.spanCredit(use)
 	}
 	for _, credit := range m.Reservation.Credits {
@@ -187,16 +187,19 @@ const recoveryMetadataFixedBytes = 4 + 4 + 32 + 32 + 4
 const recoveryCreditBytes = 4 + 4 + 8 + 8
 
 func recoveryMetadataBytes(m applicationRecoveryMetadata) int {
-	n := recoveryMetadataFixedBytes + recoveryCreditBytes*len(m.Reservation.Credits) + recoverySpanBytes*len(m.Reservation.Spans) + 8 + 16 + 32
+	n := recoveryMetadataFixedBytes + recoveryCreditBytes*len(m.Reservation.Credits) + recoverySpanWireBytes(m.Config.Version)*len(m.Reservation.Spans) + 8 + 16 + 32
 	if m.Config.Version >= 2 {
 		n += terminalBankBytes(m.Terminal)
 	}
 	for _, q := range m.Queued {
 		n += 45
+		if m.Config.Version == 4 {
+			n += 8
+		}
 		if r := q.Purpose.reservation(); r != nil {
 			n += 76 + recoveryCreditBytes*len(r.Credits)
-			if m.Config.Version == 3 && !q.Purpose.terminal() {
-				n += 4 + recoverySpanBytes*len(r.Spans)
+			if m.Config.Version >= 3 && !q.Purpose.terminal() {
+				n += 4 + recoverySpanWireBytes(m.Config.Version)*len(r.Spans)
 			}
 		} else {
 			n += 128
@@ -241,8 +244,8 @@ func validateRecoveryMetadata(m metadata, l Limits) error {
 	contract := 2 + c.Version
 	if m.Retention.Config.enabled() {
 		contract = 5
-		if c.Version == 3 {
-			contract = 6
+		if c.Version >= 3 {
+			contract = 3 + c.Version
 		}
 	}
 	recordsValid := m.Recovery.Records == m.Applied
@@ -258,7 +261,7 @@ func validateRecoveryMetadata(m metadata, l Limits) error {
 		}
 		return nil
 	}
-	if c.Version == 3 && m.Retention.Config.Version != 1 {
+	if c.Version >= 3 && m.Retention.Config.Version != 1 {
 		return ErrInvalid
 	}
 	if !m.App.Policy.Enabled() || !m.Rep.Config.enabled() || m.Rep.SemanticContractID == (ApplicationSemanticContractID{}) || !m.Controls.Config.enabled() {
@@ -282,9 +285,14 @@ func appendRecoveryMetadata(b []byte, m applicationRecoveryMetadata) []byte {
 	if m.Config.Version == 3 {
 		version = 5
 	}
+	if m.Config.Version == 4 {
+		version = 6
+	}
 	b = append(b, 'R', 'Y', version, 0)
 	b = binary.BigEndian.AppendUint32(b, m.Config.Version)
-	if m.Config.Version == 3 {
+	if m.Config.Version == 4 {
+		b = append(b, appendRecoveryPoolRoot(m.Reservation)[4:]...)
+	} else if m.Config.Version == 3 {
 		b = append(b, appendRecoverySpanRoot(m.Reservation)[4:]...)
 	} else {
 		b = append(b, m.Reservation.ID[:]...)
@@ -310,7 +318,7 @@ func appendRecoveryMetadata(b []byte, m applicationRecoveryMetadata) []byte {
 }
 func decodeRecoveryMetadata(b []byte, p ApplicationPolicy, l Limits) (applicationRecoveryMetadata, []byte, error) {
 	var m applicationRecoveryMetadata
-	if len(b) > maxMetadataBytes || len(b) < recoveryMetadataFixedBytes || (!bytes.Equal(b[:4], []byte{'R', 'Y', 3, 0}) && !bytes.Equal(b[:4], []byte{'R', 'Y', 4, 0}) && !bytes.Equal(b[:4], []byte{'R', 'Y', 5, 0})) {
+	if len(b) > maxMetadataBytes || len(b) < recoveryMetadataFixedBytes || (!bytes.Equal(b[:4], []byte{'R', 'Y', 3, 0}) && !bytes.Equal(b[:4], []byte{'R', 'Y', 4, 0}) && !bytes.Equal(b[:4], []byte{'R', 'Y', 5, 0}) && !bytes.Equal(b[:4], []byte{'R', 'Y', 6, 0})) {
 		return m, nil, ErrCorrupt
 	}
 	m.Config.Version = binary.BigEndian.Uint32(b[4:8])
@@ -318,18 +326,26 @@ func decodeRecoveryMetadata(b []byte, p ApplicationPolicy, l Limits) (applicatio
 		return m, nil, ErrCorrupt
 	}
 	var tail []byte
-	if m.Config.Version == 3 {
+	if m.Config.Version >= 3 {
 		count := binary.BigEndian.Uint32(b[72:76])
-		if count > maxApplicationRecoverySpans || uint64(count)*recoverySpanBytes > uint64(len(b)-recoveryMetadataFixedBytes) {
+		rowBytes := recoverySpanWireBytes(m.Config.Version)
+		if count > maxApplicationRecoverySpans || uint64(count)*uint64(rowBytes) > uint64(len(b)-recoveryMetadataFixedBytes) { // #nosec G115 -- rowBytes is fixed32/72.
 			return applicationRecoveryMetadata{}, nil, ErrCorrupt
 		}
-		length := recoveryRootFixedBytes + int(count)*recoverySpanBytes // #nosec G115 -- <=8 spans and delivered frame checked before ownership.
+		length := recoveryRootFixedBytes + int(count)*rowBytes // #nosec G115 -- <=8 spans and delivered frame checked before ownership.
 		frame := make([]byte, length)
 		copy(frame, b[4:4+length])
-		frame[0], frame[1], frame[2], frame[3] = 'R', 'S', 3, 0
+		frame[0], frame[1], frame[2], frame[3] = 'R', 'S', byte(m.Config.Version), 0 // #nosec G115 -- selected config3/4.
 		// Config occupies four bytes before the root body. The bounded native
 		// root reader checks count/length before owning any span array.
-		r, used, err := readRecoverySpanRoot(frame, p, l)
+		var r ApplicationRecoveryReservation
+		var used int
+		var err error
+		if m.Config.Version == 4 {
+			r, used, err = readRecoveryPoolRoot(frame, p, l)
+		} else {
+			r, used, err = readRecoverySpanRoot(frame, p, l)
+		}
 		if err != nil {
 			return applicationRecoveryMetadata{}, nil, err
 		}
@@ -412,6 +428,13 @@ func (m applicationRecoveryMetadata) consume(use ApplicationRecoveryUse) (applic
 	credit, err := m.credit(use)
 	if err != nil {
 		return m, ApplicationRecoveryCredit{}, err
+	}
+	if m.Config.Version == 4 && len(m.Reservation.Spans) != 0 {
+		// Install's first pass determines the actual prospective ROOT SHAPE,
+		// including terminal retirement. No actual byte debit is committed from
+		// this pass; consumeMeasured rechecks/debits against the applied owner.
+		// Queue projection calls consumePool(installed=false) explicitly.
+		return m.consumePool(use, credit, 0, 0, true)
 	}
 	if m.Config.Version == 3 && len(m.Reservation.Spans) != 0 {
 		return m.consumeSpan(use, credit)

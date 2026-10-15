@@ -92,7 +92,7 @@ func canonicalConf(c *pb.ConfState) *pb.ConfState {
 	return cs
 }
 func validateManifest(m ApplicationSnapshotManifest) error {
-	if m.Version > 8 || m.Version < 4 && (m.ControlBytes != 0 || m.ControlRecords != 0 || m.Contract.Version != 1) || m.Version == 4 && m.Contract.Version != 2 || m.Version == 5 && m.Contract.Version != 3 || m.Version == 6 && m.Contract.Version != 4 || m.Version == 7 && m.Contract.Version != 5 || m.Version == 8 && m.Contract.Version != 6 || m.Version < 7 && !m.Retention.zero() || m.Version < 6 && len(m.TerminalReservations) != 0 || m.Version < 5 && (m.RecoveryBytes != 0 || m.RecoveryRecords != 0 || m.RecoveryReservation.ID != ([32]byte{}) || m.RecoveryReservation.Digest != ([32]byte{}) || recoveryEntries(m.RecoveryReservation) != 0) || m.Version < 2 && m.CutID != [32]byte{} || m.Version < 3 && m.SemanticContractID != (ApplicationSemanticContractID{}) || m.Version >= 3 && m.SemanticContractID == (ApplicationSemanticContractID{}) {
+	if m.Version > 9 || m.Version < 4 && (m.ControlBytes != 0 || m.ControlRecords != 0 || m.Contract.Version != 1) || m.Version == 4 && m.Contract.Version != 2 || m.Version == 5 && m.Contract.Version != 3 || m.Version == 6 && m.Contract.Version != 4 || m.Version == 7 && m.Contract.Version != 5 || m.Version == 8 && m.Contract.Version != 6 || m.Version == 9 && m.Contract.Version != 7 || m.Version < 7 && !m.Retention.zero() || m.Version < 6 && len(m.TerminalReservations) != 0 || m.Version < 5 && (m.RecoveryBytes != 0 || m.RecoveryRecords != 0 || m.RecoveryReservation.ID != ([32]byte{}) || m.RecoveryReservation.Digest != ([32]byte{}) || recoveryEntries(m.RecoveryReservation) != 0) || m.Version < 2 && m.CutID != [32]byte{} || m.Version < 3 && m.SemanticContractID != (ApplicationSemanticContractID{}) || m.Version >= 3 && m.SemanticContractID == (ApplicationSemanticContractID{}) {
 		return ErrInvalid
 	}
 	if err := m.Identity.validate(); err != nil {
@@ -257,7 +257,7 @@ func DecodeApplicationSnapshotManifest(b []byte, maxImageBytes int) (Application
 	if maxImageBytes < 1 || maxImageBytes > 64<<20 {
 		return m, ErrInvalid
 	}
-	if len(b) < snapshotManifestOverhead || (!bytes.Equal(b[:4], []byte{'A', 'S', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 2, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 3, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 4, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 5, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 6, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 7, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 8, 0})) {
+	if len(b) < snapshotManifestOverhead || (!bytes.Equal(b[:4], []byte{'A', 'S', 1, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 2, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 3, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 4, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 5, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 6, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 7, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 8, 0}) && !bytes.Equal(b[:4], []byte{'A', 'S', 9, 0})) {
 		return m, ErrCorrupt
 	}
 	// Preserve the original AS1/AS2 envelope ceiling and refusal classification.
@@ -412,6 +412,10 @@ func manifestID(m ApplicationSnapshotManifest) ([32]byte, error) {
 func snapshotSeed(m ApplicationSnapshotManifest) [32]byte {
 	h := sha256.New()
 	switch m.Version {
+	case 9:
+		_, _ = h.Write([]byte("rho-tkg:application-snapshot-records:v9\x00"))
+		_, _ = h.Write(m.SemanticContractID[:])
+		_, _ = h.Write(m.CutID[:])
 	case 8:
 		_, _ = h.Write([]byte("rho-tkg:application-snapshot-records:v8\x00"))
 		_, _ = h.Write(m.SemanticContractID[:])
@@ -641,7 +645,7 @@ func DecodeApplicationSnapshotManifestForBinding(b []byte, maxImageBytes int, ex
 	if len(b) >= 4 && (bytes.Equal(b[:4], []byte{'A', 'S', 1, 0}) || bytes.Equal(b[:4], []byte{'A', 'S', 2, 0})) {
 		return ApplicationSnapshotManifest{}, ErrInvalid
 	}
-	if len(b) >= 4 && (b[2] == 5 || b[2] == 6 || b[2] == 7 || b[2] == 8) {
+	if len(b) >= 4 && (b[2] == 5 || b[2] == 6 || b[2] == 7 || b[2] == 8 || b[2] == 9) {
 		minimum := snapshotManifestOverhead + 100 + recoveryRootFixedBytes
 		maximum := maxSnapshotManifestBytes + 100 + maxMetadataBytes
 		if b[2] >= 7 {
@@ -688,6 +692,9 @@ func manifestRetention(m ApplicationSnapshotManifest) *ApplicationRetentionState
 	return &m.Retention
 }
 func snapshotRecoveryVersion(m ApplicationSnapshotManifest) byte {
+	if m.Version == 9 {
+		return 4
+	}
 	if m.Version == 8 {
 		return 3
 	}

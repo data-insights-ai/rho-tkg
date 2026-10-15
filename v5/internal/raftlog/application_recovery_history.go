@@ -72,7 +72,7 @@ func ApplicationContractForPolicyWithRecovery(p ApplicationPolicy, c Application
 	if err := r.validate(); err != nil {
 		return ApplicationContract{}, err
 	}
-	if r.Version == 3 {
+	if r.Version >= 3 {
 		return ApplicationContract{}, ErrInvalid
 	}
 	contract, err := ApplicationContractForPolicyWithControls(p, c)
@@ -96,7 +96,7 @@ func ApplicationContractForPolicyWithRetention(p ApplicationPolicy, c Applicatio
 	if err := retention.validate(); err != nil {
 		return ApplicationContract{}, err
 	}
-	if r.Version == 3 {
+	if r.Version == 3 || r.Version == 4 {
 		if retention.Version != 1 || c.Version != 1 {
 			return ApplicationContract{}, ErrInvalid
 		}
@@ -104,7 +104,7 @@ func ApplicationContractForPolicyWithRetention(p ApplicationPolicy, c Applicatio
 		if err != nil {
 			return ApplicationContract{}, err
 		}
-		contract.Version = 6
+		contract.Version = 3 + r.Version
 		return contract, nil
 	}
 	contract, err := ApplicationContractForPolicyWithRecovery(p, c, r)

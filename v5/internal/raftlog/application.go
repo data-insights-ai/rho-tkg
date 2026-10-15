@@ -522,7 +522,11 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 			return ErrInvalid
 		}
 		var credit ApplicationRecoveryCredit
-		prospective.Recovery, credit, err = prospective.Recovery.consume(*b.RecoveryUse)
+		if prospective.Recovery.Config.Version == 4 {
+			prospective.Recovery, credit, err = prospective.Recovery.consumeMeasured(*b.RecoveryUse, added, uint64(len(entry.GetData())+frameOverhead+9)) // #nosec G115 -- authentic bounded native entry.
+		} else {
+			prospective.Recovery, credit, err = prospective.Recovery.consume(*b.RecoveryUse)
+		}
 		if err != nil {
 			return err
 		}
@@ -531,12 +535,18 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 		}
 	}
 	if b.RecoveryReserve != nil {
-		if recoveryReservationBytes(*b.RecoveryReserve)+4 > maxMetadataBytes {
+		if recoveryReservationWireBytes(prospective.Recovery.Config.Version, *b.RecoveryReserve)+4 > maxMetadataBytes {
 			return ErrLimit
 		}
 		future, err := recoveryGrowth(*b.RecoveryReserve, p, s.limits)
 		if err != nil {
 			return err
+		}
+		if prospective.Recovery.Config.Version == 4 {
+			future, err = addRecoveryPoolPendingWindow(future, *b.RecoveryReserve, p, 0)
+			if err != nil {
+				return err
+			}
 		}
 		if err := recoveryFits(future, retained+added, rows+count, s.meta.LogBytes, s.meta.LogCount, p, s.limits); err != nil {
 			return err
@@ -547,6 +557,9 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 		}
 	}
 	prospective.Recovery = prospective.Recovery.afterApplied(index)
+	if prospective.Recovery.Config.Version == 4 {
+		recoveryState = prospective.Recovery
+	}
 	prospective.Applied = index
 	prospective.App.Through = index
 	rb, rr := uint64(0), uint64(0)

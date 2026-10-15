@@ -358,6 +358,12 @@ func (s *Store) reserveGeneration(m ApplicationSnapshotManifest) (metadata, byte
 		if futureErr != nil {
 			return prospective, bank, futureErr
 		}
+		if m.Version == 9 {
+			future, futureErr = addRecoveryPoolPendingWindow(future, m.RecoveryReservation, s.meta.App.Policy, 0)
+			if futureErr != nil {
+				return prospective, bank, futureErr
+			}
+		}
 		if m.Version >= 6 {
 			terminal, err := terminalGrowth(applicationTerminalBank(m.TerminalReservations), s.meta.App.Policy, s.limits)
 			if err != nil {

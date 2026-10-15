@@ -216,6 +216,9 @@ func cutID(c ApplicationCutReference) ([32]byte, error) {
 		if c.Contract.Version == 6 {
 			domain = append([]byte("rho-tkg:published-application-cut:v7\x00"), c.SemanticContractID[:]...)
 		}
+		if c.Contract.Version == 7 {
+			domain = append([]byte("rho-tkg:published-application-cut:v8\x00"), c.SemanticContractID[:]...)
+		}
 	} else if c.Retention != nil {
 		return [32]byte{}, ErrInvalid
 	}

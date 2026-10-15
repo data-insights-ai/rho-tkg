@@ -15,6 +15,11 @@ type ApplicationRecoverySpan struct {
 	First, Next, Last              uint32
 	CommandBytes                   int
 	RetainedBytes, RetainedRecords uint64
+	// BytePool is exclusive to recovery4. Its trusted materializer proves that
+	// all future actual steps fit the immutable totals, independently of the
+	// maxima for any single installation. Zero keeps fixed-span accounting.
+	BytePool  ApplicationRecoveryBytePool
+	Exhausted bool
 }
 
 const maxApplicationRecoverySpans = 8
@@ -25,11 +30,14 @@ func recoveryReservationBytes(r ApplicationRecoveryReservation) int {
 	return recoveryRootFixedBytes + recoveryCreditBytes*len(r.Credits) + recoverySpanBytes*len(r.Spans)
 }
 func recoverySpanProfile(c ApplicationRecoveryConfig, r ApplicationRecoveryReservation) error {
-	if c.Version == 3 {
+	if c.Version == 3 || c.Version == 4 {
 		if len(r.Credits) != 0 {
 			return ErrInvalid
 		}
 	} else if len(r.Spans) != 0 {
+		return ErrInvalid
+	}
+	if c.Version != 4 && hasRecoveryPools(r) {
 		return ErrInvalid
 	}
 	return nil
@@ -49,12 +57,21 @@ func recoverySpanGrowth(r ApplicationRecoveryReservation, p ApplicationPolicy, l
 		if s.First == 0 || s.Next < s.First || s.Next > s.Last || i > 0 && r.Spans[i-1].Last >= s.First {
 			return applicationRecoveryGrowth{}, ErrInvalid
 		}
+		if s.CommandBytes < 0 || s.CommandBytes > l.MaxEntryBytes-frameOverhead {
+			return applicationRecoveryGrowth{}, ErrInvalid
+		}
+		if err := validateRecoveryPool(s); err != nil {
+			return applicationRecoveryGrowth{}, err
+		}
 		credit := ApplicationRecoveryCredit{Phase: s.Next, CommandBytes: s.CommandBytes, RetainedBytes: s.RetainedBytes, RetainedRecords: s.RetainedRecords}
 		step, err := recoveryGrowth(ApplicationRecoveryReservation{ID: r.ID, Digest: r.Digest, Credits: []ApplicationRecoveryCredit{credit}}, p, l)
 		if err != nil {
 			return applicationRecoveryGrowth{}, err
 		}
 		count := uint64(s.Last) - uint64(s.Next) + 1
+		if s.Exhausted {
+			count = 0
+		}
 		for _, row := range []struct {
 			each uint64
 			out  *uint64
@@ -62,6 +79,14 @@ func recoverySpanGrowth(r ApplicationRecoveryReservation, p ApplicationPolicy, l
 			n, err := checkedRecoveryMul(count, row.each)
 			if err != nil {
 				return applicationRecoveryGrowth{}, err
+			}
+			if s.BytePool.enabled() {
+				if row.out == &g.bytes {
+					n = s.BytePool.RetainedRemaining
+				}
+				if row.out == &g.logBytes {
+					n = s.BytePool.LogRemaining
+				}
 			}
 			*row.out, err = checkedRecoveryAdd(*row.out, n)
 			if err != nil {
@@ -72,11 +97,11 @@ func recoverySpanGrowth(r ApplicationRecoveryReservation, p ApplicationPolicy, l
 	return g, nil
 }
 func (m applicationRecoveryMetadata) spanCredit(u ApplicationRecoveryUse) (ApplicationRecoveryCredit, error) {
-	if m.Config.Version != 3 || len(m.Reservation.Credits) != 0 {
+	if m.Config.Version != 3 && m.Config.Version != 4 || len(m.Reservation.Credits) != 0 {
 		return ApplicationRecoveryCredit{}, ErrInvalid
 	}
 	for _, s := range m.Reservation.Spans {
-		if s.Next != u.Phase {
+		if s.Exhausted || s.Next != u.Phase {
 			continue
 		}
 		if u.RetireBefore != 0 {

@@ -30,6 +30,14 @@ func (d *applicationRecoveryDependency) Unwrap() []error {
 }
 
 func terminalRecoveryUse(q applicationRecoveryQueued, reservation ApplicationRecoveryReservation) bool {
+	version := uint32(1)
+	if len(reservation.Spans) != 0 {
+		version = 3
+	}
+	return terminalRecoveryUseFor(version, q, reservation)
+}
+
+func terminalRecoveryUseFor(version uint32, q applicationRecoveryQueued, reservation ApplicationRecoveryReservation) bool {
 	use := q.Purpose.Use
 	if q.Purpose.Reserve != nil || use == nil || use.ID != reservation.ID || use.Digest != reservation.Digest || use.CommandDigest != q.CommandDigest || use.Phase == 0 || use.RetireBefore != use.Phase || q.Credit.Phase != use.Phase {
 		return false
@@ -44,10 +52,6 @@ func terminalRecoveryUse(q applicationRecoveryQueued, reservation ApplicationRec
 			return false
 		}
 	}
-	version := uint32(1)
-	if len(reservation.Spans) != 0 {
-		version = 3
-	}
 	credit, err := (applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{Version: version}, Reservation: reservation}).credit(*use)
 	return err == nil && credit == q.Credit
 }
@@ -59,7 +63,7 @@ func (s *Store) captureRecoveryDependency(entry *pb.Entry, input []*pb.Entry, ca
 	}
 	for i := len(before.Queued) - 1; i >= 0; i-- {
 		terminal := before.Queued[i]
-		if terminal.Index <= before.Applied || terminal.Index >= entry.GetIndex() || !terminalRecoveryUse(terminal, captured.Reservation) {
+		if terminal.Index <= before.Applied || terminal.Index >= entry.GetIndex() || !terminalRecoveryUseFor(captured.Config.Version, terminal, captured.Reservation) {
 			continue
 		}
 		found := false
@@ -95,7 +99,7 @@ func (s *Store) captureRecoveryDependency(entry *pb.Entry, input []*pb.Entry, ca
 // terminal recipe; a stale/copied receipt or uncommitted retirement cannot
 // grant prefix progress. New classification after actual installation is required.
 func (d *applicationRecoveryDependency) matches(s *Store, committed uint64) bool {
-	if d == nil || d.self != d || d.s != s || !d.before.matches(s) || d.inputHash != recoveryDependencyInputHash(d.input) || d.owner.ID == ([32]byte{}) || d.owner != (ApplicationRecoveryOwner{ID: s.meta.Recovery.Reservation.ID, Digest: s.meta.Recovery.Reservation.Digest}) || d.terminal.Index <= s.meta.Applied || d.terminal.Index >= d.entry || d.terminal.Index > committed || !terminalRecoveryUse(d.terminal, s.meta.Recovery.Reservation) {
+	if d == nil || d.self != d || d.s != s || !d.before.matches(s) || d.inputHash != recoveryDependencyInputHash(d.input) || d.owner.ID == ([32]byte{}) || d.owner != (ApplicationRecoveryOwner{ID: s.meta.Recovery.Reservation.ID, Digest: s.meta.Recovery.Reservation.Digest}) || d.terminal.Index <= s.meta.Applied || d.terminal.Index >= d.entry || d.terminal.Index > committed || !terminalRecoveryUseFor(s.meta.Recovery.Config.Version, d.terminal, s.meta.Recovery.Reservation) {
 		return false
 	}
 	deferrer := false
@@ -114,7 +118,7 @@ func (d *applicationRecoveryDependency) matches(s *Store, committed uint64) bool
 	}
 	for _, queued := range s.meta.Recovery.Queued {
 		if queued.Index == d.terminal.Index {
-			return queued.CommandDigest == d.terminal.CommandDigest && terminalRecoveryUse(queued, s.meta.Recovery.Reservation)
+			return queued.CommandDigest == d.terminal.CommandDigest && terminalRecoveryUseFor(s.meta.Recovery.Config.Version, queued, s.meta.Recovery.Reservation)
 		}
 	}
 	return false

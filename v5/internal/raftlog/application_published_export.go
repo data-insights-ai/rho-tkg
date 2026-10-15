@@ -46,6 +46,9 @@ func publishedManifestID(m ApplicationSnapshotManifest) [32]byte {
 	if m.Version == 8 {
 		domain = append([]byte("rho-tkg:application-snapshot-manifest:v8\x00"), m.SemanticContractID[:]...)
 	}
+	if m.Version == 9 {
+		domain = append([]byte("rho-tkg:application-snapshot-manifest:v9\x00"), m.SemanticContractID[:]...)
+	}
 	if m.Version == 4 {
 		domain = append([]byte("rho-tkg:application-snapshot-manifest:v4\x00"), m.SemanticContractID[:]...)
 	}

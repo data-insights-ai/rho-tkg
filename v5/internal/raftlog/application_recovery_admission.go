@@ -224,6 +224,14 @@ func (s *Store) admitRecoveryCreationLocked(commandBytes int, reserve Applicatio
 	pending := s.meta.Last - s.meta.Applied + 2
 	bytes += pending * unsignedLimit(p.MaxInstallBytes)
 	records += pending * applicationInstallRecords(s.meta)
+	if s.meta.Recovery.Config.Version == 4 {
+		// Creation funds the full window before the owner exists. Existing
+		// ordinary/pending entries remain separate backing at this boundary.
+		future, err = addRecoveryPoolPendingWindow(future, reserve, p, 0)
+		if err != nil {
+			return err
+		}
+	}
 	if err := recoveryFits(future, bytes, records, s.meta.LogBytes+uint64(commandBytes+2*(frameOverhead+9)), s.meta.LogCount+2, p, s.limits); err != nil { // #nosec G115 -- admitApplicationLocked validates commandBytes 0..MaxEntryBytes-74 with MaxEntryBytes<=16 MiB; +166 fits int/uint64.
 		return err
 	}
@@ -254,6 +262,9 @@ func (s *Store) admitCreditUseLocked(commandBytes int, purpose applicationRecove
 	queued := make([]applicationRecoveryQueued, n+1)
 	copy(queued, m.Recovery.Queued)
 	queued[n] = applicationRecoveryQueued{Index: m.Last + 1, CommandDigest: use.CommandDigest, Purpose: purpose, Credit: credit}
+	if m.Recovery.Config.Version == 4 {
+		queued[n].ActualLogBytes = uint64(commandBytes + frameOverhead + 9)
+	} // #nosec G115 -- command validated under concrete native entry bound.
 	m.Recovery.Queued = queued
 	m.Last++
 	extra := uint64(commandBytes + frameOverhead + 9) // #nosec G115 -- sole caller passes len(data)<=validated credit.CommandBytes<=16 MiB-74; nonnegative +83 fits int/uint64.

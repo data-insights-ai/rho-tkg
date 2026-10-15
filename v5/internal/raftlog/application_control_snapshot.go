@@ -127,6 +127,9 @@ func localApplicationKey(bank byte, key []byte) []byte {
 }
 func (m ApplicationSnapshotManifest) controls() bool { return m.Version >= 4 }
 func (m metadata) manifestVersion() uint32 {
+	if m.Recovery.Config.Version == 4 {
+		return 9
+	}
 	if m.Recovery.Config.Version == 3 {
 		return 8
 	}
@@ -174,6 +177,9 @@ func snapshotRecoveryState(m ApplicationSnapshotManifest) applicationRecoveryMet
 	}
 	if m.Version == 8 {
 		version = 3
+	}
+	if m.Version == 9 {
+		version = 4
 	}
 	return applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{Version: version}, Reservation: m.RecoveryReservation, Terminal: applicationTerminalBank(m.TerminalReservations)}
 }

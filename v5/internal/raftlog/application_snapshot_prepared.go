@@ -21,7 +21,7 @@ const applicationSnapshotClaimFixedBytes uint64 = 2048
 // It contains no application image, local generation/voter policy or HardState.
 // Encoding does not prove receipt, Raft acceptance or authorize activation.
 func EncodeApplicationSnapshotDescriptor(m ApplicationSnapshotManifest) ([]byte, error) {
-	if m.Version != 2 && m.Version != 3 && m.Version != 4 && m.Version != 5 && m.Version != 6 && m.Version != 7 && m.Version != 8 {
+	if m.Version != 2 && m.Version != 3 && m.Version != 4 && m.Version != 5 && m.Version != 6 && m.Version != 7 && m.Version != 8 && m.Version != 9 {
 		return nil, ErrInvalid
 	}
 	if err := validateManifest(m); err != nil {

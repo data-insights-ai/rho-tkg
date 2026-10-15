@@ -182,6 +182,9 @@ func decodeTerminalBank(b []byte, p ApplicationPolicy, l Limits) (applicationTer
 
 func nativeRecoveryRootBytes(m applicationRecoveryMetadata) int {
 	n := recoveryRootBytes(m.Reservation)
+	if m.Config.Version == 4 {
+		n = recoveryPoolRootBytes(m.Reservation)
+	}
 	if m.Config.Version >= 2 {
 		n += terminalBankBytes(m.Terminal)
 	}
@@ -189,7 +192,9 @@ func nativeRecoveryRootBytes(m applicationRecoveryMetadata) int {
 }
 func appendNativeRecoveryRoot(m applicationRecoveryMetadata) []byte {
 	var b []byte
-	if m.Config.Version == 3 {
+	if m.Config.Version == 4 {
+		b = appendRecoveryPoolRoot(m.Reservation)
+	} else if m.Config.Version == 3 {
 		b = appendRecoverySpanRoot(m.Reservation)
 	} else {
 		b = appendRecoveryRoot(m.Reservation)
@@ -211,6 +216,17 @@ func nativeRecoveryRootDigest(m applicationRecoveryMetadata) [32]byte {
 func readNativeRecoveryRoot(b []byte, p ApplicationPolicy, l Limits) (ApplicationRecoveryReservation, applicationTerminalBank, error) {
 	if len(b) < recoveryRootFixedBytes || len(b) > maxMetadataBytes {
 		return ApplicationRecoveryReservation{}, nil, ErrCorrupt
+	}
+	if b[2] == 4 {
+		r, end, err := readRecoveryPoolRoot(b, p, l)
+		if err != nil {
+			return ApplicationRecoveryReservation{}, nil, err
+		}
+		bank, tail, err := decodeTerminalBank(b[end:], p, l)
+		if err != nil || len(tail) != 0 {
+			return ApplicationRecoveryReservation{}, nil, ErrCorrupt
+		}
+		return r, bank, nil
 	}
 	if b[2] == 3 {
 		r, end, err := readRecoverySpanRoot(b, p, l)
@@ -286,6 +302,24 @@ func nativeRecoveryRootOverhead(m applicationRecoveryMetadata) (uint64, uint64, 
 	return uint64(9 + appFrameBytes + n), 1, nil // #nosec G115 -- n bounded by the concrete64KiB metadata frame.
 }
 func (p ApplicationPolicy) measureNativeRecovery(b ApplicationBatch, m applicationRecoveryMetadata) (uint64, uint64, error) {
+	if m.Config.Version == 4 {
+		added, count, err := p.measure(b)
+		if err != nil {
+			return 0, 0, err
+		}
+		extra, rows, err := nativeRecoveryRootOverhead(m)
+		if err != nil || nativeRecoveryRootBytes(m) > p.MaxValueBytes {
+			return 0, 0, ErrLimit
+		}
+		work := 2*added + uint64(len(b.Image)+1024) + uint64(64*(len(b.Writes)+len(b.ControlPuts))) // #nosec G115 -- p.measure validated finite concrete shape.
+		for _, w := range b.ControlPuts {
+			work += uint64(128 + 4*controlPhysicalKeyBytes(w.Key))
+		} // #nosec G115 -- key shape admitted by p.measure.
+		if work > unsignedLimit(p.MaxInstallBytes) || 2*extra > unsignedLimit(p.MaxInstallBytes)-work {
+			return 0, 0, ErrLimit
+		}
+		return added + extra, count + rows, nil
+	}
 	added, count, err := p.measureRecovery(b, m.Reservation)
 	if err != nil || m.Config.Version < 2 {
 		return added, count, err
@@ -372,6 +406,14 @@ func (s *Store) admitTerminalCreationLocked(commandBytes int, r ApplicationRecov
 	future, err = addRecoveryGrowth(future, retentionCursorGrowth(s.meta))
 	if err != nil {
 		return err
+	}
+	if s.meta.Recovery.Config.Version == 4 {
+		// The ordinary preflight protected the window before adding this new
+		// terminal owner. Its added bank cannot spend that existing backing.
+		future, err = addRecoveryPoolPendingWindow(future, s.meta.Recovery.Reservation, p, 0)
+		if err != nil {
+			return err
+		}
 	}
 	retained, records := applicationTotals(s.meta)
 	pending := s.meta.Last - s.meta.Applied + 2
@@ -461,6 +503,9 @@ func (s *Store) classifyTerminalEntry(e *pb.Entry, v *ApplicationView, captured 
 		return ErrInvalid
 	}
 	q := applicationRecoveryQueued{Index: e.GetIndex(), CommandDigest: sha256.Sum256(e.GetData()), Purpose: applicationRecoveryQueuedPurpose{TerminalReserve: purpose.TerminalReserve, TerminalUse: purpose.TerminalUse}}
+	if captured.Config.Version == 4 {
+		q.ActualLogBytes = uint64(len(e.GetData()) + frameOverhead + 9)
+	} // #nosec G115 -- native entry bound already validated.
 	if reserve := purpose.TerminalReserve; reserve != nil {
 		if _, err := terminalGrowth(applicationTerminalBank{*reserve}, s.applicationPolicy, s.limits); err != nil {
 			return err
