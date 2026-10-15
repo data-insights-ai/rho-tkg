@@ -931,11 +931,21 @@ fresh snapshot allowances and common presence-row validation preserve the older
 profiles. The independent sparse-source checker and owned launcher/matrix route
 are source-integrated at `1c8f0b0`. Complete all-voter originals, sparse retained
 prefixes, genuine checkpoint columns and physical collector cursors are joined
-under finite grants. The matched FDB retained-only adapter and cross-engine join
-remain implementation work; the unmatched paired route refuses. Neither the Go
-workload nor Python controller/checker has been executed. Report conservative native retention and any
-additional generic At availability as actual cost and behavior; this does not
-claim FDB's physical reclamation or runtime qualification.
+under finite grants. The matching FDB adapter and complete local paired join
+are now source-integrated at `a32e34e`: fresh Cost10/Transfer3 uses actual HOME
+reservation, recipient sessions and local Cursor.Next; the held C read occurs
+after mutation, then authenticated physical-owner release and source collection
+precede a genuine unread Page/SAME ACK through SDK SIGKILL/replacement. Complete
+raw originals, old/current exact sets, physical deletion/anchor accounting and
+actual event chronology precede every parity digest. Fresh interval columns
+bind checkpoint Initial.Groups through Policy2/Generation2/RHOCLM03; old formats
+remain unchanged. All 24 frozen source blobs, 15 complete parent blobs and 962
+author-input hashes were verified before integration. Neither workload nor its
+controllers/checkers has been compiled or executed. Native rolling-ACK retention,
+additional generic At availability and installed-grant references remain distinct
+from FDB detached CDC/physical reclamation and actual local Next costs. Older
+native Cost5/6 guarded-update matching and nonlocal paired joins remain source
+work; this minimum-contract integration is not runtime or capacity acceptance.
 
 The native selector family is source-integrated at `330aaf89`: fourteen actual
 Fresh/Stable/After/At, scoped-refusal and same-token reopen observations join
