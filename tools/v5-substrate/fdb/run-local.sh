@@ -26,7 +26,7 @@ cost_retention=${RHO_GRAPH_COST_RETENTION:-off}
 case "$cost_layout" in kv|columns) ;; *) echo 'RHO_GRAPH_COST_LAYOUT must be kv or columns' >&2; exit 2;; esac
 case "$cost_retention" in off|source-v1) ;; *) echo 'RHO_GRAPH_COST_RETENTION must be off or source-v1' >&2; exit 2;; esac
 case "$cost_qualify" in 0|1) ;; *) echo 'FDB_COST_QUALIFY must be 0 or 1' >&2; exit 2;; esac
-case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|workload-cell|static|platform-faults|column-publication-faults|source-history-faults) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|workload-cell|static|platform-faults|column-publication-faults|source-history-faults] [small|large]' >&2; exit 2;; esac
+case "$mode" in smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|workload-cell|static|platform-faults|column-publication-faults|source-history-faults|composed-platform-faults) ;; *) echo 'usage: run-local.sh [smoke|test|graph-fault|paired-tests|paired-graph-fault|lifecycle-trace|cost-cell|workload-cell|static|platform-faults|column-publication-faults|source-history-faults|composed-platform-faults] [small|large]' >&2; exit 2;; esac
 runtime='foundationdb/foundationdb@sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db'
 tag="rho-v5-fdb-$(date +%s)-$$"
 out="$PWD/artifacts/$tag"
@@ -242,7 +242,7 @@ if [ "$mode" = test ] || [ "$mode" = graph-fault ] || [ "$mode" = paired-tests ]
       cat /sys/fs/cgroup/memory.stat > /evidence/test-client-memory-stat.txt; exit "$result"' -- "$mode" >"$out/tests.txt" 2>&1
   capture_client "$name" tests
 fi
-if [ "$mode" != workload-cell ] && [ "$mode" != source-history-faults ] && [ "$mode" != column-publication-faults ] && [ "$mode" != platform-faults ] && [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired-tests ] && [ "$mode" != cost-cell ]; then
+if [ "$mode" != composed-platform-faults ] && [ "$mode" != workload-cell ] && [ "$mode" != source-history-faults ] && [ "$mode" != column-publication-faults ] && [ "$mode" != platform-faults ] && [ "$mode" != smoke ] && [ "$mode" != lifecycle-trace ] && [ "$mode" != paired-tests ] && [ "$mode" != cost-cell ]; then
   prefix=fault
   if [ "$mode" = graph-fault ]; then prefix=graph-fault; fi
   if [ "$mode" = paired-graph-fault ]; then prefix=paired-fault; fi
@@ -368,7 +368,8 @@ if [ "$mode" = workload-cell ]; then
   python3 -c 'import time; print(time.monotonic_ns())' >"$out/workload-controller-end-nanos.txt"
  fi
 fi
-if [ "$mode" = column-publication-faults ]; then
+if [ "$mode" = composed-platform-faults ]; then source run-composed-faults.sh; fi
+if [ "$mode" = column-publication-faults ] || [ "$mode" = composed-platform-faults ]; then
   phase_deadline=$((SECONDS+1800))
   publication_client() {
     local command="$1" destination="$2" result=0
@@ -390,6 +391,7 @@ if [ "$mode" = column-publication-faults ]; then
   publication_child() {
     local phase="$1" command="$2" reached=0
     publication_child_name="$tag-publication-$phase-$publication_case-$publication_coord"
+    if [ "$mode" = composed-platform-faults ]; then publication_child_name="$publication_child_name-$composition_fault"; fi
     containers+=("$publication_child_name")
     docker run -d --name "$publication_child_name" --network "$tag" --memory "${client_mib}m" --cpus 0.5 \
       --env "FDB_CONNECTION_STRING=$connection" --env "FDB_COLUMN_FAULT_CASE=$publication_case" \
@@ -407,12 +409,15 @@ if [ "$mode" = column-publication-faults ]; then
     cp "$publication_dir/state.json" "$publication_dir/$phase-state.json"
     docker inspect "$publication_child_name" >"$publication_dir/$phase.before.json"
     docker exec "$publication_child_name" /bin/bash -c 'cat /sys/fs/cgroup/memory.peak; cat /sys/fs/cgroup/memory.stat' >"$publication_dir/$phase-memory.txt"
+    if [ "$mode" = composed-platform-faults ]; then composed_before_reap column "$phase" "$publication_dir"; fi
     docker kill --signal KILL "$publication_child_name" >"$publication_dir/$phase-kill.txt"
     docker inspect "$publication_child_name" >"$publication_dir/$phase.stopped.json"
     python3 -B launcher.py killed "$publication_dir/$phase.stopped.json"
     docker logs "$publication_child_name" >"$publication_dir/$phase-final.stdout" 2>"$publication_dir/$phase-final.stderr"
     capture_client "$publication_child_name" "$publication_key-$phase"
+    if [ "$mode" = composed-platform-faults ]; then composed_after_reap column "$phase" "$publication_dir"; fi
   }
+ if [ "$mode" = column-publication-faults ]; then
   for publication_case in chunk source-eof manifest-issued; do
     for publication_coord in A B; do
       publication_key="column-publication-$publication_case-$publication_coord"
@@ -431,8 +436,9 @@ if [ "$mode" = column-publication-faults ]; then
       python3 -B column_publication_controller.py finalize "$publication_dir" "$out/commands.jsonl"
     done
   done
+ fi
 fi
-if [ "$mode" = source-history-faults ]; then
+if [ "$mode" = source-history-faults ] || [ "$mode" = composed-platform-faults ]; then
   phase_deadline=$((SECONDS+1200))
   history_client() {
     local command="$1" destination="$2" result=0
@@ -452,7 +458,9 @@ if [ "$mode" = source-history-faults ]; then
   }
   history_child() {
     local phase="$1" command="$2" reached=0
-    history_child_name="$tag-history-$phase-$history_coord"; containers+=("$history_child_name")
+    history_child_name="$tag-history-$phase-$history_coord"
+    if [ "$mode" = composed-platform-faults ]; then history_child_name="$history_child_name-$composition_fault-$composition_seam"; fi
+    containers+=("$history_child_name")
     docker run -d --name "$history_child_name" --network "$tag" --memory "${client_mib}m" --cpus 0.5 \
       --env "FDB_CONNECTION_STRING=$connection" --env "FDB_HISTORY_FAULT_COORDINATOR=$history_coord" \
       --env "FDB_HISTORY_FAULT_GRAPH=$history_graph" --env "FDB_HISTORY_FAULT_ARTIFACT=/evidence/$history_key" \
@@ -466,12 +474,15 @@ if [ "$mode" = source-history-faults ]; then
     cp "$history_dir/state.json" "$history_dir/$phase-state.json"
     docker inspect "$history_child_name" >"$history_dir/$phase.before.json"
     docker exec "$history_child_name" /bin/bash -c 'cat /sys/fs/cgroup/memory.peak; cat /sys/fs/cgroup/memory.stat' >"$history_dir/$phase-memory.txt"
+    if [ "$mode" = composed-platform-faults ]; then composed_before_reap source "$phase" "$history_dir"; fi
     docker kill --signal KILL "$history_child_name" >"$history_dir/$phase-kill.txt"
     docker inspect "$history_child_name" >"$history_dir/$phase.stopped.json"
     python3 -B launcher.py killed "$history_dir/$phase.stopped.json"
     docker logs "$history_child_name" >"$history_dir/$phase-final.stdout" 2>"$history_dir/$phase-final.stderr"
     capture_client "$history_child_name" "$history_key-$phase"
+    if [ "$mode" = composed-platform-faults ]; then composed_after_reap source "$phase" "$history_dir"; fi
   }
+ if [ "$mode" = source-history-faults ]; then
   for history_coord in A B; do
     history_key="source-history-$history_coord"; history_graph="source-history-fault-v1-$tag-$history_coord"
     history_dir="$out/$history_key"; mkdir "$history_dir"
@@ -487,7 +498,9 @@ if [ "$mode" = source-history-faults ]; then
     wait_healthy "${servers[0]}" "$history_dir/healthy-after.json"
     python3 -B history_retirement_controller.py finalize "$history_dir" "$out/commands.jsonl"
   done
+ fi
 fi
+if [ "$mode" = composed-platform-faults ]; then run_composed_faults; fi
 if [ "$mode" = platform-faults ]; then source run-platform-faults.sh; fi
 if [ "$mode" = lifecycle-trace ]; then client lifecycle-trace; fi
 wait_healthy "${servers[0]}" "$out/status-after.json"

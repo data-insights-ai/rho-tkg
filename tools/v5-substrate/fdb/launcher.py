@@ -110,7 +110,7 @@ def main():
                 while chunk := source.read(64 << 10):
                     digest.update(chunk)
             return digest.hexdigest()
-        hashes = {p.name: (workload_hash(p) if mode == "workload-cell" else hashlib.sha256(p.read_bytes()).hexdigest())
+        hashes = {p.name: (workload_hash(p) if mode in ("workload-cell", "composed-platform-faults") else hashlib.sha256(p.read_bytes()).hexdigest())
                   for p in sorted(out.iterdir()) if p.is_file() and p.name != "receipt.json"}
         if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") in ("fdb-owned-ingress-transport-v2", "fdb-owned-ingress-transport-v3"):
             hashes.update({str(p.relative_to(out)): workload_hash(p) for p in sorted((out / "owned-tools").iterdir()) if p.is_file()})
@@ -125,6 +125,10 @@ def main():
             hashes.update({str(p.relative_to(out)): hashlib.sha256(p.read_bytes()).hexdigest()
                            for directory in sorted(out.glob("source-history-*")) if directory.is_dir()
                            for p in sorted(directory.rglob("*")) if p.is_file()})
+        if mode == "composed-platform-faults":
+            hashes.update({str(p.relative_to(out)): workload_hash(p)
+                           for directory in sorted(out.glob("composed-*")) if directory.is_dir()
+                           for p in sorted(directory.rglob("*")) if p.is_file()})
         scopes = {
             "workload-cell": "one physical host, four logical FDB zones; explicitly selected fresh contention/RMW/empty-ID-range, effective edge uniqueness/endpoint-life ABA, authenticated Fresh/Stable/After/At, late scalar correction/retained posting scan, immutable column publication/scan or snapshot-to-retained-feed workload, 1/8/32 callers, actual original/source/column artifacts and owned same-container SDK child replacement for feed; local transport only, no native parity/full matrix/RTT/capacity acceptance",
             "source-history-faults": "one physical host; genuine source-history SDK owner and partial-collector SIGKILL/replacement, same retained owner Close and durable cursor resume; five COMMIT originals only, no ABORT/server-loss/power-loss/matrix/capacity acceptance",
@@ -135,6 +139,7 @@ def main():
             "paired-graph-fault": "one physical host, four logical FDB zones; paired fixed graph process faults only",
             "column-publication-faults": "one physical host; genuine publisher/derived-column collector SDK child kill/replacement and same immutable generation/owner recovery; source KV/history retained, not source-history process-restart or matrix/capacity acceptance",
             "platform-faults": "one physical host, four logical FDB zones; observed co-resident-role SIGKILL/same-volume restart, coordinator-domain and symmetric network isolation, native Commit-issued caller loss; finite four-operation cases, no matrix/power-loss/packet-reorder claim",
+            "composed-platform-faults": "one physical host/four logical FDB domains; fixed sixty actual role/domain faults during unchanged held-source or held-column/publisher/partial-collector SDK seams; exact caller reap before same-volume heal and same-owner/original/generation/cursor recovery; separate source and column namespaces, unchanged full terminal raw/history/CDC/cache/GC oracles; no inside-outage progress, power-loss, packet-reorder, matrix, capacity or V2 acceptance",
             "paired-tests": "one physical host, four logical FDB zones; normal/race/coverage tests, no external kill schedule",
             "test": "one physical host, four logical FDB zones; native tests and scalar faults",
             "smoke": "one physical host, four logical FDB zones; native scalar smoke only",
