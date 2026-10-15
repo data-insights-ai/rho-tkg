@@ -846,9 +846,16 @@ versioned cases bind ordinary Prepare/Resolve retries to the stored terminal
 original, zero duplicate CDC and unchanged graph image. Actual lost Propose
 replies remain distinct from returned append packets followed by a failed Step;
 the checker joins native entry/term/packet identity and the killed incarnation.
-Initial occurrences, leader/message variants, other P-row and applicable
-publication/import/GC conjunctions remain source gaps. All three finite profiles
-remain unexecuted; these source checkpoints do not complete P06 or D. Source
+Initial Register interruption is additionally source-integrated at `d8cdd83`:
+16 fresh cases lose the actual registration submission before first YES, retain
+the surviving coordinator's same private manifest, restore its native target,
+then exercise first-YES leader loss, original decision recovery and complete
+old/current/index/CDC observations. Replacement historical reads select both
+child and parent routes to the actual local source; source review corrected a
+parent-route mismatch before integration. Existing profiles and formats remain
+unchanged. First-Prepare occurrences, leader/message variants, other P-row and
+applicable publication/import/GC conjunctions remain source gaps. All four finite
+profiles remain unexecuted; these checkpoints do not complete P06 or D. Source
 review found that ordinary fixture reconnect rejects retained pending runs.
 The correction is source-integrated at `0f6f10a`: fresh NCR1 routing retains the
 same coordinator, private pending manifests, certified engine and unchanged-peer
