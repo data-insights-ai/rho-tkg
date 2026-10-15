@@ -276,7 +276,7 @@ all A–F exit requirements; implementation status never implies acceptance.
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (integrated main is `1b0a50a3`, including release
+   cutoff (integrated main is `5b49d002`, including release
    `a08c0d52`/v4.56.0),
    review relevant handover/consumer/CI deltas and integrate required changes.
    The effective-page, history-epoch/head-cache, correction/rollback fast-path
@@ -495,8 +495,8 @@ recovery API; neither this quota nor the correction is runtime qualification.
 The dispatcher schedules all eight families and local/1/20/100ms profiles.
 FDB has source drivers for contention, selectors, snapshot-to-feed,
 cross-edge uniqueness, immutable columns and late correction; their fresh owned transport adapters cover
-local/1/20/100ms. Native has contention and cross-edge source drivers across
-local/1/20/100ms, with local paired cross-edge comparison. Unsupported semantics
+local/1/20/100ms. Native has contention, cross-edge and snapshot-to-feed source
+drivers across local/1/20/100ms, with local paired comparisons. Unsupported semantics
 or transport refuse before effects.
 Each selected-family matrix contains 360 fresh cells;
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
@@ -731,8 +731,16 @@ unique entry, complete ordered entry-manifest hash and native batch payload
 hash. Prepaid, immutable before/after Sync observations grant no operation ACK
 or power-loss proof; unsupported/ambiguous/unfunded diagnostics leave native
 persistence unchanged, and default filesystems do no diagnostic hashing.
-Checkpoint/publication/activation mapping and graph-driver wiring remain open;
-none of these new guards ran.
+Graph-driver wiring at `20aeba6b` adds 24 before/after Ready/install cells for
+the six applicable cross-protocol commands. Exact native entry/batch receipts
+precede real child self-SIGKILL; same-directory replacement, immutable original
+recovery and held old cuts join the complete prefix and independent checker.
+Only an all-zero response with an actual pipe-loss cause and the expected
+persisted receipt can drop a failed Step delivery; native refusals, corruption,
+limits and caller expiry still propagate. Hash/event work, serialized receipts
+and parent receipt reads have separate finite grants. Checkpoint/publication/
+activation/import/retention identities and broader P01–P09 leader/message/conflict
+composition remain in implementation. None of these new guards ran.
 
 Native snapshot-to-feed ownership is source-integrated at `4868f0f7`. One genuine
 issued pin retains the snapshot and full-vector feed; complete original-round
@@ -758,10 +766,11 @@ without emitting duplicate business changes. Its authored guard distinguishes
 that new retry from an expired historical frame. Source integration is not
 runtime qualification.
 
-Current worker lanes: Sol 6.1/high for native snapshot-to-feed production
-ownership and its workload; Sol 6.1/high for remaining C/D certificate/publication
-transitions and concrete production gaps; Sol 6.1/high for the remaining FDB
-workload families after integration of their owned transport. These packages
+Current worker lanes: Sol 6.1/high for the remaining native workload families,
+starting with snapshot selectors after the feed integration; Sol 6.1/high for
+graph-composed stable-storage transitions and concrete production gaps;
+Sol 6.1/high for the remaining FDB workload families, starting with the actual
+transfer process driver. These packages
 are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
