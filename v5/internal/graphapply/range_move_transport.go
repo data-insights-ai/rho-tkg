@@ -293,7 +293,7 @@ func (e *graphAuthenticatedEndpoint) submitMove(ctx context.Context, proposal al
 		return status, errRangeMovePending
 	case rangeMoveMismatch:
 		return status, errInvalid
-	case rangeMoveLimit:
+	case rangeMoveLimit, rangeMoveBudgetLimit:
 		return status, errLimit
 	}
 	return status, nil

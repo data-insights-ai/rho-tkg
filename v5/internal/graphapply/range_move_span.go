@@ -42,6 +42,9 @@ func rangeMovePageLimit(id raftlog.ApplicationSemanticContractID) int {
 	return 1024
 }
 func rangeMoveStatusFormat(id raftlog.ApplicationSemanticContractID) byte {
+	if rangeMovePoolsEnabled(id) {
+		return 3
+	}
 	if rangeMoveSpans(id) {
 		return 2
 	}
@@ -77,6 +80,12 @@ func (m *declaredMaterializer) spanMoveReservation(r rangeMoveIntent) (raftlog.A
 		add(moveSpanUndo, moveSpanUndo+uint32(r.maxPages)-1, 8192, (64<<10)+16*r.pageBytes+16384, 128)
 	} // #nosec G115 -- maxPages1..2^24, disjoint ascending band.
 	add(moveSpanTerminal, moveSpanTerminal, 8192, 128<<10, 16)
+	if rangeMovePoolsEnabled(m.SemanticContractID()) {
+		// Terminal also restores the genuine three-row target fence GMU0.
+		if err := applyMovePools(&out, r.pools); err != nil {
+			return raftlog.ApplicationRecoveryReservation{}, err
+		}
+	}
 	return out, nil
 }
 func moveSpanCredit(c rangeMoveCommand) uint32 {
@@ -118,8 +127,18 @@ func (m *declaredMaterializer) spanMoveFits(r raftlog.ApplicationRecoveryReserva
 			if each == 0 || count > math.MaxUint64/each || count*each > math.MaxUint64-totals[j] {
 				return false
 			}
-			totals[j] += count * each
+			growth := count * each
+			if j == 0 && s.BytePool.RetainedLimit != 0 {
+				growth = s.BytePool.RetainedLimit
+			}
+			totals[j] += growth
 		}
+	}
+	if rangeMovePoolsEnabled(m.SemanticContractID()) {
+		if p.MaxInstallBytes < 1 || p.MaxTailEntries > math.MaxUint64/uint64(p.MaxInstallBytes) || p.MaxTailEntries*uint64(p.MaxInstallBytes) > math.MaxUint64-totals[0] {
+			return false
+		}
+		totals[0] += p.MaxTailEntries * uint64(p.MaxInstallBytes) // #nosec G115 -- positive validated native policy.
 	}
 	return totals[0] <= p.RetainedApplicationBytes && totals[1] <= p.RetainedApplicationRecords && totals[2] <= l.MaxRetainedBytes && totals[3] <= l.MaxRetainedEntries
 }
@@ -187,13 +206,16 @@ func (m *declaredMaterializer) hydrateMoveRetention(q *reader, move [16]byte, p 
 	return nil
 }
 func moveStatusWireFor(id raftlog.ApplicationSemanticContractID, wire []byte) bool {
+	if rangeMovePoolsEnabled(id) {
+		return bytes.HasPrefix(wire, []byte("GMO\x03"))
+	}
 	if rangeMoveSpans(id) {
 		return bytes.HasPrefix(wire, []byte("GMO\x02"))
 	}
 	return bytes.HasPrefix(wire, []byte("GMO\x01"))
 }
 func rangeMoveStatusPageLimit(format byte) int {
-	if format == 2 {
+	if format == 2 || format == 3 {
 		return rangeMoveSpanMaxPages
 	}
 	return 1024

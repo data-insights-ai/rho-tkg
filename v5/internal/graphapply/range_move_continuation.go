@@ -23,6 +23,9 @@ func (m *declaredMaterializer) moveBudget(q *reader) (graphstore.OwnershipBudget
 }
 
 func (m *declaredMaterializer) finishMovePage(q *reader, status rangeMoveStatus, controls []raftlog.ApplicationControlPut, budget raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error) {
+	if m == nil || q == nil {
+		return raftlog.ApplicationBatch{}, errInvalid
+	}
 	wire, err := encodeRangeMoveStatus(status)
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err

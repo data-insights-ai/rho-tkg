@@ -18,7 +18,7 @@ type rangeMoveCommand struct {
 }
 
 func isRangeMoveWire(wire []byte) bool {
-	return len(wire) >= 4 && (bytes.Equal(wire[:4], []byte{'G', 'M', 'Q', 1}) || bytes.Equal(wire[:4], []byte{'G', 'M', 'Q', 2}))
+	return len(wire) >= 4 && (bytes.Equal(wire[:4], []byte{'G', 'M', 'Q', 1}) || bytes.Equal(wire[:4], []byte{'G', 'M', 'Q', 2}) || bytes.Equal(wire[:4], []byte{'G', 'M', 'Q', 3}))
 }
 
 func encodeRangeMoveCommand(c rangeMoveCommand) ([]byte, error) {
@@ -33,6 +33,9 @@ func encodeRangeMoveCommand(c rangeMoveCommand) ([]byte, error) {
 		version := byte(1)
 		if rangeMoveSpans(intent.source.semantic) {
 			version = 2
+		}
+		if rangeMovePoolsEnabled(intent.source.semantic) {
+			version = 3
 		}
 		w.add([]byte{'G', 'M', 'Q', version})
 		w.add(appendAllocationScope(nil, c.scope))
@@ -60,6 +63,9 @@ func decodeRangeMoveCommand(wire []byte) (rangeMoveCommand, error) {
 	magic := "GMQ\x01"
 	if bytes.HasPrefix(wire, []byte("GMQ\x02")) {
 		magic = "GMQ\x02"
+	}
+	if bytes.HasPrefix(wire, []byte("GMQ\x03")) {
+		magic = "GMQ\x03"
 	}
 	body, err := graphBody(wire, magic, 1<<20)
 	if err != nil {
@@ -142,6 +148,11 @@ func rangeMoveObservationHash(o rangeMoveObservation) [32]byte {
 			w.u64(n)
 		}
 		w.add(s.digest[:])
+		if s.format == 3 {
+			w.tag(byte(s.failedPhase))
+			w.u64(s.failedSequence)
+			w.add(s.failedCommand[:])
+		}
 		field(w.b)
 	}
 	field(o.intent)

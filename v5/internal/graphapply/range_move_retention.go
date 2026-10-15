@@ -392,7 +392,7 @@ func (m *declaredMaterializer) checkMoveRetainedLineages(q *reader) error {
 			if e != nil {
 				return e
 			}
-			if status.ns != q.ns || status.index > q.base.Index || !bytes.Equal(row.Key, rangeMoveStatusKey(q.ns, status.move)) {
+			if status.ns != q.ns || status.index > q.base.Index || status.format != rangeMoveStatusFormat(m.SemanticContractID()) || !bytes.Equal(row.Key, rangeMoveStatusKey(q.ns, status.move)) {
 				return errCorrupt
 			}
 			capture, present, e := crossControl(q, rangeMoveControlKey(q.ns, status.move, 'C'), 1024)
@@ -412,6 +412,11 @@ func (m *declaredMaterializer) checkMoveRetainedLineages(q *reader) error {
 			intent, e := decodeRangeMoveIntent(intentRecord.Value)
 			if e != nil {
 				return e
+			}
+			if rangeMovePoolsEnabled(m.SemanticContractID()) {
+				if e = m.checkMovePoolState(q, intent, status); e != nil {
+					return e
+				}
 			}
 			root, floor, e := moveCaptureRoot(capture.Value, m.scope())
 			if e != nil {

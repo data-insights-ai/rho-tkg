@@ -14,6 +14,18 @@ import (
 // store. Request recovery precedes current placement checks; a moved range can
 // still recover its original intent without interpreting a new business retry.
 func (h *allocationHost) PrepareRangeMove(ctx context.Context, id requestID, rangeID, target uint64, maxPages, pageRows, pageBytes int) (intent rangeMoveIntent, err error) {
+	return h.prepareRangeMove(ctx, id, rangeID, target, maxPages, pageRows, pageBytes, rangeMovePools{})
+}
+
+// Fresh hard limits are explicit and preserved in the original GMI3. They are
+// not a caller certificate that a source fits: every candidate is checked.
+func (h *allocationHost) PreparePooledRangeMove(ctx context.Context, id requestID, rangeID, target uint64, maxPages, pageRows, pageBytes int, pools rangeMovePools) (rangeMoveIntent, error) {
+	if !pools.valid(true) {
+		return rangeMoveIntent{}, errInvalid
+	}
+	return h.prepareRangeMove(ctx, id, rangeID, target, maxPages, pageRows, pageBytes, pools)
+}
+func (h *allocationHost) prepareRangeMove(ctx context.Context, id requestID, rangeID, target uint64, maxPages, pageRows, pageBytes int, pools rangeMovePools) (intent rangeMoveIntent, err error) {
 	if h == nil || ctx == nil || id == (requestID{}) || rangeID == 0 || target == 0 {
 		return intent, errInvalid
 	}
@@ -26,6 +38,9 @@ func (h *allocationHost) PrepareRangeMove(ctx context.Context, id requestID, ran
 		return intent, replica.ErrStopped
 	}
 	if h.machine == nil || !h.machine.rangeMoves() {
+		return intent, errInvalid
+	}
+	if !pools.valid(rangeMovePoolsEnabled(h.machine.SemanticContractID())) {
 		return intent, errInvalid
 	}
 	to, err := h.target(target)
@@ -61,7 +76,7 @@ func (h *allocationHost) PrepareRangeMove(ctx context.Context, id requestID, ran
 		if err != nil {
 			return intent, err
 		}
-		if intent.id != id || intent.source != h.machine.scope() || intent.target != to || intent.publication.RangeID != rangeID || intent.maxPages != maxPages || intent.pageRows != pageRows || intent.pageBytes != pageBytes {
+		if intent.id != id || intent.source != h.machine.scope() || intent.target != to || intent.publication.RangeID != rangeID || intent.maxPages != maxPages || intent.pageRows != pageRows || intent.pageBytes != pageBytes || intent.pools != pools {
 			return rangeMoveIntent{}, errInvalid
 		}
 		return intent, nil
@@ -93,6 +108,7 @@ func (h *allocationHost) PrepareRangeMove(ctx context.Context, id requestID, ran
 		return intent, graphstore.ErrStaleOwner
 	}
 	intent = rangeMoveIntent{id: id, source: h.machine.scope(), target: to, publication: publication, epoch: owner.Epoch, maxPages: maxPages, pageRows: pageRows, pageBytes: pageBytes}
+	intent.pools = pools
 	if !intent.valid() {
 		return rangeMoveIntent{}, errInvalid
 	}

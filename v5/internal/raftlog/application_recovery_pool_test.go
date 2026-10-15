@@ -2,12 +2,131 @@ package raftlog
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"math"
 	"slices"
 	"testing"
 )
+
+func TestApplicationRecoveryPooledCandidateBoundAndExactView(t *testing.T) {
+	p := DefaultApplicationPolicy(1)
+	b := ApplicationBatch{Image: []byte("root"), Outcome: []byte("outcome"), Writes: []KV{{Key: []byte{0, 1, 0}, Value: []byte("before")}}, ControlPuts: []ApplicationControlPut{{Key: []byte{0, 2, 0}, Value: []byte("control")}}}
+	m := recoveryPoolFixture()
+	for i := range maxApplicationTerminalOwners {
+		m.Terminal = append(m.Terminal, ApplicationRecoveryReservation{ID: [32]byte{byte(i + 1)}, Digest: [32]byte{42}, Credits: []ApplicationRecoveryCredit{{1, 128, 8192, 16}, {2, 128, 8192, 16}, {3, 128, 8192, 16}}})
+	}
+	actual, records, err := p.measureNativeRecovery(b, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, maximum, work, err := p.PooledRecoveryBatchBound(b, 0)
+	if err != nil || bound < actual || maximum < records || work < 2*bound {
+		t.Fatal("complete roots/control/key-escape bound", actual, bound, records, maximum, work, err)
+	}
+	more, _, _, err := p.PooledRecoveryBatchBound(b, 17)
+	if err != nil || more != bound+17 {
+		t.Fatal("padding discounted/reset candidate", err)
+	}
+	if _, _, _, err = p.PooledRecoveryBatchBound(b, math.MaxUint64); !errors.Is(err, ErrLimit) {
+		t.Fatal("overflow", err)
+	}
+	bad := b
+	bad.Writes = []KV{{Key: nil}}
+	if _, _, _, err = p.PooledRecoveryBatchBound(bad, 0); !errors.Is(err, ErrInvalid) {
+		t.Fatal("malformed key", err)
+	}
+	var absent *ApplicationView
+	if _, _, err = absent.RecoveryStepBudget(t.Context(), ApplicationRecoveryUse{}, ReadBudget{2, 1 << 20}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("nil view", err)
+	}
+	s, _, v := recoveryPoolStore(t)
+	spanRecoveryInstall(t, s, v, "register")
+	view, err := s.ApplicationView(s.meta.Applied)
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := view.ReadLimits()
+	step := ApplicationRecoveryUse{ID: v.reserve.ID, Digest: v.reserve.Digest, CommandDigest: [32]byte{1}, Phase: 100}
+	got, _, err := view.RecoveryStepBudget(t.Context(), step, limits)
+	if err != nil || got.Pool != v.reserve.Spans[0].BytePool || got.Maximum.Phase != 100 {
+		t.Fatal("exact native pool", got, err)
+	}
+	spanRecoveryInstall(t, s, v, "step")
+	old, _, err := view.RecoveryStepBudget(t.Context(), step, limits)
+	if err != nil || old != got {
+		t.Fatal("held old pool changed after actual debit", old, got, err)
+	}
+	current, err := s.ApplicationView(s.meta.Applied)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentUse := step
+	currentUse.Phase++
+	now, _, err := current.RecoveryStepBudget(t.Context(), currentUse, current.ReadLimits())
+	if err != nil || now.Pool.RetainedRemaining >= got.Pool.RetainedRemaining || now.Pool.LogRemaining >= got.Pool.LogRemaining || now.Maximum.Phase != 101 {
+		t.Fatal("current pool did not debit", now, err)
+	}
+	if err = current.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*ApplicationRecoveryUse){func(u *ApplicationRecoveryUse) { u.ID[0]++ }, func(u *ApplicationRecoveryUse) { u.Digest[0]++ }, func(u *ApplicationRecoveryUse) { u.CommandDigest = [32]byte{} }, func(u *ApplicationRecoveryUse) { u.Phase++ }, func(u *ApplicationRecoveryUse) { u.RetireBefore = u.Phase }} {
+		bad := step
+		mutate(&bad)
+		if _, _, err := view.RecoveryStepBudget(t.Context(), bad, limits); !errors.Is(err, ErrInvalid) {
+			t.Fatal("forged owner/phase/hash/terminal", err)
+		}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, _, err = view.RecoveryStepBudget(ctx, step, limits); !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled", err)
+	}
+	view.retention.RecoveryFloor = view.index + 1
+	if _, _, err = view.RecoveryStepBudget(t.Context(), step, limits); !errors.Is(err, ErrApplicationExpired) {
+		t.Fatal("expired", err)
+	}
+	view.retention.RecoveryFloor = 0
+	if err = view.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = view.RecoveryStepBudget(t.Context(), step, limits); !errors.Is(err, ErrClosed) {
+		t.Fatal("closed", err)
+	}
+	if err = s.PublishSnapshot(); err != nil {
+		t.Fatal(err)
+	}
+	cut, err := s.PublishedApplicationCut()
+	if err != nil {
+		t.Fatal(err)
+	}
+	export, err := s.BeginPublishedApplicationExport(t.Context(), cut.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := buildPublished(t, export, ReadBudget{1, 8192})
+	chunks := collectPublished(t, export, ReadBudget{1, 8192})
+	if err = export.Close(); err != nil {
+		t.Fatal(err)
+	}
+	receiver, _, _ := recoveryPoolStore(t)
+	prepared, _ := semanticPrepared(t, receiver, manifest, chunks)
+	read, err := prepared.OpenReadView(t.Context(), manifest.Index, 172)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _, err = read.RecoveryStepBudget(t.Context(), currentUse, read.ReadLimits())
+	if err != nil || got.Pool != now.Pool {
+		t.Fatal("AS9 prepared pool", got, err)
+	}
+	if err = read.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = prepared.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func recoveryPoolFixture() applicationRecoveryMetadata {
 	return applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{Version: 4}, Reservation: ApplicationRecoveryReservation{ID: [32]byte{1}, Digest: [32]byte{2}, Spans: []ApplicationRecoverySpan{

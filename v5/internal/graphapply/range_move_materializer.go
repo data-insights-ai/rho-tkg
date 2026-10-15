@@ -283,12 +283,26 @@ func (m *declaredMaterializer) rangeMoveRecovery(q *reader, c rangeMoveCommand, 
 		if e != nil {
 			return raftlog.ApplicationRecoveryPurpose{}, e
 		}
-		if found && (bytes.HasPrefix(wire, []byte("GMP\x04")) || bytes.HasPrefix(wire, []byte("GMP\x05"))) {
+		if found && (bytes.HasPrefix(wire, []byte("GMP\x04")) || bytes.HasPrefix(wire, []byte("GMP\x05")) || movePoolProgressWire(wire)) {
 			p, e := decodeRangeMoveProgress(wire, q.arena)
 			if e != nil {
 				return raftlog.ApplicationRecoveryPurpose{}, e
 			}
 			if e = m.checkMoveReference(q, move, p); e != nil {
+				return raftlog.ApplicationRecoveryPurpose{}, e
+			}
+		}
+	}
+	if rangeMovePoolsEnabled(m.SemanticContractID()) && c.phase != rangeMoveFence {
+		_, found, e := readMovePoolOriginal(q, c)
+		if e != nil {
+			return raftlog.ApplicationRecoveryPurpose{}, e
+		}
+		if found {
+			return raftlog.ApplicationRecoveryPurpose{}, nil
+		}
+		if present {
+			if _, e = movePoolRefusalReplay(c, current); e != nil {
 				return raftlog.ApplicationRecoveryPurpose{}, e
 			}
 		}
@@ -367,13 +381,78 @@ func (m *declaredMaterializer) stageRangeMove(q *reader, entry replica.Entry, bu
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err
 	}
+	pooled := rangeMovePoolsEnabled(m.SemanticContractID())
+	var step raftlog.ApplicationRecoveryStepBudget
+	var refusalOutput *graphstate.OutputBudget
+	var originalStatus rangeMoveStatus
+	if pooled && purpose.Use != nil {
+		step, err = m.movePoolStep(q, c)
+		if err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+		if c.phase == rangeMoveDescribe || c.phase == rangeMoveImport && c.sequence > 0 {
+			refusalOutput, err = prepayMoveRefusal(q)
+			if err != nil {
+				return raftlog.ApplicationBatch{}, err
+			}
+			originalStatus, _, err = readRangeMoveStatus(q, rangeMoveID(namespace{intent.source.graph, intent.source.partition}, intent.id))
+			if err != nil {
+				return raftlog.ApplicationBatch{}, err
+			}
+		}
+	}
 	defer func() {
+		if pooled && purpose.Use != nil {
+			if err == nil {
+				if e := reserveComposer(q, 2048); e != nil {
+					err = e
+				}
+			}
+			if err == nil {
+				s, e := decodeRangeMoveStatus(batch.Outcome)
+				if e != nil {
+					err = e
+				} else {
+					control, e := movePoolOriginal(c, s)
+					if e != nil {
+						err = e
+					} else {
+						batch.ControlPuts = append(batch.ControlPuts, control)
+						err = sortMoveControls(batch.ControlPuts)
+					}
+				}
+				if err == nil {
+					n, rows, _, e := m.store.ApplicationLimits().PooledRecoveryBatchBound(batch, 0)
+					if e != nil {
+						err = errors.Join(errLimitIfNative(e), e)
+					} else if n > step.Maximum.RetainedBytes || rows > step.Maximum.RetainedRecords {
+						err = errLimit
+					}
+				}
+				if err == nil && step.Pool.RetainedLimit != 0 {
+					floor := uint64(0)
+					if refusalOutput != nil {
+						floor = movePoolRefusalBytes
+					}
+					err = movePoolCandidateFits(m.store.ApplicationLimits(), batch, step, floor)
+				}
+			}
+			if refusalOutput != nil && (errors.Is(err, errLimit) || errors.Is(err, graphstate.ErrResourceLimit) || errors.Is(err, graphstore.ErrResourceLimit)) {
+				batch, err = m.finishMoveRefusal(q, c, originalStatus, entry.Index, refusalOutput, budget)
+				if err == nil {
+					err = movePoolCandidateFits(m.store.ApplicationLimits(), batch, step, 0)
+				}
+			}
+		}
 		if err == nil {
 			batch.RecoveryReserve, batch.RecoveryUse = purpose.Reserve, purpose.Use
 			err = m.preflight(batch, budget)
 			if err != nil {
 				batch = raftlog.ApplicationBatch{}
 			}
+		}
+		if pooled && err != nil {
+			batch = raftlog.ApplicationBatch{}
 		}
 	}()
 	cfg, err := m.initialized(q)
@@ -409,6 +488,15 @@ func (m *declaredMaterializer) stageRangeMove(q *reader, entry replica.Entry, bu
 		return batch, m.preflight(batch, budget)
 	}
 	if present {
+		if pooled && c.phase != rangeMoveFence {
+			original, found, e := readMovePoolOriginal(q, c)
+			if e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+			if found {
+				return finish(original, false, nil)
+			}
+		}
 		if rangeMoveTerminal(current) || rangeMoveCommandReplayed(c, current) || c.phase == rangeMoveFence {
 			return finish(current, false, nil)
 		}
@@ -505,7 +593,7 @@ func (m *declaredMaterializer) stageRangeMove(q *reader, entry replica.Entry, bu
 		status.floor = c.proofs[0].floor
 		return finish(status, true, []raftlog.ApplicationControlPut{{Key: rangeMoveControlKey(m.ns, move, 'I'), Value: owned(c.intent)}})
 	}
-	if !present || current.result != rangeMoveApplied {
+	if !present || current.result != rangeMoveApplied && !(pooled && current.result == rangeMoveBudgetLimit && c.phase == rangeMoveAbort) {
 		status.result = rangeMoveBlocked
 		return finish(status, false, nil)
 	}

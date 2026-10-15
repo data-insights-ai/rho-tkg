@@ -69,6 +69,9 @@ func newDeclaredMaterializerBinding(s *raftlog.Store, n namespace, d graphstore.
 		return nil, err
 	}
 	if collectedGraphAgreement(agreement) && (s.ApplicationRetention().Version != 1 || s.ApplicationRecovery().Version != func() uint32 {
+		if rangeMovePoolsEnabled(agreement) {
+			return 4
+		}
 		if rangeMoveSpans(agreement) {
 			return 3
 		}

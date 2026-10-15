@@ -283,7 +283,7 @@ func (op *rangeMoveInvocation) submit(ctx context.Context, partition uint64, pha
 	op.run.attempted = true
 	op.changed = partition
 	status, err := op.endpoints[partition].submitMove(ctx, proposal)
-	if status.result == rangeMoveLimit {
+	if status.result == rangeMoveLimit || status.result == rangeMoveBudgetLimit {
 		return errors.Join(errRangeMoveIntrinsicCapacity, err)
 	}
 	return err
@@ -334,6 +334,11 @@ func (op *rangeMoveInvocation) advance(ctx context.Context, source, target range
 		return true, errInvalid
 	}
 	from, to := op.intent.source.partition, op.intent.target.partition
+	if (s.result == rangeMoveBudgetLimit || t.result == rangeMoveBudgetLimit) && s.phase != rangeMoveAbort {
+		// This is a completed native refusal, including a previously lost reply.
+		// Only the real source decision may authorize independent target undo.
+		return false, op.abort(ctx)
+	}
 	if s.phase == rangeMoveFinish && t.phase == rangeMoveFinish {
 		op.result.committed = true
 		return true, nil

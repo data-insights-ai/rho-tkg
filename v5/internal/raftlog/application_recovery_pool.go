@@ -1,9 +1,107 @@
 package raftlog
 
 import (
+	"context"
 	"encoding/binary"
+	"errors"
 	"slices"
 )
+
+// ApplicationRecoveryStepBudget is observation of one immutable native root,
+// not a reservation or permission to discount the trusted materializer's work.
+type ApplicationRecoveryStepBudget struct {
+	Maximum ApplicationRecoveryCredit
+	Pool    ApplicationRecoveryBytePool
+}
+
+// RecoveryStepBudget authenticates the exact owner and exact-next Use at this
+// registered cut. Both native reads are charged before their bounded decodes.
+// Older roots remain descriptive; the caller must stage against this SAME base.
+func (v *ApplicationView) RecoveryStepBudget(ctx context.Context, use ApplicationRecoveryUse, budget ReadBudget) (out ApplicationRecoveryStepBudget, work ApplicationProofWork, err error) {
+	defer func() {
+		if err != nil {
+			out = ApplicationRecoveryStepBudget{}
+		}
+	}()
+	// Reuse native root/active/prepared equality validation, rather than adding
+	// a second interpretation of snapshot recovery authority.
+	owner, work, err := v.RecoveryOwner(ctx, budget)
+	if err != nil {
+		return out, work, err
+	}
+	if owner.ID != use.ID || owner.Digest != use.Digest {
+		return out, work, ErrInvalid
+	}
+	if err = v.lock(ctx); err != nil {
+		return out, work, err
+	}
+	defer v.unlock()
+	const extra = 1024 + 8*maxMetadataBytes
+	if v.s.meta.Recovery.Config.Version != 4 {
+		return out, work, ErrInvalid
+	}
+	if work.Records >= budget.Rows || extra > budget.Bytes-work.Bytes {
+		return out, work, ErrLimit
+	}
+	work.Records++
+	work.Bytes += extra
+	r, _, err := v.s.loadNativeRecoveryRootAt(v.bank, v.index)
+	if err != nil {
+		return out, work, v.fail(err)
+	}
+	m := applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{Version: 4}, Reservation: r}
+	out.Maximum, err = m.credit(use)
+	if err != nil {
+		return ApplicationRecoveryStepBudget{}, work, err
+	}
+	for _, span := range r.Spans {
+		if !span.Exhausted && span.Next == use.Phase {
+			out.Pool = span.BytePool
+			return out, work, ctx.Err()
+		}
+	}
+	return ApplicationRecoveryStepBudget{}, work, ErrInvalid
+}
+
+// PooledRecoveryBatchBound measures a complete prospective application batch
+// using native framing, then adds the maximum RS4+TB1 envelope. Padding may only
+// INCREASE a bound (e.g. a fixed future progress envelope); it never discounts
+// actual writes, outcomes, controls, record count or native installation work.
+// This pure helper neither reserves nor calls a materializer under Store.mu.
+func (p ApplicationPolicy) PooledRecoveryBatchBound(b ApplicationBatch, padding uint64) (retained, records, work uint64, err error) {
+	retained, records, err = p.measure(b)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	baseControl, _, controlWork, err := controlGrowth(p, b)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	// This is the same owned/native work charged by measure, including control
+	// copies, plus a maximum native root and any declared future-value padding.
+	work = 2*(retained-baseControl) + uint64(len(b.Image)+1024) + 64*uint64(len(b.Writes)) + controlWork
+	const root = recoveryRootFixedBytes + recoveryPoolSpanBytes*maxApplicationRecoverySpans + 8 + maxApplicationTerminalOwners*(4+recoveryRootFixedBytes+recoveryCreditBytes*maxApplicationTerminalAlternatives)
+	if root > p.MaxValueBytes {
+		return 0, 0, 0, ErrLimit
+	}
+	added, err := checkedRecoveryAdd(uint64(9+appFrameBytes+root), padding)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	retained, err = checkedRecoveryAdd(retained, added)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	twice, err := checkedRecoveryMul(2, added)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	work, err = checkedRecoveryAdd(work, twice)
+	if err != nil || work > unsignedLimit(p.MaxInstallBytes) {
+		return 0, 0, 0, errors.Join(ErrLimit, err)
+	}
+	return retained, records + 1, work, nil
+}
 
 // ApplicationRecoveryBytePool is finite protected backing, not graph authority.
 // The selected trusted materializer must bound the SUM of every remaining

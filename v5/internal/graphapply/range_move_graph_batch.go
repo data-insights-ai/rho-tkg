@@ -15,7 +15,7 @@ func rangeMoveGraphBatchSemanticContractID() raftlog.ApplicationSemanticContract
 	return raftlog.ApplicationSemanticContractID(sha256.Sum256(append(base[:], []byte("graph=bounded-native-rmp-batches32-component8-family-boundary-v1\x00progress=gmp5-native-graph-count-v1\x00")...)))
 }
 func rangeMoveGraphBatches(id raftlog.ApplicationSemanticContractID) bool {
-	return id == rangeMoveGraphBatchSemanticContractID()
+	return id == rangeMoveGraphBatchSemanticContractID() || rangeMovePoolsEnabled(id)
 }
 func newRangeMoveGraphBatchMaterializer(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits) (*declaredMaterializer, error) {
 	if s == nil || s.ApplicationRecovery().Version != 3 || s.ApplicationRetention().Version != 1 || s.ApplicationControls().Version != 1 {

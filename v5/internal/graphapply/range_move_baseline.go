@@ -23,7 +23,7 @@ func (m *declaredMaterializer) rangeMoveCatalogBaseline(q *reader, cfg genesisAl
 		return nil, err
 	}
 	status, present, err := readRangeMoveStatus(q, move)
-	if err != nil || !present || status.result != rangeMoveApplied || rangeMoveTerminal(status) {
+	if err != nil || !present || status.result != rangeMoveApplied && !(rangeMovePoolsEnabled(m.SemanticContractID()) && status.result == rangeMoveBudgetLimit) || rangeMoveTerminal(status) {
 		return nil, errors.Join(errCorrupt, err)
 	}
 	intentRecord, present, err := crossControl(q, rangeMoveControlKey(q.ns, move, 'I'), 1024)
@@ -61,15 +61,20 @@ func (m *declaredMaterializer) rangeMoveCatalogBaseline(q *reader, cfg genesisAl
 	}
 	d, s := progress.descriptor, progress.imported
 	_, _, manifestDigest := progress.transferSummary()
-	if d.Spec.Publication != intent.publication || d.Spec.From.Partition != intent.source.partition || d.Spec.From.Epoch != intent.epoch || d.Spec.To.Partition != intent.target.partition || d.Spec.To.Epoch != intent.epoch+1 || d.Configuration != configuration || d.Declaration != m.declaration.Digest() || d.DefaultAxis != cfg.defaultAxis || d.Target.Binding != m.binding || s.FutureRoot.Namespace() != (graphstore.Namespace{Graph: intent.publication.Graph, Partition: m.ns.partition}) || s.Rows+progress.replay.rows+progress.retentionRows != status.rows || s.Bytes+progress.replay.bytes+uint64(len(progress.retention)) != status.size || status.digest != manifestDigest {
+	if d.Spec.Publication != intent.publication || d.Spec.From.Partition != intent.source.partition || d.Spec.From.Epoch != intent.epoch || d.Spec.To.Partition != intent.target.partition || d.Spec.To.Epoch != intent.epoch+1 || d.Configuration != configuration || d.Declaration != m.declaration.Digest() || d.DefaultAxis != cfg.defaultAxis || d.Target.Binding != m.binding || s.FutureRoot.Namespace() != (graphstore.Namespace{Graph: intent.publication.Graph, Partition: m.ns.partition}) || s.Rows+progress.replay.rows+progress.retentionRows != status.rows || s.Bytes+progress.replay.bytes+progress.retainedBytes() != status.size || status.digest != manifestDigest {
 		return nil, errCorrupt
 	}
-	completed := s.Sequence + s.PreparationSteps + progress.replay.sequence
+	completed := moveBaselinePages(m.SemanticContractID(), progress)
 	if status.phase == rangeMoveAbort {
 		if progress.undoTotal != completed || progress.undoNext != status.sequence || progress.undoNext > progress.undoTotal {
 			return nil, errCorrupt
 		}
-	} else if completed != status.sequence || progress.undoNext != 0 || progress.undoTotal != 0 {
+	} else if completed != status.sequence || progress.undoNext != 0 || progress.undoTotal != func() uint64 {
+		if rangeMovePoolsEnabled(m.SemanticContractID()) {
+			return completed
+		}
+		return 0
+	}() {
 		return nil, errCorrupt
 	}
 	if status.phase == rangeMoveSeal && (!s.Complete || !s.Sealed || !rangeMoveReplaySame(progress.replay, progress.replayEnd)) {
@@ -119,4 +124,18 @@ func (m *declaredMaterializer) rangeMoveCatalogBaseline(q *reader, cfg genesisAl
 		return nil, errors.Join(e, view.Close())
 	}
 	return view, nil
+}
+
+func moveBaselinePages(id raftlog.ApplicationSemanticContractID, p rangeMoveProgress) uint64 {
+	if p.imported == nil {
+		return 0
+	}
+	graph, replay := p.imported.Sequence, p.replay.sequence
+	if rangeMoveSpans(id) {
+		replay = p.replayPages
+	}
+	if rangeMoveGraphBatches(id) {
+		graph = p.graphApplied
+	}
+	return graph + p.imported.PreparationSteps + replay
 }

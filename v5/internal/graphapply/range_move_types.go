@@ -33,6 +33,7 @@ const (
 	rangeMoveBlocked
 	rangeMoveMismatch
 	rangeMoveLimit
+	rangeMoveBudgetLimit // fresh pooled, active refusal: only genuine ABORT terminates.
 )
 
 // Intent identity is source-qualified request identity. The range, destination
@@ -43,6 +44,7 @@ type rangeMoveIntent struct {
 	publication                   graphstore.RangePublication
 	epoch                         uint64
 	maxPages, pageRows, pageBytes int
+	pools                         rangeMovePools
 }
 
 func rangeMoveID(n namespace, id requestID) [16]byte {
@@ -53,7 +55,7 @@ func rangeMoveID(n namespace, id requestID) [16]byte {
 }
 
 func (r rangeMoveIntent) valid() bool {
-	return r.id != (requestID{}) && r.source.valid() && r.target.valid() &&
+	return r.pools.valid(rangeMovePoolsEnabled(r.source.semantic)) && r.id != (requestID{}) && r.source.valid() && r.target.valid() &&
 		r.source.partition != r.target.partition && r.source.graph == r.target.graph &&
 		r.source.declaration == r.target.declaration && r.source.topology == r.target.topology &&
 		r.source.semantic == r.target.semantic && rangeMoveGraphAgreement(r.source.semantic) &&
@@ -76,6 +78,9 @@ func encodeRangeMoveIntent(r rangeMoveIntent) ([]byte, error) {
 		if rangeMoveSpans(r.source.semantic) {
 			version = 2
 		}
+		if rangeMovePoolsEnabled(r.source.semantic) {
+			version = 3
+		}
 		w.add([]byte{'G', 'M', 'I', version})
 		w.add(r.id[:])
 		w.add(appendAllocationScope(nil, r.source))
@@ -85,6 +90,11 @@ func encodeRangeMoveIntent(r rangeMoveIntent) ([]byte, error) {
 		w.u32(r.maxPages)
 		w.u32(r.pageRows)
 		w.u32(r.pageBytes)
+		if version == 3 {
+			w.u64(r.pools.describe)
+			w.u64(r.pools.imported)
+			w.u64(r.pools.undo)
+		}
 	})
 }
 
@@ -92,6 +102,9 @@ func decodeRangeMoveIntent(wire []byte) (rangeMoveIntent, error) {
 	magic := "GMI\x01"
 	if bytes.HasPrefix(wire, []byte("GMI\x02")) {
 		magic = "GMI\x02"
+	}
+	if bytes.HasPrefix(wire, []byte("GMI\x03")) {
+		magic = "GMI\x03"
 	}
 	body, err := graphBody(wire, magic, 1024)
 	if err != nil {
@@ -103,6 +116,9 @@ func decodeRangeMoveIntent(wire []byte) (rangeMoveIntent, error) {
 	publication := c.field(256)
 	r.epoch = c.u64()
 	r.maxPages, r.pageRows, r.pageBytes = c.count(rangeMoveSpanMaxPages, 0), c.count(256, 0), c.count(1<<20, 0)
+	if magic == "GMI\x03" {
+		r.pools = rangeMovePools{c.u64(), c.u64(), c.u64()}
+	}
 	if c.err != nil || len(c.b) != 0 {
 		return rangeMoveIntent{}, errors.Join(errCorrupt, c.err)
 	}
@@ -126,16 +142,26 @@ type rangeMoveStatus struct {
 	sequence, rows, size uint64
 	digest               [32]byte
 	result               byte
+	failedPhase          rangeMovePhase
+	failedSequence       uint64
+	failedCommand        [32]byte
 }
 
 func encodeRangeMoveStatus(s rangeMoveStatus) ([]byte, error) {
-	if !s.ns.valid() || s.move == ([16]byte{}) || s.intent == ([32]byte{}) || s.phase < rangeMoveFence || s.phase > rangeMoveAbort || s.index == 0 || s.result < rangeMoveApplied || s.result > rangeMoveLimit || s.format != 0 && s.format != 2 || s.sequence > uint64(rangeMoveStatusPageLimit(s.format)) {
+	if !s.ns.valid() || s.move == ([16]byte{}) || s.intent == ([32]byte{}) || s.phase < rangeMoveFence || s.phase > rangeMoveAbort || s.index == 0 || s.result < rangeMoveApplied || s.result > rangeMoveLimit && (s.format != 3 || s.result != rangeMoveBudgetLimit) || s.format != 0 && s.format != 2 && s.format != 3 || s.sequence > uint64(rangeMoveStatusPageLimit(s.format)) {
+		return nil, errInvalid
+	}
+	failed := s.result == rangeMoveBudgetLimit
+	if failed && (!moveFailureFollows(s) || s.failedCommand == ([32]byte{}) || s.failedSequence > uint64(rangeMoveStatusPageLimit(s.format))) || !failed && (s.failedPhase != 0 || s.failedSequence != 0 || s.failedCommand != ([32]byte{})) {
 		return nil, errInvalid
 	}
 	return boundedEncoding(256, func(w *boundedWriter) {
 		version := byte(1)
 		if s.format == 2 {
 			version = 2
+		}
+		if s.format == 3 {
+			version = 3
 		}
 		w.add([]byte{'G', 'M', 'O', version})
 		w.add(appendNamespace(nil, s.ns))
@@ -147,6 +173,11 @@ func encodeRangeMoveStatus(s rangeMoveStatus) ([]byte, error) {
 			w.u64(n)
 		}
 		w.add(s.digest[:])
+		if version == 3 {
+			w.tag(byte(s.failedPhase))
+			w.u64(s.failedSequence)
+			w.add(s.failedCommand[:])
+		}
 	})
 }
 
@@ -154,6 +185,9 @@ func decodeRangeMoveStatus(wire []byte) (rangeMoveStatus, error) {
 	magic := "GMO\x01"
 	if bytes.HasPrefix(wire, []byte("GMO\x02")) {
 		magic = "GMO\x02"
+	}
+	if bytes.HasPrefix(wire, []byte("GMO\x03")) {
+		magic = "GMO\x03"
 	}
 	body, err := graphBody(wire, magic, 256)
 	if err != nil {
@@ -165,10 +199,18 @@ func decodeRangeMoveStatus(wire []byte) (rangeMoveStatus, error) {
 	if magic == "GMO\x02" {
 		s.format = 2
 	}
+	if magic == "GMO\x03" {
+		s.format = 3
+	}
 	copy(s.intent[:], c.take(32))
 	s.phase, s.result = rangeMovePhase(c.tag()), c.tag()
 	s.index, s.floor, s.round, s.sequence, s.rows, s.size = c.u64(), c.u64(), c.u64(), c.u64(), c.u64(), c.u64()
 	copy(s.digest[:], c.take(32))
+	if s.format == 3 {
+		s.failedPhase = rangeMovePhase(c.tag())
+		s.failedSequence = c.u64()
+		copy(s.failedCommand[:], c.take(32))
+	}
 	if c.err != nil || len(c.b) != 0 {
 		return rangeMoveStatus{}, errors.Join(errCorrupt, c.err)
 	}

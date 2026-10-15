@@ -18,6 +18,13 @@ func rangeMoveUndoControlKey(n namespace, move [16]byte, sequence uint64) []byte
 // The undo record captures the original value of every current-page write.
 // It is co-committed with that page, so restart never guesses pre-stage state.
 func encodeRangeMoveUndo(q *reader, writes []raftlog.KV) ([]byte, error) {
+	previous, err := rangeMoveUndoRows(q, writes)
+	if err != nil {
+		return nil, err
+	}
+	return encodeMoveUndoRows(previous, 0)
+}
+func rangeMoveUndoRows(q *reader, writes []raftlog.KV) ([]raftlog.KV, error) {
 	if len(writes) > 128 {
 		return nil, errLimit
 	}
@@ -32,8 +39,21 @@ func encodeRangeMoveUndo(q *reader, writes []raftlog.KV) ([]byte, error) {
 		}
 		previous[i] = raftlog.KV{Key: row.Key, Value: value, Deleted: !present}
 	}
+	return previous, nil
+}
+func encodeMoveUndoRows(previous []raftlog.KV, bound uint64) ([]byte, error) {
+	if len(previous) > 128 {
+		return nil, errLimit
+	}
 	return boundedEncoding((1<<20)-2048, func(w *boundedWriter) {
-		w.add([]byte{'G', 'M', 'U', 1})
+		version := byte(1)
+		if bound != 0 {
+			version = 2
+		}
+		w.add([]byte{'G', 'M', 'U', version})
+		if version == 2 {
+			w.u64(bound)
+		}
 		w.u32(len(previous))
 		for _, row := range previous {
 			emitSourceKV(w, row)
@@ -106,7 +126,32 @@ func decodeRangeMoveUndo(wire []byte) ([]raftlog.KV, error) {
 	return rows, nil
 }
 
+func decodePooledMoveUndo(wire []byte) ([]raftlog.KV, uint64, error) {
+	body, err := graphBody(wire, "GMU\x02", (1<<20)-2048)
+	if err != nil {
+		return nil, 0, err
+	}
+	c := graphCursor{b: body}
+	bound := c.u64()
+	n := c.count(128, 9)
+	if c.err != nil || bound == 0 || bound > 1<<40 {
+		return nil, 0, errors.Join(errCorrupt, c.err)
+	}
+	rows := make([]raftlog.KV, n)
+	for i := range rows {
+		rows[i] = readSourceKV(&c, 1<<20)
+		if len(rows[i].Key) == 0 {
+			return nil, 0, errCorrupt
+		}
+	}
+	if c.err != nil || len(c.b) != 0 {
+		return nil, 0, errors.Join(errCorrupt, c.err)
+	}
+	return rows, bound, nil
+}
+
 func (m *declaredMaterializer) stageRangeMoveAbort(q *reader, c rangeMoveCommand, intent rangeMoveIntent, current, status rangeMoveStatus, budget raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error) {
+	var undoLimit uint64
 	if len(c.data) != 0 || current.phase >= rangeMoveDecide && current.phase != rangeMoveAbort {
 		return raftlog.ApplicationBatch{}, errInvalid
 	}
@@ -141,7 +186,7 @@ func (m *declaredMaterializer) stageRangeMoveAbort(q *reader, c rangeMoveCommand
 			}
 		}
 		if c.sequence == 0 {
-			if progress.undoNext != progress.undoTotal {
+			if progress.undoNext != progress.undoTotal || progress.undoDebt != 0 {
 				return raftlog.ApplicationBatch{}, errInvalid
 			}
 			original, found, err := crossControl(q, rangeMoveUndoControlKey(m.ns, current.move, 0), (1<<20)-2048)
@@ -170,9 +215,37 @@ func (m *declaredMaterializer) stageRangeMoveAbort(q *reader, c rangeMoveCommand
 			if err := reserveComposer(q, 4096+4*len(record.Value)); err != nil {
 				return raftlog.ApplicationBatch{}, err
 			}
-			rows, err := decodeRangeMoveUndo(record.Value)
+			var rows []raftlog.KV
+			var bound uint64
+			if rangeMovePoolsEnabled(m.SemanticContractID()) {
+				rows, bound, err = decodePooledMoveUndo(record.Value)
+			} else {
+				rows, err = decodeRangeMoveUndo(record.Value)
+			}
 			if err != nil {
 				return raftlog.ApplicationBatch{}, err
+			}
+			if rangeMovePoolsEnabled(m.SemanticContractID()) {
+				if bound > progress.undoDebt {
+					return raftlog.ApplicationBatch{}, errCorrupt
+				}
+				step, e := m.movePoolStep(q, c)
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				if progress.undoDebt > step.Pool.RetainedRemaining {
+					return raftlog.ApplicationBatch{}, errCorrupt
+				}
+				wire, e := encodeRangeMoveProgress(progress, q.arena)
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				required, e := m.moveUndoBound(q, c, rows, wire, status, step.Maximum)
+				if e != nil || required > bound {
+					return raftlog.ApplicationBatch{}, errors.Join(errCorrupt, e)
+				}
+				progress.undoDebt -= bound
+				undoLimit = bound
 			}
 			for _, row := range rows {
 				if err := q.put(row.Key, row.Value); err != nil {
@@ -195,5 +268,24 @@ func (m *declaredMaterializer) stageRangeMoveAbort(q *reader, c rangeMoveCommand
 			return raftlog.ApplicationBatch{}, err
 		}
 	}
-	return m.finishMovePage(q, status, nil, budget)
+	batch, err := m.finishMovePage(q, status, nil, budget)
+	if err != nil || undoLimit == 0 {
+		return batch, err
+	}
+	// Check the COMPLETE actual reverse candidate, including the exact original
+	// retry control appended by Stage, against its prepaid GMU2 bound as well.
+	if err = reserveComposer(q, 2048); err != nil {
+		return raftlog.ApplicationBatch{}, err
+	}
+	control, err := movePoolOriginal(c, status)
+	if err != nil {
+		return raftlog.ApplicationBatch{}, err
+	}
+	probe := batch
+	probe.ControlPuts = []raftlog.ApplicationControlPut{control}
+	actual, _, _, err := m.store.ApplicationLimits().PooledRecoveryBatchBound(probe, 0)
+	if err != nil || actual > undoLimit {
+		return raftlog.ApplicationBatch{}, errors.Join(errCorrupt, err)
+	}
+	return batch, nil
 }

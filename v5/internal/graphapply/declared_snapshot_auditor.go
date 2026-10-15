@@ -20,6 +20,7 @@ type declaredSnapshotAuditor struct {
 	validation declaredMaterializer
 	contract   raftlog.ApplicationContract
 	advance    replica.ApplicationAuditBudget
+	poolPolicy raftlog.ApplicationPolicy
 }
 
 var _ replica.ApplicationSnapshotAuditor = (*declaredSnapshotAuditor)(nil)
@@ -29,7 +30,11 @@ func newDeclaredSnapshotAuditor(s *raftlog.Store, n namespace, d graphstore.Owne
 		return nil, errInvalid
 	}
 	if rangeMoveSpans(agreement) {
-		if s.ApplicationControls().Version != 1 || s.ApplicationRecovery().Version != 3 || s.ApplicationRetention().Version != 1 {
+		recovery := uint32(3)
+		if rangeMovePoolsEnabled(agreement) {
+			recovery = 4
+		}
+		if s.ApplicationControls().Version != 1 || s.ApplicationRecovery().Version != recovery || s.ApplicationRetention().Version != 1 {
 			return nil, errInvalid
 		}
 	} else if crossGraphAgreement(agreement) && (s.ApplicationControls().Version != 1 || s.ApplicationRecovery().Version != 1) {
@@ -73,7 +78,7 @@ func newDeclaredSnapshotAuditor(s *raftlog.Store, n namespace, d graphstore.Owne
 		WorkBytes:  declaredAuditFixedBytes + uint64(readBytes) + 6*(4096+4*uint64(policy.MaxImageBytes)),
 		OwnedBytes: declaredAuditFixedBytes + uint64(readBytes) + uint64(l.outputBytes) + 4*172,
 	} // #nosec G115 -- limits/policy are validated positive <=64 MiB; six fixed terms and sums fit uint64.
-	return &declaredSnapshotAuditor{validation: declaredMaterializer{ns: n, owner: entry.OwnershipEpoch, declaration: d, binding: binding, limits: l, agreement: agreement}, contract: contract, advance: advance}, nil
+	return &declaredSnapshotAuditor{validation: declaredMaterializer{ns: n, owner: entry.OwnershipEpoch, declaration: d, binding: binding, limits: l, agreement: agreement}, contract: contract, advance: advance, poolPolicy: policy}, nil
 }
 
 func declaredAuditAdmit(b, required replica.ApplicationAuditBudget) error {
@@ -118,16 +123,18 @@ func (a *declaredSnapshotAuditor) BeginApplicationSnapshotAudit(p *raftlog.Prepa
 }
 
 type declaredSnapshotAudit struct {
-	mu        sync.Mutex
-	self      *declaredSnapshotAudit
-	auditor   *declaredSnapshotAuditor
-	prepared  *raftlog.PreparedApplicationSnapshot
-	view      *raftlog.ApplicationView
-	snapshot  replica.ApplicationSnapshotContext
-	validated bool
-	sealed    bool
-	closed    bool
-	closeErr  error
+	mu                sync.Mutex
+	self              *declaredSnapshotAudit
+	auditor           *declaredSnapshotAuditor
+	prepared          *raftlog.PreparedApplicationSnapshot
+	view              *raftlog.ApplicationView
+	snapshot          replica.ApplicationSnapshotContext
+	validated         bool
+	baselineValidated bool
+	poolAudit         movePoolAudit
+	sealed            bool
+	closed            bool
+	closeErr          error
 }
 
 var _ replica.ApplicationSnapshotAudit = (*declaredSnapshotAudit)(nil)
@@ -167,8 +174,28 @@ func (a *declaredSnapshotAudit) Advance(ctx context.Context, b replica.Applicati
 	l := m.limits.allocation
 	l.readRows, l.readBytes = min(l.readRows, m.limits.sourceRows), min(l.readBytes, m.limits.sourceBytes)
 	q := reader{ctx: ctx, view: a.view, preparedHistory: a.prepared, ns: m.ns, base: base, limits: l, bytes: cap(base.Image)}
-	if err := m.validateRestoredState(&q, true); err != nil {
-		return false, err
+	if !a.baselineValidated {
+		if err := m.validateRestoredState(&q, true); err != nil {
+			return false, err
+		}
+		a.baselineValidated = true
+		if rangeMovePoolsEnabled(m.SemanticContractID()) {
+			return false, nil
+		}
+	}
+	if rangeMovePoolsEnabled(m.SemanticContractID()) {
+		if err = joinGraphOutputBudget(&q, graphRequest{}, 2048, m.limits); err != nil {
+			return false, err
+		}
+		next := a.poolAudit
+		done, e := next.advance(&q, m, a.auditor.poolPolicy)
+		if e != nil {
+			return false, e
+		}
+		a.poolAudit = next
+		if !done {
+			return false, nil
+		}
 	}
 	a.validated = true
 	return true, nil
@@ -211,6 +238,7 @@ func (a *declaredSnapshotAudit) releaseLocked() {
 		a.view = nil
 	}
 	a.auditor, a.prepared = nil, nil
+	a.poolAudit = movePoolAudit{}
 }
 
 func (a *declaredSnapshotAudit) Close() error {

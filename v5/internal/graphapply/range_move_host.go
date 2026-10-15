@@ -197,8 +197,14 @@ func (m *declaredMaterializer) observeRangeMove(ctx context.Context, question ra
 		if err != nil || !found || sha256.Sum256(intent.Value) != observation.status.intent {
 			return observation, errors.Join(errCorrupt, err)
 		}
-		if _, err := decodeRangeMoveIntent(intent.Value); err != nil {
-			return observation, err
+		decoded, e := decodeRangeMoveIntent(intent.Value)
+		if e != nil || decoded.source.semantic != m.SemanticContractID() {
+			return observation, errors.Join(errCorrupt, e)
+		}
+		if rangeMovePoolsEnabled(m.SemanticContractID()) && observation.status.result == rangeMoveBudgetLimit {
+			if !moveFailureFollows(observation.status) || observation.status.phase >= rangeMoveDecide {
+				return observation, errCorrupt
+			}
 		}
 		observation.intent = intent.Value
 		decision, found, err := crossControl(&q, rangeMoveControlKey(m.ns, question.move, 'D'), 256)

@@ -165,12 +165,41 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 			if c.data[0] == 2 || c.data[0] == 3 {
 				undoWrites = replayWrites
 			}
-			undo, err := encodeRangeMoveUndo(q, undoWrites)
+			var undo []byte
+			var beforeRows []raftlog.KV
+			if rangeMovePoolsEnabled(m.SemanticContractID()) {
+				beforeRows, err = rangeMoveUndoRows(q, undoWrites)
+			} else {
+				undo, err = encodeRangeMoveUndo(q, undoWrites)
+			}
 			if err != nil {
 				return raftlog.ApplicationBatch{}, err
 			}
 			progress.imported = new(effects.Next)
 			status.sequence, status.rows, status.size = c.sequence, effects.Next.Rows+progress.replay.rows+progress.retentionRows, effects.Next.Bytes+progress.replay.bytes+progress.retainedBytes()
+			if rangeMovePoolsEnabled(m.SemanticContractID()) {
+				progress.undoTotal = c.sequence // exact accepted prefix, never the refused attempt.
+				step, e := m.moveUndoBudget(q, c, progress.undoNext+1)
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				preview, e := encodeRangeMoveProgress(progress, q.arena)
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				bound, e := m.moveUndoBound(q, c, beforeRows, preview, status, step.Maximum)
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				if progress.undoDebt > step.Pool.RetainedRemaining || bound > step.Pool.RetainedRemaining-progress.undoDebt {
+					return raftlog.ApplicationBatch{}, errLimit
+				}
+				progress.undoDebt += bound
+				undo, e = encodeMoveUndoRows(beforeRows, bound)
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+			}
 			encoded, err := encodeRangeMoveProgress(progress, q.arena)
 			if err != nil {
 				return raftlog.ApplicationBatch{}, err
