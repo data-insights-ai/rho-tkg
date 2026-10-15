@@ -521,9 +521,15 @@ existing COMMIT or records a fenced ABORT only with both originals absent in the
 same native transaction. Already-funded move/grant cleanup has eight bounded
 admissions and an immutable deadline ceiling after ordinary run expiry; it
 cannot authorize new allocations or writes. Catalog1 caps remain unchanged.
-These authored guards are unexecuted. Full handoff/cost census, target process
-replacement, retained feed/GC and matrix-family wiring remain implementation
-work; stable shared-KV keys do not establish physical replica transfer.
+These authored guards are unexecuted. The fresh census at `b6dadb9d` binds a
+complete bounded mutable-head inventory and both-prefix raw EOF to the frozen
+source owner; its seal and route activation share one native transaction. SAME
+last-page recovery retains cumulative work, including full delivered SDK head
+windows after the correction at `772e9391`. Its separately counted controls and
+raw census are logical key/value bytes, not physical disk or RSS measurements.
+Actual target-process replacement, transfer workload/oracle and matrix-family
+wiring remain implementation work; stable shared-KV keys do not establish
+physical replica transfer.
 The fresh FDB feed3 prerequisite at `29f00cbe` authenticates snapshot Close and
 the complete token-reader inventory before atomically relinquishing its physical
 pin. Native retained-feed identities and funded cleanup then use the existing
