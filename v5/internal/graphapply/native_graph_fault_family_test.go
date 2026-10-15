@@ -125,7 +125,7 @@ func TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage(t 
 						t.Fatal("native synced image lost acknowledged old source prefix")
 					}
 				}
-				reopened = p06Observe(f, 1, graphReadAt, cut)
+				reopened = nativeP06InitialLocalOld(f, 1, cut)
 				if !reflect.DeepEqual(old, reopened) {
 					t.Fatal("native reopen before catch-up changed old cut")
 				}
@@ -743,7 +743,7 @@ func TestNativeFaultFamilyCorruptedDurableNativeRecordsRefuseBeforeReady(t *test
 						t.Fatal("repaired native image lost acknowledged prefix")
 					}
 				}
-				reopened = p06Observe(f, 1, graphReadAt, cut)
+				reopened = nativeP06InitialLocalOld(f, 1, cut)
 				if !reflect.DeepEqual(old, reopened) {
 					t.Fatal("native repair changed old cut before catch-up")
 				}
@@ -1007,7 +1007,7 @@ func TestNativeFaultFamilyOptionsPublicationRenameFailsActualReopen(t *testing.T
 		t.Fatal("actual native OPTIONS rename never matched")
 	}
 	var reopened p06Observation
-	rejoined := f.replaceBeforeHeal(1, func(_ *graphProcess, _ processResponse) { reopened = p06Observe(f, 1, graphReadAt, cut) })
+	rejoined := f.replaceBeforeHeal(1, func(_ *graphProcess, _ processResponse) { reopened = nativeP06InitialLocalOld(f, 1, cut) })
 	p03Reconnect(f, 6)
 	recovered := p06Observe(f, 6, graphReadFresh, graphCut{})
 	retained := p06Observe(f, 6, graphReadAt, cut)
