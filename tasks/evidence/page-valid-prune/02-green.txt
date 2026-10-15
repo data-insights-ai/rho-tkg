@@ -1,0 +1,603 @@
+=== RUN   TestEffectivePage_ValidPruneCost
+=== PAUSE TestEffectivePage_ValidPruneCost
+=== RUN   TestEffectivePage_ValidPruneDifferential
+=== PAUSE TestEffectivePage_ValidPruneDifferential
+=== CONT  TestEffectivePage_ValidPruneCost
+=== RUN   TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=true
+=== PAUSE TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=true
+=== RUN   TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=false
+=== PAUSE TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=false
+=== RUN   TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=true
+=== PAUSE TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=true
+=== RUN   TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=false
+=== PAUSE TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=false
+=== CONT  TestEffectivePage_ValidPruneDifferential
+=== RUN   TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=true
+=== PAUSE TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=true
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=false
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=false
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=true
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=true
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=false
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=false
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=true
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=true
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=false
+=== PAUSE TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=false
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=true
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=true
+=== RUN   TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=false
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=false
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=true
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=true
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=false
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=false
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=true
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=true
+=== RUN   TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=false
+=== PAUSE TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=false
+=== CONT  TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=true
+=== CONT  TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=false
+=== CONT  TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=false
+=== CONT  TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=false
+=== CONT  TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=true
+=== CONT  TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=false
+=== CONT  TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=false
+=== CONT  TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=true
+=== CONT  TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=true
+=== CONT  TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=false
+=== CONT  TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=true
+=== CONT  TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=false
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=true/seed=0
+=== CONT  TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=true
+=== CONT  TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=true
+=== CONT  TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=false
+=== CONT  TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=true
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=1
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=0
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=0
+=== RUN   TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=1
+=== PAUSE TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=true/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=true/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=true/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=true/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=true/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=true/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=false/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=false/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=true/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=1
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=false/seed=0
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=true/seed=1
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:67: property index EA: graph: relationship property indexes are not supported on this backend (backend declines; the type list feeds)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:67: property index Ev: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ev": graph: property indexes only supported for reference entities in Store (backend declines; the type list feeds)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:67: property index EB: graph: relationship property indexes are not supported on this backend (backend declines; the type list feeds)
+    effective_page_valid_prune_test.go:67: property index EC: graph: relationship property indexes are not supported on this backend (backend declines; the type list feeds)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:67: property index Ux: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ux": graph: property indexes only supported for reference entities in Store (backend declines; the type list feeds)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=0
+    effective_page_valid_prune_test.go:178: declare index 0: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+    effective_page_valid_prune_test.go:178: declare index 1: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=0
+    effective_page_valid_prune_test.go:178: declare index 1: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ev": graph: property indexes only supported for reference entities in Store (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=0
+    effective_page_valid_prune_test.go:178: declare index 1: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ev": graph: property indexes only supported for reference entities in Store (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=1
+    effective_page_valid_prune_test.go:178: declare index 1: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ev": graph: property indexes only supported for reference entities in Store (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=true/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=0
+    effective_page_valid_prune_test.go:178: declare index 0: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+    effective_page_valid_prune_test.go:178: declare index 1: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=1
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=1
+    effective_page_valid_prune_test.go:178: declare index 1: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ev": graph: property indexes only supported for reference entities in Store (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 300 timeline reads (pruned=false sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 60 timeline reads (pruned=true sidecar=false)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=1
+=== NAME  TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 300 timeline reads (pruned=false sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=false/seed=1
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 19 timeline reads (pruned=true sidecar=true)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=false/seed=0
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 300 timeline reads (pruned=false sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 19 timeline reads (pruned=true sidecar=true)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=true/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=1
+    effective_page_valid_prune_test.go:178: declare index 0: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+    effective_page_valid_prune_test.go:178: declare index 1: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 300 timeline reads (pruned=false sidecar=false)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=false/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:2 interval:6 retract:5 touch:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=false/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=false/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:1 interval:6 retract:5 touch:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=false/seed=0
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 300 timeline reads (pruned=false sidecar=false)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=false/seed=0
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 300 timeline reads (pruned=false sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=false
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== NAME  TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=true
+    effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 60 timeline reads (pruned=true sidecar=false)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=true/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=true/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=true/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:2 interval:8 label:1 retract:5 update:7]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=true/seed=1
+--- PASS: TestEffectivePage_ValidPruneCost (0.00s)
+    --- PASS: TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=true (0.01s)
+    --- PASS: TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=true (0.01s)
+    --- PASS: TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=false (0.02s)
+    --- PASS: TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=false (0.02s)
+    --- PASS: TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=true (0.03s)
+    --- PASS: TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=false (0.03s)
+    --- PASS: TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=true (0.03s)
+    --- PASS: TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=false (0.03s)
+    --- PASS: TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=false (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=false (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=true (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=true (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=false (0.05s)
+    --- PASS: TestEffectivePage_ValidPruneCost/tiered/rel=false/propIdx=true (0.05s)
+    --- PASS: TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=false (0.05s)
+    --- PASS: TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=true (0.05s)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=true/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:3 interval:3 label:2 retract:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:2 interval:8 label:1 retract:5 update:7]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=true/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:3 interval:3 label:2 retract:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:2 interval:6 retract:5 touch:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:5 interval:10 retract:6 update:8]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:3 interval:3 label:2 retract:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:2 interval:8 label:1 retract:5 update:7]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:3 interval:3 label:2 retract:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=true/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=true/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:2 interval:6 retract:5 touch:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=false/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:2 interval:8 label:1 retract:5 update:7]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:5 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:2 interval:6 retract:5 touch:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=false/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=true/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:1 interval:6 retract:5 touch:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:5 interval:10 retract:6 update:8]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:1 interval:6 retract:5 touch:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=true/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:2 interval:3 label:2 retract:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:2 interval:3 label:2 retract:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=false/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:2 interval:3 label:2 retract:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:1 interval:8 label:1 retract:5 update:7]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=false/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:3 interval:3 label:2 retract:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=true/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=1
+    effective_page_valid_prune_test.go:178: declare index 1: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ev": graph: property indexes only supported for reference entities in Store (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:5 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:1 interval:6 retract:5 touch:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=false/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:2 interval:8 label:1 retract:5 update:7]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=1
+    effective_page_valid_prune_test.go:178: declare index 0: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+    effective_page_valid_prune_test.go:178: declare index 1: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:2 interval:6 retract:5 touch:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:1 interval:8 label:1 retract:5 update:7]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=false/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=0
+    effective_page_valid_prune_test.go:178: declare index 1: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ev": graph: property indexes only supported for reference entities in Store (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:2 interval:6 retract:5 touch:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:1 interval:8 label:1 retract:5 update:7]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=true/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=1
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:2 interval:3 label:2 retract:3 update:9]
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=0
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:1 interval:8 label:1 retract:5 update:7]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=0
+    effective_page_valid_prune_test.go:178: declare index 1: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ev": graph: property indexes only supported for reference entities in Store (backend declines; the door falls back)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=true/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=false/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=0
+    effective_page_valid_prune_test.go:178: declare index 0: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+    effective_page_valid_prune_test.go:178: declare index 1: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=false/seed=0
+=== CONT  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=true/seed=1
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=1
+    effective_page_valid_prune_test.go:178: declare index 0: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+    effective_page_valid_prune_test.go:178: declare index 1: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=0
+    effective_page_valid_prune_test.go:178: declare index 0: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+    effective_page_valid_prune_test.go:178: declare index 1: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:1 interval:6 retract:5 touch:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=1
+    effective_page_valid_prune_test.go:178: declare index 0: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+    effective_page_valid_prune_test.go:178: declare index 1: graph: relationship property indexes are not supported on this backend (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:3 interval:3 label:2 retract:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:1 interval:8 label:1 retract:5 update:7]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:2 interval:3 label:2 retract:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:2 interval:8 label:1 retract:5 update:7]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:1 interval:8 label:1 retract:5 update:7]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:1 interval:6 retract:5 touch:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:1 interval:6 retract:5 touch:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:2 interval:3 label:2 retract:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:4 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:4 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:4 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:1 interval:6 retract:5 touch:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:4 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:1 interval:8 label:1 retract:5 update:7]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:2 interval:3 label:2 retract:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:1 interval:8 label:1 retract:5 update:7]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:4 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:2 interval:3 label:2 retract:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:4 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:5 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=1
+    effective_page_valid_prune_test.go:178: declare index 1: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "Ev": graph: property indexes only supported for reference entities in Store (backend declines; the door falls back)
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:5 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:4 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:2 interval:6 retract:5 touch:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:3 interval:3 label:2 retract:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:2 interval:8 label:1 retract:5 update:7]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:24 close:4 delete:2 excise:2 interval:6 retract:5 touch:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=0
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:6 delete:4 excise:3 interval:3 label:2 retract:3 update:9]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:4 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:5 interval:10 retract:6 update:8]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:7 excise:2 interval:8 label:1 retract:5 update:7]
+=== NAME  TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=1
+    effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:31 close:4 delete:5 excise:5 interval:10 retract:6 update:8]
+--- PASS: TestEffectivePage_ValidPruneDifferential (0.01s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=true/seed=0 (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=true/seed=0 (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=false/seed=1 (0.05s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=false/seed=0 (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=true/seed=1 (0.03s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=false/early=true/seed=0 (0.03s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=true/seed=0 (0.10s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=1 (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=true/seed=0 (0.08s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=false/seed=1 (0.10s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=0 (0.02s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=false/seed=0 (0.10s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=false/early=true/seed=1 (0.10s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=1 (0.12s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=0 (0.07s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=true/seed=1 (0.05s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=0 (0.18s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=0 (0.19s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=0 (0.21s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=0 (0.21s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=true/seed=0 (0.22s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=true/seed=1 (0.23s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=true/seed=1 (0.15s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=false/seed=0 (0.23s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=false/seed=1 (0.24s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=0 (0.24s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=true/seed=0 (0.24s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=false/seed=1 (0.21s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=true/seed=0 (0.25s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=false/seed=1 (0.25s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=false/early=false/seed=0 (0.22s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=false/early=true/seed=1 (0.24s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=false/seed=0 (0.24s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=false/seed=1 (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=false/seed=0 (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=true/seed=1 (0.03s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=true/seed=0 (0.26s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=false/early=true/seed=1 (0.27s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=true/seed=0 (0.15s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=false/seed=0 (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=false/early=true/seed=0 (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=false/seed=1 (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=true/seed=1 (0.04s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=false/seed=0 (0.08s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=false/seed=1 (0.27s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=false/seed=1 (0.17s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=false/seed=0 (0.15s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=false/seed=1 (0.28s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=true/seed=1 (0.15s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=false/early=true/seed=0 (0.13s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=true/seed=1 (0.29s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=true/seed=1 (0.11s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=1 (0.34s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=false/seed=1 (0.15s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=true/seed=1 (0.30s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=1 (0.23s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=0 (0.14s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=0 (0.13s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=0 (0.13s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=false/seed=0 (0.21s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=0/tiered/rel=true/early=true/seed=1 (0.29s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=1 (0.17s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=false/early=true/seed=1 (0.21s)
+    --- PASS: TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=1 (0.29s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.657s

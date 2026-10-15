@@ -608,11 +608,13 @@ func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 
 	ms.putRelHistoryRowLocked(rid, version, r)
 	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership (history version)
-	// A live or already-covered relationship's envelope covers every row since
-	// the index existed (a delete keeps it), so this version's interval joins it.
-	// An uncovered relationship without a current row stays uncovered and is
-	// never pruned: extending it would vouch for one version only.
-	if _, live := ms.rels[rid]; live || indexpkg.RelCoveredInTemporalIndexes(ms.relTypeTemporalIndexes, r, rid.SnowflakeID()) {
+	// A covered relationship's envelope covers every row since the index existed
+	// (a delete keeps it), so this version's interval joins it. An uncovered one
+	// stays uncovered and is never pruned: extending it would vouch for one
+	// version only. Being live is not coverage: a relationship re-created under
+	// another type is live while its older rows' type index does not cover it
+	// (backlog 75 review).
+	if indexpkg.RelCoveredInTemporalIndexes(ms.relTypeTemporalIndexes, r, rid.SnowflakeID()) {
 		indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, rid.SnowflakeID())
 	}
 	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c — the cascade's bounded-correction append door
@@ -942,7 +944,7 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, current, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(current, 1)
 	ms.adjustRelPropertyKeyCounts(current, 1)
-	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, current, id.SnowflakeID()) // BACKLOG 21c
+	ms.addRelToTemporalIndexesLocked(current, id.SnowflakeID()) // BACKLOG 21c
 	return ms.logRelPutRoutedLocked(current, true, token)
 }
 

@@ -152,11 +152,7 @@ func (c *Core) nodesByLabelAtLocked(label string, at types.Instant) ([]*types.No
 	// before the expensive per-id chain resolve below. Same sound-superset prune as
 	// the generic ByLabel{ValidAt} door (queries.go) — both temporal-ByLabel doors
 	// MUST agree (rule 17), enforced by TestTemporalCandidatePruneEquivalence.
-	if c.temporalCandidates != nil {
-		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, storepkg.QueryOpts{ValidAt: at}); ok {
-			candIDs = kept
-		}
-	}
+	candIDs = c.pruneNodeLabelCandidates(tok, candIDs, storepkg.QueryOpts{ValidAt: at})
 
 	var result []*types.Node
 	for _, id := range candIDs {
@@ -1180,11 +1176,7 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 	// pruning would wrongly drop.) end is already resolved to a concrete bound by
 	// normalizeDuringRange, so ValidEnd > 0 holds. Mirrors the point-in-time door
 	// (rule 17); TestTemporalDuringCandidatePruneEquivalence enforces agreement.
-	if c.temporalCandidates != nil {
-		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end}); ok {
-			candIDs = kept
-		}
-	}
+	candIDs = c.pruneNodeLabelCandidates(tok, candIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end})
 	elements, err := c.nodeIndexElements(tok, key)
 	if err != nil {
 		return nil, err

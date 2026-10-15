@@ -1,0 +1,105 @@
+--- FAIL: TestEffectivePage_ValidPruneCost (0.00s)
+    --- FAIL: TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=true (0.01s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 99 timelines, want 19
+    --- FAIL: TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=true (0.02s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 99 timelines, want 19
+    --- FAIL: TestEffectivePage_ValidPruneCost/memory/rel=true/propIdx=false (0.02s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 300 timelines, want 60
+    --- FAIL: TestEffectivePage_ValidPruneCost/memory/rel=false/propIdx=false (0.02s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 300 timelines, want 60
+    --- FAIL: TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=true (0.03s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 99 timelines, want 19
+    --- FAIL: TestEffectivePage_ValidPruneCost/badger/rel=false/propIdx=false (0.03s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 300 timelines, want 60
+    --- FAIL: TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=false (0.03s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 300 timelines, want 60
+    --- FAIL: TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=true (0.04s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 99 timelines, want 19
+    --- FAIL: TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=true (0.04s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 99 timelines, want 19
+    --- FAIL: TestEffectivePage_ValidPruneCost/sharded/rel=true/propIdx=false (0.05s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 300 timelines, want 60
+    --- FAIL: TestEffectivePage_ValidPruneCost/badger/rel=true/propIdx=true (0.05s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 99 timelines, want 19
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 99 timeline reads (pruned=true sidecar=true)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 99 timelines, want 19
+    --- FAIL: TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=true (0.05s)
+        effective_page_valid_prune_test.go:67: property index EA: graph: relationship property indexes are not supported on this backend (backend declines; the type list feeds)
+        effective_page_valid_prune_test.go:67: property index EB: graph: relationship property indexes are not supported on this backend (backend declines; the type list feeds)
+        effective_page_valid_prune_test.go:67: property index EC: graph: relationship property indexes are not supported on this backend (backend declines; the type list feeds)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 300 timelines, want 60
+    --- FAIL: TestEffectivePage_ValidPruneCost/sharded/rel=false/propIdx=false (0.06s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 300 timelines, want 60
+    --- FAIL: TestEffectivePage_ValidPruneCost/tiered/rel=true/propIdx=false (0.07s)
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:1792066001000 ValidStart:0 ValidEnd:0}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:1792066001100}: page read 300 timelines, want 60
+        effective_page_valid_prune_test.go:145: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: 300 timeline reads (pruned=true sidecar=false)
+        effective_page_valid_prune_test.go:147: pin {Tx:1792066001000 ValidAt:0 ValidStart:1792066000900 ValidEnd:0}: page read 300 timelines, want 60
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.236s
+FAIL

@@ -1,0 +1,40 @@
+--- FAIL: TestEffectivePage_ValidPruneDifferential (0.00s)
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=1 (0.09s)
+        effective_page_valid_prune_test.go:178: pin {Tx:1792067017001 ValidAt:1792067033905 ValidStart:0 ValidEnd:0} eq e1 limit 1:
+             got  
+             want 
+              813876900333552640:
+                [1792067013762,0) v3 {ValidFrom:1792067013762 ValidTo:0 TxFrom:1792067013000 TxTo:0 CreatedAt:0 UpdatedAt:1792067013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false Void:false} type=3 813876900330307584->813876900330864640 props=estate=e1,n=82
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=0/memory/rel=true/early=false/seed=1 (0.06s)
+        effective_page_valid_prune_test.go:178: pin {Tx:1792067017001 ValidAt:1792067033905 ValidStart:0 ValidEnd:0} eq e1 limit 1:
+             got  
+             want 
+              813876916279477248:
+                [1792067013762,0) v3 {ValidFrom:1792067013762 ValidTo:0 TxFrom:1792067013000 TxTo:0 CreatedAt:0 UpdatedAt:1792067013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false Void:false} type=3 813876916277116928->813876916277477376 props=estate=e1,n=82
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=0/badger/rel=true/early=false/seed=1 (0.19s)
+        effective_page_valid_prune_test.go:178: pin {Tx:1792067017001 ValidAt:1792067033905 ValidStart:0 ValidEnd:0} eq e1 limit 1:
+             got  
+             want 
+              813876913245258752:
+                [1792067013762,0) v3 {ValidFrom:1792067013762 ValidTo:0 TxFrom:1792067013000 TxTo:0 CreatedAt:0 UpdatedAt:1792067013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false Void:false} type=3 813876913228087296->813876913232969728 props=estate=e1,n=82
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=1 (0.21s)
+        effective_page_valid_prune_test.go:178: pin {Tx:1792067017001 ValidAt:1792067033905 ValidStart:0 ValidEnd:0} eq e1 limit 1:
+             got  
+             want 
+              813876914972001280:
+                [1792067013762,0) v3 {ValidFrom:1792067013762 ValidTo:0 TxFrom:1792067013000 TxTo:0 CreatedAt:0 UpdatedAt:1792067013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false Void:false} type=3 813876914959286272->813876914962432000 props=estate=e1,n=82
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=1 (0.66s)
+        effective_page_valid_prune_test.go:178: pin {Tx:1792067017001 ValidAt:1792067033905 ValidStart:0 ValidEnd:0} eq e1 limit 1:
+             got  
+             want 
+              813876900054828032:
+                [1792067013762,0) v3 {ValidFrom:1792067013762 ValidTo:0 TxFrom:1792067013000 TxTo:0 CreatedAt:0 UpdatedAt:1792067013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false Void:false} type=3 813876900044537856->813876900046503936 props=estate=e1,n=82
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=0/sharded/rel=true/early=false/seed=1 (0.47s)
+        effective_page_valid_prune_test.go:178: pin {Tx:1792067017001 ValidAt:1792067033905 ValidStart:0 ValidEnd:0} eq e1 limit 1:
+             got  
+             want 
+              813876910806270976:
+                [1792067013762,0) v3 {ValidFrom:1792067013762 ValidTo:0 TxFrom:1792067013000 TxTo:0 CreatedAt:0 UpdatedAt:1792067013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false Void:false} type=3 813876910798798848->813876910800502784 props=estate=e1,n=82
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	2.046s
+FAIL

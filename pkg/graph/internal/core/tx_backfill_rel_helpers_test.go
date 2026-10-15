@@ -25,9 +25,13 @@ type txbBackend struct {
 	open func(t *testing.T, allowBackfill bool) *Core
 }
 
-func txbBackends() []txbBackend {
+// txbBackends lists the four backends; mods adjust every backend's Config.
+func txbBackends(mods ...func(*Config)) []txbBackend {
 	newCore := func(t *testing.T, cfg Config) *Core {
 		t.Helper()
+		for _, m := range mods {
+			m(&cfg)
+		}
 		g, err := New(cfg)
 		if err != nil {
 			t.Fatalf("New: %v", err)

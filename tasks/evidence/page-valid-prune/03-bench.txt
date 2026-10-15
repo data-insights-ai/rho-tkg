@@ -1,0 +1,44 @@
+BenchmarkEffectivePageValidPrune (backlog 75): 100,000 relationships, 3 types each indexed on estate,
+10 estates, 1 in 20 of each estate still open, the rest closed 900 s before ValidAt; one page of
+limit 5,000 of estate e3 at ValidAt (500 matching relationships, 10,000 candidates).
+"none" = no CreateRelTemporal (today's path), "envelope" = CreateRelTemporal on the 3 types.
+Host: AMD Ryzen 9 7950X3D, shared (load average ~14 during the runs), -benchtime 20x -count 3.
+
+BEFORE (main 4eb74bbf, same bench file; the page ignores the envelope index)
+BenchmarkEffectivePageValidPrune/memory/none-32         	      20	   5861165 ns/op
+BenchmarkEffectivePageValidPrune/memory/none-32         	      20	   5039519 ns/op
+BenchmarkEffectivePageValidPrune/memory/none-32         	      20	   5427346 ns/op
+BenchmarkEffectivePageValidPrune/memory/envelope-32     	      20	   5010232 ns/op
+BenchmarkEffectivePageValidPrune/memory/envelope-32     	      20	   5471330 ns/op
+BenchmarkEffectivePageValidPrune/memory/envelope-32     	      20	   4808409 ns/op
+BenchmarkEffectivePageValidPrune/badger/none-32         	      20	  35390020 ns/op
+BenchmarkEffectivePageValidPrune/badger/none-32         	      20	  33903314 ns/op
+BenchmarkEffectivePageValidPrune/badger/none-32         	      20	  36985354 ns/op
+BenchmarkEffectivePageValidPrune/badger/envelope-32     	      20	  37282816 ns/op
+BenchmarkEffectivePageValidPrune/badger/envelope-32     	      20	  34705259 ns/op
+BenchmarkEffectivePageValidPrune/badger/envelope-32     	      20	  35712545 ns/op
+    memory: CreateRelTemporal over 100000 relationships (3 types) took 41.610298ms
+    badger: CreateRelTemporal over 100000 relationships (3 types) took 294.558213ms
+
+AFTER (this branch)
+BenchmarkEffectivePageValidPrune/memory/none-32         	      20	   7928514 ns/op
+BenchmarkEffectivePageValidPrune/memory/none-32         	      20	   6455032 ns/op
+BenchmarkEffectivePageValidPrune/memory/none-32         	      20	   6611594 ns/op
+BenchmarkEffectivePageValidPrune/memory/envelope-32     	      20	    657377 ns/op
+BenchmarkEffectivePageValidPrune/memory/envelope-32     	      20	    787783 ns/op
+BenchmarkEffectivePageValidPrune/memory/envelope-32     	      20	    534632 ns/op
+BenchmarkEffectivePageValidPrune/badger/none-32         	      20	  47203178 ns/op
+BenchmarkEffectivePageValidPrune/badger/none-32         	      20	  86907388 ns/op
+BenchmarkEffectivePageValidPrune/badger/none-32         	      20	  46277968 ns/op
+BenchmarkEffectivePageValidPrune/badger/envelope-32     	      20	    855435 ns/op
+BenchmarkEffectivePageValidPrune/badger/envelope-32     	      20	    690152 ns/op
+BenchmarkEffectivePageValidPrune/badger/envelope-32     	      20	    693908 ns/op
+    memory: CreateRelTemporal over 100000 relationships (3 types) took 47.740763ms
+    badger: CreateRelTemporal over 100000 relationships (3 types) took 282.020792ms
+
+"none" re-run back to back (badger, -count 4), to separate load noise from the unchanged path:
+  branch: 35.8 32.6 33.2 31.8 ms/op
+  main:   31.1 31.2 29.9 30.0 ms/op
+
+Summary (median): badger page 35.4 ms -> 0.69 ms (51x), memory 5.4 ms -> 0.66 ms (8x), with the
+envelope declared; without it the page keeps today's path (within load noise). Timeline reads: 10,000 -> 500.

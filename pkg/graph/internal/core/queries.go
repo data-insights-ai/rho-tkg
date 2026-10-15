@@ -466,20 +466,30 @@ func (c *Core) nodeLabelCandidatesFrom(tok uint16, currentIDs []types.NodeID, op
 		return nil, err
 	}
 
-	// With a per-label valid-time ENVELOPE index, drop candidates whose envelope
-	// cannot overlap the query's valid-time filter without loading their chains.
-	// PruneTemporalCandidates returns ok=false (unchanged) when opts has no
-	// valid-time filter or no envelope covers the label. The envelope is a sound
-	// superset: pruning is positive-evidence-only.
-	if c.temporalCandidates != nil {
-		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, opts); ok {
-			candIDs = kept
-			if !slices.IsSorted(candIDs) {
-				slices.Sort(candIDs)
-			}
-		}
+	return c.pruneNodeLabelCandidates(tok, candIDs, opts), nil
+}
+
+// pruneNodeLabelCandidates drops the ids of label tok whose valid-time
+// ENVELOPE (CreateTemporal) cannot overlap opts' valid-time filter, without
+// loading their chains; ids are unchanged when opts has no valid-time filter
+// or no envelope covers the label. The envelope is a sound superset over every
+// row of the entity (current and history, any transaction time): pruning is
+// positive-evidence-only. Ascending input stays ascending. The one seam of the
+// node envelope prune: the ByLabel doors and the paged effective door
+// (backlog 75). Callers hold c.mu (R or W).
+func (c *Core) pruneNodeLabelCandidates(tok uint16, ids []types.NodeID, opts storepkg.QueryOpts) []types.NodeID {
+	if c.temporalCandidates == nil {
+		return ids
 	}
-	return candIDs, nil
+	sorted := slices.IsSorted(ids)
+	kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, ids, opts)
+	if !ok {
+		return ids
+	}
+	if sorted && !slices.IsSorted(kept) {
+		slices.Sort(kept)
+	}
+	return kept
 }
 
 // nodeLabelCandidatesSorted is the gather of nodeLabelCandidatesFrom in
@@ -608,19 +618,24 @@ func (c *Core) relTypeCandidatesFrom(tok uint16, currentIDs []types.RelID, opts 
 		return nil, err
 	}
 
-	// Backlog 21c: with a per-rel-type valid-time ENVELOPE index, drop
-	// candidates whose envelope cannot overlap the query's valid-time filter (rel
-	// mirror of the temporalCandidates prune in nodesByLabelLocked). Sound
-	// superset.
-	if c.relTypeTemporalCandidates != nil {
-		if kept, ok := c.relTypeTemporalCandidates.PruneRelTypeTemporalCandidates(tok, candIDs, opts); ok {
-			candIDs = kept
-			if !slices.IsSorted(candIDs) {
-				slices.Sort(candIDs)
-			}
-		}
+	return c.pruneRelTypeCandidates(tok, candIDs, opts), nil
+}
+
+// pruneRelTypeCandidates is pruneNodeLabelCandidates for relationship type tok
+// (backlog 21c, CreateRelTemporal).
+func (c *Core) pruneRelTypeCandidates(tok uint16, ids []types.RelID, opts storepkg.QueryOpts) []types.RelID {
+	if c.relTypeTemporalCandidates == nil {
+		return ids
 	}
-	return candIDs, nil
+	sorted := slices.IsSorted(ids)
+	kept, ok := c.relTypeTemporalCandidates.PruneRelTypeTemporalCandidates(tok, ids, opts)
+	if !ok {
+		return ids
+	}
+	if sorted && !slices.IsSorted(kept) {
+		slices.Sort(kept)
+	}
+	return kept
 }
 
 // relTypeCandidatesSorted is nodeLabelCandidatesSorted for a relationship type.

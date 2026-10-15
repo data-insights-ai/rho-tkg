@@ -398,6 +398,7 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 70 (MEDIUM) — version allocation below surviving rows after a compaction gap; rollback-after-compaction data loss | `[4.55.1]` Fixed; evidence `tasks/evidence/r10-write/` |
 | Item 72 (PERF, ai-soc) — sorted postings for property/composite indexes, 1M walk 85 s to 0.5 s | `[4.55.3]` Changed |
 | Item 73 (FEATURE, René, sigma-tkgd, ai-soc) — `Config.UntimedValidStart`: untimed first version from TxFrom (default) or -inf, `Admin().SetUntimedValidStart` one-way conversion, marker 7 | `[Unreleased]` Added + Deprecated (default for new stores becomes `UntimedUnbounded` next minor); evidence `tasks/evidence/untimed-mode/` |
+| Item 75 (PERF, ai-soc) — paged effective doors prune valid-filtered candidates by the envelope index (no automatic build: a full type scan plus RAM and a write cost per relationship forever; reopen if a consumer cannot declare `CreateRelTemporal`) | `[Unreleased]` Changed; evidence `tasks/evidence/page-valid-prune/` |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 
