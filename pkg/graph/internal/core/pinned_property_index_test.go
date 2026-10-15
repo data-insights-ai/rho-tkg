@@ -17,6 +17,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
 // Item M (backlog 8, tasks/handover-pinned-index-churn-20261009.md): a pinned
@@ -1403,14 +1404,38 @@ func TestPinnedPropertyLookupLifecycle(t *testing.T) {
 		if err := f.g.Close(); err != nil {
 			t.Fatalf("Close: %v", err)
 		}
+		// Clean reopen (backlog 74): the open image restores the built
+		// sidecars, and they answer as the arms did before the close.
 		g := be.open(t)
-		defer g.Close()
-		if st := propTxStats(t, g); st.Builds != 0 {
-			t.Fatalf("a reopened store starts with built sidecars: %+v", st)
+		if st := propTxStats(t, g); st.Builds != 0 || st.RelSidecars != 1 || st.NodeSidecars != 1 {
+			t.Fatalf("a clean reopen did not restore both sidecars without a build: %+v", st)
 		}
-		assertPropertyArmsAgree(t, g, pins, "after reopen")
-		if st := propTxStats(t, g); st.RelSidecars != 1 || st.NodeSidecars != 1 {
-			t.Fatalf("lookups after reopen did not rebuild lazily: %+v", st)
+		assertPropertyArmsAgree(t, g, pins, "after clean reopen")
+		if st := propTxStats(t, g); st.Builds != 0 {
+			t.Fatalf("lookups on restored sidecars rebuilt them: %+v", st)
+		}
+		if err := g.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+		// Untrusted image (deleted, as after a crash): one pass per kind rebuilds.
+		db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Update(badger.DeleteOpenStateForTest); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+		g = be.open(t)
+		defer g.Close()
+		if st := propTxStats(t, g); st.RelSidecars != 0 || st.NodeSidecars != 0 {
+			t.Fatalf("an open without the image restored sidecars: %+v", st)
+		}
+		assertPropertyArmsAgree(t, g, pins, "after untrusted reopen")
+		if st := propTxStats(t, g); st.RelSidecars != 1 || st.NodeSidecars != 1 || st.Builds != 2 {
+			t.Fatalf("lookups after an untrusted reopen: %+v, want both sidecars from one pass per kind", st)
 		}
 	})
 	for _, be := range pastDatedBackends() {

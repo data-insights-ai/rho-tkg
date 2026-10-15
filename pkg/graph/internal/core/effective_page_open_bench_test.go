@@ -3,14 +3,41 @@ package core
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"testing"
 	"time"
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
+
+// openImageBytes sums the open image's header and chunk values in dir.
+func openImageBytes(b *testing.B, dir string) int64 {
+	b.Helper()
+	db, err := badgerv4.Open(badgerv4.DefaultOptions(dir).WithLogger(nil))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer db.Close()
+	var n int64
+	prefix := storeutil.MetaKey("tkg_open_image")
+	if err := db.View(func(txn *badgerv4.Txn) error {
+		it := txn.NewIterator(badgerv4.IteratorOptions{Prefix: prefix})
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			n += it.Item().ValueSize()
+		}
+		return nil
+	}); err != nil {
+		b.Fatal(err)
+	}
+	return n
+}
 
 // BenchmarkEffectivePageFirstAfterOpen (backlog 74, ai-soc: "after every
 // open, the first page waits about 3 minutes"): a disk store with 29 indexed
@@ -58,6 +85,53 @@ func BenchmarkEffectivePageFirstAfterOpen(b *testing.B) {
 	if err := g.Close(); err != nil {
 		b.Fatal(err)
 	}
+	// size: the open image without and with the 29 sidecars, and their
+	// resident bytes: the heap (after GC) of a clean open whose image holds
+	// them minus that of one whose image does not. Both opens read keys and
+	// the image only, so the badger caches match; a heap delta across the
+	// build scan would count the block cache the scan fills.
+	b.Run("size", func(b *testing.B) {
+		heap := func() uint64 {
+			var ms runtime.MemStats
+			runtime.GC()
+			runtime.GC()
+			runtime.ReadMemStats(&ms)
+			return ms.HeapAlloc
+		}
+		openHeap := func() (*Core, uint64) {
+			g, err := New(Config{BadgerDir: dir})
+			if err != nil {
+				b.Fatal(err)
+			}
+			return g, heap()
+		}
+		without := openImageBytes(b, dir)
+		g, before := openHeap()
+		tok, _ := g.relTypes.Lookup(relTypes[0])
+		if err := g.store.(storepkg.RelPropertyTxMembershipCapability).ForEachRelPropertyTxMember(tok, epProp, "phantom", func(types.RelID, types.Instant) bool { return true }); err != nil {
+			b.Fatal(err)
+		}
+		st, err := g.store.(storepkg.PropertyTxMembershipStatsCapability).PropertyTxMembershipStats()
+		if err != nil || st.RelSidecars != nTypes {
+			b.Fatalf("stats %+v, %v", st, err)
+		}
+		if err := g.Close(); err != nil {
+			b.Fatal(err)
+		}
+		with := openImageBytes(b, dir)
+		g, after := openHeap()
+		if st, _ := g.store.(storepkg.PropertyTxMembershipStatsCapability).PropertyTxMembershipStats(); st.RelSidecars != nTypes || st.Builds != 0 {
+			b.Fatalf("restored stats %+v", st)
+		}
+		if err := g.Close(); err != nil {
+			b.Fatal(err)
+		}
+		b.ReportMetric(float64(st.RelPostings), "postings")
+		b.ReportMetric(float64(after-before)/float64(st.RelPostings), "sidecar-B/posting")
+		b.ReportMetric(float64(after-before)/(1<<20), "sidecar-MiB")
+		b.ReportMetric(float64(without)/(1<<20), "image-MiB-without")
+		b.ReportMetric(float64(with)/(1<<20), "image-MiB-with")
+	})
 	for _, mode := range []string{"clean", "dirty"} {
 		b.Run(mode, func(b *testing.B) {
 			var openD, pageD time.Duration

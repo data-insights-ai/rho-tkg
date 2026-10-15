@@ -22,10 +22,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   slot on sharded). Compatibility: v4.56.0 and older reject the new image sections and rebuild from the rows once.
   Measured (`BenchmarkEffectivePageFirstAfterOpen`, 29 indexed types, 200,000 relationships, 50,000 history rows):
   open to first page 15.3 s to 0.38 s after a clean close, 14.7 s to 2.8 s without an image
-  (`tasks/evidence/sidecar-one-scan/03-bench.txt`). Tests: `TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex`
+  (`tasks/evidence/sidecar-one-scan/03-bench.txt`). Cost on the same store (200,000 postings): about 10.5 MiB resident
+  (~55 B per posting) and +2.9 MiB in the open image (2.2 to 5.0 MiB, ~15 B per posting; `08-size.txt`). Tests: `TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex`
   (badger, delta, sharded), `TestPropTxBuild_OnePassScanCount`, `TestPropTxBuild_OnePassEqualsPerKeyBuild`,
   `TestPropTxBuild_CleanReopenRestoresSidecars`, `TestPropTxBuild_OtherKeyNotBlockedByRunningBuild`,
-  `TestTieredNodePropertyTxMembersOnePass`.
+  `TestTieredNodePropertyTxMembersOnePass`, `TestPinnedPropertyLookupLifecycle/badger/reopen` (clean reopen restores
+  and answers with no build; an open without the image rebuilds with one pass per kind).
 
 ## [4.56.0] - 2026-10-15
 
