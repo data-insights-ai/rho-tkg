@@ -37,7 +37,25 @@ CONTROL = set("Version Cookie Sequence Action Request Original Token Boundary Di
 REPLY = set("Version Profile Cookie Run Sequence Calls TerminalCalls GrantedWork Member PID DeadlineUnixNanos Action Result Original Token Page Digest Snapshot Completed".split())
 
 
-def state_profile(a):
+PROGRAM_PROFILE = "native-protocol-owned-pooled-state-program-v1"
+
+
+def program_state_roles(context, recipe):
+    require(type(context) is dict and set(context) == {"leaders", "target"} and type(context["leaders"]) is tuple
+            and context["leaders"] in ((1, 4), (2, 6)) and all(type(v) is int for v in context["leaders"])
+            and type(context["target"]) is int, "explicit authenticated native state roles")
+    leaders, target = context["leaders"], context["target"]
+    part = recipe["Partition"]
+    expected = (3 if part == 3 else 6) if leaders == (1, 4) else (1 if part == 3 else 4)
+    require(recipe["Family"] != "allocation" and target == expected, "actual nonowner follower loss, no leader/accepted issuance relabelling")
+    return leaders, target
+
+
+def state_profile(a, program_roles=None):
+    if type(a.get("Version")) is int and a["Version"] == 3:
+        program_state_roles(program_roles, a["Recipe"])
+        require(a.get("Profile") == PROGRAM_PROFILE and set(a) == HEADER | {"Pooled", "Program"}, "fresh state program grammar")
+        return POOLED_PROFILE, POOLED_SEMANTIC
     fresh = type(a.get("Version")) is int and a["Version"] == 2
     require((fresh and a.get("Profile") == POOLED_PROFILE and set(a) == HEADER | {"Pooled"}) or
             (type(a.get("Version")) is int and a["Version"] == 1 and a.get("Profile") == PROFILE and set(a) == HEADER), "explicit state agreement/version; no inferred upgrade")
@@ -63,7 +81,7 @@ def recipe(r):
     return family, phase, part, page, kind, side
 
 
-def load(path):
+def load(path, *, program=False):
     total, digest, header, footer = 0, hashlib.sha256(), None, None
     rows, calls, gc, pooled = [], [], [], []
     with path.open("rb") as stream:
@@ -76,30 +94,33 @@ def load(path):
                 require(set(row) == {"Type", "Artifact"} and row["Type"] == "header", "state header")
                 header = row["Artifact"]
                 require(type(header) is dict, "owned streamed proof object")
-                require(set(header) == (HEADER | {"Pooled"} if type(header.get("Version")) is int and header["Version"] == 2 else HEADER), "exact selected state stream header")
+                version = header.get("Version")
+                require(type(version) is int and (version in (1, 2) or program and version == 3), "explicit admitted state stream version")
+                require(set(header) == (HEADER | {"Pooled", "Program"} if version == 3 else HEADER | {"Pooled"} if version == 2 else HEADER), "exact selected state stream header")
                 require(all(header[k] is None for k in ("Records", "Calls", "GC")), "owned streamed proof grammar")
-                if header["Version"] == 2:
-                    state_profile(header)
+                if version in (2, 3):
+                    if version == 2: state_profile(header)
+                    else: require(header["Profile"] == PROGRAM_PROFILE and type(header["Program"]) is dict, "fresh program is validated before optional semantic routing")
                     p = header["Pooled"]
                     require(type(p) is dict and set(p) == {"Version", "Semantic", "Frames"} and type(p["Version"]) is int and p["Version"] == 1 and fixed(p["Semantic"], 32) == POOLED_SEMANTIC and p["Frames"] is None, "fresh native pooled stream header")
             elif row.get("Type") == "record":
                 require(set(row) == {"Type", "Record"} and len(rows) < 512, "bounded native prefix"); rows.append(row["Record"])
             elif row.get("Type") == "pooled":
-                require(header["Version"] == 2 and set(row) == {"Type", "Sequence", "Frame"} and type(row["Sequence"]) is int and row["Sequence"] == len(pooled) < 128, "bounded exact pooled frame order")
+                require(header["Version"] in (2, 3) and set(row) == {"Type", "Sequence", "Frame"} and type(row["Sequence"]) is int and row["Sequence"] == len(pooled) < 128, "bounded exact pooled frame order")
                 pooled.append(row["Frame"])
             elif row.get("Type") in ("call", "gc"):
                 kind = row["Type"]; target = calls if kind == "call" else gc; field = "Call" if kind == "call" else "Receipt"
                 require(set(row) == {"Type", "Sequence", field} and type(row["Sequence"]) is int and row["Sequence"] == len(target) < (416 if kind == "call" else 2304), "exact bounded owner row sequence")
                 target.append(row[field])
             else:
-                extra = {"Pooled"} if header["Version"] == 2 else set()
+                extra = {"Pooled"} if header["Version"] in (2, 3) else set()
                 require(set(row) == {"Type", "Rows", "Calls", "GC", "Through", "PayloadSHA256"} | extra and row["Type"] == "footer" and all(type(row[k]) is int and row[k] == len(v) for k, v in (("Rows", rows), ("Calls", calls), ("GC", gc))) and row["PayloadSHA256"] == digest.hexdigest(), "exact state EOF/hash/census")
                 if extra: require(type(row["Pooled"]) is int and row["Pooled"] == len(pooled), "pooled stream complete EOF census")
                 footer = row
             if footer is None: digest.update(line)
     require(header is not None and footer is not None and footer["Through"] == header["Through"], "missing/foreign complete EOF")
     header.update(Records=rows, Calls=calls, GC=gc)
-    if header["Version"] == 2: header["Pooled"]["Frames"] = pooled
+    if header["Version"] in (2, 3): header["Pooled"]["Frames"] = pooled
     return header
 
 
@@ -314,7 +335,7 @@ def pool_progress(wire, command):
     return dict(imported=bool(imported), next=next_, total=total, debt=debt, graph=graph, applied=applied, replay=replay_pages)
 
 
-def pool_exchange(item):
+def pool_exchange(item, leaders=(1, 4)):
     require(type(item) is dict and set(item) == {"Origin", "Partition", "Request", "Reply", "Before", "After"}, "actual complete pooled Submit observation")
     require(integer(item["Origin"], 6, 1) and item["Partition"] in (3, 8), "real source caller/partition")
     c = P.Cursor(P.body(P.raw(item["Request"]), b"GSQ\1"))
@@ -334,7 +355,7 @@ def pool_exchange(item):
     actual, member, issuer = P.body(c.field(256), b"APS\1"), c.number(), c.take(16)
     reply_kind, reply_sequence, reply_nonce, mask = c.number(1), c.number(), c.take(16), c.number(2)
     result = c.field((2 << 20)-512); c.end()
-    require(actual == scope and member == (1 if item["Partition"] == 3 else 4) and any(issuer)
+    require(actual == scope and member == leaders[0 if item["Partition"] == 3 else 1] and any(issuer)
             and (reply_kind, reply_sequence, reply_nonce) == (kind, sequence, nonce), "authenticated source reply association")
     require(not mask or not result, "unavailable submit supplies no invented original")
     if result:
@@ -343,10 +364,10 @@ def pool_exchange(item):
     return command, parsed, result
 
 
-def pool_observation(item, command, parsed, a):
+def pool_observation(item, command, parsed, a, leaders=(1, 4)):
     require(type(item) is dict and set(item) == {"Member", "Input", "Response"}, "actual move-proof owner call")
     part = int.from_bytes(parsed["scope"][16:24], "big")
-    require(item["Member"] == (1 if part == 3 else 4), "proof executes at actual native leader")
+    require(item["Member"] == leaders[0 if part == 3 else 1], "proof executes at actual native leader")
     q = item["Input"]
     require(type(q) is dict and set(q) == CONTROL and q["Action"] == "move-proof" and type(q["Version"]) is int and q["Version"] == 1
             and P.raw(q["Original"]) == command and not P.raw(q["Token"]) and fixed(q["Request"], 16) == bytes(16) and fixed(q["Digest"], 32) == bytes(32), "proof binds actual complete command, no minted authority")
@@ -459,7 +480,8 @@ def pool_transition(command, before, after, inventory):
                     and q["debt"]+pool_undo_bound(inventory[original][1], command) == p["debt"], "actual exact-next reverse tail consumes debt once, not its retained control")
 
 
-def pooled(a, rows):
+def pooled(a, rows, program_roles=None):
+    leaders = (1, 4) if program_roles is None else program_state_roles(program_roles, a["Recipe"])[0]
     p = a["Pooled"]
     require(type(p) is dict and set(p) == {"Version", "Semantic", "Frames"} and type(p["Version"]) is int and p["Version"] == 1
             and fixed(p["Semantic"], 32) == POOLED_SEMANTIC and type(p["Frames"]) is list and len(p["Frames"]) <= 128, "finite actual pooled submit inventory")
@@ -474,12 +496,12 @@ def pooled(a, rows):
             return originals[namespace, key]
     evidence = Evidence()
     for item in p["Frames"]:
-        wire, command, result = pool_exchange(item)
+        wire, command, result = pool_exchange(item, leaders)
         commands.add(wire)
         if item["Reply"] is None:
             require(a["Recipe"]["Family"] == "move" and wire == P.raw(a["Command"]), "missing reply only belongs to actual selected native kill command; never success authority")
             unknown.append(wire)
-        before, after = [pool_observation(item[name], wire, command, a) for name in ("Before", "After")]
+        before, after = [pool_observation(item[name], wire, command, a, leaders) for name in ("Before", "After")]
         calls.extend((item["Before"], item["After"]))
         require(before["proof"]["UndoIndices"] == after["proof"]["UndoIndices"]
                 and before["proof"]["RootIndex"] <= after["proof"]["RootIndex"], "same observed keys and monotone native view")
@@ -567,12 +589,12 @@ def pooled(a, rows):
                     and r["GrantedWork"] == (calls_+terminals)*(4*(64 << 20)+2*(2 << 20)), "same finite no-refund proof/feed work pool")
 
 
-def batch(a, scopes):
+def batch(a, scopes, program_roles=None):
     r = a["Recipe"]; family, phase, part, _, kind, side = recipe(r)
     command = P.raw(a["Command"]); require(0 < len(command) <= 64 << 10, "actual owned encoded command")
     selected(command, r, scopes)
     arm, receipt = a["Arm"], a["Batch"]
-    member = 3 if part == 3 else 6
+    member = (3 if part == 3 else 6) if program_roles is None else program_state_roles(program_roles, a["Recipe"])[1]
     for value in (arm, receipt):
         require(type(value) is dict and set(value) == B.RECEIPT and value["Profile"] == B.PROFILE and type(value["Version"]) is int and value["Version"] == 1, "actual native batch owner")
         require(value["Member"] == member and fixed(value["Run"], 16, True) == fixed(a["Run"], 16, True) and value["DeadlineUnixNanos"] == a["DeadlineUnixNanos"], "same native member/run/deadline")
@@ -615,12 +637,13 @@ def prefix(a):
     return rows
 
 
-def check_calls(a, d, rows):
-    _, semantic = state_profile(a)
+def check_calls(a, d, rows, program_roles=None):
+    _, semantic = state_profile(a, program_roles)
+    leaders = (1, 4) if program_roles is None else program_state_roles(program_roles, a["Recipe"])[0]
     owners, pages, acks, chain, business_pages = {}, {}, set(), [], {}
     for item in a["Calls"]:
         require(type(item) is dict and set(item) == {"Member", "Input", "Response"}
-                and (item["Member"] in (2, 5) or semantic == POOLED_SEMANTIC and item["Member"] in (1, 4) and item["Input"]["Action"] == "inspect"), "actual feed owner or pooled proof owner inspection")
+                and (item["Member"] in (2, 5) or semantic == POOLED_SEMANTIC and item["Member"] in leaders and item["Input"]["Action"] == "inspect"), "actual feed owner or pooled proof owner inspection")
         q = item["Input"]; require(type(q) is dict and set(q) == CONTROL and type(q["Version"]) is int and q["Version"] == 1, "canonical private owner control")
         response = R.response(item["Response"]); reply = T.decoded(response["aux"])
         require(type(reply) is dict and set(reply) == REPLY and reply["Profile"] == PROFILE and type(reply["Version"]) is int and reply["Version"] == 1 and reply["Member"] == item["Member"] and fixed(reply["Run"], 16, True) == fixed(a["Run"], 16, True) and reply["DeadlineUnixNanos"] == a["DeadlineUnixNanos"] and reply["Action"] == q["Action"] and reply["Sequence"] == q["Sequence"], "actual original owner/operation/deadline")
@@ -690,8 +713,9 @@ def k_label_changes(logical, partition, round_, expected_axis, seen):
     seen.add(owner)
 
 
-def business(a, scopes, rows):
-    command, manifest, lost, lost_wire = P.peer_phase(P.raw(a["LostRequest"]), P.raw(a["LostReply"]), scopes, 4)
+def business(a, scopes, rows, program_roles=None):
+    leaders = (1, 4) if program_roles is None else program_state_roles(program_roles, a["Recipe"])[0]
+    command, manifest, lost, lost_wire = P.peer_phase(P.raw(a["LostRequest"]), P.raw(a["LostReply"]), scopes, leaders[1])
     require(lost["partition"] == 8 and lost["phase"] == 3 and lost["commit"], "actual committed K reply withheld, not an invented timeout vote")
     c = P.Cursor(P.body(manifest, b"GCM"+bytes((1,)))); tx, coordinator, original_wire = c.take(16), c.number(), c.field(32768)
     original = P.pgq(original_wire)
@@ -717,7 +741,7 @@ def business(a, scopes, rows):
             logical = e.field(); e.end(); body = P.body(logical, b"GCD"+bytes((5,)))
             require(body[:16] == P.GRAPH and int.from_bytes(body[16:24], "big") == part, "actual complete K business namespace")
             if part == 3:
-                _, semantic = state_profile(a)
+                _, semantic = state_profile(a, program_roles)
                 _, _, native = cut(a["Before"]) if semantic == SEMANTIC else cut(a["Before"], semantic)
                 seen = set(); k_label_changes(logical, part, lost["round"], bytes.fromhex(native["A/fact/1"]["axis"]), seen)
                 require(seen == {1}, "literal K healthy label exact owner")
@@ -797,14 +821,14 @@ def gc(a, d):
         require(all(plans[p]["RootFloor"] <= d["parts"][p]["source"] and plans[p]["DataFloor"] <= d["parts"][p]["source"] for p in (3, 8)), "live C lineage protected while eligible state reclaimed")
 
 
-def check(a):
+def check(a, *, program_roles=None):
     require(type(a) is dict, "D-only state object")
-    _, semantic = state_profile(a)
+    _, semantic = state_profile(a, program_roles)
     family, _, part, _, _, _ = recipe(a["Recipe"])
     fixed(a["Run"], 16, True); integer(a["DeadlineUnixNanos"], (1 << 63)-1, 1)
     require(integer(a["ReceiptReads"], 129)*(64 << 10) == integer(a["ReceiptGrantBytes"], 129*(64 << 10)), "finite receipt read/decode grants remain retired")
     rows = prefix(a)
-    if semantic == POOLED_SEMANTIC: pooled(a, rows)
+    if semantic == POOLED_SEMANTIC: pooled(a, rows, program_roles)
     if family == "allocation":
         # This supplement attributes exact native Sync; accepted P08 issuance,
         # stale recipient and exhaustion schedules remain separately accepted.
@@ -819,17 +843,19 @@ def check(a):
     if family != "publication-race":
         cut(a["Retained"], semantic); cut(a["Reopened"], semantic)
         require(a["Before"] == a["Retained"] == a["Reopened"], "full original C exact set/revisions survive native loss/GC")
-        business(a, scopes, rows)
+        business(a, scopes, rows, program_roles)
         refusals(a, rows)
         if family in ("move", "pin"):
-            batch(a, scopes); processes(a, a["Batch"])
+            batch(a, scopes, program_roles); processes(a, a["Batch"])
         elif family == "gc":
-            ident = S.pair(a["StateArm"], a["State"], fixed(a["Run"], 16), a["DeadlineUnixNanos"], member=3)
+            target = 3 if program_roles is None else program_state_roles(program_roles, a["Recipe"])[1]
+            ident = S.pair(a["StateArm"], a["State"], fixed(a["Run"], 16), a["DeadlineUnixNanos"], member=target)
             require(ident["PlanID"] == a["State"]["Control"]["Filter"]["PlanID"], "actual GC cursor/bank/plan Sync")
             processes(a, a["State"])
-    feed_business = check_calls(a, d, rows)
+    feed_business = check_calls(a, d, rows, program_roles)
     if family == "gc" or family == "move" and a["Recipe"]["Phase"] != 9:
-        _, _, lost, _ = P.peer_phase(P.raw(a["LostRequest"]), P.raw(a["LostReply"]), scopes, 4)
+        leaders = (1, 4) if program_roles is None else program_state_roles(program_roles, a["Recipe"])[0]
+        _, _, lost, _ = P.peer_phase(P.raw(a["LostRequest"]), P.raw(a["LostReply"]), scopes, leaders[1])
         require(feed_business.get(lost["tx"]) == 2, "complete actual K feed envelope survives original reply loss")
         require(sum(v == 3 for v in feed_business.values()) == (1 if family == "move" else 0), "exact complete move lineage, not a half or duplicate group")
 

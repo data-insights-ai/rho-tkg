@@ -174,15 +174,16 @@ func (c *nativeProtocolPoolCapture) proof(ctx context.Context, partition uint64,
 		c.clients[member], c.processes[member] = client, c.n.all[member]
 	}
 	client.ctx = operation
+	priorCalls := len(client.calls)
 	_, err := client.call(nativeProtocolStateControl{Action: "move-proof", Original: command, Boundary: boundary})
 	if err != nil {
 		return nativeProtocolStateCall{}, err
 	}
-	if len(client.calls) != 1 {
+	if len(client.calls) != priorCalls+1 {
 		return nativeProtocolStateCall{}, errCorrupt
 	}
-	call := client.calls[0]
-	client.calls = nil
+	call := client.calls[priorCalls]
+	client.calls = client.calls[:priorCalls]
 	return call, nil // Only observation storage retires; native owner counters do not reset.
 }
 func nativeProtocolPoolBoundary(call nativeProtocolStateCall) ([]byte, error) {
@@ -342,7 +343,10 @@ type nativeProtocolStateArtifact struct {
 	Refusals                                  []nativeProtocolStateRefusal
 	ChangedCaller, ChangedReply               []byte
 	AllocatorBefore, AllocatorAfter           []byte
-	Pooled                                    *nativeProtocolStatePooledEvidence `json:",omitempty"`
+	Pooled                                    *nativeProtocolStatePooledEvidence  `json:",omitempty"`
+	Program                                   *nativeProtocolStateProgramEvidence `json:",omitempty"`
+	program                                   *nativeProtocolStateProgram
+	capture                                   *nativeProtocolPoolCapture
 }
 
 func nativeProtocolStateStart(t *testing.T) (context.Context, [16]byte, int64) {
@@ -520,8 +524,8 @@ func TestNativeProtocolPooledStateTransitionsKeepActualUndoOriginals(t *testing.
 		}
 		t.Run(fmt.Sprintf("%s-phase%d-p%d-page%d-kind%d-%s", recipe.Family, recipe.Phase, recipe.Partition, recipe.Page, recipe.Kind, recipe.Side), func(t *testing.T) {
 			t.Setenv("RHO_GRAPH_PROTOCOL_STATE_RECOVERY", "4")
-			artifact := nativeProtocolStateCase(t, recipe)
-			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			artifact, deadline := nativeProtocolStateCaseAt(t, recipe)
+			ctx, cancel := nativeProtocolStateCheckerContext(t, deadline)
 			defer cancel()
 			command := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", "native_protocol_campaign_state_check.py"), artifact)
 			var diagnostics processStderr
@@ -571,7 +575,11 @@ func TestNativeProtocolPooledProofDoorKeepsCanonicalBoundedNativeKeys(t *testing
 	}
 }
 
-func nativeProtocolStateCase(t *testing.T, recipe nativeProtocolStateRecipe) string {
+func nativeProtocolStateCase(t *testing.T, recipe nativeProtocolStateRecipe, programs ...nativeProtocolProgramSpec) string {
+	path, _ := nativeProtocolStateCaseAt(t, recipe, programs...)
+	return path
+}
+func nativeProtocolStateCaseAt(t *testing.T, recipe nativeProtocolStateRecipe, programs ...nativeProtocolProgramSpec) (string, int64) {
 	t.Helper()
 	if !recipe.valid() {
 		t.Fatal("exact finite recipe")
@@ -589,7 +597,16 @@ func nativeProtocolStateCase(t *testing.T, recipe nativeProtocolStateRecipe) str
 		f.parent = ctx
 		a.Version, a.Profile = 2, nativeProtocolPooledStateProfile
 		a.Pooled = &nativeProtocolStatePooledEvidence{Version: 1, Semantic: rangeMovePooledSemanticContractID()}
+		if len(programs) == 1 {
+			a.Version, a.Profile = 3, nativeProtocolStateProgramProfile
+			a.program = newNativeProtocolStateProgram(t, ctx, f, recipe, programs[0])
+		} else if len(programs) != 0 {
+			t.Fatal("one finite state program")
+		}
 		pooled = newNativeProtocolPoolCapture(t, ctx, n)
+		a.capture = pooled
+	} else if len(programs) != 0 {
+		t.Fatal("state programs require actual pooled profile")
 	}
 	if recipe.Family == "allocation" {
 		nativeProtocolStateAllocation(t, ctx, f, &a)
@@ -605,10 +622,13 @@ func nativeProtocolStateCase(t *testing.T, recipe nativeProtocolStateRecipe) str
 		pooled.finish(&a)
 		pooled.close()
 	}
+	if a.program != nil {
+		a.Program = a.program.finish()
+	}
 	if ctx.Err() != nil {
 		t.Fatal("same original campaign deadline", ctx.Err())
 	}
-	return nativeProtocolStateWrite(t, filepath.Join(n.dir, "native-protocol-state.jsonl"), a)
+	return nativeProtocolStateWrite(t, filepath.Join(n.dir, "native-protocol-state.jsonl"), a), deadline
 }
 func nativeProtocolStateAllocation(t *testing.T, ctx context.Context, f *pairedGraphFaultNetwork, a *nativeProtocolStateArtifact) {
 	t.Helper()
@@ -680,6 +700,14 @@ func nativeProtocolStateGraph(t *testing.T, ctx context.Context, f *pairedGraphF
 		t.Fatal(e)
 	}
 	client := nativeProtocolStateNewClient(t, ctx, n)
+	if a.capture != nil {
+		// A rotated A source is also the existing feed's actual child2. Share
+		// its genuine client/sequence, never create a second observer ledger.
+		a.capture.mu.Lock()
+		a.capture.clients[2] = client
+		a.capture.processes[2] = n.all[2]
+		a.capture.mu.Unlock()
+	}
 	begin := client.must(nativeProtocolStateControl{Action: "begin", Request: nativeProtocolStateRequest(a.Run, "snapshot-feed", 0)})
 	a.Original = bytes.Clone(begin.Original)
 	if a.Recipe.Family == "publication-race" {
@@ -713,7 +741,20 @@ func nativeProtocolStateGraph(t *testing.T, ctx context.Context, f *pairedGraphF
 	// Genuine K is installed after C. Hold its actual committed Decide reply at
 	// the existing source relay; cancel the original caller before releasing it.
 	k := nativeProtocolStatePrepare(t, n, 4, certifiedHealthyLabel, 1, nil)
-	entered, release := f.gate(5, true)
+	// The legacy gate owns a temporary callback window and clears both hooks
+	// on release. A fresh pooled observer must resume the SAME saved callbacks,
+	// not silently lose the later original/undo trace or acquire a new ledger.
+	var restore func() error
+	if a.program != nil {
+		a.program.beginBusiness(k)
+	}
+	var entered <-chan pairedFaultBoundary
+	var release func()
+	if a.Pooled != nil {
+		entered, release, restore = nativeProtocolStateCommittedGate(f)
+	} else {
+		entered, release = f.gate(5, true)
+	}
 	done, stop := f.beginRun(5, k)
 	boundary := f.awaitBoundary(entered)
 	if len(boundary.Request) == 0 || len(boundary.Reply) == 0 {
@@ -722,6 +763,11 @@ func nativeProtocolStateGraph(t *testing.T, ctx context.Context, f *pairedGraphF
 	a.LostRequest, a.LostReply = boundary.Request, boundary.Reply
 	stop()
 	release()
+	if a.Pooled != nil {
+		if err := restore(); err != nil {
+			t.Fatal("LIFO committed-reply callback restore", err)
+		}
+	}
 	select {
 	case <-done:
 	case <-ctx.Done():
@@ -850,7 +896,7 @@ func nativeProtocolStateMove(t *testing.T, ctx context.Context, f *pairedGraphFa
 	if !errors.Is(e, errRangeMovePending) {
 		t.Fatal("actual source-owned move factory", e)
 	}
-	gate, e := newNativeProtocolStateGate(ctx, f, a.Recipe)
+	gate, e := newNativeProtocolStateGate(ctx, f, a.Recipe, a.program)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -1005,7 +1051,7 @@ func nativeProtocolStatePin(t *testing.T, ctx context.Context, f *pairedGraphFau
 		// precedes ACK. This is the P09 move/cursor race, not a direct cursor label.
 		nativeProtocolStateWholeMove(t, ctx, f)
 	}
-	gate, e := newNativeProtocolStateGate(ctx, f, a.Recipe)
+	gate, e := newNativeProtocolStateGate(ctx, f, a.Recipe, a.program)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -1240,13 +1286,24 @@ func nativeProtocolStateCollect(t *testing.T, ctx context.Context, f *pairedGrap
 	// Durable pins instead permit deleting eligible earlier native sidecars.
 	if c != nil {
 		c.must(nativeProtocolStateControl{Action: "snapshot"})
-		if _, _, e := clients[0].call(nativeRetentionControl{Action: "collect"}); !errors.Is(e, errLimit) && !errors.Is(e, raftlog.ErrLimit) {
+		source := 0
+		if a.program != nil {
+			source = int(f.n.leaders[0] - 1)
+		}
+		_, blocked, e := clients[source].call(nativeRetentionControl{Action: "collect"})
+		if !errors.Is(e, errLimit) && !errors.Is(e, raftlog.ErrLimit) {
 			t.Fatal("collector bypassed held native owner", e)
+		}
+		if a.program != nil {
+			a.program.evidence.BlockedCollectorResponse = p06ProcessWire(t, blocked)
 		}
 		c.must(nativeProtocolStateControl{Action: "snapshot-close"})
 	}
 	if transition != nil {
 		member := uint64(3)
+		if a.program != nil {
+			member = a.program.evidence.Target
+		}
 		client := clients[member-1]
 		inspect, e := nativeStateCall(ctx, f.n.all[member], nativeStateControl{Version: 1, Action: "inspect"})
 		if e != nil {
@@ -1265,7 +1322,7 @@ func nativeProtocolStateCollect(t *testing.T, ctx context.Context, f *pairedGrap
 		}
 		// Retire the fixed receipt/decode grant before the actual file read.
 		a.ReceiptReads++
-		receipt, e := nativeStateRead(filepath.Join(f.n.dir, "3"), a.StateArm)
+		receipt, e := nativeStateRead(filepath.Join(f.n.dir, fmt.Sprint(member)), a.StateArm)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -1320,7 +1377,7 @@ func nativeProtocolStatePublicationRace(t *testing.T, ctx context.Context, f *pa
 	// Captured-but-unpublished recipe owns no durable pin. A genuine subsequent
 	// mutation produces a strictly newer root which the actual plan may collect
 	// past; merely running GC would not establish this refusal condition.
-	nativeProtocolStateAction(t, f.n, 1, certifiedHealthyLabel, 1, nil)
+	nativeProtocolStateActionProgram(t, f.n, 1, certifiedHealthyLabel, 1, nil, a.program)
 	current := nativeScalarWorkloadCut(t, ctx, f.n, graphReadFresh, graphCut{}, nativeProtocolStateExpectedAgreement(t))
 	for i := range current.certificates {
 		if current.certificates[i].sourceIndex < old.certificates[i].sourceIndex {

@@ -825,6 +825,9 @@ func nativeProtocolStateNetwork(t *testing.T, p08 bool) (*certifiedProcessNetwor
 	return n, bootstrap
 }
 func nativeProtocolStateAction(t *testing.T, n *certifiedProcessNetwork, actor, kind, index uint64, data []byte, bootstrap ...*[32]byte) (outcome, processResponse) {
+	return nativeProtocolStateActionProgram(t, n, actor, kind, index, data, nil, bootstrap...)
+}
+func nativeProtocolStateActionProgram(t *testing.T, n *certifiedProcessNetwork, actor, kind, index uint64, data []byte, program *nativeProtocolStateProgram, bootstrap ...*[32]byte) (outcome, processResponse) {
 	t.Helper()
 	r := n.all[actor].call(t, processRequest{op: processCertifiedAction, entity: kind, index: index, data: data})
 	if kind == certifiedOpenRecipient {
@@ -846,7 +849,13 @@ func nativeProtocolStateAction(t *testing.T, n *certifiedProcessNetwork, actor, 
 	if proposal.target.graph != (idalloc.GraphID{1}) || proposal.target.partition != ns.partition || proposal.target.semantic != agreement {
 		t.Fatal("source proposal escaped declared process topology", proposal.target)
 	}
-	n.groups[group].event(t, leader, processRequest{op: processPropose, data: r.aux})
+	if program != nil {
+		if err := program.localSubmit(proposal, r.aux); err != nil {
+			t.Fatal("actual publication predecessor message program", err)
+		}
+	} else {
+		n.groups[group].event(t, leader, processRequest{op: processPropose, data: r.aux})
+	}
 	state := n.all[leader].call(t, processRequest{op: processStateOp})
 	result := n.all[leader].call(t, processRequest{op: processEntryRecord, index: state.applied})
 	var o outcome
@@ -874,6 +883,11 @@ func nativeProtocolStateAction(t *testing.T, n *certifiedProcessNetwork, actor, 
 	}
 	if kind != certifiedCreateCrossEdge && o.reason != reasonNone {
 		t.Fatal("certified process local positive control refused", kind, o)
+	}
+	if program != nil {
+		program.mu.Lock()
+		program.evidence.LocalRecord = p06ProcessWire(t, result)
+		program.mu.Unlock()
 	}
 	if len(bootstrap) != 0 {
 		if kind != certifiedInitialize || len(bootstrap) != 1 || bootstrap[0] == nil || *bootstrap[0] != ([32]byte{}) && *bootstrap[0] != proposal.target.semantic {
@@ -984,15 +998,27 @@ type nativeProtocolStateGate struct {
 	lost              chan struct{}
 	once              sync.Once
 	closed            bool
+	program           *nativeProtocolStateProgram
 }
 
-func newNativeProtocolStateGate(ctx context.Context, f *pairedGraphFaultNetwork, r nativeProtocolStateRecipe) (*nativeProtocolStateGate, error) {
+func newNativeProtocolStateGate(ctx context.Context, f *pairedGraphFaultNetwork, r nativeProtocolStateRecipe, programs ...*nativeProtocolStateProgram) (*nativeProtocolStateGate, error) {
 	if ctx == nil || f == nil || f.n == nil || !r.valid() || r.Kind == 0 {
 		return nil, errInvalid
 	}
 	member := uint64(3)
 	if r.Partition == 8 {
 		member = 6
+	}
+	if len(programs) > 1 {
+		return nil, errInvalid
+	}
+	var program *nativeProtocolStateProgram
+	if len(programs) == 1 && programs[0] != nil {
+		program = programs[0]
+		if program.f != f || program.recipe != r || program.evidence.Window != "selected-command" {
+			return nil, errInvalid
+		}
+		member = program.evidence.Target
 	}
 	p := f.n.all[member]
 	if p == nil || p.mux == nil {
@@ -1006,7 +1032,7 @@ func newNativeProtocolStateGate(ctx context.Context, f *pairedGraphFaultNetwork,
 	if !ok || owner.DeadlineUnixNanos != deadline.UnixNano() {
 		return nil, errInvalid
 	}
-	g := &nativeProtocolStateGate{ctx: ctx, f: f, target: p, hub: p.mux.hub, recipe: r, owner: owner, lost: make(chan struct{})}
+	g := &nativeProtocolStateGate{ctx: ctx, f: f, target: p, hub: p.mux.hub, recipe: r, owner: owner, lost: make(chan struct{}), program: program}
 	g.hub.mu.Lock()
 	g.priorBefore, g.priorFailed = g.hub.beforeRelay, g.hub.failedStep
 	g.hub.beforeRelay, g.hub.failedStep = g.before, g.failed
@@ -1036,6 +1062,11 @@ func (g *nativeProtocolStateGate) selectProposal(ctx context.Context, p allocati
 		return errors.Join(errCorrupt, err)
 	}
 	g.arm, g.command = actual, bytes.Clone(p.wire)
+	if g.program != nil {
+		if err := g.program.arm(g.owner.Member, p.target.partition, p.wire); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func (g *nativeProtocolStateGate) before(ctx context.Context, origin, part uint64, wire []byte) error {
