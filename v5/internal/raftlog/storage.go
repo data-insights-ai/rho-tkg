@@ -68,6 +68,7 @@ type Config struct {
 // Fatal Pebble WAL/storage errors terminate the embedding process; this candidate
 // fail-stop tradeoff requires evaluation before engine selection.
 type Store struct {
+	storageObserver               StableStorageObserver
 	readyProgress                 *ApplicationReadyProgress
 	mu                            sync.Mutex
 	publicationMu                 sync.Mutex
@@ -159,6 +160,10 @@ func Open(c Config) (*Store, error) {
 			return nil, err
 		}
 	}
+	var storageObserver StableStorageObserver
+	if c.FS != nil {
+		storageObserver, _ = c.FS.(StableStorageObserver)
+	}
 	if c.FS == nil {
 		c.FS = vfs.Default
 	}
@@ -166,7 +171,7 @@ func Open(c Config) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{db: db, limits: c.Limits, canInitialize: c.Create, applicationPolicy: c.Application, publicationPolicy: c.PublishedCuts}
+	s := &Store{storageObserver: storageObserver, db: db, limits: c.Limits, canInitialize: c.Create, applicationPolicy: c.Application, publicationPolicy: c.PublishedCuts}
 	fail := func(err error) (*Store, error) { return nil, errors.Join(err, db.Close()) }
 	if c.Create {
 		s.meta = initial
@@ -329,6 +334,10 @@ func (s *Store) check() error {
 }
 
 func (s *Store) commit(m metadata, batch *pebble.Batch) (err error) {
+	return s.commitObserved(m, batch, 0, nil)
+}
+
+func (s *Store) commitObserved(m metadata, batch *pebble.Batch, kind StableStorageKind, entries []*pb.Entry) (err error) {
 	if batch == nil {
 		batch = s.db.NewBatch()
 	}
@@ -356,7 +365,7 @@ func (s *Store) commit(m metadata, batch *pebble.Batch) (err error) {
 		err = batch.Set(metaKey, b, nil)
 	}
 	if err == nil {
-		err = batch.Commit(pebble.Sync)
+		err = s.commitStableBatch(batch, kind, entries)
 	}
 	if err != nil {
 		s.poison = err

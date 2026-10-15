@@ -4,7 +4,6 @@ import (
 	"errors"
 	"math"
 
-	"github.com/cockroachdb/pebble/v2"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -225,7 +224,7 @@ func (s *Store) writeOrdinaryReadyLocked(rd raft.Ready, p ordinaryReadyPlan) (er
 	if err := batch.Set(metaKey, raw, nil); err != nil {
 		return err
 	}
-	if err := batch.Commit(pebble.Sync); err != nil {
+	if err := s.commitStableBatch(batch, StableStorageReady, rd.Entries); err != nil {
 		s.poison = err
 		return errors.Join(ErrPoisoned, err)
 	}

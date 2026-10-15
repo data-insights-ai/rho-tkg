@@ -645,7 +645,12 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 	if err := batch.Set(imageKey, b.Image, nil); err != nil {
 		return fail(err)
 	}
-	return s.commit(m, batch)
+	if s.storageObserver == nil {
+		return s.commit(m, batch)
+	}
+	// Reuse the exact retained normal entry already validated above. This
+	// diagnostic branch adds no native read and exposes no mutable entry bytes.
+	return s.commitObserved(m, batch, StableStorageApplication, []*pb.Entry{e})
 }
 
 // AdmitApplication conservatively reserves worst-case installation growth for
