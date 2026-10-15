@@ -49,6 +49,11 @@ package core
 //     written before the setting existed (hashes on) and an off-store would be
 //     refused or mixed. Re-persisted from c.hashesOff, no capture needed — see
 //     restoreIntegrityModeAfterReset (integrity_switch.go).
+//   - untimedValidStartMeta (Preserve): the Config.UntimedValidStart mode the
+//     store's creates are written under (backlog 73), for the same reason:
+//     wiped, a reopen would read the store as one written before the option
+//     existed (UntimedFromTxFrom). Re-persisted from c.untimedUnbounded — see
+//     restoreUntimedModeAfterReset (untimed_mode.go).
 //   - idSlotLeaseMeta (Preserve): an EXTERNAL ORCHESTRATOR's failover hint
 //     (which snowflake slot this node is leased for) — data-independent
 //     identity, unrelated to the graph's own entities. Wiping it on a data
@@ -97,6 +102,7 @@ var metaKVFixedKeys = map[string]reapPolicy{
 	idSlotLeaseMeta:              reapPolicyPreserve,
 	instantFloorMeta:             reapPolicyPreserve,
 	integrityHashesMeta:          reapPolicyPreserve,
+	untimedValidStartMeta:        reapPolicyPreserve,
 	uniqueForeverOwnersMeta:      reapPolicyReap,
 	schemaVersionKey:             reapPolicyReap,
 	retentionMaxWatermarkMeta:    reapPolicyReap,

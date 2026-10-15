@@ -138,8 +138,12 @@ func (c *Core) nodeLabelEpoch(tok uint16) (uint64, bool) {
 }
 
 // explicitValid reports whether a row carries a valid-from or valid-to of
-// its own.
-func explicitValid(from, to types.Instant) bool { return from != 0 || to != 0 }
+// its own. A start at -inf (types.UnboundedValidFrom, the untimed first
+// version under Config.UntimedValidStart = UntimedUnbounded, backlog 73)
+// bounds nothing and does not count.
+func explicitValid(from, to types.Instant) bool {
+	return (from != 0 && from != types.UnboundedValidFrom) || to != 0
+}
 
 // LabelTimeStats returns store.MemberTimeStats for label: current members,
 // those carrying explicit valid time, and the latest end of a member row.

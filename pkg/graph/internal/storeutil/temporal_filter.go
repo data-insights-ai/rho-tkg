@@ -11,7 +11,10 @@ import (
 // ValidFrom, else its UntimedValidFrom. Every valid-time door — the chain
 // resolver, the store push-down, the temporal index envelopes, the column
 // filters — takes a row's start from here, so a create and a later version
-// without a valid-from start on one clock.
+// without a valid-from start on one clock. Config.UntimedValidStart needs no
+// branch here (backlog 73): under UntimedUnbounded the create stores an
+// untimed first version with ValidFrom = types.UnboundedValidFrom, an
+// explicit start this rule returns as is.
 func EntityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
 	if tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom

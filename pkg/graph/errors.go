@@ -166,6 +166,9 @@ var (
 	// Config.DisableIntegrityHashes (backlog 61).
 	ErrIntegrityDisabled     = core.ErrIntegrityDisabled
 	ErrIntegrityModeMismatch = core.ErrIntegrityModeMismatch
+	// Config.UntimedValidStart (backlog 73).
+	ErrUntimedModeMismatch      = core.ErrUntimedModeMismatch
+	ErrInvalidUntimedValidStart = core.ErrInvalidUntimedValidStart
 	// Config.DurableCommit (backlog 11).
 	ErrCommitNotDurable = core.ErrCommitNotDurable
 	// Exact legal erasure.

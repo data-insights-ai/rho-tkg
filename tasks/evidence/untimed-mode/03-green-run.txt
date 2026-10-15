@@ -1,0 +1,20 @@
+=== RUN   TestUntimedValidStartModes
+=== RUN   TestUntimedValidStartModes/txfrom/memory
+=== RUN   TestUntimedValidStartModes/txfrom/badger
+=== RUN   TestUntimedValidStartModes/txfrom/tiered
+=== RUN   TestUntimedValidStartModes/txfrom/sharded
+=== RUN   TestUntimedValidStartModes/unbounded/memory
+=== RUN   TestUntimedValidStartModes/unbounded/badger
+=== RUN   TestUntimedValidStartModes/unbounded/tiered
+=== RUN   TestUntimedValidStartModes/unbounded/sharded
+=== RUN   TestUntimedValidStartModes/reopen/badger
+=== RUN   TestUntimedValidStartModes/convert/badger
+=== RUN   TestUntimedValidStartModes/reopen/tiered
+=== RUN   TestUntimedValidStartModes/convert/tiered
+=== RUN   TestUntimedValidStartModes/reopen/sharded
+=== RUN   TestUntimedValidStartModes/convert/sharded
+=== RUN   TestUntimedValidStartModes/convert/memory
+=== RUN   TestUntimedValidStartModes/invalid
+--- PASS: TestUntimedValidStartModes (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	2.973s

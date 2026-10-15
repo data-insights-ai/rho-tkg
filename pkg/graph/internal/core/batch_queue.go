@@ -68,6 +68,9 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 	if err != nil {
 		return nil, err
 	}
+	// A generated ID: a first version. Re-checked at commit
+	// (stampQueuedUntimedStart) for a conversion in between.
+	validFrom = b.g.untimedStart(validFrom, true)
 	txFromOverride, err = b.g.resolveBackfillTxFrom(txFromOverride)
 	if err != nil {
 		return nil, err
@@ -236,6 +239,9 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	if err != nil {
 		return nil, err
 	}
+	// A generated ID: a first version. Re-checked at commit
+	// (stampQueuedUntimedStart) for a conversion in between.
+	validFrom = b.g.untimedStart(validFrom, true)
 	txFromOverride, err = b.g.resolveBackfillTxFrom(txFromOverride)
 	if err != nil {
 		return nil, err

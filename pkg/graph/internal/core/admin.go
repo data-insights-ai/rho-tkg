@@ -275,7 +275,8 @@ func (a *AdminOps) Reset() error {
 		return errors.Join(err,
 			c.restoreIDSlotLeaseAfterReset(leaseBytes),
 			c.restoreInstantFloorAfterReset(),
-			c.restoreIntegrityModeAfterReset())
+			c.restoreIntegrityModeAfterReset(),
+			c.restoreUntimedModeAfterReset())
 	}
 	return c.reapCoreStateForClear(leaseBytes)
 }
@@ -312,6 +313,7 @@ func (c *Core) reapCoreStateForClear(leaseBytes []byte) error {
 		c.restoreIDSlotLeaseAfterReset(leaseBytes),
 		c.restoreInstantFloorAfterReset(),
 		c.restoreIntegrityModeAfterReset(),
+		c.restoreUntimedModeAfterReset(),
 	}
 
 	// And no short-circuit: each step below wipes an INDEPENDENT key, so

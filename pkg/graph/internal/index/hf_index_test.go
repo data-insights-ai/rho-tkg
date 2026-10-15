@@ -327,3 +327,23 @@ func hfIDsContain(ids []types.NodeID, want types.NodeID) bool {
 	}
 	return false
 }
+
+// TestHFIndexBucketForIsMonotonicAtTheExtremes (backlog 73): a row valid
+// since -inf (types.UnboundedValidFrom) must land in a bucket at or below
+// every later start's; validFrom - origin overflowed and wrapped it to the
+// top.
+func TestHFIndexBucketForIsMonotonicAtTheExtremes(t *testing.T) {
+	starts := []types.Instant{types.UnboundedValidFrom, types.UnboundedValidFrom + 1, -3_600_001, -1, 0, 1, 3_600_000, 1<<63 - 1}
+	for _, origin := range []types.Instant{0, 1_000_000, -1_000_000, types.UnboundedValidFrom, 1<<63 - 1} {
+		hfi := NewHighFrequencyIndex(time.Hour, origin)
+		for i := 1; i < len(starts); i++ {
+			lo, hi := hfi.BucketFor(starts[i-1]), hfi.BucketFor(starts[i])
+			if lo > hi {
+				t.Errorf("origin %d: BucketFor(%d) = %d > BucketFor(%d) = %d", origin, starts[i-1], lo, starts[i], hi)
+			}
+		}
+		if got := hfi.BucketFor(origin); got != 0 {
+			t.Errorf("origin %d: BucketFor(origin) = %d, want 0", origin, got)
+		}
+	}
+}

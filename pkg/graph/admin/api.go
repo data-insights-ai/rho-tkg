@@ -64,6 +64,16 @@ type ExactErasureReceipt = core.ExactErasureReceipt
 // layout (ADR-0011). Alias of store.RelSegmentStats.
 type RelSegmentStats = store.RelSegmentStats
 
+// UntimedValidStart is the untimed valid-start mode (backlog 73). See
+// core.UntimedValidStart and graph.Config.UntimedValidStart.
+type UntimedValidStart = core.UntimedValidStart
+
+// UntimedFromTxFrom and UntimedUnbounded are the untimed valid-start modes.
+const (
+	UntimedFromTxFrom = core.UntimedFromTxFrom
+	UntimedUnbounded  = core.UntimedUnbounded
+)
+
 // PurgeByAge purges nodes below Before by IMMUTABLE snowflake mint-time (v1).
 const PurgeByAge = core.PurgeByAge
 
@@ -84,6 +94,7 @@ type Ops interface {
 	ExactErase(ctx context.Context, request ExactErasureRequest) (ExactErasureReceipt, error)
 	SealRelSegments(relType string) error
 	RelSegmentStats(relType string) (RelSegmentStats, error)
+	SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) error
 }
 
 // API is the admin sub-API accessor.
@@ -109,6 +120,25 @@ func (a *API) Reset() error {
 		return err
 	}
 	return ops.Reset()
+}
+
+// SetUntimedValidStart converts the store, once and one way, to the untimed
+// valid-start mode (backlog 73): with UntimedUnbounded every entity's first
+// version without a valid-from (current or history, node and relationship)
+// is rewritten to start at -inf (types.UnboundedValidFrom) through the store
+// doors that keep every index current, the mode is persisted, and later
+// creates take it; reopen the store with Config.UntimedValidStart =
+// UntimedUnbounded. UntimedFromTxFrom on a TxFrom store is a no-op, on an
+// unbounded one ErrUntimedModeMismatch. The graph is locked meanwhile. A
+// conversion cut short (crash, ctx, store error) stays marked unfinished: a
+// reopen under UntimedFromTxFrom fails with ErrUntimedModeMismatch, one under
+// UntimedUnbounded (or a second call) finishes it. See core.AdminOps.
+func (a *API) SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.SetUntimedValidStart(ctx, mode)
 }
 
 // DecomposeNodeID extracts time/node/step from a node ID.
