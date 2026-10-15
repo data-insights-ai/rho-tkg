@@ -70,6 +70,11 @@ COST_PARENTS = [
     "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation",
 ]
 FAULT_PARENTS = [
+    "TestNativePreparedLockP06InitialRegisterPrecedesFirstYESAcrossSyncDeath",
+    "TestNativeP06InitialRegisterRegistryKeepsPreYESOrderAndOriginalIdentity",
+    "TestNativeConjunctionRetainedRoutingRequiresFreshCanonicalIdleOwner",
+    "TestNativeConjunctionSameCoordinatorRetainsGenuineUnknownRegisterAndStreams",
+    "TestNativeConjunctionChangedPeerReplacesOnlyItsStreamAfterValidation",
     "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal",
     "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath",
     "TestNativeP06TerminalSelectorsCannotImportAuthorityOrInventStepReply",
@@ -147,9 +152,9 @@ FIXTURE_COMPAT = {
     "native_graph_contention_harness_test.go": WORKLOAD_PARENTS,
     "native_graph_contention_runner_test.go": WORKLOAD_PARENTS,
     "native_graph_workload_transport_harness_test.go": WORKLOAD_PARENTS,
-    "paired_graph_fault_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath"],
-    "paired_graph_snapshot_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath"],
-    "prepared_lock_p06_harness_test.go": ["TestPreparedLockP06FirstYESLeaderKillOriginalRecovery", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath"],
+    "paired_graph_fault_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath", "TestNativePreparedLockP06InitialRegisterPrecedesFirstYESAcrossSyncDeath", "TestNativeConjunctionRetainedRoutingRequiresFreshCanonicalIdleOwner", "TestNativeConjunctionSameCoordinatorRetainsGenuineUnknownRegisterAndStreams", "TestNativeConjunctionChangedPeerReplacesOnlyItsStreamAfterValidation"],
+    "paired_graph_snapshot_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath", "TestNativePreparedLockP06InitialRegisterPrecedesFirstYESAcrossSyncDeath"],
+    "prepared_lock_p06_harness_test.go": ["TestPreparedLockP06FirstYESLeaderKillOriginalRecovery", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath", "TestNativePreparedLockP06InitialRegisterPrecedesFirstYESAcrossSyncDeath"],
     "coordinator_loss_p03_harness_test.go": ["TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"],
     "prepare_fence_p02_harness_test.go": ["TestPrepareFenceP02ActualOrderingAcrossElection"],
     "native_graph_fault_schedule_harness_test.go": FAULT_PARENTS,
@@ -191,6 +196,7 @@ CORRECTION_INPUTS = {"tools/v5-substrate/native_late_correction_check.py","tools
                      "tools/v5-substrate/fdb_columns_check.py","tools/v5-substrate/fdb_correction_check.py",
                      "tools/v5-substrate/fdb_correction_check_test.py","tools/v5-substrate/fdb_selectors_check.py"}
 FAULT_INPUTS = {"tools/v5-substrate/native_fault_schedule_check.py", "tools/v5-substrate/native_fault_schedule_check_test.py",
+                "tools/v5-substrate/native_transition_initial_check.py", "tools/v5-substrate/native_transition_initial_check_test.py",
                 "tools/v5-substrate/native_transition_conjunction_check.py", "tools/v5-substrate/native_transition_conjunction_check_test.py",
                 "tools/v5-substrate/native_transition_retention_check.py", "tools/v5-substrate/native_transition_retention_check_test.py",
                 "tools/v5-substrate/native_transition_publication_check.py", "tools/v5-substrate/native_transition_publication_check_test.py",
@@ -602,6 +608,7 @@ def cdc(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transition_state_check_test.py"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transition_batch_check_test.py"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transition_conjunction_check_test.py"], cwd=ROOT, check=True)
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transition_initial_check_test.py"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_fault_schedule_check_test.py"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_fault_family_check_test.py"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transition_check_test.py"], cwd=ROOT, check=True)
