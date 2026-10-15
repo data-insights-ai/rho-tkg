@@ -262,14 +262,15 @@ all A–F exit requirements; implementation status never implies acceptance.
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (latest observed main source is `259105ad`/v4.55.2; current v5 source includes v4.51.8),
+   cutoff (latest observed main source is `e6f04f41`/v4.55.2; current v5 source includes v4.51.8),
    review relevant handover/consumer/CI deltas and integrate required changes.
    The effective-page, history-epoch/head-cache, correction/rollback fast-path
    and compaction-gap version-allocation contracts belong in that source/consumer
    reconciliation. The latest additive delta also includes numeric property
    bounds, range reads/counts at a pin, label/type time statistics and scans
    restricted by ordinal bitsets. No v5 implementation or shared CI file changed
-   in that latest delta; the upstream handover is not release evidence.
+   in that latest delta; `Eternal()` still requires the valid-time filter because
+   an implicit-valid member starts at its `TxFrom`. The upstream handover is not release evidence.
    Preserve historical qualification rather than relabelling it as current.
    On the final integrated revision run full phase CI/race/coverage/security and
    the complete V2 requirement/evidence audit once; repeat only gates invalidated
@@ -390,6 +391,10 @@ cancellation fences against delayed publication. Four terminal exchanges are
 prepaid in the persisted policy; spent uncertain attempts are not refunded, and
 exhaustion preserves retiring state with an explicit limit refusal. Legacy
 contracts/bytes stay unchanged. The two native guard parents are authored only.
+Fresh column admission and source-failure accounting are source-integrated at
+`d385f2cd`: a separately versioned aggregate-row allowance binds the immutable
+workload admission; failed distributed captures retain actual post-Close RPC
+and wire counters. Legacy zero-version bytes and allowances remain unchanged.
 Large-prefix continuation still needs a source correction: the dependency
 prepass currently keeps its positions and minimum feed indexes only in memory.
 The fresh policy must journal and resume that progress with cumulative work
