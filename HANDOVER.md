@@ -1,7 +1,7 @@
-# HANDOVER — rho-tkg v4 line (2026-10-15, main = tag v4.55.3)
+# HANDOVER — rho-tkg v4 line (2026-10-15, main = tag v4.56.0)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). Latest tag `v4.55.3`; main = tag. Read in this order: this file, `tasks/lessons.md` (digest at the top),
+database). Latest tag `v4.56.0`; main = tag. Read in this order: this file, `tasks/lessons.md` (digest at the top),
 `tasks/todo.md` (user requests, releases table), `tasks/backlog.md` (open table, then specs), `CHANGELOG.md` top.
 What shipped and why is in `CHANGELOG.md` and git, not here.
 
@@ -12,7 +12,7 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
    `Unbounded` (first version only). Persisted per store; existing stores open as `TxFrom`; switching is an explicit admin
    conversion. Both sigma and ai-soc chose `Unbounded`. The default for new stores flips to `Unbounded` in the next minor
    release, after a `// Deprecated:` notice and CHANGELOG Deprecated entry.
-2. **Consumer status:** ai-soc PIN17 (v4.55.1) is running; PIN18 (v4.55.3 plus sigma's Derived-read patch) is next. sigma adopts
+2. **v4.56.0 released 2026-10-15:** Config.UntimedValidStart (todo row 42); both consumers set UntimedUnbounded; the default for new stores flips in v4.57.0. **Consumer status:** ai-soc PIN17 (v4.55.1) is running; PIN18 (v4.55.3 plus sigma's Derived-read patch) is next. sigma adopts
    v4.55.x in its next patch.
 3. **Open work:** the open table of `tasks/backlog.md` (one list; parked rows are marked there).
 
