@@ -39,6 +39,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   unbounded and a converted one, opens a TxFrom store; badger, tiered, sharded). Upgrade notes: persistence.md "Upgrading a
   store".
 
+- **`Config.UntimedValidStart` review fixes** (backlog 73, Opus review of 75f86596). (1) Under `ConstraintRelWithinEndpoints` an
+  untimed -inf relationship compared with the endpoint's CURRENT row start, so add A, update A, add an untimed A->B failed with
+  `ErrRelBeforeStartNode` on every create door; it now compares with the endpoint's first version when that is unbounded and
+  no delete ended its life (`TestUntimedUnboundedEndpointConstraint`). (2) The conversion wrote its final mode durably before
+  the rewritten rows left the write buffer (on tiered and sharded, another shard): every shard is now flushed durably first,
+  also when an open finishes a conversion (`TestUntimedConversionCrashSafe`, a crash image of the live directory on badger,
+  sharded and tiered). (4) Exports carry the mode (header `uu`); an import into an empty store adopts it, into a store with rows
+  under the other mode, and a delta merge of the other mode, fail with `ErrUntimedModeMismatch` (`TestImportCarriesUntimedMode`,
+  `TestImportMergeRefusesOtherUntimedMode`). (5) The mode replicates: `MetaSetDurableRaising` appends the key, the marker raise
+  and a `ChangeMeta` record to one pending batch and flushes it durably; the replica applies and persists it; any other
+  replicated meta key fails closed (`TestUntimedModeReplicates`). The conversion also stamps a sharded store's Model-A
+  incoming stubs, and a replica applying `ChangeForeignIncoming` for an existing stub takes the record's row
+  (`TestUntimedConversionStampsForeignIncomingStubs`).
+
+### Fixed
+
+- **`Admin().Reset` no longer re-arms the one-shot bitemporal migration** (backlog 73 review 3). Reset reaped
+  `schema_version`, so the next open re-ran the migration over rows written after the Reset: a close row copies its version's
+  start, the migration read the equal starts as an inherited legacy `ValidFrom` and cleared it, and the close row no longer
+  answered its version's span (timed and unbounded alike). `schema_version` is now kept across `Reset` and a replica's
+  `ChangeClear`, and the migration never treats `types.UnboundedValidFrom` as inherited (`TestResetKeepsBitemporalMigrationDone`).
+
 ### Deprecated
 
 - **The default of `Config.UntimedValidStart` for NEW stores becomes `UntimedUnbounded` in the next minor release**

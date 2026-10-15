@@ -503,7 +503,6 @@ func (ms *Store) MetaGet(key string) ([]byte, error) {
 	return out, nil
 }
 
-// MetaSet stores value under key, overwriting any previous value.
 // MetaSetDurableRaising implements store.MetaFormatMarkerCapability: a memory
 // store has no format marker and nothing to make durable, so it is MetaSet
 // that also appends a ChangeMeta change-log record, so a replica applies the
@@ -526,6 +525,7 @@ func (ms *Store) MetaSetDurableRaising(key string, value []byte, _ uint16) error
 	return nil
 }
 
+// MetaSet stores value under key, overwriting any previous value.
 func (ms *Store) MetaSet(key string, value []byte) error {
 	if ms == nil {
 		return ErrNilStore
