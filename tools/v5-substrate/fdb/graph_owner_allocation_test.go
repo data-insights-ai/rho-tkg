@@ -41,12 +41,29 @@ func TestGraphOwnerLocalIssuanceAndBurnedLifetimeGuards(t *testing.T) {
 }
 
 func ownerActualTransferFixture(t *testing.T, budget ...uint64) (*harness, *graphHistoryRetention, *graphOwnerCatalog, *graphOwnerClient, *graphOwnerClient, graphOwnerAuthority, graphOwnerAuthority) {
+	return ownerActualTransferFixtureAdmission(t, false, budget...)
+}
+func ownerActualTransferFixtureAdmission(t *testing.T, transported bool, budget ...uint64) (*harness, *graphHistoryRetention, *graphOwnerCatalog, *graphOwnerClient, *graphOwnerClient, graphOwnerAuthority, graphOwnerAuthority) {
 	t.Helper()
 	var run [16]byte
 	if _, err := rand.Read(run[:]); err != nil {
 		t.Fatal(err)
 	}
 	spec := graphFeedWorkloadSpec{Version: 1, Family: graphOwnerTransferFamily, Facts: 20, CrossPercent: 100, Writers: 1, Layout: "kv"}
+	var admission *graphTransportPolicy
+	if transported {
+		spec.Version = 2
+		p := graphTransportGuardPolicy()
+		p.Spec, p.Run, p.Transport = spec, run, graphTransport{"local", 0, 0, 20261009}
+		p.BudgetSeconds = 180
+		if len(budget) > 0 {
+			p.BudgetSeconds = budget[0]
+		}
+		p.AdmittedUnixNanos = time.Now().UnixNano()
+		p.DeadlineUnixNanos = p.AdmittedUnixNanos + int64(p.BudgetSeconds)*int64(time.Second)
+		p.CausalMinimumMillis = 0
+		admission = &p // Declared fixture metadata, NOT actual tc/tool/PID evidence.
+	}
 	cfg := graphOwnerTransferConfig(spec, hex.EncodeToString(run[:]))
 	h := fixture(t, cfg)
 	t.Cleanup(func() {
@@ -60,6 +77,11 @@ func ownerActualTransferFixture(t *testing.T, budget ...uint64) (*harness, *grap
 			t.Error(err)
 		}
 	})
+	if admission != nil {
+		if _, err := h.graphTransportInstall(t.Context(), *admission); err != nil {
+			t.Fatal(err)
+		}
+	}
 	initial := mustCut(t, h, []uint8{0, 1}, nil)
 	source, err := newGraphHistoryRetentionContext(t.Context(), h, initial, graphSelectorsPolicy(cfg).History)
 	if err != nil {
@@ -71,6 +93,10 @@ func ownerActualTransferFixture(t *testing.T, budget ...uint64) (*harness, *grap
 	if len(budget) > 0 {
 		policy.BudgetSeconds = budget[0]
 		policy.DeadlineUnixNanos = policy.AdmittedUnixNanos + int64(budget[0])*int64(time.Second)
+	}
+	if admission != nil {
+		policy.Version, policy.Admission, policy.Census = 2, admission, new(ownerDirectCensusPolicy())
+		policy.BudgetSeconds, policy.AdmittedUnixNanos, policy.DeadlineUnixNanos = admission.BudgetSeconds, admission.AdmittedUnixNanos, admission.DeadlineUnixNanos
 	}
 	catalog, err := newGraphOwnerCatalogTransfer(t.Context(), source, [2]graphOwnerAuthority{a, b}, policy)
 	if err != nil {
@@ -137,7 +163,7 @@ func TestGraphOwnerActualAllocationFactoryAndFencedAbort(t *testing.T) {
 		}
 	})
 	t.Run("MultipleGrantFactorySuccessorAndNativeAbort", func(t *testing.T) {
-		h, source, catalog, ca, cb, a, b := ownerActualTransferFixture(t)
+		h, source, catalog, ca, cb, a, b := ownerActualTransferFixtureAdmission(t, true)
 		reserves := []struct {
 			name   string
 			count  uint64
@@ -304,8 +330,36 @@ func TestGraphOwnerActualAllocationFactoryAndFencedAbort(t *testing.T) {
 		if err := source.begin("gc-frozen", old); !errors.Is(err, errHistoryInUse) {
 			t.Fatal(err)
 		}
+		if _, err := catalog.PrepareCensus(t.Context(), a, move, "complete"); err != nil {
+			t.Fatal(err)
+		}
+		var last graphOwnerCensusDelivery
+		for ordinal := uint64(1); ordinal <= 512; ordinal++ {
+			last, err = catalog.CensusPage(t.Context(), a, move, "complete", ordinal)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ordinal == 1 {
+				replay, err := catalog.CensusPage(t.Context(), a, move, "complete", ordinal)
+				if err != nil || !replay.Replay || !graphColumnSame(replay.Page, last.Page) || !slices.EqualFunc(replay.Rows, last.Rows, func(a, b graphCostStoredRecord) bool {
+					return bytes.Equal(a.Key, b.Key) && bytes.Equal(a.Value, b.Value)
+				}) {
+					t.Fatal("SAME native page changed", replay, err)
+				}
+			}
+			if last.Page.EOF {
+				break
+			}
+		}
+		if !last.Page.EOF {
+			t.Fatal("no complete native two-prefix EOF")
+		}
 		if _, err := catalog.Activate(t.Context(), b, move); err != nil {
 			t.Fatal(err)
+		}
+		census, err := catalog.ObserveCensus(t.Context(), a, move, "complete")
+		if err != nil || !census.Seal.Complete || census.AllRows != census.Seal.Rows+3 || census.AllBytes <= census.Seal.Bytes {
+			t.Fatal("native seal/cost census", census, err)
 		}
 		if _, err := ca.ReserveIDs(t.Context(), "home-0", reserves[0].secret, 32, 0); !errors.Is(err, errStale) {
 			t.Fatal("old HOME recovered authority", err)

@@ -103,7 +103,7 @@ func (c *graphOwnerCatalog) Observe(ctx context.Context) (graphOwnerView, int, e
 }
 
 func graphOwnerSelected(c config) bool {
-	return strings.HasPrefix(c.Graph, graphOwnerNamespace) || strings.HasPrefix(c.Graph, graphOwnerTransferNamespace)
+	return strings.HasPrefix(c.Graph, graphOwnerNamespace) || strings.HasPrefix(c.Graph, graphOwnerTransferNamespace) || strings.HasPrefix(c.Graph, graphOwnerTransportNamespace)
 }
 func (p graphOwnerPolicy) validate() error {
 	if p.MaxRecords < 8 || p.MaxRecords > 4096 || p.MaxControlBytes < 8*graphOwnerRecordBytes || p.MaxControlBytes > 256<<20 {
@@ -209,6 +209,9 @@ func (h *harness) ownerCatalogIn(tr fdb.ReadTransaction) (*graphOwnerCatalog, er
 		return nil, errMismatch
 	}
 	c.binding = b
+	if err := c.transportIn(tr); err != nil {
+		return nil, err
+	}
 	if _, err := c.stateIn(tr); err != nil {
 		return nil, err
 	}
@@ -270,6 +273,9 @@ func installGraphOwnerCatalog(ctx context.Context, source *graphHistoryRetention
 	}
 	defer cancel()
 	_, _, err = historyTransactContext(ctx, c.h.db, func() error { return nil }, func(tr fdb.Transaction) (bool, error) {
+		if err := c.transportIn(tr); err != nil {
+			return false, err
+		}
 		actual, err := c.h.historyRetentionIn(tr)
 		if err != nil {
 			return false, err
@@ -376,6 +382,7 @@ type graphOwnerMoveProgress struct {
 	Phase    uint8 // 0 reserved; 1 frozen; 2 activated; 3 canceled.
 	Cut      certificate
 	Metadata [2]metadata
+	Census   string `json:",omitempty"`
 }
 
 func (m graphOwnerMove) validate() error {
@@ -673,6 +680,11 @@ func (c *graphOwnerCatalog) Activate(ctx context.Context, target graphOwnerAutho
 		}
 		if progress.Phase != 1 || state.Moving != move.Request || state.Version != move.Before.Version || state.Routes != move.Before.Routes {
 			return state, errStale
+		}
+		if c.binding.Transfer != nil && c.binding.Transfer.Version == 2 {
+			if err := c.censusActivateIn(tr, move, progress, expected); err != nil {
+				return state, err
+			}
 		}
 		source, err := c.heldIn(tr, move, progress)
 		if err != nil {

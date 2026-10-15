@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -128,5 +129,43 @@ func TestGraphOwnerFundedCleanupDeadlineAndNoResetGuards(t *testing.T) {
 	ticket.Calls = 0
 	if _, err := p.cleanupDebit(ticket, now); !errors.Is(err, errMismatch) {
 		t.Fatal("spent/deadline state reset", err)
+	}
+}
+
+func TestGraphOwnerOwnedTransportAndCensusBindingGuards(t *testing.T) {
+	a := graphTransportGuardPolicy()
+	a.Spec.Family = graphOwnerTransferFamily
+	a.CausalMinimumMillis, _ = graphTransportCausalMinimum(a.Spec, a.Transport)
+	cfg := graphTransportConfig(a.Spec, hex.EncodeToString(a.Run[:]))
+	p := ownerDirectTransferPolicy(cfg, a.Run)
+	p.Version, p.Admission, p.Census = 2, &a, new(ownerDirectCensusPolicy())
+	p.BudgetSeconds, p.AdmittedUnixNanos, p.DeadlineUnixNanos = a.BudgetSeconds, a.AdmittedUnixNanos, a.DeadlineUnixNanos
+	p.MaxGrants, p.MaxBlock, p.MaxRecords, p.MaxControlBytes = 8, graphOwnerMaxBlock, 10_000_000, 1<<40
+	*p.Census = graphOwnerCensusPolicy{PageRows: 128, PageBytes: 4 << 20, HeadRows: 512, HeadBytes: 48 << 10, MaxRows: 1 << 31, MaxBytes: 1 << 45, MaxCalls: 1 << 28, MaxWorkRows: 1 << 48, MaxWorkBytes: 1 << 62}
+	if err := p.validate(); err != nil {
+		t.Fatal("explicit owned transfer binding", err)
+	}
+	if !graphOwnerSelected(cfg) || !graphTransported(cfg) || cfg.Cost.Version != 8 {
+		t.Fatal("fresh route bypassed original/owner gate", cfg)
+	}
+	for _, change := range []func(*graphOwnerTransferPolicy){
+		func(p *graphOwnerTransferPolicy) { p.Admission = nil },
+		func(p *graphOwnerTransferPolicy) { p.Census = nil },
+		func(p *graphOwnerTransferPolicy) { p.Version = 1 },
+		func(p *graphOwnerTransferPolicy) { p.DeadlineUnixNanos-- },
+	} {
+		bad := p
+		change(&bad)
+		if err := bad.validate(); err == nil {
+			t.Fatal("missing/reset owned transport admitted", bad)
+		}
+	}
+	legacy := ownerDirectTransferPolicy(graphOwnerTransferConfig(graphFeedWorkloadSpec{Version: 1, Family: graphOwnerTransferFamily, Facts: 20, CrossPercent: 100, Writers: 1, Layout: "kv"}, hex.EncodeToString(a.Run[:])), a.Run)
+	body, err := wire(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(body, []byte("Admission")) || bytes.Contains(body, []byte("Census")) {
+		t.Fatal("direct policy1 bytes widened", string(body))
 	}
 }

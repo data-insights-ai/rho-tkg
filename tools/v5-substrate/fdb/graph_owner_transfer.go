@@ -3,6 +3,7 @@ package main
 // Fresh ownership/allocator admission for the transfer workload. This is
 // deliberately separate from catalog1's small direct-API control grant.
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"math"
@@ -13,6 +14,7 @@ import (
 )
 
 const graphOwnerTransferNamespace = "graph-owned-v2-"
+const graphOwnerTransportNamespace = "graph-owned-v3-"
 const graphOwnerTransferFamily = "transfer-retained-pins"
 const graphOwnerMaxBlock = uint64(1 << 20)
 
@@ -26,6 +28,8 @@ type graphOwnerTransferPolicy struct {
 	MaxGrants, MaxBlock                           uint64
 	MaxAttempts, MaxSubmissions, MaxCallbacks     uint64
 	CleanupMillis, MaxCleanupCalls                uint64
+	Admission                                     *graphTransportPolicy   `json:",omitempty"`
+	Census                                        *graphOwnerCensusPolicy `json:",omitempty"`
 }
 
 func graphOwnerTransferLimit(p graphCostProfile) limits {
@@ -33,7 +37,11 @@ func graphOwnerTransferLimit(p graphCostProfile) limits {
 	return limits{Bytes: (64 << 20) + p.Facts*(64<<10) + originals*2048, Transactions: originals, Versions: 3 + 6*p.Facts, Certificates: 1024}
 }
 func graphOwnerTransferConfig(spec graphFeedWorkloadSpec, run string) config {
-	return graphCostConfig(graphOwnerTransferNamespace+spec.Layout+"-"+run, graphCostProfile{8, spec.Facts, spec.CrossPercent, spec.Writers})
+	prefix := graphOwnerTransferNamespace
+	if spec.Version == 2 {
+		prefix = graphOwnerTransportNamespace
+	}
+	return graphCostConfig(prefix+spec.Layout+"-"+run, graphCostProfile{8, spec.Facts, spec.CrossPercent, spec.Writers})
 }
 func validGraphOwnerTransferConfig(c config) bool {
 	p := c.Cost
@@ -41,6 +49,9 @@ func validGraphOwnerTransferConfig(c config) bool {
 		return false
 	}
 	name, found := strings.CutPrefix(c.Graph, graphOwnerTransferNamespace)
+	if !found {
+		name, found = strings.CutPrefix(c.Graph, graphOwnerTransportNamespace)
+	}
 	if !found {
 		return false
 	}
@@ -55,8 +66,22 @@ func validGraphOwnerTransferConfig(c config) bool {
 	return c.Nodes == [2]uint64{n[0].Node, n[2].Node}
 }
 func (p graphOwnerTransferPolicy) validate() error {
-	if p.Version != 1 || !validGraphOwnerTransferConfig(p.Config) || p.Run == [16]byte{} || !strings.HasSuffix(p.Config.Graph, hex.EncodeToString(p.Run[:])) || p.BudgetSeconds < 1 || p.BudgetSeconds > graphTransportMaxSeconds || p.AdmittedUnixNanos <= 0 || p.AdmittedUnixNanos > math.MaxInt64-int64(p.BudgetSeconds)*int64(time.Second) || p.DeadlineUnixNanos != p.AdmittedUnixNanos+int64(p.BudgetSeconds)*int64(time.Second) || p.DeadlineUnixNanos > math.MaxInt64-int64(30*time.Second) || p.CleanupMillis != 30_000 || p.MaxCleanupCalls != 8 || p.MaxAttempts != 64 || p.MaxSubmissions != 8 || p.MaxCallbacks != 16 || p.MaxProposalBytes < 2048 || p.MaxProposalBytes > 32<<10 || p.MaxGrants < 4 || p.MaxGrants > 64 || p.MaxBlock < 1 || p.MaxBlock > graphOwnerMaxBlock {
+	legacy := p.Version == 1 && p.Admission == nil && p.Census == nil && strings.HasPrefix(p.Config.Graph, graphOwnerTransferNamespace)
+	fresh := p.Version == 2 && p.Admission != nil && p.Census != nil && p.Admission.validate() == nil && p.Admission.Spec.Family == graphOwnerTransferFamily && p.Census.validate() == nil && strings.HasPrefix(p.Config.Graph, graphOwnerTransportNamespace)
+	if (!legacy && !fresh) || !validGraphOwnerTransferConfig(p.Config) || p.Run == [16]byte{} || !strings.HasSuffix(p.Config.Graph, hex.EncodeToString(p.Run[:])) || p.BudgetSeconds < 1 || p.BudgetSeconds > graphTransportMaxSeconds || p.AdmittedUnixNanos <= 0 || p.AdmittedUnixNanos > math.MaxInt64-int64(p.BudgetSeconds)*int64(time.Second) || p.DeadlineUnixNanos != p.AdmittedUnixNanos+int64(p.BudgetSeconds)*int64(time.Second) || p.DeadlineUnixNanos > math.MaxInt64-int64(30*time.Second) || p.CleanupMillis != 30_000 || p.MaxCleanupCalls != 8 || p.MaxAttempts != 64 || p.MaxSubmissions != 8 || p.MaxCallbacks != 16 || p.MaxProposalBytes < 2048 || p.MaxProposalBytes > 32<<10 || p.MaxGrants < 4 || p.MaxGrants > 64 || p.MaxBlock < 1 || p.MaxBlock > graphOwnerMaxBlock {
 		return errInvalid
+	}
+	if p.Admission != nil {
+		a := p.Admission
+		if a.Run != p.Run || a.BudgetSeconds != p.BudgetSeconds || a.AdmittedUnixNanos != p.AdmittedUnixNanos || a.DeadlineUnixNanos != p.DeadlineUnixNanos || graphTransportConfig(a.Spec, hex.EncodeToString(a.Run[:])) != p.Config {
+			return errMismatch
+		}
+		// Explicit grant for the declared complete useful schedule: source
+		// history/current/CDC, both original+intent pairs and first-use IDs.
+		// ABORT/control/column/page headroom is additional caller-owned admission.
+		if p.Census.MaxRows < 33+21*p.Config.Cost.Facts {
+			return errInvalid
+		}
 	}
 	// Enough records for the useful schedule, with the actual chosen extra
 	// attempt headroom explicit. Limits may still refuse a genuinely exhausted
@@ -65,6 +90,23 @@ func (p graphOwnerTransferPolicy) validate() error {
 	grants := (2*p.Config.Cost.Facts+6+p.MaxBlock-1)/p.MaxBlock + (2+p.MaxBlock-1)/p.MaxBlock + 1
 	if grants > p.MaxGrants || p.MaxRecords < minimum || p.MaxRecords > 1<<32 || p.MaxControlBytes < 512<<10 || p.MaxControlBytes > 1<<50 || p.MaxRecords > p.MaxControlBytes/128 {
 		return errInvalid
+	}
+	return nil
+}
+
+func (c *graphOwnerCatalog) transportIn(tr fdb.ReadTransaction) error {
+	if p := c.binding.Transfer; p != nil && p.Admission != nil {
+		body, err := wire(p.Admission)
+		if err != nil {
+			return err
+		}
+		raw, err := tr.Get(c.h.key(0, "workload-transport-v2", "binding")).Get()
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(raw, body) {
+			return errMismatch
+		}
 	}
 	return nil
 }
