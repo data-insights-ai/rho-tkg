@@ -124,6 +124,13 @@ the mode and export `uu` carries it. V4/V6 source-delta mapping and importer
 qualification must preserve those policies, interrupted-conversion refusals,
 current endpoint-life bounds and Reset migration markers. Earlier source pins
 and receipts remain historical. No V2 runtime or CI gate was run for this merge.
+Main `0fa37786`/v4.56.1 is source-integrated at `dee0c7f2`, preserving its
+one-pass property-sidecar builds/open-image restoration and complete-history
+temporal-envelope pruning, including re-created/re-typed relationship IDs.
+All 26 affected v4 source/test blobs match upstream; no v5 source changed.
+Consumer source-delta mapping and reader qualification remain V4/V6 work, and
+the recorded upstream performance evidence is not v5 measurement or acceptance.
+No compile, test, measurement or CI run accompanies this merge.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
@@ -276,8 +283,8 @@ all A–F exit requirements; implementation status never implies acceptance.
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (integrated main is `5b49d002`, including release
-   `a08c0d52`/v4.56.0),
+   cutoff (integrated main is `0fa37786`, including release
+   `5d8b5917`/v4.56.1),
    review relevant handover/consumer/CI deltas and integrate required changes.
    The effective-page, history-epoch/head-cache, correction/rollback fast-path
    and compaction-gap version-allocation contracts belong in that source/consumer
