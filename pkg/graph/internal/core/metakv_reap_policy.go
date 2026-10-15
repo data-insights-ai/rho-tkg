@@ -62,10 +62,12 @@ package core
 //     (replication.go).
 //   - uniqueForeverOwnersMeta (Reap): the durable value-ownership registry is
 //     scoped to the graph's own entities/values, which Reset just erased.
-//   - schemaVersionKey (Reap): gates a one-shot, EXPLICITLY IDEMPOTENT
-//     migration (see migration_bitemporal.go's own doc comment). Wiping it is
-//     harmless — the migration simply re-runs against the now-empty store and
-//     re-sets the flag; there is no correctness reason to preserve it.
+//   - schemaVersionKey (Preserve): gates the one-shot bitemporal migration
+//     (migration_bitemporal.go). Wiped, the next open re-ran it over the rows
+//     written after the Clear, which are current-format: it read a close row's
+//     copied start as an inherited legacy ValidFrom and cleared it (backlog 73
+//     review). Re-persisted from c.bitemporalMigrated — see
+//     restoreSchemaVersionAfterReset.
 //   - retentionMaxWatermarkMeta / retentionWatermarkKey and the relationship
 //     family retentionRelMaxWatermarkMeta / retentionRelWatermarkKey (Reap):
 //     retention watermarks describe purge progress over the graph's own
@@ -104,7 +106,7 @@ var metaKVFixedKeys = map[string]reapPolicy{
 	integrityHashesMeta:          reapPolicyPreserve,
 	untimedValidStartMeta:        reapPolicyPreserve,
 	uniqueForeverOwnersMeta:      reapPolicyReap,
-	schemaVersionKey:             reapPolicyReap,
+	schemaVersionKey:             reapPolicyPreserve,
 	retentionMaxWatermarkMeta:    reapPolicyReap,
 	retentionRelMaxWatermarkMeta: reapPolicyReap,
 	uniqueConstraintsMeta:        reapPolicyReap,

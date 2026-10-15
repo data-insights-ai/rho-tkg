@@ -1,0 +1,9 @@
+--- FAIL: TestResetKeepsBitemporalMigrationDone (0.00s)
+    --- FAIL: TestResetKeepsBitemporalMigrationDone/txfrom (0.19s)
+        untimed_review_test.go:149: closed timed version at 150000 after Reset + reopen: &{813445810965643264 [] [] 0x271900389030 0x271915bb7440 <nil> 0 1 false false 2} (<nil>), want the close row (version 1)
+    --- FAIL: TestResetKeepsBitemporalMigrationDone/unbounded (0.22s)
+        untimed_review_test.go:149: closed timed version at 150000 after Reset + reopen: &{813445810979241984 [] [] 0x2718fff22fc0 0x2718fff17ce0 <nil> 0 1 false false 2} (<nil>), want the close row (version 1)
+        untimed_review_test.go:153: closed unbounded first version at far after Reset + reopen: &{813445810978291712 [] [] 0x2718fff23180 0x27190001a120 <nil> 0 1 false false 1} (<nil>), want the close row (version 1)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.230s
+FAIL

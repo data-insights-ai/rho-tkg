@@ -95,3 +95,66 @@ func TestUntimedUnboundedEndpointConstraint(t *testing.T) {
 		})
 	}
 }
+
+// TestResetKeepsBitemporalMigrationDone (review 3): Admin().Reset reaped the
+// one-shot bitemporal migration's schema_version, so the next open ran the
+// migration over rows written after the Reset and cleared the start a close
+// row copies from its version (equal starts read as an inherited legacy
+// ValidFrom): an unbounded closed first version, and a timed one, lost their
+// start. Both modes, badger on disk.
+func TestResetKeepsBitemporalMigrationDone(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, mode := range []graphpkg.UntimedValidStart{graphpkg.UntimedFromTxFrom, graphpkg.UntimedUnbounded} {
+		t.Run(uvsModeName(mode), func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			open := func() *graphpkg.Graph {
+				t.Helper()
+				g, err := graphpkg.New(graphpkg.Config{BadgerDir: dir, AllowReset: true, UntimedValidStart: mode})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return g
+			}
+			g := open()
+			if _, err := g.Nodes().Add(ctx, []string{"N"}, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Admin().Reset(); err != nil {
+				t.Fatal(err)
+			}
+			untimed, err := g.Nodes().Add(ctx, []string{"N"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			timed, err := g.Nodes().Add(ctx, []string{"N"}, map[string]any{"tkg_valid_from": types.Instant(100_000)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			end := untimed.Temporal().TxFrom + 3_600_000
+			for _, id := range []types.NodeID{untimed.ID(), timed.ID()} {
+				if _, err := g.Nodes().Update(ctx, id, map[string]any{"tkg_valid_to": end}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := g.Close(); err != nil {
+				t.Fatal(err)
+			}
+			g = open()
+			defer g.Close()
+			// The close row (version 1) answers over its version's whole span;
+			// with its start cleared, version 0 answers before the close's TxFrom.
+			if n, err := g.Temporal().NodeAt(timed.ID(), 150_000); err != nil || n.Version() != 1 {
+				t.Errorf("closed timed version at 150000 after Reset + reopen: %v (%v), want the close row (version 1)", n, err)
+			}
+			n, err := g.Temporal().NodeAt(untimed.ID(), uvsFar)
+			if mode == graphpkg.UntimedUnbounded && (err != nil || n.Version() != 1) {
+				t.Errorf("closed unbounded first version at far after Reset + reopen: %v (%v), want the close row (version 1)", n, err)
+			}
+			if mode == graphpkg.UntimedFromTxFrom && err == nil {
+				t.Errorf("closed untimed TxFrom version valid at far after Reset + reopen")
+			}
+		})
+	}
+}
