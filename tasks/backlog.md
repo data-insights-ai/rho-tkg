@@ -498,14 +498,14 @@ Its retain-all record allowance is corrected at `7d4f62c9`: each entry funds
 recovery API; neither this quota nor the correction is runtime qualification.
 The dispatcher schedules all eight families and local/1/20/100ms profiles.
 FDB has source drivers for contention, selectors, snapshot-to-feed,
-cross-edge uniqueness and immutable columns; their fresh owned transport adapters cover
+cross-edge uniqueness, immutable columns and late correction; their fresh owned transport adapters cover
 local/1/20/100ms. Native has contention and cross-edge source drivers across
 local/1/20/100ms, with local paired cross-edge comparison. Unsupported semantics
 or transport refuse before effects.
 Each selected-family matrix contains 360 fresh cells;
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
-No new cell, guard or runtime gate has run. The three remaining FDB family drivers
-(partition-local, late-correction/old-index and transfer/retained-pins), native
+No new cell, guard or runtime gate has run. The two remaining FDB family drivers
+(partition-local and transfer/retained-pins), native
 parity, full matrix and engine decision remain open.
 The FDB cross-edge family is source-integrated at `78f11fc8`: distinct contenders
 share one scalar uniqueness claim, endpoint close/reopen masks the old life,
@@ -540,13 +540,23 @@ The KV layout stays a source-scan reference. Complete-call timing includes its
 actual artifact callbacks, while fixed samples stay bounded. Existing selector
 formats and filenames are unchanged. Source KV history remains retained;
 execution, native family parity and capacity acceptance remain open.
+The late-correction family is source-integrated at `f580f765`: half the facts
+change from 5 to 6 after a retained old cut; the other half remain 5. One bounded
+source scan per cut serves six out/in posting predicates, including phantom 7,
+with complete original/history/current joins and exact corrected/unchanged sets.
+This is scan-based posting selection, not a value-index latency claim. Its Cost7
+admission, actual partial-update counts, immutable-column lifecycle and owned
+local/RTT dispatch retain separate family artifacts. The checker requires the
+actual business-participant fraction rather than inferring it from endpoint IDs;
+setup and physical transport costs are separately attributed. Authored guards,
+runtime qualification and native parity remain pending.
 The FDB snapshot-to-feed source is integrated at `5c14f42c`/`bb867775`:
 Its fresh owned transport adapter is source-integrated at `7f4a4fb8`: actual
 receiver-ingress delay setup, probes, same-deadline client replacement, cleanup
 and raw process/cgroup accounting are wired across five owned containers.
 The native binding and retained feed original authenticate that fixed admission.
 Tool builds, Linux/FDB execution and all authored guards remain unqualified;
-transport support for the three remaining families and the complete matrix remain open.
+transport support for the two remaining families and the complete matrix remain open.
 Begin journals its actual selected cut and factory intent; Publish atomically
 acquires the pin, snapshot owner and feed cursor. Bounded complete CDC pages
 replay until an exact immutable ACK advances their vectors. Independently
@@ -651,9 +661,13 @@ finite lifetime and cleanup owner. Transfer transitions are source-integrated at
 factory intent through drained authenticated leader reassociation, actual child
 loss/replacement, terminal replay, old cuts and both activation lineages. The
 fixed-profile placement checker now matches the actual split reservation ending
-at ID1. These are authored cases, not executed recovery proof. Cut/pin and
-namespace-publication transition parents, plus broader recorded-seed composition,
-remain in implementation; none of these guards ran.
+at ID1. Cut transitions are source-integrated at `a11f8c62`: eight actual
+FreshFence/Certify participant/side cases retain a concurrent committed original,
+same-request recovery and old-cut checks across child replacement. Repeated-round
+controls are identified explicitly; they do not qualify first publication of a
+new certificate. These are authored cases, not executed recovery proof. Durable
+pin, new-certificate and namespace-publication transitions, plus broader
+recorded-seed composition, remain in implementation; none of these guards ran.
 
 Current worker lanes: Sol 6.1/high for native snapshot-to-feed production
 ownership and its workload; Sol 6.1/high for remaining C/D transfer/cut/pin
