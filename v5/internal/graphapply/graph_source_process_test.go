@@ -397,7 +397,7 @@ func (m *graphProcessMux) readLoop() {
 			m.fail(errCorrupt)
 			return
 		}
-		r, err := decodeProcessResponse(wire[6:])
+		r, err := decodeProcessResponseForProfile(wire[6:], m.p.durableColumns)
 		m.mu.Lock()
 		if err == nil && m.p.incarnation == ([16]byte{}) {
 			m.p.incarnation = r.incarnation
@@ -1474,7 +1474,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			return false
 		}
 		command, err := decodeGraphPinCommand(proposal.wire)
-		return err == nil && (command.phase == pinRelease || command.phase == pinExpire || command.phase == pinClose)
+		return err == nil && (command.phase == pinRelease || command.phase == pinExpire || command.phase == pinClose || command.phase == pinCancelIssue && h.machine.SemanticContractID() == durableColumnGraphSemanticContractID())
 	}
 	launch := func(r processRequest) error {
 		control := isSourceClose(r)
@@ -1641,6 +1641,13 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			response.ready = o.ready
 		}
 		response.code, response.detail = processError(err)
+		if h.machine.SemanticContractID() == durableColumnGraphSemanticContractID() && r.op == processCostObserve && bytes.HasPrefix(r.data, []byte(nativeColumnsMarker)) {
+			if _, inputErr := nativeGraphCostColumnDecode(r); inputErr == nil {
+				if code := nativeColumnProcessErrorCode(err); code != 0 {
+					response.code = code
+				}
+			}
+		}
 		response.causeMask = processCauseMask(err)
 		wire, e := encodeProcessResponse(response)
 		if e != nil {

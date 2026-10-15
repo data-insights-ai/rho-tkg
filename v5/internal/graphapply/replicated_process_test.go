@@ -280,6 +280,9 @@ func encodeProcessResponse(r processResponse) ([]byte, error) {
 	})
 }
 func decodeProcessResponse(b []byte) (processResponse, error) {
+	return decodeProcessResponseForProfile(b, false)
+}
+func decodeProcessResponseForProfile(b []byte, durableColumns bool) (processResponse, error) {
 	c := graphCursor{b: b}
 	r := processResponse{incarnation: c.array()}
 	for i := range r.stats {
@@ -345,7 +348,11 @@ func decodeProcessResponse(b []byte) (processResponse, error) {
 		r.fact.Labels[i] = string(c.field(256))
 	}
 	r.fact.Answer = string(c.field(256))
-	if r.sequence == 0 || r.code > 6 || len(c.b) != 0 {
+	maxCode := byte(6)
+	if durableColumns {
+		maxCode = 9
+	}
+	if r.sequence == 0 || r.code > maxCode || len(c.b) != 0 {
 		c.err = errCorrupt
 	}
 	return r, c.err
@@ -415,6 +422,7 @@ type graphProcess struct {
 	stderr                                    processStderr
 	sequence                                  uint64
 	closed                                    bool
+	durableColumns                            bool // explicit child profile, never inferred from a result code
 	incarnation                               [16]byte
 	maxPinned, maxOffers, maxImports, maxHeld uint64
 	closeErr                                  error
@@ -435,6 +443,8 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 	for _, entry := range p.cmd.Env {
 		name, value, _ := strings.Cut(entry, "=")
 		switch name {
+		case "RHO_GRAPH_DURABLE_COLUMN_PROCESS":
+			p.durableColumns = value == "1"
 		case "RHO_GRAPH_CONDITIONAL_PROCESS":
 			conditional = value == "1"
 		case "RHO_P05_CHILD_COVER":
@@ -522,7 +532,7 @@ func (p *graphProcess) exchange(ctx context.Context, r processRequest) (processR
 			ch <- result{err: err}
 			return
 		}
-		r, err := decodeProcessResponse(wire)
+		r, err := decodeProcessResponseForProfile(wire, p.durableColumns)
 		ch <- result{r: r, err: err, frameBytes: len(wire) + 4}
 	}()
 	select {
@@ -651,7 +661,11 @@ func processResponseError(r processResponse) error {
 	if r.code == 0 {
 		return nil
 	}
-	return processRemoteError{r.causeMask, r.code, r.detail}
+	err := processRemoteError{r.causeMask, r.code, r.detail}
+	if r.code >= 7 && r.code <= 9 {
+		return nativeColumnProcessRemoteError{err}
+	}
+	return err
 }
 
 // One exact command only. The fixed hash metadata is diagnostic, never a
@@ -1025,6 +1039,9 @@ func TestReplicatedGraphChild(t *testing.T) {
 	id, err := strconv.ParseUint(os.Getenv("RHO_GRAPH_PROCESS_ID"), 10, 64)
 	if err != nil || id < 1 || id > 6 {
 		t.Fatal("child identity", err)
+	}
+	if _, err := nativeColumnProcessProfile(); err != nil {
+		t.Fatal("durable column profile", err)
 	}
 	if os.Getenv("RHO_GRAPH_CERTIFIED_PROCESS") == "1" {
 		certifiedGraphProcessChild(t, id)
@@ -1821,11 +1838,23 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	if err := nativeGraphCostProfile(cost, &init, &l, &p, &generations); err != nil {
 		t.Fatal(err)
 	}
+	durableColumns, err := nativeColumnProcessProfile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if durableColumns {
+		agreement, materializer = durableColumnGraphSemanticContractID(), newDurableColumnGraphMaterializer
+	}
 	controls, recovery := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 1}
-	if retention {
+	if retention || durableColumns {
 		recovery.Version = 2
 	}
+	var nativeRetention raftlog.ApplicationRetentionConfig
 	contract, err := raftlog.ApplicationContractForPolicyWithRecovery(p, controls, recovery)
+	if durableColumns {
+		nativeRetention.Version = 1
+		contract, err = raftlog.ApplicationContractForPolicyWithRetention(p, controls, recovery, nativeRetention)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1855,7 +1884,7 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	default:
 		t.Fatal("unknown native fault process profile")
 	}
-	s, err := raftlog.Open(raftlog.Config{Dir: os.Getenv("RHO_GRAPH_PROCESS_DIR"), FS: faultFS, Create: create, Limits: l, Application: p, Controls: controls, Recovery: recovery, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.graph), Partition: n.partition, Group: part.Group}, Contract: contract, Limits: raftlog.ApplicationTransferLimits{MaxExports: 2, MaxChunkRows: 64, MaxChunkBytes: 256 << 10, MaxStagedBytes: 16 << 20, MaxStagedRecords: 8192, MaxPinnedLogicalBytes: 64 << 20}}, Generations: generations, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: voters}, SemanticContractID: agreement})
+	s, err := raftlog.Open(raftlog.Config{Dir: os.Getenv("RHO_GRAPH_PROCESS_DIR"), FS: faultFS, Create: create, Limits: l, Application: p, Controls: controls, Recovery: recovery, Retention: nativeRetention, Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(n.graph), Partition: n.partition, Group: part.Group}, Contract: contract, Limits: raftlog.ApplicationTransferLimits{MaxExports: 2, MaxChunkRows: 64, MaxChunkBytes: 256 << 10, MaxStagedBytes: 16 << 20, MaxStagedRecords: 8192, MaxPinnedLogicalBytes: 64 << 20}}, Generations: generations, PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 4096}, Replication: raftlog.ApplicationReplicationConfig{Voters: voters}, SemanticContractID: agreement})
 	if err != nil {
 		t.Fatal(err)
 	}

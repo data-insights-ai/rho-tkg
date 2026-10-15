@@ -97,6 +97,8 @@ const (
 	nativeColumnsNext
 	nativeColumnsClose
 	nativeColumnsRetire
+	nativeColumnsRecoverRetire
+	nativeColumnsPinProbe
 )
 
 type nativeGraphCostColumnCookie struct {
@@ -111,6 +113,7 @@ type nativeGraphCostColumnRequest struct {
 	Cookie               nativeGraphCostColumnCookie
 	Sequence             uint64
 	RetainedExpires      uint64 `json:",omitzero"` // explicit fresh durable profile; zero preserves legacy requests
+	RetainedToken        []byte `json:",omitzero"` // only the explicit durable token probe
 }
 type nativeGraphCostColumnReceipt struct {
 	Cookie                          nativeGraphCostColumnCookie
@@ -128,6 +131,7 @@ type nativeGraphCostColumnReceipt struct {
 	RPCs, RequestBytes, ReplyBytes  uint64
 	DeadlineUnixNanos, ElapsedNanos int64
 	Accounting                      string
+	Retention                       *nativeColumnProcessRetentionReceipt `json:",omitzero"`
 }
 type nativeGraphCostColumnOwner struct {
 	mu                       sync.Mutex
@@ -160,6 +164,7 @@ type nativeGraphCostColumnSessions struct {
 	dir         string
 	spec        *nativeGraphCostSpec
 	next        uint64
+	probes      uint8 // fresh diagnostic attempts only; ordinary/default paths never spend it
 	pending     bool
 	owner       *nativeGraphCostColumnOwner
 }
@@ -187,11 +192,19 @@ func nativeGraphCostColumnDecode(r processRequest) (q nativeGraphCostColumnReque
 		return q, errors.Join(errInvalid, err)
 	}
 	if q.Action == nativeColumnsOpen {
-		if len(q.Initial) == 0 || len(q.Final) == 0 || len(q.At) != 0 || q.Generation == ([16]byte{}) || q.Cookie != (nativeGraphCostColumnCookie{}) || q.Sequence != 0 || q.Cached || q.Fill {
+		if len(q.Initial) == 0 || len(q.Final) == 0 || len(q.At)+len(q.RetainedToken) != 0 || q.Generation == ([16]byte{}) || q.Cookie != (nativeGraphCostColumnCookie{}) || q.Sequence != 0 || q.Cached || q.Fill {
+			return q, errInvalid
+		}
+	} else if q.Action == nativeColumnsPinProbe {
+		if q.Generation == ([16]byte{}) || q.Cookie != (nativeGraphCostColumnCookie{}) || q.Sequence != 0 || len(q.Initial)+len(q.Final)+len(q.At) != 0 || len(q.RetainedToken) == 0 || len(q.RetainedToken) > nativeColumnMetadataBytes || q.RetainedExpires != 0 || q.Create || q.Cached || q.Fill {
+			return q, errInvalid
+		}
+	} else if q.Action == nativeColumnsRecoverRetire {
+		if q.Generation == ([16]byte{}) || q.Cookie != (nativeGraphCostColumnCookie{}) || q.Sequence != 0 || len(q.Initial)+len(q.Final)+len(q.At)+len(q.RetainedToken) != 0 || q.RetainedExpires != 0 || q.Create || q.Cached || q.Fill {
 			return q, errInvalid
 		}
 	} else {
-		if q.RetainedExpires != 0 || q.Cookie.Owner == 0 || q.Cookie.Request == ([16]byte{}) || len(q.Initial)+len(q.Final) != 0 || q.Generation != ([16]byte{}) || q.Create || q.Action < nativeColumnsPublish || q.Action > nativeColumnsRetire {
+		if q.RetainedExpires != 0 || q.Cookie.Owner == 0 || q.Cookie.Request == ([16]byte{}) || len(q.Initial)+len(q.Final)+len(q.RetainedToken) != 0 || q.Generation != ([16]byte{}) || q.Create || q.Action < nativeColumnsPublish || q.Action > nativeColumnsRetire {
 			return q, errInvalid
 		}
 		if q.Action == nativeColumnsClose || q.Action == nativeColumnsRetire {
@@ -216,6 +229,9 @@ func nativeGraphCostColumnCloseControl(r processRequest) bool {
 		return false
 	}
 	q, err := nativeGraphCostColumnDecode(r)
+	// Durable retirement orchestrates ordinary observations and nested native
+	// Close/Cancel RPCs, so it must not occupy that same reserved control slot.
+	// Busy retirement refuses admission; transient Close frees its owner first.
 	return err == nil && q.Action == nativeColumnsClose
 }
 func nativeGraphCostColumnAt(body []byte) (graphCut, error) {
@@ -253,6 +269,13 @@ func nativeGraphCostColumnDecodeReceipt(body []byte) (r nativeGraphCostColumnRec
 	if r.Cached && r.Fill || (r.Cached || r.Fill) && r.CacheLedger.Version != 1 || r.CacheLedger.Version != 0 && (r.CacheLedger.Version != 1 || r.CacheLedger.Maximum != nativeColumnsCacheBytes || r.CacheLedger.Charged < 2*nativeColumnMetadataBytes || r.CacheLedger.Charged > r.CacheLedger.Maximum) {
 		return r, errCorrupt
 	}
+	if r.Binding.Version == 2 {
+		if r.Retention == nil || r.Retention.validate(false) != nil || r.Binding.TerminalAttempts != nativeColumnTerminalAttempts {
+			return r, errCorrupt
+		}
+	} else if r.Retention != nil {
+		return r, errCorrupt
+	}
 	return r, nil
 }
 func (o *nativeGraphCostColumnOwner) receipt(sequence uint64) (nativeGraphCostColumnReceipt, error) {
@@ -275,7 +298,16 @@ func (o *nativeGraphCostColumnOwner) receipt(sequence uint64) (nativeGraphCostCo
 		cached = o.cache.ledger
 		o.cache.mu.Unlock()
 	}
-	return nativeGraphCostColumnReceipt{Cookie: o.cookie, Sequence: sequence, Binding: o.source.binding, Manifest: o.manifest, Cached: o.cached, Fill: o.fill, Charged: charged, DurableWork: p.Work, Ledger: ledger, CacheLedger: cached, RPCs: calls, RequestBytes: request, ReplyBytes: reply, DeadlineUnixNanos: deadline.UnixNano(), ElapsedNanos: time.Since(o.started).Nanoseconds(), Accounting: "Prepaid theoretical source/decode/output/RPC/wire quotas, including retired failed attempts; not actual bytes/RSS. Actual authenticated peer calls and received frames include failure and Close. Direct local native original reads are not peer RPCs. Only accepted sealed source EOF covers this declared local mask."}, nil
+	r := nativeGraphCostColumnReceipt{Cookie: o.cookie, Sequence: sequence, Binding: o.source.binding, Manifest: o.manifest, Cached: o.cached, Fill: o.fill, Charged: charged, DurableWork: p.Work, Ledger: ledger, CacheLedger: cached, RPCs: calls, RequestBytes: request, ReplyBytes: reply, DeadlineUnixNanos: deadline.UnixNano(), ElapsedNanos: time.Since(o.started).Nanoseconds(), Accounting: "Prepaid theoretical source/decode/output/RPC/wire quotas, including retired failed attempts; not actual bytes/RSS. Actual authenticated peer calls and received frames include failure and Close. Direct local native original reads are not peer RPCs. Only accepted sealed source EOF covers this declared local mask."}
+	if o.store.binding.Version == 2 {
+		retention, err := nativeColumnProcessRetention(o.store, o.generation)
+		if err != nil {
+			return r, err
+		}
+		r.Retention = &retention
+		r.Accounting += " Fresh durable-pin publication/retirement/probes use separately prepaid native invocations in the same durable generation ledger; their peer calls are not the transient source meter. This small profile proves no comparative cost."
+	}
+	return r, nil
 }
 func (s *nativeGraphCostColumnSessions) open(ctx context.Context, q nativeGraphCostColumnRequest) (body []byte, err error) {
 	initial, err := nativeGraphCostColumnAt(q.Initial)
@@ -309,7 +341,14 @@ func (s *nativeGraphCostColumnSessions) open(ctx context.Context, q nativeGraphC
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); s.pending = false; s.mu.Unlock() }()
 	h := s.coordinator.host
-	policy, err := nativeGraphCostColumnsPolicy(h.machine.store.ApplicationLimits(), h.machine.limits)
+	var policy nativeColumnPolicy
+	if q.RetainedExpires != 0 {
+		policy, err = nativeColumnProcessPolicy(h)
+	} else if h.machine.SemanticContractID() == durableColumnGraphSemanticContractID() {
+		return nil, errInvalid // the fresh profile never silently creates a v1 owner
+	} else {
+		policy, err = nativeGraphCostColumnsPolicy(h.machine.store.ApplicationLimits(), h.machine.limits)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -422,6 +461,12 @@ func (s *nativeGraphCostColumnSessions) serve(ctx context.Context, r processRequ
 	}
 	if q.Action == nativeColumnsOpen {
 		return s.open(ctx, q)
+	}
+	if q.Action == nativeColumnsRecoverRetire {
+		return s.recoverRetirement(ctx, q.Generation)
+	}
+	if q.Action == nativeColumnsPinProbe {
+		return s.probeOriginalPin(ctx, q.Generation, q.RetainedToken)
 	}
 	s.mu.Lock()
 	o := s.owner
@@ -708,7 +753,7 @@ func (c *nativeGraphCostColumnClient) call(q nativeGraphCostColumnRequest) nativ
 	c.t.Helper()
 	if q.Action != nativeColumnsOpen {
 		q.Cookie = c.cookie
-		if q.Action != nativeColumnsClose {
+		if q.Action != nativeColumnsClose && q.Action != nativeColumnsRetire {
 			if c.sequence == ^uint64(0) {
 				c.t.Fatal("column invocation overflow")
 			}
@@ -741,7 +786,8 @@ func (c *nativeGraphCostColumnClient) call(q nativeGraphCostColumnRequest) nativ
 		c.t.Fatal("column transport counters refunded")
 	}
 	c.charged, c.durable, c.rpcs, c.requestBytes, c.replyBytes = r.Charged, r.DurableWork, r.RPCs, r.RequestBytes, r.ReplyBytes
-	if q.Action == nativeColumnsClose && !r.Closed || q.Action != nativeColumnsClose && r.Closed {
+	terminal := q.Action == nativeColumnsClose || q.Action == nativeColumnsRetire
+	if terminal && !r.Closed || !terminal && r.Closed {
 		c.t.Fatal("column cleanup receipt")
 	}
 	if err := c.stream.Encode(nativeGraphCostColumnTrace{c.stage, uint64(3 + 5*c.group), q.Action, uint64(len(input)), uint64(len(out.aux)), r}); err != nil {
