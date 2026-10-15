@@ -245,6 +245,22 @@ FAULT_INPUTS = {"tools/v5-substrate/native_fault_schedule_check.py", "tools/v5-s
                 "tools/v5-substrate/native_transition_check.py", "tools/v5-substrate/native_transition_check_test.py",
                 "tools/v5-substrate/native_fault_family_check.py", "tools/v5-substrate/native_fault_family_check_test.py",
                 "tools/v5-substrate/check-p06-history.py", "docs/v5/reference/independent/protocol/oracle.py"}
+PAIR_INPUTS = {"tools/v5-substrate/paired_workload_check.py", "tools/v5-substrate/paired_workload_cell.py",
+               "tools/v5-substrate/paired_workload_check_test.py", "tools/v5-substrate/fdb/fdb_contention_check.py",
+               "tools/v5-substrate/fdb/fdb_contention_check_test.py", "tools/v5-substrate/workload_matrix.py",
+               "tools/v5-substrate/workload_matrix_test.py", "tools/v5-substrate/native_workload_cell.py",
+               "tools/v5-substrate/native_contention_check.py", "tools/v5-substrate/native_edge_unique_check.py",
+               "tools/v5-substrate/native_edge_unique_cell.py", "tools/v5-substrate/fdb_edge_unique_check.py",
+               "tools/v5-substrate/native_guarded_scalar_cell.py", "tools/v5-substrate/native_guarded_scalar_check.py",
+               "tools/v5-substrate/native_feed_check.py", "tools/v5-substrate/native_selectors_check.py",
+               "tools/v5-substrate/native_feed_cell.py", "tools/v5-substrate/native_selectors_cell.py",
+               "tools/v5-substrate/native_create_update_cell.py", "tools/v5-substrate/native_create_update_check.py",
+               "tools/v5-substrate/native_immutable_columns_cell.py", "tools/v5-substrate/native_immutable_columns_check.py",
+               "tools/v5-substrate/native_late_correction_cell.py", "tools/v5-substrate/native_late_correction_check.py",
+               "tools/v5-substrate/native_feed_retained_cell.py", "tools/v5-substrate/native_feed_retained_check.py",
+               "tools/v5-substrate/fdb_feed_retained_check.py", "tools/v5-substrate/fdb_feed_check.py",
+               "tools/v5-substrate/fdb_selectors_check.py", "tools/v5-substrate/fdb_create_update_check.py",
+               "tools/v5-substrate/fdb_columns_check.py", "tools/v5-substrate/fdb_correction_check.py"}
 PROCESS_INPUTS = {"tools/v5-substrate/process_watchdog.py", "tools/v5-substrate/process_watchdog_test.py"}
 # The complete-CDC replay tests consume these two frozen FDB archives directly.
 # Keep this finite dependency list in sync with compare_cost_cdc_test.py.
@@ -664,6 +680,8 @@ def cdc(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/process_watchdog_test.py"], cwd=ROOT, check=True)
     if GUARDED_INPUTS.intersection(paths):
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_guarded_scalar_test.py"], cwd=ROOT, check=True)
+    if PAIR_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/paired_workload_check_test.py"], cwd=ROOT, check=True)
 
 
 def focused_dispatch_base(event, kind, head):

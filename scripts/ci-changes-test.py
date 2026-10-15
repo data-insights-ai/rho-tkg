@@ -18,7 +18,7 @@ SPEC.loader.exec_module(CI)
 
 class Planning(unittest.TestCase):
     def with_guarded(self, paths, expected):
-        return expected + ([[sys.executable,"-B","tools/v5-substrate/native_guarded_scalar_test.py"]] if CI.GUARDED_INPUTS.intersection(paths) else [])
+        return expected + ([[sys.executable,"-B","tools/v5-substrate/native_guarded_scalar_test.py"]] if CI.GUARDED_INPUTS.intersection(paths) else []) + ([[sys.executable,"-B","tools/v5-substrate/paired_workload_check_test.py"]] if CI.PAIR_INPUTS.intersection(paths) else [])
     def docs_action(self, paths):
         with patch.object(sys, "argv", ["ci-changes.py", "docs", "--base", "fixture"]), patch.object(CI, "changed_paths", return_value=paths):
             CI.main()
@@ -161,6 +161,15 @@ class Planning(unittest.TestCase):
                 if CI.CORRECTION_INPUTS.intersection(paths):expected.append([sys.executable,"-B","tools/v5-substrate/native_late_correction_check_test.py"])
                 if CI.WORKLOAD_INPUTS.intersection(paths):expected.extend([[sys.executable,"-B","tools/v5-substrate/"+name] for name in ("native_contention_check_test.py","native_workload_cell_test.py","workload_matrix_test.py")])
                 self.assertEqual([c.args[0] for c in run.call_args_list],self.with_guarded(paths,expected))
+                self.assertTrue(all(c.kwargs=={"cwd":CI.ROOT,"check":True} for c in run.call_args_list))
+
+    def test_owned_pair_dependencies_select_private_guard_once_without_engines(self):
+        for paths in [[p] for p in CI.PAIR_INPUTS]+[list(CI.PAIR_INPUTS)]:
+            with self.subTest(paths=paths),patch.object(CI.subprocess,"run") as run:
+                CI.cdc(paths)
+                calls=[c.args[0] for c in run.call_args_list]
+                self.assertEqual(calls.count([sys.executable,"-B","tools/v5-substrate/paired_workload_check_test.py"]),1)
+                self.assertTrue(all(len(c)==3 and c[:2]==[sys.executable,"-B"] and c[-1].endswith("_test.py") for c in calls))
                 self.assertTrue(all(c.kwargs=={"cwd":CI.ROOT,"check":True} for c in run.call_args_list))
 
     def test_full_cdc_action_runs_only_its_exact_replay_without_reference_or_go(self):

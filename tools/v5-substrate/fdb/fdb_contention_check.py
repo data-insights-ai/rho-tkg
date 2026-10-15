@@ -8,6 +8,7 @@ are distinct: complete CDC is folded in its genuine (Round,Coordinator,Request)
 order, never in worker completion/provenance order.
 """
 import base64
+from contextlib import nullcontext
 import hashlib
 import importlib.util
 import json
@@ -859,7 +860,7 @@ def columns(directory, end, spool):
             spool.lookup(b"column-walk-eof", mode.encode())
 
 
-def verify(directory, spool_directory, policy=None):
+def verify(directory, spool_directory, policy=None, *, shared_spool=None):
     directory = Path(directory).resolve(strict=True)
     with (directory / "fdb-workload-result.json").open("rb") as source:
         raw = source.read(LINE + 1)
@@ -868,7 +869,8 @@ def verify(directory, spool_directory, policy=None):
     validate_result(end)
     require(policy is not None or end["spec"]["facts"] < 1_000_000 and end["spec"]["writers"] != 32, "large cell requires explicit finite comparison grant, not the unqualified small default")
     policy = POLICY if policy is None else policy
-    with Spool(spool_directory, policy) as spool:
+    if shared_spool is not None: policy.validate()
+    with (Spool(spool_directory, policy) if shared_spool is None else nullcontext(shared_spool)) as spool:
         attempts(directory, end, spool)
         verify_sources(directory, end, spool)
         columns(directory, end, spool)

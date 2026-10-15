@@ -7,6 +7,21 @@ import workload_matrix as matrix
 
 
 class WorkloadMatrixGuards(unittest.TestCase):
+    def test_explicit_owned_pair_covers_actual_delays_and_keeps_old_refusals(self):
+        for family in ("contention-empty-range","cross-edge-endpoint-uniqueness","snapshot-selectors","snapshot-to-feed","partition-local-create-update","immutable-columns","late-correction-old-index"):
+            guarded=family in ("snapshot-selectors","snapshot-to-feed")
+            cells=list(matrix.matrix((family,),tuple(matrix.TRANSPORTS),("paired",),owned=True,guarded_endpoints=guarded,paired_owned=True))
+            self.assertEqual(len(cells),1440);self.assertTrue(all(c["implemented"] for c in cells))
+            self.assertEqual({c["workload"]["version"] for c in cells},{2 if guarded else 1})
+            for cell in cells:matrix.preflight(cell["workload"],"12"*16,"paired",next(k for k,v in matrix.TRANSPORTS.items() if v==cell["transport"]["targetRTTMillis"]),paired_owned=True)
+            old=next(matrix.matrix((family,),("rtt-20ms",),("paired",)))
+            self.assertFalse(old["implemented"])
+            with self.assertRaises(ValueError):matrix.preflight(old["workload"],"12"*16,"paired","rtt-20ms")
+        retained=list(matrix.matrix(("snapshot-to-feed",),tuple(matrix.TRANSPORTS),("paired",),owned=True,retained_only=True,paired_owned=True))
+        self.assertEqual(len(retained),1440);self.assertTrue(all(c["workload"]["version"]==3 and c["implemented"] for c in retained))
+        with self.assertRaises(ValueError):list(matrix.matrix(("transfer-retained-pins",),("local",),("paired",),owned=True,paired_owned=True))
+        with self.assertRaises(ValueError):list(matrix.matrix(("snapshot-selectors",),("rtt-20ms",),("paired",),owned=True,paired_owned=True))
+
     def test_explicit_guarded_endpoint_profiles_preserve_old_defaults(self):
         for family in ("snapshot-to-feed","snapshot-selectors"):
             ordinary=list(matrix.matrix((family,),("local",),("native-raft",)))

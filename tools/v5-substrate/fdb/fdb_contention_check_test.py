@@ -6,6 +6,7 @@ import hashlib
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 import fdb_contention_check as check
 from comparison_spool import Policy, Spool, SpoolError
 
@@ -74,6 +75,20 @@ class ContentionOracleGuards(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     check.column_refusal({"Type": "refusal", "Name": "expired-new-open", "Generation": "old", "Error": "fdb-column: retained generation or token expired", "Input": {}, "Result": None, "Records": []},
                                          {"Config": c}, {}, b"held", {}, spool, 0, 0, 0, 2)
+
+    def test_optional_shared_spool_owns_no_new_arena_or_close(self):
+        # Ownership-only wrapper guard: pipeline mocks supply NO protocol or
+        # SDK acceptance evidence. Real pair uses every full unmocked pass.
+        end={"spec":{"facts":20,"writers":1},"format":"fixture","version":1,"Config":{"Graph":"fixture"},"Attempts":0,"Committed":0,"Aborted":0}
+        policy=Policy(4<<20,65536,4096,check.LINE)
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory)/"fdb-workload-result.json").write_bytes(check.go_json(end)+b"\n")
+            with Spool(directory,policy) as spool:
+                spool.insert(b"existing",b"owner",b"same")
+                with patch.object(check,"Spool",side_effect=AssertionError("new arena")),patch.object(check,"validate_result"),patch.object(check,"attempts") as attempts,patch.object(check,"verify_sources") as source,patch.object(check,"columns") as columns:
+                    check.verify(directory,directory,policy,shared_spool=spool)
+                    for call in (attempts,source,columns):self.assertIs(call.call_args.args[-1],spool)
+                self.assertEqual(spool.lookup(b"existing",b"owner"),b"same")
 
     def test_family_identity_and_missing_or_trailing_eof(self):
         p, _, row, _ = setup_attempt()
