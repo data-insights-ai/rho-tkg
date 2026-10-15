@@ -553,9 +553,21 @@ rules out smaller page grants alone for the mandatory 1M/100%-cross shape:
 full rewritten index paths enter both the retained manifest and local kernel.
 Those R/K records alone have a conservative 32,734,243,584-byte lower bound
 after the first 262,144 creates. Current per-page import/undo credits already
-reserve more than 1 TiB for those bytes at either 16 or 32 KiB, before graph
-pages and other retained state. Resolve this reservation/representation cost
-without raising ceilings or discarding originals before adding the workload.
+reserve more than 1 TiB for those bytes at every supported page size up to
+64 KiB, before graph pages and other retained state: with page bytes P, each
+import/undo credit is 81,920 + 16P, so their combined multiplier is at least
+34.5. Resolve this reservation/representation cost without raising ceilings or
+discarding originals before adding the workload. The next source primitive is
+explicit fresh recovery4 byte pools with unchanged per-install maxima. Actual
+committed installations spend retained totals; queued entries project their
+actual encoded log charges separately. An additional bounded pending-install
+window must be protected from ordinary traffic before reservation, with distinct
+live queued uses charged against that window once. Speculatively subtracting
+earlier maximum retained charges is unsound: maxima 80/80 would otherwise strand
+valid actual growth 10/70 inside a total budget of 100. Original retries cannot
+refill a pool; unused surplus and its window retire only at actual terminal
+installation. This primitive is in implementation, not source-integrated or
+qualified; authenticated transfer bounds and both-move capacity remain open.
 At 1M, HOME issuance also
 spans two actual range publications, both of which must move under distinct
 original identities before the driver claims the full routing transition.
@@ -1067,11 +1079,11 @@ uses genuine planned checks while preserving ordinary Set. Count actual read/wri
 participants, not empty cross-protocol manifests or endpoint placement, before
 accepting any affected scalar cost row.
 
-Current worker lanes: Sol 6.1/high for read-only scoping of the remaining native
-P07–P09 transition adapters and the eventual actual transfer pair; Sol 6.1/high for the finite
-applicable protocol/storage/message/leader/conflict composition registry and
-driver; Sol 6.1/high for bounded shared graph-transfer staging and the remaining
-actual transfer workload. These packages are in
+Current worker lanes: Sol 6.1/high for the native P07–P09 owned-state transition
+adapters and their checker; Sol 6.1/high for the finite P01–P06 protocol/storage
+composition adapters and checker; Sol 6.1/high for the bounded recovery byte-pool
+primitive, followed by authenticated transfer budgets and the actual transfer
+workload. Shared graph batching is already source-integrated above. These packages are in
 implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
