@@ -697,9 +697,16 @@ The precise marker Sync selector requires the actual pinned native caller and
 its created, successfully closed file; generic directory Sync remains separate.
 The replacement reads genuine old/current cuts before catch-up and replays the
 immutable original against the complete prefix/serial checker. These are process
-interruption cases, not power-loss evidence. Broader retained-pin/fault
-composition and recorded-seed exploration remain in implementation; none of
-these guards ran.
+interruption cases, not power-loss evidence. Recorded composition is
+source-integrated at `d2a29188`: the six genuine two-conflict/fence/transfer
+schedules admit bounded recorded Tick and same-original duplicate actions.
+Native checkpoint vectors bind each action to its actual causal stage. Fresh
+cohorts replay the recipe; deletion minimization requires the same independently
+authenticated semantic failure. Missing evidence, expiry, failed cleanup and
+resource refusal cannot qualify a counterexample or deletion. This is authored
+controller/oracle wiring, not an executed soak or whole-D acceptance. The
+remaining P01–P09 clause audit and broader retained-pin/fault composition stay
+open; none of these new guards ran.
 
 Native snapshot-to-feed ownership is source-integrated at `4868f0f7`. One genuine
 issued pin retains the snapshot and full-vector feed; complete original-round
