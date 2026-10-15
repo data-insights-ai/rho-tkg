@@ -928,8 +928,18 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64, packetOnly ...bool) {
 }
 func (f *pairedGraphFaultNetwork) elect(prior, next uint64) {
 	f.t.Helper()
+	restarted := prior == next
+	if restarted && f.parent == nil {
+		f.t.Fatal("same-member restart election requires the fresh original deadline")
+	}
 	group := f.n.group(next)
-	group.blocked = map[uint64]bool{prior: true}
+	if restarted {
+		// This is the actual replacement, not the still-dead prior OS object.
+		// Its own vote/append traffic must reach the live quorum.
+		group.blocked = nil
+	} else {
+		group.blocked = map[uint64]bool{prior: true}
+	}
 	defer func() { group.blocked = nil }()
 	spec := partitionCodecRequest(f.t, 1, defaultMaterializerLimits())
 	ns, _ := certifiedProcessNamespace(next)
@@ -949,7 +959,15 @@ func (f *pairedGraphFaultNetwork) elect(prior, next uint64) {
 	defer func() { group.dropPacket = nil }()
 	for round := range 64 {
 		for id := range group.nodes {
-			if id != prior {
+			if id != prior || restarted {
+				if restarted {
+					f.mu.Lock()
+					dead := f.down[id]
+					f.mu.Unlock()
+					if dead {
+						continue
+					}
+				}
 				f.groupEvent(group, id, processRequest{op: processTick})
 			}
 		}
@@ -974,7 +992,11 @@ func (f *pairedGraphFaultNetwork) elect(prior, next uint64) {
 		} else {
 			f.n.leaders[1] = next
 		}
-		f.t.Logf("paired elected actual leader%d round%d while%d down", next, round+1, prior)
+		if restarted {
+			f.t.Logf("paired elected actual restarted leader%d round%d", next, round+1)
+		} else {
+			f.t.Logf("paired elected actual leader%d round%d while%d down", next, round+1, prior)
+		}
 		return
 	}
 	f.t.Fatal("paired finite election")

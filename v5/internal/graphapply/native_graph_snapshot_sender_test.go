@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
 const nativeSnapshotSenderProfile = "native-snapshot-inflight-sender-loss-v1"
@@ -57,7 +60,61 @@ func nativeSnapshotSenderReaped(f *pairedGraphFaultNetwork, donor *graphProcess)
 	return intentional && ok && status.Signaled() && status.Signal() == syscall.SIGKILL && donor.cmd.ProcessState.Pid() == donor.cmd.Process.Pid
 }
 
+// A mux exchange reports a classified native refusal alongside its correlated
+// raw reply. That is distinct from a pipe/context failure without a native
+// result. Accept only this exact invalid-handle refusal, never another cause.
+func nativeSnapshotSenderStaleRefusal(reply processResponse, exchangeErr error) error {
+	if reply.incarnation == ([16]byte{}) || reply.sequence == 0 || reply.code != 1 || reply.causeMask != processCauseMask(errInvalid) || len(reply.aux)+len(reply.handles)+len(reply.outcome)+len(reply.changes)+len(reply.packets) != 0 {
+		return errCorrupt
+	}
+	if exchangeErr == nil { // The nonmultiplexed IPC door reports code in reply.
+		return nil
+	}
+	if joined, ok := exchangeErr.(interface{ Unwrap() []error }); ok {
+		causes := joined.Unwrap()
+		if len(causes) != 1 {
+			return errCorrupt
+		}
+		exchangeErr = causes[0]
+	}
+	// This is an exact wire classifier check, not a search through arbitrary
+	// wrappers which might also contain EOF or another unclassified failure.
+	native, ok := exchangeErr.(graphWireError)
+	if !ok || native.mask != graphErrorMask(errInvalid) {
+		return errCorrupt
+	}
+	return nil
+}
+
 func TestNativeSnapshotSenderLossRequiresExactReapedProcessAndApplicableBoundary(t *testing.T) {
+	reply := processResponse{incarnation: [16]byte{1}, sequence: 2, code: 1, causeMask: processCauseMask(errInvalid)}
+	native := graphWireError{graphErrorMask(errInvalid)}
+	for _, actual := range []error{nil, native, errors.Join(native, nil)} {
+		if err := nativeSnapshotSenderStaleRefusal(reply, actual); err != nil {
+			t.Fatal("actual classified native refusal", err)
+		}
+	}
+	for _, actual := range []error{errInvalid, context.Canceled, context.DeadlineExceeded, io.EOF, replica.ErrUnavailable, graphWireError{graphErrorMask(replica.ErrUnavailable)}, graphWireError{graphErrorMask(errLimit)}, graphWireError{graphErrorMask(errors.Join(errInvalid, context.Canceled))}, errors.Join(native, context.Canceled), errors.Join(native, io.EOF)} {
+		if err := nativeSnapshotSenderStaleRefusal(reply, actual); !errors.Is(err, errCorrupt) {
+			t.Fatal("transport/other cause substituted for native refusal", actual, err)
+		}
+	}
+	for _, mutate := range []func(*processResponse){
+		func(r *processResponse) { r.incarnation = [16]byte{} },
+		func(r *processResponse) { r.sequence = 0 },
+		func(r *processResponse) { r.code = 0 },
+		func(r *processResponse) { r.causeMask = graphErrorMask(errInvalid) },
+		func(r *processResponse) { r.aux = []byte("new authority") },
+		func(r *processResponse) { r.handles = []uint64{7} },
+		func(r *processResponse) { r.outcome = []byte("invented outcome") },
+		func(r *processResponse) { r.changes = []byte("invented change") },
+	} {
+		bad := reply
+		mutate(&bad)
+		if err := nativeSnapshotSenderStaleRefusal(bad, errors.Join(native, nil)); !errors.Is(err, errCorrupt) {
+			t.Fatal("missing/mixed/successful native reply admitted", bad, err)
+		}
+	}
 	if nativeSnapshotSenderReaped(nil, nil) || nativeSnapshotSenderReaped(&pairedGraphFaultNetwork{}, new(graphProcess)) {
 		t.Fatal("logical member/down state substituted for actual SIGKILL/reap")
 	}
@@ -215,7 +272,7 @@ func nativeSnapshotSenderCase(t *testing.T, side string) {
 			}
 			request := processRequest{op: processNext, index: e.SenderOwner}
 			reply, transport := sender.exchange(ctx, request)
-			if transport != nil || !errors.Is(processResponseError(reply), errInvalid) || len(reply.aux) != 0 || len(reply.handles) != 0 {
+			if refusal := nativeSnapshotSenderStaleRefusal(reply, transport); refusal != nil {
 				t.Fatal("restarted process acquired old sender authority", transport, processResponseError(reply))
 			}
 			request.incarnation, request.sequence = reply.incarnation, reply.sequence
@@ -224,10 +281,10 @@ func nativeSnapshotSenderCase(t *testing.T, side string) {
 				t.Fatal(err)
 			}
 			e.StaleReply = p06ProcessWire(t, reply)
-			// Restore opens a follower. A real Campaign and its actual drained
-			// vote/append packets precede heal's leader-only ReadIndex; a copied
-			// member ID or prior vote is not a new leader claim.
-			f.groupEvent(f.n.groups[0], 1, processRequest{op: processCampaign})
+			// Restore opens a follower. Real bounded tick/campaign progression,
+			// quorum ReadIndex and readiness precede heal's leader-only reads;
+			// one drained Campaign alone can still be refused by a voter lease.
+			f.elect(1, 1)
 		}))
 	})
 	processes = append(processes, receiver)
