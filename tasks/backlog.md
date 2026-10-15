@@ -494,15 +494,16 @@ Its retain-all record allowance is corrected at `7d4f62c9`: each entry funds
 recovery API; neither this quota nor the correction is runtime qualification.
 The dispatcher schedules all eight families and local/1/20/100ms profiles.
 FDB has source drivers for contention, selectors, snapshot-to-feed,
-cross-edge uniqueness, immutable columns and late correction; their fresh owned transport adapters cover
+cross-edge uniqueness, immutable columns, late correction and ownership transfer;
+their fresh owned transport adapters cover
 local/1/20/100ms. Native has contention, cross-edge, snapshot-to-feed and selector
 source drivers across local/1/20/100ms, with local paired comparisons. Unsupported semantics
 or transport refuse before effects.
 Each family/transport matrix contains 360 fresh cells; the complete eight-family,
 four-transport matrix contains 11,520 cells per engine.
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
-No new cell, guard or runtime gate has run. The two remaining FDB family drivers
-(partition-local and transfer/retained-pins), and native partition-local,
+No new cell, guard or runtime gate has run. The remaining FDB partition-local
+family driver, and native partition-local,
 immutable-columns, late-correction and transfer/retained-pins
 drivers remain implementation work. Full matrix qualification and the engine
 decision remain open.
@@ -535,9 +536,17 @@ not an inherent FDB copy or placement requirement. Record its actual wall time
 separately from complete transfer latency; material overhead requires an explicit
 baseline refinement before the engine verdict, not inferred throughput from
 subtracted or overlapping times.
-Actual target-process replacement, transfer workload/oracle and matrix-family
-wiring remain implementation work; stable shared-KV keys do not establish
-physical replica transfer.
+The actual transfer workload/oracle and matrix wiring are source-integrated at
+`d3be95bd`. Two source/target SDK losses recover the SAME committed K across A1
+to B2 processing ownership; a prior frozen request gets an authentic fenced
+ABORT before a linked replan. Actual Next-backed blocks, held C, irreversible
+feed-only release, physical source-history GC and complete retained CDC join
+bounded independent original/column/native-cost inventories. Terminal Cancel
+advances the catalog control version to 3 and permits only its five exact head
+transitions after the frozen storage census. Caller cancellation reaches native
+collector Commit/OnError through the same deletion reducer. These cases have
+not run; native transfer parity and equal allocator/retention costs remain open.
+Stable shared-KV keys do not establish physical replica transfer.
 The fresh FDB feed3 prerequisite at `29f00cbe` authenticates snapshot Close and
 the complete token-reader inventory before atomically relinquishing its physical
 pin. Native retained-feed identities and funded cleanup then use the existing
@@ -764,9 +773,15 @@ exact observation, self-kill and recover the same directory. The independent
 checker joins the actual AS5 stream, complete EOF, original request/prefix and
 old/current serial witnesses. Physical-clear targets come from the same live
 Begin observation and acknowledged import owner. Initialization is explicitly
-unsupported by this finite recipe. Publication/checkpoint, retention-reader and
-the broader applicable protocol/message/leader/conflict combinations remain
-implementation work; no runtime qualification or whole-D closure is implied.
+unsupported by this finite recipe. Retention-reader and the broader applicable
+protocol/message/leader/conflict combinations remain implementation work;
+no runtime qualification or whole-D closure is implied.
+Actual publication composition is source-integrated at `cb483e5c`: before/after
+Commit(Sync) self-kill/reap and same-directory recovery assert the exact native
+compaction boundary, immutable request and local old cut before catch-up.
+Application checkpoint persistence already co-installs with the native entry;
+this does not invent a second graph checkpoint Sync. Retention-reader and the
+broader applicable combinations remain open. No new guard or process case ran.
 
 Native snapshot-to-feed ownership is source-integrated at `4868f0f7`. One genuine
 issued pin retains the snapshot and full-vector feed; complete original-round
@@ -800,8 +815,9 @@ reservation/install originals and each fresh claim's installed grant. Whole
 Open/Scan-through-EOF/Points wall times include retries and artifact callbacks.
 The retained-C contract supports native local/1/20/100ms and paired local only.
 Normal source cancellation and terminal cleanup have separate fixed admission;
-the outer worker router still needs to classify `release` alongside `close` as
-terminal control. This source package has not been compiled or executed.
+the outer worker correction at `260b4a38` routes canonical `release` and `close`
+through the reserved terminal lane, rejecting ordinary or malformed queries.
+This source package has not been compiled or executed.
 
 The scalar native workload factory builds fresh claims from authenticated,
 installed grant references; it does not call `Recipient`/`Cursor.Next`. Keep
@@ -812,12 +828,12 @@ install originals. The selector implementation now supplies that bounded join;
 the feed follow-up must reuse it before comparative qualification. Neither
 expected numeric IDs nor an artifact hash establishes cursor issuance.
 
-Current worker lanes: Sol 6.1/high for the selector terminal-router correction,
-then native retained-only feed ownership/GC and remaining native workload families;
-Sol 6.1/high for actual publication and retention-reader storage transitions,
+Current worker lanes: Sol 6.1/high for native retained-only feed ownership/GC
+and remaining native workload families;
+Sol 6.1/high for actual retention-reader storage transitions,
 then broader protocol/message/leader/conflict composition;
-Sol 6.1/high for the remaining FDB workload families, starting with the actual
-transfer process driver. These packages
+Sol 6.1/high for the remaining FDB partition-local workload family and
+source-grounded accounting follow-ups. These packages
 are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
