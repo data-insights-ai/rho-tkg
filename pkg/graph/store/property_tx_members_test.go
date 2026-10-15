@@ -100,8 +100,13 @@ func ptxNode(id int64, labels []uint16, seat int64, version uint32, tx types.Ins
 
 func relMembers(t *testing.T, c propTxCaps, typ uint16, vk string) map[types.RelID]types.Instant {
 	t.Helper()
+	return relMembersOf(t, c, typ, "seat", vk)
+}
+
+func relMembersOf(t *testing.T, c propTxCaps, typ uint16, key, vk string) map[types.RelID]types.Instant {
+	t.Helper()
 	out := map[types.RelID]types.Instant{}
-	if err := c.ForEachRelPropertyTxMember(typ, "seat", vk, func(id types.RelID, tx types.Instant) bool {
+	if err := c.ForEachRelPropertyTxMember(typ, key, vk, func(id types.RelID, tx types.Instant) bool {
 		out[id] = tx
 		return true
 	}); err != nil {
@@ -112,8 +117,13 @@ func relMembers(t *testing.T, c propTxCaps, typ uint16, vk string) map[types.Rel
 
 func nodeMembers(t *testing.T, c propTxCaps, label uint16, vk string) map[types.NodeID]types.Instant {
 	t.Helper()
+	return nodeMembersOf(t, c, label, "seat", vk)
+}
+
+func nodeMembersOf(t *testing.T, c propTxCaps, label uint16, key, vk string) map[types.NodeID]types.Instant {
+	t.Helper()
 	out := map[types.NodeID]types.Instant{}
-	if err := c.ForEachNodePropertyTxMember(label, "seat", vk, func(id types.NodeID, tx types.Instant) bool {
+	if err := c.ForEachNodePropertyTxMember(label, key, vk, func(id types.NodeID, tx types.Instant) bool {
 		out[id] = tx
 		return true
 	}); err != nil {
@@ -126,12 +136,17 @@ func nodeMembers(t *testing.T, c propTxCaps, label uint16, vk string) map[types.
 // (current + history) of the given rels under type typ.
 func relOracle(t *testing.T, st storecontract.Store, typ uint16, ids []types.RelID) map[string]map[types.RelID]types.Instant {
 	t.Helper()
+	return relOracleOf(t, st, typ, "seat", ids)
+}
+
+func relOracleOf(t *testing.T, st storecontract.Store, typ uint16, key string, ids []types.RelID) map[string]map[types.RelID]types.Instant {
+	t.Helper()
 	out := map[string]map[types.RelID]types.Instant{}
 	note := func(r *types.Relationship) {
 		if !r.HasTypeTokenRaw(typ) {
 			return
 		}
-		vk, ok := r.IndexablePropertyValueKey("seat")
+		vk, ok := r.IndexablePropertyValueKey(key)
 		if !ok {
 			return
 		}
@@ -167,12 +182,17 @@ func relOracle(t *testing.T, st storecontract.Store, typ uint16, ids []types.Rel
 
 func nodeOracle(t *testing.T, st storecontract.Store, label uint16, ids []types.NodeID) map[string]map[types.NodeID]types.Instant {
 	t.Helper()
+	return nodeOracleOf(t, st, label, "seat", ids)
+}
+
+func nodeOracleOf(t *testing.T, st storecontract.Store, label uint16, key string, ids []types.NodeID) map[string]map[types.NodeID]types.Instant {
+	t.Helper()
 	out := map[string]map[types.NodeID]types.Instant{}
 	note := func(n *types.Node) {
 		if !n.HasLabelTokenRaw(label) {
 			return
 		}
-		vk, ok := n.IndexablePropertyValueKey("seat")
+		vk, ok := n.IndexablePropertyValueKey(key)
 		if !ok {
 			return
 		}

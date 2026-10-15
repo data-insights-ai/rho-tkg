@@ -210,7 +210,7 @@ func (ms *Store) accountSealedRowLocked(r *types.Relationship) {
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
-	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID())
+	ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID())
 }
 
 // spillSegment writes an encoded segment to the directory, maps it and

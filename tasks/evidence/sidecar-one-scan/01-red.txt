@@ -1,0 +1,29 @@
+# red run on v4.56.0 (5b49d002) code, tests written first
+$ go test -short -count=1 -run TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex ./pkg/graph/store/
+--- FAIL: TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex (0.10s)
+    --- FAIL: TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex/badger (0.03s)
+        property_tx_members_one_pass_test.go:136: rel lookups on 4 declared indexes ran 4 build passes, want 1 (one pass per store)
+    --- FAIL: TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex/badger-delta (0.01s)
+        property_tx_members_one_pass_test.go:136: rel lookups on 4 declared indexes ran 4 build passes, want 1 (one pass per store)
+    --- FAIL: TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex/sharded (0.06s)
+        property_tx_members_one_pass_test.go:136: rel lookups on 4 declared indexes ran 8 build passes, want 2 (one pass per store)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.148s
+FAIL
+$ go test -short -count=1 -run "TestPropTxBuild_(OnePass|CleanReopen|OtherKey)" -v ./pkg/graph/store/badger/
+    badgerstore_propertytxmembers_one_pass_test.go:175: lookups on 4 rel indexes scanned the store 4 times, want 1
+--- FAIL: TestPropTxBuild_OnePassScanCount (0.01s)
+--- PASS: TestPropTxBuild_OnePassEqualsPerKeyBuild (0.06s)
+    badgerstore_propertytxmembers_one_pass_test.go:268: clean reopen stats = {RelSidecars:0 NodeSidecars:0 RelPostings:0 NodePostings:0 Builds:0 BuildDuration:0s}, want 3 rel and 3 node sidecars restored, no build
+--- FAIL: TestPropTxBuild_CleanReopenRestoresSidecars (0.08s)
+    badgerstore_propertytxmembers_test.go:557: passes A and C scanned 3 times, want 2 (D is built by A's pass)
+--- FAIL: TestPropTxBuild_OtherKeyNotBlockedByRunningBuild (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.197s
+FAIL
+$ go test -short -count=1 -run TestTieredNodePropertyTxMembersOnePass ./pkg/graph/store/tiered/
+--- FAIL: TestTieredNodePropertyTxMembersOnePass (0.00s)
+    tieredstore_prop_tx_one_pass_test.go:53: reference shard: {RelSidecars:0 NodeSidecars:3 RelPostings:0 NodePostings:3 Builds:3 BuildDuration:32.872µs}, want 3 sidecars from 1 pass
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.009s
+FAIL

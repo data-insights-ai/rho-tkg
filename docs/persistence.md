@@ -347,6 +347,11 @@ open then:
   while they were still deferred) defers them: the first statistics read builds them from the current rows, as a
   full open would, holding the flush and index write locks — readers and writers wait for that one scan — and a
   failed scan returns its error and stays deferred;
+- restores the property membership sidecars (the pinned property lookups and `RelsEffectivePage` /
+  `NodesEffectivePage`) the closing process had built, so their first lookup scans nothing (backlog 74). They
+  are derived from the current and history rows like the indexes, so the same trust rule covers them; one not
+  built at `Close` is built at its first lookup, in the one pass that builds every unbuilt declared sidecar of
+  its kind. v4.56.0 and older do not know the section and rebuild from the rows (a downgrade costs one full open);
 - fills node integrity hashes on first use.
 
 Measured on the ai-soc shape: `tasks/evidence/open-cost/03-open-time.txt`. Read-only opens read the image and
@@ -409,7 +414,7 @@ With `badger.Config.HistoryDeltaEncoding` (or the mirrored `graph.Config.History
 
 ## History rows: versions, lives and RAM sidecars (no format change)
 
-Every row a write appends takes the version one above the highest stored for the entity (current row and history; v4.46, `internal/core/version_alloc.go`), so history keys `0x07`/`0x08` `/<id>/<version>` are unique and ascend in write order. A re-import of a deleted ID continues that numbering and links its `PrevHash` to the top row (v4.48); chains written by v4.43–v4.47 whose earlier life a re-import overwrote stay as stored (no migration). The read-side doors `HasHistory`, `LatestStamps` and the pinned property lookups answer from RAM sidecars (badger: history presence set, history-stamps fold, per-index property tx-membership; memory: its maps): built lazily on first use after open from the history keys and values, maintained wherever a history key enters the write buffer, dropped by `Clear`, never persisted — a reopen pays one build per sidecar instead of a migration.
+Every row a write appends takes the version one above the highest stored for the entity (current row and history; v4.46, `internal/core/version_alloc.go`), so history keys `0x07`/`0x08` `/<id>/<version>` are unique and ascend in write order. A re-import of a deleted ID continues that numbering and links its `PrevHash` to the top row (v4.48); chains written by v4.43–v4.47 whose earlier life a re-import overwrote stay as stored (no migration). The read-side doors `HasHistory`, `LatestStamps` and the pinned property lookups answer from RAM sidecars (badger: history presence set, history-stamps fold, per-index property tx-membership; memory: its maps): built lazily on first use after open from the history keys and values, maintained wherever a history key enters the write buffer, dropped by `Clear`. The property tx-membership sidecars are built by one scan per kind (rel, node) for every declared index and travel in the open image (backlog 74); the others are never persisted — a reopen pays one build per sidecar instead of a migration.
 
 ## Column segments (opt-in, `RelSegments` / `SegmentDir`, memory store)
 

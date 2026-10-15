@@ -498,6 +498,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   imported-package and two required-module advisories are unreachable. Final
   consolidated root+v5 CI remains pending; no other v4 API or behavior change.
 
+## [4.56.1] - 2026-10-15
+
+### Changed
+
+- **A paged effective door with a valid filter prunes its candidates by the valid-time envelope index** (ai-soc 2026-10-15;
+  backlog 75). `RelsEffectivePage` / `NodesEffectivePage` with `ValidAt` or an interval read the timeline of every candidate
+  and filtered the segments after (ai-soc `cpu-q4.pprof`: 62 % of CPU in `streamRelTimelines` decoding current rows, 0.7-1.85 s
+  for a page of 21/0/0 events). A type (label) with an envelope index (`Index().CreateRelTemporal` / `CreateTemporal`) now
+  drops each fetched candidate whose envelope cannot meet the filter before any timeline is read, on the property-sidecar and
+  the type-list path alike, through the one prune seam the `ByType` / `ByLabel` doors use (`pruneRelTypeCandidates` /
+  `pruneNodeLabelCandidates`). The envelope covers every row of the entity at every transaction time, so a dropped candidate
+  has no segment that meets the filter: pages, `next` and the cursor are unchanged, and a candidate listed by several
+  sources is read when one keeps it. Types without the envelope index keep today's path. 100,000 relationships, one in twenty
+  open at `ValidAt`, a page of 5,000: badger 35 ms to 0.7 ms, memory 5.4 ms to 0.66 ms
+  (`tasks/evidence/page-valid-prune/03-bench.txt`). **ai-soc: declare `CreateRelTemporal` on the 29 estate-indexed
+  relationship types** (no automatic build: see backlog 75). Tests: `TestEffectivePage_ValidPruneCost` (timeline reads equal
+  the candidates whose envelope meets `ValidAt`, a closed and an open interval; memory, badger, sharded, tiered),
+  `TestEffectivePage_ValidPruneDifferential` (envelope indexes declared before or after the writes, `UntimedFromTxFrom` and
+  `UntimedUnbounded` stores, against the unpruned full walk). Docs: api.md and `temporal.API.RelsEffectivePage` cost note,
+  architecture.md "Temporal envelope indexes".
+- **Relationship envelopes cover every row of a re-created or re-typed ID** (backlog 75 review). Memory's relationship
+  create doors (`PutRelationship`, generated-ID, import, batch, sealed-segment load) extended an uncovered ID's envelope by
+  the new row alone, so a relationship deleted before `CreateRelTemporal` and re-imported later was pruned at a pin before
+  its delete; they now fold the ID's history first (`addRelToTemporalIndexesLocked`, the twin of badger's
+  `foldRecreatedRelHistoryLocked`). `PutRelVersion` on memory and badger extended an uncovered ID because it was live; a
+  relationship re-created under another type is live while its older rows' type index does not cover it, so a correction
+  that wrote a row of the old type made that envelope vouch for one version. It now extends covered (or building) IDs only.
+  Tests: `TestEffectivePage_ReimportedIDEnvelope`, re-imports of deleted
+  IDs (same or another type, envelope indexes declared mid-history) in `TestEffectivePage_ValidPruneDifferential`.
+  Each `CreateRelTemporal` declare scans its type once; later clean reopens restore the envelopes from the open image.
+
+- **One scan builds every declared property membership sidecar; a clean close keeps them** (ai-soc; backlog 74; badger and sharded — the memory store still builds each sidecar on its own). ai-soc's
+  first `RelsEffectivePage` after an open waited about 3 minutes (503 meanwhile): the page asks every relationship type,
+  and each declared `(type, key)` sidecar was built lazily by its own full scan of the current and history rows
+  (`buildRelPropTx`, 123 of 259 s CPU, 29 types). Now the first lookup of a kind (relationship or node) starts one build
+  pass that claims every declared unbuilt sidecar of that kind and fills them all from one scan (the lazy-build rules
+  stand: tracking on under `idxMu`, write-buffer overlay captured before the view, install only if the generation did
+  not move). A lookup on a sidecar the running pass claimed waits for it; one on a built sidecar, or on an index
+  declared after the pass started, does not (the per-sidecar build mutex is gone). A clean badger `Close` writes the
+  built sidecars into the open image (sections 9 and 10, same trust rule as the indexes) and a trusted reopen restores
+  them, so the first page after a clean reopen scans nothing. Builds stay lazy: a store whose consumers never ask a
+  temporal property lookup builds and holds none. `PropertyTxMembershipStats().Builds` counts passes on badger (per
+  slot on sharded). Compatibility: v4.56.0 and older reject the new image sections and rebuild from the rows once.
+  Measured (`BenchmarkEffectivePageFirstAfterOpen`, 29 indexed types, 200,000 relationships, 50,000 history rows):
+  open to first page 15.3 s to 0.38 s after a clean close, 14.7 s to 2.8 s without an image
+  (`tasks/evidence/sidecar-one-scan/03-bench.txt`). Cost on the same store (200,000 postings): about 10.5 MiB resident
+  (~55 B per posting) and +2.9 MiB in the open image (2.2 to 5.0 MiB, ~15 B per posting; `08-size.txt`). Tests: `TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex`
+  (badger, delta, sharded), `TestPropTxBuild_OnePassScanCount`, `TestPropTxBuild_OnePassEqualsPerKeyBuild`,
+  `TestPropTxBuild_CleanReopenRestoresSidecars`, `TestPropTxBuild_OtherKeyNotBlockedByRunningBuild`,
+  `TestTieredNodePropertyTxMembersOnePass`, `TestPinnedPropertyLookupLifecycle/badger/reopen` (clean reopen restores
+  and answers with no build; an open without the image rebuilds with one pass per kind).
+
 ## [4.56.0] - 2026-10-15
 
 ### Added

@@ -347,7 +347,9 @@ type NodePropertyTxMemberPageCapability interface {
 
 // PropertyTxMembershipStats reports the property membership sidecars (backlog 8):
 // sidecars built, postings held, completed lazy builds since open and their
-// summed wall time.
+// summed wall time. On badger (and per slot on sharded) one build is one store
+// scan that builds every declared sidecar of its kind; sidecars restored from
+// the open image count no build (backlog 74). Memory builds one per sidecar.
 type PropertyTxMembershipStats struct {
 	RelSidecars   int
 	NodeSidecars  int

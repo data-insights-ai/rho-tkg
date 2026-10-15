@@ -1,0 +1,9 @@
+# BenchmarkEffectivePageFirstAfterOpen/size (same store: 29 indexed rel types, 200,000 rels, 50,000 history rows)
+# image bytes = header + chunk values of 0x0F tkg_open_image*; sidecar bytes = heap after GC of a clean open whose
+# image holds the 29 sidecars minus that of one whose image does not (both opens read keys + image only).
+$ go test -short -count=1 -run '^$' -bench 'BenchmarkEffectivePageFirstAfterOpen/size' -benchtime 1x ./pkg/graph/internal/core/
+BenchmarkEffectivePageFirstAfterOpen/size-32  1  2978982677 ns/op  5.039 image-MiB-with  2.175 image-MiB-without  200000 postings  55.24 sidecar-B/posting  10.54 sidecar-MiB
+BenchmarkEffectivePageFirstAfterOpen/size-32  1  2798007549 ns/op  5.039 image-MiB-with  2.175 image-MiB-without  200000 postings  54.61 sidecar-B/posting  10.42 sidecar-MiB
+
+Resident: ~10.5 MiB for 200,000 postings (~55 B/posting, 10 values x ~690 members per sidecar).
+Open image: 2.18 MiB -> 5.04 MiB (+2.86 MiB, ~15 B/posting).

@@ -60,6 +60,15 @@ type Filter struct {
 // the ordered sidecar; tiered keeps no relationship property index, so every
 // type takes the second path there.
 //
+// With a valid filter (ValidAt or an interval), a type with a valid-time
+// envelope index (Index().CreateRelTemporal) drops, on either path, each
+// candidate whose envelope (earliest valid-from to latest valid-to over all
+// its rows) cannot meet the filter before its timeline is read, so a page at
+// ValidAt reads only the candidates whose envelope covers it. A type without
+// the envelope index reads every candidate and filters its segments. Declare
+// CreateRelTemporal on the types paged with a valid filter (all four backends
+// prune; the index costs RAM per relationship and is rebuilt at open).
+//
 // Errors: ForEachRelEffective's gates for pin.Tx (ErrInvalidTimeRange,
 // ErrTxPinTooNew, ErrHistoryCompacted, ErrRetentionExpired),
 // ErrInvalidTimeRange for a negative or conflicting valid filter, an invalid
@@ -78,7 +87,10 @@ func (a *API) RelsEffectivePage(ctx context.Context, pin Pin, f Filter, after ty
 // oracle is ForEachNodeEffective, an index is a (label, f.Prop) node property
 // index, and a label without one contributes its ever-members at the pin
 // (the same per-page cost; declare the index on every label that carries the
-// property). Tiered offers no paged sidecar, so every label gathers there.
+// property). Tiered offers no paged sidecar, so every label gathers there. A
+// label's envelope index (Index().CreateTemporal) prunes a valid-filtered page
+// as CreateRelTemporal does; a node listed by several labels is read when one
+// of them keeps it. Tiered keeps no node envelope prune.
 func (a *API) NodesEffectivePage(ctx context.Context, pin Pin, f Filter, after types.NodeID, limit int) (segs []NodeSegment, next types.NodeID, err error) {
 	ops, err := a.ready()
 	if err != nil {

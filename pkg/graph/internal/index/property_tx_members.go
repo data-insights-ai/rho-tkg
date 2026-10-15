@@ -194,6 +194,23 @@ func (m *PropertyTxMembers[ID]) Merge(other *PropertyTxMembers[ID]) {
 	}
 }
 
+// ForEachValue calls fn once per value with its members (the open image's
+// encoder, backlog 74). members is reused between calls: valid only during fn.
+// The owner calls it under at least its shared lock.
+func (m *PropertyTxMembers[ID]) ForEachValue(fn func(vk string, members []TxMember[ID])) {
+	if m == nil {
+		return
+	}
+	var buf []TxMember[ID]
+	for vk, p := range m.values {
+		buf = append(buf[:0], TxMember[ID]{ID: p.id, FirstTx: p.tx})
+		for id, tx := range p.more {
+			buf = append(buf, TxMember[ID]{ID: id, FirstTx: tx})
+		}
+		fn(vk, buf)
+	}
+}
+
 // Members returns a caller-owned snapshot of vk's members.
 func (m *PropertyTxMembers[ID]) Members(vk string) []TxMember[ID] {
 	if m == nil {

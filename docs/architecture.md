@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.56.0)
+# Architecture — tkg/v4 (v4.56.1)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -551,7 +551,7 @@ flush writes the group). Sharded holds its store lock across the fold.
 - `idxMu sync.RWMutex` -- protects all in-memory indexes
 - `wbMu sync.Mutex` -- protects pending write buffer
 - `flushMu sync.Mutex` -- serializes flushes (background, backpressure, `DurableFlush`, `Close`)
-- sidecar locks: the history presence / stamps sets each have a `buildMu` and an `RWMutex` taken inside `wbMu` by `noteHistoryKey`; one build mutex per property tx-membership sidecar (build mutex -> `idxMu`, never nested)
+- sidecar locks: the history presence / stamps sets each have a `buildMu` and an `RWMutex` taken inside `wbMu` by `noteHistoryKey`; the property tx-membership sidecars are claimed by one build pass per kind under `idxMu` (`propTxPass`), and a lookup waits for the claiming pass with no lock held
 - `atomic.Int64` counters for node/rel counts
 - `sync.Map` for per-label/per-type counters
 - `sync.Once` for idempotent Close
@@ -594,7 +594,7 @@ endpoint-resolving traversals without fetching the relationship row.
 **RAM sidecars (no on-disk keyspace; built lazily, rebuilt after reopen, dropped by `Clear`):**
 - *History presence* (`HasNodeHistory` / `HasRelHistory`): the IDs with history rows and their highest history version, built by one key-only scan of `0x07`/`0x08` (write buffer included) and maintained in `noteHistoryKey` under `wbMu`, the one seam every history key passes; a delete marks the ID for a per-ID key probe installed under a write-generation stamp. `Config.HistoryPresenceProbeOnly` (tiered cold shards) answers by probe without building.
 - *History stamps* (`NodeHistoryStamps` / `RelHistoryStamps`, behind `LatestStamps`): the fold of each ID's history-row `TxFrom` / `TxTo` / `DeletedAt` (`store.FoldTxStamps`), built from the temporal block of each history value, same maintenance and probe protocol.
-- *Transaction-time membership*: per label / rel type (`ByLabel` / `ByType` with `TxAt` / `TxPin`) and, since v4.48, per declared property index (`ForEach{Node,Rel}PropertyTxMember`: value -> every entity whose rows ever carried it, with the earliest `TxFrom`, merged by `index.MergeFirstTx` so an unstamped 0 is never raised). Append-only sound supersets: the chain resolver stays the authority. Recorded at the current-row index seam and every history-row door.
+- *Transaction-time membership*: per label / rel type (`ByLabel` / `ByType` with `TxAt` / `TxPin`) and, since v4.48, per declared property index (`ForEach{Node,Rel}PropertyTxMember`: value -> every entity whose rows ever carried it, with the earliest `TxFrom`, merged by `index.MergeFirstTx` so an unstamped 0 is never raised). Append-only sound supersets: the chain resolver stays the authority. Recorded at the current-row index seam and every history-row door. The property ones are the exception to "rebuilt after reopen": one scan per kind builds every declared one, and the open image carries the built ones across a clean close (backlog 74).
 
 **Key layout (11 prefixes):**
 
@@ -636,7 +636,7 @@ DocValues row costs no per-row heap object, and a 10M-row numeric column
 
 ### Temporal envelope indexes (node label, relationship type)
 
-`g.Index().CreateTemporal(label)` and `CreateRelTemporal(type)` keep a RAM index of one envelope per entity: the earliest valid-from and latest valid-to over ALL its rows, current and history. A valid-time `ByLabel` / `ByType` read prunes an entity whose envelope misses the query instant without reading it. The prune is sound only if no row lies outside its entity's envelope, so the contract is: an entity the index does not cover is never pruned, and every write that adds a row to a covered entity extends the envelope in the same step.
+`g.Index().CreateTemporal(label)` and `CreateRelTemporal(type)` keep a RAM index of one envelope per entity: the earliest valid-from and latest valid-to over ALL its rows, current and history. A valid-time `ByLabel` / `ByType` read, and a paged effective door with a valid filter (`RelsEffectivePage` / `NodesEffectivePage`, backlog 75), prunes an entity whose envelope misses the query instant without reading it (one seam: `pruneRelTypeCandidates` / `pruneNodeLabelCandidates`). The prune is sound only if no row lies outside its entity's envelope, so the contract is: an entity the index does not cover is never pruned, and every write that adds a row to a covered entity extends the envelope in the same step.
 
 - **Build (three phases, `CreateTemporalIndex`, `CreateRelTemporalIndex`).** (1) Install the index as Building: writes fold into it and record their IDs, prunes decline it, it is not persisted or imaged. (2) Build unlocked from the members taken at the start; the relationship build reads one transaction with two forward walks (current rows, history rows) in ID order and folds a delta history row from its temporal block (reopen rebuild and tiered cold-to-warm promotion use the same build; 200,000 relationships with history reopen at 0.3 M rels/s, 4x the former per-ID reads). (3) Re-read every recorded ID, merge and publish under the lock. An ID first written after the re-read has its whole history folded at the install. A create that fails leaves no index behind.
 - **Doors that add rows to a covered or uncovered ID fold its history first**: the create doors for a re-created ID (`PutNode`, `PutRelationship` and their batch and co-located forms), the add-label doors for a label added back to a live node, and `PutNodeVersion` (it extends the envelope of each of the node's labels; an uncovered ID stays uncovered). Memory's create reads a node's history rows under its lock.
@@ -1219,7 +1219,7 @@ Import treats record streams as untrusted input. `ImportOptions.MaxStagedBytes =
 | v3.0.66 | `GraphTx.GetNode`, `GraphTx.AddRelationshipByID`, `GraphTx.AddRelationshipByIDIfAbsent` for transactional graph writes |
 | v3.0.67 | Cross-shard incoming relationship type filter fix — `inIdx` changed from `map[ID]struct{}` to `map[ID]uint16` (relID → typeToken; today `inEdge{startNodeID, typeToken}`) |
 
-The table records the v3.0 build-out only. Every later release (v3.0.68 – v4.56.0) is in `CHANGELOG.md`; the sections above describe the current code.
+The table records the v3.0 build-out only. Every later release (v3.0.68 – v4.56.1) is in `CHANGELOG.md`; the sections above describe the current code.
 
 ---
 

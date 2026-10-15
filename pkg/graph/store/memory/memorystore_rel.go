@@ -85,7 +85,7 @@ func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) erro
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
-	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
+	ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID()) // BACKLOG 21c
 	return ms.logRelPutRoutedLocked(r, false, token)
 }
 
@@ -181,7 +181,7 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
-	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
+	ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID()) // BACKLOG 21c
 	if err := ms.logRelPutRoutedLocked(r, false, token); err != nil {
 		return "", "", err
 	}
@@ -280,7 +280,7 @@ func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
-	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
+	ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID()) // BACKLOG 21c
 	return ms.logRelPutRoutedLocked(r, false, token)
 }
 
@@ -828,7 +828,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 		ms.adjustRelPropertyTypeClassCounts(r, 1)
 		ms.adjustRelPropertyKeyCounts(r, 1)
-		indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
+		ms.addRelToTemporalIndexesLocked(r, id.SnowflakeID()) // BACKLOG 21c
 		if err := ms.logRelPutLocked(r, false); err != nil {
 			return err
 		}
