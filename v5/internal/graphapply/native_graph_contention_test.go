@@ -32,6 +32,13 @@ func TestNativeContentionRequiredProfileAndWholeGenerationGrantAreFinite(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, records, _, err := spec.applicationAdmission()
+	rootBytes, recoveryRecords, recoveryErr := raftlog.ApplicationRecoveryRootOverhead(0)
+	// Derive the extra row from the actual native recovery API, including its
+	// empty-credit envelope. A graph-only259-row ceiling must fail this guard.
+	if err != nil || recoveryErr != nil || rootBytes == 0 || recoveryRecords != 1 || records != frames*(uint64(application.MaxInstallWrites)+3+recoveryRecords)+65536 || application.RetainedApplicationRecords != records {
+		t.Fatal("native recovery record omitted from whole-run admission", records, recoveryRecords, err, recoveryErr)
+	}
 	p, err := nativeContentionColumnAllowance(application, defaultMaterializerLimits(), frames, nativeContentionWholeSeconds)
 	if err != nil || p.Version != 1 || p.ChunkRecords != 16 || p.ChunkRows != 16 || p.Lifetime != time.Minute || p.MaxWorkBytes == ^uint64(0) || p.MaxRetainedBytes > 1<<62 || p.CacheBytes != 2<<20 || p.MemTableBytes != 1<<20 {
 		t.Fatal("required additive whole-generation policy", p, err)

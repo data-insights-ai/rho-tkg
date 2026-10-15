@@ -232,19 +232,20 @@ func (s nativeContentionSpec) retainedFrames() (uint64, error) {
 }
 
 // Same immutable contiguous retain-all admission used by the child bootstrap
-// and fresh column policy. Three native application records exist per frame;
-// sparse AS7/collected profiles may not reuse this proof.
+// and fresh column policy. Root/Outcome/CDC plus the enabled native recovery
+// envelope exist per frame; sparse AS7/collected profiles may not reuse this proof.
 func (s nativeContentionSpec) applicationAdmission() (frames, records, bytes uint64, err error) {
 	frames, err = s.retainedFrames()
-	if err != nil || frames > (^uint64(0)-65536)/259 {
+	if err != nil || frames > (^uint64(0)-65536)/260 {
 		return 0, 0, 0, errors.Join(errLimit, err)
 	}
-	// Every admitted native entry can install at most256 keyed writes plus its
-	// three Root/Outcome/CDC frames. Quotas allocate no corresponding row map.
+	// Every admitted native entry can install at most256 keyed writes/control
+	// puts plus Root/Outcome/CDC and one native recovery envelope. AS6 retains
+	// that fourth record even with no active credits. Quotas allocate no row map.
 	// Retained bytes are an explicit logical resource policy, NOT theoretical
 	// decoded-work grants or physical disk/RSS. Both banks fit unchanged1TiB cap;
 	// reaching this finite policy remains a reported resource refusal.
-	return frames, 259*frames + 65536, (64 << 20) + s.Facts*(512<<10), nil
+	return frames, 260*frames + 65536, (64 << 20) + s.Facts*(512<<10), nil
 }
 
 // This separate fresh profile leaves ordinary COST, P05 and the compact durable
@@ -263,8 +264,8 @@ func nativeContentionProfile(s *nativeContentionSpec, init *declaredInitCommand,
 	if err != nil {
 		return err
 	}
-	// Three genuine application records per retained index, plus native keyed
-	// graph/control state. No sparse/collected-source frame count is inferred.
+	// Four genuine application/recovery records per retained index, plus native
+	// keyed graph/control state. No sparse/collected-source count is inferred.
 	init.maxBlock = min(s.homeCount(), idalloc.MaxBlockSize)
 	l.MaxRetainedBytes, l.MaxRetainedEntries = bytes, 1_000_000
 	p.RetainedApplicationBytes, p.RetainedApplicationRecords = bytes, records
