@@ -262,11 +262,14 @@ all A–F exit requirements; implementation status never implies acceptance.
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (latest observed main source is `e364456f`/v4.55.1; current v5 source includes v4.51.8),
+   cutoff (latest observed main source is `259105ad`/v4.55.2; current v5 source includes v4.51.8),
    review relevant handover/consumer/CI deltas and integrate required changes.
    The effective-page, history-epoch/head-cache, correction/rollback fast-path
    and compaction-gap version-allocation contracts belong in that source/consumer
-   reconciliation; the upstream handover is not release evidence.
+   reconciliation. The latest additive delta also includes numeric property
+   bounds, range reads/counts at a pin, label/type time statistics and scans
+   restricted by ordinal bitsets. No v5 implementation or shared CI file changed
+   in that latest delta; the upstream handover is not release evidence.
    Preserve historical qualification rather than relabelling it as current.
    On the final integrated revision run full phase CI/race/coverage/security and
    the complete V2 requirement/evidence audit once; repeat only gates invalidated
