@@ -812,8 +812,10 @@ and the exact unanswered request have separate bounded capture; the target's
 actual pipe failure and persisted batch receipt precede interruption eligibility.
 Fresh bootstrap, RPCs, snapshot catch-up and boundary waits share the original
 deadline, with separate terminal cleanup; nil/default fixture behavior remains.
-The independent checker/guards and CI routes are still implementation work.
-No compilation or execution has occurred. Other phase/occurrence, leader/message,
+The independent checker/guards and future CI routes are source-integrated at
+`7a82352a`: actual retained originals, complete source prefixes, exact old/current
+sets and an independent serial witness authenticate the finite conjunctions.
+No compilation, tests or CI execution has occurred. Other phase/occurrence, leader/message,
 P-row and applicable publication/import/GC conjunctions remain source gaps;
 this checkpoint does not complete P06 or D.
 The first actual state/process composition is source-integrated at `7081f9ff`:
@@ -881,9 +883,12 @@ Page/ACK after client loss, same-directory cohort recovery and a genuine post-GC
 checkpoint column generation. C-dependent generations retire before collection;
 setup transactions remain separate from useful create/update timing. Explicit
 fresh snapshot allowances and common presence-row validation preserve the older
-profiles. The independent sparse-source checker, owned launcher/matrix route and
-matched FDB retained-only adapter remain implementation work. This Go checkpoint
-has not been compiled or executed. Report conservative native retention and any
+profiles. The independent sparse-source checker and owned launcher/matrix route
+are source-integrated at `1c8f0b0`. Complete all-voter originals, sparse retained
+prefixes, genuine checkpoint columns and physical collector cursors are joined
+under finite grants. The matched FDB retained-only adapter and cross-engine join
+remain implementation work; the unmatched paired route refuses. Neither the Go
+workload nor Python controller/checker has been executed. Report conservative native retention and any
 additional generic At availability as actual cost and behavior; this does not
 claim FDB's physical reclamation or runtime qualification.
 
@@ -919,8 +924,8 @@ uses genuine planned checks while preserving ordinary Set. Count actual read/wri
 participants, not empty cross-protocol manifests or endpoint placement, before
 accepting any affected scalar cost row.
 
-Current worker lanes: Sol 6.1/high for the native retained-only feed workload/GC
-adapter and remaining native workload families;
+Current worker lanes: Sol 6.1/high for the matching FDB retained-only workload
+adapter and complete independent cross-engine join;
 Sol 6.1/high for the finite applicable protocol/storage/message/leader/conflict
 composition registry and driver;
 Sol 6.1/high for the remaining native workload families, starting with immutable
