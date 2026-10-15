@@ -530,6 +530,11 @@ source owner; its seal and route activation share one native transaction. SAME
 last-page recovery retains cumulative work, including full delivered SDK head
 windows after the correction at `772e9391`. Its separately counted controls and
 raw census are logical key/value bytes, not physical disk or RSS measurements.
+Catalog2's mandatory full census is a conservative harness certification barrier,
+not an inherent FDB copy or placement requirement. Record its actual wall time
+separately from complete transfer latency; material overhead requires an explicit
+baseline refinement before the engine verdict, not inferred throughput from
+subtracted or overlapping times.
 Actual target-process replacement, transfer workload/oracle and matrix-family
 wiring remain implementation work; stable shared-KV keys do not establish
 physical replica transfer.
