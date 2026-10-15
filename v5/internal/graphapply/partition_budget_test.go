@@ -6,9 +6,64 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
+
+func TestCollectedAndPooledPartitionWritesShareInitializationBudget(t *testing.T) {
+	for _, profile := range []struct {
+		name     string
+		semantic raftlog.ApplicationSemanticContractID
+		recovery uint32
+	}{{"collected", collectedGraphSemanticContractID(), 2}, {"pooled", rangeMovePooledSemanticContractID(), 4}} {
+		t.Run(profile.name, func(t *testing.T) {
+			n := collectedGraphNetworkWithRecovery(t, nil, profile.semantic, raftlog.ApplicationRecoveryConfig{Version: profile.recovery})
+			h := n.hosts[0][0]
+			handle := n.activate(0, [16]byte{1})
+			n.acquire(0, handle, 1, 16)
+			scope, err := temporal.All(graphGenesisBinding(t).Axis())
+			if err != nil {
+				t.Fatal(err)
+			}
+			claims := []freshBinding{{role: entityBinding, id: 1, grant: grantReference{session: handle.session, sequence: 1}}, {role: lifeBinding, owner: 1, id: 2, grant: grantReference{session: handle.session, sequence: 1}}}
+			create, err := h.PreparePartitionGraphOperations(n.requestID(), []graphstate.Operation{{Kind: graphstate.CreateNode, Owner: 1, Life: 2, Scope: scope}}, 23, claims)
+			if err != nil {
+				t.Fatal(err)
+			}
+			entry := replica.Entry{Index: h.driver.Applied() + 1, Generation: h.machine.store.ApplicationGeneration(), Term: 2, Data: create.wire}
+			batch, err := h.machine.Stage(entry, h.machine.store.ApplicationBudget())
+			if err != nil || len(batch.Writes) == 0 || len(batch.Changes) == 0 {
+				t.Fatal("first local write must share initialization's arena", err)
+			}
+			// A smaller allowance must refuse atomically, rather than reset the
+			// initialization or decoded-command ownership to a fresh arena.
+			tight := *h.machine
+			tight.limits.outputBytes = 4096
+			refused, err := tight.Stage(entry, h.machine.store.ApplicationBudget())
+			if !errors.Is(err, errLimit) || len(refused.Writes)+len(refused.Image)+len(refused.Changes)+len(refused.Outcome) != 0 {
+				t.Fatal("shared output admission did not refuse atomically", err)
+			}
+			n.submitPartitionGraph(0, create, reasonNone)
+			old, closeOld := crossView(t, n, 0, [2]uint64{})
+			defer closeOld()
+			assertCertifiedProjection(t, old, 1, true, nil)
+			mutation, err := h.PreparePartitionGraphOperations(n.requestID(), []graphstate.Operation{{Kind: graphstate.AddLabel, Owner: 1, Life: 2, Name: "later", Scope: scope}}, 24, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			n.submitPartitionGraph(0, mutation, reasonNone)
+			for member := range 3 {
+				current, closeCurrent := crossView(t, n, member, [2]uint64{})
+				assertCertifiedProjection(t, current, 1, true, []string{"later"})
+				assertCertifiedProjection(t, current, 13, false, nil)
+				closeCurrent()
+			}
+			assertCertifiedProjection(t, old, 1, true, nil)
+		})
+	}
+}
 
 func TestPartitionAggregateOutputRefusalPrecedes128OperationInputClones(t *testing.T) {
 	r := partitionCodecRequest(t, 0, defaultMaterializerLimits())

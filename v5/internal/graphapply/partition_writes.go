@@ -21,12 +21,18 @@ func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.Ow
 	if info.Root().SemanticEpoch() == 0 {
 		return raftlog.ApplicationBatch{}, errNotInitialized
 	}
-	cfg, err := m.initialized(q)
+	decodedOwned := 0
+	r, err := decodePartitionGraphCommandOwned(entry.Data, m.limits, &decodedOwned)
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err
 	}
-	decodedOwned := 0
-	r, err := decodePartitionGraphCommandOwned(entry.Data, m.limits, &decodedOwned)
+	// Initialization and graph staging share this one allowance. Collected
+	// profiles may need an arena during initialization; admit decoded ownership
+	// first so initialization reuses it without rejoining or losing prior charges.
+	if err := joinGraphOutputBudget(q, r.request, decodedOwned, m.limits); err != nil {
+		return raftlog.ApplicationBatch{}, err
+	}
+	cfg, err := m.initialized(q)
 	if err != nil {
 		return raftlog.ApplicationBatch{}, err
 	}
@@ -101,9 +107,6 @@ func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.Ow
 	outer := 4096 + compositionMetadataBytes + graphRequestMetadataBytes + 640*cap(r.request.operations) + 128*cap(r.request.claims) + 8*len(entry.Data) + 4*cap(q.base.Image)
 	for _, row := range q.writes {
 		outer += cap(row.Key) + cap(row.Value) + 128
-	}
-	if err := joinGraphOutputBudget(q, r.request, decodedOwned, m.limits); err != nil {
-		return raftlog.ApplicationBatch{}, err
 	}
 	gl := m.limits.graph
 	gl.MaxSourceRows = min(gl.MaxSourceRows, q.limits.readRows-q.rows)
