@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -24,12 +26,20 @@ import (
 //     ByTypeAndProperty (forEachRelPropertyCandidateID), resumed at the cursor;
 //   - otherwise the type's candidates at the pin (relTypeCandidateIDsAt, the
 //     ForEachRelEffectiveByType gather), above the cursor.
+// With a valid filter (ValidAt or an interval), a source whose type (label)
+// has a valid-time envelope index (CreateRelTemporal / CreateTemporal) drops
+// each fetched candidate whose envelope cannot meet the filter before any
+// timeline is read (backlog 75, the ByType/ByLabel prune: every segment lies
+// inside its entity's envelope, so a dropped candidate has no segment that
+// meets the filter). Sources without the index are not pruned.
 // The sources are merged in ID order (k-way, a candidate in several sources
 // once). Every row carrying the value is a row of its own type, so the union
-// covers every entity the full walk keeps. Each candidate's timeline is the
+// covers every entity the full walk keeps; a candidate is skipped only when
+// every source that lists it dropped it. Each candidate's timeline is the
 // per-entity door's (streamRelTimelines); the page keeps the segments whose
 // row carries the value and that meet the valid filter, and ends after limit
-// entities with a kept segment.
+// entities with a kept segment. The cursor is the last returned ID: a dropped
+// candidate never has a kept segment, so no page skips one that would match.
 // =============================================================================
 
 // MaxEffectivePageLimit is the largest limit the paged effective doors accept
@@ -49,6 +59,7 @@ type pageSource[ID ~int64] struct {
 	seen  ID   // the highest ID the store returned (the resume point)
 	done  bool // the store has nothing above seen
 	fetch func(after ID, n int) (ids []ID, last ID, done bool, err error)
+	prune func(ids []ID) []ID // drops fetched candidates outside the valid filter (nil: none)
 }
 
 // fill refills an empty buffer (c.mu held).
@@ -57,6 +68,9 @@ func (s *pageSource[ID]) fill(n int) error {
 		ids, last, done, err := s.fetch(s.seen, n)
 		if err != nil {
 			return err
+		}
+		if s.prune != nil && len(ids) > 0 {
+			ids = s.prune(ids)
 		}
 		s.buf, s.done = ids, done
 		if last > s.seen {
@@ -145,17 +159,25 @@ func listSource[ID ~int64](ids []ID, after ID) *pageSource[ID] {
 	return &pageSource[ID]{buf: above(ids, after), seen: after, done: true}
 }
 
-// pageValidKeep returns the segment predicate of pin's valid-time filter.
-func pageValidKeep(pin temporal.Pin) func(from, to types.Instant) bool {
-	switch {
-	case pin.ValidAt != 0:
-		at := pin.ValidAt
-		return func(from, to types.Instant) bool { return from <= at && (to == 0 || to > at) }
-	case pin.ValidStart != 0:
-		s, e := pin.ValidStart, pin.ValidEnd // e == 0: open-ended [s, inf)
-		return func(from, to types.Instant) bool { return (e == 0 || from < e) && (to == 0 || to > s) }
+// pageQueryOpts returns pin as store query options: the transaction pin and
+// the valid-time filter, which both the envelope prune and the segment
+// predicate (pageValidKeep) read. An open interval [s, inf) ends at
+// math.MaxInt64, since QueryOpts reads ValidEnd 0 as no interval.
+func pageQueryOpts(pin temporal.Pin) storepkg.QueryOpts {
+	opts := storepkg.QueryOpts{TxPin: pin.Tx, ValidAt: pin.ValidAt}
+	if pin.ValidStart != 0 {
+		opts.ValidStart, opts.ValidEnd = pin.ValidStart, pin.ValidEnd
+		if opts.ValidEnd == 0 {
+			opts.ValidEnd = math.MaxInt64
+		}
 	}
-	return func(types.Instant, types.Instant) bool { return true }
+	return opts
+}
+
+// pageValidKeep returns the segment predicate of opts' valid-time filter: the
+// envelope predicate, applied to one segment.
+func pageValidKeep(opts storepkg.QueryOpts) func(from, to types.Instant) bool {
+	return func(from, to types.Instant) bool { return storeutil.EnvelopeOverlaps(from, to, opts) }
 }
 
 // validatePage checks the arguments both paged doors share and returns the
@@ -208,12 +230,13 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 	if err != nil {
 		return nil, 0, err
 	}
+	opts := pageQueryOpts(pin)
 	var srcs []*pageSource[types.RelID]
 	if err := c.readUnderRLock(func() error {
 		n := c.relTypes.Len()
 		for i := 1; i <= n; i++ {
 			tok := uint16(i) // #nosec G115 -- bounded by the registry's uint16 token space
-			src, err := c.relPageSource(tok, f.Prop, vk, pin.Tx, after)
+			src, err := c.relPageSource(tok, f.Prop, vk, opts, after)
 			if err != nil {
 				return err
 			}
@@ -223,7 +246,7 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 	}); err != nil {
 		return nil, 0, err
 	}
-	validOK := pageValidKeep(pin)
+	validOK := pageValidKeep(opts)
 	keepRow := func(r *types.Relationship) bool { return r.HasPropertyIndexKey(f.Prop, false, vk) }
 	var (
 		out      []temporal.RelSegment
@@ -261,13 +284,15 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 	return out, last, nil
 }
 
-// relPageSource returns tok's candidate source (c.mu held).
-func (c *Core) relPageSource(tok uint16, key, vk string, pin types.Instant, after types.RelID) (*pageSource[types.RelID], error) {
+// relPageSource returns tok's candidate source at opts (pageQueryOpts), its
+// candidates pruned by the type's envelope index (c.mu held).
+func (c *Core) relPageSource(tok uint16, key, vk string, opts storepkg.QueryOpts, after types.RelID) (*pageSource[types.RelID], error) {
 	if c.relPropTxPage != nil {
-		src := sidecarSource(pin, after, c.storeRowsTrust, storepkg.ValidateRelID,
+		src := sidecarSource(opts.TxPin, after, c.storeRowsTrust, storepkg.ValidateRelID,
 			func(after types.RelID, n int, fn func(types.RelID, types.Instant) bool) error {
 				return c.relPropTxPage.ForEachRelPropertyTxMemberAfter(tok, key, vk, after, n, fn)
 			})
+		src.prune = func(ids []types.RelID) []types.RelID { return c.pruneRelTypeCandidates(tok, ids, opts) }
 		// The first fetch tells an indexed type from one without the index.
 		err := src.fill(pageChunkMin)
 		if err == nil {
@@ -277,7 +302,7 @@ func (c *Core) relPageSource(tok uint16, key, vk string, pin types.Instant, afte
 			return nil, err
 		}
 	}
-	ids, err := c.relTypeCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin})
+	ids, err := c.relTypeCandidateIDsAt(tok, opts) // pruned by the envelope
 	if err != nil {
 		return nil, err
 	}
@@ -291,12 +316,13 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 	if err != nil {
 		return nil, 0, err
 	}
+	opts := pageQueryOpts(pin)
 	var srcs []*pageSource[types.NodeID]
 	if err := c.readUnderRLock(func() error {
 		n := c.labels.Len()
 		for i := 1; i <= n; i++ {
 			tok := uint16(i) // #nosec G115 -- bounded by the registry's uint16 token space
-			src, err := c.nodePageSource(tok, f.Prop, vk, pin.Tx, after)
+			src, err := c.nodePageSource(tok, f.Prop, vk, opts, after)
 			if err != nil {
 				return err
 			}
@@ -306,7 +332,7 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 	}); err != nil {
 		return nil, 0, err
 	}
-	validOK := pageValidKeep(pin)
+	validOK := pageValidKeep(opts)
 	keepRow := func(n *types.Node) bool { return n.HasPropertyIndexKey(f.Prop, false, vk) }
 	var (
 		out      []temporal.NodeSegment
@@ -344,13 +370,16 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 	return out, last, nil
 }
 
-// nodePageSource returns label tok's candidate source (c.mu held).
-func (c *Core) nodePageSource(tok uint16, key, vk string, pin types.Instant, after types.NodeID) (*pageSource[types.NodeID], error) {
+// nodePageSource is relPageSource for label tok, pruned by the label's
+// envelope index; a node listed by several labels is read when one of their
+// sources keeps it (c.mu held).
+func (c *Core) nodePageSource(tok uint16, key, vk string, opts storepkg.QueryOpts, after types.NodeID) (*pageSource[types.NodeID], error) {
 	if c.nodePropTxPage != nil {
-		src := sidecarSource(pin, after, c.storeRowsTrust, storepkg.ValidateNodeID,
+		src := sidecarSource(opts.TxPin, after, c.storeRowsTrust, storepkg.ValidateNodeID,
 			func(after types.NodeID, n int, fn func(types.NodeID, types.Instant) bool) error {
 				return c.nodePropTxPage.ForEachNodePropertyTxMemberAfter(tok, key, vk, after, n, fn)
 			})
+		src.prune = func(ids []types.NodeID) []types.NodeID { return c.pruneNodeLabelCandidates(tok, ids, opts) }
 		err := src.fill(pageChunkMin)
 		if err == nil {
 			return src, nil
@@ -359,7 +388,7 @@ func (c *Core) nodePageSource(tok uint16, key, vk string, pin types.Instant, aft
 			return nil, err
 		}
 	}
-	ids, err := c.nodeLabelCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin})
+	ids, err := c.nodeLabelCandidateIDsAt(tok, opts) // pruned by the envelope
 	if err != nil {
 		return nil, err
 	}

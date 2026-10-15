@@ -179,6 +179,10 @@ type epScenario struct {
 	minX   types.Instant
 	ops    map[string]int
 	values []string
+	// temporal also declares the valid-time envelope indexes (backlog 75) on
+	// types (labels) 0 and 2: one source has both indexes, one the property
+	// index alone, one the envelope alone.
+	temporal bool
 }
 
 var (
@@ -203,6 +207,20 @@ func (sc *epScenario) declare(t *testing.T) {
 		}
 		if err != nil && !strings.Contains(err.Error(), "tiered") && !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 			t.Logf("declare index %d: %v (backend declines; the door falls back)", i, err)
+		}
+	}
+	if !sc.temporal {
+		return
+	}
+	for _, i := range []int{0, 2} {
+		var err error
+		if sc.rel {
+			err = sc.g.Index.CreateRelTemporal(epRelTypes[i])
+		} else {
+			err = sc.g.Index.CreateTemporal(epLabels[i])
+		}
+		if err != nil {
+			t.Fatalf("declare temporal index %d: %v", i, err)
 		}
 	}
 }
@@ -346,67 +364,77 @@ func TestEffectivePage_DifferentialRandom(t *testing.T) {
 				for seed := 0; seed < seeds; seed++ {
 					t.Run(fmt.Sprintf("%s/rel=%v/early=%v/seed=%d", be.name, rel, early, seed), func(t *testing.T) {
 						t.Parallel()
-						g := be.open(t, false)
-						clk := &switchableClock{}
-						g.SetClockForTest(t, clk.Now)
-						sc := &epScenario{g: g, rel: rel, rng: rand.New(rand.NewPCG(uint64(seed), 0x69)), clk: clk,
-							x: etX0(), ops: map[string]int{}, values: []string{"e0", "e1", "e2"}}
-						sc.minX = sc.tick()
-						if rel {
-							sc.s, sc.e = txbEndpoints(t, g)
-						}
-						if early {
-							sc.declare(t)
-							pin, _ := g.Temporal.NowTx()
-							epWalk(t, g, rel, temporal.Pin{Tx: pin}, "e0", 2, nil) // opens the ordered views
-						}
-						for i := 0; i < steps; i++ {
-							sc.step(t)
-							if early && i == steps/3 {
-								// Open every value's ordered view: the later
-								// writes reach it through Record.
-								pin := sc.pins[len(sc.pins)-1]
-								for _, v := range sc.values {
-									epWalk(t, g, rel, temporal.Pin{Tx: pin}, v, 2, nil)
-								}
-							}
-						}
-						if !early {
-							sc.declare(t)
-						}
-						checks := 0
-						for _, k := range []int{0, len(sc.pins) / 3, len(sc.pins) / 2, len(sc.pins) - 1, sc.rng.IntN(len(sc.pins))} {
-							pin := sc.pins[k]
-							vt := sc.minX + types.Instant(sc.rng.IntN(int(sc.x-sc.minX)+1))
-							for _, p := range []temporal.Pin{
-								{Tx: pin},
-								{Tx: pin, ValidAt: vt},
-								{Tx: pin, ValidStart: vt, ValidEnd: vt + types.Instant(1+sc.rng.IntN(8000))},
-								{Tx: pin, ValidStart: vt}, // open-ended [vt, inf)
-							} {
-								for _, eq := range []any{"e0", "e1", "e2", "absent"} {
-									want := epOracle(t, g, rel, p, eq)
-									for _, limit := range []int{1, 3, 1000} {
-										got := epWalk(t, g, rel, p, eq, limit, nil)
-										if a, b := epRender(got), epRender(want); a != b {
-											t.Fatalf("pin %+v eq %v limit %d:\n got  %s\n want %s", p, eq, limit, a, b)
-										}
-										checks++
-									}
-								}
-							}
-						}
-						for _, op := range []string{"add", "update", "delete", "close", "excise", "interval", "retract"} {
-							if sc.ops[op] == 0 && !testing.Short() {
-								t.Errorf("generator never ran %s (ops %v)", op, sc.ops)
-							}
-						}
-						t.Logf("%d page walks, ops %v", checks, sc.ops)
+						epDifferential(t, be, rel, early, false, seed, steps)
 					})
 				}
 			}
 		}
 	}
+}
+
+// epDifferential runs one differential: a random history (steps), the
+// indexes declared before (early) or after the writes, with temporalIdx also
+// the valid-time envelope indexes (sc.declare), then every page walk at the
+// recorded pins and random valid filters against the full walk.
+func epDifferential(t *testing.T, be txbBackend, rel, early, temporalIdx bool, seed, steps int) {
+	t.Helper()
+	g := be.open(t, false)
+	clk := &switchableClock{}
+	g.SetClockForTest(t, clk.Now)
+	sc := &epScenario{g: g, rel: rel, rng: rand.New(rand.NewPCG(uint64(seed), 0x69)), clk: clk,
+		x: etX0(), ops: map[string]int{}, values: []string{"e0", "e1", "e2"}, temporal: temporalIdx}
+	sc.minX = sc.tick()
+	if rel {
+		sc.s, sc.e = txbEndpoints(t, g)
+	}
+	if early {
+		sc.declare(t)
+		pin, _ := g.Temporal.NowTx()
+		epWalk(t, g, rel, temporal.Pin{Tx: pin}, "e0", 2, nil) // opens the ordered views
+	}
+	for i := 0; i < steps; i++ {
+		sc.step(t)
+		if early && i == steps/3 {
+			// Open every value's ordered view: the later
+			// writes reach it through Record.
+			pin := sc.pins[len(sc.pins)-1]
+			for _, v := range sc.values {
+				epWalk(t, g, rel, temporal.Pin{Tx: pin}, v, 2, nil)
+			}
+		}
+	}
+	if !early {
+		sc.declare(t)
+	}
+	checks := 0
+	for _, k := range []int{0, len(sc.pins) / 3, len(sc.pins) / 2, len(sc.pins) - 1, sc.rng.IntN(len(sc.pins))} {
+		pin := sc.pins[k]
+		vt := sc.minX + types.Instant(sc.rng.IntN(int(sc.x-sc.minX)+1))
+		for _, p := range []temporal.Pin{
+			{Tx: pin},
+			{Tx: pin, ValidAt: vt},
+			{Tx: pin, ValidStart: vt, ValidEnd: vt + types.Instant(1+sc.rng.IntN(8000))},
+			{Tx: pin, ValidStart: vt},          // open-ended [vt, inf)
+			{Tx: pin, ValidAt: sc.minX - 5000}, // before every write: only -inf starts meet it
+		} {
+			for _, eq := range []any{"e0", "e1", "e2", "absent"} {
+				want := epOracle(t, g, rel, p, eq)
+				for _, limit := range []int{1, 3, 1000} {
+					got := epWalk(t, g, rel, p, eq, limit, nil)
+					if a, b := epRender(got), epRender(want); a != b {
+						t.Fatalf("pin %+v eq %v limit %d:\n got  %s\n want %s", p, eq, limit, a, b)
+					}
+					checks++
+				}
+			}
+		}
+	}
+	for _, op := range []string{"add", "update", "delete", "close", "excise", "interval", "retract"} {
+		if sc.ops[op] == 0 && !testing.Short() {
+			t.Errorf("generator never ran %s (ops %v)", op, sc.ops)
+		}
+	}
+	t.Logf("%d page walks, ops %v", checks, sc.ops)
 }
 
 // TestEffectivePage_ValueChangeTwoPhase — rule 15: an entity whose estate

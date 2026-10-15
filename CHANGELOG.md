@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A paged effective door with a valid filter prunes its candidates by the valid-time envelope index** (ai-soc 2026-10-15;
+  backlog 75). `RelsEffectivePage` / `NodesEffectivePage` with `ValidAt` or an interval read the timeline of every candidate
+  and filtered the segments after (ai-soc `cpu-q4.pprof`: 62 % of CPU in `streamRelTimelines` decoding current rows, 0.7-1.85 s
+  for a page of 21/0/0 events). A type (label) with an envelope index (`Index().CreateRelTemporal` / `CreateTemporal`) now
+  drops each fetched candidate whose envelope cannot meet the filter before any timeline is read, on the property-sidecar and
+  the type-list path alike, through the one prune seam the `ByType` / `ByLabel` doors use (`pruneRelTypeCandidates` /
+  `pruneNodeLabelCandidates`). The envelope covers every row of the entity at every transaction time, so a dropped candidate
+  has no segment that meets the filter: pages, `next` and the cursor are unchanged, and a candidate listed by several
+  sources is read when one keeps it. Types without the envelope index keep today's path. 100,000 relationships, one in twenty
+  open at `ValidAt`, a page of 5,000: badger 35 ms to 0.7 ms, memory 5.4 ms to 0.66 ms
+  (`tasks/evidence/page-valid-prune/03-bench.txt`). **ai-soc: declare `CreateRelTemporal` on the 29 estate-indexed
+  relationship types** (no automatic build: see backlog 75). Tests: `TestEffectivePage_ValidPruneCost` (timeline reads equal
+  the candidates whose envelope meets `ValidAt`, a closed and an open interval; memory, badger, sharded, tiered),
+  `TestEffectivePage_ValidPruneDifferential` (envelope indexes declared before or after the writes, `UntimedFromTxFrom` and
+  `UntimedUnbounded` stores, against the unpruned full walk). Docs: api.md and `temporal.API.RelsEffectivePage` cost note,
+  architecture.md "Temporal envelope indexes".
+
 ## [4.56.0] - 2026-10-15
 
 ### Added

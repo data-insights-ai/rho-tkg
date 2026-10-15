@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -87,5 +88,81 @@ func BenchmarkEffectivePage(b *testing.B) {
 			check(b, ids)
 		})
 		_ = g.Close()
+	}
+}
+
+// BenchmarkEffectivePageValidPrune (backlog 75, evidence
+// tasks/evidence/page-valid-prune/): 100,000 relationships over 10 estates and
+// 3 types, each type indexed on estate, of which one in twenty is still open
+// and the rest closed long before ValidAt; one page of 5,000 of estate e3 at
+// ValidAt. "envelope" declares CreateRelTemporal on the three types, "none"
+// does not (today's path). EP_BENCH_RELS is not read: the size is fixed.
+func BenchmarkEffectivePageValidPrune(b *testing.B) {
+	const n, limit = 100_000, 5000
+	ctx := context.Background()
+	for _, be := range []string{"memory", "badger"} {
+		for _, idx := range []string{"none", "envelope"} {
+			g, err := New(Config{BadgerInMemory: be == "badger"})
+			if err != nil {
+				b.Fatal(err)
+			}
+			s, err := g.Nodes.Add(ctx, []string{"Host"}, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			e, err := g.Nodes.Add(ctx, []string{"Host"}, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			for _, typ := range epRelTypes {
+				if err := g.Index.CreateRelProperty(typ, epProp); err != nil {
+					b.Fatal(err)
+				}
+			}
+			now, _ := g.Temporal.NowTx()
+			open := 0
+			for i := 0; i < n; i++ {
+				v := fmt.Sprintf("e%d", i%10)
+				props := map[string]any{epProp: v, "tkg_valid_from": now - 1_000_000}
+				if (i/10)%20 != 0 { // one in twenty of each estate stays open
+					props["tkg_valid_to"] = now - 900_000
+				} else {
+					open++
+				}
+				if _, err := g.Rels.AddByID(ctx, epRelTypes[i%3], s.ID(), e.ID(), props); err != nil {
+					b.Fatal(err)
+				}
+			}
+			if idx == "envelope" {
+				start := time.Now()
+				for _, typ := range epRelTypes {
+					if err := g.Index.CreateRelTemporal(typ); err != nil {
+						b.Fatal(err)
+					}
+				}
+				b.Logf("%s: CreateRelTemporal over %d relationships (3 types) took %v", be, n, time.Since(start))
+			}
+			pin, _ := g.Temporal.NowTx()
+			p := temporal.Pin{Tx: pin, ValidAt: pin}
+			f := temporal.Filter{Prop: epProp, Eq: "e3"}
+			// The first page builds the sidecars and opens the views.
+			if _, _, err := g.Temporal.RelsEffectivePage(ctx, p, f, 0, 1); err != nil {
+				b.Fatal(err)
+			}
+			b.Run(be+"/"+idx, func(b *testing.B) {
+				var got int
+				for b.Loop() {
+					segs, _, err := g.Temporal.RelsEffectivePage(ctx, p, f, 0, limit)
+					if err != nil {
+						b.Fatal(err)
+					}
+					got = len(segs)
+				}
+				if got != open/10 {
+					b.Fatalf("page holds %d segments, want %d", got, open/10)
+				}
+			})
+			_ = g.Close()
+		}
 	}
 }
