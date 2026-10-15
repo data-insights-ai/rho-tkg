@@ -470,8 +470,13 @@ saved owner after client loss or pin expiry. The driver includes a real
 snapshot/write race, SDK client kill/replacement, both layouts and a bounded
 independent source/page/ACK/control verifier. Source review corrected owned
 cleanup-work reporting. Normal-IO deadline propagation through shared scanners
-and column helpers, plus workload-container deadline forwarding, remains an
-explicit source follow-up; compilation, runtime and capacity remain unqualified.
+and column helpers is source-integrated at `ed38403f`: configuration, cuts,
+scans, columns and native retry/commit waits share the original run lifetime
+and any shorter caller cancellation. Legacy nil-context paths retain their
+ordinary IO. Fresh column cleanup retains its same pending owner and separate
+finite first-close deadline/callback allowance. The workload container now
+receives the same admitted deadline as its monitor. Compilation, runtime and
+capacity remain unqualified.
 The explicitly selected FDB source-history
 collector is source-integrated at `5685b659`: durable pre-deletion admission,
 held-read/pin/reference protection, resumable bounded deletion and exact original
@@ -547,8 +552,8 @@ B or D.
 Current worker lanes: Sol 6.1/high for the native/FDB cross-edge endpoint-life
 and uniqueness family; Sol 6.1/high for native contention, real directed
 transport delay and resumable column dependencies, followed by the remaining
-C/D schedules; Sol 6.1/high for FDB snapshot-to-feed normal-IO deadline
-propagation, followed by real owned FDB transport. These packages
+C/D schedules; Sol 6.1/high for real owned FDB transport and explicit fresh
+duration admission. These packages
 are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
