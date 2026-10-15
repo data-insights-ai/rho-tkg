@@ -40,6 +40,62 @@ def attempt(end,ordinal,commit=True,number=1,previous=""):
 
 
 class TransferGuards(unittest.TestCase):
+    def test_actual_stable_source_footprint_changes_authority_without_fake_colocation(self):
+        p=spec();before=[{"Owner":"A","Epoch":1},{"Owner":"B","Epoch":1}]
+        after=[{"Owner":"B","Epoch":2},{"Owner":"B","Epoch":1}]
+        end={"Spec":p,"Config":{"Graph":"graph-owned-v3-columns-"+"01"*16,"Topology":1,"Epochs":[7,11]},
+             "Move":{"Before":{"Routes":before}},"Handoff":{"Seal":{"After":{"Routes":after}},"Original":{"Frozen":{"Cut":{"Round":50}}}}}
+        a=attempt(end,4+p["facts"]+1)
+        self.assertEqual(check.actual_footprint(a,end),("before-handoff",(0,1),(0,1),("A","B")))
+        a["Intent"]["Routes"]=after;a["Proof"]["Outcome"]["Round"]=51
+        self.assertEqual(check.actual_footprint(a,end),("after-handoff",(0,1),(0,1),("B",)))
+        a["Proof"]["Outcome"]["Round"]=50
+        with self.assertRaises(ValueError):check.actual_footprint(a,end)
+        with tempfile.TemporaryDirectory() as directory:
+            with Spool(directory,Policy(1<<20,64<<10,4096,check.LINE)) as spool:
+                for role,call in ((b"A",7),(b"B",2)):
+                    spool.insert(b"submit-issued",role+check.u64(call),check.go_json({"ID":call}))
+                names=check.paired_artifacts(end,spool)
+                self.assertIn("fdb-transfer-lost-A-0000000000000007.json",names)
+                self.assertIn("fdb-transfer-lost-B-0000000000000002.json",names)
+                self.assertIn("fdb-transfer-after-gc-history.jsonl",names)
+
+    def test_shared_answer_requires_actual_old_current_postings_and_acknowledged_predecessor(self):
+        p=spec();end={"Spec":p,"Config":{"Graph":"graph-owned-v3-columns-"+"01"*16}}
+        def fill(spool,bad_predecessor=False):
+            for fact in range(p["facts"]):
+                before=None
+                for updated in (False,True):
+                    ordinal=4+fact+(p["facts"] if updated else 0)
+                    command,lifecycle,effects,_=check.codec.fdb_contract(p,ordinal)
+                    value={"Value":6 if updated else 5,"Version":2 if updated else 1,"Round":3 if updated else 2,"Deleted":False,"TxID":f"tx-{ordinal}"}
+                    original={"Tx":{"GraphChange":command,"Lifecycle":lifecycle},"Outcome":{"Coordinator":0,"Sequence":ordinal,"Request":f"request/{ordinal}"},"Writes":[]}
+                    for g,items in effects.items():
+                        for effect in items:
+                            native=check.key(end["Config"],g,"current",effect["Key"])
+                            prior=before if updated else None
+                            if bad_predecessor and updated and fact==0:prior=before|{"Value":6}
+                            original["Writes"].append({"Group":g,"Key":effect["Key"],"Before":prior,"After":value})
+                            spool.insert(b"fdb-current" if updated else b"fdb-old",native,check.go_json(value))
+                            spool.insert(b"snapshot-seen-"+(b"current-before-gc" if updated else b"held-old-after-target-restart"),native,check.go_json(value))
+                            if updated:spool.insert(b"feed-replica",native,check.go_json(value))
+                    spool.insert(b"fdb-operation",check.u64(ordinal),check.go_json(original))
+                    if updated:
+                        o=original["Outcome"];native=check.prefix(end["Config"],0)+f'changes/{ordinal:016x}/'.encode()+o["Request"].encode().hex().encode()
+                        spool.insert(b"feed-consumed",native,check.go_json(original))
+                        spool.insert(b"transfer/update-authority",check.u64(fact),b'{"actual-native-ack":"already-joined"}')
+                    else:before=value
+        with tempfile.TemporaryDirectory() as directory:
+            with Spool(directory,Policy(8<<20,64<<10,4096,check.LINE)) as spool:
+                fill(spool);digest,count=check.logical_answers(end,spool)
+                self.assertEqual(count,2*p["facts"]);self.assertEqual(len(digest),64)
+                self.assertEqual(check.transfer_answers(p,spool),(digest,count))
+                update=check.decoded(spool.lookup(b"transfer/updates",check.u64(0)))
+                self.assertEqual((update["before"][7],update["after"][7]),(5,6))
+            with Spool(directory,Policy(8<<20,64<<10,4096,check.LINE)) as spool:
+                fill(spool,True)
+                with self.assertRaises(ValueError):check.logical_answers(end,spool)
+
     def test_finite_native_grant_and_closed_mutable_classes(self):
         value=grant();p=spec()
         self.assertEqual(check.validate_grant(value,p),value)

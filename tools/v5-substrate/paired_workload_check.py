@@ -21,14 +21,22 @@ require=common.require
 ROOT=Path(__file__).resolve().parent
 TRANSPORTS=common.TRANSPORTS
 SCALARS=("partition-local-create-update","immutable-columns","late-correction-old-index")
-FAMILIES=("contention-empty-range","cross-edge-endpoint-uniqueness","snapshot-to-feed","snapshot-selectors",*SCALARS)
+FAMILIES=("contention-empty-range","cross-edge-endpoint-uniqueness","snapshot-to-feed","snapshot-selectors",*SCALARS,"transfer-retained-pins")
 FORMAT="owned-native-fdb-complete-pair-v1"
 
 
 def registry(spec):
     family=spec["family"]
-    require(family in FAMILIES,"actual native transfer Cost12 driver/schema is still required; no nominal pair")
-    if family=="contention-empty-range":
+    require(family in FAMILIES,"actual native/FDB family driver/schema is required; no nominal pair")
+    if family=="transfer-retained-pins":
+        require(type(spec.get("version")) is int and spec["version"]==2,"explicit Cost12 transfer profile, no legacy promotion")
+        try:
+            import native_transfer_check as n
+            import native_transfer_cell as cell
+        except ModuleNotFoundError as error:
+            raise ValueError("complete native Cost12 source/oracle is required before transfer pairing") from error
+        import fdb_transfer_check as f
+    elif family=="contention-empty-range":
         import native_contention_check as n
         import native_workload_cell as cell
         path=ROOT/"fdb/fdb_contention_check.py"
@@ -93,6 +101,8 @@ TRANSPORT_ARTIFACTS={"transport-"+name for name in ("admission.json","input.json
 
 def fdb_artifacts(spec):
     family=spec["family"]
+    if family=="transfer-retained-pins":
+        return {"fdb-transfer-"+s for s in ("result.json","events.jsonl","history.jsonl","current.jsonl","cdc.jsonl","after-gc-history.jsonl")} | ({"fdb-transfer-columns.jsonl"} if spec["layout"]=="columns" else set())
     if spec["version"]==3:return {"fdb-feed-retained-end.json","fdb-feed-retained-events.jsonl"}
     if family=="cross-edge-endpoint-uniqueness":
         return {"fdb-workload-"+s for s in ("result.json","attempts.jsonl","latency.jsonl","views.jsonl")} | {"fdb-cost-"+s+".jsonl" for s in ("history","current","cdc")} | ({"fdb-workload-columns.jsonl"} if spec["layout"]=="columns" else set())
@@ -197,6 +207,39 @@ def contention_answers(spec,native,fdb,nspool,fspool):
     return answer.hexdigest(),2*n
 
 
+def transfer_answers(spec,native,fdb,nspool,fspool):
+    """Complete actual typed answer/ACK join, without matching placement costs."""
+    for fact in range(spec["facts"]):
+        old=current=None
+        for namespace in (b"transfer/old",b"transfer/current"):
+            a=native.decoded(nspool.lookup(namespace,u64(fact)))
+            b=fdb.decoded(fspool.lookup(namespace,u64(fact)))
+            require(type(a) is type(b) is list and len(a)==len(b)==9 and all(type(v) is int for v in a+b),"actual complete typed transfer cells")
+            require(a==b,"actual old/current relationship, life, endpoints, dictionary, i64 and provenance differ")
+            if namespace==b"transfer/old":old=a
+            else:current=a
+        for engine,spool in ((native,nspool),(fdb,fspool)):
+            update=engine.decoded(spool.lookup(b"transfer/updates",u64(fact)))
+            require(type(update) is dict and set(update)=={"before","after"} and all(type(update[k]) is list and len(update[k])==9 and all(type(v) is int for v in update[k]) for k in ("before","after")) and update=={"before":old,"after":current},"complete actual acknowledged5-to6 predecessor/successor pair")
+            require(spool.lookup(b"transfer/update-authority",u64(fact)),"native original/property/presence/complete page/ACK authority is required, not a detached value")
+    left=native.transfer_answers(spec,nspool);right=fdb.transfer_answers(spec,fspool)
+    require(left==right and left[1]==2*spec["facts"],"both complete checked transfer enumerations agree")
+    return left
+
+
+def transfer_contract(native_proof,fdb_proof):
+    import fdb_transfer_check as fdb
+    require(native_proof["minimumContract"]==fdb_proof["minimumContract"]==fdb.MINIMUM_CONTRACT,
+            "same held-C, authenticated release, complete unread originals and original retry promise")
+    left=native_proof["actualBusinessFootprints"];right=fdb_proof["timing"]["actualBusinessFootprints"]
+    require(type(left) is type(right) is list and 0<len(left)<=64 and 0<len(right)<=64,"actual bounded pre/post business footprint summaries from both full oracles")
+    for proof in (native_proof,fdb_proof):
+        require(type(proof["genericAtAfterRelease"]) is str and proof["genericAtAfterRelease"] and type(proof["physicalReclamation"]) is str and proof["physicalReclamation"],"actual floor/retention difference must remain explicit")
+    return {"minimumContract":fdb.MINIMUM_CONTRACT,"nativeBusinessFootprints":left,"FDBBusinessFootprints":right,
+            "crossPercentBasis":"initial declared scalar/cross-edge fixture placement; actual pre/between/post transfer read/write footprints are reported separately, never inferred from this input or forced equal after movement",
+            "scope":"stable logical source namespaces and actual processing authority are distinct. Native range movement and shared-KV owner activation need not have equal business participants, copies, physical retention, log replay, or coordinator costs. Held-C safety is preserved through the actual reclamation door; FDB may refuse unsafe physical history collection while native collects only eligible old-owner data. Generic At after snapshot release follows each engine's authenticated floors and is not compared for forced expiry."}
+
+
 def verify(native_directory,fdb_directory,spool_directory,policy):
     native_directory,fdb_directory=Path(native_directory).resolve(strict=True),Path(fdb_directory).resolve(strict=True)
     request=common.bounded_json(native_directory/"request.json");receipt=common.bounded_json(native_directory/"receipt.json")
@@ -211,7 +254,7 @@ def verify(native_directory,fdb_directory,spool_directory,policy):
     require(fr["success"] is True and fr["exit"]==fr["cleanup_exit"]==0 and fr["mode"]=="workload-cell","real owned FDB launcher/helper terminal")
     require((fdb_artifacts(spec)|TRANSPORT_ARTIFACTS)<=fr["sha256"].keys(),"every actual full-oracle FDB family input is launcher hash-bound")
     guarded_cell.fdb_inventory(fdb_directory,fr["sha256"])
-    stem="fdb-workload-" if spec["family"] in ("contention-empty-range","cross-edge-endpoint-uniqueness") else "fdb-feed-retained-" if spec["version"]==3 else "fdb-feed-" if spec["family"]=="snapshot-to-feed" else "fdb-selectors-" if spec["family"]=="snapshot-selectors" else "fdb-create-update-" if spec["family"]=="partition-local-create-update" else "fdb-columns-" if spec["family"]=="immutable-columns" else "fdb-correction-"
+    stem="fdb-workload-" if spec["family"] in ("contention-empty-range","cross-edge-endpoint-uniqueness") else "fdb-transfer-" if spec["family"]=="transfer-retained-pins" else "fdb-feed-retained-" if spec["version"]==3 else "fdb-feed-" if spec["family"]=="snapshot-to-feed" else "fdb-selectors-" if spec["family"]=="snapshot-selectors" else "fdb-create-update-" if spec["family"]=="partition-local-create-update" else "fdb-columns-" if spec["family"]=="immutable-columns" else "fdb-correction-"
     end=common.bounded_json(fdb_directory/("fdb-feed-retained-end.json" if spec["version"]==3 else stem+"result.json"));actual_spec=end.get("Spec",end.get("spec"))
     require(actual_spec==fdb_spec(spec),"exact fresh owned FDB native family profile; normalization never relabels wire")
     native_end=common.bounded_json(native_directory/"engine/result.json")
@@ -221,11 +264,23 @@ def verify(native_directory,fdb_directory,spool_directory,policy):
         b=fdb.verify(fdb_directory,spool_directory,policy,shared_spool=right)
         joined=transport_join(spec,request["run"],request["seconds"],selected,a,b,end)
         graph=end["Config"]["Graph"];require(graph.endswith("-"+request["run"]),"genuine FDB graph/run prefix authenticated by its full oracle")
-        if spec["family"]=="cross-edge-endpoint-uniqueness":answers,count=edge_answers(spec,native,fdb,left,right)
+        if spec["family"]=="transfer-retained-pins":
+            answers,count=transfer_answers(spec,native,fdb,left,right)
+            transfer=transfer_contract(a,b)
+            require(set(b["pairedArtifacts"])<=fr["sha256"].keys(),"every actual SDK child input/lost-reply marker/stream/stderr used by transfer oracle is launcher hash-bound")
+            require(request["nativeGrants"]==a["nativeGrants"],"actual immutable native admission binds all four caller grants")
+            transfer["nativeGrants"]=a["nativeGrants"]
+            policy_=end["Binding"]["Transfer"]
+            transfer["FDBGrants"]=fdb.validate_grant({k:policy_[k] for k in ("MaxRecords","MaxControlBytes","MaxGrants","MaxBlock","Census")},actual_spec)
+        elif spec["family"]=="cross-edge-endpoint-uniqueness":answers,count=edge_answers(spec,native,fdb,left,right)
         elif spec["family"]=="contention-empty-range":answers,count=contention_answers(spec,native,fdb,left,right)
         else:answers,count=scalar_answers(spec,graph,native,fdb,left,right)
         require(count==2*spec["facts"] and answers==a["logicalAnswersSHA256"] and (spec["family"]=="contention-empty-range" or answers==b["logicalAnswersSHA256"]),"complete actual typed answer enumeration before digest")
         if spec["version"]==3:
             require(a["minimumContract"]==b["minimumContract"]=={"completeOldCurrent":True,"snapshotTokenReopenRefused":True,"completeUpdates":spec["facts"],"unreadAfterRealGC":True,"samePageAckAfterClientReplacement":True},"same exact minimum retained-only outputs, not equal physical reclamation")
-        elif spec["family"]!="contention-empty-range" and spec["family"]!="cross-edge-endpoint-uniqueness":require(a["retentionContract"]==b["retentionContract"],"same actual retained-C observable promise")
-        return {"format":FORMAT,"spec":spec,"FDBSpec":actual_spec,"run":request["run"],"equal":True,"typedAnswers":count,"logicalAnswersSHA256":answers,"transport":joined,"nativeOriginalDeadlineUnixNanos":request["deadlineUnixNanos"],"nativeBinarySHA256":request["binarySHA256"],"nativeProcessTree":meter,"nativeTransportRecords":native_end["Transport"],"nativeStoredCounters":{k:native_end[k] for k in ("PersistedFileBytes","AllocatedFileBytes","SetupNanos","BusinessNanos","DiagnosticNanos","TotalNanos") if k in native_end},"nativeAllInControllerNanos":receipt["elapsedNanos"],"native":a,"foundationdb":b,"spool":spool.report(),"costBoundary":{"sameConfiguredAddedRTT":True,"equalObservedRTT":False,"equalPhysicalRetention":False,"allocator":"native installed-grant references versus FDB actual per-family issuance/fixed-ID APIs; each full source cost remains explicit","lifetime":"each engine retains its own immutable original absolute deadline and process/retry budgets under the SAME chosen seconds/run","physicalWinningIDs":"contention/unique winners may differ, both complete engine-specific original/index/absence proofs retained"},"scope":"complete source-implemented owned nonlocal pair; no measured efficiency, capacity, independent-host-loss or full V2 acceptance; native transfer pairing remains required after actual Cost12 driver integration"}
+        elif spec["family"] not in ("contention-empty-range","cross-edge-endpoint-uniqueness","transfer-retained-pins"):require(a["retentionContract"]==b["retentionContract"],"same actual retained-C observable promise")
+        out={"format":FORMAT,"spec":spec,"FDBSpec":actual_spec,"run":request["run"],"equal":True,"typedAnswers":count,"logicalAnswersSHA256":answers,"transport":joined,"nativeOriginalDeadlineUnixNanos":request["deadlineUnixNanos"],"nativeBinarySHA256":request["binarySHA256"],"nativeProcessTree":meter,"nativeTransportRecords":native_end["Transport"],"nativeStoredCounters":{k:native_end[k] for k in ("PersistedFileBytes","AllocatedFileBytes","SetupNanos","BusinessNanos","DiagnosticNanos","TotalNanos") if k in native_end},"nativeAllInControllerNanos":receipt["elapsedNanos"],"native":a,"foundationdb":b,"spool":spool.report(),"costBoundary":{"sameConfiguredAddedRTT":True,"equalObservedRTT":False,"equalPhysicalRetention":False,"allocator":"native installed-grant references versus FDB actual per-family issuance/fixed-ID APIs; each full source cost remains explicit","lifetime":"each engine retains its own immutable original absolute deadline and process/retry budgets under the SAME chosen seconds/run","physicalWinningIDs":"contention/unique winners may differ, both complete engine-specific original/index/absence proofs retained"},"scope":"complete source-implemented owned nonlocal pair; no measured efficiency, capacity, independent-host-loss or full V2 acceptance; native transfer pairing remains required after actual Cost12 driver integration"}
+        if spec["family"]=="transfer-retained-pins":
+            out["transfer"]=transfer
+            out["scope"]="complete actual native BOTH-HOME and shared-KV transfer pair after both raw/lifecycle/original/index/column/ACK EOF oracles; engine-specific movement, replay and collection costs preserved. Source implementation is not measured capacity/efficiency, independent-host-loss or full V2 acceptance."
+        return out

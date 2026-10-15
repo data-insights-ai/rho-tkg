@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -28,8 +29,8 @@ def put(spool,ns,key,value):
 
 
 class OwnedPairSourceGuards(unittest.TestCase):
-    def test_actual_family_registry_full_dimensions_and_declared_delays(self):
-        for family in check.FAMILIES:
+    def test_existing_family_registry_full_dimensions_and_declared_delays(self):
+        for family in (f for f in check.FAMILIES if f!="transfer-retained-pins"):
             for n in (10000,100000,1000000):
                 for writers in (1,8,32):
                     for cross in (0,10,50,100):
@@ -116,6 +117,64 @@ class OwnedPairSourceGuards(unittest.TestCase):
                 self.assertEqual(check.native_inventory(s,wrapper,"owned"),{"actual":"hash"})
                 expected={"family":family} if family in check.SCALARS else {}
                 actual.assert_called_once_with("owned","columns",**expected)
+
+    def test_transfer_complete_typed_ack_join_keeps_different_real_footprints(self):
+        import fdb_transfer_check as fdb
+        s=spec("transfer-retained-pins",n=20,version=2)|{"writers":1}
+        native=SimpleNamespace(decoded=fdb.decoded,transfer_answers=fdb.transfer_answers)
+        proof={"minimumContract":dict(fdb.MINIMUM_CONTRACT),"actualBusinessFootprints":[{"stage":"after-both","reads":[8],"writes":[8]}],
+               "genericAtAfterRelease":"exact-C-or-authentic-expired","physicalReclamation":"actual rolling ACK predecessor and unread originals"}
+        other={"minimumContract":dict(fdb.MINIMUM_CONTRACT),"timing":{"actualBusinessFootprints":[{"stage":"after-handoff","readSourceGroups":[0,1],"writeSourceGroups":[0,1],"processingOwners":["B"]}]},
+               "genericAtAfterRelease":"authenticated-expired","physicalReclamation":"stable shared-KV keys, complete detached CDC"}
+        contract=check.transfer_contract(proof,other)
+        self.assertNotEqual(contract["nativeBusinessFootprints"],contract["FDBBusinessFootprints"])
+        with self.assertRaises(ValueError):check.transfer_contract(proof,other|{"minimumContract":other["minimumContract"]|{"snapshotAfterRelease":"current-fallback"}})
+        with tempfile.TemporaryDirectory() as directory:
+            with Spool(directory,Policy(4<<20,65536,4096,512<<10)) as spool:
+                left,right=check.common.NamespacedSpool(spool,b"n/"),check.common.NamespacedSpool(spool,b"f/")
+                for fact in range(s["facts"]):
+                    values=[]
+                    for updated in (False,True):
+                        row=[7+2*fact,8+2*fact,1,3,2,4,6 if updated else 5,6 if updated else 5,4+fact+(s["facts"] if updated else 0)]
+                        values.append(row)
+                        for target in (left,right):put(target,b"transfer/current" if updated else b"transfer/old",u64(fact),row)
+                    for target in (left,right):
+                        put(target,b"transfer/updates",u64(fact),{"before":values[0],"after":values[1]})
+                        put(target,b"transfer/update-authority",u64(fact),{"actual-original-page-ack":"full-engine-oracle-joined"})
+                self.assertEqual(check.transfer_answers(s,native,fdb,left,right)[1],40)
+                bad=fdb.decoded(left.lookup(b"transfer/current",u64(0)));bad[5]+=1
+                put(left,b"transfer/current",u64(0),bad)
+                with self.assertRaises(ValueError):check.transfer_answers(s,native,fdb,left,right)
+
+    def test_actual_cost12_registry_and_owned_transport_require_fresh_transfer_schema(self):
+        # This direct guard intentionally depends on the genuine complete
+        # native Cost12 module; a mocked registry is no integration substitute.
+        s=spec("transfer-retained-pins",n=40,version=2)
+        native,owner,fdb=check.registry(s)
+        self.assertEqual(native.FORMAT,"native-both-home-transfer-workload-v1")
+        self.assertEqual(fdb.FORMAT,"fdb-owner-transfer-workload-v1")
+        g={"MaxPages":1024,"DescribeBytes":32<<20,"ImportBytes":256<<20,"UndoBytes":256<<20}
+        for name in check.TRANSPORTS:
+            self.assertEqual(owner.preflight(s,name,31536000,4096,"native-raft",native_grants=g),check.declared_transport(name))
+        for bad in (s|{"version":1},s|{"version":True},s|{"writers":True},s|{"facts":0}):
+            with self.assertRaises(ValueError):check.registry(bad)
+
+    def test_transfer_separate_grants_admit_before_any_engine_or_destination(self):
+        import fdb_transfer_check as fdb
+        s=spec("transfer-retained-pins",n=40,version=2)
+        grant={"native":{"MaxPages":1000,"DescribeBytes":1<<30,"ImportBytes":1<<30,"UndoBytes":1<<30},
+               "foundationdb":{"MaxRecords":10000,"MaxControlBytes":1<<30,"MaxGrants":8,"MaxBlock":32,
+                 "Census":{"PageRows":32,"PageBytes":4<<20,"HeadRows":128,"HeadBytes":48<<10,"MaxRows":10000,"MaxBytes":1<<30,"MaxCalls":1024,"MaxWorkRows":1<<40,"MaxWorkBytes":1<<58}}}
+        selected=check.declared_transport("rtt-20ms")
+        owner=SimpleNamespace(preflight=lambda *args,**kwargs:self.assertEqual(kwargs,{"native_grants":grant["native"]}) or selected)
+        with patch.object(check,"registry",return_value=(None,owner,fdb)):
+            self.assertEqual(cell.preflight(s,"rtt-20ms",60,4096,Policy(1<<40,65536,4096,512<<10),grants(60),transfer_grants=grant),selected)
+            with tempfile.TemporaryDirectory() as directory:
+                output=Path(directory)/"unadmitted"
+                with self.assertRaises(ValueError):cell.execute(s,"rtt-20ms",output,None,None,60,4096,Policy(1<<40,65536,4096,512<<10),profile="small",owned_options=grants(60))
+                self.assertFalse(output.exists())
+                with self.assertRaises(ValueError):cell.execute(s,"rtt-20ms",output,None,None,60,4096,Policy(1<<40,65536,4096,512<<10),profile="small",owned_options=grants(60),transfer_grants=grant|{"foundationdb":grant["foundationdb"]|{"MaxRecords":1}})
+                self.assertFalse(output.exists())
 
 
 if __name__=="__main__":unittest.main()

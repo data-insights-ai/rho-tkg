@@ -6,9 +6,11 @@ replicas are separate. Snapshot-C retaining and later feed-only stages are
 checked separately; this format grants no matched native retention verdict.
 """
 import base64
+from contextlib import nullcontext
 import hashlib
 import json
 from pathlib import Path
+import struct
 import sys
 
 ROOT = Path(__file__).resolve().parent
@@ -22,6 +24,10 @@ decoded, lines, blob, same, go_json = feed.decoded, feed.lines, feed.blob, feed.
 key, prefix, raw_record = feed.key, feed.prefix, feed.raw_record
 FAMILY, FORMAT = "transfer-retained-pins", "fdb-owner-transfer-workload-v1"
 LINE = 512 << 10
+MINIMUM_CONTRACT = {"snapshotHeldThrough":"handoff-target-restart-old-owner-reclamation",
+                    "snapshotAfterRelease":"feed-token-refused",
+                    "feedAfterRelease":"complete-unread-originals",
+                    "originalRetry":"same-result-and-ids"}
 
 
 def validate_grant(value, spec):
@@ -406,7 +412,7 @@ def feed_identity(end):
     require(reader["PinRequest"]==pin["Request"] and reader["PinDigest"]==list(hashlib.sha256(go_json(pin_token)).digest()) and reader["Request"]=="source-read-"+bytes(reader["Secret"])[:16].hex(),"actual held snapshot pin binding")
 
 
-def retained_page(frame,end,spool,position,last):
+def retained_page(frame,end,spool,position,last,*,export_answers=False):
     delivery,ack=frame["Delivery"],frame["Ack"]
     page=delivery["Page"];token=end["FeedToken"];c=end["Config"]
     fields(page,"Version Request Original From Next Boundary Last Rows EOF")
@@ -441,10 +447,20 @@ def retained_page(frame,end,spool,position,last):
     feed.feed_cursor(cursor,proxy)
     require(cursor["Positions"]==next_ and cursor["Completed"]==a["Completed"] and cursor["Pending"]=="","real native ACK cursor persisted before return")
     spool.insert(b"retained-page",page["Request"].encode(),go_json(page))
+    # At most eight complete originals are live here. This is an index of
+    # already authenticated native page/ACK authority, never a second model.
+    if export_answers:
+        for row in page["Rows"]:
+            group=decoded(blob(row["Value"]))
+            fact=group["Tx"]["Lifecycle"]["Provenance"]-4-end["Spec"]["facts"]
+            integer(fact,0,end["Spec"]["facts"]-1)
+            spool.insert(b"transfer/update-authority",u64(fact),go_json({
+                "OriginalKey":row["Key"],"IDKey":row["IDKey"],"RequestKey":row["RequestKey"],
+                "PageKey":delivery["Record"]["Key"],"AckKey":ack["Record"]["Key"],"PageSHA256":a["Page"]}))
     return next_,last,len(page["Rows"])
 
 
-def lifecycle(directory,end,spool):
+def lifecycle(directory,end,spool,*,export_answers=False):
     c=end["Config"];n=end["Spec"]["facts"]
     states={};mandatory=set();snapshot_counts={};snapshot_eofs=set();point_sets=set()
     position=list(end["Old"]["Groups"]);last=None;pages=rows=0;replayed=False;gc_done=False
@@ -554,7 +570,7 @@ def lifecycle(directory,end,spool):
             spool.insert(b"pending-replay",delivery["Page"]["Request"].encode(),go_json(delivery["Page"]));integer(frame["Nanos"],1);replayed=True
         elif kind=="retained-page":
             require(gc_done,"feed after genuine physical history deletion")
-            position,last,used=retained_page(frame,end,spool,position,last)
+            position,last,used=retained_page(frame,end,spool,position,last,export_answers=export_answers)
             if pages==0:require(replayed and spool.lookup(b"pending-replay",frame["Delivery"]["Page"]["Request"].encode())==go_json(frame["Delivery"]["Page"]),"actual pending page survives reader Close/reopen unchanged")
             pages+=1;rows+=used;integer(frame["PageNanos"],1);integer(frame["AckNanos"],1)
         elif kind=="storage-eof":
@@ -735,8 +751,100 @@ def allocation(end,spool):
     require(issued==end["Issued"],"grant reservation is not an issuance claim")
 
 
-def timing(directory,end,spool):
+def transfer_value(original):
+    """Typed cells from one authenticated original, without physical routing."""
+    tx=original["Tx"];edge,m=tx["GraphChange"]["Edge"],tx["Lifecycle"]
+    d=m["Definition"]
+    require(d["Kind"]=="i64" and type(d["I64"]) is int and d["I64"]==edge["Value"],"actual typed scalar definition")
+    value=[edge["ID"],m["EdgeLife"],edge["Source"]["Node"],edge["Target"]["Node"],
+           edge["Source"]["Life"],edge["Target"]["Life"],d["ID"],d["I64"],m["Provenance"]]
+    for coordinate in (*value[:7],value[8]):integer(coordinate,1,(1<<64)-1)
+    integer(value[7],-(1<<63),(1<<63)-1)
+    return value
+
+
+def logical_answers(end,spool):
+    """Export only actual old/current/ACK answers after every native EOF join."""
+    n=end["Spec"]["facts"];c=end["Config"]
+    for fact in range(n):
+        before=None
+        for updated in (False,True):
+            ordinal=4+fact+(n if updated else 0)
+            original=decoded(spool.lookup(b"fdb-operation",u64(ordinal)))
+            value=transfer_value(original)
+            require(value[0]==7+2*fact and value[8]==ordinal,"actual relationship identity and operation provenance")
+            namespace=b"fdb-current" if updated else b"fdb-old"
+            observation=b"current-before-gc" if updated else b"held-old-after-target-restart"
+            for write in original["Writes"]:
+                native=key(c,write["Group"],"current",write["Key"])
+                after=go_json(write["After"])
+                require(spool.lookup(namespace,native)==spool.lookup(b"snapshot-seen-"+observation,native)==after,
+                        "paired answer requires every actual old/current edge/out/in observation")
+                require(write["After"]["Deleted"] is False and write["After"]["Value"]==value[7],"actual scalar and both postings agree")
+                if updated:
+                    require(go_json(write["Before"])==spool.lookup(b"fdb-old",native) and write["Before"]["Value"]==before[7] and write["Before"]["Deleted"] is False,
+                            "actual full5-to6 predecessor, not a fabricated normalization")
+                    require(spool.lookup(b"feed-replica",native)==after,"complete acknowledged feed matches observed current answer")
+            spool.insert(b"transfer/current" if updated else b"transfer/old",u64(fact),go_json(value))
+            if updated:
+                o=original["Outcome"]
+                native=prefix(c,o["Coordinator"])+f'changes/{o["Sequence"]:016x}/'.encode()+o["Request"].encode().hex().encode()
+                require(spool.lookup(b"feed-consumed",native)==go_json(original),"actual complete update original acknowledged after physical collection")
+                spool.lookup(b"transfer/update-authority",u64(fact))
+                spool.insert(b"transfer/updates",u64(fact),go_json({"before":before,"after":value}))
+            else:before=value
+    return transfer_answers(end["Spec"],spool)
+
+
+def transfer_answers(spec,spool):
+    """Walk the complete checked answer index under the caller's one quota."""
+    digest=hashlib.sha256();n=spec["facts"];count=0
+    for namespace in (b"transfer/old",b"transfer/current"):
+        for fact in range(n):
+            value=decoded(spool.lookup(namespace,u64(fact)))
+            require(type(value) is list and len(value)==9,"complete typed transfer answer")
+            for coordinate in (*value[:7],value[8]):integer(coordinate,1,(1<<64)-1)
+            integer(value[7],-(1<<63),(1<<63)-1)
+            digest.update(b"edge-i64-lifebound-v1\0"+u64(fact)+b"".join(u64(v) for v in value[:7])+struct.pack(">q",value[7])+u64(value[8]))
+            count+=1
+    return digest.hexdigest(),count
+
+
+def paired_artifacts(end,spool):
+    names={"fdb-transfer-"+suffix for suffix in ("result.json","events.jsonl","history.jsonl","current.jsonl","cdc.jsonl","after-gc-history.jsonl")}
+    if end["Spec"]["layout"]=="columns":names.add("fdb-transfer-columns.jsonl")
+    for role in ("A","B"):
+        names.add(f"fdb-transfer-{role}-input.json")
+        for incarnation in ("initial","replacement"):names.add(f"fdb-transfer-{role}-{incarnation}.stderr")
+    count=0
+    for identity,body in spool.walk(b"submit-issued"):
+        call=decoded(body)
+        require(len(identity)==9 and identity[:1] in (b"A",b"B") and int.from_bytes(identity[1:],"big")==call["ID"],"actual bounded lost-reply marker identity")
+        names.add(f'fdb-transfer-lost-{identity[:1].decode()}-{call["ID"]:016x}.json');count+=1
+    require(count==2,"both actual source/target lost-COMMIT marker inputs")
+    return sorted(names)
+
+
+def actual_footprint(a,end):
+    """Original business keys and captured authority, never physical FDB shards."""
+    tx=decoded(blob(a["Intent"]["Body"]))
+    before=end["Move"]["Before"]["Routes"];after=end["Handoff"]["Seal"]["After"]["Routes"]
+    routes=a["Intent"]["Routes"]
+    require(routes in (before,after),"actual immutable admission routes before or after handoff")
+    stage="before-handoff" if routes==before else "after-handoff"
+    o=a["Proof"]["Outcome"];boundary=end["Handoff"]["Original"]["Frozen"]["Cut"]["Round"]
+    require(o["Round"]<=boundary if stage=="before-handoff" else o["Round"]>boundary,"actual COMMIT lies on captured catalog side of the fence")
+    reads=tuple(p["Group"] for p in tx["Participants"] if p["Reads"])
+    writes=tuple(p["Group"] for p in tx["Participants"] if p["Effects"])
+    groups=tuple(sorted(set(reads+writes)))
+    require(groups and len(groups)<=2,"complete bounded original business footprint")
+    owners=tuple(sorted({routes[g]["Owner"] for g in groups}))
+    return stage,reads,writes,owners
+
+
+def timing(directory,end,spool,*,include_footprints=False):
     counts={}
+    footprints={}
     def add(name,nanos,identity):
         integer(nanos,1,(1<<63)-1)
         spool.insert(b"transfer-time/"+name.encode(),u64(nanos)+identity,b"1")
@@ -746,6 +854,10 @@ def timing(directory,end,spool):
         if kind=="attempt" and frame["Attempt"]["Classification"]=="committed":
             a=frame["Attempt"]
             add("business-"+a["Operation"]["Phase"],a["Nanos"],u64(a["Operation"]["Ordinal"]))
+            if include_footprints:
+                stage,reads,writes,owners=actual_footprint(a,end)
+                identity=(a["Operation"]["Phase"],stage,reads,writes,owners)
+                footprints[identity]=footprints.get(identity,0)+1
         elif kind in ("snapshot-eof","points"):
             add(("Scan-" if kind=="snapshot-eof" else "Points-scan-based-")+frame["Name"],frame["Nanos"],b"one")
         elif kind in ("feed-begin","feed-publish","retained-open","retained-reopen","retained-page-replay"):
@@ -769,30 +881,49 @@ def timing(directory,end,spool):
         wall=integer(phase["WallNanos"],1,(1<<63)-1)
         phases.append({**phase,"usefulOperationsPerSecond":phase["Operations"]*1_000_000_000/wall,"logicalParticipants":{"local":1,"cross":2},"currentProcessingOwners":2 if expected=="create" else 1,"physicalFDBRolePlacement":"four owned co-resident logical-zone processes; actual role map/resource evidence separate"})
     require(counts.get("business-setup")==3 and counts.get("business-create")==counts.get("business-update")==end["Spec"]["facts"],"complete useful-operation timing inventory")
-    return {"nearestRank":result,"phases":phases,"scope":"complete caller retry/wait; throughput uses actual phase wall, never sum of parallel latencies. Update includes target loss/recovery and chosen mandatory catalog2 diagnostic census; the census/API durations are reported separately without subtraction or an inherent FDB copy-cost claim. Points are scan-based, not indexed latency."}
+    out={"nearestRank":result,"phases":phases,"scope":"complete caller retry/wait; throughput uses actual phase wall, never sum of parallel latencies. Update includes target loss/recovery and chosen mandatory catalog2 diagnostic census; the census/API durations are reported separately without subtraction or an inherent FDB copy-cost claim. Points are scan-based, not indexed latency."}
+    if include_footprints:
+        out["actualBusinessFootprints"]=[{"phase":phase,"stage":stage,"readSourceGroups":list(reads),"writeSourceGroups":list(writes),"processingOwners":list(owners),"transactions":count}
+                                         for (phase,stage,reads,writes,owners),count in sorted(footprints.items())]
+        for phase in phases:
+            actual=[(identity,count) for identity,count in footprints.items() if identity[0]==phase["Phase"]]
+            cross=sum(count for (_,_,reads,writes,_),count in actual if len(set(reads+writes))>1)
+            require(sum(count for _,count in actual)==phase["Operations"] and cross==phase["BusinessCrossTransactions"],"reported source-group cross count is derived from complete useful original footprints")
+            del phase["currentProcessingOwners"]
+            phase["processingOwnerScope"]="per actual captured pre/post native routes below; no homogeneous whole-phase owner count"
+        out["footprintScope"]="actual immutable original business reads/effects and captured native owner routes; g0/g1 are stable logical source namespaces inside one native transaction, not physical shards or extra commit RPCs. Source K commits before the fence; SAME K recovery after target restart is not another useful transaction. No native/FDB footprint-count equality is promised."
+    return out
 
 
-def verify(directory,spool_directory,policy=None):
+def verify(directory,spool_directory,policy=None,*,shared_spool=None):
     directory=Path(directory).resolve(strict=True)
     end=result(directory)
     feed_identity(end)
     require(policy is not None or end["Spec"]["facts"]<1_000_000 and end["Spec"]["writers"]!=32,"explicit finite verifier disk/cache grant for large cell")
-    with Spool(spool_directory,policy or Policy(1<<30,8<<20,4096,LINE)) as spool:
+    with (nullcontext(shared_spool) if shared_spool is not None else Spool(spool_directory,policy or Policy(1<<30,8<<20,4096,LINE))) as spool:
         first_pass(directory,end,spool)
         originals(directory,end,spool)
         files=Files(directory)
         header=feed.source_fold(files,end,spool)
         feed.columns(files,end,spool)
-        lifecycle(directory,end,spool)
+        lifecycle(directory,end,spool,export_answers=shared_spool is not None)
         after_gc(directory,end,spool,header)
         native_census(end,spool)
         allocation(end,spool)
-        durations=timing(directory,end,spool)
+        durations=timing(directory,end,spool,include_footprints=shared_spool is not None)
         transport=raw.transport.verify(directory,end["Transport"]["Policy"],spool)
+        answers=logical_answers(end,spool) if shared_spool is not None else None
+        artifacts=paired_artifacts(end,spool) if shared_spool is not None else None
         report=spool.report()
-    return {"format":FORMAT,"family":FAMILY,"spec":end["Spec"],"runGraph":end["Config"]["Graph"],"attempts":end["Attempts"],"committed":end["Committed"],"aborted":end["Aborted"],"logicalNativeStorage":end["Storage"],"issuedIDs":end["Issued"],"burnedReservationIDs":end["Burned"],"timing":durations,"transport":transport,"spool":report,
+    out={"format":FORMAT,"family":FAMILY,"spec":end["Spec"],"runGraph":end["Config"]["Graph"],"attempts":end["Attempts"],"committed":end["Committed"],"aborted":end["Aborted"],"logicalNativeStorage":end["Storage"],"issuedIDs":end["Issued"],"burnedReservationIDs":end["Burned"],"timing":durations,"transport":transport,"spool":report,
             "retentionContract":"snapshot-C retained across A1-to-B2 and target SDK replacement; explicitly released before feed3 retained-only + physical source-history collection",
             "scope":"one actual fresh FDB transfer-family cell with stable logical source keys, authentic monotone processing-owner fence, immutable COMMIT/fenced-ABORT recovery and complete native cost census. Census is chosen conservative certification overhead, not physical replica copy. Feed-only post-GC differs from native C-retaining feed; no matched native/paired verdict, independent-host, full-matrix or capacity acceptance."}
+    if answers is not None:
+        out.update(logicalAnswersSHA256=answers[0],typedAnswers=answers[1],minimumContract=dict(MINIMUM_CONTRACT),
+                   pairedArtifacts=artifacts,
+                   genericAtAfterRelease="authenticated-expired-after-source-history-collection",
+                   physicalReclamation="shared transactional KV retains complete CDC/originals/cuts; physical history reduces to genuine current anchors; native storage/floors may differ")
+    return out
 
 
 if __name__=="__main__":
