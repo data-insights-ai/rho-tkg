@@ -103,7 +103,7 @@ func (c *graphOwnerCatalog) Observe(ctx context.Context) (graphOwnerView, int, e
 }
 
 func graphOwnerSelected(c config) bool {
-	return strings.HasPrefix(c.Graph, graphOwnerNamespace) || strings.HasPrefix(c.Graph, graphOwnerTransferNamespace) || strings.HasPrefix(c.Graph, graphOwnerTransportNamespace)
+	return strings.HasPrefix(c.Graph, graphFeedRetainedNamespace) || strings.HasPrefix(c.Graph, graphOwnerNamespace) || strings.HasPrefix(c.Graph, graphOwnerTransferNamespace) || strings.HasPrefix(c.Graph, graphOwnerTransportNamespace)
 }
 func (p graphOwnerPolicy) validate() error {
 	if p.MaxRecords < 8 || p.MaxRecords > 4096 || p.MaxControlBytes < 8*graphOwnerRecordBytes || p.MaxControlBytes > 256<<20 {
@@ -681,7 +681,7 @@ func (c *graphOwnerCatalog) Activate(ctx context.Context, target graphOwnerAutho
 		if progress.Phase != 1 || state.Moving != move.Request || state.Version != move.Before.Version || state.Routes != move.Before.Routes {
 			return state, errStale
 		}
-		if c.binding.Transfer != nil && c.binding.Transfer.Version == 2 {
+		if graphOwnerTransferCensus(c.binding.Transfer) {
 			if err := c.censusActivateIn(tr, move, progress, expected); err != nil {
 				return state, err
 			}

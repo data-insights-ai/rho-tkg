@@ -26,6 +26,7 @@ cost_monitor=importlib.util.module_from_spec(_monitor_spec)
 _monitor_spec.loader.exec_module(cost_monitor)
 
 FORMAT = "fdb-owned-ingress-transport-v2"
+RETAINED_FORMAT = "fdb-owned-ingress-transport-v3"
 MAX_SECONDS, MAX_SAMPLES, MAX_BYTES = 31_536_000, 31_536_002, 1 << 44
 # A conservative declaration, not allocated storage/RSS or capacity evidence.
 # Each sample funds five <=128KiB native readbacks, their command envelopes,
@@ -67,6 +68,9 @@ def sha_file(path):
 
 def causal_minimum(spec, transport):
     n, writers = spec["facts"], spec["writers"]
+    if spec["version"] == 3 and spec["family"] == "snapshot-to-feed":
+        half = n//2
+        return (4 + (n+writers-1)//writers + (half+writers-1)//writers + (n-half-1+writers-1)//writers + (n+7)//8) * transport["targetRTTMillis"]
     rounds = 5 + 2 * ((n - 1 + writers - 1) // writers)
     if spec["family"] in ("snapshot-to-feed", "transfer-retained-pins"):
         rounds += (n + 7) // 8  # complete page ACKs, in addition to commits
@@ -86,12 +90,12 @@ def causal_minimum(spec, transport):
 
 def validate_input(value):
     require(type(value) is dict and set(value) == set("Version Spec Run Transport BudgetSeconds QueuePackets SampleMillis MaxSamples MaxArtifactBytes ToolsDirectory".split()), "explicit fresh transport input")
-    require(value["Version"] == 2 and type(value["Version"]) is int, "fresh version2 required")
+    require(type(value["Version"]) is int and value["Version"] in (2, 3), "explicit fresh transport version")
     spec, t = value["Spec"], value["Transport"]
     require(type(spec) is dict and set(spec) == set("version family facts crossPercent writers layout".split()), "exact implemented family spec")
     n = integer(spec["facts"], 20, 1_000_000)
     writers = integer(spec["writers"], 1, 32)
-    require(spec["version"] == 2 and type(spec["version"]) is int and spec["family"] in FAMILIES and n % 20 == 0 and writers in (1, 8, 32) and (spec["family"] not in ("snapshot-to-feed", "snapshot-selectors", "immutable-columns", "transfer-retained-pins", "partition-local-create-update") or n >= writers + 1) and type(spec["crossPercent"]) is int and spec["crossPercent"] in (0, 10, 50, 100) and spec["layout"] in ("kv", "columns"), "actual fresh implemented-family transport adapter")
+    require((value["Version"] == spec["version"] == 2 or value["Version"] == spec["version"] == 3 and spec["family"] == "snapshot-to-feed") and type(spec["version"]) is int and spec["family"] in FAMILIES and n % 20 == 0 and writers in (1, 8, 32) and (spec["family"] not in ("snapshot-to-feed", "snapshot-selectors", "immutable-columns", "transfer-retained-pins", "partition-local-create-update") or n >= writers + 1) and type(spec["crossPercent"]) is int and spec["crossPercent"] in (0, 10, 50, 100) and spec["layout"] in ("kv", "columns"), "actual fresh implemented-family transport adapter")
     require(type(t) is dict and set(t) == set("kind targetRTTMillis jitterMillis seed".split()) and type(t["targetRTTMillis"]) is int and type(t["jitterMillis"]) is int and type(t["seed"]) is int and t["jitterMillis"] == 0 and t["seed"] == 20261009 and (t["kind"] == "local" and t["targetRTTMillis"] == 0 or t["kind"] == "injected-rtt" and t["targetRTTMillis"] in (1, 20, 100)), "actual local or fixed injected delay")
     run = value["Run"]
     require(type(run) is str and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "same fresh run identity")
@@ -129,11 +133,24 @@ def environment_input():
     raw = os.environ.get("RHO_FDB_TRANSPORT_INPUT", "")
     require(len(raw) <= 8192, "finite input envelope")
     value = validate_input(json.loads(raw))
-    require(value["Spec"] == json.loads(os.environ["RHO_GRAPH_WORKLOAD_SPEC"]) and value["Run"] == os.environ["RHO_GRAPH_WORKLOAD_RUN"] and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") == FORMAT and os.environ.get("RHO_GRAPH_WORKLOAD_SECONDS") == str(value["BudgetSeconds"]), "request/launcher source binding")
+    require(value["Spec"] == json.loads(os.environ["RHO_GRAPH_WORKLOAD_SPEC"]) and value["Run"] == os.environ["RHO_GRAPH_WORKLOAD_RUN"] and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") == (RETAINED_FORMAT if value["Version"] == 3 else FORMAT) and os.environ.get("RHO_GRAPH_WORKLOAD_SECONDS") == str(value["BudgetSeconds"]), "request/launcher source binding")
     require(value["ToolsDirectory"] == "@pinned-prebuild", "repository-owned pinned prebuild required")
     if value["Spec"]["family"] == "transfer-retained-pins":
         transfer_grant(value["Spec"])
+    if value["Version"] == 3:
+        retained_grant(value["Spec"])
     return value
+
+
+def retained_grant(spec):
+    # Fresh native owner/allocator/census admission is chosen before SDK open.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from fdb_feed_retained_check import validate_grant
+    body = os.environ.get("RHO_FDB_FEED_RETAINED_GRANT", "")
+    require(0 < len(body) <= 16384, "explicit bounded retained-feed owner grant")
+    value = validate_grant(json.loads(body), spec)
+    require(canonical(value).decode() == body, "canonical native retained-feed grant")
+    return body
 
 
 def transfer_grant(spec):
@@ -348,7 +365,9 @@ def family_record(record, spec, config):
     require(type(record) is dict and set(record) == {"Policy", "Record"}, "complete native transport observation")
     p = validate_policy(record["Policy"])
     require(p["Spec"] == spec, "same family/dimensions; no policy relabel")
-    if spec["family"] == "transfer-retained-pins":
+    if spec["version"] == 3 and spec["family"] == "snapshot-to-feed":
+        expected = f"graph-workload-feed-retained-v1-{spec['layout']}-{bytes(p['Run']).hex()}"
+    elif spec["family"] == "transfer-retained-pins":
         expected = f"graph-owned-v3-{spec['layout']}-{bytes(p['Run']).hex()}"
     else:
         stem = {"snapshot-to-feed": "feed", "contention-empty-range": "contention", "snapshot-selectors": "selectors", "cross-edge-endpoint-uniqueness": "edge-unique", "immutable-columns": "columns", "late-correction-old-index":"correction", "partition-local-create-update":"create-update"}[spec["family"]]
@@ -392,10 +411,12 @@ def launch(value, directory, tag, image, connection, client_ip, client_mib):
     try:
         spec = canonical(value["Spec"]).decode()
         command = ["run", "-d", "--name", names[-1], "--network", tag, "--ip", client_ip, "--cap-add", "NET_ADMIN", "--memory", str(integer(int(client_mib), 1, 32768))+"m", "--cpus", "0.5", "--mount", f"type=bind,source={directory},target=/evidence", "--mount", f"type=bind,source={tool_dir},target=/owned-tools,readonly"]
-        for key, content in {"FDB_CONNECTION_STRING": connection, "RHO_GRAPH_WORKLOAD_SPEC": spec, "RHO_GRAPH_WORKLOAD_RUN": value["Run"], "RHO_GRAPH_WORKLOAD_TRANSPORT": FORMAT, "RHO_GRAPH_WORKLOAD_SECONDS": str(value["BudgetSeconds"]), "RHO_GRAPH_WORKLOAD_DEADLINE": str(absolute), "FDB_COST_ARTIFACT": "/evidence"}.items():
+        for key, content in {"FDB_CONNECTION_STRING": connection, "RHO_GRAPH_WORKLOAD_SPEC": spec, "RHO_GRAPH_WORKLOAD_RUN": value["Run"], "RHO_GRAPH_WORKLOAD_TRANSPORT": RETAINED_FORMAT if value["Version"] == 3 else FORMAT, "RHO_GRAPH_WORKLOAD_SECONDS": str(value["BudgetSeconds"]), "RHO_GRAPH_WORKLOAD_DEADLINE": str(absolute), "FDB_COST_ARTIFACT": "/evidence"}.items():
             command += ["--env", key+"="+content]
         if value["Spec"]["family"] == "transfer-retained-pins":
             command += ["--env", "RHO_FDB_TRANSFER_GRANT="+transfer_grant(value["Spec"])]
+        if value["Version"] == 3:
+            command += ["--env", "RHO_FDB_FEED_RETAINED_GRANT="+retained_grant(value["Spec"])]
         # Driver cannot mutate before genuine native namespace readback and
         # probes. The absolute deadline is set BEFORE this container is released.
         command += [image, "/bin/bash", "-c", 'while [ ! -f /evidence/transport-admission.json ]; do sleep 0.05; done; fdb-spike workload-cell > /evidence/workload-result.stdout 2>/evidence/workload-result.stderr; result=$?; printf "%s\\n" "$result" > /evidence/transport-driver-exit; while [ ! -f /evidence/transport-release ]; do sleep 0.05; done; exit "$result"']
@@ -409,7 +430,7 @@ def launch(value, directory, tag, image, connection, client_ip, client_mib):
         e.write("transport-input.json", value)
         # Policy order is identical to the Go typed wire; it is persisted later
         # by an actual SDK write and post-commit observation, never a label only.
-        p = {"Version": 2, "Spec": value["Spec"], "Run": list(bytes.fromhex(value["Run"])), "Transport": value["Transport"], "BudgetSeconds": value["BudgetSeconds"], "CausalMinimumMillis": causal_minimum(value["Spec"], value["Transport"]), "AdmittedUnixNanos": admitted_at, "DeadlineUnixNanos": absolute, **{k: value[k] for k in ("QueuePackets", "SampleMillis", "MaxSamples", "MaxArtifactBytes")}, "ProbeSamples": 9, "ProbePayloadBytes": 64, "ProbeTimeoutMillis": 3000, "Tools": {"Version": tool["Version"], "TC": array_hash(tool["TC"]), "IP": array_hash(tool["IP"]), "Probe": array_hash(sha_file(probe)), "Source": array_hash(tool["SourceSHA256"]), "Build": array_hash(tool["BuildSHA256"])}, "Peers": peers, "ArmedSHA256": [1]*32}
+        p = {"Version": value["Version"], "Spec": value["Spec"], "Run": list(bytes.fromhex(value["Run"])), "Transport": value["Transport"], "BudgetSeconds": value["BudgetSeconds"], "CausalMinimumMillis": causal_minimum(value["Spec"], value["Transport"]), "AdmittedUnixNanos": admitted_at, "DeadlineUnixNanos": absolute, **{k: value[k] for k in ("QueuePackets", "SampleMillis", "MaxSamples", "MaxArtifactBytes")}, "ProbeSamples": 9, "ProbePayloadBytes": 64, "ProbeTimeoutMillis": 3000, "Tools": {"Version": tool["Version"], "TC": array_hash(tool["TC"]), "IP": array_hash(tool["IP"]), "Probe": array_hash(sha_file(probe)), "Source": array_hash(tool["SourceSHA256"]), "Build": array_hash(tool["BuildSHA256"])}, "Peers": peers, "ArmedSHA256": [1]*32}
         # Monitor starts before any probe/shaping helper so their process-tree
         # RSS is included; cgroup peak/stat additionally capture unsampled work.
         monitor_args = [sys.executable, "-B", str(Path(__file__).with_name("cost_monitor.py")), "--servers", *names[:4], "--client", names[-1], "--output", str(directory/"transport-rss.jsonl"), "--seconds", str(p["BudgetSeconds"]), "--absolute-deadline", str(absolute), "--sample-millis", str(p["SampleMillis"]), "--max-samples", str(p["MaxSamples"]), "--max-bytes", str(monitor_grant),"--terminal-marker",str(directory/"transport-release")]

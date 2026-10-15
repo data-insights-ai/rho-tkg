@@ -9,7 +9,7 @@ profile=${2:-small}
 if [ "$mode" = workload-cell ]; then
   : "${RHO_GRAPH_WORKLOAD_SPEC:?explicit fresh workload specification required}"
   : "${RHO_GRAPH_WORKLOAD_RUN:?explicit fresh run identity required}"
-  if [ "${RHO_GRAPH_WORKLOAD_TRANSPORT:-}" = fdb-owned-ingress-transport-v2 ]; then
+  if { [ "${RHO_GRAPH_WORKLOAD_TRANSPORT:-}" = fdb-owned-ingress-transport-v2 ] || [ "${RHO_GRAPH_WORKLOAD_TRANSPORT:-}" = fdb-owned-ingress-transport-v3 ]; }; then
     python3 -B owned_transport.py preflight
   else
     python3 -B ../workload_matrix.py preflight "$RHO_GRAPH_WORKLOAD_SPEC" "$RHO_GRAPH_WORKLOAD_RUN"
@@ -17,7 +17,7 @@ if [ "$mode" = workload-cell ]; then
 fi
 owned_transport=0
 if [ "${RHO_GRAPH_WORKLOAD_TRANSPORT:-}" != '' ]; then
-  [ "$mode" = workload-cell ] && [ "$RHO_GRAPH_WORKLOAD_TRANSPORT" = fdb-owned-ingress-transport-v2 ] || exit 2
+  [ "$mode" = workload-cell ] && { [ "$RHO_GRAPH_WORKLOAD_TRANSPORT" = fdb-owned-ingress-transport-v2 ] || [ "$RHO_GRAPH_WORKLOAD_TRANSPORT" = fdb-owned-ingress-transport-v3 ]; } || exit 2
   owned_transport=1
 fi
 cost_qualify=${FDB_COST_QUALIFY:-0}
@@ -118,7 +118,7 @@ images+=("$source_image")
 shasum -a 256 ./*.go ./*.sh ./*.py go.mod go.sum Dockerfile .dockerignore >"$out/source-sha256.txt"
 if [ "$owned_transport" = 1 ]; then shasum -a 256 transportprobe/*.go >"$out/transport-probe-source-sha256.txt"; fi
 if [ "$mode" = workload-cell ]; then
-  shasum -a 256 ../workload_matrix.py ../comparison_spool.py ../compare-cost-cdc.py ../native_columns_check.py ../fdb_retention_check.py ../fdb_transfer_check.py >"$out/workload-controller-source-sha256.txt"
+  shasum -a 256 ../workload_matrix.py ../comparison_spool.py ../compare-cost-cdc.py ../native_columns_check.py ../fdb_retention_check.py ../fdb_transfer_check.py ../fdb_feed_retained_check.py ../feed_retained_pair.py >"$out/workload-controller-source-sha256.txt"
 fi
 git rev-parse HEAD >"$out/source-head.txt"
 git status --porcelain -- . >"$out/source-status.txt"

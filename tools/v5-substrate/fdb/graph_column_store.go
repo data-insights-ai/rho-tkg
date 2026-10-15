@@ -64,6 +64,9 @@ func newGraphColumnStoreContext(ctx context.Context, h *harness, p graphColumnPo
 	if h.config.Cost.Version == 4 {
 		binding.Version, binding.Layout, binding.Schema = 2, graphColumnEdgeUniqueLayout, "node-life-create-close;edge-life-bound-create-close;property-p:i64:effective-unique;canonical-original:v1"
 	}
+	if h.config.Cost.Version == 10 {
+		binding.Version, binding.Layout, binding.Schema = 3, graphFeedRetainedColumnLayout, "authenticated-initial-groups;node-presence;edge-life-bound;property-p:i64;canonical-interval-original:v1"
+	}
 	body, err := wire(binding)
 	if err != nil {
 		return nil, err
@@ -152,7 +155,7 @@ func graphColumnSame(a, b any) bool {
 	return e1 == nil && e2 == nil && bytes.Equal(left, right)
 }
 func (s *graphColumnStore) check(tr fdb.ReadTransaction, g graphColumnGeneration) error {
-	if g.Version != 1 || !validName(g.ID) || g.Binding != s.digest || !slices.Equal(g.Initial.Scope, []uint8{0, 1}) || !slices.Equal(g.Cut.Scope, []uint8{0, 1}) || g.Initial.Groups != [2]uint64{} || g.Initial.Round > g.Cut.Round {
+	if g.Version != graphColumnGenerationVersion(s) || !validName(g.ID) || g.Binding != s.digest || !slices.Equal(g.Initial.Scope, []uint8{0, 1}) || !slices.Equal(g.Cut.Scope, []uint8{0, 1}) || !graphColumnInterval(g) && g.Initial.Groups != [2]uint64{} || g.Initial.Round > g.Cut.Round {
 		return errInvalid
 	}
 	for _, groups := range g.Cut.Groups {
@@ -160,7 +163,15 @@ func (s *graphColumnStore) check(tr fdb.ReadTransaction, g graphColumnGeneration
 			return errInvalid
 		}
 	}
-	if g.Cut.Groups[0]+g.Cut.Groups[1] > s.binding.Policy.MaxWorkRows {
+	rows := g.Cut.Groups[0] + g.Cut.Groups[1]
+	if graphColumnInterval(g) {
+		var ok bool
+		rows, ok = graphColumnIntervalRows(g, g.Cut.Groups)
+		if !ok {
+			return errInvalid
+		}
+	}
+	if rows > s.binding.Policy.MaxWorkRows {
 		return errLimit
 	}
 	binding, err := tr.Get(s.key("binding")).Get()
@@ -195,11 +206,19 @@ func (s *graphColumnStore) progress(tr fdb.ReadTransaction, g graphColumnGenerat
 	if !found || !graphColumnSame(state.Generation, g) || state.Next > p.MaxChunks || state.Rows > p.MaxWorkRows || state.Bytes > p.MaxRetainedBytes || state.WorkBytes > p.MaxWorkBytes {
 		return graphColumnProgress{}, errMismatch
 	}
-	if state.Rows != state.Sequences[0]+state.Sequences[1] || state.Rows < state.Next || state.Rows > state.Next*uint64(p.ChunkRows) || state.Next == 0 && (state.Bytes != 0 || state.WorkBytes != 0 || state.Chain != [32]byte{} || state.Previous != (outcome{})) || state.Next != 0 && (state.Chain == [32]byte{} || !state.Previous.Commit || state.Previous.Coordinator > 1 || state.Previous.Sequence != state.Sequences[state.Previous.Coordinator] || state.Previous.Round > g.Cut.Round) {
+	expectedRows := state.Sequences[0] + state.Sequences[1]
+	if graphColumnInterval(g) {
+		var ok bool
+		expectedRows, ok = graphColumnIntervalRows(g, state.Sequences)
+		if !ok {
+			return graphColumnProgress{}, errInvalid
+		}
+	}
+	if state.Rows != expectedRows || state.Rows < state.Next || state.Rows > state.Next*uint64(p.ChunkRows) || state.Next == 0 && (state.Bytes != 0 || state.WorkBytes != 0 || state.Chain != [32]byte{} || state.Previous != (outcome{})) || state.Next != 0 && (state.Chain == [32]byte{} || !state.Previous.Commit || state.Previous.Coordinator > 1 || state.Previous.Sequence != state.Sequences[state.Previous.Coordinator] || state.Previous.Round > g.Cut.Round) {
 		return graphColumnProgress{}, errInvalid
 	}
 	for group := uint8(0); group < 2; group++ {
-		if state.Sequences[group] > g.Cut.Groups[group] || state.History[group] > graphColumnPublicationHistory(state)[group] {
+		if state.Sequences[group] > g.Cut.Groups[group] || !graphColumnInterval(g) && state.History[group] > graphColumnPublicationHistory(state)[group] || graphColumnInterval(g) && state.History[group] > 6*state.Rows {
 			return graphColumnProgress{}, errInvalid
 		}
 		if quiescent {
@@ -240,6 +259,9 @@ func (s *graphColumnStore) begin(g graphColumnGeneration) error {
 			return nil, errLimit
 		}
 		state := graphColumnProgress{Generation: g}
+		if graphColumnInterval(g) {
+			state.Sequences = g.Initial.Groups
+		}
 		for group := uint8(0); group < 2; group++ {
 			m, err := s.h.meta(tr, group)
 			if err != nil {
@@ -250,12 +272,14 @@ func (s *graphColumnStore) begin(g graphColumnGeneration) error {
 			}
 			state.Metadata[group] = m
 		}
-		census, err := s.h.historyPublicationIn(tr, state.Metadata)
-		if err != nil {
-			return nil, err
-		}
-		if census != [2]uint64{state.Metadata[0].Versions, state.Metadata[1].Versions} {
-			state.PublicationHistory = census
+		if !graphColumnInterval(g) {
+			census, err := s.h.historyPublicationIn(tr, state.Metadata)
+			if err != nil {
+				return nil, err
+			}
+			if census != [2]uint64{state.Metadata[0].Versions, state.Metadata[1].Versions} {
+				state.PublicationHistory = census
+			}
 		}
 		l.Bytes += reserved
 		l.Generations++
@@ -433,11 +457,19 @@ func (s *graphColumnStore) upload(g graphColumnGeneration, ordinal uint64, previ
 
 func graphColumnComplete(p graphColumnProgress) bool {
 	g := p.Generation
-	if p.Sequences != g.Cut.Groups || p.Rows != g.Cut.Groups[0]+g.Cut.Groups[1] {
+	rows := g.Cut.Groups[0] + g.Cut.Groups[1]
+	if graphColumnInterval(g) {
+		var ok bool
+		rows, ok = graphColumnIntervalRows(g, g.Cut.Groups)
+		if !ok {
+			return false
+		}
+	}
+	if p.Sequences != g.Cut.Groups || p.Rows != rows {
 		return false
 	}
 	for group := range 2 {
-		if p.Metadata[group].Groups != g.Cut.Groups[group] || p.Metadata[group].Floor != g.Cut.Round || p.History[group] != graphColumnPublicationHistory(p)[group] {
+		if p.Metadata[group].Groups != g.Cut.Groups[group] || p.Metadata[group].Floor != g.Cut.Round || !graphColumnInterval(g) && p.History[group] != graphColumnPublicationHistory(p)[group] {
 			return false
 		}
 	}
@@ -551,7 +583,7 @@ func (s *graphColumnStore) publishObserved(ctx context.Context, id string, initi
 	}
 	s, cancel := s.forContext(ctx)
 	defer cancel()
-	g := graphColumnGeneration{Version: 1, ID: id, Binding: s.digest, Initial: initial.record, Cut: final.record}
+	g := graphColumnGeneration{Version: graphColumnGenerationVersion(s), ID: id, Binding: s.digest, Initial: initial.record, Cut: final.record}
 	body, err := wire(g)
 	if err != nil {
 		return graphColumnManifest{}, err
@@ -690,13 +722,16 @@ func (s *graphColumnStore) walkOwned(ctx context.Context, id string, at cut, cac
 		return graphColumnManifest{}, errInvalid
 	}
 	for group := range 2 {
-		if at.record.Groups[group] > m.Generation.Cut.Groups[group] {
+		if at.record.Groups[group] > m.Generation.Cut.Groups[group] || graphColumnInterval(m.Generation) && at.record.Groups[group] < m.Generation.Initial.Groups[group] {
 			return graphColumnManifest{}, errInvalid
 		}
 	}
 	var chain [32]byte
 	var count, retained, work uint64
 	var sequences, history [2]uint64
+	if graphColumnInterval(m.Generation) {
+		sequences = m.Generation.Initial.Groups
+	}
 	var previous outcome
 	for ordinal := uint64(0); ordinal < m.Chunks; ordinal++ {
 		if err := ctx.Err(); err != nil {

@@ -43,21 +43,23 @@ class WorkloadMatrixGuards(unittest.TestCase):
             with self.assertRaises(ValueError):matrix.execute({**cells[0],"engine":"paired"},output,1800,"small",4096,1<<30,8<<20)
             self.assertFalse(output.exists())
 
-    def test_retained_only_feed_v3_is_explicit_and_not_paired_or_fdb(self):
+    def test_retained_only_feed_v3_requires_real_fdb_owner_adapter_and_local_pair(self):
         spec={"version":3,"family":"snapshot-to-feed","facts":40,"crossPercent":50,"writers":32,"layout":"columns"}
-        for transport in matrix.TRANSPORTS:self.assertEqual(matrix.preflight(spec,"01"*16,"native-raft",transport),spec)
-        for engine in ("paired","foundationdb"):
-            with self.assertRaises(ValueError):matrix.preflight(spec,"01"*16,engine,"local")
-        cells=list(matrix.matrix(("snapshot-to-feed",),("local",),("native-raft",),retained_only=True))
-        self.assertEqual(len(cells),360)
-        self.assertTrue(all(c["workload"]["version"]==3 and c["implemented"] for c in cells))
+        for transport in matrix.TRANSPORTS:
+            self.assertEqual(matrix.preflight(spec,"01"*16,"native-raft",transport),spec)
+            self.assertEqual(matrix.preflight(spec,"01"*16,"foundationdb",transport),spec)
+        self.assertEqual(matrix.preflight(spec,"01"*16,"paired","local"),spec)
+        for transport in ("rtt-1ms","rtt-20ms","rtt-100ms"):
+            with self.assertRaises(ValueError):matrix.preflight(spec,"01"*16,"paired",transport)
+        for engine in matrix.ENGINES:
+            cells=list(matrix.matrix(("snapshot-to-feed",),("local",),(engine,),owned=engine!="native-raft",retained_only=True))
+            self.assertEqual(len(cells),360);self.assertTrue(all(c["workload"]["version"]==3 for c in cells))
         self.assertTrue(all(c["workload"]["version"]==1 for c in matrix.matrix(("snapshot-to-feed",),("local",),("native-raft",))))
-        for kwargs in ({"engines":("paired",)},{"owned":True},{"families":("snapshot-selectors",)}):
-            params={"families":("snapshot-to-feed",),"transports":("local",),"engines":("native-raft",),"retained_only":True,**kwargs}
-            with self.assertRaises(ValueError):list(matrix.matrix(**params))
+        with self.assertRaises(ValueError):list(matrix.matrix(("snapshot-to-feed",),("rtt-1ms",),("paired",),owned=True,retained_only=True))
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/"refused"
-            with self.assertRaises(ValueError):matrix.execute({**cells[0],"engine":"paired"},path,1800,"small",4096,1<<30,8<<20)
+            cell=next(matrix.matrix(("snapshot-to-feed",),("local",),("foundationdb",),owned=True,retained_only=True))
+            with self.assertRaises(ValueError):matrix.execute(cell,path,1800,"small",4096,1<<30,8<<20)
             self.assertFalse(path.exists())
 
     def test_create_update_local_baseline_and_explicit_cross_variants(self):

@@ -81,6 +81,15 @@ func graphTransportCausalMinimum(spec graphFeedWorkloadSpec, t graphTransport) (
 	// One mandatory client request/response per counted operation is a lower
 	// bound only. Extra SDK reads, retries, scans and base latency are omitted.
 	var rounds uint64
+	if spec.Version == 3 && spec.Family == graphFeedWorkloadFamily {
+		// Three serial anchors, complete create wave, first half-update wave,
+		// one serial post-GC checkpoint update, remaining update wave, then
+		// at least ceil(N/8) complete envelope Page/ACKs. Extra native/catalog/
+		// GC/retry/probe IO is omitted, never inferred from configured RTT.
+		half := spec.Facts / 2
+		rounds = 4 + (spec.Facts+writers-1)/writers + (half+writers-1)/writers + (spec.Facts-half-1+writers-1)/writers + pages
+		return rounds * t.TargetRTTMillis, nil
+	}
 	switch spec.Family {
 	case graphFeedWorkloadFamily, graphOwnerTransferFamily:
 		rounds = 5 + 2*waves + pages
@@ -115,7 +124,7 @@ func transportHex(s string, size int) bool {
 }
 func (p graphTransportPolicy) validate() error {
 	s := p.Spec
-	if p.Version != 2 || s.Version != 2 || !graphTransportFamily(s.Family) || s.Facts < 20 || s.Facts > 1_000_000 || s.Facts%20 != 0 || s.Writers != 1 && s.Writers != 8 && s.Writers != 32 || (s.Family == graphFeedWorkloadFamily || s.Family == graphSelectorsFamily || s.Family == graphColumnsFamily || s.Family == graphOwnerTransferFamily || s.Family == graphCreateUpdateFamily) && s.Facts < uint64(s.Writers)+1 || s.CrossPercent != 0 && s.CrossPercent != 10 && s.CrossPercent != 50 && s.CrossPercent != 100 || s.Layout != "kv" && s.Layout != "columns" || p.Run == [16]byte{} {
+	if !(p.Version == 2 && s.Version == 2 || p.Version == 3 && s.Version == 3 && s.Family == graphFeedWorkloadFamily && s.Facts >= 20 && s.Facts > uint64(s.Writers)) || !graphTransportFamily(s.Family) || s.Facts < 20 || s.Facts > 1_000_000 || s.Facts%20 != 0 || s.Writers != 1 && s.Writers != 8 && s.Writers != 32 || (s.Family == graphFeedWorkloadFamily || s.Family == graphSelectorsFamily || s.Family == graphColumnsFamily || s.Family == graphOwnerTransferFamily || s.Family == graphCreateUpdateFamily) && s.Facts < uint64(s.Writers)+1 || s.CrossPercent != 0 && s.CrossPercent != 10 && s.CrossPercent != 50 && s.CrossPercent != 100 || s.Layout != "kv" && s.Layout != "columns" || p.Run == [16]byte{} {
 		return errInvalid
 	}
 	t := p.Transport
@@ -169,7 +178,7 @@ func graphTransportFromEnv() (*graphTransportPolicy, error) {
 	if os.Getenv("RHO_GRAPH_WORKLOAD_TRANSPORT") == "" {
 		return nil, nil
 	}
-	if os.Getenv("RHO_GRAPH_WORKLOAD_TRANSPORT") != graphTransportFormat {
+	if os.Getenv("RHO_GRAPH_WORKLOAD_TRANSPORT") != graphTransportFormat && os.Getenv("RHO_GRAPH_WORKLOAD_TRANSPORT") != graphFeedRetainedTransportFormat {
 		return nil, errInvalid
 	}
 	root, err := os.OpenRoot(os.Getenv("FDB_COST_ARTIFACT"))
@@ -187,7 +196,7 @@ func graphTransportFromEnv() (*graphTransportPolicy, error) {
 		return nil, errors.Join(errLimit, err)
 	}
 	p, err := decode[graphTransportPolicy](body)
-	if err != nil || p.validate() != nil {
+	if err != nil || p.validate() != nil || (p.Version == 3) != (os.Getenv("RHO_GRAPH_WORKLOAD_TRANSPORT") == graphFeedRetainedTransportFormat) {
 		return nil, errors.Join(errInvalid, err)
 	}
 	if os.Getenv("RHO_GRAPH_WORKLOAD_SECONDS") != strconv.FormatUint(p.BudgetSeconds, 10) || os.Getenv("RHO_GRAPH_WORKLOAD_DEADLINE") != strconv.FormatInt(p.DeadlineUnixNanos, 10) || os.Getenv("RHO_GRAPH_WORKLOAD_RUN") != hex.EncodeToString(p.Run[:]) || time.Now().UnixNano() < p.AdmittedUnixNanos || time.Now().UnixNano() >= p.DeadlineUnixNanos {
@@ -243,6 +252,9 @@ func graphTransportFamily(family string) bool {
 	return family == graphFeedWorkloadFamily || family == graphContentionFamily || family == graphSelectorsFamily || family == graphEdgeUniqueFamily || family == graphColumnsFamily || family == graphCorrectionFamily || family == graphOwnerTransferFamily || family == graphCreateUpdateFamily
 }
 func graphTransportConfig(spec graphFeedWorkloadSpec, run string) config {
+	if spec.Version == 3 && spec.Family == graphFeedWorkloadFamily {
+		return graphFeedRetainedConfig(spec, run)
+	}
 	switch spec.Family {
 	case graphCreateUpdateFamily:
 		return graphCreateUpdateConfig(graphSelectorsSpec(spec), run)
@@ -268,7 +280,7 @@ func graphTransportConfig(spec graphFeedWorkloadSpec, run string) config {
 	return config{}
 }
 func graphTransported(c config) bool {
-	return strings.HasPrefix(c.Graph, "graph-workload-contention-v2-") || strings.HasPrefix(c.Graph, "graph-workload-selectors-v2-") || strings.HasPrefix(c.Graph, "graph-workload-edge-unique-v2-") || strings.HasPrefix(c.Graph, "graph-workload-columns-v2-") || strings.HasPrefix(c.Graph, "graph-workload-correction-v2-") || strings.HasPrefix(c.Graph, "graph-workload-create-update-v2-") || strings.HasPrefix(c.Graph, graphOwnerTransportNamespace)
+	return strings.HasPrefix(c.Graph, graphFeedRetainedNamespace) || strings.HasPrefix(c.Graph, "graph-workload-contention-v2-") || strings.HasPrefix(c.Graph, "graph-workload-selectors-v2-") || strings.HasPrefix(c.Graph, "graph-workload-edge-unique-v2-") || strings.HasPrefix(c.Graph, "graph-workload-columns-v2-") || strings.HasPrefix(c.Graph, "graph-workload-correction-v2-") || strings.HasPrefix(c.Graph, "graph-workload-create-update-v2-") || strings.HasPrefix(c.Graph, graphOwnerTransportNamespace)
 }
 
 // Every new business capture/apply authenticates the SAME actual native policy
@@ -463,6 +475,15 @@ func (h *harness) graphTransportCheckIn(tr fdb.ReadTransaction) error {
 		return nil
 	}
 	switch h.config.Cost.Version {
+	case 10:
+		p, err := h.graphTransportNative(tr)
+		if err != nil {
+			return err
+		}
+		if p == nil || p.Version != 3 || p.Spec.Family != graphFeedWorkloadFamily {
+			return errMismatch
+		}
+		return nil
 	case 8:
 		p, err := h.graphTransportNative(tr)
 		if err != nil {

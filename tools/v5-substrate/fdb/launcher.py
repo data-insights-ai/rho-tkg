@@ -112,7 +112,7 @@ def main():
             return digest.hexdigest()
         hashes = {p.name: (workload_hash(p) if mode == "workload-cell" else hashlib.sha256(p.read_bytes()).hexdigest())
                   for p in sorted(out.iterdir()) if p.is_file() and p.name != "receipt.json"}
-        if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") == "fdb-owned-ingress-transport-v2":
+        if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") in ("fdb-owned-ingress-transport-v2", "fdb-owned-ingress-transport-v3"):
             hashes.update({str(p.relative_to(out)): workload_hash(p) for p in sorted((out / "owned-tools").iterdir()) if p.is_file()})
         if mode == "platform-faults":
             hashes.update({str(p.relative_to(out)): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -144,12 +144,14 @@ def main():
                    "mode": mode, "scope": scopes[mode]}
         if mode == "workload-cell" and json.loads(os.environ["RHO_GRAPH_WORKLOAD_SPEC"])["family"] == "partition-local-create-update":
             receipt["scope"] = "one host/four logical FDB zones; genuine fixed scalar graph create5/update6, strict one-business-participant baseline at0 percent and explicit mixed/cross variants10/50/100; setup excluded from business ratio, complete immutable COMMIT/ABORT originals, old/current/index/CDC/source and optional actual native/cache columns, actual phase wall and full operation durations; fixed fixture IDs, no allocator issuance; no native parity/full matrix/capacity acceptance"
-        if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") == "fdb-owned-ingress-transport-v2":
+        if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") in ("fdb-owned-ingress-transport-v2", "fdb-owned-ingress-transport-v3"):
             receipt["scope"] = "one host/four logical FDB zones; fresh explicitly selected contention/selectors/effective-unique/feed/immutable-columns/late-correction owned receiver-ingress transport and fixed original budget; actual configured delay, TCP connect+echo baseline/armed/after distributions, drops, all helper/engine process RSS and cgroup counters; no identical observed RTT, independent-host/LAN-WAN, native parity, remaining-family or capacity/matrix acceptance"
             if json.loads(os.environ["RHO_GRAPH_WORKLOAD_SPEC"])["family"] == "transfer-retained-pins":
                 receipt["scope"] = "one host/four logical FDB zones; actual stable-bucket A1-to-B2 processing authority, separate source/target SDK SIGKILL/replacement, immutable COMMIT/fenced-ABORT recovery, actual Next-backed blocks, frozen native full-census handoff, retained old snapshot before release and explicit feed-only after physical history GC, owned receiver-ingress transport/fixed original budget; co-resident SDK processes are not independent machines or FDB replica roles; no native retention equivalence, whole matrix or capacity acceptance"
             if json.loads(os.environ["RHO_GRAPH_WORKLOAD_SPEC"])["family"] == "partition-local-create-update":
                 receipt["scope"] = "one host/four logical FDB zones; actual owned ingress transport/fixed original budget, strict-local0 business create/update baseline and explicit mixed/cross10/50/100 variants, authentic complete read/write footprints and full phase wall/operation timings, raw retained old/current/original/CDC and optional native/cache columns; setup excluded, fixed declared IDs not allocator issuance; configured delay and actual probes/resources retained; no native parity/full matrix/capacity acceptance"
+        if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") == "fdb-owned-ingress-transport-v3":
+            receipt["scope"] = "one host/four logical FDB zones; fresh Cost10 catalog2/Transfer3/actual HOME+recipient+Next; snapshot C before authenticated all-owner physical-close transition, real source GC and detached complete-original feed; SAME pending Page/ACK across killed/reaped SDK replacement; true checkpoint interval columns; configured ingress/probes and actual aggregate resources separate; native rolling-anchor availability/storage differs; no nonlocal parity, whole-matrix or capacity acceptance"
         (out / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     else:
         raise ValueError("unsupported launcher action")

@@ -18,6 +18,13 @@ def request():
 
 
 class OwnedTransportGuards(unittest.TestCase):
+    def test_retained_only_v3_preserves_v2_and_requires_exact_fresh_family(self):
+        value=request();value["Version"]=3;value["Spec"]["version"]=3
+        self.assertEqual(owned.validate_input(value),value)
+        self.assertEqual(owned.validate_input(request()),request())
+        for change in ({"Version":2},{"Spec":{**value["Spec"],"version":2}},{"Spec":{**value["Spec"],"family":"snapshot-selectors"}},{"Version":True}):
+            with self.assertRaises(ValueError):owned.validate_input(value|change)
+
     def test_checked_finite_budget_and_exact_directed_ownership(self):
         value=request()
         self.assertEqual(owned.validate_input(value),value)

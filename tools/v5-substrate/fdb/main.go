@@ -40,12 +40,23 @@ func main() {
 
 func run() error {
 	if os.Getenv("RHO_GRAPH_WORKLOAD_TRANSPORT") != "" {
-		if len(os.Args) != 2 || os.Args[1] != "workload-cell" && os.Args[1] != "feed-client-hold" && os.Args[1] != "feed-client-resume" && os.Args[1] != "transfer-owner-A" && os.Args[1] != "transfer-owner-B" {
+		if len(os.Args) != 2 || os.Args[1] != "workload-cell" && os.Args[1] != "feed-client-hold" && os.Args[1] != "feed-client-resume" && os.Args[1] != "transfer-owner-A" && os.Args[1] != "transfer-owner-B" && os.Args[1] != "feed-retained-hold" && os.Args[1] != "feed-retained-resume" {
 			return errInvalid
 		}
 		if _, err := graphTransportFromEnv(); err != nil {
 			return err
 		}
+	}
+	if len(os.Args) == 2 && (os.Args[1] == "feed-retained-hold" || os.Args[1] == "feed-retained-resume") {
+		if _, _, err := graphFeedRetainedEnvironment(); err != nil {
+			return err
+		}
+		db, err := openDB()
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		return runGraphFeedRetainedChild(db, os.Args[1] == "feed-retained-resume")
 	}
 	if len(os.Args) == 2 && (os.Args[1] == "transfer-owner-A" || os.Args[1] == "transfer-owner-B") {
 		if _, _, _, err := graphTransferEnvironment(); err != nil {
@@ -72,7 +83,8 @@ func run() error {
 			return errInvalid
 		}
 		var family struct {
-			Family string `json:"family"`
+			Version uint8  `json:"version"`
+			Family  string `json:"family"`
 		}
 		if err := json.Unmarshal([]byte(raw), &family); err != nil {
 			return errInvalid
@@ -100,6 +112,17 @@ func run() error {
 			}
 			defer db.Close()
 			return runGraphCreateUpdate(db, spec, run)
+		}
+		if family.Version == 3 && family.Family == graphFeedWorkloadFamily {
+			if _, _, err := graphFeedRetainedEnvironment(); err != nil {
+				return err
+			}
+			db, err := openDB()
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			return runGraphFeedRetainedWorkload(db)
 		}
 		if family.Family == graphFeedWorkloadFamily {
 			spec, run, err := graphFeedWorkloadSpecFromEnv()

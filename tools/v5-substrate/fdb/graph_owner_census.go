@@ -497,7 +497,7 @@ func (c *graphOwnerCatalog) censusOriginalIn(tr fdb.ReadTransaction, move graphO
 	if err != nil {
 		return o, progress, err
 	}
-	if actual == nil || actual.binding.Transfer == nil || actual.binding.Transfer.Version != 2 || !graphColumnSame(actual.binding, c.binding) {
+	if actual == nil || !graphOwnerTransferCensus(actual.binding.Transfer) || !graphColumnSame(actual.binding, c.binding) {
 		return o, progress, errMismatch
 	}
 	frozen, err := c.moveIn(tr, move)
@@ -561,7 +561,7 @@ func (c *graphOwnerCatalog) censusOriginalIn(tr fdb.ReadTransaction, move graphO
 // not a client RSS or matrix capacity claim. No data-sized transaction/map.
 func (c *graphOwnerCatalog) PrepareCensus(ctx context.Context, a graphOwnerAuthority, move graphOwnerMove, request string) (graphOwnerCensusOriginal, error) {
 	var zero graphOwnerCensusOriginal
-	if c == nil || c.binding.Transfer == nil || c.binding.Transfer.Version != 2 || !validName(request) {
+	if c == nil || !graphOwnerTransferCensus(c.binding.Transfer) || !validName(request) {
 		return zero, errInvalid
 	}
 	owned, err := graphOwnerMoveInput(move)
@@ -719,7 +719,7 @@ func (c *graphOwnerCatalog) censusRowsIn(tr fdb.ReadTransaction, request string,
 // no resume promise after losing older caller-owned output.
 func (c *graphOwnerCatalog) CensusPage(ctx context.Context, a graphOwnerAuthority, move graphOwnerMove, original string, ordinal uint64) (graphOwnerCensusDelivery, error) {
 	var zero graphOwnerCensusDelivery
-	if c == nil || c.binding.Transfer == nil || c.binding.Transfer.Version != 2 || !validName(original) || ordinal == 0 {
+	if c == nil || !graphOwnerTransferCensus(c.binding.Transfer) || !validName(original) || ordinal == 0 {
 		return zero, errInvalid
 	}
 	request := fmt.Sprintf("page-%016x", ordinal)
@@ -865,7 +865,7 @@ func (c *graphOwnerCatalog) censusActivateIn(tr fdb.Transaction, move graphOwner
 
 func (c *graphOwnerCatalog) ObserveCensus(ctx context.Context, a graphOwnerAuthority, move graphOwnerMove, request string) (graphOwnerCensusObservation, error) {
 	var zero graphOwnerCensusObservation
-	if c == nil || c.binding.Transfer == nil || c.binding.Transfer.Version != 2 || !validName(request) {
+	if c == nil || !graphOwnerTransferCensus(c.binding.Transfer) || !validName(request) {
 		return zero, errInvalid
 	}
 	owned, err := graphOwnerMoveInput(move)

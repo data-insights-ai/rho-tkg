@@ -26,7 +26,7 @@ type graphColumnPolicy struct {
 }
 
 func (p graphColumnPolicy) validate() error {
-	if p.Version == 1 {
+	if p.Version == 1 || p.Version == 2 {
 		if p.ChunkRows < 1 || p.ChunkRows > 32 || p.ChunkBytes < 1024 || p.ChunkBytes > 64<<10 || p.MaxChunks < 1 || p.MaxChunks > 1_000_000 || p.MaxGenerations < 1 || p.MaxGenerations > 1024 || p.MaxRetainedBytes < 8192 || p.MaxRetainedBytes > 1<<40 || p.MaxWorkRows < 1 || p.MaxWorkRows > 3_000_007 || p.MaxWorkBytes < uint64(p.ChunkBytes) || p.MaxWorkBytes > 1<<40 {
 			return errInvalid
 		}
@@ -43,9 +43,12 @@ func (p graphColumnPolicy) validate() error {
 
 // A policy version cannot opt an ordinary agreement into fresh row semantics.
 func graphColumnProfile(h *harness, p graphColumnPolicy) bool {
-	return h != nil && p.validate() == nil && validGraphCostProfile(h.config) && (h.config.Cost.Version == 4 && p.Version == 1 || h.config.Cost.Version != 4 && p.Version == 0)
+	return graphFeedRetainedColumnProfile(h, p) || h != nil && p.validate() == nil && validGraphCostProfile(h.config) && (h.config.Cost.Version == 4 && p.Version == 1 || h.config.Cost.Version != 4 && h.config.Cost.Version != 10 && p.Version == 0)
 }
 func graphColumnMagic(p graphColumnPolicy) string {
+	if p.Version == 2 {
+		return "RHOCLM03"
+	}
 	if p.Version == 1 {
 		return "RHOCLM02"
 	}
@@ -145,7 +148,7 @@ func graphColumnGenerationHash(g graphColumnGeneration) ([32]byte, error) {
 // Original bytes live once per logical group in a bounded arena. Offsets and
 // lengths are canonical consecutive spans; no alias survives this owned decode.
 func encodeGraphColumnChunk(h *harness, g graphColumnGeneration, ordinal uint64, previous [32]byte, rows []graphColumnRow, p graphColumnPolicy) ([]byte, error) {
-	if !graphColumnProfile(h, p) || len(rows) < 1 || len(rows) > p.ChunkRows {
+	if !graphColumnProfile(h, p) || p.Version == 2 && g.Version != 2 || len(rows) < 1 || len(rows) > p.ChunkRows {
 		return nil, errInvalid
 	}
 	generation, err := graphColumnGenerationHash(g)
@@ -201,7 +204,7 @@ func decodeGraphColumnChunk(h *harness, g graphColumnGeneration, ordinal uint64,
 	if err != nil {
 		return nil, err
 	}
-	if string(body[:8]) != graphColumnMagic(p) || !bytes.Equal(body[8:40], g.Binding[:]) || !bytes.Equal(body[40:72], generation[:]) || binary.BigEndian.Uint64(body[72:80]) != ordinal || !bytes.Equal(body[80:112], previous[:]) {
+	if p.Version == 2 && g.Version != 2 || string(body[:8]) != graphColumnMagic(p) || !bytes.Equal(body[8:40], g.Binding[:]) || !bytes.Equal(body[40:72], generation[:]) || binary.BigEndian.Uint64(body[72:80]) != ordinal || !bytes.Equal(body[80:112], previous[:]) {
 		return nil, errMismatch
 	}
 	n := int(binary.BigEndian.Uint16(body[112:114]))

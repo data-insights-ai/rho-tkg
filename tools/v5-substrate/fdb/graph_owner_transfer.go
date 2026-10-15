@@ -66,6 +66,9 @@ func validGraphOwnerTransferConfig(c config) bool {
 	return c.Nodes == [2]uint64{n[0].Node, n[2].Node}
 }
 func (p graphOwnerTransferPolicy) validate() error {
+	if p.Version == 3 {
+		return p.validateFeedRetained()
+	}
 	legacy := p.Version == 1 && p.Admission == nil && p.Census == nil && strings.HasPrefix(p.Config.Graph, graphOwnerTransferNamespace)
 	fresh := p.Version == 2 && p.Admission != nil && p.Census != nil && p.Admission.validate() == nil && p.Admission.Spec.Family == graphOwnerTransferFamily && p.Census.validate() == nil && strings.HasPrefix(p.Config.Graph, graphOwnerTransportNamespace)
 	if (!legacy && !fresh) || !validGraphOwnerTransferConfig(p.Config) || p.Run == [16]byte{} || !strings.HasSuffix(p.Config.Graph, hex.EncodeToString(p.Run[:])) || p.BudgetSeconds < 1 || p.BudgetSeconds > graphTransportMaxSeconds || p.AdmittedUnixNanos <= 0 || p.AdmittedUnixNanos > math.MaxInt64-int64(p.BudgetSeconds)*int64(time.Second) || p.DeadlineUnixNanos != p.AdmittedUnixNanos+int64(p.BudgetSeconds)*int64(time.Second) || p.DeadlineUnixNanos > math.MaxInt64-int64(30*time.Second) || p.CleanupMillis != 30_000 || p.MaxCleanupCalls != 8 || p.MaxAttempts != 64 || p.MaxSubmissions != 8 || p.MaxCallbacks != 16 || p.MaxProposalBytes < 2048 || p.MaxProposalBytes > 32<<10 || p.MaxGrants < 4 || p.MaxGrants > 64 || p.MaxBlock < 1 || p.MaxBlock > graphOwnerMaxBlock {
