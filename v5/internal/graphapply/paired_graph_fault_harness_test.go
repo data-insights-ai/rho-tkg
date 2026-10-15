@@ -295,6 +295,7 @@ type pairedGraphFaultNetwork struct {
 	nativeSnapshotHook    func(nativeFaultSnapshotBoundary) bool
 	nativeSnapshotArena   *graphstate.OutputBudget
 	nativeSnapshotNotices int
+	nativeSnapshotState   string // Fresh-only selected pre-call diagnostic; nil hook adds no work.
 }
 
 func newPairedGraphFaultNetwork(t *testing.T) *pairedGraphFaultNetwork {

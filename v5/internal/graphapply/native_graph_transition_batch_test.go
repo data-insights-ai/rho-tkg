@@ -137,8 +137,16 @@ func nativeBatchCall(ctx context.Context, p *graphProcess, c nativeBatchControl)
 
 func nativeBatchReap(t *testing.T, f *pairedGraphFaultNetwork, member uint64, receipt nativeBatchReceipt) pairedFaultProcess {
 	t.Helper()
+	return nativeTransitionReap(t, f, member, receipt.Member, receipt.PID, receipt, "native-batch-transition-kill")
+}
+
+// Typed callers authenticate the actual native receipt before entering this
+// shared OS wait/pipe cleanup path. The legacy wrapper keeps its JSON order and
+// value unchanged; this function creates no converted or synthetic receipt.
+func nativeTransitionReap(t *testing.T, f *pairedGraphFaultNetwork, member, receiptMember, receiptPID uint64, receipt any, action string) pairedFaultProcess {
+	t.Helper()
 	p := f.n.all[member]
-	if p.closed || p.mux == nil || receipt.Member != member || receipt.PID != uint64(p.cmd.Process.Pid) {
+	if p.closed || p.mux == nil || receiptMember != member || receiptPID != uint64(p.cmd.Process.Pid) {
 		t.Fatal("foreign native batch child")
 	}
 	p.closed = true
@@ -178,12 +186,12 @@ func nativeBatchReap(t *testing.T, f *pairedGraphFaultNetwork, member uint64, re
 		ExitCode, SignalNumber int
 		Signaled, Reaped       bool
 		Volume, Stderr         string
-		Receipt                nativeBatchReceipt
+		Receipt                any
 	}{member, uint64(p.cmd.Process.Pid), -1, 9, true, true, volume, stderr, receipt})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return pairedFaultProcess{EventID: f.event(), Action: "native-batch-transition-kill", Role: "replica", Member: member, Instance: pairedGraphFaultInstance(member, p), Volume: volume, Reaped: true, Signal: "SIGKILL", Raw: raw}
+	return pairedFaultProcess{EventID: f.event(), Action: action, Role: "replica", Member: member, Instance: pairedGraphFaultInstance(member, p), Volume: volume, Reaped: true, Signal: "SIGKILL", Raw: raw}
 }
 
 func nativeBatchCrossCase(t *testing.T, phase byte, partition uint64, kind raftlog.StableStorageKind, side string) {

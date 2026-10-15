@@ -55,14 +55,15 @@ type nativeBatchReceipt struct {
 // candidate batches per arm. All cumulative grants are spent before hashing;
 // exhaustion simply withholds diagnostic qualification, leaving native IO alone.
 type nativeBatchOwner struct {
-	mu       sync.Mutex
-	ctx      context.Context
-	cancel   context.CancelFunc
-	dir      string
-	controls uint64
-	attempts uint64
-	last     nativeBatchControl
-	state    nativeBatchReceipt
+	mu          sync.Mutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	dir         string
+	controls    uint64
+	attempts    uint64
+	last        nativeBatchControl
+	state       nativeBatchReceipt
+	nativeState *nativeStateOwner // Immutable before raftlog.Open/worker publication.
 }
 
 type nativeBatchFS struct {
@@ -103,8 +104,15 @@ func newNativeBatchOwner(ctx context.Context, dir string, member uint64, run [16
 // Installed immutably before raftlog.Open; the ordinary nil branch returns the
 // exact existing filesystem and creates no owner, timer, hashes or receipts.
 func nativeBatchOpen(ctx context.Context, dir string, member uint64, base vfs.FS) (*nativeBatchOwner, vfs.FS, error) {
+	stateProfile := os.Getenv("RHO_GRAPH_STABLE_STATE_PROCESS")
+	if stateProfile != "" && stateProfile != "off" && stateProfile != "1" {
+		return nil, nil, errInvalid
+	}
 	switch os.Getenv("RHO_GRAPH_STABLE_STORAGE_PROCESS") {
 	case "", "off":
+		if stateProfile == "1" {
+			return nil, nil, errInvalid
+		}
 		return nil, base, nil
 	case "1":
 	default:
@@ -127,7 +135,17 @@ func nativeBatchOpen(ctx context.Context, dir string, member uint64, base vfs.FS
 	if base == nil {
 		base = vfs.Default
 	}
-	return o, &nativeBatchFS{FS: base, owner: o}, nil
+	fs := &nativeBatchFS{FS: base, owner: o}
+	if stateProfile == "1" {
+		state, err := newNativeStateOwner(o)
+		if err != nil {
+			o.close()
+			return nil, nil, err
+		}
+		o.nativeState = state
+		return o, &nativeStateFS{nativeBatchFS: fs, state: state}, nil
+	}
+	return o, fs, nil
 }
 
 func nativeBatchControlDecode(wire []byte) (nativeBatchControl, error) {
@@ -151,6 +169,9 @@ func nativeBatchControlDecode(wire []byte) (nativeBatchControl, error) {
 func (o *nativeBatchOwner) control(wire []byte) ([]byte, error) {
 	if o == nil {
 		return nil, replica.ErrUnavailable
+	}
+	if o.nativeState != nil && bytes.HasPrefix(wire, []byte(nativeStateMarker)) {
+		return o.nativeState.control(wire)
 	}
 	c, err := nativeBatchControlDecode(wire)
 	if err != nil {

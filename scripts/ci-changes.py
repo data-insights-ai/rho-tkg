@@ -66,6 +66,8 @@ COST_PARENTS = [
     "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation",
 ]
 FAULT_PARENTS = [
+    "TestNativeStateOwnerMatchesWholeNativeIdentityAndSpendsBeforeObservation",
+    "TestNativeStateImportSyncBoundariesRecoverGenuineSourceAndRetainedCut",
     "TestNativeScopeReadDoorPreservesLegacyBytesAndRejectsForeignScopeShapes",
     "TestNativeP01OutsideDataScopeFreshAndAfterResolveOrRefuseActualCoordinator",
     "TestNativeComposedReplayRecipesKeepGenuineCausalInventoryAndFiniteActions",
@@ -130,6 +132,7 @@ FIXTURE_COMPAT = {
     "native_graph_fault_durable_fs_test.go": FAULT_PARENTS,
     "native_graph_transition_harness_test.go": FAULT_PARENTS,
     "native_graph_transition_batch_harness_test.go": FAULT_PARENTS,
+    "native_graph_transition_state_harness_test.go": FAULT_PARENTS,
     "native_graph_transition_replay_harness_test.go": FAULT_PARENTS,
     "native_graph_transition_move_harness_test.go": FAULT_PARENTS,
     "native_graph_transition_cut_harness_test.go": FAULT_PARENTS,
@@ -148,6 +151,7 @@ WORKLOAD_INPUTS = {"tools/v5-substrate/native_contention_check.py", "tools/v5-su
                    "tools/v5-substrate/native_workload_cell.py", "tools/v5-substrate/native_workload_cell_test.py",
                    "tools/v5-substrate/workload_matrix.py", "tools/v5-substrate/workload_matrix_test.py"}
 FAULT_INPUTS = {"tools/v5-substrate/native_fault_schedule_check.py", "tools/v5-substrate/native_fault_schedule_check_test.py",
+                "tools/v5-substrate/native_transition_state_check.py", "tools/v5-substrate/native_transition_state_check_test.py",
                 "tools/v5-substrate/native_transition_scope_check.py", "tools/v5-substrate/native_transition_scope_check_test.py",
                 "tools/v5-substrate/native_transition_composed_check.py", "tools/v5-substrate/native_transition_composed_check_test.py",
                 "tools/v5-substrate/native_transition_composed_replay.py", "tools/v5-substrate/native_transition_composed_replay_test.py",
@@ -269,7 +273,7 @@ def graph_selection(directory, changed, definitions):
         # Only actually edited top-level helper functions get consumer lookup.
         # Shared types/methods require a reviewed finite fixture guard list.
         helpers = {name for kind, name in edited if kind == "func" and name not in parent_names(path)}
-        if helpers and (path.name in COST_FIXTURES or path.name in ("graph_source_process_test.go", "remote_certified_process_test.go", "native_graph_transition_scope_harness_test.go", "native_graph_fault_schedule_harness_test.go", "native_graph_fault_decision_harness_test.go", "native_graph_fault_family_harness_test.go", "native_graph_fault_durable_fs_test.go", "native_graph_transition_harness_test.go", "native_graph_transition_batch_harness_test.go", "native_graph_transition_replay_harness_test.go", "native_graph_transition_move_harness_test.go", "native_graph_transition_cut_harness_test.go", "native_graph_transition_pin_harness_test.go", "native_graph_transition_certificate_harness_test.go", "native_graph_transition_namespace_harness_test.go", "native_graph_transition_composed_harness_test.go", "native_graph_contention_harness_test.go", "native_graph_contention_runner_test.go", "native_graph_workload_transport_harness_test.go")):
+        if helpers and (path.name in COST_FIXTURES or path.name in ("graph_source_process_test.go", "remote_certified_process_test.go", "native_graph_transition_scope_harness_test.go", "native_graph_fault_schedule_harness_test.go", "native_graph_fault_decision_harness_test.go", "native_graph_fault_family_harness_test.go", "native_graph_fault_durable_fs_test.go", "native_graph_transition_harness_test.go", "native_graph_transition_batch_harness_test.go", "native_graph_transition_state_harness_test.go", "native_graph_transition_replay_harness_test.go", "native_graph_transition_move_harness_test.go", "native_graph_transition_cut_harness_test.go", "native_graph_transition_pin_harness_test.go", "native_graph_transition_certificate_harness_test.go", "native_graph_transition_namespace_harness_test.go", "native_graph_transition_composed_harness_test.go", "native_graph_contention_harness_test.go", "native_graph_contention_runner_test.go", "native_graph_workload_transport_harness_test.go")):
             tests |= set(FIXTURE_COMPAT[path.name])
         else:
             for candidate in directory.glob("*_test.go"):
@@ -539,6 +543,7 @@ def cdc(paths):
         if {"tools/v5-substrate/compare-cost-cdc.py", "tools/v5-substrate/fdb_retention_check.py", "tools/v5-substrate/fdb_retention_check_test.py"}.intersection(paths):
             subprocess.run([sys.executable, "-B", "tools/v5-substrate/fdb_retention_check_test.py"], cwd=ROOT, check=True)
     if FAULT_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transition_state_check_test.py"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transition_batch_check_test.py"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_fault_schedule_check_test.py"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_fault_family_check_test.py"], cwd=ROOT, check=True)
