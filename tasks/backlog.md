@@ -1061,8 +1061,16 @@ EOFs, original deadlines and resource layers remain separately authenticated;
 configured delay equality does not imply equal observed latency or physical
 retention/allocator costs. Old local defaults remain unchanged. Nine final
 source blobs, six complete current parents and 966 original author inputs were
-verified; no checker/controller/guard was executed. The actual native transfer
-family and its complete paired join remain required implementation work.
+verified; no checker/controller/guard was executed. The transfer pairing source
+is integrated at `331ba938`: optional shared-spool FDB export follows complete
+raw/original/lifecycle/GC/transport verification, then joins typed old/current
+and acknowledged before/after values. Actual pre/post read/write groups and
+processing authority remain engine-specific. The owned pair separately admits
+native describe/import/undo/page grants and FDB catalog/census grants before
+effects. All five frozen blobs and current parents were verified with whitespace
+checks only; no Python import or execution occurred. The real native Cost12
+module, matrix/CI handoffs and integrated qualification remain required; the
+registry refuses an absent driver rather than enabling a nominal pair.
 
 The native selector family is source-integrated at `330aaf89`: fourteen actual
 Fresh/Stable/After/At, scoped-refusal and same-token reopen observations join
@@ -1120,9 +1128,10 @@ blobs and 11 current parents were verified with pinned parser/format and whitesp
 only. No compilation, execution or B/D acceptance is claimed. Broader actual
 leader/message/conflict conjunctions and the exploration/seed controller remain open.
 
-Current worker lanes: Sol 6.1/high for the remaining B/C/D source inventory and
-bounded campaign proposal; Sol 6.1/high for complete native/FDB transfer pairing;
-Sol 6.1/high for the native transfer workload implementation. FDB retains stable
+Current worker lanes: Sol 6.1/high for remaining B/C/D program implementation;
+Sol 6.1/high for the bounded exploration/seed/replay controller proposal after
+freezing transfer pairing; Sol 6.1/high for the native transfer workload
+implementation. FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing
 authority; these prefixes do not establish physical server placement. Source
 review found no ownership violation requiring key relocation. Native movement
@@ -1131,8 +1140,11 @@ Pair equivalent logical answers, retained cuts/originals and authority semantics
 report each engine's actual pre/post business read/write footprint and physical
 cost separately. Do not infer equal physical participants from nominal cross
 percentage or add copies solely to imitate native placement.
-The bounded exploration/seed-controller proposal remains queued. Shared graph
-batching, recovery byte pools and range-move pool admission are source-integrated above;
+The program adapter and native driver share one explicit, still-unintegrated
+Recovery4 fixture-selector handoff; the driver owns the child edit, while the
+program owns the selector and actual state/retained-source validation. Old
+Recovery3 fixtures retain their agreement. Shared graph batching, recovery byte
+pools and range-move pool admission are source-integrated above;
 these remaining packages are not integrated or runtime-qualified. A complete
 static 1M workload bound is not a prerequisite to authoring its driver. Preserve
 all required matrix cells and their capacity gates: safe resource refusal does
