@@ -102,7 +102,7 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 	if err := batch.Set(dormantKey, i.descriptor(), nil); err != nil {
 		return nil, errors.Join(err, batch.Close())
 	}
-	if err := s.commit(prospective, batch); err != nil {
+	if err := s.commitImportState(prospective, batch, StableStateImportBegin, i); err != nil {
 		return nil, err
 	}
 	ref, err := s.pinGeneration(bank)
@@ -262,7 +262,7 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 	if err := batch.Set(dormantKey, next.descriptor(), nil); err != nil {
 		return fail(err)
 	}
-	if err := s.commit(prospective, batch); err != nil {
+	if err := s.commitImportState(prospective, batch, StableStateImportAppend, &next); err != nil {
 		return err
 	}
 	*i = next
@@ -358,7 +358,7 @@ func (i *ApplicationImport) Verify(ctx context.Context) (err error) {
 	if err := batch.Set(dormantKey, next.descriptor(), nil); err != nil {
 		return errors.Join(err, batch.Close())
 	}
-	if err := s.commit(s.meta, batch); err != nil {
+	if err := s.commitImportState(s.meta, batch, StableStateImportSeal, &next); err != nil {
 		return err
 	}
 	*i = next
@@ -497,6 +497,12 @@ func (s *Store) cleanupApplicationImport() error {
 			if err := batch.Delete(dormantKey, nil); err != nil {
 				return errors.Join(err, batch.Close())
 			}
+			if s.stateObserver != nil {
+				identity := stateIdentity(s.meta)
+				identity.TargetBank = bank
+				identity.TargetGeneration = s.meta.Gen.Banks[bank].Generation
+				return s.commitState(s.meta, batch, StableStateDormantClear, identity)
+			}
 			return s.commit(s.meta, batch)
 		}
 		return s.clearGenerationBank(bank, s.meta.Gen.Banks[bank].Generation)
@@ -504,6 +510,11 @@ func (s *Store) cleanupApplicationImport() error {
 	batch := s.db.NewBatch()
 	if err := batch.DeleteRange([]byte{dormantDataTag}, dormantEnd, nil); err != nil {
 		return errors.Join(err, batch.Close())
+	}
+	if s.stateObserver != nil {
+		identity := stateIdentity(s.meta)
+		identity.TargetBank = 1 // Legacy dormant namespace, no generation/manifest.
+		return s.commitState(s.meta, batch, StableStateDormantClear, identity)
 	}
 	return s.commit(s.meta, batch)
 }

@@ -69,6 +69,7 @@ type Config struct {
 // fail-stop tradeoff requires evaluation before engine selection.
 type Store struct {
 	storageObserver               StableStorageObserver
+	stateObserver                 StableStateObserver
 	readyProgress                 *ApplicationReadyProgress
 	mu                            sync.Mutex
 	publicationMu                 sync.Mutex
@@ -161,8 +162,10 @@ func Open(c Config) (*Store, error) {
 		}
 	}
 	var storageObserver StableStorageObserver
+	var stateObserver StableStateObserver
 	if c.FS != nil {
 		storageObserver, _ = c.FS.(StableStorageObserver)
+		stateObserver, _ = c.FS.(StableStateObserver)
 	}
 	if c.FS == nil {
 		c.FS = vfs.Default
@@ -171,7 +174,7 @@ func Open(c Config) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{storageObserver: storageObserver, db: db, limits: c.Limits, canInitialize: c.Create, applicationPolicy: c.Application, publicationPolicy: c.PublishedCuts}
+	s := &Store{storageObserver: storageObserver, stateObserver: stateObserver, db: db, limits: c.Limits, canInitialize: c.Create, applicationPolicy: c.Application, publicationPolicy: c.PublishedCuts}
 	fail := func(err error) (*Store, error) { return nil, errors.Join(err, db.Close()) }
 	if c.Create {
 		s.meta = initial
@@ -338,6 +341,10 @@ func (s *Store) commit(m metadata, batch *pebble.Batch) (err error) {
 }
 
 func (s *Store) commitObserved(m metadata, batch *pebble.Batch, kind StableStorageKind, entries []*pb.Entry) (err error) {
+	return s.commitObservedState(m, batch, kind, entries, nil)
+}
+
+func (s *Store) commitObservedState(m metadata, batch *pebble.Batch, kind StableStorageKind, entries []*pb.Entry, state *stableStateCommit) (err error) {
 	if batch == nil {
 		batch = s.db.NewBatch()
 	}
@@ -365,7 +372,11 @@ func (s *Store) commitObserved(m metadata, batch *pebble.Batch, kind StableStora
 		err = batch.Set(metaKey, b, nil)
 	}
 	if err == nil {
-		err = s.commitStableBatch(batch, kind, entries)
+		if state != nil {
+			err = s.commitStableStateBatch(batch, b, *state)
+		} else {
+			err = s.commitStableBatch(batch, kind, entries)
+		}
 	}
 	if err != nil {
 		s.poison = err
@@ -460,7 +471,14 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 			return err
 		}
 	}
-	if err := s.commit(m, b); err != nil {
+	if s.stateObserver != nil {
+		identity := stateIdentity(m)
+		identity.SourceIndex = m.Applied
+		identity.SourceImageSHA256, identity.SourceCutID = m.ImageHash, m.Gen.Publication.ID
+		if err := s.commitState(m, b, StableStateInitialize, identity); err != nil {
+			return err
+		}
+	} else if err := s.commit(m, b); err != nil {
 		return err
 	}
 	s.canInitialize = false
@@ -1006,6 +1024,12 @@ func (s *Store) SaveCheckpoint(index uint64, cs *pb.ConfState, image []byte) err
 		_ = b.Close()
 		return err
 	}
+	if s.stateObserver != nil {
+		identity := stateIdentity(m)
+		identity.SourceIndex = index
+		identity.SourceImageSHA256 = m.ImageHash
+		return s.commitState(m, b, StableStateCheckpoint, identity)
+	}
 	return s.commit(m, b)
 }
 
@@ -1079,6 +1103,12 @@ func (s *Store) publishSnapshot() error {
 	if err := b.DeleteRange(entryKey(0), entryKey(m.Base+1), nil); err != nil {
 		_ = b.Close()
 		return err
+	}
+	if s.stateObserver != nil {
+		identity := stateIdentity(m)
+		identity.SourceIndex = m.Base
+		identity.SourceImageSHA256, identity.SourceCutID = m.SnapHash, m.Gen.Publication.ID
+		return s.commitState(m, b, StableStatePublication, identity)
 	}
 	return s.commit(m, b)
 }

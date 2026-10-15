@@ -513,7 +513,14 @@ func (s *Store) publishApplicationCut() (err error) {
 	if err := batch.DeleteRange(entryKey(0), entryKey(c.index+1), nil); err != nil {
 		return fail(err)
 	}
-	if err := s.commit(current, batch); err != nil {
+	if s.stateObserver != nil {
+		identity := stateIdentity(current)
+		identity.SourceIndex = c.index
+		identity.SourceImageSHA256, identity.SourceCutID = current.SnapHash, current.Gen.Publication.ID
+		if err := s.commitState(current, batch, StableStatePublication, identity); err != nil {
+			return err
+		}
+	} else if err := s.commit(current, batch); err != nil {
 		return err
 	}
 	bank := byte(1) - s.activeBank()

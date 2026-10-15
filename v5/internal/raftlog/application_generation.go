@@ -330,6 +330,11 @@ func (s *Store) clearGenerationBank(bank byte, generation uint64) error {
 	if err := b.Delete(dormantKey, nil); err != nil {
 		return errors.Join(err, b.Close())
 	}
+	if s.stateObserver != nil {
+		identity := stateIdentity(m)
+		identity.TargetBank, identity.TargetGeneration = bank, generation
+		return s.commitState(m, b, StableStateGenerationClear, identity)
+	}
 	return s.commit(m, b)
 }
 func (s *Store) reserveGeneration(m ApplicationSnapshotManifest) (metadata, byte, error) {
@@ -415,7 +420,7 @@ func (s *Store) retireImport(i *ApplicationImport) error {
 	if err := batch.Delete(dormantKey, nil); err != nil {
 		return errors.Join(err, batch.Close())
 	}
-	if err := s.commit(m, batch); err != nil {
+	if err := s.commitImportState(m, batch, StableStateImportRetire, i); err != nil {
 		return err
 	}
 	return nil

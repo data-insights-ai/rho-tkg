@@ -535,7 +535,16 @@ func (s *Store) CollectApplicationRetention(ctx context.Context, planID [32]byte
 	if err := ctx.Err(); err != nil {
 		return progress, work, err
 	}
-	err = s.commit(m, batch)
+	if s.stateObserver != nil {
+		identity := stateIdentity(m)
+		identity.SourceIndex, identity.PlanID = m.Retention.State.SourceIndex, m.Retention.State.ID
+		identity.SourceImageSHA256 = m.Retention.State.SourceHash
+		identity.ProgressSHA256, identity.Section = m.Retention.Cursor.Hash, m.Retention.Cursor.Section
+		identity.Final = m.Retention.Cursor.Section == 6
+		err = s.commitState(m, batch, StableStateRetentionPage, identity)
+	} else {
+		err = s.commit(m, batch)
+	}
 	batch = nil // commit owns and closes the batch, including failures
 	if err != nil {
 		return progress, work, err

@@ -232,7 +232,7 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	if s.activationCommitHook != nil {
 		s.activationCommitHook()
 	}
-	if err := s.commit(m, batch); err != nil {
+	if err := s.commitImportState(m, batch, StableStateActivation, c.p.i); err != nil {
 		return root, err
 	}
 	if s.activationAfterSyncHook != nil {
