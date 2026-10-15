@@ -16,6 +16,9 @@ import sys
 _spec = importlib.util.spec_from_file_location("feed_raw_codec", Path(__file__).resolve().parent / "fdb/fdb_contention_check.py")
 raw = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(raw)
+_transport_spec = importlib.util.spec_from_file_location("feed_owned_transport", Path(__file__).resolve().parent / "fdb/owned_transport.py")
+transport = importlib.util.module_from_spec(_transport_spec)
+_transport_spec.loader.exec_module(transport)
 
 codec = raw._codec
 require, fields, integer = codec.require, codec.fields, codec.integer
@@ -134,7 +137,7 @@ def raw_stream(directory, name, end):
         if header is None:
             header = frame
             fields(header, "Type Format Stream Config InitialCut OldCut FinalCut Policy Metadata ConfigRecords MetadataRecords CutRecords")
-            require(header["Type"] == "header" and header["Format"] == FORMAT and header["Stream"] == name and header["Config"] == end["Config"] and header["InitialCut"] == end["Initial"] and header["OldCut"] == end["Old"] and header["FinalCut"] == end["Final"] and header["Policy"] == {"PageRows": 32, "PageBytes": 4 << 20}, "fresh source header/scope/policy")
+            require(header["Type"] == "header" and header["Format"] == end["Format"] and header["Stream"] == name and header["Config"] == end["Config"] and header["InitialCut"] == end["Initial"] and header["OldCut"] == end["Old"] and header["FinalCut"] == end["Final"] and header["Policy"] == {"PageRows": 32, "PageBytes": 4 << 20}, "fresh source header/scope/policy")
             for g in range(2):
                 raw_record(header["ConfigRecords"][g], key(end["Config"], g, "meta", "config"), go_json(end["Config"]))
                 raw_record(header["MetadataRecords"][g], key(end["Config"], g, "meta", "state"), go_json(header["Metadata"][g]))
@@ -266,7 +269,7 @@ def columns(directory, end, spool):
         kind = row.get("Type")
         if kind == "footer":
             final = row["End"]
-            require(final == column_end | {"ArtifactSHA256": [0] * 32} and final["Format"] == final["SourceFormat"] == FORMAT and final["ReferenceLayout"] == "native-logical-kv-reference" and
+            require(final == column_end | {"ArtifactSHA256": [0] * 32} and final["Format"] == final["SourceFormat"] == end["Format"] and final["ReferenceLayout"] == "native-logical-kv-reference" and
                     final["Old"] == manifests["old"] and final["Final"] == manifests["final"] and bytes(final["PayloadSHA256"]) == digest.digest(), "sealed actual derived column artifact")
             require(final["Counts"]["Stages"] == 6 and final["Counts"]["Chunks"] == sum(chunks.values()) and final["Counts"]["WalkRows"] == sum(walks.values()) and final["Counts"]["Points"] == point_count == 6 and final["Counts"]["Collections"] == collected and
                     final["Ledger"]["Chunks"] == live_chunks == manifests["final"]["Chunks"] and final["Storage"]["Records"] == storage_count and final["Storage"]["Bytes"] == storage_bytes and
@@ -277,7 +280,7 @@ def columns(directory, end, spool):
             continue
         digest.update(line)
         if not header:
-            require(row["Type"] == "header" and row["Format"] == FORMAT and row["Config"] == c and len(row["Records"]) == 2, "fresh actual column binding header")
+            require(row["Type"] == "header" and row["Format"] == end["Format"] and row["Config"] == c and len(row["Records"]) == 2, "fresh actual column binding header")
             binding = decoded(blob(row["Records"][0]["Value"]))
             require(binding["Version"] == 1 and binding["Config"] == c and binding["Scope"] == codec.SCOPE and binding["Layout"] == codec.COLUMN_LAYOUT and
                     binding["Schema"] == "node-presence;edge-life-bound;property-p:i64;canonical-original:v1", "typed column graph/schema/axis binding")
@@ -466,17 +469,23 @@ def columns(directory, end, spool):
 
 
 def validate_result(end):
-    fields(end, "Version Format Spec Config Binding BindingRecord Initial Old Final Attempts Aborted Committed Setup Creates Updates Observations Clients Sources Feed AttemptSHA256 EventSHA256" + (" Columns" if "Columns" in end else ""))
-    require(integer(end["Version"], 1, 1) == 1 and end["Format"] == FORMAT, "fresh selector result only")
+    version = integer(end["Version"], 1, 2)
+    fields(end, "Version Format Spec Config Binding BindingRecord Initial Old Final Attempts Aborted Committed Setup Creates Updates Observations Clients Sources Feed AttemptSHA256 EventSHA256" + (" Columns" if "Columns" in end else "") + (" Transport" if version == 2 else ""))
+    require(end["Format"] == (FORMAT if version == 1 else "fdb-snapshot-feed-workload-v2"), "explicit fresh feed result format")
     p, c = end["Spec"], end["Config"]
     fields(p, "version family facts crossPercent writers layout")
     n = integer(p["facts"], 20, 1_000_000)
-    integer(p["version"], 1, 1)
+    integer(p["version"], version, version)
     integer(p["writers"], 1, 32)
-    require(p["version"] == 1 and p["family"] == FAMILY and n % 20 == 0 and p["writers"] in (1, 8, 32) and n >= p["writers"] + 1 and p["crossPercent"] in (0, 10, 50, 100) and type(p["crossPercent"]) is int and p["layout"] in ("kv", "columns"), "actual implemented selector dimensions")
-    graph_prefix = "graph-workload-feed-v1-" + p["layout"] + "-"
+    require(p["version"] == version and p["family"] == FAMILY and n % 20 == 0 and p["writers"] in (1, 8, 32) and n >= p["writers"] + 1 and p["crossPercent"] in (0, 10, 50, 100) and type(p["crossPercent"]) is int and p["layout"] in ("kv", "columns"), "actual implemented feed dimensions")
+    graph_prefix = f"graph-workload-feed-v{version}-" + p["layout"] + "-"
     run = c["Graph"].removeprefix(graph_prefix)
     require(c["Graph"].startswith(graph_prefix) and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "explicit fresh persisted run identity")
+    if version == 2:
+        fields(end["Transport"], "Policy Record")
+        policy = transport.validate_policy(end["Transport"]["Policy"])
+        require(policy["Spec"] == p and bytes(policy["Run"]).hex() == run, "actual transport policy/run/workload")
+        raw_record(end["Transport"]["Record"], key(c, 0, "workload-transport-v2", "binding"), go_json(policy))
     originals = 3 + 2 * n * 64
     require(same(c, {"Format": 2, "Graph": c["Graph"], "Topology": 1, "Epochs": [7, 11],
                     "Limits": {"Bytes": (64 << 20) + n * (64 << 10) + originals * 2048, "Transactions": originals, "Versions": 3 + 6 * n, "Certificates": 1024},
@@ -580,11 +589,13 @@ def feed_original(end):
     summary, c = end["Feed"], end["Config"]
     fields(summary, "Original Token Pages AcknowledgedRows ReplayedPages Completed Processes KilledReaped ReplacementReaped Storage")
     o, token = summary["Original"], summary["Token"]
-    fields(o, "Version Request Secret Policy Selection Cut Pin Snapshot Opening DeadlineNanos")
+    fields(o, "Version Request Secret Policy Selection Cut Pin Snapshot Opening DeadlineNanos" + (" Admission" if end["Version"] == 2 else ""))
     fields(token, "Request Secret Original DeadlineNanos")
-    require(o["Version"] == 1 and o["Request"] == token["Request"] == "workload" and codec.sha_array(o["Secret"]) == codec.sha_array(token["Secret"]) and any(o["Secret"]) and
+    require(o["Version"] == end["Version"] and o["Request"] == token["Request"] == "workload" and codec.sha_array(o["Secret"]) == codec.sha_array(token["Secret"]) and any(o["Secret"]) and
             codec.sha_array(token["Original"]) == hashlib.sha256(go_json(o)).digest() and token["DeadlineNanos"]==o["DeadlineNanos"] and o["Policy"] == feed_policy(end) and o["Cut"] == end["Old"], "native immutable feed original/policy/cut/digest")
     integer(o["DeadlineNanos"], 1, (1 << 63) - 1)
+    if end["Version"] == 2:
+        require(bytes(o["Admission"]) == hashlib.sha256(go_json(end["Transport"]["Policy"])).digest() and o["DeadlineNanos"] == end["Transport"]["Policy"]["DeadlineUnixNanos"], "factory original authenticates original transport/deadline, no replacement reset")
     zero = {"Graph": "", "Topology": 0, "Epochs": [0, 0], "Scope": None, "Round": 0, "Groups": [0, 0]}
     require(o["Selection"] == {"Mode": "Fresh", "Scope": "AAE=", "At": zero} and all(v == 0 for v in o["Opening"].values()), "Begin is genuine native Fresh intent; feed control debit separate from snapshot work")
     for name, kind in (("Pin", "pin"), ("Snapshot", "read")):
@@ -768,8 +779,9 @@ def feed_control(frame, end, spool, ordinal):
             owner = decoded(values[k])
             mandatory.update((key(c, 0, "source-owner-v1", owner["Request"]), feed_key(c, "cleanup/workload", owner["Request"])))
     require(set(values) == mandatory and values[feed_key(c, "original", "workload")] == go_json(o), "exact native original/control/owner inventory")
-    binding = {"Version": 1, "Config": c, "Source": {"Version": 1, "Config": c, "Initial": end["Initial"], "Policy": end["Binding"]["History"]}, "Policy": feed_policy(end),
+    binding = {"Version": end["Version"], "Config": c, "Source": {"Version": 1, "Config": c, "Initial": end["Initial"], "Policy": end["Binding"]["History"]}, "Policy": feed_policy(end),
                "Selector": "full-scope;fixed-scalar-cross-edge;unfiltered-complete-before-after:v1", "Order": "Round,Coordinator,Request;independent-coordinator-sequences:v1"}
+    if end["Version"] == 2: binding["Admission"] = end["Transport"]["Policy"]
     require(decoded(values[feed_key(c, "meta", "binding")]) == binding, "actual fresh persisted feed binding")
     cursor = decoded(values[feed_key(c, "cursor", "workload")])
     feed_cursor(cursor, end)
@@ -814,7 +826,7 @@ def events(directory, end, spool, header):
             continue
         digest.update(line)
         if not started:
-            require(frame == {"Type": "header", "Format": FORMAT, "Spec": end["Spec"], "Config": end["Config"], "Binding": end["Binding"], "Record": end["BindingRecord"], "Initial": end["Initial"]}, "actual workload header/binding")
+            require(frame == {"Type": "header", "Format": end["Format"], "Spec": end["Spec"], "Config": end["Config"], "Binding": end["Binding"], "Record": end["BindingRecord"], "Initial": end["Initial"]}, "actual workload header/binding")
             started = True
         elif kind == "committed":
             fields(frame, "Type Operation Original Outcome")
@@ -967,8 +979,10 @@ def events(directory, end, spool, header):
 
 
 def child_input(value, end):
-    fields(value, "Config Source Policy Token Boundary ReaderRequest PageRequest DeadlineNanos")
-    require(value == {"Config": end["Config"], "Source": {"Version": 1, "Config": end["Config"], "Initial": end["Initial"], "Policy": end["Binding"]["History"]}, "Policy": feed_policy(end), "Token": end["Feed"]["Token"], "Boundary": end["Final"], "ReaderRequest": "process-reader", "PageRequest": "page-0", "DeadlineNanos": end["Feed"]["Original"]["DeadlineNanos"]}, "actual client replacement uses same original, finite outer deadline and immutable page request")
+    fields(value, "Config Source Policy Token Boundary ReaderRequest PageRequest DeadlineNanos" + (" Admission" if end.get("Version",1) == 2 else ""))
+    expected = {"Config": end["Config"], "Source": {"Version": 1, "Config": end["Config"], "Initial": end["Initial"], "Policy": end["Binding"]["History"]}, "Policy": feed_policy(end), "Token": end["Feed"]["Token"], "Boundary": end["Final"], "ReaderRequest": "process-reader", "PageRequest": "page-0", "DeadlineNanos": end["Feed"]["Original"]["DeadlineNanos"]}
+    if end["Version"] == 2: expected["Admission"] = end["Transport"]["Policy"]
+    require(value == expected, "actual client replacement uses same native original/transport, original finite deadline and immutable page request")
 
 
 def metadata(end, spool, header):
@@ -1142,10 +1156,15 @@ def verify(directory, spool_directory, policy=None):
         columns(directory, end, spool)
         latencies(directory, end, spool)
         timing = timings(end, spool)
+        transport_proof = transport.verify(directory, end["Transport"]["Policy"], spool) if end["Version"] == 2 else None
         report = spool.report()
-    return {"format": FORMAT, "family": FAMILY, "runGraph": end["Config"]["Graph"], "spec": end["Spec"], "attempts": end["Attempts"], "committed": end["Committed"], "aborted": end["Aborted"],
+    result = {"format": end["Format"], "family": FAMILY, "runGraph": end["Config"]["Graph"], "spec": end["Spec"], "attempts": end["Attempts"], "committed": end["Committed"], "aborted": end["Aborted"],
             "feedPages": end["Feed"]["Pages"], "replayedPages": end["Feed"]["ReplayedPages"], "spool": report, "timing": timing,
             "scope": "one source-implemented FDB snapshot/write-race/feed/actual-client-replacement cell, source retain-all plus derived-column lifetime; explicit replay, no external exactly-once/native parity/RTT/full-matrix/capacity acceptance"}
+    if transport_proof is not None:
+        transport_proof["nativeRetainedBindingBytes"]=len(blob(end["Transport"]["Record"]["Key"]))+len(blob(end["Transport"]["Record"]["Value"]))
+        result["transport"] = transport_proof
+    return result
 
 
 if __name__ == "__main__":

@@ -73,6 +73,7 @@ type graphFeedBinding struct {
 	Source          graphHistoryBinding
 	Policy          graphFeedPolicy
 	Selector, Order string
+	Admission       *graphTransportPolicy `json:",omitempty"`
 }
 type graphFeedLedger struct{ Records, Bytes, CleanupTickets uint64 }
 type graphFeedStore struct {
@@ -89,6 +90,7 @@ type graphFeedOriginal struct {
 	Pin, Snapshot graphHistoryOwner
 	Opening       graphSnapshotWork
 	DeadlineNanos int64
+	Admission     [32]byte `json:",omitzero"`
 }
 
 func (o graphFeedOriginal) validate() error {
@@ -106,7 +108,7 @@ func (o graphFeedOriginal) validate() error {
 			}
 		}
 	}
-	if o.Version != 1 || o.DeadlineNanos <= 0 || !validName(o.Request) || o.Secret == [32]byte{} || o.Policy.validate() != nil || o.Selection.Mode != "Fresh" || o.Selection.validate() != nil || !bytes.Equal(o.Selection.Scope, []byte{0, 1}) || !bytes.Equal(o.Cut.Scope, []byte{0, 1}) || o.Cut.Round == 0 || !historyOwnerValid(o.Pin) || !historyOwnerValid(o.Snapshot) || o.Pin.Kind != "pin" || o.Snapshot.Kind != "read" || o.Pin.State != historyActive || o.Snapshot.State != historyActive || !sameCertificate(o.Cut, o.Pin.Cut) || !sameCertificate(o.Cut, o.Snapshot.Cut) || !sameCertificate(o.Pin.Required, o.Snapshot.Required) || o.Snapshot.PinRequest != o.Pin.Request {
+	if !(o.Version == 1 && o.Admission == [32]byte{} || o.Version == 2 && o.Admission != [32]byte{}) || o.DeadlineNanos <= 0 || !validName(o.Request) || o.Secret == [32]byte{} || o.Policy.validate() != nil || o.Selection.Mode != "Fresh" || o.Selection.validate() != nil || !bytes.Equal(o.Selection.Scope, []byte{0, 1}) || !bytes.Equal(o.Cut.Scope, []byte{0, 1}) || o.Cut.Round == 0 || !historyOwnerValid(o.Pin) || !historyOwnerValid(o.Snapshot) || o.Pin.Kind != "pin" || o.Snapshot.Kind != "read" || o.Pin.State != historyActive || o.Snapshot.State != historyActive || !sameCertificate(o.Cut, o.Pin.Cut) || !sameCertificate(o.Cut, o.Snapshot.Cut) || !sameCertificate(o.Pin.Required, o.Snapshot.Required) || o.Snapshot.PinRequest != o.Pin.Request {
 		return errInvalid
 	}
 	token := graphHistoryToken{o.Pin.Request, o.Cut, o.Pin.Secret}
@@ -152,18 +154,31 @@ func (s *graphFeedStore) key(kind, name string) fdb.Key {
 	return s.source.h.key(0, "feed-v1/"+kind, name)
 }
 func newGraphFeedStore(ctx context.Context, source *graphHistoryRetention, p graphFeedPolicy) (*graphFeedStore, error) {
+	return newGraphFeedStoreAdmission(ctx, source, p, nil)
+}
+func newGraphFeedStoreAdmission(ctx context.Context, source *graphHistoryRetention, p graphFeedPolicy, admission *graphTransportPolicy) (*graphFeedStore, error) {
 	if ctx == nil || source == nil || p.validate() != nil {
 		return nil, errInvalid
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	s := &graphFeedStore{source: source, binding: graphFeedBinding{1, source.h.config, source.binding, p, "full-scope;fixed-scalar-cross-edge;unfiltered-complete-before-after:v1", "Round,Coordinator,Request;independent-coordinator-sequences:v1"}}
+	s := &graphFeedStore{source: source, binding: graphFeedBinding{Version: 1, Config: source.h.config, Source: source.binding, Policy: p, Selector: "full-scope;fixed-scalar-cross-edge;unfiltered-complete-before-after:v1", Order: "Round,Coordinator,Request;independent-coordinator-sequences:v1"}}
+	if admission != nil {
+		if admission.validate() != nil || source.h.config != graphFeedWorkloadConfig(admission.Spec, hex.EncodeToString(admission.Run[:])) {
+			return nil, errInvalid
+		}
+		own := *admission // Fixed arrays/strings only, no caller-owned slices.
+		s.binding.Version, s.binding.Admission = 2, &own
+	}
 	body, err := wire(s.binding)
 	if err != nil {
 		return nil, err
 	}
 	_, _, err = historyTransactContext(ctx, source.h.db, func() error { return nil }, func(tr fdb.Transaction) (bool, error) {
+		if err := s.admissionIn(tr); err != nil {
+			return false, err
+		}
 		if err := source.h.checkConfig(tr, 0); err != nil {
 			return false, err
 		}
@@ -198,6 +213,9 @@ func (s *graphFeedStore) checkIn(tr fdb.ReadTransaction) error {
 	if s == nil || s.source == nil {
 		return errInvalid
 	}
+	if err := s.admissionIn(tr); err != nil {
+		return err
+	}
 	raw, err := tr.Get(s.key("meta", "binding")).Get()
 	if err != nil {
 		return err
@@ -209,6 +227,26 @@ func (s *graphFeedStore) checkIn(tr fdb.ReadTransaction) error {
 	actual, err := s.source.h.historyRetentionIn(tr)
 	if err != nil || actual == nil || !graphColumnSame(actual.binding, s.binding.Source) {
 		return errors.Join(errUnavailable, err)
+	}
+	return nil
+}
+func (s *graphFeedStore) admissionIn(tr fdb.ReadTransaction) error {
+	if s.binding.Admission == nil {
+		if s.binding.Version != 1 {
+			return errInvalid
+		}
+		return nil
+	}
+	if s.binding.Version != 2 {
+		return errInvalid
+	}
+	body, err := wire(*s.binding.Admission)
+	if err != nil {
+		return err
+	}
+	actual, err := tr.Get(s.source.h.key(0, "workload-transport-v2", "binding")).Get()
+	if err != nil || !bytes.Equal(actual, body) {
+		return errors.Join(errMismatch, err)
 	}
 	return nil
 }
@@ -243,6 +281,9 @@ func (s *graphFeedStore) createIn(tr fdb.Transaction, key fdb.Key, v any, reserv
 	return put(tr, s.key("meta", "ledger"), ledger)
 }
 func (s *graphFeedStore) originalIn(tr fdb.ReadTransaction, token graphFeedToken) (graphFeedOriginal, error) {
+	if err := s.admissionIn(tr); err != nil {
+		return graphFeedOriginal{}, err
+	}
 	var zero graphFeedOriginal
 	if !validName(token.Request) || token.Secret == [32]byte{} {
 		return zero, errInvalid
@@ -267,6 +308,15 @@ func (s *graphFeedStore) originalIn(tr fdb.ReadTransaction, token graphFeedToken
 	canonical, err := wire(o)
 	if err != nil || !bytes.Equal(canonical, raw) {
 		return zero, errors.Join(errMismatch, err)
+	}
+	if o.Version != s.binding.Version {
+		return zero, errMismatch
+	}
+	if p := s.binding.Admission; p != nil {
+		digest, err := p.digest()
+		if err != nil || o.Admission != digest || o.DeadlineNanos != p.DeadlineUnixNanos {
+			return zero, errors.Join(errMismatch, err)
+		}
 	}
 	return o, nil
 }
@@ -313,6 +363,12 @@ func (s *graphFeedStore) Begin(ctx context.Context, request string, secret [32]b
 	if end, ok := ctx.Deadline(); ok && end.Before(deadline) {
 		deadline = end
 	}
+	if p := s.binding.Admission; p != nil {
+		deadline = time.Unix(0, p.DeadlineUnixNanos)
+		if time.Now().UnixNano() < p.AdmittedUnixNanos || !deadline.After(time.Now()) {
+			return zero, context.DeadlineExceeded
+		}
+	}
 	actual, _, err := historyTransactContext(ctx, s.source.h.db, func() error { return nil }, func(tr fdb.Transaction) (graphFeedOriginal, error) {
 		if err := s.checkIn(tr); err != nil {
 			return zero, err
@@ -331,6 +387,9 @@ func (s *graphFeedStore) Begin(ctx context.Context, request string, secret [32]b
 			}
 			token, err := graphFeedTokenFor(actual)
 			if err != nil {
+				return zero, err
+			}
+			if _, err := s.originalIn(tr, token); err != nil {
 				return zero, err
 			}
 			c, err := s.cursorIn(tr, token)
@@ -367,7 +426,13 @@ func (s *graphFeedStore) Begin(ctx context.Context, request string, secret [32]b
 		// Feed-control native work is prepaid in the durable cursor. The snapshot's
 		// separate opening/scan allowance starts at zero; the two are not relabelled.
 		opening := graphSnapshotWork{}
-		o := graphFeedOriginal{1, request, secret, s.binding.Policy, graphSnapshotRequest{Mode: "Fresh", Scope: []uint8{0, 1}}, selected.record, graphHistoryOwner{Kind: "pin", Request: token.Request, Cut: selected.record, Required: required, Secret: pinSecret, State: historyActive}, reader.id, opening, deadline.UnixNano()}
+		o := graphFeedOriginal{Version: s.binding.Version, Request: request, Secret: secret, Policy: s.binding.Policy, Selection: graphSnapshotRequest{Mode: "Fresh", Scope: []uint8{0, 1}}, Cut: selected.record, Pin: graphHistoryOwner{Kind: "pin", Request: token.Request, Cut: selected.record, Required: required, Secret: pinSecret, State: historyActive}, Snapshot: reader.id, Opening: opening, DeadlineNanos: deadline.UnixNano()}
+		if p := s.binding.Admission; p != nil {
+			o.Admission, err = p.digest()
+			if err != nil {
+				return zero, err
+			}
+		}
 		if err := o.validate(); err != nil {
 			return zero, err
 		}

@@ -9,7 +9,16 @@ profile=${2:-small}
 if [ "$mode" = workload-cell ]; then
   : "${RHO_GRAPH_WORKLOAD_SPEC:?explicit fresh workload specification required}"
   : "${RHO_GRAPH_WORKLOAD_RUN:?explicit fresh run identity required}"
-  python3 -B ../workload_matrix.py preflight "$RHO_GRAPH_WORKLOAD_SPEC" "$RHO_GRAPH_WORKLOAD_RUN"
+  if [ "${RHO_GRAPH_WORKLOAD_TRANSPORT:-}" = fdb-owned-ingress-transport-v2 ]; then
+    python3 -B owned_transport.py preflight
+  else
+    python3 -B ../workload_matrix.py preflight "$RHO_GRAPH_WORKLOAD_SPEC" "$RHO_GRAPH_WORKLOAD_RUN"
+  fi
+fi
+owned_transport=0
+if [ "${RHO_GRAPH_WORKLOAD_TRANSPORT:-}" != '' ]; then
+  [ "$mode" = workload-cell ] && [ "$RHO_GRAPH_WORKLOAD_TRANSPORT" = fdb-owned-ingress-transport-v2 ] || exit 2
+  owned_transport=1
 fi
 cost_qualify=${FDB_COST_QUALIFY:-0}
 cost_layout=${RHO_GRAPH_COST_LAYOUT:-kv}
@@ -107,6 +116,7 @@ stop_client() {
 source_image="$tag-source"; client_image="$tag-client-image"
 images+=("$source_image")
 shasum -a 256 ./*.go ./*.sh ./*.py go.mod go.sum Dockerfile .dockerignore >"$out/source-sha256.txt"
+if [ "$owned_transport" = 1 ]; then shasum -a 256 transportprobe/*.go >"$out/transport-probe-source-sha256.txt"; fi
 if [ "$mode" = workload-cell ]; then
   shasum -a 256 ../workload_matrix.py ../comparison_spool.py ../compare-cost-cdc.py ../native_columns_check.py ../fdb_retention_check.py >"$out/workload-controller-source-sha256.txt"
 fi
@@ -122,6 +132,7 @@ bounded_docker 300 build --target source -t "$source_image" . >"$out/build-sourc
 build_name="$tag-prebuild"; containers+=("$build_name")
 bounded_docker 600 run --name "$build_name" --memory 1024m --cpus 2 \
   --env "FDB_LAUNCH_MODE=$mode" --env "FDB_COST_QUALIFY=$cost_qualify" \
+  --env "FDB_BUILD_OWNED_TRANSPORT=$owned_transport" \
   --mount "type=bind,source=$out,target=/evidence" "$source_image" /bin/bash -c '
     timeout --signal=KILL 180s bash prepare-client.sh && timeout --signal=KILL 180s go mod download &&
     { { [ "$FDB_LAUNCH_MODE" != cost-cell ] && [ "$FDB_LAUNCH_MODE" != static ]; } || {
@@ -140,11 +151,20 @@ bounded_docker 600 run --name "$build_name" --memory 1024m --cpus 2 \
       fi
     }
     result=$?
+    if [ "$result" = 0 ] && [ "$FDB_BUILD_OWNED_TRANSPORT" = 1 ]; then
+      timeout --signal=KILL 300s bash build-owned-tools.sh || result=$?
+    fi
     cat /sys/fs/cgroup/memory.peak > /evidence/build-memory-peak.txt
     cat /sys/fs/cgroup/memory.stat > /evidence/build-memory-stat.txt
     go version > /evidence/build-go-version.txt
     exit "$result"' >"$out/prebuild.log" 2>&1
 inspect_resources "$build_name" build "$out/prebuild-inspect.json"
+transport_mounts=()
+if [ "$owned_transport" = 1 ]; then
+  docker cp "$build_name:/owned-tools" "$out/owned-tools"
+  docker cp "$build_name:/usr/local/bin/transport-probe" "$out/transport-probe"
+  transport_mounts=(--cap-add NET_ADMIN --mount "type=bind,source=$out/owned-tools,target=/owned-tools,readonly" --mount "type=bind,source=$out/transport-probe,target=/usr/local/bin/transport-probe,readonly")
+fi
 images+=("$client_image")
 docker commit "$build_name" "$client_image" >"$out/client-image-id.txt"
 docker image inspect "$client_image" "$runtime" >"$out/images.json"
@@ -184,6 +204,7 @@ for i in 0 1 2 3; do
   volumes+=("$v"); containers+=("$c")
   docker volume create "$v" >/dev/null
   docker run -d --name "$c" --hostname "zone$i" --network "$tag" --ip "${ips[$i]}" \
+    ${transport_mounts[@]+"${transport_mounts[@]}"} \
     --memory "${server_mib}m" --cpus 0.375 --mount "type=volume,source=$v,target=/var/fdb/data" \
     --env "FDB_CLUSTER_FILE_CONTENTS=$connection" --env "FDB_RESIDENT_MIB=$resident_mib" --env "FDB_CACHE_MIB=$cache_mib" \
     --entrypoint /bin/bash "$runtime" -c 'printf "%s\n" "$FDB_CLUSTER_FILE_CONTENTS" > /var/fdb/fdb.cluster; exec fdbserver -C /var/fdb/fdb.cluster -p auto:4500 -l 0.0.0.0:4500 --datadir /var/fdb/data --logdir /var/fdb/logs --locality-zoneid="$HOSTNAME" --locality-machineid="$HOSTNAME" --memory "${FDB_RESIDENT_MIB}MiB" --storage-memory "${FDB_CACHE_MIB}MiB" --cache-memory "${FDB_CACHE_MIB}MiB" --maxlogssize 20MiB' >/dev/null
@@ -318,6 +339,14 @@ if [ "$mode" = cost-cell ]; then
   python3 -c 'import time; print(time.monotonic_ns())' >"$out/cost-controller-end-nanos.txt"
 fi
 if [ "$mode" = workload-cell ]; then
+ if [ "$owned_transport" = 1 ]; then
+  phase_deadline=$((SECONDS+RHO_GRAPH_WORKLOAD_SECONDS+180))
+  name="$tag-workload"; containers+=("$name")
+  client_ip=$(python3 -c 'import ipaddress,sys;print(ipaddress.ip_network(sys.argv[1])[14])' "$subnet")
+  python3 -B owned_transport.py launch "$out" "$tag" "$client_image" "$connection" "$client_ip" "$client_mib"
+  stop_client "$name" workload-client
+  capture_client "$name" workload-client
+ else
   workload_seconds=${FDB_COST_SECONDS:-180}
   case "$workload_seconds" in *[!0-9]*|'') echo 'invalid finite workload deadline' >&2; exit 2;; esac
   if [ "$workload_seconds" -lt 1 ] || [ "$workload_seconds" -gt 1800 ]; then echo 'workload deadline outside 1..1800 seconds' >&2; exit 2; fi
@@ -337,6 +366,7 @@ if [ "$mode" = workload-cell ]; then
   stop_client "$name" workload-client
   capture_client "$name" workload-client
   python3 -c 'import time; print(time.monotonic_ns())' >"$out/workload-controller-end-nanos.txt"
+ fi
 fi
 if [ "$mode" = column-publication-faults ]; then
   phase_deadline=$((SECONDS+1800))

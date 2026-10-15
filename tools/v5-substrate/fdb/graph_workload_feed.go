@@ -49,6 +49,7 @@ type graphFeedChildInput struct {
 	Boundary                   certificate
 	ReaderRequest, PageRequest string
 	DeadlineNanos              int64
+	Admission                  *graphTransportPolicy `json:",omitempty"`
 }
 type graphFeedChildResult struct {
 	PID                            int
@@ -133,6 +134,10 @@ func runGraphFeedChild(db fdb.Database, resume bool) (err error) {
 	if !validGraphFeedWorkloadConfig(input.Config) || input.Source.Version != 1 || input.Source.Config != input.Config || input.Policy != graphFeedPolicyFor(input.Config.Cost) || input.DeadlineNanos <= 0 || input.Token.DeadlineNanos != input.DeadlineNanos || input.ReaderRequest != "process-reader" || input.PageRequest != "page-0" {
 		return errInvalid
 	}
+	expected, err := graphTransportFromEnv()
+	if err != nil || (expected == nil) != (input.Admission == nil) || expected != nil && *expected != *input.Admission {
+		return errors.Join(errMismatch, err)
+	}
 	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, input.DeadlineNanos))
 	defer cancel()
 	h, err := newHarnessContext(ctx, db, input.Config)
@@ -143,7 +148,10 @@ func runGraphFeedChild(db fdb.Database, resume bool) (err error) {
 	if err != nil {
 		return err
 	}
-	store, err := newGraphFeedStore(ctx, source, input.Policy)
+	if input.Admission != nil && (input.Admission.validate() != nil || input.Admission.DeadlineUnixNanos != input.DeadlineNanos || h.config != graphFeedWorkloadConfig(input.Admission.Spec, hex.EncodeToString(input.Admission.Run[:]))) {
+		return errInvalid
+	}
+	store, err := newGraphFeedStoreAdmission(ctx, source, input.Policy, input.Admission)
 	if err != nil {
 		return err
 	}
@@ -215,7 +223,7 @@ func (a *graphFeedWorkloadArtifacts) replaceProcess(ctx context.Context, s *grap
 	if !ok {
 		return zero, errInvalid
 	}
-	input := graphFeedChildInput{a.h.config, s.source.binding, s.binding.Policy, token, a.final.record, "process-reader", "page-0", deadline.UnixNano()}
+	input := graphFeedChildInput{a.h.config, s.source.binding, s.binding.Policy, token, a.final.record, "process-reader", "page-0", deadline.UnixNano(), s.binding.Admission}
 	if err := feedChildWrite(a.root, "fdb-feed-child-input.json", input); err != nil {
 		return zero, err
 	}
@@ -360,22 +368,38 @@ func (a *graphFeedWorkloadArtifacts) replaceProcess(ctx context.Context, s *grap
 
 func runGraphFeedWorkload(db fdb.Database, spec graphFeedWorkloadSpec, run string) (err error) {
 	c := graphFeedWorkloadConfig(spec, run)
-	if spec.Version != 1 || spec.Family != graphFeedWorkloadFamily || !validGraphFeedWorkloadConfig(c) {
+	if spec.Version != 1 && spec.Version != 2 || spec.Family != graphFeedWorkloadFamily || !validGraphFeedWorkloadConfig(c) {
 		return errInvalid
 	}
+	admission, err := graphTransportFromEnv()
+	if err != nil || (admission != nil) != (spec.Version == 2) || admission != nil && (admission.Spec != spec || hex.EncodeToString(admission.Run[:]) != run) {
+		return errors.Join(errInvalid, err)
+	}
 	seconds := 1800
-	if raw := os.Getenv("FDB_COST_SECONDS"); raw != "" {
+	if raw := os.Getenv("FDB_COST_SECONDS"); raw != "" && admission == nil {
 		n, parseErr := strconv.Atoi(raw)
 		if parseErr != nil || n < 1 || n > 1800 {
 			return errInvalid
 		}
 		seconds = n
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(seconds)*time.Second)
+	deadline := time.Now().Add(time.Duration(seconds) * time.Second)
+	if admission != nil {
+		deadline = time.Unix(0, admission.DeadlineUnixNanos)
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	h, err := newHarnessContext(ctx, db, c)
 	if err != nil {
 		return err
+	}
+	var transport *graphTransportRecord
+	if admission != nil {
+		record, err := h.graphTransportInstall(ctx, *admission)
+		if err != nil {
+			return err
+		}
+		transport = &graphTransportRecord{*admission, record}
 	}
 	binding, err := h.graphFeedWorkloadInstall(ctx)
 	if err != nil {
@@ -395,7 +419,7 @@ func runGraphFeedWorkload(db fdb.Database, spec graphFeedWorkloadSpec, run strin
 	if err != nil {
 		return err
 	}
-	store, err := newGraphFeedStore(ctx, source, graphFeedPolicyFor(c.Cost))
+	store, err := newGraphFeedStoreAdmission(ctx, source, graphFeedPolicyFor(c.Cost), admission)
 	if err != nil {
 		return err
 	}
@@ -404,7 +428,7 @@ func runGraphFeedWorkload(db fdb.Database, spec graphFeedWorkloadSpec, run strin
 		return err
 	}
 	defer func() { err = errors.Join(err, root.Close()) }()
-	a, err := newGraphFeedWorkloadArtifacts(ctx, h, root, spec, binding, initial)
+	a, err := newGraphFeedWorkloadArtifactsAdmission(ctx, h, root, spec, binding, initial, transport)
 	if err != nil {
 		return err
 	}
@@ -634,7 +658,7 @@ func graphFeedWorkloadLimit(p graphCostProfile) limits {
 	return limits{Bytes: (64 << 20) + p.Facts*(64<<10) + originals*2048, Transactions: originals, Versions: 3 + 6*p.Facts, Certificates: 1024}
 }
 func graphFeedWorkloadConfig(spec graphFeedWorkloadSpec, run string) config {
-	return graphCostConfig("graph-workload-feed-v1-"+spec.Layout+"-"+run, spec.profile())
+	return graphCostConfig("graph-workload-feed-v"+strconv.Itoa(int(spec.Version))+"-"+spec.Layout+"-"+run, spec.profile())
 }
 func validGraphFeedWorkloadConfig(c config) bool {
 	p := c.Cost
@@ -647,7 +671,10 @@ func validGraphFeedWorkloadConfig(c config) bool {
 	}
 	name := strings.TrimPrefix(c.Graph, "graph-workload-feed-v1-")
 	if name == c.Graph {
-		return false
+		name = strings.TrimPrefix(c.Graph, "graph-workload-feed-v2-")
+		if name == c.Graph {
+			return false
+		}
 	}
 	run, found := strings.CutPrefix(name, "kv-")
 	if !found {
@@ -689,6 +716,22 @@ func (h *harness) graphFeedWorkloadBindingIn(tr fdb.ReadTransaction) error {
 	actual, err := decode[graphFeedWorkloadBinding](raw)
 	if err != nil || actual != graphFeedWorkloadPolicy(h.config) {
 		return errors.Join(errMismatch, err)
+	}
+	if strings.HasPrefix(h.config.Graph, "graph-workload-feed-v2-") {
+		// Every original transaction conflicts with the same authentic immutable
+		// policy. Its native graph/config is the command's namespace binding; this
+		// is not a printable RTT label or an SDK error/ABORT classification.
+		raw, err := tr.Get(h.key(0, "workload-transport-v2", "binding")).Get()
+		if err != nil {
+			return err
+		}
+		if len(raw) > graphTransportControlBytes {
+			return errLimit
+		}
+		policy, err := decode[graphTransportPolicy](raw)
+		if err != nil || policy.validate() != nil || h.config != graphFeedWorkloadConfig(policy.Spec, hex.EncodeToString(policy.Run[:])) {
+			return errors.Join(errMismatch, err)
+		}
 	}
 	return nil
 }
@@ -765,7 +808,7 @@ func graphFeedWorkloadSpecFromEnv() (graphFeedWorkloadSpec, string, error) {
 	if err := d.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return spec, "", errors.Join(errInvalid, err)
 	}
-	if spec.Version != 1 || spec.Family != graphFeedWorkloadFamily || !validGraphFeedWorkloadConfig(graphFeedWorkloadConfig(spec, run)) {
+	if spec.Version != 1 && spec.Version != 2 || spec.Family != graphFeedWorkloadFamily || !validGraphFeedWorkloadConfig(graphFeedWorkloadConfig(spec, run)) {
 		return spec, "", errInvalid
 	}
 	return spec, run, nil

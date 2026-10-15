@@ -54,6 +54,11 @@ def seed(spool, delivery, old):
 
 
 class FeedOracleGuards(unittest.TestCase):
+    def test_transport_policy_cannot_replace_native_original_or_deadline(self):
+        with self.assertRaises(ValueError): check.transport.validate_policy({"Version":2})
+        with self.assertRaises(ValueError): check.child_input({"Admission":{}},{"Version":2})
+        with self.assertRaises(ValueError): check.validate_result({"Version":2,"Format":check.FORMAT})
+
     def test_complete_exact_page_and_explicit_same_original_replay(self):
         end, delivery, old = fixture()
         with tempfile.TemporaryDirectory() as directory:

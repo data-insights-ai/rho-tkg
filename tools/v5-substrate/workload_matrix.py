@@ -37,12 +37,12 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def implemented(family, engine, transport):
-    return (family in IMPLEMENTED and transport == "local" if engine == "foundationdb" else
+def implemented(family, engine, transport, owned=False):
+    return (family in IMPLEMENTED and (transport == "local" or owned and family == "snapshot-to-feed") if engine == "foundationdb" else
             family == "contention-empty-range" and (engine == "native-raft" or engine == "paired" and transport == "local"))
 
 
-def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("foundationdb",)):
+def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("foundationdb",), owned=False):
     """11520 cells/engine across all8 families and local+3 RTT profiles.
 
     Five repetitions are independent fresh databases, not repeat queries on one
@@ -50,16 +50,17 @@ def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("fou
     """
     require(all(f in FAMILIES for f in families) and all(t in TRANSPORTS for t in transports) and all(e in ENGINES for e in engines), "unknown canonical workload dimension")
     for engine, family, facts, cross, writers, layout, transport, repetition in itertools.product(engines, families, FACTS, CROSS, WRITERS, LAYOUTS, transports, range(1, 6)):
-        yield {"version": 1, "engine": engine, "workload": {"version": 1, "family": family, "facts": facts, "crossPercent": cross, "writers": writers, "layout": layout},
+        yield {"version": 1, "engine": engine, "workload": {"version": 2 if owned and engine=="foundationdb" and family=="snapshot-to-feed" else 1, "family": family, "facts": facts, "crossPercent": cross, "writers": writers, "layout": layout},
                "transport": {"kind": "local" if transport == "local" else "injected-rtt", "targetRTTMillis": TRANSPORTS[transport], "jitterMillis": 0, "seed": 20261009},
-               "repetition": repetition, "implemented": implemented(family, engine, transport),
+               "repetition": repetition, "implemented": implemented(family, engine, transport, owned),
                "scope": "schedule only; missing family semantics/real directed shaping refuse execution, not accepted skips"}
 
 
 def preflight(spec, run, engine="foundationdb", transport="local"):
     require(type(spec) is dict and set(spec) == {"version", "family", "facts", "crossPercent", "writers", "layout"}, "explicit fresh workload schema")
-    require(type(spec["version"]) is int and spec["version"] == 1 and engine in ENGINES and transport in TRANSPORTS
-            and implemented(spec["family"], engine, transport), "family/engine/real transport driver not implemented")
+    fresh = type(spec["version"]) is int and spec["version"] == 2 and spec["family"] == "snapshot-to-feed" and engine == "foundationdb"
+    require(type(spec["version"]) is int and (spec["version"] == 1 and (engine != "foundationdb" or transport == "local") or fresh) and engine in ENGINES and transport in TRANSPORTS
+            and implemented(spec["family"], engine, transport, fresh), "family/engine/real transport driver not implemented")
     require(type(spec["facts"]) is int and 20 <= spec["facts"] <= 1_000_000 and spec["facts"] % 20 == 0 and type(spec["crossPercent"]) is int and spec["crossPercent"] in CROSS and type(spec["writers"]) is int and spec["writers"] in WRITERS and spec["layout"] in LAYOUTS, "fresh family shape")
     require(spec["family"] not in ("snapshot-selectors", "snapshot-to-feed") or spec["facts"] >= spec["writers"] + 1, "seed plus one genuine initial job per independent caller")
     require(type(run) is str and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "explicit nonzero fresh run identity")
@@ -83,20 +84,46 @@ def run_seconds(seconds, engine):
     return seconds
 
 
-def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, grant_origin="explicit-caller", native_binary=None, watchdog=None):
+def owned_transport_input(spec, run, transport, seconds, options):
+    sys.path.insert(0, str(ROOT / "fdb"))
+    import owned_transport as owned
+    return owned.validate_input({"Version":2,"Spec":spec,"Run":run,"Transport":transport,"BudgetSeconds":seconds,**options,"ToolsDirectory":"@pinned-prebuild"})
+
+
+def transport_options(args):
+    values = (args.transport_queue_packets,args.transport_sample_millis,args.transport_max_samples,args.transport_artifact_bytes)
+    require(args.fdb_owned_transport or all(v is None for v in values), "transport grants require explicit fresh FDB adapter")
+    if not args.fdb_owned_transport: return None
+    require(args.engine == "foundationdb" and args.family == "snapshot-to-feed" and all(v is not None for v in values), "fresh feed transport requires all four finite output/packet grants")
+    return dict(zip(("QueuePackets","SampleMillis","MaxSamples","MaxArtifactBytes"),values,strict=True))
+
+
+def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, grant_origin="explicit-caller", native_binary=None, watchdog=None, owned_options=None):
     """One finite fresh run with existing launcher owned cleanup/accounting."""
     transport = next((name for name, delay in TRANSPORTS.items() if cell["transport"] ==
                       {"kind": "local" if name == "local" else "injected-rtt", "targetRTTMillis": delay, "jitterMillis": 0, "seed": 20261009}), "unsupported")
     run = secrets.token_hex(16)
-    spec = preflight(cell["workload"], run, cell["engine"], transport)
+    require(owned_options is None or cell["engine"] == "foundationdb" and cell["workload"]["family"] == "snapshot-to-feed", "no nominal paired/other-family FDB shaping")
+    actual_cell = cell if owned_options is None else {**cell,"workload":{**cell["workload"],"version":2}}
+    spec = preflight(actual_cell["workload"], run, cell["engine"], transport)
     require(grant_origin in ("explicit-caller", "small-default") and (grant_origin == "explicit-caller" or spec["facts"] < 1_000_000 and spec["writers"] != 32), "large cells require explicit finite verifier grant")
-    seconds = run_seconds(seconds, cell["engine"])
+    owned_input = None
+    if owned_options is None:
+        seconds = run_seconds(seconds, cell["engine"])
+    else:
+        owned_input = owned_transport_input(spec,run,cell["transport"],seconds,owned_options)
     require(profile in ("small", "large"), "finite declared run/profile policy")
     require(memory >= (3072 if profile == "small" else 10240), "all four servers+client must fit declared aggregate allowance")
     # Private temporary verifier state only. No engine/backend replacement.
     from comparison_spool import Policy
     policy = Policy(spool_disk, spool_cache, 4096, 512 << 10)
     policy.validate()
+    if owned_input is not None:
+        # Same caller-owned spool, not a second renewable per-phase allowance.
+        # Reserve worst admitted native-output joins plus fixed control pages;
+        # remaining graph state is still subject to this ONE finite grant.
+        reserve = ((owned_input["MaxSamples"]+4)*5+60)*((128<<10)+4096)+(64<<20)
+        require(spool_disk>reserve,"explicit verifier disk grant cannot fund even declared transport joins; refuse before build/workload")
     if cell["engine"] != "foundationdb":
         import native_workload_cell as native
         native.preflight(spec, transport, seconds, memory, cell["engine"])
@@ -127,10 +154,11 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     feed = spec["family"] == "snapshot-to-feed"
     edge_unique = spec["family"] == "cross-edge-endpoint-uniqueness"
     originals = 7 + 258 * spec["facts"] if edge_unique else 3 + 2 * spec["facts"] * 64 if selector else 3 + spec["facts"] // 2 + 64 * spec["facts"] + spec["facts"] // 2 * max(2, spec["writers"])
-    request = {"cell": cell, "run": run, "spoolPolicy": {"max_disk_bytes": spool_disk, "cache_bytes": spool_cache, "grantOrigin": grant_origin},
+    request = {"cell": actual_cell, "run": run, "spoolPolicy": {"max_disk_bytes": spool_disk, "cache_bytes": spool_cache, "grantOrigin": grant_origin},
                "nativeAdmission": {"maxOriginals": originals, "logicalGraphBytes": (64 << 20) + spec["facts"] * ((256 if edge_unique else 64 if selector else 128) << 10) + originals * 2048,
                                    "retainedVersions": 7 + 11 * spec["facts"] if edge_unique else 3 + 6 * spec["facts"], "capacityQualified": False}, "deadlineSeconds": seconds,
                "deploymentProfile": profile, "admissionMiB": memory}
+    if owned_input is not None: request["ownedTransport"] = owned_input
     if feed:
         pages = 3 + 2 * spec["facts"]
         calls = 8 * (2 * pages + 32)
@@ -144,6 +172,9 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
         out.write("\n")
     env = {**os.environ, "RHO_GRAPH_WORKLOAD_SPEC": json.dumps(spec, separators=(",", ":")), "RHO_GRAPH_WORKLOAD_RUN": run,
            "FDB_COST_SECONDS": str(seconds), "FDB_ADMISSION_MIB": str(memory)}
+    require(not os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") and not os.environ.get("RHO_FDB_TRANSPORT_INPUT"), "transport authority must come from this fresh explicit request")
+    if owned_input is not None:
+        env.update({"RHO_GRAPH_WORKLOAD_TRANSPORT":"fdb-owned-ingress-transport-v2","RHO_FDB_TRANSPORT_INPUT":json.dumps(owned_input,separators=(",",":")),"RHO_GRAPH_WORKLOAD_SECONDS":str(seconds)})
     with (destination / "launcher.stdout").open("x") as out, (destination / "launcher.stderr").open("x") as error:
         # run-local owns monitored containers/volumes and its EXIT cleanup. Its
         # own finite phases are authoritative; do not timeout only the Docker CLI.
@@ -171,7 +202,7 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     else:
         import fdb_contention_check as checker
     proof = checker.verify(artifacts, destination, policy)
-    prefix = "graph-workload-edge-unique-v1-" if edge_unique else "graph-workload-feed-v1-" if feed else "graph-workload-selectors-v1-" if selector else "graph-workload-contention-v1-"
+    prefix = "graph-workload-edge-unique-v1-" if edge_unique else f"graph-workload-feed-v{spec['version']}-" if feed else "graph-workload-selectors-v1-" if selector else "graph-workload-contention-v1-"
     require(proof["spec"] == spec and proof["runGraph"] == prefix + spec["layout"] + "-" + run, "fresh run/native binding/result agreement")
     with (destination / "verified.json").open("x") as out:
         json.dump({"requestSHA256": hashlib.sha256((destination / "request.json").read_bytes()).hexdigest(), "artifacts": str(artifacts), "proof": proof,
@@ -182,8 +213,13 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
 def execute_matrix(args):
     # Refuse absent semantics/shaping for the WHOLE selection before admitting
     # any database/build. Never silently skip unsupported cells from a matrix.
-    require(implemented(args.family, args.engine, args.transport), "selected matrix family/engine/transport implementation is absent")
-    seconds = run_seconds(args.seconds, args.engine)
+    options = transport_options(args)
+    require(implemented(args.family, args.engine, args.transport, options is not None), "selected matrix family/engine/transport implementation is absent")
+    require(args.engine != "foundationdb" or args.transport == "local" or options is not None, "nonlocal FDB matrix requires explicit fresh owned transport/grants before any directory/effect")
+    seconds = run_seconds(args.seconds, args.engine) if options is None else args.seconds
+    if options is not None:
+        owned_transport_input({"version":2,"family":args.family,"facts":1_000_000,"crossPercent":100,"writers":1,"layout":"columns"}, "01"*16,
+                              {"kind":"local" if args.transport=="local" else "injected-rtt","targetRTTMillis":TRANSPORTS[args.transport],"jitterMillis":0,"seed":20261009},seconds,options)
     require(args.admission_mib >= (3072 if args.deployment_profile == "small" else 10240), "explicit matrix resource policy")
     disk, cache, origin = comparison_grant(1_000_000, 32, args.spool_disk_bytes, args.spool_cache_bytes)
     from comparison_spool import Policy
@@ -196,12 +232,12 @@ def execute_matrix(args):
     root.mkdir(mode=0o700, parents=False, exist_ok=False)
     count = 0
     with (root / "schedule.jsonl").open("x") as schedule:
-        for cell in matrix((args.family,), (args.transport,), (args.engine,)):
+        for cell in matrix((args.family,), (args.transport,), (args.engine,), owned=options is not None):
             schedule.write(json.dumps(cell, separators=(",", ":")) + "\n")
     with (root / "completed.jsonl").open("x") as completed:
-        for cell in matrix((args.family,), (args.transport,), (args.engine,)):
+        for cell in matrix((args.family,), (args.transport,), (args.engine,), owned=options is not None):
             destination = root / f"cell-{count:04d}"
-            execute(cell, destination, seconds, args.deployment_profile, args.admission_mib, disk, cache, origin, args.native_binary, args.watchdog)
+            execute(cell, destination, seconds, args.deployment_profile, args.admission_mib, disk, cache, origin, args.native_binary, args.watchdog, options)
             completed.write(json.dumps({"cell": count, "repetition": cell["repetition"], "verified": str(destination / "verified.json")}) + "\n")
             completed.flush()
             count += 1
@@ -248,6 +284,11 @@ def main():
     for command in (run, campaign):
         command.add_argument("--native-binary")
         command.add_argument("--watchdog")
+        command.add_argument("--fdb-owned-transport", action="store_true")
+        command.add_argument("--transport-queue-packets", type=int)
+        command.add_argument("--transport-sample-millis", type=int)
+        command.add_argument("--transport-max-samples", type=int)
+        command.add_argument("--transport-artifact-bytes", type=int)
     args = parser.parse_args()
     if args.mode == "plan":
         for cell in matrix(engines=(args.engine,)):
@@ -261,7 +302,7 @@ def main():
                     (cell["workload"]["facts"], cell["workload"]["crossPercent"], cell["workload"]["writers"], cell["workload"]["layout"], cell["repetition"]) ==
                     (args.facts, args.cross, args.writers, args.layout, args.repetition))
         disk, cache, origin = comparison_grant(args.facts, args.writers, args.spool_disk_bytes, args.spool_cache_bytes)
-        execute(cell, args.output, args.seconds, args.deployment_profile, args.admission_mib, disk, cache, origin, args.native_binary, args.watchdog)
+        execute(cell, args.output, args.seconds, args.deployment_profile, args.admission_mib, disk, cache, origin, args.native_binary, args.watchdog, transport_options(args))
 
 
 if __name__ == "__main__":

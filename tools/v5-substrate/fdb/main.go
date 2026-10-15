@@ -39,6 +39,14 @@ func main() {
 }
 
 func run() error {
+	if os.Getenv("RHO_GRAPH_WORKLOAD_TRANSPORT") != "" {
+		if len(os.Args) != 2 || os.Args[1] != "workload-cell" && os.Args[1] != "feed-client-hold" && os.Args[1] != "feed-client-resume" {
+			return errInvalid
+		}
+		if _, err := graphTransportFromEnv(); err != nil {
+			return err
+		}
+	}
 	if len(os.Args) == 2 && (os.Args[1] == "feed-client-hold" || os.Args[1] == "feed-client-resume") {
 		db, err := openDB()
 		if err != nil {

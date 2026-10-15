@@ -7,7 +7,8 @@ WORKDIR /harness
 ENV GOTOOLCHAIN=local GOWORK=off GOMAXPROCS=2 GOMEMLIMIT=768MiB GOFLAGS=-p=1
 COPY go.mod go.sum ./
 COPY *.go ./
-COPY prepare-client.sh ./
+COPY prepare-client.sh build-owned-tools.sh ./
+COPY transportprobe/ ./transportprobe/
 
 # The local launcher builds only source, then compiles in a separately capped
 # container before starting any server. The default image remains executable.

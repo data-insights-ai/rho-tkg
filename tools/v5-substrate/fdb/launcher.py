@@ -112,6 +112,8 @@ def main():
             return digest.hexdigest()
         hashes = {p.name: (workload_hash(p) if mode == "workload-cell" else hashlib.sha256(p.read_bytes()).hexdigest())
                   for p in sorted(out.iterdir()) if p.is_file() and p.name != "receipt.json"}
+        if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") == "fdb-owned-ingress-transport-v2":
+            hashes.update({str(p.relative_to(out)): workload_hash(p) for p in sorted((out / "owned-tools").iterdir()) if p.is_file()})
         if mode == "platform-faults":
             hashes.update({str(p.relative_to(out)): hashlib.sha256(p.read_bytes()).hexdigest()
                            for p in sorted(out.glob("platform-*/*")) if p.is_file()})
@@ -140,6 +142,8 @@ def main():
         receipt = {"exit": int(result), "cleanup_exit": int(cleanup),
                    "success": result == "0" and cleanup == "0", "sha256": hashes,
                    "mode": mode, "scope": scopes[mode]}
+        if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") == "fdb-owned-ingress-transport-v2":
+            receipt["scope"] = "one host/four logical FDB zones; fresh feed-only owned receiver-ingress transport and fixed original budget; actual configured delay, TCP connect+echo baseline/armed/after distributions, drops, all helper/engine process RSS and cgroup counters; no identical observed RTT, independent-host/LAN-WAN, native parity, other-family or capacity/matrix acceptance"
         (out / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     else:
         raise ValueError("unsupported launcher action")

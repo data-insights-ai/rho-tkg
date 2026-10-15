@@ -93,6 +93,21 @@ func TestGraphFeedActualSnapshotPageAckAndRetainedOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Start with a genuine otherwise-valid native factory original. These two
+	// refusals isolate the version/digest contract rather than an invalid cut.
+	if err := original.validate(); err != nil {
+		t.Fatal(err)
+	}
+	foreign := original
+	foreign.Version = 2
+	if err := foreign.validate(); !errors.Is(err, errInvalid) {
+		t.Fatal("transport original without native admission digest", err)
+	}
+	foreign = original
+	foreign.Admission = [32]byte{1}
+	if err := foreign.validate(); !errors.Is(err, errInvalid) {
+		t.Fatal("legacy original widened by transport label", err)
+	}
 	again, err := store.Begin(t.Context(), "direct", secret)
 	if err != nil || !graphColumnSame(original, again) {
 		t.Fatal("Begin selected a different original", err)

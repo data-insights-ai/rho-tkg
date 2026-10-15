@@ -29,6 +29,7 @@ type graphFeedWorkloadEnd struct {
 	Columns                                                             *graphCostColumnEnd `json:",omitempty"`
 	AttemptSHA256, EventSHA256                                          string
 	Feed                                                                graphFeedWorkloadSummary
+	Transport                                                           *graphTransportRecord `json:",omitempty"`
 }
 type graphFeedWorkloadArtifacts struct {
 	ctx                         context.Context
@@ -46,13 +47,25 @@ type graphFeedWorkloadArtifacts struct {
 }
 
 func newGraphFeedWorkloadArtifacts(ctx context.Context, h *harness, root *os.Root, spec graphFeedWorkloadSpec, binding graphCostStoredRecord, initial cut) (*graphFeedWorkloadArtifacts, error) {
+	return newGraphFeedWorkloadArtifactsAdmission(ctx, h, root, spec, binding, initial, nil)
+}
+func newGraphFeedWorkloadArtifactsAdmission(ctx context.Context, h *harness, root *os.Root, spec graphFeedWorkloadSpec, binding graphCostStoredRecord, initial cut, transport *graphTransportRecord) (*graphFeedWorkloadArtifacts, error) {
 	if ctx == nil || h == nil || root == nil {
 		return nil, errInvalid
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	a := &graphFeedWorkloadArtifacts{ctx: ctx, h: h, root: root, attemptHash: sha256.New(), eventHash: sha256.New(), end: graphFeedWorkloadEnd{Version: 1, Format: graphFeedWorkloadFormat, Spec: spec, Config: h.config, Binding: graphFeedWorkloadPolicy(h.config), BindingRecord: binding, Initial: initial.record}}
+	if spec.Version != 1 && spec.Version != 2 || (spec.Version == 2) != (transport != nil) {
+		return nil, errInvalid
+	}
+	if transport != nil {
+		body, err := wire(transport.Policy)
+		if err != nil || transport.Policy.validate() != nil || transport.Policy.Spec != spec || h.config != graphFeedWorkloadConfig(spec, hex.EncodeToString(transport.Policy.Run[:])) || !bytes.Equal(transport.Record.Key, h.key(0, "workload-transport-v2", "binding")) || !bytes.Equal(transport.Record.Value, body) {
+			return nil, errors.Join(errMismatch, err)
+		}
+	}
+	a := &graphFeedWorkloadArtifacts{ctx: ctx, h: h, root: root, attemptHash: sha256.New(), eventHash: sha256.New(), end: graphFeedWorkloadEnd{Version: spec.Version, Format: graphFeedFormatFor(spec), Spec: spec, Config: h.config, Binding: graphFeedWorkloadPolicy(h.config), BindingRecord: binding, Initial: initial.record, Transport: transport}}
 	var err error
 	a.attempts, _, err = openGraphCostArtifact(root, "fdb-feed-attempts.jsonl")
 	if err != nil {
@@ -74,7 +87,7 @@ func newGraphFeedWorkloadArtifacts(ctx context.Context, h *harness, root *os.Roo
 		Binding graphFeedWorkloadBinding
 		Record  graphCostStoredRecord
 		Initial certificate
-	}{"header", graphFeedWorkloadFormat, spec, h.config, a.end.Binding, binding, initial.record}); err != nil {
+	}{"header", a.end.Format, spec, h.config, a.end.Binding, binding, initial.record}); err != nil {
 		return nil, errors.Join(err, a.Close())
 	}
 	return a, nil
@@ -569,7 +582,7 @@ func (a *graphFeedWorkloadArtifacts) inventory(stage string, at cut) error {
 }
 
 func (a *graphFeedWorkloadArtifacts) raw(header graphCostArtifactHeader, walk func(func(graphCostRawRow) error) (graphCostStreamEnd, error)) (end graphCostStreamEnd, err error) {
-	header.Format = graphFeedWorkloadFormat
+	header.Format = a.end.Format
 	file, _, err := openGraphCostArtifact(a.root, "fdb-feed-"+header.Stream+".jsonl")
 	if err != nil {
 		return end, err
@@ -735,7 +748,7 @@ func (a *graphFeedWorkloadArtifacts) columnsStart() (err error) {
 		return err
 	}
 	l := &graphCostColumnLane{s: store, pins: pins, root: a.root, file: file, payload: sha256.New(), whole: sha256.New(), initial: cut{a.end.Initial}}
-	l.end.Format, l.end.SourceFormat, l.end.ReferenceLayout = graphFeedWorkloadFormat, graphFeedWorkloadFormat, "native-logical-kv-reference"
+	l.end.Format, l.end.SourceFormat, l.end.ReferenceLayout = a.end.Format, a.end.Format, "native-logical-kv-reference"
 	a.column = l
 	records, err := l.records([]fdb.Key{store.key("binding"), pins.key("binding")})
 	if err != nil {
@@ -746,7 +759,7 @@ func (a *graphFeedWorkloadArtifacts) columnsStart() (err error) {
 		Config                                      config
 		InitialCut                                  certificate
 		Records                                     []graphCostStoredRecord
-	}{"header", graphFeedWorkloadFormat, graphFeedWorkloadFormat, "native-logical-kv-reference", a.h.config, a.end.Initial, records}, true); err != nil {
+	}{"header", a.end.Format, a.end.Format, "native-logical-kv-reference", a.h.config, a.end.Initial, records}, true); err != nil {
 		return err
 	}
 	return l.holdOld(a.old)

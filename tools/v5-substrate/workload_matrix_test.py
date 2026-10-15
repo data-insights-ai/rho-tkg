@@ -7,6 +7,20 @@ import workload_matrix as matrix
 
 
 class WorkloadMatrixGuards(unittest.TestCase):
+    def test_fresh_fdb_transport_is_explicit_and_refuses_before_effects(self):
+        spec={"version":2,"family":"snapshot-to-feed","facts":1_000_000,"crossPercent":50,"writers":1,"layout":"columns"}
+        run="01"*16
+        self.assertEqual(matrix.preflight(spec,run,"foundationdb","rtt-100ms"),spec)
+        options={"QueuePackets":1024,"SampleMillis":60000,"MaxSamples":525602,"MaxArtifactBytes":1<<44}
+        self.assertEqual(matrix.owned_transport_input(spec,run,{"kind":"injected-rtt","targetRTTMillis":100,"jitterMillis":0,"seed":20261009},31536000,options)["Spec"],spec)
+        with self.assertRaises(ValueError): matrix.preflight({**spec,"version":1},run,"foundationdb","rtt-100ms")
+        with self.assertRaises(ValueError): matrix.preflight(spec,run,"paired","rtt-100ms")
+        with tempfile.TemporaryDirectory() as directory:
+            destination=Path(directory)/"must-not-exist"
+            cell=next(matrix.matrix(("snapshot-to-feed",),("rtt-100ms",)))
+            with self.assertRaises(ValueError): matrix.execute(cell,destination,1,"small",4096,1<<30,8<<20,owned_options=options)
+            self.assertFalse(destination.exists())
+
     def test_native_owned_rtt_and_paired_fdb_nonlocal_boundary(self):
         self.assertEqual(matrix.run_seconds(None, "foundationdb"), 180)
         self.assertEqual(matrix.run_seconds(365*24*60*60, "native-raft"), 365*24*60*60)
