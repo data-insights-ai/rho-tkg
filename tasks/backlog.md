@@ -497,15 +497,16 @@ Its retain-all record allowance is corrected at `7d4f62c9`: each entry funds
 (260 records). The authored guard derives that extra record from the native
 recovery API; neither this quota nor the correction is runtime qualification.
 The dispatcher schedules all eight families and local/1/20/100ms profiles.
-FDB has source drivers for contention, selectors, snapshot-to-feed and
-cross-edge uniqueness; their fresh owned transport adapters cover
+FDB has source drivers for contention, selectors, snapshot-to-feed,
+cross-edge uniqueness and immutable columns; their fresh owned transport adapters cover
 local/1/20/100ms. Native has contention and cross-edge source drivers across
 local/1/20/100ms, with local paired cross-edge comparison. Unsupported semantics
 or transport refuse before effects.
 Each selected-family matrix contains 360 fresh cells;
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
-No new cell, guard or runtime gate has run. The other four FDB family drivers,
-directed RTT for the other families, native parity, full matrix and engine decision remain open.
+No new cell, guard or runtime gate has run. The three remaining FDB family drivers
+(partition-local, late-correction/old-index and transfer/retained-pins), native
+parity, full matrix and engine decision remain open.
 The FDB cross-edge family is source-integrated at `78f11fc8`: distinct contenders
 share one scalar uniqueness claim, endpoint close/reopen masks the old life,
 and closing/replaying the old canonical relation preserves the replacement claim.
@@ -531,13 +532,21 @@ snapshot selectors and cross-edge uniqueness now bind the same original
 transport/deadline through native policy, captures, retries and retained-original
 fast paths. Old formats remain unchanged. The authored guards and actual
 local/RTT execution remain unqualified.
+The immutable-column family is source-integrated at `866ffb9b`: a dedicated
+Cost6 binding, genuine concurrent create/update originals, retained old source
+and column owners, final publication, native/cache walks, scan-based probes and
+authenticated derived collection share complete raw source/original checks.
+The KV layout stays a source-scan reference. Complete-call timing includes its
+actual artifact callbacks, while fixed samples stay bounded. Existing selector
+formats and filenames are unchanged. Source KV history remains retained;
+execution, native family parity and capacity acceptance remain open.
 The FDB snapshot-to-feed source is integrated at `5c14f42c`/`bb867775`:
 Its fresh owned transport adapter is source-integrated at `7f4a4fb8`: actual
 receiver-ingress delay setup, probes, same-deadline client replacement, cleanup
 and raw process/cgroup accounting are wired across five owned containers.
 The native binding and retained feed original authenticate that fixed admission.
 Tool builds, Linux/FDB execution and all authored guards remain unqualified;
-transport support for the four remaining families and the complete matrix remain open.
+transport support for the three remaining families and the complete matrix remain open.
 Begin journals its actual selected cut and factory intent; Publish atomically
 acquires the pin, snapshot owner and feed cursor. Bounded complete CDC pages
 replay until an exact immutable ACK advances their vectors. Independently
