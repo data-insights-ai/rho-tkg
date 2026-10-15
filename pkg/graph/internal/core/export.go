@@ -165,6 +165,9 @@ func (c *Core) exportLocked(w io.Writer) error {
 	if isNilInterfaceValue(w) {
 		return ErrNilWriter
 	}
+	if err := c.checkUntimedComplete("export"); err != nil {
+		return err
+	}
 	// Drain the async write buffer so the change-log's LastCommittedLSN reflects
 	// every mutation that the (cache-sourced) entity snapshot below contains.
 	// Without this, a badger source with buffered writes stamps SnapshotLSN=0

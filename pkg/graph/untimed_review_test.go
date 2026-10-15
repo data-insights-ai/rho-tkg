@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -296,6 +297,22 @@ func TestUntimedModeReplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A node and a relationship WITH history: the conversion rewrites their
+	// first versions as history rows, and the replica must hold the same.
+	h, err := p.Nodes().Add(ctx, []string{"U"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Nodes().Update(ctx, h.ID(), map[string]any{"v": int64(1)}); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := p.Rels().AddByID(ctx, "R", n.ID(), h.ID(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Rels().Update(ctx, rel.ID(), map[string]any{"v": int64(1)}); err != nil {
+		t.Fatal(err)
+	}
 	var snap bytes.Buffer
 	if err := p.IO().Export(&snap); err != nil {
 		t.Fatal(err)
@@ -334,6 +351,7 @@ func TestUntimedModeReplicates(t *testing.T) {
 	if _, err := r.Temporal().NodeAt(n.ID(), uvsFar); err != nil {
 		t.Errorf("replica: converted node at far: %v", err)
 	}
+	uvsAssertSameHistory(t, p, r, h.ID(), rel.ID())
 	if err := r.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -347,6 +365,60 @@ func TestUntimedModeReplicates(t *testing.T) {
 	defer r.Close()
 	if _, err := r.Temporal().NodeAt(n.ID(), uvsFar); err != nil {
 		t.Errorf("replica reopened: converted node at far: %v", err)
+	}
+	uvsAssertSameHistory(t, p, r, h.ID(), rel.ID())
+}
+
+// uvsRowStamp is the temporal identity of one history row.
+type uvsRowStamp struct {
+	Version                          uint32
+	ValidFrom, ValidTo, TxFrom, TxTo types.Instant
+}
+
+func uvsStamp(version uint32, tm *types.TemporalMetadata) uvsRowStamp {
+	s := uvsRowStamp{Version: version}
+	if tm != nil {
+		s.ValidFrom, s.ValidTo, s.TxFrom, s.TxTo = tm.ValidFrom, tm.ValidTo, tm.TxFrom, tm.TxTo
+	}
+	return s
+}
+
+// uvsAssertSameHistory asserts the replica's history rows of node id and
+// relationship rid equal the primary's, and that the primary's first version
+// (a history row) was converted to -inf.
+func uvsAssertSameHistory(t *testing.T, p, r *graphpkg.Graph, id types.NodeID, rid types.RelID) {
+	t.Helper()
+	stamps := func(g *graphpkg.Graph) (nodes, rels []uvsRowStamp) {
+		t.Helper()
+		nh, err := g.Nodes().History(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range nh {
+			nodes = append(nodes, uvsStamp(row.Version(), row.Temporal()))
+		}
+		rh, err := g.Rels().History(rid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range rh {
+			rels = append(rels, uvsStamp(row.Version(), row.Temporal()))
+		}
+		return nodes, rels
+	}
+	pn, pr := stamps(p)
+	rn, rr := stamps(r)
+	if len(pn) == 0 || len(pr) == 0 {
+		t.Fatalf("primary history: %d node rows, %d rel rows, want both > 0", len(pn), len(pr))
+	}
+	if pn[0].Version != 0 || pn[0].ValidFrom != types.UnboundedValidFrom || pr[0].Version != 0 || pr[0].ValidFrom != types.UnboundedValidFrom {
+		t.Errorf("primary history first versions not converted: node %+v, rel %+v", pn[0], pr[0])
+	}
+	if !reflect.DeepEqual(pn, rn) {
+		t.Errorf("node history: replica %+v, primary %+v", rn, pn)
+	}
+	if !reflect.DeepEqual(pr, rr) {
+		t.Errorf("rel history: replica %+v, primary %+v", rr, pr)
 	}
 }
 

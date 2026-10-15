@@ -178,7 +178,7 @@ func (co *ConstraintOps) DryRunValidate(ctx context.Context, facts constraintspk
 					Err: fmt.Errorf("end node %d: %w", dr.EndID, err)})
 				continue
 			}
-			validFrom := c.untimedStart(dr.ValidFrom, true)
+			validFrom := c.untimedStartMode(dr.ValidFrom, true)
 			if validFrom == 0 {
 				validFrom = c.now() // validate as if asserted now
 			}
@@ -208,7 +208,7 @@ func (c *Core) buildDryRunEndpointNode(id types.NodeID, props map[string]any) (*
 	if err != nil {
 		return nil, err
 	}
-	validFrom = c.untimedStart(validFrom, true)
+	validFrom = c.untimedStartMode(validFrom, true)
 	if err := c.validateProperties(props); err != nil {
 		return nil, err
 	}

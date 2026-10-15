@@ -48,11 +48,56 @@ const untimedConverting byte = 2
 // untimedStart is THE place the mode decides: the valid-from a create stores.
 // first reports that the row is the entity's first version (a generated ID,
 // or an imported ID without an earlier life). An explicit validFrom is kept.
-func (c *Core) untimedStart(validFrom types.Instant, first bool) types.Instant {
+// While a conversion is unfinished (untimedIncomplete) an untimed first
+// version is refused: the store holds rows of both rules.
+func (c *Core) untimedStart(validFrom types.Instant, first bool) (types.Instant, error) {
+	if validFrom == 0 && first {
+		if err := c.checkUntimedComplete("create an untimed first version"); err != nil {
+			return 0, err
+		}
+	}
+	return c.untimedStartMode(validFrom, first), nil
+}
+
+// untimedStartMode is untimedStart's mode rule without the
+// unfinished-conversion guard (a dry run; a commit-time restamp whose batch
+// passed precheckQueuedUntimedCreates).
+func (c *Core) untimedStartMode(validFrom types.Instant, first bool) types.Instant {
 	if validFrom == 0 && first && c.untimedUnbounded.Load() {
 		return types.UnboundedValidFrom
 	}
 	return validFrom
+}
+
+// checkUntimedComplete fails closed with ErrUntimedModeMismatch while a
+// conversion to UntimedUnbounded is unfinished (the store is marked
+// converting, part of its untimed first versions may still start at their
+// TxFrom). op names the refused operation.
+func (c *Core) checkUntimedComplete(op string) error {
+	if !c.untimedIncomplete.Load() {
+		return nil
+	}
+	return fmt.Errorf("graph: %s: the conversion to UntimedUnbounded did not finish; call Admin().SetUntimedValidStart(ctx, UntimedUnbounded) again: %w", op, ErrUntimedModeMismatch)
+}
+
+// precheckQueuedUntimedCreates refuses a batch or ingest group, before any
+// write, that would create an untimed first version while a conversion is
+// unfinished (a create queued before the conversion was cut short).
+func (c *Core) precheckQueuedUntimedCreates(nodes []pendingNode, rels []pendingRel) error {
+	if !c.untimedIncomplete.Load() {
+		return nil
+	}
+	for i := range nodes {
+		if tm := nodes[i].temporal; tm != nil && tm.ValidFrom == 0 {
+			return c.checkUntimedComplete("create an untimed first version")
+		}
+	}
+	for i := range rels {
+		if tm := rels[i].temporal; tm != nil && tm.ValidFrom == 0 {
+			return c.checkUntimedComplete("create an untimed first version")
+		}
+	}
+	return nil
 }
 
 // stampQueuedUntimedStart applies the mode to a queued create (batch, ingest)
@@ -64,7 +109,7 @@ func (c *Core) stampQueuedUntimedStart(tm *types.TemporalMetadata) bool {
 	if tm == nil || tm.ValidFrom != 0 {
 		return false
 	}
-	vf := c.untimedStart(0, true)
+	vf := c.untimedStartMode(0, true)
 	tm.ValidFrom = vf
 	return vf != 0
 }
@@ -115,6 +160,7 @@ func (c *Core) resolveUntimedMode() error {
 		if want != UntimedUnbounded {
 			return fmt.Errorf("graph: the store's conversion to UntimedUnbounded did not finish; open it with Config.UntimedValidStart = UntimedUnbounded to finish it: %w", ErrUntimedModeMismatch)
 		}
+		c.untimedIncomplete.Store(true) // until the conversion finishes
 		if c.readOnlyReplica {
 			return nil // the primary's feed carries the rest of the conversion
 		}
@@ -184,7 +230,18 @@ func (c *Core) untimedModeByte() byte {
 	return byte(UntimedFromTxFrom)
 }
 
+// writeUntimedMode persists the mode key b and, once it is written, mirrors
+// it in untimedIncomplete (b == untimedConverting): the in-process guard and
+// the persisted key change together.
 func (c *Core) writeUntimedMode(b byte) error {
+	if err := c.writeUntimedModeKey(b); err != nil {
+		return err
+	}
+	c.untimedIncomplete.Store(b == untimedConverting)
+	return nil
+}
+
+func (c *Core) writeUntimedModeKey(b byte) error {
 	if c.metaKV == nil {
 		return nil
 	}
@@ -227,7 +284,10 @@ func (c *Core) restoreUntimedModeAfterReset() error {
 // Crash safety: the store is marked "converting" durably before the first
 // row changes; a reopen under UntimedFromTxFrom then fails with
 // ErrUntimedModeMismatch and one under UntimedUnbounded finishes the
-// conversion. A store already in mode is stamped again (idempotent: rows
+// conversion. While the mark holds (untimedIncomplete, also in a process
+// whose call was cut short), exports, imports and creates of an untimed first
+// version fail with ErrUntimedModeMismatch. A store already in mode is
+// marked and stamped again (idempotent: rows
 // copied in verbatim since, e.g. by a restore, are converted). Reopen the
 // store with Config.UntimedValidStart = UntimedUnbounded afterwards.
 //
@@ -252,12 +312,12 @@ func (a *AdminOps) SetUntimedValidStart(ctx context.Context, mode UntimedValidSt
 		if c.untimedUnbounded.Load() {
 			return fmt.Errorf("graph: a store converted to UntimedUnbounded cannot go back: %w", ErrUntimedModeMismatch)
 		}
-		return nil
+		return c.checkUntimedComplete("go back to UntimedFromTxFrom")
 	}
-	if !c.untimedUnbounded.Load() {
-		if err := c.writeUntimedMode(untimedConverting); err != nil {
-			return fmt.Errorf("graph: mark the untimed valid-start conversion: %w", err)
-		}
+	// Marked on an UntimedUnbounded store too (a re-stamp of rows copied in
+	// verbatim): a re-stamp cut short also leaves rows of both rules.
+	if err := c.writeUntimedMode(untimedConverting); err != nil {
+		return fmt.Errorf("graph: mark the untimed valid-start conversion: %w", err)
 	}
 	// Rewritten history rows change answers at earlier pins: drop the cached
 	// as-of columns and state cuts, also after a conversion cut short.
@@ -484,6 +544,9 @@ func untimedModeOf(unbounded bool) UntimedValidStart {
 // field (a UntimedFromTxFrom source, or one written before backlog 73) is a
 // TxFrom export. Caller holds c.mu.Lock.
 func (c *Core) checkImportUntimedModeLocked(srcUnbounded bool, rollback *importRollback) error {
+	if err := c.checkUntimedComplete("import"); err != nil {
+		return err
+	}
 	if srcUnbounded == c.untimedUnbounded.Load() {
 		return nil
 	}
