@@ -1098,12 +1098,16 @@ retains its original scope. Source/hash, pinned parser/format and whitespace
 checks passed; compilation, runtime, coverage and C acceptance remain open.
 
 Current worker lanes: Sol 6.1/high for the finite P01–P06 protocol/storage
-composition adapters and checker; Sol 6.1/high for authenticated transfer budgets
-and fresh range-move wiring, followed by the actual transfer workload. The
-P07–P09 worker has completed its package; its next campaign-controller proposal
-is held while these packages finish. Shared graph batching and the recovery
-byte-pool primitive are source-integrated above. The remaining packages are in
-implementation and do not add accepted runtime evidence. The
+composition adapters and checker; Sol 6.1/high for pooled range-move admission,
+independent undo and bounded snapshot validation; Sol 6.1/high for the native
+transfer workload proposal after completing the one-file P05 extraction.
+The bounded exploration/seed-controller proposal remains queued. Shared graph
+batching and the recovery byte-pool primitive are source-integrated above;
+these remaining packages are not integrated or runtime-qualified. A complete
+static 1M workload bound is not a prerequisite to authoring its driver. Preserve
+all required matrix cells and their capacity gates: safe resource refusal does
+not qualify a successful cost cell, and an incomplete upper bound proves
+neither capacity nor infeasibility. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
 serialize heavy local fault/benchmark workloads under the shared resource lease.
