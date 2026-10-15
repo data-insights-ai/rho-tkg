@@ -88,7 +88,11 @@ def partial_reads(rows, tx, coordinator):
         c.end()
         require(actual_mode == mode and cuts == 0 and actual_tx == (tx if mode == 4 else bytes(16)) and actual_coordinator == (coordinator if mode == 4 else 0), "certified request binding")
         response = process_response(P.raw(row["Response"]))
-        require(row["Classification"] == "unavailable" and response["mask"] & (1 << 3) and not response["mask"] & (1 << 12) and not response["aux"] and not response["outcome"] and not response["changes"], "partial read invented success or timeout authority")
+        # This is processResponse.causeMask, not the outer graph-wire mask.
+        # processCauseMask bit7 is replica.ErrUnavailable; bit3 is ErrLimit.
+        # No additional/unknown cause may qualify as the expected outage.
+        require(row["Classification"] == "unavailable" and response["code"] == 3 and response["mask"] == 1 << 7 and
+                not response["aux"] and not response["outcome"] and not response["changes"], "partial read invented success or timeout authority")
 
 
 def io_receipt(receipt, case):

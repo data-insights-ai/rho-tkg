@@ -25,10 +25,16 @@ type nativeConjunctionSelector struct {
 	Occurrence               uint8 // Zero is the legacy first occurrence; fresh rows use1..16.
 	Kind                     raftlog.StableStorageKind
 	Side                     string
+	Fence                    bool            // Fresh P02 local fence; never a cross-phase alias.
+	FenceScope               allocationScope // Genuine earlier configured scope, by value.
 }
 
 func (s nativeConjunctionSelector) valid() bool {
-	return s.Actor >= 1 && s.Actor <= 6 && s.Member >= 1 && s.Member <= 6 && (s.Partition == 3 && s.Member <= 3 || s.Partition == 8 && s.Member >= 4) && s.Phase >= crossRegister && s.Phase <= crossResolve && s.Occurrence <= 16 && (s.Kind == raftlog.StableStorageReady || s.Kind == raftlog.StableStorageApplication) && (s.Side == "before" || s.Side == "after")
+	phase := s.Phase >= crossRegister && s.Phase <= crossResolve && s.FenceScope == (allocationScope{})
+	if s.Fence {
+		phase = s.Phase == 0 && s.Partition == 3 && s.Actor == 1 && s.Member == 1 && s.Occurrence <= 1 && s.FenceScope.valid() && s.FenceScope.partition == 3
+	}
+	return s.Actor >= 1 && s.Actor <= 6 && s.Member >= 1 && s.Member <= 6 && (s.Partition == 3 && s.Member <= 3 || s.Partition == 8 && s.Member >= 4) && phase && s.Occurrence <= 16 && (s.Kind == raftlog.StableStorageReady || s.Kind == raftlog.StableStorageApplication) && (s.Side == "before" || s.Side == "after")
 }
 
 // One bounded exact native target is retained. Installation and teardown are
@@ -111,8 +117,8 @@ func reserveNativeConjunctionGate(f *pairedGraphFaultNetwork, g *nativeConjuncti
 	return nil
 }
 
-// Fresh terminal parent only: pre-admit/hash an actually captured command as a
-// diagnostic selector before its ordinary Submit. Neither this method nor its
+// Fresh terminal/P02 parent only: pre-admit/hash an actual source-owned command
+// as a diagnostic selector before its ordinary Submit. Neither this method nor its
 // copied bytes import/reconstruct any private proposal authority or stamps.
 func (g *nativeConjunctionBatchGate) armObserved(ctx context.Context, proposal allocationProposal) error {
 	if g == nil || ctx == nil {
@@ -128,9 +134,19 @@ func (g *nativeConjunctionBatchGate) armObserved(ctx context.Context, proposal a
 	}
 	g.candidates++
 	g.decodeWork += 4096 + 32*processFrameBytes
-	command, _, err := decodeCrossCommand(proposal.wire, defaultMaterializerLimits())
-	if err != nil || !proposal.target.valid() || command.ns.graph != proposal.target.graph || command.ns.partition != proposal.target.partition || command.phase != g.selector.Phase || command.ns.partition != g.selector.Partition {
-		return errors.Join(errInvalid, err)
+	if !proposal.target.valid() {
+		return errInvalid
+	}
+	if g.selector.Fence {
+		command, err := decodeGraphCutCommand(proposal.wire)
+		if err != nil || command.phase != graphCutFence || command.scope != proposal.target || command.scope != g.selector.FenceScope {
+			return errors.Join(errInvalid, err)
+		}
+	} else {
+		command, _, err := decodeCrossCommand(proposal.wire, defaultMaterializerLimits())
+		if err != nil || command.ns.graph != proposal.target.graph || command.ns.partition != proposal.target.partition || command.phase != g.selector.Phase || command.ns.partition != g.selector.Partition {
+			return errors.Join(errInvalid, err)
+		}
 	}
 	control := nativeBatchControl{Version: 1, Action: "arm", Cookie: g.owner.Cookie, Sequence: 1, Kind: g.selector.Kind, Side: g.selector.Side, CommandSHA256: sha256.Sum256(proposal.wire)}
 	deadline, _ := g.ctx.Deadline()
@@ -152,6 +168,9 @@ func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partiti
 		if err := g.priorBefore(ctx, origin, partition, request); err != nil {
 			return err
 		}
+	}
+	if g.selector.Fence {
+		return nil // Local genuine proposal is explicitly armed before Submit.
 	}
 	if origin != g.selector.Actor || partition != g.selector.Partition {
 		return nil
@@ -437,6 +456,9 @@ func (f *pairedGraphFaultNetwork) bootstrapAction(actor, kind, index uint64, dat
 	if f.n.rangeMoves {
 		agreement = rangeMoveSemanticContractID()
 	}
+	if pairedFaultConditionalFixture() {
+		agreement = conditionalGraphSemanticContractID()
+	}
 	if [16]byte(proposal.target.graph) != ([16]byte{1}) || proposal.target.partition != ns.partition || proposal.target.semantic != agreement {
 		f.t.Fatal("source bootstrap proposal escaped actual topology")
 	}
@@ -554,10 +576,19 @@ type nativeConjunctionCapture struct {
 	refused                                                bool
 	candidates, attempts, work, output, retained, reserved uint64
 	requests                                               []p06Phase
+	// Fresh P02 only: two actual planning-source opens share this SAME callback
+	// owner. They are diagnostics, never imported source/certificate authority.
+	planningSources              bool
+	sourceOutput, sourceRetained uint64
+	sources                      []p06Phase
 }
 
-func newNativeConjunctionCapture(f *pairedGraphFaultNetwork, actor uint64, tx [16]byte) *nativeConjunctionCapture {
+func newNativeConjunctionCapture(f *pairedGraphFaultNetwork, actor uint64, tx [16]byte, planningSources ...bool) *nativeConjunctionCapture {
+	if len(planningSources) > 1 {
+		f.t.Fatal("one immutable optional planning-source capture mode")
+	}
 	c := &nativeConjunctionCapture{hub: f.n.all[actor].mux.hub, actor: actor, tx: tx}
+	c.planningSources = len(planningSources) == 1 && planningSources[0]
 	c.hub.mu.Lock()
 	c.prior, c.priorBefore = c.hub.afterRelay, c.hub.beforeRelay
 	c.hub.afterRelay, c.hub.beforeRelay = c.after, c.before
@@ -588,6 +619,24 @@ func (c *nativeConjunctionCapture) before(ctx context.Context, origin, partition
 		return nil
 	}
 	if !cross {
+		if c.planningSources {
+			q, err := decodeGraphSourceRequest(request)
+			if err != nil {
+				c.refused = true
+			} else if q.kind == sourceOpen {
+				if len(c.sources) == 2 || len(request) > 4096 {
+					c.refused = true
+					return nil
+				}
+				// Separate from the32-submit/256KiB owner. These two finite
+				// source replies and their JSON output are prepaid before copy.
+				c.sourceOutput += 8*(4096+nativeBatchReceiptBytes) + 8192
+				p := p06Phase{Origin: origin, Partition: partition, Request: make([]byte, len(request))}
+				copy(p.Request, request)
+				c.sourceRetained += uint64(len(request))
+				c.sources = append(c.sources, p)
+			}
+		}
 		return nil
 	}
 	if c.attempts >= 32 || len(request) > 2*nativeLogicalTransitionBodyBytes || uint64(len(request)+nativeBatchReceiptBytes) > (256<<10)-c.reserved {
@@ -625,6 +674,29 @@ func (c *nativeConjunctionCapture) after(ctx context.Context, origin, partition 
 		if c.requests[i].Partition == partition && bytes.Equal(c.requests[i].Request, request) {
 			selected = &c.requests[i]
 			break
+		}
+	}
+	if selected == nil && c.planningSources {
+		for i := range c.sources {
+			if c.sources[i].Partition != partition || !bytes.Equal(c.sources[i].Request, request) {
+				continue
+			}
+			row := &c.sources[i]
+			if c.finished || len(row.Reply) != 0 || len(reply) > nativeBatchReceiptBytes {
+				c.refused = true
+				return nil
+			}
+			q, qerr := decodeGraphSourceRequest(request)
+			r, rerr := decodeGraphWireResponse(reply)
+			info, ierr := decodeGraphSourceInfo(r.body)
+			if qerr != nil || rerr != nil || ierr != nil || r.err != nil || q.kind != sourceOpen || r.kind != q.kind || r.sequence != q.sequence || r.nonce != q.nonce || info.nonce != q.nonce || info.cookie.issuer != r.issuer || info.readID.session != r.issuer || info.observation.source.scope != r.peer.scope || r.peer.scope.partition != partition {
+				c.refused = true
+				return nil
+			}
+			row.Reply = make([]byte, len(reply))
+			copy(row.Reply, reply)
+			c.sourceRetained += uint64(len(reply))
+			return nil
 		}
 	}
 	if selected == nil {

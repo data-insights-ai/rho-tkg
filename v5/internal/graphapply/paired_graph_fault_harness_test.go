@@ -323,6 +323,7 @@ type pairedGraphFaultNetwork struct {
 	n                     *certifiedProcessNetwork
 	parent                context.Context             // Optional, immutable before fresh fixture publication.
 	conjunctionGate       *nativeConjunctionBatchGate // At most one; guarded by mu.
+	protocolReplyHold     *nativeProtocolReplyHold    // Fresh causal hold; at most one, guarded by mu.
 	mu                    sync.Mutex
 	down                  map[uint64]bool
 	dropped               [][2]uint64
@@ -499,6 +500,14 @@ func (f *pairedGraphFaultNetwork) packetDrain() {
 		}
 	}
 }
+
+// This is the same exact opt-in consumed by the actual child constructor. A
+// conditional certificate cannot be relabelled as the ordinary certified
+// agreement, including the existing P05 parent without fresh campaign hooks.
+func pairedFaultConditionalFixture() bool {
+	return os.Getenv("RHO_GRAPH_CONDITIONAL_PROCESS") == "1"
+}
+
 func (f *pairedGraphFaultNetwork) open(actor uint64, mode graphReadMode, cut graphCut) (uint64, graphCut) {
 	f.t.Helper()
 	f.reads++
@@ -515,7 +524,11 @@ func (f *pairedGraphFaultNetwork) open(actor uint64, mode graphReadMode, cut gra
 		f.t.Fatal("paired actual certified cut", err)
 	}
 	for _, cert := range actual.certificates {
-		if cert.scope.semantic != certifiedGraphSemanticContractID() {
+		agreement := certifiedGraphSemanticContractID()
+		if pairedFaultConditionalFixture() {
+			agreement = conditionalGraphSemanticContractID()
+		}
+		if cert.scope.semantic != agreement {
 			f.t.Fatal("paired certified agreement")
 		}
 	}
@@ -699,8 +712,11 @@ func (f *pairedGraphFaultNetwork) replace(id uint64) pairedFaultProcess {
 
 // Optional diagnostic runs through the actual replacement pipe after native
 // Restore/Ready, before any fair catch-up can import another voter's history.
-func (f *pairedGraphFaultNetwork) replaceBeforeHeal(id uint64, before func(*graphProcess, processResponse)) pairedFaultProcess {
+func (f *pairedGraphFaultNetwork) replaceBeforeHeal(id uint64, before func(*graphProcess, processResponse), packetOnly ...bool) pairedFaultProcess {
 	f.t.Helper()
+	if len(packetOnly) > 1 || len(packetOnly) == 1 && (!packetOnly[0] || f.parent == nil) {
+		f.t.Fatal("invalid fresh held-reply packet-only replacement")
+	}
 	prior := f.n.all[id]
 	if !prior.closed || prior.cmd.ProcessState == nil {
 		f.t.Fatal("paired replacing unreaped owner")
@@ -749,7 +765,7 @@ func (f *pairedGraphFaultNetwork) replaceBeforeHeal(id uint64, before func(*grap
 	if id > 3 {
 		leader = f.n.leaders[1]
 	}
-	f.heal(leader)
+	f.heal(leader, packetOnly...)
 	f.mu.Lock()
 	interrupted := f.down[id]
 	f.mu.Unlock()
@@ -834,8 +850,11 @@ func pairedFaultOriginalOf(t *testing.T, p allocationProposal, coord uint64, res
 	}
 	return pairedFaultOriginal{Coordinator: coord, Graph: hex.EncodeToString(c.request.ns.graph[:]), Request: hex.EncodeToString(c.request.id[:]), Transaction: hex.EncodeToString(result.resume.tx[:]), Payload: bytes.Clone(p.wire)}
 }
-func (f *pairedGraphFaultNetwork) heal(leader uint64) {
+func (f *pairedGraphFaultNetwork) heal(leader uint64, packetOnly ...bool) {
 	f.t.Helper()
+	if len(packetOnly) > 1 || len(packetOnly) == 1 && (!packetOnly[0] || f.parent == nil) {
+		f.t.Fatal("invalid fresh held-reply packet-only catch-up")
+	}
 	group := f.n.group(leader)
 	priorFilter := group.dropPacket
 	observed := 0
@@ -868,8 +887,17 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64) {
 	for round := range 32 {
 		f.groupEvent(group, leader, processRequest{op: processTick})
 		f.groupEvent(group, leader, processRequest{op: processCertifiedRead, entity: uint64(observeConfiguration)})
-		f.drain()
-		f.snapshotCatchup(leader, sealed)
+		if len(packetOnly) == 1 {
+			// A genuine completed service reply is still held by its original
+			// caller. Drain only the SAME native queue/Step path; waiting for all
+			// relays would deadlock that live causal predecessor. This mode has
+			// no synthetic snapshot or success fallback: native log catch-up must
+			// actually finish within the existing finite rounds and queue caps.
+			f.drainGroup(group)
+		} else {
+			f.drain()
+			f.snapshotCatchup(leader, sealed)
+		}
 		base := f.call(f.n.all[leader], processRequest{op: processStateOp, entity: 1})
 		if round == 31 {
 			f.t.Logf("paired heal final leader%d applied%d ready%t generation%d checkpoint%d term%d commit%d image%x", leader, base.applied, base.ready, base.stats[statGeneration], base.stats[statCheckpoint], base.stats[statTerm], base.stats[statCommit], base.image)

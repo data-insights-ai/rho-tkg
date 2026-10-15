@@ -260,12 +260,27 @@ func p02SubmitWhilePaused(f *pairedGraphFaultNetwork, actor uint64, p allocation
 		f.t.Fatal(err)
 	}
 	group := f.n.group(actor)
-	group.event(f.t, actor, processRequest{op: processPropose, data: wire})
+	if f.parent == nil {
+		group.event(f.t, actor, processRequest{op: processPropose, data: wire})
+	} else {
+		// The live semantic relay is intentionally held. Use the same native
+		// queue and original outer deadline without draining that relay owner.
+		group.enqueue(f.t, f.call(f.n.all[actor], processRequest{op: processPropose, data: wire}))
+		f.drainGroup(group)
+	}
 	f.packetDrain()
-	state := f.n.all[actor].call(f.t, processRequest{op: processStateOp})
-	r := f.n.all[actor].call(f.t, processRequest{op: processEntryRecord, index: state.applied})
+	state := f.call(f.n.all[actor], processRequest{op: processStateOp})
+	r := f.call(f.n.all[actor], processRequest{op: processEntryRecord, index: state.applied})
 	for id, voter := range group.nodes {
-		got := voter.call(f.t, processRequest{op: processEntryRecord, index: state.applied})
+		if f.parent != nil {
+			f.mu.Lock()
+			dead := f.down[id]
+			f.mu.Unlock()
+			if dead {
+				continue // Inspect every genuine surviving voter, never a dead pipe.
+			}
+		}
+		got := f.call(voter, processRequest{op: processEntryRecord, index: state.applied})
 		if !bytes.Equal(got.outcome, r.outcome) || !bytes.Equal(got.changes, r.changes) || got.stats[statCommit] < state.applied {
 			f.t.Fatal("P02 native progress original differs", id)
 		}

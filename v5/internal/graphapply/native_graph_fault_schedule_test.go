@@ -20,8 +20,30 @@ import (
 )
 
 func TestNativeComposedFaultPartialInstallSurvivesDecisionLeaderLossAndDelayedResolve(t *testing.T) {
+	nativeFaultPartialCase(t)
+}
+
+func nativeFaultPartialCase(t *testing.T, campaign ...nativeProtocolPartialRecipe) {
+	if len(campaign) > 1 || len(campaign) == 1 && !campaign[0].valid() {
+		t.Fatal("invalid fresh P03 partial-install occurrence")
+	}
 	t.Setenv("RHO_GRAPH_NATIVE_FAULT_PROCESS", "1")
-	f := newPairedGraphFaultNetwork(t)
+	var f *pairedGraphFaultNetwork
+	ctx := t.Context()
+	var run [16]byte
+	var deadline int64
+	var artifactBudget *graphstate.OutputBudget
+	if len(campaign) == 0 {
+		f = newPairedGraphFaultNetwork(t)
+	} else {
+		artifactBudget = nativeProtocolArtifactAllowance(t)
+		run, deadline = nativeP06ConjunctionIdentity(t)
+		t.Setenv("RHO_GRAPH_STABLE_STORAGE_PROCESS", "1")
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, time.Unix(0, deadline))
+		defer cancel()
+		f = newPairedGraphFaultNetworkWithParent(t, ctx)
+	}
 	before := f.observe(4, graphReadFresh, graphCut{}, false)
 	for stage, name := range []string{"node-a", "node-b"} {
 		proposal := f.proposal(stage + 1)
@@ -44,12 +66,16 @@ func TestNativeComposedFaultPartialInstallSurvivesDecisionLeaderLossAndDelayedRe
 	heldClosed := false
 	defer func() {
 		if !heldClosed {
-			f.n.all[1].call(t, processRequest{op: processSourceCertifiedClose, index: held})
+			if len(campaign) == 0 {
+				f.n.all[1].call(t, processRequest{op: processSourceCertifiedClose, index: held})
+			} else {
+				f.cleanupCertifiedHandle(f.n.all[1], &held)
+			}
 		}
 	}()
 	readHeld := func() p06Observation {
-		raw := nativeLifecycleRead(t, f.n, 1, held, 0)
-		raw.Census = nativeLifecycleRead(t, f.n, 1, held, 2).Census
+		raw := f.lifecycleRead(1, held, 0)
+		raw.Census = f.lifecycleRead(1, held, 2).Census
 		view, err := lifecycleNormalizeView(raw, f.trace.IdentityMapping, f.trace.OperationMapping)
 		if err != nil {
 			t.Fatal(err)
@@ -59,12 +85,27 @@ func TestNativeComposedFaultPartialInstallSurvivesDecisionLeaderLossAndDelayedRe
 	first := readHeld()
 	proposal := f.proposal(3)
 	from := f.indexes()
-	gate, err := newNativeFaultPartialGate(t.Context(), f.n.all[5].mux.hub, 5)
+	actor, reader := uint64(5), uint64(6)
+	if len(campaign) == 1 {
+		actor, reader = 6, 2
+	}
+	gate, err := newNativeFaultPartialGate(ctx, f.n.all[actor].mux.hub, actor)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer gate.release()
-	call, cancel := f.beginRun(5, proposal)
+	var nativeGate *nativeConjunctionBatchGate
+	var native nativeProtocolBatchEvidence
+	var outage *nativeP06ConjunctionAttempt
+	var firstRejoined pairedFaultProcess
+	if len(campaign) == 1 && !(campaign[0].Phase == crossResolve && campaign[0].Partition == 8) {
+		nativeGate, err = newNativeConjunctionBatchGate(ctx, f, campaign[0].selector(actor), run, deadline)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer nativeGate.close()
+	}
+	call, cancel := f.beginRun(actor, proposal)
 	defer cancel()
 	_ = f.awaitBoundary(gate.entered)
 	gate.mu.Lock()
@@ -72,31 +113,39 @@ func TestNativeComposedFaultPartialInstallSurvivesDecisionLeaderLossAndDelayedRe
 	gate.mu.Unlock()
 	resolved, manifest := nativeFaultInstalledResolve(t, proposal, installed)
 	f.packetDrain()
+	if nativeGate != nil {
+		native = nativeProtocolFinishBatch(t, f, nativeGate, oldCut, true)
+	}
 	// Inspect every real A voter before certification or coordinator loss.
 	for id := uint64(1); id <= 3; id++ {
-		record := f.n.all[id].call(t, processRequest{op: processEntryRecord, index: resolved.index})
+		record := f.call(f.n.all[id], processRequest{op: processEntryRecord, index: resolved.index})
 		status, err := decodeCrossStatus(record.outcome)
 		if err != nil || status != resolved || len(record.changes) == 0 {
 			t.Fatal("A was not actually installed", id, err)
 		}
 	}
-	reads := []nativeFaultPartialRead{
-		nativeFaultPartialReadCall(t, f, 6, graphReadFresh, [16]byte{}, 0),
-		nativeFaultPartialReadCall(t, f, 6, graphReadAfter, manifest.tx, manifest.coordinator),
+	read := nativeFaultPartialReadCall
+	if len(campaign) == 1 {
+		read = nativeProtocolPartialRead
 	}
+	reads := []nativeFaultPartialRead{read(t, f, reader, graphReadFresh, [16]byte{}, 0), read(t, f, reader, graphReadAfter, manifest.tx, manifest.coordinator)}
 	retained := readHeld()
 	if !reflect.DeepEqual(first, retained) || !reflect.DeepEqual(old, retained) {
 		t.Fatal("partial installation substituted current state at held old cut")
 	}
-	f.n.all[1].call(t, processRequest{op: processSourceCertifiedClose, index: held})
+	f.call(f.n.all[1], processRequest{op: processSourceCertifiedClose, index: held})
 	heldClosed = true
 	killed := f.kill(4, "replica")
 	cancel()
 	var answer graphProcessAnswer
-	select {
-	case answer = <-call:
-	case <-time.After(10 * time.Second):
-		t.Fatal("partial original worker not retired")
+	if len(campaign) == 1 {
+		answer = nativeP06AwaitAnswer(f, call)
+	} else {
+		select {
+		case answer = <-call:
+		case <-time.After(10 * time.Second):
+			t.Fatal("partial original worker not retired")
+		}
 	}
 	pending, pendingErr := decodeGraphProcessCoordinatorResult(answer.response)
 	if !errors.Is(answer.err, context.Canceled) || !errors.Is(pendingErr, errCrossProcessPending) || pending.resume.tx != manifest.tx || pending.decision != (crossStatus{}) {
@@ -105,8 +154,38 @@ func TestNativeComposedFaultPartialInstallSurvivesDecisionLeaderLossAndDelayedRe
 	pendingWire := p06ProcessWire(t, answer.response)
 	gate.release()
 	f.elect(4, 5)
-	p03Reconnect(f, 6)
-	result := f.run(6, proposal)
+	var result crossProcessResult
+	var completed []byte
+	if len(campaign) == 0 {
+		p03Reconnect(f, 6)
+		result = f.run(6, proposal)
+	} else {
+		nativeConjunctionReconnect(f, 6)
+		if campaign[0].Phase == crossResolve && campaign[0].Partition == 8 {
+			nativeGate, err = newNativeConjunctionBatchGate(ctx, f, campaign[0].selector(6), run, deadline)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer nativeGate.close()
+			unknownCall, stopUnknown := f.beginRun(6, proposal)
+			defer stopUnknown()
+			unknown := nativeP06AwaitAnswer(f, unknownCall)
+			actual, actualErr := decodeGraphProcessCoordinatorResult(unknown.response)
+			if !nativeP06UnknownTransport(unknown.err) || !errors.Is(actualErr, errCrossProcessPending) || actual.resume != pending.resume || actual.decision != (crossStatus{}) {
+				t.Fatal("partial B second-voter loss must be actual SAME-original pending", unknown.err, actualErr)
+			}
+			outage = &nativeP06ConjunctionAttempt{Reply: p06ProcessWire(t, unknown.response), Transport: unknown.err.Error(), Pending: true}
+			native, firstRejoined = nativeProtocolFinishRecoveryBatch(t, f, nativeGate, oldCut, 4)
+			nativeConjunctionReconnect(f, 6)
+		}
+		response := f.call(f.n.all[6], processRequest{op: processSourceCoordinate, data: proposal.wire})
+		result, err = decodeGraphProcessCoordinatorResult(response)
+		if err != nil || result.resume != pending.resume {
+			t.Fatal("partial SAME-original recovery changed identity", err)
+		}
+		completed = p06ProcessWire(t, response)
+		f.drain()
+	}
 	if !result.decision.commit || result.decision.tx != resolved.tx || result.decision.digest != resolved.digest || result.decision.round != resolved.round {
 		t.Fatal("recovery changed actual durable decision", result.decision, resolved)
 	}
@@ -115,14 +194,21 @@ func TestNativeComposedFaultPartialInstallSurvivesDecisionLeaderLossAndDelayedRe
 	pairedFaultAssertCDC(t, step, 3)
 	assertLifecycleCandidates(t, step.RawObservation, 3)
 	recovered := p06Observe(f, 6, graphReadFresh, graphCut{})
-	rejoined := f.replace(4)
+	rejoined := firstRejoined
+	if rejoined.Member == 0 {
+		rejoined = f.replace(4)
+	}
 	// The delayed genuine original A phase is replayed after recovery/rejoin.
 	// Its earlier original index survives; the new retained entry has empty CDC.
 	delayed := p06ReplayPhase(f, p06SourceProposal(t, installed.Request), manifest.tx)
 	if delayed.Partition != 3 || len(delayed.CDC) != 0 {
 		t.Fatal("delayed Resolve duplicated business")
 	}
-	p03Reconnect(f, 1)
+	if len(campaign) == 0 {
+		p03Reconnect(f, 1)
+	} else {
+		nativeConjunctionReconnect(f, 1)
+	}
 	reopened := p06Observe(f, 1, graphReadAt, oldCut)
 	if !reflect.DeepEqual(reopened, old) {
 		t.Fatal("new genuine old-cut read changed after process recovery")
@@ -135,7 +221,11 @@ func TestNativeComposedFaultPartialInstallSurvivesDecisionLeaderLossAndDelayedRe
 	artifact := nativeFaultArtifact{Version: 1, Profile: nativeFaultProfile, Case: "partial-install-decision-loss", Original: proposal.wire, Manifest: actualCommand.manifest,
 		PendingCaller: pendingWire, InstalledA: installed, WithheldB: withheld, PartialReads: reads, Before: old, Retained: retained, Recovered: recovered, Reopened: reopened,
 		Processes: []pairedFaultProcess{killed, rejoined}, From: from, Through: through, Records: p06Records(f, from, through)}
-	writeNativeFaultArtifact(t, f.n.dir, artifact)
+	if len(campaign) == 0 {
+		writeNativeFaultArtifact(t, f.n.dir, artifact)
+	} else {
+		nativeProtocolPartialWrite(t, ctx, f, campaign[0], run, deadline, native, artifact, completed, outage, artifactBudget)
+	}
 }
 
 // Compact direct FS/owner guards only; these do not provide graph/process,

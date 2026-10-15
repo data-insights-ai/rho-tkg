@@ -204,6 +204,40 @@ func TestHistoricalDependencyP05ConditionCodecAndAgreement(t *testing.T) {
 	if newCredit.Credits[0].RetainedBytes-oldCredit.Credits[0].RetainedBytes != 2*uint64(len(newSized)-len(oldSized)) {
 		t.Fatal("conditional prepared-original retention omitted wrapper")
 	}
+	// Inert diagnostic frames exercise only bounded ownership/correlation. They
+	// grant no certificate, condition, or native original authority.
+	question := graphSourceRequest{kind: sourceCertifiedOpen, sequence: 1, nonce: [16]byte{1}}
+	request, err := encodeGraphSourceRequest(question)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply, err := encodeGraphWireResponse(graphWireResponse{peer: graphPeerIdentity{scope: n.hosts[0][0].machine.scope(), voter: 1}, issuer: [16]byte{2}, kind: question.kind, sequence: question.sequence, nonce: question.nonce})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture := &p05CampaignCapture{}
+	if err := capture.after(t.Context(), 1, 3, request, reply); err != nil || capture.charge.Candidates != 1 || capture.charge.Attempts != 1 || capture.charge.Work == 0 || capture.charge.Output == 0 || capture.charge.Retained != uint64(64+len(request)+len(reply)) || len(capture.frames) != 1 {
+		t.Fatal("bounded complete P05 frame ownership", err, capture.charge)
+	}
+	request[0] ^= 1
+	reply[0] ^= 1
+	if capture.frames[0].Request[0] != 'G' || capture.frames[0].Reply[0] != 'G' {
+		t.Fatal("P05 diagnostic frame retained caller-owned bytes")
+	}
+	canceled, cancelCapture := context.WithCancel(t.Context())
+	cancelCapture()
+	unspent := &p05CampaignCapture{}
+	if err := unspent.after(canceled, 1, 3, nil, nil); !errors.Is(err, context.Canceled) || unspent.charge != (p05CampaignCaptureCharge{}) || len(unspent.frames) != 0 {
+		t.Fatal("canceled diagnostic capture admitted work", err, unspent.charge)
+	}
+	const candidates = 2 * (processDeliveries + 96*4*1024)
+	full := &p05CampaignCapture{charge: p05CampaignCaptureCharge{Candidates: candidates}}
+	if err := full.after(t.Context(), 1, 3, nil, nil); !errors.Is(err, errLimit) || full.charge.Candidates != candidates || full.charge.Work != 0 || len(full.frames) != 0 {
+		t.Fatal("capture renewed its exhausted candidate grant", err, full.charge)
+	}
+	if err := full.prepayGate(t.Context(), nil); !errors.Is(err, errLimit) || full.charge.Work != 0 || full.charge.Output != 0 {
+		t.Fatal("Register hold bypassed the same exhausted capture ledger", err, full.charge)
+	}
 }
 
 func p05Schemas() []graphstate.PropertyDefinition {
@@ -234,6 +268,7 @@ type p05Attempt struct {
 	Result                                          []byte
 	Conflict, Closed, Unavailable, Expired, Invalid bool
 	Error                                           string
+	NativePending                                   bool `json:",omitzero"` // Fresh campaign diagnostic; ordinary bytes unchanged.
 }
 type p05ObservedCell struct {
 	Owner, Life uint64
@@ -392,7 +427,11 @@ func (s *p05ProcessSessions) serve(ctx context.Context, r processRequest) ([]byt
 		if err != nil {
 			message = err.Error()
 		}
-		return json.Marshal(p05Attempt{Result: wire, Conflict: errors.Is(err, errGraphReadConflict), Closed: errors.Is(err, graphstore.ErrClosed), Unavailable: errors.Is(err, replica.ErrUnavailable) || errors.Is(err, errCrossProcessPending), Expired: errors.Is(err, context.DeadlineExceeded), Invalid: errors.Is(err, errInvalid), Error: message})
+		pendingLoss := false
+		if err != nil && os.Getenv("RHO_GRAPH_PROTOCOL_CAMPAIGN") == nativeProtocolCampaignProfile {
+			pendingLoss = nativeProtocolPendingLoss(err)
+		}
+		return json.Marshal(p05Attempt{Result: wire, Conflict: errors.Is(err, errGraphReadConflict), Closed: errors.Is(err, graphstore.ErrClosed), Unavailable: errors.Is(err, replica.ErrUnavailable) || errors.Is(err, errCrossProcessPending), Expired: errors.Is(err, context.DeadlineExceeded), Invalid: errors.Is(err, errInvalid), Error: message, NativePending: pendingLoss})
 	}
 	return nil, errInvalid
 }
@@ -656,7 +695,7 @@ func p05Open(t *testing.T, f *pairedGraphFaultNetwork, actor uint64, mode graphR
 	if len(lifetime) > 0 {
 		seconds = lifetime[0]
 	}
-	r := f.n.all[actor].call(t, processRequest{op: processP05Open, entity: seconds, data: input})
+	r := f.call(f.n.all[actor], processRequest{op: processP05Open, entity: seconds, data: input})
 	var opened p05OpenReply
 	if err := json.Unmarshal(r.aux, &opened); err != nil {
 		t.Fatal(err)
@@ -669,7 +708,7 @@ func p05Open(t *testing.T, f *pairedGraphFaultNetwork, actor uint64, mode graphR
 }
 func p05Observe(t *testing.T, f *pairedGraphFaultNetwork, actor, handle uint64) p05Observation {
 	t.Helper()
-	r := f.n.all[actor].call(t, processRequest{op: processP05Observe, index: handle})
+	r := f.call(f.n.all[actor], processRequest{op: processP05Observe, index: handle})
 	var observed p05Observation
 	if err := json.Unmarshal(r.aux, &observed); err != nil {
 		t.Fatal(err)
@@ -680,12 +719,12 @@ func p05Current(t *testing.T, f *pairedGraphFaultNetwork, actor uint64, mode gra
 	t.Helper()
 	handle, actual := f.open(actor, mode, cut)
 	observed := p05Observe(t, f, actor, handle)
-	f.n.all[actor].call(t, processRequest{op: processSourceCertifiedClose, index: handle})
+	f.call(f.n.all[actor], processRequest{op: processSourceCertifiedClose, index: handle})
 	return observed, actual
 }
 func p05AttemptRun(t *testing.T, f *pairedGraphFaultNetwork, actor, handle uint64, p allocationProposal) (p05Attempt, crossProcessResult) {
 	t.Helper()
-	r := f.n.all[actor].call(t, processRequest{op: processP05Coordinate, index: handle, data: p.wire})
+	r := f.call(f.n.all[actor], processRequest{op: processP05Coordinate, index: handle, data: p.wire})
 	var attempt p05Attempt
 	if err := json.Unmarshal(r.aux, &attempt); err != nil {
 		t.Fatal(err)
@@ -698,7 +737,7 @@ func p05AttemptRun(t *testing.T, f *pairedGraphFaultNetwork, actor, handle uint6
 }
 func p05Prepare(t *testing.T, f *pairedGraphFaultNetwork, actor, kind, owner uint64, data []byte) allocationProposal {
 	t.Helper()
-	r := f.n.all[actor].call(t, processRequest{op: processP05Proposal, entity: kind, index: owner, data: data})
+	r := f.call(f.n.all[actor], processRequest{op: processP05Proposal, entity: kind, index: owner, data: data})
 	p, err := decodeCertifiedProcessProposal(r.aux)
 	if err != nil {
 		t.Fatal(err)
@@ -715,7 +754,7 @@ func p05Records(t *testing.T, f *pairedGraphFaultNetwork, from [2]uint64) []life
 			members = []uint64{4, 5, 6}
 		}
 		for _, id := range members {
-			r := f.n.all[id].call(t, processRequest{op: processEntryRecord, index: record.Index})
+			r := f.call(f.n.all[id], processRequest{op: processEntryRecord, index: record.Index})
 			if !bytes.Equal(r.outcome, record.Outcome) || !bytes.Equal(r.changes, record.CDC) {
 				t.Fatal("P05 actual voter original/CDC mismatch", id, record.Index)
 			}
@@ -853,374 +892,452 @@ type p05Artifact struct {
 
 func TestHistoricalDependencyP05ConditionalCrossWriteActualProcesses(t *testing.T) {
 	for _, schedule := range []string{"write-skew-A-first", "write-skew-B-first", "empty-range-and-absent-key-insertion", "temporal-life-value-ABA", "authority-fence-before-prepare"} {
-		if !t.Run(schedule, func(t *testing.T) {
-			t.Setenv("RHO_GRAPH_CONDITIONAL_PROCESS", "1")
-			f := newPairedGraphFaultNetwork(t)
-			finishCapture := p05Capture(f)
-			base := f.indexes()
-			for stage := 1; stage <= 2; stage++ {
-				actor := uint64(1)
-				if stage == 2 {
-					actor = 4
-				}
-				p := f.proposal(stage)
-				result := f.run(actor, p)
-				if !result.decision.commit {
-					t.Fatal("unconditional fixture node creation failed")
-				}
-			}
-			if schedule == "temporal-life-value-ABA" {
-				if result := f.run(1, f.proposal(3)); !result.decision.commit {
-					t.Fatal("unconditional edge creation failed")
-				}
-			}
-			actor := uint64(1)
-			if schedule == "write-skew-B-first" {
-				actor = 4
-			}
-			handle, cut, condition := p05Open(t, f, actor, graphReadFresh, graphCut{})
-			old := p05Observe(t, f, actor, handle)
-			cutWire, err := lifecycleRawCertificate(cut)
-			if err != nil {
-				t.Fatal(err)
-			}
-			artifact := p05Artifact{Schedule: schedule, Condition: condition, Cut: cutWire, Old: old}
-			var committed crossProcessResult
-			var original allocationProposal
-			switch schedule {
-			case "write-skew-A-first", "write-skew-B-first":
-				other := uint64(4)
-				owner, otherOwner := uint64(1), uint64(17)
-				if actor == 4 {
-					other, owner, otherOwner = 1, 17, 1
-				}
-				otherHandle, _, _ := p05Open(t, f, other, graphReadAt, cut)
-				if p05Cell(t, old, 1, "p", 0).Present || p05Cell(t, old, 17, "p", 0).Present {
-					t.Fatal("skew read predicate not genuinely absent")
-				}
-				original = p05Prepare(t, f, actor, 1, owner, nil)
-				from := f.indexes()
-				attempt, result := p05AttemptRun(t, f, actor, handle, original)
-				artifact.Attempts = append(artifact.Attempts, attempt)
-				if attempt.Error != "" || !result.decision.commit {
-					t.Fatal("unchanged condition must genuinely COMMIT", attempt, result)
-				}
-				committed = result
-				records := p05Records(t, f, from)
-				p05CommitCDC(t, records, result, []graphstate.ComponentKey{{Owner: graphstate.EntityID(owner), Life: graphstate.LifeID(owner + 1), Kind: graphstate.ScalarProperty, Name: "p"}}, 0, 0, 1)
-				loser := p05Prepare(t, f, other, 1, otherOwner, nil)
-				from = f.indexes()
-				refused, result := p05AttemptRun(t, f, other, otherHandle, loser)
-				artifact.Attempts = append(artifact.Attempts, refused)
-				if !refused.Conflict || refused.Unavailable || result.decision != (crossStatus{}) {
-					t.Fatal("historical skew branch admitted", refused, result)
-				}
-				p05NoEffects(t, p05Records(t, f, from), result.resume.tx, true)
-				if retained := p05Observe(t, f, other, otherHandle); !reflect.DeepEqual(retained, old) {
-					t.Fatal("held old skew read became current")
-				}
-				f.n.all[other].call(t, processRequest{op: processP05Close, index: otherHandle})
-				artifact.Steps = append(artifact.Steps, p05Step{Name: "conditional-winner", Original: original.wire, Result: p05Result(t, committed), Records: records, Before: old})
-			case "empty-range-and-absent-key-insertion":
-				if !old.AbsentEntity || !old.AbsentValue || !old.AbsentLife || len(old.Keys) != 0 || len(old.NodeUnique) != 0 || len(old.RelUnique) != 0 {
-					t.Fatal("absence/range footprint not empty", old)
-				}
-				p := p05Prepare(t, f, 1, 2, 0, nil)
-				from := f.indexes()
-				result := f.run(1, p)
-				if !result.decision.commit {
-					t.Fatal("actual node/relationship unique insert failed")
-				}
-				records := p05Records(t, f, from)
-				p05CommitCDC(t, records, result, []graphstate.ComponentKey{{Owner: 9, Kind: graphstate.Presence}, {Owner: 9, Life: 10, Kind: graphstate.ScalarProperty, Name: "u"}, {Owner: 3, Kind: graphstate.Presence}, {Owner: 3, Life: 4, Kind: graphstate.ScalarProperty, Name: "u"}}, 2, 2, 2)
-				inserted := result
-				original = p05Prepare(t, f, 1, 1, 17, nil)
-				from = f.indexes()
-				refused, result := p05AttemptRun(t, f, 1, handle, original)
-				artifact.Attempts = append(artifact.Attempts, refused)
-				if !refused.Conflict || result.decision != (crossStatus{}) {
-					t.Fatal("old empty/absent footprint admitted", refused)
-				}
-				p05NoEffects(t, p05Records(t, f, from), result.resume.tx, true)
-				artifact.Steps = append(artifact.Steps, p05Step{Name: "unique-insertion", Original: p.wire, Result: p05Result(t, inserted), Records: records, Before: old})
-				// Restart owns a NEW complete authenticated cut and evaluates its
-				// actual positive/negative footprint before constructing new work.
-				restarted, restartedCut, _ := p05Open(t, f, actor, graphReadFresh, graphCut{})
-				reevaluated := p05Observe(t, f, actor, restarted)
-				if reevaluated.AbsentEntity || reevaluated.AbsentValue || reevaluated.AbsentLife || len(reevaluated.Keys) != 1 || len(reevaluated.NodeUnique) != 1 || reevaluated.NodeUnique[0].Owner != 9 || len(reevaluated.RelUnique) != 1 || reevaluated.RelUnique[0].Owner != 3 {
-					t.Fatal("restart did not evaluate the complete actual footprint", reevaluated)
-				}
-				artifact.Steps[0].Cut, err = lifecycleRawCertificate(restartedCut)
-				if err != nil {
-					t.Fatal(err)
-				}
-				artifact.Steps[0].After = reevaluated
-				original = p05Prepare(t, f, actor, 1, 17, nil)
-				from = f.indexes()
-				admitted, result := p05AttemptRun(t, f, actor, restarted, original)
-				artifact.Attempts = append(artifact.Attempts, admitted)
-				if admitted.Error != "" || !result.decision.commit {
-					t.Fatal("genuine re-evaluation/new request must COMMIT", admitted, result)
-				}
-				committed = result
-				records = p05Records(t, f, from)
-				// ValueIdentity(5) was genuinely installed as11 by the insertion.
-				// Re-evaluation reuses it rather than minting requested fresh5.
-				p05CommitCDC(t, records, result, []graphstate.ComponentKey{{Owner: 17, Life: 18, Kind: graphstate.ScalarProperty, Name: "p"}}, 0, 0, 0)
-				artifact.Steps = append(artifact.Steps, p05Step{Name: "conditional-re-evaluation", Original: original.wire, Result: p05Result(t, result), Records: records, Before: reevaluated})
-				f.n.all[actor].call(t, processRequest{op: processP05Close, index: restarted})
-			case "temporal-life-value-ABA":
-				previous := old
-				for _, kind := range []uint64{4, 5, 6, 7} {
-					p := p05Prepare(t, f, 1, kind, 0, nil)
-					from := f.indexes()
-					result := f.run(1, p)
-					if !result.decision.commit {
-						t.Fatal("real correction/Close/Reopen failed", kind)
-					}
-					records := p05Records(t, f, from)
-					key := graphstate.ComponentKey{Owner: 3, Life: 4, Kind: graphstate.ScalarProperty, Name: "p"}
-					lives, values := 0, 0
-					if kind == 4 {
-						values = 1
-					}
-					if kind >= 6 {
-						key = graphstate.ComponentKey{Owner: 1, Kind: graphstate.Presence}
-					}
-					if kind == 7 {
-						lives = 1
-					}
-					p05CommitCDC(t, records, result, []graphstate.ComponentKey{key}, 0, lives, values)
-					after, afterCut := p05Current(t, f, 1, graphReadFresh, graphCut{})
-					cutEvidence, err := lifecycleRawCertificate(afterCut)
-					if err != nil {
-						t.Fatal(err)
-					}
-					artifact.Steps = append(artifact.Steps, p05Step{Cut: cutEvidence, Name: fmt.Sprint("native-ABA-", kind), Original: p.wire, Result: p05Result(t, result), Records: records, Before: previous, After: after})
-					previous = after
-				}
-				original = p05Prepare(t, f, 1, 1, 17, nil)
-				from := f.indexes()
-				refused, result := p05AttemptRun(t, f, 1, handle, original)
-				artifact.Attempts = append(artifact.Attempts, refused)
-				if !refused.Conflict || result.decision != (crossStatus{}) {
-					t.Fatal("equal point/scalar masked history/life ABA", refused)
-				}
-				p05NoEffects(t, p05Records(t, f, from), result.resume.tx, true)
-			case "authority-fence-before-prepare":
-				original = p05Prepare(t, f, 1, 1, 17, nil)
-				from := f.indexes()
-				entered, release := p05GateRegister(t, f, 1)
-				defer release()
-				answers := make(chan graphProcessAnswer, 1)
-				runCtx, cancelRun := context.WithTimeout(t.Context(), 30*time.Second)
-				defer cancelRun()
-				go func() {
-					response, err := f.n.all[1].exchange(runCtx, processRequest{op: processP05Coordinate, index: handle, data: original.wire})
-					answers <- graphProcessAnswer{response: response, err: err}
-				}()
-
-				select {
-				case <-entered:
-				case <-time.After(10 * time.Second):
-					t.Fatal("conditional preflight/Register boundary missing")
-				}
-				before := f.n.all[4].call(t, processRequest{op: processStateOp})
-				fence := p05Prepare(t, f, 4, 101, 0, nil)
-				f.n.group(4).event(t, 4, processRequest{op: processPropose, data: mustP05Proposal(t, fence)})
-				command, err := decodeRangeMoveCommand(fence.wire)
-				if err != nil {
-					t.Fatal(err)
-				}
-				abort := p05Prepare(t, f, 4, 102, 0, command.intent)
-				f.n.group(4).event(t, 4, processRequest{op: processPropose, data: mustP05Proposal(t, abort)})
-				after := f.n.all[4].call(t, processRequest{op: processStateOp})
-				if !bytes.Equal(before.image, after.image) || after.applied <= before.applied {
-					t.Fatal("authority control fixture must change actual prefix while graph image stays identical")
-				}
-				for index := before.applied + 1; index <= after.applied; index++ {
-					r := f.n.all[4].call(t, processRequest{op: processEntryRecord, index: index})
-					status, err := decodeRangeMoveStatus(r.outcome)
-					if err != nil || status.result != rangeMoveApplied || status.phase != rangeMoveFence && status.phase != rangeMoveAbort || len(r.changes) != 0 {
-						t.Fatal("actual range fence/abort evidence", err, status)
-					}
-					artifact.Controls = append(artifact.Controls, p06LocalRecord{Partition: 8, Index: index, Outcome: r.outcome, CDC: r.changes})
-				}
-				release()
-				answer := <-answers
-				if answer.err != nil {
-					t.Fatal("original conditional caller", answer.err)
-				}
-				var attempt p05Attempt
-				if err := json.Unmarshal(answer.response.aux, &attempt); err != nil {
-					t.Fatal(err)
-				}
-				result, err := decodeGraphProcessCoordinatorResult(processResponse{aux: attempt.Result})
-				if err != nil {
-					t.Fatal(err)
-				}
-				artifact.Attempts = append(artifact.Attempts, attempt)
-				if attempt.Error != "" || result.decision.commit || result.decision.phase != crossDecide {
-					t.Fatal("intervening native authority prefix obtained YES/COMMIT", attempt, result)
-				}
-				noVotes, resolves := 0, 0
-				for _, record := range p05Records(t, f, from) {
-					if len(record.CDC) != 0 {
-						t.Fatal("authority refusal installed business effects")
-					}
-					status, err := decodeCrossStatus(record.Outcome)
-					if err != nil || status.tx != result.resume.tx {
-						continue
-					}
-					if status.digest != result.decision.digest {
-						t.Fatal("authority refusal changed original condition identity")
-					}
-					if status.phase == crossPrepare && status.ns.partition == 8 {
-						if status.yes || status.why != reasonReadConflict {
-							t.Fatal("changed participant did not retain exact prefix-conflict NO", status)
-						}
-						noVotes++
-					}
-					if status.phase == crossResolve {
-						if status.commit || status.round != result.decision.round {
-							t.Fatal("authority refusal changed durable ABORT", status)
-						}
-						resolves++
-					}
-				}
-				if noVotes != 1 || resolves != 2 {
-					t.Fatal("authority refusal omitted exact participant/decision closure", noVotes, resolves)
-				}
-				committed = result
-
-			}
-			retained := p05Observe(t, f, actor, handle)
-			if !reflect.DeepEqual(retained, old) {
-				t.Fatal("historical read changed after concurrent work")
-			}
-			artifact.Retained = retained
-			f.n.all[actor].call(t, processRequest{op: processP05Close, index: handle})
-			// Closed handles refuse NEW admission, while registered originals use
-			// their retained exact manifests/conditions and need no live read owner.
-			closedProposal := p05Prepare(t, f, actor, 1, 17, nil)
-			from := f.indexes()
-			closed, result := p05AttemptRun(t, f, actor, handle, closedProposal)
-			if !closed.Closed || result.decision != (crossStatus{}) {
-				t.Fatal("closed read admitted new work", closed)
-			}
-			p05NoEffects(t, p05Records(t, f, from), result.resume.tx, true)
-			current, currentCut := p05Current(t, f, actor, graphReadFresh, graphCut{})
-			artifact.Current = current
-			if schedule == "write-skew-A-first" || schedule == "write-skew-B-first" {
-				winner, loser, valueID := uint64(1), uint64(17), uint64(5)
-				if actor == 4 {
-					winner, loser, valueID = 17, 1, 21
-				}
-				for _, at := range []int64{0, 2} {
-					cell := p05Cell(t, current, winner, "p", at)
-					if !cell.Present || cell.I64 != 5 || cell.Handle != valueID || cell.Revision != committed.decision.round || cell.Provenance != 101 || p05Cell(t, current, loser, "p", at) != p05Cell(t, old, loser, "p", at) {
-						t.Fatal("skew winner scalar/original revision or unchanged loser", at, cell)
-					}
-				}
-			}
-			if schedule == "temporal-life-value-ABA" {
-				oldCell, newCell := p05Cell(t, old, 3, "p", 2), p05Cell(t, current, 3, "p", 2)
-				if oldCell.I64 != 5 || newCell.I64 != 5 || oldCell.Handle != newCell.Handle || oldCell.Revision == newCell.Revision || p05Cell(t, old, 3, "p", 0) != p05Cell(t, current, 3, "p", 0) {
-					t.Fatal("ABA must retain point equality while changing actual interval revision")
-				}
-				if p05Presence(t, old, 1, 2).Life != 2 || p05Presence(t, current, 1, 2).Life != 7 || !p05Presence(t, current, 3, 0).Effective || p05Presence(t, current, 3, 2).Effective {
-					t.Fatal("life ABA/partial-overlap effective edge proof")
-				}
-			}
-			if schedule == "empty-range-and-absent-key-insertion" && (current.AbsentEntity || current.AbsentValue || current.AbsentLife || len(current.Keys) != 1 || len(current.NodeUnique) != 1 || current.NodeUnique[0].Owner != 9 || len(current.RelUnique) != 1 || current.RelUnique[0].Owner != 3) {
-				t.Fatal("insertion omitted native negative/range footprint", current)
-			}
-			for i := range artifact.Steps {
-				if i == len(artifact.Steps)-1 {
-					artifact.Steps[i].Cut, err = lifecycleRawCertificate(currentCut)
-					if err != nil {
-						t.Fatal(err)
-					}
-					artifact.Steps[i].After = current
-				}
-			}
-			if committed.resume.request != (requestID{}) {
-				resume, err := encodeP05Resume(committed.resume)
-				if err != nil {
-					t.Fatal(err)
-				}
-				from = f.indexes()
-				r := f.n.all[actor].call(t, processRequest{op: processP05Resume, data: resume})
-				var replay p05Attempt
-				if err := json.Unmarshal(r.aux, &replay); err != nil {
-					t.Fatal(err)
-				}
-				replayed, err := decodeGraphProcessCoordinatorResult(processResponse{aux: replay.Result})
-				if err != nil || replayed != committed || replay.Error != "" {
-					t.Fatal("closed-handle original identity/recovery", err, replay, replayed, committed)
-				}
-				p05NoEffects(t, p05Records(t, f, from), committed.resume.tx, false)
-				artifact.Attempts = append(artifact.Attempts, replay)
-				if schedule == "write-skew-B-first" {
-					changedHandle, _, _ := p05Open(t, f, actor, graphReadAt, currentCut)
-					from = f.indexes()
-					changed, result := p05AttemptRun(t, f, actor, changedHandle, original)
-					if !changed.Invalid || result.decision != (crossStatus{}) {
-						t.Fatal("same original request accepted another authenticated condition", changed)
-					}
-					p05NoEffects(t, p05Records(t, f, from), committed.resume.tx, false)
-					artifact.Attempts = append(artifact.Attempts, changed)
-					f.n.all[actor].call(t, processRequest{op: processP05Close, index: changedHandle})
-				}
-				if schedule == "write-skew-A-first" {
-					artifact.Processes = append(artifact.Processes, f.stopAll()...)
-					artifact.Processes = append(artifact.Processes, p05Reopen(t, f)...)
-					from = f.indexes()
-					r = f.n.all[actor].call(t, processRequest{op: processP05Resume, data: resume})
-					if err := json.Unmarshal(r.aux, &replay); err != nil {
-						t.Fatal(err)
-					}
-					recovered, err := decodeGraphProcessCoordinatorResult(processResponse{aux: replay.Result})
-					if err != nil || recovered != committed || replay.Error != "" {
-						t.Fatal("same-directory original condition/decision changed", err, replay)
-					}
-					p05NoEffects(t, p05Records(t, f, from), committed.resume.tx, false)
-					artifact.Attempts = append(artifact.Attempts, replay)
-				}
-			}
-			if schedule == "write-skew-B-first" {
-				expiring, _, _ := p05Open(t, f, actor, graphReadAt, currentCut, 5)
-				f.n.all[actor].call(t, processRequest{op: processP05Close, index: expiring, entity: 1})
-				freshProposal := p05Prepare(t, f, actor, 1, 1, nil)
-				from = f.indexes()
-				expired, result := p05AttemptRun(t, f, actor, expiring, freshProposal)
-				if !expired.Expired || result.decision != (crossStatus{}) {
-					t.Fatal("actual expired ownership admitted new work", expired)
-				}
-				p05NoEffects(t, p05Records(t, f, from), result.resume.tx, true)
-				artifact.Attempts = append(artifact.Attempts, expired)
-				f.n.all[actor].call(t, processRequest{op: processP05Close, index: expiring})
-			}
-			oldAfter, _ := p05Current(t, f, actor, graphReadAt, cut)
-			if !reflect.DeepEqual(oldAfter, old) {
-				t.Fatal("reopened old certified cut substituted current data")
-			}
-			unchanged, _ := p05Current(t, f, actor, graphReadAt, currentCut)
-			if !reflect.DeepEqual(unchanged, current) {
-				t.Fatal("duplicate/original recovery changed graph/postings/census")
-			}
-			artifact.Phases = finishCapture()
-			artifact.Records = p05Records(t, f, base)
-			wire, err := json.MarshalIndent(artifact, "", "  ")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(f.n.dir, "p05-"+schedule+".json"), wire, 0600); err != nil {
-				t.Fatal(err)
-			}
-		}) {
+		if !t.Run(schedule, func(t *testing.T) { p05ConditionalCase(t, schedule, nil) }) {
 			return
 		}
+	}
+}
+
+// Hooks observe the same genuine conditional scenarios; they grant no source,
+// condition, or proposal authority. Parent is fixed before any child starts.
+type p05CampaignHooks struct {
+	Parent        context.Context
+	Begin         func(*pairedGraphFaultNetwork, uint64, graphCut)
+	BeforeRecords func(*pairedGraphFaultNetwork)
+	Finish        func(*pairedGraphFaultNetwork, p05Artifact, [2]uint64, p05CampaignCaptureCharge)
+}
+
+type p05CampaignCaptureCharge struct {
+	Candidates, Attempts, Work, Output, Retained uint64
+}
+
+func p05ConditionalCase(t *testing.T, schedule string, hooks *p05CampaignHooks) {
+	t.Helper()
+	t.Setenv("RHO_GRAPH_CONDITIONAL_PROCESS", "1")
+	var f *pairedGraphFaultNetwork
+	var finishCapture func() []p06Phase
+	var capture *p05CampaignCapture
+	var charge p05CampaignCaptureCharge
+	if hooks == nil {
+		f = newPairedGraphFaultNetwork(t)
+		finishCapture = p05Capture(f)
+	} else {
+		if hooks.Parent == nil || hooks.Begin == nil || hooks.BeforeRecords == nil || hooks.Finish == nil {
+			t.Fatal("incomplete bounded P05 campaign hooks")
+		}
+		t.Setenv("RHO_GRAPH_PROTOCOL_CAMPAIGN", nativeProtocolCampaignProfile)
+		f = newPairedGraphFaultNetworkWithParent(t, hooks.Parent)
+		capture = newP05CampaignCapture(f)
+		t.Cleanup(capture.close)
+		finishCapture = func() []p06Phase {
+			var rows []p06Phase
+			rows, charge = capture.finish()
+			return rows
+		}
+	}
+	proofRecords := func(from [2]uint64) []lifecycleRawRecord {
+		if hooks != nil {
+			hooks.BeforeRecords(f)
+		}
+		return p05Records(t, f, from)
+	}
+	base := f.indexes()
+	for stage := 1; stage <= 2; stage++ {
+		actor := uint64(1)
+		if stage == 2 {
+			actor = 4
+		}
+		p := f.proposal(stage)
+		result := f.run(actor, p)
+		if !result.decision.commit {
+			t.Fatal("unconditional fixture node creation failed")
+		}
+	}
+	if schedule == "temporal-life-value-ABA" {
+		if result := f.run(1, f.proposal(3)); !result.decision.commit {
+			t.Fatal("unconditional edge creation failed")
+		}
+	}
+	actor := uint64(1)
+	if schedule == "write-skew-B-first" {
+		actor = 4
+	}
+	handle, cut, condition := p05Open(t, f, actor, graphReadFresh, graphCut{})
+	old := p05Observe(t, f, actor, handle)
+	cutWire, err := lifecycleRawCertificate(cut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact := p05Artifact{Schedule: schedule, Condition: condition, Cut: cutWire, Old: old}
+	if hooks != nil {
+		hooks.Begin(f, handle, cut)
+	}
+	var committed crossProcessResult
+	var original allocationProposal
+	switch schedule {
+	case "write-skew-A-first", "write-skew-B-first":
+		other := uint64(4)
+		owner, otherOwner := uint64(1), uint64(17)
+		if actor == 4 {
+			other, owner, otherOwner = 1, 17, 1
+		}
+		otherHandle, _, _ := p05Open(t, f, other, graphReadAt, cut)
+		if p05Cell(t, old, 1, "p", 0).Present || p05Cell(t, old, 17, "p", 0).Present {
+			t.Fatal("skew read predicate not genuinely absent")
+		}
+		original = p05Prepare(t, f, actor, 1, owner, nil)
+		from := f.indexes()
+		attempt, result := p05AttemptRun(t, f, actor, handle, original)
+		artifact.Attempts = append(artifact.Attempts, attempt)
+		if attempt.Error != "" || !result.decision.commit {
+			t.Fatal("unchanged condition must genuinely COMMIT", attempt, result)
+		}
+		committed = result
+		records := proofRecords(from)
+		p05CommitCDC(t, records, result, []graphstate.ComponentKey{{Owner: graphstate.EntityID(owner), Life: graphstate.LifeID(owner + 1), Kind: graphstate.ScalarProperty, Name: "p"}}, 0, 0, 1)
+		loser := p05Prepare(t, f, other, 1, otherOwner, nil)
+		from = f.indexes()
+		refused, result := p05AttemptRun(t, f, other, otherHandle, loser)
+		artifact.Attempts = append(artifact.Attempts, refused)
+		if !refused.Conflict || refused.Unavailable || result.decision != (crossStatus{}) {
+			t.Fatal("historical skew branch admitted", refused, result)
+		}
+		p05NoEffects(t, proofRecords(from), result.resume.tx, true)
+		if retained := p05Observe(t, f, other, otherHandle); !reflect.DeepEqual(retained, old) {
+			t.Fatal("held old skew read became current")
+		}
+		f.call(f.n.all[other], processRequest{op: processP05Close, index: otherHandle})
+		artifact.Steps = append(artifact.Steps, p05Step{Name: "conditional-winner", Original: original.wire, Result: p05Result(t, committed), Records: records, Before: old})
+	case "empty-range-and-absent-key-insertion":
+		if !old.AbsentEntity || !old.AbsentValue || !old.AbsentLife || len(old.Keys) != 0 || len(old.NodeUnique) != 0 || len(old.RelUnique) != 0 {
+			t.Fatal("absence/range footprint not empty", old)
+		}
+		p := p05Prepare(t, f, 1, 2, 0, nil)
+		from := f.indexes()
+		result := f.run(1, p)
+		if !result.decision.commit {
+			t.Fatal("actual node/relationship unique insert failed")
+		}
+		records := proofRecords(from)
+		p05CommitCDC(t, records, result, []graphstate.ComponentKey{{Owner: 9, Kind: graphstate.Presence}, {Owner: 9, Life: 10, Kind: graphstate.ScalarProperty, Name: "u"}, {Owner: 3, Kind: graphstate.Presence}, {Owner: 3, Life: 4, Kind: graphstate.ScalarProperty, Name: "u"}}, 2, 2, 2)
+		inserted := result
+		original = p05Prepare(t, f, 1, 1, 17, nil)
+		from = f.indexes()
+		refused, result := p05AttemptRun(t, f, 1, handle, original)
+		artifact.Attempts = append(artifact.Attempts, refused)
+		if !refused.Conflict || result.decision != (crossStatus{}) {
+			t.Fatal("old empty/absent footprint admitted", refused)
+		}
+		p05NoEffects(t, proofRecords(from), result.resume.tx, true)
+		artifact.Steps = append(artifact.Steps, p05Step{Name: "unique-insertion", Original: p.wire, Result: p05Result(t, inserted), Records: records, Before: old})
+		// Restart owns a NEW complete authenticated cut and evaluates its
+		// actual positive/negative footprint before constructing new work.
+		restarted, restartedCut, _ := p05Open(t, f, actor, graphReadFresh, graphCut{})
+		reevaluated := p05Observe(t, f, actor, restarted)
+		if reevaluated.AbsentEntity || reevaluated.AbsentValue || reevaluated.AbsentLife || len(reevaluated.Keys) != 1 || len(reevaluated.NodeUnique) != 1 || reevaluated.NodeUnique[0].Owner != 9 || len(reevaluated.RelUnique) != 1 || reevaluated.RelUnique[0].Owner != 3 {
+			t.Fatal("restart did not evaluate the complete actual footprint", reevaluated)
+		}
+		artifact.Steps[0].Cut, err = lifecycleRawCertificate(restartedCut)
+		if err != nil {
+			t.Fatal(err)
+		}
+		artifact.Steps[0].After = reevaluated
+		original = p05Prepare(t, f, actor, 1, 17, nil)
+		from = f.indexes()
+		admitted, result := p05AttemptRun(t, f, actor, restarted, original)
+		artifact.Attempts = append(artifact.Attempts, admitted)
+		if admitted.Error != "" || !result.decision.commit {
+			t.Fatal("genuine re-evaluation/new request must COMMIT", admitted, result)
+		}
+		committed = result
+		records = proofRecords(from)
+		// ValueIdentity(5) was genuinely installed as11 by the insertion.
+		// Re-evaluation reuses it rather than minting requested fresh5.
+		p05CommitCDC(t, records, result, []graphstate.ComponentKey{{Owner: 17, Life: 18, Kind: graphstate.ScalarProperty, Name: "p"}}, 0, 0, 0)
+		artifact.Steps = append(artifact.Steps, p05Step{Name: "conditional-re-evaluation", Original: original.wire, Result: p05Result(t, result), Records: records, Before: reevaluated})
+		f.call(f.n.all[actor], processRequest{op: processP05Close, index: restarted})
+	case "temporal-life-value-ABA":
+		previous := old
+		for _, kind := range []uint64{4, 5, 6, 7} {
+			p := p05Prepare(t, f, 1, kind, 0, nil)
+			from := f.indexes()
+			result := f.run(1, p)
+			if !result.decision.commit {
+				t.Fatal("real correction/Close/Reopen failed", kind)
+			}
+			records := proofRecords(from)
+			key := graphstate.ComponentKey{Owner: 3, Life: 4, Kind: graphstate.ScalarProperty, Name: "p"}
+			lives, values := 0, 0
+			if kind == 4 {
+				values = 1
+			}
+			if kind >= 6 {
+				key = graphstate.ComponentKey{Owner: 1, Kind: graphstate.Presence}
+			}
+			if kind == 7 {
+				lives = 1
+			}
+			p05CommitCDC(t, records, result, []graphstate.ComponentKey{key}, 0, lives, values)
+			after, afterCut := p05Current(t, f, 1, graphReadFresh, graphCut{})
+			cutEvidence, err := lifecycleRawCertificate(afterCut)
+			if err != nil {
+				t.Fatal(err)
+			}
+			artifact.Steps = append(artifact.Steps, p05Step{Cut: cutEvidence, Name: fmt.Sprint("native-ABA-", kind), Original: p.wire, Result: p05Result(t, result), Records: records, Before: previous, After: after})
+			previous = after
+		}
+		original = p05Prepare(t, f, 1, 1, 17, nil)
+		from := f.indexes()
+		refused, result := p05AttemptRun(t, f, 1, handle, original)
+		artifact.Attempts = append(artifact.Attempts, refused)
+		if !refused.Conflict || result.decision != (crossStatus{}) {
+			t.Fatal("equal point/scalar masked history/life ABA", refused)
+		}
+		p05NoEffects(t, proofRecords(from), result.resume.tx, true)
+	case "authority-fence-before-prepare":
+		original = p05Prepare(t, f, 1, 1, 17, nil)
+		from := f.indexes()
+		var entered <-chan struct{}
+		var release func()
+		if capture == nil {
+			entered, release = p05GateRegister(t, f, 1)
+		} else {
+			entered, release = p05CampaignGateRegister(f, 1, capture)
+		}
+		defer release()
+		answers := make(chan graphProcessAnswer, 1)
+		runCtx, cancelRun := f.operationContext(30 * time.Second)
+		defer cancelRun()
+		go func() {
+			response, err := f.n.all[1].exchange(runCtx, processRequest{op: processP05Coordinate, index: handle, data: original.wire})
+			answers <- graphProcessAnswer{response: response, err: err}
+		}()
+
+		if f.parent == nil {
+			select {
+			case <-entered:
+			case <-time.After(10 * time.Second):
+				t.Fatal("conditional preflight/Register boundary missing")
+			}
+		} else {
+			waitCtx, cancelWait := f.operationContext(10 * time.Second)
+			defer cancelWait()
+			select {
+			case <-entered:
+				f.requireActive()
+			case <-waitCtx.Done():
+				t.Fatal("conditional Register hold exceeded original deadline", waitCtx.Err())
+			}
+		}
+		before := f.call(f.n.all[4], processRequest{op: processStateOp})
+		fence := p05Prepare(t, f, 4, 101, 0, nil)
+		f.groupEvent(f.n.group(4), 4, processRequest{op: processPropose, data: mustP05Proposal(t, fence)})
+		command, err := decodeRangeMoveCommand(fence.wire)
+		if err != nil {
+			t.Fatal(err)
+		}
+		abort := p05Prepare(t, f, 4, 102, 0, command.intent)
+		f.groupEvent(f.n.group(4), 4, processRequest{op: processPropose, data: mustP05Proposal(t, abort)})
+		after := f.call(f.n.all[4], processRequest{op: processStateOp})
+		if !bytes.Equal(before.image, after.image) || after.applied <= before.applied {
+			t.Fatal("authority control fixture must change actual prefix while graph image stays identical")
+		}
+		for index := before.applied + 1; index <= after.applied; index++ {
+			r := f.call(f.n.all[4], processRequest{op: processEntryRecord, index: index})
+			status, err := decodeRangeMoveStatus(r.outcome)
+			if err != nil || status.result != rangeMoveApplied || status.phase != rangeMoveFence && status.phase != rangeMoveAbort || len(r.changes) != 0 {
+				t.Fatal("actual range fence/abort evidence", err, status)
+			}
+			artifact.Controls = append(artifact.Controls, p06LocalRecord{Partition: 8, Index: index, Outcome: r.outcome, CDC: r.changes})
+		}
+		release()
+		var answer graphProcessAnswer
+		if f.parent == nil {
+			answer = <-answers
+		} else {
+			select {
+			case answer = <-answers:
+				f.requireActive()
+			case <-runCtx.Done():
+				t.Fatal("conditional original exceeded its admitted deadline", runCtx.Err())
+			}
+		}
+		if answer.err != nil {
+			t.Fatal("original conditional caller", answer.err)
+		}
+		var attempt p05Attempt
+		if err := json.Unmarshal(answer.response.aux, &attempt); err != nil {
+			t.Fatal(err)
+		}
+		result, err := decodeGraphProcessCoordinatorResult(processResponse{aux: attempt.Result})
+		if err != nil {
+			t.Fatal(err)
+		}
+		artifact.Attempts = append(artifact.Attempts, attempt)
+		if attempt.Error != "" || result.decision.commit || result.decision.phase != crossDecide {
+			t.Fatal("intervening native authority prefix obtained YES/COMMIT", attempt, result)
+		}
+		noVotes, resolves := 0, 0
+		for _, record := range proofRecords(from) {
+			if len(record.CDC) != 0 {
+				t.Fatal("authority refusal installed business effects")
+			}
+			status, err := decodeCrossStatus(record.Outcome)
+			if err != nil || status.tx != result.resume.tx {
+				continue
+			}
+			if status.digest != result.decision.digest {
+				t.Fatal("authority refusal changed original condition identity")
+			}
+			if status.phase == crossPrepare && status.ns.partition == 8 {
+				if status.yes || status.why != reasonReadConflict {
+					t.Fatal("changed participant did not retain exact prefix-conflict NO", status)
+				}
+				noVotes++
+			}
+			if status.phase == crossResolve {
+				if status.commit || status.round != result.decision.round {
+					t.Fatal("authority refusal changed durable ABORT", status)
+				}
+				resolves++
+			}
+		}
+		if noVotes != 1 || resolves != 2 {
+			t.Fatal("authority refusal omitted exact participant/decision closure", noVotes, resolves)
+		}
+		committed = result
+
+	}
+	retained := p05Observe(t, f, actor, handle)
+	if !reflect.DeepEqual(retained, old) {
+		t.Fatal("historical read changed after concurrent work")
+	}
+	artifact.Retained = retained
+	f.call(f.n.all[actor], processRequest{op: processP05Close, index: handle})
+	// Closed handles refuse NEW admission, while registered originals use
+	// their retained exact manifests/conditions and need no live read owner.
+	closedProposal := p05Prepare(t, f, actor, 1, 17, nil)
+	from := f.indexes()
+	closed, result := p05AttemptRun(t, f, actor, handle, closedProposal)
+	if !closed.Closed || result.decision != (crossStatus{}) {
+		t.Fatal("closed read admitted new work", closed)
+	}
+	p05NoEffects(t, proofRecords(from), result.resume.tx, true)
+	current, currentCut := p05Current(t, f, actor, graphReadFresh, graphCut{})
+	artifact.Current = current
+	if schedule == "write-skew-A-first" || schedule == "write-skew-B-first" {
+		winner, loser, valueID := uint64(1), uint64(17), uint64(5)
+		if actor == 4 {
+			winner, loser, valueID = 17, 1, 21
+		}
+		for _, at := range []int64{0, 2} {
+			cell := p05Cell(t, current, winner, "p", at)
+			if !cell.Present || cell.I64 != 5 || cell.Handle != valueID || cell.Revision != committed.decision.round || cell.Provenance != 101 || p05Cell(t, current, loser, "p", at) != p05Cell(t, old, loser, "p", at) {
+				t.Fatal("skew winner scalar/original revision or unchanged loser", at, cell)
+			}
+		}
+	}
+	if schedule == "temporal-life-value-ABA" {
+		oldCell, newCell := p05Cell(t, old, 3, "p", 2), p05Cell(t, current, 3, "p", 2)
+		if oldCell.I64 != 5 || newCell.I64 != 5 || oldCell.Handle != newCell.Handle || oldCell.Revision == newCell.Revision || p05Cell(t, old, 3, "p", 0) != p05Cell(t, current, 3, "p", 0) {
+			t.Fatal("ABA must retain point equality while changing actual interval revision")
+		}
+		if p05Presence(t, old, 1, 2).Life != 2 || p05Presence(t, current, 1, 2).Life != 7 || !p05Presence(t, current, 3, 0).Effective || p05Presence(t, current, 3, 2).Effective {
+			t.Fatal("life ABA/partial-overlap effective edge proof")
+		}
+	}
+	if schedule == "empty-range-and-absent-key-insertion" && (current.AbsentEntity || current.AbsentValue || current.AbsentLife || len(current.Keys) != 1 || len(current.NodeUnique) != 1 || current.NodeUnique[0].Owner != 9 || len(current.RelUnique) != 1 || current.RelUnique[0].Owner != 3) {
+		t.Fatal("insertion omitted native negative/range footprint", current)
+	}
+	for i := range artifact.Steps {
+		if i == len(artifact.Steps)-1 {
+			artifact.Steps[i].Cut, err = lifecycleRawCertificate(currentCut)
+			if err != nil {
+				t.Fatal(err)
+			}
+			artifact.Steps[i].After = current
+		}
+	}
+	if committed.resume.request != (requestID{}) {
+		resume, err := encodeP05Resume(committed.resume)
+		if err != nil {
+			t.Fatal(err)
+		}
+		from = f.indexes()
+		r := f.call(f.n.all[actor], processRequest{op: processP05Resume, data: resume})
+		var replay p05Attempt
+		if err := json.Unmarshal(r.aux, &replay); err != nil {
+			t.Fatal(err)
+		}
+		replayed, err := decodeGraphProcessCoordinatorResult(processResponse{aux: replay.Result})
+		if err != nil || replayed != committed || replay.Error != "" {
+			t.Fatal("closed-handle original identity/recovery", err, replay, replayed, committed)
+		}
+		p05NoEffects(t, proofRecords(from), committed.resume.tx, false)
+		artifact.Attempts = append(artifact.Attempts, replay)
+		if schedule == "write-skew-B-first" {
+			changedHandle, _, _ := p05Open(t, f, actor, graphReadAt, currentCut)
+			from = f.indexes()
+			changed, result := p05AttemptRun(t, f, actor, changedHandle, original)
+			if !changed.Invalid || result.decision != (crossStatus{}) {
+				t.Fatal("same original request accepted another authenticated condition", changed)
+			}
+			p05NoEffects(t, proofRecords(from), committed.resume.tx, false)
+			artifact.Attempts = append(artifact.Attempts, changed)
+			f.call(f.n.all[actor], processRequest{op: processP05Close, index: changedHandle})
+		}
+		if schedule == "write-skew-A-first" {
+			artifact.Processes = append(artifact.Processes, f.stopAll()...)
+			artifact.Processes = append(artifact.Processes, p05Reopen(t, f)...)
+			if capture != nil {
+				capture.attach(f)
+			}
+			from = f.indexes()
+			r = f.call(f.n.all[actor], processRequest{op: processP05Resume, data: resume})
+			if err := json.Unmarshal(r.aux, &replay); err != nil {
+				t.Fatal(err)
+			}
+			recovered, err := decodeGraphProcessCoordinatorResult(processResponse{aux: replay.Result})
+			if err != nil || recovered != committed || replay.Error != "" {
+				t.Fatal("same-directory original condition/decision changed", err, replay)
+			}
+			p05NoEffects(t, proofRecords(from), committed.resume.tx, false)
+			artifact.Attempts = append(artifact.Attempts, replay)
+		}
+	}
+	if schedule == "write-skew-B-first" {
+		expiring, _, _ := p05Open(t, f, actor, graphReadAt, currentCut, 5)
+		f.call(f.n.all[actor], processRequest{op: processP05Close, index: expiring, entity: 1})
+		freshProposal := p05Prepare(t, f, actor, 1, 1, nil)
+		from = f.indexes()
+		expired, result := p05AttemptRun(t, f, actor, expiring, freshProposal)
+		if !expired.Expired || result.decision != (crossStatus{}) {
+			t.Fatal("actual expired ownership admitted new work", expired)
+		}
+		p05NoEffects(t, proofRecords(from), result.resume.tx, true)
+		artifact.Attempts = append(artifact.Attempts, expired)
+		f.call(f.n.all[actor], processRequest{op: processP05Close, index: expiring})
+	}
+	oldAfter, _ := p05Current(t, f, actor, graphReadAt, cut)
+	if !reflect.DeepEqual(oldAfter, old) {
+		t.Fatal("reopened old certified cut substituted current data")
+	}
+	unchanged, _ := p05Current(t, f, actor, graphReadAt, currentCut)
+	if !reflect.DeepEqual(unchanged, current) {
+		t.Fatal("duplicate/original recovery changed graph/postings/census")
+	}
+	artifact.Phases = finishCapture()
+	artifact.Records = proofRecords(base)
+	if hooks != nil {
+		hooks.Finish(f, artifact, base, charge)
+		return
+	}
+	wire, err := json.MarshalIndent(artifact, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.n.dir, "p05-"+schedule+".json"), wire, 0600); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -1280,6 +1397,7 @@ func p05Reopen(t *testing.T, f *pairedGraphFaultNetwork) []pairedFaultProcess {
 		if old[id].cmd.ProcessState == nil || !old[id].closed {
 			t.Fatal("P05 reopen before actual child reap")
 		}
+		f.requireActive()
 		fresh[id] = startGraphProcess(t, filepath.Join(f.n.dir, fmt.Sprint(id)), id, "RHO_GRAPH_CERTIFIED_PROCESS=1", "RHO_GRAPH_SOURCE_PROCESS=1", "RHO_GRAPH_LIFECYCLE_PROCESS=1", "RHO_GRAPH_PAIRED_PROCESS=1", "RHO_GRAPH_CONDITIONAL_PROCESS=1", "RHO_GRAPH_PROCESS_REOPEN=1")
 		f.incarnations = append(f.incarnations, fresh[id])
 	}
@@ -1293,12 +1411,12 @@ func p05Reopen(t *testing.T, f *pairedGraphFaultNetwork) []pairedFaultProcess {
 	f.mu.Unlock()
 	f.installFilter()
 	for _, leader := range []uint64{1, 4} {
-		f.n.group(leader).event(t, leader, processRequest{op: processCampaign})
-		f.n.read(t, leader, observeConfiguration, 0)
+		f.groupEvent(f.n.group(leader), leader, processRequest{op: processCampaign})
+		f.bootstrapRead(leader, observeConfiguration, 0)
 		f.heal(leader)
 	}
 	for id := uint64(1); id <= 6; id++ {
-		raw, err := encodeProcessResponse(fresh[id].call(t, processRequest{op: processStateOp}))
+		raw, err := encodeProcessResponse(f.call(fresh[id], processRequest{op: processStateOp}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1345,4 +1463,220 @@ func p05Capture(f *pairedGraphFaultNetwork) func() []p06Phase {
 		defer mu.Unlock()
 		return slices.Clone(frames)
 	}
+}
+
+// The fresh capture uses the fixture's existing whole-cohort IPC ceiling and
+// the legacy128 retained-frame ceiling. Delivered bytes are charged BEFORE
+// decoding or taking ownership; diagnostic refusal never fabricates a reply.
+type p05CampaignCapture struct {
+	mu      sync.Mutex
+	f       *pairedGraphFaultNetwork
+	charge  p05CampaignCaptureCharge
+	frames  []p06Phase
+	slots   []p05CampaignCaptureSlot
+	closed  bool
+	refused bool
+}
+
+type p05CampaignCaptureSlot struct {
+	hub   *graphProcessHub
+	prior func(context.Context, uint64, uint64, []byte, []byte) error
+}
+
+func newP05CampaignCapture(f *pairedGraphFaultNetwork) *p05CampaignCapture {
+	// Prepay the fixed selected-row and two-hub directory headers before their
+	// allocations. Exact capacity prevents append growth from hiding ownership.
+	const headers = 128*64 + 2*64
+	c := &p05CampaignCapture{f: f, charge: p05CampaignCaptureCharge{Output: headers, Retained: headers}}
+	c.frames = make([]p06Phase, 0, 128)
+	c.slots = make([]p05CampaignCaptureSlot, 0, 2)
+	c.attach(f)
+	return c
+}
+
+func (c *p05CampaignCapture) attach(f *pairedGraphFaultNetwork) {
+	// A cohort reopen has already reaped/drained the old hub. Continue this SAME
+	// consumptive owner on the new actual pipes, without resetting its ledger.
+	hub := f.n.all[1].mux.hub
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || len(c.slots) >= 2 {
+		f.t.Fatal("P05 capture admits only original and same-volume reopened hubs")
+	}
+	for _, slot := range c.slots {
+		if slot.hub == hub {
+			f.t.Fatal("P05 capture already owns this actual hub")
+		}
+	}
+	hub.mu.Lock()
+	prior := hub.afterRelay
+	hub.afterRelay = func(ctx context.Context, origin, partition uint64, request, reply []byte) error {
+		if prior != nil {
+			if err := prior(ctx, origin, partition, request, reply); err != nil {
+				return err
+			}
+		}
+		return c.after(ctx, origin, partition, request, reply)
+	}
+	hub.mu.Unlock()
+	c.slots = append(c.slots, p05CampaignCaptureSlot{hub: hub, prior: prior})
+}
+
+func (c *p05CampaignCapture) after(ctx context.Context, origin, partition uint64, request, reply []byte) error {
+	const candidates = 2 * (processDeliveries + 96*4*1024) // At most before+after per admitted fixture RPC.
+	const retainedFrames = 128                             // Same selected-row ceiling as p05Capture.
+	const frameWork = 4096 + 64*processFrameBytes
+	const frameOutput = 8192 + 16*processFrameBytes
+	const frameRetained = 64 + 2*processFrameBytes
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		c.refused = true
+		return err
+	}
+	if c.closed || c.charge.Candidates >= candidates || len(request) > processFrameBytes || len(reply) > processFrameBytes {
+		c.refused = true
+		return errLimit
+	}
+	work := uint64(4096 + 32*(len(request)+len(reply)))
+	if work > uint64(candidates)*frameWork-c.charge.Work {
+		c.refused = true
+		return errLimit
+	}
+	c.charge.Candidates++
+	c.charge.Work += work
+	q, err := decodeGraphSourceRequest(request)
+	if err != nil {
+		c.refused = true
+		return err
+	}
+	if q.kind != sourceSubmit && q.kind != sourceCertifiedOpen {
+		return nil
+	}
+	output := uint64(8192 + 8*(len(request)+len(reply)))
+	retained := uint64(64 + len(request) + len(reply))
+	if c.charge.Attempts >= retainedFrames || output > uint64(candidates)*frameOutput-c.charge.Output || retained > retainedFrames*frameRetained-c.charge.Retained {
+		c.refused = true
+		return errLimit
+	}
+	c.charge.Attempts++
+	c.charge.Output += output
+	c.charge.Retained += retained
+	r, err := decodeGraphWireResponse(reply)
+	if err != nil || r.kind != q.kind || r.sequence != q.sequence || r.nonce != q.nonce || r.peer.scope.partition != partition {
+		c.refused = true
+		return errors.Join(errCorrupt, err)
+	}
+	ownedRequest, ownedReply := make([]byte, len(request)), make([]byte, len(reply))
+	copy(ownedRequest, request)
+	copy(ownedReply, reply)
+	c.frames = append(c.frames, p06Phase{origin, partition, ownedRequest, ownedReply})
+	return nil
+}
+
+func (c *p05CampaignCapture) close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	// Only the after hook belongs to this owner. The native before/failed gate
+	// remains independently owned and is restored by its own LIFO cleanup.
+	for _, slot := range c.slots {
+		slot.hub.mu.Lock()
+		slot.hub.afterRelay = slot.prior
+		slot.hub.mu.Unlock()
+	}
+	c.closed = true
+}
+
+func (c *p05CampaignCapture) finish() ([]p06Phase, p05CampaignCaptureCharge) {
+	c.f.drain()
+	c.close()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.refused {
+		c.f.t.Fatal("P05 full-frame capture exceeded its original prepaid ledger")
+	}
+	rows := c.frames // Transfer the already-owned full rows; no second copy/arena.
+	c.frames = nil
+	return rows, c.charge
+}
+
+func p05CampaignGateRegister(f *pairedGraphFaultNetwork, actor uint64, capture *p05CampaignCapture) (<-chan struct{}, func()) {
+	entered := make(chan struct{}, 1)
+	released := make(chan struct{})
+	var once, end sync.Once
+	hub := f.n.all[actor].mux.hub
+	hub.mu.Lock()
+	prior := hub.beforeRelay
+	hub.beforeRelay = func(ctx context.Context, origin, partition uint64, wire []byte) error {
+		if err := capture.prepayGate(ctx, wire); err != nil {
+			return err
+		}
+		q, err := decodeGraphSourceRequest(wire)
+		if err != nil {
+			return err
+		}
+		if origin == actor && partition == 3 && q.kind == sourceSubmit {
+			p, err := decodeGraphSourceProposal(q.command)
+			if err != nil {
+				return err
+			}
+			if isCrossPartitionWire(p.wire) {
+				command, _, err := decodeCrossCommand(p.wire, defaultMaterializerLimits())
+				if err != nil {
+					return err
+				}
+				if command.phase == crossRegister {
+					once.Do(func() { entered <- struct{}{} })
+					select {
+					case <-released:
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+			}
+		}
+		// Run the existing native selector AFTER the genuine authority hold has
+		// released, so it still observes the actual queued Register command.
+		if prior != nil {
+			return prior(ctx, origin, partition, wire)
+		}
+		return nil
+	}
+	hub.mu.Unlock()
+	return entered, func() {
+		end.Do(func() {
+			close(released)
+			hub.mu.Lock()
+			hub.beforeRelay = prior
+			hub.mu.Unlock()
+		})
+	}
+}
+
+func (c *p05CampaignCapture) prepayGate(ctx context.Context, wire []byte) error {
+	// The authority hold performs its own full canonical proposal/command
+	// decode. Fund that temporary ownership BEFORE decode, on the same ledger
+	// as capture; no fresh decoder allowance is created for a retry.
+	const candidates = 2 * (processDeliveries + 96*4*1024)
+	const frameWork = 4096 + 64*processFrameBytes
+	const frameOutput = 8192 + 16*processFrameBytes
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		c.refused = true
+		return err
+	}
+	work := uint64(4096 + 32*len(wire))
+	output := uint64(8192 + 16*len(wire))
+	if c.closed || c.charge.Candidates >= candidates || len(wire) > processFrameBytes || work > uint64(candidates)*frameWork-c.charge.Work || output > uint64(candidates)*frameOutput-c.charge.Output {
+		c.refused = true
+		return errLimit
+	}
+	c.charge.Candidates++
+	c.charge.Work += work
+	c.charge.Output += output
+	return nil
 }

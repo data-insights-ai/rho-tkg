@@ -46,6 +46,11 @@ type nativeP06PreparedContinuation struct {
 	Pending                          processResponse
 	FirstKilled                      pairedFaultProcess
 	Evidence                         nativeP06PreparedProvenance
+	// Fresh shared campaign only: these are actual records produced while the
+	// SAME first coordinator invocation is held, not commands to reconstruct.
+	BeforeRecoveryRefused *p06LocalRecord
+	BeforeRecoveryChanged *p06LocalRecord
+	AllowKnownDecision    bool
 }
 
 type nativeP06PreparedCompletion struct {
@@ -79,12 +84,22 @@ func nativeP06CompletePrepared(t *testing.T, s nativeP06PreparedContinuation) na
 			t.Fatal("missing actual stored-vote/selected Sync join", err, voteErr)
 		}
 	}
-	refused := p06SubmitLocal(f, s.RecoveryVoter, p06LocalProposal(f, s.RecoveryVoter, certifiedP08Close, 1, allocationP08Words(2)), reasonPreparedConflict)
-	var changed *p06LocalRecord
-	if !recipe.Commit {
+	var refused p06LocalRecord
+	if s.BeforeRecoveryRefused == nil {
+		refused = p06SubmitLocal(f, s.RecoveryVoter, p06LocalProposal(f, s.RecoveryVoter, certifiedP08Close, 1, allocationP08Words(2)), reasonPreparedConflict)
+	} else {
+		refused = *s.BeforeRecoveryRefused
+	}
+	changed := s.BeforeRecoveryChanged
+	if recipe.Commit && changed != nil {
+		t.Fatal("COMMIT continuation was supplied an intervening endpoint Close")
+	}
+	if !recipe.Commit && changed == nil {
 		actual := p06SubmitLocal(f, f.n.leaders[1], p06LocalProposal(f, f.n.leaders[1], certifiedP08Close, 17, allocationP08Words(18)), reasonNone)
 		changed = &actual
-		f.trace.OperationMapping = append(f.trace.OperationMapping, lifecycleOperationMap{Logical: "node-b-close", Round: p06LocalRound(t, actual)})
+	}
+	if changed != nil {
+		f.trace.OperationMapping = append(f.trace.OperationMapping, lifecycleOperationMap{Logical: "node-b-close", Round: p06LocalRound(t, *changed)})
 	}
 	bVoter := f.n.leaders[1]
 	capture := newNativeConjunctionCapture(f, s.Actor, manifest.tx)
@@ -96,8 +111,14 @@ func nativeP06CompletePrepared(t *testing.T, s nativeP06PreparedContinuation) na
 		t.Fatal("prepared continuation changed immutable original", err, pendingErr)
 	}
 	f.drain()
-	phases, charge := nativeP06InitialTake(t, capture, 5)
-	p06CheckRecoveryPhases(t, phases, prepare, manifest, result.decision, recipe.Commit)
+	var phases []p06Phase
+	var charge nativeP06InitialCharge
+	if s.AllowKnownDecision {
+		phases, charge = nativeProtocolRecoveryCapture(t, capture, prepare, manifest, result.decision, recipe.Commit)
+	} else {
+		phases, charge = nativeP06InitialTake(t, capture, 5)
+		p06CheckRecoveryPhases(t, phases, prepare, manifest, result.decision, recipe.Commit)
+	}
 	nativeP06CheckCensus(t, phases, p06Records(f, s.From, f.indexes()), manifest, prepareManifest(t, prepare), result.decision, recipe.Commit)
 	f.trace.OperationMapping = append(f.trace.OperationMapping, lifecycleOperationMap{Logical: "edge-create", Coordinator: recipe.Coordinator, Request: pairedFaultResultOf(result).Request, Transaction: pairedFaultResultOf(result).Transaction, Round: result.decision.round})
 	recovered := p06Observe(f, s.Actor, graphReadFresh, graphCut{})

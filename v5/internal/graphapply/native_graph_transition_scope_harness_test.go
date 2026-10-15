@@ -101,13 +101,22 @@ func nativeTransitionScopeAssert(t *testing.T, wire []byte, current bool) {
 
 // This bounded source case uses six genuine OS children. The existing P01
 // native-host parent remains a separate, more detailed scalar/claim witness.
-func nativeTransitionScopeCase(t *testing.T, mode graphReadMode) string {
+func nativeTransitionScopeCase(t *testing.T, mode graphReadMode, campaign ...nativeProtocolScopeRecipe) string {
 	t.Helper()
-	if mode != graphReadFresh && mode != graphReadAfter {
+	if mode != graphReadFresh && mode != graphReadAfter || len(campaign) > 1 || len(campaign) == 1 && (!campaign[0].valid() || campaign[0].Mode != mode) {
 		t.Fatal("finite P01 mode")
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	defer cancel()
+	var run [16]byte
+	var deadline int64
+	if len(campaign) == 1 {
+		cancel()
+		run, deadline = nativeP06ConjunctionIdentity(t)
+		t.Setenv("RHO_GRAPH_STABLE_STORAGE_PROCESS", "1")
+		ctx, cancel = context.WithDeadline(t.Context(), time.Unix(0, deadline))
+		defer cancel()
+	}
 	arena, err := graphstate.NewOutputBudget(16 << 20)
 	if err != nil {
 		t.Fatal(err)
@@ -117,16 +126,41 @@ func nativeTransitionScopeCase(t *testing.T, mode graphReadMode) string {
 	if err := arena.Reserve(2*processFrameBytes + (4 << 20) + (2 << 20)); err != nil {
 		t.Fatal(err)
 	}
-	f := newPairedGraphFaultNetwork(t)
+	if len(campaign) == 1 {
+		if err := arena.Reserve(4 << 20); err != nil {
+			t.Fatal("fresh native receipt/process/local-old serialized allowance", err)
+		}
+	}
+	var f *pairedGraphFaultNetwork
+	if len(campaign) == 0 {
+		f = newPairedGraphFaultNetwork(t)
+	} else {
+		f = newPairedGraphFaultNetworkWithParent(t, ctx)
+	}
+	reader := uint64(3)
+	if len(campaign) == 1 {
+		reader = 2 // Survives both actual selected native voters3/6.
+	}
 	// Only B exists at C. A's genuine creation is later coordinated by B;
 	// the old scoped exact-empty answer must remain empty after that commit.
 	nativeTransitionCertificateBusiness(t, f, 2)
 	before := p06Observe(f, 6, graphReadFresh, graphCut{})
+	var nativeOld graphCut
+	if len(campaign) == 1 {
+		nativeOld, err = pairedFaultCut(before.Cut)
+		if err != nil {
+			t.Fatal("actual complete old graph cut for selected native replacement", err)
+		}
+	}
 	oldHandle, oldCut, old := nativeTransitionScopeOpen(t, f, ctx, 2, graphE15ReadRequest{mode: graphReadFresh, partitions: []uint64{3}})
 	oldClosed := false
 	defer func() {
 		if !oldClosed {
-			f.n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: oldHandle})
+			if f.parent == nil {
+				f.n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: oldHandle})
+			} else {
+				f.cleanupCertifiedHandle(f.n.all[2], &oldHandle)
+			}
 		}
 	}()
 	nativeTransitionScopeAssert(t, old.Facts, false)
@@ -140,6 +174,20 @@ func nativeTransitionScopeCase(t *testing.T, mode graphReadMode) string {
 	manifest := nativeTransitionCutManifest(t, f.n.all[1].mux.hub, tx)
 	entered, releaseDecision := p03GateCommittedReply(f, 5, 8)
 	defer releaseDecision()
+	var gate *nativeConjunctionBatchGate
+	var native nativeProtocolScopeEvidence
+	if len(campaign) == 1 {
+		r := campaign[0]
+		target := uint64(3)
+		if r.Partition == 8 {
+			target = 6
+		}
+		gate, err = newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: 5, Partition: r.Partition, Member: target, Phase: r.Phase, Occurrence: 1, Kind: r.Kind, Side: r.Side}, run, deadline)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer gate.close()
+	}
 	call, cancelCall := f.beginRun(5, original)
 	defer cancelCall()
 	decisionBoundary := f.awaitBoundary(entered)
@@ -151,7 +199,9 @@ func nativeTransitionScopeCase(t *testing.T, mode graphReadMode) string {
 	if err != nil || !decision.commit || decision.phase != crossDecide || decision.ns.partition != 8 || decision.tx != tx {
 		t.Fatal("original coordinator B durable COMMIT", decision, err)
 	}
-	p03AssertDecisionRecords(f, decision, decisionBoundary, true)
+	if gate == nil {
+		p03AssertDecisionRecords(f, decision, decisionBoundary, true)
+	}
 	actualManifest := manifest()
 	if len(actualManifest) > 64<<10 || sha256.Sum256(actualManifest) != decision.digest {
 		t.Fatal("bounded original full manifest")
@@ -165,18 +215,26 @@ func nativeTransitionScopeCase(t *testing.T, mode graphReadMode) string {
 	}
 	releaseDecision()
 	f.drain()
+	if gate != nil && campaign[0].Phase != crossResolve {
+		native.nativeProtocolBatchEvidence = nativeProtocolFinishBatch(t, f, gate, nativeOld)
+		p03AssertDecisionRecords(f, decision, decisionBoundary, true)
+	}
 	resume, decodeErr := decodeGraphProcessCoordinatorResult(pending.response)
 	if !errors.Is(decodeErr, errCrossProcessPending) || resume.resume.tx != tx || resume.decision != (crossStatus{}) || !errors.Is(pending.err, context.Canceled) {
 		t.Fatal("unknown original changed to success/ABORT", pending.err, decodeErr)
 	}
 	hub := f.n.all[1].mux.hub
 	hub.mu.Lock()
-	hub.beforeRelay = nil
+	if gate == nil || campaign[0].Phase != crossResolve {
+		hub.beforeRelay = nil
+	}
+	// A selected Resolve still lies ahead. Keep its actual outer native gate;
+	// the bounded original-manifest observer remains its immutable predecessor.
 	hub.mu.Unlock()
 	prepared := make([]nativeTransitionScopePrepared, 0, 3)
 	for _, member := range []uint64{1, 2, 3} {
-		state := f.n.all[member].call(t, processRequest{op: processStateOp})
-		record := f.n.all[member].call(t, processRequest{op: processEntryRecord, index: state.applied})
+		state := f.call(f.n.all[member], processRequest{op: processStateOp})
+		record := f.call(f.n.all[member], processRequest{op: processEntryRecord, index: state.applied})
 		vote, err := decodeCrossStatus(record.outcome)
 		if err != nil || vote.phase != crossPrepare || !vote.yes || vote.tx != tx || vote.digest != decision.digest || vote.index != state.applied || len(record.changes) != 0 {
 			t.Fatal("actual A voters must retain only original YES", member, vote, err)
@@ -190,7 +248,7 @@ func nativeTransitionScopeCase(t *testing.T, mode graphReadMode) string {
 	defer unblock()
 	hub.mu.Lock()
 	hub.afterRelay = func(caller context.Context, origin, partition uint64, wire, reply []byte) error {
-		if origin != 3 || partition != 8 {
+		if origin != reader || partition != 8 {
 			return nil
 		}
 		request, err := decodeGraphSourceRequest(wire)
@@ -222,7 +280,7 @@ func nativeTransitionScopeCase(t *testing.T, mode graphReadMode) string {
 	readCtx, stopRead := context.WithCancel(ctx)
 	defer stopRead()
 	go func() {
-		r, err := f.n.all[3].exchange(readCtx, processRequest{op: processSourceCertifiedOpen, data: request})
+		r, err := f.n.all[reader].exchange(readCtx, processRequest{op: processSourceCertifiedOpen, data: request})
 		answers <- graphProcessAnswer{response: r, err: err}
 	}()
 	drained := false
@@ -269,19 +327,23 @@ func nativeTransitionScopeCase(t *testing.T, mode graphReadMode) string {
 	}
 	f.trace.OperationMapping = append(f.trace.OperationMapping, lifecycleOperationMap{Logical: "node-a", Coordinator: 8,
 		Request: hex.EncodeToString(command.request.id[:]), Transaction: hex.EncodeToString(tx[:]), Round: decision.round})
-	currentHandle, currentCut, recovered := nativeTransitionScopeOpen(t, f, ctx, 3, spec)
+	if gate != nil && campaign[0].Phase == crossResolve {
+		f.drain()
+		native.nativeProtocolBatchEvidence = nativeProtocolFinishBatch(t, f, gate, nativeOld)
+	}
+	currentHandle, currentCut, recovered := nativeTransitionScopeOpen(t, f, ctx, reader, spec)
 	if currentCut.certificates[0].round < decision.round {
 		t.Fatal("scoped Fresh/After omitted acknowledged B original")
 	}
 	nativeTransitionScopeAssert(t, recovered.Facts, true)
-	f.n.all[3].call(t, processRequest{op: processSourceCertifiedClose, index: currentHandle})
+	f.call(f.n.all[reader], processRequest{op: processSourceCertifiedClose, index: currentHandle})
 	retained := old
 	retained.Facts = nativeTransitionScopeFacts(t, f, ctx, 2, oldHandle)
 	nativeTransitionScopeAssert(t, retained.Facts, false)
-	f.n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: oldHandle})
+	f.call(f.n.all[2], processRequest{op: processSourceCertifiedClose, index: oldHandle})
 	oldClosed = true
 	current := p06Observe(f, 6, graphReadFresh, graphCut{})
-	retryReply := f.n.all[5].call(t, processRequest{op: processSourceCoordinate, data: original.wire})
+	retryReply := f.call(f.n.all[5], processRequest{op: processSourceCoordinate, data: original.wire})
 	retry, err := decodeGraphProcessCoordinatorResult(retryReply)
 	if err != nil || retry != result {
 		t.Fatal("same original replay", err)
@@ -295,7 +357,7 @@ func nativeTransitionScopeCase(t *testing.T, mode graphReadMode) string {
 	if !slices.Equal(reopenedCut.certificates, oldCut.certificates) || !bytes.Equal(reopened.Facts, old.Facts) {
 		t.Fatal("native same-directory reopen substituted current A")
 	}
-	f.n.all[2].call(t, processRequest{op: processSourceCertifiedClose, index: reopenedHandle})
+	f.call(f.n.all[2], processRequest{op: processSourceCertifiedClose, index: reopenedHandle})
 	name := "Fresh"
 	if mode == graphReadAfter {
 		name = "After"
@@ -310,6 +372,10 @@ func nativeTransitionScopeCase(t *testing.T, mode graphReadMode) string {
 		Failure: failure, FailureMask: mask, Before: before, Current: current, Old: old, Held: held, Recovered: recovered,
 		Retained: retained, Reopened: reopened, Retry: p06ProcessWire(t, retryReply), Prepared: prepared, Processes: processes,
 		From: from, Through: through}
+	if gate != nil {
+		native.Recipe, native.Run, native.DeadlineUnixNanos, native.P01 = campaign[0], run, deadline, artifact
+		return nativeProtocolScopeWrite(t, ctx, f, native, records)
+	}
 	nativeTransitionWriteRows(t, path, artifact, records, through)
 	return path
 }

@@ -15,17 +15,38 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 )
 
-func p03GateCommittedReply(f *pairedGraphFaultNetwork, actor, partition uint64) (<-chan pairedFaultBoundary, func()) {
+func p03GateCommittedReply(f *pairedGraphFaultNetwork, actor, partition uint64, campaign ...bool) (<-chan pairedFaultBoundary, func()) {
+	if len(campaign) > 1 || len(campaign) == 1 && (!campaign[0] || f.parent == nil) {
+		f.t.Fatal("invalid fresh P03 relay ownership")
+	}
 	entered := make(chan pairedFaultBoundary, 1)
 	released := make(chan struct{})
 	var first sync.Once
 	hub := f.n.all[actor].mux.hub
 	hub.mu.Lock()
+	prior := hub.afterRelay
 	hub.afterRelay = func(ctx context.Context, origin, part uint64, request, reply []byte) error {
+		if len(campaign) == 1 && prior != nil {
+			if err := prior(ctx, origin, part, request, reply); err != nil {
+				return err
+			}
+		}
 		if origin != actor || part != partition || !pairedFaultIsDecide(request) {
 			return nil
 		}
-		first.Do(func() { entered <- pairedFaultBoundary{bytes.Clone(request), bytes.Clone(reply)} })
+		if len(campaign) == 1 && (len(request) > nativeProtocolReplyBytes || len(reply) > nativeProtocolReplyBytes-len(request)) {
+			return nil // Unmatched diagnostic cannot alter the actual native reply.
+		}
+		first.Do(func() {
+			if len(campaign) == 0 {
+				entered <- pairedFaultBoundary{bytes.Clone(request), bytes.Clone(reply)}
+				return
+			}
+			ownedRequest, ownedReply := make([]byte, len(request)), make([]byte, len(reply))
+			copy(ownedRequest, request)
+			copy(ownedReply, reply)
+			entered <- pairedFaultBoundary{ownedRequest, ownedReply}
+		})
 		select {
 		case <-released:
 		case <-ctx.Done():
@@ -38,7 +59,11 @@ func p03GateCommittedReply(f *pairedGraphFaultNetwork, actor, partition uint64) 
 	release := sync.OnceFunc(func() {
 		close(released)
 		hub.mu.Lock()
-		hub.afterRelay = nil
+		if len(campaign) == 1 {
+			hub.afterRelay = prior
+		} else {
+			hub.afterRelay = nil
+		}
 		hub.mu.Unlock()
 	})
 	return entered, release
@@ -156,7 +181,7 @@ func p03AssertDecisionRecords(f *pairedGraphFaultNetwork, decision crossStatus, 
 			f.t.Fatal("P03 missing required coordinator voter", id)
 		}
 		child := f.n.all[id]
-		r := child.call(f.t, processRequest{op: processEntryRecord, index: decision.index})
+		r := f.call(child, processRequest{op: processEntryRecord, index: decision.index})
 		if !bytes.Equal(r.outcome, reply.body) || len(r.changes) != 0 ||
 			r.applied < decision.index || r.stats[statCheckpoint] < decision.index || r.stats[statCommit] < decision.index {
 			f.t.Fatal("P03 original Decide not durably retained unchanged", id, r.applied, decision.index)

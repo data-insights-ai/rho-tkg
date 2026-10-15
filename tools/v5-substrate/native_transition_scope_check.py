@@ -254,7 +254,13 @@ def processes(rows):
     return stopped
 
 
-def check(data):
+def check(data, *, failure_member=3, selected_processes=None):
+    # Fresh campaign callers first authenticate the native batch/kill roster.
+    # Recheck its actual incarnation lineage here before allowing it to explain
+    # a prepared reply from the selected process's earlier incarnation. Ordinary
+    # check(data) retains its exact actor3/cohort-only contract.
+    require(failure_member == 3 if selected_processes is None else failure_member == 2,
+            "ordinary scope reader or explicit fresh campaign reader")
     require(type(data) is dict and set(data) == HEADER and data["Version"] == 1 and data["Profile"] == PROFILE and data["Mode"] in ("Fresh", "After"), "fresh finite P01 source profile")
     integer(data["Version"], 1, 1)
     scopes, old_round = P.cut(data["Before"])
@@ -293,10 +299,29 @@ def check(data):
                                 [dict(event="final", scope=["A", "B"], values=after)])
     require(witness is not None, "independent exact serial/scoped-cut witness: " + str(detail))
     stopped = processes(data["Processes"])
+    selected = {}
+    if selected_processes is not None:
+        require(type(selected_processes) is list and len(selected_processes) == 2, "exact actual selected native kill/reopen")
+        killed, reopened = selected_processes
+        member = integer(killed["Member"], 6, 1)
+        raw, restored = T.decoded(P.raw(killed["Raw"])), T.decoded(P.raw(reopened["Raw"]))
+        require(set(raw) == set("Member PID ExitCode SignalNumber Signaled Reaped Volume Stderr Receipt".split()) and
+                member in (3, 6) and killed["Action"] == "native-batch-transition-kill" and killed["Reaped"] is True and killed["Signal"] == "SIGKILL"
+                and raw["Member"] == raw["Receipt"]["Member"] == member and integer(raw["PID"], minimum=1) == raw["Receipt"]["PID"] and raw["Reaped"] is True and raw["Signaled"] is True
+                and raw["SignalNumber"] == 9 and raw["ExitCode"] == -1 and killed["Instance"].startswith(f'voter{member}/pid{raw["PID"]}/')
+                and raw["Volume"] == killed["Volume"], "actual selected native process death")
+        require(reopened["Member"] == restored["Member"] == member and reopened["Action"] == "reopen" and reopened["Ready"] is True
+                and reopened["PreviousInstance"] == restored["PreviousInstance"] == killed["Instance"] and
+                reopened["Volume"] == restored["Volume"] == killed["Volume"] and raw["PID"] != restored["PID"]
+                and reopened["Instance"] == stopped[member][0]["Instance"] and restored["RecoveryRaw"] == reopened["RecoveryRaw"],
+                "selected native same-directory replacement is the actual later stopped process")
+        selected[member] = killed["Instance"]
     for row in data["Prepared"]:
         native = C.process_response(P.raw(row["State"]))
-        require(stopped[row["Member"]][0]["Instance"].endswith("/" + native["incarnation"].hex()), "prepared reply bound to its actual retired native process")
-    for field, member in (("Failure", 3), ("PendingCaller", 5), ("Retry", 5)):
+        actual = "/" + native["incarnation"].hex()
+        require(stopped[row["Member"]][0]["Instance"].endswith(actual) or
+                selected.get(row["Member"], "").endswith(actual), "prepared reply bound to its actual retired native process")
+    for field, member in (("Failure", failure_member), ("PendingCaller", 5), ("Retry", 5)):
         native = C.process_response(P.raw(data[field]))
         require(stopped[member][0]["Instance"].endswith("/" + native["incarnation"].hex()), "actual request/result source incarnation")
     return dict(mode=data["Mode"], coordinator=8, dataScope=[3], serial_witness=witness, records=len(records),
