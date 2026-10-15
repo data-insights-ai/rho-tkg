@@ -121,7 +121,7 @@ func retainedFeedPagesAndACK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n.submitPartitionGraph(0, local, reasonNone)
+	localOriginal := n.submitPartitionGraph(0, local, reasonNone)
 	current, err := p.coordinator.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -238,20 +238,32 @@ func retainedFeedPagesAndACK(t *testing.T) {
 		t.Fatal(position.err)
 	}
 	identityOffset := len(protocolBody) - len(position.b)
+	actual, err := graphRetentionReader(h, t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	businessFrame, err := h.machine.feedNativeFrame(actual, localOriginal.index, policy.pageBytes, recovered.pin.definition.parts[0].feedStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	businessHead, err := h.machine.feedEnvelope(businessFrame, actual.arena)
+	if err != nil || businessHead.kind != feedLocalEnvelope || businessFrame.progressNext != 0 {
+		t.Fatal("missing authentic first-install business frame", businessHead, err)
+	}
+	if err = actual.view.Close(); err != nil {
+		t.Fatal(err)
+	}
 	for _, identity := range []struct {
 		kind  byte
 		tx    [16]byte
 		round uint64
-	}{{feedLocalEnvelope, [16]byte{1}, 1}, {feedCrossEnvelope, [16]byte{1}, 1}, {feedMoveEnvelope, [16]byte{1}, 1}, {feedLocalEnvelope, [16]byte{}, 1}, {feedLocalEnvelope, [16]byte{1}, 0}, {0, [16]byte{1}, 0}, {0, [16]byte{}, 1}} {
+	}{{feedLocalEnvelope, [16]byte{1}, 1}, {feedCrossEnvelope, [16]byte{1}, 1}, {feedMoveEnvelope, [16]byte{1}, 1}, {feedLocalEnvelope, [16]byte{}, businessHead.round}, {feedLocalEnvelope, businessHead.tx, 0}, {0, [16]byte{1}, 0}, {0, [16]byte{}, 1}} {
 		bad := protocol
 		bad.kind, bad.tx, bad.round = identity.kind, identity.tx, identity.round
 		if identity.kind != 0 && (identity.tx == ([16]byte{}) || identity.round == 0) {
-			// Keep actual frames here so the one-zero refusal cannot pass merely
-			// because the separate empty-business-frame check rejected it first.
-			if len(delivery.page.frames) == 0 {
-				t.Fatal("fixture supplied no authentic frame for one-zero guard")
-			}
-			bad.frames = delivery.page.frames
+			// A real business first-install frame has no protocol census; neither
+			// empty-frame nor progressNext checks can mask the one-zero defect.
+			bad.frames = []retainedFeedFrame{businessFrame}
 		}
 		if _, err := encodeRetainedFeedPage(bad, policy.pageBytes); !errors.Is(err, errInvalid) {
 			t.Fatal("invalid business identity encoded", identity, err)
