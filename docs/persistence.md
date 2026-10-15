@@ -241,7 +241,7 @@ Rows and feeds behave alike: an `fv` above what a release reads fails that row c
 First writable open on v4.54.0 (one-time work, no action needed):
 
 - the open image is format 2, so a store closed by an older release is rebuilt from its rows once, and a clean `Close` writes the new image (cost: the full open of the "Clean reopen" section);
-- with `TemporalIndexOnDisk`, the 0x0B keyspace is rebuilt under the marker `temporal_index_on_disk_built_v2` (envelopes of untimed rows now start at their `TxFrom`, see api.md "Valid-time start (TxFrom)"); the old marker is deleted, so an older release rebuilds it again after a downgrade; a read-only open rebuilds in RAM and writes nothing;
+- with `TemporalIndexOnDisk`, the 0x0B keyspace is rebuilt under the marker `temporal_index_on_disk_built_v2` (envelopes of untimed rows now start at their `TxFrom`, see api.md "Valid-time start (Config.UntimedValidStart)"); the old marker is deleted, so an older release rebuilds it again after a downgrade; a read-only open rebuilds in RAM and writes nothing;
 - with `ColumnsOnDisk`, persisted column blobs of the old format are not used and the columns are rebuilt on first read;
 - a writable open raises the marker to 4 (binary hashes); hex rows already on disk stay readable and are rewritten as they change;
 - v4.52.1 or earlier cannot open the store afterwards. Roll back only to v4.52.2 or v4.53.0 (they read markers 4 and 5, not 6), and only before the first excise.

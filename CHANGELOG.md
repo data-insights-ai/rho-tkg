@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`Config.UntimedValidStart`: where an untimed first version starts** (René, sigma-tkgd, ai-soc; backlog 73). An entity's
+  first version written without a valid-from starts at its `TxFrom` under `graph.UntimedFromTxFrom` (the default, unchanged:
+  backlog 62) or at -inf under `graph.UntimedUnbounded`; a later version without a valid-from starts at its `TxFrom` under
+  both (sigma's genesis rule, `TestLabelAddedLaterKeepsItsStart`; ai-soc's `GetOrCreateByKey` identities). The mode is
+  decided once, where a create writes the first version, and stored in the row as `ValidFrom = types.UnboundedValidFrom`
+  (`math.MinInt64`, an ordinary explicit start; 0 stays "unset"), so every reader (resolver, point/interval/Allen doors,
+  effective timelines and head cache, correction kernel, index envelopes in RAM / `0x0B` / open image / tiered shards,
+  DocValues start column, `CountByLabelAt`, `RelsEffectivePage`, range reads, member time statistics, replicas, exports)
+  sees it from the row with no mode of its own. Every create door applies it, batch and ingest creates at queue and again at
+  commit. The mode is persisted per store (MetaKV `untimed_valid_start`, durable on tiered and sharded, kept across `Reset`);
+  a reopen under the other mode fails with `ErrUntimedModeMismatch`, an empty store takes the configured mode, a store with
+  rows and no key is an `UntimedFromTxFrom` store; a value out of range is `ErrInvalidUntimedValidStart`.
+  `Admin().SetUntimedValidStart(ctx, UntimedUnbounded)` converts an existing store once, one way: marked "converting"
+  durably, every untimed first version (current and history, node and relationship) rewritten through the index-keeping
+  store doors, the mode persisted; a cut-short conversion refuses a `TxFrom` reopen and is finished by an unbounded reopen or
+  a second call. `Stats()` member time statistics count a start at -inf without an end as no explicit valid time
+  (`Eternal()` stays true for untimed identities). Default mode: rows byte-identical to before. Also fixed: the
+  high-frequency index bucket of a start far before its origin overflowed (`BucketFor`, a test-only reader). Tests:
+  `TestUntimedValidStartModes` (memory, badger, sharded, tiered; both modes; every create door incl. `GetOrCreateByKey`;
+  update, close, excise; the indexed, counting and paged doors against the per-entity fold; reopen, legacy, empty store,
+  conversion, interrupted conversion), `TestHFIndexBucketForIsMonotonicAtTheExtremes`. Docs: api.md "Valid-time start
+  (Config.UntimedValidStart)".
+
+### Deprecated
+
+- **The default of `Config.UntimedValidStart` for NEW stores becomes `UntimedUnbounded` in the next minor release**
+  (backlog 73; sigma-tkgd and ai-soc both asked for it). Existing stores keep their persisted or legacy mode (a store with
+  rows and no persisted mode stays `UntimedFromTxFrom`). To keep `UntimedFromTxFrom` for new stores, set
+  `Config.UntimedValidStart = graph.UntimedFromTxFrom` explicitly now.
+
 ## [4.55.3] - 2026-10-15
 
 ### Changed
