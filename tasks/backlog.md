@@ -1127,6 +1127,17 @@ Recovery4 merely by changing a profile label. Existing accepted P08 evidence
 retains its original scope. Source/hash, pinned parser/format and whitespace
 checks passed; compilation, runtime, coverage and C acceptance remain open.
 
+The Recovery4 counterpart is source-integrated at `d77378d2` and `b648da67`.
+It reuses the same 139 boundaries with an explicit fresh artifact agreement.
+Actual native submissions carry before/after observations from one view per
+observation, exact immutable originals and a bounded same-key undo window.
+The independent checker joins the complete native prefix, original outcomes,
+live undo debt and every diagnostic-owner call. Consumed immutable undo rows may
+remain retained; retiring debt does not claim physical deletion. A missing
+service reply remains unknown until the same installed original is observed.
+All four source hashes and complete current parents were checked; pinned Go
+formatting and Git whitespace passed. Compilation and execution remain deferred.
+
 The P01–P06 native storage composition is source-integrated at `10aa770f`:
 524 finite adapter recipes bind actual original calls, native Ready/application
 boundaries and same-directory replacement to the complete serial/cut oracle.
@@ -1143,7 +1154,7 @@ and duplicated native packets retain their configured identities. Full
 original, historical-dependency, queued-candidate and serial/cut checks use
 authenticated process/election context. All 15 final files and 11 complete
 current parents were verified. That extension covers P06's first-live parent;
-its recovery, terminal-replay, initial-register, first-prepare and ordinary
+its recovery, terminal-replay, initial-register, first-prepare, Decide and ordinary
 initial-batch parents retain their literal schedules and still need the
 applicable leader/message conjunctions. Twenty local-leader Ready recipes
 precede their own packet emission. Their separate service/predecessor companion
@@ -1153,9 +1164,9 @@ cached predecessor retransmission or already-emitted Tick packets precede the
 original Ready loss; no selected-command emission is fabricated. The complete
 existing semantic/original/CDC/old-cut oracle precedes the independent companion
 joins. All five frozen files, the complete current owner parent and pinned
-format/whitespace were checked. P07–P09 pooled-state and leader/message
-conjunctions also remain open. No compilation, execution or B/C/D acceptance is
-claimed. The bounded composed
+format/whitespace were checked. P07–P09 leader/message conjunctions remain
+in implementation; their pooled-state capture/checker is integrated above.
+No compilation, execution or B/C/D acceptance is claimed. The bounded composed
 exploration/replay controller is source-integrated at `73d18533`: all six real
 causal recipes precede one or two recorded seeds and fresh exact replays under
 one 16-trial, original-deadline and cumulative resource allowance. Only a
@@ -1174,8 +1185,9 @@ guards and sustained execution remain unexecuted. Fresh-cohort repetition does
 not establish long-lived-store endurance or full D acceptance.
 
 Current worker lanes: Sol 6.1/high for the remaining P06 leader/message source;
-Sol 6.1/high for the pooled-state Go capture; Sol 6.1/high for its independent
-checker. P07–P09 leader/message composition follows the frozen state API.
+Sol 6.1/high for P07–P09 leader/message composition against the frozen state API;
+Sol 6.1/high for existing CI selection/dependency associations for the new
+parents and guards. These are source changes; CI execution remains deferred.
 FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing
 authority; these prefixes do not establish physical server placement. Source
@@ -1192,7 +1204,7 @@ fixtures retain their agreement. The native transfer workload and independent
 checker are source-integrated at `0ea16cc2`, `d70dee0a` and `d907d096`.
 Shared graph batching, recovery byte pools and range-move pool admission are
 source-integrated above. These sources remain uncompiled and runtime-unqualified;
-the pooled-state counterpart is still in implementation. A complete
+the pooled-state counterpart is integrated above. A complete
 static 1M workload bound is not a prerequisite to authoring its driver. Preserve
 all required matrix cells and their capacity gates: safe resource refusal does
 not qualify a successful cost cell, and an incomplete upper bound proves
