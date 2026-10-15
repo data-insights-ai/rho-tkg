@@ -401,7 +401,18 @@ after that binding succeeds. The compact native and offline guards are unrun.
 FDB independent 8/32 writers are source-integrated at `45c61d84`, with bounded
 workers, actual paired retry/abort originals, completion-order-independent
 comparison and genuine post-commit policy observation (`e76c49c7`). Compact
-guards are authored, not executed. The explicitly selected FDB source-history
+guards are authored, not executed. The fresh contention/empty-range family is
+source-integrated at `f9e99ca5`: true native read-modify-increment checks and
+isolated competing empty-ID claims use 1/8/32 callers, immutable uncertain retries
+and authenticated ABORT-only replanning. Its separate artifacts/checker bind
+complete originals, old/current state, CDC, column ownership and derived GC;
+fixed probes share history walks and make no indexed-point latency claim.
+The dispatcher schedules all eight families and local/1/20/100ms profiles, but
+executes only this family/local; unsupported semantics or transport refuse before
+effects. Selected-family execution covers 360 fresh cells; 1M or 32-writer cells
+require explicit finite comparison disk/cache grants. No cell, new guard or
+runtime gate has run. The other seven families, directed RTT, native parity,
+full matrix and engine decision remain open. The explicitly selected FDB source-history
 collector is source-integrated at `5685b659`: durable pre-deletion admission,
 held-read/pin/reference protection, resumable bounded deletion and exact original
 revision checks preserve current anchors, retry outcomes and retained CDC.
