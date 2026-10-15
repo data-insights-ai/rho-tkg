@@ -20,6 +20,27 @@ Spool, Policy, u64 = raw.Spool, raw.Policy, raw.u64
 FAMILY, FORMAT = "cross-edge-endpoint-uniqueness", "graph-edge-endpoint-unique-v1"
 
 
+def metadata(value):
+    fields(value, "Floor Generation Versions Transactions Certificates Bytes Groups")
+    for counter in value.values():
+        integer(counter)
+    return value
+
+
+def writer_census(spec, completed):
+    for name in ("version", "facts", "crossPercent", "writers"):
+        require(type(spec[name]) is int, "integer workload dimensions exclude bool")
+    require(type(completed) is list and len(completed) == 32
+            and all(type(value) is int and value >= 0 for value in completed),
+            "strict bounded per-caller completion counters")
+    total, writers = 6*spec["facts"]+7, spec["writers"]
+    require(writers in (1, 8, 32) and sum(completed) == total
+            and all(completed[i] == (total+writers-1-i)//writers for i in range(writers))
+            and all(value == 0 for value in completed[writers:])
+            and all(value > 0 for value in completed[:writers]),
+            "every declared independent caller completed its exact ordinal assignment")
+
+
 def endpoint(p, remote=False, reopened=False):
     n = p["facts"]
     return {"Owner": int(remote), "Node": 5*n+8 if remote else 3,
@@ -132,6 +153,7 @@ def capture(a, tx, end, reads):
             "complete native capture")
     by_group = {part["Group"]: part for part in tx["Participants"]}
     for g in range(2):
+        metadata(observation["Metadata"][g])
         records = observation["Reads"][g] or []
         wanted = reads.get(g, [])
         require(len(records) == len(wanted), "captured exact point footprint")
@@ -172,6 +194,7 @@ def attempt(a, end, spool):
     candidate = integer(a["Candidate"], 0, 1)
     require(a["Family"] == FAMILY and a["Engine"] == "foundationdb" and a["Phase"] == phase and a["Fact"] == fact, "fresh family operation")
     client, number = integer(a["Client"], 0, p["writers"]-1), integer(a["Attempt"], 1, 64)
+    require(client == (a["Ordinal"]-1) % p["writers"], "actual declared writer assignment")
     integer(a["ReadCallbacks"], 2, 16*(1+8))
     body, proof = blob(a["Proposal"]), a["Proof"]
     require(0 < len(body) <= 8192 and hashlib.sha256(body).digest() == codec.sha_array(a["Digest"]), "exact frozen body/hash")
@@ -223,7 +246,60 @@ def attempt(a, end, spool):
         spool.insert(b"attempt-chain", chain_key, value)
     else:
         spool.replace(b"attempt-chain", chain_key, previous_raw, value)
+    prior_metrics = spool.find(b"timing-attempts", chain_key)
+    metrics = {"Attempts": 0, "Submissions": 0, "ReadCallbacks": 0, "SDKCallbacks": 0} if prior_metrics is None else decoded(prior_metrics)
+    metrics["Attempts"] += 1
+    metrics["Submissions"] += len(a["Submissions"])
+    metrics["ReadCallbacks"] += a["ReadCallbacks"]
+    metrics["SDKCallbacks"] += sum(sub["Callbacks"] for sub in a["Submissions"])
+    metrics["Commit"] = o["Commit"]
+    if prior_metrics is None:
+        spool.insert(b"timing-attempts", chain_key, go_json(metrics))
+    else:
+        spool.replace(b"timing-attempts", chain_key, prior_metrics, go_json(metrics))
     return o
+
+
+def timing_row(row, end, spool):
+    fields(row, "Phase Fact Candidate Ordinal Client StartNanos StopNanos ElapsedNanos AdmissionNanos Attempts Submissions ReadCallbacks SDKCallbacks Commit")
+    phase, fact, fixed = operation(end["spec"], integer(row["Ordinal"], 1))
+    require(row["Phase"] == phase and row["Fact"] == fact
+            and row["Candidate"] in (0, 1) and (fixed is None or row["Candidate"] == fixed)
+            and row["Client"] == (row["Ordinal"]-1) % end["spec"]["writers"],
+            "logical latency is bound to the admitted operation/caller")
+    for field in ("Fact", "Candidate", "Client", "StartNanos", "AdmissionNanos"):
+        integer(row[field])
+    integer(row["StopNanos"], 1, end["TotalNanos"])
+    integer(row["ElapsedNanos"], 1)
+    require(row["StopNanos"]-row["StartNanos"] == row["ElapsedNanos"]
+            and row["AdmissionNanos"] <= row["ElapsedNanos"],
+            "monotone complete-operation elapsed/admission interval")
+    metrics = decoded(spool.lookup(b"timing-attempts", u64(row["Ordinal"])))
+    for field in ("Attempts", "Submissions", "ReadCallbacks", "SDKCallbacks"):
+        require(integer(row[field], 1) == metrics[field], "latency includes every same-original/replan SDK invocation")
+    require(type(row["Commit"]) is bool and row["Commit"] == metrics["Commit"], "actual final logical decision")
+    spool.insert(b"timing-seen", u64(row["Ordinal"]), b"1")
+    spool.insert(b"latency-order", u64(row["ElapsedNanos"])+u64(row["Ordinal"]), b"1")
+
+
+def timings(directory, end, spool):
+    digest, count = hashlib.sha256(), 0
+    for row, line in raw.lines(directory/"fdb-workload-latency.jsonl", 6*end["spec"]["facts"]+8):
+        timing_row(row, end, spool)
+        count += 1
+        digest.update(line)
+    require(count == end["LogicalOperations"] == 6*end["spec"]["facts"]+7
+            and digest.hexdigest() == end["LatencyPayloadSHA256"], "complete hash-bound logical timing stream")
+    ranks = {name: (count*percent+99)//100 for name, percent in (("p50", 50), ("p95", 95), ("p99", 99))}
+    result = {}
+    for index, (key, _) in enumerate(spool.walk(b"latency-order"), 1):
+        for name, rank in ranks.items():
+            if index == rank:
+                result[name+"Nanos"] = int.from_bytes(key[:8], "big")
+    require(len(result) == 3, "bounded spool percentile ranks")
+    return {**result, "logicalOperations": count,
+            "usefulTransactionsPerSecond": end["Committed"]*1_000_000_000/end["BusinessNanos"],
+            "scope": "queue admission through final retained original, including same-original/replan waits; frozen-plan capture is separately inside business-phase time"}
 
 
 def raw_stream(directory, name, end):
@@ -235,6 +311,7 @@ def raw_stream(directory, name, end):
             fields(header, "Type Format Stream Config InitialCut OldCut FinalCut Policy Metadata ConfigRecords MetadataRecords CutRecords")
             require(header["Type"] == "header" and header["Format"] == "fdb-graph-cost-raw-v2" and header["Stream"] == name and header["Config"] == end["Config"] and header["InitialCut"] == end["Initial"] and header["OldCut"] == end["Old"] and header["FinalCut"] == end["Final"] and header["Policy"] == {"PageRows":128,"PageBytes":16<<20}, "exact source/config/cuts")
             for g in range(2):
+                metadata(header["Metadata"][g])
                 raw.raw_record(header["ConfigRecords"][g], raw.key(end["Config"],g,"meta","config"), go_json(end["Config"]))
                 raw.raw_record(header["MetadataRecords"][g], raw.key(end["Config"],g,"meta","state"), go_json(header["Metadata"][g]))
             for record, cut in zip(header["CutRecords"], (end["Initial"],end["Old"],end["Final"]), strict=True):
@@ -461,15 +538,24 @@ def views(directory,end,spool):
 def verify(directory,spool_directory,policy=None):
     directory=Path(directory)
     end=decoded((directory/"fdb-workload-result.json").read_bytes().rstrip(b"\n"))
-    fields(end,"version format spec Config Binding Initial Old Final Attempts Aborted Committed Completed OldMetadata FinalMetadata Sources Columns OldHeldRows Views AttemptPayloadSHA256")
+    fields(end,"version format spec Config Binding Initial Old Final Attempts Aborted Committed Completed OldMetadata FinalMetadata Sources Columns OldHeldRows Views AttemptPayloadSHA256 LatencyPayloadSHA256 LogicalOperations SetupNanos BusinessNanos DiagnosticNanos TotalNanos")
     p=end["spec"];fields(p,"version family facts crossPercent writers layout")
     require(end["version"]==p["version"]==1 and end["format"]==FORMAT and p["family"]==FAMILY and p["writers"] in (1,8,32) and p["crossPercent"] in (0,10,50,100) and p["layout"] in ("kv","columns") and integer(p["facts"],20,1_000_000)%20==0,"fresh family result/spec")
     c=end["Config"];require(c["Cost"]=={**{k:p[k] for k in ("facts","crossPercent","writers")},"version":4},"fresh immutable profile")
     n=p["facts"]
     binding={"Version":1,"Family":FAMILY,"Config":c,"Window":32,"MaxAttempts":64,"Policy":"effective relationship p:UniqueScalar; exact endpoint lives; distinct contenders; retained canonical old relations and originals; unknown never authorizes replan"}
     raw.raw_record(end["Binding"],raw.key(c,0,"workload-edge-unique-v1","binding"),go_json(binding))
-    require(len(end["Completed"])==32 and sum(end["Completed"])==6*n+7
-            and all(v==0 for v in end["Completed"][p["writers"]:]),"actual declared writer completion census")
+    writer_census(p, end["Completed"])
+    for name in ("OldMetadata", "FinalMetadata"):
+        require(len(end[name]) == 2, "both native metadata participants")
+        for value in end[name]:
+            metadata(value)
+    for field in ("version", "Attempts", "Aborted", "Committed", "LogicalOperations", "SetupNanos", "DiagnosticNanos"):
+        integer(end[field])
+    integer(end["BusinessNanos"], 1)
+    integer(end["TotalNanos"], 1)
+    require(end["SetupNanos"]+end["BusinessNanos"]+end["DiagnosticNanos"] == end["TotalNanos"],
+            "explicit setup/business/diagnostic wall-time partition")
     require(len(end["OldHeldRows"]) == 2 and all(type(v) is int and v >= 0 for v in end["OldHeldRows"])
             and sum(end["OldHeldRows"]) == 3+4*n, "complete held old-cut source EOF")
     require(c["Limits"]=={"Bytes":(64<<20)+n*(256<<10)+(7+258*n)*2048,"Transactions":7+258*n,"Versions":7+11*n,"Certificates":1024},"full finite admitted schedule")
@@ -507,4 +593,5 @@ def verify(directory,spool_directory,policy=None):
         # Binary columns are independently checked by the family-specific
         # decoder below, never the legacy5/6 acceptance wrapper.
         columns(directory,end,spool)
-        return {"spec":p,"runGraph":c["Graph"],"commits":commits,"aborts":aborts,"sourceVersions":11*n+7,"scope":"one real family cell; matrix/native parity/transport/capacity remain separately qualified"}
+        timing = timings(directory, end, spool)
+        return {"spec":p,"runGraph":c["Graph"],"commits":commits,"aborts":aborts,"sourceVersions":11*n+7,"timing":timing,"scope":"one real family cell; matrix/native parity/transport/capacity remain separately qualified"}

@@ -82,6 +82,17 @@ type graphEdgeUniqueEvent struct {
 	Client  int
 	Done    bool
 	Err     error
+	Timing  *graphEdgeUniqueTiming
+}
+
+type graphEdgeUniqueClockKey struct{}
+type graphEdgeUniqueTiming struct {
+	Phase                                               string
+	Fact, Candidate, Ordinal                            uint64
+	Client                                              int
+	StartNanos, StopNanos, ElapsedNanos, AdmissionNanos int64
+	Attempts, Submissions, ReadCallbacks, SDKCallbacks  uint64
+	Commit                                              bool
 }
 
 func (h *harness) graphEdgeUniqueInstall(ctx context.Context) (graphCostStoredRecord, error) {
@@ -293,6 +304,11 @@ func (h *harness) graphEdgeUniqueWindow(ctx context.Context, jobs []graphEdgeUni
 	if len(jobs) < 1 || len(jobs) > 32 || emit == nil {
 		return errInvalid
 	}
+	origin, ok := ctx.Value(graphEdgeUniqueClockKey{}).(time.Time)
+	if !ok || origin.IsZero() {
+		return errInvalid
+	}
+	queued := time.Now()
 	queues := make([]chan graphEdgeUniqueJob, h.config.Cost.Writers)
 	events := make(chan graphEdgeUniqueEvent, 32)
 	var workers sync.WaitGroup
@@ -300,8 +316,24 @@ func (h *harness) graphEdgeUniqueWindow(ctx context.Context, jobs []graphEdgeUni
 		queues[client] = make(chan graphEdgeUniqueJob, 1)
 		workers.Go(func() {
 			for job := range queues[client] {
-				proof, err := h.graphEdgeUniqueApply(ctx, job, client, func(e graphEdgeUniqueEvent) { events <- e })
-				events <- graphEdgeUniqueEvent{Job: job, Proof: proof, Client: client, Done: true, Err: err}
+				began := time.Now()
+				timing := graphEdgeUniqueTiming{Phase: job.Phase, Fact: job.Fact, Candidate: job.Candidate, Ordinal: job.Ordinal, Client: client, StartNanos: queued.Sub(origin).Nanoseconds(), AdmissionNanos: began.Sub(queued).Nanoseconds()}
+				proof, err := h.graphEdgeUniqueApply(ctx, job, client, func(e graphEdgeUniqueEvent) {
+					if e.Attempt != nil {
+						timing.Attempts++
+						timing.ReadCallbacks += uint64(e.Attempt.ReadCallbacks)
+						timing.Submissions += uint64(len(e.Attempt.Submissions))
+						for _, sub := range e.Attempt.Submissions {
+							timing.SDKCallbacks += uint64(sub.Callbacks)
+						}
+					} // #nosec G115 -- admitted nonnegative SDK counters.
+					events <- e
+				})
+				ended := time.Now()
+				timing.StopNanos = ended.Sub(origin).Nanoseconds()
+				timing.ElapsedNanos = ended.Sub(queued).Nanoseconds()
+				timing.Commit = proof.Outcome.Commit
+				events <- graphEdgeUniqueEvent{Job: job, Proof: proof, Client: client, Done: true, Err: err, Timing: &timing}
 			}
 		})
 	}

@@ -20,29 +20,34 @@ import (
 )
 
 type graphEdgeUniqueEnd struct {
-	Version                      uint8               `json:"version"`
-	Format                       string              `json:"format"`
-	Spec                         graphEdgeUniqueSpec `json:"spec"`
-	Config                       config
-	Binding                      graphCostStoredRecord
-	Initial, Old, Final          certificate
-	Attempts, Aborted, Committed uint64
-	Completed                    [32]uint64
-	OldMetadata, FinalMetadata   [2]metadata
-	Sources                      [3]graphCostStreamEnd
-	Columns                      [2]graphColumnManifest
-	OldHeldRows                  [2]uint64
-	Views                        [2]graphSnapshotEnd
-	AttemptPayloadSHA256         string
+	Version                                                uint8               `json:"version"`
+	Format                                                 string              `json:"format"`
+	Spec                                                   graphEdgeUniqueSpec `json:"spec"`
+	Config                                                 config
+	Binding                                                graphCostStoredRecord
+	Initial, Old, Final                                    certificate
+	Attempts, Aborted, Committed                           uint64
+	Completed                                              [32]uint64
+	OldMetadata, FinalMetadata                             [2]metadata
+	Sources                                                [3]graphCostStreamEnd
+	Columns                                                [2]graphColumnManifest
+	OldHeldRows                                            [2]uint64
+	Views                                                  [2]graphSnapshotEnd
+	AttemptPayloadSHA256                                   string
+	LatencyPayloadSHA256                                   string
+	LogicalOperations                                      uint64
+	SetupNanos, BusinessNanos, DiagnosticNanos, TotalNanos int64
 }
 type graphEdgeUniqueArtifacts struct {
-	ctx     context.Context
-	h       *harness
-	root    *os.Root
-	file    *os.File
-	replays *os.File
-	payload hash.Hash
-	end     graphEdgeUniqueEnd
+	ctx         context.Context
+	h           *harness
+	root        *os.Root
+	file        *os.File
+	replays     *os.File
+	payload     hash.Hash
+	end         graphEdgeUniqueEnd
+	latency     *json.Encoder
+	latencyHash hash.Hash
 }
 
 func (a *graphEdgeUniqueArtifacts) write(v any) error {
@@ -79,6 +84,13 @@ func (a *graphEdgeUniqueArtifacts) accept(e graphEdgeUniqueEvent) error {
 		}
 	}
 	if e.Done && e.Err == nil {
+		if e.Timing == nil || e.Timing.Ordinal != e.Job.Ordinal || e.Timing.Client != e.Client || e.Timing.ElapsedNanos <= 0 || e.Timing.AdmissionNanos < 0 || e.Timing.AdmissionNanos > e.Timing.ElapsedNanos || e.Timing.StopNanos-e.Timing.StartNanos != e.Timing.ElapsedNanos {
+			return errMismatch
+		}
+		if err := a.latency.Encode(e.Timing); err != nil {
+			return err
+		}
+		a.end.LogicalOperations++
 		o := e.Proof.Outcome
 		mustAbort := e.Job.Phase == "stale" || e.Job.Phase == "frozen-close"
 		if mustAbort && o.Commit || !mustAbort && e.Job.Phase != "claim" && !o.Commit {
@@ -165,6 +177,7 @@ func (h *harness) graphEdgeUniqueWinner(ctx context.Context, fact uint64) (uint6
 }
 
 func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (err error) {
+	started := time.Now()
 	c := graphEdgeUniqueConfig(spec.profile(), spec.Layout, run)
 	if spec.Version != 1 || spec.Family != graphEdgeUniqueFamily || !validGraphEdgeUniqueConfig(c) {
 		return errInvalid
@@ -179,6 +192,7 @@ func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(seconds)*time.Second)
 	defer cancel()
+	ctx = context.WithValue(ctx, graphEdgeUniqueClockKey{}, started)
 	h, err := newHarnessContext(ctx, db, c)
 	if err != nil {
 		return err
@@ -214,6 +228,13 @@ func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (
 		return err
 	}
 	a := &graphEdgeUniqueArtifacts{ctx: ctx, h: h, root: root, file: file, replays: replays, payload: sha256.New(), end: graphEdgeUniqueEnd{Version: 1, Format: graphEdgeUniqueFormat, Spec: spec, Config: c, Binding: binding, Initial: initial.record}}
+	latency, _, err := openGraphCostArtifact(root, "fdb-workload-latency.jsonl")
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, latency.Close()) }()
+	a.latencyHash = sha256.New()
+	a.latency = json.NewEncoder(io.MultiWriter(latency, a.latencyHash))
 	if err = a.write(struct {
 		Type string
 		End  graphEdgeUniqueEnd
@@ -221,6 +242,8 @@ func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (
 		return err
 	}
 	p := c.Cost
+	a.end.SetupNanos = time.Since(started).Nanoseconds()
+	businessStarted := time.Now()
 	apply := func(job graphEdgeUniqueJob) error {
 		return h.graphEdgeUniqueWindow(ctx, []graphEdgeUniqueJob{job}, a.accept)
 	}
@@ -314,6 +337,7 @@ func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (
 		return err
 	}
 	var columns *graphColumnStore
+	a.end.BusinessNanos = time.Since(businessStarted).Nanoseconds()
 	if spec.Layout == "columns" {
 		policy, e1 := graphEdgeUniqueColumnPolicy(p)
 		if e1 != nil {
@@ -328,6 +352,7 @@ func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (
 			return err
 		}
 	}
+	businessStarted = time.Now()
 	for i, remote := range []bool{false, true} {
 		for k, reopened := range []bool{false, true} {
 			kind := "node-close"
@@ -400,6 +425,7 @@ func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (
 	if final.record.Groups[0]+final.record.Groups[1] != n.Groups || a.end.Committed != n.Groups || a.end.FinalMetadata[0].Versions+a.end.FinalMetadata[1].Versions != n.Versions {
 		return errMismatch
 	}
+	a.end.BusinessNanos += time.Since(businessStarted).Nanoseconds()
 	if a.end.OldHeldRows, err = held.walk(ctx, func(graphCostRawRow) error { return nil }); err != nil {
 		return err
 	}
@@ -432,6 +458,12 @@ func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (
 		return err
 	}
 	a.end.AttemptPayloadSHA256 = hex.EncodeToString(a.payload.Sum(nil))
+	a.end.LatencyPayloadSHA256 = hex.EncodeToString(a.latencyHash.Sum(nil))
+	a.end.TotalNanos = time.Since(started).Nanoseconds()
+	a.end.DiagnosticNanos = a.end.TotalNanos - a.end.SetupNanos - a.end.BusinessNanos
+	if a.end.BusinessNanos <= 0 || a.end.DiagnosticNanos < 0 || a.end.LogicalOperations != 6*p.Facts+7 {
+		return errMismatch
+	}
 	if err = json.NewEncoder(file).Encode(struct {
 		Type string
 		End  graphEdgeUniqueEnd
