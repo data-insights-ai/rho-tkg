@@ -128,10 +128,11 @@ cases now pass all ten narrow gates at `da5d32e6` ([receipt](../tools/v5-migrate
 qualification remain pending. The ten-gate v4.51.4 migration receipt
 and [three finite reader lanes](evidence/current-reader-9e805ddc-20261014/receipt.json)
 remain immutable historical proof at `9e805ddc`, without whole-root/V6 acceptance.
-Main `e6f04f41`/v4.55.2 is now source-integrated, without runtime qualification.
+Main `2a72753d`/v4.55.3 is now source-integrated, without runtime qualification.
 The new reader baseline includes binary integrity hashes and newer store markers,
 void pieces for valid-time excision, implicit validity from `TxFrom`, and newer
-index/read capabilities. Consumer source-delta manifests and the migration reader
+index/read capabilities, including sorted equality/composite postings and keyset
+page push-down. Consumer source-delta manifests and the migration reader
 must be refreshed for these contracts during V4/V6; their older pins and all
 historical receipts remain unchanged. The main integration changes no V2 engine
 or comparison paths. No compile, test, measurement or CI run accompanies it:
@@ -283,7 +284,7 @@ all A–F exit requirements; implementation status never implies acceptance.
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (latest observed main source is `e6f04f41`/v4.55.2; current v5 source includes v4.51.8),
+   cutoff (current integrated main source is `2a72753d`/v4.55.3),
    review relevant handover/consumer/CI deltas and integrate required changes.
    The effective-page, history-epoch/head-cache, correction/rollback fast-path
    and compaction-gap version-allocation contracts belong in that source/consumer
@@ -496,8 +497,8 @@ Its retain-all record allowance is corrected at `7d4f62c9`: each entry funds
 (260 records). The authored guard derives that extra record from the native
 recovery API; neither this quota nor the correction is runtime qualification.
 The dispatcher schedules all eight families and local/1/20/100ms profiles.
-FDB has local source drivers for contention, selectors, snapshot-to-feed and
-cross-edge uniqueness; its fresh snapshot-to-feed transport adapter also covers
+FDB has source drivers for contention, selectors, snapshot-to-feed and
+cross-edge uniqueness; their fresh owned transport adapters cover
 local/1/20/100ms. Native has contention and cross-edge source drivers across
 local/1/20/100ms, with local paired cross-edge comparison. Unsupported semantics
 or transport refuse before effects.
@@ -525,13 +526,18 @@ binary, graph declaration, finite budget and deadline. The matrix selects this
 fresh admission explicitly; the original direct local format stays unchanged.
 Its guards are unexecuted; other native families, nonlocal paired comparison and
 the full matrix remain open.
+The FDB transport extension is source-integrated at `452c8913`: contention,
+snapshot selectors and cross-edge uniqueness now bind the same original
+transport/deadline through native policy, captures, retries and retained-original
+fast paths. Old formats remain unchanged. The authored guards and actual
+local/RTT execution remain unqualified.
 The FDB snapshot-to-feed source is integrated at `5c14f42c`/`bb867775`:
 Its fresh owned transport adapter is source-integrated at `7f4a4fb8`: actual
 receiver-ingress delay setup, probes, same-deadline client replacement, cleanup
 and raw process/cgroup accounting are wired across five owned containers.
 The native binding and retained feed original authenticate that fixed admission.
 Tool builds, Linux/FDB execution and all authored guards remain unqualified;
-transport support for the other families and the complete matrix remain open.
+transport support for the four remaining families and the complete matrix remain open.
 Begin journals its actual selected cut and factory intent; Publish atomically
 acquires the pin, snapshot owner and feed cursor. Bounded complete CDC pages
 replay until an exact immutable ACK advances their vectors. Independently

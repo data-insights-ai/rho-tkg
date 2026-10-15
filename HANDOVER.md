@@ -103,9 +103,10 @@ V0/V1 are accepted and V2 remains open. Exact finite source/test receipts live u
 `docs/v5/HANDOVER.md` is external review, reconciled against PLAN, not permission to reduce those
 gates or push/merge main. `docs/v5-analysis.md` §5 keeps the 45-family consumer mapping; immutable
 sigma/ai-soc inventories and current v4 source deltas are in `docs/v5/reference/consumer-*.json`.
-The selected reader is now main `e6f04f41`/v4.55.2, source-integrated and unqualified.
+The selected reader is now main `2a72753d`/v4.55.3, source-integrated and unqualified.
 This changes the v4 row/store format, implicit valid-from rule, void pieces,
-indexes and read APIs. Existing consumer manifests still describe older source;
+indexes and read APIs, including sorted equality/composite postings with keyset
+page push-down. Existing consumer manifests still describe older source;
 refresh their source deltas and prove the reader/importer against the new formats
 before migration acceptance. No earlier qualification covers this baseline.
 Final source selection precedes any new ten-target reader gate.

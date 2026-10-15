@@ -497,6 +497,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   over v5 through `eb2f421` passes with zero reachable vulnerabilities; two
   imported-package and two required-module advisories are unreachable. Final
   consolidated root+v5 CI remains pending; no other v4 API or behavior change.
+
 ## [4.55.3] - 2026-10-15
 
 ### Changed
