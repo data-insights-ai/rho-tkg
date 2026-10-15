@@ -366,12 +366,7 @@ func (m *declaredMaterializer) observeRetainedPin(ctx context.Context, question 
 		out.status = pinExpired
 		return out, nil
 	}
-	part, found := pinPart(actual, m.ns.partition)
-	if !found {
-		return out, errCorrupt
-	}
-	part.feedStart = owner.feedStart
-	if err := m.checkPinSource(&q, part, head); err != nil {
+	if err := m.checkPinRetainedSource(&q, actual, owner, head); err != nil {
 		return out, err
 	}
 	return out, nil
@@ -519,6 +514,12 @@ func (s *graphPeerService) openRetainedPin(ctx context.Context, r graphSourceReq
 			return nil, cfg, errGraphPinExpired
 		}
 		if err := m.checkRetainedPinRoster(&q, false); err != nil {
+			return nil, cfg, err
+		}
+		// A live feed keeper no longer promises a new physical snapshot source
+		// after this authenticated irreversible transition. Check again during
+		// final lease admission, so a racing capture cannot publish a new lease.
+		if err := m.feedSnapshotAvailable(&q, actual); err != nil {
 			return nil, cfg, err
 		}
 		if !acquire {

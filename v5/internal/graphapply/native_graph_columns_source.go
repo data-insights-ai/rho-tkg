@@ -417,7 +417,7 @@ func (s *nativeColumnSource) frame(ctx context.Context, group int, index uint64)
 	if out.Outcome == nil || out.CDC == nil {
 		return out, errCorrupt
 	}
-	if bytes.HasPrefix(out.Outcome, []byte("GPO\x01")) || bytes.HasPrefix(out.Outcome, []byte("GGO\x01")) || h.machine.SemanticContractID() == retainedFeedSemanticContractID() && bytes.HasPrefix(out.Outcome, []byte("GFO\x01")) {
+	if bytes.HasPrefix(out.Outcome, []byte("GPO\x01")) || bytes.HasPrefix(out.Outcome, []byte("GGO\x01")) || retainedFeedOutcomeFor(h.machine.SemanticContractID(), out.Outcome) {
 		if s.binding.Version != 2 || !durableColumnGraphAgreement(h.machine.SemanticContractID()) {
 			return out, errInvalid
 		}

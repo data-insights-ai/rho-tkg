@@ -167,6 +167,31 @@ func readGraphRoundPredecessor(q *reader, c [32]byte, b uint64) (round, index ui
 	return selectGraphRoundPredecessor(q, c, b, false)
 }
 func selectGraphRoundPredecessor(q *reader, c [32]byte, b uint64, retained bool) (round, index uint64, image [172]byte, err error) {
+	round, index, image, err = readGraphRoundRecord(q, c, b)
+	if err != nil {
+		return 0, 0, image, err
+	}
+	if err = chargeGraphWork(q, graphstore.PageWork{Bytes: 1024}); err != nil {
+		return 0, 0, image, err
+	}
+	var root raftlog.ApplicationRoot
+	if retained {
+		index, root, err = retainedGraphRoundSource(q, c, round, index, image)
+	} else {
+		root, err = q.view.RootAt(q.ctx, index, 172)
+	}
+	if retained && err != nil {
+		return 0, 0, image, err
+	}
+	if err != nil || !bytes.Equal(root.Image, image[:]) {
+		return 0, 0, image, errors.Join(errCorrupt, err)
+	}
+	return
+}
+
+// Only the immutable canonical PLM is decoded here. Consumers must authenticate
+// its physical root, or an explicitly qualified private feed ACK anchor.
+func readGraphRoundRecord(q *reader, c [32]byte, b uint64) (round, index uint64, image [172]byte, err error) {
 	lower := recordKey(q.ns, 9)
 	upper := partitionRoundMapKey(q.ns, b+1)
 	var before []byte
@@ -198,21 +223,6 @@ func selectGraphRoundPredecessor(q *reader, c [32]byte, b uint64, retained bool)
 			copy(image[:], body[48:])
 			if round > b || round != binary.BigEndian.Uint64(row.Key[len(lower):]) || index == 0 || index > q.base.Index {
 				return 0, 0, image, errCorrupt
-			}
-			if e := chargeGraphWork(q, graphstore.PageWork{Bytes: 1024}); e != nil {
-				return 0, 0, image, e
-			}
-			var root raftlog.ApplicationRoot
-			if retained {
-				index, root, e = retainedGraphRoundSource(q, c, round, index, image)
-			} else {
-				root, e = q.view.RootAt(q.ctx, index, 172)
-			}
-			if retained && e != nil {
-				return 0, 0, image, e
-			}
-			if e != nil || !bytes.Equal(root.Image, image[:]) {
-				return 0, 0, image, errors.Join(errCorrupt, e)
 			}
 			return round, index, image, nil
 		}

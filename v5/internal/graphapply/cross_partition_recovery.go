@@ -110,7 +110,7 @@ func (m *declaredMaterializer) VerifyApplicationRecovery(ctx context.Context, da
 	}
 	if isRetainedFeedWire(data) {
 		command, err := decodeRetainedFeedCommand(data)
-		if err != nil || m.SemanticContractID() != retainedFeedSemanticContractID() || command.scope != m.scope() {
+		if err != nil || !retainedFeedAgreement(m.SemanticContractID()) || command.scope != m.scope() {
 			return purpose, errors.Join(errInvalid, err)
 		}
 		// No historical reopen here: view may be the prepared incoming bank.

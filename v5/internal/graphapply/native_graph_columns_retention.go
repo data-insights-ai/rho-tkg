@@ -454,7 +454,7 @@ func (s *nativeColumnStore) retentionDependencyPage(ctx context.Context, id [16]
 }
 
 func nativeColumnOriginalIndex(wire []byte, ns namespace) (uint64, error) {
-	if bytes.HasPrefix(wire, []byte("GFO\x01")) {
+	if isRetainedFeedOutcome(wire) {
 		r, e := decodeRetainedFeedResult(wire)
 		return r.index, e
 	}
@@ -981,7 +981,7 @@ func (s *nativeColumnStore) Retire(ctx context.Context, id [16]byte, publisher *
 // scoped canonical immutable original, and unchanged graph image are all
 // required; an unknown/malformed prefix is never silently folded into no-op.
 func (s *nativeColumnSource) retainedMetadataFrame(ctx context.Context, group int, out nativeColumnFrame) (nativeColumnFrame, error) {
-	if s.hosts[group].machine.SemanticContractID() == retainedFeedSemanticContractID() {
+	if retainedFeedAgreement(s.hosts[group].machine.SemanticContractID()) {
 		return s.retainedFeedMetadataFrame(ctx, group, out)
 	}
 	h, view := s.hosts[group], s.views[group]

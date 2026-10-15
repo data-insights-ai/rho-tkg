@@ -68,7 +68,7 @@ func retainedFeedBootstrapContext(ctx context.Context, p *retainedPinPublisher, 
 // Persist Original before Publish if the embedding needs producer recovery.
 // It does not claim publication/issuance merely because this recipe exists.
 func beginRetainedFeed(ctx context.Context, p *retainedPinPublisher, id requestID, request graphReadRequest, expires uint64, policy retainedFeedPolicy) (*retainedFeedOwner, error) {
-	if p == nil || !p.valid() || p.coordinator.host.machine.SemanticContractID() != retainedFeedSemanticContractID() || !policy.valid() {
+	if p == nil || !p.valid() || !retainedFeedAgreement(p.coordinator.host.machine.SemanticContractID()) || !policy.valid() {
 		return nil, errInvalid
 	}
 	ctx, cancel, err := retainedFeedBootstrapContext(ctx, p, policy)
@@ -94,7 +94,7 @@ func beginRetainedFeed(ctx context.Context, p *retainedPinPublisher, id requestI
 	return o, nil
 }
 func resumeRetainedFeed(ctx context.Context, p *retainedPinPublisher, original []byte) (*retainedFeedOwner, error) {
-	if ctx == nil || p == nil || !p.valid() || p.coordinator.host.machine.SemanticContractID() != retainedFeedSemanticContractID() {
+	if ctx == nil || p == nil || !p.valid() || !retainedFeedAgreement(p.coordinator.host.machine.SemanticContractID()) {
 		return nil, errInvalid
 	}
 	d, err := decodeRetainedFeedDefinition(original)

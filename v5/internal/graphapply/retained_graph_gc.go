@@ -375,10 +375,20 @@ func (m *declaredMaterializer) graphRetentionCeiling(q *reader, configuration [3
 			return cap, errCorrupt
 		}
 		source := part.certificate.sourceIndex
+		retention, retained, err := m.feedRetention(q, original)
+		if err != nil {
+			return cap, err
+		}
+		if retained {
+			// Acknowledged predecessor plus the unread native suffix replaces C
+			// only for this feed's physical source protection. Other pins/columns
+			// still independently take their own minima below.
+			source = retention.index
+		}
 		cap.root = min(cap.root, source)
 		cap.data = min(cap.data, source)
 		cap.feed = min(cap.feed, owner.feedStart)
-		if m.SemanticContractID() == retainedFeedSemanticContractID() {
+		if retainedFeedAgreement(m.SemanticContractID()) {
 			// Snapshot C still protects its exact root/data. Feed originals have
 			// immutable controls/locators, so acknowledged raw outcomes need only
 			// remain from the actual native feed owner floor onward.
@@ -390,7 +400,9 @@ func (m *declaredMaterializer) graphRetentionCeiling(q *reader, configuration [3
 			}
 		}
 		cap.recovery = min(cap.recovery, source)
-		cap.certificate = min(cap.certificate, part.certificate.index)
+		if !retained {
+			cap.certificate = min(cap.certificate, part.certificate.index)
+		}
 	}
 	return cap, nil
 }
@@ -602,7 +614,7 @@ func (m *declaredMaterializer) finishGraphRetention(q *reader, c graphRetentionC
 	if admission != nil {
 		b.ControlPuts = append(b.ControlPuts, raftlog.ApplicationControlPut{Key: graphRetentionPlanKey(m.ns, result.id), Value: owned(record)})
 	}
-	if m.SemanticContractID() == retainedFeedSemanticContractID() {
+	if retainedFeedAgreement(m.SemanticContractID()) {
 		locator, err := feedMetadataLocator(graphRetentionOriginalKey(m.ns, c.issuer, c.request), sha256.Sum256(command))
 		if err != nil {
 			return raftlog.ApplicationBatch{}, err

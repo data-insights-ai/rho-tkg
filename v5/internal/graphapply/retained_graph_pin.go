@@ -546,12 +546,7 @@ func (m *declaredMaterializer) checkRetainedPinRoster(q *reader, sources bool) e
 			if err := m.bindPinManifest(manifest); err != nil {
 				return err
 			}
-			p, found := pinPart(manifest, m.ns.partition)
-			if !found {
-				return errCorrupt
-			}
-			p.feedStart = owner.feedStart
-			if err := m.checkPinSource(q, p, h); err != nil {
+			if err := m.checkPinRetainedSource(q, manifest, owner, h); err != nil {
 				return err
 			}
 		}
@@ -875,7 +870,7 @@ func (m *declaredMaterializer) stageRetainedPin(q *reader, entry replica.Entry, 
 				return raftlog.ApplicationBatch{}, err
 			}
 			puts = append(puts, raftlog.ApplicationControlPut{Key: graphPinActionKey(m.ns, c.issuer, c.action), Value: record})
-			if m.SemanticContractID() == retainedFeedSemanticContractID() {
+			if retainedFeedAgreement(m.SemanticContractID()) {
 				locator, e := feedMetadataLocator(graphPinActionKey(m.ns, c.issuer, c.action), sha256.Sum256(entry.Data))
 				if e != nil {
 					return raftlog.ApplicationBatch{}, e

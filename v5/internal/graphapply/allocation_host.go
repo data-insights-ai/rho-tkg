@@ -286,7 +286,7 @@ func (h *allocationHost) Submit(p allocationProposal) (allocationEvent, error) {
 	}
 	if isRetainedFeedWire(p.wire) {
 		c, err := decodeRetainedFeedCommand(p.wire)
-		if err != nil || c.scope != local || h.machine.SemanticContractID() != retainedFeedSemanticContractID() {
+		if err != nil || c.scope != local || !retainedFeedAgreement(h.machine.SemanticContractID()) {
 			return allocationEvent{}, errors.Join(errInvalid, err)
 		}
 		if err := h.preflightRetainedFeed(c, p.wire); err != nil {

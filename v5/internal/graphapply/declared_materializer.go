@@ -292,7 +292,7 @@ func (m *declaredMaterializer) validateRestoredState(q *reader, initializedOnly 
 	if err == nil {
 		err = m.checkRetainedPinLedger(q)
 	}
-	if err == nil && m.SemanticContractID() == retainedFeedSemanticContractID() {
+	if err == nil && retainedFeedAgreement(m.SemanticContractID()) {
 		err = m.checkRetainedFeedLedger(q)
 	}
 	if err == nil && m.collectsHistory() {

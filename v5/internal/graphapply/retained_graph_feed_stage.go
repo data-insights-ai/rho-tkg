@@ -374,7 +374,7 @@ func (m *declaredMaterializer) feedNativeFrame(q *reader, index uint64, maximum 
 				return errors.Join(errCorrupt, e)
 			}
 			if r.status != pinPending {
-				out.registration, e = feedMetadataOriginal(at, r.index, out.outcome)
+				out.registration, e = feedMetadataOriginal(at, r.index, out.outcome, m.SemanticContractID())
 				if e != nil {
 					return e
 				}
@@ -389,20 +389,20 @@ func (m *declaredMaterializer) feedNativeFrame(q *reader, index uint64, maximum 
 			if e != nil || r.index > index || len(out.changes) != 0 {
 				return errors.Join(errCorrupt, e)
 			}
-			out.registration, e = feedMetadataOriginal(at, r.index, out.outcome)
+			out.registration, e = feedMetadataOriginal(at, r.index, out.outcome, m.SemanticContractID())
 			if e != nil {
 				return e
 			}
 			if r.index < index {
 				original = r.index
 			}
-		case bytes.HasPrefix(out.outcome, []byte("GFO\x01")):
+		case retainedFeedOutcomeFor(m.SemanticContractID(), out.outcome):
 			r, e := decodeRetainedFeedResult(out.outcome)
 			if e != nil || r.index > index || len(out.changes) != 0 {
 				return errors.Join(errCorrupt, e)
 			}
 			if r.status != feedPending {
-				out.registration, e = feedMetadataOriginal(at, r.index, out.outcome)
+				out.registration, e = feedMetadataOriginal(at, r.index, out.outcome, m.SemanticContractID())
 				if e != nil {
 					return e
 				}
@@ -459,7 +459,7 @@ func (m *declaredMaterializer) feedNativeFrame(q *reader, index uint64, maximum 
 						return errors.Join(errCorrupt, e, e2)
 					}
 					out.originalOutcome = wire
-				case bytes.HasPrefix(out.outcome, []byte("GPO\x01")), bytes.HasPrefix(out.outcome, []byte("GGO\x01")), bytes.HasPrefix(out.outcome, []byte("GFO\x01")):
+				case bytes.HasPrefix(out.outcome, []byte("GPO\x01")), bytes.HasPrefix(out.outcome, []byte("GGO\x01")), retainedFeedOutcomeFor(m.SemanticContractID(), out.outcome):
 					// feedMetadataOriginal already authenticated the immutable native
 					// locator, complete original result and actual first-install index.
 					if len(out.registration) == 0 {
@@ -644,12 +644,7 @@ func (m *declaredMaterializer) feedLive(q *reader, d retainedFeedDefinition) (gr
 	if err = m.checkRetainedPinRoster(q, false); err != nil {
 		return actual, owner, 0, err
 	}
-	p, found := pinPart(actual, m.ns.partition)
-	if !found {
-		return actual, owner, 0, errInvalid
-	}
-	p.feedStart = owner.feedStart
-	if err = m.checkPinSource(q, p, head); err != nil {
+	if err = m.checkPinRetainedSource(q, actual, owner, head); err != nil {
 		return actual, owner, 0, err
 	}
 	return actual, owner, feedApplied, nil
@@ -673,7 +668,7 @@ func feedMetadataLocator(key []byte, command [32]byte) ([]byte, error) {
 	}
 	return boundedEncoding(1024, func(w *boundedWriter) { w.add([]byte("GFM\x01")); w.field(key); w.add(command[:]) })
 }
-func feedMetadataOriginal(q *reader, index uint64, outcome []byte) ([]byte, error) {
+func feedMetadataOriginal(q *reader, index uint64, outcome []byte, semantic raftlog.ApplicationSemanticContractID) ([]byte, error) {
 	locator, found, err := crossControl(q, retainedFeedMetadataKey(q.ns, index), 1024)
 	if err != nil || !found || locator.Index != index {
 		return nil, errors.Join(errCorrupt, err)
@@ -708,7 +703,7 @@ func feedMetadataOriginal(q *reader, index uint64, outcome []byte) ([]byte, erro
 		if e != nil || e2 != nil || !found || command.scope.partition != q.ns.partition || sha256.Sum256(wire) != hash || !bytes.Equal(key, graphRetentionOriginalKey(q.ns, command.issuer, command.request)) || !bytes.Equal(encoded, outcome) {
 			return nil, errors.Join(errCorrupt, e, e2)
 		}
-	case bytes.HasPrefix(outcome, []byte("GFO\x01")):
+	case retainedFeedOutcomeFor(semantic, outcome):
 		prefix := recordKey(q.ns, 35)
 		b, e := graphBody(row.Value, "GFX\x01", 512)
 		r, e2 := decodeRetainedFeedResult(outcome)
@@ -733,11 +728,11 @@ func readFeedCursor(q *reader, id [32]byte) (retainedFeedCursor, bool, error) {
 	return c, true, nil
 }
 
-func (m *declaredMaterializer) checkFeedPayload(q *reader, p retainedFeedPayload, round uint64, configuration [32]byte) error {
+func (m *declaredMaterializer) checkFeedPayload(q *reader, manifest graphPinManifest, p retainedFeedPayload, round uint64, configuration [32]byte) error {
 	if p.partition != m.ns.partition {
 		return errInvalid
 	}
-	_, index, image, err := readGraphRoundPredecessor(q, configuration, round)
+	_, index, image, err := m.feedPayloadSource(q, manifest, configuration, round)
 	if err != nil {
 		return err
 	}
@@ -881,8 +876,14 @@ func (m *declaredMaterializer) checkFeedPage(q *reader, d retainedFeedDefinition
 			return errInvalid
 		}
 	}
-	if err = m.checkPinSource(q, graphPinPart{certificate: cert, feedStart: p.from[local]}, graphPinHead{}); err != nil {
+	_, retained, err := m.feedRetention(q, manifest)
+	if err != nil {
 		return err
+	}
+	if !retained {
+		if err = m.checkPinSource(q, graphPinPart{certificate: cert, feedStart: p.from[local]}, graphPinHead{}); err != nil {
+			return err
+		}
 	}
 	var frame *retainedFeedFrame
 	for i := range p.frames {
@@ -932,7 +933,7 @@ func (m *declaredMaterializer) checkFeedPage(q *reader, d retainedFeedDefinition
 	if p.payloads[local].partition != m.ns.partition {
 		return errInvalid
 	}
-	return m.checkFeedPayload(q, p.payloads[local], p.round, cert.configuration)
+	return m.checkFeedPayload(q, manifest, p.payloads[local], p.round, cert.configuration)
 }
 
 func (m *declaredMaterializer) checkFeedTip(q *reader, tip retainedFeedTip, cert graphCertificate) error {
@@ -956,7 +957,7 @@ func (m *declaredMaterializer) checkFeedTip(q *reader, tip retainedFeedTip, cert
 }
 
 func (m *declaredMaterializer) stageRetainedFeed(q *reader, entry replica.Entry, budget raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error) {
-	if m.SemanticContractID() != retainedFeedSemanticContractID() {
+	if !retainedFeedAgreement(m.SemanticContractID()) {
 		return raftlog.ApplicationBatch{}, errInvalid
 	}
 	if err := joinGraphOutputBudget(q, graphRequest{}, 8192+16*len(entry.Data), m.limits); err != nil {
@@ -1071,6 +1072,34 @@ func (m *declaredMaterializer) stageRetainedFeed(q *reader, entry replica.Entry,
 			}
 			return finish(true)
 		}
+		if c.phase == feedRetainOnly {
+			prior, retained, e := m.feedRetention(q, manifest)
+			if e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+			if retained {
+				result.status = feedMismatch // the SAME action returned above
+				return finish(true)
+			}
+			if cursor.pending != ([32]byte{}) {
+				result.status = feedPending
+				return finish(false)
+			}
+			prior.action, prior.installed = c.action, entry.Index
+			anchor, e := m.feedAnchor(q, manifest, cursor.positions, prior)
+			if e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+			encoded, e := encodeFeedRetention(anchor)
+			if e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+			if e = q.put(retainedFeedRetentionKey(m.ns, manifest.id()), encoded); e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+			result.sequence = cursor.sequence
+			return finish(true)
+		}
 		p, e := decodeRetainedFeedPage(c.page, d.policy.pageBytes, q.arena)
 		if e != nil {
 			return raftlog.ApplicationBatch{}, e
@@ -1126,6 +1155,23 @@ func (m *declaredMaterializer) stageRetainedFeed(q *reader, entry replica.Entry,
 				result.status = feedPending
 				return finish(false)
 			}
+			retention, retained, e := m.feedRetention(q, manifest)
+			if e != nil {
+				return raftlog.ApplicationBatch{}, e
+			}
+			if retained {
+				retention, e = m.feedAnchor(q, manifest, p.next, retention)
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				encoded, e := encodeFeedRetention(retention)
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				if e = q.put(retainedFeedRetentionKey(m.ns, manifest.id()), encoded); e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+			}
 			cursor.positions = p.next
 			cursor.pending = [32]byte{}
 			cursor.acknowledged = result.page
@@ -1145,7 +1191,7 @@ func (m *declaredMaterializer) stageRetainedFeed(q *reader, entry replica.Entry,
 }
 
 func (h *allocationHost) preflightRetainedFeed(c retainedFeedCommand, wire []byte) (err error) {
-	if h.machine.SemanticContractID() != retainedFeedSemanticContractID() || c.scope != h.machine.scope() {
+	if !retainedFeedAgreement(h.machine.SemanticContractID()) || c.scope != h.machine.scope() {
 		return errInvalid
 	}
 	view, err := h.machine.store.ApplicationView(h.driver.Applied())
@@ -1194,6 +1240,19 @@ func (h *allocationHost) preflightRetainedFeed(c retainedFeedCommand, wire []byt
 		}
 		return nil
 	}
+	if c.phase == feedRetainOnly {
+		_, retained, err := h.machine.feedRetention(&q, manifest)
+		if err != nil {
+			return err
+		}
+		if retained {
+			return errInvalid
+		}
+		if cursor.pending != ([32]byte{}) {
+			return errRetainedFeedPending
+		}
+		return nil // Stage captures its actual predecessor, never caller data.
+	}
 	page, err := decodeRetainedFeedPage(c.page, d.policy.pageBytes, q.arena)
 	if err != nil {
 		return err
@@ -1231,7 +1290,7 @@ func (h *allocationHost) preflightRetainedFeed(c retainedFeedCommand, wire []byt
 // bank. Immutable page originals authenticate previously checked payloads;
 // re-reading their old active-bank roots here would be both wrong and needless.
 func (m *declaredMaterializer) checkRetainedFeedLedger(q *reader) error {
-	if m.SemanticContractID() != retainedFeedSemanticContractID() {
+	if !retainedFeedAgreement(m.SemanticContractID()) {
 		return nil
 	}
 	head, err := readPinHead(q)
@@ -1260,6 +1319,9 @@ func (m *declaredMaterializer) checkRetainedFeedLedger(q *reader) error {
 		}
 		if len(cursor.positions) != len(manifest.parts) || len(cursor.completed.certificates) != len(manifest.parts) {
 			return errCorrupt
+		}
+		if _, _, err := m.feedRetention(q, manifest); err != nil {
+			return err
 		}
 		for i, p := range manifest.parts {
 			c := cursor.completed.certificates[i]

@@ -137,7 +137,7 @@ func decodeRetainedFeedQuestion(wire []byte) (retainedFeedQuestion, error) {
 	return q, nil
 }
 func encodeRetainedFeedObservation(o retainedFeedObservation) ([]byte, error) {
-	if o.scope.semantic != retainedFeedSemanticContractID() || !o.scope.valid() || o.read.session == ([16]byte{}) || o.read.sequence == 0 || o.nonce == ([16]byte{}) || o.index == 0 || o.status < feedApplied || o.status > feedLimited || o.rows < 0 || o.bytes < 0 || o.output < 0 || len(o.cursor) > graphPinManifestBytes+2048 || len(o.page) > retainedFeedMaxBytes {
+	if !retainedFeedAgreement(o.scope.semantic) || !o.scope.valid() || o.read.session == ([16]byte{}) || o.read.sequence == 0 || o.nonce == ([16]byte{}) || o.index == 0 || o.status < feedApplied || o.status > feedLimited || o.rows < 0 || o.bytes < 0 || o.output < 0 || len(o.cursor) > graphPinManifestBytes+2048 || len(o.page) > retainedFeedMaxBytes {
 		return nil, errInvalid
 	}
 	return boundedEncoding(2*retainedFeedMaxBytes+graphPinManifestBytes+8192, func(w *boundedWriter) { emitRetainedFeedObservation(w, o) })
@@ -211,7 +211,7 @@ func decodeRetainedFeedObservation(wire []byte) (retainedFeedObservation, error)
 }
 
 func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRequest) ([]byte, error) {
-	if s == nil || ctx == nil || s.host.machine.SemanticContractID() != retainedFeedSemanticContractID() {
+	if s == nil || ctx == nil || !retainedFeedAgreement(s.host.machine.SemanticContractID()) {
 		return nil, errInvalid
 	}
 	question, err := decodeRetainedFeedQuestion(r.command)
@@ -385,7 +385,7 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 		if question.round < manifest.parts[0].certificate.round || question.round > cert.round {
 			return o, errInvalid
 		}
-		_, index, image, e := readGraphRoundPredecessor(&q, cert.configuration, question.round)
+		_, index, image, e := m.feedPayloadSource(&q, manifest, cert.configuration, question.round)
 		if e != nil {
 			return o, e
 		}
@@ -479,7 +479,7 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 }
 
 func (e *graphAuthenticatedEndpoint) retainedFeedRead(ctx context.Context, q retainedFeedQuestion) (out retainedFeedObservation, err error) {
-	if e == nil || ctx == nil || e.budget == nil || e.peer.scope.semantic != retainedFeedSemanticContractID() {
+	if e == nil || ctx == nil || e.budget == nil || !retainedFeedAgreement(e.peer.scope.semantic) {
 		return out, errInvalid
 	}
 	b := e.budget
@@ -688,7 +688,7 @@ func (s *retainedFeedRecordingSource) Scan(ctx context.Context, lower, upper, af
 var _ graphstore.ApplicationReadSource = (*retainedFeedRecordingSource)(nil)
 
 func (e *graphAuthenticatedEndpoint) submitRetainedFeed(ctx context.Context, c retainedFeedCommand) (retainedFeedResult, error) {
-	if e == nil || ctx == nil || e.budget == nil || c.scope != e.peer.scope || c.scope.semantic != retainedFeedSemanticContractID() {
+	if e == nil || ctx == nil || e.budget == nil || c.scope != e.peer.scope || !retainedFeedAgreement(c.scope.semantic) {
 		return retainedFeedResult{}, errInvalid
 	}
 	if err := e.budget.output.Reserve(4096 + 8*(len(c.definition)+len(c.page)+allocationScopeBytes+128)); err != nil {
@@ -738,7 +738,7 @@ func (e *graphAuthenticatedEndpoint) submitRetainedFeed(ctx context.Context, c r
 }
 func (s *graphPeerService) submitRetainedFeed(ctx context.Context, p allocationProposal) ([]byte, error) {
 	c, err := decodeRetainedFeedCommand(p.wire)
-	if err != nil || p.target != s.peer.scope || c.scope != s.peer.scope || c.scope.semantic != retainedFeedSemanticContractID() {
+	if err != nil || p.target != s.peer.scope || c.scope != s.peer.scope || !retainedFeedAgreement(c.scope.semantic) {
 		return nil, errors.Join(errInvalid, err)
 	}
 	// Full canonical GFL/GFD/GPM decode is funded by the variable command debit
@@ -802,7 +802,7 @@ func (s *graphPeerService) submitRetainedFeed(ctx context.Context, p allocationP
 // The inherited durable-column projector authenticates the same fresh native
 // metadata originals. It remains a derived column path, never feed authority.
 func (s *nativeColumnSource) retainedFeedMetadataFrame(ctx context.Context, group int, out nativeColumnFrame) (nativeColumnFrame, error) {
-	if s == nil || ctx == nil || group < 0 || group >= len(s.hosts) || s.hosts[group] == nil || s.hosts[group].machine.SemanticContractID() != retainedFeedSemanticContractID() {
+	if s == nil || ctx == nil || group < 0 || group >= len(s.hosts) || s.hosts[group] == nil || !retainedFeedAgreement(s.hosts[group].machine.SemanticContractID()) {
 		return out, errInvalid
 	}
 	h, view := s.hosts[group], s.views[group]
@@ -836,7 +836,7 @@ func (s *nativeColumnSource) retainedFeedMetadataFrame(ctx context.Context, grou
 		if len(out.CDC) != 0 {
 			return out, errCorrupt
 		}
-	case bytes.HasPrefix(out.Outcome, []byte("GFO\x01")):
+	case retainedFeedOutcomeFor(h.machine.SemanticContractID(), out.Outcome):
 		r, e := decodeRetainedFeedResult(out.Outcome)
 		if e != nil {
 			return out, e
@@ -854,7 +854,7 @@ func (s *nativeColumnSource) retainedFeedMetadataFrame(ctx context.Context, grou
 	if pending {
 		return out, nil
 	}
-	locator, err := feedMetadataOriginal(&q, index, out.Outcome)
+	locator, err := feedMetadataOriginal(&q, index, out.Outcome, h.machine.SemanticContractID())
 	if err != nil {
 		return out, err
 	}

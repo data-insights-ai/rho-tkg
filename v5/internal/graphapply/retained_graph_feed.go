@@ -20,7 +20,7 @@ func retainedFeedSemanticContractID() raftlog.ApplicationSemanticContractID {
 }
 
 func durableColumnGraphAgreement(id raftlog.ApplicationSemanticContractID) bool {
-	return id == durableColumnGraphSemanticContractID() || id == retainedFeedSemanticContractID()
+	return id == durableColumnGraphSemanticContractID() || retainedFeedAgreement(id)
 }
 
 const (
@@ -28,6 +28,7 @@ const (
 	feedSealPage
 	feedAcknowledge
 	feedAdmitOperation
+	feedRetainOnly
 )
 
 const (
@@ -184,7 +185,7 @@ func retainedFeedPhaseAction(request [16]byte, phase byte) [16]byte {
 
 func encodeRetainedFeedDefinition(d retainedFeedDefinition) ([]byte, error) {
 	m, err := decodeGraphPinManifest(d.manifest)
-	if err != nil || m.publisher.semantic != retainedFeedSemanticContractID() || !d.policy.valid() {
+	if err != nil || !retainedFeedAgreement(m.publisher.semantic) || !d.policy.valid() {
 		return nil, errors.Join(errInvalid, err)
 	}
 	return boundedEncoding(graphPinManifestBytes+128, func(w *boundedWriter) {
@@ -582,7 +583,8 @@ func decodeRetainedFeedCursor(wire []byte) (retainedFeedCursor, error) {
 }
 
 func encodeRetainedFeedCommand(c retainedFeedCommand) ([]byte, error) {
-	if !c.scope.valid() || c.scope.semantic != retainedFeedSemanticContractID() || c.issuer == ([16]byte{}) || c.action == ([16]byte{}) || c.phase < feedInitialize || c.phase > feedAdmitOperation || (c.phase == feedInitialize || c.phase == feedAdmitOperation) != (len(c.page) == 0) || len(c.page) > retainedFeedMaxBytes {
+	transition := c.phase == feedRetainOnly && c.scope.semantic == retainedOnlyFeedSemanticContractID()
+	if !c.scope.valid() || !retainedFeedAgreement(c.scope.semantic) || c.issuer == ([16]byte{}) || c.action == ([16]byte{}) || c.phase < feedInitialize || c.phase > feedRetainOnly || c.phase == feedRetainOnly && !transition || (c.phase == feedInitialize || c.phase == feedAdmitOperation || transition) != (len(c.page) == 0) || len(c.page) > retainedFeedMaxBytes {
 		return nil, errInvalid
 	}
 	d, err := decodeRetainedFeedDefinition(c.definition)
@@ -597,7 +599,11 @@ func encodeRetainedFeedCommand(c retainedFeedCommand) ([]byte, error) {
 		return nil, errInvalid
 	}
 	return boundedEncoding(retainedFeedCommandBytes, func(w *boundedWriter) {
-		w.add([]byte("GFL\x01"))
+		if transition {
+			w.add([]byte("GFL\x02"))
+		} else {
+			w.add([]byte("GFL\x01"))
+		}
 		w.add(appendAllocationScope(nil, c.scope))
 		w.add(c.issuer[:])
 		w.add(c.action[:])
@@ -607,7 +613,11 @@ func encodeRetainedFeedCommand(c retainedFeedCommand) ([]byte, error) {
 	})
 }
 func decodeRetainedFeedCommand(wire []byte) (retainedFeedCommand, error) {
-	body, err := graphBody(wire, "GFL\x01", retainedFeedCommandBytes)
+	magic := "GFL\x01"
+	if bytes.HasPrefix(wire, []byte("GFL\x02")) {
+		magic = "GFL\x02"
+	}
+	body, err := graphBody(wire, magic, retainedFeedCommandBytes)
 	if err != nil {
 		return retainedFeedCommand{}, err
 	}
@@ -629,14 +639,24 @@ func decodeRetainedFeedCommand(wire []byte) (retainedFeedCommand, error) {
 	c.original = m.id()
 	return c, nil
 }
-func isRetainedFeedWire(wire []byte) bool { return bytes.HasPrefix(wire, []byte("GFL\x01")) }
+func isRetainedFeedWire(wire []byte) bool {
+	return bytes.HasPrefix(wire, []byte("GFL\x01")) || bytes.HasPrefix(wire, []byte("GFL\x02"))
+}
+
+func isRetainedFeedOutcome(wire []byte) bool {
+	return bytes.HasPrefix(wire, []byte("GFO\x01")) || bytes.HasPrefix(wire, []byte("GFO\x02"))
+}
 
 func encodeRetainedFeedResult(r retainedFeedResult) ([]byte, error) {
-	if r.index == 0 || r.original == ([32]byte{}) || r.command == ([32]byte{}) || r.action == ([16]byte{}) || r.phase < feedInitialize || r.phase > feedAdmitOperation || r.status < feedApplied || r.status > feedLimited {
+	if r.index == 0 || r.original == ([32]byte{}) || r.command == ([32]byte{}) || r.action == ([16]byte{}) || r.phase < feedInitialize || r.phase > feedRetainOnly || r.phase == feedRetainOnly && r.page != ([32]byte{}) || r.status < feedApplied || r.status > feedLimited {
 		return nil, errInvalid
 	}
 	return boundedEncoding(256, func(w *boundedWriter) {
-		w.add([]byte("GFO\x01"))
+		if r.phase == feedRetainOnly {
+			w.add([]byte("GFO\x02"))
+		} else {
+			w.add([]byte("GFO\x01"))
+		}
 		w.add(r.original[:])
 		w.add(r.command[:])
 		w.add(r.page[:])
@@ -648,7 +668,11 @@ func encodeRetainedFeedResult(r retainedFeedResult) ([]byte, error) {
 	})
 }
 func decodeRetainedFeedResult(wire []byte) (retainedFeedResult, error) {
-	body, err := graphBody(wire, "GFO\x01", 256)
+	magic := "GFO\x01"
+	if bytes.HasPrefix(wire, []byte("GFO\x02")) {
+		magic = "GFO\x02"
+	}
+	body, err := graphBody(wire, magic, 256)
 	if err != nil {
 		return retainedFeedResult{}, err
 	}
