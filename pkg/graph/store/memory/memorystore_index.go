@@ -566,6 +566,27 @@ func (ms *Store) extendNodeVersionTemporalLocked(n *types.Node, id snowflake.ID)
 	}
 }
 
+// addRelToTemporalIndexesLocked extends the envelope of r's type by r. An index
+// that does not cover id yet first gets id's history (a deleted relationship
+// re-created or re-imported under the same ID keeps its old rows), else the
+// envelope would vouch for less than the ID holds and a valid-time prune would
+// drop a row a read at an earlier pin returns (backlog 75 review; badger's twin
+// is foldRecreatedRelHistoryLocked, the node side addNodeToTemporalIndexesLocked).
+// Caller holds ms.mu (write).
+func (ms *Store) addRelToTemporalIndexesLocked(r *types.Relationship, id snowflake.ID) {
+	if ti := ms.relTypeTemporalIndexes[r.TypeToken().Value()]; ti != nil {
+		if _, _, covered := ti.EnvelopeOf(id); !covered {
+			for _, hv := range ms.relHistory[types.RelID(id)] {
+				if hv != nil {
+					from, to := indexpkg.RelTemporalBounds(id, hv.Temporal())
+					ti.Extend(id, from, to)
+				}
+			}
+		}
+	}
+	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id)
+}
+
 // requireTemporalIndexCurrentForCreate mirrors requirePropertyIndexCurrentForCreate
 // (and badger's identically-named helper) for the temporal-index door.
 func requireTemporalIndexCurrentForCreate(idxs map[uint16]*indexpkg.TemporalIndex, labelToken uint16, expected *indexpkg.TemporalIndex) error {

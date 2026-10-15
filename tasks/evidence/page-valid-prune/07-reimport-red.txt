@@ -1,0 +1,10 @@
+--- FAIL: TestEffectivePage_ReimportedIDEnvelope (0.00s)
+    --- FAIL: TestEffectivePage_ReimportedIDEnvelope/memory/rel=true (0.00s)
+        effective_page_reimport_test.go:96: page at the first life:
+             got  
+             want 
+              813873359751054336:
+                [1792066991000,0) v0 {ValidFrom:1792066991000 ValidTo:0 TxFrom:1792067001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0 Retracted:false Void:false} type=1 813873359747940352->813873359750234112 props=estate=v
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.030s
+FAIL

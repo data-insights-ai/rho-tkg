@@ -181,8 +181,9 @@ type epScenario struct {
 	values []string
 	// temporal also declares the valid-time envelope indexes (backlog 75) on
 	// types (labels) 0 and 2: one source has both indexes, one the property
-	// index alone, one the envelope alone.
+	// index alone, one the envelope alone (declareTemporal).
 	temporal bool
+	deleted  []int64 // deleted IDs, re-imported by a later step
 }
 
 var (
@@ -209,9 +210,11 @@ func (sc *epScenario) declare(t *testing.T) {
 			t.Logf("declare index %d: %v (backend declines; the door falls back)", i, err)
 		}
 	}
-	if !sc.temporal {
-		return
-	}
+}
+
+// declareTemporal creates the envelope indexes of sc.temporal.
+func (sc *epScenario) declareTemporal(t *testing.T) {
+	t.Helper()
 	for _, i := range []int{0, 2} {
 		var err error
 		if sc.rel {
@@ -244,7 +247,7 @@ func (sc *epScenario) step(t *testing.T) {
 	now := sc.tick()
 	pick := func() int64 { return sc.ids[sc.rng.IntN(len(sc.ids))] }
 	op := sc.rng.IntN(13)
-	if len(sc.ids) < 3 || op >= 10 {
+	if len(sc.ids) < 3 || op >= 11 || op == 10 && (!sc.temporal || len(sc.deleted) == 0) {
 		op = 0 // about a third of the steps add
 	}
 	switch op {
@@ -289,11 +292,31 @@ func (sc *epScenario) step(t *testing.T) {
 		}
 		must("update", err)
 	case 4:
+		id := pick()
+		var err error
 		if sc.rel {
-			must("delete", g.Rels.Delete(ctx, types.RelID(pick())))
+			err = g.Rels.Delete(ctx, types.RelID(id))
 		} else {
-			must("delete", g.Nodes.Delete(ctx, types.NodeID(pick())))
+			err = g.Nodes.Delete(ctx, types.NodeID(id))
 		}
+		must("delete", err)
+		if err == nil {
+			sc.deleted = append(sc.deleted, id)
+		}
+	case 10: // re-import a deleted ID valid from far later (its old rows stay in history)
+		i := sc.rng.IntN(len(sc.deleted))
+		id := sc.deleted[i]
+		sc.deleted = append(sc.deleted[:i], sc.deleted[i+1:]...)
+		props := map[string]any{epProp: val(), "tkg_valid_from": now + 1_000_000 + types.Instant(sc.rng.IntN(20_000))}
+		var err error
+		if sc.rel {
+			sn, _ := g.Nodes.Get(ctx, sc.s)
+			en, _ := g.Nodes.Get(ctx, sc.e)
+			_, err = g.Rels.Import(ctx, types.RelID(id), epRelTypes[sc.rng.IntN(3)], sn, en, props)
+		} else {
+			_, err = g.Nodes.Import(ctx, types.NodeID(id), []string{epLabels[sc.rng.IntN(3)]}, props)
+		}
+		must("reimport", err)
 	case 5:
 		if sc.rel {
 			must("close", g.Rels.CloseVersion(ctx, types.RelID(pick()), now+types.Instant(sc.rng.IntN(3000))))
@@ -373,9 +396,10 @@ func TestEffectivePage_DifferentialRandom(t *testing.T) {
 }
 
 // epDifferential runs one differential: a random history (steps), the
-// indexes declared before (early) or after the writes, with temporalIdx also
-// the valid-time envelope indexes (sc.declare), then every page walk at the
-// recorded pins and random valid filters against the full walk.
+// property indexes declared before (early) or after the writes, with
+// temporalIdx also the valid-time envelope indexes, before the writes (early)
+// or in the middle of them, then every page walk at the recorded pins and
+// random valid filters against the full walk.
 func epDifferential(t *testing.T, be txbBackend, rel, early, temporalIdx bool, seed, steps int) {
 	t.Helper()
 	g := be.open(t, false)
@@ -389,11 +413,19 @@ func epDifferential(t *testing.T, be txbBackend, rel, early, temporalIdx bool, s
 	}
 	if early {
 		sc.declare(t)
+		if temporalIdx {
+			sc.declareTemporal(t)
+		}
 		pin, _ := g.Temporal.NowTx()
 		epWalk(t, g, rel, temporal.Pin{Tx: pin}, "e0", 2, nil) // opens the ordered views
 	}
 	for i := 0; i < steps; i++ {
 		sc.step(t)
+		if !early && temporalIdx && i == steps/2 {
+			// Late: the envelope indexes come mid-history, between deletes
+			// and re-imports of the same IDs.
+			sc.declareTemporal(t)
+		}
 		if early && i == steps/3 {
 			// Open every value's ordered view: the later
 			// writes reach it through Record.
@@ -429,8 +461,8 @@ func epDifferential(t *testing.T, be txbBackend, rel, early, temporalIdx bool, s
 			}
 		}
 	}
-	for _, op := range []string{"add", "update", "delete", "close", "excise", "interval", "retract"} {
-		if sc.ops[op] == 0 && !testing.Short() {
+	for _, op := range []string{"add", "update", "delete", "close", "excise", "interval", "retract", "reimport"} {
+		if sc.ops[op] == 0 && !testing.Short() && (op != "reimport" || temporalIdx) {
 			t.Errorf("generator never ran %s (ops %v)", op, sc.ops)
 		}
 	}

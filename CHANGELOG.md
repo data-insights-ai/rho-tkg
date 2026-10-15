@@ -24,6 +24,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestEffectivePage_ValidPruneDifferential` (envelope indexes declared before or after the writes, `UntimedFromTxFrom` and
   `UntimedUnbounded` stores, against the unpruned full walk). Docs: api.md and `temporal.API.RelsEffectivePage` cost note,
   architecture.md "Temporal envelope indexes".
+- **Relationship envelopes cover every row of a re-created or re-typed ID** (backlog 75 review). Memory's relationship
+  create doors (`PutRelationship`, generated-ID, import, batch, sealed-segment load) extended an uncovered ID's envelope by
+  the new row alone, so a relationship deleted before `CreateRelTemporal` and re-imported later was pruned at a pin before
+  its delete; they now fold the ID's history first (`addRelToTemporalIndexesLocked`, the twin of badger's
+  `foldRecreatedRelHistoryLocked`). `PutRelVersion` on memory and badger extended an uncovered ID because it was live; a
+  relationship re-created under another type is live while its older rows' type index does not cover it, so a correction
+  that wrote a row of the old type made that envelope vouch for one version. It now extends covered (or building) IDs only.
+  Tests: `TestEffectivePage_ReimportedIDEnvelope`, re-imports of deleted
+  IDs (same or another type, envelope indexes declared mid-history) in `TestEffectivePage_ValidPruneDifferential`.
 
 ## [4.56.0] - 2026-10-15
 

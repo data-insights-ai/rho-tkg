@@ -244,7 +244,11 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 			bs.recordRelTypeMemberLocked(r)
 			bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
 			bs.recordRelRowLocked(r) // backlog 8: tracking or built property sidecars
-			if _, live := bs.relIDs[rid]; live || indexpkg.RelCoveredInTemporalIndexes(bs.relTypeTemporalIndexes, r, id) || indexpkg.RelTemporalIndexBuilding(bs.relTypeTemporalIndexes, r) {
+			// Covered (or Building), not merely live: a relationship re-created
+			// under another type is live while its older rows' type index does
+			// not cover it, and one version would make that envelope vouch for
+			// less than the ID holds (backlog 75 review).
+			if indexpkg.RelCoveredInTemporalIndexes(bs.relTypeTemporalIndexes, r, id) || indexpkg.RelTemporalIndexBuilding(bs.relTypeTemporalIndexes, r) {
 				bs.maintainRelTypeTemporalIndexesAdd(r, id)
 			}
 		},

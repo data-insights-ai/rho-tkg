@@ -1,2 +1,2 @@
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	415.368s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	342.819s
 exit 0
