@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -83,12 +84,8 @@ const (
 	DefaultFlushInterval  = 100 * time.Millisecond
 	DefaultGCInterval     = 5 * time.Minute
 	DefaultGCDiscardRatio = 0.5
-	// DefaultMaxPendingWrites bounds the async write buffer: when the
-	// pending-op count reaches this threshold the writing goroutine flushes
-	// synchronously instead of growing the buffer (and the never-evictable
-	// dirty cache entries behind it) without limit. Generous enough that a
-	// workload must sustain ~1M ops/s against the 100ms flush interval to
-	// ever hit it.
+	// DefaultMaxPendingWrites bounds the async write buffer: at this many pending ops
+	// the writer flushes synchronously (backpressure).
 	DefaultMaxPendingWrites = 100_000
 )
 
@@ -102,142 +99,71 @@ type Config struct {
 	Logger badgerv4.Logger
 	// CacheCapacity is the per-cache (nodes, rels) soft limit. Default: 10,000.
 	CacheCapacity int
-	// CacheBudgetBytes bounds each entity cache (nodes, rels) by estimated
-	// resident BYTES instead of entry count alone — entries vary 100B-64KB,
-	// so a count capacity alone cannot bound memory under mixed payloads.
-	// Clean LRU entries are evicted while the estimate exceeds the budget;
-	// like CacheCapacity this is a soft limit (dirty entries are never
-	// evicted). 0 disables byte accounting. When set and CacheCapacity is 0,
-	// the count limit is effectively unbounded and the byte budget governs.
+	// CacheBudgetBytes bounds each entity cache (nodes, rels) by estimated resident
+	// bytes. Soft limit: dirty entries are never evicted. 0 disables byte accounting;
+	// with CacheCapacity 0 the byte budget alone governs.
 	CacheBudgetBytes int64
-	// ResidentCache keeps every decoded node/rel resident (clean entries are
-	// never evicted, and fetches skip LRU promotion). For an in-memory store
-	// the backing data already lives in RAM, so re-decoding on cache miss is
-	// pure waste that makes graph-larger-than-cache traversal scale
-	// super-linearly; resident mode restores linear (Memgraph-like) big-O at
-	// the cost of holding the decoded working set resident. Ignores
-	// CacheCapacity/CacheBudgetBytes for eviction.
+	// ResidentCache keeps every decoded node/rel resident (no clean eviction, no LRU
+	// promotion on fetch); for in-memory stores this avoids re-decoding on cache miss.
+	// Ignores CacheCapacity/CacheBudgetBytes.
 	ResidentCache bool
-	// LabelIndexOnDisk keeps the label→nodes index OUT of RAM: label
-	// snapshots are answered from the persisted label keyspace (written
-	// transactionally with node rows since the format's inception — no
-	// migration needed) via badger prefix iterators, with unflushed writes
-	// overlaid. Saves the in-memory labelIdx map (~50-100B per label entry
-	// — THE memory ceiling at hundreds of millions of nodes) at the cost
-	// of disk iteration per label scan. See badgerstore_label_disk.go.
+	// LabelIndexOnDisk keeps the label->nodes index out of RAM: label snapshots come
+	// from the persisted label keyspace (prefix iterators, unflushed writes overlaid).
+	// No migration needed. See badgerstore_label_disk.go.
 	LabelIndexOnDisk bool
-	// AdjacencyIndexOnDisk is the adjacency sibling of LabelIndexOnDisk:
-	// outgoing/incoming snapshots are answered from the persisted
-	// OutKey/InKey keyspaces (also written transactionally with rel rows
-	// since inception — no migration). Saves the outIdx/inIdx maps (~2
-	// entries per relationship — the largest index maps) at the cost of a
-	// disk prefix iteration per adjacency read; typed queries use an
-	// 11-byte prefix that replaces the in-memory typeIdx intersection.
-	// See badgerstore_adjacency_disk.go.
+	// AdjacencyIndexOnDisk is the adjacency sibling of LabelIndexOnDisk: outgoing and
+	// incoming snapshots come from the persisted OutKey/InKey keyspaces; typed queries
+	// use an 11-byte prefix. See badgerstore_adjacency_disk.go.
 	AdjacencyIndexOnDisk bool
-	// PropertyIndexOnDisk is the property-index sibling of LabelIndexOnDisk:
-	// entries created by CreatePropertyIndex live in the persisted 0x0A
-	// keyspace (see badgerstore_property_disk.go) instead of the in-memory
-	// PropertyIndex.Entries/numBuckets maps — each entry is one
-	// (propertyKeyToken, order-preserving value bytes, nodeID) row, written
-	// transactionally with the node row it describes. Saves the per-value
-	// RAM the in-memory index would otherwise hold at large scale, at the
-	// cost of a disk prefix/range iteration per equality/range read. An
-	// existing data directory with property-index definitions but no prior
-	// 0x0A rows is backfilled from current node state exactly once, on the
-	// first open with this flag set (guarded by
-	// storeutil.PropertyIndexOnDiskBuiltKey, mirroring the wire-format
-	// marker pattern) — no manual migration step is required. Requires a
-	// wired property-key registry (see Config.PropertyKeyRegistry — always
-	// present when opened via pkg/graph); CreatePropertyIndex fails closed
-	// with ErrInvalidStoreMutation without one. Ignored when Store is
+	// PropertyIndexOnDisk keeps property-index entries in the persisted 0x0A keyspace
+	// (badgerstore_property_disk.go), written with the node row, instead of RAM maps.
+	// A directory with property-index definitions but no 0x0A rows is backfilled once
+	// on the first open with this flag (storeutil.PropertyIndexOnDiskBuiltKey).
+	// Requires a property-key registry (always present via pkg/graph); without one
+	// CreatePropertyIndex fails with ErrInvalidStoreMutation. Ignored when Store is
 	// provided explicitly.
 	PropertyIndexOnDisk bool
-	// TemporalIndexOnDisk is a REBUILD-AT-OPEN accelerator for the
-	// maxTo-augmented temporal interval index (g.Index().CreateTemporalIndex),
-	// NOT a RAM-vs-disk trade-off like LabelIndexOnDisk / AdjacencyIndexOnDisk /
-	// PropertyIndexOnDisk above: the index always stays fully resident in RAM
-	// at runtime (its stabbing/overlap queries need the in-memory subMax
-	// augmentation, which has no on-disk analogue). Off (default), reopening a
-	// store with an existing temporal index definition rebuilds it via a full
-	// node fetch+decode (a Badger point-get plus msgpack decode of the ENTIRE
-	// row) for every node carrying the indexed label, just to extract two
-	// int64 fields. On, a compact 19-byte-key/8-byte-value row is maintained
-	// per (labelToken, entity) alongside the node row (see
-	// badgerstore_temporal_disk.go), and loadIndexesScan streams straight from
-	// a prefix iteration over it instead — trading a small amount of extra
-	// write-path I/O for eliminating the O(N) full-row rebuild at open. An
-	// existing data directory with temporal-index definitions but no prior
-	// 0x0B rows is backfilled from current node state exactly once, on the
-	// first open with this flag set (guarded by
-	// storeutil.TemporalIndexOnDiskBuiltKey, mirroring the
-	// PropertyIndexOnDiskBuiltKey pattern) — no manual migration step is
-	// required. Ignored when Store is provided explicitly.
+	// TemporalIndexOnDisk is a rebuild-at-open accelerator, not a RAM-vs-disk trade:
+	// the temporal index stays resident at runtime. On, a compact row per (labelToken,
+	// entity) is kept beside the node row (badgerstore_temporal_disk.go) and
+	// loadIndexesScan streams it instead of decoding every node. A directory without
+	// 0x0B rows is backfilled once on first open with this flag
+	// (storeutil.TemporalIndexOnDiskBuiltKey). Ignored when Store is provided
+	// explicitly.
 	TemporalIndexOnDisk bool
-	// DropRelTemporalIndexesAtOpen deletes the persisted relationship-type
-	// temporal index definitions at open instead of rebuilding them (a
-	// read-only open only skips the rebuild). The tiered store opens its cold
-	// shards this way: a cold shard keeps no relationship temporal index, so a
-	// lazy open never pays the per-row rebuild. Ignored when Store is provided
-	// explicitly.
+	// DropRelTemporalIndexesAtOpen deletes the persisted rel-type temporal index
+	// definitions at open instead of rebuilding them (a read-only open only skips the
+	// rebuild). The tiered store sets it for cold shards. Ignored when Store is
+	// provided explicitly.
 	DropRelTemporalIndexesAtOpen bool
-	// HistoryPresenceProbeOnly answers HasNodeHistory / HasRelHistory with a
-	// per-ID key probe (one bounded prefix seek, ~1-2 us) instead of building
-	// the RAM set of IDs with history on the first call. The tiered store opens
-	// its cold shards this way: a cold shard is often opened for one read and
-	// closed again, so a key scan of its whole history keyspace would cost more
-	// than the answers it serves. Ignored when Store is provided explicitly.
+	// HistoryPresenceProbeOnly answers HasNodeHistory / HasRelHistory with a per-ID
+	// key probe instead of building the RAM ID set on first call. The tiered store sets
+	// it for cold shards. Ignored when Store is provided explicitly.
 	HistoryPresenceProbeOnly bool
-	// ColumnsOnDisk persists built columnar snapshots so a cold store, or one whose
-	// in-RAM snapshot was dropped, can decode a column instead of re-reading every
-	// entity. OFF by default; on, it changes nothing a caller can observe except
-	// latency.
-	//
-	// A persisted column is a REBUILD ACCELERATOR, never a read authority (the rule
-	// TemporalIndexOnDisk states above). Every failure mode — a stale epoch stamp, an
-	// unreadable blob, a missing key — means "rebuild", so this needs no wire-format
-	// bump and no migration, and an older binary simply never reads the keys.
-	// Ignored when Store is provided explicitly.
+	// ColumnsOnDisk persists built columnar snapshots so a cold store can decode a
+	// column instead of re-reading every entity. Observable only as latency. A persisted
+	// column is a rebuild accelerator, never a read authority (as TemporalIndexOnDisk):
+	// a stale stamp, unreadable blob or missing key means rebuild, so no wire-format
+	// bump. Ignored when Store is provided explicitly.
 	ColumnsOnDisk bool
-	// DisablePlannerStats turns OFF maintenance of the query-planner statistics —
-	// the per-(label, property key) presence counts, NDV + min/max
-	// range-cardinality accumulator, and exact type-class counts. These are
-	// maintained on EVERY node write (a full per-property sweep in
-	// adjustNodePropertyKeyCounts, under idxMu) and rebuilt by the loadIndexes
-	// open scan, yet are consumed ONLY by query-planning APIs
-	// (NodeCountByLabelAndPropertyKey, NodeRangeCardinality,
-	// NodePropertyTypeClassCounts + rel mirrors). A pure-ingest or non-planning
-	// deployment pays that write-path CPU (and open-scan work) for data it never
-	// reads. When set, the maintenance is skipped and those stat methods fail
-	// closed with ErrCapabilityNotSupported (range-cardinality returns exact=false)
-	// — the SAME signal a backend that never implemented the capability returns,
-	// so planners already fall back gracefully. NO correctness path reads these
-	// counters (unique constraints use the property index, not the stats), so
-	// disabling them changes only planner estimate availability. Default false =
-	// stats maintained (unchanged behavior). Ignored when Store is provided
-	// explicitly.
+	// DisablePlannerStats turns off maintenance of the query-planner statistics
+	// (per-(label, property key) counts, NDV + min/max, type-class counts), which only
+	// the planning APIs read (NodeCountByLabelAndPropertyKey, NodeRangeCardinality,
+	// NodePropertyTypeClassCounts and rel mirrors). Those methods then fail with
+	// ErrCapabilityNotSupported (range-cardinality returns exact=false). No correctness
+	// path reads these counters. Ignored when Store is provided explicitly.
 	DisablePlannerStats bool
-	// HistoryDeltaEncoding turns ON anchor+delta storage for version-history rows
-	// (badger 0x07/0x08). When set, a version V with V%HistoryAnchorInterval == 0
-	// is stored as a full ANCHOR and the rest as DELTAS carrying only the
-	// properties that changed vs the interval anchor — eliding large unchanged
-	// values that a full snapshot would re-serialize every version (less
-	// history storage post-Snappy on wide, history-heavy entities). Reads
-	// reconstruct transparently and always accept BOTH forms, so the flag may be
-	// toggled on an existing store with no migration (legacy full rows are
-	// anchors; new deltas carry a 1-byte 'D' tag). Opt-in (default false) while the
-	// path soaks; the current row (0x01/0x02) is always full. See ADR-0009.
+	// HistoryDeltaEncoding stores version-history rows (0x07/0x08) as anchor + delta:
+	// version V with V%HistoryAnchorInterval == 0 is a full anchor, the rest carry only
+	// properties changed vs the anchor. Reads accept both forms, so the flag can be
+	// toggled on an existing store without migration. The current row is always full.
+	// Opt-in. See ADR-0009.
 	HistoryDeltaEncoding bool
 	// HistoryAnchorInterval overrides the anchor spacing for HistoryDeltaEncoding
-	// (0 = the default 16). A version V with V%interval == 0 is a full anchor; the
-	// rest are deltas against the nearest lower anchor. A larger interval stores more
-	// deltas per anchor (less storage, more reconstruction reads); a smaller one the
-	// reverse. **The interval is baked into the on-disk delta layout**, so a store
-	// that wrote deltas at interval N MUST be reopened at N — a persisted marker is
-	// verified at open and a mismatch FAILS CLOSED (ErrHistoryAnchorIntervalMismatch),
-	// because a delta reconstructed against the wrong anchor is a SILENT misread. To
-	// change it on an existing delta store, rewrite history (not an inline migration).
-	// Validated at New: 0 or in [2, 4096]. Moot when HistoryDeltaEncoding is off.
+	// (0 = default 16; validated 0 or [2, 4096]). The interval is baked into the
+	// on-disk delta layout: a persisted marker is checked at open and a mismatch fails
+	// with ErrHistoryAnchorIntervalMismatch, since a delta read against the wrong
+	// anchor is a silent misread. Moot when HistoryDeltaEncoding is off.
 	HistoryAnchorInterval int
 	// FlushInterval is the time between async write batches. Default: 100ms.
 	// Zero disables periodic flushing (manual flush only — for testing).
@@ -250,22 +176,15 @@ type Config struct {
 	// ReadOnly opens Badger in read-only mode. No flushLoop, no gcLoop,
 	// no write operations. Used for warm/cold shards in TieredStore.
 	ReadOnly bool
-	// SyncWrites enables synchronous disk writes for every mutation.
-	// When true, each write is flushed to Badger immediately (no async buffer).
-	// Eliminates the async flush window at the cost of higher write latency.
-	// Inside a store.MutationFlushHoldCapability hold (graph DurableCommit
-	// group) the flush waits for the group's DurableFlush instead.
-	// Ignored in ReadOnly mode.
+	// SyncWrites flushes every mutation to Badger immediately (no async buffer), at
+	// higher write latency. Inside a store.MutationFlushHoldCapability hold (graph
+	// DurableCommit group) the flush waits for the group's DurableFlush. Ignored in
+	// ReadOnly mode.
 	SyncWrites bool
-	// MaxPendingWrites bounds the async write buffer. When the pending-op
-	// count reaches this threshold, the mutating call flushes synchronously
-	// (backpressure) instead of letting the buffer — and the dirty,
-	// never-evictable cache entries behind it — grow without limit under a
-	// write burst faster than FlushInterval. Default:
-	// DefaultMaxPendingWrites. Negative disables the bound (pre-4.5
-	// unbounded behavior). Under SyncWrites it bounds only the writes held
-	// by a durable group (HoldMutationFlushes); otherwise ignored there (every write
-	// already flushes).
+	// MaxPendingWrites bounds the async write buffer: at this many pending ops the
+	// mutating call flushes synchronously. Default DefaultMaxPendingWrites; negative
+	// disables the bound. Under SyncWrites it bounds only writes held by a durable
+	// group (HoldMutationFlushes). See docs/architecture.md (Write-Pressure Bound).
 	MaxPendingWrites int
 	// Compression sets the SSTable compression algorithm.
 	// Valid values: options.None (0), options.Snappy (1), options.ZSTD (2).
@@ -275,66 +194,43 @@ type Config struct {
 	// Only effective when Compression is options.ZSTD.
 	// Zero keeps the Badger default (1).
 	ZSTDCompressionLevel int
-	// ValueLogFileSize / MemTableSize / BlockCacheSize / NumCompactors tune
-	// Badger's per-instance footprint. ZERO KEEPS BADGER'S STOCK DEFAULTS
-	// (1GB vlog / 64MB memtable / 256MB block cache / 4 compactors) — a
-	// deliberate choice for this library: silent default changes would be a
-	// behavioral surprise for external consumers, so the owner (e.g. the
-	// tiered store, or a downstream service) opts in explicitly. One Badger
-	// instance opens per shard, so stock sizes multiply by shard count: a
-	// handful of nearly-empty shards still pre-create GBs of apparent vlog and
-	// allocate tens of MB of memtable arena each. These knobs bound that.
-	//
-	// ValueLogFileSize is validated to [1MB, 2GB) (Badger's own range). The
-	// vlog FILE appears at 2x this while open (sparse — apparent, not
-	// allocated) and is truncated to content on clean close.
+	// ValueLogFileSize / MemTableSize / BlockCacheSize / NumCompactors tune Badger's
+	// per-instance footprint. Zero keeps Badger's stock defaults (1GB vlog / 64MB
+	// memtable / 256MB block cache / 4 compactors); the owner opts in explicitly. One
+	// Badger instance opens per shard, so stock sizes multiply by shard count.
+	// ValueLogFileSize is validated to [1MB, 2GB); the vlog file appears at 2x while
+	// open (sparse).
 	ValueLogFileSize int64 // bytes; valid [1MB, 2GB)
-	// MemTableSize is the RAM knob: a heap arena of ~size+slack is allocated
-	// upfront per open instance, and the WAL file appears at 2x this. Validated
-	// to [8MB, 1GB] — the 8MB floor is a real Badger constraint (Open fails
-	// unless ValueThreshold (1MB) <= 15% of MemTableSize). Shrinking this on an
-	// existing data dir triggers a one-time WAL migration (see New).
+	// MemTableSize is the RAM knob: a heap arena of ~size is allocated per open
+	// instance, the WAL appears at 2x. Validated to [8MB, 1GB] (Badger needs
+	// ValueThreshold 1MB <= 15% of it). Shrinking on an existing dir triggers a
+	// one-time WAL migration (see New).
 	MemTableSize int64 // bytes; valid [8MB, 1GB]
 	// BlockCacheSize bounds the Ristretto block cache (filled lazily, not
 	// pre-allocated). Must be >= 0; 0 keeps the stock default.
 	BlockCacheSize int64 // bytes; >= 0
-	// IndexCacheSize bounds the Ristretto table-index/bloom-filter cache. Must
-	// be >= 0; 0 keeps Badger's stock default (0 — indices decoded and kept
-	// resident on the table object with NO cache). REQUIRED (> 0) whenever
-	// EncryptionKey is set: an encrypted table's index is stored encrypted on
-	// disk, and Badger's per-table fetchIndex() unconditionally PANICS
-	// ("Index Cache must be set for encrypted workloads") the first time an
-	// encrypted SSTable is created (flush or compaction) if this cache is
-	// nil — a real, empirically-reproduced failure mode distinct from (and in
-	// addition to) the BlockCacheSize requirement below. See
+	// IndexCacheSize bounds the Ristretto table-index/bloom cache; must be >= 0 (0 =
+	// Badger default, no cache). Required (> 0) when EncryptionKey is set, because
+	// Badger panics creating an encrypted SSTable without it. See
 	// ErrEncryptionRequiresIndexCache.
 	IndexCacheSize int64 // bytes; >= 0
 	// NumCompactors sets the compactor goroutine count. 0 keeps the stock
 	// default (4); any non-zero value must be >= 2 (Badger's minimum).
 	NumCompactors int
-	// ChangeLog enables the durable, ordered change-log (op-log): every
-	// committed mutation appends a framed record under the KeyChangeLog
-	// keyspace in the SAME WriteBatch as the data, tagged with a monotonic
-	// cluster LSN. Off by default (zero overhead — the write path is
-	// byte-for-byte identical). Surfaces store.ChangeFeedCapability for
-	// change-data-capture / audit / point-in-time recovery and as the
-	// foundation for read-replica streaming. Ignored in ReadOnly mode (a
-	// read-only shard never mutates). See badgerstore_changelog.go.
+	// ChangeLog enables the durable ordered change-log: every committed mutation
+	// appends a framed record under KeyChangeLog in the same WriteBatch as the data,
+	// tagged with a monotonic LSN. Off by default (write path unchanged). Surfaces
+	// store.ChangeFeedCapability. Ignored in ReadOnly mode. See
+	// badgerstore_changelog.go.
 	ChangeLog bool
-	// ChangeLogSeqSource, when non-nil, replaces this shard's self-owned
-	// change-log LSN counter (logSeq) with an injected store-global allocator.
-	// A sharded owner (the tiered store) injects ONE allocator so every shard
-	// draws change-log LSNs from a single monotonic sequence — the global
-	// commit order the merged feed depends on. nil (the default) keeps the
-	// self-owned counter, so a standalone badger store is byte-for-byte
-	// unchanged. Ignored when ChangeLog is off or in ReadOnly mode. See
-	// ChangeLogSeqSource and badgerstore_changelog.go.
+	// ChangeLogSeqSource, when non-nil, replaces the shard's self-owned LSN counter
+	// with an injected store-global allocator, so all shards of a sharded owner (the
+	// tiered store) draw LSNs from one sequence. Ignored when ChangeLog is off or in
+	// ReadOnly mode. See badgerstore_changelog.go.
 	ChangeLogSeqSource ChangeLogSeqSource
-	// SharedMutationEpochs, when non-nil, is advanced together with this
-	// store's own node and relationship mutation epochs: an owner of several
-	// stores (the tiered store) injects ONE so its store-wide epochs move on
-	// every write of every shard, whether that shard is open when the epochs
-	// are read or has been closed since. nil (the default) changes nothing.
+	// SharedMutationEpochs, when non-nil, is advanced together with this store's node
+	// and relationship mutation epochs, so an owner of several stores keeps store-wide
+	// epochs that move on every shard write, open or closed.
 	SharedMutationEpochs *SharedMutationEpochs
 	// DisableOrdinals turns the dense ordinals (store.OrdinalCapability) off:
 	// every row carries 0 and Max*Ordinal return 0. The tiered store sets it
@@ -345,69 +241,42 @@ type Config struct {
 	// ordinals from instead of its own, so several stores never hand out
 	// the same ordinal (the sharded store's slots share one).
 	SharedOrdinals *OrdinalAllocator
-	// ForeignNodeOrdinal, when non-nil, states the dense ordinal of a node
-	// this store holds no current row for, so a relationship whose endpoint
-	// lives in another store of the same owner carries that endpoint's
-	// ordinal (types.Relationship.StartOrdinal / EndOrdinal). The sharded
-	// store sets it to look the node up in its owning slot. It must not call
-	// back into this store's ordinal state; nil states 0.
+	// ForeignNodeOrdinal, when non-nil, gives the dense ordinal of a node this store
+	// holds no current row for, so a relationship whose endpoint lives in another store
+	// carries that ordinal (Relationship.StartOrdinal / EndOrdinal). Must not call back
+	// into this store's ordinal state; nil states 0.
 	ForeignNodeOrdinal func(types.NodeID) uint32
-	// PropertyKeyRegistry, when non-nil, is the property-key token registry the
-	// store uses to tokenize on write and resolve tokens on read — supplied by
-	// an owner (e.g. the tiered store) that holds ONE canonical registry for all
-	// shards. When non-nil it is installed BEFORE loadIndexes so row decoding can
-	// resolve tokenized property keys, and the store does NOT load its own copy
-	// from meta. When nil, the store loads its own registry from its meta
-	// (standalone behavior). The store never persists a registry it was handed;
-	// persistence is the owner's responsibility (single canonical copy).
+	// PropertyKeyRegistry, when non-nil, is the owner's canonical property-key token
+	// registry (one for all shards). It is installed before loadIndexes so rows decode,
+	// and the store does not load or persist its own copy. When nil the store loads its
+	// own from meta.
 	PropertyKeyRegistry *registrypkg.PropertyKeyRegistry
-	// OnPropertyKeyGrow, when non-nil, is invoked from flush() — BEFORE the row
-	// WriteBatch — whenever the registry has grown since the last commit, i.e.
-	// write-ahead persistence of the registry to its canonical location. The
-	// tiered store sets this to commit the shared registry to the reference
-	// shard (with fsync). When nil, the store persists the registry to its own
-	// meta (standalone behavior). A non-nil error aborts the flush so a batch of
-	// rows can never become durable before the registry entries it depends on.
+	// OnPropertyKeyGrow, when non-nil, is called from flush() before the row
+	// WriteBatch whenever the registry grew (write-ahead registry persistence; the
+	// tiered store commits it to the reference shard). When nil the store persists to
+	// its own meta. A non-nil error aborts the flush, so rows never become durable
+	// before the registry entries they depend on.
 	OnPropertyKeyGrow func() error
-	// OnChangeLogFlush, when non-nil, is invoked from flush() AFTER a WriteBatch
-	// carrying change-log records commits durably. The tiered store sets it to
-	// persist the store-global allocator high-water to the reference shard's
-	// catalog watermark (ADR-0005 §2.1-reseed), so reseed at open reads ONE key
-	// and never opens a cold shard. A non-nil error surfaces to the writer (the
-	// records are already durable; the watermark is belt-and-braces, so the store
-	// logs but does not roll back). nil = no watermark persistence (standalone).
+	// OnChangeLogFlush, when non-nil, is called from flush() after a WriteBatch with
+	// change-log records commits (the tiered store persists the allocator high-water,
+	// ADR-0005 §2.1-reseed). An error surfaces to the writer without rollback (the
+	// records are already durable). nil = no watermark persistence.
 	OnChangeLogFlush func() error
-	// OnCommitFloor, when non-nil, receives the commit floor (the newest
-	// transaction stamp of every row the store has written,
-	// store.CommitFloorCapability) from flush() — BEFORE the row WriteBatch —
-	// whenever it grew, and must persist it where the owner's open reads it.
-	// The tiered store sets it on every shard but the reference shard, whose
-	// open does not see a cold shard. A non-nil error aborts the flush. When
-	// nil, the floor rides the row WriteBatch into this store (standalone).
-	// durable is true inside a DurableFlush: the hook must then make the floor
-	// durable before it returns (it is called before the batch, and again
-	// before the write-ahead-log fsync for rows a background flush wrote), so
-	// a power loss cannot keep a row whose floor it lost. A background flush
-	// passes false and pays no fsync.
+	// OnCommitFloor, when non-nil, receives the commit floor (newest transaction stamp
+	// of every row written, store.CommitFloorCapability) from flush() before the row
+	// WriteBatch whenever it grew, and must persist it where the owner's open reads it.
+	// An error aborts the flush. When nil the floor rides the row WriteBatch.
+	// durable is true inside DurableFlush: the hook must make the floor durable before
+	// returning, so a power loss cannot keep a row whose floor it lost. Called before the
+	// batch, and with durable=true again before DurableFlush's WAL fsync for rows a
+	// background flush wrote; a background flush passes false (no fsync).
 	OnCommitFloor func(floor types.Instant, durable bool) error
-	// EncryptionKey enables AES encryption-at-rest (SSTables, value log, WAL,
-	// and Badger's own key registry). Length must be 0 (disabled — the
-	// default, byte-for-byte the pre-encryption on-disk format), 16, 24, or 32
-	// bytes (AES-128/192/256); any other length is rejected at New() with
-	// ErrInvalidEncryptionKeyLength.
-	//
-	// Badger REQUIRES a non-zero BlockCacheSize whenever compression or
-	// encryption is enabled and PANICS (not a returned error) on Open
-	// otherwise — verified directly against the Badger v4.9.2 source (it is
-	// BlockCacheSize, not IndexCacheSize, that gates the check). New() fails
-	// closed with ErrEncryptionRequiresBlockCache instead of letting that
-	// panic escape when EncryptionKey is set and BlockCacheSize == 0.
-	//
-	// Reopening an encrypted dir with the WRONG key, or opening an existing
-	// PLAINTEXT dir with a non-empty key, fails Open with an error wrapping
-	// badgerv4.ErrEncryptionKeyMismatch (errors.Is-able) — Badger detects
-	// both by decrypting a sanity marker in its KEYREGISTRY file at open,
-	// before any row is read.
+	// EncryptionKey enables AES encryption-at-rest (SSTables, value log, WAL, key
+	// registry). Length must be 0 (disabled), 16, 24 or 32, else New fails with
+	// ErrInvalidEncryptionKeyLength. Badger panics on Open without a BlockCacheSize, so
+	// New fails with ErrEncryptionRequiresBlockCache instead. Opening with the wrong
+	// key, or a plaintext dir with a key, fails with an error wrapping
+	// badgerv4.ErrEncryptionKeyMismatch.
 	EncryptionKey []byte
 	// EncryptionKeyRotation is Badger's EncryptionKeyRotationDuration — how
 	// often a new internal data key is generated for the encrypted value log.
@@ -431,30 +300,21 @@ type writeOp struct {
 	value  []byte // nil for deletes and index entries
 }
 
-// pendingLogRecord is a change-log record buffered for the next flush. value is
-// the fully framed on-disk value (tag byte || msgpack body); lsn is its
-// monotonic cluster sequence. Unlike pending (the entity-op map, which
-// last-write-wins coalesces by key), pendingLog is an append-only slice — every
-// committed mutation appears in the feed, never coalesced. Guarded by wbMu, the
-// same lock as pending, so a record and its entity ops are snapshotted together
-// by flush() (no committed-but-unlogged window).
+// pendingLogRecord is a change-log record buffered for the next flush: value is
+// the framed on-disk value, lsn its cluster sequence. pendingLog is append-only
+// (never coalesced) and guarded by wbMu with pending, so flush() snapshots a record
+// and its entity ops together.
 type pendingLogRecord struct {
 	lsn   uint64
 	value []byte
 }
 
-// Store implements the Store interface using Badger as the durable backing store.
-//
-// Architecture: in-memory state is the source of truth while running. The LRU caches
-// hold recently accessed entities with dirty tracking. In-memory indexes (label, type,
-// adjacency) provide O(1) lookups. Write operations update in-memory state immediately
-// and queue writeOps for async batch persistence.
-//
-// A background flush loop drains the write buffer to Badger via WriteBatch every
-// FlushInterval. A GC loop runs RunValueLogGC periodically. On shutdown, a final
-// flush ensures all pending writes are persisted.
-//
-// Counters are atomic int64 fields, persisted atomically in the flush WriteBatch. No OCC contention.
+// Store implements the Store interface on Badger. In-memory state (LRU caches
+// with dirty tracking, label/type/adjacency indexes) is the source of truth while
+// running; writes update it immediately and queue writeOps for async batch
+// persistence by a background flush loop (every FlushInterval). A GC loop runs
+// RunValueLogGC; shutdown does a final flush. Counters are atomic and persisted in
+// the flush WriteBatch. See docs/architecture.md (badger.Store).
 type Store struct {
 	db *badgerv4.DB
 
@@ -472,6 +332,7 @@ type Store struct {
 	labelOnDisk           bool                                          // answer label snapshots from the persisted keyspace
 	adjOnDisk             bool                                          // answer adjacency snapshots from the persisted keyspaces
 	propIdxOnDisk         bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
+	formatMarker          uint16                                        // store-level format marker (raiseFormatMarkerPendingLocked; guarded by wbMu)
 	temporalIdxOnDisk     bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
 	disablePlannerStats   bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
 	openImageSuppressed   atomic.Bool                                   // the open's index-key repair failed: Close writes no image (badgerstore_index_repair.go)
@@ -487,24 +348,18 @@ type Store struct {
 	relValidIdxBuilt      atomic.Bool                                   // fast-path "already built" check outside idxMu
 
 	// Transaction-time membership sidecars (store.LabelTxMembershipCapability /
-	// RelTypeTxMembershipCapability). labelTxMembers maps a label token to the set
-	// of node IDs that EVER carried it (current OR any historical version) tagged
-	// with a lower bound on their earliest acquisition transaction time;
-	// relTypeTxMembers is the rel-type mirror. Both APPEND-ONLY (removal/delete
-	// never drops a member) and nil until lazily built on the first pinned label/
-	// type scan (mirrors relValidIdx). Guarded by idxMu.
+	// RelTypeTxMembershipCapability): label (rel-type) token -> node IDs that ever
+	// carried it, with a lower bound on the earliest acquisition tx time. Append-only;
+	// nil until lazily built on the first pinned scan. Guarded by idxMu.
 	labelTxMembers      map[uint16]map[types.NodeID]types.Instant
 	labelTxMembersBuilt atomic.Bool
 	relTypeTxMembers    map[uint16]map[types.RelID]types.Instant
 	relTypeMembersBuilt atomic.Bool
 
-	// Property membership sidecars (backlog 8, badgerstore_propertytxmembers.go):
-	// one per declared property index a temporal lookup asked for. relPropTx /
-	// nodePropTx and propTxGen are guarded by idxMu; propTxBuildMus holds one
-	// mutex per sidecar ((type|label, key)) that serializes ITS lazy builds, so a
-	// build of one index never delays a lookup on another (order: a build mutex
-	// -> idxMu; no build mutex is taken under another). propTxBuilds /
-	// propTxBuildNanos feed PropertyTxMembershipStats.
+	// Property membership sidecars (backlog 8, badgerstore_propertytxmembers.go), one
+	// per declared property index a temporal lookup asked for. relPropTx / nodePropTx /
+	// propTxGen are guarded by idxMu; propTxBuildMus holds one mutex per sidecar that
+	// serializes its lazy build (order: build mutex -> idxMu, never nested).
 	relPropTx        map[indexpkg.RelPropertyIndexKey]*propTxSidecar[types.RelID]
 	nodePropTx       map[indexpkg.PropertyIndexKey]*propTxSidecar[types.NodeID]
 	propTxGen        uint64
@@ -513,14 +368,9 @@ type Store struct {
 	propTxBuildNanos atomic.Int64
 
 	// Belief-watermark sidecars (store.NodeBeliefWatermarkCapability /
-	// RelBeliefWatermarkCapability, BACKLOG 10c). nodeBeliefWatermark maps a
-	// node ID to the MAXIMUM TxFrom ever recorded across its whole version
-	// chain (current + every history row); relBeliefWatermark mirrors it for
-	// relationships. Lazily built on first use (same nil-until-built shape as
-	// labelTxMembers above), maintained incrementally thereafter at every
-	// door that persists a current or history row. See
-	// store.NodeBeliefWatermarkCapability's doc comment for the invariant
-	// this restores. Guarded by idxMu.
+	// RelBeliefWatermarkCapability, backlog 10c): ID -> max TxFrom over its whole
+	// version chain. Lazily built, then maintained at every door that persists a
+	// current or history row. Guarded by idxMu.
 	nodeBeliefWatermark      map[types.NodeID]types.Instant
 	nodeBeliefWatermarkBuilt atomic.Bool
 	relBeliefWatermark       map[types.RelID]types.Instant
@@ -534,12 +384,16 @@ type Store struct {
 	histRelEpoch  atomic.Uint64
 	histNodeCount historyCount
 	histRelCount  historyCount
+	// History epochs (store.HistoryEpochCapability, backlog 68,
+	// badgerstore_history_epoch.go): per-ID watch tables noted by
+	// noteHistoryKey under wbMu, dropped by Clear.
+	histNodeEpochs storepkg.HistoryEpochs[snowflake.ID]
+	histRelEpochs  storepkg.HistoryEpochs[snowflake.ID]
 
 	// History presence (store.HistoryPresenceCapability,
-	// badgerstore_history_presence.go): per kind, a RAM set of the IDs with
-	// history rows, built once by a key-only scan and maintained by
-	// noteHistoryKey under wbMu. historyPresenceProbeOnly (Config) never builds
-	// it and probes per ID instead.
+	// badgerstore_history_presence.go): per kind, a RAM set of IDs with history rows,
+	// built once by a key scan and maintained by noteHistoryKey under wbMu. Never built
+	// when historyPresenceProbeOnly.
 	histNodePresence         historyPresence
 	histRelPresence          historyPresence
 	historyPresenceProbeOnly bool
@@ -550,13 +404,11 @@ type Store struct {
 	// historyPresenceProbeHook, when non-nil, runs after a per-ID probe and
 	// before it installs its answer. Set only from the owning test.
 	historyPresenceProbeHook func()
-	// History stamps (store.HistoryStampsCapability,
-	// badgerstore_history_stamps.go): per kind, a RAM sidecar of the newest
-	// TxFrom / TxTo-or-DeletedAt over each ID's history rows, built once by a
-	// value scan on the first NodeHistoryStamps / RelHistoryStamps call and
-	// maintained by noteHistoryKey under wbMu. historyPresenceProbeOnly also
-	// keeps it unbuilt (per-ID computation). The hooks mirror the presence
-	// hooks (build window, probe window). Set only from the owning test.
+	// History stamps (store.HistoryStampsCapability, badgerstore_history_stamps.go):
+	// per kind, a RAM sidecar of the newest TxFrom / TxTo-or-DeletedAt over each ID's
+	// history rows, built once on the first NodeHistoryStamps / RelHistoryStamps call
+	// and maintained by noteHistoryKey under wbMu. Unbuilt when
+	// historyPresenceProbeOnly. The hooks are set only by the owning test.
 	histNodeStamps         historyStamps
 	histRelStamps          historyStamps
 	historyStampsBuildHook func()
@@ -572,23 +424,18 @@ type Store struct {
 	// drop; a non-nil error is returned as the drop's failure. Test only.
 	clearDropTestHook func() error
 
-	// DocValues: cached per-label columnar snapshots + a global node-mutation
-	// epoch bumped on EVERY node write (incl. deletes). nextNodeRev above misses
-	// deletes, so DocValues keeps its own counter. docMu guards docColumns only
-	// (the build itself runs lock-free, keyed on nodeEpoch — see
-	// ForEachDocValues). atomic so the epoch reads need no lock.
+	// DocValues: cached per-label columnar snapshots plus a global node-mutation epoch
+	// bumped on every node write including deletes (nextNodeRev misses deletes). docMu
+	// guards docColumns only; builds run lock-free keyed on nodeEpoch (see
+	// ForEachDocValues).
 	nodeEpoch atomic.Uint64
-	// PER-LABEL node-mutation epochs (BACKLOG 4b): a node write bumps only the epochs
-	// of the labels it carries, so a cached column for an UNRELATED label survives
-	// write-active ingest of other labels (the global nodeEpoch invalidates every
-	// label's column on any write). labelEpoch(token) = nodeLabelEpochs[token%256] +
-	// nodeEpochSalt. The sharded array (256 stripes) trades exactness for lock-free
-	// O(1): a hash collision over-invalidates two labels together (SAFE — never
-	// stale). nodeEpochSalt is bumped on the label-LESS invalidation events (Clear,
-	// retention purge) so they invalidate every label. Both counters are monotonic, so
-	// a stamp-and-recheck is a total-order freshness test (and the multi-label cache
-	// uses the monotonic SUM of member epochs). Bumped in add/removeNodePropertyKeyCounts
-	// (the ungated wrappers every node-content write funnels through, with the node).
+	// Per-label node-mutation epochs (backlog 4b): a node write bumps only its labels'
+	// epochs, so cached columns of unrelated labels survive. labelEpoch(token) =
+	// nodeLabelEpochs[token%256] + nodeEpochSalt. A stripe collision over-invalidates
+	// (safe, never stale). nodeEpochSalt is bumped by label-less invalidations (Clear,
+	// retention purge). Counters are monotonic, so stamp-and-recheck is a total-order
+	// freshness test. Bumped in add/removeNodePropertyKeyCounts, which every
+	// node-content write funnels through.
 	nodeLabelEpochs [nodeLabelEpochStripes]atomic.Uint64
 	nodeEpochSalt   atomic.Uint64
 
@@ -597,22 +444,22 @@ type Store struct {
 	// instead of rebuilding it. See badgerstore_append_delta.go.
 	appendMu     sync.Mutex
 	appendDeltas map[uint16]*appendDelta
-	// patchable (round 5 request 4) holds the labels a single-label or
-	// intersection column snapshot was cached for: only for those does the
-	// removal seam record the node (an update's remove half) instead of
-	// poisoning, so a label nobody reads columns of pays nothing more per
-	// write. Guarded by appendMu; dropped with appendDeltas.
+	// patchable holds the labels a single-label or intersection column snapshot was
+	// cached for: only for those does the removal seam record the node (an update's
+	// remove half) instead of poisoning. Guarded by appendMu; dropped with
+	// appendDeltas.
 	patchable map[uint16]struct{}
 	// Refresh counters: how many columnar snapshots were EXTENDED, PATCHED
 	// (in-place updates, round 5 request 4) or rebuilt.
 	columnExtends  atomic.Uint64
 	columnPatches  atomic.Uint64
 	columnRebuilds atomic.Uint64
-	// relEpoch: DISTINCT generation counter bumped on every relationship write. The
-	// expand-aggregation column path reads ADJACENCY, so its Gate-2 re-check must
-	// see edge mutations (nodeEpoch alone would wave through a torn aggregate from a
-	// concurrent edge insert). Separate from nodeEpoch so node-only column caches do
-	// not rebuild on edge-heavy writes.
+	// multiFromMember counts the label-intersection snapshots taken from a
+	// member label's columns instead of the records (round 7 request 6).
+	multiFromMember atomic.Uint64
+	// relEpoch is a distinct generation counter bumped on every relationship write:
+	// the expand-aggregation column path reads adjacency, so its re-check must see edge
+	// mutations. Separate from nodeEpoch so node-only column caches survive edge writes.
 	relEpoch atomic.Uint64
 	// sharedEpochs is Config.SharedMutationEpochs (nil standalone).
 	sharedEpochs *SharedMutationEpochs
@@ -626,7 +473,7 @@ type Store struct {
 	relTypeEpochs  [relTypeEpochStripes]atomic.Uint64
 	relEpochCoarse atomic.Uint64
 	// relAppendDeltas records pure inserts per rel type since that type's snapshot
-	// was built, letting a read EXTEND instead of rebuilding (measured 171x at 10k).
+	// was built, letting a read EXTEND instead of rebuilding.
 	columnsOnDisk   bool
 	relAppendMu     sync.Mutex
 	relAppendDeltas map[uint16]*relAppendDelta
@@ -681,15 +528,12 @@ type Store struct {
 	// Map keyed by string(op.key) for last-write-wins deduplication.
 	wbMu    sync.Mutex
 	pending map[string]writeOp
-	// flushing holds the snapshot a concurrent flush() is mid-committing to
-	// Badger. flush() parks `pending` here under wbMu BEFORE the WriteBatch
-	// commit and clears it only AFTER the commit succeeds (or merges it back on
-	// failure). Readers must consult BOTH maps: between the swap and the commit a
-	// row lives ONLY in `flushing` — it is no longer in `pending` and not yet
-	// visible in a Badger View. Entity point reads survive this window via the
-	// resident dirty cache, but history / adjacency / label-index overlay scans
-	// read the buffer directly and would otherwise drop in-flight rows. Always go
-	// through rangePending / lookupPending so `flushing` is included.
+	// flushing holds the snapshot a concurrent flush() is committing: parked from
+	// pending under wbMu before the WriteBatch commit, cleared after it succeeds (merged
+	// back on failure). In between a row lives only here, so history, adjacency and
+	// label overlay scans must go through rangePending / lookupPending, which read both
+	// maps. Entity point reads survive this window via the resident dirty cache;
+	// overlay scans must use rangePending/lookupPending.
 	flushing map[string]writeOp
 	// commitGen counts the commits that move buffered rows into Badger (flush,
 	// Clear): a read snapshot re-pins when it moved (badgerstore_read_snapshot.go).
@@ -697,13 +541,9 @@ type Store struct {
 	// bump it before the rows leave the overlay.
 	commitGen atomic.Uint64
 
-	// flushMu serializes concurrent flush() executions end-to-end.
-	// Without this, two concurrent flush() calls can both snapshot atomic
-	// counters under idxMu.RLock() and then submit out-of-order WriteBatches,
-	// causing the later-completing batch to overwrite newer counter values with
-	// stale ones — corrupting node/rel counts on restart.
-	// The background flushLoop goroutine is single-threaded, so flushMu adds no
-	// contention there. It serializes callers in SyncWrites mode only.
+	// flushMu serializes concurrent flush() executions end to end; otherwise two
+	// flushes could snapshot counters and submit out-of-order WriteBatches, leaving
+	// stale node/rel counts after restart. Matters only for SyncWrites callers.
 	flushMu sync.Mutex
 
 	// Per-label and per-type counters — O(1) reads via atomic.Int64.
@@ -717,180 +557,115 @@ type Store struct {
 	// values because the planner uses this to prune scalar equality lookups.
 	propertyKeyCounts sync.Map // map[indexpkg.PropertyIndexKey]*atomic.Int64
 
-	// Per-(label, property key) EXACT type-class node counters — O(1) reads.
-	// Keys are indexpkg.PropertyIndexKey, values *typeClassCounters. Unlike
-	// propertyKeyCounts this covers EVERY property value (non-indexable ones
-	// classify as types.ClassOther); maintained on the SAME mutation call
-	// (adjustNodePropertyKeyCounts) and rebuilt by the same loadIndexes pass.
+	// Per-(label, property key) exact type-class node counters (*typeClassCounters).
+	// Unlike propertyKeyCounts this covers every value (non-indexable ones are
+	// types.ClassOther); maintained by adjustNodePropertyKeyCounts, rebuilt by
+	// loadIndexes.
 	propertyTypeClassCounts sync.Map // map[indexpkg.PropertyIndexKey]*typeClassCounters
 
-	// relPropertyTypeClassCounts is the RELATIONSHIP mirror of propertyTypeClassCounts
-	// (BACKLOG 5B): exact per-(relTypeToken, propertyKey) rel counts by
-	// types.PropertyTypeClass. Incremented from the row a door makes current,
-	// decremented from the row a delete or replace removes (no per-relationship
-	// memo, backlog 53); rebuilt by loadIndexes.
+	// relPropertyTypeClassCounts is the relationship mirror of
+	// propertyTypeClassCounts (backlog 5B): incremented from the row a door makes
+	// current, decremented from the row a delete or replace removes (backlog 53);
+	// rebuilt by loadIndexes.
 	relPropertyTypeClassCounts sync.Map // map[indexpkg.RelPropertyIndexKey]*typeClassCounters
 
-	// Per-label property-key NDV + exact min/max accumulators, protected by
-	// idxMu (unlike propertyKeyCounts's lock-free sync.Map — the accumulator's
-	// HyperLogLog registers and min/max fields are not atomic-friendly, and
-	// NodePropertyStats is a cold-path planner call, so it takes idxMu instead
-	// of a bespoke lock-free structure). Maintained on the SAME node-mutation
-	// doors as propertyKeyCounts — see adjustNodePropertyKeyCounts in
-	// badgerstore_property_key_counts.go. Backs the optional
-	// store.NodePropertyStatsCapability.
+	// Per-label property-key NDV + min/max accumulators, guarded by idxMu (HyperLogLog
+	// registers are not atomic-friendly; NodePropertyStats is a cold path). Maintained
+	// on the same doors as propertyKeyCounts (adjustNodePropertyKeyCounts in
+	// badgerstore_property_key_counts.go). Backs store.NodePropertyStatsCapability.
 	propertyStats map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator
 
-	// relPropertyKeyCounts / relPropertyStats are the RELATIONSHIP mirror of
-	// propertyKeyCounts / propertyStats (BACKLOG 21a), maintained like
-	// relPropertyTypeClassCounts above: relPropertyKeyCounts is the per-(relType,
-	// property key) presence counter (indexable scalar values only, same
-	// convention as propertyKeyCounts); relPropertyStats is the per-(relType,
-	// property key) NDV+min/max accumulator, protected by idxMu for the same
-	// reason propertyStats is. Both follow the rows themselves: added from the
-	// row a door makes current, taken out with the row a delete or replace
-	// removes (backlog 53: RAM per distinct statistic, not per relationship);
-	// rebuilt by loadIndexes. Backs the optional store.RelPropertyStatsCapability.
+	// Rel mirrors of propertyKeyCounts / propertyStats (backlog 21a): per-(relType,
+	// property key) presence counter and NDV+min/max accumulator (idxMu); follow the rows
+	// (backlog 53), rebuilt by loadIndexes. Backs store.RelPropertyStatsCapability.
 	relPropertyKeyCounts sync.Map // map[indexpkg.RelPropertyIndexKey]*atomic.Int64
 	relPropertyStats     map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator
 
-	// rescanTestHook, when non-nil, is invoked by NodePropertyStats right after
-	// the unlocked value collection and BEFORE the write-generation re-check /
-	// Rescan commit, once per rescan attempt. Production leaves it nil (zero
-	// overhead); tests use it to deterministically land a concurrent mutation
-	// inside the collect→commit window that the stale-rescan-overwrite guard
-	// must catch. Set only from the owning test before starting workers.
+	// rescanTestHook runs in NodePropertyStats between the unlocked collection and the
+	// write-generation re-check, once per attempt. Test-only.
 	rescanTestHook func(attempt int)
 
-	// historyScanTestHook, when non-nil, is invoked by the full-history prefix
-	// readers (getNodeHistoryByPrefix / getRelHistoryByPrefix) right AFTER the
-	// Badger scan and BEFORE the overlay merge. Production leaves it nil (zero
-	// overhead); tests use it to deterministically land a concurrent flush()
-	// commit (flushing rows -> Badger, `flushing` cleared) inside the
-	// scan->merge window — the window in which a scan-first reader drops a row
-	// that has left `flushing` but was not in the reader's older Badger
-	// snapshot. The lazy builds (K1 membership sidecars, belief watermarks)
-	// invoke it too, right after their Badger scan and before they mark
-	// themselves built, while holding idxMu.Lock; so does
-	// relationshipIndexKeysForRel after its scan. Set only from the owning test.
+	// historyScanTestHook runs in the full-history prefix readers and the lazy builds
+	// (membership sidecars, belief watermarks, relationshipIndexKeysForRel) after their
+	// Badger scan and before the overlay merge / install, so tests land a flush() commit
+	// there. Test-only; called under idxMu.Lock, so a hook must not take idxMu.
 	historyScanTestHook func()
 	// flushClearedTestHook (tests only) runs inside flush right after the
 	// committed rows left the overlay (flushing cleared).
 	flushClearedTestHook func()
-	// propTxScanTestHook runs inside a property membership build after the
-	// overlay capture and before the badger view; propTxBuildTestHook after the
-	// scan and before the install. Tests only.
+	// propTxScanTestHook runs in a property membership build after the overlay capture
+	// and before the badger view; propTxBuildTestHook after the scan, before the install.
+	// Test-only.
 	propTxScanTestHook  func()
 	propTxBuildTestHook func()
 
-	// bulkAsOfScanTestHook, when non-nil, is invoked by NodesAsOf/RelsAsOf once
-	// per candidate entity, right BEFORE that entity's nodeAsOfInTxn/relAsOfInTxn
-	// call, passing the 0-based candidate index. Production leaves it nil (zero
-	// overhead); tests use it to deterministically land a concurrent flush()
-	// commit in the middle of the bulk scan's per-entity loop — the exact
-	// commit-window gap historyOverlaySnapshot exists to close (BACKLOG 18k
-	// undercounting fix). Set only from the owning test.
+	// bulkAsOfScanTestHook runs in NodesAsOf/RelsAsOf once per candidate before its
+	// as-of read, so tests land a flush() commit mid-scan (backlog 18k). Test-only.
 	bulkAsOfScanTestHook func(index int)
 
-	// bulkAsOfKeyProbeTestHook, when non-nil, is invoked by the bulk as-of
-	// scans' history key existence check for every entity not answered by the
-	// history presence set (bulkPresence). Set only from the owning test.
+	// bulkAsOfKeyProbeTestHook runs in the bulk as-of history key check for each entity
+	// the presence set (bulkPresence) did not answer. Test-only.
 	bulkAsOfKeyProbeTestHook func()
 
-	// bulkAsOfOverlayTestHook, when non-nil, is invoked by NodesAsOf/RelsAsOf
-	// right after the write-buffer overlay is captured and before the shared
-	// transaction opens: a history delete landing here is NOT in the scan's
-	// snapshot, which is what the presence set's delete counter, read before the
-	// capture (bulkPresence), must catch. Set only from the owning test.
+	// bulkAsOfOverlayTestHook runs in NodesAsOf/RelsAsOf after the write-buffer overlay
+	// is captured and before the shared transaction opens (a delete landing here is what
+	// bulkPresence's delete counter must catch). Test-only.
 	bulkAsOfOverlayTestHook func()
 
-	// moveTestHook, when non-nil, is invoked (moveHook) by every with-history
-	// door (Replace*WithHistory, the label-token history doors,
-	// Delete*WithHistory) while it holds idxMu.Lock: between the two halves of
-	// publishing the move — the pending buffer (the history readers' overlay)
-	// and the entity cache (the GetNode / GetRelationship answer) — and again
-	// right after each change of a current slot (the cache put of a moved
-	// entity's new row, a relationship's removal, a cascade's removals), so a
-	// test sees every intermediate state whatever the order of the halves.
-	// Production leaves it nil; tests read the entity there through the
-	// lock-free point doors to prove a reader never sees the move half done
-	// (backlog 32). Set only from the owning test.
+	// moveTestHook is called (moveHook) by every with-history door under idxMu.Lock
+	// between the two halves of publishing a move and after each current-slot change, so
+	// tests can prove lock-free point readers never see a half move (backlog 32).
+	// Test-only.
 	moveTestHook func()
 
-	// asOfAfterCurrentTestHook, when non-nil, is invoked by the point as-of
-	// doors (NodeAsOf / RelAsOf) between their current-row read and their
-	// history scan — the two lock-free reads whose order must be current row
-	// first (backlog 32). Production leaves it nil; tests land a whole move
-	// there. Set only from the owning test.
+	// asOfAfterCurrentTestHook runs in NodeAsOf / RelAsOf between the current-row read
+	// and the history scan, whose order must be current first (backlog 32). Test-only.
 	asOfAfterCurrentTestHook func()
 
-	// relIndexKeysTestErr, when non-nil, is consulted first by
-	// relationshipIndexKeysForRel (the fallible read of an orphan
-	// relationship's index keys); a non-nil return is that read's error.
-	// Production leaves it nil; tests fail one read of a cascade's preflight to
-	// prove a fatal error applies nothing. Set only from the owning test.
+	// relIndexKeysTestErr is consulted first by relationshipIndexKeysForRel; non-nil is
+	// that read's error, to prove a fatal preflight error applies nothing. Test-only.
 	relIndexKeysTestErr func() error
 
-	// replaceRelPrefetchTestHook, when non-nil, is invoked by ReplaceRelationship
-	// right after prefetchRelWithRev returns and BEFORE idxMu.Lock() is acquired.
-	// Production leaves it nil (zero overhead); tests use it to deterministically
-	// land a concurrent property-changing write inside the prefetch->lock window
-	// that relRevs (BACKLOG 18b) must detect via currentRelForPrefetchLocked's
-	// rev check. Set only from the owning test.
+	// replaceRelPrefetchTestHook runs in ReplaceRelationship after prefetchRelWithRev,
+	// before idxMu.Lock, to land a write that relRevs (backlog 18b) must detect.
+	// Test-only.
 	replaceRelPrefetchTestHook func()
 
-	// relDeletePrefetchTestHook, when non-nil, runs after a deferred
-	// relationship delete's prefetch (DeleteRelationshipsBatch, every node
-	// cascade) and BEFORE idxMu.Lock(), so a test can change a prefetched row and
-	// force the locked re-read fallback (backlog 53). Set only from the owning test.
+	// relDeletePrefetchTestHook runs after a deferred relationship delete's prefetch and
+	// before idxMu.Lock, to force the locked re-read fallback (backlog 53). Test-only.
 	relDeletePrefetchTestHook func()
 
-	// exactErasureScanTestHook, when non-nil, runs immediately before each
-	// fallible exact-erasure preflight scan. Production leaves it nil. Tests
-	// inject a failure at a late scan and prove the destructive apply phase has
-	// not started: current rows/indexes remain visible and no delete op entered
-	// the write buffer.
+	// exactErasureScanTestHook runs before each exact-erasure preflight scan, to prove a
+	// late failure leaves the destructive phase unstarted. Test-only.
 	exactErasureScanTestHook func(stage string, id uint64) error
 
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
 
-	// Relationship property indexes — RAM-only value maps, keyed by
-	// rel-type token. Definitions persisted under RelPropIndexDefsKey; data
-	// rebuilt from current relationships at open. There is no on-disk value
-	// keyspace (RAM-only v1; a 0x0C rel keyspace disk mode is a documented
-	// follow-up mirroring the node 0x0A PropertyIndexOnDisk mode). Guarded by
+	// Relationship property indexes: RAM-only value maps keyed by rel-type token.
+	// Definitions persist under RelPropIndexDefsKey; data is rebuilt at open. Guarded by
 	// idxMu like propertyIndexes.
 	relPropertyIndexes map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex
 
-	// Composite property indexes — in-memory only (v1 has no on-disk mode,
-	// unlike PropertyIndexOnDisk). Definitions persisted, data rebuilt on
-	// startup. compositeIndexesByLabel is the label->definitions secondary
-	// index the node-mutation maintenance seam
-	// (maintainPropertyIndexesAdd/Remove/Purge) needs.
+	// Composite property indexes: in-memory only; definitions persist, data is rebuilt
+	// at startup. compositeIndexesByLabel is the label->definitions index for the
+	// maintainPropertyIndexesAdd/Remove/Purge seam.
 	compositeIndexes        map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex
 	compositeIndexesByLabel map[uint16][]indexpkg.CompositeIndexKey
 
 	// Temporal indexes — in-memory only. Label tokens persisted, data rebuilt on startup.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
-	// Relationship-type temporal indexes (BACKLOG 21c) — the rel-side mirror of
-	// temporalIndexes, keyed by rel-type token in its own independent map (a
-	// label token and a rel-type token are different registries and may
-	// numerically collide). In memory only, like temporalIndexes: the indexed
-	// rel-type tokens are persisted under RelTypeTemporalIndexDefsKey and the
-	// data is rebuilt on open (loadRelTypeTemporalIndexes; through v4.41 the
-	// definitions were not persisted and a reopen dropped the index).
+	// Rel-type temporal indexes (backlog 21c), mirror of temporalIndexes in its own map
+	// (label and rel-type tokens may collide). In memory; definitions persist under
+	// RelTypeTemporalIndexDefsKey, data is rebuilt on open (loadRelTypeTemporalIndexes).
 	relTypeTemporalIndexes map[uint16]*indexpkg.TemporalIndex
-	// relTemporalBuilds counts relationship temporal index builds (create and
-	// rebuild at open) — a timing-independent hook for the tiered cold-shard
-	// tests (RelTemporalIndexBuildsForTest).
+	// relTemporalBuilds counts rel temporal index builds, a timing-independent hook for
+	// the tiered cold-shard tests (RelTemporalIndexBuildsForTest).
 	relTemporalBuilds atomic.Int64
 
-	// Index-rebuild diagnostics — record count of node entries that the
-	// loadIndexes pass tolerated as missing/corrupt. Surfaced via
-	// IndexRebuildStats so operators can detect partially rebuilt indexes
-	// instead of the previous silent skip (F9 in the maintainability review).
+	// Index-rebuild diagnostics: node entries loadIndexes tolerated as missing/corrupt,
+	// surfaced via IndexRebuildStats.
 	indexRebuildPropertySkips  atomic.Int64
 	indexRebuildCompositeSkips atomic.Int64
 	indexRebuildTemporalSkips  atomic.Int64
@@ -911,11 +686,9 @@ type Store struct {
 	inMemory   bool
 	readOnly   bool
 	syncWrites bool
-	// groupCommit is set between BeginGroupCommit and EndGroupCommit (the
-	// store.GroupCommitCapability window): flushIfNeeded holds every
-	// per-mutation flush and EndGroupCommit issues one. Only one exclusive
-	// writer may hold the window; the flag is atomic so the read in
-	// flushIfNeeded needs no lock.
+	// groupCommit is set between BeginGroupCommit and EndGroupCommit
+	// (store.GroupCommitCapability): flushIfNeeded holds per-mutation flushes and
+	// EndGroupCommit issues one. Atomic so the read needs no lock.
 	groupCommit atomic.Bool
 	maxPending  int // async write-buffer bound; 0 disables (see Config.MaxPendingWrites)
 	flushInt    time.Duration
@@ -925,105 +698,75 @@ type Store struct {
 	flushDone   chan struct{}
 	gcDone      chan struct{}
 	closeOnce   sync.Once
-	// closing is set at the start of Close(), before background goroutines are
-	// stopped and before the final flush snapshots pending writes. Public
-	// operations must fail closed after this point so no mutation can enqueue
-	// work that misses the final flush.
+	// closing is set at the start of Close(), before the final flush snapshots pending
+	// writes; public operations fail closed after it so no mutation misses that flush.
 	closing atomic.Bool
-	// dbClosed is set to true immediately before bs.db.Close() in Close().
-	// flush() checks this before calling WriteBatch.Flush() to avoid
-	// blocking indefinitely — Badger v4 hangs in WaitForMark when the DB
-	// is closed while a WriteBatch is in progress.
+	// dbClosed is set just before bs.db.Close(); flush() checks it before
+	// WriteBatch.Flush() because Badger v4 hangs in WaitForMark on a closed DB.
 	dbClosed atomic.Bool
-	// unsynced is set by every successful WriteBatch commit in
-	// flushIndexLocked that Badger did not fsync (SyncWrites off) and cleared
-	// by DurableFlush's db.Sync, so a durable flush fsyncs exactly when
-	// something reached the WAL without an fsync. durableSyncs counts those
-	// syncs (DurableSyncCountForTest). syncedFlushes counts the WriteBatch
-	// commits Badger synced itself (SyncWrites); with durableSyncs it is the
-	// sync count per commit group (SyncCountForTest, backlog 52).
+	// unsynced is set by each WriteBatch commit Badger did not fsync (SyncWrites off)
+	// and cleared by DurableFlush's db.Sync, so a durable flush fsyncs exactly when
+	// needed. durableSyncs / syncedFlushes feed the test sync counters (backlog 52).
 	unsynced      atomic.Bool
 	durableSyncs  atomic.Int64
 	metaSyncs     atomic.Int64 // fsyncs issued by MetaSetDurable (MetaSyncCountForTest)
 	syncedFlushes atomic.Int64
 
 	// flushHold is set between HoldMutationFlushes and ReleaseMutationFlushes
-	// (store.MutationFlushHoldCapability, a durable group under SyncWrites):
-	// flushIfNeeded leaves the writes pending until holdMaxPending (the
-	// resolved MaxPendingWrites; 0 = unbounded).
+	// (store.MutationFlushHoldCapability): flushIfNeeded leaves writes pending up to
+	// holdMaxPending (resolved MaxPendingWrites; 0 = unbounded).
 	flushHold      atomic.Bool
 	holdMaxPending int
 
-	// Test seams (nil in production): failNextFlush makes the next WriteBatch
-	// commit fail through the real requeue path (FailNextFlushForTest);
-	// testHookDurableAfterCheckOpen runs inside DurableFlush right after its
-	// checkOpen, so a test can interleave Close there.
+	// Test seams (nil in production): failNextFlush fails the next WriteBatch commit
+	// through the real requeue path; testHookDurableAfterCheckOpen runs in DurableFlush
+	// after checkOpen so a test can interleave Close.
 	failNextFlush                 atomic.Pointer[error]
 	failNextSync                  atomic.Pointer[error]
 	testHookDurableAfterCheckOpen func()
 
-	// Change-log (op-log) — opt-in via Config.ChangeLog. logEnabled gates ALL
-	// record production (zero overhead when off). logSeq is the monotonic LSN
-	// allocator, seeded at open from LastLSNKey (or the max KeyChangeLog key),
-	// advanced only under wbMu so LSN order is a total commit order. pendingLog
-	// is the append-only buffer of framed records awaiting flush, guarded by
-	// wbMu so a record and its entity ops snapshot together. logEnabled is
-	// atomic (not a plain bool guarded by wbMu) because ChangeLogEnabled() is a
-	// PUBLIC accessor called externally with no lock of its own (BACKLOG 18i) —
-	// every write-path check still runs under wbMu as before, but the flag type
-	// itself must be safe for the unsynchronized external read.
+	// Change-log (opt-in via Config.ChangeLog). logEnabled gates all record production;
+	// atomic because ChangeLogEnabled() is a public lock-free accessor (backlog 18i).
+	// logSeq is the LSN allocator, seeded at open (LastLSNKey or max KeyChangeLog key) and
+	// advanced only under wbMu. pendingLog is the append-only buffer, guarded by wbMu.
 	logEnabled atomic.Bool
-	// logConfigured records the open-time change-log intent, so EnableChangeLog
-	// (recovery) only re-enables a store that was actually opened with the log —
-	// it never turns the log on for a store opened without it. DisableChangeLog
-	// leaves it set; EnableChangeLog restores logEnabled to it.
+	// logConfigured records the open-time change-log intent so EnableChangeLog
+	// (recovery) only re-enables a store opened with the log. DisableChangeLog leaves it
+	// set.
 	logConfigured bool
 	logSeq        atomic.Uint64
 	pendingLog    []pendingLogRecord
-	// logSeqSource, when non-nil (Config.ChangeLogSeqSource), supplies change-log
-	// LSNs in place of logSeq — the tiered store's store-global allocator. When
-	// set, nextLSN() draws from it and the open-time watermark is folded into it
-	// via Observe (instead of stored in logSeq). nil = self-owned counter.
+	// logSeqSource, when non-nil (Config.ChangeLogSeqSource), supplies LSNs in place of
+	// logSeq: nextLSN() draws from it and the open-time watermark is folded in via
+	// Observe.
 	logSeqSource ChangeLogSeqSource
 	// onChangeLogFlush (Config.OnChangeLogFlush) persists the store-global
 	// allocator watermark after a log-bearing flush commits. nil = standalone.
 	onChangeLogFlush func() error
-	// Commit floor (badgerstore_commit_floor.go): commitFloor is the newest
-	// row stamp written (loaded at open); commitFloorDurable the value the
-	// persisted key holds (guarded by flushMu; 0 after Clear wiped it);
-	// onCommitFloor is Config.OnCommitFloor; inDurableFlush marks a
-	// DurableFlush's flush (guarded by flushMu).
+	// Commit floor (badgerstore_commit_floor.go): commitFloor is the newest row stamp
+	// written (loaded at open); commitFloorDurable the value the persisted key holds
+	// (flushMu; 0 after Clear); onCommitFloor is Config.OnCommitFloor; inDurableFlush
+	// marks a DurableFlush's flush (flushMu).
 	commitFloor        atomic.Int64
 	commitFloorDurable int64
 	onCommitFloor      func(types.Instant, bool) error
 	inDurableFlush     bool
 
-	// Per-transaction change-log scope (store.TxChangeLogScope). When a tx/batch
-	// opens a scope, scopeActive diverts record production into scopeLog — the
-	// records are buffered WITHOUT an LSN (logSeq is NOT advanced) and NOT placed
-	// in pendingLog. On CommitLogScope they get contiguous LSNs minted at commit
-	// time (so a rolled-back tx burns no LSN and leaves no gap) and co-commit with
-	// the tx's data via flush(); on DiscardLogScope they are dropped (a rolled-back
-	// tx emits nothing). All guarded by wbMu. scopeActive is toggled by the core
-	// ONLY while it holds c.mu.Lock around a tx mutation, so a concurrent standalone
-	// mutation (c.mu.RLock) can never observe it true and misroute its own record.
+	// Per-transaction change-log scope (store.TxChangeLogScope), guarded by wbMu. While
+	// scopeActive, records go to scopeLog without an LSN; CommitLogScope mints contiguous
+	// LSNs (a rolled-back tx burns none) and co-commits them via flush(); DiscardLogScope
+	// drops them. The core toggles scopeActive only under c.mu.Lock.
 	scopeActive bool
 	scopeLog    [][]byte // framed record values (tag‖payload), LSN assigned at commit
 
-	// Scoped (multi-token) change-log buffers — store.ScopedTxChangeLog
-	// (BACKLOG 11f Batch A, foundation only; nothing wires a nonzero token
-	// into a tx yet). Unlike scopeActive/scopeLog above (a single implicit
-	// buffer requiring provable exclusion of every other writer for its
-	// entire open duration), each scope here is independently addressed by
-	// its token, so multiple scopes can be open concurrently with no shared
-	// "which scope is active" flag to race on — see changefeed_scoped.go and
-	// store.ScopedTxChangeLog's doc comment. Both fields guarded by wbMu.
+	// Scoped change-log buffers (store.ScopedTxChangeLog, backlog 11f, changefeed_scoped.go):
+	// each scope is addressed by its token, so several can be open concurrently. Guarded
+	// by wbMu.
 	scopedTokenSeq uint64
 	scopedLogs     map[uint64][][]byte
 
-	// relPurgeCursor (backlog 21, badgerstore_rel_retention_purge.go) is, per
-	// relationship type, where a chunked relationship purge's walks resume
-	// (the last type-index and history IDs examined); cleared when they finish.
+	// relPurgeCursor (backlog 21, badgerstore_rel_retention_purge.go): per rel type,
+	// where a chunked relationship purge resumes; cleared when it finishes.
 	relPurgeMu     sync.Mutex
 	relPurgeCursor map[uint16]relPurgeCursor
 }
@@ -1035,20 +778,11 @@ var (
 
 // New opens a Badger database with the given configuration and
 // rebuilds in-memory indexes from persisted data.
-// newNodeCache / newRelCache construct the entity caches, byte-budgeted
-// when budget > 0 (sized by the entities' approximate resident heap
-// footprint — see types.ApproxHeapBytes).
-// cacheShards is the shard count for the entity caches, derived once from
-// GOMAXPROCS so concurrent label scans (one Get per node) spread across shards
-// instead of serializing on a single mutex. Floored at 16 and rounded to a
-// power of two (see indexpkg.ShardHint). The TOTAL capacity/budget passed to the
-// sharded constructors is split evenly across shards, so the configured soft
-// limit is preserved.
+// newNodeCache / newRelCache build the entity caches (byte-budgeted when budget > 0).
+// cacheShards derives the shard count once from GOMAXPROCS (floor 16, power of two).
 func cacheShards() int {
-	// TKG_CACHE_SHARDS overrides the derived shard count (1 disables
-	// sharding — the pre-sharding single-mutex behaviour — for A/B
-	// measurement and as a kill switch). Invalid / unset uses the
-	// GOMAXPROCS-derived default.
+	// TKG_CACHE_SHARDS overrides the derived shard count (1 = single mutex, a kill
+	// switch); invalid or unset uses the default.
 	if v := os.Getenv("TKG_CACHE_SHARDS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
 			return n // raw (NewShardedCache rounds to a power of two); 1 = no sharding
@@ -1095,29 +829,19 @@ func New(cfg Config) (*Store, error) {
 		return nil, err
 	}
 
-	// Shrinking the EFFECTIVE MemTableSize on a data dir that still holds WAL
-	// files written under a LARGER memtable bricks the open: Badger replays
-	// each WAL into an arena sized by the current memtable and fails with
-	// "Arena too small" (not a recoverable sentinel) before a single row is
-	// read. Flush such WALs at their original size first. Gated on a writable
-	// on-disk store (the read-only probe must not write — the tiered recovery
-	// path migrates explicitly before its probe) — NOT on MemTableSize > 0
-	// (BACKLOG 18m): reverting an explicitly-tuned dir back to MemTableSize: 0
-	// ("use Badger's stock default") is itself a shrink whenever stock is
-	// smaller than the previous tuning, so MigrateOversizedWAL/
-	// guardReadOnlyOversizedWAL must run for that case too — they compare
-	// against the resolved effective size internally and no-op when nothing
-	// needs migrating (clean dirs, stock sizes with no oversized WAL, etc.).
+	// Shrinking the effective MemTableSize on a dir with WALs written under a larger
+	// memtable fails the open ("Arena too small", unrecoverable), so flush such WALs at
+	// their original size first. Gated on a writable on-disk store, not on MemTableSize >
+	// 0 (backlog 18m): reverting to stock can also be a shrink. The migration helpers
+	// no-op when nothing needs migrating.
 	if !cfg.InMemory && !cfg.ReadOnly {
 		if err := MigrateOversizedWAL(cfg); err != nil {
 			return nil, err
 		}
 	}
-	// A read-only open cannot flush, so it cannot migrate an oversized WAL —
-	// and replaying one into the tuned arena would os.Exit (log.Fatal "Arena
-	// too small"). Fail closed with a returned error instead of crashing the
-	// process. (The tiered store never reaches here for a recoverable shard: it
-	// migrates before its read-only probe.)
+	// A read-only open cannot migrate an oversized WAL, and replaying one would
+	// os.Exit ("Arena too small"); fail closed with an error. (The tiered store migrates
+	// before its read-only probe.)
 	if !cfg.InMemory && cfg.ReadOnly {
 		if err := guardReadOnlyOversizedWAL(cfg); err != nil {
 			return nil, err
@@ -1129,11 +853,11 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: badger open: %w", err)
 	}
 
-	// Enforce the on-disk format contract before decoding a single row: a
-	// directory stamped by a newer release must fail closed here, not surface
-	// as per-row decode failures (which loadIndexes would conflate with
-	// corruption / counter mismatch).
-	if err := verifyAndStampWireFormatVersion(db, cfg.ReadOnly); err != nil {
+	// Enforce the on-disk format contract before decoding a row: a directory stamped by
+	// a newer release fails closed here, not as per-row decode failures that loadIndexes
+	// would conflate with corruption.
+	formatMarker, err := verifyAndStampWireFormatVersion(db, cfg.ReadOnly)
+	if err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
@@ -1188,14 +912,13 @@ func New(cfg Config) (*Store, error) {
 		typeIdx:                  make(map[uint16]map[types.RelID]struct{}),
 		outIdx:                   make(map[types.NodeID]map[types.RelID]types.NodeID),
 		inIdx:                    make(map[types.NodeID]map[types.RelID]inEdge),
-		// relValidIdx is built LAZILY on the first temporal traversal — a graph
-		// that never does temporal adjacency (or a tiered store, which does not
-		// expose the capability) pays nothing for the per-rel stamps.
+		// relValidIdx is built lazily on the first temporal traversal.
 		nodeCache:               newNodeCache(capacity, cfg.CacheBudgetBytes),
 		relCache:                newRelCache(capacity, cfg.CacheBudgetBytes),
 		resident:                cfg.ResidentCache,
 		heldRows:                heldRowsOf(capacity, cfg.ResidentCache),
 		pending:                 make(map[string]writeOp),
+		formatMarker:            formatMarker,
 		propertyIndexes:         make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
 		relPropertyIndexes:      make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex),
 		compositeIndexes:        make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex),
@@ -1233,46 +956,34 @@ func New(cfg Config) (*Store, error) {
 		gcDone:                  make(chan struct{}),
 		logger:                  cfg.Logger,
 	}
-	// atomic.Bool cannot be set via a composite literal (unexported internal
-	// field) — set it here, before any concurrent access is possible (bs is
-	// still local to this constructor).
+	// atomic.Bool cannot be set in a composite literal; set it before bs escapes.
 	bs.logEnabled.Store(cfg.ChangeLog && !cfg.ReadOnly)
 
-	// Resident mode: keep every decoded node/rel resident so a cache miss never
-	// re-decodes (msgpack unmarshal + wire-decode) the same entity twice — the
-	// per-fetch decode is what makes graph-larger-than-cache traversal scale
-	// super-linearly. GetNode/GetRel additionally fetch via GetNoPromote here.
+	// Resident mode: a cache miss never re-decodes the same entity;
+	// GetNode/GetRel additionally fetch via GetNoPromote.
 	if bs.resident {
 		bs.nodeCache.SetNoEvict()
 		bs.relCache.SetNoEvict()
 	}
 
-	// Load the property-key registry BEFORE loadIndexes so the index
-	// rebuild can resolve tokenized property keys when decoding stored
-	// node/rel rows. Without this, rows written under tokenization would
-	// fail validation during loadIndexes and silently drop from the
-	// in-memory liveness map.
-	// An owner-supplied registry (tiered store) is the single canonical instance
-	// shared by all shards; use it directly so loadIndexes can resolve tokenized
-	// property keys. Otherwise (standalone store) load this store's own meta copy.
+	// Install the property-key registry BEFORE loadIndexes so row decoding can resolve
+	// tokenized keys (else rows fail validation and silently drop from the liveness
+	// map). An owner-supplied registry is used directly; otherwise load this store's
+	// own meta copy.
 	if cfg.PropertyKeyRegistry != nil {
 		bs.propKeyReg.Store(cfg.PropertyKeyRegistry)
 	} else if reg := readPropertyKeyRegistryFromMeta(bs); reg != nil {
 		bs.propKeyReg.Store(reg)
 	}
-	// Seed the write-ahead watermark to the already-persisted length: the
-	// canonical registry handed in by the tiered store is loaded from durable
-	// meta, and a standalone store's own meta copy is durable too. Only growth
-	// beyond this needs a new commit.
+	// Seed the write-ahead watermark to the already-persisted length; only growth
+	// beyond it needs a new commit.
 	if reg := bs.propKeyReg.Load(); reg != nil {
 		bs.persistedKeyLen.Store(int64(reg.Len()))
 	}
 
-	// Write-ahead registry hook. The tiered store supplies one that commits the
-	// shared registry to the reference shard; a standalone store defaults to
-	// committing its own registry to its own meta. flush() invokes it before the
-	// row WriteBatch, so every token a durable row references is itself durable —
-	// recovery can always resolve every persisted row.
+	// Write-ahead registry hook (tiered store: commits the shared registry to the
+	// reference shard; standalone: own meta). flush() calls it before the row
+	// WriteBatch, so every token a durable row references is itself durable.
 	bs.onPropertyKeyGrow = cfg.OnPropertyKeyGrow
 	if bs.onPropertyKeyGrow == nil {
 		bs.onPropertyKeyGrow = func() error {
@@ -1291,10 +1002,9 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: load indexes: %w", err)
 	}
 
-	// loadIndexes rebuilds each temporal index from CURRENT node state only.
-	// Fold every node's history versions into the per-node valid-time ENVELOPE so
-	// the sound-superset property survives restart (a past interval differing from
-	// the current one stays a candidate for the core resolver's temporal narrowing).
+	// loadIndexes rebuilds temporal indexes from current node state only; fold each
+	// node's history versions into the per-node valid-time envelope so the sound-superset
+	// property survives restart.
 	bs.idxMu.RLock()
 	temporalToks := make([]uint16, 0, len(bs.temporalIndexes))
 	for tok := range bs.temporalIndexes {
@@ -1334,13 +1044,10 @@ func New(cfg Config) (*Store, error) {
 	return bs, nil
 }
 
-// loadIndexes rebuilds in-memory indexes and counters from Badger.
-// Single db.View() scan of all index key prefixes (keys-only, no values).
-//
-// With a trusted open image (img != nil) the entity, label, type and adjacency
-// state comes from keys alone, index contents from the image, and planner
-// statistics are deferred to their first read; no row is decoded unless an
-// index is missing from the image.
+// loadIndexes rebuilds in-memory indexes and counters from Badger in one db.View()
+// key scan. With a trusted open image (img != nil) entity, label, type and adjacency
+// state come from keys alone, index contents from the image, and planner statistics
+// are deferred; no row is decoded unless an index is missing from the image.
 func (bs *Store) loadIndexes(img *openImage) error {
 	err := bs.loadIndexesScan(img)
 	if err != nil {
@@ -1354,20 +1061,13 @@ func (bs *Store) loadIndexes(img *openImage) error {
 		}
 	}
 	if bs.labelOnDisk {
-		// Disk-resident label index: the map was built transiently above
-		// because the open-path rebuilds (per-label counters, property/
-		// temporal/HF/vector index backfills) walk it — drop it now for the
-		// steady-state RAM win. Runtime label snapshots come from the
-		// persisted keyspace (badgerstore_label_disk.go). Open-path peak
-		// memory still includes the transient map; making open fully
-		// streaming is the documented follow-up.
+		// Disk-resident label index: the map was built transiently for the open-path
+		// rebuilds; drop it for the steady-state RAM win (label snapshots come from
+		// badgerstore_label_disk.go). Open peak memory still includes it.
 		bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	}
 	if bs.adjOnDisk {
-		// Same transient-then-drop discipline for the adjacency maps
-		// (badgerstore_adjacency_disk.go) — the open-path counter rebuilds
-		// walked them above; runtime snapshots come from the OutKey/InKey
-		// keyspaces.
+		// Same transient-then-drop for the adjacency maps (badgerstore_adjacency_disk.go).
 		bs.outIdx = make(map[types.NodeID]map[types.RelID]types.NodeID)
 		bs.inIdx = make(map[types.NodeID]map[types.RelID]inEdge)
 	}
@@ -1375,24 +1075,15 @@ func (bs *Store) loadIndexes(img *openImage) error {
 }
 
 func (bs *Store) loadIndexesScan(img *openImage) error {
-	// propIdxNeedsBuild / propIdxBackfillOps support item (d) — rebuild-on-
-	// enable: the 0x0A property-index keyspace is NEW (unlike label/adjacency,
-	// which have always been written transactionally), so an existing
-	// directory that already has property-index DEFINITIONS needs an explicit
-	// one-time backfill the first time PropertyIndexOnDisk is turned on.
-	// Computed inside the View closure below (which already walks every
-	// definition's current node set); committed via a real WriteBatch AFTER
-	// the read-only View returns, guarded by
-	// storeutil.PropertyIndexOnDiskBuiltKey so it runs exactly once.
+	// propIdxNeedsBuild / propIdxBackfillOps: one-time backfill of the new 0x0A
+	// keyspace for a directory with property-index definitions when PropertyIndexOnDisk
+	// is first enabled. Computed in the View closure below, committed via WriteBatch
+	// after it, guarded by storeutil.PropertyIndexOnDiskBuiltKey.
 	var propIdxNeedsBuild bool
 	var propIdxBackfillOps []writeOp
 	propIdxDefined := false // any property index definition persisted
-	// temporalIdxNeedsBuild / temporalIdxBackfillOps mirror propIdxNeedsBuild /
-	// propIdxBackfillOps above for the 0x0B temporal-index raw-entry log (also
-	// a new keyspace): an existing directory with temporal-index definitions
-	// but no prior 0x0B rows is backfilled from current node state exactly
-	// once, the first time TemporalIndexOnDisk is turned on. Guarded by
-	// storeutil.TemporalIndexOnDiskBuiltKey so it runs exactly once.
+	// temporalIdxNeedsBuild / temporalIdxBackfillOps mirror the above for the 0x0B
+	// temporal-index keyspace, guarded by storeutil.TemporalIndexOnDiskBuiltKey.
 	var temporalIdxNeedsBuild bool
 	var temporalIdxBackfillOps []writeOp
 	// kr collects the keys a full rebuild finds disagreeing with the rows
@@ -1415,23 +1106,25 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			}
 		}
 		if bs.temporalIdxOnDisk {
-			_, merr := txn.Get(storepkg.TemporalIndexOnDiskBuiltKey)
-			switch {
-			case merr == nil:
-				temporalIdxNeedsBuild = false
-			case errors.Is(merr, badgerv4.ErrKeyNotFound):
-				temporalIdxNeedsBuild = true
-			default:
-				return fmt.Errorf("graph: read temporal-index-on-disk marker: %w", merr)
+			// Trusted only when built under the TxFrom start (v2 marker) and no
+			// older release rebuilt it since (that rebuild writes the v1 marker
+			// and keys rows by the mint start, leaving v2 in place) — backlog 62.
+			v2, err := metaKeyPresent(txn, storepkg.TemporalIndexOnDiskBuiltKey)
+			if err != nil {
+				return fmt.Errorf("graph: read temporal-index-on-disk marker: %w", err)
 			}
+			v1, err := metaKeyPresent(txn, storepkg.TemporalIndexOnDiskBuiltV1Key)
+			if err != nil {
+				return fmt.Errorf("graph: read temporal-index-on-disk marker: %w", err)
+			}
+			temporalIdxNeedsBuild = !v2 || v1
 		}
 
 		nodeEntityIDs := make(map[types.NodeID]struct{})
 		decodedNodeLabels := make(map[types.NodeID]map[uint16]struct{})
 
-		// Scan node entities. The node row is authoritative for liveness:
-		// stale label index keys must not manufacture live nodeIDs after
-		// restart, while missing label keys can be rebuilt from the row.
+		// Scan node entities. The node row is authoritative for liveness: stale label keys
+		// must not manufacture live nodeIDs, missing ones can be rebuilt from the row.
 		valueOpts := opts
 		valueOpts.PrefetchValues = true
 		if img != nil {
@@ -1449,9 +1142,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			nid := types.NodeID(storepkg.ParseIDFromKey(key, 1))
 			nodeEntityIDs[nid] = struct{}{}
 			if img != nil {
-				// Clean close: the row is live; its labels come from the label
-				// keys below, its hash on first use (NodeIntegrityHash), its
-				// statistics on first read (ensurePlannerStats).
+				// Clean close: the row is live; labels come from the label keys, hash and
+				// statistics on first use.
 				bs.nodeIDs[nid] = struct{}{}
 				bs.ords.node(nid, true)
 				bs.bumpNodeRevLocked(nid)
@@ -1471,12 +1163,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				n = decoded
 				return nil
 			}); err != nil {
-				// Corrupt rows are tolerated (skipped + counted) so one
-				// damaged value cannot brick the store. A FUTURE format
-				// version is not damage — it is a newer release's data and
-				// silently dropping it would be data loss masquerading as a
-				// clean open. Fail closed instead (break first: the iterator
-				// must be closed before returning from the View closure).
+				// Corrupt rows are skipped and counted, but a future wire-format version is a
+				// newer release's data: dropping it would be silent data loss, so fail closed
+				// (break first: the iterator must close before returning from the View closure).
 				if errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
 					loadErr = fmt.Errorf("graph: node %d: %w", nid.SnowflakeID(), err)
 					break
@@ -1506,10 +1195,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			return loadErr
 		}
 
-		// Scan label index: keyLabel(1B) + token(2B) + nodeID(8B).
-		// Only rows with a local node entity key may populate labelIdx. If
-		// the entity row decoded cleanly, ignore labels that disagree with
-		// the canonical node labels.
+		// Scan label index: keyLabel(1B) + token(2B) + nodeID(8B). Only rows with a local
+		// node entity may populate labelIdx; ignore labels that disagree with a cleanly
+		// decoded row.
 		it = txn.NewIterator(opts)
 		prefix = []byte{storepkg.KeyLabel}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
@@ -1544,9 +1232,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		relEntityIDs := make(map[types.RelID]struct{})
 		decodedRelInfo := make(map[types.RelID]RelDeleteInfo)
 
-		// Scan relationship entities. The entity row is authoritative for
-		// relationship liveness: reltype/outgoing index keys can be stale after
-		// interrupted repair/delete paths and must not manufacture live relIDs.
+		// Scan relationship entities. The entity row is authoritative for liveness: stale
+		// reltype/outgoing keys (interrupted repair/delete) must not manufacture live relIDs.
 		relValueOpts := opts
 		relValueOpts.PrefetchValues = img == nil
 		it = txn.NewIterator(relValueOpts)
@@ -1613,10 +1300,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			return loadErr
 		}
 
-		// Scan reltype index: keyRelType(1B) + token(2B) + relID(8B).
-		// Only rows with a local entity key may populate the type index.
-		// If the entity row decoded cleanly, ignore keys that disagree with
-		// the canonical row type.
+		// Scan reltype index: keyRelType(1B) + token(2B) + relID(8B). Only rows with a
+		// local entity key may populate it; ignore keys that disagree with a decoded row.
 		it = txn.NewIterator(opts)
 		prefix = []byte{storepkg.KeyRelType}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
@@ -1648,9 +1333,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		}
 		it.Close()
 
-		// Scan outgoing adjacency: keyOut(1B) + startID(8B) + relType(2B) + endID(8B) + relID(8B).
-		// Outgoing entries belong on the relationship entity shard. Ignore
-		// outgoing keys without a local relationship entity.
+		// Scan outgoing adjacency: keyOut(1B) + startID(8B) + relType(2B) + endID(8B) +
+		// relID(8B). Ignore keys without a local relationship entity.
 		it = txn.NewIterator(opts)
 		prefix = []byte{storepkg.KeyOut}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
@@ -1693,10 +1377,9 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 				}
 			}
 		}
-		// Scan incoming adjacency: keyIn(1B) + endID(8B) + relType(2B) + startID(8B) + relID(8B).
-		// Incoming-only rows are valid in TieredStore cross-shard layouts, so
-		// preserve keys with no local relationship entity. If there is a local
-		// decoded relationship row, only accept the canonical same-shard entry.
+		// Scan incoming adjacency: keyIn(1B) + endID(8B) + relType(2B) + startID(8B) +
+		// relID(8B). Incoming-only rows are valid in tiered cross-shard layouts, so keep keys
+		// with no local entity; with a local row accept only the canonical entry.
 		it = txn.NewIterator(opts)
 		prefix = []byte{storepkg.KeyIn}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
@@ -1770,21 +1453,15 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			return err
 		}
 
-		// Seed the change-log LSN allocator so new LSNs continue strictly
-		// monotonic across restart and no LSN is ever reissued. LastLSNKey
-		// commits in the same WriteBatch as the records it covers, so it is
-		// crash-consistent with the maximum KeyChangeLog key; fall back to
-		// scanning the max key when the marker is absent (defensive — a fresh
-		// store has neither and seeds 0).
+		// Seed the LSN allocator so LSNs stay monotonic across restart. LastLSNKey commits
+		// with the records it covers; fall back to scanning the max key if absent.
 		lastLSN, err := seedLogLSN(txn)
 		if err != nil {
 			return err
 		}
 		if bs.logSeqSource != nil {
-			// Tiered: fold this shard's durable watermark into the store-global
-			// allocator (belt-and-braces above the refShard catalog watermark),
-			// so the shared sequence resumes strictly above every shard's max —
-			// even a cold shard that lazily opens read-only later.
+			// Tiered: fold this shard's watermark into the store-global allocator so the shared
+			// sequence resumes above every shard's max, even a cold shard opened read-only later.
 			bs.logSeqSource.Observe(lastLSN)
 		} else {
 			bs.logSeq.Store(lastLSN)
@@ -1818,12 +1495,19 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					return fmt.Errorf("graph: load property index definition label %d property %q: %w",
 						def.LabelToken, def.PropertyKey, err)
 				}
+				if def.Elements && bs.propIdxOnDisk {
+					// The disk keyspace keys scalars only and is shared by
+					// every label indexing the key: an Elements index would
+					// answer equality. Open it without PropertyIndexOnDisk.
+					return fmt.Errorf("graph: load property index definition label %d property %q: an elements index needs the RAM index, not PropertyIndexOnDisk: %w",
+						def.LabelToken, def.PropertyKey, storecontract.ErrCapabilityNotSupported)
+				}
 				key := indexpkg.PropertyIndexKey{LabelToken: def.LabelToken, PropertyKey: def.PropertyKey}
 				if _, exists := seenProperty[key]; exists {
 					continue
 				}
 				seenProperty[key] = struct{}{}
-				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts)
+				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if entries, ok := img.takeNodeProp(key); ok && !bs.propIdxOnDisk {
 					installValueIDs(entries, idx.AddKey)
 				} else if bs.propIdxOnDisk && !propIdxNeedsBuild {
@@ -1834,35 +1518,28 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						rawID := nodeID.SnowflakeID()
 						n, nerr := bs.loadNodeFromBadger(txn, rawID)
 						if nerr != nil {
-							// Tolerate missing/corrupt during rebuild,
-							// but record + warn (F9). Operators can
-							// inspect via IndexRebuildStats() and trigger
-							// an explicit repair pass if the count is
-							// nonzero.
+							// Tolerate missing/corrupt rows during rebuild, but count and warn
+							// (IndexRebuildStats).
 							bs.indexRebuildPropertySkips.Add(1)
 							if bs.logger != nil {
 								bs.logger.Warningf("graph: property-index rebuild skipped node %d (label %d, property %q): %v", rawID, def.LabelToken, def.PropertyKey, nerr)
 							}
 							continue
 						}
+						if !bs.propIdxOnDisk {
+							idx.AddEntityKeys(rawID, def.PropertyKey, n.ForEachPropertyIndexKey)
+							continue
+						}
+						// Disk mode: do NOT populate idx.Entries/numBuckets (entries stay
+						// off the RAM heap); collect the one-time backfill op instead,
+						// only when this directory has not been backfilled before
+						// (propIdxNeedsBuild).
 						valueKey, found := n.IndexablePropertyValueKey(def.PropertyKey)
-						if !found {
-							continue
-						}
-						if bs.propIdxOnDisk {
-							// Disk mode: do NOT populate idx.Entries/numBuckets
-							// (the whole point is to keep entries off the RAM
-							// heap) — collect the one-time backfill op instead,
-							// only when this directory hasn't been backfilled
-							// before (propIdxNeedsBuild).
-							if propIdxNeedsBuild {
-								if op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, rawID, writeOpSet); ok {
-									propIdxBackfillOps = append(propIdxBackfillOps, op)
-								}
+						if found && propIdxNeedsBuild {
+							if op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, rawID, writeOpSet); ok {
+								propIdxBackfillOps = append(propIdxBackfillOps, op)
 							}
-							continue
 						}
-						idx.AddKey(rawID, valueKey)
 					}
 				}
 				bs.propertyIndexes[key] = idx
@@ -1870,10 +1547,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 		}
 		// badgerv4.ErrKeyNotFound is OK — no indexes defined yet.
 
-		// Load relationship property index definitions and rebuild RAM value maps.
-		// RAM-only: no on-disk value keyspace, so the maps are rebuilt from
-		// current relationship state by scanning each type's members. Mirrors the
-		// non-disk node property index rebuild above.
+		// Load rel property index definitions and rebuild the RAM value maps from current
+		// relationship state (mirrors the non-disk node rebuild above).
 		item, err = txn.Get(storepkg.RelPropIndexDefsKey)
 		if err == nil {
 			var defs []relPropIdxDef
@@ -1897,7 +1572,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					continue
 				}
 				seenRelProperty[key] = struct{}{}
-				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts)
+				idx := indexpkg.NewPropertyIndexWith(def.RangeCounts, def.Elements)
 				if entries, ok := img.takeRelProp(key); ok {
 					installValueIDs(entries, idx.AddKey)
 				} else if relIDs, ok := bs.typeIdx[def.RelTypeToken]; ok {
@@ -1913,9 +1588,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							}
 							continue
 						}
-						if valueKey, found := r.IndexablePropertyValueKey(def.PropertyKey); found {
-							idx.AddKey(rawID, valueKey)
-						}
+						idx.AddEntityKeys(rawID, def.PropertyKey, r.ForEachPropertyIndexKey)
 					}
 				}
 				bs.relPropertyIndexes[key] = idx
@@ -1997,9 +1670,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					restored, haveImage = img.takeTemporal(tok)
 				}
 				if haveImage {
-					// The runtime envelope also keeps nodes that left the label
-					// (append-only); the open keeps the label's current members,
-					// as the row walk below would.
+					// The runtime envelope also keeps nodes that left the label; the open keeps only
+					// current members, as the row walk below does.
 					members := bs.labelIdx[tok]
 					for _, e := range restored {
 						if _, ok := members[types.NodeID(e.ID)]; ok {
@@ -2007,13 +1679,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						}
 					}
 				} else if bs.temporalIdxOnDisk && !temporalIdxNeedsBuild {
-					// Fast path: stream (from, to, id) triples directly from the
-					// compact 0x0B keyspace — no per-node full-row fetch/decode.
-					// Iteration order over one label's sub-keyspace is already
-					// (From ASC, ID ASC) by key construction (see
-					// storeutil.TemporalIndexEntryKey), matching
-					// TemporalIndex.Entries' required order exactly — this is
-					// the O(N) full-node-fetch rebuild this eliminates.
+					// Fast path: stream (from, to, id) triples from the 0x0B keyspace without decoding
+					// nodes; key order matches TemporalIndex.Entries (storeutil.TemporalIndexEntryKey).
 					valueOpts := opts
 					valueOpts.PrefetchValues = true
 					prefix := storepkg.TemporalIndexTokenPrefix(tok)
@@ -2052,9 +1719,8 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 						from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
 						ti.AddKnownAbsent(rawID, from, to)
 						if bs.temporalIdxOnDisk && temporalIdxNeedsBuild {
-							// Rebuild-on-enable: collect the one-time backfill row
-							// for the NEW 0x0B keyspace (committed after the View
-							// returns — see commitTemporalIndexOnDiskBackfill).
+							// Rebuild-on-enable: collect the one-time 0x0B backfill row (committed after the
+							// View, see commitTemporalIndexOnDiskBackfill).
 							temporalIdxBackfillOps = append(temporalIdxBackfillOps, writeOp{
 								opType: writeOpSet,
 								key:    storepkg.TemporalIndexEntryKey(tok, from, rawID),
@@ -2202,18 +1868,14 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 
 	if bs.propIdxOnDisk && propIdxNeedsBuild {
 		if bs.propKeyReg.Load() == nil && propIdxDefined {
-			// No property-key registry wired yet (a direct badger.Store user
-			// without Config.PropertyKeyRegistry and no meta-persisted
-			// registry) — skip the backfill AND leave the marker unset so a
-			// later open (once the registry is available) retries. A graph
-			// opened via pkg/graph always wires a registry before this runs.
-			// With no definition there is nothing to backfill: mark it built,
-			// or every later open walks the rows again (backlog 54).
+			// No property-key registry wired (direct badger.Store user): skip the backfill and
+			// leave the marker unset so a later open retries. With no definition there is nothing
+			// to backfill: mark it built, or every open re-walks the rows (backlog 54).
 		} else if err := bs.commitPropertyIndexOnDiskBackfill(propIdxBackfillOps); err != nil {
 			return err
 		}
 	}
-	if bs.temporalIdxOnDisk && temporalIdxNeedsBuild {
+	if bs.temporalIdxOnDisk && temporalIdxNeedsBuild && !bs.readOnly {
 		if err := bs.commitTemporalIndexOnDiskBackfill(temporalIdxBackfillOps); err != nil {
 			return err
 		}
@@ -2227,20 +1889,16 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 }
 
 // reconcilePersistedCounter resolves a persisted entity counter against the rows
-// actually present after an index rebuild. Entity rows are authoritative:
+// present after an index rebuild; rows are authoritative:
 //
-//   - persisted == 0: counter never written (pre-counter store) — trust rows.
+//   - persisted == 0: never written (pre-counter store), trust rows.
 //   - persisted == liveRows: consistent.
-//   - persisted == rawEntityRows && rawEntityRows > liveRows: counter matches the
-//     raw row count but some rows are soft-deleted / undecodable — trust liveRows.
-//   - persisted < liveRows && liveRows == rawEntityRows: every entity row decoded
-//     cleanly and is current, yet the counter undercounts. No data is missing —
-//     the counter lost increments in an unclean shutdown. Heal UP to liveRows
-//     (warn so the operator knows a crash was recovered).
+//   - persisted == rawEntityRows > liveRows: some rows soft-deleted/undecodable, trust
+//     liveRows.
+//   - persisted < liveRows == rawEntityRows: counter lost increments in an unclean
+//     shutdown; heal up to liveRows and warn.
 //
-// Any other case — notably persisted > liveRows, where the counter claims more
-// rows than exist (rows genuinely missing → data loss) — stays fatal: it surfaces
-// real corruption instead of silently masking it.
+// Anything else, notably persisted > liveRows (rows missing, data loss), stays fatal.
 func reconcilePersistedCounter(name string, persisted, liveRows, rawEntityRows int64, logger badgerv4.Logger) (int64, error) {
 	if persisted == 0 {
 		return liveRows, nil
@@ -2294,27 +1952,16 @@ func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 	}
 }
 
-// Clear removes all entities, indexes, history, counters, and secondary
-// indexes. After Clear(), the Store is in the same state as a freshly
-// opened store. Registries are a Graph-layer concern — not cleared here.
+// Clear removes all entities, indexes, history, counters and secondary indexes,
+// leaving the Store as freshly opened. Registries are a Graph-layer concern and are
+// not cleared.
 //
-// flushMu is acquired first to drain any in-flight async flush. Without this
-// barrier, a flush goroutine that has already snapshotted dirty cache
-// versions, pending ops, and counter values (under idxMu.RLock) but has not
-// yet submitted its WriteBatch could race ahead of DropAll() and resurrect
-// pre-Clear entities into Badger after the namespace is wiped — silent
-// post-restart data corruption. Holding flushMu for the duration of Clear
-// also blocks any new flush() from snapshotting state we're about to reset.
-//
-// Cost note: in SyncWrites mode every concurrent mutation
-// blocks while Clear runs DropAll, which can be slow on large stores.
-// This is an intentional accepted trade-off — Clear is rare and admin-
-// scoped, and the alternative (release flushMu before DropAll) does not
-// actually reduce the blocking window because concurrent flush() also
-// needs idxMu.RLock which Clear holds via idxMu.Lock for the same
-// duration. Releasing flushMu would only save a sync.Mutex acquisition
-// that is already serialised behind idxMu anyway.
-func (bs *Store) Clear() error {
+// flushMu is taken first to drain any in-flight flush, which could otherwise race
+// ahead of DropAll() and resurrect pre-Clear entities, and to block new flushes. In
+// SyncWrites mode concurrent mutations block for the duration of DropAll (accepted:
+// Clear is rare and admin-scoped). Releasing flushMu before DropAll would not help:
+// flush() also needs idxMu.RLock, which Clear holds via idxMu.Lock.
+func (bs *Store) Clear() (err error) {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -2327,9 +1974,8 @@ func (bs *Store) Clear() error {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 
-	// No history-presence build may scan across the wipe (lock order:
-	// flushMu -> idxMu -> presence buildMu -> wbMu; a build takes only
-	// buildMu -> wbMu). The sets are reset with the write buffer below.
+	// No history-presence build may scan across the wipe (lock order: flushMu -> idxMu
+	// -> presence buildMu -> wbMu; a build takes only buildMu -> wbMu).
 	bs.histNodePresence.buildMu.Lock()
 	defer bs.histNodePresence.buildMu.Unlock()
 	bs.histRelPresence.buildMu.Lock()
@@ -2381,13 +2027,9 @@ func (bs *Store) Clear() error {
 	bs.relBeliefWatermark = nil // rel mirror
 	bs.relBeliefWatermarkBuilt.Store(false)
 
-	// Reset atomic counters. Clear sync.Map contents via Range+Delete
-	// rather than struct reassignment: concurrent readers
-	// at NodeCountByLabel / RelCountByType call labelCounts.Load /
-	// typeCounts.Load WITHOUT holding idxMu, and replacing the
-	// sync.Map struct value while a reader is mid-Load races on the
-	// field itself. Deleting individual keys is safe because sync.Map
-	// is concurrency-safe by contract.
+	// Reset counters. Clear sync.Map contents via Range+Delete, not struct
+	// reassignment: NodeCountByLabel / RelCountByType Load without idxMu, so replacing
+	// the sync.Map value would race on the field.
 	bs.nodeCount.Store(0)
 	bs.relCount.Store(0)
 	bs.labelCounts.Range(func(k, _ any) bool {
@@ -2423,12 +2065,10 @@ func (bs *Store) Clear() error {
 	bs.nodeCache = newNodeCache(cap, bs.nodeCache.Budget())
 	bs.relCache = newRelCache(cap, bs.relCache.Budget())
 
-	// Clear pending buffer. (flushMu serializes us against flush(), so any
-	// snapshot that happens after this point sees an empty buffer.) Drop any
-	// buffered change-log records too — DropAll below wipes the KeyChangeLog
-	// keyspace, so a stale record left in pendingLog would be re-flushed as a
-	// phantom after the wipe. logSeq is intentionally left monotonic so
-	// post-Clear LSNs never collide with a consumer's pre-Clear watermark.
+	// Clear the pending buffer (flushMu serializes against flush()) and any buffered
+	// change-log records: DropAll wipes KeyChangeLog, so a stale record would be
+	// re-flushed as a phantom. logSeq stays monotonic so post-Clear LSNs never collide
+	// with a consumer's pre-Clear watermark.
 	bs.commitGen.Add(1) // read snapshots re-pin after the wipe
 	bs.wbMu.Lock()
 	bs.pending = make(map[string]writeOp)
@@ -2439,19 +2079,30 @@ func (bs *Store) Clear() error {
 	bs.histRelPresence.resetLocked()
 	bs.histNodeStamps.resetLocked()
 	bs.histRelStamps.resetLocked()
-	// Drop any snapshot a just-completed flush parked (the success path clears it,
-	// but a leaked/in-flight snapshot must not survive the wipe below — otherwise
-	// rangePending would resurface pre-Clear history keys as phantom IDs).
+	bs.histNodeEpochs.NoteAll()
+	bs.histRelEpochs.NoteAll()
+	// Drop any snapshot a just-completed flush parked, or rangePending would resurface
+	// pre-Clear history keys as phantom IDs.
 	bs.flushing = nil
 	bs.wbMu.Unlock()
 
-	// Clear all secondary index maps. Leaving these populated leaks
-	// pre-Clear state into the post-Clear store: CreateTemporalIndex /
-	// CreateHighFrequencyIndex / CreateVectorIndex would return "already
-	// exists" on a logically empty store, and stale vector entries would
-	// occupy top-k slots in SearchNearestNodes results.
+	// Clear all secondary index maps; leftovers would make CreateTemporalIndex /
+	// CreateHighFrequencyIndex / CreateVectorIndex report "already exists" on an empty
+	// store and leave stale vector entries in SearchNearestNodes.
 	bs.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
 	bs.relPropertyIndexes = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex)
+	// The wipe below may drop the format marker: the next Elements definition
+	// re-raises it rather than trusting the cached value.
+	bs.wbMu.Lock()
+	bs.formatMarker = 0
+	bs.wbMu.Unlock()
+	// Rows written after the wipe carry binary hashes (backlog 61): the
+	// wiped marker is stamped again once the wipe has succeeded.
+	defer func() {
+		if err == nil {
+			err = bs.restampBinaryHashMarker()
+		}
+	}()
 	bs.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
 	bs.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
 	bs.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
@@ -2464,20 +2115,15 @@ func (bs *Store) Clear() error {
 			return err
 		}
 	}
-	// When the change-log is enabled, wipe via DropPrefix while keeping
-	// LastLSNKey continuously durable (clearAndReanchorChangeLog), so a crash
-	// mid-Clear cannot reseed the LSN allocator to 0 and collide with a tailing
-	// consumer's pre-Clear watermark (lesson 53).
+	// Change-log enabled: wipe via DropPrefix keeping LastLSNKey continuously durable
+	// (clearAndReanchorChangeLog), so a crash mid-Clear cannot reseed LSNs to 0 (lesson 53).
 	if bs.logEnabled.Load() {
 		return bs.clearAndReanchorChangeLog()
 	}
-	// Change-log disabled now — but a PRIOR change-log-enabled session may have
-	// left a durable LastLSNKey. A bare DropAll would wipe it, and a FUTURE
-	// change-log-enabled reopen would then reseed the LSN allocator to 0 and
-	// REUSE LSNs a consumer already checkpointed past (the same silent-divergence
-	// hole lesson 53 closes, reached through the log-disabled Clear door). So
-	// preserve LastLSNKey whenever it is present; only a never-logged store
-	// (no watermark to protect) takes the single atomic DropAll.
+	// Change-log is off now, but a prior enabled session may have left a durable
+	// LastLSNKey; wiping it would let a later enabled reopen reseed LSNs to 0 and reuse
+	// LSNs a consumer checkpointed past (lesson 53). Preserve it whenever present; only
+	// a never-logged store takes the single atomic DropAll.
 	hasLSN, err := bs.lastLSNKeyPresent()
 	if err != nil {
 		return err
@@ -2488,12 +2134,8 @@ func (bs *Store) Clear() error {
 	return bs.db.DropAll()
 }
 
-// Close stops background goroutines, performs a final flush (including counters),
+// Close stops background goroutines, performs a final flush (including counters)
 // and closes the Badger database. Safe to call multiple times.
-//
-// The explicit flush() handles the case where flushLoop was never started
-// (InMemory mode, FlushInterval==0). If flushLoop already drained pending,
-// this is a no-op. Counters are included in the WriteBatch atomically.
 func (bs *Store) Close() error {
 	if bs == nil {
 		return ErrNilStore
@@ -2511,17 +2153,15 @@ func (bs *Store) Close() error {
 		// flushLoop was never spawned. No-op if already drained.
 		e := bs.flush()
 		err = e
-		// flushMu from the open image's drained check until dbClosed is set: a
-		// write that passed checkWritable before closing and flushes now waits
-		// here, then finds the DB closed — it can never commit between the
-		// image's encode and its header (badgerstore_open_image.go).
+		// flushMu from the open image's drained check until dbClosed is set: a write that
+		// passed checkWritable before closing waits here, then finds the DB closed, so it
+		// cannot commit between the image's encode and its header (badgerstore_open_image.go).
 		bs.flushMu.Lock()
 		if e == nil {
 			bs.persistOpenImageLocked() // the next open reads keys + this image, not every row
 		}
-		// Mark DB as closed BEFORE db.Close() so any concurrent flush()
-		// calls (e.g., from tests that close the DB directly) return an error
-		// instead of blocking in Badger's WaitForMark.
+		// Mark closed BEFORE db.Close() so a concurrent flush() returns an error instead of
+		// blocking in Badger's WaitForMark.
 		bs.dbClosed.Store(true)
 		bs.flushMu.Unlock()
 		err = errors.Join(err, bs.db.Close())
@@ -2545,13 +2185,9 @@ func (bs *Store) checkOpen() error {
 	return nil
 }
 
-// isClosingOrClosed is the shared "silently return zero" guard for stats
-// accessors whose signature (plain value, no error return) can't propagate
-// checkOpen()'s error — a nil *Store is handled by the caller's own `bs ==
-// nil` check, since a nil receiver can't have this method called on it via a
-// non-nil-checked call chain in the first place (BACKLOG 18q: deduplicates
-// the identical `bs.closing.Load() || bs.dbClosed.Load()` inline check that
-// was repeated at 5 call sites).
+// isClosingOrClosed is the shared "silently return zero" guard for stats accessors
+// whose signature cannot propagate checkOpen()'s error (backlog 18q). A nil *Store is
+// handled by the caller.
 func (bs *Store) isClosingOrClosed() bool {
 	return bs.closing.Load() || bs.dbClosed.Load()
 }
@@ -2566,10 +2202,9 @@ func (bs *Store) checkWritable() error {
 	return nil
 }
 
-// IndexRebuildStats reports the number of node entries that the loadIndexes
-// pass (called once at Open) tolerated as missing or corrupt while rebuilding
-// the property, temporal, high-frequency, and vector in-memory indexes. A nonzero count after a fresh
-// Open means the persisted indexes are degraded — operators should run an
+// IndexRebuildStats reports how many node entries loadIndexes (at Open) tolerated
+// as missing or corrupt while rebuilding the property, temporal, high-frequency and
+// vector indexes. A nonzero count means the persisted indexes are degraded; run an
 // explicit repair pass before relying on index-backed queries.
 type IndexRebuildStats struct {
 	PropertySkipped  int64
@@ -2594,20 +2229,17 @@ func (bs *Store) IndexRebuildStats() IndexRebuildStats {
 	}
 }
 
-// SetPropertyKeyRegistry installs the property-key registry on the Store.
-// Once set, subsequent writes dictionary-encode property keys via the
-// registry; reads resolve tokens back to key strings. Safe to call before
-// any writes; effective from the next marshal/unmarshal onward. Pass nil
-// to disable tokenization (preserves the pre-tokenization wire format).
+// SetPropertyKeyRegistry installs the property-key registry: subsequent writes
+// dictionary-encode property keys and reads resolve tokens back. Safe to call before
+// any writes; effective from the next marshal/unmarshal. Nil disables tokenization
+// and keeps the pre-tokenization wire format.
 func (bs *Store) SetPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) {
 	if bs == nil {
 		return
 	}
 	bs.propKeyReg.Store(reg)
-	// Re-seed the write-ahead watermark to the new registry's length. Core.New
-	// installs the canonical registry here after loading it from durable meta
-	// (or freshly empty), so its current length is already persisted — only
-	// later growth needs a commit.
+	// Re-seed the write-ahead watermark to the new registry's length (Core.New installs
+	// the canonical registry loaded from durable meta); only later growth needs a commit.
 	bs.persistKeyMu.Lock()
 	if reg != nil {
 		bs.persistedKeyLen.Store(int64(reg.Len()))
@@ -2638,35 +2270,23 @@ func (bs *Store) marshalRelBytes(r *types.Relationship) ([]byte, error) {
 	return storepkg.MarshalRelWireWithKeys(r, bs.propKeyReg.Load())
 }
 
-// persistRegistryIfGrew write-ahead commits the property-key registry to durable
-// storage whenever it has grown since the last commit. Called from flush()
-// BEFORE the row WriteBatch is written, so every batch of rows is preceded by a
-// durable registry covering all of their tokens — a crash can never leave a
-// tokenized row durable while its token is absent from the registry (which would
-// make the row undecodable on reload → counter mismatch → fatal).
+// persistRegistryIfGrew write-ahead commits the property-key registry whenever it
+// grew since the last commit. Called from flush() before the row WriteBatch, so a
+// crash never leaves a tokenized row durable without its token (undecodable on
+// reload, fatal counter mismatch).
 //
-// Growth is measured against bs.persistedKeyLen (a watermark), NOT against any
-// per-marshal diff: the registry is SHARED with the core engine, which allocates
-// tokens during property validation — strictly before the store marshals — so a
-// before/after diff at marshal time is always zero. The watermark captures "has
-// any token been allocated since we last committed", regardless of which layer
-// allocated it.
-//
-// Persisting here (once per ~100ms flush cycle) rather than per row keeps the
-// fsync cost at O(flush cycles), not O(keys) — critical for high-cardinality
-// key workloads. A failure is propagated so the caller aborts the flush and
-// requeues the rows rather than committing rows ahead of their registry.
+// Growth is measured against the bs.persistedKeyLen watermark, not a per-marshal
+// diff: the registry is shared with the core engine, which allocates tokens before
+// the store marshals, so a diff is always zero. One persist per flush cycle keeps the
+// fsync cost O(flush cycles). A failure aborts the flush and requeues the rows.
 func (bs *Store) persistRegistryIfGrew() error {
 	reg := bs.propKeyReg.Load()
 	if reg == nil || bs.onPropertyKeyGrow == nil {
 		return nil
 	}
-	// Skip during shutdown. The closing flush (flushLoop on stopCh + the explicit
-	// final flush) runs with closing=true, when SavePropertyKeyRegistry's
-	// checkWritable rejects writes. Close-time durability is already guaranteed:
-	// Core.Close persists all registries (core.go) BEFORE store.Close, so every
-	// row in the closing flush has its tokens durable. Re-persisting here would
-	// only fail with ErrStoreClosed.
+	// Skip during shutdown: the closing flush runs with closing=true, when
+	// SavePropertyKeyRegistry's checkWritable rejects writes. Core.Close persists all
+	// registries before store.Close, so those rows' tokens are already durable.
 	if bs.closing.Load() {
 		return nil
 	}
@@ -2682,10 +2302,9 @@ func (bs *Store) persistRegistryIfGrew() error {
 	if err := bs.onPropertyKeyGrow(); err != nil {
 		return err
 	}
-	// The hook exported names AFTER we read cur, so it persisted at least cur
-	// keys. Advancing the watermark to cur (never beyond what we verified) keeps
-	// it a safe lower bound — an under-count only risks a redundant future
-	// commit, never a skipped one.
+	// The hook exported names after we read cur, so it persisted at least cur keys;
+	// advancing the watermark only to cur keeps it a safe lower bound (an under-count
+	// costs a redundant commit, never a skipped one).
 	bs.persistedKeyLen.Store(cur)
 	return nil
 }

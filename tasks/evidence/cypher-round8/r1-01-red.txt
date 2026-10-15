@@ -1,0 +1,28 @@
+--- FAIL: TestPropertyBounds (0.01s)
+    --- FAIL: TestPropertyBounds/memory (0.00s)
+        property_bounds_test.go:269: created: ok false / false, want answered
+    --- FAIL: TestPropertyBounds/badger (0.00s)
+        property_bounds_test.go:269: created: ok false / false, want answered
+    --- FAIL: TestPropertyBounds/tiered (0.00s)
+        property_bounds_test.go:211: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "M": graph: property indexes only supported for reference entities in Store
+    --- FAIL: TestPropertyBounds/sharded (0.01s)
+        property_bounds_test.go:311: graph: cannot remove the last label from a node
+--- FAIL: TestPropertyBoundsFlags (0.01s)
+    --- FAIL: TestPropertyBoundsFlags/memory (0.00s)
+        property_bounds_test.go:413: a: ok=false err=<nil>
+    --- FAIL: TestPropertyBoundsFlags/badger (0.00s)
+        property_bounds_test.go:413: b: ok=false err=<nil>
+--- FAIL: TestPropertyBoundsDeclines (0.01s)
+    --- FAIL: TestPropertyBoundsDeclines/memory (0.00s)
+        property_bounds_test.go:494: big after update: {Min:0 Max:0 MinValue:<nil> MaxValue:<nil> Classes:{Numeric:0 NaN:0 String:0 Bool:0 Other:0 Missing:0}} ok=false err=<nil>, want [7, 7]
+        property_bounds_test.go:497: rel big after update: {Min:0 Max:0 MinValue:<nil> MaxValue:<nil> Classes:{Numeric:0 NaN:0 String:0 Bool:0 Other:0 Missing:0}} ok=false err=<nil>, want [8, 8]
+    --- FAIL: TestPropertyBoundsDeclines/badger (0.01s)
+        property_bounds_test.go:494: big after update: {Min:0 Max:0 MinValue:<nil> MaxValue:<nil> Classes:{Numeric:0 NaN:0 String:0 Bool:0 Other:0 Missing:0}} ok=false err=<nil>, want [7, 7]
+        property_bounds_test.go:497: rel big after update: {Min:0 Max:0 MinValue:<nil> MaxValue:<nil> Classes:{Numeric:0 NaN:0 String:0 Bool:0 Other:0 Missing:0}} ok=false err=<nil>, want [8, 8]
+    property_bounds_test.go:541: disk mode rel index: {Min:0 Max:0 MinValue:<nil> MaxValue:<nil> Classes:{Numeric:0 NaN:0 String:0 Bool:0 Other:0 Missing:0}} ok=false err=<nil>, want [3, 3]
+--- FAIL: TestPropertyBoundsAfterReopen (0.03s)
+    property_bounds_test.go:582: before: ok=false err=<nil>
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.387s
+FAIL
+limit: {"command": ["go", "test", "-count=1", "-run", "TestPropertyBounds", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 1800.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 1084.266, "elapsed_s": 4.88, "exit_code": 1, "reason": "command-failed"}

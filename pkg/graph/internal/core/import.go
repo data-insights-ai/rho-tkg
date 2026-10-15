@@ -38,9 +38,8 @@ const importMemoryStageLimit = 8 << 20 // 8 MiB before spilling to temp file.
 // map/slice allocation — a memory-exhaustion DoS at the import trust boundary.
 // The maps are created empty in newImportReplaySeen/newImportRollback and grow
 // naturally during replay, so this is a pure pre-sizing hint: a small cap keeps
-// the common-case optimization while bounding hostile amplification (a header
-// lying about 1M counts now reserves at most ~this many entries, ~hundreds of
-// KiB, not hundreds of MiB). See lessons.md 48.
+// the common-case optimization while bounding hostile amplification. See
+// lessons.md 48.
 const importPreallocLimit = 4096
 
 // importBodyPreallocCap bounds the buffer pre-allocated for an inbound record
@@ -584,6 +583,7 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 	// must never succeed while producing a graph that fails its own
 	// integrity verification. History-only entities (deleted on the source)
 	// are collected from the history records too.
+	// An off-graph (Config.DisableIntegrityHashes) holds no chain to verify.
 	verifyNodes := make(map[types.NodeID]struct{}, len(seenRecords.nodes))
 	for id := range seenRecords.nodes {
 		verifyNodes[id] = struct{}{}
@@ -592,6 +592,9 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 		verifyNodes[key.id] = struct{}{}
 	}
 	for id := range verifyNodes {
+		if c.hashesOff {
+			break
+		}
 		valid, err := c.verifyNodeChainLocked(id)
 		if err != nil {
 			return fmt.Errorf("import: verify node chain %d: %w", id.SnowflakeID(), err)
@@ -608,6 +611,9 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 		verifyRels[key.id] = struct{}{}
 	}
 	for id := range verifyRels {
+		if c.hashesOff {
+			break
+		}
 		valid, err := c.verifyRelChainLocked(id)
 		if err != nil {
 			return fmt.Errorf("import: verify rel chain %d: %w", id.SnowflakeID(), err)
@@ -628,14 +634,12 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 	// Monotonic, mirroring ApplyChange/ApplyChanges's enforced no-regression
 	// (BACKLOG 12c): a raw overwrite here could REGRESS an already-tailing
 	// replica's watermark if this snapshot is re-imported (or an older one is
-	// imported) onto a replica that has already applied past SnapshotLSN — the
-	// replica would then re-tail from the regressed point, re-applying already-
-	// seen records, and any change-log delete whose LSN falls in the
-	// re-applied range would (harmlessly, eventually) re-delete its entity —
-	// but the entity is MOMENTARILY resurrected by this import's own row data
-	// in the meantime. A snapshot's LSN advancing the watermark only when it's
-	// actually newer than what's already recorded closes that window: a
-	// same-or-older re-import leaves the existing (higher) watermark alone.
+	// imported) onto a replica that has already applied past SnapshotLSN. The
+	// replica would then re-tail from the regressed point, and an entity deleted
+	// in the re-applied range would be momentarily resurrected by this import's
+	// own row data. A snapshot's LSN advances the watermark only when it is
+	// newer than what is recorded: a same-or-older re-import leaves the existing
+	// (higher) watermark alone.
 	if err := c.importRelRetentionLocked(header.RelRetention); err != nil {
 		return err
 	}
@@ -763,7 +767,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 			return fmt.Errorf("import: node %d: %w", wn.ID, err)
 		}
-		if err := c.verifyImportedNodeHash(n, wn.ID, "node"); err != nil {
+		if err := c.admitImportedNodeHash(n, &wn, "node"); err != nil {
 			return err
 		}
 		if err := seen.recordNode(n.ID()); err != nil {
@@ -812,7 +816,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 			return fmt.Errorf("import: node history %d: %w", wn.ID, err)
 		}
-		if err := c.verifyImportedNodeHash(n, wn.ID, "node history"); err != nil {
+		if err := c.admitImportedNodeHash(n, &wn, "node history"); err != nil {
 			return err
 		}
 		id := types.NodeID(wn.ID) //nolint:gosec — ID from our own serialization
@@ -862,7 +866,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := c.validatePropertySliceLimits(rel.Properties()); err != nil {
 			return fmt.Errorf("import: rel %d: %w", wr.ID, err)
 		}
-		if err := c.verifyImportedRelHash(rel, wr.ID, "rel"); err != nil {
+		if err := c.admitImportedRelHash(rel, &wr, "rel"); err != nil {
 			return err
 		}
 		if err := seen.recordRel(rel.ID()); err != nil {
@@ -904,7 +908,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := c.validatePropertySliceLimits(rel.Properties()); err != nil {
 			return fmt.Errorf("import: rel history %d: %w", wr.ID, err)
 		}
-		if err := c.verifyImportedRelHash(rel, wr.ID, "rel history"); err != nil {
+		if err := c.admitImportedRelHash(rel, &wr, "rel history"); err != nil {
 			return err
 		}
 		id := types.RelID(wr.ID) //nolint:gosec — ID from our own serialization

@@ -25,7 +25,7 @@ func BenchmarkRangeCardinality(b *testing.B) {
 
 func benchRangeCardinality(b *testing.B, mode string, counts bool, distinct int) {
 	{
-		pi := NewPropertyIndexWith(counts)
+		pi := NewPropertyIndexWith(counts, false)
 		for i := range 100_000 {
 			pi.AddKey(snowflake.ID(i+1), fmt.Sprintf("i64:%d", i%distinct))
 		}
@@ -63,7 +63,7 @@ func BenchmarkPropertyIndexAddRemove(b *testing.B) {
 		b.Run(mode.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				pi := NewPropertyIndexWith(mode.counts)
+				pi := NewPropertyIndexWith(mode.counts, false)
 				for i := range 100_000 {
 					pi.AddKey(snowflake.ID(i+1), keys[i%1000])
 				}

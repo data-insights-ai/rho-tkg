@@ -1,0 +1,16 @@
+=== RUN   TestR10Dump
+    r10_dump_test.go:22: memory compact err <nil>
+    r10_dump_test.go:25: memory after compaction: history 1 rows, head 299 err <nil> (before v299)
+    r10_dump_test.go:27: memory pin before compaction: graph: history compacted below the requested transaction time
+    r10_dump_test.go:32: memory head read after compaction: 883ns/op
+    r10_dump_test.go:22: badger compact err <nil>
+    r10_dump_test.go:25: badger after compaction: history 1 rows, head 299 err <nil> (before v299)
+    r10_dump_test.go:27: badger pin before compaction: graph: history compacted below the requested transaction time
+    r10_dump_test.go:32: badger head read after compaction: 5.187µs/op
+--- PASS: TestR10Dump (0.22s)
+=== RUN   TestR10CompactionDropsWinners
+    r10_dump_test.go:81: before: [100,1000)c=0 [1000,2000)c=1 [2000,3000)c=0 [3000,4000)c=2 [4000,0)c=0 err <nil>
+    r10_dump_test.go:81: after KeepVersions 1 (err <nil>): [100,1000)c=0 [1000,2000)c=1 [2000,3000)c=0 [3000,4000)c=2 [4000,0)c=0 err <nil>
+--- PASS: TestR10CompactionDropsWinners (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.248s

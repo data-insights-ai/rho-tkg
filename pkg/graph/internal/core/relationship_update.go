@@ -9,7 +9,6 @@ import (
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -163,6 +162,14 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 			return nil, false, fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
 		}
 	}
+	// A tkg_valid_to without a tkg_valid_from closes the version as CloseVersion
+	// does: it keeps its start and ends there (backlog 65).
+	var closeStart types.Instant
+	if tmp.closesVersion() {
+		if closeStart, err = c.checkRelClose(current, startID, endID, "tkg_valid_to", tmp.validTo); err != nil {
+			return nil, false, err
+		}
+	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("update relationship"); err != nil {
 		return nil, false, err
 	}
@@ -224,6 +231,9 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo
 	}
+	if tmp.closesVersion() {
+		stampClose(tm, closeStart, tmp.validTo)
+	}
 	tm.UpdatedAt = now
 
 	// Set TxTo on the previous version (being superseded) using the same now.
@@ -240,7 +250,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	stampAppendedRow(tm, now)
 
 	relTypeName := c.relTypeUnlocked(current)
-	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)
+	hash, err := c.relContentHash(current, relTypeName)
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: compute relationship hash: %w", err)
 	}
@@ -528,9 +538,15 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo
 	}
+	if tm.ValidTo != 0 {
+		// The close rule (backlog 65): the row keeps its start, the end must follow it.
+		if err := checkCloseAfterStart("tkg_valid_to", tm.ValidTo, c.relValidFrom(current), "relationship"); err != nil {
+			return nil, false, err
+		}
+	}
 
 	relTypeName := c.relTypeUnlocked(current)
-	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)
+	hash, err := c.relContentHash(current, relTypeName)
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: compute relationship hash: %w", err)
 	}

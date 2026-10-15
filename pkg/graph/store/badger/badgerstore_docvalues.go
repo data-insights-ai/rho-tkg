@@ -46,34 +46,64 @@ func (bs *Store) RelMutationEpoch() uint64 {
 // column.
 func (bs *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	col, gen, ok, err := bs.labelDocColumns(labelToken, propKeys)
+	if err != nil || !ok {
+		return gen, false, err
+	}
+	col.ForEachRow(propKeys, fn)
+	return gen, true, nil
+}
+
+// ForEachDocValuesOrdinal is ForEachDocValues with each row's node ordinal
+// beside its ID (sigma-tkgd round 6 request 11), the ordinal a point read of
+// the node carries. The ordinals of a snapshot's rows are read once per
+// snapshot and kept with it (labelColumnOrdinals, shared with
+// ScanNodeColumns). ok=false, fn not called, when the store numbers no node
+// (DisableOrdinals) or ForEachDocValues would decline.
+func (bs *Store) ForEachDocValuesOrdinal(labelToken uint16, propKeys []string,
+	fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	if bs != nil && !bs.HasOrdinals() {
+		return 0, false, bs.checkOpen()
+	}
+	col, gen, ok, err := bs.labelDocColumns(labelToken, propKeys)
+	if err != nil || !ok {
+		return gen, false, err
+	}
+	col.ForEachRowOrdinal(propKeys, bs.labelColumnOrdinals(labelToken, col), fn)
+	return gen, true, nil
+}
+
+// labelDocColumns is the snapshot ForEachDocValues reads: fresh for the
+// label's epoch and holding every requested key. ok=false (gen as known) when
+// the door declines.
+func (bs *Store) labelDocColumns(labelToken uint16, propKeys []string) (col *indexpkg.LabelDocValues, gen uint64, ok bool, err error) {
 	if bs == nil {
-		return 0, false, ErrStoreClosed
+		return nil, 0, false, ErrStoreClosed
 	}
 	if err := bs.checkOpen(); err != nil {
-		return 0, false, err
+		return nil, 0, false, err
 	}
 	if bs.labelOnDisk {
-		return 0, false, nil // membership not materialized in RAM → fall back
+		return nil, 0, false, nil // membership not materialized in RAM → fall back
 	}
 
 	cur := bs.labelEpoch(labelToken) // per-label epoch: survives unrelated-label writes (BACKLOG 4b)
 	bs.docMu.Lock()
-	col := bs.docColumns[labelToken]
+	col = bs.docColumns[labelToken]
 	bs.docMu.Unlock()
 
 	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
 		built, declined := bs.buildLabelColumns(labelToken, propKeys)
 		if declined {
-			return 0, false, nil // empty/over-cap label → fall back
+			return nil, 0, false, nil // empty/over-cap label → fall back
 		}
 		col = built
 	}
 
 	if !col.HasAll(propKeys) {
-		return col.Epoch(), false, nil
+		return nil, col.Epoch(), false, nil
 	}
-	col.ForEachRow(propKeys, fn)
-	return col.Epoch(), true, nil
+	return col, col.Epoch(), true, nil
 }
 
 // DocValuesSnapshot returns a RANDOM-ACCESS point-lookup handle over a single
@@ -122,35 +152,61 @@ func (bs *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap t
 // empty intersection is served (ok=true, no rows; round 5 request 3).
 func (bs *Store) ForEachDocValuesMulti(toks []uint16, propKeys []string,
 	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	col, _, gen, ok, err := bs.multiDocColumns(toks, propKeys)
+	if err != nil || !ok {
+		return gen, false, err
+	}
+	col.ForEachRow(propKeys, fn)
+	return gen, true, nil
+}
+
+// ForEachDocValuesMultiOrdinal is ForEachDocValuesMulti with each row's node
+// ordinal (round 6 request 11), as ForEachDocValuesOrdinal. An intersection
+// snapshot's ordinals are kept with it like a label's.
+func (bs *Store) ForEachDocValuesMultiOrdinal(toks []uint16, propKeys []string,
+	fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	if bs != nil && !bs.HasOrdinals() {
+		return 0, false, bs.checkOpen()
+	}
+	col, key, gen, ok, err := bs.multiDocColumns(toks, propKeys)
+	if err != nil || !ok {
+		return gen, false, err
+	}
+	col.ForEachRowOrdinal(propKeys, bs.multiColumnOrdinals(key, col), fn)
+	return gen, true, nil
+}
+
+// multiDocColumns is labelDocColumns for a label intersection; key is the
+// intersection's cache key.
+func (bs *Store) multiDocColumns(toks []uint16, propKeys []string) (col *indexpkg.LabelDocValues, key string, gen uint64, ok bool, err error) {
 	if bs == nil {
-		return 0, false, ErrStoreClosed
+		return nil, "", 0, false, ErrStoreClosed
 	}
 	if err := bs.checkOpen(); err != nil {
-		return 0, false, err
+		return nil, "", 0, false, err
 	}
 	if bs.labelOnDisk {
-		return 0, false, nil // membership not materialized in RAM → fall back
+		return nil, "", 0, false, nil // membership not materialized in RAM → fall back
 	}
 
 	cur := bs.multiLabelEpoch(toks) // monotonic sum of member per-label epochs (BACKLOG 4b)
-	key := indexpkg.MultiLabelKey(toks)
+	key = indexpkg.MultiLabelKey(toks)
 	bs.docMu.Lock()
-	col := bs.docColumnsMulti[key]
+	col = bs.docColumnsMulti[key]
 	bs.docMu.Unlock()
 
 	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
 		built, declined := bs.buildMultiColumns(toks, key, propKeys)
 		if declined {
-			return 0, false, nil // empty intersection / over-cap → fall back
+			return nil, "", 0, false, nil // over-cap → fall back
 		}
 		col = built
 	}
 
 	if !col.HasAll(propKeys) {
-		return col.Epoch(), false, nil
+		return nil, "", col.Epoch(), false, nil
 	}
-	col.ForEachRow(propKeys, fn)
-	return col.Epoch(), true, nil
+	return col, key, col.Epoch(), true, nil
 }
 
 // buildMultiColumns builds a fresh immutable snapshot over a label intersection,
@@ -161,20 +217,14 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 	gen := bs.multiLabelEpoch(toks)
 
 	bs.idxMu.RLock()
-	set := bs.intersectLabelsLocked(toks)
-	n := len(set)
+	ids := bs.intersectLabelsLocked(toks)
+	bs.idxMu.RUnlock()
 	// An EMPTY intersection is served (an empty snapshot, round 5 request 3):
 	// the caller cannot tell it from the labels' counts, and a decline sent it
 	// to look for a common member itself. Only over-cap declines.
-	if n > indexpkg.MaxDocValuesNodes {
-		bs.idxMu.RUnlock()
+	if len(ids) > indexpkg.MaxDocValuesNodes {
 		return nil, true
 	}
-	ids := make([]types.NodeID, 0, n)
-	for id := range set {
-		ids = append(ids, id)
-	}
-	bs.idxMu.RUnlock()
 
 	keys := requested
 	bs.docMu.Lock()
@@ -214,8 +264,16 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 		}
 	}
 
-	getProp, getTemporal := bs.bulkNodeGetters(ids)
-	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal)
+	// From a member label's fresh columns when one holds every key (round 7
+	// request 6): the intersection's rows are a subset of its rows, so no
+	// node row is read; else the record read below.
+	if sub := bs.multiColumnsFromMember(toks, gen, keys); sub != nil {
+		col = sub
+		bs.multiFromMember.Add(1)
+	} else {
+		getProp, getTemporal := bs.bulkNodeGetters(ids)
+		col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal)
+	}
 	bs.columnRebuilds.Add(1)
 	// Intersections are NOT persisted: the disk key is per single label, and an
 	// A-and-B snapshot is not reconstructible from either one's blob.
@@ -241,10 +299,11 @@ func (bs *Store) bulkNodePropGetter(ids []types.NodeID) func(types.NodeID, strin
 	return getProp
 }
 
-// intersectLabelsLocked returns the node IDs present in EVERY label token, driven
-// by the smallest set (O(min |label|) probes). Returns nil if any token is
-// unknown/empty. Must hold bs.idxMu (read lock).
-func (bs *Store) intersectLabelsLocked(toks []uint16) map[types.NodeID]struct{} {
+// intersectLabelsLocked returns the node IDs present in EVERY label token,
+// driven by the smallest set (O(min |label|) probes), as a slice (no
+// intermediate set). Returns nil if any token is unknown/empty. Must hold
+// bs.idxMu (read lock).
+func (bs *Store) intersectLabelsLocked(toks []uint16) []types.NodeID {
 	if len(toks) == 0 {
 		return nil
 	}
@@ -258,20 +317,61 @@ func (bs *Store) intersectLabelsLocked(toks []uint16) map[types.NodeID]struct{} 
 			smallest = s
 		}
 	}
-	out := make(map[types.NodeID]struct{}, len(smallest))
+	out := make([]types.NodeID, 0, len(smallest))
 	for id := range smallest {
-		inAll := true
-		for _, t := range toks {
-			if _, ok := bs.labelIdx[t][id]; !ok {
-				inAll = false
-				break
-			}
-		}
-		if inAll {
-			out[id] = struct{}{}
+		if bs.inAllLabelsLocked(toks, id) {
+			out = append(out, id)
 		}
 	}
 	return out
+}
+
+// inAllLabelsLocked reports whether id carries every label of toks. Must
+// hold bs.idxMu (read lock).
+func (bs *Store) inAllLabelsLocked(toks []uint16, id types.NodeID) bool {
+	for _, t := range toks {
+		if _, ok := bs.labelIdx[t][id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// multiColumnsFromMember builds an intersection's snapshot at gen from the
+// cached columns of its smallest member label that is fresh (built at the
+// label's current epoch) and holds every key with validity columns, taking
+// that label's rows that carry every other label
+// (indexpkg.SubsetDocValues). nil when no member qualifies or a key is not
+// buildable on the member: the caller reads the records.
+func (bs *Store) multiColumnsFromMember(toks []uint16, gen uint64, keys []string) *indexpkg.LabelDocValues {
+	var src *indexpkg.LabelDocValues
+	bs.docMu.Lock()
+	for _, t := range toks {
+		c := bs.docColumns[t]
+		if c == nil || c.Epoch() != bs.labelEpoch(t) || !c.HasAll(keys) || !c.HasTemporal() {
+			continue
+		}
+		if src == nil || c.Len() < src.Len() {
+			src = c
+		}
+	}
+	bs.docMu.Unlock()
+	if src == nil {
+		return nil
+	}
+	bs.idxMu.RLock()
+	var ords []int
+	for o, id := range src.IDs() {
+		if bs.inAllLabelsLocked(toks, id) {
+			ords = append(ords, o)
+		}
+	}
+	bs.idxMu.RUnlock()
+	sub, ok := indexpkg.SubsetDocValues(gen, src, ords, keys)
+	if !ok {
+		return nil
+	}
+	return sub
 }
 
 // buildLabelColumns builds a fresh immutable snapshot over the full label
@@ -386,7 +486,7 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 // reads so the build still completes correctly.
 func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 	func(types.NodeID, string) (any, bool),
-	func(types.NodeID) (int64, int64, bool),
+	func(types.NodeID) (int64, int64, int64, bool),
 ) {
 	sorted := append([]types.NodeID(nil), ids...)
 	storepkg.SortNodeIDs(sorted)
@@ -421,17 +521,14 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 					return nil, false
 				}
 				return nd.GetProperty(key)
-			}, func(id types.NodeID) (int64, int64, bool) {
+			}, func(id types.NodeID) (int64, int64, int64, bool) {
 				nd, gerr := bs.GetNode(id)
 				if gerr != nil || nd == nil {
-					return 0, 0, false
+					return 0, 0, 0, false
 				}
-				f, t, ok := nd.ValidRange()
-				if !ok {
-					return 0, 0, false
-				}
-				// RAW, not effective — see the note on getTemporal below.
-				return int64(f), int64(t), true
+				// RAW and effective — see the note on getTemporal below.
+				f, t, _ := nd.ValidRange()
+				return int64(f), int64(t), int64(storepkg.NodeValidFrom(nd)), true
 			}
 	}
 	// Both closures read the SAME materialised map, so the value columns and the
@@ -442,15 +539,12 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 				return nil, false // deleted between the membership snapshot and the scan
 			}
 			return nd.GetProperty(key)
-		}, func(id types.NodeID) (int64, int64, bool) {
+		}, func(id types.NodeID) (int64, int64, int64, bool) {
 			nd := mat[id]
 			if nd == nil {
-				return 0, 0, false
+				return 0, 0, 0, false
 			}
-			f, t, ok := nd.ValidRange()
-			if !ok {
-				return 0, 0, false
-			}
+			f, t, _ := nd.ValidRange()
 			// RAW ValidFrom, NOT the snowflake-effective one.
 			//
 			// These bounds are REPORTED to the caller as ColumnBatch.ValidFrom, and
@@ -462,11 +556,12 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 			// an entity with no valid-time metadata read as Eternal through the
 			// memory store and as [mint, +inf) through Badger.
 			//
-			// The mint-time fallback is still right for FILTERING, and it has moved
-			// to where filtering happens (effectiveValidFrom, applied in
-			// validTimeMatches). Separating them keeps the row-path predicate
-			// identical while letting the reported column mean what it says.
-			return int64(f), int64(t), true
+			// FILTERING uses the effective start (storeutil.NodeValidFrom: an unset
+			// ValidFrom is the row's TxFrom, backlog 62), carried as the snapshot's
+			// third column (DocValues.EffectiveValidFrom) and read by the column
+			// scan's filter and the zone map. Separating them keeps the row-path
+			// predicate identical while letting the reported column mean what it says.
+			return int64(f), int64(t), int64(storepkg.NodeValidFrom(nd)), true
 		}
 }
 

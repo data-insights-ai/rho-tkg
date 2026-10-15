@@ -61,3 +61,28 @@ func TestBadgerStoreRelTypeDegreeStats(t *testing.T) {
 		}
 	}
 }
+
+// TestBadgerRelTypeDegreeCounts (round 7 request 2): the per-node counts fold
+// to RelTypeDegreeStats' answer, count only the type's live relationships,
+// and decline with AdjacencyIndexOnDisk.
+func TestBadgerRelTypeDegreeCounts(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+	for i := int64(1); i <= 4; i++ {
+		putTestNode(t, bs, i, 1, nil)
+	}
+	putTestRel(t, bs, 10, 3, 1, 2)
+	putTestRel(t, bs, 11, 3, 1, 3)
+	putTestRel(t, bs, 12, 3, 4, 3)
+	putTestRel(t, bs, 13, 5, 1, 2) // another type
+	out, in, rels, ok, err := bs.RelTypeDegreeCounts(3)
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if rels != 3 || len(out) != 2 || out[1] != 2 || out[4] != 1 || len(in) != 2 || in[3] != 2 || in[2] != 1 {
+		t.Fatalf("counts rels=%d out=%v in=%v", rels, out, in)
+	}
+	st, ok, err := bs.RelTypeDegreeStats(3)
+	if err != nil || !ok || st != storecontract.DegreeStatsFromCounts(rels, out, in) {
+		t.Fatalf("stats %+v ok=%v err=%v", st, ok, err)
+	}
+}

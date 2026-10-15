@@ -14,6 +14,7 @@ import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	lockspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	badger "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
@@ -111,11 +112,11 @@ type Config struct {
 	EncryptionKeyRotation time.Duration
 	// CacheBudgetBytes bounds EACH shard's entity caches (nodes, rels) by
 	// estimated resident BYTES rather than entry count. With one cache pair per
-	// open shard, CacheCapacity alone (an entry count, default 10,000 per cache)
-	// can pin hundreds of thousands of entities in heap across many shards
-	// regardless of their size; this knob bounds that by bytes. Soft limit
-	// (dirty entries are never evicted). 0 disables byte accounting. When set
-	// and CacheCapacity is 0, the byte budget alone governs.
+	// open shard, CacheCapacity alone (an entry count) can pin many entities in
+	// heap across many shards regardless of their size; this knob bounds that
+	// by bytes. Soft limit (dirty entries are never evicted). 0 disables byte
+	// accounting. When set and CacheCapacity is 0, the byte budget alone
+	// governs.
 	CacheBudgetBytes int64
 	// PropertyIndexOnDisk is the tiered sibling of badger.Config's
 	// PropertyIndexOnDisk: it does NOT change WHERE property indexes live —
@@ -132,14 +133,11 @@ type Config struct {
 	// there, harmless.
 	PropertyIndexOnDisk bool
 	// TemporalIndexOnDisk is the tiered sibling of badger.Config's
-	// TemporalIndexOnDisk: a rebuild-at-open accelerator for each shard's
-	// maxTo-augmented temporal interval index, NOT a RAM-vs-disk trade-off —
-	// the index always stays fully resident in RAM at runtime on every shard.
-	// false (default) rebuilds an existing temporal index definition via a
-	// full node fetch+decode per entity whenever a shard opens; true
-	// maintains a compact per-entity row in each shard's persisted 0x0B
-	// keyspace instead, so shard open streams straight from a prefix
-	// iteration over it. Passed through badgerCfg to EVERY shard (reference,
+	// TemporalIndexOnDisk: a rebuild-at-open accelerator, NOT a RAM-vs-disk
+	// trade-off — the index stays fully resident in RAM at runtime on every
+	// shard. true maintains a compact per-entity row in each shard's persisted
+	// 0x0B keyspace, so a shard open streams from a prefix iteration instead of
+	// decoding every node. Passed through badgerCfg to EVERY shard (reference,
 	// hot, warm, lazy cold/archive, and rotation-created) for uniformity.
 	TemporalIndexOnDisk bool
 	// DisablePlannerStats turns OFF the query-planner statistics (presence/NDV/
@@ -240,6 +238,11 @@ func (es *EventShard) currentTier() ShardTier {
 // Event entities (Signal, Alert) live in time-windowed event shards.
 // Phase 3a: exactly one hot event shard. Phases 3b-3e add warm/cold/archive.
 type Store struct {
+	// histTopoEpoch is a history token (storeutil.NextHistoryEpoch) drawn
+	// anew whenever the shard set changes (reindexShardsLocked, Clear): it is
+	// folded into every HistoryEpoch answer, so a shard leaving the history
+	// walk moves every token (tieredstore_history_epoch.go).
+	histTopoEpoch     atomic.Uint64
 	mu                sync.RWMutex                                    // protects hotShard + eventShards during rotation
 	refShard          *BadgerStore                                    // reference shard (always hot)
 	shardFloor        shardCommitFloor                                // non-reference shards' commit floor, kept on refShard (tieredstore_commit_floor.go)
@@ -249,6 +252,8 @@ type Store struct {
 	refArchive        atomic.Pointer[BadgerStore]                     // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
 	archiveMu         sync.Mutex                                      // serializes lazy-open of refArchive (single-flight)
 	migrateMu         sync.Mutex                                      // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)
+	moveMu            sync.RWMutex                                    // ArchiveNode/RestoreNode hold it; reads of the reference shard and the archive (and point routes) read-hold it (refAndArchive, lockMoveRead); writes do not, so a direct user must not write during a move (the graph fences with c.mu)
+	fanoutRefReadHook func()                                          // test-only: refArchiveGapHook runs it between a door's reference shard read and its archive read
 	archiveActiveReqs atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
 	eventShards       map[string]*EventShard                          // name -> event shard
 	shardIndex        []*EventShard                                   // eventShards sorted by timeStart; rebuilt by reindexShardsLocked on every insert/delete; guarded by mu
@@ -314,14 +319,13 @@ type Store struct {
 	scopeOpen     bool
 	scopeDivertOn bool
 
-	// nodeCreateLocks / relCreateLocks (BACKLOG 19q) replace a single
-	// whole-store create mutex with the SAME 256-shard per-ID striping
-	// internal/locks.Manager already provides for entity-level serialization
-	// elsewhere in this codebase (CLAUDE.md "Entity locks"). INVARIANT: the
+	// nodeCreateLocks / relCreateLocks (BACKLOG 19q) use the SAME 256-shard
+	// per-ID striping internal/locks.Manager provides for entity-level
+	// serialization elsewhere in this codebase (CLAUDE.md "Entity locks"). INVARIANT: the
 	// lock for entity ID X is held continuously from the start of X's
 	// duplicate-ID check through the completion of X's physical shard write
 	// (never released in between) — this is what closes the cross-shard/
-	// cross-class TOCTOU the whole-store mutex used to close, since two
+	// cross-class TOCTOU, since two
 	// concurrent creates for the SAME raw snowflake ID always hash to the
 	// SAME shard index and therefore fully serialize against each other,
 	// while two DIFFERENT IDs (the common case) proceed with no contention
@@ -659,13 +663,9 @@ func New(cfg Config) (*Store, error) {
 	shards := make([]*EventShard, len(entries))
 	warmIdx := make([]int, 0, len(entries))
 
-	// ColdAfter IS APPLIED HERE, not only at rotation.
-	//
-	// Demotion used to happen solely as a side effect of the hot shard
-	// rotating, so setting ColdAfter on an existing store changed nothing until
-	// the next rotation came round — a week, on a weekly window. That made the
-	// setting untestable on a live store and left every shard it should have
-	// demoted open in the meantime, which is the cost it exists to avoid.
+	// ColdAfter IS APPLIED HERE, not only at rotation, so setting it on an
+	// existing store takes effect at the next open instead of waiting for the
+	// next rotation.
 	//
 	// Deciding the tier BEFORE the mount loop is also what makes it pay: a
 	// shard classified cold here is never opened at all, rather than being
@@ -873,6 +873,19 @@ func (ts *Store) MetaSet(key string, value []byte) error {
 		return ErrStoreClosed
 	}
 	return ts.refShard.MetaSet(key, value)
+}
+
+// MetaSetDurable is MetaSet made durable before it returns (the reference
+// shard's write-ahead log is fsynced): for a meta entry that must not be lost
+// while rows written after it to an event shard survive a power loss.
+func (ts *Store) MetaSetDurable(key string, value []byte) error {
+	if ts == nil {
+		return ErrNilStore
+	}
+	if ts.refShard == nil {
+		return ErrStoreClosed
+	}
+	return ts.refShard.MetaSetDurable(key, value)
 }
 
 // SavePropertyKeyRegistry delegates to the reference shard. Property keys
@@ -1135,6 +1148,7 @@ func (ts *Store) Clear() error {
 
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
+	defer ts.histTopoEpoch.Store(storeutil.NextHistoryEpoch())
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}

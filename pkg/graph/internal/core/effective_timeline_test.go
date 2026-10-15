@@ -122,11 +122,12 @@ func (e *ccEnt) mint(id int64) types.Instant {
 }
 
 // TestEffectiveTimeline_DerivedStart — (b). A row without a recorded
-// valid-from (plain Add, AddWithTx backfill) starts at the ID's mint instant:
-// the first segment's ValidFrom is that instant — not 0, not the TxFrom — and
-// the point door agrees on both sides of it. A later Update without a
-// valid-from starts at its UpdatedAt. Catches a door that reports 0 (the raw
-// stored value), the backfill's TxFrom, or the write time as the start.
+// valid-from (plain Add, AddWithTx backfill) starts at its TxFrom (backlog 62):
+// the first segment's ValidFrom is that instant — not 0, not the ID's mint
+// instant (a backfill's TxFrom lies before the mint) — and the point door
+// agrees on both sides of it. A later Update without a valid-from starts at its
+// own TxFrom. Catches a door that reports 0 (the raw stored value), the mint
+// instant, or the write time of a backfill as the start.
 func TestEffectiveTimeline_DerivedStart(t *testing.T) {
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
@@ -138,18 +139,21 @@ func TestEffectiveTimeline_DerivedStart(t *testing.T) {
 					txFrom = e.pin() - 60_000
 				}
 				id := e.addNoVF("T", txFrom)
-				mint := e.mint(id)
-				pin := e.pin()
-				if got, want := e.mustTimeline(id, pin), fmt.Sprintf("[%d,0) v0", mint); got != want {
-					t.Fatalf("%s timeline = %q, want %q (derived start = mint instant)%s", e.kind(), got, want, e.chainString(id))
+				start := e.chain(id)[0].tm.TxFrom
+				if backfill && (start != txFrom || start >= e.mint(id)) {
+					t.Fatalf("setup: backfill TxFrom %d, want %d before the mint %d", start, txFrom, e.mint(id))
 				}
-				if e.atTxPresent(id, mint-1, pin) || !e.atTxPresent(id, mint, pin) {
-					t.Fatalf("point door disagrees around the mint instant %d", mint)
+				pin := e.pin()
+				if got, want := e.mustTimeline(id, pin), fmt.Sprintf("[%d,0) v0", start); got != want {
+					t.Fatalf("%s timeline = %q, want %q (derived start = TxFrom)%s", e.kind(), got, want, e.chainString(id))
+				}
+				if e.atTxPresent(id, start-1, pin) || !e.atTxPresent(id, start, pin) {
+					t.Fatalf("point door disagrees around the TxFrom %d", start)
 				}
 				if backfill {
-					// Pinned between the backfill's TxFrom and now: the row is
-					// recorded, its start is still the mint instant.
-					if got, want := e.mustTimeline(id, txFrom), fmt.Sprintf("[%d,0) v0", mint); got != want {
+					// Pinned at the backfill's TxFrom: the row is recorded and
+					// starts there.
+					if got, want := e.mustTimeline(id, txFrom), fmt.Sprintf("[%d,0) v0", start); got != want {
 						t.Fatalf("timeline at the backfill pin = %q, want %q", got, want)
 					}
 					if got := e.mustTimeline(id, txFrom-1); got != "" {
@@ -160,14 +164,14 @@ func TestEffectiveTimeline_DerivedStart(t *testing.T) {
 				var upd types.Instant
 				for _, r := range e.chain(id) {
 					if r.current {
-						upd = r.tm.UpdatedAt
+						upd = r.tm.TxFrom
 					}
 				}
 				pin2 := e.pin()
-				if got, want := e.mustTimeline(id, pin2), fmt.Sprintf("[%d,%d) v0 [%d,0) v1", mint, upd, upd); got != want {
+				if got, want := e.mustTimeline(id, pin2), fmt.Sprintf("[%d,%d) v0 [%d,0) v1", start, upd, upd); got != want {
 					t.Fatalf("%s timeline after an Update without valid-from = %q, want %q%s", e.kind(), got, want, e.chainString(id))
 				}
-				if got, want := e.mustTimeline(id, pin), fmt.Sprintf("[%d,0) v0", mint); got != want {
+				if got, want := e.mustTimeline(id, pin), fmt.Sprintf("[%d,0) v0", start); got != want {
 					t.Fatalf("timeline at the earlier pin changed: %q, want %q", got, want)
 				}
 			})

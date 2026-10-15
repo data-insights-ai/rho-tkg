@@ -3,7 +3,6 @@ package core
 import (
 	"fmt"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -86,7 +85,7 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch label: %w", err)
 	}
-	hashSuffix, err := integrity.PrecomputeNodeHashSuffixChecked(canonicalLabels, baseProps)
+	hashSuffix, err := b.g.nodeHashSuffix(canonicalLabels, baseProps)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch node hash: %w", err)
 	}
@@ -113,7 +112,7 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 			n.SetPropertiesCanonicalShared(baseProps)
 		}
 
-		hash := integrity.ComputeNodeHashFromSuffix(n.ID(), n.Version(), hashSuffix)
+		hash := b.g.nodeHashFromSuffix(n.ID(), n.Version(), hashSuffix)
 		nodeIntegrity := &types.NodeIntegrity{
 			Hash:               hash,
 			PrevHash:           "",
@@ -280,7 +279,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		return nil, fmt.Errorf("graph: batch relationship properties: %w", err)
 	}
 
-	hash, err := integrity.ComputeRelHashChecked(r, typeName)
+	hash, err := b.g.relContentHash(r, typeName)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch relationship hash: %w", err)
 	}
@@ -383,13 +382,13 @@ func (b *BatchBuilder) UpdateRelationship(id types.RelID, updates map[string]any
 // executed as part of Batch.Execute. Each cascade is its own
 // entity-lock-bounded write inside Execute; failures are tracked per-op.
 func (b *BatchBuilder) SetNodeVersionInterval(id types.NodeID, validFrom, validTo types.Instant, props map[string]any) error {
-	return b.queueNodeCascade(id, validFrom, validTo, props, 0, false)
+	return b.queueNodeCascade(id, validFrom, validTo, props, 0, false, false)
 }
 
 // queueNodeCascade is the queue door of SetNodeVersionInterval and (withTx)
 // SetNodeVersionIntervalWithTx, whose txFrom is gated here (value, then
 // privilege) after the id. Nothing is queued on a refusal.
-func (b *BatchBuilder) queueNodeCascade(id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant, withTx bool) error {
+func (b *BatchBuilder) queueNodeCascade(id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant, withTx, void bool) error {
 	if err := b.lockOpen(); err != nil {
 		return err
 	}
@@ -413,10 +412,10 @@ func (b *BatchBuilder) queueNodeCascade(id types.NodeID, validFrom, validTo type
 			return err
 		}
 	}
-	if err := validateCascadeInterval(validFrom, validTo); err != nil {
+	if err := validateQueuedInterval(validFrom, validTo, void); err != nil {
 		return err
 	}
-	b.nodeCascades = append(b.nodeCascades, pendingNodeCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at})
+	b.nodeCascades = append(b.nodeCascades, pendingNodeCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at, void: void})
 	return nil
 }
 
@@ -430,6 +429,15 @@ func validateCascadeInterval(validFrom, validTo types.Instant) error {
 		return ErrInvalidTimeRange
 	}
 	return nil
+}
+
+// validateQueuedInterval is the queue-time interval check of a correction or
+// (void) an excise.
+func validateQueuedInterval(validFrom, validTo types.Instant, void bool) error {
+	if void {
+		return validateExciseInterval(validFrom, validTo)
+	}
+	return validateCascadeInterval(validFrom, validTo)
 }
 
 // copyCascadeProps is a defensive copy of a queued patch — the caller may
@@ -447,11 +455,11 @@ func copyCascadeProps(props map[string]any) map[string]any {
 
 // SetRelVersionInterval queues a relationship cascade. See SetNodeVersionInterval.
 func (b *BatchBuilder) SetRelVersionInterval(id types.RelID, validFrom, validTo types.Instant, props map[string]any) error {
-	return b.queueRelCascade(id, validFrom, validTo, props, 0, false)
+	return b.queueRelCascade(id, validFrom, validTo, props, 0, false, false)
 }
 
 // queueRelCascade mirrors queueNodeCascade for relationships.
-func (b *BatchBuilder) queueRelCascade(id types.RelID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant, withTx bool) error {
+func (b *BatchBuilder) queueRelCascade(id types.RelID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant, withTx, void bool) error {
 	if err := b.lockOpen(); err != nil {
 		return err
 	}
@@ -475,10 +483,10 @@ func (b *BatchBuilder) queueRelCascade(id types.RelID, validFrom, validTo types.
 			return err
 		}
 	}
-	if err := validateCascadeInterval(validFrom, validTo); err != nil {
+	if err := validateQueuedInterval(validFrom, validTo, void); err != nil {
 		return err
 	}
-	b.relCascades = append(b.relCascades, pendingRelCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at})
+	b.relCascades = append(b.relCascades, pendingRelCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at, void: void})
 	return nil
 }
 

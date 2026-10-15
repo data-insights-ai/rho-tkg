@@ -222,6 +222,9 @@ func (c *Core) importMergeReplayRecordsLocked(readRecord func() (byte, []byte, e
 	// A hard-deleted entity (fully absent) has no chain — that is the correct
 	// merged outcome, not corruption.
 	for id := range touchedNodes {
+		if c.hashesOff { // no chain to verify
+			break
+		}
 		valid, err := c.verifyNodeChainLocked(id)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -234,6 +237,9 @@ func (c *Core) importMergeReplayRecordsLocked(readRecord func() (byte, []byte, e
 		}
 	}
 	for id := range touchedRels {
+		if c.hashesOff {
+			break
+		}
 		valid, err := c.verifyRelChainLocked(id)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrRelNotFound) {

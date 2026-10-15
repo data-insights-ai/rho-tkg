@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -120,10 +121,17 @@ func TestReImportKeepsEveryLife(t *testing.T) {
 				step("bounded cascade", func() {
 					e.mustCascade(id, 5500, 6000, map[string]any{"x": int64(4)})
 				})
-				// The update's version starts at its UpdatedAt: close after it
-				// and before the second delete (a close after a plain delete's
-				// instant is clamped to it — a separate, documented limit).
+				// Close after the current version's start (its valid-from, else
+				// its TxFrom — backlog 62; a backfilled valid-from can put it
+				// ahead of the clock) and before the second delete (a close after
+				// a plain delete's instant is clamped to it — a separate,
+				// documented limit).
 				closeV := e.pin() + 1
+				for _, r := range e.chain(id) {
+					if r.current {
+						closeV = max(closeV, storeutil.EntityValidFrom(0, &r.tm)+1)
+					}
+				}
 				valids = rlWith(valids, closeV)
 				views = e.record(pins, valids)
 				step("close", func() {

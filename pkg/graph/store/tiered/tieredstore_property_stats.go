@@ -6,34 +6,23 @@ import (
 )
 
 // NodePropertyStats folds NDV/min/max/count planner statistics for
-// (labelToken, propertyKey) across every shard — refShard, refArchive (if
-// open/present), and every event shard (hot + warm + cold) — mirroring the
-// checkout/checkin fold discipline of NodeCountByLabelAndPropertyKey
-// (tieredstore_read_bulk.go).
+// (labelToken, propertyKey) across refShard, refArchive and every event shard
+// (hot, warm, cold), with the checkout/checkin discipline of
+// NodeCountByLabelAndPropertyKey.
 //
-// Count and Min/Max fold trivially (SUM and min-of-mins/max-of-maxes), but
-// NDV is a HyperLogLog ESTIMATE and estimates do not sum: a value present on
-// two shards would be double-counted by summing per-shard Estimate()s. The
-// correct fold is a register-max MERGE of the raw per-shard sketches
-// (indexpkg.HyperLogLog.Merge), with Estimate() called exactly ONCE on the
-// merged sketch — see docs/adr/0005-tiered-parity.md §3.1. Each shard's
-// concrete *BadgerStore exposes the raw sketch via the store-internal (not
-// public-contract) NodePropertyStatsSketch method.
-//
-// Merge returns ErrHLLPrecisionMismatch if two shards' sketches were built
-// at different precisions — every shard uses the same
-// indexpkg.DefaultHLLPrecision, so this cannot fire in practice, but the
-// error is PROPAGATED rather than discarded: silently ignoring a precision
-// mismatch would silently under-count NDV, exactly the failure mode the
-// merge exists to prevent.
+// Count sums and Min/Max fold trivially, but NDV is a HyperLogLog ESTIMATE
+// that does not sum (a value on two shards would double count): raw per-shard
+// sketches (store-internal NodePropertyStatsSketch) are register-max MERGED
+// (indexpkg.HyperLogLog.Merge) and Estimate() runs once on the result
+// (docs/adr/0005-tiered-parity.md §3.1). ErrHLLPrecisionMismatch is
+// PROPAGATED, never discarded (it would silently under-count NDV).
 func (ts *Store) NodePropertyStats(labelToken uint16, propertyKey string) (storecontract.PropertyStats, error) {
 	return ts.foldNodePropertySketches(labelToken, propertyKey, (*BadgerStore).NodePropertyStatsSketch)
 }
 
-// NodePropertyNDV implements store.NodePropertyNDVCapability: the same
-// cross-shard sketch merge as NodePropertyStats, over each shard's
-// NodePropertyNDVSketch, which never rescans a shard's Min/Max (round 5
-// request 1).
+// NodePropertyNDV implements store.NodePropertyNDVCapability: the cross-shard
+// sketch merge of NodePropertyStats over NodePropertyNDVSketch, never
+// rescanning Min/Max.
 func (ts *Store) NodePropertyNDV(labelToken uint16, propertyKey string) (storecontract.PropertyNDV, error) {
 	stats, err := ts.foldNodePropertySketches(labelToken, propertyKey, func(bs *BadgerStore, tok uint16, key string) (*indexpkg.HyperLogLog, any, any, int64, error) {
 		sketch, count, err := bs.NodePropertyNDVSketch(tok, key)
@@ -68,12 +57,8 @@ func (ts *Store) foldNodePropertySketches(labelToken uint16, propertyKey string,
 		count    int64
 	)
 
-	// merge folds one shard's (sketch, min, max, count) into the running
-	// totals. Sequential — called once per shard, never concurrently with
-	// itself, even though event-shard sketches are COLLECTED under
-	// queryEventShards' internal goroutines (each goroutine writes into its
-	// own results[i] slot; this function only runs over the collected slice
-	// afterward).
+	// merge folds one shard's (sketch, min, max, count) into the running totals;
+	// sequential, run over the slice collected by queryEventShards' goroutines.
 	merge := func(shardSketch *indexpkg.HyperLogLog, shardMin, shardMax any, shardCount int64) error {
 		if shardSketch != nil {
 			if sketch == nil {
@@ -87,6 +72,8 @@ func (ts *Store) foldNodePropertySketches(labelToken uint16, propertyKey string,
 		return nil
 	}
 
+	move := ts.lockMoveRead() // a node moved mid-read would count twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return storecontract.PropertyStats{}, err
@@ -100,6 +87,7 @@ func (ts *Store) foldNodePropertySketches(labelToken uint16, propertyKey string,
 		return storecontract.PropertyStats{}, err
 	}
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return storecontract.PropertyStats{}, archiveErr
@@ -114,6 +102,7 @@ func (ts *Store) foldNodePropertySketches(labelToken uint16, propertyKey string,
 			return storecontract.PropertyStats{}, err
 		}
 	}
+	move.unlock()
 
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)

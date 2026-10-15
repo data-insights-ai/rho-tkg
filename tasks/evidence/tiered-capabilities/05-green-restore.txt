@@ -1,0 +1,16 @@
+# backlog 58 review fix 1 green: ArchiveNode/RestoreNode hold Store.moveMu; the fan-out read-holds it across its reference and archive reads
+# go test -short -race -count=1 -run TestTxMembersFanoutListsNodeRestoredMidRead -v ./pkg/graph/store/tiered/
+=== RUN   TestTxMembersFanoutListsNodeRestoredMidRead
+=== RUN   TestTxMembersFanoutListsNodeRestoredMidRead/LabelTxMembership
+=== RUN   TestTxMembersFanoutListsNodeRestoredMidRead/NodeValidEndCandidates
+--- PASS: TestTxMembersFanoutListsNodeRestoredMidRead (2.17s)
+    --- PASS: TestTxMembersFanoutListsNodeRestoredMidRead/LabelTxMembership (1.05s)
+    --- PASS: TestTxMembersFanoutListsNodeRestoredMidRead/NodeValidEndCandidates (1.12s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	3.209s
+
+# go test -short -race -count=1 ./pkg/graph/store/tiered/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	145.863s
+
+# go test -short -race -count=1 -run 'Tiered|TxMember|ValidEnd|PropertyTx' ./pkg/graph/internal/core/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	13.702s

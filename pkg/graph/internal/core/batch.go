@@ -77,6 +77,7 @@ type pendingNodeCascade struct {
 	validTo   types.Instant
 	props     map[string]any
 	at        types.Instant
+	void      bool // an excise (ExciseNodeValidity*), not a correction
 }
 
 type pendingRelCascade struct {
@@ -85,6 +86,7 @@ type pendingRelCascade struct {
 	validTo   types.Instant
 	props     map[string]any
 	at        types.Instant
+	void      bool
 }
 
 // pendingNode and pendingRel keep private queued entities plus the

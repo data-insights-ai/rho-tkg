@@ -23,29 +23,30 @@ import (
 //
 // The highest version is derived from the chain under the entity lock (no
 // persisted counter, no store format change). Versions are allocated densely
-// (each write takes max+1), so a row above the current version exists iff the
-// version current+1 does: the common case costs one point read that misses;
-// only an entity whose chain holds rows above the current row (a cascade that
-// left the current row in place) reads its history to find the top.
+// (each write takes max+1): the common case costs one point read of
+// current+1 that misses and one page read of at most one row; only an entity
+// whose chain holds rows above the current row (a cascade that left the
+// current row in place) reads its history to find the top.
 //
-// Density is an assumption, shared with the as-of fast paths (memory
-// history[v+1], badger's point read of key current+1, the core fallback) and
-// the GraphTx rollback snapshot. Every write path of this package keeps it. A
-// gap directly above the current row — a direct Store.TruncateNodeHistory /
-// TrimNodeHistoryFrom that removed version current+1 but kept a higher one, or
-// a re-import over an earlier life compacted below its top, stored before
-// backlog 38 (a re-import now starts above the chain's top) — makes all of
-// them answer "no row above": the allocator then hands out current+1 again
-// (unique, since that key is free, but below the surviving higher row, so the
-// newest write is no longer the highest version), and the as-of door answers
-// the current row where SelectAsOfWithCurrent over the whole chain would
-// answer the higher row. Memory, badger and the core fallback agree with each
-// other in that case (all probe current+1).
+// Versions are dense along every write path, but history compaction trims the
+// oldest rows, which after bounded corrections lie directly above the current
+// row, and a direct Store.TruncateNodeHistory / TrimNodeHistoryFrom or a
+// re-import stored before backlog 38 can leave a gap too. The check above the
+// current row is therefore exact (nodeHasHistoryAbove, backlog 70): the point
+// read of current+1 answers the dense chain, and only when it misses one page
+// read of at most one row looks past a gap. The stores' as-of fast paths use
+// the same rule (memory historyHasVersionAbove, badger liveHistoryAbove /
+// snapshotHistoryAbove).
 
-// nodeHasHistoryAbove reports whether node id has a history row at version
-// v+1, i.e. (versions being dense) any row above v.
+// nodeHasHistoryAbove reports whether node id has a history row above
+// version v. Exact (backlog 70): the point read of v+1 answers the common
+// dense chain; when v+1 is absent one history page read of at most one row
+// from v+2 (memory and badger answer it from their upper bound of the top version
+// without reading rows when none lies above) finds a row above a gap — history compaction
+// trims the oldest rows, which after bounded corrections lie directly above
+// the current row, and a probe of v+1 alone then answered "none above".
 func (c *Core) nodeHasHistoryAbove(id types.NodeID, v uint32) (bool, error) {
-	if v == math.MaxUint32 {
+	if v >= math.MaxUint32-1 {
 		return false, nil
 	}
 	if p, ok := c.store.(storepkg.HistoryPresenceCapability); ok {
@@ -59,18 +60,37 @@ func (c *Core) nodeHasHistoryAbove(id types.NodeID, v uint32) (bool, error) {
 	switch {
 	case err == nil:
 		return true, nil
-	case errors.Is(err, storepkg.ErrVersionNotFound):
-		return false, nil
-	default:
+	case !errors.Is(err, storepkg.ErrVersionNotFound):
 		return false, err
 	}
+	return c.nodeHasHistoryFrom(id, v+2)
+}
+
+// nodeHasHistoryFrom reports whether node id has a history row at version v
+// or above: one page read of at most one row, else (a store without
+// HistoryVersionPageCapability) the history.
+func (c *Core) nodeHasHistoryFrom(id types.NodeID, v uint32) (bool, error) {
+	if pager := historyVersionPageCapability(c.store); pager != nil {
+		rows, err := c.nodeHistoryVersionsFrom(pager, id, v, 1)
+		return len(rows) > 0, err
+	}
+	history, err := c.getNodeHistory(id)
+	if err != nil {
+		return false, err
+	}
+	for _, h := range history {
+		if h.Version() >= v {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // relHasHistoryAbove mirrors nodeHasHistoryAbove for relationships. A Model-A
 // foreign-incoming stub's slot is foreign (ErrSlotNotLocal): it has no local
 // history.
 func (c *Core) relHasHistoryAbove(id types.RelID, v uint32) (bool, error) {
-	if v == math.MaxUint32 {
+	if v >= math.MaxUint32-1 {
 		return false, nil
 	}
 	if p, ok := c.store.(storepkg.HistoryPresenceCapability); ok {
@@ -85,11 +105,34 @@ func (c *Core) relHasHistoryAbove(id types.RelID, v uint32) (bool, error) {
 	switch {
 	case err == nil:
 		return true, nil
-	case errors.Is(err, storepkg.ErrVersionNotFound), errors.Is(err, storepkg.ErrSlotNotLocal):
+	case errors.Is(err, storepkg.ErrSlotNotLocal):
 		return false, nil
-	default:
+	case !errors.Is(err, storepkg.ErrVersionNotFound):
 		return false, err
 	}
+	return c.relHasHistoryFrom(id, v+2)
+}
+
+// relHasHistoryFrom mirrors nodeHasHistoryFrom for relationships.
+func (c *Core) relHasHistoryFrom(id types.RelID, v uint32) (bool, error) {
+	var history []*types.Relationship
+	var err error
+	if pager := historyVersionPageCapability(c.store); pager != nil {
+		history, err = c.relHistoryVersionsFrom(pager, id, v, 1)
+	} else {
+		history, err = c.getRelHistory(id)
+	}
+	if errors.Is(err, storepkg.ErrSlotNotLocal) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	for _, h := range history {
+		if h.Version() >= v {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // nextNodeVersion returns the version of the next row appended to node id,

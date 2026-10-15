@@ -7,24 +7,13 @@ import (
 
 // --- Bulk queries ---
 
-// AllNodes returns every node across every shard (reference + archive-if-
-// DepthAll + every event shard at opts.Depth). Memory caveat (BACKLOG 19j):
-// this is UNBOUNDED in RAM, not a streaming door — every shard's full result
-// is materialized concurrently (queryEventShards) and then concatenated, so
-// peak memory is O(total nodes across every scanned shard), not O(one shard)
-// or O(1). opts.Limit/opts.After do NOT reduce this: applyNodePagination
-// trims the already-fully-materialized merged slice AFTER every shard's
-// unlimited result has already been fetched and held in RAM — pagination
-// here shrinks the RETURNED set, not the peak memory footprint. This is
-// also NOT mitigated by the graph layer's streaming `ForEachByLabel`/
-// `IterByLabel` doors: tiered does not implement their streaming capability,
-// so those doors fall back to a materialized `ByLabel` scan internally and
-// stream only at the caller-facing interface (see `nodes.API.IterByLabel`'s
-// doc comment). `ForEachNodeID` (below) IS a genuine O(one-shard) sequential
-// streaming door, but it yields bare IDs with no depth filtering, not full
-// nodes — there is no equivalent for full-node or depth-filtered bulk reads
-// today. Prefer a label-scoped point query when the caller only needs a
-// subset.
+// AllNodes returns every node across every shard (reference, archive at
+// DepthAll, event shards at opts.Depth). Memory caveat (BACKLOG 19j): NOT a
+// streaming door; every shard's full result is materialized concurrently, so
+// peak RAM is O(total nodes), and opts.Limit/opts.After only trim the merged
+// slice afterwards. The graph layer's ForEachByLabel/IterByLabel do not help
+// (tiered has no streaming capability). ForEachNodeID is O(one-shard) but
+// yields bare IDs without depth filtering. Prefer label-scoped queries.
 func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -36,6 +25,8 @@ func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
@@ -46,19 +37,13 @@ func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 		return nil, err
 	}
 
-	// refArchive parity: archived nodes are still GetNode-addressable, so
-	// public bulk scans must include them. Otherwise an archived entity
-	// silently disappears from AllNodes / similar APIs even though point
-	// lookups still find it. checkoutArchive lazy-opens on cold start
-	// (catalog-archive-shard-but-pointer-nil).
-	//
-	// Depth gating: archive is the coldest tier of reference data;
-	// including it in DepthHot/DepthWarm would surface entities the
-	// caller asked to exclude. Only DepthAll requests archive content.
-	// refShard is queried for all Depth values per existing semantics
-	// (reference data is not Depth-tiered, only event data is).
+	// refArchive parity: archived nodes stay GetNode-addressable, so bulk scans
+	// include them, but only at DepthAll (the coldest tier; DepthHot/DepthWarm
+	// callers excluded it). checkoutArchive lazy-opens on cold start. refShard is
+	// queried for every Depth (reference data is not Depth-tiered).
 	var archiveNodes []*types.Node
 	if opts.Depth == DepthAll {
+		ts.refArchiveGapHook()
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
 			return nil, archiveErr
@@ -71,6 +56,7 @@ func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 			}
 		}
 	}
+	move.unlock()
 
 	type result struct {
 		nodes []*types.Node
@@ -118,6 +104,8 @@ func (ts *Store) NodeCount() (int, error) {
 	ts.mu.RUnlock()
 
 	total := 0
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return 0, err
@@ -130,6 +118,7 @@ func (ts *Store) NodeCount() (int, error) {
 	total += n
 
 	// refArchive parity: archived nodes count toward the public total.
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return 0, archiveErr
@@ -142,6 +131,7 @@ func (ts *Store) NodeCount() (int, error) {
 		}
 		total += an
 	}
+	move.unlock()
 
 	type result struct {
 		count int
@@ -181,6 +171,8 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 	}
 
 	total := 0
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return 0, err
@@ -192,6 +184,7 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 	}
 	total += n
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return 0, archiveErr
@@ -204,6 +197,7 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 		}
 		total += an
 	}
+	move.unlock()
 
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)
@@ -250,6 +244,8 @@ func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string
 	}
 
 	total := 0
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return 0, err
@@ -261,6 +257,7 @@ func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string
 	}
 	total += n
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return 0, archiveErr
@@ -273,6 +270,7 @@ func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string
 		}
 		total += an
 	}
+	move.unlock()
 
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)
@@ -303,12 +301,9 @@ func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string
 
 // --- ID enumeration ---
 
-// AllNodeIDs mirrors AllNodes's memory caveat (BACKLOG 19j): every shard's
-// full ID set is materialized concurrently and merged before pagination is
-// applied, so peak memory is unbounded in the total node count, not reduced
-// by opts.Limit/opts.After. See AllNodes's doc comment for the full writeup.
-// ForEachNodeID (below) is a genuine O(one-shard) streaming alternative when
-// the caller needs every ID with no depth filtering.
+// AllNodeIDs has AllNodes's memory caveat (BACKLOG 19j): every shard's ID set
+// is materialized before pagination. ForEachNodeID is the O(one-shard)
+// streaming alternative (no depth filtering).
 func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -320,6 +315,8 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	eventShards := ts.eventShardSnapshot(opts.Depth)
 	ts.mu.RUnlock()
 
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
@@ -331,12 +328,10 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	}
 	refIDs := refTyped
 
-	// refArchive parity: AllNodeIDs must surface archived nodes whenever
-	// AllNodes / GetNode see them. Depth-gated to DepthAll — archive is
-	// the coldest tier of reference data; DepthHot/DepthWarm callers
-	// asked to exclude it. Same policy as AllNodes.
+	// refArchive parity: archived nodes surface at DepthAll only, as in AllNodes.
 	var archiveIDs []types.NodeID
 	if opts.Depth == DepthAll {
+		ts.refArchiveGapHook()
 		archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 		if archiveErr != nil {
 			return nil, archiveErr
@@ -350,6 +345,7 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 			archiveIDs = typed
 		}
 	}
+	move.unlock()
 
 	type result struct {
 		ids []types.NodeID
@@ -389,9 +385,8 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 }
 
 // --- ForEach iterators ---
-// Sequential shard iteration — one shard at a time, no goroutines, no ID merge.
-// This avoids materializing IDs from every shard at once while keeping callbacks
-// outside Tiered shard checkouts.
+// Sequential, one shard at a time, no goroutines or ID merge; callbacks run
+// outside shard checkouts.
 
 func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 	if err := ts.checkOpen(); err != nil {
@@ -400,48 +395,45 @@ func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
 	if fn == nil {
 		return errNilIterationCallback()
 	}
+	// Reference and archive IDs are collected under one moveMu read hold and
+	// emitted after it (fn may call back), so a moved entity is emitted once.
 	ids := make([]types.NodeID, 0)
+	collect := func(id types.NodeID) bool {
+		ids = append(ids, id)
+		return true
+	}
+	move := ts.lockMoveRead()
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return err
 	}
-	if err := ref.ForEachNodeID(func(id types.NodeID) bool {
-		ids = append(ids, id)
-		return true
-	}); err != nil {
-		refCheckin()
+	err = ref.ForEachNodeID(collect)
+	refCheckin()
+	if err != nil {
 		return err
 	}
-	refCheckin()
+
+	// Archive shard (cold-start safe + Close race-free via checkoutArchive).
+	ts.refArchiveGapHook()
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return archiveErr
+	}
+	if archive != nil {
+		err := archive.ForEachNodeID(collect)
+		archiveCheckin()
+		if err != nil {
+			return err
+		}
+	}
+	move.unlock()
 	for _, id := range ids {
 		if !fn(id) {
 			return nil
 		}
 	}
 
-	// Archive shard (cold-start safe + Close race-free via checkoutArchive).
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-	if archiveErr != nil {
-		return archiveErr
-	}
-	if archive != nil {
-		ids = ids[:0]
-		err := archive.ForEachNodeID(func(id types.NodeID) bool {
-			ids = append(ids, id)
-			return true
-		})
-		archiveCheckin()
-		if err != nil {
-			return err
-		}
-		for _, id := range ids {
-			if !fn(id) {
-				return nil
-			}
-		}
-	}
-
-	// Event shards — sequential, depth=all.
 	ts.mu.RLock()
 	shards := ts.eventShardSnapshot(DepthAll)
 	ts.mu.RUnlock()

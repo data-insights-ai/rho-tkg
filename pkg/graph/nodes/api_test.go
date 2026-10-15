@@ -27,6 +27,9 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "AddWithTx", run: func() error { _, err := nilAPI.AddWithTx(ctx, []string{"Node"}, nil, 1000); return err }},
 		{name: "Get", run: func() error { _, err := nilAPI.Get(context.Background(), id); return err }},
 		{name: "Lend", run: func() error { _, err := nilAPI.Lend(context.Background(), id); return err }},
+		{name: "LendByIDs", run: func() error {
+			return nilAPI.LendByIDs(context.Background(), []types.NodeID{id}, func(int, *types.Node) bool { return true })
+		}},
 		{name: "GetWithContext", run: func() error { _, err := nilAPI.Get(ctx, id); return err }},
 		{name: "GetByIDs", run: func() error { _, err := nilAPI.GetByIDs([]types.NodeID{id}); return err }},
 		{name: "Update", run: func() error { _, err := nilAPI.Update(context.Background(), id, nil); return err }},
@@ -131,6 +134,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Get", run: func() error { _, err := api.Get(context.Background(), id); return err }},
 		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, id); return err }},
 		{name: "Lend", run: func() error { _, err := api.Lend(ctx, id); return err }},
+		{name: "LendByIDs", run: func() error {
+			return api.LendByIDs(ctx, []types.NodeID{id}, func(int, *types.Node) bool { return true })
+		}},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.NodeID{id}); return err }},
 		{name: "Update", run: func() error {
 			_, err := api.Update(context.Background(), id, map[string]any{"name": "Grace"})
@@ -206,7 +212,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	}
 
 	wantCalls := []string{
-		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "GetByIDs",
+		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "LendByIDs", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
 		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
@@ -279,6 +285,14 @@ func (s *nodeOpsSpy) Get(ctx context.Context, id types.NodeID) (*types.Node, err
 	s.record("Get")
 	s.lastID = id
 	return nil, s.err
+}
+
+func (s *nodeOpsSpy) LendByIDs(ctx context.Context, ids []types.NodeID, fn func(int, *types.Node) bool) error {
+	s.record("LendByIDs")
+	if len(ids) > 0 {
+		s.lastID = ids[0]
+	}
+	return s.err
 }
 
 func (s *nodeOpsSpy) Lend(ctx context.Context, id types.NodeID) (*types.Node, error) {
@@ -393,6 +407,21 @@ func (s *nodeOpsSpy) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.No
 	s.lastLabel = label
 	s.lastOpts = opts
 	return nil, s.err
+}
+
+func (s *nodeOpsSpy) CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {
+	s.record("CountByLabelPropertyValue")
+	return 0, false, s.err
+}
+
+func (s *nodeOpsSpy) ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error {
+	s.record("ForEachIDByLabelPropertyRangeOrdered")
+	return s.err
+}
+
+func (s *nodeOpsSpy) ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error {
+	s.record("ForEachIDByLabelPropertyPrefix")
+	return s.err
 }
 
 func (s *nodeOpsSpy) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
@@ -671,11 +700,8 @@ func TestCountByLabelAtForwards(t *testing.T) {
 	}
 }
 
-// The caller-instant doors must hand the instant, id and update map to the ops
-// verbatim. Catches a facade that drops the instant (forwards 0, which the
-// core reads as invalid), swaps it for the clock, forwards to the plain
-// Delete/Update, or rewrites the update map (e.g. injecting a reserved
-// tkg_tx_from/tkg_tx_to property instead of passing the argument).
+// The caller-instant doors must hand instant, id and update map to the ops verbatim
+// (no dropped instant, clock swap, plain Delete/Update, or injected reserved props).
 func TestAPIWithTxDoorsForwardInstantVerbatim(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -751,10 +777,8 @@ func TestAPILatestStampsForwardsAnswer(t *testing.T) {
 	}
 }
 
-// Backlog 43: the retraction doors must reach Ops.Retract / Ops.RetractWithTx
-// with the id and the instant verbatim. Catches a facade that forwards a
-// retraction to Delete / DeleteWithTx (Retract as Delete: the past stays
-// readable), drops the instant, or swaps the id.
+// Backlog 43: the retraction doors reach Ops.Retract / RetractWithTx with id and
+// instant verbatim (not Delete / DeleteWithTx, which leaves the past readable).
 func TestAPIRetractDoorsForwardVerbatim(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -776,4 +800,46 @@ func TestAPIRetractDoorsForwardVerbatim(t *testing.T) {
 			t.Fatalf("RetractWithTx forwarded calls=%v id=%v at=%d; want [RetractWithTx] 42 %d", ops.calls, ops.lastID, ops.lastTx, at)
 		}
 	}
+}
+
+func (s *nodeOpsSpy) ForEachDocValuesOrdinal(label string, _ []string, _ func(types.NodeID, uint32, []any, []bool) bool) (uint64, bool, error) {
+	s.record("ForEachDocValuesOrdinal")
+	s.lastLabel = label
+	return 3, true, s.err
+}
+
+func (s *nodeOpsSpy) ForEachDocValuesMultiOrdinal(labels []string, _ []string, _ func(types.NodeID, uint32, []any, []bool) bool) (uint64, bool, error) {
+	s.record("ForEachDocValuesMultiOrdinal")
+	if len(labels) > 0 {
+		s.lastLabel = labels[0]
+	}
+	return 4, true, s.err
+}
+
+func TestForEachDocValuesOrdinalForwards(t *testing.T) {
+	var nilAPI *API
+	fn := func(types.NodeID, uint32, []any, []bool) bool { return true }
+	if _, _, err := nilAPI.ForEachDocValuesOrdinal("A", nil, fn); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ForEachDocValuesOrdinal: %v", err)
+	}
+	if _, _, err := nilAPI.ForEachDocValuesMultiOrdinal([]string{"A"}, nil, fn); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ForEachDocValuesMultiOrdinal: %v", err)
+	}
+	spy := &nodeOpsSpy{}
+	if gen, ok, err := New(spy).ForEachDocValuesOrdinal("A", nil, fn); gen != 3 || !ok || err != nil || spy.lastLabel != "A" {
+		t.Fatalf("ForEachDocValuesOrdinal = %d %v %v (label %q)", gen, ok, err, spy.lastLabel)
+	}
+	if gen, ok, err := New(spy).ForEachDocValuesMultiOrdinal([]string{"B", "C"}, nil, fn); gen != 4 || !ok || err != nil || spy.lastLabel != "B" {
+		t.Fatalf("ForEachDocValuesMultiOrdinal = %d %v %v (label %q)", gen, ok, err, spy.lastLabel)
+	}
+}
+
+func (s *nodeOpsSpy) RangeCardinalityAt(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	s.record("RangeCardinalityAt")
+	return 0, false, s.err
+}
+
+func (s *nodeOpsSpy) ForEachByLabelOrdinals(label string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	s.record("ForEachByLabelOrdinals")
+	return s.err
 }

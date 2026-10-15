@@ -1,0 +1,4 @@
+# 2026-10-14T23:50:34+02:00 c6174db3 go test -short -race -timeout 40m ./pkg/graph/internal/core/ ./pkg/graph/store/badger/
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	293.138s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	177.695s
+exit 0

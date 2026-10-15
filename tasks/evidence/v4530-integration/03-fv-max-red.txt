@@ -1,0 +1,5 @@
+    wire_void_binaryhash_test.go:30: node: fv 4; want 5 (void outranks binary hash 4)
+--- FAIL: TestVoidRowWithBinaryHash_FormatVersionIsMax (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.003s
+FAIL

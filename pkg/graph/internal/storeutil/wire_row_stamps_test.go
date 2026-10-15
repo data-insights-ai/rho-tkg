@@ -155,7 +155,7 @@ func TestDecodeWireRowStamps(t *testing.T) {
 	}
 
 	newer := NodeToWire(n)
-	newer.FormatVersion = RetractedWireFormatVersion + 1
+	newer.FormatVersion = VoidWireFormatVersion + 1
 	newerRaw, err := MarshalNodeWireStruct(newer)
 	if err != nil {
 		t.Fatal(err)

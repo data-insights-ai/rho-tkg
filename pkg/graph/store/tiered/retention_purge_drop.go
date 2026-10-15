@@ -11,23 +11,19 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// coldShardDrainSpinLimit bounds the drain wait so a wedged in-flight request cannot
-// stall a purge forever. On timeout the shard is RE-LINKED and left to the row-scan
-// path (safe — the fast-drop is a pure optimization). ~5s at 1ms/spin. Reused by
-// Close()'s drains (BACKLOG 19n, drainActiveReqsBounded in tieredstore.go) — same
-// bound, same "a wedged counter must not stall forever" rationale.
+// coldShardDrainSpinLimit bounds the drain wait (~5s at 1ms/spin) so a wedged
+// request cannot stall a purge; on timeout the shard is re-linked and left to
+// the row-scan path. Also bounds Close()'s drains (BACKLOG 19n,
+// drainActiveReqsBounded).
 const coldShardDrainSpinLimit = 5000
 
-// ErrDrainTimeout is returned (wrapped) when a bounded active-request drain hits
-// coldShardDrainSpinLimit without reaching zero — signals a checkin leak elsewhere
-// rather than normal in-flight traffic finishing late.
+// ErrDrainTimeout is returned (wrapped) when a bounded active-request drain
+// hits coldShardDrainSpinLimit: signals a checkin leak, not late traffic.
 var ErrDrainTimeout = errors.New("graph: active-request drain timed out")
 
-// drainActiveReqsBounded spin-waits (1ms/iteration) for load() to reach <= 0, up to
-// coldShardDrainSpinLimit iterations (~5s). Returns true if drained, false on
-// timeout — the caller decides what to do (report and proceed; a wedged counter
-// must never make a lifecycle method like Close() hang forever, unlike the purge
-// protocol which can safely fall back to a slower path instead).
+// drainActiveReqsBounded spin-waits (1ms) for load() <= 0, up to
+// coldShardDrainSpinLimit iterations. Returns false on timeout; the caller
+// decides (Close must never hang on a wedged counter).
 func drainActiveReqsBounded(load func() int64) bool {
 	for i := 0; i < coldShardDrainSpinLimit; i++ {
 		if load() <= 0 {
@@ -38,30 +34,23 @@ func drainActiveReqsBounded(load func() int64) bool {
 	return false
 }
 
-// fastDropEligibleShards physically DROPS wholly-aged-out single-label event shards
-// (ADR-0008 R4 optimization) instead of row-scanning them, for a ByAge purge with the
-// change-log DISABLED. It returns the accumulated drop result; the dropped shards are
-// removed from ts.eventShards, so the caller's row-scan fan-out (forEachOpenShard)
-// naturally skips them.
-//
-// A drop replaces the per-row cascade + flush with one directory removal. Correctness
-// under concurrency rests on a DRAIN PROTOCOL (dropOneShard): a shard is unlinked from
-// routing, its in-flight requests drained, and only THEN is its cross-shard residue
-// collected + swept and the directory removed — so no concurrent write can leave
-// un-swept residue (a new edge to a purged-window node fails endpoint validation once
-// the shard is unlinked; an in-flight one is captured by the drain). Disabled under
-// change-log (dropping a shard would destroy its 0x09 log segment → replica LSN gap).
+// fastDropEligibleShards physically DROPS wholly-aged-out single-label event
+// shards (ADR-0008 R4) instead of row-scanning them, for a ByAge purge with the
+// change-log DISABLED (a drop would destroy the shard's 0x09 log segment and
+// leave a replica LSN gap). Dropped shards leave ts.eventShards, so the
+// row-scan fan-out skips them. Safety rests on the DRAIN PROTOCOL
+// (dropOneShard): unlink from routing, drain in-flight requests, only then
+// collect and sweep cross-shard residue and remove the directory. Returns the
+// accumulated drop result.
 func (ts *Store) fastDropEligibleShards(labelToken uint16, before types.Instant) (storecontract.RetentionPurgeResult, error) {
 	var total storecontract.RetentionPurgeResult
 	if ts.logEnabled || before <= 0 {
 		return total, nil // change-log on (log-segment loss) → row-scan
 	}
 
-	// dropOneShard mutates ts.eventShards (the same map Close() ranges while
-	// tearing shards down). Every other topology-mutating operation
-	// (RotateHotShard, Clear, index creation) excludes Close() via
-	// beginSequentialStoreWideOperation/lifecycleMu; the drop path must too,
-	// or Close() and a drop's map mutations race unsynchronized (BACKLOG 19a).
+	// dropOneShard mutates ts.eventShards, which Close() ranges; like every
+	// topology mutation it must exclude Close() via
+	// beginSequentialStoreWideOperation/lifecycleMu (BACKLOG 19a).
 	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
 	if err != nil {
 		return total, err
@@ -70,9 +59,8 @@ func (ts *Store) fastDropEligibleShards(labelToken uint16, before types.Instant)
 
 	beforeTime := time.UnixMilli(int64(before))
 
-	// Snapshot the candidate event shards whose entire window is below the boundary
-	// (every entity minted before it — ByAge). Never the hot shard (write-active, open
-	// window). timeEnd is exclusive, so timeEnd <= before ⇒ all mint-times < before.
+	// Candidates: event shards whose whole window is below the boundary
+	// (timeEnd exclusive). Never the write-active hot shard.
 	ts.mu.RLock()
 	var candidates []*EventShard
 	for _, es := range ts.eventShards {
@@ -104,9 +92,8 @@ func (ts *Store) fastDropEligibleShards(labelToken uint16, before types.Instant)
 func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.RetentionPurgeResult, bool, error) {
 	var zero storecontract.RetentionPurgeResult
 
-	// (1) Single-label check (a shard holding another label is not droppable by a
-	// single-label purge). Open the shard read-pinned for the check; this holds a
-	// checkout, so do it BEFORE the drain-unlink.
+	// (1) Single-label check, read-pinned; holds a checkout, so BEFORE the
+	// drain-unlink.
 	store, err := es.checkoutStore(ts)
 	if err != nil {
 		return zero, false, err
@@ -120,9 +107,9 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		return zero, false, nil // other labels present — row-scan handles it
 	}
 
-	// (2) Unlink from routing so no NEW checkout can reach this shard (a concurrent
-	// edge to a purged-window node now fails endpoint validation on the hot-shard
-	// fallback instead of adding un-swept residue here).
+	// (2) Unlink from routing so no NEW checkout reaches the shard. Once unlinked, a new
+	// edge to a purged-window node fails endpoint validation on the hot-shard fallback,
+	// so it adds no unswept residue; the drain captures an in-flight one.
 	ts.mu.Lock()
 	if ts.eventShards[es.name] != es {
 		ts.mu.Unlock()
@@ -161,14 +148,10 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	if cerr != nil {
 		return zero, false, cerr
 	}
-	// Re-verify single-label eligibility (BACKLOG 19e): a write that started
-	// and finished entirely between step (1)'s check and step (2)'s unlink is
-	// invisible to the drain (it was never "in-flight" at unlink time), so a
-	// concurrent AddNodeLabelToken adding a FOREIGN label in that narrow
-	// window would otherwise go undetected — the shard would be dropped with
-	// live data under a label this purge was never authorized to remove. This
-	// second, POST-drain result is authoritative; re-link and fall back to
-	// row-scan instead of silently discarding it.
+	// Re-verify single-label eligibility (BACKLOG 19e): a write that began and
+	// finished between step (1) and the unlink is invisible to the drain, so a
+	// concurrent AddNodeLabelToken adding a FOREIGN label would go undetected.
+	// This post-drain result is authoritative: re-link and fall back to row-scan.
 	if !stillOnlyLabel {
 		ts.mu.Lock()
 		ts.eventShards[es.name] = es
@@ -185,17 +168,10 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		return zero, false, serr
 	}
 
-	// (5) Physically drop: close the store, then durably commit the catalog
-	// removal BEFORE deleting the directory (not after). This ordering means a
-	// crash/failure before the catalog commit leaves the directory AND the
-	// catalog untouched — consistent and safely retryable, mirroring
-	// RotateHotShard's snapshot/restore discipline on a failed Save. A
-	// crash/failure after the catalog commits but before RemoveAll finishes
-	// leaves only a harmless orphaned, unreferenced directory (reclaimable by
-	// a future cleanup pass) instead of a catalog entry pointing at a
-	// directory that no longer exists — which would otherwise brick the
-	// shard's reopen for a warm shard, or leave a permanent zombie catalog
-	// entry for a cold one (BACKLOG 19b).
+	// (5) Physically drop: close the store, then commit the catalog removal
+	// BEFORE deleting the directory. A failure before the commit leaves directory
+	// and catalog untouched (retryable); one after it leaves only an orphaned
+	// directory, never a catalog entry for a missing directory (BACKLOG 19b).
 	es.shardMu.Lock()
 	if es.store != nil {
 		if closeErr := es.store.Close(); closeErr != nil {
@@ -210,13 +186,9 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	ts.catalog.RemoveShard(es.name)
 	if serr := ts.catalog.Save(); serr != nil {
 		ts.catalog.restoreShards(snapshot)
-		// The directory is still intact (RemoveAll hasn't run) and the
-		// catalog rollback means it's still logically present too — reopen
-		// (checkoutStore's fast path for a non-cold shard assumes es.store is
-		// never nil, so relinking alone would leave every subsequent checkout
-		// returning a nil store) and re-link so the shard stays reachable,
-		// instead of being silently stranded in memory despite its data
-		// surviving on disk.
+		// Directory intact and catalog rolled back: reopen (checkoutStore assumes
+		// es.store is non-nil for non-cold shards) and re-link so the shard stays
+		// reachable.
 		es.shardMu.Lock()
 		store, reopenErr := ts.openShardStoreWithRecovery(es.path, es.currentTier() == TierCold)
 		if reopenErr == nil {
@@ -243,11 +215,10 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	}, true, nil
 }
 
-// sweepDroppedShardResidue removes, on each SURVIVING endpoint's shard, the residue a
-// dropped shard's cross-shard edges leave behind (mirrors the row-scan phase-2 sweep):
-// an endpoint in dropSet is on the dropped shard (gone with the directory); the OTHER
-// endpoint's shard holds the residue (a full-local rel or an orphan in-leg), removed
-// via PurgeRelationshipByInfo. Returns the count of distinct rels swept.
+// sweepDroppedShardResidue removes, on each SURVIVING endpoint's shard, the
+// residue a dropped shard's cross-shard edges leave (an endpoint in dropSet is
+// gone with the directory), via PurgeRelationshipByInfo. Returns the count of
+// distinct rels swept.
 func (ts *Store) sweepDroppedShardResidue(rels []storecontract.PurgedRel, dropSet map[types.NodeID]struct{}) (int, error) {
 	return ts.sweepRelResidue(rels, func(endpoint types.NodeID) bool {
 		_, gone := dropSet[endpoint]
@@ -255,18 +226,13 @@ func (ts *Store) sweepDroppedShardResidue(rels []storecontract.PurgedRel, dropSe
 	})
 }
 
-// sweepRelResidue is the shared cross-shard residue-sweep body BACKLOG 19m
-// factors out of sweepDroppedShardResidue (whole-shard fast-drop) and
-// purgeNodesFanOut's Phase 2 (row-scan purge, retention_purge.go) — the two
-// were independently near-duplicated, a future fix to one likely to miss
-// the other. Dedupes rels by ID (an internal rel between two purged nodes,
-// or a self-loop, would otherwise be swept once per endpoint), then for
-// each endpoint whose shard MIGHT hold residue, purges it. isKnownGone lets
-// a caller with a precomputed "already known dropped" set (the fast-drop
-// path's dropSet) skip a redundant GetNode call for those endpoints; a
-// caller with no such set (the row-scan path) passes a func that always
-// returns false, relying solely on GetNode's ErrNodeNotFound to detect a
-// purged endpoint. Returns the count of unique rels processed.
+// sweepRelResidue is the residue-sweep body shared by sweepDroppedShardResidue
+// and purgeNodesFanOut's Phase 2 (retention_purge.go) (BACKLOG 19m). It dedupes
+// rels by ID (internal rels and self-loops would repeat per endpoint), then
+// purges at each endpoint whose shard might hold residue. isKnownGone lets the
+// fast-drop path skip GetNode for dropSet endpoints; the row-scan path passes
+// func always false and relies on ErrNodeNotFound. Returns the unique rel
+// count.
 func (ts *Store) sweepRelResidue(rels []storecontract.PurgedRel, isKnownGone func(types.NodeID) bool) (int, error) {
 	seen := make(map[types.RelID]struct{}, len(rels))
 	swept := 0

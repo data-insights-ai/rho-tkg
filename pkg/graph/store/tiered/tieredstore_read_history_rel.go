@@ -30,10 +30,9 @@ func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 		return r, err
 	}
 
-	// If the live rel entity is on this shard, the local ErrVersionNotFound is
-	// authoritative — no need to wake other shards.
-	// Reference relationships are the exception: archive/restore can leave
-	// history in refArchive while the restored live row is back on refShard.
+	// A live rel entity on this shard makes the local ErrVersionNotFound
+	// authoritative, except reference rels: archive/restore can leave history in
+	// refArchive while the live row is back on refShard.
 	liveHere, err := relationshipRowLive(shard, rid)
 	if err != nil {
 		return nil, err
@@ -230,9 +229,8 @@ func (ts *Store) AllRelHistoryIDs() ([]types.RelID, error) {
 	return all, nil
 }
 
-// AllRelHistoryIDsFrom is the relationship-history equivalent of
-// AllNodeHistoryIDsFrom. Same sequential checkout/checkin walk, same
-// bounded-RAM dedup contract.
+// AllRelHistoryIDsFrom is AllNodeHistoryIDsFrom for relationships (same
+// sequential walk, bounded-RAM dedup).
 func (ts *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.RelID, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -265,6 +263,7 @@ func (ts *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 	}
 	addAll(refIDs)
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return nil, archiveErr
@@ -726,10 +725,9 @@ func trimRelHistoryPage(history []*types.Relationship, limit int) []*types.Relat
 	return history
 }
 
-// ForEachDeletedRelID is the relationship counterpart of ForEachDeletedNodeID.
-// Streaming probe inside the history-iteration callback; shard locks/checkouts
-// are released across callback invocations so ts.GetRelationship re-routes
-// safely. Yields only IDs whose current row is absent.
+// ForEachDeletedRelID is ForEachDeletedNodeID for relationships: streaming
+// probe inside the history callback (checkouts released across callbacks, so
+// ts.GetRelationship re-routes safely); yields IDs whose current row is absent.
 func (ts *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
 	return ts.ForEachDeletedRelIDByDepth(DepthAll, fn)
 }

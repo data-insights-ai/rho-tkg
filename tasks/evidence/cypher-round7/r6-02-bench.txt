@@ -1,0 +1,18 @@
+== before round 1
+BenchmarkDocValuesMultiCold/memory/rows=100000         	      10	  85596733 ns/op	33763201 B/op	  599520 allocs/op
+BenchmarkDocValuesMultiCold/badger/rows=100000         	      10	 199431038 ns/op	176857389 B/op	 2625577 allocs/op
+== after round 1
+BenchmarkDocValuesMultiCold/memory/rows=100000         	      10	  66382558 ns/op	34697107 B/op	  599286 allocs/op
+BenchmarkDocValuesMultiCold/badger/rows=100000         	      10	  48239138 ns/op	42151904 B/op	  595874 allocs/op
+== before round 2
+BenchmarkDocValuesMultiCold/memory/rows=100000         	      10	  83521592 ns/op	33763201 B/op	  599520 allocs/op
+BenchmarkDocValuesMultiCold/badger/rows=100000         	      10	 193357888 ns/op	175249311 B/op	 2592988 allocs/op
+== after round 2
+BenchmarkDocValuesMultiCold/memory/rows=100000         	      10	  68460362 ns/op	34697108 B/op	  599286 allocs/op
+BenchmarkDocValuesMultiCold/badger/rows=100000         	      10	  47832629 ns/op	42152402 B/op	  595889 allocs/op
+== before round 3
+BenchmarkDocValuesMultiCold/memory/rows=100000         	      10	  84206062 ns/op	33763231 B/op	  599521 allocs/op
+BenchmarkDocValuesMultiCold/badger/rows=100000         	      10	 194825221 ns/op	175248999 B/op	 2592985 allocs/op
+== after round 3
+BenchmarkDocValuesMultiCold/memory/rows=100000         	      10	  69687946 ns/op	34697108 B/op	  599286 allocs/op
+BenchmarkDocValuesMultiCold/badger/rows=100000         	      10	  48598150 ns/op	42148258 B/op	  595904 allocs/op

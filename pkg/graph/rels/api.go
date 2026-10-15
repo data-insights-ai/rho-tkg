@@ -2,11 +2,9 @@
 // surface of a Graph. The package declares a local Ops interface listing the
 // methods it forwards to; *core.RelOps satisfies it implicitly.
 //
-// API 4.0 change: methods that previously came in (Foo, FooWithContext) pairs
-// (Add, AddByID, AddByIDIfAbsent, Get, Update, UpdateInPlace, Delete,
-// CompareAndSetProperty) collapsed into a single context-aware method each.
-// Pass context.Background() for the previous no-context behavior. The
-// historical *WithContext variants no longer exist.
+// Each method takes a context (Add, AddByID, AddByIDIfAbsent, Get, Update,
+// UpdateInPlace, Delete, CompareAndSetProperty); pass context.Background()
+// when there is none.
 package rels
 
 import (
@@ -29,6 +27,7 @@ type Ops interface {
 	RecordForeignIncoming(ctx context.Context, edge storepkg.ForeignIncomingEdge) error
 	Get(ctx context.Context, id types.RelID) (*types.Relationship, error)
 	Lend(ctx context.Context, id types.RelID) (*types.Relationship, error)
+	LendByIDs(ctx context.Context, ids []types.RelID, fn func(i int, row *types.Relationship) bool) error
 	MaxOrdinal() (uint32, bool, error)
 	ScanKeepsOrder(typeName string) (bool, error)
 	GetByIDs(ids []types.RelID) ([]*types.Relationship, error)
@@ -49,6 +48,11 @@ type Ops interface {
 	ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	RangeCardinalityAt(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	ForEachByTypeOrdinals(typeName string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
+	ForEachIDByTypePropertyRangeOrdered(ctx context.Context, typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
+	ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
+	CountByTypePropertyValue(typeName, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	Count() (int, error)
 	CountByType(typeName string) (int, error)
@@ -199,6 +203,25 @@ func (a *API) Lend(ctx context.Context, id types.RelID) (*types.Relationship, er
 	return ops.Lend(ctx, id)
 }
 
+// LendByIDs lends the current row of each relationship in ids as Lend does (frozen,
+// no copy where Lend makes none) and calls fn(i, row) for each ID that names
+// a relationship, i its position in ids; an ID naming none is skipped (fn is not
+// called for it). Calls come in ascending ID order (equal IDs in ids'
+// order); fn returning false stops; fn runs with no lock held. The IDs are
+// read in chunks of 4,096, each under one read: badger reads a chunk's rows
+// missing from its cache through one snapshot in key order (not cached),
+// memory under one lock, other stores per ID. The context is checked before
+// each chunk. Safe for concurrent calls. Errors: an error for a nil fn,
+// ErrInvalidStoreMutation for a non-positive ID (before any read),
+// ErrGraphClosed, the context's error, a store read error.
+func (a *API) LendByIDs(ctx context.Context, ids []types.RelID, fn func(i int, row *types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.LendByIDs(ctx, ids, fn)
+}
+
 // MaxOrdinal is nodes.API.MaxOrdinal for relationships
 // (types.Relationship.Ordinal); on a memory store a relationship of a declared
 // segment type carries 0.
@@ -233,6 +256,11 @@ func (a *API) GetByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 }
 
 // Update updates a relationship's properties honoring ctx.
+//
+// An update that sets tkg_valid_to without tkg_valid_from closes the current
+// version as CloseVersion does: the version keeps its start and ends at
+// tkg_valid_to; an end at or before that start returns ErrInvalidTimeRange and
+// writes nothing (backlog 65).
 func (a *API) Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -258,6 +286,9 @@ func (a *API) UpdateWithTx(ctx context.Context, id types.RelID, updates map[stri
 }
 
 // UpdateInPlace updates a relationship in place honoring ctx (no version branch).
+//
+// A tkg_valid_to at or before the row's effective start returns
+// ErrInvalidTimeRange (backlog 65).
 func (a *API) UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -501,6 +532,68 @@ func (a *API) RangeCardinality(typeName, propKey string, min, max float64, inclM
 	return ops.RangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)
 }
 
+// RangeCardinalityAt is the relationship mirror of
+// nodes.API.RangeCardinalityAt: the versions ForEachByTypePropertyRange
+// returns under a temporal opts whose value is within the bounds, counted from
+// the declared rel property index's membership sidecar; exact=false declines
+// as there (store.RelPropertyTxMemberRangeCapability: memory and badger).
+func (a *API) RangeCardinalityAt(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.RangeCardinalityAt(typeName, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// ForEachByTypeOrdinals is the relationship mirror of
+// nodes.API.ForEachByLabelOrdinals over ForEachByType's rows (a relationship
+// of a declared segment type on memory has no ordinal and is never selected).
+func (a *API) ForEachByTypeOrdinals(typeName string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByTypeOrdinals(typeName, set, opts, fn)
+}
+
+// ForEachIDByTypePropertyRangeOrdered is the relationship mirror of
+// nodes.API.ForEachIDByLabelPropertyRangeOrdered over a type's property index.
+func (a *API) ForEachIDByTypePropertyRangeOrdered(ctx context.Context, typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachIDByTypePropertyRangeOrdered(ctx, typeName, propKey, min, max, inclMin, inclMax, desc, opts, fn)
+}
+
+// ForEachIDByTypePropertyPrefix is the relationship mirror of
+// nodes.API.ForEachIDByLabelPropertyPrefix.
+func (a *API) ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachIDByTypePropertyPrefix(ctx, typeName, propKey, prefix, desc, opts, fn)
+}
+
+// CountByTypePropertyValue counts the type's relationships whose propKey value equals value as
+// Cypher equality keeps it (3 matches 3 and 3.0 of every stored width, no
+// string/number crossing, nil and NaN count 0), from the property index's
+// value sets, no relationship read. exact=false with no error declines (count
+// otherwise): no property index on (type, propKey), a store without the
+// capability (tiered, external stores), badger with PropertyIndexOnDisk
+// (nodes), an index being built, an Elements index, a number of magnitude
+// 2^53 or more, a temporal value, a list or map, an unknown type, or a
+// temporal QueryOpts. exact tells a planner whether exact counts are
+// available for (type, propKey).
+func (a *API) CountByTypePropertyValue(typeName, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.CountByTypePropertyValue(typeName, propKey, value, opts)
+}
+
 // ForEachByTypePropertyPrefix streams relationships whose STRING propKey value
 // begins with prefix to fn in CONTRACTUAL VALUE ORDER — lexicographic ascending,
 // or descending when desc, with ties broken by rel ID ascending — the
@@ -659,7 +752,7 @@ func (a *API) ForEachAdjacentEndpointOrdinal(nodeID types.NodeID, typeName strin
 
 // ForEachAdjacentEndpointAt streams (relID, otherEndpoint) for nodeID's
 // adjacency in the given direction under the opts temporal filter. With a
-// filter set the door is VERSION-AWARE (v4.35.0): each adjacent relationship
+// filter set the door is VERSION-AWARE: each adjacent relationship
 // resolves to the version valid under opts, like the node doors and
 // Temporal().OutgoingRelsAt, and a since-deleted edge stays visible inside
 // its window. fn returning false stops the scan.
@@ -678,7 +771,7 @@ func (a *API) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, in
 
 // ForEachAdjacentRelAt streams the DECODED relationships for nodeID's adjacency
 // in the given direction under the opts temporal filter. With a filter set the
-// door is VERSION-AWARE (v4.35.0): it yields, per adjacent relationship, the
+// door is VERSION-AWARE: it yields, per adjacent relationship, the
 // version valid under opts — never a live row the filter rejects while an
 // older version matches. fn returning false stops the scan.
 // See core.RelOps.ForEachAdjacentRelAt.
@@ -883,6 +976,12 @@ func (a *API) CloseVersion(ctx context.Context, id types.RelID, t types.Instant)
 }
 
 // History returns the version chain for a relationship.
+//
+// The chain holds the rows as written, including an excise's void pieces
+// (Temporal().Void, Temporal().ExciseRelValidity): a void row asserts that the
+// relationship is absent over its [ValidFrom, ValidTo), it is not a state of
+// it. A consumer that reads raw History intervals must skip void rows (or read
+// RelEffectiveTimeline, which never returns them).
 func (a *API) History(id types.RelID) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {

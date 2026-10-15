@@ -16,10 +16,9 @@ import (
 // Tx-scoped consistent-read APIs.
 //
 // The standalone IO/Temporal/Admin snapshot-style entry points acquire
-// c.mu.Lock themselves. Code that is already inside g.Tx.Run /
-// g.Tx.RunContext must call these tx-scoped methods instead: the tx
-// already holds c.mu.Lock, so the underlying lock-free implementations
-// run without re-entering c.mu.
+// c.mu themselves. A tx does not hold c.mu for its lifetime (Path B,
+// lesson 31): each tx call takes it briefly (lockActiveCore), so these
+// tx-scoped methods exist for clarity and read the tx's own state.
 //
 // Calling the standalone (*IOOps).Export, (*TempOps).Snapshot, or
 // (*AdminOps).VerifyShard from inside g.Tx.Run would deadlock because
@@ -65,11 +64,12 @@ func (tx *GraphTx) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
 
 // Tx-side resolution and shadow-property mirrors.
 //
-// Calling g.Nodes.Labels, g.Nodes.HasLabel, g.Nodes.PrimaryLabel,
-// g.Rels.Type, g.Rels.HasType, g.Resolve.NodeProperty, or
-// g.Resolve.RelProperty from inside g.Tx.Run / g.Tx.RunContext deadlocks
-// the caller goroutine because each acquires c.mu.RLock while the tx
-// already holds c.mu.Lock (sync.RWMutex is not reentrant — lesson 9).
+// The mirrors of g.Nodes.Labels, g.Nodes.HasLabel, g.Nodes.PrimaryLabel,
+// g.Rels.Type, g.Rels.HasType, g.Resolve.NodeProperty and
+// g.Resolve.RelProperty keep tx code on the tx's lock discipline. They
+// would be required again if a tx ever held c.mu.Lock for its lifetime:
+// the standalone accessors take c.mu.RLock and sync.RWMutex is not
+// reentrant (lessons 9, 31).
 // The mirrors below call the lock-free *Unlocked helpers directly and
 // guard only the tx-state mutex.
 //

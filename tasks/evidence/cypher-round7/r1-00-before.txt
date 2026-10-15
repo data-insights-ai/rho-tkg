@@ -1,0 +1,55 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: Apple M4 Max
+BenchmarkTxCreateRelationshipsSizes/memory/1x1000/binding         	       3	   4403222 ns/op	      4403 ns/binding	 3229538 B/op	   36933 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x1000/binding         	       3	   3813986 ns/op	      3814 ns/binding	 3229317 B/op	   36931 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x1000/rels-one        	       3	   3657736 ns/op	      3658 ns/binding	 4050309 B/op	   38938 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x1000/rels-one        	       3	   3667222 ns/op	      3667 ns/binding	 4050341 B/op	   38939 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x1000/rels-batch      	       3	   3507986 ns/op	      3508 ns/binding	 4623866 B/op	   39971 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x1000/rels-batch      	       3	   3723583 ns/op	      3724 ns/binding	 4630264 B/op	   39973 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x10000/binding        	       3	  43657917 ns/op	      4366 ns/binding	29972088 B/op	  370644 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x10000/binding        	       3	  42592347 ns/op	      4259 ns/binding	29971989 B/op	  370643 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x10000/rels-one       	       3	  38532986 ns/op	      3853 ns/binding	38073648 B/op	  390724 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x10000/rels-one       	       3	  37862945 ns/op	      3786 ns/binding	38073712 B/op	  390724 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x10000/rels-batch     	       3	  35951389 ns/op	      3595 ns/binding	43826192 B/op	  400952 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x10000/rels-batch     	       3	  38384903 ns/op	      3838 ns/binding	43826237 B/op	  400952 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x50000/binding        	       3	 257330583 ns/op	      5147 ns/binding	142211832 B/op	 1852797 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x50000/binding        	       3	 270462292 ns/op	      5409 ns/binding	142211594 B/op	 1852794 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x50000/rels-one       	       3	 281173056 ns/op	      5623 ns/binding	183847600 B/op	 1953237 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x50000/rels-one       	       3	 211862750 ns/op	      4237 ns/binding	183847648 B/op	 1953237 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x50000/rels-batch     	       3	 217089694 ns/op	      4342 ns/binding	212458178 B/op	 2004305 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/1x50000/rels-batch     	       3	 211218361 ns/op	      4224 ns/binding	212458170 B/op	 2004304 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/5x50000/binding        	       3	1785418917 ns/op	      7142 ns/binding	758459826 B/op	 9268551 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/5x50000/binding        	       3	1836746403 ns/op	      7347 ns/binding	758336648 B/op	 9268536 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/5x50000/rels-one       	       3	1315217028 ns/op	      5261 ns/binding	974524242 B/op	 9770901 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/5x50000/rels-one       	       3	1361279181 ns/op	      5445 ns/binding	974511933 B/op	 9770899 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/5x50000/rels-batch     	       3	1361886069 ns/op	      5448 ns/binding	1117589637 B/op	10026245 allocs/op
+BenchmarkTxCreateRelationshipsSizes/memory/5x50000/rels-batch     	       3	1460303292 ns/op	      5841 ns/binding	1117589589 B/op	10026245 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x1000/binding         	       3	  17181111 ns/op	     17181 ns/binding	112539101 B/op	  168517 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x1000/binding         	       3	  20307639 ns/op	     20308 ns/binding	112468890 B/op	  168409 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x1000/rels-one        	       3	  29519431 ns/op	     29519 ns/binding	113590280 B/op	  168436 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x1000/rels-one        	       3	  14589708 ns/op	     14590 ns/binding	113569869 B/op	  168435 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x1000/rels-batch      	       3	  13361431 ns/op	     13361 ns/binding	114563992 B/op	  169484 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x1000/rels-batch      	       3	  15656722 ns/op	     15657 ns/binding	114555874 B/op	  169481 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x10000/binding        	       3	 261080681 ns/op	     26108 ns/binding	262374589 B/op	 1628373 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x10000/binding        	       3	 304125278 ns/op	     30413 ns/binding	261051056 B/op	 1628083 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x10000/rels-one       	       3	 225248694 ns/op	     22525 ns/binding	274154570 B/op	 1628089 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x10000/rels-one       	       3	 240089514 ns/op	     24009 ns/binding	272258136 B/op	 1627793 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x10000/rels-batch     	       3	 217413000 ns/op	     21741 ns/binding	283073786 B/op	 1638246 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x10000/rels-batch     	       3	 225845986 ns/op	     22585 ns/binding	282193354 B/op	 1638099 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x50000/binding        	       3	1217798472 ns/op	     24356 ns/binding	890283992 B/op	 8115474 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x50000/binding        	       3	1611606486 ns/op	     32232 ns/binding	891842680 B/op	 8115225 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x50000/rels-one       	       3	1709110000 ns/op	     34182 ns/binding	1134732402 B/op	10515452 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x50000/rels-one       	       3	1619906278 ns/op	     32398 ns/binding	1128894386 B/op	10514542 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x50000/rels-batch     	       3	1277783389 ns/op	     25556 ns/binding	1189255226 B/op	10565299 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/1x50000/rels-batch     	       3	1009283486 ns/op	     20186 ns/binding	1185527578 B/op	10564478 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/5x50000/binding        	       3	5113479930 ns/op	     20454 ns/binding	3927272757 B/op	40560682 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/5x50000/binding        	       3	5195855805 ns/op	     20783 ns/binding	3958364562 B/op	40564300 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/5x50000/rels-one       	       3	7126133792 ns/op	     28505 ns/binding	5576807365 B/op	54272454 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/5x50000/rels-one       	       3	6396292986 ns/op	     25585 ns/binding	5484099818 B/op	54157664 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/5x50000/rels-batch     	       3	7388638528 ns/op	     29555 ns/binding	5925825944 B/op	54642317 allocs/op
+BenchmarkTxCreateRelationshipsSizes/badger/5x50000/rels-batch     	       3	11633056111 ns/op	     46532 ns/binding	5947761621 B/op	54391559 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	192.418s
+limit: {"command": ["go", "test", "-run", "^$", "-bench", "BenchmarkTxCreateRelationshipsSizes", "-benchtime", "3x", "-count", "2", "-cpu", "1", "./pkg/graph/"], "rss_limit_mib": 8192.0, "wall_limit_s": 1800.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 1810.672, "elapsed_s": 194.786, "exit_code": 0, "reason": "completed"}

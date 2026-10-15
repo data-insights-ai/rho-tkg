@@ -42,8 +42,20 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
 | 56 | MEDIUM | Node temporal envelope holes: `PutNodeVersion`, `CreateTemporalIndex` publish-before-fold window, label add on a live node, memory re-create | done (Unreleased Fixed); all cases red, all fixed |
 | 57 | FEATURE (sigma R1) | Batched point read at (validAt, txAt): `NodesAtTxByIDs` / `RelsAtTxByIDs` | done (Unreleased Added); badger -29% per 100 IDs, memory parity |
-| 58 | FEATURE (sigma R2) | Tiered: tx-membership sidecars (label/type, property value) and `*From` valid-end acceleration | open; after 59 |
+| 58 | FEATURE (sigma R2) | Tiered: tx-membership sidecars (label/type, property value) and `*From` valid-end acceleration | DONE (Unreleased) |
 | 59 | PERF (sigma R3) | Tiered event-shard routing by mint instant: binary search instead of a linear window scan | done (Unreleased Changed); 700 shards 3301 -> 33 ns/op, evidence `tasks/evidence/shard-routing/` |
+| 60 | LOW (store-level only: graph Archive/Restore hold `c.mu.Lock`) | Tiered ref-then-archive readers outside moveMu straddle an ArchiveNode/RestoreNode | DONE (Unreleased): 16 scan doors and the point reads (GetNode, GetRelationship, Lend*, *ByIDs, adjacency, degree, current stamps) and NodePropertyStats/NDV hold moveMu's read side across ref+archive (route+read); ArchiveNode/RestoreNode use the unlocked route. Not a bug: DocValues folds (NodeMutationEpoch, Gate 2), history-ID scans (dedup), history point reads/walks (rows stay put, walks fall back to every shard; guard cases, no lock). Not covered: write doors route without moveMu (fenced by the graph's c.mu.Lock) |
+| 61 | FEATURE (René, ai-soc) | Integrity-hash switch (default on) and one binary hash path | DONE: step 1 in v4.52.2 (switch, binary hashes readable, Deprecated), step 2 (writer binary, marker 4) Unreleased Changed → v4.54.0; evidence `tasks/evidence/integrity-switch/` |
+| 62 | SEMANTICS (sigma observation) | One valid-from source for untimed rows: TxFrom (today creates use the mint instant, updates TxFrom) | DONE (Unreleased): phase A → v4.52.2 (third answer fixed, Deprecated markers + notes), phase B → v4.54.0 (one start rule `storeutil.EntityValidFrom` = ValidFrom, else TxFrom; persisted envelopes rebuilt; evidence `tasks/evidence/valid-from-source/`) |
+| 63 | FEATURE (sigma R6) | Membership by rel ID: list properties are not indexed (propertyslice.go:353); recommended: one indexed support node per (Derived, relID), no rho change; fallback `PropertyIndexOptions{Elements: true}` | done (Unreleased Added): `PropertyIndexOptions{Elements: true}` on memory, badger, sharded, tiered ref labels; evidence `tasks/evidence/property-elements/` |
+| 64 | FEATURE (sigma R7) | Valid-time excise [a,b): new door `Temporal().ExciseNodeValidity` with void pieces (no existing composition: CloseVersion only on the open current row) | DONE (Unreleased Added, v4.54.0): `ExciseNodeValidity` / `ExciseRelValidity` + `*WithTx`, `GraphTx` and `BatchBuilder` twins; void pieces (`TemporalMetadata.Void`, row fv 5, store marker 6); evidence `tasks/evidence/excise/` |
+| 65 | SEMANTICS (traced) | `Update` with only `tkg_valid_to` copies the end onto the new row unchecked (node_update.go:224-233, relationship_update.go:~219; UpdateInPlace too); tests use it as "expire" (docvalues_test.go:120, retention_purge_validto_test.go:63). Chosen: consolidate with CloseVersion — such an update closes the version as CloseVersion does (rejects t <= valid-from); deprecation ritual together with 62 | DONE (Unreleased): phase A → v4.52.2 (Deprecated notes), phase B → v4.54.0 (close via `checkCloseAfterStart`, shared with CloseVersion; CloseVersion keeps the version start) |
+| 66 | FEATURE (sigma round 7, low: Tyla lazy graph sources, not needed by sigma's current release) | Property-index range walks and exact range counts at a transaction pin (`TxAt` / `TxPin`), like `ForEachByLabelPropertyRangeOrdered` and `RangeCardinality` at current state | open, not built in round 7: the pinned doors fold every label member today (Stage B, O(N log N)); the tx-membership sidecar (backlog 8) is keyed by equality value, so an index answer at a pin needs an ordered view of (value, ID, TxFrom/TxTo) per index (memory and write cost per index write: opt-in per index, as `RangeCounts`). Design first |
+| 67 | FEATURE (sigma round 7, low) | Per label: no current node carries an explicit `tkg_valid_from` / `tkg_valid_to` (rows stated eternal without reading them) | DONE (Unreleased, round 8 request 3): `Stats().LabelTimeStats` / `RelTypeTimeStats` (lazy explicit-valid count against the label epoch, `LastEnded` under the history generation) |
+| 68 | PERF (sigma R10) | `NodeEffectiveTimeline(id, pin)` cost O(history versions) for a node whose versions keep superseding one validity (10 facts: 0.37 ms at 1 version, 10 ms at 300) | DONE (4.55.0): head-pin answer per entity kept under `store.HistoryEpochCapability` and extended by corrections (`internal/core/effective_head.go`); 300 versions: memory 150-230 us -> 0.4 us, badger 190-210 us -> 3 us; evidence `tasks/evidence/r10/`. 68b DONE (Unreleased Changed): a correction with a valid head entry plans from the entry plus one point read per base row, and the GraphTx rollback snapshot is the current row plus the entry's top version (`internal/core/effective_head_write.go`); sigma's cut per fact at 300 versions (read then GraphTx correction, warm): memory 0.28-0.35 ms -> 6 us, badger 1.9-2.0 ms -> 16-24 us; evidence `tasks/evidence/r10-write/` |
+| 69 | FEATURE (ai-soc) | Effective scan keyset-paged by ID and filtered by a rel/node property equality (`estate`) from an index, at a tx pin and an optional valid instant or interval, over every type | DONE (Unreleased Added): `Temporal().RelsEffectivePage` / `NodesEffectivePage`; candidates from the backlog-8 property membership sidecar with an ordered view per value (store `Rel/NodePropertyTxMemberPageCapability`: memory, badger, sharded), types merged in ID order; unindexed types and tiered gather per page; evidence `tasks/evidence/paged-effective/` |
+| 70 | MEDIUM (found by the 68b twin) | Version allocation below surviving rows after a compaction gap above the current row | DONE (Unreleased Fixed): `nodeHasHistoryAbove` / `relHasHistoryAbove` exact; evidence `tasks/evidence/r10-write/10-red-allocator-gap.txt` |
+| 71 | FEATURE (sigma round 8, optional) | Valid-time hull per label / relationship type: earliest valid-from and latest valid-to of the current entities, exact and cheap | open, not built in round 8. No structure holds it exactly: a temporal index keeps per-ID envelopes that only widen (`Extend` unions, `Remove` is a no-op, deletes and excises leave them), so its hull is an upper bound over history, and only where a temporal index exists. Exact needs a per-label ordered multiset of valid-from and valid-to (a write cost on every node write: opt-in per label, as `TrackRelTypeDegrees`) or a walk. Design first |
 | 52 | HIGH (ai-soc) | Durable commit under SyncWrites costs one fsync per mutation | in progress, v4.51.3 |
 | 53 | HIGH (ai-soc) | Relationship planner-stat memos hold one RAM entry per relationship | in progress, v4.51.3 |
 | 54 | HIGH (ai-soc) | Badger open walks every current row (open linear in history) | in progress, v4.51.3 |
@@ -115,6 +127,14 @@ cases now pass all ten narrow gates at `da5d32e6` ([receipt](../tools/v5-migrate
 qualification remain pending. The ten-gate v4.51.4 migration receipt
 and [three finite reader lanes](evidence/current-reader-9e805ddc-20261014/receipt.json)
 remain immutable historical proof at `9e805ddc`, without whole-root/V6 acceptance.
+Main `e6f04f41`/v4.55.2 is now source-integrated, without runtime qualification.
+The new reader baseline includes binary integrity hashes and newer store markers,
+void pieces for valid-time excision, implicit validity from `TxFrom`, and newer
+index/read capabilities. Consumer source-delta manifests and the migration reader
+must be refreshed for these contracts during V4/V6; their older pins and all
+historical receipts remain unchanged. The main integration changes no V2 engine
+or comparison paths. No compile, test, measurement or CI run accompanies it:
+the owner's implementation-first sequence below remains in force.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
@@ -1696,9 +1716,9 @@ no budget; reopen only if a consumer reports memory pressure; then design a per-
 
 *FEATURE* — sigma-tkgd R1 (2026-10-14, design sigma-tkgd `tasks/history-via-rho-design.md`): sigma reads up to ~100 old rows per cut at one pin; `NodesEffectiveByIDs`/`RelsEffectiveByIDs` return whole timelines. Add `temporal.API.NodesAtTxByIDs(ids, validAt, txAt) ([]*types.Node, error)` and `RelsAtTxByIDs`: results aligned to ids, nil where `NodeAtTx` would return not-found or no row valid at validAt; call-level errors as `NodeAtTx` (pin checks, retention, compaction). Additive. **Done:** both doors (CHANGELOG [Unreleased] Added); each ID runs the per-ID gates and body, one read lock per 256 IDs, one store read snapshot per call; a pin is required (`txAt <= 0` → `ErrInvalidTimeRange`, as the effective by-IDs doors). Red `tasks/evidence/batched-attx/01-red.txt`, green `02-green.txt`, bench `03-bench.txt` (100 IDs, half from history: badger 293 → 207 µs, memory 48 → 47 µs). `GetNodesByIDs` is not used: it fails the whole batch on one missing ID and badger answers it with one read per ID anyway; the read snapshot is the batch win.
 
-### 58. Tiered: tx-membership sidecars and valid-end acceleration
+### 58. Tiered: tx-membership sidecars and valid-end acceleration — DONE (Unreleased)
 
-*FEATURE* — sigma-tkgd R2: the label/type and property-value tx-membership sidecars and the `ForEach*EffectiveBy*From` valid-end acceleration exist on memory and badger only (`capabilities.go:366-437`); tiered answers through unbounded candidates. Fan out per shard as the other tiered capabilities do.
+*FEATURE* — sigma-tkgd R2: done (CHANGELOG [Unreleased] Added, `store/tiered/tieredstore_tx_members.go`, evidence `tasks/evidence/tiered-capabilities/`). Every shard's badger answer unioned; refine is a no-op on tiered; the node property form declines when the label has members off the reference shard, the rel property form always declines.
 
 ### 59. Tiered event-shard routing by mint instant
 
@@ -1794,6 +1814,15 @@ Recover closed investigation prose via `git log --all -- tasks/backlog.md` if ne
   calibration (C4s). Reopen when sigma-tkgd re-adopts the degree statistics and measures the recount after writes
   to the read type itself on its cold rows; then build it opt-in per type (built lazily on the first
   `RelTypeDegreeStats` of a type that opted in, maintained at the relationship write seams).
+  Re-evaluated 2026-10-14 (round 6): half met. sigma-tkgd re-adopted the statistic (`a04176971`, C4u: the weighed
+  expand's fanout from `RelTypeDegreeStats`) and states the recount after a write to the type itself, but has not
+  measured it on a cold row; its cold harness writes another type, which round 5 request 9 already keeps from
+  forcing a recount. Still not built; the reopen criterion is the measurement.
+  BUILT 2026-10-14 (round 7 request 2): measured in rho-tkg (`BenchmarkRelTypeDegreeStatsRecount`, three types of
+  n relationships): the recount after a write to the read type itself is 0.7 ms at n = 10,000 and 12-16 ms at
+  n = 100,000 (memory and badger) against 2-6 us for a write plus a cached read; a statement that writes a type
+  and plans a hop over it pays that per statement. Criterion met; built opt-in per type
+  (`Stats().TrackRelTypeDegrees`), see CHANGELOG [Unreleased]. Kept here as the record of the decision.
 - **Item 9 — property-keyed unique constraint on relationships (ai-soc request 4): WITHDRAWN 2026-10-09** (René,
   relayed by ai-soc: "rho-tkg already has unique snowflake ids"). ai-soc uses the snowflake ID as the global ID.
   Possible cheap follow-up, not requested: a relationship door that accepts a caller-supplied snowflake ID "if

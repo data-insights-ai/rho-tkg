@@ -32,6 +32,7 @@ var storeEntitySentinels = []string{
 var storeIndexSentinels = []string{
 	"ErrIndexExists",
 	"ErrIndexNotFound",
+	"ErrElementsIndexUnsupported",
 	"ErrTemporalIndexExists",
 	"ErrTemporalIndexNotFound",
 	"ErrVectorIndexExists",
@@ -171,6 +172,12 @@ var retentionSentinels = []string{
 // Admin.Reset safety valve (BACKLOG 13d)
 var adminResetSentinels = []string{
 	"ErrResetDisabled",
+}
+
+// Config.DisableIntegrityHashes (backlog 61)
+var integrityHashSentinels = []string{
+	"ErrIntegrityDisabled",
+	"ErrIntegrityModeMismatch",
 }
 
 // Config.DurableCommit (backlog 11)
@@ -354,6 +361,7 @@ func graphReexportSentinelNames() []string {
 	all = append(all, retentionSentinels...)
 	all = append(all, adminResetSentinels...)
 	all = append(all, durableCommitSentinels...)
+	all = append(all, integrityHashSentinels...)
 	all = append(all, exactErasureSentinels...)
 	all = append(all, ioSentinels...)
 	all = append(all, backupSentinels...)

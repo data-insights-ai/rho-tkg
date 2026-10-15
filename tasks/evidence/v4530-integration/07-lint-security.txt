@@ -1,0 +1,2 @@
+make lint-docker: 0 issues
+make security-docker: exit 0, no findings

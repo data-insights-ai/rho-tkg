@@ -297,11 +297,15 @@ func (c *Core) resolveNodeChain(chain []*types.Node, probe chainProbe, pred func
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 	caps := chainLifeEnds(chain)
-	if probe.kind == probeInterval {
-		return c.resolveNodeChainDuring(chain, probe.validStart, probe.validEnd, pred, caps)
-	}
-	if probe.kind == probeRelate {
-		return c.resolveNodeChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred, caps)
+	if probe.kind == probeInterval || probe.kind == probeRelate {
+		// Where an excise's void row wins, the entity is absent: the
+		// interval kinds test each row's interval minus those spans
+		// (computed before the kinds sort chain: lesson 73).
+		mask := voidMask(c, nodeKernel, chain)
+		if probe.kind == probeInterval {
+			return c.resolveNodeChainDuring(chain, probe.validStart, probe.validEnd, pred, caps, mask)
+		}
+		return c.resolveNodeChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred, caps, mask)
 	}
 	return c.resolveNodeVersionAtCapped(chain, probe.validAt, caps)
 }
@@ -311,7 +315,7 @@ func (c *Core) resolveNodeChain(chain []*types.Node, probe chainProbe, pred func
 // (predicate-anywhere — the same rationale as resolveNodeChainDuring). qEnd == 0
 // denotes an open query interval; types.RelateOpen substitutes +∞ for both the
 // query's and the version's open ends, so Before/After/Meets classify exactly.
-func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Node) bool, caps lifeEnds[*types.Node]) (*types.Node, error) {
+func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Node) bool, caps lifeEnds[*types.Node], mask []voidSpan) (*types.Node, error) {
 	if rels == 0 {
 		return nil, storepkg.ErrNoVersionValidAt
 	}
@@ -319,15 +323,17 @@ func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := c.nodeVersionBounds(chain, i)
 		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone {
+		if gone || isVoidRow(chain[i]) {
 			continue
 		}
-		rel, err := types.RelateOpen(vStart, vEnd, qStart, qEnd)
-		if err != nil {
-			continue
-		}
-		if rels.Contains(rel) && (pred == nil || pred(chain[i])) {
-			return chain[i], nil
+		for _, iv := range unmasked(mask, vStart, vEnd) {
+			rel, err := types.RelateOpen(iv[0], iv[1], qStart, qEnd)
+			if err != nil {
+				continue
+			}
+			if rels.Contains(rel) && (pred == nil || pred(chain[i])) {
+				return chain[i], nil
+			}
 		}
 	}
 	return nil, storepkg.ErrNoVersionValidAt
@@ -337,7 +343,7 @@ func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.
 // validity overlaps [start, end) and (when pred != nil) satisfies pred,
 // most-recent-first so the newest overlapping match is preferred. See the
 // funnel comment for the predicate-anywhere rationale.
-func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Instant, pred func(*types.Node) bool, caps lifeEnds[*types.Node]) (*types.Node, error) {
+func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Instant, pred func(*types.Node) bool, caps lifeEnds[*types.Node], mask []voidSpan) (*types.Node, error) {
 	// Order by effective valid-from so next-version tiling is correct after an
 	// append-only cascade (see sortNodeChainForResolve). Scan highest-valid-from
 	// first to preserve the "most-recent overlapping match" semantic.
@@ -345,11 +351,12 @@ func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Inst
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := c.nodeVersionBounds(chain, i)
 		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone {
+		if gone || isVoidRow(chain[i]) {
 			continue
 		}
-		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start).
-		if vStart < end && (vEnd == 0 || vEnd > start) {
+		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start), outside
+		// the spans an excise voided.
+		if vStart < end && (vEnd == 0 || vEnd > start) && uncovered(mask, max(vStart, start), minEnd(vEnd, end)) {
 			if pred == nil || pred(chain[i]) {
 				return chain[i], nil
 			}
@@ -383,17 +390,21 @@ func (c *Core) resolveRelChain(chain []*types.Relationship, probe chainProbe, pr
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 	caps := chainLifeEnds(chain)
-	if probe.kind == probeInterval {
-		return c.resolveRelChainDuring(chain, probe.validStart, probe.validEnd, pred, caps)
-	}
-	if probe.kind == probeRelate {
-		return c.resolveRelChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred, caps)
+	if probe.kind == probeInterval || probe.kind == probeRelate {
+		// Where an excise's void row wins, the entity is absent: the
+		// interval kinds test each row's interval minus those spans
+		// (computed before the kinds sort chain: lesson 73).
+		mask := voidMask(c, relKernel, chain)
+		if probe.kind == probeInterval {
+			return c.resolveRelChainDuring(chain, probe.validStart, probe.validEnd, pred, caps, mask)
+		}
+		return c.resolveRelChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred, caps, mask)
 	}
 	return c.resolveRelVersionAtCapped(chain, probe.validAt, caps)
 }
 
 // resolveRelChainRelating mirrors resolveNodeChainRelating for relationships.
-func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Relationship) bool, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
+func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Relationship) bool, caps lifeEnds[*types.Relationship], mask []voidSpan) (*types.Relationship, error) {
 	if rels == 0 {
 		return nil, storepkg.ErrNoVersionValidAt
 	}
@@ -401,30 +412,34 @@ func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := c.relVersionBounds(chain, i)
 		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone {
+		if gone || isVoidRow(chain[i]) {
 			continue
 		}
-		rel, err := types.RelateOpen(vStart, vEnd, qStart, qEnd)
-		if err != nil {
-			continue
-		}
-		if rels.Contains(rel) && (pred == nil || pred(chain[i])) {
-			return chain[i], nil
+		for _, iv := range unmasked(mask, vStart, vEnd) {
+			rel, err := types.RelateOpen(iv[0], iv[1], qStart, qEnd)
+			if err != nil {
+				continue
+			}
+			if rels.Contains(rel) && (pred == nil || pred(chain[i])) {
+				return chain[i], nil
+			}
 		}
 	}
 	return nil, storepkg.ErrNoVersionValidAt
 }
 
 // resolveRelChainDuring mirrors resolveNodeChainDuring for relationships.
-func (c *Core) resolveRelChainDuring(chain []*types.Relationship, start, end types.Instant, pred func(*types.Relationship) bool, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
+func (c *Core) resolveRelChainDuring(chain []*types.Relationship, start, end types.Instant, pred func(*types.Relationship) bool, caps lifeEnds[*types.Relationship], mask []voidSpan) (*types.Relationship, error) {
 	c.sortRelChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := c.relVersionBounds(chain, i)
 		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone {
+		if gone || isVoidRow(chain[i]) {
 			continue
 		}
-		if vStart < end && (vEnd == 0 || vEnd > start) {
+		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start), outside
+		// the spans an excise voided.
+		if vStart < end && (vEnd == 0 || vEnd > start) && uncovered(mask, max(vStart, start), minEnd(vEnd, end)) {
 			if pred == nil || pred(chain[i]) {
 				return chain[i], nil
 			}
@@ -442,4 +457,96 @@ func (c *Core) resolveRelChainAsOf(chain []*types.Relationship, txPin types.Inst
 	// Chain rows may be shared frozen store rows — never mutate them in place
 	// (lesson 60, mirroring filterRelChainByTxAt's discipline).
 	return relVisibleAtTxTime(best.DeepCopy(), txPin), nil
+}
+
+// voidSpan is one valid-time span [from, to) (to == 0: open) where a void row
+// (an excise, types.TemporalMetadata.Void) wins the point resolution.
+type voidSpan struct{ from, to types.Instant }
+
+// voidMask returns, ascending, the spans of a TxAt-filtered resolver chain
+// where the point resolver's winner is a void row; nil without void rows.
+func voidMask[T interface {
+	comparable
+	storeutil.TemporalRow
+}](c *Core, k *chainKernel[T], chain []T) []voidSpan {
+	if !slices.ContainsFunc(chain, isVoidRow[T]) {
+		return nil
+	}
+	var mask []voidSpan
+	pieces, _ := effectiveSweep(c, k, chain, nil, true)
+	for _, p := range pieces {
+		if !isVoidRow(p.row) {
+			continue
+		}
+		if n := len(mask); n > 0 && mask[n-1].to == p.from {
+			mask[n-1].to = p.to
+			continue
+		}
+		mask = append(mask, voidSpan{p.from, p.to})
+	}
+	return mask
+}
+
+// minEnd is the smaller of two valid ends (0 = open).
+func minEnd(a, b types.Instant) types.Instant {
+	switch {
+	case a == 0:
+		return b
+	case b == 0:
+		return a
+	}
+	return min(a, b)
+}
+
+// uncovered reports whether some instant of [lo, hi) (hi == 0: open) lies
+// outside every span of mask (ascending, disjoint). An empty [lo, hi) has none.
+func uncovered(mask []voidSpan, lo, hi types.Instant) bool {
+	if hi != 0 && lo >= hi {
+		return false
+	}
+	cur := lo
+	for _, m := range mask {
+		if m.to != 0 && m.to <= cur {
+			continue
+		}
+		if m.from > cur {
+			return true
+		}
+		if m.to == 0 {
+			return false
+		}
+		cur = m.to
+		if hi != 0 && cur >= hi {
+			return false
+		}
+	}
+	return true
+}
+
+// unmasked splits [s, e) (e == 0: open) into its maximal parts outside mask.
+func unmasked(mask []voidSpan, s, e types.Instant) [][2]types.Instant {
+	if len(mask) == 0 {
+		return [][2]types.Instant{{s, e}}
+	}
+	var out [][2]types.Instant
+	cur := s
+	for _, m := range mask {
+		if m.to != 0 && m.to <= cur {
+			continue
+		}
+		if e != 0 && m.from >= e {
+			break
+		}
+		if m.from > cur {
+			out = append(out, [2]types.Instant{cur, m.from})
+		}
+		if m.to == 0 {
+			return out
+		}
+		cur = m.to
+		if e != 0 && cur >= e {
+			return out
+		}
+	}
+	return append(out, [2]types.Instant{cur, e})
 }

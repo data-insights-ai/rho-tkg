@@ -6,7 +6,9 @@ import (
 	"sync"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/internal/hash32"
 	"github.com/vmihailenco/msgpack/v5"
+	"github.com/vmihailenco/msgpack/v5/msgpcode"
 )
 
 // Hand-written msgpack decoders for the entity wire types, mirroring the
@@ -153,6 +155,8 @@ func (w *NodeWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 			w.DeletedAt, err = dec.DecodeInt64()
 		case "rx":
 			w.Retracted, err = dec.DecodeBool()
+		case "vd":
+			w.Void, err = dec.DecodeBool()
 		case "cb":
 			w.CreatedBy, err = dec.DecodeString()
 		case "ub":
@@ -160,9 +164,9 @@ func (w *NodeWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 		case "be":
 			w.BaseEntityID, err = dec.DecodeInt64()
 		case "h":
-			w.Hash, err = dec.DecodeString()
+			w.Hash, err = decodeHashField(dec)
 		case "ph":
-			w.PrevHash, err = dec.DecodeString()
+			w.PrevHash, err = decodeHashField(dec)
 		case "aid":
 			w.AuthorID, err = dec.DecodeString()
 		case "sig":
@@ -228,6 +232,8 @@ func (w *RelWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 			w.DeletedAt, err = dec.DecodeInt64()
 		case "rx":
 			w.Retracted, err = dec.DecodeBool()
+		case "vd":
+			w.Void, err = dec.DecodeBool()
 		case "cb":
 			w.CreatedBy, err = dec.DecodeString()
 		case "ub":
@@ -235,13 +241,13 @@ func (w *RelWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 		case "be":
 			w.BaseEntityID, err = dec.DecodeInt64()
 		case "h":
-			w.Hash, err = dec.DecodeString()
+			w.Hash, err = decodeHashField(dec)
 		case "ph":
-			w.PrevHash, err = dec.DecodeString()
+			w.PrevHash, err = decodeHashField(dec)
 		case "fnh":
-			w.FromNodeHash, err = dec.DecodeString()
+			w.FromNodeHash, err = decodeHashField(dec)
 		case "tnh":
-			w.ToNodeHash, err = dec.DecodeString()
+			w.ToNodeHash, err = decodeHashField(dec)
 		case "aid":
 			w.AuthorID, err = dec.DecodeString()
 		case "sig":
@@ -363,4 +369,30 @@ func decodePropertyWireInto(dec *msgpack.Decoder, p *PropertyWire, kb []byte) er
 		}
 	}
 	return nil
+}
+
+// decodeHashField reads an integrity hash in either form encodeHashField
+// writes: 32 raw bytes (msgpack bin, rows from BinaryHashWireFormatVersion
+// on), returned as the canonical 64-character lowercase hex string, or a
+// string verbatim (every older row, and a non-canonical hash).
+func decodeHashField(dec *msgpack.Decoder) (string, error) {
+	c, err := dec.PeekCode()
+	if err != nil {
+		return "", err
+	}
+	if c != msgpcode.Bin8 && c != msgpcode.Bin16 && c != msgpcode.Bin32 {
+		return dec.DecodeString()
+	}
+	n, err := dec.DecodeBytesLen()
+	if err != nil {
+		return "", err
+	}
+	if n != 32 {
+		return "", fmt.Errorf("%w: binary integrity hash of %d bytes, want 32", storepkg.ErrCorruptWire, n)
+	}
+	var b [32]byte
+	if err := dec.ReadFull(b[:]); err != nil {
+		return "", err
+	}
+	return hash32.String(b[:]), nil
 }

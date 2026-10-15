@@ -1,0 +1,3 @@
+--- FAIL: TestLendSortedColdRowsOneSnapshot (0.00s)
+    badgerstore_lend_batch_test.go:67: node 1: lent ID 1 frozen false
+FAIL

@@ -13,33 +13,26 @@ import (
 
 // --- Relationship property indexes (K3b) ---
 //
-// The relationship mirror of memorystore_index.go's node property indexes,
-// keyed by rel-type token instead of label token. RAM-only (v1): rebuilt from
-// current relationships on open (memory has no persistence). Maintained at every
-// rel mutation door (see AddRelToPropertyIndexes / RemoveRelFromPropertyIndexes /
-// PurgeRelFromAllPropertyIndexes call sites in memorystore_rel.go and
-// memorystore_history.go).
+// The rel mirror of memorystore_index.go's node indexes, keyed by rel-type token.
+// RAM-only, rebuilt from current relationships on open; maintained at every rel
+// mutation door (memorystore_rel.go, memorystore_history.go).
 
-// CreateRelPropertyIndex creates a property index for the given rel-type token
-// and property key. Three-phase approach mirroring node CreatePropertyIndex
-// (BACKLOG 17h) — see its doc comment for the full rationale; the rel mirror
-// snapshots the type's relationship IDs instead of a label's node IDs, and
-// Phase 2 reads *types.Relationship rows (also frozen/immutable-once-cached,
-// same safety argument). Returns ErrIndexExists if the index already exists.
+// CreateRelPropertyIndex creates a property index for the rel-type token and
+// property key, in three phases as node CreatePropertyIndex (BACKLOG 17h), over
+// the type's relationship IDs. Returns ErrIndexExists if it already exists.
 func (ms *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
 	return ms.CreateRelPropertyIndexWithOptions(relTypeToken, propertyKey, storecontract.PropertyIndexOptions{})
 }
 
 // CreateRelPropertyIndexWithOptions is CreateRelPropertyIndex with
-// storecontract.PropertyIndexOptions (round 4 R2: RangeCounts).
+// storecontract.PropertyIndexOptions.
 func (ms *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if ms == nil {
 		return ErrNilStore
 	}
 
-	// Phase 1. checkOpenLocked before argument validation — a closed store
-	// must report ErrStoreClosed even for otherwise-invalid arguments,
-	// mirroring node CreatePropertyIndex's lifecycle-before-validation order.
+	// Phase 1. checkOpenLocked before argument validation: a closed store reports
+	// ErrStoreClosed even for invalid arguments (as node CreatePropertyIndex).
 	ms.mu.Lock()
 	if err := ms.checkOpenLocked(); err != nil {
 		ms.mu.Unlock()
@@ -53,12 +46,16 @@ func (ms *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 		ms.mu.Unlock()
 		return err
 	}
+	if err := storecontract.ValidatePropertyIndexOptions(opts); err != nil {
+		ms.mu.Unlock()
+		return err
+	}
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
 	if _, exists := ms.relPropertyIndexes[key]; exists {
 		ms.mu.Unlock()
 		return ErrIndexExists
 	}
-	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts)
+	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts, opts.Elements)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	ms.relPropertyIndexes[key] = liveIdx
 	var rids []types.RelID
@@ -80,7 +77,7 @@ func (ms *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	ms.mu.Unlock()
 
 	// Phase 2.
-	backfill := indexpkg.NewPropertyIndex()
+	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
 	for _, rid := range rids {
 		ms.mu.RLock()
 		r, ok, err := ms.relLocked(rid)
@@ -97,9 +94,7 @@ func (ms *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 		if !ok {
 			continue // deleted between snapshot and fetch
 		}
-		if valueKey, found := r.IndexablePropertyValueKey(propertyKey); found {
-			backfill.AddKey(rid.SnowflakeID(), valueKey)
-		}
+		backfill.AddEntityKeys(rid.SnowflakeID(), propertyKey, r.ForEachPropertyIndexKey)
 	}
 
 	// Phase 3.
@@ -125,8 +120,8 @@ func (ms *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	return nil
 }
 
-// requireRelPropertyIndexCurrentForCreate mirrors node CreatePropertyIndex's
-// requirePropertyIndexCurrentForCreate for the rel-type-keyed index map.
+// requireRelPropertyIndexCurrentForCreate mirrors requirePropertyIndexCurrentForCreate
+// for the rel-type-keyed index map.
 func requireRelPropertyIndexCurrentForCreate(idxs map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex, key indexpkg.RelPropertyIndexKey, expected *indexpkg.PropertyIndex) error {
 	current := idxs[key]
 	if current == expected {
@@ -168,9 +163,8 @@ func (ms *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) e
 }
 
 // RelationshipsByTypeAndProperty returns relationships matching the type and
-// property value, with optional pagination and temporal filtering. Uses the
-// rel property index if one exists; falls back to a type scan + property filter.
-// Results are sorted by snowflake.ID for deterministic output.
+// property value (pagination, temporal filtering), sorted by snowflake.ID; uses
+// the rel property index if one exists, else a type scan + property filter.
 func (ms *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Relationship, error) {
 	if ms == nil {
 		return nil, ErrNilStore
@@ -206,12 +200,13 @@ func (ms *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 			return nil, nil
 		}
 		storepkg.SortRelIDs(ids)
+		elements := idx.Elements()
 		if ms.anySegmentsLocked() {
 			rows, err := ms.relsFromIDsLocked(ids, opts.After, opts.Limit, func(r *types.Relationship) bool {
 				if !r.HasTypeTokenRaw(relTypeToken) {
 					return false
 				}
-				if valueKey, found := r.IndexablePropertyValueKey(propKey); !found || valueKey != targetKey {
+				if !r.HasPropertyIndexKey(propKey, elements, targetKey) {
 					return false
 				}
 				return !storepkg.HasTemporalFilter(opts) || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
@@ -221,7 +216,7 @@ func (ms *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 			}
 			return rows, nil
 		}
-		return ms.relsByTypePropertyFromIDs(relTypeToken, propKey, targetKey, ids, opts), nil
+		return ms.relsByTypePropertyFromIDs(relTypeToken, propKey, targetKey, elements, ids, opts), nil
 	}
 
 	// Fallback: type scan + property filter.
@@ -251,10 +246,10 @@ func (ms *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 		return nil, nil
 	}
 	storepkg.SortRelIDs(matchIDs)
-	return ms.relsByTypePropertyFromIDs(relTypeToken, propKey, targetKey, matchIDs, opts), nil
+	return ms.relsByTypePropertyFromIDs(relTypeToken, propKey, targetKey, false, matchIDs, opts), nil
 }
 
-func (ms *Store) relsByTypePropertyFromIDs(relTypeToken uint16, propKey, targetKey string, ids []types.RelID, opts QueryOpts) []*types.Relationship {
+func (ms *Store) relsByTypePropertyFromIDs(relTypeToken uint16, propKey, targetKey string, elements bool, ids []types.RelID, opts QueryOpts) []*types.Relationship {
 	ids = storepkg.PaginateRelIDs(ids, opts.After, 0)
 	if len(ids) == 0 {
 		return nil
@@ -271,7 +266,7 @@ func (ms *Store) relsByTypePropertyFromIDs(relTypeToken uint16, propKey, targetK
 			if !r.HasTypeTokenRaw(relTypeToken) {
 				continue
 			}
-			if valueKey, found := r.IndexablePropertyValueKey(propKey); !found || valueKey != targetKey {
+			if !r.HasPropertyIndexKey(propKey, elements, targetKey) {
 				continue
 			}
 			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
@@ -289,24 +284,15 @@ func (ms *Store) relsByTypePropertyFromIDs(relTypeToken uint16, propKey, targetK
 	return result
 }
 
-// ForEachRelByTypePropertyRange streams relationships carrying relTypeToken whose
-// NUMERIC propKey value lies within [min, max] (per the inclusivity flags), in
-// snowflake-ID order. Candidates come from the rel property index's ordered
-// numeric view, which OVER-SELECTS by design (float64 sort keys, ulp-widened
-// bounds): fn must re-check its predicate with exact comparison semantics.
-// Returns ErrIndexNotFound when no rel property index with a usable ordered view
-// exists for (relType, propKey) — the caller falls back to a type scan.
+// ForEachRelByTypePropertyRange streams relationships of relTypeToken whose numeric
+// propKey value lies within [min, max] (per the inclusivity flags), in snowflake-ID
+// order. Candidates come from the index's ordered numeric view, which over-selects
+// (float64 sort keys, ulp-widened bounds): fn must re-check exactly. Returns
+// ErrIndexNotFound without a usable ordered view (callers fall back to a type scan).
 //
-// Isolation mirrors ForEachRelByTypePropertyRangeOrdered (BACKLOG 17b): the
-// candidate ID set is snapshotted under one brief store RLock, then each row is
-// looked up under its OWN brief RLock, and fn runs with NO lock held — fn may
-// freely call back into the store. Every sibling streaming method already
-// followed this two-phase pattern (matching the documented IterationCapability
-// contract and sync.RWMutex's non-reentrancy); this was the one door that held
-// the lock across the whole callback loop, a self-deadlock hazard if fn ever
-// re-entered any Store read method while a writer was waiting for the RLock
-// (a waiting writer blocks NEW readers too, so a reentrant RLock from inside fn
-// would never acquire).
+// Isolation as ForEachRelByTypePropertyRangeOrdered (BACKLOG 17b): the candidate
+// IDs are snapshotted under one brief RLock, each row is looked up under its own
+// brief RLock, and fn runs with no lock held, so it may call back into the store.
 func (ms *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey string, min, max float64, inclMin, inclMax bool, opts QueryOpts, fn func(*types.Relationship) bool) error {
 	if ms == nil {
 		return ErrNilStore

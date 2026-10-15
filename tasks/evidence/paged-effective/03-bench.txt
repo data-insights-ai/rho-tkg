@@ -1,0 +1,18 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkEffectivePage/memory/page-32         	    4730	    242710 ns/op	  353371 B/op	    4627 allocs/op
+BenchmarkEffectivePage/memory/page-32         	    5404	    235066 ns/op	  352281 B/op	    4606 allocs/op
+BenchmarkEffectivePage/memory/page-32         	    5511	    233670 ns/op	  352281 B/op	    4606 allocs/op
+BenchmarkEffectivePage/memory/fullwalk-32     	      21	  55096446 ns/op	78587291 B/op	  900313 allocs/op
+BenchmarkEffectivePage/memory/fullwalk-32     	      21	  55096965 ns/op	78587313 B/op	  900313 allocs/op
+BenchmarkEffectivePage/memory/fullwalk-32     	      19	  57272344 ns/op	78587946 B/op	  900313 allocs/op
+BenchmarkEffectivePage/badger/page-32         	    2554	    410673 ns/op	  440129 B/op	    5986 allocs/op
+BenchmarkEffectivePage/badger/page-32         	    5848	    203425 ns/op	  320476 B/op	    4107 allocs/op
+BenchmarkEffectivePage/badger/page-32         	    5886	    196060 ns/op	  320475 B/op	    4107 allocs/op
+BenchmarkEffectivePage/badger/fullwalk-32     	       4	 346260716 ns/op	224898786 B/op	 3008255 allocs/op
+BenchmarkEffectivePage/badger/fullwalk-32     	       3	 433077081 ns/op	224910157 B/op	 3008274 allocs/op
+BenchmarkEffectivePage/badger/fullwalk-32     	       4	 292241374 ns/op	224897934 B/op	 3008240 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	15.434s

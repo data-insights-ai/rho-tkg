@@ -6,11 +6,13 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
 
 ## Rules digest (standing rules; the number owns the detail)
 
+- Trace the cause before asking or adding; consolidate duplicate paths, notes and rules instead of layering, docs
+  rewritten in place (84).
 - Act, do not offer: open work with a clear next step (consumer request, review finding, patch batch) starts now; ask only for the
   irreversible or materially different (81). Tick the ledger and doc targets at every release (80, 41).
 - Red first: a failing break-the-code test before the fix, a clean root-cause fix at the shared seam, no "known limitation" in
   place of work (78, 27, 77).
-- Releases: PATCH only, batched, one gate; behaviour changes via the deprecation ritual, no new named exceptions (79); full
+- Releases: MINOR for a really new feature, PATCH otherwise (René 2026-10-14; was patch-only since 10-10), batched, one gate; behaviour changes via the deprecation ritual, no new named exceptions (79); full
   `make test-race` before a tag (66); a green workflow means its gates ran (75).
 - Reviews: one round per branch, authors run lint + security first; models: builds Opus, code reviews Opus high, final Fable
   review before tagging, doc work Sonnet (79).
@@ -614,3 +616,16 @@ Detector: a tag whose CI run is not `success`.
 Rule: one compact red test per item (the key break cases), then the code. No mutation runs, probe tests, oversized tables or benchmarks unless the item is about speed or RAM; reviewers read and reason instead of writing tests. Supersedes the mutant/probe parts of 78 and 79.
 Trigger: René 2026-10-13 "I think you're testing too much. Focus on more development work."
 Detector: evidence files named *mutant* or *probe*, or a test file longer than the code it tests.
+
+## 84. Trace The Cause, Then Consolidate: No Unreflected Questions, No Layers On Top
+
+René 2026-10-14 (standing rules, also in ~/CLAUDE.md). Before a design question to René: trace where it really comes from in the
+current code (file:line, not an old note), look for a strategy that removes it (fix the cause upstream, a standard, an existing
+mechanism) and solve it if one works; ask only the remainder, naming the cause and each rejected strategy in one line.
+Consolidate, don't add: when two code paths, notes or rules do the same job, merge them into one and delete the rest instead of
+a fix, layer or note on top; check for duplication first, it is often the real bug. Docs too (lessons, backlog, HANDOVER):
+rewrite in place, delete outdated entries, never only append.
+
+## 85. Comment Trimming Is Editing, Not A Script
+
+2026-10-14: a second comment pass cut 15,982 → 10,371 lines in 266 files with sentence-boundary scripts run by six Sonnet agents. The Opus check found ~260 passages to restore: sentences cut mid-word with a period added, and dropped `Concurrency:` / `Caller holds` / `Errors:` / `lesson N` / format-marker paragraphs, so exported godoc lost its contract and surviving comments pointed at deleted text. Rule: trim comments by hand, file by file. Never cut inside a sentence. Never drop lock-order, caller-holds, crash-ordering, re-entrancy, error/nil/ownership/concurrency contract or format-compatibility lines. Every comment pass gets an Opus check of the diff for lost invariants before merge. The pass was discarded, not patched.

@@ -5,13 +5,10 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// Query-planner index-existence/config introspection (BACKLOG 21b) for
-// property indexes on reference labels, temporal indexes and vector indexes.
-// Composite introspection lives with the composite fan-out
-// (shard_index_fanout.go). Relationship property indexes are NOT implemented:
-// tiered declines them (see RelPropertyIndexCapability), so it does not
-// satisfy RelPropertyIndexIntrospectionCapability and callers get
-// store.ErrCapabilityNotSupported, consistent with Create/DropRelPropertyIndex.
+// Query-planner index introspection (BACKLOG 21b) for property indexes on reference
+// labels, temporal and vector indexes; composite introspection lives in
+// shard_index_fanout.go. Relationship property indexes are not implemented (tiered
+// declines them), so callers get store.ErrCapabilityNotSupported.
 
 var (
 	_ storecontract.PropertyIndexIntrospectionCapability = (*Store)(nil)
@@ -20,8 +17,7 @@ var (
 )
 
 // HasPropertyIndex reports whether a property index exists on (labelToken,
-// propertyKey). Property indexes on tiered live only on the reference shard
-// (CreatePropertyIndex rejects event labels), so this delegates there.
+// propertyKey); property indexes live only on the reference shard.
 func (ts *Store) HasPropertyIndex(labelToken uint16, propertyKey string) (bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return false, err
@@ -37,10 +33,25 @@ func (ts *Store) HasPropertyIndex(labelToken uint16, propertyKey string) (bool, 
 	return ref.HasPropertyIndex(labelToken, propertyKey)
 }
 
-// HasTemporalIndex reports whether a temporal interval index exists on
-// labelToken, reading the store-level label list CreateTemporalIndex
-// maintains (the index itself fans out across every shard, but membership is
-// tracked once, store-wide).
+// PropertyIndexOptions returns the options of the index on (labelToken,
+// propertyKey) from the reference shard.
+func (ts *Store) PropertyIndexOptions(labelToken uint16, propertyKey string) (storecontract.PropertyIndexOptions, bool, error) {
+	if err := ts.checkOpen(); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	defer refCheckin()
+	return ref.PropertyIndexOptions(labelToken, propertyKey)
+}
+
+// HasTemporalIndex reports whether a temporal interval index exists on labelToken,
+// from the store-level label list (membership is tracked once, store-wide).
 func (ts *Store) HasTemporalIndex(labelToken uint16) (bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return false, err
@@ -59,8 +70,7 @@ func (ts *Store) HasTemporalIndex(labelToken uint16) (bool, error) {
 }
 
 // VectorIndexInfo returns the declared configuration of the vector index on
-// (labelToken, propertyKey). Vector indexes are STORE-LEVEL on tiered (not
-// per-shard), so this reads ts.vectorIndexes directly.
+// (labelToken, propertyKey); vector indexes are store-level on tiered.
 func (ts *Store) VectorIndexInfo(labelToken uint16, propertyKey string) (storecontract.VectorIndexInfo, bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return storecontract.VectorIndexInfo{}, false, err

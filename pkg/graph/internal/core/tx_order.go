@@ -28,7 +28,7 @@ func (c *Core) resolveCallerTxInstant(t types.Instant) (types.Instant, error) {
 
 // checkTxOrder reports whether a caller instant t can end or supersede the
 // current version of an entity: t must be after start (the current version's
-// effective start, see relTxDeleteStart / relCurrentVersionStart) and after
+// effective start, see relTxDeleteStart / relValidFrom) and after
 // every TxFrom and TxTo recorded on the entity's chain — history AND current,
 // because TxFrom is not co-monotonic with version (lesson 62: a validInstantAfter
 // bump, or a backfilled re-import in a chain stored before backlog 38, can
@@ -91,11 +91,11 @@ func (c *Core) relChainTemporals(id types.RelID, current *types.Relationship) ([
 }
 
 // relTxDeleteStart is the start a caller-instant delete must follow: the
-// later of the effective valid-from (the tombstone clamps ValidTo to t, so
-// t <= ValidFrom inverts the valid interval) and the current version's start
-// (UpdatedAt once updated: a delete before the last change is out of order).
+// current version's effective start (the tombstone clamps ValidTo to t, so
+// t <= the start inverts the valid interval). One start rule (relValidFrom,
+// backlog 62): an in-place write's UpdatedAt does not move it.
 func (c *Core) relTxDeleteStart(r *types.Relationship) types.Instant {
-	return max(c.relValidFrom(r), c.relCurrentVersionStart(r))
+	return c.relValidFrom(r)
 }
 
 // checkRelCallerTx runs the order rule for a caller instant on relationship
@@ -126,10 +126,9 @@ func (c *Core) nodeChainTemporals(id types.NodeID, current *types.Node) ([]*type
 	return out, nil
 }
 
-// nodeTxDeleteStart is the node twin of relTxDeleteStart: the later of the
-// effective valid-from and the current version's start.
+// nodeTxDeleteStart is the node twin of relTxDeleteStart.
 func (c *Core) nodeTxDeleteStart(n *types.Node) types.Instant {
-	return max(c.nodeValidFrom(n), c.nodeCurrentVersionStart(n))
+	return c.nodeValidFrom(n)
 }
 
 // checkNodeCallerTx runs the order rule for a caller instant on node current
@@ -193,7 +192,7 @@ func (c *Core) checkRelCallerDelete(id types.RelID, current *types.Relationship,
 // pre-flight (precheckCallerTxOps). Call under the relationship's entity
 // lock.
 func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship, prov updateProvenance, tmp updateTemporal, updates map[string]any) error {
-	if err := c.checkRelCallerTx(id, current, tmp.txAt, c.relCurrentVersionStart(current)); err != nil {
+	if err := c.checkRelCallerTx(id, current, tmp.txAt, c.relValidFrom(current)); err != nil {
 		return err
 	}
 	if !relPreparedUpdateMutates(current, prov, tmp, updates) {
@@ -207,6 +206,13 @@ func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship,
 			return fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
 		}
 	}
+	if tmp.closesVersion() {
+		// The close check of every close door (backlog 65), so the pre-flight
+		// refuses the unit before any write.
+		if _, err := c.checkRelClose(current, current.StartNodeID(), current.EndNodeID(), "tkg_valid_to", tmp.validTo); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -217,7 +223,7 @@ func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship,
 // the update seam (updateNodePreparedInternal) and the Batch/ingest pre-flight
 // (precheckCallerTxOps). Call under the node's entity lock.
 func (c *Core) checkNodeCallerUpdate(id types.NodeID, current *types.Node, prov updateProvenance, tmp updateTemporal, updates map[string]any) error {
-	if err := c.checkNodeCallerTx(id, current, tmp.txAt, c.nodeCurrentVersionStart(current)); err != nil {
+	if err := c.checkNodeCallerTx(id, current, tmp.txAt, c.nodeValidFrom(current)); err != nil {
 		return err
 	}
 	if !nodePreparedUpdateMutates(current, prov, tmp, updates) {
@@ -229,6 +235,13 @@ func (c *Core) checkNodeCallerUpdate(id types.NodeID, current *types.Node, prov 
 	if tmp.hasValidFrom && tmp.validFrom != 0 {
 		if prevEff := c.nodeValidFrom(current); tmp.validFrom <= prevEff {
 			return fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
+		}
+	}
+	if tmp.closesVersion() {
+		// The close check of every close door (backlog 65), so the pre-flight
+		// refuses the unit before any write.
+		if _, err := c.checkNodeClose(id, current, "tkg_valid_to", tmp.validTo); err != nil {
+			return err
 		}
 	}
 	return nil

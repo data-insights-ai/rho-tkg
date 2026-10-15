@@ -225,7 +225,7 @@ func TestBulkAsOfPresence_EquivalentAcrossStates(t *testing.T) {
 				for e := 0; e < n; e++ {
 					id := k.id(base + e)
 					ids = append(ids, id)
-					for _, v := range genCascadeAsofChain(rng) {
+					for _, v := range genCascadeAsofChain(rng, rng) {
 						k.put(t, bs, id, v.version, v.txFrom, v.current)
 					}
 				}
@@ -382,7 +382,8 @@ func seedAboveCurrent(t *testing.T, k bulkPresenceKind, bs *Store, n int) []int6
 
 // TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory is the feature test: an
 // entity without a history row costs the bulk scan no key probe; entities with
-// history still do. (Red before the presence check: every entity probed.)
+// history are answered by the set's top bound (backlog 70). (Red before the
+// presence check: every entity probed.)
 func TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory(t *testing.T) {
 	t.Parallel()
 	for _, k := range bulkPresenceKinds() {
@@ -406,9 +407,9 @@ func TestBulkAsOfPresence_SkipsKeyProbeWithoutHistory(t *testing.T) {
 				t.Fatalf("bulk: %v", err)
 			}
 			bs.bulkAsOfKeyProbeTestHook = nil
-			if probes.Load() < int64(withHistory) {
-				t.Fatalf("%d probes for %d entities with history, want at least one each", probes.Load(), withHistory)
-			}
+			// Entities with history: the set's top bound answers whether a row
+			// may lie above the current one without a key probe (backlog 70);
+			// the scan then decides, so no lower bound on probes here.
 			// Nodes: the two endpoint nodes are plain entities too (no history).
 			if limit := int64(withHistory) * 2; probes.Load() > limit {
 				t.Fatalf("%d key probes for %d entities with history and %d without: entities without history were probed", probes.Load(), withHistory, without)
@@ -744,8 +745,9 @@ func countProbes(t *testing.T, k bulkPresenceKind, bs *Store, pin types.Instant)
 // whose history rows all sit below the current version has no row above it,
 // which the presence set knows from the highest history version it keeps per
 // ID: the bulk scan reads no key for it. Entities with rows above the current
-// version (cascade rows) still read the key. (Red before the top version: every
-// entity with history was probed.)
+// version (cascade rows) are answered by the scan (the bound says one may lie
+// there; backlog 70: no key probe of current+1 decides). (Red before the top
+// version: every entity with history was probed.)
 func TestBulkAsOfPresence_TopVersionSkipsProbeForHistoryBelowCurrent(t *testing.T) {
 	t.Parallel()
 	for _, k := range bulkPresenceKinds() {
@@ -775,8 +777,8 @@ func TestBulkAsOfPresence_TopVersionSkipsProbeForHistoryBelowCurrent(t *testing.
 				}
 				probes, got := countProbes(t, k, bs, bulkPresencePin)
 				_ = bs.Close()
-				if probes < int64(len(aboveIDs)) || probes > 2*int64(len(aboveIDs)) {
-					t.Fatalf("reopen=%v: %d key probes for %d entities with a row above the current version and %d with history only below it; want about one per entity of the first kind and none for the second", reopen, probes, len(aboveIDs), len(below))
+				if probes > 2*int64(len(aboveIDs)) {
+					t.Fatalf("reopen=%v: %d key probes for %d entities with a row above the current version and %d with history only below it; want at most about one per entity of the first kind and none for the second", reopen, probes, len(aboveIDs), len(below))
 				}
 				for _, id := range aboveIDs {
 					if got[id] != 2 {

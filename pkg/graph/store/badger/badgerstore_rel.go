@@ -18,10 +18,9 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 	return bs.putRelationship(r, true, false, 0)
 }
 
-// PutRelationshipScoped mirrors PutRelationship but routes the change-log
-// record into the store.ScopedTxChangeLog buffer named by token instead of
-// the eager pending log. token == 0 is exactly PutRelationship. See
-// badgerstore_changelog_scoped.go (BACKLOG 11f Batch A — foundation only).
+// PutRelationshipScoped is PutRelationship with the change-log record routed to
+// the store.ScopedTxChangeLog buffer named by token (0 = PutRelationship). See
+// badgerstore_changelog_scoped.go.
 func (bs *Store) PutRelationshipScoped(r *types.Relationship, token uint64) error {
 	if token == 0 {
 		return bs.PutRelationship(r)
@@ -29,26 +28,20 @@ func (bs *Store) PutRelationshipScoped(r *types.Relationship, token uint64) erro
 	return bs.putRelationship(r, true, false, token)
 }
 
-// PutRelationshipCoLocated writes a relationship whose entity AND both adjacency
-// legs (out + in) live on THIS shard, WITHOUT validating that its endpoint nodes
-// exist on this shard — a sharded owner (ADR-0007: a rel + both legs live on the
-// rel's shard, endpoints may be elsewhere) validates the endpoints on their own
-// shards before calling. It emits the SAME co-committed ChangeRelPut record as
-// PutRelationship, so a sharded rel create appears in the change-log feed (the
-// partial doors PutRelEntityAndOut/PutRelIncoming are record-free split-write
-// helpers and would leave a sharded rel create invisible to a tailing replica).
+// PutRelationshipCoLocated writes a relationship whose entity and both adjacency
+// legs live on THIS shard, without validating endpoint existence here (a sharded
+// owner validates them on their own shards, ADR-0007). Emits the same ChangeRelPut
+// record as PutRelationship; the partial split-write doors are record-free.
 func (bs *Store) PutRelationshipCoLocated(r *types.Relationship) error {
 	return bs.putRelationship(r, false, false, 0)
 }
 
-// PutRelationshipForeignIncoming writes a cross-machine incoming half-edge STUB
-// (ADR-0010 Model A) co-located on THIS shard exactly like PutRelationshipCoLocated
-// (entity + both adjacency legs, no endpoint validation), but co-commits a
-// ChangeForeignIncoming record instead of ChangeRelPut. The stub's rel-ID belongs
-// to a FOREIGN slot (the edge's real owner is another machine), so it is reachable
-// only via this shard's adjacency fold, never a slot-routed GetRelationship — and
-// the distinct record tag lets a replica route apply by the END-node slot rather
-// than the (foreign) rel slot. Called by the sharded store's RecordForeignIncoming.
+// PutRelationshipForeignIncoming writes a cross-machine incoming half-edge stub
+// (ADR-0010 Model A), co-located like PutRelationshipCoLocated but co-committing
+// ChangeForeignIncoming so a replica routes apply by the END-node slot (the rel-ID
+// slot is foreign). Called by the sharded store's RecordForeignIncoming. The stub's
+// rel-ID is in a foreign slot: reachable only via this shard's adjacency fold, never
+// a slot-routed GetRelationship.
 func (bs *Store) PutRelationshipForeignIncoming(r *types.Relationship) error {
 	return bs.putRelationship(r, false, true, 0)
 }
@@ -57,9 +50,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	// Per-type invalidation: this site holds the relationship, so it knows the
-	// type and can leave every OTHER type's columns valid. Sites that do not know
-	// the type keep the coarse bumpRelEpoch and invalidate everything.
+	// Per-type invalidation: the type is known here, so other types' columns stay valid.
 	defer bs.bumpRelEpochAppend(r)
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
@@ -161,13 +152,10 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	return bs.flushIfNeeded()
 }
 
-// bumpRelRevLocked mirrors bumpNodeRevLocked (BACKLOG 18b): called by every
-// door that changes a live relationship's DATA (create + property-changing
-// update), so relRevs[rid] changes on every such write. This is what lets
-// currentRelForPrefetchLocked detect a concurrent property-changing write in
-// the prefetch→lock window — relDeleteInfoStillIndexedLocked alone cannot,
-// because endpoints/type are immutable, so a property-only update leaves
-// relIDs/typeIdx/adjacency membership completely unchanged.
+// bumpRelRevLocked mirrors bumpNodeRevLocked (BACKLOG 18b): called by every door
+// that changes a live rel's data, so currentRelForPrefetchLocked can detect a
+// property-only write in the prefetch-lock window (endpoints/type are immutable,
+// so relDeleteInfoStillIndexedLocked cannot).
 func (bs *Store) bumpRelRevLocked(rid types.RelID) {
 	if bs.relRevs == nil {
 		bs.relRevs = make(map[types.RelID]uint64)
@@ -179,16 +167,13 @@ func (bs *Store) bumpRelRevLocked(rid types.RelID) {
 	bs.relRevs[rid] = bs.nextRelRev
 }
 
-// deleteRelRevLocked mirrors deleteNodeRevLocked. Called from the single
-// shared delete mutator (deleteRelByInfo) so every rel delete path clears the
-// rev entry in one place.
+// deleteRelRevLocked mirrors deleteNodeRevLocked; called from deleteRelByInfo.
 func (bs *Store) deleteRelRevLocked(rid types.RelID) {
 	delete(bs.relRevs, rid)
 }
 
-// GetRelationship retrieves a relationship by its snowflake ID.
-// Cache-first: checks LRU cache before falling through to Badger.
-// Returns ErrRelNotFound if the relationship does not exist.
+// GetRelationship retrieves a relationship by ID (LRU cache first).
+// Returns ErrRelNotFound if it does not exist.
 func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -250,10 +235,9 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	return r.DeepCopy(), nil
 }
 
-// getRelInTxn is GetRelationship's body reading through an ALREADY-OPEN read
-// transaction instead of opening its own — used by RelsAsOf's single-transaction
-// bulk scan (BACKLOG 18k). Mirrors getNodeInTxn; see its doc comment. REQUIRES
-// the caller to hold bs.idxMu (at least RLock) for the entire surrounding scan.
+// getRelInTxn is GetRelationship's body over an already-open read transaction
+// (RelsAsOf bulk scan, BACKLOG 18k); mirrors getNodeInTxn. Caller must hold
+// bs.idxMu (at least RLock) for the whole scan.
 func (bs *Store) getRelInTxn(snap *scanSnapshot, rid types.RelID) (*types.Relationship, error) {
 	id := rid.SnowflakeID()
 	v, status := bs.relCache.Get(id)
@@ -296,18 +280,14 @@ func (bs *Store) getRelInTxn(snap *scanSnapshot, rid types.RelID) (*types.Relati
 	return r.DeepCopy(), nil
 }
 
-// ReplaceRelationship overwrites an existing relationship's data in-place.
-// Returns ErrRelNotFound if the relationship does not exist.
-// No index changes — type and endpoints are immutable after creation.
+// ReplaceRelationship overwrites a relationship's data in place; no index changes
+// (type and endpoints are immutable). Returns ErrRelNotFound if absent.
 func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 	return bs.replaceRelationshipRouted(r, 0)
 }
 
-// ReplaceRelationshipScoped mirrors ReplaceRelationship but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// ReplaceRelationship. See badgerstore_changelog_scoped.go (BACKLOG 11f
-// Batch E — foundation only).
+// ReplaceRelationshipScoped is ReplaceRelationship with the change-log record
+// routed to the ScopedTxChangeLog buffer named by token (0 = ReplaceRelationship).
 func (bs *Store) ReplaceRelationshipScoped(r *types.Relationship, token uint64) error {
 	if token == 0 {
 		return bs.ReplaceRelationship(r)
@@ -319,9 +299,7 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	// Per-type invalidation: this site holds the relationship, so it knows the
-	// type and can leave every OTHER type's columns valid. Sites that do not know
-	// the type keep the coarse bumpRelEpoch and invalidate everything.
+	// Per-type invalidation: the type is known here, so other types' columns stay valid.
 	defer bs.bumpRelEpochForType(uint16(r.TypeToken())) // UPDATE: poisons, never records an append
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
@@ -329,10 +307,8 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	rid := r.InternalID()
 	id := rid.SnowflakeID()
 
-	// Snapshot the rev alongside the prefetched row (BACKLOG 18b): endpoints/
-	// type are immutable, so relDeleteInfoStillIndexedLocked's structural check
-	// alone cannot detect a concurrent property-only update racing this
-	// prefetch — only relRevs (bumped on every rel data write) can.
+	// Snapshot the rev with the prefetched row (BACKLOG 18b): only relRevs detects a
+	// concurrent property-only update, the structural check cannot.
 	prefetched, prefetchErr := bs.prefetchRelWithRev(rid)
 
 	data, err := bs.marshalRelBytes(r)
@@ -382,9 +358,8 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	bs.addRelPropertyTypeClassCounts(r)         // increment new
 	bs.addRelPropertyStatsCounts(r)
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data})
-	// A version update rewrites the row in place — endpoints/type are
-	// immutable (no adjacency change) but valid_to may move, so the inline stamp
-	// MUST be refreshed here or a temporal traversal reads a stale interval.
+	// A version update rewrites the row in place; valid_to may move, so the inline
+	// stamp must be refreshed or a temporal traversal reads a stale interval.
 	bs.setRelValidStampLocked(rid, r)
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelPut, changePayload, token)
 	bs.idxMu.Unlock()
@@ -417,11 +392,8 @@ func (bs *Store) UndoRelationshipCreateScoped(rid types.RelID, token uint64) err
 	return bs.deleteRelationshipRouted(rid, token, false)
 }
 
-// DeleteRelationshipScoped mirrors DeleteRelationship but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// DeleteRelationship. See badgerstore_changelog_scoped.go (BACKLOG 11f
-// Batch F — foundation only).
+// DeleteRelationshipScoped is DeleteRelationship with the change-log record
+// routed to the ScopedTxChangeLog buffer named by token (0 = DeleteRelationship).
 func (bs *Store) DeleteRelationshipScoped(rid types.RelID, token uint64) error {
 	if token == 0 {
 		return bs.DeleteRelationship(rid)
@@ -435,27 +407,21 @@ func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64, exLeg b
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	// Coarse on purpose: this site holds only a RelID, so it cannot name the type
-	// without an extra read. Deletes are the rarer path, and over-invalidating is
-	// the safe direction.
+	// Coarse on purpose: only a RelID is known here; over-invalidating is the safe direction.
 	defer bs.bumpRelEpoch()
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return err
 	}
-	// Build the change-log delete record up front (a standalone rel delete is a
-	// hard delete with no tombstone), so a marshal error aborts before any op is
-	// enqueued. deleteRelByInfo itself stays record-free — it is shared with the
-	// node-cascade path, which emits a single ChangeNodeDelete instead.
+	// Build the change-log delete record up front so a marshal error aborts before
+	// any op is enqueued; deleteRelByInfo stays record-free (shared with node cascade).
 	relDelPayload, err := bs.buildChangePayload(storepkg.RelDeleteBody{ID: int64(rid.SnowflakeID())})
 	if err != nil {
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
 
-	// Pre-fetch the relationship before acquiring idxMu.Lock so a cache-miss
-	// delete does not hold the global index write lock across Badger I/O.
-	// The locked section re-reads from the cache-loaded current row below to
-	// avoid cleaning indexes with stale type/endpoints if a direct Store caller
-	// reused the same ID in the TOCTOU window.
+	// Prefetch before idxMu.Lock so a cache-miss delete does not hold the index lock
+	// across Badger I/O; the locked section re-reads to avoid stale type/endpoints
+	// if the ID was reused in the TOCTOU window.
 	if _, err := bs.prefetchRel(rid); err != nil {
 		return err
 	}
@@ -483,13 +449,10 @@ func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64, exLeg b
 }
 
 // DeleteRelationshipForeignIncoming removes a Model-A incoming half-edge stub
-// (ADR-0010 §3.3) physically co-located on THIS (the END node's) shard. It is the
-// delete counterpart of PutRelationshipForeignIncoming: the stub's row + both
-// adjacency legs are removed exactly like DeleteRelationship, but a
-// ChangeForeignIncomingDelete record is co-committed instead of ChangeRelDelete,
-// carrying the END-node ID so a replica routes apply by the END slot (the rel's
-// own slot is foreign). Returns ErrRelNotFound when the stub is absent — the
-// caller (cascade / replica apply) tolerates it for idempotency.
+// (ADR-0010 section 3.3) on the END node's shard: the counterpart of
+// PutRelationshipForeignIncoming, co-committing ChangeForeignIncomingDelete with
+// the END-node ID. Returns ErrRelNotFound when absent (callers tolerate it).
+// Callers (cascade / replica apply) tolerate ErrRelNotFound for idempotency.
 func (bs *Store) DeleteRelationshipForeignIncoming(rid types.RelID) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -512,10 +475,8 @@ func (bs *Store) DeleteRelationshipForeignIncoming(rid types.RelID) error {
 		bs.idxMu.Unlock()
 		return err
 	}
-	// The END-node ID must be captured from the stub before deletion — a replica
-	// routes the delete by it (the rel-ID's slot is foreign). Build the record
-	// inside the lock but marshal errors surface after unlock, mirroring the
-	// other delete doors.
+	// Capture the END-node ID from the stub before deletion (replica routes by it);
+	// marshal errors surface after unlock.
 	delPayload, perr := bs.buildChangePayload(storepkg.ForeignIncomingDeleteBody{
 		RelID: int64(rid.SnowflakeID()),
 		EndID: int64(r.EndNodeID().SnowflakeID()),
@@ -540,11 +501,8 @@ type RelDeleteInfo struct {
 	EndID   snowflake.ID
 	Rev     uint64
 
-	// row carries the pre-read row of a deferred delete (prefetchRelDeleteInfo,
-	// a cascade or batch's locked re-read, an erasure plan) to deleteRelByInfo,
-	// whose planner-statistic decrement needs it (backlog 53). Unset by
-	// relDeleteInfoFromRelationship, so the open rebuild's descriptor map holds
-	// no rows.
+	// row carries the pre-read row of a deferred delete to deleteRelByInfo for the
+	// planner-statistic decrement (backlog 53). Unset by relDeleteInfoFromRelationship.
 	row *types.Relationship
 }
 
@@ -557,13 +515,9 @@ func relDeleteInfoFromRelationship(r *types.Relationship) RelDeleteInfo {
 	}
 }
 
-// relPrefetchSnapshot pairs a prefetched relationship with the relRevs value
-// observed at prefetch time (BACKLOG 18b). Used by ReplaceRelationship to
-// detect a concurrent property-changing write in the prefetch→lock window:
-// relDeleteInfoStillIndexedLocked alone is insufficient because endpoints/
-// type are immutable, so a concurrent property-only ReplaceRelationship
-// leaves relIDs/typeIdx/adjacency membership completely unchanged — only the
-// rev (bumped on every rel data write) detects it.
+// relPrefetchSnapshot pairs a prefetched relationship with the relRevs value seen
+// at prefetch (BACKLOG 18b), so ReplaceRelationship detects a concurrent
+// property-only write; the structural check cannot (endpoints/type are immutable).
 type relPrefetchSnapshot struct {
 	rel *types.Relationship
 	rev uint64
@@ -592,14 +546,10 @@ func (bs *Store) currentRelForPrefetchLocked(rid types.RelID, prefetched relPref
 	return bs.getRelLocked(rid)
 }
 
-// prefetchRelDeleteInfo prefetches a relationship's delete metadata plus the
-// relRevs value observed at prefetch time (BACKLOG 18g, mirroring
-// prefetchRelWithRev/BACKLOG 18b). The rev lets a locked TOCTOU re-check
-// detect ANY write to this specific rel ID in the prefetch→lock window —
-// including a delete-then-recreate-with-the-same-ID-but-different-endpoints
-// race (lesson 22), which relDeleteInfoStillIndexedLocked's relIDs/typeIdx
-// membership check alone cannot catch in AdjacencyIndexOnDisk mode (no RAM
-// adjacency mirror to verify endpoints against).
+// prefetchRelDeleteInfo prefetches delete metadata plus the relRevs value
+// (BACKLOG 18g). The rev lets the locked re-check detect any write to this rel ID,
+// including delete-then-recreate with different endpoints (lesson 22), which the
+// membership check cannot catch in AdjacencyIndexOnDisk mode.
 func (bs *Store) prefetchRelDeleteInfo(rid types.RelID) (RelDeleteInfo, error) {
 	bs.idxMu.RLock()
 	rev := bs.relRevs[rid]
@@ -614,12 +564,9 @@ func (bs *Store) prefetchRelDeleteInfo(rid types.RelID) (RelDeleteInfo, error) {
 	return info, nil
 }
 
-// relDeleteInfoRevCurrentLocked reports whether info's prefetch-time rev
-// still matches the live rev for its rel ID — i.e. nothing has written to
-// (or deleted+recreated) that specific rel ID since prefetch. Caller must
-// hold bs.idxMu (read or write). info.Rev == 0 (unset by construction, e.g.
-// relDeleteInfoFromRelationship) always reports stale, forcing callers that
-// didn't capture a rev to fall back to a locked re-read.
+// relDeleteInfoRevCurrentLocked reports whether info's prefetch-time rev still
+// matches the live rev. Caller holds bs.idxMu (R or W). info.Rev == 0 (no rev
+// captured) always reports stale, forcing a locked re-read.
 func (bs *Store) relDeleteInfoRevCurrentLocked(info RelDeleteInfo) bool {
 	return info.Rev != 0 && bs.relRevs[types.RelID(info.ID)] == info.Rev
 }
@@ -653,13 +600,10 @@ func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {
 	return true
 }
 
-// deleteRelByInfo applies relationship deletion mutations using pre-read metadata.
-// old is the current row being deleted, read by the caller: the planner
-// statistics take exactly its contribution back out (backlog 53). old is nil
-// only when the row could not be read (PurgeRelationshipByInfo's residue
-// cleanup); its contribution then stays until the next open rebuild, which
-// skips unreadable rows too.
-// Caller must hold bs.idxMu write lock. This method performs no reads — it cannot fail.
+// deleteRelByInfo applies relationship deletion using pre-read metadata. old is
+// the row being deleted; the planner statistics take its contribution back out
+// (backlog 53). old is nil only for unreadable rows (PurgeRelationshipByInfo
+// residue cleanup). Caller holds bs.idxMu write lock; performs no reads.
 func (bs *Store) deleteRelByInfo(info RelDeleteInfo, old *types.Relationship) {
 	bs.removeRelByInfo(info, old, true)
 }
@@ -667,9 +611,8 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo, old *types.Relationship) {
 // removeRelByInfo is deleteRelByInfo; exLeg false records no ex-adjacency (an
 // undone create).
 func (bs *Store) removeRelByInfo(info RelDeleteInfo, old *types.Relationship, exLeg bool) {
-	// info.ID/startID/endID are raw snowflake.ID — RelDeleteInfo is shared with
-	// off-limits TieredStore code paths and must keep raw fields. Convert at
-	// each map access.
+	// info.ID/startID/endID are raw snowflake.ID (RelDeleteInfo is shared with
+	// TieredStore code); convert at each map access.
 	rid := types.RelID(info.ID)
 	startNID := types.NodeID(info.StartID)
 	endNID := types.NodeID(info.EndID)
@@ -681,10 +624,9 @@ func (bs *Store) removeRelByInfo(info RelDeleteInfo, old *types.Relationship, ex
 	bs.deleteRelRevLocked(rid)
 	delete(bs.relValidIdx, rid)                 // drop the inline valid-time stamp
 	bs.maintainRelPropertyIndexesPurge(info.ID) // brute-force (RelDeleteInfo has no property values)
-	// The rel-type temporal envelope is append-only, as memory's delete keeps
-	// it: the deleted row's history stays on this store, and a rolled-back
-	// delete restores the current row without re-adding the history versions,
-	// so purging here would drop past versions from valid-time queries.
+	// The rel-type temporal envelope is append-only (as memory's delete): history
+	// stays, and a rolled-back delete does not re-add versions, so purging would drop
+	// past versions from valid-time queries.
 	bs.removeRelPropertyTypeClassCounts(old) // the deleted row's own contribution (the single delete seam)
 	bs.removeRelPropertyStatsCounts(old)
 
@@ -786,21 +728,16 @@ func (bs *Store) prefetchRel(rid types.RelID) (*types.Relationship, error) {
 	return r, nil
 }
 
-// prefetchRelScan is prefetchRel WITHOUT the cache fill on miss — the
-// relationship mirror of prefetchNodeScan; see that comment for the LRU
-// sequential-scan pathology it prevents. Used by full-cardinality scans
-// (by-type, AllRelationships, temporal range); adjacency reads
-// (Outgoing/Incoming) keep the filling prefetchRel because traversals
-// revisit them.
+// prefetchRelScan is prefetchRel without the cache fill on miss (see
+// prefetchNodeScan for the LRU scan pathology). Used by full-cardinality scans;
+// adjacency reads keep the filling prefetchRel.
 func (bs *Store) prefetchRelScan(rid types.RelID) (*types.Relationship, error) {
 	r, _, err := bs.prefetchRelNoFill(rid, false) // scan: no promote
 	return r, err
 }
 
-// prefetchRelNoFill is the shared core: cache lookup, then badger decode.
-// miss=true means r was decoded from badger (a cache-fill candidate). The
-// decoded relationship is frozen before return because callers may publish
-// it into the cache, and cache entries must never be mutable.
+// prefetchRelNoFill is the shared core. miss=true means r was decoded from badger.
+// The result is frozen because callers may publish it into the cache.
 func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool) (r *types.Relationship, miss bool, err error) {
 	id := rid.SnowflakeID()
 	// Point reads promote (Get); scan reads do not (GetNoPromote) — see

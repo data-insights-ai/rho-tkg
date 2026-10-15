@@ -1,0 +1,33 @@
+# backlog 70: cost of the exact row-above check on the common Update path (current row tops the chain, current+1 misses)
+# BenchmarkZZUpdateDeepChain (scratch, not committed): Nodes.Update on a node whose history grows from N by b.N; -benchtime=2000x -count=3
+# columns: name ns/op B/op allocs/op
+#
+# first cut (page read of one row on every miss): memory 3.3 -> 7.5-10 us, badger 4.3-6.4 -> 14.5-18.9 us (45 -> 57 allocs): rejected
+# final: the stores answer a page from above their per-ID upper bound of the top version without reading rows
+# (memory: nodeHistTop / relHistTop raised by the one history-write funnel; badger: the history presence set's top)
+== before (main e61f1014 + 68b test hooks)
+BenchmarkZZUpdateDeepChain/memory/history=1-32 3000 2385 29
+BenchmarkZZUpdateDeepChain/memory/history=1-32 3771 2388 29
+BenchmarkZZUpdateDeepChain/memory/history=1-32 3372 2391 29
+BenchmarkZZUpdateDeepChain/memory/history=300-32 3403 2375 29
+BenchmarkZZUpdateDeepChain/memory/history=300-32 2879 2375 29
+BenchmarkZZUpdateDeepChain/memory/history=300-32 2375 2375 29
+BenchmarkZZUpdateDeepChain/badger/history=1-32 5424 3658 45
+BenchmarkZZUpdateDeepChain/badger/history=1-32 4964 3658 45
+BenchmarkZZUpdateDeepChain/badger/history=1-32 4666 3658 45
+BenchmarkZZUpdateDeepChain/badger/history=300-32 4416 3615 45
+BenchmarkZZUpdateDeepChain/badger/history=300-32 4863 3615 45
+BenchmarkZZUpdateDeepChain/badger/history=300-32 4877 3615 45
+== after (backlog 70 final)
+BenchmarkZZUpdateDeepChain/memory/history=1-32 3237 2386 29
+BenchmarkZZUpdateDeepChain/memory/history=1-32 3870 2388 29
+BenchmarkZZUpdateDeepChain/memory/history=1-32 3622 2388 29
+BenchmarkZZUpdateDeepChain/memory/history=300-32 3075 2375 29
+BenchmarkZZUpdateDeepChain/memory/history=300-32 3307 2374 29
+BenchmarkZZUpdateDeepChain/memory/history=300-32 3460 2375 29
+BenchmarkZZUpdateDeepChain/badger/history=1-32 5838 3658 45
+BenchmarkZZUpdateDeepChain/badger/history=1-32 5256 3658 45
+BenchmarkZZUpdateDeepChain/badger/history=1-32 5564 3659 45
+BenchmarkZZUpdateDeepChain/badger/history=300-32 4702 3615 45
+BenchmarkZZUpdateDeepChain/badger/history=300-32 6958 3615 45
+BenchmarkZZUpdateDeepChain/badger/history=300-32 4837 3615 45

@@ -1,0 +1,27 @@
+--- FAIL: TestElementsIndexStampsFormatMarker (0.50s)
+    --- FAIL: TestElementsIndexStampsFormatMarker/node_elements (0.09s)
+        badgerstore_elements_format_test.go:42: marker = 3 (present true), want 5
+    --- FAIL: TestElementsIndexStampsFormatMarker/rel_elements (0.13s)
+        badgerstore_elements_format_test.go:42: marker = 3 (present true), want 5
+--- FAIL: TestElementsIndexRefusedOnDiskReopen (0.13s)
+    badgerstore_elements_format_test.go:96: PropertyIndexOnDisk opened a store with an Elements index
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.682s
+FAIL
+--- FAIL: TestPropertyIndexElementsContains (0.64s)
+    --- FAIL: TestPropertyIndexElementsContains/memory (0.01s)
+        property_index_elements_test.go:165: composite over an Elements key: <nil>, want ErrElementsIndexUnsupported
+    --- FAIL: TestPropertyIndexElementsContains/badger (0.02s)
+        property_index_elements_test.go:165: composite over an Elements key: <nil>, want ErrElementsIndexUnsupported
+    --- FAIL: TestPropertyIndexElementsContains/tiered (0.05s)
+        property_index_elements_test.go:165: composite over an Elements key: <nil>, want ErrElementsIndexUnsupported
+    --- FAIL: TestPropertyIndexElementsContains/sharded (0.02s)
+        property_index_elements_test.go:165: composite over an Elements key: <nil>, want ErrElementsIndexUnsupported
+--- FAIL: TestPropertyIndexElementsTieredEventShardAndArchive (0.09s)
+    property_index_elements_test.go:348: current 101: got [811399876224778240 811399876225400832], want [811399876222091264 811399876224778240 811399876225400832]
+    property_index_elements_test.go:348: current 102 (event shard): got [], want [811399876222091264]
+    property_index_elements_test.go:348: TxPin 102: got [], want [811399876222091264]
+    property_index_elements_test.go:348: TxPin 101: got [811399876224778240 811399876225400832], want [811399876222091264 811399876224778240 811399876225400832]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.788s
+FAIL

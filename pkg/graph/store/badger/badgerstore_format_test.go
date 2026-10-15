@@ -78,8 +78,8 @@ func TestWireFormatMarkerStampAndLegacyDirReopen(t *testing.T) {
 	newDiskStoreWithNode(t, dir, 100)
 
 	v, found := readRawMarker(t, dir)
-	if !found || v != storepkg.StoreFormatVersion {
-		t.Fatalf("marker after first open = (%d, %v), want (%d, true)", v, found, storepkg.StoreFormatVersion)
+	if !found || v != openStampVersion() {
+		t.Fatalf("marker after first open = (%d, %v), want (%d, true)", v, found, openStampVersion())
 	}
 
 	// Simulate a pre-versioning directory: strip the marker.
@@ -103,8 +103,8 @@ func TestWireFormatMarkerStampAndLegacyDirReopen(t *testing.T) {
 	}
 
 	v, found = readRawMarker(t, dir)
-	if !found || v != storepkg.StoreFormatVersion {
-		t.Fatalf("marker after legacy reopen = (%d, %v), want re-stamped (%d, true)", v, found, storepkg.StoreFormatVersion)
+	if !found || v != openStampVersion() {
+		t.Fatalf("marker after legacy reopen = (%d, %v), want re-stamped (%d, true)", v, found, openStampVersion())
 	}
 }
 

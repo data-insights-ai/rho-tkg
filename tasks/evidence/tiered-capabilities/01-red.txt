@@ -1,0 +1,525 @@
+# backlog 58 red: base 5d57a132, test only
+# go test -count=1 -run TestTieredTxMembershipAndValidEndMatchBadger ./pkg/graph/internal/core/
+--- FAIL: TestTieredTxMembershipAndValidEndMatchBadger (1.40s)
+    tiered_capabilities_test.go:370: [A: one event shard] core RelHistoryCountByType LINK:
+         tiered:
+          0 false
+         badger:
+          0 true
+    tiered_capabilities_test.go:370: [A: one event shard] core RelHistoryCountByType OWNS:
+         tiered:
+          0 false
+         badger:
+          0 true
+    tiered_capabilities_test.go:233: [A: one event shard] graph 1 store does not implement LabelTxMembershipCapability
+    tiered_capabilities_test.go:242: [A: one event shard] graph 1 store does not implement RelTypeTxMembershipCapability
+    tiered_capabilities_test.go:251: [A: one event shard] graph 1 store does not implement LabelTxMemberLookupCapability
+    tiered_capabilities_test.go:258: [A: one event shard] graph 1 store does not implement RelTypeTxMemberLookupCapability
+    tiered_capabilities_test.go:265: [A: one event shard] graph 1 store does not implement NodePropertyTxMembershipCapability
+    tiered_capabilities_test.go:284: [A: one event shard] graph 1 store does not implement RelPropertyTxMembershipCapability
+    tiered_capabilities_test.go:370: [A: one event shard] store LabelTxMembers Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+    tiered_capabilities_test.go:370: [A: one event shard] store LabelTxMembers Sig:
+         tiered:
+          
+         badger:
+          s1@5
+          s2@6
+    tiered_capabilities_test.go:370: [A: one event shard] store LabelTxMembersOf Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+    tiered_capabilities_test.go:370: [A: one event shard] store NodePropertyTxMembers Case status=closed:
+         tiered:
+          
+         badger:
+          c3@4
+    tiered_capabilities_test.go:370: [A: one event shard] store NodePropertyTxMembers Case status=open:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+    tiered_capabilities_test.go:370: [A: one event shard] store RelTypeTxMembers LINK:
+         tiered:
+          
+         badger:
+          r1@7
+    tiered_capabilities_test.go:370: [A: one event shard] store RelTypeTxMembers OWNS:
+         tiered:
+          
+         badger:
+          o1@8
+    tiered_capabilities_test.go:370: [A: one event shard] store RelTypeTxMembersOf LINK:
+         tiered:
+          
+         badger:
+          r1@7
+    tiered_capabilities_test.go:298: [A: one event shard] graph 1 store does not implement RelValidEndCapability
+    tiered_capabilities_test.go:385: [B: two event shards] core RelHistoryCountByType LINK:
+         tiered:
+          0 false
+         badger:
+          3 true
+    tiered_capabilities_test.go:385: [B: two event shards] core RelHistoryCountByType OWNS:
+         tiered:
+          0 false
+         badger:
+          0 true
+    tiered_capabilities_test.go:233: [B: two event shards] graph 1 store does not implement LabelTxMembershipCapability
+    tiered_capabilities_test.go:242: [B: two event shards] graph 1 store does not implement RelTypeTxMembershipCapability
+    tiered_capabilities_test.go:251: [B: two event shards] graph 1 store does not implement LabelTxMemberLookupCapability
+    tiered_capabilities_test.go:258: [B: two event shards] graph 1 store does not implement RelTypeTxMemberLookupCapability
+    tiered_capabilities_test.go:265: [B: two event shards] graph 1 store does not implement NodePropertyTxMembershipCapability
+    tiered_capabilities_test.go:284: [B: two event shards] graph 1 store does not implement RelPropertyTxMembershipCapability
+    tiered_capabilities_test.go:385: [B: two event shards] store LabelTxMembers Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+    tiered_capabilities_test.go:385: [B: two event shards] store LabelTxMembers Sig:
+         tiered:
+          
+         badger:
+          s1@5
+          s2@6
+          s3@11
+    tiered_capabilities_test.go:385: [B: two event shards] store LabelTxMembersOf Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+    tiered_capabilities_test.go:385: [B: two event shards] store NodePropertyTxMembers Case status=closed:
+         tiered:
+          
+         badger:
+          c1@9
+          c3@4
+    tiered_capabilities_test.go:385: [B: two event shards] store NodePropertyTxMembers Case status=open:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+    tiered_capabilities_test.go:385: [B: two event shards] store RelTypeTxMembers LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+    tiered_capabilities_test.go:385: [B: two event shards] store RelTypeTxMembers OWNS:
+         tiered:
+          
+         badger:
+          o1@8
+    tiered_capabilities_test.go:385: [B: two event shards] store RelTypeTxMembersOf LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+    tiered_capabilities_test.go:298: [B: two event shards] graph 1 store does not implement RelValidEndCapability
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 8] core RelHistoryCountByType LINK:
+         tiered:
+          0 false
+         badger:
+          4 true
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 8] core RelHistoryCountByType OWNS:
+         tiered:
+          0 false
+         badger:
+          0 true
+    tiered_capabilities_test.go:233: [C: three event shards + archive, pin 8] graph 1 store does not implement LabelTxMembershipCapability
+    tiered_capabilities_test.go:242: [C: three event shards + archive, pin 8] graph 1 store does not implement RelTypeTxMembershipCapability
+    tiered_capabilities_test.go:251: [C: three event shards + archive, pin 8] graph 1 store does not implement LabelTxMemberLookupCapability
+    tiered_capabilities_test.go:258: [C: three event shards + archive, pin 8] graph 1 store does not implement RelTypeTxMemberLookupCapability
+    tiered_capabilities_test.go:265: [C: three event shards + archive, pin 8] graph 1 store does not implement NodePropertyTxMembershipCapability
+    tiered_capabilities_test.go:284: [C: three event shards + archive, pin 8] graph 1 store does not implement RelPropertyTxMembershipCapability
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 8] store LabelTxMembers Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 8] store LabelTxMembers Sig:
+         tiered:
+          
+         badger:
+          s1@5
+          s2@6
+          s3@11
+          s4@18
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 8] store LabelTxMembersOf Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 8] store NodePropertyTxMembers Case status=closed:
+         tiered:
+          
+         badger:
+          c1@9
+          c3@4
+          s5@21
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 8] store NodePropertyTxMembers Case status=open:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 8] store RelTypeTxMembers LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+          r4@20
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 8] store RelTypeTxMembers OWNS:
+         tiered:
+          
+         badger:
+          o1@8
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 8] store RelTypeTxMembersOf LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+          r4@20
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 8] graph 0 valid-end candidates at vf=now [r1 r2 r3 r4] keep r2, deleted before it
+    tiered_capabilities_test.go:298: [C: three event shards + archive, pin 8] graph 1 store does not implement RelValidEndCapability
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 17] core RelHistoryCountByType LINK:
+         tiered:
+          0 false
+         badger:
+          4 true
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 17] core RelHistoryCountByType OWNS:
+         tiered:
+          0 false
+         badger:
+          0 true
+    tiered_capabilities_test.go:233: [C: three event shards + archive, pin 17] graph 1 store does not implement LabelTxMembershipCapability
+    tiered_capabilities_test.go:242: [C: three event shards + archive, pin 17] graph 1 store does not implement RelTypeTxMembershipCapability
+    tiered_capabilities_test.go:251: [C: three event shards + archive, pin 17] graph 1 store does not implement LabelTxMemberLookupCapability
+    tiered_capabilities_test.go:258: [C: three event shards + archive, pin 17] graph 1 store does not implement RelTypeTxMemberLookupCapability
+    tiered_capabilities_test.go:265: [C: three event shards + archive, pin 17] graph 1 store does not implement NodePropertyTxMembershipCapability
+    tiered_capabilities_test.go:284: [C: three event shards + archive, pin 17] graph 1 store does not implement RelPropertyTxMembershipCapability
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 17] store LabelTxMembers Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 17] store LabelTxMembers Sig:
+         tiered:
+          
+         badger:
+          s1@5
+          s2@6
+          s3@11
+          s4@18
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 17] store LabelTxMembersOf Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 17] store NodePropertyTxMembers Case status=closed:
+         tiered:
+          
+         badger:
+          c1@9
+          c3@4
+          s5@21
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 17] store NodePropertyTxMembers Case status=open:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 17] store RelTypeTxMembers LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+          r4@20
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 17] store RelTypeTxMembers OWNS:
+         tiered:
+          
+         badger:
+          o1@8
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 17] store RelTypeTxMembersOf LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+          r4@20
+    tiered_capabilities_test.go:298: [C: three event shards + archive, pin 17] graph 1 store does not implement RelValidEndCapability
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 23] core RelHistoryCountByType LINK:
+         tiered:
+          0 false
+         badger:
+          4 true
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 23] core RelHistoryCountByType OWNS:
+         tiered:
+          0 false
+         badger:
+          0 true
+    tiered_capabilities_test.go:233: [C: three event shards + archive, pin 23] graph 1 store does not implement LabelTxMembershipCapability
+    tiered_capabilities_test.go:242: [C: three event shards + archive, pin 23] graph 1 store does not implement RelTypeTxMembershipCapability
+    tiered_capabilities_test.go:251: [C: three event shards + archive, pin 23] graph 1 store does not implement LabelTxMemberLookupCapability
+    tiered_capabilities_test.go:258: [C: three event shards + archive, pin 23] graph 1 store does not implement RelTypeTxMemberLookupCapability
+    tiered_capabilities_test.go:265: [C: three event shards + archive, pin 23] graph 1 store does not implement NodePropertyTxMembershipCapability
+    tiered_capabilities_test.go:284: [C: three event shards + archive, pin 23] graph 1 store does not implement RelPropertyTxMembershipCapability
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 23] store LabelTxMembers Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 23] store LabelTxMembers Sig:
+         tiered:
+          
+         badger:
+          s1@5
+          s2@6
+          s3@11
+          s4@18
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 23] store LabelTxMembersOf Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 23] store NodePropertyTxMembers Case status=closed:
+         tiered:
+          
+         badger:
+          c1@9
+          c3@4
+          s5@21
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 23] store NodePropertyTxMembers Case status=open:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          s5@19
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 23] store RelTypeTxMembers LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+          r4@20
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 23] store RelTypeTxMembers OWNS:
+         tiered:
+          
+         badger:
+          o1@8
+    tiered_capabilities_test.go:396: [C: three event shards + archive, pin 23] store RelTypeTxMembersOf LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+          r4@20
+    tiered_capabilities_test.go:298: [C: three event shards + archive, pin 23] graph 1 store does not implement RelValidEndCapability
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 8] core RelHistoryCountByType LINK:
+         tiered:
+          0 false
+         badger:
+          4 true
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 8] core RelHistoryCountByType OWNS:
+         tiered:
+          0 false
+         badger:
+          0 true
+    tiered_capabilities_test.go:233: [D: cold first shard, pin 8] graph 1 store does not implement LabelTxMembershipCapability
+    tiered_capabilities_test.go:242: [D: cold first shard, pin 8] graph 1 store does not implement RelTypeTxMembershipCapability
+    tiered_capabilities_test.go:251: [D: cold first shard, pin 8] graph 1 store does not implement LabelTxMemberLookupCapability
+    tiered_capabilities_test.go:258: [D: cold first shard, pin 8] graph 1 store does not implement RelTypeTxMemberLookupCapability
+    tiered_capabilities_test.go:265: [D: cold first shard, pin 8] graph 1 store does not implement NodePropertyTxMembershipCapability
+    tiered_capabilities_test.go:284: [D: cold first shard, pin 8] graph 1 store does not implement RelPropertyTxMembershipCapability
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 8] store LabelTxMembers Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+          s5@19
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 8] store LabelTxMembers Sig:
+         tiered:
+          
+         badger:
+          s1@5
+          s2@6
+          s3@11
+          s4@18
+          s5@19
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 8] store LabelTxMembersOf Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+          s5@19
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 8] store NodePropertyTxMembers Case status=closed:
+         tiered:
+          
+         badger:
+          c1@9
+          c3@4
+          s5@21
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 8] store NodePropertyTxMembers Case status=open:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          s5@19
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 8] store RelTypeTxMembers LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+          r4@20
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 8] store RelTypeTxMembers OWNS:
+         tiered:
+          
+         badger:
+          o1@8
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 8] store RelTypeTxMembersOf LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+          r4@20
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 8] graph 0 valid-end candidates at vf=now [r1 r2 r3 r4] keep r2, deleted before it
+    tiered_capabilities_test.go:298: [D: cold first shard, pin 8] graph 1 store does not implement RelValidEndCapability
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 23] core RelHistoryCountByType LINK:
+         tiered:
+          0 false
+         badger:
+          4 true
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 23] core RelHistoryCountByType OWNS:
+         tiered:
+          0 false
+         badger:
+          0 true
+    tiered_capabilities_test.go:233: [D: cold first shard, pin 23] graph 1 store does not implement LabelTxMembershipCapability
+    tiered_capabilities_test.go:242: [D: cold first shard, pin 23] graph 1 store does not implement RelTypeTxMembershipCapability
+    tiered_capabilities_test.go:251: [D: cold first shard, pin 23] graph 1 store does not implement LabelTxMemberLookupCapability
+    tiered_capabilities_test.go:258: [D: cold first shard, pin 23] graph 1 store does not implement RelTypeTxMemberLookupCapability
+    tiered_capabilities_test.go:265: [D: cold first shard, pin 23] graph 1 store does not implement NodePropertyTxMembershipCapability
+    tiered_capabilities_test.go:284: [D: cold first shard, pin 23] graph 1 store does not implement RelPropertyTxMembershipCapability
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 23] store LabelTxMembers Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+          s5@19
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 23] store LabelTxMembers Sig:
+         tiered:
+          
+         badger:
+          s1@5
+          s2@6
+          s3@11
+          s4@18
+          s5@19
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 23] store LabelTxMembersOf Case:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          c3@4
+          s5@19
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 23] store NodePropertyTxMembers Case status=closed:
+         tiered:
+          
+         badger:
+          c1@9
+          c3@4
+          s5@21
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 23] store NodePropertyTxMembers Case status=open:
+         tiered:
+          
+         badger:
+          c1@2
+          c2@3
+          s5@19
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 23] store RelTypeTxMembers LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+          r4@20
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 23] store RelTypeTxMembers OWNS:
+         tiered:
+          
+         badger:
+          o1@8
+    tiered_capabilities_test.go:430: [D: cold first shard, pin 23] store RelTypeTxMembersOf LINK:
+         tiered:
+          
+         badger:
+          r1@7
+          r2@12
+          r3@13
+          r4@20
+    tiered_capabilities_test.go:298: [D: cold first shard, pin 23] graph 1 store does not implement RelValidEndCapability
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.420s
+FAIL

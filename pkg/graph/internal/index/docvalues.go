@@ -31,7 +31,7 @@ import (
 
 // MaxDocValuesNodes caps a per-label column. Over the cap a store declines to
 // build (the consumer falls back to the per-node path), bounding column memory
-// rather than silently truncating. 10M numeric rows ≈ 165 MB/column.
+// rather than silently truncating.
 const MaxDocValuesNodes = 10_000_000
 
 // MultiLabelKey encodes a label-token tuple into an order-independent cache key
@@ -89,19 +89,16 @@ const (
 // representation is populated per col type.
 //
 // Storage is TYPED (`[]int64`/`[]float64`/`[]string`); the boxed `[]any` views the
-// older doors hand out are built LAZILY, on first use, and cached. That ordering is
-// deliberate and is the whole point of the layout:
+// boxed-column doors hand out are built LAZILY, on first use, and cached. That
+// ordering is deliberate and is the whole point of the layout:
 //
 //   - a typed reader (the column-scan capability) never materialises a boxed view
-//     at all, so it costs 8 bytes per numeric row and ZERO heap objects, against
-//     the 24 bytes (16B interface header + 8B boxed int64) and one object per row
-//     an eagerly-boxed column costs;
-//   - a boxed reader pays exactly what it paid when the column was boxed at build —
-//     once per snapshot, amortised over every read — so it does NOT regress. Boxing
-//     per read instead would allocate on every value, because Go heap-escapes an
-//     int64 on interface conversion outside the small-value cache. `[]any` is in the
-//     PUBLISHED contract (types.NodeColumnReader, nodes.API.ForEachDocValues), so
-//     that regression would land on every existing consumer.
+//     at all, so it holds no per-row heap objects;
+//   - a boxed reader pays the boxing once per snapshot, amortised over every read.
+//     Boxing per read instead would allocate on every value, because Go
+//     heap-escapes an int64 on interface conversion outside the small-value
+//     cache. `[]any` is in the PUBLISHED contract (types.NodeColumnReader,
+//     nodes.API.ForEachDocValues), so it must stay cheap for every consumer.
 //
 // Contains a sync.Once, so a docColumn must only ever be handled as *docColumn
 // (go vet's copylocks enforces this).
@@ -113,8 +110,7 @@ type docColumn struct {
 	// ColNumeric: typed storage in one of three exact states, so a column never
 	// carries an array it does not need. int64-vs-float64 must be PRESERVED (not
 	// collapsed to float64) or a consumer's accumulator stops being bit-exact above
-	// 2^53 — the invariant the previous boxed representation held via each value's
-	// dynamic type.
+	// 2^53.
 	//
 	//	isFloat == nil && flts == nil  -> uniformly int64  (values in ints)
 	//	isFloat == nil && ints == nil  -> uniformly float64 (values in flts)
@@ -173,6 +169,13 @@ type DocValues[T EntityID] struct {
 	validFrom   []int64
 	validTo     []int64
 	hasTemporal bool
+	// effFrom is the EFFECTIVE start per row (storeutil.EntityValidFrom: an
+	// unset ValidFrom is the row's TxFrom), the start every valid-time filter
+	// and the zone map use; nil when it equals validFrom on every row (a builder
+	// that reports the effective start as validFrom). A builder that reports the
+	// RAW stored ValidFrom (badger: ColumnBatch.ValidFrom is the stored value)
+	// supplies both (backlog 62).
+	effFrom []int64
 
 	// Zone map: per-block min/max of validFrom/validTo over zoneBlockSize ordinals,
 	// so a valid-time predicate can skip whole blocks on metadata alone instead of
@@ -213,6 +216,27 @@ func (l *DocValues[T]) ValidFrom() []int64 { return l.validFrom }
 // nil when the snapshot has no temporal columns. Immutable; callers must not write
 // to it.
 func (l *DocValues[T]) ValidTo() []int64 { return l.validTo }
+
+// EffectiveValidFrom is the ordinal-aligned start a valid-time filter uses
+// (see effFrom), or nil when the snapshot has no temporal columns. Immutable.
+func (l *DocValues[T]) EffectiveValidFrom() []int64 {
+	if l.effFrom != nil {
+		return l.effFrom
+	}
+	return l.validFrom
+}
+
+// setEff records row ord's effective start, allocating effFrom (a copy of
+// validFrom so far) on the first row whose effective start differs.
+func (l *DocValues[T]) setEff(ord int, eff int64) {
+	if l.effFrom == nil {
+		if eff == l.validFrom[ord] {
+			return
+		}
+		l.effFrom = slices.Clone(l.validFrom)
+	}
+	l.effFrom[ord] = eff
+}
 
 // BlockCanMatch reports whether the ordinal block starting at `start` can contain
 // any row matching the half-open query window [qFrom, qTo). A false means the whole
@@ -301,6 +325,21 @@ func (l *DocValues[T]) HasAll(propKeys []string) bool {
 // Returns false if any requested key is not a usable column (caller must check
 // HasAll first; this is a defensive guard).
 func (l *DocValues[T]) ForEachRow(propKeys []string, fn func(id T, vals []any, present []bool) bool) bool {
+	return l.forEachRow(propKeys, func(_ int, id T, vals []any, present []bool) bool { return fn(id, vals, present) })
+}
+
+// ForEachRowOrdinal is ForEachRow with each row's entity ordinal beside its ID:
+// ords is aligned with IDs() (ords[row] is the ordinal of IDs()[row]; the
+// store reads them for this snapshot). Returns false, calling fn for no row, if
+// len(ords) differs from Len() or a requested key is not a usable column.
+func (l *DocValues[T]) ForEachRowOrdinal(propKeys []string, ords []uint32, fn func(id T, ordinal uint32, vals []any, present []bool) bool) bool {
+	if len(ords) != len(l.ids) {
+		return false
+	}
+	return l.forEachRow(propKeys, func(row int, id T, vals []any, present []bool) bool { return fn(id, ords[row], vals, present) })
+}
+
+func (l *DocValues[T]) forEachRow(propKeys []string, fn func(row int, id T, vals []any, present []bool) bool) bool {
 	cols := make([]*docColumn, len(propKeys))
 	for i, k := range propKeys {
 		c, ok := l.cols[k]
@@ -320,7 +359,7 @@ func (l *DocValues[T]) ForEachRow(propKeys []string, fn func(id T, vals []any, p
 			present[i] = true
 			vals[i] = c.valueAt(ord)
 		}
-		if !fn(id, vals, present) {
+		if !fn(ord, id, vals, present) {
 			return false
 		}
 	}
@@ -538,13 +577,13 @@ func (c *docColumn) boxedDict() []any {
 // because every existing caller names it.
 func BuildLabelDocValues(epoch uint64, nodeIDs []types.NodeID, propKeys []string,
 	getProp func(types.NodeID, string) (any, bool),
-	getTemporal func(types.NodeID) (validFrom, validTo int64, ok bool)) *LabelDocValues {
+	getTemporal func(types.NodeID) (validFrom, validTo, effFrom int64, ok bool)) *LabelDocValues {
 	return BuildDocValues(epoch, nodeIDs, propKeys, getProp, getTemporal)
 }
 
 func BuildDocValues[T EntityID](epoch uint64, entityIDs []T, propKeys []string,
 	getProp func(T, string) (any, bool),
-	getTemporal func(T) (validFrom, validTo int64, ok bool)) *DocValues[T] {
+	getTemporal func(T) (validFrom, validTo, effFrom int64, ok bool)) *DocValues[T] {
 
 	ids := slices.Clone(entityIDs)
 	slices.SortFunc(ids, func(a, b T) int {
@@ -561,8 +600,9 @@ func BuildDocValues[T EntityID](epoch uint64, entityIDs []T, propKeys []string,
 		for ord, id := range ids {
 			// A node with no metadata keeps (0,0) — the same shape as an unbounded
 			// entity, which is why the column pair alone is not a membership filter.
-			if f, t, ok := getTemporal(id); ok {
+			if f, t, eff, ok := getTemporal(id); ok {
 				l.validFrom[ord], l.validTo[ord] = f, t
+				l.setEff(ord, eff)
 			}
 		}
 		l.buildZoneMap()

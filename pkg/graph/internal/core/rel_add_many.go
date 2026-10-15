@@ -156,6 +156,7 @@ func (c *Core) addRelationshipsInternal(ctx context.Context, typeName string, re
 	if err := c.putGeneratedRelationshipsBatch(built); err != nil {
 		return nil, finish(err)
 	}
+	c.noteRelsCreated(typeName, built...) // degree tracking (StatOps.TrackRelTypeDegrees)
 	if err := finish(nil); err != nil {
 		// The rows are live; only the registry persistence failed.
 		c.opRelAdds.Add(int64(len(built)))

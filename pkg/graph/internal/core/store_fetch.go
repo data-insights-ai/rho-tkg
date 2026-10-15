@@ -150,6 +150,9 @@ func (c *Core) trustedCurrentRel(id types.RelID, r *types.Relationship, err erro
 
 func (c *Core) getNodeHistory(id types.NodeID) ([]*types.Node, error) {
 	history, err := c.store.GetNodeHistory(id)
+	if c.historyRead != nil {
+		c.historyRead(len(history))
+	}
 	return c.trustedNodeHistory(id, history, err)
 }
 
@@ -168,6 +171,9 @@ func (c *Core) trustedNodeHistory(id types.NodeID, history []*types.Node, err er
 
 func (c *Core) getRelHistory(id types.RelID) ([]*types.Relationship, error) {
 	history, err := c.store.GetRelHistory(id)
+	if c.historyRead != nil {
+		c.historyRead(len(history))
+	}
 	return c.trustedRelHistory(id, history, err)
 }
 
@@ -186,6 +192,9 @@ func (c *Core) trustedRelHistory(id types.RelID, history []*types.Relationship, 
 
 func (c *Core) getNodeVersion(id types.NodeID, version uint32) (*types.Node, error) {
 	n, err := c.store.GetNodeVersion(id, version)
+	if c.historyRead != nil && err == nil {
+		c.historyRead(1)
+	}
 	return c.trustedNodeVersion(id, version, n, err)
 }
 
@@ -204,6 +213,9 @@ func (c *Core) trustedNodeVersion(id types.NodeID, version uint32, n *types.Node
 
 func (c *Core) getRelVersion(id types.RelID, version uint32) (*types.Relationship, error) {
 	r, err := c.store.GetRelVersion(id, version)
+	if c.historyRead != nil && err == nil {
+		c.historyRead(1)
+	}
 	return c.trustedRelVersion(id, version, r, err)
 }
 
@@ -225,6 +237,9 @@ func (c *Core) nodeHistoryVersionsFrom(pager storepkg.HistoryVersionPageCapabili
 	if err != nil {
 		return nil, err
 	}
+	if c.historyRead != nil {
+		c.historyRead(len(history))
+	}
 	if !c.storeRowsTrust {
 		if err := validateNodeHistoryPageRows(id, startVersion, limit, history); err != nil {
 			return nil, err
@@ -238,6 +253,9 @@ func (c *Core) relHistoryVersionsFrom(pager storepkg.HistoryVersionPageCapabilit
 	history, err := pager.RelHistoryVersionsFrom(id, startVersion, limit)
 	if err != nil {
 		return nil, err
+	}
+	if c.historyRead != nil {
+		c.historyRead(len(history))
 	}
 	if !c.storeRowsTrust {
 		if err := validateRelationshipHistoryPageRows(id, startVersion, limit, history); err != nil {

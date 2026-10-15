@@ -8,12 +8,11 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // =============================================================================
-// Cascade timeline edit — append-only (since 994df82, 2026-06-12)
+// Cascade timeline edit — append-only
 //
 // SetNodeVersionInterval / SetRelVersionInterval record, at transaction time
 // `now`, the belief "[newVF, newVT) is `props` (a patch)" — `now` is the clock,
@@ -30,10 +29,9 @@ import (
 //     held at newVT, so the timeline after the target is unchanged (none when
 //     newVT is open).
 //
-// How an existing row [vf, vt) relates to the target is still described with
-// the old classification names, but now only as vocabulary for what the
-// appended rows do to the READ result — the stored row is untouched in every
-// case:
+// How an existing row [vf, vt) relates to the target is described with these
+// classification names, as vocabulary for what the appended rows do to the READ
+// result — the stored row is untouched in every case:
 //
 //   - keep            no overlap; reads unchanged
 //   - closeRight      vf < newVF < vt — reads of [newVF, vt) see the pieces
@@ -50,10 +48,7 @@ import (
 // (resolveNodeVersionAt). Pins before `now` therefore reconstruct the
 // pre-correction belief exactly, pins at or after it the corrected one. Every
 // row is an ordinary half-open span, including a one-tick [t, t+1) piece:
-// there is no sentinel width (the pre-994df82 in-place cascade marked an
-// eclipsed row as ValidTo == ValidFrom+1 and the resolvers skipped that
-// shape; nothing has written it since, and the skip was removed because it
-// hid legitimate one-tick rows).
+// there is no sentinel width, and the resolvers skip no shape.
 //
 // Integrity: TemporalMetadata is NOT part of the content hash (see
 // integrity.computeNodeHashWithBuffer). Each appended row gets a fresh hash and
@@ -69,8 +64,7 @@ import (
 // entity's chain, and the base is always a member of that chain. Any change to
 // how pieces or bases are chosen must re-run the full bitemporal oracle fuzz
 // harness (bitemporaloracle_test.go / bitemporaloracle_commitwindow_test.go) —
-// 10b's reverted fix attempts prove this file's bounds logic breaks in
-// non-obvious multi-cascade ways.
+// this file's bounds logic breaks in non-obvious multi-cascade ways (10b).
 //
 // "Current" slot: the newest belief among rows whose OWN interval is open
 // (ValidTo == 0) takes the store's current slot; the prior current moves to
@@ -93,11 +87,21 @@ import (
 // =============================================================================
 
 func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any, at types.Instant) (*types.Node, error) {
+	return c.cascadeNode(ctx, id, newVF, newVT, props, at, false)
+}
+
+// cascadeNode is the cascade kernel. void selects the excise (excise.go): the
+// pieces over [newVF, newVT) are void rows and cover only the parts where a
+// version is valid as believed before the call (none: ErrNoVersionValidAt).
+func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any, at types.Instant, void bool) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
 	if newVF == 0 {
 		return nil, fmt.Errorf("%w: cascade requires non-zero validFrom", ErrInvalidTimeRange)
+	}
+	if void && newVT == 0 {
+		return nil, fmt.Errorf("%w: excise requires a bounded end", ErrInvalidTimeRange)
 	}
 	if newVT != 0 && newVF >= newVT {
 		return nil, fmt.Errorf("%w: validFrom %d >= validTo %d", ErrInvalidTimeRange, newVF, newVT)
@@ -120,22 +124,35 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
-	history, err := c.getNodeHistory(id)
-	if err != nil {
-		return nil, err
-	}
-	if current == nil && len(history) == 0 {
-		return nil, storepkg.ErrNodeNotFound
-	}
-	if current == nil {
-		// Hard-deleted: the chain ends in a tombstone. A correction appended
-		// after it would be a belief no door reads consistently (backlog 14).
-		return nil, nodeDeletedErr(id)
+	// The head answer before any write (backlog 68, effective_head.go). A
+	// valid one stands in for the history read (backlog 68b,
+	// effective_head_write.go).
+	headBefore := c.nodeHeadBeforeWrite(id, current)
+	hc, fromHead := chainFromHead(c, headBefore, current, func(v uint32) (*types.Node, error) { return c.getNodeVersion(id, v) },
+		newVF, newVT, at, void)
+	var history []*types.Node
+	if !fromHead {
+		if history, err = c.getNodeHistory(id); err != nil {
+			return nil, err
+		}
+		if current == nil && len(history) == 0 {
+			return nil, storepkg.ErrNodeNotFound
+		}
+		if current == nil {
+			// Hard-deleted: the chain ends in a tombstone. A correction appended
+			// after it would be a belief no door reads consistently (backlog 14).
+			return nil, nodeDeletedErr(id)
+		}
 	}
 
-	maxVersion := current.Version()
-	for _, h := range history {
-		maxVersion = max(maxVersion, h.Version())
+	maxVersion := hc.maxVersion
+	var stamps []*types.TemporalMetadata // from the head: the order rule was checked
+	if !fromHead {
+		maxVersion = current.Version()
+		for _, h := range history {
+			maxVersion = max(maxVersion, h.Version())
+		}
+		stamps = temporalsOf(history, current)
 	}
 	nextVersion, err := nextEntityVersion(maxVersion)
 	if err != nil {
@@ -143,7 +160,7 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	}
 	// The clock, or the caller instant at once the order rule holds for the
 	// whole chain (interval_withtx.go). Every appended row is stamped with it.
-	now, err := c.cascadeInstant(at, temporalsOf(history, current))
+	now, err := c.cascadeInstant(at, stamps)
 	if err != nil {
 		return nil, err
 	}
@@ -164,10 +181,13 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// (resolveNodeVersionAt). Existing rows therefore reconstruct the
 	// pre-correction belief exactly, and the appended rows the post-correction
 	// belief — no holes, no leaks.
-	preChain := make([]*types.Node, 0, len(history)+1)
-	preChain = append(preChain, history...)
-	preChain = append(preChain, current) // non-nil: a deleted entity was refused above
-	preChain = versionOrdered(preChain)  // the resolver's input contract (lesson 73)
+	var preChain []*types.Node
+	if !fromHead {
+		preChain = make([]*types.Node, 0, len(history)+1)
+		preChain = append(preChain, history...)
+		preChain = append(preChain, current) // non-nil: a deleted entity was refused above
+		preChain = versionOrdered(preChain)  // the resolver's input contract (lesson 73)
+	}
 
 	// Resumption: re-assert, from newVT onward, whatever value held AT newVT in
 	// the pre-correction belief, so the part of the timeline after the
@@ -176,13 +196,12 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// BACKLOG 10b: the resumption row's ValidTo is stamped EXPLICITLY here,
 	// via nodeResumptionEnd — the smallest own-interval boundary (any row's
 	// own vStart or vEnd) in the PRE-correction chain that is strictly after
-	// newVT. This is NOT "the positionally-next row after src" (that was
-	// tried and is UNSAFE on an already-cascaded preChain: src can be chosen
+	// newVT. This is NOT "the positionally-next row after src" (that is
+	// UNSAFE on an already-cascaded preChain: src can be chosen
 	// by BELIEF, not position, so the row positionally after it in a
 	// valid-from-sorted array can have an own vStart earlier than newVT
-	// itself, producing an inverted [newVT, earlier) interval — caught by the
-	// oracle harness during this fix's own verification). Own-interval bounds
-	// make every row's own [vStart, vEnd) a fixed, position-independent
+	// itself, producing an inverted [newVT, earlier) interval). Own-interval
+	// bounds make every row's own [vStart, vEnd) a fixed, position-independent
 	// interval, so the set of rows covering any t is piecewise-constant
 	// between consecutive own-boundary points — meaning the belief-winner
 	// (src) provably cannot change before the NEXT such boundary across ANY
@@ -197,19 +216,21 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// (the version is hashed), see the allocation step below.
 	appended := make([]*types.Node, 0, 4)
 	prevHashes := make([]string, 0, 4)
-	if newVT != 0 {
+	if newVT != 0 && !fromHead {
 		if src, err := c.resolveNodeVersionAt(append([]*types.Node(nil), preChain...), newVT); err == nil && src != nil {
-			resumptionEnd := nodeResumptionEnd(c, preChain, newVT)
-			resumption := src.DeepCopy()
-			ensureNodeTemporal(resumption)
-			resumption.Temporal().ValidFrom = newVT
-			resumption.Temporal().ValidTo = resumptionEnd // explicit; 0 == open (src was the pre-correction open tail)
-			stampAppendedRow(resumption.Temporal(), now)
-			appended = append(appended, resumption)
-			prevHashes = append(prevHashes, nodeHashOf(src))
+			hc.src, hc.hasSrc, hc.srcEnd = src, true, nodeResumptionEnd(c, preChain, newVT)
 		} else if err != nil && !errors.Is(err, storepkg.ErrNoVersionValidAt) {
 			return nil, fmt.Errorf("graph: cascade resolve resumption source: %w", err)
 		}
+	}
+	if hc.hasSrc {
+		resumption := hc.src.DeepCopy()
+		ensureNodeTemporal(resumption)
+		resumption.Temporal().ValidFrom = newVT
+		resumption.Temporal().ValidTo = hc.srcEnd // explicit; 0 == open (src was the pre-correction open tail)
+		stampAppendedRow(resumption.Temporal(), now)
+		appended = append(appended, resumption)
+		prevHashes = append(prevHashes, nodeHashOf(hc.src))
 	}
 
 	// The inserted interval [newVF, newVT) carrying the corrected state. `props`
@@ -219,21 +240,34 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// each piece is the winner's content plus the patch (see
 	// nodeCorrectionSegments). Rows are fully built (patched, bounded, hashed)
 	// before any write — preflight, then apply.
-	segments, err := c.nodeCorrectionSegments(preChain, template, newVF, newVT)
-	if err != nil {
-		return nil, err
+	segments := hc.segments
+	if !fromHead {
+		if segments, err = c.nodeCorrectionSegments(preChain, template, newVF, newVT, void); err != nil {
+			return nil, err
+		}
 	}
 	var newVer *types.Node // the appended row covering newVF — the return value
-	for i, seg := range segments {
+	voids := 0
+	for _, seg := range segments {
+		if void && seg.gap {
+			continue // nothing valid there: no absence to record
+		}
 		row, err := c.buildNodeCorrectionRow(seg, template, now, props)
 		if err != nil {
 			return nil, err
 		}
-		if i == 0 {
+		if void {
+			row.Temporal().Void = true
+			voids++
+		}
+		if newVer == nil {
 			newVer = row
 		}
 		appended = append(appended, row)
 		prevHashes = append(prevHashes, nodeHashOf(seg.base))
+	}
+	if void && voids == 0 {
+		return nil, fmt.Errorf("%w: excise [%d, %d): no version is valid there", storepkg.ErrNoVersionValidAt, newVF, newVT)
 	}
 	// Provisional versions in build order, all above every stored version, so
 	// the newest-belief comparison below ranks appended rows above existing
@@ -254,17 +288,21 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// valid-from order" — a row's own-open status must never be decided by its
 	// neighbors, or an untouched older open row can wrongly keep the "current"
 	// slot from a newer, wider-reaching open correction. See nodeOwnBounds.
-	postChain := make([]*types.Node, 0, len(preChain)+len(appended))
-	postChain = append(postChain, preChain...)
-	postChain = append(postChain, appended...)
 	var newCurrent *types.Node
-	for i := range postChain {
-		entry := postChain[i]
-		if _, vEnd := c.nodeOwnBounds(entry); vEnd != 0 {
-			continue // only own-open rows can own the current slot
-		}
-		if newCurrent == nil || nodeBeliefNewerThan(entry, newCurrent) {
-			newCurrent = entry
+	if fromHead {
+		newCurrent = headNewCurrent(c, nodeKernel, hc.open, appended)
+	} else {
+		postChain := make([]*types.Node, 0, len(preChain)+len(appended))
+		postChain = append(postChain, preChain...)
+		postChain = append(postChain, appended...)
+		for i := range postChain {
+			entry := postChain[i]
+			if _, vEnd := c.nodeOwnBounds(entry); vEnd != 0 || isVoidRow(entry) {
+				continue // only own-open rows can own the current slot
+			}
+			if newCurrent == nil || nodeBeliefNewerThan(entry, newCurrent) {
+				newCurrent = entry
+			}
 		}
 	}
 
@@ -323,6 +361,14 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 		}
 	}
 
+	headCur := current
+	if curIsNew {
+		headCur = newCurrent
+	}
+	c.nodeHeadAfterWrite(id, headBefore, appended, headCur)
+	if fromHead {
+		c.headWrites.Add(1)
+	}
 	c.opNodeUpdates.Add(1)
 	return newVer, nil
 }
@@ -390,18 +436,20 @@ func relResumptionEnd(c *Core, preChain []*types.Relationship, newVT types.Insta
 // same winner are merged back into one row.
 // =============================================================================
 
-// nodeCorrectionSegment is one maximal piece [from, to) of a cascade target
+// correctionSegment is one maximal piece [from, to) of a cascade target
 // interval (to == 0: open-ended) over which the patch base is one row.
-type nodeCorrectionSegment struct {
+type correctionSegment[T any] struct {
 	from, to types.Instant
-	base     *types.Node
+	base     T
+	gap      bool // no version valid there: base is the template
 }
 
-// relCorrectionSegment mirrors nodeCorrectionSegment for relationships.
-type relCorrectionSegment struct {
-	from, to types.Instant
-	base     *types.Relationship
-}
+// nodeCorrectionSegment and relCorrectionSegment are the node and
+// relationship pieces.
+type (
+	nodeCorrectionSegment = correctionSegment[*types.Node]
+	relCorrectionSegment  = correctionSegment[*types.Relationship]
+)
 
 // correctionCuts returns the sorted, de-duplicated boundaries strictly inside
 // (newVF, newVT) — (newVF, +inf) when newVT == 0.
@@ -429,11 +477,11 @@ func correctionCuts(bounds []types.Instant, newVF, newVT types.Instant) []types.
 // ascending-version preChain (the resolver sorts in place and classifies by
 // input order — lesson 73). Where NO version is valid (a gap: before the
 // entity's first valid-from, after a close, …) there is no then-valid state
-// to patch, so the piece keeps the pre-fix base: the template (the most
+// to patch, so the piece's base is the template (the most
 // recent version). That is a choice, not a derivation — a gap piece asserts a
 // state the entity was never believed to have, and the most recent state is
 // the least surprising content for it.
-func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.Node, newVF, newVT types.Instant) ([]nodeCorrectionSegment, error) {
+func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.Node, newVF, newVT types.Instant, splitGaps bool) ([]nodeCorrectionSegment, error) {
 	bounds := make([]types.Instant, 0, 4*len(preChain))
 	for i, row := range preChain {
 		vStart, vEnd := c.nodeOwnBounds(row)
@@ -450,16 +498,17 @@ func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.No
 			to = cuts[i]
 		}
 		base, err := c.resolveNodeVersionAt(append([]*types.Node(nil), preChain...), from)
-		if errors.Is(err, storepkg.ErrNoVersionValidAt) {
+		gap := errors.Is(err, storepkg.ErrNoVersionValidAt)
+		if gap {
 			base, err = template, nil
 		}
 		if err != nil {
 			return nil, fmt.Errorf("graph: cascade resolve correction base at %d: %w", from, err)
 		}
-		if n := len(segs); n > 0 && segs[n-1].base == base {
+		if n := len(segs); n > 0 && segs[n-1].base == base && (!splitGaps || segs[n-1].gap == gap) {
 			segs[n-1].to = to
 		} else {
-			segs = append(segs, nodeCorrectionSegment{from: from, to: to, base: base})
+			segs = append(segs, nodeCorrectionSegment{from: from, to: to, base: base, gap: gap})
 		}
 		from = to
 	}
@@ -467,7 +516,7 @@ func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.No
 }
 
 // relCorrectionSegments mirrors nodeCorrectionSegments for relationships.
-func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *types.Relationship, newVF, newVT types.Instant) ([]relCorrectionSegment, error) {
+func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *types.Relationship, newVF, newVT types.Instant, splitGaps bool) ([]relCorrectionSegment, error) {
 	bounds := make([]types.Instant, 0, 4*len(preChain))
 	for i, row := range preChain {
 		vStart, vEnd := c.relOwnBounds(row)
@@ -484,16 +533,17 @@ func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *t
 			to = cuts[i]
 		}
 		base, err := c.resolveRelVersionAt(append([]*types.Relationship(nil), preChain...), from)
-		if errors.Is(err, storepkg.ErrNoVersionValidAt) {
+		gap := errors.Is(err, storepkg.ErrNoVersionValidAt)
+		if gap {
 			base, err = template, nil
 		}
 		if err != nil {
 			return nil, fmt.Errorf("graph: cascade resolve rel correction base at %d: %w", from, err)
 		}
-		if n := len(segs); n > 0 && segs[n-1].base == base {
+		if n := len(segs); n > 0 && segs[n-1].base == base && (!splitGaps || segs[n-1].gap == gap) {
 			segs[n-1].to = to
 		} else {
-			segs = append(segs, relCorrectionSegment{from: from, to: to, base: base})
+			segs = append(segs, relCorrectionSegment{from: from, to: to, base: base, gap: gap})
 		}
 		from = to
 	}
@@ -528,6 +578,16 @@ func stampAppendedRow(tm *types.TemporalMetadata, now types.Instant) {
 	tm.TxFrom = now
 	tm.TxTo = 0
 	tm.DeletedAt = 0
+	tm.Void = false // a void piece is marked by the excise after stamping
+}
+
+// isVoidRow reports whether a chain row is a void piece of an excise
+// (types.TemporalMetadata.Void): absent over its own valid interval.
+func isVoidRow[T interface {
+	Temporal() *types.TemporalMetadata
+}](r T) bool {
+	tm := r.Temporal()
+	return tm != nil && tm.Void
 }
 
 // nodeHashOf is n's content hash ("" without integrity metadata) — the
@@ -568,7 +628,7 @@ func moveToEnd[T comparable](rows []T, hashes []string, target T) bool {
 // final) and sets its integrity metadata with PrevHash = prevHash, the hash of
 // the row it corrects.
 func (c *Core) hashAppendedNodeRow(row *types.Node, prevHash string) error {
-	hash, err := integrity.ComputeNodeHashChecked(row, c.nodeLabelsUnlocked(row))
+	hash, err := c.nodeContentHash(row, c.nodeLabelsUnlocked(row))
 	if err != nil {
 		return fmt.Errorf("graph: cascade compute hash: %w", err)
 	}
@@ -579,7 +639,7 @@ func (c *Core) hashAppendedNodeRow(row *types.Node, prevHash string) error {
 // hashAppendedRelRow mirrors hashAppendedNodeRow for relationships, refreshing
 // the endpoint hashes as well.
 func (c *Core) hashAppendedRelRow(row *types.Relationship, prevHash string) error {
-	hash, err := integrity.ComputeRelHashChecked(row, c.relTypeUnlocked(row))
+	hash, err := c.relContentHash(row, c.relTypeUnlocked(row))
 	if err != nil {
 		return fmt.Errorf("graph: cascade compute rel hash: %w", err)
 	}
@@ -648,11 +708,19 @@ func ensureRelTemporal(r *types.Relationship) {
 // =============================================================================
 
 func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, newVF, newVT types.Instant, props map[string]any, at types.Instant) (*types.Relationship, error) {
+	return c.cascadeRel(ctx, id, newVF, newVT, props, at, false)
+}
+
+// cascadeRel mirrors cascadeNode for relationships.
+func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT types.Instant, props map[string]any, at types.Instant, void bool) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
 	if newVF == 0 {
 		return nil, fmt.Errorf("%w: cascade requires non-zero validFrom", ErrInvalidTimeRange)
+	}
+	if void && newVT == 0 {
+		return nil, fmt.Errorf("%w: excise requires a bounded end", ErrInvalidTimeRange)
 	}
 	if newVT != 0 && newVF >= newVT {
 		return nil, fmt.Errorf("%w: validFrom %d >= validTo %d", ErrInvalidTimeRange, newVF, newVT)
@@ -675,28 +743,39 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
-	history, err := c.getRelHistory(id)
-	if err != nil {
-		return nil, err
-	}
-	if current == nil && len(history) == 0 {
-		return nil, storepkg.ErrRelNotFound
-	}
-	if current == nil {
-		// Hard-deleted — see the node cascade (backlog 14).
-		return nil, relDeletedErr(id)
+	// The head answer before any write — see the node cascade.
+	headBefore := c.relHeadBeforeWrite(id, current)
+	hc, fromHead := chainFromHead(c, headBefore, current, func(v uint32) (*types.Relationship, error) { return c.getRelVersion(id, v) },
+		newVF, newVT, at, void)
+	var history []*types.Relationship
+	if !fromHead {
+		if history, err = c.getRelHistory(id); err != nil {
+			return nil, err
+		}
+		if current == nil && len(history) == 0 {
+			return nil, storepkg.ErrRelNotFound
+		}
+		if current == nil {
+			// Hard-deleted — see the node cascade (backlog 14).
+			return nil, relDeletedErr(id)
+		}
 	}
 
-	maxVersion := current.Version()
-	for _, h := range history {
-		maxVersion = max(maxVersion, h.Version())
+	maxVersion := hc.maxVersion
+	var stamps []*types.TemporalMetadata // from the head: the order rule was checked
+	if !fromHead {
+		maxVersion = current.Version()
+		for _, h := range history {
+			maxVersion = max(maxVersion, h.Version())
+		}
+		stamps = temporalsOf(history, current)
 	}
 	nextVersion, err := nextEntityVersion(maxVersion)
 	if err != nil {
 		return nil, err
 	}
 	// The clock or the checked caller instant — see the node cascade.
-	now, err := c.cascadeInstant(at, temporalsOf(history, current))
+	now, err := c.cascadeInstant(at, stamps)
 	if err != nil {
 		return nil, err
 	}
@@ -708,49 +787,67 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	// Never mutate an existing row's stored interval or transaction stamps;
 	// append fresh-TxFrom rows and let the resolver tile by valid-from with the
 	// newer belief winning on overlap. See the node cascade for the rationale.
-	preChain := make([]*types.Relationship, 0, len(history)+1)
-	preChain = append(preChain, history...)
-	preChain = append(preChain, current) // non-nil: a deleted entity was refused above
-	preChain = versionOrdered(preChain)  // the resolver's input contract (lesson 73)
+	var preChain []*types.Relationship
+	if !fromHead {
+		preChain = make([]*types.Relationship, 0, len(history)+1)
+		preChain = append(preChain, history...)
+		preChain = append(preChain, current) // non-nil: a deleted entity was refused above
+		preChain = versionOrdered(preChain)  // the resolver's input contract (lesson 73)
+	}
 
 	// BACKLOG 10b: explicit resumption ValidTo via relResumptionEnd — see the
 	// node cascade above for the full rationale (own-interval boundary scan,
 	// not "positionally-next row after src").
 	appended := make([]*types.Relationship, 0, 4)
 	prevHashes := make([]string, 0, 4)
-	if newVT != 0 {
+	if newVT != 0 && !fromHead {
 		if src, err := c.resolveRelVersionAt(append([]*types.Relationship(nil), preChain...), newVT); err == nil && src != nil {
-			resumptionEnd := relResumptionEnd(c, preChain, newVT)
-			resumption := src.DeepCopy()
-			ensureRelTemporal(resumption)
-			resumption.Temporal().ValidFrom = newVT
-			resumption.Temporal().ValidTo = resumptionEnd
-			stampAppendedRow(resumption.Temporal(), now)
-			appended = append(appended, resumption)
-			prevHashes = append(prevHashes, relHashOf(src))
+			hc.src, hc.hasSrc, hc.srcEnd = src, true, relResumptionEnd(c, preChain, newVT)
 		} else if err != nil && !errors.Is(err, storepkg.ErrNoVersionValidAt) {
 			return nil, fmt.Errorf("graph: cascade resolve rel resumption source: %w", err)
 		}
+	}
+	if hc.hasSrc {
+		resumption := hc.src.DeepCopy()
+		ensureRelTemporal(resumption)
+		resumption.Temporal().ValidFrom = newVT
+		resumption.Temporal().ValidTo = hc.srcEnd
+		stampAppendedRow(resumption.Temporal(), now)
+		appended = append(appended, resumption)
+		prevHashes = append(prevHashes, relHashOf(hc.src))
 	}
 
 	// Patch over the then-valid state, piece by piece — mirror of the node
 	// cascade (see nodeCorrectionSegments). Endpoints and type are immutable,
 	// so every base row carries the same ones; only properties differ.
-	segments, err := c.relCorrectionSegments(preChain, template, newVF, newVT)
-	if err != nil {
-		return nil, err
+	segments := hc.segments
+	if !fromHead {
+		if segments, err = c.relCorrectionSegments(preChain, template, newVF, newVT, void); err != nil {
+			return nil, err
+		}
 	}
 	var newVer *types.Relationship // the appended row covering newVF — the return value
-	for i, seg := range segments {
+	voids := 0
+	for _, seg := range segments {
+		if void && seg.gap {
+			continue // nothing valid there: no absence to record
+		}
 		row, err := c.buildRelCorrectionRow(seg, template, now, props)
 		if err != nil {
 			return nil, err
 		}
-		if i == 0 {
+		if void {
+			row.Temporal().Void = true
+			voids++
+		}
+		if newVer == nil {
 			newVer = row
 		}
 		appended = append(appended, row)
 		prevHashes = append(prevHashes, relHashOf(seg.base))
+	}
+	if void && voids == 0 {
+		return nil, fmt.Errorf("%w: excise [%d, %d): no version is valid there", storepkg.ErrNoVersionValidAt, newVF, newVT)
 	}
 	// Provisional versions — see the node cascade.
 	firstVersion := nextVersion
@@ -764,17 +861,21 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	}
 
 	// BACKLOG 10b: newest-belief-among-own-open — see the node cascade above.
-	postChain := make([]*types.Relationship, 0, len(preChain)+len(appended))
-	postChain = append(postChain, preChain...)
-	postChain = append(postChain, appended...)
 	var newCurrent *types.Relationship
-	for i := range postChain {
-		entry := postChain[i]
-		if _, vEnd := c.relOwnBounds(entry); vEnd != 0 {
-			continue
-		}
-		if newCurrent == nil || relBeliefNewerThan(entry, newCurrent) {
-			newCurrent = entry
+	if fromHead {
+		newCurrent = headNewCurrent(c, relKernel, hc.open, appended)
+	} else {
+		postChain := make([]*types.Relationship, 0, len(preChain)+len(appended))
+		postChain = append(postChain, preChain...)
+		postChain = append(postChain, appended...)
+		for i := range postChain {
+			entry := postChain[i]
+			if _, vEnd := c.relOwnBounds(entry); vEnd != 0 || isVoidRow(entry) {
+				continue
+			}
+			if newCurrent == nil || relBeliefNewerThan(entry, newCurrent) {
+				newCurrent = entry
+			}
 		}
 	}
 
@@ -804,6 +905,14 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 		}
 	}
 
+	headCur := current
+	if curIsNew {
+		headCur = newCurrent
+	}
+	c.relHeadAfterWrite(id, headBefore, appended, headCur)
+	if fromHead {
+		c.headWrites.Add(1)
+	}
 	c.opRelUpdates.Add(1)
 	return newVer, nil
 }

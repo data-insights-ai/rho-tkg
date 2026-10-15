@@ -1,8 +1,5 @@
-// Package stats is a sub-API accessor for graph counter / count-by-label
-// statistics. The full GraphStats struct (atomic operation counters + cache
-// metrics) is reachable via `g.Stats().Get()`; the count helpers below answer
-// label/type-scoped questions without materialising the full GraphStats
-// snapshot.
+// Package stats is the sub-API for graph counters and label/type-scoped count
+// statistics. The full GraphStats snapshot is reachable via g.Stats().Get().
 package stats
 
 import (
@@ -34,13 +31,8 @@ type GraphStats struct {
 	RelCacheMisses  int64
 }
 
-// Ops is the subset of *core.StatOps the stats sub-API forwards to.
-//
-// The full-snapshot accessor returns the individual counters as a 12-tuple via
-// SnapshotCounters() so the local Ops interface stays decoupled from any
-// particular GraphStats struct definition (the implementation in
-// pkg/graph/internal/core ships the same struct shape under a different
-// declaration; assembling the result here keeps the interface narrow).
+// Ops is the subset of *core.StatOps the stats sub-API forwards to; counters come
+// back as a tuple via SnapshotCounters() to keep the interface narrow.
 type Ops interface {
 	NodeCount() (int, error)
 	RelCount() (int, error)
@@ -52,8 +44,14 @@ type Ops interface {
 	RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error)
 	PropertyNDV(label, propertyKey string) (storepkg.PropertyNDV, error)
 	RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV, error)
+	PropertyBounds(label, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error)
+	RelPropertyBounds(typeName, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error)
+	LabelTimeStats(label string) (storepkg.MemberTimeStats, bool, error)
+	RelTypeTimeStats(typeName string) (storepkg.MemberTimeStats, bool, error)
 	RelCountByType(typeName string) (int, error)
 	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
+	TrackRelTypeDegrees(typeName string) error
+	UntrackRelTypeDegrees(typeName string) error
 	ReadCosts() (storepkg.ReadCosts, bool, error)
 	HistoryCounts() (storepkg.HistoryCounts, bool, error)
 	RelHistoryCountByType(typeName string) (int, bool, error)
@@ -85,15 +83,9 @@ func (a *API) ready() (Ops, error) {
 	return a.ops, nil
 }
 
-// Get returns a snapshot of graph operation counters and optional cache metrics.
-// Cache metrics are populated only when the underlying store implements the
-// store-stats interface (currently BadgerStore only); all cache fields are zero
-// for MemoryStore and tiered.Store.
-//
-// Returns ErrNilGraph if called on a zero-value or nil-backed API, or
-// ErrGraphClosed if the graph has been closed (the counter snapshot is still
-// populated in the closed case so callers can observe the final state). The
-// error shape matches every other Stats method for caller-side uniformity.
+// Get returns a snapshot of operation counters and optional cache metrics (cache
+// fields are populated for BadgerStore only). Returns ErrNilGraph on a zero-value
+// API, or ErrGraphClosed after close (the snapshot is still populated).
 func (a *API) Get() (GraphStats, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -153,22 +145,13 @@ func (a *API) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, er
 	return ops.NodeCountByLabelAndPropertyKey(label, propertyKey)
 }
 
-// PropertyTypeClassCounts returns the EXACT partition of label's current
-// nodes by the type class of propertyKey's value — Numeric (finite numbers
-// and ±Inf), NaN, String, Bool, Other (slices/maps/structs), plus Missing
-// (nodes carrying the label WITHOUT the key, computed as NodeCountByLabel
-// minus the present classes). O(1): maintained counters adjusted on the same
-// mutation call as NodeCountByLabelAndPropertyKey, so exactness is a
-// correctness guarantee a planner's ordering-soundness gate may rely on —
-// e.g. "every present value is orderable-numeric" is Numeric == Present, and
-// "the gap is nulls only" is Present == Numeric with Missing free to be
-// nonzero. Note the difference from NodeCountByLabelAndPropertyKey: that
-// counter covers INDEXABLE SCALAR values only, while this partition covers
-// EVERY value (a []int64 property counts under Other here but is invisible
-// there). Unregistered labels return the zero value. Backends without
-// store.NodePropertyTypeClassCountsCapability return
-// store.ErrCapabilityNotSupported; the in-tree memory, badger, and tiered
-// (cross-shard fold) backends all implement it.
+// PropertyTypeClassCounts returns the EXACT partition of label's current nodes by
+// the type class of propertyKey's value: Numeric (finite and +-Inf), NaN, String,
+// Bool, Other, plus Missing (label count minus present classes). O(1) maintained
+// counters; unlike NodeCountByLabelAndPropertyKey (indexable scalars only) it
+// covers EVERY value. Unregistered labels return zero. Backends without
+// store.NodePropertyTypeClassCountsCapability return store.ErrCapabilityNotSupported
+// (memory, badger, tiered implement it).
 func (a *API) PropertyTypeClassCounts(label, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -177,12 +160,9 @@ func (a *API) PropertyTypeClassCounts(label, propertyKey string) (storepkg.Prope
 	return ops.PropertyTypeClassCounts(label, propertyKey)
 }
 
-// RelPropertyTypeClassCounts is the relationship mirror of PropertyTypeClassCounts
-// (rule 2, BACKLOG 5B): the EXACT per-(relType, property key) partition of the type's
-// current relationships by value class — the correctness gate for the rel ORDER BY
-// r.prop LIMIT k push-down (ordering is sound only when the ordered class is
-// unambiguous). Memory, badger and sharded (summed over its slots) state it;
-// tiered and stores without store.RelPropertyTypeClassCountsCapability return
+// RelPropertyTypeClassCounts is the relationship mirror of PropertyTypeClassCounts:
+// the EXACT per-(relType, key) partition, the gate for the rel ORDER BY ... LIMIT k
+// push-down. Memory, badger and sharded implement it; others return
 // store.ErrCapabilityNotSupported.
 func (a *API) RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
 	ops, err := a.ready()
@@ -192,16 +172,12 @@ func (a *API) RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg
 	return ops.RelPropertyTypeClassCounts(typeName, propertyKey)
 }
 
-// RelTypeDegreeStats returns the largest out-degree and in-degree among a
-// relationship type's current relationships (with the nodes holding them),
-// the number of relationships and of distinct start and end nodes; typeName
-// "" means every relationship. A planner takes max(mean, MaxOut) where a hub
-// makes the mean fanout (Rels / Starts) misleading. Every backend. Derived,
-// not maintained: the first call after a write to the type scans its
-// relationships once; the result is cached against the relationship mutation
-// epoch (badger: the type's own stripe) and served in O(1) until it moves.
-// Exact reports that no write moved the epoch during the count. Unregistered
-// types return zero stats.
+// RelTypeDegreeStats returns the largest out- and in-degree among a type's current
+// relationships (with the holding nodes), the relationship count and distinct start
+// and end node counts; typeName "" means every relationship. Every backend.
+// Derived: the first call after a write scans once, then it is cached against the
+// mutation epoch; Exact reports that no write moved the epoch during the count.
+// Unregistered types return zero stats.
 func (a *API) RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -210,12 +186,38 @@ func (a *API) RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, 
 	return ops.RelTypeDegreeStats(typeName)
 }
 
-// ReadCosts returns the store's statement of what its read doors cost
-// through the graph, in nominal nanoseconds per row (a by-ID Lend, a
-// streaming scan, an adjacency walk), for a row held decoded in RAM and for
-// one read from the backing store, plus how many rows stay held
-// (store.ReadCosts). A query planner prices access paths per backend with it.
-// ok=false when the store states none.
+// TrackRelTypeDegrees opts a relationship type in to maintained degree counts
+// (opt-in, per type): after its next count, RelTypeDegreeStats applies the
+// relationships created since (every create door but a foreign-endpoint one)
+// instead of counting the type again after each write to it; a delete, an
+// update, a rollback or a write through another door counts again. Cost only
+// for a tracked type: two per-node count maps (about 40-50 B per distinct
+// endpoint), up to 65,536 recorded creates between reads, a short lock per
+// create, the graph's write lock for O(creates since) at a read. Other types
+// pay one atomic load per create. Counts again as without tracking where the
+// store keeps no per-type stamp (tiered, sharded, external stores). Errors: a
+// malformed type name, ErrGraphClosed.
+func (a *API) TrackRelTypeDegrees(typeName string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.TrackRelTypeDegrees(typeName)
+}
+
+// UntrackRelTypeDegrees drops a type's maintained degree counts (a no-op for
+// an untracked type).
+func (a *API) UntrackRelTypeDegrees(typeName string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.UntrackRelTypeDegrees(typeName)
+}
+
+// ReadCosts returns the store's nominal read costs in ns per row (by-ID Lend,
+// streaming scan, adjacency walk) for RAM-held and backing-store rows, plus how many
+// rows stay held (store.ReadCosts). ok=false when the store states none.
 func (a *API) ReadCosts() (storepkg.ReadCosts, bool, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -225,10 +227,8 @@ func (a *API) ReadCosts() (storepkg.ReadCosts, bool, error) {
 }
 
 // HistoryCounts returns how many nodes and relationships have history rows
-// (store.HistoryCounts) — what a temporal read by property value resolves
-// beside the current matches — exact and without a pass per call where the
-// store states it (memory, badger, sharded). ok=false when it states none
-// (tiered).
+// (store.HistoryCounts), exact and without a pass per call (memory, badger,
+// sharded). ok=false when the store states none (tiered).
 func (a *API) HistoryCounts() (storepkg.HistoryCounts, bool, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -237,14 +237,11 @@ func (a *API) HistoryCounts() (storepkg.HistoryCounts, bool, error) {
 	return ops.HistoryCounts()
 }
 
-// RelHistoryCountByType returns how many relationships of typeName have
-// history rows (updated, closed, deleted or otherwise versioned, deleted ones
-// included): HistoryCounts.Rels for one type, so a caller can tell that one
-// type's relationships have no history while another's do. Exact unless a
-// relationship ID was reused across types (then an upper bound), so 0 always
-// means none. Memory and badger answer it (O(relationships with history) per
-// call); ok=false on a store without a per-type answer (sharded, tiered,
-// external stores). An unknown type is 0.
+// RelHistoryCountByType returns how many relationships of typeName have history
+// rows (deleted ones included). Exact unless a relationship ID was reused across
+// types (then an upper bound), so 0 always means none. Memory, badger and tiered
+// answer it (O(relationships with history); tiered opens closed cold shards);
+// ok=false otherwise. An unknown type is 0.
 func (a *API) RelHistoryCountByType(typeName string) (int, bool, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -253,20 +250,12 @@ func (a *API) RelHistoryCountByType(typeName string) (int, bool, error) {
 	return ops.RelHistoryCountByType(typeName)
 }
 
-// PropertyStats returns NDV (estimated distinct-value count via a
-// HyperLogLog sketch), exact Min/Max (for scalar-ordered value families —
-// numeric and string, see store.NodePropertyStatsCapability), and Count (the
-// same presence count NodeCountByLabelAndPropertyKey returns) for label's
-// current nodes carrying propertyKey.
-//
-// Missing/unpopulated (label, propertyKey) pairs return a zero-value
-// PropertyStats, not an error — matching NodeCountByLabelAndPropertyKey's
-// "unregistered → 0" convention. All three in-tree backends (memory,
-// badger, tiered) implement store.NodePropertyStatsCapability — tiered
-// folds NDV via a register-max HyperLogLog merge across shards and Min/Max
-// via min-of-mins/max-of-maxes (see docs/query-planners.md "Tiered NDV
-// fold"). A backend WITHOUT the optional capability returns
-// store.ErrCapabilityNotSupported; check with errors.Is.
+// PropertyStats returns NDV (HyperLogLog estimate), exact Min/Max (numeric and
+// string families) and Count for label's current nodes carrying propertyKey.
+// Missing pairs return a zero PropertyStats, not an error. Memory, badger and
+// tiered implement store.NodePropertyStatsCapability (tiered folds shards, see
+// docs/query-planners.md "Tiered NDV fold"); others return
+// store.ErrCapabilityNotSupported (check with errors.Is).
 func (a *API) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -275,22 +264,11 @@ func (a *API) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, 
 	return ops.PropertyStats(label, propertyKey)
 }
 
-// RelPropertyStats is the relationship mirror of PropertyStats (BACKLOG
-// 21a): NDV (estimated distinct-value count via a HyperLogLog sketch), exact
-// Min/Max (for scalar-ordered value families — numeric and string), and
-// Count (the number of the type's current relationships carrying
-// propertyKey with an indexable scalar value), complementing the existing
-// rel-side ordering-soundness primitives RelRangeCardinality and
-// RelPropertyTypeClassCounts with a selectivity estimate.
-//
-// Missing/unpopulated (relType, propertyKey) pairs return a zero-value
-// PropertyStats, not an error — matching RelPropertyTypeClassCounts'
-// "unregistered → 0" convention. memory and badger implement
-// store.RelPropertyStatsCapability; tiered does not (mirroring the
-// precedent already set by RelRangeCardinality/RelPropertyTypeClassCounts,
-// neither of which tiered implements either — rel property indexes are
-// RAM-only per-shard). A backend WITHOUT the optional capability returns
-// store.ErrCapabilityNotSupported; check with errors.Is.
+// RelPropertyStats is the relationship mirror of PropertyStats (backlog 21a):
+// NDV, exact Min/Max and Count of the type's current relationships carrying
+// propertyKey with an indexable scalar value. Missing pairs return zero stats.
+// Memory and badger implement store.RelPropertyStatsCapability; tiered (rel property
+// indexes are RAM-only per shard) and others return store.ErrCapabilityNotSupported.
 func (a *API) RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -299,14 +277,10 @@ func (a *API) RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyS
 	return ops.RelPropertyStats(typeName, propertyKey)
 }
 
-// PropertyNDV returns PropertyStats' NDV and Count without its exact
-// Min/Max: the HyperLogLog estimate and the presence count, read without the
-// rescan of the label's current values that PropertyStats runs after a
-// write removed a value equal to the minimum or maximum. Use it where a
-// planner needs the distinct-value estimate only. Missing (label,
-// propertyKey) pairs and unknown labels return a zero value; memory, badger
-// and tiered implement store.NodePropertyNDVCapability, any other backend
-// (and a store with planner statistics disabled) returns
+// PropertyNDV returns PropertyStats' NDV and Count without Min/Max, skipping the
+// rescan PropertyStats runs after a write removed the min or max value. Missing
+// pairs return zero. Memory, badger and tiered implement
+// store.NodePropertyNDVCapability; others (or planner statistics disabled) return
 // store.ErrCapabilityNotSupported.
 func (a *API) PropertyNDV(label, propertyKey string) (storepkg.PropertyNDV, error) {
 	ops, err := a.ready()
@@ -327,6 +301,64 @@ func (a *API) RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV
 	return ops.RelPropertyNDV(typeName, propertyKey)
 }
 
+// PropertyBounds returns the smallest and largest numeric value of
+// propertyKey over label's current nodes (store.PropertyBounds: Min, Max, a
+// stored value at each, and the exact type-class partition with Missing, so
+// NumericOnly and NullFree) read at one moment, O(1) from the property
+// index's first and last key and maintained counters. ok=false with no error
+// where it cannot be stated exactly, never answered by a walk: no property
+// index on the pair, an index being built, an Elements index, an integer of
+// magnitude past 2^53 in the index, badger PropertyIndexOnDisk, planner
+// statistics disabled, tiered, sharded and external stores, an unknown label,
+// a temporal opts. Read-only: no write cost. Errors: a malformed label or
+// key, ErrGraphClosed.
+func (a *API) PropertyBounds(label, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyBounds{}, false, err
+	}
+	return ops.PropertyBounds(label, propertyKey, opts)
+}
+
+// RelPropertyBounds is the relationship mirror of PropertyBounds over a
+// relationship type's property index (memory and badger).
+func (a *API) RelPropertyBounds(typeName, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyBounds{}, false, err
+	}
+	return ops.RelPropertyBounds(typeName, propertyKey, opts)
+}
+
+// LabelTimeStats returns store.MemberTimeStats for label: current members,
+// those whose row carries an explicit valid time (tkg_valid_from or
+// tkg_valid_to), and LastEnded, the latest transaction instant a row of an
+// entity whose rows ever carried the label was ended (HistoryAfter(pin):
+// whether a read pinned there may see a non-current version; Eternal: neither).
+// No write cost: the explicit count is counted on the first call after a
+// write to the label (one pass over its current rows) and then served in O(1)
+// against the label's mutation epoch; LastEnded is O(1) on a store without
+// node history rows, else one RAM stamp lookup per ever-member. exact=false
+// when writers kept moving the epoch across three counts, or the store keeps
+// no epoch (tiered, external stores: counted per call). An unknown label is
+// zero stats. Errors: a malformed label, ErrGraphClosed.
+func (a *API) LabelTimeStats(label string) (storepkg.MemberTimeStats, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.MemberTimeStats{}, false, err
+	}
+	return ops.LabelTimeStats(label)
+}
+
+// RelTypeTimeStats is LabelTimeStats for a relationship type.
+func (a *API) RelTypeTimeStats(typeName string) (storepkg.MemberTimeStats, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.MemberTimeStats{}, false, err
+	}
+	return ops.RelTypeTimeStats(typeName)
+}
+
 // RelCountByType returns the count of relationships of the given type.
 func (a *API) RelCountByType(typeName string) (int, error) {
 	ops, err := a.ready()
@@ -336,21 +368,12 @@ func (a *API) RelCountByType(typeName string) (int, error) {
 	return ops.RelCountByType(typeName)
 }
 
-// RangeCardinality is an additive alias forwarding to the SAME core op
-// Nodes().RangeCardinality uses (core.NodeOps.RangeCardinality) — identical
-// signature and semantics, so a query planner reading only g.Stats() need
-// not also import the nodes sub-API for this one statistic.
-//
-// It returns the count of the label's nodes whose numeric propKey value lies
-// within [min,max] (inclusivity per flags), summed directly from the
-// property index's sorted per-value bucket sizes — O(distinct values in
-// range), NO node scan. The second return is exact: false means the fast
-// path declined (no store capability, no/poisoned index, or a temporal
-// filter set in opts — the index is valid-time agnostic) and the caller must
-// scan-and-count instead (e.g. via ForEachByLabel). The bounds MUST already
-// capture the whole predicate. See core.NodeOps.RangeCardinality and
-// nodes.API.RangeCardinality — Nodes().RangeCardinality itself is untouched
-// by this alias.
+// RangeCardinality forwards to core.NodeOps.RangeCardinality (same signature and
+// semantics as Nodes().RangeCardinality): the count of label's nodes whose numeric
+// propKey lies within [min,max] (inclusivity per flags), summed from the property
+// index bucket sizes, no node scan. exact=false means the fast path declined (no
+// capability, no/poisoned index, or a temporal filter in opts) and the caller must
+// scan-and-count. The bounds MUST capture the whole predicate.
 func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -359,11 +382,9 @@ func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin,
 	return ops.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
 }
 
-// RelRangeCardinality is the relationship mirror of RangeCardinality (rule 2): an
-// O(distinct values in range) bucket-sum count from the REL property index, with
-// exact=false when the fast path declines (no capability — rel indexes are RAM-only,
-// so tiered declines; no/poisoned index; or a temporal filter in opts). The
-// rel ordering-soundness primitive for the ORDER BY r.prop LIMIT k push-down.
+// RelRangeCardinality is the relationship mirror of RangeCardinality: a bucket-sum
+// count from the REL property index, exact=false when the fast path declines (no
+// capability, e.g. tiered; no/poisoned index; temporal filter in opts).
 func (a *API) RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	ops, err := a.ready()
 	if err != nil {

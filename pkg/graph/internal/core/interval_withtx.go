@@ -207,7 +207,7 @@ func (tx *GraphTx) SetRelVersionIntervalWithTx(id types.RelID, validFrom, validT
 // as for UpdateNodeWithTx. The correction must be the only op of the batch on
 // the node.
 func (b *BatchBuilder) SetNodeVersionIntervalWithTx(id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) error {
-	return b.queueNodeCascade(id, validFrom, validTo, props, txFrom, true)
+	return b.queueNodeCascade(id, validFrom, validTo, props, txFrom, true, false)
 }
 
 // SetRelVersionIntervalWithTx is the relationship counterpart of
@@ -215,7 +215,7 @@ func (b *BatchBuilder) SetNodeVersionIntervalWithTx(id types.NodeID, validFrom, 
 // op of the batch on the relationship, a node delete that cascades into it
 // included).
 func (b *BatchBuilder) SetRelVersionIntervalWithTx(id types.RelID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) error {
-	return b.queueRelCascade(id, validFrom, validTo, props, txFrom, true)
+	return b.queueRelCascade(id, validFrom, validTo, props, txFrom, true, false)
 }
 
 // SetNodeVersionIntervalWithTx accumulates a node correction at a caller
@@ -254,10 +254,15 @@ func cascadeCallerPastDated(nodes []pendingNodeCascade, rels []pendingRelCascade
 	return t
 }
 
-// cascadeOpName is the BatchError op name of a queued correction.
-func cascadeOpName(kind string, at types.Instant) string {
-	if at != 0 {
-		return "Set" + kind + "VersionIntervalWithTx"
+// cascadeOpName is the BatchError op name of a queued correction or (void)
+// excise.
+func cascadeOpName(kind string, at types.Instant, void bool) string {
+	name := "Set" + kind + "VersionInterval"
+	if void {
+		name = "Excise" + kind + "Validity"
 	}
-	return "Set" + kind + "VersionInterval"
+	if at != 0 {
+		return name + "WithTx"
+	}
+	return name
 }

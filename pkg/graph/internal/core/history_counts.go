@@ -6,11 +6,10 @@ import (
 )
 
 // HistoryCounts returns how many nodes and relationships have history rows
-// (store.HistoryCounts): the IDs a temporal read by property value resolves
-// beside the current matches, so a query planner can price that read. Exact,
-// without a pass per call (store.HistoryCountCapability: memory, badger,
-// sharded). ok=false when the store states none (tiered, external stores).
-// Errors: ErrGraphClosed, a store error, a negative count from the store.
+// (store.HistoryCounts), so a planner can price a temporal read by property value.
+// Exact, no pass per call (store.HistoryCountCapability: memory, badger, sharded);
+// ok=false when the store states none (tiered, external). Errors: ErrGraphClosed,
+// a store error, a negative count from the store.
 func (s *StatOps) HistoryCounts() (storepkg.HistoryCounts, bool, error) {
 	c := s.c
 	if err := c.checkOpen(); err != nil {
@@ -45,18 +44,13 @@ func (s *StatOps) HistoryCounts() (storepkg.HistoryCounts, bool, error) {
 	return out, true, nil
 }
 
-// RelHistoryCountByType returns how many relationships of one type have
-// history rows (round 5 request 7): the relationships with history that ever
-// carried the type, from the store's history IDs and the point form of its
-// rel-type membership sidecar (store.RelTypeTxMemberLookupCapability, which
-// the core wires for memory and badger only). A relationship's type is
-// immutable, so this is exact unless an ID was reused across types (it then
-// counts for each type it carried: an upper bound, never an undercount, so a
-// 0 always means no relationship of the type has history). O(relationships
-// with history) map lookups per call. An unknown type is 0. ok=false when the
-// store states no per-type answer (sharded, tiered, external stores): never a
-// substitute count. Errors: a malformed type name, ErrGraphClosed, a store
-// error.
+// RelHistoryCountByType returns how many relationships of one type have history rows,
+// from the store's history IDs and the point form of its rel-type membership sidecar
+// (store.RelTypeTxMemberLookupCapability: memory, badger, tiered). Exact unless an ID
+// was reused across types (then an upper bound, so 0 always means none).
+// O(relationships with history) per call. Unknown type is 0; ok=false when the store
+// states no per-type answer (sharded, external). Errors: malformed type name,
+// ErrGraphClosed, a store error.
 func (s *StatOps) RelHistoryCountByType(typeName string) (int, bool, error) {
 	c := s.c
 	if err := c.validateRelTypeQueryName(typeName); err != nil {

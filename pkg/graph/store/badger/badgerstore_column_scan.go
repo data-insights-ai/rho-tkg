@@ -1,9 +1,7 @@
 package badger
 
 import (
-	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
-	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -99,6 +97,9 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 	}
 
 	ids, vf, vt := col.IDs(), col.ValidFrom(), col.ValidTo()
+	// The filter reads the effective start (an unset ValidFrom is the row's
+	// TxFrom, backlog 62); the batch reports the stored one (vf).
+	eff := col.EffectiveValidFrom()
 	ords := bs.labelColumnOrdinals(token, col)
 	batch := newColumnBatch(len(props))
 	for i, v := range views {
@@ -112,16 +113,28 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 		}
 		end := min(start+storecontract.ColumnScanBatchRows, len(ids))
 		resetColumnBatch(batch, len(props))
-		for ord := start; ord < end; ord++ {
-			if !validTimeMatches(effectiveValidFrom(vf[ord], ids[ord]), vt[ord], qFrom, qTo) {
-				continue
-			}
-			batch.IDs = append(batch.IDs, ids[ord])
-			batch.Ordinals = append(batch.Ordinals, ords[ord])
-			batch.ValidFrom = append(batch.ValidFrom, vf[ord])
-			batch.ValidTo = append(batch.ValidTo, vt[ord])
+		if unfilteredWindow(qTo) {
+			batch.IDs = append(batch.IDs, ids[start:end]...)
+			batch.Ordinals = append(batch.Ordinals, ords[start:end]...)
+			batch.ValidFrom = append(batch.ValidFrom, vf[start:end]...)
+			batch.ValidTo = append(batch.ValidTo, vt[start:end]...)
 			for c, v := range views {
-				appendFromView(&batch.ColumnData, c, v, ord)
+				for ord := start; ord < end; ord++ {
+					appendFromView(&batch.ColumnData, c, v, ord)
+				}
+			}
+		} else {
+			for ord := start; ord < end; ord++ {
+				if !validTimeMatches(eff[ord], vt[ord], qFrom, qTo) {
+					continue
+				}
+				batch.IDs = append(batch.IDs, ids[ord])
+				batch.Ordinals = append(batch.Ordinals, ords[ord])
+				batch.ValidFrom = append(batch.ValidFrom, vf[ord])
+				batch.ValidTo = append(batch.ValidTo, vt[ord])
+				for c, v := range views {
+					appendFromView(&batch.ColumnData, c, v, ord)
+				}
 			}
 		}
 		if len(batch.IDs) == 0 {
@@ -168,25 +181,10 @@ func validTimeMatches(f, t, start, end int64) bool {
 	return f < end && (t == 0 || t > start)
 }
 
-// effectiveValidFrom is the valid-from a FILTER must use: an entity that carries
-// no ValidFrom is treated as valid from its MINT time, which is the rule
-// storeutil.MatchesTemporalFilter applies on the row path and the one every
-// non-columnar door already agrees on.
-//
-// SEPARATE FROM THE REPORTED COLUMN, deliberately. The doc-values builder stores
-// the RAW bound, because ColumnBatch.ValidFrom is handed to callers as the
-// entity's stored validity and must mean the same thing it means through
-// ValidRange() and the tkg_valid_from shadow key. Folding the fallback into the
-// stored array made those two questions share one answer, and a columnar reader
-// then saw [mint, +inf) where the memory backend saw eternal.
-//
-// Applying it here keeps the filter's behaviour bit-identical to before.
-func effectiveValidFrom(f int64, id interface{ SnowflakeID() snowflake.ID }) int64 {
-	if f != 0 {
-		return f
-	}
-	return int64(storeutil.SnowflakeInstant(id.SnowflakeID()))
-}
+// unfilteredWindow reports whether every row of [start, end) passes the valid-time
+// window: true without a filter (end == 0), so the scan copies the block's
+// rows as runs instead of testing and appending them one by one.
+func unfilteredWindow(qTo int64) bool { return qTo == 0 }
 
 func columnKindOf(v indexpkg.ColumnView) storecontract.ColumnKind {
 	if v.Type == indexpkg.ColString {

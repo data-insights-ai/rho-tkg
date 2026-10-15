@@ -2,11 +2,8 @@
 // a Graph. The package declares a local interface (Ops) listing the methods
 // the API forwards; *core.NodeOps implements it implicitly.
 //
-// API 4.0 change: methods that previously came in (Foo, FooWithContext) pairs
-// (Add, Get, Update, UpdateInPlace, Delete, CompareAndSetProperty) collapsed
-// into a single context-aware method each. Pass context.Background() for the
-// previous no-context behavior. The historical *WithContext variants no
-// longer exist.
+// Each method takes a context (Add, Get, Update, UpdateInPlace, Delete,
+// CompareAndSetProperty); pass context.Background() when there is none.
 package nodes
 
 import (
@@ -25,6 +22,7 @@ type Ops interface {
 	AddWithTx(ctx context.Context, labels []string, props map[string]any, txFrom types.Instant) (*types.Node, error)
 	Get(ctx context.Context, id types.NodeID) (*types.Node, error)
 	Lend(ctx context.Context, id types.NodeID) (*types.Node, error)
+	LendByIDs(ctx context.Context, ids []types.NodeID, fn func(i int, row *types.Node) bool) error
 	MaxOrdinal() (uint32, bool, error)
 	ScanKeepsOrder(label string) (bool, error)
 	DocValuesColumn(label, propertyKey string) (storepkg.DocValuesColumn, bool, error)
@@ -48,8 +46,15 @@ type Ops interface {
 	ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	RangeCardinalityAt(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	ForEachByLabelOrdinals(label string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
+	ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
+	ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
+	CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachDocValues(label string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
+	ForEachDocValuesOrdinal(label string, propKeys []string, fn func(types.NodeID, uint32, []any, []bool) bool) (uint64, bool, error)
+	ForEachDocValuesMultiOrdinal(labels []string, propKeys []string, fn func(types.NodeID, uint32, []any, []bool) bool) (uint64, bool, error)
 	DocValuesSnapshot(label string, propKeys []string) (types.NodeColumnReader, uint64, bool, error)
 	DocValuesSnapshotAsOf(label string, propKeys []string, txAt types.Instant) (types.NodeColumnReader, uint64, bool, error)
 	ForEachDocValuesAsOf(label string, propKeys []string, txAt types.Instant, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
@@ -166,6 +171,25 @@ func (a *API) Lend(ctx context.Context, id types.NodeID) (*types.Node, error) {
 	return ops.Lend(ctx, id)
 }
 
+// LendByIDs lends the current row of each node in ids as Lend does (frozen,
+// no copy where Lend makes none) and calls fn(i, row) for each ID that names
+// a node, i its position in ids; an ID naming none is skipped (fn is not
+// called for it). Calls come in ascending ID order (equal IDs in ids'
+// order); fn returning false stops; fn runs with no lock held. The IDs are
+// read in chunks of 4,096, each under one read: badger reads a chunk's rows
+// missing from its cache through one snapshot in key order (not cached),
+// memory under one lock, other stores per ID. The context is checked before
+// each chunk. Safe for concurrent calls. Errors: an error for a nil fn,
+// ErrInvalidStoreMutation for a non-positive ID (before any read),
+// ErrGraphClosed, the context's error, a store read error.
+func (a *API) LendByIDs(ctx context.Context, ids []types.NodeID, fn func(i int, row *types.Node) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.LendByIDs(ctx, ids, fn)
+}
+
 // MaxOrdinal returns the largest dense node ordinal handed out
 // (types.Node.Ordinal; size an ordinal-indexed array max+1) and ok=false when
 // the store assigns none (tiered, badger with DisableOrdinals, external
@@ -219,6 +243,11 @@ func (a *API) GetByIDs(ids []types.NodeID) ([]*types.Node, error) {
 }
 
 // Update updates a node's labels/properties honoring ctx.
+//
+// An update that sets tkg_valid_to without tkg_valid_from closes the current
+// version as CloseVersion does: the version keeps its start and ends at
+// tkg_valid_to; an end at or before that start returns ErrInvalidTimeRange and
+// writes nothing (backlog 65).
 func (a *API) Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -244,6 +273,9 @@ func (a *API) UpdateWithTx(ctx context.Context, id types.NodeID, updates map[str
 }
 
 // UpdateInPlace updates a node in place honoring ctx (no version chain entry).
+//
+// A tkg_valid_to at or before the row's effective start returns
+// ErrInvalidTimeRange (backlog 65).
 func (a *API) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -496,21 +528,109 @@ func (a *API) ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc b
 // RangeCardinality returns the count of the label's nodes whose numeric propKey
 // value lies within [min, max] (inclusivity per flags) from the property index,
 // NO node scan. Cost depends on how the index was created: with
-// PropertyIndexOptions.RangeCounts (round 4 R2) two prefix sums over the
+// PropertyIndexOptions.RangeCounts two prefix sums over the
 // per-value counts, O(log chunks) plus at most 512 counts each, independent of
 // the range's width; without it (the default) a walk over the range's distinct
-// values summing their bucket sizes, O(distinct values in range) — the
-// contract as it always was. The second return is exact: false (count 0) when
-// the door does not answer — no index, a backend without the count (tiered,
-// badger with PropertyIndexOnDisk), an index poisoned by an integer past 2^53,
-// or temporal opts — and the caller must scan-and-count. A NaN bound counts 0. Fractional values and bounds are counted exactly. The bounds
-// must already capture the WHOLE predicate. See core.NodeOps.RangeCardinality.
+// values summing their bucket sizes, O(distinct values in range). The second
+// return is exact: false (count 0) when the door does not answer — no index, a
+// backend without the count (tiered, badger with PropertyIndexOnDisk), an index
+// poisoned by an integer past 2^53, or temporal opts — and the caller must
+// scan-and-count. A NaN bound counts 0. Fractional values and bounds are
+// counted exactly. The bounds must already capture the WHOLE predicate. See
+// core.NodeOps.RangeCardinality.
 func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return 0, false, err
 	}
 	return ops.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// RangeCardinalityAt is RangeCardinality at a temporal coordinate (round 8
+// request 2): the number of versions ForEachByLabelPropertyRange returns under
+// opts (each node's version ByLabel resolves) whose value, a float32 widened
+// to float64, lies within [min, max] per the inclusivity flags (NaN never;
+// After and Limit ignored). Counted from the declared property index's
+// membership sidecar: only the nodes whose rows ever carried a value in the
+// range are resolved, no label fold. exact=false with no error declines (the
+// caller folds and counts): no temporal filter in opts (use RangeCardinality),
+// invalid opts, a NaN bound, no property index on (label, propKey), a store
+// without store.NodePropertyTxMemberRangeCapability (tiered, sharded, external
+// stores), a depth-scoped read on a store with depth-aware history, an
+// unknown label.
+func (a *API) RangeCardinalityAt(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.RangeCardinalityAt(label, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// ForEachByLabelOrdinals streams the nodes ForEachByLabel(label, opts)
+// streams, restricted to the ID set given as a bitset over dense ordinals
+// (round 8 request 4): bit k of set[k/64] selects the node whose current
+// ordinal is k (n.Ordinal(); size the set from MaxOrdinal), current or at a
+// temporal coordinate, ascending ID order, fn false stops, After and Limit
+// as for ForEachByLabel. A node without a current row has no ordinal and is
+// never selected, at a pin too. Where the store tells ordinals from RAM and
+// lists members (badger, sharded) only the selected rows are read and, at a
+// coordinate, only the selected candidates resolved; memory filters its
+// in-RAM rows. Same isolation and frozen-row contract as ForEachByLabel.
+// Errors: those of ForEachByLabel, store.ErrCapabilityNotSupported on a
+// store without ordinals (tiered, badger DisableOrdinals).
+func (a *API) ForEachByLabelOrdinals(label string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByLabelOrdinals(label, set, opts, fn)
+}
+
+// ForEachIDByLabelPropertyRangeOrdered streams (ID, value) of the label's
+// nodes whose numeric propKey value lies within [min, max] (inclusivity
+// applied exactly) in value order (descending when desc), ties by ID
+// ascending, from the property index alone: no node row is read. The value is
+// the stored one in its stored type. fn returning false stops; fn runs with
+// no lock held; the context is checked every 4,096 entries. ErrIndexNotFound
+// (reported, never a slower walk) for temporal opts, a store without the
+// door (tiered, sharded, external), badger PropertyIndexOnDisk, no index, an
+// Elements index, an index being built or one holding an integer past 2^53.
+func (a *API) ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachIDByLabelPropertyRangeOrdered(ctx, label, propKey, min, max, inclMin, inclMax, desc, opts, fn)
+}
+
+// ForEachIDByLabelPropertyPrefix is the string twin of
+// ForEachIDByLabelPropertyRangeOrdered: (ID, value) of the label's nodes
+// whose string value begins with prefix, in byte order (descending when
+// desc), ties by ID ascending, from the index alone. Same contract.
+func (a *API) ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachIDByLabelPropertyPrefix(ctx, label, propKey, prefix, desc, opts, fn)
+}
+
+// CountByLabelPropertyValue counts the label's nodes whose propKey value equals value as
+// Cypher equality keeps it (3 matches 3 and 3.0 of every stored width, no
+// string/number crossing, nil and NaN count 0), from the property index's
+// value sets, no node read. exact=false with no error declines (count
+// otherwise): no property index on (label, propKey), a store without the
+// capability (tiered, external stores), badger with PropertyIndexOnDisk
+// (nodes), an index being built, an Elements index, a number of magnitude
+// 2^53 or more, a temporal value, a list or map, an unknown label, or a
+// temporal QueryOpts. exact tells a planner whether exact counts are
+// available for (label, propKey).
+func (a *API) CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.CountByLabelPropertyValue(label, propKey, value, opts)
 }
 
 // ForEachDocValues (X5) streams the requested property columns for a label's nodes
@@ -541,6 +661,30 @@ func (a *API) ForEachDocValuesMulti(labels []string, propKeys []string, fn func(
 		return 0, false, err
 	}
 	return ops.ForEachDocValuesMulti(labels, propKeys, fn)
+}
+
+// ForEachDocValuesOrdinal is ForEachDocValues with each row's dense node
+// ordinal (types.Node.Ordinal) beside its ID: same rows, order and gen.
+// ok=false where ForEachDocValues declines and where the store numbers no
+// node (tiered, external stores, badger with DisableOrdinals); the caller then
+// uses ForEachDocValues. See core.NodeOps.ForEachDocValuesOrdinal.
+func (a *API) ForEachDocValuesOrdinal(label string, propKeys []string, fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.ForEachDocValuesOrdinal(label, propKeys, fn)
+}
+
+// ForEachDocValuesMultiOrdinal is ForEachDocValuesMulti with each row's node
+// ordinal, under ForEachDocValuesOrdinal's contract. See
+// core.NodeOps.ForEachDocValuesMultiOrdinal.
+func (a *API) ForEachDocValuesMultiOrdinal(labels []string, propKeys []string, fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.ForEachDocValuesMultiOrdinal(labels, propKeys, fn)
 }
 
 // DocValuesSnapshot returns a random-access point-lookup handle over a label's
@@ -749,6 +893,13 @@ func (a *API) CloseVersion(ctx context.Context, id types.NodeID, t types.Instant
 }
 
 // History returns the version chain for a node.
+//
+// The chain holds the rows as written, including an excise's void pieces
+// (Temporal().Void, Temporal().ExciseNodeValidity): a void row asserts that
+// the node is absent over its [ValidFrom, ValidTo), it is not a state of the
+// node. A consumer that reads raw History intervals must skip void rows (or
+// read the effective timeline, NodeEffectiveTimeline, which never returns
+// them).
 func (a *API) History(id types.NodeID) ([]*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {

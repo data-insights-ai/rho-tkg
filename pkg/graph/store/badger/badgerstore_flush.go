@@ -21,12 +21,19 @@ import (
 // Last-write-wins: if the same key is written multiple times, only the
 // latest operation is retained.
 func (bs *Store) appendOps(ops ...writeOp) {
+	bs.appendOpsRaising(0, ops...)
+}
+
+// appendOpsRaising is appendOps raising the store-level format marker to
+// marker (0: none) in the same wbMu section (raiseFormatMarkerPendingLocked).
+func (bs *Store) appendOpsRaising(marker uint16, ops ...writeOp) {
 	bs.wbMu.Lock()
 	for _, op := range ops {
 		bs.pending[string(op.key)] = op
 		bs.noteHistoryKey(op)
 		bs.noteValidEndOp(op)
 	}
+	bs.raiseFormatMarkerPendingLocked(marker)
 	bs.wbMu.Unlock()
 }
 

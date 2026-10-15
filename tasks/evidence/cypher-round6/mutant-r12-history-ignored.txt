@@ -1,0 +1,4 @@
+--- FAIL: TestLabelReadAtAgreesWithTheResolver (0.03s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.516s
+FAIL

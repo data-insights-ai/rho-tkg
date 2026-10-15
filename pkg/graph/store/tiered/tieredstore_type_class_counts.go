@@ -4,11 +4,9 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// NodePropertyTypeClassCounts satisfies the optional
-// store.NodePropertyTypeClassCountsCapability by folding the exact per-shard
-// counters across the reference shard, the archive (when open), and every
-// event shard — the same shard walk as NodeCountByLabelAndPropertyKey, so the
-// two capabilities agree on which rows are counted.
+// NodePropertyTypeClassCounts satisfies store.NodePropertyTypeClassCountsCapability
+// by folding the exact per-shard counters over the same shards as
+// NodeCountByLabelAndPropertyKey, so both count the same rows.
 func (ts *Store) NodePropertyTypeClassCounts(token uint16, propertyKey string) (storecontract.PropertyTypeClassCounts, error) {
 	var total storecontract.PropertyTypeClassCounts
 	if err := ts.checkOpen(); err != nil {
@@ -29,6 +27,8 @@ func (ts *Store) NodePropertyTypeClassCounts(token uint16, propertyKey string) (
 		total.Other += c.Other
 	}
 
+	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
+	defer move.unlock()
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return storecontract.PropertyTypeClassCounts{}, err
@@ -40,6 +40,7 @@ func (ts *Store) NodePropertyTypeClassCounts(token uint16, propertyKey string) (
 	}
 	add(n)
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
 	if archiveErr != nil {
 		return storecontract.PropertyTypeClassCounts{}, archiveErr
@@ -52,6 +53,7 @@ func (ts *Store) NodePropertyTypeClassCounts(token uint16, propertyKey string) (
 		}
 		add(an)
 	}
+	move.unlock()
 
 	ts.mu.RLock()
 	eventShards := ts.eventShardSnapshot(DepthAll)

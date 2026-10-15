@@ -44,37 +44,62 @@ func (ms *Store) RelMutationEpoch() uint64 {
 //     NodeMutationEpoch()==gen after consuming fn's results (Gate 2).
 func (ms *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
-	if ms == nil {
-		return 0, false, ErrNilStore
+	col, _, gen, ok, err := ms.labelDocColumns(labelToken, propKeys, false)
+	if err != nil || !ok {
+		return gen, false, err
 	}
+	// Phase B: iterate the immutable snapshot lock-free.
+	col.ForEachRow(propKeys, fn)
+	return gen, true, nil
+}
 
-	// Phase A: under the write lock (atomic vs every mutation, which also takes
-	// the write lock), ensure a fresh column and grab the immutable pointer.
+// ForEachDocValuesOrdinal is ForEachDocValues with each row's node ordinal
+// beside its ID (sigma-tkgd round 6 request 11): the ordinal the node's row
+// carries, read under the lock that took the snapshot, once per snapshot.
+func (ms *Store) ForEachDocValuesOrdinal(labelToken uint16, propKeys []string,
+	fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	col, ords, gen, ok, err := ms.labelDocColumns(labelToken, propKeys, true)
+	if err != nil || !ok {
+		return gen, false, err
+	}
+	col.ForEachRowOrdinal(propKeys, ords, fn)
+	return gen, true, nil
+}
+
+// labelDocColumns is ForEachDocValues' Phase A: under the write lock (atomic
+// vs every mutation, which also takes it), a column fresh for the epoch and
+// holding every requested key, with its rows' ordinals when withOrds.
+// ok=false (gen as known) when the door declines: the label is empty, over
+// the size cap, or a requested property is not a uniformly numeric/string
+// column.
+func (ms *Store) labelDocColumns(labelToken uint16, propKeys []string, withOrds bool) (col *indexpkg.LabelDocValues, ords []uint32, gen uint64, ok bool, err error) {
+	if ms == nil {
+		return nil, nil, 0, false, ErrNilStore
+	}
 	ms.mu.Lock()
+	defer ms.mu.Unlock()
 	if cerr := ms.checkOpenLocked(); cerr != nil {
-		ms.mu.Unlock()
-		return 0, false, cerr
+		return nil, nil, 0, false, cerr
 	}
 	set := ms.labelIdx[labelToken]
 	if len(set) == 0 || len(set) > indexpkg.MaxDocValuesNodes {
-		ms.mu.Unlock()
-		return 0, false, nil // empty or over cap → fall back
+		return nil, nil, 0, false, nil // empty or over cap → fall back
 	}
 	cur := ms.nodeEpoch.Load()
-	col := ms.docColumns[labelToken]
+	col = ms.docColumns[labelToken]
 	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
 		col = ms.refreshLabelColumnsLocked(labelToken, set, propKeys, ms.docColumns[labelToken], cur)
 		ms.docColumns[labelToken] = col
 	}
-	ms.mu.Unlock()
-
-	// Phase B: iterate the immutable snapshot lock-free. If a requested column was
-	// not buildable, decline (the caller falls back for the whole query).
+	// A requested column that is not buildable declines (the caller falls
+	// back for the whole query).
 	if !col.HasAll(propKeys) {
-		return col.Epoch(), false, nil
+		return nil, nil, col.Epoch(), false, nil
 	}
-	col.ForEachRow(propKeys, fn)
-	return col.Epoch(), true, nil
+	if withOrds {
+		ords = ms.docOrdinals.label(labelToken, col, ms.snapshotOrdinalsLocked)
+	}
+	return col, ords, col.Epoch(), true, nil
 }
 
 // ForEachDocValuesMulti streams the requested property columns for a LABEL
@@ -94,49 +119,133 @@ func (ms *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 //     NodeMutationEpoch()==gen after consuming fn's results (Gate 2).
 func (ms *Store) ForEachDocValuesMulti(toks []uint16, propKeys []string,
 	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
-	if ms == nil {
-		return 0, false, ErrNilStore
+	col, _, gen, ok, err := ms.multiDocColumns(toks, propKeys, false)
+	if err != nil || !ok {
+		return gen, false, err
 	}
+	col.ForEachRow(propKeys, fn)
+	return gen, true, nil
+}
 
+// ForEachDocValuesMultiOrdinal is ForEachDocValuesMulti with each row's node
+// ordinal (round 6 request 11), as ForEachDocValuesOrdinal.
+func (ms *Store) ForEachDocValuesMultiOrdinal(toks []uint16, propKeys []string,
+	fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	col, ords, gen, ok, err := ms.multiDocColumns(toks, propKeys, true)
+	if err != nil || !ok {
+		return gen, false, err
+	}
+	col.ForEachRowOrdinal(propKeys, ords, fn)
+	return gen, true, nil
+}
+
+// multiDocColumns is labelDocColumns for a label intersection.
+func (ms *Store) multiDocColumns(toks []uint16, propKeys []string, withOrds bool) (col *indexpkg.LabelDocValues, ords []uint32, gen uint64, ok bool, err error) {
+	if ms == nil {
+		return nil, nil, 0, false, ErrNilStore
+	}
 	ms.mu.Lock()
+	defer ms.mu.Unlock()
 	if cerr := ms.checkOpenLocked(); cerr != nil {
-		ms.mu.Unlock()
-		return 0, false, cerr
+		return nil, nil, 0, false, cerr
 	}
 	cur := ms.nodeEpoch.Load()
 	key := indexpkg.MultiLabelKey(toks)
-	col := ms.docColumnsMulti[key]
+	col = ms.docColumnsMulti[key]
 	// Compute the intersection ONLY when a (re)build is needed. A fresh cached
 	// snapshot is trusted as-is: every label change bumps the epoch, so a matching
 	// epoch guarantees the intersection membership is unchanged — re-intersecting
 	// on every call would re-probe the smaller label set (O(min|label|)) for
 	// nothing (the 50k-probe steady-state regression this avoids).
 	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
-		set := ms.intersectLabelsLocked(toks)
-		if len(set) > indexpkg.MaxDocValuesNodes {
-			ms.mu.Unlock()
-			return 0, false, nil // over cap → fall back
+		keys := propKeys
+		if col != nil {
+			keys = indexpkg.UnionKeys(col.Keys(), propKeys)
 		}
-		// An empty intersection is served: an empty snapshot (round 5
-		// request 3).
 		// Intersection membership, NOT single-label: a per-label append record cannot
-		// say whether an appended node joins A∩B, so this path always rebuilds.
-		col = ms.buildColumnsLocked(set, propKeys, col, cur)
+		// say whether an appended node joins A∩B, so this path always rebuilds:
+		// from a member label's fresh columns when one holds every key (round 7
+		// request 6, no node read), else from the nodes.
+		if sub := ms.multiColumnsFromMemberLocked(toks, cur, keys); sub != nil {
+			ms.columnRebuilds.Add(1)
+			ms.multiFromMember.Add(1)
+			col = sub
+		} else {
+			ids := ms.intersectLabelsLocked(toks)
+			if len(ids) > indexpkg.MaxDocValuesNodes {
+				return nil, nil, 0, false, nil // over cap → fall back
+			}
+			// An empty intersection is served: an empty snapshot (round 5
+			// request 3).
+			col = ms.buildColumnsFromIDsLocked(ids, keys, nil, cur)
+		}
 		ms.docColumnsMulti[key] = col
 	}
-	ms.mu.Unlock()
-
 	if !col.HasAll(propKeys) {
-		return col.Epoch(), false, nil
+		return nil, nil, col.Epoch(), false, nil
 	}
-	col.ForEachRow(propKeys, fn)
-	return col.Epoch(), true, nil
+	if withOrds {
+		ords = ms.docOrdinals.multi(key, col, ms.snapshotOrdinalsLocked)
+	}
+	return col, ords, col.Epoch(), true, nil
 }
 
-// intersectLabelsLocked returns the set of node IDs present in EVERY label token,
-// driven by the smallest label set (so the probe count is O(min |label|)). Returns
-// nil (empty) if any token is unknown/empty. Must hold ms.mu.
-func (ms *Store) intersectLabelsLocked(toks []uint16) map[types.NodeID]struct{} {
+// docOrdinalCache holds, per label and per label intersection, the node
+// ordinals of the rows of the snapshot they were read for. Guarded by the
+// store's mu.
+type docOrdinalCache struct {
+	labels map[uint16]snapshotOrdinals
+	multis map[string]snapshotOrdinals
+}
+
+type snapshotOrdinals struct {
+	col  *indexpkg.LabelDocValues
+	ords []uint32
+}
+
+func (c *docOrdinalCache) label(tok uint16, col *indexpkg.LabelDocValues, read func(*indexpkg.LabelDocValues) []uint32) []uint32 {
+	if e, ok := c.labels[tok]; ok && e.col == col {
+		return e.ords
+	}
+	if c.labels == nil {
+		c.labels = make(map[uint16]snapshotOrdinals)
+	}
+	ords := read(col)
+	c.labels[tok] = snapshotOrdinals{col: col, ords: ords}
+	return ords
+}
+
+func (c *docOrdinalCache) multi(key string, col *indexpkg.LabelDocValues, read func(*indexpkg.LabelDocValues) []uint32) []uint32 {
+	if e, ok := c.multis[key]; ok && e.col == col {
+		return e.ords
+	}
+	if c.multis == nil {
+		c.multis = make(map[string]snapshotOrdinals)
+	}
+	ords := read(col)
+	c.multis[key] = snapshotOrdinals{col: col, ords: ords}
+	return ords
+}
+
+// snapshotOrdinalsLocked reads the ordinals of col's rows from the nodes'
+// current rows (0 for a row the store no longer holds). Callers hold ms.mu,
+// under which col was taken fresh, so every row is current.
+func (ms *Store) snapshotOrdinalsLocked(col *indexpkg.LabelDocValues) []uint32 {
+	ids := col.IDs()
+	ords := make([]uint32, len(ids))
+	for i, id := range ids {
+		if n := ms.nodes[id]; n != nil {
+			ords[i] = n.Ordinal()
+		}
+	}
+	return ords
+}
+
+// intersectLabelsLocked returns the node IDs present in EVERY label token,
+// driven by the smallest label set (so the probe count is O(min |label|)), as
+// a slice (no intermediate set). Returns nil (empty) if any token is
+// unknown/empty. Must hold ms.mu.
+func (ms *Store) intersectLabelsLocked(toks []uint16) []types.NodeID {
 	if len(toks) == 0 {
 		return nil
 	}
@@ -150,20 +259,56 @@ func (ms *Store) intersectLabelsLocked(toks []uint16) map[types.NodeID]struct{} 
 			smallest = s
 		}
 	}
-	out := make(map[types.NodeID]struct{}, len(smallest))
+	out := make([]types.NodeID, 0, len(smallest))
 	for id := range smallest {
-		inAll := true
-		for _, t := range toks {
-			if _, ok := ms.labelIdx[t][id]; !ok {
-				inAll = false
-				break
-			}
-		}
-		if inAll {
-			out[id] = struct{}{}
+		if ms.inAllLabelsLocked(toks, id) {
+			out = append(out, id)
 		}
 	}
 	return out
+}
+
+// inAllLabelsLocked reports whether id carries every label of toks. Must hold
+// ms.mu.
+func (ms *Store) inAllLabelsLocked(toks []uint16, id types.NodeID) bool {
+	for _, t := range toks {
+		if _, ok := ms.labelIdx[t][id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// multiColumnsFromMemberLocked builds an intersection's snapshot at cur from
+// the cached columns of its smallest member label that is fresh (built at
+// cur) and holds every key with validity columns, taking that label's rows
+// that carry every other label (indexpkg.SubsetDocValues). nil when no member
+// qualifies or a key is not buildable on it. Must hold ms.mu (write lock).
+func (ms *Store) multiColumnsFromMemberLocked(toks []uint16, cur uint64, keys []string) *indexpkg.LabelDocValues {
+	var src *indexpkg.LabelDocValues
+	for _, t := range toks {
+		c := ms.docColumns[t]
+		if c == nil || c.Epoch() != cur || !c.HasAll(keys) || !c.HasTemporal() {
+			continue
+		}
+		if src == nil || c.Len() < src.Len() {
+			src = c
+		}
+	}
+	if src == nil {
+		return nil
+	}
+	var ords []int
+	for o, id := range src.IDs() {
+		if ms.inAllLabelsLocked(toks, id) {
+			ords = append(ords, o)
+		}
+	}
+	sub, ok := indexpkg.SubsetDocValues(cur, src, ords, keys)
+	if !ok {
+		return nil
+	}
+	return sub
 }
 
 // DocValuesSnapshot returns a RANDOM-ACCESS point-lookup handle over a single
@@ -219,7 +364,13 @@ func (ms *Store) buildColumnsLocked(set map[types.NodeID]struct{}, requested []s
 	for id := range set {
 		ids = append(ids, id)
 	}
+	return ms.buildColumnsFromIDsLocked(ids, requested, old, cur)
+}
 
+// buildColumnsFromIDsLocked is buildColumnsLocked over a membership slice.
+// Must hold ms.mu (write lock).
+func (ms *Store) buildColumnsFromIDsLocked(ids []types.NodeID, requested []string,
+	old *indexpkg.LabelDocValues, cur uint64) *indexpkg.LabelDocValues {
 	keys := requested
 	if old != nil {
 		keys = indexpkg.UnionKeys(old.Keys(), requested)
@@ -232,17 +383,15 @@ func (ms *Store) buildColumnsLocked(set map[types.NodeID]struct{}, requested []s
 		}
 		return n.GetProperty(key)
 	}
-	getTemporal := func(id types.NodeID) (int64, int64, bool) {
+	getTemporal := func(id types.NodeID) (int64, int64, int64, bool) {
 		n, ok := ms.nodes[id]
 		if !ok {
-			return 0, 0, false
+			return 0, 0, 0, false
 		}
-		f, t, has := n.ValidRange()
-		// See core/docvalues.go: an unset ValidFrom resolves to the mint time.
-		if !has || f == 0 {
-			f = storeutil.SnowflakeInstant(id.SnowflakeID())
-		}
-		return int64(f), int64(t), true
+		// See core/docvalues.go: the effective start, one rule.
+		_, t, _ := n.ValidRange()
+		f := int64(storeutil.NodeValidFrom(n))
+		return f, int64(t), f, true
 	}
 	ms.columnRebuilds.Add(1)
 	return indexpkg.BuildLabelDocValues(cur, ids, keys, getProp, getTemporal)
@@ -268,16 +417,14 @@ func (ms *Store) refreshLabelColumnsLocked(token uint16, set map[types.NodeID]st
 					}
 					return n.GetProperty(key)
 				}
-				getTemporal := func(id types.NodeID) (int64, int64, bool) {
+				getTemporal := func(id types.NodeID) (int64, int64, int64, bool) {
 					n, present := ms.nodes[id]
 					if !present {
-						return 0, 0, false
+						return 0, 0, 0, false
 					}
-					f, t, has := n.ValidRange()
-					if !has || f == 0 {
-						f = storeutil.SnowflakeInstant(id.SnowflakeID())
-					}
-					return int64(f), int64(t), true
+					_, t, _ := n.ValidRange()
+					f := int64(storeutil.NodeValidFrom(n))
+					return f, int64(t), f, true
 				}
 				if ext := old.Extend(cur, added, getProp, getTemporal); ext != nil {
 					ms.clearAppendDeltaFor(token)

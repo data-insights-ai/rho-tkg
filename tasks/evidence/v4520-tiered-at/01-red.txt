@@ -1,0 +1,110 @@
+# sigma-tkgd TestSharedPinnedPointReadLooksUpTheNodesProperty, '/tiered fails on v4.52.0' (2026-10-14)
+# Result: reproduced, but NOT a rho bug and NOT v4.52.0- or tiered-specific.
+# The frozen (expected) answer is {v:0} (only left); the failing runs answer {v:1} (only right).
+# rho stamps an update without valid-from as valid from its TxFrom. The tx clock runs ahead of the
+# wall clock when several stamps fall in one ms; at = time.Now().UnixMilli() taken after the update
+# is < TxFrom (answer 0, the frozen one) only while that lead lasts. When at >= TxFrom, 1 is correct.
+
+## 1. sigma v4.52.0-adoption worktree (agent-af3a9fb2bd08d6fb2, read-only), its own go.mod (rho v4.52.0), -count=60
+    --- FAIL: TestSharedPinnedPointReadLooksUpTheNodesProperty/sharded (0.02s)
+    --- FAIL: TestSharedPinnedPointReadLooksUpTheNodesProperty/tiered (0.08s)
+        shared_reopen_test.go:294: MATCH (p:P1) AT TIME $at RETURN p.val AS v run 0: rows (as a multiset): 1 vs 1 entries; only left: {"v": 0}; only right: {"v": 1}
+
+## 2. same sigma code against rho v4.51.8 (module cache, modfile copy), -count=120: fails too (badger, sharded)
+    --- FAIL: TestSharedPinnedPointReadLooksUpTheNodesProperty/sharded (0.04s)
+    --- FAIL: TestSharedPinnedPointReadLooksUpTheNodesProperty/badger (0.07s)
+        shared_reopen_test.go:280: MATCH (p:P1) AT TIME 1791980130186 RETURN p.val AS v: rows (as a multiset): 1 vs 1 entries; only left: {"v": 0}; only right: {"v": 1}
+        shared_reopen_test.go:294: MATCH (p:P1) AT TIME $at RETURN p.val AS v run 0: rows (as a multiset): 1 vs 1 entries; only left: {"v": 0}; only right: {"v": 1}
+
+## 3. diagnostic COPY of sigma's test (sigma untouched; diff at the end) adds 'DIAG at, TxFrom' to the failure
+##    and errors with REFUTE if a run passes with at >= TxFrom. 600 runs x 4 backends against rho main (b303ebe3):
+##    every failing run had at >= TxFrom; no run with at >= TxFrom passed (REFUTE 0).
+    130         shared_reopen_test.go:299: MATCH (p:P1) AT TIME $at RETURN p.val AS v run 2: rows (as a multiset): 1 vs 1 entries; only left: {"v": 0}; only right: {"v": 1} DIAG at=N curTxFrom=N at>=TxFrom=true
+    130         shared_reopen_test.go:299: MATCH (p:P1) AT TIME $at RETURN p.val AS v run 1: rows (as a multiset): 1 vs 1 entries; only left: {"v": 0}; only right: {"v": 1} DIAG at=N curTxFrom=N at>=TxFrom=true
+    130         shared_reopen_test.go:299: MATCH (p:P1) AT TIME $at RETURN p.val AS v run 0: rows (as a multiset): 1 vs 1 entries; only left: {"v": 0}; only right: {"v": 1} DIAG at=N curTxFrom=N at>=TxFrom=true
+     16         shared_reopen_test.go:281: MATCH (p:P1) AT TIME N RETURN p.val AS v: rows (as a multiset): 1 vs 1 entries; only left: {"v": 0}; only right: {"v": 1}
+REFUTE lines: 0
+     33 TestSharedPinnedPointReadLooksUpTheNodesProperty/badger
+     15 TestSharedPinnedPointReadLooksUpTheNodesProperty/memory
+     27 TestSharedPinnedPointReadLooksUpTheNodesProperty/sharded
+     55 TestSharedPinnedPointReadLooksUpTheNodesProperty/tiered
+
+## 4. lead = TxFrom - at per backend, 300 runs each. Failures == runs with lead <= 0, on v4.51.8 as on main.
+-- lead-4518 (load avg ~66)
+badger n=300 lead<=0:56 meanlead=1,56
+memory n=300 lead<=0:39 meanlead=2,59
+sharded n=300 lead<=0:65 meanlead=1,23
+tiered n=300 lead<=0:80 meanlead=0,82
+subtest FAILs: 240  REFUTE: 0
+-- lead-main (load avg ~66)
+badger n=300 lead<=0:79 meanlead=1,17
+memory n=300 lead<=0:46 meanlead=2,47
+sharded n=300 lead<=0:88 meanlead=0,82
+tiered n=300 lead<=0:123 meanlead=-0,30
+subtest FAILs: 336  REFUTE: 0
+-- bisect v4.51.8 .. v4.52.0+backlog (rho worktree checked out per commit, sigma copy replaced onto it): no step
+-- b-4518
+badger n=300 lead<=0:0 meanlead=3,76
+memory n=300 lead<=0:0 meanlead=4,15
+sharded n=300 lead<=0:0 meanlead=3,42
+tiered n=300 lead<=0:3 meanlead=3,30
+subtest FAILs: 3  REFUTE: 0
+-- b-7c2c
+badger n=300 lead<=0:1 meanlead=4,11
+memory n=300 lead<=0:2 meanlead=4,45
+sharded n=300 lead<=0:1 meanlead=3,91
+tiered n=300 lead<=0:3 meanlead=3,94
+subtest FAILs: 7  REFUTE: 0
+-- b-25df
+badger n=300 lead<=0:0 meanlead=4,22
+memory n=300 lead<=0:0 meanlead=4,51
+sharded n=300 lead<=0:2 meanlead=3,96
+tiered n=300 lead<=0:0 meanlead=4,06
+subtest FAILs: 2  REFUTE: 0
+-- b-351a
+badger n=300 lead<=0:0 meanlead=4,04
+memory n=300 lead<=0:0 meanlead=4,33
+sharded n=300 lead<=0:0 meanlead=3,82
+tiered n=300 lead<=0:0 meanlead=3,83
+subtest FAILs: 0  REFUTE: 0
+-- b-main
+badger n=300 lead<=0:2 meanlead=3,92
+memory n=300 lead<=0:0 meanlead=4,30
+sharded n=300 lead<=0:0 meanlead=3,77
+tiered n=300 lead<=0:1 meanlead=3,73
+subtest FAILs: 3  REFUTE: 0
+
+## diagnostic diff (applied to a copy in the scratchpad only)
+--- /home/renework2023/Work/2026/datainsights/sigma-tkgd/.claude/worktrees/agent-af3a9fb2bd08d6fb2/internal/cypher/testing/suites/contracts/twodriver/shared_reopen_test.go	2026-10-14 13:49:13.315700758 +0200
++++ /tmp/claude-1000/-home-renework2023-Work-2026-datainsights-rho-tkg/d8867122-d92d-44f6-8bc1-21ec6c585e85/scratchpad/sigcopy/internal/cypher/testing/suites/contracts/twodriver/shared_reopen_test.go	2026-10-14 14:19:14.852697420 +0200
+@@ -9,6 +9,7 @@
+ 	"time"
+ 
+ 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
++	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+ 
+ 	"github.com/data-insights-ai/sigma-tkgd/pkg/cypher"
+ )
+@@ -282,6 +283,11 @@
+ 			}
+ 			// a qualifier that is a parameter's value is read as a constant is, each run
+ 			params := map[string]any{"pin": int64(pin), "at": time.Now().UnixMilli()}
++			diag := ""
++			if ns, _ := g.Nodes().ByLabel("P1", storepkg.QueryOpts{}); len(ns) == 1 {
++				diag = fmt.Sprintf("DIAG at=%d curTxFrom=%d at>=TxFrom=%v", params["at"], ns[0].Temporal().TxFrom, params["at"].(int64) >= int64(ns[0].Temporal().TxFrom))
++			}
++			t.Logf("LEAD %s %d", backend, int64(0)+func() int64 { ns, _ := g.Nodes().ByLabel("P1", storepkg.QueryOpts{}); return int64(ns[0].Temporal().TxFrom) - params["at"].(int64) }())
+ 			for _, statement := range []string{
+ 				"MATCH (p:P1) AS OF SYSTEM TIME $pin RETURN p.val AS v", "MATCH (p:P1) AT TIME $at RETURN p.val AS v",
+ 			} {
+@@ -291,7 +297,9 @@
+ 					got, err := shared.Execute(ctx, statement, params)
+ 					must(t, err, statement)
+ 					if diffs := Compare(want, Canonize(info, Result{Columns: got.Columns, Rows: got.Rows, Stats: got.Stats}, State{})); len(diffs) > 0 {
+-						t.Errorf("%s run %d: %s", statement, run, strings.Join(diffs, "; "))
++						t.Errorf("%s run %d: %s %s", statement, run, strings.Join(diffs, "; "), diag)
++					} else if strings.Contains(statement, "$at") && strings.HasSuffix(diag, "true") {
++						t.Errorf("REFUTE: passed with %s", diag)
+ 					}
+ 				}
+ 			}

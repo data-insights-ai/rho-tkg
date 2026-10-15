@@ -14,13 +14,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship property indexes — the rel mirror of badgerstore_index.go's
-// node property indexes, keyed by rel-type token. RAM-only v1: the value maps
-// live entirely in RAM (bs.relPropertyIndexes), only the DEFINITIONS are
-// persisted (RelPropIndexDefsKey), and the maps are rebuilt from current
-// relationship state at open (loadIndexes). There is no on-disk value keyspace;
-// a 0x0C rel keyspace disk mode mirroring the node 0x0A PropertyIndexOnDisk mode
-// is a documented follow-up.
+// Relationship property indexes: the rel mirror of badgerstore_index.go's node
+// indexes, keyed by rel-type token. RAM-only: value maps live in
+// bs.relPropertyIndexes, only definitions persist (RelPropIndexDefsKey), and the
+// maps are rebuilt from current relationships at open (loadIndexes).
 
 // relPropIdxDef is the serialization format for relationship property index
 // definitions (mirror of propIdxDef).
@@ -28,25 +25,21 @@ type relPropIdxDef struct {
 	RelTypeToken uint16 `msgpack:"t"`
 	PropertyKey  string `msgpack:"p"`
 	RangeCounts  bool   `msgpack:"rc,omitempty"` // round 4 R2; written only when set
+	Elements     bool   `msgpack:"el,omitempty"` // backlog 63; written only when set
 }
 
-// CreateRelPropertyIndex creates a relationship property index for the given
-// rel-type token and property key. Three-phase (mirror of CreatePropertyIndex)
-// so slow backfill I/O does not block concurrent rel writes:
-//
-//	Phase 1 (idxMu.Lock): install an empty live index, snapshot the type's rel IDs.
-//	Phase 2 (no lock): prefetch relationship data to build a backfill set.
-//	Phase 3 (idxMu.Lock): merge backfill, skipping IDs a concurrent write already
-//	  handled during Phase 2 and rels deleted meanwhile.
-//
+// CreateRelPropertyIndex creates a relationship property index for the rel-type
+// token and property key, in three phases (mirror of CreatePropertyIndex) so slow
+// backfill I/O does not block rel writes: install an empty live index and
+// snapshot the type's rel IDs under idxMu; prefetch outside any lock; merge the
+// backfill under idxMu, skipping IDs a concurrent write handled or deleted.
 // Returns ErrIndexExists if the index already exists.
 func (bs *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
 	return bs.CreateRelPropertyIndexWithOptions(relTypeToken, propertyKey, storecontract.PropertyIndexOptions{})
 }
 
 // CreateRelPropertyIndexWithOptions is CreateRelPropertyIndex with
-// storecontract.PropertyIndexOptions (round 4 R2); the options persist with
-// the definition.
+// storecontract.PropertyIndexOptions, persisted with the definition.
 func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -57,22 +50,25 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return err
 	}
+	if err := storecontract.ValidatePropertyIndexOptions(opts); err != nil {
+		return err
+	}
 
-	// Phase 1: install empty live index + snapshot rel IDs under idxMu.Lock.
+	// Phase 1: install empty live index, snapshot rel IDs.
 	bs.idxMu.Lock()
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
 	if _, exists := bs.relPropertyIndexes[key]; exists {
 		bs.idxMu.Unlock()
 		return ErrIndexExists
 	}
-	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts)
+	liveIdx := indexpkg.NewPropertyIndexWith(opts.RangeCounts, opts.Elements)
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.relPropertyIndexes[key] = liveIdx
 	rids := bs.relTypeRelIDsSnapshotLocked(relTypeToken)
 	bs.idxMu.Unlock()
 
-	// Phase 2: fetch relationship data OUTSIDE any lock.
-	backfill := indexpkg.NewPropertyIndex()
+	// Phase 2: fetch outside any lock.
+	backfill := indexpkg.NewPropertyIndexWith(false, opts.Elements)
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)
 		if err != nil {
@@ -84,14 +80,10 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: create relationship property index: %w", err)
 		}
-		valueKey, found := r.IndexablePropertyValueKey(propertyKey)
-		if !found {
-			continue
-		}
-		backfill.AddKey(rid.SnowflakeID(), valueKey)
+		backfill.AddEntityKeys(rid.SnowflakeID(), propertyKey, r.ForEachPropertyIndexKey)
 	}
 
-	// Phase 3: merge backfill into live index under idxMu.Lock.
+	// Phase 3: merge backfill.
 	bs.idxMu.Lock()
 	if err := requireRelPropertyIndexCurrentForCreate(bs.relPropertyIndexes, key, liveIdx); err != nil {
 		bs.idxMu.Unlock()
@@ -143,9 +135,9 @@ func (bs *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) e
 	return bs.flushIfNeeded()
 }
 
-// RelationshipsByTypeAndProperty returns relationships with the given rel-type
-// token and property value, applying temporal/pagination options. Uses the rel
-// property index if one exists; falls back to a type scan + property filter.
+// RelationshipsByTypeAndProperty returns relationships with the rel-type token and
+// property value, applying temporal/pagination options; uses the rel property
+// index if one exists, else a type scan + property filter.
 func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Relationship, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -171,16 +163,17 @@ func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
 	if idx, ok := bs.relPropertyIndexes[key]; ok && idx.Mutated == nil {
 		rids := idx.RelIDs(value)
+		elements := idx.Elements()
 		bs.idxMu.RUnlock()
 		if len(rids) == 0 {
 			return nil, nil
 		}
 		storepkg.SortRelIDs(rids)
 		rids = bs.filterRelIDsByTemporalPeek(rids, opts)
-		return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, rids, opts)
+		return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, elements, rids, opts)
 	}
 
-	// Fallback: snapshot type IDs, release lock, then scan properties.
+	// Fallback: type scan + property filter.
 	set := bs.typeIdx[relTypeToken]
 	rids := make([]types.RelID, 0, len(set))
 	for id := range set {
@@ -191,10 +184,10 @@ func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 		return nil, nil
 	}
 	storepkg.SortRelIDs(rids)
-	return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, rids, opts)
+	return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, false, rids, opts)
 }
 
-func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey, targetKey string, rids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
+func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey, targetKey string, elements bool, rids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
 	rids = storepkg.PaginateRelIDs(rids, opts.After, 0)
 	if len(rids) == 0 {
 		return nil, nil
@@ -212,7 +205,7 @@ func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey, target
 		if !r.HasTypeTokenRaw(relTypeToken) {
 			continue
 		}
-		if valueKey, found := r.IndexablePropertyValueKey(propKey); !found || valueKey != targetKey {
+		if !r.HasPropertyIndexKey(propKey, elements, targetKey) {
 			continue
 		}
 		if hasTemporal && !storepkg.MatchesTemporalFilter(rid.SnowflakeID(), r.Temporal(), opts) {
@@ -229,14 +222,12 @@ func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey, target
 	return rels, nil
 }
 
-// ForEachRelByTypePropertyRange streams the type's relationships whose NUMERIC
+// ForEachRelByTypePropertyRange streams the type's relationships whose numeric
 // propKey value lies within [min, max] (per the inclusivity flags) to fn in
-// snowflake-ID order — the rel range-scan capability. Candidates come from the
-// rel property index's ordered numeric view, which OVER-SELECTS by design, so
-// fn receives CANDIDATES and MUST re-check the predicate with exact comparison
-// semantics. fn returning false stops early. Returns ErrIndexNotFound when no
-// usable rel property index exists for (relType, propKey) — callers fall back to
-// a type scan.
+// snowflake-ID order. Candidates come from the index's ordered numeric view,
+// which over-selects by design, so fn MUST re-check the predicate exactly; false
+// stops. Returns ErrIndexNotFound when no usable rel property index exists
+// (callers fall back to a type scan).
 func (bs *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey string, min, max float64, inclMin, inclMax bool, opts QueryOpts, fn func(*types.Relationship) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
@@ -310,11 +301,15 @@ func (bs *Store) relTypeRelIDsSnapshotLocked(relTypeToken uint16) []types.RelID 
 // definitions to Badger. Caller holds idxMu. Mirror of persistPropertyIndexDefs.
 func (bs *Store) persistRelPropertyIndexDefs() {
 	var defs []relPropIdxDef
+	var marker uint16 // ElementsStoreFormatVersion when an Elements definition is persisted
 	for key, idx := range bs.relPropertyIndexes {
 		if idx == nil || idx.Mutated != nil {
 			continue // still being created (Phase 2) — not yet durable
 		}
-		defs = append(defs, relPropIdxDef{RelTypeToken: key.RelTypeToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts()})
+		defs = append(defs, relPropIdxDef{RelTypeToken: key.RelTypeToken, PropertyKey: key.PropertyKey, RangeCounts: idx.RangeCounts(), Elements: idx.Elements()})
+		if idx.Elements() {
+			marker = storepkg.ElementsStoreFormatVersion
+		}
 	}
 	if len(defs) == 0 {
 		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.RelPropIndexDefsKey})
@@ -325,16 +320,12 @@ func (bs *Store) persistRelPropertyIndexDefs() {
 		slog.Error("graph: persist relationship property index defs: marshal failed", "error", err)
 		return // index still works in-memory; will retry on next change
 	}
-	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelPropIndexDefsKey, value: data})
+	bs.appendOpsRaising(marker, writeOp{opType: writeOpSet, key: storepkg.RelPropIndexDefsKey, value: data})
 }
 
-// maintainRelPropertyIndexesAdd / Remove are the write-path maintenance entry
-// points every rel-mutation door calls. RAM-only: they mutate the value maps
-// directly under idxMu (the caller already holds it). No disk ops (unlike the
-// node property index's disk mode).
-//
-// Every door that writes a current relationship row calls Add, so it also
-// records the row into the property membership sidecars (backlog 8).
+// maintainRelPropertyIndexesAdd / Remove are the write-path entry points every
+// rel-mutation door calls, mutating the RAM value maps under idxMu (held by the
+// caller). Add also records the row into the property membership sidecars (backlog 8).
 func (bs *Store) maintainRelPropertyIndexesAdd(r *types.Relationship, id snowflake.ID) {
 	indexpkg.AddRelToPropertyIndexes(bs.relPropertyIndexes, r, id)
 	bs.recordRelRowLocked(r)
@@ -359,7 +350,7 @@ func deleteRelPropertyIndexIfCurrent(idxs map[indexpkg.RelPropertyIndexKey]*inde
 func requireRelPropertyIndexCurrentForCreate(idxs map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex, key indexpkg.RelPropertyIndexKey, expected *indexpkg.PropertyIndex) error {
 	cur, ok := idxs[key]
 	if !ok || cur != expected {
-		// The index was dropped (or replaced) during Phase 2 — abort the create.
+		// Dropped or replaced during Phase 2: abort the create.
 		return ErrIndexNotFound
 	}
 	return nil

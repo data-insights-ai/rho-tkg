@@ -1,0 +1,40 @@
+# sigma's unmodified test (v4.52.0-adoption worktree, read-only) -count=60 against rho main b303ebe3 (modfile copy with replace).
+# No rho change was made: the test's frozen answer depends on the tx clock leading the wall clock (01-red.txt).
+# This run: 0 failures; under heavier load the same test fails on v4.51.8 as well.
+ok  	github.com/data-insights-ai/sigma-tkgd/internal/cypher/testing/suites/contracts/twodriver	3.510s
+
+# the same 60 runs through the diagnostic copy (its extra read widens the wall-clock window): failures only where lead <= 0
+      2     --- FAIL: TestSharedPinnedPointReadLooksUpTheNodesProperty/badger 
+      5     --- FAIL: TestSharedPinnedPointReadLooksUpTheNodesProperty/tiered 
+      1     shared_reopen_test.go:290: LEAD badger -1
+      3     shared_reopen_test.go:290: LEAD badger 1
+      1     shared_reopen_test.go:290: LEAD badger -2
+      1     shared_reopen_test.go:290: LEAD badger 2
+     13     shared_reopen_test.go:290: LEAD badger 3
+     32     shared_reopen_test.go:290: LEAD badger 4
+      9     shared_reopen_test.go:290: LEAD badger 5
+      1     shared_reopen_test.go:290: LEAD memory 1
+      3     shared_reopen_test.go:290: LEAD memory 3
+     37     shared_reopen_test.go:290: LEAD memory 4
+     19     shared_reopen_test.go:290: LEAD memory 5
+      1     shared_reopen_test.go:290: LEAD sharded 1
+      2     shared_reopen_test.go:290: LEAD sharded 2
+     23     shared_reopen_test.go:290: LEAD sharded 3
+     33     shared_reopen_test.go:290: LEAD sharded 4
+      1     shared_reopen_test.go:290: LEAD sharded 5
+      3     shared_reopen_test.go:290: LEAD tiered 0
+      1     shared_reopen_test.go:290: LEAD tiered -1
+      1     shared_reopen_test.go:290: LEAD tiered 1
+      1     shared_reopen_test.go:290: LEAD tiered -2
+      1     shared_reopen_test.go:290: LEAD tiered 2
+     22     shared_reopen_test.go:290: LEAD tiered 3
+     29     shared_reopen_test.go:290: LEAD tiered 4
+      2     shared_reopen_test.go:290: LEAD tiered 5
+      7     shared_reopen_test.go:300: MATCH (p:P1) AT TIME $at RETURN p.val AS v run 0: rows (as a multiset): 1 vs 1 entries; only left: {"v": 0}; only right: {"v": 1} DIAG at=N curTxFrom=N at>=TxFrom=true
+      7     shared_reopen_test.go:300: MATCH (p:P1) AT TIME $at RETURN p.val AS v run 1: rows (as a multiset): 1 vs 1 entries; only left: {"v": 0}; only right: {"v": 1} DIAG at=N curTxFrom=N at>=TxFrom=true
+      7     shared_reopen_test.go:300: MATCH (p:P1) AT TIME $at RETURN p.val AS v run 2: rows (as a multiset): 1 vs 1 entries; only left: {"v": 0}; only right: {"v": 1} DIAG at=N curTxFrom=N at>=TxFrom=true
+badger n=60 lead<=0:2
+memory n=60 lead<=0:0
+sharded n=60 lead<=0:0
+tiered n=60 lead<=0:5
+REFUTE (passed with at >= TxFrom): 0

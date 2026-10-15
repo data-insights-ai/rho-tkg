@@ -1,0 +1,7 @@
+# red: run with the marker key reverted to its pre-v4.52.3 name (the old keyspace is trusted)
+--- FAIL: TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt (0.20s)
+    badgerstore_temporal_disk_start_rule_test.go:74: row keyed by TxFrom: Key not found
+    badgerstore_temporal_disk_start_rule_test.go:77: the old marker survived the rebuild
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.217s
+FAIL

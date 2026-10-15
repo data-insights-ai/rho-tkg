@@ -1,0 +1,13 @@
+CAUGHT: overlay ignores a replaced row's TxTo (supersession) by TestHeadOverlay_MatchesFold
+CAUGHT: overlay ignores an open newest row's positional end by TestHeadOverlay_MatchesFold
+CAUGHT: overlay lets a monotonic chain turn non-monotonic by TestEffectiveHead_DifferentialOracle, TestHeadOverlay_MatchesFold
+CAUGHT: entry ignores the current row's temporal block by TestEffectiveHead_DifferentialOracle
+CAUGHT: entry served below the chain's newest TxFrom by TestEffectiveHead_DifferentialOracle
+CAUGHT: fold keeps a chain with deletes by TestHeadOverlay_MatchesFold
+CAUGHT: fold keeps a chain with a shared version by TestHeadOverlay_MatchesFold
+CAUGHT: tiered token ignores the shard set by TestHistoryEpoch_Contract
+CAUGHT: cache keeps answers above the per-entry limit by TestHeadCache_BoundedByPieces
+CAUGHT: cache ignores the piece bound by TestHeadCache_BoundedByPieces
+CAUGHT: memory store does not note a history write by TestHistoryEpoch_Contract
+CAUGHT: memory store ignores the row count by TestHistoryEpoch_Contract
+CAUGHT: badger store does not note a history key by TestHistoryEpoch_Contract

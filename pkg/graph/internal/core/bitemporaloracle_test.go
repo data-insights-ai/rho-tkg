@@ -41,7 +41,8 @@ package core
 // The op set (WP deliverable 1): add node/rel (optional explicit valid-from /
 // valid-to), backfill-add via AddWithTx (Config.AllowTxBackfill), update-props
 // (optional explicit valid-from), add-label / remove-label, set-version-interval
-// (append-only cascade), and hard-delete. Relationships connect a fixed pool of
+// (append-only cascade), valid-time excise (backlog 64: void pieces), and
+// hard-delete. Relationships connect a fixed pool of
 // anchor nodes (never mutated / deleted) so endpoints stay stable and a node
 // delete never cascades into a tracked relationship.
 
@@ -79,6 +80,7 @@ type oracleRow struct {
 	labels    []string // node label set on this version ("" set for rels)
 	seatVK    string   // canonical value key of the "seat" property ("" = absent; backlog 8)
 	retracted bool     // the retraction marker of a tombstone (backlog 43)
+	void      bool     // an excise's void piece (backlog 64): absent where it wins
 }
 
 // oracleEntity is the captured chain for one entity, in engine chain order:
@@ -91,7 +93,7 @@ type oracleEntity struct {
 }
 
 // effVF is a VERSION's effective valid-from used to ORDER it within the chain
-// and as its tile start. Mirrors the engine's nodeSortValidFrom (temporal.go):
+// and as its tile start. Mirrors the engine's nodeValidFrom (temporal.go):
 // explicit ValidFrom, else a non-genesis row's UpdatedAt, else the snowflake
 // fallback. (Contract: "effective valid-from of that version".)
 func (e *oracleEntity) effVF(r oracleRow) types.Instant {
@@ -283,7 +285,7 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 			vs, ve := e.bounds(chain, i)
 			ve = capAtLifeEnd(ve, lifeEnd(chain, chain[i]))
 			if vs <= validAt && (ve == 0 || ve > validAt) {
-				return chain[i], true
+				return chain[i], !chain[i].void // a void winner: absent (backlog 64)
 			}
 		}
 		return oracleRow{}, false
@@ -304,8 +306,8 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 			}
 		}
 	}
-	if best < 0 {
-		return oracleRow{}, false
+	if best < 0 || chain[best].void {
+		return oracleRow{}, false // nothing covers, or an excise's void piece wins
 	}
 	return chain[best], true
 }
@@ -325,13 +327,82 @@ func (e *oracleEntity) intervalVisible(s, end, txAt types.Instant, pred func(ora
 			}
 			ve = le
 		}
-		if vs < end && (ve == 0 || ve > s) {
+		if chain[i].void {
+			continue // a void piece asserts absence, never a match
+		}
+		if vs < end && (ve == 0 || ve > s) && e.presentSomewhere(max(vs, s), minOracleEnd(ve, end), txAt) {
 			if pred == nil || pred(chain[i]) {
 				return chain[i], true
 			}
 		}
 	}
 	return oracleRow{}, false
+}
+
+// presentSomewhere reports whether, in [lo, hi) (hi finite), some instant is
+// not voided: the point resolution there is not an excise's void piece
+// (backlog 64). Brute force, independent of the engine's mask sweep: the
+// point answer is constant between consecutive bounds of any row, so it is
+// probed at lo and at every row bound inside (lo, hi).
+func (e *oracleEntity) presentSomewhere(lo, hi, txAt types.Instant) bool {
+	if lo >= hi {
+		return false
+	}
+	if !e.voidAt(lo, txAt) {
+		return true
+	}
+	chain, _ := e.sortChain(e.txFilter(txAt))
+	for i, r := range chain {
+		ps, pe := e.bounds(chain, i)
+		os, oe := e.ownBounds(r)
+		for _, b := range []types.Instant{ps, pe, os, oe, r.deletedAt} {
+			if b > lo && b < hi && !e.voidAt(b, txAt) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// voidAt reports whether the point resolution at t (as known at txAt) is an
+// excise's void piece.
+func (e *oracleEntity) voidAt(t, txAt types.Instant) bool {
+	chain, needed := e.sortChain(e.txFilter(txAt))
+	if len(chain) == 0 {
+		return false
+	}
+	if !needed {
+		for i := len(chain) - 1; i >= 0; i-- {
+			vs, ve := e.bounds(chain, i)
+			ve = capAtLifeEnd(ve, lifeEnd(chain, chain[i]))
+			if vs <= t && (ve == 0 || ve > t) {
+				return chain[i].void
+			}
+		}
+		return false
+	}
+	best := -1
+	for i := range chain {
+		vs, ve := e.ownBounds(chain[i])
+		ve = capAtLifeEnd(ve, lifeEnd(chain, chain[i]))
+		if vs <= t && (ve == 0 || ve > t) && !e.replacedAt(chain, chain[i], t) {
+			if best < 0 || beliefNewer(chain[i], chain[best]) {
+				best = i
+			}
+		}
+	}
+	return best >= 0 && chain[best].void
+}
+
+// minOracleEnd is the smaller of two valid ends (0 = open).
+func minOracleEnd(a, b types.Instant) types.Instant {
+	if a == 0 {
+		return b
+	}
+	if b == 0 {
+		return a
+	}
+	return min(a, b)
 }
 
 // dropRetractedLivesModel states retraction (backlog 43) for the model: a life
@@ -451,7 +522,14 @@ func (e *oracleEntity) asOfVisible(txTime types.Instant) (oracleRow, bool) {
 	if e.currentAlive {
 		hist = e.rows[:n-1]
 	}
-	desc := append([]oracleRow(nil), hist...)
+	// An excise's void piece is never an as-of answer and the rule reads as
+	// if it were absent (backlog 64).
+	var desc []oracleRow
+	for _, r := range hist {
+		if !r.void {
+			desc = append(desc, r)
+		}
+	}
 	sort.SliceStable(desc, func(i, j int) bool { return desc[i].version > desc[j].version })
 	if e.currentAlive {
 		cur := e.rows[n-1]
@@ -531,6 +609,7 @@ func nodeRow(g *Core, n *types.Node) oracleRow {
 		r.txFrom, r.txTo = tm.TxFrom, tm.TxTo
 		r.deletedAt, r.updatedAt = tm.DeletedAt, tm.UpdatedAt
 		r.retracted = tm.Retracted
+		r.void = tm.Void
 	}
 	return r
 }
@@ -544,6 +623,7 @@ func relRow(r *types.Relationship) oracleRow {
 		out.txFrom, out.txTo = tm.TxFrom, tm.TxTo
 		out.deletedAt, out.updatedAt = tm.DeletedAt, tm.UpdatedAt
 		out.retracted = tm.Retracted
+		out.void = tm.Void
 	}
 	return out
 }
@@ -863,6 +943,32 @@ func (w *world) cascadeRel() {
 	w.record(fmt.Sprintf("cascadeRel(%v,[%d,%d))", id, vf, vt), err)
 }
 
+// exciseNode ends a node's validity over a bounded [a, b) (backlog 64),
+// sometimes over a span where nothing is valid (ErrNoVersionValidAt).
+func (w *world) exciseNode() {
+	alive := w.aliveNodes()
+	if len(alive) == 0 {
+		return
+	}
+	id := alive[w.rng.IntN(len(alive))]
+	a := w.cascadeVF()
+	b := a + w.width()
+	err := w.g.Temporal.ExciseNodeValidity(w.ctx, id, a, b)
+	w.record(fmt.Sprintf("exciseNode(%v,[%d,%d))", id, a, b), err)
+}
+
+func (w *world) exciseRel() {
+	alive := w.aliveRels()
+	if len(alive) == 0 {
+		return
+	}
+	id := alive[w.rng.IntN(len(alive))]
+	a := w.cascadeVF()
+	b := a + w.width()
+	err := w.g.Temporal.ExciseRelValidity(w.ctx, id, a, b)
+	w.record(fmt.Sprintf("exciseRel(%v,[%d,%d))", id, a, b), err)
+}
+
 func (w *world) deleteNode() {
 	alive := w.aliveNodes()
 	if len(alive) == 0 {
@@ -890,7 +996,7 @@ func (w *world) deleteRel() {
 }
 
 func (w *world) step() {
-	switch w.rng.IntN(11) {
+	switch w.rng.IntN(13) {
 	case 0:
 		w.addNode()
 	case 1:
@@ -913,6 +1019,10 @@ func (w *world) step() {
 		w.deleteNode()
 	case 10:
 		w.deleteRel()
+	case 11:
+		w.exciseNode()
+	case 12:
+		w.exciseRel()
 	}
 }
 
@@ -1387,6 +1497,10 @@ func (w *world) runPointProbe(backend string, seed uint64, snap *snapshot, p pro
 		if gm := nodeSetVer(gotBL); !nodeMapsEqual(oracleByLabel[l], gm) {
 			w.harnessFail(backend, seed, p, "Nodes.ByLabel("+l+")", fmtNodeVer(oracleByLabel[l]), fmtNodeVer(gm))
 		}
+		// CountByLabelAt is len(ByLabel) (round 6 request 12 put it in the oracle).
+		if n, err := g.Nodes.CountByLabelAt(l, storepkg.QueryOpts{ValidAt: p.validAt, TxAt: p.txAt}); err != nil || n != len(oracleByLabel[l]) {
+			w.harnessFail(backend, seed, p, "Nodes.CountByLabelAt("+l+")", fmt.Sprint(len(oracleByLabel[l])), fmt.Sprint(n, err))
+		}
 	}
 
 	// NodeAtTx per node (strong per-entity check).
@@ -1451,6 +1565,9 @@ func (w *world) runPointProbe(backend string, seed uint64, snap *snapshot, p pro
 		}
 		if gm := relSetVer(gotBT); !relMapsEqual(oracleByType[ty], gm) {
 			w.harnessFail(backend, seed, p, "Rels.ByType("+ty+")", fmtRelVer(oracleByType[ty]), fmtRelVer(gm))
+		}
+		if n, err := g.Rels.CountByTypeAt(ty, storepkg.QueryOpts{ValidAt: p.validAt, TxAt: p.txAt}); err != nil || n != len(oracleByType[ty]) {
+			w.harnessFail(backend, seed, p, "Rels.CountByTypeAt("+ty+")", fmt.Sprint(len(oracleByType[ty])), fmt.Sprint(n, err))
 		}
 	}
 
@@ -1537,6 +1654,9 @@ func (w *world) runIntervalProbe(backend string, seed uint64, snap *snapshot, p 
 		if gm := nodeSetVer(gotBL); !nodeKeysEqual(oracleByLabel[l], gm) {
 			w.harnessFail(backend, seed, p, "Nodes.ByLabel("+l+",interval)", fmtNodeVer(oracleByLabel[l]), fmtNodeVer(gm))
 		}
+		if n, err := g.Nodes.CountByLabelAt(l, storepkg.QueryOpts{ValidStart: p.s, ValidEnd: p.e, TxAt: p.txAt}); err != nil || n != len(oracleByLabel[l]) {
+			w.harnessFail(backend, seed, p, "Nodes.CountByLabelAt("+l+",interval)", fmt.Sprint(len(oracleByLabel[l])), fmt.Sprint(n, err))
+		}
 	}
 
 	// --- Rels ---
@@ -1586,6 +1706,9 @@ func (w *world) runIntervalProbe(backend string, seed uint64, snap *snapshot, p 
 		}
 		if gm := relSetVer(gotBT); !relKeysEqual(oracleByType[ty], gm) {
 			w.harnessFail(backend, seed, p, "Rels.ByType("+ty+",interval)", fmtRelVer(oracleByType[ty]), fmtRelVer(gm))
+		}
+		if n, err := g.Rels.CountByTypeAt(ty, storepkg.QueryOpts{ValidStart: p.s, ValidEnd: p.e, TxAt: p.txAt}); err != nil || n != len(oracleByType[ty]) {
+			w.harnessFail(backend, seed, p, "Rels.CountByTypeAt("+ty+",interval)", fmt.Sprint(len(oracleByType[ty])), fmt.Sprint(n, err))
 		}
 	}
 }

@@ -45,3 +45,4 @@ bench/local-*
 # Owned comparison tool artifacts are never source or acceptance records.
 tools/graph-compare/artifacts/
 tools/graph-compare/__pycache__/
+coverage.test.log

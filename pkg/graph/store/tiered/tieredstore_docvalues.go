@@ -4,44 +4,26 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// DocValues (X5 columnar aggregation) on tiered — ADR-0005 §3.4.
+// DocValues (X5 columnar aggregation) on tiered, ADR-0005 §3.4.
 //
-// Design: CONCATENATE-WITH-ORDINAL-OFFSETS, not fold-into-one-column. Each
-// shard (refShard, refArchive, every event shard regardless of tier) builds
-// its OWN columnar snapshot over its OWN membership exactly as badger/memory
-// already do internally, and streams its rows directly to the caller's fn;
-// the tiered layer never merges columns into one aggregate vector. This is
-// correct because the consumer receives rows ONE AT A TIME and performs its
-// own grouping/aggregation — the GLOBAL ordinal order across shards does not
-// matter, only that every label member is emitted EXACTLY ONCE with its
-// correct value. Reference labels are effectively single/two-shard (refShard
-// + refArchive, since reference entities never route to an event shard), so
-// most DocValues queries on tiered touch only those; an event label may span
-// many event shards.
+// CONCATENATE-WITH-ORDINAL-OFFSETS: every shard (reference, archive, every
+// event shard) builds its own columnar snapshot over its own membership and
+// streams rows to the caller's fn; columns are never merged. The consumer
+// aggregates row by row, so only exactly-once emission matters, not global
+// ordinal order.
 //
-// Membership-vs-decline. A per-shard ForEachDocValues/ForEachDocValuesMulti
-// call returns ok=false for BOTH "this shard has zero members for the
-// label(s)" and "this shard has members but the column is unbuildable
-// (mixed/unsupported types, or over the size cap)" — the two cannot be told
-// apart from the (gen, ok, err) tuple alone (gen is literally 0 in the
-// declined case, not the shard's real epoch). Silently skipping a declining
-// shard would be safe ONLY in the first case; in the second it would
-// silently OMIT real members from the aggregate — an undercount a caller
-// would never detect (ok=true would still be returned overall). So every
-// fold here first determines an EXACT lower bound on membership via the O(1)
-// NodeCountByLabel counter(s) — for Multi, the MINIMUM per-shard count across
-// the label tuple, since an intersection can never exceed its smallest
-// constituent set — and only calls the shard's own DocValues method when
-// that bound is nonzero. A shard whose bound is nonzero but whose own call
-// still declines forces the WHOLE tiered call to decline (never a partial or
-// silently-incomplete columnar answer).
+// Membership-vs-decline: a per-shard call returns ok=false both for "zero
+// members" and for "members but column unbuildable" (mixed types, size cap),
+// and the (gen, ok, err) tuple cannot tell them apart. Skipping a declining
+// shard is safe only in the first case; in the second it silently undercounts.
+// So each fold first takes an exact lower bound on membership from the O(1)
+// NodeCountByLabel counter (for Multi the MINIMUM across the label tuple) and
+// calls the shard only when it is nonzero. A nonzero shard that still
+// declines makes the WHOLE tiered call decline.
 
-// shardMinLabelCount returns the minimum, over tokens, of store's exact
-// NodeCountByLabel — a safe lower bound on how many nodes on this shard could
-// possibly satisfy every label in tokens (their intersection can never
-// exceed the smallest constituent label's count on this shard). A result of
-// 0 proves the shard contributes no rows and can be skipped without calling
-// into its (possibly expensive) column builder at all.
+// shardMinLabelCount returns the minimum over tokens of store's exact
+// NodeCountByLabel: a lower bound on nodes satisfying every label. 0 proves the
+// shard contributes no rows, so its column builder is never called.
 func shardMinLabelCount(store *BadgerStore, tokens []uint16) (int, error) {
 	minCount := -1
 	for _, tok := range tokens {
@@ -60,26 +42,20 @@ func shardMinLabelCount(store *BadgerStore, tokens []uint16) (int, error) {
 }
 
 // foldDocValues is the shared cross-shard traversal for ForEachDocValues,
-// ForEachDocValuesMulti, and DocValuesSnapshot: checkout ref shard, checkout
-// archive (if any), then every event shard (ref + archive, DepthAll — a
-// label's membership is not Depth-gated; DocValues has no QueryOpts), in the
-// same checkout/checkin discipline as NodeCountByLabelAndPropertyKey
-// (tieredstore_read_bulk.go). tokens is the membership-count probe (a single
-// label for ForEachDocValues/DocValuesSnapshot, the full tuple for Multi);
-// call is invoked ONLY on a shard whose shardMinLabelCount is nonzero, and
-// its bool return is the per-shard "usable" signal (mirrors the store-level
-// ok). The Gate-1 epoch snapshot (returned as gen) is taken ONCE, before any
-// shard is touched, exactly like badger/memory sample their own nodeEpoch at
-// build-start — the caller's post-scan NodeMutationEpoch()==gen re-check
-// (Gate 2) is what actually detects a concurrent writer.
+// ForEachDocValuesMulti and DocValuesSnapshot: ref shard, archive (if any),
+// then every event shard, DepthAll (membership is not Depth-gated), with the
+// checkout/checkin discipline of NodeCountByLabelAndPropertyKey. tokens is the
+// membership probe; call runs only on shards with nonzero shardMinLabelCount
+// and its bool is the per-shard "usable" signal. The Gate-1 epoch (gen) is
+// sampled ONCE before any shard is touched; the caller's post-scan
+// NodeMutationEpoch()==gen re-check (Gate 2) detects concurrent writers.
 func (ts *Store) foldDocValues(tokens []uint16, call func(store *BadgerStore) (bool, error)) (gen uint64, ok bool, err error) {
 	return ts.foldDocValuesServingEmpty(tokens, false, call)
 }
 
-// foldDocValuesServingEmpty is foldDocValues; with emptyServes a fold in which
-// no shard holds a member of every token (each one proved empty by its
-// counts, and a node lives on one shard) is served as an empty answer
-// (ok=true) instead of declined: the intersection door (round 5 request 3).
+// foldDocValuesServingEmpty is foldDocValues; with emptyServes a fold where
+// every shard is proved empty by its counts is served as an empty answer
+// (ok=true) instead of declined (the intersection door).
 func (ts *Store) foldDocValuesServingEmpty(tokens []uint16, emptyServes bool, call func(store *BadgerStore) (bool, error)) (gen uint64, ok bool, err error) {
 	if ts == nil {
 		return 0, false, ErrNilStore
@@ -123,6 +99,7 @@ func (ts *Store) foldDocValuesServingEmpty(tokens []uint16, emptyServes bool, ca
 		return 0, false, nil
 	}
 
+	ts.refArchiveGapHook()
 	archive, archiveCheckin, aerr := ts.checkoutArchive()
 	if aerr != nil {
 		return 0, false, aerr
@@ -163,10 +140,9 @@ func (ts *Store) foldDocValuesServingEmpty(tokens []uint16, emptyServes bool, ca
 	return gen, true, nil
 }
 
-// ForEachDocValues streams the requested property columns for a label's
-// nodes, in per-shard ordinal order, concatenating each contributing shard's
-// rows one after another (ADR-0005 §3.4). See the package-level DocValues
-// doc above for the membership/decline contract.
+// ForEachDocValues streams the requested property columns for a label's nodes
+// shard by shard, in per-shard ordinal order (ADR-0005 §3.4). Membership and
+// decline contract: see the file header.
 func (ts *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
 	return ts.foldDocValues([]uint16{labelToken}, func(store *BadgerStore) (bool, error) {
@@ -175,11 +151,8 @@ func (ts *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 	})
 }
 
-// ForEachDocValuesMulti streams the requested property columns for a LABEL
-// INTERSECTION (a multi-label pattern like (p:A:B)), concatenating each
-// contributing shard's intersection rows. Same membership/decline contract as
-// ForEachDocValues, with the per-shard bound taken as the MINIMUM count across
-// the label tuple.
+// ForEachDocValuesMulti is ForEachDocValues for a LABEL INTERSECTION (e.g.
+// (p:A:B)); the per-shard bound is the MINIMUM count across the tuple.
 func (ts *Store) ForEachDocValuesMulti(labelTokens []uint16, propKeys []string,
 	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
 	if len(labelTokens) == 0 {
@@ -192,8 +165,7 @@ func (ts *Store) ForEachDocValuesMulti(labelTokens []uint16, propKeys []string,
 }
 
 // DocValuesSnapshot returns a random-access point-lookup handle spanning every
-// shard that contributes a member of labelToken (the X5 expand-aggregation
-// target side). See tieredColumnSnapshot for the dispatch strategy.
+// shard contributing a member of labelToken. See tieredColumnSnapshot.
 func (ts *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
 	var readers []types.NodeColumnReader
 	gen, ok, err = ts.foldDocValues([]uint16{labelToken}, func(store *BadgerStore) (bool, error) {
@@ -211,15 +183,10 @@ func (ts *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap t
 }
 
 // tieredColumnSnapshot implements types.NodeColumnReader over a label spanning
-// multiple shards (concatenate-with-ordinal-offsets, ADR-0005 §3.4): each
-// underlying reader is one shard's own immutable point-lookup snapshot, tried
-// in shard-fold order until one reports membership. A node lives on exactly
-// one shard at a time (a version chain never splits across shards — CLAUDE.md
-// B33, primary-label class immutable), so at most one reader ever reports a
-// hit — no double-emission risk. Every underlying snapshot is self-contained
-// (no store lock or shard checkout retained after DocValuesSnapshot returns:
-// badger/memory hand back a pointer into an immutable, already-built column),
-// so holding this slice pins no shard open.
+// several shards: each reader is one shard's immutable point-lookup snapshot,
+// tried in shard-fold order until one reports membership. A node lives on one
+// shard (primary-label class immutable, B33), so at most one reader hits. No
+// store lock or shard checkout is retained, so nothing is pinned open.
 type tieredColumnSnapshot struct {
 	readers []types.NodeColumnReader
 	epoch   uint64
@@ -268,14 +235,10 @@ func (s *tieredColumnSnapshot) Row(id types.NodeID, vals []any, present []bool) 
 func (s *tieredColumnSnapshot) Epoch() uint64 { return s.epoch }
 
 // NodeMutationEpoch returns the store-global node-mutation epoch. Every shard
-// (reference, archive, every event shard, including one opened lazily later
-// or created by rotation) is opened with the store's one
-// badger.SharedMutationEpochs, which a shard advances on each bump of its own
-// node epoch, so this moves on every node write of every shard, whether or
-// not that shard is still open when it is read. (Until v4.41 this was the sum
-// of the OPEN shards' own epochs: a write to a cold shard that idle-closed
-// before the next read contributed nothing, and the sum could return to a
-// value a reader already held, masking the write.) Never force-opens a shard.
+// (reference, archive, event, including lazily opened or rotation-created
+// ones) shares one badger.SharedMutationEpochs, so it moves on every node
+// write whether or not the shard is still open (a sum of open shards' epochs
+// could return to a held value). Never force-opens a shard.
 func (ts *Store) NodeMutationEpoch() uint64 {
 	if ts == nil {
 		return 0
@@ -283,9 +246,8 @@ func (ts *Store) NodeMutationEpoch() uint64 {
 	return ts.mutationEpochs.NodeMutationEpoch()
 }
 
-// RelMutationEpoch is NodeMutationEpoch's relationship mirror: it moves on
-// every relationship write of every shard, a cross-shard relationship's
-// split writes included (each half bumps the epoch of the shard it lands on).
+// RelMutationEpoch is NodeMutationEpoch's relationship mirror, including both
+// halves of a cross-shard relationship write.
 func (ts *Store) RelMutationEpoch() uint64 {
 	if ts == nil {
 		return 0

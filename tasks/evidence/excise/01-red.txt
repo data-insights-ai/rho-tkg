@@ -1,0 +1,47 @@
+--- FAIL: TestExciseNodeValidityWithTx (0.00s)
+    --- FAIL: TestExciseNodeValidityWithTx/memory (0.00s)
+        excise_validity_test.go:420: void rows [] at tx 0; want one at 1791988941716
+    --- FAIL: TestExciseNodeValidityWithTx/badger (0.01s)
+        excise_validity_test.go:420: void rows [] at tx 0; want one at 1791988941719
+    --- FAIL: TestExciseNodeValidityWithTx/sharded (0.01s)
+        excise_validity_test.go:420: void rows [] at tx 0; want one at 1791988941721
+    --- FAIL: TestExciseNodeValidityWithTx/tiered (0.01s)
+        excise_validity_test.go:420: void rows [] at tx 0; want one at 1791988941722
+--- FAIL: TestExciseNodeValidityTxAndBatch (0.00s)
+    --- FAIL: TestExciseNodeValidityTxAndBatch/memory (0.00s)
+        excise_validity_test.go:487: tx commit
+             got  v v v v v v v v v v v v
+             want v v _ _ _ v v v v v v v
+    --- FAIL: TestExciseNodeValidityTxAndBatch/badger (0.01s)
+        excise_validity_test.go:487: tx commit
+             got  v v v v v v v v v v v v
+             want v v _ _ _ v v v v v v v
+    --- FAIL: TestExciseNodeValidityTxAndBatch/sharded (0.01s)
+        excise_validity_test.go:487: tx commit
+             got  v v v v v v v v v v v v
+             want v v _ _ _ v v v v v v v
+    --- FAIL: TestExciseNodeValidityTxAndBatch/tiered (0.01s)
+        excise_validity_test.go:487: tx commit
+             got  v v v v v v v v v v v v
+             want v v _ _ _ v v v v v v v
+--- FAIL: TestExciseNodeValidity (0.00s)
+    --- FAIL: TestExciseNodeValidity/memory (0.00s)
+        excise_validity_test.go:284: refusal nothing valid: ExciseNodeValidity(60000, 70000) = <nil>; want graph: no version valid at the given time
+    --- FAIL: TestExciseNodeValidity/badger-disk (0.13s)
+        excise_validity_test.go:284: refusal nothing valid: ExciseNodeValidity(60000, 70000) = <nil>; want graph: no version valid at the given time
+    --- FAIL: TestExciseNodeValidity/sharded-disk (0.27s)
+        excise_validity_test.go:284: refusal nothing valid: ExciseNodeValidity(60000, 70000) = <nil>; want graph: no version valid at the given time
+    --- FAIL: TestExciseNodeValidity/tiered-disk (0.35s)
+        excise_validity_test.go:284: refusal nothing valid: ExciseNodeValidity(60000, 70000) = <nil>; want graph: no version valid at the given time
+--- FAIL: TestExciseRelValidity (0.00s)
+    --- FAIL: TestExciseRelValidity/memory (0.00s)
+        excise_validity_test.go:702: rel refusal nothing valid: <nil>; want graph: no version valid at the given time
+    --- FAIL: TestExciseRelValidity/badger-disk (0.13s)
+        excise_validity_test.go:702: rel refusal nothing valid: <nil>; want graph: no version valid at the given time
+    --- FAIL: TestExciseRelValidity/sharded-disk (0.27s)
+        excise_validity_test.go:702: rel refusal nothing valid: <nil>; want graph: no version valid at the given time
+    --- FAIL: TestExciseRelValidity/tiered-disk (0.36s)
+        excise_validity_test.go:702: rel refusal nothing valid: <nil>; want graph: no version valid at the given time
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.395s
+FAIL

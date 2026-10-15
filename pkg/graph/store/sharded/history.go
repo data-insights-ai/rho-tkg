@@ -228,3 +228,30 @@ func (s *Store) DeleteRelWithHistory(id types.RelID, prevVersion uint32, tombsto
 	}
 	return shard.DeleteRelWithHistory(id, prevVersion, tombstone)
 }
+
+// NodeHistoryVersionsFrom / RelHistoryVersionsFrom (store.HistoryVersionPageCapability)
+// route to the entity's slot: one page of its history from startVersion. The
+// graph's exact row-above check reads one row of it (backlog 70).
+func (s *Store) NodeHistoryVersionsFrom(id types.NodeID, startVersion uint32, limit int) ([]*types.Node, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
+	shard, err := s.shardForNodeID(id)
+	if err != nil {
+		return nil, err
+	}
+	return shard.NodeHistoryVersionsFrom(id, startVersion, limit)
+}
+
+func (s *Store) RelHistoryVersionsFrom(id types.RelID, startVersion uint32, limit int) ([]*types.Relationship, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
+	shard, err := s.shardForRelID(id)
+	if err != nil {
+		return nil, err
+	}
+	return shard.RelHistoryVersionsFrom(id, startVersion, limit)
+}
+
+var _ storecontract.HistoryVersionPageCapability = (*Store)(nil)

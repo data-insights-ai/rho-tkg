@@ -1,0 +1,26 @@
+Backlog 69 trace (ai-soc request: paged, estate-filtered effective scan), main at v4.54.0 (80f7f067).
+
+ai-soc today (read only, ai-soc-main, rho-tkg v4.51.8):
+- aisoc/internal/graphmgr/tkg.go:124 EventsAt -> Temporal().ForEachRelEffective(pin) over EVERY rel per page,
+  filters estate and ended versions in selection.offer (tkg.go:206-225), keyset (ValidFrom, RelID) (tkg.go:214).
+- estate is set on every rel (manager.go:885-894, props[estateProp]) and every node (manager.go:861);
+  rel types are the readers' edge types (e.Type, manager.go:894), so estate spans all rel types.
+- Indexes: only the unique `key` constraint per node label (manager.go:394-410); no rel property index.
+
+What rho-tkg had:
+- Rels().ByTypeAndProperty / Nodes().ByLabelAndProperty + QueryOpts{TxPin|TxAt+Valid*, After, Limit}
+  (graph_rel_property_query.go:28-112): ONE type, DECLARED rows (one per entity, not segments), and the
+  temporal path gathers all candidates, resolves all, sorts, then paginates (PaginateRels) -> O(value) per page.
+- Property tx-membership sidecar (backlog 8, index/property_tx_members.go, temporal.go:1097
+  forEachRelPropertyCandidateID): ever-members of (type,key,value) with first TxFrom; a map -> unordered,
+  enumerated whole (Members) per call.
+- Effective scans (effective_scans.go): candidate gather + streamRelTimelines (resolved segments); no
+  property filter, no cursor; ForEachRelEffective walks every rel ever stored.
+- Keyset cursor elsewhere: QueryOpts.After (ID) on the generic doors; storeutil.MemberOrder keeps ascending
+  member lists for label/type scans.
+
+Missing (all three): type-agnostic property filter, effective (segment) semantics, an O(page) cursor.
+
+Built: Temporal().RelsEffectivePage / NodesEffectivePage = the effective scan with per-type candidate
+sources merged in ID order; indexed types page the backlog-8 sidecar through a new ordered view per value
+(PropertyTxMembers.OrderValue / MembersAfter on index.sortedChunks); unindexed types (and tiered) gather.

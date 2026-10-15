@@ -5,9 +5,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// NodeInterval returns the effective [start, end) for a node.
-// start is derived from the snowflake ID timestamp if not explicitly set
-// via TemporalMetadata.ValidFrom.
+// NodeInterval returns the effective [start, end) for a node. start is the
+// row's explicit ValidFrom, else the start the chain resolver gives the row
+// (nodeValidFrom: its TxFrom — backlog 62).
 //
 // NodeInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid),
 // because Allen's algebra requires finite intervals.
@@ -34,9 +34,8 @@ func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err err
 	return start, end, err
 }
 
-// RelInterval returns the effective [start, end) for a relationship.
-// start is derived from the snowflake ID timestamp if not explicitly set
-// via TemporalMetadata.ValidFrom.
+// RelInterval returns the effective [start, end) for a relationship; start
+// as NodeInterval's (relValidFrom).
 //
 // RelInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid).
 func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {

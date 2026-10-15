@@ -90,6 +90,9 @@ func (s *StatOps) RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeSta
 	if !known {
 		return storepkg.RelTypeDegreeStats{Exact: true}, nil
 	}
+	if st, handled, err := c.trackedDegreeStats(typeName, tok); handled {
+		return st, err
+	}
 	const maxAttempts = 3
 	var stats storepkg.RelTypeDegreeStats
 	for attempt := 0; attempt < maxAttempts; attempt++ {

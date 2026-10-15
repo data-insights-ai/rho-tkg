@@ -213,9 +213,9 @@ func TestRetractedRow_FormatVersion3(t *testing.T) {
 					t.Errorf("%s / %s: v4.49.1 row (fv=2 + rx) rx=%v err=%v, want rx=true", e.name, p.name, rx, err)
 				}
 			}
-			maxReadableWireFormatVersion = CurrentWireFormatVersion // a v4.49.0 reader
+			restore := SetMaxReadableWireFormatVersionForTest(CurrentWireFormatVersion) // a v4.49.0 reader
 			rx, err := p.dec(e, raw)
-			maxReadableWireFormatVersion = RetractedWireFormatVersion
+			restore()
 			if e.retracted && !errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
 				t.Errorf("%s / %s: fv<=2 reader got rx=%v err=%v, want ErrWireFormatVersionUnsupported", e.name, p.name, rx, err)
 			}

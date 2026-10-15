@@ -15,7 +15,7 @@ g.Close() // saves registries + closes DB
 
 Data is serialized using msgpack. Keys use fixed-width binary encoding with single-byte prefix tags for correct sort order. Registries are restored on startup and are saved both when new label/relationship-type tokens are committed and again during `Close()`. Rollback paths persist restored registry snapshots, so durable entity rows are not left without token mappings when a process restarts after successful writes but before graph-level close.
 
-On-disk format versioning: every persisted `NodeWire`/`RelWire` row carries a per-row `FormatVersion` (`fv`; absent on pre-versioning rows = version 1), and the badger backend verifies/stamps a store-level `wire_format_version` meta marker at open. A directory (or row) written by a newer release fails closed with `store.ErrWireFormatVersionUnsupported` instead of misdecoding fields this binary does not know about. Backward compatible with every existing directory: absent marker is stamped on the first read-write open, legacy rows keep decoding.
+On-disk format versioning and the integrity-hash format: see "Format versions and markers" and "Integrity hashes" below; upgrading across releases: "Upgrading a store".
 
 **Wire format v2 — patchable transaction-time slot (current).** In v2 the transaction-time tail (`tf`/`tt` — TxFrom/TxTo) is a FIXED-WIDTH, always-present TRAILING slot: the last two map entries, each a full-width int64 (the 9-byte `0xd3` form msgpack already emits for present int64 values), emitted after every other field. This lets the ingest pipeline (ADR-0006 §4.5) pre-encode a whole row on the producer thread with a ZERO tail and have the single applier patch in its stamped TxFrom/TxTo with a bounded in-place memory write (`storeutil.PatchWireTemporalTail`, marker-validated and fail-closed with `ErrCorruptWire` on a truncated or non-v2 buffer) instead of a second msgpack pass. The equivalence `Patch(PreEncode(E, 0), T) == Encode(E, T)` holds byte-for-byte by construction — the tail is the only difference — and because TxFrom/TxTo are not hashed, a patched buffer still passes `Verify*Chain` and replicates verbatim. DECODE IS VERSION-TRANSPARENT: msgpack map keys are self-describing, so both v1 (omitempty mid-map tail) and v2 (fixed tail) rows decode with no read-side version branch; mixed v1+v2 rows coexist in one directory. Opening an old (v1-marked or unmarked) directory with v2 code reopens it read-write and restamps the marker to 2; subsequent writes are v2. Apply-side CONSUMPTION of the pre-encoded buffer is now WIRED (ADR-0006 §4.5 Scenario B): the optional `store.PreEncodedPutCapability` (`PutNodesBatchPreEncoded`: native memory/badger; sharded routes each row to its slot's badger door) lets the ingest applier hand the store the producer-thread-encoded row with its tail patched, skipping the second msgpack pass. The applier uses a pre-encoded buffer ONLY when it is provably byte-identical to the store's own encode — for a genesis create the sole field that can diverge between prepare and apply is the label tokens (a probe token re-stamped to a different real token, §4.4), so when the finalized tokens differ from the pre-encoded ones (or the patch fails, or the store declines the capability) the applier falls back to encode-at-flush, which is byte-identical by construction. Provenance is by the typed in-process buffer the applier carries, NEVER by sniffing stored bytes: `HasWireTemporalTail` is a debug/validation helper, never a "this stored row is patchable" decision (v1/foreign marker bytes can coincide). The change-log put body stays the UNTOKENIZED encode-at-flush form on both paths, so cross-backend change-feed parity is byte-identical.
 
@@ -195,6 +195,59 @@ Tiered registry loads validate both persisted halves. Malformed label or
 relationship-type slices are rejected before startup/load code or deprecated
 single-registry save paths can preserve corrupt metadata.
 
+## Format versions and markers
+
+Purpose: an older binary must refuse data it cannot read, instead of misdecoding it or writing around a feature it does not know. Two levels carry the version:
+
+- **Per row**: every `NodeWire` / `RelWire` has `FormatVersion` (`fv`; absent on pre-versioning rows = 1). A row is written at the highest `fv` its features need (`emittedRowFormatVersion`); a decoder that reads less fails closed on that row (`ErrWireFormatVersionUnsupported`) in a checked decode, an import, a replica apply or `loadIndexes`. It never skips the key.
+- **Per store**: the badger meta key `wire_format_version` (big-endian uint16, also per shard of a tiered or sharded store) is verified at `New` before any row is decoded and before any write. A marker above `MaxReadableStoreFormatVersion` fails the open; an absent one is stamped by a writable open; a lower one is raised; an unparsable one is corruption.
+
+| Marker | Written by | Meaning | Rows at `fv` |
+|---|---|---|---|
+| absent / 2 | v4.6.0 to v4.51.1 | row format v2 (fixed-width `tf`/`tt` tail) | 2; 3 for a retraction tombstone (v4.49.2) |
+| 3 | v4.51.2 on | ex-adjacency index kept with every relationship delete (backlog 50) | as 2 |
+| 4 | v4.54.0 on | integrity hashes stored as 32 raw bytes (backlog 61) | 4 |
+| 5 | v4.52.2 on, only with an Elements definition | an Elements property index is persisted (backlog 63) | as 3 |
+| 6 | v4.54.0 on, only after a first excise | the store holds a void row (backlog 64) | 5 for the void row |
+
+One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries). A store with none of the features keeps its marker (3 or 4); `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: SPEC section 9.1a; the retraction key `rx` and the void key `vd` are keys an older reader must not skip, which is why they raise `fv`.
+
+## Integrity hashes
+
+Purpose: a row's hashes (`h`, `ph`, and on a relationship `fnh`, `tnh`) chain its versions; they cost bytes, and a development store may not want them.
+
+Storage. A hash is stored as its 32 raw bytes (msgpack bin 8, 34 bytes) instead of 64 hex characters (66 bytes); both forms decode to the same lowercase 64-hex string at the boundary, so `types.NodeIntegrity` / `RelIntegrity` are unchanged. One conversion (`pkg/internal/hash32`) serves the rows, the compact frozen rows in RAM (`types/compact.go`) and the column segments. A string that is not 64 lowercase hex characters stays a string. Binary rows are `fv` 4 and raise the marker to 4 (a higher marker stays). Exports and the change feed carry `fv` 4, so an importing or replicating release needs v4.52.2 or later.
+
+Switch. `Config.DisableIntegrityHashes` (default false = on) computes and stores no hash, resident or on disk; author, signature and authorization fields are unaffected. With it set, `Hash().VerifyNodeChain` / `VerifyRelChain` and `Tier().VerifyShard` return `ErrIntegrityDisabled` (never "valid"), `Config.RelSegments` is refused, and an import or replica apply verifies and then drops the hashes it carries. An on-graph refuses an off-graph's export (`ErrCorruptExport`).
+
+Persisted setting. MetaKV key `integrity_hashes`, written durably (`MetaSetDurable` on badger, the tiered reference shard and the sharded anchor) as the last step of a successful `New`, kept across `Admin().Reset()`. A store with rows keeps its setting by refusal: `New` under the other setting fails with `ErrIntegrityModeMismatch` and writes nothing. Without the key the rows decide (a hashed row makes an on-store, an unhashed row an off-store); a store without rows takes the configured setting. To change it, export and import into a new store opened with the wanted setting. A custom backend without MetaKV follows the configuration.
+
+Cost, a relationship row of four properties (`TestIntegrityBytesPerEdge`, 20,000 relationships, badger): 366.9 B raw / 251.2 B Snappy as hex, 270.9 / 151.8 B binary, 158.9 / 43.5 B with hashes off. Errors: `docs/errors.md`.
+
+## Upgrading a store
+
+A store is opened by a release that reads its marker (the table above). Opening writable under a newer release may raise the marker; there is no way back except a copy made before the upgrade.
+
+| Marker | Read by | Refused by (`ErrWireFormatVersionUnsupported` at `New`, nothing written) |
+|---|---|---|
+| absent / 2 | every release | none |
+| 3 | v4.51.2 and later | v4.51.1 and earlier |
+| 4 | v4.52.2 and later | v4.52.1 and earlier |
+| 5 | v4.52.2 and later | v4.52.1 and earlier |
+| 6 | v4.54.0 and later | v4.53.0 and earlier |
+
+Rows and feeds behave alike: an `fv` above what a release reads fails that row closed in an export, a change feed or a replica (fv 3 retraction: v4.49.2 and later; fv 4 binary hashes: v4.52.2 and later; fv 5 void row: v4.54.0 and later). Upgrade readers, replicas and importers before the writer.
+
+First writable open on v4.54.0 (one-time work, no action needed):
+
+- the open image is format 2, so a store closed by an older release is rebuilt from its rows once, and a clean `Close` writes the new image (cost: the full open of the "Clean reopen" section);
+- with `TemporalIndexOnDisk`, the 0x0B keyspace is rebuilt under the marker `temporal_index_on_disk_built_v2` (envelopes of untimed rows now start at their `TxFrom`, see api.md "Valid-time start (TxFrom)"); the old marker is deleted, so an older release rebuilds it again after a downgrade; a read-only open rebuilds in RAM and writes nothing;
+- with `ColumnsOnDisk`, persisted column blobs of the old format are not used and the columns are rebuilt on first read;
+- a writable open raises the marker to 4 (binary hashes); hex rows already on disk stay readable and are rewritten as they change;
+- v4.52.1 or earlier cannot open the store afterwards. Roll back only to v4.52.2 or v4.53.0 (they read markers 4 and 5, not 6), and only before the first excise.
+
+Consumers: untimed rows start at their `TxFrom`, an update setting only `tkg_valid_to` closes the version, and the excise doors exist; see api.md and the 4.54.0 CHANGELOG entry.
+
 ## Tiered Persistence (`tiered.Store`)
 
 For workloads with distinct reference data (Case, User) and high-volume events (Signal, Alert):
@@ -326,7 +379,7 @@ With `badger.Config.TemporalIndexOnDisk` (or the mirrored `graph.Config.Temporal
 
 **On-disk layout.** `0x0B/<2B labelToken>/<8B order-preserving-encoded from>/<8B nodeID>`, value = `<8B to>`. The `from` component is encoded with the standard sign-bit-flip trick (mirroring the numeric domain's IEEE-754 sign-flip in the property index above, applied to a signed `int64` instead of a float), so a plain prefix iteration over one label's sub-keyspace visits entries in EXACTLY the `(From ASC, ID ASC)` order `TemporalIndex.Entries` requires — `loadIndexesScan` streams straight from iteration order into `TemporalIndex.AddKnownAbsent`, no separate sort pass.
 
-**Write-path maintenance.** Maintained ALONGSIDE — never instead of — the existing RAM maintenance (`indexpkg.AddNodeToTemporalIndexes`/`RemoveNodeFromTemporalIndexes`) at every node-mutation door that already calls those: `PutNode`, `DeleteNode`, `ReplaceNode`, `ReplaceNodeWithHistory`, the four label-token doors, `PutNodesBatch`, `DeleteNodesBatch`, and the cascade-delete corruption-path brute-force purge. `CreateTemporalIndex`'s own three-phase backfill writes the disk rows directly (no reliance on the rebuild-on-enable marker); `DropTemporalIndex` purges the whole `labelToken` prefix — safe unconditionally because (unlike the property-index keyspace, whose rows are shared across labels indexing the same property key) a `TemporalIndex` definition is exclusively keyed by `labelToken`: only one definition can ever exist per label.
+**Write-path maintenance.** Maintained ALONGSIDE — never instead of — the existing RAM maintenance (`indexpkg.AddNodeToTemporalIndexes`/`RemoveNodeFromTemporalIndexes`) at every node-mutation door that already calls those: `PutNode`, `DeleteNode`, `ReplaceNode`, `ReplaceNodeWithHistory`, the four label-token doors, `PutNodesBatch`, `DeleteNodesBatch`, and the cascade-delete corruption-path brute-force purge. `CreateTemporalIndex`'s own three-phase backfill writes the disk rows directly (no reliance on the rebuild-on-enable marker); `DropTemporalIndex` purges the whole `labelToken` prefix — safe unconditionally because (unlike the property-index keyspace, whose rows are shared across labels indexing the same property key) a `TemporalIndex` definition is exclusively keyed by `labelToken`: only one definition can ever exist per label. A create that fails or crashes before it publishes purges the label's rows, and an open purges the rows of every label with no definition, so a later create plus a crash reopen cannot load two rows for one node. How the create stays sound against concurrent writes: architecture.md, "Temporal envelope indexes".
 
 **Enable on an existing directory.** The `0x0B` keyspace is new (like `0x0A`), so an existing directory with temporal-index definitions predating the flag is backfilled from current node state exactly once, on the first open with the flag set — guarded by the `temporal_index_on_disk_built` meta marker (mirroring `property_index_on_disk_built`), committed in the SAME `WriteBatch` as the backfill rows so a crash mid-backfill leaves either nothing or everything, never a half-built keyspace a later open trusts as complete. The marker is set unconditionally on the first open with the flag on (even an empty backfill), so any temporal index created afterward — in that session or a later one — stays self-sufficient via the live write-path maintenance above.
 

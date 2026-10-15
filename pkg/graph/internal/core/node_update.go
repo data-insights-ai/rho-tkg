@@ -7,7 +7,6 @@ import (
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -167,6 +166,14 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 			return nil, false, fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
 		}
 	}
+	// A tkg_valid_to without a tkg_valid_from closes the version as CloseVersion
+	// does: it keeps its start and ends there (backlog 65).
+	var closeStart types.Instant
+	if tmp.closesVersion() {
+		if closeStart, err = c.checkNodeClose(id, current, "tkg_valid_to", tmp.validTo); err != nil {
+			return nil, false, err
+		}
+	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("update node"); err != nil {
 		return nil, false, err
 	}
@@ -230,6 +237,9 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo
 	}
+	if tmp.closesVersion() {
+		stampClose(tm, closeStart, tmp.validTo)
+	}
 	tm.UpdatedAt = now
 
 	// Set TxTo on the previous version (being superseded) using the same now.
@@ -246,7 +256,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	stampAppendedRow(tm, now)
 
 	nodeLabels := c.nodeLabelsUnlocked(current)
-	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
+	hash, err := c.nodeContentHash(current, nodeLabels)
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: compute node hash: %w", err)
 	}
@@ -452,9 +462,15 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo
 	}
+	if tm.ValidTo != 0 {
+		// The close rule (backlog 65): the row keeps its start, the end must follow it.
+		if err := checkCloseAfterStart("tkg_valid_to", tm.ValidTo, c.nodeValidFrom(current), "node"); err != nil {
+			return nil, false, err
+		}
+	}
 
 	nodeLabels := c.nodeLabelsUnlocked(current)
-	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
+	hash, err := c.nodeContentHash(current, nodeLabels)
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: compute node hash: %w", err)
 	}

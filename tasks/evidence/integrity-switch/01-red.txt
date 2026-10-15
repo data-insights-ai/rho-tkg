@@ -1,0 +1,27 @@
+# go test ./pkg/graph -run 'TestIntegritySwitch$' -count=1, on main 490e29c1 plus only the API surface the test
+# compiles against (Config.DisableIntegrityHashes declared but unused, ErrIntegrityDisabled / ErrIntegrityModeMismatch
+# declared). The on cases pass (hashes present, tampered row detected: memory, badger, tiered); every off, reopen,
+# legacy, bytes, segments and import case fails. badger/reset_keeps_setting was added after this run (Reset wipes
+# MetaKV; found by TestMetaKVReapPolicyCoversEveryKey).
+--- FAIL: TestIntegritySwitch (4.66s)
+    --- FAIL: TestIntegritySwitch/memory/off (0.00s)
+        integrity_switch_test.go:229: off: node integrity &{Hash:dcd0edc61aaf7e1aac4c2d0e0d029a87ca8a513d5ffb694f01484b526a124675 PrevHash:8e3c4680c8ec9899fd178f0de4fe2f910b73e7204f9d3ca463615a9c99d82d67 AuthorID: Signature:[] AuthorizedBy: AuthorizationLevel:0}, want no hash
+    --- FAIL: TestIntegritySwitch/badger/off (0.21s)
+        integrity_switch_test.go:229: off: node integrity &{Hash:c5dfaff96f4b3ceaed10d96b83cf890f9517e760039ca766470fd75cb271a30c PrevHash:dab21304e1bf8bc55baaab00bcb2f3bb6821b69c2e7331f94b9db4637fac0470 AuthorID: Signature:[] AuthorizedBy: AuthorizationLevel:0}, want no hash
+    --- FAIL: TestIntegritySwitch/badger/reopen (0.45s)
+        integrity_switch_test.go:259: store written off=false reopened off=true: err = <nil>, want ErrIntegrityModeMismatch
+    --- FAIL: TestIntegritySwitch/tiered/off (0.43s)
+        integrity_switch_test.go:229: off: node integrity &{Hash:bbb22e0c2f7dd9444aa4de014eafd6fe6a0c895c0b71df4e468da95cfa120c20 PrevHash:fa6b5c0eb7068cb1a6e6eeee4a27d103f7e30033ac84da93fbfe4ed97ceb834e AuthorID: Signature:[] AuthorizedBy: AuthorizationLevel:0}, want no hash
+    --- FAIL: TestIntegritySwitch/tiered/reopen (1.23s)
+        integrity_switch_test.go:259: store written off=false reopened off=true: err = <nil>, want ErrIntegrityModeMismatch
+    --- FAIL: TestIntegritySwitch/badger/legacy (0.71s)
+        integrity_switch_test.go:293: legacy store with rows opened off: err = <nil>, want ErrIntegrityModeMismatch
+    --- FAIL: TestIntegritySwitch/badger/bytes (0.45s)
+        integrity_switch_test.go:344: on: rel row stores its hash as 64 hex characters (308 B row)
+    --- FAIL: TestIntegritySwitch/segments_off_refused (0.00s)
+        integrity_switch_test.go:359: RelSegments with hashes off: err = <nil>, want ErrIntegrityDisabled
+    --- FAIL: TestIntegritySwitch/import (0.00s)
+        integrity_switch_test.go:396: on-export imported into off-graph keeps hashes: &{Hash:1a18d5c3c8614b32f8644b2400d88ee4228dab42b1acbc046bd8d1c59131633b PrevHash:903a5abffc12e75e1a929114546e2ee58dab5370bbecff1146e5d8e6e8a06ac1 FromNodeHash:0a917f4a98486e5742de6ce4d9ec70bf2f9a55dd783ea19f2f0dca79df5a62fb ToNodeHash:8d96dd1b394c234a512003acbb37270c2c218fe9543ae2b4c0b2774f78f4a764 AuthorID: Signature:[] AuthorizedBy: AuthorizationLevel:0}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	4.725s
+FAIL

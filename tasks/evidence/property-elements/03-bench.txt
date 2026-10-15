@@ -1,0 +1,25 @@
+ 16:01:50 up 14 days,  7:17, 21 users,  load average: 79,41, 65,48, 74,47
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkPropertyIndexElementsWrite/memory/none-32         	   20000	     12291 ns/op	    1321 B/op	      17 allocs/op
+BenchmarkPropertyIndexElementsWrite/memory/none-32         	   20000	      7473 ns/op	    1322 B/op	      17 allocs/op
+BenchmarkPropertyIndexElementsWrite/memory/none-32         	   20000	      8672 ns/op	    1320 B/op	      17 allocs/op
+BenchmarkPropertyIndexElementsWrite/memory/scalar-32       	   20000	     11378 ns/op	    1886 B/op	      22 allocs/op
+BenchmarkPropertyIndexElementsWrite/memory/scalar-32       	   20000	     10924 ns/op	    1885 B/op	      22 allocs/op
+BenchmarkPropertyIndexElementsWrite/memory/scalar-32       	   20000	      8787 ns/op	    1885 B/op	      22 allocs/op
+BenchmarkPropertyIndexElementsWrite/memory/elements-32     	   20000	     12316 ns/op	    2721 B/op	      33 allocs/op
+BenchmarkPropertyIndexElementsWrite/memory/elements-32     	   20000	     11521 ns/op	    2721 B/op	      33 allocs/op
+BenchmarkPropertyIndexElementsWrite/memory/elements-32     	   20000	     10027 ns/op	    2721 B/op	      33 allocs/op
+BenchmarkPropertyIndexElementsWrite/badger/none-32         	   20000	     17946 ns/op	    5332 B/op	      52 allocs/op
+BenchmarkPropertyIndexElementsWrite/badger/none-32         	   20000	     15621 ns/op	    5292 B/op	      52 allocs/op
+BenchmarkPropertyIndexElementsWrite/badger/none-32         	   20000	     17092 ns/op	    5319 B/op	      52 allocs/op
+BenchmarkPropertyIndexElementsWrite/badger/scalar-32       	   20000	     19865 ns/op	    5756 B/op	      57 allocs/op
+BenchmarkPropertyIndexElementsWrite/badger/scalar-32       	   20000	     24483 ns/op	    5936 B/op	      57 allocs/op
+BenchmarkPropertyIndexElementsWrite/badger/scalar-32       	   20000	     27290 ns/op	    5849 B/op	      57 allocs/op
+BenchmarkPropertyIndexElementsWrite/badger/elements-32     	   20000	     22413 ns/op	    6674 B/op	      68 allocs/op
+BenchmarkPropertyIndexElementsWrite/badger/elements-32     	   20000	     45651 ns/op	    6648 B/op	      68 allocs/op
+BenchmarkPropertyIndexElementsWrite/badger/elements-32     	   20000	     81119 ns/op	    6598 B/op	      69 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	8.320s

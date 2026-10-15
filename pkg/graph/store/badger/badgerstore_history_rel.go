@@ -18,11 +18,8 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	return bs.replaceRelWithHistoryRouted(current, prevVersion, prevState, 0)
 }
 
-// ReplaceRelWithHistoryScoped mirrors ReplaceRelWithHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// ReplaceRelWithHistory. See badgerstore_changelog_scoped.go (BACKLOG 11f
-// Batch B — foundation only).
+// ReplaceRelWithHistoryScoped is ReplaceRelWithHistory with the change-log record
+// routed to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) ReplaceRelWithHistoryScoped(current *types.Relationship, prevVersion uint32, prevState *types.Relationship, token uint64) error {
 	if token == 0 {
 		return bs.ReplaceRelWithHistory(current, prevVersion, prevState)
@@ -128,11 +125,8 @@ func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	return bs.deleteRelWithHistoryRouted(rid, prevVersion, tombstone, 0)
 }
 
-// DeleteRelWithHistoryScoped mirrors DeleteRelWithHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// DeleteRelWithHistory. See badgerstore_changelog_scoped.go (BACKLOG 11f
-// Batch C — foundation only).
+// DeleteRelWithHistoryScoped is DeleteRelWithHistory with the change-log record
+// routed to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) DeleteRelWithHistoryScoped(rid types.RelID, prevVersion uint32, tombstone *types.Relationship, token uint64) error {
 	if token == 0 {
 		return bs.DeleteRelWithHistory(rid, prevVersion, tombstone)
@@ -201,10 +195,8 @@ func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 	return bs.putRelVersionRouted(rid, version, r, 0)
 }
 
-// PutRelVersionScoped mirrors PutRelVersion but routes the change-log record
-// into the store.ScopedTxChangeLog buffer named by token instead of the
-// eager pending log. token == 0 is exactly PutRelVersion. See
-// badgerstore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+// PutRelVersionScoped is PutRelVersion with the change-log record routed to the
+// ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) PutRelVersionScoped(rid types.RelID, version uint32, r *types.Relationship, token uint64) error {
 	if token == 0 {
 		return bs.PutRelVersion(rid, version, r)
@@ -230,22 +222,17 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
 	key := storepkg.HistRelKey(id, uint64(version))
-	// Capture a history-only rel (deleted rel reconstructed via version
-	// inserts) in the rel-type sidecar and the belief watermark (BACKLOG 10c) —
-	// the cascade's bounded-correction append door. The op and its record are
-	// enqueued together under one wbMu critical section (appendOpsLoggedRouted)
-	// for snapshot atomicity.
-	// A live or already-covered relationship's rel-type temporal envelope
-	// covers every row it has had since the index existed (a delete keeps the
-	// envelope), so this version's interval joins it (an imported or restored
-	// past version stays findable). An uncovered relationship without a current
-	// row stays uncovered and is never pruned — extending it here would vouch
-	// for this one version while its other rows stay outside. While the index
-	// is being created (Building), the version joins it and records the ID, and
-	// the create re-reads every row of the ID (backlog 22).
-	// A row whose endpoints are not the live row's joins the ex-adjacency in
-	// the same batch (backlog 50). Decided before the enqueue (which may run
-	// under idxMu.Lock): a delete landing in between adds the legs itself.
+	// Capture a history-only rel in the rel-type sidecar and belief watermark
+	// (BACKLOG 10c); op and record are enqueued under one wbMu section
+	// (appendOpsLoggedRouted) for snapshot atomicity.
+	// A live or covered rel's envelope covers every row since the index existed, so
+	// this version joins it. An uncovered rel without a current row stays uncovered
+	// (never pruned): extending would vouch for this one version only. While the index
+	// is Building the version joins it and records the ID (backlog 22). A delete keeps
+	// the envelope; while Building the create re-reads every row (backlog 22).
+	// A row whose endpoints differ from the live row's joins the ex-adjacency in the
+	// same batch (backlog 50), decided before the enqueue because the enqueue may run
+	// under idxMu.Lock (a delete in between adds the legs itself).
 	bs.idxMu.RLock()
 	ops := append([]writeOp{{opType: writeOpSet, key: key, value: data}}, bs.exAdjOpsForHistoryRowLocked(rid, r)...)
 	bs.idxMu.RUnlock()
@@ -262,7 +249,7 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 			}
 		},
 		func() error {
-			return bs.appendOpsLoggedRouted(storecontract.ChangeRelHistoryVersion, logPayload, token, ops...)
+			return bs.appendOpsLoggedRoutedRaising(voidRowMarker(r.Temporal()), storecontract.ChangeRelHistoryVersion, logPayload, token, ops...)
 		},
 	)
 	if err != nil {
@@ -281,10 +268,8 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 	id := rid.SnowflakeID()
 	key := storepkg.HistRelKey(id, uint64(version))
 
-	// Check the write buffer (pending + the snapshot a concurrent flush is
-	// mid-committing). Consulting only `pending` would miss a row parked in
-	// `flushing` during the commit window and wrongly return ErrVersionNotFound
-	// for a version that was just written.
+	// Check pending and the snapshot a flush is mid-committing (`flushing`): pending
+	// alone would miss a parked row and return ErrVersionNotFound for a just-written version.
 	op, found := bs.lookupPending(string(key))
 
 	if found {
@@ -362,6 +347,9 @@ func (bs *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 		return nil, err
 	}
 	id := rid.SnowflakeID()
+	if top, ok := bs.historyTopBound(&bs.histRelPresence, id); ok && top < startVersion {
+		return nil, nil // nothing at or above startVersion: no iterator
+	}
 	prefix := storepkg.HistRelPrefix(id)
 	return bs.relHistoryVersionsFromPrefix(prefix, startVersion, limit)
 }
@@ -369,10 +357,8 @@ func (bs *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, error) {
 	expectedID := storepkg.ParseIDFromKey(prefix, 1)
 
-	// Snapshot the overlay BEFORE the Badger scan to close the commit-window drop
-	// (a flush that commits a parked row to Badger and clears `flushing` between a
-	// scan-first reader's Badger snapshot and its overlay read loses the row).
-	// Mirror of getNodeHistoryByPrefix — see lesson 64.
+	// Snapshot the overlay BEFORE the Badger scan to close the commit-window drop;
+	// mirror of getNodeHistoryByPrefix (lesson 64).
 	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	entries := make(map[string][]byte)
@@ -564,11 +550,8 @@ func (bs *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 	return bs.truncateRelHistoryRouted(rid, keepVersions, 0)
 }
 
-// TruncateRelHistoryScoped mirrors TruncateRelHistory but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// TruncateRelHistory. See badgerstore_changelog_scoped.go (BACKLOG 11f
-// Batch F — foundation only).
+// TruncateRelHistoryScoped is TruncateRelHistory with the change-log record routed
+// to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) TruncateRelHistoryScoped(rid types.RelID, keepVersions int, token uint64) error {
 	if token == 0 {
 		return bs.TruncateRelHistory(rid, keepVersions)
@@ -597,11 +580,8 @@ func (bs *Store) TrimRelHistoryFrom(rid types.RelID, minVersion uint32) error {
 	return bs.trimRelHistoryFromRouted(rid, minVersion, 0)
 }
 
-// TrimRelHistoryFromScoped mirrors TrimRelHistoryFrom but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly
-// TrimRelHistoryFrom. See badgerstore_changelog_scoped.go (BACKLOG 11f
-// Batch F — foundation only).
+// TrimRelHistoryFromScoped is TrimRelHistoryFrom with the change-log record routed
+// to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) TrimRelHistoryFromScoped(rid types.RelID, minVersion uint32, token uint64) error {
 	if token == 0 {
 		return bs.TrimRelHistoryFrom(rid, minVersion)
@@ -670,10 +650,9 @@ func (bs *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 	}
 }
 
-// ForEachDeletedRelID is the relationship counterpart of ForEachDeletedNodeID
-// — visits only history-but-no-current IDs via an inline HasRelID check.
-// Once the RAM history-presence set is built (forEachPresentHistoryID) the IDs
-// come from it instead of a scan of the history keyspace.
+// ForEachDeletedRelID is the rel counterpart of ForEachDeletedNodeID (history but
+// no current row, inline HasRelID). Once the RAM history-presence set is built
+// (forEachPresentHistoryID) IDs come from it, not a keyspace scan.
 func (bs *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
@@ -720,9 +699,8 @@ func (bs *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
 	}
 }
 
-// MaxRelHistoryID returns the highest relationship ID with version history
-// visible to this store. It includes pending buffered writes and the persisted
-// Badger key space, and returns zero when no relationship history exists.
+// MaxRelHistoryID returns the highest relationship ID with version history,
+// including pending buffered writes; zero when there is none.
 func (bs *Store) MaxRelHistoryID() (types.RelID, error) {
 	if err := bs.checkOpen(); err != nil {
 		return 0, err
@@ -780,9 +758,7 @@ func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 				continue
 			}
 			if _, deleted := pendingDeletes[string(key)]; deleted {
-				// Only this version row is masked — the same id may still be
-				// emitted via one of its other (unmasked) version rows, so
-				// step to the next row rather than skipping the whole id.
+				// Only this version row is masked; the id may still be emitted via another row, so step to the next row.
 				it.Next()
 				continue
 			}
@@ -814,11 +790,8 @@ func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 					return nil
 				}
 			}
-			// This id is decided — SKIP its remaining version rows with one
-			// Seek to the next id's first possible key instead of Next-ing
-			// through every row. Makes the scan O(distinct IDs), not O(total
-			// version rows) — the depth-dependent cost the pinned adjacency
-			// door's deleted-entity fold.
+			// Id decided: Seek past its remaining version rows so the scan is O(distinct IDs),
+			// not O(version rows).
 			next := historyIDSeekKey(storepkg.KeyHistRel, id)
 			if next == nil {
 				break // id is the max snowflake ID — no successor exists.

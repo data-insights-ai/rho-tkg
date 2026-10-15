@@ -18,11 +18,8 @@ func (bs *Store) DeleteNodeCascade(nid types.NodeID) error {
 	return bs.deleteNodeCascadeRouted(nid, 0)
 }
 
-// DeleteNodeCascadeScoped mirrors DeleteNodeCascade but routes the
-// change-log record into the store.ScopedTxChangeLog buffer named by token
-// instead of the eager pending log. token == 0 is exactly DeleteNodeCascade.
-// See badgerstore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
-// only).
+// DeleteNodeCascadeScoped is DeleteNodeCascade with the change-log record routed
+// to the ScopedTxChangeLog buffer named by token (0 = unscoped).
 func (bs *Store) DeleteNodeCascadeScoped(nid types.NodeID, token uint64) error {
 	if token == 0 {
 		return bs.DeleteNodeCascade(nid)
@@ -103,17 +100,15 @@ func (bs *Store) prefetchCascadeDeleteRows(nid types.NodeID) (cascadeDeletePrefe
 	return cascadeDeletePrefetch{node: nodeInfo, rels: infos}, nil
 }
 
-// cascadeDeleteInner performs Phases 1+2 of DeleteNodeCascade.
-// Caller MUST hold bs.idxMu.Lock(). All ops are appended to pending under the same lock.
-// history is the with-history delete's tombstone batch (nil for a plain
-// cascade): it is published through publishMoveLocked after the preflight and
-// BEFORE Phase 2 removes the node and its relationships from the cache, so a
-// lock-free reader never sees an entity gone from its current slot and not
-// yet in history (backlog 32).
+// cascadeDeleteInner performs Phases 1+2 of DeleteNodeCascade. Caller MUST hold
+// bs.idxMu.Lock; all ops are appended under it. history is the with-history
+// delete's tombstone batch (nil for a plain cascade), published via
+// publishMoveLocked BEFORE Phase 2 removes the entities from the cache, so a
+// lock-free reader never sees an entity in neither slot (backlog 32).
 // Returns (toDelete, corruptErr, fatalErr):
 //   - fatalErr != nil: aborted with no mutations applied.
 //   - corruptErr != nil: cleanup completed but node data was unreadable (indexes brute-force purged).
-//   - Otherwise: clean success.
+//   - otherwise: clean success.
 func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePrefetch, history []writeOp) ([]RelDeleteInfo, error, error) {
 	if _, exists := bs.nodeIDs[nid]; !exists {
 		return nil, nil, ErrNodeNotFound
@@ -184,9 +179,8 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 	return toDelete, corruptErr, nil
 }
 
-// cascadeDeleteApply is cascadeDeleteInner's Phase 2 — Apply: every mutation,
-// from pre-read data, under the caller's idxMu.Lock; it cannot fail. A non-nil
-// return is the corrupt-node outcome (cleanup completed, node data unreadable).
+// cascadeDeleteApply is Phase 2: every mutation from pre-read data under the
+// caller's idxMu.Lock; cannot fail. Non-nil return = corrupt-node outcome.
 func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePrefetch, toDelete []RelDeleteInfo, orphanRelIDs []types.RelID, orphanKeys [][][]byte) error {
 	id := nid.SnowflakeID()
 	for i, relID := range orphanRelIDs {
@@ -205,10 +199,8 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 		n, err = bs.getNodeLocked(nid)
 	}
 	if err != nil {
-		// Node was in nodeIDs but can't be loaded (data corruption or cache miss
-		// with closed DB). Still proceed with cleanup — scrub labelIdx by scanning
-		// ALL label sets to prevent orphaned index entries (perma-leak).
-		// O(L) where L is total distinct labels — bounded, corruption-only path.
+		// Node in nodeIDs but unloadable (corruption): still clean up by scanning ALL
+		// label sets to avoid orphaned index entries. O(L), corruption-only path.
 		ops := []writeOp{{opType: writeOpDelete, key: storepkg.NodeKey(id)}}
 		if bs.labelOnDisk {
 			// Disk mode: derive the node's tokens from the persisted
@@ -233,10 +225,8 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 				}
 			}
 		}
-		// Property, temporal, and vector indexes: node data unavailable, brute-force purge.
-		// Leave property-key counters conservatively positive: without the row
-		// we cannot know which keys to decrement, and positive overcounts only
-		// cause extra scans while undercounts could make planners prune matches.
+		// Node data unavailable: brute-force purge. Property-key counters stay
+		// conservatively positive (overcounts cost scans, undercounts could prune matches).
 		ops = append(ops, bs.maintainPropertyIndexesPurge(id)...)
 		indexpkg.PurgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
 		ops = append(ops, bs.maintainTemporalIndexDiskPurge(id)...)
@@ -250,14 +240,9 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)
 		bs.nodeCount.Add(-1)
-		// The label-index scrub above touched an UNKNOWN set of labels (the
-		// per-token loop above, not a single known label), so no single
-		// per-label epoch bump can target it precisely — bump the salt that
-		// invalidates every per-label DocValues column (same coarse
-		// belt-and-braces invalidation purgeNodesByLabel already uses for its
-		// own bulk-delete case, BACKLOG 4b/18h). Without this, a columnar
-		// query could keep answering from a column snapshot still containing
-		// this node's now-deleted row.
+		// The label scrub touched an unknown set of labels, so bump the salt that
+		// invalidates every per-label DocValues column (as purgeNodesByLabel does,
+		// BACKLOG 4b/18h); otherwise a columnar query could still see this deleted row.
 		bs.nodeEpochSalt.Add(1)
 		bs.poisonAllLabels() // label-less event: no per-label append record can describe it (R3)
 		return fmt.Errorf("graph: cascade completed with corrupt node data: %w", err)
@@ -300,9 +285,8 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 	return nil
 }
 
-// cascadeDeleteLocked acquires idxMu.Lock() and delegates to cascadeDeleteInner.
-// token == 0 (unscoped) convenience wrapper over cascadeDeleteRouted — kept
-// so existing direct callers (tests) are unaffected.
+// cascadeDeleteLocked takes idxMu.Lock and delegates to cascadeDeleteInner; the
+// unscoped (token == 0) wrapper over cascadeDeleteRouted.
 func (bs *Store) cascadeDeleteLocked(nid types.NodeID, prefetched cascadeDeletePrefetch) ([]RelDeleteInfo, error, error) {
 	return bs.cascadeDeleteRouted(nid, prefetched, 0)
 }
@@ -313,10 +297,8 @@ func (bs *Store) cascadeDeleteRouted(nid types.NodeID, prefetched cascadeDeleteP
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 	deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched, nil)
-	// Emit the single hard-cascade ChangeNodeDelete under the SAME lock as the
-	// cascade ops (cascadeDeleteInner / deleteRelByInfo emit nothing themselves,
-	// so the node-cascade and with-history-delete paths each emit exactly one
-	// logical record). Skipped on a fatal error (no ops were committed).
+	// Emit the single ChangeNodeDelete under the same lock as the cascade ops
+	// (cascadeDeleteInner / deleteRelByInfo emit nothing). Skipped on fatalErr.
 	if fatalErr == nil {
 		if logErr := bs.logCascadeNodeDeleteRouted(nid.SnowflakeID(), deleted, token); logErr != nil {
 			return deleted, corruptErr, logErr
@@ -361,9 +343,8 @@ func (bs *Store) purgeOrphanRelIDLocked(rid types.RelID) error {
 }
 
 // purgeOrphanRelIDLockedWithIndexKeys is the non-fallible apply half of
-// purgeOrphanRelIDLocked. Exact erasure precomputes indexKeys before its first
-// mutation, then uses this helper so a later Badger scan cannot split the
-// destructive transition.
+// purgeOrphanRelIDLocked: exact erasure precomputes indexKeys so a later Badger
+// scan cannot split the destructive transition.
 func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys [][]byte) {
 	rawID := rid.SnowflakeID()
 	typeTokens := make([]uint16, 0)
@@ -401,12 +382,9 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 			continue
 		}
 	}
-	// A matching index key parked in `flushing` is mid-commit: gone from `pending`
-	// (swapped out) and not yet in Badger. Queue an explicit delete so a later
-	// flush removes it once the in-flight commit lands the key — otherwise it
-	// orphans a persisted index key. relationshipIndexKeysForRel already returns
-	// such keys (it reads the buffer before its View); this pass is kept as a
-	// second guard for callers that pass a precomputed key list.
+	// An index key parked in `flushing` is mid-commit (not in `pending`, not yet in
+	// Badger): queue an explicit delete so the flush removes it once it lands, else it
+	// orphans. Second guard for callers passing a precomputed key list.
 	for k, op := range bs.flushing {
 		if op.opType != writeOpSet || !relationshipIndexKeyMatchesRelID([]byte(k), rawID) {
 			continue
@@ -453,12 +431,9 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 	}
 }
 
-// relationshipIndexKeysForRel returns every type/adjacency index key of relID
-// that is buffered (flushing ++ pending) or committed. The buffer is read FIRST
-// and the Badger View opened SECOND (lesson 64): a parked flush can commit and
-// clear `flushing` while the caller holds idxMu.Lock, and a key it commits
-// between a View-first scan and a later `flushing` read would get no delete and
-// stay on disk as an orphan.
+// relationshipIndexKeysForRel returns every type/adjacency index key of relID,
+// buffered (flushing ++ pending) or committed. Buffer first, View second (lesson
+// 64): otherwise a key committed between the two reads gets no delete and orphans.
 func (bs *Store) relationshipIndexKeysForRel(relID snowflake.ID) ([][]byte, error) {
 	if h := bs.relIndexKeysTestErr; h != nil {
 		if err := h(); err != nil {
@@ -522,44 +497,34 @@ func relationshipIndexKeyMatchesRelID(key []byte, relID snowflake.ID) bool {
 	}
 }
 
-// PutNodesBatch stores multiple nodes atomically using two-phase validation.
-// Phase 1: check for duplicates vs existing store AND within the batch.
-// Phase 2: serialize, cache, index, and queue each for async flush.
-// Any duplicate → error, zero mutations. Nil/empty input → nil error.
+// PutNodesBatch stores nodes atomically in two phases: duplicate check (store and
+// within batch), then serialize/cache/index/queue. Any duplicate errors with zero
+// mutations. Nil/empty input returns nil.
 func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 	return bs.putNodesBatchInternal(nodes, nil, nil, false)
 }
 
-// PutNodesBatchPreEncoded persists nodes whose v2 entity-row wire has already
-// been pre-encoded (with its transaction-time tail patched by the applier),
-// skipping the second msgpack pass for those rows (store.PreEncodedPutCapability,
-// ADR-0006 §4.5). wireBodies[i] == nil re-encodes node i via marshalNodeBytes —
-// the applier's conservative fallback — so the persisted bytes are byte-identical
-// whether or not a row arrived pre-encoded (proven by the ingest divergence
-// battery). The change-log put body is UNCHANGED (untokenized encode-at-flush).
+// PutNodesBatchPreEncoded persists nodes whose v2 entity-row wire is pre-encoded
+// (tail patched by the applier), skipping the second msgpack pass
+// (store.PreEncodedPutCapability, ADR-0006 section 4.5). wireBodies[i] == nil
+// re-encodes node i, so persisted bytes are identical either way. The change-log
+// put body is unchanged.
 func (bs *Store) PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte) error {
 	return bs.putNodesBatchInternal(nodes, wireBodies, nil, false)
 }
 
-// PutNodesBatchPreEncodedLog satisfies store.PreEncodedPutLogCapability:
-// like PutNodesBatchPreEncoded, but logBodies[i] (when non-nil) is used
-// VERBATIM as node i's ChangeNodePut record body — the producer thread
-// already encoded and the applier already tail-patched it — so the door
-// skips that node's payload encode entirely. Nil elements build at the door
-// (byte-identical by the crown equivalence).
+// PutNodesBatchPreEncodedLog (store.PreEncodedPutLogCapability) additionally uses
+// logBodies[i], when non-nil, verbatim as node i's ChangeNodePut body; nil
+// elements are built at the door (byte-identical).
 func (bs *Store) PutNodesBatchPreEncodedLog(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
 	return bs.putNodesBatchInternal(nodes, wireBodies, logBodies, false)
 }
 
-// PutNodesBatchOwnedPreEncoded is PutNodesBatchPreEncodedLog with an OWNERSHIP
-// TRANSFER: the caller guarantees it will never read or mutate the nodes again,
-// so the store freezes each node IN PLACE and caches it directly instead of
-// deep-copying it (frozenNodeRow). This eliminates the single largest per-node
-// allocation on the ingest apply path. Satisfies store.OwnedPreEncodedPutCapability.
-//
-// UNDEFINED BEHAVIOR if the caller touches a node afterward — the store's cached
-// (frozen) entry IS that object. Only the ingest bulk path (write-only creates,
-// no caller-visible skeleton) may use this; see the gate in the core apply path.
+// PutNodesBatchOwnedPreEncoded is PutNodesBatchPreEncodedLog with an ownership
+// transfer: the caller never reads or mutates the nodes again, so the store
+// freezes and caches each in place instead of deep-copying
+// (store.OwnedPreEncodedPutCapability). Undefined behavior if the caller touches
+// a node afterward; only the ingest bulk path may use it.
 func (bs *Store) PutNodesBatchOwnedPreEncoded(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
 	return bs.putNodesBatchInternal(nodes, wireBodies, logBodies, true)
 }
@@ -567,11 +532,8 @@ func (bs *Store) PutNodesBatchOwnedPreEncoded(nodes []*types.Node, wireBodies, l
 var _ storecontract.OwnedPreEncodedPutCapability = (*Store)(nil)
 
 // putNodesBatchInternal is the shared body of PutNodesBatch (wireBodies nil) and
-// PutNodesBatchPreEncoded. When wireBodies[i] is non-nil it is used verbatim as
-// the persisted entity-row bytes for nodes[i]; otherwise the row is marshaled
-// here (encode-at-flush). Everything else — validation, duplicate check, cache,
-// index maintenance, counters, and the UNTOKENIZED change-log put body — is
-// identical on both paths.
+// PutNodesBatchPreEncoded: wireBodies[i] non-nil is the persisted entity-row
+// bytes, otherwise the row is marshaled here. Everything else is identical.
 func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodies [][]byte, owned bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
@@ -583,15 +545,10 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		return err
 	}
 
-	// Pre-serialize all nodes outside the lock. A pre-encoded buffer (from the
-	// ingest applier — already tail-patched with the stamped TxFrom) is used
-	// verbatim; a nil element falls back to a fresh encode here. The frozen
-	// cache copy (a full deep copy) and the change-log put payload (a second
-	// msgpack encode) are ALSO built here — both are pure functions of the
-	// caller-owned finalized node, and keeping them inside idxMu was the
-	// dominant contention cost of concurrent batch creates. Only the
-	// ORDER-sensitive appends (cache put, index maps, ops, record buffering)
-	// stay under the lock.
+	// Pre-serialize outside the lock: row bytes, the frozen cache copy and the
+	// change-log payload are pure functions of the finalized node, and building them
+	// under idxMu was the dominant contention cost. Only order-sensitive appends
+	// (cache put, index maps, ops, record buffering) stay under the lock.
 	type nodeData struct {
 		nid    types.NodeID
 		id     snowflake.ID
@@ -668,10 +625,8 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 	for i, n := range nodes {
 		nd := serialized[i]
 
-		// Apply this node's vector-index entries first, before any other RAM
-		// state for it commits — lesson 4 "preflight then apply" (BACKLOG
-		// 18e): a failure here must not leave cache/label/property/temporal/
-		// HF indexes reflecting a node whose write was never queued.
+		// Apply this node's vector-index entries first (lesson 4, BACKLOG 18e): a failure
+		// must not leave other indexes reflecting a node whose write was never queued.
 		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], nd.id); err != nil {
 			bs.idxMu.Unlock()
 			return err
@@ -681,6 +636,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		bs.nodeIDs[nd.nid] = struct{}{}
 		bs.nodeHashes[nd.nid] = badgerNodeIntegrityHash(n)
 		bs.bumpNodeRevLocked(nd.nid)
+		bs.bumpNodeBeliefWatermarkLocked(nd.nid, nodeTxFrom(n)) // BACKLOG 10c, as PutNode
 
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(nd.id), value: nd.data})
 		labelCount := n.LabelTokenCount()
@@ -712,11 +668,9 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 	return bs.flushIfNeeded()
 }
 
-// DeleteNodesBatch deletes multiple nodes atomically using two-phase validation.
-// Phase 1: check all IDs exist, pre-read node data for label cleanup.
-// Phase 2: remove from cache, indexes, queue delete ops.
-// Missing ID → ErrNodeNotFound, zero mutations. Duplicate IDs are coalesced.
-// Nil/empty input → nil error.
+// DeleteNodesBatch deletes nodes atomically in two phases: all IDs exist (pre-read
+// for label cleanup), then remove from cache/indexes and queue deletes. Missing ID
+// returns ErrNodeNotFound with zero mutations; duplicates are coalesced; nil/empty returns nil.
 func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
@@ -860,6 +814,5 @@ func uniqueNodeIDs(ids []types.NodeID) []types.NodeID {
 	return out
 }
 
-// loadNodeFromBadger reads and unmarshals a node within an existing Badger transaction.
-// Does not interact with the LRU cache. Used during loadIndexes where the cache is
-// not yet populated and concurrent access has not started.
+// loadNodeFromBadger reads a node within an existing Badger transaction, bypassing
+// the LRU cache (used by loadIndexes before concurrent access starts).

@@ -13,26 +13,17 @@ type labelToken uint16
 // Value returns the underlying uint16 value of the token.
 func (t labelToken) Value() uint16 { return uint16(t) }
 
-// NodeID is the opaque ID type for nodes. Exported so callers can pass IDs
-// to graph methods and reference them in results, but the underlying
-// snowflake.ID layout is intentionally hidden — use the typed accessor
-// SnowflakeID() to bridge to persistence keys, and the graph generators
-// (g.Nodes().NextID, g.Rels().NextID) to allocate fresh IDs.
+// NodeID is the opaque ID type for nodes; use SnowflakeID() to bridge to
+// persistence keys and g.Nodes().NextID to allocate IDs.
 type NodeID snowflake.ID
 
 // SnowflakeID extracts the underlying snowflake.ID from a nodeID.
 // This is the bridge for pkg/graph to get persistence keys from entities.
 func (id NodeID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 
-// Node represents a vertex in the temporal knowledge graph.
-// All fields are unexported; access is through methods only.
-// A Node is a pure-data struct — it works immediately after construction
-// with no graph back-reference required.
-//
-// Layout: fields are ordered by descending alignment to eliminate internal
-// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 88 bytes
-// (the 96-byte size class); the compact metadata pointer (P7) replaces a
-// 96-byte TemporalMetadata and a 96-byte NodeIntegrity on every cached row.
+// Node represents a vertex in the temporal knowledge graph. All fields are
+// unexported; a Node is pure data and needs no graph back-reference. Fields are
+// ordered by descending alignment (88 bytes, the 96-byte size class).
 type Node struct {
 	id           NodeID            // 8B, offset  0
 	properties   PropertySlice     // 24B (slice header), offset  8
@@ -83,8 +74,7 @@ func (n *Node) ID() NodeID {
 	return n.id
 }
 
-// InternalID is the legacy accessor kept for migration; prefer ID().
-// Will be removed once all callsites have switched.
+// InternalID is the legacy accessor; prefer ID().
 func (n *Node) InternalID() NodeID {
 	if n == nil {
 		return 0
@@ -143,9 +133,8 @@ func (n *Node) HasLabelToken(tok labelToken) bool {
 	return false
 }
 
-// HasLabelTokenRaw checks if this node has the given label token using a raw
-// uint16 value. This is the zero-allocation path for the graph layer, which
-// holds tokens as uint16. Token 0 always returns false.
+// HasLabelTokenRaw is HasLabelToken for a raw uint16 token (zero-allocation
+// path for the graph layer). Token 0 always returns false.
 func (n *Node) HasLabelTokenRaw(tok uint16) bool {
 	if n == nil || tok == 0 {
 		return false
@@ -186,12 +175,9 @@ func (n *Node) LabelTokenRawAt(i int) uint16 {
 	return uint16(n.extraLabels[i])
 }
 
-// Freeze marks the node immutable. After freezing, error-returning mutators
-// return ErrFrozenNode and void/bool mutators panic — mutating a frozen node
-// is a programming error, never a recoverable condition. Stores freeze the
-// entries they cache so query paths can return shared pointers instead of
-// per-row deep copies; callers that need to mutate a fetched node must thaw
-// it first via DeepCopy, which always returns a mutable copy.
+// Freeze marks the node immutable: error-returning mutators then return
+// ErrFrozenNode and void/bool mutators panic. Stores freeze cached entries so
+// queries can return shared pointers; DeepCopy thaws.
 func (n *Node) Freeze() {
 	if n == nil {
 		return
@@ -232,18 +218,14 @@ func (n *Node) SetProperties(ps PropertySlice) error {
 	return nil
 }
 
-// SetPropertiesCanonicalShared assigns an ALREADY-CANONICAL PropertySlice
-// directly, with NO sort/validate/deep-copy — the node ALIASES ps. It is the
-// batch/ingest BULK-create fast path: one NewPropertySlice result is shared
-// across many sibling write-only create nodes, avoiding a per-node
-// canonicalize+copy (the store deep-copies each node at Put, so the shared slice
-// is never mutated through any node).
+// SetPropertiesCanonicalShared assigns an already-canonical PropertySlice with
+// no sort/validate/copy: the node ALIASES ps (batch/ingest bulk-create fast
+// path; the store deep-copies at Put).
 //
-// UNSAFE for any node that a caller can reach and mutate: SetProperty mutates
-// the slice in place, so a shared slice would corrupt every sibling. Callers
-// MUST use this only for nodes that are never returned to the caller (the
-// write-only keepResults==false path) and MUST pass an already-canonical,
-// caller-owned ps. General code uses SetProperties or SetOwnedProperties.
+// UNSAFE for any node a caller can reach and mutate (SetProperty writes in
+// place and would corrupt siblings): only for never-returned write-only nodes,
+// with a canonical caller-owned ps. General code uses SetProperties or
+// SetOwnedProperties.
 func (n *Node) SetPropertiesCanonicalShared(ps PropertySlice) {
 	if n == nil {
 		return
@@ -252,11 +234,10 @@ func (n *Node) SetPropertiesCanonicalShared(ps PropertySlice) {
 	n.sharedProps = true // aliased by contract: an in-place write copies first
 }
 
-// SetOwnedProperties replaces the node's property slice without copying it.
-// The caller transfers ownership of ps and must not mutate it after this call.
-// This is intended for graph-layer construction paths that just received ps
-// from NewPropertySlice; general callers should use SetProperties. Reusing a
-// consumed OwnedPropertySlice installs nil properties instead of sharing state.
+// SetOwnedProperties replaces the node's property slice without copying; the
+// caller transfers ownership of ps. A consumed OwnedPropertySlice installs nil.
+// The caller must not mutate ps after this call; for graph-layer paths that just
+// got ps from NewPropertySlice (general callers use SetProperties).
 func (n *Node) SetOwnedProperties(ps OwnedPropertySlice) error {
 	if n == nil {
 		return ErrNilNode
@@ -314,10 +295,8 @@ func (n *Node) PropertyValueEqual(key string, expected any) (found bool, equal b
 	return n.properties.propertyValueEqual(key, expected)
 }
 
-// IndexablePropertyValueKey returns the canonical index key for a scalar
-// property without exposing the property value itself. The second return value
-// reports whether the property exists; a present but non-indexable value
-// returns ("", true).
+// IndexablePropertyValueKey returns the canonical index key of a scalar
+// property and whether it exists (present but non-indexable: ("", true)).
 func (n *Node) IndexablePropertyValueKey(key string) (string, bool) {
 	if n == nil {
 		return "", false
@@ -325,20 +304,47 @@ func (n *Node) IndexablePropertyValueKey(key string) (string, bool) {
 	return n.properties.indexableValueKey(key)
 }
 
-// ForEachIndexablePropertyValueKey calls fn for each scalar property using
-// the canonical value key consumed by property indexes. It skips non-indexable
-// values and stops early when fn returns false.
+// ForEachIndexablePropertyValueKey calls fn with each scalar property's
+// canonical index key, skipping non-indexable values; fn returning false stops.
 func (n *Node) ForEachIndexablePropertyValueKey(fn func(propertyKey, valueKey string) bool) {
 	if n == nil {
 		return
 	}
-	n.properties.forEachIndexableValueKey(fn)
+	n.properties.forEachIndexKey(nil, fn)
+}
+
+// ForEachIndexKey is ForEachIndexablePropertyValueKey for stores with Elements
+// indexes (backlog 63): a list property for which elements reports true yields
+// each distinct scalar element's key. elements is consulted for list values
+// only; nil means scalars only.
+func (n *Node) ForEachIndexKey(elements func(propertyKey string) bool, fn func(propertyKey, valueKey string) bool) {
+	if n == nil {
+		return
+	}
+	n.properties.forEachIndexKey(elements, fn)
+}
+
+// ForEachPropertyIndexKey calls fn with the index keys of one property (scalar
+// key, or with elements each distinct element's key); missing yields nothing.
+func (n *Node) ForEachPropertyIndexKey(propertyKey string, elements bool, fn func(valueKey string) bool) {
+	if n == nil {
+		return
+	}
+	n.properties.propertyIndexKeys(propertyKey, elements, fn)
+}
+
+// HasPropertyIndexKey reports whether the property carries targetKey as an
+// index key: equality, or list membership with elements. The match test of
+// every property-index read.
+func (n *Node) HasPropertyIndexKey(propertyKey string, elements bool, targetKey string) bool {
+	if n == nil {
+		return false
+	}
+	return n.properties.hasIndexKey(propertyKey, elements, targetKey)
 }
 
 // Float32SlicePropertyCopy returns a caller-owned []float32 copy for vector
-// index input. It accepts []float32, []float64 (elements narrowed to float32),
-// and []any containing only float32/float64 values, matching vector-index
-// input support.
+// index input ([]float32, []float64, or []any of floats).
 func (n *Node) Float32SlicePropertyCopy(key string) ([]float32, bool) {
 	if n == nil {
 		return nil, false
@@ -368,14 +374,12 @@ func (n *Node) PropertyCount() int {
 	return n.properties.Len()
 }
 
-// AppendPropertyHashBytes appends this node's properties using the integrity
-// hash byte layout without exposing or defensive-copying the property slice.
+// AppendPropertyHashBytes appends this node's properties in the integrity hash
+// byte layout without copying the slice.
 //
-// PANIC CONTRACT: when PropertyHashNeedsRecover() reports true (registered
-// custom types or unknown values present), the caller MUST wrap this call in
-// panic recovery — a custom HashBytes implementation may panic. The graph
-// layer's integrity package (ComputeNodeHashChecked) is the reference
-// pattern; do not call this directly on untrusted data without it.
+// PANIC CONTRACT: when PropertyHashNeedsRecover() is true (custom types or
+// unknown values), the caller MUST wrap this in panic recovery; see
+// ComputeNodeHashChecked in the graph integrity package.
 func (n *Node) AppendPropertyHashBytes(buf []byte) []byte {
 	if n == nil {
 		return buf
@@ -427,21 +431,12 @@ func (n *Node) SetVersion(v uint32) {
 	n.version = v
 }
 
-// Temporal returns the node's temporal metadata (nil until set by the graph layer).
-// The returned pointer is shared with the node — the graph layer needs mutation
-// access, so no defensive copy is made.
+// Temporal returns the node's temporal metadata (nil until set by the graph
+// layer). The pointer is shared with the node and with store caches and
+// version snapshots, so it MUST NOT be mutated outside pkg/graph/internal/core.
 //
-// MUST NOT be mutated outside pkg/graph/internal/core: the same pointer is
-// held by store caches and version-history snapshots, so an external write
-// silently corrupts cached graph state and temporal-query results. Treat as
-// strictly read-only.
-//
-// FROZEN entities return an independent copy instead: frozen scan rows alias
-// the store's canonical cache entry, and the shared pointer was the one
-// escape hatch the frozen guard could not cover (TemporalMetadata fields are
-// exported, so writes through the pointer bypass every mutator check).
-// Copying on frozen rows makes such writes harmless. Unfrozen entities keep
-// the shared pointer — the graph layer mutates it on rows it owns.
+// FROZEN entities return an independent copy, since the exported fields would
+// let a shared pointer bypass the frozen guard.
 func (n *Node) Temporal() *TemporalMetadata {
 	if n == nil {
 		return nil
@@ -458,16 +453,9 @@ func (n *Node) Temporal() *TemporalMetadata {
 }
 
 // ValidRange returns the node's validity bounds and whether it carries temporal
-// metadata at all. ok=false means no metadata; a zero ValidTo means open-ended,
-// the store-wide convention.
-//
-// Prefer this over Temporal() when only the validity bounds are wanted. Temporal()
-// must COPY the metadata for a frozen entity (exported fields, so a shared pointer
-// is a write escape hatch), which costs one allocation per call — and every entity
-// a store scan hands back is frozen. Returning the two values by copy has nothing
-// to alias, so it is safe for frozen and unfrozen entities alike and allocates
-// nothing. That matters wherever bounds are read once per entity across a whole
-// label (bulk/columnar builds), where the per-call copy would otherwise dominate.
+// metadata at all (a zero ValidTo means open-ended). Prefer it over Temporal()
+// for bounds only: it returns values, so it allocates nothing on a frozen row,
+// where Temporal() copies.
 func (n *Node) ValidRange() (from, to Instant, ok bool) {
 	if n == nil {
 		return 0, 0, false
@@ -508,16 +496,12 @@ func (n *Node) SetTemporal(tm *TemporalMetadata) {
 	n.temporal = tm
 }
 
-// Integrity returns the node's integrity metadata (nil until set by the graph layer).
-// The returned pointer is shared with the node — the graph layer needs mutation
-// access, so no defensive copy is made.
+// Integrity returns the node's integrity metadata (nil until set by the graph
+// layer). The pointer is shared with the node and store caches and the hash
+// chain is computed from it, so it MUST NOT be mutated outside
+// pkg/graph/internal/core (it would break Verify*Chain).
 //
-// MUST NOT be mutated outside pkg/graph/internal/core: the same pointer is
-// held by store caches, and the hash chain is computed from this state — an
-// external write silently breaks Verify*Chain. Treat as strictly read-only.
-//
-// FROZEN entities return an independent deep copy (Signature bytes cloned)
-// instead — see Temporal() for the rationale.
+// FROZEN entities return an independent deep copy (see Temporal()).
 func (n *Node) Integrity() *NodeIntegrity {
 	if n == nil {
 		return nil
@@ -565,14 +549,10 @@ func (n *Node) AddLabelTokenRaw(tok uint16) bool {
 	return true
 }
 
-// RemoveLabelTokenRaw removes the label with the given raw uint16 token from this node.
-// Returns false if tok == 0 or the token is not present on this node.
-// If the removed label is the primary label, the first NON-ZERO extra label is
-// promoted to primary — token 0 is reserved (HasLabelToken(0) always returns
-// false), so promoting it would silently leave the node with a primary label
-// that can never be observed as present while still counting toward
-// LabelTokenCount. Any skipped token-0 extras stay in the extra set.
-// Removing the last (non-zero-promotable) label is refused and returns false.
+// RemoveLabelTokenRaw removes the label with the given raw token. Returns false
+// if tok == 0 or absent. Removing the primary promotes the first non-zero extra
+// (token 0 is reserved and must never become primary); removing the last
+// promotable label is refused and returns false.
 func (n *Node) RemoveLabelTokenRaw(tok uint16) bool {
 	if n == nil || tok == 0 {
 		return false
@@ -642,11 +622,8 @@ func (n *Node) SetLabelTokensRaw(primary uint16, extras []uint16) {
 	}
 }
 
-// DeepCopy returns a fully independent clone of the node.
-// All nested reference types (extraLabels, properties, temporal, integrity)
-// are deep-copied so mutations to the copy never affect the original.
-// The copy is always mutable, even when n is frozen — DeepCopy is the thaw
-// operation for entities fetched from store caches.
+// DeepCopy returns a fully independent, always-mutable clone (the thaw for
+// frozen entities fetched from store caches).
 func (n *Node) DeepCopy() *Node {
 	if n == nil {
 		return nil

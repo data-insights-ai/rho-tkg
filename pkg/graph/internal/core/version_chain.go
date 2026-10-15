@@ -10,7 +10,6 @@ import (
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -138,13 +137,8 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 		return err
 	}
 
-	if tm := current.Temporal(); tm != nil && tm.ValidTo != 0 {
-		return ErrAlreadyClosed
-	}
-	if start := c.nodeValidFrom(current); t <= start {
-		return fmt.Errorf("%w: close time %d must be after node valid-from %d", ErrInvalidTimeRange, t, start)
-	}
-	if err := c.checkNodeCloseTemporalConstraints(id, current, t); err != nil {
+	start, err := c.checkNodeClose(id, current, "close time", t)
+	if err != nil {
 		return err
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("close node version"); err != nil {
@@ -172,7 +166,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 		tm = &types.TemporalMetadata{}
 		current.SetTemporal(tm)
 	}
-	tm.ValidTo = t
+	stampClose(tm, start, t)
 	tm.UpdatedAt = now
 	stampAppendedRow(tm, now)
 
@@ -183,7 +177,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 		prevHash = ig.Hash
 	}
 	nodeLabels := c.nodeLabelsUnlocked(current)
-	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
+	hash, err := c.nodeContentHash(current, nodeLabels)
 	if err != nil {
 		return fmt.Errorf("graph: compute node hash: %w", err)
 	}
@@ -364,20 +358,9 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	}
 	defer c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
 
-	if tm := current.Temporal(); tm != nil && tm.ValidTo != 0 {
-		return ErrAlreadyClosed
-	}
-	if start := c.relValidFrom(current); t <= start {
-		return fmt.Errorf("%w: close time %d must be after relationship valid-from %d", ErrInvalidTimeRange, t, start)
-	}
-	if c.constraints.Len() > 0 {
-		liveStart, liveEnd, err := c.liveEndpointNodes(startID, endID)
-		if err != nil {
-			return err
-		}
-		if err := c.checkTemporalConstraints(relWithValidTo(current, t), liveStart, liveEnd); err != nil {
-			return err
-		}
+	start, err := c.checkRelClose(current, startID, endID, "close time", t)
+	if err != nil {
+		return err
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("close relationship version"); err != nil {
 		return err
@@ -404,7 +387,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 		tm = &types.TemporalMetadata{}
 		current.SetTemporal(tm)
 	}
-	tm.ValidTo = t
+	stampClose(tm, start, t)
 	tm.UpdatedAt = now
 	stampAppendedRow(tm, now)
 
@@ -415,7 +398,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 		prevHash = ig.Hash
 	}
 	relTypeName := c.relTypeUnlocked(current)
-	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)
+	hash, err := c.relContentHash(current, relTypeName)
 	if err != nil {
 		return fmt.Errorf("graph: compute relationship hash: %w", err)
 	}

@@ -3,6 +3,7 @@ package stats
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
@@ -449,6 +450,39 @@ func (s *statsOpsSpy) RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegre
 	return storepkg.RelTypeDegreeStats{Rels: 4, MaxOut: 3, Exact: true}, s.relCountByTypeErr
 }
 
+func (s *statsOpsSpy) TrackRelTypeDegrees(typeName string) error {
+	s.relTypeArg = typeName
+	return s.relCountByTypeErr
+}
+
+func (s *statsOpsSpy) UntrackRelTypeDegrees(typeName string) error {
+	s.relTypeArg = "un:" + typeName
+	return s.relCountByTypeErr
+}
+
+// TestTrackRelTypeDegreesForwards: the wrappers forward the type and the
+// error; a nil API fails closed.
+func TestTrackRelTypeDegreesForwards(t *testing.T) {
+	var nilAPI *API
+	if err := nilAPI.TrackRelTypeDegrees("KNOWS"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil TrackRelTypeDegrees error = %v", err)
+	}
+	if err := nilAPI.UntrackRelTypeDegrees("KNOWS"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil UntrackRelTypeDegrees error = %v", err)
+	}
+	ops := &statsOpsSpy{}
+	if err := New(ops).TrackRelTypeDegrees("KNOWS"); err != nil || ops.relTypeArg != "KNOWS" {
+		t.Fatalf("TrackRelTypeDegrees = %v, arg %q", err, ops.relTypeArg)
+	}
+	if err := New(ops).UntrackRelTypeDegrees("KNOWS"); err != nil || ops.relTypeArg != "un:KNOWS" {
+		t.Fatalf("UntrackRelTypeDegrees = %v, arg %q", err, ops.relTypeArg)
+	}
+	opErr := errors.New("boom")
+	if err := New(&statsOpsSpy{relCountByTypeErr: opErr}).TrackRelTypeDegrees("KNOWS"); !errors.Is(err, opErr) {
+		t.Fatalf("TrackRelTypeDegrees error = %v", err)
+	}
+}
+
 func TestRelTypeDegreeStatsForwards(t *testing.T) {
 	var nilAPI *API
 	if _, err := nilAPI.RelTypeDegreeStats("KNOWS"); !errors.Is(err, grapherr.ErrNilGraph) {
@@ -513,5 +547,82 @@ func TestRelHistoryCountByTypeForwards(t *testing.T) {
 	opErr := errors.New("op failed")
 	if _, _, err := New(&statsOpsSpy{relCountByTypeErr: opErr}).RelHistoryCountByType("R"); !errors.Is(err, opErr) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func (s *statsOpsSpy) PropertyBounds(label, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
+	s.propertyNDVArgs = append(s.propertyNDVArgs, "bounds:"+label+"."+propertyKey)
+	return storepkg.PropertyBounds{Min: 1, Max: 9}, opts.ValidAt == 0, s.propertyStatsErr
+}
+
+func (s *statsOpsSpy) RelPropertyBounds(typeName, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
+	s.propertyNDVArgs = append(s.propertyNDVArgs, "relbounds:"+typeName+"."+propertyKey)
+	return storepkg.PropertyBounds{Min: -2, Max: 2}, opts.ValidAt == 0, s.propertyStatsErr
+}
+
+// TestPropertyBoundsForwards: both wrappers forward the target, the opts and
+// the answer; a nil API fails closed; an ops error comes back.
+func TestPropertyBoundsForwards(t *testing.T) {
+	var nilAPI *API
+	if _, _, err := nilAPI.PropertyBounds("L", "k", storepkg.QueryOpts{}); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil PropertyBounds error = %v", err)
+	}
+	if _, _, err := nilAPI.RelPropertyBounds("R", "k", storepkg.QueryOpts{}); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelPropertyBounds error = %v", err)
+	}
+	ops := &statsOpsSpy{}
+	b, ok, err := New(ops).PropertyBounds("L", "k", storepkg.QueryOpts{})
+	if err != nil || !ok || b.Min != 1 || b.Max != 9 {
+		t.Fatalf("PropertyBounds = (%+v, %v, %v)", b, ok, err)
+	}
+	if _, ok, _ := New(ops).PropertyBounds("L", "k", storepkg.QueryOpts{ValidAt: 5}); ok {
+		t.Fatal("opts not forwarded to PropertyBounds")
+	}
+	rb, ok, err := New(ops).RelPropertyBounds("R", "k", storepkg.QueryOpts{})
+	if err != nil || !ok || rb.Min != -2 || rb.Max != 2 {
+		t.Fatalf("RelPropertyBounds = (%+v, %v, %v)", rb, ok, err)
+	}
+	if want := []string{"bounds:L.k", "bounds:L.k", "relbounds:R.k"}; !slices.Equal(ops.propertyNDVArgs, want) {
+		t.Fatalf("args = %v, want %v", ops.propertyNDVArgs, want)
+	}
+	opErr := errors.New("boom")
+	if _, _, err := New(&statsOpsSpy{propertyStatsErr: opErr}).RelPropertyBounds("R", "k", storepkg.QueryOpts{}); !errors.Is(err, opErr) {
+		t.Fatalf("RelPropertyBounds error = %v", err)
+	}
+}
+
+func (s *statsOpsSpy) LabelTimeStats(label string) (storepkg.MemberTimeStats, bool, error) {
+	s.propertyNDVArgs = append(s.propertyNDVArgs, "time:"+label)
+	return storepkg.MemberTimeStats{Members: 3, ExplicitValid: 1}, true, s.propertyStatsErr
+}
+
+func (s *statsOpsSpy) RelTypeTimeStats(typeName string) (storepkg.MemberTimeStats, bool, error) {
+	s.propertyNDVArgs = append(s.propertyNDVArgs, "reltime:"+typeName)
+	return storepkg.MemberTimeStats{Members: 2, LastEnded: 9}, true, s.propertyStatsErr
+}
+
+// TestTimeStatsForwards: both wrappers forward the target and the answer; a
+// nil API fails closed; an ops error comes back.
+func TestTimeStatsForwards(t *testing.T) {
+	var nilAPI *API
+	if _, _, err := nilAPI.LabelTimeStats("L"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil LabelTimeStats error = %v", err)
+	}
+	if _, _, err := nilAPI.RelTypeTimeStats("R"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelTypeTimeStats error = %v", err)
+	}
+	ops := &statsOpsSpy{}
+	if st, ok, err := New(ops).LabelTimeStats("L"); err != nil || !ok || st.Members != 3 || st.ExplicitValid != 1 {
+		t.Fatalf("LabelTimeStats = %+v, %v, %v", st, ok, err)
+	}
+	if st, ok, err := New(ops).RelTypeTimeStats("R"); err != nil || !ok || st.LastEnded != 9 || !st.HistoryAfter(8) || st.HistoryAfter(9) {
+		t.Fatalf("RelTypeTimeStats = %+v, %v, %v", st, ok, err)
+	}
+	if want := []string{"time:L", "reltime:R"}; !slices.Equal(ops.propertyNDVArgs, want) {
+		t.Fatalf("args = %v", ops.propertyNDVArgs)
+	}
+	opErr := errors.New("boom")
+	if _, _, err := New(&statsOpsSpy{propertyStatsErr: opErr}).LabelTimeStats("L"); !errors.Is(err, opErr) {
+		t.Fatalf("LabelTimeStats error = %v", err)
 	}
 }

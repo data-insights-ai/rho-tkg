@@ -10,12 +10,8 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
-// Round 4 R2: RangeCardinality answers from the ordered view's per-key counts
-// and their per-chunk prefix sums instead of visiting each distinct value in
-// the range. These tests compare it against iteration over every indexed
-// entry on indexes large enough to span many chunks, under churn that splits,
-// merges and drains chunks, with re-adds of a present entry and the
-// corruption-path purge.
+// Pins RangeCardinality (per-key counts and chunk prefix sums) against
+// iteration over every entry, on multi-chunk indexes under churn.
 
 // rangeCountByIteration is the oracle: every live (id, value) visited.
 func rangeCountByIteration(vals map[snowflake.ID]float64, min, max float64, inclMin, inclMax bool) int64 {
@@ -74,11 +70,8 @@ func assertCountsConsistent(t *testing.T, pi *PropertyIndex) {
 	}
 }
 
-// Many chunks (up to ~6,000 distinct values, chunk cap 1,024), duplicates per
-// value, removals that drain values and chunks, re-adds of present entries
-// (must not double count), value moves, the purge path, and bounds that fall
-// on keys, between keys, inside one chunk, across chunk boundaries, outside
-// the data, reversed, equal, infinite and NaN.
+// Many chunks, duplicates, drains, re-adds (no double count), moves, purge, and
+// bounds on/between keys, across chunks, reversed, equal, infinite and NaN.
 func TestRangeCardinality_PrefixSumsVsIteration(t *testing.T) {
 	t.Parallel()
 	rng := rand.New(rand.NewSource(0x5EED4)) //nolint:gosec // deterministic test
@@ -90,7 +83,7 @@ func TestRangeCardinality_PrefixSumsVsIteration(t *testing.T) {
 	}()
 	for trial := range 12 {
 		t.Run(fmt.Sprintf("trial%d", trial), func(t *testing.T) {
-			pi := NewPropertyIndexWith(true)
+			pi := NewPropertyIndexWith(true, false)
 			vals := map[snowflake.ID]float64{}
 			universe := 50 + rng.Intn(6000)
 			next := snowflake.ID(1)
@@ -177,7 +170,7 @@ func TestRangeCardinality_PrefixSumsVsIteration(t *testing.T) {
 // A NaN bound counts 0 on a counted index too.
 func TestRangeCardinality_CountedNaNBoundCountsNothing(t *testing.T) {
 	t.Parallel()
-	pi := NewPropertyIndexWith(true)
+	pi := NewPropertyIndexWith(true, false)
 	for i := range 10 {
 		pi.AddKey(snowflake.ID(i+1), numericVK(float64(i)))
 	}
@@ -194,9 +187,8 @@ func TestRangeCardinality_CountedNaNBoundCountsNothing(t *testing.T) {
 	}
 }
 
-// A chunk drained to empty while both neighbours are too full to merge with
-// it leaves the directory by slot deletion, not by a merge: the prefix sums of
-// every chunk after it must move down with it.
+// A chunk drained while both neighbours are too full to merge leaves by slot
+// deletion: later prefix sums must move down with it.
 func TestCountedChunks_DrainedChunkBetweenFullNeighbours(t *testing.T) {
 	t.Parallel()
 	var o sortedChunks[float64]
@@ -256,14 +248,12 @@ func TestCountedChunks_DrainedChunkBetweenFullNeighbours(t *testing.T) {
 	check("after")
 }
 
-// An index created without range counts keeps the set-mode ordered view: no
-// counts, totals or prefix sums after loads, re-adds, moves, removals and the
-// purge, and the walk gives the same answers as a counted twin fed the same
-// operations.
+// An index without range counts keeps the set-mode view (no counts, totals or
+// prefix sums) and the walk agrees with a counted twin.
 func TestRangeCardinality_PlainIndexKeepsNoCounts(t *testing.T) {
 	t.Parallel()
 	rng := rand.New(rand.NewSource(0xC0)) //nolint:gosec // deterministic test
-	plain, counted := NewPropertyIndex(), NewPropertyIndexWith(true)
+	plain, counted := NewPropertyIndex(), NewPropertyIndexWith(true, false)
 	if plain.RangeCounts() || !counted.RangeCounts() || (*PropertyIndex)(nil).RangeCounts() {
 		t.Fatal("RangeCounts does not report the creation option")
 	}

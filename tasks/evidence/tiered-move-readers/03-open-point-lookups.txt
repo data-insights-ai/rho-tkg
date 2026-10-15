@@ -1,0 +1,12 @@
+    tieredstore_move_readers_test.go:263: door never reached its archive read (answered from the reference shard)
+    tieredstore_move_readers_test.go:269: RestoreNode during the read: got 0, want 1 (no move in flight)
+    tieredstore_move_readers_test.go:263: door never reached its archive read (answered from the reference shard)
+    tieredstore_move_readers_test.go:269: RestoreNode during the read: got 0, want 1 (no move in flight)
+--- FAIL: TestRefArchiveReadersSeeMovedEntityOnce (0.31s)
+    --- SKIP: TestRefArchiveReadersSeeMovedEntityOnce/GetNode/ArchiveNode (0.03s)
+    --- FAIL: TestRefArchiveReadersSeeMovedEntityOnce/GetNode/RestoreNode (0.10s)
+    --- SKIP: TestRefArchiveReadersSeeMovedEntityOnce/GetRelationship/ArchiveNode (0.05s)
+    --- FAIL: TestRefArchiveReadersSeeMovedEntityOnce/GetRelationship/RestoreNode (0.12s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.363s
+FAIL

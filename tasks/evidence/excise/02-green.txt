@@ -1,0 +1,24 @@
+--- PASS: TestExciseNodeValidityWithTx (0.00s)
+--- PASS: TestExciseNodeValidityTxAndBatch (0.00s)
+--- PASS: TestExciseNodeValidity (0.00s)
+--- PASS: TestExciseRelValidity (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.736s
+--- PASS: TestAPIExciseForwardsVerbatim (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	0.004s
+--- PASS: TestVoidRow_FormatVersion5 (0.00s)
+--- PASS: TestSelectAsOfWithCurrent_Table (0.00s)
+--- PASS: TestSelectAsOf_RealNodes (0.00s)
+--- PASS: TestSelectAsOf_RealRels (0.00s)
+--- PASS: TestSelectAsOf_SkipsVoidRows (0.00s)
+--- PASS: TestVoidRow_ValidationRejectsImpossiblePieces (0.00s)
+--- PASS: TestSelectAsOf_Table (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.005s
+--- PASS: TestVoidRowRaisesStoreFormatMarker (0.93s)
+--- PASS: TestBadgerNodeAsOfEquivalentToSelectAsOf (0.07s)
+--- PASS: TestBadgerRelAsOfEquivalentToSelectAsOf (0.09s)
+--- PASS: TestBadgerAsOfCascadeShapesEquivalentToSelectAsOf (0.65s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.603s

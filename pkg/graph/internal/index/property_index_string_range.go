@@ -7,25 +7,14 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Ordered STRING view of a PropertyIndex (prefix / string-range scans).
-//
-// Alongside the hash-shaped Entries and the numeric ordered view, every property
-// index maintains an ORDERED view of the STRING values it has seen: a chunked
-// sorted set (sortedChunks[string]) of distinct string values in lexicographic
-// (canonical byte) order, plus per-value ID buckets. A prefix scan
-// (`WHERE n.name STARTS WITH $p`) is a contiguous range [p, p⁺) over that set,
-// where p⁺ is the prefix successor — so the scan searches the key set instead of
-// scanning the label. Unlike the numeric view there is NO precision caveat:
-// string sort keys are exact, so the view neither over- nor under-selects.
-//
-// The value key for a string property is "s:"+value (IndexablePropertyValueKey),
-// so a value key sorts identically to its underlying string and stringSortKey
-// simply strips the "s:" tag.
+// Ordered STRING view of a PropertyIndex (prefix / string-range scans): a
+// sortedChunks[string] of distinct values in byte order plus per-value ID
+// buckets. A prefix scan is the range [p, p+) over it. String sort keys are
+// exact, so the view never over-selects. The value key is "s:"+value;
+// stringSortKey strips the tag.
 
-// StrOrderedCursor is the opaque resumption point for a paged ordered prefix /
-// string-range scan (PrefixOrderedPage). The zero value is "start from the
-// beginning". Callers thread the returned `next` cursor into the next call and
-// never construct or interpret its fields.
+// StrOrderedCursor is the opaque resumption point for PrefixOrderedPage. The
+// zero value starts at the beginning; callers only thread the returned `next`.
 type StrOrderedCursor struct {
 	has bool
 	val string
@@ -41,11 +30,9 @@ func stringSortKey(vk string) (string, bool) {
 	return "", false
 }
 
-// prefixSuccessor returns the smallest string strictly greater than every string
-// beginning with p — the EXCLUSIVE upper bound of the prefix range. ok=false when
-// no finite successor exists: an empty prefix (every string matches) or a prefix
-// that is all 0xFF bytes (no larger same-length prefix). Callers treat ok=false
-// as "range open to the top".
+// prefixSuccessor returns the smallest string greater than every string with
+// prefix p (the exclusive upper bound). ok=false when none exists (empty or
+// all-0xFF prefix): the range is open to the top.
 func prefixSuccessor(p string) (string, bool) {
 	b := []byte(p)
 	for i := len(b) - 1; i >= 0; i-- {
@@ -111,12 +98,11 @@ func (pi *PropertyIndex) purgeOrderedStr(id snowflake.ID) {
 	}
 }
 
-// PrefixNodeIDs returns the candidate node IDs whose STRING property value begins
-// with prefix, as a caller-owned slice (unordered). An empty prefix matches every
-// string value. supported=false only when the index is nil; an enabled view with
-// no string keys returns an authoritative empty result.
+// PrefixNodeIDs returns the node IDs whose string value begins with prefix, as
+// a caller-owned unordered slice (empty prefix matches all strings).
+// supported=false only when the index is nil or an Elements index.
 func (pi *PropertyIndex) PrefixNodeIDs(prefix string) (ids []types.NodeID, supported bool) {
-	if pi == nil {
+	if pi == nil || pi.elements {
 		return nil, false
 	}
 	if pi.strKeys.n == 0 {
@@ -135,18 +121,30 @@ func (pi *PropertyIndex) PrefixNodeIDs(prefix string) (ids []types.NodeID, suppo
 	return ids, true
 }
 
-// PrefixOrderedPage collects up to `limit` candidate node IDs whose STRING value
-// begins with prefix, in CONTRACTUAL order — value lexicographically ascending
-// (or descending when desc), TIES within one value ALWAYS by node ID ascending
-// regardless of desc — starting strictly AFTER `after`. It returns the page (in
-// order), the cursor to resume the NEXT page from, and done=true once the range
-// is exhausted. Paging keeps a top-k caller's work O(k + pageSize + log n): the
-// caller stops threading pages once it has enough rows. Unlike the numeric view
-// this NEVER over-selects (string keys are exact). supported=false only when the
-// index is nil; an enabled view with no string keys returns an authoritative
-// empty page (done=true).
+// PrefixOrderedPage collects up to limit node IDs whose string value begins
+// with prefix, in value order (descending when desc; ties by node ID ascending
+// in both directions), strictly after `after`. It returns the page, the cursor
+// for the next page and done=true once exhausted. Never over-selects.
+// supported=false only when the index is nil or an Elements index.
 func (pi *PropertyIndex) PrefixOrderedPage(prefix string, desc bool, after StrOrderedCursor, limit int) (ids []snowflake.ID, next StrOrderedCursor, done bool, supported bool) {
-	if pi == nil {
+	return pi.prefixOrderedPage(prefix, desc, after, limit, nil)
+}
+
+// PrefixOrderedValuePage is PrefixOrderedPage with each ID's string value,
+// aligned with ids (round 7 request 5: an ordered walk that reads no row).
+// supported=false also while the index is being built (Mutated is set).
+func (pi *PropertyIndex) PrefixOrderedValuePage(prefix string, desc bool, after StrOrderedCursor, limit int) (ids []snowflake.ID, vals []string, next StrOrderedCursor, done bool, supported bool) {
+	if pi != nil && pi.Mutated != nil {
+		return nil, nil, StrOrderedCursor{}, true, false
+	}
+	ids, next, done, supported = pi.prefixOrderedPage(prefix, desc, after, limit, &vals)
+	return ids, vals, next, done, supported
+}
+
+// prefixOrderedPage is PrefixOrderedPage; a non-nil keys receives each ID's
+// string, aligned with ids.
+func (pi *PropertyIndex) prefixOrderedPage(prefix string, desc bool, after StrOrderedCursor, limit int, keys *[]string) (ids []snowflake.ID, next StrOrderedCursor, done bool, supported bool) {
+	if pi == nil || pi.elements {
 		return nil, StrOrderedCursor{}, true, false
 	}
 	if limit <= 0 || pi.strKeys.n == 0 {
@@ -166,13 +164,14 @@ func (pi *PropertyIndex) PrefixOrderedPage(prefix string, desc bool, after StrOr
 		}
 		slices.Sort(kids) // ties by node ID ascending, in asc AND desc value order
 		for _, id := range kids {
-			// Skip everything at or before the resume cursor's position. The
-			// per-value tie order is ascending in BOTH scan directions, so the
-			// within-group skip test is `id <= after.id` regardless of desc.
+			// Tie order is ascending in both directions: skip `id <= after.id`.
 			if after.has && k == after.val && id <= after.id {
 				continue
 			}
 			ids = append(ids, id)
+			if keys != nil {
+				*keys = append(*keys, k)
+			}
 			next = StrOrderedCursor{has: true, val: k, id: id}
 			if len(ids) >= limit {
 				return false

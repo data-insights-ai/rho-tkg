@@ -137,12 +137,20 @@ func (bs *Store) logChangeRoutedRaw(tag storecontract.ChangeTag, payload []byte,
 // critical section (matching every other *Scoped door's "the write lands,
 // only the record's routing can fail" contract).
 func (bs *Store) appendOpsLoggedRouted(tag storecontract.ChangeTag, payload []byte, token uint64, ops ...writeOp) error {
+	return bs.appendOpsLoggedRoutedRaising(0, tag, payload, token, ops...)
+}
+
+// appendOpsLoggedRoutedRaising is appendOpsLoggedRouted raising the
+// store-level format marker to marker (0: none) in the same wbMu section that
+// appends ops (raiseFormatMarkerPendingLocked).
+func (bs *Store) appendOpsLoggedRoutedRaising(marker uint16, tag storecontract.ChangeTag, payload []byte, token uint64, ops ...writeOp) error {
 	bs.wbMu.Lock()
 	for _, op := range ops {
 		bs.pending[string(op.key)] = op
 		bs.noteHistoryKey(op)
 		bs.noteValidEndOp(op)
 	}
+	bs.raiseFormatMarkerPendingLocked(marker)
 	if !bs.logEnabled.Load() {
 		bs.wbMu.Unlock()
 		return nil

@@ -117,3 +117,8 @@ func (ms *Store) ColumnExtendCount() uint64 { return ms.columnExtends.Load() }
 // REBUILD. Paired with ColumnExtendCount it is the builds-per-read telemetry the
 // cache-versus-native-columnar decision needs.
 func (ms *Store) ColumnRebuildCount() uint64 { return ms.columnRebuilds.Load() }
+
+// MultiColumnFromMemberCount reports how many label-intersection snapshots
+// were taken from a member label's columns instead of the nodes (round 7
+// request 6); telemetry beside ColumnRebuildCount, which counts them too.
+func (ms *Store) MultiColumnFromMemberCount() uint64 { return ms.multiFromMember.Load() }

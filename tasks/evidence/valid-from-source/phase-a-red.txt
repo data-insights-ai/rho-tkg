@@ -1,0 +1,10 @@
+--- FAIL: TestRowDoorsAgreeWithResolverOnAnUntimedUpdate (0.01s)
+    valid_from_row_doors_test.go:80: NodeMatchesValidTime(v1, 1791982820583) = true, NodeAt says false
+    valid_from_row_doors_test.go:80: NodeMatchesValidTime(v1, 1791982850583) = true, NodeAt says false
+    valid_from_row_doors_test.go:95: RelMatchesValidTime(v1, 1791982820583) = true, RelAt says false
+    valid_from_row_doors_test.go:95: RelMatchesValidTime(v1, 1791982850585) = true, RelAt says false
+    valid_from_row_doors_test.go:108: NodeInterval(v1) start 1791982790579 (<nil>), timeline segment starts 1791982850584
+    valid_from_row_doors_test.go:115: RelInterval(v1) start 1791982790580 (<nil>), timeline segment starts 1791982850586
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.030s
+FAIL

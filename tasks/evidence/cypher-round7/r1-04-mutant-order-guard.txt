@@ -1,0 +1,3 @@
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.299s
+FAIL

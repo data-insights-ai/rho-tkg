@@ -12,15 +12,15 @@ import (
 
 // TestZeroValidFromIsUnsetInEveryDoor (sigma-tkgd question, 2026-10-09): is
 // tkg_valid_from = 0 a legal explicit valid-from? The documented rule is
-// "0 = unset; the effective start is the ID's mint instant" (pkg/types,
+// "0 = unset; the effective start is the row's TxFrom" (backlog 62,
 // storeutil.EntityValidFrom). An entity written with an explicit 0 through
 // Add / AddByID, AddWithTx and Import must read exactly like one written
-// without the key, in every door: absent before the mint instant (1, mint-1),
-// present from it (mint, mint+1, far), pinned or not; the record doors
+// without the key, in every door: absent before its TxFrom (1, TxFrom-1),
+// present from it (TxFrom, TxFrom+1, far), pinned or not; the record doors
 // (NodeAsOf, TxPin) list it at a pin after the write; the timeline is
-// [mint, 0). SetVersionInterval with validFrom 0 is refused
+// [TxFrom, 0) (backlog 62). SetVersionInterval with validFrom 0 is refused
 // (ErrInvalidTimeRange). Catches a door that reads a stored 0 as "valid since
-// the epoch" (eternal) while another derives the mint instant. Four backends,
+// the epoch" (eternal) while another derives the TxFrom. Four backends,
 // node and rel.
 func TestZeroValidFromIsUnsetInEveryDoor(t *testing.T) {
 	t.Parallel()
@@ -83,10 +83,11 @@ func TestZeroValidFromIsUnsetInEveryDoor(t *testing.T) {
 			if err := e.cascade(m.id, 0, 5000, map[string]any{"x": int64(1)}); !errors.Is(err, ErrInvalidTimeRange) {
 				t.Fatalf("%s: SetVersionInterval(0, 5000) = %v, want ErrInvalidTimeRange", m.name, err)
 			}
-			mint := e.mint(m.id)
+			// The start of a row without a valid-from is its TxFrom (backlog 62).
+			start := e.chain(m.id)[0].tm.TxFrom
 			var bad []string
-			for _, va := range []types.Instant{1, mint - 1, mint, mint + 1, mint + 1_000_000_000} {
-				want := va >= mint
+			for _, va := range []types.Instant{1, start - 1, start, start + 1, start + 1_000_000_000} {
+				want := va >= start
 				for door, got := range e.zeroDoors(m.id, va, pin) {
 					if got != want {
 						bad = append(bad, fmt.Sprintf("%s(valid %d) present=%v, want %v", door, va, got, want))
@@ -98,11 +99,11 @@ func TestZeroValidFromIsUnsetInEveryDoor(t *testing.T) {
 					bad = append(bad, door+" absent at a pin after the write")
 				}
 			}
-			if got, want := e.mustTimeline(m.id, pin), fmt.Sprintf("[%d,0) v0", mint); got != want {
+			if got, want := e.mustTimeline(m.id, pin), fmt.Sprintf("[%d,0) v0", start); got != want {
 				bad = append(bad, fmt.Sprintf("timeline %q, want %q", got, want))
 			}
 			if len(bad) > 0 {
-				t.Fatalf("%s %s (mint %d):\n  %s", e.kind(), m.name, mint, strings.Join(bad, "\n  "))
+				t.Fatalf("%s %s (start %d):\n  %s", e.kind(), m.name, start, strings.Join(bad, "\n  "))
 			}
 		}
 	})

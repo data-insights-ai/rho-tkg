@@ -1,11 +1,7 @@
 // Package graph is the public façade over pkg/graph/internal/core.
 //
-// As of v3.4.0 the 130+ public methods that historically lived directly on
-// *Graph have been removed. Customers must reach the implementation through
-// the sub-API accessors. From v4.2.0 the sub-APIs are exposed as accessor
-// methods (g.Nodes(), g.Rels(), …) rather than exported fields — see the
-// CHANGELOG for the migration recipe. The complete public surface on
-// *Graph itself is:
+// Callers reach the implementation through the sub-API accessors (g.Nodes(),
+// g.Rels(), …). The complete public surface on *Graph itself is:
 //
 //	New(cfg Config) (*Graph, error)
 //	(*Graph).Close() error
@@ -53,8 +49,6 @@ import (
 )
 
 // Graph is the thin façade providing sub-API accessors over an internal Core.
-// All methods that historically lived on *Graph have been moved to *core.Core
-// and are reachable through the sub-API accessor methods below.
 type Graph struct {
 	core *core.Core
 
@@ -166,10 +160,8 @@ func (g *Graph) Hash() *hash.API {
 	return g.hash
 }
 
-// Replication returns the change-log / replication sub-API (durable op-log:
-// CDC, audit, point-in-time recovery, read-replica streaming foundation).
-// Nil-safe. Its methods return ErrCapabilityNotSupported on a backend without a
-// change-log (e.g. tiered, or badger/memory opened without it enabled).
+// Replication returns the change-log / replication sub-API. Nil-safe. Its
+// methods return ErrCapabilityNotSupported on a backend without a change-log.
 func (g *Graph) Replication() *replication.API {
 	if g == nil {
 		return nil
@@ -280,35 +272,29 @@ type ConstraintSet = core.ConstraintSet
 // importing pkg/graph/store directly.
 type QueryOpts = store.QueryOpts
 
-// ShardDepth aliases store.ShardDepth — the Depth field of QueryOpts.
-// Use the storepkg.Depth* constants (DepthAll, DepthHot, …) — they keep
-// their original location since they're tiered-store-specific knobs.
+// ShardDepth aliases store.ShardDepth — the Depth field of QueryOpts
+// (constants: store.DepthAll, store.DepthHot, …).
 type ShardDepth = store.ShardDepth
 
 // DistanceMetric aliases store.DistanceMetric — accepted by
 // g.Index().SearchNearest.
 type DistanceMetric = store.DistanceMetric
 
-// Distance metrics for vector indexes — re-exports of the store-canonical
-// store.DistanceCosine / store.DistanceEuclidean values (same identity, not
-// just the same numeric value), so a caller using only graph.DistanceMetric
-// (via g.Index().CreateVector/CreateVectorWithOptions/SearchNearest) is not
-// forced to import pkg/graph/store directly just to name a metric constant.
+// Distance metrics for vector indexes — the same values as
+// store.DistanceCosine / store.DistanceEuclidean.
 const (
 	DistanceCosine    = store.DistanceCosine
 	DistanceEuclidean = store.DistanceEuclidean
 )
 
 // VectorIndexOptions aliases store.VectorIndexOptions — accepted by
-// g.Index().CreateVectorWithOptions to choose the vector-index engine
-// (default approximate HNSW, or the UseBruteForce exact-recall escape
-// hatch) and its tuning. Zero value = documented defaults.
+// g.Index().CreateVectorWithOptions (engine and tuning). Zero value = defaults.
 type VectorIndexOptions = store.VectorIndexOptions
 
 // PropertyIndexOptions aliases store.PropertyIndexOptions — accepted by
 // g.Index().CreatePropertyWithOptions / CreateRelPropertyWithOptions
-// (RangeCounts: prefix-sum range counts, opt-in per index). Zero value = the
-// plain index.
+// (RangeCounts, Elements; both opt-in per index; see docs/api.md "Property
+// index options"). Zero value = the plain index.
 type PropertyIndexOptions = store.PropertyIndexOptions
 
 // RelSegmentSpec aliases store.RelSegmentSpec — one entry of

@@ -498,6 +498,641 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   imported-package and two required-module advisories are unreachable. Final
   consolidated root+v5 CI remains pending; no other v4 API or behavior change.
 
+### Fixed
+
+- **`MemberTimeStats.Eternal()` docs (v4.55.2) promised members unbounded in valid time.** No code change: such a member is
+  valid from its `TxFrom` (backlog 62), so a read at valid instant t equals a read pinned at transaction time t; a
+  consumer must keep the valid-time filter. Godoc and `docs/api.md` corrected.
+
+## [4.55.2] - 2026-10-15
+
+### Added
+
+- **`Stats().PropertyBounds` / `Stats().RelPropertyBounds`: the numeric bounds of a property per label and per
+  relationship type** (sigma-tkgd round 8 request 1, statistics). `PropertyBounds(label, key, opts)` /
+  `RelPropertyBounds(type, key, opts)` return `(store.PropertyBounds, ok, err)`: `Min` / `Max` (the ordered index's
+  first and last numeric key: integers up to 2^53 and float64 as themselves, ±Inf included, a float32 by its
+  shortest decimal rendering, NaN left out), `MinValue` / `MaxValue` (a stored value at each in its stored type;
+  where several numeric types share the key the first of float64, float32, int64, int, int32, int16, int8, uint64,
+  uint, uint32, uint16, uint8) and `Classes`, the exact type-class partition of the same entities with `Missing`;
+  methods `HasNumeric`, `NumericOnly` (no string, bool, list or map; NaN counts as a number) and `NullFree` (no
+  entity without the key). The index, the class counters and the label (type) count are read under one store lock
+  (memory: the store lock; badger: `idxMu`), so the parts agree under concurrent writers. O(1): no row and no index
+  entry walked. `ok=false`, no error, where the bounds cannot be stated exactly (never answered by a walk): no
+  property index on the pair, an index being built, an Elements index, an index holding an integer of magnitude
+  past 2^53, badger `PropertyIndexOnDisk` (nodes), planner statistics disabled, tiered, sharded and external
+  stores, an unknown label or type, a temporal `opts`. Memory and badger (new optional store capabilities
+  `store.NodePropertyBoundsCapability` / `store.RelPropertyBoundsCapability`). Read-only, no write cost (no write
+  path changed). 300,000 nodes (`BenchmarkPropertyBounds`, one CPU, load 27-29): the read 0.69-0.71 us memory /
+  0.83-0.89 us badger; an Update that moves the maximum plus the read 3.9-6.5 us memory / 8.0-11.5 us badger,
+  against `PropertyStats`' exact Max after the same write (a rescan of the label) 49-137 ms memory / 0.98-1.47 s
+  badger. The valid-time hull per label or type was not built: no structure holds it exactly without a per-write
+  cost (backlog 71). Tests `TestPropertyBounds` (every backend against a brute-force pass through creates, updates
+  and deletes of the extremes, label changes, a backfilled index; declines), `TestPropertyBoundsFlags`,
+  `TestPropertyBoundsDeclines`, `TestPropertyBoundsAfterReopen`, `TestPropertyBoundsUnderWriters`,
+  `TestNumericBoundsMatchesScan`, store tests; evidence `tasks/evidence/cypher-round8/r1-*`.
+- **Numeric range reads at a temporal coordinate from the property index** (sigma-tkgd round 8 request 2, sources:
+  a range over every valid-time version as recorded at a pin, `ValidStart: 1, ValidEnd: MaxInt64, TxAt: pin`).
+  `Nodes().ForEachByLabelPropertyRange` / `Rels().ForEachByTypePropertyRange` under a temporal `opts` folded every
+  label (type) member; with a declared property index on the pair they now take as candidates the entities whose
+  rows ever carried a value in the range (the index's membership sidecar, pruned by the transaction-time pin, as
+  `ByLabelAndProperty` does for one value), resolve them with the label read's resolver and apply the same value
+  test: the same answers in the same order (each entity's resolved version, backlog 16 unchanged), from the
+  entities that can match. New `Nodes().RangeCardinalityAt` / `Rels().RangeCardinalityAt(…, opts)` count those
+  versions within the bounds per the inclusivity flags (a float32 widened, NaN never) with `exact=true` where the
+  sidecar serves; `exact=false` declines (no temporal filter, invalid opts, NaN bound, no index, tiered, sharded,
+  external stores, depth-scoped tiered reads, unknown label). `RangeCardinality` is unchanged (declines at a
+  coordinate). New optional store capabilities `store.NodePropertyTxMemberRangeCapability` /
+  `store.RelPropertyTxMemberRangeCapability` (memory, badger): the sidecar opens a numeric view of its values at
+  its first range read (lazy, one sort key and value-key reference per distinct numeric value, kept by the
+  sidecar's existing record step; sidecars no range read asked for and stores without a sidecar pay nothing, the
+  plain write path is unchanged). 50,000 nodes with two versions each, 500 in range (`BenchmarkRangeAtPin`, one
+  CPU, load 38-44): memory 59 ms (fold) -> 0.66-1.6 ms, badger 308-389 ms -> 1.45-2.2 ms; the count 0.45-0.84 ms
+  memory / 1.46-1.57 ms badger (before: declined, the caller folded). Tests `TestRangeAtFromSidecar` (every
+  backend, against `ByLabel` / `ByType` filtered by the fold's test, at pinned all-valid-time, `TxPin`, `ValidAt`
+  with and without `TxAt` and window coordinates, through value updates, values first written after the numeric
+  view opened, label changes and deletes), `TestPropertyTxMembersInRange`, store tests; evidence
+  `tasks/evidence/cypher-round8/r2-*`.
+- **`Stats().LabelTimeStats` / `Stats().RelTypeTimeStats`: explicit valid time and ended rows per label and type**
+  (sigma-tkgd round 8 request 3, sources: declare a source's rows eternal at bind without scanning; backlog 67).
+  `(store.MemberTimeStats{Members, ExplicitValid, LastEnded}, exact, err)`: the current members, those whose row
+  carries `tkg_valid_from` or `tkg_valid_to`, and the latest `TxTo` / `DeletedAt` over the history rows of the
+  entities whose rows ever carried the label (type); `HistoryAfter(pin)` = `LastEnded > pin` (a read pinned there
+  may see a non-current version), `Eternal()` = neither. Lazy, no write cost on the plain path: the explicit count
+  is counted at the first call after a write to the label (one pass over its current rows) and served in O(1)
+  against the label's (type's) mutation epoch; `LastEnded` is O(1) without history rows of the kind
+  (`HistoryCountCapability`), else recomputed once per history change over the ever-members with history (label
+  membership sidecar, RAM presence check, history stamps; no row read on memory and badger) and cached under the
+  store's new history generation (`HistoryGeneration()`: memory one atomic add per history row write or removal,
+  badger the existing history-key epochs). 100,000 nodes (`BenchmarkLabelTimeStats`, load 65-73): cached reads
+  120-280 ns, after a write 23-75 ms memory / 110-220 ms badger; plain memory Update unchanged within noise (30
+  allocs, 2,675 B both; `BenchmarkMemoryUpdateWritePath`, `tasks/evidence/cypher-round8/r3-06-write-path.txt`).
+  `exact=false` when writers kept moving the epoch across three counts or the store keeps no epoch (tiered:
+  counted per call). Tests `TestMemberTimeStats` (every backend, against a fold over every row through untimed
+  creates, explicit valid-from, valid-to only, closing valid-to, updates, deletes, label moves, writes to other
+  labels and types; cached and recounted), store tests for `HistoryGeneration`; evidence
+  `tasks/evidence/cypher-round8/r3-*`.
+- **`Nodes().ForEachByLabelOrdinals` / `Rels().ForEachByTypeOrdinals`: label and type scans restricted to an ordinal
+  bitset** (sigma-tkgd round 8 request 4, the dynamic-filter wave: `NodesEffectiveByIDs` takes an ID list). `(label,
+  set []uint64, opts, fn)` streams the rows `ForEachByLabel` / `ForEachByType` stream under `opts`, current or at any
+  temporal coordinate, for the entities whose current ordinal is in the bitset (bit k of `set[k/64]`), ascending ID
+  order, `After` / `Limit` as for the scan; an entity without a current row has no ordinal and is never selected.
+  New optional store capability `store.OrdinalLookupCapability` (`NodeOrdinalsOf` / `RelOrdinalsOf`: memory, badger;
+  ordinals from RAM under one lock) and helper `store.OrdinalSetHas`: where the store also lists a label's members
+  (badger, sharded) only the selected rows are lent, and at a coordinate only the selected candidates are resolved.
+  `store.ErrCapabilityNotSupported` without ordinals (tiered, badger `DisableOrdinals`). Read-only, no write cost.
+  100,000 nodes, 1% selected (`BenchmarkForEachByOrdinals`, one CPU): badger current 95 ms (scan and filter) ->
+  11 ms, badger `TxPin` 360-404 ms -> 18 ms, memory `TxPin` 43 ms -> 21 ms, memory current unchanged (1.0 ms). Tests
+  `TestForEachByOrdinals` (memory, badger, sharded against the filtered scan at current, `After`/`Limit`, `TxPin`,
+  `ValidAt` and all-valid-time-at-a-pin coordinates through updates, deletes and label moves; tiered refused), store
+  tests; evidence `tasks/evidence/cypher-round8/r4-*`.
+
+## [4.55.1] - 2026-10-15
+
+### Changed
+
+- **sigma's read-then-correct cut no longer copies the history: corrections and GraphTx rollback snapshots from the
+  head entry** (backlog 68b, sigma R10 write side). A `SetNodeVersionInterval` / excise correction (every door:
+  Temporal, `*WithTx`, GraphTx, BatchBuilder, ingest) read the entity's whole history for its pre-correction chain,
+  and the GraphTx rollback snapshot deep-copied it again whenever a bounded correction had left rows above the
+  current row (sigma's shape: every cut). When the entity's head entry (backlog 68) is valid at the write's start,
+  the correction now takes the highest version, the order rule of a caller instant, the resumption, the correction
+  pieces and the current-slot choice from the entry plus one point read per base row, and the snapshot is the
+  current row and the entry's highest version (rollback trims above it). The entry gains every row's own valid
+  bounds (at most 1,024 kept) and the newest open belief, gathered by the fold and kept by the overlay; without a
+  valid entry both read the history as before. No new store operation: removing the current row a transaction
+  moved into history below kept rows reuses `TrimNodeHistoryFrom` and a rewrite of the kept rows (only then);
+  sharded and tiered, which have no rollback trim, rewrite the history from the rows read at rollback instead of a
+  copy taken at the snapshot. Measured per fact at 300 versions (`BenchmarkR10CutPerFact`, read then GraphTx
+  correction, `tasks/evidence/r10-write/02-bench-before.txt` -> `05-bench-after.txt`): warm (the fact read at the
+  previous cut, sigma's steady state) memory 0.28-0.35 ms -> 6 us, badger 1.9-2.0 ms -> 16-24 us (3661 -> 59 and
+  25997 -> 153 allocs); cold (first read folds the history) memory 0.45-0.49 -> 0.14-0.19 ms, badger 2.2-2.5 ->
+  0.22-0.26 ms; at 1 version unchanged. Rows are byte-identical to the history path:
+  `TestEffectiveHeadWrite_TwinDifferential` (twin graphs, same IDs and clock, one plans from the entry and one
+  reads the history; corrections bounded and open, caller instants accepted and refused, excises, Updates,
+  in-place validity rewrites, CloseVersion, label changes, deletes and re-imports, GraphTx commits and rollbacks
+  of several mutations, rollback-then-rewrite, compaction, Clear, retention purge and the tiered shard moves, on
+  memory, badger, sharded and tiered; every rollback leaves the rows byte-identical to before its tx),
+  `TestHeadOverlay_MatchesFold` (106k planned corrections on random chains equal to the chain path),
+  `TestR10bCorrectionReadsBoundedHistory` (at most 4 history rows read per correction at 300 versions, red:
+  599); all 18 break-the-code mutations caught (`04-break-the-code.txt`).
+
+### Fixed
+
+- **Versions are allocated above every stored row, also across a compaction gap** (backlog 70, found by the 68b
+  twin; memory, badger, tiered). History compaction trims the oldest history rows, which after bounded corrections
+  lie directly above the current row; the version allocator of every appending door (Update, CloseVersion, label
+  changes, property CAS, nodes and relationships) and the core as-of fast paths probed only version current+1, so
+  the next write took a version below surviving rows (an Update after `KeepVersions: 1` wrote v1 beside v3), and a
+  GraphTx that appended twice to such an entity and rolled back kept a row (68b's snapshot trims above the
+  chain's top). `nodeHasHistoryAbove` / `relHasHistoryAbove` are exact: the point read of current+1, and only
+  when it misses one history page read of at most one row, which memory and badger answer from a per-ID upper
+  bound of the top version (memory: raised by its one history-write funnel; badger: the history presence set)
+  without reading rows when nothing lies above: Update cost unchanged (`11-update-cost-allocator.txt`); sharded
+  gains the page read (`HistoryVersionPageCapability`, routed to the slot). The
+  stores' as-of fast paths (point and bulk `NodeAsOf` / `NodesAsOf` and the rel twins, memory and badger) answered
+  the current row where the row above the gap is the newest belief; they now use the same rule: the per-ID upper
+  bound says no row lies above (no read), else current+1, else a pass over the versions (memory) or the history
+  scan (badger) decides (`TestStoreAsOfAboveCompactionGap`, red: `12-red-store-asof-gap.txt`). Tests:
+  `TestVersionAllocatorAboveCompactionGap`, `TestTxRollbackAppendsAboveCompactionGap` (nodes and relationships;
+  red: `tasks/evidence/r10-write/10-red-allocator-gap.txt`), the 68b twin now with deletes, closes and this
+  shape inside a GraphTx.
+
+- **GraphTx rollback kept the pre-transaction rows above a compaction gap** (found by the 68b twin; memory,
+  badger). History compaction trims the oldest history rows, which after bounded corrections lie directly above
+  the current row; the rollback snapshot probed only version current+1 (dense versions), took the trim path, and
+  the rollback trimmed every surviving pre-transaction row above the current one. The snapshot's check is now
+  exact (one history page read of at most one row). Test: `TestTxRollbackKeepsRowsAboveCompactionGap` (red on
+  memory and badger: `tasks/evidence/r10-write/03-red-compaction-gap-rollback.txt`).
+
+## [4.55.0] - 2026-10-14
+
+### Added
+
+- **Paged effective scans with a property filter: `Temporal().RelsEffectivePage(ctx, pin, filter, after, limit)` /
+  `NodesEffectivePage`** (backlog 69, ai-soc `GET /api/v1/tkg/asof`). One keyset page (ID > `after`, at most `limit`
+  entities, `next` = the last ID of a full page) of `ForEachRelEffective` / `ForEachNodeEffective` at `pin.Tx`
+  keeping the segments whose row carries `filter.Prop` = `filter.Eq` (index-key equality; a list, map or nil `Eq`
+  is `types.ErrUnsupportedValueType`) and that meet an optional valid instant, interval or open-ended
+  `[ValidStart, ∞)`, over every relationship type (node label); `limit` is 1..`temporal.MaxPageLimit` (10,000). Candidates come from the existing
+  transaction-time property membership sidecar (backlog 8) of each type's declared `(type, Prop)` index, now with
+  an ordered view per value (`PropertyTxMembers.OrderValue` / `MembersAfter`: opened by a value's first page, kept
+  by every write; 8.06 B per member over 1,000,000 members, built into exact-capacity chunks) so a page resumes at
+  the cursor instead of enumerating the value; the types merge in ID order. A type without the index (and every
+  type on tiered, which keeps no relationship property index) contributes its ever-members at the pin, gathered
+  per page, and a page reads their timelines until it fills (up to one effective walk of that type): declare the
+  index on every type and label that carries the property. New optional store capabilities
+  `RelPropertyTxMemberPageCapability` / `NodePropertyTxMemberPageCapability` (memory, badger, sharded). 100,000
+  relationships over 10 estates, one page of 500: 0.24 ms (memory) / 0.2 ms (badger) against 55 ms / 290-430 ms
+  for the filtered full walk. Differential against the full walk at random pins and valid filters with value
+  changes, deletes, closes, excise, interval corrections, retractions and writes between pages, on memory, badger,
+  sharded and tiered: `tasks/evidence/paged-effective/`.
+
+- **Head-pin effective timeline in O(segments): `store.HistoryEpochCapability` and a per-entity head answer**
+  (backlog 68, sigma R10). `NodeEffectiveTimeline(id, pin)` / `RelEffectiveTimeline` at a pin at or above the
+  entity's newest `TxFrom` (sigma's Derived writer reads at `CommittedTx` every cut) folded the whole history
+  each call: at 300 versions of one validity the memory store deep-copied every row (64% of the read) and badger
+  decoded every row's temporal skeleton (71%), then the resolver swept them (~100-230 us memory, ~190-210 us
+  badger per read; sharded and tiered decoded full rows). No existing mechanism avoided it without losing
+  as-of history (history compaction refuses every pin below its watermark; the skeleton door is O(versions)),
+  and sigma's corrections are real (a new value over the same validity each cut), so nothing upstream removes
+  them. Now the graph keeps that head answer per entity as pieces naming their winning version, exact while the
+  store's new per-entity history token (`NodeHistoryEpoch` / `RelHistoryEpoch`: a watch table noted at the
+  store's one history-write funnel — count-checked on memory, `noteHistoryKey` on badger, the slot on sharded,
+  on tiered the largest of the walked shards' tokens and a shard-set token drawn anew at every shard-set change;
+  tokens never reused) and the current row's version and
+  temporal block are unchanged; a `SetNodeVersionInterval` / excise correction extends it by its appended rows
+  where they cannot change how older rows resolve, any other write makes the next head read fold again.
+  Measured at 300 versions (`tasks/evidence/r10/`, 01-before -> 02-after): memory 150-230 us -> 0.4 us
+  (1226 -> 9 allocs), badger 190-210 us -> 3 us (1020 -> 44 allocs), independent of the version count; the same
+  for relationships. sigma's read-then-correct cut per fact at 300 versions: memory 0.74 -> 0.38 ms, badger
+  4.0 -> 3.3 ms — the GraphTx correction itself still copies the history (rollback snapshot and cascade
+  pre-chain), so the cut stays above sigma's 1 ms per 10 facts budget until the write side is addressed. Answers
+  are unchanged: `TestEffectiveHead_DifferentialOracle` (every answer equal to the fold at the head pin and at
+  random earlier pins after corrections, caller-instant corrections, GraphTx commits and rollbacks followed by
+  rewrites, excises, Updates, in-place validity rewrites, CloseVersion, deletes, re-imports, compaction, Clear,
+  retention purge and, on tiered, Archive / Restore, rotation and the idle close of cold shards, on
+  memory, badger, sharded and tiered), `TestHeadOverlay_MatchesFold`, `TestHistoryEpoch_Contract`,
+  `TestR10HeadTimelineCostIndependentOfHistory`, `TestHeadCache_BoundedByPieces`; all 13 break-the-code mutations caught
+  (`04-break-the-code.txt`). Bounds and overhead: the cache holds at most 1M pieces per graph (an answer above 512
+  pieces is not kept); the cache and the watch tables are striped under read-write locks, so parallel head reads
+  share no exclusive lock (256 nodes from 32 goroutines: memory 440 -> 306 ns/op, badger 6.7 -> 1.5 us/op); a
+  miss gathers the entry's facts inside the fold's own walk and adds only the entry itself (at 300 versions
+  +2 allocations, +216 B over the fold, `10-review-after.txt`). Limits: the cache serves point reads only (scans never read or fill it); the per-store token watch table keeps up to 64K entities per kind, so a hot set larger than that refolds on its next read (correct, slower).
+
+## [4.54.0] - 2026-10-14
+
+### Added
+
+- **Valid-time excise: `Temporal().ExciseNodeValidity(ctx, id, a, b)` / `ExciseRelValidity`** (backlog 64, sigma R7,
+  v4.54.0). Ends an entity's validity over `[a, b)` and keeps it outside: reads with a valid instant in `[a, b)`
+  answer `ErrNoVersionValidAt` (point, label, property and interval doors, effective timelines), reads outside keep
+  their answers, pins before the call see the unsplit version. Works on the current version (open or closed), a
+  historical one and across several; a later `SetNodeVersionInterval` over the hole fills it again. Append-only,
+  one transaction instant for every row, under the entity lock: the cascade kernel writes void pieces
+  (`types.TemporalMetadata.Void`) over the parts of `[a, b)` where a version was valid and the usual resumption
+  from `b`. A void row never holds the current slot and never answers `NodeAsOf` / `RelAsOf`; `History()` returns
+  it marked (`Temporal().Void`), so a consumer reading raw History intervals must skip void rows. Twins: `*WithTx` (caller instant, the `SetNodeVersionIntervalWithTx` rules), `GraphTx` and
+  `BatchBuilder` (the batch `*WithTx` twin refuses the whole unit). Refusals, nothing written: `b == 0`, `a <= 0`,
+  `a >= b` (`ErrInvalidTimeRange`), no version valid in `[a, b)` (`ErrNoVersionValidAt`), unknown
+  (`ErrNodeNotFound` / `ErrRelNotFound`) or deleted (`ErrEntityDeleted`). No existing mechanism modelled absence
+  over a bounded interval (a retraction ends a whole life, a delete tombstone ends the life at its instant,
+  `CloseVersion` closes only the open current row), so the flag is new. Format: a void row is written at row
+  format version 5 (`storeutil.VoidWireFormatVersion`, key `vd`) and the badger store marker is raised to 6
+  (`VoidStoreFormatVersion`) in the batch that writes the first void row; a store without an excise keeps its
+  marker (4 under the binary-hash writer, 5 with an Elements definition). One monotonic tracker serves all three
+  markers (`raiseFormatMarkerPendingLocked`, under `wbMu`, in the section that appends the row or definition), so
+  an Elements definition written after a void row in one flush cannot lower 6 to 5; a row's format version is the
+  highest its features need (void 5 > binary hash 4 > retracted 3). An older binary refuses such a store at open and fails such a row closed (export, change feed, replica) with
+  `ErrWireFormatVersionUnsupported`; it must not skip the key, since it would read the piece as a valid version.
+  Tests `TestExciseNodeValidity` / `TestExciseRelValidity` (memory,
+  badger, tiered, sharded on disk with reopen), `TestExciseNodeValidityWithTx`, `TestExciseNodeValidityTxAndBatch`,
+  `TestVoidRow_FormatVersion5`, `TestVoidRowWithBinaryHash_FormatVersionIsMax`, `TestVoidRowRaisesStoreFormatMarker`,
+  `TestFormatMarkerOneTrackerAcrossFeatures`, the bitemporal oracle harness with the
+  excise op; evidence `tasks/evidence/excise/`.
+
+### Changed
+
+- **Integrity hashes written as 32 raw bytes** (backlog 61, step 2; deprecated in v4.52.2 for v4.52.3; lands later than announced, in v4.54.0): the writer stores each
+  canonical hash as its 32 raw bytes (row fv 4) and a writable open raises the badger store marker to 4 (a store
+  with a higher marker keeps it); callers still get the same 64-hex strings. A relationship row of the measured
+  shape: 366.9 → 270.9 B raw, 251.2 → 151.8 B Snappy. A store this release opens writable can be opened only by
+  v4.52.2 or later; exports and change feeds carry row fv 4, so readers and replicas need v4.52.2 or later first.
+
+- **A row without a valid-from is valid from its `TxFrom`** (backlog 62, deprecated in v4.52.2 for v4.52.3; lands later than announced, in v4.54.0; sigma-tkgd
+  observation). One start rule, `storeutil.EntityValidFrom`: explicit `ValidFrom`, else `TxFrom`, else (a legacy
+  row without one) `UpdatedAt`, else the ID's mint instant — for an untimed create (was: its mint instant) and an
+  untimed later version (was: its `UpdatedAt`) alike. One instant now sees one write burst in commit order: a
+  create written after an update is no longer valid before it (the commit clock runs ahead of the snowflake wall
+  clock under bursts; batch and ingest mint IDs before they stamp `TxFrom`), and an `AddWithTx` backfill is valid
+  from its backfilled `TxFrom`, before its mint. Every valid-time door reads it: `NodeAt` / `RelAt`, `NodeAtTx` /
+  `RelAtTx`, `NodesAt[Tx]`, `ByLabel` / `ByType` with `ValidAt`, `NodeMatchesValidTime` / `RelMatchesValidTime`,
+  `NodeInterval` / `RelInterval` (`RelateNodes` / `RelateRels`), the effective timelines (first `ValidFrom` = the
+  first version's `TxFrom`) and their scans, the store push-down, the temporal index envelopes and the column scans'
+  valid-time filter (badger: the snapshot carries an effective-start column next to the reported raw
+  `ColumnBatch.ValidFrom`, which stays the stored value). The resolver's separate `UpdatedAt` start for later
+  versions and the mint fallbacks in the first-version shortcuts and column builders are folded into it; a later
+  version after `UpdateInPlace` starts at its `TxFrom`, no longer at the in-place write's `UpdatedAt`. Consequences
+  a caller can see: a read at wall-clock "now" right after a create can miss it (the commit clock runs ahead of
+  the wall clock under bursts; updates already behaved so): read "now" via `g.Temporal().NowTx()` or at the write's
+  `TxFrom`; an `Update` with a `tkg_valid_from` at or before the current version's `TxFrom` is
+  `ErrValidFromBeforePrevious` (was: before its mint); a temporal constraint compares against the endpoint's
+  `TxFrom`. The caller-instant order gates and the update instant use the same start (`nodeValidFrom`; the
+  separate `UpdatedAt`-based `nodeCurrentVersionStart` is gone), so an `UpdateWithTx` / `DeleteWithTx` at a `t` in
+  (`TxFrom`, `UpdatedAt`] after an `UpdateInPlace` is accepted (was: refused; an in-place write records nothing in
+  transaction time), and a plain update after a later version with a future `tkg_valid_from` is stamped after that
+  start, as one after a future-dated create already was. Persisted derived starts: the open image is format 2 and the 0x0B temporal-index keyspace marker is
+  `temporal_index_on_disk_built_v2`, so the first open rebuilds envelopes keyed by the mint start (an envelope
+  starting after the row would prune it); the old marker is deleted, so an older release rebuilds too. The keyspace is trusted only when the v2 marker is present and the old one absent (after a downgrade an older release rebuilds it mint-keyed and writes the old marker, leaving v2 in place); a read-only open rebuilds it in RAM without writing. Persisted
+  column blobs are format 2. The HOP segment header's `valid_from` min/max stores the raw value and is not read for
+  pruning: unchanged. Consumer adaptation (sigma-tkgd `tyla/source/graph/effective.go:99/104`): an untimed create's
+  first segment starts at the first version's `TxFrom` (`TxStamps`), no longer at `MintInstant()`. Tests
+  `TestUntimedRowsStartAtTxFrom`, `TestOneBurstReadsConsistentlyAtOneInstant` (four backends),
+  `TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt`, `TestRelColumns_UnsetValidFromFiltersFromTxFrom`; evidence
+  `tasks/evidence/valid-from-source/`.
+- **An update that sets only `tkg_valid_to` closes the version** (backlog 65, deprecated in v4.52.2 for v4.52.3; lands later than announced, in v4.54.0). `Update` and
+  its `GraphTx`, batch, ingest and `*WithTx` twins treat a `tkg_valid_to` without `tkg_valid_from` as
+  `CloseVersion` does, through one helper (`checkNodeClose` / `checkRelClose` + `stampClose`: the version must be
+  open, the end must follow its start, the temporal constraints must hold): the version keeps its start and ends at
+  `tkg_valid_to`; an end at or before that start is `ErrInvalidTimeRange` and writes nothing (was: copied unchecked
+  onto a new version starting at the update instant, so a past end wrote an empty row and the entity stayed
+  valid). `UpdateInPlace` refuses an end at or before the row's start. `CloseVersion` stamps the version's start on
+  the closing row (was: the closing row started at the close instant, so `CloseVersion(t)` with `t` before the close
+  instant left the entity valid until the close was written). This is also the close inside a transaction sigma-tkgd
+  asked for (R9): `GraphTx.UpdateNode` / `UpdateRelationship(id, {tkg_valid_to: t})` answers as
+  `CloseVersion(id, t)`, no new door. The caller-instant pre-flight of a Batch / ingest unit runs the same close
+  check, so a unit with one refused close writes nothing. Side effect: a closed untimed version now carries its
+  start as a stored `ValidFrom`, so the raw `tkg_valid_from` shadow, `ValidRange()` and `ColumnBatch.ValidFrom`
+  of such a row read that start instead of 0. On an external store without `MetaKVCapability` (the bitemporal
+  migration never runs) a close of a version with an explicit valid-from equal to its predecessor's is read by
+  the legacy inherited-valid-from heuristic as inherited and starts at the close's `TxFrom`; every in-tree store
+  migrates. Tests `TestUpdateValidToClosesTheVersion` (incl. WithTx batch and ingest units),
+  `TestTxUpdateValidToClosesLikeCloseVersion` (four backends, twin stores); `TestDocValues_ExpiredNodeStillCounted`
+  now gives its expired node a start before the close.
+
+## [4.53.0] - 2026-10-14
+
+Minor release, the sigma-tkgd store requests, round 7 (new public API): badger batch relationship creates read their
+endpoints through one snapshot (faster than one-by-one); opt-in per-type degree counts (`Stats().TrackRelTypeDegrees`);
+`Nodes()/Rels().LendByIDs` lend many rows per call (one read snapshot on badger, concurrent-safe);
+`CountByLabelPropertyValue` / `CountByTypePropertyValue` exact equality counts from a property index; ordered
+(ID, value) index walks without reading rows; multi-label columns built from a member label's columns instead of
+re-reading records. Read-only doors cost nothing on writes; untracked graphs pay one atomic load per create.
+
+### Added
+
+- **`Nodes().LendByIDs` / `Rels().LendByIDs`: lend many rows in one read** (sigma-tkgd round 7 request 3: a parallel
+  record scan's workers called `Lend` per ID, on badger one read transaction per node). `LendByIDs(ctx, ids,
+  fn(i, row) bool)` lends each ID's current row under `Lend`'s contract (frozen, no copy where `Lend` makes none)
+  and calls `fn` with the ID's position in `ids`; absent IDs are skipped, calls come in ascending ID order, `fn`
+  runs with no lock held and false stops it. Chunks of 4,096 IDs, each under one read: badger serves a chunk's
+  cache misses through one re-pinning snapshot in key order (no cache fill), memory under one store lock, other
+  stores per ID; the context is checked per chunk; concurrent calls are safe. New optional store capability
+  `store.EntityLendBatchCapability` (memory, badger). Read-only, no write cost. 300,000 nodes in batches of 4,096
+  (`BenchmarkLendByIDs`): badger per-ID `Lend` 2.85 / 1.73 / 1.63 us per node at 1 / 4 / 16 goroutines,
+  `LendByIDs` 1.12 / 0.38 / 0.24 us; memory 46 / 135 / 140 ns against 16 / 13 / 31 ns. Tests `TestLendByIDs`
+  (every backend, nodes and relationships, oracle `Lend`), `TestLendByIDs_ConcurrentWithWriters`,
+  `TestLendSortedColdRowsOneSnapshot`, `TestMemoryStoreLendSorted`; evidence `tasks/evidence/cypher-round7/r3-*`.
+- **Exact equality counts from a property index** (sigma-tkgd round 7 request 4):
+  `Nodes().CountByLabelPropertyValue(label, key, value, opts)` / `Rels().CountByTypePropertyValue(type, key, value,
+  opts)` return `(count, exact, err)`: the entities whose value equals `value` under Cypher equality (numbers by
+  value across every stored width, a float32 compared as its float64 widening, no string/number crossing, nil and
+  NaN count 0), summed from the index's per-value sets (`PropertyIndex.EqualCount`: set sizes, no row and no ID
+  read). `exact=false`, no error, is the decline a planner probes per (label, key): no index, tiered, badger
+  `PropertyIndexOnDisk` (nodes), an index being built, an Elements index, a number of magnitude 2^53 or more, a
+  temporal value, a list or map, an unknown label or type, temporal opts. Memory, badger, sharded (summed over
+  slots). Read-only, no write cost. 300,000 nodes, 3,000 equal to 7 (`BenchmarkCountByPropertyValue`): the int64
+  and float64 lookups counted 0.32 ms memory / 7.8-10.2 ms badger, the count 0.28-0.29 us on both. Tests
+  `TestCountByPropertyValue` (every backend against a brute-force Cypher-equality count after writes, updates and
+  deletes; declines), `TestEqualCountMatchesCypherEquality`, store tests; evidence
+  `tasks/evidence/cypher-round7/r4-*`.
+- **Ordered index walks without the row** (sigma-tkgd round 7 request 5: a grouping by an indexed property as a
+  group source): `Nodes().ForEachIDByLabelPropertyRangeOrdered(ctx, label, key, min, max, inclMin, inclMax, desc,
+  opts, fn(id, value))`, the string twin `ForEachIDByLabelPropertyPrefix`, and the `Rels()` mirrors
+  `ForEachIDByTypePropertyRangeOrdered` / `ForEachIDByTypePropertyPrefix` stream (ID, stored value) in value order,
+  ties by ID ascending, from the property index alone (`PropertyIndex.RangeOrderedValuePage` /
+  `PrefixOrderedValuePage`: the value is recovered from the per-type value sets of a sort key, the bounds applied
+  exactly). Pages of 256 under the store's read lock, fn with no lock held, ctx checked every 4,096 entries.
+  `ErrIndexNotFound` reports every unsupported case (temporal opts, tiered, sharded, external stores, badger
+  `PropertyIndexOnDisk` for nodes, no index, Elements, an index being built, an integer past 2^53). Memory, badger.
+  Read-only, no write cost; the row doors' paging is unchanged (the key capture is off for them). 300,000 nodes
+  (`BenchmarkForEachIDOrdered`): badger 2.8 us per node through the ordered row door, 0.09 us here; memory 0.13
+  against 0.09-0.10 us. Tests `TestForEachIDOrdered` (every backend, brute-force oracle over the rows, both
+  directions, exact bounds, prefixes, early stop, cancellation, declines), `TestOrderedValuePagesMatchBruteForce`,
+  store tests (badger: no read transaction); evidence `tasks/evidence/cypher-round7/r5-*`.
+- **Opt-in maintained degree counts per relationship type** (sigma-tkgd round 5 request 5, reopened and built in
+  round 7 request 2): `Stats().TrackRelTypeDegrees(type)` / `UntrackRelTypeDegrees(type)`. For a tracked type,
+  `RelTypeDegreeStats` keeps the per-node out- and in-counts after its first count and applies the relationships
+  created since (the create kernel records start and end of every relationship it creates of a tracked type:
+  Add, AddByID, AddByIDIfAbsent, Import, their transaction mirrors, `AddRelationships`, Batch) instead of counting
+  the type again after each write to it. Sound by an accounting identity checked under the graph's write lock:
+  the type's mutation stamp moved by exactly the number of recorded creates; any other change (delete, update,
+  rollback, another door, a type sharing the stamp's stripe) fails it and the type is counted again, as before.
+  Reopen criterion measured (`BenchmarkRelTypeDegreeStatsRecount`): the recount after a write to the type itself
+  is 0.7 ms at 10,000 and 12-16 ms at 100,000 relationships of the type; tracked, a write plus a read is 1.5-3.9 us
+  at 10,000 and 2.3-6.6 us at 100,000 (memory, badger). Cost only for a tracked type: two per-node maps (about
+  40-50 B per distinct endpoint), up to 65,536 recorded creates between reads, a short lock per create, the write
+  lock for O(creates since) at a read. Plain write paths: one atomic load per create; `BenchmarkTxCreateRelationships`
+  before/after untracked within noise (memory 2.46 / 2.50 ms by ID, 2.31 / 2.22 ms batch; badger 9.1 / 8.8 ms,
+  8.7 / 8.4 ms; `r2-05`, `r2-06`). Tiered, sharded and external stores (no per-type stamp) count as before. New
+  optional store capability `store.RelTypeDegreeCountsCapability` (badger). Tests `TestTrackRelTypeDegrees` (every
+  recording door applied, every other change recounted, stats against a count), `..._ConcurrentWriters` (race),
+  `TestBadgerRelTypeDegreeCounts`; evidence `tasks/evidence/cypher-round7/r2-*`.
+
+### Changed
+
+- **Badger batch relationship create reads its endpoints through one snapshot** (sigma-tkgd round 7 request 1:
+  `GraphTx.AddRelationships` was slower than one `AddRelationship` per binding, 4,862 against 4,011 ms for five
+  statements of 50,000 bindings). Cause: `PutRelationshipsBatch` checks that every endpoint row is live and
+  decodes (the contract a corrupt endpoint row fails), and a batch's endpoints had mostly left the node cache
+  (a bulk statement writes all starts, then all ends, then the relationships), so it opened one badger read
+  transaction per endpoint; one by one, each relationship follows its two nodes and finds them cached. Now the
+  check (`ensureNodeRowsLive`, also behind `OutgoingRelationshipsForNodes` / `IncomingRelationshipsForNodes`)
+  answers cache hits under one lock and reads the misses in key order through one forward iterator of a
+  re-pinning scan snapshot, without filling the cache; the error is still the one of the first failing endpoint
+  in the batch's order. The shared scan snapshot reaches a target at most four keys ahead with `Next` instead of
+  `Seek` (consecutive IDs), which every bulk row read through it (`forEachNodeBulk`, `forEachRelBulk`) gets too.
+  Same answers; no write-path cost. Measured (`BenchmarkTxCreateRelationshipsSizes`, sigma-tkgd's statement shape,
+  one CPU, medians of four interleaved rounds, time inside the relationship calls per relationship): badger 5 x
+  50,000 13.9 -> 9.6 us (one by one 15.0 us), 1 x 50,000 11.4 -> 8.4 us, 10,000 3.6 -> 3.4 us, 1,000 2.2 -> 2.1 us;
+  the whole statement in bulk now beats binding by binding (5 x 50,000: 18.9 against 20.6 us per binding, before
+  23.6). Memory unchanged (batch 1.5-2.3 us against one by one 1.7-2.2 us, within the load's spread). Evidence
+  `tasks/evidence/cypher-round7/r1-*`.
+- **A label intersection's columns come from a member label's columns** (sigma-tkgd round 7 request 6: on badger
+  the cold `ForEachDocValuesMulti` build was 83 % of a multi-label aggregation, re-reading every member node).
+  (1) The intersection is collected as a slice driven by the smallest label (no intermediate set). (2) When a
+  member label's cached columns are fresh (its epoch: badger per label, memory the store's) and hold every key
+  as a usable column with validity columns, the intersection's snapshot is that label's rows carrying every
+  other label (`indexpkg.SubsetDocValues`: the same IDs, validity columns, zone map and per-key classification
+  a build from the nodes gives, dictionaries renumbered); else, as before, the nodes are read (also where the
+  member's column is unbuildable for a key, since a mixed column of the whole label may be uniform on the
+  intersection). Same answers; no write cost. 200,000 :A nodes, 100,000 also :B, one :B write per read
+  (`BenchmarkDocValuesMultiCold`, one CPU, three interleaved rounds): badger 193-199 -> 48 ms, 175 -> 42 MB per
+  rebuild; memory 84-86 -> 66-70 ms. Telemetry `MultiColumnFromMemberCount()` on both stores. Tests
+  `TestSubsetDocValuesEqualsBuild` (deep-equal to the build over random rows and subsets),
+  `TestDocValuesMultiFromMemberColumns` (memory, badger: rows against the nodes through writes, label changes,
+  a stale member column, an unbuildable member column); evidence `tasks/evidence/cypher-round7/r6-*`.
+
+### Fixed
+
+- **Badger batch creates keep the belief watermark** (found with round 7 request 1): `PutNodesBatch` and
+  `PutRelationshipsBatch` did not bump the belief-watermark sidecar as `PutNode` / `PutRelationship` and the
+  memory store's batch doors do, so once the sidecar was built, a batch-created entity had no watermark and its
+  point reads lost the current-row fast path (answers were right, by the slow path). Test
+  `TestBatchPutsBumpBeliefWatermarks`.
+
+## [4.52.2] - 2026-10-14
+
+### Added
+
+- **Integrity-hash switch; binary hashes readable** (backlog 61, René from ai-soc's 232 B per edge of hashes):
+  `Config.DisableIntegrityHashes` (default false = hashes on, today's behaviour) computes and stores no integrity
+  hash — `Hash`, `PrevHash`, `FromNodeHash`, `ToNodeHash` stay empty, resident and on disk; author, signature and
+  authorization are unaffected — for development and quick tests. Every write path hashes through one switch
+  (`core/integrity_switch.go`); with it set, `Hash().VerifyNodeChain` / `VerifyRelChain` and `Tier().VerifyShard`
+  return the new `ErrIntegrityDisabled` (never "valid"), `Config.RelSegments` is refused with it, an import or
+  replica apply verifies and drops the hashes it carries, and an on-graph refuses an off-graph's export
+  (`ErrCorruptExport`). The setting is persisted with the store (MetaKV `integrity_hashes`, kept across
+  `Admin().Reset()`); a reopen of a store with rows under the other setting fails `New` with the new
+  `ErrIntegrityModeMismatch` and writes nothing (without the key, the rows decide: hashed rows make an on-store,
+  unhashed rows an off-store; a store without rows takes the configured setting). The key is written durably
+  (new `MetaSetDurable` on the tiered and sharded stores) and only by a `New` that passed every check.
+  Readers now also accept integrity
+  hashes stored as 32 raw bytes (row fv 4) and badger store marker 4, handing out the same 64-hex strings; this
+  release still writes hex and marker 3 (see Deprecated). One hex/bytes conversion (`pkg/internal/hash32`) now
+  serves the wire, the compact frozen rows and the segments. Relationship row, 20,000 rels of four properties:
+  366.9 B raw / 251.2 B Snappy (hex), 270.9 / 151.8 B (binary writer), 158.9 / 43.5 B (hashes off). Test
+  `TestIntegritySwitch` (memory, badger, tiered: hashes present and a tampered row detected; off: no hash on any
+  row before and after a reopen, sentinel; reopen both ways; legacy store; Reset; a store written by the binary
+  writer read and extended; segments; import both ways; bytes on disk), `TestWireBinaryHashRoundTripAndLegacyHex`;
+  evidence `tasks/evidence/integrity-switch/`.
+
+
+- **Elements property indexes** (backlog 63, sigma-tkgd R6): `PropertyIndexOptions{Elements: true}` indexes each
+  scalar element of a list value, so `ByLabelAndProperty(label, key, x, opts)` / `ByTypeAndProperty` on the index
+  mean "the list contains x" at current, `TxPin`, `TxAt`+`ValidAt` and interval reads and on the named `*At` /
+  `*During` doors. One key path: `types.ForEachIndexableElementKey` (scalar = one-element list, duplicates once,
+  nil / empty / nested elements add nothing, scalar rules per element, `[]byte` a blob) feeds the index writes, the
+  create backfill, the badger open rebuild and the per-element membership sidecar records (memory and badger, live
+  and build); every match test of those doors is `HasPropertyIndexKey(key, elements, target)`, so an element an
+  update removed matches at an earlier pin and not after. The index keeps no ordered view: range, prefix and
+  `RangeCardinality` decline on it as without an index. Refused with the new `ErrElementsIndexUnsupported`:
+  Elements with RangeCounts, an Elements index on a unique-constrained key, `CreateUnique` / `GetOrCreateByKey` on
+  an Elements-indexed key (checked again under the constraint's install lock), `ByLabelAndProperties` and
+  `CreateComposite` over one. Memory, badger (definition key `el`; the open image carries its element entries),
+  sharded, and tiered on reference labels (tiered now implements `store.PropertyIndexOptionsCapability` on the
+  reference shard and still refuses RangeCounts with `ErrCapabilityNotSupported`; the event shards — a node with an
+  event primary label and the reference label — and the archive hold no copy of the index and answer with the same
+  match through badger's new `NodesByLabelContainingProperty`, filtered during the fetch); relationship indexes on
+  memory, badger and sharded. Badger `PropertyIndexOnDisk` refuses it at create and refuses to open a store holding
+  an Elements definition (`ErrCapabilityNotSupported`; the shared disk keyspace keys scalars only).
+  **Format marker:** a badger directory that persists an Elements definition is stamped store format 5
+  (`storeutil.ElementsStoreFormatVersion`; 4 is reserved for the integrity-hash format, backlog 61), so a binary
+  before this release refuses it with `ErrWireFormatVersionUnsupported` instead of loading the index plain and
+  keying scalars only (which a re-upgrade would then trust). This binary opens markers up to 5; a store without
+  Elements keeps marker 3. Dropping the Elements indexes does not lower the marker: once stamped, the store stays
+  closed to older binaries.
+  Write cost of a row with 5 supports (`BenchmarkPropertyIndexElementsWrite`, host load ~79, ns noisy): memory
+  33 vs 22 allocs and 2,721 vs 1,885 B per row against a plain index on a scalar key of the same row (no index: 17
+  allocs, 1,321 B); badger 68 vs 57 allocs, 6.6 vs 5.8 KB. Test `TestPropertyIndexElementsContains`; evidence
+  `tasks/evidence/property-elements/`.
+
+### Fixed
+
+- **A later version without a valid-from got a third start on the materialized-row doors** (backlog 62).
+  `NodeMatchesValidTime` / `RelMatchesValidTime` and `NodeInterval` / `RelInterval` (so `RelateNodes` /
+  `RelateRels`) started such a row (version > 0, `ValidFrom` 0, e.g. a plain `Update`) at its ID's mint instant,
+  while `NodeAt` / `RelAt` and the effective timeline start it at its update instant (`UpdatedAt`): the row
+  matched valid instants before it existed. They now take the resolver's start (`nodeSortValidFrom`).
+  Test `TestRowDoorsAgreeWithResolverOnAnUntimedUpdate`; evidence `tasks/evidence/valid-from-source/`.
+
+### Deprecated
+
+- **Hex integrity hashes on disk** (backlog 61): from v4.52.3 stores are written with binary hashes (marker 4);
+  opening such a store needs v4.52.2 or later. Why: a hash as 64 hex characters costs 66 bytes on disk, as raw
+  bytes 34 — about 100 B per edge (a relationship row carries three: 366.9 → 270.9 B raw, 251.2 → 151.8 B Snappy).
+  Not only stores: from v4.52.3 every row in an export file and in the change feed carries the binary hashes
+  (row fv 4), so an import, a restore or a replica running a release before v4.52.2 refuses those rows
+  (`ErrWireFormatVersionUnsupported`); upgrade readers and replicas to v4.52.2 or later first. Releases from this
+  one on read both forms; nothing changes for callers (the hashes are handed out as the same 64-hex strings).
+
+
+- **The start of a row without a valid-from changes in v4.52.3** (backlog 62, sigma-tkgd observation 2026-10-14).
+  Today an untimed create starts at its ID's mint instant (snowflake wall clock) and an untimed update at its
+  `TxFrom` (commit clock, which runs ahead under bursts; batch and ingest mint IDs before they stamp `TxFrom`;
+  `AddWithTx` stamps a `TxFrom` before the mint), so no single instant sees one burst consistently. From v4.52.3
+  every row without a valid-from, version 0 and later, is valid from its `TxFrom`, on every valid-time door
+  (`NodeAt` / `RelAt`, `NodeAtTx` / `RelAtTx`, `NodesAt[Tx]`, `ByLabel` / `ByType` with `ValidAt`, the effective
+  timelines and their scans, `RelateNodes` / `RelateRels`, the column scans' valid-time filter); a row without a
+  `TxFrom` (legacy) keeps its `UpdatedAt` or mint instant. A later version after `UpdateInPlace` starts at its
+  `TxFrom`, no longer at the in-place write's `UpdatedAt`. Marked `// Deprecated:` on `temporal.API`
+  `NodeMatchesValidTime`, `RelMatchesValidTime`, `NodeInterval`, `RelInterval` (no consumer calls them in
+  production code, so the marker breaks no consumer lint; the timelines, `RelateNodes` / `RelateRels` and
+  `MintInstant` are called in sigma-tkgd production code and carry a doc note instead). Adapt: detect an untimed
+  create by "first segment `ValidFrom` == the first version's `TxFrom`" (`TxStamps`), not "== `MintInstant()`".
+  Further consequences from v4.52.3: (1) a read at wall-clock "now" right after a create can miss it (the commit
+  clock runs ahead of the wall clock under bursts; updates already behave so): read "now" via
+  `g.Temporal().NowTx()` or at the write's `TxFrom`; (2) an `Update` whose `tkg_valid_from` is at or before the
+  current version's `TxFrom` returns `ErrValidFromBeforePrevious` (today the bound for an untimed create is its mint
+  instant); (3) a temporal constraint (`ConstraintRelWithinEndpoints`) compares a relationship's start with an
+  untimed endpoint's `TxFrom`, no longer its mint instant.
+- **An update that sets only `tkg_valid_to` becomes a close in v4.52.3** (backlog 65). Today `Update` (and the
+  `GraphTx`, batch and ingest twins) copies the end onto a new version that starts at the update instant without a
+  check, so a past end writes an empty or inverted row and the entity stays valid; `UpdateInPlace` stores the end
+  unchecked too. From v4.52.3 such an update closes the current version as `CloseVersion` does (one helper): the
+  version keeps its start and ends at `tkg_valid_to`, and an end at or before that start returns
+  `ErrInvalidTimeRange` (`UpdateInPlace`: an end at or before the row's start). `CloseVersion` itself changes with
+  it: today its closing row starts at the close instant, so `CloseVersion(t)` with `t` before that instant leaves
+  the entity valid until the close was written; from v4.52.3 the closed row keeps the version's start. No
+  `// Deprecated:` marker: `Update` is called in sigma-tkgd and ai-soc production code, so a marker would break
+  their lint; doc notes on `Nodes()` / `Rels()` `Update` and `UpdateInPlace`.
+
+## [4.52.1] - 2026-10-14
+
+### Added
+
+- **Tiered tx-membership sidecars and valid-end acceleration** (backlog 58, sigma-tkgd R2): the tiered store now
+  implements `LabelTxMembership`, `RelTypeTxMembership`, `LabelTxMemberLookup`, `RelTypeTxMemberLookup`,
+  `NodePropertyTxMembership`, `RelPropertyTxMembership`, `RelValidEnd` and `NodeValidEnd`
+  (`store/tiered/tieredstore_tx_members.go`). Each fans out to the reference shard, the archive and every event
+  shard (a closed cold shard is opened, as the DepthAll history fold it replaces opens it) and unions the per-shard
+  badger answers: each entity once with the lowest first transaction time; a valid-end candidate listed by several
+  shards takes the highest stamp and bound. `RefineRelValidEnd` / `RefineNodeValidEnd` are no-ops: an entity's rows
+  can span shards (ArchiveNode, a re-import), so an entity with a loose fold (a valid-time close) is read on every
+  call. `ForEachNodePropertyTxMember` answers from the reference shard's sidecar and declines with
+  `ErrIndexNotFound` for an event-class label or an undeclared index (no fan-out), and when the archive or an event
+  shard ever held a node with the label (checked in the same fan-out as the sidecar read); `ForEachRelPropertyTxMember`
+  always declines (tiered has no rel property index). The core now uses the label and type membership sidecars for
+  DepthAll reads only (a depth-scoped read on tiered keeps the depth fold), and `Stats.RelHistoryCountByType` answers
+  on tiered (was ok=false): it runs the DepthAll history-ID fold plus a `RelTypeTxMembersOf` fan-out, both opening
+  closed cold shards. `ForEachRelEffectiveByTypeFrom` on tiered, 2,000 relationships over two event shards,
+  10 live: 2,000 → 10 timelines read, ~490 ms → ~11.5 µs per scan; with 7 of 8 event shards cold and
+  `MaxOpenColdShards` 0, 141 s → 0.59 s (temporal ByLabel over the same shards unchanged, ~17 s both). Test `TestTieredTxMembershipAndValidEndMatchBadger`
+  (badger vs tiered with rotation, archive and a closed cold shard: capability answers and the core doors equal),
+  bench `BenchmarkTieredRelEffectiveByTypeFrom`; evidence `tasks/evidence/tiered-capabilities/`.
+  The fan-out reads the reference shard and the archive under a read lock that `ArchiveNode` and `RestoreNode` now
+  hold for their whole move, so a `RestoreNode` between the two reads (reference write, then a hard archive delete)
+  no longer drops the node from the membership answers and valid-end candidates, nor an `ArchiveNode` from the
+  property door; a shard error joined with the property door's off-reference finding is returned, no longer
+  turned into `ErrIndexNotFound`. Test `TestTxMembersFanoutListsNodeRestoredMidRead`.
+
+### Changed
+
+
+### Fixed
+
+- **Tiered scans no longer see a node twice or not at all while `ArchiveNode` / `RestoreNode` moves it** (backlog 60).
+  `NodesByLabel`, `NodesByLabelAndProperty`, `NodesByLabelAndProperties`, `RelationshipsByType`, `AllNodes`,
+  `AllNodeIDs`, `AllRelationships`, `AllRelIDs` (each at `DepthAll`), `ForEachNodeID`, `ForEachRelID`, `NodeCount`,
+  `NodeCountByLabel`, `NodeCountByLabelAndPropertyKey`, `NodePropertyTypeClassCounts`, `NodePropertyStats` /
+  `NodePropertyNDV` (their `Count`), `RelationshipCount` and `RelCountByType` read the reference shard and then the archive; a move between the two reads returned the node
+  (and its relationship) twice or counted it twice (`ArchiveNode`: the archive copy is written before the reference
+  delete), or dropped it (`RestoreNode`: the reference write lands after the reference read, the archive delete before
+  the archive read). They now take the move lock's read side across the two reads, as the tx-membership fan-out does;
+  `ForEachNodeID` / `ForEachRelID` collect both shards' IDs under it and call `fn` after releasing it. Not changed:
+  the DocValues folds (a move bumps `NodeMutationEpoch`, so the caller's Gate-2 re-check discards the answer) and
+  `AllNodeHistoryIDsFrom` / `AllRelHistoryIDsFrom` (history rows stay where they are, IDs are deduplicated).
+  Point reads routed reference shard → archive → event shard missed a node or relationship `RestoreNode` moved
+  between the route's reference and archive probes (`ErrNodeNotFound` / `ErrRelNotFound` for a live entity), or
+  one `ArchiveNode` moved between the route and the read. `GetNode`, `LendNode`, `NodeIntegrityHash`,
+  `EndpointIntegrityHashes`, `GetNodesByIDs`, `GetRelationship`, `LendRelationship`, `GetRelationshipsByIDs`,
+  `Outgoing`/`IncomingRelationships` (and their `ForNodes` forms), `Outgoing`/`IncomingDegree`,
+  `Node`/`RelCurrentStamps` now hold the same read lock across route and read. The history reads
+  (`HasNode`/`HasRelHistory`, `Node`/`RelHistoryStamps`, the version and history reads) take no lock: history rows
+  stay on the shard they were written to and the walks fall back to every shard, so a move in either gap leaves their
+  answer unchanged (guard cases in the same test); `ArchiveNode` / `RestoreNode` read relationships through the unlocked
+  route. One uncontended `RLock` per call, no allocation: `GetNode` 2 allocs / 112 B (reference) and 3 / 128 B
+  (archived) before and after, median 160.5 → 175 ns (reference) and 180.5 → 178.5 ns (archived), alternating runs
+  on one pinned core of a loaded host. Write doors still route without the lock: a direct `tiered.Store` user must not write during a move (the graph layer fences them with its exclusive lock; documented on `ArchiveNode` / `RestoreNode`).
+  Graph users were not affected: `g.Tier().Archive` / `Restore`
+  hold the graph's exclusive lock. Test `TestRefArchiveReadersSeeMovedEntityOnce`; evidence
+  `tasks/evidence/tiered-move-readers/`.
+
+
+## [4.52.0] - 2026-10-14
+
+Minor release, the sigma-tkgd store requests, round 6 (new public API): badger column scans without a per-row
+allocation; `Nodes().ForEachDocValuesOrdinal` / `ForEachDocValuesMultiOrdinal` hand out each row's node ordinal
+(memory, badger, sharded; others report unsupported; ordinals kept lazily with the snapshot, 4 B per row on memory,
+no write cost); label and type reads at a valid-time point or interval answer entities without history from the row
+already read, stream in blocks of 1,024 and no longer sort. Fixed: `CountByLabelAt` / `CountByTypeAt` over a
+valid-time interval over-counted. A temporal `ForEachByLabel` answers each node as of a moment during the scan
+(within the door's documented relaxed isolation). Additive.
+
+### Fixed
+
+- **`CountByLabelAt` / `CountByTypeAt` over a valid-time interval over-counted** (found by round 6 request 12 putting
+  both doors into the bitemporal oracle harness): their current-row shortcut called a current row that answers the
+  point query at the first instant of the interval it covers a match, where `ByLabel` / `ByType` (the chain
+  resolver) found none, e.g. 5 against 4 (`tasks/evidence/cypher-round6/red-r12-count-interval-on-main.txt`, seeds
+  of `TestBitemporalOracleHarness`, `TestTxBackfillOracle_CrossBackend`, `TestReImportLifeOracle`,
+  `TestEffectiveScans_MatchPerEntityTimeline`, memory and badger). The shortcut is gone; an interval count now
+  equals `len(ByLabel)` / `len(ByType)`. The harness checks both counts at every point and interval probe.
+
+### Added
+
+- **`g.Nodes().ForEachDocValuesOrdinal` / `ForEachDocValuesMultiOrdinal`** (sigma-tkgd round 6 request 11): the
+  rows, order and `gen` of `ForEachDocValues` / `ForEachDocValuesMulti` with each node's dense ordinal beside its
+  ID, so a consumer marks and reads back rows by ordinal (an array) instead of by ID. The ordinals of a snapshot's
+  rows are read once, on the first ordinal read of that snapshot, and kept with it (badger shares the cache of
+  `ScanNodeColumns`; memory reads them under the lock that took the snapshot). Memory, badger, sharded; `ok=false`
+  where the plain door declines and where the store numbers no node (tiered, external stores, badger
+  `DisableOrdinals`). No write cost; memory 4 B per row of a snapshot read through these doors. 100,000 nodes, one
+  column: `ForEachDocValues` plus a `Lend` per row for the ordinal 6.5 ms (memory) / 255 ms (badger) -> 0.64 /
+  0.69 ms. Tests `TestForEachDocValuesOrdinal` (every backend, two-phase), `TestStoreForEachDocValuesOrdinal`,
+  `TestForEachDocValuesOrdinalDeclinesWithoutOrdinals`; bench `BenchmarkDocValuesOrdinals`.
+
+### Changed
+
+- **A label (type) read at a valid-time coordinate answers a node (relationship) without history from the row it
+  read, streams and sorts nothing** (sigma-tkgd round 6 request 12; EnvelopePruneLarge: 5.02 of 5.02 s in
+  `ByLabel` at the coordinate). `ByLabel` / `ByType`, `ForEachByLabel` / `ForEachByType` and `CountByLabelAt` /
+  `CountByTypeAt` under a temporal filter gather their candidates in ascending ID order (the current members merged
+  with the ever-members or the history fold, no hash set), pair each with its current row in one forward walk and
+  answer an entity the store states has no history rows (`store.HistoryPresenceCapability`) from that row under a
+  pure valid-time filter (point or interval; the chain resolver over the one-row chain, round 5 request 6's rule),
+  instead of reading it again and loading its chain; other entities, `TxAt` and `TxPin` keep the full resolution.
+  The answers are the resolver's and come in ascending ID order with or without `NoSort`, so nothing is sorted.
+  `ForEachByLabel` / `ForEachByType` with a temporal filter no longer materialize `ByLabel`: they resolve 1,024
+  candidates per hold of the graph read lock and call `fn` with no lock held (an early stop resolves no further;
+  each entity is answered as of a moment between the call and its chunk). No write cost. 300,000 :Event nodes,
+  ValidAt 5000, `NoSort` (`BenchmarkLabelScanAt`, 1 CPU, before/after interleaved): memory `ForEachByLabel`
+  279-355 -> 73-75 ms, 1,680,870 -> 12 allocations; badger 3.07-3.12 s -> 0.63-0.88 s (the rest is the label's
+  current-row read); with the label's temporal index memory 134-192 -> 76-79 ms, badger 1.28-1.46 s -> 0.71-1.08
+  s; `CountByLabelAt` likewise. Tests `TestLabelReadAtAgreesWithTheResolver` (every backend, oracle =
+  `findNodeVersionForOpts` per node, two-phase, point and interval, NoSort, pagination),
+  `TestLabelReadAtReadsNoHistoryNodeTwice`, `TestForEachByLabelAtStreams`, `TestSingleVersionNodeMatchesResolver`,
+  `TestTypeReadAtAgreesWithTheResolver`.
+- **Badger column scans allocate nothing per row** (sigma-tkgd round 6 request 10). `ScanRelColumns` and
+  `ScanNodeColumns` on the columnar path converted each row's ID to an interface to derive a missing valid-from,
+  one allocation per row whether or not a valid-time filter was set (1,049,588 allocations a run of sigma-tkgd's
+  StarCandidatesSkewedCold badger). The derivation now takes the snowflake ID, and without a filter a block's IDs,
+  ordinals, endpoints and validity are copied as runs from the snapshot. Same rows, same order. 262,144
+  relationships of one type, no property, snapshot built: 4.0-10.2 ms, 262,158 allocations, 2.3 MB -> 0.53-0.98 ms,
+  13 allocations, 0.21 MB (load 220-300). Tests `TestScanRelColumns_AllocationsDoNotGrowWithRows`,
+  `TestScanNodeColumns_AllocationsDoNotGrowWithRows`; bench `BenchmarkRelEndpointColumnScan`; evidence
+  `tasks/evidence/cypher-round6/`.
+
 ## [4.51.8] - 2026-10-14
 
 ### Added

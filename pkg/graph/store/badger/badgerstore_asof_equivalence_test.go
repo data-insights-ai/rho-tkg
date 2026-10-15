@@ -31,6 +31,7 @@ type asofVersion struct {
 	deletedAt types.Instant
 	validTo   types.Instant // 0 = own interval open
 	current   bool          // stored as the live current row (PutNode/PutRelationship), not history
+	void      bool          // an excise's void piece (backlog 64): bounded, never current or stamped
 }
 
 // genAsofChain produces a random but invariant-respecting version chain: strictly
@@ -82,14 +83,14 @@ func genAsofChain(rng *rand.Rand) []asofVersion {
 func buildNode(id types.NodeID, v asofVersion) *types.Node {
 	n := types.NewNode(id, 1, nil)
 	n.SetVersion(v.version)
-	n.SetTemporal(&types.TemporalMetadata{ValidFrom: 1, ValidTo: v.validTo, TxFrom: v.txFrom, TxTo: v.txTo, DeletedAt: v.deletedAt})
+	n.SetTemporal(&types.TemporalMetadata{ValidFrom: 1, ValidTo: v.validTo, TxFrom: v.txFrom, TxTo: v.txTo, DeletedAt: v.deletedAt, Void: v.void})
 	return n
 }
 
 func buildRel(id types.RelID, v asofVersion) *types.Relationship {
 	r := types.NewRelationship(id, 1, types.NodeID(snowflake.ID(7)), types.NodeID(snowflake.ID(9)))
 	r.SetVersion(v.version)
-	r.SetTemporal(&types.TemporalMetadata{ValidFrom: 1, ValidTo: v.validTo, TxFrom: v.txFrom, TxTo: v.txTo, DeletedAt: v.deletedAt})
+	r.SetTemporal(&types.TemporalMetadata{ValidFrom: 1, ValidTo: v.validTo, TxFrom: v.txFrom, TxTo: v.txTo, DeletedAt: v.deletedAt, Void: v.void})
 	return r
 }
 

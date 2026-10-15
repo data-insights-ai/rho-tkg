@@ -46,11 +46,19 @@ func (ms *Store) putNodeHistoryRowLocked(nid types.NodeID, v uint32, row *types.
 	before := len(inner)
 	_, overwrite := inner[v]
 	inner[v] = ms.historyNode(row)
+	if top, ok := ms.nodeHistTop[nid]; !ok || v > top {
+		if ms.nodeHistTop == nil {
+			ms.nodeHistTop = make(map[types.NodeID]uint32)
+		}
+		ms.nodeHistTop[nid] = v
+	}
 	if ms.nodeValidEnds.Active() {
 		vr := indexpkg.ValidEndRowOfNode(row, true)
 		vr.Version = v
 		ms.nodeValidEnds.NoteRow(int64(nid), vr)
 	}
+	ms.nodeHistEpochs.Note(nid, len(inner))
+	ms.histGen.Add(1)
 	f, t, d := row.TxStamps()
 	ms.histStampsMu.Lock()
 	ms.nodeHistStamps = noteHistStamps(ms.nodeHistStamps, nid, before, len(inner), overwrite, f, t, d)
@@ -69,11 +77,19 @@ func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row *types.Re
 	_, overwrite := inner[v]
 	ms.noteHistoryRowExAdjLocked(rid, row) // backlog 50
 	inner[v] = ms.historyRel(row)
+	if top, ok := ms.relHistTop[rid]; !ok || v > top {
+		if ms.relHistTop == nil {
+			ms.relHistTop = make(map[types.RelID]uint32)
+		}
+		ms.relHistTop[rid] = v
+	}
 	if ms.relValidEnds.Active() {
 		vr := indexpkg.ValidEndRowOfRel(row, true)
 		vr.Version = v
 		ms.relValidEnds.NoteRow(int64(rid), vr)
 	}
+	ms.relHistEpochs.Note(rid, len(inner))
+	ms.histGen.Add(1)
 	f, t, d := row.TxStamps()
 	ms.histStampsMu.Lock()
 	ms.relHistStamps = noteHistStamps(ms.relHistStamps, rid, before, len(inner), overwrite, f, t, d)
@@ -108,6 +124,7 @@ func (ms *Store) invalidateNodeHistStampsLocked(nid types.NodeID) {
 	ms.histStampsMu.Lock()
 	delete(ms.nodeHistStamps, nid)
 	ms.histStampsMu.Unlock()
+	ms.nodeHistEpochs.Note(nid, len(ms.nodeHistory[nid]))
 }
 
 // NodeHistoryStamps returns the newest TxFrom and TxTo-or-DeletedAt over the

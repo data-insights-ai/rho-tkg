@@ -1,0 +1,12 @@
+--- FAIL: TestRangeAtFromSidecar (0.26s)
+    --- FAIL: TestRangeAtFromSidecar/memory (0.00s)
+        range_at_test.go:222: values coord 0 {Limit:0 After:0 ValidAt:0 ValidStart:1 ValidEnd:9223372036854775807 TxAt:1792025842992 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} range [0.1000000001 1] rels:
+             got  []
+             want [812654362033193984=0.1@0]
+    --- FAIL: TestRangeAtFromSidecar/badger (0.01s)
+        range_at_test.go:222: values coord 0 {Limit:0 After:0 ValidAt:0 ValidStart:1 ValidEnd:9223372036854775807 TxAt:1792025842996 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} range [0.1000000001 1] rels:
+             got  []
+             want [812654362146440192=0.1@0]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.580s
+FAIL

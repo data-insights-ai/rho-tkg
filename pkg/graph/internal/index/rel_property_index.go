@@ -5,20 +5,16 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// RelPropertyIndexKey uniquely identifies a relationship property index by
-// rel-type token and property key. It is the relationship mirror of
-// PropertyIndexKey (which is keyed by label token). The value store itself is
-// the same ID-generic *PropertyIndex — only the keying and the typed accessor
-// helpers below differ, so the range/ordered-view machinery is shared verbatim
-// (Node/Rel parity, house rule / Testing Rule 2).
+// RelPropertyIndexKey identifies a relationship property index by rel-type
+// token and property key (mirror of PropertyIndexKey; the value store is the
+// same *PropertyIndex).
 type RelPropertyIndexKey struct {
 	RelTypeToken uint16
 	PropertyKey  string
 }
 
-// RelIDs returns the relationship IDs matching the given value as a
-// caller-owned slice — the rel-typed mirror of PropertyIndex.NodeIDs. Store
-// query code needs IDs but must not receive the mutable index set.
+// RelIDs returns the relationship IDs matching the value as a caller-owned
+// slice (rel mirror of NodeIDs).
 func (pi *PropertyIndex) RelIDs(value any) []types.RelID {
 	if pi == nil {
 		return nil
@@ -38,15 +34,11 @@ func (pi *PropertyIndex) RelIDs(value any) []types.RelID {
 	return out
 }
 
-// RangeRelIDs is the rel-typed mirror of RangeNodeIDs — the candidate
-// relationship IDs whose numeric property sort key lies within [min, max]
-// (bound inclusivity per flags), as a caller-owned slice. Bounds are WIDENED
-// by one ulp on each side before the search, so the returned set OVER-SELECTS
-// by design: callers must post-filter with exact comparison semantics.
-// supported=false only when the index is nil; an enabled view with no numeric
-// keys returns an authoritative empty result.
+// RangeRelIDs is the rel mirror of RangeNodeIDs: over-selecting candidates, so
+// callers must post-filter exactly. supported=false only when the index is nil
+// or an Elements index.
 func (pi *PropertyIndex) RangeRelIDs(min, max float64, inclMin, inclMax bool) (ids []types.RelID, supported bool) {
-	if pi == nil {
+	if pi == nil || pi.elements {
 		return nil, false
 	}
 	if pi.numKeys.n == 0 {
@@ -63,16 +55,14 @@ func (pi *PropertyIndex) RangeRelIDs(min, max float64, inclMin, inclMax bool) (i
 	return ids, true
 }
 
-// AddRelToPropertyIndexes indexes a relationship's properties into the matching
-// rel property index (there is at most one — the type token is a single value,
-// unlike a node's label set). Mirror of AddNodeToPropertyIndexes.
-// Caller must hold the store's write lock.
+// AddRelToPropertyIndexes indexes a relationship's properties (at most one
+// matching index: a rel has one type token). Caller must hold the store's write lock.
 func AddRelToPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyIndex, r *types.Relationship, id snowflake.ID) {
 	if len(indexes) == 0 || r == nil {
 		return
 	}
 	typeToken := r.TypeToken().Value()
-	r.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+	r.ForEachIndexKey(RelElementsOf(indexes, typeToken), func(propertyKey, valueKey string) bool {
 		key := RelPropertyIndexKey{RelTypeToken: typeToken, PropertyKey: propertyKey}
 		if idx, ok := indexes[key]; ok {
 			idx.AddKey(id, valueKey)
@@ -89,7 +79,7 @@ func RemoveRelFromPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyIndex
 		return
 	}
 	typeToken := r.TypeToken().Value()
-	r.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+	r.ForEachIndexKey(RelElementsOf(indexes, typeToken), func(propertyKey, valueKey string) bool {
 		key := RelPropertyIndexKey{RelTypeToken: typeToken, PropertyKey: propertyKey}
 		if idx, ok := indexes[key]; ok {
 			idx.removeKey(id, valueKey)
@@ -98,11 +88,10 @@ func RemoveRelFromPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyIndex
 	})
 }
 
-// PurgeRelFromAllPropertyIndexes removes a relationship ID from every value set
-// in every rel property index. Brute-force O(V) fallback used when the
-// relationship's data is unavailable (the shared deleteRelByInfo seam carries
-// only RelDeleteInfo, no property values) or on the corruption path. Mirror of
-// PurgeNodeFromAllPropertyIndexes. Caller must hold the store's write lock.
+// PurgeRelFromAllPropertyIndexes removes a relationship ID from every rel
+// property index. Brute-force O(V) fallback when the relationship's data is
+// unavailable (deleteRelByInfo carries no property values) or on the corruption
+// path. Caller must hold the store's write lock.
 func PurgeRelFromAllPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyIndex, id snowflake.ID) {
 	if len(indexes) == 0 {
 		return

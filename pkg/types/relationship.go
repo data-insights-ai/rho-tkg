@@ -13,26 +13,17 @@ type relTypeToken uint16
 // Value returns the underlying uint16 value of the token.
 func (t relTypeToken) Value() uint16 { return uint16(t) }
 
-// RelID is the opaque ID type for relationships. Exported so callers can
-// pass IDs to graph methods and reference them in results, but the
-// underlying snowflake.ID layout is intentionally hidden — use the typed
-// accessor SnowflakeID() to bridge to persistence keys, and the graph
-// generators (g.Nodes().NextID, g.Rels().NextID) to allocate fresh IDs.
+// RelID is the opaque ID type for relationships; use SnowflakeID() to bridge to
+// persistence keys and g.Rels().NextID to allocate IDs.
 type RelID snowflake.ID
 
 // SnowflakeID extracts the underlying snowflake.ID from a relID.
 // This is the bridge for pkg/graph to get persistence keys from entities.
 func (id RelID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 
-// Relationship represents a directed edge in the temporal knowledge graph.
-// All fields are unexported; access is through methods only.
-//
-// Layout: fields are ordered by descending alignment to eliminate internal
-// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 96 bytes.
-// The compact metadata pointer (P7) fit the 80-byte size class of the former
-// 72-byte layout; the dense ordinal (v4.41) moved the struct to 88 bytes in
-// the 96-byte class, and the endpoints' ordinals fill that class, so they
-// cost nothing per object.
+// Relationship represents a directed edge in the temporal knowledge graph. All
+// fields are unexported; fields are ordered by descending alignment (88 bytes,
+// the 96-byte size class, which the endpoints' ordinals fill at no cost).
 type Relationship struct {
 	id         RelID             // 8B, offset  0
 	startID    NodeID            // 8B, offset  8
@@ -76,8 +67,7 @@ func (r *Relationship) ID() RelID {
 	return r.id
 }
 
-// InternalID is the legacy accessor kept for migration; prefer ID().
-// Will be removed once all callsites have switched.
+// InternalID is the legacy accessor; prefer ID().
 func (r *Relationship) InternalID() RelID {
 	if r == nil {
 		return 0
@@ -99,16 +89,14 @@ func (r *Relationship) HasTypeToken(tok relTypeToken) bool {
 	return r != nil && tok != 0 && r.relType == tok
 }
 
-// HasTypeTokenRaw checks if this relationship has the given type token using
-// a raw uint16 value. This is the zero-allocation path for the graph layer.
-// Token 0 always returns false.
+// HasTypeTokenRaw is HasTypeToken for a raw uint16 token (zero-allocation path
+// for the graph layer). Token 0 always returns false.
 func (r *Relationship) HasTypeTokenRaw(tok uint16) bool {
 	return r != nil && tok != 0 && uint16(r.relType) == tok
 }
 
-// SetTypeTokenRaw replaces the relationship's type token using a raw uint16
-// token. Token 0 is accepted as an invalid/unset value so Store write
-// validation can reject malformed entities consistently with NewRelationship.
+// SetTypeTokenRaw replaces the type token. Token 0 is accepted so Store write
+// validation can reject it consistently with NewRelationship.
 func (r *Relationship) SetTypeTokenRaw(tok uint16) {
 	if r == nil {
 		return
@@ -119,13 +107,9 @@ func (r *Relationship) SetTypeTokenRaw(tok uint16) {
 	r.relType = relTypeToken(tok)
 }
 
-// Freeze marks the relationship immutable. After freezing, error-returning
-// mutators return ErrFrozenRelationship and void mutators panic — mutating a
-// frozen relationship is a programming error, never a recoverable condition.
-// Stores freeze the entries they cache so query paths can return shared
-// pointers instead of per-row deep copies; callers that need to mutate a
-// fetched relationship must thaw it first via DeepCopy, which always returns
-// a mutable copy.
+// Freeze marks the relationship immutable: error-returning mutators then return
+// ErrFrozenRelationship and void mutators panic. Stores freeze cached entries so
+// queries can return shared pointers; DeepCopy thaws.
 func (r *Relationship) Freeze() {
 	if r == nil {
 		return
@@ -182,12 +166,10 @@ func (r *Relationship) SetProperties(ps PropertySlice) error {
 	return nil
 }
 
-// SetOwnedProperties replaces the relationship's property slice without
-// copying it. The caller transfers ownership of ps and must not mutate it
-// after this call. This is intended for graph-layer construction paths that
-// just received ps from NewPropertySlice; general callers should use
-// SetProperties. Reusing a consumed OwnedPropertySlice installs nil properties
-// instead of sharing state.
+// SetOwnedProperties replaces the property slice without copying; the caller
+// transfers ownership of ps. A consumed OwnedPropertySlice installs nil.
+// The caller must not mutate ps after this call; for graph-layer paths that just
+// got ps from NewPropertySlice (general callers use SetProperties).
 func (r *Relationship) SetOwnedProperties(ps OwnedPropertySlice) error {
 	if r == nil {
 		return ErrNilRelationship
@@ -245,10 +227,8 @@ func (r *Relationship) PropertyValueEqual(key string, expected any) (found bool,
 	return r.properties.propertyValueEqual(key, expected)
 }
 
-// IndexablePropertyValueKey returns the canonical index key for a scalar
-// property without exposing the property value itself. The second return value
-// reports whether the property exists; a present but non-indexable value
-// returns ("", true).
+// IndexablePropertyValueKey returns the canonical index key of a scalar
+// property and whether it exists (present but non-indexable: ("", true)).
 func (r *Relationship) IndexablePropertyValueKey(key string) (string, bool) {
 	if r == nil {
 		return "", false
@@ -256,20 +236,47 @@ func (r *Relationship) IndexablePropertyValueKey(key string) (string, bool) {
 	return r.properties.indexableValueKey(key)
 }
 
-// ForEachIndexablePropertyValueKey calls fn for each scalar property using
-// the canonical value key consumed by property indexes. It skips non-indexable
-// values and stops early when fn returns false.
+// ForEachIndexablePropertyValueKey calls fn with each scalar property's
+// canonical index key, skipping non-indexable values; fn returning false stops.
 func (r *Relationship) ForEachIndexablePropertyValueKey(fn func(propertyKey, valueKey string) bool) {
 	if r == nil {
 		return
 	}
-	r.properties.forEachIndexableValueKey(fn)
+	r.properties.forEachIndexKey(nil, fn)
+}
+
+// ForEachIndexKey is ForEachIndexablePropertyValueKey for stores with Elements
+// indexes (backlog 63): a list property for which elements reports true yields
+// each distinct scalar element's key. elements is consulted for list values
+// only; nil means scalars only.
+func (r *Relationship) ForEachIndexKey(elements func(propertyKey string) bool, fn func(propertyKey, valueKey string) bool) {
+	if r == nil {
+		return
+	}
+	r.properties.forEachIndexKey(elements, fn)
+}
+
+// ForEachPropertyIndexKey calls fn with the index keys of one property (scalar
+// key, or with elements each distinct element's key); missing yields nothing.
+func (r *Relationship) ForEachPropertyIndexKey(propertyKey string, elements bool, fn func(valueKey string) bool) {
+	if r == nil {
+		return
+	}
+	r.properties.propertyIndexKeys(propertyKey, elements, fn)
+}
+
+// HasPropertyIndexKey reports whether the property carries targetKey as an
+// index key: equality, or list membership with elements. The match test of
+// every property-index read.
+func (r *Relationship) HasPropertyIndexKey(propertyKey string, elements bool, targetKey string) bool {
+	if r == nil {
+		return false
+	}
+	return r.properties.hasIndexKey(propertyKey, elements, targetKey)
 }
 
 // Float32SlicePropertyCopy returns a caller-owned []float32 copy for vector
-// index input. It accepts []float32, []float64 (elements narrowed to float32),
-// and []any containing only float32/float64 values, matching vector-index
-// input support.
+// index input ([]float32, []float64, or []any of floats).
 func (r *Relationship) Float32SlicePropertyCopy(key string) ([]float32, bool) {
 	if r == nil {
 		return nil, false
@@ -299,14 +306,12 @@ func (r *Relationship) PropertyCount() int {
 	return r.properties.Len()
 }
 
-// AppendPropertyHashBytes appends this relationship's properties using the
-// integrity hash byte layout without exposing or defensive-copying the slice.
+// AppendPropertyHashBytes appends this relationship's properties in the
+// integrity hash byte layout without copying the slice.
 //
-// PANIC CONTRACT: when PropertyHashNeedsRecover() reports true (registered
-// custom types or unknown values present), the caller MUST wrap this call in
-// panic recovery — a custom HashBytes implementation may panic. The graph
-// layer's integrity package (ComputeRelHashChecked) is the reference
-// pattern; do not call this directly on untrusted data without it.
+// PANIC CONTRACT: when PropertyHashNeedsRecover() is true (custom types or
+// unknown values), the caller MUST wrap this in panic recovery; see
+// ComputeRelHashChecked in the graph integrity package.
 func (r *Relationship) AppendPropertyHashBytes(buf []byte) []byte {
 	if r == nil {
 		return buf
@@ -314,9 +319,8 @@ func (r *Relationship) AppendPropertyHashBytes(buf []byte) []byte {
 	return r.properties.AppendHashBytes(buf)
 }
 
-// PropertyHashNeedsRecover reports whether hashing this relationship's
-// properties can invoke custom user code that the checked hash path should
-// recover from.
+// PropertyHashNeedsRecover reports whether hashing the properties can invoke
+// custom user code that the checked hash path should recover from.
 func (r *Relationship) PropertyHashNeedsRecover() bool {
 	if r == nil {
 		return false
@@ -359,21 +363,13 @@ func (r *Relationship) SetVersion(v uint32) {
 	r.version = v
 }
 
-// Temporal returns the relationship's temporal metadata (nil until set by the graph layer).
-// The returned pointer is shared with the relationship — the graph layer needs
-// mutation access, so no defensive copy is made.
+// Temporal returns the relationship's temporal metadata (nil until set by the
+// graph layer). The pointer is shared with the relationship and with store
+// caches and version snapshots, so it MUST NOT be mutated outside
+// pkg/graph/internal/core.
 //
-// MUST NOT be mutated outside pkg/graph/internal/core: the same pointer is
-// held by store caches and version-history snapshots, so an external write
-// silently corrupts cached graph state and temporal-query results. Treat as
-// strictly read-only.
-//
-// FROZEN entities return an independent copy instead: frozen scan rows alias
-// the store's canonical cache entry, and the shared pointer was the one
-// escape hatch the frozen guard could not cover (TemporalMetadata fields are
-// exported, so writes through the pointer bypass every mutator check).
-// Copying on frozen rows makes such writes harmless. Unfrozen entities keep
-// the shared pointer — the graph layer mutates it on rows it owns.
+// FROZEN entities return an independent copy, since the exported fields would
+// let a shared pointer bypass the frozen guard.
 func (r *Relationship) Temporal() *TemporalMetadata {
 	if r == nil {
 		return nil
@@ -389,15 +385,9 @@ func (r *Relationship) Temporal() *TemporalMetadata {
 	return r.temporal
 }
 
-// ValidRange returns the relationship's validity bounds and whether it carries
-// temporal metadata at all. ok=false means no metadata; a zero ValidTo means
-// open-ended, the store-wide convention.
-//
-// The node-side counterpart's rationale applies verbatim: Temporal() must COPY the
-// metadata for a frozen entity (its fields are exported, so a shared pointer is a
-// write escape hatch), and every entity a store scan hands back is frozen. Returning
-// two values by copy has nothing to alias, so it costs no allocation — which matters
-// wherever bounds are read once per entity across a whole relationship type.
+// ValidRange returns the validity bounds and whether the relationship carries
+// temporal metadata at all (a zero ValidTo means open-ended). Prefer it over
+// Temporal() for bounds only: it allocates nothing on a frozen row.
 func (r *Relationship) ValidRange() (from, to Instant, ok bool) {
 	if r == nil {
 		return 0, 0, false
@@ -439,16 +429,12 @@ func (r *Relationship) SetTemporal(tm *TemporalMetadata) {
 	r.temporal = tm
 }
 
-// Integrity returns the relationship's integrity metadata (nil until set by the graph layer).
-// The returned pointer is shared with the relationship — the graph layer needs
-// mutation access, so no defensive copy is made.
+// Integrity returns the relationship's integrity metadata (nil until set by the
+// graph layer). The pointer is shared with store caches and the hash chain is
+// computed from it, so it MUST NOT be mutated outside pkg/graph/internal/core
+// (it would break Verify*Chain).
 //
-// MUST NOT be mutated outside pkg/graph/internal/core: the same pointer is
-// held by store caches, and the hash chain is computed from this state — an
-// external write silently breaks Verify*Chain. Treat as strictly read-only.
-//
-// FROZEN entities return an independent deep copy (Signature bytes cloned)
-// instead — see Temporal() for the rationale.
+// FROZEN entities return an independent deep copy (see Temporal()).
 func (r *Relationship) Integrity() *RelIntegrity {
 	if r == nil {
 		return nil
@@ -473,11 +459,8 @@ func (r *Relationship) SetIntegrity(ig *RelIntegrity) {
 	r.integrity = ig
 }
 
-// DeepCopy returns a fully independent clone of the relationship.
-// All nested reference types (properties, temporal, integrity) are deep-copied
-// so mutations to the copy never affect the original.
-// The copy is always mutable, even when r is frozen — DeepCopy is the thaw
-// operation for entities fetched from store caches.
+// DeepCopy returns a fully independent, always-mutable clone (the thaw for
+// frozen entities fetched from store caches).
 func (r *Relationship) DeepCopy() *Relationship {
 	if r == nil {
 		return nil

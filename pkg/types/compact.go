@@ -1,6 +1,6 @@
 package types
 
-import "encoding/hex"
+import "github.com/data-insights-ai/rho-tkg/v4/pkg/internal/hash32"
 
 // Compact frozen metadata (P7).
 //
@@ -22,9 +22,10 @@ import "encoding/hex"
 // Everything else keeps today's two objects: a row with any other temporal
 // field set (tx to, created/updated/deleted at, created/updated by, a base
 // entity — i.e. updated, closed, deleted and history versions), a previous
-// hash, provenance (author, signature, authorization), a hash that is not
-// 64 lowercase hex characters, or missing temporal or integrity metadata. The
-// compact form is an exact re-encoding or it is not used.
+// hash, provenance (author, signature, authorization), a hash that is neither
+// empty (hashes off, Config.DisableIntegrityHashes) nor 64 lowercase hex
+// characters, or missing temporal or integrity metadata. The compact form is
+// an exact re-encoding or it is not used.
 //
 // A field added to TemporalMetadata, RelIntegrity, NodeIntegrity, Relationship
 // or Node must be taught to this file (fit check and rebuild, or the copy
@@ -41,6 +42,7 @@ type relMeta struct {
 	validFrom, validTo, txFrom Instant
 	hash                       [32]byte
 	fromNodeHash, toNodeHash   string
+	noHash                     bool // Hash is "" (Config.DisableIntegrityHashes)
 }
 
 // nodeMeta is a frozen first-version node's temporal + integrity metadata.
@@ -49,39 +51,11 @@ type nodeMeta struct {
 	hash                       string
 }
 
-// decodeCanonicalHash decodes a 64-character lowercase hex hash into dst. It
-// reports false for anything hex.EncodeToString would not produce, so the
-// round trip back to a string is exact.
-func decodeCanonicalHash(s string, dst *[32]byte) bool {
-	if len(s) != 64 {
-		return false
-	}
-	for i := 0; i < 32; i++ {
-		hi, ok1 := lowerHexNibble(s[2*i])
-		lo, ok2 := lowerHexNibble(s[2*i+1])
-		if !ok1 || !ok2 {
-			return false
-		}
-		dst[i] = hi<<4 | lo
-	}
-	return true
-}
-
-func lowerHexNibble(c byte) (byte, bool) {
-	switch {
-	case c >= '0' && c <= '9':
-		return c - '0', true
-	case c >= 'a' && c <= 'f':
-		return c - 'a' + 10, true
-	}
-	return 0, false
-}
-
 // temporalFitsCompact reports whether tm sets no field beyond valid from/to
 // and tx from.
 func temporalFitsCompact(tm *TemporalMetadata) bool {
 	return tm.TxTo == 0 && tm.CreatedAt == 0 && tm.UpdatedAt == 0 && tm.DeletedAt == 0 &&
-		tm.CreatedBy == "" && tm.UpdatedBy == "" && tm.baseEntityID == 0 && !tm.Retracted
+		tm.CreatedBy == "" && tm.UpdatedBy == "" && tm.baseEntityID == 0 && !tm.Retracted && !tm.Void
 }
 
 // compactRelMeta packs tm and ig, or reports false when the compact form
@@ -92,7 +66,11 @@ func compactRelMeta(tm *TemporalMetadata, ig *RelIntegrity) (*relMeta, bool) {
 		return nil, false
 	}
 	m := &relMeta{validFrom: tm.ValidFrom, validTo: tm.ValidTo, txFrom: tm.TxFrom, fromNodeHash: ig.FromNodeHash, toNodeHash: ig.ToNodeHash}
-	if !decodeCanonicalHash(ig.Hash, &m.hash) {
+	if ig.Hash == "" {
+		m.noHash = true
+		return m, true
+	}
+	if !hash32.Decode(ig.Hash, &m.hash) {
 		return nil, false
 	}
 	return m, true
@@ -101,15 +79,17 @@ func compactRelMeta(tm *TemporalMetadata, ig *RelIntegrity) (*relMeta, bool) {
 // integrity rebuilds the RelIntegrity the row was compacted from: a fresh,
 // caller-owned object with the same hash strings.
 func (m *relMeta) integrity() *RelIntegrity {
-	var buf [64]byte // one allocation for the string (hex.EncodeToString makes two)
-	hex.Encode(buf[:], m.hash[:])
-	return &RelIntegrity{Hash: string(buf[:]), FromNodeHash: m.fromNodeHash, ToNodeHash: m.toNodeHash}
+	ig := &RelIntegrity{FromNodeHash: m.fromNodeHash, ToNodeHash: m.toNodeHash}
+	if !m.noHash {
+		ig.Hash = hash32.String(m.hash[:])
+	}
+	return ig
 }
 
 // compactNodeMeta packs tm and ig, or reports false when the compact form
 // cannot represent them exactly.
 func compactNodeMeta(tm *TemporalMetadata, ig *NodeIntegrity) (*nodeMeta, bool) {
-	if tm == nil || ig == nil || !temporalFitsCompact(tm) || ig.Hash == "" || ig.PrevHash != "" ||
+	if tm == nil || ig == nil || !temporalFitsCompact(tm) || ig.PrevHash != "" ||
 		ig.AuthorID != "" || ig.Signature != nil || ig.AuthorizedBy != "" || ig.AuthorizationLevel != 0 {
 		return nil, false
 	}

@@ -226,7 +226,7 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 			continue
 		}
 		refuse := func(err error) error {
-			return BatchError{Op: "SetNodeVersionIntervalWithTx", ID: types.EntityID(pc.id), Err: err}
+			return BatchError{Op: cascadeOpName("Node", pc.at, pc.void), ID: types.EntityID(pc.id), Err: err}
 		}
 		if nodeTouched[pc.id] > 1 {
 			return refuse(another("node", int64(pc.id), pc.at))
@@ -241,7 +241,7 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 			continue
 		}
 		refuse := func(err error) error {
-			return BatchError{Op: "SetRelVersionIntervalWithTx", ID: types.EntityID(pc.id), Err: err}
+			return BatchError{Op: cascadeOpName("Rel", pc.at, pc.void), ID: types.EntityID(pc.id), Err: err}
 		}
 		if relTouched[pc.id] > 1 {
 			return refuse(another("relationship", int64(pc.id), pc.at))

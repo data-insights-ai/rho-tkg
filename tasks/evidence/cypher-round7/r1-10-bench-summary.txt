@@ -1,0 +1,29 @@
+BenchmarkTxCreateRelationshipsSizes, -cpu 1, -benchtime 3x, 4 interleaved rounds before/after (r1-07), load 7-28 (other agents).
+before = origin/main 4dfd31d0 + the benchmark file; after = request 1 (one-snapshot endpoint check + forward-step seek; the watermark bump not in this binary).
+r1-03 and r1-06 are earlier runs without the rel-call metric (whole statement only, same direction, noisier). Medians of 4 rounds.
+
+case                                    ns/binding before    after  rel-ns/rel before    after  B/op before        after
+memory/1x1000/binding                                4042     3982               1710     1655      3229506      3229506
+memory/1x1000/rels-one                               3892     3752               1916     1828      4050304      4050304
+memory/1x1000/rels-batch                             3823     3642               1602     1500      4630192      4630192
+memory/1x10000/binding                               4449     4508               1866     1887     29972166     29972153
+memory/1x10000/rels-one                              3852     3922               1674     1678     38073700     38073681
+memory/1x10000/rels-batch                            3746     3745               1571     1599     43826214     43826214
+memory/1x50000/binding                               5671     5598               2352     2334    142211385    142211492
+memory/1x50000/rels-one                              4188     4348               1884     1822    183847602    183847649
+memory/1x50000/rels-batch                            4412     4124               1743     1756    212458180    212458206
+memory/5x50000/binding                               7246     7404               3090     3074    758380100    758392037
+memory/5x50000/rels-one                              5537     5524               2178     2182    974524293    974524336
+memory/5x50000/rels-batch                            5370     5334               1947     2304   1117589629   1117577164
+badger/1x1000/binding                               14496    14086               2540     2583    112532302    112537717
+badger/1x1000/rels-one                              14212    13236               2519     2524    113571308    113571746
+badger/1x1000/rels-batch                            14104    13164               2202     2081    114559162    114491877
+badger/1x10000/binding                              17152    17088               3620     3448    261500284    261531084
+badger/1x10000/rels-one                             16026    15604               4158     4205    272280857    272451000
+badger/1x10000/rels-batch                           15313    15025               3550     3422    282178337    281393406
+badger/1x50000/binding                              19857    18950               7620     7331    893591949    893345326
+badger/1x50000/rels-one                             23114    22911              13298    13096   1118601809   1118225632
+badger/1x50000/rels-batch                           21668    18452              11378     8414   1183169584   1085217153
+badger/5x50000/binding                              21940    20639               8385     7996   3952983577   3948038609
+badger/5x50000/rels-one                             25996    24390              16054    15028   5574428944   5515060297
+badger/5x50000/rels-batch                           23594    18880              13904     9648   5820655996   4926446326

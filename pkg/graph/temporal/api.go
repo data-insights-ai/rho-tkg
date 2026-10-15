@@ -1,7 +1,6 @@
 // API accessors for the Graph temporal-query surface (point-in-time, interval,
 // bitemporal, snapshot/diff, Allen). Lives in the same package as the temporal
-// types it returns (GraphSnapshot, SnapshotDiff, …) — collapsed in v3.4.0
-// post-cleanup from the previous pkg/graph/temporalapi sibling.
+// types it returns (GraphSnapshot, SnapshotDiff, …).
 package temporal
 
 import (
@@ -70,6 +69,8 @@ type Ops interface {
 	ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, fn func(NodeSegment) bool) error
 	ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error
 	ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFrom types.Instant, fn func(NodeSegment) bool) error
+	RelsEffectivePage(ctx context.Context, pin Pin, f Filter, after types.RelID, limit int) ([]RelSegment, types.RelID, error)
+	NodesEffectivePage(ctx context.Context, pin Pin, f Filter, after types.NodeID, limit int) ([]NodeSegment, types.NodeID, error)
 
 	// Cascade / timeline edit: an append-only valid-time correction. props is
 	// a patch (nil deletes a key) applied to the state valid in each piece of
@@ -81,6 +82,12 @@ type Ops interface {
 	// (Config.AllowTxBackfill). See SetNodeVersionIntervalWithTx on API.
 	SetNodeVersionIntervalWithTx(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) (*types.Node, error)
 	SetRelVersionIntervalWithTx(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any, txFrom types.Instant) (*types.Relationship, error)
+	// Valid-time excise: the entity is absent over [a, b). See
+	// ExciseNodeValidity on API.
+	ExciseNodeValidity(ctx context.Context, id types.NodeID, a, b types.Instant) error
+	ExciseRelValidity(ctx context.Context, id types.RelID, a, b types.Instant) error
+	ExciseNodeValidityWithTx(ctx context.Context, id types.NodeID, a, b, txFrom types.Instant) error
+	ExciseRelValidityWithTx(ctx context.Context, id types.RelID, a, b, txFrom types.Instant) error
 
 	// Snapshot/Diff
 	Snapshot(t types.Instant) (*GraphSnapshot, error)
@@ -490,7 +497,8 @@ func (a *API) RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*
 // For every valid instant t the segment containing t holds the row
 // NodeAtTx(id, t, pin) returns; none contains t where NodeAtTx answers
 // ErrNoVersionValidAt. ValidFrom is the effective start, never 0 (the ID's
-// mint instant for a row without a recorded valid-from); a deleted node's last
+// TxFrom for a row without a recorded valid-from, backlog 62); a deleted
+// node's last
 // segment ends at the delete instant; a node created after the pin returns
 // nil, nil. Segments may share a row pointer; DeepCopy before mutating.
 //
@@ -631,12 +639,15 @@ func (a *API) ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, f
 // ForEachRelEffectiveByType's.
 //
 // Cost on memory and badger: the relationships of the type whose valid end is
-// at or after validFrom plus those written after pin, from a valid-end index
-// the store keeps per queried type: the first call for a type reads its
+// at or after validFrom plus those written after pin, from a RAM valid-end
+// index the store keeps per queried type. The first call for a type reads its
 // ever-members' temporal fields once (and builds the K1 membership sidecar if
-// no pinned scan did), every write of the type after that is folded, writes
-// of other types change nothing (RAM; tracked again on the first call after a
-// reopen). Tiered and sharded answer the same through the unbounded door's
+// no pinned scan did); after that every write of the type is folded in, and
+// writes of other types change nothing. A reopen tracks it again on the next
+// call. Tiered keeps the index
+// per shard and unions the shards' candidates (a closed cold shard is opened;
+// an entity whose rows bound its end loosely, such as a valid-time close, is
+// read on every call). Sharded answers the same through the unbounded door's
 // candidates (not accelerated).
 func (a *API) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error {
 	ops, err := a.ready()
@@ -767,6 +778,66 @@ func (a *API) SetRelVersionIntervalWithTx(ctx context.Context, id types.RelID, v
 	return ops.SetRelVersionIntervalWithTx(ctx, id, validFrom, validTo, props, txFrom)
 }
 
+// ExciseNodeValidity ends node id's validity over [a, b) (sigma R7): reads
+// with a valid instant in [a, b) answer ErrNoVersionValidAt (NodeAt,
+// NodeAtTx, the label and property doors, the effective timeline), interval
+// reads no longer see the node there, and reads outside [a, b) keep their
+// answers. It splits the version valid over [a, b) — the current one, open or
+// closed, or a historical one, also several — and is append-only: the rows it
+// appends (void pieces over the parts of [a, b) where a version was valid, and
+// a resumption from b) all carry one transaction instant, recorded under the
+// node's entity lock, so pins before the call see the unsplit version.
+// History() returns the void pieces (Temporal().Void); they never hold the
+// current slot and never answer NodeAsOf. A later SetNodeVersionInterval over
+// [a, b) fills the hole again.
+//
+// Refusals, nothing written: b == 0 (an open tail is CloseVersion's), a <= 0
+// or a >= b (ErrInvalidTimeRange); no version valid anywhere in [a, b)
+// (ErrNoVersionValidAt); an unknown node (ErrNodeNotFound); a hard-deleted one
+// (ErrEntityDeleted). Twins with the same rules: GraphTx.ExciseNodeValidity
+// and BatchBuilder.ExciseNodeValidity.
+func (a *API) ExciseNodeValidity(ctx context.Context, id types.NodeID, from, to types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ExciseNodeValidity(ctx, id, from, to)
+}
+
+// ExciseRelValidity is the relationship counterpart of ExciseNodeValidity.
+func (a *API) ExciseRelValidity(ctx context.Context, id types.RelID, from, to types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ExciseRelValidity(ctx, id, from, to)
+}
+
+// ExciseNodeValidityWithTx is ExciseNodeValidity recorded at the caller's
+// transaction instant txFrom, with the rules of SetNodeVersionIntervalWithTx:
+// Config.AllowTxBackfill (ErrTxBackfillDisabled); txFrom a positive instant
+// not in the future (ErrInvalidTxFrom) and after every TxFrom and TxTo of the
+// node's chain (ErrTxOrder). The commit clock is not advanced. Twins:
+// GraphTx.ExciseNodeValidityWithTx and BatchBuilder.ExciseNodeValidityWithTx
+// (whole-unit pre-flight: one refusal refuses the batch).
+func (a *API) ExciseNodeValidityWithTx(ctx context.Context, id types.NodeID, from, to, txFrom types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ExciseNodeValidityWithTx(ctx, id, from, to, txFrom)
+}
+
+// ExciseRelValidityWithTx is the relationship counterpart of
+// ExciseNodeValidityWithTx.
+func (a *API) ExciseRelValidityWithTx(ctx context.Context, id types.RelID, from, to, txFrom types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ExciseRelValidityWithTx(ctx, id, from, to, txFrom)
+}
+
 // Snapshot captures the graph state at t. EFFECTIVE view: a relationship is
 // included only if it and both its endpoints are valid at t (RelsAt(t) is the
 // declared, unmasked row view and may return more).
@@ -799,6 +870,8 @@ func (a *API) DiffCallback(t1, t2 types.Instant, h DiffHandlers) error {
 }
 
 // NodeInterval returns the interval [valid_from, valid_to) for n.
+//
+// A row without a valid-from starts at its TxFrom (backlog 62).
 func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -808,6 +881,8 @@ func (a *API) NodeInterval(n *types.Node) (start, end types.Instant, err error) 
 }
 
 // RelInterval returns the interval [valid_from, valid_to) for r.
+//
+// A row without a valid-from starts at its TxFrom (backlog 62).
 func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -822,6 +897,8 @@ func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err 
 // the RelMatchesValidTime path. Returns false (no match) on a not-ready graph
 // or nil node — a post-filter consumer treats either as "excluded", which is
 // the safe default. See core.TempOps.NodeMatchesValidTime.
+//
+// A row without a valid-from starts at its TxFrom (backlog 62).
 func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool {
 	ops, err := a.ready()
 	if err != nil {
@@ -836,6 +913,8 @@ func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool 
 // the node path. Returns false (no match) on a not-ready graph or nil rel — a
 // post-filter consumer treats either as "excluded", which is the safe default.
 // See core.TempOps.RelMatchesValidTime.
+//
+// A row without a valid-from starts at its TxFrom (backlog 62).
 func (a *API) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {
 	ops, err := a.ready()
 	if err != nil {
@@ -844,7 +923,8 @@ func (a *API) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts
 	return ops.RelMatchesValidTime(r, opts)
 }
 
-// RelateNodes returns the Allen relation between the validity intervals of x and y.
+// RelateNodes returns the Allen relation between the validity intervals of x and y
+// (as NodeInterval: a row without a valid-from starts at its TxFrom, backlog 62).
 func (a *API) RelateNodes(x, y *types.Node) (types.AllenRelation, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -853,7 +933,8 @@ func (a *API) RelateNodes(x, y *types.Node) (types.AllenRelation, error) {
 	return ops.RelateNodes(x, y)
 }
 
-// RelateRels returns the Allen relation between the validity intervals of x and y.
+// RelateRels returns the Allen relation between the validity intervals of x and y
+// (as RelInterval).
 func (a *API) RelateRels(x, y *types.Relationship) (types.AllenRelation, error) {
 	ops, err := a.ready()
 	if err != nil {

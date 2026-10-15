@@ -3,6 +3,9 @@ package badger
 import (
 	"errors"
 	"fmt"
+	"slices"
+
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -416,18 +419,89 @@ func (bs *Store) ensureRelationshipEndpointRowsLive(start, end types.NodeID) err
 	return bs.ensureNodeRowLive(end)
 }
 
+// ensureNodeRowsLive is ensureNodeRowLive for each of ids, returning the error
+// of the first failing ID in ids' order, as that loop would. Cache hits answer
+// from the cache; the misses are read in ascending key order through one
+// forward-seeking iterator of a scanSnapshot (re-pinned after a flush) instead
+// of one read transaction each, and are not filled into the cache (a batch
+// larger than the LRU would evict the rows the next writes need).
 func (bs *Store) ensureNodeRowsLive(ids []types.NodeID) error {
-	seen := make(map[types.NodeID]struct{}, len(ids))
-	for _, id := range ids {
-		if _, ok := seen[id]; ok {
+	if len(ids) == 1 {
+		return bs.ensureNodeRowLive(ids[0])
+	}
+	var failed map[types.NodeID]error
+	fail := func(id types.NodeID, err error) {
+		if failed == nil {
+			failed = make(map[types.NodeID]error)
+		}
+		if _, ok := failed[id]; !ok {
+			failed[id] = err
+		}
+	}
+	var misses []types.NodeID
+	bs.idxMu.RLock()
+	for _, nid := range ids {
+		switch _, status := bs.nodeCache.GetNoPromote(nid.SnowflakeID()); status {
+		case indexpkg.CacheHit:
+			continue
+		case indexpkg.CacheDeleted:
+			fail(nid, ErrNodeNotFound)
 			continue
 		}
-		seen[id] = struct{}{}
-		if err := bs.ensureNodeRowLive(id); err != nil {
+		if _, exists := bs.nodeIDs[nid]; !exists {
+			fail(nid, ErrNodeNotFound)
+			continue
+		}
+		misses = append(misses, nid)
+	}
+	bs.idxMu.RUnlock()
+	if len(misses) > 0 {
+		slices.Sort(misses)
+		misses = slices.Compact(misses)
+		snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
+		for _, nid := range misses {
+			if err := bs.checkNodeRowInSnapshot(snap, nid); err != nil {
+				fail(nid, err)
+			}
+		}
+		snap.close()
+	}
+	if failed == nil {
+		return nil
+	}
+	for _, nid := range ids {
+		if err, ok := failed[nid]; ok {
 			return err
 		}
 	}
 	return nil
+}
+
+// checkNodeRowInSnapshot is prefetchNodeNoFill's miss branch over a shared
+// scanSnapshot: the cache missed for nid (re-checked here, after which the
+// snapshot's epoch is read), so its row must decode from badger.
+func (bs *Store) checkNodeRowInSnapshot(snap *scanSnapshot, nid types.NodeID) error {
+	id := nid.SnowflakeID()
+	switch _, status := bs.nodeCache.GetNoPromote(id); status {
+	case indexpkg.CacheHit:
+		return nil
+	case indexpkg.CacheDeleted:
+		return ErrNodeNotFound
+	}
+	item := snap.seekAfterMiss(storepkg.NodeKey(id))
+	if item == nil {
+		return ErrNodeNotFound
+	}
+	return item.Value(func(val []byte) error {
+		var w storepkg.NodeWire
+		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
+			return fmt.Errorf("graph: unmarshal node: %w", err)
+		}
+		if _, err := bs.decodeNodeWireForKey(w, id); err != nil {
+			return fmt.Errorf("graph: decode node: %w", err)
+		}
+		return nil
+	})
 }
 
 func relationshipMatchesOutgoing(r *types.Relationship, nid types.NodeID, typeToken uint16) bool {

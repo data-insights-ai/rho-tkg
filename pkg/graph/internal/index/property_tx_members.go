@@ -1,6 +1,11 @@
 package index
 
-import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+import (
+	"cmp"
+	"slices"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
 
 // PropertyTxMembers is the transaction-time membership sidecar of ONE declared
 // property index (backlog 8): canonical value key -> the entities whose rows
@@ -18,12 +23,27 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // 1 M and 10 M postings with >= 20 postings per value; about 100 B per
 // posting when every value is distinct (a plain map per value costs 264 B
 // there).
-type PropertyTxMembers[ID comparable] struct {
+//
+// Ordered views (backlog 69): OrderValue opens, for one value, an ascending
+// view of its members that Record keeps from then on, so MembersAfter pages
+// the members above a cursor in O(log n + page) instead of enumerating the
+// value. A view exists only for the values a paged read asked for; it is
+// built into full exact-capacity chunks and an ascending ID stream fills new
+// ones (sortedChunks.add): 8.06 B per member opened over 1,000,000 members,
+// 8.02 B grown by 1,000,000 ascending records (was 18.6 with the plain insert
+// path; BenchmarkPropertyTxMembersOrderedViewBytes,
+// tasks/evidence/paged-effective/09-view-bytes.txt).
+type PropertyTxMembers[ID cmp.Ordered] struct {
 	values   map[string]txPostings[ID]
 	postings int64
+	ordered  map[string]*sortedChunks[ID]
+	// numeric, nil until OrderNumeric opens it (round 8 request 2): the
+	// value keys by numeric sort key, so MembersInRange visits the values of
+	// a range instead of every value. Record keeps it once open.
+	numeric *numericValueView
 }
 
-type txPostings[ID comparable] struct {
+type txPostings[ID cmp.Ordered] struct {
 	id   ID
 	tx   types.Instant
 	more map[ID]types.Instant
@@ -37,7 +57,7 @@ type TxMember[ID comparable] struct {
 }
 
 // NewPropertyTxMembers returns an empty sidecar.
-func NewPropertyTxMembers[ID comparable]() *PropertyTxMembers[ID] {
+func NewPropertyTxMembers[ID cmp.Ordered]() *PropertyTxMembers[ID] {
 	return &PropertyTxMembers[ID]{values: make(map[string]txPostings[ID])}
 }
 
@@ -65,6 +85,10 @@ func (m *PropertyTxMembers[ID]) Record(vk string, id ID, tx types.Instant) {
 	case !ok:
 		m.values[vk] = txPostings[ID]{id: id, tx: tx}
 		m.postings++
+		m.orderNew(vk, id)
+		if m.numeric != nil {
+			m.numeric.add(vk)
+		}
 		return
 	case p.id == id:
 		if merged := MergeFirstTx(p.tx, tx); merged != p.tx {
@@ -83,6 +107,78 @@ func (m *PropertyTxMembers[ID]) Record(vk string, id ID, tx types.Instant) {
 	}
 	p.more[id] = tx
 	m.postings++
+	m.orderNew(vk, id)
+}
+
+// orderNew adds a new member of vk to vk's ordered view, when one is open.
+func (m *PropertyTxMembers[ID]) orderNew(vk string, id ID) {
+	if o := m.ordered[vk]; o != nil {
+		o.add(id)
+	}
+}
+
+// OrderValue opens vk's ordered view (a no-op when open) and reports whether
+// vk has one: a value without members gets none (MembersAfter answers it
+// empty), so a lookup of an unknown value allocates nothing. The owner calls
+// it under its exclusive lock.
+func (m *PropertyTxMembers[ID]) OrderValue(vk string) bool {
+	if m == nil {
+		return false
+	}
+	if m.ordered[vk] != nil {
+		return true
+	}
+	p, ok := m.values[vk]
+	if !ok {
+		return false
+	}
+	ids := make([]ID, 0, 1+len(p.more))
+	ids = append(ids, p.id)
+	for id := range p.more {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	o := newSortedChunksFrom(ids)
+	if m.ordered == nil {
+		m.ordered = make(map[string]*sortedChunks[ID])
+	}
+	m.ordered[vk] = o
+	return true
+}
+
+// MembersAfter returns at most limit members of vk with an ID above after,
+// ascending, with their bounds (caller-owned). ok is false when vk has members
+// but no ordered view (the owner opens one with OrderValue, then asks again);
+// a value without members answers empty with ok. The owner calls it under at
+// least its shared lock.
+func (m *PropertyTxMembers[ID]) MembersAfter(vk string, after ID, limit int) (out []TxMember[ID], ok bool) {
+	if m == nil {
+		return nil, true
+	}
+	p, has := m.values[vk]
+	if !has {
+		return nil, true
+	}
+	o := m.ordered[vk]
+	if o == nil {
+		return nil, false
+	}
+	out = make([]TxMember[ID], 0, min(max(limit, 0), o.n))
+	if limit <= 0 {
+		return out, true
+	}
+	o.forEachFrom(after, func(id ID) bool {
+		if id == after {
+			return true
+		}
+		tx := p.tx
+		if id != p.id {
+			tx = p.more[id]
+		}
+		out = append(out, TxMember[ID]{ID: id, FirstTx: tx})
+		return len(out) < limit
+	})
+	return out, true
 }
 
 // Merge folds every posting of other into m (other is left unchanged).

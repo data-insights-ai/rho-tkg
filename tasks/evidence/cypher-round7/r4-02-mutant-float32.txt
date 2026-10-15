@@ -1,0 +1,4 @@
+--- FAIL: TestEqualCountMatchesCypherEquality (0.00s)
+    property_index_equal_count_test.go:47: EqualCount(float64 0.1) = 2, true; want 1, true
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.196s

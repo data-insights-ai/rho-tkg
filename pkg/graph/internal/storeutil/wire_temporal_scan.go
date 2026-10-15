@@ -324,6 +324,10 @@ func scanWireTemporalMeta(data []byte) (wireTemporalMetaPartial, bool) {
 			if !captureBool(&out.Retracted) {
 				return out, false
 			}
+		case "vd":
+			if !captureBool(&out.Void) {
+				return out, false
+			}
 		case "vf":
 			if !captureInt(&out.ValidFrom) {
 				return out, false

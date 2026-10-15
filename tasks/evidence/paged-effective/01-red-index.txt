@@ -1,0 +1,14 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index.test]
+pkg/graph/internal/index/property_tx_members_page_test.go:24:16: m.MembersAfter undefined (type *PropertyTxMembers[types.RelID] has no field or method MembersAfter)
+pkg/graph/internal/index/property_tx_members_page_test.go:27:18: m.MembersAfter undefined (type *PropertyTxMembers[types.RelID] has no field or method MembersAfter)
+pkg/graph/internal/index/property_tx_members_page_test.go:30:7: m.OrderValue undefined (type *PropertyTxMembers[types.RelID] has no field or method OrderValue)
+pkg/graph/internal/index/property_tx_members_page_test.go:33:8: m.OrderValue undefined (type *PropertyTxMembers[types.RelID] has no field or method OrderValue)
+pkg/graph/internal/index/property_tx_members_page_test.go:43:16: m.MembersAfter undefined (type *PropertyTxMembers[types.RelID] has no field or method MembersAfter)
+pkg/graph/internal/index/property_tx_members_page_test.go:67:18: m.MembersAfter undefined (type *PropertyTxMembers[types.RelID] has no field or method MembersAfter)
+pkg/graph/internal/index/property_tx_members_page_test.go:74:6: big.OrderValue undefined (type *PropertyTxMembers[types.NodeID] has no field or method OrderValue)
+pkg/graph/internal/index/property_tx_members_page_test.go:81:17: big.MembersAfter undefined (type *PropertyTxMembers[types.NodeID] has no field or method MembersAfter)
+pkg/graph/internal/index/property_tx_members_page_test.go:98:10: nilM.OrderValue undefined (type *PropertyTxMembers[types.RelID] has no field or method OrderValue)
+pkg/graph/internal/index/property_tx_members_page_test.go:101:21: nilM.MembersAfter undefined (type *PropertyTxMembers[types.RelID] has no field or method MembersAfter)
+pkg/graph/internal/index/property_tx_members_page_test.go:101:21: too many errors
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index [build failed]
+FAIL

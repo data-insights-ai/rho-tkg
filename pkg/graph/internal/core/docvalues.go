@@ -107,6 +107,80 @@ func (n *NodeOps) ForEachDocValuesMulti(labels []string, propKeys []string,
 	return scanner.ForEachDocValuesMulti(toks, propKeys, fn)
 }
 
+// nodeDocValuesOrdinalScanner is the OPTIONAL store capability behind
+// ForEachDocValuesOrdinal / ForEachDocValuesMultiOrdinal (round 6 request
+// 11): the DocValues rows with each node's ordinal. Memory, badger (not with
+// DisableOrdinals: it declines) and sharded; tiered numbers no node.
+type nodeDocValuesOrdinalScanner interface {
+	ForEachDocValuesOrdinal(labelToken uint16, propKeys []string, fn func(types.NodeID, uint32, []any, []bool) bool) (gen uint64, ok bool, err error)
+	ForEachDocValuesMultiOrdinal(labelTokens []uint16, propKeys []string, fn func(types.NodeID, uint32, []any, []bool) bool) (gen uint64, ok bool, err error)
+}
+
+// ForEachDocValuesOrdinal is ForEachDocValues with each row's dense node
+// ordinal beside its ID (store.OrdinalCapability; the ordinal a point read of
+// the node carries), so a consumer can mark and index the rows by ordinal
+// instead of by ID (sigma-tkgd round 6 request 11). Same rows, order, gen and
+// Gate-2 contract as ForEachDocValues. ok=false (no error, fn not called)
+// where ForEachDocValues declines, and where the store numbers no node: a
+// store without the capability (tiered, external stores) or a badger store
+// opened with DisableOrdinals. Never a row with ordinal 0 for a node the
+// store numbers.
+func (n *NodeOps) ForEachDocValuesOrdinal(label string, propKeys []string,
+	fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return 0, false, err
+	}
+	scanner, native := c.store.(nodeDocValuesOrdinalScanner)
+	if !native {
+		return 0, false, nil
+	}
+	var tok uint16
+	var found bool
+	if err := c.readUnderRLock(func() error {
+		tok, found = c.lookupLabelLocked(label)
+		return nil
+	}); err != nil {
+		return 0, false, err
+	}
+	if !found {
+		return 0, false, nil // unknown label — caller falls back (finds zero rows)
+	}
+	return scanner.ForEachDocValuesOrdinal(tok, propKeys, fn)
+}
+
+// ForEachDocValuesMultiOrdinal is ForEachDocValuesMulti with each row's node
+// ordinal, under ForEachDocValuesOrdinal's contract (an empty intersection of
+// known labels is served: ok=true, no rows).
+func (n *NodeOps) ForEachDocValuesMultiOrdinal(labels []string, propKeys []string,
+	fn func(id types.NodeID, ordinal uint32, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return 0, false, err
+	}
+	scanner, native := c.store.(nodeDocValuesOrdinalScanner)
+	if !native || len(labels) == 0 {
+		return 0, false, nil
+	}
+	toks := make([]uint16, 0, len(labels))
+	if err := c.readUnderRLock(func() error {
+		for _, label := range labels {
+			tok, found := c.lookupLabelLocked(label)
+			if !found {
+				return nil
+			}
+			toks = append(toks, tok)
+		}
+		return nil
+	}); err != nil {
+		return 0, false, err
+	}
+	if len(toks) != len(labels) {
+		return 0, false, nil // an unknown label — caller falls back (finds zero rows)
+	}
+	return scanner.ForEachDocValuesMultiOrdinal(toks, propKeys, fn)
+}
+
 // DocValuesSnapshot returns a random-access point-lookup handle over a single
 // label's cached column snapshot — the X5 expand-aggregation target side, fetching
 // a node's properties by ID without materializing it. ok=false (not an error) when
@@ -273,20 +347,18 @@ func (c *Core) buildAsOfColumns(label string, propKeys []string, txAt types.Inst
 			}
 			return nd.GetProperty(key)
 		}
-		getTemporal := func(id types.NodeID) (int64, int64, bool) {
+		getTemporal := func(id types.NodeID) (int64, int64, int64, bool) {
 			nd, present := byID[id]
 			if !present {
-				return 0, 0, false
+				return 0, 0, 0, false
 			}
-			f, t, ok := nd.ValidRange()
-			// EntityValidFrom's rule: an unset ValidFrom means the entity is valid
-			// from its MINT time, not from the epoch. Storing the raw 0 would make a
+			// The effective start (storeutil.NodeValidFrom: an unset ValidFrom is
+			// the row's TxFrom, not the epoch). Storing the raw 0 would make a
 			// columnar reader disagree with every row-path filter on exactly those
 			// nodes (Pattern 38).
-			if !ok || f == 0 {
-				f = storeutil.SnowflakeInstant(id.SnowflakeID())
-			}
-			return int64(f), int64(t), true
+			_, t, _ := nd.ValidRange()
+			f := int64(storeutil.NodeValidFrom(nd))
+			return f, int64(t), f, true
 		}
 		col = indexpkg.BuildLabelDocValues(epoch, ids, buildKeys, getProp, getTemporal)
 		return nil

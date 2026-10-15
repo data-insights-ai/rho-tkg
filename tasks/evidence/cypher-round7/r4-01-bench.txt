@@ -1,0 +1,12 @@
+BenchmarkCountByPropertyValue/memory/lookup         	    3940	    346937 ns/op	   65184 B/op	    3008 allocs/op
+BenchmarkCountByPropertyValue/memory/lookup         	    3882	    318403 ns/op	   65184 B/op	    3008 allocs/op
+BenchmarkCountByPropertyValue/memory/lookup         	    3951	    316263 ns/op	   65184 B/op	    3008 allocs/op
+BenchmarkCountByPropertyValue/memory/count          	 4157163	       290.9 ns/op	      64 B/op	      12 allocs/op
+BenchmarkCountByPropertyValue/memory/count          	 4444076	       279.1 ns/op	      64 B/op	      12 allocs/op
+BenchmarkCountByPropertyValue/memory/count          	 4533024	       279.1 ns/op	      64 B/op	      12 allocs/op
+BenchmarkCountByPropertyValue/badger/lookup         	     110	  10182873 ns/op	 8858915 B/op	   86314 allocs/op
+BenchmarkCountByPropertyValue/badger/lookup         	     156	   7759110 ns/op	 6148747 B/op	   83925 allocs/op
+BenchmarkCountByPropertyValue/badger/lookup         	     151	   7956164 ns/op	 6149305 B/op	   83926 allocs/op
+BenchmarkCountByPropertyValue/badger/count          	 4116544	       290.1 ns/op	      64 B/op	      12 allocs/op
+BenchmarkCountByPropertyValue/badger/count          	 4205052	       287.7 ns/op	      64 B/op	      12 allocs/op
+BenchmarkCountByPropertyValue/badger/count          	 4075558	       291.7 ns/op	      64 B/op	      12 allocs/op

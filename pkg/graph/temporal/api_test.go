@@ -80,9 +80,7 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 		t.Fatalf("typed-nil NodeAt = %v, want ErrNilGraph", err)
 	}
 
-	// NodeMatchesValidTime / RelMatchesValidTime return bool, not error: a
-	// not-ready graph must report "not valid" (false), the safe default for a
-	// post-filter consumer.
+	// NodeMatchesValidTime / RelMatchesValidTime return bool: a not-ready graph reports false.
 	var nilGraphAPI *API
 	if nilGraphAPI.NodeMatchesValidTime(nil, storepkg.QueryOpts{}) {
 		t.Fatal("nil-graph NodeMatchesValidTime = true, want false")
@@ -445,6 +443,30 @@ func (s *temporalOpsSpy) SetRelVersionIntervalWithTx(ctx context.Context, id typ
 	s.record("SetRelVersionIntervalWithTx")
 	s.lastIv = ivCall{id: int64(id), vf: validFrom, vt: validTo, props: props, tx: txFrom}
 	return nil, s.err
+}
+
+func (s *temporalOpsSpy) ExciseNodeValidity(ctx context.Context, id types.NodeID, a, b types.Instant) error {
+	s.record("ExciseNodeValidity")
+	s.lastIv = ivCall{id: int64(id), vf: a, vt: b}
+	return s.err
+}
+
+func (s *temporalOpsSpy) ExciseRelValidity(ctx context.Context, id types.RelID, a, b types.Instant) error {
+	s.record("ExciseRelValidity")
+	s.lastIv = ivCall{id: int64(id), vf: a, vt: b}
+	return s.err
+}
+
+func (s *temporalOpsSpy) ExciseNodeValidityWithTx(ctx context.Context, id types.NodeID, a, b, txFrom types.Instant) error {
+	s.record("ExciseNodeValidityWithTx")
+	s.lastIv = ivCall{id: int64(id), vf: a, vt: b, tx: txFrom}
+	return s.err
+}
+
+func (s *temporalOpsSpy) ExciseRelValidityWithTx(ctx context.Context, id types.RelID, a, b, txFrom types.Instant) error {
+	s.record("ExciseRelValidityWithTx")
+	s.lastIv = ivCall{id: int64(id), vf: a, vt: b, tx: txFrom}
+	return s.err
 }
 
 func (s *temporalOpsSpy) Snapshot(tm types.Instant) (*GraphSnapshot, error) {

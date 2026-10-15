@@ -79,9 +79,8 @@ func (t *TempOps) RelsAt(at types.Instant) ([]*types.Relationship, error) {
 }
 
 func (c *Core) relationshipsAtLocked(at types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
-	// had no retention gate, so only the relationship family applies (their
-	// node-purge behaviour is unchanged).
+	// Relationship-purge watermarks (backlog 21): only the relationship
+	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", at); err != nil {
 		return nil, err
 	}
@@ -259,9 +258,8 @@ func (t *TempOps) RelsDuring(start, end types.Instant) ([]*types.Relationship, e
 }
 
 func (c *Core) relsDuringLocked(start, end types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
-	// had no retention gate, so only the relationship family applies (their
-	// node-purge behaviour is unchanged).
+	// Relationship-purge watermarks (backlog 21): only the relationship
+	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", start); err != nil {
 		return nil, err
 	}
@@ -383,9 +381,8 @@ func (t *TempOps) RelsRelating(from, to types.Instant, rels types.AllenRelationS
 }
 
 func (c *Core) relsRelatingLocked(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
-	// had no retention gate, so only the relationship family applies (their
-	// node-purge behaviour is unchanged).
+	// Relationship-purge watermarks (backlog 21): only the relationship
+	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", from); err != nil {
 		return nil, err
 	}
@@ -450,16 +447,14 @@ func (c *Core) nodeAtLocked(id types.NodeID, at types.Instant) (*types.Node, err
 // answers a point query NodeAt(validAt) / NodeAtTx(validAt, txAt), letting the
 // caller skip the full-history materialize + decode + scan.
 //
-// BACKLOG 10b removed the original version of this shortcut: it assumed no
-// history row could ever outrank the open current row's belief, an assumption
-// a bounded bitemporal cascade correction can break — a correction can insert
-// a HISTORY row with a NEWER TxFrom than an untouched, still-open current
-// row, without ever replacing current (see the 10b commit for the full
-// mechanism). BACKLOG 10c restores this shortcut SAFELY by gating it on an
-// explicit invariant instead of the broken assumption: current only answers
-// the query if it IS the newest belief anywhere in the entity's WHOLE version
-// chain (current + every history row) — the store.NodeBeliefWatermarkCapability
-// sidecar tracks exactly that maximum. If current's own TxFrom equals the
+// A history row can outrank the open current row's belief: a bounded
+// bitemporal cascade correction can insert a HISTORY row with a NEWER TxFrom
+// than an untouched, still-open current row, without ever replacing current
+// (BACKLOG 10b). So the shortcut is gated (BACKLOG 10c) on an explicit
+// invariant: current only answers the query if it IS the newest belief
+// anywhere in the entity's WHOLE version chain (current + every history row)
+// — the store.NodeBeliefWatermarkCapability sidecar tracks exactly that
+// maximum. If current's own TxFrom equals the
 // watermark, no history row (however it got there) can outrank it for any
 // validAt at or after current's own valid-from, so the shortcut is sound. If
 // the watermark is unknown (capability absent, e.g. tiered/sharded) or does
@@ -477,7 +472,7 @@ func (c *Core) nodeCurrentAnswersAt(current *types.Node, validAt, txAt types.Ins
 	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
 		return false
 	}
-	if validAt < c.nodeSortValidFrom(current) {
+	if validAt < c.nodeValidFrom(current) {
 		return false
 	}
 	if c.nodeBeliefWatermark == nil {
@@ -502,7 +497,7 @@ func (c *Core) relCurrentAnswersAt(current *types.Relationship, validAt, txAt ty
 	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
 		return false
 	}
-	if validAt < c.relSortValidFrom(current) {
+	if validAt < c.relValidFrom(current) {
 		return false
 	}
 	if c.relBeliefWatermark == nil {
@@ -518,7 +513,7 @@ func (c *Core) relCurrentAnswersAt(current *types.Relationship, validAt, txAt ty
 // nodeAtLockedTx is the bitemporal variant of nodeAtLocked: it filters the
 // version chain to only versions visible at txAt (TxFrom <= txAt < TxTo)
 // before resolving the valid-time match. txAt == 0 returns the same chain as
-// nodeAtLocked (no TX filter — current behaviour).
+// nodeAtLocked (no TX filter).
 func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
@@ -693,8 +688,8 @@ func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationshi
 }
 
 // relAtLockedTx is the bitemporal variant of relAtLocked. See nodeAtLockedTx
-// for the BACKLOG 10b/10c history of the current-row-alone shortcut
-// (relCurrentAnswersAt).
+// and nodeCurrentAnswersAt for the BACKLOG 10b/10c gate on the
+// current-row-alone shortcut (relCurrentAnswersAt).
 func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
@@ -826,9 +821,8 @@ func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.N
 }
 
 func (c *Core) neighborsAtLocked(nodeID types.NodeID, at types.Instant) ([]*types.Node, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
-	// had no retention gate, so only the relationship family applies (their
-	// node-purge behaviour is unchanged).
+	// Relationship-purge watermarks (backlog 21): only the relationship
+	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", at); err != nil {
 		return nil, err
 	}
@@ -962,9 +956,8 @@ func (t *TempOps) directionalRelsAt(nodeID types.NodeID, at types.Instant, outgo
 }
 
 func (c *Core) directionalRelsAtLocked(nodeID types.NodeID, at types.Instant, outgoing bool) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
-	// had no retention gate, so only the relationship family applies (their
-	// node-purge behaviour is unchanged).
+	// Relationship-purge watermarks (backlog 21): only the relationship
+	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", at); err != nil {
 		return nil, err
 	}
@@ -1093,6 +1086,10 @@ func (c *Core) nodesByLabelPropertyAtLocked(label, key string, value any, at typ
 	if err != nil {
 		return nil, err
 	}
+	elements, err := c.nodeIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	var result []*types.Node
 	if err := c.forEachNodePropertyCandidateID(tok, map[string]string{key: targetKey}, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.NodeID) error {
 		n, err := c.nodeAtLocked(id, at)
@@ -1102,10 +1099,7 @@ func (c *Core) nodesByLabelPropertyAtLocked(label, key string, value any, at typ
 			}
 			return err
 		}
-		if !n.HasLabelTokenRaw(tok) {
-			return nil
-		}
-		if valueKey, found := n.IndexablePropertyValueKey(key); found && valueKey == targetKey {
+		if n.HasLabelTokenRaw(tok) && n.HasPropertyIndexKey(key, elements, targetKey) {
 			result = append(result, n)
 		}
 		return nil
@@ -1191,12 +1185,12 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 			candIDs = kept
 		}
 	}
+	elements, err := c.nodeIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	pred := func(n *types.Node) bool {
-		if !n.HasLabelTokenRaw(tok) {
-			return false
-		}
-		gotKey, found := n.IndexablePropertyValueKey(key)
-		return found && gotKey == targetKey
+		return n.HasLabelTokenRaw(tok) && n.HasPropertyIndexKey(key, elements, targetKey)
 	}
 	var result []*types.Node
 	for _, id := range candIDs {
@@ -1276,9 +1270,8 @@ func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.
 }
 
 func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
-	// had no retention gate, so only the relationship family applies (their
-	// node-purge behaviour is unchanged).
+	// Relationship-purge watermarks (backlog 21): only the relationship
+	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention(relType, at); err != nil {
 		return nil, err
 	}
@@ -1294,6 +1287,10 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 	if err != nil {
 		return nil, err
 	}
+	elements, err := c.relIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	var result []*types.Relationship
 	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
@@ -1303,10 +1300,7 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 			}
 			return err
 		}
-		if !r.HasTypeTokenRaw(tok) {
-			return nil
-		}
-		if valueKey, found := r.IndexablePropertyValueKey(key); found && valueKey == targetKey {
+		if r.HasTypeTokenRaw(tok) && r.HasPropertyIndexKey(key, elements, targetKey) {
 			result = append(result, r)
 		}
 		return nil
@@ -1540,9 +1534,8 @@ func (t *TempOps) RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, 
 }
 
 func (c *Core) relsAtLockedTx(validAt, txAt types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
-	// had no retention gate, so only the relationship family applies (their
-	// node-purge behaviour is unchanged).
+	// Relationship-purge watermarks (backlog 21): only the relationship
+	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", relsAtTxPin(validAt, txAt)); err != nil {
 		return nil, err
 	}
@@ -1650,9 +1643,8 @@ func (t *TempOps) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relations
 }
 
 func (c *Core) relsDuringTxLocked(start, end, txAt types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
-	// had no retention gate, so only the relationship family applies (their
-	// node-purge behaviour is unchanged).
+	// Relationship-purge watermarks (backlog 21): only the relationship
+	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention("", relsAtTxPin(start, txAt)); err != nil {
 		return nil, err
 	}
@@ -1676,9 +1668,8 @@ func (c *Core) relsDuringTxLocked(start, end, txAt types.Instant) ([]*types.Rela
 }
 
 func (c *Core) relsByTypePropertyDuringLocked(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error) {
-	// Relationship-purge watermarks (backlog 21): the doors on this helper
-	// had no retention gate, so only the relationship family applies (their
-	// node-purge behaviour is unchanged).
+	// Relationship-purge watermarks (backlog 21): only the relationship
+	// family applies on this door (node-purge behaviour is unchanged).
 	if err := c.checkRelsOnlyRetention(relType, start); err != nil {
 		return nil, err
 	}
@@ -1694,12 +1685,12 @@ func (c *Core) relsByTypePropertyDuringLocked(relType, key string, value any, st
 	if err != nil {
 		return nil, err
 	}
+	elements, err := c.relIndexElements(tok, key)
+	if err != nil {
+		return nil, err
+	}
 	pred := func(r *types.Relationship) bool {
-		if !r.HasTypeTokenRaw(tok) {
-			return false
-		}
-		gotKey, found := r.IndexablePropertyValueKey(key)
-		return found && gotKey == targetKey
+		return r.HasTypeTokenRaw(tok) && r.HasPropertyIndexKey(key, elements, targetKey)
 	}
 	var result []*types.Relationship
 	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end}, func(id types.RelID) error {

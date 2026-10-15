@@ -44,8 +44,8 @@ import (
 // arm (ascending by start, ties by version — sortNodeChainForResolve), the end
 // of each row's belief: the smallest start S >= start(row) of a replacing row
 // newer than it (0: none), aligned with chain; nil when no row of the chain
-// was replaced. start is the resolver's start key (nodeSortValidFrom /
-// relSortValidFrom), so chain is sorted by it. The returned caps live in sc
+// was replaced. start is the resolver's start key (nodeValidFrom /
+// relValidFrom), so chain is sorted by it. The returned caps live in sc
 // (supersessionScratchPool): the caller reads them before releasing sc.
 //
 // O(n log n) without a sort on the usual chain: the replaced (TxTo, version)
