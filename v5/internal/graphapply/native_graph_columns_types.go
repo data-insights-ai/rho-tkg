@@ -31,9 +31,14 @@ type nativeColumnPolicy struct {
 	CacheBytes                                                   int64
 	MemTableBytes                                                uint64
 	Lifetime                                                     time.Duration
+	Version                                                      uint8    `json:",omitzero"` // fresh aggregate-row allowance; legacy zero bytes/recipe unchanged
+	Admission                                                    [32]byte `json:",omitzero"` // fresh immutable workload/budget identity; no source authority
 }
 
 func (p nativeColumnPolicy) validate() error {
+	if p.Version > 1 || p.Version == 0 && p.Admission != ([32]byte{}) {
+		return errInvalid
+	}
 	if p.ChunkRecords < 1 || p.ChunkRecords > 16 || p.ChunkRows < 1 || p.ChunkRows > 32 || p.ChunkBytes < 1024 || p.ChunkBytes > 64<<10 || p.FrameBytes < 256 || p.FrameBytes > 64<<10 || p.MaxGenerations < 1 || p.MaxGenerations > 1024 || p.MaxChunks < 1 || p.MaxChunks > 1<<40 || p.MaxRetainedBytes < 4*nativeColumnMetadataBytes || p.MaxRetainedBytes > 1<<62 || p.MaxWorkRecords < 1 || p.MaxWorkBytes < uint64(p.ChunkBytes) || p.MaxDecodedRows < 1 || p.MaxOutputBytes < uint64(p.ChunkBytes) || p.CacheBytes < 64<<10 || p.CacheBytes > 1<<30 || p.MemTableBytes < 64<<10 || p.MemTableBytes > 64<<20 || p.Lifetime <= 0 || p.Lifetime > time.Minute {
 		return errInvalid
 	}

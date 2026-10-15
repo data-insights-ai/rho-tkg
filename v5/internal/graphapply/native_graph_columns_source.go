@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
@@ -21,6 +22,8 @@ import (
 type nativeColumnSource struct {
 	mu                       sync.Mutex
 	ctx                      context.Context
+	issued                   time.Time
+	fullTTL                  bool
 	cancel                   context.CancelFunc
 	closed                   bool
 	stop                     func() bool
@@ -42,8 +45,9 @@ type nativeColumnSource struct {
 // A failed admitted capture retires its full prepaid allowance. This receipt
 // carries no live view, token, secret or graph authority.
 type nativeColumnSourceFailure struct {
-	Charged nativeColumnWork
-	Cause   error
+	Charged                        nativeColumnWork
+	RPCs, RequestBytes, ReplyBytes uint64
+	Cause                          error `json:"-"` // internal errors.Is/Unwrap only; never reconstruct authority from diagnostics
 }
 
 func (e *nativeColumnSourceFailure) Error() string {
@@ -70,6 +74,17 @@ func nativeColumnLimitAllowance(policy raftlog.ApplicationPolicy, l materializer
 	decoded := 8 * min(declared, uint64(p.FrameBytes))
 	count := uint64(p.ChunkRecords + 1)
 	page := nativeColumnWork{Records: count * (16 + uint64(p.ChunkRows*5+3)*uint64(catalogRows) + uint64(l.allocation.readRows)), Bytes: count * (8192 + 8*uint64(policy.MaxImageBytes) + 8*uint64(policy.MaxOutcomeBytes) + 8*uint64(policy.MaxChangeBytes) + uint64(p.ChunkRows*5+3)*uint64(catalogBytes) + 4*uint64(l.outputBytes) + uint64(16*p.ChunkBytes)), DecodedRows: count * decoded, OutputBytes: count * (4*uint64(l.outputBytes) + uint64(16*p.ChunkBytes))}
+	if p.Version == 1 {
+		// The chunk accepts AT MOST ChunkRows across all frames. page hydrates
+		// at most one additional rejected lookahead (<=ChunkRows); frame's
+		// over-row refusal can inspect Entity/Property before noticing the cap.
+		// Three catalog calls per attempted frame cover open plus that pair;
+		// five per admitted/lookahead row cover entity/property/Before/After/life.
+		// Full raw/decode/output/allocation terms still apply to EVERY frame.
+		catalogCalls := 3*count + 10*uint64(p.ChunkRows)
+		page.Records = count*(16+uint64(l.allocation.readRows)) + catalogCalls*uint64(catalogRows)
+		page.Bytes = count*(8192+8*uint64(policy.MaxImageBytes)+8*uint64(policy.MaxOutcomeBytes)+8*uint64(policy.MaxChangeBytes)+4*uint64(l.outputBytes)+uint64(16*p.ChunkBytes)) + catalogCalls*uint64(catalogBytes)
+	}
 	return capture, page, nil
 }
 func nativeColumnSourceAllowance(hosts [2]*allocationHost, p nativeColumnPolicy) (open, grant nativeColumnWork, err error) {
@@ -148,8 +163,15 @@ func newNativeColumnSource(ctx context.Context, hosts [2]*allocationHost, initia
 	if err != nil {
 		return nil, err
 	}
+	issued := time.Now()
 	owner, cancel := context.WithTimeout(ctx, policy.Lifetime)
-	s := &nativeColumnSource{ctx: owner, cancel: cancel, hosts: hosts, initial: first, final: last, openWork: open, grant: grant, charged: open}
+	deadline, _ := owner.Deadline()
+	parentDeadline, parentBounded := ctx.Deadline()
+	fullTTL := !parentBounded || deadline.Before(parentDeadline)
+	if fullTTL {
+		issued = deadline.Add(-policy.Lifetime)
+	}
+	s := &nativeColumnSource{ctx: owner, issued: issued, fullTTL: fullTTL, cancel: cancel, hosts: hosts, initial: first, final: last, openWork: open, grant: grant, charged: open}
 	defer func() {
 		if err != nil {
 			err = &nativeColumnSourceFailure{Charged: open, Cause: errors.Join(err, s.Close())}
@@ -939,8 +961,15 @@ func newPartitionNativeColumnSource(ctx context.Context, c *crossProcessCoordina
 	if !open.admit(grant, p) {
 		return nil, errLimit
 	}
+	issued := time.Now()
 	owner, cancel := context.WithTimeout(ctx, p.Lifetime)
-	s := &nativeColumnSource{ctx: owner, cancel: cancel, initial: first, final: last, openWork: open, grant: grant, charged: open, meter: new(nativeColumnTransportMeter)}
+	deadline, _ := owner.Deadline()
+	parentDeadline, parentBounded := ctx.Deadline()
+	fullTTL := !parentBounded || deadline.Before(parentDeadline)
+	if fullTTL {
+		issued = deadline.Add(-p.Lifetime)
+	}
+	s := &nativeColumnSource{ctx: owner, issued: issued, fullTTL: fullTTL, cancel: cancel, initial: first, final: last, openWork: open, grant: grant, charged: open, meter: new(nativeColumnTransportMeter)}
 	s.hosts[group] = h
 	s.binding = nativeColumnBinding{Version: 1, Layout: nativeColumnLayout, Coverage: 1 << group, Policy: p, Agreement: sha256.Sum256([]byte("rho-tkg:V2:partition-local-native-change-columns:v1\x00authenticated-full-cuts;explicit-local-prefix-coverage;complete-native-originals;typed-i64;exact-native-scope;local-quiescence;retain-all;no-authority\x00"))}
 	wrapped := make(map[uint64]graphPeerWireTransport, 2)
@@ -950,7 +979,9 @@ func newPartitionNativeColumnSource(ctx context.Context, c *crossProcessCoordina
 	s.coordinator = &crossProcessCoordinator{host: h, transports: wrapped, streams: c.streams}
 	defer func() {
 		if err != nil {
-			err = &nativeColumnSourceFailure{Charged: open, Cause: errors.Join(err, s.Close())}
+			cause := errors.Join(err, s.Close())
+			rpcs, requestBytes, replyBytes := s.meter.snapshot()
+			err = &nativeColumnSourceFailure{Charged: open, RPCs: rpcs, RequestBytes: requestBytes, ReplyBytes: replyBytes, Cause: cause}
 		}
 	}()
 	s.owner, err = graphReadNonce()
