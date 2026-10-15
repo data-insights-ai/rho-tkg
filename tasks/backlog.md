@@ -505,14 +505,14 @@ selectors, snapshot-to-feed, cross-edge uniqueness, immutable columns,
 late correction and ownership transfer;
 their fresh owned transport adapters cover
 local/1/20/100ms. Native has create/update, contention, cross-edge, snapshot-to-feed,
-selector and immutable-column source drivers across local/1/20/100ms, with local
-paired comparisons. Unsupported semantics
+selector, immutable-column and late-correction source drivers across
+local/1/20/100ms, with local paired comparisons. Unsupported semantics
 or transport refuse before effects.
 Each family/transport matrix contains 360 fresh cells; the complete eight-family,
 four-transport matrix contains 11,520 cells per engine.
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
-No new cell, guard or runtime gate has run. Native late-correction and
-transfer/retained-pins drivers remain implementation work. FDB feed business accounting is source-integrated at
+No new cell, guard or runtime gate has run. The native transfer/retained-pins
+driver remains implementation work. FDB feed business accounting is source-integrated at
 `4218c9a7`: an explicit optional extension joins create/update phase walls,
 including each seed and complete worker drain, to raw begin/end markers and
 useful originals. Same-clock queued-start/worker-stop samples supply complete
@@ -647,6 +647,16 @@ local/RTT dispatch retain separate family artifacts. The checker requires the
 actual business-participant fraction rather than inferring it from endpoint IDs;
 setup and physical transport costs are separately attributed. Authored guards,
 runtime qualification and native parity remain pending.
+The native late-correction workload is source-integrated at `185fcbc4`: only
+the first half receives guarded scalar corrections; the retained cut stays5
+and current state contains corrected6 plus unchanged5. Three genuine endpoint
+continuations per cut provide complete outgoing/incoming5/6/phantom7 predicates,
+with original-bound hydration and independent exact-set joins. Its fresh policy
+funds nine scan-equivalent passes under five query originals; prior profiles
+keep their original allowances. Complete native/cache columns, held-reader
+retirement refusal and same-directory restart use the half-cohort row/provenance
+census. Native actual RTT routes and local paired comparison are wired. No
+compilation, execution, capacity or efficiency acceptance is claimed.
 The FDB snapshot-to-feed source is integrated at `5c14f42c`/`bb867775`:
 Its fresh owned transport adapter is source-integrated at `7f4a4fb8`: actual
 receiver-ingress delay setup, probes, same-deadline client replacement, cleanup
@@ -838,7 +848,10 @@ replies remain distinct from returned append packets followed by a failed Step;
 the checker joins native entry/term/packet identity and the killed incarnation.
 Initial occurrences, leader/message variants, other P-row and applicable
 publication/import/GC conjunctions remain source gaps. All three finite profiles
-remain unexecuted; these source checkpoints do not complete P06 or D.
+remain unexecuted; these source checkpoints do not complete P06 or D. Source
+review found that ordinary fixture reconnect rejects retained pending runs;
+a fresh-profile reassociation preserving the actual coordinator and private
+originals is in implementation before these cases can qualify.
 The first actual state/process composition is source-integrated at `7081f9ff`:
 twelve import Begin/Append/seal/activation/unclaimed-retirement/physical-clear
 cells select the real native batch before or after Commit(Sync), persist its
@@ -949,8 +962,8 @@ Current worker lanes: Sol 6.1/high for the matching FDB retained-only workload
 adapter and complete independent cross-engine join;
 Sol 6.1/high for the finite applicable protocol/storage/message/leader/conflict
 composition registry and driver;
-Sol 6.1/high for the remaining native late-correction and transfer workload
-families, plus the explicit matched guarded-update follow-ups. These packages
+Sol 6.1/high for the remaining native transfer workload and its actual bounded
+protocol admission, plus the explicit matched guarded-update follow-ups. These packages
 are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
