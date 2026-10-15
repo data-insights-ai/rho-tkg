@@ -546,9 +546,9 @@ envelopes to eight subpages and all envelopes to 32/64 KiB; the existing
 128-write undo ceiling remains. All 13 frozen blobs and nine complete current
 parents were verified, with pinned parser/format and whitespace checks only.
 Actual transfer and capacity remain open: import plus undo reservation bytes
-must also fit the unchanged 1 TiB ceiling. A conservative upper bound must
-include actual packing, ordinary retained state, the completed first move and
-the second move's active reservations before the driver grows. Source review
+must also fit the unchanged 1 TiB ceiling. Capacity qualification must include
+actual packing, ordinary retained state, the completed first move and the
+second move's active reservations; it does not block authoring the driver. Source review
 rules out smaller page grants alone for the mandatory 1M/100%-cross shape:
 full rewritten index paths enter both the retained manifest and local kernel.
 Those R/K records alone have a conservative 32,734,243,584-byte lower bound
@@ -557,7 +557,7 @@ reserve more than 1 TiB for those bytes at every supported page size up to
 64 KiB, before graph pages and other retained state: with page bytes P, each
 import/undo credit is 81,920 + 16P, so their combined multiplier is at least
 34.5. Resolve this reservation/representation cost without raising ceilings or
-discarding originals before adding the workload. The bounded recovery primitive
+discarding originals. The bounded recovery primitive
 is source-integrated at `c5da369a`: explicit fresh recovery4 byte pools retain
 unchanged per-install maxima. Actual
 committed installations spend retained totals; queued entries project their
@@ -573,8 +573,18 @@ agreements remain unchanged. Source review verified all 23 frozen owned blobs,
 20 complete current parents and three new-file absences; the patch changes
 17 existing files and adds three. Pinned Go1.26.9 parser/format and whitespace
 checks passed only. The new direct native reopen, snapshot-plus-suffix,
-near-quota, terminal and duplicate guards remain unexecuted. Range-move wiring,
-authenticated aggregate transfer bounds and both-move capacity remain open.
+near-quota, terminal and duplicate guards remain unexecuted. Range-move wiring
+is source-integrated at `bef39c2e`: fresh GMI3/GMQ3/GMO3 and GMP6 use independent
+describe/import/undo hard limits. Every accepted import funds its complete
+before-image undo bound; refused pages preserve the accepted prefix and an
+installable refusal until genuine source ABORT. Immutable GM/V originals bind
+the full attempted command and outcome, including retries after terminal abort.
+Scalar reopen checks and incremental AS9 undo/control folding keep validation
+bounded. Shared compact baseline validation now uses reference bytes and native
+graph/replay counts. All 21 frozen source blobs, 19 current parents and two
+new-file absences were verified with pinned parser/format and whitespace only.
+Direct commit, partial undo, refusal, lost-reply, same-original and snapshot guards
+are authored, not executed. Both-move capacity and actual Cost12 remain open.
 At 1M, HOME issuance also
 spans two actual range publications, both of which must move under distinct
 original identities before the driver claims the full routing transition.
@@ -1098,11 +1108,16 @@ retains its original scope. Source/hash, pinned parser/format and whitespace
 checks passed; compilation, runtime, coverage and C acceptance remain open.
 
 Current worker lanes: Sol 6.1/high for the finite P01–P06 protocol/storage
-composition adapters and checker; Sol 6.1/high for pooled range-move admission,
-independent undo and bounded snapshot validation; Sol 6.1/high for the native
-transfer workload proposal after completing the one-file P05 extraction.
+composition adapters and checker; Sol 6.1/high for the FoundationDB placement
+correction proposal after freezing pooled range-move admission; Sol 6.1/high for
+the native transfer workload proposal after completing the one-file P05 extraction.
+The current FDB transfer changes catalog processing ownership but retains its
+original business-key placement. Native movement relocates current graph data;
+after both HOME moves its guarded updates become local. The paired driver must
+match actual current-data routing and preserve old-cut/original authority before
+claiming equivalent post-move participant costs.
 The bounded exploration/seed-controller proposal remains queued. Shared graph
-batching and the recovery byte-pool primitive are source-integrated above;
+batching, recovery byte pools and range-move pool admission are source-integrated above;
 these remaining packages are not integrated or runtime-qualified. A complete
 static 1M workload bound is not a prerequisite to authoring its driver. Preserve
 all required matrix cells and their capacity gates: safe resource refusal does

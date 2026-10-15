@@ -28,6 +28,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   groups bounded graph subpages into one native import with shared staged reads
   and cumulative work budgets. Native batch counts remain separate from logical
   cursors; family packing and the existing 128-write undo limit bound each step.
+  A further explicit agreement uses independent hard retained-byte pools for
+  describe, import and undo. Accepted imports fund their exact before-image
+  undo debt; an installable capacity refusal preserves the accepted cursor until
+  a genuine abort. Immutable per-phase originals preserve retries after abort
+  and reopen. Snapshot validation folds undo records incrementally, and compact
+  baseline validation uses retained reference bytes and native page counts.
   New guards remain unexecuted and large-transfer capacity remains unqualified.
   Logical-group retirement, retention/GC, broader fault evidence and full V2
   remain open.
