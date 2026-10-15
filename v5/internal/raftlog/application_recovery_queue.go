@@ -76,7 +76,7 @@ func recoveryProjected(m metadata, l Limits, pending uint64) (applicationRecover
 	if state.Reservation.ID != ([32]byte{}) {
 		protected, err = recoveryGrowth(state.Reservation, p, l)
 	}
-	if err != nil || state.Config.Version != 2 {
+	if err != nil || state.Config.Version < 2 {
 		return protected, bytes, records, err
 	}
 	terminal, err := terminalGrowth(state.Terminal, p, l)
@@ -206,13 +206,28 @@ func (m applicationRecoveryMetadata) afterApplied(index uint64) applicationRecov
 	return m
 }
 
-func appendRecoveryQueue(dst []byte, queued []applicationRecoveryQueued) []byte {
-	dst = append(dst, 'R', 'Q', 2, 0)
+func appendRecoveryQueue(dst []byte, queued []applicationRecoveryQueued, selected ...uint32) []byte {
+	config := uint32(1)
+	if len(selected) > 0 {
+		config = selected[0]
+	}
+	version := byte(2)
+	if config == 3 {
+		version = 3
+	}
+	dst = append(dst, 'R', 'Q', version, 0)
 	dst = binary.BigEndian.AppendUint32(dst, uint32(len(queued))) // #nosec G115 -- queued owners admitted under the existing 64 KiB metadata frame.
 	for _, q := range queued {
 		dst = binary.BigEndian.AppendUint64(dst, q.Index)
 		dst = append(dst, q.CommandDigest[:]...)
 		if r := q.Purpose.reservation(); r != nil {
+			if config == 3 && !q.Purpose.terminal() {
+				dst = append(dst, 5)
+				dst = binary.BigEndian.AppendUint32(dst, uint32(8+recoveryReservationBytes(*r))) // #nosec G115 -- <=8 bounded spans.
+				dst = binary.BigEndian.AppendUint64(dst, q.ReservationOriginIndex)
+				dst = append(dst, appendRecoverySpanRoot(*r)...)
+				continue
+			}
 			kind := byte(1)
 			if q.Purpose.terminal() {
 				kind = 3
@@ -251,8 +266,16 @@ func appendRecoveryQueue(dst []byte, queued []applicationRecoveryQueued) []byte 
 	return dst
 }
 
-func decodeRecoveryQueue(b []byte, p ApplicationPolicy, l Limits) ([]applicationRecoveryQueued, []byte, error) {
-	if len(b) < 8 || !bytes.Equal(b[:4], []byte{'R', 'Q', 2, 0}) {
+func decodeRecoveryQueue(b []byte, p ApplicationPolicy, l Limits, selected ...uint32) ([]applicationRecoveryQueued, []byte, error) {
+	config := uint32(1)
+	if len(selected) > 0 {
+		config = selected[0]
+	}
+	version := byte(2)
+	if config == 3 {
+		version = 3
+	}
+	if len(b) < 8 || !bytes.Equal(b[:4], []byte{'R', 'Q', version, 0}) {
 		return nil, nil, ErrCorrupt
 	}
 	count := uint64(binary.BigEndian.Uint32(b[4:8]))
@@ -280,7 +303,23 @@ func decodeRecoveryQueue(b []byte, p ApplicationPolicy, l Limits) ([]application
 		payload := b[:int(n)] // #nosec G115 -- n <= uint64(len(b)) above; conversion fits int before slicing.
 		b = b[int(n):]        // #nosec G115 -- n checked against delivered <=64 KiB frame.
 		switch kind {
+		case 5:
+			if config != 3 || len(payload) < 8+recoveryRootFixedBytes {
+				return nil, nil, ErrCorrupt
+			}
+			q.ReservationOriginIndex = binary.BigEndian.Uint64(payload[:8])
+			if q.ReservationOriginIndex == 0 || q.ReservationOriginIndex > q.Index {
+				return nil, nil, ErrCorrupt
+			}
+			r, end, err := readRecoverySpanRoot(payload[8:], p, l)
+			if err != nil || end != len(payload)-8 || r.ID == ([32]byte{}) {
+				return nil, nil, ErrCorrupt
+			}
+			q.Purpose.Reserve = &r
 		case 1, 3:
+			if config == 3 && kind == 1 {
+				return nil, nil, ErrCorrupt
+			}
 			if len(payload) < 76 {
 				return nil, nil, ErrCorrupt
 			}
@@ -397,8 +436,18 @@ func advanceRecoveryQueued(state applicationRecoveryMetadata, q applicationRecov
 		if q.ReservationOriginIndex < q.Index {
 			return state, ApplicationRecoveryCredit{}, nil
 		} // verified retry adds no future credits
+		if err := recoverySpanProfile(state.Config, *q.Purpose.Reserve); err != nil {
+			return state, ApplicationRecoveryCredit{}, err
+		}
 		if _, err := recoveryGrowth(*q.Purpose.Reserve, p, l); err != nil {
 			return state, ApplicationRecoveryCredit{}, err
+		}
+		if state.Config.Version == 3 {
+			for _, span := range q.Purpose.Reserve.Spans {
+				if span.Next != span.First {
+					return state, ApplicationRecoveryCredit{}, ErrInvalid
+				}
+			}
 		}
 		if state.Reservation.ID != ([32]byte{}) {
 			if !sameRecoveryReservation(state.Reservation, *q.Purpose.Reserve) {
@@ -475,14 +524,14 @@ func (s *Store) classifyRecoveryEntriesOutcome(entries []*pb.Entry, view *Applic
 					return nil, ErrInvalid
 				}
 				if prospective.TerminalReserve != nil {
-					if captured.Config.Version != 2 {
+					if captured.Config.Version < 2 {
 						return nil, ErrInvalid
 					}
 					if _, err := terminalGrowth(applicationTerminalBank{*prospective.TerminalReserve}, s.applicationPolicy, s.limits); err != nil {
 						return nil, err
 					}
 				}
-				if prospective.TerminalUse != nil && (captured.Config.Version != 2 || prospective.TerminalUse.CommandDigest != sha256.Sum256(future.GetData()) || prospective.TerminalUse.RetireBefore != 0) {
+				if prospective.TerminalUse != nil && (captured.Config.Version < 2 || prospective.TerminalUse.CommandDigest != sha256.Sum256(future.GetData()) || prospective.TerminalUse.RetireBefore != 0) {
 					return nil, ErrInvalid
 				}
 				if prospective.Reserve != nil {
@@ -511,14 +560,22 @@ func (s *Store) classifyRecoveryEntriesOutcome(entries []*pb.Entry, view *Applic
 			for _, q := range r.Queued {
 				if q.Purpose.Reserve != nil {
 					used += recoveryCreditBytes * len(q.Purpose.Reserve.Credits)
+					if captured.Config.Version == 3 {
+						used += recoverySpanBytes*len(q.Purpose.Reserve.Spans) + 4
+					}
 				}
 			}
-			if recoveryCreditBytes*len(purpose.Reserve.Credits) > maxMetadataBytes-used {
+			extra := recoveryCreditBytes * len(purpose.Reserve.Credits)
+			if captured.Config.Version == 3 {
+				extra += recoverySpanBytes*len(purpose.Reserve.Spans) + 4
+			}
+			if extra > maxMetadataBytes-used {
 				return nil, ErrLimit
 			}
-			owned := *purpose.Reserve
-			owned.Credits = make([]ApplicationRecoveryCredit, len(purpose.Reserve.Credits))
-			copy(owned.Credits, purpose.Reserve.Credits)
+			if err := recoverySpanProfile(captured.Config, *purpose.Reserve); err != nil {
+				return nil, err
+			}
+			owned := cloneRecoveryReservation(*purpose.Reserve)
 			purpose.Reserve = &owned
 		} else {
 			use := *purpose.Use
@@ -552,10 +609,21 @@ func (s *Store) classifyRecoveryEntriesOutcome(entries []*pb.Entry, view *Applic
 			// A genuine original or earlier pending registration must supply the
 			// phase bound. Retried exact commands retain that same bound; they never
 			// mint another future credit or change an unrelated active owner.
-			q.Credit, eErr = captured.credit(*purpose.Use)
+			state := captured
+			if captured.Config.Version == 3 {
+				state.Queued = nil
+				for _, prior := range r.Queued {
+					var e error
+					state, _, e = advanceRecoveryQueued(state, prior, s.applicationPolicy, s.limits)
+					if e != nil {
+						return nil, e
+					}
+				}
+			}
+			q.Credit, eErr = state.credit(*purpose.Use)
 			if eErr != nil {
 				for _, prior := range r.Queued {
-					if prior.Purpose.Reserve != nil {
+					if prior.Purpose.Reserve != nil && captured.Config.Version != 3 {
 						priorState := applicationRecoveryMetadata{Config: captured.Config, Reservation: *prior.Purpose.Reserve}
 						if c, cErr := priorState.credit(*purpose.Use); cErr == nil {
 							q.Credit = c

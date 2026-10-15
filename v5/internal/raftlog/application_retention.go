@@ -102,7 +102,7 @@ func (r applicationRetentionMetadata) syntax(applied uint64) error {
 func validateRetentionMetadata(m metadata) error {
 	r := m.Retention
 	if !r.Config.enabled() {
-		if !r.zero() || m.Transfer.Contract.Version == 5 {
+		if !r.zero() || m.Transfer.Contract.Version >= 5 {
 			return ErrInvalid
 		}
 		return nil
@@ -110,7 +110,7 @@ func validateRetentionMetadata(m metadata) error {
 	if err := r.syntax(m.Applied); err != nil {
 		return err
 	}
-	if !m.App.Policy.Enabled() || !m.Rep.Config.enabled() || m.Rep.SemanticContractID == (ApplicationSemanticContractID{}) || m.Controls.Config.Version != 1 || m.Recovery.Config.Version != 2 || m.Transfer.Contract.Version != 5 || !m.Gen.Limits.enabled() || !m.Gen.Publication.Limits.enabled() {
+	if !m.App.Policy.Enabled() || !m.Rep.Config.enabled() || m.Rep.SemanticContractID == (ApplicationSemanticContractID{}) || m.Controls.Config.Version != 1 || (m.Recovery.Config.Version != 2 || m.Transfer.Contract.Version != 5) && (m.Recovery.Config.Version != 3 || m.Transfer.Contract.Version != 6) || !m.Gen.Limits.enabled() || !m.Gen.Publication.Limits.enabled() {
 		return ErrInvalid
 	}
 	return nil

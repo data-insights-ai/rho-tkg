@@ -57,7 +57,7 @@ func (c ApplicationControlConfig) validate(m metadata) error {
 		}
 		return nil
 	}
-	if c.Version != 1 || !m.App.Policy.Enabled() || !m.Rep.Config.enabled() || m.Rep.SemanticContractID == (ApplicationSemanticContractID{}) || m.Transfer.Contract.Version != 2 && m.Transfer.Contract.Version != 3 && m.Transfer.Contract.Version != 4 && m.Transfer.Contract.Version != 5 || !m.Gen.Limits.enabled() || !m.Gen.Publication.Limits.enabled() {
+	if c.Version != 1 || !m.App.Policy.Enabled() || !m.Rep.Config.enabled() || m.Rep.SemanticContractID == (ApplicationSemanticContractID{}) || m.Transfer.Contract.Version != 2 && m.Transfer.Contract.Version != 3 && m.Transfer.Contract.Version != 4 && m.Transfer.Contract.Version != 5 && m.Transfer.Contract.Version != 6 || !m.Gen.Limits.enabled() || !m.Gen.Publication.Limits.enabled() {
 		return ErrInvalid
 	}
 	if (m.Transfer.Contract.Version >= 3) != m.Recovery.Config.enabled() {

@@ -444,7 +444,7 @@ func (s *Store) CollectApplicationRetention(ctx context.Context, planID [32]byte
 				var reservation ApplicationRecoveryReservation
 				var bank applicationTerminalBank
 				reservation, bank, e = readNativeRecoveryRoot(payload, p, s.limits)
-				if e == nil && (payload[2] != 2 || index == m.Applied && (!sameRecoveryReservation(reservation, m.Recovery.Reservation) || !sameTerminalBank(bank, m.Recovery.Terminal))) {
+				if e == nil && (payload[2] != byte(m.Recovery.Config.Version) || index == m.Applied && (!sameRecoveryReservation(reservation, m.Recovery.Reservation) || !sameTerminalBank(bank, m.Recovery.Terminal))) {
 					e = ErrCorrupt
 				}
 			}
@@ -576,7 +576,7 @@ func (s *Store) scrubRetainedApplicationLocked(ctx context.Context) (err error) 
 	if err != nil {
 		return err
 	}
-	manifest := ApplicationSnapshotManifest{Version: 7, Index: m.Applied, Contract: m.Transfer.Contract, Image: image, Retention: m.Retention.State,
+	manifest := ApplicationSnapshotManifest{Version: m.manifestVersion(), Index: m.Applied, Contract: m.Transfer.Contract, Image: image, Retention: m.Retention.State,
 		ControlBytes: m.Controls.Bytes, ControlRecords: m.Controls.Records, RecoveryBytes: m.Recovery.Bytes, RecoveryRecords: m.Recovery.Records,
 		RecoveryReservation: m.Recovery.Reservation, TerminalReservations: []ApplicationRecoveryReservation(m.Recovery.Terminal)}
 	for i := range manifest.NamespaceBytes {

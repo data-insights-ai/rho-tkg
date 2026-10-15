@@ -50,7 +50,7 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 	if m.SemanticContractID != s.meta.Rep.SemanticContractID {
 		return nil, ErrInvalid
 	}
-	if (m.Version == 7) != s.meta.Retention.Config.enabled() || m.controls() != s.meta.Controls.Config.enabled() || (m.Version >= 5) != s.meta.Recovery.Config.enabled() || m.Version >= 5 && m.Version != s.meta.manifestVersion() {
+	if (m.Version >= 7) != s.meta.Retention.Config.enabled() || m.controls() != s.meta.Controls.Config.enabled() || (m.Version >= 5) != s.meta.Recovery.Config.enabled() || m.Version >= 5 && m.Version != s.meta.manifestVersion() {
 		return nil, ErrInvalid
 	}
 	if !tc.enabled() || m.Identity != tc.Identity || m.Contract != tc.Contract {
@@ -78,7 +78,7 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 	// The owned bounded anchor array shares the existing transfer pin ledger.
 	// It survives verification/preparation and is released only with this import.
 	retentionReservation := uint64(0)
-	if m.Version == 7 {
+	if m.Version >= 7 {
 		retentionReservation = uint64(64 * len(m.Retention.Roots)) // #nosec G115 -- <=64 admitted anchors, including Go padding.
 		if err := s.admitSnapshotOwnership(retentionReservation); err != nil {
 			return nil, err

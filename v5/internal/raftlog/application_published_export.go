@@ -43,6 +43,9 @@ func publishedManifestID(m ApplicationSnapshotManifest) [32]byte {
 	if m.Version == 7 {
 		domain = append([]byte("rho-tkg:application-snapshot-manifest:v7\x00"), m.SemanticContractID[:]...)
 	}
+	if m.Version == 8 {
+		domain = append([]byte("rho-tkg:application-snapshot-manifest:v8\x00"), m.SemanticContractID[:]...)
+	}
 	if m.Version == 4 {
 		domain = append([]byte("rho-tkg:application-snapshot-manifest:v4\x00"), m.SemanticContractID[:]...)
 	}
@@ -63,7 +66,7 @@ func publishedManifestID(m ApplicationSnapshotManifest) [32]byte {
 		sum := snapshotRecoveryHash(m)
 		b = append(b, sum[:]...)
 	}
-	if m.Version == 7 {
+	if m.Version >= 7 {
 		b = appendPortableRetention(b, m.Retention)
 	}
 	return sha256.Sum256(b)
@@ -124,8 +127,8 @@ func (s *Store) BeginPublishedApplicationExport(ctx context.Context, id [32]byte
 		if recoveryErr != nil || nativeRecoveryRootDigest(applicationRecoveryMetadata{Config: s.meta.Recovery.Config, Reservation: recovery, Terminal: terminal}) != p.RecoveryHash {
 			return nil, errors.Join(ErrCorrupt, recoveryErr)
 		}
-		extra := uint64(256 + 32*len(recovery.Credits))
-		if s.meta.Recovery.Config.Version == 2 {
+		extra := uint64(256 + 32*len(recovery.Credits) + 48*len(recovery.Spans))
+		if s.meta.Recovery.Config.Version >= 2 {
 			extra += uint64(2*terminalBankBytes(terminal) + 128*len(terminal))
 		} // admitted bounded credit owner, separate from image/cursors
 		if pin > tc.Limits.MaxPinnedLogicalBytes-s.pinnedApplicationBytes || extra > tc.Limits.MaxPinnedLogicalBytes-s.pinnedApplicationBytes-pin {
@@ -157,7 +160,7 @@ func (s *Store) BeginPublishedApplicationExport(ctx context.Context, id [32]byte
 	if p.Retention != nil {
 		m.Retention = cloneRetentionState(*p.Retention)
 	}
-	if m.Version == 7 {
+	if m.Version >= 7 {
 		// These are temporary build ceilings, not claimed family counts. The
 		// bounded source pass computes each ACTUAL namespace census before a
 		// manifest/descriptor can escape; aggregate totals are already captured.
@@ -224,7 +227,7 @@ func (e *ApplicationExport) BuildManifest(ctx context.Context, b ReadBudget) (bo
 		}
 		m := e.manifest
 		m.NamespaceBytes = state.namespaceBytes
-		if m.Version == 7 {
+		if m.Version >= 7 {
 			m.NamespaceRecords = state.namespaceRows
 		}
 		m.RecordsHash = state.digest

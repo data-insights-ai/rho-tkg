@@ -411,7 +411,7 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 			return ErrInvalid
 		}
 	}
-	if (b.TerminalReserve != nil || b.TerminalUse != nil) && (s.meta.Recovery.Config.Version != 2 || b.RecoveryAdmission == nil) {
+	if (b.TerminalReserve != nil || b.TerminalUse != nil) && (s.meta.Recovery.Config.Version < 2 || b.RecoveryAdmission == nil) {
 		return ErrInvalid
 	}
 	recoveryState := s.meta.Recovery
@@ -531,7 +531,7 @@ func (s *Store) InstallApplication(index uint64, b ApplicationBatch) error {
 		}
 	}
 	if b.RecoveryReserve != nil {
-		if recoveryMetadataFixedBytes+recoveryCreditBytes*len(b.RecoveryReserve.Credits) > maxMetadataBytes {
+		if recoveryReservationBytes(*b.RecoveryReserve)+4 > maxMetadataBytes {
 			return ErrLimit
 		}
 		future, err := recoveryGrowth(*b.RecoveryReserve, p, s.limits)
@@ -1334,7 +1334,7 @@ func (s *Store) ScrubApplication(ctx context.Context) (err error) {
 			if err != nil {
 				return err
 			}
-			if recoveryThrough == s.meta.Applied && (owner != (ApplicationRecoveryOwner{ID: s.meta.Recovery.Reservation.ID, Digest: s.meta.Recovery.Reservation.Digest}) || count != len(s.meta.Recovery.Reservation.Credits) || sha256.Sum256(data) != nativeRecoveryRootDigest(s.meta.Recovery)) {
+			if recoveryThrough == s.meta.Applied && (owner != (ApplicationRecoveryOwner{ID: s.meta.Recovery.Reservation.ID, Digest: s.meta.Recovery.Reservation.Digest}) || count != recoveryEntries(s.meta.Recovery.Reservation) || sha256.Sum256(data) != nativeRecoveryRootDigest(s.meta.Recovery)) {
 				return ErrCorrupt
 			}
 			recoveryBytes += cost

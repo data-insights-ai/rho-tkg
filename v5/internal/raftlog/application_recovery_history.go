@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"slices"
 )
 
 // Native recovery roots use a separate physical namespace. Neither arbitrary
@@ -16,7 +17,7 @@ const recoveryRootTag byte = 20
 const recoveryRootFixedBytes = 4 + 32 + 32 + 4
 
 func recoveryRootBytes(r ApplicationRecoveryReservation) int {
-	return recoveryRootFixedBytes + recoveryCreditBytes*len(r.Credits)
+	return recoveryReservationBytes(r)
 }
 func appendRecoveryRoot(r ApplicationRecoveryReservation) []byte {
 	b := make([]byte, 0, recoveryRootBytes(r))
@@ -71,6 +72,9 @@ func ApplicationContractForPolicyWithRecovery(p ApplicationPolicy, c Application
 	if err := r.validate(); err != nil {
 		return ApplicationContract{}, err
 	}
+	if r.Version == 3 {
+		return ApplicationContract{}, ErrInvalid
+	}
 	contract, err := ApplicationContractForPolicyWithControls(p, c)
 	if err != nil {
 		return ApplicationContract{}, err
@@ -91,6 +95,17 @@ func ApplicationContractForPolicyWithRecovery(p ApplicationPolicy, c Application
 func ApplicationContractForPolicyWithRetention(p ApplicationPolicy, c ApplicationControlConfig, r ApplicationRecoveryConfig, retention ApplicationRetentionConfig) (ApplicationContract, error) {
 	if err := retention.validate(); err != nil {
 		return ApplicationContract{}, err
+	}
+	if r.Version == 3 {
+		if retention.Version != 1 || c.Version != 1 {
+			return ApplicationContract{}, ErrInvalid
+		}
+		contract, err := ApplicationContractForPolicyWithControls(p, c)
+		if err != nil {
+			return ApplicationContract{}, err
+		}
+		contract.Version = 6
+		return contract, nil
 	}
 	contract, err := ApplicationContractForPolicyWithRecovery(p, c, r)
 	if err != nil {
@@ -143,7 +158,7 @@ func (p ApplicationPolicy) measureRecovery(b ApplicationBatch, r ApplicationReco
 	if err != nil {
 		return 0, 0, err
 	}
-	n, rows, err := ApplicationRecoveryRootOverhead(len(r.Credits))
+	n, rows, err := recoveryReservationOverhead(r)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -220,6 +235,7 @@ func cloneRecoveryReservation(r ApplicationRecoveryReservation) ApplicationRecov
 		copy(credits, r.Credits)
 		r.Credits = credits
 	}
+	r.Spans = slices.Clone(r.Spans)
 	return r
 }
 
@@ -235,7 +251,7 @@ func recoveryHashForManifest(m ApplicationSnapshotManifest) [32]byte {
 
 func validatePortableRecoveryReservation(r ApplicationRecoveryReservation) error {
 	if r.ID == ([32]byte{}) {
-		if r.Digest != ([32]byte{}) || len(r.Credits) != 0 {
+		if r.Digest != ([32]byte{}) || recoveryEntries(r) != 0 {
 			return ErrCorrupt
 		}
 		return nil
@@ -246,7 +262,7 @@ func validatePortableRecoveryReservation(r ApplicationRecoveryReservation) error
 
 func recoveryGrowthIfPresent(r ApplicationRecoveryReservation, p ApplicationPolicy, l Limits) (applicationRecoveryGrowth, error) {
 	if r.ID == ([32]byte{}) {
-		if r.Digest != ([32]byte{}) || len(r.Credits) != 0 {
+		if r.Digest != ([32]byte{}) || recoveryEntries(r) != 0 {
 			return applicationRecoveryGrowth{}, ErrInvalid
 		}
 		return applicationRecoveryGrowth{}, nil
@@ -371,7 +387,7 @@ func (v *ApplicationView) RecoveryOwner(ctx context.Context, budget ReadBudget) 
 		expected = &v.s.meta.Recovery.Reservation
 		expectedNative = &v.s.meta.Recovery
 	}
-	if expected != nil && (parsed.ID != expected.ID || parsed.Digest != expected.Digest || count != len(expected.Credits) || sha256.Sum256(data) != expectedNativeRecoveryDigest(expectedNative, *expected)) {
+	if expected != nil && (parsed.ID != expected.ID || parsed.Digest != expected.Digest || count != recoveryEntries(*expected) || sha256.Sum256(data) != expectedNativeRecoveryDigest(expectedNative, *expected)) {
 		return owner, work, v.fail(ErrCorrupt)
 	}
 	if e := ctx.Err(); e != nil {

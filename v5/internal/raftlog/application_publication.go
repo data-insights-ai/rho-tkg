@@ -200,7 +200,7 @@ func cutID(c ApplicationCutReference) ([32]byte, error) {
 	} else if c.RecoveryBytes != 0 || c.RecoveryRecords != 0 || c.RecoveryHash != ([32]byte{}) {
 		return [32]byte{}, ErrInvalid
 	}
-	if c.Contract.Version == 5 {
+	if c.Contract.Version >= 5 {
 		if c.Retention == nil || c.Retention.validate(c.Index) != nil {
 			return [32]byte{}, ErrInvalid
 		}
@@ -213,6 +213,9 @@ func cutID(c ApplicationCutReference) ([32]byte, error) {
 			return [32]byte{}, ErrInvalid
 		}
 		domain = append([]byte("rho-tkg:published-application-cut:v6\x00"), c.SemanticContractID[:]...)
+		if c.Contract.Version == 6 {
+			domain = append([]byte("rho-tkg:published-application-cut:v7\x00"), c.SemanticContractID[:]...)
+		}
 	} else if c.Retention != nil {
 		return [32]byte{}, ErrInvalid
 	}
@@ -230,7 +233,7 @@ func cutID(c ApplicationCutReference) ([32]byte, error) {
 		b = binary.BigEndian.AppendUint64(b, c.RecoveryRecords)
 		b = append(b, c.RecoveryHash[:]...)
 	}
-	if c.Contract.Version == 5 {
+	if c.Contract.Version >= 5 {
 		b = appendPortableRetention(b, *c.Retention)
 	}
 	b = append(b, c.ImageHash[:]...)

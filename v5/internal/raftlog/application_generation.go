@@ -367,7 +367,7 @@ func (s *Store) reserveGeneration(m ApplicationSnapshotManifest) (metadata, byte
 			if err != nil {
 				return prospective, bank, err
 			}
-			if m.Version == 7 {
+			if m.Version >= 7 {
 				imported := s.meta
 				imported.Retention.State = m.Retention
 				imported.Retention.Cursor = applicationRetentionCursor{}
@@ -380,7 +380,7 @@ func (s *Store) reserveGeneration(m ApplicationSnapshotManifest) (metadata, byte
 			imported.Recovery = snapshotRecoveryState(m)
 			imported.Recovery.Bytes = m.RecoveryBytes
 			imported.Recovery.Records = m.RecoveryRecords
-			if m.Version == 7 {
+			if m.Version >= 7 {
 				// Headroom includes both native and published immutable plan copies;
 				// the local deletion cursor is never imported as portable authority.
 				imported.Retention.State = m.Retention

@@ -27,6 +27,8 @@ type ApplicationRecoveryCredit struct {
 type ApplicationRecoveryReservation struct {
 	ID, Digest [32]byte
 	Credits    []ApplicationRecoveryCredit
+	// Spans are exclusive to explicitly configured recovery version three.
+	Spans []ApplicationRecoverySpan
 }
 
 // ApplicationRecoveryUse identifies a single phase. Its command digest is
@@ -54,7 +56,7 @@ type applicationRecoveryGrowth struct {
 
 func (c ApplicationRecoveryConfig) enabled() bool { return c.Version != 0 }
 func (c ApplicationRecoveryConfig) validate() error {
-	if c.Version > 2 {
+	if c.Version > 3 {
 		return ErrInvalid
 	}
 	return nil
@@ -69,6 +71,9 @@ func checkedRecoveryAdd(a, b uint64) (uint64, error) {
 
 func recoveryGrowth(r ApplicationRecoveryReservation, p ApplicationPolicy, l Limits) (applicationRecoveryGrowth, error) {
 	var growth applicationRecoveryGrowth
+	if len(r.Spans) != 0 {
+		return recoverySpanGrowth(r, p, l)
+	}
 	if r.ID == ([32]byte{}) || r.Digest == ([32]byte{}) || len(r.Credits) == 0 || len(r.Credits) > (maxMetadataBytes-recoveryMetadataFixedBytes)/recoveryCreditBytes {
 		return growth, ErrInvalid
 	}
@@ -111,11 +116,16 @@ func recoveryFits(g applicationRecoveryGrowth, retainedBytes, retainedRecords, l
 }
 
 func sameRecoveryReservation(a, b ApplicationRecoveryReservation) bool {
-	if a.ID != b.ID || a.Digest != b.Digest || len(a.Credits) != len(b.Credits) {
+	if a.ID != b.ID || a.Digest != b.Digest || len(a.Credits) != len(b.Credits) || len(a.Spans) != len(b.Spans) {
 		return false
 	}
 	for i := range a.Credits {
 		if a.Credits[i] != b.Credits[i] {
+			return false
+		}
+	}
+	for i := range a.Spans {
+		if a.Spans[i] != b.Spans[i] {
 			return false
 		}
 	}
@@ -126,6 +136,9 @@ func (m applicationRecoveryMetadata) reserve(r ApplicationRecoveryReservation, p
 	if !m.Config.enabled() || m.Config.validate() != nil {
 		return m, ErrInvalid
 	}
+	if err := recoverySpanProfile(m.Config, r); err != nil {
+		return m, err
+	}
 	if _, err := recoveryGrowth(r, p, l); err != nil {
 		return m, err
 	}
@@ -135,11 +148,16 @@ func (m applicationRecoveryMetadata) reserve(r ApplicationRecoveryReservation, p
 		}
 		return m, ErrLimit
 	}
+	if m.Config.Version == 3 {
+		for _, span := range r.Spans {
+			if span.Next != span.First {
+				return m, ErrInvalid
+			}
+		}
+	}
 	// The enclosing metadata/driver admission must precharge this exact typed
 	// array before ownership. This helper is not a public reservation door.
-	credits := make([]ApplicationRecoveryCredit, len(r.Credits))
-	copy(credits, r.Credits)
-	m.Reservation = ApplicationRecoveryReservation{ID: r.ID, Digest: r.Digest, Credits: credits}
+	m.Reservation = cloneRecoveryReservation(r)
 	return m, nil
 }
 
@@ -149,6 +167,9 @@ func (m applicationRecoveryMetadata) credit(use ApplicationRecoveryUse) (Applica
 	}
 	if use.ID != m.Reservation.ID || use.Digest != m.Reservation.Digest {
 		return ApplicationRecoveryCredit{}, ErrInvalid
+	}
+	if m.Config.Version == 3 && len(m.Reservation.Spans) != 0 {
+		return m.spanCredit(use)
 	}
 	for _, credit := range m.Reservation.Credits {
 		if credit.Phase == use.Phase {
@@ -166,14 +187,17 @@ const recoveryMetadataFixedBytes = 4 + 4 + 32 + 32 + 4
 const recoveryCreditBytes = 4 + 4 + 8 + 8
 
 func recoveryMetadataBytes(m applicationRecoveryMetadata) int {
-	n := recoveryMetadataFixedBytes + recoveryCreditBytes*len(m.Reservation.Credits) + 8 + 16 + 32
-	if m.Config.Version == 2 {
+	n := recoveryMetadataFixedBytes + recoveryCreditBytes*len(m.Reservation.Credits) + recoverySpanBytes*len(m.Reservation.Spans) + 8 + 16 + 32
+	if m.Config.Version >= 2 {
 		n += terminalBankBytes(m.Terminal)
 	}
 	for _, q := range m.Queued {
 		n += 45
 		if r := q.Purpose.reservation(); r != nil {
 			n += 76 + recoveryCreditBytes*len(r.Credits)
+			if m.Config.Version == 3 && !q.Purpose.terminal() {
+				n += 4 + recoverySpanBytes*len(r.Spans)
+			}
 		} else {
 			n += 128
 		}
@@ -189,10 +213,24 @@ func validateRecoveryMetadata(m metadata, l Limits) error {
 		return ErrLimit
 	}
 	r := m.Recovery.Reservation
-	if c.Version != 2 && len(m.Recovery.Terminal) != 0 {
+	if err := recoverySpanProfile(c, r); err != nil {
+		return err
+	}
+	for _, q := range m.Recovery.Queued {
+		if v := q.Purpose.reservation(); v != nil {
+			if q.Purpose.terminal() {
+				if len(v.Spans) != 0 {
+					return ErrInvalid
+				}
+			} else if err := recoverySpanProfile(c, *v); err != nil {
+				return err
+			}
+		}
+	}
+	if c.Version < 2 && len(m.Recovery.Terminal) != 0 {
 		return ErrInvalid
 	}
-	if c.Version == 2 {
+	if c.Version >= 2 {
 		if err := terminalMetadataHeadroom(m, l); err != nil {
 			return err
 		}
@@ -203,6 +241,9 @@ func validateRecoveryMetadata(m metadata, l Limits) error {
 	contract := 2 + c.Version
 	if m.Retention.Config.enabled() {
 		contract = 5
+		if c.Version == 3 {
+			contract = 6
+		}
 	}
 	recordsValid := m.Recovery.Records == m.Applied
 	if m.Retention.Config.enabled() {
@@ -212,16 +253,19 @@ func validateRecoveryMetadata(m metadata, l Limits) error {
 		return ErrInvalid
 	}
 	if !c.enabled() {
-		if r.ID != ([32]byte{}) || r.Digest != ([32]byte{}) || len(r.Credits) != 0 || len(m.Recovery.Queued) != 0 || m.Recovery.Bytes != 0 || m.Recovery.Records != 0 || m.Recovery.Staged != (applicationRecoveryGrowth{}) {
+		if r.ID != ([32]byte{}) || r.Digest != ([32]byte{}) || recoveryEntries(r) != 0 || len(m.Recovery.Queued) != 0 || m.Recovery.Bytes != 0 || m.Recovery.Records != 0 || m.Recovery.Staged != (applicationRecoveryGrowth{}) {
 			return ErrInvalid
 		}
 		return nil
+	}
+	if c.Version == 3 && m.Retention.Config.Version != 1 {
+		return ErrInvalid
 	}
 	if !m.App.Policy.Enabled() || !m.Rep.Config.enabled() || m.Rep.SemanticContractID == (ApplicationSemanticContractID{}) || !m.Controls.Config.enabled() {
 		return ErrInvalid
 	}
 	if r.ID == ([32]byte{}) {
-		if r.Digest != ([32]byte{}) || len(r.Credits) != 0 {
+		if r.Digest != ([32]byte{}) || recoveryEntries(r) != 0 {
 			return ErrInvalid
 		}
 	} else if _, err := recoveryGrowth(r, m.App.Policy, l); err != nil {
@@ -232,68 +276,95 @@ func validateRecoveryMetadata(m metadata, l Limits) error {
 }
 func appendRecoveryMetadata(b []byte, m applicationRecoveryMetadata) []byte {
 	version := byte(3)
-	if m.Config.Version == 2 {
+	if m.Config.Version >= 2 {
 		version = 4
+	}
+	if m.Config.Version == 3 {
+		version = 5
 	}
 	b = append(b, 'R', 'Y', version, 0)
 	b = binary.BigEndian.AppendUint32(b, m.Config.Version)
-	b = append(b, m.Reservation.ID[:]...)
-	b = append(b, m.Reservation.Digest[:]...)
-	b = binary.BigEndian.AppendUint32(b, uint32(len(m.Reservation.Credits))) // #nosec G115 -- metadata count preflight bounded by the existing64KiB metadata frame.
-	for _, c := range m.Reservation.Credits {
-		b = binary.BigEndian.AppendUint32(b, c.Phase)
-		b = binary.BigEndian.AppendUint32(b, uint32(c.CommandBytes)) // #nosec G115 -- command bytes validated0..16MiB before encoding.
-		b = binary.BigEndian.AppendUint64(b, c.RetainedBytes)
-		b = binary.BigEndian.AppendUint64(b, c.RetainedRecords)
+	if m.Config.Version == 3 {
+		b = append(b, appendRecoverySpanRoot(m.Reservation)[4:]...)
+	} else {
+		b = append(b, m.Reservation.ID[:]...)
+		b = append(b, m.Reservation.Digest[:]...)
+		b = binary.BigEndian.AppendUint32(b, uint32(len(m.Reservation.Credits))) // #nosec G115 -- metadata count preflight bounded by the existing64KiB metadata frame.
+		for _, c := range m.Reservation.Credits {
+			b = binary.BigEndian.AppendUint32(b, c.Phase)
+			b = binary.BigEndian.AppendUint32(b, uint32(c.CommandBytes)) // #nosec G115 -- command bytes validated0..16MiB before encoding.
+			b = binary.BigEndian.AppendUint64(b, c.RetainedBytes)
+			b = binary.BigEndian.AppendUint64(b, c.RetainedRecords)
+		}
 	}
-	b = appendRecoveryQueue(b, m.Queued)
+	b = appendRecoveryQueue(b, m.Queued, m.Config.Version)
 	b = binary.BigEndian.AppendUint64(b, m.Bytes)
 	b = binary.BigEndian.AppendUint64(b, m.Records)
 	for _, n := range []uint64{m.Staged.bytes, m.Staged.records, m.Staged.logBytes, m.Staged.logRecords} {
 		b = binary.BigEndian.AppendUint64(b, n)
 	}
-	if m.Config.Version == 2 {
+	if m.Config.Version >= 2 {
 		b = appendTerminalBank(b, m.Terminal)
 	}
 	return b
 }
 func decodeRecoveryMetadata(b []byte, p ApplicationPolicy, l Limits) (applicationRecoveryMetadata, []byte, error) {
 	var m applicationRecoveryMetadata
-	if len(b) < recoveryMetadataFixedBytes || (!bytes.Equal(b[:4], []byte{'R', 'Y', 3, 0}) && !bytes.Equal(b[:4], []byte{'R', 'Y', 4, 0})) {
+	if len(b) > maxMetadataBytes || len(b) < recoveryMetadataFixedBytes || (!bytes.Equal(b[:4], []byte{'R', 'Y', 3, 0}) && !bytes.Equal(b[:4], []byte{'R', 'Y', 4, 0}) && !bytes.Equal(b[:4], []byte{'R', 'Y', 5, 0})) {
 		return m, nil, ErrCorrupt
 	}
 	m.Config.Version = binary.BigEndian.Uint32(b[4:8])
 	if m.Config.Version != uint32(b[2]-2) {
 		return m, nil, ErrCorrupt
 	}
-	copy(m.Reservation.ID[:], b[8:40])
-	copy(m.Reservation.Digest[:], b[40:72])
-	count := uint64(binary.BigEndian.Uint32(b[72:76]))
-	if count > uint64((maxMetadataBytes-recoveryMetadataFixedBytes)/recoveryCreditBytes) || count > uint64((len(b)-recoveryMetadataFixedBytes)/recoveryCreditBytes) {
-		return m, nil, ErrCorrupt
-	} // #nosec G115 -- concrete positive policy and delivered-length bounds.
-	n := int(count) // #nosec G115 -- count bounded by delivered<=64KiB metadata.
-	if n > 0 {
-		m.Reservation.Credits = make([]ApplicationRecoveryCredit, n)
-	}
-	for i := range m.Reservation.Credits {
-		row := b[76+i*recoveryCreditBytes : 76+(i+1)*recoveryCreditBytes]
-		command := binary.BigEndian.Uint32(row[4:8])
-		if uint64(command) > uint64(l.MaxEntryBytes-frameOverhead) {
-			return applicationRecoveryMetadata{}, nil, ErrCorrupt
-		} // #nosec G115 -- concrete validated entry policy.
-		m.Reservation.Credits[i] = ApplicationRecoveryCredit{Phase: binary.BigEndian.Uint32(row[:4]), CommandBytes: int(command), RetainedBytes: binary.BigEndian.Uint64(row[8:16]), RetainedRecords: binary.BigEndian.Uint64(row[16:24])} // #nosec G115 -- command bounded<=16MiB.
-	}
-	if m.Reservation.ID == ([32]byte{}) {
-		if m.Reservation.Digest != ([32]byte{}) || n != 0 {
+	var tail []byte
+	if m.Config.Version == 3 {
+		count := binary.BigEndian.Uint32(b[72:76])
+		if count > maxApplicationRecoverySpans || uint64(count)*recoverySpanBytes > uint64(len(b)-recoveryMetadataFixedBytes) {
 			return applicationRecoveryMetadata{}, nil, ErrCorrupt
 		}
-	} else if _, err := recoveryGrowth(m.Reservation, p, l); err != nil {
-		return applicationRecoveryMetadata{}, nil, ErrCorrupt
+		length := recoveryRootFixedBytes + int(count)*recoverySpanBytes // #nosec G115 -- <=8 spans and delivered frame checked before ownership.
+		frame := make([]byte, length)
+		copy(frame, b[4:4+length])
+		frame[0], frame[1], frame[2], frame[3] = 'R', 'S', 3, 0
+		// Config occupies four bytes before the root body. The bounded native
+		// root reader checks count/length before owning any span array.
+		r, used, err := readRecoverySpanRoot(frame, p, l)
+		if err != nil {
+			return applicationRecoveryMetadata{}, nil, err
+		}
+		m.Reservation = r
+		tail = b[4+used:]
+	} else {
+		copy(m.Reservation.ID[:], b[8:40])
+		copy(m.Reservation.Digest[:], b[40:72])
+		count := uint64(binary.BigEndian.Uint32(b[72:76]))
+		if count > uint64((maxMetadataBytes-recoveryMetadataFixedBytes)/recoveryCreditBytes) || count > uint64((len(b)-recoveryMetadataFixedBytes)/recoveryCreditBytes) {
+			return m, nil, ErrCorrupt
+		} // #nosec G115 -- concrete positive policy and delivered-length bounds.
+		n := int(count) // #nosec G115 -- count bounded by delivered<=64KiB metadata.
+		if n > 0 {
+			m.Reservation.Credits = make([]ApplicationRecoveryCredit, n)
+		}
+		for i := range m.Reservation.Credits {
+			row := b[76+i*recoveryCreditBytes : 76+(i+1)*recoveryCreditBytes]
+			command := binary.BigEndian.Uint32(row[4:8])
+			if uint64(command) > uint64(l.MaxEntryBytes-frameOverhead) {
+				return applicationRecoveryMetadata{}, nil, ErrCorrupt
+			} // #nosec G115 -- concrete validated entry policy.
+			m.Reservation.Credits[i] = ApplicationRecoveryCredit{Phase: binary.BigEndian.Uint32(row[:4]), CommandBytes: int(command), RetainedBytes: binary.BigEndian.Uint64(row[8:16]), RetainedRecords: binary.BigEndian.Uint64(row[16:24])} // #nosec G115 -- command bounded<=16MiB.
+		}
+		if m.Reservation.ID == ([32]byte{}) {
+			if m.Reservation.Digest != ([32]byte{}) || n != 0 {
+				return applicationRecoveryMetadata{}, nil, ErrCorrupt
+			}
+		} else if _, err := recoveryGrowth(m.Reservation, p, l); err != nil {
+			return applicationRecoveryMetadata{}, nil, ErrCorrupt
+		}
+		tail = b[76+n*recoveryCreditBytes:]
 	}
-	tail := b[76+n*recoveryCreditBytes:]
 	var err error
-	m.Queued, tail, err = decodeRecoveryQueue(tail, p, l)
+	m.Queued, tail, err = decodeRecoveryQueue(tail, p, l, m.Config.Version)
 	if err != nil {
 		return applicationRecoveryMetadata{}, nil, err
 	}
@@ -304,7 +375,7 @@ func decodeRecoveryMetadata(b []byte, p ApplicationPolicy, l Limits) (applicatio
 	m.Records = binary.BigEndian.Uint64(tail[8:16])
 	m.Staged = applicationRecoveryGrowth{bytes: binary.BigEndian.Uint64(tail[16:24]), records: binary.BigEndian.Uint64(tail[24:32]), logBytes: binary.BigEndian.Uint64(tail[32:40]), logRecords: binary.BigEndian.Uint64(tail[40:48])}
 	tail = tail[48:]
-	if m.Config.Version == 2 {
+	if m.Config.Version >= 2 {
 		m.Terminal, tail, err = decodeTerminalBank(tail, p, l)
 		if err != nil {
 			return applicationRecoveryMetadata{}, nil, err
@@ -323,7 +394,7 @@ func recoveryOutstanding(m metadata, l Limits) (applicationRecoveryGrowth, error
 	if err := validateRecoveryMetadata(m, l); err != nil {
 		return applicationRecoveryGrowth{}, err
 	}
-	if m.Recovery.Config.Version != 2 {
+	if m.Recovery.Config.Version < 2 {
 		return recoveryGrowthIfPresent(m.Recovery.Reservation, m.App.Policy, l)
 	}
 	g, err := recoveryGrowthIfPresent(m.Recovery.Reservation, m.App.Policy, l)
@@ -341,6 +412,9 @@ func (m applicationRecoveryMetadata) consume(use ApplicationRecoveryUse) (applic
 	credit, err := m.credit(use)
 	if err != nil {
 		return m, ApplicationRecoveryCredit{}, err
+	}
+	if m.Config.Version == 3 && len(m.Reservation.Spans) != 0 {
+		return m.consumeSpan(use, credit)
 	}
 	n := 0
 	keep := func(c ApplicationRecoveryCredit) bool {

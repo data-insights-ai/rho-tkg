@@ -25,7 +25,7 @@ func terminalGrowth(bank applicationTerminalBank, p ApplicationPolicy, l Limits)
 		return total, ErrLimit
 	}
 	for i, owner := range bank {
-		if len(owner.Credits) > maxApplicationTerminalAlternatives || i > 0 && bytes.Compare(bank[i-1].ID[:], owner.ID[:]) >= 0 {
+		if len(owner.Spans) != 0 || len(owner.Credits) > maxApplicationTerminalAlternatives || i > 0 && bytes.Compare(bank[i-1].ID[:], owner.ID[:]) >= 0 {
 			return applicationRecoveryGrowth{}, ErrInvalid
 		}
 		for _, credit := range owner.Credits {
@@ -68,7 +68,7 @@ func (bank applicationTerminalBank) find(id [32]byte) int {
 }
 
 func (m applicationRecoveryMetadata) reserveTerminal(r ApplicationRecoveryReservation, p ApplicationPolicy, l Limits) (applicationRecoveryMetadata, error) {
-	if m.Config.Version != 2 {
+	if m.Config.Version < 2 {
 		return m, ErrInvalid
 	}
 	if _, err := terminalGrowth(applicationTerminalBank{r}, p, l); err != nil {
@@ -92,14 +92,14 @@ func (m applicationRecoveryMetadata) reserveTerminal(r ApplicationRecoveryReserv
 }
 
 func (m applicationRecoveryMetadata) terminalCredit(u ApplicationRecoveryUse) (ApplicationRecoveryCredit, error) {
-	if m.Config.Version != 2 || u.RetireBefore != 0 {
+	if m.Config.Version < 2 || u.RetireBefore != 0 {
 		return ApplicationRecoveryCredit{}, ErrInvalid
 	}
 	i := m.Terminal.find(u.ID)
 	if i < 0 {
 		return ApplicationRecoveryCredit{}, ErrInvalid
 	}
-	state := applicationRecoveryMetadata{Config: m.Config, Reservation: m.Terminal[i]}
+	state := applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{Version: 2}, Reservation: m.Terminal[i]}
 	return state.credit(u)
 }
 
@@ -113,7 +113,7 @@ func (m applicationRecoveryMetadata) consumeTerminal(u ApplicationRecoveryUse, i
 	i := m.Terminal.find(u.ID)
 	owner := m.Terminal[i]
 	if !installed {
-		state := applicationRecoveryMetadata{Config: m.Config, Reservation: owner}
+		state := applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{Version: 2}, Reservation: owner}
 		state, _, err = state.consume(u)
 		if err != nil {
 			return m, ApplicationRecoveryCredit{}, err
@@ -182,21 +182,26 @@ func decodeTerminalBank(b []byte, p ApplicationPolicy, l Limits) (applicationTer
 
 func nativeRecoveryRootBytes(m applicationRecoveryMetadata) int {
 	n := recoveryRootBytes(m.Reservation)
-	if m.Config.Version == 2 {
+	if m.Config.Version >= 2 {
 		n += terminalBankBytes(m.Terminal)
 	}
 	return n
 }
 func appendNativeRecoveryRoot(m applicationRecoveryMetadata) []byte {
-	b := appendRecoveryRoot(m.Reservation)
-	if m.Config.Version == 2 {
-		b[2] = 2
+	var b []byte
+	if m.Config.Version == 3 {
+		b = appendRecoverySpanRoot(m.Reservation)
+	} else {
+		b = appendRecoveryRoot(m.Reservation)
+	}
+	if m.Config.Version >= 2 {
+		b[2] = byte(m.Config.Version)
 		b = appendTerminalBank(b, m.Terminal)
 	}
 	return b
 }
 func nativeRecoveryRootDigest(m applicationRecoveryMetadata) [32]byte {
-	if m.Config.Version != 2 {
+	if m.Config.Version < 2 {
 		return recoveryRootDigest(m.Reservation)
 	}
 	// Encoding is only used for an actual bound root/hash. Reservation sizing
@@ -206,6 +211,17 @@ func nativeRecoveryRootDigest(m applicationRecoveryMetadata) [32]byte {
 func readNativeRecoveryRoot(b []byte, p ApplicationPolicy, l Limits) (ApplicationRecoveryReservation, applicationTerminalBank, error) {
 	if len(b) < recoveryRootFixedBytes || len(b) > maxMetadataBytes {
 		return ApplicationRecoveryReservation{}, nil, ErrCorrupt
+	}
+	if b[2] == 3 {
+		r, end, err := readRecoverySpanRoot(b, p, l)
+		if err != nil {
+			return ApplicationRecoveryReservation{}, nil, err
+		}
+		bank, tail, err := decodeTerminalBank(b[end:], p, l)
+		if err != nil || len(tail) != 0 {
+			return ApplicationRecoveryReservation{}, nil, ErrCorrupt
+		}
+		return r, bank, nil
 	}
 	if b[2] == 1 {
 		r, err := readRecoveryRoot(b, p, l)
@@ -251,7 +267,7 @@ func inspectNativeRecoveryOwner(b []byte, p ApplicationPolicy, l Limits) (Applic
 	if err != nil {
 		return ApplicationRecoveryOwner{}, 0, err
 	}
-	return ApplicationRecoveryOwner{ID: r.ID, Digest: r.Digest}, len(r.Credits), nil
+	return ApplicationRecoveryOwner{ID: r.ID, Digest: r.Digest}, recoveryEntries(r), nil
 }
 func expectedNativeRecoveryDigest(m *applicationRecoveryMetadata, r ApplicationRecoveryReservation) [32]byte {
 	if m != nil {
@@ -260,7 +276,7 @@ func expectedNativeRecoveryDigest(m *applicationRecoveryMetadata, r ApplicationR
 	return recoveryRootDigest(r)
 }
 func nativeRecoveryRootOverhead(m applicationRecoveryMetadata) (uint64, uint64, error) {
-	if m.Config.Version != 2 {
+	if m.Config.Version < 2 {
 		return ApplicationRecoveryRootOverhead(len(m.Reservation.Credits))
 	}
 	n := nativeRecoveryRootBytes(m)
@@ -271,7 +287,7 @@ func nativeRecoveryRootOverhead(m applicationRecoveryMetadata) (uint64, uint64, 
 }
 func (p ApplicationPolicy) measureNativeRecovery(b ApplicationBatch, m applicationRecoveryMetadata) (uint64, uint64, error) {
 	added, count, err := p.measureRecovery(b, m.Reservation)
-	if err != nil || m.Config.Version != 2 {
+	if err != nil || m.Config.Version < 2 {
 		return added, count, err
 	}
 	extra := uint64(terminalBankBytes(m.Terminal)) // #nosec G115 -- <=16 admitted owners, each<=3 credits.
@@ -326,7 +342,7 @@ func validRecoveryPurpose(p ApplicationRecoveryPurpose) bool {
 }
 
 func (s *Store) admitTerminalCreationLocked(commandBytes int, r ApplicationRecoveryReservation) error {
-	if s.meta.Recovery.Config.Version != 2 {
+	if s.meta.Recovery.Config.Version < 2 {
 		return ErrInvalid
 	}
 	if err := s.admitApplicationLocked(commandBytes); err != nil {
@@ -406,7 +422,7 @@ func (p applicationRecoveryQueuedPurpose) valid() bool {
 }
 
 func advanceTerminalQueued(state applicationRecoveryMetadata, q applicationRecoveryQueued, p ApplicationPolicy, l Limits) (applicationRecoveryMetadata, ApplicationRecoveryCredit, error) {
-	if state.Config.Version != 2 || !q.Purpose.valid() {
+	if state.Config.Version < 2 || !q.Purpose.valid() {
 		return state, ApplicationRecoveryCredit{}, ErrInvalid
 	}
 	if r := q.Purpose.TerminalReserve; r != nil {
@@ -441,7 +457,7 @@ func advanceTerminalQueued(state applicationRecoveryMetadata, q applicationRecov
 }
 
 func (s *Store) classifyTerminalEntry(e *pb.Entry, v *ApplicationView, captured applicationRecoveryMetadata, r *applicationRecoveryReady, purpose ApplicationRecoveryPurpose) error {
-	if captured.Config.Version != 2 || !validRecoveryPurpose(purpose) {
+	if captured.Config.Version < 2 || !validRecoveryPurpose(purpose) {
 		return ErrInvalid
 	}
 	q := applicationRecoveryQueued{Index: e.GetIndex(), CommandDigest: sha256.Sum256(e.GetData()), Purpose: applicationRecoveryQueuedPurpose{TerminalReserve: purpose.TerminalReserve, TerminalUse: purpose.TerminalUse}}
@@ -519,7 +535,7 @@ func (s *Store) classifyTerminalEntry(e *pb.Entry, v *ApplicationView, captured 
 }
 
 func (s *Store) verifyTerminalQueued(q applicationRecoveryQueued) error {
-	if s.meta.Recovery.Config.Version != 2 || !q.Purpose.valid() {
+	if s.meta.Recovery.Config.Version < 2 || !q.Purpose.valid() {
 		return ErrCorrupt
 	}
 	r := q.Purpose.TerminalReserve
@@ -557,7 +573,7 @@ func (s *Store) verifyTerminalQueued(q applicationRecoveryQueued) error {
 // single-command Ready envelope as well. Actual queued duplicates still count
 // in metadataBytes and never mint another reservation or free another slot.
 func terminalMetadataHeadroom(m metadata, l Limits) error {
-	if m.Recovery.Config.Version != 2 {
+	if m.Recovery.Config.Version < 2 {
 		return nil
 	}
 	const terminalRecipeBytes = 45 + 128
@@ -624,7 +640,7 @@ func (v *ApplicationView) CheckTerminalBank(ctx context.Context, expected []Appl
 	}
 	defer v.unlock()
 	p := v.s.meta.App.Policy
-	if v.s.meta.Recovery.Config.Version != 2 || budget.Rows < 1 || budget.Bytes < 1 {
+	if v.s.meta.Recovery.Config.Version < 2 || budget.Rows < 1 || budget.Bytes < 1 {
 		return false, work, ErrInvalid
 	}
 	if budget.Rows > p.MaxPageRows || budget.Bytes > p.MaxPageBytes {
@@ -663,7 +679,7 @@ func (v *ApplicationView) CheckTerminalBank(ctx context.Context, expected []Appl
 	}
 	work.Bytes += cost
 	data, deleted, e := inspectAppFrame(key, raw, min(p.MaxValueBytes, maxMetadataBytes))
-	if e != nil || deleted || len(data) < 4 || data[2] != 2 {
+	if e != nil || deleted || len(data) < 4 || data[2] != byte(v.s.meta.Recovery.Config.Version) {
 		return false, work, v.fail(ErrCorrupt)
 	}
 	r, bank, e := readNativeRecoveryRoot(data, p, v.s.limits)
@@ -697,7 +713,7 @@ func (v *ApplicationView) CheckRetainedRootFeed(ctx context.Context, sourceIndex
 	}
 	defer v.unlock()
 	p := v.s.meta.App.Policy
-	if v.s.meta.Recovery.Config.Version != 2 || sourceIndex == 0 || sourceIndex > v.index || imageHash == ([32]byte{}) || feedStart == 0 || feedStart > v.index+1 || budget.Rows < 1 || budget.Bytes < 1 {
+	if v.s.meta.Recovery.Config.Version < 2 || sourceIndex == 0 || sourceIndex > v.index || imageHash == ([32]byte{}) || feedStart == 0 || feedStart > v.index+1 || budget.Rows < 1 || budget.Bytes < 1 {
 		return false, work, ErrInvalid
 	}
 	if budget.Rows > p.MaxPageRows || budget.Bytes > p.MaxPageBytes {

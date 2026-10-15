@@ -127,6 +127,9 @@ func localApplicationKey(bank byte, key []byte) []byte {
 }
 func (m ApplicationSnapshotManifest) controls() bool { return m.Version >= 4 }
 func (m metadata) manifestVersion() uint32 {
+	if m.Recovery.Config.Version == 3 {
+		return 8
+	}
 	if m.Retention.Config.enabled() {
 		return 7
 	}
@@ -149,7 +152,7 @@ func descriptorBytesForContract(id ApplicationSemanticContractID, c ApplicationC
 	if c.Version >= 3 {
 		n += 48
 	}
-	if c.Version == 5 {
+	if c.Version >= 5 {
 		n += 32
 	} // AD6 binds portable retention by its canonical hash.
 	return n
@@ -168,6 +171,9 @@ func snapshotRecoveryState(m ApplicationSnapshotManifest) applicationRecoveryMet
 	version := uint32(1)
 	if m.Version >= 6 {
 		version = 2
+	}
+	if m.Version == 8 {
+		version = 3
 	}
 	return applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{Version: version}, Reservation: m.RecoveryReservation, Terminal: applicationTerminalBank(m.TerminalReservations)}
 }

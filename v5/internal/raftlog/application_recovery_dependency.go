@@ -34,12 +34,21 @@ func terminalRecoveryUse(q applicationRecoveryQueued, reservation ApplicationRec
 	if q.Purpose.Reserve != nil || use == nil || use.ID != reservation.ID || use.Digest != reservation.Digest || use.CommandDigest != q.CommandDigest || use.Phase == 0 || use.RetireBefore != use.Phase || q.Credit.Phase != use.Phase {
 		return false
 	}
+	for _, span := range reservation.Spans {
+		if span.Last > use.Phase {
+			return false
+		}
+	}
 	for _, credit := range reservation.Credits {
 		if credit.Phase > use.Phase {
 			return false
 		}
 	}
-	credit, err := (applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{Version: 1}, Reservation: reservation}).credit(*use)
+	version := uint32(1)
+	if len(reservation.Spans) != 0 {
+		version = 3
+	}
+	credit, err := (applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{Version: version}, Reservation: reservation}).credit(*use)
 	return err == nil && credit == q.Credit
 }
 

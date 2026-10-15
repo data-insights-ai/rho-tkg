@@ -205,7 +205,7 @@ func (s *Store) admitRecoveryCreationLocked(commandBytes int, reserve Applicatio
 	}
 	if sameRecoveryReservation(s.meta.Recovery.Reservation, reserve) {
 		future = current
-	} else if s.meta.Recovery.Config.Version == 2 {
+	} else if s.meta.Recovery.Config.Version >= 2 {
 		terminal, err := terminalGrowth(s.meta.Recovery.Terminal, s.meta.App.Policy, s.limits)
 		if err != nil {
 			return err

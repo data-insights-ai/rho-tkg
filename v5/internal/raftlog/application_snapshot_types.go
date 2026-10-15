@@ -41,7 +41,7 @@ func (c ApplicationContract) numbers() []uint64 {
 	return []uint64{uint64(c.Version), unsignedLimit(c.MaxKeyBytes), unsignedLimit(c.MaxValueBytes), unsignedLimit(c.MaxImageBytes), unsignedLimit(c.MaxPageRows), unsignedLimit(c.MaxPageBytes), unsignedLimit(c.MaxInstallWrites), unsignedLimit(c.MaxInstallBytes), unsignedLimit(c.MaxChangeBytes), unsignedLimit(c.MaxOutcomeBytes)}
 }
 func (c ApplicationContract) validate() error {
-	if c.Version != 1 && c.Version != 2 && c.Version != 3 && c.Version != 4 && c.Version != 5 {
+	if c.Version != 1 && c.Version != 2 && c.Version != 3 && c.Version != 4 && c.Version != 5 && c.Version != 6 {
 		return ErrInvalid
 	}
 	for _, n := range c.numbers()[1:] {
@@ -89,7 +89,7 @@ func (c ApplicationTransferConfig) validate(p ApplicationPolicy) error {
 	if !c.enabled() {
 		return nil
 	}
-	if !p.Enabled() || c.Contract.Version != 1 && c.Contract.Version != 2 && c.Contract.Version != 3 && c.Contract.Version != 4 && c.Contract.Version != 5 || func() bool {
+	if !p.Enabled() || c.Contract.Version != 1 && c.Contract.Version != 2 && c.Contract.Version != 3 && c.Contract.Version != 4 && c.Contract.Version != 5 && c.Contract.Version != 6 || func() bool {
 		want := ApplicationContractForPolicy(p)
 		want.Version = c.Contract.Version
 		return c.Contract != want
@@ -111,7 +111,7 @@ func (c ApplicationTransferConfig) validate(p ApplicationPolicy) error {
 // The digest binds ordered canonical records; ManifestID binds all metadata too.
 // Version zero or one selects the original AS1 bytes; AS1 decode normalizes to
 // zero. Version two binds an unbound CutID; version three requires and binds
-// SemanticContractID. Older formats require its zero value. AS4/AS5 preserve native control/transient recovery history; AS6 also binds the separate terminal bank; AS7 binds sparse retention floors/anchors. Other versions refuse.
+// SemanticContractID. Older formats require its zero value. AS4/AS5 preserve native control/transient recovery history; AS6 also binds the separate terminal bank; AS7 binds sparse retention floors/anchors; AS8 explicitly binds compact recovery spans with the same sparse retention. Other versions refuse.
 type ApplicationSnapshotManifest struct {
 	Retention                        ApplicationRetentionState
 	RecoveryReservation              ApplicationRecoveryReservation

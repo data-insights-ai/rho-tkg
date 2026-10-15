@@ -98,7 +98,7 @@ func (s *Store) PersistApplicationReady(rd raft.Ready, c *ApplicationSnapshotCla
 	}
 	m.Base, m.BaseTerm, m.Last, m.Applied = idx, term, idx, idx
 	if old.Retention.Config.enabled() {
-		if c.p.i.manifest.Version != 7 {
+		if c.p.i.manifest.Version < 7 {
 			return root, ErrInvalid
 		}
 		m.Retention.State = cloneRetentionState(c.p.i.manifest.Retention)
