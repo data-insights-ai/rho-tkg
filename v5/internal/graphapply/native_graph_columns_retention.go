@@ -32,6 +32,51 @@ type nativeColumnRetentionRecord struct {
 	Seed, Original, Token []byte
 	TerminalAttempts      uint8
 	Feed                  [2]uint64
+	Dependencies          nativeColumnDependencyProgress `json:",omitzero"` // fresh policy only; old journal bytes unchanged
+}
+
+// An owned crash-recovery cursor, never a native pin or proof of a current
+// issuer. Every resumed page still uses the exact authenticated native cuts.
+type nativeColumnDependencyProgress struct {
+	Version                        byte
+	Seed                           [32]byte
+	Positions, Feed                [2]uint64
+	AttemptedPages, CompletedPages uint64
+	Frames                         uint64
+	EOF                            bool
+}
+
+// The actual source context classifies a constructor failure BEFORE Close.
+// A shorter RPC deadline or explicit cancellation is not a full TTL expiry.
+// This is diagnostic accounting, not replacement source/pin authority.
+type nativeColumnCreationFailure struct {
+	Failure                            *nativeColumnSourceFailure
+	IssuedUnixNanos, DeadlineUnixNanos int64
+	FullTTL, Expired                   bool
+}
+
+func (e *nativeColumnCreationFailure) Error() string {
+	return "native-column: interrupted fresh retained creation"
+}
+func (e *nativeColumnCreationFailure) Unwrap() error {
+	if e == nil || e.Failure == nil {
+		return nil
+	}
+	return e.Failure
+}
+
+func nativeColumnCreationInterruption(_ context.Context, source *nativeColumnSource) *nativeColumnCreationFailure {
+	if source == nil || source.binding.Policy.Version != 1 {
+		return nil
+	}
+	deadline, bounded := source.ctx.Deadline()
+	// The actual constructor captures issuance and whether its immutable TTL
+	// preceded its parent. A later caller cannot infer or replace that lifetime.
+	f := &nativeColumnCreationFailure{IssuedUnixNanos: source.issued.UnixNano(), FullTTL: source.fullTTL, Expired: errors.Is(source.ctx.Err(), context.DeadlineExceeded)}
+	if bounded {
+		f.DeadlineUnixNanos = deadline.UnixNano()
+	}
+	return f
 }
 
 type nativeColumnRetentionLease struct {
@@ -116,6 +161,9 @@ func (s *nativeColumnStore) retentionRecord(id [16]byte) (nativeColumnRetentionR
 			return r, errCorrupt
 		}
 	}
+	if err := s.validateDependencies(r); err != nil {
+		return r, err
+	}
 	if r.State == nativeColumnPreparing && len(r.Original) == 0 {
 		if len(r.Token) != 0 || r.Generation.Pin != ([32]byte{}) || r.Feed != ([2]uint64{}) {
 			return r, errCorrupt
@@ -140,6 +188,51 @@ func (s *nativeColumnStore) retentionRecord(id [16]byte) (nativeColumnRetentionR
 		return r, errCorrupt
 	}
 	return r, nil
+}
+
+func (s *nativeColumnStore) validateDependencies(r nativeColumnRetentionRecord) error {
+	d := r.Dependencies
+	if s.binding.Policy.Version == 0 {
+		if d != (nativeColumnDependencyProgress{}) {
+			return errCorrupt
+		}
+		return nil
+	}
+	if s.binding.Policy.Version != 1 || d.Version != 1 || d.Seed != sha256.Sum256(r.Seed) || d.CompletedPages > d.AttemptedPages || d.AttemptedPages > s.binding.Policy.MaxWorkRecords || d.CompletedPages > s.binding.Policy.MaxChunks+1 {
+		return errCorrupt
+	}
+	var frames uint64
+	for g, boundary := range r.Generation.Sources {
+		first, err := decodeGraphCertificate(boundary.Initial)
+		if err != nil {
+			return err
+		}
+		final, err := decodeGraphCertificate(boundary.Final)
+		if err != nil {
+			return err
+		}
+		end := first.sourceIndex
+		if r.Generation.Coverage&(1<<g) != 0 {
+			end = final.sourceIndex
+		}
+		if d.Positions[g] < first.sourceIndex || d.Positions[g] > end || d.Feed[g] == 0 || d.Feed[g] > first.sourceIndex+1 || !nativeColumnAdd(frames, d.Positions[g]-first.sourceIndex) {
+			return errCorrupt
+		}
+		frames += d.Positions[g] - first.sourceIndex
+		if r.Generation.Coverage&(1<<g) == 0 && d.Feed[g] != first.sourceIndex+1 {
+			return errCorrupt
+		}
+		if d.EOF && d.Positions[g] != end {
+			return errCorrupt
+		}
+		if (r.State != nativeColumnPreparing || len(r.Original) != 0) && r.State < nativeColumnRetiring && (!d.EOF || d.Feed[g] != r.Feed[g]) {
+			return errCorrupt
+		}
+	}
+	if d.CompletedPages > ^uint64(0)/uint64(s.binding.Policy.ChunkRecords) || frames > d.CompletedPages*uint64(s.binding.Policy.ChunkRecords) || frames != d.Frames || d.CompletedPages == 0 && frames != 0 || d.CompletedPages > 0 && d.Frames == 0 && !d.EOF || d.EOF && d.CompletedPages == 0 || d.EOF && d.CompletedPages-1 > frames {
+		return errCorrupt
+	}
+	return nil
 }
 
 func (s *nativeColumnStore) saveRetention(r nativeColumnRetentionRecord, progress *nativeColumnProgress) error {
@@ -172,6 +265,9 @@ func (s *nativeColumnStore) prepareRetention(id [16]byte, source *nativeColumnSo
 		return nativeColumnRetentionRecord{}, err
 	}
 	r := nativeColumnRetentionRecord{Version: 1, State: nativeColumnPreparing, Generation: generation, Seed: seed}
+	if s.binding.Policy.Version == 1 {
+		r.Dependencies = nativeColumnDependencyProgress{Version: 1, Seed: sha256.Sum256(seed), Positions: [2]uint64{source.initial[0].sourceIndex, source.initial[1].sourceIndex}, Feed: [2]uint64{source.initial[0].sourceIndex + 1, source.initial[1].sourceIndex + 1}}
+	}
 	ledger, err := s.ledger()
 	if err != nil {
 		return r, err
@@ -214,6 +310,14 @@ func (s *nativeColumnStore) retentionDependencies(ctx context.Context, id [16]by
 	if s == nil || source == nil || ctx == nil {
 		return [2]uint64{}, errInvalid
 	}
+	if s.binding.Policy.Version == 1 {
+		for {
+			feed, complete, err := s.retentionDependencyPage(ctx, id, source)
+			if err != nil || complete {
+				return feed, err
+			}
+		}
+	}
 	feed := [2]uint64{source.initial[0].sourceIndex + 1, source.initial[1].sourceIndex + 1}
 	positions := [2]uint64{source.initial[0].sourceIndex, source.initial[1].sourceIndex}
 	for pages := uint64(0); pages <= s.binding.Policy.MaxChunks; pages++ {
@@ -253,6 +357,100 @@ func (s *nativeColumnStore) retentionDependencies(ctx context.Context, id [16]by
 		positions = next
 	}
 	return feed, errLimit
+}
+
+// One whole native page is charged durably before any source reads. Only a
+// successful complete hydration advances the dependency cursor/minimum. An
+// expired constructor can therefore close and reopen the SAME generation and
+// continue this prefix rather than replaying the entire prepass from zero.
+func (s *nativeColumnStore) retentionDependencyPage(ctx context.Context, id [16]byte, source *nativeColumnSource) ([2]uint64, bool, error) {
+	if s == nil || source == nil || ctx == nil || s.binding.Policy.Version != 1 || source.digest != s.digest || source.binding.Version != 2 {
+		return [2]uint64{}, false, errInvalid
+	}
+	r, err := s.retentionRecord(id)
+	if err != nil {
+		return [2]uint64{}, false, err
+	}
+	d := r.Dependencies
+	if r.State != nativeColumnPreparing || len(r.Original) != 0 {
+		return d.Feed, false, errInvalid
+	}
+	for g := range 2 {
+		first, err := encodeGraphCertificate(source.initial[g])
+		if err != nil {
+			return d.Feed, false, err
+		}
+		final, err := encodeGraphCertificate(source.final[g])
+		if err != nil || !bytes.Equal(first, r.Generation.Sources[g].Initial) || !bytes.Equal(final, r.Generation.Sources[g].Final) {
+			return d.Feed, false, errors.Join(errInvalid, err)
+		}
+	}
+	if d.EOF {
+		return d.Feed, true, nil
+	}
+	if d.CompletedPages > s.binding.Policy.MaxChunks || d.AttemptedPages == ^uint64(0) {
+		return d.Feed, false, errLimit
+	}
+	p, err := s.progress(id)
+	if err != nil {
+		return d.Feed, false, err
+	}
+	grant := source.grant
+	if p.Owner != source.owner {
+		grant, err = grant.plus(source.openWork)
+		if err != nil {
+			return d.Feed, false, err
+		}
+	}
+	if !p.Work.admit(grant, s.binding.Policy) {
+		return d.Feed, false, errLimit
+	}
+	p.Work, p.Owner = p.Work.add(grant), source.owner
+	r.Dependencies.AttemptedPages++
+	if err := s.saveRetention(r, &p); err != nil {
+		return d.Feed, false, err
+	}
+	frames, next, err := source.page(ctx, d.Positions)
+	if err != nil {
+		return d.Feed, false, err
+	}
+	for _, frame := range frames {
+		group := source.frameGroup(frame.Partition)
+		if group < 0 {
+			return d.Feed, false, errCorrupt
+		}
+		if len(frame.OriginalOutcome) > 0 {
+			index, err := nativeColumnOriginalIndex(frame.OriginalOutcome, source.hosts[group].machine.ns)
+			if err != nil || index == 0 || index > frame.Index {
+				return d.Feed, false, errors.Join(errCorrupt, err)
+			}
+			d.Feed[group] = min(d.Feed[group], index)
+		}
+	}
+	if len(frames) == 0 {
+		if next != source.finalPositions() {
+			return d.Feed, false, errCorrupt
+		}
+		d.EOF = true
+	} else if next == d.Positions {
+		return d.Feed, false, errCorrupt
+	}
+	if !nativeColumnAdd(d.Frames, uint64(len(frames))) || d.CompletedPages == ^uint64(0) {
+		return d.Feed, false, errLimit
+	}
+	d.Frames += uint64(len(frames)) // #nosec G115 -- bounded nonnegative page count, checked addition.
+	d.Positions, d.CompletedPages, d.AttemptedPages = next, d.CompletedPages+1, r.Dependencies.AttemptedPages
+	if err := errors.Join(ctx.Err(), source.ctx.Err()); err != nil {
+		return d.Feed, false, err
+	}
+	r.Dependencies = d
+	if err := s.validateDependencies(r); err != nil {
+		return d.Feed, false, err
+	}
+	if err := s.saveRetention(r, nil); err != nil {
+		return d.Feed, false, err
+	}
+	return d.Feed, d.EOF, nil
 }
 
 func nativeColumnOriginalIndex(wire []byte, ns namespace) (uint64, error) {
@@ -436,6 +634,7 @@ func createDurablePartitionNativeColumns(ctx context.Context, dir string, fs vfs
 	}
 	defer func() {
 		if err != nil {
+			creation := nativeColumnCreationInterruption(ctx, source)
 			source.mu.Lock()
 			charged := source.charged
 			source.mu.Unlock()
@@ -443,7 +642,15 @@ func createDurablePartitionNativeColumns(ctx context.Context, dir string, fs vfs
 			if store != nil {
 				err = errors.Join(err, store.Close())
 			}
-			err = &nativeColumnSourceFailure{Charged: charged, Cause: err}
+			failure := &nativeColumnSourceFailure{Charged: charged, Cause: err}
+			if source.meter != nil {
+				failure.RPCs, failure.RequestBytes, failure.ReplyBytes = source.meter.snapshot()
+			}
+			err = failure
+			if creation != nil {
+				creation.Failure = failure
+				err = creation
+			}
 			store, source = nil, nil
 		}
 	}()
@@ -497,6 +704,13 @@ func (s *nativeColumnStore) completeRetentionCreation(ctx context.Context, sourc
 		feed, err := s.retentionDependencies(ctx, r.Generation.ID, source)
 		if err != nil {
 			return err
+		}
+		if s.binding.Policy.Version == 1 {
+			latest, err := s.retentionRecord(r.Generation.ID)
+			if err != nil || latest.State != nativeColumnPreparing || len(latest.Original) != 0 || !bytes.Equal(latest.Seed, r.Seed) || !nativeColumnSame(latest.Generation, r.Generation) || !latest.Dependencies.EOF || latest.Dependencies.Feed != feed {
+				return errors.Join(errCorrupt, err)
+			}
+			*r = latest
 		}
 		if err := request.columnFeeds(feed); err != nil {
 			return err
@@ -558,13 +772,40 @@ func reopenDurablePartitionNativeColumns(ctx context.Context, dir string, fs vfs
 	if err != nil {
 		return nil, nil, err
 	}
+	return reopenDurablePartitionNativeColumnsStore(ctx, store, c, id, policy, true)
+}
+
+// The fresh live-query owner can renew only its transient source while keeping
+// the SAME dirlocked store, durable original and genuine private read cursor.
+// The caller exclusively owns this store through construction or its query
+// gate. No consumer callback or Host mutex spans the authenticated native calls.
+// Constructor ownership closes the store on error; an existing query retains
+// its already owned store and attempted-work journal for bounded recovery.
+func reopenDurablePartitionNativeColumnsStore(ctx context.Context, store *nativeColumnStore, c *crossProcessCoordinator, id [16]byte, policy nativeColumnPolicy, constructor bool) (result *nativeColumnStore, source *nativeColumnSource, err error) {
+	if ctx == nil || store == nil || c == nil || c.host == nil || c.host.machine == nil || c.host.machine.SemanticContractID() != durableColumnGraphSemanticContractID() || id == ([16]byte{}) || !nativeColumnSame(store.binding.Policy, policy) {
+		return nil, nil, errInvalid
+	}
 	defer func() {
 		if err != nil {
+			creation := nativeColumnCreationInterruption(ctx, source)
+			var charged nativeColumnWork
 			if source != nil {
+				source.mu.Lock()
+				charged = source.charged
+				source.mu.Unlock()
 				err = errors.Join(err, source.Close())
 			}
-			err = errors.Join(err, store.Close())
-			store, source = nil, nil
+			if constructor {
+				err = errors.Join(err, store.Close())
+			}
+			if creation != nil {
+				creation.Failure = &nativeColumnSourceFailure{Charged: charged, Cause: err}
+				if source.meter != nil {
+					creation.Failure.RPCs, creation.Failure.RequestBytes, creation.Failure.ReplyBytes = source.meter.snapshot()
+				}
+				err = creation
+			}
+			result, source = nil, nil
 		}
 	}()
 	r, err := store.retentionRecord(id)

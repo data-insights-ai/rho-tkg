@@ -102,7 +102,9 @@ type graphProcessHub struct {
 	relayTargets        map[uint64]map[uint64]uint64
 	packetFilter        func(replica.Packet) (bool, error)
 	nativeFaultSchedule *nativeFaultPacketScheduler
-	scheduledPackets    int // charged held/duplicate frames within existing caps
+	workload            *nativeWorkloadTransport // immutable fresh workload owner
+	workloadBytes       int                      // fixed scheduler ownership within existing queue bytes
+	scheduledPackets    int                      // charged held/duplicate frames within existing caps
 	// Paired-only actual MsgSnap transport owners share the original queue byte
 	// allowance; neither these IDs nor the copied packets grant activation.
 	pairedSnapshots bool
@@ -127,8 +129,11 @@ func attachGraphProcessMuxes(t *testing.T, all map[uint64]*graphProcess) {
 	attachGraphProcessMuxesWithLimit(t, all, processDeliveries)
 }
 func attachGraphProcessMuxesWithLimit(t *testing.T, all map[uint64]*graphProcess, limit int) {
+	attachGraphProcessMuxesWithWorkload(t, all, limit, nil)
+}
+func attachGraphProcessMuxesWithWorkload(t *testing.T, all map[uint64]*graphProcess, limit int, workload *nativeWorkloadTransport) {
 	t.Helper()
-	if limit < processDeliveries || limit > 9<<30 {
+	if limit < processDeliveries || limit > 9<<30 && (workload == nil || uint64(limit) > workload.maximum) {
 		t.Fatal("invalid finite fixture delivery allowance", limit)
 	}
 	// The owner outlives t.Context cancellation so graceful child cleanup can
@@ -143,6 +148,12 @@ func attachGraphProcessMuxesWithLimit(t *testing.T, all map[uint64]*graphProcess
 		m := &graphProcessMux{p: p, id: id, hub: hub, pending: make(map[uint64]chan graphProcessAnswer), relays: make(map[uint64]context.CancelFunc), relayQueue: make(chan graphProcessRelayJob, processSourceWorkers)}
 		hub.peers[id] = m
 		p.mux = m
+	}
+	if workload != nil {
+		if err := workload.install(hub); err != nil {
+			cancel()
+			t.Fatal(err)
+		}
 	}
 	for _, m := range hub.peers {
 		hub.wg.Go(m.readLoop)
@@ -264,7 +275,11 @@ func (m *graphProcessMux) send(r processRequest, ch chan graphProcessAnswer) (ui
 	m.p.maxFrame = max(m.p.maxFrame, len(wire)+4)
 	m.mu.Unlock()
 	if err == nil {
-		err = writeProcessFrame(m.p.stdin, wire)
+		if m.hub.workload != nil {
+			err = m.hub.workload.writeFrame(m.p.stdin, wire)
+		} else {
+			err = writeProcessFrame(m.p.stdin, wire)
+		}
 	}
 	if err != nil {
 		m.fail(err)
@@ -328,7 +343,13 @@ func (m *graphProcessMux) exchange(ctx context.Context, r processRequest) (proce
 }
 func (m *graphProcessMux) readLoop() {
 	for {
-		wire, err := readProcessFrame(m.p.stdout)
+		var wire []byte
+		var err error
+		if m.hub.workload != nil {
+			wire, err = m.hub.workload.readFrame(m.p.stdout)
+		} else {
+			wire, err = readProcessFrame(m.p.stdout)
+		}
 		if err != nil {
 			m.fail(err)
 			return
@@ -446,6 +467,15 @@ func (h *graphProcessHub) enqueue(origin uint64, packets []replica.Packet, handl
 		}
 		cost := cap(packet.Payload) + 64
 		h.mu.Lock()
+		if h.workload != nil {
+			err := h.workload.enqueueLocked(h, origin, packet)
+			h.mu.Unlock()
+			if err != nil {
+				return err
+			}
+			h.changed()
+			continue
+		}
 		full := cost > processQueueBytes-h.packetBytes-h.snapshotBytes || !packet.Snapshot && len(h.packets)+h.scheduledPackets >= processPacketCount
 		if packet.Snapshot {
 			if !h.pairedSnapshots || snapshotAt >= len(handles) || handles[snapshotAt] == 0 {
@@ -491,6 +521,10 @@ func (h *graphProcessHub) enqueue(origin uint64, packets []replica.Packet, handl
 }
 func (h *graphProcessHub) packetLoop() {
 	defer func() {
+		if h.workload != nil {
+			h.cancel()
+			h.workload.close(h)
+		}
 		h.mu.Lock()
 		schedule := h.nativeFaultSchedule
 		h.mu.Unlock()
@@ -499,61 +533,74 @@ func (h *graphProcessHub) packetLoop() {
 		}
 	}()
 	for {
-		select {
-		case <-h.ctx.Done():
-			return
-		case job := <-h.packets:
-			h.mu.Lock()
-			h.packetBytes -= cap(job.packet.Payload) + 64
-			h.delivered++
-			h.inFlight++
-			full := h.delivered > h.deliveryLimit
-			filter := h.packetFilter
-			schedule := h.nativeFaultSchedule
-			timed := h.costTiming != nil
-			if timed {
-				age := time.Since(h.costStarted).Nanoseconds() - job.enqueuedNanos
-				h.costTiming.QueueCount++
-				h.costTiming.QueueNanos += age
-				h.costTiming.QueueMaxNanos = max(h.costTiming.QueueMaxNanos, age)
+		var job graphProcessPacketJob
+		if h.workload != nil {
+			var err error
+			job, err = h.workload.next(h)
+			if err != nil {
+				h.cancel()
+				return
 			}
-			h.mu.Unlock()
+		} else {
+			select {
+			case <-h.ctx.Done():
+				return
+			case job = <-h.packets:
+			}
+		}
+		h.mu.Lock()
+		h.packetBytes -= cap(job.packet.Payload) + 64
+		if h.workload != nil {
+			h.workload.held--
+		}
+		h.delivered++
+		h.inFlight++
+		full := h.delivered > h.deliveryLimit
+		filter := h.packetFilter
+		schedule := h.nativeFaultSchedule
+		timed := h.costTiming != nil
+		if timed {
+			age := time.Since(h.costStarted).Nanoseconds() - job.enqueuedNanos
+			h.costTiming.QueueCount++
+			h.costTiming.QueueNanos += age
+			h.costTiming.QueueMaxNanos = max(h.costTiming.QueueMaxNanos, age)
+		}
+		h.mu.Unlock()
 
-			if full {
+		if full {
+			h.mu.Lock()
+			h.inFlight--
+			h.mu.Unlock()
+			h.changed()
+			h.peer(job.origin).fail(errLimit)
+			continue
+		}
+		if filter != nil {
+			drop, err := pairedGraphFaultPacketDisposition(h.delivered, filter, job.packet)
+			if err != nil {
+				h.peer(job.origin).fail(err)
+			}
+			if drop || err != nil {
 				h.mu.Lock()
 				h.inFlight--
 				h.mu.Unlock()
 				h.changed()
-				h.peer(job.origin).fail(errLimit)
 				continue
 			}
-			if filter != nil {
-				drop, err := pairedGraphFaultPacketDisposition(h.delivered, filter, job.packet)
-				if err != nil {
-					h.peer(job.origin).fail(err)
-				}
-				if drop || err != nil {
-					h.mu.Lock()
-					h.inFlight--
-					h.mu.Unlock()
-					h.changed()
-					continue
-				}
-			}
-			err := h.deliverFaultScheduled(job, schedule, timed)
-			if err != nil {
-				h.peer(job.origin).fail(err)
-			}
-			h.mu.Lock()
-			h.inFlight--
-			h.costProgressLocked()
-			h.mu.Unlock()
-			h.changed()
-			if h.packetCompleted != nil {
-				select {
-				case h.packetCompleted <- struct{}{}:
-				default:
-				}
+		}
+		err := h.deliverFaultScheduled(job, schedule, timed)
+		if err != nil {
+			h.peer(job.origin).fail(err)
+		}
+		h.mu.Lock()
+		h.inFlight--
+		h.costProgressLocked()
+		h.mu.Unlock()
+		h.changed()
+		if h.packetCompleted != nil {
+			select {
+			case h.packetCompleted <- struct{}{}:
+			default:
 			}
 		}
 	}
@@ -652,7 +699,11 @@ func (m *graphProcessMux) relayLoop() {
 			if err == nil {
 				err = processResponseError(r)
 			}
-			if err == nil && after != nil {
+			if m.hub.workload != nil && r.sequence != 0 {
+				// A correlated native error reply is still a received frame and
+				// traverses the same reply leg; Completed means delay, never ACK.
+				err = errors.Join(err, m.hub.workload.after(ctx, m.id, e.target, e.body, r.aux))
+			} else if err == nil && after != nil {
 				err = after(ctx, m.id, e.target, e.body, r.aux)
 			}
 			cancel()
@@ -1227,6 +1278,25 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		}
 	}()
 	columns := &nativeGraphCostColumnSessions{ctx: ctx, coordinator: coordinator, spec: o.cost, dir: os.Getenv("RHO_GRAPH_PROCESS_DIR")}
+	workloadCtx := ctx
+	if o.workload != nil {
+		if o.workloadDeadline.IsZero() {
+			t.Fatal("missing immutable whole workload deadline")
+		}
+		var stopWorkload context.CancelFunc
+		workloadCtx, stopWorkload = context.WithDeadline(ctx, o.workloadDeadline)
+		defer stopWorkload()
+	}
+	if o.workload != nil && o.workload.Layout == "columns" {
+		profile := *o.workload
+		columns.ctx = workloadCtx
+		admission := o.workloadAdmission
+		columns.policyProvider = func() (nativeColumnPolicy, error) { return nativeContentionColumnsPolicy(h, profile, admission) }
+	}
+	contention, err := newNativeContentionSessions(workloadCtx, coordinator, o, columns, o.workload, o.workloadRun)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
 		if err := columns.close(); err != nil {
 			t.Error(err)
@@ -1456,6 +1526,13 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		return nil
 	}
 	isSourceClose := func(r processRequest) bool {
+		if contention != nil && r.op == processCostObserve && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
+			if q, err := decodeNativeContentionInput(r.data); err == nil {
+				if q.Action == "close" || q.Action == "records-close" || q.Action == "columns" && nativeGraphCostColumnCloseControl(processRequest{op: processCostObserve, data: q.Column}) {
+					return true
+				}
+			}
+		}
 		if o.cost != nil && (nativeGraphCostIncidentCloseControl(r) || nativeGraphCostColumnCloseControl(r)) {
 			return true
 		}
@@ -1544,6 +1621,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processCostObserve:
 				if o.cost == nil {
 					e = errInvalid
+				} else if contention != nil && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
+					out.aux, e = contention.serve(workerCtx, r)
 				} else if bytes.HasPrefix(r.data, []byte(nativeColumnsMarker)) {
 					out.aux, e = columns.serve(workerCtx, r)
 				} else if bytes.HasPrefix(r.data, []byte(nativeIncidentMarker)) {
@@ -1644,8 +1723,14 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			response.ready = o.ready
 		}
 		response.code, response.detail = processError(err)
-		if h.machine.SemanticContractID() == durableColumnGraphSemanticContractID() && r.op == processCostObserve && bytes.HasPrefix(r.data, []byte(nativeColumnsMarker)) {
-			if _, inputErr := nativeGraphCostColumnDecode(r); inputErr == nil {
+		if h.machine.SemanticContractID() == durableColumnGraphSemanticContractID() && r.op == processCostObserve {
+			columnRequest := r
+			if contention != nil && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
+				if q, inputErr := decodeNativeContentionInput(r.data); inputErr == nil && q.Action == "columns" {
+					columnRequest.data = q.Column
+				}
+			}
+			if _, inputErr := nativeGraphCostColumnDecode(columnRequest); inputErr == nil {
 				if code := nativeColumnProcessErrorCode(err); code != 0 {
 					response.code = code
 				}
@@ -1669,6 +1754,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			_ = h.cancelSourceRead(active.id)
 		}
 		wg.Wait()
+		if err := contention.close(); err != nil {
+			t.Error("contention owner cleanup", err)
+		}
 		if snapshots != nil {
 			h.mu.Lock()
 			err := snapshots.close(h.driver)
@@ -1772,6 +1860,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					certifiedSessions.coordinator = coordinator
 					incidents.coordinator = coordinator
 					columns.coordinator = coordinator
+					if contention != nil {
+						contention.coordinator = coordinator
+					}
 				}
 			case processCostRecords:
 				if o.cost == nil {

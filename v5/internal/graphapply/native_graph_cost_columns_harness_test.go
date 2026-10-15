@@ -132,30 +132,38 @@ type nativeGraphCostColumnReceipt struct {
 	DeadlineUnixNanos, ElapsedNanos int64
 	Accounting                      string
 	Retention                       *nativeColumnProcessRetentionReceipt `json:",omitzero"`
+	SourceStarts, SourceExpirations uint64                               `json:",omitzero"`
+	SourceDeadlineUnixNanos         int64                                `json:",omitzero"`
 }
 type nativeGraphCostColumnOwner struct {
-	mu                       sync.Mutex
-	gate                     graphRequestGate
-	source                   *nativeColumnSource
-	store                    *nativeColumnStore
-	cache                    *nativeColumnCache
-	cursor                   *nativeColumnReadCursor
-	generation               [16]byte
-	cacheDir                 string
-	cookie                   nativeGraphCostColumnCookie
-	manifest                 nativeColumnManifest
-	fill                     bool
-	cached                   bool
-	mode                     byte
-	started                  time.Time
-	lastSequence             uint64
-	cachedInput, cachedReply []byte
-	replayed, closed         bool
-	cancel                   context.CancelFunc
-	closeOnce                sync.Once
-	closeDone                chan struct{}
-	closeErr                 error
-	terminal                 nativeGraphCostColumnReceipt
+	mu                                            sync.Mutex
+	gate                                          graphRequestGate
+	source                                        *nativeColumnSource
+	store                                         *nativeColumnStore
+	cache                                         *nativeColumnCache
+	cursor                                        *nativeColumnReadCursor
+	generation                                    [16]byte
+	cacheDir                                      string
+	cookie                                        nativeGraphCostColumnCookie
+	manifest                                      nativeColumnManifest
+	fill                                          bool
+	cached                                        bool
+	mode                                          byte
+	started                                       time.Time
+	lastSequence                                  uint64
+	cachedInput, cachedReply                      []byte
+	replayed, closed                              bool
+	cancel                                        context.CancelFunc
+	closeOnce                                     sync.Once
+	closeDone                                     chan struct{}
+	closeErr                                      error
+	terminal                                      nativeGraphCostColumnReceipt
+	ctx                                           context.Context // fresh fixed whole-query owner; source TTL cannot extend it
+	coordinator                                   *crossProcessCoordinator
+	retired                                       nativeColumnWork
+	retiredCalls, retiredRequests, retiredReplies uint64
+	starts, expirations, failedStarts             uint64
+	startsLimit                                   uint64
 }
 type nativeGraphCostColumnSessions struct {
 	mu          sync.Mutex
@@ -167,6 +175,19 @@ type nativeGraphCostColumnSessions struct {
 	probes      uint8 // fresh diagnostic attempts only; ordinary/default paths never spend it
 	pending     bool
 	owner       *nativeGraphCostColumnOwner
+	// Installed once before worker publication. The fresh bootstrap authenticates
+	// its actual Host/profile; nil preserves the compact diagnostic policy.
+	policyProvider func() (nativeColumnPolicy, error)
+}
+
+func (s *nativeGraphCostColumnSessions) policy() (nativeColumnPolicy, error) {
+	if s == nil || s.coordinator == nil {
+		return nativeColumnPolicy{}, errInvalid
+	}
+	if s.policyProvider != nil {
+		return s.policyProvider()
+	}
+	return nativeColumnProcessPolicy(s.coordinator.host)
 }
 
 func nativeGraphCostColumnInput(q nativeGraphCostColumnRequest) ([]byte, error) {
@@ -266,7 +287,18 @@ func nativeGraphCostColumnDecodeReceipt(body []byte) (r nativeGraphCostColumnRec
 	if r.Cookie.Owner == 0 || r.Cookie.Request == ([16]byte{}) || r.Binding.Coverage == 0 || r.Binding.Coverage > 2 || r.Binding.Policy.validate() != nil || len(r.Body) > r.Binding.Policy.ChunkBytes || len(r.Rows) > r.Binding.Policy.ChunkRows || r.DeadlineUnixNanos <= 0 || r.ElapsedNanos < 0 || r.RPCs > r.Charged.RPCs || r.RequestBytes > r.Charged.WireBytes || r.ReplyBytes > r.Charged.WireBytes-r.RequestBytes || r.EOF && r.Manifest.Generation.ID == ([16]byte{}) || r.Closed && (r.EOF || len(r.Body)+len(r.Rows) != 0) {
 		return r, errCorrupt
 	}
-	if r.Cached && r.Fill || (r.Cached || r.Fill) && r.CacheLedger.Version != 1 || r.CacheLedger.Version != 0 && (r.CacheLedger.Version != 1 || r.CacheLedger.Maximum != nativeColumnsCacheBytes || r.CacheLedger.Charged < 2*nativeColumnMetadataBytes || r.CacheLedger.Charged > r.CacheLedger.Maximum) {
+	cacheMaximum := nativeColumnsCacheBytes
+	if r.Binding.Policy.Version == 1 {
+		cacheMaximum = r.Binding.Policy.MaxRetainedBytes
+	}
+	if r.Cached && r.Fill || (r.Cached || r.Fill) && r.CacheLedger.Version != 1 || r.CacheLedger.Version != 0 && (r.CacheLedger.Version != 1 || r.CacheLedger.Maximum != cacheMaximum || r.CacheLedger.Charged < 2*nativeColumnMetadataBytes || r.CacheLedger.Charged > r.CacheLedger.Maximum) {
+		return r, errCorrupt
+	}
+	if r.Binding.Policy.Version == 0 {
+		if r.SourceStarts != 0 || r.SourceExpirations != 0 || r.SourceDeadlineUnixNanos != 0 {
+			return r, errCorrupt
+		}
+	} else if r.SourceStarts == 0 || r.SourceStarts > nativeContentionOwnerStarts || r.SourceExpirations > r.SourceStarts || !r.Closed && (r.SourceExpirations == r.SourceStarts || r.SourceDeadlineUnixNanos <= 0) {
 		return r, errCorrupt
 	}
 	if r.Binding.Version == 2 {
@@ -279,11 +311,31 @@ func nativeGraphCostColumnDecodeReceipt(body []byte) (r nativeGraphCostColumnRec
 	return r, nil
 }
 func (o *nativeGraphCostColumnOwner) receipt(sequence uint64) (nativeGraphCostColumnReceipt, error) {
-	o.source.mu.Lock()
-	charged := o.source.charged
-	o.source.mu.Unlock()
-	calls, request, reply := o.source.meter.snapshot()
-	deadline, _ := o.source.ctx.Deadline()
+	charged := o.retired
+	calls, request, reply := o.retiredCalls, o.retiredRequests, o.retiredReplies
+	var deadline, sourceDeadline time.Time
+	if o.source != nil {
+		o.source.mu.Lock()
+		current := o.source.charged
+		o.source.mu.Unlock()
+		var err error
+		charged, err = charged.plus(current)
+		if err != nil {
+			return nativeGraphCostColumnReceipt{}, err
+		}
+		c, q, r := o.source.meter.snapshot()
+		if !nativeColumnAdd(calls, c) || !nativeColumnAdd(request, q) || !nativeColumnAdd(reply, r) {
+			return nativeGraphCostColumnReceipt{}, errLimit
+		}
+		calls += c
+		request += q
+		reply += r
+		deadline, _ = o.source.ctx.Deadline()
+		sourceDeadline = deadline
+	}
+	if o.store.binding.Policy.Version == 1 {
+		deadline, _ = o.ctx.Deadline()
+	}
 	p, err := o.store.progress(o.generation)
 	if err != nil && !errors.Is(err, pebble.ErrNotFound) {
 		return nativeGraphCostColumnReceipt{}, err
@@ -298,7 +350,13 @@ func (o *nativeGraphCostColumnOwner) receipt(sequence uint64) (nativeGraphCostCo
 		cached = o.cache.ledger
 		o.cache.mu.Unlock()
 	}
-	r := nativeGraphCostColumnReceipt{Cookie: o.cookie, Sequence: sequence, Binding: o.source.binding, Manifest: o.manifest, Cached: o.cached, Fill: o.fill, Charged: charged, DurableWork: p.Work, Ledger: ledger, CacheLedger: cached, RPCs: calls, RequestBytes: request, ReplyBytes: reply, DeadlineUnixNanos: deadline.UnixNano(), ElapsedNanos: time.Since(o.started).Nanoseconds(), Accounting: "Prepaid theoretical source/decode/output/RPC/wire quotas, including retired failed attempts; not actual bytes/RSS. Actual authenticated peer calls and received frames include failure and Close. Direct local native original reads are not peer RPCs. Only accepted sealed source EOF covers this declared local mask."}
+	r := nativeGraphCostColumnReceipt{Cookie: o.cookie, Sequence: sequence, Binding: o.store.binding, Manifest: o.manifest, Cached: o.cached, Fill: o.fill, Charged: charged, DurableWork: p.Work, Ledger: ledger, CacheLedger: cached, RPCs: calls, RequestBytes: request, ReplyBytes: reply, DeadlineUnixNanos: deadline.UnixNano(), ElapsedNanos: time.Since(o.started).Nanoseconds(), Accounting: "Prepaid theoretical source/decode/output/RPC/wire quotas, including retired failed attempts; not actual bytes/RSS. Actual authenticated peer calls and received frames include failure and Close. Direct local native original reads are not peer RPCs. Only accepted sealed source EOF covers this declared local mask."}
+	if o.store.binding.Policy.Version == 1 {
+		r.SourceStarts, r.SourceExpirations = o.starts, o.expirations
+		if !sourceDeadline.IsZero() {
+			r.SourceDeadlineUnixNanos = sourceDeadline.UnixNano()
+		}
+	}
 	if o.store.binding.Version == 2 {
 		retention, err := nativeColumnProcessRetention(o.store, o.generation)
 		if err != nil {
@@ -343,7 +401,7 @@ func (s *nativeGraphCostColumnSessions) open(ctx context.Context, q nativeGraphC
 	h := s.coordinator.host
 	var policy nativeColumnPolicy
 	if q.RetainedExpires != 0 {
-		policy, err = nativeColumnProcessPolicy(h)
+		policy, err = s.policy()
 	} else if h.machine.SemanticContractID() == durableColumnGraphSemanticContractID() {
 		return nil, errInvalid // the fresh profile never silently creates a v1 owner
 	} else {
@@ -351,6 +409,11 @@ func (s *nativeGraphCostColumnSessions) open(ctx context.Context, q nativeGraphC
 	}
 	if err != nil {
 		return nil, err
+	}
+	if policy.Version == 1 {
+		if _, bounded := s.ctx.Deadline(); !bounded {
+			return nil, errInvalid
+		}
 	}
 	ownerCtx, cancel := context.WithCancel(s.ctx)
 	stop := context.AfterFunc(ctx, cancel)
@@ -410,7 +473,19 @@ func (s *nativeGraphCostColumnSessions) open(ctx context.Context, q nativeGraphC
 		}
 		return nil, err
 	}
-	o := &nativeGraphCostColumnOwner{gate: newGraphRequestGate(), source: source, store: store, generation: q.Generation, cacheDir: filepath.Join(s.dir, "native-column-cache"), cookie: nativeGraphCostColumnCookie{number, source.owner}, started: started, cancel: cancel, closeDone: make(chan struct{})}
+	o := &nativeGraphCostColumnOwner{gate: newGraphRequestGate(), source: source, store: store, generation: q.Generation, cacheDir: filepath.Join(s.dir, "native-column-cache"), cookie: nativeGraphCostColumnCookie{number, source.owner}, started: started, cancel: cancel, closeDone: make(chan struct{}), ctx: ownerCtx, coordinator: s.coordinator}
+	if policy.Version == 1 {
+		o.starts = 1
+		deadline, _ := ownerCtx.Deadline()
+		remaining := time.Until(deadline)
+		if remaining <= 0 || remaining > nativeContentionWholeSeconds*time.Second {
+			cancel()
+			return nil, errors.Join(errInvalid, source.Close(), store.Close())
+		}
+		// This owner's fixed remaining deadline is no later than the immutable
+		// admitted run deadline. Source TTL renewals cannot restart that budget.
+		o.startsLimit = uint64(remaining/policy.Lifetime) + 13 // #nosec G115 -- positive admitted duration.
+	}
 	defer func() {
 		if err != nil {
 			cancel()
@@ -441,7 +516,11 @@ func (s *nativeGraphCostColumnSessions) open(ctx context.Context, q nativeGraphC
 	}
 	// Deadline cleanup owns exactly one asynchronous join. Publication occurs
 	// before this callback can retire resources; no constructor assignments race.
-	context.AfterFunc(source.ctx, func() {
+	expiry := source.ctx
+	if policy.Version == 1 {
+		expiry = ownerCtx
+	}
+	context.AfterFunc(expiry, func() {
 		cleanup, done := context.WithTimeout(context.Background(), 3*time.Second)
 		defer done()
 		_ = o.close(cleanup)
@@ -482,7 +561,12 @@ func (s *nativeGraphCostColumnSessions) serve(ctx context.Context, r processRequ
 			return nil, err
 		}
 		o.cancel()
-		err := o.source.Close()
+		var err error
+		if o.store.binding.Policy.Version == 1 {
+			err = o.retireSource()
+		} else if o.source != nil {
+			err = o.source.Close()
+		}
 		if err == nil {
 			p, e := newRetainedPinPublisher(s.coordinator)
 			if e != nil {
@@ -513,6 +597,135 @@ func (s *nativeGraphCostColumnSessions) serve(ctx context.Context, r processRequ
 	}
 	return o.next(ctx, q)
 }
+
+// The query gate owns this transition. Expiry retires only a transient genuine
+// source; it cannot replace the query cookie, cursor, original cuts or ledger.
+func (o *nativeGraphCostColumnOwner) renew(ctx context.Context) error {
+	if o.store.binding.Policy.Version != 1 {
+		return nil
+	}
+	if err := errors.Join(ctx.Err(), o.ctx.Err()); err != nil {
+		return err
+	}
+	if o.source != nil && o.source.ctx.Err() == nil {
+		return nil
+	}
+	if o.source != nil {
+		deadline, bounded := o.source.ctx.Deadline()
+		whole, fixed := o.ctx.Deadline()
+		if !bounded || !fixed || !o.source.fullTTL || !deadline.Before(whole) || !errors.Is(o.source.ctx.Err(), context.DeadlineExceeded) {
+			return errCrossProcessPending
+		}
+		if err := o.retireSource(); err != nil {
+			return err
+		}
+		o.expirations++
+	}
+	if o.starts >= o.startsLimit || o.failedStarts >= 4 {
+		return errLimit
+	}
+	o.starts++
+	call, cancel := context.WithCancel(o.ctx)
+	stop := context.AfterFunc(ctx, cancel)
+	_, source, err := reopenDurablePartitionNativeColumnsStore(call, o.store, o.coordinator, o.generation, o.store.binding.Policy, false)
+	if err == nil && o.cursor != nil {
+		// These are the actual private cursor's certificates, never caller bytes.
+		// Reauthenticate its predicate at the SAME genuine replacement source.
+		var progress nativeColumnProgress
+		progress, err = o.store.existing(o.generation, source)
+		if err == nil {
+			err = o.store.reserveWork(&progress, source, source.openWork)
+		}
+		if err == nil {
+			var pair [2]graphCertificate
+			pair, err = source.at(call, graphCut{certificates: []graphCertificate{o.cursor.at[0], o.cursor.at[1]}})
+			if err == nil && pair != o.cursor.at {
+				err = errInvalid
+			}
+		}
+	}
+	stop()
+	if err == nil {
+		err = errors.Join(ctx.Err(), o.ctx.Err(), source.ctx.Err())
+	}
+	if err != nil {
+		failure, hadFailure := errors.AsType[*nativeColumnCreationFailure](err)
+		if !hadFailure && source != nil {
+			// The replacement may finish capture and then expire during SAME-cut
+			// cursor authentication. Classify its actual context before canceling;
+			// a shorter request timeout cannot buy another full source TTL.
+			failure = nativeColumnCreationInterruption(call, source)
+		}
+		cancel()
+		if failure != nil && failure.FullTTL && failure.Expired && failure.DeadlineUnixNanos-failure.IssuedUnixNanos == int64(o.store.binding.Policy.Lifetime) {
+			o.expirations++
+		} else {
+			o.failedStarts++
+		}
+		if source != nil {
+			// Attach only for uniform, once-only metering/cleanup. No cursor or
+			// sequence changes until the entire native replacement succeeds.
+			o.source = source
+			err = errors.Join(err, o.retireSource())
+			if failure != nil && !hadFailure {
+				source.mu.Lock()
+				work := source.charged
+				source.mu.Unlock()
+				calls, request, reply := source.meter.snapshot()
+				failure.Failure = &nativeColumnSourceFailure{Charged: work, RPCs: calls, RequestBytes: request, ReplyBytes: reply, Cause: err}
+				err = failure
+			}
+		} else if failed, ok := errors.AsType[*nativeColumnSourceFailure](err); ok {
+			var sumErr error
+			o.retired, sumErr = o.retired.plus(failed.Charged)
+			err = errors.Join(err, sumErr)
+			if !nativeColumnAdd(o.retiredCalls, failed.RPCs) || !nativeColumnAdd(o.retiredRequests, failed.RequestBytes) || !nativeColumnAdd(o.retiredReplies, failed.ReplyBytes) {
+				err = errors.Join(err, errLimit)
+			} else {
+				o.retiredCalls += failed.RPCs
+				o.retiredRequests += failed.RequestBytes
+				o.retiredReplies += failed.ReplyBytes
+			}
+		}
+		return err
+	}
+	// The nested capture context lives until this source actually terminates;
+	// successful return does not cancel it or extend the fixed outer deadline.
+	context.AfterFunc(source.ctx, cancel)
+	o.source = source
+	if o.cursor != nil {
+		prospective := *o.cursor
+		prospective.source = source
+		o.cursor = &prospective
+	}
+	return nil
+}
+
+func (o *nativeGraphCostColumnOwner) retireSource() error {
+	if o.source == nil {
+		return nil
+	}
+	source := o.source
+	err := source.Close()
+	source.mu.Lock()
+	work := source.charged
+	source.mu.Unlock()
+	combined, sumErr := o.retired.plus(work)
+	if sumErr != nil {
+		return errors.Join(err, sumErr)
+	}
+	calls, request, reply := source.meter.snapshot() // after actual cleanup
+	if !nativeColumnAdd(o.retiredCalls, calls) || !nativeColumnAdd(o.retiredRequests, request) || !nativeColumnAdd(o.retiredReplies, reply) {
+		return errors.Join(err, errLimit)
+	}
+	o.retired = combined
+	o.retiredCalls += calls
+	o.retiredRequests += request
+	o.retiredReplies += reply
+	o.source = nil
+	return err
+}
+
 func (o *nativeGraphCostColumnOwner) next(ctx context.Context, q nativeGraphCostColumnRequest) ([]byte, error) {
 	if !o.gate.tryLock() {
 		return nil, errLimit
@@ -527,9 +740,15 @@ func (o *nativeGraphCostColumnOwner) next(ctx context.Context, q nativeGraphCost
 		o.mu.Unlock()
 		return nil, errInvalid
 	}
-	if err := errors.Join(ctx.Err(), o.source.ctx.Err()); err != nil {
+	active := ctx.Err()
+	if o.store.binding.Policy.Version == 1 {
+		active = errors.Join(active, o.ctx.Err())
+	} else {
+		active = errors.Join(active, o.source.ctx.Err())
+	}
+	if active != nil {
 		o.mu.Unlock()
-		return nil, err
+		return nil, active
 	}
 	if q.Sequence == o.lastSequence && o.cachedReply != nil {
 		if o.replayed || !bytes.Equal(canonical, o.cachedInput) {
@@ -546,7 +765,11 @@ func (o *nativeGraphCostColumnOwner) next(ctx context.Context, q nativeGraphCost
 		return nil, errInvalid
 	}
 	o.mu.Unlock()
+	if err := o.renew(ctx); err != nil {
+		return nil, err
+	}
 	var result []byte
+	var completedCursor *nativeColumnReadCursor
 	switch q.Action {
 	case nativeColumnsPublish:
 		if o.mode > nativeColumnsPublish {
@@ -583,7 +806,11 @@ func (o *nativeGraphCostColumnOwner) next(ctx context.Context, q nativeGraphCost
 				if err != nil && !create {
 					return nil, err
 				}
-				o.cache, err = openNativeColumnCache(dir, vfs.Default, create, nativeColumnsCacheBytes)
+				if o.store.binding.Policy.Version == 1 {
+					o.cache, err = openNativeColumnCacheForPolicy(dir, vfs.Default, create, o.store.binding.Policy)
+				} else {
+					o.cache, err = openNativeColumnCache(dir, vfs.Default, create, nativeColumnsCacheBytes)
+				}
 				if err != nil {
 					return nil, err
 				}
@@ -611,7 +838,8 @@ func (o *nativeGraphCostColumnOwner) next(ctx context.Context, q nativeGraphCost
 		if o.mode != nativeColumnsRead || o.cursor == nil {
 			return nil, errInvalid
 		}
-		_, err = o.store.nextReadChunk(ctx, o.cursor, func(ordinal uint64, body []byte, frames []nativeColumnFrame, eof bool) error {
+		prospective := *o.cursor
+		_, err = o.store.nextReadChunk(ctx, &prospective, func(ordinal uint64, body []byte, frames []nativeColumnFrame, eof bool) error {
 			o.mu.Lock()
 			closed := o.closed
 			o.mu.Unlock()
@@ -652,6 +880,7 @@ func (o *nativeGraphCostColumnOwner) next(ctx context.Context, q nativeGraphCost
 		if err != nil {
 			return nil, err
 		}
+		completedCursor = &prospective
 	default:
 		return nil, errInvalid
 	}
@@ -659,6 +888,9 @@ func (o *nativeGraphCostColumnOwner) next(ctx context.Context, q nativeGraphCost
 	defer o.mu.Unlock()
 	if o.closed || errors.Join(ctx.Err(), o.source.ctx.Err()) != nil {
 		return nil, errors.Join(context.Canceled, ctx.Err(), o.source.ctx.Err())
+	}
+	if completedCursor != nil {
+		o.cursor = completedCursor
 	}
 	o.lastSequence, o.cachedInput, o.cachedReply, o.replayed = q.Sequence, canonical, result, false
 	return bytes.Clone(result), nil
@@ -674,10 +906,15 @@ func (o *nativeGraphCostColumnOwner) close(ctx context.Context) error {
 		go func() {
 			err := o.gate.lock(context.Background())
 			if err == nil {
+				if o.store.binding.Policy.Version == 1 {
+					err = errors.Join(err, o.retireSource())
+				}
 				receipt, e := o.receipt(0)
 				err = errors.Join(err, e)
 				receipt.Closed, receipt.EOF, receipt.Body, receipt.Rows = true, false, nil, nil
-				err = errors.Join(err, o.source.Close())
+				if o.source != nil {
+					err = errors.Join(err, o.source.Close())
+				}
 				if o.cache != nil {
 					err = errors.Join(err, o.cache.Close())
 				}

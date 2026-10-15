@@ -33,6 +33,22 @@ func openNativeColumnCache(dir string, fs vfs.FS, create bool, maximum uint64) (
 	if dir == "" || maximum < 2*nativeColumnMetadataBytes || maximum > 1<<40 {
 		return nil, errInvalid
 	}
+	return openNativeColumnCacheBounded(dir, fs, create, maximum)
+}
+
+// The fresh embedding authenticates this policy against the actual source
+// binding before opening a cache. This finite maximum is admission, not an
+// allocation or a claim about measured disk use. A cache grants no source cut.
+func openNativeColumnCacheForPolicy(dir string, fs vfs.FS, create bool, policy nativeColumnPolicy) (*nativeColumnCache, error) {
+	if dir == "" || policy.Version != 1 || policy.validate() != nil || policy.MaxRetainedBytes < 2*nativeColumnMetadataBytes || policy.MaxRetainedBytes > 1<<62 {
+		return nil, errInvalid
+	}
+	return openNativeColumnCacheBounded(dir, fs, create, policy.MaxRetainedBytes)
+}
+
+// Both constructors use the same locked ledger and exact reopen identity.
+// Only their admitted maximum differs; the persisted ledger format is stable.
+func openNativeColumnCacheBounded(dir string, fs vfs.FS, create bool, maximum uint64) (cache *nativeColumnCache, err error) {
 	if fs == nil {
 		fs = vfs.Default
 	}

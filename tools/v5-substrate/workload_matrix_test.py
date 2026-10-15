@@ -7,6 +7,34 @@ import workload_matrix as matrix
 
 
 class WorkloadMatrixGuards(unittest.TestCase):
+    def test_native_owned_rtt_and_paired_fdb_nonlocal_boundary(self):
+        self.assertEqual(matrix.run_seconds(None, "foundationdb"), 180)
+        self.assertEqual(matrix.run_seconds(365*24*60*60, "native-raft"), 365*24*60*60)
+        for seconds, engine in ((None, "native-raft"), (1801, "foundationdb"), (1801, "paired")):
+            with self.assertRaises(ValueError): matrix.run_seconds(seconds, engine)
+        spec = {"version": 1, "family": "contention-empty-range", "facts": 20, "crossPercent": 50, "writers": 32, "layout": "columns"}
+        run = "01020304050607080910111213141516"
+        self.assertEqual(matrix.preflight(spec, run, "native-raft", "rtt-100ms"), spec)
+        self.assertEqual(matrix.preflight(spec, run, "paired", "local"), spec)
+        count, repetitions, facts, source_implemented = 0, set(), set(), True
+        for cell in matrix.matrix(("contention-empty-range",), ("rtt-100ms",), ("native-raft",)):
+            count += 1
+            repetitions.add(cell["repetition"]); facts.add(cell["workload"]["facts"])
+            source_implemented &= cell["implemented"]
+        self.assertEqual(count, 360)
+        self.assertEqual(repetitions, set(range(1, 6)))
+        self.assertEqual(facts, set(matrix.FACTS))
+        self.assertTrue(source_implemented)
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory)/"must-not-exist"
+            unsupported = next(matrix.matrix(("contention-empty-range",), ("rtt-100ms",), ("paired",)))
+            with self.assertRaises(ValueError):
+                matrix.execute(unsupported, destination, 180, "small", 4096, 1 << 30, 8 << 20)
+            self.assertFalse(destination.exists())
+        for engine, transport in (("foundationdb", "rtt-1ms"), ("paired", "rtt-1ms")):
+            with self.assertRaises(ValueError): matrix.preflight(spec, run, engine, transport)
+        with self.assertRaises(ValueError): matrix.preflight({**spec, "family": "snapshot-selectors"}, run, "native-raft", "local")
+
     def test_full_dimensions_and_fail_before_effects(self):
         counts = {}
         for cell in matrix.matrix():

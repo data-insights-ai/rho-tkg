@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -425,6 +426,7 @@ type graphProcess struct {
 	closed                                    bool
 	durableColumns                            bool // explicit child profile, never inferred from a result code
 	incarnation                               [16]byte
+	workloadRun                               [16]byte
 	maxPinned, maxOffers, maxImports, maxHeld uint64
 	closeErr                                  error
 	maxFrame                                  int
@@ -441,15 +443,32 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 	// Coverage is an explicit P05 qualification lane. Each incarnation owns a
 	// separate profile, including a reopen in the same graph directory.
 	conditional, childCover := false, false
+	durableProfile, contentionProfile := false, false
+	var workloadRun string
 	for _, entry := range p.cmd.Env {
 		name, value, _ := strings.Cut(entry, "=")
 		switch name {
 		case "RHO_GRAPH_DURABLE_COLUMN_PROCESS":
-			p.durableColumns = value == "1"
+			durableProfile = value == "1"
+		case "RHO_GRAPH_NATIVE_WORKLOAD":
+			contentionProfile = value == nativeContentionFormat
+		case "RHO_GRAPH_WORKLOAD_RUN":
+			workloadRun = value
 		case "RHO_GRAPH_CONDITIONAL_PROCESS":
 			conditional = value == "1"
 		case "RHO_P05_CHILD_COVER":
 			childCover = value == "1"
+		}
+	}
+	p.durableColumns = durableProfile || contentionProfile
+	if contentionProfile {
+		raw, err := hex.DecodeString(workloadRun)
+		if err != nil || len(raw) != 16 || hex.EncodeToString(raw) != workloadRun {
+			t.Fatal("fresh workload run binding", err)
+		}
+		copy(p.workloadRun[:], raw)
+		if p.workloadRun == ([16]byte{}) {
+			t.Fatal("zero fresh workload run")
 		}
 	}
 	if conditional && childCover {
@@ -1544,18 +1563,22 @@ const (
 )
 
 type certifiedProcessOwners struct {
-	cost        *nativeGraphCostSpec
-	fault       *nativeFaultFS
-	decisions   *nativeDecisionOwner
-	family      *nativeFaultFamilyOwner
-	host        *allocationHost
-	proof       allocationProof
-	readID      allocationReadID
-	question    allocationQuery
-	ready       bool
-	reserve     idalloc.RecipientSession
-	recipient   *allocationRecipientHandle
-	incarnation [16]byte
+	cost              *nativeGraphCostSpec
+	workload          *nativeContentionSpec
+	workloadRun       [16]byte
+	workloadDeadline  time.Time
+	workloadAdmission nativeContentionAdmission
+	fault             *nativeFaultFS
+	decisions         *nativeDecisionOwner
+	family            *nativeFaultFamilyOwner
+	host              *allocationHost
+	proof             allocationProof
+	readID            allocationReadID
+	question          allocationQuery
+	ready             bool
+	reserve           idalloc.RecipientSession
+	recipient         *allocationRecipientHandle
+	incarnation       [16]byte
 }
 
 func encodeCertifiedProcessProposal(p allocationProposal) ([]byte, error) {
@@ -1641,6 +1664,9 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 	case certifiedPairedFaultProperty:
 		return pairedGraphFaultProperty(o, r, id)
 	case certifiedGraphCost:
+		if o.workload != nil {
+			return allocationProposal{}, errInvalid // fresh factories require their genuine retained condition owner
+		}
 		return nativeGraphCostProposal(o, r, id)
 	case certifiedLifecycle:
 		return nativeLifecycleProposal(o, r, id)
@@ -1690,7 +1716,12 @@ func (o *certifiedProcessOwners) action(t *testing.T, r processRequest, init dec
 		}
 		return h.RecipientTransition(id, commandKind(r.data[0]), r.index, o.proof)
 	case certifiedReserve:
-		sequence, count, err := o.grantParameters(r.data)
+		sequence, count, err := uint64(0), uint64(0), error(nil)
+		if o.workload != nil {
+			sequence, count, err = nativeContentionGrantParameters(o, *o.workload, r.data)
+		} else {
+			sequence, count, err = o.grantParameters(r.data)
+		}
 		if err != nil {
 			return allocationProposal{}, err
 		}
@@ -1842,6 +1873,28 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	if err := nativeGraphCostProfile(cost, &init, &l, &p, &generations); err != nil {
 		t.Fatal(err)
 	}
+	workload, workloadRun, err := nativeContentionSpecFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workloadDeadline time.Time
+	var workloadAdmission nativeContentionAdmission
+	if workload != nil {
+		workloadAdmission, err = nativeContentionAdmissionFromEnv(*workload, workloadRun)
+		if err != nil {
+			t.Fatal("fixed fresh workload deadline", err)
+		}
+		workloadDeadline = time.Unix(0, workloadAdmission.DeadlineUnixNanos)
+	}
+	if err := nativeContentionProfile(workload, &init, &l, &p, &generations); err != nil {
+		t.Fatal(err)
+	}
+	if workload != nil {
+		// The facade enables only shared diagnostics/schema selection. Business
+		// and grant factories above take the distinct authenticated fresh route.
+		cost = &nativeGraphCostSpec{Version: 1, Facts: workload.Facts, CrossPercent: workload.CrossPercent, Writers: workload.Writers}
+		agreement, materializer = durableColumnGraphSemanticContractID(), newDurableColumnGraphMaterializer
+	}
 	durableColumns, err := nativeColumnProcessProfile()
 	if err != nil {
 		t.Fatal(err)
@@ -1850,12 +1903,12 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 		agreement, materializer = durableColumnGraphSemanticContractID(), newDurableColumnGraphMaterializer
 	}
 	controls, recovery := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 1}
-	if retention || durableColumns {
+	if retention || durableColumns || workload != nil {
 		recovery.Version = 2
 	}
 	var nativeRetention raftlog.ApplicationRetentionConfig
 	contract, err := raftlog.ApplicationContractForPolicyWithRecovery(p, controls, recovery)
-	if durableColumns {
+	if durableColumns || workload != nil {
 		nativeRetention.Version = 1
 		contract, err = raftlog.ApplicationContractForPolicyWithRetention(p, controls, recovery, nativeRetention)
 	}
@@ -1926,7 +1979,7 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 			t.Error(err)
 		}
 	}()
-	o := certifiedProcessOwners{host: h, cost: cost, fault: fault, family: family}
+	o := certifiedProcessOwners{host: h, cost: cost, workload: workload, workloadRun: workloadRun, workloadDeadline: workloadDeadline, workloadAdmission: workloadAdmission, fault: fault, family: family}
 	if _, err := io.ReadFull(rand.Reader, o.incarnation[:]); err != nil {
 		t.Fatal(err)
 	}

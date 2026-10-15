@@ -86,7 +86,17 @@ class Planning(unittest.TestCase):
             with self.subTest(paths=paths), patch.object(CI.subprocess,"run") as run:
                 CI.cdc(paths)
                 self.assertEqual([call.args[0] for call in run.call_args_list],
-                                 [[sys.executable,"-B","tools/v5-substrate/native_fault_schedule_check_test.py"]])
+                                 [[sys.executable,"-B","tools/v5-substrate/native_fault_schedule_check_test.py"],
+                                  [sys.executable,"-B","tools/v5-substrate/native_fault_family_check_test.py"]])
+
+    def test_native_workload_inputs_select_only_their_compact_private_guards(self):
+        for paths in [[path] for path in CI.WORKLOAD_INPUTS] + [list(CI.WORKLOAD_INPUTS)]:
+            with self.subTest(paths=paths), patch.object(CI.subprocess, "run") as run:
+                CI.cdc(paths)
+                self.assertEqual([call.args[0] for call in run.call_args_list], [
+                    [sys.executable, "-B", "tools/v5-substrate/native_contention_check_test.py"],
+                    [sys.executable, "-B", "tools/v5-substrate/native_workload_cell_test.py"],
+                    [sys.executable, "-B", "tools/v5-substrate/workload_matrix_test.py"]])
 
     def test_full_cdc_action_runs_only_its_exact_replay_without_reference_or_go(self):
         with patch.object(sys, "argv", ["ci-changes.py", "cdc", "--base", "fixture"]), \
@@ -308,7 +318,9 @@ class RealGitSelection(unittest.TestCase):
                    "TestNativeGraphCostThirtyTwoCommandWindowRejectsOtherWaveOriginals",
                    "TestNativeColumnsPublishResumeCacheAndRetainedCut",
                    "TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor",
-                   "TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass"}
+                   "TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass",
+                   "TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement",
+                   "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation"}
         for fixture in ("native_graph_cost_test.go", "native_graph_cost_harness_test.go",
                         "native_graph_cost_grants_harness_test.go", "native_graph_cost_reopen_harness_test.go",
                         "native_graph_cost_incident_harness_test.go", "native_graph_cost_columns_harness_test.go",
@@ -323,13 +335,13 @@ class RealGitSelection(unittest.TestCase):
                 changed = [self.root / p for p in CI.changed_paths(base, head)]
                 definitions = {p: CI.changed_definitions(p, base) for p in changed}
                 self.assertEqual(set(CI.graph_selection(self.directory, changed, definitions)),
-                                 parents | set(CI.GRAPH_COMPAT))
+                                 parents | set(CI.GRAPH_COMPAT) | (set(CI.WORKLOAD_PARENTS) if fixture == "native_graph_cost_columns_harness_test.go" else set()))
 
     def test_shared_child_cost_delta_keeps_finite_cost_and_transport_consumers(self):
         path = self.directory / "graph_source_process_test.go"
         path.write_text("package graphapply\ntype graphProcessHub struct{}\n")
         selected = set(CI.graph_selection(self.directory, [path], {path: [("type", "graphProcessHub")]}))
-        self.assertEqual(selected, set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.GRAPH_COMPAT) |
+        self.assertEqual(selected, set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.GRAPH_COMPAT) |
                          {"TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput",
                           "TestGraphSourceProcessObservationBatchBoundsOrderAndOwnedFacts"})
         self.assertNotIn("TestNativeGraphCostCell", selected)
@@ -525,7 +537,7 @@ class CurrentRepository(unittest.TestCase):
     def test_checked_compatibility_names_exist_in_current_sources(self):
         directory = CI.ROOT / "v5/internal/graphapply"
         names = set().union(*(CI.parent_names(p) for p in directory.glob("*_test.go")))
-        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) <= names)
+        self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) <= names)
         self.assertIn("TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements", CI.GRAPH_COMPAT)
 
     def test_explicit_cost_cell_is_short_guarded_before_profile(self):

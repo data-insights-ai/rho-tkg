@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Explicit fresh workload scheduling; scheduling is not family/RTT acceptance.
 
-The canonical eight-family matrix remains intact. Genuine FDB contention and
-snapshot-selectors/local source drivers exist here; every unsupported
+The canonical eight-family matrix remains intact. Genuine native contention
+and owned native delays join the existing local FDB drivers; every unsupported
 family/engine/transport refuses BEFORE directories, builds or cluster effects.
 """
 import argparse
@@ -28,6 +28,7 @@ FAMILIES = {
 }
 FACTS, CROSS, WRITERS, LAYOUTS = (10_000, 100_000, 1_000_000), (0, 10, 50, 100), (1, 8, 32), ("kv", "columns")
 TRANSPORTS = {"local": 0, "rtt-1ms": 1, "rtt-20ms": 20, "rtt-100ms": 100}
+ENGINES = ("foundationdb", "native-raft", "paired")
 IMPLEMENTED = ("contention-empty-range", "snapshot-selectors", "snapshot-to-feed")
 
 
@@ -36,23 +37,29 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS)):
+def implemented(family, engine, transport):
+    return (family in IMPLEMENTED and transport == "local" if engine == "foundationdb" else
+            family == "contention-empty-range" and (engine == "native-raft" or engine == "paired" and transport == "local"))
+
+
+def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("foundationdb",)):
     """11520 cells/engine across all8 families and local+3 RTT profiles.
 
     Five repetitions are independent fresh databases, not repeat queries on one
     retained cache. A cell here is a proposed schedule, never a result/skip.
     """
-    require(all(f in FAMILIES for f in families) and all(t in TRANSPORTS for t in transports), "unknown canonical workload dimension")
-    for family, facts, cross, writers, layout, transport, repetition in itertools.product(families, FACTS, CROSS, WRITERS, LAYOUTS, transports, range(1, 6)):
-        yield {"version": 1, "engine": "foundationdb", "workload": {"version": 1, "family": family, "facts": facts, "crossPercent": cross, "writers": writers, "layout": layout},
+    require(all(f in FAMILIES for f in families) and all(t in TRANSPORTS for t in transports) and all(e in ENGINES for e in engines), "unknown canonical workload dimension")
+    for engine, family, facts, cross, writers, layout, transport, repetition in itertools.product(engines, families, FACTS, CROSS, WRITERS, LAYOUTS, transports, range(1, 6)):
+        yield {"version": 1, "engine": engine, "workload": {"version": 1, "family": family, "facts": facts, "crossPercent": cross, "writers": writers, "layout": layout},
                "transport": {"kind": "local" if transport == "local" else "injected-rtt", "targetRTTMillis": TRANSPORTS[transport], "jitterMillis": 0, "seed": 20261009},
-               "repetition": repetition, "implemented": family in IMPLEMENTED and transport == "local",
+               "repetition": repetition, "implemented": implemented(family, engine, transport),
                "scope": "schedule only; missing family semantics/real directed shaping refuse execution, not accepted skips"}
 
 
 def preflight(spec, run, engine="foundationdb", transport="local"):
     require(type(spec) is dict and set(spec) == {"version", "family", "facts", "crossPercent", "writers", "layout"}, "explicit fresh workload schema")
-    require(type(spec["version"]) is int and spec["version"] == 1 and spec["family"] in IMPLEMENTED and engine == "foundationdb" and transport == "local", "family/engine/real transport driver not implemented")
+    require(type(spec["version"]) is int and spec["version"] == 1 and engine in ENGINES and transport in TRANSPORTS
+            and implemented(spec["family"], engine, transport), "family/engine/real transport driver not implemented")
     require(type(spec["facts"]) is int and 20 <= spec["facts"] <= 1_000_000 and spec["facts"] % 20 == 0 and type(spec["crossPercent"]) is int and spec["crossPercent"] in CROSS and type(spec["writers"]) is int and spec["writers"] in WRITERS and spec["layout"] in LAYOUTS, "fresh family shape")
     require(spec["family"] not in ("snapshot-selectors", "snapshot-to-feed") or spec["facts"] >= spec["writers"] + 1, "seed plus one genuine initial job per independent caller")
     require(type(run) is str and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "explicit nonzero fresh run identity")
@@ -66,18 +73,54 @@ def comparison_grant(facts, writers, disk, cache):
     return (disk, cache, "explicit-caller") if explicit else (1 << 30, 8 << 20, "small-default")
 
 
-def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, grant_origin="explicit-caller"):
+def run_seconds(seconds, engine):
+    if engine == "foundationdb":
+        seconds = 180 if seconds is None else seconds
+        require(type(seconds) is int and 1 <= seconds <= 1800, "unchanged ordinary FDB default180/cap1800")
+    else:
+        require(type(seconds) is int and 1 <= seconds <= 365*24*60*60, "fresh native run requires explicit finite --seconds; no implicit completion budget")
+        require(engine != "paired" or seconds <= 1800, "paired local requires a separately valid existing FDB run budget")
+    return seconds
+
+
+def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, grant_origin="explicit-caller", native_binary=None, watchdog=None):
     """One finite fresh run with existing launcher owned cleanup/accounting."""
-    transport = "local" if cell["transport"] == {"kind": "local", "targetRTTMillis": 0, "jitterMillis": 0, "seed": 20261009} else "unsupported"
+    transport = next((name for name, delay in TRANSPORTS.items() if cell["transport"] ==
+                      {"kind": "local" if name == "local" else "injected-rtt", "targetRTTMillis": delay, "jitterMillis": 0, "seed": 20261009}), "unsupported")
     run = secrets.token_hex(16)
     spec = preflight(cell["workload"], run, cell["engine"], transport)
     require(grant_origin in ("explicit-caller", "small-default") and (grant_origin == "explicit-caller" or spec["facts"] < 1_000_000 and spec["writers"] != 32), "large cells require explicit finite verifier grant")
-    require(type(seconds) is int and 1 <= seconds <= 1800 and profile in ("small", "large"), "finite declared run/profile policy")
+    seconds = run_seconds(seconds, cell["engine"])
+    require(profile in ("small", "large"), "finite declared run/profile policy")
     require(memory >= (3072 if profile == "small" else 10240), "all four servers+client must fit declared aggregate allowance")
     # Private temporary verifier state only. No engine/backend replacement.
     from comparison_spool import Policy
     policy = Policy(spool_disk, spool_cache, 4096, 512 << 10)
     policy.validate()
+    if cell["engine"] != "foundationdb":
+        import native_workload_cell as native
+        native.preflight(spec, transport, seconds, memory, cell["engine"])
+        native_binary, watchdog = native.executables(native_binary, watchdog)
+        # Verify both local adapters before either engine starts. Unsupported
+        # FDB shaping never turns into a nominally paired RTT result.
+        if cell["engine"] == "paired": preflight(spec, run, "foundationdb", transport)
+        destination = Path(output)
+        if cell["engine"] == "native-raft":
+            native.execute(spec, transport, destination, native_binary, watchdog, seconds, memory, policy, run=run)
+            receipt = native.bounded_json(destination / "receipt.json")
+            proof, artifacts = receipt["proof"], str((destination / "engine").resolve(strict=True))
+        else:
+            destination.mkdir(mode=0o700, parents=False, exist_ok=False)
+            native.execute(spec, transport, destination / "native", native_binary, watchdog, seconds, memory, policy, run=run)
+            execute({**cell, "engine": "foundationdb"}, destination / "fdb", seconds, profile, memory, spool_disk, spool_cache, grant_origin)
+            fdb = native.bounded_json(destination / "fdb/verified.json")
+            proof = native.compare(destination / "native", fdb["artifacts"], destination, policy)
+            artifacts = {"native": str(destination / "native/engine"), "foundationdb": fdb["artifacts"]}
+        with (destination / "verified.json").open("x") as out:
+            json.dump({"cell": cell, "artifacts": artifacts, "proof": proof,
+                       "acceptance": "one actual fresh cell; runtime capacity/full matrix and remaining D source are separate"}, out, indent=2)
+            out.write("\n")
+        return
     destination = Path(output)
     destination.mkdir(mode=0o700, parents=False, exist_ok=False)
     selector = spec["family"] in ("snapshot-selectors", "snapshot-to-feed")
@@ -136,40 +179,47 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
 def execute_matrix(args):
     # Refuse absent semantics/shaping for the WHOLE selection before admitting
     # any database/build. Never silently skip unsupported cells from a matrix.
-    require(args.family in IMPLEMENTED and args.transport == "local", "selected matrix family/transport implementation is absent")
-    require(1 <= args.seconds <= 1800 and args.admission_mib >= (3072 if args.deployment_profile == "small" else 10240), "explicit matrix resource policy")
+    require(implemented(args.family, args.engine, args.transport), "selected matrix family/engine/transport implementation is absent")
+    seconds = run_seconds(args.seconds, args.engine)
+    require(args.admission_mib >= (3072 if args.deployment_profile == "small" else 10240), "explicit matrix resource policy")
     disk, cache, origin = comparison_grant(1_000_000, 32, args.spool_disk_bytes, args.spool_cache_bytes)
     from comparison_spool import Policy
     Policy(disk, cache, 4096, 512 << 10).validate()
+    if args.engine != "foundationdb":
+        import native_workload_cell as native
+        native.preflight({"version": 1, "family": args.family, "facts": 1_000_000, "crossPercent": 100, "writers": 32, "layout": "columns"}, args.transport, seconds, args.admission_mib, args.engine)
+        native.executables(args.native_binary, args.watchdog)
     root = Path(args.output)
     root.mkdir(mode=0o700, parents=False, exist_ok=False)
     count = 0
     with (root / "schedule.jsonl").open("x") as schedule:
-        for cell in matrix((args.family,), (args.transport,)):
+        for cell in matrix((args.family,), (args.transport,), (args.engine,)):
             schedule.write(json.dumps(cell, separators=(",", ":")) + "\n")
     with (root / "completed.jsonl").open("x") as completed:
-        for cell in matrix((args.family,), (args.transport,)):
+        for cell in matrix((args.family,), (args.transport,), (args.engine,)):
             destination = root / f"cell-{count:04d}"
-            execute(cell, destination, args.seconds, args.deployment_profile, args.admission_mib, disk, cache, origin)
+            execute(cell, destination, seconds, args.deployment_profile, args.admission_mib, disk, cache, origin, args.native_binary, args.watchdog)
             completed.write(json.dumps({"cell": count, "repetition": cell["repetition"], "verified": str(destination / "verified.json")}) + "\n")
             completed.flush()
             count += 1
     require(count == 360, "all3 facts/4 cross/3 writers/2 layouts/5 fresh repetitions must complete")
     with (root / "matrix-result.json").open("x") as output:
-        json.dump({"version": 1, "family": args.family, "transport": args.transport, "freshCells": count,
-                   "scope": "selected implemented family/local schedule only; remaining families, directed RTT and native parity remain open"}, output, indent=2)
+        json.dump({"version": 1, "family": args.family, "engine": args.engine, "transport": args.transport, "freshCells": count,
+                   "scope": "selected actual fresh family/engine/transport cells only; missing families, FDB directed RTT, capacity and remaining D composition stay open"}, output, indent=2)
         output.write("\n")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="mode", required=True)
-    sub.add_parser("plan")
+    planned = sub.add_parser("plan")
+    planned.add_argument("--engine", choices=ENGINES, default="foundationdb")
     admission = sub.add_parser("preflight")
     admission.add_argument("spec")
     admission.add_argument("run")
     run = sub.add_parser("run")
     run.add_argument("--family", choices=FAMILIES, required=True)
+    run.add_argument("--engine", choices=ENGINES, default="foundationdb")
     run.add_argument("--transport", choices=TRANSPORTS, required=True)
     run.add_argument("--facts", type=int, choices=FACTS, required=True)
     run.add_argument("--cross", type=int, choices=CROSS, required=True)
@@ -177,34 +227,38 @@ def main():
     run.add_argument("--layout", choices=LAYOUTS, required=True)
     run.add_argument("--repetition", type=int, choices=range(1, 6), required=True)
     run.add_argument("--output", required=True)
-    run.add_argument("--seconds", type=int, default=180)
+    run.add_argument("--seconds", type=int)
     run.add_argument("--deployment-profile", choices=("small", "large"), default="small")
     run.add_argument("--admission-mib", type=int, default=4096)
     run.add_argument("--spool-disk-bytes", type=int)
     run.add_argument("--spool-cache-bytes", type=int)
     campaign = sub.add_parser("run-matrix")
     campaign.add_argument("--family", choices=FAMILIES, required=True)
+    campaign.add_argument("--engine", choices=ENGINES, default="foundationdb")
     campaign.add_argument("--transport", choices=TRANSPORTS, required=True)
     campaign.add_argument("--output", required=True)
-    campaign.add_argument("--seconds", type=int, default=180)
+    campaign.add_argument("--seconds", type=int)
     campaign.add_argument("--deployment-profile", choices=("small", "large"), default="small")
     campaign.add_argument("--admission-mib", type=int, default=4096)
     campaign.add_argument("--spool-disk-bytes", type=int)
     campaign.add_argument("--spool-cache-bytes", type=int)
+    for command in (run, campaign):
+        command.add_argument("--native-binary")
+        command.add_argument("--watchdog")
     args = parser.parse_args()
     if args.mode == "plan":
-        for cell in matrix():
+        for cell in matrix(engines=(args.engine,)):
             print(json.dumps(cell, separators=(",", ":")))
     elif args.mode == "preflight":
         preflight(json.loads(args.spec), args.run)
     elif args.mode == "run-matrix":
         execute_matrix(args)
     else:
-        cell = next(cell for cell in matrix((args.family,), (args.transport,)) if
+        cell = next(cell for cell in matrix((args.family,), (args.transport,), (args.engine,)) if
                     (cell["workload"]["facts"], cell["workload"]["crossPercent"], cell["workload"]["writers"], cell["workload"]["layout"], cell["repetition"]) ==
                     (args.facts, args.cross, args.writers, args.layout, args.repetition))
         disk, cache, origin = comparison_grant(args.facts, args.writers, args.spool_disk_bytes, args.spool_cache_bytes)
-        execute(cell, args.output, args.seconds, args.deployment_profile, args.admission_mib, disk, cache, origin)
+        execute(cell, args.output, args.seconds, args.deployment_profile, args.admission_mib, disk, cache, origin, args.native_binary, args.watchdog)
 
 
 if __name__ == "__main__":
