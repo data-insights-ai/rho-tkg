@@ -784,7 +784,7 @@ func retainedFeedMoveAndCollectedOriginals(t *testing.T) {
 	// Genuine ACKed feed floor can advance raw Outcome/CDC independently of the
 	// still-pinned initial snapshot root. The immutable pre-C original survives.
 	collect := func(outcome uint64) {
-		proposal, err := h.PrepareGraphRetention(t.Context(), n.requestID(), graphRetentionFloors{initial.certificate.sourceIndex, initial.certificate.sourceIndex, initial.feedStart, outcome, initial.certificate.sourceIndex, initial.certificate.index})
+		proposal, err := h.PrepareGraphRetention(t.Context(), n.requestID(), graphRetentionFloors{initial.certificate.sourceIndex, initial.certificate.sourceIndex, outcome, outcome, initial.certificate.sourceIndex, initial.certificate.index})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -857,6 +857,11 @@ func retainedFeedMoveAndCollectedOriginals(t *testing.T) {
 		t.Fatal("test did not acknowledge post-C original")
 	}
 	collect(cursor.positions[0])
+	for _, outcome := range []bool{false, true} {
+		if _, err = h.machine.store.ApplicationRecord(t.Context(), postIndex, outcome, 64<<10); !errors.Is(err, raftlog.ErrApplicationExpired) {
+			t.Fatal("acknowledged post-C raw sidecar was not collected", outcome, err)
+		}
+	}
 	q, err = graphRetentionReader(h, t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -867,6 +872,67 @@ func retainedFeedMoveAndCollectedOriginals(t *testing.T) {
 	}
 	if err = q.view.Close(); err != nil {
 		t.Fatal(err)
+	}
+	// A NEW same-original retry is different from that expired historical
+	// frame. Authenticate the original against the actual acknowledged prefix;
+	// its immutable retained result emits no second business delta after GC.
+	event, err = h.Submit(post)
+	if err != nil {
+		t.Fatal("post-C original retry after acknowledged collection", err)
+	}
+	n.pump(0, event)
+	q, err = graphRetentionReader(h, t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	actualCursor, found, err := readFeedCursor(q, owner.pin.definition.id())
+	if err != nil || !found || actualCursor.positions[0] != cursor.positions[0] {
+		t.Fatal("missing authentic acknowledged cursor", actualCursor, found, err)
+	}
+	frame, err = h.machine.feedNativeFrame(q, h.driver.Applied(), 64<<10, actualCursor.positions[0])
+	if err != nil || !frame.originalBeforeCut || len(frame.originalOutcome) == 0 || len(frame.originalChanges) != 0 || len(frame.changes) != 0 {
+		t.Fatal("new acknowledged retry lost immutable authority", frame, err)
+	}
+	replayed, decodeErr = decodePartitionMappedOutcome(frame.outcome, h.machine.ns)
+	prior, priorErr = decodePartitionMappedOutcome(frame.originalOutcome, h.machine.ns)
+	if decodeErr != nil || priorErr != nil || replayed.index != postIndex || prior.index != postIndex || replayed.identity != prior.identity || replayed.hash != prior.hash || replayed.disposition != requestReplay || prior.disposition != applied {
+		t.Fatal("collected post-C original identity changed", decodeErr, priorErr)
+	}
+	if err = q.view.Close(); err != nil {
+		t.Fatal(err)
+	}
+	read, err = p.coordinator.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundary, err = read.Cut()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = read.Close(); err != nil {
+		t.Fatal(err)
+	}
+	complete = false
+	for range 64 {
+		id := [16]byte(n.requestID())
+		d, err := owner.Page(t.Context(), id, boundary)
+		if err != nil || d.page.kind != 0 {
+			t.Fatal("new retry stranded feed or duplicated business delta", d.page.kind, err)
+		}
+		completed, err := owner.Ack(t.Context(), id, d.digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d.page.eof {
+			if !feedCutEqual(completed, boundary) {
+				t.Fatal("post-GC retry did not complete actual boundary")
+			}
+			complete = true
+			break
+		}
+	}
+	if !complete {
+		t.Fatal("post-GC original retry permanently stranded live feed")
 	}
 	if err = owner.Release(t.Context()); err != nil {
 		t.Fatal(err)

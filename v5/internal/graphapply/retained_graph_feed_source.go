@@ -374,7 +374,7 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 				return o, errInvalid
 			}
 			if question.index <= question.tip.index {
-				f, e := m.feedProgress(&q, question.index, question.index+min(question.tip.index-question.index, retainedFeedProgressBatch-1), d.policy.pageBytes, manifest.parts[local].feedStart)
+				f, e := m.feedProgress(&q, question.index, question.index+min(question.tip.index-question.index, retainedFeedProgressBatch-1), d.policy.pageBytes, cursor.positions[local])
 				if e != nil {
 					return o, e
 				}

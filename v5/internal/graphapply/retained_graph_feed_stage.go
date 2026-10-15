@@ -288,7 +288,7 @@ func (m *declaredMaterializer) feedRecord(q *reader, index uint64, outcome bool,
 	return wire, nil
 }
 
-func (m *declaredMaterializer) feedNativeFrame(q *reader, index uint64, maximum int, initialFeed uint64) (out retainedFeedFrame, err error) {
+func (m *declaredMaterializer) feedNativeFrame(q *reader, index uint64, maximum int, acknowledged uint64) (out retainedFeedFrame, err error) {
 	err = m.feedAt(q, index, func(at *reader) error {
 		out.partition, out.index = m.ns.partition, index
 		copy(out.root[:], at.base.Image)
@@ -430,10 +430,11 @@ func (m *declaredMaterializer) feedNativeFrame(q *reader, index uint64, maximum 
 			if len(out.changes) != 0 {
 				return errCorrupt
 			}
-			// A pre-C original can legitimately have lost its old raw envelopes.
-			// Authenticate its retained original control; this flag never means
-			// that its original business CDC was empty.
-			if original < initialFeed {
+			// An original below the authenticated acknowledged cursor (initially
+			// C's feed start) can legitimately have lost its raw envelopes. Its
+			// retained immutable control still authenticates this new replay;
+			// this flag never means that the original business CDC was empty.
+			if original < acknowledged {
 				out.originalBeforeCut = true
 				switch {
 				case bytes.HasPrefix(out.outcome, []byte("GCS\x01")):
@@ -547,14 +548,14 @@ func feedNativeFrameEqual(a, b retainedFeedFrame) bool {
 // authenticated before hashing. It never crosses the first business envelope.
 // Keeping just the first frame and rolling hash avoids copying a history-sized
 // metadata batch into the durable page. Source and Stage use this same verifier.
-func (m *declaredMaterializer) feedProgress(q *reader, index, through uint64, maximum int, initial uint64) (retainedFeedFrame, error) {
+func (m *declaredMaterializer) feedProgress(q *reader, index, through uint64, maximum int, acknowledged uint64) (retainedFeedFrame, error) {
 	if index == 0 || through < index || through-index >= retainedFeedProgressBatch {
 		return retainedFeedFrame{}, errInvalid
 	}
 	var first retainedFeedFrame
 	var digest [32]byte
 	for at := index; at <= through; at++ {
-		f, err := m.feedNativeFrame(q, at, maximum, initial)
+		f, err := m.feedNativeFrame(q, at, maximum, acknowledged)
 		if err != nil {
 			return retainedFeedFrame{}, err
 		}
@@ -868,7 +869,7 @@ func (m *declaredMaterializer) checkFeedPage(q *reader, d retainedFeedDefinition
 		if p.next[local] > p.tips[local].index {
 			return errInvalid
 		}
-		f, e := m.feedNativeFrame(q, p.next[local], d.policy.pageBytes, manifest.parts[local].feedStart)
+		f, e := m.feedNativeFrame(q, p.next[local], d.policy.pageBytes, cursor.positions[local])
 		if e != nil {
 			return e
 		}
@@ -900,7 +901,7 @@ func (m *declaredMaterializer) checkFeedPage(q *reader, d retainedFeedDefinition
 		if frame.progressNext != 0 {
 			through = frame.progressNext - 1
 		}
-		actual, err := m.feedProgress(q, frame.index, through, d.policy.pageBytes, manifest.parts[local].feedStart)
+		actual, err := m.feedProgress(q, frame.index, through, d.policy.pageBytes, cursor.positions[local])
 		if err != nil {
 			return err
 		}
