@@ -851,13 +851,15 @@ through the reserved terminal lane, rejecting ordinary or malformed queries.
 This source package has not been compiled or executed.
 
 The scalar native workload factory builds fresh claims from authenticated,
-installed grant references; it does not call `Recipient`/`Cursor.Next`. Keep
-reservation, installation, fresh application claims and cursor issuance distinct
-in the allocator cost comparison. Source review also found that the shared feed
-checker hashes `grants.jsonl` without independently joining its full reserve and
-install originals. The selector implementation now supplies that bounded join;
-the feed follow-up must reuse it before comparative qualification. Neither
-expected numeric IDs nor an artifact hash establishes cursor issuance.
+installed grant references; it does not call `Recipient`/`Cursor.Next`.
+The feed checker now reuses the selector's bounded reserve/install-original and
+fresh-claim join at `edec78fa`, before raw source verification. Existing selector
+wrappers retain their exact semantics. Reservation, installation, application
+claims and cursor issuance remain distinct costs; neither planned numeric IDs
+nor artifact hashes establish cursor issuance. These checker guards are authored,
+not executed. A separate selector launcher mismatch remains to fix: its controller
+exports `RHO_GRAPH_WORKLOAD_OUTPUT`, while its parent requires
+`RHO_GRAPH_PROCESS_ARTIFACT` and an owned directory.
 
 Current worker lanes: Sol 6.1/high for the native retained-only feed workload/GC
 adapter, installed-grant proof reuse and remaining native workload families;
