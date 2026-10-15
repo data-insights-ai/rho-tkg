@@ -434,12 +434,27 @@ isolated competing empty-ID claims use 1/8/32 callers, immutable uncertain retri
 and authenticated ABORT-only replanning. Its separate artifacts/checker bind
 complete originals, old/current state, CDC, column ownership and derived GC;
 fixed probes share history walks and make no indexed-point latency claim.
+The selector/source family is source-integrated at `ae6866cd`: genuine
+Fresh/Stable/After/At selection acquires an authenticated retained owner before
+data access. Stable selects from a complete bounded native inventory without
+publishing a new fence; After authenticates its original receipt. A linear
+current-key/original-prefix census proves semantic scan completeness; deep-old
+predecessor traversal has an explicit finite policy. Fixed batched Points uses
+one full scan and makes no indexed-point latency claim. Cleanup retains the
+same owner, cumulative allowance and bounded pending handle, independently of a
+cancelled read context. The fresh driver supplies actual 1/8/32 business callers,
+old/current and exact-scope observations, complete ID/request/source inventories,
+both layouts and genuine column/cache/lifetime operations. Separate actual
+Open/Scan/Points timings bind mode, cut and EOF cardinality, with fixed per-cell
+sample counts; write latency stays separate. Legacy wrappers/formats remain
+unchanged. The direct API and independent checker guards are authored only.
 The dispatcher schedules all eight families and local/1/20/100ms profiles, but
-executes only this family/local; unsupported semantics or transport refuse before
-effects. Selected-family execution covers 360 fresh cells; 1M or 32-writer cells
-require explicit finite comparison disk/cache grants. No cell, new guard or
-runtime gate has run. The other seven families, directed RTT, native parity,
-full matrix and engine decision remain open. The explicitly selected FDB source-history
+executes only contention and selectors/local; unsupported semantics or transport
+refuse before effects. Each selected-family matrix contains 360 fresh cells;
+1M or 32-writer cells require explicit finite comparison disk/cache grants.
+No new cell, guard or runtime gate has run. The other six FDB family drivers,
+directed RTT, native parity, full matrix and engine decision remain open.
+The explicitly selected FDB source-history
 collector is source-integrated at `5685b659`: durable pre-deletion admission,
 held-read/pin/reference protection, resumable bounded deletion and exact original
 revision checks preserve current anchors, retry outcomes and retained CDC.
