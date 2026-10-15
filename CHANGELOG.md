@@ -17,8 +17,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   graph genesis. Missing copied outcomes require a completed origin-group read;
   unavailable origin authority remains pending. Recovery retains exact captures,
   staged progress and reverse undo through reopen and partial activation.
-  The admitted 1,024-page content bound and explicit per-invocation allowances
-  are finite internal limits, not arbitrary-size rebalance or performance claims.
+  Older agreements retain their 1,024-page content bound. An explicitly selected
+  fresh agreement adds compact recovery-credit spans and immutable native lineage
+  references, with at most 32 original-history subframes per 64 KiB page. Its
+  caller-declared page grant is bounded by 2^24 and checked against unchanged
+  aggregate store/log quotas before fencing. Partial records continue only after
+  their predecessor fragments are installed; duplicate original bytes coalesce
+  while conflicting payloads refuse. These are finite internal limits, not
+  arbitrary-size rebalance or performance claims; new guards remain unexecuted.
   Logical-group retirement, retention/GC, broader fault evidence and full V2
   remain open.
 

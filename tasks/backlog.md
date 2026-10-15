@@ -519,8 +519,21 @@ application/log bytes and records. RS3/RY5/RQ3 and AS8/AD7 carry the same remain
 capacity through queued replay, old roots, portable snapshots and receiver reopen;
 TB1 terminal funding stays separate. Actual terminal installation alone retires
 unused suffixes. Recovery1/2 and older formats remain unchanged; no quota ceiling
-was raised. All 22 frozen blobs and 19 complete parents were verified. Its guards
-are authored only; graph transfer formats and the actual workload remain pending.
+was raised. All 22 frozen blobs and 19 complete parents were verified. Compact
+graph transfer formats are source-integrated at `1cf21b1e`: fresh GMI2/GMQ2/GMO2/
+GMY3/GMP4 bind that same explicit agreement; at most eight credit spans fund an
+explicit page grant up to 2^24 without raising store/log quotas. GMP4 references
+the actual immutable source H0 header and retained packet, hydrated once for the
+authenticated target manifest. GEB1 batches at most 32 genuine GEP1 subframes
+within 64 KiB and one shared read/output ledger. Its outer seal is prepaid;
+nonfinal fragments end the batch so continuations read installed predecessors.
+Identical native/inherited original aliases coalesce without refunds; conflicting
+bytes refuse before publication. Fresh remote source opening, feed classification,
+inactive AS8 auditing and ascending partial undo use the same agreement. All 23
+frozen source blobs and 21 complete current parents were verified. Direct native
+fragment, reference, conflict, source-lease, audit and undo/reopen guards are
+authored only, not executed. The actual native transfer workload, full fault
+composition and matrix qualification remain open.
 FDB feed business accounting is source-integrated at `4218c9a7`: an explicit
 optional extension joins create/update phase walls,
 including each seed and complete worker drain, to raw begin/end markers and
