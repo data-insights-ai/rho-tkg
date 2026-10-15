@@ -11,11 +11,17 @@ import (
 // Test-only helper used during property index verification.
 func (pi *PropertyIndex) Contains(id snowflake.ID) bool {
 	for _, idSet := range pi.Entries {
-		if _, ok := idSet[id]; ok {
+		if idSet.Has(id) {
 			return true
 		}
 	}
 	return false
+}
+
+// lookupIDs (test-only) returns value's IDs ascending as a fresh slice, nil
+// when none.
+func lookupIDs(pi *PropertyIndex, value any) []snowflake.ID {
+	return pi.Postings(value).AppendAfter(nil, 0, 0)
 }
 
 func TestPropertyIndex_Contains(t *testing.T) {
@@ -45,18 +51,18 @@ func TestPropertyIndexZeroValueAndNilReceiverNoop(t *testing.T) {
 
 	var idx PropertyIndex
 	idx.Add(snowflake.ID(1), "Alice")
-	if got := idx.Lookup("Alice"); len(got) != 1 {
+	if got := lookupIDs(&idx, "Alice"); len(got) != 1 {
 		t.Fatalf("zero-value Lookup after Add len = %d, want 1", len(got))
 	}
 	idx.Remove(snowflake.ID(1), "Alice")
-	if got := idx.Lookup("Alice"); got != nil {
+	if got := lookupIDs(&idx, "Alice"); got != nil {
 		t.Fatalf("zero-value Lookup after Remove = %v, want nil", got)
 	}
 
 	var nilIdx *PropertyIndex
 	nilIdx.Add(snowflake.ID(1), "Alice")
 	nilIdx.Remove(snowflake.ID(1), "Alice")
-	if got := nilIdx.Lookup("Alice"); got != nil {
+	if got := lookupIDs(nilIdx, "Alice"); got != nil {
 		t.Fatalf("nil Lookup = %v, want nil", got)
 	}
 
@@ -70,7 +76,7 @@ func TestPropertyIndexAddKey(t *testing.T) {
 
 	var idx PropertyIndex
 	idx.AddKey(snowflake.ID(1), "s:Alice")
-	if got := idx.Lookup("Alice"); len(got) != 1 {
+	if got := lookupIDs(&idx, "Alice"); len(got) != 1 {
 		t.Fatalf("zero-value Lookup after AddKey len = %d, want 1", len(got))
 	}
 
@@ -109,66 +115,25 @@ func TestPropertyIndexPurgeMarksMutated(t *testing.T) {
 	}
 }
 
-func TestPropertyIndexLookupReturnsIndependentMap(t *testing.T) {
-	t.Parallel()
-
-	idx := NewPropertyIndex()
-	idx.Add(snowflake.ID(1), "Alice")
-	idx.Add(snowflake.ID(2), "Alice")
-
-	got := idx.Lookup("Alice")
-	if len(got) != 2 {
-		t.Fatalf("Lookup len = %d, want 2", len(got))
-	}
-	delete(got, snowflake.ID(1))
-	got[snowflake.ID(99)] = struct{}{}
-
-	again := idx.Lookup("Alice")
-	if _, ok := again[snowflake.ID(1)]; !ok {
-		t.Fatal("mutating Lookup result removed ID from index")
-	}
-	if _, ok := again[snowflake.ID(99)]; ok {
-		t.Fatal("mutating Lookup result inserted ID into index")
-	}
-}
-
-func TestPropertyIndexNodeIDsReturnsIndependentSlice(t *testing.T) {
-	t.Parallel()
-
-	idx := NewPropertyIndex()
-	idx.Add(snowflake.ID(1), "Alice")
-	idx.Add(snowflake.ID(2), "Alice")
-
-	got := idx.NodeIDs("Alice")
-	if len(got) != 2 {
-		t.Fatalf("NodeIDs len = %d, want 2", len(got))
-	}
-	got[0] = 99
-
-	again := idx.Lookup("Alice")
-	if _, ok := again[snowflake.ID(99)]; ok {
-		t.Fatal("mutating NodeIDs result inserted ID into index")
-	}
-	if len(again) != 2 {
-		t.Fatalf("Lookup after NodeIDs mutation len = %d, want 2", len(again))
-	}
-}
-
-func TestPropertyIndexNodeIDsMisses(t *testing.T) {
+func TestPropertyIndexPostingsMisses(t *testing.T) {
 	t.Parallel()
 
 	var nilIdx *PropertyIndex
-	if got := nilIdx.NodeIDs("Alice"); got != nil {
-		t.Fatalf("nil NodeIDs = %v, want nil", got)
+	if got := nilIdx.Postings("Alice"); got != nil {
+		t.Fatalf("nil Postings = %v, want nil", got)
 	}
 
 	idx := NewPropertyIndex()
+	idx.Add(snowflake.ID(2), "Alice")
 	idx.Add(snowflake.ID(1), "Alice")
-	if got := idx.NodeIDs([]string{"not", "indexable"}); got != nil {
-		t.Fatalf("unindexable NodeIDs = %v, want nil", got)
+	if got := idx.Postings([]string{"not", "indexable"}); got != nil {
+		t.Fatalf("unindexable Postings = %v, want nil", got)
 	}
-	if got := idx.NodeIDs("Bob"); got != nil {
-		t.Fatalf("missing NodeIDs = %v, want nil", got)
+	if got := idx.Postings("Bob"); got != nil {
+		t.Fatalf("missing Postings = %v, want nil", got)
+	}
+	if got := lookupIDs(idx, "Alice"); len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Fatalf("Postings(Alice) = %v, want [1 2] ascending", got)
 	}
 }
 
@@ -193,7 +158,7 @@ func TestAddAndRemoveNodeFromPropertyIndexes(t *testing.T) {
 	}
 
 	AddNodeToPropertyIndexes(indexes, n, snowflake.ID(1))
-	if got := nameIdx.Lookup("Alice"); len(got) != 1 {
+	if got := lookupIDs(nameIdx, "Alice"); len(got) != 1 {
 		t.Fatalf("name index len = %d, want 1", len(got))
 	}
 	if metaIdx.Contains(snowflake.ID(1)) {
@@ -204,7 +169,7 @@ func TestAddAndRemoveNodeFromPropertyIndexes(t *testing.T) {
 	}
 
 	RemoveNodeFromPropertyIndexes(indexes, n, snowflake.ID(1))
-	if got := nameIdx.Lookup("Alice"); got != nil {
+	if got := lookupIDs(nameIdx, "Alice"); got != nil {
 		t.Fatalf("name index after remove = %v, want nil", got)
 	}
 }

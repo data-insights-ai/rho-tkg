@@ -1,0 +1,12 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkPostingsCreateIndex/property-32         	       5	1388993150 ns/op
+BenchmarkPostingsCreateIndex/property-32         	       5	1428420707 ns/op
+BenchmarkPostingsCreateIndex/property-32         	       5	1466937416 ns/op
+BenchmarkPostingsCreateIndex/composite-32        	       5	 824497729 ns/op
+BenchmarkPostingsCreateIndex/composite-32        	       5	 819791027 ns/op
+BenchmarkPostingsCreateIndex/composite-32        	       5	 813663511 ns/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	41.889s

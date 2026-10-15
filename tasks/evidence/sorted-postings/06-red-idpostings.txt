@@ -1,0 +1,9 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index.test]
+pkg/graph/internal/index/sorted_postings_bench_test.go:84:31: cannot use i (variable of type int) as int64 value in argument to itoa
+pkg/graph/internal/index/sorted_postings_bench_test.go:106:6: itoa redeclared in this block
+	pkg/graph/internal/index/docvalues_extend_test.go:75:6: other declaration of itoa
+pkg/graph/internal/index/sorted_postings_test.go:19:9: undefined: IDPostings
+pkg/graph/internal/index/sorted_postings_test.go:58:37: undefined: IDPostings
+pkg/graph/internal/index/sorted_postings_test.go:118:9: undefined: IDPostings
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index [build failed]
+FAIL

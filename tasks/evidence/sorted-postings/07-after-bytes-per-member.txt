@@ -1,0 +1,20 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkPostingsBytesPerMember/composite/ascending-32         	       1	  27836278 ns/op	         8.061 B/member
+BenchmarkPostingsBytesPerMember/composite/ascending-32         	       1	  25756600 ns/op	         8.061 B/member
+BenchmarkPostingsBytesPerMember/composite/shuffled-32          	       1	 220202759 ns/op	        12.15 B/member
+BenchmarkPostingsBytesPerMember/composite/shuffled-32          	       1	 219929048 ns/op	        12.15 B/member
+BenchmarkPostingsBytesPerMember/property-int/ascending-32      	       1	  83300135 ns/op	        16.12 B/member
+BenchmarkPostingsBytesPerMember/property-int/ascending-32      	       1	  82700610 ns/op	        16.12 B/member
+BenchmarkPostingsBytesPerMember/property-int/shuffled-32       	       1	 430962581 ns/op	        24.31 B/member
+BenchmarkPostingsBytesPerMember/property-int/shuffled-32       	       1	 446618228 ns/op	        24.31 B/member
+BenchmarkPostingsBytesPerMember/property-string/ascending-32   	       1	  32489173 ns/op	         8.061 B/member
+BenchmarkPostingsBytesPerMember/property-string/ascending-32   	       1	  29306169 ns/op	         8.061 B/member
+BenchmarkPostingsBytesPerMember/property-string/shuffled-32    	       1	 219544751 ns/op	        12.15 B/member
+BenchmarkPostingsBytesPerMember/property-string/shuffled-32    	       1	 224475298 ns/op	        12.15 B/member
+BenchmarkPostingsBytesPerMember/property-distinct/ascending-32 	       1	 922349258 ns/op	       295.6 B/member
+BenchmarkPostingsBytesPerMember/property-distinct/ascending-32 	       1	 925104374 ns/op	       297.2 B/member
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	3.937s

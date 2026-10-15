@@ -100,7 +100,7 @@ func (pi *PropertyIndex) RangeCardinality(min, max float64, inclMin, inclMax boo
 		} else if k >= max {
 			return false
 		}
-		count += int64(len(pi.numBuckets[k]))
+		count += int64(pi.numBuckets[k].Len())
 		return true
 	})
 	return count, true

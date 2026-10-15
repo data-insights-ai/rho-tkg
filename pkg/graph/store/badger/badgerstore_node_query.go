@@ -355,22 +355,28 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 	if idx, ok := bs.propertyIndexes[key]; ok && idx.Mutated == nil {
 		// Indexed path.
 		elements := idx.Elements()
-		var nids []types.NodeID
-		if bs.propIdxOnDisk {
-			diskNids, dErr := bs.propertyIndexDiskLookupLocked(propKey, targetKey)
-			if dErr != nil {
-				bs.idxMu.RUnlock()
-				return nil, dErr
+		if !bs.propIdxOnDisk {
+			// The value's sorted posting list, paged from opts.After in
+			// batches (backlog 72): no copy or sort of the whole key.
+			ids := idx.Postings(value)
+			empty := ids.Len() == 0
+			bs.idxMu.RUnlock()
+			if empty {
+				return nil, nil
 			}
-			nids = diskNids
-		} else {
-			nids = idx.NodeIDs(value)
+			return pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Node, error) {
+				nids := bs.filterNodeIDsByTemporalPeek(storepkg.ToNodeIDs(batch), page)
+				return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, elements, nids, page)
+			})
+		}
+		nids, dErr := bs.propertyIndexDiskLookupLocked(propKey, targetKey)
+		bs.idxMu.RUnlock()
+		if dErr != nil {
+			return nil, dErr
 		}
 		if len(nids) == 0 {
-			bs.idxMu.RUnlock()
 			return nil, nil
 		}
-		bs.idxMu.RUnlock()
 
 		storepkg.SortNodeIDs(nids)
 

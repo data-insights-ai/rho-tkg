@@ -79,7 +79,7 @@ func (bs *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 	bs.idxMu.Unlock()
 
 	// Phase 2: Fetch node data OUTSIDE any lock.
-	backfill := indexpkg.NewCompositePropertyIndex(keys)
+	backfill := indexpkg.NewPostingsBuild(false)
 	for _, nid := range nids {
 		n, err := bs.prefetchNode(nid)
 		if err != nil {
@@ -106,8 +106,8 @@ func (bs *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 		bs.idxMu.Unlock()
 		return err
 	}
-	for vk, idSet := range backfill.Entries {
-		for id := range idSet {
+	backfill.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
@@ -116,7 +116,8 @@ func (bs *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 			}
 			liveIdx.AddKey(id, vk)
 		}
-	}
+		return true
+	})
 	liveIdx.Mutated = nil // stop tracking — index creation complete
 	bs.persistCompositeIndexDefs()
 	bs.idxMu.Unlock()
@@ -218,16 +219,18 @@ func (bs *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 			bs.idxMu.RUnlock()
 			return nil, nil
 		}
-		nids := idx.NodeIDs(vk)
-		if len(nids) == 0 {
-			bs.idxMu.RUnlock()
+		// The tuple's sorted posting list, paged from opts.After in batches
+		// (backlog 72): no copy or sort of the whole key.
+		ids := idx.Postings(vk)
+		empty := ids.Len() == 0
+		bs.idxMu.RUnlock()
+		if empty {
 			return nil, nil
 		}
-		bs.idxMu.RUnlock()
-
-		storepkg.SortNodeIDs(nids)
-		nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
-		return bs.fetchNodesByLabelPropertiesIDs(labelToken, values, nids, opts)
+		return pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Node, error) {
+			nids := bs.filterNodeIDsByTemporalPeek(storepkg.ToNodeIDs(batch), page)
+			return bs.fetchNodesByLabelPropertiesIDs(labelToken, values, nids, page)
+		})
 	}
 
 	// Fallback: snapshot label IDs, release lock, then scan properties.

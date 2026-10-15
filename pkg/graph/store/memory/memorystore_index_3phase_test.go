@@ -168,13 +168,13 @@ func TestCreatePropertyIndex_ConcurrentMutationDuringScanIsReconciled(t *testing
 	}
 
 	for i := int64(1); i <= 2_000; i++ {
-		ids := idx.NodeIDs(int64(1))
+		ids := postingIDs(idx.Postings(int64(1)))
 		for _, id := range ids {
 			if id == types.NodeID(i) {
 				t.Fatalf("deleted node %d still present in index under its old value", i)
 			}
 		}
-		ids999 := idx.NodeIDs(int64(999))
+		ids999 := postingIDs(idx.Postings(int64(999)))
 		for _, id := range ids999 {
 			if id == types.NodeID(i) {
 				t.Fatalf("deleted node %d present in index under the updated value", i)
@@ -183,7 +183,7 @@ func TestCreatePropertyIndex_ConcurrentMutationDuringScanIsReconciled(t *testing
 	}
 	for i := int64(2_001); i <= 4_000; i++ {
 		found := false
-		for _, id := range idx.NodeIDs(int64(999)) {
+		for _, id := range postingIDs(idx.Postings(int64(999))) {
 			if id == types.NodeID(i) {
 				found = true
 				break
@@ -192,14 +192,14 @@ func TestCreatePropertyIndex_ConcurrentMutationDuringScanIsReconciled(t *testing
 		if !found {
 			t.Fatalf("updated node %d missing from index under its new value 999", i)
 		}
-		for _, id := range idx.NodeIDs(int64(1)) {
+		for _, id := range postingIDs(idx.Postings(int64(1))) {
 			if id == types.NodeID(i) {
 				t.Fatalf("updated node %d still present in index under its stale pre-update value 1", i)
 			}
 		}
 	}
 	// A node untouched by the concurrent goroutine keeps its original value.
-	for _, id := range idx.NodeIDs(int64(1)) {
+	for _, id := range postingIDs(idx.Postings(int64(1))) {
 		if id == types.NodeID(n) {
 			return
 		}

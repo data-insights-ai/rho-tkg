@@ -57,7 +57,8 @@ func (s *Store) DropCompositePropertyIndex(labelToken uint16, keys []string) err
 }
 
 // NodesByLabelAndProperties folds each shard's AND-conjunction equality matches
-// into one globally ID-sorted, paginated result.
+// into one globally ID-sorted, paginated result; each shard answers the same
+// page, as in NodesByLabelAndProperty (backlog 72).
 func (s *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]any, opts QueryOpts) ([]*types.Node, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
@@ -70,7 +71,7 @@ func (s *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]a
 	}
 	per := make([][]*types.Node, len(s.shards))
 	err := s.forEachShardErr(func(idx int, shard *badgerShard) error {
-		nodes, e := shard.NodesByLabelAndProperties(labelToken, values, stripPagination(opts))
+		nodes, e := shard.NodesByLabelAndProperties(labelToken, values, opts)
 		per[idx] = nodes
 		return e
 	})

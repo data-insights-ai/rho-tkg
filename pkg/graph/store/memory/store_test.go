@@ -3217,22 +3217,22 @@ func TestPurgeNodeFromAllPropertyIndexes_RemovesFromAll(t *testing.T) {
 	indexpkg.PurgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(1))
 
 	// ID 1 should be gone from both indexes.
-	if s := idx1.Lookup("Alice"); s != nil {
+	if s := lookupSet(idx1, "Alice"); s != nil {
 		if _, ok := s[snowflake.ID(1)]; ok {
 			t.Error("ID 1 should be removed from name index")
 		}
 	}
-	if s := idx2.Lookup(30); s != nil {
+	if s := lookupSet(idx2, 30); s != nil {
 		if _, ok := s[snowflake.ID(1)]; ok {
 			t.Error("ID 1 should be removed from age index")
 		}
 	}
 
 	// Other IDs should remain.
-	if s := idx1.Lookup("Bob"); len(s) != 1 {
+	if s := lookupSet(idx1, "Bob"); len(s) != 1 {
 		t.Errorf("Bob should still have 1 entry, got %d", len(s))
 	}
-	if s := idx2.Lookup(25); len(s) != 1 {
+	if s := lookupSet(idx2, 25); len(s) != 1 {
 		t.Errorf("age 25 should still have 1 entry, got %d", len(s))
 	}
 }
@@ -3251,11 +3251,11 @@ func TestPurgeNodeFromAllPropertyIndexes_OtherNodesUnaffected(t *testing.T) {
 	indexpkg.PurgeNodeFromAllPropertyIndexes(indexes, snowflake.ID(10))
 
 	// ID 20 and 30 should be unaffected.
-	s := idx.Lookup("val")
+	s := lookupSet(idx, "val")
 	if _, ok := s[snowflake.ID(20)]; !ok {
 		t.Error("ID 20 should still be in index")
 	}
-	s2 := idx.Lookup("other")
+	s2 := lookupSet(idx, "other")
 	if _, ok := s2[snowflake.ID(30)]; !ok {
 		t.Error("ID 30 should still be in index")
 	}

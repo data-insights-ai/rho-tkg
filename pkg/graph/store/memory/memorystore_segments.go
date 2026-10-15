@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"iter"
 	"math"
 	"slices"
 	"sync"
@@ -1125,9 +1126,15 @@ func (ms *Store) relationshipsByTypeSegmentsLocked(token uint16, opts QueryOpts)
 // IDs <= after skipped, then keep, then at most limit (0 = all). nil when
 // empty.
 func (ms *Store) relsFromIDsLocked(ids []types.RelID, after types.EntityID, limit int, keep func(*types.Relationship) bool) ([]*types.Relationship, error) {
-	ids = storepkg.PaginateRelIDs(ids, after, 0)
+	return ms.relsFromSeqLocked(idsAfter(ids, after), limit, keep)
+}
+
+// relsFromSeqLocked is relsFromIDsLocked over ascending candidates already
+// past the cursor (an index posting list's After, backlog 72).
+func (ms *Store) relsFromSeqLocked(ids iter.Seq[snowflake.ID], limit int, keep func(*types.Relationship) bool) ([]*types.Relationship, error) {
 	var out []*types.Relationship
-	for _, id := range ids {
+	for raw := range ids {
+		id := types.RelID(raw)
 		r, ok, err := ms.relLocked(id)
 		if err != nil {
 			return nil, err
