@@ -1074,9 +1074,12 @@ Recipient/Cursor issuance, BOTH HOME moves, held-C reads, original-result
 lookups, rolling-ACK collection, client replacement and cohort reopen share one
 finite admission. All 23 source blobs, 16 full current parents and 874 frozen
 input hashes were independently verified. The independent Python controller/
-oracle and Recovery4 state-bootstrap helper remain separate integration
-dependencies. The follow-up at `d70dee0a` distinguishes useful business pages
-from move-lineage pages when selecting the unread update across collection and
+oracle is source-integrated at `d907d096`: genuine native commands and copied
+original fragments join complete old/current queries, feed/ACK, collector and
+process records before pairing. All seven final files and three complete
+current parents were verified. The Recovery4 state-bootstrap helper remains a
+separate integration dependency. The follow-up at `d70dee0a` distinguishes
+useful business pages from move-lineage pages when selecting the unread update across collection and
 client replacement; lineage is still emitted and acknowledged. Both complete
 parent blobs and the two final files were verified. Integrated qualification
 remains open. No compilation, workload, checker, test or capacity run occurred.
