@@ -512,10 +512,14 @@ four-transport matrix contains 11,520 cells per engine.
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
 No new cell, guard or runtime gate has run. Native immutable-columns,
 late-correction and transfer/retained-pins drivers remain
-implementation work. FDB feed accounting still needs create/update phase wall
-times covering the seed and complete worker drain, plus complete-operation
-percentiles joined to actual originals. Existing scan and feed-call durations
+implementation work. FDB feed business accounting is source-integrated at
+`4218c9a7`: an explicit optional extension joins create/update phase walls,
+including each seed and complete worker drain, to raw begin/end markers and
+useful originals. Same-clock queued-start/worker-stop samples supply complete
+operation percentiles through the bounded spool. Historical helpers keep the
+extension omitted and their earlier scope. Existing scan and feed-call durations
 remain separate; parallel operation durations cannot supply phase throughput.
+These accounting guards and the workload have not been compiled or executed.
 Cross-engine allocator/retention matching, full matrix qualification and the
 engine decision remain open.
 The create/update family keeps a strict-local 0% baseline and explicitly named
@@ -899,8 +903,8 @@ Current worker lanes: Sol 6.1/high for the native retained-only feed workload/GC
 adapter and remaining native workload families;
 Sol 6.1/high for the finite applicable protocol/storage/message/leader/conflict
 composition registry and driver;
-Sol 6.1/high for source-grounded FDB accounting follow-ups, then the remaining
-native workload families. These packages
+Sol 6.1/high for the remaining native workload families, starting with immutable
+columns after the integrated FDB feed accounting follow-up. These packages
 are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
