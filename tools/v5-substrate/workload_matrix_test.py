@@ -18,11 +18,14 @@ class WorkloadMatrixGuards(unittest.TestCase):
         self.assertEqual(matrix.preflight(spec, run), spec)
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "must-not-exist"
-            unsupported = next(matrix.matrix(("snapshot-selectors",), ("local",)))
+            unsupported = next(matrix.matrix(("snapshot-to-feed",), ("local",)))
             with self.assertRaises(ValueError):
                 matrix.execute(unsupported, output, 180, "small", 4096, 1 << 30, 8 << 20)
             self.assertFalse(output.exists())
-        for changed, nonce in (({**spec, "family": "snapshot-selectors"}, run), (spec, "00" * 16), ({**spec, "writers": True}, run)):
+        selectors = {**spec, "family": "snapshot-selectors", "facts": 40}
+        self.assertEqual(matrix.preflight(selectors, run), selectors)
+        self.assertTrue(next(matrix.matrix(("snapshot-selectors",), ("local",)))["implemented"])
+        for changed, nonce in (({**spec, "family": "snapshot-selectors"}, run), ({**spec, "family": "snapshot-to-feed"}, run), (spec, "00" * 16), ({**spec, "writers": True}, run)):
             with self.assertRaises(ValueError):
                 matrix.preflight(changed, nonce)
         with self.assertRaises(ValueError):

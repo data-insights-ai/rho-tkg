@@ -535,86 +535,92 @@ func (h *harness) fresh(scope []uint8, after *outcome) (cut, error) {
 	}
 	scope = slices.Clone(scope)
 	result, e := h.db.Transact(func(tr fdb.Transaction) (any, error) {
-		round := uint64(1)
-		ms := [2]metadata{}
-		var groups [2]uint64
-		for g := uint8(0); g < 2; g++ {
-			if e := h.checkConfig(tr, g); e != nil {
-				return nil, e
-			}
-			m, e := h.meta(tr, g)
-			if e != nil {
-				return nil, e
-			}
-			groups[g] = m.Groups
-		}
-		if after != nil {
-			if !after.Commit || after.Coordinator > 1 {
-				return nil, errInvalid
-			}
-			o, ok, e := get[outcome](tr, h.key(after.Coordinator, "request", after.Request))
-			if e != nil {
-				return nil, e
-			}
-			if !ok || o != *after {
-				return nil, errUnknown
-			}
-			round = max(round, o.Round)
-		}
-		for _, g := range scope {
-			if e := h.checkConfig(tr, g); e != nil {
-				return nil, e
-			}
-			m, e := h.meta(tr, g)
-			if e != nil {
-				return nil, e
-			}
-			ms[g] = m
-			round = max(round, m.Floor)
-		}
-		cert := certificate{Graph: h.config.Graph, Topology: h.config.Topology, Epochs: h.config.Epochs, Scope: scope, Round: round, Groups: groups}
-		b, e := wire(cert)
-		if e != nil {
-			return nil, e
-		}
-		name := hex.EncodeToString(b)
-		k := h.key(scope[0], "cut", name)
-		prior, ok, e := get[certificate](tr, k)
-		if e != nil {
-			return nil, e
-		}
-		if ok {
-			if !sameCertificate(prior, cert) {
-				return nil, errMismatch
-			}
-			return cut{cert}, nil
-		}
-		// Existing immutable cut replay remains available. A new certificate must
-		// not change the collector's frozen metadata during durable retirement.
-		if err := h.historyWriteIn(tr); err != nil {
-			return nil, err
-		}
-		m := ms[scope[0]]
-		if m.Certificates >= h.config.Limits.Certificates || uint64(len(k)+len(b)) > h.config.Limits.Bytes-m.Bytes {
-			return nil, errLimit
-		}
-		m.Certificates++
-		m.Bytes += uint64(len(k) + len(b))
-		ms[scope[0]] = m
-		for _, g := range scope {
-			m := ms[g]
-			m.Floor = round
-			if e = put(tr, h.key(g, "meta", "state"), m); e != nil {
-				return nil, e
-			}
-		}
-		tr.Set(k, b)
-		return cut{cert}, nil
+		return h.freshIn(tr, scope, after)
 	})
 	if e != nil {
 		return cut{}, e
 	}
 	return result.(cut), nil
+}
+
+// The reducer performs no external IO and retains the historical fresh wrapper
+// behavior. New owned selectors supply bounded SDK cancellation/retry policy.
+func (h *harness) freshIn(tr fdb.Transaction, scope []uint8, after *outcome) (any, error) {
+	round := uint64(1)
+	ms := [2]metadata{}
+	var groups [2]uint64
+	for g := uint8(0); g < 2; g++ {
+		if e := h.checkConfig(tr, g); e != nil {
+			return nil, e
+		}
+		m, e := h.meta(tr, g)
+		if e != nil {
+			return nil, e
+		}
+		groups[g] = m.Groups
+	}
+	if after != nil {
+		if !after.Commit || after.Coordinator > 1 {
+			return nil, errInvalid
+		}
+		o, ok, e := get[outcome](tr, h.key(after.Coordinator, "request", after.Request))
+		if e != nil {
+			return nil, e
+		}
+		if !ok || o != *after {
+			return nil, errUnknown
+		}
+		round = max(round, o.Round)
+	}
+	for _, g := range scope {
+		if e := h.checkConfig(tr, g); e != nil {
+			return nil, e
+		}
+		m, e := h.meta(tr, g)
+		if e != nil {
+			return nil, e
+		}
+		ms[g] = m
+		round = max(round, m.Floor)
+	}
+	cert := certificate{Graph: h.config.Graph, Topology: h.config.Topology, Epochs: h.config.Epochs, Scope: scope, Round: round, Groups: groups}
+	b, e := wire(cert)
+	if e != nil {
+		return nil, e
+	}
+	name := hex.EncodeToString(b)
+	k := h.key(scope[0], "cut", name)
+	prior, ok, e := get[certificate](tr, k)
+	if e != nil {
+		return nil, e
+	}
+	if ok {
+		if !sameCertificate(prior, cert) {
+			return nil, errMismatch
+		}
+		return cut{cert}, nil
+	}
+	// Existing immutable cut replay remains available. A new certificate must
+	// not change the collector's frozen metadata during durable retirement.
+	if err := h.historyWriteIn(tr); err != nil {
+		return nil, err
+	}
+	m := ms[scope[0]]
+	if m.Certificates >= h.config.Limits.Certificates || uint64(len(k)+len(b)) > h.config.Limits.Bytes-m.Bytes {
+		return nil, errLimit
+	}
+	m.Certificates++
+	m.Bytes += uint64(len(k) + len(b))
+	ms[scope[0]] = m
+	for _, g := range scope {
+		m := ms[g]
+		m.Floor = round
+		if e = put(tr, h.key(g, "meta", "state"), m); e != nil {
+			return nil, e
+		}
+	}
+	tr.Set(k, b)
+	return cut{cert}, nil
 }
 func sameCertificate(a, b certificate) bool {
 	return a.Graph == b.Graph && a.Topology == b.Topology && a.Epochs == b.Epochs && a.Round == b.Round && a.Groups == b.Groups && slices.Equal(a.Scope, b.Scope)

@@ -25,6 +25,9 @@ func (p graphCostProfile) edge(i uint64, value int64) graphEdge {
 	return graphEdge{ID: 7 + 2*i, Source: nodes[0], Target: target, Value: value}
 }
 func graphCostLimit(c config) limits {
+	if c.Cost.Version == 3 {
+		return graphSelectorsLimit(c.Cost)
+	}
 	if c.Cost.Version == 2 {
 		return graphContentionLimit(c.Cost)
 	}
@@ -48,6 +51,9 @@ func graphCostConfig(graph string, p graphCostProfile) config {
 	return c
 }
 func validGraphCostProfile(c config) bool {
+	if c.Cost.Version == 3 {
+		return validGraphSelectorsConfig(c)
+	}
 	if c.Cost.Version == 2 {
 		return validGraphContentionConfig(c)
 	}

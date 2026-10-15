@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Explicit fresh workload scheduling; scheduling is not family/RTT acceptance.
 
-The canonical eight-family matrix remains intact. Only the genuine FDB
-contention-empty-range/local source driver exists here; every unsupported
+The canonical eight-family matrix remains intact. Genuine FDB contention and
+snapshot-selectors/local source drivers exist here; every unsupported
 family/engine/transport refuses BEFORE directories, builds or cluster effects.
 """
 import argparse
@@ -28,6 +28,7 @@ FAMILIES = {
 }
 FACTS, CROSS, WRITERS, LAYOUTS = (10_000, 100_000, 1_000_000), (0, 10, 50, 100), (1, 8, 32), ("kv", "columns")
 TRANSPORTS = {"local": 0, "rtt-1ms": 1, "rtt-20ms": 20, "rtt-100ms": 100}
+IMPLEMENTED = ("contention-empty-range", "snapshot-selectors")
 
 
 def require(condition, message):
@@ -45,14 +46,15 @@ def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS)):
     for family, facts, cross, writers, layout, transport, repetition in itertools.product(families, FACTS, CROSS, WRITERS, LAYOUTS, transports, range(1, 6)):
         yield {"version": 1, "engine": "foundationdb", "workload": {"version": 1, "family": family, "facts": facts, "crossPercent": cross, "writers": writers, "layout": layout},
                "transport": {"kind": "local" if transport == "local" else "injected-rtt", "targetRTTMillis": TRANSPORTS[transport], "jitterMillis": 0, "seed": 20261009},
-               "repetition": repetition, "implemented": family == "contention-empty-range" and transport == "local",
+               "repetition": repetition, "implemented": family in IMPLEMENTED and transport == "local",
                "scope": "schedule only; missing family semantics/real directed shaping refuse execution, not accepted skips"}
 
 
 def preflight(spec, run, engine="foundationdb", transport="local"):
     require(type(spec) is dict and set(spec) == {"version", "family", "facts", "crossPercent", "writers", "layout"}, "explicit fresh workload schema")
-    require(type(spec["version"]) is int and spec["version"] == 1 and spec["family"] == "contention-empty-range" and engine == "foundationdb" and transport == "local", "family/engine/real transport driver not implemented")
+    require(type(spec["version"]) is int and spec["version"] == 1 and spec["family"] in IMPLEMENTED and engine == "foundationdb" and transport == "local", "family/engine/real transport driver not implemented")
     require(type(spec["facts"]) is int and 20 <= spec["facts"] <= 1_000_000 and spec["facts"] % 20 == 0 and type(spec["crossPercent"]) is int and spec["crossPercent"] in CROSS and type(spec["writers"]) is int and spec["writers"] in WRITERS and spec["layout"] in LAYOUTS, "fresh family shape")
+    require(spec["family"] != "snapshot-selectors" or spec["facts"] >= spec["writers"] + 1, "selector seed plus one genuine initial job per independent caller")
     require(type(run) is str and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "explicit nonzero fresh run identity")
     return spec
 
@@ -78,9 +80,10 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     policy.validate()
     destination = Path(output)
     destination.mkdir(mode=0o700, parents=False, exist_ok=False)
-    originals = 3 + spec["facts"] // 2 + 64 * spec["facts"] + spec["facts"] // 2 * max(2, spec["writers"])
+    selector = spec["family"] == "snapshot-selectors"
+    originals = 3 + 2 * spec["facts"] * 64 if selector else 3 + spec["facts"] // 2 + 64 * spec["facts"] + spec["facts"] // 2 * max(2, spec["writers"])
     request = {"cell": cell, "run": run, "spoolPolicy": {"max_disk_bytes": spool_disk, "cache_bytes": spool_cache, "grantOrigin": grant_origin},
-               "nativeAdmission": {"maxOriginals": originals, "logicalGraphBytes": (64 << 20) + spec["facts"] * (128 << 10) + originals * 2048,
+               "nativeAdmission": {"maxOriginals": originals, "logicalGraphBytes": (64 << 20) + spec["facts"] * ((64 if selector else 128) << 10) + originals * 2048,
                                    "retainedVersions": 3 + 6 * spec["facts"], "capacityQualified": False}, "deadlineSeconds": seconds,
                "deploymentProfile": profile, "admissionMiB": memory}
     with (destination / "request.json").open("x") as out:
@@ -106,9 +109,13 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     # Import the private family oracle only after the actual run; it joins all
     # originals/raw EOFs/cache bytes under one finite spool policy.
     sys.path.insert(0, str(ROOT / "fdb"))
-    import fdb_contention_check
-    proof = fdb_contention_check.verify(artifacts, destination, policy)
-    require(proof["spec"] == spec and proof["runGraph"] == "graph-workload-contention-v1-" + spec["layout"] + "-" + run, "fresh run/native binding/result agreement")
+    if selector:
+        import fdb_selectors_check as checker
+    else:
+        import fdb_contention_check as checker
+    proof = checker.verify(artifacts, destination, policy)
+    prefix = "graph-workload-selectors-v1-" if selector else "graph-workload-contention-v1-"
+    require(proof["spec"] == spec and proof["runGraph"] == prefix + spec["layout"] + "-" + run, "fresh run/native binding/result agreement")
     with (destination / "verified.json").open("x") as out:
         json.dump({"requestSHA256": hashlib.sha256((destination / "request.json").read_bytes()).hexdigest(), "artifacts": str(artifacts), "proof": proof,
                    "acceptance": "one verified family cell; full matrix/native parity/RTT/resources remain separate"}, out, indent=2)
@@ -118,7 +125,7 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
 def execute_matrix(args):
     # Refuse absent semantics/shaping for the WHOLE selection before admitting
     # any database/build. Never silently skip unsupported cells from a matrix.
-    require(args.family == "contention-empty-range" and args.transport == "local", "selected matrix family/transport implementation is absent")
+    require(args.family in IMPLEMENTED and args.transport == "local", "selected matrix family/transport implementation is absent")
     require(1 <= args.seconds <= 1800 and args.admission_mib >= (3072 if args.deployment_profile == "small" else 10240), "explicit matrix resource policy")
     disk, cache, origin = comparison_grant(1_000_000, 32, args.spool_disk_bytes, args.spool_cache_bytes)
     from comparison_spool import Policy
@@ -139,7 +146,7 @@ def execute_matrix(args):
     require(count == 360, "all3 facts/4 cross/3 writers/2 layouts/5 fresh repetitions must complete")
     with (root / "matrix-result.json").open("x") as output:
         json.dump({"version": 1, "family": args.family, "transport": args.transport, "freshCells": count,
-                   "scope": "selected implemented family/local schedule only; other7 families, directed RTT and native parity remain open"}, output, indent=2)
+                   "scope": "selected implemented family/local schedule only; remaining families, directed RTT and native parity remain open"}, output, indent=2)
         output.write("\n")
 
 

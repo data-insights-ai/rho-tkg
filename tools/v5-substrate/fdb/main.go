@@ -40,6 +40,28 @@ func main() {
 
 func run() error {
 	if len(os.Args) == 2 && os.Args[1] == "workload-cell" {
+		raw := os.Getenv("RHO_GRAPH_WORKLOAD_SPEC")
+		if len(raw) == 0 || len(raw) > 1024 {
+			return errInvalid
+		}
+		var family struct {
+			Family string `json:"family"`
+		}
+		if err := json.Unmarshal([]byte(raw), &family); err != nil {
+			return errInvalid
+		}
+		if family.Family == graphSelectorsFamily {
+			spec, run, err := graphSelectorsSpecFromEnv()
+			if err != nil {
+				return err
+			}
+			db, err := openDB()
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			return runGraphSelectors(db, spec, run)
+		}
 		spec, run, err := graphContentionSpecFromEnv()
 		if err != nil {
 			return err

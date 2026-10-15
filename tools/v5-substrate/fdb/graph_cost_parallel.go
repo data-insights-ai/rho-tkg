@@ -393,8 +393,16 @@ type graphCostParallelJob struct {
 }
 
 func (h *harness) graphCostParallelApply(parent context.Context, job graphCostParallelJob, client int, emit func(graphCostParallelEvent)) (graphCostSample, error) {
+	return h.graphCostApplyOperation(parent, job, client, graphCostOperationID(h.config.Cost, job.Phase, job.Fact), "cost", emit)
+}
+
+// Fresh workload callers supply their separately bound operation/factory
+// namespace; the historical cost wrapper retains its exact operation and IDs.
+func (h *harness) graphCostApplyOperation(parent context.Context, job graphCostParallelJob, client int, op graphCostOperation, identity string, emit func(graphCostParallelEvent)) (graphCostSample, error) {
 	p := h.config.Cost
-	op := graphCostOperationID(p, job.Phase, job.Fact)
+	if !validName(identity) || emit == nil || parent == nil || client < 0 || client >= p.Writers {
+		return graphCostSample{}, errInvalid
+	}
 	command := graphCommand{Kind: "edge-" + job.Phase, Edge: p.edge(job.Fact, 5)}
 	if job.Phase == "update" {
 		command.Edge.Value = 6
@@ -424,7 +432,7 @@ func (h *harness) graphCostParallelApply(parent context.Context, job graphCostPa
 		if job.Phase == "setup" {
 			coordinator = command.Node.Owner
 		}
-		x := h.graphTransaction(fmt.Sprintf("cost-%s-%d-c%d-a%d", job.Phase, job.Fact, client, ordinal), coordinator, command, before)
+		x := h.graphTransaction(fmt.Sprintf("%s-%s-%d-c%d-a%d", identity, job.Phase, job.Fact, client, ordinal), coordinator, command, before)
 		m := lifecycleMetadata{Provenance: op.Ordinal}
 		if job.Phase != "setup" {
 			id := uint64(5)

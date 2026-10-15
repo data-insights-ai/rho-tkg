@@ -613,39 +613,73 @@ func historyReadCleanup(r *graphHistoryRead) error {
 	return nil
 }
 func (s *graphHistoryRetention) newRead(c cut, pin *graphHistoryToken) (*graphHistoryRead, error) {
-	if s == nil {
-		return nil, errInvalid
-	}
-	var secret [32]byte
-	if _, err := rand.Read(secret[:]); err != nil {
-		return nil, err
-	}
-	o := graphHistoryOwner{Kind: "read", Request: "source-read-" + hex.EncodeToString(secret[:16]), Cut: c.record, Secret: secret, State: historyActive}
-	o.Cut.Scope = slices.Clone(c.record.Scope)
-	observed, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
-		state, err := s.state(tr)
-		if err != nil {
-			return nil, err
-		}
-		if c.record.Round < s.floor(state) {
-			return nil, errHistoryExpired
-		}
-		if state.Phase == historyCensus || state.Phase == historyDeleting {
-			return nil, errHistoryBusy
-		}
-		required := s.binding.Initial
-		if state.Completed.Cut.Round > required.Round {
-			required = state.Completed.Cut
-		}
-		required.Scope = slices.Clone(required.Scope)
-		return required, nil
-	})
+	o, err := s.readIdentity(c)
 	if err != nil {
 		return nil, err
 	}
-	o.Required = observed.(certificate)
+	observed, err := s.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) { return s.readRequiredIn(tr, c) })
+	if err != nil {
+		return nil, err
+	}
+	return s.bindRead(o, observed.(certificate), pin)
+}
+
+// Existing callers keep the historical IO wrapper above. Owned selectors use
+// the same identity/requirement reducers through bounded context-aware native IO.
+func (s *graphHistoryRetention) newReadContext(ctx context.Context, c cut, pin *graphHistoryToken, admit func() error) (*graphHistoryRead, int, error) {
+	if ctx == nil || admit == nil {
+		return nil, 0, errInvalid
+	}
+	o, err := s.readIdentity(c)
+	if err != nil {
+		return nil, 0, err
+	}
+	required, callbacks, err := graphCostParallelRead(ctx, s.h.db, func(tr fdb.ReadTransaction) (certificate, error) {
+		if err := admit(); err != nil {
+			return certificate{}, err
+		}
+		return s.readRequiredIn(tr, c)
+	})
+	if err != nil {
+		return nil, callbacks, err
+	}
+	r, err := s.bindRead(o, required, pin)
+	return r, callbacks, err
+}
+func (s *graphHistoryRetention) readIdentity(c cut) (graphHistoryOwner, error) {
+	if s == nil {
+		return graphHistoryOwner{}, errInvalid
+	}
+	var secret [32]byte
+	if _, err := rand.Read(secret[:]); err != nil {
+		return graphHistoryOwner{}, err
+	}
+	o := graphHistoryOwner{Kind: "read", Request: "source-read-" + hex.EncodeToString(secret[:16]), Cut: c.record, Secret: secret, State: historyActive}
+	o.Cut.Scope = slices.Clone(c.record.Scope)
+	return o, nil
+}
+func (s *graphHistoryRetention) readRequiredIn(tr fdb.ReadTransaction, c cut) (certificate, error) {
+	state, err := s.state(tr)
+	if err != nil {
+		return certificate{}, err
+	}
+	if c.record.Round < s.floor(state) {
+		return certificate{}, errHistoryExpired
+	}
+	if state.Phase == historyCensus || state.Phase == historyDeleting {
+		return certificate{}, errHistoryBusy
+	}
+	required := s.binding.Initial
+	if state.Completed.Cut.Round > required.Round {
+		required = state.Completed.Cut
+	}
+	required.Scope = slices.Clone(required.Scope)
+	return required, nil
+}
+func (s *graphHistoryRetention) bindRead(o graphHistoryOwner, required certificate, pin *graphHistoryToken) (*graphHistoryRead, error) {
+	o.Required = required
 	if pin != nil {
-		if !sameCertificate(pin.Cut, c.record) {
+		if !sameCertificate(pin.Cut, o.Cut) {
 			return nil, errMismatch
 		}
 		o.PinRequest = pin.Request
@@ -761,28 +795,85 @@ func (r *graphHistoryRead) Close() error {
 	if r.closed {
 		return nil
 	}
-	_, err := r.s.h.db.Transact(func(tr fdb.Transaction) (any, error) {
-		o, found, err := r.s.owner(tr, r.id.Request)
-		if err != nil {
-			return nil, err
-		}
-		if !found {
-			cancelled := r.id
-			cancelled.State = historyReleased
-			cancelled.TerminalRequest = "close"
-			return nil, r.s.writeOwner(tr, cancelled, true)
-		}
-		identity := o
-		identity.State, identity.TerminalRequest = r.id.State, r.id.TerminalRequest
-		if !graphColumnSame(identity, r.id) {
-			return nil, errMismatch
-		}
-		return nil, r.s.terminateIn(tr, r.id.Request, r.id.Secret, historyReleased, "close")
-	})
+	_, err := r.s.h.db.Transact(func(tr fdb.Transaction) (any, error) { return nil, r.closeIn(tr) })
 	if err == nil {
 		r.closed = true
 	}
 	return graphHistoryCommitError(err)
+}
+
+// Separate old/new IO wrappers share this unchanged ownership reducer.
+func (r *graphHistoryRead) closeIn(tr fdb.Transaction) error {
+	o, found, err := r.s.owner(tr, r.id.Request)
+	if err != nil {
+		return err
+	}
+	if !found {
+		cancelled := r.id
+		cancelled.State = historyReleased
+		cancelled.TerminalRequest = "close"
+		return r.s.writeOwner(tr, cancelled, true)
+	}
+	identity := o
+	identity.State, identity.TerminalRequest = r.id.State, r.id.TerminalRequest
+	if !graphColumnSame(identity, r.id) {
+		return errMismatch
+	}
+	return r.s.terminateIn(tr, r.id.Request, r.id.Secret, historyReleased, "close")
+}
+func (r *graphHistoryRead) closeContext(ctx context.Context, admit func() error) (int, error) {
+	if r == nil || r.s == nil || ctx == nil || admit == nil || !historyOwnerValid(r.id) {
+		return 0, errInvalid
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.walking {
+		return 0, errHistoryInUse
+	}
+	if r.closed {
+		return 0, nil
+	}
+	_, callbacks, err := historyTransactContext(ctx, r.s.h.db, admit, func(tr fdb.Transaction) (bool, error) { return true, r.closeIn(tr) })
+	if err == nil {
+		r.closed = true
+	}
+	return callbacks, graphHistoryCommitError(err)
+}
+func historyTransactContext[T any](ctx context.Context, db fdb.Database, admit func() error, fn func(fdb.Transaction) (T, error)) (T, int, error) {
+	var captured T
+	callbacks := 0
+	var stop func() bool
+	result, err := db.Transact(func(tr fdb.Transaction) (any, error) {
+		if stop == nil {
+			stop = context.AfterFunc(ctx, tr.Cancel)
+		}
+		callbacks++
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if callbacks > graphCostParallelCallbacks {
+			return nil, errLimit
+		}
+		if err := tr.Options().SetTimeout(graphCostParallelTimeoutMillis); err != nil {
+			return nil, err
+		}
+		if err := tr.Options().SetRetryLimit(graphCostParallelCallbacks - 1); err != nil {
+			return nil, err
+		}
+		if err := admit(); err != nil {
+			return nil, err
+		}
+		var inner error
+		captured, inner = fn(tr)
+		return captured, inner
+	})
+	if stop != nil {
+		stop()
+	}
+	if err != nil {
+		return captured, callbacks, graphHistoryCommitError(err)
+	}
+	return result.(T), callbacks, nil
 }
 
 // Every source value names a genuine committed original. Lookup consults both
