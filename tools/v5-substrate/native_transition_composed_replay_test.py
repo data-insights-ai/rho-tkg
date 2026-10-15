@@ -5,6 +5,67 @@ import native_transition_composed_replay as replay
 
 
 class ComposedReplayGuards(unittest.TestCase):
+    def test_soak_requires_actual_minimums_and_reserves_one_cumulative_failure_tail(self):
+        plan=replay.campaign([19,23])
+        policy=replay.soak_policy([19,23],24,2,1)
+        self.assertEqual(policy,replay.soak_policy([19,23],24,2,1))
+        self.assertEqual(policy["Recorded"][:2],plan["Recorded"])
+        self.assertNotEqual(policy["Recorded"][2],policy["Recorded"][0])
+        for limits in ((18,1,1),(65,1,1),(True,1,1),(24,0,1),(24,2,0),(24,9,1)):
+            with self.subTest(limits=limits),self.assertRaises(ValueError):replay.soak_policy([19],*limits)
+        def run(clock):
+            receipts=[];seen=[]
+            def invoke(value,number):
+                self.assertEqual(number,len(receipts));self.assertLess(number,policy["MaxTrials"])
+                replay.C.recipe(value);seen.append(value)
+                row={"classification":"passed"};receipts.append(row);return row
+            result=dict(schedule=[],successfulRounds=0,activeNanos=0)
+            replay.R.soak_sequence(result,plan,policy,invoke,receipts,replay.C,clock=clock)
+            return result,receipts,seen
+        ticks=iter((0,400_000_000,400_000_000,800_000_000,800_000_000,1_200_000_000))
+        result,receipts,seen=run(lambda:next(ticks))
+        self.assertEqual(result["classification"],"passed")
+        self.assertEqual(result["successfulRounds"],3);self.assertEqual(len(receipts),12)
+        self.assertEqual(seen[:6],plan["Enumeration"])
+        self.assertEqual(seen[6:],[r for value in policy["Recorded"][:3] for r in (value,value)])
+        result,receipts,_=run(lambda:0)
+        self.assertEqual(result["classification"],"source-refused")
+        self.assertEqual(len(receipts),12)
+        self.assertGreaterEqual(policy["MaxTrials"]-len(receipts),replay.R.SOAK_FAILURE_TRIALS)
+        self.assertEqual(result["activeNanos"],0)
+        self.assertEqual(replay.R.MAX_TRIALS,16)
+
+    def test_soak_exact_failure_replay_and_deletion_never_reset_or_accept_stale_verdict(self):
+        plan=replay.campaign([37]);policy=replay.soak_policy([37],24,2,1)
+        receipts=[];seen=[]
+        def invoke(value,number):
+            self.assertEqual(number,len(receipts));self.assertLess(number,policy["MaxTrials"])
+            replay.C.recipe(value);seen.append(value)
+            row=({"classification":"passed"} if number<6 else
+                 {"classification":"semantic-failure","semanticFailure":{"code":"old-cut:composed-transfer"}} if number<8 else
+                 {"classification":"source-refused","semanticFailure":{"code":"old-cut:composed-transfer"}})
+            receipts.append(row);return row
+        result=dict(schedule=[],successfulRounds=0,activeNanos=0,reproduced=False,minimization=None)
+        replay.R.soak_sequence(result,plan,policy,invoke,receipts,replay.C,clock=lambda:0)
+        self.assertEqual(seen[6:8],[policy["Recorded"][0]]*2)
+        self.assertEqual(result["failedRecipe"],policy["Recorded"][0])
+        self.assertTrue(result["reproduced"]);self.assertEqual(result["successfulRounds"],0)
+        self.assertEqual(result["minimization"]["used"],len(receipts))
+        self.assertFalse(result["minimization"]["deletionOneMinimal"])
+        self.assertEqual(result["minimization"]["acceptedTrials"],[])
+        for value in seen[8:]:
+            self.assertEqual({k:v for k,v in value.items() if k!="Actions"},
+                             {k:v for k,v in policy["Recorded"][0].items() if k!="Actions"})
+        receipts=[]
+        def late(value,number):
+            row={"classification":"passed"} if number<6 else {"classification":"driver-or-resource-refused","semanticFailure":{"code":"old-cut:composed-transfer"}}
+            receipts.append(row);return row
+        result=dict(schedule=[],successfulRounds=0,activeNanos=0,reproduced=False,minimization=None)
+        replay.R.soak_sequence(result,plan,policy,late,receipts,replay.C,clock=lambda:0)
+        self.assertEqual(result["classification"],"source-refused")
+        self.assertEqual(len(receipts),7);self.assertFalse(result["reproduced"])
+        self.assertIsNone(result["minimization"])
+
     def test_campaign_admits_every_actual_causal_order_before_distinct_recorded_seeds(self):
         plan=replay.campaign([20261015,20261016])
         self.assertEqual(len(plan["Enumeration"]),6)

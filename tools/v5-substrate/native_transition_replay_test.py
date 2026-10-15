@@ -6,6 +6,24 @@ import native_transition_replay as replay
 
 
 class RecordedReplayGuards(unittest.TestCase):
+    def test_soak_deletion_uses_spent_cumulative_slots_but_old_ceiling_stays_literal(self):
+        recipe={**replay.seeded_recipe(37),"Actions":[{"Member":1,"Ticks":1},{"Member":2,"Ticks":1}]}
+        calls=[]
+        def invoke(value,number):
+            calls.append(number)
+            return {"classification":"semantic-failure","semanticFailure":{"code":"serial-cut"}}
+        with self.assertRaises(ValueError):replay.minimize(recipe,invoke,"serial-cut",used=20,maximum=24)
+        result=replay.minimize(recipe,invoke,"serial-cut",used=23,maximum=24,soak={"MaxTrials":24})
+        self.assertEqual(calls,[23]);self.assertEqual(result["used"],24)
+        self.assertFalse(result["deletionOneMinimal"])
+        self.assertEqual(len(result["recipe"]["Actions"]),1)
+        receipt={"classification":"passed","proof":{"actual":True}}
+        with patch.object(replay,"footprint",return_value={"files":8,"bytes":replay.CAMPAIGN_TRIAL_BYTES+1,"allocatedFileBytes":0}),patch.object(replay.time,"time_ns",return_value=10):
+            replay.campaign_trial_finalizer(receipt,"owned/trial",100)
+        self.assertEqual(receipt["capturedClassification"],"passed")
+        self.assertEqual(receipt["classification"],"driver-or-resource-refused")
+        self.assertIsNone(receipt["proof"])
+
     def test_replay_environment_clears_actual_sibling_profiles_and_retains_original_recipe(self):
         inherited={name:"1" for name in replay.FIXTURE_FLAGS}
         inherited.update(RHO_GRAPH_PROTOCOL_STATE_RECOVERY="4",KEEP_NON_FIXTURE="opaque-test-value")

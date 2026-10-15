@@ -19,6 +19,8 @@ SPEC = importlib.util.spec_from_file_location("native_recorded_semantics", Path(
 C = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(C)
 MAX_TRIALS = 16
+MAX_SOAK_TRIALS = 64
+SOAK_FAILURE_TRIALS = 11  # One exact replay + at most 4+3+2+1 deletions.
 MAX_TRIAL_BYTES = 2 << 30
 MAX_SECONDS = 1800
 CAMPAIGN_CONTROL_BYTES = 4 * 65536
@@ -161,8 +163,10 @@ def trial_environment(temporary, engine, recipe, run, deadline, profile, *, inhe
     return env
 
 
-def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline, memory_mib, *, profile="cross", source_hashes=None, campaign=False):
-    require(0 <= number < MAX_TRIALS and time.time_ns() < deadline, "fixed whole-replay trial/deadline grant exhausted")
+def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline, memory_mib, *, profile="cross", source_hashes=None, campaign=False, soak=None):
+    ceiling = MAX_TRIALS if soak is None else soak["MaxTrials"]
+    require(soak is None or profile == "composed" and campaign, "explicit composed soak owner")
+    require(0 <= number < ceiling and time.time_ns() < deadline, "fixed whole-replay trial/deadline grant exhausted")
     if profile == "composed": require(source_hashes is not None and composed_sources(watchdog) == source_hashes, "same admitted independent checker/controller/watchdog sources")
     checker = components(profile)
     checker.recipe(recipe)
@@ -191,6 +195,9 @@ def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline,
         require(profile == "composed", "fresh campaign uses the actual composed adapter")
         request["admission"].update(controllerReserveBytes=CAMPAIGN_CONTROL_BYTES,
                                      monitoredDiskBytes=disk_limit)
+    if soak is not None:
+        request.update(version=3, soakAdmissionSHA256=hashlib.sha256(canonical(soak).encode()).hexdigest())
+        request["admission"]["trials"] = ceiling
     write(path/"request.json", request)
     receipt = dict(version=1, requestSHA256=digest(path/"request.json"), recipe=recipe, run=run, binarySHA256=binary_sha,
                    deadlineUnixNanos=deadline, exit=None, monitor=None, monitorSHA256=None, artifact=None,
@@ -263,10 +270,11 @@ def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline,
         write(path/"receipt.json", receipt)
 
 
-def minimize(recipe, invoke, expected_code, *, used=2, maximum=MAX_TRIALS, validator=None):
+def minimize(recipe, invoke, expected_code, *, used=2, maximum=MAX_TRIALS, validator=None, soak=None):
     """Single-action deletion, fresh invoke for EVERY candidate; no simulation."""
     (C.recipe if validator is None else validator)(recipe)
-    require(2 <= used <= maximum <= MAX_TRIALS and type(expected_code) is str and expected_code, "prepaid replay/minimization pool")
+    ceiling = MAX_TRIALS if soak is None else soak["MaxTrials"]
+    require(2 <= used <= maximum <= ceiling and ceiling <= MAX_SOAK_TRIALS and type(expected_code) is str and expected_code, "prepaid replay/minimization pool")
     current = {**recipe, "Actions": list(recipe["Actions"] or [])}
     index, attempts, accepted, unresolved = 0, [], [], []
     while index < len(current["Actions"]) and used < maximum:
@@ -367,7 +375,74 @@ def campaign_trial_finalizer(receipt,path,deadline):
     return receipt
 
 
-def execute(output, binary, watchdog, seconds, memory_mib, recipe, *, profile="cross", deadline_unix_nanos=None, campaign=None):
+def soak_admission(value, checker):
+    require(type(value) is dict and set(value)=={"Version","MaxTrials","MinRounds","MinActiveSeconds","Recorded"}
+            and type(value["Version"]) is int and value["Version"]==1,"explicit fresh-cohort soak policy")
+    trials,rounds,seconds=value["MaxTrials"],value["MinRounds"],value["MinActiveSeconds"]
+    require(type(trials) is int and 1<=trials<=MAX_SOAK_TRIALS and type(rounds) is int and rounds>=1
+            and type(seconds) is int and 1<=seconds<MAX_SECONDS,"finite soak minimums and maximum")
+    require(6+2*rounds+SOAK_FAILURE_TRIALS<=trials,"enumeration, minimum rounds and protected failure replay/deletion slots")
+    recorded=value["Recorded"]
+    require(type(recorded) is list and len(recorded)==(trials-6-SOAK_FAILURE_TRIALS)//2,
+            "bounded complete deterministic recorded recipe stream after protected failure tail")
+    for recipe in recorded:
+        checker.recipe(recipe)
+        require(type(recipe["Actions"]) is list and len(recipe["Actions"])<=4,"funded four-action soak deletion bound")
+    return value
+
+
+def soak_sequence(result, campaign, soak, invoke, receipts, checker, *, clock=time.monotonic_ns):
+    """Sustained real fresh cohorts; no idle padding or long-lived-store claim."""
+    def run(recipe,stage):
+        number=len(receipts)
+        result["schedule"].append(dict(trial=number,stage=stage,recipeSHA256=hashlib.sha256(canonical(recipe).encode()).hexdigest()))
+        return invoke(recipe,number)
+    def failed(recipe,row,again=None):
+        result["failedRecipe"]=recipe
+        code=semantic_code(row)
+        if code is None:
+            result["classification"]="source-refused"
+            return
+        again=run(recipe,"soak-exact-failure-replay") if again is None else again
+        if semantic_code(again)!=code:
+            result["classification"]="semantic-failure-unreproduced"
+            return
+        result.update(classification="semantic-failure",reproduced=True,failureCode=code,counterexampleRecipe=recipe)
+        result["minimization"]=minimize(recipe,invoke,code,used=len(receipts),maximum=soak["MaxTrials"],validator=checker.recipe,soak=soak)
+    bases=[run(recipe,"causal-enumeration") for recipe in campaign["Enumeration"]]
+    result["enumerationComplete"]=True
+    result["enumerationPassed"]=all(row["classification"]=="passed" for row in bases)
+    if not result["enumerationPassed"]:
+        for recipe,row in zip(campaign["Enumeration"],bases):
+            if semantic_code(row):
+                failed(recipe,row)
+                return
+        result["classification"]="source-refused"
+        return
+    for recipe in soak["Recorded"]:
+        if len(receipts)+2+SOAK_FAILURE_TRIALS>soak["MaxTrials"]:
+            result.update(classification="source-refused",diagnostic="soak minimums not reached before protected replay/terminal trial reserve")
+            return
+        started=clock()
+        first=run(recipe,"soak-recorded-round")
+        if first["classification"]!="passed":
+            failed(recipe,first)
+            return
+        again=run(recipe,"soak-recorded-round-exact-replay")
+        ended=clock()
+        require(type(started) is int and type(ended) is int and ended>=started,"monotone actual active execution interval")
+        result["activeNanos"]+=ended-started
+        if again["classification"]!="passed":
+            failed(recipe,again)
+            return
+        result["successfulRounds"]+=1
+        if result["successfulRounds"]>=soak["MinRounds"] and result["activeNanos"]>=soak["MinActiveSeconds"]*1_000_000_000:
+            result["classification"]="passed"
+            return
+    result.update(classification="source-refused",diagnostic="recorded recipe stream exhausted before soak minimums")
+
+
+def execute(output, binary, watchdog, seconds, memory_mib, recipe, *, profile="cross", deadline_unix_nanos=None, campaign=None, soak=None):
     checker = components(profile)
     checker.recipe(recipe)
     if campaign is not None:
@@ -375,13 +450,18 @@ def execute(output, binary, watchdog, seconds, memory_mib, recipe, *, profile="c
         campaign=campaign_admission(campaign,checker)
         require(recipe==campaign["Recorded"][0],"plan's original recorded recipe must match its actual campaign")
     require(type(seconds) is int and 1 <= seconds <= MAX_SECONDS and type(memory_mib) is int and 4096 <= memory_mib <= 1 << 20, "finite caller-selected whole-replay resources")
+    if soak is not None:
+        require(campaign is not None,"soak follows actual six-case enumeration")
+        soak=soak_admission(soak,checker)
+        require(soak["MinActiveSeconds"]<seconds,"soak active minimum must leave original deadline for terminal cleanup")
+    ceiling=MAX_TRIALS if soak is None else soak["MaxTrials"]
     binary, watchdog = Path(binary).resolve(strict=True), Path(watchdog).resolve(strict=True)
     require(binary.is_file() and os.access(binary, os.X_OK) and watchdog.is_file(), "supplied actual native binary/repository watchdog")
     destination = Path(output).absolute()
     require(destination.parent.resolve(strict=True) == destination.parent and not destination.exists(), "fresh owned output parent")
     now = time.time_ns(); deadline = now+seconds*1_000_000_000 if deadline_unix_nanos is None else deadline_unix_nanos
     require(type(deadline) is int and now < deadline <= now+seconds*1_000_000_000, "same admitted original absolute deadline")
-    require(deadline <= (1 << 63)-1 and MAX_TRIALS*seconds*1_000_000_000 <= (1 << 63)-1, "checked fixed deadline/cumulative trial time")
+    require(deadline <= (1 << 63)-1 and ceiling*seconds*1_000_000_000 <= (1 << 63)-1, "checked fixed deadline/cumulative trial time")
     destination.mkdir(mode=0o700)
     binary_sha = digest(binary)
     source_hashes = composed_sources(watchdog) if profile == "composed" else None
@@ -395,14 +475,25 @@ def execute(output, binary, watchdog, seconds, memory_mib, recipe, *, profile="c
                                              actions=8*MAX_TRIALS,ticks=16*MAX_TRIALS,duplicates=4*MAX_TRIALS,
                                              trialFileBytes=CAMPAIGN_TRIAL_BYTES,maxFileBytes=MAX_TRIALS*MAX_TRIAL_BYTES,
                                              controllerTerminalBytes=2*65536,ownedNames=8192*MAX_TRIALS+2))
+    if soak is not None:
+        plan.update(version=4,soak=soak,maxTrials=ceiling,maxDiskBytes=ceiling*MAX_TRIAL_BYTES)
+        plan["activeElapsedScope"]="monotonic intervals around complete recorded trial + fresh exact replay, including native startup/cleanup, watchdog, full oracle and trial finalization; enumeration, idle time and failure deletion excluded"
+        plan["cumulativeAdmission"].update(trials=ceiling,engineCreations=6*ceiling,observedProcessIdentities=128*ceiling,
+                                           actions=8*ceiling,ticks=16*ceiling,duplicates=4*ceiling,
+                                           maxFileBytes=ceiling*MAX_TRIAL_BYTES,ownedNames=8192*ceiling+2,
+                                           protectedFailureTrials=SOAK_FAILURE_TRIALS)
     write(destination/"plan.json", plan)
     receipts = []
     def invoke(value, number):
-        require(number == len(receipts) and len(receipts) < MAX_TRIALS, "monotone whole-query trial accounting")
+        require(number == len(receipts) and len(receipts) < ceiling, "monotone whole-query trial accounting")
+        if soak is not None:
+            charged=sum(max((r.get("finalizedDisk") or {}).get("bytes",CAMPAIGN_TRIAL_BYTES),
+                            (r.get("finalizedDisk") or {}).get("allocatedFileBytes",CAMPAIGN_TRIAL_BYTES)) for r in receipts)
+            require(charged+MAX_TRIAL_BYTES+2*65536<=ceiling*MAX_TRIAL_BYTES,"one cumulative retained-file and terminal allowance")
         if campaign is not None and len(result["schedule"])==number:
             result["schedule"].append(dict(trial=number,stage="semantic-action-deletion",recipeSHA256=hashlib.sha256(canonical(value).encode()).hexdigest()))
         receipt = trial(destination, number, value, binary, binary_sha, watchdog, seconds, deadline, memory_mib, profile=profile, source_hashes=source_hashes,
-                        **({"campaign":True} if campaign is not None else {}))
+                        **({"campaign":True} if campaign is not None else {}),**({"soak":soak} if soak is not None else {}))
         if campaign is not None:
             # The terminal trial receipt is itself charged. Later finalizer
             # refusal overrides its captured verdict in the owning campaign;
@@ -417,9 +508,14 @@ def execute(output, binary, watchdog, seconds, memory_mib, recipe, *, profile="c
         result.update(version=3,classification="source-refused",schedule=[],enumerationComplete=False,enumerationPassed=False,
                       recordedSeedsAttempted=0,recordedSeedsPassed=0,
                       scope="finite actual six-order enumeration before recorded seeded fresh-cohort replay; one original deadline/trial/work/file pool and independent full raw oracle. Only reproduced SAME semantic failures admit deletion; reported minimality is deletion1-minimal only, not global minimum, sustained soak or B/C/D qualification")
+    if soak is not None:
+        result.update(version=4,successfulRounds=0,activeNanos=0,
+                      activeElapsedScope=plan["activeElapsedScope"],
+                      scope="bounded sustained fixed-seed actual fresh-cohort execution, not long-lived-store endurance or clock/VFS/full-D acceptance; one original deadline and cumulative resource grant")
     try:
         if campaign is not None:
-            campaign_sequence(result,campaign,invoke,receipts,checker)
+            if soak is None:campaign_sequence(result,campaign,invoke,receipts,checker)
+            else:soak_sequence(result,campaign,soak,invoke,receipts,checker)
             return result
         first = invoke(recipe, 0)
         # Replaying the recorded exact schedule always uses a NEW actual child
@@ -452,10 +548,11 @@ def execute(output, binary, watchdog, seconds, memory_mib, recipe, *, profile="c
             result["unmeasuredTrials"]=[n for n,r in enumerate(receipts) if r.get("finalizedDisk") is None]
             result["chargedFileBytes"]=result["observedFileBytes"]+len(result["unmeasuredTrials"])*CAMPAIGN_TRIAL_BYTES
             try:
-                require(time.time_ns()<deadline and composed_sources(watchdog)==source_hashes and result["chargedFileBytes"]+2*65536<=MAX_TRIALS*MAX_TRIAL_BYTES,
+                require(time.time_ns()<deadline and composed_sources(watchdog)==source_hashes and result["chargedFileBytes"]+2*65536<=ceiling*MAX_TRIAL_BYTES,
                         "whole-campaign source/deadline/cumulative finalizer refusal")
                 require(not result["unmeasuredTrials"],"failed final catalog measurement is missing evidence, never zero-cost or NA")
-                require(result["classification"]!="passed" or result["enumerationPassed"] and result["recordedSeedsPassed"]==len(campaign["Recorded"]),
+                minimums=(result["recordedSeedsPassed"]==len(campaign["Recorded"])) if soak is None else (result["successfulRounds"]>=soak["MinRounds"] and result["activeNanos"]>=soak["MinActiveSeconds"]*1_000_000_000)
+                require(result["classification"]!="passed" or result["enumerationPassed"] and minimums,
                         "missing causal/seed adapter or evidence is not a passing campaign")
             except (OSError,ValueError) as failure:
                 result.update(classification="source-refused",diagnostic=str(failure)[:4096],minimization=None)
