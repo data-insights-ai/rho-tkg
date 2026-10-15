@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 )
 
 type nativeFeedTrace struct {
@@ -128,6 +130,10 @@ func nativeFeedAttach(t *testing.T, n *certifiedProcessNetwork, s nativeFeedSpec
 	n.groups[1] = &tinyGraphTransport{nodes: map[uint64]*graphProcess{4: n.all[4], 5: n.all[5], 6: n.all[6]}}
 }
 func nativeFeedBootstrapAction(t *testing.T, n *certifiedProcessNetwork, actor, action, index uint64, data []byte, stream *json.Encoder) {
+	nativeScalarWorkloadBootstrapAction(t, n, actor, action, index, data, stream, retainedFeedSemanticContractID())
+}
+
+func nativeScalarWorkloadBootstrapAction(t *testing.T, n *certifiedProcessNetwork, actor, action, index uint64, data []byte, stream *json.Encoder, semantic raftlog.ApplicationSemanticContractID) {
 	t.Helper()
 	response := n.all[actor].call(t, processRequest{op: processCertifiedAction, entity: action, index: index, data: data})
 	if action == certifiedOpenRecipient {
@@ -137,7 +143,7 @@ func nativeFeedBootstrapAction(t *testing.T, n *certifiedProcessNetwork, actor, 
 		return
 	}
 	proposal, err := decodeCertifiedProcessProposal(response.aux)
-	if err != nil || proposal.target.semantic != retainedFeedSemanticContractID() {
+	if err != nil || proposal.target.semantic != semantic {
 		t.Fatal("feed bootstrap original scope", err)
 	}
 	group := 0
@@ -176,7 +182,15 @@ func nativeFeedNetwork(t *testing.T, s nativeFeedSpec, a nativeFeedAdmission, st
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir, err := os.MkdirTemp(os.Getenv("RHO_GRAPH_PROCESS_ARTIFACT"), "rho-native-feed-")
+	return nativeScalarWorkloadNetwork(t, s.cost(), env, "rho-native-feed-", retainedFeedSemanticContractID(), stream, func(n *certifiedProcessNetwork) { nativeFeedAttach(t, n, s, a) })
+}
+
+// Profile wrappers supply immutable child environment, exact semantic identity
+// and actual owned scheduler. This shares genuine allocator/native bootstrap
+// operations without selecting another family's profile or source authority.
+func nativeScalarWorkloadNetwork(t *testing.T, spec nativeGraphCostSpec, env []string, prefix string, semantic raftlog.ApplicationSemanticContractID, stream *json.Encoder, attach func(*certifiedProcessNetwork)) *certifiedProcessNetwork {
+	t.Helper()
+	dir, err := os.MkdirTemp(os.Getenv("RHO_GRAPH_PROCESS_ARTIFACT"), prefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +198,7 @@ func nativeFeedNetwork(t *testing.T, s nativeFeedSpec, a nativeFeedAdmission, st
 	for id := uint64(1); id <= 6; id++ {
 		n.all[id] = startGraphProcess(t, filepath.Join(dir, fmt.Sprint(id)), id, env...)
 	}
-	nativeFeedAttach(t, n, s, a)
+	attach(n)
 	t.Cleanup(func() {
 		for _, p := range n.all {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -198,47 +212,50 @@ func nativeFeedNetwork(t *testing.T, s nativeFeedSpec, a nativeFeedAdmission, st
 	for group, leader := range n.leaders {
 		n.groups[group].event(t, leader, processRequest{op: processCampaign})
 	}
-	nativeFeedBootstrapAction(t, n, 1, certifiedInitialize, 3, nil, stream)
+	action := func(actor, kind, index uint64, data []byte) {
+		nativeScalarWorkloadBootstrapAction(t, n, actor, kind, index, data, stream, semantic)
+	}
+	action(1, certifiedInitialize, 3, nil)
 	n.read(t, 1, observeConfiguration, 0)
-	nativeFeedBootstrapAction(t, n, 1, certifiedInitialize, 8, nil, stream)
-	block, err := nativeGraphCostBlockSize(s.cost())
+	action(1, certifiedInitialize, 8, nil)
+	block, err := nativeGraphCostBlockSize(spec)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, r := range []struct{ actor, recipient, partition uint64 }{{1, 1, 3}, {4, 2, 8}} {
 		n.read(t, r.actor, observeConfiguration, 0)
-		nativeFeedBootstrapAction(t, n, r.actor, certifiedBeginRecipient, r.recipient, nil, stream)
+		action(r.actor, certifiedBeginRecipient, r.recipient, nil)
 		n.read(t, 1, observeRecipient, r.recipient)
-		nativeFeedBootstrapAction(t, n, 1, certifiedRecipientTransition, 3, []byte{byte(fenceDeclaredRecipient)}, stream)
+		action(1, certifiedRecipientTransition, 3, []byte{byte(fenceDeclaredRecipient)})
 		if r.partition != 3 {
-			nativeFeedBootstrapAction(t, n, 1, certifiedRecipientTransition, r.partition, []byte{byte(fenceDeclaredRecipient)}, stream)
+			action(1, certifiedRecipientTransition, r.partition, []byte{byte(fenceDeclaredRecipient)})
 		}
 		n.read(t, r.actor, observeRecipient, r.recipient)
-		nativeFeedBootstrapAction(t, n, r.actor, certifiedRecipientTransition, 3, []byte{byte(acknowledgeDeclaredHome)}, stream)
+		action(r.actor, certifiedRecipientTransition, 3, []byte{byte(acknowledgeDeclaredHome)})
 		n.read(t, 1, observeRecipient, r.recipient)
-		nativeFeedBootstrapAction(t, n, 1, certifiedRecipientTransition, 3, []byte{byte(activateDeclaredRecipient)}, stream)
+		action(1, certifiedRecipientTransition, 3, []byte{byte(activateDeclaredRecipient)})
 		n.read(t, 1, observeRecipient, r.recipient)
-		nativeFeedBootstrapAction(t, n, 1, certifiedRecipientTransition, r.partition, []byte{byte(publishDeclaredRecipient)}, stream)
+		action(1, certifiedRecipientTransition, r.partition, []byte{byte(publishDeclaredRecipient)})
 		n.read(t, r.actor, observeRecipient, r.recipient)
-		nativeFeedBootstrapAction(t, n, r.actor, certifiedOpenRecipient, 0, nil, stream)
+		action(r.actor, certifiedOpenRecipient, 0, nil)
 		grants := uint64(1)
 		if r.partition == 3 {
-			grants = (s.cost().homeCount() + block - 1) / block
+			grants = (spec.homeCount() + block - 1) / block
 		}
 		for sequence := uint64(1); sequence <= grants; sequence++ {
-			_, count, err := nativeFeedGrantPlan(s.cost(), block, r.partition, sequence)
+			_, count, err := nativeGraphCostGrantPlan(spec, block, r.partition, sequence)
 			if err != nil {
 				t.Fatal(err)
 			}
 			n.read(t, 1, observeRecipient, r.recipient)
 			n.read(t, 1, observeAllocator, 0)
 			input := graphE17GrantInput(sequence, count)
-			nativeFeedBootstrapAction(t, n, 1, certifiedReserve, 0, input, stream)
+			action(1, certifiedReserve, 0, input)
 			n.group(1).event(t, 1, processRequest{op: processCertifiedRead, entity: uint64(observeGrant), data: input})
 			if !n.all[1].call(t, processRequest{op: processStateOp}).ready {
 				t.Fatal("actual native grant observation incomplete")
 			}
-			nativeFeedBootstrapAction(t, n, 1, certifiedInstallGrant, r.partition, nil, stream)
+			action(1, certifiedInstallGrant, r.partition, nil)
 		}
 	}
 	return n
@@ -303,8 +320,15 @@ func (d *nativeFeedDriver) beginOriginal() error {
 	return nil
 }
 func (d *nativeFeedDriver) phase(t *testing.T, phase uint64, from uint64, attempts, completed *json.Encoder, census *[32]uint64) {
+	nativeScalarWorkloadPhase(t, d.ctx, d.n, d.spec.cost(), d.admissions, d.started, phase, from, attempts, completed, census)
+}
+
+// Both wrappers have already admitted their exact fresh profile. This is only
+// the common scalar dispatcher; actual factories/proposals/native originals
+// retain their profile-specific validation and semantic scope.
+func nativeScalarWorkloadPhase(t *testing.T, parent context.Context, n *certifiedProcessNetwork, spec nativeGraphCostSpec, admissions *nativeGraphCostAdmissions, started time.Time, phase, from uint64, attempts, completed *json.Encoder, census *[32]uint64) (last nativeGraphCostSample) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(d.ctx)
+	ctx, cancel := context.WithCancel(parent)
 	type job struct {
 		fact   uint64
 		queued time.Time
@@ -313,7 +337,7 @@ func (d *nativeFeedDriver) phase(t *testing.T, phase uint64, from uint64, attemp
 		value nativeFeedBusiness
 		err   error
 	}
-	queues := make([]chan job, d.spec.Writers)
+	queues := make([]chan job, spec.Writers)
 	results := make(chan result, 32)
 	events := make(chan nativeGraphCostClientEvent, 32)
 	var workers sync.WaitGroup
@@ -321,9 +345,9 @@ func (d *nativeFeedDriver) phase(t *testing.T, phase uint64, from uint64, attemp
 		queues[client] = make(chan job, 1)
 		workers.Go(func() {
 			for j := range queues[client] {
-				sample, err := nativeGraphCostClientSubmit(ctx, d.n, d.spec.cost(), phase, j.fact, phase >= 4 && d.spec.cost().cross(j.fact), client, d.admissions, events)
+				sample, err := nativeGraphCostClientSubmit(ctx, n, spec, phase, j.fact, phase >= 4 && spec.cross(j.fact), client, admissions, events)
 				stop := time.Now()
-				results <- result{nativeFeedBusiness{sample, j.queued.Sub(d.started).Nanoseconds(), stop.Sub(d.started).Nanoseconds(), stop.Sub(j.queued).Nanoseconds()}, err}
+				results <- result{nativeFeedBusiness{sample, j.queued.Sub(started).Nanoseconds(), stop.Sub(started).Nanoseconds(), stop.Sub(j.queued).Nanoseconds()}, err}
 			}
 		})
 	}
@@ -363,7 +387,7 @@ func (d *nativeFeedDriver) phase(t *testing.T, phase uint64, from uint64, attemp
 			}
 		}
 	}()
-	end := d.spec.Facts
+	end := spec.Facts
 	if phase <= 3 {
 		end = from + 1
 	}
@@ -379,8 +403,8 @@ func (d *nativeFeedDriver) phase(t *testing.T, phase uint64, from uint64, attemp
 			defer close(submitted)
 			for i := uint64(0); i < count; i++ {
 				fact := first + i
-				ordinal := nativeGraphCostOperationID(d.spec.cost(), phase, fact).Ordinal
-				client := int((ordinal - 1) % uint64(d.spec.Writers))
+				ordinal := nativeGraphCostOperationID(spec, phase, fact).Ordinal
+				client := int((ordinal - 1) % uint64(spec.Writers))
 				select {
 				case queues[client] <- job{fact, time.Now()}:
 				case <-ctx.Done():
@@ -431,10 +455,11 @@ func (d *nativeFeedDriver) phase(t *testing.T, phase uint64, from uint64, attemp
 						t.Fatal(err)
 					}
 				}
-				if a.ClientID != int((a.Operation.Ordinal-1)%uint64(d.spec.Writers)) || a.Fact < first || a.Fact >= first+count {
+				if a.ClientID != int((a.Operation.Ordinal-1)%uint64(spec.Writers)) || a.Fact < first || a.Fact >= first+count {
 					t.Fatal("logical caller assignment")
 				}
 				census[a.ClientID]++
+				last = a
 				if err := completed.Encode(done.value); err != nil {
 					t.Fatal(err)
 				}
@@ -445,6 +470,7 @@ func (d *nativeFeedDriver) phase(t *testing.T, phase uint64, from uint64, attemp
 		feederDone = nil
 		first += count
 	}
+	return last
 }
 
 type nativeFeedSourceTrace struct {
@@ -459,6 +485,14 @@ type nativeFeedVoterRecord struct {
 }
 
 func nativeFeedSources(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, initial, cut graphCut, stage string, stream *json.Encoder) (rows [2]uint64) {
+	return nativeScalarWorkloadSources(t, ctx, n, initial, cut, stage, stream, func(after, through uint64, boundary []byte) ([]byte, error) {
+		return nativeFeedInputWire(nativeFeedInput{Version: 1, Action: "records", From: after, Through: through, Boundary: boundary})
+	})
+}
+
+// Framing is supplied only by an exact admitted profile wrapper; census,
+// native records, physical tips and three-voter equality stay one algorithm.
+func nativeScalarWorkloadSources(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, initial, cut graphCut, stage string, stream *json.Encoder, input func(uint64, uint64, []byte) ([]byte, error)) (rows [2]uint64) {
 	t.Helper()
 	boundary, err := nativeFeedCutWire(cut)
 	if err != nil {
@@ -474,8 +508,7 @@ func nativeFeedSources(t *testing.T, ctx context.Context, n *certifiedProcessNet
 		}
 		after := initial.certificates[group].sourceIndex
 		for {
-			input := nativeFeedInput{Version: 1, Action: "records", From: after, Through: state.applied, Boundary: boundary}
-			wire, err := nativeFeedInputWire(input)
+			wire, err := input(after, state.applied, boundary)
 			if err != nil {
 				t.Fatal(err)
 			}

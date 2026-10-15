@@ -6,6 +6,7 @@ import struct
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import native_feed_check as check
 import native_feed_cell as cell
@@ -25,6 +26,18 @@ class NativeFeedGuards(unittest.TestCase):
         cell.preflight(self.spec,"local",1800,4096,"paired")
         for args in (("rtt-1ms",1800,"paired"),("rtt-100ms",True,"native-raft"),("local",1801,"paired")):
             with self.assertRaises(ValueError):cell.preflight(self.spec,args[0],args[1],4096,args[2])
+
+    def test_scalar_reuse_keeps_exact_feed_wrapper_parameters(self):
+        end={"spec":self.spec,"Snapshot":"actual-C"}
+        with patch.object(check,"_scalar_attempts",return_value="attempts") as helper:
+            self.assertEqual(check.attempts("owned",end,"spool"),"attempts")
+            helper.assert_called_once_with("owned",end,"spool")
+        with patch.object(check,"_scalar_sources",return_value="sources") as helper:
+            self.assertEqual(check.sources("owned",end,"spool"),"sources")
+            helper.assert_called_once_with("owned",end,"spool",check.cut,check.frames(self.spec))
+        with patch.object(check,"_scalar_columns",return_value="columns") as helper:
+            self.assertEqual(check.columns("owned",end,"spool"),"columns")
+            helper.assert_called_once_with("owned",end,"spool",check.cut,check.frames(self.spec),"actual-C")
 
     def test_strict_operation_and_original_request_binding(self):
         dataset=list(hashlib.sha256(b"\1"+struct.pack(">QQ",40,50)+b"graph-v2").digest())

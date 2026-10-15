@@ -91,6 +91,10 @@ def request(admission, domain, sequence):
 
 
 def attempts(directory, end, spool):
+    return _scalar_attempts(directory, end, spool)
+
+
+def _scalar_attempts(directory, end, spool):
     s, total, extra = end["spec"], 0, 0
     for a in lines(directory/"attempts.jsonl", 16*s["facts"]+4):
         fields(a, "Operation Engine ClientID AttemptOrdinal PreviousRequest Request Transaction BodySHA256 BusinessSHA256 DecisionDigest OriginalIndex Round Classification Error SubmitInvocations Proposal Manifest Outcome CDC")
@@ -298,10 +302,14 @@ def authenticate_frame(frame, previous, s, spool, fresh):
 
 
 def sources(directory,end,spool):
-    first=cut(end["Initial"]);stages=("before-stop","reopened-replayed")
+    return _scalar_sources(directory,end,spool,cut,frames(end["spec"]))
+
+
+def _scalar_sources(directory,end,spool,decode_cut,frame_ceiling):
+    first=decode_cut(end["Initial"]);stages=("before-stop","reopened-replayed")
     stage,group,after,previous=0,0,first[0]["sourceIndex"],first[0]["image"]
     counts=[0,0]
-    for row in lines(directory/"sources.jsonl",4*(frames(end["spec"])+1)):
+    for row in lines(directory/"sources.jsonl",4*(frame_ceiling+1)):
         require(stage<2 and row["Stage"]==stages[stage] and row["Member"]==1+3*group,"physical source stage/owner order")
         p=row["Page"];part=3+5*group
         fields(p,"Partition After Next Through Root Complete Frames")
@@ -570,12 +578,16 @@ def feed(directory,end,spool):
 
 
 def columns(directory,end,spool):
+    return _scalar_columns(directory,end,spool,cut,frames(end["spec"]),end["Snapshot"])
+
+
+def _scalar_columns(directory,end,spool,decode_cut,frame_ceiling,old_cut):
     if end["spec"]["layout"]=="kv":
         require((directory/"columns.jsonl").stat().st_size==0,"KV invented derived generation work");return
     expected={"old-seal/native","old-seal/fill","old-seal/cached","final-seal/native","final-seal/fill","final-seal/cached","old-after-update",
               "reopened-0-false","reopened-0-true","reopened-1-false","reopened-1-true"}
     owners=[None,None];completed=set();sealed=set();retired=set();probed=set();cache=[None,None]
-    for trace in lines(directory/"columns.jsonl",32*(frames(end["spec"])+end["Admission"]["BudgetSeconds"]//60+100)):
+    for trace in lines(directory/"columns.jsonl",32*(frame_ceiling+end["Admission"]["BudgetSeconds"]//60+100)):
         if trace["Stage"]=="actual-keeper-retired-token":
             group=(integer(trace["Member"],1,4)-1)//3
             matches=[g for g in range(2) if end["ColumnManifests"][g][group]["Generation"]["ID"]==trace["Generation"]]
@@ -591,13 +603,13 @@ def columns(directory,end,spool):
         require(r["Binding"]==b and b["Version"]==2 and b["TerminalAttempts"]==4 and b["Coverage"]==1<<group and b["Layout"]==column.LAYOUT
                 and array(b["Agreement"],32)==BASE and p["Version"]==1 and array(p["Admission"],32)==array(end["AdmissionSHA256"],32)
                 and p["ChunkRecords"]==p["ChunkRows"]==16 and p["ChunkBytes"]==65536 and p["FrameBytes"]==32768
-                and p["MaxChunks"]==2*frames(end["spec"]) and p["MaxRetainedBytes"]==8*16384+2*frames(end["spec"])*(65536+128)
+                and p["MaxChunks"]==2*frame_ceiling and p["MaxRetainedBytes"]==8*16384+2*frame_ceiling*(65536+128)
                 and r["DeadlineUnixNanos"]==end["Admission"]["DeadlineUnixNanos"],"identical prepaid durable-column admission, no source TTL reset")
         require(array(m["Generation"]["Binding"],32)==digest(column.sealed_json(raw,b)),"immutable actual column binding")
-        final=end["Final"] if generation else end["Snapshot"]
+        final=end["Final"] if generation else old_cut
         for g in range(2):
             boundary=m["Generation"]["Sources"][g]
-            require(column.certificate(raw,boundary["Initial"])==cut(end["Initial"])[g] and column.certificate(raw,boundary["Final"])==cut(final)[g],"same exact generation prefix, no recreated current source")
+            require(column.certificate(raw,boundary["Initial"])==decode_cut(end["Initial"])[g] and column.certificate(raw,boundary["Final"])==decode_cut(final)[g],"same exact generation prefix, no recreated current source")
         if action==1:
             require(owners[group] is None and r["Sequence"]==0 and not r["Closed"] and q["Initial"]==end["Initial"] and q["Final"]==final,"actual immutable constructor")
             owners[group]={"r":r,"sequence":0,"cursor":None}
@@ -618,7 +630,7 @@ def columns(directory,end,spool):
             require(r["Manifest"]==m,"full source seal");codec.retention(r["Retention"],m,spool);sealed.add((generation,group))
         elif action==3:
             require(stage in expected and (stage,group) not in completed and r["Manifest"]==m and q["At"]==final,"exact cut projected read")
-            owner["cursor"]={"ordinal":0,"chain":bytes(32),"position":cut(end["Initial"])[group]["sourceIndex"],"frames":0,"rows":0,"bytes":0,"stage":stage,"cached":q["Cached"],"fill":q["Fill"]}
+            owner["cursor"]={"ordinal":0,"chain":bytes(32),"position":decode_cut(end["Initial"])[group]["sourceIndex"],"frames":0,"rows":0,"bytes":0,"stage":stage,"cached":q["Cached"],"fill":q["Fill"]}
             if q["Cached"]:column.cache_manifest(raw,Path(end["Directory"]),group,m)
         elif action==4:
             c=owner["cursor"];require(c is not None and c["stage"]==stage and r["Ordinal"]==c["ordinal"] and r["Manifest"]==m and r["Cached"]==c["cached"] and r["Fill"]==c["fill"],"actual continuation/cached output")

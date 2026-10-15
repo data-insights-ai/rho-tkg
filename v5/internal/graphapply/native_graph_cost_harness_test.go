@@ -29,6 +29,9 @@ type nativeGraphCostSpec struct {
 }
 
 func (s nativeGraphCostSpec) validate() error {
+	if s.Version == 6 {
+		return nativeSelectorsValidate(s)
+	}
 	if s.Version == 5 {
 		return nativeFeedValidate(s)
 	}
@@ -80,6 +83,13 @@ func (s nativeGraphCostSpec) edge(i uint64) (uint64, uint64, uint64, uint64) {
 	return 7 + 2*i, 8 + 2*i, target, targetLife
 }
 func (s nativeGraphCostSpec) deliveries() int {
+	if s.Version == 6 {
+		frames, err := nativeSelectorsFrames(s)
+		if err != nil || frames > uint64(^uint(0)>>1)/1024 {
+			return 0
+		}
+		return int(frames * 1024) // #nosec G115 -- checked finite numeric grant, not an allocation.
+	}
 	if s.Version == 5 {
 		frames, err := nativeFeedFrames(s)
 		if err != nil || frames > uint64(^uint(0)>>1)/1024 {
@@ -100,6 +110,9 @@ func (s nativeGraphCostSpec) deliveries() int {
 func nativeGraphCostProfile(s *nativeGraphCostSpec, init *declaredInitCommand, l *raftlog.Limits, p *raftlog.ApplicationPolicy, generations *raftlog.ApplicationGenerationLimits) error {
 	if s == nil {
 		return nil
+	}
+	if s.Version == 6 {
+		return nativeSelectorsProfile(*s, init, l, p, generations)
 	}
 	if s.Version == 5 {
 		return nativeFeedProfile(*s, init, l, p, generations)

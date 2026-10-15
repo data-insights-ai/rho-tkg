@@ -1395,6 +1395,30 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			}
 		}()
 	}
+	var selectors *nativeSelectorsSessions
+	if o.cost != nil && o.cost.Version == 6 {
+		spec, e := nativeSelectorsSpecFromEnv()
+		if e != nil {
+			t.Fatal(e)
+		}
+		admission, digest, e := nativeSelectorsAdmissionFromEnv(spec)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var stopSelectors context.CancelFunc
+		columns.ctx, stopSelectors = context.WithDeadline(ctx, time.Unix(0, admission.DeadlineUnixNanos))
+		defer stopSelectors()
+		columns.policyProvider = func() (nativeColumnPolicy, error) { return nativeSelectorsColumnPolicy(h, spec, admission, digest) }
+		selectors, e = newNativeSelectorsSessions(columns.ctx, coordinator, pump.Cut)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer func() {
+			if e := selectors.close(); e != nil {
+				t.Error(e)
+			}
+		}()
+	}
 	defer func() {
 		if err := columns.close(); err != nil {
 			t.Error(err)
@@ -1648,13 +1672,19 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		return nil
 	}
 	isSourceClose := func(r processRequest) bool {
+		if selectors != nil && r.op == processCostObserve && bytes.HasPrefix(r.data, []byte(nativeSelectorsMarker)) {
+			q, err := nativeSelectorsInputDecode(r)
+			if err == nil && q.Action == "close" {
+				return true
+			}
+		}
 		if feed != nil && r.op == processCostObserve && bytes.HasPrefix(r.data, []byte(nativeFeedMarker)) {
 			q, err := nativeFeedInputDecode(r)
 			if err == nil && (q.Action == "close" || q.Action == "snapshot-close") {
 				return true
 			}
 		}
-		if o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5) && nativeGraphEdgeUniqueColumnClose(r) {
+		if o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6) && nativeGraphEdgeUniqueColumnClose(r) {
 			return true
 		}
 		if logicalTransitions != nil && r.op == processNativeTransitionControl {
@@ -1786,11 +1816,13 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processCostObserve:
 				if o.cost == nil {
 					e = errInvalid
+				} else if selectors != nil && bytes.HasPrefix(r.data, []byte(nativeSelectorsMarker)) {
+					out.aux, e = selectors.serve(workerCtx, r)
 				} else if feed != nil && bytes.HasPrefix(r.data, []byte(nativeFeedMarker)) {
 					out.aux, e = feed.serve(workerCtx, r)
 				} else if contention != nil && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
 					out.aux, e = contention.serve(workerCtx, r)
-				} else if (o.cost.Version == 4 || o.cost.Version == 5) && bytes.HasPrefix(r.data, []byte(nativeEdgeColumns)) {
+				} else if (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6) && bytes.HasPrefix(r.data, []byte(nativeEdgeColumns)) {
 					out.aux, e = nativeGraphEdgeUniqueColumnServe(workerCtx, columns, r)
 				} else if bytes.HasPrefix(r.data, []byte(nativeColumnsMarker)) {
 					out.aux, e = columns.serve(workerCtx, r)
@@ -1896,8 +1928,15 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			response.ready = o.ready
 		}
 		response.code, response.detail = processError(err)
-		if code := nativeFeedProfileResponseCode(r, feed != nil, o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5), err); code != 0 {
+		if code := nativeFeedProfileResponseCode(r, feed != nil, o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5 || o.cost.Version == 6), err); code != 0 {
 			response.code = code
+		}
+		if selectors != nil && r.op == processCostObserve {
+			if _, inputErr := nativeSelectorsInputDecode(r); inputErr == nil {
+				if code := nativeColumnProcessErrorCode(err); code != 0 {
+					response.code = code
+				}
+			}
 		}
 		if durableColumnGraphAgreement(h.machine.SemanticContractID()) && r.op == processCostObserve {
 			columnRequest := r
@@ -2045,6 +2084,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					}
 					if feed != nil {
 						feed.coordinator = coordinator
+					}
+					if selectors != nil {
+						selectors.coordinator = coordinator
 					}
 				}
 			case processCostRecords:

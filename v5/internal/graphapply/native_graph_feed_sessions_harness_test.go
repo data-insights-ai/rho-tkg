@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
@@ -483,7 +484,16 @@ func nativeFeedRecords(ctx context.Context, h *allocationHost, q nativeFeedInput
 	if ctx == nil || h == nil || h.machine == nil || h.machine.SemanticContractID() != retainedFeedSemanticContractID() || q.Through > h.driver.Applied() {
 		return nil, errInvalid
 	}
-	boundary, err := nativeFeedCutDecode(q.Boundary)
+	return nativeScalarWorkloadRecords(ctx, h, q.From, q.Through, q.Boundary, retainedFeedSemanticContractID())
+}
+
+// Only exact admitted wrappers call this evidence exporter. No semantic
+// capability predicate relaxes the current store/argument/certificate equality.
+func nativeScalarWorkloadRecords(ctx context.Context, h *allocationHost, from, through uint64, boundaryWire []byte, semantic raftlog.ApplicationSemanticContractID) (wire []byte, err error) {
+	if ctx == nil || h == nil || h.machine == nil || h.driver == nil || h.machine.SemanticContractID() != semantic || through > h.driver.Applied() {
+		return nil, errInvalid
+	}
+	boundary, err := nativeFeedCutDecode(boundaryWire)
 	if err != nil {
 		return nil, err
 	}
@@ -493,7 +503,7 @@ func nativeFeedRecords(ctx context.Context, h *allocationHost, q nativeFeedInput
 			cert = c
 		}
 	}
-	if cert.index == 0 || q.Through < cert.index {
+	if cert.index == 0 || through < cert.index {
 		return nil, errInvalid
 	}
 	// Genuine At first authenticates the immutable business certificate. Its
@@ -505,7 +515,7 @@ func nativeFeedRecords(ctx context.Context, h *allocationHost, q nativeFeedInput
 	if err = proof.Close(); err != nil {
 		return nil, err
 	}
-	view, err := h.machine.store.ApplicationView(q.Through)
+	view, err := h.machine.store.ApplicationView(through)
 	if err != nil {
 		return nil, err
 	}
@@ -527,8 +537,8 @@ func nativeFeedRecords(ctx context.Context, h *allocationHost, q nativeFeedInput
 	}
 	source := nativeColumnSource{binding: nativeColumnBinding{Version: 2, Policy: nativeColumnPolicy{FrameBytes: 32 << 10, ChunkRows: 16}}}
 	source.hosts[0], source.views[0], source.roots[0], source.final[0], source.configurations[0] = h, view, root, cert, cfg
-	page := nativeFeedRecordPage{Partition: h.machine.ns.partition, After: q.From, Next: q.From, Through: q.Through, Root: root.Image, Frames: []nativeColumnFrame{}}
-	for len(page.Frames) < 4 && page.Next < q.Through {
+	page := nativeFeedRecordPage{Partition: h.machine.ns.partition, After: from, Next: from, Through: through, Root: root.Image, Frames: []nativeColumnFrame{}}
+	for len(page.Frames) < 4 && page.Next < through {
 		frame, e := source.frame(ctx, 0, page.Next+1)
 		if e != nil {
 			return nil, e
@@ -536,7 +546,7 @@ func nativeFeedRecords(ctx context.Context, h *allocationHost, q nativeFeedInput
 		page.Frames = append(page.Frames, frame)
 		page.Next++
 	}
-	page.Complete = page.Next == q.Through
+	page.Complete = page.Next == through
 	wire, err = json.Marshal(page)
 	if len(wire) > 1<<20 {
 		return nil, errLimit

@@ -5,11 +5,13 @@ All dataset-sized joins live in ONE caller-granted disposable BLOB spool. Native
 round enumeration, business provenance and completion order remain independent.
 """
 import hashlib
+from contextlib import nullcontext
 import importlib.util
 import json
 import os
 from pathlib import Path
 import sys
+import struct
 
 # The older private raw codec is intentionally still in fdb/. Load its exact
 # source location, without requiring callers to mutate their import path.
@@ -937,7 +939,36 @@ def selector_timings(spool):
             "scope": "actual Open retry/wait, Scan through EOF including artifact callbacks, and separate fixed scan-based Points; finite per-cell samples, no indexed/per-key latency claim"}
 
 
-def verify(directory, spool_directory, policy=None):
+def logical_answers(end, spool):
+    """Normalize only complete authenticated old/final selector observations.
+
+    Native physical revisions remain exact in each engine's own proof; typed
+    lives, definition and logical provenance are the cross-engine coordinates.
+    """
+    answer = hashlib.sha256()
+    n = end["Spec"]["facts"]
+    for namespace, offset, observation in ((b"fdb-old", 0, b"old-fresh"), (b"fdb-current", n, b"fresh-current")):
+        for fact in range(n):
+            original = decoded(spool.lookup(b"fdb-operation", u64(4+offset+fact)))
+            tx = original["Tx"]
+            edge, lifecycle = tx["GraphChange"]["Edge"], tx["Lifecycle"]
+            _, _, effects, _ = codec.fdb_contract(end["Spec"], 4+offset+fact)
+            scalar = None
+            for group in sorted(effects):
+                for effect in effects[group]:
+                    native = key(end["Config"], group, "current", effect["Key"])
+                    row = decoded(spool.lookup(namespace, native))
+                    require(spool.lookup(b"snapshot-seen-"+observation, native) == go_json(row), "paired selector answer lacks actual complete source observation")
+                    require(row["Deleted"] is False and type(row["Value"]) is int and row["Value"] == edge["Value"], "actual endpoint indexes disagree with scalar")
+                    if effect["Key"].startswith("edge/"): scalar = row["Value"]
+            definition = lifecycle["Definition"]
+            require(scalar is not None and definition["Kind"] == "i64" and definition["ID"] == definition["I64"] == scalar, "actual typed value definition")
+            coordinates = (fact, edge["ID"], lifecycle["EdgeLife"], edge["Source"]["Node"], edge["Target"]["Node"], edge["Source"]["Life"], edge["Target"]["Life"], definition["ID"])
+            answer.update(b"edge-i64-lifebound-v1\0"+b"".join(u64(v) for v in coordinates)+struct.pack(">q",scalar)+u64(lifecycle["Provenance"]))
+    return answer.hexdigest()
+
+
+def verify(directory, spool_directory, policy=None, *, shared_spool=None):
     directory = Path(directory).resolve(strict=True)
     with (directory / "fdb-selectors-result.json").open("rb") as source:
         body = source.read(raw.LINE + 1)
@@ -946,7 +977,7 @@ def verify(directory, spool_directory, policy=None):
     validate_result(end)
     require(policy is not None or end["Spec"]["facts"] < 1_000_000 and end["Spec"]["writers"] != 32, "large cell needs explicit finite comparison grant")
     policy = POLICY if policy is None else policy
-    with Spool(spool_directory, policy) as spool:
+    with (nullcontext(shared_spool) if shared_spool is not None else Spool(spool_directory, policy)) as spool:
         attempts(directory, end, spool)
         header = source_fold(directory, end, spool)
         events(directory, end, spool, header)
@@ -955,6 +986,7 @@ def verify(directory, spool_directory, policy=None):
         latencies(directory, end, spool)
         timing = selector_timings(spool)
         transport_proof = raw.transport.verify(directory, end["Transport"]["Policy"], spool) if end["Version"] == 2 else None
+        answers = logical_answers(end, spool) if shared_spool is not None else None
         report = spool.report()
     result = {"format": end["Format"], "family": FAMILY, "runGraph": end["Config"]["Graph"], "spec": end["Spec"], "attempts": end["Attempts"],
             "committed": end["Committed"], "aborted": end["Aborted"], "spool": report, "selectorTiming": timing,
@@ -962,6 +994,9 @@ def verify(directory, spool_directory, policy=None):
     if transport_proof is not None:
         transport_proof["nativeRetainedBindingBytes"] = len(blob(end["Transport"]["Record"]["Key"])) + len(blob(end["Transport"]["Record"]["Value"]))
         result["transport"] = transport_proof
+    if answers is not None:
+        result["logicalAnswersSHA256"] = answers
+        result["retentionContract"] = "snapshot-C-retained-full-prefix-v1"
     return result
 
 

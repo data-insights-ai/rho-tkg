@@ -45,7 +45,7 @@ type nativeGraphCostClientEvent struct {
 }
 
 func nativeGraphCostOperationID(s nativeGraphCostSpec, phase, fact uint64) nativeGraphCostOperation {
-	if s.Version == 5 {
+	if s.Version == 5 || s.Version == 6 {
 		s.Version = 1
 	} // Fresh feed shares FDB's logical dataset, never its native profile/authority.
 	// Fixed fields are encoded explicitly: Writers and engine do not participate.
