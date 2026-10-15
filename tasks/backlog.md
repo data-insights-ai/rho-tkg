@@ -815,9 +815,15 @@ deadline, with separate terminal cleanup; nil/default fixture behavior remains.
 The independent checker/guards and future CI routes are source-integrated at
 `7a82352a`: actual retained originals, complete source prefixes, exact old/current
 sets and an independent serial witness authenticate the finite conjunctions.
-No compilation, tests or CI execution has occurred. Other phase/occurrence, leader/message,
-P-row and applicable publication/import/GC conjunctions remain source gaps;
-this checkpoint does not complete P06 or D.
+No compilation, tests or CI execution has occurred. Recovery Prepare/Resolve
+conjunctions are additionally source-integrated at `1162207a`: 64 separately
+versioned cases preserve the original Decide recipe, bind the selected actual
+participant and original authority proofs, and authenticate all stored originals
+before terminal replay. ABORT may skip a participant already resolved after a
+lost response; an unanswered submission never becomes a successful capture.
+Initial and terminal-duplicate occurrences, leader/message variants, other P-row
+and applicable publication/import/GC conjunctions remain source gaps. These
+source checkpoints do not complete P06 or D.
 The first actual state/process composition is source-integrated at `7081f9ff`:
 twelve import Begin/Append/seal/activation/unclaimed-retirement/physical-clear
 cells select the real native batch before or after Commit(Sync), persist its
