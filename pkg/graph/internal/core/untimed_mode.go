@@ -116,7 +116,7 @@ func (c *Core) resolveUntimedMode() error {
 			return fmt.Errorf("graph: the store's conversion to UntimedUnbounded did not finish; open it with Config.UntimedValidStart = UntimedUnbounded to finish it: %w", ErrUntimedModeMismatch)
 		}
 		if c.readOnlyReplica {
-			return fmt.Errorf("graph: the store's conversion to UntimedUnbounded did not finish; a writable open finishes it: %w", ErrUntimedModeMismatch)
+			return nil // the primary's feed carries the rest of the conversion
 		}
 		c.untimedResume = true
 	case hasKey:
@@ -152,6 +152,9 @@ func (c *Core) resumeUntimedConversion() error {
 		return nil
 	}
 	if err := c.stampUntimedFirstVersions(context.Background()); err != nil {
+		return fmt.Errorf("graph: finish the conversion to UntimedUnbounded: %w", err)
+	}
+	if err := c.flushUntimedRows(); err != nil {
 		return fmt.Errorf("graph: finish the conversion to UntimedUnbounded: %w", err)
 	}
 	c.untimedModeStamp = true
@@ -262,9 +265,29 @@ func (a *AdminOps) SetUntimedValidStart(ctx context.Context, mode UntimedValidSt
 	if err := c.stampUntimedFirstVersions(ctx); err != nil {
 		return err
 	}
+	// The rewritten rows are on disk on every shard before the final key
+	// says the conversion is done; a crash before it leaves the store marked
+	// converting, and the next unbounded open finishes it.
+	if err := c.flushUntimedRows(); err != nil {
+		return fmt.Errorf("graph: flush the converted rows: %w", err)
+	}
 	c.untimedUnbounded.Store(true)
 	if err := c.writeUntimedMode(byte(UntimedUnbounded)); err != nil {
 		return fmt.Errorf("graph: persist untimed valid-start mode: %w", err)
+	}
+	return nil
+}
+
+// flushUntimedRows makes the rows a conversion rewrote durable on every shard
+// (store.DurableFlushCapability) before the final mode key is written; a
+// store without stable storage flushes its write buffer, one without either
+// has nothing buffered.
+func (c *Core) flushUntimedRows() error {
+	if df, ok := c.store.(storepkg.DurableFlushCapability); ok && df.DurableFlushSupported() {
+		return df.DurableFlush()
+	}
+	if f, ok := c.store.(interface{ Flush() error }); ok {
+		return f.Flush()
 	}
 	return nil
 }
@@ -388,4 +411,22 @@ func (c *Core) stampRelFirstVersion(id types.RelID) error {
 		return c.store.ReplaceRelationship(row)
 	}
 	return c.store.PutRelVersion(id, row.Version(), row)
+}
+
+// applyMetaLocked applies a replicated ChangeMeta record (a replica's apply,
+// caller holds c.mu.Lock). The only meta entry a primary replicates is the
+// untimed valid-start mode (backlog 73): the replica takes it as its own and
+// persists it like the primary (key, format marker 7). Any other key fails
+// closed: this release does not know what applying it means.
+func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
+	if body.Key != untimedValidStartMeta {
+		return fmt.Errorf("graph: apply: unknown replicated meta key %q: %w", body.Key, storepkg.ErrCorruptWire)
+	}
+	if len(body.Value) != 1 || body.Value[0] > untimedConverting {
+		return fmt.Errorf("graph: apply: untimed valid-start mode %x: %w", body.Value, storepkg.ErrCorruptWire)
+	}
+	v := body.Value[0]
+	c.untimedUnbounded.Store(v != byte(UntimedFromTxFrom))
+	c.asOfColumns.bump() // the conversion's rewritten history rows follow in the feed
+	return c.writeUntimedMode(v)
 }

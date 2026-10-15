@@ -4,13 +4,23 @@ package graph_test
 // each a red test first.
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	constraintspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -156,5 +166,185 @@ func TestResetKeepsBitemporalMigrationDone(t *testing.T) {
 				t.Errorf("closed untimed TxFrom version valid at far after Reset + reopen")
 			}
 		})
+	}
+}
+
+// TestUntimedConversionCrashSafe (review 2): the conversion wrote its final
+// mode key durably while the rewritten rows still sat in the store's write
+// buffer, so a crash right after the call left a store that claims
+// UntimedUnbounded but holds first versions still starting at TxFrom. The
+// crash is played by copying the live directory right after the call (the
+// write buffer is not on disk; FlushInterval holds it). The copy must open
+// under UntimedUnbounded with every converted row in place, or refuse a
+// TxFrom open as an unfinished conversion — never a silent mix.
+func TestUntimedConversionCrashSafe(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	hold := time.Hour
+	open := map[string]func(dir string) (storepkg.MandatoryStore, error){
+		"badger": func(dir string) (storepkg.MandatoryStore, error) {
+			return badger.New(badger.Config{Dir: dir, FlushInterval: hold})
+		},
+		"sharded": func(dir string) (storepkg.MandatoryStore, error) {
+			return sharded.New(sharded.Config{Dir: dir, BaseSlot: 0, SlotCount: 2, FlushInterval: hold})
+		},
+		// Tiered keeps the mode key on the reference shard and these rows on
+		// an event shard: the key's own flush does not cover them.
+		"tiered": func(dir string) (storepkg.MandatoryStore, error) {
+			return tiered.New(tiered.Config{DataDir: dir, ShardWindow: 7 * 24 * time.Hour, RefLabels: []string{"Ref"}, FlushInterval: hold})
+		},
+	}
+	for _, name := range []string{"badger", "sharded", "tiered"} {
+		openStore := open[name]
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			newGraph := func(dir string, mode graphpkg.UntimedValidStart) *graphpkg.Graph {
+				t.Helper()
+				st, err := openStore(dir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				g, err := graphpkg.New(graphpkg.Config{Store: st, UntimedValidStart: mode})
+				if err != nil {
+					_ = st.Close()
+					t.Fatal(err)
+				}
+				return g
+			}
+			dir := t.TempDir()
+			g := newGraph(dir, graphpkg.UntimedFromTxFrom)
+			var ids []types.NodeID
+			for i := 0; i < 8; i++ {
+				n, err := g.Nodes().Add(ctx, []string{"U"}, map[string]any{"i": int64(i)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				ids = append(ids, n.ID())
+			}
+			if err := g.Close(); err != nil { // the rows are on disk
+				t.Fatal(err)
+			}
+			g = newGraph(dir, graphpkg.UntimedFromTxFrom)
+			if err := g.Admin().SetUntimedValidStart(ctx, graphpkg.UntimedUnbounded); err != nil {
+				t.Fatal(err)
+			}
+			crashed := t.TempDir()
+			uvsCopyDir(t, dir, crashed)
+			_ = g.Close()
+
+			st, err := openStore(crashed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cg, err := graphpkg.New(graphpkg.Config{Store: st, UntimedValidStart: graphpkg.UntimedUnbounded})
+			if err != nil {
+				_ = st.Close()
+				t.Fatalf("crash copy opened unbounded: %v", err)
+			}
+			defer cg.Close()
+			for _, id := range ids {
+				if _, err := cg.Temporal().NodeAt(id, uvsFar); err != nil {
+					t.Errorf("crash copy: node %d not valid at far (%v): the store claims UntimedUnbounded with an unconverted row", id, err)
+				}
+			}
+		})
+	}
+}
+
+// uvsCopyDir copies src to dst recursively (a crash image of a live store).
+func uvsCopyDir(t *testing.T, src, dst string) {
+	t.Helper()
+	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, p)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o750)
+		}
+		data, err := os.ReadFile(p) // #nosec G304 -- test-owned temp directory
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o600)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestUntimedModeReplicates (review 5): the mode key is MetaKV, which the
+// change feed did not carry, so a replica of a converted primary kept
+// TxFrom as its persisted mode. The primary's conversion now emits ChangeMeta
+// records; the replica applies and persists them: it reopens under
+// UntimedUnbounded, refuses TxFrom, and answers the converted rows.
+func TestUntimedModeReplicates(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pdir, rdir := t.TempDir(), t.TempDir()
+	p, err := graphpkg.New(graphpkg.Config{BadgerDir: pdir, ChangeLog: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	n, err := p.Nodes().Add(ctx, []string{"U"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snap bytes.Buffer
+	if err := p.IO().Export(&snap); err != nil {
+		t.Fatal(err)
+	}
+	lsn0, err := p.Replication().LastCommittedLSN()
+	if err != nil {
+		t.Fatal(err)
+	}
+	openReplica := func(mode graphpkg.UntimedValidStart) (*graphpkg.Graph, error) {
+		return graphpkg.New(graphpkg.Config{BadgerDir: rdir, SnowflakeNodeID: 6, ReadOnlyReplica: true, UntimedValidStart: mode})
+	}
+	r, err := openReplica(graphpkg.UntimedFromTxFrom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.IO().Import(bytes.NewReader(snap.Bytes()), tkgio.ImportOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Replication().SetAppliedLSN(lsn0); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := p.Admin().SetUntimedValidStart(ctx, graphpkg.UntimedUnbounded); err != nil {
+		t.Fatal(err)
+	}
+	var recs []storepkg.ChangeRecord
+	if err := p.Replication().ForEachChange(lsn0, func(rec storepkg.ChangeRecord) bool {
+		recs = append(recs, rec)
+		return true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Replication().ApplyChanges(recs); err != nil {
+		t.Fatalf("replica applies the conversion: %v", err)
+	}
+	if _, err := r.Temporal().NodeAt(n.ID(), uvsFar); err != nil {
+		t.Errorf("replica: converted node at far: %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := openReplica(graphpkg.UntimedFromTxFrom); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
+		t.Fatalf("replica reopened txfrom after the primary converted: err = %v, want ErrUntimedModeMismatch", err)
+	}
+	r, err = openReplica(graphpkg.UntimedUnbounded)
+	if err != nil {
+		t.Fatalf("replica reopened unbounded: %v", err)
+	}
+	defer r.Close()
+	if _, err := r.Temporal().NodeAt(n.ID(), uvsFar); err != nil {
+		t.Errorf("replica reopened: converted node at far: %v", err)
 	}
 }

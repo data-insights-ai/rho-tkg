@@ -202,6 +202,12 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 			return err
 		}
 		return c.applyRelRangePurgeLocked(body)
+	case storepkg.ChangeMeta:
+		body, err := storeutil.DecodeMeta(rec.Payload)
+		if err != nil {
+			return err
+		}
+		return c.applyMetaLocked(body)
 	case storepkg.ChangeClear:
 		// Captured BEFORE Clear (BACKLOG 13l), mirroring Admin.Reset(): a
 		// replica's id_slot_lease is data-independent orchestrator state that
