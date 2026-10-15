@@ -387,6 +387,10 @@ cancellation fences against delayed publication. Four terminal exchanges are
 prepaid in the persisted policy; spent uncertain attempts are not refunded, and
 exhaustion preserves retiring state with an explicit limit refusal. Legacy
 contracts/bytes stay unchanged. The two native guard parents are authored only.
+Large-prefix continuation still needs a source correction: the dependency
+prepass currently keeps its positions and minimum feed indexes only in memory.
+The fresh policy must journal and resume that progress with cumulative work
+charges; persisted publication progress alone does not resume this prepass.
 Genuine OS-child selection and interruption wiring are source-integrated at
 `feb661e9`: six same-directory child restarts preserve exact originals/tokens;
 partial retirement resumes the existing generation with spent attempts intact.
@@ -526,10 +530,13 @@ cost workload dispatches and RTT/matrix integration also remain open; a finite
 packet delay is not a measured RTT profile. This source package does not close
 B or D.
 
-Worker lanes: Sol 6.1/high for native protocol recovery and durable pins/GC,
-then C/D; Sol 6.1/high for native column/fault-workload implementation (bounded
-incident continuation, native reopen/index and 8/32-client source packages are integrated);
-Sol 6.1/high for FDB source reclamation and remaining fault/workload parity. The
+Current worker lanes: Sol 6.1/high for the native/FDB cross-edge endpoint-life
+and uniqueness family; Sol 6.1/high for native contention, real directed
+transport delay and resumable column dependencies, followed by the remaining
+C/D schedules; Sol 6.1/high for the FDB snapshot-to-feed family. Feed cleanup
+must reserve terminal capacity independently of ordinary request quotas and
+recover the same saved owner after process loss and pin expiry. These packages
+are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
 serialize heavy local fault/benchmark workloads under the shared resource lease.
