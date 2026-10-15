@@ -1086,12 +1086,23 @@ uses genuine planned checks while preserving ordinary Set. Count actual read/wri
 participants, not empty cross-protocol manifests or endpoint placement, before
 accepting any affected scalar cost row.
 
-Current worker lanes: Sol 6.1/high for the native P07–P09 owned-state transition
-adapters and their checker; Sol 6.1/high for the finite P01–P06 protocol/storage
+The P07–P09 owned-state transition package is source-integrated at `17d69788`:
+139 native boundaries cover move/pin Ready and application sync, allocator
+reserve/install, collector sync and publication after actual collection. The
+parent checks original retry outcomes, stale-owner refusal, actual held old-cut
+values, full feed/ACK vectors and physical record reclamation after same-volume
+restart. Its independent checker and guards are authored, not executed. These
+cases select the existing Recovery3 transfer agreement; they cannot qualify
+Recovery4 merely by changing a profile label. Existing accepted P08 evidence
+retains its original scope. Source/hash, pinned parser/format and whitespace
+checks passed; compilation, runtime, coverage and C acceptance remain open.
+
+Current worker lanes: Sol 6.1/high for the finite P01–P06 protocol/storage
 composition adapters and checker; Sol 6.1/high for authenticated transfer budgets
-and fresh range-move wiring, followed by the actual transfer workload. Shared
-graph batching and the recovery byte-pool primitive are source-integrated above.
-The remaining packages are in
+and fresh range-move wiring, followed by the actual transfer workload. The
+P07–P09 worker has completed its package; its next campaign-controller proposal
+is held while these packages finish. Shared graph batching and the recovery
+byte-pool primitive are source-integrated above. The remaining packages are in
 implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
