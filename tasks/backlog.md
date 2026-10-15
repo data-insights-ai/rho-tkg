@@ -804,6 +804,18 @@ encoding, hashing and by-value output. Authored guards compare exact prior/post
 metadata and retain old data through activation, collection and dormant cleanup.
 Reusable process wiring and broader applicable P01–P09 leader/message/conflict
 composition remain in implementation. None of these new guards ran.
+The first P06/native-batch conjunction Go driver is source-integrated at
+`5c336e50`: 16 coordinator/outcome/Ready-or-install/before-or-after cases combine
+first-YES leader loss, prepared-lock refusal and genuine endpoint conflict with
+the selected Decide interruption and SAME-original recovery. Successful replies
+and the exact unanswered request have separate bounded capture; the target's
+actual pipe failure and persisted batch receipt precede interruption eligibility.
+Fresh bootstrap, RPCs, snapshot catch-up and boundary waits share the original
+deadline, with separate terminal cleanup; nil/default fixture behavior remains.
+The independent checker/guards and CI routes are still implementation work.
+No compilation or execution has occurred. Other phase/occurrence, leader/message,
+P-row and applicable publication/import/GC conjunctions remain source gaps;
+this checkpoint does not complete P06 or D.
 The first actual state/process composition is source-integrated at `7081f9ff`:
 twelve import Begin/Append/seal/activation/unclaimed-retirement/physical-clear
 cells select the real native batch before or after Commit(Sync), persist its
