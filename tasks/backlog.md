@@ -342,7 +342,8 @@ floor predecessors and data anchors, co-sync namespace debits and a separately
 accounted resumable cursor, and retire a publication only when represented rows
 are deleted. Same-index sparse republication keeps the genuine term/hash and
 changes the cut identity without business or CDC progress. Durable column-owner
-process wiring and graph reachability/reclamation remain implementation work; all
+process wiring remains V2 implementation work; logical-page reclamation remains
+V3/V6 work under PLAN §8, as detailed below. All
 these new sources await execution. The bounded captured-view plan accessor is
 source-integrated at `3fcf9591`; it grants no anchor or deletion authority.
 The fixed-size publication identity accessor is integrated at `12b2293f`.
@@ -353,7 +354,14 @@ integrated at `178d4537` with ordinary-credit dispatch at `fe80a2b4`:
 authenticated pin and recovery rosters bound all six requested floors, installed
 Applied/Blocked/Stale results remain immutable, original PLMs are preserved,
 and current source selection uses the genuine installed plan anchor.
-Graph logical key-family retirement is separate. These guards are authored only.
+V2's P07/P09 reclamation gate still requires actual native root/MVCC/CDC
+collection with active old-cut/feed pins and exact original retries. Reclaiming
+unreachable immutable graph pages/catalog entries belongs to V3's compact
+engine and V6's retention operations (PLAN §8); current-root-reachable temporal
+assertions remain live data. Deleting request originals first requires the
+declared deduplication lease/known-expired identity contract (PLAN §5.2).
+Retained logical pages and originals stay in V2's storage/cost ledger and remain
+subject to explicit admission/backpressure. These guards are authored only.
 Remote classification is integrated at `860f6b32`: the fresh collected profile
 preserves authenticated graph/native history expiry independently of pin
 expiry, unavailable authority and exact-empty data. Older response bytes and
