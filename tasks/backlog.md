@@ -748,8 +748,10 @@ answers. The local FDB comparison uses the same snapshot-plus-feed retention
 contract; broader transfer retention and the remaining workload families still
 need matching implementations. These cases and their finite resource grants have
 not been executed. Full API tracing found that existing Issue already recovers
-an unissued saved original; the remaining bootstrap correction clamps that work
-to the saved feed deadline and limits. The source-review correction at
+an unissued saved original; the bootstrap correction at `051ea682` clamps
+Begin/Resume/Publish/Open to the saved feed deadline and configured limits before
+native work, preserving separately funded terminal cleanup. Its authored recovery
+and refusal guards remain unexecuted. The source-review correction at
 `0de7a1ad` authenticates new retries against each keeper's actual acknowledged
 cursor, preserving immutable original results after raw sidecar collection
 without emitting duplicate business changes. Its authored guard distinguishes
