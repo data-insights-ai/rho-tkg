@@ -1153,10 +1153,17 @@ actual elections establish the original and rotated peers; delayed, reordered
 and duplicated native packets retain their configured identities. Full
 original, historical-dependency, queued-candidate and serial/cut checks use
 authenticated process/election context. All 15 final files and 11 complete
-current parents were verified. That extension covers P06's first-live parent;
-its recovery, terminal-replay, initial-register, first-prepare, Decide and ordinary
-initial-batch parents retain their literal schedules and still need the
-applicable leader/message conjunctions. Twenty local-leader Ready recipes
+current parents were verified. That extension covers P06's first-live parent.
+The remaining recovery, terminal-replay, initial-register, first-prepare, Decide
+and ordinary initial-batch programs are source-integrated at `488a738e`.
+They reuse 184 literal cases and add 1,288 actual leader/message cases. Genuine
+elections and successor observations bind the original source/member identities;
+Ready cases use already-emitted Tick packets, while application cases use the
+selected command's actual native packets. The existing complete semantic,
+original, CDC, history and serial oracles receive separately authenticated role
+context. All 15 source files, 11 complete current parents and 1,337 frozen input
+blobs were verified with pinned formatting and whitespace only; nothing was
+compiled or executed. Twenty local-leader Ready recipes
 precede their own packet emission. Their separate service/predecessor companion
 is source-integrated at `1b598c5b`: exactly 20 recipes × two actual leader layouts
 × three delivery modes. Actual selected service delay, immediate same-service
@@ -1184,7 +1191,7 @@ cleanup refusal cannot pass. Source review and whitespace checks passed;
 guards and sustained execution remain unexecuted. Fresh-cohort repetition does
 not establish long-lived-store endurance or full D acceptance.
 
-Current worker lanes: Sol 6.1/high for the remaining P06 leader/message source;
+Current worker lanes: Sol 6.1/high for one read-only V2 source-closure inventory;
 Sol 6.1/high for P07–P09 leader/message composition against the frozen state API;
 Sol 6.1/high for actual sender/leader loss during in-flight snapshot/import.
 Existing receiver-loss fixtures do not establish sender loss. Actual leader1
