@@ -96,7 +96,7 @@ func (r *nativeColumnRetentionLease) detach(owner [16]byte) {
 }
 
 func (s *nativeColumnSource) retainedBinding() error {
-	if s == nil || s.coordinator == nil || s.coordinator.host == nil || s.coordinator.host.machine == nil || s.coordinator.host.machine.SemanticContractID() != durableColumnGraphSemanticContractID() {
+	if s == nil || s.coordinator == nil || s.coordinator.host == nil || s.coordinator.host.machine == nil || !durableColumnGraphAgreement(s.coordinator.host.machine.SemanticContractID()) {
 		return errInvalid
 	}
 	s.mu.Lock()
@@ -454,6 +454,10 @@ func (s *nativeColumnStore) retentionDependencyPage(ctx context.Context, id [16]
 }
 
 func nativeColumnOriginalIndex(wire []byte, ns namespace) (uint64, error) {
+	if bytes.HasPrefix(wire, []byte("GFO\x01")) {
+		r, e := decodeRetainedFeedResult(wire)
+		return r.index, e
+	}
 	if bytes.HasPrefix(wire, []byte("GPO\x01")) {
 		r, e := decodeGraphPinResult(wire)
 		return r.index, e
@@ -625,7 +629,7 @@ func (s *nativeColumnStore) fundRetention(id [16]byte, source *nativeColumnSourc
 // A pending local generation is reserved before the dependency prepass. No pin
 // Publish is attempted until its exact issued original is durably journaled.
 func createDurablePartitionNativeColumns(ctx context.Context, dir string, fs vfs.FS, c *crossProcessCoordinator, id [16]byte, initial, final graphCut, policy nativeColumnPolicy, expires uint64) (store *nativeColumnStore, source *nativeColumnSource, err error) {
-	if ctx == nil || id == ([16]byte{}) || c == nil || c.host == nil || c.host.machine == nil || c.host.machine.SemanticContractID() != durableColumnGraphSemanticContractID() {
+	if ctx == nil || id == ([16]byte{}) || c == nil || c.host == nil || c.host.machine == nil || !durableColumnGraphAgreement(c.host.machine.SemanticContractID()) {
 		return nil, nil, errInvalid
 	}
 	source, err = newPartitionNativeColumnSource(ctx, c, initial, final, policy)
@@ -765,7 +769,7 @@ func (s *nativeColumnStore) completeRetentionCreation(ctx context.Context, sourc
 // Local metadata opens before hydration, but authentic original keepers—not the
 // journal, token, manifest or cache—must recover publication and admit the pin.
 func reopenDurablePartitionNativeColumns(ctx context.Context, dir string, fs vfs.FS, c *crossProcessCoordinator, id [16]byte, policy nativeColumnPolicy) (store *nativeColumnStore, source *nativeColumnSource, err error) {
-	if ctx == nil || c == nil || c.host == nil || c.host.machine == nil || c.host.machine.SemanticContractID() != durableColumnGraphSemanticContractID() || id == ([16]byte{}) {
+	if ctx == nil || c == nil || c.host == nil || c.host.machine == nil || !durableColumnGraphAgreement(c.host.machine.SemanticContractID()) || id == ([16]byte{}) {
 		return nil, nil, errInvalid
 	}
 	store, err = openNativeColumnStoreBinding(dir, fs, false, nativeColumnBinding{Policy: policy}, [32]byte{})
@@ -782,7 +786,7 @@ func reopenDurablePartitionNativeColumns(ctx context.Context, dir string, fs vfs
 // Constructor ownership closes the store on error; an existing query retains
 // its already owned store and attempted-work journal for bounded recovery.
 func reopenDurablePartitionNativeColumnsStore(ctx context.Context, store *nativeColumnStore, c *crossProcessCoordinator, id [16]byte, policy nativeColumnPolicy, constructor bool) (result *nativeColumnStore, source *nativeColumnSource, err error) {
-	if ctx == nil || store == nil || c == nil || c.host == nil || c.host.machine == nil || c.host.machine.SemanticContractID() != durableColumnGraphSemanticContractID() || id == ([16]byte{}) || !nativeColumnSame(store.binding.Policy, policy) {
+	if ctx == nil || store == nil || c == nil || c.host == nil || c.host.machine == nil || !durableColumnGraphAgreement(c.host.machine.SemanticContractID()) || id == ([16]byte{}) || !nativeColumnSame(store.binding.Policy, policy) {
 		return nil, nil, errInvalid
 	}
 	defer func() {
@@ -977,6 +981,9 @@ func (s *nativeColumnStore) Retire(ctx context.Context, id [16]byte, publisher *
 // scoped canonical immutable original, and unchanged graph image are all
 // required; an unknown/malformed prefix is never silently folded into no-op.
 func (s *nativeColumnSource) retainedMetadataFrame(ctx context.Context, group int, out nativeColumnFrame) (nativeColumnFrame, error) {
+	if s.hosts[group].machine.SemanticContractID() == retainedFeedSemanticContractID() {
+		return s.retainedFeedMetadataFrame(ctx, group, out)
+	}
 	h, view := s.hosts[group], s.views[group]
 	l := h.machine.limits
 	arena, err := graphstate.NewOutputBudget(l.outputBytes)
@@ -1117,7 +1124,7 @@ func (s *nativeColumnSource) retainedMetadataFrame(ctx context.Context, group in
 
 // Recovery of a retiring generation never hydrates or reactivates its source.
 func retireDurablePartitionNativeColumns(ctx context.Context, dir string, fs vfs.FS, c *crossProcessCoordinator, id [16]byte, policy nativeColumnPolicy) (err error) {
-	if ctx == nil || c == nil || c.host == nil || c.host.machine == nil || c.host.machine.SemanticContractID() != durableColumnGraphSemanticContractID() {
+	if ctx == nil || c == nil || c.host == nil || c.host.machine == nil || !durableColumnGraphAgreement(c.host.machine.SemanticContractID()) {
 		return errInvalid
 	}
 	store, err := openNativeColumnStoreBinding(dir, fs, false, nativeColumnBinding{Policy: policy}, [32]byte{})

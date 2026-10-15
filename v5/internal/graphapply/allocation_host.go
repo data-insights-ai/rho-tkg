@@ -284,7 +284,15 @@ func (h *allocationHost) Submit(p allocationProposal) (allocationEvent, error) {
 	if p.target != local || len(p.wire) < requestHeaderBytes || len(p.wire) > h.machine.limits.commandBytes {
 		return allocationEvent{}, errInvalid
 	}
-	if isGraphRetentionWire(p.wire) {
+	if isRetainedFeedWire(p.wire) {
+		c, err := decodeRetainedFeedCommand(p.wire)
+		if err != nil || c.scope != local || h.machine.SemanticContractID() != retainedFeedSemanticContractID() {
+			return allocationEvent{}, errors.Join(errInvalid, err)
+		}
+		if err := h.preflightRetainedFeed(c, p.wire); err != nil {
+			return allocationEvent{}, err
+		}
+	} else if isGraphRetentionWire(p.wire) {
 		c, err := decodeGraphRetentionCommand(p.wire)
 		if err != nil || !h.machine.collectsHistory() || c.scope != local {
 			return allocationEvent{}, errors.Join(errInvalid, err)

@@ -308,6 +308,10 @@ func (s *graphPeerService) serve(ctx context.Context, wire []byte) ([]byte, erro
 	case sourceClose:
 		err = s.sources.closeSource(r.cookie)
 	case sourceCrossRead:
+		if bytes.HasPrefix(r.command, []byte("GFQ\x01")) {
+			body, err = s.readRetainedFeed(ctx, r)
+			break
+		}
 		if bytes.HasPrefix(r.command, []byte{'G', 'P', 'Q', 1}) {
 			body, err = s.readRetainedPin(ctx, r)
 			break
@@ -350,7 +354,9 @@ func (s *graphPeerService) serve(ctx context.Context, wire []byte) ([]byte, erro
 			err = errInvalid
 		}
 		if err == nil {
-			if isGraphPinWire(p.wire) {
+			if isRetainedFeedWire(p.wire) {
+				body, err = s.submitRetainedFeed(ctx, p)
+			} else if isGraphPinWire(p.wire) {
 				body, err = s.submitRetainedPin(ctx, p)
 			} else {
 				body, err = s.pump.Submit(ctx, p)

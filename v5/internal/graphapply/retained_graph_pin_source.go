@@ -76,7 +76,7 @@ func encodeRetainedPinObservation(o retainedPinObservation) ([]byte, error) {
 			return nil, e
 		}
 		if o.result.index == 0 {
-			if (o.status != pinPending && !(o.scope.semantic == durableColumnGraphSemanticContractID() && (o.cancelled && o.status == pinReleased || o.issued.index != 0 && o.status == pinExpired))) || o.result != (graphPinResult{}) || o.owner != (graphPinOwner{}) {
+			if (o.status != pinPending && !(durableColumnGraphAgreement(o.scope.semantic) && (o.cancelled && o.status == pinReleased || o.issued.index != 0 && o.status == pinExpired))) || o.result != (graphPinResult{}) || o.owner != (graphPinOwner{}) {
 				return nil, errInvalid
 			}
 		} else {
@@ -102,7 +102,7 @@ func encodeRetainedPinObservation(o retainedPinObservation) ([]byte, error) {
 	}
 	version := byte(1)
 	var issued []byte
-	if o.scope.semantic == durableColumnGraphSemanticContractID() {
+	if durableColumnGraphAgreement(o.scope.semantic) {
 		version = 2
 		if o.issued.index != 0 {
 			manifest, e := decodeGraphPinManifest(o.manifest)
@@ -178,7 +178,7 @@ func decodeRetainedPinObservation(wire []byte) (retainedPinObservation, error) {
 		return retainedPinObservation{}, errors.Join(errCorrupt, c.err)
 	}
 	o.scope = readAllocationScope(&decoder{b: scope})
-	if version == 2 && o.scope.semantic != durableColumnGraphSemanticContractID() || version == 1 && o.scope.semantic == durableColumnGraphSemanticContractID() {
+	if version == 2 && !durableColumnGraphAgreement(o.scope.semantic) || version == 1 && durableColumnGraphAgreement(o.scope.semantic) {
 		return retainedPinObservation{}, errInvalid
 	}
 	if len(issuance) > 0 {
@@ -313,7 +313,7 @@ func (m *declaredMaterializer) observeRetainedPin(ctx context.Context, question 
 	if err != nil {
 		return out, err
 	}
-	if m.SemanticContractID() == durableColumnGraphSemanticContractID() {
+	if durableColumnGraphAgreement(m.SemanticContractID()) {
 		out.issued, err = readPinIssuance(&q, manifest, question.manifest)
 		if err != nil {
 			return out, err

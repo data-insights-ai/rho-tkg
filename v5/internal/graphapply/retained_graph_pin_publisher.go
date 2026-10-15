@@ -341,7 +341,7 @@ func (r *retainedPinRequest) columnFeeds(feed [2]uint64) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !r.born || r.closed || len(r.definition.parts) != 2 || r.definition.publisher.semantic != durableColumnGraphSemanticContractID() {
+	if !r.born || r.closed || len(r.definition.parts) != 2 || !durableColumnGraphAgreement(r.definition.publisher.semantic) {
 		return errInvalid
 	}
 	if err := r.invocation.arena.Reserve(4096 + 8*len(r.manifest)); err != nil {
@@ -377,7 +377,7 @@ func (r *retainedPinRequest) Issue(ctx context.Context, p *retainedPinPublisher)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	m := r.definition
-	if r.closed || m.publisher.semantic != durableColumnGraphSemanticContractID() {
+	if r.closed || !durableColumnGraphAgreement(m.publisher.semantic) {
 		return errInvalid
 	}
 	endpoint := r.invocation.endpoints[m.publisher.partition]
@@ -440,7 +440,7 @@ func (r *retainedPinRequest) CancelIssue(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	m := r.definition
-	if m.publisher.semantic != durableColumnGraphSemanticContractID() {
+	if !durableColumnGraphAgreement(m.publisher.semantic) {
 		return errInvalid
 	}
 	if r.closed {
@@ -639,7 +639,8 @@ func (p *retainedPinPublisher) AdvanceEpoch(ctx context.Context, issuer, action 
 
 type retainedPinReadBackend struct {
 	*remoteCertifiedGraphBackend
-	manifest []byte
+	manifest     []byte
+	feedLifetime *retainedFeedSnapshotLifetime
 }
 
 func (b *retainedPinReadBackend) Capture(ctx context.Context, cert graphCertificate) (certifiedGraphSource, genesisAllocationConfig, materializerLimits, error) {
@@ -647,7 +648,11 @@ func (b *retainedPinReadBackend) Capture(ctx context.Context, cert graphCertific
 	if endpoint == nil {
 		return nil, genesisAllocationConfig{}, materializerLimits{}, errGraphCutScope
 	}
-	source, cfg, err := endpoint.openRetainedPinSource(ctx, b.manifest)
+	opened, cfg, err := endpoint.openRetainedPinSource(ctx, b.manifest)
+	var source certifiedGraphSource = opened
+	if err == nil && b.feedLifetime != nil {
+		source = &retainedFeedSnapshotSource{certifiedGraphSource: source, lifetime: b.feedLifetime}
+	}
 	return source, cfg, b.coordinator.host.machine.limits, err
 }
 func (p *retainedPinPublisher) Open(ctx context.Context, token retainedPinToken) (*certifiedGraphRead, error) {
@@ -668,6 +673,15 @@ func (p *retainedPinPublisher) Open(ctx context.Context, token retainedPinToken)
 	if err != nil {
 		return nil, err
 	}
+	return p.openWithInvocation(ctx, token, manifest, invocation, nil)
+}
+
+// The feed door supplies its already durably admitted operation ledger and
+// lifetime. Ordinary Open above retains exactly its existing default recipe.
+func (p *retainedPinPublisher) openWithInvocation(ctx context.Context, token retainedPinToken, manifest graphPinManifest, invocation *retainedPinInvocation, lifetime *retainedFeedSnapshotLifetime) (*certifiedGraphRead, error) {
+	if !p.valid() || ctx == nil || invocation == nil || invocation.arena == nil || invocation.budget == nil || len(manifest.parts) == 0 || len(token.publications) != len(manifest.parts) || len(token.manifest) == 0 {
+		return nil, errInvalid
+	}
 	if err := invocation.arena.Reserve(4096 + 1024*len(manifest.parts)); err != nil {
 		return nil, outputBudgetFailure(err)
 	}
@@ -687,7 +701,7 @@ func (p *retainedPinPublisher) Open(ctx context.Context, token retainedPinToken)
 	}
 	c := p.coordinator
 	engine := &certifiedReadCoordinator{declaration: c.host.machine.declaration}
-	backend := &retainedPinReadBackend{remoteCertifiedGraphBackend: &remoteCertifiedGraphBackend{coordinator: c, endpoints: invocation.endpoints, budget: invocation.budget, arena: invocation.arena}, manifest: token.manifest}
+	backend := &retainedPinReadBackend{remoteCertifiedGraphBackend: &remoteCertifiedGraphBackend{coordinator: c, endpoints: invocation.endpoints, budget: invocation.budget, arena: invocation.arena}, manifest: token.manifest, feedLifetime: lifetime}
 	return engine.openBackend(ctx, graphReadRequest{mode: graphReadAt, cut: cut}, nil, backend)
 }
 
@@ -707,7 +721,7 @@ func (r *retainedPinRequest) bindUnissuedColumnSource(source *nativeColumnSource
 	if err := source.check(source.ctx); err != nil {
 		return err
 	}
-	if r.closed || r.born || len(r.definition.parts) != 2 || source.binding.Version != 2 || r.definition.publisher.semantic != durableColumnGraphSemanticContractID() {
+	if r.closed || r.born || len(r.definition.parts) != 2 || source.binding.Version != 2 || !durableColumnGraphAgreement(r.definition.publisher.semantic) {
 		return errInvalid
 	}
 	for g, part := range r.definition.parts {

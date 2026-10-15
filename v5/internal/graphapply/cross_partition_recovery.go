@@ -108,6 +108,16 @@ func (m *declaredMaterializer) VerifyApplicationRecovery(ctx context.Context, da
 	if len(data) == 0 {
 		return purpose, nil
 	}
+	if isRetainedFeedWire(data) {
+		command, err := decodeRetainedFeedCommand(data)
+		if err != nil || m.SemanticContractID() != retainedFeedSemanticContractID() || command.scope != m.scope() {
+			return purpose, errors.Join(errInvalid, err)
+		}
+		// No historical reopen here: view may be the prepared incoming bank.
+		// Native ordinary admission funds feed controls. It cannot borrow the
+		// transient coordinator reserve or independently funded pin cleanup.
+		return purpose, nil
+	}
 	if isGraphRetentionWire(data) {
 		command, err := decodeGraphRetentionCommand(data)
 		if err != nil || !m.collectsHistory() || command.scope != m.scope() {

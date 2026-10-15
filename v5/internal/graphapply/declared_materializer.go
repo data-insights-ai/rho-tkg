@@ -292,6 +292,9 @@ func (m *declaredMaterializer) validateRestoredState(q *reader, initializedOnly 
 	if err == nil {
 		err = m.checkRetainedPinLedger(q)
 	}
+	if err == nil && m.SemanticContractID() == retainedFeedSemanticContractID() {
+		err = m.checkRetainedFeedLedger(q)
+	}
 	if err == nil && m.collectsHistory() {
 		_, c, _, planErr := activeGraphRetention(q)
 		err = planErr
@@ -462,6 +465,9 @@ func (m *declaredMaterializer) Stage(entry replica.Entry, budget raftlog.Applica
 		return b, nil
 	}
 
+	if isRetainedFeedWire(entry.Data) {
+		return m.stageRetainedFeed(&q, entry, budget)
+	}
 	if isGraphRetentionWire(entry.Data) {
 		return m.stageGraphRetention(&q, entry, budget)
 	}

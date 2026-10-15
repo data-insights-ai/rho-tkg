@@ -205,7 +205,7 @@ func (c graphPinCommand) valid() bool {
 	if c.id == ([32]byte{}) || c.digest == ([32]byte{}) || c.expectedEpoch != 0 {
 		return false
 	}
-	if c.phase >= pinIssue && c.scope.semantic != durableColumnGraphSemanticContractID() {
+	if c.phase >= pinIssue && !durableColumnGraphAgreement(c.scope.semantic) {
 		return false
 	}
 	if c.phase == pinPublish || c.phase == pinIssue || c.phase == pinCancelIssue {
@@ -466,7 +466,7 @@ func (m *declaredMaterializer) checkPinSource(q *reader, p graphPinPart, h graph
 			return err
 		}
 	}
-	if m.SemanticContractID() == durableColumnGraphSemanticContractID() {
+	if durableColumnGraphAgreement(m.SemanticContractID()) {
 		plan, _, _, err := activeGraphRetention(q)
 		if err != nil {
 			return err
@@ -688,21 +688,21 @@ func (m *declaredMaterializer) pinPublication(q *reader, c graphPinCommand, h gr
 	if !found || p.certificate.configuration != configuration {
 		return manifest, p, 0, errInvalid
 	}
-	if c.scope.semantic == durableColumnGraphSemanticContractID() {
+	if durableColumnGraphAgreement(c.scope.semantic) {
 		if cancelled, e := pinIssuedCancellation(q, c.id, c.digest, c.issuer); e != nil {
 			return manifest, p, 0, e
 		} else if cancelled {
 			return manifest, p, pinReleased, nil
 		}
 	}
-	if m.SemanticContractID() == durableColumnGraphSemanticContractID() && h.epoch >= manifest.expires {
+	if durableColumnGraphAgreement(m.SemanticContractID()) && h.epoch >= manifest.expires {
 		return manifest, p, pinExpired, nil
 	}
 	if h.epoch != manifest.epoch {
 		return manifest, p, pinStale, nil
 	}
 	if err := m.checkPinSource(q, p, h); err != nil {
-		if errors.Is(err, errGraphPinExpired) || m.SemanticContractID() == durableColumnGraphSemanticContractID() && errors.Is(err, raftlog.ErrApplicationExpired) || errors.Is(err, errGraphHistoryExpired) && errors.Is(err, raftlog.ErrApplicationExpired) {
+		if errors.Is(err, errGraphPinExpired) || durableColumnGraphAgreement(m.SemanticContractID()) && errors.Is(err, raftlog.ErrApplicationExpired) || errors.Is(err, errGraphHistoryExpired) && errors.Is(err, raftlog.ErrApplicationExpired) {
 			return manifest, p, pinExpired, nil
 		}
 		return manifest, p, 0, err
@@ -875,6 +875,13 @@ func (m *declaredMaterializer) stageRetainedPin(q *reader, entry replica.Entry, 
 				return raftlog.ApplicationBatch{}, err
 			}
 			puts = append(puts, raftlog.ApplicationControlPut{Key: graphPinActionKey(m.ns, c.issuer, c.action), Value: record})
+			if m.SemanticContractID() == retainedFeedSemanticContractID() {
+				locator, e := feedMetadataLocator(graphPinActionKey(m.ns, c.issuer, c.action), sha256.Sum256(entry.Data))
+				if e != nil {
+					return raftlog.ApplicationBatch{}, e
+				}
+				puts = append(puts, raftlog.ApplicationControlPut{Key: retainedFeedMetadataKey(m.ns, entry.Index), Value: locator})
+			}
 		}
 		b := batchAt(q.base)
 		b.Outcome = out
@@ -1071,7 +1078,7 @@ func durableColumnGraphSemanticContractID() raftlog.ApplicationSemanticContractI
 	return raftlog.ApplicationSemanticContractID(sha256.Sum256(append(base[:], []byte("durable-columns=exact-native-issuance-v1\x00intent-cancel=ordered-tombstone-v1\x00original-outcome-footprint=feed-min-v1\x00")...)))
 }
 func collectedGraphAgreement(id raftlog.ApplicationSemanticContractID) bool {
-	return id == collectedGraphSemanticContractID() || id == durableColumnGraphSemanticContractID()
+	return id == collectedGraphSemanticContractID() || durableColumnGraphAgreement(id)
 }
 func newDurableColumnGraphMaterializer(s *raftlog.Store, n namespace, d graphstore.OwnershipDeclaration, l materializerLimits) (*declaredMaterializer, error) {
 	if s == nil || s.ApplicationRetention().Version != 1 || s.ApplicationRecovery().Version != 2 || s.ApplicationControls().Version != 1 {
@@ -1082,7 +1089,7 @@ func newDurableColumnGraphMaterializer(s *raftlog.Store, n namespace, d graphsto
 func graphPinIssueKey(n namespace, id [32]byte) []byte  { return append(recordKey(n, 28), id[:]...) }
 func graphPinCancelKey(n namespace, id [32]byte) []byte { return append(recordKey(n, 29), id[:]...) }
 func encodePinCancellation(c graphPinCommand) ([]byte, error) {
-	if c.phase != pinCancelIssue || c.scope.semantic != durableColumnGraphSemanticContractID() || !c.valid() {
+	if c.phase != pinCancelIssue || !durableColumnGraphAgreement(c.scope.semantic) || !c.valid() {
 		return nil, errInvalid
 	}
 	return boundedEncoding(128, func(w *boundedWriter) {

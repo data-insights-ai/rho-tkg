@@ -378,9 +378,16 @@ func (m *declaredMaterializer) graphRetentionCeiling(q *reader, configuration [3
 		cap.root = min(cap.root, source)
 		cap.data = min(cap.data, source)
 		cap.feed = min(cap.feed, owner.feedStart)
-		cap.outcome = min(cap.outcome, source)
-		if m.SemanticContractID() == durableColumnGraphSemanticContractID() {
+		if m.SemanticContractID() == retainedFeedSemanticContractID() {
+			// Snapshot C still protects its exact root/data. Feed originals have
+			// immutable controls/locators, so acknowledged raw outcomes need only
+			// remain from the actual native feed owner floor onward.
 			cap.outcome = min(cap.outcome, owner.feedStart)
+		} else {
+			cap.outcome = min(cap.outcome, source)
+			if m.SemanticContractID() == durableColumnGraphSemanticContractID() {
+				cap.outcome = min(cap.outcome, owner.feedStart)
+			}
 		}
 		cap.recovery = min(cap.recovery, source)
 		cap.certificate = min(cap.certificate, part.certificate.index)
@@ -594,6 +601,13 @@ func (m *declaredMaterializer) finishGraphRetention(q *reader, c graphRetentionC
 	b.ControlPuts = []raftlog.ApplicationControlPut{{Key: graphRetentionOriginalKey(m.ns, c.issuer, c.request), Value: record}}
 	if admission != nil {
 		b.ControlPuts = append(b.ControlPuts, raftlog.ApplicationControlPut{Key: graphRetentionPlanKey(m.ns, result.id), Value: owned(record)})
+	}
+	if m.SemanticContractID() == retainedFeedSemanticContractID() {
+		locator, err := feedMetadataLocator(graphRetentionOriginalKey(m.ns, c.issuer, c.request), sha256.Sum256(command))
+		if err != nil {
+			return raftlog.ApplicationBatch{}, err
+		}
+		b.ControlPuts = append(b.ControlPuts, raftlog.ApplicationControlPut{Key: retainedFeedMetadataKey(m.ns, result.index), Value: locator})
 	}
 	return b, m.preflight(b, budget)
 }
