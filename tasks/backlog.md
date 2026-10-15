@@ -497,8 +497,9 @@ recovery API; neither this quota nor the correction is runtime qualification.
 The dispatcher schedules all eight families and local/1/20/100ms profiles.
 FDB has local source drivers for contention, selectors, snapshot-to-feed and
 cross-edge uniqueness; its fresh snapshot-to-feed transport adapter also covers
-local/1/20/100ms. Native has the contention source driver and a local native/
-paired cross-edge driver. Unsupported semantics or transport refuse before effects.
+local/1/20/100ms. Native has contention and cross-edge source drivers across
+local/1/20/100ms, with local paired cross-edge comparison. Unsupported semantics
+or transport refuse before effects.
 Each selected-family matrix contains 360 fresh cells;
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
 No new cell, guard or runtime gate has run. The other four FDB family drivers,
@@ -517,10 +518,12 @@ The native cross-edge source and local paired controller are integrated at
 complete voter/CDC/index histories, native/cache columns and same-directory restart
 join one bounded independent oracle. Exact caller assignments and original/body
 joins prevent incomplete or misclassified traces from passing. Streamed timings
-include admission and same-original/replan waits. The repository watchdog and
-focused CI mappings are being supplied separately; this adapter is local-only.
-Its guards are unexecuted, and directed RTT, other native families and the full
-matrix remain open.
+include admission and same-original/replan waits. Owned local/1/20/100ms transport
+is source-integrated at `e8ae7462`, binding both actual process cohorts to one
+binary, graph declaration, finite budget and deadline. The matrix selects this
+fresh admission explicitly; the original direct local format stays unchanged.
+Its guards are unexecuted; other native families, nonlocal paired comparison and
+the full matrix remain open.
 The FDB snapshot-to-feed source is integrated at `5c14f42c`/`bb867775`:
 Its fresh owned transport adapter is source-integrated at `7f4a4fb8`: actual
 receiver-ingress delay setup, probes, same-deadline client replacement, cleanup
@@ -621,14 +624,19 @@ operations from guaranteed synchronization; queued `SyncTo` and unmatched arms
 cannot qualify a case. Same-original, complete CDC and old-cut recovery reuse the
 independent history checker after strict new process/IO admission. These cases
 do not attribute background IO to a particular Prepare/Decide or simulate power
-loss. The remaining logical-phase, namespace-publication and recorded-seed
-replay/minimization source is still in implementation; none of these guards ran.
+loss. Logical transaction-phase source is integrated at `755b8e5b`: twelve
+before-submit/after-applied process cases bind genuine commands and native
+entry/root/outcome/CDC evidence to same-original recovery and retained old cuts.
+Recorded-seed replay uses fresh children and only minimizes the same independent
+semantic failure; unavailable trials cannot establish a minimal case. The
+repository-owned process watchdog now supplies the workload controllers' default
+finite lifetime and cleanup owner. Namespace-publication and transfer/cut/pin
+transition parents remain in implementation; none of these guards ran.
 
-Current worker lanes: Sol 6.1/high for the native/FDB cross-edge endpoint-life
-and uniqueness family; Sol 6.1/high for the remaining C/D transition and seeded
-schedule implementation after the frozen contention/transport package;
-Sol 6.1/high for real owned FDB transport and explicit fresh
-duration admission. These packages
+Current worker lanes: Sol 6.1/high for native snapshot-to-feed production
+ownership and its workload; Sol 6.1/high for remaining C/D transfer/cut/pin
+transitions and concrete production gaps; Sol 6.1/high for the remaining FDB
+workload families after integration of their owned transport. These packages
 are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
