@@ -1846,6 +1846,10 @@ func certifiedProcessObservation(ctx context.Context, h *allocationHost, id uint
 
 func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	t.Helper()
+	protocolState, profileErr := nativeProtocolStateProfileFromEnv()
+	if profileErr != nil {
+		t.Fatal("D-only protocol state profile", profileErr)
+	}
 	n, voters := certifiedProcessNamespace(id)
 	init := partitionCodecRequest(t, 1, defaultMaterializerLimits())
 	if init.declaration.Graph() != graphstate.GraphID(n.graph) {
@@ -1956,6 +1960,12 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	if feedRetained {
 		agreement, materializer = retainedOnlyFeedSemanticContractID(), newRetainedOnlyFeedMaterializer
 	}
+	if protocolState {
+		agreement, materializer = rangeMoveSpanSemanticContractID(), newRangeMoveSpanMaterializer
+		l.MaxRetainedBytes, l.MaxRetainedEntries = 256<<20, 131072
+		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 256<<20, 131072
+		generations = raftlog.ApplicationGenerationLimits{MaxBytes: 512 << 20, MaxRecords: 262144}
+	}
 	controls, recovery := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 1}
 	if retention || durableColumns || workload != nil || feed || feedRetained {
 		recovery.Version = 2
@@ -1964,6 +1974,10 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	contract, err := raftlog.ApplicationContractForPolicyWithRecovery(p, controls, recovery)
 	if durableColumns || workload != nil || feed || feedRetained {
 		nativeRetention.Version = 1
+		contract, err = raftlog.ApplicationContractForPolicyWithRetention(p, controls, recovery, nativeRetention)
+	}
+	if protocolState {
+		recovery.Version, nativeRetention.Version = 3, 1
 		contract, err = raftlog.ApplicationContractForPolicyWithRetention(p, controls, recovery, nativeRetention)
 	}
 	if err != nil {

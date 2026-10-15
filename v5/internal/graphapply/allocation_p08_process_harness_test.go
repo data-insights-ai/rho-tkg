@@ -51,6 +51,14 @@ func newAllocationP08Owners(ctx context.Context, h *allocationHost, o *certified
 	if os.Getenv("RHO_GRAPH_ALLOCATION_PROCESS") != "1" {
 		return nil
 	}
+	if os.Getenv("RHO_GRAPH_PROTOCOL_STATE_PROCESS") == "1" {
+		// Only the explicit D constructor borrows the already-admitted original
+		// native observation lifetime. Recipient issuance cannot outlive it.
+		if h == nil || o == nil || o.stableBatch == nil || h.machine.SemanticContractID() != rangeMoveSpanSemanticContractID() {
+			return nil
+		}
+		ctx = o.stableBatch.ctx
+	}
 	return &allocationP08Owners{ctx: ctx, host: h, owners: o, cursors: make(map[uint64]allocationP08Cursor)}
 }
 func (s *allocationP08Owners) close() {

@@ -176,6 +176,19 @@ func nativeTransitionPinSnapshot(ctx context.Context, host *allocationHost, read
 			snapshot = nil
 		}
 	}()
+	return nativeTransitionPinProjection(ctx, host, read)
+}
+
+// Projection borrows the actual owner's read. The caller, never a decoded cut,
+// controls its lifetime; the legacy consuming wrapper above still closes it.
+func nativeTransitionPinProjection(ctx context.Context, host *allocationHost, read *certifiedGraphRead) (snapshot *nativeTransitionPinRead, err error) {
+	return nativeTransitionPinProjectionFor(ctx, host, read, false)
+}
+
+func nativeTransitionPinProjectionFor(ctx context.Context, host *allocationHost, read *certifiedGraphRead, scalarNodes bool) (snapshot *nativeTransitionPinRead, err error) {
+	if ctx == nil || host == nil || read == nil {
+		return nil, errInvalid
+	}
 	cut, err := read.Cut()
 	if err != nil {
 		return nil, err
@@ -225,8 +238,8 @@ func nativeTransitionPinSnapshot(ctx context.Context, host *allocationHost, read
 			if err != nil {
 				return nil, err
 			}
-			if id == 7 {
-				key = graphstate.ComponentKey{Owner: 7, Life: 8, Kind: graphstate.ScalarProperty, Name: "p"}
+			if id == 7 || scalarNodes && (id == 1 || id == 17) {
+				key = graphstate.ComponentKey{Owner: graphstate.EntityID(id), Life: graphstate.LifeID(id + 1), Kind: graphstate.ScalarProperty, Name: "p"}
 				e.Property, err = nativeLifecycleCellRead(ctx, view, key, scope, point, host.machine.limits.graph.Planner.Component)
 				if err != nil {
 					return nil, err

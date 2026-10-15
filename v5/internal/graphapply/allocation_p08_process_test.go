@@ -127,6 +127,9 @@ func TestAllocationP08PrivateWireSentinelsAndOwnedRequests(t *testing.T) {
 // candidate-owned native ReadIndex establishes the new role. No wall-time sleep,
 // imported proof, RawNode state mutation or application leadership-transfer stub.
 func allocationP08Elect(t *testing.T, n *certifiedProcessNetwork, prior, next uint64) {
+	allocationP08ElectFor(t, n, rangeMoveSemanticContractID(), prior, next)
+}
+func allocationP08ElectFor(t *testing.T, n *certifiedProcessNetwork, semantic raftlog.ApplicationSemanticContractID, prior, next uint64) {
 	t.Helper()
 	group := n.group(next)
 	if group.blocked == nil {
@@ -137,7 +140,7 @@ func allocationP08Elect(t *testing.T, n *certifiedProcessNetwork, prior, next ui
 	spec := partitionCodecRequest(t, 1, defaultMaterializerLimits())
 	ns, _ := certifiedProcessNamespace(next)
 	part, _ := spec.declaration.Partition(ns.partition)
-	binding := raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(ns.graph), Partition: ns.partition, Group: part.Group}, SemanticContractID: rangeMoveSemanticContractID()}
+	binding := raftlog.ApplicationBinding{Identity: raftlog.ApplicationIdentity{Graph: [16]byte(ns.graph), Partition: ns.partition, Group: part.Group}, SemanticContractID: semantic}
 	oldDrop := group.dropPacket
 	group.dropPacket = func(packet replica.Packet) bool {
 		raw, err := replica.DecodeApplicationPacket(binding, packet, processFrameBytes)
@@ -388,13 +391,16 @@ func allocationP08SubmitControl(t *testing.T, n *certifiedProcessNetwork, propos
 	return o
 }
 func allocationP08Install(t *testing.T, n *certifiedProcessNetwork, source uint64, request idalloc.GrantRequest) allocationProposal {
+	return allocationP08InstallFor(t, n, source, 8, request)
+}
+func allocationP08InstallFor(t *testing.T, n *certifiedProcessNetwork, source, target uint64, request idalloc.GrantRequest) allocationProposal {
 	t.Helper()
 	wire, err := encodeAllocationP08Request(request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	n.group(source).event(t, source, processRequest{op: processP08ReadGrant, data: wire})
-	response := allocationP08Call(t, n.all[source], processRequest{op: processCertifiedAction, entity: certifiedInstallGrant, index: 8})
+	response := allocationP08Call(t, n.all[source], processRequest{op: processCertifiedAction, entity: certifiedInstallGrant, index: target})
 	p, err := decodeCertifiedProcessProposal(response.aux)
 	if err != nil {
 		t.Fatal(err)

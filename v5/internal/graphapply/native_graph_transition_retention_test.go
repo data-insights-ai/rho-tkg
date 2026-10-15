@@ -45,6 +45,12 @@ type nativeRetentionArtifact struct {
 }
 
 func TestNativeRetentionStateDoorKeepsIgnoredFieldsAndMissingOwnersInert(t *testing.T) {
+	if _, err := nativeTransitionPinProjection(t.Context(), nil, nil); !errors.Is(err, errInvalid) {
+		t.Fatal("borrowed native snapshot requires an actual live owner", err)
+	}
+	if (nativeProtocolStateRecipe{Family: "gc", Partition: 3, Side: "before", Kind: raftlog.StableStorageReady}).valid() {
+		t.Fatal("GC cursor transition was relabelled as a Ready entry")
+	}
 	t.Setenv("RHO_GRAPH_STATE_RETENTION_PROCESS", "off")
 	if o, err := newNativeRetentionOwner(nil, nil); o != nil || err != nil {
 		t.Fatal("default created a native owner", err)

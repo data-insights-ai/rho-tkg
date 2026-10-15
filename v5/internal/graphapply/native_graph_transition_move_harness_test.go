@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
@@ -213,6 +214,10 @@ type nativeMoveTransitionRead struct {
 }
 
 func nativeTransitionMoveRead(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, actor uint64, mode graphReadMode, cut graphCut) nativeMoveTransitionRead {
+	return nativeTransitionMoveReadFor(t, ctx, n, actor, mode, cut, rangeMoveSemanticContractID())
+}
+
+func nativeTransitionMoveReadFor(t *testing.T, ctx context.Context, n *certifiedProcessNetwork, actor uint64, mode graphReadMode, cut graphCut, semantic raftlog.ApplicationSemanticContractID) nativeMoveTransitionRead {
 	t.Helper()
 	n.e17PublicUsed++
 	if n.e17PublicUsed > n.e17PublicPhases {
@@ -243,7 +248,7 @@ func nativeTransitionMoveRead(t *testing.T, ctx context.Context, n *certifiedPro
 		}
 	}()
 	for _, certificate := range actual.certificates {
-		if certificate.scope.semantic != rangeMoveSemanticContractID() {
+		if certificate.scope.semantic != semantic {
 			t.Fatal("foreign range read profile")
 		}
 	}

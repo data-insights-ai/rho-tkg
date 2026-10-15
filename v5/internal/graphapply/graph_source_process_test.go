@@ -1303,6 +1303,21 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	if err != nil {
 		t.Fatal(err)
 	}
+	protocolState, err := newNativeProtocolStateOwner(ctx, coordinator, o.stableBatch)
+	if err != nil {
+		t.Fatal("D-only actual pin/feed owner", err)
+	}
+	if protocolState != nil {
+		if retentionState != nil {
+			t.Fatal("D-only owner borrowed legacy retention owner")
+		}
+		retentionState = protocolState.gc
+		defer func() {
+			if err := protocolState.close(); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
 	var decisionChanged <-chan struct{}
 	switch os.Getenv("RHO_GRAPH_DECISION_FAULT_PROCESS") {
 	case "", "off":
@@ -1840,6 +1855,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		return nil
 	}
 	isSourceClose := func(r processRequest) bool {
+		if protocolState != nil && nativeProtocolStateTerminalControl(r) {
+			return true
+		}
 		if feedRetained != nil && nativeFeedRetainedTerminalControl(r) {
 			return true
 		}
@@ -1908,7 +1926,14 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		if control {
 			controlWorkers[r.sequence] = true
 		}
-		workerCtx, stop := context.WithCancel(ctx)
+		workerParent := ctx
+		if protocolState != nil {
+			workerParent = protocolState.ctx
+			if control {
+				workerParent = protocolState.cleanup
+			}
+		}
+		workerCtx, stop := context.WithCancel(workerParent)
 		workers[r.sequence] = stop
 		var service *graphPeerService
 		if r.op == processSourceServe {
@@ -1938,6 +1963,8 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processNativeTransitionControl:
 				if r.index != 0 || r.entity != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
 					e = errInvalid
+				} else if protocolState != nil && bytes.HasPrefix(r.data, []byte(nativeProtocolStateMarker)) {
+					out.aux, e = protocolState.serve(workerCtx, r.data)
 				} else if bytes.HasPrefix(r.data, []byte(nativeTransitionMovePrepareMarker)) {
 					out.aux, e = logicalTransitions.prepareMove(workerCtx, o.family, o.incarnation, r)
 				} else if bytes.HasPrefix(r.data, []byte(nativeTransitionPinMarker)) {
