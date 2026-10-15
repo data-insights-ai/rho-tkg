@@ -378,9 +378,20 @@ func (h *harness) executeOwned(tr fdb.Transaction, x transaction, digest [32]byt
 	// Current authority precedes retained replay; captured routing gates only
 	// NEW execution. A successor may recover old bytes but never execute an
 	// unresolved predecessor capture after its ownership epoch changed.
+	forcedReason := ""
 	if catalog != nil {
-		if e := graphOwnerNew(ownerState, x, permit.Intent); e != nil {
-			return outcome{}, e
+		if permit.Retire {
+			if e := graphOwnerFenced(catalog, ownerState, x, permit.Intent); e != nil {
+				return outcome{}, e
+			}
+			forcedReason = "owner-epoch"
+		} else {
+			if e := graphOwnerNew(ownerState, x, permit.Intent); e != nil {
+				return outcome{}, e
+			}
+			if e := catalog.allocatedIn(tr, x, permit.Intent, ownerState); e != nil {
+				return outcome{}, e
+			}
 		}
 	}
 	// Original replay precedes retirement-busy admission. A collector never
@@ -442,6 +453,9 @@ func (h *harness) executeOwned(tr fdb.Transaction, x transaction, digest [32]byt
 		if graphReason != "" {
 			reason = graphReason
 		}
+	}
+	if forcedReason != "" {
+		reason = forcedReason
 	}
 	o := outcome{Commit: reason == "", Digest: digest, ID: x.ID, Request: x.Request, Reason: reason, Coordinator: x.Coordinator}
 	if o.Commit {
@@ -544,6 +558,11 @@ func (h *harness) executeOwned(tr fdb.Transaction, x transaction, digest [32]byt
 	ms[x.Coordinator] = m
 	for _, p := range x.Participants {
 		if e = put(tr, h.key(p.Group, "meta", "state"), ms[p.Group]); e != nil {
+			return outcome{}, e
+		}
+	}
+	if catalog != nil && o.Commit {
+		if e := catalog.recordIssuedIn(tr, x, permit.Intent); e != nil {
 			return outcome{}, e
 		}
 	}

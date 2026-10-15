@@ -9,14 +9,16 @@ import (
 )
 
 type graphOwnerIntent struct {
-	Body   []byte
-	Digest [32]byte
-	Routes [2]graphOwnerRoute
+	Body      []byte
+	Digest    [32]byte
+	Routes    [2]graphOwnerRoute
+	Allocated []graphOwnerAllocatedID `json:",omitempty"`
 }
 type graphOwnerPermit struct {
 	Authority graphOwnerAuthority
 	Intent    graphOwnerIntent
 	Route     graphOwnerRoute
+	Retire    bool
 }
 type graphOwnerClient struct {
 	catalog   *graphOwnerCatalog
@@ -34,6 +36,11 @@ func (c *graphOwnerCatalog) Client(ctx context.Context, a graphOwnerAuthority) (
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	ctx, cancel, err := c.operationContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	client, _, err := graphCostParallelRead(ctx, c.h.db, func(tr fdb.ReadTransaction) (*graphOwnerClient, error) {
 		actual, err := c.h.ownerCatalogIn(tr)
 		if err != nil {
@@ -57,7 +64,7 @@ func (c *graphOwnerCatalog) Client(ctx context.Context, a graphOwnerAuthority) (
 // Input owns the actual canonical proposal before any SDK retry or callback.
 // A fresh intent's envelope cap is explicit, checked BEFORE decode or cloning.
 func (c *graphOwnerClient) input(body []byte) (transaction, []byte, error) {
-	if c == nil || c.catalog == nil || c.catalog.h == nil || len(body) == 0 || len(body) > 32<<10 {
+	if c == nil || c.catalog == nil || c.catalog.h == nil || len(body) == 0 || len(body) > 32<<10 || c.catalog.binding.Transfer != nil && uint64(len(body)) > c.catalog.binding.Transfer.MaxProposalBytes {
 		return transaction{}, nil, errInvalid
 	}
 	x, err := decode[transaction](body)
@@ -86,11 +93,40 @@ func graphOwnerNew(state graphOwnerState, x transaction, intent graphOwnerIntent
 	}
 	return nil
 }
+func graphOwnerFenced(c *graphOwnerCatalog, state graphOwnerState, x transaction, intent graphOwnerIntent) error {
+	if c == nil || c.binding.Transfer == nil || c.h.config.Cost.Version != 8 {
+		return errInvalid
+	}
+	if state.Moving != "" {
+		return errOwnerBusy
+	}
+	fenced := false
+	for _, p := range x.Participants {
+		if p.Group > 1 {
+			return errInvalid
+		}
+		old, current := intent.Routes[p.Group], state.Routes[p.Group]
+		if old.Epoch == 0 || !validName(old.Owner) || current.Epoch < old.Epoch || current.Epoch == old.Epoch && current.Owner != old.Owner {
+			return errMismatch
+		}
+		fenced = fenced || current.Epoch > old.Epoch
+	}
+	if !fenced {
+		return errStale
+	}
+	return nil
+}
 
 // Prepare durably binds both request AND transaction ID to exactly one body and
 // route capture. It grants no business completion. Retrying after uncertainty
 // uses these SAME bytes; capture never silently refreshes under an old request.
 func (c *graphOwnerClient) Prepare(ctx context.Context, body []byte) (graphOwnerIntent, error) {
+	return c.prepareAllocated(ctx, body, nil)
+}
+func (c *graphOwnerClient) PrepareAllocated(ctx context.Context, body []byte, allocated []graphOwnerAllocatedID) (graphOwnerIntent, error) {
+	return c.prepareAllocated(ctx, body, allocated)
+}
+func (c *graphOwnerClient) prepareAllocated(ctx context.Context, body []byte, allocated []graphOwnerAllocatedID) (graphOwnerIntent, error) {
 	if ctx == nil {
 		return graphOwnerIntent{}, errInvalid
 	}
@@ -100,6 +136,18 @@ func (c *graphOwnerClient) Prepare(ctx context.Context, body []byte) (graphOwner
 	x, owned, err := c.input(body)
 	if err != nil {
 		return graphOwnerIntent{}, err
+	}
+	ctx, cancel, err := c.catalog.operationContext(ctx)
+	if err != nil {
+		return graphOwnerIntent{}, err
+	}
+	defer cancel()
+	claims, err := graphOwnerAllocatedInput(allocated)
+	if err != nil {
+		return graphOwnerIntent{}, err
+	}
+	if (c.catalog.binding.Transfer != nil) != (len(claims) != 0) {
+		return graphOwnerIntent{}, errInvalid
 	}
 	intent, _, err := historyTransactContext(ctx, c.catalog.h.db, func() error { return nil }, func(tr fdb.Transaction) (graphOwnerIntent, error) {
 		actual, err := c.catalog.h.ownerCatalogIn(tr)
@@ -127,7 +175,7 @@ func (c *graphOwnerClient) Prepare(ctx context.Context, body []byte) (graphOwner
 			return prior, err
 		}
 		if found {
-			if !idFound || !graphColumnSame(id, prior) || !bytes.Equal(prior.Body, owned) || prior.Digest != sha256.Sum256(owned) {
+			if !idFound || !graphColumnSame(id, prior) || !bytes.Equal(prior.Body, owned) || prior.Digest != sha256.Sum256(owned) || !graphColumnSame(prior.Allocated, claims) {
 				return prior, errMismatch
 			}
 			return prior, nil // Never recapture, even under successor ownership.
@@ -135,8 +183,11 @@ func (c *graphOwnerClient) Prepare(ctx context.Context, body []byte) (graphOwner
 		if idFound {
 			return prior, errMismatch
 		}
-		intent := graphOwnerIntent{owned, sha256.Sum256(owned), state.Routes}
+		intent := graphOwnerIntent{Body: owned, Digest: sha256.Sum256(owned), Routes: state.Routes, Allocated: claims}
 		if err := graphOwnerNew(state, x, intent); err != nil {
+			return intent, err
+		}
+		if err := actual.allocatedIn(tr, x, intent, state); err != nil {
 			return intent, err
 		}
 		// An absent intent cannot be retrofitted around an existing original.
@@ -177,6 +228,11 @@ func (h *harness) ownerGateIn(tr fdb.ReadTransaction, x transaction, digest [32]
 	if err := c.authenticate(permit.Authority); err != nil {
 		return nil, graphOwnerState{}, err
 	}
+	if c.binding.Transfer != nil {
+		if err := c.checkTime(); err != nil {
+			return nil, graphOwnerState{}, err
+		}
+	}
 	state, err := c.stateIn(tr)
 	if err != nil {
 		return nil, state, err
@@ -203,6 +259,16 @@ func (h *harness) ownerGateIn(tr fdb.ReadTransaction, x transaction, digest [32]
 }
 
 func (c *graphOwnerClient) Submit(ctx context.Context, intent graphOwnerIntent) (outcome, int, error) {
+	return c.submitOwned(ctx, intent, false)
+}
+
+// ResolveFenced records a genuine native ABORT only under an authenticated
+// successor and irrevocably older participant routing, with BOTH originals
+// absent in the SAME native commit. Timeout/missing reply alone grants nothing.
+func (c *graphOwnerClient) ResolveFenced(ctx context.Context, intent graphOwnerIntent) (outcome, int, error) {
+	return c.submitOwned(ctx, intent, true)
+}
+func (c *graphOwnerClient) submitOwned(ctx context.Context, intent graphOwnerIntent, retire bool) (outcome, int, error) {
 	if ctx == nil {
 		return outcome{}, 0, errInvalid
 	}
@@ -213,11 +279,20 @@ func (c *graphOwnerClient) Submit(ctx context.Context, intent graphOwnerIntent) 
 	if err != nil {
 		return outcome{}, 0, err
 	}
+	ctx, cancel, err := c.catalog.operationContext(ctx)
+	if err != nil {
+		return outcome{}, 0, err
+	}
+	defer cancel()
 	intent.Body = owned
+	intent.Allocated, err = graphOwnerAllocatedInput(intent.Allocated)
+	if err != nil {
+		return outcome{}, 0, err
+	}
 	if intent.Digest != sha256.Sum256(owned) {
 		return outcome{}, 0, errMismatch
 	}
-	permit := graphOwnerPermit{c.authority, intent, c.routes[x.Coordinator]}
+	permit := graphOwnerPermit{c.authority, intent, c.routes[x.Coordinator], retire}
 	return historyTransactContext(ctx, c.catalog.h.db, func() error { return nil }, func(tr fdb.Transaction) (outcome, error) {
 		return c.catalog.h.executeOwned(tr, x, intent.Digest, &permit)
 	})
@@ -237,11 +312,20 @@ func (c *graphOwnerClient) Original(ctx context.Context, intent graphOwnerIntent
 	if err != nil {
 		return graphCostParallelProof{}, 0, err
 	}
+	ctx, cancel, err := c.catalog.operationContext(ctx)
+	if err != nil {
+		return graphCostParallelProof{}, 0, err
+	}
+	defer cancel()
 	intent.Body = owned
+	intent.Allocated, err = graphOwnerAllocatedInput(intent.Allocated)
+	if err != nil {
+		return graphCostParallelProof{}, 0, err
+	}
 	if intent.Digest != sha256.Sum256(owned) {
 		return graphCostParallelProof{}, 0, errMismatch
 	}
-	permit := graphOwnerPermit{c.authority, intent, c.routes[x.Coordinator]}
+	permit := graphOwnerPermit{c.authority, intent, c.routes[x.Coordinator], false}
 	return graphCostParallelRead(ctx, c.catalog.h.db, func(tr fdb.ReadTransaction) (graphCostParallelProof, error) {
 		if _, _, err := c.catalog.h.ownerGateIn(tr, x, intent.Digest, &permit); err != nil {
 			return graphCostParallelProof{}, err

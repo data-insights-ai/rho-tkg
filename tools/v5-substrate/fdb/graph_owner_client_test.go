@@ -84,4 +84,16 @@ func TestGraphOwnerCurrentAuthorityAndImmutableCaptureGuards(t *testing.T) {
 	if _, err := client.Prepare(ctx, nil); !errors.Is(err, context.Canceled) {
 		t.Fatal("canceled reservation entered SDK", err)
 	}
+	if _, err := client.PrepareAllocated(ctx, nil, nil); !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled allocated factory", err)
+	}
+	if _, _, err := client.ResolveFenced(ctx, graphOwnerIntent{}); !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled successor recovery", err)
+	}
+	if _, err := client.CloseAllocationSession(t.Context(), graphOwnerAllocationSession{}); !errors.Is(err, errInvalid) {
+		t.Fatal("nil cleanup receiver", err)
+	}
+	if _, err := client.CloseReservedIDs(t.Context(), "grant", [32]byte{1}); !errors.Is(err, errInvalid) {
+		t.Fatal("nil grant cleanup receiver", err)
+	}
 }

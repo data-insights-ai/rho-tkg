@@ -8,9 +8,84 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/apple/foundationdb/bindings/go/src/fdb"
 )
+
+// Authored only: authentic stored tickets survive normal deadline/caller loss;
+// this is API composition, not an actual OS process-replacement qualification.
+func TestGraphOwnerActualFundedCleanupAfterNormalDeadline(t *testing.T) {
+	h, _, catalog, ca, cb, a, b := ownerActualTransferFixture(t, 5)
+	if _, err := ca.ReserveIDs(t.Context(), "remote-live", [32]byte{10}, 2, 1); err != nil {
+		t.Fatal(err)
+	}
+	o, err := cb.AllocationSession(t.Context(), "remote-live", "session", [32]byte{10}, [32]byte{11})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cursor, _, err := cb.InstallIDs(t.Context(), o); err != nil || cursor == nil {
+		t.Fatal(err)
+	}
+	if _, err := ca.ReserveIDs(t.Context(), "remote-reserved", [32]byte{12}, 2, 1); err != nil {
+		t.Fatal(err)
+	}
+	at := mustCut(t, h, []uint8{0, 1}, nil)
+	move, err := catalog.ReserveMove(t.Context(), a, ca.routes[0], "funded-move", [32]byte{13}, 0, b.ID, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.Freeze(t.Context(), a, move); err != nil {
+		t.Fatal(err)
+	}
+	timer := time.NewTimer(time.Until(time.Unix(0, catalog.binding.Transfer.DeadlineUnixNanos)))
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-t.Context().Done():
+		t.Fatal(t.Context().Err())
+	}
+	if _, err := ca.ReserveIDs(t.Context(), "late-new", [32]byte{14}, 2, 0); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("new authority after expiry", err)
+	}
+	lost, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := catalog.Cancel(lost, a, move); err != nil {
+		t.Fatal("funded owner cleanup stranded", err)
+	}
+	r, err := cb.CloseAllocationSession(lost, o)
+	if err != nil || r.Slot.State != 2 || r.Slot.Consumed != 0 {
+		t.Fatal("same lost session did not burn/fence", r, err)
+	}
+	if _, err := cb.CloseReservedIDs(lost, "remote-reserved", [32]byte{12}); err != nil {
+		t.Fatal("reserved terminal credit lost", err)
+	}
+	_, _, err = graphCostParallelRead(t.Context(), h.db, func(tr fdb.ReadTransaction) (bool, error) {
+		for _, request := range []string{"move/funded-move", "grant/remote-live", "grant/remote-reserved"} {
+			ticket, found, err := get[graphOwnerCleanup](tr, catalog.key("cleanup", request))
+			if err != nil {
+				return false, err
+			}
+			if !found || ticket.Calls != 1 || ticket.DeadlineUnixNanos <= catalog.binding.Transfer.DeadlineUnixNanos || ticket.DeadlineUnixNanos > catalog.binding.Transfer.DeadlineUnixNanos+int64(30*time.Second) {
+				return false, errMismatch
+			}
+		}
+		owner, found, err := (&graphHistoryRetention{h: h, binding: catalog.binding.Source}).owner(tr, move.Owner.Request)
+		if err != nil {
+			return false, err
+		}
+		if !found || owner.State != historyReleased {
+			return false, errMismatch
+		}
+		return true, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cursor, _, err := cb.InstallIDs(t.Context(), o); cursor != nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("cleanup minted cursor", err)
+	}
+}
 
 func TestGraphOwnerCatalogAdmissionGuards(t *testing.T) {
 	for _, p := range []graphOwnerPolicy{{}, {4097, 16 << 20}, {8, 256<<20 + 1}} {

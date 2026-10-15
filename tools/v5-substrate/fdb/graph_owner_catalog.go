@@ -42,6 +42,7 @@ type graphOwnerBinding struct {
 	Source      graphHistoryBinding
 	Authorities [2]graphOwnerPrincipal
 	Policy      graphOwnerPolicy
+	Transfer    *graphOwnerTransferPolicy `json:",omitempty"`
 }
 type graphOwnerState struct {
 	Version uint64
@@ -69,6 +70,11 @@ func (c *graphOwnerCatalog) Observe(ctx context.Context) (graphOwnerView, int, e
 	if err := ctx.Err(); err != nil {
 		return graphOwnerView{}, 0, err
 	}
+	ctx, cancel, err := c.operationContext(ctx)
+	if err != nil {
+		return graphOwnerView{}, 0, err
+	}
+	defer cancel()
 	return graphCostParallelRead(ctx, c.h.db, func(tr fdb.ReadTransaction) (graphOwnerView, error) {
 		actual, err := c.h.ownerCatalogIn(tr)
 		if err != nil {
@@ -96,7 +102,9 @@ func (c *graphOwnerCatalog) Observe(ctx context.Context) (graphOwnerView, int, e
 	})
 }
 
-func graphOwnerSelected(c config) bool { return strings.HasPrefix(c.Graph, graphOwnerNamespace) }
+func graphOwnerSelected(c config) bool {
+	return strings.HasPrefix(c.Graph, graphOwnerNamespace) || strings.HasPrefix(c.Graph, graphOwnerTransferNamespace)
+}
 func (p graphOwnerPolicy) validate() error {
 	if p.MaxRecords < 8 || p.MaxRecords > 4096 || p.MaxControlBytes < 8*graphOwnerRecordBytes || p.MaxControlBytes > 256<<20 {
 		return errInvalid
@@ -104,7 +112,9 @@ func (p graphOwnerPolicy) validate() error {
 	return nil
 }
 func (b graphOwnerBinding) validate() error {
-	if b.Version != 1 || !graphOwnerSelected(b.Config) || b.Config.Cost.Version != 1 || b.Config.Cost.Writers != 1 || !validGraphCostProfile(b.Config) || b.Policy.validate() != nil || b.Source.Config != b.Config || b.Source.Version != 1 || b.Source.Policy.validate() != nil || !slices.Equal(b.Source.Initial.Scope, []uint8{0, 1}) || b.Source.Initial.Groups != [2]uint64{} {
+	legacy := b.Version == 1 && b.Transfer == nil && strings.HasPrefix(b.Config.Graph, graphOwnerNamespace) && b.Config.Cost.Version == 1 && b.Config.Cost.Writers == 1 && b.Policy.validate() == nil
+	fresh := b.Version == 2 && b.Transfer != nil && b.Transfer.validate() == nil && b.Transfer.Config == b.Config && b.Policy == (graphOwnerPolicy{b.Transfer.MaxRecords, b.Transfer.MaxControlBytes})
+	if (!legacy && !fresh) || !validGraphCostProfile(b.Config) || b.Source.Config != b.Config || b.Source.Version != 1 || b.Source.Policy.validate() != nil || !slices.Equal(b.Source.Initial.Scope, []uint8{0, 1}) || b.Source.Initial.Groups != [2]uint64{} {
 		return errInvalid
 	}
 	for i, a := range b.Authorities {
@@ -166,7 +176,7 @@ func (c *graphOwnerCatalog) createIn(tr fdb.Transaction, key fdb.Key, v any) err
 	if err != nil {
 		return err
 	}
-	charge := uint64(len(key) + graphOwnerRecordBytes)
+	charge := c.recordCharge(key, body, v)
 	p := c.binding.Policy
 	if !found || l.Records >= p.MaxRecords || l.Bytes > p.MaxControlBytes || charge > p.MaxControlBytes-l.Bytes {
 		return errLimit
@@ -216,6 +226,17 @@ func (h *harness) ownerCatalogIn(tr fdb.ReadTransaction) (*graphOwnerCatalog, er
 // commit, before any business original exists. It is not a later local claim
 // about an earlier observation. Secrets are supplied by the caller's factory.
 func newGraphOwnerCatalog(ctx context.Context, source *graphHistoryRetention, authorities [2]graphOwnerAuthority, policy graphOwnerPolicy) (*graphOwnerCatalog, error) {
+	return installGraphOwnerCatalog(ctx, source, authorities, policy, nil)
+}
+
+func newGraphOwnerCatalogTransfer(ctx context.Context, source *graphHistoryRetention, authorities [2]graphOwnerAuthority, policy graphOwnerTransferPolicy) (*graphOwnerCatalog, error) {
+	if policy.validate() != nil {
+		return nil, errInvalid
+	}
+	return installGraphOwnerCatalog(ctx, source, authorities, graphOwnerPolicy{policy.MaxRecords, policy.MaxControlBytes}, &policy)
+}
+
+func installGraphOwnerCatalog(ctx context.Context, source *graphHistoryRetention, authorities [2]graphOwnerAuthority, policy graphOwnerPolicy, transfer *graphOwnerTransferPolicy) (*graphOwnerCatalog, error) {
 	if ctx == nil || source == nil || source.h == nil {
 		return nil, errInvalid
 	}
@@ -223,6 +244,9 @@ func newGraphOwnerCatalog(ctx context.Context, source *graphHistoryRetention, au
 		return nil, err
 	}
 	c := &graphOwnerCatalog{h: source.h, binding: graphOwnerBinding{Version: 1, Config: source.h.config, Source: source.binding, Policy: policy}}
+	if transfer != nil {
+		c.binding.Version, c.binding.Transfer = 2, transfer
+	}
 	for i, a := range authorities {
 		if a.Secret == [32]byte{} {
 			return nil, errInvalid
@@ -240,6 +264,11 @@ func newGraphOwnerCatalog(ctx context.Context, source *graphHistoryRetention, au
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel, err := c.operationContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	_, _, err = historyTransactContext(ctx, c.h.db, func() error { return nil }, func(tr fdb.Transaction) (bool, error) {
 		actual, err := c.h.historyRetentionIn(tr)
 		if err != nil {
@@ -282,6 +311,11 @@ func newGraphOwnerCatalog(ctx context.Context, source *graphHistoryRetention, au
 			value any
 		}{{c.key("binding", "immutable"), c.binding}, {c.key("state", "current"), initial}, {c.key("ledger", "controls"), graphOwnerLedger{3, reserved}}} {
 			if err := put(tr, record.key, record.value); err != nil {
+				return false, err
+			}
+		}
+		if c.binding.Version == 2 {
+			if err := c.createIn(tr, c.key("allocation-state", "current"), graphOwnerAllocationState{Next: 1}); err != nil {
 				return false, err
 			}
 		}
@@ -374,6 +408,11 @@ func (c *graphOwnerCatalog) ReserveMove(ctx context.Context, a graphOwnerAuthori
 	if err := ctx.Err(); err != nil {
 		return graphOwnerMove{}, err
 	}
+	ctx, cancel, err := c.operationContext(ctx)
+	if err != nil {
+		return graphOwnerMove{}, err
+	}
+	defer cancel()
 	at.record.Scope = slices.Clone(at.record.Scope)
 	returnValue, _, err := historyTransactContext(ctx, c.h.db, func() error { return nil }, func(tr fdb.Transaction) (graphOwnerMove, error) {
 		actual, err := c.h.ownerCatalogIn(tr)
@@ -441,6 +480,9 @@ func (c *graphOwnerCatalog) ReserveMove(ctx context.Context, a graphOwnerAuthori
 		if err := c.createIn(tr, c.key("move", request), move); err != nil {
 			return graphOwnerMove{}, err
 		}
+		if err := c.reserveCleanupIn(tr, "move/"+request); err != nil {
+			return graphOwnerMove{}, err
+		}
 		return move, c.createIn(tr, c.key("move-progress", request), graphOwnerMoveProgress{})
 	})
 	return returnValue, err
@@ -505,6 +547,11 @@ func (c *graphOwnerCatalog) Freeze(ctx context.Context, a graphOwnerAuthority, m
 	if err := ctx.Err(); err != nil {
 		return graphOwnerMoveProgress{}, err
 	}
+	ctx, cancel, err := c.operationContext(ctx)
+	if err != nil {
+		return graphOwnerMoveProgress{}, err
+	}
+	defer cancel()
 	owned, err := graphOwnerMoveInput(move)
 	if err != nil {
 		return graphOwnerMoveProgress{}, err
@@ -535,6 +582,9 @@ func (c *graphOwnerCatalog) Freeze(ctx context.Context, a graphOwnerAuthority, m
 		}
 		if progress.Phase != 0 || state != move.Before {
 			return progress, errStale
+		}
+		if err := c.allocationDrainIn(tr, move.Bucket, move.Before.Routes[move.Bucket]); err != nil {
+			return progress, err
 		}
 		boundary, err := c.h.freshIn(tr, []uint8{0, 1}, nil)
 		if err != nil {
@@ -581,6 +631,11 @@ func (c *graphOwnerCatalog) Activate(ctx context.Context, target graphOwnerAutho
 	if err := ctx.Err(); err != nil {
 		return graphOwnerState{}, err
 	}
+	ctx, cancel, err := c.operationContext(ctx)
+	if err != nil {
+		return graphOwnerState{}, err
+	}
+	defer cancel()
 	owned, err := graphOwnerMoveInput(move)
 	if err != nil {
 		return graphOwnerState{}, err
@@ -643,14 +698,34 @@ func (c *graphOwnerCatalog) Cancel(ctx context.Context, a graphOwnerAuthority, m
 	if c == nil || ctx == nil {
 		return errInvalid
 	}
-	if err := ctx.Err(); err != nil {
-		return err
+	if c.binding.Transfer == nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 	}
 	owned, err := graphOwnerMoveInput(move)
 	if err != nil {
 		return err
 	}
 	move = owned
+	ctx, cancel, err := c.terminalContext(ctx, "move/"+move.Request, func(tr fdb.ReadTransaction) error {
+		actual, err := c.h.ownerCatalogIn(tr)
+		if err != nil {
+			return err
+		}
+		if err := actual.authenticate(a); err != nil {
+			return err
+		}
+		if a.ID != move.From {
+			return errStale
+		}
+		_, err = c.moveIn(tr, move)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	defer cancel()
 	_, _, err = historyTransactContext(ctx, c.h.db, func() error { return nil }, func(tr fdb.Transaction) (bool, error) {
 		actual, err := c.h.ownerCatalogIn(tr)
 		if err != nil {
