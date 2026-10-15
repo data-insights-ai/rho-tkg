@@ -22,17 +22,18 @@ OBSERVATIONS = ("old-fresh", "held-old-after-update", "fresh-current")
 
 
 def validate_result(end, family=FAMILY):
-    require(family in (FAMILY,"late-correction-old-index"),"explicit implemented scalar source family")
+    require(family in (FAMILY,"late-correction-old-index","partition-local-create-update"),"explicit implemented scalar source family")
     correction=family=="late-correction-old-index"
-    format_="fdb-late-correction-old-index-v1" if correction else FORMAT
+    create_update=family=="partition-local-create-update"
+    format_="fdb-create-update-v1" if create_update else "fdb-late-correction-old-index-v1" if correction else FORMAT
     version = integer(end["Version"], 1, 2)
-    fields(end, "Version Format Spec Config Binding BindingRecord Initial Old Final Attempts Aborted Committed Setup Creates Updates Observations Clients Sources AttemptSHA256 EventSHA256" + (" Columns" if "Columns" in end else "") + (" Transport" if version == 2 else ""))
+    fields(end, "Version Format Spec Config Binding BindingRecord Initial Old Final Attempts Aborted Committed Setup Creates Updates Observations Clients Sources AttemptSHA256 EventSHA256" + (" Columns" if "Columns" in end else "") + (" Transport" if version == 2 else "") + (" CreateUpdate" if create_update else ""))
     require(end["Format"] == format_.replace("-v1", f"-v{version}"), "dedicated scalar source result")
     p, c = end["Spec"], end["Config"]
     fields(p, "version family facts crossPercent writers layout")
     n = integer(p["facts"], 20, 1_000_000)
     require(type(p["version"]) is int and p["version"] == version and p["family"] == family and n % 20 == 0 and type(p["writers"]) is int and p["writers"] in (1, 8, 32) and (n//2 if correction else n) > p["writers"] and type(p["crossPercent"]) is int and p["crossPercent"] in (0, 10, 50, 100) and p["layout"] in ("kv", "columns"), "actual family dimensions")
-    stem="correction" if correction else "columns"
+    stem="create-update" if create_update else "correction" if correction else "columns"
     updates=n//2 if correction else n
     graph_prefix = f"graph-workload-{stem}-v{version}-{p['layout']}-"
     run = c["Graph"].removeprefix(graph_prefix)
@@ -40,7 +41,7 @@ def validate_result(end, family=FAMILY):
     originals = 3 + (n+updates)*64
     expected = {"Format": 2, "Graph": c["Graph"], "Topology": 1, "Epochs": [7, 11],
                 "Limits": {"Bytes": (64 << 20) + n*(64 << 10) + originals*2048, "Transactions": originals, "Versions": 3+3*n+3*updates, "Certificates": 1024},
-                "Nodes": [1, 7+2*n], "Cost": {"version": 7 if correction else 6, "facts": n, "crossPercent": p["crossPercent"], "writers": p["writers"]}, "CostScope": codec.SCOPE}
+                "Nodes": [1, 7+2*n], "Cost": {"version": 9 if create_update else 7 if correction else 6, "facts": n, "crossPercent": p["crossPercent"], "writers": p["writers"]}, "CostScope": codec.SCOPE}
     require(same(c, expected), "fresh scalar family cannot reinterpret old persisted profiles")
     binding = {"Version": 1, "Config": c, "Dataset": list(hashlib.sha256(b"\x01"+u64(n)+u64(p["crossPercent"])+b"graph-v2").digest()),
                "Window":32,"Attempts":64,"Submissions":8,"Callbacks":16,
@@ -62,6 +63,9 @@ def validate_result(end, family=FAMILY):
     require(("Columns" in end)==(p["layout"]=="columns"),"KV source reference is not native columns")
     for digest in (end["AttemptSHA256"],end["EventSHA256"]):
         require(type(digest) is str and len(digest)==64 and bytes.fromhex(digest).hex()==digest,"canonical sealed digest")
+    if create_update:
+        import fdb_create_update_check as workload
+        workload.validate_summary(end)
 
 
 def point_values(frame,end,spool):
@@ -116,6 +120,10 @@ def events(directory,end,spool,header,stem="fdb-columns"):
             require(frame["Original"]==actual["Original"] and blob(frame["Original"]["Value"])==body and frame["Outcome"]==decoded(body)["Outcome"],"complete actual business original")
             spool.insert(b"completion-seen",u64(ordinal),b"1")
             completions+=1
+        elif kind=="business-phase":
+            require(end["Spec"]["family"]=="partition-local-create-update","new phase fields cannot alter older family evidence")
+            import fdb_create_update_check as workload
+            workload.phase_event(frame,end,spool,completions,observations,inventories)
         elif kind=="selector-open":
             fields(frame,"Type Name Mode Access Cut Nanos")
             require(active is None and frame["Name"] in ("old-fresh","fresh-current","raw-source-held") and frame["Mode"]==("At" if frame["Name"]=="raw-source-held" else "Fresh") and frame["Access"]=="actual Open through retained selection/acquisition including retries/wait; no data rows read","actual source open, no synthetic selector schedule")
@@ -229,8 +237,8 @@ def metadata(end,spool,header):
 
 
 def verify(directory,spool_directory,policy=None,family=FAMILY):
-    require(family in (FAMILY,"late-correction-old-index"),"explicit implemented scalar family")
-    stem="fdb-correction" if family=="late-correction-old-index" else "fdb-columns"
+    require(family in (FAMILY,"late-correction-old-index","partition-local-create-update"),"explicit implemented scalar family")
+    stem="fdb-create-update" if family=="partition-local-create-update" else "fdb-correction" if family=="late-correction-old-index" else "fdb-columns"
     directory=Path(directory).resolve(strict=True)
     with (directory/(stem+"-result.json")).open("rb") as stream:
         body=stream.read(raw.LINE+1)
@@ -252,6 +260,9 @@ def verify(directory,spool_directory,policy=None,family=FAMILY):
             # callback that could return an empty proof for missing index EOF.
             import fdb_correction_check as correction
             additional=correction.indexes(directory,end,spool)
+        if family=="partition-local-create-update":
+            import fdb_create_update_check as workload
+            additional=workload.business(directory,end,spool)
         transport=raw.transport.verify(directory,end["Transport"]["Policy"],spool) if end["Version"]==2 else None
         # Fixed <=14 column calls and six source calls, not per-row samples.
         samples=[decoded(value) for _,value in spool.walk(b"column-timing")]

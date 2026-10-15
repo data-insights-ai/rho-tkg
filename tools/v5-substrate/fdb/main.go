@@ -89,6 +89,18 @@ func run() error {
 			defer db.Close()
 			return runGraphTransferWorkload(db)
 		}
+		if family.Family == graphCreateUpdateFamily {
+			spec, run, err := graphCreateUpdateSpecFromEnv()
+			if err != nil {
+				return err
+			}
+			db, err := openDB()
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			return runGraphCreateUpdate(db, spec, run)
+		}
 		if family.Family == graphFeedWorkloadFamily {
 			spec, run, err := graphFeedWorkloadSpecFromEnv()
 			if err != nil {

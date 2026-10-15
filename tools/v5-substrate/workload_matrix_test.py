@@ -7,6 +7,18 @@ import workload_matrix as matrix
 
 
 class WorkloadMatrixGuards(unittest.TestCase):
+    def test_create_update_local_baseline_and_explicit_cross_variants(self):
+        family="partition-local-create-update"
+        for cross in matrix.CROSS:
+            spec={"version":1,"family":family,"facts":40,"crossPercent":cross,"writers":32,"layout":"columns"}
+            self.assertEqual(matrix.preflight(spec,"01"*16),spec)
+            self.assertEqual(matrix.preflight(spec|{"version":2},"01"*16,"foundationdb","rtt-100ms"),spec|{"version":2})
+            for engine in ("native-raft","paired"):
+                with self.assertRaises(ValueError):matrix.preflight(spec,"01"*16,engine)
+        cells=list(matrix.matrix((family,),tuple(matrix.TRANSPORTS),owned=True))
+        self.assertEqual(len(cells),1440)
+        self.assertTrue(all(c["implemented"] and c["workload"]["version"]==2 for c in cells))
+        with self.assertRaises(ValueError):matrix.preflight(spec|{"facts":20},"01"*16)
     def test_native_selectors_complete_dimensions_and_local_pairing(self):
         spec={"version":1,"family":"snapshot-selectors","facts":40,"crossPercent":0,"writers":32,"layout":"columns"}
         for transport in matrix.TRANSPORTS:

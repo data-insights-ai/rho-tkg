@@ -29,7 +29,7 @@ FAMILIES = {
 FACTS, CROSS, WRITERS, LAYOUTS = (10_000, 100_000, 1_000_000), (0, 10, 50, 100), (1, 8, 32), ("kv", "columns")
 TRANSPORTS = {"local": 0, "rtt-1ms": 1, "rtt-20ms": 20, "rtt-100ms": 100}
 ENGINES = ("foundationdb", "native-raft", "paired")
-IMPLEMENTED = ("contention-empty-range", "snapshot-selectors", "snapshot-to-feed", "cross-edge-endpoint-uniqueness", "immutable-columns", "late-correction-old-index", "transfer-retained-pins")
+IMPLEMENTED = ("contention-empty-range", "snapshot-selectors", "snapshot-to-feed", "cross-edge-endpoint-uniqueness", "immutable-columns", "late-correction-old-index", "transfer-retained-pins", "partition-local-create-update")
 
 
 def require(condition, message):
@@ -63,7 +63,7 @@ def preflight(spec, run, engine="foundationdb", transport="local"):
     require(type(spec["version"]) is int and (spec["version"] == 1 and (engine != "foundationdb" or transport == "local") or fresh) and engine in ENGINES and transport in TRANSPORTS
             and implemented(spec["family"], engine, transport, fresh), "family/engine/real transport driver not implemented")
     require(type(spec["facts"]) is int and 20 <= spec["facts"] <= 1_000_000 and spec["facts"] % 20 == 0 and type(spec["crossPercent"]) is int and spec["crossPercent"] in CROSS and type(spec["writers"]) is int and spec["writers"] in WRITERS and spec["layout"] in LAYOUTS, "fresh family shape")
-    require(spec["family"] not in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns", "transfer-retained-pins") or spec["facts"] >= spec["writers"] + 1, "seed plus one genuine initial job per independent caller")
+    require(spec["family"] not in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns", "transfer-retained-pins", "partition-local-create-update") or spec["facts"] >= spec["writers"] + 1, "seed plus one genuine initial job per independent caller")
     require(spec["family"]!="late-correction-old-index" or spec["facts"]//2>spec["writers"],"half correction cohort funds seed plus a genuine job per caller")
     require(type(run) is str and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "explicit nonzero fresh run identity")
     return spec
@@ -177,7 +177,8 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
         return
     destination = Path(output)
     destination.mkdir(mode=0o700, parents=False, exist_ok=False)
-    selector = spec["family"] in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns", "late-correction-old-index", "transfer-retained-pins")
+    selector = spec["family"] in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns", "late-correction-old-index", "transfer-retained-pins", "partition-local-create-update")
+    create_update = spec["family"] == "partition-local-create-update"
     columns = spec["family"] == "immutable-columns"
     correction = spec["family"] == "late-correction-old-index"
     feed = spec["family"] == "snapshot-to-feed"
@@ -189,6 +190,8 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
                                    "retainedVersions": 7 + 11 * spec["facts"] if edge_unique else 3+3*spec["facts"]+3*(spec["facts"]//2) if correction else 3 + 6 * spec["facts"], "capacityQualified": False}, "deadlineSeconds": seconds,
                "deploymentProfile": profile, "admissionMiB": memory}
     if owned_input is not None: request["ownedTransport"] = owned_input
+    if create_update:
+        request["businessSemantics"]={"RowSemantics":"strict-partition-local-create-update" if spec["crossPercent"]==0 else "mixed-or-cross-partition-create-update","setupExcluded":True,"crossPercentBasis":"complete actual business reads/effects, not metadata, client location or empty coordination","IDAdmission":"fixed declared fixture IDs; no allocator issuance claim"}
     if transfer:request["transferAdmission"]={"Policy":transfer_policy,"Scope":"finite native grant; stable logical buckets versus processing owners; explicit C-retaining then feed-only history-GC phases; no matched native retention verdict"}
     if feed or transfer:
         pages = 3 + 2 * spec["facts"]
@@ -225,7 +228,9 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     # Import the private family oracle only after the actual run; it joins all
     # originals/raw EOFs/cache bytes under one finite spool policy.
     sys.path.insert(0, str(ROOT / "fdb"))
-    if transfer:
+    if create_update:
+        import fdb_create_update_check as checker
+    elif transfer:
         import fdb_transfer_check as checker
     elif correction:
         import fdb_correction_check as checker
@@ -240,7 +245,7 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     else:
         import fdb_contention_check as checker
     proof = checker.verify(artifacts, destination, policy)
-    stem = "correction" if correction else "columns" if columns else "edge-unique" if edge_unique else "feed" if feed else "selectors" if selector else "contention"
+    stem = "create-update" if create_update else "correction" if correction else "columns" if columns else "edge-unique" if edge_unique else "feed" if feed else "selectors" if selector else "contention"
     prefix = "graph-owned-v3-" if transfer else f"graph-workload-{stem}-v{spec['version']}-"
     require(proof["spec"] == spec and proof["runGraph"] == prefix + spec["layout"] + "-" + run, "fresh run/native binding/result agreement")
     with (destination / "verified.json").open("x") as out:

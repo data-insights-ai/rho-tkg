@@ -30,6 +30,7 @@ type graphSelectorsEnd struct {
 	Columns                                                             *graphCostColumnEnd `json:",omitempty"`
 	AttemptSHA256, EventSHA256                                          string
 	Transport                                                           *graphTransportRecord `json:",omitempty"`
+	CreateUpdate                                                        *graphCreateUpdateEnd `json:",omitempty"`
 }
 type graphSelectorsArtifacts struct {
 	ctx                         context.Context
@@ -58,7 +59,7 @@ func newGraphSelectorsArtifactsAdmission(ctx context.Context, h *harness, root *
 // selector schedule. Its fresh namespace, files, observations and format remain
 // explicit; the historical selector constructor and output defaults are intact.
 func newGraphWorkloadArtifacts(ctx context.Context, h *harness, root *os.Root, spec graphSelectorsSpec, binding graphCostStoredRecord, initial cut, transport *graphTransportRecord) (*graphSelectorsArtifacts, error) {
-	if h == nil || root == nil || spec.profile() != h.config.Cost || !validGraphCostProfile(h.config) || spec.Family != graphSelectorsFamily && spec.Family != graphColumnsFamily && spec.Family != graphCorrectionFamily {
+	if h == nil || root == nil || spec.profile() != h.config.Cost || !validGraphCostProfile(h.config) || spec.Family != graphSelectorsFamily && spec.Family != graphColumnsFamily && spec.Family != graphCorrectionFamily && spec.Family != graphCreateUpdateFamily {
 		return nil, errInvalid
 	}
 	admission, checkErr := graphTransportArtifact(h, graphFeedWorkloadSpec(spec), transport)
@@ -75,6 +76,10 @@ func newGraphWorkloadArtifacts(ctx context.Context, h *harness, root *os.Root, s
 	}
 	if spec.Family == graphCorrectionFamily {
 		a.end.Format = graphTransportFormatFor(spec.Version, graphCorrectionFormat)
+	}
+	if spec.Family == graphCreateUpdateFamily {
+		a.end.Format = graphTransportFormatFor(spec.Version, graphCreateUpdateFormat)
+		a.end.CreateUpdate = graphCreateUpdateSummary(h.config)
 	}
 	var err error
 	a.attempts, _, err = openGraphCostArtifact(root, a.filename("attempts.jsonl"))
@@ -131,6 +136,11 @@ func (a *graphSelectorsArtifacts) accept(e graphCostParallelEvent) error {
 		return err
 	}
 	a.end.Attempts++
+	// Retain the actual terminal/unknown attempt before optional fresh-family
+	// diagnostics can refuse it. An incomplete cell never gets a result footer.
+	if err := a.createUpdateAccept(e); err != nil {
+		return err
+	}
 	if attempt.Classification == "aborted" {
 		a.end.Aborted++
 		return nil
@@ -499,7 +509,7 @@ func (a *graphSelectorsArtifacts) finish(source *graphHistoryRetention) (err err
 	if p.Version == 7 {
 		updates = p.Facts / 2
 	}
-	if p.Version == 6 || p.Version == 7 {
+	if p.Version == 6 || p.Version == 7 || p.Version == 9 {
 		observations = 3
 	}
 	if a.end.Setup != 3 || a.end.Creates != p.Facts || a.end.Updates != updates || a.end.Committed != 3+p.Facts+updates || a.end.Attempts != a.end.Committed+a.end.Aborted || a.end.Observations != observations {
@@ -624,7 +634,7 @@ func (a *graphSelectorsArtifacts) columnsStart() (err error) {
 		return err
 	}
 	l := &graphCostColumnLane{s: store, pins: pins, root: a.root, file: file, payload: sha256.New(), whole: sha256.New(), initial: cut{a.end.Initial}}
-	if a.end.Spec.Family == graphColumnsFamily || a.end.Spec.Family == graphCorrectionFamily {
+	if a.end.Spec.Family == graphColumnsFamily || a.end.Spec.Family == graphCorrectionFamily || a.end.Spec.Family == graphCreateUpdateFamily {
 		l.timing = a.columnTiming
 	}
 	if a.end.Spec.Family == graphCorrectionFamily {
@@ -837,6 +847,9 @@ func (a *graphSelectorsArtifacts) context() context.Context {
 }
 
 func (a *graphSelectorsArtifacts) filename(suffix string) string {
+	if a.end.Spec.Family == graphCreateUpdateFamily {
+		return "fdb-create-update-" + suffix
+	}
 	if a.end.Spec.Family == graphCorrectionFamily {
 		return "fdb-correction-" + suffix
 	}

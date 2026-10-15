@@ -56,7 +56,7 @@ class OwnedTransportGuards(unittest.TestCase):
         with self.assertRaises(ValueError): owned.validate_readback([],peers,value,True)
 
     def test_all_actual_family_schedules_and_native_admission_binding(self):
-        for family, minimum in (("contention-empty-range",150000300),("snapshot-selectors",200000300),("cross-edge-endpoint-uniqueness",600000700),("immutable-columns",200000300),("late-correction-old-index",150000300),("transfer-retained-pins",212500300)):
+        for family, minimum in (("contention-empty-range",150000300),("snapshot-selectors",200000300),("cross-edge-endpoint-uniqueness",600000700),("immutable-columns",200000300),("late-correction-old-index",150000300),("transfer-retained-pins",212500300),("partition-local-create-update",200000300)):
             value=request();value["Spec"]["family"]=family
             self.assertEqual(owned.validate_input(value),value)
             self.assertEqual(owned.causal_minimum(value["Spec"],value["Transport"]),minimum)
@@ -68,7 +68,7 @@ class OwnedTransportGuards(unittest.TestCase):
             if family=="transfer-retained-pins":
                 c={"Graph":"graph-owned-v3-kv-"+"01"*16}
             else:
-                stem={"contention-empty-range":"contention","snapshot-selectors":"selectors","cross-edge-endpoint-uniqueness":"edge-unique","immutable-columns":"columns","late-correction-old-index":"correction"}[family]
+                stem={"contention-empty-range":"contention","snapshot-selectors":"selectors","cross-edge-endpoint-uniqueness":"edge-unique","immutable-columns":"columns","late-correction-old-index":"correction","partition-local-create-update":"create-update"}[family]
                 c={"Graph":f"graph-workload-{stem}-v2-kv-"+"01"*16}
             key=b"g0/"+c["Graph"].encode().hex().encode()+b"/workload-transport-v2/"+b"binding".hex().encode()
             native={"Policy":p,"Record":{"Key":base64.b64encode(key).decode(),"Value":base64.b64encode(owned.canonical(p)).decode()}}

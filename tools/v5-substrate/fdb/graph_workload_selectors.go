@@ -29,6 +29,9 @@ type graphSelectorsSpec struct {
 }
 
 func (s graphSelectorsSpec) profile() graphCostProfile {
+	if s.Family == graphCreateUpdateFamily {
+		return graphCostProfile{9, s.Facts, s.CrossPercent, s.Writers}
+	}
 	if s.Family == graphCorrectionFamily {
 		return graphCostProfile{7, s.Facts, s.CrossPercent, s.Writers}
 	}
@@ -218,6 +221,9 @@ func (h *harness) graphSelectorsApply(ctx context.Context, phase string, fact ui
 	p := h.config.Cost
 	p.Version = 1
 	prefix := "selectors"
+	if h.config.Cost.Version == 9 {
+		prefix = "create-update"
+	}
 	if h.config.Cost.Version == 6 {
 		prefix = "columns"
 	}

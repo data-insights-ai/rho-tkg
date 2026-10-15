@@ -84,7 +84,7 @@ func graphTransportCausalMinimum(spec graphFeedWorkloadSpec, t graphTransport) (
 	switch spec.Family {
 	case graphFeedWorkloadFamily, graphOwnerTransferFamily:
 		rounds = 5 + 2*waves + pages
-	case graphSelectorsFamily, graphColumnsFamily:
+	case graphSelectorsFamily, graphColumnsFamily, graphCreateUpdateFamily:
 		rounds = 5 + 2*waves
 	case graphCorrectionFamily:
 		if spec.Facts/2 <= writers {
@@ -115,7 +115,7 @@ func transportHex(s string, size int) bool {
 }
 func (p graphTransportPolicy) validate() error {
 	s := p.Spec
-	if p.Version != 2 || s.Version != 2 || !graphTransportFamily(s.Family) || s.Facts < 20 || s.Facts > 1_000_000 || s.Facts%20 != 0 || s.Writers != 1 && s.Writers != 8 && s.Writers != 32 || (s.Family == graphFeedWorkloadFamily || s.Family == graphSelectorsFamily || s.Family == graphColumnsFamily || s.Family == graphOwnerTransferFamily) && s.Facts < uint64(s.Writers)+1 || s.CrossPercent != 0 && s.CrossPercent != 10 && s.CrossPercent != 50 && s.CrossPercent != 100 || s.Layout != "kv" && s.Layout != "columns" || p.Run == [16]byte{} {
+	if p.Version != 2 || s.Version != 2 || !graphTransportFamily(s.Family) || s.Facts < 20 || s.Facts > 1_000_000 || s.Facts%20 != 0 || s.Writers != 1 && s.Writers != 8 && s.Writers != 32 || (s.Family == graphFeedWorkloadFamily || s.Family == graphSelectorsFamily || s.Family == graphColumnsFamily || s.Family == graphOwnerTransferFamily || s.Family == graphCreateUpdateFamily) && s.Facts < uint64(s.Writers)+1 || s.CrossPercent != 0 && s.CrossPercent != 10 && s.CrossPercent != 50 && s.CrossPercent != 100 || s.Layout != "kv" && s.Layout != "columns" || p.Run == [16]byte{} {
 		return errInvalid
 	}
 	t := p.Transport
@@ -240,10 +240,12 @@ func (h *harness) graphTransportInstall(ctx context.Context, p graphTransportPol
 // Family dispatch is private to the explicit transported spec. Ordinary config
 // constructors and Cost.Version meanings remain unchanged.
 func graphTransportFamily(family string) bool {
-	return family == graphFeedWorkloadFamily || family == graphContentionFamily || family == graphSelectorsFamily || family == graphEdgeUniqueFamily || family == graphColumnsFamily || family == graphCorrectionFamily || family == graphOwnerTransferFamily
+	return family == graphFeedWorkloadFamily || family == graphContentionFamily || family == graphSelectorsFamily || family == graphEdgeUniqueFamily || family == graphColumnsFamily || family == graphCorrectionFamily || family == graphOwnerTransferFamily || family == graphCreateUpdateFamily
 }
 func graphTransportConfig(spec graphFeedWorkloadSpec, run string) config {
 	switch spec.Family {
+	case graphCreateUpdateFamily:
+		return graphCreateUpdateConfig(graphSelectorsSpec(spec), run)
 	case graphOwnerTransferFamily:
 		return graphOwnerTransferConfig(spec, run)
 	case graphFeedWorkloadFamily:
@@ -266,7 +268,7 @@ func graphTransportConfig(spec graphFeedWorkloadSpec, run string) config {
 	return config{}
 }
 func graphTransported(c config) bool {
-	return strings.HasPrefix(c.Graph, "graph-workload-contention-v2-") || strings.HasPrefix(c.Graph, "graph-workload-selectors-v2-") || strings.HasPrefix(c.Graph, "graph-workload-edge-unique-v2-") || strings.HasPrefix(c.Graph, "graph-workload-columns-v2-") || strings.HasPrefix(c.Graph, "graph-workload-correction-v2-") || strings.HasPrefix(c.Graph, graphOwnerTransportNamespace)
+	return strings.HasPrefix(c.Graph, "graph-workload-contention-v2-") || strings.HasPrefix(c.Graph, "graph-workload-selectors-v2-") || strings.HasPrefix(c.Graph, "graph-workload-edge-unique-v2-") || strings.HasPrefix(c.Graph, "graph-workload-columns-v2-") || strings.HasPrefix(c.Graph, "graph-workload-correction-v2-") || strings.HasPrefix(c.Graph, "graph-workload-create-update-v2-") || strings.HasPrefix(c.Graph, graphOwnerTransportNamespace)
 }
 
 // Every new business capture/apply authenticates the SAME actual native policy
@@ -397,6 +399,8 @@ func graphTransportFamilyConfig(spec graphFeedWorkloadSpec, run string) config {
 		return graphTransportConfig(spec, run)
 	}
 	switch spec.Family {
+	case graphCreateUpdateFamily:
+		return graphCreateUpdateConfig(graphSelectorsSpec(spec), run)
 	case graphContentionFamily:
 		return graphContentionConfig(graphContentionSpec(spec).profile(), spec.Layout, run)
 	case graphSelectorsFamily:
@@ -443,6 +447,9 @@ func graphTransportConfigVersion(c config) uint8 {
 func (h *harness) graphTransportCheckIn(tr fdb.ReadTransaction) error {
 	if h == nil {
 		return errInvalid
+	}
+	if h.config.Cost.Version == 9 {
+		return h.graphWorkloadBindingIn(tr, "workload-create-update-v1")
 	}
 	if h.config.Cost.Version == 6 {
 		// This new family's ordinary and transported original fast paths both

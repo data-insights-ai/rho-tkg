@@ -33,7 +33,7 @@ MAX_SECONDS, MAX_SAMPLES, MAX_BYTES = 31_536_000, 31_536_002, 1 << 44
 FRAME, FIXED = 2 << 20, 16 << 20
 SOURCE_SHA = "bbd141ef7b5d0127cc2152843ba61f274dc32814fa3e0f13e7d07a080bef53d9"
 ROLES = ("zone0", "zone1", "zone2", "zone3", "client")
-FAMILIES = ("snapshot-to-feed", "contention-empty-range", "snapshot-selectors", "cross-edge-endpoint-uniqueness", "immutable-columns", "late-correction-old-index", "transfer-retained-pins")
+FAMILIES = ("snapshot-to-feed", "contention-empty-range", "snapshot-selectors", "cross-edge-endpoint-uniqueness", "immutable-columns", "late-correction-old-index", "transfer-retained-pins", "partition-local-create-update")
 
 
 def require(condition, message):
@@ -80,7 +80,7 @@ def causal_minimum(spec, transport):
         require(n//2>writers,"seed plus a genuine correction job per caller")
         rounds=5+(n-1+writers-1)//writers+(n//2-1+writers-1)//writers
     else:
-        require(spec["family"] in ("snapshot-selectors", "immutable-columns"), "unsupported genuine schedule")
+        require(spec["family"] in ("snapshot-selectors", "immutable-columns", "partition-local-create-update"), "unsupported genuine schedule")
     return rounds * transport["targetRTTMillis"]
 
 
@@ -91,7 +91,7 @@ def validate_input(value):
     require(type(spec) is dict and set(spec) == set("version family facts crossPercent writers layout".split()), "exact implemented family spec")
     n = integer(spec["facts"], 20, 1_000_000)
     writers = integer(spec["writers"], 1, 32)
-    require(spec["version"] == 2 and type(spec["version"]) is int and spec["family"] in FAMILIES and n % 20 == 0 and writers in (1, 8, 32) and (spec["family"] not in ("snapshot-to-feed", "snapshot-selectors", "immutable-columns", "transfer-retained-pins") or n >= writers + 1) and type(spec["crossPercent"]) is int and spec["crossPercent"] in (0, 10, 50, 100) and spec["layout"] in ("kv", "columns"), "actual fresh implemented-family transport adapter")
+    require(spec["version"] == 2 and type(spec["version"]) is int and spec["family"] in FAMILIES and n % 20 == 0 and writers in (1, 8, 32) and (spec["family"] not in ("snapshot-to-feed", "snapshot-selectors", "immutable-columns", "transfer-retained-pins", "partition-local-create-update") or n >= writers + 1) and type(spec["crossPercent"]) is int and spec["crossPercent"] in (0, 10, 50, 100) and spec["layout"] in ("kv", "columns"), "actual fresh implemented-family transport adapter")
     require(type(t) is dict and set(t) == set("kind targetRTTMillis jitterMillis seed".split()) and type(t["targetRTTMillis"]) is int and type(t["jitterMillis"]) is int and type(t["seed"]) is int and t["jitterMillis"] == 0 and t["seed"] == 20261009 and (t["kind"] == "local" and t["targetRTTMillis"] == 0 or t["kind"] == "injected-rtt" and t["targetRTTMillis"] in (1, 20, 100)), "actual local or fixed injected delay")
     run = value["Run"]
     require(type(run) is str and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "same fresh run identity")
@@ -351,7 +351,7 @@ def family_record(record, spec, config):
     if spec["family"] == "transfer-retained-pins":
         expected = f"graph-owned-v3-{spec['layout']}-{bytes(p['Run']).hex()}"
     else:
-        stem = {"snapshot-to-feed": "feed", "contention-empty-range": "contention", "snapshot-selectors": "selectors", "cross-edge-endpoint-uniqueness": "edge-unique", "immutable-columns": "columns", "late-correction-old-index":"correction"}[spec["family"]]
+        stem = {"snapshot-to-feed": "feed", "contention-empty-range": "contention", "snapshot-selectors": "selectors", "cross-edge-endpoint-uniqueness": "edge-unique", "immutable-columns": "columns", "late-correction-old-index":"correction", "partition-local-create-update":"create-update"}[spec["family"]]
         expected = f"graph-workload-{stem}-v2-{spec['layout']}-{bytes(p['Run']).hex()}"
     require(config["Graph"] == expected, "same native graph/run admission")
     actual = record["Record"]

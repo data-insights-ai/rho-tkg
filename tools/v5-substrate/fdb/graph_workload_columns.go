@@ -63,7 +63,7 @@ func graphColumnsSpecFromEnv() (graphSelectorsSpec, string, error) {
 // emitted after the actual API returns/EOF, including native retries, waits and
 // its caller callback IO. Errors never emit successful timing/EOF evidence.
 func (a *graphSelectorsArtifacts) columnTiming(call, name string, at certificate, rows uint64, nanos int64) error {
-	if a == nil || a.h == nil || a.end.Spec.Family != graphColumnsFamily && a.end.Spec.Family != graphCorrectionFamily || nanos <= 0 || !validName(name) || rows > 3+2*a.h.config.Cost.Facts {
+	if a == nil || a.h == nil || a.end.Spec.Family != graphColumnsFamily && a.end.Spec.Family != graphCorrectionFamily && a.end.Spec.Family != graphCreateUpdateFamily || nanos <= 0 || !validName(name) || rows > 3+2*a.h.config.Cost.Facts {
 		return errInvalid
 	}
 	return a.event(struct {
@@ -86,7 +86,10 @@ func runGraphScalarReadWorkload(db fdb.Database, spec graphSelectorsSpec, run st
 	if spec.Family == graphCorrectionFamily {
 		c, kind = graphCorrectionConfig(spec, run), "workload-correction-v1"
 	}
-	if (spec.Version != 1 && spec.Version != 2) || spec.Family != graphColumnsFamily && spec.Family != graphCorrectionFamily || !validGraphCostProfile(c) {
+	if spec.Family == graphCreateUpdateFamily {
+		c, kind = graphCreateUpdateConfig(spec, run), "workload-create-update-v1"
+	}
+	if (spec.Version != 1 && spec.Version != 2) || spec.Family != graphColumnsFamily && spec.Family != graphCorrectionFamily && spec.Family != graphCreateUpdateFamily || !validGraphCostProfile(c) {
 		return errInvalid
 	}
 	admission, err := graphTransportAdmission(spec.Version, spec.Family, run)
@@ -156,10 +159,14 @@ func runGraphScalarReadWorkload(db fdb.Database, spec graphSelectorsSpec, run st
 			return err
 		}
 	}
+	phaseBegin := time.Now()
 	if err := apply("create", 0); err != nil {
 		return err
 	}
 	if err := h.graphSelectorsPhase(ctx, a, "create"); err != nil {
+		return err
+	}
+	if err := a.createUpdatePhase("create", phaseBegin); err != nil {
 		return err
 	}
 	old, err := a.open(source, "old-fresh", graphSnapshotRequest{Mode: "Fresh", Scope: []uint8{0, 1}})
@@ -184,6 +191,7 @@ func runGraphScalarReadWorkload(db fdb.Database, spec graphSelectorsSpec, run st
 		return err
 	}
 	// fact0's actual value6 is authoritative before parallel dependents start.
+	phaseBegin = time.Now()
 	if err := apply("update", 0); err != nil {
 		return err
 	}
@@ -192,6 +200,9 @@ func runGraphScalarReadWorkload(db fdb.Database, spec graphSelectorsSpec, run st
 		updates /= 2
 	}
 	if err := h.graphWorkloadPhase(ctx, a, "update", updates); err != nil {
+		return err
+	}
+	if err := a.createUpdatePhase("update", phaseBegin); err != nil {
 		return err
 	}
 	if err := a.observe("held-old-after-update", old, 5); err != nil {

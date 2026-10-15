@@ -68,6 +68,7 @@ func TestGraphTransportFamilyBindingAndCanceledNativeEntry(t *testing.T) {
 	}{
 		{graphContentionFamily, 150000300, 2}, {graphSelectorsFamily, 200000300, 3}, {graphEdgeUniqueFamily, 600000700, 4}, {graphColumnsFamily, 200000300, 6}, {graphCorrectionFamily, 150000300, 7},
 		{graphOwnerTransferFamily, 212500300, 8},
+		{graphCreateUpdateFamily, 200000300, 9},
 	} {
 		p := graphTransportGuardPolicy()
 		p.Spec.Family = cell.family
