@@ -679,7 +679,7 @@ def label_changes(logical, partition, round_, expected_axis, seen):
     definition = hashlib.sha256(b"rho-tkg:axis:v1\0" + descriptor).digest()
     require(definition == expected_axis and [c.number(4) for _ in range(3)] == [0, 0, 0] and c.number(4) == 1, "label CDC no entity/life/value or extra component rows")
     owner, life, kind, name, member = c.number(), c.number(), c.number(1), c.field(256), c.number()
-    require(owner == (1 if partition == 3 else 17) and owner not in seen and life == owner + 1 and kind == 2 and name == b"family-conflict" and member == 0 and c.number(4) == 0, "label CDC complete exact component key")
+    require(owner == (1 if partition == 3 else 17) and owner not in seen and life == owner + 1 and kind == 2 and name == b"family-conflict" and member == 0 and c.number(4) == 1, "label CDC complete exact component key/one-based axis")
     scope = b"TS\1" + bytes([profile]) + axis_id + definition + bytes([6])
     require(c.field(53) == scope, "label CDC whole native-domain ownership")
     changes = P.Cursor(c.field())

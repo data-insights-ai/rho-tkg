@@ -15,6 +15,30 @@ SPEC.loader.exec_module(F)
 
 
 class NativeFaultFamilyGuards(unittest.TestCase):
+    def test_label_cdc_scope_uses_its_one_based_axis_and_rejects_absent_or_foreign_axis(self):
+        # Inert primary-codec bytes exercise only this parser. They are not a
+        # native artifact, process result, authority or passing source witness.
+        field = lambda value: struct.pack(">I", len(value)) + value
+        axis_id, profile, reference, unit = b"a"*16, 2, b"declared-axis", b"unit"
+        descriptor = axis_id + struct.pack(">BH", profile, 1) + field(reference) + field(unit)
+        definition = hashlib.sha256(b"rho-tkg:axis:v1\0" + descriptor).digest()
+        scope = b"TS\1" + bytes([profile]) + axis_id + definition + bytes([6])
+        changes = (b"CC\1" + bytes([profile]) + axis_id + definition + struct.pack(">I", 1)
+                   + field(scope) + bytes(34) + bytes([1, 1]) + struct.pack(">4Q", 0, 0, 7, 71))
+        for partition, owner in ((3, 1), (8, 17)):
+            def encoded(axis_index):
+                body = (b"GCD\5" + F.P.GRAPH + struct.pack(">QB3QII", partition, 0, 0, 0, 0, 0, 1)
+                        + descriptor + struct.pack(">4I", 0, 0, 0, 1)
+                        + struct.pack(">QQB", owner, owner+1, 2) + field(b"family-conflict")
+                        + struct.pack(">QI", 0, axis_index) + field(scope) + field(changes))
+                return body + hashlib.sha256(body).digest()
+            seen = set()
+            F.label_changes(encoded(1), partition, 7, definition, seen)
+            self.assertEqual(seen, {owner})
+            for index in (0, 2):
+                with self.subTest(partition=partition, index=index), self.assertRaises(ValueError):
+                    F.label_changes(encoded(index), partition, 7, definition, set())
+
     def test_range_profile_split_publication_ends_at_one_not_sixteen(self):
         def sealed(magic, body):
             wire = magic+body
