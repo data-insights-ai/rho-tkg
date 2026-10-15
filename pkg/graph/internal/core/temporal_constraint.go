@@ -47,6 +47,12 @@ func (c *Core) checkRelWithinEndpoints(r *types.Relationship, startNode, endNode
 // isStart=true means startNode; false means endNode (controls which error is returned).
 func (c *Core) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Instant, node *types.Node, isStart bool) error {
 	nodeFrom := c.nodeValidFrom(node)
+	if relFrom == types.UnboundedValidFrom && relFrom < nodeFrom {
+		// A relationship valid since -inf (backlog 73) is bounded by where the
+		// endpoint's life starts, not by its current row: an endpoint whose
+		// first version is unbounded is valid there too after an update.
+		nodeFrom = c.nodeLifeFirstStart(node, nodeFrom)
+	}
 
 	var nodeTo types.Instant
 	if tm := node.Temporal(); tm != nil {
@@ -130,6 +136,30 @@ func (c *Core) checkNodeCloseRelWithinEndpoints(id types.NodeID, current *types.
 		}
 	}
 	return nil
+}
+
+// nodeLifeFirstStart is the start of the first version of node's entity when
+// that version is unbounded (types.UnboundedValidFrom) and no delete ended a
+// life since (a re-imported ID's later life starts at its own row), else
+// current, node's own start. Read only for a relationship starting at -inf.
+func (c *Core) nodeLifeFirstStart(node *types.Node, current types.Instant) types.Instant {
+	if node.Version() == 0 {
+		return current
+	}
+	history, err := c.getNodeHistory(node.ID())
+	if err != nil || len(history) == 0 {
+		return current
+	}
+	for _, h := range history {
+		if tm := h.Temporal(); tm != nil && tm.DeletedAt != 0 {
+			return current
+		}
+	}
+	first := versionOrdered(history)[0]
+	if tm := first.Temporal(); first.Version() == 0 && tm != nil && tm.ValidFrom == types.UnboundedValidFrom {
+		return types.UnboundedValidFrom
+	}
+	return current
 }
 
 func nodeWithValidTo(n *types.Node, validTo types.Instant) *types.Node {
