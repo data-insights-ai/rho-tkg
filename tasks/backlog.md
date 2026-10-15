@@ -757,6 +757,16 @@ encoding, hashing and by-value output. Authored guards compare exact prior/post
 metadata and retain old data through activation, collection and dormant cleanup.
 Reusable process wiring and broader applicable P01–P09 leader/message/conflict
 composition remain in implementation. None of these new guards ran.
+The first actual state/process composition is source-integrated at `7081f9ff`:
+twelve import Begin/Append/seal/activation/unclaimed-retirement/physical-clear
+cells select the real native batch before or after Commit(Sync), persist its
+exact observation, self-kill and recover the same directory. The independent
+checker joins the actual AS5 stream, complete EOF, original request/prefix and
+old/current serial witnesses. Physical-clear targets come from the same live
+Begin observation and acknowledged import owner. Initialization is explicitly
+unsupported by this finite recipe. Publication/checkpoint, retention-reader and
+the broader applicable protocol/message/leader/conflict combinations remain
+implementation work; no runtime qualification or whole-D closure is implied.
 
 Native snapshot-to-feed ownership is source-integrated at `4868f0f7`. One genuine
 issued pin retains the snapshot and full-vector feed; complete original-round
@@ -781,6 +791,15 @@ cursor, preserving immutable original results after raw sidecar collection
 without emitting duplicate business changes. Its authored guard distinguishes
 that new retry from an expired historical frame. Source integration is not
 runtime qualification.
+
+The scalar native workload factory builds fresh claims from authenticated,
+installed grant references; it does not call `Recipient`/`Cursor.Next`. Keep
+reservation, installation, fresh application claims and cursor issuance distinct
+in the allocator cost comparison. Source review also found that the shared feed
+checker hashes `grants.jsonl` without independently joining its full reserve and
+install originals. The selector implementation is adding that bounded join;
+the feed follow-up must reuse it before comparative qualification. Neither
+expected numeric IDs nor an artifact hash establishes cursor issuance.
 
 Current worker lanes: Sol 6.1/high for the remaining native workload families,
 starting with snapshot selectors after the feed integration; Sol 6.1/high for
