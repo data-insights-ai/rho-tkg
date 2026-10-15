@@ -498,11 +498,14 @@ cross-edge uniqueness, immutable columns and late correction; their fresh owned 
 local/1/20/100ms. Native has contention, cross-edge and snapshot-to-feed source
 drivers across local/1/20/100ms, with local paired comparisons. Unsupported semantics
 or transport refuse before effects.
-Each selected-family matrix contains 360 fresh cells;
+Each family/transport matrix contains 360 fresh cells; the complete eight-family,
+four-transport matrix contains 11,520 cells per engine.
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
 No new cell, guard or runtime gate has run. The two remaining FDB family drivers
-(partition-local and transfer/retained-pins), native
-parity, full matrix and engine decision remain open.
+(partition-local and transfer/retained-pins), and native partition-local,
+snapshot-selectors, immutable-columns, late-correction and transfer/retained-pins
+drivers remain implementation work. Full matrix qualification and the engine
+decision remain open.
 The FDB transfer prerequisite is source-integrated at `d13cc3eb`: a fresh
 owner-catalog namespace maps stable logical buckets to processing owners and
 monotone epochs. Native execution checks current authority before replay and
