@@ -1186,8 +1186,16 @@ not establish long-lived-store endurance or full D acceptance.
 
 Current worker lanes: Sol 6.1/high for the remaining P06 leader/message source;
 Sol 6.1/high for P07–P09 leader/message composition against the frozen state API;
-Sol 6.1/high for existing CI selection/dependency associations for the new
-parents and guards. These are source changes; CI execution remains deferred.
+Sol 6.1/high for actual sender/leader loss during in-flight snapshot/import.
+Existing receiver-loss fixtures do not establish sender loss. Actual leader1
+publication before/after remains covered by its existing source parent.
+CI selection/dependency associations are source-integrated at `4c336669` for
+the integrated protocol core, leader/message program, Ready companion and
+pooled-state parents/guards, including their private Go attachments and
+transitive Python/data dependencies. Existing workflow/run budgets are unchanged.
+The two selector files and complete current parents passed source/hash and
+whitespace review; no selector/test/CI execution ran. Forthcoming P06,
+state-program and snapshot-loss parents still need their exact associations.
 FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing
 authority; these prefixes do not establish physical server placement. Source
