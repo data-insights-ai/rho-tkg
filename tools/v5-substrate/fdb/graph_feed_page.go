@@ -175,6 +175,9 @@ func (f *graphFeed) sealedIn(tr fdb.ReadTransaction, p graphFeedPage) error {
 	return nil
 }
 func (f *graphFeed) enter() error {
+	if f != nil && f.retained != nil {
+		return f.retained.enter()
+	}
 	if f == nil || f.s == nil || f.reader == nil || f.lifetime == nil {
 		return errInvalid
 	}
@@ -198,6 +201,10 @@ func (f *graphFeed) enter() error {
 	return nil
 }
 func (f *graphFeed) leave() {
+	if f.retained != nil {
+		f.retained.leave()
+		return
+	}
 	f.lifetime.mu.Lock()
 	f.lifetime.busy = false
 	f.lifetime.mu.Unlock()
@@ -218,7 +225,7 @@ func (f *graphFeed) Page(ctx context.Context, request string, boundary certifica
 		return zero, err
 	}
 	defer f.leave()
-	ctx, cancel, boundErr := feedContext(ctx, f.token)
+	ctx, cancel, boundErr := f.s.feedRunContext(ctx, f.token)
 	if boundErr != nil {
 		return zero, boundErr
 	}
@@ -238,7 +245,7 @@ func (f *graphFeed) Page(ctx context.Context, request string, boundary certifica
 		if err != nil {
 			return false, err
 		}
-		if err := f.reader.check(tr); err != nil {
+		if err := f.checkReaderIn(tr); err != nil {
 			return false, err
 		}
 		key := f.s.key("page/"+f.token.Request, request)
@@ -329,7 +336,7 @@ func (f *graphFeed) Page(ctx context.Context, request string, boundary certifica
 	}
 	// The returned witness is the genuine persisted page, not the submitted Set.
 	result, _, err := graphCostParallelRead(ctx, f.s.source.h.db, func(tr fdb.ReadTransaction) (graphFeedDelivery, error) {
-		if err := f.reader.check(tr); err != nil {
+		if err := f.checkReaderIn(tr); err != nil {
 			return zero, err
 		}
 		record, err := snapshotStored(tr, f.s.key("page/"+f.token.Request, request), f.original.Policy.PageBytes)
@@ -364,7 +371,7 @@ func (f *graphFeed) Ack(ctx context.Context, request string, pageDigest [32]byte
 		return zero, err
 	}
 	defer f.leave()
-	ctx, cancel, boundErr := feedContext(ctx, f.token)
+	ctx, cancel, boundErr := f.s.feedRunContext(ctx, f.token)
 	if boundErr != nil {
 		return zero, boundErr
 	}
@@ -377,7 +384,7 @@ func (f *graphFeed) Ack(ctx context.Context, request string, pageDigest [32]byte
 		if err != nil {
 			return false, err
 		}
-		if err := f.reader.check(tr); err != nil {
+		if err := f.checkReaderIn(tr); err != nil {
 			return false, err
 		}
 		ackKey := f.s.key("ack/"+f.token.Request, request)
@@ -439,7 +446,7 @@ func (f *graphFeed) Ack(ctx context.Context, request string, pageDigest [32]byte
 		return zero, err
 	}
 	result, _, err := graphCostParallelRead(ctx, f.s.source.h.db, func(tr fdb.ReadTransaction) (graphFeedAcknowledgement, error) {
-		if err := f.reader.check(tr); err != nil {
+		if err := f.checkReaderIn(tr); err != nil {
 			return zero, err
 		}
 		record, err := snapshotStored(tr, f.s.key("ack/"+f.token.Request, request), 8192)

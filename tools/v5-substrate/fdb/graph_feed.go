@@ -74,11 +74,13 @@ type graphFeedBinding struct {
 	Policy          graphFeedPolicy
 	Selector, Order string
 	Admission       *graphTransportPolicy `json:",omitempty"`
+	Retention       *graphOwnerBinding    `json:",omitempty"`
 }
 type graphFeedLedger struct{ Records, Bytes, CleanupTickets uint64 }
 type graphFeedStore struct {
-	source  *graphHistoryRetention
-	binding graphFeedBinding
+	source     *graphHistoryRetention
+	binding    graphFeedBinding
+	stopNormal context.CancelFunc // Feed3 caller-owned local IO lifetime, not native authority.
 }
 type graphFeedOriginal struct {
 	Version       uint8
@@ -91,6 +93,7 @@ type graphFeedOriginal struct {
 	Opening       graphSnapshotWork
 	DeadlineNanos int64
 	Admission     [32]byte `json:",omitzero"`
+	Catalog       [32]byte `json:",omitzero"`
 }
 
 func (o graphFeedOriginal) validate() error {
@@ -108,7 +111,8 @@ func (o graphFeedOriginal) validate() error {
 			}
 		}
 	}
-	if !(o.Version == 1 && o.Admission == [32]byte{} || o.Version == 2 && o.Admission != [32]byte{}) || o.DeadlineNanos <= 0 || !validName(o.Request) || o.Secret == [32]byte{} || o.Policy.validate() != nil || o.Selection.Mode != "Fresh" || o.Selection.validate() != nil || !bytes.Equal(o.Selection.Scope, []byte{0, 1}) || !bytes.Equal(o.Cut.Scope, []byte{0, 1}) || o.Cut.Round == 0 || !historyOwnerValid(o.Pin) || !historyOwnerValid(o.Snapshot) || o.Pin.Kind != "pin" || o.Snapshot.Kind != "read" || o.Pin.State != historyActive || o.Snapshot.State != historyActive || !sameCertificate(o.Cut, o.Pin.Cut) || !sameCertificate(o.Cut, o.Snapshot.Cut) || !sameCertificate(o.Pin.Required, o.Snapshot.Required) || o.Snapshot.PinRequest != o.Pin.Request {
+	version := o.Version == 1 && o.Admission == [32]byte{} && o.Catalog == [32]byte{} || o.Version == 2 && o.Admission != [32]byte{} && o.Catalog == [32]byte{} || o.Version == 3 && o.Admission == [32]byte{} && o.Catalog != [32]byte{}
+	if !version || o.DeadlineNanos <= 0 || !validName(o.Request) || o.Secret == [32]byte{} || o.Policy.validate() != nil || o.Selection.Mode != "Fresh" || o.Selection.validate() != nil || !bytes.Equal(o.Selection.Scope, []byte{0, 1}) || !bytes.Equal(o.Cut.Scope, []byte{0, 1}) || o.Cut.Round == 0 || !historyOwnerValid(o.Pin) || !historyOwnerValid(o.Snapshot) || o.Pin.Kind != "pin" || o.Snapshot.Kind != "read" || o.Pin.State != historyActive || o.Snapshot.State != historyActive || !sameCertificate(o.Cut, o.Pin.Cut) || !sameCertificate(o.Cut, o.Snapshot.Cut) || !sameCertificate(o.Pin.Required, o.Snapshot.Required) || o.Snapshot.PinRequest != o.Pin.Request {
 		return errInvalid
 	}
 	token := graphHistoryToken{o.Pin.Request, o.Cut, o.Pin.Secret}
@@ -148,6 +152,7 @@ type graphFeed struct {
 	lifetime *graphSnapshotLifetime
 	mu       sync.Mutex
 	busy     bool
+	retained *graphFeedRetainedReader
 }
 
 func (s *graphFeedStore) key(kind, name string) fdb.Key {
@@ -157,6 +162,9 @@ func newGraphFeedStore(ctx context.Context, source *graphHistoryRetention, p gra
 	return newGraphFeedStoreAdmission(ctx, source, p, nil)
 }
 func newGraphFeedStoreAdmission(ctx context.Context, source *graphHistoryRetention, p graphFeedPolicy, admission *graphTransportPolicy) (*graphFeedStore, error) {
+	return installGraphFeedStore(ctx, source, p, admission, nil)
+}
+func installGraphFeedStore(ctx context.Context, source *graphHistoryRetention, p graphFeedPolicy, admission *graphTransportPolicy, retention *graphOwnerBinding) (*graphFeedStore, error) {
 	if ctx == nil || source == nil || p.validate() != nil {
 		return nil, errInvalid
 	}
@@ -170,6 +178,20 @@ func newGraphFeedStoreAdmission(ctx context.Context, source *graphHistoryRetenti
 		}
 		own := *admission // Fixed arrays/strings only, no caller-owned slices.
 		s.binding.Version, s.binding.Admission = 2, &own
+	}
+	if retention != nil {
+		if admission != nil || retention.validate() != nil || retention.Version != 2 || retention.Config != source.h.config || !graphColumnSame(retention.Source, source.binding) {
+			return nil, errInvalid
+		}
+		body, err := wire(retention)
+		if err != nil {
+			return nil, err
+		}
+		own, err := decode[graphOwnerBinding](body)
+		if err != nil {
+			return nil, err
+		}
+		s.binding.Version, s.binding.Retention = 3, &own
 	}
 	body, err := wire(s.binding)
 	if err != nil {
@@ -231,6 +253,9 @@ func (s *graphFeedStore) checkIn(tr fdb.ReadTransaction) error {
 	return nil
 }
 func (s *graphFeedStore) admissionIn(tr fdb.ReadTransaction) error {
+	if s.binding.Retention != nil {
+		return s.retainedAdmissionIn(tr)
+	}
 	if s.binding.Admission == nil {
 		if s.binding.Version != 1 {
 			return errInvalid
@@ -318,6 +343,15 @@ func (s *graphFeedStore) originalIn(tr fdb.ReadTransaction, token graphFeedToken
 			return zero, errors.Join(errMismatch, err)
 		}
 	}
+	if p := s.binding.Retention; p != nil {
+		body, err := wire(p)
+		if err != nil {
+			return zero, err
+		}
+		if o.Catalog != sha256.Sum256(body) || o.DeadlineNanos != p.Transfer.DeadlineUnixNanos {
+			return zero, errMismatch
+		}
+	}
 	return o, nil
 }
 func (s *graphFeedStore) cursorIn(tr fdb.ReadTransaction, token graphFeedToken) (graphFeedCursor, error) {
@@ -354,6 +388,14 @@ func (s *graphFeedStore) Begin(ctx context.Context, request string, secret [32]b
 	if s == nil || ctx == nil || !validName(request) || secret == [32]byte{} {
 		return zero, errInvalid
 	}
+	if s.binding.Retention != nil {
+		bounded, cancel, err := s.retainedRunContext(ctx)
+		if err != nil {
+			return zero, err
+		}
+		defer cancel()
+		ctx = bounded
+	}
 	seed, err := s.source.readIdentity(cut{})
 	if err != nil {
 		return zero, err
@@ -368,6 +410,9 @@ func (s *graphFeedStore) Begin(ctx context.Context, request string, secret [32]b
 		if time.Now().UnixNano() < p.AdmittedUnixNanos || !deadline.After(time.Now()) {
 			return zero, context.DeadlineExceeded
 		}
+	}
+	if p := s.binding.Retention; p != nil {
+		deadline = time.Unix(0, p.Transfer.DeadlineUnixNanos)
 	}
 	actual, _, err := historyTransactContext(ctx, s.source.h.db, func() error { return nil }, func(tr fdb.Transaction) (graphFeedOriginal, error) {
 		if err := s.checkIn(tr); err != nil {
@@ -433,6 +478,13 @@ func (s *graphFeedStore) Begin(ctx context.Context, request string, secret [32]b
 				return zero, err
 			}
 		}
+		if p := s.binding.Retention; p != nil {
+			body, err := wire(p)
+			if err != nil {
+				return zero, err
+			}
+			o.Catalog = sha256.Sum256(body)
+		}
 		if err := o.validate(); err != nil {
 			return zero, err
 		}
@@ -454,6 +506,11 @@ func (s *graphFeedStore) Begin(ctx context.Context, request string, secret [32]b
 		}
 		for _, owner := range []graphHistoryOwner{o.Pin, o.Snapshot} {
 			if err := s.cleanupCreateIn(tr, o, owner); err != nil {
+				return zero, err
+			}
+		}
+		if s.binding.Retention != nil {
+			if err := s.createIn(tr, s.key("retained-phase", request), graphFeedRetainedPhase{Version: 1, Original: c.Original}, uint64(len(s.key("retained-phase", request)))+8192); err != nil {
 				return zero, err
 			}
 		}
@@ -559,7 +616,7 @@ func (s *graphFeedStore) Publish(ctx context.Context, o graphFeedOriginal) (*gra
 	if err != nil || ctx == nil || s == nil {
 		return nil, token, errors.Join(errInvalid, err)
 	}
-	ctx, cancel, err := feedContext(ctx, token)
+	ctx, cancel, err := s.feedRunContext(ctx, token)
 	if err != nil {
 		return nil, token, err
 	}
@@ -582,6 +639,9 @@ func (s *graphFeedStore) Publish(ctx context.Context, o graphFeedOriginal) (*gra
 		}
 		cursor, err := s.cursorIn(tr, token)
 		if err != nil {
+			return false, err
+		}
+		if err := s.retainedSnapshotIn(tr, token); err != nil {
 			return false, err
 		}
 		if cursor.State != graphFeedPrepared && cursor.State != graphFeedActive {
@@ -610,7 +670,7 @@ func (s *graphFeedStore) Open(ctx context.Context, token graphFeedToken, request
 	if s == nil || ctx == nil {
 		return nil, errInvalid
 	}
-	ctx, cancel, boundErr := feedContext(ctx, token)
+	ctx, cancel, boundErr := s.feedRunContext(ctx, token)
 	if boundErr != nil {
 		return nil, boundErr
 	}
@@ -621,6 +681,9 @@ func (s *graphFeedStore) Open(ctx context.Context, token graphFeedToken, request
 	o, _, err := graphCostParallelRead(ctx, s.source.h.db, func(tr fdb.ReadTransaction) (graphFeedOriginal, error) {
 		c, err := s.cursorIn(tr, token)
 		if err != nil {
+			return graphFeedOriginal{}, err
+		}
+		if err := s.retainedSnapshotIn(tr, token); err != nil {
 			return graphFeedOriginal{}, err
 		}
 		if c.State != graphFeedActive {
@@ -642,6 +705,9 @@ func (s *graphFeedStore) Open(ctx context.Context, token graphFeedToken, request
 	id, _, err := historyTransactContext(ctx, s.source.h.db, func() error { return nil }, func(tr fdb.Transaction) (graphHistoryOwner, error) {
 		c, err := s.cursorIn(tr, token)
 		if err != nil {
+			return graphHistoryOwner{}, err
+		}
+		if err := s.retainedSnapshotIn(tr, token); err != nil {
 			return graphHistoryOwner{}, err
 		}
 		key := s.key("reader/"+token.Request, request)
@@ -676,6 +742,9 @@ func (s *graphFeedStore) Open(ctx context.Context, token graphFeedToken, request
 		if err != nil {
 			return false, err
 		}
+		if err := s.retainedSnapshotIn(tr, token); err != nil {
+			return false, err
+		}
 		if c.State != graphFeedActive {
 			return false, errHistoryExpired
 		}
@@ -687,6 +756,9 @@ func (s *graphFeedStore) Open(ctx context.Context, token graphFeedToken, request
 	return &graphFeed{s: s, original: o, token: token, reader: r, lifetime: lifetime}, nil
 }
 func (f *graphFeed) Close() error {
+	if f != nil && f.retained != nil {
+		return f.retained.close()
+	}
 	if f == nil || f.lifetime == nil {
 		return errInvalid
 	}
@@ -699,6 +771,9 @@ func (f *graphFeed) Close() error {
 	return f.lifetime.close()
 }
 func (f *graphFeed) Work() graphSnapshotWork {
+	if f != nil && f.retained != nil {
+		return f.retained.work()
+	}
 	if f == nil || f.lifetime == nil {
 		return graphSnapshotWork{}
 	}
@@ -708,7 +783,7 @@ func (s *graphFeedStore) Finish(ctx context.Context, token graphFeedToken, reque
 	if ctx == nil || s == nil {
 		return errInvalid
 	}
-	ctx, cancel, boundErr := feedContext(ctx, token)
+	ctx, cancel, boundErr := s.feedCleanupContext(ctx, token)
 	if boundErr != nil {
 		return boundErr
 	}
@@ -751,7 +826,7 @@ func (s *graphFeedStore) cleanupCreateIn(tr fdb.Transaction, o graphFeedOriginal
 		return err
 	}
 	if found {
-		if previous.Original != token.Original || !graphColumnSame(previous.Owner, owner) || previous.OuterDeadlineNanos != o.DeadlineNanos {
+		if previous.Original != token.Original || !graphColumnSame(previous.Owner, owner) || previous.OuterDeadlineNanos != s.feedCleanupCeiling(o.DeadlineNanos) {
 			return errMismatch
 		}
 		return nil
@@ -763,7 +838,7 @@ func (s *graphFeedStore) cleanupCreateIn(tr fdb.Transaction, o graphFeedOriginal
 	if ledger.CleanupTickets >= 64 {
 		return errLimit
 	}
-	ticket := graphFeedCleanup{Original: token.Original, Owner: owner, OuterDeadlineNanos: o.DeadlineNanos}
+	ticket := graphFeedCleanup{Original: token.Original, Owner: owner, OuterDeadlineNanos: s.feedCleanupCeiling(o.DeadlineNanos)}
 	if err := s.createIn(tr, key, ticket, uint64(len(key))+historyControlBytes); err != nil {
 		return err
 	}
@@ -783,7 +858,7 @@ func (s *graphFeedStore) cleanupIn(tr fdb.ReadTransaction, token graphFeedToken,
 	if err != nil || !found {
 		return ticket, errors.Join(errUnavailable, err)
 	}
-	if ticket.Original != token.Original || ticket.OuterDeadlineNanos != o.DeadlineNanos || !historyOwnerValid(ticket.Owner) || ticket.Owner.Request != owner || ticket.Owner.State != historyActive || !sameCertificate(ticket.Owner.Cut, o.Cut) || !sameCertificate(ticket.Owner.Required, o.Pin.Required) || ticket.Calls > 8 || ticket.Rows != uint64(ticket.Calls)*1024 || ticket.Bytes != uint64(ticket.Calls)*(64<<20) || ticket.DeadlineNanos > ticket.OuterDeadlineNanos || ticket.DeadlineNanos < 0 || (ticket.Calls == 0) != (ticket.DeadlineNanos == 0) {
+	if ticket.Original != token.Original || ticket.OuterDeadlineNanos != s.feedCleanupCeiling(o.DeadlineNanos) || !historyOwnerValid(ticket.Owner) || ticket.Owner.Request != owner || ticket.Owner.State != historyActive || !sameCertificate(ticket.Owner.Cut, o.Cut) || !sameCertificate(ticket.Owner.Required, o.Pin.Required) || ticket.Calls > 8 || ticket.Rows != uint64(ticket.Calls)*1024 || ticket.Bytes != uint64(ticket.Calls)*(64<<20) || ticket.DeadlineNanos > ticket.OuterDeadlineNanos || ticket.DeadlineNanos < 0 || (ticket.Calls == 0) != (ticket.DeadlineNanos == 0) {
 		return ticket, errMismatch
 	}
 	if ticket.Owner.Kind == "pin" {
@@ -806,7 +881,7 @@ func (s *graphFeedStore) cleanup(ctx context.Context, token graphFeedToken, owne
 	if s == nil || ctx == nil || !validName(owner) || !validName(request) || terminal != historyReleased && terminal != historyExpired {
 		return graphSnapshotWork{}, errInvalid
 	}
-	ctx, outerCancel, boundErr := feedContext(ctx, token)
+	ctx, outerCancel, boundErr := s.feedCleanupContext(ctx, token)
 	if boundErr != nil {
 		return graphSnapshotWork{}, boundErr
 	}
@@ -879,8 +954,14 @@ func (s *graphFeedStore) cleanup(ctx context.Context, token graphFeedToken, owne
 					return false, errors.Join(errMismatch, err)
 				}
 			} else if c.State == graphFeedActive {
-				if err := s.source.terminateIn(tr, owner, actual.Owner.Secret, terminal, request); err != nil {
+				retained, err := s.isRetainedOnlyIn(tr, token)
+				if err != nil {
 					return false, err
+				}
+				if !retained {
+					if err := s.source.terminateIn(tr, owner, actual.Owner.Secret, terminal, request); err != nil {
+						return false, err
+					}
 				}
 			} else if c.State != desired || c.TerminalRequest != request {
 				return false, errMismatch
@@ -916,7 +997,7 @@ func (s *graphFeedStore) CloseReader(ctx context.Context, token graphFeedToken, 
 	if s == nil || !validName(request) {
 		return graphSnapshotWork{}, errInvalid
 	}
-	ctx, cancel, err := feedContext(ctx, token)
+	ctx, cancel, err := s.feedCleanupContext(ctx, token)
 	if err != nil {
 		return graphSnapshotWork{}, err
 	}
