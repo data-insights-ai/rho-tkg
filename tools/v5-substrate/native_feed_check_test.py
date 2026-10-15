@@ -29,6 +29,12 @@ class NativeFeedGuards(unittest.TestCase):
 
     def test_scalar_reuse_keeps_exact_feed_wrapper_parameters(self):
         end={"spec":self.spec,"Snapshot":"actual-C"}
+        with patch.object(check,"_scalar_grants",return_value="grants") as helper:
+            self.assertEqual(check.grants("owned",end,"spool"),"grants")
+            helper.assert_called_once_with("owned",end,"spool",check.AGREEMENT,check.cut)
+        with patch.object(check,"_scalar_claims",return_value="claims") as helper:
+            self.assertEqual(check.claims("owned",end,"spool"),"claims")
+            helper.assert_called_once_with("owned",end,"spool")
         with patch.object(check,"_scalar_attempts",return_value="attempts") as helper:
             self.assertEqual(check.attempts("owned",end,"spool"),"attempts")
             helper.assert_called_once_with("owned",end,"spool")
@@ -38,6 +44,20 @@ class NativeFeedGuards(unittest.TestCase):
         with patch.object(check,"_scalar_columns",return_value="columns") as helper:
             self.assertEqual(check.columns("owned",end,"spool"),"columns")
             helper.assert_called_once_with("owned",end,"spool",check.cut,check.frames(self.spec),"actual-C")
+
+    def test_feed_claim_requires_actual_prior_installed_grant(self):
+        # Inert join fixture; workload grants() alone authenticates this roster
+        # from native reserve/install originals. No Recipient.Next is inferred.
+        session=b"s"*40
+        wire=b"\1"+u64(0)+u64(7)+session+u64(1)
+        with tempfile.TemporaryDirectory() as path:
+            with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
+                with self.assertRaises(ValueError):check._scalar_claim_binding(check.cursor(wire),(1,0,7),3,10,spool)
+                spool.insert(b"installed-grant",session+u64(1),check.encoded({"home":3,"first":1,"last":86,"index":9}))
+                check._scalar_claim_binding(check.cursor(wire),(1,0,7),3,10,spool)
+                for body,expected,home,index in ((b"\2"+wire[1:],(1,0,7),3,10),(wire,(1,0,7),8,10),(wire,(1,0,7),3,9),
+                        (b"\1"+u64(0)+u64(87)+session+u64(1),(1,0,87),3,10)):
+                    with self.assertRaises(ValueError):check._scalar_claim_binding(check.cursor(body),expected,home,index,spool)
 
     def test_strict_operation_and_original_request_binding(self):
         dataset=list(hashlib.sha256(b"\1"+struct.pack(">QQ",40,50)+b"graph-v2").digest())

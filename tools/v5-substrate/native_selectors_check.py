@@ -61,98 +61,15 @@ def frames(s):
 
 
 def grants(directory,end,spool):
-    """Authenticate native reservation and installed range before any claims.
-
-    The scalar fixture uses explicit IDs backed by actual stored grant
-    references, not Recipient.Next cursors. No cursor counter is inferred from
-    these receipts; every PGO claim below must name this exact installed grant.
-    """
-    reserved={};installed={};roots={};indexes={};begun={};global_sequence=0;next_id=1
-    for row in lines(directory/"grants.jsonl",64):
-        fields(row,"Actor Action Index Proposal Outcome CDC Root")
-        action=integer(row["Action"],1,5);integer(row["Actor"],1,4)
-        p=cursor(blob(row["Proposal"]));scope=checked(p.field(256),b"APS\1",156);command=p.field(1<<20);p.done()
-        require(scope[:16].hex()==raw.GRAPH and scope[88:]==AGREEMENT,"bootstrap exact graph/semantic")
-        part=int.from_bytes(scope[16:24],"big");require(part in (3,8),"bootstrap actual native partition")
-        index=integer(row["Index"],1);require(index>indexes.get(part,0),"bootstrap original index reordered")
-        indexes[part]=index;image=blob(row["Root"]);column.root(raw,image,part);roots[part]=image
-        out=checked(blob(row["Outcome"]),b"GRO\2",120)
-        require(out[1:25]==scope[:24] and out[41:73]==digest(command) and out[73:81]==u64(index) and out[81] in (1,4) and out[82:]==bytes(2),"actual immutable bootstrap original/hash/index")
-        if action==1:
-            require(out[0]==8 and row["CDC"] is not None and blob(row["CDC"]),"genuine initialized native namespace")
-            continue
-        c=cursor(checked(command,b"AQP\1",1<<20));kind=c.number(1);namespace=c.take(24);request=c.take(16);configuration=c.take(32)
-        require(namespace==scope[:24] and request==out[25:41] and kind==out[0] and not blob(row["CDC"]),"canonical native allocation control original")
-        session=sequence=count=None
-        if kind==10:
-            session=c.take(40);home,previous=c.number(),c.number()
-            require(action==2 and session[0] in (1,2) and session[1:16]==bytes(15) and any(session[16:32]) and int.from_bytes(session[32:],"big")==1
-                    and home==(3 if session[0]==1 else 8) and previous==0,"genuine original recipient/home/incarnation")
-            require(home not in begun,"recipient reborn during bootstrap");begun[home]=session
-        elif kind==15:
-            session,sequence,count=c.take(40),c.number(),c.number()
-            require(action==4 and part==3 and count>0,"genuine allocator reservation")
-        else:require(kind in (11,12,13,14,16) and action==(5 if kind==16 else 3),"unsupported bootstrap transition")
-        o=cursor(checked(c.field(32768),b"APO\1",32768));c.done()
-        observed_kind,source,observed_index=o.number(1),o.take(120),o.number()
-        observed_config,epoch,effect=o.take(32),o.number(),o.take(32);payload=o.field(4096);o.done()
-        require(source[:16]==scope[:16] and source[88:]==AGREEMENT and observed_index>0 and observed_config==configuration and epoch>0 and any(effect),"actual completed native allocation observation")
-        if kind==15:
-            require(observed_kind==3 and source==scope and begun.get(3 if session[0]==1 else 8)==session,"reservation binds active exact recipient")
-            key=session+u64(sequence);require(key not in reserved,"duplicate reservation cannot allocate a second range")
-            reserved[key]={"session":session,"sequence":sequence,"count":count,"index":index,"configuration":configuration,"scope":scope}
-        elif kind==16:
-            require(observed_kind==4 and source[16:24]==u64(3),"installed grant needs actual source reservation observation")
-            # APG2 is exactly512 bytes, followed by the109-byte current owner.
-            require(len(payload)==621,"bounded complete published grant/owner payload")
-            g=cursor(checked(payload[:512],b"APG\2",512))
-            grant_ns,grant_config,grant_scope,grant_index=g.take(24),g.take(32),g.take(120),g.number()
-            graph,gsession,gsequence,gcount=g.take(16),g.take(40),g.number(),g.number()
-            reservation_graph,authority,allocation_sequence,allocation_count,first,last=g.take(16),g.take(24),g.number(),g.number(),g.number(),g.number()
-            installed_index=g.number();publication=checked(g.take(140),b"RPB\1",140);g.done()
-            owner=checked(payload[512:],b"ROF\1",109)
-            key=gsession+u64(gsequence);r=reserved.get(key)
-            require(r is not None and key not in installed and grant_ns==source[:24] and grant_config==configuration==r["configuration"]
-                    and grant_scope==source==r["scope"] and grant_index==installed_index==r["index"] and observed_index>=grant_index
-                    and graph==reservation_graph==scope[:16] and gcount==allocation_count==r["count"] and any(authority[:16]) and int.from_bytes(authority[16:],"big")>0,
-                    "installed native grant differs from its exact original reservation")
-            home=3 if gsession[0]==1 else 8
-            require(part==home and begun.get(home)==gsession and allocation_sequence==global_sequence+1 and first==next_id and last-first+1==gcount,
-                    "actual allocator high water/range and recipient home")
-            expected_count=min(1<<20,6+2*end["spec"]["facts"]-(gsequence-1)*(1<<20)) if home==3 else 2
-            require(gcount==expected_count and gsequence==(sum(v["home"]==home for v in installed.values())+1),"complete bounded multi-block range shape")
-            require(publication==graph+u64(first)+u64(first)+u64(last)+u64(home)+scope[40:48]+configuration+u64(3)+u64(grant_index)
-                    and owner==graph+u64(first)+u64(home)+scope[40:48]+configuration+b"\0","actual native range publication/owner")
-            installed[key]={"home":home,"first":first,"last":last,"index":index};global_sequence+=1;next_id=last+1
-            spool.insert(b"installed-grant",key,encoded(installed[key]))
-    require(len(installed)==len(reserved)==(6+2*end["spec"]["facts"]+(1<<20)-1)//(1<<20)+1
-            and next_id==9+2*end["spec"]["facts"] and set(begun)=={3,8},"complete authentic HOME+remote range issuance")
-    for cert in cut(end["Initial"]):require(roots[cert["partition"]]==cert["image"],"initial certificate differs from actual bootstrap native root")
+    return scalar._scalar_grants(directory,end,spool,AGREEMENT,cut)
 
 
 def claims(directory,end,spool):
-    for a in lines(directory/"attempts.jsonl",16*end["spec"]["facts"]+4):
-        phase,fact,ordinal=scalar.operation(end["spec"],a["Operation"])
-        proposal=blob(a["Proposal"]);raw.native_parallel_proposal(proposal,array(a["Request"],16),ordinal)
-        inner=checked(proposal[145:-32],b"PGO\1",1<<20)
-        owner=(1,3,2*end["spec"]["facts"]+7)[fact] if phase=="setup" else 7+2*fact
-        expected=[(1,0,owner),(2,owner,owner+1)] if phase in ("setup","create") else []
-        if phase!="setup" and fact==0:expected.append((3,0,5 if phase=="create" else 6))
-        width=65;start=len(inner)-len(expected)*width-4
-        require(start>=61 and int.from_bytes(inner[start:start+4],"big")==len(expected),"actual complete PGO fresh claim roster")
-        c=cursor(inner[start+4:])
-        for role,claim_owner,identity in expected:
-            home=8 if phase=="setup" and fact==2 else 3
-            claim_binding(c,(role,claim_owner,identity),home,integer(a["OriginalIndex"],1),spool)
-        c.done()
+    return scalar._scalar_claims(directory,end,spool)
 
 
 def claim_binding(c,expected,home,business_index,spool):
-    actual_role,actual_owner,actual_id,session,sequence=c.number(1),c.number(),c.number(),c.take(40),c.number()
-    require((actual_role,actual_owner,actual_id)==expected,"changed claim role/identity/owner")
-    grant=decoded(spool.lookup(b"installed-grant",session+u64(sequence)))
-    require(grant["home"]==home and grant["first"]<=actual_id<=grant["last"] and 0<grant["index"]<business_index,
-            "business fresh claim lacks genuine prior installed native reservation")
+    return scalar._scalar_claim_binding(c,expected,home,business_index,spool)
 
 
 def cut(value):

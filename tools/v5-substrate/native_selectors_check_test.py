@@ -4,6 +4,7 @@ import copy
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import native_selectors_check as check
 import native_selectors_cell as cell
@@ -14,6 +15,15 @@ from comparison_spool import Policy, Spool, u64
 class NativeSelectorsGuards(unittest.TestCase):
     def setUp(self):
         self.spec={"version":1,"family":"snapshot-selectors","facts":40,"crossPercent":50,"writers":32,"layout":"columns"}
+
+    def test_grant_factoring_keeps_exact_selector_semantic_and_cut(self):
+        end={"spec":self.spec}
+        with patch.object(check.scalar,"_scalar_grants",return_value="grants") as helper:
+            self.assertEqual(check.grants("owned",end,"spool"),"grants")
+            helper.assert_called_once_with("owned",end,"spool",check.AGREEMENT,check.cut)
+        with patch.object(check.scalar,"_scalar_claims",return_value="claims") as helper:
+            self.assertEqual(check.claims("owned",end,"spool"),"claims")
+            helper.assert_called_once_with("owned",end,"spool")
 
     def test_strict_dimensions_and_real_transport_boundary(self):
         check.shape(self.spec)
