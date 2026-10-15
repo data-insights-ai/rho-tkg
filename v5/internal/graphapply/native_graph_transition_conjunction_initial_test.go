@@ -36,6 +36,7 @@ type nativeP06InitialArtifact struct {
 	InitialReopened, FirstReopened                                      p06Observation
 	ReceiptReads, ReceiptGrantBytes, GateCandidates, GateDecodeWork     uint64
 	InitialCapture, RecoveryCapture                                     nativeP06InitialCharge
+	Program                                                             *nativeP06ProgramEvidence `json:",omitempty"`
 }
 
 func nativeP06InitialName(r nativeP06ConjunctionRecipe) string {
@@ -89,7 +90,7 @@ func nativeP06InitialLocalRoute(hub *graphProcessHub, member, a, b uint64) error
 	return nil
 }
 
-func nativeP06InitialRegisterCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
+func nativeP06InitialRegisterCase(t *testing.T, recipe nativeP06ConjunctionRecipe, programs ...nativeProtocolProgramSpec) {
 	t.Helper()
 	if !recipe.valid() || recipe.Phase != 0 || recipe.Partition != 0 || recipe.Stage != "" {
 		t.Fatal("initial Register is a separate pre-YES causal recipe")
@@ -99,6 +100,7 @@ func nativeP06InitialRegisterCase(t *testing.T, recipe nativeP06ConjunctionRecip
 	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, deadline))
 	defer cancel()
 	f := newPairedGraphFaultNetworkWithParent(t, ctx)
+	program := nativeP06ProgramStart(t, ctx, f, recipe.Kind, programs...)
 	before := nativeFaultSeed(t, f)
 	old, err := pairedFaultCut(before.Cut)
 	if err != nil {
@@ -108,6 +110,13 @@ func nativeP06InitialRegisterCase(t *testing.T, recipe nativeP06ConjunctionRecip
 	actor, target, successor := uint64(3), uint64(1), uint64(2)
 	if recipe.Coordinator == 8 {
 		actor, target, successor = 5, 4, 6
+	}
+	if program != nil {
+		target = f.n.leaders[0]
+		if recipe.Coordinator == 8 {
+			target = f.n.leaders[1]
+		}
+		successor = nativeP06ProgramAlternate(target)
 	}
 	business, err := decodePartitionGraphCommand(original.wire, defaultMaterializerLimits())
 	if err != nil {
@@ -149,6 +158,7 @@ func nativeP06InitialRegisterCase(t *testing.T, recipe nativeP06ConjunctionRecip
 	if !nativeBatchFailedStepAllowed(processResponse{}, targetLoss) {
 		t.Fatal("initial native target lacks typed pipe death", targetLoss)
 	}
+	nativeP06ProgramLoss(t, program)
 	failed := nativeBatchReap(t, f, target, receipt)
 	reads := gate.readCount()
 	gate.mu.Lock()
@@ -161,6 +171,7 @@ func nativeP06InitialRegisterCase(t *testing.T, recipe nativeP06ConjunctionRecip
 	}
 	f.drain()
 	f.elect(target, successor)
+	nativeP06ProgramSuccessor(t, program, target, successor)
 	var initialOld p06Observation
 	initialRejoined := f.replaceBeforeHeal(target, func(_ *graphProcess, _ processResponse) { initialOld = nativeP06InitialLocalOld(f, target, old) })
 	wantOld := p06Observation{before.Cut, before.View, before.RawObservation}
@@ -209,8 +220,13 @@ func nativeP06InitialRegisterCase(t *testing.T, recipe nativeP06ConjunctionRecip
 	a := nativeP06InitialArtifact{Version: 1, Profile: nativeP06InitialProfile, Case: nativeP06InitialName(recipe), Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, Actor: actor, Target: target, Successor: successor, FirstVoter: firstVoter, RecoveryVoter: recoveryVoter, RecoveryBVoter: completed.RecoveryBVoter,
 		P06:         completed.P06,
 		InitialCall: nativeP06ConjunctionAttempt{p06ProcessWire(t, unknown.response), unknown.err.Error(), true}, InitialPhase: initialRows[0], Calls: completed.Calls, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: targetLoss.Error(), Processes: []pairedFaultProcess{failed, initialRejoined}, InitialReopened: initialOld, FirstReopened: completed.FirstReopened, ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: gateCandidates, GateDecodeWork: gateWork, InitialCapture: initialCharge, RecoveryCapture: completed.Capture}
+	a.Program = nativeP06ProgramComplete(t, program)
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, a.Case+".jsonl"), a, records, a.P06.Through)
-	check := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", "native_transition_initial_check.py"), path)
+	checker := "native_transition_initial_check.py"
+	if a.Program != nil {
+		checker = "native_protocol_campaign_p06_check.py"
+	}
+	check := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", checker), path)
 	var diagnostics processStderr
 	check.Stdout, check.Stderr = &diagnostics, &diagnostics
 	if err := check.Run(); err != nil {

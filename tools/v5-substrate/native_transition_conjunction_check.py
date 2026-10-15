@@ -51,7 +51,7 @@ def recipe(row, version=1):
     return f'{prefix}-decide-k{row["Kind"]}-{row["Side"]}'
 
 
-def load(path):
+def load(path, *, program=False):
     digest, total, header, footer, records = hashlib.sha256(), 0, None, None, []
     with path.open("rb") as source:
         while line := source.readline((512 << 10)+1):
@@ -62,7 +62,7 @@ def load(path):
             if header is None:
                 require(set(row) == {"Type", "Artifact"} and row["Type"] == "header", "conjunction header row")
                 header = row["Artifact"]
-                require(type(header) is dict and set(header) == (TERMINAL_HEADER if header.get("Version") == 3 else HEADER) and type(header["P06"]) is dict and set(header["P06"]) == P06 and header["P06"]["Records"] is None, "fresh grammar cannot inline prefix")
+                require(type(header) is dict and set(header) == (TERMINAL_HEADER if header.get("Version") == 3 else HEADER) | ({"Program"} if program else set()) and type(header["P06"]) is dict and set(header["P06"]) == P06 and header["P06"]["Records"] is None, "fresh grammar cannot inline prefix")
             elif row.get("Type") == "record":
                 require(set(row) == {"Type", "Record"} and len(records) < 512, "bounded actual record row")
                 records.append(row["Record"])
@@ -153,7 +153,16 @@ def recovery_order(successful, coordinator, commit, phase, partition):
     return selected
 
 
-def capture(rows, unknown, scopes, actor, coordinator, manifest, tx, records, commit=True, phase=3, partition=None):
+def program_voters(value):
+    # Private context from the full fresh program authenticator, never fields
+    # silently adopted by an ordinary old artifact/check entry point.
+    require(type(value) is dict and set(value)=={"initial", "selected", "after"}, "exact authenticated P06 role context")
+    for pair in value.values():
+        require(type(pair) is tuple and len(pair)==2 and type(pair[0]) is type(pair[1]) is int and pair[0] in (1,2) and pair[1] in (4,6), "actual elected P06 voters; no nominal permutation")
+    return value
+
+
+def capture(rows, unknown, scopes, actor, coordinator, manifest, tx, records, commit=True, phase=3, partition=None, *, program_roles=None):
     require(type(rows) is list and 4 <= len(rows) <= 10 and type(unknown) is list and len(unknown) == 1, "actual successes separate from one unknown")
     partition = coordinator if partition is None else partition
     order = [(2, 3), (2, 8), (3, coordinator), (4, 3), (4, 8)]
@@ -164,6 +173,9 @@ def capture(rows, unknown, scopes, actor, coordinator, manifest, tx, records, co
         require(correlation not in seen, "duplicate correlated source observation")
         seen.add(correlation)
         voter = (2 if row["Partition"] == 3 else 4) if n < selected_position else (1 if partition == 3 else 2) if row["Partition"] == 3 else (4 if partition == 3 else 6)
+        if program_roles is not None:
+            roles=program_voters(program_roles)
+            voter=roles["selected" if n<selected_position else "after"][0 if row["Partition"]==3 else 1]
         _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes, voter)
         require(actual_manifest == decoded["manifest"] == manifest and status["tx"] == tx, "immutable actual source original")
         require((status["partition"], status["index"]) in records and P.raw(records[status["partition"], status["index"]]["Outcome"]) == outcome, "successful reply not in actual retained originals")
@@ -174,7 +186,7 @@ def capture(rows, unknown, scopes, actor, coordinator, manifest, tx, records, co
     return command
 
 
-def terminal_capture(rows, unknown, scopes, actor, coordinator, manifest, tx, records, phase, partition, prepare):
+def terminal_capture(rows, unknown, scopes, actor, coordinator, manifest, tx, records, phase, partition, prepare, *, program_roles=None):
     require(type(rows) is list and len(rows) == 5 and (unknown is None or type(unknown) is list and not unknown), "terminal owner needs five actual successes, no invented unknown")
     order = [(2, 3), (2, 8), (3, coordinator), (4, 3), (4, 8)]
     seen, selected = set(), prepare if phase == 2 else None
@@ -182,7 +194,9 @@ def terminal_capture(rows, unknown, scopes, actor, coordinator, manifest, tx, re
         command, decoded, correlation = source_request(row, scopes, actor)
         require(correlation not in seen and (decoded["phase"], decoded["partition"]) == expected, "actual initial recovery order/correlation")
         seen.add(correlation)
-        _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes, 2 if row["Partition"] == 3 else 4)
+        voter=2 if row["Partition"] == 3 else 4
+        if program_roles is not None:voter=program_voters(program_roles)["selected"][0 if row["Partition"]==3 else 1]
+        _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes, voter)
         require(actual_manifest == decoded["manifest"] == manifest and status["tx"] == tx and P.raw(records[status["partition"], status["index"]]["Outcome"]) == outcome, "terminal source command lacks its genuine retained original")
         if expected == (phase, partition):
             require(selected is None or selected == command, "terminal Prepare differs from first YES command")
@@ -351,16 +365,16 @@ def literal_and_serial(data, decision):
     return witness
 
 
-def first_processes(rows):
+def first_processes(rows, voter=1):
     require(type(rows) is list and len(rows) == 2, "first YES actual process pair")
     killed, reopened = rows
     raw, restored = T.decoded(P.raw(killed["Raw"])), T.decoded(P.raw(reopened["Raw"]))
-    require(killed["Action"] == "kill" and killed["Member"] == raw["Member"] == 1 and killed["Reaped"] is True and killed["Signal"] == "SIGKILL" and raw["SignalNumber"] == 9 and raw["Signaled"] is True and raw["Reaped"] is True and raw["Success"] is False and raw["Instance"] == killed["Instance"] and raw["Volume"] == killed["Volume"], "actual prepared leader death/reap")
-    require(reopened["Action"] == "reopen" and reopened["Member"] == restored["Member"] == 1 and reopened["Ready"] is True and reopened["PreviousInstance"] == restored["PreviousInstance"] == killed["Instance"] and reopened["Volume"] == restored["Volume"] == killed["Volume"] and reopened["RecoveryRaw"] == restored["RecoveryRaw"] and raw["PID"] != restored["PID"], "first same-directory restored quorum")
+    require(killed["Action"] == "kill" and killed["Member"] == raw["Member"] == voter and killed["Reaped"] is True and killed["Signal"] == "SIGKILL" and raw["SignalNumber"] == 9 and raw["Signaled"] is True and raw["Reaped"] is True and raw["Success"] is False and raw["Instance"] == killed["Instance"] and raw["Volume"] == killed["Volume"], "actual prepared leader death/reap")
+    require(reopened["Action"] == "reopen" and reopened["Member"] == restored["Member"] == voter and reopened["Ready"] is True and reopened["PreviousInstance"] == restored["PreviousInstance"] == killed["Instance"] and reopened["Volume"] == restored["Volume"] == killed["Volume"] and reopened["RecoveryRaw"] == restored["RecoveryRaw"] and raw["PID"] != restored["PID"], "first same-directory restored quorum")
     return F.process(P.raw(restored["LocallyRestoredRaw"]))
 
 
-def check(a):
+def check(a, *, program_roles=None):
     require(type(a) is dict and type(a.get("Version")) is int and a["Version"] in (1, 2, 3), "implemented conjunction version")
     terminal = a["Version"] == 3
     require(set(a) == (TERMINAL_HEADER if terminal else HEADER) and a["Profile"] == {1: PROFILE, 2: RECOVERY_PROFILE, 3: TERMINAL_PROFILE}[a["Version"]] and a["Case"] == recipe(a["Recipe"], a["Version"]), "fresh implemented conjunction grammar")
@@ -370,9 +384,13 @@ def check(a):
     phase, partition = (3, coordinator) if a["Version"] == 1 else (r["Phase"], r["Partition"])
     actor = 3 if coordinator == 3 else 5
     target, successor = (2, 1) if partition == 3 else (4, 6)
-    require((a["Actor"], a["FirstVoter"], a["Target"], a["Successor"]) == (actor, 1, target, successor), "actual finite process routing")
+    first_voter=1
+    if program_roles is not None:
+        roles=program_voters(program_roles);first_voter=roles["initial"][0]
+        target,successor=roles["selected"][0 if partition==3 else 1],roles["after"][0 if partition==3 else 1]
+    require((a["Actor"], a["FirstVoter"], a["Target"], a["Successor"]) == (actor, first_voter, target, successor), "actual finite process routing")
     scopes, _ = P.cut(d["Before"])
-    first, manifest, yes, yes_wire = P.peer_phase(P.raw(d["FirstYES"]["Request"]), P.raw(d["FirstYES"]["Reply"]), scopes, 1)
+    first, manifest, yes, yes_wire = P.peer_phase(P.raw(d["FirstYES"]["Request"]), P.raw(d["FirstYES"]["Reply"]), scopes, first_voter)
     require(first == P.raw(d["Manifest"]) and yes["yes"] and yes["partition"] == 3, "genuine first YES source")
     original = C.decision_manifest(P.raw(d["Original"]), manifest, coordinator, scopes, d["Before"])
     tx, digest = original["tx"], original["digest"]
@@ -383,9 +401,9 @@ def check(a):
     P.resumed(d["Pending"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], coordinator), 1, b"")
     P.resumed(d["Decision"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], coordinator), 0, decision_wire)
     if terminal:
-        selected = terminal_capture(d["Phases"], a["UnknownPhases"], scopes, actor, coordinator, manifest, tx, records, phase, partition, first)
+        selected = terminal_capture(d["Phases"], a["UnknownPhases"], scopes, actor, coordinator, manifest, tx, records, phase, partition, first, program_roles=program_roles)
     else:
-        selected = capture(d["Phases"], a["UnknownPhases"], scopes, actor, coordinator, manifest, tx, records, commit, phase, partition)
+        selected = capture(d["Phases"], a["UnknownPhases"], scopes, actor, coordinator, manifest, tx, records, commit, phase, partition, program_roles=program_roles)
     require(selected == P.raw(a["SelectedCommand"]), "actual captured command differs from native selected command")
     decoded = C.decision_command(selected)
     require(decoded["phase"] == phase and decoded["partition"] == partition and decoded["manifest"] == manifest, "actual selected recovery original")
@@ -396,7 +414,7 @@ def check(a):
     run, deadline = fixed(a["Run"], 16, True), integer(a["DeadlineUnixNanos"], (1 << 63)-1, 1)
     event = batch_pair(a["Arm"], a["Batch"], run, deadline, target, kind, side, selected)
     B.processes(a["Processes"], None, a["Case"], a["Batch"])
-    first_local = first_processes(d["Processes"])
+    first_local = first_processes(d["Processes"], first_voter)
     process_order = [d["Processes"][0], d["Processes"][1], a["Processes"][0], a["Processes"][1]]
     events = [integer(row["EventID"], minimum=1) for row in process_order]
     require(events == sorted(set(events)), "first quorum restored before second actual crash/reopen")

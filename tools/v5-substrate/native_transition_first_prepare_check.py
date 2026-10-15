@@ -22,7 +22,7 @@ def lost_yes(row):
     return row["Kind"] == 2 and row["Side"] == "after"
 
 
-def load(path):
+def load(path, *, program=False):
     digest, total, header, footer, rows = hashlib.sha256(), 0, None, None, []
     with path.open("rb") as source:
         while line := source.readline((512 << 10)+1):
@@ -33,7 +33,7 @@ def load(path):
             if header is None:
                 require(set(row) == {"Type", "Artifact"} and row["Type"] == "header", "first-Prepare header")
                 header = row["Artifact"]
-                require(type(header) is dict and set(header) == HEADER and type(header["P06"]) is dict and set(header["P06"]) == C.P06 and header["P06"]["Records"] is None, "fresh first-Prepare grammar/streamed prefix")
+                require(type(header) is dict and set(header) == HEADER | ({"Program"} if program else set()) and type(header["P06"]) is dict and set(header["P06"]) == C.P06 and header["P06"]["Records"] is None, "fresh first-Prepare grammar/streamed prefix")
             elif row.get("Type") == "record":
                 require(set(row) == {"Type", "Record"} and len(rows) < 512, "finite first-Prepare prefix")
                 rows.append(row["Record"])
@@ -59,12 +59,17 @@ def unanswered_yes(boundary, initial, pending, first_call):
     require(type(boundary) is dict and set(boundary) == {"Request", "Reply"} and boundary["Request"] == initial["Request"] and not P.raw(boundary["Reply"]) and pending == first_call, "lost first YES cannot borrow a GSR or another invocation")
 
 
-def check(a):
+def check(a, *, program_roles=None):
     require(type(a) is dict and set(a) == HEADER and type(a["Version"]) is int and a["Version"] == 1 and a["Profile"] == PROFILE and a["Case"] == recipe(a["Recipe"]), "fresh first-Prepare profile")
     r, d, no_reply = a["Recipe"], a["P06"], lost_yes(a["Recipe"])
     co, commit = r["Coordinator"], r["Commit"]
     actor, first, recovered = (3 if co == 3 else 5), (1 if no_reply else 2), (2 if no_reply else 1)
-    require(tuple(a[k] for k in ("Actor", "Target", "Successor", "FirstVoter", "RecoveryVoter", "RecoveryBVoter")) == (actor, 1, 2, first, recovered, 4), "actual first-Prepare routing")
+    target,successor,b_voter,registered_voter=1,2,4,(1 if co==3 else 4)
+    if program_roles is not None:
+        roles=C.program_voters(program_roles);target,successor=roles["initial"][0],roles["after"][0]
+        first,recovered=(target,successor) if no_reply else (successor,target)
+        b_voter=roles["initial"][1];registered_voter=roles["initial"][0 if co==3 else 1]
+    require(tuple(a[k] for k in ("Actor", "Target", "Successor", "FirstVoter", "RecoveryVoter", "RecoveryBVoter")) == (actor, target, successor, first, recovered, b_voter), "actual first-Prepare routing")
     require(type(d) is dict and set(d) == C.P06 and type(d["Version"]) is int and d["Version"] == 1 and d["Coordinator"] == co and d["Commit"] is commit, "same semantic P06 original")
     scopes, _ = P.cut(d["Before"])
     rows = a["InitialPhases"]
@@ -76,14 +81,14 @@ def check(a):
     original = C.C.decision_manifest(P.raw(d["Original"]), manifest, co, scopes, d["Before"])
     tx, digest = original["tx"], original["digest"]
     records, decision = C.phase_census(d, tx, digest, co, commit)
-    _, actual_manifest, registered, register_wire = P.peer_phase(P.raw(rows[0]["Request"]), P.raw(rows[0]["Reply"]), scopes, 1 if co == 3 else 4)
+    _, actual_manifest, registered, register_wire = P.peer_phase(P.raw(rows[0]["Request"]), P.raw(rows[0]["Reply"]), scopes, registered_voter)
     require(actual_manifest == manifest and registered["phase"] == 1 and registered["tx"] == tx and registered["digest"] == digest and P.raw(records[co, registered["index"]]["Outcome"]) == register_wire and prepare["proof_wires"] == [register_wire], "first Prepare lacks actual immutable Register proof")
     run, deadline = fixed(a["Run"], 16, True), integer(a["DeadlineUnixNanos"], (1 << 63)-1, 1)
-    event = C.batch_pair(a["Arm"], a["Batch"], run, deadline, 1, r["Kind"], r["Side"], selected)
+    event = C.batch_pair(a["Arm"], a["Batch"], run, deadline, target, r["Kind"], r["Side"], selected)
     B.processes(a["Processes"], None, a["Case"], a["Batch"])
     if no_reply:
         survivor = a["Survivor"]
-        require(type(survivor) is dict and set(survivor) == {"Member", "Reply", "Native", "InputGrantBytes", "OutputGrantBytes"} and type(survivor["Member"]) is int and survivor["Member"] == 2 and survivor["Native"] == a["Batch"] and type(survivor["InputGrantBytes"]) is int and survivor["InputGrantBytes"] == 512 and type(survivor["OutputGrantBytes"]) is int and survivor["OutputGrantBytes"] == 8*(2 << 20) and a["EarlyReopened"] is None and d["Processes"] is None and d["FirstYES"]["Request"] == rows[1]["Request"] and not P.raw(d["FirstYES"]["Reply"]) and d["Pending"] == a["InitialCall"]["Reply"], "lost installed YES must not invent source ACK or second death")
+        require(type(survivor) is dict and set(survivor) == {"Member", "Reply", "Native", "InputGrantBytes", "OutputGrantBytes"} and type(survivor["Member"]) is int and survivor["Member"] == recovered and survivor["Native"] == a["Batch"] and type(survivor["InputGrantBytes"]) is int and survivor["InputGrantBytes"] == 512 and type(survivor["OutputGrantBytes"]) is int and survivor["OutputGrantBytes"] == 8*(2 << 20) and a["EarlyReopened"] is None and d["Processes"] is None and d["FirstYES"]["Request"] == rows[1]["Request"] and not P.raw(d["FirstYES"]["Reply"]) and d["Pending"] == a["InitialCall"]["Reply"], "lost installed YES must not invent source ACK or second death")
         actual = F.process(P.raw(survivor["Reply"]))
         unanswered_yes(d["FirstYES"], rows[1], d["Pending"], a["InitialCall"]["Reply"])
         require(actual["code"] == actual["mask"] == 0 and not actual["packets"] and not actual["reads"], "actual survivor ApplicationRecord read")
@@ -92,11 +97,11 @@ def check(a):
         classification = "selected-installed-YES-without-GSR"
     else:
         require(a["Survivor"] is None and a["EarlyReopened"] is not None, "uninstalled/unknown boundary borrowed a stored-YES guarantee")
-        command, actual_manifest, yes, outcome = P.peer_phase(P.raw(d["FirstYES"]["Request"]), P.raw(d["FirstYES"]["Reply"]), scopes, 2)
+        command, actual_manifest, yes, outcome = P.peer_phase(P.raw(d["FirstYES"]["Request"]), P.raw(d["FirstYES"]["Reply"]), scopes, first)
         require(command == selected and actual_manifest == manifest and yes["tx"] == tx and yes["yes"] and P.raw(records[3, yes["index"]]["Outcome"]) == outcome, "actual later YES acknowledgement/current original")
         if r["Kind"] == 2:
             require(yes["index"] == event["Index"], "install-before retries SAME retained Prepare original")
-        local = I.first_processes(d["Processes"], 2)
+        local = I.first_processes(d["Processes"], first)
         require(local["applied"] >= yes["index"], "later YES replacement lacks local original")
         T.semantic(a["EarlyReopened"] == d["Before"], "old-cut:first-Prepare-before-observed-YES")
         process_order = a["Processes"]+d["Processes"]
@@ -118,7 +123,7 @@ def check(a):
         require(actual["incarnation"] == pending["incarnation"] and actual["sequence"] > pending["sequence"] and actual["code"] == actual["mask"] == 0 and not actual["outcome"] and not actual["changes"] and not actual["packets"] and not actual["reads"], "actual successful same-original coordinator call")
         P.resumed(wire, scopes, original["source"]["request"], tx, P.business_hash(original["wire"], co), 0, decision_wire)
         pending = actual
-    I.recovery(d["Phases"], scopes, actor, co, {3: recovered, 8: 4}, manifest, tx, records)
+    I.recovery(d["Phases"], scopes, actor, co, {3: recovered, 8: b_voter}, manifest, tx, records)
     require(unknown_correlation not in [C.source_request(row, scopes, actor)[2] for row in d["Phases"]], "missing first GSR borrowed a later successful reply")
     require(type(d["Duplicates"]) is list and len(d["Duplicates"]) == 3, "actual late Prepare/two Resolve duplicates")
     for i, row in enumerate(d["Duplicates"]):

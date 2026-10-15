@@ -107,6 +107,7 @@ type nativeBatchArtifact struct {
 	DeadlineUnixNanos int64
 	ReceiptReads      uint64
 	ReceiptGrantBytes uint64
+	Program           *nativeP06ProgramEvidence `json:",omitempty"`
 }
 
 func nativeBatchCall(ctx context.Context, p *graphProcess, c nativeBatchControl) (nativeBatchReceipt, error) {
@@ -193,7 +194,7 @@ func nativeTransitionReap(t *testing.T, f *pairedGraphFaultNetwork, member, rece
 	return pairedFaultProcess{EventID: f.event(), Action: action, Role: "replica", Member: member, Instance: pairedGraphFaultInstance(member, p), Volume: volume, Reaped: true, Signal: "SIGKILL", Raw: raw}
 }
 
-func nativeBatchCrossCase(t *testing.T, phase byte, partition uint64, kind raftlog.StableStorageKind, side string) {
+func nativeBatchCrossCase(t *testing.T, phase byte, partition uint64, kind raftlog.StableStorageKind, side string, programs ...nativeProtocolProgramSpec) {
 	t.Helper()
 	var run [16]byte
 	if raw := os.Getenv("RHO_GRAPH_TRANSITION_RUN"); raw == "" {
@@ -219,7 +220,15 @@ func nativeBatchCrossCase(t *testing.T, phase byte, partition uint64, kind raftl
 		t.Fatal("fixed original batch deadline", err)
 	}
 	t.Setenv("RHO_GRAPH_STABLE_STORAGE_PROCESS", "1")
-	f := newPairedGraphFaultNetwork(t)
+	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, deadline))
+	defer cancel()
+	var f *pairedGraphFaultNetwork
+	if len(programs) == 0 {
+		f = newPairedGraphFaultNetwork(t)
+	} else {
+		f = newPairedGraphFaultNetworkWithParent(t, ctx)
+	}
+	program := nativeP06ProgramStart(t, ctx, f, kind, programs...)
 	before := nativeFaultSeed(t, f)
 	old := p06Observe(f, 6, graphReadFresh, graphCut{})
 	cut, err := pairedFaultCut(old.Cut)
@@ -231,8 +240,13 @@ func nativeBatchCrossCase(t *testing.T, phase byte, partition uint64, kind raftl
 	if partition == 8 {
 		member, successor = 4, 5
 	}
-	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, deadline))
-	defer cancel()
+	if program != nil {
+		member = f.n.leaders[0]
+		if partition == 8 {
+			member = f.n.leaders[1]
+		}
+		successor = nativeP06ProgramAlternate(member)
+	}
 	gate, err := newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: 5, Partition: partition, Member: member, Phase: crossPhase(phase), Kind: kind, Side: side}, run, deadline)
 	if err != nil {
 		t.Fatal("genuine bounded batch owner", err)
@@ -257,16 +271,28 @@ func nativeBatchCrossCase(t *testing.T, phase byte, partition uint64, kind raftl
 	if err != nil {
 		t.Fatal("unmatched/exhausted/failed native batch cannot qualify", err)
 	}
+	nativeP06ProgramLoss(t, program)
 	failed := nativeBatchReap(t, f, member, receipt)
 	clear()
 	f.elect(member, successor)
-	p03Reconnect(f, 6)
-	result := f.run(6, proposal)
-	_ = p03Complete(f, 6, "edge-create", proposal, result, from, before)
-	recovered := p06Observe(f, 6, graphReadFresh, graphCut{})
+	nativeP06ProgramSuccessor(t, program, member, successor)
+	recoverer := uint64(6)
+	if program != nil && member == 6 {
+		recoverer = 5
+	}
+	p03Reconnect(f, recoverer)
+	result := f.run(recoverer, proposal)
+	_ = p03Complete(f, recoverer, "edge-create", proposal, result, from, before)
+	recovered := p06Observe(f, recoverer, graphReadFresh, graphCut{})
 	var reopened p06Observation
-	rejoined := f.replaceBeforeHeal(member, func(_ *graphProcess, _ processResponse) { reopened = p06Observe(f, member, graphReadAt, cut) })
-	retained := p06Observe(f, 6, graphReadAt, cut)
+	rejoined := f.replaceBeforeHeal(member, func(_ *graphProcess, _ processResponse) {
+		if program != nil {
+			reopened = nativeP06InitialLocalOld(f, member, cut)
+		} else {
+			reopened = p06Observe(f, member, graphReadAt, cut)
+		}
+	})
+	retained := p06Observe(f, recoverer, graphReadAt, cut)
 	if !reflect.DeepEqual(old, retained) || !reflect.DeepEqual(old, reopened) {
 		t.Fatal("native batch recovery substituted current for held old cut")
 	}
@@ -278,12 +304,17 @@ func nativeBatchCrossCase(t *testing.T, phase byte, partition uint64, kind raftl
 	name := fmt.Sprintf("batch-cross-%d-p%d-k%d-%s", phase, partition, kind, side)
 	reads := gate.readCount()
 	artifact := nativeBatchArtifact{nativeFaultArtifact: nativeFaultArtifact{Version: 3, Profile: nativeBatchProfile, Case: name, Original: proposal.wire, Manifest: command.manifest, PendingCaller: pending, Before: old, Retained: retained, Recovered: recovered, Reopened: reopened, Processes: []pairedFaultProcess{failed, rejoined}, From: from, Through: through, Records: p06Records(f, from, through)}, Phase: phase, Partition: partition, Kind: kind, Side: side, SelectedCommand: selectedCommand, Arm: actualArm, Batch: receipt, Run: run, DeadlineUnixNanos: deadline, ReceiptReads: reads, ReceiptGrantBytes: reads * 65536}
+	artifact.Program = nativeP06ProgramComplete(t, program)
 	header := artifact
 	header.Records = nil
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, "native-"+name+".jsonl"), header, artifact.Records, through)
 	checkCtx, stopCheck := context.WithDeadline(t.Context(), time.Unix(0, deadline))
 	defer stopCheck()
-	check := exec.CommandContext(checkCtx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", "native_transition_batch_check.py"), path)
+	checker := "native_transition_batch_check.py"
+	if artifact.Program != nil {
+		checker = "native_protocol_campaign_p06_check.py"
+	}
+	check := exec.CommandContext(checkCtx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", checker), path)
 	var diagnostics processStderr
 	check.Stdout, check.Stderr = &diagnostics, &diagnostics
 	if err := check.Run(); err != nil {

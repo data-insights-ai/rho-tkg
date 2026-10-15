@@ -118,6 +118,7 @@ type nativeP06ConjunctionArtifact struct {
 	GateCandidates, GateDecodeWork                                                  uint64
 	CaptureCandidates, CaptureAttempts, CaptureWork, CaptureOutput, CaptureRetained uint64
 	Duplicate                                                                       *nativeP06TerminalSubmission `json:",omitempty"`
+	Program                                                                         *nativeP06ProgramEvidence    `json:",omitempty"`
 }
 
 func nativeP06ConjunctionIdentity(t *testing.T) ([16]byte, int64) {
@@ -230,7 +231,7 @@ func nativeP06UnknownTransport(err error) bool {
 	return false
 }
 
-func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
+func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe, programs ...nativeProtocolProgramSpec) {
 	t.Helper()
 	if !recipe.valid() {
 		t.Fatal("unsupported P06 conjunction recipe")
@@ -240,6 +241,12 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, deadline))
 	defer cancel()
 	f := newPairedGraphFaultNetworkWithParent(t, ctx)
+	program := nativeP06ProgramStart(t, ctx, f, recipe.Kind, programs...)
+	firstVoter, recoveryVoter, bVoter := uint64(1), uint64(2), uint64(4)
+	if program != nil {
+		firstVoter, bVoter = f.n.leaders[0], f.n.leaders[1]
+		recoveryVoter = nativeP06ProgramAlternate(firstVoter)
+	}
 	before := nativeFaultSeed(t, f)
 	old, err := pairedFaultCut(before.Cut)
 	if err != nil {
@@ -255,7 +262,7 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 	firstCall, stopFirst := f.beginRun(actor, original)
 	defer stopFirst()
 	boundary := f.awaitBoundary(firstGate)
-	prepare, vote, manifest := p06PrepareBoundary(t, boundary, recipe.Coordinator, 1)
+	prepare, vote, manifest := p06PrepareBoundary(t, boundary, recipe.Coordinator, firstVoter)
 	p06BindBusiness(t, original, manifest)
 	f.packetDrain()
 	for member := uint64(1); member <= 3; member++ {
@@ -264,7 +271,7 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 			t.Fatal("first actual YES lacks complete voter originals", member)
 		}
 	}
-	firstKilled := f.kill(1, "prepared-participant-leader")
+	firstKilled := f.kill(firstVoter, "prepared-participant-leader")
 	stopFirst()
 	interrupted := nativeP06AwaitAnswer(f, firstCall)
 	resume, pending := decodeGraphProcessCoordinatorResult(interrupted.response)
@@ -273,32 +280,46 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 	}
 	clearFirst()
 	f.drain()
-	f.elect(1, 2)
+	f.elect(firstVoter, recoveryVoter)
+	nativeP06ProgramSuccessor(t, program, firstVoter, recoveryVoter)
 	nativeConjunctionReconnect(f, actor)
-	blocked := p06LocalProposal(f, 2, certifiedP08Close, 1, allocationP08Words(2))
-	refused := p06SubmitLocal(f, 2, blocked, reasonPreparedConflict)
+	blocked := p06LocalProposal(f, recoveryVoter, certifiedP08Close, 1, allocationP08Words(2))
+	refused := p06SubmitLocal(f, recoveryVoter, blocked, reasonPreparedConflict)
 	var changed *p06LocalRecord
 	if !recipe.Commit {
-		p := p06LocalProposal(f, 4, certifiedP08Close, 17, allocationP08Words(18))
-		actual := p06SubmitLocal(f, 4, p, reasonNone)
+		p := p06LocalProposal(f, bVoter, certifiedP08Close, 17, allocationP08Words(18))
+		actual := p06SubmitLocal(f, bVoter, p, reasonNone)
 		changed = &actual
 		f.trace.OperationMapping = append(f.trace.OperationMapping, lifecycleOperationMap{Logical: "node-b-close", Round: p06LocalRound(t, actual)})
 	}
 	// Restore the first dead voter before a second actual leader death, keeping
 	// a genuine quorum. At executes through its replacement BEFORE fair heal.
 	var firstReopened p06Observation
-	firstRejoined := f.replaceBeforeHeal(1, func(_ *graphProcess, _ processResponse) { firstReopened = p06Observe(f, 1, graphReadAt, old) })
+	firstRejoined := f.replaceBeforeHeal(firstVoter, func(_ *graphProcess, _ processResponse) {
+		if program != nil {
+			firstReopened = nativeP06InitialLocalOld(f, firstVoter, old)
+		} else {
+			firstReopened = p06Observe(f, firstVoter, graphReadAt, old)
+		}
+	})
 	if !reflect.DeepEqual(firstReopened.Native, before.RawObservation) || !reflect.DeepEqual(firstReopened.View, before.View) || !reflect.DeepEqual(firstReopened.Cut, before.Cut) {
 		t.Fatal("actual first replacement lost old graph/index cut")
 	}
 	if recipe.Stage == nativeP06TerminalStage {
-		nativeP06TerminalCase(t, nativeP06PreparedFixture{f: f, ctx: ctx, recipe: recipe, run: run, deadline: deadline, before: before, old: old, from: from, original: original, actor: actor, boundary: boundary, prepare: prepare, manifest: manifest, interrupted: interrupted, firstKilled: firstKilled, firstRejoined: firstRejoined, refused: refused, changed: changed, firstReopened: firstReopened})
+		nativeP06TerminalCase(t, nativeP06PreparedFixture{f: f, ctx: ctx, recipe: recipe, run: run, deadline: deadline, before: before, old: old, from: from, original: original, actor: actor, boundary: boundary, prepare: prepare, manifest: manifest, interrupted: interrupted, firstKilled: firstKilled, firstRejoined: firstRejoined, refused: refused, changed: changed, firstReopened: firstReopened, program: program})
 		return
 	}
 	target, successor := uint64(2), uint64(1)
 	phase, partition := recipe.selected()
 	if partition == 8 {
 		target, successor = 4, 6
+	}
+	if program != nil {
+		target = f.n.leaders[0]
+		if partition == 8 {
+			target = f.n.leaders[1]
+		}
+		successor = nativeP06ProgramAlternate(target)
 	}
 	capture := newNativeConjunctionCapture(f, actor, manifest.tx)
 	defer capture.close()
@@ -330,9 +351,11 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 	if err != nil || selectedCommand.phase != phase || selectedCommand.ns.partition != partition || !bytes.Equal(selectedCommand.manifest, prepareManifest(t, prepare)) {
 		t.Fatal("selected actual recovery submission changed first original", err)
 	}
+	nativeP06ProgramLoss(t, program)
 	batchKilled := nativeBatchReap(t, f, target, receipt)
 	gate.close()
 	f.elect(target, successor)
+	nativeP06ProgramSuccessor(t, program, target, successor)
 	nativeConjunctionReconnect(f, actor)
 	finalResponse := f.call(f.n.all[actor], processRequest{op: processSourceCoordinate, data: original.wire})
 	result, err := decodeGraphProcessCoordinatorResult(finalResponse)
@@ -407,7 +430,13 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 		t.Fatal("old certified state substituted current")
 	}
 	var faultReopened p06Observation
-	batchRejoined := f.replaceBeforeHeal(target, func(_ *graphProcess, _ processResponse) { faultReopened = p06Observe(f, target, graphReadAt, old) })
+	batchRejoined := f.replaceBeforeHeal(target, func(_ *graphProcess, _ processResponse) {
+		if program != nil {
+			faultReopened = nativeP06InitialLocalOld(f, target, old)
+		} else {
+			faultReopened = p06Observe(f, target, graphReadAt, old)
+		}
+	})
 	if !reflect.DeepEqual(faultReopened, retained) {
 		t.Fatal("actual selected replacement lost local old data")
 	}
@@ -435,16 +464,21 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 	if recipe.Phase != 0 {
 		version, profile = 2, nativeP06RecoveryConjunctionProfile
 	}
-	a := nativeP06ConjunctionArtifact{Version: version, Profile: profile, Case: recipe.name(), Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, Actor: actor, FirstVoter: 1, Target: target, Successor: successor,
+	a := nativeP06ConjunctionArtifact{Version: version, Profile: profile, Case: recipe.name(), Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, Actor: actor, FirstVoter: firstVoter, Target: target, Successor: successor,
 		P06:      p06Artifact{Version: 1, Coordinator: recipe.Coordinator, Commit: recipe.Commit, Original: original.wire, Manifest: prepare.wire, Pending: p06ProcessWire(t, interrupted.response), Decision: p06ProcessWire(t, finalResponse), FirstYES: boundary, Processes: []pairedFaultProcess{firstKilled, firstRejoined}, Refused: refused, Changed: changed, Closed: closed, Duplicates: duplicates, Phases: phases, Before: p06Observation{before.Cut, before.View, before.RawObservation}, Recovered: recovered, Current: current, Retained: retained, From: from, Through: through, Records: nil},
 		Attempts: []nativeP06ConjunctionAttempt{{p06ProcessWire(t, unknown.response), transport, true}, {p06ProcessWire(t, finalResponse), "", false}, {p06ProcessWire(t, replayed), "", false}}, UnknownPhases: failed, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: targetLoss.Error(), Processes: []pairedFaultProcess{batchKilled, batchRejoined}, FirstReopened: firstReopened, FaultReopened: faultReopened, ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: gateCandidates, GateDecodeWork: gateWork, CaptureCandidates: candidates, CaptureAttempts: attempts, CaptureWork: work, CaptureOutput: output, CaptureRetained: retainedBytes}
+	a.Program = nativeP06ProgramComplete(t, program)
 	nativeP06ConjunctionWrite(t, ctx, f, a, records)
 }
 
 func nativeP06ConjunctionWrite(t *testing.T, ctx context.Context, f *pairedGraphFaultNetwork, a nativeP06ConjunctionArtifact, records []lifecycleRawRecord) {
 	t.Helper()
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, a.Case+".jsonl"), a, records, a.P06.Through)
-	check := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", "native_transition_conjunction_check.py"), path)
+	checker := "native_transition_conjunction_check.py"
+	if a.Program != nil {
+		checker = "native_protocol_campaign_p06_check.py"
+	}
+	check := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", checker), path)
 	var diagnostics processStderr
 	check.Stdout, check.Stderr = &diagnostics, &diagnostics
 	if err := check.Run(); err != nil {

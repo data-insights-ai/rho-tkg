@@ -133,30 +133,34 @@ type nativeProtocolProgramEvidence struct {
 // It never owns/recreates a transaction. Its only mutation is an actual native
 // election or installation of the existing bounded packet scheduler.
 type nativeProtocolProgram struct {
-	mu                 sync.Mutex
-	ctx                context.Context
-	f                  *pairedGraphFaultNetwork
-	spec               nativeProtocolProgramSpec
-	evidence           nativeProtocolProgramEvidence
-	finish             func() ([]nativeFaultPacketEvent, error)
-	armed              bool
-	closed             bool
-	closing            bool
-	terminal           error
-	output             *graphstate.OutputBudget
-	hub                *graphProcessHub
-	priorFilter        func(replica.Packet) (bool, error)
-	scheduler          *nativeFaultPacketScheduler
-	nativeTarget       uint64
-	matched            chan struct{}
-	pumpDone           chan struct{}
-	pumpCancel         context.CancelFunc
-	selectionSet       bool
-	selectionPhase     crossPhase
-	selectionPartition uint64
-	selectionFence     bool
-	successorAttempts  uint64
-	predecessor        *nativeProtocolPredecessorOwner
+	mu                  sync.Mutex
+	ctx                 context.Context
+	f                   *pairedGraphFaultNetwork
+	spec                nativeProtocolProgramSpec
+	evidence            nativeProtocolProgramEvidence
+	finish              func() ([]nativeFaultPacketEvent, error)
+	armed               bool
+	closed              bool
+	closing             bool
+	terminal            error
+	output              *graphstate.OutputBudget
+	hub                 *graphProcessHub
+	priorFilter         func(replica.Packet) (bool, error)
+	scheduler           *nativeFaultPacketScheduler
+	nativeTarget        uint64
+	matched             chan struct{}
+	pumpDone            chan struct{}
+	pumpCancel          context.CancelFunc
+	selectionSet        bool
+	selectionPhase      crossPhase
+	selectionPartition  uint64
+	selectionFence      bool
+	successorAttempts   uint64
+	predecessor         *nativeProtocolPredecessorOwner
+	preReadyPredecessor bool
+	afterPredecessor    []byte
+	p06                 bool
+	afterLoss           *nativeProtocolProgramElection
 }
 
 func newNativeProtocolProgram(ctx context.Context, f *pairedGraphFaultNetwork, spec nativeProtocolProgramSpec) (*nativeProtocolProgram, error) {
@@ -264,11 +268,33 @@ func (p *nativeProtocolProgram) arm(selector nativeConjunctionSelector, command 
 	if p.selectionSet && (selector.Phase != p.selectionPhase || selector.Partition != p.selectionPartition || selector.Fence != p.selectionFence) {
 		return nil // Actual earlier causal gate remains native, never counted as this occurrence.
 	}
-	if p.closed || p.closing || p.armed || p.ctx.Err() != nil || len(p.evidence.Elections) != 2 || !selector.valid() || len(command) == 0 || len(command) > nativeLogicalTransitionBodyBytes {
+	if !selector.valid() {
+		return errors.Join(errInvalid, p.ctx.Err())
+	}
+	return p.armNativeLocked(selector.Partition, selector.Member, command, &selector)
+}
+
+// The state gate authenticates its complete actual GMQ/GPL command and native
+// entry before this private attachment. No cross-phase enum or decoded source
+// authority is manufactured to make a state command resemble a transaction.
+func (p *nativeProtocolProgram) armNative(partition, member uint64, command []byte) error {
+	if p == nil {
+		return errInvalid
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.selectionSet || p.predecessor != nil {
+		return errInvalid
+	}
+	return p.armNativeLocked(partition, member, command, nil)
+}
+
+func (p *nativeProtocolProgram) armNativeLocked(partition, member uint64, command []byte, selector *nativeConjunctionSelector) error {
+	if p.closed || p.closing || p.armed || p.ctx.Err() != nil || len(p.evidence.Elections) != 2 || partition != 3 && partition != 8 || member < 1 || member > 6 || (member <= 3) != (partition == 3) || len(command) == 0 || len(command) > nativeLogicalTransitionBodyBytes {
 		return errors.Join(errInvalid, p.ctx.Err())
 	}
 	group := 0
-	if selector.Partition == 8 {
+	if partition == 8 {
 		group = 1
 	}
 	leader := p.f.n.leaders[group]
@@ -278,9 +304,9 @@ func (p *nativeProtocolProgram) arm(selector nativeConjunctionSelector, command 
 	// Sending toward a surviving different voter is deliberate: the native
 	// target can die at Sync while the message program still retires honestly.
 	to := uint64(0)
-	for member := uint64(1 + group*3); member <= uint64(3+group*3); member++ {
-		if member != leader && member != selector.Member {
-			to = member
+	for peer := uint64(1 + group*3); peer <= uint64(3+group*3); peer++ {
+		if peer != leader && peer != member {
+			to = peer
 			break
 		}
 	}
@@ -289,9 +315,26 @@ func (p *nativeProtocolProgram) arm(selector nativeConjunctionSelector, command 
 	}
 	p.evidence.CommandSHA256 = sha256.Sum256(command)
 	p.evidence.MessageFrom, p.evidence.MessageTo = leader, to
-	p.nativeTarget = selector.Member
-	if err := p.predecessor.arm(selector, command); err != nil {
-		return err
+	p.nativeTarget = member
+	if selector != nil {
+		if err := p.predecessor.arm(*selector, command); err != nil {
+			return err
+		}
+	}
+	if p.preReadyPredecessor {
+		if member != leader || p.spec.Message == "literal" {
+			return errInvalid
+		}
+		actual, err := nativeProtocolPredecessorTick(p.ctx, p.f, member, p.spec.Message, nil)
+		if err != nil {
+			return err
+		}
+		p.evidence.TickResponse, p.afterPredecessor = actual.tickWire, actual.stateWire
+		p.evidence.Packets, p.evidence.Frames = actual.events, actual.tick.packets
+		p.evidence.FrameCandidates = uint64(len(actual.tick.packets))
+		p.evidence.MessageFrom, p.evidence.MessageTo = actual.tick.packets[0].From, actual.tick.packets[0].To
+		p.armed = true
+		return nil
 	}
 	if p.spec.Message != "literal" {
 		delay := 0
@@ -355,7 +398,8 @@ func (p *nativeProtocolProgram) successor(prior, next uint64) (nativeProtocolPro
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	closedFence := p.closed && p.selectionFence && p.armed && p.successorAttempts == 0
-	if (p.closed || p.closing || p.armed) && !closedFence || p.ctx.Err() != nil || len(p.evidence.Elections) != 2 || p.successorAttempts >= 2 || prior == next || prior < 1 || next < 1 || prior > 6 || next > 6 || (prior <= 3) != (next <= 3) {
+	closedP06 := p.closed && p.p06 && p.armed && p.afterLoss == nil
+	if (p.closed || p.closing || p.armed) && !closedFence && !closedP06 || p.ctx.Err() != nil || len(p.evidence.Elections) != 2 || p.successorAttempts >= 2 || prior == next || prior < 1 || next < 1 || prior > 6 || next > 6 || (prior <= 3) != (next <= 3) {
 		return nativeProtocolProgramElection{}, errors.Join(errInvalid, p.ctx.Err())
 	}
 	group := 0
@@ -391,6 +435,8 @@ func (p *nativeProtocolProgram) successor(prior, next uint64) (nativeProtocolPro
 		if err := p.predecessor.successor(); err != nil {
 			return nativeProtocolProgramElection{}, err
 		}
+	} else if closedP06 {
+		p.afterLoss = &row
 	}
 	return row, nil
 }

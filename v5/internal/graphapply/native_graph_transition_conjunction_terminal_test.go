@@ -36,6 +36,7 @@ type nativeP06PreparedFixture struct {
 	refused                    p06LocalRecord
 	changed                    *p06LocalRecord
 	firstReopened              p06Observation
+	program                    *nativeProtocolProgram
 }
 
 type nativeP06TerminalStepLoss struct {
@@ -112,6 +113,13 @@ func nativeP06TerminalCase(t *testing.T, s nativeP06PreparedFixture) {
 	if r.Partition == 8 {
 		target, successor = 4, 6
 	}
+	if s.program != nil {
+		target = f.n.leaders[0]
+		if r.Partition == 8 {
+			target = f.n.leaders[1]
+		}
+		successor = nativeP06ProgramAlternate(target)
+	}
 	beforeImage := f.call(f.n.all[target], processRequest{op: processStateOp}).image
 	f.drain()
 	f.packetDrain()
@@ -147,9 +155,16 @@ func nativeP06TerminalCase(t *testing.T, s nativeP06PreparedFixture) {
 			t.Fatal("native terminal Propose returned a refusal", err)
 		}
 		submission.Accepted = true
-		group := f.n.group(target)
-		group.enqueue(t, reply) // Actual native packets, never fabricated ACKs.
-		f.drainGroup(group)     // Install death can occur in a real subsequent Step.
+		if s.program != nil {
+			if err := f.n.all[target].mux.hub.enqueue(target, reply.packets, reply.handles...); err != nil {
+				t.Fatal("SAME owned terminal program transport", err)
+			}
+			f.packetDrain()
+		} else {
+			group := f.n.group(target)
+			group.enqueue(t, reply) // Actual native packets, never fabricated ACKs.
+			f.drainGroup(group)     // Install death can occur in a real subsequent Step.
+		}
 	}
 	submission.Reply = p06ProcessWire(t, reply)
 	arm, receipt, selected, _, err := gate.evidence()
@@ -169,9 +184,11 @@ func nativeP06TerminalCase(t *testing.T, s nativeP06PreparedFixture) {
 	if submission.Accepted && submission.StepLoss == nil || !submission.Accepted && submission.StepLoss != nil || len(submission.Transport) > 4096 {
 		t.Fatal("Propose loss and subsequent Step loss were conflated")
 	}
+	nativeP06ProgramLoss(t, s.program)
 	failed := nativeBatchReap(t, f, target, receipt)
 	gate.close()
 	f.elect(target, successor)
+	nativeP06ProgramSuccessor(t, s.program, target, successor)
 	nativeConjunctionReconnect(f, s.actor)
 	replayed := f.call(f.n.all[s.actor], processRequest{op: processSourceCoordinate, data: s.original.wire})
 	replayResult, err := decodeGraphProcessCoordinatorResult(replayed)
@@ -195,7 +212,13 @@ func nativeP06TerminalCase(t *testing.T, s nativeP06PreparedFixture) {
 		t.Fatal("terminal retry substituted current for original old cut")
 	}
 	var localOld p06Observation
-	rejoined := f.replaceBeforeHeal(target, func(_ *graphProcess, _ processResponse) { localOld = p06Observe(f, target, graphReadAt, s.old) })
+	rejoined := f.replaceBeforeHeal(target, func(_ *graphProcess, _ processResponse) {
+		if s.program != nil {
+			localOld = nativeP06InitialLocalOld(f, target, s.old)
+		} else {
+			localOld = p06Observe(f, target, graphReadAt, s.old)
+		}
+	})
 	if !reflect.DeepEqual(localOld, wantOld) {
 		t.Fatal("actual terminal replacement lost local old history/index")
 	}
@@ -214,9 +237,10 @@ func nativeP06TerminalCase(t *testing.T, s nativeP06PreparedFixture) {
 	gate.mu.Lock()
 	gateCandidates, gateWork := gate.candidates, gate.decodeWork
 	gate.mu.Unlock()
-	a := nativeP06ConjunctionArtifact{Version: 3, Profile: nativeP06TerminalProfile, Case: r.name(), Recipe: r, Run: s.run, DeadlineUnixNanos: s.deadline, Actor: s.actor, FirstVoter: 1, Target: target, Successor: successor,
+	a := nativeP06ConjunctionArtifact{Version: 3, Profile: nativeP06TerminalProfile, Case: r.name(), Recipe: r, Run: s.run, DeadlineUnixNanos: s.deadline, Actor: s.actor, FirstVoter: s.firstKilled.Member, Target: target, Successor: successor,
 		P06:      p06Artifact{Version: 1, Coordinator: r.Coordinator, Commit: r.Commit, Original: s.original.wire, Manifest: s.prepare.wire, Pending: p06ProcessWire(t, s.interrupted.response), Decision: p06ProcessWire(t, decisionReply), FirstYES: s.boundary, Processes: []pairedFaultProcess{s.firstKilled, s.firstRejoined}, Refused: s.refused, Changed: s.changed, Closed: closed, Duplicates: duplicates, Phases: phases, Before: wantOld, Recovered: recovered, Current: current, Retained: retained, From: s.from, Through: through},
 		Attempts: []nativeP06ConjunctionAttempt{{p06ProcessWire(t, decisionReply), "", false}, {p06ProcessWire(t, replayed), "", false}, {p06ProcessWire(t, reopenedReply), "", false}}, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: targetLoss.Error(), Processes: []pairedFaultProcess{failed, rejoined}, FirstReopened: s.firstReopened, FaultReopened: localOld, ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: gateCandidates, GateDecodeWork: gateWork, CaptureCandidates: candidates, CaptureAttempts: attempts, CaptureWork: work, CaptureOutput: output, CaptureRetained: retainedBytes, Duplicate: submission}
+	a.Program = nativeP06ProgramComplete(t, s.program)
 	nativeP06ConjunctionWrite(t, s.ctx, f, a, records)
 }
 

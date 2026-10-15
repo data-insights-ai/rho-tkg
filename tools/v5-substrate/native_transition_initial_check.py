@@ -29,7 +29,7 @@ def routing(row):
     return (3, 1, 2, 2, 1, 4) if row["Coordinator"] == 3 else (5, 4, 6, 1, 2, 6)
 
 
-def load(path):
+def load(path, *, program=False):
     digest, total, header, footer, rows = hashlib.sha256(), 0, None, None, []
     with path.open("rb") as source:
         while line := source.readline((512 << 10)+1):
@@ -40,7 +40,7 @@ def load(path):
             if header is None:
                 require(set(row) == {"Type", "Artifact"} and row["Type"] == "header", "initial header")
                 header = row["Artifact"]
-                require(type(header) is dict and set(header) == HEADER and type(header["P06"]) is dict and set(header["P06"]) == C.P06 and header["P06"]["Records"] is None, "fresh initial grammar/streamed prefix")
+                require(type(header) is dict and set(header) == HEADER | ({"Program"} if program else set()) and type(header["P06"]) is dict and set(header["P06"]) == C.P06 and header["P06"]["Records"] is None, "fresh initial grammar/streamed prefix")
             elif row.get("Type") == "record":
                 require(set(row) == {"Type", "Record"} and len(rows) < 512, "finite initial prefix")
                 rows.append(row["Record"])
@@ -81,11 +81,15 @@ def recovery(rows, scopes, actor, coordinator, voters, manifest, tx, records):
         require(actual_manifest == manifest and status["tx"] == tx and P.raw(records[status["partition"], status["index"]]["Outcome"]) == outcome, "recovery response missing actual stored original")
 
 
-def check(a):
+def check(a, *, program_roles=None):
     require(type(a) is dict and set(a) == HEADER and type(a["Version"]) is int and a["Version"] == 1 and a["Profile"] == PROFILE and a["Case"] == recipe(a["Recipe"]), "fresh initial Register profile")
     r, d = a["Recipe"], a["P06"]
     coordinator, commit = r["Coordinator"], r["Commit"]
     actor, target, successor, first, recovered, b_voter = routing(r)
+    if program_roles is not None:
+        roles=C.program_voters(program_roles);group=0 if coordinator==3 else 1
+        target,successor=roles["initial"][group],roles["after"][group]
+        first=roles["after"][0];recovered=3-first;b_voter=roles["after"][1]
     require(tuple(a[k] for k in ("Actor", "Target", "Successor", "FirstVoter", "RecoveryVoter", "RecoveryBVoter")) == (actor, target, successor, first, recovered, b_voter), "actual pre-YES leader/peer inventory")
     require(type(d) is dict and set(d) == C.P06 and type(d["Version"]) is int and d["Version"] == 1 and d["Coordinator"] == coordinator and d["Commit"] is commit, "same semantic P06 parent")
     scopes, _ = P.cut(d["Before"])

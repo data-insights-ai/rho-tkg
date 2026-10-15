@@ -24,7 +24,7 @@ EVENT = set("Selection Kind Stage Synced Matches EntryCount Position FirstIndex 
 require, integer, fixed = T.require, T.integer, T.fixed
 
 
-def load(path):
+def load(path, *, program=False):
     digest, total, header, footer, records = hashlib.sha256(), 0, None, None, []
     with path.open("rb") as source:
         while line := source.readline((512 << 10) + 1):
@@ -35,7 +35,7 @@ def load(path):
             if header is None:
                 require(set(row) == {"Type", "Artifact"} and row["Type"] == "header", "batch header row")
                 header = row["Artifact"]
-                require(type(header) is dict and set(header) == HEADER and header["Records"] is None, "fresh batch grammar")
+                require(type(header) is dict and set(header) == HEADER | ({"Program"} if program else set()) and header["Records"] is None, "fresh batch grammar")
             elif row.get("Type") == "record":
                 require(set(row) == {"Type", "Record"} and len(records) < 512, "batch prefix admission")
                 records.append(row["Record"])
@@ -87,13 +87,15 @@ def zero_event(e):
     require(all(type(v) is int and v == 0 for v in e["Work"].values()), "unused work")
 
 
-def receipt_pair(arm, r, run, deadline, phase, partition, kind, side, command):
+def receipt_pair(arm, r, run, deadline, phase, partition, kind, side, command, *, member=None):
+    selected_member=(1 if partition==3 else 4) if member is None else member
+    require(type(selected_member) is int and selected_member in ((1,2) if partition==3 else (4,6)), "actual selected native batch voter")
     for value in (arm, r):
         require(type(value) is dict and set(value) == RECEIPT, "native owner receipt grammar")
         require(type(value["Version"]) is int and value["Version"] == 1 and value["Profile"] == PROFILE, "native owner profile")
         fixed(value["Cookie"], 16, True)
         require(fixed(value["Run"], 16, True) == run, "same original run owner")
-        require(integer(value["Member"], 6, 1) == (1 if partition == 3 else 4) and integer(value["PID"], minimum=1) and integer(value["Sequence"], 1, 1), "actual native owner/member")
+        require(integer(value["Member"], 6, 1) == selected_member and integer(value["PID"], minimum=1) and integer(value["Sequence"], 1, 1), "actual native owner/member")
         require(integer(value["DeadlineUnixNanos"], (1 << 63)-1, 1) <= deadline, "fixed original deadline")
         c = value["Control"]
         require(type(c) is dict and set(c) == CONTROL and type(c["Version"]) is int and c["Version"] == 1 and c["Action"] == "arm" and c["Cookie"] == value["Cookie"] and type(c["Sequence"]) is int and c["Sequence"] == 1 and type(c["Kind"]) is int and c["Kind"] == kind and c["Side"] == side, "exact native selector/control")
@@ -132,7 +134,7 @@ def processes(rows, _io, _case, receipt):
     require(restored["Action"] == "reopen" and restored["Ready"] is True and restored["Member"] == reopened["Member"] == receipt["Member"] and reopened["PID"] != receipt["PID"] and restored["PreviousInstance"] == reopened["PreviousInstance"] == failed["Instance"] and restored["Volume"] == reopened["Volume"] == failed["Volume"] and restored["RecoveryRaw"] == reopened["RecoveryRaw"], "genuine same-directory native replacement")
 
 
-def check(data):
+def check(data, *, program_roles=None):
     require(type(data) is dict and set(data) == HEADER and type(data["Version"]) is int and data["Version"] == 3 and data["Profile"] == PROFILE, "fresh exact-batch artifact")
     phase, part, kind, side = integer(data["Phase"], 4, 1), integer(data["Partition"], 8, 3), integer(data["Kind"], 2, 1), data["Side"]
     require(part in (3, 8) and (phase not in (1, 3) or part == 8) and side in ("before", "after") and data["Case"] == f"batch-cross-{phase}-p{part}-k{kind}-{side}", "finite applicable native transition inventory")
@@ -143,7 +145,13 @@ def check(data):
     require(0 < len(command) <= 64 << 10, "selected source command bound")
     run, deadline = fixed(data["Run"], 16, True), integer(data["DeadlineUnixNanos"], (1 << 63)-1, 1)
     require(integer(data["ReceiptReads"], 129, 1)*65536 == integer(data["ReceiptGrantBytes"], 129*65536, 65536), "prepaid finite receipt authentication attempts")
-    e, decoded = receipt_pair(data["Arm"], data["Batch"], run, deadline, phase, part, kind, side, command)
+    member=None
+    if program_roles is not None:
+        require(type(program_roles) is dict and set(program_roles)=={"initial","selected","after"}, "exact fresh batch program roles")
+        initial=program_roles["initial"]
+        require(type(initial) is tuple and len(initial)==2 and type(initial[0]) is type(initial[1]) is int and initial[0] in (1,2) and initial[1] in (4,6) and program_roles["selected"]==initial, "first occurrence uses actual initial native layout")
+        member=initial[0 if part==3 else 1]
+    e, decoded = receipt_pair(data["Arm"], data["Batch"], run, deadline, phase, part, kind, side, command, member=member)
     require(decoded["manifest"] == P.raw(data["Manifest"]), "same actual business manifest")
     processes(data["Processes"], None, data["Case"], data["Batch"])
     scopes, _ = P.cut(data["Before"])

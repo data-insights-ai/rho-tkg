@@ -175,13 +175,14 @@ type nativeP06FirstPrepareArtifact struct {
 	Survivor                                                            *nativeP06SurvivingVote
 	ReceiptReads, ReceiptGrantBytes, GateCandidates, GateDecodeWork     uint64
 	InitialCapture, RecoveryCapture                                     nativeP06InitialCharge
+	Program                                                             *nativeP06ProgramEvidence `json:",omitempty"`
 }
 
 func nativeP06FirstPrepareName(r nativeP06ConjunctionRecipe) string {
 	return fmt.Sprintf("p06-co%d-commit%t-first-prepare-k%d-%s", r.Coordinator, r.Commit, r.Kind, r.Side)
 }
 
-func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
+func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe, programs ...nativeProtocolProgramSpec) {
 	t.Helper()
 	if !recipe.valid() || recipe.Phase != 0 || recipe.Partition != 0 || recipe.Stage != "" {
 		t.Fatal("first Prepare is a separate causal profile")
@@ -191,6 +192,12 @@ func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe) 
 	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, deadline))
 	defer cancel()
 	f := newPairedGraphFaultNetworkWithParent(t, ctx)
+	program := nativeP06ProgramStart(t, ctx, f, recipe.Kind, programs...)
+	firstVoter, recoveryVoter := uint64(1), uint64(2)
+	if program != nil {
+		firstVoter = f.n.leaders[0]
+		recoveryVoter = nativeP06ProgramAlternate(firstVoter)
+	}
 	before := nativeFaultSeed(t, f)
 	old, err := pairedFaultCut(before.Cut)
 	if err != nil {
@@ -211,7 +218,7 @@ func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe) 
 	tx := crossTransactionID(ns, business.request.id)
 	capture := newNativeConjunctionCapture(f, actor, tx)
 	defer capture.close()
-	gate, err := newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: actor, Partition: 3, Member: 1, Phase: crossPrepare, Occurrence: 1, Kind: recipe.Kind, Side: recipe.Side}, run, deadline)
+	gate, err := newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: actor, Partition: 3, Member: firstVoter, Phase: crossPrepare, Occurrence: 1, Kind: recipe.Kind, Side: recipe.Side}, run, deadline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +249,8 @@ func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe) 
 	if !nativeBatchFailedStepAllowed(processResponse{}, targetLoss) {
 		t.Fatal("first Prepare target lacks typed pipe death", targetLoss)
 	}
-	failed := nativeBatchReap(t, f, 1, receipt)
+	nativeP06ProgramLoss(t, program)
+	failed := nativeBatchReap(t, f, firstVoter, receipt)
 	reads := gate.readCount()
 	gate.mu.Lock()
 	gateCandidates, gateWork := gate.candidates, gate.decodeWork
@@ -256,7 +264,8 @@ func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe) 
 		t.Fatal("first Prepare was not preceded by genuine Register success", err, statusErr)
 	}
 	f.drain()
-	f.elect(1, 2)
+	f.elect(firstVoter, recoveryVoter)
+	nativeP06ProgramSuccessor(t, program, firstVoter, recoveryVoter)
 	nativeConjunctionReconnect(f, actor)
 	var earlyOld *p06Observation
 	var processes []pairedFaultProcess
@@ -268,18 +277,18 @@ func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe) 
 		index := receipt.Events[1].Index
 		// Fund one bounded native IPC/read/decode/binary/JSON observation before
 		// dispatch; these are finite grants, not measured output or allocations.
-		survivor := &nativeP06SurvivingVote{Member: 2, Native: receipt, InputGrantBytes: 512, OutputGrantBytes: 8 * processFrameBytes}
-		stored := f.call(f.n.all[2], processRequest{op: processEntryRecord, index: index})
+		survivor := &nativeP06SurvivingVote{Member: recoveryVoter, Native: receipt, InputGrantBytes: 512, OutputGrantBytes: 8 * processFrameBytes}
+		stored := f.call(f.n.all[recoveryVoter], processRequest{op: processEntryRecord, index: index})
 		vote, err := decodeCrossStatus(stored.outcome)
 		if err != nil || vote.index != index || vote.phase != crossPrepare || !vote.yes || vote.tx != tx || vote.digest != manifest.digest || len(stored.changes) != 0 {
 			t.Fatal("survivor lacks SAME selected durable YES original", err)
 		}
-		s.FirstVoter, s.RecoveryVoter, s.Pending, s.FirstKilled = 1, 2, unknown.response, failed
+		s.FirstVoter, s.RecoveryVoter, s.Pending, s.FirstKilled = firstVoter, recoveryVoter, unknown.response, failed
 		survivor.Reply = p06ProcessWire(t, stored)
 		s.Evidence = nativeP06PreparedProvenance{Boundary: pairedFaultBoundary{initialRows[1].Request, nil}, Prepare: p06SourceProposal(t, initialRows[1].Request), Manifest: manifest, Vote: vote, Survivor: survivor}
 	} else {
 		var local p06Observation
-		rejoined := f.replaceBeforeHeal(1, func(_ *graphProcess, _ processResponse) { local = nativeP06InitialLocalOld(f, 1, old) })
+		rejoined := f.replaceBeforeHeal(firstVoter, func(_ *graphProcess, _ processResponse) { local = nativeP06InitialLocalOld(f, firstVoter, old) })
 		if !reflect.DeepEqual(local, wantOld) {
 			t.Fatal("initial first-Prepare replacement lost local old cut")
 		}
@@ -290,7 +299,7 @@ func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe) 
 		call, stop := f.beginRun(actor, original)
 		defer stop()
 		boundary := f.awaitBoundary(firstGate)
-		prepare, vote, actual := p06PrepareBoundary(t, boundary, recipe.Coordinator, 2)
+		prepare, vote, actual := p06PrepareBoundary(t, boundary, recipe.Coordinator, recoveryVoter)
 		if !bytes.Equal(prepareManifest(t, prepare), command.manifest) || actual.digest != manifest.digest {
 			t.Fatal("observed YES replanned original")
 		}
@@ -301,7 +310,7 @@ func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe) 
 				t.Fatal("observed first YES lacks complete voter originals", member)
 			}
 		}
-		killed := f.kill(2, "prepared-participant-leader")
+		killed := f.kill(recoveryVoter, "prepared-participant-leader")
 		stop()
 		pending := nativeP06AwaitAnswer(f, call)
 		resume, err := decodeGraphProcessCoordinatorResult(pending.response)
@@ -310,9 +319,9 @@ func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe) 
 		}
 		clear()
 		f.drain()
-		f.elect(2, 1)
+		f.elect(recoveryVoter, firstVoter)
 		nativeConjunctionReconnect(f, actor)
-		s.FirstVoter, s.RecoveryVoter, s.Pending, s.FirstKilled = 2, 1, pending.response, killed
+		s.FirstVoter, s.RecoveryVoter, s.Pending, s.FirstKilled = recoveryVoter, firstVoter, pending.response, killed
 		// A repeated GSR may name an already installed original, especially
 		// install-before. Keep that actual original index; no new YES is claimed.
 		s.Evidence = nativeP06PreparedProvenance{Boundary: boundary, Prepare: prepare, Manifest: actual, Vote: vote}
@@ -323,9 +332,14 @@ func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe) 
 	}
 	records := completed.P06.Records
 	completed.P06.Records = nil
-	a := nativeP06FirstPrepareArtifact{Version: 1, Profile: nativeP06FirstPrepareProfile, Case: nativeP06FirstPrepareName(recipe), Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, Actor: actor, Target: 1, Successor: 2, FirstVoter: s.FirstVoter, RecoveryVoter: s.RecoveryVoter, RecoveryBVoter: completed.RecoveryBVoter, P06: completed.P06, InitialCall: nativeP06ConjunctionAttempt{p06ProcessWire(t, unknown.response), unknown.err.Error(), true}, InitialPhases: initialRows, Calls: completed.Calls, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: targetLoss.Error(), Processes: processes, EarlyReopened: earlyOld, FirstReopened: completed.FirstReopened, Survivor: s.Evidence.Survivor, ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: gateCandidates, GateDecodeWork: gateWork, InitialCapture: initialCharge, RecoveryCapture: completed.Capture}
+	a := nativeP06FirstPrepareArtifact{Version: 1, Profile: nativeP06FirstPrepareProfile, Case: nativeP06FirstPrepareName(recipe), Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, Actor: actor, Target: firstVoter, Successor: recoveryVoter, FirstVoter: s.FirstVoter, RecoveryVoter: s.RecoveryVoter, RecoveryBVoter: completed.RecoveryBVoter, P06: completed.P06, InitialCall: nativeP06ConjunctionAttempt{p06ProcessWire(t, unknown.response), unknown.err.Error(), true}, InitialPhases: initialRows, Calls: completed.Calls, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: targetLoss.Error(), Processes: processes, EarlyReopened: earlyOld, FirstReopened: completed.FirstReopened, Survivor: s.Evidence.Survivor, ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: gateCandidates, GateDecodeWork: gateWork, InitialCapture: initialCharge, RecoveryCapture: completed.Capture}
+	a.Program = nativeP06ProgramComplete(t, program)
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, a.Case+".jsonl"), a, records, a.P06.Through)
-	check := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", "native_transition_first_prepare_check.py"), path)
+	checker := "native_transition_first_prepare_check.py"
+	if a.Program != nil {
+		checker = "native_protocol_campaign_p06_check.py"
+	}
+	check := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", checker), path)
 	var diagnostics processStderr
 	check.Stdout, check.Stderr = &diagnostics, &diagnostics
 	if err := check.Run(); err != nil {

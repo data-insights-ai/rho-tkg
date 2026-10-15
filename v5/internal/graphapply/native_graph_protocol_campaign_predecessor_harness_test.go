@@ -483,73 +483,103 @@ func (o *nativeProtocolPredecessorOwner) arm(selector nativeConjunctionSelector,
 		return o.terminal
 	}
 	o.e.Actor, o.e.Partition, o.e.Voter = selector.Actor, selector.Partition, selector.Member
-	o.p.f.packetDrain()
-	before, err := o.p.f.n.all[selector.Member].exchange(o.ctx, processRequest{op: processTick})
-	if err = errors.Join(err, processResponseError(before)); err != nil {
+	actual, err := nativeProtocolPredecessorTick(o.ctx, o.p.f, selector.Member, o.e.Spec.Mode, o.event)
+	if err != nil {
 		return err
 	}
-	if len(before.packets) < 1 || len(before.packets) > 2 || len(before.handles) != 0 {
-		return errInvalid
+	o.e.TickResponse, o.e.AfterState, o.e.Packets = actual.tickWire, actual.stateWire, actual.events
+	o.e.RetainedBytes = uint64(len(actual.tickWire) + len(actual.stateWire))
+	o.performed = true
+	o.event("selected-command-native-arm-complete")
+	return nil
+}
+
+type nativeProtocolPredecessorTickResult struct {
+	tick                processResponse
+	tickWire, stateWire []byte
+	events              []nativeFaultPacketEvent
+}
+
+// Shared real predecessor path. It changes neither the selected native command
+// nor its authority; all packets already exist before that command is submitted.
+func nativeProtocolPredecessorTick(ctx context.Context, f *pairedGraphFaultNetwork, member uint64, mode string, observe func(string)) (*nativeProtocolPredecessorTickResult, error) {
+	if ctx == nil || f == nil || f.parent == nil || member < 1 || member > 6 || (mode != "delay" && mode != "reorder" && mode != "duplicate") {
+		return nil, errInvalid
 	}
-	for _, packet := range before.packets {
-		if packet.Snapshot || packet.From != selector.Member || len(packet.Payload) == 0 || len(packet.Payload) > 64<<10 {
-			return errLimit
+	deadline, bounded := ctx.Deadline()
+	parent, original := f.parent.Deadline()
+	if !bounded || !original || deadline.After(parent) || ctx.Err() != nil {
+		return nil, errors.Join(errInvalid, ctx.Err())
+	}
+	event := func(action string) {
+		if observe != nil {
+			observe(action)
 		}
 	}
-	if o.e.Spec.Mode == "reorder" && len(before.packets) != 2 {
-		return errInvalid
+	actual := &nativeProtocolPredecessorTickResult{}
+	f.packetDrain()
+	before, err := f.n.all[member].exchange(ctx, processRequest{op: processTick})
+	if err = errors.Join(err, processResponseError(before)); err != nil {
+		return nil, err
+	}
+	if len(before.packets) < 1 || len(before.packets) > 2 || len(before.handles) != 0 {
+		return nil, errInvalid
+	}
+	for _, packet := range before.packets {
+		if packet.Snapshot || packet.From != member || len(packet.Payload) == 0 || len(packet.Payload) > 64<<10 {
+			return nil, errLimit
+		}
+	}
+	if mode == "reorder" && len(before.packets) != 2 {
+		return nil, errInvalid
 	}
 	// These frames already exist before the selected command enters native
 	// Propose/Step. The existing transport alone owns their actual deliveries.
 	wire, err := encodeProcessResponse(before)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(wire) > 256<<10 {
-		return errLimit
+		return nil, errLimit
 	}
-	o.e.TickResponse = wire
-	o.e.RetainedBytes = uint64(len(wire))
-	o.event("predecessor-native-tick-returned-emitted-packets")
+	actual.tick, actual.tickWire = before, wire
+	event("predecessor-native-tick-returned-emitted-packets")
 	delay := 0
-	if o.e.Spec.Mode == "delay" {
+	if mode == "delay" {
 		delay = 20
 	}
-	schedule, err := newNativeFaultPacketScheduler(o.ctx, o.e.Spec.Mode, before.packets[0].From, before.packets[0].To, 1, delay)
+	schedule, err := newNativeFaultPacketScheduler(ctx, mode, before.packets[0].From, before.packets[0].To, 1, delay)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	h := o.p.f.n.all[selector.Member].mux.hub
+	h := f.n.all[member].mux.hub
 	finish, err := attachNativeFaultPacketScheduler(h, schedule)
 	if err != nil {
 		schedule.cancel()
-		return err
+		return nil, err
 	}
-	if err := h.enqueue(selector.Member, before.packets, before.handles...); err != nil {
+	if err := h.enqueue(member, before.packets, before.handles...); err != nil {
 		_, closed := finish()
-		return errors.Join(err, closed)
+		return nil, errors.Join(err, closed)
 	}
-	o.p.f.packetDrain()
-	o.e.Packets, err = finish()
+	f.packetDrain()
+	actual.events, err = finish()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if len(o.e.Packets) != 1 {
-		return errCorrupt
+	if len(actual.events) != 1 {
+		return nil, errCorrupt
 	}
-	state, err := o.p.f.n.all[selector.Member].exchange(o.ctx, processRequest{op: processStateOp})
+	state, err := f.n.all[member].exchange(ctx, processRequest{op: processStateOp})
 	if err = errors.Join(err, processResponseError(state)); err != nil {
-		return err
+		return nil, err
 	}
-	o.e.AfterState, err = encodeProcessResponse(state)
+	actual.stateWire, err = encodeProcessResponse(state)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	o.e.RetainedBytes += uint64(len(o.e.AfterState))
-	o.performed = true
-	o.event("predecessor-packets-delivered-by-native-scheduler")
-	o.event("selected-command-native-arm-complete")
-	return nil
+	event("predecessor-packets-delivered-by-native-scheduler")
+	return actual, nil
 }
 
 func (r nativeProtocolPredecessorRecipe) matches(s nativeConjunctionSelector) bool {
