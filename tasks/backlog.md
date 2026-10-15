@@ -661,12 +661,19 @@ at ID1. Cut transitions are source-integrated at `a11f8c62`: eight actual
 FreshFence/Certify participant/side cases retain a concurrent committed original,
 same-request recovery and old-cut checks across child replacement. Repeated-round
 controls are identified explicitly; they do not qualify first publication of a
-new certificate. These are authored cases, not executed recovery proof. Durable
-pin, new-certificate and namespace-publication transitions, plus broader
-recorded-seed composition, remain in implementation; none of these guards ran.
+new certificate. Native pin-call transitions are source-integrated at `d48bac42`:
+30 feasible phase/participant/side cases retain the genuine issued request through
+whole-cohort same-directory replacement, authenticated resume, old-cut reads,
+terminal refusal and ordered cancellation. The checker joins complete native
+prefixes, original control/business CDC, exact call identities and the independent
+serial witness. Invalid, limit, corruption and unexpected joined errors cannot
+qualify an interruption. These are authored cases, not executed recovery proof.
+New-certificate and namespace-publication boundaries, broader retained-pin/fault
+composition and recorded-seed exploration remain in implementation; none of
+these guards ran.
 
 Current worker lanes: Sol 6.1/high for native snapshot-to-feed production
-ownership and its workload; Sol 6.1/high for remaining C/D transfer/cut/pin
+ownership and its workload; Sol 6.1/high for remaining C/D certificate/publication
 transitions and concrete production gaps; Sol 6.1/high for the remaining FDB
 workload families after integration of their owned transport. These packages
 are in implementation and do not add accepted runtime evidence. The
