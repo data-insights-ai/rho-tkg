@@ -33,7 +33,7 @@ MAX_SECONDS, MAX_SAMPLES, MAX_BYTES = 31_536_000, 31_536_002, 1 << 44
 FRAME, FIXED = 2 << 20, 16 << 20
 SOURCE_SHA = "bbd141ef7b5d0127cc2152843ba61f274dc32814fa3e0f13e7d07a080bef53d9"
 ROLES = ("zone0", "zone1", "zone2", "zone3", "client")
-FAMILIES = ("snapshot-to-feed", "contention-empty-range", "snapshot-selectors", "cross-edge-endpoint-uniqueness")
+FAMILIES = ("snapshot-to-feed", "contention-empty-range", "snapshot-selectors", "cross-edge-endpoint-uniqueness", "immutable-columns")
 
 
 def require(condition, message):
@@ -77,7 +77,7 @@ def causal_minimum(spec, transport):
         rounds = 7 + 2*n + (2*n+writers-1)//writers + 2*((n+writers-1)//writers)
         # Lifecycle commits, serial old-plan captures/replays, three worker phases.
     else:
-        require(spec["family"] == "snapshot-selectors", "unsupported genuine schedule")
+        require(spec["family"] in ("snapshot-selectors", "immutable-columns"), "unsupported genuine schedule")
     return rounds * transport["targetRTTMillis"]
 
 
@@ -88,7 +88,7 @@ def validate_input(value):
     require(type(spec) is dict and set(spec) == set("version family facts crossPercent writers layout".split()), "exact implemented family spec")
     n = integer(spec["facts"], 20, 1_000_000)
     writers = integer(spec["writers"], 1, 32)
-    require(spec["version"] == 2 and type(spec["version"]) is int and spec["family"] in FAMILIES and n % 20 == 0 and writers in (1, 8, 32) and (spec["family"] not in ("snapshot-to-feed", "snapshot-selectors") or n >= writers + 1) and type(spec["crossPercent"]) is int and spec["crossPercent"] in (0, 10, 50, 100) and spec["layout"] in ("kv", "columns"), "actual fresh implemented-family transport adapter")
+    require(spec["version"] == 2 and type(spec["version"]) is int and spec["family"] in FAMILIES and n % 20 == 0 and writers in (1, 8, 32) and (spec["family"] not in ("snapshot-to-feed", "snapshot-selectors", "immutable-columns") or n >= writers + 1) and type(spec["crossPercent"]) is int and spec["crossPercent"] in (0, 10, 50, 100) and spec["layout"] in ("kv", "columns"), "actual fresh implemented-family transport adapter")
     require(type(t) is dict and set(t) == set("kind targetRTTMillis jitterMillis seed".split()) and type(t["targetRTTMillis"]) is int and type(t["jitterMillis"]) is int and type(t["seed"]) is int and t["jitterMillis"] == 0 and t["seed"] == 20261009 and (t["kind"] == "local" and t["targetRTTMillis"] == 0 or t["kind"] == "injected-rtt" and t["targetRTTMillis"] in (1, 20, 100)), "actual local or fixed injected delay")
     run = value["Run"]
     require(type(run) is str and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "same fresh run identity")
@@ -331,7 +331,7 @@ def family_record(record, spec, config):
     require(type(record) is dict and set(record) == {"Policy", "Record"}, "complete native transport observation")
     p = validate_policy(record["Policy"])
     require(p["Spec"] == spec, "same family/dimensions; no policy relabel")
-    stem = {"snapshot-to-feed": "feed", "contention-empty-range": "contention", "snapshot-selectors": "selectors", "cross-edge-endpoint-uniqueness": "edge-unique"}[spec["family"]]
+    stem = {"snapshot-to-feed": "feed", "contention-empty-range": "contention", "snapshot-selectors": "selectors", "cross-edge-endpoint-uniqueness": "edge-unique", "immutable-columns": "columns"}[spec["family"]]
     require(config["Graph"] == f"graph-workload-{stem}-v2-{spec['layout']}-{bytes(p['Run']).hex()}", "same native graph/run admission")
     actual = record["Record"]
     require(type(actual) is dict and set(actual) == {"Key", "Value"}, "actual native policy key/value")

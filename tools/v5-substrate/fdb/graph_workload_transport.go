@@ -84,7 +84,7 @@ func graphTransportCausalMinimum(spec graphFeedWorkloadSpec, t graphTransport) (
 	switch spec.Family {
 	case graphFeedWorkloadFamily:
 		rounds = 5 + 2*waves + pages
-	case graphSelectorsFamily:
+	case graphSelectorsFamily, graphColumnsFamily:
 		rounds = 5 + 2*waves
 	case graphContentionFamily:
 		// Serial setup + seed half + isolated claim waves, and the longest
@@ -108,7 +108,7 @@ func transportHex(s string, size int) bool {
 }
 func (p graphTransportPolicy) validate() error {
 	s := p.Spec
-	if p.Version != 2 || s.Version != 2 || !graphTransportFamily(s.Family) || s.Facts < 20 || s.Facts > 1_000_000 || s.Facts%20 != 0 || s.Writers != 1 && s.Writers != 8 && s.Writers != 32 || (s.Family == graphFeedWorkloadFamily || s.Family == graphSelectorsFamily) && s.Facts < uint64(s.Writers)+1 || s.CrossPercent != 0 && s.CrossPercent != 10 && s.CrossPercent != 50 && s.CrossPercent != 100 || s.Layout != "kv" && s.Layout != "columns" || p.Run == [16]byte{} {
+	if p.Version != 2 || s.Version != 2 || !graphTransportFamily(s.Family) || s.Facts < 20 || s.Facts > 1_000_000 || s.Facts%20 != 0 || s.Writers != 1 && s.Writers != 8 && s.Writers != 32 || (s.Family == graphFeedWorkloadFamily || s.Family == graphSelectorsFamily || s.Family == graphColumnsFamily) && s.Facts < uint64(s.Writers)+1 || s.CrossPercent != 0 && s.CrossPercent != 10 && s.CrossPercent != 50 && s.CrossPercent != 100 || s.Layout != "kv" && s.Layout != "columns" || p.Run == [16]byte{} {
 		return errInvalid
 	}
 	t := p.Transport
@@ -233,7 +233,7 @@ func (h *harness) graphTransportInstall(ctx context.Context, p graphTransportPol
 // Family dispatch is private to the explicit transported spec. Ordinary config
 // constructors and Cost.Version meanings remain unchanged.
 func graphTransportFamily(family string) bool {
-	return family == graphFeedWorkloadFamily || family == graphContentionFamily || family == graphSelectorsFamily || family == graphEdgeUniqueFamily
+	return family == graphFeedWorkloadFamily || family == graphContentionFamily || family == graphSelectorsFamily || family == graphEdgeUniqueFamily || family == graphColumnsFamily
 }
 func graphTransportConfig(spec graphFeedWorkloadSpec, run string) config {
 	switch spec.Family {
@@ -245,6 +245,8 @@ func graphTransportConfig(spec graphFeedWorkloadSpec, run string) config {
 		return c
 	case graphSelectorsFamily:
 		return graphSelectorsConfig(graphSelectorsSpec(spec), run)
+	case graphColumnsFamily:
+		return graphColumnsConfig(graphSelectorsSpec(spec), run)
 	case graphEdgeUniqueFamily:
 		c := graphEdgeUniqueConfig(graphEdgeUniqueSpec(spec).profile(), spec.Layout, run)
 		c.Graph = strings.Replace(c.Graph, "unique-v1-", "unique-v2-", 1)
@@ -253,7 +255,7 @@ func graphTransportConfig(spec graphFeedWorkloadSpec, run string) config {
 	return config{}
 }
 func graphTransported(c config) bool {
-	return strings.HasPrefix(c.Graph, "graph-workload-contention-v2-") || strings.HasPrefix(c.Graph, "graph-workload-selectors-v2-") || strings.HasPrefix(c.Graph, "graph-workload-edge-unique-v2-")
+	return strings.HasPrefix(c.Graph, "graph-workload-contention-v2-") || strings.HasPrefix(c.Graph, "graph-workload-selectors-v2-") || strings.HasPrefix(c.Graph, "graph-workload-edge-unique-v2-") || strings.HasPrefix(c.Graph, "graph-workload-columns-v2-")
 }
 
 // Every new business capture/apply authenticates the SAME actual native policy
@@ -388,6 +390,8 @@ func graphTransportFamilyConfig(spec graphFeedWorkloadSpec, run string) config {
 		return graphContentionConfig(graphContentionSpec(spec).profile(), spec.Layout, run)
 	case graphSelectorsFamily:
 		return graphSelectorsConfig(graphSelectorsSpec(spec), run)
+	case graphColumnsFamily:
+		return graphColumnsConfig(graphSelectorsSpec(spec), run)
 	case graphEdgeUniqueFamily:
 		return graphEdgeUniqueConfig(graphEdgeUniqueSpec(spec).profile(), spec.Layout, run)
 	}
@@ -426,6 +430,11 @@ func graphTransportConfigVersion(c config) uint8 {
 func (h *harness) graphTransportCheckIn(tr fdb.ReadTransaction) error {
 	if h == nil {
 		return errInvalid
+	}
+	if h.config.Cost.Version == 6 {
+		// This new family's ordinary and transported original fast paths both
+		// require its actual native admission before returning a retained reply.
+		return h.graphWorkloadBindingIn(tr, "workload-columns-v1")
 	}
 	if !graphTransported(h.config) {
 		return nil

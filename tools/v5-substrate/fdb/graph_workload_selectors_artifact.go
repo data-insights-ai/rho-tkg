@@ -51,6 +51,16 @@ func newGraphSelectorsArtifactsAdmission(ctx context.Context, h *harness, root *
 	if h == nil || root == nil || spec.Family != graphSelectorsFamily || spec.profile() != h.config.Cost || !validGraphSelectorsConfig(h.config) {
 		return nil, errInvalid
 	}
+	return newGraphWorkloadArtifacts(ctx, h, root, spec, binding, initial, transport)
+}
+
+// The columns family shares authentic attempt/raw/lifetime reducers, not the
+// selector schedule. Its fresh namespace, files, observations and format remain
+// explicit; the historical selector constructor and output defaults are intact.
+func newGraphWorkloadArtifacts(ctx context.Context, h *harness, root *os.Root, spec graphSelectorsSpec, binding graphCostStoredRecord, initial cut, transport *graphTransportRecord) (*graphSelectorsArtifacts, error) {
+	if h == nil || root == nil || spec.profile() != h.config.Cost || !validGraphCostProfile(h.config) || spec.Family != graphSelectorsFamily && spec.Family != graphColumnsFamily {
+		return nil, errInvalid
+	}
 	admission, checkErr := graphTransportArtifact(h, graphFeedWorkloadSpec(spec), transport)
 	if checkErr != nil {
 		return nil, checkErr
@@ -60,16 +70,19 @@ func newGraphSelectorsArtifactsAdmission(ctx context.Context, h *harness, root *
 	}
 
 	a := &graphSelectorsArtifacts{ctx: ctx, h: h, root: root, attemptHash: sha256.New(), eventHash: sha256.New(), end: graphSelectorsEnd{Version: spec.Version, Format: graphTransportFormatFor(spec.Version, graphSelectorsFormat), Spec: spec, Config: h.config, Binding: graphSelectorsPolicyAdmission(h.config, admission), BindingRecord: binding, Initial: initial.record, Transport: transport}}
+	if spec.Family == graphColumnsFamily {
+		a.end.Format = graphTransportFormatFor(spec.Version, graphColumnsFormat)
+	}
 	var err error
-	a.attempts, _, err = openGraphCostArtifact(root, "fdb-selectors-attempts.jsonl")
+	a.attempts, _, err = openGraphCostArtifact(root, a.filename("attempts.jsonl"))
 	if err != nil {
 		return nil, err
 	}
-	a.events, _, err = openGraphCostArtifact(root, "fdb-selectors-events.jsonl")
+	a.events, _, err = openGraphCostArtifact(root, a.filename("events.jsonl"))
 	if err != nil {
 		return nil, errors.Join(err, a.Close())
 	}
-	a.latencies, _, err = openGraphCostArtifact(root, "fdb-selectors-latency.jsonl")
+	a.latencies, _, err = openGraphCostArtifact(root, a.filename("latency.jsonl"))
 	if err != nil {
 		return nil, errors.Join(err, a.Close())
 	}
@@ -429,7 +442,7 @@ func (a *graphSelectorsArtifacts) inventory(stage string, at cut) error {
 
 func (a *graphSelectorsArtifacts) raw(header graphCostArtifactHeader, walk func(func(graphCostRawRow) error) (graphCostStreamEnd, error)) (end graphCostStreamEnd, err error) {
 	header.Format = a.end.Format
-	file, _, err := openGraphCostArtifact(a.root, "fdb-selectors-"+header.Stream+".jsonl")
+	file, _, err := openGraphCostArtifact(a.root, a.filename(header.Stream+".jsonl"))
 	if err != nil {
 		return end, err
 	}
@@ -466,7 +479,11 @@ func (a *graphSelectorsArtifacts) raw(header graphCostArtifactHeader, walk func(
 }
 func (a *graphSelectorsArtifacts) finish(source *graphHistoryRetention) (err error) {
 	p := a.h.config.Cost
-	if a.end.Setup != 3 || a.end.Creates != p.Facts || a.end.Updates != p.Facts || a.end.Committed != 3+2*p.Facts || a.end.Attempts != a.end.Committed+a.end.Aborted || a.end.Observations != 11 {
+	observations := uint64(11)
+	if p.Version == 6 {
+		observations = 3
+	}
+	if a.end.Setup != 3 || a.end.Creates != p.Facts || a.end.Updates != p.Facts || a.end.Committed != 3+2*p.Facts || a.end.Attempts != a.end.Committed+a.end.Aborted || a.end.Observations != observations {
 		return errMismatch
 	}
 	for client := 0; client < p.Writers; client++ {
@@ -566,7 +583,7 @@ func (a *graphSelectorsArtifacts) finish(source *graphHistoryRetention) (err err
 	if err = a.Close(); err != nil {
 		return err
 	}
-	file, _, err := openGraphCostArtifact(a.root, "fdb-selectors-result.json")
+	file, _, err := openGraphCostArtifact(a.root, a.filename("result.json"))
 	if err != nil {
 		return err
 	}
@@ -583,11 +600,14 @@ func (a *graphSelectorsArtifacts) columnsStart() (err error) {
 	if err != nil {
 		return err
 	}
-	file, _, err := openGraphCostArtifact(a.root, "fdb-selectors-columns.jsonl")
+	file, _, err := openGraphCostArtifact(a.root, a.filename("columns.jsonl"))
 	if err != nil {
 		return err
 	}
 	l := &graphCostColumnLane{s: store, pins: pins, root: a.root, file: file, payload: sha256.New(), whole: sha256.New(), initial: cut{a.end.Initial}}
+	if a.end.Spec.Family == graphColumnsFamily {
+		l.timing = a.columnTiming
+	}
 	l.end.Format, l.end.SourceFormat, l.end.ReferenceLayout = a.end.Format, a.end.Format, "native-logical-kv-reference"
 	a.column = l
 	records, err := l.records([]fdb.Key{store.key("binding"), pins.key("binding")})
@@ -634,8 +654,12 @@ func (a *graphSelectorsArtifacts) columnsFinish() (err error) {
 	if l == nil || l.held == nil {
 		return errInvalid
 	}
+	begin := time.Now()
 	l.end.Final, err = l.s.publish(ctx, "final", l.initial, a.final)
 	if err != nil {
+		return err
+	}
+	if err = l.timed("Publish", "final", a.final.record, l.end.Final.Rows, begin); err != nil {
 		return err
 	}
 	l.head, err = l.pins.reference(ctx, "head-final", "head", "final", l.head.Version)
@@ -786,4 +810,11 @@ func (a *graphSelectorsArtifacts) columnsFinish() (err error) {
 
 func (a *graphSelectorsArtifacts) context() context.Context {
 	return graphTransportLegacyContext(a.ctx)
+}
+
+func (a *graphSelectorsArtifacts) filename(suffix string) string {
+	if a.end.Spec.Family == graphColumnsFamily {
+		return "fdb-columns-" + suffix
+	}
+	return "fdb-selectors-" + suffix
 }

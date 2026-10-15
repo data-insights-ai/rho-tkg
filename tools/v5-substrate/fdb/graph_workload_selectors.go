@@ -29,6 +29,9 @@ type graphSelectorsSpec struct {
 }
 
 func (s graphSelectorsSpec) profile() graphCostProfile {
+	if s.Family == graphColumnsFamily {
+		return graphCostProfile{6, s.Facts, s.CrossPercent, s.Writers}
+	}
 	return graphCostProfile{3, s.Facts, s.CrossPercent, s.Writers}
 }
 func graphSelectorsLimit(p graphCostProfile) limits {
@@ -101,11 +104,14 @@ func graphSelectorsPolicyAdmission(c config, p *graphTransportPolicy) graphSelec
 	return b
 }
 func (h *harness) graphSelectorsBindingIn(tr fdb.ReadTransaction) error {
+	return h.graphWorkloadBindingIn(tr, "workload-selectors-v1")
+}
+func (h *harness) graphWorkloadBindingIn(tr fdb.ReadTransaction, kind string) error {
 	p, err := h.graphTransportNative(tr)
 	if err != nil {
 		return err
 	}
-	raw, err := tr.Get(h.key(0, graphTransportBindingKind(h.config, "workload-selectors-v1"), "binding")).Get()
+	raw, err := tr.Get(h.key(0, graphTransportBindingKind(h.config, kind), "binding")).Get()
 	if err != nil {
 		return err
 	}
@@ -119,10 +125,13 @@ func (h *harness) graphSelectorsInstall() (graphCostStoredRecord, error) {
 	return h.graphSelectorsInstallContext(nil, nil)
 }
 func (h *harness) graphSelectorsInstallContext(ctx context.Context, admission *graphTransportPolicy) (graphCostStoredRecord, error) {
+	return h.graphWorkloadInstallContext(ctx, admission, "workload-selectors-v1")
+}
+func (h *harness) graphWorkloadInstallContext(ctx context.Context, admission *graphTransportPolicy, kind string) (graphCostStoredRecord, error) {
 	if h == nil || admission != nil && ctx == nil {
 		return graphCostStoredRecord{}, errInvalid
 	}
-	key := h.key(0, graphTransportBindingKind(h.config, "workload-selectors-v1"), "binding")
+	key := h.key(0, graphTransportBindingKind(h.config, kind), "binding")
 	body, err := wire(graphSelectorsPolicyAdmission(h.config, admission))
 	if err != nil {
 		return graphCostStoredRecord{}, err
@@ -170,7 +179,7 @@ func (h *harness) graphSelectorsInstallContext(ctx context.Context, admission *g
 		return graphCostStoredRecord{}, graphHistoryCommitError(err)
 	}
 	stored, _, err := graphCostParallelRead(graphTransportLegacyContext(ctx), h.db, func(tr fdb.ReadTransaction) (graphCostStoredRecord, error) {
-		if err := h.graphSelectorsBindingIn(tr); err != nil {
+		if err := h.graphWorkloadBindingIn(tr, kind); err != nil {
 			return graphCostStoredRecord{}, err
 		}
 		return snapshotStored(tr, key, 64<<10)
@@ -205,7 +214,11 @@ func graphSelectorsSpecFromEnv() (graphSelectorsSpec, string, error) {
 func (h *harness) graphSelectorsApply(ctx context.Context, phase string, fact uint64, client int, emit func(graphCostParallelEvent)) error {
 	p := h.config.Cost
 	p.Version = 1
-	_, err := h.graphCostApplyOperation(ctx, graphCostParallelJob{phase, fact}, client, graphCostOperationID(p, phase, fact), "selectors", emit)
+	prefix := "selectors"
+	if h.config.Cost.Version == 6 {
+		prefix = "columns"
+	}
+	_, err := h.graphCostApplyOperation(ctx, graphCostParallelJob{phase, fact}, client, graphCostOperationID(p, phase, fact), prefix, emit)
 	return err
 }
 

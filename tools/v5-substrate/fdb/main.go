@@ -78,6 +78,18 @@ func run() error {
 			defer db.Close()
 			return runGraphFeedWorkload(db, spec, run)
 		}
+		if family.Family == graphColumnsFamily {
+			spec, run, err := graphColumnsSpecFromEnv()
+			if err != nil {
+				return err
+			}
+			db, err := openDB()
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			return runGraphColumns(db, spec, run)
+		}
 		if family.Family == graphEdgeUniqueFamily {
 			spec, run, err := graphEdgeUniqueSpecFromEnv()
 			if err != nil {

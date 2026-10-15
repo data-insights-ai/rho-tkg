@@ -33,7 +33,7 @@ def operation(p, value):
     return ordinal, phase, fact
 
 
-def attempt(a, end, spool):
+def attempt(a, end, spool, request_prefix="selectors"):
     fields(a, "Operation Engine ClientID AttemptOrdinal PreviousRequest Request Transaction BodySHA256 Proposal Submissions ReadCallbacks Classification Error Originals Original")
     p, c = end["Spec"], end["Config"]
     ordinal, phase, fact = operation(p, a["Operation"])
@@ -47,7 +47,7 @@ def attempt(a, end, spool):
     tx = decoded(body)
     fields(tx, "Graph Topology ID Request Coordinator Dependency Participants GraphChange Lifecycle")
     command, lifecycle, effects, reads = codec.fdb_contract(p, ordinal)
-    name = f"selectors-{phase}-{fact}-c{client}-a{number}"
+    name = f"{request_prefix}-{phase}-{fact}-c{client}-a{number}"
     owner = 1 if phase == "setup" and fact == 2 else 0
     require(a["Engine"] == "foundationdb" and a["Error"] == "" and tx["Graph"] == c["Graph"] and tx["Topology"] == c["Topology"] and tx["ID"] == a["Transaction"] == name and tx["Request"] == a["Request"] == "request/" + name and tx["Dependency"] == 0 and tx["Coordinator"] == owner and same(tx["GraphChange"], command) and same(tx["Lifecycle"], lifecycle), "actual family/namespace/command/provenance/request")
     require([part["Group"] for part in tx["Participants"]] == sorted(effects), "complete actual participants")
@@ -97,11 +97,11 @@ def attempt(a, end, spool):
     return ordinal, o
 
 
-def attempts(directory, end, spool):
+def attempts(directory, end, spool, filename="fdb-selectors-attempts.jsonl", request_prefix="selectors"):
     digest, counts, footer = hashlib.sha256(), [0, 0, 0], False
     clients = [0] * 32
     original_cost = {"old": [[0, 0], [0, 0]], "final": [[0, 0], [0, 0]]}
-    for frame, line in lines(directory / "fdb-selectors-attempts.jsonl", end["Config"]["Limits"]["Transactions"] + 1):
+    for frame, line in lines(directory / filename, end["Config"]["Limits"]["Transactions"] + 1):
         require(not footer, "attempt after EOF")
         if frame.get("Type") == "footer":
             require(frame == {"Type": "footer", "Attempts": counts[0], "Aborted": counts[1], "Committed": counts[2], "PayloadSHA256": digest.hexdigest()} and digest.hexdigest() == end["AttemptSHA256"], "attempt EOF/raw hash")
@@ -109,7 +109,7 @@ def attempts(directory, end, spool):
             continue
         fields(frame, "Type Attempt")
         require(frame["Type"] == "attempt", "unknown attempt frame")
-        ordinal, outcome = attempt(frame["Attempt"], end, spool)
+        ordinal, outcome = attempt(frame["Attempt"], end, spool, request_prefix)
         size = sum(len(blob(r["Key"])) + len(blob(r["Value"])) for r in frame["Attempt"]["Originals"])
         for phase in ("old", "final") if ordinal <= 3 + end["Spec"]["facts"] else ("final",):
             original_cost[phase][0][outcome["Coordinator"]] += 1
@@ -127,9 +127,9 @@ def attempts(directory, end, spool):
         spool.insert(b"original-cost", phase.encode(), go_json(costs))
 
 
-def raw_stream(directory, name, end):
+def raw_stream(directory, name, end, stem="fdb-selectors"):
     digest, counts, previous, footer, header = hashlib.sha256(), [0, 0], None, False, None
-    for frame, line in lines(directory / ("fdb-selectors-" + name + ".jsonl"), 6 * end["Spec"]["facts"] + 6):
+    for frame, line in lines(directory / (stem + "-" + name + ".jsonl"), 6 * end["Spec"]["facts"] + 6):
         require(not footer, "raw row after EOF")
         if header is None:
             header = frame
@@ -166,7 +166,7 @@ def raw_stream(directory, name, end):
     require(header is not None and footer, "truncated raw source")
 
 
-def source_fold(directory, end, spool):
+def source_fold(directory, end, spool, stem="fdb-selectors"):
     p, c = end["Spec"], end["Config"]
     physical, definitions = codec.StoredState(spool, b"fdb-before"), set()
     generations, sequences, versions = [0, 0], [0, 0], [0, 0]
@@ -175,7 +175,7 @@ def source_fold(directory, end, spool):
     header = None
     cdc_bytes = {"old": [0, 0], "final": [0, 0]}
     history_bytes = {"old": [0, 0], "final": [0, 0]}
-    for kind, row in raw_stream(directory, "cdc", end):
+    for kind, row in raw_stream(directory, "cdc", end, stem):
         if kind == "header":
             header = row
             continue
@@ -215,7 +215,7 @@ def source_fold(directory, end, spool):
         spool.lookup(b"cdc-seen", u64(ordinal))
     for name, expected_count in (("history", 3 + 6 * p["facts"]), ("current", 3 + 3 * p["facts"])):
         count = 0
-        for kind, row in raw_stream(directory, name, end):
+        for kind, row in raw_stream(directory, name, end, stem):
             if kind == "header":
                 require(same(row, header | {"Stream": name}), "mixed raw stream authorities")
                 continue
@@ -558,8 +558,10 @@ def snapshot_row(row, cut, end, spool, name):
     spool.insert(b"snapshot-seen-" + name.encode(), native_key, go_json(v))
 
 
-def columns(directory, end, spool):
-    path = directory / "fdb-selectors-columns.jsonl"
+def columns(directory, end, spool, filename="fdb-selectors-columns.jsonl"):
+    # Explicit caller filename only; native graph/config/cut/format and every
+    # source/original/chunk/owner join below remain independently authenticated.
+    path = directory / filename
     if end["Spec"]["layout"] == "kv":
         require(not path.exists() and "Columns" not in end, "KV evidence cannot masquerade as columns")
         return
@@ -892,9 +894,9 @@ def metadata(end, spool, header):
         require(decoded(spool.lookup(b"selection-metadata", name.encode())) == expected, "exact actual selection metadata at its native lifecycle position")
 
 
-def latencies(directory, end, spool):
+def latencies(directory, end, spool, filename="fdb-selectors-latency.jsonl"):
     count = 0
-    for row, _ in lines(directory / "fdb-selectors-latency.jsonl", end["Committed"]):
+    for row, _ in lines(directory / filename, end["Committed"]):
         fields(row, "Phase Fact Client Nanos Access")
         integer(row["Nanos"], 1, (1 << 63) - 1)
         phase, fact = row["Phase"], integer(row["Fact"])

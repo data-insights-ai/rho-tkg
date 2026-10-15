@@ -212,6 +212,11 @@ func (h *harness) nativeLives(tr fdb.ReadTransaction, e endpoint) (int, bool, er
 	return live, matched, nil
 }
 func (h *harness) checkGraphNative(tr fdb.ReadTransaction, x transaction) (string, error) {
+	if h.config.Cost.Version == 6 {
+		if err := h.graphWorkloadBindingIn(tr, "workload-columns-v1"); err != nil {
+			return "", err
+		}
+	}
 	if h.config.Cost.Version == 4 {
 		return h.checkGraphEdgeUniqueNative(tr, x)
 	}

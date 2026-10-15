@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"hash"
 	"os"
+	"time"
 
 	"github.com/apple/foundationdb/bindings/go/src/fdb"
 )
@@ -56,6 +57,16 @@ type graphCostColumnLane struct {
 	head    graphColumnReference
 	end     graphCostColumnEnd
 	closed  bool
+	// Nil preserves historical artifact bytes and emits no new timing. The fresh
+	// columns workload observes complete calls, never one sample per emitted row.
+	timing func(call, name string, at certificate, rows uint64, nanos int64) error
+}
+
+func (l *graphCostColumnLane) timed(call, name string, at certificate, rows uint64, begin time.Time) error {
+	if l.timing == nil {
+		return nil
+	}
+	return l.timing(call, name, at, rows, time.Since(begin).Nanoseconds())
 }
 
 func (l *graphCostColumnLane) context() context.Context {
@@ -222,6 +233,7 @@ func (l *graphCostColumnLane) holdOld(old cut) error {
 }
 
 func (l *graphCostColumnLane) walk(owner *graphColumnRead, at cut, cache *os.Root, name string) error {
+	begin := time.Now()
 	var count uint64
 	m, err := owner.walk(l.context(), at, cache, func(row graphColumnRow) error {
 		if err := l.write(struct {
@@ -248,13 +260,14 @@ func (l *graphCostColumnLane) walk(owner *graphColumnRead, at cut, cache *os.Roo
 		return err
 	}
 	l.end.Counts.WalkRows += count
-	return nil
+	return l.timed("Walk", name, at.record, count, begin)
 }
 
 // Cache files are actual immutable SDK chunk bytes in an exclusive directory.
 // Their filenames/body are independently checked against the hash-bound chunk
 // records by the offline verifier; nested cache files need no inventory map.
 func (l *graphCostColumnLane) chunks(owner *graphColumnRead, m graphColumnManifest) (cache *os.Root, err error) {
+	begin := time.Now()
 	name := "column-cache-" + m.Generation.ID
 	if err := l.root.Mkdir(name, 0700); err != nil {
 		return nil, err
@@ -337,6 +350,9 @@ func (l *graphCostColumnLane) chunks(owner *graphColumnRead, m graphColumnManife
 		Type, Generation string
 		Manifest         graphColumnManifest
 	}{"chunks-eof", m.Generation.ID, m}, true)
+	if err == nil {
+		err = l.timed("Cache", m.Generation.ID, m.Generation.Cut, count, begin)
+	}
 	return cache, err
 }
 
@@ -355,6 +371,7 @@ func (l *graphCostColumnLane) export(owner *graphColumnRead, m graphColumnManife
 	// The existing point API is a bounded generation scan, NOT an index. Three
 	// selected witnesses per cut keep total work linear rather than N point scans.
 	for _, id := range [3]uint64{7, 7 + 2*(l.s.h.config.Cost.Facts-1), 5} {
+		begin := time.Now()
 		row, found, err := l.s.point(l.context(), m.Generation.ID, at, id)
 		if err != nil {
 			return err
@@ -372,6 +389,9 @@ func (l *graphCostColumnLane) export(owner *graphColumnRead, m graphColumnManife
 			Found            bool
 			Row              graphColumnRow
 		}{"point", m.Generation.ID, id, found, row}, true); err != nil {
+			return err
+		}
+		if err := l.timed("ScanPoint", fmt.Sprintf("%s-%d", m.Generation.ID, id), at.record, m.Rows, begin); err != nil {
 			return err
 		}
 		l.end.Counts.Points++

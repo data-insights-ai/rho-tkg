@@ -56,7 +56,7 @@ class OwnedTransportGuards(unittest.TestCase):
         with self.assertRaises(ValueError): owned.validate_readback([],peers,value,True)
 
     def test_all_actual_family_schedules_and_native_admission_binding(self):
-        for family, minimum in (("contention-empty-range",150000300),("snapshot-selectors",200000300),("cross-edge-endpoint-uniqueness",600000700)):
+        for family, minimum in (("contention-empty-range",150000300),("snapshot-selectors",200000300),("cross-edge-endpoint-uniqueness",600000700),("immutable-columns",200000300)):
             value=request();value["Spec"]["family"]=family
             self.assertEqual(owned.validate_input(value),value)
             self.assertEqual(owned.causal_minimum(value["Spec"],value["Transport"]),minimum)
@@ -65,7 +65,7 @@ class OwnedTransportGuards(unittest.TestCase):
                "Tools":{"Version":"iproute2-6.12.0",**{k:[i+1]*32 for i,k in enumerate(("TC","IP","Probe","Source","Build"))}},
                "Peers":[{"Role":role,"Container":f"{i+1:064x}","Image":"sha256:"+f"{i+10:064x}","IP":f"10.0.0.{i+10}","NetNS":f"net:[{i+100}]","Network":"aa"*32,"PID":i+1} for i,role in enumerate(owned.ROLES)],"ArmedSHA256":[7]*32}
             p["Tools"]["Source"]=list(bytes.fromhex(owned.SOURCE_SHA))
-            stem={"contention-empty-range":"contention","snapshot-selectors":"selectors","cross-edge-endpoint-uniqueness":"edge-unique"}[family]
+            stem={"contention-empty-range":"contention","snapshot-selectors":"selectors","cross-edge-endpoint-uniqueness":"edge-unique","immutable-columns":"columns"}[family]
             c={"Graph":f"graph-workload-{stem}-v2-kv-"+"01"*16}
             key=b"g0/"+c["Graph"].encode().hex().encode()+b"/workload-transport-v2/"+b"binding".hex().encode()
             native={"Policy":p,"Record":{"Key":base64.b64encode(key).decode(),"Value":base64.b64encode(owned.canonical(p)).decode()}}

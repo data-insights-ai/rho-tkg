@@ -29,7 +29,7 @@ FAMILIES = {
 FACTS, CROSS, WRITERS, LAYOUTS = (10_000, 100_000, 1_000_000), (0, 10, 50, 100), (1, 8, 32), ("kv", "columns")
 TRANSPORTS = {"local": 0, "rtt-1ms": 1, "rtt-20ms": 20, "rtt-100ms": 100}
 ENGINES = ("foundationdb", "native-raft", "paired")
-IMPLEMENTED = ("contention-empty-range", "snapshot-selectors", "snapshot-to-feed", "cross-edge-endpoint-uniqueness")
+IMPLEMENTED = ("contention-empty-range", "snapshot-selectors", "snapshot-to-feed", "cross-edge-endpoint-uniqueness", "immutable-columns")
 
 
 def require(condition, message):
@@ -63,7 +63,7 @@ def preflight(spec, run, engine="foundationdb", transport="local"):
     require(type(spec["version"]) is int and (spec["version"] == 1 and (engine != "foundationdb" or transport == "local") or fresh) and engine in ENGINES and transport in TRANSPORTS
             and implemented(spec["family"], engine, transport, fresh), "family/engine/real transport driver not implemented")
     require(type(spec["facts"]) is int and 20 <= spec["facts"] <= 1_000_000 and spec["facts"] % 20 == 0 and type(spec["crossPercent"]) is int and spec["crossPercent"] in CROSS and type(spec["writers"]) is int and spec["writers"] in WRITERS and spec["layout"] in LAYOUTS, "fresh family shape")
-    require(spec["family"] not in ("snapshot-selectors", "snapshot-to-feed") or spec["facts"] >= spec["writers"] + 1, "seed plus one genuine initial job per independent caller")
+    require(spec["family"] not in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns") or spec["facts"] >= spec["writers"] + 1, "seed plus one genuine initial job per independent caller")
     require(type(run) is str and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "explicit nonzero fresh run identity")
     return spec
 
@@ -159,7 +159,8 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
         return
     destination = Path(output)
     destination.mkdir(mode=0o700, parents=False, exist_ok=False)
-    selector = spec["family"] in ("snapshot-selectors", "snapshot-to-feed")
+    selector = spec["family"] in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns")
+    columns = spec["family"] == "immutable-columns"
     feed = spec["family"] == "snapshot-to-feed"
     edge_unique = spec["family"] == "cross-edge-endpoint-uniqueness"
     originals = 7 + 258 * spec["facts"] if edge_unique else 3 + 2 * spec["facts"] * 64 if selector else 3 + spec["facts"] // 2 + 64 * spec["facts"] + spec["facts"] // 2 * max(2, spec["writers"])
@@ -202,7 +203,9 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     # Import the private family oracle only after the actual run; it joins all
     # originals/raw EOFs/cache bytes under one finite spool policy.
     sys.path.insert(0, str(ROOT / "fdb"))
-    if edge_unique:
+    if columns:
+        import fdb_columns_check as checker
+    elif edge_unique:
         import fdb_edge_unique_check as checker
     elif feed:
         import fdb_feed_check as checker
@@ -211,7 +214,7 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     else:
         import fdb_contention_check as checker
     proof = checker.verify(artifacts, destination, policy)
-    stem = "edge-unique" if edge_unique else "feed" if feed else "selectors" if selector else "contention"
+    stem = "columns" if columns else "edge-unique" if edge_unique else "feed" if feed else "selectors" if selector else "contention"
     prefix = f"graph-workload-{stem}-v{spec['version']}-"
     require(proof["spec"] == spec and proof["runGraph"] == prefix + spec["layout"] + "-" + run, "fresh run/native binding/result agreement")
     with (destination / "verified.json").open("x") as out:
