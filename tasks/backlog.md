@@ -1121,14 +1121,16 @@ only. No compilation, execution or B/D acceptance is claimed. Broader actual
 leader/message/conflict conjunctions and the exploration/seed controller remain open.
 
 Current worker lanes: Sol 6.1/high for the remaining B/C/D source inventory and
-bounded campaign proposal; Sol 6.1/high for the FoundationDB placement
-correction proposal after freezing pooled range-move admission; Sol 6.1/high for
-the native transfer workload proposal after completing the one-file P05 extraction.
-The current FDB transfer changes catalog processing ownership but retains its
-original business-key placement. Native movement relocates current graph data;
-after both HOME moves its guarded updates become local. The paired driver must
-match actual current-data routing and preserve old-cut/original authority before
-claiming equivalent post-move participant costs.
+bounded campaign proposal; Sol 6.1/high for complete native/FDB transfer pairing;
+Sol 6.1/high for the native transfer workload implementation. FDB retains stable
+logical-home key namespaces while its catalog fences and transfers processing
+authority; these prefixes do not establish physical server placement. Source
+review found no ownership violation requiring key relocation. Native movement
+relocates current graph data, and both HOME moves make its guarded updates local.
+Pair equivalent logical answers, retained cuts/originals and authority semantics;
+report each engine's actual pre/post business read/write footprint and physical
+cost separately. Do not infer equal physical participants from nominal cross
+percentage or add copies solely to imitate native placement.
 The bounded exploration/seed-controller proposal remains queued. Shared graph
 batching, recovery byte pools and range-move pool admission are source-integrated above;
 these remaining packages are not integrated or runtime-qualified. A complete
