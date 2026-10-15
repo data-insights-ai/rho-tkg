@@ -328,6 +328,44 @@ func (c *Core) stampUntimedFirstVersions(ctx context.Context) error {
 			return fmt.Errorf("relationship %d: %w", id, err)
 		}
 	}
+	return c.stampForeignIncomingStubs(ctx)
+}
+
+// foreignIncomingStubs is the sharded store's view of its Model-A incoming
+// stubs (ADR-0010): rows carrying another machine's edge verbatim.
+type foreignIncomingStubs interface {
+	ForEachForeignIncoming(fn func(*types.Relationship) bool) error
+	ReplaceForeignIncoming(r *types.Relationship) error
+}
+
+// stampForeignIncomingStubs stamps every stub of an untimed first version: the
+// START machine's conversion stamps the authoritative edge the same way, so
+// both machines read the edge from -inf. The slot-routed relationship pass
+// above cannot reach a stub (its ID's slot is foreign).
+func (c *Core) stampForeignIncomingStubs(ctx context.Context) error {
+	fs, ok := c.store.(foreignIncomingStubs)
+	if !ok {
+		return nil
+	}
+	var stubs []*types.Relationship
+	if err := fs.ForEachForeignIncoming(func(r *types.Relationship) bool {
+		if untimedFirst(r.Version(), r.Temporal()) {
+			stubs = append(stubs, r)
+		}
+		return true
+	}); err != nil {
+		return fmt.Errorf("iterate foreign-incoming stubs: %w", err)
+	}
+	for _, r := range stubs {
+		if err := checkCtx(ctx); err != nil {
+			return err
+		}
+		row := r.DeepCopy()
+		row.Temporal().ValidFrom = types.UnboundedValidFrom
+		if err := fs.ReplaceForeignIncoming(row); err != nil {
+			return fmt.Errorf("foreign-incoming stub %d: %w", r.ID(), err)
+		}
+	}
 	return nil
 }
 

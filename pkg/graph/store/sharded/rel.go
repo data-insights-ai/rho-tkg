@@ -154,6 +154,57 @@ func (s *Store) DeleteForeignIncoming(relID types.RelID, endID types.NodeID) err
 	return nil
 }
 
+// ForEachForeignIncoming calls fn with every Model-A incoming stub this store
+// holds (a relationship row whose ID is in a foreign slot, stored on its END
+// node's shard), shard by shard; fn returning false stops. The rows are the
+// shards' own (do not mutate; DeepCopy to change).
+func (s *Store) ForEachForeignIncoming(fn func(*types.Relationship) bool) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	for _, shard := range s.shards {
+		var stubs []types.RelID
+		if err := shard.ForEachRelID(func(rid types.RelID) bool {
+			if _, err := s.shardForRelID(rid); errors.Is(err, ErrSlotNotLocal) {
+				stubs = append(stubs, rid)
+			}
+			return true
+		}); err != nil {
+			return err
+		}
+		for _, rid := range stubs {
+			r, err := shard.GetRelationship(rid)
+			if isRelNotFound(err) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if !fn(r) {
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
+// ReplaceForeignIncoming overwrites a Model-A incoming stub in place, routed
+// by its LOCAL end node like RecordForeignIncoming, co-committing
+// ChangeForeignIncoming. ErrRelNotFound when the stub is absent.
+func (s *Store) ReplaceForeignIncoming(r *types.Relationship) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
+	endShard, err := s.shardForNodeID(r.EndNodeID())
+	if err != nil {
+		return err
+	}
+	return endShard.ReplaceRelationshipForeignIncoming(r)
+}
+
 func (s *Store) GetRelationship(id types.RelID) (*types.Relationship, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err

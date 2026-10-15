@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	constraintspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
@@ -489,5 +490,111 @@ func TestImportMergeRefusesOtherUntimedMode(t *testing.T) {
 	}
 	if err := other.IO().ImportMerge(bytes.NewReader(delta.Bytes()), tkgio.MergeOptions{}); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
 		t.Fatalf("merge an unbounded delta into a TxFrom graph: err = %v, want ErrUntimedModeMismatch", err)
+	}
+}
+
+// TestUntimedConversionStampsForeignIncomingStubs (review, cross-machine
+// edges): a sharded END machine holds a Model-A incoming stub of an edge whose
+// authoritative row lives on the START machine; the stub carries that row's
+// temporal block verbatim. Converting the END machine must stamp a stub of an
+// untimed first version like the START machine's conversion stamps the edge,
+// or the END machine's incoming reads start the edge at its TxFrom while the
+// START machine reads it from -inf. A stub of a timed edge is kept.
+func TestUntimedConversionStampsForeignIncomingStubs(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 0, Store: st})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	end, err := g.Nodes().Add(ctx, []string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, err := g.Nodes().Add(ctx, []string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Rels().AddByID(ctx, "KNOWS", x.ID(), end.ID(), nil); err != nil {
+		t.Fatal(err)
+	}
+	untimed := storepkg.ForeignIncomingEdge{
+		RelID: types.RelID(snowflake.ID(700003)), TypeName: "KNOWS",
+		StartID: types.NodeID(snowflake.ID(700001)), EndID: end.ID(),
+		FromHash: "aa11", ToHash: "bb22", TxFrom: 1234, Version: 0, AttestTx: 1,
+	}
+	timed := untimed
+	timed.RelID = types.RelID(snowflake.ID(700005))
+	timed.ValidFrom = 500
+	// A replica of the END machine, bootstrapped before the conversion.
+	var snap bytes.Buffer
+	if err := g.IO().Export(&snap); err != nil {
+		t.Fatal(err)
+	}
+	lsn0, err := g.Replication().LastCommittedLSN()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 6, Store: repStore, ReadOnlyReplica: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rep.Close()
+	if err := rep.IO().Import(bytes.NewReader(snap.Bytes()), tkgio.ImportOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rep.Replication().SetAppliedLSN(lsn0); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []storepkg.ForeignIncomingEdge{untimed, timed} {
+		if err := g.Rels().RecordForeignIncoming(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := g.Admin().SetUntimedValidStart(ctx, graphpkg.UntimedUnbounded); err != nil {
+		t.Fatal(err)
+	}
+	var recs []storepkg.ChangeRecord
+	if err := g.Replication().ForEachChange(lsn0, func(rec storepkg.ChangeRecord) bool {
+		recs = append(recs, rec)
+		return true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rep.Replication().ApplyChanges(recs); err != nil {
+		t.Fatalf("replica applies the conversion: %v", err)
+	}
+	rin, err := rep.Rels().Incoming(end.ID(), "KNOWS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rin {
+		if r.ID() == untimed.RelID && r.Temporal().ValidFrom != types.UnboundedValidFrom {
+			t.Errorf("replica: untimed stub ValidFrom = %d, want UnboundedValidFrom", r.Temporal().ValidFrom)
+		}
+	}
+	in, err := g.Rels().Incoming(end.ID(), "KNOWS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[types.RelID]types.Instant{}
+	for _, r := range in {
+		got[r.ID()] = r.Temporal().ValidFrom
+	}
+	if vf, ok := got[untimed.RelID]; !ok || vf != types.UnboundedValidFrom {
+		t.Errorf("untimed stub after conversion: ValidFrom = %d (present %v), want UnboundedValidFrom", vf, ok)
+	}
+	if vf := got[timed.RelID]; vf != 500 {
+		t.Errorf("timed stub after conversion: ValidFrom = %d, want 500 kept", vf)
 	}
 }

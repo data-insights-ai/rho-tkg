@@ -295,7 +295,20 @@ func (bs *Store) ReplaceRelationshipScoped(r *types.Relationship, token uint64) 
 	return bs.replaceRelationshipRouted(r, token)
 }
 
+// ReplaceRelationshipForeignIncoming overwrites a Model-A incoming stub
+// (PutRelationshipForeignIncoming) in place, co-committing ChangeForeignIncoming
+// so a replica routes the apply by the END-node slot (backlog 73: the untimed
+// valid-start conversion stamps a stub of an untimed first version). Returns
+// ErrRelNotFound if the stub is absent.
+func (bs *Store) ReplaceRelationshipForeignIncoming(r *types.Relationship) error {
+	return bs.replaceRelationshipTagged(r, 0, storecontract.ChangeForeignIncoming)
+}
+
 func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) error {
+	return bs.replaceRelationshipTagged(r, token, storecontract.ChangeRelPut)
+}
+
+func (bs *Store) replaceRelationshipTagged(r *types.Relationship, token uint64, tag storecontract.ChangeTag) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -361,7 +374,7 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	// A version update rewrites the row in place; valid_to may move, so the inline
 	// stamp must be refreshed or a temporal traversal reads a stale interval.
 	bs.setRelValidStampLocked(rid, r)
-	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelPut, changePayload, token)
+	logErr := bs.logChangeRoutedRaw(tag, changePayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
 		return logErr
