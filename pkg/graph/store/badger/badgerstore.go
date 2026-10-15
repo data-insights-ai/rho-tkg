@@ -357,14 +357,13 @@ type Store struct {
 	relTypeMembersBuilt atomic.Bool
 
 	// Property membership sidecars (backlog 8, badgerstore_propertytxmembers.go), one
-	// per declared property index a temporal lookup asked for. relPropTx / nodePropTx /
-	// propTxGen are guarded by idxMu; propTxBuildMus holds one mutex per sidecar that
-	// serializes its lazy build (order: build mutex -> idxMu, never nested).
+	// per declared property index, built by one pass per kind (backlog 74).
+	// relPropTx / nodePropTx / propTxGen and each sidecar's pass claim are guarded
+	// by idxMu; no lock is held while a lookup waits for a running pass.
 	relPropTx        map[indexpkg.RelPropertyIndexKey]*propTxSidecar[types.RelID]
 	nodePropTx       map[indexpkg.PropertyIndexKey]*propTxSidecar[types.NodeID]
 	propTxGen        uint64
-	propTxBuildMus   sync.Map // propTxBuildKey -> *sync.Mutex
-	propTxBuilds     atomic.Int64
+	propTxBuilds     atomic.Int64 // installed build passes (one scan each)
 	propTxBuildNanos atomic.Int64
 
 	// Belief-watermark sidecars (store.NodeBeliefWatermarkCapability /
@@ -1545,6 +1544,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					fillFromBuild(build, idx.AddKey)
 				}
 				bs.propertyIndexes[key] = idx
+				bs.restoreNodePropTx(img, key)
 			}
 		}
 		// badgerv4.ErrKeyNotFound is OK — no indexes defined yet.
@@ -1596,6 +1596,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 					fillFromBuild(build, idx.AddKey)
 				}
 				bs.relPropertyIndexes[key] = idx
+				bs.restoreRelPropTx(img, key)
 			}
 		}
 		// badgerv4.ErrKeyNotFound is OK — no rel property indexes defined yet.

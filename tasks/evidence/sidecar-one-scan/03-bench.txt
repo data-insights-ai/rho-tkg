@@ -1,0 +1,16 @@
+# BenchmarkEffectivePageFirstAfterOpen (pkg/graph/internal/core/effective_page_open_bench_test.go)
+# disk badger, 29 relationship types each indexed on "estate", 200,000 rels (every 4th updated once:
+# 50,000 history rows); per iteration: open, one RelsEffectivePage of 500, close. -benchtime 3x,
+# quiet machine (AMD Ryzen 9 7950X3D, 32 threads), before and after run back to back.
+# clean = reopen after a clean close (image trusted); dirty = open state deleted first (crash / older release).
+# before = v4.56.0 code (5b49d002) + the bench file; after = this branch.
+
+before:
+BenchmarkEffectivePageFirstAfterOpen/clean-32  3  15291784746 ns/op  14885 first-page-ms   360.7 open-ms
+BenchmarkEffectivePageFirstAfterOpen/dirty-32  3  14786867207 ns/op  12325 first-page-ms  2352   open-ms
+after:
+BenchmarkEffectivePageFirstAfterOpen/clean-32  3    444997907 ns/op     20.67 first-page-ms  355.0 open-ms
+BenchmarkEffectivePageFirstAfterOpen/dirty-32  3   2974752334 ns/op    685.0 first-page-ms  2149   open-ms
+
+open -> first answer: clean 15.25 s -> 0.38 s (40x); dirty 14.68 s -> 2.83 s (first page 12.3 s -> 0.69 s, 18x).
+03-bench-before.txt is an earlier before-run (17.9 / 14.4 s); an after-run beside go test ./pkg/... was discarded as contended. The numbers above are the quiet pair.

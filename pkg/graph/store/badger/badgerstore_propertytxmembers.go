@@ -3,7 +3,7 @@ package badger
 import (
 	"cmp"
 	"fmt"
-	"sync"
+	"math"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -24,7 +24,9 @@ var (
 // Property membership sidecars (backlog 8, badger arm): one
 // indexpkg.PropertyTxMembers per declared property index a temporal lookup asked
 // for (value key -> rels/nodes whose rows ever carried it, with the lowest
-// TxFrom). RAM-only append-only supersets; the chain resolver stays the authority.
+// TxFrom). Append-only supersets; the chain resolver stays the authority. A
+// clean close persists the built ones in the open image and a trusted reopen
+// restores them (backlog 74, badgerstore_open_image.go).
 //
 // Every door writing a current row records via maintain*IndexesAdd under
 // idxMu.Lock, every history row next to its belief-watermark bump. History rows:
@@ -32,19 +34,23 @@ var (
 // PutRel/NodeVersion via enqueueVersionAgainstLazyBuilds. A sidecar in
 // relPropTx / nodePropTx is tracking; built marks it readable.
 //
-// Lazy build without blocking writers (lessons 63, 64, 74): under a per-sidecar
-// build mutex the build turns tracking on under idxMu.Lock, reads the invalidation
-// generation, releases idxMu, captures the write-buffer overlay, then scans
-// committed current and history rows in one view. A row written before tracking
+// Lazy build without blocking writers (lessons 63, 64): the first lookup of an
+// unbuilt sidecar starts a build pass (propTxPass) that, under idxMu.Lock, claims
+// every declared unbuilt sidecar of the kind and turns tracking on for each, reads
+// the invalidation generation, releases idxMu, captures the write-buffer overlay,
+// then scans committed current and history rows in one view, filling all of them
+// (backlog 74: one scan, not one per (type, key)). A row written before tracking
 // was on is in the overlay or the view (its door appended its op inside the same
 // idxMu section); a row written after is recorded by its door. A scan straddling an
 // invalidation is discarded and redone. The merge is a union with
-// per-member minimum, so scan and concurrent records commute. The result installs
-// only if generation and sidecar are unchanged; Clear, index drop, retention purge
-// and exact erasure drop the sidecars and move the generation.
+// per-member minimum, so scan and concurrent records commute. The results install
+// only if the generation is unchanged, each only if its sidecar is still mapped;
+// Clear, index drop, retention purge and exact erasure drop the sidecars and move
+// the generation.
 type propTxSidecar[ID cmp.Ordered] struct {
 	members *indexpkg.PropertyTxMembers[ID]
 	built   bool
+	pass    *propTxPass // the running pass that fills it; nil when none
 }
 
 // propTxBuildAttempts bounds rescans of a build that keeps losing to an
@@ -203,141 +209,168 @@ func (bs *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 	return fmt.Errorf("graph: node property membership: lookup raced %d invalidations: %w", propTxBuildAttempts, ErrIndexNotFound)
 }
 
-// propTxBuildKey names one sidecar for its build mutex.
-type propTxBuildKey struct {
-	node  bool
-	token uint16
-	key   string
-}
+// propTxPass is one running build pass (backlog 74). A pass claims every
+// declared, usable sidecar of its kind that is neither built nor claimed, and
+// fills them all from ONE store scan (ai-soc paid 29 scans for 29 types). done
+// closes when the pass ends, installed or not: a lookup on a claimed sidecar
+// waits for it instead of scanning again, a lookup on a built or unclaimed one
+// never does.
+type propTxPass struct{ done chan struct{} }
 
-// propTxBuildLock returns the build mutex of one sidecar (created on first use,
-// bounded by the declared indexes).
-func (bs *Store) propTxBuildLock(k propTxBuildKey) *sync.Mutex {
-	if mu, ok := bs.propTxBuildMus.Load(k); ok {
-		return mu.(*sync.Mutex)
-	}
-	mu, _ := bs.propTxBuildMus.LoadOrStore(k, &sync.Mutex{})
-	return mu.(*sync.Mutex)
+// propTxTarget is one sidecar a pass fills: the scan records into scratch,
+// the install merges scratch into sc.
+type propTxTarget[K comparable, ID cmp.Ordered] struct {
+	key      K
+	sc       *propTxSidecar[ID]
+	elements bool
+	scratch  *indexpkg.PropertyTxMembers[ID]
 }
 
 // buildRelPropTx builds the sidecar for key (see the file comment): nil when built
-// (by this call or a racing one), ErrIndexNotFound when the index went away.
+// (by this call's pass or a running one), ErrIndexNotFound when the index went away.
 func (bs *Store) buildRelPropTx(key indexpkg.RelPropertyIndexKey) error {
-	mu := bs.propTxBuildLock(propTxBuildKey{token: key.RelTypeToken, key: key.PropertyKey})
-	mu.Lock()
-	defer mu.Unlock()
-	for attempt := 0; attempt < propTxBuildAttempts; attempt++ {
-		bs.idxMu.Lock()
-		if !bs.relPropIndexUsableLocked(key) {
-			bs.idxMu.Unlock()
-			return ErrIndexNotFound
-		}
-		sc := bs.relPropTx[key]
-		if sc != nil && sc.built {
-			bs.idxMu.Unlock()
-			return nil
-		}
-		if sc == nil {
-			sc = &propTxSidecar[types.RelID]{members: indexpkg.NewPropertyTxMembers[types.RelID]()}
-			if bs.relPropTx == nil {
-				bs.relPropTx = make(map[indexpkg.RelPropertyIndexKey]*propTxSidecar[types.RelID])
-			}
-			bs.relPropTx[key] = sc // tracking from here on
-		}
-		gen := bs.propTxGen
-		elements := bs.relPropertyIndexes[key].Elements()
-		bs.idxMu.Unlock()
-
-		start := time.Now()
-		scratch := indexpkg.NewPropertyTxMembers[types.RelID]()
-		err := bs.scanPropTxRows(storepkg.KeyRel, storepkg.KeyHistRel, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
-			return bs.recordRelRowPropTx(scratch, key, elements, id, hist, version, raw, local)
-		})
-		if err != nil {
-			return fmt.Errorf("graph: build relationship property membership: %w", err)
-		}
-		if bs.propTxBuildTestHook != nil {
-			bs.propTxBuildTestHook()
-		}
-		bs.idxMu.Lock()
-		if bs.propTxGen != gen || bs.relPropTx[key] != sc {
-			bs.idxMu.Unlock()
-			continue // dropped while scanning: the scan may hold dropped rows
-		}
-		sc.members.Merge(scratch)
-		sc.built = true
-		bs.idxMu.Unlock()
-		bs.propTxBuilds.Add(1)
-		bs.propTxBuildNanos.Add(int64(time.Since(start)))
-		return nil
-	}
-	return fmt.Errorf("graph: build relationship property membership: raced %d invalidations: %w", propTxBuildAttempts, ErrIndexNotFound)
+	return ensurePropTxBuilt(bs, "relationship", key, &bs.relPropTx, &bs.relPropertyIndexes, bs.scanRelPropTx)
 }
 
 // buildNodePropTx is buildRelPropTx for a node property index.
 func (bs *Store) buildNodePropTx(key indexpkg.PropertyIndexKey) error {
-	mu := bs.propTxBuildLock(propTxBuildKey{node: true, token: key.LabelToken, key: key.PropertyKey})
-	mu.Lock()
-	defer mu.Unlock()
+	return ensurePropTxBuilt(bs, "node", key, &bs.nodePropTx, &bs.propertyIndexes, bs.scanNodePropTx)
+}
+
+// ensurePropTxBuilt is the body of both builds. sidecars and indexes point at
+// the kind's sidecar map and declared indexes (both guarded by idxMu); scan
+// runs one store pass filling every target. Lock order: idxMu is never held
+// while waiting for a pass or scanning.
+func ensurePropTxBuilt[K comparable, ID cmp.Ordered](bs *Store, what string, key K,
+	sidecars *map[K]*propTxSidecar[ID], indexes *map[K]*indexpkg.PropertyIndex,
+	scan func([]*propTxTarget[K, ID]) error) error {
+	usable := func(idx *indexpkg.PropertyIndex) bool { return idx != nil && idx.Mutated == nil } // declared, finished creating
 	for attempt := 0; attempt < propTxBuildAttempts; attempt++ {
 		bs.idxMu.Lock()
-		if !bs.nodePropIndexUsableLocked(key) {
+		if !usable((*indexes)[key]) {
 			bs.idxMu.Unlock()
 			return ErrIndexNotFound
 		}
-		sc := bs.nodePropTx[key]
-		if sc != nil && sc.built {
+		if sc := (*sidecars)[key]; sc != nil && sc.built {
 			bs.idxMu.Unlock()
 			return nil
+		} else if sc != nil && sc.pass != nil {
+			running := sc.pass
+			bs.idxMu.Unlock()
+			<-running.done // a running pass builds key: wait, then re-check
+			continue
 		}
-		if sc == nil {
-			sc = &propTxSidecar[types.NodeID]{members: indexpkg.NewPropertyTxMembers[types.NodeID]()}
-			if bs.nodePropTx == nil {
-				bs.nodePropTx = make(map[indexpkg.PropertyIndexKey]*propTxSidecar[types.NodeID])
+		pass := &propTxPass{done: make(chan struct{})}
+		var targets []*propTxTarget[K, ID]
+		for k, idx := range *indexes {
+			if !usable(idx) {
+				continue
 			}
-			bs.nodePropTx[key] = sc
+			sc := (*sidecars)[k]
+			if sc == nil {
+				sc = &propTxSidecar[ID]{members: indexpkg.NewPropertyTxMembers[ID]()}
+				if *sidecars == nil {
+					*sidecars = make(map[K]*propTxSidecar[ID])
+				}
+				(*sidecars)[k] = sc // tracking from here on
+			}
+			if sc.built || sc.pass != nil {
+				continue
+			}
+			sc.pass = pass
+			targets = append(targets, &propTxTarget[K, ID]{key: k, sc: sc, elements: idx.Elements(), scratch: indexpkg.NewPropertyTxMembers[ID]()})
 		}
 		gen := bs.propTxGen
-		elements := bs.propertyIndexes[key].Elements()
 		bs.idxMu.Unlock()
 
 		start := time.Now()
-		scratch := indexpkg.NewPropertyTxMembers[types.NodeID]()
-		err := bs.scanPropTxRows(storepkg.KeyNode, storepkg.KeyHistNode, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
-			return bs.recordNodeRowPropTx(scratch, key, elements, id, hist, version, raw, local)
-		})
+		installed, err := runPropTxPass(bs, pass, gen, sidecars, targets, scan)
 		if err != nil {
-			return fmt.Errorf("graph: build node property membership: %w", err)
+			return fmt.Errorf("graph: build %s property membership: %w", what, err)
 		}
-		if bs.propTxBuildTestHook != nil {
-			bs.propTxBuildTestHook()
+		if installed {
+			bs.propTxBuilds.Add(1)
+			bs.propTxBuildNanos.Add(int64(time.Since(start)))
+			return nil
 		}
-		bs.idxMu.Lock()
-		if bs.propTxGen != gen || bs.nodePropTx[key] != sc {
-			bs.idxMu.Unlock()
-			continue
-		}
-		sc.members.Merge(scratch)
-		sc.built = true
-		bs.idxMu.Unlock()
-		bs.propTxBuilds.Add(1)
-		bs.propTxBuildNanos.Add(int64(time.Since(start)))
-		return nil
 	}
-	return fmt.Errorf("graph: build node property membership: raced %d invalidations: %w", propTxBuildAttempts, ErrIndexNotFound)
+	return fmt.Errorf("graph: build %s property membership: raced %d invalidations: %w", what, propTxBuildAttempts, ErrIndexNotFound)
+}
+
+// runPropTxPass scans for the claimed targets and installs them when the scan
+// completed and the generation did not move (a drop while scanning: the scan
+// may hold dropped rows, the caller rescans). However it ends, even by a
+// panic, it releases the claims and closes pass.done, so no waiter hangs.
+func runPropTxPass[K comparable, ID cmp.Ordered](bs *Store, pass *propTxPass, gen uint64,
+	sidecars *map[K]*propTxSidecar[ID], targets []*propTxTarget[K, ID],
+	scan func([]*propTxTarget[K, ID]) error) (installed bool, err error) {
+	scanned := false
+	defer func() {
+		bs.idxMu.Lock()
+		installed = scanned && bs.propTxGen == gen
+		for _, t := range targets {
+			if (*sidecars)[t.key] != t.sc {
+				continue // dropped while scanning
+			}
+			if installed {
+				t.sc.members.Merge(t.scratch)
+				t.sc.built = true
+			}
+			t.sc.pass = nil
+		}
+		bs.idxMu.Unlock()
+		close(pass.done)
+	}()
+	if err = scan(targets); err != nil {
+		return false, err
+	}
+	if bs.propTxBuildTestHook != nil {
+		bs.propTxBuildTestHook()
+	}
+	scanned = true
+	return false, nil // the deferred install decides installed
+}
+
+type relPropTxTarget = propTxTarget[indexpkg.RelPropertyIndexKey, types.RelID]
+
+type nodePropTxTarget = propTxTarget[indexpkg.PropertyIndexKey, types.NodeID]
+
+// scanRelPropTx fills every rel target from one pass over the rel rows.
+func (bs *Store) scanRelPropTx(targets []*relPropTxTarget) error {
+	byType := make(map[int][]*relPropTxTarget, len(targets))
+	for _, t := range targets {
+		tok := int(t.key.RelTypeToken)
+		byType[tok] = append(byType[tok], t)
+	}
+	return bs.scanPropTxRows(storepkg.KeyRel, storepkg.KeyHistRel, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+		return bs.recordRelRowPropTx(byType, id, hist, version, raw, local)
+	})
+}
+
+// scanNodePropTx fills every node target from one pass over the node rows.
+func (bs *Store) scanNodePropTx(targets []*nodePropTxTarget) error {
+	byLabel := make(map[uint16][]*nodePropTxTarget, len(targets))
+	for _, t := range targets {
+		byLabel[t.key.LabelToken] = append(byLabel[t.key.LabelToken], t)
+	}
+	return bs.scanPropTxRows(storepkg.KeyNode, storepkg.KeyHistNode, func(id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+		return bs.recordNodeRowPropTx(byLabel, id, hist, version, raw, local)
+	})
 }
 
 // recordRelRowPropTx decodes one stored rel row (current or history, full or delta)
 // through the checked wire path, so the value key equals the index's, and records
-// it when the row has key's type and the property.
-func (bs *Store) recordRelRowPropTx(m *indexpkg.PropertyTxMembers[types.RelID], key indexpkg.RelPropertyIndexKey, elements bool, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+// it into every target of its type. A row of an untargeted type is skipped
+// before the full decode.
+func (bs *Store) recordRelRowPropTx(byType map[int][]*relPropTxTarget, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
 	var w storepkg.RelWire
+	var targets []*relPropTxTarget
 	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
 		d, err := storepkg.DecodeRelHistoryDelta(raw)
 		if err != nil {
 			return err
 		}
-		if d.Meta.RelType != int(key.RelTypeToken) {
+		if targets = byType[d.Meta.RelType]; len(targets) == 0 {
 			return nil
 		}
 		if w, err = bs.reconstructRelHistoryWire(id, version, raw, local); err != nil {
@@ -347,7 +380,7 @@ func (bs *Store) recordRelRowPropTx(m *indexpkg.PropertyTxMembers[types.RelID], 
 		if err := storepkg.SafeUnmarshal(raw, &w); err != nil {
 			return err
 		}
-		if w.RelType != int(key.RelTypeToken) {
+		if targets = byType[w.RelType]; len(targets) == 0 {
 			return nil
 		}
 	}
@@ -361,23 +394,26 @@ func (bs *Store) recordRelRowPropTx(m *indexpkg.PropertyTxMembers[types.RelID], 
 	if r.ID().SnowflakeID() != id {
 		return fmt.Errorf("%w: relationship wire id %d does not match key %d", ErrInvalidStoreMutation, r.ID().SnowflakeID(), id)
 	}
-	r.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
-		m.Record(vk, r.ID(), relTxFrom(r))
-		return true
-	})
+	rid, tx := r.ID(), relTxFrom(r)
+	for _, t := range targets {
+		r.ForEachPropertyIndexKey(t.key.PropertyKey, t.elements, func(vk string) bool {
+			t.scratch.Record(vk, rid, tx)
+			return true
+		})
+	}
 	return nil
 }
 
-// recordNodeRowPropTx is recordRelRowPropTx for node rows; the row must carry
-// key's label itself.
-func (bs *Store) recordNodeRowPropTx(m *indexpkg.PropertyTxMembers[types.NodeID], key indexpkg.PropertyIndexKey, elements bool, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
+// recordNodeRowPropTx is recordRelRowPropTx for node rows: the row is recorded
+// into the targets of every label it carries.
+func (bs *Store) recordNodeRowPropTx(byLabel map[uint16][]*nodePropTxTarget, id snowflake.ID, hist bool, version uint64, raw []byte, local localAnchorFunc) error {
 	var w storepkg.NodeWire
 	if hist && storepkg.HistoryValueKindOf(raw) == storepkg.HistoryDelta {
 		d, err := storepkg.DecodeNodeHistoryDelta(raw)
 		if err != nil {
 			return err
 		}
-		if !nodeWireHasLabel(&d.Meta, key.LabelToken) {
+		if !nodeWireHasTarget(&d.Meta, byLabel) {
 			return nil
 		}
 		if w, err = bs.reconstructNodeHistoryWire(id, version, raw, local); err != nil {
@@ -387,7 +423,7 @@ func (bs *Store) recordNodeRowPropTx(m *indexpkg.PropertyTxMembers[types.NodeID]
 		if err := storepkg.SafeUnmarshal(raw, &w); err != nil {
 			return err
 		}
-		if !nodeWireHasLabel(&w, key.LabelToken) {
+		if !nodeWireHasTarget(&w, byLabel) {
 			return nil
 		}
 	}
@@ -401,19 +437,28 @@ func (bs *Store) recordNodeRowPropTx(m *indexpkg.PropertyTxMembers[types.NodeID]
 	if n.ID().SnowflakeID() != id {
 		return fmt.Errorf("%w: node wire id %d does not match key %d", ErrInvalidStoreMutation, n.ID().SnowflakeID(), id)
 	}
-	n.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
-		m.Record(vk, n.ID(), nodeTxFrom(n))
-		return true
-	})
+	nid, tx := n.ID(), nodeTxFrom(n)
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		for _, t := range byLabel[n.LabelTokenRawAt(i)] {
+			n.ForEachPropertyIndexKey(t.key.PropertyKey, t.elements, func(vk string) bool {
+				t.scratch.Record(vk, nid, tx)
+				return true
+			})
+		}
+	}
 	return nil
 }
 
-func nodeWireHasLabel(w *storepkg.NodeWire, label uint16) bool {
-	if w.PrimaryLabel == int(label) {
+// nodeWireHasTarget reports whether the row carries a label some target indexes.
+func nodeWireHasTarget(w *storepkg.NodeWire, byLabel map[uint16][]*nodePropTxTarget) bool {
+	has := func(label int) bool {
+		return label > 0 && label <= math.MaxUint16 && len(byLabel[uint16(label)]) > 0 // #nosec G115 -- range checked
+	}
+	if has(w.PrimaryLabel) {
 		return true
 	}
 	for _, el := range w.ExtraLabels {
-		if el == int(label) {
+		if has(el) {
 			return true
 		}
 	}

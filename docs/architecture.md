@@ -551,7 +551,7 @@ flush writes the group). Sharded holds its store lock across the fold.
 - `idxMu sync.RWMutex` -- protects all in-memory indexes
 - `wbMu sync.Mutex` -- protects pending write buffer
 - `flushMu sync.Mutex` -- serializes flushes (background, backpressure, `DurableFlush`, `Close`)
-- sidecar locks: the history presence / stamps sets each have a `buildMu` and an `RWMutex` taken inside `wbMu` by `noteHistoryKey`; one build mutex per property tx-membership sidecar (build mutex -> `idxMu`, never nested)
+- sidecar locks: the history presence / stamps sets each have a `buildMu` and an `RWMutex` taken inside `wbMu` by `noteHistoryKey`; the property tx-membership sidecars are claimed by one build pass per kind under `idxMu` (`propTxPass`), and a lookup waits for the claiming pass with no lock held
 - `atomic.Int64` counters for node/rel counts
 - `sync.Map` for per-label/per-type counters
 - `sync.Once` for idempotent Close
@@ -594,7 +594,7 @@ endpoint-resolving traversals without fetching the relationship row.
 **RAM sidecars (no on-disk keyspace; built lazily, rebuilt after reopen, dropped by `Clear`):**
 - *History presence* (`HasNodeHistory` / `HasRelHistory`): the IDs with history rows and their highest history version, built by one key-only scan of `0x07`/`0x08` (write buffer included) and maintained in `noteHistoryKey` under `wbMu`, the one seam every history key passes; a delete marks the ID for a per-ID key probe installed under a write-generation stamp. `Config.HistoryPresenceProbeOnly` (tiered cold shards) answers by probe without building.
 - *History stamps* (`NodeHistoryStamps` / `RelHistoryStamps`, behind `LatestStamps`): the fold of each ID's history-row `TxFrom` / `TxTo` / `DeletedAt` (`store.FoldTxStamps`), built from the temporal block of each history value, same maintenance and probe protocol.
-- *Transaction-time membership*: per label / rel type (`ByLabel` / `ByType` with `TxAt` / `TxPin`) and, since v4.48, per declared property index (`ForEach{Node,Rel}PropertyTxMember`: value -> every entity whose rows ever carried it, with the earliest `TxFrom`, merged by `index.MergeFirstTx` so an unstamped 0 is never raised). Append-only sound supersets: the chain resolver stays the authority. Recorded at the current-row index seam and every history-row door.
+- *Transaction-time membership*: per label / rel type (`ByLabel` / `ByType` with `TxAt` / `TxPin`) and, since v4.48, per declared property index (`ForEach{Node,Rel}PropertyTxMember`: value -> every entity whose rows ever carried it, with the earliest `TxFrom`, merged by `index.MergeFirstTx` so an unstamped 0 is never raised). Append-only sound supersets: the chain resolver stays the authority. Recorded at the current-row index seam and every history-row door. The property ones are the exception to "rebuilt after reopen": one scan per kind builds every declared one, and the open image carries the built ones across a clean close (backlog 74).
 
 **Key layout (11 prefixes):**
 

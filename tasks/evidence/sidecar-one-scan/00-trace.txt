@@ -1,0 +1,23 @@
+# backlog 74 trace (code at v4.56.0, 5b49d002)
+
+Profile (ai-soc wave4/ASOF/runs/C/cpu-first.pprof, 120 s, 258.8 s samples):
+  RelsEffectivePage -> relPageSource -> ForEachRelPropertyTxMemberAfter -> pagePropTxMembers
+  -> buildRelPropTx -> scanPropTxRows: 122.97 s cum; recordRelRowPropTx 88.1 s, of it SafeUnmarshal 81.6 s
+  (RelWire.DecodeMsgpack 63.9 s); GC mark ~87 s from the decode garbage. run.txt: ready 86.6 s, first 200 at 185.5 s.
+
+Who asks: core/effective_page.go:211-220 RelsEffectivePage loops every registered rel type (c.relTypes.Len())
+  under readUnderRLock, relPageSource (:265) fills the first chunk from the type's sidecar page.
+When built: lazily, on the first lookup of each (type, key):
+  badgerstore_propertytxmembers.go:160 (ForEachRelPropertyTxMember), _page.go:43 (paged), _range.go:63 (range),
+  node twins :199, _page.go:66, _range.go:40.
+Why one scan each: buildRelPropTx (:225) took a build mutex PER sidecar (propTxBuildLock :215, key
+  propTxBuildKey :207) and scanned ALL rel rows, current (KeyRel) and history (KeyHistRel), for ONE key
+  (scanPropTxRows :428); recordRelRowPropTx (:333) fully msgpack-decodes every current row before the type check
+  (:347-350). 29 declared types -> 29 full scans of every row, each decoding every row. buildNodePropTx (:278) the same
+  per (label, key).
+Open image (badgerstore_open_image.go, backlog 54): sections node prop, rel prop, composite, temporal, rel temporal,
+  HF, vector, planner stats (:65-73, encode :197-305). No sidecar: every open, clean or not, pays the scans again.
+Fit of the sidecar to the image: it is derived from the current + history rows only, like the indexes; the image is
+  trusted only when its header is the store's newest badger version (any later commit, history writes included,
+  untrusts it), and Clear / drop / purge / erasure drop the sidecar in RAM before a close, so a persisted built sidecar
+  is the exact superset a scan at close would rebuild. Ordered / numeric views are not persisted (opened on demand).

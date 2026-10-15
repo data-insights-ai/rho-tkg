@@ -710,13 +710,18 @@ The sidecar (`store.RelPropertyTxMembershipCapability` /
 entity whose rows ever carried the value — under the type, or for nodes under
 the label IN THE SAME ROW — with the lowest TxFrom of those rows. It is
 append-only (a later value change, delete, truncation or compaction never
-removes a posting), RAM-only and LAZY: built on the first temporal lookup for
-the `(scope, key)` after open (O(history) once: one scan of the current and
-history rows), then recorded at every row write. Clear / `Admin().Reset()`,
-an index drop, retention purge and exact erasure drop the sidecars; the next
-lookup rebuilds them. On badger the build does not hold the write lock: it
-turns recording on, captures the write buffer, scans the committed keyspaces
-and installs the scan only if no drop happened meanwhile.
+removes a posting) and LAZY: the first temporal lookup of a kind (relationship
+or node) after open builds the sidecars of EVERY declared index of that kind in
+one scan of the current and history rows (O(history) once, not once per
+`(scope, key)`: backlog 74), then each is recorded at every row write. Clear /
+`Admin().Reset()`, an index drop, retention purge and exact erasure drop the
+sidecars; the next lookup rebuilds them. On badger the build does not hold the
+write lock: it turns recording on, captures the write buffer, scans the
+committed keyspaces and installs the scan only if no drop happened meanwhile;
+a lookup on a sidecar the running pass builds waits for it, one on a built
+sidecar or an index declared after the pass started does not. A clean badger
+`Close` persists the built sidecars in the open image and a trusted reopen
+restores them (no scan).
 `PropertyTxMembershipStats()` (store capability) reports built sidecars,
 postings, builds and summed build time.
 
