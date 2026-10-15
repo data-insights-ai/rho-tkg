@@ -740,7 +740,16 @@ business groups, bounded protocol-prefix progress, immutable Page/ACK replay and
 durably admitted operation ceilings share actual native authority. Snapshot
 reads retain their admitted ledger and deadline until Close. This fresh semantic
 agreement leaves older formats unchanged. The native OS-child workload and
-matrix wiring remain in implementation. The source-review correction at
+matrix wiring are source-integrated at `1eb3df54`, with the exact point-revision
+oracle correction at `7f67e7ba`. Genuine 1/8/32 writers retain snapshot C across
+updates, replay Page/ACK after actual client loss and same-directory cohort
+replacement, and join complete original, CDC, typed old/current and column/cache
+answers. The local FDB comparison uses the same snapshot-plus-feed retention
+contract; broader transfer retention and the remaining workload families still
+need matching implementations. These cases and their finite resource grants have
+not been executed. Full API tracing found that existing Issue already recovers
+an unissued saved original; the remaining bootstrap correction clamps that work
+to the saved feed deadline and limits. The source-review correction at
 `0de7a1ad` authenticates new retries against each keeper's actual acknowledged
 cursor, preserving immutable original results after raw sidecar collection
 without emitting duplicate business changes. Its authored guard distinguishes
