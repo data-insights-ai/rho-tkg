@@ -533,7 +533,14 @@ inactive AS8 auditing and ascending partial undo use the same agreement. All 23
 frozen source blobs and 21 complete current parents were verified. Direct native
 fragment, reference, conflict, source-lease, audit and undo/reopen guards are
 authored only, not executed. The actual native transfer workload, full fault
-composition and matrix qualification remain open.
+composition and matrix qualification remain open. Source feasibility review
+found that graph content still emits one logical record per page: at 1M facts,
+even the first HOME range at 100% cross has at least 5,097,148 graph pages before
+preparation/history. Import plus undo would exceed the hard 10M retained-log
+entry ceiling. A fresh bounded graph batch with genuine shared staging is
+required; larger caller grants alone cannot solve it. At 1M, HOME issuance also
+spans two actual range publications, both of which must move under distinct
+original identities before the driver claims the full routing transition.
 FDB feed business accounting is source-integrated at `4218c9a7`: an explicit
 optional extension joins create/update phase walls,
 including each seed and complete worker drain, to raw begin/end markers and
@@ -986,8 +993,19 @@ remain distinct. Fresh feed terminal cleanup has an absolute original deadline
 plus 30 seconds and 128 nonrenewable calls, with no new read/source allowance.
 All 28 frozen blobs, 22 current parent blobs and 961 author-input hashes were
 verified before integration. Direct guards and full native RTT routes are
-source only; none has been compiled or executed. Complete nonlocal paired joins
-remain implementation work.
+source only; none has been compiled or executed. Complete owned local/RTT
+comparisons for seven available workload families and the retained-only feed
+variant are source-integrated at `b64b3ea2`, with the direct fixture correction
+at `549166dd`. Explicit `--paired-owned` requires the actual owned FDB adapter
+and finite transport/resource/spool grants. Both full raw oracles run in one
+namespaced spool before every typed old/current, index, feed and before/after
+answer join. Actual native scheduler and FDB ingress policy, tool/probe/process
+EOFs, original deadlines and resource layers remain separately authenticated;
+configured delay equality does not imply equal observed latency or physical
+retention/allocator costs. Old local defaults remain unchanged. Nine final
+source blobs, six complete current parents and 966 original author inputs were
+verified; no checker/controller/guard was executed. The actual native transfer
+family and its complete paired join remain required implementation work.
 
 The native selector family is source-integrated at `330aaf89`: fourteen actual
 Fresh/Stable/After/At, scoped-refusal and same-token reopen observations join
@@ -1021,10 +1039,11 @@ uses genuine planned checks while preserving ordinary Set. Count actual read/wri
 participants, not empty cross-protocol manifests or endpoint placement, before
 accepting any affected scalar cost row.
 
-Current worker lanes: Sol 6.1/high for complete nonlocal paired workload
-joins; Sol 6.1/high for the finite applicable protocol/storage/message/leader/
-conflict composition registry and driver; Sol 6.1/high for compact native transfer
-formats and the remaining actual transfer workload. These packages are in
+Current worker lanes: Sol 6.1/high for remaining equivalent FDB fault
+compositions and the eventual actual transfer pair; Sol 6.1/high for the finite
+applicable protocol/storage/message/leader/conflict composition registry and
+driver; Sol 6.1/high for bounded shared graph-transfer staging and the remaining
+actual transfer workload. These packages are in
 implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
