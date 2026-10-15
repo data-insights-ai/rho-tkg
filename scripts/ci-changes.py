@@ -68,6 +68,9 @@ COST_PARENTS = [
     "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation",
 ]
 FAULT_PARENTS = [
+    "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal",
+    "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath",
+    "TestNativeP06TerminalSelectorsCannotImportAuthorityOrInventStepReply",
     "TestNativeConjunctionRegistryDeadlineAndGateOwnership",
     "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut",
     "TestNativeRetentionStateDoorKeepsIgnoredFieldsAndMissingOwnersInert",
@@ -140,9 +143,9 @@ FIXTURE_COMPAT = {
     "native_graph_contention_harness_test.go": WORKLOAD_PARENTS,
     "native_graph_contention_runner_test.go": WORKLOAD_PARENTS,
     "native_graph_workload_transport_harness_test.go": WORKLOAD_PARENTS,
-    "paired_graph_fault_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut"],
-    "paired_graph_snapshot_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut"],
-    "prepared_lock_p06_harness_test.go": ["TestPreparedLockP06FirstYESLeaderKillOriginalRecovery", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut"],
+    "paired_graph_fault_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath"],
+    "paired_graph_snapshot_harness_test.go": ["TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath"],
+    "prepared_lock_p06_harness_test.go": ["TestPreparedLockP06FirstYESLeaderKillOriginalRecovery", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath"],
     "coordinator_loss_p03_harness_test.go": ["TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"],
     "prepare_fence_p02_harness_test.go": ["TestPrepareFenceP02ActualOrderingAcrossElection"],
     "native_graph_fault_schedule_harness_test.go": FAULT_PARENTS,

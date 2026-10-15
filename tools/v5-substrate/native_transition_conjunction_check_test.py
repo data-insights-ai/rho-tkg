@@ -30,6 +30,31 @@ def unanswered(phase=3, partition=3):
     return dict(Origin=3, Partition=partition, Request=base64.b64encode(request).decode(), Reply=None), {partition: scope}, manifest, command
 
 
+def encoded(wire):
+    return base64.b64encode(wire).decode()
+
+
+def terminal_sample():
+    # Native codec shapes only. No Submit, proof factory, original or certified
+    # source is obtained from this inert packet/receipt observation.
+    scope, command = bytes([1])*120, b"inert-terminal-codec"
+    event = dict(Index=7, Term=3)
+    entry = bytes([8, 0, 16, 3, 24, 7, 34, len(command)])+command
+    append = bytes([8, 3, 16, 1, 24, 2, 32, 3, 58, len(entry)])+entry
+    def packet(message):
+        return b"RP\1\0"+scope[:40]+scope[88:120]+field(message)
+    outgoing = packet(append)
+    response = bytes([1])*16+bytes(28*8+32+32+8)+bytes(4)+field(b"")+bytes(1)+struct.pack(">QQBH", 1, 0, 0, 0)+field(b"")
+    response += struct.pack(">IQQB", 1, 2, 1, 0)+field(outgoing)+bytes(4)+field(b"")*3+bytes(1+8+4)+field(b"")
+    incoming = packet(bytes([8, 4, 16, 2, 24, 1, 32, 3, 48, 7]))
+    image = b"GR\3\1"+C.P.GRAPH+struct.pack(">Q", 3)+bytes(112)
+    image += hashlib.sha256(image).digest()
+    row = dict(Input=encoded(field(sealed(b"APS\1", scope))+field(command)), Reply=encoded(response), Transport="", Accepted=True,
+               InputGrantBytes=(64 << 10)+512, OutputGrantBytes=8*(2 << 20), BeforeImage=encoded(image), RecoveredImage=encoded(image),
+               StepLoss=dict(Packet=dict(From=1, To=2, Snapshot=False, Payload=encoded(incoming)), PayloadSHA256=list(hashlib.sha256(incoming).digest()), Transport="EOF", WorkGrant=4*(2 << 20)+8192))
+    return row, {3: scope}, command, event
+
+
 class NativeP06ConjunctionGuards(unittest.TestCase):
     def test_partial_extra_and_foreign_eof_never_supply_a_complete_prefix(self):
         # Framing only: these inert null fields are never passed to check() and
@@ -86,6 +111,47 @@ class NativeP06ConjunctionGuards(unittest.TestCase):
                                                     (order[:1]+order[2:], True, 2, 8)):
             with self.subTest(successful=successful), self.assertRaises(ValueError):
                 C.recovery_order(successful, 3, commit, phase, partition)
+
+    def test_terminal48_preserves_old_recipes_and_actual_requested_phase(self):
+        rows = [dict(Coordinator=co, Commit=commit, Kind=kind, Side=side, Phase=phase, Partition=part, Stage="terminal-replay")
+                for co in (3, 8) for commit in (True, False) for kind in (1, 2)
+                for side in ("before", "after") for phase, part in ((2, 3), (4, 3), (4, 8))]
+        self.assertEqual(len({C.recipe(row, 3) for row in rows}), 48)
+        for row in ({**rows[0], "Partition":8}, {**rows[0], "Stage":"recovery"}):
+            with self.assertRaises(ValueError):
+                C.recipe(row, 3)
+        with self.assertRaises(ValueError):
+            C.recipe(rows[0], 2)
+        resolve, prepare = encoded(b"inert stored Resolve"), encoded(b"inert requested Prepare")
+        C.terminal_install_original(dict(Outcome=resolve, CDC=None), {(3, 4):C.P.raw(resolve)}, 3)
+        with self.assertRaises(ValueError):
+            C.terminal_install_original(dict(Outcome=prepare, CDC=None), {(3, 4):C.P.raw(resolve)}, 3)
+
+    def test_terminal_propose_loss_and_actual_step_loss_cannot_exchange_ack_authority(self):
+        row, scopes, command, event = terminal_sample()
+        C.terminal_submission(row, scopes, 3, 2, command, event)
+        unknown = {**row, "Reply":encoded(bytes(381)), "Transport":"EOF", "Accepted":False, "StepLoss":None}
+        C.terminal_submission(unknown, scopes, 3, 2, command, event)
+        for mutate in (lambda r:r.update(Accepted=False),
+                       lambda r:r.update(StepLoss=None),
+                       lambda r:r["StepLoss"]["Packet"].update(To=3),
+                       lambda r:r["StepLoss"]["PayloadSHA256"].__setitem__(0, r["StepLoss"]["PayloadSHA256"][0]^1),
+                       lambda r:r.update(OutputGrantBytes=0),
+                       lambda r:r.update(RecoveredImage=encoded(bytes(172)))):
+            changed = copy.deepcopy(row)
+            mutate(changed)
+            with self.assertRaises(ValueError):
+                C.terminal_submission(changed, scopes, 3, 2, command, event)
+        for offset in (0, 321, 337, 339):  # incarnation/sequence/native code/cause.
+            wire = bytearray(381)
+            wire[offset] = 1
+            with self.assertRaises(ValueError):
+                C.terminal_transport({**unknown, "Reply":encoded(wire)})
+        for code in (1, 2, 4, 5):
+            wire = bytearray(C.P.raw(row["Reply"]))
+            wire[337] = code
+            with self.assertRaises(ValueError):
+                C.terminal_transport({**row, "Reply":encoded(wire)})
 
     def test_actual_rotated_target_and_same_native_after_batch_are_required(self):
         arm, receipt, run, command = batch_guards.sample()

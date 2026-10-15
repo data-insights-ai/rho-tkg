@@ -26,7 +26,9 @@ T, C, P = B.T, B.C, B.P
 require, integer, fixed = T.require, T.integer, T.fixed
 PROFILE = "native-p06-decide-sync-conjunction-v1"
 RECOVERY_PROFILE = "native-p06-recovery-sync-conjunction-v2"
+TERMINAL_PROFILE = "native-p06-terminal-sync-conjunction-v3"
 HEADER = set("Version Profile Case Recipe Run DeadlineUnixNanos Actor FirstVoter Target Successor P06 Attempts UnknownPhases Arm Batch SelectedCommand TargetTransportLoss Processes FirstReopened FaultReopened ReceiptReads ReceiptGrantBytes GateCandidates GateDecodeWork CaptureCandidates CaptureAttempts CaptureWork CaptureOutput CaptureRetained".split())
+TERMINAL_HEADER = HEADER | {"Duplicate"}
 P06 = set("Version Coordinator Commit Original Manifest Pending Decision FirstYES Processes Refused Closed Changed Duplicates Phases Before Recovered Current Retained From Through Records".split())
 RECIPE = {"Coordinator", "Commit", "Kind", "Side"}
 LOCAL = {"Partition", "Index", "Proposal", "Outcome", "CDC"}
@@ -34,11 +36,15 @@ PHASE = {"Origin", "Partition", "Request", "Reply"}
 
 
 def recipe(row, version=1):
-    require(type(version) is int and version in (1, 2), "implemented conjunction version")
-    require(type(row) is dict and set(row) == (RECIPE if version == 1 else RECIPE | {"Phase", "Partition"}), "conjunction recipe grammar")
+    require(type(version) is int and version in (1, 2, 3), "implemented conjunction version")
+    keys = RECIPE if version == 1 else RECIPE | {"Phase", "Partition"}
+    require(type(row) is dict and set(row) == (keys | {"Stage"} if version == 3 else keys), "conjunction recipe grammar")
     require(type(row["Coordinator"]) is int and row["Coordinator"] in (3, 8) and type(row["Commit"]) is bool, "actual coordinator/outcome recipe")
     require(type(row["Kind"]) is int and row["Kind"] in (1, 2) and row["Side"] in ("before", "after"), "implemented Decide native boundary")
     prefix = f'p06-co{row["Coordinator"]}-commit{str(row["Commit"]).lower()}'
+    if version == 3:
+        require(row["Stage"] == "terminal-replay" and type(row["Phase"]) is int and type(row["Partition"]) is int and (row["Phase"], row["Partition"]) in ((2, 3), (4, 3), (4, 8)), "actual terminal original occurrence")
+        return f'{prefix}-terminal{row["Phase"]}-p{row["Partition"]}-k{row["Kind"]}-{row["Side"]}'
     if version == 2:
         require(type(row["Phase"]) is int and row["Phase"] in (2, 4) and type(row["Partition"]) is int and row["Partition"] in (3, 8), "actual additional recovery occurrence")
         return f'{prefix}-recovery{row["Phase"]}-p{row["Partition"]}-k{row["Kind"]}-{row["Side"]}'
@@ -56,7 +62,7 @@ def load(path):
             if header is None:
                 require(set(row) == {"Type", "Artifact"} and row["Type"] == "header", "conjunction header row")
                 header = row["Artifact"]
-                require(type(header) is dict and set(header) == HEADER and type(header["P06"]) is dict and set(header["P06"]) == P06 and header["P06"]["Records"] is None, "fresh grammar cannot inline prefix")
+                require(type(header) is dict and set(header) == (TERMINAL_HEADER if header.get("Version") == 3 else HEADER) and type(header["P06"]) is dict and set(header["P06"]) == P06 and header["P06"]["Records"] is None, "fresh grammar cannot inline prefix")
             elif row.get("Type") == "record":
                 require(set(row) == {"Type", "Record"} and len(records) < 512, "bounded actual record row")
                 records.append(row["Record"])
@@ -168,6 +174,84 @@ def capture(rows, unknown, scopes, actor, coordinator, manifest, tx, records, co
     return command
 
 
+def terminal_capture(rows, unknown, scopes, actor, coordinator, manifest, tx, records, phase, partition, prepare):
+    require(type(rows) is list and len(rows) == 5 and (unknown is None or type(unknown) is list and not unknown), "terminal owner needs five actual successes, no invented unknown")
+    order = [(2, 3), (2, 8), (3, coordinator), (4, 3), (4, 8)]
+    seen, selected = set(), prepare if phase == 2 else None
+    for row, expected in zip(rows, order):
+        command, decoded, correlation = source_request(row, scopes, actor)
+        require(correlation not in seen and (decoded["phase"], decoded["partition"]) == expected, "actual initial recovery order/correlation")
+        seen.add(correlation)
+        _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes, 2 if row["Partition"] == 3 else 4)
+        require(actual_manifest == decoded["manifest"] == manifest and status["tx"] == tx and P.raw(records[status["partition"], status["index"]]["Outcome"]) == outcome, "terminal source command lacks its genuine retained original")
+        if expected == (phase, partition):
+            require(selected is None or selected == command, "terminal Prepare differs from first YES command")
+            selected = command
+    require(selected is not None, "terminal command not captured")
+    return selected
+
+
+def terminal_install_original(record, original_wires, partition):
+    # Late Prepare returns CURRENT Resolve. Requested phase and returned phase
+    # are separate coordinates; retrying does not create another first original.
+    require(record is not None and P.raw(record["Outcome"]) == original_wires[partition, 4] and not P.raw(record["CDC"]), "terminal install changed current Resolve original or emitted CDC")
+
+
+def terminal_transport(row):
+    require(type(row) is dict and set(row) == set("Input Reply Transport Accepted InputGrantBytes OutputGrantBytes BeforeImage RecoveredImage StepLoss".split()) and type(row["Accepted"]) is bool and type(row["Transport"]) is str and len(row["Transport"]) <= 4096, "terminal Propose observation grammar")
+    require(type(row["InputGrantBytes"]) is int and row["InputGrantBytes"] == (64 << 10)+512 and type(row["OutputGrantBytes"]) is int and row["OutputGrantBytes"] == 8*(2 << 20), "separate prepaid actual IPC observations")
+    wire = P.raw(row["Reply"])
+    require(len(wire) <= 2 << 20, "actual terminal reply frame")
+    if not row["Accepted"]:
+        require(len(wire) == 381 and not any(wire) and bool(row["Transport"]) and row["StepLoss"] is None, "unknown Propose requires actual all-zero transport result, no Step ACK")
+        return None
+    require(not row["Transport"] and row["StepLoss"] is not None, "returned Propose and failed Step must remain distinct")
+    response = F.process(wire)
+    require(response["code"] == response["mask"] == 0 and not response["detail"] and response["packets"] and not response["outcome"] and not response["changes"] and not response["reads"], "native refused/error response cannot qualify Propose acceptance")
+    return response
+
+
+def terminal_packet(packet, scopes, partition, target, outbound):
+    require(type(packet) is dict and set(packet) == {"From", "To", "Snapshot", "Payload"} and type(packet["From"]) is int and type(packet["To"]) is int and packet["Snapshot"] is False, "terminal actual ordinary packet grammar")
+    members = (1, 2, 3) if partition == 3 else (4, 5, 6)
+    require(packet["From"] in members and packet["To"] in members and packet["From"] != packet["To"] and packet["From" if outbound else "To"] == target, "actual terminal native transport route")
+    payload = packet["Payload"] if type(packet["Payload"]) is bytes else P.raw(packet["Payload"])
+    require(0 < len(payload) <= 2 << 20, "finite actual Step payload")
+    message = F.raft_packet(payload, scopes, partition)
+    require(message.get(2) == [packet["To"]] and message.get(3) == [packet["From"]], "native protobuf endpoints differ from transport")
+    return payload, message
+
+
+def terminal_submission(row, scopes, partition, target, selected, event):
+    response = terminal_transport(row)
+    wire = P.raw(row["Input"])
+    require(0 < len(wire) <= row["InputGrantBytes"], "bounded native Propose input")
+    c = P.Cursor(wire)
+    require(P.body(c.field(156), b"APS\1") == scopes[partition] and c.field(64 << 10) == selected, "actual native Submit scope/command binding")
+    c.end()
+    before, after = P.raw(row["BeforeImage"]), P.raw(row["RecoveredImage"])
+    require(before == after and len(before) == 172 and before[:3] == b"GR\3" and before[3] in (1, 2, 3) and before[4:20] == P.GRAPH and int.from_bytes(before[20:28], "big") == partition and hashlib.sha256(before[:-32]).digest() == before[-32:], "terminal retry must preserve actual native graph image")
+    if response is None:
+        return
+    matches, recipients = 0, set()
+    for packet in response["packets"]:
+        _, message = terminal_packet(packet, scopes, partition, target, True)
+        require(message.get(1) == [3] and message.get(4) == [event["Term"]], "returned Propose packets must be actual same-term append messages")
+        for wire in message.get(7, []):
+            require(type(wire) is bytes, "native entry protobuf wire")
+            entry = F.protobuf_fields(wire)
+            if entry.get(3) == [event["Index"]]:
+                require(entry.get(2) == [event["Term"]] and entry.get(1, [0]) == [0] and entry.get(4) == [selected], "returned Propose packet changed selected native entry")
+                matches += 1
+                recipients.add(packet["To"])
+    require(1 <= matches <= 2, "returned Propose did not carry selected entry to real peers")
+    loss = row["StepLoss"]
+    require(type(loss) is dict and set(loss) == {"Packet", "PayloadSHA256", "Transport", "WorkGrant"} and type(loss["Transport"]) is str and 0 < len(loss["Transport"]) <= 4096 and type(loss["WorkGrant"]) is int and loss["WorkGrant"] == 4*(2 << 20)+8192, "separately prepaid real failed Step observation")
+    payload, message = terminal_packet(loss["Packet"], scopes, partition, target, False)
+    require(loss["Packet"]["From"] in recipients and fixed(loss["PayloadSHA256"], 32, True) == hashlib.sha256(payload).digest() and message.get(1) == [4] and message.get(4) == [event["Term"]] and message.get(6) == [event["Index"]] and message.get(10, [0]) == [0], "failed Step must carry actual nonrejecting selected-entry append response")
+    return response
+
+
 def phase_census(data, tx, digest, coordinator, commit):
     records = F.prefix(data)
     originals, resolved = {}, set()
@@ -277,7 +361,9 @@ def first_processes(rows):
 
 
 def check(a):
-    require(type(a) is dict and set(a) == HEADER and type(a["Version"]) is int and a["Version"] in (1, 2) and a["Profile"] == (PROFILE if a["Version"] == 1 else RECOVERY_PROFILE) and a["Case"] == recipe(a["Recipe"], a["Version"]), "fresh implemented conjunction grammar")
+    require(type(a) is dict and type(a.get("Version")) is int and a["Version"] in (1, 2, 3), "implemented conjunction version")
+    terminal = a["Version"] == 3
+    require(set(a) == (TERMINAL_HEADER if terminal else HEADER) and a["Profile"] == {1: PROFILE, 2: RECOVERY_PROFILE, 3: TERMINAL_PROFILE}[a["Version"]] and a["Case"] == recipe(a["Recipe"], a["Version"]), "fresh implemented conjunction grammar")
     d, r = a["P06"], a["Recipe"]
     require(type(d) is dict and set(d) == P06 and type(d["Version"]) is int and d["Version"] == 1 and d["Coordinator"] == r["Coordinator"] and d["Commit"] is r["Commit"], "same real semantic P06 recipe")
     coordinator, commit, kind, side = r["Coordinator"], r["Commit"], r["Kind"], r["Side"]
@@ -296,8 +382,11 @@ def check(a):
     decision_wire = P.raw(records[coordinator, decision["index"]]["Outcome"])
     P.resumed(d["Pending"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], coordinator), 1, b"")
     P.resumed(d["Decision"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], coordinator), 0, decision_wire)
-    selected = capture(d["Phases"], a["UnknownPhases"], scopes, actor, coordinator, manifest, tx, records, commit, phase, partition)
-    require(selected == P.raw(a["SelectedCommand"]), "unknown attempt differs from native selected command")
+    if terminal:
+        selected = terminal_capture(d["Phases"], a["UnknownPhases"], scopes, actor, coordinator, manifest, tx, records, phase, partition, first)
+    else:
+        selected = capture(d["Phases"], a["UnknownPhases"], scopes, actor, coordinator, manifest, tx, records, commit, phase, partition)
+    require(selected == P.raw(a["SelectedCommand"]), "actual captured command differs from native selected command")
     decoded = C.decision_command(selected)
     require(decoded["phase"] == phase and decoded["partition"] == partition and decoded["manifest"] == manifest, "actual selected recovery original")
     original_wires = {(part, P.status(P.raw(row["Outcome"]))["phase"]): P.raw(row["Outcome"]) for (part, index), row in records.items() if P.raw(row["Outcome"])[:4] == b"GCS\1" and P.status(P.raw(row["Outcome"]))["index"] == index}
@@ -314,24 +403,32 @@ def check(a):
     require(first_local["applied"] >= yes["index"], "first replacement did not read its own durable prepared prefix")
     if kind == 2:
         row = records.get((partition, event["Index"]))
-        require(row is not None and P.raw(row["Outcome"]) == original_wires[partition, phase], "install event not bound to actual retained phase original")
+        if terminal:
+            terminal_install_original(row, original_wires, partition)
+        else:
+            require(row is not None and P.raw(row["Outcome"]) == original_wires[partition, phase], "install event not bound to actual retained phase original")
+    if terminal:
+        submitted = terminal_submission(a["Duplicate"], scopes, partition, target, selected, event)
+        if submitted is not None:
+            require(a["Processes"][0]["Instance"] == f'voter{target}/pid{a["Batch"]["PID"]}/{submitted["incarnation"].hex()}', "returned Propose belongs to actual killed target incarnation")
     require(type(a["TargetTransportLoss"]) is str and 0 < len(a["TargetTransportLoss"]) <= 4096, "missing typed target loss observation")
     attempts = a["Attempts"]
     require(type(attempts) is list and len(attempts) == 3, "bounded actual unknown/final/replay calls")
     pending_response = F.process(P.raw(d["Pending"]))
     previous_sequence = pending_response["sequence"]
     for i, row in enumerate(attempts):
-        require(type(row) is dict and set(row) == {"Reply", "Transport", "Pending"} and type(row["Pending"]) is bool and row["Pending"] is (i == 0) and type(row["Transport"]) is str and len(row["Transport"]) <= 4096, "actual invocation grammar")
+        unknown_call = not terminal and i == 0
+        require(type(row) is dict and set(row) == {"Reply", "Transport", "Pending"} and type(row["Pending"]) is bool and row["Pending"] is unknown_call and type(row["Transport"]) is str and len(row["Transport"]) <= 4096, "actual invocation grammar")
         response = F.process(P.raw(row["Reply"]))
         require(response["incarnation"] == pending_response["incarnation"] and response["sequence"] > previous_sequence, "original caller changed process or replayed IPC sequence")
         previous_sequence = response["sequence"]
         require(not response["outcome"] and not response["changes"] and not response["packets"] and not response["reads"], "coordinator call invented native event outputs")
-        if i == 0:
+        if unknown_call:
             unknown_invocation(response, row["Transport"])
         else:
             require(not row["Transport"] and response["code"] == response["mask"] == 0, "success/replay was not genuine success")
-        P.resumed(row["Reply"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], coordinator), int(i == 0), b"" if i == 0 else decision_wire)
-    require(attempts[1]["Reply"] == d["Decision"], "final returned original not actual captured response")
+        P.resumed(row["Reply"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], coordinator), int(unknown_call), b"" if unknown_call else decision_wire)
+    require(attempts[0 if terminal else 1]["Reply"] == d["Decision"], "final returned original not actual captured response")
     require(type(d["Duplicates"]) is list and len(d["Duplicates"]) == 3, "actual terminal Prepare/two Resolve replays")
     for i, row in enumerate(d["Duplicates"]):
         require(type(row) is dict and set(row) == LOCAL, "terminal duplicate grammar")
@@ -345,25 +442,26 @@ def check(a):
     require(a["ReceiptGrantBytes"] == reads*65536, "receipt read grants/prepay")
     require(integer(a["GateCandidates"], 128, 1)*(4096+32*(2 << 20)) == integer(a["GateDecodeWork"], 128*(4096+32*(2 << 20)), 1), "whole envelope gate decode prepay")
     candidates, count = integer(a["CaptureCandidates"], 256, 1), integer(a["CaptureAttempts"], 32, 1)
-    require(candidates >= count == len(d["Phases"])+len(a["UnknownPhases"]) and a["CaptureWork"] == candidates*(4096+32*(2 << 20)) and a["CaptureOutput"] == count*((128 << 10)+8192), "attempted capture/output grant prepay")
-    actual_bytes = sum(len(P.raw(row["Request"]))+len(P.raw(row["Reply"])) for row in d["Phases"]+a["UnknownPhases"])
+    unknown = a["UnknownPhases"] or []  # Only terminal_capture admits nil; old capture requires its list.
+    require(candidates >= count == len(d["Phases"])+len(unknown) and a["CaptureWork"] == candidates*(4096+32*(2 << 20)) and a["CaptureOutput"] == count*((128 << 10)+8192), "attempted capture/output grant prepay")
+    actual_bytes = sum(len(P.raw(row["Request"]))+len(P.raw(row["Reply"])) for row in d["Phases"]+unknown)
     require(integer(a["CaptureRetained"], 256 << 10) == actual_bytes, "finite owned actual captures")
     witness = literal_and_serial(d, decision)
-    return dict(case=a["Case"], records=len(records), successful_replies=len(d["Phases"]), unknown_attempts=len(a["UnknownPhases"]), serial_witness=witness, scope="P06 × actual recovery Prepare/Decide/Resolve Ready/install before/after only; initial/duplicate occurrences/leaders/messages/P rows and runtime qualification remain open")
+    return dict(case=a["Case"], records=len(records), successful_replies=len(d["Phases"]), unknown_attempts=len(unknown), serial_witness=witness, scope="P06 recovery/terminal replay Ready/install before/after only; initial occurrences, rotated leaders/messages, other P rows/state compositions and runtime qualification remain open")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("artifacts", nargs="+", type=Path)
     args = parser.parse_args()
-    require(len(args.artifacts) <= 80, "finite conjunction invocation")
-    counts, seen, results = {1: 0, 2: 0}, set(), []
+    require(len(args.artifacts) <= 128, "finite conjunction invocation")
+    counts, seen, results = {1: 0, 2: 0, 3: 0}, set(), []
     for path in args.artifacts:
-        artifact = load(path)  # One bounded artifact at a time, never80 prefixes.
+        artifact = load(path)  # One bounded artifact at a time, never128 prefixes.
         result = check(artifact)
         version = artifact["Version"]
         counts[version] += 1
-        require(counts[version] <= (16 if version == 1 else 64) and artifact["Case"] not in seen, "finite unique versioned conjunction inventory")
+        require(counts[version] <= {1: 16, 2: 64, 3: 48}[version] and artifact["Case"] not in seen, "finite unique versioned conjunction inventory")
         seen.add(artifact["Case"])
         results.append(result)  # Only bounded two/three-transaction summaries.
     print(json.dumps(results, indent=2))

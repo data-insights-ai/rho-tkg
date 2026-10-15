@@ -58,10 +58,12 @@ type nativeConjunctionBatchGate struct {
 	closeOnce                          sync.Once
 	priorBefore                        func(context.Context, uint64, uint64, []byte) error
 	priorFailed                        func(graphProcessPacketJob, error) bool
+	captureStep                        bool // Immutable before callback publication; terminal only.
+	stepLoss                           *nativeP06TerminalStepLoss
 }
 
-func newNativeConjunctionBatchGate(ctx context.Context, f *pairedGraphFaultNetwork, selector nativeConjunctionSelector, run [16]byte, deadline int64) (*nativeConjunctionBatchGate, error) {
-	if ctx == nil || f == nil || f.n == nil || !selector.valid() || run == ([16]byte{}) {
+func newNativeConjunctionBatchGate(ctx context.Context, f *pairedGraphFaultNetwork, selector nativeConjunctionSelector, run [16]byte, deadline int64, captureStep ...bool) (*nativeConjunctionBatchGate, error) {
+	if ctx == nil || f == nil || f.n == nil || !selector.valid() || run == ([16]byte{}) || len(captureStep) > 1 {
 		return nil, errInvalid
 	}
 	actual, bounded := ctx.Deadline()
@@ -74,6 +76,7 @@ func newNativeConjunctionBatchGate(ctx context.Context, f *pairedGraphFaultNetwo
 	}
 	owned, cancel := context.WithCancel(ctx)
 	g := &nativeConjunctionBatchGate{ctx: owned, cancel: cancel, f: f, hub: target.mux.hub, target: target, selector: selector, dir: filepath.Join(f.n.dir, fmt.Sprint(selector.Member)), lost: make(chan struct{})}
+	g.captureStep = len(captureStep) == 1 && captureStep[0]
 	if err := reserveNativeConjunctionGate(f, g); err != nil {
 		cancel()
 		return nil, err
@@ -105,6 +108,42 @@ func reserveNativeConjunctionGate(f *pairedGraphFaultNetwork, g *nativeConjuncti
 		return errLimit
 	}
 	f.conjunctionGate = g // Sole fixture slot, before native effects.
+	return nil
+}
+
+// Fresh terminal parent only: pre-admit/hash an actually captured command as a
+// diagnostic selector before its ordinary Submit. Neither this method nor its
+// copied bytes import/reconstruct any private proposal authority or stamps.
+func (g *nativeConjunctionBatchGate) armObserved(ctx context.Context, proposal allocationProposal) error {
+	if g == nil || ctx == nil {
+		return errInvalid
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed || g.ctx.Err() != nil || ctx.Err() != nil {
+		return errors.Join(errCrossProcessPending, g.ctx.Err(), ctx.Err())
+	}
+	if g.arm.Sequence != 0 || g.refused || g.candidates >= 128 || len(proposal.wire) == 0 || len(proposal.wire) > nativeLogicalTransitionBodyBytes {
+		return errLimit
+	}
+	g.candidates++
+	g.decodeWork += 4096 + 32*processFrameBytes
+	command, _, err := decodeCrossCommand(proposal.wire, defaultMaterializerLimits())
+	if err != nil || !proposal.target.valid() || command.ns.graph != proposal.target.graph || command.ns.partition != proposal.target.partition || command.phase != g.selector.Phase || command.ns.partition != g.selector.Partition {
+		return errors.Join(errInvalid, err)
+	}
+	control := nativeBatchControl{Version: 1, Action: "arm", Cookie: g.owner.Cookie, Sequence: 1, Kind: g.selector.Kind, Side: g.selector.Side, CommandSHA256: sha256.Sum256(proposal.wire)}
+	deadline, _ := g.ctx.Deadline()
+	actualCtx, cancel := context.WithDeadline(ctx, deadline)
+	stop := context.AfterFunc(g.ctx, cancel)
+	defer func() { stop(); cancel() }()
+	actual, err := nativeBatchCall(actualCtx, g.target, control)
+	if err != nil || actual.State != "armed" || actual.Control != control || actual.Run != g.owner.Run || actual.PID != g.owner.PID || actual.DeadlineUnixNanos != g.owner.DeadlineUnixNanos {
+		return errors.Join(errCorrupt, err)
+	}
+	g.selected = make([]byte, len(proposal.wire))
+	copy(g.selected, proposal.wire)
+	g.arm = actual
 	return nil
 }
 
@@ -200,6 +239,27 @@ func (g *nativeConjunctionBatchGate) failed(job graphProcessPacketJob, actual er
 			if g.closed || g.ctx.Err() != nil || g.hub.peer(g.selector.Member).p != g.target {
 				g.mu.Unlock()
 				return false
+			}
+			if g.captureStep && g.stepLoss == nil {
+				if len(job.packet.Payload) > processFrameBytes {
+					g.refused = true
+					g.mu.Unlock()
+					return false
+				}
+				// One actual failed Step payload, separately prepaid BEFORE its
+				// owned copy/hash. Ordinary frame/queue limits stay unchanged.
+				observation := &nativeP06TerminalStepLoss{WorkGrant: 4*processFrameBytes + 8192}
+				observation.Transport = actual.Error()
+				if len(observation.Transport) > 4096 {
+					g.refused = true
+					g.mu.Unlock()
+					return false
+				}
+				observation.Packet = job.packet
+				g.stepLoss = observation
+				g.stepLoss.Packet.Payload = make([]byte, len(job.packet.Payload))
+				copy(g.stepLoss.Packet.Payload, job.packet.Payload)
+				g.stepLoss.PayloadSHA256 = sha256.Sum256(job.packet.Payload)
 			}
 			g.f.mu.Lock()
 			g.f.down[g.selector.Member] = true

@@ -327,6 +327,10 @@ class RealGitSelection(unittest.TestCase):
         self.assertNotIn("TestUnrelated", names)
 
     def test_reviewed_paired_fixture_types_have_finite_real_parent_scope(self):
+        for parent in ("TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal",
+                       "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath",
+                       "TestNativeP06TerminalSelectorsCannotImportAuthorityOrInventStepReply"):
+            self.assertIn(parent, CI.FAULT_PARENTS)
         fixtures = {
             "native_graph_feed_retained_harness_test.go": {"TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell", "TestNativeFeedRetainedAdmissionWireAndCleanupStayProfileBound"},
             "native_graph_feed_retained_sessions_harness_test.go": {"TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell", "TestNativeFeedRetainedAdmissionWireAndCleanupStayProfileBound"},
@@ -339,9 +343,9 @@ class RealGitSelection(unittest.TestCase):
             "native_graph_selectors_sessions_harness_test.go": {"TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *CI.IMMUTABLE_PARENTS},
             "native_graph_selectors_runner_harness_test.go": {"TestNativeSelectorsAdmissionAndPrivateReadIdentity", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateFreshProfileAndLocalChoice", "TestNativeGraphCreateUpdateWorkloadCell", *CI.IMMUTABLE_PARENTS},
             "native_graph_feed_runner_harness_test.go": {"TestNativeGraphSnapshotFeedWorkloadCell", "TestNativeGraphSnapshotFeedRetainedOnlyWorkloadCell", "TestNativeGraphSnapshotSelectorsWorkloadCell", "TestNativeGraphCreateUpdateWorkloadCell", *CI.IMMUTABLE_PARENTS},
-            "paired_graph_fault_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut"},
-            "paired_graph_snapshot_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut"},
-            "prepared_lock_p06_harness_test.go": {"TestPreparedLockP06FirstYESLeaderKillOriginalRecovery", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut"},
+            "paired_graph_fault_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath"},
+            "paired_graph_snapshot_harness_test.go": {"TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath"},
+            "prepared_lock_p06_harness_test.go": {"TestPreparedLockP06FirstYESLeaderKillOriginalRecovery", "TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut", "TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal", "TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath"},
             "coordinator_loss_p03_harness_test.go": {"TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply"},
             "prepare_fence_p02_harness_test.go": {"TestPrepareFenceP02ActualOrderingAcrossElection"},
             "native_graph_fault_schedule_harness_test.go": set(CI.FAULT_PARENTS),
