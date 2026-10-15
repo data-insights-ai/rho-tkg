@@ -203,61 +203,13 @@ func nativeP06InitialRegisterCase(t *testing.T, recipe nativeP06ConjunctionRecip
 	}
 	f.elect(firstVoter, recoveryVoter)
 	nativeConjunctionReconnect(f, actor)
-	refused := p06SubmitLocal(f, recoveryVoter, p06LocalProposal(f, recoveryVoter, certifiedP08Close, 1, allocationP08Words(2)), reasonPreparedConflict)
-	var changed *p06LocalRecord
-	if !recipe.Commit {
-		actual := p06SubmitLocal(f, f.n.leaders[1], p06LocalProposal(f, f.n.leaders[1], certifiedP08Close, 17, allocationP08Words(18)), reasonNone)
-		changed = &actual
-		f.trace.OperationMapping = append(f.trace.OperationMapping, lifecycleOperationMap{Logical: "node-b-close", Round: p06LocalRound(t, actual)})
-	}
-	recoveryBVoter := f.n.leaders[1]
-	capture := newNativeConjunctionCapture(f, actor, tx)
-	defer capture.close()
-	decisionReply := f.call(f.n.all[actor], processRequest{op: processSourceCoordinate, data: original.wire})
-	result, err := decodeGraphProcessCoordinatorResult(decisionReply)
-	if err != nil || result.resume != initialResult.resume || result.decision.phase != crossDecide || result.decision.commit != recipe.Commit || result.decision.digest != manifest.digest {
-		t.Fatal("initial interruption changed first immutable decision", err)
-	}
-	f.drain()
-	phases, recoveryCharge := nativeP06InitialTake(t, capture, 5)
-	p06CheckRecoveryPhases(t, phases, prepare, manifest, result.decision, recipe.Commit)
-	nativeP06CheckCensus(t, phases, p06Records(f, from, f.indexes()), manifest, prepareManifest(t, prepare), result.decision, recipe.Commit)
-	f.trace.OperationMapping = append(f.trace.OperationMapping, lifecycleOperationMap{Logical: "edge-create", Coordinator: recipe.Coordinator, Request: pairedFaultResultOf(result).Request, Transaction: pairedFaultResultOf(result).Transaction, Round: result.decision.round})
-	recovered := p06Observe(f, actor, graphReadFresh, graphCut{})
-	p06AssertView(t, recovered.View, recipe.Commit, !recipe.Commit, false)
-	resolves, err := nativeConjunctionTerminalResolveCommands(phases, nil, prepareManifest(t, prepare))
-	if err != nil {
-		t.Fatal(err)
-	}
-	duplicates := []p06LocalRecord{p06ReplayPhase(f, prepare, tx), p06ReplayPhase(f, resolves[0], tx), p06ReplayPhase(f, resolves[1], tx)}
-	closed := p06SubmitLocal(f, recoveryVoter, p06LocalProposal(f, recoveryVoter, certifiedP08Close, 1, allocationP08Words(2)), reasonNone)
-	f.trace.OperationMapping = append(f.trace.OperationMapping, lifecycleOperationMap{Logical: "node-close", Round: p06LocalRound(t, closed)})
-	current := p06Observe(f, actor, graphReadFresh, graphCut{})
-	p06AssertView(t, current.View, recipe.Commit, !recipe.Commit, true)
-	retained := p06Observe(f, actor, graphReadAt, old)
-	if !reflect.DeepEqual(retained, wantOld) {
-		t.Fatal("initial Register recovery replaced old graph/index state")
-	}
-	var firstOld p06Observation
-	firstRejoined := f.replaceBeforeHeal(firstVoter, func(_ *graphProcess, _ processResponse) { firstOld = nativeP06InitialLocalOld(f, firstVoter, old) })
-	if !reflect.DeepEqual(firstOld, wantOld) {
-		t.Fatal("first YES replacement lost actual local historical source")
-	}
-	nativeConjunctionReconnect(f, actor)
-	replayed := f.call(f.n.all[actor], processRequest{op: processSourceCoordinate, data: original.wire})
-	replayResult, err := decodeGraphProcessCoordinatorResult(replayed)
-	if err != nil || replayResult != result {
-		t.Fatal("same-directory retry changed actual original", err)
-	}
-	f.drain()
-	through := f.indexes()
-	records := p06Records(f, from, through)
-	nativeP06CheckCensus(t, phases, records, manifest, prepareManifest(t, prepare), result.decision, recipe.Commit)
-	p06CheckCDC(t, records, manifest, recipe.Commit, changed, refused, closed)
-	a := nativeP06InitialArtifact{Version: 1, Profile: nativeP06InitialProfile, Case: nativeP06InitialName(recipe), Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, Actor: actor, Target: target, Successor: successor, FirstVoter: firstVoter, RecoveryVoter: recoveryVoter, RecoveryBVoter: recoveryBVoter,
-		P06:         p06Artifact{Version: 1, Coordinator: recipe.Coordinator, Commit: recipe.Commit, Original: original.wire, Manifest: prepare.wire, Pending: p06ProcessWire(t, interrupted.response), Decision: p06ProcessWire(t, decisionReply), FirstYES: boundary, Processes: []pairedFaultProcess{firstKilled, firstRejoined}, Refused: refused, Closed: closed, Changed: changed, Duplicates: duplicates, Phases: phases, Before: wantOld, Recovered: recovered, Current: current, Retained: retained, From: from, Through: through},
-		InitialCall: nativeP06ConjunctionAttempt{p06ProcessWire(t, unknown.response), unknown.err.Error(), true}, InitialPhase: initialRows[0], Calls: [][]byte{p06ProcessWire(t, decisionReply), p06ProcessWire(t, replayed)}, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: targetLoss.Error(), Processes: []pairedFaultProcess{failed, initialRejoined}, InitialReopened: initialOld, FirstReopened: firstOld, ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: gateCandidates, GateDecodeWork: gateWork, InitialCapture: initialCharge, RecoveryCapture: recoveryCharge}
-	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, a.Case+".jsonl"), a, records, through)
+	completed := nativeP06CompletePrepared(t, nativeP06PreparedContinuation{f: f, Recipe: recipe, Actor: actor, FirstVoter: firstVoter, RecoveryVoter: recoveryVoter, Original: original, Before: wantOld, Old: old, From: from, Pending: interrupted.response, FirstKilled: firstKilled, Evidence: nativeP06PreparedProvenance{Boundary: boundary, Prepare: prepare, Manifest: manifest, Vote: vote}})
+	records := completed.P06.Records
+	completed.P06.Records = nil
+	a := nativeP06InitialArtifact{Version: 1, Profile: nativeP06InitialProfile, Case: nativeP06InitialName(recipe), Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, Actor: actor, Target: target, Successor: successor, FirstVoter: firstVoter, RecoveryVoter: recoveryVoter, RecoveryBVoter: completed.RecoveryBVoter,
+		P06:         completed.P06,
+		InitialCall: nativeP06ConjunctionAttempt{p06ProcessWire(t, unknown.response), unknown.err.Error(), true}, InitialPhase: initialRows[0], Calls: completed.Calls, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: targetLoss.Error(), Processes: []pairedFaultProcess{failed, initialRejoined}, InitialReopened: initialOld, FirstReopened: completed.FirstReopened, ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: gateCandidates, GateDecodeWork: gateWork, InitialCapture: initialCharge, RecoveryCapture: completed.Capture}
+	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, a.Case+".jsonl"), a, records, a.P06.Through)
 	check := exec.CommandContext(ctx, "python3", "-B", filepath.Join("..", "..", "..", "tools", "v5-substrate", "native_transition_initial_check.py"), path)
 	var diagnostics processStderr
 	check.Stdout, check.Stderr = &diagnostics, &diagnostics
