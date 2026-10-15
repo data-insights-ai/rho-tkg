@@ -2,7 +2,6 @@ package index
 
 import (
 	"math"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -53,21 +52,13 @@ func (pi *PropertyIndex) rangeOrderedPage(min, max float64, desc bool, after Ran
 
 	next = after
 	emitKey := func(k float64) bool {
-		bucket := pi.numBuckets[k]
-		if len(bucket) == 0 {
-			return true
+		// Ties by node ID ascending in asc AND desc value order: the bucket is
+		// sorted, so resuming inside a value is a seek past after.id.
+		var from snowflake.ID
+		if after.has && k == after.val {
+			from = after.id
 		}
-		kids := make([]snowflake.ID, 0, len(bucket))
-		for id := range bucket {
-			kids = append(kids, id)
-		}
-		slices.Sort(kids) // ties by node ID ascending, in asc AND desc value order
-		for _, id := range kids {
-			// Tie order is ascending in both directions, so the resume skip is
-			// `id <= after.id` regardless of desc.
-			if after.has && k == after.val && id <= after.id {
-				continue
-			}
+		for id := range pi.numBuckets[k].After(from) {
 			ids = append(ids, id)
 			if keys != nil {
 				*keys = append(*keys, k)
@@ -150,7 +141,7 @@ func (pi *PropertyIndex) addOrdered(id snowflake.ID, vk string) {
 		return
 	}
 	if pi.numBuckets == nil {
-		pi.numBuckets = make(map[float64]map[snowflake.ID]struct{})
+		pi.numBuckets = make(map[float64]*IDPostings)
 	}
 	if pi.rangeCounts {
 		pi.addOrderedCounted(id, k)
@@ -159,11 +150,11 @@ func (pi *PropertyIndex) addOrdered(id snowflake.ID, vk string) {
 	}
 	bucket, exists := pi.numBuckets[k]
 	if !exists {
-		bucket = make(map[snowflake.ID]struct{})
+		bucket = &IDPostings{}
 		pi.numBuckets[k] = bucket
 		pi.numKeys.insert(k)
 	}
-	bucket[id] = struct{}{}
+	bucket.add(id)
 	pi.noteNumericPrecision(vk) // R1: flag >2^53 integers (float64 key collision)
 }
 
@@ -172,11 +163,10 @@ func (pi *PropertyIndex) addOrdered(id snowflake.ID, vk string) {
 func (pi *PropertyIndex) addOrderedCounted(id snowflake.ID, k float64) {
 	bucket, exists := pi.numBuckets[k]
 	if !exists {
-		bucket = make(map[snowflake.ID]struct{})
+		bucket = &IDPostings{}
 		pi.numBuckets[k] = bucket
 	}
-	if _, present := bucket[id]; !present {
-		bucket[id] = struct{}{}
+	if bucket.add(id) {
 		pi.numKeys.addCount(k, 1)
 	}
 }
@@ -195,16 +185,15 @@ func (pi *PropertyIndex) removeOrdered(id snowflake.ID, vk string) {
 		return
 	}
 	if pi.rangeCounts {
-		if _, present := bucket[id]; present {
-			delete(bucket, id)
+		if bucket.remove(id) {
 			pi.numKeys.addCount(k, -1) // drops the key with its last member
 		}
-		if len(bucket) == 0 {
+		if bucket.Len() == 0 {
 			delete(pi.numBuckets, k)
 		}
 	} else {
-		delete(bucket, id)
-		if len(bucket) == 0 {
+		bucket.remove(id)
+		if bucket.Len() == 0 {
 			delete(pi.numBuckets, k)
 			pi.numKeys.remove(k)
 		}
@@ -219,14 +208,13 @@ func (pi *PropertyIndex) purgeOrdered(id snowflake.ID) {
 		return
 	}
 	for k, bucket := range pi.numBuckets {
+		if !bucket.remove(id) {
+			continue
+		}
 		if pi.rangeCounts {
-			if _, present := bucket[id]; !present {
-				continue
-			}
 			pi.numKeys.addCount(k, -1)
 		}
-		delete(bucket, id)
-		if len(bucket) == 0 {
+		if bucket.Len() == 0 {
 			delete(pi.numBuckets, k)
 			if !pi.rangeCounts {
 				pi.numKeys.remove(k)
@@ -254,7 +242,7 @@ func (pi *PropertyIndex) RangeNodeIDs(min, max float64, inclMin, inclMax bool) (
 		}
 		// Boundary buckets are never skipped, even on exclusive bounds: keys
 		// past 2^53 collide, so the bound bucket may hold in-range values.
-		for id := range pi.numBuckets[k] {
+		for id := range pi.numBuckets[k].All() {
 			ids = append(ids, types.NodeID(id))
 		}
 		return true

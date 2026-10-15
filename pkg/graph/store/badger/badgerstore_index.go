@@ -125,7 +125,7 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		return bs.flushIfNeeded()
 	}
 	for vk, idSet := range backfill.Entries {
-		for id := range idSet {
+		for id := range idSet.All() {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}

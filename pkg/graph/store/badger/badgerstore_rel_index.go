@@ -90,7 +90,7 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 		return err
 	}
 	for vk, idSet := range backfill.Entries {
-		for id := range idSet {
+		for id := range idSet.All() {
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
@@ -162,15 +162,19 @@ func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 	bs.idxMu.RLock()
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
 	if idx, ok := bs.relPropertyIndexes[key]; ok && idx.Mutated == nil {
-		rids := idx.RelIDs(value)
+		// The value's sorted posting list, paged from opts.After in batches
+		// (backlog 72): no copy or sort of the whole key.
+		ids := idx.Postings(value)
+		empty := ids.Len() == 0
 		elements := idx.Elements()
 		bs.idxMu.RUnlock()
-		if len(rids) == 0 {
+		if empty {
 			return nil, nil
 		}
-		storepkg.SortRelIDs(rids)
-		rids = bs.filterRelIDsByTemporalPeek(rids, opts)
-		return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, elements, rids, opts)
+		return pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Relationship, error) {
+			rids := bs.filterRelIDsByTemporalPeek(storepkg.ToRelIDs(batch), page)
+			return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, elements, rids, page)
+		})
 	}
 
 	// Fallback: type scan + property filter.

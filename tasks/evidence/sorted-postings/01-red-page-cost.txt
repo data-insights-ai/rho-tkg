@@ -1,0 +1,11 @@
+=== RUN   TestPostingsPageCostIndependentOfKeySize
+    sorted_postings_cost_test.go:125: NodesByLabelAndProperties: 1606048 B per page of 16 over a key of 200000
+    sorted_postings_cost_test.go:127: NodesByLabelAndProperties: one page of 16 allocates 1606048 B over a key of 200000 members (bound 4096 B): the page copies or sorts the key
+    sorted_postings_cost_test.go:125: NodesByLabelAndProperty: 1605856 B per page of 16 over a key of 200000
+    sorted_postings_cost_test.go:127: NodesByLabelAndProperty: one page of 16 allocates 1605856 B over a key of 200000 members (bound 4096 B): the page copies or sorts the key
+    sorted_postings_cost_test.go:125: RelationshipsByTypeAndProperty: 1605856 B per page of 16 over a key of 200000
+    sorted_postings_cost_test.go:127: RelationshipsByTypeAndProperty: one page of 16 allocates 1605856 B over a key of 200000 members (bound 4096 B): the page copies or sorts the key
+--- FAIL: TestPostingsPageCostIndependentOfKeySize (1.95s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	1.970s
+FAIL

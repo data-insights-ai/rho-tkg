@@ -450,7 +450,9 @@ func (ts *Store) ListCompositePropertyIndexes(labelToken uint16) ([][]string, er
 // NodesByLabelAndProperties folds each shard's AND-conjunction equality
 // matches (its composite index, or its label scan + filter without one) into
 // one ID-sorted, paginated result. Shards follow NodesByLabelAndProperty:
-// reference always, archive at DepthAll, event shards by opts.Depth.
+// reference always, archive at DepthAll, event shards by opts.Depth; each
+// answers the same page (After, Limit), whose merge holds the global page
+// (backlog 72).
 func (ts *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]any, opts QueryOpts) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -462,7 +464,6 @@ func (ts *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 		return nil, err
 	}
 	shardOpts := stripDepth(opts)
-	shardOpts.Limit, shardOpts.After = 0, 0
 
 	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
 	defer move.unlock()

@@ -64,7 +64,8 @@ func (s *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) er
 }
 
 // RelationshipsByTypeAndProperty folds each shard's accelerated equality
-// matches into one globally ID-sorted, paginated result.
+// matches into one globally ID-sorted, paginated result; each shard answers
+// the same page, as in NodesByLabelAndProperty (backlog 72).
 func (s *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string, value any, opts QueryOpts) ([]*types.Relationship, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
@@ -77,7 +78,7 @@ func (s *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string, 
 	}
 	per := make([][]*types.Relationship, len(s.shards))
 	err := s.forEachShardErr(func(idx int, shard *badgerShard) error {
-		rels, e := shard.RelationshipsByTypeAndProperty(relTypeToken, key, value, stripPagination(opts))
+		rels, e := shard.RelationshipsByTypeAndProperty(relTypeToken, key, value, opts)
 		per[idx] = rels
 		return e
 	})

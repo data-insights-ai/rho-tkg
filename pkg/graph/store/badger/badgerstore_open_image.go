@@ -209,12 +209,13 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 		out = binary.AppendUvarint(out, uint64(len(payload)))
 		out = append(out, payload...)
 	}
-	appendValueIDs := func(b []byte, entries map[string]map[snowflake.ID]struct{}) []byte {
+	appendValueIDs := func(b []byte, entries map[string]*indexpkg.IDPostings) []byte {
 		b = binary.AppendUvarint(b, uint64(len(entries)))
 		for vk, ids := range entries {
 			b = appendImgString(b, vk)
-			b = binary.AppendUvarint(b, uint64(len(ids)))
-			for id := range ids {
+			b = binary.AppendUvarint(b, uint64(ids.Len())) // #nosec G115 -- a length
+			// Ascending, so the reload's AddKey fills exact chunks.
+			for id := range ids.All() {
 				b = binary.AppendUvarint(b, uint64(id)) // #nosec G115 -- positive snowflake ID
 			}
 		}
