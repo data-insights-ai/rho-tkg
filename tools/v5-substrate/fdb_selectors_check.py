@@ -97,7 +97,8 @@ def attempt(a, end, spool, request_prefix="selectors"):
     return ordinal, o
 
 
-def attempts(directory, end, spool, filename="fdb-selectors-attempts.jsonl", request_prefix="selectors"):
+def attempts(directory, end, spool, filename="fdb-selectors-attempts.jsonl", request_prefix="selectors", updates=None):
+    updates = end["Spec"]["facts"] if updates is None else integer(updates, 1, end["Spec"]["facts"])
     digest, counts, footer = hashlib.sha256(), [0, 0, 0], False
     clients = [0] * 32
     original_cost = {"old": [[0, 0], [0, 0]], "final": [[0, 0], [0, 0]]}
@@ -110,6 +111,7 @@ def attempts(directory, end, spool, filename="fdb-selectors-attempts.jsonl", req
         fields(frame, "Type Attempt")
         require(frame["Type"] == "attempt", "unknown attempt frame")
         ordinal, outcome = attempt(frame["Attempt"], end, spool, request_prefix)
+        require(ordinal <= 3 + end["Spec"]["facts"] + updates, "attempt outside explicitly admitted create/correction footprint")
         size = sum(len(blob(r["Key"])) + len(blob(r["Value"])) for r in frame["Attempt"]["Originals"])
         for phase in ("old", "final") if ordinal <= 3 + end["Spec"]["facts"] else ("final",):
             original_cost[phase][0][outcome["Coordinator"]] += 1
@@ -120,7 +122,7 @@ def attempts(directory, end, spool, filename="fdb-selectors-attempts.jsonl", req
             clients[frame["Attempt"]["ClientID"]] += 1
         digest.update(line)
     require(footer and counts == [end["Attempts"], end["Aborted"], end["Committed"]] and clients == end["Clients"], "all durable useful/aborted attempts and real caller inventory")
-    for ordinal in range(1, 4 + 2 * end["Spec"]["facts"]):
+    for ordinal in range(1, 4 + end["Spec"]["facts"] + updates):
         final = decoded(spool.lookup(b"attempt-chain", u64(ordinal)))
         require(final["Classification"] == "committed", "exactly one useful completion per operation")
     for phase, costs in original_cost.items():
@@ -166,8 +168,9 @@ def raw_stream(directory, name, end, stem="fdb-selectors"):
     require(header is not None and footer, "truncated raw source")
 
 
-def source_fold(directory, end, spool, stem="fdb-selectors"):
+def source_fold(directory, end, spool, stem="fdb-selectors", updates=None):
     p, c = end["Spec"], end["Config"]
+    updates = p["facts"] if updates is None else integer(updates, 1, p["facts"])
     physical, definitions = codec.StoredState(spool, b"fdb-before"), set()
     generations, sequences, versions = [0, 0], [0, 0], [0, 0]
     floors = [end["Old"]["Round"]] * 2
@@ -180,7 +183,7 @@ def source_fold(directory, end, spool, stem="fdb-selectors"):
             header = row
             continue
         group = decoded(row["Value"])
-        ordinal = integer(group["Tx"]["Lifecycle"]["Provenance"], 1, 3 + 2 * p["facts"])
+        ordinal = integer(group["Tx"]["Lifecycle"]["Provenance"], 1, 3 + p["facts"] + updates)
         require(row["Value"] == spool.lookup(b"fdb-operation", u64(ordinal)), "CDC exact useful attempt/body lineage")
         codec.fdb_group(group, p, ordinal, c, physical, generations, sequences, definitions, parallel=True)
         for participant in group["Tx"]["Participants"]:
@@ -211,9 +214,9 @@ def source_fold(directory, end, spool, stem="fdb-selectors"):
             if ordinal <= 3 + p["facts"]:
                 old_versions[g] += 1
     require(header is not None and sequences == end["Final"]["Groups"], "complete native coordinator prefix")
-    for ordinal in range(1, 4 + 2 * p["facts"]):
+    for ordinal in range(1, 4 + p["facts"] + updates):
         spool.lookup(b"cdc-seen", u64(ordinal))
-    for name, expected_count in (("history", 3 + 6 * p["facts"]), ("current", 3 + 3 * p["facts"])):
+    for name, expected_count in (("history", 3 + 3 * p["facts"] + 3 * updates), ("current", 3 + 3 * p["facts"])):
         count = 0
         for kind, row in raw_stream(directory, name, end, stem):
             if kind == "header":

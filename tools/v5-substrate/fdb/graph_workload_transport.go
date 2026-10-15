@@ -86,6 +86,13 @@ func graphTransportCausalMinimum(spec graphFeedWorkloadSpec, t graphTransport) (
 		rounds = 5 + 2*waves + pages
 	case graphSelectorsFamily, graphColumnsFamily:
 		rounds = 5 + 2*waves
+	case graphCorrectionFamily:
+		if spec.Facts/2 <= writers {
+			return 0, errInvalid
+		}
+		// Real create and delayed HALF-correction phases each have their own
+		// seed then independent callers. Retained scans/publication are omitted.
+		rounds = 5 + waves + (spec.Facts/2-1+writers-1)/writers
 	case graphContentionFamily:
 		// Serial setup + seed half + isolated claim waves, and the longest
 		// genuine increment dependency chain. Each counted step requires a
@@ -233,7 +240,7 @@ func (h *harness) graphTransportInstall(ctx context.Context, p graphTransportPol
 // Family dispatch is private to the explicit transported spec. Ordinary config
 // constructors and Cost.Version meanings remain unchanged.
 func graphTransportFamily(family string) bool {
-	return family == graphFeedWorkloadFamily || family == graphContentionFamily || family == graphSelectorsFamily || family == graphEdgeUniqueFamily || family == graphColumnsFamily
+	return family == graphFeedWorkloadFamily || family == graphContentionFamily || family == graphSelectorsFamily || family == graphEdgeUniqueFamily || family == graphColumnsFamily || family == graphCorrectionFamily
 }
 func graphTransportConfig(spec graphFeedWorkloadSpec, run string) config {
 	switch spec.Family {
@@ -247,6 +254,8 @@ func graphTransportConfig(spec graphFeedWorkloadSpec, run string) config {
 		return graphSelectorsConfig(graphSelectorsSpec(spec), run)
 	case graphColumnsFamily:
 		return graphColumnsConfig(graphSelectorsSpec(spec), run)
+	case graphCorrectionFamily:
+		return graphCorrectionConfig(graphSelectorsSpec(spec), run)
 	case graphEdgeUniqueFamily:
 		c := graphEdgeUniqueConfig(graphEdgeUniqueSpec(spec).profile(), spec.Layout, run)
 		c.Graph = strings.Replace(c.Graph, "unique-v1-", "unique-v2-", 1)
@@ -255,7 +264,7 @@ func graphTransportConfig(spec graphFeedWorkloadSpec, run string) config {
 	return config{}
 }
 func graphTransported(c config) bool {
-	return strings.HasPrefix(c.Graph, "graph-workload-contention-v2-") || strings.HasPrefix(c.Graph, "graph-workload-selectors-v2-") || strings.HasPrefix(c.Graph, "graph-workload-edge-unique-v2-") || strings.HasPrefix(c.Graph, "graph-workload-columns-v2-")
+	return strings.HasPrefix(c.Graph, "graph-workload-contention-v2-") || strings.HasPrefix(c.Graph, "graph-workload-selectors-v2-") || strings.HasPrefix(c.Graph, "graph-workload-edge-unique-v2-") || strings.HasPrefix(c.Graph, "graph-workload-columns-v2-") || strings.HasPrefix(c.Graph, "graph-workload-correction-v2-")
 }
 
 // Every new business capture/apply authenticates the SAME actual native policy
@@ -392,6 +401,8 @@ func graphTransportFamilyConfig(spec graphFeedWorkloadSpec, run string) config {
 		return graphSelectorsConfig(graphSelectorsSpec(spec), run)
 	case graphColumnsFamily:
 		return graphColumnsConfig(graphSelectorsSpec(spec), run)
+	case graphCorrectionFamily:
+		return graphCorrectionConfig(graphSelectorsSpec(spec), run)
 	case graphEdgeUniqueFamily:
 		return graphEdgeUniqueConfig(graphEdgeUniqueSpec(spec).profile(), spec.Layout, run)
 	}
@@ -435,6 +446,9 @@ func (h *harness) graphTransportCheckIn(tr fdb.ReadTransaction) error {
 		// This new family's ordinary and transported original fast paths both
 		// require its actual native admission before returning a retained reply.
 		return h.graphWorkloadBindingIn(tr, "workload-columns-v1")
+	}
+	if h.config.Cost.Version == 7 {
+		return h.graphWorkloadBindingIn(tr, "workload-correction-v1")
 	}
 	if !graphTransported(h.config) {
 		return nil

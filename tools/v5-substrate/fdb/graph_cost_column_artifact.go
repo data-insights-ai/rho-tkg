@@ -59,7 +59,8 @@ type graphCostColumnLane struct {
 	closed  bool
 	// Nil preserves historical artifact bytes and emits no new timing. The fresh
 	// columns workload observes complete calls, never one sample per emitted row.
-	timing func(call, name string, at certificate, rows uint64, nanos int64) error
+	timing     func(call, name string, at certificate, rows uint64, nanos int64) error
+	pointValue func(id uint64, generation string) int64
 }
 
 func (l *graphCostColumnLane) timed(call, name string, at certificate, rows uint64, begin time.Time) error {
@@ -379,6 +380,9 @@ func (l *graphCostColumnLane) export(owner *graphColumnRead, m graphColumnManife
 		want := int64(6)
 		if m.Generation.ID == "old" {
 			want = 5
+		}
+		if l.pointValue != nil && id != 5 {
+			want = l.pointValue(id, m.Generation.ID)
 		}
 		if found != (id != 5) || found && (row.Owner != id || row.Value != want) {
 			return errMismatch

@@ -21,22 +21,27 @@ FAMILY, FORMAT = "immutable-columns", "fdb-immutable-columns-v1"
 OBSERVATIONS = ("old-fresh", "held-old-after-update", "fresh-current")
 
 
-def validate_result(end):
+def validate_result(end, family=FAMILY):
+    require(family in (FAMILY,"late-correction-old-index"),"explicit implemented scalar source family")
+    correction=family=="late-correction-old-index"
+    format_="fdb-late-correction-old-index-v1" if correction else FORMAT
     version = integer(end["Version"], 1, 2)
     fields(end, "Version Format Spec Config Binding BindingRecord Initial Old Final Attempts Aborted Committed Setup Creates Updates Observations Clients Sources AttemptSHA256 EventSHA256" + (" Columns" if "Columns" in end else "") + (" Transport" if version == 2 else ""))
-    require(end["Format"] == FORMAT.replace("-v1", f"-v{version}"), "dedicated immutable-column result")
+    require(end["Format"] == format_.replace("-v1", f"-v{version}"), "dedicated scalar source result")
     p, c = end["Spec"], end["Config"]
     fields(p, "version family facts crossPercent writers layout")
     n = integer(p["facts"], 20, 1_000_000)
-    require(type(p["version"]) is int and p["version"] == version and p["family"] == FAMILY and n % 20 == 0 and type(p["writers"]) is int and p["writers"] in (1, 8, 32) and n > p["writers"] and type(p["crossPercent"]) is int and p["crossPercent"] in (0, 10, 50, 100) and p["layout"] in ("kv", "columns"), "actual family dimensions")
-    graph_prefix = f"graph-workload-columns-v{version}-{p['layout']}-"
+    require(type(p["version"]) is int and p["version"] == version and p["family"] == family and n % 20 == 0 and type(p["writers"]) is int and p["writers"] in (1, 8, 32) and (n//2 if correction else n) > p["writers"] and type(p["crossPercent"]) is int and p["crossPercent"] in (0, 10, 50, 100) and p["layout"] in ("kv", "columns"), "actual family dimensions")
+    stem="correction" if correction else "columns"
+    updates=n//2 if correction else n
+    graph_prefix = f"graph-workload-{stem}-v{version}-{p['layout']}-"
     run = c["Graph"].removeprefix(graph_prefix)
     require(c["Graph"].startswith(graph_prefix) and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "fresh native graph/run identity")
-    originals = 3 + 2*n*64
+    originals = 3 + (n+updates)*64
     expected = {"Format": 2, "Graph": c["Graph"], "Topology": 1, "Epochs": [7, 11],
-                "Limits": {"Bytes": (64 << 20) + n*(64 << 10) + originals*2048, "Transactions": originals, "Versions": 3+6*n, "Certificates": 1024},
-                "Nodes": [1, 7+2*n], "Cost": {"version": 6, "facts": n, "crossPercent": p["crossPercent"], "writers": p["writers"]}, "CostScope": codec.SCOPE}
-    require(same(c, expected), "fresh Cost6 cannot reinterpret old persisted profiles")
+                "Limits": {"Bytes": (64 << 20) + n*(64 << 10) + originals*2048, "Transactions": originals, "Versions": 3+3*n+3*updates, "Certificates": 1024},
+                "Nodes": [1, 7+2*n], "Cost": {"version": 7 if correction else 6, "facts": n, "crossPercent": p["crossPercent"], "writers": p["writers"]}, "CostScope": codec.SCOPE}
+    require(same(c, expected), "fresh scalar family cannot reinterpret old persisted profiles")
     binding = {"Version": 1, "Config": c, "Dataset": list(hashlib.sha256(b"\x01"+u64(n)+u64(p["crossPercent"])+b"graph-v2").digest()),
                "Window":32,"Attempts":64,"Submissions":8,"Callbacks":16,
                "Read":{"PageRows":8,"PageBytes":4<<20,"InventoryBytes":4<<20,"WorkRows":1024*n+4096,"WorkBytes":(64<<20)+n*(2<<20),"ChainSteps":128,
@@ -45,15 +50,15 @@ def validate_result(end):
     if version == 2:
         binding.update(Version=2, Admission=raw.transport.family_record(end["Transport"],p,c))
     require(same(end["Binding"],binding), "authentic bounded native work/cleanup admission")
-    source.raw_record(end["BindingRecord"],key(c,0,f"workload-columns-v{version}","binding"),go_json(binding))
-    for name, groups in (("Initial",[0,0]),("Old",[2+n,1]),("Final",[2+2*n,1])):
+    source.raw_record(end["BindingRecord"],key(c,0,f"workload-{stem}-v{version}","binding"),go_json(binding))
+    for name, groups in (("Initial",[0,0]),("Old",[2+n,1]),("Final",[2+n+updates,1])):
         cut=end[name]
         fields(cut,"Graph Topology Epochs Scope Round Groups")
         require(cut["Graph"]==c["Graph"] and cut["Topology"]==1 and cut["Epochs"]==c["Epochs"] and blob(cut["Scope"])==b"\0\1" and cut["Groups"]==groups, "complete native cut membership")
         integer(cut["Round"],1)
     require(end["Initial"]["Round"]<end["Old"]["Round"]<end["Final"]["Round"],"mutation then retained old-cut query")
-    require(end["Setup"]==3 and end["Creates"]==end["Updates"]==n and end["Committed"]==3+2*n and end["Observations"]==3 and integer(end["Aborted"])+end["Committed"]==end["Attempts"]<=originals,"useful/ABORT/source observation census")
-    require(type(end["Clients"]) is list and len(end["Clients"])==32 and all(type(v) is int and v>=2 for v in end["Clients"][:p["writers"]]) and all(type(v) is int and v==0 for v in end["Clients"][p["writers"]:]) and sum(end["Clients"])==2*n,"genuine independent callers in both phases")
+    require(end["Setup"]==3 and end["Creates"]==n and end["Updates"]==updates and end["Committed"]==3+n+updates and end["Observations"]==3 and integer(end["Aborted"])+end["Committed"]==end["Attempts"]<=originals,"useful/ABORT/source observation census")
+    require(type(end["Clients"]) is list and len(end["Clients"])==32 and all(type(v) is int and v>=2 for v in end["Clients"][:p["writers"]]) and all(type(v) is int and v==0 for v in end["Clients"][p["writers"]:]) and sum(end["Clients"])==n+updates,"genuine independent callers in both phases")
     require(("Columns" in end)==(p["layout"]=="columns"),"KV source reference is not native columns")
     for digest in (end["AttemptSHA256"],end["EventSHA256"]):
         require(type(digest) is str and len(digest)==64 and bytes.fromhex(digest).hex()==digest,"canonical sealed digest")
@@ -85,14 +90,14 @@ def timing(frame,end,spool):
     spool.insert(b"column-timing",(call+"/"+name).encode(),go_json(frame))
 
 
-def events(directory,end,spool,header):
+def events(directory,end,spool,header,stem="fdb-columns"):
     digest,started,footer=hashlib.sha256(),False,False
     active,selected,rows=None,None,[0,0]
     observations,completions,inventories,points,opens,timings=0,0,0,0,0,0
     inv_stage,inv_meta,inv_counts,previous=None,None,[[0,0],[0,0]],{}
     source_owner,closed=None,False
     c=end["Config"]
-    for frame,line in source.lines(directory/"fdb-columns-events.jsonl",80+6*(3+3*end["Spec"]["facts"])+4*end["Attempts"]):
+    for frame,line in source.lines(directory/(stem+"-events.jsonl"),80+6*(3+3*end["Spec"]["facts"])+4*end["Attempts"]):
         require(not footer,"trailing family event")
         kind=frame.get("Type")
         if kind=="footer":
@@ -122,6 +127,7 @@ def events(directory,end,spool,header):
             require(active is None and observations<3 and frame["Name"]==OBSERVATIONS[observations] and frame["Policy"]==end["Binding"]["Read"],"three actual source observations only")
             active,selected=frame["Name"],frame["Selection"]
             source.selection(selected,active,end,spool)
+            spool.insert(b"acquired-owner",active.encode(),go_json(selected["AcquiredOwner"]))
             if active!="held-old-after-update":
                 opening=decoded(spool.lookup(b"selector-open",active.encode()))
                 require(opening["Cut"]==selected["Selected"] and opening["Mode"]=="Fresh","opening binds returned genuine source owner")
@@ -222,21 +228,30 @@ def metadata(end,spool,header):
         require(spool.lookup(b"selection-metadata",name.encode())==spool.lookup(b"barrier-metadata",phase.encode()),"actual opening metadata at exact generation barrier")
 
 
-def verify(directory,spool_directory,policy=None):
+def verify(directory,spool_directory,policy=None,family=FAMILY):
+    require(family in (FAMILY,"late-correction-old-index"),"explicit implemented scalar family")
+    stem="fdb-correction" if family=="late-correction-old-index" else "fdb-columns"
     directory=Path(directory).resolve(strict=True)
-    with (directory/"fdb-columns-result.json").open("rb") as stream:
+    with (directory/(stem+"-result.json")).open("rb") as stream:
         body=stream.read(raw.LINE+1)
     require(len(body)<=raw.LINE and body.endswith(b"\n"),"bounded exclusive result")
-    end=decoded(body[:-1]);validate_result(end)
+    end=decoded(body[:-1]);validate_result(end,family)
     require(policy is not None or end["Spec"]["facts"]<1_000_000 and end["Spec"]["writers"]!=32,"large cell requires explicit finite comparison grant")
     policy=source.POLICY if policy is None else policy
     with source.Spool(spool_directory,policy) as spool:
-        source.attempts(directory,end,spool,"fdb-columns-attempts.jsonl","columns")
-        header=source.source_fold(directory,end,spool,"fdb-columns")
-        events(directory,end,spool,header)
+        updates=end["Spec"]["facts"]//2 if family=="late-correction-old-index" else None
+        source.attempts(directory,end,spool,stem+"-attempts.jsonl",stem.removeprefix("fdb-"),updates)
+        header=source.source_fold(directory,end,spool,stem,updates)
+        events(directory,end,spool,header,stem)
         metadata(end,spool,header)
-        source.columns(directory,end,spool,"fdb-columns-columns.jsonl")
-        source.latencies(directory,end,spool,"fdb-columns-latency.jsonl")
+        source.columns(directory,end,spool,stem+"-columns.jsonl")
+        source.latencies(directory,end,spool,stem+"-latency.jsonl")
+        additional={}
+        if family=="late-correction-old-index":
+            # Exact coded family dispatch, never a caller-supplied validation
+            # callback that could return an empty proof for missing index EOF.
+            import fdb_correction_check as correction
+            additional=correction.indexes(directory,end,spool)
         transport=raw.transport.verify(directory,end["Transport"]["Policy"],spool) if end["Version"]==2 else None
         # Fixed <=14 column calls and six source calls, not per-row samples.
         samples=[decoded(value) for _,value in spool.walk(b"column-timing")]
@@ -254,7 +269,7 @@ def verify(directory,spool_directory,policy=None):
             values=sorted(v["Nanos"] for v in (*samples,*source_samples) if v["Call"]==call)
             percentiles.append({"call":call,"samples":len(values),**{f"p{p}Nanos":values[(p*len(values)+99)//100-1] for p in (50,95,99)}})
         report=spool.report()
-    out={"format":end["Format"],"family":FAMILY,"spec":end["Spec"],"runGraph":end["Config"]["Graph"],"attempts":end["Attempts"],"committed":end["Committed"],"aborted":end["Aborted"],"spool":report,"columnTiming":samples,"sourceTiming":source_samples,"nearestRankTiming":percentiles,
+    out={"format":end["Format"],"family":family,"spec":end["Spec"],"runGraph":end["Config"]["Graph"],"attempts":end["Attempts"],"committed":end["Committed"],"aborted":end["Aborted"],"spool":report,"columnTiming":samples,"sourceTiming":source_samples,"nearestRankTiming":percentiles,**additional,
          "scope":"one actual source-scan reference or genuine immutable-column publication/native+cache scan lifecycle; source KV retain-all, derived GC only; no native parity/full matrix/capacity acceptance"}
     if transport is not None:
         transport["nativeRetainedBindingBytes"]=len(blob(end["Transport"]["Record"]["Key"]))+len(blob(end["Transport"]["Record"]["Value"]))

@@ -29,6 +29,9 @@ type graphSelectorsSpec struct {
 }
 
 func (s graphSelectorsSpec) profile() graphCostProfile {
+	if s.Family == graphCorrectionFamily {
+		return graphCostProfile{7, s.Facts, s.CrossPercent, s.Writers}
+	}
 	if s.Family == graphColumnsFamily {
 		return graphCostProfile{6, s.Facts, s.CrossPercent, s.Writers}
 	}
@@ -218,6 +221,9 @@ func (h *harness) graphSelectorsApply(ctx context.Context, phase string, fact ui
 	if h.config.Cost.Version == 6 {
 		prefix = "columns"
 	}
+	if h.config.Cost.Version == 7 {
+		prefix = "correction"
+	}
 	_, err := h.graphCostApplyOperation(ctx, graphCostParallelJob{phase, fact}, client, graphCostOperationID(p, phase, fact), prefix, emit)
 	return err
 }
@@ -225,6 +231,12 @@ func (h *harness) graphSelectorsApply(ctx context.Context, phase string, fact ui
 // Real independent callers share only bounded immutable jobs/results. The one
 // owner drains admitted events even on error; no terminal/unknown attempt drops.
 func (h *harness) graphSelectorsPhase(ctx context.Context, a *graphSelectorsArtifacts, phase string) error {
+	return h.graphWorkloadPhase(ctx, a, phase, h.config.Cost.Facts)
+}
+func (h *harness) graphWorkloadPhase(ctx context.Context, a *graphSelectorsArtifacts, phase string, count uint64) error {
+	if count > h.config.Cost.Facts || count <= uint64(h.config.Cost.Writers) {
+		return errInvalid
+	}
 	type job struct {
 		fact  uint64
 		begin time.Time
@@ -259,8 +271,8 @@ func (h *harness) graphSelectorsPhase(ctx context.Context, a *graphSelectorsArti
 	var result error
 	next := uint64(h.config.Cost.Writers + 1) // #nosec G115 -- admitted1/8/32.
 	inflight := h.config.Cost.Writers
-	for next < h.config.Cost.Facts || inflight > 0 {
-		for result == nil && next < h.config.Cost.Facts && inflight < 32 {
+	for next < count || inflight > 0 {
+		for result == nil && next < count && inflight < 32 {
 			jobs <- job{next, time.Now()}
 			next++
 			inflight++

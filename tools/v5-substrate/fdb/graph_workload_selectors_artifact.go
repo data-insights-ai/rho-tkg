@@ -58,7 +58,7 @@ func newGraphSelectorsArtifactsAdmission(ctx context.Context, h *harness, root *
 // selector schedule. Its fresh namespace, files, observations and format remain
 // explicit; the historical selector constructor and output defaults are intact.
 func newGraphWorkloadArtifacts(ctx context.Context, h *harness, root *os.Root, spec graphSelectorsSpec, binding graphCostStoredRecord, initial cut, transport *graphTransportRecord) (*graphSelectorsArtifacts, error) {
-	if h == nil || root == nil || spec.profile() != h.config.Cost || !validGraphCostProfile(h.config) || spec.Family != graphSelectorsFamily && spec.Family != graphColumnsFamily {
+	if h == nil || root == nil || spec.profile() != h.config.Cost || !validGraphCostProfile(h.config) || spec.Family != graphSelectorsFamily && spec.Family != graphColumnsFamily && spec.Family != graphCorrectionFamily {
 		return nil, errInvalid
 	}
 	admission, checkErr := graphTransportArtifact(h, graphFeedWorkloadSpec(spec), transport)
@@ -72,6 +72,9 @@ func newGraphWorkloadArtifacts(ctx context.Context, h *harness, root *os.Root, s
 	a := &graphSelectorsArtifacts{ctx: ctx, h: h, root: root, attemptHash: sha256.New(), eventHash: sha256.New(), end: graphSelectorsEnd{Version: spec.Version, Format: graphTransportFormatFor(spec.Version, graphSelectorsFormat), Spec: spec, Config: h.config, Binding: graphSelectorsPolicyAdmission(h.config, admission), BindingRecord: binding, Initial: initial.record, Transport: transport}}
 	if spec.Family == graphColumnsFamily {
 		a.end.Format = graphTransportFormatFor(spec.Version, graphColumnsFormat)
+	}
+	if spec.Family == graphCorrectionFamily {
+		a.end.Format = graphTransportFormatFor(spec.Version, graphCorrectionFormat)
 	}
 	var err error
 	a.attempts, _, err = openGraphCostArtifact(root, a.filename("attempts.jsonl"))
@@ -243,6 +246,14 @@ func (a *graphSelectorsArtifacts) observe(name string, read *graphSnapshot, want
 		if strings.HasPrefix(row.Key, "node/") {
 			value = 1
 		}
+		if a.h.config.Cost.Version == 7 && want == 6 && !strings.HasPrefix(row.Key, "node/") {
+			kind, _, _ := strings.Cut(row.Key, "/")
+			edge, err := parseGraphEdge(kind, row.Key, row.Value.Value, a.h.config)
+			if err != nil {
+				return err
+			}
+			value = graphCorrectionValue(a.h.config.Cost, (edge.ID-7)/2, "final")
+		}
 		if want == 0 || row.Value.Value != value || row.Value.Deleted {
 			return errMismatch
 		}
@@ -295,7 +306,11 @@ func (a *graphSelectorsArtifacts) observe(name string, read *graphSnapshot, want
 			return err
 		}
 		elapsed := time.Since(begin).Nanoseconds()
-		if !points[0].Found || !points[1].Found || points[2].Found || points[0].Value.Value != 6 || points[1].Value.Value != 6 {
+		last := int64(6)
+		if a.h.config.Cost.Version == 7 {
+			last = 5
+		}
+		if !points[0].Found || !points[1].Found || points[2].Found || points[0].Value.Value != 6 || points[1].Value.Value != last {
 			return errMismatch
 		}
 		return a.event(struct {
@@ -480,10 +495,14 @@ func (a *graphSelectorsArtifacts) raw(header graphCostArtifactHeader, walk func(
 func (a *graphSelectorsArtifacts) finish(source *graphHistoryRetention) (err error) {
 	p := a.h.config.Cost
 	observations := uint64(11)
-	if p.Version == 6 {
+	updates := p.Facts
+	if p.Version == 7 {
+		updates = p.Facts / 2
+	}
+	if p.Version == 6 || p.Version == 7 {
 		observations = 3
 	}
-	if a.end.Setup != 3 || a.end.Creates != p.Facts || a.end.Updates != p.Facts || a.end.Committed != 3+2*p.Facts || a.end.Attempts != a.end.Committed+a.end.Aborted || a.end.Observations != observations {
+	if a.end.Setup != 3 || a.end.Creates != p.Facts || a.end.Updates != updates || a.end.Committed != 3+p.Facts+updates || a.end.Attempts != a.end.Committed+a.end.Aborted || a.end.Observations != observations {
 		return errMismatch
 	}
 	for client := 0; client < p.Writers; client++ {
@@ -532,7 +551,7 @@ func (a *graphSelectorsArtifacts) finish(source *graphHistoryRetention) (err err
 			return err
 		}
 	}
-	if a.end.Sources[0].Rows[0]+a.end.Sources[0].Rows[1] != 3+6*p.Facts || a.end.Sources[1].Rows[0]+a.end.Sources[1].Rows[1] != 3+3*p.Facts || a.end.Sources[2].Rows != a.final.record.Groups {
+	if a.end.Sources[0].Rows[0]+a.end.Sources[0].Rows[1] != 3+3*p.Facts+3*updates || a.end.Sources[1].Rows[0]+a.end.Sources[1].Rows[1] != 3+3*p.Facts || a.end.Sources[2].Rows != a.final.record.Groups {
 		return errMismatch
 	}
 	if err = held.Close(); err != nil {
@@ -605,8 +624,13 @@ func (a *graphSelectorsArtifacts) columnsStart() (err error) {
 		return err
 	}
 	l := &graphCostColumnLane{s: store, pins: pins, root: a.root, file: file, payload: sha256.New(), whole: sha256.New(), initial: cut{a.end.Initial}}
-	if a.end.Spec.Family == graphColumnsFamily {
+	if a.end.Spec.Family == graphColumnsFamily || a.end.Spec.Family == graphCorrectionFamily {
 		l.timing = a.columnTiming
+	}
+	if a.end.Spec.Family == graphCorrectionFamily {
+		l.pointValue = func(id uint64, generation string) int64 {
+			return graphCorrectionValue(a.h.config.Cost, (id-7)/2, generation)
+		}
 	}
 	l.end.Format, l.end.SourceFormat, l.end.ReferenceLayout = a.end.Format, a.end.Format, "native-logical-kv-reference"
 	a.column = l
@@ -813,6 +837,9 @@ func (a *graphSelectorsArtifacts) context() context.Context {
 }
 
 func (a *graphSelectorsArtifacts) filename(suffix string) string {
+	if a.end.Spec.Family == graphCorrectionFamily {
+		return "fdb-correction-" + suffix
+	}
 	if a.end.Spec.Family == graphColumnsFamily {
 		return "fdb-columns-" + suffix
 	}

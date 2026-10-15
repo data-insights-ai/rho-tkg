@@ -22,7 +22,7 @@ class WorkloadMatrixGuards(unittest.TestCase):
             self.assertFalse(destination.exists())
 
     def test_other_three_fresh_owned_families_preserve_ordinary_and_paired_refusals(self):
-        for family in ("contention-empty-range","snapshot-selectors","cross-edge-endpoint-uniqueness","immutable-columns"):
+        for family in ("contention-empty-range","snapshot-selectors","cross-edge-endpoint-uniqueness","immutable-columns","late-correction-old-index"):
             spec={"version":2,"family":family,"facts":1_000_000,"crossPercent":50,"writers":32,"layout":"columns"}
             self.assertEqual(matrix.preflight(spec,"01"*16,"foundationdb","rtt-100ms"),spec)
             options={"QueuePackets":1024,"SampleMillis":60000,"MaxSamples":525602,"MaxArtifactBytes":1<<44}

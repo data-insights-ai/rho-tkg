@@ -29,7 +29,7 @@ FAMILIES = {
 FACTS, CROSS, WRITERS, LAYOUTS = (10_000, 100_000, 1_000_000), (0, 10, 50, 100), (1, 8, 32), ("kv", "columns")
 TRANSPORTS = {"local": 0, "rtt-1ms": 1, "rtt-20ms": 20, "rtt-100ms": 100}
 ENGINES = ("foundationdb", "native-raft", "paired")
-IMPLEMENTED = ("contention-empty-range", "snapshot-selectors", "snapshot-to-feed", "cross-edge-endpoint-uniqueness", "immutable-columns")
+IMPLEMENTED = ("contention-empty-range", "snapshot-selectors", "snapshot-to-feed", "cross-edge-endpoint-uniqueness", "immutable-columns", "late-correction-old-index")
 
 
 def require(condition, message):
@@ -64,6 +64,7 @@ def preflight(spec, run, engine="foundationdb", transport="local"):
             and implemented(spec["family"], engine, transport, fresh), "family/engine/real transport driver not implemented")
     require(type(spec["facts"]) is int and 20 <= spec["facts"] <= 1_000_000 and spec["facts"] % 20 == 0 and type(spec["crossPercent"]) is int and spec["crossPercent"] in CROSS and type(spec["writers"]) is int and spec["writers"] in WRITERS and spec["layout"] in LAYOUTS, "fresh family shape")
     require(spec["family"] not in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns") or spec["facts"] >= spec["writers"] + 1, "seed plus one genuine initial job per independent caller")
+    require(spec["family"]!="late-correction-old-index" or spec["facts"]//2>spec["writers"],"half correction cohort funds seed plus a genuine job per caller")
     require(type(run) is str and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "explicit nonzero fresh run identity")
     return spec
 
@@ -159,14 +160,16 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
         return
     destination = Path(output)
     destination.mkdir(mode=0o700, parents=False, exist_ok=False)
-    selector = spec["family"] in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns")
+    selector = spec["family"] in ("snapshot-selectors", "snapshot-to-feed", "immutable-columns", "late-correction-old-index")
     columns = spec["family"] == "immutable-columns"
+    correction = spec["family"] == "late-correction-old-index"
     feed = spec["family"] == "snapshot-to-feed"
     edge_unique = spec["family"] == "cross-edge-endpoint-uniqueness"
     originals = 7 + 258 * spec["facts"] if edge_unique else 3 + 2 * spec["facts"] * 64 if selector else 3 + spec["facts"] // 2 + 64 * spec["facts"] + spec["facts"] // 2 * max(2, spec["writers"])
+    if correction: originals=3+(spec["facts"]+spec["facts"]//2)*64
     request = {"cell": actual_cell, "run": run, "spoolPolicy": {"max_disk_bytes": spool_disk, "cache_bytes": spool_cache, "grantOrigin": grant_origin},
                "nativeAdmission": {"maxOriginals": originals, "logicalGraphBytes": (64 << 20) + spec["facts"] * ((256 if edge_unique else 64 if selector else 128) << 10) + originals * 2048,
-                                   "retainedVersions": 7 + 11 * spec["facts"] if edge_unique else 3 + 6 * spec["facts"], "capacityQualified": False}, "deadlineSeconds": seconds,
+                                   "retainedVersions": 7 + 11 * spec["facts"] if edge_unique else 3+3*spec["facts"]+3*(spec["facts"]//2) if correction else 3 + 6 * spec["facts"], "capacityQualified": False}, "deadlineSeconds": seconds,
                "deploymentProfile": profile, "admissionMiB": memory}
     if owned_input is not None: request["ownedTransport"] = owned_input
     if feed:
@@ -203,7 +206,9 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     # Import the private family oracle only after the actual run; it joins all
     # originals/raw EOFs/cache bytes under one finite spool policy.
     sys.path.insert(0, str(ROOT / "fdb"))
-    if columns:
+    if correction:
+        import fdb_correction_check as checker
+    elif columns:
         import fdb_columns_check as checker
     elif edge_unique:
         import fdb_edge_unique_check as checker
@@ -214,7 +219,7 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     else:
         import fdb_contention_check as checker
     proof = checker.verify(artifacts, destination, policy)
-    stem = "columns" if columns else "edge-unique" if edge_unique else "feed" if feed else "selectors" if selector else "contention"
+    stem = "correction" if correction else "columns" if columns else "edge-unique" if edge_unique else "feed" if feed else "selectors" if selector else "contention"
     prefix = f"graph-workload-{stem}-v{spec['version']}-"
     require(proof["spec"] == spec and proof["runGraph"] == prefix + spec["layout"] + "-" + run, "fresh run/native binding/result agreement")
     with (destination / "verified.json").open("x") as out:

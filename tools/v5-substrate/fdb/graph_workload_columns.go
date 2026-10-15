@@ -63,7 +63,7 @@ func graphColumnsSpecFromEnv() (graphSelectorsSpec, string, error) {
 // emitted after the actual API returns/EOF, including native retries, waits and
 // its caller callback IO. Errors never emit successful timing/EOF evidence.
 func (a *graphSelectorsArtifacts) columnTiming(call, name string, at certificate, rows uint64, nanos int64) error {
-	if a == nil || a.h == nil || a.end.Spec.Family != graphColumnsFamily || nanos <= 0 || !validName(name) || rows > 3+2*a.h.config.Cost.Facts {
+	if a == nil || a.h == nil || a.end.Spec.Family != graphColumnsFamily && a.end.Spec.Family != graphCorrectionFamily || nanos <= 0 || !validName(name) || rows > 3+2*a.h.config.Cost.Facts {
 		return errInvalid
 	}
 	return a.event(struct {
@@ -75,8 +75,18 @@ func (a *graphSelectorsArtifacts) columnTiming(call, name string, at certificate
 }
 
 func runGraphColumns(db fdb.Database, spec graphSelectorsSpec, run string) (err error) {
+	if spec.Family != graphColumnsFamily {
+		return errInvalid
+	}
+	return runGraphScalarReadWorkload(db, spec, run)
+}
+func runGraphScalarReadWorkload(db fdb.Database, spec graphSelectorsSpec, run string) (err error) {
 	c := graphColumnsConfig(spec, run)
-	if (spec.Version != 1 && spec.Version != 2) || spec.Family != graphColumnsFamily || !validGraphColumnsConfig(c) {
+	kind := "workload-columns-v1"
+	if spec.Family == graphCorrectionFamily {
+		c, kind = graphCorrectionConfig(spec, run), "workload-correction-v1"
+	}
+	if (spec.Version != 1 && spec.Version != 2) || spec.Family != graphColumnsFamily && spec.Family != graphCorrectionFamily || !validGraphCostProfile(c) {
 		return errInvalid
 	}
 	admission, err := graphTransportAdmission(spec.Version, spec.Family, run)
@@ -110,7 +120,7 @@ func runGraphColumns(db fdb.Database, spec graphSelectorsSpec, run string) (err 
 		}
 		transport = &graphTransportRecord{*admission, stored}
 	}
-	binding, err := h.graphWorkloadInstallContext(ctx, admission, "workload-columns-v1")
+	binding, err := h.graphWorkloadInstallContext(ctx, admission, kind)
 	if err != nil {
 		return err
 	}
@@ -177,7 +187,11 @@ func runGraphColumns(db fdb.Database, spec graphSelectorsSpec, run string) (err 
 	if err := apply("update", 0); err != nil {
 		return err
 	}
-	if err := h.graphSelectorsPhase(ctx, a, "update"); err != nil {
+	updates := c.Cost.Facts
+	if spec.Family == graphCorrectionFamily {
+		updates /= 2
+	}
+	if err := h.graphWorkloadPhase(ctx, a, "update", updates); err != nil {
 		return err
 	}
 	if err := a.observe("held-old-after-update", old, 5); err != nil {
@@ -190,6 +204,11 @@ func runGraphColumns(db fdb.Database, spec graphSelectorsSpec, run string) (err 
 	a.final = cut{final.owner.id.Cut}
 	if err := a.observe("fresh-current", final, 6); err != nil {
 		return errors.Join(err, final.Close())
+	}
+	if spec.Family == graphCorrectionFamily {
+		if err := a.correctionIndexes(old, final); err != nil {
+			return errors.Join(err, final.Close())
+		}
 	}
 	if err := final.Close(); err != nil {
 		return err

@@ -90,6 +90,18 @@ func run() error {
 			defer db.Close()
 			return runGraphColumns(db, spec, run)
 		}
+		if family.Family == graphCorrectionFamily {
+			spec, run, err := graphCorrectionSpecFromEnv()
+			if err != nil {
+				return err
+			}
+			db, err := openDB()
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			return runGraphCorrection(db, spec, run)
+		}
 		if family.Family == graphEdgeUniqueFamily {
 			spec, run, err := graphEdgeUniqueSpecFromEnv()
 			if err != nil {

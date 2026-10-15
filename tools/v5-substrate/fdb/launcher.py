@@ -126,7 +126,7 @@ def main():
                            for directory in sorted(out.glob("source-history-*")) if directory.is_dir()
                            for p in sorted(directory.rglob("*")) if p.is_file()})
         scopes = {
-            "workload-cell": "one physical host, four logical FDB zones; explicitly selected fresh contention/RMW/empty-ID-range, effective edge uniqueness/endpoint-life ABA, authenticated Fresh/Stable/After/At, immutable column publication/scan or snapshot-to-retained-feed workload, 1/8/32 callers, actual original/source/column artifacts and owned same-container SDK child replacement for feed; local transport only, no native parity/full matrix/RTT/capacity acceptance",
+            "workload-cell": "one physical host, four logical FDB zones; explicitly selected fresh contention/RMW/empty-ID-range, effective edge uniqueness/endpoint-life ABA, authenticated Fresh/Stable/After/At, late scalar correction/retained posting scan, immutable column publication/scan or snapshot-to-retained-feed workload, 1/8/32 callers, actual original/source/column artifacts and owned same-container SDK child replacement for feed; local transport only, no native parity/full matrix/RTT/capacity acceptance",
             "source-history-faults": "one physical host; genuine source-history SDK owner and partial-collector SIGKILL/replacement, same retained owner Close and durable cursor resume; five COMMIT originals only, no ABORT/server-loss/power-loss/matrix/capacity acceptance",
             "static": "pinned compilation/static tools; no cluster or fault schedule",
             "lifecycle-trace": "one physical host, four logical FDB zones; lifecycle trace, no external kill schedule",
@@ -143,7 +143,7 @@ def main():
                    "success": result == "0" and cleanup == "0", "sha256": hashes,
                    "mode": mode, "scope": scopes[mode]}
         if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") == "fdb-owned-ingress-transport-v2":
-            receipt["scope"] = "one host/four logical FDB zones; fresh explicitly selected contention/selectors/effective-unique/feed/immutable-columns owned receiver-ingress transport and fixed original budget; actual configured delay, TCP connect+echo baseline/armed/after distributions, drops, all helper/engine process RSS and cgroup counters; no identical observed RTT, independent-host/LAN-WAN, native parity, remaining-family or capacity/matrix acceptance"
+            receipt["scope"] = "one host/four logical FDB zones; fresh explicitly selected contention/selectors/effective-unique/feed/immutable-columns/late-correction owned receiver-ingress transport and fixed original budget; actual configured delay, TCP connect+echo baseline/armed/after distributions, drops, all helper/engine process RSS and cgroup counters; no identical observed RTT, independent-host/LAN-WAN, native parity, remaining-family or capacity/matrix acceptance"
         (out / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     else:
         raise ValueError("unsupported launcher action")
