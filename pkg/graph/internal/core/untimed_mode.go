@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -185,6 +186,13 @@ func (c *Core) writeUntimedMode(b byte) error {
 		return nil
 	}
 	val := []byte{b}
+	// An unbounded (or converting) store raises the store format marker to 7
+	// with the key, so a release that ignores the key refuses the store
+	// instead of writing TxFrom-start creates into it; a TxFrom store keeps
+	// its marker.
+	if fm, ok := c.metaKV.(storepkg.MetaFormatMarkerCapability); ok && b != byte(UntimedFromTxFrom) {
+		return fm.MetaSetDurableRaising(untimedValidStartMeta, val, storeutil.UntimedUnboundedStoreFormatVersion)
+	}
 	if d, ok := c.metaKV.(interface {
 		MetaSetDurable(key string, value []byte) error
 	}); ok {

@@ -9,16 +9,16 @@ import (
 )
 
 // TestReadableCaps: this binary reads every row format a feature writes (fv
-// 5) and every store marker (6). Catches a merge that keeps one feature's cap
-// (4 or 5) and refuses the other feature's rows or stores.
+// 5) and every store marker (7). Catches a merge that keeps one feature's cap
+// (4, 5 or 6) and refuses the other feature's rows or stores.
 func TestReadableCaps(t *testing.T) {
 	if maxReadableWireFormatVersion != VoidWireFormatVersion || VoidWireFormatVersion != 5 ||
 		BinaryHashWireFormatVersion != 4 || RetractedWireFormatVersion != 3 {
 		t.Fatalf("row cap %d (void %d, binary hash %d, retracted %d); want 5 over 5/4/3", maxReadableWireFormatVersion, VoidWireFormatVersion, BinaryHashWireFormatVersion, RetractedWireFormatVersion)
 	}
-	if MaxReadableStoreFormatVersion != VoidStoreFormatVersion || VoidStoreFormatVersion != 6 ||
-		ElementsStoreFormatVersion != 5 || BinaryHashStoreFormatVersion != 4 {
-		t.Fatalf("store cap %d; want 6 over void 6, elements 5, binary hash 4", MaxReadableStoreFormatVersion)
+	if MaxReadableStoreFormatVersion != UntimedUnboundedStoreFormatVersion || UntimedUnboundedStoreFormatVersion != 7 ||
+		VoidStoreFormatVersion != 6 || ElementsStoreFormatVersion != 5 || BinaryHashStoreFormatVersion != 4 {
+		t.Fatalf("store cap %d; want 7 over untimed unbounded 7, void 6, elements 5, binary hash 4", MaxReadableStoreFormatVersion)
 	}
 }
 

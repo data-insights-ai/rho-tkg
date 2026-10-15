@@ -30,6 +30,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   update, close, excise; the indexed, counting and paged doors against the per-entity fold; reopen, legacy, empty store,
   conversion, interrupted conversion), `TestHFIndexBucketForIsMonotonicAtTheExtremes`. Docs: api.md "Valid-time start
   (Config.UntimedValidStart)".
+- **Store format marker 7 for `UntimedUnbounded` stores** (backlog 73). A store created under `UntimedUnbounded`, or whose
+  conversion started, raises the one marker tracker to 7 in the same transaction as its `untimed_valid_start` key (new
+  optional capability `store.MetaFormatMarkerCapability`, `MetaSetDurableRaising` on badger, the tiered reference shard and
+  the sharded anchor), so v4.55.3 and earlier, which ignore the key and would write `TxFrom`-start creates into it, refuse
+  the store at open (`ErrWireFormatVersionUnsupported`). Readers accept markers up to 7. A `UntimedFromTxFrom` store keeps
+  its marker (3 or 4). Test: `TestUntimedUnboundedRaisesStoreFormatMarker` (a reader capped at 6 refuses a store created
+  unbounded and a converted one, opens a TxFrom store; badger, tiered, sharded). Upgrade notes: persistence.md "Upgrading a
+  store".
 
 ### Deprecated
 

@@ -336,6 +336,45 @@ func (bs *Store) MetaSetDurable(key string, value []byte) error {
 	return nil
 }
 
+// MetaSetDurableRaising is MetaSetDurable that also raises the store-level
+// format marker to marker (store.MetaFormatMarkerCapability, backlog 73): the
+// entry and the marker commit in one transaction, and the one tracker
+// (raiseFormatMarkerPendingLocked) moves with them under wbMu, so a pending
+// raise to a lower marker cannot overwrite it at the next flush. A marker at
+// or below the store's keeps it.
+func (bs *Store) MetaSetDurableRaising(key string, value []byte, marker uint16) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
+	if marker > maxReadableStoreFormatVersion {
+		return fmt.Errorf("%w: format marker %d above the readable %d", storecontract.ErrInvalidStoreMutation, marker, maxReadableStoreFormatVersion)
+	}
+	bs.wbMu.Lock()
+	err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		if err := txn.Set(storepkg.MetaKey(key), value); err != nil {
+			return err
+		}
+		if marker > bs.formatMarker {
+			return txn.Set(storepkg.WireFormatVersionKey, formatMarkerValue(marker))
+		}
+		return nil
+	})
+	if err == nil {
+		bs.raiseFormatMarkerPendingLocked(marker)
+	}
+	bs.wbMu.Unlock()
+	if err != nil {
+		return fmt.Errorf("graph: meta set %q with format marker %d: %w", key, marker, err)
+	}
+	if !bs.syncWrites && !bs.inMemory {
+		if err := bs.db.Sync(); err != nil {
+			return fmt.Errorf("graph: sync meta %q: %w", key, err)
+		}
+		bs.metaSyncs.Add(1)
+	}
+	return nil
+}
+
 // ForEachMetaName calls fn with the name (MetaKey's argument) of every meta
 // entry whose name starts with prefix, in key order. An error from fn stops
 // the walk and is returned.

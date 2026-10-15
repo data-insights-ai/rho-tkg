@@ -888,6 +888,19 @@ func (ts *Store) MetaSetDurable(key string, value []byte) error {
 	return ts.refShard.MetaSetDurable(key, value)
 }
 
+// MetaSetDurableRaising is MetaSetDurable raising the reference shard's
+// format marker with the entry (store.MetaFormatMarkerCapability): the
+// reference shard opens with the store, so its refusal fails the open.
+func (ts *Store) MetaSetDurableRaising(key string, value []byte, marker uint16) error {
+	if ts == nil {
+		return ErrNilStore
+	}
+	if ts.refShard == nil {
+		return ErrStoreClosed
+	}
+	return ts.refShard.MetaSetDurableRaising(key, value, marker)
+}
+
 // SavePropertyKeyRegistry delegates to the reference shard. Property keys
 // are shared across event + reference shards (they index the same Property
 // type), so a single canonical registry stored on refShard is sufficient.

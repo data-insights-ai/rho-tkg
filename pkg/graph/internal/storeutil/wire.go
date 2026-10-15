@@ -75,9 +75,20 @@ const ElementsStoreFormatVersion = 5
 // (backlog 63), so this is 6.
 const VoidStoreFormatVersion = 6
 
+// UntimedUnboundedStoreFormatVersion is the store-level marker of a directory
+// whose untimed valid-start mode is UntimedUnbounded or a conversion to it
+// started (backlog 73, MetaKV key untimed_valid_start). Row encodings are
+// unchanged (the start is an ordinary ValidFrom), but a binary that predates
+// it ignores the key and would write untimed first versions starting at their
+// TxFrom into the store, a silent mix of the two rules: it must refuse the
+// store. Raised with the key on the shard that holds it (badger
+// MetaSetDurableRaising); a TxFrom store keeps its marker. 4 to 6 are taken
+// (binary hashes, Elements definitions, void rows), so this is 7.
+const UntimedUnboundedStoreFormatVersion = 7
+
 // MaxReadableStoreFormatVersion is the highest store-level marker this binary
 // opens (the max of every marker it knows how to read).
-const MaxReadableStoreFormatVersion = VoidStoreFormatVersion
+const MaxReadableStoreFormatVersion = UntimedUnboundedStoreFormatVersion
 
 // writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
 // rollout under the deprecation ritual). Step 1 (the release before): every
