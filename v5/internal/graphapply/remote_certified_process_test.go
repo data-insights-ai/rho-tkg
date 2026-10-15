@@ -16,14 +16,33 @@ type graphE15ReadRequest struct {
 	cut         graphCut
 	transaction [16]byte
 	coordinator uint64
+	partitions  []uint64
+}
+
+func graphE15ReadPartitionsValid(partitions []uint64) bool {
+	if len(partitions) > 16 {
+		return false
+	}
+	var prior uint64
+	for _, partition := range partitions {
+		if partition <= prior {
+			return false
+		}
+		prior = partition
+	}
+	return true
 }
 
 func encodeGraphE15ReadRequest(r graphE15ReadRequest) ([]byte, error) {
-	if r.mode < graphReadFresh || r.mode > graphReadAfter || len(r.cut.certificates) > 16 {
+	if r.mode < graphReadFresh || r.mode > graphReadAfter || len(r.cut.certificates) > 16 || !graphE15ReadPartitionsValid(r.partitions) {
 		return nil, errInvalid
 	}
 	return boundedEncoding(16<<10, func(w *boundedWriter) {
-		w.add([]byte{'G', 'E', 'Q', 1})
+		version := byte(1)
+		if len(r.partitions) != 0 {
+			version = 2
+		}
+		w.add([]byte{'G', 'E', 'Q', version})
 		w.tag(byte(r.mode))
 		w.add(r.transaction[:])
 		w.u64(r.coordinator)
@@ -36,10 +55,20 @@ func encodeGraphE15ReadRequest(r graphE15ReadRequest) ([]byte, error) {
 			}
 			w.field(b)
 		}
+		if version == 2 {
+			w.u32(len(r.partitions))
+			for _, partition := range r.partitions {
+				w.u64(partition)
+			}
+		}
 	})
 }
 func decodeGraphE15ReadRequest(wire []byte) (graphE15ReadRequest, error) {
-	b, e := graphBody(wire, "GEQ\x01", 16<<10)
+	version := byte(1)
+	if len(wire) >= 4 && wire[3] == 2 {
+		version = 2
+	}
+	b, e := graphBody(wire, string([]byte{'G', 'E', 'Q', version}), 16<<10)
 	if e != nil {
 		return graphE15ReadRequest{}, e
 	}
@@ -56,7 +85,17 @@ func decodeGraphE15ReadRequest(wire []byte) (graphE15ReadRequest, error) {
 			return graphE15ReadRequest{}, e
 		}
 	}
-	if c.err != nil || len(c.b) != 0 || r.mode < graphReadFresh || r.mode > graphReadAfter {
+	if version == 2 {
+		n := c.count(16, 8)
+		if c.err != nil || n == 0 {
+			return graphE15ReadRequest{}, errors.Join(errInvalid, c.err)
+		}
+		r.partitions = make([]uint64, n)
+		for i := range n {
+			r.partitions[i] = c.u64()
+		}
+	}
+	if c.err != nil || len(c.b) != 0 || r.mode < graphReadFresh || r.mode > graphReadAfter || !graphE15ReadPartitionsValid(r.partitions) {
 		return graphE15ReadRequest{}, errors.Join(errInvalid, c.err)
 	}
 	return r, nil
@@ -140,7 +179,7 @@ func (s *graphProcessCertifiedSessions) serve(ctx context.Context, r processRequ
 		}
 		var read *certifiedGraphRead
 		if e == nil {
-			read, e = s.coordinator.OpenCertified(owner, spec, nil)
+			read, e = s.coordinator.OpenCertified(owner, spec, request.partitions)
 		}
 		stop()
 		if e == nil {
