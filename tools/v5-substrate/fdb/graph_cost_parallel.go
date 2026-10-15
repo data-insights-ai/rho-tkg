@@ -339,50 +339,59 @@ type graphCostParallelProof struct {
 }
 
 func (h *harness) graphCostReadParallelOriginal(ctx context.Context, x transaction, body []byte) (graphCostParallelProof, int, error) {
+	if graphOwnerSelected(h.config) {
+		return graphCostParallelProof{}, 0, errStale
+	}
 	return graphCostParallelRead(ctx, h.db, func(tr fdb.ReadTransaction) (graphCostParallelProof, error) {
-		var proof graphCostParallelProof
-		if err := h.graphTransportCheckIn(tr); err != nil {
-			return proof, err
-		}
-		if err := h.checkConfig(tr, x.Coordinator); err != nil {
-			return proof, err
-		}
-		for i, key := range []fdb.Key{h.key(x.Coordinator, "id", x.ID), h.key(x.Coordinator, "request", x.Request)} {
-			raw, err := tr.Get(key).Get()
-			if err != nil {
-				return proof, err
-			}
-			if len(raw) > 64<<10 {
-				return proof, errLimit
-			}
-			proof.Pair[i] = graphCostStoredRecord{bytes.Clone(key), bytes.Clone(raw)}
-		}
-		o, err := h.graphCostParallelOriginal(x, body, proof.Pair)
-		if err != nil {
-			return proof, err
-		}
-		proof.Outcome = o
-		if !o.Commit {
-			return proof, nil
-		}
-		key := h.changeKey(o.Coordinator, o.Sequence, o.Request)
+		return h.graphCostParallelOriginalIn(tr, x, body)
+	})
+}
+
+// One canonical retained-original reader. Owned callers authenticate their
+// current native catalog in this SAME read transaction before invoking it.
+func (h *harness) graphCostParallelOriginalIn(tr fdb.ReadTransaction, x transaction, body []byte) (graphCostParallelProof, error) {
+	var proof graphCostParallelProof
+	if err := h.graphTransportCheckIn(tr); err != nil {
+		return proof, err
+	}
+	if err := h.checkConfig(tr, x.Coordinator); err != nil {
+		return proof, err
+	}
+	for i, key := range []fdb.Key{h.key(x.Coordinator, "id", x.ID), h.key(x.Coordinator, "request", x.Request)} {
 		raw, err := tr.Get(key).Get()
 		if err != nil {
 			return proof, err
 		}
-		group, err := decode[changeGroup](raw)
-		if err != nil {
-			return proof, errors.Join(errUnavailable, err)
+		if len(raw) > 64<<10 {
+			return proof, errLimit
 		}
-		if err := h.validateChange(group); err != nil {
-			return proof, err
-		}
-		if !reflect.DeepEqual(group.Tx, x) || group.Outcome != o {
-			return proof, errMismatch
-		}
-		proof.Group, proof.Original = group, graphCostStoredRecord{bytes.Clone(key), bytes.Clone(raw)}
+		proof.Pair[i] = graphCostStoredRecord{bytes.Clone(key), bytes.Clone(raw)}
+	}
+	o, err := h.graphCostParallelOriginal(x, body, proof.Pair)
+	if err != nil {
+		return proof, err
+	}
+	proof.Outcome = o
+	if !o.Commit {
 		return proof, nil
-	})
+	}
+	key := h.changeKey(o.Coordinator, o.Sequence, o.Request)
+	raw, err := tr.Get(key).Get()
+	if err != nil {
+		return proof, err
+	}
+	group, err := decode[changeGroup](raw)
+	if err != nil {
+		return proof, errors.Join(errUnavailable, err)
+	}
+	if err := h.validateChange(group); err != nil {
+		return proof, err
+	}
+	if !reflect.DeepEqual(group.Tx, x) || group.Outcome != o {
+		return proof, errMismatch
+	}
+	proof.Group, proof.Original = group, graphCostStoredRecord{bytes.Clone(key), bytes.Clone(raw)}
+	return proof, nil
 }
 
 type graphCostParallelEvent struct {

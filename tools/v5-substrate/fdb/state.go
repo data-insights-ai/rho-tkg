@@ -334,6 +334,13 @@ func (h *harness) submit(x transaction) (outcome, error) {
 	return result.(outcome), nil
 }
 func (h *harness) execute(tr fdb.Transaction, x transaction, digest [32]byte) (outcome, error) {
+	return h.executeOwned(tr, x, digest, nil)
+}
+func (h *harness) executeOwned(tr fdb.Transaction, x transaction, digest [32]byte, permit *graphOwnerPermit) (outcome, error) {
+	catalog, ownerState, ownerErr := h.ownerGateIn(tr, x, digest, permit)
+	if ownerErr != nil {
+		return outcome{}, ownerErr
+	}
 	if e := h.checkConfig(tr, x.Coordinator); e != nil {
 		return outcome{}, e
 	}
@@ -367,6 +374,14 @@ func (h *harness) execute(tr fdb.Transaction, x transaction, digest [32]byte) (o
 	}
 	if idOK {
 		return outcome{}, errMismatch
+	}
+	// Current authority precedes retained replay; captured routing gates only
+	// NEW execution. A successor may recover old bytes but never execute an
+	// unresolved predecessor capture after its ownership epoch changed.
+	if catalog != nil {
+		if e := graphOwnerNew(ownerState, x, permit.Intent); e != nil {
+			return outcome{}, e
+		}
 	}
 	// Original replay precedes retirement-busy admission. A collector never
 	// changes the immutable result of an already committed/aborted request.
@@ -538,6 +553,9 @@ func (h *harness) recover(g uint8, request string) (outcome, error) {
 	if h == nil || g > 1 || !validName(request) {
 		return outcome{}, errInvalid
 	}
+	if graphOwnerSelected(h.config) {
+		return outcome{}, errStale // Owned Original authenticates native catalog.
+	}
 	r, e := h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
 		o, ok, e := get[outcome](tr, h.key(g, "request", request))
 		if e != nil {
@@ -629,6 +647,9 @@ func (h *harness) freshIn(tr fdb.Transaction, scope []uint8, after *outcome) (an
 	}
 	// Existing immutable cut replay remains available. A new certificate must
 	// not change the collector's frozen metadata during durable retirement.
+	if err := h.ownerPublicationIn(tr); err != nil {
+		return nil, err
+	}
 	if err := h.historyWriteIn(tr); err != nil {
 		return nil, err
 	}
