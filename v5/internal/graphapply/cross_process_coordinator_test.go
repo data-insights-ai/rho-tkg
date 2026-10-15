@@ -43,6 +43,12 @@ func (w *coordinatorTestWire) RoundTrip(ctx context.Context, wire []byte) ([]byt
 		if e != nil {
 			return nil, e
 		}
+		// Inject only into this wrapper's actual cross-command families. Other
+		// checked proposals (including certified cut controls) retain their own
+		// native decoder and submission path.
+		if !isCrossPartitionWire(p.wire) {
+			return w.nativeGraphTestTransport.RoundTrip(ctx, wire)
+		}
 		command, _, e := decodeCrossCommand(p.wire, w.service.host.machine.limits)
 		if e != nil {
 			return nil, e
@@ -94,6 +100,42 @@ func coordinatorNativeFixture(t *testing.T) (*allocationTestNetwork, *crossProce
 	}
 	return n, c, ops, claims, wires
 }
+
+func TestCoordinatorFaultWireKeepsCutSubmitsSeparateFromCrossFaults(t *testing.T) {
+	n, c, _, _, wires := coordinatorNativeFixture(t)
+	for _, wire := range wires {
+		wire.dropRegister, wire.dropDecisionReply = true, true
+	}
+	read, err := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)
+	if err != nil {
+		t.Fatal("genuine cut commands must reach the native transport", err)
+	}
+	if err := read.Close(); err != nil {
+		t.Fatal(err)
+	}
+	arena, err := graphstate.NewOutputBudget(defaultMaterializerLimits().outputBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoints, err := c.endpoints(newGraphRemoteBudget(defaultMaterializerLimits(), arena))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for group, partition := range []uint64{3, 8} {
+		wire := wires[group]
+		before := n.hosts[group][0].driver.Applied()
+		for _, version := range []byte{1, 2} {
+			bad := allocationProposal{target: wire.Peer().scope, wire: []byte{'G', 'C', 'T', version}}
+			if _, err := endpoints[partition].submit(t.Context(), bad); !errors.Is(err, errCorrupt) {
+				t.Fatal("corrupt cross command escaped its original decoder", err)
+			}
+		}
+		if !wire.dropRegister || !wire.dropDecisionReply || len(wire.registrations) != 0 || wire.prepares != 0 || n.hosts[group][0].driver.Applied() != before {
+			t.Fatal("cut or corrupt cross command consumed a fault or installed native state")
+		}
+	}
+}
+
 func TestCrossProcessCoordinatorSuccessiveRunReadAndExactResume(t *testing.T) {
 	n, c, ops, claims, wires := coordinatorNativeFixture(t)
 	id := n.requestID()
