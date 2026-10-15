@@ -124,6 +124,24 @@ func nativeSelectorsTerminalControl(r processRequest) bool {
 	return err == nil && (q.Action == "close" || q.Action == "release")
 }
 
+// Scoped selector cuts are the exact one- or two-participant fixture scope.
+// The wire carries no source, quorum, pin or query-handle authority.
+func nativeSelectorsCutDecode(wire []byte) (graphCut, error) {
+	cut, err := nativeScalarWorkloadCutDecode(wire, durableColumnGraphSemanticContractID(), 1, 2)
+	if err != nil {
+		return graphCut{}, err
+	}
+	var previous uint64
+	for _, cert := range cut.certificates {
+		partition := cert.scope.partition
+		if partition != 3 && partition != 8 || partition <= previous {
+			return graphCut{}, errInvalid
+		}
+		previous = partition
+	}
+	return cut, nil
+}
+
 type nativeSelectorsQuery struct {
 	cancel       context.CancelFunc
 	request      [16]byte
@@ -265,7 +283,7 @@ func (s *nativeSelectorsSessions) prepare(ctx context.Context, q nativeSelectors
 	}
 	request := graphReadRequest{mode: q.Mode}
 	if len(q.Cut) != 0 {
-		request.cut, err = nativeFeedCutDecode(q.Cut)
+		request.cut, err = nativeSelectorsCutDecode(q.Cut)
 		if err != nil {
 			return out, err
 		}

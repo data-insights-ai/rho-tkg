@@ -41,7 +41,7 @@ func nativeSelectorsQuery(t *testing.T, c *nativeSelectorsClient, q nativeSelect
 	started := time.Now()
 	defer func() { c.openNanos = time.Since(started).Nanoseconds() }()
 	r := c.invoke(q, nil)
-	cut, err := nativeFeedCutDecode(r.Cut)
+	cut, err := nativeSelectorsCutDecode(r.Cut)
 	if err != nil || r.Handle == 0 {
 		t.Fatal("actual mode-selected query cut", err)
 	}

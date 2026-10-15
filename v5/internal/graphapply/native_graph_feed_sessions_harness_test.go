@@ -149,12 +149,18 @@ func nativeFeedCutWire(c graphCut) ([]byte, error) {
 	return encodeGraphE15ReadRequest(graphE15ReadRequest{mode: graphReadAt, cut: c})
 }
 func nativeFeedCutDecode(wire []byte) (graphCut, error) {
+	return nativeScalarWorkloadCutDecode(wire, retainedFeedSemanticContractID(), 2, 2)
+}
+
+// This decodes inert At coordinates only. Each admitted caller supplies the
+// exact agreement/cardinality; native At still authenticates the stored cut.
+func nativeScalarWorkloadCutDecode(wire []byte, semantic raftlog.ApplicationSemanticContractID, minParts, maxParts int) (graphCut, error) {
 	q, err := decodeGraphE15ReadRequest(wire)
-	if err != nil || q.mode != graphReadAt || q.transaction != ([16]byte{}) || q.coordinator != 0 || len(q.cut.certificates) != 2 {
+	if err != nil || q.mode != graphReadAt || q.transaction != ([16]byte{}) || q.coordinator != 0 || minParts < 1 || maxParts < minParts || len(q.cut.certificates) < minParts || len(q.cut.certificates) > maxParts {
 		return graphCut{}, errors.Join(errInvalid, err)
 	}
 	for _, c := range q.cut.certificates {
-		if c.scope.semantic != retainedFeedSemanticContractID() {
+		if c.scope.semantic != semantic {
 			return graphCut{}, errInvalid
 		}
 	}
@@ -493,7 +499,7 @@ func nativeScalarWorkloadRecords(ctx context.Context, h *allocationHost, from, t
 	if ctx == nil || h == nil || h.machine == nil || h.driver == nil || h.machine.SemanticContractID() != semantic || through > h.driver.Applied() {
 		return nil, errInvalid
 	}
-	boundary, err := nativeFeedCutDecode(boundaryWire)
+	boundary, err := nativeScalarWorkloadCutDecode(boundaryWire, semantic, 2, 2)
 	if err != nil {
 		return nil, err
 	}

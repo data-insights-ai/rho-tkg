@@ -144,7 +144,7 @@ func TestNativeSelectorsAdmissionAndPrivateReadIdentity(t *testing.T) {
 	// The native terminal itself uses its genuine original cleanup bank, not
 	// the exhausted normal query counters. No constructed owner DTO supplies
 	// authority: Begin/Publish install it through the actual six native voters.
-	n, publisher, _, _ := retainedPublisherFixture(t)
+	n, publisher, _, _ := retainedPublisherFromNetwork(t, collectedGraphNetworkWithAgreement(t, nil, durableColumnGraphSemanticContractID()))
 	pin, err := publisher.Begin(t.Context(), n.requestID(), graphReadRequest{mode: graphReadFresh}, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -152,6 +152,59 @@ func TestNativeSelectorsAdmissionAndPrivateReadIdentity(t *testing.T) {
 	token, err := pin.Publish(t.Context())
 	if err != nil {
 		t.Fatal(err)
+	}
+	// These are actual native certificates, not profile labels grafted onto
+	// another agreement. Full and scoped selector coordinates must both decode;
+	// the Cost5 wire door must continue to refuse this distinct agreement.
+	manifest, err := decodeGraphPinManifest(token.manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := graphCut{certificates: []graphCertificate{manifest.parts[0].certificate, manifest.parts[1].certificate}}
+	for _, cut := range []graphCut{full, {certificates: full.certificates[:1]}, {certificates: full.certificates[1:]}} {
+		wire, err := nativeFeedCutWire(cut)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual, err := nativeSelectorsCutDecode(wire)
+		if err != nil || !feedCutEqual(actual, cut) {
+			t.Fatal("exact full/scoped selector cut", err)
+		}
+		if _, err := nativeFeedCutDecode(wire); !errors.Is(err, errInvalid) {
+			t.Fatal("Cost5 accepted another agreement", err)
+		}
+	}
+	for _, cut := range []graphCut{{}, {certificates: []graphCertificate{full.certificates[1], full.certificates[0]}}, {certificates: []graphCertificate{full.certificates[0], full.certificates[0]}}} {
+		wire, err := nativeFeedCutWire(cut)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := nativeSelectorsCutDecode(wire); !errors.Is(err, errInvalid) {
+			t.Fatal("empty/reordered/duplicate selector scope", err)
+		}
+	}
+	wire, err := nativeFeedCutWire(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := n.hosts[0][0]
+	if _, err := nativeScalarWorkloadRecords(t.Context(), h, full.certificates[0].index-1, full.certificates[0].index, wire, durableColumnGraphSemanticContractID()); err != nil {
+		t.Fatal("actual scalar native records used a different decoder agreement", err)
+	}
+	// Codec-only legacy regression: these bytes remain inert until native At.
+	legacy := graphCut{certificates: append([]graphCertificate(nil), full.certificates...)}
+	for i := range legacy.certificates {
+		legacy.certificates[i].scope.semantic = retainedFeedSemanticContractID()
+	}
+	legacyWire, err := nativeFeedCutWire(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual, err := nativeFeedCutDecode(legacyWire); err != nil || !feedCutEqual(actual, legacy) {
+		t.Fatal("Cost5 exact two-certificate codec regression", err)
+	}
+	if _, err := nativeSelectorsCutDecode(legacyWire); !errors.Is(err, errInvalid) {
+		t.Fatal("selector accepted Cost5 agreement", err)
 	}
 	liveCleanup, finishCleanup := context.WithTimeout(context.Background(), 30*time.Second)
 	defer finishCleanup()
