@@ -85,7 +85,7 @@ The first read is `HANDOVER.md` (next steps). **Open work is ONE list: the open 
 | v4.55.1 | d3870cce | 68b GraphTx corrections + rollback from the head entry (sigma R10 write side), backlog 70 exact version allocation, as-of above a compaction gap, rollback-after-compaction data loss fixed |
 | v4.55.2 | 259105ad | **Markus**: sigma-tkgd round 8 (`PropertyBounds`, range reads and `RangeCardinalityAt` at a pin, `LabelTimeStats`, scans by ordinal bitset) |
 | v4.55.3 | 2a72753d | sorted postings for property/composite indexes (72, ai-soc cost note), Eternal() doc fix |
-| v4.56.0 | (tag) | Config.UntimedValidStart (73, René + sigma + ai-soc: Unbounded first version, explicit conversion, marker 7), endpoint constraint over the current life, Reset keeps schema_version |
+| v4.56.0 | a08c0d52 | Config.UntimedValidStart (73, René + sigma + ai-soc: Unbounded first version, explicit conversion, marker 7), endpoint constraint over the current life, Reset keeps schema_version |
 
 
 ## Open work
