@@ -1137,8 +1137,15 @@ bootstrap and process-error masks now match their actual child agreements and
 wire encoding. Complete P03/P05 traces use separately admitted bounded sidecars;
 the main stream retains its full original-prefix census and EOF. All 16 frozen
 blobs and 11 current parents were verified with pinned parser/format and whitespace
-only. No compilation, execution or B/D acceptance is claimed. Broader actual
-leader/message/conflict conjunctions remain open. The bounded composed
+only. The P01–P06 leader/message extension is source-integrated at `a0f7e0f6`:
+actual elections establish the original and rotated peers; delayed, reordered
+and duplicated native packets retain their configured identities. Full
+original, historical-dependency, queued-candidate and serial/cut checks use
+authenticated process/election context. All 15 final files and 11 complete
+current parents were verified. Twenty local-leader Ready recipes precede their
+own packet emission; their genuine service/predecessor companion remains in
+implementation. P07–P09 pooled-state and leader/message conjunctions also remain
+open. No compilation, execution or B/C/D acceptance is claimed. The bounded composed
 exploration/replay controller is source-integrated at `73d18533`: all six real
 causal recipes precede one or two recorded seeds and fresh exact replays under
 one 16-trial, original-deadline and cumulative resource allowance. Only a
