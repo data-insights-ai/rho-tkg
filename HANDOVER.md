@@ -51,6 +51,9 @@ V0/V1 are accepted and V2 remains open. Exact finite source/test receipts live u
 gates or push/merge main. `docs/v5-analysis.md` §5 keeps the 45-family consumer mapping; immutable
 sigma/ai-soc inventories and current v4 source deltas are in `docs/v5/reference/consumer-*.json`.
 The selected reader is now main `2a72753d`/v4.55.3, source-integrated and unqualified.
+Main's later ledger cleanup at `09806210` is integrated; the code baseline is
+unchanged. Its planned untimed-row option must be reconciled from actual source
+before consumer/migration acceptance if it lands in the selected baseline.
 This changes the v4 row/store format, implicit valid-from rule, void pieces,
 indexes and read APIs, including sorted equality/composite postings with keyset
 page push-down. Existing consumer manifests still describe older source;

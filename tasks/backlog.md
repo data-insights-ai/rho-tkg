@@ -116,6 +116,10 @@ must be refreshed for these contracts during V4/V6; their older pins and all
 historical receipts remain unchanged. The main integration changes no V2 engine
 or comparison paths. No compile, test, measurement or CI run accompanies it:
 the owner's implementation-first sequence below remains in force.
+The later main ledger/handover cleanup at `09806210` is integrated without
+changing that v4.55.3 code baseline or V5 implementation. Its untimed-row option
+is an upstream work item, not an implemented migration contract; reconcile the
+actual persisted policy if that source change lands before the V4/V6 cutoff.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
@@ -263,7 +267,8 @@ all A–F exit requirements; implementation status never implies acceptance.
    from comparable correctness, durability, total cost, deployment and maintenance
    evidence before V3 format freeze.
 6. **Run one coordinated V2 acceptance gate.** Reconcile main at a recorded
-   cutoff (current integrated main source is `2a72753d`/v4.55.3),
+   cutoff (integrated main is `09806210`; its code baseline remains
+   `2a72753d`/v4.55.3),
    review relevant handover/consumer/CI deltas and integrate required changes.
    The effective-page, history-epoch/head-cache, correction/rollback fast-path
    and compaction-gap version-allocation contracts belong in that source/consumer
