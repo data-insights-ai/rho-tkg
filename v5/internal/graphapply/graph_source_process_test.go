@@ -2209,7 +2209,14 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processPairedConnections:
 				response.aux, e = pairedGraphFaultConnections(r.entity, services, server)
 			case processPairedReconnect:
-				if logicalTransitions != nil && o.family != nil && moveCoordinator != nil {
+				var retained bool
+				r, retained, e = nativeConjunctionReconnectRequest(r, o.stableBatch != nil)
+				if e != nil {
+					break
+				}
+				if retained {
+					coordinator, e = pairedGraphFaultReconnect(o.stableBatch.ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil, true)
+				} else if logicalTransitions != nil && o.family != nil && moveCoordinator != nil {
 					coordinator, e = nativeTransitionMoveReconnect(ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil)
 				} else {
 					coordinator, e = pairedGraphFaultReconnect(ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil)

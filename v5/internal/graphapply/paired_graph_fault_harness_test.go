@@ -71,8 +71,8 @@ func pairedGraphFaultConnections(origin uint64, services map[uint64]*graphPeerSe
 		w.u64(uint64(sessions))
 	})
 }
-func pairedGraphFaultReconnect(ctx context.Context, h *allocationHost, old *crossProcessCoordinator, s *graphProcessCertifiedSessions, move *rangeMoveCoordinator, server *graphSourceServer, r processRequest, workers, queued int, active bool) (*crossProcessCoordinator, error) {
-	if ctx == nil || h == nil || old == nil || s == nil || len(r.data) != 16 {
+func pairedGraphFaultReconnect(ctx context.Context, h *allocationHost, old *crossProcessCoordinator, s *graphProcessCertifiedSessions, move *rangeMoveCoordinator, server *graphSourceServer, r processRequest, workers, queued int, active bool, retainRuns ...bool) (*crossProcessCoordinator, error) {
+	if ctx == nil || h == nil || old == nil || s == nil || len(r.data) != 16 || len(retainRuns) > 1 {
 		return old, errInvalid
 	}
 	voters := [2]uint64{binary.BigEndian.Uint64(r.data[:8]), binary.BigEndian.Uint64(r.data[8:])}
@@ -101,8 +101,12 @@ func pairedGraphFaultReconnect(ctx context.Context, h *allocationHost, old *cros
 	defer old.mu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(old.runs) != 0 || len(s.owners) != 0 || s.pending != 0 {
+	retained := len(retainRuns) == 1 && retainRuns[0]
+	if !retained && len(old.runs) != 0 || len(s.owners) != 0 || s.pending != 0 {
 		return old, errInvalid
+	}
+	if retained && ctx.Err() != nil {
+		return old, errors.Join(errCrossProcessPending, ctx.Err())
 	}
 	h.mu.Lock()
 	busy := h.pendingReadCount() != 0 || h.closed
@@ -137,7 +141,45 @@ func pairedGraphFaultReconnect(ctx context.Context, h *allocationHost, old *cros
 			next.streams[partition] = old.streams[partition]
 		}
 	}
+	if retained {
+		if ctx.Err() != nil {
+			return old, errors.Join(errCrossProcessPending, ctx.Err())
+		}
+		if err := nativeConjunctionRetainRoutesLocked(old, next); err != nil {
+			return old, err
+		}
+		return old, nil
+	}
 	return next, nil
+}
+
+// Fresh NCR1 diagnostic route only, after all ordinary reconnect ownership
+// gates above. Caller holds old.mu and has drained every native worker/RPC.
+// No manifest is decoded or copied: the actual private idle run objects and
+// original certified engine remain owned by this SAME coordinator and Host.
+func nativeConjunctionRetainRoutesLocked(old, next *crossProcessCoordinator) error {
+	if old == nil || next == nil || old == next || old.host == nil || old.host.machine == nil || old.host != next.host || len(old.runs) > 2 || len(next.runs) != 0 || len(old.transports) != old.host.machine.declaration.Len() || len(next.transports) != len(old.transports) || len(next.streams) != len(old.streams) || len(old.streams) != len(old.transports) {
+		return errInvalid
+	}
+	for tx, run := range old.runs {
+		if run == nil || run.busy || !run.registrationAttempted || run.resume.tx != tx || tx == ([16]byte{}) || run.resume.request == (requestID{}) || run.resume.business == ([32]byte{}) || run.resume.scope != old.host.machine.scope() || run.tx.owner != old.host || len(run.tx.manifest) == 0 || len(run.tx.manifest) > old.host.machine.limits.commandBytes || run.tx.digest == ([32]byte{}) {
+			return errInvalid
+		}
+	}
+	for partition, transport := range old.transports {
+		replacement := next.transports[partition]
+		if transport == nil || replacement == nil || replacement.Peer().scope != mustProcessScope(old.host, partition) || replacement.Peer().voter == 0 || old.streams[partition] == nil || next.streams[partition] == nil {
+			return errInvalid
+		}
+		unchanged := transport.Peer() == replacement.Peer()
+		if unchanged != (old.streams[partition] == next.streams[partition]) {
+			return errInvalid
+		}
+	}
+	// All replacements were checked before either map changes. No native read,
+	// new run allowance, original deadline, beforeDecision or cut cache resets.
+	old.transports, old.streams = next.transports, next.streams
+	return nil
 }
 
 type pairedFaultProcess struct {

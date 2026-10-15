@@ -490,6 +490,19 @@ func (f *pairedGraphFaultNetwork) cleanupCertifiedHandle(p *graphProcess, handle
 
 // Same actual reconnect door as P03, with the fresh immutable parent deadline.
 // Closed source replay slots are retained; none are reset to fund this retry.
+const nativeConjunctionReconnectPrefix = "NCR1"
+
+func nativeConjunctionReconnectRequest(r processRequest, enabled bool) (processRequest, bool, error) {
+	if len(r.data) == 16 {
+		return r, false, nil // Literal legacy voter payload/admission below.
+	}
+	if !enabled || r.op != processPairedReconnect || len(r.data) != len(nativeConjunctionReconnectPrefix)+16 || !bytes.HasPrefix(r.data, []byte(nativeConjunctionReconnectPrefix)) || r.index != 0 || r.entity != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
+		return r, false, errInvalid
+	}
+	r.data = r.data[len(nativeConjunctionReconnectPrefix):]
+	return r, true, nil
+}
+
 func nativeConjunctionReconnect(f *pairedGraphFaultNetwork, actor uint64) {
 	f.drain()
 	f.packetDrain()
@@ -514,7 +527,11 @@ func nativeConjunctionReconnect(f *pairedGraphFaultNetwork, actor uint64) {
 			f.t.Fatal("fresh reconnect target owns live work", actor, target, c.err)
 		}
 	}
-	f.call(f.n.all[actor], processRequest{op: processPairedReconnect, data: allocationP08Words(f.n.leaders[0], f.n.leaders[1])})
+	data := allocationP08Words(f.n.leaders[0], f.n.leaders[1])
+	if f.parent != nil {
+		data = append([]byte(nativeConjunctionReconnectPrefix), data...)
+	}
+	f.call(f.n.all[actor], processRequest{op: processPairedReconnect, data: data})
 	hub.mu.Lock()
 	if hub.relayTargets == nil {
 		hub.relayTargets = make(map[uint64]map[uint64]uint64)
