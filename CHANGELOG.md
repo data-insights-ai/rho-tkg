@@ -6,8 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Planned as the next patch of the latest tag, v4.55.2 (sigma-tkgd round 8, additive doors only; released after the
-user's OK).
+## [4.55.2] - 2026-10-15
 
 ### Added
 
