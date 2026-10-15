@@ -173,6 +173,7 @@ type nativeGraphCostColumnSessions struct {
 	spec        *nativeGraphCostSpec
 	next        uint64
 	probes      uint8 // fresh diagnostic attempts only; ordinary/default paths never spend it
+	openProbes  uint8 // fresh lost-Open observations; independent of terminal diagnostics
 	pending     bool
 	owner       *nativeGraphCostColumnOwner
 	// Installed once before worker publication. The fresh bootstrap authenticates
@@ -181,13 +182,89 @@ type nativeGraphCostColumnSessions struct {
 }
 
 func (s *nativeGraphCostColumnSessions) policy() (nativeColumnPolicy, error) {
-	if s == nil || s.coordinator == nil {
+	if s == nil || s.coordinator == nil || s.coordinator.host == nil {
 		return nativeColumnPolicy{}, errInvalid
 	}
 	if s.policyProvider != nil {
 		return s.policyProvider()
 	}
 	return nativeColumnProcessPolicy(s.coordinator.host)
+}
+
+// A lost constructor reply can observe ONLY this actual same child owner.
+// Caller recipes provide equality questions, never ownership or absence proof.
+// Both fresh workload families share this exact lifetime/keeper audit.
+func (s *nativeGraphCostColumnSessions) observeOpen(ctx context.Context, body []byte) ([]byte, error) {
+	if s == nil || ctx == nil {
+		return nil, errInvalid
+	}
+	policy, err := s.policy()
+	if err != nil || policy.Version != 1 || policy.Admission == ([32]byte{}) {
+		return nil, errors.Join(errInvalid, err)
+	}
+	q, err := nativeGraphCostColumnDecode(processRequest{data: body})
+	if err != nil || q.Action != nativeColumnsOpen || q.RetainedExpires == 0 {
+		return nil, errors.Join(errInvalid, err)
+	}
+	canonical, err := nativeGraphCostColumnInput(q)
+	if err != nil || !bytes.Equal(canonical, body) {
+		return nil, errors.Join(errInvalid, err)
+	}
+	s.mu.Lock()
+	if s.openProbes >= 4 {
+		s.mu.Unlock()
+		return nil, errLimit
+	}
+	s.openProbes++
+	owner, pending := s.owner, s.pending
+	s.mu.Unlock()
+	if owner == nil || pending {
+		return nil, errCrossProcessPending
+	}
+	if err := owner.gate.lock(ctx); err != nil {
+		return nil, err
+	}
+	defer owner.gate.unlock()
+	if owner.generation != q.Generation || owner.store == nil || owner.store.binding.Policy != policy {
+		return nil, errInvalid
+	}
+	if owner.source == nil {
+		if err := owner.renew(ctx); err != nil {
+			return nil, err
+		}
+	}
+	initial, err := nativeGraphCostColumnAt(q.Initial)
+	if err != nil {
+		return nil, err
+	}
+	final, err := nativeGraphCostColumnAt(q.Final)
+	if err != nil {
+		return nil, err
+	}
+	first, err := owner.source.cutPair(initial)
+	if err != nil {
+		return nil, err
+	}
+	last, err := owner.source.cutPair(final)
+	if err != nil || first != owner.source.initial || last != owner.source.final {
+		return nil, errors.Join(errInvalid, err)
+	}
+	r, err := owner.store.retentionRecord(q.Generation)
+	if err != nil {
+		return nil, err
+	}
+	m, err := decodeGraphPinManifest(r.Original)
+	if err != nil || m.expires != q.RetainedExpires {
+		return nil, errors.Join(errInvalid, err)
+	}
+	if err := errors.Join(ctx.Err(), owner.ctx.Err()); err != nil {
+		return nil, err
+	}
+	receipt, err := owner.receipt(0)
+	if err != nil {
+		return nil, err
+	}
+	return nativeGraphCostColumnEncode(receipt)
 }
 
 func nativeGraphCostColumnInput(q nativeGraphCostColumnRequest) ([]byte, error) {

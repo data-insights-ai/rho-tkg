@@ -565,7 +565,6 @@ type nativeContentionSessions struct {
 	cancel                 context.CancelFunc
 	next                   uint64
 	busy, pending          int
-	columnProbes           uint8
 	frozen                 [nativeContentionCallers]*nativeContentionFrozen
 	previous               [nativeContentionCallers]nativeContentionPrevious
 	source                 *nativeContentionSourceOwner
@@ -1223,73 +1222,7 @@ func (s *nativeContentionSessions) columnOwner(ctx context.Context, body []byte)
 	if s.spec.Layout != "columns" {
 		return nil, errInvalid
 	}
-	q, err := nativeGraphCostColumnDecode(processRequest{data: body})
-	if err != nil || q.Action != nativeColumnsOpen || q.RetainedExpires == 0 {
-		return nil, errors.Join(errInvalid, err)
-	}
-	s.mu.Lock()
-	if s.columnProbes >= nativeColumnTerminalAttempts {
-		s.mu.Unlock()
-		return nil, errLimit
-	}
-	s.columnProbes++
-	s.mu.Unlock()
-	s.columns.mu.Lock()
-	owner, pending := s.columns.owner, s.columns.pending
-	s.columns.mu.Unlock()
-	if owner == nil || pending {
-		return nil, errCrossProcessPending
-	}
-	if err := owner.gate.lock(ctx); err != nil {
-		return nil, err
-	}
-	defer owner.gate.unlock()
-	if owner.generation != q.Generation {
-		return nil, errInvalid
-	}
-	if owner.source == nil {
-		if err := owner.renew(ctx); err != nil {
-			return nil, err
-		}
-	}
-	initial, err := nativeGraphCostColumnAt(q.Initial)
-	if err != nil {
-		return nil, err
-	}
-	final, err := nativeGraphCostColumnAt(q.Final)
-	if err != nil {
-		return nil, err
-	}
-	first, err := owner.source.cutPair(initial)
-	if err != nil {
-		return nil, err
-	}
-	last, err := owner.source.cutPair(final)
-	if err != nil || first != owner.source.initial || last != owner.source.final {
-		return nil, errors.Join(errInvalid, err)
-	}
-	r, err := owner.store.retentionRecord(q.Generation)
-	if err != nil {
-		return nil, err
-	}
-	m, err := decodeGraphPinManifest(r.Original)
-	if err != nil || m.expires != q.RetainedExpires {
-		return nil, errors.Join(errInvalid, err)
-	}
-	active := ctx.Err()
-	if owner.store.binding.Policy.Version == 1 {
-		active = errors.Join(active, owner.ctx.Err())
-	} else {
-		active = errors.Join(active, owner.source.ctx.Err())
-	}
-	if active != nil {
-		return nil, active
-	}
-	receipt, err := owner.receipt(0)
-	if err != nil {
-		return nil, err
-	}
-	return nativeGraphCostColumnEncode(receipt)
+	return s.columns.observeOpen(ctx, body)
 }
 
 // Called only after the shared worker WaitGroup has joined. Cancellation does
