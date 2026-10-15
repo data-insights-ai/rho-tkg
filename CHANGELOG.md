@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.55.3] - 2026-10-15
+
 ### Changed
 
 - **perf: equality index pages read their page, not the whole value key** (ai-soc, backlog 72). `NodesByLabelAndProperties`
