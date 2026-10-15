@@ -862,10 +862,17 @@ then exercise first-YES leader loss, original decision recovery and complete
 old/current/index/CDC observations. Replacement historical reads select both
 child and parent routes to the actual local source; source review corrected a
 parent-route mismatch before integration. Existing profiles and formats remain
-unchanged. First-Prepare occurrences, leader/message variants, other P-row and
-applicable publication/import/GC conjunctions remain source gaps. All four finite
-profiles remain unexecuted; these checkpoints do not complete P06 or D. Source
-review found that ordinary fixture reconnect rejects retained pending runs.
+unchanged. Initial first-participant Prepare interruption is source-integrated
+at `59036e1`: 16 fresh cases retain the actual unknown reply. An after-install
+Sync loss joins the selected entry to the surviving native ApplicationRecord
+before mutation/retry, without inventing a successful source reply or second
+crash. Other boundaries retain the actual later/repeated YES original. A shared
+typed completion preserves the Register profile's original artifact/call/event
+order and full original, old/current/index/CDC and same-directory replay checks.
+Broader participant/leader/message variants, other P-row and applicable
+publication/import/GC conjunctions remain source work. All five finite profiles
+remain unexecuted; these checkpoints do not complete P06 or D. Source review
+found that ordinary fixture reconnect rejects retained pending runs.
 The correction is source-integrated at `0f6f10a`: fresh NCR1 routing retains the
 same coordinator, private pending manifests, certified engine and unchanged-peer
 streams, replacing routes only after all ownership and idle-work checks pass.
