@@ -35,6 +35,15 @@ def seeded_recipe(seed):
     return value
 
 
+def campaign(seeds):
+    R.require(type(seeds) is list and 1<=len(seeds)<=2,"one or two explicit recorded campaign seeds")
+    recorded=[seeded_recipe(seed) for seed in seeds]
+    enumeration=[dict(Version=1,Seed=seeds[0],First=first,Phase=phase,FenceFirst=fence,Actions=[])
+                 for first in ("A","B") for phase in ("registered","prepared") for fence in (True,False)
+                 if first=="A" or fence]
+    return R.campaign_admission(dict(Version=1,Enumeration=enumeration,Recorded=recorded),C)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
@@ -42,11 +51,16 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--seconds", required=True, type=int)
     parser.add_argument("--memory-mib", required=True, type=int)
-    parser.add_argument("--seed", required=True, type=int)
+    selection=parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--seed",type=int,help="unchanged single recorded replay")
+    selection.add_argument("--seeds",type=int,nargs="+",help="six genuine causal orders, then one or two recorded seeds under ONE trial/deadline pool")
     parser.add_argument("--deadline-unix-nanos", type=int)
     args = parser.parse_args()
-    result = R.execute(args.output, args.binary, args.watchdog, args.seconds, args.memory_mib, seeded_recipe(args.seed),
-                       profile="composed", deadline_unix_nanos=args.deadline_unix_nanos)
+    exploration=None if args.seeds is None else campaign(args.seeds)
+    value=seeded_recipe(args.seed) if exploration is None else exploration["Recorded"][0]
+    result = R.execute(args.output, args.binary, args.watchdog, args.seconds, args.memory_mib, value,
+                       profile="composed", deadline_unix_nanos=args.deadline_unix_nanos,
+                       **({"campaign":exploration} if exploration is not None else {}))
     print(json.dumps(result, indent=2))
     if result["classification"] != "passed":
         raise SystemExit(1)

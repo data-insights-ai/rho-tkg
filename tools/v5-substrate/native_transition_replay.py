@@ -21,7 +21,19 @@ SPEC.loader.exec_module(C)
 MAX_TRIALS = 16
 MAX_TRIAL_BYTES = 2 << 30
 MAX_SECONDS = 1800
+CAMPAIGN_CONTROL_BYTES = 4 * 65536
+CAMPAIGN_TRIAL_BYTES = MAX_TRIAL_BYTES-2*65536
 WATCHDOG = Path(__file__).with_name("process_watchdog.py")
+FIXTURE_FLAGS = ("RHO_GRAPH_COST_SPEC", "RHO_GRAPH_COST_BLOCK_SIZE", "RHO_GRAPH_NATIVE_WORKLOAD",
+                 "RHO_GRAPH_NATIVE_FAULT_PROCESS", "RHO_GRAPH_NATIVE_FAULT_START", "RHO_GRAPH_NATIVE_FAULT_FAMILY",
+                 "RHO_GRAPH_RANGE_PROCESS", "RHO_GRAPH_CONDITIONAL_PROCESS", "RHO_GRAPH_RETENTION_PROCESS",
+                 "RHO_GRAPH_DURABLE_COLUMN_PROCESS", "RHO_GRAPH_FAULT_FAMILY_PROCESS", "RHO_GRAPH_DURABLE_MODEL",
+                 "RHO_GRAPH_DECISION_FAULT_PROCESS", "RHO_GRAPH_TRANSITION_PROCESS", "RHO_GRAPH_FEED_PROCESS",
+                 "RHO_GRAPH_FEED_RETAINED_PROCESS", "RHO_GRAPH_SELECTORS_PROCESS", "RHO_GRAPH_CREATE_UPDATE_PROCESS",
+                 "RHO_GRAPH_IMMUTABLE_COLUMNS_PROCESS", "RHO_GRAPH_LATE_CORRECTION_PROCESS", "RHO_GRAPH_EDGE_UNIQUE_PROCESS",
+                 "RHO_GRAPH_STATE_RETENTION_PROCESS", "RHO_GRAPH_STABLE_STORAGE_PROCESS", "RHO_GRAPH_STABLE_STATE_PROCESS",
+                 "RHO_GRAPH_PROTOCOL_CAMPAIGN", "RHO_GRAPH_PROTOCOL_STATE_PROCESS", "RHO_GRAPH_PROTOCOL_STATE_RECOVERY",
+                 "RHO_GRAPH_TRANSFER_PROCESS")
 
 
 def components(profile):
@@ -94,9 +106,9 @@ def seeded_recipe(seed):
     return value
 
 
-def footprint(root):
+def footprint(root, *, physical=False):
     """Finite actual child/artifact files, no directory-sized list or symlinks."""
-    total, files, directories = 0, 0, [root]
+    total, allocated, files, directories = 0, 0, 0, [root]
     while directories:
         directory = directories.pop()
         with os.scandir(directory) as entries:
@@ -108,10 +120,24 @@ def footprint(root):
                     directories.append(Path(entry.path))
                 else:
                     require(entry.is_file(follow_symlinks=False), "foreign owned-file kind")
-                    n = entry.stat(follow_symlinks=False).st_size
+                    info = entry.stat(follow_symlinks=False)
+                    n = info.st_size
                     require(type(n) is int and 0 <= n <= MAX_TRIAL_BYTES-total, "actual replay disk quota")
                     total += n
-    return dict(files=files, bytes=total)
+                    if physical:
+                        allocated += info.st_blocks * 512
+                        require(0 <= allocated <= MAX_TRIAL_BYTES, "actual allocated replay file quota")
+    result = dict(files=files, bytes=total)
+    if physical: result["allocatedFileBytes"] = allocated
+    return result
+
+
+def semantic_code(receipt):
+    """A stale diagnostic payload cannot override a later owner refusal."""
+    if receipt.get("classification") != "semantic-failure":
+        return None
+    value = (receipt.get("semanticFailure") or {}).get("code")
+    return value if type(value) is str and 0 < len(value) <= 4096 else None
 
 
 def terminal_result(meter, wrapper_exit, profile):
@@ -122,7 +148,20 @@ def terminal_result(meter, wrapper_exit, profile):
     return completed, failed_verdict
 
 
-def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline, memory_mib, *, profile="cross", source_hashes=None):
+def trial_environment(temporary, engine, recipe, run, deadline, profile, *, inherited=None):
+    require(profile in ("cross","composed"),"actual replay environment profile")
+    env=dict(os.environ if inherited is None else inherited)
+    for name in FIXTURE_FLAGS:env[name]=""
+    env.update(TMPDIR=str(temporary),GOTMPDIR=str(temporary),GOWORK="off",GOTOOLCHAIN="local",GOMAXPROCS="2",GOMEMLIMIT="2GiB",
+               RHO_GRAPH_TRANSITION_RUN=run,RHO_GRAPH_TRANSITION_DEADLINE=str(deadline),
+               RHO_GRAPH_TRANSITION_RECIPE=canonical(recipe) if profile=="cross" else "",
+               RHO_GRAPH_TRANSITION_OUTPUT=str(engine) if profile=="cross" else "",
+               RHO_GRAPH_COMPOSED_RECIPE=canonical(recipe) if profile=="composed" else "",
+               RHO_GRAPH_COMPOSED_OUTPUT=str(engine) if profile=="composed" else "")
+    return env
+
+
+def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline, memory_mib, *, profile="cross", source_hashes=None, campaign=False):
     require(0 <= number < MAX_TRIALS and time.time_ns() < deadline, "fixed whole-replay trial/deadline grant exhausted")
     if profile == "composed": require(source_hashes is not None and composed_sources(watchdog) == source_hashes, "same admitted independent checker/controller/watchdog sources")
     checker = components(profile)
@@ -132,23 +171,13 @@ def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline,
     path.mkdir(mode=0o700)
     temporary = path/"tmp"; temporary.mkdir(mode=0o700)
     run = secrets.token_hex(16)
-    env = {**os.environ, "TMPDIR": str(temporary), "GOTMPDIR": str(temporary), "GOWORK": "off", "GOTOOLCHAIN": "local",
-           "GOMAXPROCS": "2", "GOMEMLIMIT": "2GiB", "RHO_GRAPH_TRANSITION_RECIPE": canonical(recipe),
-           "RHO_GRAPH_TRANSITION_OUTPUT": str(path/"engine"), "RHO_GRAPH_TRANSITION_RUN": run,
-           "RHO_GRAPH_TRANSITION_DEADLINE": str(deadline)}
-    env["RHO_GRAPH_COMPOSED_RECIPE"] = canonical(recipe) if profile == "composed" else ""
-    env["RHO_GRAPH_COMPOSED_OUTPUT"] = str(path/"engine") if profile == "composed" else ""
-    if profile == "composed":
-        env["RHO_GRAPH_TRANSITION_RECIPE"], env["RHO_GRAPH_TRANSITION_OUTPUT"] = "", ""
-    for name in ("RHO_GRAPH_COST_SPEC", "RHO_GRAPH_NATIVE_WORKLOAD", "RHO_GRAPH_NATIVE_FAULT_PROCESS", "RHO_GRAPH_NATIVE_FAULT_START",
-                 "RHO_GRAPH_RANGE_PROCESS", "RHO_GRAPH_CONDITIONAL_PROCESS", "RHO_GRAPH_RETENTION_PROCESS", "RHO_GRAPH_DURABLE_COLUMN_PROCESS",
-                 "RHO_GRAPH_FAULT_FAMILY_PROCESS", "RHO_GRAPH_DURABLE_MODEL", "RHO_GRAPH_DECISION_FAULT_PROCESS", "RHO_GRAPH_FEED_PROCESS"):
-        env[name] = ""
+    env = trial_environment(temporary,path/"engine",recipe,run,deadline,profile)
     remaining = max(1, (deadline-time.time_ns()+999_999_999)//1_000_000_000)
     parent = "TestNativeComposedTransitionRecordedReplayCell" if profile == "composed" else "TestNativeTransitionRecordedReplayCell"
     actual = [str(binary), "-test.run=^"+parent+"$", "-test.count=1", "-test.v", f"-test.timeout={remaining}s"]
+    disk_limit = MAX_TRIAL_BYTES-CAMPAIGN_CONTROL_BYTES if campaign else MAX_TRIAL_BYTES
     command = [sys.executable, str(watchdog), "--rss-mib", str(memory_mib), "--seconds", str(seconds),
-               "--deadline-unix-nanos", str(deadline), "--owned-dir", str(path), "--disk-bytes", str(MAX_TRIAL_BYTES),
+               "--deadline-unix-nanos", str(deadline), "--owned-dir", str(path), "--disk-bytes", str(disk_limit),
                "--report", str(path/"watchdog.json"), "--", *actual]
     request = dict(version=1, recipe=recipe, recipeSHA256=hashlib.sha256(canonical(recipe).encode()).hexdigest(), run=run,
                    binarySHA256=binary_sha, watchdogSHA256=digest(watchdog), deadlineUnixNanos=deadline,
@@ -158,6 +187,10 @@ def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline,
     if profile == "composed":
         request.update(version=2, profile=checker.PROFILE, sourceSHA256=source_hashes)
         request["admission"].update(totalEngineCreationsPerTrial=6, duplicates=4)
+    if campaign:
+        require(profile == "composed", "fresh campaign uses the actual composed adapter")
+        request["admission"].update(controllerReserveBytes=CAMPAIGN_CONTROL_BYTES,
+                                     monitoredDiskBytes=disk_limit)
     write(path/"request.json", request)
     receipt = dict(version=1, requestSHA256=digest(path/"request.json"), recipe=recipe, run=run, binarySHA256=binary_sha,
                    deadlineUnixNanos=deadline, exit=None, monitor=None, monitorSHA256=None, artifact=None,
@@ -205,6 +238,8 @@ def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline,
                 receipt["semanticFailure"] = dict(code=failure.code, detail=failure.detail)
         except (ValueError, KeyError, TypeError) as failure:
             receipt["classification"], receipt["diagnostic"] = "source-refused", str(failure)[:4096]
+        if campaign:
+            require(time.time_ns() < deadline, "independent oracle exceeded original whole-campaign deadline")
         return receipt
     except (OSError, ValueError, KeyError, TypeError) as failure:
         receipt["classification"], receipt["diagnostic"] = "source-refused", str(failure)[:4096]
@@ -216,9 +251,15 @@ def trial(root, number, recipe, binary, binary_sha, watchdog, seconds, deadline,
             except (OSError, ValueError) as error:
                 receipt["classification"], receipt["semanticFailure"], receipt["diagnostic"] = "source-refused", None, str(error)[:4096]
         try:
-            receipt["disk"] = footprint(path)
+            receipt["disk"] = footprint(path, physical=campaign)
+            if campaign:
+                require(time.time_ns() < deadline, "native/source finalizer exceeded original whole-campaign deadline")
+                require(max(receipt["disk"]["bytes"],receipt["disk"]["allocatedFileBytes"]) <= CAMPAIGN_TRIAL_BYTES-65536,
+                        "prepaid terminal controller receipt cannot fit")
         except (OSError, ValueError) as error:
             receipt["classification"], receipt["diagnostic"] = "driver-or-resource-refused", str(error)[:4096]
+        if campaign and receipt["classification"] not in ("passed", "semantic-failure"):
+            receipt["semanticFailure"], receipt["proof"] = None, None
         write(path/"receipt.json", receipt)
 
 
@@ -249,9 +290,90 @@ def minimize(recipe, invoke, expected_code, *, used=2, maximum=MAX_TRIALS, valid
                 minimality="single-action deletion under the fixed mandatory selector/recovery recipe; no global minimum or infinite-state claim")
 
 
-def execute(output, binary, watchdog, seconds, memory_mib, recipe, *, profile="cross", deadline_unix_nanos=None):
+def campaign_admission(value, checker):
+    """Closed six-order + recorded-seed domain, not a model executor."""
+    require(type(value) is dict and set(value)=={"Version","Enumeration","Recorded"} and type(value["Version"]) is int and value["Version"]==1,
+            "explicit finite composed campaign")
+    enumeration,recorded=value["Enumeration"],value["Recorded"]
+    require(type(enumeration) is list and len(enumeration)==6 and type(recorded) is list and 1<=len(recorded)<=2,
+            "six actual causal orders precede one or two recorded seeds")
+    seen,seeds=set(),set()
+    for r in enumeration:
+        checker.recipe(r)
+        identity=(r["First"],r["Phase"],r["FenceFirst"])
+        require(r["Actions"]==[] and identity not in seen,"one empty-action actual base per causal order")
+        seen.add(identity)
+    expected={(first,phase,fence) for first in ("A","B") for phase in ("registered","prepared") for fence in (True,False) if first=="A" or fence}
+    require(seen==expected,"missing real two-conflict/fence/transfer causal order")
+    for r in recorded:
+        checker.recipe(r)
+        require(r["Seed"] not in seeds,"recorded seeds are explicit and distinct")
+        seeds.add(r["Seed"])
+    require(all(r["Seed"]==recorded[0]["Seed"] for r in enumeration) and 6+2*len(recorded)<=MAX_TRIALS,
+            "one original enumeration seed and prepaid fresh exact replays")
+    return value
+
+
+def campaign_sequence(result, campaign, invoke, receipts, checker):
+    """Every invoke is the existing real six-child trial and full oracle."""
+    def run(r, stage):
+        number=len(receipts)
+        result["schedule"].append(dict(trial=number,stage=stage,recipeSHA256=hashlib.sha256(canonical(r).encode()).hexdigest()))
+        return invoke(r,number)
+    def reproduce(r, first, stage, again=None):
+        code=semantic_code(first)
+        if not code:
+            result["classification"]="semantic-failure-unreproduced" if again is not None and semantic_code(again) else "source-refused"
+            return
+        again=run(r,stage+"-exact-replay") if again is None else again
+        if semantic_code(again)!=code:
+            result["classification"]="semantic-failure-unreproduced"
+            return
+        result["reproduced"],result["classification"]=True,"semantic-failure"
+        result["failureCode"],result["counterexampleRecipe"]=code,r
+        result["minimization"]=minimize(r,invoke,code,used=len(receipts),validator=checker.recipe)
+    bases=[]
+    for r in campaign["Enumeration"]:
+        bases.append(run(r,"causal-enumeration"))
+    result["enumerationComplete"]=True
+    result["enumerationPassed"]=all(row["classification"]=="passed" for row in bases)
+    if not result["enumerationPassed"]:
+        for r,row in zip(campaign["Enumeration"],bases):
+            if semantic_code(row):
+                reproduce(r,row,"causal-enumeration")
+                return
+        result["classification"]="source-refused"
+        return
+    for r in campaign["Recorded"]:
+        first=run(r,"recorded-seed")
+        again=run(r,"recorded-seed-exact-replay")
+        result["recordedSeedsAttempted"]+=1
+        if first["classification"]==again["classification"]=="passed":
+            result["recordedSeedsPassed"]+=1
+        else:
+            reproduce(r,first,"recorded-seed",again)
+            return
+    result["classification"]="passed"
+
+
+def campaign_trial_finalizer(receipt,path,deadline):
+    receipt["capturedClassification"]=receipt["classification"]
+    try:
+        receipt["finalizedDisk"]=footprint(path,physical=True)
+        require(time.time_ns()<deadline and max(receipt["finalizedDisk"]["bytes"],receipt["finalizedDisk"]["allocatedFileBytes"])<=CAMPAIGN_TRIAL_BYTES,
+                "late or over-budget terminal trial finalizer")
+    except (OSError,ValueError) as failure:
+        receipt.update(classification="driver-or-resource-refused",semanticFailure=None,proof=None,finalizationRefusal=str(failure)[:4096])
+    return receipt
+
+
+def execute(output, binary, watchdog, seconds, memory_mib, recipe, *, profile="cross", deadline_unix_nanos=None, campaign=None):
     checker = components(profile)
     checker.recipe(recipe)
+    if campaign is not None:
+        require(profile=="composed","campaign requires the actual composed native source adapter")
+        campaign=campaign_admission(campaign,checker)
+        require(recipe==campaign["Recorded"][0],"plan's original recorded recipe must match its actual campaign")
     require(type(seconds) is int and 1 <= seconds <= MAX_SECONDS and type(memory_mib) is int and 4096 <= memory_mib <= 1 << 20, "finite caller-selected whole-replay resources")
     binary, watchdog = Path(binary).resolve(strict=True), Path(watchdog).resolve(strict=True)
     require(binary.is_file() and os.access(binary, os.X_OK) and watchdog.is_file(), "supplied actual native binary/repository watchdog")
@@ -267,35 +389,76 @@ def execute(output, binary, watchdog, seconds, memory_mib, recipe, *, profile="c
                                        seconds=seconds, deadlineUnixNanos=deadline, aggregateRSSMiB=memory_mib,
                                        maxTrials=MAX_TRIALS, maxDiskBytes=MAX_TRIALS*MAX_TRIAL_BYTES)
     if profile == "composed": plan.update(version=2, profile=checker.PROFILE, sourceSHA256=source_hashes)
+    if campaign is not None:
+        plan.update(version=3,campaign=campaign,
+                    cumulativeAdmission=dict(trials=MAX_TRIALS,engineCreations=6*MAX_TRIALS,observedProcessIdentities=128*MAX_TRIALS,
+                                             actions=8*MAX_TRIALS,ticks=16*MAX_TRIALS,duplicates=4*MAX_TRIALS,
+                                             trialFileBytes=CAMPAIGN_TRIAL_BYTES,maxFileBytes=MAX_TRIALS*MAX_TRIAL_BYTES,
+                                             controllerTerminalBytes=2*65536,ownedNames=8192*MAX_TRIALS+2))
     write(destination/"plan.json", plan)
     receipts = []
     def invoke(value, number):
         require(number == len(receipts) and len(receipts) < MAX_TRIALS, "monotone whole-query trial accounting")
-        receipt = trial(destination, number, value, binary, binary_sha, watchdog, seconds, deadline, memory_mib, profile=profile, source_hashes=source_hashes)
+        if campaign is not None and len(result["schedule"])==number:
+            result["schedule"].append(dict(trial=number,stage="semantic-action-deletion",recipeSHA256=hashlib.sha256(canonical(value).encode()).hexdigest()))
+        receipt = trial(destination, number, value, binary, binary_sha, watchdog, seconds, deadline, memory_mib, profile=profile, source_hashes=source_hashes,
+                        **({"campaign":True} if campaign is not None else {}))
+        if campaign is not None:
+            # The terminal trial receipt is itself charged. Later finalizer
+            # refusal overrides its captured verdict in the owning campaign;
+            # the original receipt/hash stays preserved, never rewritten.
+            campaign_trial_finalizer(receipt,destination/f"trial-{number:02d}",deadline)
         receipts.append(receipt)
         return receipt
     result = dict(version=1, planSHA256=digest(destination/"plan.json"), receipts=[], reproduced=False, minimization=None,
                   scope="fixed recorded real six-child replay; semantic-failure-only bounded deletion; source-only until executed qualification")
     if profile == "composed": result.update(version=2, profile=checker.PROFILE)
+    if campaign is not None:
+        result.update(version=3,classification="source-refused",schedule=[],enumerationComplete=False,enumerationPassed=False,
+                      recordedSeedsAttempted=0,recordedSeedsPassed=0,
+                      scope="finite actual six-order enumeration before recorded seeded fresh-cohort replay; one original deadline/trial/work/file pool and independent full raw oracle. Only reproduced SAME semantic failures admit deletion; reported minimality is deletion1-minimal only, not global minimum, sustained soak or B/C/D qualification")
     try:
+        if campaign is not None:
+            campaign_sequence(result,campaign,invoke,receipts,checker)
+            return result
         first = invoke(recipe, 0)
         # Replaying the recorded exact schedule always uses a NEW actual child
         # cohort and original factory; no captured proposal is resubmitted as
         # authority to a fake/reconstructed Host.
         again = invoke(recipe, 1)
-        code = (first.get("semanticFailure") or {}).get("code")
-        if code and again.get("classification") == "semantic-failure" and (again.get("semanticFailure") or {}).get("code") == code:
+        code = semantic_code(first)
+        if code and semantic_code(again) == code:
             result["reproduced"] = True
             result["minimization"] = minimize(recipe, invoke, code, validator=checker.recipe)
+        return result
+    except (OSError,ValueError,KeyError,TypeError) as failure:
+        if campaign is None: raise
+        result.update(classification="source-refused",diagnostic=str(failure)[:4096],minimization=None)
         return result
     finally:
         result["receipts"] = [{"trial": n, "receiptSHA256": digest(destination/f"trial-{n:02d}"/"receipt.json"),
                                "classification": row["classification"], "artifactSHA256": row["artifactSHA256"]} for n, row in enumerate(receipts)]
-        if profile == "composed":
+        if profile == "composed" and campaign is None:
             first_two = [row["classification"] for row in receipts[:2]]
             result["classification"] = ("passed" if first_two == ["passed", "passed"] else
                                         "semantic-failure" if result["reproduced"] else
                                         "semantic-failure-unreproduced" if "semantic-failure" in first_two else "source-refused")
+        if campaign is not None:
+            result["receipts"]=[dict(row, capturedClassification=receipts[n].get("capturedClassification"),
+                                      finalizationRefusal=receipts[n].get("finalizationRefusal"),finalizedDisk=receipts[n].get("finalizedDisk"))
+                                for n,row in enumerate(result["receipts"])]
+            result["trialsUsed"]=len(receipts)
+            result["observedFileBytes"]=sum(max((r.get("finalizedDisk") or {}).get("bytes",0),(r.get("finalizedDisk") or {}).get("allocatedFileBytes",0)) for r in receipts)
+            result["unmeasuredTrials"]=[n for n,r in enumerate(receipts) if r.get("finalizedDisk") is None]
+            result["chargedFileBytes"]=result["observedFileBytes"]+len(result["unmeasuredTrials"])*CAMPAIGN_TRIAL_BYTES
+            try:
+                require(time.time_ns()<deadline and composed_sources(watchdog)==source_hashes and result["chargedFileBytes"]+2*65536<=MAX_TRIALS*MAX_TRIAL_BYTES,
+                        "whole-campaign source/deadline/cumulative finalizer refusal")
+                require(not result["unmeasuredTrials"],"failed final catalog measurement is missing evidence, never zero-cost or NA")
+                require(result["classification"]!="passed" or result["enumerationPassed"] and result["recordedSeedsPassed"]==len(campaign["Recorded"]),
+                        "missing causal/seed adapter or evidence is not a passing campaign")
+            except (OSError,ValueError) as failure:
+                result.update(classification="source-refused",diagnostic=str(failure)[:4096],minimization=None)
         write(destination/"result.json", result)
 
 
