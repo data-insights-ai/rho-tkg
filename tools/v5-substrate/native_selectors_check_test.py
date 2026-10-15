@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Authored finite oracle/controller guards, never captured selector evidence."""
 import copy
+import os
 import tempfile
 from pathlib import Path
 import unittest
@@ -24,6 +25,36 @@ class NativeSelectorsGuards(unittest.TestCase):
         with patch.object(check.scalar,"_scalar_claims",return_value="claims") as helper:
             self.assertEqual(check.claims("owned",end,"spool"),"claims")
             helper.assert_called_once_with("owned",end,"spool")
+
+    def test_owned_artifact_bootstrap_matches_actual_selector_parent(self):
+        class StopBeforeNativeLaunch(Exception):pass
+        with tempfile.TemporaryDirectory() as directory:
+            parent=Path(directory).resolve();output=parent/"cell"
+            binary,watchdog=parent/"native-test",parent/"watchdog.py"
+            binary.write_bytes(b"supplied-binary");watchdog.write_bytes(b"supplied-watchdog")
+            def launch(command,*,env,stdout,stderr,check):
+                engine=output/"engine"
+                self.assertTrue(engine.is_absolute() and engine.is_dir() and not engine.is_symlink())
+                self.assertEqual(list(engine.iterdir()),[])
+                self.assertEqual(env["RHO_GRAPH_WORKLOAD_OUTPUT"],str(engine))
+                self.assertEqual(env["RHO_GRAPH_PROCESS_ARTIFACT"],str(engine))
+                self.assertIn("-test.run=^TestNativeGraphSnapshotSelectorsWorkloadCell$",command)
+                # Actual Go parent creates these files O_EXCL in this pre-owned
+                # directory; no supplied binary/watchdog is executed here.
+                with (engine/"grants.jsonl").open("x") as receipt:receipt.write("owned\n")
+                raise StopBeforeNativeLaunch
+            with patch.object(cell,"executables",return_value=(binary,watchdog)),patch.object(cell.subprocess,"run",side_effect=launch),patch.dict(os.environ,{"RHO_GRAPH_PROCESS_ARTIFACT":"/foreign/inherited"}):
+                with self.assertRaises(StopBeforeNativeLaunch):cell.execute(self.spec,"local",output,binary,watchdog,1800,4096,Policy(1<<20,65536,4096,check.LINE),run="01"*16)
+            self.assertEqual((output/"engine"/"grants.jsonl").read_text(),"owned\n")
+            with self.assertRaises(FileExistsError):cell.owned_output(output)
+            foreign=parent/"foreign";foreign.mkdir();(foreign/"keep").write_text("unchanged")
+            link=parent/"linked";link.symlink_to(foreign,target_is_directory=True)
+            with self.assertRaises(ValueError):cell.owned_output(link)
+            self.assertEqual((foreign/"keep").read_text(),"unchanged")
+            missing=parent/"not-created";dangling=parent/"dangling";dangling.symlink_to(missing,target_is_directory=True)
+            with self.assertRaises(ValueError):cell.owned_output(dangling)
+            self.assertFalse(missing.exists())
+            with self.assertRaises(ValueError):cell.owned_output("relative-artifacts")
 
     def test_strict_dimensions_and_real_transport_boundary(self):
         check.shape(self.spec)

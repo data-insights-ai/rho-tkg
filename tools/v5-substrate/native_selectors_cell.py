@@ -50,6 +50,18 @@ def hash_artifacts(directory,layout):
     return found
 
 
+def owned_output(output):
+    requested=Path(output)
+    require(requested.is_absolute() and requested.name not in ("",".","..") and not requested.is_symlink(),"fresh absolute owned output, never a foreign artifact link")
+    parent=requested.parent.resolve(strict=True)
+    require(parent.is_dir(),"existing artifact parent directory required")
+    destination=parent/requested.name
+    destination.mkdir(mode=0o700,parents=False,exist_ok=False)
+    engine=destination/"engine"
+    engine.mkdir(mode=0o700,parents=False,exist_ok=False)
+    return destination,engine
+
+
 def execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,*,run=None):
     shaped=preflight(spec,transport,seconds,memory_mib);policy.validate()
     require(policy.max_key_bytes==4096 and policy.max_value_bytes==native.LINE,"bounded original/page verifier shape")
@@ -58,10 +70,10 @@ def execute(spec,transport,output,binary,watchdog,seconds,memory_mib,policy,*,ru
     require(type(run) is str and len(run)==32 and bytes.fromhex(run).hex()==run and any(bytes.fromhex(run)),"fresh original run identity")
     deadline=time.time_ns()+seconds*1_000_000_000
     require(0<deadline<(1<<63) and 32*seconds*1_000_000_000<(1<<63),"checked cumulative caller/time arithmetic")
-    output=Path(output).resolve();output.mkdir(mode=0o700,parents=False,exist_ok=False);engine=output/"engine"
+    output,engine=owned_output(output)
     env={**os.environ,"RHO_GRAPH_NATIVE_WORKLOAD":native.FORMAT,"RHO_GRAPH_WORKLOAD_SPEC":json.dumps(spec,separators=(",",":")),"RHO_GRAPH_WORKLOAD_RUN":run,
          "RHO_GRAPH_WORKLOAD_SECONDS":str(seconds),"RHO_GRAPH_WORKLOAD_DEADLINE":str(deadline),"RHO_GRAPH_WORKLOAD_TRANSPORT":json.dumps(shaped,separators=(",",":")),
-         "RHO_GRAPH_WORKLOAD_OUTPUT":str(engine),"GOMAXPROCS":"2","GOMEMLIMIT":"2GiB","GOWORK":"off","GOTOOLCHAIN":"local"}
+         "RHO_GRAPH_WORKLOAD_OUTPUT":str(engine),"RHO_GRAPH_PROCESS_ARTIFACT":str(engine),"GOMAXPROCS":"2","GOMEMLIMIT":"2GiB","GOWORK":"off","GOTOOLCHAIN":"local"}
     for name in ("RHO_GRAPH_COST_SPEC","RHO_GRAPH_COST_BLOCK_SIZE","RHO_GRAPH_EDGE_TRANSPORT_PROFILE","RHO_GRAPH_SELECTORS_PROCESS","RHO_GRAPH_FEED_PROCESS","RHO_GRAPH_EDGE_UNIQUE_PROCESS","RHO_GRAPH_RANGE_PROCESS","RHO_GRAPH_CONDITIONAL_PROCESS","RHO_GRAPH_RETENTION_PROCESS","RHO_GRAPH_DURABLE_COLUMN_PROCESS","RHO_GRAPH_NATIVE_FAULT_PROCESS","RHO_GRAPH_FAULT_FAMILY_PROCESS","RHO_GRAPH_DURABLE_MODEL","RHO_GRAPH_DECISION_FAULT_PROCESS","RHO_GRAPH_LIFECYCLE_PROCESS","RHO_GRAPH_NATIVE_FAULT_FAMILY"):
         env[name]=""
     command=[sys.executable,str(watchdog),"--rss-mib",str(memory_mib),"--seconds",str(seconds),"--deadline-unix-nanos",str(deadline),"--report",str(output/"watchdog.json"),"--",str(binary),"-test.run=^TestNativeGraphSnapshotSelectorsWorkloadCell$","-test.count=1","-test.v",f"-test.timeout={seconds+30}s"]
