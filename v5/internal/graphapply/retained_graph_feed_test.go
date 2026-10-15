@@ -21,12 +21,27 @@ type retainedFeedFaultWire struct {
 	graphPeerWireTransport
 	dropPage, dropAdvance, dropAdmission bool
 	reads                                int
+	unavailable                          bool
+	deadline                             time.Time
+	wrongDeadline                        bool
+	calls, captures, issues              int
 }
 
 func (w *retainedFeedFaultWire) RoundTrip(ctx context.Context, wire []byte) ([]byte, error) {
 	r, err := decodeGraphSourceRequest(wire)
 	if err != nil {
 		return nil, err
+	}
+	w.calls++
+	if r.kind == sourceCertifiedOpen {
+		w.captures++
+	}
+	if !w.deadline.IsZero() && (r.kind == sourceCertifiedOpen || r.kind == sourceCutRead || r.kind == sourceSubmit) {
+		deadline, ok := ctx.Deadline()
+		w.wrongDeadline = w.wrongDeadline || !ok || !deadline.Equal(w.deadline)
+	}
+	if w.unavailable {
+		return nil, replica.ErrUnavailable
 	}
 	page, advance, admission := false, false, false
 	if r.kind == sourceCrossRead && bytes.HasPrefix(r.command, []byte("GFQ\x01")) {
@@ -51,6 +66,9 @@ func (w *retainedFeedFaultWire) RoundTrip(ctx context.Context, wire []byte) ([]b
 				return nil, err
 			}
 			advance = c.phase == pinAdvanceFeed
+			if c.phase == pinIssue {
+				w.issues++
+			}
 		}
 	}
 	response, err := w.graphPeerWireTransport.RoundTrip(ctx, wire)
@@ -74,6 +92,125 @@ func TestRetainedFeedNativeCompletePagesOriginalACKAndSnapshot(t *testing.T) {
 	t.Run("coarse order and incoming bank", retainedFeedCoarseCommitOrderAndIncomingBank)
 	t.Run("move lineage and collected originals", retainedFeedMoveAndCollectedOriginals)
 	t.Run("snapshot operation lifetime and exhaustion", retainedFeedSnapshotAdmission)
+	t.Run("unissued bootstrap recovery and fixed deadline", retainedFeedUnissuedBootstrap)
+}
+
+func retainedFeedUnissuedBootstrap(t *testing.T) {
+	n, p, _, _ := retainedPublisherFromNetwork(t, collectedGraphNetworkWithAgreement(t, nil, retainedFeedSemanticContractID()))
+	policy := retainedFeedGuardPolicy(8)
+	var wires [2]*retainedFeedFaultWire
+	for i, part := range []uint64{3, 8} {
+		wires[i] = &retainedFeedFaultWire{graphPeerWireTransport: p.coordinator.transports[part], deadline: time.Unix(0, policy.deadlineUnixNanos)}
+		p.coordinator.transports[part] = wires[i]
+	}
+	owner, err := beginRetainedFeed(t.Context(), p, n.requestID(), graphReadRequest{mode: graphReadFresh}, 100, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := owner.Original()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, part := range owner.pin.definition.parts {
+		actual, err := owner.pin.invocation.endpoints[part.certificate.scope.partition].retainedPinRead(t.Context(), owner.pin.manifest)
+		if err != nil || actual.issued.index != 0 || actual.result.index != 0 || actual.owner.publication != 0 {
+			t.Fatal("recipe unexpectedly issued/published", actual, err)
+		}
+	}
+	if err = owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Recovery below receives only the saved original, not this closed handle.
+	definition, err := decodeRetainedFeedDefinition(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := decodeGraphPinManifest(definition.manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.parts[0].certificate.image[52] ^= 1
+	changedManifest, err := encodeGraphPinManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := definition
+	changed.manifest = changedManifest
+	changedWire, err := encodeRetainedFeedDefinition(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong, err := resumeRetainedFeed(t.Context(), p, changedWire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := [2]uint64{n.hosts[0][0].driver.Applied(), n.hosts[1][0].driver.Applied()}
+	if _, err = wrong.Publish(t.Context()); !errors.Is(err, errInvalid) {
+		t.Fatal("copied changed certificate became issuance authority", err)
+	}
+	if n.hosts[0][0].driver.Applied() != before[0] || n.hosts[1][0].driver.Applied() != before[1] || wires[0].issues != 0 {
+		t.Fatal("invalid recipe installed native intent/effects")
+	}
+	recovered, err := resumeRetainedFeed(t.Context(), p, original)
+	if err != nil || recovered.pin.born || !bytes.Equal(recovered.wire, original) {
+		t.Fatal("recipe alone authenticated or changed an original", err)
+	}
+	wires[1].unavailable = true
+	if _, err = recovered.Publish(t.Context()); !errors.Is(err, replica.ErrUnavailable) {
+		t.Fatal("missing keeper became absence/success", err)
+	}
+	wires[1].unavailable = false
+	if n.hosts[0][0].driver.Applied() != before[0] || n.hosts[1][0].driver.Applied() != before[1] || wires[0].issues != 0 {
+		t.Fatal("incomplete At installed native intent")
+	}
+	captures := [2]int{wires[0].captures, wires[1].captures}
+	token, err := recovered.Publish(t.Context())
+	if err != nil || !bytes.Equal(token.definition, original) || len(token.pin.publications) != 2 {
+		t.Fatal("all-Issue-absent original did not genuinely recover", err)
+	}
+	if wires[0].issues != 1 || wires[0].captures <= captures[0] || wires[1].captures <= captures[1] || wires[0].wrongDeadline || wires[1].wrongDeadline {
+		t.Fatal("bootstrap omitted genuine At or escaped saved deadline")
+	}
+	read, err := recovered.OpenSnapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCertifiedProjection(t, certifiedView(t, read), 1, true, nil)
+	if err = read.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// These are still inert recipes. Expired or unsupported policy refuses before
+	// a native exchange; recovery never replaces the original deadline or quota.
+	for _, limited := range []bool{false, true} {
+		refused := definition
+		want := context.DeadlineExceeded
+		if limited {
+			refused.policy.operationRows = p.coordinator.host.machine.limits.sourceRows + 1
+			want = errLimit
+		} else {
+			refused.policy.deadlineUnixNanos = time.Now().Add(-time.Hour).UnixNano()
+		}
+		wire, err := encodeRetainedFeedDefinition(refused)
+		if err != nil {
+			t.Fatal(err)
+		}
+		calls := wires[0].calls + wires[1].calls
+		if _, err = resumeRetainedFeed(t.Context(), p, wire); !errors.Is(err, want) || wires[0].calls+wires[1].calls != calls {
+			t.Fatal("bootstrap admission performed native work", limited, err)
+		}
+		if _, err = beginRetainedFeed(t.Context(), p, n.requestID(), graphReadRequest{mode: graphReadFresh}, 100, refused.policy); !errors.Is(err, want) || wires[0].calls+wires[1].calls != calls {
+			t.Fatal("initial capture escaped bootstrap admission", limited, err)
+		}
+	}
+	// Terminal cleanup keeps its independently funded lane, even when the
+	// caller's bootstrap lifetime is exhausted. No Page arena is activated.
+	recovered.definition.policy.deadlineUnixNanos = time.Now().Add(-time.Hour).UnixNano()
+	if _, err = recovered.Publish(t.Context()); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("live handle renewed bootstrap deadline", err)
+	}
+	if err = recovered.Release(t.Context()); err != nil {
+		t.Fatal("deadline stranded funded terminal cleanup", err)
+	}
 }
 
 func retainedFeedGuardPolicy(pages uint64) retainedFeedPolicy {

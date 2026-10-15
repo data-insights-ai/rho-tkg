@@ -42,6 +42,28 @@ type retainedFeedDelivery struct {
 	replay   bool
 }
 
+// Bootstrap reads and native issuance share the saved API deadline. It is not
+// replicated lease authority, and it never constrains already-funded terminal
+// cleanup. Resume does not renew this lifetime or authenticate recipe bytes.
+func retainedFeedBootstrapContext(ctx context.Context, p *retainedPinPublisher, policy retainedFeedPolicy) (context.Context, context.CancelFunc, error) {
+	if ctx == nil || !p.valid() || !policy.valid() {
+		return nil, nil, errInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	l := p.coordinator.host.machine.limits
+	if !policy.fits(l) || policy.pageBytes > p.coordinator.host.machine.store.ApplicationLimits().MaxValueBytes {
+		return nil, nil, errLimit
+	}
+	deadline := time.Unix(0, policy.deadlineUnixNanos)
+	if !time.Now().Before(deadline) {
+		return nil, nil, context.DeadlineExceeded
+	}
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	return ctx, cancel, nil
+}
+
 // Begin captures the snapshot and allocates its feed coordinates under ONE pin.
 // Persist Original before Publish if the embedding needs producer recovery.
 // It does not claim publication/issuance merely because this recipe exists.
@@ -49,13 +71,11 @@ func beginRetainedFeed(ctx context.Context, p *retainedPinPublisher, id requestI
 	if p == nil || !p.valid() || p.coordinator.host.machine.SemanticContractID() != retainedFeedSemanticContractID() || !policy.valid() {
 		return nil, errInvalid
 	}
-	if policy.pageBytes > p.coordinator.host.machine.store.ApplicationLimits().MaxValueBytes || policy.pageBytes+2*graphPinManifestBytes+4096 > p.coordinator.host.machine.limits.commandBytes {
-		return nil, errLimit
+	ctx, cancel, err := retainedFeedBootstrapContext(ctx, p, policy)
+	if err != nil {
+		return nil, err
 	}
-	l := p.coordinator.host.machine.limits
-	if policy.operationRows > l.sourceRows || policy.operationBytes > l.sourceBytes || policy.operationOutput > l.outputBytes || policy.deadlineUnixNanos <= time.Now().UnixNano() {
-		return nil, errLimit
-	}
+	defer cancel()
 	pin, err := p.Begin(ctx, id, request, expires)
 	if err != nil {
 		return nil, err
@@ -81,6 +101,11 @@ func resumeRetainedFeed(ctx context.Context, p *retainedPinPublisher, original [
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel, err := retainedFeedBootstrapContext(ctx, p, d.policy)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	pin, err := p.Resume(ctx, d.manifest)
 	if err != nil {
 		return nil, err
@@ -236,6 +261,13 @@ func (o *retainedFeedOwner) Publish(ctx context.Context) (retainedFeedToken, err
 	if o.closed {
 		return retainedFeedToken{}, errRetainedFeedClosed
 	}
+	ctx, cancel, err := retainedFeedBootstrapContext(ctx, o.publisher, o.definition.policy)
+	if err != nil {
+		return retainedFeedToken{}, err
+	}
+	defer cancel()
+	// An unissued recovered request uses Issue's genuine full At capture on
+	// this SAME invocation before its first native intent can be installed.
 	if err := o.pin.Issue(ctx, o.publisher); err != nil {
 		return retainedFeedToken{}, err
 	}
@@ -269,6 +301,11 @@ func openRetainedFeed(ctx context.Context, p *retainedPinPublisher, token retain
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel, err := retainedFeedBootstrapContext(ctx, p, o.definition.policy)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	if !bytes.Equal(token.pin.manifest, o.definition.manifest) || len(token.pin.publications) != len(o.pin.definition.parts) {
 		return nil, errInvalid
 	}
