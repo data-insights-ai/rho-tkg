@@ -1068,9 +1068,18 @@ and acknowledged before/after values. Actual pre/post read/write groups and
 processing authority remain engine-specific. The owned pair separately admits
 native describe/import/undo/page grants and FDB catalog/census grants before
 effects. All five frozen blobs and current parents were verified with whitespace
-checks only; no Python import or execution occurred. The real native Cost12
-module, matrix/CI handoffs and integrated qualification remain required; the
-registry refuses an absent driver rather than enabling a nominal pair.
+checks only; no Python import or execution occurred. The native Cost12 driver
+and explicit matrix/CI routes are source-integrated at `0ea16cc2`. Real
+Recipient/Cursor issuance, BOTH HOME moves, held-C reads, original-result
+lookups, rolling-ACK collection, client replacement and cohort reopen share one
+finite admission. All 23 source blobs, 16 full current parents and 874 frozen
+input hashes were independently verified. The independent Python controller/
+oracle and Recovery4 state-bootstrap helper remain separate integration
+dependencies. The follow-up at `d70dee0a` distinguishes useful business pages
+from move-lineage pages when selecting the unread update across collection and
+client replacement; lineage is still emitted and acknowledged. Both complete
+parent blobs and the two final files were verified. Integrated qualification
+remains open. No compilation, workload, checker, test or capacity run occurred.
 
 The native selector family is source-integrated at `330aaf89`: fourteen actual
 Fresh/Stable/After/At, scoped-refusal and same-token reopen observations join

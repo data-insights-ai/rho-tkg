@@ -34,6 +34,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a genuine abort. Immutable per-phase originals preserve retries after abort
   and reopen. Snapshot validation folds undo records incrementally, and compact
   baseline validation uses retained reference bytes and native page counts.
+  Feed and native-column replay authenticate immutable phase originals after
+  movement finishes, including retries below reclaimed raw-outcome floors.
   New guards remain unexecuted and large-transfer capacity remains unqualified.
   Logical-group retirement, retention/GC, broader fault evidence and full V2
   remain open.
