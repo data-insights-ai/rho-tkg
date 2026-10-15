@@ -497,14 +497,14 @@ FDB has source drivers for all eight families: create/update, contention,
 selectors, snapshot-to-feed, cross-edge uniqueness, immutable columns,
 late correction and ownership transfer;
 their fresh owned transport adapters cover
-local/1/20/100ms. Native has contention, cross-edge, snapshot-to-feed and selector
+local/1/20/100ms. Native has create/update, contention, cross-edge, snapshot-to-feed and selector
 source drivers across local/1/20/100ms, with local paired comparisons. Unsupported semantics
 or transport refuse before effects.
 Each family/transport matrix contains 360 fresh cells; the complete eight-family,
 four-transport matrix contains 11,520 cells per engine.
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
-No new cell, guard or runtime gate has run. Native create/update,
-immutable-columns, late-correction and transfer/retained-pins drivers remain
+No new cell, guard or runtime gate has run. Native immutable-columns,
+late-correction and transfer/retained-pins drivers remain
 implementation work. FDB feed accounting still needs create/update phase wall
 times covering the seed and complete worker drain, plus complete-operation
 percentiles joined to actual originals. Existing scan and feed-call durations
@@ -521,7 +521,17 @@ paired original joins authenticate the complete business footprint, while
 phase wall surrounds the seed plus real worker drain. Separate complete-operation
 samples supply bounded external-spool percentiles. Fixed fixture IDs claim no
 allocator issuance; old/current/raw/CDC and native/cache column observations
-remain required. Native/paired execution for this family still refuses.
+remain required. The native counterpart is source-integrated at `4937fdcc`:
+genuine local Submit at 0%, cross Run at mixed/cross percentages, all 1/8/32
+callers and native transport profiles, complete phase walls and independently
+joined operation percentiles. Each atomic update performs Set6 followed by
+same-life Present correction to check existing relation and endpoint coverage;
+ordinary Set keeps SEM06. The additional presence revision is charged in the
+3+4N row census. Updates read remote endpoints but write only their owner;
+report logical read/write and protocol participants separately. Five actual
+old/current/reopened observations, raw originals, installed grants and native/cache
+columns precede local paired answer comparison. Nonlocal paired execution still
+refuses. The authored guards and workload have not been compiled or executed.
 The independent reference validation remains historical at its recorded source
 digests; refresh it during the deferred correctness stage after this clarification.
 The FDB transfer prerequisite is source-integrated at `d13cc3eb`: a fresh
@@ -878,12 +888,12 @@ uses genuine planned checks while preserving ordinary Set. Count actual read/wri
 participants, not empty cross-protocol manifests or endpoint placement, before
 accepting any affected scalar cost row.
 
-Current worker lanes: Sol 6.1/high for exact family cut decoding, then the native
-retained-only feed workload/GC adapter and remaining native workload families;
+Current worker lanes: Sol 6.1/high for the native retained-only feed workload/GC
+adapter and remaining native workload families;
 Sol 6.1/high for the finite applicable protocol/storage/message/leader/conflict
 composition registry and driver;
-Sol 6.1/high for the native create/update counterpart and source-grounded
-FDB accounting follow-ups. These packages
+Sol 6.1/high for source-grounded FDB accounting follow-ups, then the remaining
+native workload families. These packages
 are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
