@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "scope": "Focused integrated follow-up; not full P06/state/sender family, V2, measurement or release acceptance.",
+  "source_commit": "659bdad5a3f09fd0f9f0821f2cbee6c8c166b4fd",
+  "toolchain": "Go 1.26.9",
+  "binary_sha256": "6da4b28fa8ccaea9a3e315021ad96480345b432ac01d7b4c3a90f84c4a8fa2af",
+  "command": [
+    "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-659bdad5.test",
+    "-test.v",
+    "-test.count=1",
+    "-test.timeout=1140s",
+    "-test.run=^(TestCoordinatorFaultWireKeepsCutSubmitsSeparateFromCrossFaults|TestNativeConjunctionSameCoordinatorRetainsGenuineUnknownRegisterAndStreams|TestNativeConjunctionRetainedMoveKeepsSameIdleOriginalAndPublisher|TestNativeP06ReplacementUsesUnusedRemoteServiceForExactOldCut|TestNativeSnapshotSenderLossRequiresExactReapedProcessAndApplicableBoundary|TestNativeP06ExistingTransitionsWithActualLeaderAndMessagePrograms|TestNativeProtocolPooledStateLeaderAndMessagePrograms|TestNativeSnapshotSenderLossDuringImportKeepsWholeOriginalAndOldCut)$/^(rotated|before|after)$/^reorder$/^(p06-co3-committrue-decide-k1-before|move-phase1-p3-page0-kind1-before)$"
+  ],
+  "working_directory": "v5/internal/graphapply",
+  "results": {
+    "p06": "PASS: rotated/reorder/p06-co3-committrue-decide-k1-before; actual OS children and complete independent history/cut oracle",
+    "snapshot_sender": "PASS: before and after first nonfinal Append; actual sender death/restart and full independent history/cut oracle",
+    "go_guards_passed": [
+      "TestCoordinatorFaultWireKeepsCutSubmitsSeparateFromCrossFaults",
+      "TestNativeSnapshotSenderLossRequiresExactReapedProcessAndApplicableBoundary",
+      "TestNativeConjunctionRetainedMoveKeepsSameIdleOriginalAndPublisher",
+      "TestNativeP06ReplacementUsesUnusedRemoteServiceForExactOldCut",
+      "TestNativeConjunctionSameCoordinatorRetainsGenuineUnknownRegisterAndStreams"
+    ],
+    "state": "FAIL: rotated/reorder/move-phase1-p3-page0-kind1-before; feed publish retains remote tag6 source-unavailable/pending until original300s deadline; before range-move fault injection",
+    "budget_regressions": "PASS: collected/pooled initialization plus existing native-reserved, decoder-owned and pre-clone output refusal cases",
+    "python_guards": {
+      "predecessor": 4,
+      "p06": 4,
+      "snapshot_sender": 15
+    }
+  },
+  "cleanup": {
+    "all_owned_exited": true,
+    "forced_cleanup": false,
+    "state_child_clean_exits": 4,
+    "state_child_incarnations": 6,
+    "note": "State test reaped all six children, but reported two broken-pipe/nonclean exits; do not count as successful family cleanup."
+  },
+  "remaining": "Resolve demonstrated pooled-state publication failure and concrete state fixture lifetime/factory/wait defects, then execute existing full correctness scope, comparison and final coordinated gates.",
+  "files_sha256": {
+    "integrated-659bdad5.log": "7332d4373c6d5b6d16c2a936224a1e36f1cdcda0ddf5f3aa9dd32eddf365962a",
+    "integrated-659bdad5.json": "4fccaed1e3052c7bba3e60b8f1595c0f7197c701c75c31ce429cf83dd0a22c6c",
+    "budget-regression-root.log": "331ff0ec2a0de7d95ceca2267e54223f59d17d89df9aa0689fd448baa2b6d203",
+    "budget-regression-root.json": "9b91bdbeb81edf71ef6ead83d5ef324229cfb390e5772eecda32143b7917856b",
+    "predecessor-guard-fixed.log": "56e03afda220e7ba78bbcecf9a2e53a0149cfc3e311fa10bbd01b25e8e5ba671",
+    "p06-guard-fixed.log": "56e03afda220e7ba78bbcecf9a2e53a0149cfc3e311fa10bbd01b25e8e5ba671",
+    "sender-guard-publication-fixed.log": "f70c5e12f81e6ca2a27c5a58d268b60f9b9764c638cc0c6fbef9bce3d25bd541"
+  }
+}

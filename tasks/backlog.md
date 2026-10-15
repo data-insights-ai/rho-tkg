@@ -1224,11 +1224,19 @@ records the initial compiler failures and corrections. All twelve v5 packages
 compile at `8daa85b6`; the compile-only command runs no test cases. Root execution
 passes 24 compact Python guards, three Go guards, the new state-bootstrap guard,
 the corrected CI selection case and the two corrected signature callers.
-The selected P06/state/sender process cases still fail; their exact logs and
-cleanup observations are retained. The parent/child state agreement mismatch
-is corrected at `db9da14b`, and its direct guard passes, but the elected-layout
-case now reaches a stopped-child Step refusal. No process-family acceptance,
-measurement, engine selection or V2 closure follows from this checkpoint.
+Those initial process failures and cleanup observations remain historical.
+The [integrated follow-up at `659bdad5`](evidence/v2-integrated-checkpoint-20261016/followup-659bdad5.json)
+passes the selected rotated/reordered P06 decision case and both actual
+snapshot-sender interruption cases, including their complete independent
+history/cut oracles. Five direct Go guards and the collected/pooled production
+budget regressions pass. The pooled-state case still fails during feed
+publication: source-unavailable/pending at the elected remote leader persists
+until its original 300-second deadline, before the selected move interruption.
+All owned processes exit without forced cleanup; that state case nevertheless
+reports two nonclean child exits and is not accepted. Concrete shared-client
+context, pooled move-factory and error-wait defects are also under correction.
+No full process-family acceptance, measurement, engine selection or V2 closure
+follows from these focused checkpoints.
 FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing
 authority; these prefixes do not establish physical server placement. Source
