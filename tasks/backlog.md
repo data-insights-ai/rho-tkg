@@ -744,6 +744,16 @@ and after streams bind nine original effects, six retained anchors and five
 unchanged COMMIT originals/CDC groups. This finite package does not cover ABORT,
 server loss or power loss. Remaining directed-message/workload schedules and
 execution stay open; this does not close E.
+The role/domain and retained-owner composition harness is source-integrated at
+`092fa478`: sixty fixed cases join six actual role/domain faults to five existing
+publisher/source-owner/partial-collector seams in both coordinator orientations.
+All targeted faults precede the same SDK caller's reap; same-volume healing
+precedes genuine replacement. The complete unchanged raw/history/CDC/cache/GC
+finalizers still validate original identities, generations, owners and cursors.
+Source-held and column-held fixtures remain separate namespaces. Five frozen
+blobs, both complete current parents and 1,266 source inputs were verified;
+no controller, test or fault run executed. This completes additional harness
+source, not database functionality, inside-outage progress or E acceptance.
 
 The paired native cost/fault driver composes caller loss before Decide,
 committed Decide reply loss and one HOME leader SIGKILL with a healthy quorum,
@@ -1039,8 +1049,8 @@ uses genuine planned checks while preserving ordinary Set. Count actual read/wri
 participants, not empty cross-protocol manifests or endpoint placement, before
 accepting any affected scalar cost row.
 
-Current worker lanes: Sol 6.1/high for remaining equivalent FDB fault
-compositions and the eventual actual transfer pair; Sol 6.1/high for the finite
+Current worker lanes: Sol 6.1/high for read-only scoping of the remaining native
+P07–P09 transition adapters and the eventual actual transfer pair; Sol 6.1/high for the finite
 applicable protocol/storage/message/leader/conflict composition registry and
 driver; Sol 6.1/high for bounded shared graph-transfer staging and the remaining
 actual transfer workload. These packages are in
