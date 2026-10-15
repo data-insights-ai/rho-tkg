@@ -1171,8 +1171,13 @@ cached predecessor retransmission or already-emitted Tick packets precede the
 original Ready loss; no selected-command emission is fabricated. The complete
 existing semantic/original/CDC/old-cut oracle precedes the independent companion
 joins. All five frozen files, the complete current owner parent and pinned
-format/whitespace were checked. P07–P09 leader/message conjunctions remain
-in implementation; their pooled-state capture/checker is integrated above.
+format/whitespace were checked. P07–P09 state leader/message composition is
+source-integrated at `e007efbe`: the 131 non-allocation recipes retain their
+complete state/original/CDC/GC oracle under two actual elected layouts and four
+message modes. Accepted P08 issuance evidence remains separate. GC uses a
+genuine committed K predecessor, and publication uses its actual native local
+proposal; neither invents a collector packet. The checker retains the original
+deadline. All seven source hashes and complete existing parents were checked.
 No compilation, execution or B/C/D acceptance is claimed. The bounded composed
 exploration/replay controller is source-integrated at `73d18533`: all six real
 causal recipes precede one or two recorded seeds and fresh exact replays under
@@ -1191,18 +1196,30 @@ cleanup refusal cannot pass. Source review and whitespace checks passed;
 guards and sustained execution remain unexecuted. Fresh-cohort repetition does
 not establish long-lived-store endurance or full D acceptance.
 
-Current worker lanes: Sol 6.1/high for one read-only V2 source-closure inventory;
-Sol 6.1/high for P07–P09 leader/message composition against the frozen state API;
-Sol 6.1/high for actual sender/leader loss during in-flight snapshot/import.
-Existing receiver-loss fixtures do not establish sender loss. Actual leader1
-publication before/after remains covered by its existing source parent.
+Actual snapshot-sender loss is source-integrated at `2203f916`: two cases kill
+the captured sender process before or after the first nonfinal Append, after
+the receiver has acknowledged Begin. The partial import leaves the old active
+graph intact; actual Close, same-directory sender restart, stale send-handle
+refusal and complete retry/activation precede the same original/history/CDC
+oracle. Leader attribution uses actual leader-only ReadIndex calls rather than
+the hard-state vote field. All seven source hashes and six complete existing
+parents were checked with pinned formatting and whitespace. Neither package
+has compiled or executed yet.
+
+The finite source-closure audit found no additional package beyond these
+integrated state/sender changes and their final CI associations. One Sol
+6.1/high lane owns that final two-file association update; the other lanes are
+available for concrete compiler/runtime corrections. Source integration ends
+after that update, followed by one compiled checkpoint, focused correctness
+qualification, measurements and the required engine decision. New campaigns
+are not required merely because the integrated source remains unexecuted.
 CI selection/dependency associations are source-integrated at `4c336669` for
 the integrated protocol core, leader/message program, Ready companion and
 pooled-state parents/guards, including their private Go attachments and
 transitive Python/data dependencies. Existing workflow/run budgets are unchanged.
 The two selector files and complete current parents passed source/hash and
-whitespace review; no selector/test/CI execution ran. Forthcoming P06,
-state-program and snapshot-loss parents still need their exact associations.
+whitespace review; no selector/test/CI execution ran. The integrated P06,
+state-program and snapshot-loss parents still need their final associations.
 FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing
 authority; these prefixes do not establish physical server placement. Source
