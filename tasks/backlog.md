@@ -507,6 +507,13 @@ family driver, and native partition-local,
 immutable-columns, late-correction and transfer/retained-pins
 drivers remain implementation work. Full matrix qualification and the engine
 decision remain open.
+The create/update family keeps a strict-local 0% baseline and explicitly named
+mixed/cross 10/50/100% variants, as clarified in the substrate reference.
+Nonzero rows must join actual multi-participant business read/write footprints;
+remote client/processing placement or coordination metadata cannot supply that
+percentage. Report their throughput separately from the partition-local baseline.
+The independent reference validation remains historical at its recorded source
+digests; refresh it during the deferred correctness stage after this clarification.
 The FDB transfer prerequisite is source-integrated at `d13cc3eb`: a fresh
 owner-catalog namespace maps stable logical buckets to processing owners and
 monotone epochs. Native execution checks current authority before replay and
