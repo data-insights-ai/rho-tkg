@@ -129,9 +129,9 @@ def zero_event(e):
     require(all(type(e[k]) is int and e[k] == 0 for k in EVENT - {"Selection", "Work", "Synced", "BeforeMetadataSHA256", "MetadataSHA256", "BatchPayloadSHA256"}), "unused state event")
 
 
-def receipt(r, run, deadline):
+def receipt(r, run, deadline, member=3):
     require(type(r) is dict and set(r) == RECEIPT and type(r["Version"]) is int and r["Version"] == 1 and r["Profile"] == PROFILE, "native state owner grammar")
-    require(fixed(r["Run"], 16, True) == run and integer(r["Member"], 3, 3) and integer(r["PID"], minimum=1), "genuine state process/run")
+    require(type(member) is int and 1 <= member <= 6 and fixed(r["Run"], 16, True) == run and integer(r["Member"], member, member) and integer(r["PID"], minimum=1), "genuine state process/run")
     require(fixed(r["Cookie"], 16, True) == fixed(r["Control"]["Cookie"], 16, True) and integer(r["Sequence"], 16, 1) == r["Control"]["Sequence"], "state cookie/sequence")
     integer(r["DeadlineUnixNanos"], deadline, 1)
     for k, cap in (("Attempts", 2048), ("WorkBytes", 1 << 42), ("WorkEntries", 1 << 20), ("ObservedOutput", 8 << 20), ("SerializedOutput", 4 << 20)):
@@ -140,9 +140,9 @@ def receipt(r, run, deadline):
     require(type(r["Events"]) is list and len(r["Events"]) == 2, "fixed state event ownership")
 
 
-def pair(arm, r, run, deadline):
+def pair(arm, r, run, deadline, member=3):
     for value in (arm, r):
-        receipt(value, run, deadline)
+        receipt(value, run, deadline, member)
     for k in ("Cookie", "Run", "Member", "PID", "Sequence", "Control", "DeadlineUnixNanos"):
         require(arm[k] == r[k], "native state owner changed")
     require(arm["State"] == "armed" and type(arm["Count"]) is int and arm["Count"] == 0, "arm claimed an actual native event")

@@ -86,7 +86,8 @@ class Planning(unittest.TestCase):
             with self.subTest(paths=paths), patch.object(CI.subprocess,"run") as run:
                 CI.cdc(paths)
                 self.assertEqual([call.args[0] for call in run.call_args_list],
-                                 [[sys.executable,"-B","tools/v5-substrate/native_transition_state_check_test.py"],
+                                 [[sys.executable,"-B","tools/v5-substrate/native_transition_publication_check_test.py"],
+                                  [sys.executable,"-B","tools/v5-substrate/native_transition_state_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_transition_batch_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_fault_schedule_check_test.py"],
                                   [sys.executable,"-B","tools/v5-substrate/native_fault_family_check_test.py"],

@@ -66,6 +66,8 @@ COST_PARENTS = [
     "TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation",
 ]
 FAULT_PARENTS = [
+    "TestNativePublicationSyncBoundariesKeepActualCompactionOriginalAndLocalOldCut",
+    "TestNativePublicationStorageDiagnosticRefusesInventedOrOverflowedBoundaries",
     "TestNativeStateOwnerMatchesWholeNativeIdentityAndSpendsBeforeObservation",
     "TestNativeStateImportSyncBoundariesRecoverGenuineSourceAndRetainedCut",
     "TestNativeScopeReadDoorPreservesLegacyBytesAndRejectsForeignScopeShapes",
@@ -151,6 +153,7 @@ WORKLOAD_INPUTS = {"tools/v5-substrate/native_contention_check.py", "tools/v5-su
                    "tools/v5-substrate/native_workload_cell.py", "tools/v5-substrate/native_workload_cell_test.py",
                    "tools/v5-substrate/workload_matrix.py", "tools/v5-substrate/workload_matrix_test.py"}
 FAULT_INPUTS = {"tools/v5-substrate/native_fault_schedule_check.py", "tools/v5-substrate/native_fault_schedule_check_test.py",
+                "tools/v5-substrate/native_transition_publication_check.py", "tools/v5-substrate/native_transition_publication_check_test.py",
                 "tools/v5-substrate/native_transition_state_check.py", "tools/v5-substrate/native_transition_state_check_test.py",
                 "tools/v5-substrate/native_transition_scope_check.py", "tools/v5-substrate/native_transition_scope_check_test.py",
                 "tools/v5-substrate/native_transition_composed_check.py", "tools/v5-substrate/native_transition_composed_check_test.py",
@@ -543,6 +546,7 @@ def cdc(paths):
         if {"tools/v5-substrate/compare-cost-cdc.py", "tools/v5-substrate/fdb_retention_check.py", "tools/v5-substrate/fdb_retention_check_test.py"}.intersection(paths):
             subprocess.run([sys.executable, "-B", "tools/v5-substrate/fdb_retention_check_test.py"], cwd=ROOT, check=True)
     if FAULT_INPUTS.intersection(paths):
+        subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transition_publication_check_test.py"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transition_state_check_test.py"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_transition_batch_check_test.py"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-B", "tools/v5-substrate/native_fault_schedule_check_test.py"], cwd=ROOT, check=True)
