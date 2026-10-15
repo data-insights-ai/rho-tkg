@@ -507,6 +507,18 @@ Each selected-family matrix contains 360 fresh cells;
 No new cell, guard or runtime gate has run. The two remaining FDB family drivers
 (partition-local and transfer/retained-pins), native
 parity, full matrix and engine decision remain open.
+The FDB transfer prerequisite is source-integrated at `d13cc3eb`: a fresh
+owner-catalog namespace maps stable logical buckets to processing owners and
+monotone epochs. Native execution checks current authority before replay and
+the complete captured route before new effects; successor recovery preserves
+the immutable request body. Move reservation also requires the caller's captured
+epoch, fencing delayed A1 requests after A1-to-B2-to-A3 ownership reuse. Atomic
+freeze/activation retain the genuine source owner and metadata; funded cancel
+releases that same owner. The freeze is conservative across the whole graph.
+The finite one-writer core and its authored SDK guards are unexecuted. Full
+handoff census, allocation lineage, target process replacement, retained feed/GC
+and matrix-family wiring remain implementation work; stable shared-KV keys do
+not establish physical replica transfer.
 The FDB cross-edge family is source-integrated at `78f11fc8`: distinct contenders
 share one scalar uniqueness claim, endpoint close/reopen masks the old life,
 and closing/replaying the old canonical relation preserves the replacement claim.
