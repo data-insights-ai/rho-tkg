@@ -71,6 +71,9 @@ class SelectorOracleGuards(unittest.TestCase):
 
     def test_native_numeric_inventory_scope_and_incomplete_proof(self):
         end, _, _, _, _ = fixture()
+        with self.assertRaises(ValueError):
+            check.raw.transport.family_record({}, {**end["Spec"], "version": 2}, end["Config"])
+        self.assertEqual(check.operation({**end["Spec"], "version": 2}, fixture()[1]["Operation"]), (1, "setup", 0))
         for round_ in (9, 10, (1 << 64) - 1):
             cut = end["Old"] | {"Round": round_}
             body = check.go_json(cut)

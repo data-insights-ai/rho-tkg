@@ -540,13 +540,16 @@ def views(directory,end,spool):
 def verify(directory,spool_directory,policy=None, *, shared_spool=None):
     directory=Path(directory)
     end=decoded((directory/"fdb-workload-result.json").read_bytes().rstrip(b"\n"))
-    fields(end,"version format spec Config Binding Initial Old Final Attempts Aborted Committed Completed OldMetadata FinalMetadata Sources Columns OldHeldRows Views AttemptPayloadSHA256 LatencyPayloadSHA256 LogicalOperations SetupNanos BusinessNanos DiagnosticNanos TotalNanos")
+    version=integer(end["version"],1,2)
+    fields(end,"version format spec Config Binding Initial Old Final Attempts Aborted Committed Completed OldMetadata FinalMetadata Sources Columns OldHeldRows Views AttemptPayloadSHA256 LatencyPayloadSHA256 LogicalOperations SetupNanos BusinessNanos DiagnosticNanos TotalNanos" + (" Transport" if version == 2 else ""))
     p=end["spec"];fields(p,"version family facts crossPercent writers layout")
-    require(end["version"]==p["version"]==1 and end["format"]==FORMAT and p["family"]==FAMILY and p["writers"] in (1,8,32) and p["crossPercent"] in (0,10,50,100) and p["layout"] in ("kv","columns") and integer(p["facts"],20,1_000_000)%20==0,"fresh family result/spec")
+    require(end["version"]==p["version"] and end["format"]==FORMAT.replace("-v1",f"-v{version}") and p["family"]==FAMILY and p["writers"] in (1,8,32) and p["crossPercent"] in (0,10,50,100) and p["layout"] in ("kv","columns") and integer(p["facts"],20,1_000_000)%20==0,"fresh family result/spec")
     c=end["Config"];require(c["Cost"]=={**{k:p[k] for k in ("facts","crossPercent","writers")},"version":4},"fresh immutable profile")
     n=p["facts"]
     binding={"Version":1,"Family":FAMILY,"Config":c,"Window":32,"MaxAttempts":64,"Policy":"effective relationship p:UniqueScalar; exact endpoint lives; distinct contenders; retained canonical old relations and originals; unknown never authorizes replan"}
-    raw.raw_record(end["Binding"],raw.key(c,0,"workload-edge-unique-v1","binding"),go_json(binding))
+    if version==2:
+        binding.update(Version=2,Admission=raw.transport.family_record(end["Transport"],p,c))
+    raw.raw_record(end["Binding"],raw.key(c,0,f"workload-edge-unique-v{version}","binding"),go_json(binding))
     writer_census(p, end["Completed"])
     for name in ("OldMetadata", "FinalMetadata"):
         require(len(end[name]) == 2, "both native metadata participants")
@@ -561,8 +564,9 @@ def verify(directory,spool_directory,policy=None, *, shared_spool=None):
     require(len(end["OldHeldRows"]) == 2 and all(type(v) is int and v >= 0 for v in end["OldHeldRows"])
             and sum(end["OldHeldRows"]) == 3+4*n, "complete held old-cut source EOF")
     require(c["Limits"]=={"Bytes":(64<<20)+n*(256<<10)+(7+258*n)*2048,"Transactions":7+258*n,"Versions":7+11*n,"Certificates":1024},"full finite admitted schedule")
-    run=c["Graph"].removeprefix("graph-workload-edge-unique-v1-"+p["layout"]+"-")
-    require(len(run)==32 and bytes.fromhex(run).hex()==run and bytes.fromhex(run)!=bytes(16),"fresh nonzero run binding")
+    graph_prefix=f"graph-workload-edge-unique-v{version}-"+p["layout"]+"-"
+    run=c["Graph"].removeprefix(graph_prefix)
+    require(c["Graph"].startswith(graph_prefix) and len(run)==32 and bytes.fromhex(run).hex()==run and bytes.fromhex(run)!=bytes(16),"fresh nonzero run binding")
     with (Spool(spool_directory,policy or Policy(1<<30,8<<20,4096,512<<10)) if shared_spool is None else nullcontext(shared_spool)) as spool:
         digest,header,footer,attempts,commits,aborts,replays=hashlib.sha256(),False,False,0,0,0,0
         for value,line in raw.lines(directory/"fdb-workload-attempts.jsonl",7+259*n+3):
@@ -604,4 +608,9 @@ def verify(directory,spool_directory,policy=None, *, shared_spool=None):
                 actual = current(spool, 0, edge_key("edge", e), namespace)
                 require(actual is not None and not actual["Deleted"] and actual["Value"] == fact+5, "actual paired effective old/current scalar")
                 answers.update(u64(fact)+u64(e["Target"]["Node"])+u64(e["Target"]["Life"])+struct.pack(">q", actual["Value"]))
-        return {"spec":p,"runGraph":c["Graph"],"commits":commits,"aborts":aborts,"sourceVersions":11*n+7,"logicalAnswersSHA256":answers.hexdigest(),"timing":timing,"scope":"one real family cell; matrix/native parity/transport/capacity remain separately qualified"}
+        result = {"spec":p,"runGraph":c["Graph"],"commits":commits,"aborts":aborts,"sourceVersions":11*n+7,"logicalAnswersSHA256":answers.hexdigest(),"timing":timing,"scope":"one real family cell; matrix/native parity/transport/capacity remain separately qualified"}
+        transport_proof=raw.transport.verify(directory,end["Transport"]["Policy"],spool) if version==2 else None
+        if transport_proof is not None:
+            transport_proof["nativeRetainedBindingBytes"]=len(blob(end["Transport"]["Record"]["Key"]))+len(blob(end["Transport"]["Record"]["Value"]))
+            result["transport"]=transport_proof
+        return result

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/apple/foundationdb/bindings/go/src/fdb"
@@ -69,7 +71,7 @@ func graphFeedFormatFor(spec graphFeedWorkloadSpec) string {
 }
 
 func graphTransportCausalMinimum(spec graphFeedWorkloadSpec, t graphTransport) (uint64, error) {
-	if spec.Facts < 20 || spec.Facts > 1_000_000 || spec.Writers != 1 && spec.Writers != 8 && spec.Writers != 32 || t.TargetRTTMillis > 100 {
+	if spec.Facts < 20 || spec.Facts > 1_000_000 || spec.Facts%20 != 0 || spec.CrossPercent != 0 && spec.CrossPercent != 10 && spec.CrossPercent != 50 && spec.CrossPercent != 100 || spec.Writers != 1 && spec.Writers != 8 && spec.Writers != 32 || t.TargetRTTMillis > 100 {
 		return 0, errInvalid
 	}
 	writers := uint64(spec.Writers) // #nosec G115 -- Exact positive allow-list above.
@@ -78,7 +80,27 @@ func graphTransportCausalMinimum(spec graphFeedWorkloadSpec, t graphTransport) (
 	// Three setup commits, two seed+parallel phases, then complete page ACKs.
 	// One mandatory client request/response per counted operation is a lower
 	// bound only. Extra SDK reads, retries, scans and base latency are omitted.
-	return (5 + 2*waves + pages) * t.TargetRTTMillis, nil
+	var rounds uint64
+	switch spec.Family {
+	case graphFeedWorkloadFamily:
+		rounds = 5 + 2*waves + pages
+	case graphSelectorsFamily:
+		rounds = 5 + 2*waves
+	case graphContentionFamily:
+		// Serial setup + seed half + isolated claim waves, and the longest
+		// genuine increment dependency chain. Each counted step requires a
+		// native request/response; capture/retry/query work is omitted.
+		remote := spec.Facts * spec.CrossPercent / 100
+		rounds = 3 + spec.Facts + max(remote, spec.Facts-remote)
+	case graphEdgeUniqueFamily:
+		// Seven serial lifecycle commits, N serial old-plan captures, N serial
+		// original-close replays, plus the three barrier-separated worker phases.
+		// Rejected stale/frozen-close legs and other SDK IO are omitted.
+		rounds = 7 + 2*spec.Facts + (2*spec.Facts+writers-1)/writers + 2*((spec.Facts+writers-1)/writers)
+	default:
+		return 0, errInvalid
+	}
+	return rounds * t.TargetRTTMillis, nil
 }
 func transportHex(s string, size int) bool {
 	b, err := hex.DecodeString(s)
@@ -86,7 +108,7 @@ func transportHex(s string, size int) bool {
 }
 func (p graphTransportPolicy) validate() error {
 	s := p.Spec
-	if p.Version != 2 || s.Version != 2 || s.Family != graphFeedWorkloadFamily || s.Facts < 20 || s.Facts > 1_000_000 || s.Facts%20 != 0 || s.Writers != 1 && s.Writers != 8 && s.Writers != 32 || s.Facts < uint64(s.Writers)+1 || s.CrossPercent != 0 && s.CrossPercent != 10 && s.CrossPercent != 50 && s.CrossPercent != 100 || s.Layout != "kv" && s.Layout != "columns" || p.Run == [16]byte{} {
+	if p.Version != 2 || s.Version != 2 || !graphTransportFamily(s.Family) || s.Facts < 20 || s.Facts > 1_000_000 || s.Facts%20 != 0 || s.Writers != 1 && s.Writers != 8 && s.Writers != 32 || (s.Family == graphFeedWorkloadFamily || s.Family == graphSelectorsFamily) && s.Facts < uint64(s.Writers)+1 || s.CrossPercent != 0 && s.CrossPercent != 10 && s.CrossPercent != 50 && s.CrossPercent != 100 || s.Layout != "kv" && s.Layout != "columns" || p.Run == [16]byte{} {
 		return errInvalid
 	}
 	t := p.Transport
@@ -168,7 +190,7 @@ func graphTransportFromEnv() (*graphTransportPolicy, error) {
 }
 
 func (h *harness) graphTransportInstall(ctx context.Context, p graphTransportPolicy) (graphCostStoredRecord, error) {
-	if ctx == nil || h == nil || p.validate() != nil || h.config != graphFeedWorkloadConfig(p.Spec, hex.EncodeToString(p.Run[:])) {
+	if ctx == nil || h == nil || p.validate() != nil || h.config != graphTransportConfig(p.Spec, hex.EncodeToString(p.Run[:])) {
 		return graphCostStoredRecord{}, errInvalid
 	}
 	body, err := wire(p)
@@ -206,4 +228,215 @@ func (h *harness) graphTransportInstall(ctx context.Context, p graphTransportPol
 		return actual, nil
 	})
 	return stored, err
+}
+
+// Family dispatch is private to the explicit transported spec. Ordinary config
+// constructors and Cost.Version meanings remain unchanged.
+func graphTransportFamily(family string) bool {
+	return family == graphFeedWorkloadFamily || family == graphContentionFamily || family == graphSelectorsFamily || family == graphEdgeUniqueFamily
+}
+func graphTransportConfig(spec graphFeedWorkloadSpec, run string) config {
+	switch spec.Family {
+	case graphFeedWorkloadFamily:
+		return graphFeedWorkloadConfig(spec, run)
+	case graphContentionFamily:
+		c := graphContentionConfig(graphContentionSpec(spec).profile(), spec.Layout, run)
+		c.Graph = strings.Replace(c.Graph, "contention-v1-", "contention-v2-", 1)
+		return c
+	case graphSelectorsFamily:
+		return graphSelectorsConfig(graphSelectorsSpec(spec), run)
+	case graphEdgeUniqueFamily:
+		c := graphEdgeUniqueConfig(graphEdgeUniqueSpec(spec).profile(), spec.Layout, run)
+		c.Graph = strings.Replace(c.Graph, "unique-v1-", "unique-v2-", 1)
+		return c
+	}
+	return config{}
+}
+func graphTransported(c config) bool {
+	return strings.HasPrefix(c.Graph, "graph-workload-contention-v2-") || strings.HasPrefix(c.Graph, "graph-workload-selectors-v2-") || strings.HasPrefix(c.Graph, "graph-workload-edge-unique-v2-")
+}
+
+// Every new business capture/apply authenticates the SAME actual native policy
+// inside its original transaction. A graph label alone grants no admission.
+func (h *harness) graphTransportNative(tr fdb.ReadTransaction) (*graphTransportPolicy, error) {
+	if h == nil {
+		return nil, errInvalid
+	}
+	if !graphTransported(h.config) {
+		return nil, nil
+	}
+	raw, err := tr.Get(h.key(0, "workload-transport-v2", "binding")).Get()
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 || len(raw) > graphTransportControlBytes {
+		return nil, errMismatch
+	}
+	p, err := decode[graphTransportPolicy](raw)
+	if err != nil || p.validate() != nil || graphTransportConfig(p.Spec, hex.EncodeToString(p.Run[:])) != h.config {
+		return nil, errors.Join(errMismatch, err)
+	}
+	return &p, nil
+}
+func graphTransportAdmission(version uint8, family, run string) (*graphTransportPolicy, error) {
+	p, err := graphTransportFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	if version == 1 && p == nil {
+		return nil, nil
+	}
+	if version != 2 || p == nil || p.Spec.Family != family || hex.EncodeToString(p.Run[:]) != run {
+		return nil, errMismatch
+	}
+	return p, nil
+}
+func graphTransportContext(p *graphTransportPolicy) (context.Context, context.CancelFunc) {
+	if p == nil {
+		return context.Background(), func() {}
+	}
+	return context.WithDeadline(context.Background(), time.Unix(0, p.DeadlineUnixNanos))
+}
+func graphTransportIO(ctx context.Context, p *graphTransportPolicy) context.Context {
+	if p == nil {
+		return nil
+	}
+	return ctx
+}
+func graphTransportFresh(ctx context.Context, h *harness) (cut, error) {
+	if h == nil {
+		return cut{}, errInvalid
+	}
+	if ctx == nil {
+		return h.fresh([]uint8{0, 1}, nil)
+	}
+	got, err := graphCostWriteContext(ctx, h.db, func(tr fdb.Transaction) (any, error) { return h.freshIn(tr, []uint8{0, 1}, nil) })
+	if err != nil {
+		return cut{}, err
+	}
+	return got.(cut), nil
+}
+func graphTransportFormatFor(version uint8, legacy string) string {
+	if version == 2 {
+		return strings.TrimSuffix(legacy, "-v1") + "-v2"
+	}
+	return legacy
+}
+func graphTransportDigest(p *graphTransportPolicy) (digest [32]byte) {
+	// Native and artifact callers validate the policy before deriving this
+	// private comparable binding field; nil is the exact ordinary zero value.
+	if p != nil {
+		digest, _ = p.digest()
+	}
+	return digest
+}
+func graphTransportBindingKind(c config, legacy string) string {
+	if graphTransported(c) {
+		return strings.TrimSuffix(legacy, "-v1") + "-v2"
+	}
+	return legacy
+}
+
+func graphTransportLegacyContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+// Fresh raw exports use the actual retained At owner and its independently
+// prepaid bounded cleanup lifetime; no new pin is needed for an already held
+// owner. Ordinary callers retain their literal historical pin/open/release.
+func graphTransportHeld(ctx, caller context.Context, s *graphHistoryRetention, c cut, name string) (*graphHistoryRead, func() error, func() error, error) {
+	if s == nil || caller == nil {
+		return nil, nil, nil, errInvalid
+	}
+	if ctx != nil {
+		view, err := s.OpenGraphSnapshot(ctx, graphSnapshotRequest{Mode: "At", Scope: []uint8{0, 1}, At: c.record}, graphSelectorsPolicy(s.h.config).Read)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		return view.owner, view.Close, view.Close, nil
+	}
+	var secret [32]byte
+	if _, err := rand.Read(secret[:]); err != nil {
+		return nil, nil, nil, err
+	}
+	token, err := s.pin(name, c, secret)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	owner, err := s.open(caller, token)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	closeOwner := func() error {
+		if err := historyReadCleanup(owner); err != nil {
+			return err
+		}
+		return s.release(name+"-close", token)
+	}
+	cleanupOwner := func() error { return errors.Join(historyReadCleanup(owner), s.release(name+"-close", token)) }
+	return owner, closeOwner, cleanupOwner, nil
+}
+func graphTransportFamilyConfig(spec graphFeedWorkloadSpec, run string) config {
+	if spec.Version == 2 {
+		return graphTransportConfig(spec, run)
+	}
+	switch spec.Family {
+	case graphContentionFamily:
+		return graphContentionConfig(graphContentionSpec(spec).profile(), spec.Layout, run)
+	case graphSelectorsFamily:
+		return graphSelectorsConfig(graphSelectorsSpec(spec), run)
+	case graphEdgeUniqueFamily:
+		return graphEdgeUniqueConfig(graphEdgeUniqueSpec(spec).profile(), spec.Layout, run)
+	}
+	return config{}
+}
+func graphTransportNewHarness(ctx context.Context, db fdb.Database, c config) (*harness, error) {
+	if ctx == nil {
+		return newHarness(db, c)
+	}
+	return newHarnessContext(ctx, db, c)
+}
+func graphTransportArtifact(h *harness, spec graphFeedWorkloadSpec, record *graphTransportRecord) (*graphTransportPolicy, error) {
+	if spec.Version == 1 && record == nil {
+		return nil, nil
+	}
+	if spec.Version != 2 || record == nil || h == nil || record.Policy.Spec != spec || record.Policy.validate() != nil || graphTransportConfig(spec, hex.EncodeToString(record.Policy.Run[:])) != h.config {
+		return nil, errMismatch
+	}
+	body, err := wire(record.Policy)
+	if err != nil || !bytes.Equal(record.Record.Key, h.key(0, "workload-transport-v2", "binding")) || !bytes.Equal(record.Record.Value, body) {
+		return nil, errors.Join(errMismatch, err)
+	}
+	return &record.Policy, nil
+}
+
+func graphTransportConfigVersion(c config) uint8 {
+	if graphTransported(c) {
+		return 2
+	}
+	return 1
+}
+
+// Shared SAME-body submit/original doors authenticate the fresh family policy
+// even when execute returns its retained original before native graph predicates.
+// Older graphs take the literal no-read branch.
+func (h *harness) graphTransportCheckIn(tr fdb.ReadTransaction) error {
+	if h == nil {
+		return errInvalid
+	}
+	if !graphTransported(h.config) {
+		return nil
+	}
+	switch h.config.Cost.Version {
+	case 2:
+		return h.graphContentionBindingIn(tr)
+	case 3:
+		return h.graphSelectorsBindingIn(tr)
+	case 4:
+		return h.graphEdgeUniqueBindingIn(tr)
+	}
+	return errInvalid
 }

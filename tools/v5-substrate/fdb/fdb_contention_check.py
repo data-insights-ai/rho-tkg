@@ -24,6 +24,10 @@ from comparison_spool import Policy, Spool, u64
 _spec = importlib.util.spec_from_file_location("contention_raw_codec", PARENT / "compare-cost-cdc.py")
 _codec = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_codec)
+_transport_spec = importlib.util.spec_from_file_location("family_owned_transport", Path(__file__).with_name("owned_transport.py"))
+transport = importlib.util.module_from_spec(_transport_spec)
+_transport_spec.loader.exec_module(transport)
+
 require, fields, integer = _codec.require, _codec.fields, _codec.integer
 same, go_json, blob = _codec.same, _codec.go_json, _codec.raw_bytes
 FORMAT, FAMILY = "fdb-contention-empty-range-v1", "contention-empty-range"
@@ -320,16 +324,17 @@ def fold_group(group, p, c, spool, generations, sequences, old):
 
 
 def validate_result(end):
-    fields(end, "version format spec Config Binding BindingRecord Initial Old Final Attempts Aborted Committed HotAborted ClaimAborted Setup Seed Hot Claims Submissions SDKCallbacks ReadCallbacks ClientHot OldMetadata FinalMetadata Sources Columns Points ProbeWalks ProbeAccess AttemptPayloadSHA256")
-    require(integer(end["version"], 1, 1) == 1 and end["format"] == FORMAT, "fresh family result only")
+    version = integer(end["version"], 1, 2)
+    fields(end, "version format spec Config Binding BindingRecord Initial Old Final Attempts Aborted Committed HotAborted ClaimAborted Setup Seed Hot Claims Submissions SDKCallbacks ReadCallbacks ClientHot OldMetadata FinalMetadata Sources Columns Points ProbeWalks ProbeAccess AttemptPayloadSHA256" + (" Transport" if version == 2 else ""))
+    require(end["format"] == FORMAT.replace("-v1", f"-v{version}"), "fresh family result only")
     p, c = end["spec"], end["Config"]
     fields(p, "version family facts crossPercent writers layout")
     n = integer(p["facts"], 20, 1_000_000)
-    integer(p["version"], 1, 1)
+    integer(p["version"], version, version)
     integer(p["crossPercent"], 0, 100)
     integer(p["writers"], 1, 32)
-    require(n % 20 == 0 and p["version"] == 1 and p["family"] == FAMILY and p["crossPercent"] in (0, 10, 50, 100) and p["writers"] in (1, 8, 32) and p["layout"] in ("kv", "columns"), "supported fresh workload")
-    graph_prefix = "graph-workload-contention-v1-" + p["layout"] + "-"
+    require(n % 20 == 0 and p["version"] == version and p["family"] == FAMILY and p["crossPercent"] in (0, 10, 50, 100) and p["writers"] in (1, 8, 32) and p["layout"] in ("kv", "columns"), "supported fresh workload")
+    graph_prefix = f"graph-workload-contention-v{version}-" + p["layout"] + "-"
     run = c["Graph"].removeprefix(graph_prefix)
     require(c["Graph"].startswith(graph_prefix) and len(run) == 32 and bytes.fromhex(run) != bytes(16) and bytes.fromhex(run).hex() == run, "fresh persisted per-run graph identity")
     originals = 3 + n // 2 + n * 64 + n // 2 * max(2, p["writers"])
@@ -340,8 +345,10 @@ def validate_result(end):
     expected_binding = {"Version": 1, "Family": FAMILY, "Config": c, "Competitors": max(2, p["writers"]), "Window": 32,
                         "MaxAttempts": 64, "MaxSubmissions": 8, "MaxCallbacks": 16,
                         "Policy": "retained-all; hot native current-value+revision increment; each empty-ID wave isolated after hot drain; exact paired ABORT only authorizes replan"}
+    if version == 2:
+        expected_binding.update(Version=2, Admission=transport.family_record(end["Transport"], p, c))
     require(end["Binding"] == expected_binding, "immutable attempt policy")
-    raw_record(end["BindingRecord"], key(c, 0, "workload-contention-v1", "binding"), go_json(expected_binding))
+    raw_record(end["BindingRecord"], key(c, 0, f"workload-contention-v{version}", "binding"), go_json(expected_binding))
     for name, groups in (("Initial", [0, 0]), ("Old", [2 + n // 2, 1]), ("Final", [2 + 2 * n, 1])):
         cut = end[name]
         fields(cut, "Graph Topology Epochs Scope Round Groups")
@@ -382,7 +389,7 @@ def attempts(directory, end, spool):
             continue
         payload.update(raw)
         if not header:
-            require(kind == "header" and row == {"Type": "header", "Format": FORMAT, "Spec": p, "Binding": end["Binding"], "Record": end["BindingRecord"], "Initial": end["Initial"]}, "fresh native attempt header")
+            require(kind == "header" and row == {"Type": "header", "Format": end["format"], "Spec": p, "Binding": end["Binding"], "Record": end["BindingRecord"], "Initial": end["Initial"]}, "fresh native attempt header")
             header = True
         elif kind == "attempt":
             require(stage != "final", "attempt after final barrier")
@@ -477,7 +484,7 @@ def raw_stream(directory, name, end):
         if header is None:
             header = frame
             fields(header, "Type Format Stream Config InitialCut OldCut FinalCut Policy Metadata ConfigRecords MetadataRecords CutRecords")
-            require(header["Type"] == "header" and header["Format"] == FORMAT and header["Stream"] == name and header["Config"] == c and header["InitialCut"] == end["Initial"] and header["OldCut"] == end["Old"] and header["FinalCut"] == end["Final"] and header["Metadata"] == end["FinalMetadata"] and header["Policy"] == {"PageRows": 32, "PageBytes": 4 << 20}, "exact source config/cut/metadata/policy binding")
+            require(header["Type"] == "header" and header["Format"] == end["format"] and header["Stream"] == name and header["Config"] == c and header["InitialCut"] == end["Initial"] and header["OldCut"] == end["Old"] and header["FinalCut"] == end["Final"] and header["Metadata"] == end["FinalMetadata"] and header["Policy"] == {"PageRows": 32, "PageBytes": 4 << 20}, "exact source config/cut/metadata/policy binding")
             for g in range(2):
                 raw_record(header["ConfigRecords"][g], key(c, g, "meta", "config"), go_json(c))
                 raw_record(header["MetadataRecords"][g], key(c, g, "meta", "state"), go_json(end["FinalMetadata"][g]))
@@ -691,7 +698,7 @@ def columns(directory, end, spool):
         kind = row.get("Type")
         if kind == "footer":
             final = row["End"]
-            require(final["Format"] == final["SourceFormat"] == FORMAT and final["ReferenceLayout"] == "native-logical-kv-reference" and
+            require(final["Format"] == final["SourceFormat"] == end["format"] and final["ReferenceLayout"] == "native-logical-kv-reference" and
                     final["Old"] == manifests["old"] and final["Final"] == manifests["final"] and bytes(final["PayloadSHA256"]) == digest.digest(), "sealed actual derived column artifact")
             require(final["Counts"]["Stages"] == 6 and final["Counts"]["Chunks"] == sum(chunks.values()) and final["Counts"]["WalkRows"] == sum(walks.values()) and final["Counts"]["Points"] == point_count == 6 and final["Counts"]["Collections"] == collected and
                     final["Ledger"]["Chunks"] == live_chunks == manifests["final"]["Chunks"] and final["Storage"]["Records"] == storage_count and final["Storage"]["Bytes"] == storage_bytes and
@@ -702,7 +709,7 @@ def columns(directory, end, spool):
             continue
         digest.update(raw)
         if not header:
-            require(row["Type"] == "header" and row["Format"] == FORMAT and row["Config"] == c and len(row["Records"]) == 2, "fresh actual column binding header")
+            require(row["Type"] == "header" and row["Format"] == end["format"] and row["Config"] == c and len(row["Records"]) == 2, "fresh actual column binding header")
             binding = decoded(blob(row["Records"][0]["Value"]))
             require(binding["Version"] == 1 and binding["Config"] == c and binding["Scope"] == SCOPE and binding["Layout"] == _codec.COLUMN_LAYOUT and
                     binding["Schema"] == "node-presence;edge-life-bound;property-p:i64;canonical-original:v1", "typed column graph/schema/axis binding")
@@ -865,10 +872,15 @@ def verify(directory, spool_directory, policy=None):
         attempts(directory, end, spool)
         verify_sources(directory, end, spool)
         columns(directory, end, spool)
+        transport_proof = transport.verify(directory, end["Transport"]["Policy"], spool) if end["version"] == 2 else None
         report = spool.report()
-    return {"format": FORMAT, "family": FAMILY, "runGraph": end["Config"]["Graph"], "spec": end["spec"],
+    result = {"format": end["format"], "family": FAMILY, "runGraph": end["Config"]["Graph"], "spec": end["spec"],
             "attempts": end["Attempts"], "committed": end["Committed"], "aborted": end["Aborted"],
             "spool": report, "scope": "one fresh FDB family; exact native originals/history/current/CDC/columns, no native parity/RTT/matrix/capacity acceptance"}
+    if transport_proof is not None:
+        transport_proof["nativeRetainedBindingBytes"] = len(blob(end["Transport"]["Record"]["Key"])) + len(blob(end["Transport"]["Record"]["Value"]))
+        result["transport"] = transport_proof
+    return result
 
 
 if __name__ == "__main__":

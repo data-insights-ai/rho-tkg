@@ -11,6 +11,16 @@ import (
 // Authored only; the real SDK/concurrent histories and paired native process
 // cases are separate from these direct shape/identity refusal guards.
 func TestGraphEdgeUniqueFreshIdentityAndOldOwnerCloseFootprints(t *testing.T) {
+	transport := graphTransportGuardPolicy()
+	transport.Spec.Family = graphEdgeUniqueFamily
+	transport.CausalMinimumMillis, _ = graphTransportCausalMinimum(transport.Spec, transport.Transport)
+	freshConfig := graphTransportConfig(transport.Spec, "01000000000000000000000000000000")
+	ordinary := graphEdgeUniquePolicy(freshConfig)
+	bound := graphEdgeUniquePolicyAdmission(freshConfig, &transport)
+	ordinaryBytes, _ := wire(ordinary)
+	if bound.Version != 2 || bound.Admission != graphTransportDigest(&transport) || ordinary.Version != 1 || ordinary.Admission != [32]byte{} || bytes.Contains(ordinaryBytes, []byte("Admission")) {
+		t.Fatal("ordinary bytes or exact admission digest changed")
+	}
 	p := graphCostProfile{Version: 4, Facts: 20, CrossPercent: 50, Writers: 32}
 	c := graphEdgeUniqueConfig(p, "columns", "01020304050607080910111213141516")
 	h := &harness{config: c}

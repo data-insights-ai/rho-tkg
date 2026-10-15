@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -52,6 +51,9 @@ func graphContentionConfig(p graphCostProfile, layout, run string) config {
 func graphContentionGraph(graph string) bool {
 	for _, layout := range []string{"kv", "columns"} {
 		run, found := strings.CutPrefix(graph, "graph-workload-contention-v1-"+layout+"-")
+		if !found {
+			run, found = strings.CutPrefix(graph, "graph-workload-contention-v2-"+layout+"-")
+		}
 		raw, err := hex.DecodeString(run)
 		if found && err == nil && len(raw) == 16 && hex.EncodeToString(raw) == run && !bytes.Equal(raw, make([]byte, 16)) {
 			return true
@@ -181,29 +183,53 @@ type graphContentionBinding struct {
 	Config                                                         config
 	Competitors, Window, MaxAttempts, MaxSubmissions, MaxCallbacks uint64
 	Policy                                                         string
+	Admission                                                      [32]byte `json:",omitzero"`
 }
 
 func graphContentionPolicy(c config) graphContentionBinding {
-	return graphContentionBinding{1, graphContentionFamily, c, graphContentionCompetitors(c.Cost), 32, 64, 8, 16, "retained-all; hot native current-value+revision increment; each empty-ID wave isolated after hot drain; exact paired ABORT only authorizes replan"}
+	return graphContentionBinding{1, graphContentionFamily, c, graphContentionCompetitors(c.Cost), 32, 64, 8, 16, "retained-all; hot native current-value+revision increment; each empty-ID wave isolated after hot drain; exact paired ABORT only authorizes replan", [32]byte{}}
+}
+
+func graphContentionPolicyAdmission(c config, p *graphTransportPolicy) graphContentionBinding {
+	b := graphContentionPolicy(c)
+	if p != nil {
+		b.Version = 2
+		b.Admission = graphTransportDigest(p)
+	}
+	return b
 }
 func (h *harness) graphContentionBindingIn(tr fdb.ReadTransaction) error {
-	raw, err := tr.Get(h.key(0, "workload-contention-v1", "binding")).Get()
+	p, err := h.graphTransportNative(tr)
 	if err != nil {
 		return err
 	}
-	body, err := wire(graphContentionPolicy(h.config))
+	raw, err := tr.Get(h.key(0, graphTransportBindingKind(h.config, "workload-contention-v1"), "binding")).Get()
+	if err != nil {
+		return err
+	}
+	body, err := wire(graphContentionPolicyAdmission(h.config, p))
 	if err != nil || !bytes.Equal(raw, body) {
 		return errors.Join(errMismatch, err)
 	}
 	return nil
 }
 func (h *harness) graphContentionInstall() (graphCostStoredRecord, error) {
-	body, err := wire(graphContentionPolicy(h.config))
+	return h.graphContentionInstallContext(nil, nil)
+}
+func (h *harness) graphContentionInstallContext(ctx context.Context, admission *graphTransportPolicy) (graphCostStoredRecord, error) {
+	if h == nil || admission != nil && ctx == nil {
+		return graphCostStoredRecord{}, errInvalid
+	}
+	body, err := wire(graphContentionPolicyAdmission(h.config, admission))
 	if err != nil {
 		return graphCostStoredRecord{}, err
 	}
-	key := h.key(0, "workload-contention-v1", "binding")
-	_, err = h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	key := h.key(0, graphTransportBindingKind(h.config, "workload-contention-v1"), "binding")
+	_, err = graphCostWriteContext(ctx, h.db, func(tr fdb.Transaction) (any, error) {
+		actual, err := h.graphTransportNative(tr)
+		if err != nil || graphTransportDigest(actual) != graphTransportDigest(admission) {
+			return nil, errors.Join(errMismatch, err)
+		}
 		for g := uint8(0); g < 2; g++ {
 			if err := h.checkConfig(tr, g); err != nil {
 				return nil, err
@@ -241,7 +267,7 @@ func (h *harness) graphContentionInstall() (graphCostStoredRecord, error) {
 	if err != nil {
 		return graphCostStoredRecord{}, graphHistoryCommitError(err)
 	}
-	got, err := h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+	got, err := graphCostReadContext(ctx, h.db, func(tr fdb.ReadTransaction) (any, error) {
 		if err := h.graphContentionBindingIn(tr); err != nil {
 			return nil, err
 		}
@@ -497,7 +523,7 @@ func (h *harness) graphContentionApply(parent context.Context, job graphContenti
 // A batch admits at most32 jobs/results; one owner serializes every artifact.
 // Clients are independent native SDK callers, not goroutines writing the output.
 func (h *harness) graphContentionHot(a *graphContentionArtifacts) error {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.context())
 	defer cancel()
 	writers := h.config.Cost.Writers
 	inbox := make([]chan graphContentionJob, writers)
@@ -541,7 +567,7 @@ func (h *harness) graphContentionHot(a *graphContentionArtifacts) error {
 func (h *harness) graphContentionClaims(a *graphContentionArtifacts) error {
 	p := h.config.Cost
 	for fact := uint64(0); fact < p.Facts/2; fact++ {
-		ctx, cancel := context.WithTimeout(context.Background(), graphCostParallelOperationMillis*time.Millisecond)
+		ctx, cancel := context.WithTimeout(a.context(), graphCostParallelOperationMillis*time.Millisecond)
 		count := int(graphContentionCompetitors(p)) // #nosec G115 -- bounded2/8/32.
 		frozen := make([]graphContentionFrozen, count)
 		started := make([]time.Time, count)
@@ -622,21 +648,40 @@ func graphContentionSpecFromEnv() (graphContentionSpec, string, error) {
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return spec, "", errors.Join(errInvalid, err)
 	}
-	if spec.Version != 1 || spec.Family != graphContentionFamily || (spec.Layout != "kv" && spec.Layout != "columns") || !validGraphContentionConfig(graphContentionConfig(spec.profile(), spec.Layout, run)) {
+	if (spec.Version != 1 && spec.Version != 2) || spec.Family != graphContentionFamily || (spec.Layout != "kv" && spec.Layout != "columns") || !validGraphContentionConfig(graphTransportFamilyConfig(graphFeedWorkloadSpec(spec), run)) {
 		return spec, "", errInvalid
+	}
+	p, err := graphTransportAdmission(spec.Version, spec.Family, run)
+	if err != nil || p != nil && p.Spec != graphFeedWorkloadSpec(spec) {
+		return spec, "", errors.Join(errMismatch, err)
 	}
 	return spec, run, nil
 }
 func runGraphContention(db fdb.Database, spec graphContentionSpec, run string) (err error) {
-	c := graphContentionConfig(spec.profile(), spec.Layout, run)
-	if spec.Version != 1 || spec.Family != graphContentionFamily || !validGraphContentionConfig(c) {
+	c := graphTransportFamilyConfig(graphFeedWorkloadSpec(spec), run)
+	if (spec.Version != 1 && spec.Version != 2) || spec.Family != graphContentionFamily || !validGraphContentionConfig(c) {
 		return errInvalid
 	}
-	h, err := newHarness(db, c)
+	admission, err := graphTransportAdmission(spec.Version, spec.Family, run)
+	if err != nil || admission != nil && admission.Spec != graphFeedWorkloadSpec(spec) {
+		return errors.Join(errMismatch, err)
+	}
+	ctx, cancel := graphTransportContext(admission)
+	defer cancel()
+	ioctx := graphTransportIO(ctx, admission)
+	h, err := graphTransportNewHarness(ioctx, db, c)
 	if err != nil {
 		return err
 	}
-	binding, err := h.graphContentionInstall()
+	var transport *graphTransportRecord
+	if admission != nil {
+		actual, e := h.graphTransportInstall(ctx, *admission)
+		if e != nil {
+			return e
+		}
+		transport = &graphTransportRecord{*admission, actual}
+	}
+	binding, err := h.graphContentionInstallContext(ioctx, admission)
 	if err != nil {
 		return err
 	}
@@ -645,25 +690,25 @@ func runGraphContention(db fdb.Database, spec graphContentionSpec, run string) (
 		return err
 	}
 	defer func() { err = errors.Join(err, root.Close()) }()
-	initial, err := h.fresh([]uint8{0, 1}, nil)
+	initial, err := graphTransportFresh(ioctx, h)
 	if err != nil {
 		return err
 	}
-	a, err := newGraphContentionArtifacts(h, root, spec, binding, initial)
+	a, err := newGraphContentionArtifactsAdmission(ioctx, h, root, spec, binding, initial, transport)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, a.Close()) }()
 	p := c.Cost
 	// Separate explicit source-reader policy; no deletion/retirement in this family.
-	source, err := newGraphHistoryRetention(h, initial, graphHistoryPolicy{MaxOwners: 64, MaxControlBytes: 512 << 10, PageRows: 32, PageBytes: 4 << 20, MaxWorkRows: 16*p.Facts + 64, MaxWorkBytes: (64 << 20) + (16*p.Facts+64)*(512<<10), MaxChainSteps: 128, MaxOutputBytes: 4096})
+	source, err := newGraphHistoryRetentionContext(ioctx, h, initial, graphHistoryPolicy{MaxOwners: 64, MaxControlBytes: 512 << 10, PageRows: 32, PageBytes: 4 << 20, MaxWorkRows: 16*p.Facts + 64, MaxWorkBytes: (64 << 20) + (16*p.Facts+64)*(512<<10), MaxChainSteps: 128, MaxOutputBytes: 4096})
 	if err != nil {
 		return err
 	}
 	apply := func(job graphContentionJob) error {
 		start := time.Now()
 		var outputErr error
-		err := h.graphContentionApply(context.Background(), job, 0, func(event graphContentionEvent) { outputErr = errors.Join(outputErr, a.accept(event)) })
+		err := h.graphContentionApply(ctx, job, 0, func(event graphContentionEvent) { outputErr = errors.Join(outputErr, a.accept(event)) })
 		if err != nil || outputErr != nil {
 			return errors.Join(err, outputErr)
 		}
@@ -680,26 +725,19 @@ func runGraphContention(db fdb.Database, spec graphContentionSpec, run string) (
 			return err
 		}
 	}
-	old, err := h.fresh([]uint8{0, 1}, nil)
+	old, err := graphTransportFresh(ioctx, h)
 	if err != nil {
 		return err
 	}
 	if err = a.barrier("old", old); err != nil {
 		return err
 	}
-	var secret [32]byte
-	if _, err = rand.Read(secret[:]); err != nil {
-		return err
-	}
-	token, err := source.pin("workload-old", old, secret)
+	held, closeHeld, cleanupHeld, err := graphTransportHeld(ioctx, ctx, source, old, "workload-old")
 	if err != nil {
 		return err
 	}
-	held, err := source.open(context.Background(), token)
-	if err != nil {
-		return err
-	}
-	defer func() { err = errors.Join(err, historyReadCleanup(held), source.release("workload-old-close", token)) }()
+	defer func() { err = errors.Join(err, cleanupHeld()) }()
+
 	var columns *graphCostColumnLane
 	if spec.Layout == "columns" {
 		columns, err = a.columnStart(initial, old)
@@ -714,7 +752,7 @@ func runGraphContention(db fdb.Database, spec graphContentionSpec, run string) (
 	if err = h.graphContentionClaims(a); err != nil {
 		return err
 	}
-	final, err := h.fresh([]uint8{0, 1}, nil)
+	final, err := graphTransportFresh(ioctx, h)
 	if err != nil {
 		return err
 	}
@@ -729,10 +767,7 @@ func runGraphContention(db fdb.Database, spec graphContentionSpec, run string) (
 			return err
 		}
 	}
-	if err = historyReadCleanup(held); err != nil {
-		return err
-	}
-	if err = source.release("workload-old-close", token); err != nil {
+	if err = closeHeld(); err != nil {
 		return err
 	}
 	if err = a.finish(source); err != nil {

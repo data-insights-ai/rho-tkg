@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 )
@@ -8,6 +9,16 @@ import (
 // Authored only. The direct SDK API parent is in graph_snapshot_test.go; these
 // finite dispatcher guards confer no concurrent SDK or matrix qualification.
 func TestGraphSelectorsFreshFamilyAdmissionAndPolicy(t *testing.T) {
+	transport := graphTransportGuardPolicy()
+	transport.Spec.Family = graphSelectorsFamily
+	transport.CausalMinimumMillis, _ = graphTransportCausalMinimum(transport.Spec, transport.Transport)
+	freshConfig := graphTransportConfig(transport.Spec, "01000000000000000000000000000000")
+	ordinary := graphSelectorsPolicy(freshConfig)
+	bound := graphSelectorsPolicyAdmission(freshConfig, &transport)
+	ordinaryBytes, _ := wire(ordinary)
+	if bound.Version != 2 || bound.Admission != graphTransportDigest(&transport) || ordinary.Version != 1 || ordinary.Admission != [32]byte{} || bytes.Contains(ordinaryBytes, []byte("Admission")) {
+		t.Fatal("ordinary bytes or exact admission digest changed")
+	}
 	spec := graphSelectorsSpec{1, graphSelectorsFamily, 40, 50, 32, "columns"}
 	c := graphSelectorsConfig(spec, "01020304050607080910111213141516")
 	if !validGraphCostProfile(c) || c.Limits.Transactions != 3+2*spec.Facts*64 || c.Limits.Versions != 3+6*spec.Facts {

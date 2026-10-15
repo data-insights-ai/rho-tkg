@@ -139,6 +139,9 @@ func validGraphEdgeUniqueConfig(c config) bool {
 	}
 	for _, layout := range []string{"kv", "columns"} {
 		run, found := strings.CutPrefix(c.Graph, "graph-workload-edge-unique-v1-"+layout+"-")
+		if !found {
+			run, found = strings.CutPrefix(c.Graph, "graph-workload-edge-unique-v2-"+layout+"-")
+		}
 		raw, err := hex.DecodeString(run)
 		if found && err == nil && len(raw) == 16 && hex.EncodeToString(raw) == run && !bytes.Equal(raw, make([]byte, 16)) {
 			return true
@@ -279,20 +282,34 @@ type graphEdgeUniqueBinding struct {
 	Config              config
 	Window, MaxAttempts uint64
 	Policy              string
+	Admission           [32]byte `json:",omitzero"`
 }
 
 func graphEdgeUniquePolicy(c config) graphEdgeUniqueBinding {
-	return graphEdgeUniqueBinding{1, graphEdgeUniqueFamily, c, 32, 64, "effective relationship p:UniqueScalar; exact endpoint lives; distinct contenders; retained canonical old relations and originals; unknown never authorizes replan"}
+	return graphEdgeUniqueBinding{1, graphEdgeUniqueFamily, c, 32, 64, "effective relationship p:UniqueScalar; exact endpoint lives; distinct contenders; retained canonical old relations and originals; unknown never authorizes replan", [32]byte{}}
+}
+
+func graphEdgeUniquePolicyAdmission(c config, p *graphTransportPolicy) graphEdgeUniqueBinding {
+	b := graphEdgeUniquePolicy(c)
+	if p != nil {
+		b.Version = 2
+		b.Admission = graphTransportDigest(p)
+	}
+	return b
 }
 func (h *harness) graphEdgeUniqueBindingIn(tr fdb.ReadTransaction) error {
-	if h == nil || !validGraphEdgeUniqueConfig(h.config) {
-		return errInvalid
-	}
-	raw, err := tr.Get(h.key(0, "workload-edge-unique-v1", "binding")).Get()
+	p, err := h.graphTransportNative(tr)
 	if err != nil {
 		return err
 	}
-	expected, err := wire(graphEdgeUniquePolicy(h.config))
+	if h == nil || !validGraphEdgeUniqueConfig(h.config) {
+		return errInvalid
+	}
+	raw, err := tr.Get(h.key(0, graphTransportBindingKind(h.config, "workload-edge-unique-v1"), "binding")).Get()
+	if err != nil {
+		return err
+	}
+	expected, err := wire(graphEdgeUniquePolicyAdmission(h.config, p))
 	if err != nil || !bytes.Equal(raw, expected) {
 		return errors.Join(errMismatch, err)
 	}

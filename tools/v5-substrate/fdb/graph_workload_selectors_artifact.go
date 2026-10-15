@@ -29,8 +29,10 @@ type graphSelectorsEnd struct {
 	Sources                                                             [3]graphCostStreamEnd
 	Columns                                                             *graphCostColumnEnd `json:",omitempty"`
 	AttemptSHA256, EventSHA256                                          string
+	Transport                                                           *graphTransportRecord `json:",omitempty"`
 }
 type graphSelectorsArtifacts struct {
+	ctx                         context.Context
 	h                           *harness
 	root                        *os.Root
 	attempts, events, latencies *os.File
@@ -43,7 +45,21 @@ type graphSelectorsArtifacts struct {
 }
 
 func newGraphSelectorsArtifacts(h *harness, root *os.Root, spec graphSelectorsSpec, binding graphCostStoredRecord, initial cut) (*graphSelectorsArtifacts, error) {
-	a := &graphSelectorsArtifacts{h: h, root: root, attemptHash: sha256.New(), eventHash: sha256.New(), end: graphSelectorsEnd{Version: 1, Format: graphSelectorsFormat, Spec: spec, Config: h.config, Binding: graphSelectorsPolicy(h.config), BindingRecord: binding, Initial: initial.record}}
+	return newGraphSelectorsArtifactsAdmission(nil, h, root, spec, binding, initial, nil)
+}
+func newGraphSelectorsArtifactsAdmission(ctx context.Context, h *harness, root *os.Root, spec graphSelectorsSpec, binding graphCostStoredRecord, initial cut, transport *graphTransportRecord) (*graphSelectorsArtifacts, error) {
+	if h == nil || root == nil || spec.Family != graphSelectorsFamily || spec.profile() != h.config.Cost || !validGraphSelectorsConfig(h.config) {
+		return nil, errInvalid
+	}
+	admission, checkErr := graphTransportArtifact(h, graphFeedWorkloadSpec(spec), transport)
+	if checkErr != nil {
+		return nil, checkErr
+	}
+	if admission != nil && ctx == nil {
+		return nil, errInvalid
+	}
+
+	a := &graphSelectorsArtifacts{ctx: ctx, h: h, root: root, attemptHash: sha256.New(), eventHash: sha256.New(), end: graphSelectorsEnd{Version: spec.Version, Format: graphTransportFormatFor(spec.Version, graphSelectorsFormat), Spec: spec, Config: h.config, Binding: graphSelectorsPolicyAdmission(h.config, admission), BindingRecord: binding, Initial: initial.record, Transport: transport}}
 	var err error
 	a.attempts, _, err = openGraphCostArtifact(root, "fdb-selectors-attempts.jsonl")
 	if err != nil {
@@ -65,7 +81,7 @@ func newGraphSelectorsArtifacts(h *harness, root *os.Root, spec graphSelectorsSp
 		Binding graphSelectorsBinding
 		Record  graphCostStoredRecord
 		Initial certificate
-	}{"header", graphSelectorsFormat, spec, h.config, a.end.Binding, binding, initial.record}); err != nil {
+	}{"header", a.end.Format, spec, h.config, a.end.Binding, binding, initial.record}); err != nil {
 		return nil, errors.Join(err, a.Close())
 	}
 	return a, nil
@@ -169,7 +185,7 @@ func (a *graphSelectorsArtifacts) Close() error {
 // Re-observing a held owner does not invent a second open sample.
 func (a *graphSelectorsArtifacts) open(source *graphHistoryRetention, name string, request graphSnapshotRequest) (*graphSnapshot, error) {
 	begin := time.Now()
-	r, err := source.OpenGraphSnapshot(context.Background(), request, a.end.Binding.Read)
+	r, err := source.OpenGraphSnapshot(a.context(), request, a.end.Binding.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +225,7 @@ func (a *graphSelectorsArtifacts) observe(name string, read *graphSnapshot, want
 	}
 	var count [2]uint64
 	begin := time.Now()
-	end, err := read.Scan(context.Background(), func(row graphSnapshotRow) error {
+	end, err := read.Scan(a.context(), func(row graphSnapshotRow) error {
 		value := want
 		if strings.HasPrefix(row.Key, "node/") {
 			value = 1
@@ -261,7 +277,7 @@ func (a *graphSelectorsArtifacts) observe(name string, read *graphSnapshot, want
 	if name == "fresh-current" {
 		keys := []graphSnapshotKey{{0, edgeKey("edge", a.h.config.Cost.edge(0, 6))}, {0, edgeKey("edge", a.h.config.Cost.edge(a.h.config.Cost.Facts-1, 6))}, {0, edgeKey("edge", a.h.config.Cost.edge(a.h.config.Cost.Facts+16, 6))}}
 		begin := time.Now()
-		points, err := read.Points(context.Background(), keys)
+		points, err := read.Points(a.context(), keys)
 		if err != nil {
 			return err
 		}
@@ -285,7 +301,7 @@ func (a *graphSelectorsArtifacts) inventory(stage string, at cut) error {
 	var counts [2][2]uint64
 	var actual [2]metadata
 	var native [2]graphCostStoredRecord
-	_, _, err := graphCostParallelRead(context.Background(), a.h.db, func(tr fdb.ReadTransaction) (bool, error) {
+	_, _, err := graphCostParallelRead(a.context(), a.h.db, func(tr fdb.ReadTransaction) (bool, error) {
 		if err := a.h.verifyCutIdentity(tr, at); err != nil {
 			return false, err
 		}
@@ -336,7 +352,7 @@ func (a *graphSelectorsArtifacts) inventory(stage string, at cut) error {
 			bound := prefixRange(a.h.prefix(g) + kind + "/")
 			begin := bound.Begin
 			for {
-				rows, _, err := graphCostParallelRead(context.Background(), a.h.db, func(tr fdb.ReadTransaction) ([][2]graphCostStoredRecord, error) {
+				rows, _, err := graphCostParallelRead(a.context(), a.h.db, func(tr fdb.ReadTransaction) ([][2]graphCostStoredRecord, error) {
 					if err := check(tr); err != nil {
 						return nil, err
 					}
@@ -397,7 +413,7 @@ func (a *graphSelectorsArtifacts) inventory(stage string, at cut) error {
 			}
 		}
 	}
-	_, _, err = graphCostParallelRead(context.Background(), a.h.db, func(tr fdb.ReadTransaction) (bool, error) { return true, check(tr) })
+	_, _, err = graphCostParallelRead(a.context(), a.h.db, func(tr fdb.ReadTransaction) (bool, error) { return true, check(tr) })
 	if err != nil {
 		return err
 	}
@@ -412,7 +428,7 @@ func (a *graphSelectorsArtifacts) inventory(stage string, at cut) error {
 }
 
 func (a *graphSelectorsArtifacts) raw(header graphCostArtifactHeader, walk func(func(graphCostRawRow) error) (graphCostStreamEnd, error)) (end graphCostStreamEnd, err error) {
-	header.Format = graphSelectorsFormat
+	header.Format = a.end.Format
 	file, _, err := openGraphCostArtifact(a.root, "fdb-selectors-"+header.Stream+".jsonl")
 	if err != nil {
 		return end, err
@@ -475,7 +491,7 @@ func (a *graphSelectorsArtifacts) finish(source *graphHistoryRetention) (err err
 		return err
 	}
 	policy := graphCostStreamPolicy{32, 4 << 20}
-	header, err := a.h.graphCostArtifactHeader(cut{a.end.Initial}, a.old, a.final, policy)
+	header, err := a.h.graphCostArtifactHeaderContext(a.ctx, cut{a.end.Initial}, a.old, a.final, policy)
 	if err != nil {
 		return err
 	}
@@ -484,15 +500,15 @@ func (a *graphSelectorsArtifacts) finish(source *graphHistoryRetention) (err err
 		a.end.Sources[i], err = a.raw(header, func(emit func(graphCostRawRow) error) (graphCostStreamEnd, error) {
 			switch name {
 			case "history":
-				rows, err := held.owner.walk(context.Background(), emit)
+				rows, err := held.owner.walk(a.context(), emit)
 				if err != nil {
 					return graphCostStreamEnd{}, err
 				}
 				return graphCostStreamEnd{Rows: rows, Groups: a.final.record.Groups, Metadata: header.Metadata}, nil
 			case "current":
-				return a.h.graphCostWalkCurrent(a.final, policy, emit)
+				return a.h.graphCostWalkRowsContext(a.ctx, a.final, a.final, policy, emit, false)
 			default:
-				return a.h.graphCostWalkChanges(cut{a.end.Initial}, a.final, policy, emit)
+				return a.h.graphCostWalkChangesContext(a.ctx, cut{a.end.Initial}, a.final, policy, emit)
 			}
 		})
 		if err != nil {
@@ -505,7 +521,7 @@ func (a *graphSelectorsArtifacts) finish(source *graphHistoryRetention) (err err
 	if err = held.Close(); err != nil {
 		return err
 	}
-	closed, _, err := graphCostParallelRead(context.Background(), a.h.db, func(tr fdb.ReadTransaction) (graphCostStoredRecord, error) {
+	closed, _, err := graphCostParallelRead(a.context(), a.h.db, func(tr fdb.ReadTransaction) (graphCostStoredRecord, error) {
 		raw, err := snapshotStored(tr, source.ownerKey(held.owner.id.Request), historyControlBytes)
 		if err != nil {
 			return raw, err
@@ -559,7 +575,7 @@ func (a *graphSelectorsArtifacts) finish(source *graphHistoryRetention) (err err
 
 func (a *graphSelectorsArtifacts) columnsStart() (err error) {
 	policy, retention := graphCostColumnPolicies(a.h.config.Cost)
-	store, err := newGraphColumnStore(a.h, policy)
+	store, err := newGraphColumnStoreContext(a.ctx, a.h, policy)
 	if err != nil {
 		return err
 	}
@@ -572,7 +588,7 @@ func (a *graphSelectorsArtifacts) columnsStart() (err error) {
 		return err
 	}
 	l := &graphCostColumnLane{s: store, pins: pins, root: a.root, file: file, payload: sha256.New(), whole: sha256.New(), initial: cut{a.end.Initial}}
-	l.end.Format, l.end.SourceFormat, l.end.ReferenceLayout = graphSelectorsFormat, graphSelectorsFormat, "native-logical-kv-reference"
+	l.end.Format, l.end.SourceFormat, l.end.ReferenceLayout = a.end.Format, a.end.Format, "native-logical-kv-reference"
 	a.column = l
 	records, err := l.records([]fdb.Key{store.key("binding"), pins.key("binding")})
 	if err != nil {
@@ -583,7 +599,7 @@ func (a *graphSelectorsArtifacts) columnsStart() (err error) {
 		Config                                      config
 		InitialCut                                  certificate
 		Records                                     []graphCostStoredRecord
-	}{"header", graphSelectorsFormat, graphSelectorsFormat, "native-logical-kv-reference", a.h.config, a.end.Initial, records}, true); err != nil {
+	}{"header", a.end.Format, a.end.Format, "native-logical-kv-reference", a.h.config, a.end.Initial, records}, true); err != nil {
 		return err
 	}
 	return l.holdOld(a.old)
@@ -614,7 +630,7 @@ func (a *graphSelectorsArtifacts) columnRefusal(name, generation string, input, 
 }
 func (a *graphSelectorsArtifacts) columnsFinish() (err error) {
 	l := a.column
-	ctx := context.Background()
+	ctx := a.context()
 	if l == nil || l.held == nil {
 		return errInvalid
 	}
@@ -766,4 +782,8 @@ func (a *graphSelectorsArtifacts) columnsFinish() (err error) {
 	}
 	a.end.Columns = new(l.end)
 	return nil
+}
+
+func (a *graphSelectorsArtifacts) context() context.Context {
+	return graphTransportLegacyContext(a.ctx)
 }

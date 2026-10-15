@@ -80,6 +80,10 @@ class ContentionOracleGuards(unittest.TestCase):
         for op in ({**row["Operation"], "Ordinal": 2}, {**row["Operation"], "Phase": "unknown"}):
             with self.assertRaises(ValueError):
                 check.operation(p, op, 0)
+        with self.assertRaises(ValueError):
+            check.transport.family_record({}, {**p, "version": 2}, {})
+        # Transport choices must not alter the actual business dataset/ordinal.
+        self.assertEqual(check.operation({**p, "version": 2}, row["Operation"], 0), check.operation(p, row["Operation"], 0))
         self.assertEqual(check.target(p, "hot", 0), 0)
         self.assertEqual(check.target(p, "hot", 1), 1)
         with tempfile.TemporaryDirectory() as directory:

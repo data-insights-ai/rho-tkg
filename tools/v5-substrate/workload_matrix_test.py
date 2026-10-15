@@ -21,6 +21,24 @@ class WorkloadMatrixGuards(unittest.TestCase):
             with self.assertRaises(ValueError): matrix.execute(cell,destination,1,"small",4096,1<<30,8<<20,owned_options=options)
             self.assertFalse(destination.exists())
 
+    def test_other_three_fresh_owned_families_preserve_ordinary_and_paired_refusals(self):
+        for family in ("contention-empty-range","snapshot-selectors","cross-edge-endpoint-uniqueness"):
+            spec={"version":2,"family":family,"facts":1_000_000,"crossPercent":50,"writers":32,"layout":"columns"}
+            self.assertEqual(matrix.preflight(spec,"01"*16,"foundationdb","rtt-100ms"),spec)
+            options={"QueuePackets":1024,"SampleMillis":60000,"MaxSamples":525602,"MaxArtifactBytes":1<<44}
+            matrix.owned_transport_input(spec,"01"*16,{"kind":"injected-rtt","targetRTTMillis":100,"jitterMillis":0,"seed":20261009},31536000,options)
+            cells=list(matrix.matrix((family,),("rtt-100ms",),("foundationdb",),owned=True))
+            self.assertEqual(len(cells),360)
+            self.assertTrue(all(cell["implemented"] and cell["workload"]["version"]==2 for cell in cells))
+            for engine, version in (("paired",2),("foundationdb",1)):
+                with self.assertRaises(ValueError):matrix.preflight({**spec,"version":version},"01"*16,engine,"rtt-100ms")
+            with tempfile.TemporaryDirectory() as directory:
+                destination=Path(directory)/"unfunded"
+                with self.assertRaises(ValueError):matrix.execute(cells[0],destination,180,"small",4096,1<<30,8<<20)
+                self.assertFalse(destination.exists())
+                with self.assertRaises(ValueError):matrix.execute(cells[0],destination,1,"small",4096,1<<30,8<<20,owned_options=options)
+                self.assertFalse(destination.exists())
+
     def test_native_owned_rtt_and_paired_fdb_nonlocal_boundary(self):
         self.assertEqual(matrix.run_seconds(None, "foundationdb"), 180)
         self.assertEqual(matrix.run_seconds(365*24*60*60, "native-raft"), 365*24*60*60)

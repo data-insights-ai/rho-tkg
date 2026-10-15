@@ -313,6 +313,9 @@ func (h *harness) graphCostParallelSubmit(ctx context.Context, x transaction, bo
 		if err := tr.Options().SetRetryLimit(graphCostParallelCallbacks - 1); err != nil {
 			return nil, err
 		}
+		if err := h.graphTransportCheckIn(tr); err != nil {
+			return nil, err
+		}
 		return h.execute(tr, x, graphCostBodyDigest(body))
 	})
 	if stop != nil {
@@ -338,6 +341,9 @@ type graphCostParallelProof struct {
 func (h *harness) graphCostReadParallelOriginal(ctx context.Context, x transaction, body []byte) (graphCostParallelProof, int, error) {
 	return graphCostParallelRead(ctx, h.db, func(tr fdb.ReadTransaction) (graphCostParallelProof, error) {
 		var proof graphCostParallelProof
+		if err := h.graphTransportCheckIn(tr); err != nil {
+			return proof, err
+		}
 		if err := h.checkConfig(tr, x.Coordinator); err != nil {
 			return proof, err
 		}
@@ -419,7 +425,12 @@ func (h *harness) graphCostApplyOperation(parent context.Context, job graphCostP
 	for ordinal := 1; ordinal <= maxAttempts; ordinal++ {
 		attempt := graphCostParallelAttempt{Operation: op, Engine: "foundationdb", ClientID: client, AttemptOrdinal: ordinal, PreviousRequest: previous}
 		begin := time.Now()
-		before, reads, err := graphCostParallelRead(ctx, h.db, func(tr fdb.ReadTransaction) (snapshot, error) { return h.graphCostPointSnapshotIn(tr, command) })
+		before, reads, err := graphCostParallelRead(ctx, h.db, func(tr fdb.ReadTransaction) (snapshot, error) {
+			if err := h.graphTransportCheckIn(tr); err != nil {
+				return snapshot{}, err
+			}
+			return h.graphCostPointSnapshotIn(tr, command)
+		})
 		attempt.ReadCallbacks += reads
 		sample.ProposalAttempts += reads
 		sample.ProposalNanos += time.Since(begin).Nanoseconds()

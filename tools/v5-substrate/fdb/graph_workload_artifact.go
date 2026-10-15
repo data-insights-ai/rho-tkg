@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +10,7 @@ import (
 	"hash"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/apple/foundationdb/bindings/go/src/fdb"
@@ -43,8 +43,10 @@ type graphContentionEnd struct {
 	ProbeWalks                                                         uint64
 	ProbeAccess                                                        string
 	AttemptPayloadSHA256                                               string
+	Transport                                                          *graphTransportRecord `json:",omitempty"`
 }
 type graphContentionArtifacts struct {
+	ctx                       context.Context
 	h                         *harness
 	root                      *os.Root
 	attempts, groups, latency *os.File
@@ -54,10 +56,21 @@ type graphContentionArtifacts struct {
 }
 
 func newGraphContentionArtifacts(h *harness, root *os.Root, spec graphContentionSpec, binding graphCostStoredRecord, initial cut) (a *graphContentionArtifacts, err error) {
-	if h == nil || root == nil || spec.Version != 1 || spec.Family != graphContentionFamily || spec.profile() != h.config.Cost || !strings.HasPrefix(h.config.Graph, "graph-workload-contention-v1-"+spec.Layout+"-") || !validGraphContentionConfig(h.config) {
+	return newGraphContentionArtifactsAdmission(nil, h, root, spec, binding, initial, nil)
+}
+func newGraphContentionArtifactsAdmission(ctx context.Context, h *harness, root *os.Root, spec graphContentionSpec, binding graphCostStoredRecord, initial cut, transport *graphTransportRecord) (a *graphContentionArtifacts, err error) {
+	admission, checkErr := graphTransportArtifact(h, graphFeedWorkloadSpec(spec), transport)
+	if checkErr != nil {
+		return nil, checkErr
+	}
+	if admission != nil && ctx == nil {
 		return nil, errInvalid
 	}
-	a = &graphContentionArtifacts{h: h, root: root, payload: sha256.New(), end: graphContentionEnd{Version: 1, Format: graphContentionFormat, Spec: spec, Config: h.config, Binding: graphContentionPolicy(h.config), BindingRecord: binding, Initial: initial.record}}
+
+	if h == nil || root == nil || (spec.Version != 1 && spec.Version != 2) || spec.Family != graphContentionFamily || spec.profile() != h.config.Cost || !strings.HasPrefix(h.config.Graph, "graph-workload-contention-v"+strconv.Itoa(int(spec.Version))+"-"+spec.Layout+"-") || !validGraphContentionConfig(h.config) {
+		return nil, errInvalid
+	}
+	a = &graphContentionArtifacts{ctx: ctx, h: h, root: root, payload: sha256.New(), end: graphContentionEnd{Version: spec.Version, Format: graphTransportFormatFor(spec.Version, graphContentionFormat), Spec: spec, Config: h.config, Binding: graphContentionPolicyAdmission(h.config, admission), BindingRecord: binding, Initial: initial.record, Transport: transport}}
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, a.Close())
@@ -82,7 +95,7 @@ func newGraphContentionArtifacts(h *harness, root *os.Root, spec graphContention
 		Binding      graphContentionBinding
 		Record       graphCostStoredRecord
 		Initial      certificate
-	}{"header", graphContentionFormat, spec, a.end.Binding, binding, initial.record})
+	}{"header", a.end.Format, spec, a.end.Binding, binding, initial.record})
 	return a, err
 }
 func (a *graphContentionArtifacts) write(v any) error {
@@ -155,7 +168,7 @@ func (a *graphContentionArtifacts) accept(event graphContentionEvent) error {
 	return event.Err
 }
 func (a *graphContentionArtifacts) metadata(c cut) ([2]metadata, error) {
-	got, err := a.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+	got, err := graphCostReadContext(a.ctx, a.h.db, func(tr fdb.ReadTransaction) (any, error) {
 		var out [2]metadata
 		if err := a.h.verifyCut(tr, c); err != nil {
 			return nil, err
@@ -219,7 +232,7 @@ func (a *graphContentionArtifacts) Close() error {
 	return err
 }
 func graphContentionRawWrite(root *os.Root, header graphCostArtifactHeader, walk func(func(graphCostRawRow) error) (graphCostStreamEnd, error)) (end graphCostStreamEnd, err error) {
-	if header.Format != graphContentionFormat || header.Policy.validate() != nil || walk == nil {
+	if header.Format != graphTransportFormatFor(graphTransportConfigVersion(header.Config), graphContentionFormat) || header.Policy.validate() != nil || walk == nil {
 		return end, errInvalid
 	}
 	file, _, err := openGraphCostArtifact(root, "fdb-workload-"+header.Stream+".jsonl")
@@ -267,7 +280,7 @@ func graphContentionRawWrite(root *os.Root, header graphCostArtifactHeader, walk
 	return verified, nil
 }
 func (a *graphContentionArtifacts) current(final cut, policy graphCostStreamPolicy, emit func(graphCostRawRow) error) (graphCostStreamEnd, error) {
-	stream, err := newGraphCostStream(a.h, final, final, policy, emit)
+	stream, err := newGraphCostStreamContext(a.ctx, a.h, final, final, policy, emit)
 	if err != nil {
 		return graphCostStreamEnd{}, err
 	}
@@ -276,7 +289,7 @@ func (a *graphContentionArtifacts) current(final cut, policy graphCostStreamPoli
 		interval := prefixRange(a.h.prefix(g) + "current/")
 		begin, end := interval.Begin.(fdb.Key), interval.End.(fdb.Key)
 		for {
-			got, err := a.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+			got, err := graphCostReadContext(a.ctx, a.h.db, func(tr fdb.ReadTransaction) (any, error) {
 				if _, err := stream.check(tr, true); err != nil {
 					return nil, err
 				}
@@ -335,7 +348,7 @@ func (a *graphContentionArtifacts) inventory() error {
 		interval := prefixRange(a.h.prefix(g) + "id/")
 		begin, end := interval.Begin.(fdb.Key), interval.End.(fdb.Key)
 		for {
-			got, err := a.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+			got, err := graphCostReadContext(a.ctx, a.h.db, func(tr fdb.ReadTransaction) (any, error) {
 				if err := a.h.graphContentionBindingIn(tr); err != nil {
 					return nil, err
 				}
@@ -431,29 +444,22 @@ func (a *graphContentionArtifacts) inventory() error {
 }
 func (a *graphContentionArtifacts) sources(source *graphHistoryRetention) (err error) {
 	policy := graphCostStreamPolicy{PageRows: 32, PageBytes: 4 << 20}
-	header, err := a.h.graphCostArtifactHeader(cut{a.end.Initial}, cut{a.end.Old}, cut{a.end.Final}, policy)
+	header, err := a.h.graphCostArtifactHeaderContext(a.ctx, cut{a.end.Initial}, cut{a.end.Old}, cut{a.end.Final}, policy)
 	if err != nil {
 		return err
 	}
-	header.Format = graphContentionFormat
-	var secret [32]byte
-	if _, err = rand.Read(secret[:]); err != nil {
-		return err
-	}
-	token, err := source.pin("workload-final", cut{a.end.Final}, secret)
-	if err != nil {
-		return err
-	}
-	owner, err := source.open(context.Background(), token)
+	header.Format = a.end.Format
+	owner, _, cleanupOwner, err := graphTransportHeld(a.ctx, a.context(), source, cut{a.end.Final}, "workload-final")
 	if err != nil {
 		return err
 	}
 	defer func() {
-		err = errors.Join(err, historyReadCleanup(owner), source.release("workload-final-close", token))
+		err = errors.Join(err, cleanupOwner())
 		if err != nil {
 			a.end.Sources = [3]graphCostStreamEnd{}
 		}
 	}()
+
 	for i, name := range []string{"history", "current", "cdc"} {
 		header.Stream = name
 		walk := func(emit func(graphCostRawRow) error) (graphCostStreamEnd, error) {
@@ -471,7 +477,7 @@ func (a *graphContentionArtifacts) sources(source *graphHistoryRetention) (err e
 			if name == "current" {
 				return a.current(cut{a.end.Final}, policy, emit)
 			}
-			return a.h.graphCostWalkChanges(cut{a.end.Initial}, cut{a.end.Final}, policy, emit)
+			return a.h.graphCostWalkChangesContext(a.ctx, cut{a.end.Initial}, cut{a.end.Final}, policy, emit)
 		}
 		a.end.Sources[i], err = graphContentionRawWrite(a.root, header, walk)
 		if err != nil {
@@ -497,7 +503,7 @@ func (a *graphContentionArtifacts) probeWalk(name string, owner *graphHistoryRea
 	for i, fact := range [4]uint64{0, 9, p.Facts / 2, p.Facts + 16} {
 		points[i] = graphContentionPoint{Name: name, Cut: owner.id.Cut, Fact: fact, Key: []byte(edgeKey("edge", p.edge(fact, 5)))}
 	}
-	rows, err := owner.walk(context.Background(), func(row graphCostRawRow) error {
+	rows, err := owner.walk(a.context(), func(row graphCostRawRow) error {
 		key, v, err := a.h.graphHistoryRow(row, owner.id.Cut.Round)
 		if err != nil {
 			return err
@@ -522,7 +528,7 @@ func (a *graphContentionArtifacts) probeWalk(name string, owner *graphHistoryRea
 			return [2]uint64{}, errMismatch
 		}
 		if out.Found {
-			result, err := a.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+			result, err := graphCostReadContext(a.ctx, a.h.db, func(tr fdb.ReadTransaction) (any, error) {
 				if err := owner.check(tr); err != nil {
 					return nil, err
 				}
@@ -537,7 +543,7 @@ func (a *graphContentionArtifacts) probeWalk(name string, owner *graphHistoryRea
 			if err != nil {
 				return [2]uint64{}, err
 			}
-			out.Original, _, err = a.h.graphCostReadParallelOriginal(context.Background(), group.Tx, body)
+			out.Original, _, err = a.h.graphCostReadParallelOriginal(a.context(), group.Tx, body)
 			if err != nil {
 				return [2]uint64{}, err
 			}
@@ -596,7 +602,7 @@ func (a *graphContentionArtifacts) finish(source *graphHistoryRetention) error {
 // completion grammar differ from the historical create/update lane.
 func (a *graphContentionArtifacts) columnStart(initial, old cut) (l *graphCostColumnLane, err error) {
 	policy, retention := graphCostColumnPolicies(a.h.config.Cost)
-	s, err := newGraphColumnStore(a.h, policy)
+	s, err := newGraphColumnStoreContext(a.ctx, a.h, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -609,7 +615,7 @@ func (a *graphContentionArtifacts) columnStart(initial, old cut) (l *graphCostCo
 		return nil, err
 	}
 	l = &graphCostColumnLane{s: s, pins: pins, root: a.root, file: file, payload: sha256.New(), whole: sha256.New(), initial: initial}
-	l.end.Format, l.end.SourceFormat, l.end.ReferenceLayout = graphContentionFormat, graphContentionFormat, "native-logical-kv-reference"
+	l.end.Format, l.end.SourceFormat, l.end.ReferenceLayout = a.end.Format, a.end.Format, "native-logical-kv-reference"
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, columnReadCleanup(l.held), l.Close())
@@ -624,14 +630,14 @@ func (a *graphContentionArtifacts) columnStart(initial, old cut) (l *graphCostCo
 		Type, Format string
 		Config       config
 		Records      []graphCostStoredRecord
-	}{"header", graphContentionFormat, a.h.config, records}, true); err != nil {
+	}{"header", a.end.Format, a.h.config, records}, true); err != nil {
 		return l, err
 	}
 	err = l.holdOld(old)
 	return l, err
 }
 func (a *graphContentionArtifacts) columnFinish(l *graphCostColumnLane, final cut) (err error) {
-	ctx := context.Background()
+	ctx := a.context()
 	l.end.Final, err = l.s.publish(ctx, "final", l.initial, final)
 	if err != nil {
 		return err
@@ -731,7 +737,7 @@ func (a *graphContentionArtifacts) columnFinish(l *graphCostColumnLane, final cu
 			return errors.Join(errMismatch, e)
 		}
 		key := l.s.chunkKey("old", ordinal)
-		result, e := a.h.db.ReadTransact(func(tr fdb.ReadTransaction) (any, error) {
+		result, e := graphCostReadContext(a.ctx, a.h.db, func(tr fdb.ReadTransaction) (any, error) {
 			raw, e := tr.Get(key).Get()
 			if e != nil {
 				return nil, e
@@ -862,4 +868,8 @@ func (a *graphContentionArtifacts) columnRefusal(l *graphCostColumnLane, name, g
 		Input, Result                 any
 		Records                       []graphCostStoredRecord
 	}{"refusal", name, generation, observed.Error(), input, result, records}, true)
+}
+
+func (a *graphContentionArtifacts) context() context.Context {
+	return graphTransportLegacyContext(a.ctx)
 }

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Authored admission/ownership guards only; these are not Linux/FDB evidence."""
 import copy
+import base64
+import hashlib
 import tempfile
 from pathlib import Path
 import unittest
@@ -20,7 +22,7 @@ class OwnedTransportGuards(unittest.TestCase):
         value=request()
         self.assertEqual(owned.validate_input(value),value)
         self.assertEqual(owned.causal_minimum(value["Spec"],value["Transport"]),212500300)
-        changes=[{"BudgetSeconds":1800},{"BudgetSeconds":31_536_001},{"MaxSamples":525601},{"MaxArtifactBytes":(16<<20)+525602*(2<<20)-1},{"QueuePackets":0},{"Spec":{**value["Spec"],"family":"snapshot-selectors"}},{"Transport":{**value["Transport"],"jitterMillis":1}}]
+        changes=[{"BudgetSeconds":1800},{"BudgetSeconds":31_536_001},{"MaxSamples":525601},{"MaxArtifactBytes":(16<<20)+525602*(2<<20)-1},{"QueuePackets":0},{"Spec":{**value["Spec"],"family":"missing-family"}},{"Transport":{**value["Transport"],"jitterMillis":1}}]
         for change in changes:
             with self.assertRaises(ValueError): owned.validate_input(value|change)
         peers=[{"Role":r,"Container":f"{i+1:064x}","IP":f"10.0.0.{i+10}","NetNS":f"net:[{i+100}]","Network":"aa"*32} for i,r in enumerate(owned.ROLES)]
@@ -52,6 +54,26 @@ class OwnedTransportGuards(unittest.TestCase):
         foreign=copy.deepcopy(peers);foreign[1]["NetNS"]=foreign[0]["NetNS"]
         with self.assertRaises(ValueError): owned.directed(foreign)
         with self.assertRaises(ValueError): owned.validate_readback([],peers,value,True)
+
+    def test_all_actual_family_schedules_and_native_admission_binding(self):
+        for family, minimum in (("contention-empty-range",150000300),("snapshot-selectors",200000300),("cross-edge-endpoint-uniqueness",600000700)):
+            value=request();value["Spec"]["family"]=family
+            self.assertEqual(owned.validate_input(value),value)
+            self.assertEqual(owned.causal_minimum(value["Spec"],value["Transport"]),minimum)
+            p={"Version":2,"Spec":value["Spec"],"Run":[1]*16,"Transport":value["Transport"],"BudgetSeconds":value["BudgetSeconds"],"CausalMinimumMillis":minimum,"AdmittedUnixNanos":1,"DeadlineUnixNanos":1+value["BudgetSeconds"]*1_000_000_000,
+               **{k:value[k] for k in ("QueuePackets","SampleMillis","MaxSamples","MaxArtifactBytes")},"ProbeSamples":9,"ProbePayloadBytes":64,"ProbeTimeoutMillis":3000,
+               "Tools":{"Version":"iproute2-6.12.0",**{k:[i+1]*32 for i,k in enumerate(("TC","IP","Probe","Source","Build"))}},
+               "Peers":[{"Role":role,"Container":f"{i+1:064x}","Image":"sha256:"+f"{i+10:064x}","IP":f"10.0.0.{i+10}","NetNS":f"net:[{i+100}]","Network":"aa"*32,"PID":i+1} for i,role in enumerate(owned.ROLES)],"ArmedSHA256":[7]*32}
+            p["Tools"]["Source"]=list(bytes.fromhex(owned.SOURCE_SHA))
+            stem={"contention-empty-range":"contention","snapshot-selectors":"selectors","cross-edge-endpoint-uniqueness":"edge-unique"}[family]
+            c={"Graph":f"graph-workload-{stem}-v2-kv-"+"01"*16}
+            key=b"g0/"+c["Graph"].encode().hex().encode()+b"/workload-transport-v2/"+b"binding".hex().encode()
+            native={"Policy":p,"Record":{"Key":base64.b64encode(key).decode(),"Value":base64.b64encode(owned.canonical(p)).decode()}}
+            self.assertEqual(owned.family_record(native,value["Spec"],c),list(hashlib.sha256(owned.canonical(p)).digest()))
+            for bad in ({**native,"Record":{**native["Record"],"Value":base64.b64encode(b"{}").decode()}}, {**native,"Policy":{**p,"DeadlineUnixNanos":p["DeadlineUnixNanos"]+1}}):
+                with self.assertRaises(ValueError):owned.family_record(bad,value["Spec"],c)
+            with self.assertRaises(ValueError):owned.family_record(native,{**value["Spec"],"family":"snapshot-to-feed"},c)
+            with self.assertRaises(ValueError):owned.validate_input(value|{"BudgetSeconds":minimum//1000})
 
     def test_stream_grant_partial_eof_and_missing_actual_assets(self):
         with tempfile.TemporaryDirectory() as directory:

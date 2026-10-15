@@ -38,7 +38,7 @@ def require(condition, message):
 
 
 def implemented(family, engine, transport, owned=False):
-    return (family in IMPLEMENTED and (transport == "local" or owned and family == "snapshot-to-feed") if engine == "foundationdb" else
+    return (family in IMPLEMENTED and (transport == "local" or owned) if engine == "foundationdb" else
             family == "contention-empty-range" and (engine == "native-raft" or engine == "paired" and transport == "local")
             or family == "cross-edge-endpoint-uniqueness" and (engine == "native-raft" or engine == "paired" and transport == "local"))
 
@@ -51,7 +51,7 @@ def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("fou
     """
     require(all(f in FAMILIES for f in families) and all(t in TRANSPORTS for t in transports) and all(e in ENGINES for e in engines), "unknown canonical workload dimension")
     for engine, family, facts, cross, writers, layout, transport, repetition in itertools.product(engines, families, FACTS, CROSS, WRITERS, LAYOUTS, transports, range(1, 6)):
-        yield {"version": 1, "engine": engine, "workload": {"version": 2 if owned and engine=="foundationdb" and family=="snapshot-to-feed" else 1, "family": family, "facts": facts, "crossPercent": cross, "writers": writers, "layout": layout},
+        yield {"version": 1, "engine": engine, "workload": {"version": 2 if owned and engine=="foundationdb" and family in IMPLEMENTED else 1, "family": family, "facts": facts, "crossPercent": cross, "writers": writers, "layout": layout},
                "transport": {"kind": "local" if transport == "local" else "injected-rtt", "targetRTTMillis": TRANSPORTS[transport], "jitterMillis": 0, "seed": 20261009},
                "repetition": repetition, "implemented": implemented(family, engine, transport, owned),
                "scope": "schedule only; missing family semantics/real directed shaping refuse execution, not accepted skips"}
@@ -59,7 +59,7 @@ def matrix(families=tuple(FAMILIES), transports=tuple(TRANSPORTS), engines=("fou
 
 def preflight(spec, run, engine="foundationdb", transport="local"):
     require(type(spec) is dict and set(spec) == {"version", "family", "facts", "crossPercent", "writers", "layout"}, "explicit fresh workload schema")
-    fresh = type(spec["version"]) is int and spec["version"] == 2 and spec["family"] == "snapshot-to-feed" and engine == "foundationdb"
+    fresh = type(spec["version"]) is int and spec["version"] == 2 and spec["family"] in IMPLEMENTED and engine == "foundationdb"
     require(type(spec["version"]) is int and (spec["version"] == 1 and (engine != "foundationdb" or transport == "local") or fresh) and engine in ENGINES and transport in TRANSPORTS
             and implemented(spec["family"], engine, transport, fresh), "family/engine/real transport driver not implemented")
     require(type(spec["facts"]) is int and 20 <= spec["facts"] <= 1_000_000 and spec["facts"] % 20 == 0 and type(spec["crossPercent"]) is int and spec["crossPercent"] in CROSS and type(spec["writers"]) is int and spec["writers"] in WRITERS and spec["layout"] in LAYOUTS, "fresh family shape")
@@ -95,7 +95,7 @@ def transport_options(args):
     values = (args.transport_queue_packets,args.transport_sample_millis,args.transport_max_samples,args.transport_artifact_bytes)
     require(args.fdb_owned_transport or all(v is None for v in values), "transport grants require explicit fresh FDB adapter")
     if not args.fdb_owned_transport: return None
-    require(args.engine == "foundationdb" and args.family == "snapshot-to-feed" and all(v is not None for v in values), "fresh feed transport requires all four finite output/packet grants")
+    require(args.engine == "foundationdb" and args.family in IMPLEMENTED and all(v is not None for v in values), "fresh implemented-family transport requires all four finite output/packet grants")
     return dict(zip(("QueuePackets","SampleMillis","MaxSamples","MaxArtifactBytes"),values,strict=True))
 
 
@@ -104,9 +104,10 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     transport = next((name for name, delay in TRANSPORTS.items() if cell["transport"] ==
                       {"kind": "local" if name == "local" else "injected-rtt", "targetRTTMillis": delay, "jitterMillis": 0, "seed": 20261009}), "unsupported")
     run = secrets.token_hex(16)
-    require(owned_options is None or cell["engine"] == "foundationdb" and cell["workload"]["family"] == "snapshot-to-feed", "no nominal paired/other-family FDB shaping")
+    require(owned_options is None or cell["engine"] == "foundationdb" and cell["workload"]["family"] in IMPLEMENTED, "no nominal paired/unsupported-family FDB shaping")
     actual_cell = cell if owned_options is None else {**cell,"workload":{**cell["workload"],"version":2}}
     spec = preflight(actual_cell["workload"], run, cell["engine"], transport)
+    require(cell["engine"] != "foundationdb" or (spec["version"] == 2) == (owned_options is not None), "fresh FDB spec requires the actual owned adapter, not a nominal transport label")
     require(grant_origin in ("explicit-caller", "small-default") and (grant_origin == "explicit-caller" or spec["facts"] < 1_000_000 and spec["writers"] != 32), "large cells require explicit finite verifier grant")
     owned_input = None
     if owned_options is None:
@@ -210,7 +211,8 @@ def execute(cell, output, seconds, profile, memory, spool_disk, spool_cache, gra
     else:
         import fdb_contention_check as checker
     proof = checker.verify(artifacts, destination, policy)
-    prefix = "graph-workload-edge-unique-v1-" if edge_unique else f"graph-workload-feed-v{spec['version']}-" if feed else "graph-workload-selectors-v1-" if selector else "graph-workload-contention-v1-"
+    stem = "edge-unique" if edge_unique else "feed" if feed else "selectors" if selector else "contention"
+    prefix = f"graph-workload-{stem}-v{spec['version']}-"
     require(proof["spec"] == spec and proof["runGraph"] == prefix + spec["layout"] + "-" + run, "fresh run/native binding/result agreement")
     with (destination / "verified.json").open("x") as out:
         json.dump({"requestSHA256": hashlib.sha256((destination / "request.json").read_bytes()).hexdigest(), "artifacts": str(artifacts), "proof": proof,

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -37,6 +36,7 @@ type graphEdgeUniqueEnd struct {
 	LatencyPayloadSHA256                                   string
 	LogicalOperations                                      uint64
 	SetupNanos, BusinessNanos, DiagnosticNanos, TotalNanos int64
+	Transport                                              *graphTransportRecord `json:",omitempty"`
 }
 type graphEdgeUniqueArtifacts struct {
 	ctx         context.Context
@@ -178,12 +178,16 @@ func (h *harness) graphEdgeUniqueWinner(ctx context.Context, fact uint64) (uint6
 
 func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (err error) {
 	started := time.Now()
-	c := graphEdgeUniqueConfig(spec.profile(), spec.Layout, run)
-	if spec.Version != 1 || spec.Family != graphEdgeUniqueFamily || !validGraphEdgeUniqueConfig(c) {
+	c := graphTransportFamilyConfig(graphFeedWorkloadSpec(spec), run)
+	if (spec.Version != 1 && spec.Version != 2) || spec.Family != graphEdgeUniqueFamily || !validGraphEdgeUniqueConfig(c) {
 		return errInvalid
 	}
+	admission, err := graphTransportAdmission(spec.Version, spec.Family, run)
+	if err != nil || admission != nil && admission.Spec != graphFeedWorkloadSpec(spec) {
+		return errors.Join(errMismatch, err)
+	}
 	seconds := 1800
-	if raw := os.Getenv("FDB_COST_SECONDS"); raw != "" {
+	if raw := os.Getenv("FDB_COST_SECONDS"); admission == nil && raw != "" {
 		n, e := strconv.Atoi(raw)
 		if e != nil || n < 1 || n > 1800 {
 			return errInvalid
@@ -191,13 +195,25 @@ func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (
 		seconds = n
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(seconds)*time.Second)
+	if admission != nil {
+		cancel()
+		ctx, cancel = graphTransportContext(admission)
+	}
 	defer cancel()
 	ctx = context.WithValue(ctx, graphEdgeUniqueClockKey{}, started)
 	h, err := newHarnessContext(ctx, db, c)
 	if err != nil {
 		return err
 	}
-	binding, err := h.graphEdgeUniqueInstall(ctx)
+	var transport *graphTransportRecord
+	if admission != nil {
+		actual, e := h.graphTransportInstall(ctx, *admission)
+		if e != nil {
+			return e
+		}
+		transport = &graphTransportRecord{*admission, actual}
+	}
+	binding, err := h.graphEdgeUniqueInstallAdmission(ctx, admission)
 	if err != nil {
 		return err
 	}
@@ -227,7 +243,7 @@ func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (
 	if err != nil {
 		return err
 	}
-	a := &graphEdgeUniqueArtifacts{ctx: ctx, h: h, root: root, file: file, replays: replays, payload: sha256.New(), end: graphEdgeUniqueEnd{Version: 1, Format: graphEdgeUniqueFormat, Spec: spec, Config: c, Binding: binding, Initial: initial.record}}
+	a := &graphEdgeUniqueArtifacts{ctx: ctx, h: h, root: root, file: file, replays: replays, payload: sha256.New(), end: graphEdgeUniqueEnd{Version: spec.Version, Format: graphTransportFormatFor(spec.Version, graphEdgeUniqueFormat), Spec: spec, Config: c, Binding: binding, Initial: initial.record, Transport: transport}}
 	latency, _, err := openGraphCostArtifact(root, "fdb-workload-latency.jsonl")
 	if err != nil {
 		return err
@@ -297,21 +313,12 @@ func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (
 	if err != nil {
 		return err
 	}
-	var secret [32]byte
-	if _, err = rand.Read(secret[:]); err != nil {
-		return err
-	}
-	token, err := source.pin("edge-unique-old", old, secret)
+	held, closeHeld, cleanupHeld, err := graphTransportHeld(graphTransportIO(ctx, admission), ctx, source, old, "edge-unique-old")
 	if err != nil {
 		return err
 	}
-	held, err := source.open(ctx, token)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = errors.Join(err, historyReadCleanup(held), source.release("edge-unique-old-close", token))
-	}()
+	defer func() { err = errors.Join(err, cleanupHeld()) }()
+
 	recipes, err := root.OpenFile("fdb-edge-unique-frozen-close.jsonl", os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		return err
@@ -451,10 +458,7 @@ func runGraphEdgeUnique(db fdb.Database, spec graphEdgeUniqueSpec, run string) (
 	if a.end.Sources[0].Rows[0]+a.end.Sources[0].Rows[1] != n.Versions || a.end.Sources[1].Rows[0]+a.end.Sources[1].Rows[1] != 5+7*p.Facts || a.end.Sources[2].Rows[0]+a.end.Sources[2].Rows[1] != n.Groups {
 		return errMismatch
 	}
-	if err = historyReadCleanup(held); err != nil {
-		return err
-	}
-	if err = source.release("edge-unique-old-close", token); err != nil {
+	if err = closeHeld(); err != nil {
 		return err
 	}
 	a.end.AttemptPayloadSHA256 = hex.EncodeToString(a.payload.Sum(nil))

@@ -134,7 +134,7 @@ def raw_stream(directory, name, end):
         if header is None:
             header = frame
             fields(header, "Type Format Stream Config InitialCut OldCut FinalCut Policy Metadata ConfigRecords MetadataRecords CutRecords")
-            require(header["Type"] == "header" and header["Format"] == FORMAT and header["Stream"] == name and header["Config"] == end["Config"] and header["InitialCut"] == end["Initial"] and header["OldCut"] == end["Old"] and header["FinalCut"] == end["Final"] and header["Policy"] == {"PageRows": 32, "PageBytes": 4 << 20}, "fresh source header/scope/policy")
+            require(header["Type"] == "header" and header["Format"] == end["Format"] and header["Stream"] == name and header["Config"] == end["Config"] and header["InitialCut"] == end["Initial"] and header["OldCut"] == end["Old"] and header["FinalCut"] == end["Final"] and header["Policy"] == {"PageRows": 32, "PageBytes": 4 << 20}, "fresh source header/scope/policy")
             for g in range(2):
                 raw_record(header["ConfigRecords"][g], key(end["Config"], g, "meta", "config"), go_json(end["Config"]))
                 raw_record(header["MetadataRecords"][g], key(end["Config"], g, "meta", "state"), go_json(header["Metadata"][g]))
@@ -360,7 +360,7 @@ def events(directory, end, spool, header):
         digest.update(line)
         if not started:
             fields(frame, "Type Format Spec Config Binding Record Initial")
-            require(frame == {"Type": "header", "Format": FORMAT, "Spec": end["Spec"], "Config": end["Config"], "Binding": end["Binding"], "Record": end["BindingRecord"], "Initial": end["Initial"]}, "fresh actual binding header")
+            require(frame == {"Type": "header", "Format": end["Format"], "Spec": end["Spec"], "Config": end["Config"], "Binding": end["Binding"], "Record": end["BindingRecord"], "Initial": end["Initial"]}, "fresh actual binding header")
             started = True
             continue
         if kind == "selector-open":
@@ -585,7 +585,7 @@ def columns(directory, end, spool):
         kind = row.get("Type")
         if kind == "footer":
             final = row["End"]
-            require(final == column_end | {"ArtifactSHA256": [0] * 32} and final["Format"] == final["SourceFormat"] == FORMAT and final["ReferenceLayout"] == "native-logical-kv-reference" and
+            require(final == column_end | {"ArtifactSHA256": [0] * 32} and final["Format"] == final["SourceFormat"] == end["Format"] and final["ReferenceLayout"] == "native-logical-kv-reference" and
                     final["Old"] == manifests["old"] and final["Final"] == manifests["final"] and bytes(final["PayloadSHA256"]) == digest.digest(), "sealed actual derived column artifact")
             require(final["Counts"]["Stages"] == 6 and final["Counts"]["Chunks"] == sum(chunks.values()) and final["Counts"]["WalkRows"] == sum(walks.values()) and final["Counts"]["Points"] == point_count == 6 and final["Counts"]["Collections"] == collected and
                     final["Ledger"]["Chunks"] == live_chunks == manifests["final"]["Chunks"] and final["Storage"]["Records"] == storage_count and final["Storage"]["Bytes"] == storage_bytes and
@@ -596,7 +596,7 @@ def columns(directory, end, spool):
             continue
         digest.update(line)
         if not header:
-            require(row["Type"] == "header" and row["Format"] == FORMAT and row["Config"] == c and len(row["Records"]) == 2, "fresh actual column binding header")
+            require(row["Type"] == "header" and row["Format"] == end["Format"] and row["Config"] == c and len(row["Records"]) == 2, "fresh actual column binding header")
             binding = decoded(blob(row["Records"][0]["Value"]))
             require(binding["Version"] == 1 and binding["Config"] == c and binding["Scope"] == codec.SCOPE and binding["Layout"] == codec.COLUMN_LAYOUT and
                     binding["Schema"] == "node-presence;edge-life-bound;property-p:i64;canonical-original:v1", "typed column graph/schema/axis binding")
@@ -785,15 +785,16 @@ def columns(directory, end, spool):
 
 
 def validate_result(end):
-    fields(end, "Version Format Spec Config Binding BindingRecord Initial Old Final Attempts Aborted Committed Setup Creates Updates Observations Clients Sources AttemptSHA256 EventSHA256" + (" Columns" if "Columns" in end else ""))
-    require(integer(end["Version"], 1, 1) == 1 and end["Format"] == FORMAT, "fresh selector result only")
+    version = integer(end["Version"], 1, 2)
+    fields(end, "Version Format Spec Config Binding BindingRecord Initial Old Final Attempts Aborted Committed Setup Creates Updates Observations Clients Sources AttemptSHA256 EventSHA256" + (" Columns" if "Columns" in end else "") + (" Transport" if version == 2 else ""))
+    require(end["Format"] == FORMAT.replace("-v1", f"-v{version}"), "fresh selector result only")
     p, c = end["Spec"], end["Config"]
     fields(p, "version family facts crossPercent writers layout")
     n = integer(p["facts"], 20, 1_000_000)
-    integer(p["version"], 1, 1)
+    integer(p["version"], version, version)
     integer(p["writers"], 1, 32)
-    require(p["version"] == 1 and p["family"] == FAMILY and n % 20 == 0 and p["writers"] in (1, 8, 32) and n >= p["writers"] + 1 and p["crossPercent"] in (0, 10, 50, 100) and type(p["crossPercent"]) is int and p["layout"] in ("kv", "columns"), "actual implemented selector dimensions")
-    graph_prefix = "graph-workload-selectors-v1-" + p["layout"] + "-"
+    require(p["version"] == version and p["family"] == FAMILY and n % 20 == 0 and p["writers"] in (1, 8, 32) and n >= p["writers"] + 1 and p["crossPercent"] in (0, 10, 50, 100) and type(p["crossPercent"]) is int and p["layout"] in ("kv", "columns"), "actual implemented selector dimensions")
+    graph_prefix = f"graph-workload-selectors-v{version}-" + p["layout"] + "-"
     run = c["Graph"].removeprefix(graph_prefix)
     require(c["Graph"].startswith(graph_prefix) and len(run) == 32 and bytes.fromhex(run).hex() == run and bytes.fromhex(run) != bytes(16), "explicit fresh persisted run identity")
     originals = 3 + 2 * n * 64
@@ -806,8 +807,10 @@ def validate_result(end):
                         "Cleanup": {"Rows": 1024, "Bytes": 64 << 20, "Millis": 30000}},
                "History": {"MaxOwners": 64, "MaxControlBytes": 4 << 20, "PageRows": 32, "PageBytes": 4 << 20, "MaxWorkRows": 32 * n + 4096,
                            "MaxWorkBytes": (64 << 20) + n * (1 << 20), "MaxChainSteps": 128, "MaxOutputBytes": 4096}}
+    if version == 2:
+        binding.update(Version=2, Admission=raw.transport.family_record(end["Transport"], p, c))
     require(end["Binding"] == binding, "actual finite opening/scan/cleanup/history admission")
-    raw_record(end["BindingRecord"], key(c, 0, "workload-selectors-v1", "binding"), go_json(binding))
+    raw_record(end["BindingRecord"], key(c, 0, f"workload-selectors-v{version}", "binding"), go_json(binding))
     for name, groups in (("Initial", [0, 0]), ("Old", [2 + n, 1]), ("Final", [2 + 2 * n, 1])):
         cut = end[name]
         fields(cut, "Graph Topology Epochs Scope Round Groups")
@@ -946,10 +949,15 @@ def verify(directory, spool_directory, policy=None):
         columns(directory, end, spool)
         latencies(directory, end, spool)
         timing = selector_timings(spool)
+        transport_proof = raw.transport.verify(directory, end["Transport"]["Policy"], spool) if end["Version"] == 2 else None
         report = spool.report()
-    return {"format": FORMAT, "family": FAMILY, "runGraph": end["Config"]["Graph"], "spec": end["Spec"], "attempts": end["Attempts"],
+    result = {"format": end["Format"], "family": FAMILY, "runGraph": end["Config"]["Graph"], "spec": end["Spec"], "attempts": end["Attempts"],
             "committed": end["Committed"], "aborted": end["Aborted"], "spool": report, "selectorTiming": timing,
             "scope": "one actual FDB selectors/source cell; opening reservations and successful-page logical debit; scan-based points; source retain-all and derived GC; no native parity/RTT/matrix/capacity acceptance"}
+    if transport_proof is not None:
+        transport_proof["nativeRetainedBindingBytes"] = len(blob(end["Transport"]["Record"]["Key"])) + len(blob(end["Transport"]["Record"]["Value"]))
+        result["transport"] = transport_proof
+    return result
 
 
 if __name__ == "__main__":

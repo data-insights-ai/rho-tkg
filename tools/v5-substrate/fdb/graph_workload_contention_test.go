@@ -1,12 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 )
 
 // Authored only. These guards grant no actual concurrent SDK evidence.
 func TestGraphContentionFreshProfileAndIncrementGuards(t *testing.T) {
+	transport := graphTransportGuardPolicy()
+	transport.Spec.Family = graphContentionFamily
+	transport.CausalMinimumMillis, _ = graphTransportCausalMinimum(transport.Spec, transport.Transport)
+	freshConfig := graphTransportConfig(transport.Spec, "01000000000000000000000000000000")
+	ordinary := graphContentionPolicy(freshConfig)
+	bound := graphContentionPolicyAdmission(freshConfig, &transport)
+	ordinaryBytes, _ := wire(ordinary)
+	if bound.Version != 2 || bound.Admission != graphTransportDigest(&transport) || ordinary.Version != 1 || ordinary.Admission != [32]byte{} || bytes.Contains(ordinaryBytes, []byte("Admission")) {
+		t.Fatal("ordinary bytes or exact admission digest changed")
+	}
 	p := graphCostProfile{Version: 2, Facts: 20, CrossPercent: 50, Writers: 8}
 	c := graphContentionConfig(p, "kv", "01020304050607080910111213141516")
 	if !validGraphCostProfile(c) || c.Limits.Transactions != graphContentionLimit(p).Transactions {

@@ -36,7 +36,11 @@ func graphSelectorsLimit(p graphCostProfile) limits {
 	return limits{Bytes: (64 << 20) + p.Facts*(64<<10) + originals*2048, Transactions: originals, Versions: 3 + 6*p.Facts, Certificates: 1024}
 }
 func graphSelectorsConfig(spec graphSelectorsSpec, run string) config {
-	return graphCostConfig("graph-workload-selectors-v1-"+spec.Layout+"-"+run, spec.profile())
+	version := "v1"
+	if spec.Version == 2 {
+		version = "v2"
+	}
+	return graphCostConfig("graph-workload-selectors-"+version+"-"+spec.Layout+"-"+run, spec.profile())
 }
 func validGraphSelectorsConfig(c config) bool {
 	p := c.Cost
@@ -48,6 +52,9 @@ func validGraphSelectorsConfig(c config) bool {
 		return false
 	}
 	name := strings.TrimPrefix(c.Graph, "graph-workload-selectors-v1-")
+	if name == c.Graph {
+		name = strings.TrimPrefix(c.Graph, "graph-workload-selectors-v2-")
+	}
 	if name == c.Graph {
 		return false
 	}
@@ -73,6 +80,7 @@ type graphSelectorsBinding struct {
 	Window, Attempts, Submissions, Callbacks int
 	Read                                     graphSnapshotPolicy
 	History                                  graphHistoryPolicy
+	Admission                                [32]byte `json:",omitzero"`
 }
 
 func graphSelectorsPolicy(c config) graphSelectorsBinding {
@@ -81,26 +89,49 @@ func graphSelectorsPolicy(c config) graphSelectorsBinding {
 	datasetProfile.Version = 1
 	return graphSelectorsBinding{1, c, graphCostOperationID(datasetProfile, "setup", 0).Dataset, 32, 64, 8, 16,
 		graphSnapshotPolicy{PageRows: 8, PageBytes: 4 << 20, InventoryBytes: 4 << 20, WorkRows: 1024*p.Facts + 4096, WorkBytes: (64 << 20) + p.Facts*(2<<20), ChainSteps: 128, Cleanup: graphSnapshotCleanupDefault()},
-		graphHistoryPolicy{MaxOwners: 64, MaxControlBytes: 4 << 20, PageRows: 32, PageBytes: 4 << 20, MaxWorkRows: 32*p.Facts + 4096, MaxWorkBytes: (64 << 20) + p.Facts*(1<<20), MaxChainSteps: 128, MaxOutputBytes: 4096}}
+		graphHistoryPolicy{MaxOwners: 64, MaxControlBytes: 4 << 20, PageRows: 32, PageBytes: 4 << 20, MaxWorkRows: 32*p.Facts + 4096, MaxWorkBytes: (64 << 20) + p.Facts*(1<<20), MaxChainSteps: 128, MaxOutputBytes: 4096}, [32]byte{}}
+}
+
+func graphSelectorsPolicyAdmission(c config, p *graphTransportPolicy) graphSelectorsBinding {
+	b := graphSelectorsPolicy(c)
+	if p != nil {
+		b.Version = 2
+		b.Admission = graphTransportDigest(p)
+	}
+	return b
 }
 func (h *harness) graphSelectorsBindingIn(tr fdb.ReadTransaction) error {
-	raw, err := tr.Get(h.key(0, "workload-selectors-v1", "binding")).Get()
+	p, err := h.graphTransportNative(tr)
+	if err != nil {
+		return err
+	}
+	raw, err := tr.Get(h.key(0, graphTransportBindingKind(h.config, "workload-selectors-v1"), "binding")).Get()
 	if err != nil {
 		return err
 	}
 	actual, err := decode[graphSelectorsBinding](raw)
-	if err != nil || actual != graphSelectorsPolicy(h.config) {
+	if err != nil || actual != graphSelectorsPolicyAdmission(h.config, p) {
 		return errors.Join(errMismatch, err)
 	}
 	return nil
 }
 func (h *harness) graphSelectorsInstall() (graphCostStoredRecord, error) {
-	key := h.key(0, "workload-selectors-v1", "binding")
-	body, err := wire(graphSelectorsPolicy(h.config))
+	return h.graphSelectorsInstallContext(nil, nil)
+}
+func (h *harness) graphSelectorsInstallContext(ctx context.Context, admission *graphTransportPolicy) (graphCostStoredRecord, error) {
+	if h == nil || admission != nil && ctx == nil {
+		return graphCostStoredRecord{}, errInvalid
+	}
+	key := h.key(0, graphTransportBindingKind(h.config, "workload-selectors-v1"), "binding")
+	body, err := wire(graphSelectorsPolicyAdmission(h.config, admission))
 	if err != nil {
 		return graphCostStoredRecord{}, err
 	}
-	_, err = h.db.Transact(func(tr fdb.Transaction) (any, error) {
+	_, err = graphCostWriteContext(ctx, h.db, func(tr fdb.Transaction) (any, error) {
+		actual, err := h.graphTransportNative(tr)
+		if err != nil || graphTransportDigest(actual) != graphTransportDigest(admission) {
+			return nil, errors.Join(errMismatch, err)
+		}
 		for g := uint8(0); g < 2; g++ {
 			if err := h.checkConfig(tr, g); err != nil {
 				return nil, err
@@ -138,7 +169,7 @@ func (h *harness) graphSelectorsInstall() (graphCostStoredRecord, error) {
 	if err != nil {
 		return graphCostStoredRecord{}, graphHistoryCommitError(err)
 	}
-	stored, _, err := graphCostParallelRead(context.Background(), h.db, func(tr fdb.ReadTransaction) (graphCostStoredRecord, error) {
+	stored, _, err := graphCostParallelRead(graphTransportLegacyContext(ctx), h.db, func(tr fdb.ReadTransaction) (graphCostStoredRecord, error) {
 		if err := h.graphSelectorsBindingIn(tr); err != nil {
 			return graphCostStoredRecord{}, err
 		}
@@ -161,8 +192,12 @@ func graphSelectorsSpecFromEnv() (graphSelectorsSpec, string, error) {
 	if err := d.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return spec, "", errors.Join(errInvalid, err)
 	}
-	if spec.Version != 1 || spec.Family != graphSelectorsFamily || !validGraphSelectorsConfig(graphSelectorsConfig(spec, run)) {
+	if (spec.Version != 1 && spec.Version != 2) || spec.Family != graphSelectorsFamily || !validGraphSelectorsConfig(graphSelectorsConfig(spec, run)) {
 		return spec, "", errInvalid
+	}
+	p, err := graphTransportAdmission(spec.Version, spec.Family, run)
+	if err != nil || p != nil && p.Spec != graphFeedWorkloadSpec(spec) {
+		return spec, "", errors.Join(errMismatch, err)
 	}
 	return spec, run, nil
 }
@@ -237,23 +272,38 @@ func (h *harness) graphSelectorsPhase(ctx context.Context, a *graphSelectorsArti
 
 func runGraphSelectors(db fdb.Database, spec graphSelectorsSpec, run string) (err error) {
 	c := graphSelectorsConfig(spec, run)
-	if spec.Version != 1 || spec.Family != graphSelectorsFamily || !validGraphSelectorsConfig(c) {
+	if (spec.Version != 1 && spec.Version != 2) || spec.Family != graphSelectorsFamily || !validGraphSelectorsConfig(c) {
 		return errInvalid
 	}
-	h, err := newHarness(db, c)
+	admission, err := graphTransportAdmission(spec.Version, spec.Family, run)
+	if err != nil || admission != nil && admission.Spec != graphFeedWorkloadSpec(spec) {
+		return errors.Join(errMismatch, err)
+	}
+	ctx, cancel := graphTransportContext(admission)
+	defer cancel()
+	ioctx := graphTransportIO(ctx, admission)
+	h, err := graphTransportNewHarness(ioctx, db, c)
 	if err != nil {
 		return err
 	}
-	binding, err := h.graphSelectorsInstall()
+	var transport *graphTransportRecord
+	if admission != nil {
+		actual, e := h.graphTransportInstall(ctx, *admission)
+		if e != nil {
+			return e
+		}
+		transport = &graphTransportRecord{*admission, actual}
+	}
+	binding, err := h.graphSelectorsInstallContext(ioctx, admission)
 	if err != nil {
 		return err
 	}
-	initial, err := h.fresh([]uint8{0, 1}, nil)
+	initial, err := graphTransportFresh(ioctx, h)
 	if err != nil {
 		return err
 	}
 	policy := graphSelectorsPolicy(c)
-	source, err := newGraphHistoryRetention(h, initial, policy.History)
+	source, err := newGraphHistoryRetentionContext(ioctx, h, initial, policy.History)
 	if err != nil {
 		return err
 	}
@@ -262,7 +312,7 @@ func runGraphSelectors(db fdb.Database, spec graphSelectorsSpec, run string) (er
 		return err
 	}
 	defer func() { err = errors.Join(err, root.Close()) }()
-	a, err := newGraphSelectorsArtifacts(h, root, spec, binding, initial)
+	a, err := newGraphSelectorsArtifactsAdmission(ioctx, h, root, spec, binding, initial, transport)
 	if err != nil {
 		return err
 	}
@@ -270,7 +320,7 @@ func runGraphSelectors(db fdb.Database, spec graphSelectorsSpec, run string) (er
 	apply := func(phase string, fact uint64) error {
 		begin := time.Now()
 		var outputErr error
-		err := h.graphSelectorsApply(context.Background(), phase, fact, 0, func(e graphCostParallelEvent) { outputErr = errors.Join(outputErr, a.accept(e)) })
+		err := h.graphSelectorsApply(ctx, phase, fact, 0, func(e graphCostParallelEvent) { outputErr = errors.Join(outputErr, a.accept(e)) })
 		if err != nil || outputErr != nil {
 			return errors.Join(err, outputErr)
 		}
@@ -295,7 +345,7 @@ func runGraphSelectors(db fdb.Database, spec graphSelectorsSpec, run string) (er
 	if err := apply("create", 0); err != nil {
 		return err
 	}
-	if err := h.graphSelectorsPhase(context.Background(), a, "create"); err != nil {
+	if err := h.graphSelectorsPhase(ctx, a, "create"); err != nil {
 		return err
 	}
 	old, err := a.open(source, "old-fresh", graphSnapshotRequest{Mode: "Fresh", Scope: []uint8{0, 1}})
@@ -333,7 +383,7 @@ func runGraphSelectors(db fdb.Database, spec graphSelectorsSpec, run string) (er
 	if err := apply("update", 0); err != nil {
 		return err
 	}
-	if err := h.graphSelectorsPhase(context.Background(), a, "update"); err != nil {
+	if err := h.graphSelectorsPhase(ctx, a, "update"); err != nil {
 		return err
 	}
 	// No new certificate has been created since old5. Current is now6.

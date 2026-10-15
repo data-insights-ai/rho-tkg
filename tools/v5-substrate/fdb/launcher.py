@@ -143,7 +143,7 @@ def main():
                    "success": result == "0" and cleanup == "0", "sha256": hashes,
                    "mode": mode, "scope": scopes[mode]}
         if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") == "fdb-owned-ingress-transport-v2":
-            receipt["scope"] = "one host/four logical FDB zones; fresh feed-only owned receiver-ingress transport and fixed original budget; actual configured delay, TCP connect+echo baseline/armed/after distributions, drops, all helper/engine process RSS and cgroup counters; no identical observed RTT, independent-host/LAN-WAN, native parity, other-family or capacity/matrix acceptance"
+            receipt["scope"] = "one host/four logical FDB zones; fresh explicitly selected contention/selectors/effective-unique/feed owned receiver-ingress transport and fixed original budget; actual configured delay, TCP connect+echo baseline/armed/after distributions, drops, all helper/engine process RSS and cgroup counters; no identical observed RTT, independent-host/LAN-WAN, native parity, remaining-family or capacity/matrix acceptance"
         (out / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     else:
         raise ValueError("unsupported launcher action")

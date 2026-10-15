@@ -32,13 +32,17 @@ func graphEdgeUniqueSpecFromEnv() (graphEdgeUniqueSpec, string, error) {
 	if err := d.Decode(&s); err != nil {
 		return s, "", errors.Join(errInvalid, err)
 	}
-	if err := d.Decode(new(any)); err != io.EOF || s.Version != 1 || s.Family != graphEdgeUniqueFamily || !graphEdgeUniqueValid(s.profile()) || s.Layout != "kv" && s.Layout != "columns" {
+	if err := d.Decode(new(any)); err != io.EOF || (s.Version != 1 && s.Version != 2) || s.Family != graphEdgeUniqueFamily || !graphEdgeUniqueValid(s.profile()) || s.Layout != "kv" && s.Layout != "columns" {
 		return s, "", errInvalid
 	}
 	run := os.Getenv("RHO_GRAPH_WORKLOAD_RUN")
-	c := graphEdgeUniqueConfig(s.profile(), s.Layout, run)
+	c := graphTransportFamilyConfig(graphFeedWorkloadSpec(s), run)
 	if !validGraphEdgeUniqueConfig(c) {
 		return s, "", errInvalid
+	}
+	p, err := graphTransportAdmission(s.Version, s.Family, run)
+	if err != nil || p != nil && p.Spec != graphFeedWorkloadSpec(s) {
+		return s, "", errors.Join(errMismatch, err)
 	}
 	return s, run, nil
 }
@@ -96,12 +100,22 @@ type graphEdgeUniqueTiming struct {
 }
 
 func (h *harness) graphEdgeUniqueInstall(ctx context.Context) (graphCostStoredRecord, error) {
-	body, err := wire(graphEdgeUniquePolicy(h.config))
+	return h.graphEdgeUniqueInstallAdmission(ctx, nil)
+}
+func (h *harness) graphEdgeUniqueInstallAdmission(ctx context.Context, admission *graphTransportPolicy) (graphCostStoredRecord, error) {
+	if h == nil || admission != nil && ctx == nil {
+		return graphCostStoredRecord{}, errInvalid
+	}
+	body, err := wire(graphEdgeUniquePolicyAdmission(h.config, admission))
 	if err != nil || !validGraphEdgeUniqueConfig(h.config) {
 		return graphCostStoredRecord{}, errors.Join(errInvalid, err)
 	}
-	key := h.key(0, "workload-edge-unique-v1", "binding")
+	key := h.key(0, graphTransportBindingKind(h.config, "workload-edge-unique-v1"), "binding")
 	_, err = graphCostWriteContext(ctx, h.db, func(tr fdb.Transaction) (any, error) {
+		actual, err := h.graphTransportNative(tr)
+		if err != nil || graphTransportDigest(actual) != graphTransportDigest(admission) {
+			return nil, errors.Join(errMismatch, err)
+		}
 		for g := uint8(0); g < 2; g++ {
 			if err := h.checkConfig(tr, g); err != nil {
 				return nil, err

@@ -14,6 +14,9 @@ class EdgeUniqueOracleGuards(unittest.TestCase):
         total = 6*p["facts"]+7
         actual = [(total+7-i)//8 for i in range(8)]+[0]*24
         checker.writer_census(p, actual)
+        checker.writer_census({**p, "version": 2}, actual)
+        with self.assertRaises(ValueError):
+            checker.raw.transport.family_record({}, {**p, "version": 2}, {})
         for broken in ([total]+[0]*31, [True]+actual[1:]):
             with self.assertRaises(ValueError):
                 checker.writer_census(p, broken)
