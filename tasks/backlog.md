@@ -495,12 +495,14 @@ Its retain-all record allowance is corrected at `7d4f62c9`: each entry funds
 (260 records). The authored guard derives that extra record from the native
 recovery API; neither this quota nor the correction is runtime qualification.
 The dispatcher schedules all eight families and local/1/20/100ms profiles.
-FDB executes contention, selectors, snapshot-to-feed and cross-edge uniqueness/local; native executes
-the contention family. Unsupported semantics or transport refuse before effects.
+FDB has local source drivers for contention, selectors, snapshot-to-feed and
+cross-edge uniqueness; its fresh snapshot-to-feed transport adapter also covers
+local/1/20/100ms. Native has the contention family. Unsupported semantics or
+transport refuse before effects.
 Each selected-family matrix contains 360 fresh cells;
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
 No new cell, guard or runtime gate has run. The other four FDB family drivers,
-directed RTT, native parity, full matrix and engine decision remain open.
+directed RTT for the other families, native parity, full matrix and engine decision remain open.
 The FDB cross-edge family is source-integrated at `78f11fc8`: distinct contenders
 share one scalar uniqueness claim, endpoint close/reopen masks the old life,
 and closing/replaying the old canonical relation preserves the replacement claim.
@@ -511,6 +513,12 @@ including same-original/replan waits, into bounded percentile calculations.
 Setup, business and diagnostic durations remain separate. Its adversarial guards
 are authored only; all runtime qualification and native family parity remain open.
 The FDB snapshot-to-feed source is integrated at `5c14f42c`/`bb867775`:
+Its fresh owned transport adapter is source-integrated at `7f4a4fb8`: actual
+receiver-ingress delay setup, probes, same-deadline client replacement, cleanup
+and raw process/cgroup accounting are wired across five owned containers.
+The native binding and retained feed original authenticate that fixed admission.
+Tool builds, Linux/FDB execution and all authored guards remain unqualified;
+transport support for the other families and the complete matrix remain open.
 Begin journals its actual selected cut and factory intent; Publish atomically
 acquires the pin, snapshot owner and feed cursor. Bounded complete CDC pages
 replay until an exact immutable ACK advances their vectors. Independently
