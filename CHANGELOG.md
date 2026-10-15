@@ -140,7 +140,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   before admission. RS3/RY5/RQ3 and AS8/AD7 preserve their remaining capacity and
   the separate TB1 terminal bank through replay and snapshot transfer. Only
   actual terminal installation retires unused suffixes; existing recovery1/2
-  formats and quota ceilings remain unchanged. Runtime qualification, broader
+  formats and quota ceilings remain unchanged. A separate explicit recovery4/
+  Contract7 profile adds finite retained/log byte totals per span while keeping
+  per-install maxima. Committed installation spends actual retained growth;
+  pending entries charge actual log bytes and retain separate install backing.
+  A protected pending window prevents ordinary or additional terminal traffic
+  from spending completion capacity. AS9/AD8 and RS4/RY6/RQ4 preserve remaining
+  totals through history, reopen and snapshot transfer; retries cannot refill
+  pools, and actual terminal installation alone releases surplus. These source
+  changes and their authored guards remain unexecuted; graph range-move wiring
+  and large-transfer capacity are still open. Runtime qualification, broader
   fault/ownership evidence and full V2 acceptance remain open in `tasks/backlog.md`.
 
 - Added checked partition-local v5 graph mutations on declared partitions,

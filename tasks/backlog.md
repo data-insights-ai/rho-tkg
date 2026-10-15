@@ -557,8 +557,9 @@ reserve more than 1 TiB for those bytes at every supported page size up to
 64 KiB, before graph pages and other retained state: with page bytes P, each
 import/undo credit is 81,920 + 16P, so their combined multiplier is at least
 34.5. Resolve this reservation/representation cost without raising ceilings or
-discarding originals before adding the workload. The next source primitive is
-explicit fresh recovery4 byte pools with unchanged per-install maxima. Actual
+discarding originals before adding the workload. The bounded recovery primitive
+is source-integrated at `c5da369a`: explicit fresh recovery4 byte pools retain
+unchanged per-install maxima. Actual
 committed installations spend retained totals; queued entries project their
 actual encoded log charges separately. An additional bounded pending-install
 window must be protected from ordinary traffic before reservation, with distinct
@@ -566,8 +567,14 @@ live queued uses charged against that window once. Speculatively subtracting
 earlier maximum retained charges is unsound: maxima 80/80 would otherwise strand
 valid actual growth 10/70 inside a total budget of 100. Original retries cannot
 refill a pool; unused surplus and its window retire only at actual terminal
-installation. This primitive is in implementation, not source-integrated or
-qualified; authenticated transfer bounds and both-move capacity remain open.
+installation. Contract7/AS9, AD8 and RS4/RY6/RQ4 preserve exact remaining totals
+through native history, queued recovery and snapshot transfer; TB1 and older
+agreements remain unchanged. Source review verified all 23 frozen owned blobs,
+20 complete current parents and three new-file absences; the patch changes
+17 existing files and adds three. Pinned Go1.26.9 parser/format and whitespace
+checks passed only. The new direct native reopen, snapshot-plus-suffix,
+near-quota, terminal and duplicate guards remain unexecuted. Range-move wiring,
+authenticated aggregate transfer bounds and both-move capacity remain open.
 At 1M, HOME issuance also
 spans two actual range publications, both of which must move under distinct
 original identities before the driver claims the full routing transition.
@@ -1081,9 +1088,10 @@ accepting any affected scalar cost row.
 
 Current worker lanes: Sol 6.1/high for the native P07–P09 owned-state transition
 adapters and their checker; Sol 6.1/high for the finite P01–P06 protocol/storage
-composition adapters and checker; Sol 6.1/high for the bounded recovery byte-pool
-primitive, followed by authenticated transfer budgets and the actual transfer
-workload. Shared graph batching is already source-integrated above. These packages are in
+composition adapters and checker; Sol 6.1/high for authenticated transfer budgets
+and fresh range-move wiring, followed by the actual transfer workload. Shared
+graph batching and the recovery byte-pool primitive are source-integrated above.
+The remaining packages are in
 implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
