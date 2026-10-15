@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
@@ -70,25 +71,58 @@ func nativeSnapshotSenderStaleRefusal(reply processResponse, exchangeErr error) 
 	if exchangeErr == nil { // The nonmultiplexed IPC door reports code in reply.
 		return nil
 	}
+	if !nativeSnapshotSenderWireCause(exchangeErr, graphErrorMask(errInvalid)) {
+		return errCorrupt
+	}
+	return nil
+}
+
+func nativeSnapshotSenderWireCause(exchangeErr error, wanted uint16) bool {
 	if joined, ok := exchangeErr.(interface{ Unwrap() []error }); ok {
 		causes := joined.Unwrap()
 		if len(causes) != 1 {
-			return errCorrupt
+			return false
 		}
 		exchangeErr = causes[0]
 	}
 	// This is an exact wire classifier check, not a search through arbitrary
 	// wrappers which might also contain EOF or another unclassified failure.
 	native, ok := exchangeErr.(graphWireError)
-	if !ok || native.mask != graphErrorMask(errInvalid) {
-		return errCorrupt
+	return ok && native.mask == wanted
+}
+
+func nativeSnapshotSenderReplay(t *testing.T, f *pairedGraphFaultNetwork, actor uint64, proposal allocationProposal, expected crossProcessResult) processResponse {
+	t.Helper()
+	ctx, cancel := f.operationContext(10 * time.Second)
+	reply, exchangeErr := f.n.all[actor].exchange(ctx, processRequest{op: processSourceCoordinate, data: proposal.wire})
+	actual, err := decodeGraphProcessCoordinatorResult(reply)
+	// exchange already joins its own caller cancellation. Keep that actual
+	// native wrapper; nesting another nil Join is not the mux's wire result.
+	cancel()
+	if err != nil || exchangeErr != nil {
+		if actual.resume != expected.resume || !errors.Is(err, errCrossProcessPending) || !nativeSnapshotSenderWireCause(exchangeErr, graphErrorMask(graphstore.ErrSourceUnavailable)) {
+			t.Fatal("SAME original did not observe exact changed-source refusal", actor, exchangeErr, err)
+		}
+		// The actual source reply invalidated only the replaced issuer stream.
+		// NCR1 retains its sequence and this SAME private run; no service ledger,
+		// original proposal, source allowance or unchanged peer is reset.
+		nativeConjunctionReconnect(f, actor)
+		reply = f.call(f.n.all[actor], processRequest{op: processSourceCoordinate, data: proposal.wire})
+		actual, err = decodeGraphProcessCoordinatorResult(reply)
 	}
-	return nil
+	if err != nil || actual.decision != expected.decision || actual.resume != expected.resume {
+		t.Fatal("sender recovery changed immutable original", actor, err)
+	}
+	return reply
 }
 
 func TestNativeSnapshotSenderLossRequiresExactReapedProcessAndApplicableBoundary(t *testing.T) {
 	reply := processResponse{incarnation: [16]byte{1}, sequence: 2, code: 1, causeMask: processCauseMask(errInvalid)}
 	native := graphWireError{graphErrorMask(errInvalid)}
+	source := graphWireError{graphErrorMask(graphstore.ErrSourceUnavailable)}
+	if !nativeSnapshotSenderWireCause(errors.Join(source, nil), source.mask) || nativeSnapshotSenderWireCause(errors.Join(source, io.EOF), source.mask) || nativeSnapshotSenderWireCause(graphWireError{graphErrorMask(replica.ErrUnavailable)}, source.mask) {
+		t.Fatal("actual mux source refusal confused with transport/unavailable")
+	}
 	for _, actual := range []error{nil, native, errors.Join(native, nil)} {
 		if err := nativeSnapshotSenderStaleRefusal(reply, actual); err != nil {
 			t.Fatal("actual classified native refusal", err)
@@ -125,6 +159,70 @@ func TestNativeSnapshotSenderLossRequiresExactReapedProcessAndApplicableBoundary
 	}
 	if nativeSnapshotSenderSide("sender-before-append") != "before" || nativeSnapshotSenderSide("sender-after-append") != "after" {
 		t.Fatal("exact two in-flight Append boundaries")
+	}
+	// Pure stream projection guards; the process parent below supplies the
+	// actual authenticated changed-issuer observation, never this inert state.
+	stream := &graphAuthenticatedStream{mu: newGraphRequestGate(), sequence: 9, issuer: [16]byte{1}}
+	if got, err := pairedFaultReconnectStream(t.Context(), stream, true); err != nil || got != stream {
+		t.Fatal("valid same-peer stream was replaced", err)
+	}
+	stream.invalid = true
+	if got, err := pairedFaultReconnectStream(t.Context(), stream, false); err != nil || got != stream {
+		t.Fatal("ordinary reconnect reset native issuer binding", err)
+	}
+	got, err := pairedFaultReconnectStream(t.Context(), stream, true)
+	if err != nil || got == stream || got.sequence != stream.sequence || got.issuer != ([16]byte{}) || got.invalid || !stream.invalid || stream.issuer != ([16]byte{1}) {
+		t.Fatal("fresh reconnect refunded sequence or imported issuer", err)
+	}
+	if _, err := pairedFaultReconnectStream(t.Context(), nil, true); !errors.Is(err, errInvalid) {
+		t.Fatal("missing stream admitted", err)
+	}
+	canceled, stop := context.WithCancel(t.Context())
+	stop()
+	if _, err := pairedFaultReconnectStream(canceled, stream, true); !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled reconnect admitted", err)
+	}
+	for _, bad := range []*graphAuthenticatedStream{{mu: newGraphRequestGate(), invalid: true}, {mu: newGraphRequestGate(), invalid: true, sequence: 9}} {
+		if _, err := pairedFaultReconnectStream(t.Context(), bad, true); !errors.Is(err, errCorrupt) {
+			t.Fatal("unbound invalid label admitted", err)
+		}
+	}
+	// Genuine unknown Register owns the private run below. Changing the inert
+	// stream projection exercises only reconnect guards, not issuer authority;
+	// the actual two-process-replacement cases establish that observation.
+	n, coordinator, ops, claims, wires := coordinatorNativeFixture(t)
+	wires[0].dropRegister = true
+	pending, err := coordinator.Run(t.Context(), n.requestID(), ops, 37, claims)
+	if !errors.Is(err, errCrossProcessPending) {
+		t.Fatal("genuine private pending original", err)
+	}
+	run := coordinator.runs[pending.resume.tx]
+	beforeA, beforeB := coordinator.streams[3], coordinator.streams[8]
+	next, err := newCrossProcessCoordinator(coordinator.host, coordinator.transports)
+	if err != nil || run == nil {
+		t.Fatal("actual unchanged authenticated peers", err)
+	}
+	next.streams[8] = beforeB
+	apply := func() error {
+		coordinator.mu.Lock()
+		defer coordinator.mu.Unlock()
+		return nativeConjunctionRetainRoutesLocked(coordinator, next)
+	}
+	if err := apply(); !errors.Is(err, errInvalid) {
+		t.Fatal("valid same-peer stream was replaced", err)
+	}
+	beforeA.invalid = true // Inert projection only; no service state changes.
+	next.streams[3], err = pairedFaultReconnectStream(t.Context(), beforeA, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next.streams[3].sequence--
+	if err := apply(); !errors.Is(err, errInvalid) {
+		t.Fatal("reconnect refunded spent sequence", err)
+	}
+	next.streams[3].sequence++
+	if err := apply(); err != nil || coordinator.runs[pending.resume.tx] != run || run.resume != pending.resume || coordinator.streams[8] != beforeB || coordinator.streams[3] == beforeA {
+		t.Fatal("reconnect replaced original/private run or unchanged peer", err)
 	}
 }
 
@@ -307,13 +405,8 @@ func nativeSnapshotSenderCase(t *testing.T, side string) {
 	// These completed/closed callers used the dead issuer before the loss.
 	// Rebind only through the existing authenticated, quiescent peer door;
 	// the durable original request/body below remains exactly unchanged.
-	f.reconnect(5, 1)
-	f.reconnect(6, 1)
-	replayed := f.call(f.n.all[5], processRequest{op: processSourceCoordinate, data: proposal.wire})
-	again, err := decodeGraphProcessCoordinatorResult(replayed)
-	if err != nil || again.decision != result.decision || again.resume != result.resume {
-		t.Fatal("sender recovery changed immutable original", err)
-	}
+	replayed := nativeSnapshotSenderReplay(t, f, 5, proposal, result)
+	_ = nativeSnapshotSenderReplay(t, f, 6, proposal, result)
 	e.ReplayReply = p06ProcessWire(t, replayed)
 	f.drain()
 	step := p03Complete(f, 6, "edge-create", proposal, result, from, before)

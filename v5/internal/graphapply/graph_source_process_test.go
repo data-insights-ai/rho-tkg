@@ -2345,14 +2345,21 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				response.aux, e = pairedGraphFaultConnections(r.entity, services, server)
 			case processPairedReconnect:
 				var retained bool
-				r, retained, e = nativeConjunctionReconnectRequest(r, o.stableBatch != nil)
+				r, retained, e = nativeConjunctionReconnectRequest(r, o.stableBatch != nil || o.family != nil)
 				if e != nil {
 					break
 				}
 				if transfer != nil {
 					coordinator, e = nativeTransferReconnect(transfer.ctx, h, coordinator, certifiedSessions, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil, transfer)
 				} else if retained {
-					coordinator, e = pairedGraphFaultReconnect(o.stableBatch.ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil, true)
+					retainedContext := ctx
+					if o.stableBatch != nil {
+						retainedContext = o.stableBatch.ctx
+					} else if o.family != nil && o.family.ctx.Err() != nil {
+						e = o.family.ctx.Err()
+						break
+					}
+					coordinator, e = pairedGraphFaultReconnect(retainedContext, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil, true)
 				} else if logicalTransitions != nil && o.family != nil && moveCoordinator != nil {
 					coordinator, e = nativeTransitionMoveReconnect(ctx, h, coordinator, certifiedSessions, moveCoordinator, server, r, len(workers)+len(paused)+len(controlWorkers), len(queue), active != nil)
 				} else {

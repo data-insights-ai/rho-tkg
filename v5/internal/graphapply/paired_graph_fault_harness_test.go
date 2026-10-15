@@ -71,6 +71,30 @@ func pairedGraphFaultConnections(origin uint64, services map[uint64]*graphPeerSe
 		w.u64(uint64(sessions))
 	})
 }
+
+// Only production callUsing's authenticated issuer-mismatch invalidation may
+// release the old issuer binding. Keep its spent sequence: the replacement
+// service may already have accepted that request before the mismatch surfaced.
+func pairedFaultReconnectStream(ctx context.Context, prior *graphAuthenticatedStream, retained bool) (*graphAuthenticatedStream, error) {
+	if ctx == nil || prior == nil {
+		return nil, errInvalid
+	}
+	if !retained {
+		return prior, nil // Literal ordinary reconnect; never reset its stream.
+	}
+	if err := prior.mu.lock(ctx); err != nil {
+		return nil, err
+	}
+	defer prior.mu.unlock()
+	if !prior.invalid {
+		return prior, nil
+	}
+	if prior.sequence == 0 || prior.issuer == ([16]byte{}) {
+		return nil, errCorrupt
+	}
+	return &graphAuthenticatedStream{mu: newGraphRequestGate(), sequence: prior.sequence}, nil
+}
+
 func pairedGraphFaultReconnect(ctx context.Context, h *allocationHost, old *crossProcessCoordinator, s *graphProcessCertifiedSessions, move *rangeMoveCoordinator, server *graphSourceServer, r processRequest, workers, queued int, active bool, retainRuns ...bool) (*crossProcessCoordinator, error) {
 	if ctx == nil || h == nil || old == nil || s == nil || len(r.data) != 16 || len(retainRuns) > 1 {
 		return old, errInvalid
@@ -138,7 +162,10 @@ func pairedGraphFaultReconnect(ctx context.Context, h *allocationHost, old *cros
 	}
 	for _, partition := range []uint64{3, 8} {
 		if old.transports[partition].Peer() == next.transports[partition].Peer() {
-			next.streams[partition] = old.streams[partition]
+			next.streams[partition], err = pairedFaultReconnectStream(ctx, old.streams[partition], retained)
+			if err != nil {
+				return old, err
+			}
 		}
 	}
 	if retained {
@@ -172,7 +199,12 @@ func nativeConjunctionRetainRoutesLocked(old, next *crossProcessCoordinator) err
 			return errInvalid
 		}
 		unchanged := transport.Peer() == replacement.Peer()
-		if unchanged != (old.streams[partition] == next.streams[partition]) {
+		prior, current := old.streams[partition], next.streams[partition]
+		if unchanged && prior != current {
+			if !prior.invalid || prior.sequence == 0 || prior.issuer == ([16]byte{}) || current.invalid || current.sequence != prior.sequence || current.issuer != ([16]byte{}) {
+				return errInvalid
+			}
+		} else if !unchanged && prior == current || unchanged && prior.invalid {
 			return errInvalid
 		}
 	}
