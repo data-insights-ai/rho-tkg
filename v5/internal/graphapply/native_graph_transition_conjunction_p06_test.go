@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,9 +22,10 @@ import (
 )
 
 const nativeP06ConjunctionProfile = "native-p06-decide-sync-conjunction-v1"
+const nativeP06RecoveryConjunctionProfile = "native-p06-recovery-sync-conjunction-v2"
 
-// This first closed implementation inventory is16 cells, not all P06 or D.
-// Missing recipes remain: Register/first Prepare/recovery Prepare and Resolve/
+// Decide16 keeps its original wire/recipe. Recovery64 adds Prepare/Resolve on
+// both actual participants. Missing recipes remain: Register/first Prepare and
 // terminal duplicate occurrences, rotated initial leaders, message variants,
 // other P01–P09 rows and applicable publication/import/GC compositions.
 type nativeP06ConjunctionRecipe struct {
@@ -31,13 +33,25 @@ type nativeP06ConjunctionRecipe struct {
 	Commit      bool
 	Kind        raftlog.StableStorageKind
 	Side        string
+	Phase       crossPhase `json:",omitzero"`
+	Partition   uint64     `json:",omitzero"`
 }
 
 func (r nativeP06ConjunctionRecipe) valid() bool {
-	return (r.Coordinator == 3 || r.Coordinator == 8) && (r.Kind == raftlog.StableStorageReady || r.Kind == raftlog.StableStorageApplication) && (r.Side == "before" || r.Side == "after")
+	return (r.Coordinator == 3 || r.Coordinator == 8) && (r.Kind == raftlog.StableStorageReady || r.Kind == raftlog.StableStorageApplication) && (r.Side == "before" || r.Side == "after") && (r.Phase == 0 && r.Partition == 0 || (r.Phase == crossPrepare || r.Phase == crossResolve) && (r.Partition == 3 || r.Partition == 8))
+}
+
+func (r nativeP06ConjunctionRecipe) selected() (crossPhase, uint64) {
+	if r.Phase == 0 {
+		return crossDecide, r.Coordinator
+	}
+	return r.Phase, r.Partition
 }
 
 func (r nativeP06ConjunctionRecipe) name() string {
+	if r.Phase != 0 {
+		return fmt.Sprintf("p06-co%d-commit%t-recovery%d-p%d-k%d-%s", r.Coordinator, r.Commit, r.Phase, r.Partition, r.Kind, r.Side)
+	}
 	return fmt.Sprintf("p06-co%d-commit%t-decide-k%d-%s", r.Coordinator, r.Commit, r.Kind, r.Side)
 }
 
@@ -47,8 +61,22 @@ func nativeP06ConjunctionRecipes() []nativeP06ConjunctionRecipe {
 		for _, commit := range []bool{true, false} {
 			for _, kind := range []raftlog.StableStorageKind{raftlog.StableStorageReady, raftlog.StableStorageApplication} {
 				for _, side := range []string{"before", "after"} {
-					rows = append(rows, nativeP06ConjunctionRecipe{coordinator, commit, kind, side})
+					rows = append(rows, nativeP06ConjunctionRecipe{Coordinator: coordinator, Commit: commit, Kind: kind, Side: side})
 				}
+			}
+		}
+	}
+	return rows
+}
+
+func nativeP06RecoveryConjunctionRecipes() []nativeP06ConjunctionRecipe {
+	var rows []nativeP06ConjunctionRecipe
+	for _, base := range nativeP06ConjunctionRecipes() {
+		for _, phase := range []crossPhase{crossPrepare, crossResolve} {
+			for _, partition := range []uint64{3, 8} {
+				row := base
+				row.Phase, row.Partition = phase, partition
+				rows = append(rows, row)
 			}
 		}
 	}
@@ -253,14 +281,15 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 		t.Fatal("actual first replacement lost old graph/index cut")
 	}
 	target, successor := uint64(2), uint64(1)
-	if recipe.Coordinator == 8 {
+	phase, partition := recipe.selected()
+	if partition == 8 {
 		target, successor = 4, 6
 	}
 	capture := newNativeConjunctionCapture(f, actor, manifest.tx)
 	defer capture.close()
-	gate, err := newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: actor, Partition: recipe.Coordinator, Member: target, Phase: crossDecide, Occurrence: 1, Kind: recipe.Kind, Side: recipe.Side}, run, deadline)
+	gate, err := newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: actor, Partition: partition, Member: target, Phase: phase, Occurrence: 1, Kind: recipe.Kind, Side: recipe.Side}, run, deadline)
 	if err != nil {
-		t.Fatal("one actual bounded Decide gate", err)
+		t.Fatal("one actual bounded recovery submission gate", err)
 	}
 	defer gate.close() // LIFO: restore before/failed before the capture's after.
 	call, stop := f.beginRun(actor, original)
@@ -274,7 +303,7 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 	}
 	arm, receipt, selected, _, err := gate.evidence()
 	if err != nil {
-		t.Fatal("unmatched/ambiguous/exhausted Decide cannot qualify", err)
+		t.Fatal("unmatched/ambiguous/exhausted recovery transition cannot qualify", err)
 	}
 	gate.target.mux.mu.Lock()
 	targetLoss := gate.target.mux.err
@@ -283,8 +312,8 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 		t.Fatal("selected target did not retain genuine transport death", targetLoss)
 	}
 	selectedCommand, _, err := decodeCrossCommand(selected, defaultMaterializerLimits())
-	if err != nil || selectedCommand.phase != crossDecide || selectedCommand.ns.partition != recipe.Coordinator || !bytes.Equal(selectedCommand.manifest, prepareManifest(t, prepare)) {
-		t.Fatal("selected actual Decide changed first original", err)
+	if err != nil || selectedCommand.phase != phase || selectedCommand.ns.partition != partition || !bytes.Equal(selectedCommand.manifest, prepareManifest(t, prepare)) {
+		t.Fatal("selected actual recovery submission changed first original", err)
 	}
 	batchKilled := nativeBatchReap(t, f, target, receipt)
 	gate.close()
@@ -310,8 +339,8 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 		t.Fatal("actual recovery capture refused or hid unknown attempts")
 	}
 	unknownProposal := p06SourceProposal(t, failed[0].Request)
-	if !bytes.Equal(unknownProposal.wire, selected) || failed[0].Partition != recipe.Coordinator || failed[0].Origin != actor {
-		t.Fatal("unanswered source attempt was not selected native Decide")
+	if !bytes.Equal(unknownProposal.wire, selected) || failed[0].Partition != partition || failed[0].Origin != actor {
+		t.Fatal("unanswered source attempt was not selected native submission")
 	}
 	candidates, attempts, work, output, retainedBytes := capture.candidates, capture.attempts, capture.work, capture.output, capture.retained
 	capture.requests = nil // Ownership transferred once after callbacks retire.
@@ -319,8 +348,24 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 	f.trace.OperationMapping = append(f.trace.OperationMapping, lifecycleOperationMap{Logical: "edge-create", Coordinator: recipe.Coordinator, Request: hex.EncodeToString(manifest.request.id[:]), Transaction: hex.EncodeToString(manifest.tx[:]), Round: result.decision.round})
 	recovered := p06Observe(f, actor, graphReadFresh, graphCut{})
 	p06AssertView(t, recovered.View, recipe.Commit, !recipe.Commit, false)
+	var terminal [2]allocationProposal
+	if recipe.Phase != 0 {
+		// ABORT can skip an already resolved participant after a lost ACK. The
+		// unanswered source command is not a successful reply or private proof:
+		// authenticate the complete actual originals before ordinary native
+		// terminal replay revalidates those same observed command bytes.
+		nativeP06CheckCensus(t, phases, p06Records(f, from, f.indexes()), manifest, prepareManifest(t, prepare), result.decision, recipe.Commit)
+		terminal, err = nativeConjunctionTerminalResolveCommands(phases, failed, prepareManifest(t, prepare))
+		if err != nil {
+			t.Fatal("missing genuine source command after actual terminal census", err)
+		}
+	}
 	duplicates := []p06LocalRecord{p06ReplayPhase(f, prepare, manifest.tx)}
-	for _, partition := range []uint64{3, 8} {
+	for ordinal, partition := range []uint64{3, 8} {
+		if recipe.Phase != 0 {
+			duplicates = append(duplicates, p06ReplayPhase(f, terminal[ordinal], manifest.tx))
+			continue
+		}
 		var actual *allocationProposal
 		for _, phase := range phases {
 			p := p06SourceProposal(t, phase.Request)
@@ -371,7 +416,11 @@ func nativeP06ConjunctionCase(t *testing.T, recipe nativeP06ConjunctionRecipe) {
 	if unknown.err != nil {
 		transport = unknown.err.Error()
 	}
-	a := nativeP06ConjunctionArtifact{Version: 1, Profile: nativeP06ConjunctionProfile, Case: recipe.name(), Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, Actor: actor, FirstVoter: 1, Target: target, Successor: successor,
+	version, profile := 1, nativeP06ConjunctionProfile
+	if recipe.Phase != 0 {
+		version, profile = 2, nativeP06RecoveryConjunctionProfile
+	}
+	a := nativeP06ConjunctionArtifact{Version: version, Profile: profile, Case: recipe.name(), Recipe: recipe, Run: run, DeadlineUnixNanos: deadline, Actor: actor, FirstVoter: 1, Target: target, Successor: successor,
 		P06:      p06Artifact{Version: 1, Coordinator: recipe.Coordinator, Commit: recipe.Commit, Original: original.wire, Manifest: prepare.wire, Pending: p06ProcessWire(t, interrupted.response), Decision: p06ProcessWire(t, finalResponse), FirstYES: boundary, Processes: []pairedFaultProcess{firstKilled, firstRejoined}, Refused: refused, Changed: changed, Closed: closed, Duplicates: duplicates, Phases: phases, Before: p06Observation{before.Cut, before.View, before.RawObservation}, Recovered: recovered, Current: current, Retained: retained, From: from, Through: through, Records: nil},
 		Attempts: []nativeP06ConjunctionAttempt{{p06ProcessWire(t, unknown.response), transport, true}, {p06ProcessWire(t, finalResponse), "", false}, {p06ProcessWire(t, replayed), "", false}}, UnknownPhases: failed, Arm: arm, Batch: receipt, SelectedCommand: selected, TargetTransportLoss: targetLoss.Error(), Processes: []pairedFaultProcess{batchKilled, batchRejoined}, FirstReopened: firstReopened, FaultReopened: faultReopened, ReceiptReads: reads, ReceiptGrantBytes: reads * 65536, GateCandidates: gateCandidates, GateDecodeWork: gateWork, CaptureCandidates: candidates, CaptureAttempts: attempts, CaptureWork: work, CaptureOutput: output, CaptureRetained: retainedBytes}
 	path := nativeTransitionWriteRows(t, filepath.Join(f.n.dir, recipe.name()+".jsonl"), a, records, through)
@@ -406,7 +455,22 @@ func TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut(t *tes
 	}
 }
 
+func TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal(t *testing.T) {
+	for i, recipe := range nativeP06RecoveryConjunctionRecipes() {
+		// Four additional short cells retain both phases/participants, both
+		// coordinator/outcome/kind/side choices. Full keeps all64 exact rows.
+		if testing.Short() && i != 0 && i != 29 && i != 38 && i != 63 {
+			continue
+		}
+		t.Run(recipe.name(), func(t *testing.T) { nativeP06ConjunctionCase(t, recipe) })
+	}
+}
+
 func TestNativeConjunctionRegistryDeadlineAndGateOwnership(t *testing.T) {
+	old, err := json.Marshal(nativeP06ConjunctionRecipes()[0])
+	if err != nil || string(old) != `{"Coordinator":3,"Commit":true,"Kind":1,"Side":"before"}` {
+		t.Fatal("Decide16 recipe bytes changed", err)
+	}
 	seen := make(map[string]bool)
 	for _, row := range nativeP06ConjunctionRecipes() {
 		if !row.valid() || seen[row.name()] {
@@ -416,6 +480,21 @@ func TestNativeConjunctionRegistryDeadlineAndGateOwnership(t *testing.T) {
 	}
 	if len(seen) != 16 || (nativeP06ConjunctionRecipe{Coordinator: 1, Kind: 1, Side: "after"}).valid() || (nativeConjunctionSelector{Actor: 3, Member: 4, Partition: 3, Phase: crossDecide, Kind: 1, Side: "after"}).valid() {
 		t.Fatal("invented coordinator/target/recipe")
+	}
+	for _, row := range nativeP06RecoveryConjunctionRecipes() {
+		if !row.valid() || seen[row.name()] {
+			t.Fatal("non-finite/duplicate actual recovery occurrence")
+		}
+		seen[row.name()] = true
+	}
+	if len(seen) != 80 || (nativeP06ConjunctionRecipe{Coordinator: 3, Commit: true, Kind: 1, Side: "before", Phase: crossPrepare}).valid() || (nativeP06ConjunctionRecipe{Coordinator: 3, Commit: true, Kind: 1, Side: "before", Phase: crossRegister, Partition: 3}).valid() {
+		t.Fatal("recovery registry silently claims Register/initial occurrences")
+	}
+	if _, err := nativeConjunctionTerminalResolveCommands(nil, nil, nil); !errors.Is(err, errInvalid) {
+		t.Fatal("missing observed commands became terminal replay authority", err)
+	}
+	if _, err := nativeConjunctionTerminalResolveCommands(make([]p06Phase, 11), nil, nil); !errors.Is(err, errLimit) {
+		t.Fatal("unbounded terminal observation traversal", err)
 	}
 	f := &pairedGraphFaultNetwork{t: t}
 	legacy, cancelLegacy := f.operationContext(time.Minute)

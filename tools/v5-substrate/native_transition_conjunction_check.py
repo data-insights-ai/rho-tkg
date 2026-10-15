@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fresh finite P06 × Decide Ready/install source bridge.
+"""Fresh finite P06 × recovery Ready/install source bridge.
 
 Successful replies, unanswered source attempts and actual retained originals are
 different inventories. No missing Decide reply is invented. Native/OS receipts
@@ -25,6 +25,7 @@ F = module("p06_conjunction_process", "native_fault_family_check.py")
 T, C, P = B.T, B.C, B.P
 require, integer, fixed = T.require, T.integer, T.fixed
 PROFILE = "native-p06-decide-sync-conjunction-v1"
+RECOVERY_PROFILE = "native-p06-recovery-sync-conjunction-v2"
 HEADER = set("Version Profile Case Recipe Run DeadlineUnixNanos Actor FirstVoter Target Successor P06 Attempts UnknownPhases Arm Batch SelectedCommand TargetTransportLoss Processes FirstReopened FaultReopened ReceiptReads ReceiptGrantBytes GateCandidates GateDecodeWork CaptureCandidates CaptureAttempts CaptureWork CaptureOutput CaptureRetained".split())
 P06 = set("Version Coordinator Commit Original Manifest Pending Decision FirstYES Processes Refused Closed Changed Duplicates Phases Before Recovered Current Retained From Through Records".split())
 RECIPE = {"Coordinator", "Commit", "Kind", "Side"}
@@ -32,11 +33,16 @@ LOCAL = {"Partition", "Index", "Proposal", "Outcome", "CDC"}
 PHASE = {"Origin", "Partition", "Request", "Reply"}
 
 
-def recipe(row):
-    require(type(row) is dict and set(row) == RECIPE, "conjunction recipe grammar")
+def recipe(row, version=1):
+    require(type(version) is int and version in (1, 2), "implemented conjunction version")
+    require(type(row) is dict and set(row) == (RECIPE if version == 1 else RECIPE | {"Phase", "Partition"}), "conjunction recipe grammar")
     require(type(row["Coordinator"]) is int and row["Coordinator"] in (3, 8) and type(row["Commit"]) is bool, "actual coordinator/outcome recipe")
     require(type(row["Kind"]) is int and row["Kind"] in (1, 2) and row["Side"] in ("before", "after"), "implemented Decide native boundary")
-    return f'p06-co{row["Coordinator"]}-commit{str(row["Commit"]).lower()}-decide-k{row["Kind"]}-{row["Side"]}'
+    prefix = f'p06-co{row["Coordinator"]}-commit{str(row["Commit"]).lower()}'
+    if version == 2:
+        require(type(row["Phase"]) is int and row["Phase"] in (2, 4) and type(row["Partition"]) is int and row["Partition"] in (3, 8), "actual additional recovery occurrence")
+        return f'{prefix}-recovery{row["Phase"]}-p{row["Partition"]}-k{row["Kind"]}-{row["Side"]}'
+    return f'{prefix}-decide-k{row["Kind"]}-{row["Side"]}'
 
 
 def load(path):
@@ -109,9 +115,10 @@ def source_request(row, scopes, actor):
     return command, decoded, (row["Partition"], sequence, nonce)
 
 
-def unknown_attempt(row, scopes, actor, coordinator, manifest):
+def unknown_attempt(row, scopes, actor, coordinator, manifest, phase=3, partition=None):
     command, decoded, correlation = source_request(row, scopes, actor)
-    require(not P.raw(row["Reply"]) and decoded["phase"] == 3 and decoded["partition"] == coordinator and decoded["manifest"] == manifest, "unanswered Decide invented a reply or changed authority")
+    partition = coordinator if partition is None else partition
+    require(not P.raw(row["Reply"]) and decoded["phase"] == phase and decoded["partition"] == partition and decoded["manifest"] == manifest, "unanswered submission invented a reply or changed authority")
     return command, correlation
 
 
@@ -122,20 +129,41 @@ def unknown_invocation(response, transport):
     require(type(transport) is str and 0 < len(transport) <= 4096 and (response["code"], response["mask"]) in ((3, 128), (6, 0)), "invalid/limit/corrupt/expiry cannot qualify unknown")
 
 
-def capture(rows, unknown, scopes, actor, coordinator, manifest, tx, records):
+def recovery_order(successful, coordinator, commit, phase, partition):
+    order = [(2, 3), (2, 8), (3, coordinator), (4, 3), (4, 8)]
+    selected = order.index((phase, partition))
+    require(successful[:selected] == order[:selected], "actual successful prefix before selected unknown")
+    if phase == 2:
+        tails = [order]
+    elif phase == 3:
+        tails = [order, order[3:]]
+    elif commit:
+        tails = [order[3:]]  # COMMIT retries both actual Resolve submissions.
+    elif partition == 3:
+        tails = [order[3:], order[4:]]  # ABORT skips only a stored terminal A.
+    else:
+        tails = [order[4:], []]  # A already returned; terminal B may be unknown.
+    require(successful[selected:] in tails, "bounded genuine retry/terminal-skip order")
+    return selected
+
+
+def capture(rows, unknown, scopes, actor, coordinator, manifest, tx, records, commit=True, phase=3, partition=None):
     require(type(rows) is list and 4 <= len(rows) <= 10 and type(unknown) is list and len(unknown) == 1, "actual successes separate from one unknown")
+    partition = coordinator if partition is None else partition
+    order = [(2, 3), (2, 8), (3, coordinator), (4, 3), (4, 8)]
+    selected_position = order.index((phase, partition))
     seen, successful = set(), []
     for n, row in enumerate(rows):
         command, decoded, correlation = source_request(row, scopes, actor)
         require(correlation not in seen, "duplicate correlated source observation")
         seen.add(correlation)
-        voter = (2 if row["Partition"] == 3 else 4) if n < 2 else (1 if coordinator == 3 else 2) if row["Partition"] == 3 else (4 if coordinator == 3 else 6)
+        voter = (2 if row["Partition"] == 3 else 4) if n < selected_position else (1 if partition == 3 else 2) if row["Partition"] == 3 else (4 if partition == 3 else 6)
         _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes, voter)
         require(actual_manifest == decoded["manifest"] == manifest and status["tx"] == tx, "immutable actual source original")
         require((status["partition"], status["index"]) in records and P.raw(records[status["partition"], status["index"]]["Outcome"]) == outcome, "successful reply not in actual retained originals")
         successful.append((decoded["phase"], row["Partition"]))
-    require(successful[:2] == [(2, 3), (2, 8)] and successful[-2:] == [(4, 3), (4, 8)] and successful[2:-2] in ([], [(2, 3), (2, 8), (3, coordinator)]), "actual bounded source retry stages")
-    command, correlation = unknown_attempt(unknown[0], scopes, actor, coordinator, manifest)
+    recovery_order(successful, coordinator, commit, phase, partition)
+    command, correlation = unknown_attempt(unknown[0], scopes, actor, coordinator, manifest, phase, partition)
     require(correlation not in seen, "unknown request duplicated a successful correlated reply")
     return command
 
@@ -249,11 +277,13 @@ def first_processes(rows):
 
 
 def check(a):
-    require(type(a) is dict and set(a) == HEADER and type(a["Version"]) is int and a["Version"] == 1 and a["Profile"] == PROFILE and a["Case"] == recipe(a["Recipe"]), "fresh implemented conjunction grammar")
+    require(type(a) is dict and set(a) == HEADER and type(a["Version"]) is int and a["Version"] in (1, 2) and a["Profile"] == (PROFILE if a["Version"] == 1 else RECOVERY_PROFILE) and a["Case"] == recipe(a["Recipe"], a["Version"]), "fresh implemented conjunction grammar")
     d, r = a["P06"], a["Recipe"]
     require(type(d) is dict and set(d) == P06 and type(d["Version"]) is int and d["Version"] == 1 and d["Coordinator"] == r["Coordinator"] and d["Commit"] is r["Commit"], "same real semantic P06 recipe")
     coordinator, commit, kind, side = r["Coordinator"], r["Commit"], r["Kind"], r["Side"]
-    actor, target, successor = (3, 2, 1) if coordinator == 3 else (5, 4, 6)
+    phase, partition = (3, coordinator) if a["Version"] == 1 else (r["Phase"], r["Partition"])
+    actor = 3 if coordinator == 3 else 5
+    target, successor = (2, 1) if partition == 3 else (4, 6)
     require((a["Actor"], a["FirstVoter"], a["Target"], a["Successor"]) == (actor, 1, target, successor), "actual finite process routing")
     scopes, _ = P.cut(d["Before"])
     first, manifest, yes, yes_wire = P.peer_phase(P.raw(d["FirstYES"]["Request"]), P.raw(d["FirstYES"]["Reply"]), scopes, 1)
@@ -266,13 +296,14 @@ def check(a):
     decision_wire = P.raw(records[coordinator, decision["index"]]["Outcome"])
     P.resumed(d["Pending"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], coordinator), 1, b"")
     P.resumed(d["Decision"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], coordinator), 0, decision_wire)
-    selected = capture(d["Phases"], a["UnknownPhases"], scopes, actor, coordinator, manifest, tx, records)
+    selected = capture(d["Phases"], a["UnknownPhases"], scopes, actor, coordinator, manifest, tx, records, commit, phase, partition)
     require(selected == P.raw(a["SelectedCommand"]), "unknown attempt differs from native selected command")
     decoded = C.decision_command(selected)
-    require(decoded["phase"] == 3 and decoded["partition"] == coordinator and decoded["manifest"] == manifest, "actual selected Decide original")
-    votes = {part: P.status(P.raw(row["Outcome"])) for (part, index), row in records.items() if P.raw(row["Outcome"])[:4] == b"GCS\1" and P.status(P.raw(row["Outcome"]))["phase"] == 2 and P.status(P.raw(row["Outcome"]))["index"] == index}
-    vote_wires = [P.raw(records[part, votes[part]["index"]]["Outcome"]) for part in (3, 8)]
-    require(decoded["proofs"] == [votes[3], votes[8]] and decoded["proof_wires"] == vote_wires and decoded["conflict"] is None, "selected native D bound to both actual original votes")
+    require(decoded["phase"] == phase and decoded["partition"] == partition and decoded["manifest"] == manifest, "actual selected recovery original")
+    original_wires = {(part, P.status(P.raw(row["Outcome"]))["phase"]): P.raw(row["Outcome"]) for (part, index), row in records.items() if P.raw(row["Outcome"])[:4] == b"GCS\1" and P.status(P.raw(row["Outcome"]))["index"] == index}
+    proof_keys = [(3, 2), (8, 2)] if phase == 3 else [(coordinator, 3)] if phase == 4 else [(coordinator, 1)]+([(3, 2)] if partition == 8 else [])
+    proof_wires = [original_wires[key] for key in proof_keys]
+    require(decoded["proofs"] == [P.status(wire) for wire in proof_wires] and decoded["proof_wires"] == proof_wires and decoded["conflict"] is None, "selected native submission bound to actual original authority records")
     run, deadline = fixed(a["Run"], 16, True), integer(a["DeadlineUnixNanos"], (1 << 63)-1, 1)
     event = batch_pair(a["Arm"], a["Batch"], run, deadline, target, kind, side, selected)
     B.processes(a["Processes"], None, a["Case"], a["Batch"])
@@ -282,8 +313,8 @@ def check(a):
     require(events == sorted(set(events)), "first quorum restored before second actual crash/reopen")
     require(first_local["applied"] >= yes["index"], "first replacement did not read its own durable prepared prefix")
     if kind == 2:
-        row = records.get((coordinator, event["Index"]))
-        require(row is not None and P.status(P.raw(row["Outcome"])) == decision, "install event not bound to actual retained original D")
+        row = records.get((partition, event["Index"]))
+        require(row is not None and P.raw(row["Outcome"]) == original_wires[partition, phase], "install event not bound to actual retained phase original")
     require(type(a["TargetTransportLoss"]) is str and 0 < len(a["TargetTransportLoss"]) <= 4096, "missing typed target loss observation")
     attempts = a["Attempts"]
     require(type(attempts) is list and len(attempts) == 3, "bounded actual unknown/final/replay calls")
@@ -318,15 +349,24 @@ def check(a):
     actual_bytes = sum(len(P.raw(row["Request"]))+len(P.raw(row["Reply"])) for row in d["Phases"]+a["UnknownPhases"])
     require(integer(a["CaptureRetained"], 256 << 10) == actual_bytes, "finite owned actual captures")
     witness = literal_and_serial(d, decision)
-    return dict(case=a["Case"], records=len(records), successful_replies=len(d["Phases"]), unknown_attempts=len(a["UnknownPhases"]), serial_witness=witness, scope="P06 × actual Decide Ready/install before/after only; other occurrences/leaders/messages/P rows and runtime qualification remain open")
+    return dict(case=a["Case"], records=len(records), successful_replies=len(d["Phases"]), unknown_attempts=len(a["UnknownPhases"]), serial_witness=witness, scope="P06 × actual recovery Prepare/Decide/Resolve Ready/install before/after only; initial/duplicate occurrences/leaders/messages/P rows and runtime qualification remain open")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("artifacts", nargs="+", type=Path)
     args = parser.parse_args()
-    require(len(args.artifacts) <= 16, "finite conjunction invocation")
-    print(json.dumps([check(load(path)) for path in args.artifacts], indent=2))
+    require(len(args.artifacts) <= 80, "finite conjunction invocation")
+    counts, seen, results = {1: 0, 2: 0}, set(), []
+    for path in args.artifacts:
+        artifact = load(path)  # One bounded artifact at a time, never80 prefixes.
+        result = check(artifact)
+        version = artifact["Version"]
+        counts[version] += 1
+        require(counts[version] <= (16 if version == 1 else 64) and artifact["Case"] not in seen, "finite unique versioned conjunction inventory")
+        seen.add(artifact["Case"])
+        results.append(result)  # Only bounded two/three-transaction summaries.
+    print(json.dumps(results, indent=2))
 
 
 if __name__ == "__main__":

@@ -61,6 +61,32 @@ class NativeP06ConjunctionGuards(unittest.TestCase):
             with self.subTest(changed=changed), self.assertRaises(ValueError):
                 C.recipe(changed)
 
+    def test_recovery64_adds_only_actual_participant_prepare_resolve_occurrences(self):
+        rows = [dict(Coordinator=co, Commit=commit, Kind=kind, Side=side, Phase=phase, Partition=part)
+                for co in (3, 8) for commit in (True, False) for kind in (1, 2)
+                for side in ("before", "after") for phase in (2, 4) for part in (3, 8)]
+        self.assertEqual(len({C.recipe(row, 2) for row in rows}), 64)
+        for row in ({**rows[0], "Phase":1}, {**rows[0], "Phase":3}, {**rows[0], "Phase":0},
+                    {**rows[0], "Partition":0}, {**rows[0], "Partition":4}, {**rows[0], "Occurrence":2}):
+            with self.assertRaises(ValueError):
+                C.recipe(row, 2)
+        with self.assertRaises(ValueError):
+            C.recipe(rows[0])  # Old Decide16 grammar stays exact.
+
+    def test_actual_abort_terminal_skip_is_not_a_synthetic_success(self):
+        order = [(2, 3), (2, 8), (3, 3), (4, 3), (4, 8)]
+        C.recovery_order(order, 3, True, 2, 3)
+        C.recovery_order(order[:1]+order, 3, False, 2, 8)
+        C.recovery_order(order[:3]+order[4:], 3, False, 4, 3)
+        C.recovery_order(order[:4], 3, False, 4, 8)
+        C.recovery_order(order[:4]+order[3:], 3, True, 4, 8)
+        for successful, commit, phase, partition in ((order[:4], True, 4, 8),
+                                                    (order[:3], False, 4, 3),
+                                                    (order[:4]+order[3:], False, 4, 8),
+                                                    (order[:1]+order[2:], True, 2, 8)):
+            with self.subTest(successful=successful), self.assertRaises(ValueError):
+                C.recovery_order(successful, 3, commit, phase, partition)
+
     def test_actual_rotated_target_and_same_native_after_batch_are_required(self):
         arm, receipt, run, command = batch_guards.sample()
         arm["Member"] = receipt["Member"] = 2
@@ -86,6 +112,12 @@ class NativeP06ConjunctionGuards(unittest.TestCase):
         wrong, scopes, manifest, _ = unanswered(phase=2)
         with self.assertRaises(ValueError):
             C.unknown_attempt(wrong, scopes, 3, 3, manifest)
+        for phase in (2, 4):
+            for partition in (3, 8):
+                row, scopes, manifest, command = unanswered(phase, partition)
+                self.assertEqual(C.unknown_attempt(row, scopes, 3, 3, manifest, phase, partition)[0], command)
+                with self.assertRaises(ValueError):
+                    C.unknown_attempt({**row, "Reply":base64.b64encode(b"invented success").decode()}, scopes, 3, 3, manifest, phase, partition)
 
     def test_native_refusal_or_expiry_cannot_qualify_target_transport_loss(self):
         C.unknown_invocation(dict(code=3, mask=128), "typed loss separately authenticated by actual Go target/receipt")

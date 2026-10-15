@@ -597,3 +597,55 @@ func (c *nativeConjunctionCapture) close() {
 	c.mu.Unlock()
 	c.hub.mu.Unlock()
 }
+
+// Borrow only actual captured source command bytes after the parent has
+// authenticated the complete retained six-original census. This grants no
+// private proof/stamp: p06ReplayPhase still enters the ordinary native Submit
+// path, which must revalidate the real terminal original. In particular an
+// unanswered Resolve is not converted into a successful source reply.
+func nativeConjunctionTerminalResolveCommands(phases, unknown []p06Phase, manifest []byte) ([2]allocationProposal, error) {
+	var commands [2]allocationProposal
+	if len(phases) > 10 || len(unknown) > 1 {
+		return commands, errLimit
+	}
+	if len(manifest) == 0 || len(manifest) > nativeLogicalTransitionBodyBytes || len(phases) == 0 {
+		return commands, errInvalid
+	}
+	// The capture pre-admitted full envelope traversal/temporary decode at
+	// 32*processFrameBytes per actual candidate, including this bounded second
+	// classification. Eleven borrowed references require no wire clone/map.
+	var rows [11]p06Phase
+	n := copy(rows[:], phases)
+	n += copy(rows[n:], unknown)
+	for _, row := range rows[:n] {
+		if len(row.Request) == 0 || len(row.Request) > 2*nativeLogicalTransitionBodyBytes {
+			return commands, errLimit
+		}
+		request, err := decodeGraphSourceRequest(row.Request)
+		if err != nil || request.kind != sourceSubmit {
+			return commands, errors.Join(errInvalid, err)
+		}
+		proposal, err := decodeGraphSourceProposal(request.command)
+		if err != nil {
+			return commands, err
+		}
+		command, _, err := decodeCrossCommand(proposal.wire, defaultMaterializerLimits())
+		if err != nil || !bytes.Equal(command.manifest, manifest) || command.ns.partition != row.Partition || proposal.target.partition != row.Partition {
+			return commands, errors.Join(errInvalid, err)
+		}
+		if command.phase != crossResolve {
+			continue
+		}
+		position := 0
+		if row.Partition == 8 {
+			position = 1
+		} else if row.Partition != 3 {
+			return commands, errInvalid
+		}
+		commands[position] = proposal
+	}
+	if len(commands[0].wire) == 0 || len(commands[1].wire) == 0 {
+		return commands, errInvalid
+	}
+	return commands, nil
+}
