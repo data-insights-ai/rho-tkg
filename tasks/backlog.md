@@ -959,9 +959,22 @@ remain unchanged. All 24 frozen source blobs, 15 complete parent blobs and 962
 author-input hashes were verified before integration. Neither workload nor its
 controllers/checkers has been compiled or executed. Native rolling-ACK retention,
 additional generic At availability and installed-grant references remain distinct
-from FDB detached CDC/physical reclamation and actual local Next costs. Older
-native Cost5/6 guarded-update matching and nonlocal paired joins remain source
-work; this minimum-contract integration is not runtime or capacity acceptance.
+from FDB detached CDC/physical reclamation and actual local Next costs. The
+minimum-contract integration is not runtime or capacity acceptance.
+
+Matched native retained-C feed and selectors are source-integrated at `59bcef6d`,
+with CI dependency associations at `0138196b`. Explicit Cost13/14 and Spec2 apply
+Set6 before same-life Correct, preserving ordinary Set and the old Cost5/6
+contracts. Actual extra presence rows, endpoint-read footprints, old/current
+revisions, complete feed/index/column observations and all-voter originals join
+before local FDB parity. Business phase walls exclude setup and include worker
+queues, retries and drain; native and FDB physical participant/allocator costs
+remain distinct. Fresh feed terminal cleanup has an absolute original deadline
+plus 30 seconds and 128 nonrenewable calls, with no new read/source allowance.
+All 28 frozen blobs, 22 current parent blobs and 961 author-input hashes were
+verified before integration. Direct guards and full native RTT routes are
+source only; none has been compiled or executed. Complete nonlocal paired joins
+remain implementation work.
 
 The native selector family is source-integrated at `330aaf89`: fourteen actual
 Fresh/Stable/After/At, scoped-refusal and same-token reopen observations join
@@ -995,13 +1008,11 @@ uses genuine planned checks while preserving ordinary Set. Count actual read/wri
 participants, not empty cross-protocol manifests or endpoint placement, before
 accepting any affected scalar cost row.
 
-Current worker lanes: Sol 6.1/high for the matching FDB retained-only workload
-adapter and complete independent cross-engine join;
-Sol 6.1/high for the finite applicable protocol/storage/message/leader/conflict
-composition registry and driver;
-Sol 6.1/high for the remaining native transfer workload and its actual bounded
-protocol admission, plus the explicit matched guarded-update follow-ups. These packages
-are in implementation and do not add accepted runtime evidence. The
+Current worker lanes: Sol 6.1/high for complete nonlocal paired workload
+joins; Sol 6.1/high for the finite applicable protocol/storage/message/leader/
+conflict composition registry and driver; Sol 6.1/high for compact native transfer
+formats and the remaining actual transfer workload. These packages are in
+implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
 serialize heavy local fault/benchmark workloads under the shared resource lease.
