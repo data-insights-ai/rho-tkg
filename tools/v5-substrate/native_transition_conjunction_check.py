@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""Fresh finite P06 × Decide Ready/install source bridge.
+
+Successful replies, unanswered source attempts and actual retained originals are
+different inventories. No missing Decide reply is invented. Native/OS receipts
+are diagnostics from the Go parent, never independent ACK or power-loss proof.
+The existing P06/default batch grammars are deliberately not widened.
+"""
+import argparse
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+
+
+def module(name, file):
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(file))
+    result = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(result)
+    return result
+
+
+B = module("p06_conjunction_batch", "native_transition_batch_check.py")
+F = module("p06_conjunction_process", "native_fault_family_check.py")
+T, C, P = B.T, B.C, B.P
+require, integer, fixed = T.require, T.integer, T.fixed
+PROFILE = "native-p06-decide-sync-conjunction-v1"
+HEADER = set("Version Profile Case Recipe Run DeadlineUnixNanos Actor FirstVoter Target Successor P06 Attempts UnknownPhases Arm Batch SelectedCommand TargetTransportLoss Processes FirstReopened FaultReopened ReceiptReads ReceiptGrantBytes GateCandidates GateDecodeWork CaptureCandidates CaptureAttempts CaptureWork CaptureOutput CaptureRetained".split())
+P06 = set("Version Coordinator Commit Original Manifest Pending Decision FirstYES Processes Refused Closed Changed Duplicates Phases Before Recovered Current Retained From Through Records".split())
+RECIPE = {"Coordinator", "Commit", "Kind", "Side"}
+LOCAL = {"Partition", "Index", "Proposal", "Outcome", "CDC"}
+PHASE = {"Origin", "Partition", "Request", "Reply"}
+
+
+def recipe(row):
+    require(type(row) is dict and set(row) == RECIPE, "conjunction recipe grammar")
+    require(type(row["Coordinator"]) is int and row["Coordinator"] in (3, 8) and type(row["Commit"]) is bool, "actual coordinator/outcome recipe")
+    require(type(row["Kind"]) is int and row["Kind"] in (1, 2) and row["Side"] in ("before", "after"), "implemented Decide native boundary")
+    return f'p06-co{row["Coordinator"]}-commit{str(row["Commit"]).lower()}-decide-k{row["Kind"]}-{row["Side"]}'
+
+
+def load(path):
+    digest, total, header, footer, records = hashlib.sha256(), 0, None, None, []
+    with path.open("rb") as source:
+        while line := source.readline((512 << 10)+1):
+            total += len(line)
+            require(len(line) <= 512 << 10 and total <= 16 << 20 and line.endswith(b"\n"), "finite conjunction frame/artifact")
+            row = T.decoded(line)
+            require(type(row) is dict and footer is None, "row after conjunction EOF")
+            if header is None:
+                require(set(row) == {"Type", "Artifact"} and row["Type"] == "header", "conjunction header row")
+                header = row["Artifact"]
+                require(type(header) is dict and set(header) == HEADER and type(header["P06"]) is dict and set(header["P06"]) == P06 and header["P06"]["Records"] is None, "fresh grammar cannot inline prefix")
+            elif row.get("Type") == "record":
+                require(set(row) == {"Type", "Record"} and len(records) < 512, "bounded actual record row")
+                records.append(row["Record"])
+            else:
+                require(set(row) == {"Type", "Rows", "Through", "PayloadSHA256"} and row["Type"] == "footer", "conjunction EOF grammar")
+                require(type(row["Rows"]) is int and row["Rows"] == len(records) and row["PayloadSHA256"] == digest.hexdigest(), "complete native prefix hash/census")
+                footer = row
+            if footer is None:
+                digest.update(line)
+    require(header is not None and footer is not None and footer["Through"] == header["P06"]["Through"], "missing/foreign actual source EOF")
+    header["P06"]["Records"] = records
+    return header
+
+
+def batch_pair(arm, actual, run, deadline, member, kind, side, command):
+    """Same native codec; this fresh owner authenticates its ACTUAL leader.
+
+    The old batch checker fixes A1/B4 and must keep that contract unchanged.
+    """
+    for r in (arm, actual):
+        require(type(r) is dict and set(r) == B.RECEIPT and type(r["Version"]) is int and r["Version"] == 1 and r["Profile"] == B.PROFILE, "native receipt grammar/profile")
+        require(fixed(r["Run"], 16, True) == run and integer(r["Member"], member, member) and integer(r["PID"], minimum=1), "actual process owner/run")
+        require(integer(r["Sequence"], 1, 1) and integer(r["DeadlineUnixNanos"], deadline, 1), "original deadline/sequence")
+        c = r["Control"]
+        require(type(c) is dict and set(c) == B.CONTROL and type(c["Version"]) is int and c["Version"] == 1 and c["Action"] == "arm" and c["Cookie"] == r["Cookie"] and type(c["Sequence"]) is int and c["Sequence"] == 1 and type(c["Kind"]) is int and c["Kind"] == kind and c["Side"] == side, "exact live native control")
+        fixed(r["Cookie"], 16, True)
+        require(fixed(c["CommandSHA256"], 32, True) == hashlib.sha256(command).digest(), "selected genuine source command")
+        for key, limit in (("Attempts", 2048), ("Work", 1 << 40), ("Entries", 1 << 20), ("Output", 2 << 20)):
+            integer(r[key], limit)
+        require(type(r["Events"]) is list and len(r["Events"]) == 2 and r["Output"] >= 2*8192, "prepaid serialized native observations")
+    require(all(arm[k] == actual[k] for k in ("Cookie", "Run", "Member", "PID", "Sequence", "Control", "DeadlineUnixNanos")), "native owner substitution")
+    require(arm["State"] == "armed" and type(arm["Count"]) is int and arm["Count"] == 0 and arm["Attempts"] == arm["Work"] == arm["Entries"] == 0, "arm cannot claim a reached transition")
+    for unused in arm["Events"]:
+        B.zero_event(unused)
+    require(actual["State"] == "observing" and type(actual["Count"]) is int and actual["Count"] == (1 if side == "before" else 2), "unmatched/ambiguous native selector")
+    before = B.event(actual["Events"][0], actual["Control"])
+    require(type(before["Stage"]) is int and before["Stage"] == 1 and before["Synced"] is False and before["CommandBytes"] == len(command), "actual before Sync event")
+    require(actual["Attempts"] >= 1 and actual["Entries"] >= before["Work"]["Entries"] and actual["Work"] >= before["Work"]["Bytes"] and actual["Output"] >= arm["Output"] + before["Work"]["OutputBytes"], "native attempted hashing/serialization prepaid")
+    if side == "after":
+        require(B.event(actual["Events"][1], actual["Control"]) == {**before, "Stage": 2, "Synced": True}, "same actual batch guaranteed returned Sync")
+    else:
+        B.zero_event(actual["Events"][1])
+    return before
+
+
+def source_request(row, scopes, actor):
+    require(type(row) is dict and set(row) == PHASE and row["Origin"] == actor and row["Partition"] in (3, 8), "actual submitted attempt grammar/origin")
+    wire = P.raw(row["Request"])
+    require(0 < len(wire) <= 128 << 10 and len(P.raw(row["Reply"])) <= 8192, "bounded source observation")
+    command = C._source_command(row["Request"], scopes)
+    decoded = C.decision_command(command)
+    require(decoded["partition"] == row["Partition"], "actual submission partition")
+    q = P.Cursor(P.body(wire, b"GSQ\1"))
+    q.number(1)
+    sequence, nonce = q.number(), q.take(16)
+    return command, decoded, (row["Partition"], sequence, nonce)
+
+
+def unknown_attempt(row, scopes, actor, coordinator, manifest):
+    command, decoded, correlation = source_request(row, scopes, actor)
+    require(not P.raw(row["Reply"]) and decoded["phase"] == 3 and decoded["partition"] == coordinator and decoded["manifest"] == manifest, "unanswered Decide invented a reply or changed authority")
+    return command, correlation
+
+
+def unknown_invocation(response, transport):
+    # This narrow format check is insufficient alone. check() first joins the
+    # genuine unanswered source request, selected native batch, actual target
+    # typed pipe loss and self-SIGKILL/reap. A generic error is not authority.
+    require(type(transport) is str and 0 < len(transport) <= 4096 and (response["code"], response["mask"]) in ((3, 128), (6, 0)), "invalid/limit/corrupt/expiry cannot qualify unknown")
+
+
+def capture(rows, unknown, scopes, actor, coordinator, manifest, tx, records):
+    require(type(rows) is list and 4 <= len(rows) <= 10 and type(unknown) is list and len(unknown) == 1, "actual successes separate from one unknown")
+    seen, successful = set(), []
+    for n, row in enumerate(rows):
+        command, decoded, correlation = source_request(row, scopes, actor)
+        require(correlation not in seen, "duplicate correlated source observation")
+        seen.add(correlation)
+        voter = (2 if row["Partition"] == 3 else 4) if n < 2 else (1 if coordinator == 3 else 2) if row["Partition"] == 3 else (4 if coordinator == 3 else 6)
+        _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes, voter)
+        require(actual_manifest == decoded["manifest"] == manifest and status["tx"] == tx, "immutable actual source original")
+        require((status["partition"], status["index"]) in records and P.raw(records[status["partition"], status["index"]]["Outcome"]) == outcome, "successful reply not in actual retained originals")
+        successful.append((decoded["phase"], row["Partition"]))
+    require(successful[:2] == [(2, 3), (2, 8)] and successful[-2:] == [(4, 3), (4, 8)] and successful[2:-2] in ([], [(2, 3), (2, 8), (3, coordinator)]), "actual bounded source retry stages")
+    command, correlation = unknown_attempt(unknown[0], scopes, actor, coordinator, manifest)
+    require(correlation not in seen, "unknown request duplicated a successful correlated reply")
+    return command
+
+
+def phase_census(data, tx, digest, coordinator, commit):
+    records = F.prefix(data)
+    originals, resolved = {}, set()
+    local = [data["Refused"], data["Closed"]] + ([data["Changed"]] if data["Changed"] else [])
+    require(data["Refused"]["Partition"] == data["Closed"]["Partition"] == 3 and (data["Changed"] is None) is commit and (data["Changed"] is None or data["Changed"]["Partition"] == 8), "exact local conflict/effect participants")
+    known = {}
+    for row in local:
+        require(type(row) is dict and set(row) == LOCAL, "local real original grammar")
+        require((row["Partition"], row["Index"]) not in known, "duplicate local original")
+        proposal = P.pgq(P.raw(row["Proposal"]))
+        outcome = P.body(P.raw(row["Outcome"]), b"GRO\4")
+        require(len(outcome) == 84 and outcome[0] == proposal["kind"] and outcome[1:17] == P.GRAPH and int.from_bytes(outcome[17:25], "big") == row["Partition"] == proposal["partition"] and outcome[25:41] == proposal["request"] and outcome[41:73] == hashlib.sha256(P.raw(row["Proposal"])).digest() and int.from_bytes(outcome[73:81], "big") == row["Index"] and outcome[81] == 1, "local native proposal/outcome identity")
+        require(records.get((row["Partition"], row["Index"])) == {k: row[k] for k in ("Partition", "Index", "Outcome", "CDC")}, "actual stored local original")
+        is_refusal = row is data["Refused"]
+        require((int.from_bytes(outcome[82:84], "big") == 11 and not P.raw(row["CDC"])) if is_refusal else (outcome[82:84] == bytes(2) and bool(P.raw(row["CDC"]))), "prepared conflict or actual useful local effect")
+        known[row["Partition"], row["Index"]] = row
+    for coordinate, row in records.items():
+        outcome, cdc = P.raw(row["Outcome"]), P.raw(row["CDC"])
+        if not outcome:
+            require(not cdc, "empty outcome cannot carry CDC")
+            continue  # Both actual output reads succeeded in the Go extractor.
+        if outcome[:4] == b"GCS\1":
+            s = P.status(outcome)
+            require(s["tx"] == tx and s["digest"] == digest and s["partition"] == coordinate[0] and 0 < s["index"] <= coordinate[1], "foreign cross original")
+            original = records.get((s["partition"], s["index"]))
+            require(original is not None and P.raw(original["Outcome"]) == outcome, "replayed status differs from retained first original")
+            require(not cdc or s["phase"] == 4 and s["commit"] and s["index"] == coordinate[1], "duplicate/nonbusiness CDC")
+            if s["index"] == coordinate[1]:
+                key = (s["partition"], s["phase"])
+                require(key not in originals, "duplicate first original phase")
+                originals[key] = s
+                why = P.body(outcome, b"GCS\1")[98]
+                require(why == (8 if key == (8, 2) and not commit else 0), "actual native Prepare refusal cause")
+                if s["phase"] == 4:
+                    require(s["commit"] == commit and bool(cdc) == commit, "whole actual Resolve outcome/CDC")
+                    resolved.add(s["partition"])
+            identity, original_hash, index = tx, digest, s["index"]
+        elif outcome[:4] == b"GRO\4":
+            require(coordinate in known, "unknown local native mutation")
+            b = P.body(outcome, b"GRO\4")
+            identity, original_hash, index = b[25:41], b[41:73], int.from_bytes(b[73:81], "big")
+        else:
+            b = P.body(outcome, b"GSO\1")
+            require(len(b) == 18 and int.from_bytes(b[10:18], "big") == coordinate[1] and not cdc, "unknown/nonempty cut control")
+            continue
+        if cdc:
+            c = P.Cursor(P.body(cdc, b"GCE\1"))
+            c.number(1)
+            require(c.take(16) == identity and c.take(32) == original_hash and c.number() == index, "complete CDC/original coordinate")
+            logical = P.body(c.field(), b"GCD\5")
+            c.end()
+            require(logical[:16] == P.GRAPH and int.from_bytes(logical[16:24], "big") == coordinate[0], "actual CDC namespace")
+    require(set(originals) == {(coordinator, 1), (3, 2), (8, 2), (coordinator, 3), (3, 4), (8, 4)} and resolved == {3, 8}, "complete six genuine phase originals")
+    decision = originals[coordinator, 3]
+    require(decision["commit"] == commit and originals[3, 2]["yes"] and originals[8, 2]["yes"] == commit, "actual prepared votes and immutable decision")
+    require(all(originals[p, 4]["round"] == decision["round"] for p in (3, 8)), "both participant effects share real decision")
+    return records, decision
+
+
+def literal_and_serial(data, decision):
+    before, recovered, current = (P.projected(data[key]) for key in ("Before", "Recovered", "Current"))
+    require([r["id"] for r in data["Before"]["Native"]["entityCensus"] if r["found"]] == [1, 17], "exact initial native IDs")
+    expected = dict(before)
+    transactions, rounds, committed = {}, {}, set()
+    if data["Commit"]:
+        round_ = decision["round"]
+        expected.update({"A/entity/3": dict(kind=2, source=1, target=17, mode=1, type="edge"), "A/presence/3": dict(present=True, null=False, handle=4, revision=round_, provenance=3, kind="life", i64=0), "A/labels/3": [], "A/property/3/p": dict(present=True, null=False, handle=5, revision=round_, provenance=3, kind="i64", i64=5), "A/life/3/4": dict(sourceLife=2, targetLife=18)})
+        for key in ("A/posting/1/0", "A/posting/1/2", "B/posting/17/0", "B/posting/17/18"):
+            expected[key] = [3]
+        transactions["edge"] = {"reads": [P.read_key(before, k) for k in ("A/presence/1", "B/presence/17", "A/entity/3")], "writes": P.writes(before, recovered, ("A/entity/3", "A/presence/3", "A/labels/3", "A/property/3/p", "A/life/3/4", "A/posting/1/0", "A/posting/1/2", "B/posting/17/0", "B/posting/17/18"))}
+        rounds["edge"], committed = decision["round"], {"edge"}
+    else:
+        require(data["Changed"] is not None, "ABORT is not a timeout or fabricated NO")
+        cell = recovered["B/presence/17"]
+        expected["B/presence/17"] = dict(present=False, null=False, handle=0, revision=cell["revision"], provenance=41, kind="absent", i64=0)
+        transactions["close-b"] = {"reads": [P.read_key(before, "B/presence/17")], "writes": P.writes(before, recovered, ("B/presence/17",))}
+        rounds["close-b"], committed = integer(cell["revision"], minimum=1), {"close-b"}
+    T.semantic(recovered == expected, "p06-useful-original-answer")
+    cell = current["A/presence/1"]
+    expected["A/presence/1"] = dict(present=False, null=False, handle=0, revision=cell["revision"], provenance=41, kind="absent", i64=0)
+    T.semantic(current == expected, "p06-final-endpoint-answer")
+    for key in ("Recovered", "Current"):
+        native = data[key]["Native"]
+        T.semantic([r["id"] for r in native["entityCensus"] if r["found"]] == ([1, 3, 17] if data["Commit"] else [1, 17]), "p06-exact-entity-census")
+        entities = {row["id"]: row for row in native["entities"]}
+        T.semantic(entities[1]["effective"] is (key != "Current") and entities[17]["effective"] is data["Commit"] and entities[3]["found"] is data["Commit"] and entities[3]["effective"] is (data["Commit"] and key != "Current"), "p06-endpoint-life-effective-answer")
+        for row in native["postings"]:
+            declared = [3] if data["Commit"] and (row["endpoint"], row["life"]) != (1, 7) else []
+            T.semantic((row["candidates"] or []) == declared and (row["declared"] or []) == declared and (row["effective"] or []) == (declared if key != "Current" else []), "p06-exact-posting-answer")
+    transactions["close-a"] = {"reads": [P.read_key(recovered, "A/presence/1")], "writes": P.writes(recovered, current, ("A/presence/1",))}
+    rounds["close-a"] = integer(cell["revision"], minimum=1)
+    committed.add("close-a")
+    history = {"name": "P06-native-Decide-sync", "initial": before, "transactions": transactions}
+    observations = [{"event": key, "scope": ["A", "B"], "round": P.cut(data[key])[1], "values": P.projected(data[key])} for key in ("Before", "Recovered", "Current", "Retained")]
+    witness, detail = P.oracle()(history, committed, rounds, observations, [{"event": "final", "scope": ["A", "B"], "values": current}])
+    T.semantic(witness is not None, "independent exact serial/cut witness: " + str(detail))
+    return witness
+
+
+def first_processes(rows):
+    require(type(rows) is list and len(rows) == 2, "first YES actual process pair")
+    killed, reopened = rows
+    raw, restored = T.decoded(P.raw(killed["Raw"])), T.decoded(P.raw(reopened["Raw"]))
+    require(killed["Action"] == "kill" and killed["Member"] == raw["Member"] == 1 and killed["Reaped"] is True and killed["Signal"] == "SIGKILL" and raw["SignalNumber"] == 9 and raw["Signaled"] is True and raw["Reaped"] is True and raw["Success"] is False and raw["Instance"] == killed["Instance"] and raw["Volume"] == killed["Volume"], "actual prepared leader death/reap")
+    require(reopened["Action"] == "reopen" and reopened["Member"] == restored["Member"] == 1 and reopened["Ready"] is True and reopened["PreviousInstance"] == restored["PreviousInstance"] == killed["Instance"] and reopened["Volume"] == restored["Volume"] == killed["Volume"] and reopened["RecoveryRaw"] == restored["RecoveryRaw"] and raw["PID"] != restored["PID"], "first same-directory restored quorum")
+    return F.process(P.raw(restored["LocallyRestoredRaw"]))
+
+
+def check(a):
+    require(type(a) is dict and set(a) == HEADER and type(a["Version"]) is int and a["Version"] == 1 and a["Profile"] == PROFILE and a["Case"] == recipe(a["Recipe"]), "fresh implemented conjunction grammar")
+    d, r = a["P06"], a["Recipe"]
+    require(type(d) is dict and set(d) == P06 and type(d["Version"]) is int and d["Version"] == 1 and d["Coordinator"] == r["Coordinator"] and d["Commit"] is r["Commit"], "same real semantic P06 recipe")
+    coordinator, commit, kind, side = r["Coordinator"], r["Commit"], r["Kind"], r["Side"]
+    actor, target, successor = (3, 2, 1) if coordinator == 3 else (5, 4, 6)
+    require((a["Actor"], a["FirstVoter"], a["Target"], a["Successor"]) == (actor, 1, target, successor), "actual finite process routing")
+    scopes, _ = P.cut(d["Before"])
+    first, manifest, yes, yes_wire = P.peer_phase(P.raw(d["FirstYES"]["Request"]), P.raw(d["FirstYES"]["Reply"]), scopes, 1)
+    require(first == P.raw(d["Manifest"]) and yes["yes"] and yes["partition"] == 3, "genuine first YES source")
+    original = C.decision_manifest(P.raw(d["Original"]), manifest, coordinator, scopes, d["Before"])
+    tx, digest = original["tx"], original["digest"]
+    require(yes["tx"] == tx, "same original first YES")
+    records, decision = phase_census(d, tx, digest, coordinator, commit)
+    require(P.raw(records[3, yes["index"]]["Outcome"]) == yes_wire, "first YES native retained original")
+    decision_wire = P.raw(records[coordinator, decision["index"]]["Outcome"])
+    P.resumed(d["Pending"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], coordinator), 1, b"")
+    P.resumed(d["Decision"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], coordinator), 0, decision_wire)
+    selected = capture(d["Phases"], a["UnknownPhases"], scopes, actor, coordinator, manifest, tx, records)
+    require(selected == P.raw(a["SelectedCommand"]), "unknown attempt differs from native selected command")
+    decoded = C.decision_command(selected)
+    require(decoded["phase"] == 3 and decoded["partition"] == coordinator and decoded["manifest"] == manifest, "actual selected Decide original")
+    votes = {part: P.status(P.raw(row["Outcome"])) for (part, index), row in records.items() if P.raw(row["Outcome"])[:4] == b"GCS\1" and P.status(P.raw(row["Outcome"]))["phase"] == 2 and P.status(P.raw(row["Outcome"]))["index"] == index}
+    vote_wires = [P.raw(records[part, votes[part]["index"]]["Outcome"]) for part in (3, 8)]
+    require(decoded["proofs"] == [votes[3], votes[8]] and decoded["proof_wires"] == vote_wires and decoded["conflict"] is None, "selected native D bound to both actual original votes")
+    run, deadline = fixed(a["Run"], 16, True), integer(a["DeadlineUnixNanos"], (1 << 63)-1, 1)
+    event = batch_pair(a["Arm"], a["Batch"], run, deadline, target, kind, side, selected)
+    B.processes(a["Processes"], None, a["Case"], a["Batch"])
+    first_local = first_processes(d["Processes"])
+    process_order = [d["Processes"][0], d["Processes"][1], a["Processes"][0], a["Processes"][1]]
+    events = [integer(row["EventID"], minimum=1) for row in process_order]
+    require(events == sorted(set(events)), "first quorum restored before second actual crash/reopen")
+    require(first_local["applied"] >= yes["index"], "first replacement did not read its own durable prepared prefix")
+    if kind == 2:
+        row = records.get((coordinator, event["Index"]))
+        require(row is not None and P.status(P.raw(row["Outcome"])) == decision, "install event not bound to actual retained original D")
+    require(type(a["TargetTransportLoss"]) is str and 0 < len(a["TargetTransportLoss"]) <= 4096, "missing typed target loss observation")
+    attempts = a["Attempts"]
+    require(type(attempts) is list and len(attempts) == 3, "bounded actual unknown/final/replay calls")
+    pending_response = F.process(P.raw(d["Pending"]))
+    previous_sequence = pending_response["sequence"]
+    for i, row in enumerate(attempts):
+        require(type(row) is dict and set(row) == {"Reply", "Transport", "Pending"} and type(row["Pending"]) is bool and row["Pending"] is (i == 0) and type(row["Transport"]) is str and len(row["Transport"]) <= 4096, "actual invocation grammar")
+        response = F.process(P.raw(row["Reply"]))
+        require(response["incarnation"] == pending_response["incarnation"] and response["sequence"] > previous_sequence, "original caller changed process or replayed IPC sequence")
+        previous_sequence = response["sequence"]
+        require(not response["outcome"] and not response["changes"] and not response["packets"] and not response["reads"], "coordinator call invented native event outputs")
+        if i == 0:
+            unknown_invocation(response, row["Transport"])
+        else:
+            require(not row["Transport"] and response["code"] == response["mask"] == 0, "success/replay was not genuine success")
+        P.resumed(row["Reply"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], coordinator), int(i == 0), b"" if i == 0 else decision_wire)
+    require(attempts[1]["Reply"] == d["Decision"], "final returned original not actual captured response")
+    require(type(d["Duplicates"]) is list and len(d["Duplicates"]) == 3, "actual terminal Prepare/two Resolve replays")
+    for i, row in enumerate(d["Duplicates"]):
+        require(type(row) is dict and set(row) == LOCAL, "terminal duplicate grammar")
+        command = C.decision_command(P.raw(row["Proposal"]))
+        status = P.status(P.raw(row["Outcome"]))
+        require(command["phase"] == (2 if i == 0 else 4) and command["partition"] == (3 if i < 2 else 8) and command["manifest"] == manifest and status["phase"] == 4 and status["tx"] == tx and status["digest"] == digest and status["index"] < row["Index"] and not P.raw(row["CDC"]), "current terminal replay semantics/original/zero CDC")
+        require(records.get((row["Partition"], row["Index"])) == {k: row[k] for k in ("Partition", "Index", "Outcome", "CDC")}, "terminal replay missing from actual prefix")
+    for actual in (d["Retained"], a["FirstReopened"], a["FaultReopened"]):
+        T.semantic(actual == d["Before"], "old-cut:exact-original-certificate-data-index")
+    reads = integer(a["ReceiptReads"], 129, 1)
+    require(a["ReceiptGrantBytes"] == reads*65536, "receipt read grants/prepay")
+    require(integer(a["GateCandidates"], 128, 1)*(4096+32*(2 << 20)) == integer(a["GateDecodeWork"], 128*(4096+32*(2 << 20)), 1), "whole envelope gate decode prepay")
+    candidates, count = integer(a["CaptureCandidates"], 256, 1), integer(a["CaptureAttempts"], 32, 1)
+    require(candidates >= count == len(d["Phases"])+len(a["UnknownPhases"]) and a["CaptureWork"] == candidates*(4096+32*(2 << 20)) and a["CaptureOutput"] == count*((128 << 10)+8192), "attempted capture/output grant prepay")
+    actual_bytes = sum(len(P.raw(row["Request"]))+len(P.raw(row["Reply"])) for row in d["Phases"]+a["UnknownPhases"])
+    require(integer(a["CaptureRetained"], 256 << 10) == actual_bytes, "finite owned actual captures")
+    witness = literal_and_serial(d, decision)
+    return dict(case=a["Case"], records=len(records), successful_replies=len(d["Phases"]), unknown_attempts=len(a["UnknownPhases"]), serial_witness=witness, scope="P06 × actual Decide Ready/install before/after only; other occurrences/leaders/messages/P rows and runtime qualification remain open")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("artifacts", nargs="+", type=Path)
+    args = parser.parse_args()
+    require(len(args.artifacts) <= 16, "finite conjunction invocation")
+    print(json.dumps([check(load(path)) for path in args.artifacts], indent=2))
+
+
+if __name__ == "__main__":
+    main()
