@@ -504,15 +504,15 @@ FDB has source drivers for all eight families: create/update, contention,
 selectors, snapshot-to-feed, cross-edge uniqueness, immutable columns,
 late correction and ownership transfer;
 their fresh owned transport adapters cover
-local/1/20/100ms. Native has create/update, contention, cross-edge, snapshot-to-feed and selector
-source drivers across local/1/20/100ms, with local paired comparisons. Unsupported semantics
+local/1/20/100ms. Native has create/update, contention, cross-edge, snapshot-to-feed,
+selector and immutable-column source drivers across local/1/20/100ms, with local
+paired comparisons. Unsupported semantics
 or transport refuse before effects.
 Each family/transport matrix contains 360 fresh cells; the complete eight-family,
 four-transport matrix contains 11,520 cells per engine.
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
-No new cell, guard or runtime gate has run. Native immutable-columns,
-late-correction and transfer/retained-pins drivers remain
-implementation work. FDB feed business accounting is source-integrated at
+No new cell, guard or runtime gate has run. Native late-correction and
+transfer/retained-pins drivers remain implementation work. FDB feed business accounting is source-integrated at
 `4218c9a7`: an explicit optional extension joins create/update phase walls,
 including each seed and complete worker drain, to raw begin/end markers and
 useful originals. Same-clock queued-start/worker-stop samples supply complete
@@ -627,6 +627,16 @@ The KV layout stays a source-scan reference. Complete-call timing includes its
 actual artifact callbacks, while fixed samples stay bounded. Existing selector
 formats and filenames are unchanged. Source KV history remains retained;
 execution, native family parity and capacity acceptance remain open.
+The native immutable-column workload is source-integrated at `2e94e9b5`: genuine
+publication, native/cache scans and fixed scan-based typed probes join complete
+originals, historical/current source, CDC and same-directory restart. An old
+reader held across guarded updates causes actual Retire refusal with unchanged
+native journal records, followed by Close, retirement and keeper refusal. The
+independent oracle authenticates the reader identity and complete binary EOF;
+future test selection includes every shared caller. KV remains a source-scan
+reference. Native derived chunks stay retained and counted after journal/pin
+retirement; no equal physical reclamation with FDB is claimed. This is source
+integration only, with no compilation, execution or efficiency acceptance.
 The late-correction family is source-integrated at `f580f765`: half the facts
 change from 5 to 6 after a retained old cut; the other half remain 5. One bounded
 source scan per cut serves six out/in posting predicates, including phantom 7,
@@ -934,8 +944,8 @@ Current worker lanes: Sol 6.1/high for the matching FDB retained-only workload
 adapter and complete independent cross-engine join;
 Sol 6.1/high for the finite applicable protocol/storage/message/leader/conflict
 composition registry and driver;
-Sol 6.1/high for the remaining native workload families, starting with immutable
-columns after the integrated FDB feed accounting follow-up. These packages
+Sol 6.1/high for the remaining native late-correction and transfer workload
+families, plus the explicit matched guarded-update follow-ups. These packages
 are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
