@@ -672,9 +672,16 @@ First-certificate publication is source-integrated at `424756d5`: four actual
 Certify participant/side cases retain distinct empty, node-A and node-A+B cuts,
 the stored first-publication index despite repeated replies, both immutable
 business originals and same-directory old/current reads. Its independent checker
-joins the complete native prefix and serial witness. Namespace-publication
-boundaries, broader retained-pin/fault composition and recorded-seed exploration
-remain in implementation; none of these guards ran.
+joins the complete native prefix and serial witness. Namespace publication is
+source-integrated at `b94307e4`: eight actual OPTIONS rename and manifest-marker
+Create/Close/directory-Sync sides interrupt same-directory Open before Ready.
+The precise marker Sync selector requires the actual pinned native caller and
+its created, successfully closed file; generic directory Sync remains separate.
+The replacement reads genuine old/current cuts before catch-up and replays the
+immutable original against the complete prefix/serial checker. These are process
+interruption cases, not power-loss evidence. Broader retained-pin/fault
+composition and recorded-seed exploration remain in implementation; none of
+these guards ran.
 
 Native snapshot-to-feed ownership is source-integrated at `4868f0f7`. One genuine
 issued pin retains the snapshot and full-vector feed; complete original-round
