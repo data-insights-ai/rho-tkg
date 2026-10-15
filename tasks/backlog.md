@@ -395,10 +395,12 @@ Fresh column admission and source-failure accounting are source-integrated at
 `d385f2cd`: a separately versioned aggregate-row allowance binds the immutable
 workload admission; failed distributed captures retain actual post-Close RPC
 and wire counters. Legacy zero-version bytes and allowances remain unchanged.
-Large-prefix continuation still needs a source correction: the dependency
-prepass currently keeps its positions and minimum feed indexes only in memory.
-The fresh policy must journal and resume that progress with cumulative work
-charges; persisted publication progress alone does not resume this prepass.
+Large-prefix continuation is source-integrated at `690ec000`: the fresh policy
+journals dependency positions/minimum feed indexes and prepays every attempted
+page. Genuine transient-source renewal preserves the same query deadline,
+durable generation, private cursor, sequence and cumulative accounting; the
+next cursor position commits only with its complete cached reply. Legacy
+zero-version journals and cache admission retain their existing contract.
 Genuine OS-child selection and interruption wiring are source-integrated at
 `feb661e9`: six same-directory child restarts preserve exact originals/tokens;
 partial retirement resumes the existing generation with spent attempts intact.
@@ -460,9 +462,18 @@ both layouts and genuine column/cache/lifetime operations. Separate actual
 Open/Scan/Points timings bind mode, cut and EOF cardinality, with fixed per-cell
 sample counts; write latency stays separate. Legacy wrappers/formats remain
 unchanged. The direct API and independent checker guards are authored only.
-The dispatcher schedules all eight families and local/1/20/100ms profiles, but
-executes only contention, selectors and snapshot-to-feed/local; unsupported semantics or transport
-refuse before effects. Each selected-family matrix contains 360 fresh cells;
+Native contention/empty-range source is integrated at `690ec000`: genuine
+1/8/32 callers share two actual Run admissions, keep complete frozen conditions,
+and replan only after known refusals/ABORTs. All six voter prefixes, physical
+restart, immutable original/grant replay and old/current/phantom answers join a
+bounded independent checker. A finite owned transport delays the real native
+Raft/source frames and records queue, framing and cancellation costs. Explicit
+chosen run budgets bind the original deadline; they are not performance promises.
+The controller supports native local/1/20/100ms and paired local FDB answers.
+The dispatcher schedules all eight families and local/1/20/100ms profiles.
+FDB executes contention, selectors and snapshot-to-feed/local; native executes
+the contention family. Unsupported semantics or transport refuse before effects.
+Each selected-family matrix contains 360 fresh cells;
 1M or 32-writer cells require explicit finite comparison disk/cache grants.
 No new cell, guard or runtime gate has run. The other five FDB family drivers,
 directed RTT, native parity, full matrix and engine decision remain open.
@@ -555,9 +566,9 @@ packet delay is not a measured RTT profile. This source package does not close
 B or D.
 
 Current worker lanes: Sol 6.1/high for the native/FDB cross-edge endpoint-life
-and uniqueness family; Sol 6.1/high for native contention, real directed
-transport delay and resumable column dependencies, followed by the remaining
-C/D schedules; Sol 6.1/high for real owned FDB transport and explicit fresh
+and uniqueness family; Sol 6.1/high for the remaining C/D transition and seeded
+schedule implementation after the frozen contention/transport package;
+Sol 6.1/high for real owned FDB transport and explicit fresh
 duration admission. These packages
 are in implementation and do not add accepted runtime evidence. The
 coordinator owns the inventory, source review, integration and acceptance
