@@ -430,3 +430,50 @@ func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
 	c.asOfColumns.bump() // the conversion's rewritten history rows follow in the feed
 	return c.writeUntimedMode(v)
 }
+
+func untimedModeOf(unbounded bool) UntimedValidStart {
+	if unbounded {
+		return UntimedUnbounded
+	}
+	return UntimedFromTxFrom
+}
+
+// checkImportUntimedModeLocked refuses a full import whose source wrote its
+// untimed rows under the other mode into a target that holds rows
+// (ErrUntimedModeMismatch, before any record is written): a store never
+// mixes the two rules. An empty target takes the source's mode at the end of
+// the import (adoptImportUntimedModeLocked). An export without the header
+// field (a UntimedFromTxFrom source, or one written before backlog 73) is a
+// TxFrom export. Caller holds c.mu.Lock.
+func (c *Core) checkImportUntimedModeLocked(srcUnbounded bool, rollback *importRollback) error {
+	if srcUnbounded == c.untimedUnbounded.Load() {
+		return nil
+	}
+	empty := rollback != nil && rollback.emptyTarget
+	if rollback == nil {
+		var err error
+		if empty, err = c.importTargetEmptyLocked(); err != nil {
+			return err
+		}
+	}
+	if empty {
+		return nil
+	}
+	return fmt.Errorf("import: the export's rows are written under %s, this store's under %s: %w",
+		untimedModeName(untimedModeOf(srcUnbounded)), untimedModeName(untimedModeOf(c.untimedUnbounded.Load())), ErrUntimedModeMismatch)
+}
+
+// adoptImportUntimedModeLocked makes an empty import target take the source's
+// mode (checkImportUntimedModeLocked admitted it) and persists it: later
+// creates follow the imported rows' rule, and a reopen needs the adopted mode.
+// Caller holds c.mu.Lock.
+func (c *Core) adoptImportUntimedModeLocked(srcUnbounded bool) error {
+	if srcUnbounded == c.untimedUnbounded.Load() {
+		return nil
+	}
+	c.untimedUnbounded.Store(srcUnbounded)
+	if err := c.writeUntimedMode(byte(untimedModeOf(srcUnbounded))); err != nil {
+		return fmt.Errorf("import: persist the adopted untimed valid-start mode: %w", err)
+	}
+	return nil
+}

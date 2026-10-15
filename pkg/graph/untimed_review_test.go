@@ -348,3 +348,146 @@ func TestUntimedModeReplicates(t *testing.T) {
 		t.Errorf("replica reopened: converted node at far: %v", err)
 	}
 }
+
+// TestImportCarriesUntimedMode (review 4): an export did not say which mode
+// its untimed rows were written under, so an import mixed the rules silently.
+// The export header now carries it: an empty target adopts it (and persists
+// it), a target with rows under the other mode refuses the import with
+// ErrUntimedModeMismatch and holds nothing of it.
+func TestImportCarriesUntimedMode(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	export := func(mode graphpkg.UntimedValidStart) ([]byte, types.NodeID) {
+		t.Helper()
+		g, err := graphpkg.New(graphpkg.Config{UntimedValidStart: mode})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer g.Close()
+		n, err := g.Nodes().Add(ctx, []string{"U"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		if err := g.IO().Export(&buf); err != nil {
+			t.Fatal(err)
+		}
+		return buf.Bytes(), n.ID()
+	}
+	unbExport, unbID := export(graphpkg.UntimedUnbounded)
+	txExport, _ := export(graphpkg.UntimedFromTxFrom)
+
+	// An empty TxFrom-configured badger store adopts the export's mode.
+	dir := t.TempDir()
+	g, err := graphpkg.New(graphpkg.Config{BadgerDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.IO().Import(bytes.NewReader(unbExport), tkgio.ImportOptions{}); err != nil {
+		t.Fatalf("import an unbounded export into an empty store: %v", err)
+	}
+	if _, err := g.Temporal().NodeAt(unbID, uvsFar); err != nil {
+		t.Errorf("imported unbounded row at far: %v", err)
+	}
+	created, err := g.Nodes().Add(ctx, []string{"U"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vf := created.Temporal().ValidFrom; vf != types.UnboundedValidFrom {
+		t.Errorf("create after adopting the unbounded export: ValidFrom = %d, want UnboundedValidFrom", vf)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graphpkg.New(graphpkg.Config{BadgerDir: dir}); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
+		t.Fatalf("reopen txfrom after adopting an unbounded export: err = %v, want ErrUntimedModeMismatch", err)
+	}
+
+	// A target with rows under the other mode refuses, both directions.
+	cases := []uvsImportCase{
+		{"unbounded-into-txfrom", graphpkg.UntimedFromTxFrom, unbExport},
+		{"txfrom-into-unbounded", graphpkg.UntimedUnbounded, txExport},
+	}
+	for _, c := range cases {
+		tg, err := graphpkg.New(graphpkg.Config{UntimedValidStart: c.target})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tg.Nodes().Add(ctx, []string{"Local"}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := tg.IO().Import(bytes.NewReader(c.data), tkgio.ImportOptions{}); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
+			t.Errorf("%s: import err = %v, want ErrUntimedModeMismatch", c.name, err)
+		}
+		if ns, err := tg.Nodes().ByLabel("U", storepkg.QueryOpts{}); err != nil || len(ns) != 0 {
+			t.Errorf("%s: refused import left %d rows (%v)", c.name, len(ns), err)
+		}
+		_ = tg.Close()
+	}
+}
+
+type uvsImportCase struct {
+	name   string
+	target graphpkg.UntimedValidStart
+	data   []byte
+}
+
+// TestImportMergeRefusesOtherUntimedMode (review 4, the delta door): a delta
+// whose source writes under the other mode than the merge target is refused
+// with ErrUntimedModeMismatch (a source converted after the base export: the
+// target re-bootstraps from a full export); a delta of the same mode merges.
+func TestImportMergeRefusesOtherUntimedMode(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	src, err := graphpkg.New(graphpkg.Config{BadgerInMemory: true, ChangeLog: true, UntimedValidStart: graphpkg.UntimedUnbounded})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	if _, err := src.Nodes().Add(ctx, []string{"U"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	var full bytes.Buffer
+	if err := src.IO().Export(&full); err != nil {
+		t.Fatal(err)
+	}
+	hdr, err := tkgio.HeaderOf(bytes.NewReader(full.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	later, err := src.Nodes().Add(ctx, []string{"U"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var delta bytes.Buffer
+	if err := src.IO().ExportSince(&delta, hdr.To); err != nil {
+		t.Fatal(err)
+	}
+
+	same, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer same.Close()
+	if err := same.IO().Import(bytes.NewReader(full.Bytes()), tkgio.ImportOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := same.IO().ImportMerge(bytes.NewReader(delta.Bytes()), tkgio.MergeOptions{}); err != nil {
+		t.Fatalf("merge a delta of the adopted mode: %v", err)
+	}
+	if _, err := same.Temporal().NodeAt(later.ID(), uvsFar); err != nil {
+		t.Errorf("merged unbounded row at far: %v", err)
+	}
+
+	other, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	if _, err := other.Nodes().Add(ctx, []string{"U"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.IO().ImportMerge(bytes.NewReader(delta.Bytes()), tkgio.MergeOptions{}); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
+		t.Fatalf("merge an unbounded delta into a TxFrom graph: err = %v, want ErrUntimedModeMismatch", err)
+	}
+}
