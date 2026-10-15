@@ -206,7 +206,7 @@ func (s *nativeGraphCostColumnSessions) probeOriginalPin(ctx context.Context, id
 		return nil, err
 	}
 	manifest, err := decodeGraphPinManifest(token.manifest)
-	if err != nil || manifest.publisher.semantic != durableColumnGraphSemanticContractID() || manifest.publisher.graph != s.coordinator.host.machine.ns.graph {
+	if err != nil || manifest.publisher.semantic != s.coordinator.host.machine.SemanticContractID() || !durableColumnGraphAgreement(manifest.publisher.semantic) || manifest.publisher.graph != s.coordinator.host.machine.ns.graph {
 		return nil, errors.Join(errInvalid, err)
 	}
 	s.mu.Lock()

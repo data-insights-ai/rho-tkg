@@ -444,7 +444,7 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 	// Coverage is an explicit P05 qualification lane. Each incarnation owns a
 	// separate profile, including a reopen in the same graph directory.
 	conditional, childCover := false, false
-	durableProfile, contentionProfile, edgeProfile := false, false, false
+	durableProfile, contentionProfile, edgeProfile, feedProfile := false, false, false, false
 	var workloadRun string
 	for _, entry := range p.cmd.Env {
 		name, value, _ := strings.Cut(entry, "=")
@@ -457,13 +457,15 @@ func startGraphProcess(t *testing.T, dir string, id uint64, extraEnv ...string) 
 			workloadRun = value
 		case "RHO_GRAPH_EDGE_UNIQUE_PROCESS":
 			edgeProfile = value == "1"
+		case "RHO_GRAPH_FEED_PROCESS":
+			feedProfile = value == "1"
 		case "RHO_GRAPH_CONDITIONAL_PROCESS":
 			conditional = value == "1"
 		case "RHO_P05_CHILD_COVER":
 			childCover = value == "1"
 		}
 	}
-	p.durableColumns = durableProfile || contentionProfile || edgeProfile
+	p.durableColumns = durableProfile || contentionProfile || edgeProfile || feedProfile
 	if contentionProfile {
 		raw, err := hex.DecodeString(workloadRun)
 		if err != nil || len(raw) != 16 || hex.EncodeToString(raw) != workloadRun {
@@ -1913,13 +1915,20 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	if durableColumns {
 		agreement, materializer = durableColumnGraphSemanticContractID(), newDurableColumnGraphMaterializer
 	}
+	feed, err := nativeFeedProcessProfile(cost)
+	if err != nil {
+		t.Fatal("feed profile", err)
+	}
+	if feed {
+		agreement, materializer = retainedFeedSemanticContractID(), newRetainedFeedMaterializer
+	}
 	controls, recovery := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 1}
-	if retention || durableColumns || workload != nil {
+	if retention || durableColumns || workload != nil || feed {
 		recovery.Version = 2
 	}
 	var nativeRetention raftlog.ApplicationRetentionConfig
 	contract, err := raftlog.ApplicationContractForPolicyWithRecovery(p, controls, recovery)
-	if durableColumns || workload != nil {
+	if durableColumns || workload != nil || feed {
 		nativeRetention.Version = 1
 		contract, err = raftlog.ApplicationContractForPolicyWithRetention(p, controls, recovery, nativeRetention)
 	}

@@ -479,7 +479,7 @@ func (s *nativeGraphCostColumnSessions) open(ctx context.Context, q nativeGraphC
 	var policy nativeColumnPolicy
 	if q.RetainedExpires != 0 {
 		policy, err = s.policy()
-	} else if h.machine.SemanticContractID() == durableColumnGraphSemanticContractID() {
+	} else if durableColumnGraphAgreement(h.machine.SemanticContractID()) {
 		return nil, errInvalid // the fresh profile never silently creates a v1 owner
 	} else {
 		policy, err = nativeGraphCostColumnsPolicy(h.machine.store.ApplicationLimits(), h.machine.limits)

@@ -45,6 +45,9 @@ type nativeGraphCostClientEvent struct {
 }
 
 func nativeGraphCostOperationID(s nativeGraphCostSpec, phase, fact uint64) nativeGraphCostOperation {
+	if s.Version == 5 {
+		s.Version = 1
+	} // Fresh feed shares FDB's logical dataset, never its native profile/authority.
 	// Fixed fields are encoded explicitly: Writers and engine do not participate.
 	var wire [25]byte
 	wire[0] = byte(s.Version)
@@ -191,6 +194,10 @@ func nativeGraphCostCoordinatorProofWire(ctx context.Context, h *allocationHost,
 type nativeGraphCostAdmissions struct {
 	local chan struct{}
 	cross chan struct{}
+	// Optional immutable fresh-family policy, installed before any workers.
+	originals, same int
+	extra           func() error
+	beginOriginal   func() error // optional finite fresh whole-cell factory grant, spent before capture
 }
 
 func newNativeGraphCostAdmissions() *nativeGraphCostAdmissions {
@@ -262,6 +269,13 @@ func nativeGraphCostRetrySame(err error) bool {
 
 func nativeGraphCostClientSubmit(parent context.Context, n *certifiedProcessNetwork, s nativeGraphCostSpec, phase, fact uint64, cross bool, client int, admissions *nativeGraphCostAdmissions, events chan<- nativeGraphCostClientEvent) (sample nativeGraphCostSample, err error) {
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	if admissions != nil && admissions.extra != nil {
+		cancel()
+		if _, bounded := parent.Deadline(); !bounded {
+			return sample, errInvalid
+		}
+		ctx, cancel = context.WithCancel(parent) // SAME immutable admitted whole-cell deadline; no fresh timeout on retry.
+	}
 	defer cancel()
 	started := time.Now()
 	operation := nativeGraphCostOperationID(s, phase, fact)
@@ -294,7 +308,19 @@ func nativeGraphCostClientSubmit(parent context.Context, n *certifiedProcessNetw
 			err = errors.Join(err, nativeGraphCostEmit(context.WithoutCancel(parent), events, *active))
 		}
 	}()
-	for ordinal := 1; ordinal <= nativeGraphCostMaxAttempts; ordinal++ {
+	maximumOriginals, maximumCalls := nativeGraphCostMaxAttempts, 128
+	if admissions != nil && admissions.extra != nil {
+		if admissions.originals < 1 || admissions.originals > 64 || admissions.same < 1 || admissions.same > 8 {
+			return sample, errInvalid
+		}
+		maximumOriginals, maximumCalls = admissions.originals, admissions.same
+	}
+	for ordinal := 1; ordinal <= maximumOriginals; ordinal++ {
+		if admissions != nil && admissions.beginOriginal != nil {
+			if err := admissions.beginOriginal(); err != nil {
+				return sample, err
+			}
+		}
 		proposalStarted := time.Now()
 		response, err := nativeGraphCostExchange(ctx, n.all[actor], processRequest{op: processCertifiedAction, entity: certifiedGraphCost, index: phase, data: data})
 		if err != nil {
@@ -324,7 +350,12 @@ func nativeGraphCostClientSubmit(parent context.Context, n *certifiedProcessNetw
 			attempt.BusinessSHA256 = sha256.Sum256(business)
 			// The unchanged request and body are submitted again on pending/busy. Run
 			// obtains original registration/decision through the actual source authority.
-			for calls := 0; calls < 128; calls++ {
+			for calls := 0; calls < maximumCalls; calls++ {
+				if calls > 0 && admissions != nil && admissions.extra != nil {
+					if err := admissions.extra(); err != nil {
+						return sample, errors.Join(errCrossProcessPending, err)
+					}
+				}
 				attempt.SubmitInvocations++
 				response, callErr := nativeGraphCostExchange(ctx, n.all[actor], processRequest{op: processSourceCoordinate, data: proposal.wire})
 				var result crossProcessResult
@@ -396,6 +427,14 @@ func nativeGraphCostClientSubmit(parent context.Context, n *certifiedProcessNetw
 			complete := false
 			for range 128 {
 				if !proposed {
+					if attempt.SubmitInvocations >= maximumCalls {
+						return sample, errCrossProcessPending
+					}
+					if attempt.SubmitInvocations > 0 && admissions != nil && admissions.extra != nil {
+						if err := admissions.extra(); err != nil {
+							return sample, errors.Join(errCrossProcessPending, err)
+						}
+					}
 					callStarted := time.Now()
 					response, err = nativeGraphCostExchange(ctx, n.all[actor], processRequest{op: processPropose, data: wire})
 					sample.LocalAckTiming.ProposeCount++
@@ -499,7 +538,10 @@ type nativeGraphCostAttemptJoin struct {
 }
 
 func nativeGraphCostJoinAttempt(previous nativeGraphCostAttemptJoin, a nativeGraphCostAttempt) (nativeGraphCostAttemptJoin, error) {
-	if a.ClientID < 0 || a.ClientID >= nativeGraphCostWindowCommands || a.AttemptOrdinal < 1 || a.AttemptOrdinal > nativeGraphCostMaxAttempts || a.Engine != "native-raft" || a.Request == ([16]byte{}) || sha256.Sum256(a.Proposal) != a.BodySHA256 {
+	return nativeGraphCostJoinAttemptBound(previous, a, nativeGraphCostMaxAttempts)
+}
+func nativeGraphCostJoinAttemptBound(previous nativeGraphCostAttemptJoin, a nativeGraphCostAttempt, maximum int) (nativeGraphCostAttemptJoin, error) {
+	if maximum < 1 || maximum > 64 || a.ClientID < 0 || a.ClientID >= nativeGraphCostWindowCommands || a.AttemptOrdinal < 1 || a.AttemptOrdinal > maximum || a.Engine != "native-raft" || a.Request == ([16]byte{}) || sha256.Sum256(a.Proposal) != a.BodySHA256 {
 		return previous, errCorrupt
 	}
 	command, err := decodePartitionGraphCommand(a.Proposal, defaultMaterializerLimits())

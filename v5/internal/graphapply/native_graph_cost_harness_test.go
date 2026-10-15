@@ -29,6 +29,9 @@ type nativeGraphCostSpec struct {
 }
 
 func (s nativeGraphCostSpec) validate() error {
+	if s.Version == 5 {
+		return nativeFeedValidate(s)
+	}
 	if s.Version == 4 {
 		return nativeGraphEdgeUniqueValidate(s)
 	}
@@ -77,6 +80,13 @@ func (s nativeGraphCostSpec) edge(i uint64) (uint64, uint64, uint64, uint64) {
 	return 7 + 2*i, 8 + 2*i, target, targetLife
 }
 func (s nativeGraphCostSpec) deliveries() int {
+	if s.Version == 5 {
+		frames, err := nativeFeedFrames(s)
+		if err != nil || frames > uint64(^uint(0)>>1)/1024 {
+			return 0
+		}
+		return int(frames * 1024) // #nosec G115 -- checked numeric allowance, never a queue allocation.
+	}
 	if s.Version == 4 {
 		frames, err := nativeGraphEdgeUniqueFrames(s)
 		if err != nil || frames > uint64(^uint(0)>>1)/4096 {
@@ -90,6 +100,9 @@ func (s nativeGraphCostSpec) deliveries() int {
 func nativeGraphCostProfile(s *nativeGraphCostSpec, init *declaredInitCommand, l *raftlog.Limits, p *raftlog.ApplicationPolicy, generations *raftlog.ApplicationGenerationLimits) error {
 	if s == nil {
 		return nil
+	}
+	if s.Version == 5 {
+		return nativeFeedProfile(*s, init, l, p, generations)
 	}
 	if s.Version == 4 {
 		return nativeGraphEdgeUniqueProfile(*s, init, l, p, generations)

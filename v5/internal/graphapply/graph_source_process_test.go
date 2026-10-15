@@ -1358,6 +1358,30 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			return policy, e
 		}
 	}
+	var feed *nativeFeedSessions
+	if o.cost != nil && o.cost.Version == 5 {
+		spec, e := nativeFeedSpecFromEnv()
+		if e != nil {
+			t.Fatal(e)
+		}
+		admission, digest, e := nativeFeedAdmissionFromEnv(spec)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var stopFeed context.CancelFunc
+		columns.ctx, stopFeed = context.WithDeadline(ctx, time.Unix(0, admission.DeadlineUnixNanos))
+		defer stopFeed()
+		columns.policyProvider = func() (nativeColumnPolicy, error) { return nativeFeedColumnPolicy(h, spec, admission, digest) }
+		feed, e = newNativeFeedSessions(columns.ctx, coordinator, o.cost)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer func() {
+			if e := feed.close(); e != nil {
+				t.Error(e)
+			}
+		}()
+	}
 	defer func() {
 		if err := columns.close(); err != nil {
 			t.Error(err)
@@ -1541,6 +1565,17 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				return nil
 			}
 		}
+		if isRetainedFeedWire(active.proposal.wire) {
+			next, scanned, body, operationErr, eventErr := pollGraphProcessFeedSubmission(active.ctx, h, active.proposal, active.baseline, active.scanned)
+			active.baseline, active.scanned = next, scanned
+			if eventErr != nil {
+				return eventErr
+			}
+			if body != nil || operationErr != nil {
+				finish(active, graphProcessPumpReply{body: body, err: operationErr})
+			}
+			return nil
+		}
 		if isGraphPinWire(active.proposal.wire) {
 			next, scanned, body, operationErr, eventErr := pollGraphProcessPinSubmission(active.ctx, h, active.proposal, active.baseline, active.scanned)
 			active.baseline, active.scanned = next, scanned
@@ -1600,7 +1635,13 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		return nil
 	}
 	isSourceClose := func(r processRequest) bool {
-		if o.cost != nil && o.cost.Version == 4 && nativeGraphEdgeUniqueColumnClose(r) {
+		if feed != nil && r.op == processCostObserve && bytes.HasPrefix(r.data, []byte(nativeFeedMarker)) {
+			q, err := nativeFeedInputDecode(r)
+			if err == nil && (q.Action == "close" || q.Action == "snapshot-close") {
+				return true
+			}
+		}
+		if o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5) && nativeGraphEdgeUniqueColumnClose(r) {
 			return true
 		}
 		if logicalTransitions != nil && r.op == processNativeTransitionControl {
@@ -1639,7 +1680,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			return false
 		}
 		command, err := decodeGraphPinCommand(proposal.wire)
-		return err == nil && (command.phase == pinRelease || command.phase == pinExpire || command.phase == pinClose || command.phase == pinCancelIssue && h.machine.SemanticContractID() == durableColumnGraphSemanticContractID())
+		return err == nil && (command.phase == pinRelease || command.phase == pinExpire || command.phase == pinClose || command.phase == pinCancelIssue && durableColumnGraphAgreement(h.machine.SemanticContractID()))
 	}
 	launch := func(r processRequest) error {
 		control := isSourceClose(r)
@@ -1732,9 +1773,11 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case processCostObserve:
 				if o.cost == nil {
 					e = errInvalid
+				} else if feed != nil && bytes.HasPrefix(r.data, []byte(nativeFeedMarker)) {
+					out.aux, e = feed.serve(workerCtx, r)
 				} else if contention != nil && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
 					out.aux, e = contention.serve(workerCtx, r)
-				} else if o.cost.Version == 4 && bytes.HasPrefix(r.data, []byte(nativeEdgeColumns)) {
+				} else if (o.cost.Version == 4 || o.cost.Version == 5) && bytes.HasPrefix(r.data, []byte(nativeEdgeColumns)) {
 					out.aux, e = nativeGraphEdgeUniqueColumnServe(workerCtx, columns, r)
 				} else if bytes.HasPrefix(r.data, []byte(nativeColumnsMarker)) {
 					out.aux, e = columns.serve(workerCtx, r)
@@ -1840,7 +1883,10 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			response.ready = o.ready
 		}
 		response.code, response.detail = processError(err)
-		if h.machine.SemanticContractID() == durableColumnGraphSemanticContractID() && r.op == processCostObserve {
+		if code := nativeFeedProfileResponseCode(r, feed != nil, o.cost != nil && (o.cost.Version == 4 || o.cost.Version == 5), err); code != 0 {
+			response.code = code
+		}
+		if durableColumnGraphAgreement(h.machine.SemanticContractID()) && r.op == processCostObserve {
 			columnRequest := r
 			if contention != nil && bytes.HasPrefix(r.data, []byte(nativeContentionMarker)) {
 				if q, inputErr := decodeNativeContentionInput(r.data); inputErr == nil && q.Action == "columns" {
@@ -1983,6 +2029,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					columns.coordinator = coordinator
 					if contention != nil {
 						contention.coordinator = coordinator
+					}
+					if feed != nil {
+						feed.coordinator = coordinator
 					}
 				}
 			case processCostRecords:
@@ -2212,7 +2261,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					stop()
 				}
 				wg.Wait()
-				e = columns.close()
+				e = errors.Join(feed.close(), columns.close())
 				if snapshots != nil {
 					h.mu.Lock()
 					e = errors.Join(e, snapshots.close(h.driver))

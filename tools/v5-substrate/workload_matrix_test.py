@@ -7,6 +7,18 @@ import workload_matrix as matrix
 
 
 class WorkloadMatrixGuards(unittest.TestCase):
+    def test_native_retained_snapshot_feed_actual_route_and_nonlocal_pair_boundary(self):
+        spec={"version":1,"family":"snapshot-to-feed","facts":40,"crossPercent":0,"writers":32,"layout":"columns"}
+        for transport in matrix.TRANSPORTS:
+            self.assertEqual(matrix.preflight(spec,"01"*16,"native-raft",transport),spec)
+        self.assertEqual(matrix.preflight(spec,"01"*16,"paired","local"),spec)
+        for transport in ("rtt-1ms","rtt-20ms","rtt-100ms"):
+            with self.assertRaises(ValueError):matrix.preflight(spec,"01"*16,"paired",transport)
+        cells=list(matrix.matrix(("snapshot-to-feed",),("local",),("native-raft",)))
+        self.assertEqual(len(cells),360)
+        self.assertTrue(all(c["implemented"] and c["workload"]["version"]==1 for c in cells))
+        self.assertEqual({c["workload"]["crossPercent"] for c in cells},{0,10,50,100})
+
     def test_fresh_fdb_transport_is_explicit_and_refuses_before_effects(self):
         spec={"version":2,"family":"snapshot-to-feed","facts":1_000_000,"crossPercent":50,"writers":1,"layout":"columns"}
         run="01"*16
