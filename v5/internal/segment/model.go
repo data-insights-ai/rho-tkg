@@ -63,8 +63,7 @@ func (c Coord) Compare(o Coord) int {
 // CoordFromBound converts a bound of an integer-profile axis. An infinite
 // bound maps to the matching infinity. A finite bound must hold a position
 // whose integer fits int64; its inclusive flag is returned because the codec
-// stores coordinates only (the interval shape belongs to the caller, cf.
-// timeblock.Kind).
+// stores coordinates only (the interval shape belongs to the caller).
 func CoordFromBound(b temporal.Bound) (c Coord, inclusive bool, err error) {
 	switch b.Kind() {
 	case temporal.BoundNegativeInfinity:
