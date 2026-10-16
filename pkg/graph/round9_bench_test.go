@@ -57,6 +57,9 @@ func round9Bench(b *testing.B, cfg graphpkg.Config, n int) (*graphpkg.Graph, typ
 	return g, pin
 }
 
+// round9TimelinePins counts the pins timeline-first asked, across runs.
+var round9TimelinePins int
+
 var round9Backends = []struct {
 	name string
 	cfg  graphpkg.Config
@@ -71,7 +74,8 @@ var round9Backends = []struct {
 //     entities on their earlier version (the any-version doors) against
 //     RangeCardinalityAt over 500 resolved versions on the same data;
 //   - timeline-first / timeline-cached: R9-2, the count timeline at a new
-//     pin (a build per call) and a cached read;
+//     pin (a build per call; run it with a fixed -benchtime Nx) and a
+//     cached read;
 //   - values-cached / values-after-write / values-pin: R9-3, the current
 //     statistics cached, the first read after a write that shrinks a value,
 //     and at a pin (cached after its first build).
@@ -115,12 +119,12 @@ func BenchmarkRound9Doors(b *testing.B) {
 			}
 		})
 		run("timeline-first", func(b *testing.B) {
-			k := 0
 			for b.Loop() {
-				// 300 pins over the last writes, more than the cache holds
-				// (countTimelineCap), so every call builds.
-				k++
-				p := pin - types.Instant(k%300)
+				// A pin no call asked before (the writes below it are
+				// those of pin for a bounded run: -benchtime Nx), so
+				// every call builds.
+				round9TimelinePins++
+				p := pin - types.Instant(round9TimelinePins)
 				if _, exact, err := g.Nodes().CountTimelineByLabel("Idx", p, storepkg.CountTimelineOpts{UntimedFromMinusInf: true}); err != nil || !exact {
 					b.Fatal(exact, err)
 				}

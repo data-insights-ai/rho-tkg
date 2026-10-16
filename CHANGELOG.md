@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Planned as v4.56.2 (patch): sigma-tkgd round 9, additive doors only; no existing door, answer, error or storage format
+changes.
+
+### Added
+
+- **Ranges over any version recorded at a pin** (sigma-tkgd round 9 R9-1, backlog 16 as a new door).
+  `Nodes().ForEachByLabelPropertyRangeAnyVersion` / `RangeCardinalityAnyVersion` and the `Rels()` twins over a type: the
+  entities of which some row recorded at the pin (every valid-time version, deleted entities' rows before the delete,
+  retracted lives dropped) carries the label and a numeric value in range, the union over the range of
+  `ByLabelAndProperty`'s matches at `{ValidStart 1, ValidEnd MaxInt64, TxAt pin}`; the count states the entities and their
+  rows in range. Candidates from the property index's membership sidecar, each chain tested with the equality door's
+  resolver (now a visitor, `eachNodeChainDuring`, shared). `ErrIndexNotFound` without an index,
+  `ErrCapabilityNotSupported` on tiered, sharded and external stores and for an Elements index (the count declines).
+  The resolved-version range doors are unchanged. 100,000 nodes, 500 in range: 0.46-0.49 ms memory, 1.31-1.35 ms badger, level with `RangeCardinalityAt` (target: within 2x).
+- **Count timelines** (R9-2). `Nodes().CountTimelineByLabel` / `Rels().CountTimelineByType(name, pin, store.CountTimelineOpts)`:
+  the members holding at each valid instant at a pin (0: the commit clock) as maximal constant-count segments, equal to
+  `CountByLabelAt` / `CountByTypeAt` at every instant; `UntimedFromMinusInf` (sigma's untimed rule on an `UntimedTxFrom`
+  store) and `MaxSegments`. Built from the effective scan the state cuts read, cached under their invalidation. States the
+  valid-time hull at a pin (backlog 71, of every believed row). 100,000 members: first call at a pin 157 ms memory / 470 ms badger (one fold; target "under 5 ms after the cut" missed: the cut keeps no version stamps the untimed rule needs), cached 1.8-2.4 µs (target 1 µs missed by the segment copy).
+- **Value statistics of an indexed property** (R9-3). `Stats().PropertyValueStats` / `RelPropertyValueStats(name, key, pin)`:
+  distinct values as the index keys them, rows, the heaviest value's rows and value. Current state from the index (computed
+  at the first call after a mutation, cached in the index; a write stores one nil pointer), at a pin per version from the
+  sidecar's members of every value (new optional `store.NodePropertyTxMemberAnyCapability` /
+  `RelPropertyTxMemberAnyCapability`, memory and badger). Declines without an index, while it is built, for an Elements
+  index, badger `PropertyIndexOnDisk` (current state), tiered, sharded, external stores. Current cached 0.24-0.36 µs, first call after a write 0.10 ms, at a pin cached 76 ns; indexed update write path level with v4.56.1.
+- **Typed chunks of a column snapshot** (R9-4, sigma-tkgd W10). Column snapshots implement the optional
+  `types.NodeColumnChunkReader`: `ReadChunk(from, to, *types.ColumnChunk)` hands out positions as typed vectors
+  (`types.ColumnVector`: ints, floats, a mixed numeric column with `IsFloat`, dictionary codes into the snapshot's shared
+  dictionary, presence), the values `RowAt` boxes, into reused buffers; memory, badger, tiered and sharded (shards
+  concatenated, kinds unified, dictionaries merged once). 0.77-0.80 ns per row and column for the read; a consumer pass 1.3 ns against 4.3 ns through `RowAt` (3.2x; target 5x missed because `RowAt` hands out cached boxed views and allocates nothing).
+- Tests: `TestRangeAnyVersionMatchesEquality`, `TestRangeAnyVersionEarlierVersion`, `TestCountTimelineMatchesCountByLabelAt`,
+  `TestCountTimelineFollowsWrites`, `TestPropertyValueStatsMatchesIndex`, `TestPropertyValueStatsPerVersion`,
+  `TestRound9DoorsAfterReopen`, `TestColumnChunksMatchRowAt`, `TestColumnChunkReuseAndBounds`, `TestChunkConcatAcrossParts`,
+  forwarding tests in nodes, rels and stats; mutants in `tasks/evidence/cypher-round9/`; benchmarks
+  `BenchmarkRound9Doors`, `BenchmarkColumnChunks`, `BenchmarkIndexedUpdateWritePath`.
+
 ## [4.56.1] - 2026-10-15
 
 ### Changed

@@ -1,0 +1,30 @@
+== round 1 base
+BenchmarkIndexedUpdateWritePath/memory         	  782811	      5169 ns/op	    2854 B/op	      40 allocs/op
+BenchmarkIndexedUpdateWritePath/badger         	  509650	      6568 ns/op	    4920 B/op	      66 allocs/op
+== round 1 head
+BenchmarkIndexedUpdateWritePath/memory         	  800704	      5630 ns/op	    2853 B/op	      40 allocs/op
+BenchmarkIndexedUpdateWritePath/badger         	  587034	      6065 ns/op	    4866 B/op	      66 allocs/op
+== round 2 base
+BenchmarkIndexedUpdateWritePath/memory         	  836425	      5344 ns/op	    2851 B/op	      40 allocs/op
+BenchmarkIndexedUpdateWritePath/badger         	  541438	      6263 ns/op	    4908 B/op	      66 allocs/op
+== round 2 head
+BenchmarkIndexedUpdateWritePath/memory         	  763006	      5243 ns/op	    2855 B/op	      40 allocs/op
+BenchmarkIndexedUpdateWritePath/badger         	  609656	      6465 ns/op	    4848 B/op	      66 allocs/op
+== round 3 base
+BenchmarkIndexedUpdateWritePath/memory         	  818265	      5076 ns/op	    2852 B/op	      40 allocs/op
+BenchmarkIndexedUpdateWritePath/badger         	  600138	      5673 ns/op	    4854 B/op	      66 allocs/op
+== round 3 head
+BenchmarkIndexedUpdateWritePath/memory         	  859626	      5154 ns/op	    2850 B/op	      40 allocs/op
+BenchmarkIndexedUpdateWritePath/badger         	  620031	      5464 ns/op	    4827 B/op	      66 allocs/op
+== round 4 base
+BenchmarkIndexedUpdateWritePath/memory         	  864558	      4937 ns/op	    2850 B/op	      40 allocs/op
+BenchmarkIndexedUpdateWritePath/badger         	  578649	      5673 ns/op	    4840 B/op	      65 allocs/op
+== round 4 head
+BenchmarkIndexedUpdateWritePath/memory         	  844486	      5137 ns/op	    2850 B/op	      40 allocs/op
+BenchmarkIndexedUpdateWritePath/badger         	  419109	      6048 ns/op	    5045 B/op	      66 allocs/op
+== round 5 base
+BenchmarkIndexedUpdateWritePath/memory         	  821857	      7966 ns/op	    2851 B/op	      40 allocs/op
+BenchmarkIndexedUpdateWritePath/badger         	  428160	      6448 ns/op	    5040 B/op	      66 allocs/op
+== round 5 head
+BenchmarkIndexedUpdateWritePath/memory         	  821977	      6954 ns/op	    2851 B/op	      40 allocs/op
+BenchmarkIndexedUpdateWritePath/badger         	  612016	      5780 ns/op	    4839 B/op	      66 allocs/op
