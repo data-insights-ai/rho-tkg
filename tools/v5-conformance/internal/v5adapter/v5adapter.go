@@ -5,9 +5,8 @@
 //   - instants map to temporal.Scope on the graph default axis (0 is "unset":
 //     [from,+inf), (-inf,to), or All);
 //   - a pin is an index into the cuts the adapter has read (CommittedTx);
-//   - the engine schema is declared at genesis, so the adapter declares a fixed
-//     key list, one property per (key, value kind) named "key#kind", and the
-//     unique claims of GetOrCreateByKey as "key#kind@label";
+//   - properties declare themselves on first use (kind = the first value's kind);
+//     the unique claims of GetOrCreateByKey are seeded as "key@label#kind";
 //   - "deleted" and "retracted" are a reserved boolean property plus the engine
 //     End/Retract op, because the v4 record doors treat a deleted entity as
 //     absent while the valid-time doors still see its past.
@@ -44,35 +43,25 @@ var _ conformance.ProfileAdapter = Adapter{}
 // belong to the compat facade (PLAN 8a).
 func (Adapter) Profiles() []conformance.Profile { return []conformance.Profile{conformance.Native} }
 
-var kindTags = []string{"s", "i", "f", "b"}
+const deletedProp = "~deleted"
 
-const deletedProp = "~deleted#b"
-
-var nodeKeys = strings.Fields("v w est k idx a z s keep b id i gen extra n other x y p q r name")
-var relKeys = strings.Fields("w est idx v k")
-
-// uniqueClaims are the (label, key, kind) triples GetOrCreateByKey may claim.
+// uniqueClaims are the (label, key, kind) triples GetOrCreateByKey may claim. The
+// engine's claim is unique per property across labels, so each (label, key, kind)
+// is its own seeded property "key@label#kind".
 var uniqueClaims = [][3]string{{"U", "id", "s"}, {"W", "id", "s"}, {"U", "other", "s"}, {"N", "k", "s"}, {"N", "k", "i"}, {"C", "id", "s"}, {"K", "k", "i"}}
 
-func schema(keys []string) []graph.PropertySchema {
-	kinds := map[string]graph.ValueKind{"s": graph.KindString, "i": graph.KindInt, "f": graph.KindFloat, "b": graph.KindBool}
-	var out []graph.PropertySchema
-	for _, k := range keys {
-		for _, t := range kindTags {
-			out = append(out, graph.PropertySchema{Key: k + "#" + t, Kind: kinds[t]})
-		}
-	}
-	return append(out, graph.PropertySchema{Key: deletedProp, Kind: graph.KindBool})
+func uniqueName(label, key string, v graph.Value) string {
+	return key + "@" + label + "#" + kindTag(v)
 }
 
 func nodeSchema() []graph.PropertySchema {
-	out := schema(nodeKeys)
+	var out []graph.PropertySchema
 	for _, u := range uniqueClaims {
 		k := graph.KindString
 		if u[2] == "i" {
 			k = graph.KindInt
 		}
-		out = append(out, graph.PropertySchema{Key: u[1] + "#" + u[2] + "@" + u[0], Kind: k, Unique: true})
+		out = append(out, graph.PropertySchema{Key: u[1] + "@" + u[0] + "#" + u[2], Kind: k, Unique: true})
 	}
 	return out
 }
@@ -90,7 +79,7 @@ func Config(t testing.TB, o conformance.Options) (graph.Config, error) {
 		return graph.Config{}, err
 	}
 	c := graph.Config{GraphID: gid, DefaultAxis: b, KnowledgeAxis: k, Durability: graph.DurabilityCommit,
-		NodeProperties: nodeSchema(), RelProperties: schema(relKeys)}
+		NodeProperties: nodeSchema()}
 	if o.Dir == "" {
 		c.Memory, c.Durability = true, graph.DurabilityBuffered
 	} else {
@@ -130,11 +119,12 @@ func (Adapter) Open(t testing.TB, o conformance.Options) (conformance.Graph, err
 
 // Graph maps the suite doors onto *graph.Graph.
 type Graph struct {
-	t    testing.TB
-	mu   sync.Mutex
-	g    *graph.Graph
-	cfg  graph.Config
-	pins []graph.Cut
+	t     testing.TB
+	mu    sync.Mutex
+	g     *graph.Graph
+	cfg   graph.Config
+	pins  []graph.Cut
+	kinds map[string]string
 }
 
 var _ conformance.Graph = (*Graph)(nil)
@@ -350,42 +340,57 @@ func fromValue(v graph.Value) any {
 	return nil
 }
 
-func propName(key string, v graph.Value) string { return key + "#" + kindTag(v) }
+// propName keeps the engine's one-kind-per-key rule visible: the first value's
+// kind owns the plain key; an exact numeric of the other numeric kind converts;
+// any other kind goes to a side property "key#kind" (v4 keys are dynamically
+// typed, the engine's are not) and reads fold both back under the user's key.
+func (w *Graph) propName(key string, v graph.Value) string {
+	tag := kindTag(v)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.kinds == nil {
+		w.kinds = map[string]string{}
+	}
+	first, ok := w.kinds[key]
+	if !ok {
+		w.kinds[key] = tag
+		return key
+	}
+	if first == tag {
+		return key
+	}
+	if f, isF := v.AsFloat(); isF && first == "i" && f == math.Trunc(f) && math.Abs(f) < 1<<53 {
+		return key
+	}
+	if i, isI := v.AsInt(); isI && first == "f" && i > -(1<<53) && i < 1<<53 {
+		return key
+	}
+	return key + "#" + tag
+}
 
 func (w *Graph) props(in map[string]any) (map[string]graph.Value, error) {
 	out := make(map[string]graph.Value, len(in))
 	for k, x := range in {
-		if k == "" || strings.ContainsAny(k, "#@~") {
+		if k == "" || strings.ContainsAny(k, "@~") {
 			return nil, bad("property key %q", k)
 		}
 		v, err := toValue(x)
 		if err != nil {
 			return nil, err
 		}
-		out[propName(k, v)] = v
+		out[w.propName(k, v)] = v
 	}
 	return out, nil
-}
-
-// readNames are the engine property names a read projects.
-func (w *Graph) readNames(rel bool) []string {
-	ps := w.cfg.NodeProperties
-	if rel {
-		ps = w.cfg.RelProperties
-	}
-	out := make([]string, len(ps))
-	for i, p := range ps {
-		out[i] = p.Key
-	}
-	return out
 }
 
 func userKey(name string) (string, bool) {
 	if strings.HasPrefix(name, "~") {
 		return "", false
 	}
-	k, _, _ := strings.Cut(name, "#")
-	return k, true
+	if i := strings.IndexAny(name, "@#"); i >= 0 {
+		name = name[:i]
+	}
+	return name, true
 }
 
 func deleted(e graph.Entity) bool {
@@ -437,7 +442,7 @@ func (w *Graph) lookup(ctx context.Context, id int64, rel bool, spec graph.Snaps
 		return nil, mapErr(err)
 	}
 	defer s.Close()
-	req := graph.LookupRequest{Selector: w.selector(valid), Projection: graph.Projection{Properties: w.readNames(rel)}, Paging: graph.PageLimits{Rows: graph.MaxPageRows, MaxBytes: 8 << 20}}
+	req := graph.LookupRequest{Selector: w.selector(valid), Projection: graph.Projection{AllProperties: true}, Paging: graph.PageLimits{Rows: graph.MaxPageRows, MaxBytes: 8 << 20}}
 	if rel {
 		req.Rels = []types.RelID{ref.Rel()}
 	} else {
@@ -611,7 +616,7 @@ func (w *Graph) history(id int64, rel bool) ([]graph.Entity, error) {
 		return nil, mapErr(err)
 	}
 	defer s.Close()
-	rows, err := w.drain(s.Timeline(ctx, graph.TimelineRequest{Ref: ref, Selector: w.selector(w.all()), Projection: graph.Projection{Properties: w.readNames(rel), Revisions: true},
+	rows, err := w.drain(s.Timeline(ctx, graph.TimelineRequest{Ref: ref, Selector: w.selector(w.all()), Projection: graph.Projection{AllProperties: true, Revisions: true},
 		Paging: graph.PageLimits{Rows: graph.MaxPageRows, MaxBytes: 8 << 20}}))(s, ctx)
 	if err != nil {
 		return nil, err
@@ -689,26 +694,6 @@ func (w *Graph) AddNode(ctx context.Context, s conformance.NodeSpec) (conformanc
 	return w.node(ent), nil
 }
 
-// retarget replaces the properties of kinds that the new values supersede.
-func supersede(cur graph.Entity, props map[string]graph.Value) []string {
-	var drop []string
-	for name := range cur.Props {
-		k, ok := userKey(name)
-		if !ok || cur.Props[name].IsNull() {
-			continue
-		}
-		if _, same := props[name]; same {
-			continue
-		}
-		for n := range props {
-			if nk, _ := userKey(n); nk == k && n != name {
-				drop = append(drop, name)
-			}
-		}
-	}
-	return drop
-}
-
 func (w *Graph) updateEntity(ctx context.Context, id int64, rel bool, in map[string]any, txFrom int64) (graph.Entity, error) {
 	if txFrom != 0 {
 		return graph.Entity{}, fmt.Errorf("%w: caller instants are not part of the native profile", conformance.ErrTxOrder)
@@ -727,11 +712,6 @@ func (w *Graph) updateEntity(ctx context.Context, id int64, rel bool, in map[str
 			return err
 		}
 		scope := w.fromNow(cur.Valid)
-		for _, name := range supersede(cur, props) {
-			if err := tx.Unset(graph.Unset{Target: ref, Key: name, Scope: scope}); err != nil {
-				return err
-			}
-		}
 		for _, name := range sortedNames(props) {
 			if err := tx.Set(graph.Set{Target: ref, Key: name, Value: props[name], Scope: scope}); err != nil {
 				return err
@@ -866,6 +846,9 @@ func (w *Graph) GetOrCreateByKey(ctx context.Context, label, key string, value a
 	if err != nil || v.IsNull() {
 		return conformance.Node{}, false, bad("claim value %T", value)
 	}
+	if f, ok := v.AsFloat(); ok && f == math.Trunc(f) && math.Abs(f) < 1<<53 {
+		v = graph.Int(int64(f)) // an integral float is the integer claim (one numeric rule)
+	}
 	props, err := w.props(extra)
 	if err != nil {
 		return conformance.Node{}, false, err
@@ -873,7 +856,7 @@ func (w *Graph) GetOrCreateByKey(ctx context.Context, label, key string, value a
 	var id types.NodeID
 	var created bool
 	err = w.update(ctx, func(tx graph.Tx) (err error) {
-		id, created, err = tx.GetOrCreate(graph.GetOrCreate{Label: label, Key: key + "#" + kindTag(v) + "@" + label, Value: v, Props: props, Scope: w.span(w.bound(time.Now().UnixMilli(), true), temporal.PositiveInfinity())})
+		id, created, err = tx.GetOrCreate(graph.GetOrCreate{Label: label, Key: uniqueName(label, key, v), Value: v, Props: props, Scope: w.span(w.bound(time.Now().UnixMilli(), true), temporal.PositiveInfinity())})
 		return
 	})
 	if err != nil {

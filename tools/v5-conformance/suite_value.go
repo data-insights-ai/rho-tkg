@@ -185,6 +185,9 @@ func numGetOrCreateAgrees(t *testing.T, a Adapter) {
 		// also under v4.57.1; the 3 vs 3.0 identity is the v5 rule.
 		t.Skip("v4 GetOrCreateByKey refuses float keys; 3 vs 3.0 identity is v5-only")
 	}
+	// A key has one kind (its first value's): an exact numeric of the other kind
+	// converts, an inexact one is refused. So 3, 3.0 and int64(3) are one identity
+	// and the stored kind is the key's.
 	g := open(t, a, false)
 	first, created, err := g.GetOrCreateByKey(ctx, "K", "k", 3, nil)
 	ok(t, err)
@@ -200,35 +203,32 @@ func numGetOrCreateAgrees(t *testing.T, a Adapter) {
 		}
 		wantKind(t, fmt.Sprintf("GetOrCreate(%v) hit", v), again, "k", "int")
 	}
-	// The other way round: a float stored first keeps its kind for an integer hit.
-	fl, created, err := g.GetOrCreateByKey(ctx, "K", "k", 5.0, nil)
-	ok(t, err)
-	if !created {
-		t.Fatalf("GetOrCreate(5.0) did not create")
+	// 3.5 does not fit an integer key: refused, nothing created.
+	_, created, err = g.GetOrCreateByKey(ctx, "K", "k", 3.5, nil)
+	if err == nil || created {
+		t.Fatalf("GetOrCreate(3.5) on an integer key: created=%v err=%v, want a refusal", created, err)
 	}
-	hit, created, err := g.GetOrCreateByKey(ctx, "K", "k", 5, nil)
-	ok(t, err)
-	if created || hit.ID != fl.ID {
-		t.Fatalf("GetOrCreate(5) after 5.0: created=%v id=%d, want the existing node %d", created, hit.ID, fl.ID)
-	}
-	wantKind(t, "5 over 5.0", hit, "k", "float")
-	// A different value is a different identity.
-	other, created, err := g.GetOrCreateByKey(ctx, "K", "k", 3.5, nil)
-	ok(t, err)
-	if !created || other.ID == first.ID {
-		t.Fatalf("GetOrCreate(3.5) must mint a new node")
-	}
+	is(t, "3.5 on an integer key", err, ErrInvalidArgument)
 	ns, err := g.NodesByLabel("K", Query{})
 	ok(t, err)
-	if len(ns) != 3 {
-		t.Fatalf("%d K nodes, want 3 (3, 5.0, 3.5)", len(ns))
+	if len(ns) != 1 {
+		t.Fatalf("%d K nodes, want 1", len(ns))
 	}
 }
 
 func numNothingMatches(t *testing.T, a Adapter) {
 	needNumericRule(t, a)
 	g := open(t, a, false)
-	addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": math.NaN()}})
+	if isV5(a) {
+		// v5 values are finite: a non-finite number is refused at the write, so it
+		// can neither be stored nor matched.
+		for _, f := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+			_, err := g.AddNode(ctx, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": f}})
+			is(t, fmt.Sprintf("write %v", f), err, ErrInvalidArgument)
+		}
+	} else {
+		addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": math.NaN()}})
+	}
 	addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": 3}})
 	addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": "NaN"}})
 	wantIDs(t, "lookup NaN", lookupIDs(t, g, "N", "v", math.NaN()), nil)
