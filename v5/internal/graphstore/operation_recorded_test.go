@@ -1,6 +1,7 @@
 package graphstore
 
 import (
+	"encoding/binary"
 	"errors"
 	"reflect"
 	"testing"
@@ -256,6 +257,18 @@ func TestRangeMoveExportRefusesRangeHoldingEvidence(t *testing.T) {
 	root, err := DecodeRoot(actual.Image)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// An ownership declaration row whose epoch equals the partition and whose
+	// digest lands inside the moved range matches the evidence probe's scan
+	// bounds byte for byte if the record kinds collide.
+	var digest [32]byte
+	binary.BigEndian.PutUint64(digest[:8], descriptor.Spec.Publication.First)
+	declaration := raftlog.KV{Key: ownershipKey(root.namespace.Graph, root.namespace.Partition, digest), Value: []byte("declaration")}
+	declared := ownershipView(t, stores[0], ownershipInstallRaw(t, stores[0], actual.Image, []raftlog.KV{declaration}))
+	sources[0] = declared
+	descriptor = rangeMoveTestPlan(t, sources, d, binding, cfg)
+	if _, _, err := ExportRangeMovePage(t.Context(), declared, descriptor, RangeMoveCursor{}, budget, Limits{}, GraphLimits{}, transactionTestOutput(t)); err != nil {
+		t.Fatal("ownership declaration at epoch == partition was read as evidence", err)
 	}
 	owner := graphstate.EntityID(descriptor.Spec.Publication.First)
 	row := raftlog.KV{Key: evidenceKey(root.namespace, owner, 5), Value: []byte("evidence")}

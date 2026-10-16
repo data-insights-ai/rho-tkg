@@ -19,9 +19,23 @@ const (
 	bucketMemberRecord
 )
 
-// evidenceRecord is a distinct kind byte: 8..11 are component/directory/
-// checkpoint/patch pages, 0x10-0x15 index trees, 0x80-0x83 associations.
-const evidenceRecord recordKind = 0x16
+const (
+	evidenceRecord          recordKind = 0x17
+	rangeMoveFragmentRecord recordKind = 0xf0
+)
+
+// recordKinds registers every record kind sharing the application KV. Kind
+// bytes must be distinct: TestRecordKindsDistinct checks values and that every
+// recordKind constant in this package is listed here.
+var recordKinds = []recordKind{
+	axisRecord, schemaRecord, entityRecord, lifeRecord, valueRecord, bucketRecord, bucketMemberRecord,
+	componentRecord, directoryRecord, checkpointRecord, patchRecord,
+	componentKeyTreeRecord, componentIndexDescriptorRecord,
+	uniquePostingRecord, canonicalIncidentRecord, declaredIncidentRecord,
+	currentPresenceRecord, ownershipDeclarationRecord, evidenceRecord,
+	associationHeadRecord, associationRevisionRecord, associationPostingRecord, associationPrimaryRecord,
+	rangeMoveFragmentRecord,
+}
 
 // Keys are provisional canonical lookup/routing keys, not temporal order keys.
 // Numeric fields are unsigned big-endian. Names are explicitly sized; schema
