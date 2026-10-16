@@ -117,6 +117,8 @@ type Op struct {
 	Recorded int64                `json:"recorded"` // v4 TxFrom (DeletedAt for end and retract)
 	Hash     string               `json:"hash,omitempty"`
 	PrevHash string               `json:"prev_hash,omitempty"`
+
+	region []Scope // writer only: a scope of several parts (Scope holds the first)
 }
 
 // Ambiguity is one thing the importer did not map. Key is empty for a row-level finding.

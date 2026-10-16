@@ -11,7 +11,7 @@ import (
 // Graph builds the v5 op for c: the scope on c.DefaultAxis, Recorded on
 // c.KnowledgeAxis (both millisecond axes). It does not validate; graph.CheckOp does.
 func (o Op) Graph(c graph.Config) (graph.Op, error) {
-	scope, err := o.Scope.temporal(c)
+	scope, err := o.scopeOf(c)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +53,20 @@ func (o Op) Graph(c graph.Config) (graph.Op, error) {
 		return graph.Retract{Target: ref, Scope: scope, Recorded: rec}, nil
 	}
 	return nil, fmt.Errorf("importmap: unknown op %q", o.Op)
+}
+
+func (o Op) scopeOf(c graph.Config) (temporal.Scope, error) {
+	if len(o.region) < 2 {
+		return o.Scope.temporal(c)
+	}
+	parts := make([]temporal.Scope, len(o.region))
+	for i, p := range o.region {
+		var err error
+		if parts[i], err = p.temporal(c); err != nil {
+			return temporal.Scope{}, err
+		}
+	}
+	return temporal.Region(c.DefaultAxis.Axis(), parts, c.Limits)
 }
 
 func (s Scope) temporal(c graph.Config) (temporal.Scope, error) {
