@@ -172,41 +172,6 @@ func rangeMoveExportReader(ctx context.Context, source ApplicationReadSource, d 
 	return p, nil
 }
 
-// rangeMoveFamilyHeld reports whether any row of a record family exists. Index
-// rows carry the owner after their name, so the owner range cannot bound them.
-func rangeMoveFamilyHeld(q *pageReader, kind recordKind) (bool, error) {
-	lower := keyPrefix(q.q.c.root.namespace, kind)
-	upper := prefixEnd(lower)
-	var after []byte
-	for {
-		if q.q.rows >= q.q.maxRows {
-			return false, ErrResourceLimit
-		}
-		maximum := min(q.q.c.source().ReadLimits().Bytes, (q.q.maxBytes-q.q.bytes-128)/2, q.q.arena.Remaining()-128)
-		if maximum < 128+len(lower)+len(upper)+len(after) {
-			return false, ErrResourceLimit
-		}
-		page, e := q.q.c.source().Scan(q.q.ctx, lower, upper, after, raftlog.ReadBudget{Rows: 1, Bytes: maximum})
-		q.q.rows += page.Visited
-		q.q.bytes += page.Bytes
-		if e != nil {
-			return false, e
-		}
-		if e = q.budget(); e != nil {
-			return false, e
-		}
-		if len(page.Rows) > 0 {
-			return true, nil
-		}
-		if page.Complete {
-			return false, nil
-		}
-		if len(page.Next) == 0 || bytes.Compare(page.Next, after) <= 0 {
-			return false, ErrCorrupt
-		}
-		after = page.Next
-	}
-}
 func rangeMoveCatalogNext(q *pageReader, d RangeMoveDescriptor, c *RangeMoveCursor, kind recordKind) (raftlog.KV, bool, error) {
 	n := q.q.c.root.namespace
 	prefix := keyPrefix(n, kind)
@@ -929,15 +894,9 @@ func ExportRangeMovePage(ctx context.Context, source ApplicationReadSource, d Ra
 		}
 	}()
 	if fresh {
-		// Recorded evidence and label/equality index rows are not carried by
-		// range moves yet: refuse rather than move the range and silently drop them.
-		for _, kind := range []recordKind{labelPostingRecord, equalityPostingRecord} {
-			if held, e := rangeMoveFamilyHeld(q, kind); e != nil {
-				return page, work, e
-			} else if held {
-				return page, work, callerError(graphstate.ErrUnsupported)
-			}
-		}
+		// Recorded evidence is not carried by range moves yet: refuse rather than
+		// move the range and silently drop it. Index rows are derived data: the
+		// destination re-derives them from the moved components.
 		var probe RangeMoveCursor
 		if _, held, e := rangeMoveCatalogNext(q, d, &probe, evidenceRecord); e != nil {
 			return page, work, e
