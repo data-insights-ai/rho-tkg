@@ -19,6 +19,7 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
@@ -614,6 +615,35 @@ func (s *p05ProcessSessions) observe(ctx context.Context, r processRequest) (wir
 	if err != nil {
 		return nil, err
 	}
+	// Retain actual immutable results only until this observation returns. Both
+	// temporal observations still use this SAME conditional handle; neither its
+	// RPC grant nor its cut is renewed.
+	owner.read.mu.Lock()
+	var shared *graphRemoteBudget
+	var lifetimes [16]context.Context
+	sourceCount := 0
+	for _, source := range owner.read.sources {
+		remote, ok := source.(*remoteGraphSource)
+		if !ok || remote.endpoint == nil || remote.endpoint.budget == nil || shared != nil && shared != remote.endpoint.budget || sourceCount == len(lifetimes) {
+			owner.read.mu.Unlock()
+			return nil, errInvalid
+		}
+		shared = remote.endpoint.budget
+		lifetimes[sourceCount] = remote.ctx
+		sourceCount++
+	}
+	owner.read.mu.Unlock()
+	if shared == nil {
+		return nil, errInvalid
+	}
+	arena, ok := shared.output.(*graphstate.OutputBudget)
+	if !ok {
+		return nil, errInvalid
+	}
+	view, err = newNativeObservationRead(view, arena, s.certified.coordinator.host.machine.limits.graph.Planner.Component, lifetimes[:sourceCount])
+	if err != nil {
+		return nil, err
+	}
 	h := s.certified.coordinator.host
 	cfg, err := h.currentConfiguration()
 	if err != nil {
@@ -625,12 +655,12 @@ func (s *p05ProcessSessions) observe(ctx context.Context, r processRequest) (wir
 	}
 	out := p05Observation{}
 	stage = "lifecycle"
-	out.Native, err = nativeLifecycleObserve(ctx, s.certified, processRequest{index: r.index})
+	out.Native, err = nativeLifecycleObserveView(ctx, s.certified, view, processRequest{index: r.index})
 	if err != nil {
 		return nil, err
 	}
 	stage = "entity-census"
-	out.Census, err = nativeLifecycleObserve(ctx, s.certified, processRequest{index: r.index, entity: 2})
+	out.Census, err = nativeLifecycleObserveView(ctx, s.certified, view, processRequest{index: r.index, entity: 2})
 	if err != nil {
 		return nil, err
 	}
@@ -1746,4 +1776,310 @@ func (c *p05CampaignCapture) prepayGate(ctx context.Context, wire []byte) error 
 	c.charge.Work += work
 	c.charge.Output += output
 	return nil
+}
+
+func TestP05ObservationReuseKeepsActualCutAndBounds(t *testing.T) {
+	n := newCertifiedGraphNetwork(t)
+	ops, claims := crossEdgeFixture(t, n)
+	tx, parts := n.crossPlan(ops, claims, 24)
+	n.crossResolve(n.crossCommit(tx, parts))
+	c := remoteCertifiedFixture(t, n)
+	held, err := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := held.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	raw, err := held.ReadView()
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := held.sources[0].(*remoteGraphSource).endpoint.budget
+	observe := func() graphstate.ReadView {
+		t.Helper()
+		v, err := newNativeObservationRead(raw, budget.output.(*graphstate.OutputBudget), c.host.machine.limits.graph.Planner.Component, []context.Context{held.sources[0].(*remoteGraphSource).ctx, held.sources[1].(*remoteGraphSource).ctx})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	view := observe()
+	before, err := view.Entity(t.Context(), 3)
+	if err != nil || !before.Found {
+		t.Fatal(before, err)
+	}
+	calls := budget.calls
+	duplicate, err := view.Entity(t.Context(), 3)
+	if err != nil || !reflect.DeepEqual(duplicate, before) {
+		t.Fatal(duplicate, err)
+	}
+	if budget.calls != calls {
+		t.Fatalf("same observation repeats actual immutable entity fetch: calls %d -> %d", calls, budget.calls)
+	}
+	for range 2 {
+		absent, err := view.Entity(t.Context(), 9)
+		if err != nil || absent.Found {
+			t.Fatal("phantom entity", absent, err)
+		}
+	}
+	if _, err := view.Entity(t.Context(), 0); !errors.Is(err, graphstore.ErrInvalid) {
+		t.Fatal("invalid ID", err)
+	}
+	l := c.host.machine.limits.graph.Planner.Component
+	lifetimes := []context.Context{held.sources[0].(*remoteGraphSource).ctx, held.sources[1].(*remoteGraphSource).ctx}
+	zero, err := graphstate.NewOutputBudget(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := newNativeObservationRead(nil, zero, l, lifetimes); got != nil || !errors.Is(err, errInvalid) {
+		t.Fatal("nil view", got, err)
+	}
+	if got, err := newNativeObservationRead(raw, nil, l, lifetimes); got != nil || !errors.Is(err, errInvalid) {
+		t.Fatal("nil ledger", got, err)
+	}
+	if got, err := newNativeObservationRead(raw, zero, l, lifetimes); got != nil || !errors.Is(err, errLimit) {
+		t.Fatal("exhausted original output", got, err)
+	}
+	if got, err := newNativeObservationRead(raw, budget.output.(*graphstate.OutputBudget), l, []context.Context{nil}); got != nil || !errors.Is(err, errInvalid) {
+		t.Fatal("nil source context", got, err)
+	}
+	probe := &p05ComponentReadProbe{ReadView: raw}
+	pageView, err := newNativeObservationRead(probe, budget.output.(*graphstate.OutputBudget), l, lifetimes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	window := ops[0].Scope
+	query := graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 1, Kind: graphstate.Presence}, Window: window}
+	bounds := graphstate.ReadBudget{Rows: 64, Bytes: 64 << 10}
+	first, err := pageView.ComponentPage(t.Context(), query, 0, bounds)
+	if err != nil || !first.Complete {
+		t.Fatal(first, err)
+	}
+	pageCalls := probe.calls
+	repeated, err := pageView.ComponentPage(t.Context(), query, 0, bounds)
+	if err != nil || !reflect.DeepEqual(repeated, first) || probe.calls != pageCalls {
+		t.Fatal("exact page not reused", probe.calls, pageCalls, err)
+	}
+	// Pieces exposes a defensive slice; modifying it must not alter captured State.
+	pieces := repeated.Data.Pieces()
+	if len(pieces) > 0 {
+		pieces[0] = state.Piece{}
+	}
+	repeated, err = pageView.ComponentPage(t.Context(), query, 0, bounds)
+	if err != nil || !reflect.DeepEqual(repeated, first) {
+		t.Fatal("caller changed immutable page", err)
+	}
+	changed := bounds
+	changed.Bytes--
+	if _, err := pageView.ComponentPage(t.Context(), query, 0, changed); err != nil || probe.calls != pageCalls+1 {
+		t.Fatal("changed budget hit", err, probe.calls)
+	}
+	pointWindow, err := temporal.Point(mustP05Point(t, window, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	changedQuery := query
+	changedQuery.Window = pointWindow
+	if _, err := pageView.ComponentPage(t.Context(), changedQuery, 0, bounds); err != nil || probe.calls != pageCalls+2 {
+		t.Fatal("changed window hit", err, probe.calls)
+	}
+	if _, err := pageView.ComponentPage(t.Context(), query, 99, bounds); !errors.Is(err, graphstore.ErrInvalid) || probe.calls != pageCalls+3 {
+		t.Fatal("forged cursor hit", err, probe.calls)
+	}
+	absentQuery := query
+	absentQuery.Key.Owner = 9
+	probe.errOnce = errLimit
+	if _, err := pageView.ComponentPage(t.Context(), absentQuery, 0, bounds); !errors.Is(err, errLimit) {
+		t.Fatal("lost source sentinel", err)
+	}
+	probe.incompleteOnce = true
+	incomplete, err := pageView.ComponentPage(t.Context(), absentQuery, 0, bounds)
+	if err != nil || incomplete.Complete {
+		t.Fatal("partial page", incomplete, err)
+	}
+	callsAfterPartial := probe.calls
+	complete, err := pageView.ComponentPage(t.Context(), absentQuery, 0, bounds)
+	if err != nil || !complete.Complete || probe.calls != callsAfterPartial+1 {
+		t.Fatal("error/partial cached", complete, err, probe.calls)
+	}
+	lost, stopSource := context.WithCancel(t.Context())
+	ownedContexts := append([]context.Context(nil), lifetimes...)
+	ownedContexts[0] = lost
+	lifetimeView, err := newNativeObservationRead(raw, budget.output.(*graphstate.OutputBudget), l, ownedContexts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lifetimeView.Entity(t.Context(), 3); err != nil {
+		t.Fatal(err)
+	}
+	ownedContexts[0] = t.Context()
+	stopSource()
+	if _, err := lifetimeView.Entity(t.Context(), 3); !errors.Is(err, context.Canceled) || !errors.Is(err, graphstore.ErrSourceUnavailable) {
+		t.Fatal("cached result bypassed original source cancellation/owned contexts", err)
+	}
+	scope := ops[0].Scope
+	oldProjection, err := graphstate.Project(t.Context(), view, 3, mustP05Point(t, scope, 0), graphstate.Effective, c.host.machine.limits.graph.Planner)
+	if err != nil || !oldProjection.Active {
+		t.Fatal(oldProjection, err)
+	}
+	tx, parts = n.crossPlan([]graphstate.Operation{{Kind: graphstate.Correct, Owner: 1, Life: 2, Scope: scope, Present: false}}, nil, 25)
+	n.crossResolve(n.crossCommit(tx, parts))
+	// A new invocation reuses no retained result from the preceding observation.
+	after := observe()
+	oldAgain, err := graphstate.Project(t.Context(), after, 3, mustP05Point(t, scope, 0), graphstate.Effective, c.host.machine.limits.graph.Planner)
+	if err != nil || !reflect.DeepEqual(oldAgain, oldProjection) {
+		t.Fatal("held cut became current", oldAgain, err)
+	}
+	current, err := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := current.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	currentView, err := current.ReadView()
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentBudget := current.sources[0].(*remoteGraphSource).endpoint.budget.output.(*graphstate.OutputBudget)
+	currentView, err = newNativeObservationRead(currentView, currentBudget, c.host.machine.limits.graph.Planner.Component, []context.Context{current.sources[0].(*remoteGraphSource).ctx, current.sources[1].(*remoteGraphSource).ctx})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now, err := graphstate.Project(t.Context(), currentView, 3, mustP05Point(t, scope, 0), graphstate.Effective, c.host.machine.limits.graph.Planner)
+	if err != nil || now.Active {
+		t.Fatal("current endpoint mask omitted", now, err)
+	}
+	canceled, stop := context.WithCancel(t.Context())
+	stop()
+	if _, err := view.Entity(canceled, 3); !errors.Is(err, context.Canceled) {
+		t.Fatal("cached result bypassed cancellation", err)
+	}
+	if err := held.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := view.Entity(t.Context(), 3); !errors.Is(err, graphstore.ErrClosed) && !errors.Is(err, graphstore.ErrSourceUnavailable) {
+		t.Fatal("closed original owner reused", err)
+	}
+
+}
+
+func mustP05Point(t *testing.T, scope temporal.Scope, value int64) temporal.Position {
+	t.Helper()
+	p, err := temporal.RationalPosition(scope.Axis(), temporal.RationalInt64(value))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestP05FullObservationsKeepSameConditionalSourceAndOriginalAllowance(t *testing.T) {
+	n := collectedGraphNetworkWithSchemas(t, nil, conditionalGraphSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 1}, raftlog.ApplicationRetentionConfig{}, p05Schemas())
+	ops, claims := crossEdgeFixture(t, n)
+	grant := claims[0].grant
+	ops = append(ops, graphstate.Operation{Kind: graphstate.Set, Owner: 3, Life: 4, Name: "p", Scope: ops[0].Scope, Value: graphstate.I64(5), ValueID: 5})
+	claims = append(claims, freshBinding{role: valueBinding, id: 5, grant: grant})
+	tx, parts := n.crossPlan(ops, claims, 24)
+	n.crossResolve(n.crossCommit(tx, parts))
+	c := remoteCertifiedFixture(t, n)
+	held, err := c.OpenForUpdate(t.Context(), graphReadRequest{mode: graphReadFresh})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := held.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	sessions := &graphProcessCertifiedSessions{coordinator: c, owners: map[uint64]graphProcessCertifiedOwner{1: {read: held.read}}}
+	p05 := newP05ProcessSessions(t.Context(), sessions, nil)
+	p05.owners[1] = p05ProcessOwner{read: held}
+	observe := func(handle uint64) p05Observation {
+		t.Helper()
+		wire, err := p05.observe(t.Context(), processRequest{index: handle})
+		if err != nil {
+			t.Fatal("full actual observation", handle, err)
+		}
+		var got p05Observation
+		if err := json.Unmarshal(wire, &got); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	before := observe(1)
+	budget := held.read.sources[0].(*remoteGraphSource).endpoint.budget
+	firstCalls := budget.calls
+	t.Logf("first complete actual P05 observation calls=%d", firstCalls)
+	scope, err := p05Span(ops[0].Scope.Axis())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, operations := range [][]graphstate.Operation{
+		{{Kind: graphstate.Set, Owner: 3, Life: 4, Scope: scope, Name: "p", Value: graphstate.I64(6), ValueID: 6}},
+		{{Kind: graphstate.Set, Owner: 3, Life: 4, Scope: scope, Name: "p", Value: graphstate.I64(5), ValueID: 5}},
+		{{Kind: graphstate.Close, Owner: 1, Life: 2, Scope: scope}},
+		{{Kind: graphstate.Reopen, Owner: 1, Life: 7, Scope: scope}},
+	} {
+		var fresh []freshBinding
+		if i == 0 {
+			fresh = []freshBinding{{role: valueBinding, id: 6, grant: grant}}
+		}
+		if i == 3 {
+			fresh = []freshBinding{{role: lifeBinding, owner: 1, id: 7, grant: grant}}
+		}
+		tx, parts = n.crossPlan(operations, fresh, uint64(25+i))
+		n.crossResolve(n.crossCommit(tx, parts))
+	}
+	retained := observe(1)
+	if !reflect.DeepEqual(before, retained) {
+		t.Fatal("same held conditional observation became current")
+	}
+	t.Logf("full genuine observations shared calls first=%d final=%d cap=%d", firstCalls, budget.calls, budget.maxCalls)
+	if budget.calls >= budget.maxCalls || budget.maxCalls != 1024 {
+		t.Fatal("source grant exhausted or changed", budget.calls, budget.maxCalls)
+	}
+	current, err := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := current.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	sessions.owners[2] = graphProcessCertifiedOwner{read: current}
+	now := observe(2)
+	if reflect.DeepEqual(now, before) || p05Presence(t, now, 1, 2).Life != 7 || p05Presence(t, before, 1, 2).Life != 2 {
+		t.Fatal("full current/old ABA projections not distinguished")
+	}
+}
+
+// Probe the real immutable reader's forwarding doors. Only injected error and
+// partial flags are synthetic adversarial inputs to the owning reuse boundary.
+type p05ComponentReadProbe struct {
+	graphstate.ReadView
+	calls          int
+	errOnce        error
+	incompleteOnce bool
+}
+
+func (p *p05ComponentReadProbe) ComponentPage(ctx context.Context, q graphstate.ComponentQuery, c graphstate.Cursor, b graphstate.ReadBudget) (graphstate.ComponentPage, error) {
+	p.calls++
+	if p.errOnce != nil {
+		err := p.errOnce
+		p.errOnce = nil
+		return graphstate.ComponentPage{}, err
+	}
+	out, err := p.ReadView.ComponentPage(ctx, q, c, b)
+	if err == nil && p.incompleteOnce {
+		p.incompleteOnce = false
+		out.Complete = false
+		out.Next = 99
+	}
+	return out, err
 }

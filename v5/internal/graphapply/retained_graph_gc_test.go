@@ -29,6 +29,10 @@ func collectedGraphNetworkWithAgreement(t *testing.T, adjust func(*raftlog.Appli
 	return collectedGraphNetworkWithRecovery(t, adjust, agreement, raftlog.ApplicationRecoveryConfig{Version: 2})
 }
 func collectedGraphNetworkWithRecovery(t *testing.T, adjust func(*raftlog.ApplicationPolicy), agreement raftlog.ApplicationSemanticContractID, recovery raftlog.ApplicationRecoveryConfig) *allocationTestNetwork {
+	return collectedGraphNetworkWithSchemas(t, adjust, agreement, recovery, raftlog.ApplicationRetentionConfig{Version: 1}, partitionWriteSchemas())
+}
+
+func collectedGraphNetworkWithSchemas(t *testing.T, adjust func(*raftlog.ApplicationPolicy), agreement raftlog.ApplicationSemanticContractID, recovery raftlog.ApplicationRecoveryConfig, retention raftlog.ApplicationRetentionConfig, schemas []graphstate.PropertyDefinition) *allocationTestNetwork {
 	t.Helper()
 	r := partitionCodecRequest(t, 1, defaultMaterializerLimits())
 	n := &allocationTestNetwork{t: t, d: r.declaration, pending: make(map[[16]byte]allocationProof)}
@@ -43,8 +47,14 @@ func collectedGraphNetworkWithRecovery(t *testing.T, adjust func(*raftlog.Applic
 			if adjust != nil {
 				adjust(&p)
 			}
-			control, retention := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRetentionConfig{Version: 1}
-			contract, err := raftlog.ApplicationContractForPolicyWithRetention(p, control, recovery, retention)
+			control := raftlog.ApplicationControlConfig{Version: 1}
+			var contract raftlog.ApplicationContract
+			var err error
+			if retention.Version == 0 {
+				contract, err = raftlog.ApplicationContractForPolicyWithRecovery(p, control, recovery)
+			} else {
+				contract, err = raftlog.ApplicationContractForPolicyWithRetention(p, control, recovery, retention)
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -85,12 +95,12 @@ func collectedGraphNetworkWithRecovery(t *testing.T, adjust func(*raftlog.Applic
 		n.pump(g, e)
 	}
 	h := n.hosts[0][0]
-	p, err := h.PreparePartitionInitialization(3, bootstrapAttemptID{1}, partitionWriteSchemas(), r.maxBlock, graphGenesisBinding(t), *r.routing, allocationProof{})
+	p, err := h.PreparePartitionInitialization(3, bootstrapAttemptID{1}, schemas, r.maxBlock, graphGenesisBinding(t), *r.routing, allocationProof{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	n.submit(0, p)
-	p, err = h.PreparePartitionInitialization(8, bootstrapAttemptID{2}, partitionWriteSchemas(), r.maxBlock, graphGenesisBinding(t), *r.routing, n.read(0, allocationQuery{kind: observeConfiguration}))
+	p, err = h.PreparePartitionInitialization(8, bootstrapAttemptID{2}, schemas, r.maxBlock, graphGenesisBinding(t), *r.routing, n.read(0, allocationQuery{kind: observeConfiguration}))
 	if err != nil {
 		t.Fatal(err)
 	}

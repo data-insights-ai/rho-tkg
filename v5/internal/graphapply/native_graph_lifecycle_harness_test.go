@@ -174,6 +174,17 @@ func nativeLifecycleObserve(ctx context.Context, s *graphProcessCertifiedSession
 	if err != nil {
 		return nil, err
 	}
+	return nativeLifecycleObserveView(ctx, s, v, r)
+}
+
+// Explicit-view composition borrows the SAME certified immutable owner. Only
+// the invocation-local observer may reuse actual typed reads; authority, cut
+// and the source/RPC ledgers remain on the original owner.
+func nativeLifecycleObserveView(ctx context.Context, s *graphProcessCertifiedSessions, v graphstate.ReadView, r processRequest) ([]byte, error) {
+	if ctx == nil || s == nil || v == nil || len(r.data) != 0 || r.entity > 2 {
+		return nil, errInvalid
+	}
+
 	s.coordinator.host.mu.Lock()
 	cfg, err := s.coordinator.host.currentConfiguration()
 	s.coordinator.host.mu.Unlock()
