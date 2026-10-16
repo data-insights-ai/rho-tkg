@@ -112,8 +112,16 @@ def main():
             return digest.hexdigest()
         hashes = {p.name: (workload_hash(p) if mode in ("workload-cell", "composed-platform-faults") else hashlib.sha256(p.read_bytes()).hexdigest())
                   for p in sorted(out.iterdir()) if p.is_file() and p.name != "receipt.json"}
+        missing_owned = []
         if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") in ("fdb-owned-ingress-transport-v2", "fdb-owned-ingress-transport-v3"):
-            hashes.update({str(p.relative_to(out)): workload_hash(p) for p in sorted((out / "owned-tools").iterdir()) if p.is_file()})
+            tools = out / "owned-tools"
+            if tools.is_dir():
+                hashes.update({str(p.relative_to(out)): workload_hash(p) for p in sorted(tools.iterdir()) if p.is_file()})
+            # Prebuild can fail before tool copy, network creation or workload
+            # release. Preserve that primary exit and hash only observed files.
+            required = ["owned-tools/" + name for name in ("tc", "ip", "manifest.json", "build.txt", "elf.txt")]
+            required += ["transport-probe", "transport-admission.json", "transport-complete.json"]
+            missing_owned = [name for name in required if not (out / name).is_file()]
         if mode == "platform-faults":
             hashes.update({str(p.relative_to(out)): hashlib.sha256(p.read_bytes()).hexdigest()
                            for p in sorted(out.glob("platform-*/*")) if p.is_file()})
@@ -147,6 +155,9 @@ def main():
         receipt = {"exit": int(result), "cleanup_exit": int(cleanup),
                    "success": result == "0" and cleanup == "0", "sha256": hashes,
                    "mode": mode, "scope": scopes[mode]}
+        if missing_owned:
+            receipt["missingOwnedArtifacts"] = missing_owned
+            receipt["success"] = False
         if mode == "workload-cell" and json.loads(os.environ["RHO_GRAPH_WORKLOAD_SPEC"])["family"] == "partition-local-create-update":
             receipt["scope"] = "one host/four logical FDB zones; genuine fixed scalar graph create5/update6, strict one-business-participant baseline at0 percent and explicit mixed/cross variants10/50/100; setup excluded from business ratio, complete immutable COMMIT/ABORT originals, old/current/index/CDC/source and optional actual native/cache columns, actual phase wall and full operation durations; fixed fixture IDs, no allocator issuance; no native parity/full matrix/capacity acceptance"
         if mode == "workload-cell" and os.environ.get("RHO_GRAPH_WORKLOAD_TRANSPORT") in ("fdb-owned-ingress-transport-v2", "fdb-owned-ingress-transport-v3"):

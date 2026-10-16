@@ -304,7 +304,7 @@ func (c *graphOwnerCatalog) censusHeadsIn(tr fdb.ReadTransaction) ([]graphCostSt
 		}
 	}
 	begin := []byte(columns + "generation/")
-	end := prefixRange(string(begin)).End
+	end := prefixRange(string(begin)).End.FDBKey()
 	for {
 		key, err := tr.GetKey(fdb.FirstGreaterOrEqual(fdb.Key(begin))).Get()
 		if err != nil {
@@ -335,7 +335,7 @@ func (c *graphOwnerCatalog) censusHeadsIn(tr fdb.ReadTransaction) ([]graphCostSt
 		if len(result) == 0 || !bytes.HasPrefix(result[len(result)-1].Key, []byte(prefix)) {
 			return nil, errUnavailable
 		}
-		begin = bytes.Clone(prefixRange(prefix).End)
+		begin = bytes.Clone(prefixRange(prefix).End.FDBKey())
 	}
 	slices.SortFunc(result, func(a, b graphCostStoredRecord) int { return bytes.Compare(a.Key, b.Key) })
 	for i := 1; i < len(result); i++ {

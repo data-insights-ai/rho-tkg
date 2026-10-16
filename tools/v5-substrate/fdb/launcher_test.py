@@ -1,15 +1,62 @@
 """Contract guards only; native graph tests and launcher establish actual faults."""
 import copy
 import hashlib
+import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import launcher
 
 
 class Contracts(unittest.TestCase):
+    def test_owned_prebuild_failure_receipt_preserves_primary_error_and_absent_stages(self):
+        env={"RHO_GRAPH_WORKLOAD_TRANSPORT":"fdb-owned-ingress-transport-v2",
+             "RHO_GRAPH_WORKLOAD_SPEC":json.dumps({"family":"partition-local-create-update"})}
+        with tempfile.TemporaryDirectory() as directory:
+            out=Path(directory);log=b"actual native compiler refusal\n"
+            (out/"prebuild.log").write_bytes(log)
+            for result,cleanup in ((1,0),(124,1),(0,0)):
+                with patch.dict(os.environ,env),patch.object(launcher.sys,"argv",["launcher.py","receipt",directory,str(result),str(cleanup),"workload-cell"]):
+                    self.assertEqual(launcher.main(),0)
+                receipt=json.loads((out/"receipt.json").read_text())
+                self.assertEqual((receipt["exit"],receipt["cleanup_exit"]),(result,cleanup))
+                self.assertFalse(receipt["success"])
+                self.assertEqual(receipt["sha256"],{"prebuild.log":hashlib.sha256(log).hexdigest()})
+                self.assertIn("owned-tools/tc",receipt["missingOwnedArtifacts"])
+                self.assertIn("transport-probe",receipt["missingOwnedArtifacts"])
+                self.assertIn("transport-admission.json",receipt["missingOwnedArtifacts"])
+                self.assertIn("transport-complete.json",receipt["missingOwnedArtifacts"])
+
+    def test_owned_partial_tools_hash_only_real_files_and_legacy_receipt_stays_literal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out=Path(directory);tools=out/"owned-tools";tools.mkdir()
+            (tools/"tc").write_bytes(b"partial genuine file")
+            env={"RHO_GRAPH_WORKLOAD_TRANSPORT":"fdb-owned-ingress-transport-v2",
+                 "RHO_GRAPH_WORKLOAD_SPEC":json.dumps({"family":"partition-local-create-update"})}
+            with patch.dict(os.environ,env),patch.object(launcher.sys,"argv",["launcher.py","receipt",directory,"1","0","workload-cell"]):
+                launcher.main()
+            receipt=json.loads((out/"receipt.json").read_text())
+            self.assertEqual(receipt["sha256"],{"owned-tools/tc":hashlib.sha256(b"partial genuine file").hexdigest()})
+            self.assertNotIn("owned-tools/tc",receipt["missingOwnedArtifacts"])
+            self.assertIn("owned-tools/ip",receipt["missingOwnedArtifacts"])
+            with patch.object(launcher.sys,"argv",["launcher.py","receipt",directory,"0","0","smoke"]):launcher.main()
+            receipt=json.loads((out/"receipt.json").read_text())
+            self.assertTrue(receipt["success"])
+            self.assertNotIn("missingOwnedArtifacts",receipt)
+            # Inert files test receipt enumeration only; native tool/transport
+            # validity remains the separate full owned-transport oracle's job.
+            for name in ("ip","manifest.json","build.txt","elf.txt"):(tools/name).write_bytes(b"observed")
+            for name in ("transport-probe","transport-admission.json","transport-complete.json"):(out/name).write_bytes(b"observed")
+            with patch.dict(os.environ,env),patch.object(launcher.sys,"argv",["launcher.py","receipt",directory,"0","0","workload-cell"]):launcher.main()
+            receipt=json.loads((out/"receipt.json").read_text())
+            self.assertTrue(receipt["success"])
+            self.assertNotIn("missingOwnedArtifacts",receipt)
+            self.assertEqual(receipt["sha256"]["owned-tools/tc"],hashlib.sha256(b"partial genuine file").hexdigest())
+
     def test_cleanup_output_preserves_sealed_redirected_failure_log(self):
         # Reproduce Bash's EXIT trap inside a redirected failing function. The
         # original output FD must carry the final path after the log is sealed.

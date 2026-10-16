@@ -217,7 +217,8 @@ func (h *harness) graphEdgeUniqueFreeze(ctx context.Context, job graphEdgeUnique
 				c.Actual.UniqueRange = append(c.Actual.UniqueRange, graphCostStoredRecord{bytes.Clone(row.Key), bytes.Clone(row.Value)})
 			}
 		}
-		c.Actual.ReadVersion, err = tr.GetReadVersion().Get()
+		version, err := tr.GetReadVersion().Get()
+		c.Actual.ReadVersion = version
 		return c, err
 	})
 	if err != nil {

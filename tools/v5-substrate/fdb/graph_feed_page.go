@@ -82,11 +82,11 @@ func (f *graphFeed) headIn(tr fdb.ReadTransaction, g uint8, next, through uint64
 	}
 	row.IDKey = f.s.source.h.key(g, "id", o.ID)
 	row.RequestKey = f.s.source.h.key(g, "request", o.Request)
-	row.IDValue, err = tr.Get(row.IDKey).Get()
+	row.IDValue, err = tr.Get(fdb.Key(row.IDKey)).Get()
 	if err != nil {
 		return nil, err
 	}
-	row.RequestValue, err = tr.Get(row.RequestKey).Get()
+	row.RequestValue, err = tr.Get(fdb.Key(row.RequestKey)).Get()
 	if err != nil {
 		return nil, err
 	}

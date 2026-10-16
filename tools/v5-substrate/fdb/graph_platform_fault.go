@@ -338,7 +338,7 @@ func (h *harness) platformCheck(r graphPlatformRecord) (fdbLifecycleTrace, error
 			return trace, errMismatch
 		}
 		trace.Steps = append(trace.Steps, step)
-		trace.OperationMap = append(trace.OperationMap, traceOperation{x.ID, []string{"A", "B"}[x.Coordinator], x.Request, x.ID, o.Round})
+		trace.OperationMap = append(trace.OperationMap, traceOperation{x.ID, x.Coordinator, x.Request, x.ID, o.Round})
 		trace.OldReads = append(trace.OldReads, traceOldRead{x.ID, "reopened-after-real-fault", c.record, v, raw})
 	}
 	c, err := h.fresh([]uint8{0, 1}, nil)
