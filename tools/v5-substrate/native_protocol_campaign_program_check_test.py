@@ -131,7 +131,8 @@ class ProgramChecks(unittest.TestCase):
                         target = caller if phase == 4 and part == co else next(v for v in range(1 if part == 3 else 4, 4 if part == 3 else 7) if v != initial[0 if part == 3 else 1] and v != caller)
                         recipe = dict(Coordinator=co, Phase=phase, Partition=part)
                         roles = dict(initial_leaders=initial, leaders=tuple(current), target=target)
-                        self.assertEqual(K.H.program_coordinator_roles(roles, recipe), (initial, leader, caller, actor, target))
+                        recovery = caller if phase != 4 and target == actor else actor
+                        self.assertEqual(K.H.program_coordinator_roles(roles, recipe), (initial, leader, caller, recovery, target))
                         self.refused(K.H.program_coordinator_roles, {**roles, "target": actor if phase == 4 and part == co else initial[0 if part == 3 else 1]}, recipe)
 
     def test_partial_roles_keep_native_leader_and_live_owner_distinct(self):

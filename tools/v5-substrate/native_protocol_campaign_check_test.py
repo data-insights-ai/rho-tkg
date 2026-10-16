@@ -334,6 +334,33 @@ class ActualVoteReadGuards(unittest.TestCase):
             with self.assertRaises(ValueError):
                 C.fence_planning_floor(stage, floor, bound)
 
+    def test_p03_program_recovery_keeps_surviving_original_caller(self):
+        # Inert role derivation only. Native originals and process receipts
+        # remain authenticated by check_coordinator and the program oracle.
+        for initial in ((1, 4), (2, 6)):
+            for co in (3, 8):
+                group = 0 if co == 3 else 1
+                caller, recoverer = ((2, 3) if initial == (1, 4) else (3, 1)) if co == 3 else ((5, 6) if initial == (1, 4) else (5, 4))
+                for phase, part in ((1, co), (2, co), (3, co), (2, 11-co), (4, co)):
+                    recipe = dict(Coordinator=co, Phase=phase, Partition=part, Kind=2, Side="after")
+                    current = list(initial)
+                    if phase == 4:
+                        current[group] = caller
+                    first = 1 if part == 3 else 4
+                    target = caller if phase == 4 else next(v for v in range(first, first+3) if v != initial[0 if part == 3 else 1] and v != caller)
+                    context = dict(initial_leaders=initial, leaders=tuple(current), target=target)
+                    want = caller if phase != 4 and target == recoverer else recoverer
+                    self.assertEqual(C.program_coordinator_roles(context, recipe), (initial, initial[group], caller, want, target))
+                    for changed in (dict(target=caller if phase != 4 else recoverer), dict(leaders=tuple(reversed(current))), dict(initial_leaders=(2, 4))):
+                        with self.assertRaises(ValueError):
+                            C.program_coordinator_roles({**context, **changed}, recipe)
+        pending = dict(incarnation=bytes([1])*16, sequence=20)
+        response = dict(incarnation=pending["incarnation"], sequence=21)
+        C.coordinator_surviving_call(response, pending)
+        for changed in (dict(incarnation=bytes([2])*16), dict(incarnation=bytes(16)), dict(sequence=20), dict(sequence=19)):
+            with self.assertRaises(ValueError):
+                C.coordinator_surviving_call({**response, **changed}, pending)
+
     def test_p03_registry_keeps_actual_predecision_and_quorum_loss_orders(self):
         names, early, outage, other = set(), 0, 0, 0
         for co in (3, 8):

@@ -312,6 +312,9 @@ func TestNativeConjunctionChangedPeerReplacesOnlyItsStreamAfterValidation(t *tes
 	}
 	run := c.runs[pending.resume.tx]
 	oldA, oldB := c.streams[3], c.streams[8]
+	owner, manifest := run.tx.owner, run.tx.manifest
+	oldSequence, oldIssuer := oldB.sequence, oldB.issuer
+	serviceSequence, serviceDigest, serviceReply := wires[1].service.last, wires[1].service.digest, bytes.Clone(wires[1].service.reply)
 	h := n.hosts[0][1]
 	server, err := newGraphSourceServer(t.Context(), h, defaultGraphSourceLimits(h.machine.limits))
 	if err != nil {
@@ -328,6 +331,11 @@ func TestNativeConjunctionChangedPeerReplacesOnlyItsStreamAfterValidation(t *tes
 	}
 	next.streams[8] = oldB
 	apply := func() error { c.mu.Lock(); defer c.mu.Unlock(); return nativeConjunctionRetainRoutesLocked(c, next) }
+	next.host = h
+	if err := apply(); !errors.Is(err, errInvalid) || c.runs[pending.resume.tx] != run || c.transports[3] != wires[0] {
+		t.Fatal("another Host acquired the surviving caller's private original", err)
+	}
+	next.host = c.host
 	next.streams[3] = oldA
 	if err := apply(); !errors.Is(err, errInvalid) || c.transports[3] != wires[0] {
 		t.Fatal("changed peer borrowed prior stream or partially mutated routes", err)
@@ -336,7 +344,28 @@ func TestNativeConjunctionChangedPeerReplacesOnlyItsStreamAfterValidation(t *tes
 	if err := apply(); err != nil {
 		t.Fatal(err)
 	}
-	if c.runs[pending.resume.tx] != run || c.transports[3] != changed || c.transports[8] != wires[1] || c.streams[3] == oldA || c.streams[8] != oldB {
+	if c.runs[pending.resume.tx] != run || run.tx.owner != owner || run.resume != pending.resume || &run.tx.manifest[0] != &manifest[0] || c.transports[3] != changed || c.transports[8] != wires[1] || c.streams[3] == oldA || c.streams[8] != oldB || oldB.sequence != oldSequence || oldB.issuer != oldIssuer || wires[1].service.last != serviceSequence || wires[1].service.digest != serviceDigest || !bytes.Equal(wires[1].service.reply, serviceReply) {
 		t.Fatal("peer change reset original/unchanged stream")
+	}
+}
+
+func TestNativeProtocolCoordinatorRecoveryKeepsSurvivingCaller(t *testing.T) {
+	for _, row := range []struct {
+		program                   bool
+		phase                     crossPhase
+		caller, recoverer, target uint64
+		want                      uint64
+	}{
+		{true, crossDecide, 3, 1, 1, 3},
+		{true, crossPrepare, 5, 4, 4, 5},
+		{true, crossRegister, 2, 3, 3, 2},
+		{true, crossResolve, 3, 1, 1, 1},
+		{true, crossPrepare, 3, 1, 4, 1},
+		{false, crossDecide, 2, 3, 3, 3},
+	} {
+		r := nativeProtocolCoordinatorRecipe{Phase: row.phase}
+		if got := r.recoveryActor(row.program, row.caller, row.recoverer, row.target); got != row.want {
+			t.Fatalf("recovery caller lost its actual surviving stream: row=%+v got=%d", row, got)
+		}
 	}
 }

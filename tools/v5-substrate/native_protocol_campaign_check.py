@@ -776,7 +776,15 @@ def program_coordinator_roles(context, recipe):
     first = 1 if part == 3 else 4
     target = caller if phase == 4 and part == co else next(v for v in range(first, first+3) if v != initial[0 if part == 3 else 1] and v != caller)
     require(type(context["target"]) is int and context["target"] == target, "actual P03 caller/recoverer/selected voter remain distinct where required")
+    if phase != 4 and target == actor:
+        actor = caller
     return initial, leader, caller, actor, target
+
+
+def coordinator_surviving_call(response, pending):
+    require(response["incarnation"] == pending["incarnation"] != bytes(16) and
+            response["sequence"] > pending["sequence"] > 0,
+            "P03 recovery remains on the surviving original caller incarnation/sequence")
 
 
 def check_coordinator(a, *, program_roles=None):
@@ -863,6 +871,8 @@ def check_coordinator(a, *, program_roles=None):
             C.unknown_invocation(response, call["Transport"])
         else:
             require(response["code"] == response["mask"] == 0 and not call["Transport"], "real successful original recovery")
+        if program_roles is not None and r["Phase"] != 4 and actor == caller:
+            coordinator_surviving_call(response, original_pending)
         P.resumed(call["Reply"], scopes, original["source"]["request"], tx, P.business_hash(original["wire"], co), int(call["Pending"]), b"" if call["Pending"] else wire)
     require(calls[-1]["Pending"] is False and (bool(P.raw(e["OutagePending"])) == outage), "no source-success invention during lost quorum")
     if outage:

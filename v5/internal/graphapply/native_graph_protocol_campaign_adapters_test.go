@@ -1073,6 +1073,13 @@ func (r nativeProtocolCoordinatorRecipe) name() string {
 	return fmt.Sprintf("p03-co%d-phase%d-p%d-k%d-%s", r.Coordinator, r.Phase, r.Partition, r.Kind, r.Side)
 }
 
+func (r nativeProtocolCoordinatorRecipe) recoveryActor(program bool, caller, recoverer, target uint64) uint64 {
+	if program && r.Phase != crossResolve && target == recoverer {
+		return caller
+	}
+	return recoverer
+}
+
 func nativeProtocolCoordinatorInventory() []nativeProtocolCoordinatorRecipe {
 	var rows []nativeProtocolCoordinatorRecipe
 	for _, co := range []uint64{3, 8} {
@@ -1272,6 +1279,11 @@ func nativeProtocolCoordinatorCase(t *testing.T, recipe nativeProtocolCoordinato
 			t.Fatal("actual durable-D successor before selected recovery occurrence", err)
 		}
 	}
+	// The replaced target proved its own old cut before heal. Its new client
+	// cannot reuse the remote service's spent pre-crash origin stream. Keep
+	// recovery on the surviving original caller/Host when that target was the
+	// planned recoverer; unchanged peer streams and the idle original remain.
+	recoverer = recipe.recoveryActor(program != nil, caller, recoverer, target)
 	nativeConjunctionReconnect(f, recoverer)
 	// These reads really occur while the first leader is down, before any
 	// second-voter failure. They do not claim unavailable-quorum Fresh success.
