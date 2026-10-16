@@ -10,6 +10,25 @@ from comparison_spool import Spool,Policy
 
 
 class NativeMovedColumnGuards(unittest.TestCase):
+    def test_declared_root_modes_match_native_codec_and_bind_image_identity(self):
+        # First actual source-page root from the successful 20-fact Cost9 run.
+        image=scalar.base64.b64decode("R1IDBQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAACAAAAAAAAAC0AAAAAAAAAgqSKdVMxe31JmDc16eJaFKOQs1gnzEcl337aNjTH6n5PAAAAAAAAAAkAAAAAAAAAAQAAAAAAAAAD5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsLjrr24wxtBjjy83bx5+82ELc+HNpmnhcA8pqsLW1UHAA==",validate=True)
+        scalar.column.root(scalar.raw,image,3)
+        def changed(offset,value):
+            body=bytearray(image[:-32]);body[offset:offset+len(value)]=value
+            return bytes(body)+hashlib.sha256(body).digest()
+        # GR3 ownershipPending/Published/Initialized are exactly 3/4/5.
+        for mode in (3,4):
+            body=bytearray(image[:-32]);body[3]=mode;body[100:108]=bytes(8)
+            scalar.column.root(scalar.raw,bytes(body)+hashlib.sha256(body).digest(),3)
+        invalid=[changed(3,bytes((mode,))) for mode in (0,1,2,6,255)]
+        invalid += [changed(0,b"GR\1"),changed(0,b"GR\2"),changed(4,b"\2"),
+                    changed(20,struct.pack(">Q",8)),image[:-1],image+b"\0",image[:-1]+bytes((image[-1]^1,))]
+        for wire in invalid:
+            with self.subTest(wire=wire[:28].hex(),size=len(wire)):
+                with self.assertRaises(ValueError):scalar.column.root(scalar.raw,wire,3)
+        with self.assertRaises(ValueError):scalar.column.root(scalar.raw,image,8)
+
     def status(self,result=1,failed_phase=0,failed_sequence=0,failed_hash=bytes(32)):
         body=b"GMO\3"+bytes.fromhex(scalar.raw.GRAPH)+struct.pack(">Q",8)+b"m"*16+b"i"*32+bytes((4,result))
         body+=struct.pack(">6Q",11,1,2,1,3,4)+b"d"*32+bytes((failed_phase,))+struct.pack(">Q",failed_sequence)+failed_hash

@@ -74,7 +74,7 @@ def certificate(api, encoded):
 
 
 def root(api, image, partition):
-    api.require(len(image) == 172 and image[:3] == b"GR\3" and image[3] in (1, 2, 3)
+    api.require(len(image) == 172 and image[:3] == b"GR\3" and image[3] in (3, 4, 5)
                 and image[4:20].hex() == api.GRAPH and image[20:28] == struct.pack(">Q", partition)
                 and hashlib.sha256(image[:-32]).digest() == image[-32:], "native column actual native root")
 
