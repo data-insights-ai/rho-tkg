@@ -18,6 +18,22 @@ import (
 
 const nativeTransitionScopeProfile = "native-outside-data-scope-v1"
 
+// The old reader stays on actor2. A rotated A leader2 also serves its held
+// source, so the unrelated B-blocked fresh caller must leave one of that
+// process's two ordinary workers free for the held reader's source RPC.
+func nativeTransitionScopeCaller(campaign bool, program *nativeProtocolProgramSpec, source uint64) (uint64, error) {
+	if source < 1 || source > 3 || program != nil && (!campaign || !program.valid()) {
+		return 0, errInvalid
+	}
+	if !campaign {
+		return 3, nil // Literal original unselected fixture.
+	}
+	if program != nil && source == 2 {
+		return 3, nil
+	}
+	return 2, nil
+}
+
 type nativeTransitionScopeObservation struct {
 	Request, Token, Facts []byte
 }
@@ -155,9 +171,9 @@ func nativeTransitionScopeCaseOwned(t *testing.T, mode graphReadMode, program *n
 			nativeConjunctionReconnect(f, member)
 		}
 	}
-	reader := uint64(3)
-	if len(campaign) == 1 {
-		reader = 2 // Survives both actual selected native voters3/6.
+	reader, err := nativeTransitionScopeCaller(len(campaign) == 1, program, f.n.leaders[0])
+	if err != nil {
+		t.Fatal("actual scoped caller/source ownership", err)
 	}
 	// Only B exists at C. A's genuine creation is later coordinated by B;
 	// the old scoped exact-empty answer must remain empty after that commit.
@@ -227,6 +243,9 @@ func nativeTransitionScopeCaseOwned(t *testing.T, mode graphReadMode, program *n
 			target, err = actualProgram.target(r.Partition, 5, reader)
 			if err != nil {
 				t.Fatal("actual native target must preserve live caller and old reader", err)
+			}
+			if target == reader || target == 2 || target == 5 {
+				t.Fatal("selected native target owns the blocked caller, held old handle, or original transaction")
 			}
 		}
 		gate, err = newNativeConjunctionBatchGate(ctx, f, nativeConjunctionSelector{Actor: 5, Partition: r.Partition, Member: target, Phase: r.Phase, Occurrence: 1, Kind: r.Kind, Side: r.Side}, run, deadline)

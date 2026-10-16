@@ -67,3 +67,49 @@ func TestNativeP01OutsideDataScopeFreshAndAfterResolveOrRefuseActualCoordinator(
 		t.Run(name, func(t *testing.T) { nativeTransitionScopeCase(t, mode) })
 	}
 }
+
+func TestNativeP01ScopedCallerLeavesHeldSourceWorkerAndOriginalReadersIntact(t *testing.T) {
+	for _, tc := range []struct {
+		campaign bool
+		program  *nativeProtocolProgramSpec
+		source   uint64
+		want     uint64
+	}{
+		{false, nil, 1, 3},
+		{true, nil, 1, 2},
+		{true, new(nativeProtocolProgramSpec{1, "original", "literal"}), 1, 2},
+		{true, new(nativeProtocolProgramSpec{1, "rotated", "reorder"}), 2, 3},
+	} {
+		caller, err := nativeTransitionScopeCaller(tc.campaign, tc.program, tc.source)
+		if err != nil || caller != tc.want || caller == tc.source {
+			t.Fatal("blocked fresh caller consumes held-source worker", caller, tc.want, err)
+		}
+	}
+	for _, layout := range []string{"original", "rotated"} {
+		for _, message := range []string{"literal", "delay", "reorder", "duplicate"} {
+			program := nativeProtocolProgramSpec{1, layout, message}
+			source := uint64(1)
+			if layout == "rotated" {
+				source = 2
+			}
+			caller, err := nativeTransitionScopeCaller(true, &program, source)
+			if err != nil || caller == source || caller < 2 || caller > 3 || processSourceWorkers != 2 {
+				t.Fatal("actual two-worker P01 topology", caller, source, err)
+			}
+		}
+	}
+	for _, tc := range []struct {
+		campaign bool
+		program  *nativeProtocolProgramSpec
+		source   uint64
+	}{
+		{true, nil, 0},
+		{true, nil, 4},
+		{false, new(nativeProtocolProgramSpec{1, "rotated", "literal"}), 2},
+		{true, new(nativeProtocolProgramSpec{1, "renumber-only", "literal"}), 2},
+	} {
+		if caller, err := nativeTransitionScopeCaller(tc.campaign, tc.program, tc.source); caller != 0 || !errors.Is(err, errInvalid) {
+			t.Fatal("unbound caller/source profile admitted", caller, err)
+		}
+	}
+}
