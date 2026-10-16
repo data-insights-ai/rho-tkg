@@ -131,7 +131,7 @@ func (e *engine) component(key ComponentKey, window temporal.Scope) ([]Component
 			if (key.Kind == Label || key.Kind == SetMember) && piece.Cell().Present() && !piece.Cell().Value().IsNull() {
 				return nil, ErrContradictoryRead
 			}
-			if key.Kind == Presence && piece.Cell().Present() && (piece.Cell().Value().IsNull() || piece.Cell().Value().ID() == 0 || piece.Cell().Value().PayloadBytes() != 0) {
+			if (key.Kind == Presence || key.Kind == LifeEnd) && piece.Cell().Present() && (piece.Cell().Value().IsNull() || piece.Cell().Value().ID() == 0 || piece.Cell().Value().PayloadBytes() != 0) {
 				return nil, ErrContradictoryRead
 			}
 			if e.budget != nil {

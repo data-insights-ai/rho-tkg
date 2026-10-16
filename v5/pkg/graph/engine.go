@@ -43,8 +43,8 @@ var (
 	allocName  = []byte("rho-tkg:v5/pkg/graph:id-allocator:v1")
 )
 
-// endAt reads the entity's committed End position at index from its Presence
-// cells: the lowest lower bound of the cells an End wrote (graphstate.IsEndCell).
+// endAt reads the entity's committed End position at index from its LifeEnd
+// cells: the lowest lower bound of the regions an End marked.
 func (e *pebbleEngine) endAt(ctx context.Context, index uint64, id graphstate.EntityID) (temporal.Position, bool, error) {
 	r, err := e.readerAt(ctx, index)
 	if err != nil {
@@ -55,7 +55,7 @@ func (e *pebbleEngine) endAt(ctx context.Context, index uint64, id graphstate.En
 	if err != nil {
 		return temporal.Position{}, false, err
 	}
-	pages, err := r.pieces(graphstate.ComponentKey{Owner: id, Kind: graphstate.Presence}, window)
+	pages, err := r.pieces(graphstate.ComponentKey{Owner: id, Kind: graphstate.LifeEnd}, window)
 	if err != nil {
 		return temporal.Position{}, false, err
 	}
@@ -63,7 +63,7 @@ func (e *pebbleEngine) endAt(ctx context.Context, index uint64, id graphstate.En
 	found := false
 	for _, pg := range pages {
 		for _, pc := range pg.Data.Pieces() {
-			if !graphstate.IsEndCell(pc.Cell()) {
+			if !pc.Cell().Present() {
 				continue
 			}
 			for _, part := range pc.Scope().Parts() {

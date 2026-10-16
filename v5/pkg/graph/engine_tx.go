@@ -293,28 +293,20 @@ func (t *engineTx) End(o End) error {
 	if err != nil {
 		return t.fail(err)
 	}
-	earlier := !ok // this End is earlier than the standing one (or the first)
-	if ok {
+	if ok { // the standing End stays the earliest; a later one is still recorded (evidence)
 		c, err := temporal.ComparePositions(p, prior, t.e.cfg.Limits)
 		if err != nil {
 			return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
 		}
-		earlier = c == temporal.Less
-	}
-	if !earlier { // the standing End already closes this tail
-		return nil
+		if c != temporal.Less {
+			p = prior
+		}
 	}
 	if t.ends == nil {
 		t.ends = map[graphstate.EntityID]temporal.Position{}
 	}
 	t.ends[id] = p
-	if t.rec.Profile() != 0 {
-		// graphstore's evidence codec does not know the End kind yet (not ours to
-		// edit): a Close over the same tail carries the evidence, End then
-		// overwrites its cells.
-		t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: tail})
-	}
-	t.ops = append(t.ops, graphstate.Operation{Kind: graphstate.End, Owner: id, Life: lifeID, Scope: tail}) // no Recorded: see above
+	t.add(graphstate.Operation{Kind: graphstate.End, Owner: id, Life: lifeID, Scope: tail})
 	return nil
 }
 

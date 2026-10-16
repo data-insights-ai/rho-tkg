@@ -505,7 +505,7 @@ func encodeEvidence(n Namespace, owner graphstate.EntityID, revision uint64, ent
 	b = binary.BigEndian.AppendUint64(b, revision)
 	b = binary.BigEndian.AppendUint64(b, uint64(len(entries)))
 	for _, e := range entries {
-		if e.Kind < graphstate.CreateNode || e.Kind > graphstate.Remove || len(e.Name) > l.MaxNameBytes || e.Recorded.Profile() == 0 {
+		if e.Kind < graphstate.CreateNode || e.Kind > graphstate.End || len(e.Name) > l.MaxNameBytes || e.Recorded.Profile() == 0 {
 			return nil, ErrInvalid
 		}
 		wire, err := temporal.AppendPosition(nil, e.Recorded, l.Temporal)
@@ -558,7 +558,7 @@ func readEvidenceRecord(src []byte, n Namespace, owner graphstate.EntityID, revi
 		if err != nil {
 			return nil, err
 		}
-		if len(wire) < 20 || graphstate.OperationKind(kind) < graphstate.CreateNode || graphstate.OperationKind(kind) > graphstate.Remove {
+		if len(wire) < 20 || graphstate.OperationKind(kind) < graphstate.CreateNode || graphstate.OperationKind(kind) > graphstate.End {
 			return nil, ErrCorrupt
 		}
 		var id temporal.AxisID

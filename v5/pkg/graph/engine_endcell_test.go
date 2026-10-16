@@ -38,11 +38,11 @@ func engineRows(t *testing.T, g *Graph) []raftlog.KV {
 	}
 }
 
-// TestEndCellSurvivesRangeMoveAndImport: End lives only in the entity's cells
-// (no engine row besides the graph store's own), so whatever carries the cells
-// (reopen, range move, import) carries the End; the End still refuses a Correct
-// after it and is not mistaken for a Retract.
-func TestEndCellSurvivesRangeMoveAndImport(t *testing.T) {
+// TestEndLivesOnlyInCellsAndSurvivesReopen: End is stored only as LifeEnd cells
+// (no engine row), read back after reopen, and a Retract is never mistaken for
+// it or able to erase it. That the cells travel with a range move or an import
+// is covered by WP-28 (dist codec) and WP-10b (importer), not here.
+func TestEndLivesOnlyInCellsAndSurvivesReopen(t *testing.T) {
 	ctx := context.Background()
 	cfg := engineConfig(t, t.TempDir())
 	g, err := Open(ctx, cfg)
@@ -107,4 +107,26 @@ func TestEndWithRecordedEvidenceCommits(t *testing.T) {
 	update(t, g, func(tx Tx) error {
 		return tx.End(End{Target: ref, Scope: spanMS(t, 0, 200), Recorded: recAt(t, knowledgeAxis(t), 1000)})
 	})
+}
+
+// A later End than the standing one is not dropped: its Recorded evidence is
+// committed and the earliest End still rules.
+func TestLaterEndKeepsEvidenceAndEarliestEndRules(t *testing.T) {
+	g := openMem(t)
+	all := scopeAll(t)
+	var id types.NodeID
+	update(t, g, func(tx Tx) (err error) {
+		id, err = tx.CreateNode(CreateNode{Props: map[string]Value{"n": Int(1)}, Scope: all})
+		return
+	})
+	ref, _ := NodeRef(id)
+	update(t, g, func(tx Tx) error { return tx.End(End{Target: ref, Scope: spanMS(t, 0, 200)}) })
+	update(t, g, func(tx Tx) error {
+		return tx.End(End{Target: ref, Scope: spanMS(t, 0, 400), Recorded: recAt(t, knowledgeAxis(t), 1000)})
+	})
+	if _, err := g.Update(context.Background(), func(tx Tx) error {
+		return tx.Correct(Correct{Target: ref, Set: map[string]Value{"n": Int(9)}, Scope: spanMS(t, 250, 300)})
+	}); !errors.Is(err, ErrInvalidScope) {
+		t.Fatalf("earliest End lost: %v", err)
+	}
 }

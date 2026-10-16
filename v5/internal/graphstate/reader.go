@@ -161,7 +161,7 @@ func validKey(k ComponentKey, l Limits) bool {
 		return false
 	}
 	switch k.Kind {
-	case Presence:
+	case Presence, LifeEnd:
 		return k.Life == 0 && k.Name == "" && k.Member == 0
 	case Label, ScalarProperty:
 		return k.Life != 0 && validName(k.Name, l) && k.Member == 0

@@ -22,7 +22,7 @@ func validComponent(k graphstate.ComponentKey, l Limits) bool {
 		return false
 	}
 	switch k.Kind {
-	case graphstate.Presence:
+	case graphstate.Presence, graphstate.LifeEnd:
 		return k.Life == 0 && k.Name == "" && k.Member == 0
 	case graphstate.Label, graphstate.ScalarProperty:
 		return k.Life != 0 && validName(k.Name, l) && k.Member == 0

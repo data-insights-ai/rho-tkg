@@ -99,11 +99,6 @@ func planWithOutputBudget(ctx context.Context, v ReadView, ops []Operation, revi
 	if revision.ID() == 0 {
 		return Delta{}, state.ErrInvalidRevision
 	}
-	for _, op := range ops {
-		if op.Kind == End && revision.Provenance()&EndProvenance != 0 {
-			return Delta{}, ErrInvalidInput
-		}
-	}
 	e, err := start(ctx, v, l, revision)
 	if err != nil {
 		return Delta{}, err
@@ -158,15 +153,10 @@ func (e *engine) apply(op Operation) error {
 			return e.mutate(ComponentKey{Owner: op.Owner, Kind: Presence}, op.Scope, ref, true)
 		}
 		if op.Kind == End {
-			marked, err := state.NewRevision(e.revision.ID(), e.revision.Provenance()|EndProvenance)
-			if err != nil {
+			ref, _ := state.NewValueRef(uint64(op.Life), 0)
+			if err := e.mutate(ComponentKey{Owner: op.Owner, Kind: LifeEnd}, op.Scope, ref, true); err != nil {
 				return err
 			}
-			plain := e.revision
-			e.revision = marked
-			err = e.mutate(ComponentKey{Owner: op.Owner, Kind: Presence}, op.Scope, state.ValueRef{}, false)
-			e.revision = plain
-			return err
 		}
 		return e.mutate(ComponentKey{Owner: op.Owner, Kind: Presence}, op.Scope, state.ValueRef{}, false)
 	}
