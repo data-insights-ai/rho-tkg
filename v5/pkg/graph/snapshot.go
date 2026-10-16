@@ -76,7 +76,9 @@ const (
 	ViewEffective
 )
 
-// PropertyEq is an exact equality predicate (gap row 10).
+// PropertyEq is an equality predicate (gap row 10). A row matches when its
+// property Equal()s Value, so Int(3) matches a stored 3.0 (one numeric rule,
+// see Value); Null matches nothing.
 type PropertyEq struct {
 	Key   string
 	Value Value
@@ -87,13 +89,35 @@ type PropertyEq struct {
 type Selector struct {
 	View    View
 	Valid   temporal.Scope // valid-time support, required
-	Known   temporal.Scope // knowledge support, required
+	Known   temporal.Scope // knowledge support (Config.KnowledgeAxis), required
 	Labels  []string
 	RelType string
 	Equals  []PropertyEq
 }
 
-// Validate checks the selector without an engine.
+// CheckSelector validates sel under the graph's Limits and requires Valid on
+// Config.DefaultAxis and Known on Config.KnowledgeAxis (the snapshot applies
+// the same check to every read). Known filters by recorded evidence; the
+// snapshot's cut bounds what exists at all.
+func CheckSelector(c Config, sel Selector) error {
+	if err := sel.Validate(c.Limits); err != nil {
+		return err
+	}
+	return checkSelectorAxes(c, sel)
+}
+
+func checkSelectorAxes(c Config, sel Selector) error {
+	if !sameAxis(sel.Valid.Axis(), c.DefaultAxis.Axis()) {
+		return fmt.Errorf("%w: valid scope is not on the graph default axis", ErrInvalidScope)
+	}
+	if !sameAxis(sel.Known.Axis(), c.KnowledgeAxis.Axis()) {
+		return fmt.Errorf("%w: known scope is not on the knowledge axis", ErrInvalidScope)
+	}
+	return nil
+}
+
+// Validate checks the selector without an engine (structure and limits, not
+// which axis; CheckSelector adds that).
 func (s Selector) Validate(l temporal.Limits) error {
 	if s.View != ViewDeclared && s.View != ViewEffective {
 		return fmt.Errorf("%w: view must be named", ErrInvalidSelector)
@@ -137,7 +161,7 @@ func (p Projection) validate() error {
 }
 
 // Cursor is an opaque page continuation bound to cut, selector and order. The
-// zero Cursor is invalid.
+// zero Cursor is invalid. It serialises with Bytes and ParseCursor.
 type Cursor struct{ b []byte }
 
 // ParseCursor wraps bytes previously obtained from Cursor.Bytes.
@@ -145,13 +169,16 @@ func ParseCursor(b []byte) (Cursor, error) {
 	if len(b) == 0 || len(b) > MaxCursorBytes {
 		return Cursor{}, fmt.Errorf("%w: length", ErrInvalidCursor)
 	}
-	return Cursor{b: append([]byte(nil), b...)}, nil
+	return Cursor{b: cloneTok(b)}, nil
 }
 
 // Bytes returns a copy of the encoded cursor.
-func (c Cursor) Bytes() []byte { return append([]byte(nil), c.b...) }
+func (c Cursor) Bytes() []byte { return cloneTok(c.b) }
 
-// Validate reports ErrInvalidCursor for the zero Cursor.
+// IsZero reports the invalid zero Cursor.
+func (c Cursor) IsZero() bool { return len(c.b) == 0 }
+
+// Validate reports ErrInvalidCursor for the zero or an oversized Cursor.
 func (c Cursor) Validate() error {
 	if len(c.b) == 0 || len(c.b) > MaxCursorBytes {
 		return fmt.Errorf("%w: zero cursor", ErrInvalidCursor)
@@ -159,7 +186,8 @@ func (c Cursor) Validate() error {
 	return nil
 }
 
-// Entity is one node or relationship revision view.
+// Entity is one node or relationship, or one revision of it in a Timeline.
+// Props is nil unless the Projection asked for properties.
 type Entity struct {
 	Ref      Ref
 	Labels   []string
@@ -177,28 +205,44 @@ type Page struct {
 	Done bool
 }
 
-// ScanRequest starts a scan (gap rows 9-10, 21-22). Limit is 1..MaxPageRows;
-// MaxBytes is mandatory.
-type ScanRequest struct {
-	Selector   Selector
-	Projection Projection
-	Limit      int
-	MaxBytes   int
+// PageLimits bounds one page of any read door: Rows is 1..MaxPageRows and
+// MaxBytes is mandatory (PLAN:389). DefaultMaxBytes is a value for callers that
+// have no opinion.
+type PageLimits struct {
+	Rows     int
+	MaxBytes int
 }
 
-func checkPageLimits(limit, maxBytes int) error {
-	if limit < 1 || limit > MaxPageRows {
+// DefaultMaxBytes is a reasonable PageLimits.MaxBytes (1 MiB).
+const DefaultMaxBytes = 1 << 20
+
+// Validate reports ErrInvalidRequest for a row count outside 1..MaxPageRows or
+// a missing byte limit.
+func (p PageLimits) Validate() error {
+	if p.Rows < 1 || p.Rows > MaxPageRows {
 		return fmt.Errorf("%w: limit must be 1..%d", ErrInvalidRequest, MaxPageRows)
 	}
-	if maxBytes < 1 {
+	if p.MaxBytes < 1 {
 		return fmt.Errorf("%w: byte limit required", ErrInvalidRequest)
 	}
 	return nil
 }
 
+// ScanRequest starts a scan (gap rows 9-10, 21-22).
+//
+// TODO(takeover plan, S2 wrapper vs engine): Labels and Equals need label and
+// property-equality index pages the engine does not have yet (ReadView offers
+// per-owner pages and unique candidates only; review MAJOR 7). The request is
+// final; the engine work (V4.2/V3.2) is not wrapper work.
+type ScanRequest struct {
+	Selector   Selector
+	Projection Projection
+	Paging     PageLimits
+}
+
 // Validate checks the request without an engine.
 func (r ScanRequest) Validate(l temporal.Limits) error {
-	if err := checkPageLimits(r.Limit, r.MaxBytes); err != nil {
+	if err := r.Paging.Validate(); err != nil {
 		return err
 	}
 	if err := r.Selector.Validate(l); err != nil {
@@ -207,12 +251,14 @@ func (r ScanRequest) Validate(l temporal.Limits) error {
 	return r.Projection.validate()
 }
 
-// LookupRequest fetches entities by ID (gap rows 8, 11-12).
+// LookupRequest fetches entities by ID (gap rows 8, 11-12). With a span Valid
+// scope one ID can yield several rows, so Lookup returns a bounded Page.
 type LookupRequest struct {
 	Selector   Selector
 	Projection Projection
 	Nodes      []types.NodeID
 	Rels       []types.RelID
+	Paging     PageLimits
 }
 
 // Validate checks the request without an engine.
@@ -229,9 +275,12 @@ func (r LookupRequest) Validate(l temporal.Limits) error {
 		}
 	}
 	for _, id := range r.Rels {
-		if id <= 0 {
-			return fmt.Errorf("%w: relationship", ErrInvalidID)
+		if err := checkRel(id); err != nil {
+			return err
 		}
+	}
+	if err := r.Paging.Validate(); err != nil {
+		return err
 	}
 	if err := r.Selector.Validate(l); err != nil {
 		return err
@@ -239,22 +288,46 @@ func (r LookupRequest) Validate(l temporal.Limits) error {
 	return r.Projection.validate()
 }
 
-// Revision is one entry of a Timeline.
-type Revision struct {
-	Entity Entity
+// TimelineRequest reads every revision of Ref visible under Selector (gap rows
+// 11-12), one bounded page at a time; continue with Resume.
+type TimelineRequest struct {
+	Ref        Ref
+	Selector   Selector
+	Projection Projection
+	Paging     PageLimits
+}
+
+// Validate checks the request without an engine.
+func (r TimelineRequest) Validate(l temporal.Limits) error {
+	if err := r.Ref.Validate(); err != nil {
+		return err
+	}
+	if err := r.Paging.Validate(); err != nil {
+		return err
+	}
+	if err := r.Selector.Validate(l); err != nil {
+		return err
+	}
+	return r.Projection.validate()
 }
 
 type snapshotEngine interface {
 	scan(ctx context.Context, r ScanRequest) (Page, error)
-	resume(ctx context.Context, c Cursor, limit, maxBytes int) (Page, error)
-	lookup(ctx context.Context, r LookupRequest) ([]Entity, error)
-	timeline(ctx context.Context, ref Ref, sel Selector) ([]Revision, error)
+	resume(ctx context.Context, c Cursor, p PageLimits) (Page, error)
+	lookup(ctx context.Context, r LookupRequest) (Page, error)
+	timeline(ctx context.Context, r TimelineRequest) (Page, error)
+	cut() Cut
 	close() error
 }
 
-// Snapshot is a read view. The zero value has no engine (doors return
-// ErrNotImplemented after validation); a nil *Snapshot is ErrClosed.
-type Snapshot struct{ eng snapshotEngine }
+// Snapshot is a read view from Graph.OpenSnapshot; it carries the graph's
+// Config, so reads validate with Config.Limits and the configured axes exactly
+// as the engine will (a bad request fails the same way with or without an
+// engine). A nil *Snapshot is ErrClosed.
+type Snapshot struct {
+	eng snapshotEngine
+	cfg Config
+}
 
 func (s *Snapshot) pre(ctx context.Context) error {
 	if s == nil {
@@ -266,12 +339,25 @@ func (s *Snapshot) pre(ctx context.Context) error {
 	return nil
 }
 
+// Cut returns the certified knowledge boundary this snapshot reads at, to be
+// persisted (Cut.Bytes) and reopened with At (gap row 13, v4 CommittedTx). It is
+// the zero Cut for a nil or engine-less Snapshot.
+func (s *Snapshot) Cut() Cut {
+	if s == nil || s.eng == nil {
+		return Cut{}
+	}
+	return s.eng.cut()
+}
+
 // Scan returns the first page of a scan.
 func (s *Snapshot) Scan(ctx context.Context, r ScanRequest) (Page, error) {
 	if err := s.pre(ctx); err != nil {
 		return Page{}, err
 	}
-	if err := r.Validate(temporal.Limits{}); err != nil {
+	if err := r.Validate(s.cfg.Limits); err != nil {
+		return Page{}, err
+	}
+	if err := checkSelectorAxes(s.cfg, r.Selector); err != nil {
 		return Page{}, err
 	}
 	if s.eng == nil {
@@ -280,52 +366,57 @@ func (s *Snapshot) Scan(ctx context.Context, r ScanRequest) (Page, error) {
 	return s.eng.scan(ctx, r)
 }
 
-// Resume returns the page after c. The zero Cursor is ErrInvalidCursor.
-func (s *Snapshot) Resume(ctx context.Context, c Cursor, limit, maxBytes int) (Page, error) {
+// Resume returns the page after c, for a Scan, Lookup or Timeline. The zero
+// Cursor is ErrInvalidCursor.
+func (s *Snapshot) Resume(ctx context.Context, c Cursor, p PageLimits) (Page, error) {
 	if err := s.pre(ctx); err != nil {
 		return Page{}, err
 	}
 	if err := c.Validate(); err != nil {
 		return Page{}, err
 	}
-	if err := checkPageLimits(limit, maxBytes); err != nil {
+	if err := p.Validate(); err != nil {
 		return Page{}, err
 	}
 	if s.eng == nil {
 		return Page{}, ErrNotImplemented
 	}
-	return s.eng.resume(ctx, c, limit, maxBytes)
+	return s.eng.resume(ctx, c, p)
 }
 
-// Lookup fetches entities by ID in the named view.
-func (s *Snapshot) Lookup(ctx context.Context, r LookupRequest) ([]Entity, error) {
+// Lookup fetches entities by ID in the named view, one bounded page at a time.
+func (s *Snapshot) Lookup(ctx context.Context, r LookupRequest) (Page, error) {
 	if err := s.pre(ctx); err != nil {
-		return nil, err
+		return Page{}, err
 	}
-	if err := r.Validate(temporal.Limits{}); err != nil {
-		return nil, err
+	if err := r.Validate(s.cfg.Limits); err != nil {
+		return Page{}, err
+	}
+	if err := checkSelectorAxes(s.cfg, r.Selector); err != nil {
+		return Page{}, err
 	}
 	if s.eng == nil {
-		return nil, ErrNotImplemented
+		return Page{}, ErrNotImplemented
 	}
 	return s.eng.lookup(ctx, r)
 }
 
-// Timeline returns every revision of ref visible under sel (gap rows 11-12).
-func (s *Snapshot) Timeline(ctx context.Context, ref Ref, sel Selector) ([]Revision, error) {
+// Timeline returns the revisions of r.Ref visible under r.Selector (gap rows
+// 11-12), one bounded page at a time.
+func (s *Snapshot) Timeline(ctx context.Context, r TimelineRequest) (Page, error) {
 	if err := s.pre(ctx); err != nil {
-		return nil, err
+		return Page{}, err
 	}
-	if err := ref.Validate(); err != nil {
-		return nil, err
+	if err := r.Validate(s.cfg.Limits); err != nil {
+		return Page{}, err
 	}
-	if err := sel.Validate(temporal.Limits{}); err != nil {
-		return nil, err
+	if err := checkSelectorAxes(s.cfg, r.Selector); err != nil {
+		return Page{}, err
 	}
 	if s.eng == nil {
-		return nil, ErrNotImplemented
+		return Page{}, ErrNotImplemented
 	}
-	return s.eng.timeline(ctx, ref, sel)
+	return s.eng.timeline(ctx, r)
 }
 
 // Close releases the snapshot.

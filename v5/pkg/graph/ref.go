@@ -30,8 +30,8 @@ func NodeRef(id types.NodeID) (Ref, error) {
 
 // RelRef refers to a relationship; zero and negative IDs are ErrInvalidID.
 func RelRef(id types.RelID) (Ref, error) {
-	if id <= 0 {
-		return Ref{}, fmt.Errorf("%w: relationship", ErrInvalidID)
+	if err := checkRel(id); err != nil {
+		return Ref{}, err
 	}
 	return Ref{kind: refRel, rel: id}, nil
 }
@@ -51,10 +51,7 @@ func (r Ref) Validate() error {
 	case refNode:
 		return checkNode(r.node)
 	case refRel:
-		if r.rel <= 0 {
-			return fmt.Errorf("%w: relationship", ErrInvalidID)
-		}
-		return nil
+		return checkRel(r.rel)
 	}
 	return fmt.Errorf("%w: empty ref", ErrInvalidID)
 }
@@ -62,6 +59,13 @@ func (r Ref) Validate() error {
 func checkNode(id types.NodeID) error {
 	if id <= 0 {
 		return fmt.Errorf("%w: node", ErrInvalidID)
+	}
+	return nil
+}
+
+func checkRel(id types.RelID) error {
+	if id <= 0 {
+		return fmt.Errorf("%w: relationship", ErrInvalidID)
 	}
 	return nil
 }

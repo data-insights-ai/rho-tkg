@@ -10,6 +10,8 @@ import (
 // detail that never echoes paths or property values.
 var (
 	// ErrNotImplemented is returned by every door while no engine is attached.
+	// Temporary: it is removed (a breaking change) when the engine lands, unless
+	// it is kept for a capability the engine still lacks.
 	ErrNotImplemented = errors.New("graph: not implemented: no engine attached")
 	// ErrInvalidConfig reports a Config that Open refuses.
 	ErrInvalidConfig = errors.New("graph: invalid config")
@@ -26,6 +28,12 @@ var (
 	ErrInvalidSelector = errors.New("graph: invalid selector")
 	// ErrInvalidSnapshotSpec reports a zero SnapshotSpec or a zero Cut/Receipt.
 	ErrInvalidSnapshotSpec = errors.New("graph: invalid snapshot spec")
+	// ErrInvalidValue reports a zero, non-finite or otherwise malformed Value.
+	ErrInvalidValue = errors.New("graph: invalid value")
+	// ErrInvalidCut reports a zero, empty or oversized Cut encoding.
+	ErrInvalidCut = errors.New("graph: invalid cut")
+	// ErrInvalidReceipt reports a zero, empty or oversized Receipt encoding.
+	ErrInvalidReceipt = errors.New("graph: invalid receipt")
 	// ErrInvalidCursor reports a zero, oversized or foreign Cursor.
 	ErrInvalidCursor = errors.New("graph: invalid cursor")
 	// ErrInvalidRequest reports a malformed read request (limits, nil arguments).

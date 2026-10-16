@@ -10,19 +10,24 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
-func binding(t testing.TB, g types.GraphID) types.DefaultAxisBinding {
+func bindingOn(t testing.TB, g types.GraphID, axisID byte) types.DefaultAxisBinding {
 	t.Helper()
-	b, err := types.NewDefaultAxisBinding(g, temporal.AxisID{19}, temporal.Limits{})
+	b, err := types.NewDefaultAxisBinding(g, temporal.AxisID{axisID}, temporal.Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return b
 }
 
+func binding(t testing.TB, g types.GraphID) types.DefaultAxisBinding { return bindingOn(t, g, 19) }
+
 func goodConfig(t testing.TB) Config {
 	g := types.GraphID{3}
-	return Config{Dir: t.TempDir(), GraphID: g, DefaultAxis: binding(t, g), Durability: DurabilityCommit}
+	return Config{Dir: t.TempDir(), GraphID: g, DefaultAxis: binding(t, g), KnowledgeAxis: bindingOn(t, g, 20), Durability: DurabilityCommit}
 }
+
+// unbacked is a snapshot with the test config and no engine.
+func unbacked(t testing.TB) *Snapshot { return &Snapshot{cfg: goodConfig(t)} }
 
 func axis(t testing.TB) temporal.Axis { return binding(t, types.GraphID{3}).Axis() }
 
@@ -49,6 +54,14 @@ func scopeZero(t testing.TB) temporal.Scope {
 		t.Fatal(err)
 	}
 	s, err := temporal.Point(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func scopeUnplaced(t testing.TB) temporal.Scope {
+	s, err := temporal.Unplaced(axis(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +127,7 @@ func TestOpenValidatesBeforeEngineSentinel(t *testing.T) {
 
 func TestConfigValidate(t *testing.T) {
 	g := types.GraphID{3}
-	mem := Config{Memory: true, GraphID: g, DefaultAxis: binding(t, g), Durability: DurabilityBuffered}
+	mem := Config{Memory: true, GraphID: g, DefaultAxis: binding(t, g), KnowledgeAxis: bindingOn(t, g, 20), Durability: DurabilityBuffered}
 	if err := mem.Validate(); err != nil {
 		t.Fatalf("memory config: %v", err)
 	}
@@ -129,6 +142,11 @@ func TestConfigValidate(t *testing.T) {
 		"neither":             func(c *Config) { c.Dir = "" },
 		"zero graph":          func(c *Config) { c.GraphID = types.GraphID{} },
 		"zero binding":        func(c *Config) { c.DefaultAxis = types.DefaultAxisBinding{} },
+		"zero knowledge axis": func(c *Config) { c.KnowledgeAxis = types.DefaultAxisBinding{} },
+		"knowledge = default": func(c *Config) { c.KnowledgeAxis = c.DefaultAxis },
+		"knowledge other graph": func(c *Config) {
+			c.KnowledgeAxis = bindingOn(t, types.GraphID{4}, 20)
+		},
 		"binding other graph": func(c *Config) { c.GraphID = types.GraphID{4} },
 		"zero durability":     func(c *Config) { c.Durability = 0 },
 		"unknown durability":  func(c *Config) { c.Durability = 99 },
@@ -144,8 +162,8 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
-func nid(v uint64) types.NodeID { return types.NodeID(v) }
-func rid(v uint64) types.RelID  { return types.RelID(v) }
+func nid(v int64) types.NodeID { return types.NodeID(v) }
+func rid(v int64) types.RelID  { return types.RelID(v) }
 
 func TestRefRefusesZeroIDs(t *testing.T) {
 	if _, err := NodeRef(0); !errors.Is(err, ErrInvalidID) {
@@ -177,14 +195,14 @@ func TestOpsValidate(t *testing.T) {
 		CreateNode{Labels: []string{"A"}, Scope: scopeZero(t)},
 		CreateNode{Scope: scopeAll(t)},
 		CreateRel{Type: "R", From: nid(1), To: nid(2), Scope: scopeAll(t)},
-		Correct{Target: n5, Set: map[string]Value{"k": 1}, Scope: scopeAll(t)},
-		Close{Target: n5, End: temporal.PositiveInfinity(), Scope: scopeAll(t)},
+		Correct{Target: n5, Set: map[string]Value{"k": Int(1)}, Scope: scopeAll(t)},
+		End{Target: n5, Scope: scopeAll(t)},
 		AddLabel{Target: nid(1), Label: "L", Scope: scopeAll(t)},
 		RemoveLabel{Target: nid(1), Label: "L", Scope: scopeAll(t)},
-		Set{Target: n5, Key: "k", Value: 0, Scope: scopeAll(t)},
+		Set{Target: n5, Key: "k", Value: Int(0), Scope: scopeAll(t)},
 		Unset{Target: n5, Key: "k", Scope: scopeAll(t)},
 		Retract{Target: n5, Scope: scopeAll(t)},
-		GetOrCreate{Label: "L", Key: "k", Value: "v", Scope: scopeAll(t)},
+		GetOrCreate{Label: "L", Key: "k", Value: String("v"), Scope: scopeAll(t)},
 	}
 	for i, op := range good {
 		if err := op.Validate(l); err != nil {
@@ -201,17 +219,23 @@ func TestOpsValidate(t *testing.T) {
 		"rel no type":      {CreateRel{From: nid(1), To: nid(2), Scope: scopeAll(t)}, ErrInvalidOp},
 		"rel zero from":    {CreateRel{Type: "R", To: nid(2), Scope: scopeAll(t)}, ErrInvalidID},
 		"rel zero to":      {CreateRel{Type: "R", From: nid(1), Scope: scopeAll(t)}, ErrInvalidID},
-		"correct zero ref": {Correct{Set: map[string]Value{"k": 1}, Scope: scopeAll(t)}, ErrInvalidID},
+		"correct zero ref": {Correct{Set: map[string]Value{"k": Int(1)}, Scope: scopeAll(t)}, ErrInvalidID},
 		"correct no set":   {Correct{Target: n5, Scope: scopeAll(t)}, ErrInvalidOp},
-		"close zero bound": {Close{Target: n5, Scope: scopeAll(t)}, ErrInvalidBound},
-		"close -inf end":   {Close{Target: n5, End: temporal.NegativeInfinity(), Scope: scopeAll(t)}, ErrInvalidBound},
-		"close zero scope": {Close{Target: n5, End: temporal.PositiveInfinity()}, ErrInvalidScope},
+		"end zero ref":     {End{Scope: scopeAll(t)}, ErrInvalidID},
+		"end zero scope":   {End{Target: n5}, ErrInvalidScope},
+		"end empty scope":  {End{Target: n5, Scope: scopeEmpty(t)}, ErrInvalidScope},
+		"end unplaced":     {End{Target: n5, Scope: scopeUnplaced(t)}, ErrInvalidScope},
 		"label zero id":    {AddLabel{Label: "L", Scope: scopeAll(t)}, ErrInvalidID},
 		"label empty":      {RemoveLabel{Target: nid(1), Scope: scopeAll(t)}, ErrInvalidOp},
-		"set empty key":    {Set{Target: n5, Scope: scopeAll(t)}, ErrInvalidOp},
+		"set empty key":    {Set{Target: n5, Value: Int(1), Scope: scopeAll(t)}, ErrInvalidOp},
+		"set zero value":   {Set{Target: n5, Key: "k", Scope: scopeAll(t)}, ErrInvalidValue},
+		"correct zero val": {Correct{Target: n5, Set: map[string]Value{"k": {}}, Scope: scopeAll(t)}, ErrInvalidValue},
+		"create zero val":  {CreateNode{Props: map[string]Value{"k": {}}, Scope: scopeAll(t)}, ErrInvalidValue},
+		"claim zero value": {GetOrCreate{Label: "L", Key: "k", Scope: scopeAll(t)}, ErrInvalidValue},
+		"claim null":       {GetOrCreate{Label: "L", Key: "k", Value: Null(), Scope: scopeAll(t)}, ErrInvalidValue},
 		"unset zero ref":   {Unset{Key: "k", Scope: scopeAll(t)}, ErrInvalidID},
 		"retract zero":     {Retract{Scope: scopeAll(t)}, ErrInvalidID},
-		"getorcreate key":  {GetOrCreate{Label: "L", Scope: scopeAll(t)}, ErrInvalidOp},
+		"getorcreate key":  {GetOrCreate{Label: "L", Value: Int(1), Scope: scopeAll(t)}, ErrInvalidOp},
 	}
 	for name, c := range bad {
 		err := c.op.Validate(l)
@@ -222,18 +246,18 @@ func TestOpsValidate(t *testing.T) {
 }
 
 func TestCheckOpRequiresDefaultAxis(t *testing.T) {
-	b := binding(t, types.GraphID{3})
+	c := goodConfig(t)
 	n5, _ := NodeRef(5)
-	if err := CheckOp(b, temporal.Limits{}, Set{Target: n5, Key: "k", Scope: scopeAll(t)}); err != nil {
+	if err := CheckOp(c, Set{Target: n5, Key: "k", Value: Int(1), Scope: scopeAll(t)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := CheckOp(b, temporal.Limits{}, Set{Target: n5, Key: "k", Scope: otherAxisScope(t)}); !errors.Is(err, ErrInvalidScope) {
+	if err := CheckOp(c, Set{Target: n5, Key: "k", Value: Int(1), Scope: otherAxisScope(t)}); !errors.Is(err, ErrInvalidScope) {
 		t.Fatal("axis mismatch", err)
 	}
-	if err := CheckOp(b, temporal.Limits{}, nil); !errors.Is(err, ErrInvalidOp) {
+	if err := CheckOp(c, nil); !errors.Is(err, ErrInvalidOp) {
 		t.Fatal(err)
 	}
-	if err := CheckOp(b, temporal.Limits{}, Set{Target: n5, Key: "k"}); !errors.Is(err, ErrInvalidScope) {
+	if err := CheckOp(c, Set{Target: n5, Key: "k", Value: Int(1)}); !errors.Is(err, ErrInvalidScope) {
 		t.Fatal(err)
 	}
 }
@@ -341,20 +365,40 @@ func TestCursorOpaqueAndRefusesEmpty(t *testing.T) {
 	}
 }
 
+func knowledgeAxis(t testing.TB) temporal.Axis { return bindingOn(t, types.GraphID{3}, 20).Axis() }
+
+func scopeAllK(t testing.TB) temporal.Scope {
+	s, err := temporal.All(knowledgeAxis(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
 func goodSel(t testing.TB) Selector {
-	return Selector{View: ViewDeclared, Valid: scopeAll(t), Known: scopeAll(t)}
+	return Selector{View: ViewDeclared, Valid: scopeAll(t), Known: scopeAllK(t)}
+}
+
+// recAt is a caller instant on the given axis.
+func recAt(t testing.TB, a temporal.Axis, ms int64) temporal.Position {
+	t.Helper()
+	p, err := types.InstantPosition(a, types.Instant(ms), temporal.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 func TestScanRequestValidate(t *testing.T) {
-	ok := ScanRequest{Selector: goodSel(t), Limit: 100, MaxBytes: 1 << 20}
+	ok := ScanRequest{Selector: goodSel(t), Paging: PageLimits{Rows: 100, MaxBytes: 1 << 20}}
 	if err := ok.Validate(temporal.Limits{}); err != nil {
 		t.Fatal(err)
 	}
 	cases := map[string]func(r *ScanRequest){
-		"zero limit":   func(r *ScanRequest) { r.Limit = 0 },
-		"neg limit":    func(r *ScanRequest) { r.Limit = -1 },
-		"over ceiling": func(r *ScanRequest) { r.Limit = MaxPageRows + 1 },
-		"no bytes":     func(r *ScanRequest) { r.MaxBytes = 0 },
+		"zero limit":   func(r *ScanRequest) { r.Paging.Rows = 0 },
+		"neg limit":    func(r *ScanRequest) { r.Paging.Rows = -1 },
+		"over ceiling": func(r *ScanRequest) { r.Paging.Rows = MaxPageRows + 1 },
+		"no bytes":     func(r *ScanRequest) { r.Paging.MaxBytes = 0 },
 		"no view":      func(r *ScanRequest) { r.Selector.View = 0 },
 		"empty prop":   func(r *ScanRequest) { r.Projection.Properties = []string{""} },
 	}
@@ -366,57 +410,64 @@ func TestScanRequestValidate(t *testing.T) {
 		}
 	}
 	r := ok
-	r.Limit = MaxPageRows
+	r.Paging.Rows = MaxPageRows
 	if err := r.Validate(temporal.Limits{}); err != nil {
 		t.Fatal("ceiling itself is allowed", err)
 	}
 }
 
 func TestSnapshotReadsValidateThenNotImplemented(t *testing.T) {
-	var s Snapshot
+	s := unbacked(t)
 	ctx := context.Background()
+	pl := PageLimits{Rows: 1, MaxBytes: 1}
 	if _, err := s.Scan(ctx, ScanRequest{}); !errors.Is(err, ErrInvalidRequest) && !errors.Is(err, ErrInvalidSelector) {
 		t.Fatal(err)
 	}
-	if _, err := s.Scan(ctx, ScanRequest{Selector: goodSel(t), Limit: 1, MaxBytes: 1}); !errors.Is(err, ErrNotImplemented) {
+	if _, err := s.Scan(ctx, ScanRequest{Selector: goodSel(t), Paging: pl}); !errors.Is(err, ErrNotImplemented) {
 		t.Fatal(err)
 	}
-	if _, err := s.Resume(ctx, Cursor{}, 10, 1024); !errors.Is(err, ErrInvalidCursor) {
+	if _, err := s.Resume(ctx, Cursor{}, PageLimits{Rows: 10, MaxBytes: 1024}); !errors.Is(err, ErrInvalidCursor) {
 		t.Fatal("zero cursor", err)
 	}
 	c, _ := ParseCursor([]byte("x"))
-	if _, err := s.Resume(ctx, c, 0, 1024); !errors.Is(err, ErrInvalidRequest) {
+	if _, err := s.Resume(ctx, c, PageLimits{Rows: 0, MaxBytes: 1024}); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatal("zero limit", err)
 	}
-	if _, err := s.Resume(ctx, c, 10, 1024); !errors.Is(err, ErrNotImplemented) {
+	if _, err := s.Resume(ctx, c, PageLimits{Rows: 10}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatal("no byte limit", err)
+	}
+	if _, err := s.Resume(ctx, c, PageLimits{Rows: 10, MaxBytes: 1024}); !errors.Is(err, ErrNotImplemented) {
 		t.Fatal(err)
 	}
 	var nilS *Snapshot
-	if _, err := nilS.Scan(ctx, ScanRequest{Selector: goodSel(t), Limit: 1, MaxBytes: 1}); !errors.Is(err, ErrClosed) {
+	if _, err := nilS.Scan(ctx, ScanRequest{Selector: goodSel(t), Paging: pl}); !errors.Is(err, ErrClosed) {
 		t.Fatal(err)
 	}
 }
 
 func TestLookupRequestValidate(t *testing.T) {
 	s := goodSel(t)
-	ok := LookupRequest{Selector: s, Nodes: []types.NodeID{1, 2}}
+	pl := PageLimits{Rows: 10, MaxBytes: 1 << 10}
+	ok := LookupRequest{Selector: s, Nodes: []types.NodeID{1, 2}, Paging: pl}
 	if err := ok.Validate(temporal.Limits{}); err != nil {
 		t.Fatal(err)
 	}
 	cases := map[string]LookupRequest{
-		"none":      {Selector: s},
-		"zero node": {Selector: s, Nodes: []types.NodeID{1, 0}},
-		"zero rel":  {Selector: s, Rels: []types.RelID{0}},
-		"too many":  {Selector: s, Nodes: make([]types.NodeID, MaxLookupIDs+1)},
-		"no view":   {Selector: Selector{Valid: scopeAll(t), Known: scopeAll(t)}, Nodes: []types.NodeID{1}},
+		"none":       {Selector: s, Paging: pl},
+		"zero node":  {Selector: s, Nodes: []types.NodeID{1, 0}, Paging: pl},
+		"zero rel":   {Selector: s, Rels: []types.RelID{0}, Paging: pl},
+		"no view":    {Selector: Selector{Valid: scopeAll(t), Known: scopeAllK(t)}, Nodes: []types.NodeID{1}, Paging: pl},
+		"no bytes":   {Selector: s, Nodes: []types.NodeID{1}, Paging: PageLimits{Rows: 10}},
+		"zero rows":  {Selector: s, Nodes: []types.NodeID{1}, Paging: PageLimits{MaxBytes: 1}},
+		"rows>limit": {Selector: s, Nodes: []types.NodeID{1}, Paging: PageLimits{Rows: MaxPageRows + 1, MaxBytes: 1}},
 	}
 	for name, r := range cases {
 		if err := r.Validate(temporal.Limits{}); err == nil {
 			t.Errorf("%s accepted", name)
 		}
 	}
-	var snap Snapshot
-	if _, err := snap.Lookup(context.Background(), LookupRequest{Selector: s, Nodes: []types.NodeID{0}}); !errors.Is(err, ErrInvalidID) {
+	snap := unbacked(t)
+	if _, err := snap.Lookup(context.Background(), LookupRequest{Selector: s, Nodes: []types.NodeID{0}, Paging: pl}); !errors.Is(err, ErrInvalidID) {
 		t.Fatal(err)
 	}
 	if _, err := snap.Lookup(context.Background(), ok); !errors.Is(err, ErrNotImplemented) {
@@ -424,19 +475,30 @@ func TestLookupRequestValidate(t *testing.T) {
 	}
 }
 
-func TestTimelineValidate(t *testing.T) {
-	var snap Snapshot
+func TestTimelineIsBoundedLikeEveryReadDoor(t *testing.T) {
+	snap := unbacked(t)
 	ctx := context.Background()
-	if _, err := snap.Timeline(ctx, Ref{}, goodSel(t)); !errors.Is(err, ErrInvalidID) {
-		t.Fatal(err)
-	}
 	n, _ := NodeRef(1)
+	pl := PageLimits{Rows: 10, MaxBytes: 1 << 10}
+	good := TimelineRequest{Ref: n, Selector: goodSel(t), Paging: pl}
 	bad := goodSel(t)
 	bad.View = 0
-	if _, err := snap.Timeline(ctx, n, bad); !errors.Is(err, ErrInvalidSelector) {
-		t.Fatal(err)
+	cases := map[string]struct {
+		r    TimelineRequest
+		want error
+	}{
+		"zero ref": {TimelineRequest{Selector: goodSel(t), Paging: pl}, ErrInvalidID},
+		"no view":  {TimelineRequest{Ref: n, Selector: bad, Paging: pl}, ErrInvalidSelector},
+		"no bytes": {TimelineRequest{Ref: n, Selector: goodSel(t), Paging: PageLimits{Rows: 10}}, ErrInvalidRequest},
+		"no rows":  {TimelineRequest{Ref: n, Selector: goodSel(t), Paging: PageLimits{MaxBytes: 1}}, ErrInvalidRequest},
+		"too many": {TimelineRequest{Ref: n, Selector: goodSel(t), Paging: PageLimits{Rows: MaxPageRows + 1, MaxBytes: 1}}, ErrInvalidRequest},
 	}
-	if _, err := snap.Timeline(ctx, n, goodSel(t)); !errors.Is(err, ErrNotImplemented) {
+	for name, c := range cases {
+		if _, err := snap.Timeline(ctx, c.r); !errors.Is(err, c.want) {
+			t.Errorf("%s: got %v want %v", name, err, c.want)
+		}
+	}
+	if _, err := snap.Timeline(ctx, good); !errors.Is(err, ErrNotImplemented) {
 		t.Fatal(err)
 	}
 }

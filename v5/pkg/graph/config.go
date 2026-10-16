@@ -32,6 +32,13 @@ type Config struct {
 	GraphID types.GraphID
 	// DefaultAxis binds this graph's default valid-time axis.
 	DefaultAxis types.DefaultAxisBinding
+	// KnowledgeAxis binds the axis of caller-recorded instants (Op.Recorded) and
+	// of the Known scope of a Selector (millisecond instants; the v4 TxFrom/TxPin
+	// values live on it in the compat layer). It is required and must be a
+	// different axis than DefaultAxis, so a valid-time scope can never be passed
+	// where knowledge is meant. Known filters by recorded evidence; the snapshot's
+	// cut bounds what exists at all.
+	KnowledgeAxis types.DefaultAxisBinding
 	// Durability is required.
 	Durability Durability
 	// Limits bounds temporal values; the zero value means temporal defaults.
@@ -59,6 +66,12 @@ func (c Config) Validate() error {
 	if err := c.DefaultAxis.Check(c.GraphID, c.DefaultAxis.Axis(), c.Limits); err != nil {
 		return fmt.Errorf("%w: default axis: %v", ErrInvalidConfig, err)
 	}
+	if err := c.KnowledgeAxis.Check(c.GraphID, c.KnowledgeAxis.Axis(), c.Limits); err != nil {
+		return fmt.Errorf("%w: knowledge axis: %v", ErrInvalidConfig, err)
+	}
+	if sameAxis(c.KnowledgeAxis.Axis(), c.DefaultAxis.Axis()) {
+		return bad("KnowledgeAxis must differ from DefaultAxis")
+	}
 	switch c.Durability {
 	case DurabilityBuffered:
 	case DurabilityCommit:
@@ -79,8 +92,8 @@ type engine interface {
 	close() error
 }
 
-// Graph is an open graph. The zero value has no engine and every door returns
-// ErrNotImplemented after validating its arguments; a nil *Graph is ErrClosed.
+// Graph is an open graph. Until an engine exists every door validates its
+// arguments and then returns ErrNotImplemented; a nil *Graph is ErrClosed.
 type Graph struct {
 	cfg Config
 	eng engine
@@ -147,5 +160,5 @@ func (g *Graph) OpenSnapshot(ctx context.Context, spec SnapshotSpec) (*Snapshot,
 	if err != nil {
 		return nil, err
 	}
-	return &Snapshot{eng: se}, nil
+	return &Snapshot{eng: se, cfg: g.cfg}, nil
 }

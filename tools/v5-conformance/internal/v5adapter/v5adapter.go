@@ -37,7 +37,11 @@ func Config(t testing.TB, o conformance.Options) (graph.Config, error) {
 	if err != nil {
 		return graph.Config{}, err
 	}
-	c := graph.Config{GraphID: gid, DefaultAxis: b, Durability: graph.DurabilityCommit}
+	k, err := types.NewDefaultAxisBinding(gid, temporal.AxisID{2}, temporal.Limits{})
+	if err != nil {
+		return graph.Config{}, err
+	}
+	c := graph.Config{GraphID: gid, DefaultAxis: b, KnowledgeAxis: k, Durability: graph.DurabilityCommit}
 	if o.Dir == "" {
 		c.Memory, c.Durability = true, graph.DurabilityBuffered
 	} else {
