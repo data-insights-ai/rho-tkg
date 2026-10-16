@@ -6,12 +6,12 @@ import (
 
 func init() {
 	register("OpenWrite",
-		testCase{"PersistsHistoryAcrossReopen", openPersistsHistory},
-		testCase{"InvalidWritesLeaveNothing", openInvalidWrites},
-		testCase{"CallerInstantRules", openCallerInstantRules},
-		testCase{"BackfillOffRefusesCallerInstants", openBackfillOff},
-		testCase{"ClosedGraphRefusesEveryDoor", openClosedGraph},
-		testCase{"DeleteEndsLifeButKeepsHistory", openDeleteKeepsHistory},
+		compat("PersistsHistoryAcrossReopen", openPersistsHistory),
+		both("InvalidWritesLeaveNothing", openInvalidWrites),
+		compat("CallerInstantRules", openCallerInstantRules),
+		compat("BackfillOffRefusesCallerInstants", openBackfillOff),
+		both("ClosedGraphRefusesEveryDoor", openClosedGraph),
+		compat("DeleteEndsLifeButKeepsHistory", openDeleteKeepsHistory),
 	)
 }
 
@@ -19,7 +19,7 @@ func init() {
 // historical cuts and the write-order guard; nothing may be lost or reordered.
 func openPersistsHistory(t *testing.T, a Adapter) {
 	g, _ := openDir(t, a)
-	n := addNode(t, g, NodeSpec{Labels: []string{"P", "Q"}, Props: map[string]any{"v": 1}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"P", "Q"}, Props: map[string]any{"v": 1}, TxFrom: ts(1000)})
 	_, err := g.UpdateNode(ctx, n.ID, map[string]any{"v": 2}, 2000)
 	ok(t, err)
 	_, err = g.UpdateNode(ctx, n.ID, map[string]any{"v": 3}, 3000)
@@ -57,7 +57,7 @@ func mustGet(t *testing.T, g Graph, id int64) Node {
 // openInvalidWrites: every refused write names its class and writes nothing.
 func openInvalidWrites(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	base := addNode(t, g, NodeSpec{Labels: []string{"Base"}, Props: map[string]any{"v": 1}, TxFrom: 1000})
+	base := addNode(t, g, NodeSpec{Labels: []string{"Base"}, Props: map[string]any{"v": 1}, TxFrom: ts(1000)})
 	check := historyUnchanged(t, g, base.ID)
 
 	bad := []struct {
@@ -103,7 +103,7 @@ func openInvalidWrites(t *testing.T, a Adapter) {
 	}
 
 	// Relationship refusals: unknown endpoint, self loop, empty type.
-	other := addNode(t, g, NodeSpec{Labels: []string{"Base"}, TxFrom: 1000})
+	other := addNode(t, g, NodeSpec{Labels: []string{"Base"}, TxFrom: ts(1000)})
 	_, err = g.AddRel(ctx, RelSpec{Type: "R", From: base.ID, To: 99999})
 	is(t, "rel to unknown endpoint", err, ErrNotFound)
 	_, err = g.AddRel(ctx, RelSpec{Type: "R", From: base.ID, To: base.ID})
@@ -124,7 +124,7 @@ func openInvalidWrites(t *testing.T, a Adapter) {
 // are refused with ErrTxOrder and leave the entity as it was.
 func openCallerInstantRules(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, Props: map[string]any{"v": 1}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, Props: map[string]any{"v": 1}, TxFrom: ts(1000)})
 	_, err := g.UpdateNode(ctx, n.ID, map[string]any{"v": 2}, 2000)
 	ok(t, err)
 	check := historyUnchanged(t, g, n.ID)
@@ -146,7 +146,7 @@ func openCallerInstantRules(t *testing.T, a Adapter) {
 	}
 	_, err = g.AddNode(ctx, NodeSpec{Labels: []string{"Late"}, TxFrom: -1})
 	is(t, "AddNode negative caller instant", err, ErrTxOrder)
-	_, err = g.AddNode(ctx, NodeSpec{Labels: []string{"Late"}, TxFrom: 1 << 60})
+	_, err = g.AddNode(ctx, NodeSpec{Labels: []string{"Late"}, TxFrom: ts(1) << 60})
 	is(t, "AddNode future caller instant", err, ErrTxOrder)
 	late, err := g.NodesByLabel("Late", Query{})
 	ok(t, err)
@@ -160,7 +160,7 @@ func openCallerInstantRules(t *testing.T, a Adapter) {
 func openBackfillOff(t *testing.T, a Adapter) {
 	g := open(t, a, false)
 	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, Props: map[string]any{"v": 1}})
-	_, err := g.AddNode(ctx, NodeSpec{Labels: []string{"P"}, TxFrom: 1000})
+	_, err := g.AddNode(ctx, NodeSpec{Labels: []string{"P"}, TxFrom: ts(1000)})
 	is(t, "AddNode with caller instant", err, ErrTxOrder)
 	_, err = g.UpdateNode(ctx, n.ID, map[string]any{"v": 2}, 1000)
 	is(t, "UpdateNode with caller instant", err, ErrTxOrder)
@@ -178,7 +178,7 @@ func openBackfillOff(t *testing.T, a Adapter) {
 // with ErrClosed; a second Close does not panic.
 func openClosedGraph(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, TxFrom: ts(1000)})
 	ok(t, g.Close())
 	_, err := g.AddNode(ctx, NodeSpec{Labels: []string{"P"}})
 	is(t, "AddNode", err, ErrClosed)
@@ -198,7 +198,7 @@ func openClosedGraph(t *testing.T, a Adapter) {
 // still answer, later pins and the current door do not.
 func openDeleteKeepsHistory(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, Props: map[string]any{"v": 1}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, Props: map[string]any{"v": 1}, TxFrom: ts(1000)})
 	_, err := g.UpdateNode(ctx, n.ID, map[string]any{"v": 2}, 2000)
 	ok(t, err)
 	ok(t, g.DeleteNode(ctx, n.ID, 4000))

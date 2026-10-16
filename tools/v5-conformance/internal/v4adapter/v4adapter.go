@@ -553,3 +553,8 @@ func (w *wrap) RetractRel(ctx context.Context, id int64, txTo int64) error {
 	}
 	return mapErr(w.g.Rels().Retract(ctx, types.RelID(id)))
 }
+
+// Profiles: the v4 engine serves both the native and the compat semantics.
+func (Adapter) Profiles() []conformance.Profile {
+	return []conformance.Profile{conformance.Native, conformance.Compat}
+}

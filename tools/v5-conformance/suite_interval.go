@@ -6,14 +6,14 @@ import (
 
 func init() {
 	register("VersionInterval",
-		testCase{"NodeCorrectionKeepsEarlierPins", ivNodeCorrection},
-		testCase{"NodeCorrectionWithPlainDoor", ivNodePlain},
-		testCase{"NodeRefusalsWriteNothing", ivNodeRefusals},
-		testCase{"NodeOpenEndedCorrection", ivNodeOpenEnded},
-		testCase{"RelCorrectionKeepsEarlierPins", ivRelCorrection},
-		testCase{"RelRefusalsWriteNothing", ivRelRefusals},
-		testCase{"CloseNodeVersion", ivCloseNode},
-		testCase{"CloseRelVersion", ivCloseRel},
+		compat("NodeCorrectionKeepsEarlierPins", ivNodeCorrection),
+		compat("NodeCorrectionWithPlainDoor", ivNodePlain),
+		compat("NodeRefusalsWriteNothing", ivNodeRefusals),
+		compat("NodeOpenEndedCorrection", ivNodeOpenEnded),
+		compat("RelCorrectionKeepsEarlierPins", ivRelCorrection),
+		compat("RelRefusalsWriteNothing", ivRelRefusals),
+		compat("CloseNodeVersion", ivCloseNode),
+		compat("CloseRelVersion", ivCloseRel),
 	)
 }
 
@@ -40,7 +40,7 @@ func wantAtTx(t *testing.T, g Graph, id int64, valid, tx int64, k string, want a
 // new one owns [150,300) and the old keeps [100,150).
 func ivNodeCorrection(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"Q"}, Props: map[string]any{"k": "old"}, Valid: Interval{From: 100, To: 200}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"Q"}, Props: map[string]any{"k": "old"}, Valid: Interval{From: 100, To: 200}, TxFrom: ts(1000)})
 	got, err := g.SetNodeVersionInterval(ctx, n.ID, 150, 300, map[string]any{"k": "new"}, 2000)
 	ok(t, err)
 	if got.ValidFrom != 150 || got.ValidTo != 300 || got.TxFrom != 2000 {
@@ -97,7 +97,7 @@ func ivNodePlain(t *testing.T, a Adapter) {
 
 func ivNodeRefusals(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"Q"}, Props: map[string]any{"k": "old"}, Valid: Interval{From: 100, To: 200}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"Q"}, Props: map[string]any{"k": "old"}, Valid: Interval{From: 100, To: 200}, TxFrom: ts(1000)})
 	_, err := g.SetNodeVersionInterval(ctx, n.ID, 150, 300, map[string]any{"k": "new"}, 2000)
 	ok(t, err)
 	check := historyUnchanged(t, g, n.ID)
@@ -164,7 +164,7 @@ func equalAny(a, b []any) bool {
 // ivNodeOpenEnded: validTo == 0 means open-ended.
 func ivNodeOpenEnded(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"Q"}, Props: map[string]any{"k": "a"}, Valid: Interval{From: 100, To: 200}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"Q"}, Props: map[string]any{"k": "a"}, Valid: Interval{From: 100, To: 200}, TxFrom: ts(1000)})
 	got, err := g.SetNodeVersionInterval(ctx, n.ID, 400, 0, map[string]any{"k": "open"}, 3000)
 	ok(t, err)
 	if got.ValidFrom != 400 || got.ValidTo != 0 {
@@ -178,9 +178,9 @@ func ivNodeOpenEnded(t *testing.T, a Adapter) {
 
 func ivRelCorrection(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 500})
-	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 500})
-	r := addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Props: map[string]any{"w": 1}, Valid: Interval{From: 10, To: 50}, TxFrom: 6000})
+	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(500)})
+	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(500)})
+	r := addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Props: map[string]any{"w": 1}, Valid: Interval{From: 10, To: 50}, TxFrom: ts(6000)})
 	got, err := g.SetRelVersionInterval(ctx, r.ID, 20, 80, map[string]any{"w": 2}, 7000)
 	ok(t, err)
 	if got.ValidFrom != 20 || got.ValidTo != 80 || got.TxFrom != 7000 || got.From != x.ID || got.To != y.ID {
@@ -210,9 +210,9 @@ func ivRelCorrection(t *testing.T, a Adapter) {
 
 func ivRelRefusals(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 500})
-	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 500})
-	r := addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Props: map[string]any{"w": 1}, Valid: Interval{From: 10, To: 50}, TxFrom: 6000})
+	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(500)})
+	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(500)})
+	r := addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Props: map[string]any{"w": 1}, Valid: Interval{From: 10, To: 50}, TxFrom: ts(6000)})
 	before, err := g.RelHistory(r.ID)
 	ok(t, err)
 	for _, c := range []struct {
@@ -254,7 +254,7 @@ func ivRelRefusals(t *testing.T, a Adapter) {
 // it, reads at or after t do not, and the pin from before the close still sees it open.
 func ivCloseNode(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"Q"}, Props: map[string]any{"k": "v"}, Valid: Interval{From: 400}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"Q"}, Props: map[string]any{"k": "v"}, Valid: Interval{From: 400}, TxFrom: ts(1000)})
 	before, err := g.CommittedTx()
 	ok(t, err)
 
@@ -294,9 +294,9 @@ func ivCloseNode(t *testing.T, a Adapter) {
 
 func ivCloseRel(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 500})
-	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 500})
-	r := addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Props: map[string]any{"w": 1}, Valid: Interval{From: 100}, TxFrom: 1000})
+	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(500)})
+	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(500)})
+	r := addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Props: map[string]any{"w": 1}, Valid: Interval{From: 100}, TxFrom: ts(1000)})
 	before, err := g.CommittedTx()
 	ok(t, err)
 	is(t, "close at the start", g.CloseRelVersion(ctx, r.ID, 100), ErrInvalidTimeRange)

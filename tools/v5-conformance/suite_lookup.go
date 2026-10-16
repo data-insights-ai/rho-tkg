@@ -8,19 +8,19 @@ import (
 
 func init() {
 	register("Lookup",
-		testCase{"GetCurrentAndRefusals", lookupGet},
-		testCase{"ByLabelKeysetPagesAreExact", lookupLabelPages},
-		testCase{"ByLabelBeforeAndAfterMutationByPin", lookupLabelPins},
-		testCase{"ByLabelValidTimeSelectors", lookupLabelValidTime},
-		testCase{"ByLabelRefusals", lookupLabelRefusals},
-		testCase{"ByLabelAndPropertyIsTypeStrictAndHistorical", lookupProperty},
-		testCase{"ByLabelAndPropertyBitemporal", lookupPropertyBitemporal},
+		compat("GetCurrentAndRefusals", lookupGet),
+		both("ByLabelKeysetPagesAreExact", lookupLabelPages),
+		both("ByLabelBeforeAndAfterMutationByPin", lookupLabelPins),
+		both("ByLabelValidTimeSelectors", lookupLabelValidTime),
+		both("ByLabelRefusals", lookupLabelRefusals),
+		both("ByLabelAndPropertyIsTypeStrictAndHistorical", lookupProperty),
+		compat("ByLabelAndPropertyBitemporal", lookupPropertyBitemporal),
 	)
 }
 
 func lookupGet(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"P", "Q"}, Props: map[string]any{"s": "text", "i": 7, "b": true}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"P", "Q"}, Props: map[string]any{"s": "text", "i": 7, "b": true}, TxFrom: ts(1000)})
 	got := mustGet(t, g, n.ID)
 	wantProps(t, "Get", got.Props, map[string]any{"s": "text", "i": 7, "b": true})
 	if got.ID != n.ID || got.Version != 0 || got.TxFrom != 1000 || got.TxTo != 0 {
@@ -48,7 +48,7 @@ func lookupLabelPages(t *testing.T, a Adapter) {
 		if i%2 == 0 {
 			labels = append(labels, "M")
 		}
-		all = append(all, addNode(t, g, NodeSpec{Labels: labels, Props: map[string]any{"i": i}, TxFrom: 1000 + int64(i)}))
+		all = append(all, addNode(t, g, NodeSpec{Labels: labels, Props: map[string]any{"i": i}, TxFrom: ts(1000 + int64(i))}))
 	}
 	want := ids(all)
 
@@ -114,8 +114,8 @@ func lookupLabelPages(t *testing.T, a Adapter) {
 // the present; the sets must differ exactly by the mutations.
 func lookupLabelPins(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	x := addNode(t, g, NodeSpec{Labels: []string{"L"}, Props: map[string]any{"v": "x0"}, TxFrom: 1000})
-	y := addNode(t, g, NodeSpec{Labels: []string{"L"}, Props: map[string]any{"v": "y0"}, TxFrom: 1000})
+	x := addNode(t, g, NodeSpec{Labels: []string{"L"}, Props: map[string]any{"v": "x0"}, TxFrom: ts(1000)})
+	y := addNode(t, g, NodeSpec{Labels: []string{"L"}, Props: map[string]any{"v": "y0"}, TxFrom: ts(1000)})
 	pin, err := g.CommittedTx()
 	ok(t, err)
 
@@ -146,10 +146,10 @@ func lookupLabelPins(t *testing.T, a Adapter) {
 
 func lookupLabelValidTime(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n1 := addNode(t, g, NodeSpec{Labels: []string{"V"}, Valid: Interval{From: 100, To: 200}, TxFrom: 1000})
-	n2 := addNode(t, g, NodeSpec{Labels: []string{"V"}, Valid: Interval{From: 150, To: 300}, TxFrom: 1000})
-	n3 := addNode(t, g, NodeSpec{Labels: []string{"V"}, Valid: Interval{From: 250, To: 400}, TxFrom: 1000})
-	n4 := addNode(t, g, NodeSpec{Labels: []string{"V"}, Valid: Interval{From: 500}, TxFrom: 1000})
+	n1 := addNode(t, g, NodeSpec{Labels: []string{"V"}, Valid: Interval{From: 100, To: 200}, TxFrom: ts(1000)})
+	n2 := addNode(t, g, NodeSpec{Labels: []string{"V"}, Valid: Interval{From: 150, To: 300}, TxFrom: ts(1000)})
+	n3 := addNode(t, g, NodeSpec{Labels: []string{"V"}, Valid: Interval{From: 250, To: 400}, TxFrom: ts(1000)})
+	n4 := addNode(t, g, NodeSpec{Labels: []string{"V"}, Valid: Interval{From: 500}, TxFrom: ts(1000)})
 	for _, c := range []struct {
 		name string
 		q    Query
@@ -176,7 +176,7 @@ func lookupLabelValidTime(t *testing.T, a Adapter) {
 
 func lookupLabelRefusals(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	addNode(t, g, NodeSpec{Labels: []string{"L"}, TxFrom: 1000})
+	addNode(t, g, NodeSpec{Labels: []string{"L"}, TxFrom: ts(1000)})
 	_, err := g.NodesByLabel("L", Query{Limit: -1})
 	is(t, "negative limit", err, ErrInvalidArgument)
 	_, err = g.NodesByLabel("L", Query{TxPin: 5, ValidAt: 5})
@@ -187,10 +187,10 @@ func lookupLabelRefusals(t *testing.T, a Adapter) {
 
 func lookupProperty(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	one := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"v": 1}, TxFrom: 1000})
-	str := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"v": "1"}, TxFrom: 1000})
-	two := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"v": 2}, TxFrom: 1000})
-	noKey := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"w": 1}, TxFrom: 1000})
+	one := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"v": 1}, TxFrom: ts(1000)})
+	str := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"v": "1"}, TxFrom: ts(1000)})
+	two := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"v": 2}, TxFrom: ts(1000)})
+	noKey := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"w": 1}, TxFrom: ts(1000)})
 	_ = noKey
 	pin, err := g.CommittedTx()
 	ok(t, err)
@@ -229,7 +229,7 @@ func lookupProperty(t *testing.T, a Adapter) {
 // instants with and without a transaction pin, after a correction.
 func lookupPropertyBitemporal(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"B"}, Props: map[string]any{"s": "a"}, Valid: Interval{From: 100, To: 200}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"B"}, Props: map[string]any{"s": "a"}, Valid: Interval{From: 100, To: 200}, TxFrom: ts(1000)})
 	_, err := g.SetNodeVersionInterval(ctx, n.ID, 150, 300, map[string]any{"s": "b"}, 2000)
 	ok(t, err)
 

@@ -8,12 +8,12 @@ import (
 
 func init() {
 	register("WithTxTwins",
-		testCase{"GraphTxTwinsApplyAtCallerInstants", twinTxApply},
-		testCase{"GraphTxFailedStepRollsBackEarlierTwins", twinTxRollback},
-		testCase{"GraphTxRefusalsWriteNothingAndKeepTheTxOpen", twinTxRefusals},
-		testCase{"BatchTwinsApplyTogether", twinBatchApply},
-		testCase{"BatchRefusalsWriteNothing", twinBatchRefusals},
-		testCase{"BatchCallbackErrorAndNilCallback", twinBatchCallback},
+		compat("GraphTxTwinsApplyAtCallerInstants", twinTxApply),
+		compat("GraphTxFailedStepRollsBackEarlierTwins", twinTxRollback),
+		compat("GraphTxRefusalsWriteNothingAndKeepTheTxOpen", twinTxRefusals),
+		compat("BatchTwinsApplyTogether", twinBatchApply),
+		compat("BatchRefusalsWriteNothing", twinBatchRefusals),
+		both("BatchCallbackErrorAndNilCallback", twinBatchCallback),
 	)
 }
 
@@ -27,12 +27,12 @@ type twinFixture struct {
 func newTwinFixture(t *testing.T, a Adapter) *twinFixture {
 	g := open(t, a, true)
 	f := &twinFixture{g: g}
-	f.n = addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100}, TxFrom: 1000})
-	f.m = addNode(t, g, NodeSpec{Labels: []string{"M"}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100, To: 300}, TxFrom: 1000})
-	f.k = addNode(t, g, NodeSpec{Labels: []string{"K"}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100, To: 300}, TxFrom: 1000})
-	f.a = addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 1000})
-	f.b = addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 1000})
-	f.rel = addRel(t, g, RelSpec{Type: "R", From: f.a.ID, To: f.b.ID, Props: map[string]any{"w": 1}, Valid: Interval{From: 100}, TxFrom: 1000})
+	f.n = addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100}, TxFrom: ts(1000)})
+	f.m = addNode(t, g, NodeSpec{Labels: []string{"M"}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100, To: 300}, TxFrom: ts(1000)})
+	f.k = addNode(t, g, NodeSpec{Labels: []string{"K"}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100, To: 300}, TxFrom: ts(1000)})
+	f.a = addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(1000)})
+	f.b = addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(1000)})
+	f.rel = addRel(t, g, RelSpec{Type: "R", From: f.a.ID, To: f.b.ID, Props: map[string]any{"w": 1}, Valid: Interval{From: 100}, TxFrom: ts(1000)})
 	return f
 }
 

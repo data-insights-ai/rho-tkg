@@ -6,18 +6,18 @@ import (
 
 func init() {
 	register("Retract",
-		testCase{"NodeRetractionRemovesTheBeliefFromTheRetractionPinOn", retractNode},
-		testCase{"RetractionIsNotAValidityEnd", retractVersusDelete},
-		testCase{"RefusalsWriteNothing", retractRefusals},
-		testCase{"PlainDoorAdvancesTheClock", retractPlain},
-		testCase{"RelRetractionLeavesTheEffectiveWalkAtLaterPins", retractRel},
+		compat("NodeRetractionRemovesTheBeliefFromTheRetractionPinOn", retractNode),
+		compat("RetractionIsNotAValidityEnd", retractVersusDelete),
+		compat("RefusalsWriteNothing", retractRefusals),
+		both("PlainDoorAdvancesTheClock", retractPlain),
+		compat("RelRetractionLeavesTheEffectiveWalkAtLaterPins", retractRel),
 	)
 }
 
 // retractNode: v1 recorded at 1000, v2 at 2000, retracted at 3000.
 func retractNode(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	x := addNode(t, g, NodeSpec{Labels: []string{"R"}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100}, TxFrom: 1000})
+	x := addNode(t, g, NodeSpec{Labels: []string{"R"}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100}, TxFrom: ts(1000)})
 	_, err := g.UpdateNode(ctx, x.ID, map[string]any{"v": 2}, 2000)
 	ok(t, err)
 	ok(t, g.RetractNode(ctx, x.ID, 3000))
@@ -64,7 +64,7 @@ func retractNode(t *testing.T, a Adapter) {
 func retractVersusDelete(t *testing.T, a Adapter) {
 	g := open(t, a, true)
 	mk := func(label string) Node {
-		n := addNode(t, g, NodeSpec{Labels: []string{label}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100}, TxFrom: 1000})
+		n := addNode(t, g, NodeSpec{Labels: []string{label}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100}, TxFrom: ts(1000)})
 		_, err := g.UpdateNode(ctx, n.ID, map[string]any{"v": 2}, 2000)
 		ok(t, err)
 		return n
@@ -85,7 +85,7 @@ func retractVersusDelete(t *testing.T, a Adapter) {
 
 func retractRefusals(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	y := addNode(t, g, NodeSpec{Labels: []string{"R"}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100}, TxFrom: 1000})
+	y := addNode(t, g, NodeSpec{Labels: []string{"R"}, Props: map[string]any{"v": 1}, Valid: Interval{From: 100}, TxFrom: ts(1000)})
 	check := historyUnchanged(t, g, y.ID)
 	for _, c := range []struct {
 		name string
@@ -102,7 +102,7 @@ func retractRefusals(t *testing.T, a Adapter) {
 	check()
 	wantNodeAsOf(t, g, y.ID, 5000, map[string]any{"v": 1}, 0)
 
-	d := addNode(t, g, NodeSpec{Labels: []string{"R"}, TxFrom: 1000})
+	d := addNode(t, g, NodeSpec{Labels: []string{"R"}, TxFrom: ts(1000)})
 	ok(t, g.DeleteNode(ctx, d.ID, 2000))
 	isAny(t, "retract a deleted node", g.RetractNode(ctx, d.ID, 3000), ErrEntityDeleted, ErrNotFound)
 
@@ -140,10 +140,10 @@ func retractPlain(t *testing.T, a Adapter) {
 
 func retractRel(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 500})
-	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 500})
+	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(500)})
+	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(500)})
 	mk := func(est string) Rel {
-		return addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Valid: Interval{From: 100}, TxFrom: 1500, Props: map[string]any{"est": est}})
+		return addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Valid: Interval{From: 100}, TxFrom: ts(1500), Props: map[string]any{"est": est}})
 	}
 	retracted, deleted := mk("e1"), mk("e1")
 	ok(t, g.RetractRel(ctx, retracted.ID, 2500))

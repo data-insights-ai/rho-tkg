@@ -6,13 +6,13 @@ import (
 
 func init() {
 	register("RelsEffectivePage",
-		testCase{"KeysetWalkEqualsTheFilteredSet", pageWalk},
-		testCase{"FullLastPageAndEmptyTail", pageExactMultiple},
-		testCase{"PinsSeePastValuesAndDeletes", pagePins},
-		testCase{"ValidTimeSelectors", pageValidTime},
-		testCase{"RefusalsReturnNoRows", pageRefusals},
-		testCase{"CursorIsStableUnderLaterWrites", pageStable},
-		testCase{"SegmentsEqualPerRelationshipReads", pagePerRel},
+		compat("KeysetWalkEqualsTheFilteredSet", pageWalk),
+		compat("FullLastPageAndEmptyTail", pageExactMultiple),
+		compat("PinsSeePastValuesAndDeletes", pagePins),
+		compat("ValidTimeSelectors", pageValidTime),
+		compat("RefusalsReturnNoRows", pageRefusals),
+		compat("CursorIsStableUnderLaterWrites", pageStable),
+		compat("SegmentsEqualPerRelationshipReads", pagePerRel),
 	)
 }
 
@@ -25,8 +25,8 @@ type pageFixture struct {
 
 func newPageFixture(t *testing.T, a Adapter, n int, estates []string, open bool) *pageFixture {
 	g := openMem(t, a)
-	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 1000})
-	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 1000})
+	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(1000)})
+	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(1000)})
 	f := &pageFixture{g: g}
 	for i := 0; i < n; i++ {
 		v := Interval{From: 100, To: 200}
@@ -34,7 +34,7 @@ func newPageFixture(t *testing.T, a Adapter, n int, estates []string, open bool)
 			v = Interval{From: 100}
 		}
 		f.rels = append(f.rels, addRel(t, g, RelSpec{
-			Type: "R", From: x.ID, To: y.ID, Valid: v, TxFrom: 2000 + int64(i)*10,
+			Type: "R", From: x.ID, To: y.ID, Valid: v, TxFrom: ts(2000 + int64(i)*10),
 			Props: map[string]any{"est": estates[i%len(estates)], "idx": i},
 		}))
 	}
@@ -288,9 +288,9 @@ func pageStable(t *testing.T, a Adapter) {
 		t.Fatalf("cursor = %d, want %d", next, f.rels[2].ID)
 	}
 
-	x := addNode(t, f.g, NodeSpec{Labels: []string{"A"}, TxFrom: 3500})
-	y := addNode(t, f.g, NodeSpec{Labels: []string{"A"}, TxFrom: 3500})
-	extra := addRel(t, f.g, RelSpec{Type: "R", From: x.ID, To: y.ID, Valid: Interval{From: 100}, TxFrom: 4000, Props: map[string]any{"est": "e1"}})
+	x := addNode(t, f.g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(3500)})
+	y := addNode(t, f.g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(3500)})
+	extra := addRel(t, f.g, RelSpec{Type: "R", From: x.ID, To: y.ID, Valid: Interval{From: 100}, TxFrom: ts(4000), Props: map[string]any{"est": "e1"}})
 	_, err = f.g.UpdateRel(ctx, f.rels[4].ID, map[string]any{"est": "e2"}, 4500)
 	ok(t, err)
 	ok(t, f.g.DeleteRel(ctx, f.rels[3].ID, 5000))

@@ -8,12 +8,12 @@ import (
 
 func init() {
 	register("Tx",
-		testCase{"CommitMakesEverythingVisible", txCommit},
-		testCase{"ErrorRollsBackEveryWrite", txRollback},
-		testCase{"FailedStepRollsBackEarlierSteps", txFailedStep},
-		testCase{"PanicRollsBackAndRepanics", txPanic},
-		testCase{"InvalidCallbackAndCancelledContext", txInvalid},
-		testCase{"CommittedUpdateIsOneVersion", txOneVersion},
+		both("CommitMakesEverythingVisible", txCommit),
+		both("ErrorRollsBackEveryWrite", txRollback),
+		both("FailedStepRollsBackEarlierSteps", txFailedStep),
+		both("PanicRollsBackAndRepanics", txPanic),
+		both("InvalidCallbackAndCancelledContext", txInvalid),
+		both("CommittedUpdateIsOneVersion", txOneVersion),
 	)
 }
 
@@ -23,7 +23,7 @@ var errBoom = errors.New("boom")
 // become visible together, and the earlier pin still sees the old state.
 func txCommit(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	old := addNode(t, g, NodeSpec{Labels: []string{"Old"}, Props: map[string]any{"v": 1}, TxFrom: 1000})
+	old := addNode(t, g, NodeSpec{Labels: []string{"Old"}, Props: map[string]any{"v": 1}, TxFrom: ts(1000)})
 	pin, err := g.CommittedTx()
 	ok(t, err)
 
@@ -77,8 +77,8 @@ func txCommit(t *testing.T, a Adapter) {
 // and fn's error comes back.
 func txRollback(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	keep := addNode(t, g, NodeSpec{Labels: []string{"Keep"}, Props: map[string]any{"v": 1}, TxFrom: 1000})
-	gone := addNode(t, g, NodeSpec{Labels: []string{"Gone"}, TxFrom: 1000})
+	keep := addNode(t, g, NodeSpec{Labels: []string{"Keep"}, Props: map[string]any{"v": 1}, TxFrom: ts(1000)})
+	gone := addNode(t, g, NodeSpec{Labels: []string{"Gone"}, TxFrom: ts(1000)})
 	check := historyUnchanged(t, g, keep.ID)
 	checkGone := historyUnchanged(t, g, gone.ID)
 
@@ -190,7 +190,7 @@ func txInvalid(t *testing.T, a Adapter) {
 // version and the old one stays addressable by pin.
 func txOneVersion(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, Props: map[string]any{"v": 1}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, Props: map[string]any{"v": 1}, TxFrom: ts(1000)})
 	pin, err := g.CommittedTx()
 	ok(t, err)
 	ok(t, g.Tx(ctx, func(tx Tx) error {
@@ -205,7 +205,7 @@ func txOneVersion(t *testing.T, a Adapter) {
 		t.Fatalf("history has %d superseded versions, want 1: %+v", len(h), h)
 	}
 	cur := mustGet(t, g, n.ID)
-	if cur.Version != 1 {
+	if curProfile == Compat && cur.Version != 1 {
 		t.Fatalf("current version = %d, want 1", cur.Version)
 	}
 	wantNodeAsOf(t, g, n.ID, pin, map[string]any{"v": 1}, 0)

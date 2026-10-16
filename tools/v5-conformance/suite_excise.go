@@ -6,11 +6,11 @@ import (
 
 func init() {
 	register("ExciseValidity",
-		testCase{"NodeHoleIsInvisibleAndHistoricalPinsKeepTheUnsplitVersion", exciseNodeHole},
-		testCase{"HoleCanBeRefilledAndTwoHolesCoexist", exciseRefillAndTwoHoles},
-		testCase{"NodeRefusalsWriteNothing", exciseNodeRefusals},
-		testCase{"PlainDoorUsesTheGraphClock", excisePlain},
-		testCase{"RelHoleSplitsTheEffectiveSegments", exciseRel},
+		compat("NodeHoleIsInvisibleAndHistoricalPinsKeepTheUnsplitVersion", exciseNodeHole),
+		compat("HoleCanBeRefilledAndTwoHolesCoexist", exciseRefillAndTwoHoles),
+		compat("NodeRefusalsWriteNothing", exciseNodeRefusals),
+		both("PlainDoorUsesTheGraphClock", excisePlain),
+		compat("RelHoleSplitsTheEffectiveSegments", exciseRel),
 	)
 }
 
@@ -33,7 +33,7 @@ func voidRows(t *testing.T, g Graph, id int64) []Node {
 
 func exciseNodeHole(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"X"}, Props: map[string]any{"k": "a"}, Valid: Interval{From: 100, To: 300}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"X"}, Props: map[string]any{"k": "a"}, Valid: Interval{From: 100, To: 300}, TxFrom: ts(1000)})
 	ok(t, g.ExciseNodeValidity(ctx, n.ID, 150, 200, 2000))
 
 	for _, c := range []struct {
@@ -81,7 +81,7 @@ func exciseNodeHole(t *testing.T, a Adapter) {
 
 func exciseRefillAndTwoHoles(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"X"}, Props: map[string]any{"k": "a"}, Valid: Interval{From: 100, To: 300}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"X"}, Props: map[string]any{"k": "a"}, Valid: Interval{From: 100, To: 300}, TxFrom: ts(1000)})
 	ok(t, g.ExciseNodeValidity(ctx, n.ID, 150, 200, 2000))
 	ok(t, g.ExciseNodeValidity(ctx, n.ID, 250, 350, 3000)) // runs past the version's end: only [250,300) is valid
 	for _, c := range []struct {
@@ -107,7 +107,7 @@ func exciseRefillAndTwoHoles(t *testing.T, a Adapter) {
 
 func exciseNodeRefusals(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"X"}, Props: map[string]any{"k": "a"}, Valid: Interval{From: 100, To: 300}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"X"}, Props: map[string]any{"k": "a"}, Valid: Interval{From: 100, To: 300}, TxFrom: ts(1000)})
 	ok(t, g.ExciseNodeValidity(ctx, n.ID, 150, 160, 2000))
 	check := historyUnchanged(t, g, n.ID)
 	for _, c := range []struct {
@@ -163,9 +163,9 @@ func excisePlain(t *testing.T, a Adapter) {
 
 func exciseRel(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 500})
-	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 500})
-	r := addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Props: map[string]any{"est": "e1"}, Valid: Interval{From: 100, To: 300}, TxFrom: 1000})
+	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(500)})
+	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(500)})
+	r := addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Props: map[string]any{"est": "e1"}, Valid: Interval{From: 100, To: 300}, TxFrom: ts(1000)})
 	ok(t, g.ExciseRelValidity(ctx, r.ID, 150, 200, 2000))
 
 	for _, c := range []struct {

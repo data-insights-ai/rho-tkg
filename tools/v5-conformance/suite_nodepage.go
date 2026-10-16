@@ -7,14 +7,14 @@ import (
 
 func init() {
 	register("NodesEffectivePage",
-		testCase{"KeysetWalkEqualsTheFilteredSet", nodePageWalk},
-		testCase{"PinsAndValidTimeAfterMutation", nodePagePins},
-		testCase{"RefusalsReturnNoRows", nodePageRefusals},
-		testCase{"CursorIsStableUnderLaterWrites", nodePageStable},
-		testCase{"CursorEdgeCases", nodePageCursorEdges},
+		compat("KeysetWalkEqualsTheFilteredSet", nodePageWalk),
+		compat("PinsAndValidTimeAfterMutation", nodePagePins),
+		compat("RefusalsReturnNoRows", nodePageRefusals),
+		compat("CursorIsStableUnderLaterWrites", nodePageStable),
+		compat("CursorEdgeCases", nodePageCursorEdges),
 	)
 	register("RelsEffectivePageCursor",
-		testCase{"EmptyGraphLastPageAndInvalidCursor", relPageCursorEdges},
+		compat("EmptyGraphLastPageAndInvalidCursor", relPageCursorEdges),
 	)
 }
 
@@ -80,7 +80,7 @@ func nodeFixture(t *testing.T, g Graph, n int, estates []string, valid Interval)
 	var out []Node
 	for i := 0; i < n; i++ {
 		out = append(out, addNode(t, g, NodeSpec{
-			Labels: []string{"P"}, Valid: valid, TxFrom: 2000 + int64(i)*10,
+			Labels: []string{"P"}, Valid: valid, TxFrom: ts(2000 + int64(i)*10),
 			Props: map[string]any{"est": estates[i%len(estates)], "idx": i},
 		}))
 	}
@@ -208,7 +208,7 @@ func nodePageStable(t *testing.T, a Adapter) {
 	if next != ns[2].ID {
 		t.Fatalf("cursor = %d, want %d", next, ns[2].ID)
 	}
-	extra := addNode(t, g, NodeSpec{Labels: []string{"P"}, Valid: Interval{From: 100}, TxFrom: 4000, Props: map[string]any{"est": "e1"}})
+	extra := addNode(t, g, NodeSpec{Labels: []string{"P"}, Valid: Interval{From: 100}, TxFrom: ts(4000), Props: map[string]any{"est": "e1"}})
 	_, err = g.UpdateNode(ctx, ns[4].ID, map[string]any{"est": "e2"}, 4500)
 	ok(t, err)
 	ok(t, g.DeleteNode(ctx, ns[3].ID, 5000))
@@ -284,8 +284,8 @@ func nodePageCursorEdges(t *testing.T, a Adapter) {
 func relPageCursorEdges(t *testing.T, a Adapter) {
 	g := open(t, a, true)
 	flt := Filter{Prop: "est", Eq: "e1"}
-	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 1000})
-	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 1000})
+	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(1000)})
+	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(1000)})
 	// No relationships yet: empty page, no cursor.
 	segs, next, err := g.RelsEffectivePage(ctx, Pin{Tx: 1500}, flt, 0, 10)
 	ok(t, err)
@@ -295,7 +295,7 @@ func relPageCursorEdges(t *testing.T, a Adapter) {
 	var rs []Rel
 	for i := 0; i < 4; i++ {
 		est := []string{"e1", "e2"}[i%2]
-		rs = append(rs, addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Valid: Interval{From: 100}, TxFrom: 2000 + int64(i)*10, Props: map[string]any{"est": est}}))
+		rs = append(rs, addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Valid: Interval{From: 100}, TxFrom: ts(2000 + int64(i)*10), Props: map[string]any{"est": est}}))
 	}
 	pin := Pin{Tx: 3000}
 	for _, c := range []struct {

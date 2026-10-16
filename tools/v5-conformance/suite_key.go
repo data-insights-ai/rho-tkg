@@ -7,12 +7,12 @@ import (
 
 func init() {
 	register("GetOrCreateByKey",
-		testCase{"CreatesThenReturnsTheSameIdentity", keyIdempotent},
-		testCase{"DistinctValuesAndLabelsAreDistinctIdentities", keyDistinct},
-		testCase{"ConcurrentCallsCreateOnce", keyConcurrent},
-		testCase{"InvalidInputsCreateNothing", keyInvalid},
-		testCase{"DeletedIdentityIsMintedAgain", keyAfterDelete},
-		testCase{"IdentitySurvivesReopen", keyReopen},
+		both("CreatesThenReturnsTheSameIdentity", keyIdempotent),
+		both("DistinctValuesAndLabelsAreDistinctIdentities", keyDistinct),
+		both("ConcurrentCallsCreateOnce", keyConcurrent),
+		both("InvalidInputsCreateNothing", keyInvalid),
+		both("DeletedIdentityIsMintedAgain", keyAfterDelete),
+		both("IdentitySurvivesReopen", keyReopen),
 	)
 }
 

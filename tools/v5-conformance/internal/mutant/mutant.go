@@ -439,3 +439,11 @@ func (g *graph) RetractRel(ctx context.Context, id int64, txTo int64) error {
 	}
 	return g.Graph.RetractRel(ctx, id, txTo)
 }
+
+// Profiles forwards the profiles the wrapped adapter serves.
+func (a adapter) Profiles() []conformance.Profile {
+	if pa, ok := a.base.(conformance.ProfileAdapter); ok {
+		return pa.Profiles()
+	}
+	return []conformance.Profile{conformance.Native, conformance.Compat}
+}

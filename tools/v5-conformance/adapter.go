@@ -212,3 +212,19 @@ type Tx interface {
 
 // Factory builds the Adapter for one test.
 type Factory func(t *testing.T) Adapter
+
+// Profiles. The suite has two profiles; see README.md.
+//
+//	native  semantics v5 keeps. Writes use the graph clock; a historical cut is a
+//	        pin read from CommittedTx right after the write that defines it;
+//	        cursors are followed until next == 0 and never interpreted; history is
+//	        compared by content and order. A v5-native adapter serves this profile.
+//	compat  the v4 contract v5 drops natively on purpose (PLAN 8a): caller stamps
+//	        as pins (TxFrom 1000 then NodeAsOf(1999)), ErrTxOrder for caller
+//	        instants, millisecond clock pins, ID-keyset cursors (next == last ID),
+//	        dense per-entity Version == i. Only a v4-shaped facade serves it.
+//
+// An Adapter that also implements ProfileAdapter declares the profiles it
+// serves; otherwise it serves both. Every case is tagged compat, native or
+// both; both-cases are written once with ts, open and pinNow so they use caller
+// stamps only under compat.

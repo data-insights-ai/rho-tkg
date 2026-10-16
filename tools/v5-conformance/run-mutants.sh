@@ -12,7 +12,7 @@ for m in $names; do
     echo "SURVIVED  $m"
     survivors=$((survivors+1))
   else
-    fails=$(printf '%s\n' "$out" | sed -n 's/^ *--- FAIL: TestV4\/\([A-Za-z]*\/[A-Za-z]*\) .*/\1/p' | tr '\n' ' ')
+    fails=$(printf '%s\n' "$out" | sed -n 's/^ *--- FAIL: TestV4\/\([a-z]*\/[A-Za-z]*\/[A-Za-z]*\) .*/\1/p' | tr '\n' ' ')
     echo "killed    $m  <- $fails"
   fi
 done

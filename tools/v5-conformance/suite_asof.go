@@ -7,11 +7,11 @@ import (
 
 func init() {
 	register("AsOfHistory",
-		testCase{"NodeBoundariesAreExact", asofNodeBoundaries},
-		testCase{"NodeWithClockPins", asofNodeClockPins},
-		testCase{"HistoryIsAppendOnly", asofAppendOnly},
-		testCase{"RelBoundariesAreExact", asofRelBoundaries},
-		testCase{"UnknownEntitiesAndBadPins", asofRefusals},
+		compat("NodeBoundariesAreExact", asofNodeBoundaries),
+		both("NodeWithClockPins", asofNodeClockPins),
+		compat("HistoryIsAppendOnly", asofAppendOnly),
+		compat("RelBoundariesAreExact", asofRelBoundaries),
+		compat("UnknownEntitiesAndBadPins", asofRefusals),
 	)
 }
 
@@ -19,7 +19,7 @@ func init() {
 // exactly at each boundary answers the version recorded by then.
 func asofNodeBoundaries(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, Props: map[string]any{"v": 1, "keep": "k"}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, Props: map[string]any{"v": 1, "keep": "k"}, TxFrom: ts(1000)})
 	_, err := g.UpdateNode(ctx, n.ID, map[string]any{"v": 2}, 2000)
 	ok(t, err)
 	_, err = g.UpdateNode(ctx, n.ID, map[string]any{"v": 3}, 3000)
@@ -84,7 +84,7 @@ func asofNodeClockPins(t *testing.T, a Adapter) {
 // asofAppendOnly: a later write never rewrites an earlier history row.
 func asofAppendOnly(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, Props: map[string]any{"v": 1}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, Props: map[string]any{"v": 1}, TxFrom: ts(1000)})
 	_, err := g.UpdateNode(ctx, n.ID, map[string]any{"v": 2}, 2000)
 	ok(t, err)
 	before, err := g.NodeHistory(n.ID)
@@ -110,9 +110,9 @@ func asofAppendOnly(t *testing.T, a Adapter) {
 
 func asofRelBoundaries(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 1000})
-	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: 1000})
-	r := addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Props: map[string]any{"w": 1}, Valid: Interval{From: 100}, TxFrom: 2000})
+	x := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(1000)})
+	y := addNode(t, g, NodeSpec{Labels: []string{"A"}, TxFrom: ts(1000)})
+	r := addRel(t, g, RelSpec{Type: "R", From: x.ID, To: y.ID, Props: map[string]any{"w": 1}, Valid: Interval{From: 100}, TxFrom: ts(2000)})
 	_, err := g.UpdateRel(ctx, r.ID, map[string]any{"w": 2}, 3000)
 	ok(t, err)
 	ok(t, g.DeleteRel(ctx, r.ID, 4000))
@@ -150,7 +150,7 @@ func asofRelBoundaries(t *testing.T, a Adapter) {
 
 func asofRefusals(t *testing.T, a Adapter) {
 	g := open(t, a, true)
-	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, TxFrom: 1000})
+	n := addNode(t, g, NodeSpec{Labels: []string{"P"}, TxFrom: ts(1000)})
 	_, err := g.NodeAsOf(987654321, 5000)
 	if err == nil {
 		t.Fatalf("NodeAsOf answered for an ID that was never minted")
