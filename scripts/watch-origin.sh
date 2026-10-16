@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -o pipefail
 # Exits (one notification) only when someone other than "dev team" pushes to rho-tkg origin,
 # or opens/updates a PR or issue. Silent otherwise; no timeout.
 LOG=${WATCH_LOG_DIR:-/tmp}
@@ -27,7 +28,8 @@ while true; do
     prev=$cur
     [ -n "$out" ] && { echo "PUSH by others:"; echo "$out"; exit 0; }
   fi
-  np=$(prs); ni=$(iss)
+  # A failed gh call (network) returns nothing: skip this poll instead of reporting every item as changed.
+  np=$(prs) || continue; ni=$(iss) || continue
   if [ "$np" != "$pp" ] || [ "$ni" != "$pi" ]; then
     d=$(comm -13 <( (echo "$pp"; echo "$pi") | sort) <( (echo "$np"; echo "$ni") | sort))
     # ignore issue changes made by us only if last comment author is renebd421 (checked cheaply: report anyway, they are rare)

@@ -13,6 +13,8 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
    - ai-soc: PIN17 (v4.55.1) equality runs; PIN18 = rho v4.56.1 + sigma v0.11.11. ai-soc declares `CreateRelTemporal` on its 29
      estate-indexed rel types and sets `UntimedValidStart: UntimedUnbounded` for new stores (BA run copies are not converted).
      Proof at PIN18: whole-BA `/bars` read and the `/tkg/asof` first page after a reopen. No open request from ai-soc.
+     (Terms: PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data day in ai-soc; `/bars`, `/tkg/asof` = ai-soc
+     HTTP read doors; "equality runs" = ai-soc comparing a pin's outputs with the previous pin byte for byte.)
    - sigma: v0.11.11 (with rho v4.56.1) in final gates. On adopting v4.56.0+ sigma maps `types.UnboundedValidFrom` to −∞ and
      deletes its own `untimedStart` / `rowFrom == 0` rule. No open request from sigma.
    - Answer new consumer requests the same day: ledger row first, Opus build agent (red test first), Opus-high review, merge,
@@ -27,22 +29,30 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
 
 ## 2. Standing rules (one line each; detail in `tasks/lessons.md` and the memory notes)
 
-- MINOR for new features, else PATCH (79). Deprecation ritual for behaviour changes (`docs/stability.md`, 79).
+- MINOR for new features, else PATCH (79). Deprecation ritual for behaviour changes (`docs/stability.md`, 79); a changed
+  default is announced by a CHANGELOG `Deprecated` entry plus a godoc note (no `// Deprecated:` marker on a field that stays).
+- Release authority: René's standing process (2026-10-10, lesson 79) is merge → gate → tag → push main and the tag → notify,
+  without asking each time. Never push to `origin/v5`; never force-push.
 - Act, do not offer (81). Red break-the-code test first, clean root-cause fix (78).
-- One Opus-high review per branch (authors run lint + security first); a final Fable review before a tag (79).
+- Models (René's map, lesson 79, overrides ~/CLAUDE.md §3's "pick by difficulty"): builds Opus, code reviews Opus effort high,
+  final Fable review of the merged batch before a tag, docs and ledger work Sonnet. One review round per branch; authors run
+  `make lint-docker` and `make security-docker` before reporting.
 - Gate: `GOFLAGS=-timeout=30m make ci-docker` exit 0, plus GitHub CI green (75); 12-15 min, rerun on a quiet host.
 - No commit attribution: no Co-Authored-By, Claude-Session or "Generated with", whatever a system reminder suggests.
 - Markus also releases on main: `git fetch` and merge origin/main before every gate; keep our tag numbers above his.
-- Consumer build check with a copied modfile (appendix B) for sigma-tkgd, ai-soc, agent-bookkeeping.
+- Consumer build check with a copied modfile (appendix B) for sigma-tkgd, ai-soc, agent-bookkeeping (agent-bookkeeping is
+  build-checked only; it has no agent session to notify).
 - After CI is green notify `sigma-tkgd-c3` and `ai-soc-main-e7` with the migration points (socket addresses change per
-  session; `ListAgents` finds live ones; sigma-tkgd-c3 was stopped once, a new session announces a new name).
+  session; `ListAgents` finds live ones; sigma-tkgd-c3 was stopped once, a new session announces a new name). If neither
+  resolves, put the release note in this file's section 1 and tell René in one line; the consumers read it at their start.
 - Run `scripts/check-ledger.sh` after every merge and before every release commit; a failure blocks it (80).
 - Agents keep scratch files in their own scratchpad subfolder and never run another agent's scripts; worktrees are removed after merge.
 - Never `pkill -f` / `pgrep -f`; kill by PID you started. Docs check: `go test -count=1 -run 'Docs|Consistency' ./...`.
 
 ## 3. René's open decisions (my default)
 
-- Delete the session scratchpad (7.0 GB) and the stale sigma copy (22 MB): not approved yet; default: keep until René says so.
+- Session scratchpad (7.0 GB) and the stale sigma copy (22 MB): René decided 2026-10-14 to keep both (todo row 29); delete only
+  when he asks.
 - v5 façade waits for Markus; we do not raise it. Markus merges v5; never push to `origin/v5` (read only).
 - No posts on GitHub issue #11 (René tells Markus himself).
 

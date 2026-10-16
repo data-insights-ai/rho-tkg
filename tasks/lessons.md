@@ -575,9 +575,9 @@ lands at the root and the shared seam (58-60), not behind a flag, skip or consum
 solution was tried and shown impossible (say why; backlog it with its red test). Delegated prompts carry these rules; my own edits too.
 Detector: `grep -rn 't.Skip' pkg | grep -v 'sharded does not support'`; evidence without a red run; "unaffected" without a test.
 
-## 79. Release And Review Process: Patch Releases, Author-Run Gates, One Review Round, Models
+## 79. Release And Review Process: Minor For Features Else Patch, Author-Run Gates, One Review Round, Models
 
-Rule (René 2026-10-10, 2026-10-12): (1) PATCH versions only, no minor until René asks, batched: one `make ci-docker`, one consumer
+Rule (René 2026-10-10, 2026-10-12): (1) MINOR for a really new feature, PATCH otherwise (René 2026-10-14; patch-only from 2026-10-10 to 10-14), batched: one `make ci-docker`, one consumer
 build, one message. (2) Behaviour changes go through the deprecation ritual (`docs/stability.md`); no new named exceptions. (3) Authors
 run `make lint-docker` and `make security-docker` before reporting. (4) One reviewer round per branch, fix round to the same agent, a
 second only for a blocker; doc/comment-only changes get the docs tests and a diff read. (5) Briefs name 5-8 files. (6) A backlog item
