@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.59.0] - 2026-10-16
+
 ### Added
 
 - **A valid-time equality lookup costs the members that meet the window, not the value's history** (MINOR: new optional
