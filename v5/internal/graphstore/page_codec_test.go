@@ -219,3 +219,24 @@ func TestPageKeyShapesAndHardBounds(t *testing.T) {
 		}
 	}
 }
+
+// A LifeEnd component key (Life=0, like Presence) is a valid stored key and
+// round-trips through the component record with kind and owner; a life or name
+// on it is invalid.
+func TestLifeEndComponentKeyRoundTrips(t *testing.T) {
+	l := Limits{MaxNameBytes: 64}
+	k := graphstate.ComponentKey{Owner: 5, Kind: graphstate.LifeEnd}
+	if !validComponent(k, l) {
+		t.Fatal("LifeEnd key refused")
+	}
+	for _, bad := range []graphstate.ComponentKey{{Owner: 5, Kind: graphstate.LifeEnd, Life: 1}, {Owner: 5, Kind: graphstate.LifeEnd, Name: "x"}, {Owner: 5, Kind: graphstate.LifeEnd, Member: 1}, {Kind: graphstate.LifeEnd}} {
+		if validComponent(bad, l) {
+			t.Fatalf("malformed LifeEnd key accepted: %+v", bad)
+		}
+	}
+	c := cursor{src: appendComponent(nil, k)}
+	got, err := decodeComponent(&c, l)
+	if err != nil || got != k || got.Kind != graphstate.LifeEnd {
+		t.Fatalf("round trip: %+v %v", got, err)
+	}
+}

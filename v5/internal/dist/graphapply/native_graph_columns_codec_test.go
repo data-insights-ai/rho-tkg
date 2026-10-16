@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 )
 
 func TestNativeColumnChunkAdmissionAndOriginalArena(t *testing.T) {
@@ -44,5 +46,14 @@ func TestNativeColumnChunkAdmissionAndOriginalArena(t *testing.T) {
 	}
 	if nativeColumnAdd(^uint64(0), 1) {
 		t.Fatal("overflow")
+	}
+}
+
+// Native columns carry only Presence and property "p"; a LifeEnd component is not
+// part of their wire until WP-28, and the graph-change codec refuses it (fail
+// closed, never dropped).
+func TestLifeEndComponentIsRefusedByDistCodecs(t *testing.T) {
+	if validComponentKey(graphstate.ComponentKey{Owner: 1, Kind: graphstate.LifeEnd}, materializerLimits{}) {
+		t.Fatal("dist graph-change codec accepts LifeEnd before WP-28")
 	}
 }

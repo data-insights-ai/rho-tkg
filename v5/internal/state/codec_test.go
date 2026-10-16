@@ -675,3 +675,36 @@ func TestCodecNoncanonicalCoordinatesDecline(t *testing.T) {
 		t.Fatal("alternate singleton normalized", err)
 	}
 }
+
+// A LifeEnd cell is an ordinary present cell with the life handle: it round-trips
+// through the state codec with its handle, revision and scope.
+func TestLifeEndCellRoundTripsThroughStateCodec(t *testing.T) {
+	a := axis(t, temporal.ProfileIntegerZ)
+	s, err := New(a, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lo, _ := temporal.FiniteBound(position(t, a, 20, 1, 0), true)
+	tail, err := temporal.Span(a, lo, temporal.PositiveInfinity(), temporal.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, _ := NewValueRef(7, 0)
+	rev, _ := NewRevision(3, 0)
+	r, err := s.Set(tail, ref, rev, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := AppendState(nil, r.State(), CodecLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeState(wire, a, CodecLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	codecEqualState(t, r.State(), got)
+	if c := got.pieces[0].cell; !c.Present() || c.Value().ID() != 7 {
+		t.Fatalf("handle lost: %+v", c)
+	}
+}
