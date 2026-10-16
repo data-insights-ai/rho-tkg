@@ -460,7 +460,8 @@ func (a *API) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*t
 }
 
 // ByTypeAndProperty returns relationships matching the rel type and property
-// value (K3b) — the relationship mirror of nodes.API.ByLabelAndProperty. Uses
+// value (K3b) — the relationship mirror of nodes.API.ByLabelAndProperty, under
+// the same property equality. Uses
 // the store-level rel property index for O(matches) lookup when one exists;
 // otherwise falls back to a type-scan + property filter, so it works on every
 // backend (including the tiered store, which declines rel-property-index
@@ -615,14 +616,14 @@ func (a *API) ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propK
 	return ops.ForEachIDByTypePropertyPrefix(ctx, typeName, propKey, prefix, desc, opts, fn)
 }
 
-// CountByTypePropertyValue counts the type's relationships whose propKey value equals value as
-// Cypher equality keeps it (3 matches 3 and 3.0 of every stored width, no
-// string/number crossing, nil and NaN count 0), from the property index's
-// value sets, no relationship read. exact=false with no error declines (count
+// CountByTypePropertyValue counts the type's relationships whose propKey value
+// equals value under the property equality ByTypeAndProperty uses (so it is
+// len(ByTypeAndProperty)), from the property index's value sets, no
+// relationship read. exact=false with no error declines (count
 // otherwise): no property index on (type, propKey), a store without the
 // capability (tiered, external stores), badger with PropertyIndexOnDisk
-// (nodes), an index being built, an Elements index, a number of magnitude
-// 2^53 or more, a temporal value, a list or map, an unknown type, or a
+// (nodes), an index being built, an Elements index, a temporal value, a list
+// or map, an unknown type, or a
 // temporal QueryOpts. exact tells a planner whether exact counts are
 // available for (type, propKey).
 func (a *API) CountByTypePropertyValue(typeName, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {
@@ -980,7 +981,8 @@ func (a *API) DeleteProperty(ctx context.Context, id types.RelID, key string) er
 	return ops.DeleteProperty(ctx, id, key)
 }
 
-// CompareAndSetProperty atomically updates a relationship property honoring ctx.
+// CompareAndSetProperty atomically updates a relationship property honoring
+// ctx; expected compares as nodes.API.CompareAndSetProperty.
 func (a *API) CompareAndSetProperty(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error) {
 	ops, err := a.ready()
 	if err != nil {

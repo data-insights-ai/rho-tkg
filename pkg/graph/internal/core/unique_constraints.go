@@ -390,7 +390,7 @@ func (c *Core) validateUniqueExisting(labelTok uint16, key string) (offenders []
 			return e
 		}
 		for _, n := range nodes {
-			vk, found := n.IndexablePropertyValueKey(key)
+			vk, found := uniqueValueKey(n, key)
 			if !found || vk == "" {
 				continue // node does not carry an indexable value → unconstrained
 			}
@@ -557,7 +557,7 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 			continue
 		}
 		for key, st := range byKey {
-			valueKey, found := node.IndexablePropertyValueKey(key)
+			valueKey, found := uniqueValueKey(node, key)
 			if !found || valueKey == "" {
 				continue // unconstrained (missing key or unindexable value)
 			}
@@ -566,10 +566,11 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 				return noop, fmt.Errorf("%w: label %q key %q holds a float value", ErrUniqueUnsupportedType, c.labels.Resolve(labelTok), key)
 			}
 			raw, _ := node.GetProperty(key)
-			checks = append(checks, uniqueCheckTuple{labelTok: labelTok, key: key, raw: raw, valueKey: valueKey, scope: st.scope})
+			checks = append(checks, uniqueCheckTuple{labelTok: labelTok, key: key, raw: raw, valueKey: valueKey, scope: st.scope,
+				unchanged: unchangedConstrainedValue(prev, node, labelTok, key)})
 			stripes = append(stripes, uniqueValueStripe(labelTok, key, valueKey))
 			if prev != nil {
-				if oldKey, ok := prev.IndexablePropertyValueKey(key); ok && oldKey != "" && oldKey != valueKey {
+				if oldKey, ok := uniqueValueKey(prev, key); ok && oldKey != "" && oldKey != valueKey {
 					stripes = append(stripes, uniqueValueStripe(labelTok, key, oldKey))
 				}
 			}
@@ -593,6 +594,12 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 	// dry-run door (checkForeverOwnership); the held stripes keep these values
 	// unclaimable by others until Pass 2.
 	for _, ck := range checks {
+		if ck.unchanged {
+			// The write leaves the value alone: a legacy width twin (int(3)
+			// beside int64(3), stored before v4.57.1) keeps accepting writes
+			// to its other properties (lesson 58: strict CHANGE, lenient LOAD).
+			continue
+		}
 		matches, err := c.nodesByLabelAndProperty(ck.labelTok, ck.key, ck.raw, storepkg.QueryOpts{})
 		if err != nil {
 			hold.release()
@@ -621,6 +628,9 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 	for _, ck := range checks {
 		if ck.scope != constraintspkg.UniqueForever {
 			continue
+		}
+		if ck.unchanged && c.checkForeverOwnership(ck.labelTok, ck.key, ck.valueKey, selfID) != nil {
+			continue // a legacy twin another entity owns: kept, not claimed
 		}
 		if err := hold.claim(ck); err != nil {
 			err = hold.storeWriteFailed(err)
@@ -673,4 +683,29 @@ func (co *ConstraintOps) DropUnique(ctx context.Context, label, propertyKey stri
 // UniqueConstraints returns a snapshot of the registered unique constraints.
 func (co *ConstraintOps) UniqueConstraints() []constraintspkg.UniqueConstraint {
 	return co.c.uniqueConstraintsList()
+}
+
+// uniqueValueKey is the key a unique constraint holds e's key value under:
+// its index key with an integer of any width mapped to the one key its equal
+// integers share (types.CanonicalIndexKey), so int(3) and int64(3) are one
+// value, as the equality lookups the constraint checks with find them.
+func uniqueValueKey(e interface {
+	IndexablePropertyValueKey(string) (string, bool)
+}, key string) (string, bool) {
+	vk, found := e.IndexablePropertyValueKey(key)
+	return types.CanonicalIndexKey(vk), found
+}
+
+// unchangedConstrainedValue reports whether prev already carried the label
+// and node's key value in the same width (identical index key).
+func unchangedConstrainedValue(prev, node *types.Node, labelTok uint16, key string) bool {
+	if prev == nil || !prev.HasLabelTokenRaw(labelTok) {
+		return false
+	}
+	prevKey, ok := prev.IndexablePropertyValueKey(key)
+	if !ok || prevKey == "" {
+		return false
+	}
+	curKey, _ := node.IndexablePropertyValueKey(key)
+	return curKey == prevKey
 }

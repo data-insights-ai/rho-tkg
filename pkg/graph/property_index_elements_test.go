@@ -97,7 +97,7 @@ func checkElementsFixture(t *testing.T, g *graphpkg.Graph, label string, f eleme
 		{"current 103", int64(103), storepkg.QueryOpts{}, elemWant(f.d1)},
 		{"current x", "x", storepkg.QueryOpts{}, elemWant(f.d4)},
 		{"current 999", int64(999), storepkg.QueryOpts{}, nil},
-		{"current int 101 is not int64 101", 101, storepkg.QueryOpts{}, nil},
+		{"current int 101 equals int64 101", 101, storepkg.QueryOpts{}, elemWant(f.d2)},
 		{"current list value", []int64{102, 103}, storepkg.QueryOpts{}, nil},
 		{"TxPin 101", int64(101), storepkg.QueryOpts{TxPin: f.pin}, elemWant(f.d1, f.d2)},
 		{"TxPin 103", int64(103), storepkg.QueryOpts{TxPin: f.pin}, nil},

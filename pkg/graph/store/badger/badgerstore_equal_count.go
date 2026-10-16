@@ -5,7 +5,7 @@ import (
 )
 
 // NodeEqualCount counts the label's nodes whose propertyKey value equals
-// value as Cypher equality keeps it, from the RAM property index's value sets
+// value under the property equality (types.EqualIndexValues), from the RAM property index's value sets
 // (PropertyIndex.EqualCount): no node and no index key is read. exact=false
 // (no error) when no index on (label, key) exists, in PropertyIndexOnDisk
 // mode (the index keys live in badger, not as counted sets), or when the

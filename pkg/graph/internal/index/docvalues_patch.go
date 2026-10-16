@@ -3,6 +3,8 @@ package index
 import (
 	"math/bits"
 	"slices"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Patch returns a NEW snapshot equal to this one with the rows of changed
@@ -172,7 +174,7 @@ func patchColumn[T EntityID](c *docColumn, ids []T, ords []int, key string,
 				present.clear(ord)
 				continue
 			}
-			if !isNumericScalar(v) {
+			if _, numeric := types.NumericFloat64(v); !numeric {
 				return nil
 			}
 			iv, fv, isF := normalizeNumeric(v)

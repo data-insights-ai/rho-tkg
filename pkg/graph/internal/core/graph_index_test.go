@@ -396,20 +396,15 @@ func TestGraphNodesByLabelAndPropertyFloatSignedZeroMatches(t *testing.T) {
 
 	assertQuery := func(name string) {
 		t.Helper()
-		got64, err := g.Nodes.ByLabelAndProperty("Reading", "score", float64(0), storepkg.QueryOpts{})
-		if err != nil {
-			t.Fatalf("%s f64 query: %v", name, err)
-		}
-		if len(got64) != 1 || got64[0].ID() != f64Node.ID() {
-			t.Fatalf("%s f64 query ids = %v, want [%v]", name, ids(got64), f64Node.ID())
-		}
-
-		got32, err := g.Nodes.ByLabelAndProperty("Reading", "score", float32(0), storepkg.QueryOpts{})
-		if err != nil {
-			t.Fatalf("%s f32 query: %v", name, err)
-		}
-		if len(got32) != 1 || got32[0].ID() != f32Node.ID() {
-			t.Fatalf("%s f32 query ids = %v, want [%v]", name, ids(got32), f32Node.ID())
+		// -0.0 equals 0 of every width: each zero query finds both stored zeros.
+		for _, q := range []any{float64(0), float32(0), int64(0)} {
+			got, err := g.Nodes.ByLabelAndProperty("Reading", "score", q, storepkg.QueryOpts{})
+			if err != nil {
+				t.Fatalf("%s %T query: %v", name, q, err)
+			}
+			if len(got) != 2 || got[0].ID() != f64Node.ID() || got[1].ID() != f32Node.ID() {
+				t.Fatalf("%s %T query ids = %v, want [%v %v]", name, q, ids(got), f64Node.ID(), f32Node.ID())
+			}
 		}
 	}
 
@@ -420,7 +415,7 @@ func TestGraphNodesByLabelAndPropertyFloatSignedZeroMatches(t *testing.T) {
 	assertQuery("indexed")
 }
 
-func TestGraphNodesByLabelAndPropertyNaNPayloadsMatchWithinExactType(t *testing.T) {
+func TestGraphNodesByLabelAndPropertyNaNMatchesNothing(t *testing.T) {
 	t.Parallel()
 
 	g, err := New(Config{Store: memory.New()})
@@ -449,19 +444,20 @@ func TestGraphNodesByLabelAndPropertyNaNPayloadsMatchWithinExactType(t *testing.
 		t.Fatalf("Add b32: %v", err)
 	}
 
+	_, _, _, _ = a64, b64, a32, b32 // stored NaNs of both widths and payloads: none equals a NaN query
 	assertQuery := func(name string) {
 		t.Helper()
 		got64, err := g.Nodes.ByLabelAndProperty("Reading", "score", nanA64, storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("%s f64 query: %v", name, err)
 		}
-		assertNodeIDs(t, name+" f64 query", got64, []types.NodeID{a64.ID(), b64.ID()})
+		assertNodeIDs(t, name+" f64 query", got64, nil)
 
 		got32, err := g.Nodes.ByLabelAndProperty("Reading", "score", nanA32, storepkg.QueryOpts{})
 		if err != nil {
 			t.Fatalf("%s f32 query: %v", name, err)
 		}
-		assertNodeIDs(t, name+" f32 query", got32, []types.NodeID{a32.ID(), b32.ID()})
+		assertNodeIDs(t, name+" f32 query", got32, nil)
 	}
 
 	assertQuery("fallback")

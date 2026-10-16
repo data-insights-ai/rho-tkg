@@ -5,7 +5,7 @@ import (
 )
 
 // NodeEqualCount counts the label's nodes whose propertyKey value equals
-// value as Cypher equality keeps it, from the property index's value sets
+// value under the property equality (types.EqualIndexValues), from the property index's value sets
 // (PropertyIndex.EqualCount): no node is read. exact=false (no error) when
 // no index on (label, key) exists or the index cannot say (see EqualCount).
 func (ms *Store) NodeEqualCount(labelToken uint16, propertyKey string, value any) (int64, bool, error) {

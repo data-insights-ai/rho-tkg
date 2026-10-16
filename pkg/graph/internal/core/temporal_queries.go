@@ -7,7 +7,6 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -1066,12 +1065,12 @@ func (t *TempOps) NodesByLabelPropertyAt(label, key string, value any, at types.
 }
 
 func (c *Core) nodesByLabelPropertyAtLocked(label, key string, value any, at types.Instant) ([]*types.Node, error) {
-	targetKey := indexpkg.PropertyValueKey(value)
+	wantKeys := equalKeys(types.EqualIndexKeys(value))
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
 	}
-	if targetKey == "" {
+	if wantKeys == nil {
 		return nil, nil
 	}
 	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
@@ -1087,7 +1086,7 @@ func (c *Core) nodesByLabelPropertyAtLocked(label, key string, value any, at typ
 		return nil, err
 	}
 	var result []*types.Node
-	if err := c.forEachNodePropertyCandidateID(tok, map[string]string{key: targetKey}, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.NodeID) error {
+	if err := c.forEachNodePropertyCandidateID(tok, map[string]equalKeys{key: wantKeys}, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.NodeID) error {
 		n, err := c.nodeAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -1095,7 +1094,7 @@ func (c *Core) nodesByLabelPropertyAtLocked(label, key string, value any, at typ
 			}
 			return err
 		}
-		if n.HasLabelTokenRaw(tok) && n.HasPropertyIndexKey(key, elements, targetKey) {
+		if n.HasLabelTokenRaw(tok) && wantKeys.node(n, key, elements) {
 			result = append(result, n)
 		}
 		return nil
@@ -1143,12 +1142,12 @@ func (t *TempOps) NodesByLabelPropertyDuring(label, key string, value any, start
 }
 
 func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, start, end types.Instant) ([]*types.Node, error) {
-	targetKey := indexpkg.PropertyValueKey(value)
+	wantKeys := equalKeys(types.EqualIndexKeys(value))
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
 	}
-	if targetKey == "" {
+	if wantKeys == nil {
 		return nil, nil
 	}
 	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
@@ -1162,7 +1161,7 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 	// Gather the full-history candidate id set (id enumeration only), then apply
 	// the B4 Step-1 envelope prune before the expensive per-id chain resolve.
 	var candIDs []types.NodeID
-	if err := c.forEachNodePropertyCandidateID(tok, map[string]string{key: targetKey}, currentIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end}, func(id types.NodeID) error {
+	if err := c.forEachNodePropertyCandidateID(tok, map[string]equalKeys{key: wantKeys}, currentIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end}, func(id types.NodeID) error {
 		candIDs = append(candIDs, id)
 		return nil
 	}); err != nil {
@@ -1182,7 +1181,7 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 		return nil, err
 	}
 	pred := func(n *types.Node) bool {
-		return n.HasLabelTokenRaw(tok) && n.HasPropertyIndexKey(key, elements, targetKey)
+		return n.HasLabelTokenRaw(tok) && wantKeys.node(n, key, elements)
 	}
 	var result []*types.Node
 	for _, id := range candIDs {
@@ -1267,12 +1266,12 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 	if err := c.checkRelsOnlyRetention(relType, at); err != nil {
 		return nil, err
 	}
-	targetKey := indexpkg.PropertyValueKey(value)
+	wantKeys := equalKeys(types.EqualIndexKeys(value))
 	tok, ok := c.lookupRelTypeQueryToken(relType)
 	if !ok {
 		return nil, nil
 	}
-	if targetKey == "" {
+	if wantKeys == nil {
 		return nil, nil
 	}
 	currentIDs, err := c.relPropertyCurrentIDs(tok, key, value)
@@ -1284,7 +1283,7 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 		return nil, err
 	}
 	var result []*types.Relationship
-	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.RelID) error {
+	if err := c.forEachRelPropertyCandidateID(tok, key, wantKeys, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
@@ -1292,7 +1291,7 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 			}
 			return err
 		}
-		if r.HasTypeTokenRaw(tok) && r.HasPropertyIndexKey(key, elements, targetKey) {
+		if r.HasTypeTokenRaw(tok) && wantKeys.rel(r, key, elements) {
 			result = append(result, r)
 		}
 		return nil
@@ -1665,12 +1664,12 @@ func (c *Core) relsByTypePropertyDuringLocked(relType, key string, value any, st
 	if err := c.checkRelsOnlyRetention(relType, start); err != nil {
 		return nil, err
 	}
-	targetKey := indexpkg.PropertyValueKey(value)
+	wantKeys := equalKeys(types.EqualIndexKeys(value))
 	tok, ok := c.lookupRelTypeQueryToken(relType)
 	if !ok {
 		return nil, nil
 	}
-	if targetKey == "" {
+	if wantKeys == nil {
 		return nil, nil
 	}
 	currentIDs, err := c.relPropertyCurrentIDs(tok, key, value)
@@ -1682,10 +1681,10 @@ func (c *Core) relsByTypePropertyDuringLocked(relType, key string, value any, st
 		return nil, err
 	}
 	pred := func(r *types.Relationship) bool {
-		return r.HasTypeTokenRaw(tok) && r.HasPropertyIndexKey(key, elements, targetKey)
+		return r.HasTypeTokenRaw(tok) && wantKeys.rel(r, key, elements)
 	}
 	var result []*types.Relationship
-	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end}, func(id types.RelID) error {
+	if err := c.forEachRelPropertyCandidateID(tok, key, wantKeys, currentIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end}, func(id types.RelID) error {
 		r, err := c.findRelVersionMatchingDuring(id, start, end, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {

@@ -16,14 +16,13 @@ type relEqualCounter interface {
 }
 
 // CountByLabelPropertyValue counts the label's nodes whose propKey value
-// equals value as Cypher equality keeps it (3 matches 3 and 3.0 of every
-// stored width, no string/number crossing, nil and NaN count 0), from the
-// property index's value sets: the size of a set, no node read. exact=false
+// equals value under the property equality of ByLabelAndProperty
+// (types.EqualIndexValues), from the property index's value sets of the
+// value's equal keys: their sizes, no node read. exact=false
 // with no error is the decline (the caller counts otherwise): no property
 // index on (label, propKey), the store lacks the capability (tiered and
 // external stores), badger with PropertyIndexOnDisk, an index still being
-// built, an Elements index, a number of magnitude 2^53 or more, a temporal
-// value, a list or map, an unknown label, or a temporal QueryOpts (the index
+// built, an Elements index, a temporal value, a list or map, an unknown label, or a temporal QueryOpts (the index
 // holds current values only). A planner learns per (label, key) whether
 // exact counts are available from exact.
 func (n *NodeOps) CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {

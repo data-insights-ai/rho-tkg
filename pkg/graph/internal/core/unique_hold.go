@@ -57,7 +57,7 @@ func (h *uniqueHold) release() {
 // claim when this call made it. The caller holds tp's value stripe (or the
 // batch's exclusive c.mu.Lock).
 func (h *uniqueHold) claim(tp uniqueCheckTuple) error {
-	claimed, err := h.c.claimForever(tp.labelTok, tp.key, tp.valueKey, h.id)
+	claimed, err := h.c.claimForever(tp.labelTok, tp.key, tp.valueKey, types.IndexablePropertyValueKey(tp.raw), h.id)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func (h *uniqueHold) writeFailed(written []*types.Node, writeErr error) error {
 	var keys []string
 	for _, tp := range h.claims {
 		if !rowsCarryValue(written, tp) {
-			keys = append(keys, foreverOwnerKey(tp.labelTok, tp.key, tp.valueKey))
+			keys = append(keys, foreverOwnerKey(tp.labelTok, tp.key, types.IndexablePropertyValueKey(tp.raw)))
 		}
 	}
 	if err := h.c.withdrawForeverClaims(keys, h.id); err != nil {
@@ -121,7 +121,7 @@ func rowsCarryValue(rows []*types.Node, tp uniqueCheckTuple) bool {
 		if !hasLabel {
 			continue
 		}
-		if vk, ok := r.IndexablePropertyValueKey(tp.key); ok && vk == tp.valueKey {
+		if vk, ok := uniqueValueKey(r, tp.key); ok && vk == tp.valueKey {
 			return true
 		}
 	}

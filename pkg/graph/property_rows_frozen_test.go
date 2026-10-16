@@ -132,7 +132,9 @@ func TestVectorSearchReturnsFrozenRows(t *testing.T) {
 }
 
 // BenchmarkNodesByLabelAndProperty: an indexed equality lookup over 20,000
-// nodes, one match ("name") and 200 matches ("city"), per backend. It is the
+// nodes, one match ("name") and 200 matches ("city"), and numbers (the
+// property equality unites every width's key: "age" 223 int64 matches,
+// "score" one float64 match), per backend. It is the
 // door a query engine's index seek calls per binding (sigma-tkgd C5b store
 // request 2: the memory store deep-copied every match).
 func BenchmarkNodesByLabelAndProperty(b *testing.B) {
@@ -150,7 +152,7 @@ func BenchmarkNodesByLabelAndProperty(b *testing.B) {
 			}
 			defer g.Close()
 			ctx := context.Background()
-			for _, key := range []string{"name", "city"} {
+			for _, key := range []string{"name", "city", "age", "score"} {
 				if err := g.Index().CreateProperty("Person", key); err != nil {
 					b.Fatal(err)
 				}
@@ -165,7 +167,7 @@ func BenchmarkNodesByLabelAndProperty(b *testing.B) {
 				name, key string
 				value     any
 				want      int
-			}{{"one", "name", "p777", 1}, {"200", "city", "c7", 200}} {
+			}{{"one", "name", "p777", 1}, {"200", "city", "c7", 200}, {"int64", "age", int64(7), 223}, {"float64", "score", 777.0, 1}} {
 				b.Run(q.name, func(b *testing.B) {
 					b.ReportAllocs()
 					for b.Loop() {

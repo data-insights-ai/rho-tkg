@@ -181,52 +181,51 @@ func pageValidKeep(opts storepkg.QueryOpts) func(from, to types.Instant) bool {
 }
 
 // validatePage checks the arguments both paged doors share and returns the
-// value's index key.
-func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after int64, limit int, scope retentionScope) (string, error) {
+// value's equal keys (property_equal.go; none for NaN, which matches nothing).
+func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after int64, limit int, scope retentionScope) (equalKeys, error) {
 	if err := c.checkOpen(); err != nil {
-		return "", err
+		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {
-		return "", err
+		return nil, err
 	}
 	if limit < 1 || limit > MaxEffectivePageLimit {
-		return "", fmt.Errorf("%w: %d (want 1..%d)", ErrInvalidQueryLimit, limit, MaxEffectivePageLimit)
+		return nil, fmt.Errorf("%w: %d (want 1..%d)", ErrInvalidQueryLimit, limit, MaxEffectivePageLimit)
 	}
 	if after < 0 {
-		return "", fmt.Errorf("%w: %d", ErrInvalidQueryCursor, after)
+		return nil, fmt.Errorf("%w: %d", ErrInvalidQueryCursor, after)
 	}
 	interval := pin.ValidStart != 0 || pin.ValidEnd != 0
 	switch {
 	case pin.ValidAt < 0 || pin.ValidStart < 0 || pin.ValidEnd < 0:
-		return "", fmt.Errorf("%w: negative valid-time filter", ErrInvalidTimeRange)
+		return nil, fmt.Errorf("%w: negative valid-time filter", ErrInvalidTimeRange)
 	case pin.ValidAt != 0 && interval:
-		return "", fmt.Errorf("%w: ValidAt and [ValidStart, ValidEnd) are exclusive", ErrInvalidTimeRange)
+		return nil, fmt.Errorf("%w: ValidAt and [ValidStart, ValidEnd) are exclusive", ErrInvalidTimeRange)
 	case interval && (pin.ValidStart == 0 || pin.ValidEnd != 0 && pin.ValidStart >= pin.ValidEnd):
-		return "", fmt.Errorf("%w: valid interval [%d, %d)", ErrInvalidTimeRange, pin.ValidStart, pin.ValidEnd)
+		return nil, fmt.Errorf("%w: valid interval [%d, %d)", ErrInvalidTimeRange, pin.ValidStart, pin.ValidEnd)
 	}
 	if f.Prop == "" {
-		return "", fmt.Errorf("%w: filter property", ErrEmptyName)
+		return nil, fmt.Errorf("%w: filter property", ErrEmptyName)
 	}
 	if err := c.validateIndexPropertyKey(f.Prop); err != nil {
-		return "", err
+		return nil, err
 	}
 	if err := types.ValidatePropertyValue(f.Eq); err != nil {
-		return "", fmt.Errorf("graph: effective page filter value: %w", err)
+		return nil, fmt.Errorf("graph: effective page filter value: %w", err)
 	}
-	vk := types.IndexablePropertyValueKey(f.Eq)
-	if vk == "" {
-		return "", fmt.Errorf("graph: effective page filter value %T has no index key (a scalar is required): %w", f.Eq, types.ErrUnsupportedValueType)
+	if types.IndexablePropertyValueKey(f.Eq) == "" {
+		return nil, fmt.Errorf("graph: effective page filter value %T has no index key (a scalar is required): %w", f.Eq, types.ErrUnsupportedValueType)
 	}
 	if err := c.validateEffectiveScanPin(pin.Tx, scope); err != nil {
-		return "", err
+		return nil, err
 	}
-	return vk, nil
+	return types.EqualIndexKeys(f.Eq), nil
 }
 
 // RelsEffectivePage implements temporal.API.RelsEffectivePage.
 func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after types.RelID, limit int) ([]temporal.RelSegment, types.RelID, error) {
 	c := t.c
-	vk, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeAllRels)
+	keys, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeAllRels)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -236,18 +235,18 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 		n := c.relTypes.Len()
 		for i := 1; i <= n; i++ {
 			tok := uint16(i) // #nosec G115 -- bounded by the registry's uint16 token space
-			src, err := c.relPageSource(tok, f.Prop, vk, opts, after)
+			tokSrcs, err := c.relPageSources(tok, f.Prop, keys, opts, after)
 			if err != nil {
 				return err
 			}
-			srcs = append(srcs, src)
+			srcs = append(srcs, tokSrcs...)
 		}
 		return nil
 	}); err != nil {
 		return nil, 0, err
 	}
 	validOK := pageValidKeep(opts)
-	keepRow := func(r *types.Relationship) bool { return r.HasPropertyIndexKey(f.Prop, false, vk) }
+	keepRow := func(r *types.Relationship) bool { return keys.rel(r, f.Prop, false) }
 	var (
 		out      []temporal.RelSegment
 		entities int
@@ -284,35 +283,48 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 	return out, last, nil
 }
 
-// relPageSource returns tok's candidate source at opts (pageQueryOpts), its
-// candidates pruned by the type's envelope index (c.mu held).
-func (c *Core) relPageSource(tok uint16, key, vk string, opts storepkg.QueryOpts, after types.RelID) (*pageSource[types.RelID], error) {
+// relPageSources returns tok's candidate sources at opts (pageQueryOpts), one
+// per equal key from the membership sidecar, else (no index) the type's
+// candidates, pruned by the type's envelope index (c.mu held). No key, no
+// source.
+func (c *Core) relPageSources(tok uint16, key string, keys equalKeys, opts storepkg.QueryOpts, after types.RelID) ([]*pageSource[types.RelID], error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
 	if c.relPropTxPage != nil {
-		src := sidecarSource(opts.TxPin, after, c.storeRowsTrust, storepkg.ValidateRelID,
-			func(after types.RelID, n int, fn func(types.RelID, types.Instant) bool) error {
-				return c.relPropTxPage.ForEachRelPropertyTxMemberAfter(tok, key, vk, after, n, fn)
-			})
-		src.prune = func(ids []types.RelID) []types.RelID { return c.pruneRelTypeCandidates(tok, ids, opts) }
-		// The first fetch tells an indexed type from one without the index.
-		err := src.fill(pageChunkMin)
-		if err == nil {
-			return src, nil
+		srcs := make([]*pageSource[types.RelID], 0, len(keys))
+		for _, vk := range keys {
+			src := sidecarSource(opts.TxPin, after, c.storeRowsTrust, storepkg.ValidateRelID,
+				func(after types.RelID, n int, fn func(types.RelID, types.Instant) bool) error {
+					return c.relPropTxPage.ForEachRelPropertyTxMemberAfter(tok, key, vk, after, n, fn)
+				})
+			src.prune = func(ids []types.RelID) []types.RelID { return c.pruneRelTypeCandidates(tok, ids, opts) }
+			// The first fetch tells an indexed type from one without the index.
+			err := src.fill(pageChunkMin)
+			if errors.Is(err, storepkg.ErrIndexNotFound) {
+				srcs = nil
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+			srcs = append(srcs, src)
 		}
-		if !errors.Is(err, storepkg.ErrIndexNotFound) {
-			return nil, err
+		if srcs != nil {
+			return srcs, nil
 		}
 	}
 	ids, err := c.relTypeCandidateIDsAt(tok, opts) // pruned by the envelope
 	if err != nil {
 		return nil, err
 	}
-	return listSource(ascending(ids), after), nil
+	return []*pageSource[types.RelID]{listSource(ascending(ids), after)}, nil
 }
 
 // NodesEffectivePage implements temporal.API.NodesEffectivePage.
 func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after types.NodeID, limit int) ([]temporal.NodeSegment, types.NodeID, error) {
 	c := t.c
-	vk, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeNodes)
+	keys, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeNodes)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -322,18 +334,18 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 		n := c.labels.Len()
 		for i := 1; i <= n; i++ {
 			tok := uint16(i) // #nosec G115 -- bounded by the registry's uint16 token space
-			src, err := c.nodePageSource(tok, f.Prop, vk, opts, after)
+			tokSrcs, err := c.nodePageSources(tok, f.Prop, keys, opts, after)
 			if err != nil {
 				return err
 			}
-			srcs = append(srcs, src)
+			srcs = append(srcs, tokSrcs...)
 		}
 		return nil
 	}); err != nil {
 		return nil, 0, err
 	}
 	validOK := pageValidKeep(opts)
-	keepRow := func(n *types.Node) bool { return n.HasPropertyIndexKey(f.Prop, false, vk) }
+	keepRow := func(n *types.Node) bool { return keys.node(n, f.Prop, false) }
 	var (
 		out      []temporal.NodeSegment
 		entities int
@@ -370,27 +382,36 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 	return out, last, nil
 }
 
-// nodePageSource is relPageSource for label tok, pruned by the label's
-// envelope index; a node listed by several labels is read when one of their
-// sources keeps it (c.mu held).
-func (c *Core) nodePageSource(tok uint16, key, vk string, opts storepkg.QueryOpts, after types.NodeID) (*pageSource[types.NodeID], error) {
+// nodePageSources is relPageSources for a label.
+func (c *Core) nodePageSources(tok uint16, key string, keys equalKeys, opts storepkg.QueryOpts, after types.NodeID) ([]*pageSource[types.NodeID], error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
 	if c.nodePropTxPage != nil {
-		src := sidecarSource(opts.TxPin, after, c.storeRowsTrust, storepkg.ValidateNodeID,
-			func(after types.NodeID, n int, fn func(types.NodeID, types.Instant) bool) error {
-				return c.nodePropTxPage.ForEachNodePropertyTxMemberAfter(tok, key, vk, after, n, fn)
-			})
-		src.prune = func(ids []types.NodeID) []types.NodeID { return c.pruneNodeLabelCandidates(tok, ids, opts) }
-		err := src.fill(pageChunkMin)
-		if err == nil {
-			return src, nil
+		srcs := make([]*pageSource[types.NodeID], 0, len(keys))
+		for _, vk := range keys {
+			src := sidecarSource(opts.TxPin, after, c.storeRowsTrust, storepkg.ValidateNodeID,
+				func(after types.NodeID, n int, fn func(types.NodeID, types.Instant) bool) error {
+					return c.nodePropTxPage.ForEachNodePropertyTxMemberAfter(tok, key, vk, after, n, fn)
+				})
+			src.prune = func(ids []types.NodeID) []types.NodeID { return c.pruneNodeLabelCandidates(tok, ids, opts) }
+			err := src.fill(pageChunkMin)
+			if errors.Is(err, storepkg.ErrIndexNotFound) {
+				srcs = nil
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+			srcs = append(srcs, src)
 		}
-		if !errors.Is(err, storepkg.ErrIndexNotFound) {
-			return nil, err
+		if srcs != nil {
+			return srcs, nil
 		}
 	}
 	ids, err := c.nodeLabelCandidateIDsAt(tok, opts) // pruned by the envelope
 	if err != nil {
 		return nil, err
 	}
-	return listSource(ascending(ids), after), nil
+	return []*pageSource[types.NodeID]{listSource(ascending(ids), after)}, nil
 }

@@ -1,0 +1,13 @@
+--- FAIL: TestUniqueLegacyWidthTwins (0.00s)
+    numeric_equality_doors_test.go:350: import of legacy width twins: graph: unique constraint violation: label "User" key "k" held by both node 816534629879744512 and node 816534629881251840 after import, want accepted (lenient load)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.013s
+--- FAIL: TestCompositeLookupDoesNotCombineForms (0.00s)
+    property_equal_test.go:71: composite lookup made 1728 store calls, want <= 12 (no form combinations)
+--- FAIL: TestUniqueForever_PersistsStoredWidthKey (0.00s)
+    unique_forever_selfhash_test.go:117: persisted records = map[User/k/i64:3:816534638616838144 User/k/i64:4:816534638618738688], want map[User/k/i:3:816534638616838144 User/k/u8:4:816534638618738688]
+--- FAIL: TestUniqueForever_LegacyWidthTwinsLoad (0.00s)
+    unique_forever_selfhash_test.go:179: records after a persist = map[User/k/i64:3:816534638623162368 User/k/i64:9:816534638626275328], want both raw twins kept and i:9
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.033s
+FAIL

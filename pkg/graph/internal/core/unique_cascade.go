@@ -82,13 +82,13 @@ func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, app
 		for li := 0; li < row.LabelTokenCount(); li++ {
 			labelTok := row.LabelTokenRawAt(li)
 			for key, scope := range constrained[labelTok] {
-				valueKey, found := row.IndexablePropertyValueKey(key)
+				valueKey, found := uniqueValueKey(row, key)
 				if !found || valueKey == "" {
 					continue
 				}
 				oldKey := ""
 				if current != nil {
-					oldKey, _ = current.IndexablePropertyValueKey(key)
+					oldKey, _ = uniqueValueKey(current, key)
 				}
 				patched := false
 				if v, ok := props[key]; ok && v != nil && isCorrection {

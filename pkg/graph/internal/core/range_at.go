@@ -160,18 +160,17 @@ func (c *Core) relsInRangeAtLocked(typeName, propKey string, min, max float64, o
 	return out, nil
 }
 
-// inRangeExact is the count's value test: the value as the temporal range
-// door hands it out (coerceFloat64, a float32 widened) within the bounds per
-// the inclusivity flags. NaN is never in range.
+// inRangeExact is the count's value test: the stored number within the
+// bounds per the inclusivity flags, compared exactly (types.CompareNumber: a
+// float32 widened, an integer past 2^53 not rounded), so [3, 3] counts what
+// the equality doors find for 3. NaN is never in range.
 func inRangeExact(v any, min, max float64, inclMin, inclMax bool) bool {
-	f, ok := coerceFloat64(v)
-	if !ok || math.IsNaN(f) {
+	lo, ok := types.CompareNumber(v, min)
+	if !ok || lo < 0 || (lo == 0 && !inclMin) {
 		return false
 	}
-	if f < min || (f == min && !inclMin) {
-		return false
-	}
-	return f < max || (f == max && inclMax)
+	hi, ok := types.CompareNumber(v, max)
+	return ok && (hi < 0 || (hi == 0 && inclMax))
 }
 
 // nodeRangeCardinalityAt is RangeCardinality under a temporal opts: the

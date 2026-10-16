@@ -335,10 +335,10 @@ func (a *API) RelPropertyBounds(typeName, propertyKey string, opts storepkg.Quer
 
 // PropertyValueStats states the values of key over label's members from
 // the property index (sigma-tkgd round 9 R9-3): Distinct values as the
-// index keys them (an int64 3 and a float64 3.0 are two, as
-// ByLabelAndProperty seeks them), Rows carrying an indexed value, the
-// heaviest value's rows (MaxRows: what ByLabelAndProperty returns for it)
-// and that value (MaxValue; the smallest key among equals). pin 0: the
+// index keys them, by stored width (an int64 3 and a float64 3.0 are two
+// keys, although ByLabelAndProperty finds both for 3; a diagnostics
+// statistic), Rows carrying an indexed value, the heaviest key's rows
+// (MaxRows) and that value (MaxValue; the smallest key among equals). pin 0: the
 // current state (Rows = NodeCountByLabelAndPropertyKey), from counts the
 // index keeps (a pass over its value keys at the first call after a write,
 // then cached until the next: the write path pays one pointer store). pin >

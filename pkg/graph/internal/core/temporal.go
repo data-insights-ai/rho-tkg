@@ -1093,34 +1093,36 @@ func (c *Core) membershipSidecarUsable(depth storepkg.ShardDepth) bool {
 // read — the full-history fold. Both paths feed the same resolver and
 // predicate, so they answer the same; the sidecar path loads only chains that
 // can carry the value.
-func (c *Core) forEachRelPropertyCandidateID(tok uint16, key, valueKey string, currentIDs []types.RelID, opts storepkg.QueryOpts, fn func(types.RelID) error) error {
+func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys equalKeys, currentIDs []types.RelID, opts storepkg.QueryOpts, fn func(types.RelID) error) error {
 	if c.relPropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
 		return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, fn)
 	}
 	pinTx := effectiveTxPin(opts)
 	seen := make(map[types.RelID]struct{}, len(currentIDs))
-	var invalid error
-	err := c.relPropTxMembers.ForEachRelPropertyTxMember(tok, key, valueKey, func(id types.RelID, firstTx types.Instant) bool {
-		if !c.storeRowsTrust {
-			if verr := storepkg.ValidateRelID(id); verr != nil {
-				invalid = verr
-				return false
+	for _, valueKey := range valueKeys {
+		var invalid error
+		err := c.relPropTxMembers.ForEachRelPropertyTxMember(tok, key, valueKey, func(id types.RelID, firstTx types.Instant) bool {
+			if !c.storeRowsTrust {
+				if verr := storepkg.ValidateRelID(id); verr != nil {
+					invalid = verr
+					return false
+				}
 			}
+			if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
+				return true // first carried the value after the pin: cannot match
+			}
+			seen[id] = struct{}{}
+			return true
+		})
+		if invalid != nil {
+			return invalid
 		}
-		if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
-			return true // first carried the value after the pin: cannot match
+		if errors.Is(err, storepkg.ErrIndexNotFound) {
+			return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, fn)
 		}
-		seen[id] = struct{}{}
-		return true
-	})
-	if invalid != nil {
-		return invalid
-	}
-	if errors.Is(err, storepkg.ErrIndexNotFound) {
-		return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, fn)
-	}
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
 	}
 	for _, id := range currentIDs {
 		seen[id] = struct{}{}
@@ -1143,7 +1145,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key, valueKey string, c
 // nothing), pruned by the pin per pair, united with currentIDs. No usable
 // pair at all: the history fold scoped to the label's ever-members
 // (forEachNodeHistoryCandidateOfLabel).
-func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]string, currentIDs []types.NodeID, opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
+func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]equalKeys, currentIDs []types.NodeID, opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
 	if c.nodePropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
 		return c.forEachNodeHistoryCandidateOfLabel(tok, currentIDs, opts, fn)
 	}
@@ -1155,38 +1157,45 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]s
 	sort.Strings(keys) // deterministic intersection order
 	var cands map[types.NodeID]struct{}
 	for _, key := range keys {
-		vk := valueKeys[key]
-		if vk == "" {
+		vks := valueKeys[key]
+		if len(vks) == 0 {
 			continue
 		}
 		set := make(map[types.NodeID]struct{})
-		var invalid error
-		err := c.nodePropTxMembers.ForEachNodePropertyTxMember(tok, key, vk, func(id types.NodeID, firstTx types.Instant) bool {
-			if !c.storeRowsTrust {
-				if verr := storepkg.ValidateNodeID(id); verr != nil {
-					invalid = verr
-					return false
+		indexed := true
+		for _, vk := range vks {
+			var invalid error
+			err := c.nodePropTxMembers.ForEachNodePropertyTxMember(tok, key, vk, func(id types.NodeID, firstTx types.Instant) bool {
+				if !c.storeRowsTrust {
+					if verr := storepkg.ValidateNodeID(id); verr != nil {
+						invalid = verr
+						return false
+					}
 				}
-			}
-			if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
-				return true
-			}
-			if cands != nil {
-				if _, keep := cands[id]; !keep {
+				if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
 					return true
 				}
+				if cands != nil {
+					if _, keep := cands[id]; !keep {
+						return true
+					}
+				}
+				set[id] = struct{}{}
+				return true
+			})
+			if invalid != nil {
+				return invalid
 			}
-			set[id] = struct{}{}
-			return true
-		})
-		if invalid != nil {
-			return invalid
+			if errors.Is(err, storepkg.ErrIndexNotFound) {
+				indexed = false
+				break
+			}
+			if err != nil {
+				return err
+			}
 		}
-		if errors.Is(err, storepkg.ErrIndexNotFound) {
+		if !indexed {
 			continue
-		}
-		if err != nil {
-			return err
 		}
 		cands = set
 	}

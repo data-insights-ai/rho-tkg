@@ -309,7 +309,7 @@ func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min,
 				if !ok {
 					return 0, false
 				}
-				f, ok := coerceFloat64(v)
+				f, ok := types.NumericFloat64(v)
 				if !ok || !numericInRange(f, min, max, true, true) { // over-select; fn re-checks inclusivity
 					return 0, false
 				}
@@ -2245,7 +2245,7 @@ func (r *RelOps) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min
 				if !ok {
 					return 0, false
 				}
-				f, ok := coerceFloat64(v)
+				f, ok := types.NumericFloat64(v)
 				if !ok || !numericInRange(f, min, max, true, true) { // over-select; fn re-checks inclusivity
 					return 0, false
 				}

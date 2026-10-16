@@ -371,13 +371,13 @@ func TestUniqueCascade_StoreWriteFailureWithdrawPersistFailureKeepsClaim(t *test
 	vk, _ := cp.IndexablePropertyValueKey("k")
 	// Fail the registry persist only after the claim was made: claim, then
 	// fail the write, then the withdrawal's persist fails.
-	if _, err := c.claimForever(tok, "k", vk, a.ID()); err != nil {
+	if _, err := c.claimForever(tok, "k", vk, vk, a.ID()); err != nil {
 		t.Fatalf("claimForever: %v", err)
 	}
 	st.mu.Lock()
 	st.failMeta = true
 	st.mu.Unlock()
-	hold := &uniqueHold{c: c, id: a.ID(), claims: []uniqueCheckTuple{{labelTok: tok, key: "k", valueKey: vk}}}
+	hold := &uniqueHold{c: c, id: a.ID(), claims: []uniqueCheckTuple{{labelTok: tok, key: "k", raw: "z", valueKey: vk}}}
 	err = hold.writeFailed(nil, errInjectedWrite)
 	if !errors.Is(err, errInjectedWrite) || err.Error() == errInjectedWrite.Error() {
 		t.Fatalf("writeFailed with a failing persist: err = %v, want the write failure joined with the withdrawal failure", err)

@@ -6,7 +6,6 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -53,10 +52,6 @@ func (n *NodeOps) ByLabelAndProperty(label, key string, value any, opts storepkg
 // Callers must hold c.mu (R or W).
 func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	temporal := hasTemporalFilter(opts)
-	var targetKey string
-	if temporal {
-		targetKey = indexpkg.PropertyValueKey(value)
-	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, nil
@@ -64,7 +59,8 @@ func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts 
 	if !temporal {
 		return c.nodesByLabelAndProperty(tok, key, value, opts)
 	}
-	if targetKey == "" {
+	keys := equalKeys(types.EqualIndexKeys(value))
+	if keys == nil {
 		return nil, nil
 	}
 	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
@@ -81,9 +77,9 @@ func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts 
 		return nil, err
 	}
 	var result []*types.Node
-	valueKeys := map[string]string{key: targetKey}
+	valueKeys := map[string]equalKeys{key: keys}
 	pred := func(n *types.Node) bool {
-		return n.HasLabelTokenRaw(tok) && n.HasPropertyIndexKey(key, elements, targetKey)
+		return n.HasLabelTokenRaw(tok) && keys.node(n, key, elements)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	if err := c.forEachNodePropertyCandidateID(tok, valueKeys, currentIDs, opts, func(id types.NodeID) error {
@@ -183,15 +179,9 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 	}
 
 	var result []*types.Node
-	valueKeys := make(map[string]string, len(values))
-	for k, v := range values {
-		valueKeys[k] = indexpkg.PropertyValueKey(v)
-	}
+	valueKeys := equalKeysOf(values)
 	pred := func(n *types.Node) bool {
-		if !n.HasLabelTokenRaw(tok) {
-			return false
-		}
-		return indexpkg.NodeMatchesAllProperties(n, values)
+		return n.HasLabelTokenRaw(tok) && nodeMatchesAllEqual(n, valueKeys)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	if err := c.forEachNodePropertyCandidateID(tok, valueKeys, currentIDs, opts, func(id types.NodeID) error {

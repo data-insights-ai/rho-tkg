@@ -6,7 +6,6 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -58,10 +57,6 @@ func (r *RelOps) ByTypeAndProperty(typeName, key string, value any, opts storepk
 // Callers must hold c.mu (R or W).
 func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	temporal := hasTemporalFilter(opts)
-	var targetKey string
-	if temporal {
-		targetKey = indexpkg.PropertyValueKey(value)
-	}
 	tok, ok := c.lookupRelTypeQueryToken(typeName)
 	if !ok {
 		return nil, nil
@@ -69,7 +64,8 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 	if !temporal {
 		return c.relsByTypeAndProperty(tok, key, value, opts)
 	}
-	if targetKey == "" {
+	keys := equalKeys(types.EqualIndexKeys(value))
+	if keys == nil {
 		return nil, nil
 	}
 	currentMatching, err := c.relsByTypeAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
@@ -87,10 +83,10 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 	}
 	var result []*types.Relationship
 	pred := func(r *types.Relationship) bool {
-		return r.HasTypeTokenRaw(tok) && r.HasPropertyIndexKey(key, elements, targetKey)
+		return r.HasTypeTokenRaw(tok) && keys.rel(r, key, elements)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
-	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, opts, func(id types.RelID) error {
+	if err := c.forEachRelPropertyCandidateID(tok, key, keys, currentIDs, opts, func(id types.RelID) error {
 		rel, err := c.findRelVersionForOpts(id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
@@ -114,22 +110,37 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 // RelationshipsByTypeAndProperty; wrappers and mandatory-only backends fall back to
 // a type scan + filter. Mirror of nodesByLabelAndProperty.
 func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
-	wantKey := indexpkg.PropertyValueKey(value)
-	if wantKey == "" {
-		// The query value itself is not canonicalisable — by contract, no matches.
+	forms := types.EqualIndexValues(value)
+	if len(forms) == 0 {
+		// nil, NaN or a value without an index key: by contract, no matches.
 		return nil, nil
 	}
-	if c.relPropertyQuery != nil {
-		rels, err := c.relPropertyQuery.RelationshipsByTypeAndProperty(tok, key, value, opts)
+	perForm := c.relPropertyQuery != nil && len(forms) == 1
+	if c.relPropertyQuery != nil && !perForm {
+		indexed, err := c.relPropertyIndexed(tok, key)
 		if err != nil {
 			return nil, err
+		}
+		perForm = indexed
+	}
+	if perForm {
+		var rels []*types.Relationship
+		for _, form := range forms {
+			found, err := c.relPropertyQuery.RelationshipsByTypeAndProperty(tok, key, form, opts)
+			if err != nil {
+				return nil, err
+			}
+			rels = append(rels, found...)
+		}
+		if len(forms) > 1 {
+			rels = uniteRels(rels, opts)
 		}
 		if !c.relPropertyQueryTrust {
 			elements, err := c.relIndexElements(tok, key)
 			if err != nil {
 				return nil, err
 			}
-			if err := validateRelsByTypeAndProperty(tok, key, wantKey, elements, opts, rels); err != nil {
+			if err := validateRelsByTypeAndProperty(tok, key, keysOf(forms), elements, opts, rels); err != nil {
 				return nil, err
 			}
 			rels = copyRelationshipRows(rels)
@@ -153,9 +164,10 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 	if err != nil {
 		return nil, err
 	}
+	keys := keysOf(forms)
 	out := make([]*types.Relationship, 0, len(candidates))
 	for _, r := range candidates {
-		if r.HasPropertyIndexKey(key, elements, wantKey) {
+		if keys.rel(r, key, elements) {
 			out = append(out, r)
 		}
 	}
