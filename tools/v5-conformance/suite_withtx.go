@@ -17,11 +17,20 @@ func init() {
 	)
 }
 
+// singleCommitTx reports a graph whose transaction is one commit (WP-35): two
+// stamps on one entity inside one Tx are one revision, known as of the later
+// stamp. Graphs that commit per stamp (v4) keep the intermediate pin.
+func singleCommitTx(g Graph) bool {
+	sc, ok := g.(interface{ SingleCommitTx() bool })
+	return ok && sc.SingleCommitTx()
+}
+
 type twinFixture struct {
 	g       Graph
 	n, m, k Node // n open from 100, m valid [100,300), k valid [100,300)
 	a, b    Node
 	rel     Rel
+	sameTx  bool // n is updated and deleted inside one Tx
 }
 
 func newTwinFixture(t *testing.T, a Adapter) *twinFixture {
@@ -43,7 +52,13 @@ func (f *twinFixture) wantTwinState(t *testing.T) {
 	t.Helper()
 	g := f.g
 	wantNodeAsOf(t, g, f.n.ID, 1500, map[string]any{"v": 1}, 0)
-	wantNodeAsOf(t, g, f.n.ID, 2500, map[string]any{"v": 2}, 1)
+	if f.sameTx && singleCommitTx(g) {
+		// One Tx is one commit, and a commit is known as of its latest stamp: n's
+		// update@2000 is not separately pinnable from its delete@5000.
+		wantNodeAsOf(t, g, f.n.ID, 2500, map[string]any{"v": 1}, 0)
+	} else {
+		wantNodeAsOf(t, g, f.n.ID, 2500, map[string]any{"v": 2}, 1)
+	}
 	wantNoNodeAsOf(t, g, f.n.ID, 5000)
 	wantAtTx(t, g, f.m.ID, 155, 1500, "v", 1) // before the excise was recorded
 	wantAtTx(t, g, f.m.ID, 155, 3500, "v", nil)
@@ -80,6 +95,7 @@ func (f *twinFixture) wantUntouched(t *testing.T) {
 
 func twinTxApply(t *testing.T, a Adapter) {
 	f := newTwinFixture(t, a)
+	f.sameTx = true
 	ok(t, f.g.Tx(ctx, func(tx Tx) error {
 		if _, err := tx.UpdateNodeWithTx(f.n.ID, map[string]any{"v": 2}, 2000); err != nil {
 			return err

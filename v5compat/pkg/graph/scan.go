@@ -7,9 +7,10 @@ import (
 	"slices"
 
 	v5 "github.com/data-insights-ai/rho-tkg/v5/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 	"github.com/data-insights-ai/rho-tkg/v5compat/internal/convert"
 	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/store"
-	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/temporal"
+	ctemporal "github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/temporal"
 )
 
 // scanQ selects entities by label or relationship type.
@@ -51,15 +52,15 @@ func probes(key string, value any) (eq []v5.PropertyEq, ok bool, err error) {
 
 // scanRows drains Scan for each equality alternative (nil = no equality), merges
 // by entity and valid time, and drops retracted rows.
-func (g *Graph) scanRows(ctx context.Context, spec v5.SnapshotSpec, view v5.View, valid span, sq scanQ, alts []v5.PropertyEq) ([]row, error) {
-	s, err := g.g.OpenSnapshot(ctx, spec)
+func (g *Graph) scanRows(ctx context.Context, known temporal.Scope, view v5.View, valid span, sq scanQ, alts []v5.PropertyEq) ([]row, error) {
+	s, err := g.g.OpenSnapshot(ctx, v5.Fresh())
 	if err != nil {
 		return nil, mapV5(err)
 	}
 	defer s.Close()
 	var all []row
 	run := func(eq []v5.PropertyEq) error {
-		sel := g.selector(view, valid, eq, sq.labels, sq.relType)
+		sel := g.selector(known, view, valid, eq, sq.labels, sq.relType)
 		p, err := s.Scan(ctx, v5.ScanRequest{Selector: sel, Projection: v5.Projection{AllProperties: true}, Paging: paging})
 		es, err := drain(ctx, s, p, err)
 		if err != nil {
@@ -102,10 +103,6 @@ func (g *Graph) scanRows(ctx context.Context, spec v5.SnapshotSpec, view v5.View
 	})
 	return slices.CompactFunc(all, func(a, b row) bool { return a.id == b.id && a.sp == b.sp && a.ver == b.ver }), nil
 }
-
-// nowValid is the implicit valid-time "now" of the v4 list doors: the later of
-// the wall clock and the commit clock.
-func (g *Graph) nowValid() int64 { return max(nowMs(), g.led.last()) }
 
 func (sq scanQ) matches(r row, eq []v5.PropertyEq) bool {
 	for _, l := range sq.labels {
@@ -150,7 +147,7 @@ func (g *Graph) list(ctx context.Context, sq scanQ, key string, value any, hasEq
 		}
 		alts = eq
 	}
-	spec, tooNew := g.pinSpec(int64(max(o.TxPin, o.TxAt)))
+	known, tooNew := g.pinKnown(int64(max(o.TxPin, o.TxAt)))
 	if tooNew {
 		return nil, ErrTxPinTooNew
 	}
@@ -176,7 +173,7 @@ func (g *Graph) list(ctx context.Context, sq scanQ, key string, value any, hasEq
 		now := g.nowValid()
 		valid = span{now, now + 1}
 	}
-	rows, err := g.scanRows(ctx, spec, v5.ViewDeclared, valid, sq, alts)
+	rows, err := g.scanRows(ctx, known, v5.ViewDeclared, valid, sq, alts)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +185,7 @@ func (g *Graph) list(ctx context.Context, sq scanQ, key string, value any, hasEq
 		}
 		r, keep := rows[i], true
 		if belief {
-			all, err := g.rowsOf(ctx, spec, r.id, sq.rel)
+			all, err := g.rowsOf(ctx, known, r.id, sq.rel)
 			if err != nil {
 				return nil, err
 			}
@@ -205,13 +202,18 @@ func (g *Graph) list(ctx context.Context, sq scanQ, key string, value any, hasEq
 		}
 		i = j
 	}
+	if !belief { // belief rows come stamped from rowsOf
+		if err := g.stampRows(ctx, known, out); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
 }
 
 // effPage is one keyset page of effective segments: up to limit entities after
 // the ID, each with its matching segments in valid-time order; next is the last
 // ID of a full page, else 0.
-func (g *Graph) effPage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after int64, limit int, rel bool) ([]row, int64, error) {
+func (g *Graph) effPage(ctx context.Context, pin ctemporal.Pin, f ctemporal.Filter, after int64, limit int, rel bool) ([]row, int64, error) {
 	if err := g.alive(); err != nil {
 		return nil, 0, err
 	}
@@ -234,7 +236,7 @@ func (g *Graph) effPage(ctx context.Context, pin temporal.Pin, f temporal.Filter
 	if pin.Tx <= 0 {
 		return nil, 0, fmt.Errorf("%w: pin %d", ErrInvalidTimeRange, pin.Tx)
 	}
-	spec, tooNew := g.pinSpec(int64(pin.Tx))
+	known, tooNew := g.pinKnown(int64(pin.Tx))
 	if tooNew {
 		return nil, 0, ErrTxPinTooNew
 	}
@@ -258,7 +260,7 @@ func (g *Graph) effPage(ctx context.Context, pin temporal.Pin, f temporal.Filter
 	if !any {
 		return nil, 0, nil
 	}
-	rows, err := g.scanRows(ctx, spec, v5.ViewEffective, valid, scanQ{rel: rel}, eq)
+	rows, err := g.scanRows(ctx, known, v5.ViewEffective, valid, scanQ{rel: rel}, eq)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -270,16 +272,16 @@ func (g *Graph) effPage(ctx context.Context, pin temporal.Pin, f temporal.Filter
 		}
 		if r.id != last {
 			if n == limit {
-				return out, last, nil
+				return out, last, g.stampRows(ctx, known, out)
 			}
 			n, last = n+1, r.id
 		}
 		out = append(out, r)
 	}
 	if n == limit {
-		return out, last, nil
+		return out, last, g.stampRows(ctx, known, out)
 	}
-	return out, 0, nil
+	return out, 0, g.stampRows(ctx, known, out)
 }
 
 // scalarOnly reports a list or bytes value: the paged effective filter and the

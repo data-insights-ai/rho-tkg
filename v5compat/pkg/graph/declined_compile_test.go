@@ -26,12 +26,8 @@ func TestDeclinedSubAPIsCompileAndReport(t *testing.T) {
 			t.Fatalf("%s: %v, want ErrNotSupportedInV5", what, err)
 		}
 	}
-	_, err = g.Stats().NodeCount()
-	want("Stats().NodeCount", err)
-	_, err = g.Stats().NodeCountByLabel("L")
-	want("Stats().NodeCountByLabel", err)
-	_, err = g.Stats().AllLabelCounts()
-	want("Stats().AllLabelCounts", err)
+	_, err = g.Stats().PropertyNDV("L", "k")
+	want("Stats().PropertyNDV", err)
 	_, _, err = g.Stats().RangeCardinality("L", "k", 0, 1, true, true, store.QueryOpts{})
 	want("Stats().RangeCardinality", err)
 	want("Index().CreateProperty", g.Index().CreateProperty("L", "k"))
@@ -42,7 +38,7 @@ func TestDeclinedSubAPIsCompileAndReport(t *testing.T) {
 	want("Replication().LastCommittedLSN", err)
 	_, err = g.Replication().IDSlotLease()
 	want("Replication().IDSlotLease", err)
-	want("Constraints().CreateUnique", g.Constraints().CreateUnique(ctx, "L", "k"))
+	want("Constraints().CreateUniqueForever", g.Constraints().CreateUniqueForever(ctx, "L", "k"))
 	_ = g.Constraints().UniqueConstraints()
 	_, err = g.Constraints().DryRunValidate(ctx, constraints.DryRunFacts{})
 	want("Constraints().DryRunValidate", err)
@@ -52,13 +48,12 @@ func TestDeclinedSubAPIsCompileAndReport(t *testing.T) {
 	want("IO().Export", g.IO().Export(nil))
 	_, err = g.Ingest().NewSession(ingest.IngestOptions{})
 	want("Ingest().NewSession", err)
-	tx, err := g.Tx().Begin()
-	want("Tx().Begin", err)
-	if tx != nil {
-		t.Fatal("Begin returned a transaction")
-	}
 	var open *graph.GraphTx
-	want("GraphTx.Commit", open.Commit())
-	want("GraphTx.Rollback", open.Rollback())
+	if err := open.Commit(); !errors.Is(err, store.ErrTxDone) {
+		t.Fatalf("nil GraphTx.Commit: %v, want ErrTxDone", err)
+	}
+	if err := open.Rollback(); !errors.Is(err, store.ErrTxDone) {
+		t.Fatalf("nil GraphTx.Rollback: %v, want ErrTxDone", err)
+	}
 	_ = open.CommittedLSN()
 }

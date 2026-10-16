@@ -21,13 +21,13 @@ func declined(door string) error { return fmt.Errorf("%w: %s", ErrNotSupportedIn
 // ErrNotSupportedInV5 naming the door (the X list, or not in the first batch).
 
 // Stats returns the statistics sub-API.
-func (g *Graph) Stats() *stats.API { return &stats.API{} }
+func (g *Graph) Stats() *stats.API { return stats.New(statSource{g}) }
 
 // Index returns the index DDL and vector sub-API.
 func (g *Graph) Index() *index.API { return &index.API{} }
 
 // Constraints returns the constraint sub-API.
-func (g *Graph) Constraints() *constraints.API { return &constraints.API{} }
+func (g *Graph) Constraints() *constraints.API { return constraints.New(uniqueSource{g}) }
 
 // Admin returns the admin sub-API (DecomposeNodeID, IDSlotLease, tier admin).
 func (g *Graph) Admin() *admin.API { return &admin.API{} }

@@ -15,8 +15,22 @@ var ErrNotSupportedInV5 = store.ErrNotSupportedInV5
 
 func declined(door string) error { return fmt.Errorf("%w: "+door, ErrNotSupportedInV5) }
 
+// Unique-constraint sentinels (the v4 names).
+var (
+	ErrUniqueViolationExisting = store.ErrUniqueViolationExisting
+	ErrUniqueConstraintExists  = store.ErrUniqueConstraintExists
+)
+
+// Source installs the runtime unique declaration of the compat graph.
+type Source interface {
+	CreateUnique(ctx context.Context, label, propertyKey string) error
+}
+
 // API is the sub-API handle returned by the graph accessor.
-type API struct{}
+type API struct{ src Source }
+
+// New builds the sub-API over the graph's unique declaration.
+func New(src Source) *API { return &API{src: src} }
 
 // DryRunFacts is a placeholder for the v4 type of the same name.
 type DryRunFacts struct{}
@@ -48,9 +62,16 @@ func (a *API) DryRunValidate(ctx context.Context, facts DryRunFacts) (r0 []DryRu
 	return
 }
 
-// CreateUnique is declined.
+// CreateUnique makes propertyKey unique (v5 Graph.DeclareUnique): over all
+// nodes, whatever their label, for the int, string and bool values of the key.
+// Existing duplicates refuse it (ErrUniqueViolationExisting), a second call is
+// ErrUniqueConstraintExists, and a write of a held value is ErrUniqueViolation.
+// The label is not part of the claim (v5 uniqueness is per key).
 func (a *API) CreateUnique(ctx context.Context, label, propertyKey string) error {
-	return declined("constraints.CreateUnique")
+	if a.src == nil {
+		return declined("constraints.CreateUnique")
+	}
+	return a.src.CreateUnique(ctx, label, propertyKey)
 }
 
 // CreateUniqueForever is declined.

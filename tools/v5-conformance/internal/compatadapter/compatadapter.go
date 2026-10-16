@@ -90,6 +90,10 @@ func mapErr(err error) error {
 	return fmt.Errorf("%w (%w)", errors.Join(all...), err)
 }
 
+// SingleCommitTx tells the suite that a v5compat Tx is one v5 commit: an entity
+// written at two caller stamps in one Tx is known as of the later one.
+func (w *wrap) SingleCommitTx() bool { return true }
+
 func (w *wrap) Close() error { return mapErr(w.g.Close()) }
 
 func (w *wrap) Reopen() error {

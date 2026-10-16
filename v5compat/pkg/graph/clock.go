@@ -1,14 +1,7 @@
 package graph
 
 import (
-	"bufio"
-	"encoding/hex"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	v5 "github.com/data-insights-ai/rho-tkg/v5/pkg/graph"
@@ -19,129 +12,38 @@ var nowMs = wallMs
 
 func wallMs() int64 { return time.Now().UnixMilli() }
 
-// maxSkewMs bounds how far ahead of the wall clock a caller instant may be.
-const maxSkewMs = 60 * 60 * 1000
+// The compat transaction clock is the v5 commit clock. CommittedTx is the
+// knowledge instant of the newest v5 commit (Receipt.KnowledgeInstant). A write
+// stamps its ops with Recorded: the caller's instant on the backfill doors, else
+// the instant the commit will take. The engine takes max(wall, previous+1); the
+// compat layer predicts the same value under the writer lock, which is at most
+// the engine's because the wall clock is read before the Update opens (the engine
+// reads it again when it does), and the engine refuses a Recorded above its own. A v4 pin is then Fresh() with
+// Selector.Known <= pin; nothing but the v5 store holds the clock.
 
-// ledger maps the compat transaction instant (one monotonic millisecond per
-// commit, or the caller's stamp on the backfill doors) to the v5 cut of that
-// commit. v5 cuts are opaque, so every v4 "pin" is resolved here: the pin reads
-// the newest cut whose instant is <= pin. The first entry is the genesis cut at
-// instant 0 (the empty graph). A directory graph persists the ledger next to the
-// store (v5compat.ledger, one "instant hexcut" line per commit, synced); v5 has
-// no metadata door in pkg/graph, so this file is the compat-only home of the
-// commit clock. A crash between a v5 commit and its ledger line leaves the commit
-// without an entry; the next open adds one at last+1.
-type ledger struct {
-	mu      sync.Mutex
-	entries []ledgerEntry
-	max     int64 // newest instant of any entry: CommittedTx
-	f       *os.File
-}
+// committed is the newest commit instant seen (0 until the first receipt).
+type clock struct{ last atomic.Int64 }
 
-type ledgerEntry struct {
-	tx  int64
-	cut v5.Cut
-}
-
-const ledgerFile = "v5compat.ledger"
-
-func openLedger(dir string) (*ledger, error) {
-	l := &ledger{}
-	if dir == "" {
-		return l, nil
+func (c *clock) note(r v5.Receipt) {
+	k, ok := r.KnowledgeInstant()
+	if !ok {
+		return
 	}
-	path := filepath.Join(dir, ledgerFile)
-	if b, err := os.ReadFile(path); err == nil {
-		sc := bufio.NewScanner(strings.NewReader(string(b)))
-		sc.Buffer(make([]byte, 0, 1<<16), v5.MaxTokenBytes*3)
-		for sc.Scan() {
-			tx, cutHex, ok := strings.Cut(sc.Text(), " ")
-			if !ok {
-				break // a torn last line
-			}
-			n, err := strconv.ParseInt(tx, 10, 64)
-			raw, err2 := hex.DecodeString(cutHex)
-			if err != nil || err2 != nil {
-				break
-			}
-			cut, err := v5.ParseCut(raw)
-			if err != nil {
-				break
-			}
-			l.entries = append(l.entries, ledgerEntry{n, cut})
-			l.max = max(l.max, n)
+	for {
+		cur := c.last.Load()
+		if int64(k) <= cur || c.last.CompareAndSwap(cur, int64(k)) {
+			return
 		}
-	} else if !os.IsNotExist(err) {
-		return nil, err
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return nil, err
-	}
-	l.f = f
-	return l, nil
 }
 
-func (l *ledger) close() error {
-	if l.f == nil {
-		return nil
-	}
-	return l.f.Close()
-}
-
-// last is the newest commit instant (0 for the genesis entry or none).
-func (l *ledger) last() int64 {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.max
-}
-
-func (l *ledger) empty() bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return len(l.entries) == 0
-}
-
-func (l *ledger) lastCut() (v5.Cut, bool) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if len(l.entries) == 0 {
-		return v5.Cut{}, false
-	}
-	return l.entries[len(l.entries)-1].cut, true
-}
+// committedTx is the newest commit instant.
+func (g *Graph) committedTx() int64 { return g.clk.last.Load() }
 
 // next is the instant a clock write would take: the wall clock, but strictly
 // above every instant committed so far.
-func (l *ledger) next() int64 { return max(nowMs(), l.last()+1) }
+func (g *Graph) next() int64 { return max(nowMs(), g.committedTx()+1) }
 
-// cutFor returns the newest cut (by commit order) whose own instant is <= pin.
-// Caller stamps may step back across entities; a pin then sees every earlier
-// commit too (the cut is a prefix of the commit order), never a later one.
-func (l *ledger) cutFor(pin int64) (v5.Cut, bool) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	for i := len(l.entries) - 1; i >= 0; i-- {
-		if l.entries[i].tx <= pin {
-			return l.entries[i].cut, true
-		}
-	}
-	return v5.Cut{}, false
-}
-
-// add records a commit at instant tx as given.
-func (l *ledger) add(tx int64, cut v5.Cut) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.f != nil {
-		if _, err := fmt.Fprintf(l.f, "%d %x\n", tx, cut.Bytes()); err != nil {
-			return err
-		}
-		if err := l.f.Sync(); err != nil {
-			return err
-		}
-	}
-	l.entries = append(l.entries, ledgerEntry{tx, cut})
-	l.max = max(l.max, tx)
-	return nil
-}
+// nowValid is the implicit valid-time "now" of the v4 list doors: the later of
+// the wall clock and the commit clock.
+func (g *Graph) nowValid() int64 { return max(nowMs(), g.committedTx()) }

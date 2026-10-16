@@ -13,8 +13,23 @@ var ErrNotSupportedInV5 = store.ErrNotSupportedInV5
 
 func declined(door string) error { return fmt.Errorf("%w: "+door, ErrNotSupportedInV5) }
 
+// Source answers the counts the compat graph serves; every other statistic is
+// declined.
+type Source interface {
+	NodeCount() (int, error)
+	RelCount() (int, error)
+	NodeCountByLabel(label string) (int, error)
+	RelCountByType(typeName string) (int, error)
+	NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, error)
+	AllLabelCounts() (map[string]int, error)
+	AllRelTypeCounts() (map[string]int, error)
+}
+
 // API is the sub-API handle returned by the graph accessor.
-type API struct{}
+type API struct{ src Source }
+
+// New builds the sub-API over the graph's count source.
+func New(src Source) *API { return &API{src: src} }
 
 // GraphStats is a placeholder for the v4 type of the same name.
 type GraphStats struct{}
@@ -25,28 +40,40 @@ func (a *API) Get() (r0 GraphStats, err error) {
 	return
 }
 
-// NodeCount is declined.
+// NodeCount counts what the lookup doors list (current, not deleted or retracted).
 func (a *API) NodeCount() (r0 int, err error) {
-	err = declined("stats.NodeCount")
-	return
+	if a.src == nil {
+		err = declined("stats.NodeCount")
+		return
+	}
+	return a.src.NodeCount()
 }
 
-// RelCount is declined.
+// RelCount counts what the lookup doors list (current, not deleted or retracted).
 func (a *API) RelCount() (r0 int, err error) {
-	err = declined("stats.RelCount")
-	return
+	if a.src == nil {
+		err = declined("stats.RelCount")
+		return
+	}
+	return a.src.RelCount()
 }
 
-// NodeCountByLabel is declined.
+// NodeCountByLabel counts what the lookup doors list (current, not deleted or retracted).
 func (a *API) NodeCountByLabel(label string) (r0 int, err error) {
-	err = declined("stats.NodeCountByLabel")
-	return
+	if a.src == nil {
+		err = declined("stats.NodeCountByLabel")
+		return
+	}
+	return a.src.NodeCountByLabel(label)
 }
 
-// NodeCountByLabelAndPropertyKey is declined.
+// NodeCountByLabelAndPropertyKey counts what the lookup doors list (current, not deleted or retracted).
 func (a *API) NodeCountByLabelAndPropertyKey(label, propertyKey string) (r0 int, err error) {
-	err = declined("stats.NodeCountByLabelAndPropertyKey")
-	return
+	if a.src == nil {
+		err = declined("stats.NodeCountByLabelAndPropertyKey")
+		return
+	}
+	return a.src.NodeCountByLabelAndPropertyKey(label, propertyKey)
 }
 
 // PropertyTypeClassCounts is declined.
@@ -143,10 +170,13 @@ func (a *API) RelTypeTimeStats(typeName string) (r0 store.MemberTimeStats, r1 bo
 	return
 }
 
-// RelCountByType is declined.
+// RelCountByType counts what the lookup doors list (current, not deleted or retracted).
 func (a *API) RelCountByType(typeName string) (r0 int, err error) {
-	err = declined("stats.RelCountByType")
-	return
+	if a.src == nil {
+		err = declined("stats.RelCountByType")
+		return
+	}
+	return a.src.RelCountByType(typeName)
 }
 
 // RangeCardinality is declined.
@@ -161,14 +191,20 @@ func (a *API) RelRangeCardinality(typeName, propKey string, min, max float64, in
 	return
 }
 
-// AllLabelCounts is declined.
+// AllLabelCounts counts what the lookup doors list (current, not deleted or retracted).
 func (a *API) AllLabelCounts() (r0 map[string]int, err error) {
-	err = declined("stats.AllLabelCounts")
-	return
+	if a.src == nil {
+		err = declined("stats.AllLabelCounts")
+		return
+	}
+	return a.src.AllLabelCounts()
 }
 
-// AllRelTypeCounts is declined.
+// AllRelTypeCounts counts what the lookup doors list (current, not deleted or retracted).
 func (a *API) AllRelTypeCounts() (r0 map[string]int, err error) {
-	err = declined("stats.AllRelTypeCounts")
-	return
+	if a.src == nil {
+		err = declined("stats.AllRelTypeCounts")
+		return
+	}
+	return a.src.AllRelTypeCounts()
 }

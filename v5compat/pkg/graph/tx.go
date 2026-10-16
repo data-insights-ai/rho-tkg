@@ -13,7 +13,19 @@ import (
 type GraphTx struct {
 	w    *wtx
 	done bool
+	hold *txHold // Begin: the goroutine holding the v5 Update open
+	lsn  uint64
 }
+
+// txHold is the open v5 Update of a Begin transaction. The Update callback runs
+// in its own goroutine and waits for Commit or Rollback; the user goroutine and
+// that one never run together (each call hands over on a channel).
+type txHold struct {
+	decide chan error // nil: commit; errRolledBack: roll back
+	done   chan error // the outcome of the Update
+}
+
+var errRolledBack = errors.New("graph: transaction rolled back")
 
 func isNotFound(err error) bool {
 	return errors.Is(err, ErrNodeNotFound) || errors.Is(err, ErrRelNotFound)
@@ -48,23 +60,69 @@ func (a *TxAPI) RunWithLSN(fn func(*GraphTx) error) (uint64, error) {
 	if err := a.Run(fn); err != nil {
 		return 0, err
 	}
-	return uint64(a.g.led.last()), nil
+	return uint64(a.g.committedTx()), nil
 }
 
-// Begin is declined: a callback-less transaction cannot be rolled back without a
-// live v5 Update.
+// Begin opens a transaction that stays open until Commit or Rollback: one v5
+// Update held open (writers wait for it, as for v4's transaction lock). Always
+// finish it; an abandoned Begin blocks every other writer and Close.
 func (a *TxAPI) Begin() (*GraphTx, error) {
-	return nil, declined("Tx().Begin (use Run or RunContext)")
+	if err := a.g.alive(); err != nil {
+		return nil, err
+	}
+	t := &GraphTx{hold: &txHold{decide: make(chan error), done: make(chan error, 1)}}
+	ready := make(chan struct{})
+	go func() {
+		_, err := a.g.run(context.Background(), false, func(w *wtx) error {
+			t.w = w
+			close(ready)
+			return <-t.hold.decide
+		})
+		t.hold.done <- err
+	}()
+	select {
+	case <-ready:
+		return t, nil
+	case err := <-t.hold.done:
+		return nil, err
+	}
 }
 
-// Commit is declined: the transaction commits when the Run callback returns nil.
-func (t *GraphTx) Commit() error { return declined("GraphTx.Commit (Run commits)") }
+func (t *GraphTx) finish(decision error) error {
+	if t == nil || t.done || t.hold == nil {
+		return store.ErrTxDone
+	}
+	t.done = true
+	t.hold.decide <- decision
+	err := <-t.hold.done
+	if errors.Is(err, errRolledBack) {
+		return nil
+	}
+	return err
+}
 
-// Rollback is declined: the transaction rolls back when the Run callback errs.
-func (t *GraphTx) Rollback() error { return declined("GraphTx.Rollback (Run rolls back)") }
+// Commit commits a Begin transaction (a Run transaction commits when its
+// callback returns nil; Commit there is ErrTxDone).
+func (t *GraphTx) Commit() error {
+	err := t.finish(nil)
+	if err == nil {
+		t.lsn = uint64(t.w.g.committedTx())
+	}
+	return err
+}
 
-// CommittedLSN is 0: v5 has no change-log LSN (RunWithLSN returns the commit instant).
-func (t *GraphTx) CommittedLSN() uint64 { return 0 }
+// Rollback discards a Begin transaction.
+func (t *GraphTx) Rollback() error { return t.finish(errRolledBack) }
+
+// CommittedLSN is the commit bookmark of a committed Begin transaction: the
+// commit instant CommittedTx (v5 has no change-log LSN; comparable with itself
+// only). It is 0 before Commit.
+func (t *GraphTx) CommittedLSN() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.lsn
+}
 
 func (t *GraphTx) live() (*wtx, error) {
 	if t == nil || t.done {

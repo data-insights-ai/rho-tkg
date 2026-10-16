@@ -7,14 +7,14 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/types"
 )
 
-// CommittedTx is the newest commit instant: one strictly increasing millisecond
-// per commit (or the caller's stamp on the backfill doors), 0 on an empty graph,
-// persisted with the graph. It is usable as a pin.
+// CommittedTx is the newest commit instant: the v5 knowledge instant of the
+// newest commit (strictly increasing, persisted with the graph). It is usable as
+// a pin: every write of a commit, backfilled or not, is recorded at or before it.
 func (a *TemporalAPI) CommittedTx() (types.Instant, error) {
 	if err := a.g.alive(); err != nil {
 		return 0, err
 	}
-	return types.Instant(a.g.led.last()), nil
+	return types.Instant(a.g.committedTx()), nil
 }
 
 // PeekTx is the instant the next clock write would take.
@@ -22,7 +22,7 @@ func (a *TemporalAPI) PeekTx() (types.Instant, error) {
 	if err := a.g.alive(); err != nil {
 		return 0, err
 	}
-	return types.Instant(a.g.led.next()), nil
+	return types.Instant(a.g.next()), nil
 }
 
 // NowTx is the transaction clock: the later of the wall clock and CommittedTx.
