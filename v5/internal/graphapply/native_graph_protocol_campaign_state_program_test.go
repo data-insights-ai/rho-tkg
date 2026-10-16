@@ -11,11 +11,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
@@ -194,6 +196,104 @@ func TestNativeProtocolStateHeldSnapshotKeepsCumulativeProjectionBudget(t *testi
 		}
 		t.Logf("genuine projection%d workBefore=%+v workAfter=%+v budgets=%+v", i, work, read.Work(), after[:afterCount])
 		before = after
+	}
+}
+
+func TestNativeProtocolStateSnapshotProjectionKeepsOldValuesAfterMutation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	n := collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
+		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 256<<20, 131072
+	}, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4})
+	_, publisher, edge, _ := retainedPublisherFromNetwork(t, n)
+	// These are genuine installed recipient sessions, not decoded authority.
+	grants := [2]grantReference{}
+	for group := range 2 {
+		proof := n.read(group, allocationQuery{kind: observeRecipient, session: idalloc.RecipientSession{ID: [16]byte{byte(group + 1)}}})
+		grants[group] = grantReference{session: proof.observation.recipient.session, sequence: 1}
+	}
+	window := edge[0].Scope
+	set := func(group int, owner graphstate.EntityID, valueID graphstate.ValueID, value int64, healthy bool) {
+		t.Helper()
+		ops := []graphstate.Operation{{Kind: graphstate.Set, Owner: owner, Life: graphstate.LifeID(owner + 1), Scope: window, Name: "p", Value: graphstate.I64(value), ValueID: valueID}}
+		if healthy {
+			ops = append(ops, graphstate.Operation{Kind: graphstate.AddLabel, Owner: owner, Life: graphstate.LifeID(owner + 1), Scope: window, Name: "healthy"})
+		}
+		tx, proposal := n.crossPlan(ops, []freshBinding{{role: valueBinding, id: uint64(valueID), grant: grants[group]}}, 23)
+		n.crossResolve(n.crossCommit(tx, proposal))
+	}
+	set(0, 1, 5, 7, false)
+	set(1, 17, 19, 13, false)
+	// The genuine cross-edge needs the original native grant, not caller IDs.
+	edgeClaims := []freshBinding{{role: entityBinding, id: 3, grant: grants[0]}, {role: lifeBinding, owner: 3, id: 4, grant: grants[0]}}
+	tx, proposal := n.crossPlan(edge, edgeClaims, 23)
+	n.crossResolve(n.crossCommit(tx, proposal))
+	owner, err := beginRetainedFeed(ctx, publisher, n.requestID(), graphReadRequest{mode: graphReadFresh}, 1, retainedFeedGuardPolicy(nativeProtocolStatePages))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := owner.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if _, err := owner.Publish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	held, err := owner.OpenSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := held.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	before, count := nativeProtocolStateSnapshotBudgets(held)
+	old, err := nativeTransitionPinProjectionFor(ctx, publisher.coordinator.host, held, true)
+	if err != nil {
+		t.Fatal("first genuine projection", err)
+	}
+	set(0, 1, 7, 9, true)
+	// Re-project the SAME original held cut after a real business mutation. This
+	// must consume the original cumulative ledger, without a new capture/grant.
+	again, err := nativeTransitionPinProjectionFor(ctx, publisher.coordinator.host, held, true)
+	if err != nil {
+		budgets, actual := nativeProtocolStateSnapshotBudgets(held)
+		t.Fatalf("second held projection work=%+v budgets=%+v: %v", held.Work(), budgets[:actual], err)
+	}
+	if !reflect.DeepEqual(old, again) {
+		t.Fatal("old held snapshot substituted current values")
+	}
+	after, actual := nativeProtocolStateSnapshotBudgets(held)
+	if count != actual {
+		t.Fatal("held source count changed")
+	}
+	for i := range count {
+		if after[i].CookieSequence != before[i].CookieSequence || after[i].Partition != before[i].Partition || after[i].Voter != before[i].Voter || after[i].Calls <= before[i].Calls || after[i].MaxCalls != before[i].MaxCalls {
+			t.Fatal("source identity or original allowance changed", before[i], after[i])
+		}
+	}
+	current, err := publisher.coordinator.OpenCertified(ctx, graphReadRequest{mode: graphReadFresh}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := current.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	now, err := nativeTransitionPinProjectionFor(ctx, publisher.coordinator.host, current, true)
+	if err != nil {
+		t.Fatal("current exact projection", err)
+	}
+	if reflect.DeepEqual(old, now) || len(old.Entities) != 4 || len(now.Entities) != 4 || old.Entities[0].Property.I64 != 7 || now.Entities[0].Property.I64 != 9 || len(old.Facts[0].Labels) != 0 || !slices.Equal(now.Facts[0].Labels, []string{"healthy"}) {
+		t.Fatal("two-phase oracle did not distinguish exact original and current", old, now)
+	}
+	for _, projection := range []*nativeTransitionPinRead{old, now} {
+		if len(projection.Facts) != 32 || projection.Facts[6].Exists || projection.Entities[2].Found {
+			t.Fatal("phantom unallocated entity7", projection)
+		}
 	}
 }
 

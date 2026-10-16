@@ -197,6 +197,19 @@ func nativeTransitionPinProjectionFor(ctx context.Context, host *allocationHost,
 	if err != nil {
 		return nil, err
 	}
+	if scalarNodes {
+		// One complete projection may revisit the same immutable scalar while
+		// assembling facts and the richer entity/property rows. Reuse only
+		// within THIS invocation, charged to the actual held source's arena.
+		arena, owners, count, err := nativeTransitionPinObservationSources(read)
+		if err != nil {
+			return nil, err
+		}
+		view, err = newNativeObservationRead(view, arena, host.machine.limits.graph.Planner.Component, owners[:count])
+		if err != nil {
+			return nil, err
+		}
+	}
 	wire, err := lifecycleRawCertificate(cut)
 	if err != nil {
 		return nil, err
@@ -249,6 +262,39 @@ func nativeTransitionPinProjectionFor(ctx context.Context, host *allocationHost,
 		snapshot.Entities = append(snapshot.Entities, e)
 	}
 	return snapshot, ctx.Err()
+}
+
+func nativeTransitionPinObservationSources(read *certifiedGraphRead) (arena *graphstate.OutputBudget, owners [16]context.Context, count int, err error) {
+	if read == nil {
+		return nil, owners, 0, errInvalid
+	}
+	read.mu.Lock()
+	defer read.mu.Unlock()
+	if read.closed {
+		return nil, owners, 0, graphstore.ErrClosed
+	}
+	if len(read.sources) == 0 || len(read.sources) > len(owners) {
+		return nil, owners, 0, errInvalid
+	}
+	for _, source := range read.sources {
+		if wrapper, ok := source.(*retainedFeedSnapshotSource); ok {
+			source = wrapper.certifiedGraphSource
+		}
+		remote, ok := source.(*remoteGraphSource)
+		if !ok || remote == nil || remote.ctx == nil || remote.endpoint == nil || remote.endpoint.budget == nil {
+			return nil, owners, 0, errInvalid
+		}
+		budget := remote.endpoint.budget
+		budget.mu.Lock()
+		actual, ok := budget.output.(*graphstate.OutputBudget)
+		budget.mu.Unlock()
+		if !ok || actual == nil || arena != nil && actual != arena {
+			return nil, owners, 0, errInvalid
+		}
+		arena, owners[count] = actual, remote.ctx
+		count++
+	}
+	return arena, owners, count, nil
 }
 
 func (o *nativeLogicalTransitionOwner) servePin(caller context.Context, coordinator *crossProcessCoordinator, incarnation [16]byte, r processRequest) ([]byte, error) {
