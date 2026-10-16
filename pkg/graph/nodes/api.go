@@ -679,14 +679,14 @@ func (a *API) ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey
 	return ops.ForEachIDByLabelPropertyPrefix(ctx, label, propKey, prefix, desc, opts, fn)
 }
 
-// CountByLabelPropertyValue counts the label's nodes whose propKey value equals value as
-// Cypher equality keeps it (3 matches 3 and 3.0 of every stored width, no
-// string/number crossing, nil and NaN count 0), from the property index's
-// value sets, no node read. exact=false with no error declines (count
+// CountByLabelPropertyValue counts the label's nodes whose propKey value equals
+// value under the property equality ByLabelAndProperty uses (so it is
+// len(ByLabelAndProperty)), from the property index's value sets, no node
+// read. exact=false with no error declines (count
 // otherwise): no property index on (label, propKey), a store without the
 // capability (tiered, external stores), badger with PropertyIndexOnDisk
-// (nodes), an index being built, an Elements index, a number of magnitude
-// 2^53 or more, a temporal value, a list or map, an unknown label, or a
+// (nodes), an index being built, an Elements index, a temporal value, a list
+// or map, an unknown label, or a
 // temporal QueryOpts. exact tells a planner whether exact counts are
 // available for (label, propKey).
 func (a *API) CountByLabelPropertyValue(label, propKey string, value any, opts storepkg.QueryOpts) (int64, bool, error) {
@@ -820,7 +820,11 @@ func (a *API) NodeLabelMutationEpoch(label string) uint64 {
 	return ops.NodeLabelMutationEpoch(label)
 }
 
-// ByLabelAndProperty returns nodes carrying the label whose property matches value.
+// ByLabelAndProperty returns nodes carrying the label whose property matches
+// value under the property equality (types.EqualIndexValues: a number matches
+// every stored width of the same exact value, 3 = int8(3) = 3.0 =
+// float32(3); NaN and nil match nothing; since v4.56.2, before which the
+// stored width had to match).
 func (a *API) ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -831,7 +835,7 @@ func (a *API) ByLabelAndProperty(label, key string, value any, opts storepkg.Que
 
 // ByLabelAndProperties returns nodes carrying the label whose properties
 // match EVERY (key, value) pair in values (AND-conjunction, EQUALITY-only in
-// v1). Accelerated by a composite property index (see
+// v1, each pair under the property equality as ByLabelAndProperty). Accelerated by a composite property index (see
 // Index().CreateComposite) whose declared key set equals values' keys;
 // otherwise answered via a label-scan + post-filter fallback — see
 // docs/query-planners.md "Composite property indexes".
@@ -896,7 +900,10 @@ func (a *API) DeleteProperty(ctx context.Context, id types.NodeID, key string) e
 	return ops.DeleteProperty(ctx, id, key)
 }
 
-// CompareAndSetProperty atomically updates a property honoring ctx.
+// CompareAndSetProperty atomically updates a property honoring ctx. A numeric
+// expected matches under the property equality (int64(42) matches a stored
+// int(42), a NaN matches nothing; since v4.56.2), any other by
+// types.PropertyValueEqual.
 func (a *API) CompareAndSetProperty(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	ops, err := a.ready()
 	if err != nil {

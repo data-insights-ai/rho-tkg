@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **One property equality for every equality door: numbers by exact value across widths, NaN equals nothing** (René
+  2026-10-16, "the 3 == 3.0 is a duplicate code path"). Two rules answered one question: `CountByLabelPropertyValue` /
+  `CountByTypePropertyValue` counted by value across widths (v4.53.0) while `ByLabelAndProperty` / `ByTypeAndProperty`, the
+  named `*At` / `*During` doors, `ByLabelAndProperties`, the paged effective doors' `Filter`, `CompareAndSetProperty` and the
+  unique constraints matched the stored width (`CountByLabelPropertyValue(3)` = 5 while `ByLabelAndProperty(3)` returned 1
+  row). Now one helper in `pkg/types` owns the rule (`EqualIndexValues` / `EqualIndexKeys`, `NumericEqual`, `CompareNumber`,
+  `PropertyEqual`, `CanonicalIndexKey`, `NumericFloat64`): a number equals every stored number of the same exact value in any
+  width (3 = `int8(3)` = `uint(3)` = 3.0 = `float32(3)`; a `float32` as its `float64` widening; -0.0 = 0; compared exactly,
+  so `int64(2^53+1)` is not `float64(2^53)` and the counts no longer decline past 2^53); NaN and nil equal nothing; strings,
+  booleans and temporal values equal themselves only. Stored values keep their width: index keys, the on-disk index, wire and
+  hash tags are unchanged; a door unites the at most 12 keys an equal value can be stored under (one store lookup per key
+  where a property index serves it, else one scan). What callers see: lookups and page filters by a number return the
+  rows of every width (`ByLabelAndProperty(3)` finds a stored 3.0); a NaN lookup, filter or CAS `expected` matches nothing
+  (was: NaN of the same float width); a numeric CAS `expected` matches across widths (`int64(42)` over a stored `int(42)`
+  swaps), while the no-op check of a write stays exact (writing 3.0 over `int64(3)` stores the `float64`); a unique
+  constraint holds integers of every width as one value (a new `int64(3)` next to `int(3)` is `ErrUniqueViolation`;
+  `CreateUnique` over existing twins is `ErrUniqueViolationExisting`; `UniqueForever` owners recorded under two widths of one
+  value load as one claim, the smaller owner ID keeping it); `RangeCardinalityAt [3, 3]` counts what `= 3` finds (exact
+  comparison above 2^53). Shipped as a fix of a door family (lessons 58, 84), not through the deprecation ritual: the doors
+  now agree with the equality counts' documented rule. **sigma-tkgd**: `sharedexec` `forms()` (seeking the int and the float
+  of a value, and -0.0) is now redundant (each seek already returns every width; the results are de-duplicated by ID) and
+  can be deleted; tyla's single-value seek that skips its post-filter (`sources.go`) now also finds a stored 2.0 for 2.
+  **ai-soc**: unaffected (string keys). Removed duplicates: `index.equalNumeric`, `index.numericValue`,
+  `index.isNumericScalar`, `core.coerceFloat64`, the width fan-out of `PropertyIndex.typedSets`. Tests:
+  `TestPropertyEqualityDoorsAgree` (every equality door against an exact `math/big` oracle, count = `len(lookup)`, every
+  width, NaN, ±Inf, -0.0, nil, 2^53 / 2^63 / 2^64 boundaries, with and without indexes; memory, badger, tiered, sharded;
+  red: `tasks/evidence/numeric-equality/red.txt`), `TestPropertyEqualityWriteDoors` (CAS, unique and UniqueForever, exact
+  range count, width kept on update; red: `red-write.txt`), `pkg/types` `TestEqualIndexKeys` / `TestCompareNumber` /
+  `TestCanonicalIndexKey`. Docs: api.md "Two equalities" rewritten, godoc of every door named above.
+
 ### Fixed
 
 - **A batch caller-instant excise with no valid version refuses the whole unit** (v4.54.0 promise). A unit queuing

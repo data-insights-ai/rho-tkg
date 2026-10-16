@@ -854,9 +854,9 @@ r, err := g.Rels().Add(ctx, "KNOWS", a, b, nil)
 n, err := g.Nodes().Get(ctx, a.ID())
 
 // By label + property (uses the property index when present, falls back to
-// label scan + property filter when PropertyIndexCapability is absent; scalar
-// float matching canonicalizes signed zero and NaN payloads within the same
-// concrete type):
+// label scan + property filter when PropertyIndexCapability is absent; values
+// match under the property equality: 3 finds 3.0 and int8(3), NaN finds
+// nothing, docs/api.md "Two equalities"):
 matches, err := g.Nodes().ByLabelAndProperty("User", "name", "Alice", store.QueryOpts{})
 
 // All nodes carrying a label:
