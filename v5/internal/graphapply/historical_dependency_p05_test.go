@@ -565,7 +565,7 @@ func (s *p05ProcessSessions) proposal(ctx context.Context, r processRequest) (al
 	}
 	return h.PreparePartitionGraphOperations(id, ops, 100+r.entity, claims)
 }
-func (s *p05ProcessSessions) observe(ctx context.Context, r processRequest) ([]byte, error) {
+func (s *p05ProcessSessions) observe(ctx context.Context, r processRequest) (wire []byte, cause error) {
 	s.certified.mu.Lock()
 	owner, ok := s.certified.owners[r.index]
 	s.certified.mu.Unlock()
@@ -577,6 +577,35 @@ func (s *p05ProcessSessions) observe(ctx context.Context, r processRequest) ([]b
 	s.mu.Lock()
 	conditional, conditionalOK := s.owners[r.index]
 	s.mu.Unlock()
+	stage := "read-view"
+	var observedOwner, observedLife uint64
+	var observedPoint int64
+	var observedName string
+	defer func() {
+		if cause == nil || os.Getenv("RHO_GRAPH_PROTOCOL_CAMPAIGN") == "" {
+			return
+		}
+		// Failure-only context for the actual retained owner. These counters do
+		// not renew its allowance or claim the remote server's private work.
+		work := owner.read.Work()
+		context := fmt.Sprintf("P05 observe handle=%d conditional=%t stage=%s owner=%d life=%d point=%d name=%q work=%+v sourceUnavailable=%t", r.index, conditionalOK, stage, observedOwner, observedLife, observedPoint, observedName, work, errors.Is(cause, graphstore.ErrSourceUnavailable))
+		if remote, ok := errors.AsType[graphWireError](cause); ok {
+			context += fmt.Sprintf(" remoteMask=%x", remote.mask)
+		}
+		owner.read.mu.Lock()
+		for _, source := range owner.read.sources {
+			remote, ok := source.(*remoteGraphSource)
+			if !ok || remote.endpoint == nil || remote.endpoint.budget == nil {
+				continue
+			}
+			b := remote.endpoint.budget
+			b.mu.Lock()
+			context += fmt.Sprintf(" [source partition=%d voter=%d calls=%d/%d rows=%d/%d bytes=%d/%d outputRemaining=%d]", remote.endpoint.peer.scope.partition, remote.endpoint.peer.voter, b.calls, b.maxCalls, b.rows, b.maxRows, b.bytes, b.maxBytes, b.output.Remaining())
+			b.mu.Unlock()
+		}
+		owner.read.mu.Unlock()
+		cause = fmt.Errorf("%s: %w", context, cause)
+	}()
 	if conditionalOK {
 		view, err = conditional.read.ReadView()
 	} else {
@@ -595,25 +624,31 @@ func (s *p05ProcessSessions) observe(ctx context.Context, r processRequest) ([]b
 		return nil, err
 	}
 	out := p05Observation{}
+	stage = "lifecycle"
 	out.Native, err = nativeLifecycleObserve(ctx, s.certified, processRequest{index: r.index})
 	if err != nil {
 		return nil, err
 	}
+	stage = "entity-census"
 	out.Census, err = nativeLifecycleObserve(ctx, s.certified, processRequest{index: r.index, entity: 2})
 	if err != nil {
 		return nil, err
 	}
 	budget := graphstate.ReadBudget{Rows: 64, Bytes: 64 << 10}
 	for _, ownerLife := range [][2]uint64{{1, 2}, {17, 18}, {3, 4}, {9, 10}} {
+		observedOwner, observedLife = ownerLife[0], ownerLife[1]
 		for _, at := range []int64{0, 2} {
+			observedPoint, observedName = at, ""
 			point, err := temporal.RationalPosition(cfg.defaultAxis.Axis(), temporal.RationalInt64(at))
 			if err != nil {
 				return nil, err
 			}
+			stage = "presence"
 			cell, err := nativeLifecycleCellRead(ctx, view, graphstate.ComponentKey{Owner: graphstate.EntityID(ownerLife[0]), Kind: graphstate.Presence}, window, point, h.machine.limits.graph.Planner.Component)
 			if err != nil {
 				return nil, err
 			}
+			stage = "effective-projection"
 			projection, err := graphstate.Project(ctx, view, graphstate.EntityID(ownerLife[0]), point, graphstate.Effective, h.machine.limits.graph.Planner)
 			if err != nil {
 				return nil, err
@@ -621,6 +656,7 @@ func (s *p05ProcessSessions) observe(ctx context.Context, r processRequest) ([]b
 			out.Presence = append(out.Presence, p05ObservedPresence{ownerLife[0], at, cell, projection.Active, uint64(projection.Life)})
 		}
 		for _, name := range []string{"p", "u"} {
+			stage, observedName, observedPoint = "component-page", name, 0
 			key := graphstate.ComponentKey{Owner: graphstate.EntityID(ownerLife[0]), Life: graphstate.LifeID(ownerLife[1]), Kind: graphstate.ScalarProperty, Name: name}
 			page, err := view.ComponentPage(ctx, graphstate.ComponentQuery{Key: key, Window: window}, 0, budget)
 			if err != nil {
@@ -629,11 +665,13 @@ func (s *p05ProcessSessions) observe(ctx context.Context, r processRequest) ([]b
 			if !page.Complete || page.Next != 0 {
 				return nil, errLimit
 			}
+			stage = "component-encode"
 			wire, err := state.AppendState(nil, page.Data, state.CodecLimits{State: h.machine.limits.graph.Planner.Component, MaxEncodedBytes: 64 << 10})
 			if err != nil {
 				return nil, err
 			}
 			for _, at := range []int64{0, 2} {
+				stage, observedPoint = "component-value", at
 				point, err := temporal.RationalPosition(cfg.defaultAxis.Axis(), temporal.RationalInt64(at))
 				if err != nil {
 					return nil, err
@@ -650,12 +688,14 @@ func (s *p05ProcessSessions) observe(ctx context.Context, r processRequest) ([]b
 			}
 		}
 	}
+	stage, observedOwner, observedLife, observedPoint, observedName = "absent-component-keys", 9, 10, 0, ""
 	keys, err := view.ComponentKeys(ctx, graphstate.KeyPredicate{Owner: 9, Life: 10, Kind: graphstate.ScalarProperty}, 0, budget)
 	if err != nil || !keys.Complete || keys.Next != 0 {
 		return nil, errors.Join(errLimit, err)
 	}
 	out.Keys = keys.Keys
 	for i, kind := range []graphstate.EntityKind{graphstate.Node, graphstate.Relationship} {
+		stage, observedOwner, observedName = "unique-candidates", uint64(kind), "u"
 		value := int64(5 + i)
 		page, err := view.UniqueCandidates(ctx, graphstate.UniquePredicate{Definition: graphstate.PropertyDefinition{Name: "u", Owner: kind, Type: graphstate.ScalarI64, Cardinality: graphstate.ScalarCardinality, Unique: graphstate.UniqueScalar}, Value: graphstate.I64(value), Window: window}, 0, budget)
 		if err != nil || !page.Complete || page.Next != 0 {
@@ -667,21 +707,25 @@ func (s *p05ProcessSessions) observe(ctx context.Context, r processRequest) ([]b
 			out.RelUnique = page.Claims
 		}
 	}
+	stage, observedOwner, observedLife, observedName = "absent-entity", 9, 0, ""
 	entity, err := view.Entity(ctx, 9)
 	if err != nil {
 		return nil, err
 	}
 	out.AbsentEntity = !entity.Found
+	stage, observedOwner = "absent-value", 11
 	value, err := view.Value(ctx, 11)
 	if err != nil {
 		return nil, err
 	}
 	out.AbsentValue = !value.Found
+	stage, observedOwner, observedLife = "absent-life", 9, 10
 	life, err := view.Life(ctx, 9, 10)
 	if err != nil {
 		return nil, err
 	}
 	out.AbsentLife = !life.Found
+	stage = "observation-encode"
 	return json.Marshal(out)
 }
 
@@ -708,7 +752,14 @@ func p05Open(t *testing.T, f *pairedGraphFaultNetwork, actor uint64, mode graphR
 }
 func p05Observe(t *testing.T, f *pairedGraphFaultNetwork, actor, handle uint64) p05Observation {
 	t.Helper()
+	completed := false
+	defer func() {
+		if !completed && f.parent != nil {
+			t.Logf("P05 observation interrupted: actual actor=%d handle=%d", actor, handle)
+		}
+	}()
 	r := f.call(f.n.all[actor], processRequest{op: processP05Observe, index: handle})
+	completed = true
 	var observed p05Observation
 	if err := json.Unmarshal(r.aux, &observed); err != nil {
 		t.Fatal(err)
