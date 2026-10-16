@@ -34,6 +34,10 @@ var Names = []string{
 	"tx-twin-ignores-instant", // Tx *WithTx twins drop the caller instant
 	"batch-eager",             // BatchRun writes through immediately, so a refused unit leaves its queued writes
 	"batch-swallows-refusal",  // BatchRun reports success for a refused unit
+	"excise-noop",             // Excise* report success and change nothing
+	"excise-as-close",         // Excise closes the version at the start of the range
+	"excise-swaps-range",      // Excise accepts an inverted range by swapping it
+	"excise-ignores-instant",  // Excise drops the caller instant
 }
 
 // Wrap returns an Adapter whose graphs carry the named mutants ("all" selects every one).
@@ -349,4 +353,32 @@ func (g *graph) BatchRun(ctx context.Context, fn func(conformance.Batch) error) 
 		return nil
 	}
 	return err
+}
+
+func (g *graph) ExciseNodeValidity(ctx context.Context, id uint64, a, b, txFrom int64) error {
+	switch {
+	case g.on["excise-noop"]:
+		return nil
+	case g.on["excise-as-close"]:
+		return g.Graph.CloseNodeVersion(ctx, id, a)
+	case g.on["excise-swaps-range"] && a > b && b > 0:
+		a, b = b, a
+	case g.on["excise-ignores-instant"]:
+		txFrom = 0
+	}
+	return g.Graph.ExciseNodeValidity(ctx, id, a, b, txFrom)
+}
+
+func (g *graph) ExciseRelValidity(ctx context.Context, id uint64, a, b, txFrom int64) error {
+	switch {
+	case g.on["excise-noop"]:
+		return nil
+	case g.on["excise-as-close"]:
+		return g.Graph.CloseRelVersion(ctx, id, a)
+	case g.on["excise-swaps-range"] && a > b && b > 0:
+		a, b = b, a
+	case g.on["excise-ignores-instant"]:
+		txFrom = 0
+	}
+	return g.Graph.ExciseRelValidity(ctx, id, a, b, txFrom)
 }
