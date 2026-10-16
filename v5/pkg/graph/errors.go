@@ -36,7 +36,8 @@ var (
 	ErrInvalidReceipt = errors.New("graph: invalid receipt")
 	// ErrInvalidCursor reports a zero, oversized or foreign Cursor.
 	ErrInvalidCursor = errors.New("graph: invalid cursor")
-	// ErrInvalidRequest reports a malformed read request (limits, nil arguments).
+	// ErrInvalidRequest reports a malformed request (limits, nil arguments), and
+	// an Update larger than one commit can hold (see Tx).
 	ErrInvalidRequest = errors.New("graph: invalid request")
 	// ErrClosed reports use of a nil or closed Graph or Snapshot.
 	ErrClosed = errors.New("graph: closed")

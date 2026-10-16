@@ -56,10 +56,10 @@ type Config struct {
 	// where knowledge is meant. Known filters by recorded evidence; the snapshot's
 	// cut bounds what exists at all.
 	KnowledgeAxis types.DefaultAxisBinding
-	// NodeProperties and RelProperties declare the typed property schema. It is
-	// fixed at genesis (PLAN:572): the engine has no door to add a property after
-	// the partition is initialised, so a Set of an undeclared key is ErrInvalidOp
-	// and reopening with a different schema is ErrInvalidConfig.
+	// NodeProperties and RelProperties seed the typed property schema at
+	// genesis; reopening with a different seed is ErrInvalidConfig. Any other key
+	// is declared by its first write (see Tx): its kind is the first value's
+	// kind, fixed from then on. Only a seed can be Unique.
 	NodeProperties []PropertySchema
 	RelProperties  []PropertySchema
 	// Allocation seeds the ID counter (see Allocation).

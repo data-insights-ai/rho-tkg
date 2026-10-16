@@ -30,6 +30,7 @@ type engineTx struct {
 	ceiling temporal.Position
 	claims  map[string]types.NodeID
 	created map[types.NodeID]bool
+	ended   map[graphstate.EntityID]temporal.Scope // union of this Update's Close scopes
 }
 
 var _ Tx = (*engineTx)(nil)
@@ -220,7 +221,8 @@ func target(r Ref) (graphstate.EntityID, bool) {
 
 // Correct re-asserts the target over Scope and sets Set there, but never where
 // the entity was ended or retracted (an explicit retraction in the committed
-// presence); a scope wholly inside such a region is ErrInvalidScope.
+// presence, or an End/Retract earlier in this Update); a scope wholly inside
+// such a region is ErrInvalidScope.
 func (t *engineTx) Correct(o Correct) error {
 	if err := t.pre(o); err != nil {
 		return err
@@ -244,6 +246,11 @@ func (t *engineTx) unretracted(id graphstate.EntityID, scope temporal.Scope) (te
 	gone, err := temporal.Empty(scope.Axis())
 	if err != nil {
 		return scope, err
+	}
+	if closed, ok := t.ended[id]; ok {
+		if gone, err = gone.Union(closed, l); err != nil {
+			return scope, err
+		}
 	}
 	pages, err := r.pieces(graphstate.ComponentKey{Owner: id, Kind: graphstate.Presence}, scope)
 	if err != nil {
@@ -287,7 +294,25 @@ func (t *engineTx) End(o End) error {
 		return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
 	}
 	id, _ := target(o.Target)
-	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: tail})
+	return t.close(id, tail)
+}
+
+// close stages a Close and remembers its scope, so a later Correct in the same
+// Update cannot revive what this one ended or retracted.
+func (t *engineTx) close(id graphstate.EntityID, scope temporal.Scope) error {
+	prior, ok := t.ended[id]
+	if !ok {
+		prior = scope
+	}
+	union, err := prior.Union(scope, t.e.cfg.Limits)
+	if err != nil {
+		return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
+	}
+	if t.ended == nil {
+		t.ended = map[graphstate.EntityID]temporal.Scope{}
+	}
+	t.ended[id] = union
+	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: scope})
 	return nil
 }
 
@@ -348,8 +373,7 @@ func (t *engineTx) Retract(o Retract) error {
 		return err
 	}
 	id, _ := target(o.Target)
-	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: o.Scope})
-	return nil
+	return t.close(id, o.Scope)
 }
 
 // GetOrCreate finds the live node holding the unique claim (Label, Key, Value)

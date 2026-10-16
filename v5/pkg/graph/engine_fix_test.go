@@ -344,3 +344,84 @@ func TestAllPropertiesProjection(t *testing.T) {
 		t.Fatalf("%+v %v", p, err)
 	}
 }
+
+// TestRefusedUpdateDeclaresNothing: one Update is one commit. A Set of a new key
+// beside an op the planner refuses persists nothing, so the key stays free to
+// be declared with another kind, also after a reopen.
+func TestRefusedUpdateDeclaresNothing(t *testing.T) {
+	ctx := context.Background()
+	cfg := bareConfig(t, t.TempDir())
+	g, err := Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := scopeAll(t)
+	var id types.NodeID
+	update(t, g, func(tx Tx) (err error) {
+		id, err = tx.CreateNode(CreateNode{Scope: all})
+		return
+	})
+	ref, _ := NodeRef(id)
+	ghost, _ := NodeRef(id + 1000)
+	_, err = g.Update(ctx, func(tx Tx) error {
+		if err := tx.Set(Set{Target: ref, Key: "typo", Value: Int(1), Scope: all}); err != nil {
+			return err
+		}
+		return tx.Set(Set{Target: ghost, Key: "other", Value: Int(1), Scope: all})
+	})
+	if err == nil {
+		t.Fatal("a Set on a missing node committed")
+	}
+	_ = g.Close()
+	if g, err = Open(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	if v, ok := lookupProps(t, g, id, "typo")["typo"]; ok {
+		t.Fatalf("refused Update wrote a value: %v", v)
+	}
+	for _, k := range []string{"typo", "other"} {
+		if _, err := g.Update(ctx, func(tx Tx) error {
+			return tx.Set(Set{Target: ref, Key: k, Value: String("s"), Scope: all})
+		}); err != nil {
+			t.Errorf("%s was declared by the refused Update: %v", k, err)
+		}
+	}
+}
+
+// TestEndAndCorrectInOneUpdateKeepsTheEnd: an End staged earlier in the same
+// Update bounds a later Correct like a committed one; wholly inside it is refused.
+func TestEndAndCorrectInOneUpdateKeepsTheEnd(t *testing.T) {
+	g := memBare(t, nil)
+	all := scopeAll(t)
+	var id types.NodeID
+	update(t, g, func(tx Tx) (err error) {
+		id, err = tx.CreateNode(CreateNode{Props: map[string]Value{"n": Int(1)}, Scope: all})
+		return
+	})
+	ref, _ := NodeRef(id)
+	if _, err := g.Update(context.Background(), func(tx Tx) error {
+		if err := tx.End(End{Target: ref, Scope: spanMS(t, 0, 100)}); err != nil {
+			return err
+		}
+		return tx.Correct(Correct{Target: ref, Set: map[string]Value{"n": Int(9)}, Scope: spanMS(t, 150, 200)})
+	}); !errors.Is(err, ErrInvalidScope) {
+		t.Errorf("correct inside an end of the same Update: %v", err)
+	}
+	update(t, g, func(tx Tx) error {
+		if err := tx.End(End{Target: ref, Scope: spanMS(t, 0, 100)}); err != nil {
+			return err
+		}
+		return tx.Correct(Correct{Target: ref, Set: map[string]Value{"n": Int(9)}, Scope: spanMS(t, 50, 200)})
+	})
+	if r := look(t, g, Fresh(), id, spanMS(t, 100, 200)); len(r) != 0 {
+		t.Fatalf("Correct revived the entity ended in the same Update: %+v", r)
+	}
+	r := look(t, g, Fresh(), id, spanMS(t, 0, 100))
+	if len(r) == 0 {
+		t.Fatal("the live part vanished")
+	}
+	if n, _ := r[len(r)-1].Props["n"].AsInt(); n != 9 {
+		t.Fatalf("live part not corrected: %+v", r)
+	}
+}

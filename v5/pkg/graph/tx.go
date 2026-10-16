@@ -15,6 +15,19 @@ import (
 // Label ops take a node ID, every other target is a Ref: relationships carry a
 // type, not labels, so a relationship ref has no meaning on a label op and the
 // type system says so.
+//
+// First use declares a key: a property key that is neither a Config seed nor
+// already declared is declared by the first Set (or CreateNode/CreateRel/Correct
+// prop) that writes it, with the kind of that value, per owner (node keys and
+// relationship keys are separate). From then on a value of another kind is
+// ErrInvalidValue; an exact numeric converts (3.0 into an int key, 3 into a
+// float key), an inexact one (3.5, "3") does not. A Null cannot declare a key,
+// and Unset of a never-declared key is ErrInvalidOp. The declaration commits
+// with the Update's ops as one batch: a refused Update declares nothing.
+//
+// One Update is bounded by the store's stage-record limit (about 4096 records;
+// a created node with a property writes several): a larger Update is refused
+// with ErrInvalidRequest and nothing is written. Split bulk loads into batches.
 type Tx interface {
 	CreateNode(CreateNode) (types.NodeID, error)
 	CreateRel(CreateRel) (types.RelID, error)
