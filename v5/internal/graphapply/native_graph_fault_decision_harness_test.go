@@ -27,6 +27,15 @@ const nativeDecisionFrameBytes = 512 << 10
 const nativeDecisionControls = 16
 const certifiedNativeDecisionBusiness = certifiedGraphCost + 1
 
+func nativeDecisionFactoryMember(source uint64) (uint64, error) {
+	if source < 1 || source > 3 {
+		return 0, errInvalid
+	}
+	// The source follows the elected leader, but the factory's Recipient is
+	// process-owned by the original A bootstrap member and is not replicated.
+	return 1, nil
+}
+
 func nativeDecisionBusiness(o *certifiedProcessOwners, r processRequest) (allocationProposal, error) {
 	if o == nil || o.decisions == nil || o.recipient == nil || len(r.data) != 0 || r.index != 3 && r.index != 8 {
 		return allocationProposal{}, errInvalid
@@ -817,8 +826,12 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 	if err != nil {
 		t.Fatal(err)
 	}
+	factoryMember, err := nativeDecisionFactoryMember(aSource)
+	if err != nil {
+		t.Fatal("original decision factory owner", err)
+	}
 	factory := func(partition uint64) allocationProposal {
-		r := call(f.n.all[aSource], processRequest{op: processCertifiedAction, entity: certifiedNativeDecisionBusiness, index: partition})
+		r := call(f.n.all[factoryMember], processRequest{op: processCertifiedAction, entity: certifiedNativeDecisionBusiness, index: partition})
 		p, err := decodeCertifiedProcessProposal(r.aux)
 		if err != nil {
 			t.Fatal(err)
@@ -1165,6 +1178,62 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 		nativeDecisionWrite(t, f.n.dir, artifact)
 	} else {
 		nativeProtocolFrozenWrite(t, ctx, f, campaign[0], run, deadline, native, frozen, artifact, capacityCharge, budget)
+	}
+}
+
+func TestNativeDecisionFactoryKeepsActualRecipientOnOriginalOwnerAcrossSourceRotation(t *testing.T) {
+	t.Setenv("RHO_GRAPH_LIFECYCLE_PROCESS", "1")
+	n := newCertifiedGraphNetwork(t)
+	recipient := n.activate(0, [16]byte{1})
+	n.acquire(0, recipient, 1, 16)
+	remote := remoteCertifiedFixture(t, n)
+	coordinator, err := newCrossProcessCoordinator(n.hosts[0][0], remote.transports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, err := newNativeDecisionOwner(t.Context(), coordinator, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer decision.close()
+	owners := map[uint64]*certifiedProcessOwners{
+		1: {host: n.hosts[0][0], recipient: recipient, decisions: decision},
+		2: {host: n.hosts[0][1], decisions: decision},
+	}
+	for _, partition := range []uint64{3, 8} {
+		request := processRequest{entity: certifiedNativeDecisionBusiness, index: partition}
+		if proposal, err := nativeDecisionBusiness(owners[2], request); !errors.Is(err, errInvalid) || len(proposal.wire) != 0 {
+			t.Fatal("serving replica acquired another process's Recipient", err)
+		}
+		member, err := nativeDecisionFactoryMember(2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		proposal, err := nativeDecisionBusiness(owners[member], request)
+		if err != nil {
+			t.Fatal("rotated source selected a factory without its actual Recipient", member, err)
+		}
+		command, err := decodePartitionGraphCommand(proposal.wire, defaultMaterializerLimits())
+		if err != nil || member != 1 || len(command.request.operations) != 2 || len(command.request.claims) != 3 || command.request.ns != n.hosts[0][0].machine.ns || command.request.revision.Provenance() != 3 {
+			t.Fatal("factory changed complete original namespace/operations/claims", member, err)
+		}
+		for i, claim := range command.request.claims {
+			sequence := uint64(1)
+			if partition == 3 && i == 0 {
+				sequence = 2 // The genuine deliberately uninstalled A claim stays hostile.
+			}
+			if claim.grant.session != recipient.session || claim.grant.sequence != sequence {
+				t.Fatal("factory substituted actual original Recipient/grant", claim.grant)
+			}
+		}
+	}
+	if owners[2].recipient != nil {
+		t.Fatal("factory installed Recipient authority on the source replica")
+	}
+	for _, source := range []uint64{0, 4} {
+		if member, err := nativeDecisionFactoryMember(source); member != 0 || !errors.Is(err, errInvalid) {
+			t.Fatal("foreign source selected a factory", member, err)
+		}
 	}
 }
 
