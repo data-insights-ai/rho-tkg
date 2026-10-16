@@ -58,13 +58,50 @@ class NativeFeedGuards(unittest.TestCase):
         session=b"s"*40
         wire=b"\1"+u64(0)+u64(7)+session+u64(1)
         with tempfile.TemporaryDirectory() as path:
+            # A missing raw join aborts its disposable spool by contract.
             with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
                 with self.assertRaises(ValueError):check._scalar_claim_binding(check.cursor(wire),(1,0,7),3,10,spool)
+            with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
                 spool.insert(b"installed-grant",session+u64(1),check.encoded({"home":3,"first":1,"last":86,"index":9}))
                 check._scalar_claim_binding(check.cursor(wire),(1,0,7),3,10,spool)
                 for body,expected,home,index in ((b"\2"+wire[1:],(1,0,7),3,10),(wire,(1,0,7),8,10),(wire,(1,0,7),3,9),
                         (b"\1"+u64(0)+u64(87)+session+u64(1),(1,0,87),3,10)):
                     with self.assertRaises(ValueError):check._scalar_claim_binding(check.cursor(body),expected,home,index,spool)
+
+    def test_allocation_cdc_binds_exact_control_and_routing_publication(self):
+        def seal(body):return body+check.digest(body)
+        def field(body):return struct.pack(">I",len(body))+body
+        graph=bytes.fromhex(check.raw.GRAPH);scope=graph+u64(3)+bytes(96)
+        config=b"c"*32;identity=b"r"*16;command_hash=b"h"*32
+        def outcome(kind):return seal(b"GRO\2"+bytes((kind,))+scope[:24]+identity+command_hash+u64(9)+b"\1\0\0")
+        def routing(out,*,namespace=scope[:24],cfg=config,original=None,publication=None,owner=None):
+            publication=seal(b"RPB\1"+graph+struct.pack(">5Q",1,1,46,3,2)+config+u64(3)+u64(9)) if publication is None else publication
+            owner=seal(b"ROF\1"+graph+struct.pack(">3Q",1,3,2)+config+b"\0") if owner is None else owner
+            logical=seal(b"RCD\1"+namespace+cfg+field(out if original is None else original)+field(publication)+field(owner))
+            return seal(b"GCE\1"+out[4:5]+identity+command_hash+u64(9)+field(logical))
+        # Real mutating AQP controls emit their exact GRO2, not empty graph CDC.
+        out=outcome(10)
+        self.assertIsNone(check._scalar_allocation_cdc(out,out,scope,config))
+        out=outcome(15);wire=routing(out)
+        publication=check._scalar_allocation_cdc(wire,out,scope,config)
+        self.assertEqual(len(publication),(140+109))
+        for cdc in (b"",outcome(11),routing(out,namespace=graph+u64(8)),routing(out,cfg=b"x"*32),
+                    routing(out,original=outcome(16)),routing(out,publication=b"wrong"),routing(out,owner=b"wrong")):
+            with self.assertRaises(ValueError):check._scalar_allocation_cdc(cdc,out,scope,config)
+        for offset in (4,5,21,53):
+            body=bytearray(wire[:-32]);body[offset]^=1
+            with self.assertRaises(ValueError):check._scalar_allocation_cdc(seal(body),out,scope,config)
+        with self.assertRaises(ValueError):check._scalar_allocation_cdc(wire[:-1]+b"x",out,scope,config)
+
+    def test_inline_axis_matches_only_identical_sealed_column_axis(self):
+        # Actual first setup row, whose GCD5 definition is embedded unsealed.
+        wire=check.base64.b64decode("HwAAAAAAAAAAAAAAAAAAAAIAAQAAAChwb3NpeC11bml4LWVwb2NoOjE5NzAtMDEtMDFUMDA6MDA6MDBaOnYxAAAAC21pbGxpc2Vjb25kOR57qCYlSq/t5hTTb+rDTZfr3y77RoDWT9CrnpEZ8vQ=",validate=True)
+        definition=wire[:-32]
+        check._scalar_row_axis(check.base64.b64encode(wire).decode(),definition)
+        for invalid in (definition,wire+b"\0",wire[:-1]+bytes((wire[-1]^1,)),b"x"+wire[1:]):
+            with self.assertRaises(ValueError):check._scalar_row_axis(check.base64.b64encode(invalid).decode(),definition)
+        changed=b"x"+definition[1:]
+        with self.assertRaises(ValueError):check._scalar_row_axis(check.base64.b64encode(changed+check.digest(changed)).decode(),definition)
 
     def test_strict_operation_and_original_request_binding(self):
         dataset=list(hashlib.sha256(b"\1"+struct.pack(">QQ",40,50)+b"graph-v2").digest())
@@ -121,6 +158,11 @@ class NativeFeedGuards(unittest.TestCase):
                     after=dict(zip(check.column.CELL,(True,False,c["handle"],c["i64"],c["revision"],c["provenance"])))
                     spool.insert(b"row",u64(4)+u64(7)+bytes([component]),check.encoded({"After":after}))
                 self.assertEqual(check.point(self.spec,p,5,spool),0)
+                nil_labels=copy.deepcopy(p);nil_labels["Entity"]["labels"]=None
+                self.assertEqual(check.point(self.spec,nil_labels,5,spool),0)
+                for labels in (["phantom"],False,0,{}):
+                    wrong_labels=copy.deepcopy(p);wrong_labels["Entity"]["labels"]=labels
+                    with self.assertRaises(ValueError):check.point(self.spec,wrong_labels,5,spool)
                 for name,key,value in (("property","revision",23),("presence","revision",23),("presence","provenance",44),("presence","handle",9)):
                     changed=copy.deepcopy(p);changed["Entity"][name][key]=value
                     with self.assertRaises(ValueError):check.point(self.spec,changed,5,spool)

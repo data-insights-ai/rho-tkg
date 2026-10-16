@@ -181,6 +181,36 @@ def claims(directory,end,spool):
     return _scalar_claims(directory,end,spool)
 
 
+def _scalar_allocation_cdc(cdc,outcome,scope,configuration,*,stale=False):
+    """Exact control-v1 outcome or genuine routing publication, never graph rows."""
+    out=checked(outcome,b"GRO\2",120);kind=out[0]
+    require(out[1:25]==scope[:24] and out[81] in (1,4),"allocation CDC original namespace/disposition")
+    if stale:
+        require(kind==15 and out[82:]==b"\0\2" and not cdc,"stale reservation has no new publication")
+        return None
+    require(out[82:]==bytes(2),"allocation CDC successful original")
+    if kind not in (15,16):
+        require(kind in range(9,15) and cdc==outcome,"exact mutating allocation control CDC")
+        return None
+    if not cdc:
+        require(kind==16 and scope[16:24]==u64(3),"only already-published local grant install has empty CDC")
+        return None
+    c=cursor(checked(cdc,b"GCE\1",32768))
+    require(c.number(1)==kind and c.take(16)==out[25:41] and c.take(32)==out[41:73]
+            and c.number()==int.from_bytes(out[73:81],"big"),"routing CDC exact request/kind/hash/index")
+    logical=c.field(32768);c.done();c=cursor(checked(logical,b"RCD\1",32768))
+    require(c.take(24)==scope[:24] and c.take(32)==configuration and c.field(120)==outcome,"routing CDC exact namespace/configuration/original")
+    publication,owner=c.field(140),c.field(109);c.done()
+    p=checked(publication,b"RPB\1",140);o=checked(owner,b"ROF\1",109)
+    first,last,home,epoch=[int.from_bytes(p[a:a+8],"big") for a in (24,32,40,48)]
+    require(len(p)==104 and len(o)==73 and p[:16]==scope[:16] and 0<first<=last and p[16:24]==u64(first)
+            and home in (3,8) and epoch>0 and p[56:88]==configuration and p[88:96]==u64(3)
+            and int.from_bytes(p[96:104],"big")>0 and o==p[:24]+p[40:88]+b"\0"
+            and (kind==15 and scope[16:24]==u64(3) and p[96:104]==out[73:81]
+                 or kind==16 and scope[16:24]==u64(home)),"routing CDC complete genuine range publication/owner")
+    return publication+owner
+
+
 def _scalar_grants(directory,end,spool,semantic,decode_cut,*,transfer=False):
     """Authenticate native reservation and installed range before any claims.
 
@@ -210,7 +240,8 @@ def _scalar_grants(directory,end,spool,semantic,decode_cut,*,transfer=False):
             require(out[0]==8 and row["CDC"] is not None and blob(row["CDC"]),"genuine initialized native namespace")
             continue
         c=cursor(checked(command,b"AQP\1",1<<20));kind=c.number(1);namespace=c.take(24);request=c.take(16);configuration=c.take(32)
-        require(namespace==scope[:24] and request==out[25:41] and kind==out[0] and not blob(row["CDC"]),"canonical native allocation control original")
+        require(namespace==scope[:24] and request==out[25:41] and kind==out[0],"canonical native allocation control original")
+        routing_cdc=_scalar_allocation_cdc(blob(row["CDC"]),blob(row["Outcome"]),scope,configuration,stale=stale)
         session=sequence=count=None
         if transfer and kind==9:
             replacement=c.take(24)
@@ -238,7 +269,7 @@ def _scalar_grants(directory,end,spool,semantic,decode_cut,*,transfer=False):
                 stale_reservations+=1
                 continue
             key=session+u64(sequence);require(key not in reserved,"duplicate reservation cannot allocate a second range")
-            reserved[key]={"session":session,"sequence":sequence,"count":count,"index":index,"configuration":configuration,"scope":scope}
+            reserved[key]={"session":session,"sequence":sequence,"count":count,"index":index,"configuration":configuration,"scope":scope,"routingCDC":routing_cdc}
         elif kind==16:
             require(observed_kind==4 and source[16:24]==u64(3),"installed grant needs actual source reservation observation")
             # APG2 is exactly512 bytes, followed by the109-byte current owner.
@@ -268,6 +299,9 @@ def _scalar_grants(directory,end,spool,semantic,decode_cut,*,transfer=False):
             require(gcount==expected_count and gsequence==(sum(v["home"]==home for v in installed.values())+1),"complete bounded multi-block range shape")
             require(publication==graph+u64(first)+u64(first)+u64(last)+u64(home)+scope[40:48]+configuration+u64(3)+u64(grant_index)
                     and owner==graph+u64(first)+u64(home)+scope[40:48]+configuration+b"\0","actual native range publication/owner")
+            published=payload[340:480]+payload[512:]
+            require(r["routingCDC"]==published and (routing_cdc is None if home==3 else routing_cdc==published),
+                    "reservation and remote install CDC join actual immutable installed grant publication")
             installed[key]={"home":home,"first":first,"last":last,"index":index};global_sequence=allocation_sequence if transfer else global_sequence+1;next_id=last+1
             if transfer:installed[key].update(authority=authority.hex(),allocationSequence=allocation_sequence,publication=publication.hex(),configuration=configuration.hex())
             spool.insert(b"installed-grant",key,encoded(installed[key]))
@@ -308,6 +342,12 @@ def native_cell(c, component):
     require(present in (0,1) and (present == 0 and kind == handle == payload == revision == provenance == 0
             or present == 1 and kind == 2 and handle > 0 and payload == (9 if component == 3 else 0)), "canonical actual CC1 scalar/life cell")
     return dict(zip(column.CELL,(bool(present),False,handle,handle if component == 3 and present else 0,revision,provenance)))
+
+
+def _scalar_row_axis(encoded_axis,definition):
+    # GCD embeds writeAxis directly; each column row uses boundedEncoding,
+    # which appends its own SHA256 seal to the identical axis definition.
+    require(blob(encoded_axis)==definition+digest(definition),"typed raw axis definition/seal correspondence")
 
 
 def logical(frame, terminal, previous, spool, *, guarded_updates=False, operation_version=1, placement=None):
@@ -356,7 +396,8 @@ def logical(frame, terminal, previous, spool, *, guarded_updates=False, operatio
     require(len(frame["Rows"] or [])==len(rows),"typed row omission")
     for actual,(owner,life,component,name,before,after,axis,scope) in zip(frame["Rows"] or [],rows,strict=True):
         fields(actual," ".join(column.ROW));require((actual["Owner"],actual["Life"],actual["Component"],actual["Name"])==(owner,life,component,name)
-            and actual["Before"]==before and actual["After"]==after and blob(actual["Axis"])==axis and blob(actual["Scope"])==scope,"typed raw cell/dictionary correspondence")
+            and actual["Before"]==before and actual["After"]==after and blob(actual["Scope"])==scope,"typed raw cell/dictionary correspondence")
+        _scalar_row_axis(actual["Axis"],axis)
         require(after["Present"] and after["Revision"]>before["Revision"] and after["Provenance"]==ordinal and after["Handle"]==(owner+1 if component==1 else 5 if phase=="create" else 6),"exact intended native replacement")
         if phase=="update":require(before["Present"] and before["Handle"]==(owner+1 if component==1 and guarded_updates else 5) and before["Provenance"]==4+fact,"actual5->6/guarded-presence before-image")
         else:require(not before["Present"],"new row invented old state")
@@ -499,7 +540,7 @@ def point(s,p,value,spool,*,guarded_updates=False):
     fields(p,"Fact Entity");fact=integer(p["Fact"],0,s["facts"]-1);r=p["Entity"]
     target=2*s["facts"]+7 if cross(s,fact) else 3
     require(r["id"]==7+2*fact and r["found"] is True and r["effective"] is True and r["kind"]==2 and r["type"]=="edge" and r["mode"]==1
-            and r["source"]==1 and r["target"]==target and r["effectiveLife"]==8+2*fact and r["labels"]==[],"exact snapshot endpoint/life, no phantom entity")
+            and r["source"]==1 and r["target"]==target and r["effectiveLife"]==8+2*fact and r["labels"] in (None,[]),"exact snapshot endpoint/life, no phantom entity")
     create=4+fact;ordinal=create+(s["facts"] if value==6 else 0);owner=7+2*fact
     presence=ordinal if guarded_updates and value==6 else create
     for name,component,at,kind in (("presence",1,presence,"life"),("property",3,ordinal,"i64")):
