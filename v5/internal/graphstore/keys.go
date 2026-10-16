@@ -19,6 +19,24 @@ const (
 	bucketMemberRecord
 )
 
+const (
+	evidenceRecord          recordKind = 0x17
+	rangeMoveFragmentRecord recordKind = 0xf0
+)
+
+// recordKinds registers every record kind sharing the application KV. Kind
+// bytes must be distinct: TestRecordKindsDistinct checks values and that every
+// recordKind constant in this package is listed here.
+var recordKinds = []recordKind{
+	axisRecord, schemaRecord, entityRecord, lifeRecord, valueRecord, bucketRecord, bucketMemberRecord,
+	componentRecord, directoryRecord, checkpointRecord, patchRecord,
+	componentKeyTreeRecord, componentIndexDescriptorRecord,
+	uniquePostingRecord, canonicalIncidentRecord, declaredIncidentRecord,
+	currentPresenceRecord, ownershipDeclarationRecord, evidenceRecord,
+	associationHeadRecord, associationRevisionRecord, associationPostingRecord, associationPrimaryRecord,
+	rangeMoveFragmentRecord,
+}
+
 // Keys are provisional canonical lookup/routing keys, not temporal order keys.
 // Numeric fields are unsigned big-endian. Names are explicitly sized; schema
 // identity includes OwnerKind. Every key includes graph and logical partition.
@@ -49,4 +67,8 @@ func bucketKey(n Namespace, digest [32]byte) []byte {
 }
 func memberKey(n Namespace, digest [32]byte, ordinal uint64) []byte {
 	return binary.BigEndian.AppendUint64(append(keyPrefix(n, bucketMemberRecord), digest[:]...), ordinal)
+}
+func evidenceKey(n Namespace, owner graphstate.EntityID, revision uint64) []byte {
+	b := binary.BigEndian.AppendUint64(keyPrefix(n, evidenceRecord), uint64(owner))
+	return binary.BigEndian.AppendUint64(b, revision)
 }

@@ -307,7 +307,7 @@ func TestOpenPartitionCatalogCorruptCurrentRetainsOldAndReadBudgets(t *testing.T
 			}
 			var row raftlog.KV
 			for _, candidate := range effects.Writes {
-				matches := mutation == "descriptor" && bytes.Equal(candidate.Key, componentIndexDescriptorKey(local)) || mutation == "own page" && candidate.Key[0] == byte(currentPresenceRecord) || mutation == "declaration" && candidate.Key[0] == ownershipDeclarationRecord
+				matches := mutation == "descriptor" && bytes.Equal(candidate.Key, componentIndexDescriptorKey(local)) || mutation == "own page" && candidate.Key[0] == byte(currentPresenceRecord) || mutation == "declaration" && candidate.Key[0] == byte(ownershipDeclarationRecord)
 				if matches {
 					row = raftlog.KV{Key: bytes.Clone(candidate.Key), Value: bytes.Clone(candidate.Value)}
 					row.Value[0] ^= 1

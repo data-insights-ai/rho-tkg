@@ -46,7 +46,7 @@ func TestSharedStageThenComposerRefusesConsumedAllowanceWithoutReset(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	retainedInput := compositionMetadataBytes + 4096 + graphRequestMetadataBytes + 640*cap(decoded.operations) + 128*cap(decoded.claims) + 8*len(wire) + 4*cap(base.Image)
+	retainedInput := compositionMetadataBytes + 4096 + graphRequestMetadataBytes + operationMetadataBytes*cap(decoded.operations) + 128*cap(decoded.claims) + 8*len(wire) + 4*cap(base.Image)
 	for _, guarded := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unconditional", true: "guarded"}[guarded], func(t *testing.T) {
 			stage := func(parent *graphstate.OutputBudget) (graphstore.GraphEffects, error) {

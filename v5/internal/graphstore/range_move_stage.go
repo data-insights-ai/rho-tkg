@@ -404,6 +404,6 @@ func ActivateRangeMoveImport(ctx context.Context, target *raftlog.ApplicationVie
 // Private fragment rows are part of this page's ordinary fenced MVCC writes,
 // never globally meaningful identity, business CDC or handoff authority.
 func rangeMoveFragmentKey(n Namespace, binding [32]byte, sequence uint64) []byte {
-	key := append(keyPrefix(n, recordKind(0xf0)), binding[:]...)
+	key := append(keyPrefix(n, rangeMoveFragmentRecord), binding[:]...)
 	return binary.BigEndian.AppendUint64(key, sequence)
 }

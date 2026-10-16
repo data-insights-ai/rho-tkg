@@ -104,7 +104,7 @@ func (m *declaredMaterializer) stagePartitionGraph(q *reader, info graphstore.Ow
 	}
 	// Retain decoded operations/claims, canonical codec backing and the original
 	// base through staging. Remaining source and output cannot gain fresh defaults.
-	outer := 4096 + compositionMetadataBytes + graphRequestMetadataBytes + 640*cap(r.request.operations) + 128*cap(r.request.claims) + 8*len(entry.Data) + 4*cap(q.base.Image)
+	outer := 4096 + compositionMetadataBytes + graphRequestMetadataBytes + operationMetadataBytes*cap(r.request.operations) + 128*cap(r.request.claims) + 8*len(entry.Data) + 4*cap(q.base.Image)
 	for _, row := range q.writes {
 		outer += cap(row.Key) + cap(row.Value) + 128
 	}

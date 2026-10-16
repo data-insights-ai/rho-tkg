@@ -618,7 +618,7 @@ func TestFullEffectOwnedBytesExactBoundaryAndSharedBuffers(t *testing.T) {
 	// additionally admits input originals, planner/normalization and read scratch.
 	// Calibrate the API cliff within unchanged defaults, independently requiring
 	// the retained effects plus known input/engine/opening owners to fit.
-	lowerBound := measured + 640*len(ops) + 1536 + fullViewMetadataBytes
+	lowerBound := measured + fullOperationBytes*len(ops) + 1536 + fullViewMetadataBytes
 	lo, hi := 1, DefaultGraphLimits().MaxOutputBytes
 	for lo < hi {
 		mid := lo + (hi-lo)/2

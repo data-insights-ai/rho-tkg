@@ -13,7 +13,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 )
 
-const ownershipDeclarationRecord byte = 0x16
+const ownershipDeclarationRecord recordKind = 0x16
 const ownershipPending byte = 3
 const ownershipPublished byte = 4
 const ownershipInitialized byte = 5
@@ -174,7 +174,7 @@ func NewOwnershipRoot(local Namespace, declaration OwnershipDeclaration) (Root, 
 
 func ownershipKey(graph graphstate.GraphID, epoch uint64, digest [32]byte) []byte {
 	b := make([]byte, ownershipKeyBytes)
-	b[0] = ownershipDeclarationRecord
+	b[0] = byte(ownershipDeclarationRecord)
 	copy(b[1:17], graph[:])
 	binary.BigEndian.PutUint64(b[17:25], epoch)
 	copy(b[25:], digest[:])

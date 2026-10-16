@@ -5,6 +5,7 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
 // GraphLimits bounds a complete reader's aggregate source work, planner output
@@ -15,6 +16,11 @@ type GraphLimits struct {
 	Pages                                         PageLimits
 	Planner                                       graphstate.Limits
 	MaxSourceRows, MaxSourceBytes, MaxOutputBytes int
+	// RecordedCeiling is the commit instant on the knowledge axis: a caller
+	// instant (Operation.Recorded) beyond it, or on another axis, is refused.
+	// The engine has no clock; the zero value sets no ceiling, and the caller
+	// that owns the commit clock supplies it for every staged revision.
+	RecordedCeiling temporal.Position
 }
 
 // DefaultGraphLimits supplies finite local single-partition integration policy.
@@ -37,6 +43,11 @@ func (l GraphLimits) resolve() (GraphLimits, error) {
 	l.MaxSourceRows = cmp.Or(l.MaxSourceRows, d.MaxSourceRows)
 	l.MaxSourceBytes = cmp.Or(l.MaxSourceBytes, d.MaxSourceBytes)
 	l.MaxOutputBytes = cmp.Or(l.MaxOutputBytes, d.MaxOutputBytes)
+	if l.RecordedCeiling.Profile() != 0 {
+		if _, err := temporal.ComparePositions(l.RecordedCeiling, l.RecordedCeiling, temporal.Limits{}); err != nil {
+			return GraphLimits{}, ErrInvalid
+		}
+	}
 	if l.MaxSourceRows < 1 || l.MaxSourceRows > 1<<20 || l.MaxSourceBytes < 1 || l.MaxSourceBytes > 64<<20 || l.MaxOutputBytes < 1 || l.MaxOutputBytes > 64<<20 {
 		return GraphLimits{}, ErrInvalid
 	}
@@ -77,7 +88,10 @@ func physicalFullTopology(r Root) bool {
 
 const fullStageMetadataBytes = 512
 const fullStageBaseBytes = 128 + fullStageMetadataBytes
-const fullViewMetadataBytes = 1536
+const fullViewMetadataBytes = 1600
+
+// fullOperationBytes charges one cloned graphstate.Operation (its struct plus owned name, type and scope headers).
+const fullOperationBytes = 704
 
 type fullIndexDescriptor struct {
 	owner, topology, schema, format uint64

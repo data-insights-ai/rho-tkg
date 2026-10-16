@@ -99,7 +99,7 @@ func (l materializerLimits) validate() error {
 // Allowances cover fixed metadata independently tested against typed Go values;
 // variable backing is separately charged. These are not heap/RSS guarantees.
 const graphRequestMetadataBytes = 384
-const operationMetadataBytes = 640
+const operationMetadataBytes = 704
 const claimMetadataBytes = 128
 const axisMetadataBytes = 128
 const graphResultMetadataBytes = 512

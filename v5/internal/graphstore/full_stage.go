@@ -61,17 +61,61 @@ func cloneAxisForOperation(ctx context.Context, v *ReadView, a temporal.Axis) (t
 	}
 	return readAxis(wire, v.c.root.namespace, v.c.limits)
 }
+
+// cloneRecorded admits a caller instant as evidence: it must be structurally
+// valid, lie on an axis other than the operation's valid axis, and (when the
+// limits carry a commit ceiling) lie on the ceiling's axis at or before it.
+// The engine has no clock; it never orders or cuts by this instant.
+func cloneRecorded(ctx context.Context, v *ReadView, op graphstate.Operation) (temporal.Position, error) {
+	tl := v.c.limits.Temporal
+	p := op.Recorded
+	valid := op.Scope.Axis()
+	if p.Axis().DefinitionHash() == valid.DefinitionHash() || p.Axis().Descriptor().ID == valid.Descriptor().ID {
+		return temporal.Position{}, callerError(graphstate.ErrInvalidInput)
+	}
+	if ceiling := v.limits.RecordedCeiling; ceiling.Profile() != 0 {
+		if p.Axis().DefinitionHash() != ceiling.Axis().DefinitionHash() {
+			return temporal.Position{}, callerError(graphstate.ErrInvalidInput)
+		}
+		order, err := temporal.ComparePositions(p, ceiling, tl)
+		if err != nil {
+			return temporal.Position{}, callerError(err)
+		}
+		if order == temporal.Greater {
+			return temporal.Position{}, callerError(graphstate.ErrInvalidInput)
+		}
+	}
+	axis, err := cloneAxisForOperation(ctx, v, p.Axis())
+	if err != nil {
+		return temporal.Position{}, callerError(err)
+	}
+	wire, err := temporal.AppendPosition(nil, p, tl)
+	if err != nil {
+		return temporal.Position{}, callerError(err)
+	}
+	if err := v.inputCost(128 + 2*cap(wire)); err != nil {
+		return temporal.Position{}, err
+	}
+	if v.arena != nil {
+		if err := v.arena.Reserve(128 + len(wire)); err != nil {
+			return temporal.Position{}, callerError(err)
+		}
+	}
+	out, err := temporal.DecodePosition(wire, axis, tl)
+	return out, callerError(err)
+}
+
 func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operation) ([]graphstate.Operation, error) {
 	maxOps := cmp.Or(v.limits.Planner.MaxOperations, graphstate.DefaultLimits().MaxOperations)
 	if len(ops) > maxOps {
 		return nil, ErrResourceLimit
 	}
 	if v.arena != nil {
-		if err := v.arena.Reserve(640 * len(ops)); err != nil {
+		if err := v.arena.Reserve(fullOperationBytes * len(ops)); err != nil {
 			return nil, callerError(err)
 		}
 	}
-	if err := v.inputCost(640 * len(ops)); err != nil {
+	if err := v.inputCost(fullOperationBytes * len(ops)); err != nil {
 		return nil, err
 	}
 	out := make([]graphstate.Operation, len(ops))
@@ -134,6 +178,11 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 		op.Scope, err = temporal.DecodeScope(wire, axis, tl)
 		if err != nil {
 			return nil, callerError(err)
+		}
+		if op.Recorded.Profile() != 0 {
+			if op.Recorded, err = cloneRecorded(ctx, v, op); err != nil {
+				return nil, err
+			}
 		}
 		if op.Kind == graphstate.CreateNode || op.Kind == graphstate.CreateRelationship {
 			if op.Record.Axis.Descriptor().ID != (temporal.AxisID{}) {
@@ -652,6 +701,9 @@ func stageOpenedOperations(ctx context.Context, c *Catalog, v *ReadView, ops []g
 		if err != nil {
 			return err
 		}
+		if err := stageOperationEvidence(&p, owned, revision); err != nil {
+			return err
+		}
 		if err := p.budget(); err != nil {
 			return err
 		}
@@ -859,4 +911,108 @@ func installFullPlan(p *pageStage, planned graphstate.Delta, l GraphLimits, aren
 		groups = append(groups, group)
 	}
 	return p.ownDelta(planned, groups, l.MaxOutputBytes)
+}
+
+// stageOperationEvidence keeps every non-zero Operation.Recorded beside its
+// revision, one record per (owner, revision) in operation order. Unset Recorded
+// stores nothing. It adds no patch, so visibility and cuts are untouched.
+func stageOperationEvidence(p *pageStage, ops []graphstate.Operation, revision state.Revision) error {
+	var owners []graphstate.EntityID
+	byOwner := map[graphstate.EntityID][]RecordedEvidence{}
+	for _, op := range ops {
+		if op.Recorded.Profile() == 0 {
+			continue
+		}
+		if _, seen := byOwner[op.Owner]; !seen {
+			owners = append(owners, op.Owner)
+		}
+		byOwner[op.Owner] = append(byOwner[op.Owner], RecordedEvidence{Kind: op.Kind, Life: op.Life, Name: op.Name, Recorded: op.Recorded})
+	}
+	for _, owner := range owners {
+		entries := byOwner[owner]
+		err := p.withPrimary(owner, func(p *pageStage) error { return p.q.stageEvidence(owner, revision.ID(), entries) })
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (q *reader) stageEvidence(owner graphstate.EntityID, revision uint64, entries []RecordedEvidence) error {
+	if t := q.transaction(); t != nil && t.installation != nil {
+		partition, err := t.owner(q, uint64(owner))
+		if err != nil {
+			return err
+		}
+		if partition != q.c.root.namespace.Partition {
+			return q.onPartition(partition, func() error { return q.stageEvidence(owner, revision, entries) })
+		}
+	}
+	if q.route != nil {
+		if err := q.route.owner(q, uint64(owner)); err != nil {
+			return err
+		}
+	}
+	if _, found, err := q.get(evidenceKey(q.c.root.namespace, owner, revision)); err != nil {
+		return err
+	} else if found {
+		return callerError(graphstate.ErrAlreadyExists)
+	}
+	for _, e := range entries {
+		if err := q.stageAxis(e.Recorded.Axis()); err != nil {
+			return err
+		}
+	}
+	encoded, err := encodeEvidence(q.c.root.namespace, owner, revision, entries, q.c.limits)
+	if err != nil {
+		return err
+	}
+	return q.put(evidenceKey(q.c.root.namespace, owner, revision), encoded)
+}
+
+// Evidence returns the caller instants staged for owner in revision (the ID of
+// the state.Revision the operations were staged with), in operation order, or
+// nil when none were supplied. They are evidence only: nothing here orders,
+// cuts or hides a revision.
+func (v *ReadView) Evidence(ctx context.Context, owner graphstate.EntityID, revision uint64) ([]RecordedEvidence, error) {
+	if v == nil || owner == 0 || revision == 0 {
+		return nil, ErrInvalid
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	if err != nil {
+		return nil, err
+	}
+	var out []RecordedEvidence
+	err = func() error {
+		if v.route != nil {
+			if err := v.route.owner(q.q, uint64(owner)); err != nil {
+				return err
+			}
+		}
+		b, found, err := q.q.get(evidenceKey(v.c.root.namespace, owner, revision))
+		if err != nil || !found {
+			return err
+		}
+		out, err = readEvidenceRecord(b, v.c.root.namespace, owner, revision, v.c.limits, func(id temporal.AxisID) (temporal.Axis, error) {
+			a, found, err := q.q.axis(id)
+			if err == nil && !found {
+				err = ErrCorrupt
+			}
+			return a, err
+		})
+		return err
+	}()
+	if err = v.finish(q, err); err != nil {
+		return nil, err
+	}
+	cost := 64
+	for _, e := range out {
+		cost += 128 + len(e.Name)
+	}
+	if err := v.output(cost); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
