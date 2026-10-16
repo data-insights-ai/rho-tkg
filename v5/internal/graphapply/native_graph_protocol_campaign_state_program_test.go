@@ -3,6 +3,7 @@ package graphapply
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,46 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
+
+func TestNativeProtocolPendingMoveCatchupUsesCommittedAppliedPrefix(t *testing.T) {
+	n, coordinator, intent, _, _ := rangeMoveCoordinatorFixture(t, 64)
+	lost := &movePoolLostDescribeReply{graphPeerWireTransport: coordinator.base.transports[3]}
+	coordinator.base.transports[3] = lost
+	pending, err := runRangeMoveToCompletion(t, coordinator, intent)
+	if !errors.Is(err, errRangeMovePending) || !errors.Is(err, io.EOF) || len(lost.command) == 0 || pending.committed {
+		t.Fatal("genuine pending move did not retain its original", err)
+	}
+	for _, host := range n.hosts[0] {
+		if _, err := host.machine.observeAllocation(allocationQuery{kind: observeConfiguration, nonce: [16]byte{1}}, host.driver.Applied()); !errors.Is(err, errRangeMovePending) {
+			t.Fatal("pending move unexpectedly grants allocation observation", err)
+		}
+		state := processResponse{applied: host.driver.Applied()}
+		_, state.image, err = host.machine.store.Checkpoint()
+		if err != nil {
+			t.Fatal(err)
+		}
+		state.stats, _, _, err = processStats(host.machine.store)
+		if err != nil || !nativeProtocolMoveCheckpointReady(state) {
+			t.Fatal("real committed/applied checkpoint rejected because semantic config is fenced", err)
+		}
+		for _, bad := range []processResponse{
+			func() processResponse { s := state; s.code = 1; return s }(),
+			func() processResponse { s := state; s.stats[statCommit] = s.applied + 1; return s }(),
+			func() processResponse { s := state; s.stats[statCheckpoint]--; return s }(),
+			func() processResponse { s := state; s.image = nil; s.ready = true; return s }(),
+		} {
+			if nativeProtocolMoveCheckpointReady(bad) {
+				t.Fatal("forged ready or incomplete native apply passed")
+			}
+		}
+	}
+	// Catch-up cannot complete the business operation or replace its identity.
+	resume := pending.resume
+	done := rangeMoveKeeperResume(t, coordinator, resume)
+	if !done.committed || done.resume != resume || sha256.Sum256(lost.command) == ([32]byte{}) {
+		t.Fatal("same native move did not complete through ordinary Resume")
+	}
+}
 
 func TestNativeProtocolPooledStateLeaderAndMessagePrograms(t *testing.T) {
 	for _, layout := range []string{"original", "rotated"} {

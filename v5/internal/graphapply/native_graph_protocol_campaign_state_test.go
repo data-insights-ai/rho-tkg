@@ -976,6 +976,13 @@ func nativeProtocolStateMove(t *testing.T, ctx context.Context, f *pairedGraphFa
 		t.Fatal(e)
 	}
 	a.Intent = bytes.Clone(command.intent)
+	catchup, e := gate.moveCatchup(receipt)
+	if e != nil {
+		t.Fatal("actual owned move catch-up admission", e)
+	}
+	gate.mu.Lock()
+	a.ReceiptReads = gate.reads
+	gate.mu.Unlock()
 	killed := nativeBatchReap(t, f, gate.owner.Member, receipt)
 	stop()
 	var pending processResponse
@@ -991,18 +998,22 @@ func nativeProtocolStateMove(t *testing.T, ctx context.Context, f *pairedGraphFa
 	}
 	gate.close()
 	prior := n.all[gate.owner.Member]
-	rejoined := f.replaceBeforeHeal(gate.owner.Member, func(_ *graphProcess, _ processResponse) {
-		observed := nativeTransitionMoveReadFor(t, ctx, n, 2, graphReadAt, func() graphCut {
-			cut, e := pairedFaultCut(a.Before.Cut)
-			if e != nil {
-				t.Fatal(e)
+	f.nativeMoveCatchup = catchup
+	rejoined := func() pairedFaultProcess {
+		defer func() { f.nativeMoveCatchup = nil }()
+		return f.replaceBeforeHeal(gate.owner.Member, func(_ *graphProcess, _ processResponse) {
+			observed := nativeTransitionMoveReadFor(t, ctx, n, 2, graphReadAt, func() graphCut {
+				cut, e := pairedFaultCut(a.Before.Cut)
+				if e != nil {
+					t.Fatal(e)
+				}
+				return cut
+			}(), nativeProtocolStateExpectedAgreement(t))
+			if !reflect.DeepEqual(a.Before, observed) {
+				t.Fatal("reopen replaced original pinned snapshot")
 			}
-			return cut
-		}(), nativeProtocolStateExpectedAgreement(t))
-		if !reflect.DeepEqual(a.Before, observed) {
-			t.Fatal("reopen replaced original pinned snapshot")
-		}
-	})
+		})
+	}()
 	n.retired = append(n.retired, prior)
 	a.Processes = append(a.Processes, killed, rejoined)
 	// The actual factory and original feed owner remain alive in child2. Neither

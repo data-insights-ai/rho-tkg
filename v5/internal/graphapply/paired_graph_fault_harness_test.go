@@ -357,6 +357,7 @@ type pairedGraphFaultNetwork struct {
 	conjunctionGate       *nativeConjunctionBatchGate // At most one; guarded by mu.
 	protocolReplyHold     *nativeProtocolReplyHold    // Fresh causal hold; at most one, guarded by mu.
 	protocolProgram       *nativeProtocolProgram      // Fresh immutable causal/message owner; nil preserves old fixtures.
+	nativeMoveCatchup     *nativeProtocolMoveCatchup  // Exact live native move gate; transport catch-up only.
 	bootstrapAgreement    [32]byte                    // Actual validated bootstrap proposal; immutable after bootstrap.
 	mu                    sync.Mutex
 	down                  map[uint64]bool
@@ -820,7 +821,12 @@ func (f *pairedGraphFaultNetwork) replaceBeforeHeal(id uint64, before func(*grap
 	if e != nil {
 		f.t.Fatal(e)
 	}
-	raw, _ := json.Marshal(map[string]any{"Member": id, "PID": replacement.cmd.Process.Pid, "Instance": pairedGraphFaultInstance(id, replacement), "PreviousInstance": pairedGraphFaultInstance(id, prior), "Volume": filepath.Join(f.n.dir, fmt.Sprint(id)), "Ready": true, "ReadyKind": "restored-and-caught-up-under-leader-read-index", "LocallyRestoredRaw": startup, "RecoveryRaw": recovered})
+	readiness := map[string]any{"Member": id, "PID": replacement.cmd.Process.Pid, "Instance": pairedGraphFaultInstance(id, replacement), "PreviousInstance": pairedGraphFaultInstance(id, prior), "Volume": filepath.Join(f.n.dir, fmt.Sprint(id)), "Ready": true, "ReadyKind": "restored-and-caught-up-under-leader-read-index", "LocallyRestoredRaw": startup, "RecoveryRaw": recovered}
+	if f.nativeMoveCatchup != nil {
+		readiness["ReadyKind"] = "native-committed-prefix-and-applied-checkpoints"
+		readiness["Catchup"] = f.nativeMoveCatchup.proof
+	}
+	raw, _ := json.Marshal(readiness)
 	return pairedFaultProcess{EventID: f.event(), Action: "reopen", Role: "replica", Member: id, PreviousInstance: fmt.Sprintf("voter%d/pid%d/%x", id, prior.cmd.Process.Pid, prior.incarnation), Instance: fmt.Sprintf("voter%d/pid%d/%x", id, replacement.cmd.Process.Pid, replacement.incarnation), Ready: true, Volume: filepath.Join(f.n.dir, fmt.Sprint(id)), Raw: raw, RecoveryRaw: recovered}
 }
 
@@ -890,6 +896,12 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64, packetOnly ...bool) {
 		f.t.Fatal("invalid fresh held-reply packet-only catch-up")
 	}
 	group := f.n.group(leader)
+	catchup := f.nativeMoveCatchup
+	if catchup != nil {
+		if err := catchup.check(f, leader); err != nil {
+			f.t.Fatal("foreign native move catch-up", err)
+		}
+	}
 	priorFilter := group.dropPacket
 	observed := 0
 	group.dropPacket = func(packet replica.Packet) bool {
@@ -917,7 +929,9 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64, packetOnly ...bool) {
 	sealed := make(map[uint64]bool)
 	for round := range 32 {
 		f.groupEvent(group, leader, processRequest{op: processTick})
-		f.groupEvent(group, leader, processRequest{op: processCertifiedRead, entity: uint64(observeConfiguration)})
+		if catchup == nil {
+			f.groupEvent(group, leader, processRequest{op: processCertifiedRead, entity: uint64(observeConfiguration)})
+		}
 		if len(packetOnly) == 1 {
 			// A genuine completed service reply is still held by its original
 			// caller. Drain only the SAME native queue/Step path; waiting for all
@@ -935,6 +949,7 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64, packetOnly ...bool) {
 			f.t.Logf("paired heal final leader%d actual raft state%s", leader, base.aux)
 		}
 		healthy := true
+		var voters []nativeProtocolMoveCatchupVoter
 		for id, p := range group.nodes {
 			f.mu.Lock()
 			dead := f.down[id]
@@ -950,8 +965,26 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64, packetOnly ...bool) {
 			if s.applied != base.applied || !bytes.Equal(s.image, base.image) {
 				healthy = false
 			}
+			if catchup != nil {
+				if !nativeProtocolMoveCheckpointReady(s) {
+					healthy = false
+				}
+				voters = append(voters, nativeProtocolMoveCatchupVoter{Member: id, PID: uint64(p.cmd.Process.Pid), Instance: pairedGraphFaultInstance(id, p), State: p06ProcessWire(f.t, s)})
+			}
 		}
-		if healthy && base.ready {
+		ready := base.ready
+		if catchup != nil {
+			ready = nativeProtocolMoveCheckpointReady(base) && base.stats[statVote] == leader && len(voters) == 3
+			// Application selection is already inside committed-entry apply.
+			// Ready persistence alone never promises that selected entry survives.
+			if catchup.receipt.Control.Kind == raftlog.StableStorageApplication && base.stats[statCommit] < catchup.receipt.Events[0].Index {
+				ready = false
+			}
+		}
+		if healthy && ready {
+			if catchup != nil {
+				catchup.proof = &nativeProtocolMoveCatchupProof{Version: 1, Leader: leader, Arm: catchup.gate.arm, Batch: catchup.receipt, Command: bytes.Clone(catchup.command), LeaderState: p06ProcessWire(f.t, base), Voters: voters}
+			}
 			f.t.Logf("paired actual healthy quorum leader%d applied%d", leader, base.applied)
 			return
 		}

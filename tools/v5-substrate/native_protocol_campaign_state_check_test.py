@@ -71,14 +71,69 @@ def pooled_sample():
     return command, C.pooled_command(command)
 
 
-def native_response(aux, root):
+def native_response(aux, root, *, incarnation=b"i"*16, stats=None, ready=1, sequence=1, applied=1):
     u = lambda n: struct.pack(">Q", n)
-    body = (b"i"*16+bytes(28*8+64)+u(1)+bytes(4)+field(aux)+b"\1"+u(1)+u(1)+bytes(3)+field(b"")
+    counters = bytes(28*8) if stats is None else b"".join(u(n) for n in stats)
+    body = (incarnation+counters+bytes(64)+u(1)+bytes(4)+field(aux)+bytes([ready])+u(sequence)+u(applied)+bytes(3)+field(b"")
             +bytes(8)+field(root)+field(b"")+field(b"")+b"\0"+u(0)+bytes(4)+field(b""))
     return encoded(body)
 
 
+def catchup_sample():
+    # Inert exact process/root codec vectors, not an accepted native run. The
+    # full checker authenticates Arm/Batch and the actual selected command first.
+    image = sealed(b"GR\3\5"+C.P.GRAPH+struct.pack(">Q",3)+bytes(112))
+    stats = [0]*28; stats[1],stats[2],stats[3],stats[4] = 7,3,1,7
+    def state(member, sequence):
+        return native_response(b"",image,incarnation=bytes([member])*16,stats=stats,ready=0,sequence=sequence,applied=7)
+    instance = lambda member: f"voter{member}/pid{100+member}/"+(bytes([member])*16).hex()
+    command,_ = pooled_sample()
+    a = dict(Recipe=dict(Family="move",Partition=3),Arm={"native":"arm"},
+             Batch=dict(Control=dict(Kind=1),Events=[dict(Index=99)]),Command=encoded(command))
+    proof = dict(Version=1,Leader=1,Arm=a["Arm"],Batch=a["Batch"],Command=a["Command"],LeaderState=state(1,10),
+                 Voters=[dict(Member=m,PID=100+m,Instance=instance(m),State=state(m,11)) for m in (1,2,3)])
+    restored = dict(Member=3,Instance=instance(3),PreviousInstance="old-voter3",Volume="owned/3",RecoveryRaw=state(3,12))
+    raw = dict(Member=3,PID=103,Instance=instance(3),PreviousInstance="old-voter3",Volume="owned/3",Ready=True,
+               ReadyKind="native-committed-prefix-and-applied-checkpoints",RecoveryRaw=restored["RecoveryRaw"],
+               LocallyRestoredRaw=state(3,1),Catchup=proof)
+    restored["Raw"] = encoded(json.dumps(raw,separators=(",",":")).encode())
+    return a,restored,raw
+
+
 class NativeProtocolStateGuard(unittest.TestCase):
+    def test_native_move_catchup_is_not_a_config_certificate_or_selected_commit(self):
+        a,restored,raw = catchup_sample()
+        self.assertTrue(C.replacement_catchup(a,restored))  # Ready index99 need not survive committed prefix7.
+        for change in (
+            lambda a,r,p:p.update(ReadyKind="invented"),
+            lambda a,r,p:p["Catchup"]["Voters"].pop(),
+            lambda a,r,p:p["Catchup"]["Voters"][0].update(Member=True),
+            lambda a,r,p:p["Catchup"].update(Leader=2),
+            lambda a,r,p:p["Catchup"].update(Command=encoded(b"foreign-original")),
+            lambda a,r,p:p["Catchup"].update(Batch={**a["Batch"],"Events":[dict(Index=8)]}),
+            lambda a,r,p:p["Catchup"].update(Arm={"foreign":"owner"}),
+            lambda a,r,p:p["Catchup"]["Voters"][2].update(Instance="retired-incarnation"),
+            lambda a,r,p:p["Catchup"].update(LeaderState=native_response(b"",C.R.response(p["Catchup"]["LeaderState"])["image"],ready=1)),
+            lambda a,r,p:p["Catchup"]["Voters"][0].update(State=p["Catchup"]["LeaderState"]),
+            lambda a,r,p:a["Recipe"].update(Family="pin"),
+            lambda a,r,p:p.update(PID=999),
+        ):
+            aa,rr,pp = copy.deepcopy((a,restored,raw));change(aa,rr,pp)
+            rr["Raw"] = encoded(json.dumps(pp,separators=(",",":")).encode())
+            with self.assertRaises(ValueError): C.replacement_catchup(aa,rr)
+        aa,rr,pp = copy.deepcopy((a,restored,raw))
+        aa["Batch"]["Control"]["Kind"] = pp["Catchup"]["Batch"]["Control"]["Kind"] = 2
+        rr["Raw"] = encoded(json.dumps(pp,separators=(",",":")).encode())
+        with self.assertRaises(ValueError): C.replacement_catchup(aa,rr)  # Application selection is already committed.
+        ordinary = copy.deepcopy(raw); ordinary.pop("Catchup"); ordinary["ReadyKind"] = "restored-and-caught-up-under-leader-read-index"
+        restored["Raw"] = encoded(json.dumps(ordinary,separators=(",",":")).encode())
+        with self.assertRaises(ValueError): C.replacement_catchup(a,restored)  # ready0 is never an old config certificate.
+        previous = C.R.response(ordinary["RecoveryRaw"])
+        ordinary["RecoveryRaw"] = native_response(b"",previous["image"],incarnation=previous["incarnation"],stats=previous["stats"],ready=1,sequence=12,applied=7)
+        restored["RecoveryRaw"] = ordinary["RecoveryRaw"]
+        restored["Raw"] = encoded(json.dumps(ordinary,separators=(",",":")).encode())
+        self.assertFalse(C.replacement_catchup(a,restored))
+
     def test_explicit_pooled_profile_stream_census_cannot_upgrade_historical_artifact(self):
         header = {name: None for name in C.HEADER}
         header.update(Version=2, Profile=C.POOLED_PROFILE, Through=[0,0],
@@ -146,14 +201,14 @@ class NativeProtocolStateGuard(unittest.TestCase):
 
     def test_capture_and_compact_progress_keep_native_generation_and_placement_distinct(self):
         _,command=pooled_sample();u=lambda n:struct.pack(">Q",n);i=command["intent"]
-        root=lambda p:sealed(b"GR\3\1"+C.P.GRAPH+u(p)+bytes(112))
+        root=lambda p:sealed(b"GR\3\5"+C.P.GRAPH+u(p)+bytes(112))
         capture=sealed(b"GMC\1"+command["scope"]+u(1)+u(1)+u(2)+hashlib.sha256(root(3)).digest()+field(root(3)))
         self.assertEqual(C.pool_progress(capture,command)["debt"],0)
         def progress(generation=0):
-            configuration=C.P.body(i["publication"],b"RPB\1")[56:88]
+            configuration=i["publication"][56:88]
             ownership=lambda p,e:sealed(b"ROF\1"+C.P.GRAPH+u(i["range"])+u(p)+u(e)+configuration+b"\0")
             captured=lambda scope,p:scope[:40]+scope[88:]+u(generation)+u(2)+root(p)+hashlib.sha256(root(p)).digest()
-            descriptor=sealed(b"RMD\1"+field(i["publication"])+field(ownership(3,1))+field(ownership(8,2))
+            descriptor=sealed(b"RMD\1"+field(sealed(b"RPB\1"+i["publication"]))+field(ownership(3,1))+field(ownership(8,2))
                               +captured(i["source"],3)+captured(i["target"],8)+b"d"*32+configuration+field(b"inert-codec-axis")+u(0)+u(0)+b"h"*32+b"\1")
             graph_cursor=sealed(b"RMC\1"+b"b"*32+b"\1"+bytes(8)+b"\0"+bytes(320+48)+b"h"*32)
             empty_replay=sealed(b"GEC\1"+bytes(82))
@@ -161,12 +216,15 @@ class NativeProtocolStateGuard(unittest.TestCase):
             return sealed(b"GMP\6"+field(descriptor)+field(graph_cursor)+field(b"")+field(empty_replay)+field(empty_replay)
                           +bytes(24)+field(reference)+b"h"*32+b"p"*32+u(10)+u(1)+bytes(24)+b"\0"+field(b""))
         self.assertEqual(C.pool_progress(progress(),command)["debt"],0)
+        bad_publication = bytearray(i["publication"]);bad_publication[56] ^= 1
+        changed = {**command,"intent":{**i,"publication":bytes(bad_publication)}}
+        with self.assertRaises(ValueError): C.pool_progress(progress(),changed)
         with self.assertRaises(ValueError):C.pool_progress(progress(1),command)
         for wire in (capture[:-1],progress()[:-1],sealed(b"GMP\5"+progress()[4:-32])):
             with self.assertRaises(ValueError):C.pool_progress(wire,command)
 
     def test_proof_observation_is_actual_same_scope_owner_and_command_not_status_summary(self):
-        wire, command=pooled_sample();root=sealed(b"GR\3\1"+C.P.GRAPH+struct.pack(">Q",3)+bytes(112))
+        wire, command=pooled_sample();root=sealed(b"GR\3\5"+C.P.GRAPH+struct.pack(">Q",3)+bytes(112))
         run=[1]*16;cookie=[2]*16
         q=dict(Version=1,Cookie=cookie,Sequence=1,Action="move-proof",Request=[0]*16,
                Original=encoded(wire),Token=None,Boundary=None,Digest=[0]*32)
@@ -269,7 +327,7 @@ class NativeProtocolStateGuard(unittest.TestCase):
             with self.assertRaises(ValueError): C.original_cell(bad, (bytes([2])*32).hex(), "i64", 7)
 
     def test_exact_stream_eof_census_and_payload_binding(self):
-        header = {name: None for name in C.HEADER}; header["Through"] = [0, 0]
+        header = {name: None for name in C.HEADER}; header.update(Version=1,Profile=C.PROFILE,Through=[0,0])
         first = (json.dumps(dict(Type="header", Artifact=header), separators=(",", ":"))+"\n").encode()
         footer = dict(Type="footer", Rows=0, Calls=0, GC=0, Through=[0, 0], PayloadSHA256=hashlib.sha256(first).hexdigest())
         last = (json.dumps(footer, separators=(",", ":"))+"\n").encode()

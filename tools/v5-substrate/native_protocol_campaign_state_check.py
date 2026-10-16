@@ -310,7 +310,7 @@ def pool_progress(wire, command):
             and inline in (0, 1) and bool(retention) == bool(inline), "exact immutable retained-reference identity")
     d = P.Cursor(P.body(descriptor, b"RMD\1"))
     publication, from_, to = d.field(256), d.field(256), d.field(256)
-    require(publication == intent["publication"], "progress binds actual HOME publication")
+    require(P.body(publication, b"RPB\1") == intent["publication"], "progress binds actual HOME publication")
     for wire_, part_, epoch_ in ((from_,3,intent["epoch"]),(to,8,intent["epoch"]+1)):
         ownership = P.body(wire_, b"ROF\1")
         require(len(ownership) == 73 and ownership[:16] == P.GRAPH and struct.unpack_from(">3Q",ownership,16) == (intent["range"],part_,epoch_)
@@ -613,7 +613,76 @@ def batch(a, scopes, program_roles=None):
     return e
 
 
-def processes(a, receipt):
+def replacement_catchup(a, restored, program_roles=None):
+    raw = T.decoded(P.raw(restored["Raw"]))
+    fields = set("Member PID Instance PreviousInstance Volume Ready ReadyKind LocallyRestoredRaw RecoveryRaw".split())
+    native = type(raw) is dict and raw.get("ReadyKind") == "native-committed-prefix-and-applied-checkpoints"
+    require(type(raw) is dict and set(raw) == fields | ({"Catchup"} if native else set())
+            and type(raw["Member"]) is int and raw["Member"] == restored["Member"] and type(raw["PID"]) is int
+            and raw["PID"] > 0 and raw["Instance"] == restored["Instance"]
+            and raw["PreviousInstance"] == restored["PreviousInstance"] and raw["Volume"] == restored["Volume"]
+            and raw["Ready"] is True and raw["RecoveryRaw"] == restored["RecoveryRaw"], "same actual replacement pipe/volume")
+    recovery = R.response(restored["RecoveryRaw"])
+    startup = R.response(raw["LocallyRestoredRaw"])
+    require(recovery["code"] == recovery["mask"] == 0 and restored["Instance"] ==
+            f"voter{restored['Member']}/pid{raw['PID']}/"+recovery["incarnation"].hex()
+            and startup["code"] == startup["mask"] == 0 and startup["incarnation"] == recovery["incarnation"]
+            and startup["sequence"] < recovery["sequence"], "exact replacement startup/final response incarnation and sequence")
+    if raw["ReadyKind"] == "restored-and-caught-up-under-leader-read-index":
+        require("Catchup" not in raw and recovery["ready"] == 1, "ordinary native ReadIndex readiness unchanged")
+        return False
+    require(raw["ReadyKind"] == "native-committed-prefix-and-applied-checkpoints" and
+            a["Recipe"]["Family"] == "move", "only the actual move gate selects committed-prefix catch-up")
+    proof = raw["Catchup"]
+    require(type(proof) is dict and set(proof) == set("Version Leader Arm Batch Command LeaderState Voters".split())
+            and type(proof["Version"]) is int and proof["Version"] == 1 and proof["Arm"] == a["Arm"]
+            and proof["Batch"] == a["Batch"] and P.raw(proof["Command"]) == P.raw(a["Command"]), "same native gate/arm/receipt/full original command")
+    part = a["Recipe"]["Partition"]
+    group = 0 if part == 3 else 1
+    leaders = (1, 4) if program_roles is None else program_state_roles(program_roles, a["Recipe"])[0]
+    leader = integer(proof["Leader"], 6, 1)
+    require(leader == leaders[group], "actual previously elected leader, not caller-selected role")
+    state = R.response(proof["LeaderState"])
+    def checkpoint(s):
+        require(s["code"] == s["mask"] == 0 and s["stats"][2] > 0 and
+                0 < s["stats"][4] == s["applied"] == s["stats"][1], "actual durable committed prefix equals completed applied native checkpoint")
+        G.column.root(G.raw, s["image"], part)
+    checkpoint(state)
+    require(state["stats"][3] == leader, "same native leader's durable self-vote, not an alternate role")
+    if a["Batch"]["Control"]["Kind"] == 2:
+        require(state["stats"][4] >= a["Batch"]["Events"][0]["Index"], "Application boundary is already committed; Ready alone is not")
+    voters = proof["Voters"]
+    require(type(voters) is list and len(voters) == 3, "complete live native partition, not caller-picked quorum subset")
+    actual, pids = {}, set()
+    for voter in voters:
+        require(type(voter) is dict and set(voter) == {"Member", "PID", "Instance", "State"}, "bounded actual native voter state")
+        member = integer(voter["Member"], 6, 1)
+        pid = integer(voter["PID"], (1 << 31)-1, 1)
+        require(member in range(1+3*group, 4+3*group) and member not in actual, "exact configured native voter set")
+        observed = R.response(voter["State"])
+        checkpoint(observed)
+        require(observed["applied"] == state["applied"] and observed["image"] == state["image"]
+                and pid not in pids and voter["Instance"] == f"voter{member}/pid{pid}/"+observed["incarnation"].hex(), "same actual process/applied index AND full checkpoint; no certificate inferred")
+        pids.add(pid)
+        if member == leader:
+            require(observed["incarnation"] == state["incarnation"] and observed["sequence"] > state["sequence"], "leader state precedes its exact live-voter observation")
+        if member == restored["Member"]:
+            require(voter["Instance"] == restored["Instance"] and observed["incarnation"] == recovery["incarnation"]
+                    and startup["sequence"] < observed["sequence"] < recovery["sequence"], "actual replacement catch-up follows startup and precedes final restored response")
+        actual[member] = observed, voter["Instance"]
+    require(set(actual) == set(range(1+3*group, 4+3*group)), "all three live voters are observed")
+    if program_roles is not None:
+        cohort = {row["Member"]: row for row in a["Program"]["Cohort"]}
+        for member, (_, instance) in actual.items():
+            require(instance == cohort[member]["Instance"], "same owned OS process later reaped in complete cohort")
+        election = a["Program"]["Program"]["Elections"][group]
+        elected = F.process(P.raw(election["State"]))
+        require(state["incarnation"] == elected["incarnation"] and state["sequence"] > elected["sequence"]
+                and state["stats"][2] >= elected["stats"][2] and state["stats"][4] >= elected["stats"][4], "same actual leader's committed prefix after original election")
+    return True
+
+
+def processes(a, receipt, program_roles=None):
     rows = a["Processes"]; require(type(rows) is list and 2 <= len(rows) <= 13, "finite actual process inventory")
     failed = rows[0]; actual = T.decoded(P.raw(failed["Raw"]))
     require(actual["Receipt"] == receipt and actual["PID"] == receipt["PID"] and actual["Member"] == failed["Member"] == receipt["Member"] and actual["ExitCode"] == -1 and actual["SignalNumber"] == 9 and actual["Signaled"] is True and actual["Reaped"] is True and failed["Reaped"] is True and failed["Signal"] == "SIGKILL", "actual receipt-selected self-kill/reap")
@@ -622,6 +691,9 @@ def processes(a, receipt):
     restored = matches[0]
     require(restored["PreviousInstance"] == failed["Instance"] and restored["Volume"] == failed["Volume"] and restored["Instance"] != failed["Instance"], "native same durable image/process lineage")
     R.response(restored["RecoveryRaw"])
+    if a["Recipe"]["Family"] != "allocation":
+        return replacement_catchup(a, restored, program_roles)
+    return False
 
 
 def prefix(a):
@@ -846,12 +918,12 @@ def check(a, *, program_roles=None):
         business(a, scopes, rows, program_roles)
         refusals(a, rows)
         if family in ("move", "pin"):
-            batch(a, scopes, program_roles); processes(a, a["Batch"])
+            batch(a, scopes, program_roles); processes(a, a["Batch"], program_roles)
         elif family == "gc":
             target = 3 if program_roles is None else program_state_roles(program_roles, a["Recipe"])[1]
             ident = S.pair(a["StateArm"], a["State"], fixed(a["Run"], 16), a["DeadlineUnixNanos"], member=target)
             require(ident["PlanID"] == a["State"]["Control"]["Filter"]["PlanID"], "actual GC cursor/bank/plan Sync")
-            processes(a, a["State"])
+            processes(a, a["State"], program_roles)
     feed_business = check_calls(a, d, rows, program_roles)
     if family == "gc" or family == "move" and a["Recipe"]["Phase"] != 9:
         leaders = (1, 4) if program_roles is None else program_state_roles(program_roles, a["Recipe"])[0]

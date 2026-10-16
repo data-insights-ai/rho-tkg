@@ -173,11 +173,11 @@ def authenticate(a):
     scopes, _, _ = C.cut(a["Before"], C.POOLED_SEMANTIC)
     family = a["Recipe"]["Family"]
     if family in ("move", "pin"):
-        C.batch(a, scopes, roles); C.processes(a, a["Batch"])
+        C.batch(a, scopes, roles); native_catchup = C.processes(a, a["Batch"], roles)
         receipt = a["Batch"]
     elif family == "gc":
         C.S.pair(a["StateArm"], a["State"], run, deadline, member=target)
-        C.processes(a, a["State"]); receipt = a["State"]
+        native_catchup = C.processes(a, a["State"], roles); receipt = a["State"]
     else:
         require(family == "publication-race" and not (a["Processes"] or []), "publication predecessor does not claim follower death")
         receipt = None
@@ -188,7 +188,7 @@ def authenticate(a):
         require(type(receipt["Member"]) is int and receipt["Member"] == target and
                 failed["Instance"].startswith(f"voter{target}/pid{receipt['PID']}/") and
                 replacement["Instance"] == cohort[target][0]["Instance"] and replacement["Volume"] == cohort[target][0]["Volume"] and
-                cohort[target][1]["PID"] != receipt["PID"] and restored["code"] == restored["mask"] == 0 and restored["ready"] == 1 and
+                cohort[target][1]["PID"] != receipt["PID"] and restored["code"] == restored["mask"] == 0 and (native_catchup or restored["ready"] == 1) and
                 replacement["Instance"].endswith("/"+restored["incarnation"].hex()) and
                 replacement["EventID"] < cohort[target][0]["EventID"], "selected actual follower replacement later reaped in SAME durable volume")
     rows = C.prefix(a)

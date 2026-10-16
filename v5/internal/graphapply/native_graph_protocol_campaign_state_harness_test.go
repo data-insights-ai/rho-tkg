@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
@@ -1026,6 +1027,91 @@ type nativeProtocolStateGate struct {
 	once              sync.Once
 	closed            bool
 	program           *nativeProtocolStateProgram
+}
+
+type nativeProtocolMoveCatchupVoter struct {
+	Member, PID uint64
+	Instance    string
+	State       []byte
+}
+type nativeProtocolMoveCatchupProof struct {
+	Version     uint8
+	Leader      uint64
+	Arm, Batch  nativeBatchReceipt
+	Command     []byte
+	LeaderState []byte
+	Voters      []nativeProtocolMoveCatchupVoter
+}
+
+// This live fixture binding permits only native committed/apply catch-up while
+// the original move fences allocation observations. It grants no read proof,
+// move success, current cut, or replacement proposal authority.
+type nativeProtocolMoveCatchup struct {
+	gate    *nativeProtocolStateGate
+	receipt nativeBatchReceipt
+	command []byte
+	leader  uint64
+	process *graphProcess
+	proof   *nativeProtocolMoveCatchupProof
+}
+
+func nativeProtocolMoveCheckpointReady(state processResponse) bool {
+	if state.code != 0 || state.causeMask != 0 || len(state.image) != 172 || state.stats[statCommit] == 0 || state.stats[statTerm] == 0 || state.applied != state.stats[statCheckpoint] || state.applied != state.stats[statCommit] {
+		return false
+	}
+	_, err := graphstore.DecodeRoot(state.image)
+	return err == nil
+}
+
+func (g *nativeProtocolStateGate) moveCatchup(receipt nativeBatchReceipt) (*nativeProtocolMoveCatchup, error) {
+	if g == nil || g.f == nil || g.f.n == nil || g.target == nil || g.target.cmd == nil || g.target.cmd.Process == nil {
+		return nil, errInvalid
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed || g.ctx.Err() != nil || g.recipe.Family != "move" || g.f.parent == nil || g.f.parent.Err() != nil || g.f.nativeMoveCatchup != nil || g.f.n.all[g.owner.Member] != g.target || g.owner.PID != uint64(g.target.cmd.Process.Pid) || !nativeBatchReceiptValid(receipt, g.arm) || sha256.Sum256(g.command) != receipt.Control.CommandSHA256 {
+		return nil, errInvalid
+	}
+	command, err := decodeRangeMoveCommand(g.command)
+	match, matchErr := g.recipe.matches(allocationProposal{target: command.scope, wire: g.command})
+	if err != nil || matchErr != nil || !match || uint64(len(g.command)) != receipt.Events[0].CommandBytes || command.scope.semantic != g.f.nativeAgreement() {
+		return nil, errors.Join(errInvalid, err, matchErr)
+	}
+	// Re-read the SAME owned native receipt; caller fields alone cannot select
+	// this door. This consumes the existing finite receipt-read allowance.
+	if g.reads >= 129 {
+		return nil, errLimit
+	}
+	g.reads++
+	actual, err := nativeBatchRead(filepath.Join(g.f.n.dir, fmt.Sprint(g.owner.Member)), g.arm)
+	if err != nil || actual != receipt {
+		return nil, errors.Join(errInvalid, err)
+	}
+	leader := g.f.n.leaders[0]
+	if command.scope.partition == 8 {
+		leader = g.f.n.leaders[1]
+	}
+	return &nativeProtocolMoveCatchup{gate: g, receipt: actual, command: bytes.Clone(g.command), leader: leader, process: g.f.n.all[leader]}, nil
+}
+
+func (c *nativeProtocolMoveCatchup) check(f *pairedGraphFaultNetwork, leader uint64) error {
+	if c == nil || c.gate == nil || c.gate.f != f || f.parent == nil || f.parent.Err() != nil || c.gate.ctx.Err() != nil || leader != c.leader || f.n.all[leader] != c.process || !nativeBatchReceiptValid(c.receipt, c.gate.arm) || !bytes.Equal(c.command, c.gate.command) {
+		return errInvalid
+	}
+	command, err := decodeRangeMoveCommand(c.command)
+	ns, _ := certifiedProcessNamespace(leader)
+	if err != nil || command.scope.partition != ns.partition || command.scope.semantic != f.nativeAgreement() || c.receipt.Events[0].CommandSHA256 != sha256.Sum256(c.command) {
+		return errors.Join(errInvalid, err)
+	}
+	for id := range f.n.group(leader).nodes {
+		f.mu.Lock()
+		dead := f.down[id]
+		f.mu.Unlock()
+		if dead {
+			return errInvalid // This fixture restores its sole selected follower.
+		}
+	}
+	return nil
 }
 
 func newNativeProtocolStateGate(ctx context.Context, f *pairedGraphFaultNetwork, r nativeProtocolStateRecipe, programs ...*nativeProtocolStateProgram) (*nativeProtocolStateGate, error) {
