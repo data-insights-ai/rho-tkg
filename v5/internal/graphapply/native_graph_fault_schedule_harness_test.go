@@ -708,16 +708,54 @@ func (s *nativeFaultPacketScheduler) close(h *graphProcessHub) ([]nativeFaultPac
 }
 
 func attachNativeFaultPacketScheduler(h *graphProcessHub, s *nativeFaultPacketScheduler) (func() ([]nativeFaultPacketEvent, error), error) {
+	return attachNativeFaultPacketSchedulerAdmission(nil, h, s)
+}
+
+// Only a program's original selected-Submit callback may wait here. Ordinary
+// callers retain immediate admission. Queue retirement carries no graph/cut
+// authority, and check plus publication share the same actual hub lock.
+func attachNativeFaultPacketSchedulerAfterDrain(ctx context.Context, h *graphProcessHub, s *nativeFaultPacketScheduler) (func() ([]nativeFaultPacketEvent, error), error) {
+	if ctx == nil || h == nil || h.ctx == nil {
+		return nil, errInvalid
+	}
+	return attachNativeFaultPacketSchedulerAdmission(ctx, h, s)
+}
+
+func attachNativeFaultPacketSchedulerAdmission(ctx context.Context, h *graphProcessHub, s *nativeFaultPacketScheduler) (func() ([]nativeFaultPacketEvent, error), error) {
 	if h == nil || s == nil {
 		return nil, errInvalid
 	}
-	h.mu.Lock()
-	if h.nativeFaultSchedule != nil || h.packetBytes != 0 || h.inFlight != 0 || len(h.packets) != 0 {
+	for {
+		h.mu.Lock()
+		if ctx != nil {
+			if err := errors.Join(ctx.Err(), s.ctx.Err(), h.ctx.Err()); err != nil {
+				h.mu.Unlock()
+				return nil, err
+			}
+		}
+		if h.nativeFaultSchedule != nil {
+			h.mu.Unlock()
+			return nil, errInvalid
+		}
+		if h.packetBytes == 0 && h.inFlight == 0 && len(h.packets) == 0 {
+			h.nativeFaultSchedule = s
+			h.mu.Unlock()
+			break
+		}
 		h.mu.Unlock()
-		return nil, errInvalid
+		if ctx == nil {
+			return nil, errInvalid
+		}
+		select {
+		case <-h.idle:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-s.ctx.Done():
+			return nil, s.ctx.Err()
+		case <-h.ctx.Done():
+			return nil, h.ctx.Err()
+		}
 	}
-	h.nativeFaultSchedule = s
-	h.mu.Unlock()
 	// The owner is fully published before expiry can tear down a held frame.
 	// Active RPCs use this same canceled context and retain their charge until
 	// done() owns their terminal response/cancellation cleanup.

@@ -120,10 +120,16 @@ func reserveNativeConjunctionGate(f *pairedGraphFaultNetwork, g *nativeConjuncti
 // Fresh terminal/P02 parent only: pre-admit/hash an actual source-owned command
 // as a diagnostic selector before its ordinary Submit. Neither this method nor its
 // copied bytes import/reconstruct any private proposal authority or stamps.
-func (g *nativeConjunctionBatchGate) armObserved(ctx context.Context, proposal allocationProposal) error {
+func (g *nativeConjunctionBatchGate) armObserved(ctx context.Context, proposal allocationProposal) (resultErr error) {
 	if g == nil || ctx == nil {
 		return errInvalid
 	}
+	var programCommand []byte
+	defer func() {
+		if resultErr == nil && programCommand != nil {
+			resultErr = g.armProgram(programCommand)
+		}
+	}()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.closed || g.ctx.Err() != nil || ctx.Err() != nil {
@@ -160,9 +166,7 @@ func (g *nativeConjunctionBatchGate) armObserved(ctx context.Context, proposal a
 	g.selected = make([]byte, len(proposal.wire))
 	copy(g.selected, proposal.wire)
 	g.arm = actual
-	if err := g.armProgram(proposal.wire); err != nil {
-		return err
-	}
+	programCommand = g.selected // Owned before gate unlock/program attachment.
 	return nil
 }
 
@@ -193,6 +197,13 @@ func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partiti
 		}
 		detail := resultErr.Error()
 		g.f.t.Logf("actual conjunction before-relay refusal: stage=%s origin=%d partition=%d kind=%d bytes=%d requestSHA256=%x selectorActor=%d selectorMember=%d selectorPhase=%d occurrence=%d candidates=%d encounters=%d refused=%t observedPhase=%d observedPartition=%d commandSHA256=%x expectedPID=%d expectedCookie=%x armSequence=%d actualArmState=%q actualArmPID=%d actualArmSequence=%d processMask=%04x graphMask=%04x detail=%q", stage, origin, partition, kind, len(request), sha256.Sum256(request), g.selector.Actor, g.selector.Member, g.selector.Phase, g.selector.Occurrence, candidates, encounters, refused, observed.phase, observed.ns.partition, selectedArm.Control.CommandSHA256, g.owner.PID, g.owner.Cookie, selectedArm.Sequence, actualArm.State, actualArm.PID, actualArm.Sequence, processCauseMask(resultErr), graphErrorMask(resultErr), detail[:min(len(detail), 4096)])
+	}()
+	var programCommand []byte
+	defer func() {
+		if resultErr == nil && programCommand != nil {
+			stage = "program-arm"
+			resultErr = g.armProgram(programCommand)
+		}
 	}()
 	if g.priorBefore != nil {
 		if err := g.priorBefore(ctx, origin, partition, request); err != nil {
@@ -269,10 +280,7 @@ func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partiti
 	g.selected = make([]byte, len(proposal.wire))
 	copy(g.selected, proposal.wire)
 	g.arm = actual
-	stage = "program-arm"
-	if err := g.armProgram(proposal.wire); err != nil {
-		return err
-	}
+	programCommand = g.selected // Deferred program arm runs after gate unlock.
 	return nil
 }
 

@@ -8,7 +8,117 @@ import (
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
+
+func TestNativeProtocolProgramAttachmentWaitsForOriginalPacketDrain(t *testing.T) {
+	// Resource-owner admission only: these queue counters are not a native
+	// message, process, cut or stable-boundary witness.
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	h := &graphProcessHub{ctx: ctx, idle: make(chan struct{}, 1), packets: make(chan graphProcessPacketJob, processPacketCount), inFlight: 1}
+	s, err := newNativeFaultPacketScheduler(ctx, "reorder", 6, 4, 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.cancel()
+	if _, err := attachNativeFaultPacketScheduler(h, s); !errors.Is(err, errInvalid) {
+		t.Fatal("legacy immediate attachment changed", err)
+	}
+	canceled, stop := context.WithCancel(ctx)
+	stop()
+	if _, err := attachNativeFaultPacketSchedulerAfterDrain(canceled, h, s); !errors.Is(err, context.Canceled) || h.inFlight != 1 || h.nativeFaultSchedule != nil {
+		t.Fatal("canceled original wait replaced or discarded retiring traffic", err)
+	}
+	type answer struct {
+		finish func() ([]nativeFaultPacketEvent, error)
+		err    error
+	}
+	done := make(chan answer, 1)
+	go func() {
+		finish, err := attachNativeFaultPacketSchedulerAfterDrain(ctx, h, s)
+		done <- answer{finish, err}
+	}()
+	// A stale notification is not proof of quiescence. The actual in-flight
+	// counter remains charged until its retiring owner publishes completion.
+	h.changed()
+	select {
+	case result := <-done:
+		t.Fatal("attachment passed a still-retiring packet", result.err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	h.mu.Lock()
+	h.inFlight = 0
+	h.mu.Unlock()
+	h.changed()
+	var attached answer
+	select {
+	case attached = <-done:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if attached.err != nil || attached.finish == nil || h.nativeFaultSchedule != s {
+		t.Fatal("actual packet retirement did not publish one scheduler", attached.err)
+	}
+	other, err := newNativeFaultPacketScheduler(ctx, "duplicate", 6, 4, 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.cancel()
+	if _, err := attachNativeFaultPacketSchedulerAfterDrain(ctx, h, other); !errors.Is(err, errInvalid) || h.nativeFaultSchedule != s {
+		t.Fatal("concurrent owner replaced the installed scheduler", err)
+	}
+	if _, err := attached.finish(); !errors.Is(err, replica.ErrUnavailable) || h.nativeFaultSchedule != nil {
+		t.Fatal("unmatched scheduler claimed success or retained slot", err)
+	}
+	if _, err := attachNativeFaultPacketSchedulerAfterDrain(nil, h, other); !errors.Is(err, errInvalid) {
+		t.Fatal("missing original context admitted", err)
+	}
+}
+
+func TestNativeProtocolProgramPendingAttachmentKeepsSingleOwnerAndOriginalCancellation(t *testing.T) {
+	// Inert owner admission: no native command, election or packet is certified
+	// here. The owning OS case supplies those independent real witnesses.
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	h := &graphProcessHub{ctx: ctx, idle: make(chan struct{}, 1), packets: make(chan graphProcessPacketJob, processPacketCount), inFlight: 1}
+	f := &pairedGraphFaultNetwork{t: t, parent: ctx, n: &certifiedProcessNetwork{leaders: [2]uint64{2, 6}, all: map[uint64]*graphProcess{6: {mux: &graphProcessMux{hub: h}}}}}
+	p := &nativeProtocolProgram{ctx: ctx, f: f, spec: nativeProtocolProgramSpec{1, "rotated", "reorder"}, evidence: nativeProtocolProgramEvidence{Elections: []nativeProtocolProgramElection{{Leader: 2}, {Leader: 6}}}}
+	f.protocolProgram = p
+	done := make(chan error, 1)
+	go func() { done <- p.armNative(8, 5, []byte("inert-selected-command")) }()
+	select {
+	case err := <-done:
+		t.Fatal("pending packet made original attachment fail immediately", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	p.mu.Lock() // Must remain available while actual packet work retires.
+	reserved := p.attaching && !p.armed && p.attachDone != nil && p.attachCancel != nil
+	p.mu.Unlock()
+	if !reserved {
+		t.Fatal("one pending attachment was not reserved")
+	}
+	if err := p.armNative(8, 4, []byte("other-command")); !errors.Is(err, errInvalid) {
+		t.Fatal("concurrent arm replaced the original selected command", err)
+	}
+	if err := p.selectCommand(crossResolve, 8, false); !errors.Is(err, errInvalid) {
+		t.Fatal("pending attachment changed selected phase", err)
+	}
+	if _, err := p.close(); !errors.Is(err, errInvalid) {
+		t.Fatal("canceled unmatched attachment qualified", err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal("original attachment lost cancellation sentinel", err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if h.nativeFaultSchedule != nil || h.inFlight != 1 || p.armed || p.attaching || f.protocolProgram != nil {
+		t.Fatal("cancellation fabricated packet retirement or retained attachment owner")
+	}
+}
 
 func TestNativeProtocolCampaignLeaderAndMessagePrograms(t *testing.T) {
 	for _, layout := range []string{"original", "rotated"} {

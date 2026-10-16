@@ -140,6 +140,9 @@ type nativeProtocolProgram struct {
 	evidence            nativeProtocolProgramEvidence
 	finish              func() ([]nativeFaultPacketEvent, error)
 	armed               bool
+	attaching           bool
+	attachCancel        context.CancelFunc
+	attachDone          chan struct{}
 	closed              bool
 	closing             bool
 	terminal            error
@@ -290,7 +293,7 @@ func (p *nativeProtocolProgram) armNative(partition, member uint64, command []by
 }
 
 func (p *nativeProtocolProgram) armNativeLocked(partition, member uint64, command []byte, selector *nativeConjunctionSelector) error {
-	if p.closed || p.closing || p.armed || p.ctx.Err() != nil || len(p.evidence.Elections) != 2 || partition != 3 && partition != 8 || member < 1 || member > 6 || (member <= 3) != (partition == 3) || len(command) == 0 || len(command) > nativeLogicalTransitionBodyBytes {
+	if p.closed || p.closing || p.armed || p.attaching || p.ctx.Err() != nil || len(p.evidence.Elections) != 2 || partition != 3 && partition != 8 || member < 1 || member > 6 || (member <= 3) != (partition == 3) || len(command) == 0 || len(command) > nativeLogicalTransitionBodyBytes {
 		return errors.Join(errInvalid, p.ctx.Err())
 	}
 	group := 0
@@ -345,7 +348,25 @@ func (p *nativeProtocolProgram) armNativeLocked(partition, member uint64, comman
 		if err != nil {
 			return err
 		}
-		finish, err := attachNativeFaultPacketScheduler(p.f.n.all[leader].mux.hub, schedule)
+		// The selected source Submit has not been forwarded. Earlier native
+		// packets may still be retiring; let their existing event lane finish
+		// without holding a program/gate callback lock. This one reservation
+		// prevents a concurrent arm from replacing the original attachment.
+		attaching, cancel := context.WithCancel(p.ctx)
+		done := make(chan struct{})
+		p.attaching, p.attachCancel, p.attachDone = true, cancel, done
+		p.mu.Unlock()
+		finish, err := attachNativeFaultPacketSchedulerAfterDrain(attaching, p.f.n.all[leader].mux.hub, schedule)
+		cancel()
+		p.mu.Lock()
+		p.attaching, p.attachCancel, p.attachDone = false, nil, nil
+		if err == nil && (p.closed || p.closing || p.ctx.Err() != nil) {
+			p.mu.Unlock()
+			_, closeErr := finish()
+			p.mu.Lock()
+			err = errors.Join(errInvalid, closeErr, p.ctx.Err())
+		}
+		close(done)
 		if err != nil {
 			schedule.cancel()
 			return err
@@ -374,7 +395,7 @@ func (p *nativeProtocolProgram) armNativeLocked(partition, member uint64, comman
 func (p *nativeProtocolProgram) selectCommand(phase crossPhase, partition uint64, fence bool) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.closed || p.closing || p.armed || p.selectionSet || p.ctx.Err() != nil || partition != 3 && partition != 8 ||
+	if p.closed || p.closing || p.armed || p.attaching || p.selectionSet || p.ctx.Err() != nil || partition != 3 && partition != 8 ||
 		(fence && (phase != 0 || partition != 3) || !fence && (phase < crossRegister || phase > crossResolve)) {
 		return errors.Join(errInvalid, p.ctx.Err())
 	}
@@ -399,7 +420,7 @@ func (p *nativeProtocolProgram) successor(prior, next uint64) (nativeProtocolPro
 	defer p.mu.Unlock()
 	closedFence := p.closed && p.selectionFence && p.armed && p.successorAttempts == 0
 	closedP06 := p.closed && p.p06 && p.armed && p.afterLoss == nil
-	if (p.closed || p.closing || p.armed) && !closedFence && !closedP06 || p.ctx.Err() != nil || len(p.evidence.Elections) != 2 || p.successorAttempts >= 2 || prior == next || prior < 1 || next < 1 || prior > 6 || next > 6 || (prior <= 3) != (next <= 3) {
+	if p.attaching || (p.closed || p.closing || p.armed) && !closedFence && !closedP06 || p.ctx.Err() != nil || len(p.evidence.Elections) != 2 || p.successorAttempts >= 2 || prior == next || prior < 1 || next < 1 || prior > 6 || next > 6 || (prior <= 3) != (next <= 3) {
 		return nativeProtocolProgramElection{}, errors.Join(errInvalid, p.ctx.Err())
 	}
 	group := 0
@@ -541,7 +562,12 @@ func (p *nativeProtocolProgram) close() (nativeProtocolProgramEvidence, error) {
 	p.mu.Lock()
 	p.closing = true
 	pumpCancel, pumpDone := p.pumpCancel, p.pumpDone
+	attachCancel, attachDone := p.attachCancel, p.attachDone
 	p.mu.Unlock()
+	if attachDone != nil {
+		attachCancel()
+		<-attachDone
+	}
 	if pumpDone != nil {
 		pumpCancel()
 		// Cancellation owns no replacement authority. Join the actual bounded
