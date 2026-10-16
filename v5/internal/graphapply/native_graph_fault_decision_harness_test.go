@@ -993,6 +993,14 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 		if original != nil {
 			captureMu.Lock()
 			charge := capacityCharge
+			// Decode only the pair already owned and funded by the capacity
+			// observer. An authentic refusal is not a capacity observation.
+			if len(capacity.Request) != 0 {
+				q, requestErr := decodeGraphSourceRequest(capacity.Request)
+				r, replyErr := decodeGraphWireResponse(capacity.Reply)
+				_, grant, grantErr := decodeCapacityQuestion(q.command, defaultMaterializerLimits())
+				t.Logf("P04 captured capacity exchange: requestBytes%d replyBytes%d requestKind%d requestSequence%d phase%d tx%x requestDecode=%v grant=%+v grantDecode=%v replyPartition%d replyVoter%d replyIssuer%x replyKind%d replySequence%d replyMask%x replyMagic%x replyDecode=%v", len(capacity.Request), len(capacity.Reply), q.kind, q.sequence, q.phase, q.tx, requestErr, grant, grantErr, r.peer.scope.partition, r.peer.voter, r.issuer, r.kind, r.sequence, graphErrorMask(r.err), r.body[:min(len(r.body), 4)], replyErr)
+			}
 			captureMu.Unlock()
 			result, decodeErr := decodeGraphProcessCoordinatorResult(original.response)
 			t.Fatalf("P04 original B returned before native candidate: actor%d pid%d mask%d sequence%d incarnation%x applied%d code%d causes%x detail%q transport=%v native=%v resultDecode=%v resumeTx%x decisionPhase%d commit%t capacityCharge=%+v controlRetirement=%v", bOwner, f.n.all[bOwner].cmd.Process.Pid, mask, original.response.sequence, original.response.incarnation, original.response.applied, original.response.code, original.response.causeMask, original.response.detail[:min(len(original.response.detail), 4096)], original.err, processResponseError(original.response), decodeErr, result.resume.tx, result.decision.phase, result.decision.commit, charge, waitErr)
