@@ -1,0 +1,9 @@
+{
+  "verified": true,
+  "files": 14,
+  "artifactArchiveSHA256": "69b2f32c32628bae79c4cfa06a3cedee7d8a792a05c96efe999abb667614c5c7",
+  "artifactArchiveBytes": 4054199,
+  "nativeBinarySHA256": "edc6bf340a2c8470ca945779bc4224c09a3381378dbb83354f2612759daf309a",
+  "nativeSource": "fb4055362080907313668e9dcc6f3926741e746d",
+  "databaseContentsOmitted": true
+}

@@ -1,0 +1,43 @@
+{
+  "actualArtifact": "/private/var/tmp/rho-v5-columns-repaired-fb405536-20261016.uhjxc46h/native",
+  "commit": "46bac02a6ee2c57ad29ddcfc4cb6bcd76695b652",
+  "engineRerun": false,
+  "evidence": {
+    "archive-manifest.json": "a4a76a840b168c21220f401ab1f59d282cd2be9e0f8f423ddf0e98ce6ae7b08c",
+    "base_native_feed_check.py": "4ee7504aedc7e5b4f95e2802455d1380dc65fa21735b67f3cc342867a65e9cb8",
+    "consumer-baseline.log": "ed6a790db55ff897e270782372b6e47606888a8593eb5b9f7aeb198bdca6c4ca",
+    "consumer-guards.log": "d3f15e86e43e0f9be4401074b71c9dc4f5c889c0da566b22f837e5f7b987bb8d",
+    "full-green.log": "9501f1786103031537d1eb852e855e8acca4e2ca2630a21ef183e7889668a965",
+    "full-red.log": "86eed6a9d2480f65db19372b645b8a9b6438bd543f29a9ebcbc823e7ea65d400",
+    "guard-green.log": "f1f13abad0113a87f764e7a23cb3bd05ed2b3921bcfde1d822ab688df8c43004",
+    "guard-red.log": "a48e644c4eabcc6d695c4fed66aef98ac8293356937f6b8d6d2573acffd99666",
+    "input-hashes.json": "9cf51ce1390c657182d9670e4d9c0500a447f50c669f2086f1d94993549044f2",
+    "original-columns-artifact.tar.gz": "69b2f32c32628bae79c4cfa06a3cedee7d8a792a05c96efe999abb667614c5c7",
+    "originals-unchanged.json": "942267c7982b796a3add7cc488a1d011c4470826421646abf3123b8719fb0994",
+    "relevant-guards-green.log": "bd002a2395bf6758bdeb798d15a7140d7773682fe78b7df203c270437eee06bc",
+    "terminal-frames.json": "cac32899f0da2eabed107186dc7568cd46a4cfb8aafbea757040eb367a51d045"
+  },
+  "fullOracle": "native_create_update_check.verify",
+  "logicalAnswersSHA256": "4ba4d27d341d14cefcfd1708e9b27efe3b1da99886dac812d38ae87b0f3410fe",
+  "originalFailedControllerReceiptUnchanged": true,
+  "parent": "fb4055362080907313668e9dcc6f3926741e746d",
+  "paths": [
+    {
+      "blob": "7c5926739e3bf4329577138aed86f6c375a7abd1",
+      "parentBlob": "e2e4fe285e2630e4a1d23404612895aceb429806",
+      "parentSHA256": "4ee7504aedc7e5b4f95e2802455d1380dc65fa21735b67f3cc342867a65e9cb8",
+      "path": "tools/v5-substrate/native_feed_check.py",
+      "sha256": "6c42c7fde6714f58479166cdb9c52c31476cff0b96370edbf9b43a30d4dfe8f7"
+    },
+    {
+      "blob": "c6238dd7c67268dcb32ef2ebb1a2ea23fe4370db",
+      "parentBlob": "462585e9e59d59fa9f371e949b8375d6501ced44",
+      "parentSHA256": "f94eee045d4ae13035c34149fb828f879fd29a5ccdf2b59011483d4407a663b1",
+      "path": "tools/v5-substrate/native_feed_check_test.py",
+      "sha256": "e3d03539eef244e54cd5e112fcb0dc4d9e086420db2ceeb1d089f634a54a12bf"
+    }
+  ],
+  "preExistingConsumerFailures": 3,
+  "relevantGuardTests": 27,
+  "scope": "Checker RED->GREEN on immutable actual columns artifact; not a completed controller or V2 acceptance"
+}

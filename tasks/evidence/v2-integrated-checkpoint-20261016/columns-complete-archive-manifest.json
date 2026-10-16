@@ -1,0 +1,22 @@
+{
+  "archive": "tiny-native-pair-create-update-columns-703bdcb7.tar.gz",
+  "archiveSHA256": "7373c209015c03ffec78fd46a337f084aa2b786918c8bb402fcfbd111220cc27",
+  "files": {
+    "pair-proof.json": "8110abbd893f10f80956c3b6873a5842028d64353106853e9392b01bf18978d2",
+    "native/request.json": "879802ff379f43b3d683c6ea4cda2f2c1c201e6965fab13a75787089c5b8eea1",
+    "native/receipt.json": "d637ada96f1d85c2b419d4f587b780bdba084ce33c6d6c5adc79447e8485048d",
+    "native/watchdog.json": "283a022de8268c78f2ab76d41f3ba8d8cc164dee2e2ca36df2bd8cf34df41f80",
+    "native/stdout.txt": "9c98e3955c81e4cdfe7f4305c72b5eae2d6299ab42d00f252beabb8acc137be8",
+    "native/stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native/engine/attempts.jsonl": "5dc6814ba4e2997c7e81f760f6307c00e4f6d1b20c5a5218570d5fc2cf140591",
+    "native/engine/columns.jsonl": "8094204ad87690fa8f85ff6eedde35877e7404561902e1f003c1c27b0c87849d",
+    "native/engine/grants.jsonl": "9ce566f78ce61c840168cf0774a026afc340a5c0d87263edc95e32c6acd173d4",
+    "native/engine/operations.jsonl": "f117d1ea0fa0fe91ab3873816b8728acd23a90130540653d2d66eeac9d6e4f66",
+    "native/engine/processes.jsonl": "89521ad5323a82f71629889edd10bf2228e911e839f4fdafc4888dd87acc8d91",
+    "native/engine/reads.jsonl": "a4b44beccd8f927483f0304d71f56fd81bb07cd3349b07cb11806647406ed7b2",
+    "native/engine/result.json": "1d364fa9193b6a9f1a318b6acf60fe6c96f5deb03390fc3f5f3287e6625177f5",
+    "native/engine/sources.jsonl": "d2876dd996386ee27e71a31939cce727fa98ccc532892fce005247417c1859fe"
+  },
+  "databaseContentsIncluded": false,
+  "originalControllerUnchanged": true
+}

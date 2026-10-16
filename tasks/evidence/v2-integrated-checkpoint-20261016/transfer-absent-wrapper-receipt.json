@@ -1,0 +1,29 @@
+{
+  "commit": "00ce61087863b26070611f49591b4cb70419ba1c",
+  "evidence": {
+    "consumer-green.log": "af1fc1ada9a7a7357349d26d994057691f059c63eba5e127902b996d120b82c2",
+    "green.log": "67c1880014375678bc3d0c53cd3a40a31957dfb3e8960fa9cb0e846769de6798",
+    "red.log": "c390e4ca2317d99150f3813003ae079a5fb69a493880b0373941da7a23880b98"
+  },
+  "guardsPassed": 54,
+  "nativeCohortRun": false,
+  "parent": "64b48a59f22c470242e3c3b86df1fee1548112ec",
+  "paths": [
+    {
+      "blob": "86f9378f097b0ebc81c171957a462c8d188ef620",
+      "parentBlob": "5a7cc017bf080e161425401bd6865968f8d06280",
+      "parentSHA256": "59c11b8eead9ecac0a82a8f111b17a0fb1cc33adabb1e65e4788897f99225540",
+      "path": "tools/v5-substrate/native_transfer_check.py",
+      "sha256": "a714cf6f84ab91f9a0c5a760acfde2a6a0cba1eb7fd81e15bb25dc5c27173f0c"
+    },
+    {
+      "blob": "ace336a14415562851938e498c1882a1c5bc7d54",
+      "parentBlob": "f424fc4a9b40d7dc8ca4bbd4ce0ab5a6f66ed088",
+      "parentSHA256": "ac9268eef10503998f632e0a196ddc8103ac78b024cf709eedea0f390a755d6e",
+      "path": "tools/v5-substrate/native_transfer_check_test.py",
+      "sha256": "7f592e2561845738f3a0bddb9ab9a1ff271d3c0354c6b7a0a3e3db18df93df17"
+    }
+  ],
+  "red": "Canonical producer-codec fixture, not captured OS evidence: nativeTransferClient.exchange zero reply on absent aux from graphProcessMux.send errLimit",
+  "scope": "Exact absent wrapper + typed reported error only; no native outcome/retirement/allocator/feed/move authority granted; original settlement and retry census unchanged"
+}

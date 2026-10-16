@@ -1,0 +1,47 @@
+............................E..............EE.
+======================================================================
+ERROR: test_same_body_replay_requires_actual_first_install_below_ack (native_feed_retained_check_test.NativeRetainedFeedGuards.test_same_body_replay_requires_actual_first_install_below_ack)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_feed_retained_check_test.py", line 39, in test_same_body_replay_requires_actual_first_install_below_ack
+    spool.insert(b"frame",u64(3)+u64(first_index),check.encoded(first))
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/comparison_spool.py", line 145, in insert
+    self._query("INSERT INTO state VALUES(?,?,?)", (namespace, key, value))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/comparison_spool.py", line 92, in _query
+    raise SpoolError("comparison spool closed")
+comparison_spool.SpoolError: comparison spool closed
+
+======================================================================
+ERROR: test_move_unknown_new_call_preserves_original_and_spends_global_retry (native_transfer_check_test.NativeTransferGuards.test_move_unknown_new_call_preserves_original_and_spends_global_retry)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_transfer_check_test.py", line 119, in test_move_unknown_new_call_preserves_original_and_spends_global_retry
+    self.assertEqual(len(list(check.controls(Path("inert"),end))),3)
+                         ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_transfer_check.py", line 279, in controls
+    require(integer(row["Member"],1,6) and integer(q["Version"],1,1) and integer(r["Version"],0,1) and integer(r.get("Failure",0),0,9)>=0,"actual native wrapper identity")
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/compare-cost-cdc.py", line 57, in require
+    raise ValueError("cost CDC refused: " + message)
+ValueError: cost CDC refused: actual native wrapper identity
+
+======================================================================
+ERROR: test_old_current_and_ack_proof_are_all_required_before_normalization (native_transfer_check_test.NativeTransferGuards.test_old_current_and_ack_proof_are_all_required_before_normalization)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_transfer_check_test.py", line 71, in test_old_current_and_ack_proof_are_all_required_before_normalization
+    spool.insert(b"transfer/old",u64(fact),check.encoded(old));spool.insert(b"transfer/current",u64(fact),check.encoded(current))
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/comparison_spool.py", line 145, in insert
+    self._query("INSERT INTO state VALUES(?,?,?)", (namespace, key, value))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/comparison_spool.py", line 92, in _query
+    raise SpoolError("comparison spool closed")
+comparison_spool.SpoolError: comparison spool closed
+
+----------------------------------------------------------------------
+Ran 46 tests in 0.044s
+
+FAILED (errors=3)

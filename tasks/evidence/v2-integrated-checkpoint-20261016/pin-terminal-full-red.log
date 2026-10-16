@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "<stdin>", line 3, in <module>
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_create_update_check.py", line 121, in verify
+    return _verify(directory,spool_directory,policy,binary_sha=binary_sha,expected_spec=expected_spec,expected_run=expected_run,expected_deadline=expected_deadline,expected_seconds=expected_seconds,shared_spool=shared_spool)
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_create_update_check.py", line 154, in _verify
+    scalar._scalar_sources(directory,end,spool,source.cut,ceiling,guarded_updates=True)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_feed_check.py", line 511, in _scalar_sources
+    authenticate_frame(f,previous,end["spec"],spool,old is None,guarded_updates=guarded_updates)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_feed_check.py", line 466, in authenticate_frame
+    if phase in (3,4,5,8) and status in (1,4,5):put(spool,b"pin-terminal",u64(part)+pin+hash_,out)
+                                                ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_feed_check.py", line 89, in put
+    else: require(old == value, "immutable original/frame changed")
+          ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/compare-cost-cdc.py", line 57, in require
+    raise ValueError("cost CDC refused: " + message)
+ValueError: cost CDC refused: immutable original/frame changed

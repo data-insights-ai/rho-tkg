@@ -1,0 +1,161 @@
+{
+  "format": "native-create-update-workload-v1",
+  "family": "partition-local-create-update",
+  "spec": {
+    "version": 1,
+    "family": "partition-local-create-update",
+    "facts": 20,
+    "crossPercent": 100,
+    "writers": 1,
+    "layout": "columns"
+  },
+  "run": "c991682d9c3de886d8e8f3f81ade0578",
+  "logicalAnswersSHA256": "4ba4d27d341d14cefcfd1708e9b27efe3b1da99886dac812d38ae87b0f3410fe",
+  "retentionContract": "snapshot-C-retained-full-prefix-v1",
+  "transport": {
+    "kind": "local",
+    "targetRTTMillis": 0,
+    "jitterMillis": 0,
+    "seed": 20261009
+  },
+  "rowSemantics": "mixed-or-cross-partition-create-update",
+  "businessTiming": [
+    {
+      "Phase": "create",
+      "StartNanos": 1926117958,
+      "StopNanos": 14856139125,
+      "WallNanos": 12930021167,
+      "SingleParticipant": 0,
+      "MultiParticipant": 20,
+      "ReadParticipants": [
+        20,
+        20
+      ],
+      "WriteParticipants": [
+        20,
+        20
+      ],
+      "single": 0,
+      "multi": 20,
+      "attempts": 20,
+      "aborted": 0,
+      "protocolParticipantInstalls": 40,
+      "p50Nanos": 1845263666,
+      "p95Nanos": 2410055375,
+      "p99Nanos": 2558819792,
+      "usefulTransactionsPerSecond": 1.5467878777371225
+    },
+    {
+      "Phase": "update",
+      "StartNanos": 21603855041,
+      "StopNanos": 35798915500,
+      "WallNanos": 14195060459,
+      "SingleParticipant": 0,
+      "MultiParticipant": 20,
+      "ReadParticipants": [
+        20,
+        20
+      ],
+      "WriteParticipants": [
+        20,
+        0
+      ],
+      "single": 0,
+      "multi": 20,
+      "attempts": 20,
+      "aborted": 0,
+      "protocolParticipantInstalls": 40,
+      "p50Nanos": 2078431583,
+      "p95Nanos": 2369821750,
+      "p99Nanos": 2412014375,
+      "usefulTransactionsPerSecond": 1.4089408113312778
+    }
+  ],
+  "sourceTiming": {
+    "samples": [
+      {
+        "name": "old-fresh",
+        "OpenNanos": 592194333,
+        "ScanNanos": 1538186875,
+        "PointsNanos": 339999958,
+        "ScopeRefusalNanos": 0,
+        "Rows": 20
+      },
+      {
+        "name": "same-pin-old-after-update",
+        "OpenNanos": 79299917,
+        "ScanNanos": 1385682250,
+        "PointsNanos": 328499875,
+        "ScopeRefusalNanos": 0,
+        "Rows": 20
+      },
+      {
+        "name": "fresh-current",
+        "OpenNanos": 548305667,
+        "ScanNanos": 1526311458,
+        "PointsNanos": 284931542,
+        "ScopeRefusalNanos": 0,
+        "Rows": 20
+      },
+      {
+        "name": "reopened-old",
+        "OpenNanos": 52827458,
+        "ScanNanos": 1764449375,
+        "PointsNanos": 337666709,
+        "ScopeRefusalNanos": 0,
+        "Rows": 20
+      },
+      {
+        "name": "reopened-final",
+        "OpenNanos": 145272250,
+        "ScanNanos": 1744503792,
+        "PointsNanos": 283280416,
+        "ScopeRefusalNanos": 0,
+        "Rows": 20
+      }
+    ],
+    "nearestRank": [
+      {
+        "call": "Open",
+        "samples": 5,
+        "p50Nanos": 145272250,
+        "p95Nanos": 592194333,
+        "p99Nanos": 592194333
+      },
+      {
+        "call": "Scan",
+        "samples": 5,
+        "p50Nanos": 1538186875,
+        "p95Nanos": 1764449375,
+        "p99Nanos": 1764449375
+      },
+      {
+        "call": "Points",
+        "samples": 5,
+        "p50Nanos": 328499875,
+        "p95Nanos": 339999958,
+        "p99Nanos": 339999958
+      }
+    ],
+    "scope": "actual complete source operations through EOF/retry/wait; scan-based Points, no indexed/per-key claim"
+  },
+  "spool": {
+    "policy": {
+      "max_disk_bytes": 1073741824,
+      "cache_bytes": 8388608,
+      "max_key_bytes": 4096,
+      "max_value_bytes": 524288
+    },
+    "page_bytes": 4096,
+    "sqlite_version": "3.53.2",
+    "walk_plan": "SEARCH state USING PRIMARY KEY (namespace=? AND key>?)",
+    "journal_mode": "off",
+    "mmap_bytes": 0,
+    "temp_store": "memory; no SQL temp tables/sorts",
+    "cached_statements": 8,
+    "cache_is_process_rss_limit": false,
+    "peak_file_bytes": 5337088,
+    "peak_allocated_bytes": 5337088
+  },
+  "scope": "genuine native local Submit versus explicit mixed/cross variants, complete original/source/voter/old-current/column/cache/reopen joins; setup excluded; planned installed-grant IDs, not Recipient.Next; no efficiency/capacity/full-matrix or nonlocal engine-parity acceptance"
+}

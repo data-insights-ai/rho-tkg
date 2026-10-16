@@ -1,0 +1,69 @@
+{
+  "commit": "20e58df4c8ce5d7d9f524a7b26ea09c02b13b076",
+  "parent": "bef1fe187d27e0a93a880330c1b7b1161c49eaba",
+  "combinedParent": "ed2cab6bc6eb8883a4a76875ca5e3f7057470ac6",
+  "worktree": "/var/tmp/rho-v5-move-catchup-actor-contract-20261016",
+  "paths": [
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_state_check.py",
+      "parentBlob": "ac5942e74b7d045990b21a59baba78bef26175e4",
+      "parentSHA256": "17e2c23b8929a82723fedf20dc847d924776d3e59f4d02bc252c455577c6f84b",
+      "blob": "b5240f7afeceefe3d9b573f26474f9f50b9d0e20",
+      "sha256": "3065f0cf902f4cd6aacdc32bef4c5ff582eac0e4abb888b82a399e48df62cbc3"
+    },
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_state_check_test.py",
+      "parentBlob": "73279228baf158a75088b5f92b7c9223808700a6",
+      "parentSHA256": "4dc6fcd9ff87e3091b204163d414a657575fd3b4083694c9db316a79f5aa33a1",
+      "blob": "cfb735f5fe880f7b0e5e25d99cfa1aab0417b1b4",
+      "sha256": "62767d8dd62bd661dac3062cb4212be3bee5b7fa8d7ecae69462c8596a4dcb88"
+    },
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_state_program_check.py",
+      "parentBlob": "cfa11d2512c03549c30b9c4b9a25f4681cd19dde",
+      "parentSHA256": "a19bbd970394731f791e1bc9d2c50c8ab89f9608892b576ed27098439a4eb0d0",
+      "blob": "892061552ccf04b09f7eb701893758b91ccf8fc5",
+      "sha256": "c4d2aa09a2db3aca08a0c1dfc3d7473849c20b980de833efec23193a9976ee1f"
+    },
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_state_program_check_test.py",
+      "parentBlob": "4c1fb91c8e0b4ebd13359cf65e23e0e30edc9c8e",
+      "parentSHA256": "025e8c372601e14b00887961308f051adaacbb2bd1bb2e121a75ca8a8815b213",
+      "blob": "4a292c52db440654f87b77659934baf28bb7c398",
+      "sha256": "f901630ea66cb8aebd4ae119845b2f2815c431f4e1628c2acef9a8758f8d0f30"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_harness_test.go",
+      "parentBlob": "1cfdd40d5e8ffe3f7d59db00933c07de86288d10",
+      "parentSHA256": "2ada66a2a5dfef8ffb2fd11142204cb1c23244e862cd631e3e4826ab09a72d6b",
+      "blob": "5d2eef7ce8ad148d4c270f2d8e842dd8ff6017d1",
+      "sha256": "1958d3ee8d71753d0d847e45b530f6b17bb71ac02a4ff280f8ccc6f048db5317"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_program_test.go",
+      "parentBlob": "9fea1eec9fcc9c562da2d9587115e37318fcd1b6",
+      "parentSHA256": "e3d3371024b8e39612b6717be568d34d072a6e5296a03520980dc53aac82db5c",
+      "blob": "296214f5ec1e46bd8e70a24030452987b11ccd46",
+      "sha256": "873af83bec6c781ee206ff1580aa84212efa5e2b37a35d1eba72a578bbbd10af"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_test.go",
+      "parentBlob": "286e9c8fb0733df57fbb2b406105f246387015ab",
+      "parentSHA256": "809394e476d9eda5b84fdc65107ae3aee84d26d237554b37436bd1de2faa407a",
+      "blob": "cc856082023ae5497db2ee7745b5216b93d73fdb",
+      "sha256": "6e5a806b011de2bad80c1d884e02ba6e1508c6768e0e37cb2d73d5943b16b9f6"
+    },
+    {
+      "path": "v5/internal/graphapply/paired_graph_fault_harness_test.go",
+      "parentBlob": "9bdfacf11c0d2e4546c4e4c9ed8b386e751a118a",
+      "parentSHA256": "27068953a36e51b706096b8b161f40afb4efbef1a3b4eded506992156baf495a",
+      "blob": "3d0de7c114536c16a7a1ad539a760d7237350248",
+      "sha256": "50fc28396a9e8c5c3b2b50314a592a8d7990e8346e8a222d0c6347358ea98774"
+    }
+  ],
+  "correction": "Transport catch-up only: Actor/ActorState bind the previously elected actual process, not a current leader/read/quorum/cut certificate. Removed self-vote role inference. All3 actual durable commit/applied/checkpoint exact image agreement remains mandatory; ordinary SAME Resume/full oracle establish later actual authority/effects. Default ReadIndex path unchanged. New log says native committed/apply catch-up.",
+  "tests": "All22 Python owning guards PASS0.010s with strict rejection of old Leader field. Previous combined Go pending/SAME Resume+demux PASS6.442s; successor Go field rename/removal formatted, root owns integrated compiler and exact OS run.",
+  "priorReceipt": "receipt.json",
+  "priorCommit": "bef1fe187d27e0a93a880330c1b7b1161c49eaba",
+  "pythonLogSHA256": "f28952177cbbcee6a0ba2fb24a3f67907b96aadae2aca07b03d74aafba7b9c19"
+}

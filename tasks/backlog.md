@@ -1220,7 +1220,7 @@ pass current/synced WAL recovery, WAL/manifest corruption and OPTIONS rename in 
 and explicit independent Python checks. This receipt corrects the earlier claim
 that Go automatically invoked the WAL checker; original logs remain unchanged.
 
-The [current query/recovery checkpoint](evidence/v2-integrated-checkpoint-20261016/qualification-fb405536.json)
+The [current query/recovery checkpoint](evidence/v2-integrated-checkpoint-20261016/qualification-b09a2784.json)
 records the following finite scope:
 
 - The 20-fact, 100%-cross, one-writer KV/local native workload completes all
@@ -1239,12 +1239,16 @@ records the following finite scope:
   checks pass. Collected, span and batched moves complete with exact retained
   old/current answers; batch reducers validate ownership once on the same
   captured view while retaining all per-record charges and original limits.
-  The process case remains open: an actual replacement-follower reply reaches
-  the leader; Host Step succeeds, but a bootstrap configuration read returns
-  range-move-pending while the original move is fenced. The fixture masks that
-  zero-proof refusal as invalid. Recovery readiness must preserve the real
-  pending authority; no full state-case pass is claimed. All eight owned
-  processes exit. Six focused import/replay parents also pass
+  The process case remains open. Recovery now catches up the actual committed
+  and applied prefix without requesting allocation authority while a move is
+  fenced. This grants no new read certificate or current-leader authority.
+  The next allocator transfer preserves the exact observed native view count,
+  view bytes and pins on the same process incarnation; direct added/dropped-owner
+  guards and scoped race checks pass. The actual case advances through both
+  corrections, then refuses a changed-K request with a remote source error.
+  Its precise cause remains under diagnosis; no changed-body effect or full
+  state-case pass is established. All eight owned processes exit without forced
+  cleanup. Six focused import/replay parents also pass
   race checks; their partial coverage does not establish the full coverage gate.
 - FoundationDB's first actual prebuild exposed seven compiler diagnostics.
   Their fixes compile; the pinned tool build additionally needed `xz-utils`.
@@ -1265,16 +1269,22 @@ records the following finite scope:
   root's five focused codec/publication/reopen/retirement and old-cut parents
   pass. Allocation metadata preserves exact CDC and originals without business
   rows; durable generation and peer binding retain their actual owner. The
-  corrected native columns workload completes in 61.65 seconds with all 13
-  owned process identities exited. Its complete checker rejects a pin-terminal
-  join; the original controller receipt remains failed, and columns pairing is
-  open. The eight-writer KV tiny pair also passes the full comparator
+  corrected native columns workload initially completes in 61.65 seconds;
+  its original controller receipt remains failed because the old checker
+  conflates Close and CancelIssue for the same pin. The checker now retains
+  each authenticated action original separately; the complete unchanged artifact
+  passes independent root replay. A fresh controller then completes in 67.38
+  seconds, including verification, and the full native/FDB column comparator
+  matches 40 typed answers. All 13 owned native processes exit without forced
+  cleanup; the original FDB and failed native receipts remain unchanged.
+  The eight-writer KV tiny pair also passes the full comparator
   and independent root replay: 40 typed answers, all 13 native process identities
-  exited, FDB 43 commits/51 aborted attempts and successful cleanup. Columns
-  pairing, larger runs and comparative cost remain open. A first previously
+  exited, FDB 43 commits/51 aborted attempts and successful cleanup. Larger
+  runs and comparative cost remain open. A first previously
   unexecuted rotated/reordered P01 scoped-read case fails with a native Limit
   wrapped as immutable-source unavailable; fail-fast leaves the selected P02,
-  P04 and P05 cases unexecuted. Source attribution is under diagnosis.
+  P04 and P05 cases unexecuted. The actual held source is the surviving voter
+  2 under the original 4,096-row/2 MiB grant. The refusal remains under diagnosis.
 
 These components do not close their full fault families, the process inventory,
 engine comparison, measurements or V2. Original deadlines, quotas, complete

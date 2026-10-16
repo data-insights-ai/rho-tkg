@@ -1,0 +1,94 @@
+{
+  "commit": "f3af3b13243613bd6008b2b2a516857810b9681d",
+  "parent": "ff3ce0387914871ed590bd2bbd53effd3a9e9c93",
+  "tree": "/private/var/tmp/rho-v5-columns-metadata-adversarial-20261016",
+  "status": "clean frozen test-only successor",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_columns_test.go",
+      "blob": "fdebfa2fb07b398075f78ee65cf57a3a35a9785a",
+      "sha256": "0266e39fcdb4d5b35b305be451f32b5d8674b0fb42e069123116ca4e37bdd8b2",
+      "parent_blob": "4d46d62d12dd9d10067286e0c2ab4ffb368119d3",
+      "parent_sha256": "828864bb24593ec47af4b80c41769321cb993a5191a1134d21cb20303d2d4079"
+    }
+  ],
+  "production_unchanged_sha256": {
+    "v5/internal/graphapply/native_graph_columns_source.go": "6c407fe4228176c6f82b631235b8a7cabf4fced4497024b50a3b434674b3763a"
+  },
+  "qualification": {
+    "tests": [
+      "TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue",
+      "TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor",
+      "TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement",
+      "TestTypedCDCBindingSchemasAndPhysicalIndependence",
+      "TestTypedLabelSetCDCAndRechecksummedSemanticCorruption"
+    ],
+    "command": [
+      "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+      "test",
+      "-p=1",
+      "-race",
+      "-covermode=atomic",
+      "-coverprofile=/private/var/tmp/rho-v5-columns-metadata-adversarial-evidence-20261016/coverage.out",
+      "-count=1",
+      "-v",
+      "-run",
+      "^(TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue|TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor|TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement|TestTypedCDCBindingSchemasAndPhysicalIndependence|TestTypedLabelSetCDCAndRechecksummedSemanticCorruption)$",
+      "-timeout=180s",
+      "./internal/graphapply"
+    ],
+    "environment": {
+      "GOMAXPROCS": "2",
+      "GOWORK": "off",
+      "GOTOOLCHAIN": "local"
+    },
+    "cwd": "/var/tmp/rho-v5-columns-metadata-adversarial-20261016/v5",
+    "exit": 0,
+    "package_seconds": 17.478,
+    "race_report": false,
+    "function_coverage": {
+      "allocationMetadataFrame": 92.0,
+      "checkAllocationMetadata": 90.7,
+      "decodeChangeEnvelopeLogical": 100.0
+    },
+    "partial_package_coverage": 34.5,
+    "scope": "same five focused parents only; not full package/repo gate",
+    "unexecuted_new_helper_blocks": [
+      {
+        "coordinate": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/native_graph_columns_source.go:633.61,635.4",
+        "statements": 1
+      },
+      {
+        "coordinate": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/native_graph_columns_source.go:646.17,648.4",
+        "statements": 1
+      },
+      {
+        "coordinate": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/native_graph_columns_source.go:659.81,661.3",
+        "statements": 1
+      },
+      {
+        "coordinate": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/native_graph_columns_source.go:663.16,665.3",
+        "statements": 1
+      },
+      {
+        "coordinate": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/native_graph_columns_source.go:704.16,706.3",
+        "statements": 1
+      },
+      {
+        "coordinate": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/native_graph_columns_source.go:708.16,710.3",
+        "statements": 1
+      }
+    ]
+  },
+  "mutation_red": {
+    "mutation": "temporarily bypass only expected != o immutable-original comparison; restored exact frozen production source before GREEN",
+    "test": "TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor",
+    "exit": 1,
+    "package_seconds": 2.437,
+    "failure": "metadata cross-field refusal replay differs from immutable original hash <nil>",
+    "log": "/private/var/tmp/rho-v5-columns-metadata-adversarial-evidence-20261016/mutation-red.log"
+  },
+  "pinned_gofmt": "clean",
+  "git_whitespace": "clean",
+  "no_os_cohort": true
+}

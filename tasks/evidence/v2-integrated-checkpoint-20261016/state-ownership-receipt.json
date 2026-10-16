@@ -1,0 +1,84 @@
+{
+  "commit": "1876282ae50e2a78813eefbc59e1a626dd3157bc",
+  "parent": "5f7e35eb9c5c98c26351f5c36f5614353395c961",
+  "tree": "/private/var/tmp/rho-v5-state-action-ownership-20261016",
+  "status": "clean frozen",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_harness_test.go",
+      "blob": "5756791bbd0fb37ab768df4ba4e28be2e94e8328",
+      "sha256": "ccb79787b648c8a83fc95993b872e057305baadaca71bfc2852301fea8d5fd88",
+      "parent_blob": "5d2eef7ce8ad148d4c270f2d8e842dd8ff6017d1",
+      "parent_sha256": "1958d3ee8d71753d0d847e45b530f6b17bb71ac02a4ff280f8ccc6f048db5317"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_program_test.go",
+      "blob": "968d619e0f43087321174e354ba1db878480aedf",
+      "sha256": "b83216f1dcaf303c20df6da9d252133e9e5a3c7b771f7b59f2a3ffc8bd386864",
+      "parent_blob": "296214f5ec1e46bd8e70a24030452987b11ccd46",
+      "parent_sha256": "873af83bec6c781ee206ff1580aa84212efa5e2b37a35d1eba72a578bbbd10af"
+    }
+  ],
+  "cause": "The state action helper required zero native views although the same live feed/factory/held snapshot intentionally retained them across allocator transfer. Member2 in OS failure is a member identity, not a count.",
+  "correction": "Observe real per-voter state before factory action; require same process/incarnation and exact unchanged view count, view bytes, and pinned logical bytes after committed action. Full existing original/root/outcome/CDC checks unchanged.",
+  "evidence": {
+    "native_os_red": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/state-catchup-fixed-703bdcb7.log",
+    "direct_test": "TestNativeProtocolStateActionKeepsActualRetainedOwnership",
+    "before": {
+      "views": 1,
+      "viewBytes": 172,
+      "pinnedLogicalBytes": 0
+    },
+    "after": {
+      "views": 1,
+      "viewBytes": 172,
+      "pinnedLogicalBytes": 0
+    },
+    "red": {
+      "exit": 1,
+      "package_seconds": 2.005,
+      "log": "/private/var/tmp/rho-v5-state-action-ownership-evidence-20261016/red.log",
+      "ordering": "unchanged zero-baseline check rejects legitimate observed ownership"
+    },
+    "green": {
+      "exit": 0,
+      "package_seconds": 2.171,
+      "log": "/private/var/tmp/rho-v5-state-action-ownership-evidence-20261016/green.log"
+    },
+    "race": {
+      "exit": 0,
+      "package_seconds": 4.739,
+      "test_seconds": 3.1,
+      "log": "/private/var/tmp/rho-v5-state-action-ownership-evidence-20261016/race.log",
+      "race_report": false,
+      "partial_package_coverage": 22.5,
+      "scope": "one focused in-process direct parent only, not a full gate; test-only helper is not included in production coverprofile",
+      "command": [
+        "/Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go",
+        "test",
+        "-p=1",
+        "-race",
+        "-covermode=atomic",
+        "-coverprofile=/private/var/tmp/rho-v5-state-action-ownership-evidence-20261016/coverage.out",
+        "-count=1",
+        "-v",
+        "-run",
+        "^TestNativeProtocolStateActionKeepsActualRetainedOwnership$",
+        "-timeout=60s",
+        "./internal/graphapply"
+      ],
+      "cwd": "/var/tmp/rho-v5-state-action-ownership-20261016/v5",
+      "environment": {
+        "GOMAXPROCS": "2",
+        "GOWORK": "off",
+        "GOTOOLCHAIN": "local"
+      }
+    },
+    "adversarial": "An actual additional native view is refused; Close restores exact held baseline; releasing the held snapshot changes that baseline and returns to actual clean ownership."
+  },
+  "pinned_gofmt": "clean",
+  "git_whitespace": "clean",
+  "production_changes": false,
+  "caps_budgets_authorities_changed": false,
+  "no_os_cohort": true
+}

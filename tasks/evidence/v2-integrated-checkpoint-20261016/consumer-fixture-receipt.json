@@ -1,0 +1,25 @@
+{
+  "baselineRedLogSHA256": "ed6a790db55ff897e270782372b6e47606888a8593eb5b9f7aeb198bdca6c4ca",
+  "commit": "641ec0d34d30c94f54030dbe054ad4c068c7a47c",
+  "greenLogSHA256": "aaf9fadea6230c050366fbeb97e55e231f1ab140db145c561ed0794754efd75e",
+  "guardsPassed": 46,
+  "parent": "46bac02a6ee2c57ad29ddcfc4cb6bcd76695b652",
+  "paths": [
+    {
+      "blob": "ac3b4e3640b61c18bf390ab25a5c52fee03e591c",
+      "parentBlob": "d91b99df384fbcc3f97a4475f8280959bc7c5d51",
+      "parentSHA256": "a103a2427058e8437d1aebe3123c663e2b548dcc2aa162477547e1bd1c63fce0",
+      "path": "tools/v5-substrate/native_feed_retained_check_test.py",
+      "sha256": "9b6ba4df53990dd492d7c9f8e222a8a17d3bc148abca71e9c973ffa9a3cb7323"
+    },
+    {
+      "blob": "f424fc4a9b40d7dc8ca4bbd4ce0ab5a6f66ed088",
+      "parentBlob": "285bcc5506fcb53e718efcdecbcec46b49ec055e",
+      "parentSHA256": "0e93c728e25c1900dd82b60e30e7fae3c26228ac819a17627754c83c3d8f5db6",
+      "path": "tools/v5-substrate/native_transfer_check_test.py",
+      "sha256": "ac9268eef10503998f632e0a196ddc8103ac78b024cf709eedea0f390a755d6e"
+    }
+  ],
+  "remainingFinding": "Native transfer controls integer(Version,0,1) used as boolean rejects actual absent-transport Version0; no checker change in this test-only commit.",
+  "testOnly": true
+}

@@ -1,0 +1,25 @@
+E
+======================================================================
+ERROR: test_native_pin_terminals_preserve_distinct_action_originals (native_feed_check_test.NativeFeedGuards.test_native_pin_terminals_preserve_distinct_action_originals)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_feed_check_test.py", line 123, in test_native_pin_terminals_preserve_distinct_action_originals
+    for f in actual:authenticate(spool,f)
+                    ~~~~~~~~~~~~^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_feed_check_test.py", line 119, in authenticate
+    def authenticate(spool,f):check.authenticate_frame(f,root,self.spec,spool,True)
+                              ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_feed_check.py", line 466, in authenticate_frame
+    if phase in (3,4,5,8) and status in (1,4,5):put(spool,b"pin-terminal",u64(part)+pin+hash_,out)
+                                                ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/native_feed_check.py", line 89, in put
+    else: require(old == value, "immutable original/frame changed")
+          ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-pin-terminal-check-fix-20261016/tools/v5-substrate/compare-cost-cdc.py", line 57, in require
+    raise ValueError("cost CDC refused: " + message)
+ValueError: cost CDC refused: immutable original/frame changed
+
+----------------------------------------------------------------------
+Ran 1 test in 0.004s
+
+FAILED (errors=1)
