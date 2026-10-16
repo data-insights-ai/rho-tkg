@@ -58,56 +58,34 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
 
 ## 7. v5 pointer
 
-**René takeover, 2026-10-16:** Markus asked to finish only the bounded fixes already
-in flight, commit them, and make one final push to `origin/v5`. All three Sol
-agents are stopped; no owned native jobs remain. Pull `v5` and read
-[`tasks/evidence/v2-integrated-checkpoint-20261016/handover-79b1cff9/README.md`](tasks/evidence/v2-integrated-checkpoint-20261016/handover-79b1cff9/README.md)
-for exact source pins, portable evidence, reproductions and remaining failures.
-All fixes are integrated commits, not patches awaiting application. V2 remains
-unaccepted at 42 accepted planning points; its full A–F exits remain unchanged.
-The current P01 regression, directory-sync reopen and WAL short-write pass;
-state retained-feed recovery and WAL EIO classification still fail. Two earlier
-feed/AS9 failures also remain open; full current gates and the cost matrix have
-not run. Continue with those concrete failures before expanding campaigns.
-Latest main metadata through `97efa1c0` is merged at `e76b8b9b`; it changed no
-v5 implementation source. The tested implementation pin is `79b1cff9`.
+**Owner: René's session since 2026-10-16** (Markus handed v5 over after one final push, `origin/v5` `91426024`; all Sol agents
+stopped). The plan is `tasks/todo.md` on branch `v5-takeover` (user requests, work packages WP-01..WP-19, waves, release gate,
+open decisions); `tasks/backlog.md` keeps PLAN's phase/package definitions and the V2 A-F queue as the acceptance reference only.
+Goal: v5 becomes the public API consumers switch to (sigma first, then ai-soc root, then ai-soc `engine/`); v4 stays live and
+unchanged. No main push, tag or release for v5 without René; `origin/v5` is never force-pushed.
 
-v5 is Markus Nissl's separate Go module `.../rho-tkg/v5` in `v5/` on branch `origin/v5`.
-**Consumers cannot switch yet:** the public surface remains value packages; graph construction,
-transactions, reads and changes remain internal. Internal certified current/historical reads and
-`tools/v5-migrate`'s qualified narrow preflight exist; neither is a public graph API or accepted
-consumer migration. Rho owns database/storage invariants; sigma owns reasoning and its adapter;
-embedding consumers supply transport/process orchestration.
+**Models:** Sonnet builds and runs one Sonnet monitor; Fable reviews every architecture-changing WP before merge; Opus analyses
+and takes a retry after a second Sonnet fix round. Commits carry no attribution lines.
 
-The original `docs/v5/PLAN.md` governs full V0–V7; `tasks/backlog.md` records current phase status.
-V0/V1 are accepted and V2 remains open. Exact finite source/test receipts live under
-`tasks/evidence/`; old test counts, estimates, pins and earlier merge observations remain historical.
-`docs/v5/HANDOVER.md` is external review, reconciled against PLAN, not permission to reduce those
-gates or push/merge main. `docs/v5-analysis.md` §5 keeps the 45-family consumer mapping; immutable
-sigma/ai-soc inventories and current v4 source deltas are in `docs/v5/reference/consumer-*.json`.
-The current integrated v4 source baseline is `0fa37786`/v4.56.1, unqualified
-for the current v5 reader/importer. Main metadata through `97efa1c0` is also merged. The persisted
-`Config.UntimedValidStart` policy, explicit conversion, store marker 7, replicated
-`ChangeMeta` and export `uu` header must be carried into V4/V6 mapping and
-reader/importer qualification; older receipts cover none of these additions.
-This changes the v4 row/store format, implicit valid-from rule, void pieces,
-indexes and read APIs, including sorted equality/composite postings with keyset
-page push-down. Existing consumer manifests still describe older source;
-refresh their source deltas and prove the reader/importer against the new formats
-before migration acceptance. No earlier qualification covers this baseline.
-Final source selection precedes any new ten-target reader gate.
-Historical v4.51.7 at `0eb0a0ac` is qualified by
-`tools/v5-migrate/evidence/main4517-0eb0a0ac.json` (absolute Go1.26.9, 96.2% total,
-both preflight functions 100%); that receipt does not cover newer sources.
-v4.51.6 was source-only; public batched consumer/selector/routing proof is separate.
-Historical v4.51.5 nonempty retained-state cases passed at `da5d32e6` (96.2%,
-both preflight functions 100%); new retention/refusal and consumer/destination-import
-qualification remain pending. Historical `9e805ddc`/v4.51.4 and earlier receipts
-are immutable; exact upstream CI/source equivalence and this mapping slice do
-not establish consumer adoption or V6 acceptance.
-**Markus integrates v5; this handover authorizes no main push/tag/release** (decision 5).
-The v4 release workflow remains separate; this explicitly authorized v5 takeover keeps shared
-CHANGELOG/backlog/lessons/AGENTS/Makefile/CI changes when reconciling main.
+**State at `91426024`:** v5 is Markus's separate module `.../rho-tkg/v5` in `v5/`. Consumers cannot switch yet: graph
+construction, transactions, reads and changes are internal; the public surface is value packages plus the skeleton on our branches
+(`pkg/graph`). V0/V1 accepted, V2 42 % (unaccepted), V4 0 %. His four open failures, all real and deterministic, with saved traces in
+`tasks/evidence/v2-integrated-checkpoint-20261016/handover-79b1cff9/README.md`:
+
+| # | Failure | Plan |
+|---|---|---|
+| F1 | state retained-feed corrupt frame (graphapply, `handover-state-79b1cff9.json`) | WP-18 (wave 3) |
+| F2 | WAL write-EIO fail-stop not accepted by the classifier; ENOSPC/fsync leaves unrun | WP-18 (wave 3) |
+| F3 | `TestRetainedFeedNativeCompletePagesOriginalACKAndSnapshot/pages_and_ACK` done=false after 64 pages | WP-18 (wave 3) |
+| F4 | `TestApplicationRecoveryBytePoolNativeReopenPublishedAS9AndReady` raftlog invalid input | WP-06 (wave 1; the importer restarts through it) |
+
+**Baseline caveats:** the integrated v4 source is `0fa37786`/v4.56.1 (main metadata through `6f5084c5`), unqualified for the v5
+reader/importer. The persisted `Config.UntimedValidStart` policy and its conversion, store marker 7, replicated `ChangeMeta` and
+export `uu` header, void pieces, sorted equality/composite postings and keyset push-down must be carried into the importer
+(WP-10) and its qualification; older receipts (`tools/v5-migrate/evidence/`, v4.51.x) are historical and cover none of them.
+`docs/v5/PLAN.md` governs V0-V7 and `docs/v5/HANDOVER.md` is the external review; `docs/v5-analysis.md` §5 keeps the 45-family
+consumer mapping and `docs/v5/reference/consumer-*.json` the immutable inventories. Rho owns database/storage invariants; sigma
+owns reasoning and its adapter. The takeover keeps shared CHANGELOG/backlog/lessons/AGENTS/Makefile/CI changes when reconciling main.
 
 ## Appendix A — origin watch
 
