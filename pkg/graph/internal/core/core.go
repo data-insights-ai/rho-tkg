@@ -1118,22 +1118,6 @@ var nativeStoreTypes = [...]reflect.Type{
 	reflect.TypeOf((*sharded.Store)(nil)),
 }
 
-// nativeCapability returns store as the optional capability C when the store
-// serves C itself (the K1 discipline): an exact native store, or a store that
-// declares C's methods itself; a wrapper that merely embeds a native store is
-// refused (its own overrides would be routed around). ok=false otherwise.
-func nativeCapability[C any](store storepkg.MandatoryStore, methods ...string) (C, bool) {
-	var zero C
-	c, ok := store.(C)
-	if !ok {
-		return zero, false
-	}
-	if isExactNativeStore(store) || !embedsNativeCapability(store, reflect.TypeOf((*C)(nil)).Elem(), methods...) {
-		return c, true
-	}
-	return zero, false
-}
-
 func embedsNativeCapability(store storepkg.MandatoryStore, capability reflect.Type, directMethods ...string) bool {
 	if typeDeclaresMethods(reflect.TypeOf(store), directMethods...) {
 		return false
@@ -1768,9 +1752,10 @@ func nodePropertyTxMemberPageCapability(store storepkg.MandatoryStore) storepkg.
 
 // nativeCapability resolves an optional capability C with the discipline of
 // relPropertyTxMemberPageCapability: an exact native store's, or a wrapper's
-// own method, never one a wrapper only promotes from an embedded native store
-// (that one answers for the inner store, not the wrapper's rows).
-func nativeCapability[C any](store storepkg.MandatoryStore, method string) C {
+// own methods (every one named), never one a wrapper only promotes from an
+// embedded native store (that one answers for the inner store, not the
+// wrapper's rows). The zero C where the store declines.
+func nativeCapability[C any](store storepkg.MandatoryStore, methods ...string) C {
 	var zero C
 	cap, ok := store.(C)
 	if !ok {
@@ -1779,7 +1764,7 @@ func nativeCapability[C any](store storepkg.MandatoryStore, method string) C {
 	if isExactNativeStore(store) {
 		return cap
 	}
-	if embedsNativeCapability(store, reflect.TypeOf((*C)(nil)).Elem(), method) {
+	if embedsNativeCapability(store, reflect.TypeOf((*C)(nil)).Elem(), methods...) {
 		return zero
 	}
 	return cap
@@ -2214,14 +2199,14 @@ func New(config Config) (*Core, error) {
 	c.currentStamps = currentStampsCapability(store)
 	c.memberIDs = memberIDsCapability(store)
 	c.relValidEnds, c.nodeValidEnds = validEndCapabilities(store)
-	c.nodeOrderedRange, _ = nativeCapability[storepkg.NodeOrderedRangeScanCapability](store, "ForEachNodeByLabelPropertyRangeOrdered")
-	c.nodePrefixScan, _ = nativeCapability[storepkg.NodePrefixScanCapability](store, "ForEachNodeByLabelPropertyPrefix")
-	c.relOrderedRange, _ = nativeCapability[storepkg.RelOrderedRangeScanCapability](store, "ForEachRelByTypePropertyRangeOrdered")
-	c.relPrefixScan, _ = nativeCapability[storepkg.RelPrefixScanCapability](store, "ForEachRelByTypePropertyPrefix")
-	c.nodeBounds, _ = nativeCapability[storepkg.NodePropertyBoundsCapability](store, "NodePropertyBounds")
-	c.relBounds, _ = nativeCapability[storepkg.RelPropertyBoundsCapability](store, "RelPropertyBounds")
-	c.docMultiSnap, _ = nativeCapability[nodeDocValuesMultiSnapshotter](store, "DocValuesSnapshotMulti")
-	c.docOrdinalSnap, _ = nativeCapability[nodeDocValuesOrdinalSnapshotter](store, "DocValuesSnapshotOrdinal", "DocValuesSnapshotMultiOrdinal")
+	c.nodeOrderedRange = nativeCapability[storepkg.NodeOrderedRangeScanCapability](store, "ForEachNodeByLabelPropertyRangeOrdered")
+	c.nodePrefixScan = nativeCapability[storepkg.NodePrefixScanCapability](store, "ForEachNodeByLabelPropertyPrefix")
+	c.relOrderedRange = nativeCapability[storepkg.RelOrderedRangeScanCapability](store, "ForEachRelByTypePropertyRangeOrdered")
+	c.relPrefixScan = nativeCapability[storepkg.RelPrefixScanCapability](store, "ForEachRelByTypePropertyPrefix")
+	c.nodeBounds = nativeCapability[storepkg.NodePropertyBoundsCapability](store, "NodePropertyBounds")
+	c.relBounds = nativeCapability[storepkg.RelPropertyBoundsCapability](store, "RelPropertyBounds")
+	c.docMultiSnap = nativeCapability[nodeDocValuesMultiSnapshotter](store, "DocValuesSnapshotMulti")
+	c.docOrdinalSnap = nativeCapability[nodeDocValuesOrdinalSnapshotter](store, "DocValuesSnapshotOrdinal", "DocValuesSnapshotMultiOrdinal")
 	// valid-time candidate prune is sound for ANY store that offers it (an
 	// unknown id is never pruned), so unlike the membership sidecar it needs no
 	// exact-native-store guard — a plain probe admits any store that implements it.

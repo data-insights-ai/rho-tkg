@@ -116,7 +116,7 @@ func (t classTally) add(row interface {
 // nodeClassCountsLocked tallies every row recorded at pin of label tok's
 // members at the pin. Callers hold c.mu (R or W).
 func (c *Core) nodeClassCountsLocked(tok uint16, key string, pin types.Instant, counts *storepkg.PropertyTypeClassCounts) error {
-	ids, err := c.nodeLabelCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin})
+	ids, err := c.nodeLabelCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin, TxPinSet: true})
 	if err != nil {
 		return err
 	}
@@ -137,7 +137,7 @@ func (c *Core) nodeClassCountsLocked(tok uint16, key string, pin types.Instant, 
 
 // relClassCountsLocked is nodeClassCountsLocked for a relationship type.
 func (c *Core) relClassCountsLocked(tok uint16, key string, pin types.Instant, counts *storepkg.PropertyTypeClassCounts) error {
-	ids, err := c.relTypeCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin})
+	ids, err := c.relTypeCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin, TxPinSet: true})
 	if err != nil {
 		return err
 	}

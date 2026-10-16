@@ -26,9 +26,8 @@ import (
 // exact native store or one declaring the methods itself; a wrapper that merely
 // embeds a native store is refused (its writes may bypass index maintenance).
 func validEndCapabilities(store storepkg.MandatoryStore) (storepkg.RelValidEndCapability, storepkg.NodeValidEndCapability) {
-	rel, _ := nativeCapability[storepkg.RelValidEndCapability](store, "RelValidEndCandidates", "RefineRelValidEnd")
-	node, _ := nativeCapability[storepkg.NodeValidEndCapability](store, "NodeValidEndCandidates", "RefineNodeValidEnd")
-	return rel, node
+	return nativeCapability[storepkg.RelValidEndCapability](store, "RelValidEndCandidates", "RefineRelValidEnd"),
+		nativeCapability[storepkg.NodeValidEndCapability](store, "NodeValidEndCandidates", "RefineNodeValidEnd")
 }
 
 // validEndCand is one entity a bounded scan reads, with what the store's index

@@ -336,7 +336,7 @@ func (c *Core) countTimelineDoor(rel bool, name string, pin types.Instant, opts 
 	if rel {
 		scope = c.relTypeRetentionScope(name)
 	}
-	if err := c.validateTemporalQueryOptsScan(storepkg.QueryOpts{ValidAt: 1, TxAt: at}, scope); err != nil {
+	if err := c.validateTemporalQueryOptsScan(storepkg.QueryOpts{ValidAt: 1, ValidAtSet: true, TxAt: at, TxAtSet: true}, scope); err != nil {
 		return nil, false, err
 	}
 	tok, known := c.stateCutToken(rel, name)

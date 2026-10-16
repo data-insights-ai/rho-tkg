@@ -356,9 +356,9 @@ func r10Backends() []storeBackend {
 //   - ForEachNodeEffectiveByLabelsWindow / ForEachRelEffectiveByTypeWindow /
 //     ForEachRelEffectiveAtNodesWindow stream exactly the unwindowed door's
 //     segments that meet the window (multiset of id/version/span), no other;
-//   - at every probe instant inside the window (0 excluded: QueryOpts reads
-//     ValidAt 0 as unset) the entities with a streamed segment containing it
-//     are ByLabel's / ByType's at {ValidAt, TxAt: pin};
+//   - at every probe instant inside the window (0 included, with v4.59.0's
+//     explicit presence) the entities with a streamed segment containing it
+//     are ByLabel's / ByType's at {ValidAt, ValidAtSet, TxAt: pin, TxAtSet};
 //   - ScanRelEffectiveColumnsAtNodes hands out the adjacency door's segments
 //     as typed rows: IDs, endpoints, spans, int and string columns, no
 //     ordinals.
@@ -426,11 +426,11 @@ func r10CheckNodeWindow(t *testing.T, g *graphpkg.Graph, w *r10World, pin types.
 	}
 	for _, iv := range win {
 		for _, at := range []types.Instant{iv.From, iv.From + 1, iv.To - 1} {
-			if at == 0 || at < iv.From || at >= iv.To {
+			if at < iv.From || at >= iv.To {
 				continue
 			}
 			want := map[types.NodeID]bool{}
-			rows, err := g.Nodes().ByLabel(w.label, storepkg.QueryOpts{ValidAt: at, TxAt: pin})
+			rows, err := g.Nodes().ByLabel(w.label, storepkg.QueryOpts{ValidAt: at, ValidAtSet: true, TxAt: pin, TxAtSet: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -476,10 +476,10 @@ func r10CheckRelWindow(t *testing.T, g *graphpkg.Graph, w *r10World, pin types.I
 	}
 	for _, iv := range win {
 		for _, at := range []types.Instant{iv.From, iv.To - 1} {
-			if at == 0 || at < iv.From || at >= iv.To {
+			if at < iv.From || at >= iv.To {
 				continue
 			}
-			rows, err := g.Rels().ByType("R", storepkg.QueryOpts{ValidAt: at, TxAt: pin})
+			rows, err := g.Rels().ByType("R", storepkg.QueryOpts{ValidAt: at, ValidAtSet: true, TxAt: pin, TxAtSet: true})
 			if err != nil {
 				t.Fatal(err)
 			}
