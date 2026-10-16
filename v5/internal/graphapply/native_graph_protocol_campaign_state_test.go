@@ -367,7 +367,7 @@ func nativeProtocolStateStart(t *testing.T) (context.Context, [16]byte, int64) {
 	// Parent-side scope/command validation uses the same explicit agreement
 	// selector as the actual child before Open. Bind the two base roles here too;
 	// adding them only to startGraphProcess's extraEnv leaves this parent invalid.
-	for _, k := range []string{"RHO_GRAPH_CERTIFIED_PROCESS", "RHO_GRAPH_SOURCE_PROCESS", "RHO_GRAPH_PROTOCOL_STATE_PROCESS", "RHO_GRAPH_TRANSITION_PROCESS", "RHO_GRAPH_STABLE_STORAGE_PROCESS", "RHO_GRAPH_STABLE_STATE_PROCESS", "RHO_GRAPH_FAULT_FAMILY_PROCESS"} {
+	for _, k := range []string{"RHO_GRAPH_CERTIFIED_PROCESS", "RHO_GRAPH_SOURCE_PROCESS", "RHO_GRAPH_PAIRED_PROCESS", "RHO_GRAPH_PROTOCOL_STATE_PROCESS", "RHO_GRAPH_TRANSITION_PROCESS", "RHO_GRAPH_STABLE_STORAGE_PROCESS", "RHO_GRAPH_STABLE_STATE_PROCESS", "RHO_GRAPH_FAULT_FAMILY_PROCESS"} {
 		t.Setenv(k, "1")
 	}
 	ctx, cancel := context.WithDeadline(t.Context(), time.Unix(0, deadline))

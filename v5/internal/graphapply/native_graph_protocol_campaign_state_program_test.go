@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -184,8 +185,15 @@ func TestNativeProtocolStateStartBindsParentAndChildAgreement(t *testing.T) {
 	// its first genuine proposal; child-only extraEnv cannot repair this parent.
 	t.Setenv("RHO_GRAPH_CERTIFIED_PROCESS", "")
 	t.Setenv("RHO_GRAPH_SOURCE_PROCESS", "")
+	t.Setenv("RHO_GRAPH_PAIRED_PROCESS", "")
 	t.Setenv("RHO_GRAPH_PROTOCOL_STATE_RECOVERY", "4")
 	ctx, run, deadline := nativeProtocolStateStart(t)
+	// startGraphProcess inherits this exact role before Open. The actual
+	// replacement already selects it; initial voters must own the same bounded
+	// snapshot registry before Offers is polled during native catch-up.
+	if os.Getenv("RHO_GRAPH_PAIRED_PROCESS") != "1" {
+		t.Fatal("initial state cohort lacks replacement snapshot-owner role")
+	}
 	if run == ([16]byte{}) || ctx.Err() != nil {
 		t.Fatal("state start lost original admission", ctx.Err())
 	}
