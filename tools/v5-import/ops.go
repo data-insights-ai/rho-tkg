@@ -137,15 +137,12 @@ func Map(src *fixtures.Source) (*Result, error) {
 	if src == nil {
 		return nil, fmt.Errorf("importmap: nil source")
 	}
-	unbounded := false
 	switch src.Config.UntimedValidStart {
-	case "unbounded":
-		unbounded = true
-	case "tx_from":
+	case "unbounded", "tx_from":
 	default:
 		return nil, fmt.Errorf("importmap: unknown untimed_valid_start %q", src.Config.UntimedValidStart)
 	}
-	m := &mapper{unbounded: unbounded}
+	m := &mapper{mode: src.Config.UntimedValidStart}
 	for _, kind := range []struct {
 		name string
 		ents []fixtures.Entity
@@ -189,9 +186,9 @@ func Map(src *fixtures.Source) (*Result, error) {
 }
 
 type mapper struct {
-	unbounded bool
-	ops       []Op
-	amb       []Ambiguity
+	mode string
+	ops  []Op
+	amb  []Ambiguity
 }
 
 func (m *mapper) report(entity string, r fixtures.Row, key, kind string) {
@@ -218,150 +215,224 @@ func (m *mapper) entity(kind string, en fixtures.Entity) error {
 		}
 		return rows[i].Version < rows[j].Version
 	})
-	var (
-		open, seenAny bool
-		life          int
-		closedAt      int64 // the instant the current life was deleted or retracted (0 = not)
-		prev          *fixtures.Row
-		first         *fixtures.Row
-	)
+	e := &entityMap{m: m, kind: kind}
 	for i := range rows {
-		r := rows[i]
-		if r.Void {
-			m.report(kind, r, "", KindVoidRow)
-			continue
-		}
-		// v4 stamps a delete or retract IN PLACE on the newest row, so rows recorded
-		// before that instant still belong to the life; a row recorded at or after it
-		// starts the next life.
-		if open && closedAt != 0 && r.TxFrom >= closedAt {
-			open, closedAt = false, 0
-		}
-		scope, ok := m.scopeOf(kind, r, !seenAny)
-		seenAny = true
-		if !ok {
-			m.report(kind, r, "", KindEmptyScope)
-		}
-		base := Op{Entity: kind, ID: r.ID, Version: r.Version, Scope: scope, Recorded: r.TxFrom, Hash: r.Hash, PrevHash: r.PrevHash}
-		props, dropped := m.props(kind, r)
-		if ok {
-			switch {
-			case !open:
-				life++
-				if life > 1 {
-					m.report(kind, r, "", KindReimportAfterDel)
-				}
-				first, prev, open = &rows[i], nil, true
-				o := base
-				o.Life, o.Props = life, props
-				if kind == "node" {
-					o.Op, o.Labels = "create_node", r.Labels
-				} else {
-					o.Op, o.Type, o.Start, o.End = "create_rel", r.Type, r.Start, r.End
-				}
-				m.ops = append(m.ops, o)
-			default:
-				m.follow(kind, base, life, first, prev, r, props, dropped)
-			}
-		}
-		if ok || open {
-			prev = &rows[i]
-		}
-		if open && closedAt == 0 && (r.Retracted || r.DeletedAt != 0) {
-			closedAt = m.close(kind, base, life, r, scope, ok)
-		}
+		e.row(rows[i])
 	}
+	e.flush()
 	return nil
 }
 
-// follow emits the ops that turn the previous row's state into r's, over r's scope.
-func (m *mapper) follow(kind string, base Op, life int, first, prev *fixtures.Row, r fixtures.Row, props map[string]PropValue, dropped int) {
-	base.Life = life
-	if kind == "rel" && first != nil && (r.Type != first.Type || r.Start != first.Start || r.End != first.End) {
-		m.report(kind, r, "", KindRelIdentityChanged)
+// entityMap walks the rows of one entity in recording order. The model holds
+// what the ops emitted so far make true over valid time, so each row is
+// turned into the ops that move the model to the state the row asserts, not
+// into a copy of the row.
+type entityMap struct {
+	m      *mapper
+	kind   string
+	model  overlay
+	done   []doneRow // non-void rows already mapped
+	first  *fixtures.Row
+	life   int
+	open   bool
+	closed int64 // the instant the open life was deleted or retracted (0 = not)
+	pend   *Op   // the end or retract at that instant, emitted once a row is recorded at or after it
+}
+
+type doneRow struct {
+	row   fixtures.Row
+	scope Scope
+}
+
+func (e *entityMap) emit(o Op) {
+	e.m.ops = append(e.m.ops, o)
+	e.model.apply(o)
+}
+
+// flush emits a pending end or retract and closes the life.
+func (e *entityMap) flush() {
+	if e.pend != nil {
+		e.emit(*e.pend)
 	}
-	if len(props) > 0 {
-		o := base
-		o.Op, o.Props = "correct", props
-		m.ops = append(m.ops, o)
-	} else if dropped > 0 {
-		m.report(kind, r, "", KindEmptyCorrection)
-	}
-	if prev == nil {
-		return
-	}
-	for _, k := range sortedKeys(prev.Props) {
-		if _, still := r.Props[k]; !still {
-			o := base
-			o.Op, o.Key = "unset", k
-			m.ops = append(m.ops, o)
-		}
-	}
-	if kind != "node" {
-		return
-	}
-	for _, l := range diff(r.Labels, prev.Labels) {
-		o := base
-		o.Op, o.Label = "add_label", l
-		m.ops = append(m.ops, o)
-	}
-	for _, l := range diff(prev.Labels, r.Labels) {
-		o := base
-		o.Op, o.Label = "remove_label", l
-		m.ops = append(m.ops, o)
+	if e.closed != 0 {
+		e.open, e.closed, e.pend = false, 0, nil
 	}
 }
 
-// close ends or retracts the life a row closes. A tombstone ends validity at
-// DeletedAt; a retracted row withdraws what the row asserted. Both are
-// recorded at DeletedAt.
-// It returns the instant the life closed.
-func (m *mapper) close(kind string, base Op, life int, r fixtures.Row, scope Scope, scopeOK bool) int64 {
-	base.Life = life
+func (e *entityMap) row(r fixtures.Row) {
+	m, kind := e.m, e.kind
+	// v4 stamps a delete or retract IN PLACE on the newest row, so rows recorded
+	// before that instant still belong to the life; a row recorded at or after
+	// it starts the next life.
+	if e.closed != 0 && r.TxFrom >= e.closed {
+		e.flush()
+	}
+	scope, ok := m.scopeOf(kind, r)
+	base := Op{Entity: kind, ID: r.ID, Version: r.Version, Scope: scope, Recorded: r.TxFrom, Hash: r.Hash, PrevHash: r.PrevHash}
+	if r.Void {
+		// An excise piece: that valid time was never lived. Reported as well, since
+		// a retract of valid time is v5's reading, not v4's word.
+		m.report(kind, r, "", KindVoidRow)
+		if e.open && ok {
+			o := base
+			o.Op, o.Life = "retract", e.life
+			e.emit(o)
+		}
+		return
+	}
+	if !ok {
+		m.report(kind, r, "", KindEmptyScope)
+	}
+	props, dropped := m.props(kind, r)
+	if ok {
+		if !e.open {
+			e.life++
+			if e.life > 1 {
+				m.report(kind, r, "", KindReimportAfterDel)
+			}
+			e.open, e.first, e.model = true, &r, overlay{}
+			o := base
+			o.Life, o.Props = e.life, props
+			if kind == "node" {
+				o.Op, o.Labels = "create_node", r.Labels
+			} else {
+				o.Op, o.Type, o.Start, o.End = "create_rel", r.Type, r.Start, r.End
+			}
+			e.emit(o)
+		} else {
+			e.follow(base, r, props, dropped)
+		}
+	}
+	e.done = append(e.done, doneRow{r, scope})
+	if e.open && e.closed == 0 && (r.Retracted || r.DeletedAt != 0) {
+		e.close(base, r, scope, ok)
+	}
+}
+
+// follow emits the ops that move the model to r's state over r's scope.
+func (e *entityMap) follow(base Op, r fixtures.Row, props map[string]PropValue, dropped int) {
+	m, kind := e.m, e.kind
+	base.Life = e.life
+	if kind == "rel" && e.first != nil && (r.Type != e.first.Type || r.Start != e.first.Start || r.End != e.first.End) {
+		m.report(kind, r, "", KindRelIdentityChanged)
+	}
+	lo, hi := base.Scope.From.coord(), base.Scope.To.coord()
+	if len(props) > 0 {
+		o := base
+		o.Op, o.Props = "correct", props
+		e.emit(o)
+	} else if dropped > 0 {
+		m.report(kind, r, "", KindEmptyCorrection)
+	}
+	// What the model holds over the scope and r does not have: unset it.
+	gone := map[string]bool{}
+	lab := map[string]bool{}
+	for _, s := range e.model.over(lo, hi) {
+		for k := range s.props {
+			gone[k] = true
+		}
+		for l := range s.labels {
+			lab[l] = true
+		}
+	}
+	for _, k := range sortedStrings(gone) {
+		if _, still := r.Props[k]; !still {
+			o := base
+			o.Op, o.Key = "unset", k
+			e.emit(o)
+		}
+	}
+	if kind == "node" {
+		want := map[string]bool{}
+		for _, l := range r.Labels {
+			want[l] = true
+		}
+		for _, l := range sortedStrings(want) {
+			if !lab[l] || e.lacks(lo, hi, l) {
+				o := base
+				o.Op, o.Label = "add_label", l
+				e.emit(o)
+			}
+		}
+		for _, l := range sortedStrings(lab) {
+			if !want[l] {
+				o := base
+				o.Op, o.Label = "remove_label", l
+				e.emit(o)
+			}
+		}
+	}
+	// r replaced an earlier row at this very instant (TxTo == TxFrom): what that row
+	// held beyond r's upper bound is gone.
+	if base.Scope.To.Inf == 0 {
+		for _, d := range e.done {
+			if d.row.TxTo != 0 && d.row.TxTo == r.TxFrom && (d.scope.To.Inf == 1 || d.scope.To.Inf == 0 && d.scope.To.MS > base.Scope.To.MS) {
+				o := base
+				o.Op, o.Props = "end", nil
+				e.emit(o)
+				break
+			}
+		}
+	}
+}
+
+func (e *entityMap) lacks(lo, hi int64, l string) bool {
+	for _, s := range e.model.over(lo, hi) {
+		if !s.labels[l] {
+			return true
+		}
+	}
+	return false
+}
+
+// close records the delete or retract a row carries. A tombstone ends validity
+// at DeletedAt; a retract withdraws the entity for all valid time (v4: "no
+// valid time"). Both are recorded at DeletedAt and take effect once a row
+// recorded at or after that instant shows the life is over.
+func (e *entityMap) close(base Op, r fixtures.Row, scope Scope, scopeOK bool) {
+	base.Life = e.life
 	base.Recorded = r.DeletedAt
 	if base.Recorded == 0 {
 		base.Recorded = r.TxFrom
 	}
-	at := base.Recorded
+	e.closed = base.Recorded
 	if r.Retracted {
-		if scopeOK {
-			base.Op = "retract"
-			m.ops = append(m.ops, base)
-		}
-		return at
+		base.Op, base.Scope = "retract", Scope{From: NegInf, To: PosInf}
+		e.pend = &base
+		return
 	}
 	if r.ValidTo != 0 && r.ValidTo != r.DeletedAt {
-		m.report(kind, r, "", KindDeleteInstantSplit)
+		e.m.report(e.kind, r, "", KindDeleteInstantSplit)
 	}
 	end := scope
 	end.To = At(r.DeletedAt)
-	if end.Empty() {
-		m.report(kind, r, "", KindEmptyScope)
-		return at
+	if !scopeOK || (end.From.Inf == 0 && end.From.MS >= r.DeletedAt) {
+		// the row never held valid time before the delete
+		e.m.report(e.kind, r, "", KindEmptyScope)
+		return
 	}
 	base.Op, base.Scope = "end", end
-	m.ops = append(m.ops, base)
-	return at
+	e.pend = &base
 }
 
 // scopeOf resolves a row's valid interval. ok is false for an empty scope.
-func (m *mapper) scopeOf(kind string, r fixtures.Row, firstEver bool) (Scope, bool) {
+// A delete stamps its instant into valid_to of the row it hits; that is the
+// delete, not the row's own interval, so the row itself stays open ended.
+func (m *mapper) scopeOf(kind string, r fixtures.Row) (Scope, bool) {
 	var s Scope
 	switch {
 	case r.ValidFrom == math.MinInt64:
 		s.From = NegInf
-		if !m.unbounded {
+		if m.mode != "unbounded" {
 			m.report(kind, r, "", KindUnboundedInTxFrom)
 		}
-	case r.ValidFrom == 0 && m.unbounded && firstEver:
-		s.From = At(0) // an unset first row would be MinInt64 in this mode: this 0 is explicit
 	case r.ValidFrom == 0:
-		s.From = At(r.TxFrom)
+		s.From = At(r.TxFrom) // v4 reads 0 as unset in both modes
 	default:
 		s.From = At(r.ValidFrom)
 	}
 	s.To = PosInf
-	if r.ValidTo != 0 {
+	if r.ValidTo != 0 && !(r.DeletedAt != 0 && r.ValidTo == r.DeletedAt && !r.Void) {
 		s.To = At(r.ValidTo)
 	}
 	return s, !s.Empty()
@@ -394,17 +465,10 @@ func sortedKeys(m map[string]fixtures.Typed) []string {
 	return out
 }
 
-// diff returns the labels in a that are not in b, sorted.
-func diff(a, b []string) []string {
-	have := map[string]bool{}
-	for _, l := range b {
-		have[l] = true
-	}
-	var out []string
-	for _, l := range a {
-		if !have[l] {
-			out = append(out, l)
-		}
+func sortedStrings(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
 	}
 	sort.Strings(out)
 	return out

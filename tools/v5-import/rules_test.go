@@ -52,7 +52,7 @@ func TestScopeAndRecordedRules(t *testing.T) {
 	}{
 		{"unbounded start", "unbounded", math.MinInt64, 0, NegInf, PosInf, ""},
 		{"explicit past", "tx_from", -4_000_000_000_000, 9000, At(-4_000_000_000_000), At(9000), ""},
-		{"explicit zero first row in unbounded", "unbounded", 0, 0, At(0), PosInf, ""},
+		{"unset first row in unbounded is TxFrom too", "unbounded", 0, 0, At(5000), PosInf, ""},
 		{"MinInt64 in a tx_from store", "tx_from", math.MinInt64, 0, NegInf, PosInf, "unbounded_start_in_txfrom_store"},
 		{"reversed interval", "tx_from", 9000, 8000, Edge{}, Edge{}, "empty_scope"},
 		{"empty interval", "tx_from", 9000, 9000, Edge{}, Edge{}, "empty_scope"},
@@ -87,7 +87,7 @@ func TestChainOrderAndDeleteRetractLife(t *testing.T) {
 	del := row(1, 2, 0, 9000, 8000, p("a", "int64", "3"))
 	del.DeletedAt = 9000
 	re := row(1, 3, 0, 0, 9500, p("a", "int64", "4"))
-	ret := row(1, 4, 0, 9900, 9600, p("a", "int64", "5"))
+	ret := row(1, 4, 0, 9700, 9600, p("a", "int64", "5"))
 	ret.DeletedAt, ret.Retracted = 9700, true
 	void := row(1, 5, 100, 200, 9800, nil)
 	void.Void = true
@@ -150,11 +150,65 @@ func TestAmbiguousPropertyIsDroppedAndReported(t *testing.T) {
 			t.Fatalf("rows %v want %v", rows, want)
 		}
 	}
-	// A key that is still present but ambiguous is not an Unset; a key that is gone is.
+	// The model never held the dropped keys, so their disappearance is no Unset; a mapped key that goes is.
 	c := row(1, 2, 0, 0, 5000, map[string]fixtures.Typed{"big": ty("uint64", "18446744073709551615")})
 	r = one(t, src("tx_from", fixtures.Entity{ID: 1, Current: &a, History: []fixtures.Row{b, c}}))
-	if n := len(r.Ops); n != 2 || r.Ops[1].Op != "unset" || r.Ops[1].Key != "l" {
+	if len(r.Ops) != 1 {
 		t.Errorf("ops %+v", r.Ops)
+	}
+	k1 := row(1, 0, 0, 0, 3000, map[string]fixtures.Typed{"x": ty("int64", "1"), "y": ty("int64", "2")})
+	k2 := row(1, 1, 0, 0, 4000, map[string]fixtures.Typed{"x": ty("int64", "1")})
+	r = one(t, src("tx_from", fixtures.Entity{ID: 1, Current: &k1, History: []fixtures.Row{k2}}))
+	if n := len(r.Ops); n != 3 || r.Ops[2].Op != "unset" || r.Ops[2].Key != "y" {
+		t.Errorf("ops %+v", r.Ops)
+	}
+}
+
+// A disjoint overlay row must not unset the keys of the row it overlays; a superseding
+// row with a smaller valid_to ends the tail; a void row retracts its interval; a delete
+// stamped valid_to does not shrink the row.
+func TestTimelineDiffRules(t *testing.T) {
+	// overlay: patch [100,200) adds "mood"; a later row on [200,inf) without it must not unset.
+	base := row(1, 0, 50, 0, 1000, p("a", "int64", "1"))
+	patch := row(1, 1, 100, 200, 2000, map[string]fixtures.Typed{"a": ty("int64", "1"), "mood": ty("string", "p")})
+	rest := row(1, 2, 200, 0, 2000, p("a", "int64", "1"))
+	r := one(t, src("tx_from", fixtures.Entity{ID: 1, Current: &base, History: []fixtures.Row{patch, rest}}))
+	for _, o := range r.Ops {
+		if o.Op == "unset" {
+			t.Errorf("overlay must not unset: %+v", o)
+		}
+	}
+	// supersede with a shorter valid_to: End at the new upper bound, recorded at the new TxFrom.
+	v0 := row(2, 0, 0, 0, 1000, p("a", "int64", "1"))
+	v0.TxTo = 6000
+	v1 := row(2, 1, 1000, 20000, 6000, p("a", "int64", "1"))
+	r = one(t, src("tx_from", fixtures.Entity{ID: 2, Current: &v1, History: []fixtures.Row{v0}}))
+	last := r.Ops[len(r.Ops)-1]
+	if last.Op != "end" || last.Scope.To != At(20000) || last.Recorded != 6000 {
+		t.Errorf("tail end: %+v", r.Ops)
+	}
+	// void: retract of [vf, vt) at the void's TxFrom.
+	live := row(3, 0, 0, 0, 1000, p("a", "int64", "1"))
+	void := row(3, 1, 1700, 1900, 7000, nil)
+	void.Void = true
+	r = one(t, src("tx_from", fixtures.Entity{ID: 3, Current: &live, History: []fixtures.Row{void}}))
+	last = r.Ops[len(r.Ops)-1]
+	if last.Op != "retract" || last.Scope != (Scope{From: At(1700), To: At(1900)}) || last.Recorded != 7000 {
+		t.Errorf("void: %+v", r.Ops)
+	}
+	// delete-stamped valid_to: the row stays open ended, the end carries the instant.
+	d := row(4, 0, 0, 9000, 1000, p("a", "int64", "1"))
+	d.DeletedAt = 9000
+	r = one(t, src("tx_from", fixtures.Entity{ID: 4, History: []fixtures.Row{d}}))
+	if len(r.Ops) != 2 || r.Ops[0].Scope.To != PosInf || r.Ops[1].Op != "end" || r.Ops[1].Scope.To != At(9000) {
+		t.Errorf("delete stamp: %+v", r.Ops)
+	}
+	// retract: whole life.
+	g := row(5, 0, 0, 9000, 1000, p("a", "int64", "1"))
+	g.DeletedAt, g.Retracted = 9000, true
+	r = one(t, src("tx_from", fixtures.Entity{ID: 5, History: []fixtures.Row{g}}))
+	if n := len(r.Ops); n != 2 || r.Ops[1].Op != "retract" || r.Ops[1].Scope != (Scope{From: NegInf, To: PosInf}) {
+		t.Errorf("retract: %+v", r.Ops)
 	}
 }
 
