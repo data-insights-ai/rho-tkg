@@ -37,3 +37,7 @@ func (stubEngine) close() error { return nil }
 func (stubSnap) meta(context.Context, string) ([]byte, bool, error) {
 	return nil, false, ErrNotImplemented
 }
+
+func (stubEngine) declareUnique(context.Context, string, ValueKind) (Receipt, error) {
+	return Receipt{}, ErrNotImplemented
+}

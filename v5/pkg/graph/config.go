@@ -59,7 +59,7 @@ type Config struct {
 	// NodeProperties and RelProperties seed the typed property schema at
 	// genesis; reopening with a different seed is ErrInvalidConfig. Any other key
 	// is declared by its first write (see Tx): its kind is the first value's
-	// kind, fixed from then on. Only a seed can be Unique.
+	// kind, fixed from then on. A seed can be Unique at genesis; Graph.DeclareUnique declares uniqueness later.
 	NodeProperties []PropertySchema
 	RelProperties  []PropertySchema
 	// Allocation seeds the ID counter (see Allocation).
@@ -123,6 +123,7 @@ func (c Config) Validate() error {
 type engine interface {
 	update(ctx context.Context, fn func(Tx) error) (Receipt, error)
 	openSnapshot(ctx context.Context, spec SnapshotSpec) (snapshotEngine, error)
+	declareUnique(ctx context.Context, key string, kind ValueKind) (Receipt, error)
 	close() error
 }
 
