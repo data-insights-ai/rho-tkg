@@ -25,6 +25,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 )
 
 const nativeProtocolStateProfile = "native-protocol-owned-state-transition-v1"
@@ -858,6 +859,124 @@ func nativeProtocolStateAction(t *testing.T, n *certifiedProcessNetwork, actor, 
 
 func nativeProtocolStateOwnershipUnchanged(before, after [statCount]uint64) bool {
 	return before[statViews] == after[statViews] && before[statViewBytes] == after[statViewBytes] && before[statPinnedBytes] == after[statPinnedBytes]
+}
+
+// A completed immutable terminal reply is not evidence that its newly queued
+// duplicate has applied. This diagnostic joins that exact submission to one
+// later native installation, its retained original, and an unchanged image.
+func nativeProtocolStateReplayInstalled(expected crossProcessResult, before, after processResponse, command []byte, record, original processResponse) error {
+	if !nativeProtocolMoveCheckpointReady(before) || !nativeProtocolMoveCheckpointReady(after) || before.incarnation != after.incarnation || after.applied <= before.applied || after.applied-before.applied != 1 || !bytes.Equal(before.image, after.image) || record.code != 0 || record.causeMask != 0 || original.code != 0 || original.causeMask != 0 || len(record.changes) != 0 || !bytes.Equal(record.outcome, original.outcome) || len(original.changes) == 0 {
+		return errInvalid
+	}
+	l := defaultMaterializerLimits()
+	c, _, err := decodeCrossCommand(command, l)
+	if err != nil || c.phase != crossResolve || len(c.proofs) != 1 || c.proofs[0] != expected.decision {
+		return errors.Join(errInvalid, err)
+	}
+	arena, err := graphstate.NewOutputBudget(l.outputBytes)
+	if err != nil {
+		return err
+	}
+	m, err := decodeCrossManifest(c.manifest, l, arena)
+	if err != nil {
+		return err
+	}
+	r, err := decodeCrossStatus(record.outcome)
+	if err != nil || validateCrossPhaseProofs(c, m) != nil || r.ns != c.ns || c.ns.graph != expected.resume.scope.graph || r.phase != crossResolve || !r.commit || r.why != reasonNone || r.index > before.applied || r.tx != expected.resume.tx || r.digest != expected.decision.digest || r.round != expected.decision.round || m.tx != r.tx || m.digest != r.digest || m.request.id != expected.resume.request || m.coordinator != expected.resume.scope.partition {
+		return errors.Join(errInvalid, err)
+	}
+	if _, ok := m.part(c.ns.partition); !ok {
+		return errInvalid
+	}
+	m.request.revision, err = state.NewRevision(1, m.request.revision.Provenance())
+	if err != nil {
+		return err
+	}
+	business, err := encodePartitionGraphCommand(partitionGraphCommand{configuration: m.configuration, declaration: m.declaration, routing: m.routing, request: m.request}, l)
+	if err != nil || sha256.Sum256(business) != expected.resume.business {
+		return errors.Join(errInvalid, err)
+	}
+	return nil
+}
+
+func nativeProtocolStateReplayBarrier(t *testing.T, f *pairedGraphFaultNetwork, original allocationProposal, expected crossProcessResult) processResponse {
+	t.Helper()
+	f.drain()
+	before := make(map[uint64]processResponse, len(f.n.all))
+	for id, p := range f.n.all {
+		before[id] = f.call(p, processRequest{op: processStateOp})
+	}
+	// Two participants, one real Resolve submission each. Storage is admitted
+	// before Run; no diagnostic grows beyond these existing frame bounds.
+	storage := [2][]byte{make([]byte, nativeLogicalTransitionBodyBytes), make([]byte, nativeLogicalTransitionBodyBytes)}
+	var commands [2][]byte
+	var mu sync.Mutex
+	var candidates uint64
+	hub := f.n.all[5].mux.hub
+	hub.mu.Lock()
+	prior := hub.beforeRelay
+	hub.beforeRelay = func(ctx context.Context, origin, partition uint64, wire []byte) error {
+		if prior != nil {
+			if err := prior(ctx, origin, partition, wire); err != nil {
+				return err
+			}
+		}
+		if origin != 5 {
+			return nil
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if candidates >= 16 || len(wire) > graphSourceFrameBytes {
+			return errLimit
+		}
+		candidates++
+		q, err := decodeGraphSourceRequest(wire)
+		if err != nil || q.kind != sourceSubmit {
+			return err
+		}
+		p, err := decodeGraphSourceProposal(q.command)
+		if err != nil || p.target.partition != partition || p.target.semantic != expected.resume.scope.semantic {
+			return errors.Join(errInvalid, err)
+		}
+		group := 0
+		if partition == 8 {
+			group = 1
+		} else if partition != 3 {
+			return errInvalid
+		}
+		if len(commands[group]) != 0 || len(p.wire) > len(storage[group]) {
+			return errLimit
+		}
+		commands[group] = storage[group][:copy(storage[group], p.wire)]
+		return nil
+	}
+	hub.mu.Unlock()
+	defer func() { hub.mu.Lock(); hub.beforeRelay = prior; hub.mu.Unlock() }()
+	reply := f.call(f.n.all[5], processRequest{op: processSourceCoordinate, data: original.wire})
+	result, err := decodeGraphProcessCoordinatorResult(reply)
+	if err != nil || result != expected {
+		t.Fatal("same original replay before causal native barrier", err)
+	}
+	// All emitted packets and native worker/RPC work, not a sleep or a fresh
+	// graph cut. The per-voter checks below reject an early terminal reply.
+	f.drain()
+	mu.Lock()
+	defer mu.Unlock()
+	for group, voters := range f.n.groups {
+		for id, p := range voters.nodes {
+			after := f.call(p, processRequest{op: processStateOp})
+			record := f.call(p, processRequest{op: processEntryRecord, index: after.applied})
+			status, err := decodeCrossStatus(record.outcome)
+			if err != nil {
+				t.Fatal("actual installed replay status", id, err)
+			}
+			retained := f.call(p, processRequest{op: processEntryRecord, index: status.index})
+			if err := nativeProtocolStateReplayInstalled(expected, before[id], after, commands[group], record, retained); err != nil {
+				t.Fatal("same original replay not completely installed on actual voter", id, before[id].applied, after.applied, err)
+			}
+		}
+	}
+	return reply
 }
 
 func nativeProtocolStateActionProgram(t *testing.T, n *certifiedProcessNetwork, actor, kind, index uint64, data []byte, program *nativeProtocolStateProgram, bootstrap ...*[32]byte) (outcome, processResponse) {

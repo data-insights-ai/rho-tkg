@@ -143,6 +143,125 @@ func TestNativeProtocolStateActionKeepsActualRetainedOwnership(t *testing.T) {
 	}
 }
 
+func TestNativeProtocolStateReplayBarrierRequiresNewNativeInstallation(t *testing.T) {
+	n, coordinator, ops, claims, _ := coordinatorNativeFixture(t)
+	id := n.requestID()
+	result, err := coordinator.Run(t.Context(), id, ops, 37, claims)
+	if err != nil || !result.decision.commit {
+		t.Fatal(err)
+	}
+	decision := n.crossReadPhase(0, result.resume.tx, crossDecide)
+	stateOf := func(h *allocationHost) processResponse {
+		t.Helper()
+		r := processResponse{applied: h.driver.Applied()}
+		_, r.image, err = h.machine.store.Checkpoint()
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.stats, _, _, err = processStats(h.machine.store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	recordOf := func(h *allocationHost, index uint64) processResponse {
+		t.Helper()
+		var r processResponse
+		r.outcome, err = h.machine.store.ApplicationRecord(t.Context(), index, true, 64<<10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.changes, err = h.machine.store.ApplicationRecord(t.Context(), index, false, 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	for group, partition := range []uint64{3, 8} {
+		h := n.hosts[group][0]
+		before := stateOf(h)
+		proposal, err := n.hosts[0][0].ResolveCrossParticipant(partition, decision)
+		if err != nil {
+			t.Fatal(err)
+		}
+		queued, err := h.Submit(proposal)
+		if err != nil || len(queued.packets) == 0 {
+			t.Fatal("genuine duplicate must await native delivery", err)
+		}
+		// This is the same real observation used by the child pollSubmit path:
+		// immutable completion exists even while the duplicate is unapplied.
+		early, _, err := h.machine.observeCrossTransaction(crossQuery{tx: result.resume.tx, nonce: [16]byte{1}, phase: crossResolve}, h.driver.Applied())
+		if err != nil || early.phase != crossResolve || early.tx != result.resume.tx || h.driver.Applied() != before.applied {
+			t.Fatal("actual early terminal observation", early, err)
+		}
+		original := recordOf(h, early.index)
+		earlyBody, err := encodeCrossStatus(early)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The actual source reply contains this terminal status and no CDC;
+		// it must not be promoted into a newly installed native record.
+		if err := nativeProtocolStateReplayInstalled(result, before, stateOf(h), proposal.wire, processResponse{outcome: earlyBody}, original); !errors.Is(err, errInvalid) {
+			t.Fatal("old terminal reply substituted for new replay installation", err)
+		}
+		n.pump(group, queued)
+		for _, voter := range n.hosts[group] {
+			after := stateOf(voter)
+			record := recordOf(voter, after.applied)
+			entries, err := voter.machine.store.Entries(after.applied, after.applied+1, 64<<10)
+			if err != nil || len(entries) != 1 || !bytes.Equal(entries[0].GetData(), proposal.wire) {
+				t.Fatal("actual installed command differs from queued SAME original", err)
+			}
+			if err := nativeProtocolStateReplayInstalled(result, before, after, entries[0].GetData(), record, original); err != nil {
+				t.Fatal("actual fully installed replay rejected", partition, err)
+			}
+			withCDC := record
+			withCDC.changes = original.changes
+			if err := nativeProtocolStateReplayInstalled(result, before, after, proposal.wire, withCDC, original); !errors.Is(err, errInvalid) {
+				t.Fatal("original business CDC emitted a second time", err)
+			}
+			// Earlier genuine Register/Prepare/Decide commands cannot qualify
+			// this boundary even though a late duplicate may return Resolve.
+			seen := make(map[crossPhase]bool)
+			for index := uint64(2); index <= before.applied; index++ {
+				entries, err := voter.machine.store.Entries(index, index+1, 64<<10)
+				if err != nil || len(entries) != 1 {
+					t.Fatal(err)
+				}
+				command, _, err := decodeCrossCommand(entries[0].GetData(), defaultMaterializerLimits())
+				if err != nil || command.phase == crossResolve {
+					continue
+				}
+				seen[command.phase] = true
+				if err := nativeProtocolStateReplayInstalled(result, before, after, entries[0].GetData(), record, original); !errors.Is(err, errInvalid) {
+					t.Fatal("non-Resolve command substituted for queued terminal replay", command.phase, err)
+				}
+				if err := nativeProtocolStateReplayInstalled(result, before, after, proposal.wire, record, recordOf(voter, index)); !errors.Is(err, errInvalid) {
+					t.Fatal("different retained original substituted for exact Resolve", command.phase, err)
+				}
+			}
+			if !seen[crossPrepare] || group == 0 && (!seen[crossRegister] || !seen[crossDecide]) {
+				t.Fatal("missing genuine adverse native phases", seen)
+			}
+		}
+	}
+	beforeChanged := [2]uint64{n.hosts[0][0].driver.Applied(), n.hosts[1][0].driver.Applied()}
+	if changed, err := coordinator.Run(t.Context(), id, ops, 38, claims); !errors.Is(err, errInvalid) || changed.decision != (crossStatus{}) || beforeChanged != [2]uint64{n.hosts[0][0].driver.Applied(), n.hosts[1][0].driver.Applied()} {
+		t.Fatal("changed body installed a decision or native prefix", changed, err)
+	}
+	h := n.hosts[0][0]
+	before := stateOf(h)
+	late, err := h.PreparePartitionGraphOperations(n.requestID(), []graphstate.Operation{{Kind: graphstate.AddLabel, Owner: 1, Life: 2, Scope: ops[0].Scope, Name: "not-a-replay-barrier"}}, 39, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.submitPartitionGraph(0, late, reasonNone)
+	after := stateOf(h)
+	if err := nativeProtocolStateReplayInstalled(result, before, after, late.wire, recordOf(h, after.applied), recordOf(h, decision.status.index)); !errors.Is(err, errInvalid) {
+		t.Fatal("late business effect accepted as replay completion", err)
+	}
+}
+
 func TestNativeProtocolPooledStateLeaderAndMessagePrograms(t *testing.T) {
 	for _, layout := range []string{"original", "rotated"} {
 		for _, message := range []string{"literal", "delay", "reorder", "duplicate"} {

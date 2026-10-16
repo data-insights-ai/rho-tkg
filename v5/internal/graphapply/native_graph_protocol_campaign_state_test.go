@@ -807,7 +807,7 @@ func nativeProtocolStateGraph(t *testing.T, ctx context.Context, f *pairedGraphF
 	if a.Recipe.Family == "gc" {
 		nativeProtocolStateGCTransition(t, ctx, f, a, client, cut)
 	}
-	replay := n.all[5].call(t, processRequest{op: processSourceCoordinate, data: k.wire})
+	replay := nativeProtocolStateReplayBarrier(t, f, k, original)
 	same, e := decodeGraphProcessCoordinatorResult(replay)
 	if e != nil || same.decision != original.decision || same.resume != original.resume {
 		t.Fatal("move/restart changed immutable K", e)
