@@ -625,7 +625,14 @@ func (o *nativeFaultFamilyOwner) recordOpenRefusal(dir string, actual error) err
 	if err != nil {
 		return err
 	}
-	return errors.Join(directory.Sync(), directory.Close())
+	if err := errors.Join(directory.Sync(), directory.Close()); err != nil {
+		return err
+	}
+	// testing.T.Fatal indents continuation lines in joined errors. Emit the
+	// identical native error bytes separately so the bounded process diagnostic
+	// can bind the complete receipt without normalizing or weakening its oracle.
+	_, err = fmt.Fprintln(os.Stderr, actual)
+	return err
 }
 
 func nativeFaultFamilyReapOpenRefusal(t *testing.T, p *graphProcess, member uint64, dir string) (pairedFaultProcess, nativeFaultFamilyOpenRefusal) {
