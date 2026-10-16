@@ -1,4 +1,4 @@
-# HANDOVER — rho-tkg v4 line (2026-10-16, latest tag v4.57.0 by Markus, merged into main; next patch v4.57.1, next minor v4.58.0)
+# HANDOVER — rho-tkg v4 line (2026-10-16, latest tag v4.57.1; next patch v4.57.2, next minor v4.58.0)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
 database). Latest tag `v4.57.0` (Markus, 1d749a86); main carries it plus the unreleased v4.57.1 patch. Read in
@@ -14,10 +14,10 @@ is now `UntimedDefault` (new stores unbounded, existing stores keep their persis
 names). ai-soc: no change needed (sets `UntimedUnbounded` explicitly). sigma-tkgd: adopting with `UntimedFromTxFrom` set
 explicitly for now; its own decision on the new default follows. Details and migration notes: CHANGELOG `[4.57.0]`.
 
-1. **State (2026-10-16):** v4.57.0 (Markus, tag at 1d749a86; todo rows 56, 57) is merged into main. Unreleased on main,
-   ships as **v4.57.1** (patch): a batch caller-instant excise with no valid version refuses the whole unit (todo row 52,
-   CHANGELOG `[Unreleased]`). Next: gate, tag v4.57.1, notify sigma-tkgd and ai-soc. Running beside it: v5 work (rows 45,
-   47-51) and the numeric-equality consolidation (row 54, branch `v4-numeric-eq`). Ledger check: `scripts/check-ledger.sh`.
+1. **State (2026-10-16):** v4.57.1 released (patch: batch excise refuses the whole unit, one numeric equality rule across
+   every equality door, fast test tier; todo rows 52, 54; CHANGELOG `[4.57.1]`); latest tag v4.57.1, next patch v4.57.2,
+   next minor v4.58.0. Next: notify sigma-tkgd and ai-soc (sigma `forms()` can be deleted). Running beside it: v5 work
+   (rows 45, 47-51). Ledger check: `scripts/check-ledger.sh`.
 2. **Consumers:**
    - ai-soc: PIN17 (v4.55.1) equality runs; PIN18 = rho v4.56.1 + sigma v0.11.11. ai-soc declares `CreateRelTemporal` on its 29
      estate-indexed rel types and sets `UntimedValidStart: UntimedUnbounded` for new stores (BA run copies are not converted).

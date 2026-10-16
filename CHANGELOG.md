@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.57.1] - 2026-10-16
+
 ### Changed
 
 - **One property equality for every equality door: numbers by exact value across widths, NaN equals nothing** (René
@@ -30,7 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   constrained value alone passes, and a `UniqueForever` value recorded under two widths for two owners is owned by the
   smaller owner ID, both records kept; the ownership blob still persists each claim under the stored value's own width key
   (byte-identical to v4.57.0); `RangeCardinalityAt [3, 3]` counts what `= 3` finds (exact
-  comparison above 2^53). Shipped as a fix of a door family (lessons 58, 84), not through the deprecation ritual: the doors
+  comparison above 2^53); the any-version range doors (v4.57.0) compare exactly too; `GetOrCreateByKey` uses the canonical
+  key (`node_getorcreate.go:47`, `tx_getorcreate.go:44`); `ReleaseOwnership` releases every integer width
+  (`unique_forever.go:413,428`). Shipped as a fix of a door family (lessons 58, 84), not through the deprecation ritual: the doors
   now agree with the equality counts' documented rule. **sigma-tkgd**: `sharedexec` `forms()` (seeking the int and the float
   of a value, and -0.0) is now redundant (each seek already returns every width; the results are de-duplicated by ID) and
   can be deleted; tyla's single-value seek that skips its post-filter (`sources.go`) now also finds a stored 2.0 for 2.
@@ -43,6 +47,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestUniqueForever_PersistsStoredWidthKey` / `_LegacyWidthTwinsLoad`, `TestCompositeLookupDoesNotCombineForms` (red:
   `red-fix.txt`), `pkg/types` `TestEqualIndexKeys` / `TestCompareNumber` /
   `TestCanonicalIndexKey`. Docs: api.md "Two equalities" rewritten, godoc of every door named above.
+
+- **Fast test tier**: `make test` / `cover-gate` (-short, no race) skip 366 long-tier tests gated `testing.Short() && !race`;
+  `make test-race` / CI race shards run them; test count 17987 unchanged.
 
 ### Fixed
 
