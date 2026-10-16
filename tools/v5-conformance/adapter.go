@@ -177,6 +177,10 @@ type Graph interface {
 	// retraction, not a validity end); txTo != 0 selects the caller-instant door.
 	RetractNode(ctx context.Context, id int64, txTo int64) error
 	RetractRel(ctx context.Context, id int64, txTo int64) error
+
+	// CountByLabelPropertyValue counts the current nodes of label whose property
+	// key equals value, by the same rule as NodesByLabelAndProperty.
+	CountByLabelPropertyValue(label, key string, value any) (int, error)
 }
 
 // NodeSegment is one effective valid-time segment of a node.

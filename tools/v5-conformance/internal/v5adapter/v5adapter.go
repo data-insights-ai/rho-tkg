@@ -177,3 +177,6 @@ func (w *Graph) ExciseRelValidity(C, int64, int64, int64, int64) error {
 }
 func (w *Graph) RetractNode(C, int64, int64) error { return nope("RetractNode") }
 func (w *Graph) RetractRel(C, int64, int64) error  { return nope("RetractRel") }
+func (w *Graph) CountByLabelPropertyValue(string, string, any) (int, error) {
+	return 0, nope("CountByLabelPropertyValue")
+}

@@ -23,14 +23,13 @@ import (
 //	        as lookup == filtered scan.
 //	both    the ID boundaries.
 //
-// Gap: the Graph interface has no Statistics door, so the native Statistics case
-// waits for an adapter method (adapter.go is not owned by this file).
 
 func init() {
 	register("NumericRule",
 		native("LookupAgreesOn3And3Point0", numLookupAgrees),
 		native("ScanFilterAgreesOn3And3Point0", numScanAgrees),
 		native("GetOrCreateAgreesOn3And3Point0", numGetOrCreateAgrees),
+		native("CountAgreesOn3And3Point0", numCountAgrees),
 		native("NaNAndOtherKindsMatchNothing", numNothingMatches),
 		compat("EveryWidthOfTheSameValueIsOneRule", numWidths),
 		compat("LookupEqualsFilteredScan", numCountEqualsRows),
@@ -333,5 +332,22 @@ func numIDBoundaries(t *testing.T, a Adapter) {
 	cur := mustGet(t, g, n.ID)
 	if cur.Version != 0 {
 		t.Fatalf("refused writes changed node %d: %+v", n.ID, cur)
+	}
+}
+
+// numCountAgrees: the count door equals the rows of the lookup for 3 vs 3.0.
+func numCountAgrees(t *testing.T, a Adapter) {
+	needNumericRule(t, a)
+	g := open(t, a, false)
+	for _, v := range []any{3, 3.0, 4, 3.5, "3"} {
+		addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": v}})
+	}
+	for _, probe := range []any{3, 3.0, 4, 3.5, 3.25, "3"} {
+		rows := lookupIDs(t, g, "N", "v", probe)
+		c, err := g.CountByLabelPropertyValue("N", "v", probe)
+		ok(t, err)
+		if c != len(rows) {
+			t.Fatalf("probe %T(%v): count %d, lookup %d rows", probe, probe, c, len(rows))
+		}
 	}
 }
