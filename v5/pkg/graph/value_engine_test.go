@@ -83,3 +83,45 @@ func TestBytesAndListEqualityScan(t *testing.T) {
 		}
 	}
 }
+
+// The scan decides with Value.Equal, not with key equality: a stored list that
+// holds a null is found by no equality scan, while the same lists without a
+// null, and bytes, still are.
+func TestScanEqualityDecidesWithValueEqual(t *testing.T) {
+	g, err := Open(context.Background(), bareConfig(t, t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	all := scopeAll(t)
+	withNull := mustVList(t, Int(3), Null())
+	var a, b types.NodeID
+	update(t, g, func(tx Tx) (err error) {
+		if a, err = tx.CreateNode(CreateNode{Props: map[string]Value{"l": withNull, "w": Bytes(nil)}, Scope: all}); err != nil {
+			return
+		}
+		b, err = tx.CreateNode(CreateNode{Props: map[string]Value{"l": mustVList(t, Int(3), Int(4))}, Scope: all})
+		return err
+	})
+	sel := func(k string, v Value) Selector {
+		return Selector{View: ViewDeclared, Valid: all, Known: knownAll(t), Equals: []PropertyEq{{Key: k, Value: v}}}
+	}
+	if withNull.Equal(withNull) {
+		t.Fatal("Value.Equal precondition")
+	}
+	for _, c := range []struct {
+		name string
+		s    Selector
+		want []string
+	}{
+		{"[3,null]", sel("l", withNull), nil},
+		{"[3.0,null]", sel("l", mustVList(t, mustFloat(t, 3), Null())), nil},
+		{"[3,4] float", sel("l", mustVList(t, mustFloat(t, 3), Int(4))), []string{n(b)}},
+		{"empty bytes", sel("w", Bytes([]byte{})), []string{n(a)}},
+	} {
+		got, err := scanAll(t, g, c.s, 10)
+		if err != nil || !slices.Equal(got.ids, c.want) {
+			t.Errorf("%s: got %v err %v want %v", c.name, got.ids, err, c.want)
+		}
+	}
+}

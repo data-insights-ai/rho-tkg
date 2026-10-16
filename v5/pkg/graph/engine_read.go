@@ -621,8 +621,10 @@ func (m *matcher) state(pr graphstate.Projection) bool {
 			if pv.Name != e.name {
 				continue
 			}
-			k, err := pv.Scalar.EqualityKey(graphstate.Limits{})
-			hit = hit || err == nil && k == e.key
+			// The final decision is Scalar.Equal (the rule of Value.Equal); the
+			// EqualityKey only finds candidates.
+			eq, err := e.value.Equal(pv.Scalar, graphstate.Limits{})
+			hit = hit || err == nil && eq
 		}
 		if !hit {
 			return false
