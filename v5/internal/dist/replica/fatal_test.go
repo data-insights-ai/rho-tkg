@@ -1,11 +1,9 @@
 package replica
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"os"
-	"os/exec"
+
 	"path/filepath"
 	"sync"
 	"syscall"
@@ -15,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/testutil"
 )
 
 // Pebble's documented default fatal logger exits the process on WAL commit
@@ -55,14 +54,9 @@ func TestFatalStorageReplicaStopsBeforeOutput(t *testing.T) {
 	for _, fault := range []string{"write", "sync"} {
 		t.Run(fault, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "db")
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestFatalStorageReplicaStopsBeforeOutput$")
-			cmd.Env = append(os.Environ(), "RHO_RAFT_FATAL_FAULT="+fault, "RHO_RAFT_FATAL_DIR="+dir)
-			output, err := cmd.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || exit.ExitCode() != 1 || !bytes.Contains(output, []byte("fatal commit error")) || bytes.Contains(output, []byte("FAILED_READY_RETURNED_OUTPUT")) {
-				t.Fatalf("fail-stop contract: %v %s", err, output)
+			r := testutil.RunChild(t, "TestFatalStorageReplicaStopsBeforeOutput", []string{"RHO_RAFT_FATAL_FAULT=" + fault, "RHO_RAFT_FATAL_DIR=" + dir}, 10*time.Second)
+			if r.Exit == nil || r.ExitCode != 1 || !r.Contains("fatal commit error") || r.Contains("FAILED_READY_RETURNED_OUTPUT") {
+				t.Fatalf("fail-stop contract: %v %s", r.Err, r.Output)
 			}
 			s, err := raftlog.Open(raftlog.Config{Dir: dir})
 			if err != nil {
@@ -139,19 +133,14 @@ func TestOpenVFSFaultsPreserveAcknowledgedPrefix(t *testing.T) {
 	for _, kind := range []string{"create", "rename", "opendir", "enospc"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "db")
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestOpenVFSFaultsPreserveAcknowledgedPrefix$")
-			cmd.Env = append(os.Environ(), "RHO_RAFT_OPEN_FAULT="+kind, "RHO_RAFT_FATAL_DIR="+dir)
-			output, err := cmd.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !bytes.Contains(output, []byte("INJECTED_OPEN_FAULT_"+kind+"\n")) {
-				t.Fatalf("child never reached scheduled fault: %v %s", err, output)
+			r := testutil.RunChild(t, "TestOpenVFSFaultsPreserveAcknowledgedPrefix", []string{"RHO_RAFT_OPEN_FAULT=" + kind, "RHO_RAFT_FATAL_DIR=" + dir}, 5*time.Second)
+			if !r.Contains("INJECTED_OPEN_FAULT_" + kind + "\n") {
+				t.Fatalf("child never reached scheduled fault: %v %s", r.Err, r.Output)
 			}
-			if ctx.Err() != nil {
+			if r.TimedOut {
 				t.Logf("%s fault: pinned Pebble open required supervisor kill after deadline; no success/packet returned", kind)
-			} else if !ok || exit.ExitCode() != 2 || !bytes.Contains(output, []byte("EXPECTED_OPEN_ERROR")) {
-				t.Fatalf("open fault did not prevent success: %v %s", err, output)
+			} else if r.Exit == nil || r.ExitCode != 2 || !r.Contains("EXPECTED_OPEN_ERROR") {
+				t.Fatalf("open fault did not prevent success: %v %s", r.Err, r.Output)
 			}
 			s, err := raftlog.Open(raftlog.Config{Dir: dir})
 			if err != nil {

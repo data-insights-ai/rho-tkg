@@ -2,19 +2,20 @@ package replica
 
 import (
 	"bytes"
-	"context"
+
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+
 	"path/filepath"
-	"syscall"
+
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/testutil"
 )
 
 func TestApplicationReceiverActivationRealProcessFaultsWithholdACK(t *testing.T) {
@@ -56,32 +57,23 @@ func TestApplicationReceiverActivationRealProcessFaultsWithholdACK(t *testing.T)
 	for _, mode := range []string{"before-sync", "write", "sync", "after-sync"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "replacement")
-			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestApplicationReceiverActivationRealProcessFaultsWithholdACK$")
-			cmd.Env = append(os.Environ(), "RHO_REPLACEMENT_ACTIVATION_FAULT="+mode, "RHO_REPLACEMENT_ACTIVATION_DIR="+dir)
-			output, err := cmd.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || ctx.Err() != nil || !bytes.Contains(output, []byte("REPLACEMENT_ACTIVATION_READY")) || bytes.Contains(output, []byte("REPLACEMENT_ACTIVATION_RETURNED_OUTPUT")) {
-				t.Fatalf("activation fault produced output or never reached its seam: %v %s", err, output)
+			r := testutil.RunChild(t, "TestApplicationReceiverActivationRealProcessFaultsWithholdACK", []string{"RHO_REPLACEMENT_ACTIVATION_FAULT=" + mode, "RHO_REPLACEMENT_ACTIVATION_DIR=" + dir}, 15*time.Second)
+			if r.Exit == nil || r.TimedOut || !r.Contains("REPLACEMENT_ACTIVATION_READY") || r.Contains("REPLACEMENT_ACTIVATION_RETURNED_OUTPUT") {
+				t.Fatalf("activation fault produced output or never reached its seam: %v %s", r.Err, r.Output)
 			}
-			if mode != "after-sync" && bytes.Contains(output, []byte("REPLACEMENT_DRIVER_FACTORY_CALLED")) {
+			if mode != "after-sync" && r.Contains("REPLACEMENT_DRIVER_FACTORY_CALLED") {
 				t.Fatal("persistence failure constructed semantic Driver/Host factory")
 			}
-			status, ok := exit.Sys().(syscall.WaitStatus)
-			if !ok {
-				t.Fatal("missing actual child wait status", exit.Sys())
-			}
 			if mode == "before-sync" || mode == "after-sync" {
-				if !status.Signaled() || status.Signal() != syscall.SIGKILL {
-					t.Fatal("missing actual SIGKILL", mode, status)
+				if !r.Killed() {
+					t.Fatal("missing actual SIGKILL", mode, r.Exit)
 				}
-			} else if exit.ExitCode() != 1 || !bytes.Contains(output, []byte("fatal commit error")) || !bytes.Contains(output, []byte("REPLACEMENT_ACTIVATION_INJECTED_OP mode="+mode+" kind=")) || !bytes.Contains(output, []byte("error="+errorfs.ErrInjected.Error())) {
-				t.Fatalf("activation I/O failure not fail-stop: %v %s", err, output)
+			} else if r.ExitCode != 1 || !r.Contains("fatal commit error") || !r.Contains("REPLACEMENT_ACTIVATION_INJECTED_OP mode="+mode+" kind=") || !r.Contains("error="+errorfs.ErrInjected.Error()) {
+				t.Fatalf("activation I/O failure not fail-stop: %v %s", r.Err, r.Output)
 			}
-			for line := range bytes.SplitSeq(output, []byte{'\n'}) {
+			for line := range bytes.SplitSeq(r.Output, []byte{'\n'}) {
 				if bytes.HasPrefix(line, []byte("REPLACEMENT_ACTIVATION_INJECTED_OP ")) {
-					t.Logf("actualChildPID=%d injectorWitness=%s", cmd.Process.Pid, line)
+					t.Logf("actualChildPID=%d injectorWitness=%s", r.PID, line)
 				}
 			}
 			// Match the real fixture's persisted binding/profile; never initialize
@@ -131,7 +123,7 @@ func TestApplicationReceiverActivationRealProcessFaultsWithholdACK(t *testing.T)
 					t.Fatal(err)
 				}
 			}
-			t.Logf("mode=%s actualChildPID=%d waitStatus=%d signal=%s returnedACK=false recoveredIndex=%d term=%d", mode, cmd.Process.Pid, int(status), status.Signal(), index, hard.GetTerm())
+			t.Logf("mode=%s actualChildPID=%d waitStatus=%d signal=%s returnedACK=false recoveredIndex=%d term=%d", mode, r.PID, int(r.Status), r.Status.Signal(), index, hard.GetTerm())
 		})
 	}
 }
