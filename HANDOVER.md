@@ -8,6 +8,12 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
+**Release note v4.57.0 (Markus, 2026-10-16; CI green):** sigma round 9 doors (any-version ranges at a pin, count
+timelines, property value statistics, typed column chunks) and the scheduled flip: `Config.UntimedValidStart` zero value
+is now `UntimedDefault` (new stores unbounded, existing stores keep their persisted mode); constants renumbered (use the
+names). ai-soc: no change needed (sets `UntimedUnbounded` explicitly). sigma-tkgd: adopting with `UntimedFromTxFrom` set
+explicitly for now; its own decision on the new default follows. Details and migration notes: CHANGELOG `[4.57.0]`.
+
 1. **State (2026-10-16):** v4.57.0 = sigma round 9 doors (todo row 45) + the `Config.UntimedValidStart` default flip for NEW
    stores (row 46); release commit prepared, gates passed, tag and push by the user, then notify sigma-tkgd and ai-soc
    with CHANGELOG `[4.57.0]` "Changed" (migration). Ledger check passes (`scripts/check-ledger.sh`).
