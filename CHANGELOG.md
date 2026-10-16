@@ -80,7 +80,7 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
   `TestRound10WindowDoorsRefuse`, `TestRound10IntervalEndIsExclusive`, `TestRound10HullTwoPhase`,
   `TestRound10ClassCountsExact`, `TestRound10SnapshotMultiAndOrdinals`, `TestRound10MixedColumnAcrossParts`,
   `TestShardedMixedColumnChunks`, `TestChunkConcatOrdinals`, `TestWindowValidateAndMeets`, forwarding tests in nodes,
-  rels, stats, temporal; 28 mutants killed (`tasks/evidence/round10/mutants.txt`).
+  rels, stats, temporal; 31 mutants killed (`tasks/evidence/round10/mutants.txt`).
 
 ### Fixed
 
