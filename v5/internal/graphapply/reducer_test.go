@@ -464,7 +464,7 @@ func TestAllocationOverflowAndRealInstallQuota(t *testing.T) {
 	// allocation before any unsigned addition can wrap to zero.
 	state, _ := idalloc.NewState(f.n.graph, reserve.authority, 16)
 	image, _ := idalloc.MarshalCheckpoint(&state)
-	binary.BigEndian.PutUint64(image[45:53], math.MaxUint64)
+	binary.BigEndian.PutUint64(image[45:53], idalloc.MaxPublicID)
 	binary.BigEndian.PutUint32(image[117:], crc32.Checksum(image[:117], crc32.MakeTable(crc32.Castagnoli)))
 	f.raw(t, allocatorKey(f.n), image, false)
 	if o, _ := f.commit(t, reserve); o.reason != reasonExhausted || o.grant != (idalloc.Grant{}) {
@@ -618,16 +618,16 @@ func TestControlRejectionsNeverChangeAllocatorOrRecipient(t *testing.T) {
 	for _, entry := range []struct {
 		sequence uint64
 		epoch    uint64
-	}{{math.MaxUint64, 1}, {0, math.MaxUint64}} {
+	}{{idalloc.MaxPublicID, 1}, {0, math.MaxUint64}} {
 		a := authority(t, 2, entry.epoch)
 		state, _ := idalloc.NewState(f.n.graph, a, 16)
 		image, _ := idalloc.MarshalCheckpoint(&state)
 		if entry.sequence != 0 {
 			r := idalloc.Request{Graph: f.n.graph, Authority: a, Sequence: entry.sequence, Count: 1}
-			binary.BigEndian.PutUint64(image[45:53], math.MaxUint64)
+			binary.BigEndian.PutUint64(image[45:53], idalloc.MaxPublicID)
 			binary.BigEndian.PutUint64(image[61:69], entry.sequence)
 			binary.BigEndian.PutUint64(image[69:77], 1)
-			binary.BigEndian.PutUint64(image[77:85], math.MaxUint64)
+			binary.BigEndian.PutUint64(image[77:85], idalloc.MaxPublicID)
 			hash := r.Digest()
 			copy(image[85:117], hash[:])
 			binary.BigEndian.PutUint32(image[117:], crc32.Checksum(image[:117], crc32.MakeTable(crc32.Castagnoli)))

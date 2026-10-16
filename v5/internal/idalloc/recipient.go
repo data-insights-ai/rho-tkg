@@ -76,7 +76,7 @@ func (i *Recipient) Acquire(ctx context.Context, r GrantRequest, deliver func(Gr
 	if err := ValidateGrant(g); err != nil {
 		return nil, errors.Join(ErrPayloadMismatch, err)
 	}
-	if g.Request != r || b.First <= i.high {
+	if g.Request != r || b.First <= i.high || b.Last > MaxPublicID {
 		return nil, ErrPayloadMismatch
 	}
 	i.high = b.Last

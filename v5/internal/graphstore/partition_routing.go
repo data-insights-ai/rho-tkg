@@ -405,6 +405,22 @@ var ErrRemoteParticipant = errors.New("graphstore: distributed participant requi
 func LookupPublishedRange(ctx context.Context, view *raftlog.ApplicationView, n Namespace, id uint64, configuration [32]byte, budget OwnershipBudget) (RangePublication, RangeOwnership, PageWork, error) {
 	return lookupPublishedRangeBudget(ctx, view, n, id, configuration, budget, nil)
 }
+
+// OwnerOf returns the partition that currently owns id: the End>=ID published
+// range containing it, with its current (unfenced) ownership. An id outside
+// every published range, or in a gap between ranges, is ErrRoutingUnknown with
+// partition 0, never a neighbour; a fenced current owner is ErrStaleOwner.
+// Partition 0 is never a valid owner, so a zero result always comes with an error.
+func OwnerOf(ctx context.Context, view *raftlog.ApplicationView, n Namespace, id uint64, configuration [32]byte, budget OwnershipBudget) (uint64, error) {
+	_, owner, _, err := LookupPublishedRange(ctx, view, n, id, configuration, budget)
+	if err != nil {
+		return 0, err
+	}
+	if owner.Fenced {
+		return 0, ErrStaleOwner
+	}
+	return owner.Partition, nil
+}
 func lookupPublishedRangeBudget(ctx context.Context, view ApplicationReadSource, n Namespace, id uint64, configuration [32]byte, budget OwnershipBudget, arena *graphstate.OutputBudget) (publication RangePublication, owner RangeOwnership, work PageWork, err error) {
 	if ctx == nil || nilApplicationSource(view) || id == 0 || n.validate() != nil || configuration == ([32]byte{}) {
 		return publication, owner, work, ErrInvalid

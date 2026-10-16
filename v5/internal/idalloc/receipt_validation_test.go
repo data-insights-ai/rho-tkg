@@ -50,8 +50,8 @@ func TestReceiptReachabilityAtCheckpointAndGrantBoundaries(t *testing.T) {
 			}
 		})
 	}
-	// Equality is reachable at both the first reservation and the final uint64.
-	for _, sequence := range []uint64{1, math.MaxUint64} {
+	// Equality is reachable at both the first reservation and the final public ID.
+	for _, sequence := range []uint64{1, MaxPublicID} {
 		_, r := fixture(t)
 		r.Sequence = sequence
 		r.Count = 1

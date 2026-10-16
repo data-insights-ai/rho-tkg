@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
@@ -314,5 +315,64 @@ func TestFinalReviewRangeOwnershipInitialEpochFloorAndTransferControls(t *testin
 		} else if !errors.Is(err, ErrStaleOwner) {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestOwnerOfUnpublishedIDIsUnknownNotZero(t *testing.T) {
+	d, err := NewOwnershipDeclaration(graphstate.GraphID{1}, 9, []PartitionOwnership{{Partition: 3, OwnershipEpoch: 2, Group: [16]byte{3}}, {Partition: 8, OwnershipEpoch: 3, Group: [16]byte{8}}, {Partition: 5, OwnershipEpoch: 1, Group: [16]byte{5}}}, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := Namespace{Graph: d.Graph(), Partition: 3}
+	s, _, _ := ownershipStore(t, vfs.NewMem(), n, d, [16]byte{3})
+	_, image, err := s.Checkpoint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := [32]byte{1}
+	var rows []raftlog.KV
+	add := func(first, last, partition, epoch uint64, fenced bool) {
+		p := RangePublication{Graph: n.Graph, RangeID: first, First: first, Last: last, InitialPartition: partition, InitialEpoch: epoch, Configuration: cfg, SourcePartition: 3, SourceIndex: 1}
+		pub, err := EncodeRangePublication(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		own, err := EncodeRangeOwnership(RangeOwnership{Graph: n.Graph, RangeID: first, Partition: partition, Epoch: epoch, Configuration: cfg, Fenced: fenced})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows = append(rows, raftlog.KV{Key: RangePublicationKey(n, first), Value: pub}, raftlog.KV{Key: RangeOwnershipKey(n, first), Value: own}, raftlog.KV{Key: RangeEndKey(n, last), Value: pub})
+	}
+	add(17, 32, 8, 3, false)
+	add(40, 48, 5, 1, false) // gap 33..39 between the two ranges
+	add(64, 70, 8, 3, true)  // fenced current owner
+	slices.SortFunc(rows, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
+	view := ownershipView(t, s, ownershipInstallRaw(t, s, image, rows))
+	b := OwnershipBudget{SourceRows: 8, SourceBytes: 4096, OutputBytes: 4096}
+	for _, tc := range []struct {
+		id   uint64
+		want uint64
+		err  error
+	}{
+		{17, 8, nil}, {32, 8, nil}, {40, 5, nil}, {48, 5, nil},
+		{33, 0, ErrRoutingUnknown}, {39, 0, ErrRoutingUnknown}, // gap: never the neighbour
+		{16, 0, ErrRoutingUnknown}, {1, 0, ErrRoutingUnknown}, // before every range
+		{49, 0, ErrRoutingUnknown}, {71, 0, ErrRoutingUnknown}, // after the last range
+		{0, 0, ErrInvalid},
+		{65, 0, ErrStaleOwner},
+	} {
+		got, err := OwnerOf(t.Context(), view, n, tc.id, cfg, b)
+		if !errors.Is(err, tc.err) || got != tc.want {
+			t.Fatalf("OwnerOf(%d)=%d,%v want %d,%v", tc.id, got, err, tc.want, tc.err)
+		}
+	}
+	if got, err := OwnerOf(t.Context(), nil, n, 17, cfg, b); !errors.Is(err, ErrInvalid) || got != 0 {
+		t.Fatal("nil view", got, err)
+	}
+	if got, err := OwnerOf(t.Context(), view, n, 17, [32]byte{}, b); !errors.Is(err, ErrInvalid) || got != 0 {
+		t.Fatal("zero configuration", got, err)
+	}
+	if got, err := OwnerOf(t.Context(), view, n, 17, cfg, OwnershipBudget{SourceRows: 1, SourceBytes: 4096, OutputBytes: 4096}); !errors.Is(err, ErrResourceLimit) || got != 0 {
+		t.Fatal("budget", got, err)
 	}
 }

@@ -45,6 +45,10 @@ var (
 // MaxBlockSize bounds a single reservation; blocks require no per-ID storage.
 const MaxBlockSize uint64 = 1 << 20
 
+// MaxPublicID is the inclusive largest local ID ever reserved or minted: the
+// signed 64-bit bound of v5/pkg/types/id.go. Nothing above it is representable.
+const MaxPublicID uint64 = math.MaxInt64
+
 // GraphID qualifies local IDs. Zero GraphID and local ID zero are invalid.
 type GraphID [16]byte
 
@@ -100,7 +104,7 @@ func (r Request) Digest() [32]byte {
 }
 
 // Reservation is a tentative reducer result, NOT a durability acknowledgement
-// and NOT a cursor source. Its inclusive range can end at math.MaxUint64.
+// and NOT a cursor source. Its inclusive range ends at or below MaxPublicID.
 type Reservation struct {
 	Request     Request
 	First, Last uint64
@@ -147,7 +151,7 @@ func NewState(graph GraphID, authority Authority, maxBlock uint64) (State, error
 }
 
 func (s *State) valid() bool {
-	if s == nil || s.graph == (GraphID{}) || !s.authority.valid() || s.maxBlock == 0 || s.maxBlock > MaxBlockSize {
+	if s == nil || s.graph == (GraphID{}) || !s.authority.valid() || s.maxBlock == 0 || s.maxBlock > MaxBlockSize || s.high > MaxPublicID {
 		return false
 	}
 	if s.sequence == 0 {
@@ -186,7 +190,7 @@ func Reserve(s *State, r Request) (next State, block Reservation, replay bool, e
 	if r.Count > s.maxBlock {
 		return State{}, Reservation{}, false, ErrInvalid
 	}
-	if r.Count > math.MaxUint64-s.high {
+	if r.Count > MaxPublicID-s.high {
 		return State{}, Reservation{}, false, ErrExhausted
 	}
 	next = *s
@@ -288,7 +292,7 @@ func (i *Issuer) Acquire(ctx context.Context, r Request, commit Committer) (*Cur
 		}
 		return nil, err
 	}
-	if !b.validFor(r) {
+	if !b.validFor(r) || b.Last > MaxPublicID {
 		return nil, ErrPayloadMismatch
 	}
 	if replay {
