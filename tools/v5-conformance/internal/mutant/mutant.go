@@ -43,6 +43,9 @@ var Names = []string{
 	"nodes-page-ignores-pin",    // NodesEffectivePage reads at the present instead of the pin
 	"page-cursor-unchecked",     // an out-of-range cursor is treated as zero (both paged doors)
 	"page-tail-cursor",          // a short last page still returns a cursor (both paged doors)
+	"retract-as-delete",         // Retract* ends validity like a delete
+	"retract-noop",              // Retract* report success and change nothing
+	"retract-ignores-instant",   // Retract* drop the caller instant
 }
 
 // Wrap returns an Adapter whose graphs carry the named mutants ("all" selects every one).
@@ -412,4 +415,28 @@ func (g *graph) ExciseRelValidity(ctx context.Context, id uint64, a, b, txFrom i
 		txFrom = 0
 	}
 	return g.Graph.ExciseRelValidity(ctx, id, a, b, txFrom)
+}
+
+func (g *graph) RetractNode(ctx context.Context, id uint64, txTo int64) error {
+	switch {
+	case g.on["retract-as-delete"]:
+		return g.Graph.DeleteNode(ctx, id, txTo)
+	case g.on["retract-noop"]:
+		return nil
+	case g.on["retract-ignores-instant"]:
+		txTo = 0
+	}
+	return g.Graph.RetractNode(ctx, id, txTo)
+}
+
+func (g *graph) RetractRel(ctx context.Context, id uint64, txTo int64) error {
+	switch {
+	case g.on["retract-as-delete"]:
+		return g.Graph.DeleteRel(ctx, id, txTo)
+	case g.on["retract-noop"]:
+		return nil
+	case g.on["retract-ignores-instant"]:
+		txTo = 0
+	}
+	return g.Graph.RetractRel(ctx, id, txTo)
 }
