@@ -219,11 +219,25 @@ func openEngine(ctx context.Context, cfg Config) (*pebbleEngine, error) {
 			}
 		}
 	}
-	rc := raftConfig(fs, dir, create, e.ns, group)
+	pol := cfg.Storage.resolve()
+	if !cfg.Memory && !create {
+		if pol, err = reopenPolicy(dir, cfg.Storage); err != nil {
+			e.lock.unlock()
+			return nil, err
+		}
+	}
+	rc := raftConfig(fs, dir, create, e.ns, group, pol)
 	st, err := raftlog.Open(rc)
 	if err != nil {
 		e.lock.unlock()
 		return nil, fmt.Errorf("%w: open store: %v", ErrInvalidConfig, err)
+	}
+	if create && !cfg.Memory {
+		if err := writePolicy(dir, pol); err != nil {
+			_ = st.Close()
+			e.lock.unlock()
+			return nil, fmt.Errorf("%w: persist storage policy: %v", ErrInvalidConfig, err)
+		}
 	}
 	e.store = st
 	if create {
@@ -239,14 +253,16 @@ func openEngine(ctx context.Context, cfg Config) (*pebbleEngine, error) {
 	return e, nil
 }
 
-func raftConfig(fs vfs.FS, dir string, create bool, ns graphstore.Namespace, group [16]byte) raftlog.Config {
+func raftConfig(fs vfs.FS, dir string, create bool, ns graphstore.Namespace, group [16]byte, pol StorageLimits) raftlog.Config {
 	p := raftlog.DefaultApplicationPolicy(1)
 	p.MaxInstallWrites = 4096
-	p.RetainedApplicationRecords = 1 << 20
-	p.RetainedApplicationBytes = 256 << 20
-	return raftlog.Config{Dir: dir, FS: fs, Create: create, Application: p, Limits: raftlog.DefaultLimits(), SemanticContractID: contractID,
+	p.RetainedApplicationRecords = pol.RetainedRecords
+	p.RetainedApplicationBytes = pol.RetainedBytes
+	lim := raftlog.DefaultLimits()
+	lim.CacheBytes, lim.MemTableBytes = pol.CacheBytes, pol.MemTableBytes
+	return raftlog.Config{Dir: dir, FS: fs, Create: create, Application: p, Limits: lim, SemanticContractID: contractID,
 		Replication:   raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}},
-		Generations:   raftlog.ApplicationGenerationLimits{MaxBytes: 1 << 30, MaxRecords: 1 << 21},
+		Generations:   raftlog.ApplicationGenerationLimits{MaxBytes: min(pol.RetainedBytes*4, 1<<40), MaxRecords: min(pol.RetainedRecords*2, 1<<40)},
 		PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 1024},
 		Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: ns.Graph, Partition: ns.Partition, Group: group}, Contract: raftlog.ApplicationContractForPolicy(p),
 			Limits: raftlog.ApplicationTransferLimits{MaxExports: 2, MaxChunkRows: 64, MaxChunkBytes: 256 << 10, MaxStagedBytes: 16 << 20, MaxStagedRecords: 8192, MaxPinnedLogicalBytes: 64 << 20}}}
@@ -403,7 +419,12 @@ func (e *pebbleEngine) install(index uint64, prevImageHash [32]byte, image []byt
 		return err
 	}
 	b := raftlog.ApplicationBatch{BaseGeneration: e.store.ApplicationGeneration(), BaseIndex: index - 1, BaseImageHash: prevImageHash, Image: image, Writes: writes}
-	return e.store.InstallApplication(index, b)
+	if err := e.store.InstallApplication(index, b); err != nil {
+		return err
+	}
+	// Keep the raft log bounded: ReclaimApplication replaces the recovery base
+	// once the log passes the policy watermark, else it is a no-op.
+	return e.store.ReclaimApplication()
 }
 
 // nextInstant is the knowledge instant of the next commit: the local wall clock
