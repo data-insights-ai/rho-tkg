@@ -1,10 +1,39 @@
 #!/usr/bin/env python3
 """Compact inert grammar/routing refusals; no process evidence is invented."""
 import base64
+import copy
+import json
 import struct
 import unittest
 
 import native_protocol_campaign_program_check as K
+
+
+def conditional_restart_rows(member):
+    # Inert native/process codec fixtures, not a source or election witness.
+    old_incarnation, incarnation = b"o"*16, b"n"*16
+    old_instance = f"voter{member}/pid101/{old_incarnation.hex()}"
+    instance = f"voter{member}/pid202/{incarnation.hex()}"
+    volume = f"/inert/cohort/{member}"
+    def stopped(event, pid, identity):
+        raw = dict(Member=member, PID=pid, Reaped=True, Success=True, Signaled=False,
+                   ExitCode=0, Instance=identity, Volume=volume, Signal="clean-exit")
+        row = dict(EventID=event, Member=member, Action="stop", Reaped=True,
+                   Instance=identity, Volume=volume,
+                   Raw=base64.b64encode(json.dumps(raw).encode()).decode())
+        return row, raw
+    stats = [0]*28
+    stats[1:4] = [32, 4, 1 if member <= 3 else 4]
+    field = lambda value: struct.pack(">I", len(value))+value
+    wire = incarnation+struct.pack(">28Q", *stats)+bytes(32+32+8+4)+field(b"")
+    wire += struct.pack(">BQQBH", int(member in (1, 4)), 7, 32, 0, 0)+field(b"")
+    wire += bytes(4+4)+field(b"")*3+bytes(1+8+4)+field(b"")
+    old, _ = stopped(1, 101, old_instance)
+    terminal = stopped(3, 202, instance)
+    restored = dict(EventID=2, Member=member, Action="reopen", Ready=True,
+                    PreviousInstance=old_instance, Instance=instance, Volume=volume,
+                    RecoveryRaw=base64.b64encode(wire).decode())
+    return old, restored, terminal
 
 
 class ProgramChecks(unittest.TestCase):
@@ -21,6 +50,31 @@ class ProgramChecks(unittest.TestCase):
                       dict(Version=1, Layout="rotated", Message="pretend-delay")):
             self.refused(K.spec, value)
         self.refused(K.authenticate, dict(Evidence=dict(P01={})))
+
+    def test_conditional_restart_binds_all_incarnations_without_follower_source_authority(self):
+        for member in range(1, 7):
+            old, restored, terminal = conditional_restart_rows(member)
+            K.conditional_restart(member, old, restored, terminal)
+            for name, value in (("Member", 7-member), ("PreviousInstance", "foreign"),
+                                ("Instance", old["Instance"]), ("Volume", "/foreign"),
+                                ("EventID", 3), ("Ready", False)):
+                self.refused(K.conditional_restart, member, old, {**restored, name:value}, terminal)
+            raw = bytearray(K.P.raw(restored["RecoveryRaw"]))
+            for offset, value in ((0, 0), (16+28*8+32+32+8+4+4+1+8+8, 2)):
+                changed = raw.copy(); changed[offset] = value
+                self.refused(K.conditional_restart, member, old,
+                             {**restored, "RecoveryRaw":base64.b64encode(changed).decode()}, terminal)
+            if member in (1, 4):
+                changed = raw.copy(); changed[16+28*8+32+32+8+4+4] = 0
+                self.refused(K.conditional_restart, member, old,
+                             {**restored, "RecoveryRaw":base64.b64encode(changed).decode()}, terminal)
+            wrong = copy.deepcopy(terminal)
+            wrong[1]["PID"] = 101
+            self.refused(K.conditional_restart, member, old, restored, wrong)
+            old_bad = copy.deepcopy(old)
+            raw_stop = json.loads(K.P.raw(old_bad["Raw"])); raw_stop["Success"] = False
+            old_bad["Raw"] = base64.b64encode(json.dumps(raw_stop).encode()).decode()
+            self.refused(K.conditional_restart, member, old_bad, restored, terminal)
 
     def test_explicit_scope_context_keeps_actual_member_ids(self):
         # Only shape diagnostics: this does not invoke check/authenticate or

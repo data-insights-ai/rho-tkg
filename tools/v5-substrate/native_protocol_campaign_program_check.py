@@ -57,6 +57,28 @@ def frame(row, scopes):
     return wire, message
 
 
+def conditional_restart(member, old, restored, terminal):
+    raw = T.decoded(P.raw(old["Raw"]))
+    require(old["Action"] == "stop" and old["Member"] == raw["Member"] == member and
+            old["Reaped"] is raw["Reaped"] is raw["Success"] is True and raw["Signaled"] is False and raw["ExitCode"] == 0 and
+            old["Instance"] == raw["Instance"] and old["Volume"] == raw["Volume"], "actual pre-reopen OS clean stop")
+    state = F.process(P.raw(restored["RecoveryRaw"]))
+    stopped, stop_raw = terminal
+    require(restored["Action"] == "reopen" and restored["Member"] == member and restored["Ready"] is True and
+            restored["PreviousInstance"] == old["Instance"] and restored["Volume"] == old["Volume"] == stopped["Volume"] and
+            restored["Instance"] == stopped["Instance"] and stop_raw["PID"] != raw["PID"] and
+            restored["Instance"].endswith("/"+state["incarnation"].hex()) and state["code"] == state["mask"] == 0 and
+            old["EventID"] < restored["EventID"] < stopped["EventID"], "actual same-volume/new-incarnation source restart")
+    # processStateOp returns certifiedProcessOwners.ready, not follower
+    # catch-up readiness. Only the actual reopened source leaders observe
+    # configuration and own that flag; all six still require native success,
+    # exact process lineage and their later real clean reap above.
+    if member in (1, 4):
+        require(state["ready"] == 1 and state["stats"][2] > 0 and state["stats"][3] == member,
+                "actual restored original source leader layout1/4")
+    return raw
+
+
 def authenticate(a):
     # The wrapper is a distinct artifact contract. The ordinary campaign
     # entry point continues to reject its extra evidence and profile.
@@ -116,20 +138,9 @@ def authenticate(a):
                     "actual sole cohort barrier and exact cumulative selected-frame ordinal")
             rejoin_stopped = {}
             for member, (old, restored) in enumerate(zip(reopened[:6], reopened[6:]), 1):
-                raw = T.decoded(P.raw(old["Raw"]))
-                require(old["Action"] == "stop" and old["Member"] == raw["Member"] == member and
-                        old["Reaped"] is raw["Reaped"] is raw["Success"] is True and raw["Signaled"] is False and raw["ExitCode"] == 0 and
-                        old["Instance"] == raw["Instance"] and old["Volume"] == raw["Volume"], "actual pre-reopen OS clean stop")
+                raw = conditional_restart(member, old, restored, stopped[member])
                 rejoin_stopped[member] = old, raw
                 native_instances[member, raw["PID"]] = old["Instance"]
-                state = F.process(P.raw(restored["RecoveryRaw"]))
-                require(restored["Action"] == "reopen" and restored["Member"] == member and restored["Ready"] is True and
-                        restored["PreviousInstance"] == old["Instance"] and restored["Volume"] == old["Volume"] == stopped[member][0]["Volume"] and
-                        restored["Instance"] == stopped[member][0]["Instance"] and stopped[member][1]["PID"] != raw["PID"] and
-                        restored["Instance"].endswith("/"+state["incarnation"].hex()) and state["code"] == state["mask"] == 0 and state["ready"] == 1 and
-                        old["EventID"] < restored["EventID"] < stopped[member][0]["EventID"], "actual same-volume/new-incarnation source restart")
-                if member in (1, 4):
-                    require(state["stats"][2] > 0 and state["stats"][3] == member, "actual restored original leader layout1/4")
         else:
             require(not reopened and "ProgramReopenAfter" not in e, "no invented conditional source switch")
     if stage:
