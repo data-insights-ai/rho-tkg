@@ -70,9 +70,10 @@ func nativeTransitionScopeFacts(t *testing.T, f *pairedGraphFaultNetwork, ctx co
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := f.n.all[actor].exchange(ctx, processRequest{op: processSourceCertifiedObserve, index: handle, data: ids})
+	owner := f.n.all[actor]
+	r, err := owner.exchange(ctx, processRequest{op: processSourceCertifiedObserve, index: handle, data: ids})
 	if err != nil {
-		t.Fatal("actual A-only read", err)
+		t.Fatalf("actual A-only read actor%d pid%d owner-incarnation%x operation%d handle%d response-sequence%d response-incarnation%x applied%d ready%t views%d code%d cause-mask%04x graph-mask%04x detail%q: %v", actor, owner.cmd.Process.Pid, owner.incarnation, processSourceCertifiedObserve, handle, r.sequence, r.incarnation, r.applied, r.ready, r.stats[statViews], r.code, r.causeMask, graphErrorMask(err), r.detail, err)
 	}
 	return r.aux
 }
