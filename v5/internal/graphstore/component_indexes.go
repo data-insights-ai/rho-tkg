@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"slices"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
@@ -226,8 +227,10 @@ func initializeIndexes(ctx context.Context, c *Catalog, schemas []graphstate.Pro
 // Index pages. Two plain-KV row families, kept beside the component trees by
 // installFullPlan (stageIndexRows) and read by ReadView.LabelMembers and
 // EqualityMembers through the immutable source Scan, so every page and cursor
-// is bound to one cut. A row exists exactly while its component holds at least
+// is bound to one cut. A row is live exactly while its component holds at least
 // one present piece, in any scope: a candidate set, never a temporal answer.
+// A row that stops being live is overwritten with the retired marker, never
+// deleted: partition kernels and range-move imports carry puts only.
 //
 //	label:    prefix | field(label) | owner | life
 //	equality: prefix | ownerKind | field(name) | sha256(EqualityKey) | owner | life | member
@@ -246,7 +249,12 @@ var _ graphstate.IndexView = (*ReadView)(nil)
 const indexEntityBytes = 16
 const indexScanBatch = 64
 
-func indexRowValue(n Namespace, kind recordKind) []byte { return append(recordHeader(n, kind), 1) }
+func indexRowValue(n Namespace, kind recordKind, live bool) []byte {
+	if live {
+		return append(recordHeader(n, kind), 1)
+	}
+	return append(recordHeader(n, kind), 0)
+}
 func labelPostingPrefix(n Namespace, label string) []byte {
 	return appendField(keyPrefix(n, labelPostingRecord), []byte(label))
 }
@@ -269,15 +277,6 @@ func prefixEnd(p []byte) []byte {
 			return end[:i+1]
 		}
 	}
-	return nil
-}
-
-// retract stages a tombstone; only rows this stage knows exist are retracted.
-func (q *reader) retract(key []byte) error {
-	if err := q.put(key, nil); err != nil {
-		return err
-	}
-	q.pending[string(key)] = raftlog.KV{Key: exactCopy(key), Deleted: true}
 	return nil
 }
 
@@ -382,31 +381,36 @@ func (h *indexHints) value(id graphstate.ValueID) (graphstate.Scalar, bool) {
 	return v, ok
 }
 
-// stageIndexRows runs after the patch is installed, so scans see the new state.
-func (q *pageStage) stageIndexRows(patch graphstate.ComponentPatch) error {
-	k := patch.Key
+// patchCells splits a patch's changes into the cells it replaced and wrote.
+func patchCells(patch graphstate.ComponentPatch) (before, after []state.Cell) {
+	before, after = make([]state.Cell, 0, len(patch.Changes)), make([]state.Cell, 0, len(patch.Changes))
+	for _, change := range patch.Changes {
+		before, after = append(before, change.Before()), append(after, change.After())
+	}
+	return before, after
+}
+
+// stageIndexRows is the one index derivation: before are the cells a write
+// replaced, after the cells it wrote. It runs after the write is installed, so
+// scans see the new state. installFullPlan and range-move import both call it.
+func (q *pageStage) stageIndexRows(k graphstate.ComponentKey, before, after []state.Cell) error {
 	if k.Kind != graphstate.Label && k.Kind != graphstate.ScalarProperty && k.Kind != graphstate.SetMember {
 		return nil
 	}
 	n := q.q.c.root.namespace
 	if k.Kind == graphstate.Label {
-		var before, after bool
-		for _, change := range patch.Changes {
-			before = before || change.Before().Present()
-			after = after || change.After().Present()
-		}
 		row := appendIndexRowTail(labelPostingPrefix(n, k.Name), k.Owner, k.Life)
-		if after {
-			return q.q.put(row, indexRowValue(n, labelPostingRecord))
+		if slices.ContainsFunc(after, state.Cell.Present) {
+			return q.q.put(row, indexRowValue(n, labelPostingRecord, true))
 		}
-		if !before {
+		if !slices.ContainsFunc(before, state.Cell.Present) {
 			return nil
 		}
 		present, err := q.componentCells(k, func(c state.Cell) (bool, error) { return c.Present(), nil })
 		if err != nil || present {
 			return err
 		}
-		return q.q.retract(row)
+		return q.q.put(row, indexRowValue(n, labelPostingRecord, false))
 	}
 	ownerKind, known := q.q.hints.kind(k.Owner)
 	if !known {
@@ -424,19 +428,19 @@ func (q *pageStage) stageIndexRows(patch graphstate.ComponentPatch) error {
 		return binary.BigEndian.AppendUint64(b, uint64(k.Member))
 	}
 	added := make(map[string]struct{})
-	var removed []string
-	for _, change := range patch.Changes {
-		if equality, ok, err := q.indexValueKey(k, change.After()); err != nil {
+	for _, cell := range after {
+		if equality, ok, err := q.indexValueKey(k, cell); err != nil {
 			return err
-		} else if ok {
-			if _, dup := added[equality]; !dup {
-				added[equality] = struct{}{}
-				if err := q.q.put(row(equality), indexRowValue(n, equalityPostingRecord)); err != nil {
-					return err
-				}
+		} else if _, dup := added[equality]; ok && !dup {
+			added[equality] = struct{}{}
+			if err := q.q.put(row(equality), indexRowValue(n, equalityPostingRecord, true)); err != nil {
+				return err
 			}
 		}
-		if equality, ok, err := q.indexValueKey(k, change.Before()); err != nil {
+	}
+	var removed []string
+	for _, cell := range before {
+		if equality, ok, err := q.indexValueKey(k, cell); err != nil {
 			return err
 		} else if _, kept := added[equality]; ok && !kept {
 			removed = append(removed, equality)
@@ -457,7 +461,7 @@ func (q *pageStage) stageIndexRows(patch graphstate.ComponentPatch) error {
 	}
 	for _, equality := range removed {
 		if _, kept := held[equality]; !kept {
-			if err := q.q.retract(row(equality)); err != nil {
+			if err := q.q.put(row(equality), indexRowValue(n, equalityPostingRecord, false)); err != nil {
 				return err
 			}
 		}
@@ -602,7 +606,7 @@ func (v *ReadView) indexPage(ctx context.Context, kind recordKind, query, lower 
 func (v *ReadView) scanIndex(ctx context.Context, q *pageReader, kind recordKind, lower []byte, old fullContinuation, owner graphstate.EntityKind, visibility graphstate.Visibility, capacity int, out *graphstate.EntityPage, consumed *[]byte, last *graphstate.EntityID) error {
 	n := v.c.root.namespace
 	upper := prefixEnd(lower)
-	marker := indexRowValue(n, kind)
+	live, retired := indexRowValue(n, kind, true), indexRowValue(n, kind, false)
 	tail := 16
 	if kind == equalityPostingRecord {
 		tail = 24
@@ -626,7 +630,7 @@ func (v *ReadView) scanIndex(ctx context.Context, q *pageReader, kind recordKind
 			return err
 		}
 		for _, row := range page.Rows {
-			if len(row.Key) != len(lower)+tail || row.Deleted || !bytes.Equal(row.Value, marker) {
+			if len(row.Key) != len(lower)+tail || row.Deleted || !bytes.Equal(row.Value, live) && !bytes.Equal(row.Value, retired) {
 				return ErrCorrupt
 			}
 			id := graphstate.EntityID(binary.BigEndian.Uint64(row.Key[len(lower):]))
@@ -634,7 +638,7 @@ func (v *ReadView) scanIndex(ctx context.Context, q *pageReader, kind recordKind
 			if id == 0 || life == 0 && kind == labelPostingRecord {
 				return ErrCorrupt
 			}
-			if id != *last {
+			if id != *last && bytes.Equal(row.Value, live) {
 				visible := true
 				if visibility == graphstate.Effective && owner == graphstate.Relationship {
 					if visible, err = q.relationshipEffective(id, life); err != nil {

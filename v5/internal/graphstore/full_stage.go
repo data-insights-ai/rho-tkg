@@ -878,7 +878,8 @@ func installFullPlan(p *pageStage, planned graphstate.Delta, l GraphLimits, aren
 			if err := p.installPatch(patch); err != nil {
 				return err
 			}
-			if err := p.stageIndexRows(patch); err != nil {
+			replaced, written := patchCells(patch)
+			if err := p.stageIndexRows(patch.Key, replaced, written); err != nil {
 				return err
 			}
 			if entity.Kind == graphstate.Relationship {
