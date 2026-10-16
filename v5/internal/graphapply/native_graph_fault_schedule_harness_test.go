@@ -74,6 +74,10 @@ type nativeFaultFS struct {
 	state   nativeFaultReceipt
 	last    nativeFaultControl
 	pending bool
+	// Startup-only: recovery flushes may retry directory IO. Arm the intended
+	// mandatory publication only after a real owned-root WAL creation succeeds.
+	startupDirectoryPublication bool
+	startupWALCreated           bool
 	// One exact created file identity, not a map of directory names. Storage is
 	// fixed/preowned before Open, and only the precise fresh selector uses it.
 	markerFile   *nativeFaultFile
@@ -156,6 +160,7 @@ func (f *nativeFaultFS) control(raw []byte) ([]byte, error) {
 	f.state.Sequence, f.state.Kind, f.state.Nth = c.Sequence, c.Kind, c.Nth
 	f.state.Arms++
 	f.state.Seen, f.state.Armed, f.state.Matched, f.state.IO = 0, true, false, nativeFaultIO{}
+	f.startupWALCreated = false
 	f.markerFile, f.markerLength, f.markerClosed = nil, 0, false
 	return json.Marshal(f.state)
 }
@@ -178,7 +183,13 @@ func (f *nativeFaultFS) match(path string, directory bool, operation string, inp
 	}
 	wal := strings.HasSuffix(path, ".log")
 	synchronizing := operation == "sync" || operation == "sync-data" || operation == "sync-to"
-	matched := operation == "write" && wal && (f.state.Kind == "short-write" || f.state.Kind == "write-eio" || f.state.Kind == "write-enospc" || f.state.Kind == "torn-wal-kill") || synchronizing && (directory && f.state.Kind == "directory-sync" || !directory && wal && f.state.Kind == "file-sync") || operation == "rename" && f.state.Kind == "options-rename" || nativeTransitionMatches(f.state.Kind, path, directory, operation)
+	// Pebble also syncs existing parents during Open. Only this owned root is
+	// the selected publication; other real directory IO keeps its normal path.
+	ownedDirectory := directory && filepath.Clean(path) == f.dir
+	if f.state.Kind == "directory-sync" && f.startupDirectoryPublication && !f.startupWALCreated {
+		ownedDirectory = false
+	}
+	matched := operation == "write" && wal && (f.state.Kind == "short-write" || f.state.Kind == "write-eio" || f.state.Kind == "write-enospc" || f.state.Kind == "torn-wal-kill") || synchronizing && (ownedDirectory && f.state.Kind == "directory-sync" || !directory && wal && f.state.Kind == "file-sync") || operation == "rename" && f.state.Kind == "options-rename" || nativeTransitionMatches(f.state.Kind, path, directory, operation)
 	if !matched {
 		return "", false, nil
 	}
@@ -294,6 +305,7 @@ func (f *nativeFaultFS) Create(path string, category vfs.DiskWriteCategory) (vfs
 		copy(f.markerPath[:], rel)
 	}
 	f.mu.Unlock()
+	f.directoryWALCreated(path)
 	return wrapped, nil
 }
 func (f *nativeFaultFS) Unwrap() vfs.FS { return f.FS }
@@ -325,7 +337,19 @@ func (f *nativeFaultFS) OpenDir(path string) (vfs.File, error) {
 }
 func (f *nativeFaultFS) ReuseForWrite(oldname, newname string, category vfs.DiskWriteCategory) (vfs.File, error) {
 	file, err := f.FS.ReuseForWrite(oldname, newname, category)
-	return f.wrap(newname, false, file, err)
+	wrapped, err := f.wrap(newname, false, file, err)
+	if err == nil {
+		f.directoryWALCreated(newname)
+	}
+	return wrapped, err
+}
+
+func (f *nativeFaultFS) directoryWALCreated(path string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.startupDirectoryPublication && f.state.Armed && f.state.Kind == "directory-sync" && filepath.Dir(path) == f.dir && strings.HasSuffix(filepath.Base(path), ".log") {
+		f.startupWALCreated = true
+	}
 }
 
 func (f *nativeFaultFS) Rename(oldname, newname string) error {

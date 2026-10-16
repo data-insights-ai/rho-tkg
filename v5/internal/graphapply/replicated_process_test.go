@@ -2038,6 +2038,7 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 			if create || kind != "directory-sync" && kind != "options-rename" && !transition {
 				t.Fatal("startup fault requires same-directory reopen with an admitted actual native IO selector")
 			}
+			fault.startupDirectoryPublication = kind == "directory-sync" // Immutable before native Open.
 			arm, encodeErr := json.Marshal(nativeFaultControl{Version: 1, Action: "arm", Cookie: fault.state.Cookie, Sequence: 1, Kind: kind, Nth: 1})
 			if encodeErr != nil {
 				t.Fatal(encodeErr)

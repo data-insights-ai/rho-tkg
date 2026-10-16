@@ -406,6 +406,169 @@ func TestNativeFaultChildFilesystemRecordsOnlyActualMatchedOperations(t *testing
 	}
 }
 
+func TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReopen(t *testing.T) {
+	t.Run("native-reopen", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "db")
+		store, err := raftlog.Open(raftlog.Config{Dir: dir, Create: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.Initialize([]uint64{1, 2, 3}, []byte("actual retained native image")); err != nil {
+			t.Fatal(errors.Join(err, store.Close()))
+		}
+		index, image, err := store.Checkpoint()
+		if err := errors.Join(err, store.Close()); err != nil {
+			t.Fatal(err)
+		}
+		owner, err := newNativeFaultFS(dir, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		owner.startupDirectoryPublication = true
+		arm, err := json.Marshal(nativeFaultControl{Version: 1, Action: "arm", Cookie: owner.state.Cookie, Sequence: 1, Kind: "directory-sync", Nth: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := owner.control(arm); err != nil {
+			t.Fatal(err)
+		}
+		refused, err := raftlog.Open(raftlog.Config{Dir: dir, FS: owner})
+		if refused != nil {
+			t.Fatal("faulty native reopen acquired a store", refused.Close())
+		}
+		if !errors.Is(err, syscall.EIO) || errors.Is(err, errLimit) || !owner.state.Matched || owner.state.Armed || owner.state.Seen != 1 {
+			t.Fatal("native reopen did not reach its genuine root-directory Sync", err, owner.state)
+		}
+		receipt := readNativeFaultStartupIO(t, dir, 1, uint64(os.Getpid()))
+		if receipt.Cookie != owner.state.Cookie || receipt.IO.Path != "." || !receipt.IO.Directory || receipt.IO.Kind != "sync" || receipt.IO.Error != syscall.EIO.Error() {
+			t.Fatal("native root refusal lost strict startup receipt", receipt)
+		}
+		reopened, err := raftlog.Open(raftlog.Config{Dir: dir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		afterIndex, afterImage, err := reopened.Checkpoint()
+		if err := errors.Join(err, reopened.Close()); err != nil || afterIndex != index || !bytes.Equal(afterImage, image) {
+			t.Fatal("failed directory publication changed actual native checkpoint", err)
+		}
+	})
+	t.Run("root-nth", func(t *testing.T) {
+		parent := t.TempDir()
+		dir := filepath.Join(parent, "db")
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		owner, err := newNativeFaultFS(dir, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		arm, err := json.Marshal(nativeFaultControl{Version: 1, Action: "arm", Cookie: owner.state.Cookie, Sequence: 1, Kind: "directory-sync", Nth: 2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := owner.control(arm); err != nil {
+			t.Fatal(err)
+		}
+		syncDir := func(path string) error {
+			file, err := owner.OpenDir(path)
+			if err != nil {
+				return err
+			}
+			return errors.Join(file.Sync(), file.Close())
+		}
+		if err := syncDir(parent); err != nil || owner.state.Seen != 0 || owner.state.Matched || !owner.state.Armed {
+			t.Fatal("real parent Sync consumed owned-root fault selection", err, owner.state)
+		}
+		if err := syncDir(dir); err != nil || owner.state.Seen != 1 || owner.state.Matched || !owner.state.Armed {
+			t.Fatal("first real root Sync skipped its unchanged Nth grant", err, owner.state)
+		}
+		if err := syncDir(parent); err != nil || owner.state.Seen != 1 {
+			t.Fatal("parent Sync advanced root Nth selection", err, owner.state)
+		}
+		if err := syncDir(dir); !errors.Is(err, syscall.EIO) || owner.state.Seen != 2 || !owner.state.Matched || owner.state.Armed || owner.state.IO.Path != "." {
+			t.Fatal("second root Sync did not retain its exact fault receipt", err, owner.state)
+		}
+	})
+	for _, reuse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("startup-wal-reuse-%t", reuse), func(t *testing.T) {
+			parent := t.TempDir()
+			dir := filepath.Join(parent, "db")
+			if err := os.Mkdir(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			owner, err := newNativeFaultFS(dir, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			owner.startupDirectoryPublication = true
+			arm, err := json.Marshal(nativeFaultControl{Version: 1, Action: "arm", Cookie: owner.state.Cookie, Sequence: 1, Kind: "directory-sync", Nth: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := owner.control(arm); err != nil {
+				t.Fatal(err)
+			}
+			syncDir := func(path string) error {
+				file, err := owner.OpenDir(path)
+				if err != nil {
+					return err
+				}
+				return errors.Join(file.Sync(), file.Close())
+			}
+			for _, path := range []string{parent, dir} {
+				if err := syncDir(path); err != nil || owner.state.Seen != 0 || owner.startupWALCreated {
+					t.Fatal("pre-WAL native directory Sync consumed startup publication", err)
+				}
+			}
+			failed := filepath.Join(dir, "failed.log")
+			if err := os.Mkdir(failed, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(failed, "keep"), []byte("nonempty directory cannot become a WAL file"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if file, err := owner.Create(failed, vfs.WriteCategoryUnspecified); err == nil || file != nil || owner.startupWALCreated {
+				t.Fatal("failed WAL creation made startup publication eligible", err)
+			}
+			foreign, err := owner.Create(filepath.Join(parent, "foreign.log"), vfs.WriteCategoryUnspecified)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := foreign.Close(); err != nil || owner.startupWALCreated {
+				t.Fatal("foreign WAL creation made startup publication eligible", err)
+			}
+			if file, err := owner.ReuseForWrite(filepath.Join(dir, "absent.log"), filepath.Join(dir, "000002.log"), vfs.WriteCategoryUnspecified); err == nil || file != nil || owner.startupWALCreated {
+				t.Fatal("failed WAL reuse made startup publication eligible", err)
+			}
+			if err := syncDir(dir); err != nil || owner.state.Seen != 0 || owner.state.Matched {
+				t.Fatal("unsuccessful/unrelated WAL events selected startup fault", err)
+			}
+			var wal vfs.File
+			if reuse {
+				seed := filepath.Join(dir, "seed.bin")
+				if err := os.WriteFile(seed, []byte("actual reusable file"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				wal, err = owner.ReuseForWrite(seed, filepath.Join(dir, "000002.log"), vfs.WriteCategoryUnspecified)
+			} else {
+				wal, err = owner.Create(filepath.Join(dir, "000002.log"), vfs.WriteCategoryUnspecified)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := wal.Close(); err != nil || !owner.startupWALCreated || owner.state.Seen != 0 {
+				t.Fatal("real owned-root WAL creation was not observed", err)
+			}
+			if err := syncDir(parent); err != nil || owner.state.Seen != 0 {
+				t.Fatal("parent selected after genuine WAL creation", err)
+			}
+			if err := syncDir(dir); !errors.Is(err, syscall.EIO) || !owner.state.Matched || owner.state.Seen != 1 || owner.state.IO.Path != "." {
+				t.Fatal("real WAL publication did not select exact root Sync", err)
+			}
+		})
+	}
+}
+
 func TestNativeFaultHeldAndDuplicatePacketsStayWithinOriginalOwnerBudget(t *testing.T) {
 	for _, action := range []string{"duplicate", "reorder"} {
 		t.Run(action, func(t *testing.T) {
