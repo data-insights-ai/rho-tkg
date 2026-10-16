@@ -1,7 +1,7 @@
 // Package importmap maps the rows of a v4 io.Export stream to a v5 op stream.
 //
 // It reads through fixtures.ReadExport (the one door to a v4 export), writes
-// nothing to a graph (WP-10b applies the stream) and decides every value and
+// nothing to a graph (write.go applies the stream) and decides every value and
 // every time coordinate explicitly:
 //
 //   - Values (MapValue): int*/uint* up to MaxInt64 -> Int, finite float32/float64

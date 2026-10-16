@@ -8,10 +8,57 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
+// Graphs is the v5 ops that write o. A create of a first life is one create
+// with the v4 ID; the next life of an ID is a Reopen over the scope, then the
+// props and labels of that life.
+func (o Op) Graphs(c graph.Config) ([]graph.Op, error) {
+	if !isCreate(o.Op) || o.Life <= 1 {
+		g, err := o.Graph(c)
+		return []graph.Op{g}, err
+	}
+	scope, err := o.scopeOf(c)
+	if err != nil {
+		return nil, err
+	}
+	rec, err := o.recorded(c)
+	if err != nil {
+		return nil, err
+	}
+	var target graph.Ref
+	if o.Entity == "rel" {
+		target, err = graph.RelRef(types.RelID(o.ID))
+	} else {
+		target, err = graph.NodeRef(types.NodeID(o.ID))
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := []graph.Op{graph.Reopen{Target: target, Scope: scope, Recorded: rec}}
+	if len(o.Props) > 0 {
+		props := make(map[string]graph.Value, len(o.Props))
+		for k, v := range o.Props {
+			props[k] = v.Value
+		}
+		out = append(out, graph.Correct{Target: target, Set: props, Scope: scope, Recorded: rec})
+	}
+	for _, l := range o.Labels {
+		out = append(out, graph.AddLabel{Target: types.NodeID(o.ID), Label: l, Scope: scope, Recorded: rec})
+	}
+	return out, nil
+}
+
+func (o Op) recorded(c graph.Config) (temporal.Position, error) {
+	rec, err := types.InstantPosition(c.KnowledgeAxis.Axis(), types.Instant(o.Recorded), c.Limits)
+	if err != nil {
+		return rec, fmt.Errorf("recorded: %w", err)
+	}
+	return rec, nil
+}
+
 // Graph builds the v5 op for c: the scope on c.DefaultAxis, Recorded on
 // c.KnowledgeAxis (both millisecond axes). It does not validate; graph.CheckOp does.
 func (o Op) Graph(c graph.Config) (graph.Op, error) {
-	scope, err := o.Scope.temporal(c)
+	scope, err := o.scopeOf(c)
 	if err != nil {
 		return nil, err
 	}
@@ -36,9 +83,9 @@ func (o Op) Graph(c graph.Config) (graph.Op, error) {
 	}
 	switch o.Op {
 	case "create_node":
-		return graph.CreateNode{Labels: o.Labels, Props: props, Scope: scope, Recorded: rec}, nil
+		return graph.CreateNode{ID: types.NodeID(o.ID), Labels: o.Labels, Props: props, Scope: scope, Recorded: rec}, nil
 	case "create_rel":
-		return graph.CreateRel{Type: o.Type, From: types.NodeID(o.Start), To: types.NodeID(o.End), Props: props, Scope: scope, Recorded: rec}, nil
+		return graph.CreateRel{ID: types.RelID(o.ID), Type: o.Type, From: types.NodeID(o.Start), To: types.NodeID(o.End), Props: props, Scope: scope, Recorded: rec}, nil
 	case "correct":
 		return graph.Correct{Target: ref, Set: props, Scope: scope, Recorded: rec}, nil
 	case "unset":
@@ -53,6 +100,10 @@ func (o Op) Graph(c graph.Config) (graph.Op, error) {
 		return graph.Retract{Target: ref, Scope: scope, Recorded: rec}, nil
 	}
 	return nil, fmt.Errorf("importmap: unknown op %q", o.Op)
+}
+
+func (o Op) scopeOf(c graph.Config) (temporal.Scope, error) {
+	return o.Scope.temporal(c)
 }
 
 func (s Scope) temporal(c graph.Config) (temporal.Scope, error) {
