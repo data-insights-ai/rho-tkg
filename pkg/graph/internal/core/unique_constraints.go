@@ -390,7 +390,7 @@ func (c *Core) validateUniqueExisting(labelTok uint16, key string) (offenders []
 			return e
 		}
 		for _, n := range nodes {
-			vk, found := n.IndexablePropertyValueKey(key)
+			vk, found := uniqueValueKey(n, key)
 			if !found || vk == "" {
 				continue // node does not carry an indexable value → unconstrained
 			}
@@ -557,7 +557,7 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 			continue
 		}
 		for key, st := range byKey {
-			valueKey, found := node.IndexablePropertyValueKey(key)
+			valueKey, found := uniqueValueKey(node, key)
 			if !found || valueKey == "" {
 				continue // unconstrained (missing key or unindexable value)
 			}
@@ -569,7 +569,7 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 			checks = append(checks, uniqueCheckTuple{labelTok: labelTok, key: key, raw: raw, valueKey: valueKey, scope: st.scope})
 			stripes = append(stripes, uniqueValueStripe(labelTok, key, valueKey))
 			if prev != nil {
-				if oldKey, ok := prev.IndexablePropertyValueKey(key); ok && oldKey != "" && oldKey != valueKey {
+				if oldKey, ok := uniqueValueKey(prev, key); ok && oldKey != "" && oldKey != valueKey {
 					stripes = append(stripes, uniqueValueStripe(labelTok, key, oldKey))
 				}
 			}
@@ -673,4 +673,15 @@ func (co *ConstraintOps) DropUnique(ctx context.Context, label, propertyKey stri
 // UniqueConstraints returns a snapshot of the registered unique constraints.
 func (co *ConstraintOps) UniqueConstraints() []constraintspkg.UniqueConstraint {
 	return co.c.uniqueConstraintsList()
+}
+
+// uniqueValueKey is the key a unique constraint holds e's key value under:
+// its index key with an integer of any width mapped to the one key its equal
+// integers share (types.CanonicalIndexKey), so int(3) and int64(3) are one
+// value, as the equality lookups the constraint checks with find them.
+func uniqueValueKey(e interface {
+	IndexablePropertyValueKey(string) (string, bool)
+}, key string) (string, bool) {
+	vk, found := e.IndexablePropertyValueKey(key)
+	return types.CanonicalIndexKey(vk), found
 }

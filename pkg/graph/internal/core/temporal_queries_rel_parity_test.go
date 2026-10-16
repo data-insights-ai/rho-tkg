@@ -173,7 +173,7 @@ func TestRelationshipsByTypePropertyAndTime_TwoPhase(t *testing.T) {
 	}
 }
 
-func TestRelsByTypePropertyTemporalQueriesNaNPayloadsMatchWithinExactType(t *testing.T) {
+func TestRelsByTypePropertyTemporalQueriesNaNMatchesNothing(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
 	useTestClock(t, g)
@@ -208,25 +208,25 @@ func TestRelsByTypePropertyTemporalQueriesNaNPayloadsMatchWithinExactType(t *tes
 	if err != nil {
 		t.Fatalf("f64 at: %v", err)
 	}
-	assertRelSet(t, "f64 at", gotAt64, []types.RelID{a64.ID(), b64.ID()})
+	assertRelSet(t, "f64 at", gotAt64, nil)
 
 	gotDuring64, err := g.Temporal.RelsByTypePropertyDuring("MEASURES", "score", nanA64, start, at+1)
 	if err != nil {
 		t.Fatalf("f64 during: %v", err)
 	}
-	assertRelSet(t, "f64 during", gotDuring64, []types.RelID{a64.ID(), b64.ID()})
+	assertRelSet(t, "f64 during", gotDuring64, nil)
 
 	gotAt32, err := g.Temporal.RelsByTypePropertyAt("MEASURES", "score", nanA32, at)
 	if err != nil {
 		t.Fatalf("f32 at: %v", err)
 	}
-	assertRelSet(t, "f32 at", gotAt32, []types.RelID{a32.ID(), b32.ID()})
+	assertRelSet(t, "f32 at", gotAt32, nil)
 
 	gotDuring32, err := g.Temporal.RelsByTypePropertyDuring("MEASURES", "score", nanA32, start, at+1)
 	if err != nil {
 		t.Fatalf("f32 during: %v", err)
 	}
-	assertRelSet(t, "f32 during", gotDuring32, []types.RelID{a32.ID(), b32.ID()})
+	assertRelSet(t, "f32 during", gotDuring32, nil)
 }
 
 // Adversarial: multiple rels with diverging property timelines + exact-set

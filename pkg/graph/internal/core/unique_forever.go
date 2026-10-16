@@ -105,7 +105,13 @@ func (c *Core) loadUniqueForeverOwners() error {
 		if !ok {
 			return fmt.Errorf("graph: load unique-forever owners: %w: label %q not in registry", storepkg.ErrCorruptWire, r.Label)
 		}
-		c.uniqueOwners[foreverOwnerKey(tok, r.PropKey, r.ValueKey)] = types.NodeID(r.Owner)
+		// Owners recorded before v4.56.2 hold an integer under its width's key;
+		// two widths of one value (int(3), int64(3)) become one claim, kept by
+		// the smaller owner ID so every open decides alike.
+		key := foreverOwnerKey(tok, r.PropKey, types.CanonicalIndexKey(r.ValueKey))
+		if prev, ok := c.uniqueOwners[key]; !ok || types.NodeID(r.Owner) < prev {
+			c.uniqueOwners[key] = types.NodeID(r.Owner)
+		}
 	}
 	return nil
 }
@@ -336,7 +342,7 @@ func (c *Core) seedForeverOwnersFromCurrent(labelTok uint16, propKey string) err
 		}
 		owners = make(map[string]types.NodeID)
 		for _, n := range nodes {
-			vk, found := n.IndexablePropertyValueKey(propKey)
+			vk, found := uniqueValueKey(n, propKey)
 			if !found || vk == "" || isFloatValueKey(vk) {
 				continue
 			}
@@ -402,7 +408,7 @@ func (c *Core) releaseOwnership(ctx context.Context, label, propKey string, valu
 	if err != nil {
 		return err
 	}
-	valueKey := types.IndexablePropertyValueKey(value)
+	valueKey := types.CanonicalIndexKey(types.IndexablePropertyValueKey(value))
 	if valueKey == "" || isFloatValueKey(valueKey) {
 		return fmt.Errorf("%w: ReleaseOwnership value for key %q is not an indexable non-float scalar", ErrUniqueUnsupportedType, propKey)
 	}

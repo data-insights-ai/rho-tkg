@@ -121,7 +121,7 @@ func rowsCarryValue(rows []*types.Node, tp uniqueCheckTuple) bool {
 		if !hasLabel {
 			continue
 		}
-		if vk, ok := r.IndexablePropertyValueKey(tp.key); ok && vk == tp.valueKey {
+		if vk, ok := uniqueValueKey(r, tp.key); ok && vk == tp.valueKey {
 			return true
 		}
 	}

@@ -1,6 +1,10 @@
 package index
 
-import "math"
+import (
+	"math"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
 
 // PropertyStatsAccumulator maintains a HyperLogLog sketch (NDV) plus an
 // exact min/max pair for one (label, property key) pair. Shared by the
@@ -275,7 +279,9 @@ func scalarLess(a, b any) bool {
 		bs, _ := b.(string)
 		return as < bs
 	}
-	return numericValue(a) < numericValue(b)
+	fa, _ := types.NumericFloat64(a)
+	fb, _ := types.NumericFloat64(b)
+	return fa < fb
 }
 
 // scalarEqual reports whether two same-family values are equal, using the
@@ -285,38 +291,7 @@ func scalarEqual(a, b any) bool {
 		bs, _ := b.(string)
 		return as == bs
 	}
-	return numericValue(a) == numericValue(b)
-}
-
-// numericValue projects any property allowlist numeric type to float64 for
-// ordering purposes.
-func numericValue(v any) float64 {
-	switch n := v.(type) {
-	case int:
-		return float64(n)
-	case int8:
-		return float64(n)
-	case int16:
-		return float64(n)
-	case int32:
-		return float64(n)
-	case int64:
-		return float64(n)
-	case uint:
-		return float64(n)
-	case uint8:
-		return float64(n)
-	case uint16:
-		return float64(n)
-	case uint32:
-		return float64(n)
-	case uint64:
-		return float64(n)
-	case float32:
-		return float64(n)
-	case float64:
-		return n
-	default:
-		return 0
-	}
+	fa, _ := types.NumericFloat64(a)
+	fb, _ := types.NumericFloat64(b)
+	return fa == fb
 }

@@ -1691,7 +1691,7 @@ func TestNodesByLabelPropertyAndTime_WithPropertyIndex(t *testing.T) {
 	}
 }
 
-func TestNodesByLabelPropertyTemporalQueriesNaNPayloadsMatchWithinExactType(t *testing.T) {
+func TestNodesByLabelPropertyTemporalQueriesNaNMatchesNothing(t *testing.T) {
 	t.Parallel()
 
 	g := newTestGraph(t)
@@ -1718,6 +1718,7 @@ func TestNodesByLabelPropertyTemporalQueriesNaNPayloadsMatchWithinExactType(t *t
 	if err != nil {
 		t.Fatalf("Add b32: %v", err)
 	}
+	_, _ = b64, a32 // stored NaNs of both widths and payloads: none is equal to a NaN query
 	start := g.nodeValidFrom(a64)
 	at := g.nodeValidFrom(b32)
 
@@ -1727,25 +1728,25 @@ func TestNodesByLabelPropertyTemporalQueriesNaNPayloadsMatchWithinExactType(t *t
 		if err != nil {
 			t.Fatalf("%s f64 at: %v", name, err)
 		}
-		assertNodeSet(t, name+" f64 at", gotAt64, []types.NodeID{a64.ID(), b64.ID()})
+		assertNodeSet(t, name+" f64 at", gotAt64, nil)
 
 		gotDuring64, err := g.Temporal.NodesByLabelPropertyDuring("Reading", "score", nanA64, start, at+1)
 		if err != nil {
 			t.Fatalf("%s f64 during: %v", name, err)
 		}
-		assertNodeSet(t, name+" f64 during", gotDuring64, []types.NodeID{a64.ID(), b64.ID()})
+		assertNodeSet(t, name+" f64 during", gotDuring64, nil)
 
 		gotAt32, err := g.Temporal.NodesByLabelPropertyAt("Reading", "score", nanA32, at)
 		if err != nil {
 			t.Fatalf("%s f32 at: %v", name, err)
 		}
-		assertNodeSet(t, name+" f32 at", gotAt32, []types.NodeID{a32.ID(), b32.ID()})
+		assertNodeSet(t, name+" f32 at", gotAt32, nil)
 
 		gotDuring32, err := g.Temporal.NodesByLabelPropertyDuring("Reading", "score", nanA32, start, at+1)
 		if err != nil {
 			t.Fatalf("%s f32 during: %v", name, err)
 		}
-		assertNodeSet(t, name+" f32 during", gotDuring32, []types.NodeID{a32.ID(), b32.ID()})
+		assertNodeSet(t, name+" f32 during", gotDuring32, nil)
 	}
 
 	assertQueries("fallback")

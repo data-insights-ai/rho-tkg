@@ -1,0 +1,25 @@
+--- FAIL: TestPropertyEqualityWriteDoors (0.07s)
+    --- FAIL: TestPropertyEqualityWriteDoors/memory (0.00s)
+        numeric_equality_doors_test.go:252: CAS(expected 3.0) over int64(3) = false, <nil>; want swapped
+        numeric_equality_doors_test.go:255: CAS(expected NaN) over NaN = true, <nil>; want refused (NaN equals nothing)
+        numeric_equality_doors_test.go:284: U: int64(3) next to int(3): <nil>, want ErrUniqueViolation
+        numeric_equality_doors_test.go:284: UF: int64(3) next to int(3): <nil>, want ErrUniqueViolation
+        numeric_equality_doors_test.go:305: CountByLabelPropertyValue(9.007199254740992e+15): exact=false err=<nil>
+    --- FAIL: TestPropertyEqualityWriteDoors/badger (0.05s)
+        numeric_equality_doors_test.go:252: CAS(expected 3.0) over int64(3) = false, <nil>; want swapped
+        numeric_equality_doors_test.go:255: CAS(expected NaN) over NaN = true, <nil>; want refused (NaN equals nothing)
+        numeric_equality_doors_test.go:284: U: int64(3) next to int(3): <nil>, want ErrUniqueViolation
+        numeric_equality_doors_test.go:284: UF: int64(3) next to int(3): <nil>, want ErrUniqueViolation
+        numeric_equality_doors_test.go:305: CountByLabelPropertyValue(9.007199254740992e+15): exact=false err=<nil>
+    --- FAIL: TestPropertyEqualityWriteDoors/tiered (0.02s)
+        numeric_equality_doors_test.go:252: CAS(expected 3.0) over int64(3) = false, <nil>; want swapped
+        numeric_equality_doors_test.go:255: CAS(expected NaN) over NaN = true, <nil>; want refused (NaN equals nothing)
+    --- FAIL: TestPropertyEqualityWriteDoors/sharded (0.01s)
+        numeric_equality_doors_test.go:252: CAS(expected 3.0) over int64(3) = false, <nil>; want swapped
+        numeric_equality_doors_test.go:255: CAS(expected NaN) over NaN = true, <nil>; want refused (NaN equals nothing)
+        numeric_equality_doors_test.go:284: U: int64(3) next to int(3): <nil>, want ErrUniqueViolation
+        numeric_equality_doors_test.go:284: UF: int64(3) next to int(3): <nil>, want ErrUniqueViolation
+        numeric_equality_doors_test.go:305: CountByLabelPropertyValue(9.007199254740992e+15): exact=false err=<nil>
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.091s
+FAIL

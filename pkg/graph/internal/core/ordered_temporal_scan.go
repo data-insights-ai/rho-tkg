@@ -139,37 +139,3 @@ func numericInRange(f, min, max float64, inclMin, inclMax bool) bool {
 	}
 	return true
 }
-
-// coerceFloat64 converts an indexable numeric property value to float64. ok=false
-// for non-numeric values (matching the ordered numeric view, which indexes only
-// numeric sort keys).
-func coerceFloat64(v any) (float64, bool) {
-	switch x := v.(type) {
-	case int:
-		return float64(x), true
-	case int8:
-		return float64(x), true
-	case int16:
-		return float64(x), true
-	case int32:
-		return float64(x), true
-	case int64:
-		return float64(x), true
-	case uint:
-		return float64(x), true
-	case uint8:
-		return float64(x), true
-	case uint16:
-		return float64(x), true
-	case uint32:
-		return float64(x), true
-	case uint64:
-		return float64(x), true
-	case float32:
-		return float64(x), true
-	case float64:
-		return x, true
-	default:
-		return 0, false
-	}
-}

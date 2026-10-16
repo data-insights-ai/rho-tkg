@@ -10,44 +10,9 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// cypherEqual is the oracle of the equality counts: numbers by value with a
-// float32 widened, no crossing between kinds, nil and NaN never equal.
-func cypherEqual(a, b any) bool {
-	num := func(v any) (float64, bool) {
-		switch x := v.(type) {
-		case int:
-			return float64(x), true
-		case int64:
-			return float64(x), true
-		case int32:
-			return float64(x), true
-		case uint8:
-			return float64(x), true
-		case float32:
-			return float64(x), true
-		case float64:
-			return x, true
-		}
-		return 0, false
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	fa, na := num(a)
-	fb, nb := num(b)
-	if na || nb {
-		return na && nb && fa == fb
-	}
-	switch a.(type) {
-	case string, bool:
-		return a == b
-	}
-	return false
-}
-
 // TestCountByPropertyValue (sigma-tkgd round 7 request 4): on memory, badger
 // and sharded the equality counts equal a brute-force count of the current
-// rows Cypher equality keeps, through writes, updates and deletes; they
+// rows the property equality keeps (propertyEqual), through writes, updates and deletes; they
 // decline (exact=false, no error) without an index, for an unknown label or
 // type, under temporal opts, for a list value and on tiered.
 func TestCountByPropertyValue(t *testing.T) {
@@ -93,7 +58,7 @@ func TestCountByPropertyValue(t *testing.T) {
 		for _, q := range queries {
 			var wantNodes, wantRels int64
 			if err := g.Nodes().ForEachByLabel("Ref", storepkg.QueryOpts{}, func(n *types.Node) bool {
-				if v, ok := n.GetProperty("v"); ok && cypherEqual(q, v) {
+				if v, ok := n.GetProperty("v"); ok && propertyEqual(v, q) {
 					wantNodes++
 				}
 				return true
@@ -101,7 +66,7 @@ func TestCountByPropertyValue(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err := g.Rels().ForEachByType("R", storepkg.QueryOpts{}, func(r *types.Relationship) bool {
-				if v, ok := r.GetProperty("v"); ok && cypherEqual(q, v) {
+				if v, ok := r.GetProperty("v"); ok && propertyEqual(v, q) {
 					wantRels++
 				}
 				return true
@@ -148,8 +113,9 @@ func TestCountByPropertyValue(t *testing.T) {
 		declined("TxPin", c, e, err)
 		c, e, err = g.Nodes().CountByLabelPropertyValue("Ref", "v", []any{int64(3)}, storepkg.QueryOpts{})
 		declined("list", c, e, err)
-		c, e, err = g.Nodes().CountByLabelPropertyValue("Ref", "v", int64(1<<53+1), storepkg.QueryOpts{})
-		declined("past 2^53", c, e, err)
+		if c, e, err = g.Nodes().CountByLabelPropertyValue("Ref", "v", int64(1<<53+1), storepkg.QueryOpts{}); err != nil || (!e && !b.tiered) || c != 0 {
+			t.Errorf("past 2^53: %d exact=%v err=%v, want 0 exact (compared exactly)", c, e, err)
+		}
 
 		if err := g.Close(); err != nil {
 			t.Fatal(err)

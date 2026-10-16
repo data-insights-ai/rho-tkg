@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 
-	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -87,32 +86,45 @@ func (c *Core) highFrequencyIndexCap() (storepkg.HighFrequencyIndexCapability, e
 }
 
 // nodesByLabelAndProperty answers the (label-token, property-key, value) query
-// with or without the accelerated capability. Exact in-tree stores and direct
-// external implementations use NodesByLabelAndProperty; concrete wrappers that
-// inherit it fall back to a label scan so their NodesByLabel overrides stay
-// visible. The capability is acceleration, not query correctness.
-//
-// Empty-key contract: indexpkg.PropertyValueKey returns "" for values it cannot
-// canonicalise (slices, maps, structs without HashableValue). Such queries match
-// nothing, as in the in-tree backends; otherwise every unindexable stored value
-// would also canonicalise to "" and match falsely.
+// with or without the accelerated capability, under the property equality
+// (property_equal.go): the value's forms are looked up one exact key each and
+// united. Exact in-tree stores and direct external implementations use
+// NodesByLabelAndProperty (per form only where a property index serves it, so
+// a store's own scan runs once); concrete wrappers that inherit it fall back to
+// a label scan so their NodesByLabel overrides stay visible. The capability is
+// acceleration, not query correctness. A value without forms (nil, NaN, a
+// list, a map) matches nothing.
 func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
-	wantKey := indexpkg.PropertyValueKey(value)
-	if wantKey == "" {
-		// The query value is not canonicalisable: no matches, as in memory/badger.
+	forms := types.EqualIndexValues(value)
+	if len(forms) == 0 {
 		return nil, nil
 	}
-	if c.propertyQuery != nil {
-		nodes, err := c.propertyQuery.NodesByLabelAndProperty(tok, key, value, opts)
+	perForm := c.propertyQuery != nil && len(forms) == 1
+	if c.propertyQuery != nil && !perForm {
+		indexed, err := c.nodePropertyIndexed(tok, key)
 		if err != nil {
 			return nil, err
+		}
+		perForm = indexed
+	}
+	if perForm {
+		var nodes []*types.Node
+		for _, form := range forms {
+			found, err := c.propertyQuery.NodesByLabelAndProperty(tok, key, form, opts)
+			if err != nil {
+				return nil, err
+			}
+			nodes = append(nodes, found...)
+		}
+		if len(forms) > 1 {
+			nodes = uniteNodes(nodes, opts)
 		}
 		if !c.propertyQueryTrust {
 			elements, err := c.nodeIndexElements(tok, key)
 			if err != nil {
 				return nil, err
 			}
-			if err := validateNodesByLabelAndProperty(tok, key, wantKey, elements, opts, nodes); err != nil {
+			if err := validateNodesByLabelAndProperty(tok, key, keysOf(forms), elements, opts, nodes); err != nil {
 				return nil, err
 			}
 			nodes = copyNodeRows(nodes)
@@ -136,10 +148,10 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 	if err != nil {
 		return nil, err
 	}
+	keys := keysOf(forms)
 	out := make([]*types.Node, 0, len(candidates))
 	for _, n := range candidates {
-		// HasPropertyIndexKey never matches through the empty key of an unindexable value.
-		if n.HasPropertyIndexKey(key, elements, wantKey) {
+		if keys.node(n, key, elements) {
 			out = append(out, n)
 		}
 	}
@@ -152,16 +164,37 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 
 // nodesByLabelAndProperties answers the (label-token, values map) composite
 // equality query with or without CompositePropertyIndexCapability; same shape as
-// nodesByLabelAndProperty (see its empty-key note, which applies per component
-// via indexpkg.NodeMatchesAllProperties).
+// nodesByLabelAndProperty: with a value of several forms the composite lookup
+// runs per combination of forms where a composite index serves it, else the
+// label scan filters every pair by its equal keys.
 func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
-	if c.compositeQuery != nil {
-		nodes, err := c.compositeQuery.NodesByLabelAndProperties(tok, values, opts)
+	forms, multi := equalForms(values)
+	if forms == nil {
+		return nil, nil
+	}
+	want := equalKeysOf(values)
+	perCombination := c.compositeQuery != nil && !multi
+	if c.compositeQuery != nil && multi {
+		indexed, err := c.compositeIndexed(tok, values)
 		if err != nil {
 			return nil, err
 		}
+		perCombination = indexed
+	}
+	if perCombination {
+		var nodes []*types.Node
+		if err := forEachFormCombination(forms, func(combo map[string]any) error {
+			found, err := c.compositeQuery.NodesByLabelAndProperties(tok, combo, opts)
+			nodes = append(nodes, found...)
+			return err
+		}); err != nil {
+			return nil, err
+		}
+		if multi {
+			nodes = uniteNodes(nodes, opts)
+		}
 		if !c.compositeQueryTrust {
-			if err := validateNodesByLabelAndProperties(tok, values, opts, nodes); err != nil {
+			if err := validateNodesByLabelAndProperties(tok, want, opts, nodes); err != nil {
 				return nil, err
 			}
 			nodes = copyNodeRows(nodes)
@@ -182,10 +215,9 @@ func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts
 	}
 	out := make([]*types.Node, 0, len(candidates))
 	for _, n := range candidates {
-		if !indexpkg.NodeMatchesAllProperties(n, values) {
-			continue
+		if nodeMatchesAllEqual(n, want) {
+			out = append(out, n)
 		}
-		out = append(out, n)
 	}
 	out = storeutil.PaginateNodes(out, opts.After, opts.Limit)
 	if !c.storeRowsTrust {

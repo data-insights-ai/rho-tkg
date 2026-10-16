@@ -698,9 +698,9 @@ func buildNumericColumn[T EntityID](ids []T, key string, n int, present bitset, 
 //
 // All signed/unsigned integer widths up to 32 bits fit int64 exactly. uint/uint64
 // need a range check: only values <= math.MaxInt64 fit, and a larger magnitude
-// becomes float64 — the same magnitude-only precision trade-off numericValue in
-// property_stats_accumulator.go already documents and accepts, rather than letting
-// a raw int64(x) cast silently wrap negative.
+// becomes float64 — the same magnitude-only precision trade-off the statistics'
+// numeric projection (types.NumericFloat64) accepts, rather than letting a raw
+// int64(x) cast silently wrap negative.
 func normalizeNumeric(v any) (int64, float64, bool) {
 	switch x := v.(type) {
 	case int64:

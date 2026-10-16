@@ -406,10 +406,6 @@ func TestScalarLessAllNumericTypes(t *testing.T) {
 			t.Errorf("%s: scalarEqual(lo, hi) = true, want false", tc.name)
 		}
 	}
-	// An unrecognized type (numericValue's default branch) projects to 0.
-	if numericValue(struct{}{}) != 0 {
-		t.Errorf("numericValue(unrecognized type) != 0")
-	}
 }
 
 // TestScalarLessAndEqualStrings exercises scalarLess/scalarEqual's string

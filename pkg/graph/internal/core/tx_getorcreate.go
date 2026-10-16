@@ -41,7 +41,7 @@ func (tx *GraphTx) getOrCreateByKeyLocked(ctx context.Context, label, propertyKe
 	}
 
 	// Reject float (bit-pattern equality trap, lesson 25) and non-scalar values up front.
-	valueKey := types.IndexablePropertyValueKey(value)
+	valueKey := types.CanonicalIndexKey(types.IndexablePropertyValueKey(value))
 	if valueKey == "" {
 		return nil, false, fmt.Errorf("%w: GetOrCreateByKey value for key %q is not an indexable scalar", ErrUniqueUnsupportedType, propertyKey)
 	}

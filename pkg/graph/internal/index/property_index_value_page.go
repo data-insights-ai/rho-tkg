@@ -65,7 +65,9 @@ func (s valueSets) find(id snowflake.ID) (any, bool) {
 }
 
 // typedSets returns the value sets of every stored numeric type whose sort
-// key is k (non-empty sets only).
+// key is k (non-empty sets only): k's equal forms (types.EqualIndexValues), and
+// float32(k), whose shortest decimal rendering sorts it at k even where its
+// float64 widening is not k.
 func (pi *PropertyIndex) typedSets(k float64) valueSets {
 	var out valueSets
 	add := func(v any) {
@@ -73,38 +75,11 @@ func (pi *PropertyIndex) typedSets(k float64) valueSets {
 			out = append(out, valueSet{value: v, ids: set})
 		}
 	}
-	add(k)
-	if math.Abs(k) <= math.MaxFloat32 || math.IsInf(k, 0) {
-		add(float32(k))
+	for _, v := range types.EqualIndexValues(k) {
+		add(v)
 	}
-	if k != math.Trunc(k) || math.Abs(k) > maxExactInt {
-		return out
-	}
-	i := int64(k)
-	add(i)
-	add(int(i))
-	if i >= math.MinInt32 && i <= math.MaxInt32 {
-		add(int32(i))
-	}
-	if i >= math.MinInt16 && i <= math.MaxInt16 {
-		add(int16(i))
-	}
-	if i >= math.MinInt8 && i <= math.MaxInt8 {
-		add(int8(i))
-	}
-	if i >= 0 {
-		u := uint64(i)
-		add(u)
-		add(uint(u))
-		if u <= math.MaxUint32 {
-			add(uint32(u))
-		}
-		if u <= math.MaxUint16 {
-			add(uint16(u))
-		}
-		if u <= math.MaxUint8 {
-			add(uint8(u))
-		}
+	if f32 := float32(k); float64(f32) != k && math.Abs(k) <= math.MaxFloat32 {
+		add(f32)
 	}
 	return out
 }

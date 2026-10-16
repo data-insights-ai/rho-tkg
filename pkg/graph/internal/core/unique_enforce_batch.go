@@ -55,7 +55,7 @@ func (c *Core) nodeUniqueValueKeys(node *types.Node, labels []string) (map[strin
 			continue
 		}
 		for key, st := range byKey {
-			valueKey, found := node.IndexablePropertyValueKey(key)
+			valueKey, found := uniqueValueKey(node, key)
 			if !found || valueKey == "" {
 				continue
 			}

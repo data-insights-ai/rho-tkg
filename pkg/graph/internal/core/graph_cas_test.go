@@ -250,25 +250,30 @@ func TestCAS_History(t *testing.T) {
 	}
 }
 
-func TestCAS_TypeMismatch(t *testing.T) {
+func TestCAS_NumericAcrossWidths(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{Store: memory.New()})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"v": int(42)})
 	id := n.ID()
 
-	// int64(42) != int(42) — type must match exactly.
-	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "v", int64(42), int(99))
+	// The property equality: a string never equals a number.
+	ok, err := g.Nodes.CompareAndSetProperty(context.Background(), id, "v", "42", int(7))
+	if err != nil || ok {
+		t.Fatalf("CAS(expected \"42\") over int(42) = %v, %v; want refused", ok, err)
+	}
+	// int64(42) equals int(42): numbers by value across widths.
+	ok, err = g.Nodes.CompareAndSetProperty(context.Background(), id, "v", int64(42), int(99))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok {
-		t.Fatal("CAS should fail: int64(42) != int(42)")
+	if !ok {
+		t.Fatal("CAS should swap: int64(42) equals int(42)")
 	}
 
 	got, _ := g.Nodes.Get(context.Background(), id)
 	v, _ := got.GetProperty("v")
-	if v != int(42) {
-		t.Fatalf("v = %v, want 42 (unchanged)", v)
+	if v != int(99) {
+		t.Fatalf("v = %v (%T), want int 99", v, v)
 	}
 }
 
@@ -307,8 +312,8 @@ func TestCAS_NaNExpectedMatchesAcceptedPropertyShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok {
-		t.Fatal("CAS should match scalar NaN properties")
+	if ok {
+		t.Fatal("CAS should not match a scalar NaN (NaN equals nothing)")
 	}
 
 	ok, err = g.Nodes.CompareAndSetProperty(context.Background(), id, "vec", []float32{1, float32(math.NaN())}, "matched")
@@ -943,22 +948,22 @@ func TestRelCAS_History(t *testing.T) {
 	}
 }
 
-func TestRelCAS_TypeMismatch(t *testing.T) {
+func TestRelCAS_NumericAcrossWidths(t *testing.T) {
 	t.Parallel()
 	g, id := newRelCASFixture(t, map[string]any{"v": int(42)})
 
-	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "v", int64(42), int(99))
+	ok, err := g.Rels.CompareAndSetProperty(context.Background(), id, "v", 42.0, int(99))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok {
-		t.Fatal("relationship CAS should fail: int64(42) != int(42)")
+	if !ok {
+		t.Fatal("relationship CAS should swap: 42.0 equals int(42)")
 	}
 
 	got, _ := g.Rels.Get(context.Background(), id)
 	v, _ := got.GetProperty("v")
-	if v != int(42) {
-		t.Fatalf("v = %v, want 42 (unchanged)", v)
+	if v != int(99) {
+		t.Fatalf("v = %v (%T), want int 99", v, v)
 	}
 }
 
@@ -973,8 +978,8 @@ func TestRelCAS_NaNExpectedMatchesAcceptedPropertyShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok {
-		t.Fatal("relationship CAS should match scalar NaN properties")
+	if ok {
+		t.Fatal("relationship CAS should not match a scalar NaN (NaN equals nothing)")
 	}
 
 	ok, err = g.Rels.CompareAndSetProperty(context.Background(), id, "trail", []any{float32(math.NaN()), "done"}, "matched")

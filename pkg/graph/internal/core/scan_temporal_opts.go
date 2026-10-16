@@ -104,7 +104,7 @@ func forEachNodeInRangeTemporal(c *Core, label, propKey string, min, max float64
 		if !ok {
 			continue
 		}
-		if f, ok := coerceFloat64(v); !ok || f < min || f > max {
+		if f, ok := types.NumericFloat64(v); !ok || f < min || f > max {
 			continue
 		}
 		if !fn(n) {
@@ -139,7 +139,7 @@ func forEachRelInRangeTemporal(c *Core, typeName, propKey string, min, max float
 		if !ok {
 			continue
 		}
-		if f, ok := coerceFloat64(v); !ok || f < min || f > max {
+		if f, ok := types.NumericFloat64(v); !ok || f < min || f > max {
 			continue
 		}
 		if !fn(r) {

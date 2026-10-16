@@ -98,7 +98,7 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 	}
 
 	// --- Compare gate ---
-	found, equal := current.PropertyValueEqual(key, expected)
+	found, equal := casGate(current.GetProperty, current.PropertyValueEqual, key, expected)
 	if expected == nil {
 		// "property must not exist"
 		if found {
@@ -291,7 +291,7 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 		return false, false, err
 	}
 
-	found, equal := current.PropertyValueEqual(key, expected)
+	found, equal := casGate(current.GetProperty, current.PropertyValueEqual, key, expected)
 	if expected == nil {
 		if found {
 			return false, false, nil
@@ -390,5 +390,16 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 }
 
 func propertyCASValueEqual(cur, expected any) bool {
-	return types.PropertyValueEqual(cur, expected)
+	return types.PropertyEqual(cur, expected)
+}
+
+// casGate reports whether key exists and its value equals expected under the
+// property equality (types.PropertyEqual): a numeric expected reads the
+// stored scalar, any other compares in place without a copy.
+func casGate(get func(string) (any, bool), same func(string, any) (bool, bool), key string, expected any) (found, equal bool) {
+	if _, num := types.NumericFloat64(expected); !num {
+		return same(key, expected)
+	}
+	cur, found := get(key)
+	return found, found && propertyCASValueEqual(cur, expected)
 }

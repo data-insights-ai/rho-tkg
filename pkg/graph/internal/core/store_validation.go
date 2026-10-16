@@ -3,7 +3,6 @@ package core
 import (
 	"fmt"
 
-	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -12,24 +11,24 @@ import (
 // query that bypasses storeRowsTrust funnels through one of these helpers so
 // the trust boundary is uniform: validate before deep-copy.
 
-func validateNodesByLabelAndProperty(labelToken uint16, key, wantKey string, elements bool, opts storepkg.QueryOpts, nodes []*types.Node) error {
+func validateNodesByLabelAndProperty(labelToken uint16, key string, want equalKeys, elements bool, opts storepkg.QueryOpts, nodes []*types.Node) error {
 	for _, n := range nodes {
 		if err := validateNodeByLabelRow(labelToken, n); err != nil {
 			return err
 		}
-		if !n.HasPropertyIndexKey(key, elements, wantKey) {
+		if !want.node(n, key, elements) {
 			return fmt.Errorf("%w: property query node %d does not match property %q", storepkg.ErrInvalidStoreMutation, n.ID(), key)
 		}
 	}
 	return validateNodeRowPage(nodes, opts, "NodesByLabelAndProperty")
 }
 
-func validateNodesByLabelAndProperties(labelToken uint16, values map[string]any, opts storepkg.QueryOpts, nodes []*types.Node) error {
+func validateNodesByLabelAndProperties(labelToken uint16, want map[string]equalKeys, opts storepkg.QueryOpts, nodes []*types.Node) error {
 	for _, n := range nodes {
 		if err := validateNodeByLabelRow(labelToken, n); err != nil {
 			return err
 		}
-		if !indexpkg.NodeMatchesAllProperties(n, values) {
+		if !nodeMatchesAllEqual(n, want) {
 			return fmt.Errorf("%w: composite property query node %d does not match requested properties", storepkg.ErrInvalidStoreMutation, n.ID())
 		}
 	}
@@ -46,12 +45,12 @@ func validateNodeByLabelRow(labelToken uint16, n *types.Node) error {
 	return nil
 }
 
-func validateRelsByTypeAndProperty(typeToken uint16, key, wantKey string, elements bool, opts storepkg.QueryOpts, rels []*types.Relationship) error {
+func validateRelsByTypeAndProperty(typeToken uint16, key string, want equalKeys, elements bool, opts storepkg.QueryOpts, rels []*types.Relationship) error {
 	for _, r := range rels {
 		if err := validateRelationshipByTypeRow(typeToken, r); err != nil {
 			return err
 		}
-		if !r.HasPropertyIndexKey(key, elements, wantKey) {
+		if !want.rel(r, key, elements) {
 			return fmt.Errorf("%w: property query relationship %d does not match property %q", storepkg.ErrInvalidStoreMutation, r.ID(), key)
 		}
 	}

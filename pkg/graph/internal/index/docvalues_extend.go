@@ -3,6 +3,8 @@ package index
 import (
 	"cmp"
 	"slices"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Extend returns a NEW snapshot covering this snapshot's rows plus newIDs, without
@@ -240,7 +242,7 @@ func extendColumn[T EntityID](c *docColumn, added []T, key string, oldN, n int,
 			if !ok || v == nil {
 				continue
 			}
-			if !isNumericScalar(v) {
+			if _, numeric := types.NumericFloat64(v); !numeric {
 				return nil // a string/bool/list in a numeric column
 			}
 			iv, fv, isF := normalizeNumeric(v)
@@ -292,16 +294,4 @@ func extendColumn[T EntityID](c *docColumn, added []T, key string, oldN, n int,
 		return out
 	}
 	return nil
-}
-
-// isNumericScalar reports whether v is one of the numeric widths normalizeNumeric
-// accepts, distinguishing a genuine zero from an unsupported type.
-func isNumericScalar(v any) bool {
-	switch v.(type) {
-	case int64, int, int32, int16, int8,
-		uint64, uint, uint32, uint16, uint8,
-		float64, float32:
-		return true
-	}
-	return false
 }

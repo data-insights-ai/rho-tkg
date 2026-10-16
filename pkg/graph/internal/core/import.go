@@ -226,7 +226,7 @@ func (c *Core) validateUniqueAfterImportLocked() error {
 			return fmt.Errorf("graph: import unique validation: %w", err)
 		}
 		for _, n := range nodes {
-			vk, found := n.IndexablePropertyValueKey(ac.key)
+			vk, found := uniqueValueKey(n, ac.key)
 			if !found || vk == "" {
 				continue
 			}
