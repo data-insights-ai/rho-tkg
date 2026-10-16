@@ -31,11 +31,11 @@ raftlog seams. The distributed engine (`internal/dist`) is not part of it.
 
 ### Reading
 
-- `SnapshotSpec` built by `Fresh()`, `Stable()`, `At(Cut)`, `After(Receipt)`; `SnapshotSpec.Validate`.
+- `SnapshotSpec` built by `Fresh()`, `Stable()`, `At(Cut)`, `After(Receipt)`, `AtKnown(types.Instant)` (the newest commit whose knowledge instant is at or before it; an earlier instant reads the empty graph; its `Cut` reopens with `At`); `SnapshotSpec.Validate`.
 - `Snapshot`: `Snapshot.Scan`, `Snapshot.Lookup`, `Snapshot.Timeline`, `Snapshot.Resume`, `Snapshot.Cut`, `Snapshot.Close`.
 - Requests: `ScanRequest`, `LookupRequest`, `TimelineRequest`, each with `Validate(temporal.Limits)` (`ScanRequest.Validate`, `LookupRequest.Validate`, `TimelineRequest.Validate`); `Selector` (`View`, `Valid`, `Known`, `Labels`, `RelType`, `Equals []PropertyEq`; `Selector.Validate`, `CheckSelector(Config, Selector)`); `Projection`; `PageLimits` (`Rows`, `MaxBytes`; `PageLimits.Validate`); results `Page` and `Entity`.
 - `View`: `ViewDeclared`, `ViewEffective`. Every read names its view, its valid scope and its knowledge scope.
-- Tokens are opaque, serialisable and minted by the engine only: `Receipt` (`Receipt.Bytes`, `Receipt.IsZero`, `ParseReceipt`), `Cut` (`Cut.Bytes`, `Cut.IsZero`, `ParseCut`), `Cursor` (`Cursor.Bytes`, `Cursor.IsZero`, `Cursor.Validate`, `ParseCursor`).
+- Tokens are opaque, serialisable and minted by the engine only: `Receipt` (`Receipt.Bytes`, `Receipt.IsZero`, `Receipt.KnowledgeInstant` (the commit's strictly increasing knowledge instant on `Config.KnowledgeAxis`), `ParseReceipt`), `Cut` (`Cut.Bytes`, `Cut.IsZero`, `ParseCut`), `Cursor` (`Cursor.Bytes`, `Cursor.IsZero`, `Cursor.Validate`, `ParseCursor`).
 - `Ref`: `NodeRef`, `RelRef`, `Ref.IsRel`, `Ref.Node`, `Ref.Rel`, `Ref.Validate`.
 
 ### Values
@@ -60,7 +60,7 @@ Match with `errors.Is`.
 
 | Sentinel | Meaning |
 |---|---|
-| `ErrNotImplemented` | door or scope not built (a `Known` scope other than All; no engine attached) |
+| `ErrNotImplemented` | door not built (provenance projection; no engine attached) |
 | `ErrInvalidConfig`, `ErrInvalidScope`, `ErrInvalidID`, `ErrInvalidBound`, `ErrInvalidOp`, `ErrInvalidSelector`, `ErrInvalidSnapshotSpec`, `ErrInvalidValue`, `ErrInvalidCut`, `ErrInvalidReceipt`, `ErrInvalidCursor`, `ErrInvalidRequest` | argument refused before any work; `ErrInvalidID` is also `types.ErrInvalidID` |
 | `ErrClosed` | nil, zero or closed `Graph` / `Snapshot` |
 | `ErrTxDone` | `Tx` used after its `Update` returned |
@@ -88,10 +88,10 @@ Separate module (`github.com/data-insights-ai/rho-tkg/v5compat`) mirroring the 1
 
 Documented, not defects; each names the work package that lifts it.
 
-- `v5compat` keeps a side commit ledger, stores `~tf` / `~dt` shadow time properties, and commits per instant (the per-instant commits go after WP-30).
+- `v5compat` keeps a side commit ledger, stores `~tf` / `~dt` shadow time properties, and commits per instant (WP-35 removes the per-instant commits and the ledger using `AtKnown` and `Receipt.KnowledgeInstant`).
 - `v5compat` `GetOrCreate` serialises with an in-process lock only (WP-34 adds the directory lock and runtime uniqueness).
 - `v5compat` Stats and `Tx.Begin` are declined (WP-35).
-- `Snapshot.Scan` with a `Known` scope other than All is `ErrNotImplemented`; Scan serves label and equality pages with a per-candidate recheck.
+- `Selector.Known` is an upper bound ("known by t"; lower bound ignored): a revision is known at its latest `Recorded` instant, else its commit knowledge instant; an entity shows the state after its longest known revision prefix. A bound below the view's newest commit bypasses the index pages (full scan). Scan serves label and equality pages with a per-candidate recheck. Range moves refuse a source holding revision rows until they are carried (WP-28).
 - Op log and range-move export refuse caller-instant evidence (`Recorded`), and the distributed codecs refuse `LifeEnd`, Bytes and List until WP-28; v5.0 is one partition.
 - `OpenSnapshot` has no partition or graph read scope; `SnapshotSpec` keeps unexported fields so one can be added.
 - Retired index markers accumulate until compaction (WP-08 note).
