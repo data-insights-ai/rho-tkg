@@ -119,12 +119,11 @@ func (Adapter) Open(t testing.TB, o conformance.Options) (conformance.Graph, err
 
 // Graph maps the suite doors onto *graph.Graph.
 type Graph struct {
-	t     testing.TB
-	mu    sync.Mutex
-	g     *graph.Graph
-	cfg   graph.Config
-	pins  []graph.Cut
-	kinds map[string]string
+	t    testing.TB
+	mu   sync.Mutex
+	g    *graph.Graph
+	cfg  graph.Config
+	pins []graph.Cut
 }
 
 var _ conformance.Graph = (*Graph)(nil)
@@ -340,34 +339,6 @@ func fromValue(v graph.Value) any {
 	return nil
 }
 
-// propName keeps the engine's one-kind-per-key rule visible: the first value's
-// kind owns the plain key; an exact numeric of the other numeric kind converts;
-// any other kind goes to a side property "key#kind" (v4 keys are dynamically
-// typed, the engine's are not) and reads fold both back under the user's key.
-func (w *Graph) propName(key string, v graph.Value) string {
-	tag := kindTag(v)
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.kinds == nil {
-		w.kinds = map[string]string{}
-	}
-	first, ok := w.kinds[key]
-	if !ok {
-		w.kinds[key] = tag
-		return key
-	}
-	if first == tag {
-		return key
-	}
-	if f, isF := v.AsFloat(); isF && first == "i" && f == math.Trunc(f) && math.Abs(f) < 1<<53 {
-		return key
-	}
-	if i, isI := v.AsInt(); isI && first == "f" && i > -(1<<53) && i < 1<<53 {
-		return key
-	}
-	return key + "#" + tag
-}
-
 func (w *Graph) props(in map[string]any) (map[string]graph.Value, error) {
 	out := make(map[string]graph.Value, len(in))
 	for k, x := range in {
@@ -378,7 +349,7 @@ func (w *Graph) props(in map[string]any) (map[string]graph.Value, error) {
 		if err != nil {
 			return nil, err
 		}
-		out[w.propName(k, v)] = v
+		out[k] = v
 	}
 	return out, nil
 }
@@ -387,7 +358,7 @@ func userKey(name string) (string, bool) {
 	if strings.HasPrefix(name, "~") {
 		return "", false
 	}
-	if i := strings.IndexAny(name, "@#"); i >= 0 {
+	if i := strings.IndexByte(name, '@'); i >= 0 { // a seeded unique claim "key@label#kind"
 		name = name[:i]
 	}
 	return name, true
