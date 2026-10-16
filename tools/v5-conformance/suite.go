@@ -116,6 +116,9 @@ var ctx = context.Background()
 func open(t *testing.T, a Adapter, backfill bool) Graph {
 	t.Helper()
 	g, err := a.Open(t, Options{AllowTxBackfill: backfill && curProfile == Compat})
+	if errors.Is(err, ErrNotImplemented) {
+		t.Skipf("door not implemented: %v", err)
+	}
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -126,6 +129,9 @@ func openDir(t *testing.T, a Adapter) (Graph, string) {
 	t.Helper()
 	dir := t.TempDir()
 	g, err := a.Open(t, Options{Dir: dir, AllowTxBackfill: curProfile == Compat})
+	if errors.Is(err, ErrNotImplemented) {
+		t.Skipf("door not implemented: %v", err)
+	}
 	if err != nil {
 		t.Fatalf("open persistent: %v", err)
 	}

@@ -8,6 +8,7 @@ require (
 	github.com/bds421/rho-mclock v0.2.1 // indirect
 	github.com/bds421/rho-snowflake-2026 v1.3.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/data-insights-ai/rho-tkg/v5 v5.0.0
 	github.com/dgraph-io/badger/v4 v4.9.2 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -22,5 +23,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.42.0 // indirect
 	go.opentelemetry.io/otel/trace v1.42.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
-	google.golang.org/protobuf v1.36.7 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+replace github.com/data-insights-ai/rho-tkg/v5 => ../../v5

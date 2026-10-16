@@ -30,6 +30,9 @@ var (
 	ErrVersionClosed    = errors.New("conformance: version already closed")
 	ErrConflictingOpts  = errors.New("conformance: conflicting query options")
 	ErrPinTooNew        = errors.New("conformance: transaction pin above the commit clock")
+	// ErrNotImplemented marks an adapter whose implementation has no engine yet;
+	// the suite skips (not fails) a case whose graph cannot be opened for it.
+	ErrNotImplemented = errors.New("conformance: implementation not available")
 )
 
 // Interval is a valid-time span in milliseconds. A zero field means unset.
