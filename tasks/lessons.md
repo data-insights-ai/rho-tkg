@@ -656,3 +656,7 @@ René 2026-10-16: "make new fast tests for new developed code parts.. and long t
 version.. lets group commits then together with short tests (a couple of seconds)".
 Trigger: writing a new test, or choosing what to run before a commit.
 Detector: `go test -short` of a touched package takes more than ~5 s, or a commit's gate ran the long suite.
+Recurred 2026-10-16 (v4.58.0 gate): the race-aware long tier (`testing.Short() && !race`) hid two tests that still pinned the
+old tiered decline, so WP-31's builder and reviewer runs (`-short`) never saw them and only the release gate did. Rule: a
+contract change (a door that now succeeds, a sentinel no longer returned) greps every test pinning the old outcome and runs
+those by name with `-race` before the branch is reported done.
