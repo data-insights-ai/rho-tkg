@@ -111,6 +111,25 @@ class NativeSelectorsGuards(unittest.TestCase):
                 phantom["found"]=True
                 with self.assertRaises(ValueError):check.point(self.spec,phantom,6,spool)
 
+    def test_actual_nil_label_nodes_and_absence_keep_exact_typed_joins(self):
+        node={"id":1,"found":True,"effective":True,"kind":1,"type":"","mode":0,"source":0,"target":0,"effectiveLife":2,
+              "labels":None,"presence":{"present":True,"null":False,"handle":2,"revision":3,"provenance":1,"kind":"life","i64":0},"property":dict(check.EMPTY_CELL)}
+        absent={"id":86,"found":False,"effective":False,"kind":0,"type":"","mode":0,"source":0,"target":0,"effectiveLife":0,
+                "labels":None,"presence":dict(check.EMPTY_CELL),"property":dict(check.EMPTY_CELL)}
+        with tempfile.TemporaryDirectory() as directory:
+            with Spool(directory,Policy(1<<20,65536,4096,check.LINE)) as spool:
+                expected=dict(zip(check.column.CELL,(True,False,2,0,3,1)))
+                spool.insert(b"row",u64(1)+u64(1)+b"\1",check.encoded({"After":expected}))
+                for entity in (node,absent):
+                    check.point(self.spec,entity,5,spool)
+                    check.point(self.spec,{**entity,"labels":[]},5,spool)
+                    for labels in (["phantom"],[1],"",False,0,{}):
+                        with self.assertRaises(ValueError):check.point(self.spec,{**entity,"labels":labels},5,spool)
+                    missing=dict(entity);del missing["labels"]
+                    with self.assertRaises(ValueError):check.point(self.spec,missing,5,spool)
+                changed=copy.deepcopy(node);changed["presence"]["revision"]=4
+                with self.assertRaises(ValueError):check.point(self.spec,changed,5,spool)
+
     def test_shared_answers_require_authenticated_full_source_observations(self):
         with tempfile.TemporaryDirectory() as directory:
             with Spool(directory,Policy(1<<20,65536,4096,check.LINE)) as spool:

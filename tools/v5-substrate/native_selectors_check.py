@@ -126,11 +126,12 @@ def cell(actual, expected, kind):
 
 def point(s, entity, value, spool, *, guarded_updates=False):
     fields(entity,"id found effective kind type mode source target effectiveLife labels presence property")
+    require(entity["labels"] in (None,[]),"native scalar point has exactly no labels")
     identity=integer(entity["id"],1);require(type(entity["found"]) is type(entity["effective"]) is bool,"point existence booleans")
     for name in ("kind","mode","source","target","effectiveLife"):integer(entity[name])
     remote=2*s["facts"]+7
     if value==0 or identity==6+2*s["facts"]:
-        require(entity=={"id":identity,"found":False,"effective":False,"kind":0,"type":"","mode":0,"source":0,"target":0,"effectiveLife":0,
+        require(entity|{"labels":[]}=={"id":identity,"found":False,"effective":False,"kind":0,"type":"","mode":0,"source":0,"target":0,"effectiveLife":0,
                          "labels":[],"presence":EMPTY_CELL,"property":EMPTY_CELL},"phantom/nonempty initial answer")
         return
     if identity in (1,3,remote):
@@ -139,7 +140,7 @@ def point(s, entity, value, spool, *, guarded_updates=False):
                 and entity["property"]==EMPTY_CELL,"native immutable node descriptor")
         expected=decoded(spool.lookup(b"row",u64(ordinal)+u64(identity)+b"\1"))["After"]
         cell(entity["presence"],expected,"life")
-        require(entity["found"] and entity["effective"] and entity["effectiveLife"]==identity+1 and entity["labels"]==[],"native node presence/life")
+        require(entity["found"] and entity["effective"] and entity["effectiveLife"]==identity+1,"native node presence/life")
     else:
         fact=(identity-7)//2
         require(identity==7+2*fact and 0<=fact<s["facts"],"unexpected relationship identity")
