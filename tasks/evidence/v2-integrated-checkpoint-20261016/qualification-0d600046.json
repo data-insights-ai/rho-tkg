@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "scope": "Source corrections and focused guards only; complete process case, D, V2, engine choice and release remain unaccepted.",
+  "source_commit": "0d6000463c576a191ff8f933f6fb75ac73d3a470",
+  "source_tree": "feefc14f19223e87ec24d316ee96761fcbc0dbac",
+  "source_changes": {
+    "a04f1ed5": "Capture genuine allocator proposal before leader rotation; preserve original bytes and use the current leader\u2019s own authority for new allocator actions.",
+    "0d600046": "Give initial state voters the same existing bounded snapshot-owner role as replacement voters."
+  },
+  "root_validation": {
+    "guards": "PASS: actual bootstrap agreement and encoded compound/primitive cleanup classification.",
+    "binary_sha256": "bd93f8bdca1a5705296eb47d3262c8178381f48022986f045e060365002bb016",
+    "binary_source": "Author 1b303a2d and integrated 0d600046 have exactly the same Git tree.",
+    "cleanup": "Terminal report completed; all owned exited, no forced cleanup."
+  },
+  "author_process_results": {
+    "allocator": "Previous allocator proof failure cleared; exact case next reaches snapshot Offers with missing initial owner role, terminal 5.47s.",
+    "snapshot_owner": "Exact case reaches selected Fence loss, node replacement and healthy quorum (leader2, applied43), then same move Resume returns resource-limit/source-unavailable; terminal 5.32s. All owned processes exited, one child nonclean, no forced cleanup."
+  },
+  "remaining": "Correct demonstrated same-move Resume resource failure and tiny comparison scan-budget failure; finish existing correctness inventory, then measurements, engine verdict and coordinated gates.",
+  "files_sha256": {
+    "state-bootstrap-worker-0d600046.log": "86f2d9e7fb192a2f9d1a8de19be31677ce61aba197f308f74b514d7065c4e1af",
+    "state-bootstrap-worker-0d600046.json": "c25bf429d7face2bbe92324f185fdc9ad61b225b6cab7fbcad58272d05054d95",
+    "state-allocator-source-receipt.json": "dc13bdc530bc06258ea3808b0ffd21f785c9cad03eea2be9b4bcba1c8cf7de46",
+    "state-allocator-process.log": "f6020460cb2599feb4442eea0540f0ef10c30383c225c32809b7a64bd9bcdf19",
+    "state-allocator-process-watchdog.json": "8d8726ae91b0ccfc737a32db6f2de630700c73e11b74595911acfee581230c25",
+    "state-snapshot-owner-source-receipt.json": "605307ad406d0a9abcb7d914ee6a952a786e382cff1b521ebdee1228a5112a13",
+    "state-snapshot-owner-red.log": "c5a7664340e1f53cb5141d9297850ef4d11f06bd2a98a59360158004faecd0d2",
+    "state-snapshot-owner-green.log": "992c80bb967c9eefef581d2b45232728c0cc64660701eab1438a83543307cce9",
+    "state-snapshot-owner-process.log": "e4b3fa61b0922db87e54c3f22504b7c10c0cd004535914fe3e9a85bb4b2bac9b",
+    "state-snapshot-owner-process-watchdog.json": "d29089c15423f05f4166dce8174e5ec9b5b2c15fc8df2d9c67c6500f34fdcf87"
+  }
+}

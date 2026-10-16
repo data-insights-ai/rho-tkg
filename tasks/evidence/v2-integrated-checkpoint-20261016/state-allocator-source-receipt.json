@@ -1,0 +1,19 @@
+{
+  "commit": "7cbed82c5e6837f3fa0f2584ce5dd7ccce377dd6",
+  "parent": "124562cb9455a80870084e6b7378db6b11cdf1b7",
+  "tree": "/private/var/tmp/rho-v5-state-allocator-proof-fix-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_test.go",
+      "sha256": "da38b8b62f7e6347349abd3cf5e52760603a5a874752a8f88e1db4ebaf7c8d3f",
+      "blob": "8222c144e39b67da73402aaea574b913b634bac2",
+      "parentBlob": "3b25a792023184ecb157edfab797ae938d9e3ade"
+    }
+  ],
+  "RED": "/private/var/tmp/rho-v5-state-token-close-evidence-20261016/run.log",
+  "REDCase": "TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder/move-phase1-p3-page0-kind1-before",
+  "REDSeconds": 5.52,
+  "GREEN": "pending root integrated exact-case rerun",
+  "format": "pinned1.26.9 gofmt; git diff --check clean",
+  "scope": "Only fixture causal capture and actual elected submit/read authority; legacy V1/V2 factory order and wire unchanged"
+}

@@ -1210,7 +1210,7 @@ The finite source-closure audit found no additional package beyond these
 integrated state/sender changes and their final CI associations. Those final
 associations are integrated at `099c846c`, closing source expansion. Focused runtime corrections address demonstrated compiler, ownership and
 source-admission failures. The selected P06 and sender cases now pass; pooled
-state publication remains under diagnosis. New campaigns
+state publication passes, while full recovery qualification remains open. New campaigns
 are not required merely because other integrated source remains unexecuted.
 CI selection/dependency associations are source-integrated at `4c336669` for
 the integrated protocol core, leader/message program, Ready companion and
@@ -1236,8 +1236,15 @@ That run's six children exit cleanly without forced cleanup. The classification
 correction is integrated at `124562cb`, preserving the same two ordinary/one
 primitive cleanup slots and terminal context. Its direct regression passes;
 the author OS run clears Close and next fails after 5.52 seconds on a local
-allocator proof requested after rotation. Capture of the genuine original-owner
-proposal before election and full case qualification remain open. The [subsequent corrections](evidence/v2-integrated-checkpoint-20261016/corrections-3ebb46ac.json)
+allocator proof requested after rotation. The [allocator/bootstrap corrections](evidence/v2-integrated-checkpoint-20261016/qualification-0d600046.json)
+preserve the genuine pre-election proposal and give initial voters the same
+existing snapshot-owner role as replacements. Root bootstrap/worker guards pass.
+The author process run now reaches selected Fence loss, replacement and healthy
+quorum, then fails at the same move's Resume resource allowance. Full case
+qualification remains open. The separate tiny comparison commits all 20 creates
+but its first scan exhausts the shared RPC allowance during hydration; that
+demonstrated query failure is under correction before any measurements.
+The [subsequent corrections](evidence/v2-integrated-checkpoint-20261016/corrections-3ebb46ac.json)
 restore shared-client context, prepare genuine pooled intents and expose early
 move errors; all three direct regression tests pass independently. The [five-leaf storage qualification](evidence/v2-integrated-checkpoint-20261016/qualification-264ec502.json)
 passes current/synced WAL recovery, WAL/manifest corruption and OPTIONS rename

@@ -1,0 +1,5 @@
+=== RUN   TestNativeProtocolStateStartBindsParentAndChildAgreement
+--- PASS: TestNativeProtocolStateStartBindsParentAndChildAgreement (0.00s)
+=== RUN   TestNativeProtocolStateCompoundCleanupKeepsPrimitiveControlSlot
+--- PASS: TestNativeProtocolStateCompoundCleanupKeepsPrimitiveControlSlot (0.00s)
+PASS

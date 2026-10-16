@@ -1,0 +1,32 @@
+{
+  "commit": "1b303a2d4c895a68135cb87a2bf1b2d94277eda1",
+  "parent": "a04f1ed554eb8d4b4b3308ae8de6f00cc3fe7fc3",
+  "tree": "/private/var/tmp/rho-v5-state-snapshot-owner-fix-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_program_test.go",
+      "sha256": "81ae2833ca4da7e0d5785821a2adaf848f3d0f233f28d39b69d02985469eb33f",
+      "blob": "8485727c05064ca1a721860bb5f121fe240f6dac",
+      "parentBlob": "a1e88a11b98f4b007caa4ca9f2b9128ea613fc42"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_test.go",
+      "sha256": "809394e476d9eda5b84fdc65107ae3aee84d26d237554b37436bd1de2faa407a",
+      "blob": "286e9c8fb0733df57fbb2b406105f246387015ab",
+      "parentBlob": "8222c144e39b67da73402aaea574b913b634bac2"
+    }
+  ],
+  "evidence": "/private/var/tmp/rho-v5-state-snapshot-owner-evidence-20261016",
+  "directREDSeconds": 0.452,
+  "directGREENSeconds": 0.394,
+  "OS": {
+    "result": "RED after healthy quorum43 at later real moveResume resource-limit; bootstrapOffers failure cleared",
+    "seconds": 5.32,
+    "log": "/private/var/tmp/rho-v5-state-snapshot-owner-evidence-20261016/run.log",
+    "watchdog": "/private/var/tmp/rho-v5-state-snapshot-owner-evidence-20261016/watchdog.json",
+    "allOwnedExited": true,
+    "forcedCleanup": false
+  },
+  "scope": "existing bounded paired owner role; initial+replacement parity; actualsnapshot Offers unchanged",
+  "limitation": "old paired snapshot Begin/chunk door is AS5-only; future actual AS8/AS9 import requires its own genuine format-specific correction, not qualified here"
+}

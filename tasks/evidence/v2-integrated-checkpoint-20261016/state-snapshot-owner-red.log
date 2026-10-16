@@ -1,0 +1,5 @@
+--- FAIL: TestNativeProtocolStateStartBindsParentAndChildAgreement (0.00s)
+    native_graph_protocol_campaign_state_program_test.go:195: initial state cohort lacks replacement snapshot-owner role
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	0.452s
+FAIL
