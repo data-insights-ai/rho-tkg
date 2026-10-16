@@ -159,6 +159,38 @@ type Graph interface {
 	// RelsEffectivePage is one keyset page of effective relationship segments
 	// (limit 1..10000); next is the last ID of a full page, else 0.
 	RelsEffectivePage(ctx context.Context, pin Pin, f Filter, after uint64, limit int) ([]RelSegment, uint64, error)
+
+	// BatchRun queues operations on a batch builder and executes them as one
+	// unit when fn returns nil; a refused queued operation or execution writes
+	// nothing.
+	BatchRun(ctx context.Context, fn func(Batch) error) error
+	// ExciseNodeValidity and ExciseRelValidity end validity over [a, b) and keep
+	// the entity outside it; txFrom != 0 selects the caller-instant door.
+	ExciseNodeValidity(ctx context.Context, id uint64, a, b, txFrom int64) error
+	ExciseRelValidity(ctx context.Context, id uint64, a, b, txFrom int64) error
+	// NodesEffectivePage is RelsEffectivePage for nodes.
+	NodesEffectivePage(ctx context.Context, pin Pin, f Filter, after uint64, limit int) ([]NodeSegment, uint64, error)
+	// RetractNode and RetractRel say the entity was never true (belief
+	// retraction, not a validity end); txTo != 0 selects the caller-instant door.
+	RetractNode(ctx context.Context, id uint64, txTo int64) error
+	RetractRel(ctx context.Context, id uint64, txTo int64) error
+}
+
+// NodeSegment is one effective valid-time segment of a node.
+type NodeSegment struct {
+	ValidFrom, ValidTo int64
+	Node               Node
+}
+
+// Batch is the builder handle of Graph.BatchRun. Operations are queued and
+// take effect together.
+type Batch interface {
+	AddNode(s NodeSpec) error
+	UpdateNodeWithTx(id uint64, props map[string]any, txFrom int64) error
+	DeleteNodeWithTx(id uint64, txTo int64) error
+	SetNodeVersionIntervalWithTx(id uint64, from, to int64, props map[string]any, txFrom int64) error
+	ExciseNodeValidityWithTx(id uint64, a, b, txFrom int64) error
+	UpdateRelWithTx(id uint64, props map[string]any, txFrom int64) error
 }
 
 // Tx is the transaction handle of Graph.Tx. Reads see the transaction's own
@@ -169,6 +201,13 @@ type Tx interface {
 	UpdateNode(id uint64, props map[string]any) (Node, error)
 	DeleteNode(id uint64) error
 	GetNode(id uint64) (Node, error)
+
+	// Caller-instant twins (appended).
+	UpdateNodeWithTx(id uint64, props map[string]any, txFrom int64) (Node, error)
+	DeleteNodeWithTx(id uint64, txTo int64) error
+	SetNodeVersionIntervalWithTx(id uint64, from, to int64, props map[string]any, txFrom int64) (Node, error)
+	ExciseNodeValidityWithTx(id uint64, a, b, txFrom int64) error
+	UpdateRelWithTx(id uint64, props map[string]any, txFrom int64) (Rel, error)
 }
 
 // Factory builds the Adapter for one test.

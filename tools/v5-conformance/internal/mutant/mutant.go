@@ -31,6 +31,9 @@ var Names = []string{
 	"unknown-update-creates",  // UpdateNode of an unknown ID succeeds silently
 	"reopen-forgets-writes",   // Reopen on a persistent graph opens an empty directory
 	"close-then-read-works",   // doors keep answering after Close
+	"tx-twin-ignores-instant", // Tx *WithTx twins drop the caller instant
+	"batch-eager",             // BatchRun writes through immediately, so a refused unit leaves its queued writes
+	"batch-swallows-refusal",  // BatchRun reports success for a refused unit
 }
 
 // Wrap returns an Adapter whose graphs carry the named mutants ("all" selects every one).
@@ -172,6 +175,10 @@ func (g *graph) Tx(ctx context.Context, fn func(conformance.Tx) error) error {
 	if g.on["tx-autocommit"] && fn != nil && ctx.Err() == nil {
 		return fn(directTx{g: g.Graph, ctx: ctx})
 	}
+	if g.on["tx-twin-ignores-instant"] && fn != nil {
+		inner := fn
+		fn = func(tx conformance.Tx) error { return inner(plainTwinTx{tx}) }
+	}
 	err := g.Graph.Tx(ctx, fn)
 	if g.on["tx-swallows-error"] && err != nil && fn != nil && ctx.Err() == nil {
 		return nil
@@ -277,4 +284,69 @@ func (g *graph) GetNode(ctx context.Context, id uint64) (conformance.Node, error
 		return conformance.Node{ID: id}, nil
 	}
 	return g.Graph.GetNode(ctx, id)
+}
+
+func (d directTx) UpdateNodeWithTx(id uint64, p map[string]any, tx int64) (conformance.Node, error) {
+	return d.g.UpdateNode(d.ctx, id, p, tx)
+}
+func (d directTx) DeleteNodeWithTx(id uint64, tx int64) error { return d.g.DeleteNode(d.ctx, id, tx) }
+func (d directTx) SetNodeVersionIntervalWithTx(id uint64, f, to int64, p map[string]any, tx int64) (conformance.Node, error) {
+	return d.g.SetNodeVersionInterval(d.ctx, id, f, to, p, tx)
+}
+func (d directTx) ExciseNodeValidityWithTx(id uint64, a, b, tx int64) error {
+	return d.g.ExciseNodeValidity(d.ctx, id, a, b, tx)
+}
+func (d directTx) UpdateRelWithTx(id uint64, p map[string]any, tx int64) (conformance.Rel, error) {
+	return d.g.UpdateRel(d.ctx, id, p, tx)
+}
+
+// plainTwinTx routes the caller-instant twins to the graph-clock doors.
+type plainTwinTx struct{ conformance.Tx }
+
+func (p plainTwinTx) UpdateNodeWithTx(id uint64, props map[string]any, _ int64) (conformance.Node, error) {
+	return p.Tx.UpdateNode(id, props)
+}
+func (p plainTwinTx) DeleteNodeWithTx(id uint64, _ int64) error { return p.Tx.DeleteNode(id) }
+func (p plainTwinTx) ExciseNodeValidityWithTx(id uint64, a, b, _ int64) error {
+	return p.Tx.ExciseNodeValidityWithTx(id, a, b, 1)
+}
+
+// directBatch writes through to the graph as each operation is queued.
+type directBatch struct {
+	g   conformance.Graph
+	ctx context.Context
+}
+
+func (d directBatch) AddNode(s conformance.NodeSpec) error {
+	_, err := d.g.AddNode(d.ctx, s)
+	return err
+}
+func (d directBatch) UpdateNodeWithTx(id uint64, p map[string]any, tx int64) error {
+	_, err := d.g.UpdateNode(d.ctx, id, p, tx)
+	return err
+}
+func (d directBatch) DeleteNodeWithTx(id uint64, tx int64) error {
+	return d.g.DeleteNode(d.ctx, id, tx)
+}
+func (d directBatch) SetNodeVersionIntervalWithTx(id uint64, f, to int64, p map[string]any, tx int64) error {
+	_, err := d.g.SetNodeVersionInterval(d.ctx, id, f, to, p, tx)
+	return err
+}
+func (d directBatch) ExciseNodeValidityWithTx(id uint64, a, b, tx int64) error {
+	return d.g.ExciseNodeValidity(d.ctx, id, a, b, tx)
+}
+func (d directBatch) UpdateRelWithTx(id uint64, p map[string]any, tx int64) error {
+	_, err := d.g.UpdateRel(d.ctx, id, p, tx)
+	return err
+}
+
+func (g *graph) BatchRun(ctx context.Context, fn func(conformance.Batch) error) error {
+	if g.on["batch-eager"] && fn != nil && ctx.Err() == nil {
+		return fn(directBatch{g: g.Graph, ctx: ctx})
+	}
+	err := g.Graph.BatchRun(ctx, fn)
+	if g.on["batch-swallows-refusal"] && err != nil && fn != nil && ctx.Err() == nil {
+		return nil
+	}
+	return err
 }

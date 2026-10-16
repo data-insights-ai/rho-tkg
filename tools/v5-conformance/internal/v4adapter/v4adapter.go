@@ -444,3 +444,112 @@ func (w *wrap) RelsEffectivePage(ctx context.Context, pin conformance.Pin, f con
 	}
 	return out, uint64(next), nil
 }
+
+func (t *txWrap) UpdateNodeWithTx(id uint64, props map[string]any, txFrom int64) (conformance.Node, error) {
+	n, err := t.tx.UpdateNodeWithTx(types.NodeID(id), props, inst(txFrom))
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return t.w.node(n), nil
+}
+
+func (t *txWrap) DeleteNodeWithTx(id uint64, txTo int64) error {
+	return mapErr(t.tx.DeleteNodeWithTx(types.NodeID(id), inst(txTo)))
+}
+
+func (t *txWrap) SetNodeVersionIntervalWithTx(id uint64, from, to int64, props map[string]any, txFrom int64) (conformance.Node, error) {
+	n, err := t.tx.SetNodeVersionIntervalWithTx(types.NodeID(id), inst(from), inst(to), props, inst(txFrom))
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return t.w.node(n), nil
+}
+
+func (t *txWrap) ExciseNodeValidityWithTx(id uint64, a, b, txFrom int64) error {
+	return mapErr(t.tx.ExciseNodeValidityWithTx(types.NodeID(id), inst(a), inst(b), inst(txFrom)))
+}
+
+func (t *txWrap) UpdateRelWithTx(id uint64, props map[string]any, txFrom int64) (conformance.Rel, error) {
+	r, err := t.tx.UpdateRelationshipWithTx(types.RelID(id), props, inst(txFrom))
+	if err != nil {
+		return conformance.Rel{}, mapErr(err)
+	}
+	return t.w.rel(r), nil
+}
+
+type batchWrap struct{ b *graph.BatchBuilder }
+
+func (w *wrap) BatchRun(ctx context.Context, fn func(conformance.Batch) error) error {
+	if fn == nil {
+		return fmt.Errorf("%w: nil batch callback", conformance.ErrInvalidArgument)
+	}
+	_, err := w.g.Batch().RunContext(ctx, func(b *graph.BatchBuilder) error { return fn(batchWrap{b}) })
+	return mapErr(err)
+}
+
+func (b batchWrap) AddNode(s conformance.NodeSpec) error {
+	_, err := b.b.AddNode(s.Labels, withValid(s.Props, s.Valid))
+	return mapErr(err)
+}
+
+func (b batchWrap) UpdateNodeWithTx(id uint64, props map[string]any, txFrom int64) error {
+	return mapErr(b.b.UpdateNodeWithTx(types.NodeID(id), props, inst(txFrom)))
+}
+
+func (b batchWrap) DeleteNodeWithTx(id uint64, txTo int64) error {
+	return mapErr(b.b.DeleteNodeWithTx(types.NodeID(id), inst(txTo)))
+}
+
+func (b batchWrap) SetNodeVersionIntervalWithTx(id uint64, from, to int64, props map[string]any, txFrom int64) error {
+	return mapErr(b.b.SetNodeVersionIntervalWithTx(types.NodeID(id), inst(from), inst(to), props, inst(txFrom)))
+}
+
+func (b batchWrap) ExciseNodeValidityWithTx(id uint64, a, c, txFrom int64) error {
+	return mapErr(b.b.ExciseNodeValidityWithTx(types.NodeID(id), inst(a), inst(c), inst(txFrom)))
+}
+
+func (b batchWrap) UpdateRelWithTx(id uint64, props map[string]any, txFrom int64) error {
+	return mapErr(b.b.UpdateRelationshipWithTx(types.RelID(id), props, inst(txFrom)))
+}
+
+func (w *wrap) ExciseNodeValidity(ctx context.Context, id uint64, a, b, txFrom int64) error {
+	if txFrom != 0 {
+		return mapErr(w.g.Temporal().ExciseNodeValidityWithTx(ctx, types.NodeID(id), inst(a), inst(b), inst(txFrom)))
+	}
+	return mapErr(w.g.Temporal().ExciseNodeValidity(ctx, types.NodeID(id), inst(a), inst(b)))
+}
+
+func (w *wrap) ExciseRelValidity(ctx context.Context, id uint64, a, b, txFrom int64) error {
+	if txFrom != 0 {
+		return mapErr(w.g.Temporal().ExciseRelValidityWithTx(ctx, types.RelID(id), inst(a), inst(b), inst(txFrom)))
+	}
+	return mapErr(w.g.Temporal().ExciseRelValidity(ctx, types.RelID(id), inst(a), inst(b)))
+}
+
+func (w *wrap) NodesEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after uint64, limit int) ([]conformance.NodeSegment, uint64, error) {
+	segs, next, err := w.g.Temporal().NodesEffectivePage(ctx,
+		temporal.Pin{Tx: inst(pin.Tx), ValidAt: inst(pin.ValidAt), ValidStart: inst(pin.ValidStart), ValidEnd: inst(pin.ValidEnd)},
+		temporal.Filter{Prop: f.Prop, Eq: f.Eq}, types.NodeID(after), limit)
+	if err != nil {
+		return nil, 0, mapErr(err)
+	}
+	out := make([]conformance.NodeSegment, len(segs))
+	for i, s := range segs {
+		out[i] = conformance.NodeSegment{ValidFrom: int64(s.ValidFrom), ValidTo: int64(s.ValidTo), Node: w.node(s.Node)}
+	}
+	return out, uint64(next), nil
+}
+
+func (w *wrap) RetractNode(ctx context.Context, id uint64, txTo int64) error {
+	if txTo != 0 {
+		return mapErr(w.g.Nodes().RetractWithTx(ctx, types.NodeID(id), inst(txTo)))
+	}
+	return mapErr(w.g.Nodes().Retract(ctx, types.NodeID(id)))
+}
+
+func (w *wrap) RetractRel(ctx context.Context, id uint64, txTo int64) error {
+	if txTo != 0 {
+		return mapErr(w.g.Rels().RetractWithTx(ctx, types.RelID(id), inst(txTo)))
+	}
+	return mapErr(w.g.Rels().Retract(ctx, types.RelID(id)))
+}
