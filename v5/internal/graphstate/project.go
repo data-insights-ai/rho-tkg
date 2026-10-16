@@ -182,7 +182,7 @@ func Project(ctx context.Context, v ReadView, id EntityID, p temporal.Position, 
 			value Scalar
 		}, len(property.Members))
 		for i, value := range property.Members {
-			key, err := value.EqualityKey(l)
+			key, err := value.IdentityKey(l)
 			if err != nil {
 				return Projection{}, err
 			}

@@ -163,7 +163,7 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 			if v.arena != nil {
 				key, err = v.arena.ScalarKey(op.Value, l)
 			} else {
-				key, err = op.Value.EqualityKey(l)
+				key, err = op.Value.IdentityKey(l)
 			}
 			if err != nil {
 				return nil, callerError(err)

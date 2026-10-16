@@ -319,7 +319,7 @@ func (e *engine) intern(v Scalar, fresh ValueID) (state.ValueRef, error) {
 	if e.budget != nil {
 		key, err = e.budget.ScalarKey(v, e.limits)
 	} else {
-		key, err = v.EqualityKey(e.limits)
+		key, err = v.IdentityKey(e.limits)
 	}
 	if err != nil {
 		return state.ValueRef{}, err
@@ -343,7 +343,7 @@ func (e *engine) intern(v Scalar, fresh ValueID) (state.ValueRef, error) {
 	}
 	id := read.ID
 	if read.Found {
-		same, err := read.Value.Equal(v, e.limits)
+		same, err := read.Value.Identical(v, e.limits)
 		if err != nil {
 			return state.ValueRef{}, err
 		}

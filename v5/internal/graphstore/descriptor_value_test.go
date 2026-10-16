@@ -85,7 +85,7 @@ func TestV1DescriptorBackingPrechargesAllCatalogModesBeforeDecode(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := encodeValue(testNamespace(), refValue(1), value, key, 0, c.limits)
+	wire, err := encodeValue(testNamespace(), refValue(1), value, 0, c.limits)
 	if err != nil {
 		t.Fatal(err)
 	}

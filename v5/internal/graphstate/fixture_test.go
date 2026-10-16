@@ -56,7 +56,7 @@ func (v *fixtureView) Value(_ context.Context, id ValueID) (ValueRead, error) {
 }
 func (v *fixtureView) ValueIdentity(_ context.Context, value Scalar) (ValueRead, error) {
 	for id, x := range v.values {
-		same, err := x.Equal(value, Limits{})
+		same, err := x.Identical(value, Limits{})
 		if err != nil {
 			return ValueRead{}, err
 		}
