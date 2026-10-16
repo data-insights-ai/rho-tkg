@@ -569,14 +569,13 @@ func (st *pageState) candidate(rd *reader) (Ref, bool, error) {
 type matcher struct {
 	labels  []string
 	relType string
-	eq      []eqKey
+	eq      []eqProp
 	none    bool // a predicate no value can satisfy (Null)
 }
 
-type eqKey struct {
+type eqProp struct {
 	name  string
 	value graphstate.Scalar
-	key   string
 }
 
 func newMatcher(sel Selector) (*matcher, error) {
@@ -590,11 +589,7 @@ func newMatcher(sel Selector) (*matcher, error) {
 			m.none = true
 			continue
 		}
-		k, err := sc.EqualityKey(graphstate.Limits{})
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrInvalidValue, err)
-		}
-		m.eq = append(m.eq, eqKey{e.Key, sc, k})
+		m.eq = append(m.eq, eqProp{e.Key, sc})
 	}
 	return m, nil
 }
@@ -621,8 +616,9 @@ func (m *matcher) state(pr graphstate.Projection) bool {
 			if pv.Name != e.name {
 				continue
 			}
-			k, err := pv.Scalar.EqualityKey(graphstate.Limits{})
-			hit = hit || err == nil && k == e.key
+			// Scalar.Equal is the rule of Value.Equal (EqualityKey finds the candidates).
+			eq, err := e.value.Equal(pv.Scalar, graphstate.Limits{})
+			hit = hit || err == nil && eq
 		}
 		if !hit {
 			return false

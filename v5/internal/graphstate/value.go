@@ -23,8 +23,16 @@ const (
 	ScalarF64
 	ScalarScope
 	ScalarDescriptor
+	// ScalarBytes is an exact byte string, distinct from a string; nil and empty are one value.
+	ScalarBytes
+	// ScalarList is a flat ordered list of string, bool, i64, f64 or bytes
+	// elements. Lists do not nest; kinds are kept per element.
+	ScalarList
 )
 
+// Bytes and List keep their payload in text (raw bytes; or u32 length | element
+// wire per element), so a Scalar stays comparable and immutable.
+//
 // Scalar is immutable typed data, not a boxed universal row payload. Finite F64
 // is numeric: signed zeros canonicalize to +0. Raw source bits require separate
 // provenance/opaque preservation; no IEEE source-bit guarantee is made here.
@@ -59,6 +67,113 @@ func F64(v float64) (Scalar, error) {
 		v = 0
 	}
 	return Scalar{kind: ScalarF64, f64: v}, nil
+}
+
+// Bytes constructs an exact byte string. The input is copied; nil and empty are
+// the same value, and Bytes never equals a String with the same bytes.
+func Bytes(b []byte) Scalar { return Scalar{kind: ScalarBytes, text: string(b)} }
+
+// List constructs a flat list. Elements keep their kinds and order; a null,
+// nested list, scope, descriptor or zero element is ErrInvalidInput. Without
+// null elements, Equal and EqualityKey are one rule for every non-null value.
+func List(elems []Scalar) (Scalar, error) {
+	var body []byte
+	for _, e := range elems {
+		if !listElementKind(e.kind) {
+			return Scalar{}, ErrInvalidInput
+		}
+		w, err := e.AppendWire(nil, Limits{MaxReadBytes: maxWire})
+		if err != nil {
+			return Scalar{}, err
+		}
+		body = binary.BigEndian.AppendUint32(body, uint32(len(w))) // #nosec G115 -- bounded by maxWire.
+		body = append(body, w...)
+		if len(body) > maxWire-1 {
+			return Scalar{}, ErrResourceLimit
+		}
+	}
+	return Scalar{kind: ScalarList, text: string(body)}, nil
+}
+
+// UniqueForm returns the member of v's equality class that a unique claim
+// stores: a list with every integral float element exact in int64 as I64, any
+// other value unchanged. Unique claims key by identity; within this form
+// IdentityKey and EqualityKey agree, so a claim follows Equal ([3.0,4] is the
+// claim [3,4]), as a typed scalar key does through its declared kind.
+func (v Scalar) UniqueForm() Scalar {
+	els, ok := v.ListValue()
+	if !ok {
+		return v
+	}
+	changed := false
+	for i, e := range els {
+		if e.kind == ScalarF64 && e.f64 == math.Trunc(e.f64) && e.f64 >= -(1<<63) && e.f64 < 1<<63 {
+			els[i], changed = I64(int64(e.f64)), true
+		}
+	}
+	if !changed {
+		return v
+	}
+	out, err := List(els)
+	if err != nil {
+		return v // unreachable: same elements, I64 for F64, same or smaller wire
+	}
+	return out
+}
+
+// maxWire is the largest wire Limits accept (Limits.resolve).
+const maxWire = 64 << 20
+
+func listElementKind(k ScalarKind) bool {
+	switch k {
+	case ScalarString, ScalarBool, ScalarI64, ScalarF64, ScalarBytes:
+		return true
+	}
+	return false
+}
+
+// BytesValue returns a copy of a typed byte string only.
+func (v Scalar) BytesValue() ([]byte, bool) {
+	if v.kind != ScalarBytes {
+		return nil, false
+	}
+	return []byte(v.text), true
+}
+
+// ListValue returns the elements of a typed list only, in order, each with its kind.
+func (v Scalar) ListValue() ([]Scalar, bool) {
+	if v.kind != ScalarList {
+		return nil, false
+	}
+	els, err := parseList(v.text)
+	return els, err == nil
+}
+
+// parseList decodes a list body: repeated u32 length | element wire. Every
+// length is checked against what is left; any non-list element kind and any
+// non-canonical element is ErrCorruptWire.
+func parseList(body string) ([]Scalar, error) {
+	els := []Scalar{}
+	for len(body) > 0 {
+		if len(body) < 4 {
+			return nil, ErrCorruptWire
+		}
+		n := int(binary.BigEndian.Uint32([]byte(body[:4])))
+		body = body[4:]
+		if n < 1 || n > len(body) {
+			return nil, ErrCorruptWire
+		}
+		if !listElementKind(ScalarKind(body[0])) {
+			return nil, ErrCorruptWire
+		}
+		e, err := DecodeWire([]byte(body[:n]), temporal.Axis{}, false, temporal.Limits{})
+		if err != nil {
+			return nil, ErrCorruptWire
+		}
+		els = append(els, e)
+		body = body[n:]
+	}
+	return els, nil
 }
 
 // ScopeValue preserves a temporal value without changing its owner's scope.
@@ -108,15 +223,45 @@ var ErrCorruptWire = errors.New("graphstate: corrupt scalar wire")
 // key by value: an integral F64 inside the int64 range keys as the same I64, so
 // I64(3) and F64(3.0) share a key (Cypher exact equality) while 2^53+1 never
 // collides with 2^53. Descriptor keys identify exact preserved envelopes, never
-// payload semantic equivalence. Use AppendWire for the kind-preserving stored form.
+// payload semantic equivalence. Bytes key bytewise; a List keys elementwise by
+// this same numeric rule, in order. Use AppendWire for the kind-preserving stored form.
 func (v Scalar) EqualityKey(l Limits) (string, error) {
 	if v.kind == ScalarF64 && !math.IsNaN(v.f64) && !math.IsInf(v.f64, 0) &&
 		v.f64 == math.Trunc(v.f64) && v.f64 >= -(1<<63) && v.f64 < 1<<63 {
 		v = I64(int64(v.f64))
 	}
+	if v.kind == ScalarList {
+		return v.listEqualityKey(l)
+	}
 	b, err := v.AppendWire(nil, l)
 	if err != nil {
 		return "", err
+	}
+	return string(b), nil
+}
+
+// listEqualityKey frames each element's EqualityKey, so elements compare by the
+// numeric rule (I64(3) and F64(3.0) alike) and by position, never by splitting.
+func (v Scalar) listEqualityKey(l Limits) (string, error) {
+	l, err := l.resolve()
+	if err != nil {
+		return "", err
+	}
+	els, ok := v.ListValue()
+	if !ok {
+		return "", ErrInvalidInput
+	}
+	b := []byte{byte(ScalarList)}
+	for _, e := range els {
+		k, err := e.EqualityKey(l)
+		if err != nil {
+			return "", err
+		}
+		b = binary.BigEndian.AppendUint32(b, uint32(len(k))) // #nosec G115 -- element wire is bounded by Limits.
+		b = append(b, k...)
+	}
+	if len(b) > l.MaxReadBytes {
+		return "", ErrResourceLimit
 	}
 	return string(b), nil
 }
@@ -162,6 +307,12 @@ func DecodeWire(wire []byte, axis temporal.Axis, hasAxis bool, tl temporal.Limit
 		}
 	case ScalarString:
 		return String(string(body)), nil
+	case ScalarBytes:
+		return Scalar{kind: ScalarBytes, text: string(body)}, nil
+	case ScalarList:
+		if _, err := parseList(string(body)); err == nil {
+			return Scalar{kind: ScalarList, text: string(body)}, nil
+		}
 	case ScalarBool:
 		if len(body) == 1 && body[0] <= 1 {
 			return Bool(body[0] == 1), nil
@@ -199,11 +350,16 @@ func DecodeWire(wire []byte, axis temporal.Axis, hasAxis bool, tl temporal.Limit
 	return Scalar{}, ErrCorruptWire
 }
 func (v Scalar) bytes(l Limits) ([]byte, error) {
-	if v.kind < ScalarNull || v.kind > ScalarDescriptor {
+	if v.kind < ScalarNull || v.kind > ScalarList {
 		return nil, ErrInvalidInput
 	}
 	b := []byte{byte(v.kind)}
 	switch v.kind {
+	case ScalarBytes, ScalarList:
+		if len(v.text) > l.MaxReadBytes-1 {
+			return nil, ErrResourceLimit
+		}
+		b = append(b, v.text...)
 	case ScalarString:
 		if len(v.text) > l.MaxReadBytes-1 {
 			return nil, ErrResourceLimit

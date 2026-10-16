@@ -26,6 +26,25 @@ func valueToScalar(v Value) (graphstate.Scalar, error) {
 			return graphstate.Scalar{}, fmt.Errorf("%w: float must be finite", ErrInvalidValue)
 		}
 		return s, nil
+	case KindBytes:
+		return graphstate.Bytes([]byte(v.s)), nil
+	case KindList:
+		var elems []graphstate.Scalar
+		if v.l != nil {
+			elems = make([]graphstate.Scalar, len(*v.l))
+			for i, e := range *v.l {
+				x, err := valueToScalar(e)
+				if err != nil {
+					return graphstate.Scalar{}, err
+				}
+				elems[i] = x
+			}
+		}
+		s, err := graphstate.List(elems)
+		if err != nil {
+			return graphstate.Scalar{}, fmt.Errorf("%w: list: %v", ErrInvalidValue, err)
+		}
+		return s, nil
 	}
 	return graphstate.Scalar{}, fmt.Errorf("%w: zero or unknown kind", ErrInvalidValue)
 }
@@ -46,6 +65,20 @@ func scalarToValue(s graphstate.Scalar) (Value, error) {
 	case graphstate.ScalarF64:
 		x, _ := s.Float64Value()
 		return Float(x)
+	case graphstate.ScalarBytes:
+		x, _ := s.BytesValue()
+		return Bytes(x), nil
+	case graphstate.ScalarList:
+		els, _ := s.ListValue()
+		vs := make([]Value, len(els))
+		for i, e := range els {
+			x, err := scalarToValue(e)
+			if err != nil {
+				return Value{}, err
+			}
+			vs[i] = x
+		}
+		return List(vs)
 	}
 	return Value{}, fmt.Errorf("%w: engine kind %d has no public Value", ErrInvalidValue, s.Kind())
 }
@@ -61,6 +94,10 @@ func kindToScalar(k ValueKind) (graphstate.ScalarKind, error) {
 		return graphstate.ScalarI64, nil
 	case KindFloat:
 		return graphstate.ScalarF64, nil
+	case KindBytes:
+		return graphstate.ScalarBytes, nil
+	case KindList:
+		return graphstate.ScalarList, nil
 	}
 	return 0, fmt.Errorf("%w: property kind", ErrInvalidConfig)
 }

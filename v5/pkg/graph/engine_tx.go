@@ -131,6 +131,9 @@ func (t *engineTx) schema(node bool, key string, v Value) (graphstate.Scalar, er
 	if err != nil {
 		return graphstate.Scalar{}, t.fail(err)
 	}
+	if d.Unique != graphstate.UniqueNone {
+		out = out.UniqueForm() // a unique claim follows Equal: [3.0,4] is stored as [3,4]
+	}
 	return out, nil
 }
 

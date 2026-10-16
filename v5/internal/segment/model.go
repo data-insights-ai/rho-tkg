@@ -105,8 +105,8 @@ func (c Coord) Bound(axis temporal.Axis, inclusive bool) (temporal.Bound, error)
 }
 
 // Property is one named scalar value. Value must be a graphstate.Scalar of
-// kind I64, F64, Bool or String (null, scope, descriptor and the zero Scalar
-// are refused with ErrInvalidRow).
+// kind I64, F64, Bool, String, Bytes or List (null, scope, descriptor and the
+// zero Scalar are refused with ErrInvalidRow).
 type Property struct {
 	Key   string
 	Value graphstate.Scalar
@@ -145,6 +145,18 @@ func kindOf(v graphstate.Scalar) Kind {
 		return k
 	}
 	return 0
+}
+
+// storable reports a value the segment can hold: a column kind, or Bytes and
+// List, which have no column and always ride the fallback column (the same
+// kind-preserving wire, so the format is unchanged). Null, scope, descriptor and
+// the zero Scalar are not storable.
+func storable(v graphstate.Scalar) bool {
+	switch v.Kind() {
+	case graphstate.ScalarBytes, graphstate.ScalarList:
+		return true
+	}
+	return kindOf(v) != 0
 }
 
 // ValueBits maps a non-string value to the int64 a column stores: the integer
@@ -188,7 +200,7 @@ var wireLimits = graphstate.Limits{MaxReadBytes: 64 << 20}
 // scalar: the one value encoding of both the row hash and the fallback
 // column. ok is false for a value the segment cannot store.
 func appendValue(b []byte, v graphstate.Scalar) ([]byte, bool) {
-	if kindOf(v) == 0 {
+	if !storable(v) {
 		return b, false
 	}
 	at := len(b)
@@ -219,8 +231,11 @@ func sortedProps(ps []Property) ([]Property, error) {
 		if s, isStr := p.Value.StringValue(); isStr && len(s) > maxStringLen {
 			return nil, fmt.Errorf("%w: property %q string of %d bytes", ErrInvalidRow, p.Key, len(s))
 		}
-		if kindOf(p.Value) == 0 {
+		if !storable(p.Value) {
 			return nil, fmt.Errorf("%w: property %q has unsupported scalar kind %d", ErrInvalidRow, p.Key, p.Value.Kind())
+		}
+		if _, err := p.Value.AppendWire(nil, wireLimits); err != nil {
+			return nil, fmt.Errorf("%w: property %q exceeds the value wire bound: %v", ErrInvalidRow, p.Key, err)
 		}
 	}
 	return out, nil

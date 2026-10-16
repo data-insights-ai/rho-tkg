@@ -207,7 +207,7 @@ func (b *OutputBudget) ScalarKey(v Scalar, l Limits) (string, error) {
 	size := 1
 	switch v.Kind() {
 	case ScalarNull:
-	case ScalarString:
+	case ScalarString, ScalarBytes, ScalarList:
 		if len(v.text) > l.MaxReadBytes-1 {
 			return "", ErrResourceLimit
 		}

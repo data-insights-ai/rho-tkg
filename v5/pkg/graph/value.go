@@ -21,6 +21,11 @@ const (
 	KindBool
 	KindInt
 	KindFloat
+	// KindBytes is an exact byte string, distinct from a string; nil and empty are one value.
+	KindBytes
+	// KindList is a flat ordered list of string, bool, int, float or bytes
+	// elements; lists do not nest and hold no null.
+	KindList
 )
 
 // Value is an immutable, typed property value. The zero Value is invalid;
@@ -33,6 +38,11 @@ const (
 // accessors AsInt and AsFloat read only their own kind. Null equals nothing,
 // itself included (Cypher: null = null is unknown); test IsNull.
 //
+// Bytes compare bytewise and never equal a String. A List compares in order,
+// element by element, by the same numeric rule (List{Int(3)} equals
+// List{Float(3)}); a list holds no null, so list equality is never unknown.
+// Constructors and accessors copy, so a Value is immutable.
+//
 // Float values are finite; signed zero is normalised to +0. Callers that hold
 // an `any` convert once at their edge (compat layer), which is where the v4
 // 0 versus 0.0 question is settled.
@@ -42,6 +52,7 @@ type Value struct {
 	i    int64
 	f    float64
 	b    bool
+	l    *[]Value // list elements; a pointer keeps Value comparable
 }
 
 // Null is a present null.
@@ -67,6 +78,22 @@ func Float(v float64) (Value, error) {
 	return Value{kind: KindFloat, f: v}, nil
 }
 
+// Bytes is an exact byte string; the input is copied.
+func Bytes(b []byte) Value { return Value{kind: KindBytes, s: string(b)} }
+
+// List is a flat list. A null, a nested list, the zero Value or an unknown
+// kind as an element is ErrInvalidValue.
+func List(vs []Value) (Value, error) {
+	out := make([]Value, len(vs))
+	for i, e := range vs {
+		if e.kind <= KindNull || e.kind > KindBytes {
+			return Value{}, fmt.Errorf("%w: list element %d has kind %d", ErrInvalidValue, i, e.kind)
+		}
+		out[i] = e
+	}
+	return Value{kind: KindList, l: &out}, nil
+}
+
 // Kind returns the value's type (KindInvalid for the zero Value).
 func (v Value) Kind() ValueKind { return v.kind }
 
@@ -85,9 +112,25 @@ func (v Value) AsInt() (int64, bool) { return v.i, v.kind == KindInt }
 // AsFloat returns the float of a Float value only.
 func (v Value) AsFloat() (float64, bool) { return v.f, v.kind == KindFloat }
 
+// AsBytes returns a copy of the bytes of a Bytes value only.
+func (v Value) AsBytes() ([]byte, bool) {
+	if v.kind != KindBytes {
+		return nil, false
+	}
+	return []byte(v.s), true
+}
+
+// AsList returns a copy of the elements of a List value only.
+func (v Value) AsList() ([]Value, bool) {
+	if v.kind != KindList || v.l == nil {
+		return nil, false
+	}
+	return append([]Value{}, *v.l...), true
+}
+
 // Validate reports ErrInvalidValue for the zero Value or an unknown kind.
 func (v Value) Validate() error {
-	if v.kind < KindNull || v.kind > KindFloat {
+	if v.kind < KindNull || v.kind > KindList {
 		return fmt.Errorf("%w: zero or unknown kind", ErrInvalidValue)
 	}
 	return nil

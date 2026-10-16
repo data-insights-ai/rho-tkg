@@ -201,6 +201,16 @@ func (e *engine) apply(op Operation) error {
 	if op.Value.Kind() != ScalarNull && op.Value.Kind() != d.Type {
 		return ErrTypeMismatch
 	}
+	// A unique claim holds only its UniqueForm, so identity-keyed claims follow Equal.
+	if d.Unique != UniqueNone && op.Value.Kind() == ScalarList {
+		same, err := op.Value.Identical(op.Value.UniqueForm(), e.limits)
+		if err != nil {
+			return err
+		}
+		if !same {
+			return ErrTypeMismatch
+		}
+	}
 	if op.Kind == Set {
 		if d.Cardinality != ScalarCardinality {
 			return ErrTypeMismatch

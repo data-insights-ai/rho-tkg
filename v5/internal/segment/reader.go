@@ -479,7 +479,7 @@ func parseFallback(b []byte, dst []Property) ([]Property, error) {
 			return nil, fmt.Errorf("value of %d bytes in %d", l, len(b))
 		}
 		val, err := graphstate.DecodeWire(b[:l], temporal.Axis{}, false, temporal.Limits{})
-		if err != nil || kindOf(val) == 0 {
+		if err != nil || !storable(val) {
 			return nil, fmt.Errorf("property %q is not a storable scalar", key)
 		}
 		b = b[l:]
