@@ -18,7 +18,7 @@ import (
 )
 
 type incidentAtReader interface {
-	IncidentAt(context.Context, IncidentAtQuery, graphstate.Cursor, graphstate.ReadBudget) (IncidentAtPage, error)
+	IncidentAt(context.Context, IncidentAtQuery, graphstate.Cursor, raftlog.ReadBudget) (IncidentAtPage, error)
 }
 
 func collectIncidentAt(t *testing.T, v *ReadView, query IncidentAtQuery) []IncidentAtCandidate {
@@ -30,7 +30,7 @@ func collectIncidentAt(t *testing.T, v *ReadView, query IncidentAtQuery) []Incid
 	var cursor graphstate.Cursor
 	var got []IncidentAtCandidate
 	for range 4096 {
-		page, err := reader.IncidentAt(t.Context(), query, cursor, graphstate.ReadBudget{Rows: 16, Bytes: 64 << 10})
+		page, err := reader.IncidentAt(t.Context(), query, cursor, raftlog.ReadBudget{Rows: 16, Bytes: 64 << 10})
 		if err != nil || page.View != v.Identity() || page.Version != v.version() {
 			t.Fatal(page, err)
 		}
@@ -123,7 +123,7 @@ func TestIncidentAtWideHashRefusalKeepsCursorAndChargesAttempt(t *testing.T) {
 	}
 	defer v.Close()
 	query := IncidentAtQuery{Endpoint: 1, Life: 11, At: f.position(t, 75), Direction: IncidentBoth, Visible: graphstate.Declared}
-	page, err := v.IncidentAt(t.Context(), query, 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	page, err := v.IncidentAt(t.Context(), query, 0, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if err != nil || page.Next == 0 {
 		t.Fatal(page, err)
 	}
@@ -143,7 +143,7 @@ func TestIncidentAtWideHashRefusalKeepsCursorAndChargesAttempt(t *testing.T) {
 	refused.At = wide
 	limit := v.limits.MaxSourceBytes
 	v.limits.MaxSourceBytes = before.Bytes + 2048
-	failed, err := v.IncidentAt(t.Context(), refused, page.Next, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	failed, err := v.IncidentAt(t.Context(), refused, page.Next, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if !errors.Is(err, ErrResourceLimit) || failed.View != (graphstate.ViewID{}) || failed.Next != 0 || len(failed.Candidates) != 0 {
 		t.Fatal("wide precharge refusal", failed, err)
 	}
@@ -151,7 +151,7 @@ func TestIncidentAtWideHashRefusalKeepsCursorAndChargesAttempt(t *testing.T) {
 		t.Fatal("refusal changed cursor/output or hid attempted source", before, v.Work())
 	}
 	v.limits.MaxSourceBytes = limit
-	resumed, err := v.IncidentAt(t.Context(), query, page.Next, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	resumed, err := v.IncidentAt(t.Context(), query, page.Next, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,12 +232,12 @@ func TestIncidentAtBatchResourceBoundaryPublishesCompletedProgress(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := calibration.IncidentAt(t.Context(), query, 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	first, err := calibration.IncidentAt(t.Context(), query, 0, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if err != nil {
 		t.Fatal(err)
 	}
 	before := calibration.Work()
-	_, err = calibration.IncidentAt(t.Context(), query, first.Next, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	_, err = calibration.IncidentAt(t.Context(), query, first.Next, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,14 +248,14 @@ func TestIncidentAtBatchResourceBoundaryPublishesCompletedProgress(t *testing.T)
 		t.Fatal(err)
 	}
 	defer v.Close()
-	first, err = v.IncidentAt(t.Context(), query, 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	first, err = v.IncidentAt(t.Context(), query, 0, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if err != nil {
 		t.Fatal(err)
 	}
 	capBytes := v.limits.Pages.MaxWorkBytes
 	v.limits.Pages.MaxWorkBytes = oneRowBytes + 4096
 	before = v.Work()
-	partial, err := v.IncidentAt(t.Context(), query, first.Next, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+	partial, err := v.IncidentAt(t.Context(), query, first.Next, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 	if err != nil || partial.Complete || partial.Next == 0 || partial.Next == first.Next || len(partial.Candidates) == 0 || len(partial.Candidates) >= 8 {
 		t.Fatal("resource boundary erased completed batch progress", partial, err, oneRowBytes, v.Work())
 	}
@@ -268,7 +268,7 @@ func TestIncidentAtBatchResourceBoundaryPublishesCompletedProgress(t *testing.T)
 	v.limits.Pages.MaxWorkBytes = capBytes
 	totalOutput := v.limits.MaxOutputBytes
 	v.limits.MaxOutputBytes = v.outputBytes + fullPageOutputBytes + cpCandidateOwned
-	quotaPage, err := v.IncidentAt(t.Context(), query, partial.Next, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+	quotaPage, err := v.IncidentAt(t.Context(), query, partial.Next, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 	if err != nil || len(quotaPage.Candidates) != 1 || quotaPage.Next == 0 || quotaPage.Complete {
 		t.Fatal("shared output cap lost one-row progress", quotaPage, err)
 	}
@@ -277,7 +277,7 @@ func TestIncidentAtBatchResourceBoundaryPublishesCompletedProgress(t *testing.T)
 	got = append(got, quotaPage.Candidates...)
 	cursor := quotaPage.Next
 	for cursor != 0 {
-		page, err := v.IncidentAt(t.Context(), query, cursor, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+		page, err := v.IncidentAt(t.Context(), query, cursor, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -319,7 +319,7 @@ func TestIncidentAtBatchLateCancellationRollsBackAllProgress(t *testing.T) {
 	}
 	defer v.Close()
 	query := IncidentAtQuery{Endpoint: 1, At: f.position(t, 75), Direction: IncidentBoth, Visible: graphstate.Effective}
-	first, err := v.IncidentAt(t.Context(), query, 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	first, err := v.IncidentAt(t.Context(), query, 0, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,14 +328,14 @@ func TestIncidentAtBatchLateCancellationRollsBackAllProgress(t *testing.T) {
 	work := v.Work()
 	output := v.outputBytes
 	ctx := &incidentBatchCancelContext{Context: t.Context(), view: v, afterWitness: 3}
-	page, err := v.IncidentAt(ctx, query, first.Next, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+	page, err := v.IncidentAt(ctx, query, first.Next, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 	if !errors.Is(err, context.Canceled) || page.View != (graphstate.ViewID{}) || len(page.Candidates) != 0 || page.Next != 0 {
 		t.Fatal("late cancellation published a batch", page, err)
 	}
 	if v.currentWork.WitnessEntityCalls < 3 || v.Work().Bytes <= work.Bytes || v.outputBytes != output || !reflect.DeepEqual(before, checkpointCurrent(old.current.iterator)) || v.cursors[first.Next].current != old.current {
 		t.Fatal("cancelled batch did not restore whole cursor/charge attempt", work, v.Work())
 	}
-	remaining, err := v.IncidentAt(t.Context(), query, first.Next, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+	remaining, err := v.IncidentAt(t.Context(), query, first.Next, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestIncidentAtAxisRegistrationIndependentOfEndpointAndMode(t *testing.T) {
 						t.Fatal(err)
 					}
 					before := v.Work()
-					page, err := v.IncidentAt(t.Context(), IncidentAtQuery{Endpoint: endpoint, At: tc.at, Mode: mode, Direction: IncidentBoth, Visible: visible}, 0, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+					page, err := v.IncidentAt(t.Context(), IncidentAtQuery{Endpoint: endpoint, At: tc.at, Mode: mode, Direction: IncidentBoth, Visible: visible}, 0, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 					if tc.invalid {
 						if !errors.Is(err, ErrInvalid) || !errors.Is(err, temporal.ErrAxisMismatch) || page.View != (graphstate.ViewID{}) || page.Next != 0 || len(v.cursors) != 0 || v.Work().Records <= before.Records {
 							t.Fatal("mode-dependent axis admission or hidden attempted lookup", endpoint, mode, visible, page, err, before, v.Work())
@@ -403,7 +403,7 @@ func TestIncidentAtNilInvalidAndClosedReaderSentinels(t *testing.T) {
 	f := newFullFixture(t, GraphLimits{})
 	at, _ := temporal.IntegerPosition(f.axis, temporal.Int64(0))
 	query := IncidentAtQuery{Endpoint: 1, At: at, Direction: IncidentBoth, Visible: graphstate.Declared}
-	budget := graphstate.ReadBudget{Rows: 8, Bytes: 4096}
+	budget := raftlog.ReadBudget{Rows: 8, Bytes: 4096}
 	var nilReader *ReadView
 	if _, err := nilReader.IncidentAt(t.Context(), query, 0, budget); !errors.Is(err, ErrInvalid) {
 		t.Fatal("nil reader", err)
@@ -426,7 +426,7 @@ func TestIncidentAtNilInvalidAndClosedReaderSentinels(t *testing.T) {
 			t.Fatal("invalid predicate", invalid, page, err)
 		}
 	}
-	for _, invalidBudget := range []graphstate.ReadBudget{{Rows: 0, Bytes: 4096}, {Rows: 1, Bytes: 0}, {Rows: 1, Bytes: 127}} {
+	for _, invalidBudget := range []raftlog.ReadBudget{{Rows: 0, Bytes: 4096}, {Rows: 1, Bytes: 0}, {Rows: 1, Bytes: 127}} {
 		if _, err := v.IncidentAt(t.Context(), query, 0, invalidBudget); !errors.Is(err, ErrInvalid) {
 			t.Fatal("invalid budget", invalidBudget, err)
 		}
@@ -485,7 +485,7 @@ func TestIncidentAtEffectiveShortcutCannotHideLiveEndpointCorruption(t *testing.
 						// validation must reject the same live row in both visibility modes.
 						v := f.view(t, f.index)
 						before := v.Work()
-						page, err := v.IncidentAt(t.Context(), IncidentAtQuery{Endpoint: 1, At: at, Direction: IncidentBoth, Mode: mode, Visible: visible}, 0, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+						page, err := v.IncidentAt(t.Context(), IncidentAtQuery{Endpoint: 1, At: at, Direction: IncidentBoth, Mode: mode, Visible: visible}, 0, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 						if !errors.Is(err, ErrCorrupt) || page.View != (graphstate.ViewID{}) || page.Next != 0 || len(page.Candidates) != 0 || len(v.cursors) != 0 || v.Work().Bytes <= before.Bytes {
 							t.Fatal("effective shortcut silently hid live endpoint corruption", fault, mode, visible, page, err, before, v.Work())
 						}
@@ -550,7 +550,7 @@ func TestIncidentScratchPostingHitsPreserveRootParentAndKeyFences(t *testing.T) 
 					t.Fatal(err)
 				}
 				defer v.Close()
-				q, err := v.begin(t.Context(), graphstate.ReadBudget{})
+				q, err := v.begin(t.Context(), raftlog.ReadBudget{})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -630,7 +630,7 @@ func TestIncidentScratchPostingEvictsOnlyBoundedNonRootPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer v.Close()
-	q, err := v.begin(t.Context(), graphstate.ReadBudget{})
+	q, err := v.begin(t.Context(), raftlog.ReadBudget{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -689,7 +689,7 @@ func TestIncidentScratchDistinctEndpointsPointsAndRetainedCursors(t *testing.T) 
 	defer current.c.view.Close()
 	at25, _ := temporal.IntegerPosition(f.axis, temporal.Int64(25))
 	at75, _ := temporal.IntegerPosition(f.axis, temporal.Int64(75))
-	q, err := current.begin(t.Context(), graphstate.ReadBudget{})
+	q, err := current.begin(t.Context(), raftlog.ReadBudget{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -738,7 +738,7 @@ func TestIncidentScratchDistinctEndpointsPointsAndRetainedCursors(t *testing.T) 
 			if p.complete {
 				continue
 			}
-			page, err := p.v.IncidentAt(t.Context(), IncidentAtQuery{Endpoint: 1, At: p.at, Direction: IncidentBoth, Visible: graphstate.Effective}, p.cursor, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+			page, err := p.v.IncidentAt(t.Context(), IncidentAtQuery{Endpoint: 1, At: p.at, Direction: IncidentBoth, Visible: graphstate.Effective}, p.cursor, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 			if err != nil {
 				t.Fatal(i, page, err)
 			}
@@ -885,7 +885,7 @@ func TestCurrentPresenceConstructorFailuresExposeExactAttemptedWork(t *testing.T
 		t.Fatal("constructor refusal consumed borrowed authority", err)
 	}
 	defer it.close()
-	page, err := it.next(t.Context(), 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	page, err := it.next(t.Context(), 0, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if err != nil || !page.complete || len(page.candidates) != 1 || page.candidates[0] != (currentPresenceCandidate{3, 31, cpSource}) || it.cursor != 0 {
 		t.Fatal("retry exact candidate", page, err)
 	}
@@ -930,7 +930,7 @@ func TestCurrentPresenceConstructorCorruptCurrentAxisKeepsRetainedCandidate(t *t
 		t.Fatal("current corruption leaked into retained cut", err)
 	}
 	defer it.close()
-	page, err := it.next(t.Context(), 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	page, err := it.next(t.Context(), 0, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if err != nil || !page.complete || len(page.candidates) != 1 || page.candidates[0] != (currentPresenceCandidate{3, 31, cpSource}) {
 		t.Fatal("retained exact candidate lost", page, err)
 	}

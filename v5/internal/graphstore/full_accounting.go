@@ -2,6 +2,7 @@ package graphstore
 
 import (
 	"encoding/binary"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
@@ -66,7 +67,7 @@ func componentOwnedBytes(s state.State, w temporal.Scope, wire []byte) (int, err
 	backing, err := scopeOwnedBacking(wire)
 	return fullComponentOutputBytes + backing + axisVariableBytes(w.Axis()) + stateOwnedBacking(s), err
 }
-func (q *pageReader) exactComponentOutput(s state.State, w temporal.Scope, budget graphstate.ReadBudget) (state.State, temporal.Scope, error) {
+func (q *pageReader) exactComponentOutput(s state.State, w temporal.Scope, budget raftlog.ReadBudget) (state.State, temporal.Scope, error) {
 	scopeWire, err := q.scopeWire(w)
 	if err != nil {
 		return state.State{}, temporal.Scope{}, err

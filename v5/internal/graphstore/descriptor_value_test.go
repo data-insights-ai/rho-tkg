@@ -3,6 +3,7 @@ package graphstore
 import (
 	"bytes"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -171,14 +172,14 @@ func TestV1DescriptorFullUniquenessRefusalIsNotEnvelopeSemantics(t *testing.T) {
 	v := f.view(t, f.index)
 	defer v.Close()
 	query := graphstate.UniquePredicate{Definition: graphstate.PropertyDefinition{Name: "evidence", Owner: graphstate.Node, Type: graphstate.ScalarDescriptor, Cardinality: graphstate.ScalarCardinality, Unique: graphstate.UniqueScalar}, Value: storeV1Descriptor(t, 1, nil), Window: f.span(t, 0, 10)}
-	out, err := v.UniqueCandidates(t.Context(), query, 0, graphstate.ReadBudget{Rows: 16, Bytes: 1 << 20})
+	out, err := v.UniqueCandidates(t.Context(), query, 0, raftlog.ReadBudget{Rows: 16, Bytes: 1 << 20})
 	if !errors.Is(err, graphstate.ErrUnsupported) || !reflect.DeepEqual(out, graphstate.ClaimPage{}) {
 		t.Fatal(out, err)
 	}
 	if err := v.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := v.UniqueCandidates(t.Context(), query, 0, graphstate.ReadBudget{Rows: 16, Bytes: 1 << 20}); !errors.Is(err, ErrClosed) {
+	if _, err := v.UniqueCandidates(t.Context(), query, 0, raftlog.ReadBudget{Rows: 16, Bytes: 1 << 20}); !errors.Is(err, ErrClosed) {
 		t.Fatal(err)
 	}
 }

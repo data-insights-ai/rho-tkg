@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"maps"
 	"os"
 	"slices"
@@ -66,7 +67,7 @@ func (v *fixtureView) ValueIdentity(_ context.Context, value Scalar) (ValueRead,
 	}
 	return ValueRead{View: v.id, Version: 1}, nil
 }
-func (v *fixtureView) ComponentPage(_ context.Context, q ComponentQuery, cursor Cursor, _ ReadBudget) (ComponentPage, error) {
+func (v *fixtureView) ComponentPage(_ context.Context, q ComponentQuery, cursor Cursor, _ raftlog.ReadBudget) (ComponentPage, error) {
 	s, err := state.New(q.Window.Axis(), state.Limits{})
 	if err != nil {
 		return ComponentPage{}, err
@@ -93,7 +94,7 @@ func (v *fixtureView) ComponentPage(_ context.Context, q ComponentQuery, cursor 
 	}
 	return p, nil
 }
-func (v *fixtureView) ComponentKeys(_ context.Context, p KeyPredicate, _ Cursor, _ ReadBudget) (KeyPage, error) {
+func (v *fixtureView) ComponentKeys(_ context.Context, p KeyPredicate, _ Cursor, _ raftlog.ReadBudget) (KeyPage, error) {
 	out := KeyPage{View: v.id, Version: 1, Complete: true}
 	for key := range v.components {
 		if key.Owner == p.Owner && (p.Life == 0 || key.Life == p.Life) && (p.Kind == 0 || key.Kind == p.Kind) && (p.Name == "" || key.Name == p.Name) {
@@ -102,7 +103,7 @@ func (v *fixtureView) ComponentKeys(_ context.Context, p KeyPredicate, _ Cursor,
 	}
 	return out, nil
 }
-func (v *fixtureView) UniqueCandidates(_ context.Context, p UniquePredicate, _ Cursor, _ ReadBudget) (ClaimPage, error) {
+func (v *fixtureView) UniqueCandidates(_ context.Context, p UniquePredicate, _ Cursor, _ raftlog.ReadBudget) (ClaimPage, error) {
 	out := ClaimPage{View: v.id, Version: 1, Complete: true}
 	for key, s := range v.components {
 		if key.Name != p.Definition.Name || (key.Kind != ScalarProperty && key.Kind != SetMember) {
@@ -132,7 +133,7 @@ func (v *fixtureView) UniqueCandidates(_ context.Context, p UniquePredicate, _ C
 	}
 	return out, nil
 }
-func (v *fixtureView) IncidentRelationships(_ context.Context, p IncidentPredicate, _ Cursor, _ ReadBudget) (EntityPage, error) {
+func (v *fixtureView) IncidentRelationships(_ context.Context, p IncidentPredicate, _ Cursor, _ raftlog.ReadBudget) (EntityPage, error) {
 	out := EntityPage{View: v.id, Version: 1, Complete: true}
 	for id, r := range v.entities {
 		if r.Kind == Relationship && (r.Source == p.Endpoint || r.Target == p.Endpoint) {

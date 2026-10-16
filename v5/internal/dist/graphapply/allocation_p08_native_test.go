@@ -3,6 +3,7 @@ package graphapply
 import (
 	"bytes"
 	"context"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"slices"
 	"testing"
 
@@ -280,7 +281,7 @@ func TestAllocationP08CompletedRangeMoveFencesUnusedIDsWithCurrentRecipient(t *t
 		if e != nil || !equal {
 			t.Fatal("positive value control changed exact typed value", equal, e)
 		}
-		property, e := view.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 3, Life: 4, Kind: graphstate.ScalarProperty, Name: "p"}, Window: all}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		property, e := view.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 3, Life: 4, Kind: graphstate.ScalarProperty, Name: "p"}, Window: all}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		pieces := property.Data.Pieces()
 		if e != nil || !property.Complete || len(pieces) != 1 || !pieces[0].Cell().Present() || pieces[0].Cell().Value().ID() != 8 {
 			t.Fatal("positive property control did not retain exact ValueID8", property, e)

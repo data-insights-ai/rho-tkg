@@ -389,7 +389,7 @@ func (v *PartitionTransactionView) selectOwner(ctx context.Context, id uint64) (
 	before := s.Work()
 	s.limits.MaxSourceRows = before.Records + v.limits.MaxSourceRows - v.work.Records
 	s.limits.MaxSourceBytes = before.Bytes + v.limits.MaxSourceBytes - v.work.Bytes
-	q, err := s.begin(ctx, graphstate.ReadBudget{})
+	q, err := s.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return nil, err
 	}
@@ -553,7 +553,7 @@ func (v *PartitionTransactionView) ValueIdentity(ctx context.Context, value grap
 }
 
 // ComponentPage retains actual primary page ownership and continuation semantics.
-func (v *PartitionTransactionView) ComponentPage(ctx context.Context, p graphstate.ComponentQuery, c graphstate.Cursor, b graphstate.ReadBudget) (graphstate.ComponentPage, error) {
+func (v *PartitionTransactionView) ComponentPage(ctx context.Context, p graphstate.ComponentQuery, c graphstate.Cursor, b raftlog.ReadBudget) (graphstate.ComponentPage, error) {
 	if v == nil {
 		return graphstate.ComponentPage{}, ErrInvalid
 	}
@@ -586,7 +586,7 @@ func (v *PartitionTransactionView) ComponentPage(ctx context.Context, p graphsta
 }
 
 // ComponentKeys includes checked empty prefixes at the owner's authority.
-func (v *PartitionTransactionView) ComponentKeys(ctx context.Context, p graphstate.KeyPredicate, c graphstate.Cursor, b graphstate.ReadBudget) (graphstate.KeyPage, error) {
+func (v *PartitionTransactionView) ComponentKeys(ctx context.Context, p graphstate.KeyPredicate, c graphstate.Cursor, b raftlog.ReadBudget) (graphstate.KeyPage, error) {
 	if v == nil {
 		return graphstate.KeyPage{}, ErrInvalid
 	}
@@ -614,7 +614,7 @@ func uniqueRoutingKey(d graphstate.PropertyDefinition, equality string) []byte {
 }
 
 // UniqueCandidates reads the global claim bucket and validates remote primaries.
-func (v *PartitionTransactionView) UniqueCandidates(ctx context.Context, p graphstate.UniquePredicate, c graphstate.Cursor, b graphstate.ReadBudget) (graphstate.ClaimPage, error) {
+func (v *PartitionTransactionView) UniqueCandidates(ctx context.Context, p graphstate.UniquePredicate, c graphstate.Cursor, b raftlog.ReadBudget) (graphstate.ClaimPage, error) {
 	if v == nil {
 		return graphstate.ClaimPage{}, ErrInvalid
 	}
@@ -644,7 +644,7 @@ func (v *PartitionTransactionView) UniqueCandidates(ctx context.Context, p graph
 }
 
 // IncidentRelationships reads the endpoint's complete declared posting authority.
-func (v *PartitionTransactionView) IncidentRelationships(ctx context.Context, p graphstate.IncidentPredicate, c graphstate.Cursor, b graphstate.ReadBudget) (graphstate.EntityPage, error) {
+func (v *PartitionTransactionView) IncidentRelationships(ctx context.Context, p graphstate.IncidentPredicate, c graphstate.Cursor, b raftlog.ReadBudget) (graphstate.EntityPage, error) {
 	if v == nil {
 		return graphstate.EntityPage{}, ErrInvalid
 	}

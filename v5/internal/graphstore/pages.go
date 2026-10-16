@@ -522,7 +522,7 @@ func (p *PageReader) queryHash(query graphstate.ComponentQuery) ([32]byte, error
 	}
 	return sha256.Sum256(b), nil
 }
-func (q *pageReader) fitPage(s state.State, w temporal.Scope, budget graphstate.ReadBudget) (state.State, temporal.Scope, error) {
+func (q *pageReader) fitPage(s state.State, w temporal.Scope, budget raftlog.ReadBudget) (state.State, temporal.Scope, error) {
 	fit := func(w temporal.Scope) (state.State, bool, error) {
 		out, err := s.Slice(w, q.limits.stateLimits(q.q.c))
 		if err != nil {
@@ -585,7 +585,7 @@ func (q *pageReader) fitPage(s state.State, w temporal.Scope, budget graphstate.
 // ComponentPage returns complete owned coverage, including never-asserted gaps.
 // A page is one bounded leaf/window atom. Optional merge context is empty;
 // context is never copied into writes. Errors return no partial output.
-func (p *PageReader) ComponentPage(ctx context.Context, query graphstate.ComponentQuery, token graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.ComponentPage, error) {
+func (p *PageReader) ComponentPage(ctx context.Context, query graphstate.ComponentQuery, token graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.ComponentPage, error) {
 	if p == nil {
 		return graphstate.ComponentPage{}, ErrInvalid
 	}

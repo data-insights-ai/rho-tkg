@@ -186,7 +186,7 @@ func (q *pageReader) walkComponentKeys(n componentKeyTreeNode, p graphstate.KeyP
 // checked candidates ends a successful incomplete page at the last checked key;
 // a candidate too large to make any progress refuses with zero output. Errors
 // never mutate continuations or return partial data.
-func (p *componentKeyReader) ComponentKeys(ctx context.Context, predicate graphstate.KeyPredicate, token graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.KeyPage, error) {
+func (p *componentKeyReader) ComponentKeys(ctx context.Context, predicate graphstate.KeyPredicate, token graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.KeyPage, error) {
 	if p == nil {
 		return graphstate.KeyPage{}, ErrInvalid
 	}

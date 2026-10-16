@@ -158,11 +158,11 @@ func TestPartitionTransactionStageCrossEdgeBothEndpointEffectsAndRetainedView(t 
 		if err != nil || !life.Found || life.Record.Owner != entity.id {
 			t.Fatal(life, err)
 		}
-		page, err := newView.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: entity.id, Kind: graphstate.Presence}, Window: all}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		page, err := newView.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: entity.id, Kind: graphstate.Presence}, Window: all}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		if err != nil || !page.Complete || page.Data.Usage().Pieces() != 1 || page.Data.Pieces()[0].Cell().Revision().ID() != 200 {
 			t.Fatal(page, err)
 		}
-		keys, err := newView.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: entity.id}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		keys, err := newView.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: entity.id}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		want := 1
 		if entity.kind == graphstate.Node {
 			want = 2
@@ -179,11 +179,11 @@ func TestPartitionTransactionStageCrossEdgeBothEndpointEffectsAndRetainedView(t 
 		id   graphstate.EntityID
 		life graphstate.LifeID
 	}{{1, 101}, {17, 202}} {
-		page, err := newView.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: endpoint.id, Life: endpoint.life, Window: all}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		page, err := newView.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: endpoint.id, Life: endpoint.life, Window: all}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		if err != nil || !page.Complete || !slices.Equal(page.Entities, []graphstate.EntityID{2}) {
 			t.Fatal(endpoint, page, err)
 		}
-		old, err := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: endpoint.id, Life: endpoint.life, Window: all}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		old, err := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: endpoint.id, Life: endpoint.life, Window: all}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		if err != nil || !old.Complete || len(old.Entities) != 0 {
 			t.Fatal("retained posting state became current", old, err)
 		}
@@ -266,7 +266,7 @@ func TestPartitionTransactionViewSharedCursorCountAndBytesRefusalPreservesPriorC
 			}
 			defer reader.Close()
 			predicate := graphstate.KeyPredicate{Owner: 1, Life: 1, Kind: graphstate.Label}
-			budget := graphstate.ReadBudget{Rows: 12, Bytes: 1 << 20}
+			budget := raftlog.ReadBudget{Rows: 12, Bytes: 1 << 20}
 			first, err := reader.ComponentKeys(t.Context(), predicate, 0, budget)
 			if err != nil || first.Complete || first.Next == 0 || len(first.Keys) != 1 || first.Keys[0].Name != "A" {
 				t.Fatal(first, err)
@@ -275,7 +275,7 @@ func TestPartitionTransactionViewSharedCursorCountAndBytesRefusalPreservesPriorC
 			if !errors.Is(err, ErrResourceLimit) || second.Next != 0 || len(second.Keys) != 0 {
 				t.Fatal("source count multiplied continuation allowance", second, err)
 			}
-			last, err := reader.ComponentKeys(t.Context(), predicate, first.Next, graphstate.ReadBudget{Rows: 512, Bytes: 1 << 20})
+			last, err := reader.ComponentKeys(t.Context(), predicate, first.Next, raftlog.ReadBudget{Rows: 512, Bytes: 1 << 20})
 			if err != nil || !last.Complete || last.Next != 0 || len(last.Keys) != 1 || last.Keys[0].Name != "B" {
 				t.Fatal("refusal consumed prior continuation", last, err)
 			}
@@ -344,7 +344,7 @@ func TestPartitionTransactionViewComponentCursorCountAndBytesAreSharedAcrossSour
 			}
 			defer reader.Close()
 			query := graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 1, Life: 1, Kind: graphstate.Label, Name: "A"}, Window: all}
-			budget := graphstate.ReadBudget{Rows: 512, Bytes: 1 << 20}
+			budget := raftlog.ReadBudget{Rows: 512, Bytes: 1 << 20}
 			first, err := reader.ComponentPage(t.Context(), query, 0, budget)
 			if err != nil || first.Complete || first.Next == 0 || first.Data.Usage().Pieces() != 1 {
 				t.Fatal(first, err)
@@ -593,7 +593,7 @@ func TestPartitionTransactionKernelRetainedNodeRelationshipBeforeAndCheckpointCe
 			}
 			defer reader.Close()
 			query := graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: owner, Life: life, Kind: graphstate.ScalarProperty, Name: "p"}, Window: all}
-			page, err := reader.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 512, Bytes: 1 << 20})
+			page, err := reader.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 512, Bytes: 1 << 20})
 			if err != nil || !page.Complete {
 				t.Fatal(page, err)
 			}
@@ -601,7 +601,7 @@ func TestPartitionTransactionKernelRetainedNodeRelationshipBeforeAndCheckpointCe
 			if len(pieces) != 3 || pieces[0].Cell().Revision() != original || pieces[1].Cell().Revision() != decided || pieces[2].Cell().Revision() != original {
 				t.Fatal("retained checkpoint cells numerically retagged", pieces)
 			}
-			historical, err := old.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 512, Bytes: 1 << 20})
+			historical, err := old.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 512, Bytes: 1 << 20})
 			if err != nil || historical.Data.Usage().Pieces() != 1 || historical.Data.Pieces()[0].Cell().Revision() != original {
 				t.Fatal("retained two-phase result changed", historical, err)
 			}
@@ -939,7 +939,7 @@ func TestPartitionTransactionStageGlobalUniqueAuthorityChecksRemoteNodeAndRelati
 	}
 	defer reader.Close()
 	for n, definition := range definitions {
-		page, err := reader.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: definition, Value: graphstate.I64(42), Window: all}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 1 << 20})
+		page, err := reader.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: definition, Value: graphstate.I64(42), Window: all}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 1 << 20})
 		owner := graphstate.EntityID(17)
 		if n == 1 {
 			owner = 2
@@ -947,7 +947,7 @@ func TestPartitionTransactionStageGlobalUniqueAuthorityChecksRemoteNodeAndRelati
 		if err != nil || !page.Complete || len(page.Claims) != 1 || page.Claims[0].Owner != owner {
 			t.Fatal("owner-kind exact claim set", page, err)
 		}
-		empty, err := reader.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: definition, Value: graphstate.I64(43), Window: all}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 1 << 20})
+		empty, err := reader.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: definition, Value: graphstate.I64(43), Window: all}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 1 << 20})
 		if err != nil || !empty.Complete || len(empty.Claims) != 0 {
 			t.Fatal("phantom typed value has a claim", empty, err)
 		}

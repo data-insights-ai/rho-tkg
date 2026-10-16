@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
@@ -126,7 +127,7 @@ func nativeGraphEdgeUniqueObserve(ctx context.Context, sessions *graphProcessCer
 	if err != nil || !definition.Found || definition.Record.Unique != graphstate.UniqueScalar {
 		return nil, errors.Join(errCorrupt, err)
 	}
-	page, err := view.UniqueCandidates(ctx, graphstate.UniquePredicate{Definition: definition.Record, Value: graphstate.I64(int64(fact + 5)), Window: window}, 0, graphstate.ReadBudget{Rows: 4, Bytes: 16 << 10}) // #nosec G115 -- admitted fact<1M.
+	page, err := view.UniqueCandidates(ctx, graphstate.UniquePredicate{Definition: definition.Record, Value: graphstate.I64(int64(fact + 5)), Window: window}, 0, raftlog.ReadBudget{Rows: 4, Bytes: 16 << 10}) // #nosec G115 -- admitted fact<1M.
 	if err != nil || page.View != view.Identity() || !page.Complete || page.Next != 0 || len(page.Claims) > 2 {
 		return nil, errors.Join(errCorrupt, err)
 	}

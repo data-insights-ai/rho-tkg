@@ -124,7 +124,7 @@ func historyCheck(t *testing.T, v *ApplicationView, at, generation uint64, image
 			t.Fatal(row, data, err)
 		}
 		bounded, work, err := v.ApplicationRecordBounded(t.Context(), at, row.outcome, len(row.want), ReadBudget{Rows: 1, Bytes: 1082 + 3*len(row.want)})
-		if err != nil || bounded == nil || !bytes.Equal(bounded, data) || work != (ApplicationHistoryReadWork{1, 1082 + 3*len(row.want)}) {
+		if err != nil || bounded == nil || !bytes.Equal(bounded, data) || work != (ReadBudget{1, 1082 + 3*len(row.want)}) {
 			t.Fatal("bounded retained-bank history", row, bounded, work, err)
 		}
 	}
@@ -402,7 +402,7 @@ func TestApplicationViewHistoryConcurrentStoreClose(t *testing.T) {
 				t.Error(data, err)
 			}
 			bounded, work, err := v.ApplicationRecordBounded(t.Context(), 2, false, 15, ReadBudget{1, 1127})
-			if err != nil && !errors.Is(err, ErrClosed) || err == nil && (string(bounded) != "change:incoming" || work != (ApplicationHistoryReadWork{1, 1127})) {
+			if err != nil && !errors.Is(err, ErrClosed) || err == nil && (string(bounded) != "change:incoming" || work != (ReadBudget{1, 1127})) {
 				t.Error(bounded, work, err)
 			}
 		}
@@ -450,7 +450,7 @@ func TestApplicationViewHistoryBoundedWorkPrecedesHashAndOwnership(t *testing.T)
 				}
 				continue
 			}
-			if err != nil || !bytes.Equal(data, want) || cap(data) != len(data) || work != (ApplicationHistoryReadWork{1, cost}) {
+			if err != nil || !bytes.Equal(data, want) || cap(data) != len(data) || work != (ReadBudget{1, cost}) {
 				t.Fatal("funded original", data, work, err)
 			}
 			data[0] = 'X'
@@ -460,11 +460,11 @@ func TestApplicationViewHistoryBoundedWorkPrecedesHashAndOwnership(t *testing.T)
 			}
 		}
 		data, work, err := v.ApplicationRecordBounded(t.Context(), 2, outcome, len(want)-1, ReadBudget{1, cost})
-		if !errors.Is(err, ErrLimit) || data != nil || work != (ApplicationHistoryReadWork{1, cost}) || s.poison != nil {
+		if !errors.Is(err, ErrLimit) || data != nil || work != (ReadBudget{1, cost}) || s.poison != nil {
 			t.Fatal("owned cap", data, work, err, s.poison)
 		}
 		data, work, err = v.ApplicationRecordBounded(t.Context(), 1, outcome, 0, ReadBudget{1, 1082})
-		if err != nil || data == nil || len(data) != 0 || cap(data) != 0 || work != (ApplicationHistoryReadWork{1, 1082}) {
+		if err != nil || data == nil || len(data) != 0 || cap(data) != 0 || work != (ReadBudget{1, 1082}) {
 			t.Fatal("present empty", data, work, err)
 		}
 	}
@@ -490,17 +490,17 @@ func TestApplicationViewHistoryBoundedWorkPrecedesHashAndOwnership(t *testing.T)
 		{v, t.Context(), 1, s.ApplicationLimits().MaxPageBytes + 1, ReadBudget{1, 4096}, ErrLimit},
 	} {
 		data, work, err := item.view.ApplicationRecordBounded(item.ctx, item.index, false, item.maximum, item.b)
-		if !errors.Is(err, item.want) || data != nil || work != (ApplicationHistoryReadWork{}) {
+		if !errors.Is(err, item.want) || data != nil || work != (ReadBudget{}) {
 			t.Fatal(item, data, work, err)
 		}
 	}
-	if data, work, err := v.readRetainedHistoryPayload(t.Context(), 1, appChangeTag, math.MaxInt, 0, 3, &ReadBudget{1, 4096}); !errors.Is(err, ErrLimit) || data != nil || work != (ApplicationHistoryReadWork{}) {
+	if data, work, err := v.readRetainedHistoryPayload(t.Context(), 1, appChangeTag, math.MaxInt, 0, 3, &ReadBudget{1, 4096}); !errors.Is(err, ErrLimit) || data != nil || work != (ReadBudget{}) {
 		t.Fatal("overflow", data, work, err)
 	}
 	if err := v.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if data, work, err := v.ApplicationRecordBounded(t.Context(), 1, false, 0, ReadBudget{1, 4096}); !errors.Is(err, ErrClosed) || data != nil || work != (ApplicationHistoryReadWork{}) {
+	if data, work, err := v.ApplicationRecordBounded(t.Context(), 1, false, 0, ReadBudget{1, 4096}); !errors.Is(err, ErrClosed) || data != nil || work != (ReadBudget{}) {
 		t.Fatal("closed", data, work, err)
 	}
 }
@@ -536,7 +536,7 @@ func TestApplicationViewHistoryBoundedDamagedFrames(t *testing.T) {
 			// hash grant. A sufficiently funded retry must still poison/refuse it.
 			if kind == "checksum" {
 				data, work, err := v.ApplicationRecordBounded(t.Context(), 2, false, 64<<10, ReadBudget{1, 1082})
-				if !errors.Is(err, ErrLimit) || data != nil || work != (ApplicationHistoryReadWork{1, 1082}) || s.poison != nil {
+				if !errors.Is(err, ErrLimit) || data != nil || work != (ReadBudget{1, 1082}) || s.poison != nil {
 					t.Fatal("unfunded hash", data, work, err, s.poison)
 				}
 			}

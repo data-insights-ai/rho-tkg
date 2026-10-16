@@ -170,7 +170,7 @@ func TestFullStagePlanInstallProjectAndNonUniqueAvoidsPostings(t *testing.T) {
 			t.Fatal(r, err)
 		}
 	}
-	if _, err := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: fullSchemas()[2], Value: graphstate.I64(7), Window: scope}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) {
+	if _, err := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: fullSchemas()[2], Value: graphstate.I64(7), Window: scope}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("nonunique predicate falsely reported complete coverage", err)
 	}
 }
@@ -204,7 +204,7 @@ func fullReadKeys(t *testing.T, v *ReadView, p graphstate.KeyPredicate) []graphs
 	var out []graphstate.ComponentKey
 	var token graphstate.Cursor
 	for range 100 {
-		page, err := v.ComponentKeys(t.Context(), p, token, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+		page, err := v.ComponentKeys(t.Context(), p, token, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -223,7 +223,7 @@ func fullReadKeys(t *testing.T, v *ReadView, p graphstate.KeyPredicate) []graphs
 	t.Fatal("key pagination failed")
 	return nil
 }
-func fullReadClaims(t *testing.T, v *ReadView, p graphstate.UniquePredicate, budget graphstate.ReadBudget) []graphstate.UniqueClaim {
+func fullReadClaims(t *testing.T, v *ReadView, p graphstate.UniquePredicate, budget raftlog.ReadBudget) []graphstate.UniqueClaim {
 	t.Helper()
 	var out []graphstate.UniqueClaim
 	var token graphstate.Cursor
@@ -244,7 +244,7 @@ func fullReadClaims(t *testing.T, v *ReadView, p graphstate.UniquePredicate, bud
 	t.Fatal("claim pagination failed")
 	return nil
 }
-func fullReadIncidents(t *testing.T, v *ReadView, p graphstate.IncidentPredicate, budget graphstate.ReadBudget) []graphstate.EntityID {
+func fullReadIncidents(t *testing.T, v *ReadView, p graphstate.IncidentPredicate, budget raftlog.ReadBudget) []graphstate.EntityID {
 	t.Helper()
 	var out []graphstate.EntityID
 	var token graphstate.Cursor
@@ -305,7 +305,7 @@ func TestFullHistoryReopenCorrectionAndRawClaimRetention(t *testing.T) {
 	if !reflect.DeepEqual(keys, want) {
 		t.Fatal("closed life keys disappeared", keys)
 	}
-	claims := fullReadClaims(t, v, graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(7), Window: scope}, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	claims := fullReadClaims(t, v, graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(7), Window: scope}, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if !reflect.DeepEqual(claims, []graphstate.UniqueClaim{{Owner: 1, Life: 11, Key: want[1]}}) {
 		t.Fatal("raw closed claim omitted", claims)
 	}
@@ -370,7 +370,7 @@ func TestFullIncidentsParallelSelfLoopsLifeRunsAndHistoricalRoots(t *testing.T) 
 	for _, index := range []uint64{first, smallRun, f.index} {
 		v := f.view(t, index)
 		before := v.Work()
-		got := fullReadIncidents(t, v, predicate, graphstate.ReadBudget{Rows: 128, Bytes: 4 << 20})
+		got := fullReadIncidents(t, v, predicate, raftlog.ReadBudget{Rows: 128, Bytes: 4 << 20})
 		if !reflect.DeepEqual(got, want) {
 			t.Fatal("parallel/selfloop/life multiplicity changed", index, got)
 		}
@@ -392,12 +392,12 @@ func TestFullIncidentsParallelSelfLoopsLifeRunsAndHistoricalRoots(t *testing.T) 
 	}
 	old := f.view(t, empty)
 	before := old.Work()
-	got := fullReadIncidents(t, old, predicate, graphstate.ReadBudget{Rows: 128, Bytes: 4 << 20})
+	got := fullReadIncidents(t, old, predicate, raftlog.ReadBudget{Rows: 128, Bytes: 4 << 20})
 	if len(got) != 0 || old.Work().Records-before.Records != 2 {
 		t.Fatal("old empty root visited future incident history", got, old.Work())
 	}
 	current := f.view(t, f.index)
-	if got := fullReadIncidents(t, current, graphstate.IncidentPredicate{Endpoint: 2, Life: 99, Window: scope}, graphstate.ReadBudget{Rows: 128, Bytes: 4 << 20}); !reflect.DeepEqual(got, []graphstate.EntityID{6}) {
+	if got := fullReadIncidents(t, current, graphstate.IncidentPredicate{Endpoint: 2, Life: 99, Window: scope}, raftlog.ReadBudget{Rows: 128, Bytes: 4 << 20}); !reflect.DeepEqual(got, []graphstate.EntityID{6}) {
 		t.Fatal("identity-reference access incorrectly depended on bound life", got)
 	}
 }
@@ -486,7 +486,7 @@ func TestFullUniquenessSwapAndAliasesUnderForcedCollisions(t *testing.T) {
 	if err != nil || !alias.Found || alias.ID != 101 {
 		t.Fatal(alias, err)
 	}
-	claims := fullReadClaims(t, v, graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(7), Window: scope}, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	claims := fullReadClaims(t, v, graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(7), Window: scope}, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if len(claims) != 1 || claims[0].Owner != 1 {
 		t.Fatal("alias bypassed raw typed candidate range", claims)
 	}
@@ -592,7 +592,7 @@ func TestFullAllScalarKindsAndSetMutationOwnExactTypedValues(t *testing.T) {
 		}
 	}
 	v := f.view(t, f.index)
-	claims := fullReadClaims(t, v, graphstate.UniquePredicate{Definition: definitions[len(definitions)-1], Value: graphstate.String("a\x00"), Window: scope}, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	claims := fullReadClaims(t, v, graphstate.UniquePredicate{Definition: definitions[len(definitions)-1], Value: graphstate.String("a\x00"), Window: scope}, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	assertFullClaimSet(t, claims, []graphstate.UniqueClaim{{Owner: 1, Life: 11, Key: graphstate.ComponentKey{Owner: 1, Life: 11, Kind: graphstate.SetMember, Name: "members", Member: 200}}})
 }
 func TestFullEffectOwnedBytesExactBoundaryAndSharedBuffers(t *testing.T) {

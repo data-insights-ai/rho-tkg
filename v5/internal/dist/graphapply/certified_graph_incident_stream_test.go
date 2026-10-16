@@ -3,6 +3,7 @@ package graphapply
 import (
 	"context"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"math"
 	"slices"
 	"testing"
@@ -48,7 +49,7 @@ func TestCertifiedIncidentStreamRetainsCutAndCommitsOnlyHydratedChunks(t *testin
 	predicate := graphstate.IncidentPredicate{Endpoint: 1, Life: 2, Window: point}
 
 	// Direct composite API parity reuses this genuine native retained view.
-	direct, err := pinned.full.IncidentRelationshipsChunk(t.Context(), predicate, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}, 1)
+	direct, err := pinned.full.IncidentRelationshipsChunk(t.Context(), predicate, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}, 1)
 	if err != nil || direct.Complete || !slices.Equal(direct.Entities, []graphstate.EntityID{3}) {
 		t.Fatal(direct, err)
 	}
@@ -60,7 +61,7 @@ func TestCertifiedIncidentStreamRetainsCutAndCommitsOnlyHydratedChunks(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	following, err := pinned.full.IncidentRelationshipsChunk(t.Context(), predicate, imported, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}, 1)
+	following, err := pinned.full.IncidentRelationshipsChunk(t.Context(), predicate, imported, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}, 1)
 	if err != nil || !following.Complete || !slices.Equal(following.Entities, []graphstate.EntityID{5}) {
 		t.Fatal(following, err)
 	}

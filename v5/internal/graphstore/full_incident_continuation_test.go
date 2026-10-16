@@ -3,6 +3,7 @@ package graphstore
 import (
 	"context"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"slices"
 	"testing"
 
@@ -28,7 +29,7 @@ func TestGenuineIncidentContinuationKeepsWholeRunsAndRejectsRebinding(t *testing
 	old := f.index
 	p := graphstate.IncidentPredicate{Endpoint: 1, Life: 11, Window: whole}
 	v := f.view(t, old)
-	b := graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}
+	b := raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}
 	page, err := v.IncidentRelationshipsChunk(t.Context(), p, 0, b, 1)
 	if err != nil || page.Complete || !slices.Equal(page.Entities, []graphstate.EntityID{3}) {
 		t.Fatal(page, err)

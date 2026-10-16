@@ -742,8 +742,11 @@ func (s *Store) ReclaimApplication() error {
 	return nil
 }
 
-// ReadBudget bounds visited logical keys as well as owned returned bytes. A
-// tombstone consumes work even though it is not emitted in a scan.
+// ReadBudget is the one {Rows, Bytes} page bound and work counter, shared by
+// raftlog and graphstate: it bounds visited logical keys as well as owned
+// returned bytes (a tombstone consumes work even though a scan does not emit
+// it); as a result it reports admitted rows and conservative byte work
+// (diagnostic only on error).
 type ReadBudget struct{ Rows, Bytes int }
 
 // ApplicationPage owns copied rows and a last-visited logical key continuation.

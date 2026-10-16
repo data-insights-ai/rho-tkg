@@ -82,10 +82,10 @@ func TestPartitionTransactionRemoteAxisAuthorityRegistrationAndRetainedConflict(
 	}
 	defer fresh.Close()
 	query := graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 17, Kind: graphstate.Presence}, Window: all}
-	if page, err := fresh.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20}); !errors.Is(err, ErrCorrupt) || page.View != (graphstate.ViewID{}) {
+	if page, err := fresh.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20}); !errors.Is(err, ErrCorrupt) || page.View != (graphstate.ViewID{}) {
 		t.Fatal("conflicting current authority produced state", page, err)
 	}
-	page, err := retained.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+	page, err := retained.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 	if err != nil || !page.Complete || page.Data.Usage().Pieces() != 1 || page.Data.Pieces()[0].Cell().Revision() != original {
 		t.Fatal("current authority changed retained state", page, err)
 	}
@@ -147,11 +147,11 @@ func TestPartitionTransactionPresenceCorrectionKeepsUnchangedAtomsAtBothEndpoint
 		if i == 1 {
 			beforePieces = 0
 		}
-		before, err := old.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		before, err := old.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		if err != nil || !before.Complete || before.Data.Usage().Pieces() != beforePieces {
 			t.Fatal("retained support changed", i, before, err)
 		}
-		after, err := fresh.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		after, err := fresh.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		want := original
 		if i != 0 {
 			want = next
@@ -279,7 +279,7 @@ func TestPartitionTransactionClosedUpperEndpointPresenceHistory(t *testing.T) {
 	defer fresh.Close()
 	for phase, view := range []*PartitionTransactionView{old, fresh} {
 		query := graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 2, Kind: graphstate.Presence}, Window: point}
-		page, err := view.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		page, err := view.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		if err != nil || !page.Complete || page.Data.Usage().Pieces() != 1 || page.Data.Pieces()[0].Cell().Present() != (phase == 0) {
 			t.Fatal("upper endpoint history substituted", phase, page, err)
 		}

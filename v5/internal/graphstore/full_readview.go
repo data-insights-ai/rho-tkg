@@ -225,7 +225,7 @@ func (v *ReadView) check(ctx context.Context) error {
 	}
 	return nil
 }
-func (v *ReadView) begin(ctx context.Context, budget graphstate.ReadBudget) (*pageReader, error) {
+func (v *ReadView) begin(ctx context.Context, budget raftlog.ReadBudget) (*pageReader, error) {
 	if err := v.check(ctx); err != nil {
 		return nil, err
 	}
@@ -281,7 +281,7 @@ func (v *ReadView) Entity(ctx context.Context, id graphstate.EntityID) (graphsta
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return graphstate.EntityRead{}, err
 	}
@@ -309,7 +309,7 @@ func (v *ReadView) Life(ctx context.Context, owner graphstate.EntityID, id graph
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return graphstate.LifeRead{}, err
 	}
@@ -343,7 +343,7 @@ func (v *ReadView) Property(ctx context.Context, owner graphstate.EntityKind, na
 	if !validName(name, v.c.limits) || owner != graphstate.Node && owner != graphstate.Relationship {
 		return graphstate.PropertyRead{}, ErrInvalid
 	}
-	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return graphstate.PropertyRead{}, err
 	}
@@ -364,7 +364,7 @@ func (v *ReadView) Value(ctx context.Context, id graphstate.ValueID) (graphstate
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return graphstate.ValueRead{}, err
 	}
@@ -395,7 +395,7 @@ func (v *ReadView) ValueIdentity(ctx context.Context, value graphstate.Scalar) (
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return graphstate.ValueRead{}, err
 	}
@@ -460,7 +460,7 @@ func (q *pageReader) equalityKey(value graphstate.Scalar) (string, error) {
 }
 
 // ComponentPage uses the same identity and shared source/cursor/output caps.
-func (v *ReadView) ComponentPage(ctx context.Context, query graphstate.ComponentQuery, token graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.ComponentPage, error) {
+func (v *ReadView) ComponentPage(ctx context.Context, query graphstate.ComponentQuery, token graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.ComponentPage, error) {
 	if v == nil {
 		return graphstate.ComponentPage{}, ErrInvalid
 	}
@@ -590,7 +590,7 @@ func (v *ReadView) oldCursor(token graphstate.Cursor, kind recordKind, hash [32]
 }
 
 // ComponentKeys seeks the exact longest contiguous prefix in its retained tree.
-func (v *ReadView) ComponentKeys(ctx context.Context, predicate graphstate.KeyPredicate, token graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.KeyPage, error) {
+func (v *ReadView) ComponentKeys(ctx context.Context, predicate graphstate.KeyPredicate, token graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.KeyPage, error) {
 	if v == nil {
 		return graphstate.KeyPage{}, ErrInvalid
 	}

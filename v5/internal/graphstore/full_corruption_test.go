@@ -118,9 +118,9 @@ func TestFullIndexRootAndBindingCorruptionNeverReturnsPartialView(t *testing.T) 
 			case "declared-role":
 				_, err = v.Life(t.Context(), 3, 31)
 			case "raw-canonical":
-				_, err = v.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 1, Life: 11, Kind: graphstate.SetMember, Name: "set", Member: 99}, Window: scope}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+				_, err = v.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 1, Life: 11, Kind: graphstate.SetMember, Name: "set", Member: 99}, Window: scope}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 			default:
-				page, e := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: fullSchemas()[1], Value: graphstate.I64(7), Window: scope}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+				page, e := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: fullSchemas()[1], Value: graphstate.I64(7), Window: scope}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 				err = e
 				if len(page.Claims) != 0 || page.Next != 0 {
 					t.Fatal("corrupt candidate returned partial data", page)

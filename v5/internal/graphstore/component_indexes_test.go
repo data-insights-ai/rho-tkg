@@ -117,7 +117,7 @@ func readIndexedKeys(t *testing.T, p *componentKeyReader, predicate graphstate.K
 	var keys []graphstate.ComponentKey
 	var token graphstate.Cursor
 	for i := 0; i < 200; i++ {
-		page, err := p.ComponentKeys(t.Context(), predicate, token, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+		page, err := p.ComponentKeys(t.Context(), predicate, token, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -186,7 +186,7 @@ func TestIndexedKeysExactPredicatesRetractionsAndHistoricalEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer old.Close()
-	page, err := old.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, graphstate.ReadBudget{Rows: 1, Bytes: 4 << 20})
+	page, err := old.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, raftlog.ReadBudget{Rows: 1, Bytes: 4 << 20})
 	if err != nil || !page.Complete || len(page.Keys) != 0 || old.last.Records != 1 {
 		t.Fatal("empty MVCC root visited future keys", page, old.last, err)
 	}
@@ -401,27 +401,27 @@ func TestIndexedMembershipSymmetryAndCursorBounds(t *testing.T) {
 	}
 	defer p.Close()
 	predicate := graphstate.KeyPredicate{Owner: 1}
-	first, err := p.ComponentKeys(t.Context(), predicate, 0, graphstate.ReadBudget{Rows: 12, Bytes: 4 << 20})
+	first, err := p.ComponentKeys(t.Context(), predicate, 0, raftlog.ReadBudget{Rows: 12, Bytes: 4 << 20})
 	if err != nil || first.Next == 0 {
 		t.Fatal(first, err)
 	}
-	if _, err := p.ComponentKeys(t.Context(), predicate, 0, graphstate.ReadBudget{Rows: 12, Bytes: 4 << 20}); !errors.Is(err, ErrResourceLimit) {
+	if _, err := p.ComponentKeys(t.Context(), predicate, 0, raftlog.ReadBudget{Rows: 12, Bytes: 4 << 20}); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal("cursor retention bypass", err)
 	}
-	if _, err := p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 2}, first.Next, graphstate.ReadBudget{Rows: 12, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) {
+	if _, err := p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 2}, first.Next, raftlog.ReadBudget{Rows: 12, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("foreign predicate cursor", err)
 	}
-	if _, err := p.ComponentKeys(t.Context(), predicate, first.Next, graphstate.ReadBudget{Rows: 1, Bytes: 4 << 20}); !errors.Is(err, ErrResourceLimit) {
+	if _, err := p.ComponentKeys(t.Context(), predicate, first.Next, raftlog.ReadBudget{Rows: 1, Bytes: 4 << 20}); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal("work budget ignored", err)
 	}
-	done, err := p.ComponentKeys(t.Context(), predicate, first.Next, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	done, err := p.ComponentKeys(t.Context(), predicate, first.Next, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || !done.Complete {
 		t.Fatal("refusal consumed cursor", err)
 	}
 	if err := p.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.ComponentKeys(t.Context(), predicate, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrClosed) {
+	if _, err := p.ComponentKeys(t.Context(), predicate, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrClosed) {
 		t.Fatal(err)
 	}
 	if err := (*componentKeyReader)(nil).Close(); !errors.Is(err, ErrInvalid) {
@@ -451,7 +451,7 @@ func TestIndexedMembershipSymmetryAndCursorBounds(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer reader.Close()
-		if _, err := reader.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: pagePoint(t, f.axis, 1)}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrCorrupt) {
+		if _, err := reader.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: pagePoint(t, f.axis, 1)}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrCorrupt) {
 			t.Fatal("missing membership side accepted", mutation, err)
 		}
 	}
@@ -497,17 +497,17 @@ func TestIndexedLateExactPrefixSeeksAndLargePageReusesTree(t *testing.T) {
 	}
 	defer p.Close()
 	exact := graphstate.KeyPredicate{Owner: 1, Life: 12, Kind: graphstate.Label, Name: expected[9].Name}
-	page, err := p.ComponentKeys(t.Context(), exact, 0, graphstate.ReadBudget{Rows: 32, Bytes: 4 << 20})
+	page, err := p.ComponentKeys(t.Context(), exact, 0, raftlog.ReadBudget{Rows: 32, Bytes: 4 << 20})
 	if err != nil || !page.Complete || !reflect.DeepEqual(page.Keys, expected[9:]) || p.last.Records > 16 {
 		t.Fatal("late exact prefix walked earlier owner keys", page, p.last, err)
 	}
-	page, err = p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1, Life: 12, Kind: graphstate.Label}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	page, err = p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1, Life: 12, Kind: graphstate.Label}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || !page.Complete || !reflect.DeepEqual(page.Keys, expected) || p.last.DirectoryPages > 20 {
 		t.Fatal("generous page restarted root for every key", page, p.last, err)
 	}
 	// Kind is an exact sparse filter when Life is unspecified. One checked earlier
 	// label can fill work without matching, and must advance rather than complete.
-	page, err = p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1, Kind: graphstate.SetMember}, 0, graphstate.ReadBudget{Rows: 16, Bytes: 4 << 20})
+	page, err = p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1, Kind: graphstate.SetMember}, 0, raftlog.ReadBudget{Rows: 16, Bytes: 4 << 20})
 	if err != nil || page.Complete || page.Next == 0 || len(page.Keys) != 0 {
 		t.Fatal("filtered page did not advance", page, p.last, err)
 	}
@@ -526,22 +526,22 @@ func TestIndexedReaderInputLifetimeAndTightOutput(t *testing.T) {
 	}
 	defer p.Close()
 	for _, pred := range []graphstate.KeyPredicate{{}, {Owner: 1, Kind: 99}, {Owner: 1, Name: " "}} {
-		if got, err := p.ComponentKeys(t.Context(), pred, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) || !reflect.DeepEqual(got, graphstate.KeyPage{}) {
+		if got, err := p.ComponentKeys(t.Context(), pred, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) || !reflect.DeepEqual(got, graphstate.KeyPage{}) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 999, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) {
+	if _, err := p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 999, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
-	if _, err := p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 100}); !errors.Is(err, ErrResourceLimit) {
+	if _, err := p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 100}); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := p.ComponentKeys(ctx, graphstate.KeyPredicate{Owner: 1}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, context.Canceled) {
+	if _, err := p.ComponentKeys(ctx, graphstate.KeyPredicate{Owner: 1}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if _, err := (*componentKeyReader)(nil).ComponentKeys(t.Context(), graphstate.KeyPredicate{}, 0, graphstate.ReadBudget{}); !errors.Is(err, ErrInvalid) {
+	if _, err := (*componentKeyReader)(nil).ComponentKeys(t.Context(), graphstate.KeyPredicate{}, 0, raftlog.ReadBudget{}); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
 	if _, err := newComponentKeyReader(c, PageLimits{MaxLevels: 9}); !errors.Is(err, ErrInvalid) {
@@ -553,7 +553,7 @@ func TestIndexedReaderInputLifetimeAndTightOutput(t *testing.T) {
 	if err := c.view.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, raftlog.ErrClosed) {
+	if _, err := p.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, raftlog.ErrClosed) {
 		t.Fatal(err)
 	}
 	if _, err := newComponentKeyReader(c, PageLimits{}); !errors.Is(err, raftlog.ErrClosed) {
@@ -676,7 +676,7 @@ func TestIndexedClosedLifeRetainsLabelsPropertiesAndHistoricalPresence(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		page, err := reader.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: presence, Window: w}, 0, graphstate.ReadBudget{Rows: 32, Bytes: 4096})
+		page, err := reader.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: presence, Window: w}, 0, raftlog.ReadBudget{Rows: 32, Bytes: 4096})
 		if err != nil {
 			t.Fatal(err)
 		}

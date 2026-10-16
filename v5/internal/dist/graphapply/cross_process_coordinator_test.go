@@ -396,7 +396,7 @@ func TestCrossProcessIncidentPhysicalWorkLimitRefusesWithoutPartialSet(t *testin
 	}
 	defer read.Close()
 	predicate := graphstate.IncidentPredicate{Endpoint: 1, Life: 2, Window: ops[0].Scope}
-	page, err := read.ReadView().IncidentRelationships(t.Context(), predicate, 0, graphstate.ReadBudget{Rows: 16, Bytes: 64 << 10})
+	page, err := read.ReadView().IncidentRelationships(t.Context(), predicate, 0, raftlog.ReadBudget{Rows: 16, Bytes: 64 << 10})
 	if !errors.Is(err, graphstore.ErrResourceLimit) || len(page.Entities) != 0 || page.Complete {
 		t.Fatal("small physical-work query published partial/false empty", page, err)
 	}

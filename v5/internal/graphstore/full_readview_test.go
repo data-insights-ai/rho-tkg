@@ -44,20 +44,20 @@ func TestFullReadViewEveryDoorOneIdentityAndNegativeReads(t *testing.T) {
 		t.Fatal(canonical, err)
 	}
 	presence := graphstate.ComponentKey{Owner: 1, Kind: graphstate.Presence}
-	component, err := v.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: presence, Window: scope}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	component, err := v.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: presence, Window: scope}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || component.View != id || !component.Complete || len(component.Data.Pieces()) != 1 {
 		t.Fatal(component, err)
 	}
-	keys, err := v.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	keys, err := v.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || keys.View != id || !keys.Complete || !reflect.DeepEqual(keys.Keys, []graphstate.ComponentKey{{Owner: 1, Kind: graphstate.Presence}, {Owner: 1, Life: 11, Kind: graphstate.Label, Name: "a\x00"}, {Owner: 1, Life: 11, Kind: graphstate.ScalarProperty, Name: "scalar"}}) {
 		t.Fatal(keys, err)
 	}
-	claims, err := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(7), Window: scope}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	claims, err := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(7), Window: scope}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || claims.View != id || !claims.Complete || len(claims.Claims) != 1 {
 		t.Fatal(claims, err)
 	}
 	assertFullClaimSet(t, claims.Claims, []graphstate.UniqueClaim{{Owner: 1, Life: 11, Key: graphstate.ComponentKey{Owner: 1, Life: 11, Kind: graphstate.ScalarProperty, Name: "scalar"}}})
-	incidents, err := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: 1, Life: 11, Window: scope}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	incidents, err := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: 1, Life: 11, Window: scope}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || incidents.View != id || !incidents.Complete || len(incidents.Entities) != 0 {
 		t.Fatal(incidents, err)
 	}
@@ -84,7 +84,7 @@ func TestFullReadViewEveryDoorOneIdentityAndNegativeReads(t *testing.T) {
 	if got := fullReadKeys(t, v, graphstate.KeyPredicate{Owner: 1, Life: 11, Name: "a\x00missing"}); len(got) != 0 {
 		t.Fatal("NUL name phantom", got)
 	}
-	if got := fullReadClaims(t, v, graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(100), Window: scope}, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); len(got) != 0 {
+	if got := fullReadClaims(t, v, graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(100), Window: scope}, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); len(got) != 0 {
 		t.Fatal("value phantom", got)
 	}
 	if err := v.Close(); err != nil {
@@ -115,16 +115,16 @@ func TestFullNilPartialLifetimeAndInvalidLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, fn := range []func() error{func() error { _, e := v.Entity(t.Context(), 1); return e }, func() error { _, e := v.Life(t.Context(), 1, 1); return e }, func() error { _, e := v.Property(t.Context(), graphstate.Node, "x"); return e }, func() error { _, e := v.Value(t.Context(), 1); return e }, func() error { _, e := v.ValueIdentity(t.Context(), graphstate.I64(1)); return e }, func() error {
-		_, e := v.ComponentPage(t.Context(), graphstate.ComponentQuery{}, 0, graphstate.ReadBudget{})
+		_, e := v.ComponentPage(t.Context(), graphstate.ComponentQuery{}, 0, raftlog.ReadBudget{})
 		return e
 	}, func() error {
-		_, e := v.ComponentKeys(t.Context(), graphstate.KeyPredicate{}, 0, graphstate.ReadBudget{})
+		_, e := v.ComponentKeys(t.Context(), graphstate.KeyPredicate{}, 0, raftlog.ReadBudget{})
 		return e
 	}, func() error {
-		_, e := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{}, 0, graphstate.ReadBudget{})
+		_, e := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{}, 0, raftlog.ReadBudget{})
 		return e
 	}, func() error {
-		_, e := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{}, 0, graphstate.ReadBudget{})
+		_, e := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{}, 0, raftlog.ReadBudget{})
 		return e
 	}, v.Close} {
 		if err := fn(); !errors.Is(err, ErrInvalid) {
@@ -251,7 +251,7 @@ func TestFullBudgetCursorRefusalsPreservePreviousContinuation(t *testing.T) {
 	}
 	defer v.Close()
 	predicate := graphstate.KeyPredicate{Owner: 1, Life: 11, Kind: graphstate.Label}
-	first, err := v.ComponentKeys(t.Context(), predicate, 0, graphstate.ReadBudget{Rows: 12, Bytes: 4 << 20})
+	first, err := v.ComponentKeys(t.Context(), predicate, 0, raftlog.ReadBudget{Rows: 12, Bytes: 4 << 20})
 	if err != nil || first.Next == 0 || first.Complete || len(first.Keys) == 0 {
 		t.Fatal("bounded key page made no progress", first, err)
 	}
@@ -259,26 +259,26 @@ func TestFullBudgetCursorRefusalsPreservePreviousContinuation(t *testing.T) {
 	bytes := v.cursorBytes
 	outputs := v.outputBytes
 	work := v.Work()
-	if _, err := v.ComponentKeys(t.Context(), predicate, 0, graphstate.ReadBudget{Rows: 12, Bytes: 4 << 20}); !errors.Is(err, ErrResourceLimit) {
+	if _, err := v.ComponentKeys(t.Context(), predicate, 0, raftlog.ReadBudget{Rows: 12, Bytes: 4 << 20}); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal("shared cursor cap bypassed", err)
 	}
 	if v.cursors[first.Next] != saved || v.cursorBytes != bytes || v.outputBytes != outputs || v.Work().Records <= work.Records {
 		t.Fatal("refusal mutated cursor/output or hid attempted source work")
 	}
-	if _, err := v.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 2}, first.Next, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) {
+	if _, err := v.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 2}, first.Next, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	before := v.Work()
-	if _, err := v.ComponentKeys(ctx, predicate, first.Next, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, context.Canceled) || v.Work() != before || v.cursors[first.Next] != saved || v.outputBytes != outputs {
+	if _, err := v.ComponentKeys(ctx, predicate, first.Next, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, context.Canceled) || v.Work() != before || v.cursors[first.Next] != saved || v.outputBytes != outputs {
 		t.Fatal("cancelled call published/consumed output", err)
 	}
-	rest, err := v.ComponentKeys(t.Context(), predicate, first.Next, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	rest, err := v.ComponentKeys(t.Context(), predicate, first.Next, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || !rest.Complete || rest.Next != 0 {
 		t.Fatal(rest, err)
 	}
-	if _, err := v.ComponentKeys(t.Context(), predicate, first.Next, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) {
+	if _, err := v.ComponentKeys(t.Context(), predicate, first.Next, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("consumed token replay accepted", err)
 	}
 }
@@ -294,7 +294,7 @@ func TestFullCandidateCursorsAndPredicateBindings(t *testing.T) {
 	}
 	v := f.view(t, f.index)
 	predicate := graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(7), Window: scope}
-	first, err := v.UniqueCandidates(t.Context(), predicate, 0, graphstate.ReadBudget{Rows: 40, Bytes: 4 << 20})
+	first, err := v.UniqueCandidates(t.Context(), predicate, 0, raftlog.ReadBudget{Rows: 40, Bytes: 4 << 20})
 	if err != nil || first.Next == 0 || first.Complete || len(first.Claims) == 0 {
 		t.Fatal("bounded candidate page made no progress", first, err)
 	}
@@ -302,13 +302,13 @@ func TestFullCandidateCursorsAndPredicateBindings(t *testing.T) {
 	output := v.outputBytes
 	changed := predicate
 	changed.Value = graphstate.I64(8)
-	if _, err := v.UniqueCandidates(t.Context(), changed, first.Next, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) || v.cursors[first.Next] != saved || v.outputBytes != output {
+	if _, err := v.UniqueCandidates(t.Context(), changed, first.Next, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrInvalid) || v.cursors[first.Next] != saved || v.outputBytes != output {
 		t.Fatal("candidate cursor accepted foreign exact value", err)
 	}
-	if _, err := v.UniqueCandidates(t.Context(), predicate, first.Next, graphstate.ReadBudget{Rows: 1, Bytes: 4 << 20}); !errors.Is(err, ErrResourceLimit) || v.cursors[first.Next] != saved {
+	if _, err := v.UniqueCandidates(t.Context(), predicate, first.Next, raftlog.ReadBudget{Rows: 1, Bytes: 4 << 20}); !errors.Is(err, ErrResourceLimit) || v.cursors[first.Next] != saved {
 		t.Fatal("failed candidate call consumed token", err)
 	}
-	rest, err := v.UniqueCandidates(t.Context(), predicate, first.Next, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	rest, err := v.UniqueCandidates(t.Context(), predicate, first.Next, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || !rest.Complete || len(first.Claims)+len(rest.Claims) != 6 {
 		t.Fatal("raw candidate omission/duplication", rest, err)
 	}
@@ -400,7 +400,7 @@ func TestFullCancellationAtFinalCheckKeepsOutputAndCursorAtomic(t *testing.T) {
 		f.apply(t, graphstate.Operation{Kind: graphstate.AddLabel, Owner: 1, Life: 11, Scope: scope, Name: name})
 	}
 	predicate := graphstate.KeyPredicate{Owner: 1, Life: 11, Kind: graphstate.Label}
-	budget := graphstate.ReadBudget{Rows: 12, Bytes: 4 << 20}
+	budget := raftlog.ReadBudget{Rows: 12, Bytes: 4 << 20}
 	probe := f.view(t, f.index)
 	first, err := probe.ComponentKeys(t.Context(), predicate, 0, budget)
 	if err != nil || first.Next == 0 {
@@ -482,7 +482,7 @@ func TestFullComponentContinuationLateCancellationRestoresBorrowedPageCursor(t *
 		f.apply(t, graphstate.Operation{Kind: graphstate.AddLabel, Owner: 1, Life: 11, Scope: f.span(t, int64(2*i), int64(2*i+1)), Name: "fragmented"})
 	}
 	query := graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 1, Life: 11, Kind: graphstate.Label, Name: "fragmented"}, Window: whole}
-	budget := graphstate.ReadBudget{Rows: 24, Bytes: 4 << 20}
+	budget := raftlog.ReadBudget{Rows: 24, Bytes: 4 << 20}
 	probe := f.view(t, f.index)
 	first, err := probe.ComponentPage(t.Context(), query, 0, budget)
 	if err != nil || first.Next == 0 || first.Complete {

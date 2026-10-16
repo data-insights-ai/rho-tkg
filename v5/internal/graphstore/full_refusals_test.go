@@ -25,7 +25,7 @@ func TestFullCandidatesEmptySchemaBudgetAndLateCancellation(t *testing.T) {
 	predicate := graphstate.IncidentPredicate{Endpoint: 1, Life: 11, Window: w}
 	v := f.view(t, f.index)
 	v.limits.MaxOutputBytes = 136
-	first, err := v.IncidentRelationships(t.Context(), predicate, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	first, err := v.IncidentRelationships(t.Context(), predicate, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || first.Next == 0 || first.Complete || !reflect.DeepEqual(first.Entities, []graphstate.EntityID{3}) {
 		t.Fatal("incident output-bound page failed to advance exactly", first, err)
 	}
@@ -33,23 +33,23 @@ func TestFullCandidatesEmptySchemaBudgetAndLateCancellation(t *testing.T) {
 	saved := v.cursors[first.Next]
 	other := predicate
 	other.Life++
-	if _, err := v.IncidentRelationships(t.Context(), other, first.Next, graphstate.ReadBudget{Rows: 512, Bytes: 1024}); !errors.Is(err, ErrInvalid) || v.cursors[first.Next] != saved {
+	if _, err := v.IncidentRelationships(t.Context(), other, first.Next, raftlog.ReadBudget{Rows: 512, Bytes: 1024}); !errors.Is(err, ErrInvalid) || v.cursors[first.Next] != saved {
 		t.Fatal("incident continuation changed predicate", err)
 	}
-	if _, err := v.IncidentRelationships(t.Context(), predicate, first.Next, graphstate.ReadBudget{Rows: 512, Bytes: 128}); !errors.Is(err, ErrResourceLimit) || v.cursors[first.Next] != saved {
+	if _, err := v.IncidentRelationships(t.Context(), predicate, first.Next, raftlog.ReadBudget{Rows: 512, Bytes: 128}); !errors.Is(err, ErrResourceLimit) || v.cursors[first.Next] != saved {
 		t.Fatal("failed incident call consumed continuation", err)
 	}
-	rest := fullReadIncidents(t, v, predicate, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	rest := fullReadIncidents(t, v, predicate, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if !reflect.DeepEqual(rest, []graphstate.EntityID{3, 4, 5}) {
 		t.Fatal("parallel relationships omitted/collapsed", rest)
 	}
 	for _, call := range []func(*ReadView, context.Context) error{
 		func(v *ReadView, ctx context.Context) error {
-			_, e := v.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: 1, Window: empty}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 1024})
+			_, e := v.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: 1, Window: empty}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 1024})
 			return e
 		},
 		func(v *ReadView, ctx context.Context) error {
-			_, e := v.UniqueCandidates(ctx, graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.Null(), Window: w}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+			_, e := v.UniqueCandidates(ctx, graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.Null(), Window: w}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 			return e
 		},
 	} {
@@ -70,10 +70,10 @@ func TestFullCandidatesEmptySchemaBudgetAndLateCancellation(t *testing.T) {
 	}
 	wrong := fullSchemas()[0]
 	wrong.Name = "undeclared"
-	if _, err := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: wrong, Value: graphstate.I64(7), Window: w}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, graphstate.ErrSchemaMismatch) {
+	if _, err := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: wrong, Value: graphstate.I64(7), Window: w}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, graphstate.ErrSchemaMismatch) {
 		t.Fatal(err)
 	}
-	if _, err := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 1024}); !errors.Is(err, ErrInvalid) {
+	if _, err := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 1024}); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
 	_ = v.Close()
@@ -187,12 +187,12 @@ func TestFullDescriptorTruncationAndRawBindingRefusals(t *testing.T) {
 	p := pageReader{q: q, limits: DefaultPageLimits()}
 	p.q.maxBytes = q.bytes + 1
 	s, _ := state.New(f.axis, state.Limits{})
-	if _, _, err := p.exactComponentOutput(s, w, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrResourceLimit) {
+	if _, _, err := p.exactComponentOutput(s, w, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal(err)
 	}
 	q, _ = c.reader(t.Context())
 	p.q = q
-	if _, _, err := p.exactComponentOutput(s, w, graphstate.ReadBudget{Rows: 512, Bytes: 1}); !errors.Is(err, ErrResourceLimit) {
+	if _, _, err := p.exactComponentOutput(s, w, raftlog.ReadBudget{Rows: 512, Bytes: 1}); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal(err)
 	}
 	_ = v.Close()

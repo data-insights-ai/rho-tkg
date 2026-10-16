@@ -5,6 +5,7 @@ package graphstate
 import (
 	"context"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
@@ -183,9 +184,6 @@ type ValueRead struct {
 	Value   Scalar
 }
 
-// ReadBudget is a per-page bound; the planner also charges aggregate reads.
-type ReadBudget struct{ Rows, Bytes int }
-
 // ComponentQuery requests owned replacement coverage and read-only merge context.
 type ComponentQuery struct {
 	Key          ComponentKey
@@ -282,8 +280,8 @@ type EqualityPredicate struct {
 // is separate from ReadView because the planner never needs it.
 type IndexView interface {
 	// LabelMembers lists nodes holding label in any life (labels are node-only).
-	LabelMembers(context.Context, string, Cursor, ReadBudget) (EntityPage, error)
-	EqualityMembers(context.Context, EqualityPredicate, Cursor, ReadBudget) (EntityPage, error)
+	LabelMembers(context.Context, string, Cursor, raftlog.ReadBudget) (EntityPage, error)
+	EqualityMembers(context.Context, EqualityPredicate, Cursor, raftlog.ReadBudget) (EntityPage, error)
 }
 
 // ReadView must bind all records/pages to Identity and Graph. The embedding
@@ -298,10 +296,10 @@ type ReadView interface {
 	Property(context.Context, EntityKind, string) (PropertyRead, error)
 	Value(context.Context, ValueID) (ValueRead, error)
 	ValueIdentity(context.Context, Scalar) (ValueRead, error)
-	ComponentPage(context.Context, ComponentQuery, Cursor, ReadBudget) (ComponentPage, error)
-	ComponentKeys(context.Context, KeyPredicate, Cursor, ReadBudget) (KeyPage, error)
-	UniqueCandidates(context.Context, UniquePredicate, Cursor, ReadBudget) (ClaimPage, error)
-	IncidentRelationships(context.Context, IncidentPredicate, Cursor, ReadBudget) (EntityPage, error)
+	ComponentPage(context.Context, ComponentQuery, Cursor, raftlog.ReadBudget) (ComponentPage, error)
+	ComponentKeys(context.Context, KeyPredicate, Cursor, raftlog.ReadBudget) (KeyPage, error)
+	UniqueCandidates(context.Context, UniquePredicate, Cursor, raftlog.ReadBudget) (ClaimPage, error)
+	IncidentRelationships(context.Context, IncidentPredicate, Cursor, raftlog.ReadBudget) (EntityPage, error)
 }
 
 // OperationKind names semantic graph mutations, with no automatic time stamping.

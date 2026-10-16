@@ -3,6 +3,7 @@ package graphapply
 import (
 	"context"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"reflect"
 	"strings"
 
@@ -44,7 +45,7 @@ type nativeObservationRead struct {
 	}
 	components []struct {
 		query  graphstate.ComponentQuery
-		budget graphstate.ReadBudget
+		budget raftlog.ReadBudget
 		value  graphstate.ComponentPage
 	}
 }
@@ -235,7 +236,7 @@ func (v *nativeObservationRead) Value(ctx context.Context, id graphstate.ValueID
 	return value, nil
 }
 
-func (v *nativeObservationRead) ComponentPage(ctx context.Context, q graphstate.ComponentQuery, next graphstate.Cursor, b graphstate.ReadBudget) (graphstate.ComponentPage, error) {
+func (v *nativeObservationRead) ComponentPage(ctx context.Context, q graphstate.ComponentQuery, next graphstate.Cursor, b raftlog.ReadBudget) (graphstate.ComponentPage, error) {
 	if err := v.check(ctx); err != nil {
 		return graphstate.ComponentPage{}, err
 	}
@@ -272,14 +273,14 @@ func (v *nativeObservationRead) ComponentPage(ctx context.Context, q graphstate.
 	if v.components == nil {
 		v.components = make([]struct {
 			query  graphstate.ComponentQuery
-			budget graphstate.ReadBudget
+			budget raftlog.ReadBudget
 			value  graphstate.ComponentPage
 		}, 0, 64)
 	}
 	q.Key.Name = strings.Clone(q.Key.Name)
 	v.components = append(v.components, struct {
 		query  graphstate.ComponentQuery
-		budget graphstate.ReadBudget
+		budget raftlog.ReadBudget
 		value  graphstate.ComponentPage
 	}{q, b, value})
 	return value, nil

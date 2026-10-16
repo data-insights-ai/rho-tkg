@@ -47,14 +47,14 @@ func newIndexFixture(t *testing.T, l GraphLimits) *fullFixture {
 	return f
 }
 
-type pageFn func(graphstate.Cursor, graphstate.ReadBudget) (graphstate.EntityPage, error)
+type pageFn func(graphstate.Cursor, raftlog.ReadBudget) (graphstate.EntityPage, error)
 
 func drain(t *testing.T, fn pageFn, rows int) []graphstate.EntityID {
 	t.Helper()
 	out := []graphstate.EntityID{}
 	var token graphstate.Cursor
 	for range 1000 {
-		page, err := fn(token, graphstate.ReadBudget{Rows: rows, Bytes: 1 << 20})
+		page, err := fn(token, raftlog.ReadBudget{Rows: rows, Bytes: 1 << 20})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,13 +78,13 @@ func drain(t *testing.T, fn pageFn, rows int) []graphstate.EntityID {
 }
 func labelIDs(t *testing.T, v *ReadView, label string, rows int) []graphstate.EntityID {
 	t.Helper()
-	return drain(t, func(c graphstate.Cursor, b graphstate.ReadBudget) (graphstate.EntityPage, error) {
+	return drain(t, func(c graphstate.Cursor, b raftlog.ReadBudget) (graphstate.EntityPage, error) {
 		return v.LabelMembers(t.Context(), label, c, b)
 	}, rows)
 }
 func eqIDs(t *testing.T, v *ReadView, owner graphstate.EntityKind, name string, value graphstate.Scalar, vis graphstate.Visibility, rows int) []graphstate.EntityID {
 	t.Helper()
-	return drain(t, func(c graphstate.Cursor, b graphstate.ReadBudget) (graphstate.EntityPage, error) {
+	return drain(t, func(c graphstate.Cursor, b raftlog.ReadBudget) (graphstate.EntityPage, error) {
 		return v.EqualityMembers(t.Context(), graphstate.EqualityPredicate{Owner: owner, Name: name, Value: value, Visibility: vis}, c, b)
 	}, rows)
 }
@@ -152,7 +152,7 @@ func TestLabelPageBoundariesAndCursors(t *testing.T) {
 	f.apply(t, label(graphstate.AddLabel, 1, all, "L"), label(graphstate.AddLabel, 2, all, "L"), label(graphstate.AddLabel, 3, all, "L"))
 	old := f.view(t, f.index)
 	p := "L"
-	b := func(rows int) graphstate.ReadBudget { return graphstate.ReadBudget{Rows: rows, Bytes: 1 << 20} }
+	b := func(rows int) raftlog.ReadBudget { return raftlog.ReadBudget{Rows: rows, Bytes: 1 << 20} }
 	// Exactly the limit: complete, no cursor. One short: a cursor.
 	page, err := old.LabelMembers(t.Context(), p, 0, b(3))
 	if err != nil || !page.Complete || page.Next != 0 || !reflect.DeepEqual(page.Entities, ids(1, 2, 3)) {
@@ -192,10 +192,10 @@ func TestLabelPageBoundariesAndCursors(t *testing.T) {
 	for _, bad := range []struct {
 		name string
 		p    string
-		b    graphstate.ReadBudget
+		b    raftlog.ReadBudget
 	}{
-		{"zero rows", p, graphstate.ReadBudget{Rows: 0, Bytes: 100}},
-		{"zero bytes", p, graphstate.ReadBudget{Rows: 1, Bytes: 0}},
+		{"zero rows", p, raftlog.ReadBudget{Rows: 0, Bytes: 100}},
+		{"zero bytes", p, raftlog.ReadBudget{Rows: 1, Bytes: 0}},
 		{"empty label", "", b(1)},
 	} {
 		if _, err := old.LabelMembers(t.Context(), bad.p, 0, bad.b); !errors.Is(err, ErrInvalid) {
@@ -203,7 +203,7 @@ func TestLabelPageBoundariesAndCursors(t *testing.T) {
 		}
 	}
 	// A byte budget too small for one entity refuses instead of looping empty.
-	if page, err := old.LabelMembers(t.Context(), p, 0, graphstate.ReadBudget{Rows: 3, Bytes: 1}); err == nil && len(page.Entities) == 0 && !page.Complete {
+	if page, err := old.LabelMembers(t.Context(), p, 0, raftlog.ReadBudget{Rows: 3, Bytes: 1}); err == nil && len(page.Entities) == 0 && !page.Complete {
 		t.Fatal("empty incomplete page", page)
 	}
 	closed := f.view(t, f.index)
@@ -290,11 +290,11 @@ func TestEqualityPageCrossKind(t *testing.T) {
 		{Owner: graphstate.Node, Name: "num", Value: graphstate.I64(3)},
 		{Owner: graphstate.Node, Name: "num", Visibility: graphstate.Declared},
 	} {
-		if _, err := w.EqualityMembers(t.Context(), bad, 0, graphstate.ReadBudget{Rows: 1, Bytes: 100}); !errors.Is(err, ErrInvalid) {
+		if _, err := w.EqualityMembers(t.Context(), bad, 0, raftlog.ReadBudget{Rows: 1, Bytes: 100}); !errors.Is(err, ErrInvalid) {
 			t.Fatal("bad predicate accepted", bad, err)
 		}
 	}
-	if _, err := w.EqualityMembers(t.Context(), graphstate.EqualityPredicate{Owner: graphstate.Node, Name: "num", Value: graphstate.I64(3), Visibility: graphstate.Declared}, 0, graphstate.ReadBudget{}); !errors.Is(err, ErrInvalid) {
+	if _, err := w.EqualityMembers(t.Context(), graphstate.EqualityPredicate{Owner: graphstate.Node, Name: "num", Value: graphstate.I64(3), Visibility: graphstate.Declared}, 0, raftlog.ReadBudget{}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("zero budget", err)
 	}
 }

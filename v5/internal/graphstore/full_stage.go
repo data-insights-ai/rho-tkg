@@ -32,7 +32,7 @@ func (v *ReadView) inputCost(n int) error {
 }
 func cloneAxisForOperation(ctx context.Context, v *ReadView, a temporal.Axis) (temporal.Axis, error) {
 	if v.route != nil {
-		q, err := v.begin(ctx, graphstate.ReadBudget{})
+		q, err := v.begin(ctx, raftlog.ReadBudget{})
 		if err != nil {
 			return temporal.Axis{}, err
 		}
@@ -1002,7 +1002,7 @@ func (v *ReadView) Evidence(ctx context.Context, owner graphstate.EntityID, revi
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return nil, err
 	}
@@ -1120,7 +1120,7 @@ func (v *ReadView) Revisions(ctx context.Context, owner graphstate.EntityID, aft
 	if err := v.check(ctx); err != nil {
 		return nil, false, err
 	}
-	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return nil, false, err
 	}

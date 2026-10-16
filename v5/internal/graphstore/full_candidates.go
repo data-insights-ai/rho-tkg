@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"strings"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -84,7 +85,7 @@ func entityPageAppend(q *pageReader, out *graphstate.EntityPage, id graphstate.E
 // Its retained raw superset includes closed/retracted/masked historical claims;
 // Plan rechecks final effective support. Canonical ID normalization uses exact
 // typed dictionary equality, including aliases and hash collision candidates.
-func (v *ReadView) UniqueCandidates(ctx context.Context, predicate graphstate.UniquePredicate, token graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.ClaimPage, error) {
+func (v *ReadView) UniqueCandidates(ctx context.Context, predicate graphstate.UniquePredicate, token graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.ClaimPage, error) {
 	if v == nil {
 		return graphstate.ClaimPage{}, ErrInvalid
 	}
@@ -223,19 +224,19 @@ func (v *ReadView) UniqueCandidates(ctx context.Context, predicate graphstate.Un
 // It merges declared LifeBound and canonical IdentityReference postings. Sorted
 // relationship IDs preserve parallel edges; one exclusive-ID continuation skips
 // all self-loop roles and repeated relationship-life entries across pages.
-func (v *ReadView) IncidentRelationships(ctx context.Context, predicate graphstate.IncidentPredicate, token graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.EntityPage, error) {
+func (v *ReadView) IncidentRelationships(ctx context.Context, predicate graphstate.IncidentPredicate, token graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.EntityPage, error) {
 	return v.incidentRelationships(ctx, predicate, token, budget, budget.Rows)
 }
 
 // IncidentRelationshipsChunk retains ordinary work limits while bounding the
 // candidate output independently. It uses the same whole-ID-run merge seam.
-func (v *ReadView) IncidentRelationshipsChunk(ctx context.Context, predicate graphstate.IncidentPredicate, token graphstate.Cursor, budget graphstate.ReadBudget, rows int) (graphstate.EntityPage, error) {
+func (v *ReadView) IncidentRelationshipsChunk(ctx context.Context, predicate graphstate.IncidentPredicate, token graphstate.Cursor, budget raftlog.ReadBudget, rows int) (graphstate.EntityPage, error) {
 	if rows < 1 || rows > budget.Rows {
 		return graphstate.EntityPage{}, ErrInvalid
 	}
 	return v.incidentRelationships(ctx, predicate, token, budget, rows)
 }
-func (v *ReadView) incidentRelationships(ctx context.Context, predicate graphstate.IncidentPredicate, token graphstate.Cursor, budget graphstate.ReadBudget, rows int) (graphstate.EntityPage, error) {
+func (v *ReadView) incidentRelationships(ctx context.Context, predicate graphstate.IncidentPredicate, token graphstate.Cursor, budget raftlog.ReadBudget, rows int) (graphstate.EntityPage, error) {
 	if v == nil {
 		return graphstate.EntityPage{}, ErrInvalid
 	}

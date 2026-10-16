@@ -667,7 +667,7 @@ func (s *p05ProcessSessions) observe(ctx context.Context, r processRequest) (wir
 	if err != nil {
 		return nil, err
 	}
-	budget := graphstate.ReadBudget{Rows: 64, Bytes: 64 << 10}
+	budget := raftlog.ReadBudget{Rows: 64, Bytes: 64 << 10}
 	for _, ownerLife := range [][2]uint64{{1, 2}, {17, 18}, {3, 4}, {9, 10}} {
 		observedOwner, observedLife = ownerLife[0], ownerLife[1]
 		for _, at := range []int64{0, 2} {
@@ -1862,7 +1862,7 @@ func TestP05ObservationReuseKeepsActualCutAndBounds(t *testing.T) {
 	}
 	window := ops[0].Scope
 	query := graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 1, Kind: graphstate.Presence}, Window: window}
-	bounds := graphstate.ReadBudget{Rows: 64, Bytes: 64 << 10}
+	bounds := raftlog.ReadBudget{Rows: 64, Bytes: 64 << 10}
 	first, err := pageView.ComponentPage(t.Context(), query, 0, bounds)
 	if err != nil || !first.Complete {
 		t.Fatal(first, err)
@@ -2080,7 +2080,7 @@ type p05ComponentReadProbe struct {
 	incompleteOnce bool
 }
 
-func (p *p05ComponentReadProbe) ComponentPage(ctx context.Context, q graphstate.ComponentQuery, c graphstate.Cursor, b graphstate.ReadBudget) (graphstate.ComponentPage, error) {
+func (p *p05ComponentReadProbe) ComponentPage(ctx context.Context, q graphstate.ComponentQuery, c graphstate.Cursor, b raftlog.ReadBudget) (graphstate.ComponentPage, error) {
 	p.calls++
 	if p.errOnce != nil {
 		err := p.errOnce

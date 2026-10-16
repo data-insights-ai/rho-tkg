@@ -64,7 +64,7 @@ func (p *currentIncidentProbe) Value(ctx context.Context, id graphstate.ValueID)
 	}
 	return p.ReadView.Value(ctx, id)
 }
-func (p *currentIncidentProbe) ComponentPage(ctx context.Context, query graphstate.ComponentQuery, token graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.ComponentPage, error) {
+func (p *currentIncidentProbe) ComponentPage(ctx context.Context, query graphstate.ComponentQuery, token graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.ComponentPage, error) {
 	p.Counters.ComponentCalls++
 	ended := p.Ended(query.Key.Owner)
 	before := p.Work()
@@ -98,7 +98,7 @@ func currentIncidentObserve(ctx context.Context, p *currentIncidentProbe, query 
 	ids := make([]graphstate.EntityID, 0, 16)
 	for range 4096 {
 		before := p.Work()
-		page, err := p.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: query.Endpoint, Life: query.Life, Window: window}, cursor, graphstate.ReadBudget{Rows: 256, Bytes: 4 << 20})
+		page, err := p.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: query.Endpoint, Life: query.Life, Window: window}, cursor, raftlog.ReadBudget{Rows: 256, Bytes: 4 << 20})
 		p.Counters.RawPages++
 		p.Counters.RawActualWork = addWork(p.Counters.RawActualWork, currentWorkDelta(p.Work(), before))
 		if err != nil {

@@ -285,7 +285,7 @@ func TestTrustedWriterWideSummaryAndRetainedRoot(t *testing.T) {
 			var got []graphstore.IncidentAtCandidate
 			done := false
 			for range 8 {
-				result, err := view.IncidentAt(t.Context(), graphstore.IncidentAtQuery{Endpoint: 11, Life: 12, At: at, Mode: graphstate.LifeBound, Direction: graphstore.IncidentSource, Type: "R", Visible: graphstate.Declared}, cursor, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+				result, err := view.IncidentAt(t.Context(), graphstore.IncidentAtQuery{Endpoint: 11, Life: 12, At: at, Mode: graphstate.LifeBound, Direction: graphstore.IncidentSource, Type: "R", Visible: graphstate.Declared}, cursor, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 				check(err)
 				if result.View != view.Identity() || result.Version != graphstate.ReadVersion(version) {
 					t.Fatal("query retained identity/version")

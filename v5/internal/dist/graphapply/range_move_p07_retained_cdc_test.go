@@ -215,7 +215,7 @@ func p07AssertGraphAt(t *testing.T, view graphstate.ReadView, old, afterMove boo
 		id   graphstate.EntityID
 		life graphstate.LifeID
 	}{{1, 2}, {17, 18}} {
-		page, err := view.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: endpoint.id, Life: endpoint.life, Window: window}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		page, err := view.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: endpoint.id, Life: endpoint.life, Window: window}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		if err != nil || !page.Complete || page.Next != 0 || !slices.Equal(page.Entities, wantRelationships) {
 			t.Fatal("exact retained incident candidates", endpoint, page, err)
 		}

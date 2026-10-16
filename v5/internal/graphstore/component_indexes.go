@@ -507,7 +507,7 @@ func (q *pageReader) relationshipEffective(id graphstate.EntityID, life graphsta
 }
 
 // LabelMembers lists nodes holding label in any life, ascending, each once.
-func (v *ReadView) LabelMembers(ctx context.Context, label string, token graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.EntityPage, error) {
+func (v *ReadView) LabelMembers(ctx context.Context, label string, token graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.EntityPage, error) {
 	if v == nil {
 		return graphstate.EntityPage{}, ErrInvalid
 	}
@@ -522,7 +522,7 @@ func (v *ReadView) LabelMembers(ctx context.Context, label string, token graphst
 
 // EqualityMembers lists owners whose property holds a value Cypher-equal to the
 // predicate value, ascending, each once. Null matches nothing.
-func (v *ReadView) EqualityMembers(ctx context.Context, p graphstate.EqualityPredicate, token graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.EntityPage, error) {
+func (v *ReadView) EqualityMembers(ctx context.Context, p graphstate.EqualityPredicate, token graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.EntityPage, error) {
 	if v == nil {
 		return graphstate.EntityPage{}, ErrInvalid
 	}
@@ -547,7 +547,7 @@ func (v *ReadView) EqualityMembers(ctx context.Context, p graphstate.EqualityPre
 
 // indexPage scans one row family prefix on the immutable source. A nil prefix
 // is an empty family. Source rows and bytes join the handle's work ledger.
-func (v *ReadView) indexPage(ctx context.Context, kind recordKind, query, lower []byte, owner graphstate.EntityKind, visibility graphstate.Visibility, token graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.EntityPage, error) {
+func (v *ReadView) indexPage(ctx context.Context, kind recordKind, query, lower []byte, owner graphstate.EntityKind, visibility graphstate.Visibility, token graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.EntityPage, error) {
 	if budget.Rows < 1 || budget.Bytes < 1 {
 		return graphstate.EntityPage{}, ErrInvalid
 	}
@@ -564,7 +564,7 @@ func (v *ReadView) indexPage(ctx context.Context, kind recordKind, query, lower 
 	if capacity < 1 {
 		return graphstate.EntityPage{}, ErrResourceLimit
 	}
-	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return graphstate.EntityPage{}, err
 	}

@@ -56,7 +56,7 @@ func (r *reader) close() {
 
 // pageBudget bounds the source rows of one component page: an entity with a few
 // dozen revisions of one property needs more than the 256 it once had.
-var pageBudget = graphstate.ReadBudget{Rows: 4096, Bytes: 8 << 20}
+var pageBudget = raftlog.ReadBudget{Rows: 4096, Bytes: 8 << 20}
 
 // readsPerView bounds the entities one fill reads through one read view.
 const readsPerView = 128

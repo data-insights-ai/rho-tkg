@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"io"
 	"os"
 	"slices"
@@ -115,7 +116,7 @@ type nativeLifecycleObservation struct {
 }
 
 func nativeLifecycleCellRead(ctx context.Context, v graphstate.ReadView, key graphstate.ComponentKey, scope temporal.Scope, point temporal.Position, l state.Limits) (nativeLifecycleCell, error) {
-	page, err := v.ComponentPage(ctx, graphstate.ComponentQuery{Key: key, Window: scope}, 0, graphstate.ReadBudget{Rows: 64, Bytes: 64 << 10})
+	page, err := v.ComponentPage(ctx, graphstate.ComponentQuery{Key: key, Window: scope}, 0, raftlog.ReadBudget{Rows: 64, Bytes: 64 << 10})
 	if err != nil {
 		return nativeLifecycleCell{}, err
 	}
@@ -248,7 +249,7 @@ func nativeLifecycleObserveView(ctx context.Context, s *graphProcessCertifiedSes
 			item.Effective, item.EffectiveLife, item.Labels = projection.Active, uint64(projection.Life), slices.Clone(projection.Labels)
 			// Enumerate stored label components even when endpoint masking hides the
 			// projection. The fixture's empty labels are observations, never constants.
-			keys, err := v.ComponentKeys(ctx, graphstate.KeyPredicate{Owner: graphstate.EntityID(id), Kind: graphstate.Label}, 0, graphstate.ReadBudget{Rows: 64, Bytes: 64 << 10})
+			keys, err := v.ComponentKeys(ctx, graphstate.KeyPredicate{Owner: graphstate.EntityID(id), Kind: graphstate.Label}, 0, raftlog.ReadBudget{Rows: 64, Bytes: 64 << 10})
 			if err != nil {
 				return nil, err
 			}
@@ -280,7 +281,7 @@ func nativeLifecycleObserveView(ctx context.Context, s *graphProcessCertifiedSes
 			out.Lives = append(out.Lives, nativeLifecycleLife{Owner: key[0], Life: key[1], Found: life.Found, SourceLife: uint64(life.Record.SourceLife), TargetLife: uint64(life.Record.TargetLife)})
 		}
 		for _, key := range [][2]uint64{{1, 0}, {1, 2}, {1, 7}, {17, 0}, {17, 18}} {
-			page, err := v.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: graphstate.EntityID(key[0]), Life: graphstate.LifeID(key[1]), Window: scope}, 0, graphstate.ReadBudget{Rows: 64, Bytes: 64 << 10})
+			page, err := v.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: graphstate.EntityID(key[0]), Life: graphstate.LifeID(key[1]), Window: scope}, 0, raftlog.ReadBudget{Rows: 64, Bytes: 64 << 10})
 			if err != nil {
 				return nil, err
 			}

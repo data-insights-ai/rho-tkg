@@ -1040,7 +1040,7 @@ func graphProcessSourceFact(ctx context.Context, h *allocationHost, v graphstate
 		if err != nil {
 			return f, err
 		}
-		page, err := v.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: graphstate.EntityID(id), Life: projection.Life, Window: scope}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		page, err := v.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: graphstate.EntityID(id), Life: projection.Life, Window: scope}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		if err != nil {
 			return f, err
 		}

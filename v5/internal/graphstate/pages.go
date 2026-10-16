@@ -1,6 +1,7 @@
 package graphstate
 
 import (
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
@@ -79,7 +80,7 @@ func (e *engine) component(key ComponentKey, window temporal.Scope) ([]Component
 		if err := e.check(); err != nil {
 			return nil, err
 		}
-		page, err := e.view.ComponentPage(e.ctx, ComponentQuery{key, window, false}, t.cursor, ReadBudget{e.limits.MaxRows - e.rows, e.limits.MaxReadBytes - e.readBytes})
+		page, err := e.view.ComponentPage(e.ctx, ComponentQuery{key, window, false}, t.cursor, raftlog.ReadBudget{Rows: e.limits.MaxRows - e.rows, Bytes: e.limits.MaxReadBytes - e.readBytes})
 		if err != nil {
 			return nil, err
 		}

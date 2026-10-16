@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"maps"
 	"strings"
 	"sync"
@@ -365,7 +366,7 @@ func (q *cpTreeOperation) childMayMatch(parent currentPresencePage, ch currentPr
 	}
 	return cpSummaryMayContain(parent, ch, p.axis, p.coordinate, q.limits.codec)
 }
-func (it *currentPresenceIterator) next(ctx context.Context, token graphstate.Cursor, budget graphstate.ReadBudget) (currentPresenceCandidatePage, error) {
+func (it *currentPresenceIterator) next(ctx context.Context, token graphstate.Cursor, budget raftlog.ReadBudget) (currentPresenceCandidatePage, error) {
 	if it == nil {
 		return currentPresenceCandidatePage{}, ErrInvalid
 	}

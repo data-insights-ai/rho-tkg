@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"math"
 	"slices"
 	"sync"
@@ -278,7 +279,7 @@ func (s *certifiedIncidentStream) hydrate(ctx context.Context, read *certifiedGr
 	}
 	pages := s.limits.graph.Pages
 	defaults := graphstore.DefaultGraphLimits()
-	page, err := read.full.IncidentRelationshipsChunk(ctx, s.predicate, token, graphstate.ReadBudget{Rows: cmp.Or(pages.MaxWorkRecords, defaults.Pages.MaxWorkRecords), Bytes: cmp.Or(pages.MaxWorkBytes, defaults.Pages.MaxWorkBytes)}, s.rows)
+	page, err := read.full.IncidentRelationshipsChunk(ctx, s.predicate, token, raftlog.ReadBudget{Rows: cmp.Or(pages.MaxWorkRecords, defaults.Pages.MaxWorkRecords), Bytes: cmp.Or(pages.MaxWorkBytes, defaults.Pages.MaxWorkBytes)}, s.rows)
 	if err != nil {
 		return nil, next, err
 	}

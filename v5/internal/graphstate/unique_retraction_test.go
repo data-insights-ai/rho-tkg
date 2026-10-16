@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"reflect"
 	"testing"
 
@@ -19,18 +20,18 @@ type retractionReads struct {
 	refuseIncident             bool
 }
 
-func (v *retractionReads) IncidentRelationships(ctx context.Context, p IncidentPredicate, c Cursor, b ReadBudget) (EntityPage, error) {
+func (v *retractionReads) IncidentRelationships(ctx context.Context, p IncidentPredicate, c Cursor, b raftlog.ReadBudget) (EntityPage, error) {
 	v.incident++
 	if v.refuseIncident {
 		return EntityPage{}, ErrResourceLimit
 	}
 	return v.ReadView.IncidentRelationships(ctx, p, c, b)
 }
-func (v *retractionReads) ComponentKeys(ctx context.Context, p KeyPredicate, c Cursor, b ReadBudget) (KeyPage, error) {
+func (v *retractionReads) ComponentKeys(ctx context.Context, p KeyPredicate, c Cursor, b raftlog.ReadBudget) (KeyPage, error) {
 	v.keys++
 	return v.ReadView.ComponentKeys(ctx, p, c, b)
 }
-func (v *retractionReads) UniqueCandidates(ctx context.Context, p UniquePredicate, c Cursor, b ReadBudget) (ClaimPage, error) {
+func (v *retractionReads) UniqueCandidates(ctx context.Context, p UniquePredicate, c Cursor, b raftlog.ReadBudget) (ClaimPage, error) {
 	v.candidates++
 	return v.ReadView.UniqueCandidates(ctx, p, c, b)
 }

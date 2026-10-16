@@ -82,7 +82,7 @@ func cpCollectCandidates(t *testing.T, it *currentPresenceIterator, rows int) []
 	var out []currentPresenceCandidate
 	cursor := graphstate.Cursor(0)
 	for range 100 {
-		page, e := it.next(t.Context(), cursor, graphstate.ReadBudget{Rows: rows, Bytes: 4096})
+		page, e := it.next(t.Context(), cursor, raftlog.ReadBudget{Rows: rows, Bytes: 4096})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -225,21 +225,21 @@ func TestCurrentPresenceIteratorCursorCancellationAndOwnership(t *testing.T) {
 			t.Fatalf("size%d cap%d", v.size, v.cap)
 		}
 	}
-	first, e := it.next(t.Context(), 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	first, e := it.next(t.Context(), 0, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if e != nil || first.complete || len(first.candidates) != 1 {
 		t.Fatal(e)
 	}
 	oldCursor, oldOutput, oldRows := it.cursor, it.outputBytes, it.op.q.rows
 	oldBytes := it.op.q.bytes
 	cancelled := &cpCancelAfter{Context: t.Context(), after: 12}
-	page, e := it.next(cancelled, first.next, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+	page, e := it.next(cancelled, first.next, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 	if !errors.Is(e, context.Canceled) || len(page.candidates) != 0 || page.next != 0 || it.cursor != oldCursor || it.outputBytes != oldOutput || it.op.q.rows <= oldRows || it.op.q.bytes <= oldBytes {
 		t.Fatal("partial cancelled publication", e)
 	}
 	rest := []currentPresenceCandidate{}
 	cursor := first.next
 	for range 100 {
-		page, e := it.next(t.Context(), cursor, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+		page, e := it.next(t.Context(), cursor, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -254,13 +254,13 @@ func TestCurrentPresenceIteratorCursorCancellationAndOwnership(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e := other.next(t.Context(), first.next, graphstate.ReadBudget{Rows: 1, Bytes: 4096}); !errors.Is(e, ErrInvalid) {
+	if _, e := other.next(t.Context(), first.next, raftlog.ReadBudget{Rows: 1, Bytes: 4096}); !errors.Is(e, ErrInvalid) {
 		t.Fatal("foreign cursor", e)
 	}
 	if e := it.close(); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := it.next(t.Context(), 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096}); !errors.Is(e, ErrClosed) {
+	if _, e := it.next(t.Context(), 0, raftlog.ReadBudget{Rows: 1, Bytes: 4096}); !errors.Is(e, ErrClosed) {
 		t.Fatal(e)
 	}
 	if _, e := c.Root(); e != nil {
@@ -284,7 +284,7 @@ func TestCurrentPresenceIteratorWideQuerySmallPageSourceBoundary(t *testing.T) {
 	// Enough room for the small page decode/attempt tables, but not the much
 	// wider query's comparison scratch. Refusal precedes its GCD/product work.
 	it.op.q.maxBytes = initial + scratch - 1
-	p, e := it.next(t.Context(), 0, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+	p, e := it.next(t.Context(), 0, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 	if !errors.Is(e, ErrResourceLimit) || p.candidates != nil || p.next != 0 || p.complete || it.cursor != 0 || it.outputBytes != 0 {
 		t.Fatal("wide comparison partially published", e)
 	}
@@ -295,7 +295,7 @@ func TestCurrentPresenceIteratorWideQuerySmallPageSourceBoundary(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	page, e := good.next(t.Context(), 0, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+	page, e := good.next(t.Context(), 0, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 	if e != nil || !page.complete || len(page.candidates) != 0 {
 		t.Fatal(e)
 	}
@@ -318,12 +318,12 @@ func TestCurrentPresenceIteratorMultipleAtomsOneLifeAndSparsePages(t *testing.T)
 	if e != nil {
 		t.Fatal(e)
 	}
-	first, e := it.next(t.Context(), 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	first, e := it.next(t.Context(), 0, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if e != nil || first.complete || len(first.candidates) != 1 {
 		t.Fatal("point0 omitted", e)
 	}
 	firstKey := exactCopy(it.last.lower)
-	rest, e := it.next(t.Context(), first.next, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+	rest, e := it.next(t.Context(), first.next, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 	if e != nil || !rest.complete || len(rest.candidates) != 0 || bytes.Equal(firstKey, it.last.lower) {
 		t.Fatal("atom key cursor collapsed one life", e)
 	}
@@ -356,7 +356,7 @@ func TestCurrentPresenceIteratorEmptyDefaultsAndClosedBorrow(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		page, e := it.next(t.Context(), 0, graphstate.ReadBudget{Rows: 1, Bytes: cpCandidatePageOwned})
+		page, e := it.next(t.Context(), 0, raftlog.ReadBudget{Rows: 1, Bytes: cpCandidatePageOwned})
 		if e != nil || !page.complete || len(page.candidates) != 0 || page.next != 0 {
 			t.Fatal("empty tree", e)
 		}
@@ -375,14 +375,14 @@ func TestCurrentPresenceIteratorEmptyDefaultsAndClosedBorrow(t *testing.T) {
 	if e := c.view.Close(); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := it.next(t.Context(), 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096}); !errors.Is(e, raftlog.ErrClosed) {
+	if _, e := it.next(t.Context(), 0, raftlog.ReadBudget{Rows: 1, Bytes: 4096}); !errors.Is(e, raftlog.ErrClosed) {
 		t.Fatal(e)
 	}
 	var none *currentPresenceIterator
 	if e := none.close(); !errors.Is(e, ErrInvalid) {
 		t.Fatal(e)
 	}
-	if _, e := none.next(t.Context(), 0, graphstate.ReadBudget{Rows: 1, Bytes: 4096}); !errors.Is(e, ErrInvalid) {
+	if _, e := none.next(t.Context(), 0, raftlog.ReadBudget{Rows: 1, Bytes: 4096}); !errors.Is(e, ErrInvalid) {
 		t.Fatal(e)
 	}
 	if _, e := newCurrentPresenceIterator(t.Context(), nil, f.tree, currentPresenceQuery{}, f.limits); !errors.Is(e, ErrInvalid) {
@@ -505,7 +505,7 @@ func TestCurrentPresenceIteratorStoredCorruptionAndWitnessFailures(t *testing.T)
 			if e != nil {
 				t.Fatal(e)
 			}
-			page, e := it.next(t.Context(), 0, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+			page, e := it.next(t.Context(), 0, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 			if !errors.Is(e, ErrCorrupt) || page.candidates != nil || page.next != 0 || page.complete || it.outputBytes != 0 || it.cursor != 0 {
 				t.Fatal("corruption published partial candidates", e)
 			}

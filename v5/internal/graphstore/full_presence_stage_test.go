@@ -2,6 +2,7 @@ package graphstore
 
 import (
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"reflect"
 	"testing"
 
@@ -86,7 +87,7 @@ func TestFullPresenceDisconnectedWindowsRecoverCompleteRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer v.Close()
-	q, err := v.begin(t.Context(), graphstate.ReadBudget{})
+	q, err := v.begin(t.Context(), raftlog.ReadBudget{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +194,7 @@ func TestFullPresencePointHolesDenseAndLexicographicRetainedLives(t *testing.T) 
 			}
 			for _, index := range []uint64{old, f.index} {
 				v := f.view(t, index)
-				historical := fullReadIncidents(t, v, graphstate.IncidentPredicate{Endpoint: 2, Window: whole}, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+				historical := fullReadIncidents(t, v, graphstate.IncidentPredicate{Endpoint: 2, Window: whole}, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 				if len(historical) != 1 || historical[0] != 3 {
 					t.Fatal("point maintenance narrowed historical superset", historical)
 				}
@@ -333,7 +334,7 @@ func TestFullPresenceOwnerLocalRecoveryCrossesDirectoryLeaves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q, err := v.begin(t.Context(), graphstate.ReadBudget{})
+	q, err := v.begin(t.Context(), raftlog.ReadBudget{})
 	if err != nil {
 		t.Fatal(err)
 	}

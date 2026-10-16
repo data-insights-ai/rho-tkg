@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"math"
 	"math/big"
 	"reflect"
@@ -93,10 +94,10 @@ type budgetComponentView struct {
 	calls int
 }
 
-func (v *budgetComponentView) ComponentPage(_ context.Context, q ComponentQuery, _ Cursor, _ ReadBudget) (ComponentPage, error) {
+func (v *budgetComponentView) ComponentPage(_ context.Context, q ComponentQuery, _ Cursor, _ raftlog.ReadBudget) (ComponentPage, error) {
 	v.calls++
 	if q.Key.Kind != Label {
-		return v.fixtureView.ComponentPage(context.Background(), q, 0, ReadBudget{})
+		return v.fixtureView.ComponentPage(context.Background(), q, 0, raftlog.ReadBudget{})
 	}
 	return ComponentPage{View: v.id, Version: 1, Owned: q.Window, Data: v.data, Complete: true}, nil
 }

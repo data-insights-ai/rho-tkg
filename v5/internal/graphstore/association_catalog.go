@@ -529,7 +529,7 @@ func (a *associationReader) stage(w AssociationWrite, result *AssociationResult)
 // Insufficient work/output for that candidate refuses with zero output, never
 // labels a partial scan Complete. Native predicates decline Unplaced/incompatible
 // axes instead of silently treating unknown or incomparable placement as false.
-func (c *Catalog) Associations(ctx context.Context, query AssociationQuery, after []byte, budget graphstate.ReadBudget, l AssociationLimits) (AssociationPage, error) {
+func (c *Catalog) Associations(ctx context.Context, query AssociationQuery, after []byte, budget raftlog.ReadBudget, l AssociationLimits) (AssociationPage, error) {
 	a, err := associationStart(ctx, c, query.Graph, l)
 	if err != nil {
 		return AssociationPage{}, err
