@@ -126,9 +126,20 @@ func TestInitializedGuardChargesActualWorkAndPreflightsOwnedMetadata(t *testing.
 	}
 	// Include visible fixed typed state, conservative two empty cursor maps and
 	// separate descriptor/fingerprint scratch; root image copies are variable.
-	fixed := unsafe.Sizeof(reader{}) + unsafe.Sizeof(request{}) + unsafe.Sizeof(graphRequest{}) + unsafe.Sizeof(outcome{}) + unsafe.Sizeof(graphstore.ReadView{}) + unsafe.Sizeof(graphstore.PageReader{}) + unsafe.Sizeof(graphstore.Catalog{}) + unsafe.Sizeof(graphstore.GraphLimits{}) + 2*128 + 1024
+	parts := []struct {
+		name string
+		size uintptr
+	}{
+		{"reader", unsafe.Sizeof(reader{})}, {"request", unsafe.Sizeof(request{})}, {"graphRequest", unsafe.Sizeof(graphRequest{})}, {"outcome", unsafe.Sizeof(outcome{})},
+		{"graphstore.ReadView", unsafe.Sizeof(graphstore.ReadView{})}, {"graphstore.PageReader", unsafe.Sizeof(graphstore.PageReader{})}, {"graphstore.Catalog", unsafe.Sizeof(graphstore.Catalog{})}, {"graphstore.GraphLimits", unsafe.Sizeof(graphstore.GraphLimits{})},
+		{"cursor maps", 2 * 128}, {"descriptor/fingerprint scratch", 1024},
+	}
+	var fixed uintptr
+	for _, p := range parts {
+		fixed += p.size
+	}
 	if fixed > readinessMetadataBytes {
-		t.Fatal("readiness fixed allowance too small", fixed)
+		t.Fatalf("readiness fixed allowance too small: %d > %d, parts %+v", fixed, readinessMetadataBytes, parts)
 	}
 	short, c, root := initializedReader(t, f)
 	m := *f.m
