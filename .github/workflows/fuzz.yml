@@ -96,10 +96,6 @@ jobs:
         working-directory: v5
         run: go test -run '^$' -fuzz=FuzzDecodeCheckpoint -fuzztime="$FUZZTIME" ./internal/idalloc/
 
-      - name: FuzzOpen (v5/timeblock)
-        working-directory: v5
-        run: go test -run '^$' -fuzz=FuzzOpen -fuzztime="$FUZZTIME" ./internal/timeblock/
-
       - name: FuzzGraphstateDeltaAndHistoryParity (v5)
         working-directory: v5
         run: go test -run '^$' -fuzz=FuzzGraphstateDeltaAndHistoryParity -fuzztime="$FUZZTIME" ./internal/graphstate/
@@ -145,7 +141,6 @@ jobs:
             v5/internal/raftlog/testdata/fuzz/**
             v5/internal/replica/testdata/fuzz/**
             v5/internal/idalloc/testdata/fuzz/**
-            v5/internal/timeblock/testdata/fuzz/**
             v5/internal/graphstate/testdata/fuzz/**
             v5/internal/txnproto/testdata/fuzz/**
             v5/internal/assertion/testdata/fuzz/**
