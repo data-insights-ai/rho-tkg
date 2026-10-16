@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Internal refactor, no behaviour change: one `chainOf` builds every "history + current" chain in `pkg/graph/internal/core` (14 inline copies folded; `preCorrectionChain` = `versionOrdered(chainOf(...))`).
+- Internal refactor, no behaviour change: one `chainOf` builds every "history + current" chain in `pkg/graph/internal/core` (16 inline copies folded; `preCorrectionChain` = `versionOrdered(chainOf(...))`).
 
 ## [4.57.1] - 2026-10-16
 
