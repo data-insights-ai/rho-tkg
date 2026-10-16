@@ -826,8 +826,11 @@ func nativeProtocolStateGraph(t *testing.T, ctx context.Context, f *pairedGraphF
 	}
 	beforeChanged := f.indexes()
 	changedResponse, actual := n.all[5].exchange(ctx, processRequest{op: processSourceCoordinate, data: changedProposal.wire})
-	if !errors.Is(errors.Join(actual, processResponseError(changedResponse)), errInvalid) || beforeChanged != f.indexes() {
-		t.Fatal("changed K body acquired a decision/effect", actual)
+	if refusal := errors.Join(actual, processResponseError(changedResponse)); !errors.Is(refusal, errInvalid) {
+		t.Fatalf("changed K body lacks required invalid refusal: exchange=%T graphMask=%04x error=%v processCode=%d processMask=%04x detail=%.256q auxBytes=%d before=%v", actual, graphErrorMask(actual), actual, changedResponse.code, changedResponse.causeMask, changedResponse.detail, len(changedResponse.aux), beforeChanged)
+	}
+	if afterChanged := f.indexes(); beforeChanged != afterChanged {
+		t.Fatalf("changed K body advanced native prefix despite invalid refusal: before=%v after=%v exchange=%T graphMask=%04x processCode=%d processMask=%04x", beforeChanged, afterChanged, actual, graphErrorMask(actual), changedResponse.code, changedResponse.causeMask)
 	}
 	a.ChangedCaller, a.ChangedReply = bytes.Clone(changedProposal.wire), p06ProcessWire(t, changedResponse)
 	if a.Recipe.Family == "pin" && (a.Recipe.Phase == pinRelease || a.Recipe.Phase == pinExpire || a.Recipe.Phase == pinClose || a.Recipe.Phase == pinAdvanceEpoch || a.Recipe.Phase == pinCancelIssue) {
