@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -497,7 +498,7 @@ func (o *retainedFeedOwner) seal(ctx context.Context, page retainedFeedPage, wir
 // participant. Protocol-only heads make explicit progress first. Business heads are merged only when ALL
 // participants have either their next business head or authenticated boundary
 // EOF; no unseen head can be skipped by round sorting.
-func (o *retainedFeedOwner) Page(ctx context.Context, request [16]byte, boundary graphCut) (retainedFeedDelivery, error) {
+func (o *retainedFeedOwner) Page(ctx context.Context, request [16]byte, boundary graphCut) (out retainedFeedDelivery, err error) {
 	var zero retainedFeedDelivery
 	if !o.valid() || ctx == nil || request == ([16]byte{}) {
 		return zero, errInvalid
@@ -512,33 +513,56 @@ func (o *retainedFeedOwner) Page(ctx context.Context, request [16]byte, boundary
 	}
 	operationCtx, finish, operationErr := o.operation(ctx)
 	if operationErr != nil {
-		return zero, operationErr
+		return zero, fmt.Errorf("retained feed Page stage=admission (no operation ledger): %w", operationErr)
 	}
 	defer finish()
 	ctx = operationCtx
+	stage := "boundary"
+	var page retainedFeedPage
+	var lastPart, lastIndex uint64
+	// Execute before finish restores the original invocation. This is a bounded
+	// scalar failure summary of the actual operation ledger, with no source reads
+	// or payload copies; it neither resets nor grants work.
+	defer func() {
+		if err == nil {
+			return
+		}
+		b := o.pin.invocation.budget
+		b.mu.Lock()
+		calls, maxCalls, rows, maxRows, nbytes, maxBytes := b.calls, b.maxCalls, b.rows, b.maxRows, b.bytes, b.maxBytes
+		left := b.output.Remaining()
+		b.mu.Unlock()
+		err = fmt.Errorf("retained feed Page stage=%s sequence=%d kind=%d lastPart=%d lastIndex=%d calls=%d/%d rows=%d/%d bytes=%d/%d outputLeft=%d ctx=%v: %w", stage, page.sequence, page.kind, lastPart, lastIndex, calls, maxCalls, rows, maxRows, nbytes, maxBytes, left, ctx.Err(), err)
+	}()
 	if err := o.pin.invocation.arena.Reserve(512 * len(boundary.certificates)); err != nil {
 		return zero, outputBudgetFailure(err)
 	}
 	boundary = graphCut{certificates: slices.Clone(boundary.certificates)}
+	stage = "states"
 	states, err := o.states(ctx)
 	if err != nil {
 		return zero, err
 	}
+	stage = "original"
 	original, originalWire, allOriginal, anyOriginal, err := o.originalPage(ctx, request, feedSealPage)
 	if err != nil {
 		return zero, err
 	}
 	if anyOriginal {
+		page = original
 		if !feedCutEqual(original.boundary, boundary) {
 			return zero, errInvalid
 		}
 		if !allOriginal {
+			stage = "original-seal"
 			if err = o.seal(ctx, original, originalWire); err != nil {
 				return zero, err
 			}
 		}
+		stage = "original-delivery"
 		return o.delivery(ctx, original, originalWire, true)
 	}
+	stage = "pending"
 	page, wire, replay, err := o.pending(states, request)
 	if err != nil {
 		return zero, err
@@ -547,11 +571,14 @@ func (o *retainedFeedOwner) Page(ctx context.Context, request [16]byte, boundary
 		if !feedCutEqual(page.boundary, boundary) {
 			return zero, errInvalid
 		}
+		stage = "pending-seal"
 		if err = o.seal(ctx, page, wire); err != nil {
 			return zero, err
 		}
+		stage = "pending-delivery"
 		return o.delivery(ctx, page, wire, true)
 	}
+	stage = "cursor"
 	var cursor retainedFeedCursor
 	for i, state := range states {
 		actual, err := decodeRetainedFeedCursor(state.cursor)
@@ -588,10 +615,13 @@ func (o *retainedFeedOwner) Page(ctx context.Context, request [16]byte, boundary
 			return zero, errInvalid
 		}
 		e := o.pin.invocation.endpoints[parts[i]]
+		stage = "frame-read"
+		lastPart, lastIndex = parts[i], cursor.positions[i]
 		state, err := e.retainedFeedRead(ctx, retainedFeedQuestion{kind: feedReadFrame, definition: o.wire, boundary: boundary.certificates[i], tip: page.tips[i], index: cursor.positions[i]})
 		if err != nil {
 			return zero, err
 		}
+		stage = "frame-status"
 		if err = retainedFeedStatusError(state.status); err != nil {
 			return zero, err
 		}
@@ -604,6 +634,7 @@ func (o *retainedFeedOwner) Page(ctx context.Context, request [16]byte, boundary
 		}
 		local := *o.publisher.coordinator.host.machine
 		local.ns.partition = parts[i]
+		stage = "frame-envelope"
 		heads[i], err = local.feedEnvelope(*state.frame, arena)
 		if err != nil {
 			return zero, err
@@ -618,6 +649,7 @@ func (o *retainedFeedOwner) Page(ctx context.Context, request [16]byte, boundary
 			progress = true
 		}
 	}
+	stage = "merge"
 	if progress {
 		for i, f := range frames {
 			if f != nil && heads[i].kind == 0 {
@@ -641,6 +673,7 @@ func (o *retainedFeedOwner) Page(ctx context.Context, request [16]byte, boundary
 			}
 		}
 		if head.kind != 0 {
+			stage = "payload"
 			if err = o.capturePayload(ctx, &page); err != nil {
 				return zero, err
 			}
@@ -655,16 +688,20 @@ func (o *retainedFeedOwner) Page(ctx context.Context, request [16]byte, boundary
 	if len(page.frames) == 0 && !page.eof {
 		return zero, errRetainedFeedPending
 	}
+	stage = "page-output"
 	if err = arena.Reserve(4096 + 4*o.definition.policy.pageBytes); err != nil {
 		return zero, outputBudgetFailure(err)
 	}
+	stage = "encode"
 	wire, err = encodeRetainedFeedPage(page, o.definition.policy.pageBytes)
 	if err != nil {
 		return zero, err
 	}
+	stage = "seal"
 	if err = o.seal(ctx, page, wire); err != nil {
 		return zero, err
 	}
+	stage = "delivery"
 	return o.delivery(ctx, page, wire, false)
 }
 
