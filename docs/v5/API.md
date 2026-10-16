@@ -24,6 +24,8 @@ raftlog seams. The distributed engine (`internal/dist`) is not part of it.
 
 - `Open(ctx, Config) (*Graph, error)`, `Graph.Close`, `Graph.Update(ctx, func(Tx) error) (Receipt, error)`, `Graph.OpenSnapshot`.
 - `Config`: `Dir` or `Memory`, `GraphID`, `DefaultAxis` and `KnowledgeAxis` (two different axes, `types.DefaultAxisBinding`), `Allocation{Seed}`, `Durability` (`DurabilityBuffered`, `DurabilityCommit`; a memory graph cannot be `DurabilityCommit`), `Limits` (`temporal.Limits`), property seeds `PropertySchema{Key, Kind, Unique}`. `Config.Validate`.
+- `Open` takes an exclusive lock on `Config.Dir` (a flock on `rho-v5.lock` in it): a second `Open` of the same directory, in this process or another, fails with `ErrLocked`; `Graph.Close` releases it; a memory graph needs none. Directory graphs need a unix platform.
+- `Graph.DeclareUnique(ctx, key, kind) (Receipt, error)` makes a node property unique on a graph that holds data (a seed is unique only from genesis). A key never written is declared fresh; a written key keeps its kind (`ErrInvalidValue` if `kind` differs; float is refused). Existing values are validated first: an equal value on two nodes over overlapping valid time is `ErrUniqueDuplicates` (also `ErrUniqueViolation`; it names the key and two node IDs, never the value) and nothing is declared. Otherwise every existing value enters the unique index in the same commit, the engine refuses a second holder in later Updates, `Tx.GetOrCreate` accepts the key, and it survives reopen. Declaring twice is `ErrUniqueDeclared`; one declaration must fit one install (stage-record limit, `ErrInvalidRequest` otherwise) and reads every value of the key.
 - `Tx` (interface, valid inside `Update` only): `CreateNode`, `CreateRel`, `Correct`, `End`, `AddLabel`, `RemoveLabel`, `Set`, `Unset`, `Retract`, `GetOrCreate`, `Reopen`, `SetMeta`. Ops: `CreateNode`, `CreateRel`, `Correct`, `End`, `AddLabel`, `RemoveLabel`, `Set`, `Unset`, `Retract`, `GetOrCreate`, `Reopen`; each has `Validate(temporal.Limits)` (`CreateNode.Validate`, `CreateRel.Validate`, `Correct.Validate`, `End.Validate`, `AddLabel.Validate`, `RemoveLabel.Validate`, `Set.Validate`, `Unset.Validate`, `Retract.Validate`, `GetOrCreate.Validate`, `Reopen.Validate`); `Op` is the closed interface, `CheckOp(Config, Op)` validates without an engine.
 - Every op carries an explicit `Scope` (valid time) and an optional `Recorded` position on `Config.KnowledgeAxis`; zero `Recorded` means "at commit". There is no implicit "now".
 - A key is declared by the first `Set` that writes it (add-only, same commit); a later value of another kind is `ErrInvalidValue`, an exact numeric converts (3.0 into an int key).
@@ -69,6 +71,9 @@ Match with `errors.Is`.
 | `ErrAlreadyExists` | explicit `CreateNode.ID` / `CreateRel.ID` already exists |
 | `ErrConflict` | write conflict |
 | `ErrUniqueViolation` | unique claim held by another node |
+| `ErrLocked` | `Open` of a directory another open `Graph` holds |
+| `ErrUniqueDeclared` | `DeclareUnique` of a property that is already unique |
+| `ErrUniqueDuplicates` | `DeclareUnique` refused: existing data holds a duplicate claim |
 | `ErrCommitNotDurable` | commit accepted, durability not confirmed |
 | `ErrSnapshotExpired` | snapshot cut no longer readable |
 
@@ -91,7 +96,7 @@ Separate module (`github.com/data-insights-ai/rho-tkg/v5compat`) mirroring the 1
 Documented, not defects; each names the work package that lifts it.
 
 - `v5compat` keeps a side commit ledger, stores `~tf` / `~dt` shadow time properties, and commits per instant (WP-35 removes the per-instant commits and the ledger using `AtKnown` and `Receipt.KnowledgeInstant`).
-- `v5compat` `GetOrCreate` serialises with an in-process lock only (WP-34 adds the directory lock and runtime uniqueness).
+- `v5compat` `GetOrCreate` still serialises with an in-process lock; the engine now offers the directory lock and `DeclareUnique` (WP-34), WP-35 switches `v5compat` over.
 - `v5compat` Stats and `Tx.Begin` are declined (WP-35).
 - `Selector.Known` is an upper bound ("known by t"; lower bound ignored): a revision is known at its latest `Recorded` instant, else its commit knowledge instant; an entity shows the state after its longest known revision prefix. A bound below the view's newest commit reads the index pages at the newest commit the bound admits plus the owners of backdated operations (`Recorded` earlier than the commit instant), so a store without backdated operations never walks its entities for a labelled or equality scan; a scan without label or equality still walks. Scan serves label and equality pages with a per-candidate recheck. Under `ViewEffective` a relationship under a `Known` bound reads each endpoint at the endpoint's own known prefix, so Lookup on the node and the relationship agree (Timeline of a relationship still reads endpoints at each revision's index). Stores created before this branch (no revision rows, no commit-instant rows) do not open; there is no migration before release. Range moves refuse a source holding revision rows until they are carried (WP-28).
 - Op log and range-move export refuse caller-instant evidence (`Recorded`), and the distributed codecs refuse `LifeEnd`, Bytes and List until WP-28; v5.0 is one partition.

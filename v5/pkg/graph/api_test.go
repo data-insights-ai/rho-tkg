@@ -133,6 +133,9 @@ func (f fakeEngine) openSnapshot(context.Context, SnapshotSpec) (snapshotEngine,
 	return f.snap, nil
 }
 func (f fakeEngine) close() error { return nil }
+func (f fakeEngine) declareUnique(context.Context, string, ValueKind) (Receipt, error) {
+	return Receipt{}, nil
+}
 
 // MAJOR 2: Snapshot.Cut, and the Cut it returns survives a byte round trip.
 func TestSnapshotCutRoundTripsThroughBytes(t *testing.T) {

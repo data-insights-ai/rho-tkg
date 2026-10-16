@@ -167,6 +167,7 @@ type pebbleEngine struct {
 	binding                  types.DefaultAxisBinding
 	node                     map[string]graphstate.PropertyDefinition
 	rel                      map[string]graphstate.PropertyDefinition
+	lock                     *dirLock // exclusive directory lock; nil for a memory graph
 	closed                   atomic.Bool
 	broken                   atomic.Pointer[error]
 	nonce                    atomic.Uint64
@@ -209,13 +210,19 @@ func openEngine(ctx context.Context, cfg Config) (*pebbleEngine, error) {
 	} else {
 		fs = vfs.Default
 		dir = cfg.Dir
-		if ents, err := os.ReadDir(dir); err == nil && len(ents) > 0 {
-			create = false
+		if e.lock, err = lockDir(dir); err != nil {
+			return nil, err
+		}
+		if ents, err := os.ReadDir(dir); err == nil {
+			for _, ent := range ents {
+				create = create && ent.Name() == lockFileName
+			}
 		}
 	}
 	rc := raftConfig(fs, dir, create, e.ns, group)
 	st, err := raftlog.Open(rc)
 	if err != nil {
+		e.lock.unlock()
 		return nil, fmt.Errorf("%w: open store: %v", ErrInvalidConfig, err)
 	}
 	e.store = st
@@ -226,6 +233,7 @@ func openEngine(ctx context.Context, cfg Config) (*pebbleEngine, error) {
 	}
 	if err != nil {
 		_ = st.Close()
+		e.lock.unlock()
 		return nil, err
 	}
 	return e, nil
@@ -373,12 +381,16 @@ func (e *pebbleEngine) recover(ctx context.Context) error {
 	for _, defs := range []map[string]graphstate.PropertyDefinition{e.node, e.rel} {
 		for name, want := range defs {
 			got, found, err := c.Property(ctx, want.Owner, name)
+			if want.Unique == graphstate.UniqueNone && got.Unique == graphstate.UniqueScalar && want.Owner == graphstate.Node {
+				want.Unique = got.Unique // a seed promoted by DeclareUnique
+				defs[name] = want
+			}
 			if err != nil || !found || got != want {
 				return fmt.Errorf("%w: stored property schema differs from the config", ErrInvalidConfig)
 			}
 		}
 	}
-	return nil
+	return e.loadUniqueDecls(ctx, view, c)
 }
 
 // install persists the raft entry for index and installs the batch.
@@ -425,7 +437,9 @@ func (e *pebbleEngine) close() error {
 	if e.closed.Swap(true) {
 		return ErrClosed
 	}
-	return e.store.Close()
+	err := e.store.Close()
+	e.lock.unlock()
+	return err
 }
 
 // ---- tokens ----
