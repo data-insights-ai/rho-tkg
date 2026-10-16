@@ -1,0 +1,12 @@
+# mutant: pkg/graph/internal/core/count_timeline.go
+# - '\tif len(genesis) == 0 {\n\t\treturn spans, nil\n\t}'
+# + '\tif true {\n\t\treturn spans, nil\n\t}'
+$ go test -run 'TestCountTimeline' ./pkg/graph/
+--- FAIL: TestCountTimelineFollowsWrites (0.01s)
+    --- FAIL: TestCountTimelineFollowsWrites/memory (0.00s)
+        round9_doors_test.go:574: closed untimed create: [{1792129818296 1792129823296 1}], want [{-9223372036854775808 1792129823296 1}]
+    --- FAIL: TestCountTimelineFollowsWrites/badger (0.00s)
+        round9_doors_test.go:574: closed untimed create: [{1792129818301 1792129823301 1}], want [{-9223372036854775808 1792129823301 1}]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.360s
+FAIL

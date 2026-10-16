@@ -3,6 +3,7 @@ package stats
 import (
 	"errors"
 	"fmt"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	"slices"
 	"testing"
 
@@ -624,5 +625,37 @@ func TestTimeStatsForwards(t *testing.T) {
 	opErr := errors.New("boom")
 	if _, _, err := New(&statsOpsSpy{propertyStatsErr: opErr}).LabelTimeStats("L"); !errors.Is(err, opErr) {
 		t.Fatalf("LabelTimeStats error = %v", err)
+	}
+}
+
+func (s *statsOpsSpy) PropertyValueStats(label, key string, pin types.Instant) (storepkg.PropertyValueStats, bool, error) {
+	s.propertyNDVArgs = append(s.propertyNDVArgs, fmt.Sprintf("values:%s.%s@%d", label, key, pin))
+	return storepkg.PropertyValueStats{Distinct: 2, Rows: 5, MaxRows: 4, MaxValue: "x"}, true, s.propertyStatsErr
+}
+
+func (s *statsOpsSpy) RelPropertyValueStats(typeName, key string, pin types.Instant) (storepkg.PropertyValueStats, bool, error) {
+	s.propertyNDVArgs = append(s.propertyNDVArgs, fmt.Sprintf("relvalues:%s.%s@%d", typeName, key, pin))
+	return storepkg.PropertyValueStats{Distinct: 1, Rows: 1, MaxRows: 1}, true, s.propertyStatsErr
+}
+
+// TestPropertyValueStatsForwards: the round 9 value statistics forward to
+// Ops with their arguments; a nil API reports the nil graph.
+func TestPropertyValueStatsForwards(t *testing.T) {
+	var nilAPI *API
+	if _, _, err := nilAPI.PropertyValueStats("L", "k", 0); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil PropertyValueStats error = %v", err)
+	}
+	if _, _, err := nilAPI.RelPropertyValueStats("R", "k", 0); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelPropertyValueStats error = %v", err)
+	}
+	ops := &statsOpsSpy{}
+	if st, ok, err := New(ops).PropertyValueStats("L", "k", 7); err != nil || !ok || st.MaxRows != 4 || st.MaxValue != "x" {
+		t.Fatalf("PropertyValueStats = %+v, %v, %v", st, ok, err)
+	}
+	if st, ok, err := New(ops).RelPropertyValueStats("R", "k", 0); err != nil || !ok || st.Rows != 1 {
+		t.Fatalf("RelPropertyValueStats = %+v, %v, %v", st, ok, err)
+	}
+	if want := []string{"values:L.k@7", "relvalues:R.k@0"}; !slices.Equal(ops.propertyNDVArgs, want) {
+		t.Fatalf("args = %v, want %v", ops.propertyNDVArgs, want)
 	}
 }

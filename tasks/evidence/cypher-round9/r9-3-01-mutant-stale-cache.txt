@@ -1,0 +1,12 @@
+# mutant: pkg/graph/internal/index/property_index.go
+# - '\tpi.valueStats.Store(nil)\n\tif set, ok := pi.Entries[vk]; ok {'
+# + '\tif set, ok := pi.Entries[vk]; ok {'
+$ go test -run 'TestPropertyValueStats' ./pkg/graph/
+--- FAIL: TestPropertyValueStatsMatchesIndex (0.02s)
+    --- FAIL: TestPropertyValueStatsMatchesIndex/memory (0.00s)
+        round9_doors_test.go:689: hub shrunk by deletes: {Distinct:8 Rows:18 MaxRows:7 MaxValue:hub} (key s:hub) exact true, want {Distinct:7 Rows:14 MaxRows:4 MaxValue:<nil>} key s:hub
+    --- FAIL: TestPropertyValueStatsMatchesIndex/badger (0.00s)
+        round9_doors_test.go:689: hub shrunk by deletes: {Distinct:8 Rows:18 MaxRows:7 MaxValue:hub} (key s:hub) exact true, want {Distinct:7 Rows:14 MaxRows:4 MaxValue:<nil>} key s:hub
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.355s
+FAIL

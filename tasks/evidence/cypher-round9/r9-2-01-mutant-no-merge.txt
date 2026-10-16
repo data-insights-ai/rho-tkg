@@ -1,0 +1,18 @@
+# mutant: pkg/graph/internal/core/count_timeline.go
+# - '\t\t\t\tcontinue // equal counts merge'
+# + '\t\t\t\tout[open].To, open = at, -1'
+$ go test -run 'TestCountTimeline' ./pkg/graph/
+--- FAIL: TestCountTimelineMatchesCountByLabelAt (0.00s)
+    --- FAIL: TestCountTimelineMatchesCountByLabelAt/memory (0.00s)
+panic: runtime error: index out of range [-1] [recovered, repanicked]
+goroutine 7 [running]:
+testing.tRunner.func1.2({0x103954118, 0x7cf3513de5d0})
+	testing/testing.go:2123 +0x1a0
+testing.tRunner.func1()
+	testing/testing.go:2126 +0x2c8
+panic({0x103954118?, 0x7cf3513de5d0?})
+	runtime/panic.go:859 +0x120
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.sweepCountTimeline({0x7cf35152a400?, 0x1b?, 0x1a143419c2c?}, 0x0)
+	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/count_timeline.go:108 +0x3cc
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.(*Core).countTimeline(0x7cf351558008, {0xa0?, 0x513e?, 0x0?}, {0x1?, 0x0?})
+	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/count_timeline.go:172 +0x180

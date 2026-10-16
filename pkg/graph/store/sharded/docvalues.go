@@ -1,6 +1,7 @@
 package sharded
 
 import (
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	badger "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -240,7 +241,27 @@ func (s *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap ty
 		}
 		out.offsets[i+1] = out.offsets[i] + n
 	}
+	if chunks, chunked := indexpkg.NewChunkConcat(readers); chunked && out.rows {
+		return &chunkSnapshot{columnSnapshot: out, chunks: chunks}, gen, true, nil
+	}
 	return out, gen, true, nil
+}
+
+// chunkSnapshot is a columnSnapshot whose slots' columns also read as typed
+// chunks (types.NodeColumnChunkReader, sigma-tkgd round 9): the slots' rows
+// concatenated in slot order, as RowAt reads them. A label whose column
+// holds strings on one slot and numbers on another is served by
+// columnSnapshot alone (no vector holds both).
+type chunkSnapshot struct {
+	*columnSnapshot
+	chunks *indexpkg.ChunkConcat
+}
+
+var _ types.NodeColumnChunkReader = (*chunkSnapshot)(nil)
+
+// ReadChunk implements types.NodeColumnChunkReader.
+func (c *chunkSnapshot) ReadChunk(from, to int, chunk *types.ColumnChunk) {
+	c.chunks.ReadChunk(from, to, chunk)
 }
 
 // columnSnapshot is the sharded types.NodeColumnRowReader: one immutable

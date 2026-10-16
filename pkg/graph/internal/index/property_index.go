@@ -3,6 +3,7 @@ package index
 import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	"sync/atomic"
 )
 
 // PropertyIndexKey uniquely identifies a property index by label token and property key.
@@ -41,6 +42,9 @@ type PropertyIndex struct {
 	// elements (backlog 63, opt-in, fixed at creation): each list element is
 	// a key. No ordered views: range and prefix accessors report supported=false.
 	elements bool
+
+	// valueStats caches ValueStats until the next mutation (round 9).
+	valueStats atomic.Pointer[ValueStats]
 }
 
 // NewPropertyIndex creates an empty property index.
@@ -106,6 +110,7 @@ func (pi *PropertyIndex) AddKey(id snowflake.ID, vk string) {
 		}
 	}
 	set.add(id)
+	pi.valueStats.Store(nil)
 	if pi.orderedViews() {
 		pi.addOrdered(id, vk)
 	}
@@ -131,6 +136,7 @@ func (pi *PropertyIndex) removeKey(id snowflake.ID, vk string) {
 	if vk == "" {
 		return
 	}
+	pi.valueStats.Store(nil)
 	if set, ok := pi.Entries[vk]; ok {
 		set.remove(id)
 		if set.Len() == 0 {
@@ -234,6 +240,7 @@ func PurgeNodeFromAllPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex
 			}
 		}
 		idx.purgeOrdered(id)
+		idx.valueStats.Store(nil)
 		if idx.Mutated != nil {
 			idx.Mutated[id] = struct{}{}
 		}

@@ -344,9 +344,22 @@ func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.
 // most-recent-first so the newest overlapping match is preferred. See the
 // funnel comment for the predicate-anywhere rationale.
 func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Instant, pred func(*types.Node) bool, caps lifeEnds[*types.Node], mask []voidSpan) (*types.Node, error) {
-	// Order by effective valid-from so next-version tiling is correct after an
-	// append-only cascade (see sortNodeChainForResolve). Scan highest-valid-from
-	// first to preserve the "most-recent overlapping match" semantic.
+	var found *types.Node
+	c.eachNodeChainDuring(chain, start, end, pred, caps, mask, func(v *types.Node) bool {
+		found = v
+		return false
+	})
+	if found == nil {
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+	return found, nil
+}
+
+// eachNodeChainDuring calls fn, most-recent-first, for every version of a
+// TxAt-filtered chain resolveNodeChainDuring would accept (validity overlapping
+// [start, end) outside the voided spans, pred true); fn false stops. The
+// resolver takes the first; the any-version reads (round 9) take them all.
+func (c *Core) eachNodeChainDuring(chain []*types.Node, start, end types.Instant, pred func(*types.Node) bool, caps lifeEnds[*types.Node], mask []voidSpan, fn func(*types.Node) bool) {
 	c.sortNodeChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := c.nodeVersionBounds(chain, i)
@@ -357,12 +370,25 @@ func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Inst
 		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start), outside
 		// the spans an excise voided.
 		if vStart < end && (vEnd == 0 || vEnd > start) && uncovered(mask, max(vStart, start), minEnd(vEnd, end)) {
-			if pred == nil || pred(chain[i]) {
-				return chain[i], nil
+			if (pred == nil || pred(chain[i])) && !fn(chain[i]) {
+				return
 			}
 		}
 	}
-	return nil, storepkg.ErrNoVersionValidAt
+}
+
+// eachNodeChainInterval is eachNodeChainDuring over a raw chain read at
+// transaction time tx (0: every belief), with resolveNodeChain's interval
+// preparation: version order, the pin's filter, retracted lives dropped,
+// life ends and excise voids.
+func (c *Core) eachNodeChainInterval(chain []*types.Node, start, end, tx types.Instant, pred func(*types.Node) bool, fn func(*types.Node) bool) {
+	chain = dropRetractedLives(filterNodeChainByTxAt(versionOrdered(chain), tx))
+	if len(chain) == 0 {
+		return
+	}
+	caps := chainLifeEnds(chain)
+	mask := voidMask(c, nodeKernel, chain)
+	c.eachNodeChainDuring(chain, start, end, pred, caps, mask, fn)
 }
 
 // resolveNodeChainAsOf selects the newest belief recorded by txPin via the
@@ -430,6 +456,22 @@ func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd
 
 // resolveRelChainDuring mirrors resolveNodeChainDuring for relationships.
 func (c *Core) resolveRelChainDuring(chain []*types.Relationship, start, end types.Instant, pred func(*types.Relationship) bool, caps lifeEnds[*types.Relationship], mask []voidSpan) (*types.Relationship, error) {
+	var found *types.Relationship
+	c.eachRelChainDuring(chain, start, end, pred, caps, mask, func(v *types.Relationship) bool {
+		found = v
+		return false
+	})
+	if found == nil {
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+	return found, nil
+}
+
+// eachRelChainDuring calls fn, most-recent-first, for every version of a
+// TxAt-filtered chain resolveRelChainDuring would accept (validity overlapping
+// [start, end) outside the voided spans, pred true); fn false stops. The
+// resolver takes the first; the any-version reads (round 9) take them all.
+func (c *Core) eachRelChainDuring(chain []*types.Relationship, start, end types.Instant, pred func(*types.Relationship) bool, caps lifeEnds[*types.Relationship], mask []voidSpan, fn func(*types.Relationship) bool) {
 	c.sortRelChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := c.relVersionBounds(chain, i)
@@ -440,12 +482,25 @@ func (c *Core) resolveRelChainDuring(chain []*types.Relationship, start, end typ
 		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start), outside
 		// the spans an excise voided.
 		if vStart < end && (vEnd == 0 || vEnd > start) && uncovered(mask, max(vStart, start), minEnd(vEnd, end)) {
-			if pred == nil || pred(chain[i]) {
-				return chain[i], nil
+			if (pred == nil || pred(chain[i])) && !fn(chain[i]) {
+				return
 			}
 		}
 	}
-	return nil, storepkg.ErrNoVersionValidAt
+}
+
+// eachRelChainInterval is eachRelChainDuring over a raw chain read at
+// transaction time tx (0: every belief), with resolveRelChain's interval
+// preparation: version order, the pin's filter, retracted lives dropped,
+// life ends and excise voids.
+func (c *Core) eachRelChainInterval(chain []*types.Relationship, start, end, tx types.Instant, pred func(*types.Relationship) bool, fn func(*types.Relationship) bool) {
+	chain = dropRetractedLives(filterRelChainByTxAt(versionOrdered(chain), tx))
+	if len(chain) == 0 {
+		return
+	}
+	caps := chainLifeEnds(chain)
+	mask := voidMask(c, relKernel, chain)
+	c.eachRelChainDuring(chain, start, end, pred, caps, mask, fn)
 }
 
 // resolveRelChainAsOf mirrors resolveNodeChainAsOf for relationships.

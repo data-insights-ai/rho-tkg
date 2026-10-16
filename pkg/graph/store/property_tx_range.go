@@ -22,3 +22,18 @@ type NodePropertyTxMemberRangeCapability interface {
 type RelPropertyTxMemberRangeCapability interface {
 	ForEachRelPropertyTxMemberInRange(relTypeToken uint16, propertyKey string, lo, hi float64, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
+
+// NodePropertyTxMemberAnyCapability is OPTIONAL (sigma-tkgd round 9): the
+// members NodePropertyTxMembershipCapability enumerates for every value of
+// (label, key), each once with the merged lower bound on its first
+// transaction time over the values (MergeFirstTx's rule), in no order;
+// ErrIndexNotFound without a declared index (or while it is built).
+type NodePropertyTxMemberAnyCapability interface {
+	ForEachNodePropertyTxMemberAny(labelToken uint16, propertyKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+}
+
+// RelPropertyTxMemberAnyCapability is the relationship mirror of
+// NodePropertyTxMemberAnyCapability, keyed (type, key).
+type RelPropertyTxMemberAnyCapability interface {
+	ForEachRelPropertyTxMemberAny(relTypeToken uint16, propertyKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+}
