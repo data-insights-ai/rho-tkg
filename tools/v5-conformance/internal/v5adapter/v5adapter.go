@@ -23,6 +23,11 @@ import (
 type Adapter struct{}
 
 var _ conformance.Adapter = Adapter{}
+var _ conformance.ProfileAdapter = Adapter{}
+
+// Profiles declares native only: caller stamps, ms pins and ID-keyset cursors
+// belong to the compat facade (PLAN 8a).
+func (Adapter) Profiles() []conformance.Profile { return []conformance.Profile{conformance.Native} }
 
 // Config builds the graph.Config for the suite options. Exported so a test can
 // check the mapping without an engine.
@@ -99,33 +104,33 @@ type C = context.Context
 func (w *Graph) AddNode(C, conformance.NodeSpec) (conformance.Node, error) {
 	return conformance.Node{}, nope("AddNode")
 }
-func (w *Graph) UpdateNode(C, uint64, map[string]any, int64) (conformance.Node, error) {
+func (w *Graph) UpdateNode(C, int64, map[string]any, int64) (conformance.Node, error) {
 	return conformance.Node{}, nope("UpdateNode")
 }
-func (w *Graph) DeleteNode(C, uint64, int64) error { return nope("DeleteNode") }
+func (w *Graph) DeleteNode(C, int64, int64) error { return nope("DeleteNode") }
 func (w *Graph) GetOrCreateByKey(C, string, string, any, map[string]any) (conformance.Node, bool, error) {
 	return conformance.Node{}, false, nope("GetOrCreateByKey")
 }
 func (w *Graph) AddRel(C, conformance.RelSpec) (conformance.Rel, error) {
 	return conformance.Rel{}, nope("AddRel")
 }
-func (w *Graph) UpdateRel(C, uint64, map[string]any, int64) (conformance.Rel, error) {
+func (w *Graph) UpdateRel(C, int64, map[string]any, int64) (conformance.Rel, error) {
 	return conformance.Rel{}, nope("UpdateRel")
 }
-func (w *Graph) DeleteRel(C, uint64, int64) error { return nope("DeleteRel") }
-func (w *Graph) SetNodeVersionInterval(C, uint64, int64, int64, map[string]any, int64) (conformance.Node, error) {
+func (w *Graph) DeleteRel(C, int64, int64) error { return nope("DeleteRel") }
+func (w *Graph) SetNodeVersionInterval(C, int64, int64, int64, map[string]any, int64) (conformance.Node, error) {
 	return conformance.Node{}, nope("SetNodeVersionInterval")
 }
-func (w *Graph) SetRelVersionInterval(C, uint64, int64, int64, map[string]any, int64) (conformance.Rel, error) {
+func (w *Graph) SetRelVersionInterval(C, int64, int64, int64, map[string]any, int64) (conformance.Rel, error) {
 	return conformance.Rel{}, nope("SetRelVersionInterval")
 }
-func (w *Graph) CloseNodeVersion(C, uint64, int64) error { return nope("CloseNodeVersion") }
-func (w *Graph) CloseRelVersion(C, uint64, int64) error  { return nope("CloseRelVersion") }
-func (w *Graph) Tx(C, func(conformance.Tx) error) error  { return nope("Tx") }
-func (w *Graph) GetNode(C, uint64) (conformance.Node, error) {
+func (w *Graph) CloseNodeVersion(C, int64, int64) error { return nope("CloseNodeVersion") }
+func (w *Graph) CloseRelVersion(C, int64, int64) error  { return nope("CloseRelVersion") }
+func (w *Graph) Tx(C, func(conformance.Tx) error) error { return nope("Tx") }
+func (w *Graph) GetNode(C, int64) (conformance.Node, error) {
 	return conformance.Node{}, nope("GetNode")
 }
-func (w *Graph) GetRel(C, uint64) (conformance.Rel, error) { return conformance.Rel{}, nope("GetRel") }
+func (w *Graph) GetRel(C, int64) (conformance.Rel, error) { return conformance.Rel{}, nope("GetRel") }
 func (w *Graph) NodesByLabel(string, conformance.Query) ([]conformance.Node, error) {
 	return nil, nope("NodesByLabel")
 }
@@ -135,24 +140,36 @@ func (w *Graph) RelsByType(string, conformance.Query) ([]conformance.Rel, error)
 func (w *Graph) NodesByLabelAndProperty(string, string, any, conformance.Query) ([]conformance.Node, error) {
 	return nil, nope("NodesByLabelAndProperty")
 }
-func (w *Graph) NodeAsOf(uint64, int64) (conformance.Node, error) {
+func (w *Graph) NodeAsOf(int64, int64) (conformance.Node, error) {
 	return conformance.Node{}, nope("NodeAsOf")
 }
-func (w *Graph) RelAsOf(uint64, int64) (conformance.Rel, error) {
+func (w *Graph) RelAsOf(int64, int64) (conformance.Rel, error) {
 	return conformance.Rel{}, nope("RelAsOf")
 }
-func (w *Graph) NodeAt(uint64, int64) (conformance.Node, error) {
+func (w *Graph) NodeAt(int64, int64) (conformance.Node, error) {
 	return conformance.Node{}, nope("NodeAt")
 }
-func (w *Graph) NodeAtTx(uint64, int64, int64) (conformance.Node, error) {
+func (w *Graph) NodeAtTx(int64, int64, int64) (conformance.Node, error) {
 	return conformance.Node{}, nope("NodeAtTx")
 }
-func (w *Graph) RelAtTx(uint64, int64, int64) (conformance.Rel, error) {
+func (w *Graph) RelAtTx(int64, int64, int64) (conformance.Rel, error) {
 	return conformance.Rel{}, nope("RelAtTx")
 }
-func (w *Graph) NodeHistory(uint64) ([]conformance.Node, error) { return nil, nope("NodeHistory") }
-func (w *Graph) RelHistory(uint64) ([]conformance.Rel, error)   { return nil, nope("RelHistory") }
-func (w *Graph) CommittedTx() (int64, error)                    { return 0, nope("CommittedTx") }
-func (w *Graph) RelsEffectivePage(C, conformance.Pin, conformance.Filter, uint64, int) ([]conformance.RelSegment, uint64, error) {
+func (w *Graph) NodeHistory(int64) ([]conformance.Node, error) { return nil, nope("NodeHistory") }
+func (w *Graph) RelHistory(int64) ([]conformance.Rel, error)   { return nil, nope("RelHistory") }
+func (w *Graph) CommittedTx() (int64, error)                   { return 0, nope("CommittedTx") }
+func (w *Graph) RelsEffectivePage(C, conformance.Pin, conformance.Filter, int64, int) ([]conformance.RelSegment, int64, error) {
 	return nil, 0, nope("RelsEffectivePage")
 }
+func (w *Graph) NodesEffectivePage(C, conformance.Pin, conformance.Filter, int64, int) ([]conformance.NodeSegment, int64, error) {
+	return nil, 0, nope("NodesEffectivePage")
+}
+func (w *Graph) BatchRun(C, func(conformance.Batch) error) error { return nope("BatchRun") }
+func (w *Graph) ExciseNodeValidity(C, int64, int64, int64, int64) error {
+	return nope("ExciseNodeValidity")
+}
+func (w *Graph) ExciseRelValidity(C, int64, int64, int64, int64) error {
+	return nope("ExciseRelValidity")
+}
+func (w *Graph) RetractNode(C, int64, int64) error { return nope("RetractNode") }
+func (w *Graph) RetractRel(C, int64, int64) error  { return nope("RetractRel") }

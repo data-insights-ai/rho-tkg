@@ -26,3 +26,10 @@ func TestOpenReportsBothSentinels(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProfilesNativeOnly(t *testing.T) {
+	p := Adapter{}.Profiles()
+	if len(p) != 1 || p[0] != conformance.Native {
+		t.Fatalf("profiles = %v, want [native]", p)
+	}
+}
