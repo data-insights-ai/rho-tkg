@@ -41,9 +41,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   written concurrently, so `ByLabelAndProperty(label, key, x)` missed rows whose list held `x` at another position until
   the row was rewritten (a row written after the create was always right). One merge, `PropertyIndex.FinishBuild`, now
   serves the node and relationship builds of memory and badger and ends tracking before merging
-  (`TestElementsIndexBackfillIndexesEveryElement`). Nothing persisted changes. Existing stores: an Elements index created
-  over existing lists before this release can keep the missing keys (badger and sharded restore the index from the open
-  image of a clean close); drop and re-create it, or open once after an unclean close, which rebuilds it from the rows.
+  (`TestElementsIndexBackfillIndexesEveryElement`). The open image format is raised to 3 (`TKGOI\x03`, as v4.54.0 did):
+  the first open of a badger store (and of every sharded slot and tiered shard) after the upgrade does not trust a
+  format-2 image and rebuilds the indexes from the rows, so an Elements index built before answers every element with no
+  consumer action (`TestOpenImageFormat2ElementsIndexRebuiltAfterUpgrade`); that one open costs a full rebuild. Downgrade:
+  v4.57.1 treats the format-3 image as unknown and rebuilds too. While an Elements index is still building, badger's scan
+  fallback now matches "contains" as the finished index does (was plain equality; `TestElementsIndexLookupWhileBuilding`).
 
 ## [4.57.1] - 2026-10-16
 

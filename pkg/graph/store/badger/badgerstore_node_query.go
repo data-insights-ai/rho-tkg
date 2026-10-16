@@ -386,9 +386,11 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, elements, nids, opts)
 	}
 
-	// Fallback: label scan + property filter.
+	// Fallback: label scan + property filter, with the declared index's match
+	// while it is still building (an Elements index means "contains").
 	slog.Debug("graph: NodesByLabelAndProperty using full label scan (no property index)",
 		"labelToken", labelToken, "propertyKey", propKey)
+	scanElements := bs.propertyIndexes[key].Elements()
 	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
 	bs.idxMu.RUnlock()
 	if idErr != nil {
@@ -400,7 +402,7 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 
 	// Sorted scan for property matches.
 	storepkg.SortNodeIDs(nids)
-	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, false, nids, opts)
+	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, scanElements, nids, opts)
 }
 
 // NodesByLabelContainingProperty answers an Elements-index lookup (backlog 63) on a

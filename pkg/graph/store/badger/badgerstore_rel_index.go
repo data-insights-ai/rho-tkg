@@ -169,7 +169,9 @@ func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 		})
 	}
 
-	// Fallback: type scan + property filter.
+	// Fallback: type scan + property filter, with the declared index's match
+	// while it is still building (an Elements index means "contains").
+	scanElements := bs.relPropertyIndexes[key].Elements()
 	set := bs.typeIdx[relTypeToken]
 	rids := make([]types.RelID, 0, len(set))
 	for id := range set {
@@ -180,7 +182,7 @@ func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 		return nil, nil
 	}
 	storepkg.SortRelIDs(rids)
-	return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, false, rids, opts)
+	return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, scanElements, rids, opts)
 }
 
 func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey, targetKey string, elements bool, rids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
