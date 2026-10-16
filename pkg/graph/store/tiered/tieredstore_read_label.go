@@ -2,7 +2,10 @@ package tiered
 
 import (
 	"fmt"
+	"slices"
 
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -10,6 +13,7 @@ import (
 // --- Label/type queries ---
 
 func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
+	ts.noteTypeScan("NodesByLabel")
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -90,6 +94,7 @@ func (ts *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 }
 
 func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Relationship, error) {
+	ts.noteTypeScan("RelationshipsByType")
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -194,10 +199,10 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 	if err != nil {
 		return nil, err
 	}
-	refNodes, err := ref.NodesByLabelAndProperty(labelToken, key, value, stripDepth(opts))
-	var elemOpts storecontract.PropertyIndexOptions
+	elemOpts, _, err := ref.PropertyIndexOptions(labelToken, key)
+	var refNodes []*types.Node
 	if err == nil {
-		elemOpts, _, err = ref.PropertyIndexOptions(labelToken, key)
+		refNodes, err = shardNodesByLabelAndProperty(ref, elemOpts.Elements, labelToken, key, value, stripDepth(opts))
 	}
 	refCheckin()
 	if err != nil {
@@ -260,14 +265,30 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 	return applyNodePagination(merged, opts), nil
 }
 
-// shardNodesByLabelAndProperty is one archive or event shard's part of a
-// property lookup. Those shards hold no copy of the reference shard's property
-// index, so for an Elements index (backlog 63) — a node with an event primary
-// label and a reference label lives on an event shard, an archived node in the
-// archive — they answer with the same "contains" match.
+// shardNodesByLabelAndProperty is one shard's part of a node property lookup
+// under the anchor's index semantics (elements: the anchor's index is an
+// Elements index, backlog 63): the shard's own door when shardPropertyDoor
+// says it answers the same, else a label scan with the anchor's match (a shard
+// without its copy of an Elements index, or with a stale copy).
 func shardNodesByLabelAndProperty(store *BadgerStore, elements bool, labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
-	if elements {
-		return store.NodesByLabelContainingProperty(labelToken, key, value, opts)
+	have, has, err := store.PropertyIndexOptions(labelToken, key)
+	if err != nil {
+		return nil, err
 	}
-	return store.NodesByLabelAndProperty(labelToken, key, value, opts)
+	if shardPropertyDoor(have, has, elements) {
+		return store.NodesByLabelAndProperty(labelToken, key, value, opts)
+	}
+	targetKey := indexpkg.PropertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
+	}
+	nodes, err := store.NodesByLabel(labelToken, QueryOpts{After: opts.After})
+	if err != nil {
+		return nil, err
+	}
+	temporal := storeutil.HasTemporalFilter(opts)
+	return slices.DeleteFunc(nodes, func(n *types.Node) bool {
+		return !n.HasPropertyIndexKey(key, elements, targetKey) ||
+			(temporal && !storeutil.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts))
+	}), nil
 }

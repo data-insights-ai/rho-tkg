@@ -111,6 +111,42 @@ func (b *PostingsBuild) Range(fn func(vk string, ids []snowflake.ID) bool) {
 	}
 }
 
+// FinishBuild merges the backfill b into the live index pi and ends its build
+// (Mutated = nil). An ID a concurrent write handled during the build (in
+// Mutated when the merge starts) or that alive rejects is skipped. Tracking
+// ends BEFORE the merge because AddKey marks every ID it adds while tracking:
+// it would skip an entity's second key, so an Elements index built over
+// existing lists kept one element per row (WP-31). alive's error stops the
+// merge and is returned with tracking restored (the build stays unfinished).
+// Caller holds the index's write lock.
+func (pi *PropertyIndex) FinishBuild(b *PostingsBuild, alive func(snowflake.ID) (bool, error)) error {
+	handled := pi.Mutated
+	pi.Mutated = nil
+	var err error
+	b.Range(func(vk string, ids []snowflake.ID) bool {
+		for _, id := range ids {
+			if _, mutated := handled[id]; mutated {
+				continue // concurrent write handled this ID during the build
+			}
+			ok, aerr := alive(id)
+			if aerr != nil {
+				err = aerr
+				return false
+			}
+			if ok {
+				// AddKey, not a direct Entries write: it keeps the ordered views.
+				pi.AddKey(id, vk)
+			}
+		}
+		return true
+	})
+	if err != nil {
+		pi.Mutated = handled
+		return err
+	}
+	return nil
+}
+
 // AppendAfter appends to dst at most limit IDs above after, ascending (every
 // one when limit <= 0), and returns dst: the copy a caller takes under the
 // index lock before reading rows without it.

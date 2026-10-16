@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
-	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
 // indexDDL advances the epoch on success and on a failure that may have left
@@ -35,7 +34,6 @@ func TestIndexDDLAdvancesExceptOnRefusals(t *testing.T) {
 		storepkg.ErrTemporalIndexExists, storepkg.ErrTemporalIndexNotFound,
 		storepkg.ErrVectorIndexExists, storepkg.ErrVectorIndexNotFound,
 		storepkg.ErrRelPropertyIndexUnsupported, storepkg.ErrCapabilityNotSupported,
-		tieredpkg.ErrEventPropertyIndex,
 		fmt.Errorf("wrapped: %w", storepkg.ErrIndexExists),
 	} {
 		check(refused, false)

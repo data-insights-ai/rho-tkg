@@ -101,8 +101,9 @@ func (a *API) HasProperty(label, propertyKey string) (bool, error) {
 }
 
 // CreateRelProperty creates a relationship property index on the given rel type
-// and property key (K3b). Returns store.ErrRelPropertyIndexUnsupported on the
-// tiered store, which declines rel property index creation.
+// and property key (K3b). store.ErrRelPropertyIndexUnsupported from a backend
+// that declines it (none in-tree since v4.58.0; ask
+// store.CapabilitiesOf(s).IndexAcceleration.RelPropertyIndex first).
 func (a *API) CreateRelProperty(typeName, propertyKey string) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -415,8 +416,7 @@ func (a *API) Providers() []string {
 // state), and after Admin().Reset or a replica's applied clear. It does not
 // advance for a create or drop refused without a change (ErrIndexExists,
 // ErrIndexNotFound and their temporal and vector twins,
-// ErrRelPropertyIndexUnsupported, ErrCapabilityNotSupported, the tiered
-// store's ErrEventPropertyIndex), for a call
+// ErrRelPropertyIndexUnsupported, ErrCapabilityNotSupported), for a call
 // rejected by validation, for data writes or for reads. Identical on every
 // backend; one atomic load.
 //

@@ -410,14 +410,28 @@ func TestHasRelProperty_Lifecycle(t *testing.T) {
 	}
 }
 
-// Tiered declines rel-property indexes entirely (CreateRelProperty always
-// returns ErrRelPropertyIndexUnsupported) — HasRelProperty must surface the
-// SAME capability-absent signal, not silently answer false.
-func TestHasRelProperty_TieredCapabilityNotSupported(t *testing.T) {
+// Tiered builds rel-property indexes on every shard since v4.58.0 (WP-31):
+// HasRelProperty follows create and drop, as on every other backend.
+func TestHasRelProperty_TieredFollowsCreateAndDrop(t *testing.T) {
 	t.Parallel()
 	g := newTieredTestCore(t)
-	if _, err := g.Index.HasRelProperty("KNOWS", "weight"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
-		t.Fatalf("tiered HasRelProperty err = %v, want ErrCapabilityNotSupported", err)
+	for _, step := range []struct {
+		name string
+		do   func() error
+		want bool
+	}{
+		{"before create", nil, false},
+		{"after create", func() error { return g.Index.CreateRelProperty("KNOWS", "weight") }, true},
+		{"after drop", func() error { return g.Index.DeleteRelProperty("KNOWS", "weight") }, false},
+	} {
+		if step.do != nil {
+			if err := step.do(); err != nil {
+				t.Fatalf("%s: %v", step.name, err)
+			}
+		}
+		if has, err := g.Index.HasRelProperty("KNOWS", "weight"); err != nil || has != step.want {
+			t.Fatalf("%s: tiered HasRelProperty = %v, %v; want %v", step.name, has, err, step.want)
+		}
 	}
 }
 

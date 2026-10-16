@@ -58,8 +58,11 @@ var openImageChunkBytes = 512 * 1024
 // openImageMagic's last byte is the image format. 2 (v4.54.0): the temporal
 // envelopes start an untimed row at its TxFrom (backlog 62); an image of format 1
 // holds mint-keyed envelopes, which can start after the row (a TxFrom backfill)
-// and prune it, so the open rebuilds instead of trusting it.
-const openImageMagic = "TKGOI\x02"
+// and prune it, so the open rebuilds instead of trusting it. 3 (v4.58.0): an
+// Elements index built over existing lists before it kept one element per row
+// (PropertyIndex.FinishBuild); an image of format 2 can hold that, so the open
+// rebuilds from the rows.
+const openImageMagic = "TKGOI\x03"
 
 const (
 	imgSecNodeProp byte = iota + 1

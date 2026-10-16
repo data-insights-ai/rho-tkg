@@ -386,9 +386,11 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, elements, nids, opts)
 	}
 
-	// Fallback: label scan + property filter.
+	// Fallback: label scan + property filter, with the declared index's match
+	// while it is still building (an Elements index means "contains").
 	slog.Debug("graph: NodesByLabelAndProperty using full label scan (no property index)",
 		"labelToken", labelToken, "propertyKey", propKey)
+	scanElements := bs.propertyIndexes[key].Elements()
 	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
 	bs.idxMu.RUnlock()
 	if idErr != nil {
@@ -400,13 +402,14 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 
 	// Sorted scan for property matches.
 	storepkg.SortNodeIDs(nids)
-	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, false, nids, opts)
+	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, scanElements, nids, opts)
 }
 
 // NodesByLabelContainingProperty answers an Elements-index lookup (backlog 63) on a
-// store holding no copy of the index (tiered event shards and archive; the
-// reference shard owns it): the label's nodes whose propKey carries value's key as
-// a scalar or list element, filtered while the rows are fetched.
+// store holding no copy of the index: the label's nodes whose propKey carries
+// value's key as a scalar or list element, filtered while the rows are fetched.
+// No in-tree caller since v4.58.0 (tiered builds the index on every shard and
+// scans a shard lacking its copy itself); kept for API compatibility.
 func (bs *Store) NodesByLabelContainingProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err

@@ -6,9 +6,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Tiered: relationship property indexes and node property indexes on event labels, built per shard** (MINOR, v4.58.0;
+  sigma-tkgd row 59, backlog 10(b)). `CreateRelProperty` / `CreateRelPropertyWithOptions` and `CreateProperty` on an
+  event label now succeed on `tiered.Store` (were `ErrRelPropertyIndexUnsupported` / `ErrEventPropertyIndex`): every
+  node and relationship property index is built on the reference shard, the archive and every event shard (closed cold
+  shards are opened for the DDL), as composites and relationship temporal indexes already were (`shard_index_fanout.go`).
+  The reference shard anchors the definition and its options (create reaches it last, drop leaves it last, a failed shard
+  step undoes the others; a re-run create replaces a stale copy with other options); a new hot shard, the archive and a
+  lazily opened cold shard copy the anchor, and store open repairs every open shard. Lookups fold the shards, each shard
+  answering under the anchor's semantics (its own index, or a scan where its copy is missing or stale).
+  `ByTypeAndProperty` / `ByLabelAndProperty` with `TxPin`, `TxAt` + valid window and the named `*At` / `*During` doors
+  take their candidates from the union of every shard's membership sidecar, so a keyed pinned read does no type or label
+  scan (`TestTieredPropertyIndex_ParityAcrossBackends`: literal sets equal on memory, badger, sharded and tiered across
+  hot -> warm -> cold with the cold shard closed, int 1 = float 1.0, `2^53+1` != `float 2^53`, nil and NaN match
+  nothing; 0 scans on the keyed reads, 2 per read before). While any shard lacks the anchor's index the sidecar declines
+  and the history fold answers. Existing tiered stores: the first open copies existing reference-label indexes onto the
+  open event shards and the archive (one backfill of each shard's own rows; cold shards on their next open). `Elements`
+  is supported, `RangeCounts` stays refused (`ErrCapabilityNotSupported`). `tiered.ErrEventPropertyIndex` /
+  `graph.ErrEventPropertyIndex` are deprecated and no longer returned. Tiered now implements
+  `RelPropertyIndexOptionsCapability` and `RelPropertyIndexIntrospectionCapability` (`HasRelProperty`, `RelPropertyOptions`).
+- **Truthful capability report** (row 59, "is there a capability query sigma can ask instead of trying
+  CreateRelPropertyIndex?"): `store.CapabilitiesOf(s).IndexAcceleration` equals "a plain create succeeds" on every in-tree
+  backend (`TestCapabilitiesOf_MatchesCreate`, memory / badger / sharded / tiered, reference and event labels).
+  `badger.Store.PropertyIndexDefs` / `RelPropertyIndexDefs` list the finished definitions with their options.
+
 ### Changed
 
 - Internal refactor, no behaviour change: one `chainOf` builds every "history + current" chain in `pkg/graph/internal/core` (16 inline copies folded; `preCorrectionChain` = `versionOrdered(chainOf(...))`).
+
+### Deprecated
+
+- `tiered.ErrEventPropertyIndex` / `graph.ErrEventPropertyIndex`: no longer returned (property indexes cover every label
+  on every tiered shard); kept exported so an `errors.Is` match still compiles. **sigma-tkgd**: `ensureRelPropertyIndex`
+  now succeeds on tiered; the first create opens every cold shard and backfills each shard's rows once.
+
+### Fixed
+
+- **An `Elements` index created over existing list values keyed only one element per row** (memory, badger, sharded;
+  found by WP-31). The build's merge skipped an entity's later keys because adding its first key marked the entity as
+  written concurrently, so `ByLabelAndProperty(label, key, x)` missed rows whose list held `x` at another position until
+  the row was rewritten (a row written after the create was always right). One merge, `PropertyIndex.FinishBuild`, now
+  serves the node and relationship builds of memory and badger and ends tracking before merging
+  (`TestElementsIndexBackfillIndexesEveryElement`). The open image format is raised to 3 (`TKGOI\x03`, as v4.54.0 did):
+  the first open of a badger store (and of every sharded slot and tiered shard) after the upgrade does not trust a
+  format-2 image and rebuilds the indexes from the rows, so an Elements index built before answers every element with no
+  consumer action (`TestOpenImageFormat2ElementsIndexRebuiltAfterUpgrade`); that one open costs a full rebuild. Downgrade:
+  v4.57.1 treats the format-3 image as unknown and rebuilds too. While a property index is still building, the lookup
+  scans with the declared index's match: badger's scan fallback matched plain equality for an Elements index
+  (`TestElementsIndexLookupWhileBuilding`), and memory answered from the partial postings, missing every row the backfill
+  had not merged yet (`TestPropertyIndexLookupWhileBuilding`, node and relationship, plain and Elements).
 
 ## [4.57.1] - 2026-10-16
 

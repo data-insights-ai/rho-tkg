@@ -757,7 +757,7 @@ the primitive's own section.
 | Composite index, introspection | yes | yes | yes | yes |
 | Valid-time envelope prune: node temporal index / rel temporal index | yes / yes | yes / yes | no / yes (hot + warm shards) | yes / yes |
 | K1 label and rel-type transaction-time membership | yes | yes | yes (DepthAll; union of the shards) | no |
-| Property transaction-time membership (pinned property lookup) | yes | yes | node: reference labels only; rel: no | yes |
+| Property transaction-time membership (pinned property lookup) | yes | yes | yes (union of the shards; declines while a shard lacks the anchor's index) | yes |
 | `Stats().HistoryCounts()` | yes | yes | no (`ok=false`) | yes |
 | `HasHistory`, `LatestStamps` store capabilities | yes | yes | yes | yes |
 | `Stats().ReadCosts()` | yes | yes | yes | yes |

@@ -110,22 +110,10 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	if err := requirePropertyIndexCurrentForCreate(ms.propertyIndexes, key, liveIdx); err != nil {
 		return err
 	}
-	backfill.Range(func(vk string, ids []snowflake.ID) bool {
-		for _, id := range ids {
-			if _, mutated := liveIdx.Mutated[id]; mutated {
-				continue // concurrent write handled this ID during Phase 2
-			}
-			if _, alive := ms.nodes[types.NodeID(id)]; !alive {
-				continue // node deleted during Phase 2
-			}
-			// AddKey, not a direct Entries write — the index's ordered
-			// numeric view is maintained inside AddKey.
-			liveIdx.AddKey(id, vk)
-		}
-		return true
+	return liveIdx.FinishBuild(backfill, func(id snowflake.ID) (bool, error) {
+		_, alive := ms.nodes[types.NodeID(id)] // a node deleted during Phase 2 is skipped
+		return alive, nil
 	})
-	liveIdx.Mutated = nil // stop tracking — index creation complete
-	return nil
 }
 
 // labelNodeIDsSnapshotLocked returns a slice copy of the label's current node
@@ -1144,7 +1132,7 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 	}
 
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propKey}
-	if idx, ok := ms.propertyIndexes[key]; ok {
+	if idx, ok := ms.propertyIndexes[key]; ok && idx.Mutated == nil {
 		// Indexed path: the value's sorted posting list from opts.After on
 		// (backlog 72), each row verified before the limit.
 		ids := idx.Postings(value)
@@ -1154,9 +1142,11 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		return ms.nodesByLabelPropertyFrom(labelToken, propKey, targetKey, idx.Elements(), ids.After(opts.After.SnowflakeID()), ids.Len(), opts), nil
 	}
 
-	// Fallback: label scan + property filter.
+	// Fallback: label scan + property filter, also while the index is still
+	// building (its postings are partial), with the declared index's match.
 	slog.Debug("graph: NodesByLabelAndProperty using full label scan (no property index)",
 		"labelToken", labelToken, "propertyKey", propKey)
+	scanElements := ms.propertyIndexes[key].Elements()
 	labelIDs := ms.labelIdx[labelToken]
 	if len(labelIDs) == 0 {
 		return nil, nil
@@ -1172,7 +1162,7 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		return nil, nil
 	}
 	storepkg.SortNodeIDs(matchIDs)
-	return ms.nodesByLabelPropertyFrom(labelToken, propKey, targetKey, false, idsAfter(matchIDs, opts.After), len(matchIDs), opts), nil
+	return ms.nodesByLabelPropertyFrom(labelToken, propKey, targetKey, scanElements, idsAfter(matchIDs, opts.After), len(matchIDs), opts), nil
 }
 
 // nodesByLabelPropertyFrom is nodesByLabelPropertiesFrom for one key.

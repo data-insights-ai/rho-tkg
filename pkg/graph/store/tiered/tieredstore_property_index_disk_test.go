@@ -283,13 +283,12 @@ func TestTieredPropertyIndexOnDisk_PersistedKeyspace(t *testing.T) {
 	}
 }
 
-// --- (d) scope boundary: event labels still reject ---
+// --- (d) scope: event labels on every shard, as in RAM mode ---
 
-// TestTieredPropertyIndexOnDisk_EventLabelStillRejects proves PropertyIndexOnDisk
-// does not widen the reference-shard-only scope: CreatePropertyIndex and
-// DropPropertyIndex on an event label still fail closed with
-// ErrEventPropertyIndex, identical to RAM mode.
-func TestTieredPropertyIndexOnDisk_EventLabelStillRejects(t *testing.T) {
+// TestTieredPropertyIndexOnDisk_EventLabelOnEveryShard: with PropertyIndexOnDisk
+// an event label's index is built on every shard and dropped from every
+// shard, identical to RAM mode (WP-31).
+func TestTieredPropertyIndexOnDisk_EventLabelOnEveryShard(t *testing.T) {
 	t.Parallel()
 	ts, err := New(Config{
 		InMemory:            true,
@@ -311,11 +310,19 @@ func TestTieredPropertyIndexOnDisk_EventLabelStillRejects(t *testing.T) {
 	pkReg := registrypkg.NewPropertyKeyRegistry()
 	ts.SetPropertyKeyRegistry(pkReg)
 
-	if err := ts.CreatePropertyIndex(signalTok, "severity"); !errors.Is(err, ErrEventPropertyIndex) {
-		t.Fatalf("CreatePropertyIndex(event label) = %v, want ErrEventPropertyIndex", err)
+	if err := ts.CreatePropertyIndex(signalTok, "severity"); err != nil {
+		t.Fatalf("CreatePropertyIndex(event label): %v", err)
 	}
-	if err := ts.DropPropertyIndex(signalTok, "severity"); !errors.Is(err, ErrEventPropertyIndex) {
-		t.Fatalf("DropPropertyIndex(event label) = %v, want ErrEventPropertyIndex", err)
+	for name, s := range allShardStoresForTest(t, ts) {
+		if has, _ := s.HasPropertyIndex(signalTok, "severity"); !has {
+			t.Errorf("shard %s carries no index", name)
+		}
+	}
+	if err := ts.DropPropertyIndex(signalTok, "severity"); err != nil {
+		t.Fatalf("DropPropertyIndex(event label): %v", err)
+	}
+	if err := ts.DropPropertyIndex(signalTok, "severity"); !errors.Is(err, ErrIndexNotFound) {
+		t.Fatalf("DropPropertyIndex twice = %v, want ErrIndexNotFound", err)
 	}
 }
 

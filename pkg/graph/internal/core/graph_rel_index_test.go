@@ -491,7 +491,7 @@ func TestGraphRelsByTypeAndProperty_TemporalTwoPhase(t *testing.T) {
 	}
 }
 
-func TestGraphRelPropertyIndex_TieredDeclinesCreationButQueryWorks(t *testing.T) {
+func TestGraphRelPropertyIndex_TieredCreatesAndQueryWorks(t *testing.T) {
 	t.Parallel()
 	g := newTieredTestCore(t)
 	ctx := context.Background()
@@ -508,17 +508,20 @@ func TestGraphRelPropertyIndex_TieredDeclinesCreationButQueryWorks(t *testing.T)
 		t.Fatalf("add rel: %v", err)
 	}
 
-	// Creation declines with the clear sentinel.
-	if err := g.Index.CreateRelProperty("KNOWS", "weight"); !errors.Is(err, storepkg.ErrRelPropertyIndexUnsupported) {
-		t.Fatalf("tiered CreateRelProperty err = %v, want ErrRelPropertyIndexUnsupported", err)
+	// Since v4.58.0 (WP-31) creation builds the index on every shard.
+	if err := g.Index.CreateRelProperty("KNOWS", "weight"); err != nil {
+		t.Fatalf("tiered CreateRelProperty: %v", err)
+	}
+	if err := g.Index.CreateRelProperty("KNOWS", "weight"); !errors.Is(err, storepkg.ErrIndexExists) {
+		t.Fatalf("tiered duplicate CreateRelProperty err = %v, want ErrIndexExists", err)
 	}
 
-	// Query still works via the graph-layer type-scan fallback.
+	// The query answers through the index.
 	got, err := g.Rels.ByTypeAndProperty("KNOWS", "weight", int64(5), storepkg.QueryOpts{})
 	if err != nil {
 		t.Fatalf("tiered ByTypeAndProperty: %v", err)
 	}
 	if len(got) != 1 {
-		t.Fatalf("tiered fallback query got %d rels, want 1", len(got))
+		t.Fatalf("tiered indexed query got %d rels, want 1", len(got))
 	}
 }

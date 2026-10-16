@@ -150,6 +150,10 @@ type CapabilityReport struct {
 // are for a MandatoryStore-only backend. A full Store satisfies MandatoryStore,
 // so any Store may be passed too.
 //
+// Index flags equal "a plain Create of that kind succeeds" on every in-tree
+// backend (TestCapabilitiesOf_MatchesCreate): a consumer asks CapabilitiesOf
+// instead of probing a Create.
+//
 // IMPORTANT — this is a STRUCTURAL probe only. It reports whether the concrete
 // store's method set satisfies each capability; it does NOT reproduce the
 // wrapper-visibility guard that internal/core applies to its own cached handles

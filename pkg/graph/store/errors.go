@@ -13,9 +13,10 @@ var (
 	ErrIndexExists      = errors.New("graph: property index already exists")
 	ErrIndexNotFound    = errors.New("graph: property index not found")
 	// ErrRelPropertyIndexUnsupported is returned by a backend that recognizes the
-	// relationship property-index capability but cannot serve it (tiered: event
-	// shards are timestamp-routed). Distinct from ErrCapabilityNotSupported; queries
-	// still work via the type-scan fallback, only index creation declines.
+	// relationship property-index capability but cannot serve it (no in-tree
+	// backend declines since v4.58.0). Distinct from
+	// ErrCapabilityNotSupported; queries still work via the type-scan fallback,
+	// only index creation declines.
 	ErrRelPropertyIndexUnsupported = errors.New("graph: relationship property indexes are not supported on this backend")
 	// ErrElementsIndexUnsupported is returned for an operation that cannot use an
 	// Elements property index (backlog 63): Elements with RangeCounts, a unique

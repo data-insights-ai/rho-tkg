@@ -760,9 +760,8 @@ type RelPropertyIndexOptionsCapability interface {
 
 // RelPropertyIndexCapability is the relationship mirror of PropertyIndexCapability,
 // keyed by rel-type token. OPTIONAL: without it the graph answers
-// RelsByTypeAndProperty by type scan + filter. Tiered implements it but its
-// Create/Drop return ErrRelPropertyIndexUnsupported (event shards are
-// timestamp-routed); its lookup still answers by cross-shard scan + filter.
+// RelsByTypeAndProperty by type scan + filter. Every in-tree backend creates it
+// (tiered and sharded on every shard since v4.58.0).
 type RelPropertyIndexCapability interface {
 	CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error
 	DropRelPropertyIndex(relTypeToken uint16, propertyKey string) error

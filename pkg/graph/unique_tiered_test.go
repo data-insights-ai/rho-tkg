@@ -167,7 +167,7 @@ func TestUniqueTiered_EventLabelRejected(t *testing.T) {
 		t.Fatalf("CreateUnique(event) err = %v, want ErrUniqueEventLabelUnsupported", err)
 	}
 	// It must NOT be the property-index sentinel (distinct message/boundary).
-	if errors.Is(err, tieredpkg.ErrEventPropertyIndex) {
+	if errors.Is(err, tieredpkg.ErrEventPropertyIndex) { //nolint:staticcheck // SA1019: the deprecated sentinel must not alias the unique refusal
 		t.Fatalf("event-label unique rejection should not alias ErrEventPropertyIndex: %v", err)
 	}
 	// The rejected constraint left no registry entry behind.
