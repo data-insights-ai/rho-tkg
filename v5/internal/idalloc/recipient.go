@@ -3,7 +3,6 @@ package idalloc
 import (
 	"context"
 	"errors"
-	"math"
 	"sync"
 )
 
@@ -38,22 +37,15 @@ type Recipient struct {
 	graph           GraphID
 	session         RecipientSession
 	attempted, high uint64
-	maxID           uint64
 }
 
 // NewRecipient initializes a volatile recipient after durable session activation.
 // This primitive cannot itself establish that activation or quorum durability.
 func NewRecipient(graph GraphID, session RecipientSession) (*Recipient, error) {
-	return NewRecipientCapped(graph, session, math.MaxUint64)
-}
-
-// NewRecipientCapped is NewRecipient for a graph whose State has the inclusive
-// ID ceiling maxID; Acquire refuses a grant ending above it.
-func NewRecipientCapped(graph GraphID, session RecipientSession, maxID uint64) (*Recipient, error) {
-	if graph == (GraphID{}) || ValidateRecipientSession(session) != nil || maxID == 0 {
+	if graph == (GraphID{}) || ValidateRecipientSession(session) != nil {
 		return nil, ErrInvalid
 	}
-	return &Recipient{graph: graph, session: session, maxID: maxID}, nil
+	return &Recipient{graph: graph, session: session}, nil
 }
 
 // Acquire burns an attempt before trusted delivery. The callback must validate
@@ -84,9 +76,9 @@ func (i *Recipient) Acquire(ctx context.Context, r GrantRequest, deliver func(Gr
 	if err := ValidateGrant(g); err != nil {
 		return nil, errors.Join(ErrPayloadMismatch, err)
 	}
-	if g.Request != r || b.First <= i.high || b.Last > i.maxID {
+	if g.Request != r || b.First <= i.high || b.Last > MaxPublicID {
 		return nil, ErrPayloadMismatch
 	}
 	i.high = b.Last
-	return &Cursor{block: b, next: b.First, maxID: i.maxID}, nil
+	return &Cursor{block: b, next: b.First}, nil
 }

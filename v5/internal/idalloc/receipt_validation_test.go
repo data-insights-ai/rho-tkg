@@ -16,11 +16,11 @@ func receiptImage(t *testing.T, r Request, first uint64) []byte {
 		t.Fatal(err)
 	}
 	binary.BigEndian.PutUint64(image[45:53], first+r.Count-1)
-	binary.BigEndian.PutUint64(image[69:77], r.Sequence)
-	binary.BigEndian.PutUint64(image[77:85], r.Count)
-	binary.BigEndian.PutUint64(image[85:93], first)
+	binary.BigEndian.PutUint64(image[61:69], r.Sequence)
+	binary.BigEndian.PutUint64(image[69:77], r.Count)
+	binary.BigEndian.PutUint64(image[77:85], first)
 	d := r.Digest()
-	copy(image[93:125], d[:])
+	copy(image[85:117], d[:])
 	checksum(image)
 	return image
 }
@@ -50,8 +50,8 @@ func TestReceiptReachabilityAtCheckpointAndGrantBoundaries(t *testing.T) {
 			}
 		})
 	}
-	// Equality is reachable at both the first reservation and the final uint64.
-	for _, sequence := range []uint64{1, math.MaxUint64} {
+	// Equality is reachable at both the first reservation and the final public ID.
+	for _, sequence := range []uint64{1, MaxPublicID} {
 		_, r := fixture(t)
 		r.Sequence = sequence
 		r.Count = 1

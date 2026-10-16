@@ -7,7 +7,7 @@ import (
 
 // CheckpointSize is the fixed v1 image size, including CRC32C. There are no
 // attacker-supplied collection lengths or variable-sized decoded allocations.
-const CheckpointSize = 129
+const CheckpointSize = 121
 
 // MarshalCheckpoint returns a derived image, NOT a durable checkpoint receipt.
 // The embedding log/manifest must publish it atomically at its exact applied
@@ -18,14 +18,14 @@ func MarshalCheckpoint(s *State) ([]byte, error) {
 	}
 	b := make([]byte, CheckpointSize)
 	copy(b[:4], "RIDA")
-	b[4] = 2
+	b[4] = 1
 	copy(b[5:21], s.graph[:])
 	copy(b[21:37], s.authority.owner[:])
-	for index, value := range [...]uint64{s.authority.epoch, s.high, s.maxBlock, s.maxID, s.sequence, s.count, s.first} {
+	for index, value := range [...]uint64{s.authority.epoch, s.high, s.maxBlock, s.sequence, s.count, s.first} {
 		binary.BigEndian.PutUint64(b[37+8*index:45+8*index], value)
 	}
-	copy(b[93:125], s.digest[:])
-	binary.BigEndian.PutUint32(b[125:], crc32.Checksum(b[:125], crc32.MakeTable(crc32.Castagnoli)))
+	copy(b[85:117], s.digest[:])
+	binary.BigEndian.PutUint32(b[117:], crc32.Checksum(b[:117], crc32.MakeTable(crc32.Castagnoli)))
 	return b, nil
 }
 
@@ -33,7 +33,7 @@ func MarshalCheckpoint(s *State) ([]byte, error) {
 // before returning any state. Missing/corrupt images must never become NewState
 // for an existing graph. CRC detects corruption; it is not an authenticity proof.
 func DecodeCheckpoint(b []byte) (State, error) {
-	if len(b) != CheckpointSize || string(b[:4]) != "RIDA" || b[4] != 2 || binary.BigEndian.Uint32(b[125:]) != crc32.Checksum(b[:125], crc32.MakeTable(crc32.Castagnoli)) {
+	if len(b) != CheckpointSize || string(b[:4]) != "RIDA" || b[4] != 1 || binary.BigEndian.Uint32(b[117:]) != crc32.Checksum(b[:117], crc32.MakeTable(crc32.Castagnoli)) {
 		return State{}, ErrCorrupt
 	}
 	var s State
@@ -42,11 +42,10 @@ func DecodeCheckpoint(b []byte) (State, error) {
 	s.authority.epoch = binary.BigEndian.Uint64(b[37:45])
 	s.high = binary.BigEndian.Uint64(b[45:53])
 	s.maxBlock = binary.BigEndian.Uint64(b[53:61])
-	s.maxID = binary.BigEndian.Uint64(b[61:69])
-	s.sequence = binary.BigEndian.Uint64(b[69:77])
-	s.count = binary.BigEndian.Uint64(b[77:85])
-	s.first = binary.BigEndian.Uint64(b[85:93])
-	copy(s.digest[:], b[93:125])
+	s.sequence = binary.BigEndian.Uint64(b[61:69])
+	s.count = binary.BigEndian.Uint64(b[69:77])
+	s.first = binary.BigEndian.Uint64(b[77:85])
+	copy(s.digest[:], b[85:117])
 	if !s.valid() {
 		return State{}, ErrCorrupt
 	}

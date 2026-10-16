@@ -45,6 +45,10 @@ var (
 // MaxBlockSize bounds a single reservation; blocks require no per-ID storage.
 const MaxBlockSize uint64 = 1 << 20
 
+// MaxPublicID is the inclusive largest local ID ever reserved or minted: the
+// signed 64-bit bound of v5/pkg/types/id.go. Nothing above it is representable.
+const MaxPublicID uint64 = math.MaxInt64
+
 // GraphID qualifies local IDs. Zero GraphID and local ID zero are invalid.
 type GraphID [16]byte
 
@@ -100,7 +104,7 @@ func (r Request) Digest() [32]byte {
 }
 
 // Reservation is a tentative reducer result, NOT a durability acknowledgement
-// and NOT a cursor source. Its inclusive range can end at math.MaxUint64.
+// and NOT a cursor source. Its inclusive range ends at or below MaxPublicID.
 type Reservation struct {
 	Request     Request
 	First, Last uint64
@@ -115,17 +119,17 @@ func (b Reservation) validFor(r Request) bool {
 // State is immutable, fixed-size derived replicated state. Its high-water must
 // never be reset for an existing graph. Only the latest request receipt is kept.
 type State struct {
-	graph                                         GraphID
-	authority                                     Authority
-	high, maxBlock, maxID, sequence, count, first uint64
-	digest                                        [32]byte
+	graph                                  GraphID
+	authority                              Authority
+	high, maxBlock, sequence, count, first uint64
+	digest                                 [32]byte
 }
 
 // View reports allocation metadata, not routing or a durability certificate.
 type View struct {
-	Graph                                    GraphID
-	Authority                                Authority
-	HighWater, MaxBlock, MaxID, LastSequence uint64
+	Graph                             GraphID
+	Authority                         Authority
+	HighWater, MaxBlock, LastSequence uint64
 }
 
 // Inspect returns immutable metadata for recovery and explicit next requests.
@@ -133,21 +137,13 @@ func Inspect(s *State) (View, error) {
 	if !s.valid() {
 		return View{}, ErrInvalid
 	}
-	return View{Graph: s.graph, Authority: s.authority, HighWater: s.high, MaxBlock: s.maxBlock, MaxID: s.maxID, LastSequence: s.sequence}, nil
+	return View{Graph: s.graph, Authority: s.authority, HighWater: s.high, MaxBlock: s.maxBlock, LastSequence: s.sequence}, nil
 }
 
-// NewState creates the initial reducer state with the widest ID space
-// (maxID = math.MaxUint64). Initialization of an existing graph with missing
-// state is unsafe; recover its checkpoint/log instead.
+// NewState creates the initial reducer state. Initialization of an existing
+// graph with missing state is unsafe; recover its checkpoint/log instead.
 func NewState(graph GraphID, authority Authority, maxBlock uint64) (State, error) {
-	return NewStateCapped(graph, authority, maxBlock, math.MaxUint64)
-}
-
-// NewStateCapped is NewState with an inclusive ID ceiling: no reservation or
-// cursor ever yields an ID above maxID (e.g. math.MaxInt64 for signed IDs).
-// maxID is fixed for the life of the graph and travels in the checkpoint.
-func NewStateCapped(graph GraphID, authority Authority, maxBlock, maxID uint64) (State, error) {
-	s := State{graph: graph, authority: authority, maxBlock: maxBlock, maxID: maxID}
+	s := State{graph: graph, authority: authority, maxBlock: maxBlock}
 	if !s.valid() {
 		return State{}, ErrInvalid
 	}
@@ -155,7 +151,7 @@ func NewStateCapped(graph GraphID, authority Authority, maxBlock, maxID uint64) 
 }
 
 func (s *State) valid() bool {
-	if s == nil || s.graph == (GraphID{}) || !s.authority.valid() || s.maxBlock == 0 || s.maxBlock > MaxBlockSize || s.maxID == 0 || s.high > s.maxID {
+	if s == nil || s.graph == (GraphID{}) || !s.authority.valid() || s.maxBlock == 0 || s.maxBlock > MaxBlockSize || s.high > MaxPublicID {
 		return false
 	}
 	if s.sequence == 0 {
@@ -194,7 +190,7 @@ func Reserve(s *State, r Request) (next State, block Reservation, replay bool, e
 	if r.Count > s.maxBlock {
 		return State{}, Reservation{}, false, ErrInvalid
 	}
-	if r.Count > s.maxID-s.high {
+	if r.Count > MaxPublicID-s.high {
 		return State{}, Reservation{}, false, ErrExhausted
 	}
 	next = *s
@@ -248,7 +244,6 @@ type Issuer struct {
 	mu        sync.Mutex
 	graph     GraphID
 	authority Authority
-	maxID     uint64
 	attempted uint64
 }
 
@@ -256,16 +251,10 @@ type Issuer struct {
 // epoch; it reserves or issues no IDs itself. This function cannot validate the
 // external durable activation/single-session guarantee.
 func NewIssuer(graph GraphID, authority Authority) (*Issuer, error) {
-	return NewIssuerCapped(graph, authority, math.MaxUint64)
-}
-
-// NewIssuerCapped is NewIssuer for a graph whose State has the inclusive ID
-// ceiling maxID; Acquire refuses any grant ending above it.
-func NewIssuerCapped(graph GraphID, authority Authority, maxID uint64) (*Issuer, error) {
-	if graph == (GraphID{}) || !authority.valid() || maxID == 0 {
+	if graph == (GraphID{}) || !authority.valid() {
 		return nil, ErrInvalid
 	}
-	return &Issuer{graph: graph, authority: authority, maxID: maxID}, nil
+	return &Issuer{graph: graph, authority: authority}, nil
 }
 
 // Acquire burns the attempt before calling commit and opens a cursor only for
@@ -303,13 +292,13 @@ func (i *Issuer) Acquire(ctx context.Context, r Request, commit Committer) (*Cur
 		}
 		return nil, err
 	}
-	if !b.validFor(r) || b.Last > i.maxID {
+	if !b.validFor(r) || b.Last > MaxPublicID {
 		return nil, ErrPayloadMismatch
 	}
 	if replay {
 		return nil, ErrAlreadyReserved
 	}
-	return &Cursor{block: b, next: b.First, maxID: i.maxID}, nil
+	return &Cursor{block: b, next: b.First}, nil
 }
 
 // Cursor mints from one fresh grant without per-ID remote calls. It is
@@ -320,7 +309,6 @@ type Cursor struct {
 	mu    sync.Mutex
 	block Reservation
 	next  uint64
-	maxID uint64
 	done  bool
 }
 
@@ -338,11 +326,7 @@ func (c *Cursor) Next() (uint64, error) {
 		return 0, ErrExhausted
 	}
 	id := c.next
-	if id > c.maxID {
-		c.done = true
-		return 0, ErrExhausted
-	}
-	if id == c.block.Last || id == c.maxID {
+	if id == c.block.Last {
 		c.done = true
 	} else {
 		c.next++

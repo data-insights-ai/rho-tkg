@@ -8,7 +8,7 @@ import (
 )
 
 func checksum(b []byte) {
-	binary.BigEndian.PutUint32(b[125:], crc32.Checksum(b[:125], crc32.MakeTable(crc32.Castagnoli)))
+	binary.BigEndian.PutUint32(b[117:], crc32.Checksum(b[:117], crc32.MakeTable(crc32.Castagnoli)))
 }
 
 func TestCheckpointRoundTripAndStrictCorruption(t *testing.T) {
@@ -67,14 +67,12 @@ func TestCheckpointRoundTripAndStrictCorruption(t *testing.T) {
 		func(b []byte) { clear(b[45:53]) }, // high-water cannot precede block
 		func(b []byte) { clear(b[53:61]) }, // maximum
 		func(b []byte) { binary.BigEndian.PutUint64(b[53:61], MaxBlockSize+1) },
-		func(b []byte) { clear(b[69:77]) }, // receipt without sequence
-		func(b []byte) { clear(b[77:85]) }, // empty reserved block
-		func(b []byte) { binary.BigEndian.PutUint64(b[77:85], 101) },
-		func(b []byte) { clear(b[85:93]) }, // zero first ID
-		func(b []byte) { binary.BigEndian.PutUint64(b[85:93], 5) },
-		func(b []byte) { clear(b[61:69]) },                         // zero maxID
-		func(b []byte) { binary.BigEndian.PutUint64(b[61:69], 3) }, // maxID below high-water
-		func(b []byte) { b[93]++ },                                 // incorrect request digest
+		func(b []byte) { clear(b[61:69]) }, // receipt without sequence
+		func(b []byte) { clear(b[69:77]) }, // empty reserved block
+		func(b []byte) { binary.BigEndian.PutUint64(b[69:77], 101) },
+		func(b []byte) { clear(b[77:85]) }, // zero first ID
+		func(b []byte) { binary.BigEndian.PutUint64(b[77:85], 5) },
+		func(b []byte) { b[85]++ }, // incorrect request digest
 	} {
 		corrupt := bytes.Clone(image)
 		mutate(corrupt)

@@ -34,7 +34,7 @@ func TestAuthorityStateAndDigest(t *testing.T) {
 		t.Fatal("authority not preserved")
 	}
 	v, err := Inspect(&s)
-	if err != nil || v != (View{Graph: r.Graph, Authority: r.Authority, MaxBlock: 100, MaxID: math.MaxUint64}) {
+	if err != nil || v != (View{Graph: r.Graph, Authority: r.Authority, MaxBlock: 100}) {
 		t.Fatalf("view %+v: %v", v, err)
 	}
 	for _, a := range []Authority{{}, {owner: [16]byte{1}}, {epoch: 1}} {
@@ -442,16 +442,16 @@ func TestTransferPreservesHighWaterAndFencesLateGrant(t *testing.T) {
 	requireError(t, err, ErrExhausted)
 }
 
-func TestFinalUint64AndSequenceNoWrap(t *testing.T) {
+func TestFinalPublicIDAndSequenceNoWrap(t *testing.T) {
 	s, r := fixture(t)
-	s.high = math.MaxUint64 - 2
+	s.high = MaxPublicID - 2
 	r.Count = 2
 	e := embedding(t, s)
 	c, err := issuer(t, r).Acquire(t.Context(), r, e.commit)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []uint64{math.MaxUint64 - 1, math.MaxUint64} {
+	for _, want := range []uint64{MaxPublicID - 1, MaxPublicID} {
 		id, err := c.Next()
 		if err != nil || id != want {
 			t.Fatalf("last id %d want %d %v", id, want, err)
@@ -465,25 +465,15 @@ func TestFinalUint64AndSequenceNoWrap(t *testing.T) {
 	_, _, _, err = Reserve(&e.s, r)
 	requireError(t, err, ErrExhausted)
 	s, r = fixture(t)
-	s.high = math.MaxUint64 - 1
+	s.high = MaxPublicID - 1
 	_, _, _, err = Reserve(&s, r)
 	requireError(t, err, ErrExhausted)
-	// Max request sequence cannot wrap into a fresh zero sequence.
-	s, r = fixture(t)
-	r.Sequence = math.MaxUint64
-	r.Count = 1
-	s.sequence = r.Sequence
-	s.count = r.Count
-	s.first = math.MaxUint64
-	s.high = math.MaxUint64
-	s.digest = r.Digest()
-	_, _, replay, err := Reserve(&s, r)
-	if err != nil || !replay {
-		t.Fatal("final sequence replay failed")
+	// A state above the public bound is invalid, never silently accepted.
+	s, _ = fixture(t)
+	s.high = MaxPublicID + 1
+	if s.valid() {
+		t.Fatal("high above MaxPublicID valid")
 	}
-	r.Sequence = 0
-	_, _, _, err = Reserve(&s, r)
-	requireError(t, err, ErrInvalid)
 }
 
 func TestNilAndMalformedPublicInputs(t *testing.T) {
