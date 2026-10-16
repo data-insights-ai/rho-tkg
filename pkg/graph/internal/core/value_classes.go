@@ -14,7 +14,7 @@ import (
 // {ValidStart: types.UnboundedValidFrom, ValidEnd: MaxInt64, TxAt: pin}):
 // every valid-time version recorded at pin carrying the label, deleted
 // entities' rows before the delete included, retracted lives dropped
-// (eachNodeChainInterval over anyValidStart / anyValidEnd, the same
+// (eachNodeChainAnyVersion, the same
 // resolver, value_stats.go and range_any_version.go). Each row counts once,
 // in the class of its key's value (types.PropertyTypeClass, the rule of
 // the current-state counts), or in Missing without the key. A consumer
@@ -127,7 +127,7 @@ func (c *Core) nodeClassCountsLocked(tok uint16, key string, pin types.Instant, 
 		if err != nil {
 			return err
 		}
-		c.eachNodeChainInterval(chain, anyValidStart, anyValidEnd, pin, pred, func(n *types.Node) bool {
+		c.eachNodeChainAnyVersion(chain, pin, pred, func(n *types.Node) bool {
 			tally.add(n)
 			return true
 		})
@@ -148,7 +148,7 @@ func (c *Core) relClassCountsLocked(tok uint16, key string, pin types.Instant, c
 		if err != nil {
 			return err
 		}
-		c.eachRelChainInterval(chain, anyValidStart, anyValidEnd, pin, pred, func(r *types.Relationship) bool {
+		c.eachRelChainAnyVersion(chain, pin, pred, func(r *types.Relationship) bool {
 			tally.add(r)
 			return true
 		})

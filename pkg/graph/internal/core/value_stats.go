@@ -19,7 +19,7 @@ import (
 // {ValidStart 1, ValidEnd MaxInt64, TxAt pin}) matches for each value v,
 // counted per row (a version), from the membership sidecar's members of
 // every value pruned by the pin, each entity's rows recorded at the pin
-// tested (eachNodeChainInterval); cached per (kind, token, key, pin) under
+// tested (eachNodeChainAnyVersion); cached per (kind, token, key, pin) under
 // the state cuts' invalidation (cutEpoch, pinLanded) as the count
 // timelines are. No label walk on either path.
 
@@ -241,7 +241,7 @@ func (c *Core) nodeValueTallyLocked(tok uint16, key string, pin types.Instant, t
 		if err != nil {
 			return true, err
 		}
-		c.eachNodeChainInterval(chain, anyValidStart, anyValidEnd, pin, pred, func(n *types.Node) bool {
+		c.eachNodeChainAnyVersion(chain, pin, pred, func(n *types.Node) bool {
 			if v, ok := n.GetProperty(key); ok {
 				tally.add(v)
 			}
@@ -275,7 +275,7 @@ func (c *Core) relValueTallyLocked(tok uint16, key string, pin types.Instant, ta
 		if err != nil {
 			return true, err
 		}
-		c.eachRelChainInterval(chain, anyValidStart, anyValidEnd, pin, pred, func(r *types.Relationship) bool {
+		c.eachRelChainAnyVersion(chain, pin, pred, func(r *types.Relationship) bool {
 			if v, ok := r.GetProperty(key); ok {
 				tally.add(v)
 			}

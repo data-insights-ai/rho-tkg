@@ -20,7 +20,7 @@ import (
 // Elements index, an index being built, or one holding an integer of
 // magnitude past 2^53 (its sort key is not its value).
 func (pi *PropertyIndex) RangeOrderedValuePage(min, max float64, inclMin, inclMax, desc bool, after RangeOrderedCursor, limit int) (ids []snowflake.ID, vals []any, next RangeOrderedCursor, done bool, supported bool) {
-	if pi == nil || pi.elements || pi.Mutated != nil || pi.numImpreciseCount > 0 {
+	if !pi.serves() || pi.numImpreciseCount > 0 {
 		return nil, nil, RangeOrderedCursor{}, true, false
 	}
 	var keys []float64

@@ -24,11 +24,6 @@ var (
 	_ storecontract.RelPropertyBoundsCapability    = (*Store)(nil)
 )
 
-func nodeProp(n *types.Node, key string) (any, bool)        { return n.GetProperty(key) }
-func nodeRawID(n *types.Node) int64                         { return int64(n.ID()) }
-func relProp(r *types.Relationship, key string) (any, bool) { return r.GetProperty(key) }
-func relRawID(r *types.Relationship) int64                  { return int64(r.ID()) }
-
 // slotParts is one ordered part per slot.
 func slotParts[R any](s *Store, walk func(shard *badgerShard, yield func(R) bool) error) []indexpkg.OrderedPart[R] {
 	parts := make([]indexpkg.OrderedPart[R], len(s.shards))
@@ -44,9 +39,9 @@ func (s *Store) ForEachNodeByLabelPropertyRangeOrdered(token uint16, propKey str
 	if err := s.orderedScanArgs(fn == nil); err != nil {
 		return err
 	}
-	return indexpkg.MergeNumericOrdered(slotParts(s, func(shard *badgerShard, yield func(*types.Node) bool) error {
+	return indexpkg.MergeNodesNumeric(slotParts(s, func(shard *badgerShard, yield func(*types.Node) bool) error {
 		return shard.ForEachNodeByLabelPropertyRangeOrdered(token, propKey, min, max, inclMin, inclMax, desc, yield)
-	}), propKey, nodeProp, nodeRawID, desc, fn)
+	}), propKey, desc, fn)
 }
 
 // ForEachNodeByLabelPropertyPrefix implements store.NodePrefixScanCapability
@@ -55,9 +50,9 @@ func (s *Store) ForEachNodeByLabelPropertyPrefix(token uint16, propKey, prefix s
 	if err := s.orderedScanArgs(fn == nil); err != nil {
 		return err
 	}
-	return indexpkg.MergeStringOrdered(slotParts(s, func(shard *badgerShard, yield func(*types.Node) bool) error {
+	return indexpkg.MergeNodesString(slotParts(s, func(shard *badgerShard, yield func(*types.Node) bool) error {
 		return shard.ForEachNodeByLabelPropertyPrefix(token, propKey, prefix, desc, yield)
-	}), propKey, nodeProp, nodeRawID, desc, fn)
+	}), propKey, desc, fn)
 }
 
 // ForEachRelByTypePropertyRangeOrdered implements
@@ -66,9 +61,9 @@ func (s *Store) ForEachRelByTypePropertyRangeOrdered(typeToken uint16, propKey s
 	if err := s.orderedScanArgs(fn == nil); err != nil {
 		return err
 	}
-	return indexpkg.MergeNumericOrdered(slotParts(s, func(shard *badgerShard, yield func(*types.Relationship) bool) error {
+	return indexpkg.MergeRelsNumeric(slotParts(s, func(shard *badgerShard, yield func(*types.Relationship) bool) error {
 		return shard.ForEachRelByTypePropertyRangeOrdered(typeToken, propKey, min, max, inclMin, inclMax, desc, yield)
-	}), propKey, relProp, relRawID, desc, fn)
+	}), propKey, desc, fn)
 }
 
 // ForEachRelByTypePropertyPrefix implements store.RelPrefixScanCapability
@@ -77,9 +72,9 @@ func (s *Store) ForEachRelByTypePropertyPrefix(typeToken uint16, propKey, prefix
 	if err := s.orderedScanArgs(fn == nil); err != nil {
 		return err
 	}
-	return indexpkg.MergeStringOrdered(slotParts(s, func(shard *badgerShard, yield func(*types.Relationship) bool) error {
+	return indexpkg.MergeRelsString(slotParts(s, func(shard *badgerShard, yield func(*types.Relationship) bool) error {
 		return shard.ForEachRelByTypePropertyPrefix(typeToken, propKey, prefix, desc, yield)
-	}), propKey, relProp, relRawID, desc, fn)
+	}), propKey, desc, fn)
 }
 
 // orderedScanArgs is the walks' own check (the slots validate the rest).
@@ -128,10 +123,6 @@ func (s *Store) foldBounds(read func(*badgerShard) (storecontract.PropertyBounds
 	}); err != nil {
 		return storecontract.PropertyBounds{}, false, err
 	}
-	for _, ok := range oks {
-		if !ok {
-			return storecontract.PropertyBounds{}, false, nil
-		}
-	}
-	return indexpkg.FoldPropertyBounds(parts), true, nil
+	b, ok := indexpkg.FoldStatedBounds(parts, oks)
+	return b, ok, nil
 }

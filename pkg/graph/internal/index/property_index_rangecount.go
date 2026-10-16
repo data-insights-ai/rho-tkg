@@ -74,11 +74,12 @@ func (pi *PropertyIndex) noteNumericPrecisionRemoved(vk string) {
 
 // RangeCardinality returns the count of indexed nodes whose numeric value lies
 // in [min,max], with no node fetches: two prefix sums on a range-counts index,
-// else the ordered bucket sizes. ok=false declines (caller scans) when the
-// index holds an integer past 2^53. A NaN bound counts 0. The caller must
+// else the ordered bucket sizes. ok=false declines (caller scans) where the
+// index does not serve (serves: an Elements index, one being built) or holds
+// an integer past 2^53. A NaN bound counts 0. The caller must
 // ensure the bounds capture the whole predicate and the query is non-temporal.
 func (pi *PropertyIndex) RangeCardinality(min, max float64, inclMin, inclMax bool) (int64, bool) {
-	if pi == nil || pi.elements || pi.numImpreciseCount > 0 {
+	if !pi.serves() || pi.numImpreciseCount > 0 {
 		return 0, false
 	}
 	if pi.rangeCounts {

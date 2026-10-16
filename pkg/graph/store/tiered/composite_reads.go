@@ -118,15 +118,12 @@ func orderedParts[R any](ts *Store, nilFn bool, walk func(store *BadgerStore, yi
 	return parts, nil
 }
 
-func nodeProp(n *types.Node, key string) (any, bool)        { return n.GetProperty(key) }
-func nodeRawID(n *types.Node) int64                         { return int64(n.ID()) }
-func relProp(r *types.Relationship, key string) (any, bool) { return r.GetProperty(key) }
-func relRawID(r *types.Relationship) int64                  { return int64(r.ID()) }
-
 // ForEachNodeByLabelPropertyRangeOrdered implements
 // store.NodeOrderedRangeScanCapability: every shard's walk read whole (the
-// rows in range on each shard, so a LIMIT bounds what fn gets, not what is
-// read), merged in the index's order; fn runs with no shard held.
+// rows in range on each shard, held in memory for the call, so a LIMIT bounds
+// what fn gets, not what is read), merged in the index's order; fn runs with
+// no shard held (a lazy merge would hold shard checkouts and the move lock
+// while fn runs).
 func (ts *Store) ForEachNodeByLabelPropertyRangeOrdered(token uint16, propKey string, min, max float64, inclMin, inclMax, desc bool, fn func(*types.Node) bool) error {
 	parts, err := orderedParts(ts, fn == nil, func(store *BadgerStore, yield func(*types.Node) bool) error {
 		return store.ForEachNodeByLabelPropertyRangeOrdered(token, propKey, min, max, inclMin, inclMax, desc, yield)
@@ -134,7 +131,7 @@ func (ts *Store) ForEachNodeByLabelPropertyRangeOrdered(token uint16, propKey st
 	if err != nil {
 		return err
 	}
-	return indexpkg.MergeNumericOrdered(parts, propKey, nodeProp, nodeRawID, desc, fn)
+	return indexpkg.MergeNodesNumeric(parts, propKey, desc, fn)
 }
 
 // ForEachNodeByLabelPropertyPrefix implements store.NodePrefixScanCapability
@@ -146,7 +143,7 @@ func (ts *Store) ForEachNodeByLabelPropertyPrefix(token uint16, propKey, prefix 
 	if err != nil {
 		return err
 	}
-	return indexpkg.MergeStringOrdered(parts, propKey, nodeProp, nodeRawID, desc, fn)
+	return indexpkg.MergeNodesString(parts, propKey, desc, fn)
 }
 
 // ForEachRelByTypePropertyRangeOrdered implements
@@ -158,7 +155,7 @@ func (ts *Store) ForEachRelByTypePropertyRangeOrdered(typeToken uint16, propKey 
 	if err != nil {
 		return err
 	}
-	return indexpkg.MergeNumericOrdered(parts, propKey, relProp, relRawID, desc, fn)
+	return indexpkg.MergeRelsNumeric(parts, propKey, desc, fn)
 }
 
 // ForEachRelByTypePropertyPrefix implements store.RelPrefixScanCapability as
@@ -170,12 +167,15 @@ func (ts *Store) ForEachRelByTypePropertyPrefix(typeToken uint16, propKey, prefi
 	if err != nil {
 		return err
 	}
-	return indexpkg.MergeStringOrdered(parts, propKey, relProp, relRawID, desc, fn)
+	return indexpkg.MergeRelsString(parts, propKey, desc, fn)
 }
 
 // RelPropertyTypeClassCounts implements store.RelPropertyTypeClassCountsCapability:
 // the shards' exact counters summed (NodePropertyTypeClassCounts' fold).
 func (ts *Store) RelPropertyTypeClassCounts(relTypeToken uint16, propertyKey string) (storecontract.PropertyTypeClassCounts, error) {
+	if err := ts.checkOpen(); err != nil {
+		return storecontract.PropertyTypeClassCounts{}, err
+	}
 	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
 		return storecontract.PropertyTypeClassCounts{}, err
 	}
@@ -231,14 +231,12 @@ func sumRangeCounts(parts []rangeCount, err error) (int64, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
-	var total int64
-	for _, p := range parts {
-		if !p.exact {
-			return 0, false, nil
-		}
-		total += p.n
+	counts, exact := make([]int64, len(parts)), make([]bool, len(parts))
+	for i, p := range parts {
+		counts[i], exact[i] = p.n, p.exact
 	}
-	return total, true, nil
+	total, ok := indexpkg.SumRangeCounts(counts, exact)
+	return total, ok, nil
 }
 
 // boundsPart is one shard's bounds.
@@ -269,12 +267,10 @@ func foldBounds(parts []boundsPart, err error) (storecontract.PropertyBounds, bo
 	if err != nil {
 		return storecontract.PropertyBounds{}, false, err
 	}
-	bounds := make([]storecontract.PropertyBounds, len(parts))
+	bounds, oks := make([]storecontract.PropertyBounds, len(parts)), make([]bool, len(parts))
 	for i, p := range parts {
-		if !p.ok {
-			return storecontract.PropertyBounds{}, false, nil
-		}
-		bounds[i] = p.b
+		bounds[i], oks[i] = p.b, p.ok
 	}
-	return indexpkg.FoldPropertyBounds(bounds), true, nil
+	b, ok := indexpkg.FoldStatedBounds(bounds, oks)
+	return b, ok, nil
 }

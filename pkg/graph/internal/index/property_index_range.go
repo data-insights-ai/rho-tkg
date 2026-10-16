@@ -38,10 +38,21 @@ func (pi *PropertyIndex) RangeOrderedPage(min, max float64, desc bool, after Ran
 	return pi.rangeOrderedPage(min, max, desc, after, limit, nil)
 }
 
+// serves reports whether the index answers the doors that read it as a
+// whole (ordered walks, range and equality counts, bounds, value
+// statistics): a plain index, built. A nil index, an Elements index (a
+// list's elements are no row value) and one being built (Mutated set: its
+// entries are partial) decline, so no door answers from a partial index.
+// The one usability rule of those doors.
+func (pi *PropertyIndex) serves() bool {
+	return pi != nil && !pi.elements && pi.Mutated == nil
+}
+
 // rangeOrderedPage is RangeOrderedPage; a non-nil keys receives each ID's
-// sort key, aligned with ids.
+// sort key, aligned with ids. supported=false where the index does not
+// serve (serves).
 func (pi *PropertyIndex) rangeOrderedPage(min, max float64, desc bool, after RangeOrderedCursor, limit int, keys *[]float64) (ids []snowflake.ID, next RangeOrderedCursor, done bool, supported bool) {
-	if pi == nil || pi.elements {
+	if !pi.serves() {
 		return nil, RangeOrderedCursor{}, true, false
 	}
 	if limit <= 0 || pi.numKeys.n == 0 {

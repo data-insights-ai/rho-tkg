@@ -145,3 +145,42 @@ func SliceOrderedPart[R any](rows []R) OrderedPart[R] {
 		return nil
 	}
 }
+
+// The row forms the composite stores use (sharded, tiered): one place that
+// names a node's and a relationship's property and ID for the merge.
+
+// MergeNodesNumeric is MergeNumericOrdered over nodes.
+func MergeNodesNumeric(parts []OrderedPart[*types.Node], key string, desc bool, fn func(*types.Node) bool) error {
+	return MergeNumericOrdered(parts, key, (*types.Node).GetProperty, nodeRawID, desc, fn)
+}
+
+// MergeNodesString is MergeStringOrdered over nodes.
+func MergeNodesString(parts []OrderedPart[*types.Node], key string, desc bool, fn func(*types.Node) bool) error {
+	return MergeStringOrdered(parts, key, (*types.Node).GetProperty, nodeRawID, desc, fn)
+}
+
+// MergeRelsNumeric is MergeNumericOrdered over relationships.
+func MergeRelsNumeric(parts []OrderedPart[*types.Relationship], key string, desc bool, fn func(*types.Relationship) bool) error {
+	return MergeNumericOrdered(parts, key, (*types.Relationship).GetProperty, relRawID, desc, fn)
+}
+
+// MergeRelsString is MergeStringOrdered over relationships.
+func MergeRelsString(parts []OrderedPart[*types.Relationship], key string, desc bool, fn func(*types.Relationship) bool) error {
+	return MergeStringOrdered(parts, key, (*types.Relationship).GetProperty, relRawID, desc, fn)
+}
+
+func nodeRawID(n *types.Node) int64        { return int64(n.ID()) }
+func relRawID(r *types.Relationship) int64 { return int64(r.ID()) }
+
+// SumRangeCounts is a composite store's range count from its disjoint
+// parts' counts: the sum, exact only when every part counted exactly.
+func SumRangeCounts(counts []int64, exact []bool) (int64, bool) {
+	var total int64
+	for i, n := range counts {
+		if !exact[i] {
+			return 0, false
+		}
+		total += n
+	}
+	return total, true
+}

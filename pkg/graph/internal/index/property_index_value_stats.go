@@ -25,7 +25,7 @@ type ValueStats struct {
 // Callers hold the store's index lock (shared at least); the cache is
 // atomic because shared holders may compute it at once.
 func (pi *PropertyIndex) ValueStats() (ValueStats, bool) {
-	if pi == nil || pi.elements || pi.Mutated != nil {
+	if !pi.serves() {
 		return ValueStats{}, false
 	}
 	if s := pi.valueStats.Load(); s != nil {

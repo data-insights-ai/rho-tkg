@@ -132,8 +132,13 @@ type CapabilityReport struct {
 		// ...Prefix, the Rels() mirrors), PropertyBounds / RelPropertyBounds
 		// the stated bounds (Stats().PropertyBounds), RelPropertyTypeClassCounts
 		// the relationship class counts. Each equals "the call serves a plain,
-		// built index" on every in-tree backend
-		// (TestCapabilitiesOf_MatchesServedCalls).
+		// built index" on every in-tree backend opened with its default
+		// options (TestCapabilitiesOf_MatchesServedCalls). One stated
+		// exception: a badger store (and a sharded or tiered store of badger
+		// shards) opened with DisablePlannerStats or PropertyIndexOnDisk keeps
+		// no bounds, so PropertyBounds / RelPropertyBounds decline there
+		// (ok=false) while the flag reports the door; the configuration, not
+		// the backend, switches them off (pinned by the same test).
 		OrderedPropertyScan        bool
 		OrderedRelPropertyScan     bool
 		PropertyBounds             bool

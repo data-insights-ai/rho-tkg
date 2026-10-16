@@ -232,3 +232,23 @@ func TestCapabilitiesOf_MatchesServedCalls(t *testing.T) {
 		})
 	}
 }
+
+// TestCapabilitiesOf_BoundsConfigException pins the one stated exception of
+// the served-call flags: badger opened with DisablePlannerStats reports the
+// bounds door (the flag) and declines the call (ok=false, no error).
+func TestCapabilitiesOf_BoundsConfigException(t *testing.T) {
+	bs, err := badger.New(badger.Config{InMemory: true, DisablePlannerStats: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	if !storecontract.CapabilitiesOf(bs).IndexAcceleration.PropertyBounds {
+		t.Fatal("the bounds door is not reported")
+	}
+	if err := bs.CreatePropertyIndex(1, "k"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := bs.NodePropertyBounds(1, "k"); err != nil || ok {
+		t.Fatalf("bounds with planner statistics off: ok %v err %v, want a decline", ok, err)
+	}
+}

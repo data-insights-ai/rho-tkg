@@ -39,7 +39,7 @@ func (o *sortedChunks[T]) last() (T, bool) {
 // value is the first non-empty set of typedSets' order (float64, float32,
 // then the integer types widest first).
 func (pi *PropertyIndex) NumericBounds() (min, max float64, minValue, maxValue any, has, supported bool) {
-	if pi == nil || pi.elements || pi.Mutated != nil || pi.numImpreciseCount > 0 {
+	if !pi.serves() || pi.numImpreciseCount > 0 {
 		return 0, 0, nil, nil, false, false
 	}
 	lo, okLo := pi.numKeys.first()
@@ -77,6 +77,17 @@ func FoldPropertyBounds(parts []storepkg.PropertyBounds) storepkg.PropertyBounds
 		bounded = true
 	}
 	return out
+}
+
+// FoldStatedBounds is FoldPropertyBounds over the parts' answers: ok=false
+// when any part states none.
+func FoldStatedBounds(parts []storepkg.PropertyBounds, ok []bool) (storepkg.PropertyBounds, bool) {
+	for _, o := range ok {
+		if !o {
+			return storepkg.PropertyBounds{}, false
+		}
+	}
+	return FoldPropertyBounds(parts), true
 }
 
 // boundValueRank is v's position in typedSets' order at key k (lower is

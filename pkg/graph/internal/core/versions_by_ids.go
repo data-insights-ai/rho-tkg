@@ -10,7 +10,7 @@ import (
 
 // Every version of a set of entities recorded at a pin (sigma-tkgd round 10
 // request 6): for each ID the rows the any-version equality reads
-// (eachNodeChainInterval over [types.UnboundedValidFrom, MaxInt64) at the
+// (eachNodeChainAnyVersion: [types.UnboundedValidFrom, MaxInt64) at the
 // pin: every valid-time version, those of an entity deleted before the pin
 // included, retracted lives dropped), the set read through the effective
 // scans' chunked path (streamEntityTimelines: one store snapshot per chunk,
@@ -52,7 +52,7 @@ func (n *NodeOps) ForEachByIDsAnyVersion(ids []types.NodeID, pin types.Instant, 
 			return nil, err
 		}
 		var rows []*types.Node
-		c.eachNodeChainInterval(chainOf(history, current), anyValidStart, anyValidEnd, pin, nil, func(n *types.Node) bool {
+		c.eachNodeChainAnyVersion(chainOf(history, current), pin, nil, func(n *types.Node) bool {
 			rows = append(rows, n)
 			return true
 		})
@@ -108,7 +108,7 @@ func (r *RelOps) ForEachByIDsAnyVersion(ids []types.RelID, pin types.Instant, fn
 			return nil, err
 		}
 		var rows []*types.Relationship
-		c.eachRelChainInterval(chainOf(history, current), anyValidStart, anyValidEnd, pin, nil, func(rel *types.Relationship) bool {
+		c.eachRelChainAnyVersion(chainOf(history, current), pin, nil, func(rel *types.Relationship) bool {
 			rows = append(rows, rel)
 			return true
 		})

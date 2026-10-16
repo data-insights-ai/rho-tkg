@@ -1,6 +1,7 @@
 package sharded
 
 import (
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -72,12 +73,6 @@ func (s *Store) NodePropertyTypeClassCounts(labelToken uint16, propertyKey strin
 	return sum, nil
 }
 
-// perShardCardinality carries one shard's range-cardinality result.
-type perShardCardinality struct {
-	count int64
-	exact bool
-}
-
 // NodeRangeCardinality sums each shard's prefix-sum range count. The total is
 // EXACT only if every shard reported exact — a single inexact shard (missing or
 // poisoned index) makes the whole sum inexact, so the caller falls back to a
@@ -113,23 +108,17 @@ func (s *Store) RelRangeCardinality(relTypeToken uint16, propKey string, min, ma
 
 // sumRangeCardinality sums one range count per shard; inexact if any shard is.
 func (s *Store) sumRangeCardinality(count func(*badgerShard) (int64, bool, error)) (int64, bool, error) {
-	per := make([]perShardCardinality, len(s.shards))
+	counts, exact := make([]int64, len(s.shards)), make([]bool, len(s.shards))
 	err := s.forEachShardErr(func(idx int, shard *badgerShard) error {
-		c, exact, e := count(shard)
-		per[idx] = perShardCardinality{count: c, exact: exact}
+		var e error
+		counts[idx], exact[idx], e = count(shard)
 		return e
 	})
 	if err != nil {
 		return 0, false, err
 	}
-	var total int64
-	for _, r := range per {
-		if !r.exact {
-			return 0, false, nil
-		}
-		total += r.count
-	}
-	return total, true, nil
+	total, ok := indexpkg.SumRangeCounts(counts, exact)
+	return total, ok, nil
 }
 
 var _ storecontract.RelPropertyTypeClassCountsCapability = (*Store)(nil)

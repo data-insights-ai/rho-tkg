@@ -15,7 +15,7 @@ import (
 // may be stored in different renderings), a list, a map or another unindexed
 // type.
 func (pi *PropertyIndex) EqualCount(value any) (count int64, exact bool) {
-	if pi == nil || pi.elements || pi.Mutated != nil {
+	if !pi.serves() {
 		return 0, false
 	}
 	switch value.(type) {

@@ -23,7 +23,7 @@ import (
 // compares: a float32 widened, NaN never in range). Candidates are the
 // property index's membership sidecar over the range
 // (store.NodePropertyTxMemberRangeCapability), pruned by the pin, each
-// entity's chain then tested row by row (eachNodeChainInterval, the
+// entity's chain then tested row by row (eachNodeChainAnyVersion, the
 // equality door's resolver as a visitor).
 
 // anyValidStart and anyValidEnd bound "any valid time":
@@ -84,7 +84,7 @@ func (c *Core) nodeRangeAnyVersionLocked(tok uint16, key string, min, max float6
 			return true, err
 		}
 		rows = rows[:0]
-		c.eachNodeChainInterval(chain, anyValidStart, anyValidEnd, pin, pred, func(n *types.Node) bool {
+		c.eachNodeChainAnyVersion(chain, pin, pred, func(n *types.Node) bool {
 			rows = append(rows, n)
 			return true
 		})
@@ -117,7 +117,7 @@ func (c *Core) relRangeAnyVersionLocked(tok uint16, key string, min, max float64
 			return true, err
 		}
 		rows = rows[:0]
-		c.eachRelChainInterval(chain, anyValidStart, anyValidEnd, pin, pred, func(r *types.Relationship) bool {
+		c.eachRelChainAnyVersion(chain, pin, pred, func(r *types.Relationship) bool {
 			rows = append(rows, r)
 			return true
 		})

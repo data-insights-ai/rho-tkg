@@ -407,11 +407,14 @@ func (c *Core) eachNodeChainDuring(chain []*types.Node, start, end types.Instant
 	}
 }
 
-// eachNodeChainInterval is eachNodeChainDuring over a raw chain read at
-// transaction time tx (0: every belief), with resolveNodeChain's interval
-// preparation: version order, the pin's filter, retracted lives dropped,
-// life ends and excise voids.
-func (c *Core) eachNodeChainInterval(chain []*types.Node, start, end, tx types.Instant, pred func(*types.Node) bool, fn func(*types.Node) bool) {
+// eachNodeChainAnyVersion calls fn for every row of a raw chain recorded at
+// transaction time tx that the any-version equality reads: eachNodeChainDuring
+// over [anyValidStart, anyValidEnd) with resolveNodeChain's interval
+// preparation (version order, the pin's filter, retracted lives dropped, life
+// ends and excise voids). The one rule of "every version at a pin" (the
+// any-version ranges, value statistics and classes, ForEachByIDsAnyVersion).
+func (c *Core) eachNodeChainAnyVersion(chain []*types.Node, tx types.Instant, pred func(*types.Node) bool, fn func(*types.Node) bool) {
+	start, end := anyValidStart, anyValidEnd
 	chain = dropRetractedLives(filterNodeChainByTxAt(versionOrdered(chain), tx))
 	if len(chain) == 0 {
 		return
@@ -519,11 +522,9 @@ func (c *Core) eachRelChainDuring(chain []*types.Relationship, start, end types.
 	}
 }
 
-// eachRelChainInterval is eachRelChainDuring over a raw chain read at
-// transaction time tx (0: every belief), with resolveRelChain's interval
-// preparation: version order, the pin's filter, retracted lives dropped,
-// life ends and excise voids.
-func (c *Core) eachRelChainInterval(chain []*types.Relationship, start, end, tx types.Instant, pred func(*types.Relationship) bool, fn func(*types.Relationship) bool) {
+// eachRelChainAnyVersion is eachNodeChainAnyVersion for relationships.
+func (c *Core) eachRelChainAnyVersion(chain []*types.Relationship, tx types.Instant, pred func(*types.Relationship) bool, fn func(*types.Relationship) bool) {
+	start, end := anyValidStart, anyValidEnd
 	chain = dropRetractedLives(filterRelChainByTxAt(versionOrdered(chain), tx))
 	if len(chain) == 0 {
 		return
