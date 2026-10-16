@@ -87,6 +87,9 @@ func coldTieredStore(t *testing.T) (*Store, uint16) {
 // trace to observe. A shard that cannot be opened at all can only be counted
 // from what was recorded before it closed.
 func TestCountFoldsDoNotReopenClosedShards(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts, _ := coldTieredStore(t)
 
 	before, err := ts.NodeCount()
@@ -144,6 +147,9 @@ func TestCountFoldsDoNotReopenClosedShards(t *testing.T) {
 // one an open store gives, per label and per relationship type, or the cache is
 // just a faster wrong number.
 func TestCountFoldsAgreeWithTheShardsTheyReplace(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts, signalTok := coldTieredStore(t)
 
 	token := signalTok
@@ -190,6 +196,9 @@ func TestCountFoldsAgreeWithTheShardsTheyReplace(t *testing.T) {
 // TestReopenedShardDropsItsSnapshot: once a shard is open again the store is
 // the answer, and a stale copy must not outlive it.
 func TestReopenedShardDropsItsSnapshot(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts, _ := coldTieredStore(t)
 	closeColdStores(t, ts)
 

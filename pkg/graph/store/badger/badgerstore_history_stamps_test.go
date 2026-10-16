@@ -510,6 +510,9 @@ func TestHistoryStamps_ErrorsAndStats(t *testing.T) {
 // id. After a reopen or a Clear the next steps run unchecked, so several ops
 // per ID sit in the buffer when the first call builds.
 func TestHistoryStamps_RandomizedDifferential(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, k := range stampKinds() {
 		for seed := int64(1); seed <= 4; seed++ {
 			t.Run(fmt.Sprintf("%s/seed=%d", k.name, seed), func(t *testing.T) {

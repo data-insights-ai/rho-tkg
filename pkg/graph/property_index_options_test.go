@@ -16,6 +16,9 @@ import (
 // same options, and their range counts still equal the data, also after a
 // write made after the reopen.
 func TestPropertyIndexOptionsSurviveReopen(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	for _, backend := range []struct {
 		name string
 		open func(t *testing.T, dir string) *graphpkg.Graph

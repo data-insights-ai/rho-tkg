@@ -539,6 +539,9 @@ func TestBadgerStore_VectorIndex_LoadRejectsConflictingDuplicateDefinition(t *te
 }
 
 func TestBadgerStoreIndexDefinitionLoadRejectsZeroLabelToken(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	cases := []struct {
 		name string
 		key  []byte
@@ -641,6 +644,9 @@ func TestBadgerStoreIndexDefinitionLoadRejectsReservedPropertyKey(t *testing.T) 
 }
 
 func TestBadgerStoreIndexDefinitionLoadRejectsCorruptMsgpack(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	cases := []struct {
 		name string
 		key  []byte

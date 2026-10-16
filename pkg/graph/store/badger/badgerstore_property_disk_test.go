@@ -452,6 +452,9 @@ func TestPropertyIndexOnDisk_RangeCardinalityDeclines(t *testing.T) {
 // (marker already set) still answers correctly without needing the
 // registry to be re-supplied (auto-loaded from persisted meta).
 func TestPropertyIndexOnDisk_EnableOnExistingDir(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	const label = uint16(1)

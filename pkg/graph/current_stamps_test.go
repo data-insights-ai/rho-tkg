@@ -216,6 +216,9 @@ func currentStampsSeeds() int {
 // current row answered with stamps, zero stamps from a stored row form, a
 // cache miss that disagrees with the hit, a router that asks the wrong shard.
 func TestCurrentStampsDifferential(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	steps := 300
 	if testing.Short() {
 		steps = 100

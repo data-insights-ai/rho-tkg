@@ -1982,6 +1982,9 @@ func runOracleSequence(t *testing.T, seed uint64, nOps, nProbes int) {
 // deterministic from the printed seed: a failure names the seed, prints the full
 // op log with recorded stamps, the probe, and both the oracle and door answers.
 func TestBitemporalOracleHarness(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 
 	sequences, probesPer, nOps := 30, 20, 12

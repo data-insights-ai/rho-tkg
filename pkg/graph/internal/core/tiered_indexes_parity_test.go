@@ -284,6 +284,9 @@ func hotShardName(ts *tiered.Store) string {
 }
 
 func TestTieredRelTemporalPrune_ParityWithBadger_RotationColdRepair(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	bc, bs := newBadgerCoreForIndexes(t)
 	tc, ts := newDiskTieredCoreForIndexes(t)
 	bw, tw := newRelTemporalWorld(bc, bs), newRelTemporalWorld(tc, ts)
@@ -345,6 +348,9 @@ func TestTieredRelTemporalPrune_ParityWithBadger_RotationColdRepair(t *testing.T
 }
 
 func TestTieredRelTemporalIndex_DropRemovesEverywhere(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	tc, ts := newDiskTieredCoreForIndexes(t)
 	tw := newRelTemporalWorld(tc, ts)
 	tw.phase1(t)
@@ -439,6 +445,9 @@ func assertCompositeParity(t *testing.T, stage string, bw, tw *compositeWorld, c
 }
 
 func TestTieredComposite_ExactSetsAcrossShardsUpdateDeleteCold(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	bc, _ := newBadgerCoreForIndexes(t)
 	tc, ts := newDiskTieredCoreForIndexes(t)
 	bw := &compositeWorld{c: bc, names: map[types.NodeID]string{}, nodes: map[string]*types.Node{}}
@@ -575,6 +584,9 @@ func TestTieredRelTemporalPrune_ArchiveRestoreKeepsHistory(t *testing.T) {
 // archive answers at DepthAll only, warm event shards drop out at DepthHot,
 // and Limit/After page the merged ID order.
 func TestTieredComposite_ArchiveDepthAndPaging(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	tc, ts := newDiskTieredCoreForIndexes(t)
 	ctx := context.Background()
 	names := map[types.NodeID]string{}

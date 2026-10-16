@@ -25,6 +25,9 @@ func (alwaysOKVerifier) VerifyNodeChain(types.NodeID) (bool, error) { return tru
 func (alwaysOKVerifier) VerifyRelChain(types.RelID) (bool, error)   { return true, nil }
 
 func TestRotateHotShard_CatalogSaveFailure_RollsBackInMemory(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-driven write-failure injection is unreliable on Windows")
 	}
@@ -125,6 +128,9 @@ func TestRotateHotShard_TrackedIndexSetupFailure_RollsBackNewShard(t *testing.T)
 }
 
 func TestRotateHotShard_Success_PersistsBeforeLiveSwitch(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -159,6 +165,9 @@ func TestRotateHotShard_Success_PersistsBeforeLiveSwitch(t *testing.T) {
 }
 
 func TestOpenRefArchive_CatalogSaveFailure_RollsBack(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-driven write-failure injection is unreliable on Windows")
 	}
@@ -196,6 +205,9 @@ func TestOpenRefArchive_CatalogSaveFailure_RollsBack(t *testing.T) {
 }
 
 func TestVerifyShard_CatalogSaveFailure_RollsBackCache(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-driven write-failure injection is unreliable on Windows")
 	}
@@ -247,6 +259,9 @@ func TestVerifyShard_CatalogSaveFailure_RollsBackCache(t *testing.T) {
 }
 
 func TestRebuildCatalog_CatalogSaveFailure_RollsBackStats(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-driven write-failure injection is unreliable on Windows")
 	}

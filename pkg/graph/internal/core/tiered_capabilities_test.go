@@ -22,6 +22,9 @@ import (
 // the same tx-membership, property-membership and valid-end capability answers
 // (candidates: a superset of what streams) and the same core door answers.
 func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	bg, err := New(Config{BadgerInMemory: true})
 	if err != nil {

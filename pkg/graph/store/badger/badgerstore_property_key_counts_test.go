@@ -66,6 +66,9 @@ func TestBadgerStoreNodeCountByLabelAndPropertyKey(t *testing.T) {
 }
 
 func TestBadgerStoreNodeCountByLabelAndPropertyKeyRebuildsOnOpen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 

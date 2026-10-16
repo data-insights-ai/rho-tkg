@@ -231,6 +231,9 @@ func TestTxBackfillNode_GateOff(t *testing.T) {
 // smuggles the instant through a reserved property (tkg_tx_from / tkg_tx_to
 // stay rejected as user properties on every UpdateWithTx twin).
 func TestTxBackfillNode_InvalidInstant(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, gate := range []bool{true, false} {
@@ -319,6 +322,9 @@ func TestTxBackfillNode_InvalidInstant(t *testing.T) {
 // holds a TxFrom and a TxTo ABOVE the current row's TxFrom (lesson 62), so t
 // between them must refuse.
 func TestTxBackfillNode_OrderEqualReversed(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name+"/current", func(t *testing.T) {
@@ -395,6 +401,9 @@ func TestTxBackfillNode_OrderEqualReversed(t *testing.T) {
 // moved UpdatedAt above TxFrom; a rule reading only TxFrom stamps a version
 // that starts before its predecessor's last change).
 func TestTxBackfillNode_OrderValidStart(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	doors := func() []txbNodeDoor { return txbNodeDoors()[:2] } // standalone; the kernel is shared (R1-R3 cover the twins)
 	for _, be := range txbBackends() {
@@ -485,6 +494,9 @@ func TestTxBackfillNode_OrderValidStart(t *testing.T) {
 // TxPin reads disagree. Exact sets with a control node b and its own rel (never
 // deleted) and a node c created after t.
 func TestTxBackfillNode_DeleteIgnoresT(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, fam := range txbNodeFamilies() {
@@ -574,6 +586,9 @@ func TestTxBackfillNode_DeleteIgnoresT(t *testing.T) {
 // update), and t leaking into the next plain write (the next plain Update must
 // stamp the clock, above t, and chain prev.TxTo to it).
 func TestTxBackfillNode_UpdateStamps(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, fam := range txbNodeFamilies() {
@@ -625,6 +640,9 @@ func TestTxBackfillNode_UpdateStamps(t *testing.T) {
 // at t is moved or overwritten). Counterpart: t = close+1 keeps the close and
 // stamps t exactly on the node and the rel.
 func TestTxBackfillNode_CloseCollision(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, on := range []string{"node", "cascaded_rel"} {
@@ -675,6 +693,9 @@ func TestTxBackfillNode_CloseCollision(t *testing.T) {
 // the clamp (pin t-1 shows ValidTo = t, which the normalizer reopens) and a
 // tombstone written before the refusal — on the node and on every cascaded rel.
 func TestTxBackfillNode_ScheduledCloseAfterT(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, on := range []string{"node", "cascaded_rel"} {
@@ -737,6 +758,9 @@ func TestTxBackfillNode_ScheduledCloseAfterT(t *testing.T) {
 // that stamps rels with the clock. Counterpart: an all-valid t stamps every
 // tombstone with t and the exact node and rel sets flip between t-1 and t.
 func TestTxBackfillNode_CascadeOrder(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	type breaker struct {
 		name  string
@@ -899,6 +923,9 @@ func TestTxBackfillNode_Duplicates(t *testing.T) {
 // instant that reports success for a belief change at t never recorded.
 // Refused with ErrTxOrder; a missing id still answers ErrNodeNotFound.
 func TestTxBackfillNode_NoopUpdateRefuses(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, fam := range txbNodeFamilies() {
@@ -954,6 +981,9 @@ func assertNodeTxChainMonotone(t *testing.T, phase string, chain []*types.Node) 
 // caller-instant write then stamps below its predecessor (an inverted chain on
 // the node or on the rel).
 func TestTxBackfillNode_RaceClock(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	const writers, rounds = 4, 40
 	for _, be := range txbBackends() {

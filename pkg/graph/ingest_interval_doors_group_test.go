@@ -41,6 +41,9 @@ func ivOutcome(g *graphpkg.Graph, tok ingest.SubmitToken, submitErr error) error
 // to a sibling group, that swallows the failure (nil for a missing id), or that
 // creates the missing entity.
 func TestSessionSetVersionInterval_FailedGroupShape(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		for _, m := range ivModes {
@@ -228,6 +231,9 @@ func ivNodeEntity(t *testing.T, g *graphpkg.Graph, n *types.Node) ivEntity {
 // the first belief (pin1 at T+7000 found), and a correction that touches the
 // sibling (its pinned reads or history change).
 func TestSessionSetVersionInterval_SiblingAndChained(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		for _, m := range ivModes {

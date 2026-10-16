@@ -39,6 +39,9 @@ import (
 // disk at Close — os.Exit drops it, the key is absent. After the fix: flush()
 // write-aheads + fsyncs the registry, so the token survives.
 func TestWriteAheadRegistryCrash(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 
 	if os.Getenv("TKG_CRASH_CHILD") == "1" {

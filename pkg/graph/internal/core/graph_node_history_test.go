@@ -32,6 +32,9 @@ func (s *staleFirstNodeSnapshotStore) GetNode(id types.NodeID) (*types.Node, err
 }
 
 func TestGraphBadgerUpdateNodePersistence(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 

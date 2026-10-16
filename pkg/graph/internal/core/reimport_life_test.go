@@ -163,6 +163,9 @@ func TestReImportKeepsEveryLife(t *testing.T) {
 // Catches: an allocator that takes one above the tombstone (the last current
 // row) only — its row collides with the cascade row of that version.
 func TestReImportAboveCascadeRows(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)
@@ -270,6 +273,9 @@ func rlImportDoors(rel bool) []rlImportDoor {
 // (the life rule counts deletes strictly before a row's TxFrom, so a row at D
 // still belongs to the earlier life).
 func TestReImportBackfillMustFollowTheChain(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		for _, door := range rlImportDoors(mk(t).rel) {
@@ -349,6 +355,9 @@ func (e *ccEnt) getCurrent(id int64) (uint32, error) {
 // that names a label or a relationship type never seen before leaves no
 // registry name behind (the refusal runs before token allocation).
 func TestReImportBackfillRefusalLeavesNoToken(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)
@@ -390,6 +399,9 @@ func TestReImportBackfillRefusalLeavesNoToken(t *testing.T) {
 // transaction time from validInstantAfter" item of the 2026-09-24 review
 // (every plain door stamps ahead of the clock without a floor).
 func TestReImportAfterDeleteAheadOfClock(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)
@@ -436,6 +448,9 @@ func TestReImportAfterDeleteAheadOfClock(t *testing.T) {
 // (TruncateNodeHistory(id, 0)) — for a re-imported ID that is the earlier
 // life's history.
 func TestReImportTxRollbackRestoresEarlierLife(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)

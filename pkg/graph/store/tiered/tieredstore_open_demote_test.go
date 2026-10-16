@@ -13,6 +13,9 @@ import (
 // turns it on must not have to wait for that, and the shards it demotes must
 // never be opened in the meantime.
 func TestColdAfterAppliesAtOpen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	// Build a store with several past shards, all warm.
@@ -95,6 +98,9 @@ func TestColdAfterAppliesAtOpen(t *testing.T) {
 // re-derives it and a store that has been running for months keeps rediscovering
 // the same answer.
 func TestDemotionAtOpenIsPersisted(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	cfg := openParallelCfg(dir)
@@ -163,6 +169,9 @@ func TestDemotionAtOpenIsPersisted(t *testing.T) {
 // demoted once would stay demoted for good, and ColdAfter would be a one-way
 // door rather than a setting an operator can try and undo.
 func TestColdAfterIsReversible(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	cfg := openParallelCfg(dir)

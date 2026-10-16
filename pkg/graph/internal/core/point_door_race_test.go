@@ -489,6 +489,9 @@ func (m *pdrMisses) add(door, msg string) {
 // record doors (Get, History). Zero misses allowed; the per-door counts are
 // logged ("pdr-miss") for the table.
 func TestPointDoorRace_UnderMovingWriters(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	const (
 		entities = 20
 		writers  = 4

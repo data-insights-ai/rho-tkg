@@ -228,6 +228,9 @@ func ivPlainDoors() []ivPlainDoor {
 // ahead of the wall, so the stamp must be that reading (plus the instants the
 // door's own wrapper burns), never 0, never a fixture instant.
 func TestIntervalWithTx_PlainDoorsUnchanged(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, d := range ivPlainDoors() {

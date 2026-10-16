@@ -307,6 +307,9 @@ func TestHistoryLives_GeneratedBatchWithoutProofRecords(t *testing.T) {
 
 // The record survives a restart; a malformed record fails the open.
 func TestHistoryLives_PersistedAndValidatedAtOpen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	// write opens a fresh store, applies fn, closes it; then the store is
 	// opened again.
 	reopen := func(t *testing.T, fn func(ts *Store) error) (*Store, error) {

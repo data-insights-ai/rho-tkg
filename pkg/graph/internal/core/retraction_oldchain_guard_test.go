@@ -29,6 +29,9 @@ import (
 // are rendered by creation ordinal, so the answers do not depend on the wall
 // clock or the minted IDs.
 func TestRetraction_OldChainsAnswerAsBefore(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	got := map[string]string{}
 	for _, be := range txbBackends() {

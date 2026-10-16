@@ -173,6 +173,9 @@ func ivMaxStamp(rows map[uint32]types.TemporalMetadata) types.Instant {
 // also catches a door that applies the update doors' version-start rule to
 // the cascade (it would refuse or move t).
 func TestIntervalWithTx_StampsEveryAppendedRow(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, d := range ivDoors() {
@@ -236,6 +239,9 @@ func TestIntervalWithTx_StampsEveryAppendedRow(t *testing.T) {
 // Every refusal changes nothing and names the binding stamp; the counterpart
 // newest+1 is stamped exactly.
 func TestIntervalWithTx_Order(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range txbBackends() {
@@ -356,6 +362,9 @@ func TestIntervalWithTx_Order(t *testing.T) {
 // door runs); no upper bound (a future t or MaxInt64 accepted); the gate
 // checked before the value. Every refusal writes nothing.
 func TestIntervalWithTx_GateAndValue(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, d := range ivDoors() {
@@ -455,6 +464,9 @@ func ivPlainFixture(t *testing.T, g *Core) ivFix {
 // (stamps t but burns an instant: the commit clock advances on every replayed
 // record), and a door that raises the floor for t.
 func TestIntervalWithTx_CommitClockNotAdvanced(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	plain := ivPlainDoors()
 	for _, be := range txbBackends() {
@@ -509,6 +521,9 @@ func TestIntervalWithTx_CommitClockNotAdvanced(t *testing.T) {
 // ErrEntityDeleted must hold on every door, as for the plain twins). An ID
 // that never existed answers the not-found sentinel only. Nothing is written.
 func TestIntervalWithTx_DeletedEntity(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range txbBackends() {
@@ -735,6 +750,9 @@ func ivPropAt(t *testing.T, g *Core, kind string, f ivFix, v, pin types.Instant,
 // (Verify*Chain). The queue doors run each growth in a unit of its own (one op
 // per entity per unit).
 func TestIntervalWithTx_BurstGrowthReplay(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range txbBackends() {

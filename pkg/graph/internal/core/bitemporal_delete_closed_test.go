@@ -429,6 +429,9 @@ func addClosedRel(t *testing.T, g *Core) (types.NodeID, types.NodeID, types.RelI
 // --- 1+2+6: closed node / rel, then delete ------------------------------------
 
 func TestDeleteKeepsPastCloseNode(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range asofCascadeBackends() {
 		for _, door := range deleteDoors() {
@@ -475,6 +478,9 @@ func TestDeleteKeepsPastCloseNode(t *testing.T) {
 }
 
 func TestDeleteKeepsPastCloseRel(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range asofCascadeBackends() {
 		for _, door := range deleteDoors() {
@@ -515,6 +521,9 @@ func TestDeleteKeepsPastCloseRel(t *testing.T) {
 // --- 3: node delete cascading onto a closed relationship ----------------------
 
 func TestNodeDeleteCascadeKeepsClosedRelValidTo(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range asofCascadeBackends() {
 		for _, door := range deleteDoors() {
@@ -733,6 +742,9 @@ func (s *switchableClock) Now() time.Time {
 // reader pinned before the delete cannot tell the recorded close from a
 // delete-stamped ValidTo and reopens the entity.
 func TestDeleteAtExactCloseInstantKeepsClose(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range asofCascadeBackends() {
 		t.Run(be.name+"/node", func(t *testing.T) {

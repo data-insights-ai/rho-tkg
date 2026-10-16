@@ -14,6 +14,9 @@ import "testing"
 // Get and NodeAt answered the imported row. Four backends, node and
 // relationship.
 func TestAsOfBackfilledReImportOfDeletedID(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)

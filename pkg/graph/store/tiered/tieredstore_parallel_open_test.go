@@ -42,6 +42,9 @@ func warmShards(t *testing.T, dir string, n int) {
 // finish first — a shard silently missing from the map is a slice of the graph
 // that queries would simply not see.
 func TestParallelOpen_MountsEveryShard(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	warmShards(t, dir, 4)
 
@@ -93,6 +96,9 @@ func TestParallelOpen_MountsEveryShard(t *testing.T) {
 // next open of that directory fails — which is what this checks, because a
 // leaked handle is otherwise invisible until something else breaks.
 func TestParallelOpen_FailureLeaksNoHandles(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	warmShards(t, dir, 4)
 

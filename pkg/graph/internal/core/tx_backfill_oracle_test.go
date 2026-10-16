@@ -1097,6 +1097,9 @@ func txbOracleRun(t *testing.T, be txbBackend, seed uint64, nOps int, x0 types.I
 }
 
 func TestTxBackfillOracle_CrossBackend(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	seeds, nOps := 24, 40
 	if !testing.Short() {

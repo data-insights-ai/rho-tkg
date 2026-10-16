@@ -8,6 +8,9 @@ import (
 )
 
 func TestGraphBadgerUpdateRelPersistence(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -152,6 +155,9 @@ func TestGraphDeleteRelPreservesHistory(t *testing.T) {
 // ─── Version history — Badger persistence ───────────────────────────────────
 
 func TestGraphBadgerDeleteRelPreservesHistory(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 

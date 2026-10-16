@@ -127,6 +127,9 @@ func TestTieredStoreSequentialStoreWideOperationBlocksClose(t *testing.T) {
 }
 
 func TestTieredStoreTemporalIndexOpsCoverClosedColdShards(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts := newDiskTestTieredStore(t)
 	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 
@@ -357,6 +360,9 @@ func TestTieredStoreTemporalIndex_CreateSnapshotFailureRollsBack(t *testing.T) {
 }
 
 func TestTieredStoreTemporalIndex_DropPersistFailureRestoresIndex(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ts, caseTok, signalTok := setupDiskBatchDelete(t)
 	if err := ts.CreateTemporalIndex(caseTok); err != nil {
@@ -461,6 +467,9 @@ func TestTieredStoreHighFrequencyIndex_CreateSnapshotFailureRollsBack(t *testing
 }
 
 func TestTieredStoreHighFrequencyIndex_DropPersistFailureRestoresIndex(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ts, caseTok, signalTok := setupDiskBatchDelete(t)
 	if err := ts.CreateHighFrequencyIndex(caseTok, time.Hour); err != nil {
@@ -879,6 +888,9 @@ func TestTieredStoreHighFrequencyIndexRejectsInvalidBucket(t *testing.T) {
 }
 
 func TestTieredStoreTrackedTemporalIndexes_SurviveRestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	caseTok := uint16(1)
 	signalTok := uint16(3)
@@ -930,6 +942,9 @@ func TestTieredStoreTrackedTemporalIndexes_SurviveRestart(t *testing.T) {
 }
 
 func TestTieredStoreTrackedHighFrequencyDrop_SurvivesRestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	signalTok := uint16(3)
 
@@ -972,6 +987,9 @@ func TestTieredStoreTrackedHighFrequencyDrop_SurvivesRestart(t *testing.T) {
 }
 
 func TestTieredStoreTrackedTemporalIndexes_ClearSurvivesRestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	caseTok := uint16(1)
 	signalTok := uint16(3)
@@ -1394,6 +1412,9 @@ func TestTieredStoreDropVectorIndexSnapshotErrorLeavesIndex(t *testing.T) {
 }
 
 func TestTieredStoreDropVectorIndexPersistFailureRestoresIndex(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ts, caseTok, _ := setupDiskBatchDelete(t)
 	key := "vec"
@@ -1766,6 +1787,9 @@ func TestTieredStorePutNodesBatchWithBackdatedEventIDRemainsReadable(t *testing.
 }
 
 func TestTieredStorePutNodeRejectsDuplicateIDInClosedColdShard(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts, caseTok, signalTok := setupDiskBatchDelete(t)
 	gen := tieredNodeGen(t)
 
@@ -1886,6 +1910,9 @@ func TestTieredStorePutNodesBatchGeneratedIDRejectsInvalidAndClosedStore(t *test
 }
 
 func TestTieredStorePutRelationshipRejectsDuplicateIDInClosedColdShard(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts, _, signalTok := setupDiskBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -1920,6 +1947,9 @@ func TestTieredStorePutRelationshipRejectsDuplicateIDInClosedColdShard(t *testin
 }
 
 func TestTieredStorePutRelationshipRejectsCurrentIDDuplicateInClosedColdStartShard(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts, _, signalTok := setupDiskBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)
@@ -1956,6 +1986,9 @@ func TestTieredStorePutRelationshipRejectsCurrentIDDuplicateInClosedColdStartSha
 }
 
 func TestTieredStoreGeneratedRelationshipRequiresFreshProof(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts, _, signalTok := setupDiskBatchDelete(t)
 	nodeGen := tieredNodeGen(t)
 	relGen := tieredRelGen(t)

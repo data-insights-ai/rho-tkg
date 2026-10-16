@@ -98,6 +98,9 @@ func ivNewNodeCnt(t *testing.T, g *graphpkg.Graph, cnt int64) *types.Node {
 }
 
 func TestSessionSetRelVersionInterval_TwoPhase(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		for _, m := range ivModes {
@@ -183,6 +186,9 @@ func TestSessionSetRelVersionInterval_TwoPhase(t *testing.T) {
 }
 
 func TestSessionSetNodeVersionInterval_TwoPhase(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		for _, m := range ivModes {
@@ -268,6 +274,9 @@ func TestSessionSetNodeVersionInterval_TwoPhase(t *testing.T) {
 // reaches the store, a refused call that still leaves Pending > 0, and a
 // returned error that is a bare string (errors.Is fails).
 func TestSessionSetVersionInterval_QueueRefusals(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	cases := []struct {
 		name     string

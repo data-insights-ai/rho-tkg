@@ -11,6 +11,9 @@ import (
 // not sync the shard to the anchor — that would undo the fan-out's work on
 // that shard. The sync is skipped, and the next lazy open heals the shard.
 func TestTieredColdLazyOpen_SkipsSyncDuringFanOut(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	cfg := Config{
 		DataDir:       t.TempDir(),
 		RefLabels:     []string{"Case", "User"},

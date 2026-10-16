@@ -94,6 +94,9 @@ func buildAisocStore(t *testing.T, dir string, entities int) {
 // TestCleanReopenCostNotLinear: the rows a clean reopen decodes (open, one
 // more ai-soc record, Close) stay within a constant factor at 10x entities.
 func TestCleanReopenCostNotLinear(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	sizes := [2]int{3_000, 30_000}
 	if !testing.Short() {
 		sizes = [2]int{100_000, 1_000_000}
@@ -274,6 +277,9 @@ func mutateMixed(t *testing.T, g *graphpkg.Graph, round int) {
 }
 
 func TestCleanReopenMatchesFullRebuild(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	defer badger.SetOpenImageChunkBytesForTest(4096)() // several chunks, so a damaged one is in the middle
 	for _, rc := range []reopenCfg{{}, {onDisk: true}} {
 		t.Run(fmt.Sprintf("onDisk=%v", rc.onDisk), func(t *testing.T) {

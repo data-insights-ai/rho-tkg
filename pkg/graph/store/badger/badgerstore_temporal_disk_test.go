@@ -82,6 +82,9 @@ func sortedNodeIDsOf(nodes []*types.Node) []int64 {
 // predicate-anywhere-in-interval case is covered because the randomized
 // [from,to) bounds routinely straddle a probe window's edges.
 func TestTemporalIndexOnDisk_ReopenEquivalenceRandomized(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	const label = uint16(7)
@@ -237,6 +240,9 @@ func TestTemporalIndexOnDisk_ReopenEquivalenceRandomized(t *testing.T) {
 // and must use the now-complete keyspace (verified indirectly via query
 // correctness, and directly via the entry count + built marker).
 func TestTemporalIndexOnDisk_EnableOnExistingDir(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	const label = uint16(3)

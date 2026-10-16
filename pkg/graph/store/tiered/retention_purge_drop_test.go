@@ -43,6 +43,9 @@ func newPersistentTieredStore(t *testing.T) *Store {
 // its cross-shard edge residue is swept on the surviving reference shard — no dangling
 // phantom.
 func TestTieredColdShardFastDrop(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts := newPersistentTieredStore(t)
 	const caseTok, signalTok, relType = uint16(1), uint16(3), uint16(5)
 
@@ -220,6 +223,9 @@ func TestTieredColdShardFastDrop_ConcurrentReads(t *testing.T) {
 // iterations widen the interleaving window and raise the chance any residual
 // race is caught.
 func TestTieredColdShardFastDrop_CloseDoesNotRaceEventShardsMap(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for iter := 0; iter < 20; iter++ {
 		ts, err := New(Config{
 			DataDir:       t.TempDir(),

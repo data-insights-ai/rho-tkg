@@ -52,6 +52,9 @@ func veCands(t *testing.T, bs *Store, from types.Instant) []int64 {
 // a history overwrite at the tombstone version is re-read; Clear drops the
 // index.
 func TestValidEndBuild_OverlayAndConcurrentWrites(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	bs, err := New(Config{Dir: t.TempDir(), FlushInterval: time.Hour})
 	if err != nil {

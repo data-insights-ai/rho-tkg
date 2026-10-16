@@ -235,6 +235,9 @@ func forUC(t *testing.T, fn func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc u
 // every door in both scopes; nothing is appended, the pin taken before the
 // attempt still reads B's value, and the value keeps exactly one holder.
 func TestUniqueCascade_OpenEndedOntoHeldValueRefused(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ucCreate(t, g, sc, ucKey)
@@ -264,6 +267,9 @@ func TestUniqueCascade_OpenEndedOntoHeldValueRefused(t *testing.T) {
 // the pin before still reads "b") and a second writer of a value owned forever
 // under UniqueForever (refused, nothing appended).
 func TestUniqueCascade_PastIntervalOntoHeldValue(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ucCreate(t, g, sc, ucKey)
@@ -304,6 +310,9 @@ func TestUniqueCascade_PastIntervalOntoHeldValue(t *testing.T) {
 // A free value passes in both scopes; the pin before still reads the old
 // value, and the new value is then held (a create with it is refused).
 func TestUniqueCascade_FreeValuePasses(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ucCreate(t, g, sc, ucKey)
@@ -331,6 +340,9 @@ func TestUniqueCascade_FreeValuePasses(t *testing.T) {
 // UniqueForever B now owns it (a create is refused), under UniqueCurrent B's
 // current row does not hold it (a create passes).
 func TestUniqueCascade_PastFreeValueClaimsForeverOnly(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ucCreate(t, g, sc, ucKey)
@@ -350,6 +362,9 @@ func TestUniqueCascade_PastFreeValueClaimsForeverOnly(t *testing.T) {
 
 // Re-setting the node's own value passes, open-ended and bounded.
 func TestUniqueCascade_SelfResetPasses(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ucCreate(t, g, sc, ucKey)
@@ -375,6 +390,9 @@ func TestUniqueCascade_SelfResetPasses(t *testing.T) {
 // UniqueForever. A bounded move does not free it (the current row still holds
 // it).
 func TestUniqueCascade_MoveReleasesForCurrentOnly(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ctx := context.Background()
@@ -417,6 +435,9 @@ func TestUniqueCascade_MoveReleasesForCurrentOnly(t *testing.T) {
 // when another node holds B's value's neighbours; nothing about the
 // constrained value changes.
 func TestUniqueCascade_NilPropsAndKeyAbsentPass(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ucCreate(t, g, sc, ucKey)
@@ -441,6 +462,9 @@ func TestUniqueCascade_NilPropsAndKeyAbsentPass(t *testing.T) {
 
 // A float patch on a constrained key is refused like a float update.
 func TestUniqueCascade_FloatRefused(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ucCreate(t, g, sc, ucKey)
@@ -457,6 +481,9 @@ func TestUniqueCascade_FloatRefused(t *testing.T) {
 // free is refused as a whole, and the free value is NOT left claimed (a later
 // create with it passes) — the BACKLOG 9e shape.
 func TestUniqueCascade_RefusalClaimsNothing(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ucCreate(t, g, sc, ucKey)
@@ -479,6 +506,9 @@ func TestUniqueCascade_RefusalClaimsNothing(t *testing.T) {
 // (ErrUniqueViolationExisting, CreateUnique's behaviour, unchanged), so a
 // cascade then writes freely.
 func TestUniqueCascade_ConstraintAfterDuplicate(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		for _, d := range ucDoors() {
@@ -513,6 +543,9 @@ func TestUniqueCascade_ConstraintAfterDuplicate(t *testing.T) {
 // cascade fails its op (the group outcome carries ErrUniqueViolation), the
 // sibling op in the same group commits, and the refused node is unchanged.
 func TestUniqueCascade_GroupSemantics(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	type groupDoor struct {
 		name string
@@ -584,6 +617,9 @@ func TestUniqueCascade_GroupSemantics(t *testing.T) {
 // the value has one current holder (UniqueCurrent, open-ended) or one owner
 // (UniqueForever, bounded past patches — the registry arbitrates).
 func TestUniqueCascade_ConcurrentOneWinner(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, b := range allStoreBackends() {
 		for _, d := range ucDoors() {
@@ -645,6 +681,9 @@ func TestUniqueCascade_ConcurrentOneWinner(t *testing.T) {
 // Catches: a claim made before the kernel's deleted-entity refusal (the
 // value would stay owned forever by a node that never wrote it).
 func TestUniqueCascade_DeletedNodeClaimsNothing(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ctx := context.Background()
@@ -668,6 +707,9 @@ func TestUniqueCascade_DeletedNodeClaimsNothing(t *testing.T) {
 // appended. Catches: a UniqueForever claim made before the kernel's own
 // checks (the value stays owned by a node that never wrote it).
 func TestUniqueCascade_KernelFailureClaimsNothing(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ucCreate(t, g, sc, ucKey)

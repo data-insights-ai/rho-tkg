@@ -128,6 +128,9 @@ func pdrEntityDoors(e *ccEnt, pin types.Instant) map[string]func(id int64) (stri
 // one store lock and has no window; the test asserts a hook fired everywhere
 // else.
 func TestPointDoorRace_MoveBetweenChainReads(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	pdrRun(t, func(t *testing.T, e *ccEnt) {
 		closeAt := e.pin() + 1_000_000
 		doors := pdrEntityDoors(e, 0)

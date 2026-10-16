@@ -14,6 +14,9 @@ import (
 // the read-only WAL-recovery probe a warm shard opens first must not build it
 // too (the probe is closed right away; its build is thrown away).
 func TestTieredRelTemporalIndex_WarmOpenBuildsOnce(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	cfg := Config{
 		DataDir:       dir,

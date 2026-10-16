@@ -138,6 +138,9 @@ func seedRelTemporalRebuild(t testing.TB, bs *Store, n int) {
 // TestRelTemporalIndexRebuildSequential pins that the sequential build (backlog
 // 10(a)) equals the per-relationship oracle on every envelope, in one transaction.
 func TestRelTemporalIndexRebuildSequential(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	const n = 120
 	for _, tc := range []struct {
 		name          string

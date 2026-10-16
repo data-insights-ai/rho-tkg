@@ -136,6 +136,9 @@ func TestTieredRecoverChangeLogReenablesEventShard(t *testing.T) {
 // handling needed, since badgerCfg reads the allocator's (now-cleared)
 // poisoned state at THAT shard's own open time.
 func TestTieredRecoverChangeLogThenRotationWiresNewHotShard(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	nodeGen := tieredNodeGen(t)
 

@@ -23,6 +23,9 @@ import (
 // must match at this layer). One errors.Is row per sentinel per door (node or
 // relationship; the stamping and parity are covered in internal/core).
 func TestIntervalWithTx_PublicDoors(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	type door struct {

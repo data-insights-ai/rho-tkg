@@ -58,6 +58,9 @@ func coldCapStore(t *testing.T, shards, cap int) (*Store, uint16) {
 // caller as 16.9s to open a case whose signals live in demoted shards, then
 // 7.5s again on the very next read. Retaining the handle is the whole point.
 func TestColdShardStaysOpenForTheNextRead(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts, signalTok := coldCapStore(t, 4, 8)
 	closeColdStores(t, ts)
 
@@ -115,6 +118,9 @@ func TestColdShardCapBoundsOpenHandles(t *testing.T) {
 // shard with a reader in flight can look old. Closing it under the reader is
 // the use-after-close the whole lifecycle is built to prevent.
 func TestColdCapNeverClosesAShardBeingRead(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts, _ := coldCapStore(t, 5, 1)
 	closeColdStores(t, ts)
 

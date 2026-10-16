@@ -77,6 +77,9 @@ func TestTieredChangeFeedAcrossRotation(t *testing.T) {
 // badger handle closed, the merge lazily reopens it read-only to page its
 // immutable log — no flush on a closed shard, no record lost.
 func TestTieredChangeFeedColdShardReadOnly(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts := newDiskChangeLogStore(t)
 	nodeGen := tieredNodeGen(t)
 	_, signalTok := wireRegistry(t, ts)

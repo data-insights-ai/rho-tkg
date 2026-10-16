@@ -172,6 +172,9 @@ func TestTieredHistoryStamps_RoutingShapes(t *testing.T) {
 // An entity on a closed cold shard: the walk opens it the way History does
 // and answers per ID, leaving the cold shard's sidecar unbuilt.
 func TestTieredHistoryStamps_ColdClosedShard(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

@@ -189,6 +189,9 @@ func TestUniqueTiered_EventLabelRejected(t *testing.T) {
 // still enforced (a duplicate of a pre-restart value is barred) — the very
 // correctness the loadUniqueConstraints short-circuit removal restores.
 func TestUniqueTiered_DurableAcrossRestart(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	dir := t.TempDir()
 
@@ -251,6 +254,9 @@ func TestUniqueTiered_ResetReaps(t *testing.T) {
 // survives (a DIFFERENT node is still barred) and the OWNER may keep it, then
 // ReleaseOwnership frees it for a new claimant.
 func TestUniqueTiered_ForeverAcrossRestart(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	dir := t.TempDir()
 

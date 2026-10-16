@@ -16,6 +16,9 @@ import (
 )
 
 func TestR9_RegistryPersistsAfterSuccessfulWritesWithoutGraphClose(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -73,6 +76,9 @@ func TestR9_RegistryPersistsAfterSuccessfulWritesWithoutGraphClose(t *testing.T)
 }
 
 func TestR9_ResolveTokenCreationPersistsWithoutGraphClose(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -144,6 +150,9 @@ func TestR9_ResolveTokenCreationPersistFailureRollsBack(t *testing.T) {
 }
 
 func TestR9_ImportedRegistryPersistsWithoutGraphClose(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 
 	src := newTestGraph(t)

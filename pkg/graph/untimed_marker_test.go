@@ -23,6 +23,9 @@ import (
 
 // Not parallel: it moves the badger package's readable-marker cap.
 func TestUntimedUnboundedRaisesStoreFormatMarker(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	open := map[string]func(dir string) (storepkg.MandatoryStore, error){
 		"badger": func(dir string) (storepkg.MandatoryStore, error) { return badger.New(badger.Config{Dir: dir}) },

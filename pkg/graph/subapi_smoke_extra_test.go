@@ -513,6 +513,9 @@ func TestSubAPISmoke_AdminWrappers_NonTieredSentinel(t *testing.T) {
 }
 
 func TestSubAPISmoke_AdminWrappers_TieredHappyPath(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	ts, err := tiered.New(tiered.Config{

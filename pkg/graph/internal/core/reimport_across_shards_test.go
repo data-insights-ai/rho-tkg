@@ -94,6 +94,9 @@ func rasUpTo(k int) []int64 {
 }
 
 func TestReimportAcrossShardsKeepsEarlierLife(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	scenarios := []struct {
 		name  string

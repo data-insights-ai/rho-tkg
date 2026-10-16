@@ -109,6 +109,9 @@ func TestTieredChangeLogReseedAcrossReopen(t *testing.T) {
 // monotonic refShard watermark — the reopened allocator lands above it without
 // opening that (now cold/warm) shard.
 func TestTieredChangeLogReseedAfterRotation(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	nodeGen := tieredNodeGen(t)
 

@@ -129,6 +129,9 @@ func (e *ccEnt) mint(id int64) types.Instant {
 // own TxFrom. Catches a door that reports 0 (the raw stored value), the mint
 // instant, or the write time of a backfill as the start.
 func TestEffectiveTimeline_DerivedStart(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		for _, backfill := range []bool{false, true} {
@@ -187,6 +190,9 @@ func TestEffectiveTimeline_DerivedStart(t *testing.T) {
 // write that made it current, a dropped gap, a deleted entity's last segment
 // running open, and an entity created after the pin reported.
 func TestEffectiveTimeline_Shapes(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)
@@ -247,6 +253,9 @@ func TestEffectiveTimeline_Shapes(t *testing.T) {
 // is validated. Catches a door that treats pin 0 as "no pin", accepts a
 // future pin, or shortcuts an unknown type before validating.
 func TestEffectiveTimeline_Errors(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)
@@ -502,6 +511,9 @@ func renderScan(m map[string]string) string {
 // created after the pin, reports current rows at an earlier pin, or ignores
 // fn's stop.
 func TestEffectiveTimeline_ScanDeletedEntities(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)
@@ -619,6 +631,9 @@ func TestEffectiveTimeline_ScanDeletedEntities(t *testing.T) {
 // after the pin, filters by the current row's label instead of the row valid
 // at t, or diverges from the per-entity timeline.
 func TestEffectiveTimeline_ScanMatchesGenericDoor(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	x0 := etX0()
 	segments := 0
@@ -811,6 +826,9 @@ func TestEffectiveTimeline_MergeAdjacentSameRow(t *testing.T) {
 // answers exactly what it answered before the writers started (a pinned read
 // is stable), and -race finds no data race. Every backend, node and rel.
 func TestEffectiveTimeline_ConcurrentWriters(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)

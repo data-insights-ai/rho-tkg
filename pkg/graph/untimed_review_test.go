@@ -297,6 +297,9 @@ func uvsCopyDir(t *testing.T, src, dst string) {
 // records; the replica applies and persists them: it reopens under
 // UntimedUnbounded, refuses TxFrom, and answers the converted rows.
 func TestUntimedModeReplicates(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	pdir, rdir := t.TempDir(), t.TempDir()
@@ -440,6 +443,9 @@ func uvsAssertSameHistory(t *testing.T, p, r *graphpkg.Graph, id types.NodeID, r
 // it), a target with rows under the other mode refuses the import with
 // ErrUntimedModeMismatch and holds nothing of it.
 func TestImportCarriesUntimedMode(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	export := func(mode graphpkg.UntimedValidStart) ([]byte, types.NodeID) {

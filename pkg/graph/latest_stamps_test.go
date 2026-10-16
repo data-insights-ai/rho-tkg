@@ -234,6 +234,9 @@ func latestStampsGraph(t *testing.T, st storepkg.Store) *graphpkg.Graph {
 // purge, erasure) that does not invalidate, a build that reads keys only, a
 // value that survives Clear, a re-imported life reported deleted.
 func TestLatestStampsDifferential(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	steps := 160
 	if testing.Short() {
 		steps = 70
@@ -955,6 +958,9 @@ func TestLatestStampsFallbackWithoutCapability(t *testing.T) {
 // through Get + History on every backend: updated, cascaded, deleted and plain
 // entities.
 func TestLatestStampsImport(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	for _, b := range hasHistoryBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			ctx := context.Background()

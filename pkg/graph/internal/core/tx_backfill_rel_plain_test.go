@@ -20,6 +20,9 @@ import (
 //     refusal is for a caller instant only, handover §6.4);
 //   - lets the GraphTx door diverge from the standalone door.
 func TestTxBackfillRel_PlainDoorsUnchanged(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	type door struct {
 		name string

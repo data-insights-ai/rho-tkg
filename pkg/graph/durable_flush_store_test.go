@@ -138,6 +138,9 @@ func TestDurableFlush_Badger_SupportAndRefusals(t *testing.T) {
 // Catches: a tiered DurableFlush that leaves one of the two touched shards
 // (reference shard, hot event shard) unflushed.
 func TestDurableFlush_Tiered_DrainsEveryTouchedShard(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ts, err := tiered.New(tiered.Config{DataDir: t.TempDir(), RefLabels: []string{"Ref"}, FlushInterval: time.Hour})
 	if err != nil {
 		t.Fatalf("tiered.New: %v", err)

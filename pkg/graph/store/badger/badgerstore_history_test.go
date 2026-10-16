@@ -450,6 +450,9 @@ func TestBadgerStoreDeleteNodePreservesHistory(t *testing.T) {
 }
 
 func TestBadgerStoreNodeHistorySurvivesRestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -950,6 +953,9 @@ func TestBadgerStoreDeleteNodeCascadePreservesHistory(t *testing.T) {
 }
 
 func TestBadgerStoreRelHistorySurvivesRestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 

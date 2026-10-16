@@ -12,6 +12,9 @@ import (
 // reached it) is built, so the API's own drop can always remove what a shard
 // carries. A cold shard keeps no relationship temporal index either way.
 func TestTieredColdLazyOpen_SyncsToAnchor(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	cfg := Config{
 		DataDir:           t.TempDir(),
 		RefLabels:         []string{"Case", "User"},

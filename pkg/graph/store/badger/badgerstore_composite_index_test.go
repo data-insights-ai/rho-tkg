@@ -352,6 +352,9 @@ func TestBadgerStoreCreateCompositePropertyIndex_ConcurrentDelete(t *testing.T) 
 // --- Reopen rebuild ---
 
 func TestBadgerStoreCompositePropertyIndex_SurvivesRestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 

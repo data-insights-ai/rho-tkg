@@ -266,6 +266,9 @@ func buildRandomLabelGraph(t *testing.T, g *Core, seed int64, ops int) []types.I
 // the same ByLabel result as the unpruned full-history fold — for the TxPin,
 // TxAt, and ValidAt doors — on both backends.
 func TestK1PrunedVsUnprunedEquivalence(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	for name, mk := range map[string]func() (*Core, error){
 		"memory": func() (*Core, error) { return New(Config{}) },
 		"badger": func() (*Core, error) { return New(Config{BadgerInMemory: true}) },

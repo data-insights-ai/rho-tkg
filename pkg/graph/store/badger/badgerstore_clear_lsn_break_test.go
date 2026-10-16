@@ -15,6 +15,9 @@ import (
 // Pre-fix behavior: the log-off Clear arm called db.DropAll(), wiping LastLSNKey;
 // the reopen reseeded the allocator to 0 and the post-Clear write reused LSN 1.
 func TestChangeLog_LogOffClearPreservesWatermark(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -115,6 +118,9 @@ func TestChangeLog_NeverLoggedClearStillDropAll(t *testing.T) {
 // the first marker, and leave the feed's only/last marker as the new ChangeClear
 // at lsn2.
 func TestChangeLog_DoubleClear_MonotonicSingleMarker(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})

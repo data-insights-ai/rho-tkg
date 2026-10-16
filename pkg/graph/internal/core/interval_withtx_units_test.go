@@ -20,6 +20,9 @@ import (
 // the standalone door (the committed bytes differ from the standalone door's
 // on the same fixture: another instant, another version, another hash).
 func TestIntervalWithTx_TxRollbackEquiv(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range txbBackends() {
@@ -118,6 +121,9 @@ func TestIntervalWithTx_TxRollbackEquiv(t *testing.T) {
 // alone. Every refused unit writes nothing; the counterpart unit (a plain op
 // on another entity plus the correction) applies both, the correction at t.
 func TestIntervalWithTx_BatchIngestWholeUnit(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range txbBackends() {
@@ -246,6 +252,9 @@ func TestIntervalWithTx_BatchIngestWholeUnit(t *testing.T) {
 // whole-unit refusal then fails the siblings, or a later sibling's correction
 // of the same entity meets the refused one in one unit).
 func TestIntervalWithTx_IngestStrongGroupAlone(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, kind := range ivKinds {
@@ -312,6 +321,9 @@ func TestIntervalWithTx_IngestStrongGroupAlone(t *testing.T) {
 // update instants but not the corrections'. (The relationship doors share the
 // node doors' report code: a rel-only report test would be a subset.)
 func TestIntervalWithTx_PrimaryCacheStale(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	for _, be := range pastDatedBackends() {
 		for _, d := range ivDoors() {
@@ -372,6 +384,9 @@ func TestIntervalWithTx_PrimaryCacheStale(t *testing.T) {
 // does not feed their TxFrom to its as-of cache (a warm replica column at
 // P >= t keeps the uncorrected k).
 func TestIntervalWithTx_ReplicaReproducesStamps(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	for _, be := range pastDatedBackends() {
 		for _, d := range ivDoors() {

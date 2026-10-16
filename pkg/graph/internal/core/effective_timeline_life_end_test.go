@@ -329,6 +329,9 @@ func runLifeShapes(t *testing.T, shapes []lifeShape, doors []ccDeleteDoor) {
 // point door at a pin after the close answers nothing at or after 4000 (and
 // exactly the pieces a later cascade asserts), every backend, node and rel.
 func TestAtTxEndsAtClose(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	runLifeShapes(t, lifeCloseShapes(), ccDeleteDoors()[:1])
 }
@@ -337,6 +340,9 @@ func TestAtTxEndsAtClose(t *testing.T) {
 // door at a pin after the delete answers nothing at or after the delete
 // instant D, through every delete door, every backend, node and rel.
 func TestAtTxEndsAtDelete(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	runLifeShapes(t, lifeDeleteShapes(), ccDeleteDoors())
 }

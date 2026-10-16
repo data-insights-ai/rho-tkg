@@ -90,6 +90,9 @@ func txbAcceptedTxFrom(t *testing.T, phase string, rows []types.TemporalMetadata
 }
 
 func TestTxBackfill_RaceClockEveryDoor(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	const writers, rounds = 3, 20
 	for _, be := range txbBackends() {

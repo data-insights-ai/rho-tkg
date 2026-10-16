@@ -109,6 +109,9 @@ func txbUnitFixture(t *testing.T, g *Core) txbUnitFix {
 //
 // Counterpart: the valid mixed unit applies every op with its exact t.
 func TestTxBackfillNode_UnitPreflight(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, m := range txbNodeQueueModes() {

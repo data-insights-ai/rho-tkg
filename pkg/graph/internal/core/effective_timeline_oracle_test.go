@@ -409,6 +409,9 @@ func etX0() types.Instant {
 }
 
 func TestEffectiveTimeline_PointwiseOracle(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	seeds, nOps := 6, 40
 	if !testing.Short() {

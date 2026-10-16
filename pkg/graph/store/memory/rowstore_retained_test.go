@@ -77,6 +77,9 @@ func retainedSize(hop, hosts int) synthhop.Size {
 // maxBytesPerRel on the heap at 1x and 4x, and the per-row cost does not grow
 // with the row count.
 func TestRowStoreRetainedBytesPerRelationship(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	if raceEnabled {
 		t.Skip("heap accounting under the race detector measures its shadow memory")
 	}

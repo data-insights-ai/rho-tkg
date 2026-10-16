@@ -39,6 +39,9 @@ func inRange(v, lo, hi float64, inclLo, inclHi bool) bool {
 // (prefix sums, round 4 R2; tiered refuses the option with
 // ErrCapabilityNotSupported and creates nothing, so it declines as before).
 func TestRangeCardinalityMatchesIteration(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	for _, mode := range []struct {
 		name string
 		opts graphpkg.PropertyIndexOptions

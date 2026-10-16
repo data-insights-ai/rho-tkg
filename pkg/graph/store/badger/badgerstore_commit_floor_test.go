@@ -20,6 +20,9 @@ func cfNodeRow(id int64, ver uint32, tf, tt, da types.Instant) *types.Node {
 }
 
 func TestStoredCommitFloor(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	put := func(t *testing.T, bs *Store, id int64, tf types.Instant) {
 		t.Helper()
 		if err := bs.PutNode(cfNodeRow(id, 1, tf, 0, 0)); err != nil {

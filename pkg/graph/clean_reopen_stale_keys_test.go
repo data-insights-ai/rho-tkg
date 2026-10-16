@@ -20,6 +20,9 @@ import (
 // (Fable review of v4.51.3, probe B). Labels, types, outgoing and incoming
 // adjacency; a read-only rebuild repairs nothing and writes no image.
 func TestCleanReopenAfterStaleIndexKeys(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	type fixture struct {
 		n1, n2, rel            int64 // raw IDs: n1 (label A) -[T]-> n2 (label B)

@@ -28,6 +28,9 @@ import (
 //
 //	go test ./pkg/graph/store/badger/ -run TestHistorySidecarRAMPerID -v
 func TestHistorySidecarRAMPerID(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, n := range []int{10_000, 100_000, 1_000_000} {
 		t.Run(fmt.Sprintf("ids=%d", n), func(t *testing.T) {
 			if n > 100_000 && testing.Short() {

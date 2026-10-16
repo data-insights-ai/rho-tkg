@@ -148,6 +148,9 @@ func TestBadgerStoreNodePropertyStatsDeleteExtremumTriggersRescan(t *testing.T) 
 // regression: NDV/min/max/count must be reconstructed from the persisted
 // node rows at open, exactly like the sibling presence counter.
 func TestBadgerStoreNodePropertyStatsRebuildsOnOpen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 

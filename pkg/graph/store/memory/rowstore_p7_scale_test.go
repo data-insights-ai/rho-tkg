@@ -241,6 +241,9 @@ func TestRowStoreP7Scale(t *testing.T) {
 // TestRowStoreP7ScaleSmoke keeps the harness compiling and working in the
 // ordinary suite on a tiny workload, with sanity bounds only.
 func TestRowStoreP7ScaleSmoke(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	sz := synthhop.Size{Name: "smoke", HOP: 2000, Pairs: 600, VATTR: 700, CATTR: 5, Hosts: 100, Actors: 20}
 	for _, rn := range []string{"hop-p6", "mix-legacy"} {
 		r := runP7(t, sz, p7Runs[rn], "")

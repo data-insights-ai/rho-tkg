@@ -20,6 +20,9 @@ import (
 // Faulty implementations caught: a purge of open shards only, a missing
 // leg-residue sweep (an orphan in-leg on the ref shard), a cold shard left open.
 func TestTieredRelPurge_ColdStartRefEnd(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts := newDiskTestTieredStore(t)
 	caseTok, _, signalTok := installDefaultTestLabelRegistry(t, ts)
 	const evType, keepType = uint16(5), uint16(6)

@@ -131,6 +131,9 @@ func checkElementsFixture(t *testing.T, g *graphpkg.Graph, label string, f eleme
 // Pins duplicates once, empty/nil nothing, scalar as one-element list, mixed
 // lists (exact type, no nesting), rel parity, refused combinations, reopen, on-disk.
 func TestPropertyIndexElementsContains(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		label := "Derived"

@@ -132,6 +132,9 @@ func hasHistorySeeds() []int64 {
 // DELETE of different versions of one entity (the burst after every reopen and
 // Clear), a store answer the core fallback would hide.
 func TestHasHistoryDifferential(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	steps := 160
 	if testing.Short() {
 		steps = 60
@@ -444,6 +447,9 @@ func runHasHistoryDifferential(t *testing.T, b hasHistoryBackend, seed int64, st
 // row is a bounded-cascade piece above its current slot does not import
 // (pre-existing, reported with the HasHistory review fixes).
 func TestHasHistoryImport(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	for _, b := range hasHistoryBackends() {
 		t.Run(b.name, func(t *testing.T) {
 			ctx := context.Background()

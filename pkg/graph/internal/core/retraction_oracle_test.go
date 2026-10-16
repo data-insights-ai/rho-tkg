@@ -47,6 +47,9 @@ import (
 // dropped (it still supersedes or bounds another life), a marker leaking into
 // a pre-T answer, a door that disagrees with the definition anywhere.
 func TestRetractionOracle_NeverRecordedWorld(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	seeds, nOps := 3, 36
 	if !testing.Short() {

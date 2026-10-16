@@ -528,6 +528,9 @@ func TestTieredPutNodesBatch_ConcurrentOverlappingBatches(t *testing.T) {
 // batch must win the shared id; both batches' node endpoints already exist
 // (created up front), so only the relationship layer is under test.
 func TestTieredPutRelationshipsBatch_ConcurrentOverlappingBatches(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	const iterations = 20
 	const perBatch = 10
 

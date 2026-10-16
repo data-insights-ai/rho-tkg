@@ -35,6 +35,9 @@ import (
 // from the wrong row, a cached answer served below the chain's newest TxFrom.
 
 func TestEffectiveHead_DifferentialOracle(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	seeds, steps := 3, 60
 	if !testing.Short() {

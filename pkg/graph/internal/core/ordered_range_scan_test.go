@@ -270,6 +270,9 @@ func TestOrderedRangeScan_LimitPushdown(t *testing.T) {
 // badger-disk(0x0A) return byte-identical ordered streams over the same
 // randomized data — asc and desc.
 func TestOrderedRangeScan_ThreeWayEquivalence(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	const label, key = "Eq", "v"
 	ctx := context.Background()

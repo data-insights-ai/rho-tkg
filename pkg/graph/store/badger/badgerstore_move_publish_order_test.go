@@ -284,6 +284,9 @@ func mpoSetup(t *testing.T, bs *Store, flush, rel bool) func() mpoView {
 // removes the node or a relationship before their tombstones are published;
 // per badger flavour.
 func TestWithHistoryDoorsPublishHistoryBeforeCurrent(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, fl := range mpoFlavours {
 		for _, d := range mpoDoors() {
 			t.Run(fl.name+"/"+d.name, func(t *testing.T) {
@@ -323,6 +326,9 @@ func TestWithHistoryDoorsPublishHistoryBeforeCurrent(t *testing.T) {
 // reading the current row (history before the move + current after it = v0 in
 // neither read: ErrVersionNotFound).
 func TestNativeAsOfReadsCurrentBeforeHistory(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, fl := range mpoFlavours {
 		for _, d := range mpoDoors() {
 			t.Run(fl.name+"/"+d.name, func(t *testing.T) {

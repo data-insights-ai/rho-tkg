@@ -34,6 +34,9 @@ func tuningCfg(dir string) Config {
 // this proves the knobs reach every shard kind AND that the pre-probe migration
 // added to the recovery path is a no-op on a cleanly closed dir.
 func TestTieredFootprintTuningRoundTrips(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	cfg := tuningCfg(dir)
 

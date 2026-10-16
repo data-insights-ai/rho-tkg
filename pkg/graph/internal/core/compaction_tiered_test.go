@@ -57,6 +57,9 @@ func buildLabeledNodeChain(t *testing.T, g *Core, label string, updates int) (ty
 // two-phase reads above the watermark, and ErrHistoryCompacted at both the point
 // and scan doors below it — all against a reference-shard entity.
 func TestCompaction_Tiered_NodeEndToEnd(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	g, _ := newDiskTieredGraph(t)
 	ctx := context.Background()
@@ -119,6 +122,9 @@ func TestCompaction_Tiered_NodeEndToEnd(t *testing.T) {
 // The "LINK" rel and its "N" endpoints are event-class, so this exercises the
 // event-shard trim path with the stub routed to the reference shard.
 func TestCompaction_Tiered_RelEndToEnd(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	g, _ := newDiskTieredGraph(t)
 	ctx := context.Background()
@@ -162,6 +168,9 @@ func TestCompaction_Tiered_RelEndToEnd(t *testing.T) {
 // every per-entity stub is readable (it landed on the reference shard, not the
 // event node's owning shard) so both below-boundary point reads fail closed.
 func TestCompaction_Tiered_CrossShard(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	ctx := context.Background()
@@ -240,6 +249,9 @@ func TestCompaction_Tiered_CrossShard(t *testing.T) {
 // boundary. The scan-door assertion is therefore the regression guard that the
 // watermark lands globally on the reference shard.
 func TestCompaction_Tiered_WatermarkOnRefShardRegression(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	g, _ := newDiskTieredGraph(t)
 	ctx := context.Background()
@@ -316,6 +328,9 @@ func TestCompaction_Tiered_ColdShardEntity(t *testing.T) {
 // TestCompaction_Tiered_ProtectedTagRefusal: a registered as-of tag pinning
 // knowledge the policy would trim refuses the whole run (no writes), on tiered.
 func TestCompaction_Tiered_ProtectedTagRefusal(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	g, _ := newDiskTieredGraph(t)
 	ctx := context.Background()
@@ -350,6 +365,9 @@ func TestCompaction_Tiered_ProtectedTagRefusal(t *testing.T) {
 // shard (store-level MetaKV), so tampering it through the store-level MetaKV
 // makes Verify*Chain fail closed — identical to the badger path.
 func TestCompaction_Tiered_TamperedStubFailsVerify(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	g, _ := newDiskTieredGraph(t)
 	ctx := context.Background()

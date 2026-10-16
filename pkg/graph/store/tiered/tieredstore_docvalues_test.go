@@ -557,6 +557,9 @@ func TestTieredDocValues_ClosedStoreErrors(t *testing.T) {
 // starts at 0 and the closed shard contributes nothing. Disk store, two
 // cycles of open-write-close, each read must differ from every earlier read.
 func TestTieredMutationEpochsSurviveColdShardClose(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

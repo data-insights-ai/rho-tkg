@@ -170,6 +170,9 @@ func TestTieredStore_ListShards_WithCold(t *testing.T) {
 }
 
 func TestTieredStore_ListShards_ClosedColdUsesCatalogStats(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
