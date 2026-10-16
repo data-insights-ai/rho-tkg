@@ -199,7 +199,7 @@ Test proportionality: graphapply 120 k test LOC for 40.7 k src (709 `Test` funcs
 | Gate | Content | Checks |
 |---|---|---|
 | **v4.57.1** (patch) | release commit `dd5c684c`: batch excise pre-flight fix (row 52), WP-02 numeric rule, WP-14 fast tier (WP-21 moves to v4.57.2) | `make ci-docker` exit 0; GitHub CI green; consumer build + vet (sigma-tkgd, ai-soc, agent-bookkeeping); tag + push; notify sigma-tkgd + ai-soc | tag `v4.57.1` → `dd5c684c`, pushed; GitHub CI run 38888559109 success; consumers build + vet (ai-soc with Go 1.27.2); sigma-tkgd-c3 + ai-soc-main-e7 notified 2026-10-16 | released |
-| **v4.58.0** (minor) | the next consumer round (sigma round 10 / ai-soc) if it brings a really new door (`stability.md:22`); nothing scheduled | as above + deprecation ritual for any default change |
+| **v4.58.0** (minor) | released: tag `v4.58.0` → `42db6281` (release commit `bc824ad8` + WP-31b stale long-tier tests); gate rerun green (first run red on two tests pinning the old tiered decline, lesson 87); GitHub CI run 38900244590 success; consumers build + vet (Go 1.27.2); sigma-tkgd-c3 + ai-soc-main-e7 notified 2026-10-16 | — | — | released |
 | **v5.0.0-alpha.1** (S2 exit, decision 4) | WP-03..WP-09, WP-15, WP-20, WP-26 merged; conformance `native` profile green on one partition | `cd v5 && GOFLAGS=-timeout=30m make ci` (fmt, vet, lint, build, `test-race`, security, vulncheck, cover-gate) on the v5.0 set + `make check-dist`; conformance both profiles with `run-mutants.sh` survivors 0; segment fuzzers 10 min + B/HOP bench; F2/F4 selectors in their pinned env (F4 green since WP-06) (`GOMAXPROCS=2`); `go test -short` per package < 30 s; René's OK |
 | **v5.0.0-beta.1** (S3) | WP-10a/b, WP-11, WP-16, WP-17, WP-18, WP-22, WP-24, WP-25 | alpha checks + importer fixtures and real-store parity + consumer build through `v5compat` with copied modfiles + performance gate v5 ≤ 1.5× v4 p95 on each consumer's benchmark + shadow-window plan per consumer (14 days) |
 | **v5.0.0** | both consumers' V6.7 commits | beta checks + consumer migrations merged |
@@ -241,7 +241,7 @@ Test proportionality: graphapply 120 k test LOC for 40.7 k src (709 `Test` funcs
 | v4.56.1 | 5d8b5917 | one-pass property sidecar build in the open image (74, ai-soc), effective pages pruned by the temporal envelope (75, ai-soc), envelope fold on re-create/re-type |
 | v4.57.0 | 1d749a86 | sigma-tkgd round 9 doors (any-version ranges at a pin, count timelines, property value statistics, typed column chunks; row 56), `Config.UntimedValidStart` default for NEW stores `UntimedUnbounded` (73, row 57) |
 | v4.57.1 | dd5c684c | batch WithTx excise refuses the whole unit (row 52), one numeric equality rule across every equality door (row 54, WP-02), fast test tier (WP-14) |
-| v4.58.0 | bc824ad8 | tiered property indexes per shard with a truthful capability report (row 59, WP-31), one chain builder (WP-21), Elements backfill fix with open image format 3 |
+| v4.58.0 | 42db6281 (release commit bc824ad8) | tiered property indexes per shard with a truthful capability report (row 59, WP-31), one chain builder (WP-21), Elements backfill fix with open image format 3 |
 
 ## Open decisions for René (my default in bold)
 
