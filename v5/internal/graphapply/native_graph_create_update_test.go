@@ -4,12 +4,134 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
+
+func TestNativeScalarQueryPagePreservesSharedSourceAllowance(t *testing.T) {
+	n := collectedGraphNetworkWithAgreement(t, nil, durableColumnGraphSemanticContractID())
+	ops, claims := crossEdgeFixture(t, n)
+	c := remoteCertifiedFixture(t, n)
+	committed, err := c.Run(t.Context(), n.requestID(), ops, 37, claims)
+	if err != nil || !committed.decision.commit {
+		t.Fatal("genuine relationship before retained query", err)
+	}
+	publisher, err := newRetainedPinPublisher(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin, err := publisher.Begin(t.Context(), n.requestID(), graphReadRequest{mode: graphReadFresh}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := pin.Publish(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 30*time.Second)
+		defer cancel()
+		if err := pin.Release(cleanup); err != nil {
+			t.Error(err)
+		}
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	spec := nativeSelectorsSpec{1, nativeCreateUpdateFamily, 20, 100, 1, "kv"}
+	deadline, _ := ctx.Deadline()
+	policy, err := nativeCreateUpdateReadPolicy(spec, nativeSelectorsAdmission{Family: nativeCreateUpdateFamily, Spec: spec, BudgetSeconds: 180, DeadlineUnixNanos: deadline.UnixNano()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &nativeSelectorsSessions{ctx: ctx, coordinator: c, policy: policy}
+	owner := &nativeSelectorsQuery{token: token, predicate: graphstate.IncidentPredicate{Endpoint: 1, Window: ops[0].Scope}}
+	first, _, err := s.page(ctx, owner, nil, true)
+	if err != nil || !first.EOF || !slices.Equal(first.Candidates, []uint64{3}) || len(first.Points) != 1 || !first.Points[0].Effective {
+		t.Fatal("complete genuine retained candidate page", first, err)
+	}
+	ids := make([]uint64, 16)
+	for i := range ids {
+		ids[i] = 3
+	}
+	beforeStarts, beforeCharged := s.starts, s.charged
+	points, _, err := s.page(ctx, owner, ids, false)
+	if err != nil || len(points.Points) != len(ids) {
+		t.Fatal("bounded same-cut hydration refused within original allowance", len(points.Points), err)
+	}
+	grant, err := nativeColumnRetentionWork(c.host.machine.limits).scaled(uint64(len(ids)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCharged, err := beforeCharged.plus(grant)
+	if err != nil || s.starts != beforeStarts+uint64(len(ids)) || s.charged != wantCharged {
+		t.Fatal("hydration reset or failed to prepay the original query allowance", s.starts, s.charged, err)
+	}
+	for _, point := range points.Points {
+		if point.ID != 3 || !point.Found || !point.Effective || point.EffectiveLife != 4 || point.Source != 1 || point.Target != 17 {
+			t.Fatal("hydration changed genuine same-cut relationship", point)
+		}
+	}
+	closed, err := c.Run(ctx, n.requestID(), []graphstate.Operation{{Kind: graphstate.Close, Owner: 3, Life: 4, Scope: ops[0].Scope}}, 41, nil)
+	if err != nil || !closed.decision.commit {
+		t.Fatal("genuine cross-partition relationship closure", err)
+	}
+	old, _, err := s.page(ctx, owner, []uint64{3}, false)
+	if err != nil || len(old.Points) != 1 || !old.Points[0].Effective || old.Points[0].EffectiveLife != 4 {
+		t.Fatal("old query substituted the closed current relationship", old, err)
+	}
+	current, err := c.OpenCertified(ctx, graphReadRequest{mode: graphReadFresh}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer current.Close()
+	view, err := current.ReadView()
+	if err != nil {
+		t.Fatal(err)
+	}
+	point, err := nativeSelectorsEntity(ctx, view, c.host, 3)
+	if err != nil || !point.Found || point.Effective {
+		t.Fatal("current source failed to observe genuine relationship closure", point, err)
+	}
+	s.policy.Starts = s.starts
+	beforeStarts, beforeCharged, beforeWork := s.starts, s.charged, owner.work
+	if _, _, err := s.page(ctx, owner, []uint64{3}, false); !errors.Is(err, errLimit) || s.starts != beforeStarts || s.charged != beforeCharged || owner.work != beforeWork {
+		t.Fatal("exhausted original allowance renewed a source or discarded prior work", err)
+	}
+}
+
+func TestNativeScalarQueryAdmissionPrepaysHydrationAndSeparateExports(t *testing.T) {
+	for _, facts := range []uint64{20, 1_000_000} {
+		for _, passes := range []uint64{5, 9, nativeSelectorsQueries} {
+			const seconds = uint64(180)
+			const frames = uint64(3200)
+			p, err := nativeScalarReadAllowance(facts, seconds, 1, frames, passes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Every pass may hydrate N candidates, walk ceil(N/16) pages,
+			// open/reopen once and issue the six named point probes. Each of
+			// the 64 failed full pages can
+			// have consumed its walker and every one of 16 hydrations.
+			query := passes * (facts + (facts+15)/16 + 1 + 6)
+			exports := 4 * ((frames + 3) / 4)
+			failed := uint64(64 * 17)
+			if p.Starts < query+exports+failed || p.Calls != 8*p.Starts {
+				t.Fatal("complete queries borrowed the separate raw-export/retry grants", p.Starts, query, exports, failed)
+			}
+		}
+	}
+	if _, err := nativeScalarReadAllowance(20, 180, 1, 0, 5); !errors.Is(err, errInvalid) {
+		t.Fatal("zero raw-export admission", err)
+	}
+	if _, err := nativeScalarReadAllowance(20, 180, 1, ^uint64(0), 5); !errors.Is(err, errLimit) {
+		t.Fatal("overflowing source grant", err)
+	}
+}
 
 // Authored guards only; the actual six-process workload is qualified later.
 func TestNativeGraphCreateUpdateFreshProfileAndLocalChoice(t *testing.T) {

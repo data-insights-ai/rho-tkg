@@ -60,6 +60,16 @@ def frames(s):
     return (16*shape(s)["facts"]+3)*10+64*10+4096
 
 
+def source_starts(facts,seconds,frame_ceiling,passes):
+    integer(facts,20,1_000_000);integer(seconds,1,MAX_SECONDS)
+    integer(frame_ceiling,1,(1<<64)-1);integer(passes,1,16)
+    # Full typed hydration is separately captured at the SAME pin. Raw export
+    # and the64 whole-cell failed attempts retain their independent grants.
+    bound=passes*(facts+(facts+15)//16+seconds//60+16)+4*((frame_ceiling+3)//4)+64*17
+    require(bound<=((1<<64)-1)//(4<<30),"finite whole-query source prepayment")
+    return bound
+
+
 def grants(directory,end,spool):
     return scalar._scalar_grants(directory,end,spool,AGREEMENT,cut)
 
@@ -162,7 +172,7 @@ def reads(directory,end,spool,*,family=FAMILY,guarded_updates=False,frame_ceilin
     completed=set();published={};timings=[];observations={};query_count=0
     ceiling=(frames(s) if family==FAMILY else (16*s["facts"]+3)*10+64*10+4096) if frame_ceiling is None else integer(frame_ceiling,1,(1<<39)//260)
     passes=9 if family=="late-correction-old-index" else queries
-    bound=passes*((s["facts"]+15)//16+end["Admission"]["BudgetSeconds"]//60+16)+4*((ceiling+3)//4)+64
+    bound=source_starts(s["facts"],end["Admission"]["BudgetSeconds"],ceiling,passes)
     for trace in lines(directory/"reads.jsonl",bound*8+256):
         if trace.get("Type")=="observation-timing":
             fields(trace,"Type Stage OpenNanos ScanNanos PointsNanos ScopeRefusalNanos Rows")

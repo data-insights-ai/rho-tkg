@@ -469,45 +469,58 @@ func nativeSelectorsEntity(ctx context.Context, view graphstate.ReadView, h *all
 	return out, err
 }
 
-// A page attempt opens an independently bounded source only after retiring a
-// whole grant from the SAME query owner. The actual durable pin reauthenticates
-// C through original keepers. Export/Import carries only a genuine native
-// cursor; neither an ID from the caller nor elapsed time advances it.
+// Candidate walking and each complete typed hydration consume separate source
+// grants from the SAME query owner. Sixteen rows are an output bound, not a
+// promise that sixteen projections fit one ordinary1024-RPC invocation. Every
+// capture reauthenticates the SAME durable pin/cut; no failed grant is refunded.
+// Export/Import carries only a genuine native cursor.
 func (s *nativeSelectorsSessions) page(ctx context.Context, owner *nativeSelectorsQuery, ids []uint64, scan bool) (out nativeSelectorsReply, next graphstore.PartitionIncidentContinuation, err error) {
 	return s.pagePredicate(ctx, owner, ids, scan, owner.predicate, owner.continuation, owner.hasCursor, owner.eof)
 }
 
 func (s *nativeSelectorsSessions) pagePredicate(ctx context.Context, owner *nativeSelectorsQuery, ids []uint64, scan bool, predicate graphstate.IncidentPredicate, continuation graphstore.PartitionIncidentContinuation, hasCursor, eof bool) (out nativeSelectorsReply, next graphstore.PartitionIncidentContinuation, err error) {
 	var read *certifiedGraphRead
-	if len(owner.token.manifest) == 0 {
-		if scan || owner.initial == nil {
-			return out, next, errInvalid
+	published := len(owner.token.manifest) != 0
+	open := func() error {
+		if !published {
+			if scan || owner.initial == nil {
+				return errInvalid
+			}
+			read = owner.initial // scoped probes retain their original source
+			return nil
 		}
-		read = owner.initial // bounded scoped probes keep their genuine source
-	} else {
-		if err = s.fund(ctx); err != nil {
-			return out, next, err
+		if err := s.fund(ctx); err != nil {
+			return err
 		}
-		publisher, e := newRetainedPinPublisher(s.coordinator)
-		if e != nil {
-			return out, next, e
+		publisher, err := newRetainedPinPublisher(s.coordinator)
+		if err != nil {
+			return err
 		}
 		read, err = publisher.Open(ctx, owner.token)
-		if err != nil {
-			return out, next, err
+		return err
+	}
+	closeRead := func() error {
+		if !published || read == nil {
+			return nil
 		}
-		defer func() {
-			err = errors.Join(err, read.Close())
-			owner.work = nativeSelectorsAddWork(owner.work, read.Work())
-		}()
+		current := read
+		read = nil
+		err := current.Close()
+		owner.work = nativeSelectorsAddWork(owner.work, current.Work())
+		return err
 	}
-	view, err := read.ReadView()
-	if err != nil {
-		return out, next, err
-	}
+	defer func() { err = errors.Join(err, closeRead()) }()
+	var view graphstate.ReadView
 	if scan {
 		if eof {
 			return out, next, errInvalid
+		}
+		if err = open(); err != nil {
+			return out, next, err
+		}
+		view, err = read.ReadView()
+		if err != nil {
+			return out, next, err
 		}
 		// Authentic endpoint absence yields exact-empty; it is not a skipped
 		// range or an assumed empty dataset inferred from family dimensions.
@@ -546,12 +559,27 @@ func (s *nativeSelectorsSessions) pagePredicate(ctx context.Context, owner *nati
 				return out, next, err
 			}
 		}
+		// The capsule already authenticates the immutable source identity. Close
+		// the walker before hydrating, so no page-sized set of sources is held.
+		if err = closeRead(); err != nil {
+			return out, next, err
+		}
 	}
 	out.Points = make([]nativeLifecycleEntity, 0, len(ids))
 	for _, id := range ids {
+		if err = open(); err != nil {
+			return out, next, err
+		}
+		view, err = read.ReadView()
+		if err != nil {
+			return out, next, err
+		}
 		point, e := nativeSelectorsEntity(ctx, view, s.coordinator.host, id)
 		if e != nil {
 			return out, next, e
+		}
+		if err = closeRead(); err != nil {
+			return out, next, err
 		}
 		out.Points = append(out.Points, point)
 	}

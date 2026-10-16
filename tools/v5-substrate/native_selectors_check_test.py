@@ -17,6 +17,17 @@ class NativeSelectorsGuards(unittest.TestCase):
     def setUp(self):
         self.spec={"version":1,"family":"snapshot-selectors","facts":40,"crossPercent":50,"writers":32,"layout":"columns"}
 
+    def test_source_admission_funds_hydration_without_borrowing_export_or_failed_attempts(self):
+        for n in (20,1_000_000):
+            for passes in (5,9,16):
+                frames=3200
+                bound=check.source_starts(n,180,frames,passes)
+                # Independently count successful typed answers/walkers/fixed
+                # point calls, the complete export and64 worst failed pages.
+                self.assertGreaterEqual(bound,passes*(n+(n+15)//16+6+1)+frames+64*17)
+        for args in ((20,180,0,5),(20,180,(1<<64)-1,5),(True,180,3200,5),(20,180,3200,17)):
+            with self.assertRaises(ValueError):check.source_starts(*args)
+
     def test_grant_factoring_keeps_exact_selector_semantic_and_cut(self):
         end={"spec":self.spec}
         with patch.object(check.scalar,"_scalar_grants",return_value="grants") as helper:

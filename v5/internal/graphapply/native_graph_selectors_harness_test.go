@@ -221,15 +221,26 @@ func nativeSelectorsReadAllowance(s nativeSelectorsSpec, a nativeSelectorsAdmiss
 	return nativeScalarReadAllowance(s.Facts, a.BudgetSeconds, a.DeadlineUnixNanos, frames, nativeSelectorsQueries)
 }
 func nativeScalarReadAllowance(facts, seconds uint64, deadline int64, frames, queries uint64) (nativeSelectorsReadPolicy, error) {
-	if facts < 20 || facts > 1_000_000 || seconds == 0 || seconds > 365*24*60*60 || deadline <= 0 || queries == 0 || queries > nativeSelectorsQueries {
+	if facts < 20 || facts > 1_000_000 || seconds == 0 || seconds > 365*24*60*60 || deadline <= 0 || frames == 0 || queries == 0 || queries > nativeSelectorsQueries {
 		return nativeSelectorsReadPolicy{}, errInvalid
 	}
 	l := defaultMaterializerLimits()
-	// Two complete physical cohorts also export all native records in pages of
-	// four, independently of the semantic query scans. These are not discarded
-	// from resource admission merely because they are diagnostic rather than
-	// business latency. Actual payload/work is reported separately from grants.
-	starts := queries*((facts+15)/16+seconds/60+16) + 4*((frames+3)/4) + 64
+	// Each full pass owns ceil(N/16) candidate walkers AND N separately funded
+	// typed hydrations. Six fixed points plus prepare/reopen fit the fixed16;
+	// correction's caller supplies nine passes (five scans + two out/in scans).
+	// The two complete physical cohorts separately export native records in
+	// four-record pages from each partition. Never borrow that reserve for reads.
+	// Every one of the cell's 64 failed SAME attempts can have spent a walker
+	// plus all16 hydration captures; a retry never refunds those grants.
+	starts := queries*(facts+(facts+15)/16+seconds/60+16) + 64*17
+	exports := frames / 4
+	if frames%4 != 0 {
+		exports++
+	}
+	if exports > (^uint64(0)-starts)/4 {
+		return nativeSelectorsReadPolicy{}, errLimit
+	}
+	starts += 4 * exports
 	unit := nativeColumnRetentionWork(l)
 	grant, err := unit.scaled(starts)
 	if err != nil {

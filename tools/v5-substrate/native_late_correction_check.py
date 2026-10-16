@@ -33,7 +33,7 @@ def index_page(trace,end,spool,owner,observation):
     for name in WORK:require(integer(r["Work"][name])>=state["work"][name],"same native owner cumulative index work cannot reset")
     fields(r["Charged"]," ".join(column.WORK))
     starts=integer(r["Starts"],1)
-    bound=9*((s["facts"]+15)//16+end["Admission"]["BudgetSeconds"]//60+16)+4*((frames(s)+3)//4)+64
+    bound=source.source_starts(s["facts"],end["Admission"]["BudgetSeconds"],frames(s),9)
     require(starts<=bound and integer(r["Calls"],1,bound*8) and r["Charged"]==dict(zip(column.WORK,(starts*16384,starts*(16<<20),0,starts*(32<<20),starts*1024,starts*(4<<30)))),"fresh11-only finite nine-pass source grants; actual work separate")
     for identity,entity in zip(r["Candidates"] or [],r["Points"] or [],strict=True):
         identity=integer(identity,7,7+2*(s["facts"]-1));fact=(identity-7)//2
