@@ -365,6 +365,9 @@ func nativeColumnProcessAction(t *testing.T, n *certifiedProcessNetwork, actor, 
 
 func restartNativeColumnProcesses(t *testing.T, n *certifiedProcessNetwork, spec nativeGraphCostSpec, stream *json.Encoder) {
 	t.Helper()
+	// Quiesce first, as nativeGraphCostReopen does: a commit still in flight to a
+	// follower would otherwise apply between this capture and the reap.
+	nativeGraphCostDrain(t, n)
 	var before [6]processResponse
 	for id := uint64(1); id <= 6; id++ {
 		before[id-1] = n.all[id].call(t, processRequest{op: processStateOp})
