@@ -43,7 +43,7 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
 - Consumer build check with a copied modfile (appendix B) for sigma-tkgd, ai-soc, agent-bookkeeping (agent-bookkeeping is
   build-checked only; it has no agent session to notify).
 - After CI is green notify `sigma-tkgd-c3` and `ai-soc-main-e7` with the migration points (socket addresses change per
-  session; `ListAgents` finds live ones; sigma-tkgd-c3 was stopped once, a new session announces a new name). If neither
+  session; `ListAgents` (main session only, not in subagents) finds live ones; sigma-tkgd-c3 was stopped once, a new session announces a new name). If neither
   resolves, put the release note in this file's section 1 and tell René in one line; the consumers read it at their start.
 - Run `scripts/check-ledger.sh` after every merge and before every release commit; a failure blocks it (80).
 - Agents keep scratch files in their own scratchpad subfolder and never run another agent's scripts; worktrees are removed after merge.

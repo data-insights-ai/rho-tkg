@@ -583,7 +583,7 @@ run `make lint-docker` and `make security-docker` before reporting. (4) One revi
 second only for a blocker; doc/comment-only changes get the docs tests and a diff read. (5) Briefs name 5-8 files. (6) A backlog item
 needs a consumer request or a failing test. (7) Never stop a running agent unless asked. (8) Models: builds Opus, code reviews Opus
 effort high, final Fable review of the batch before tagging, doc work Sonnet (Opus after a second Sonnet fix round).
-Detector: a second review round, a lint finding after a merge, a minor tag, a brief with over ten file names.
+Detector: a second review round, a lint finding after a merge, a minor tag for a release without a new feature, a brief with over ten file names.
 
 ## 80. Tick The User-Request Ledger At Every Release, Not Only The Work Queue
 

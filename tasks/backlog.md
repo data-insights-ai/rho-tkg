@@ -14,7 +14,7 @@ concurrency edge / perf cliff / contract inconsistency. LOW = smell / doc drift.
 TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
-**Open work (verified against code, CHANGELOG and git at v4.55.3 (2026-10-15); items 72-75 closed since, v4.56.1):** no reproduced CRITICAL item. This table is the ONE open-work list; `tasks/todo.md` points here. Items consumers asked for are built when they ask; the rest is parked. Closed items are one line in the Closed table below.
+**Open work (verified at v4.55.3 (2026-10-15) and current at v4.56.1 (items 72-75 closed since)):** no reproduced CRITICAL item. This table is the ONE open-work list; `tasks/todo.md` points here. Items consumers asked for are built when they ask; the rest is parked. Closed items are one line in the Closed table below.
 
 | # | Type / severity | Item | Status |
 |---|---|---|---|
