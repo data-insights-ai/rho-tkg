@@ -87,22 +87,9 @@ func (n *NodeOps) ForEachDocValuesMulti(labels []string, propKeys []string,
 	if len(labels) == 0 {
 		return 0, false, nil
 	}
-	toks := make([]uint16, 0, len(labels))
-	if err := c.readUnderRLock(func() error {
-		for _, label := range labels {
-			tok, found := c.lookupLabelLocked(label)
-			if !found {
-				toks = nil // an unknown label → empty intersection → fall back
-				return nil
-			}
-			toks = append(toks, tok)
-		}
-		return nil
-	}); err != nil {
-		return 0, false, err
-	}
-	if len(toks) != len(labels) {
-		return 0, false, nil // an unknown label — caller falls back (finds zero rows)
+	toks, known, err := c.labelTokens(labels)
+	if err != nil || !known {
+		return 0, false, err // an unknown label — caller falls back (finds zero rows)
 	}
 	return scanner.ForEachDocValuesMulti(toks, propKeys, fn)
 }
@@ -162,21 +149,9 @@ func (n *NodeOps) ForEachDocValuesMultiOrdinal(labels []string, propKeys []strin
 	if !native || len(labels) == 0 {
 		return 0, false, nil
 	}
-	toks := make([]uint16, 0, len(labels))
-	if err := c.readUnderRLock(func() error {
-		for _, label := range labels {
-			tok, found := c.lookupLabelLocked(label)
-			if !found {
-				return nil
-			}
-			toks = append(toks, tok)
-		}
-		return nil
-	}); err != nil {
-		return 0, false, err
-	}
-	if len(toks) != len(labels) {
-		return 0, false, nil // an unknown label — caller falls back (finds zero rows)
+	toks, known, err := c.labelTokens(labels)
+	if err != nil || !known {
+		return 0, false, err // an unknown label — caller falls back (finds zero rows)
 	}
 	return scanner.ForEachDocValuesMultiOrdinal(toks, propKeys, fn)
 }
@@ -428,4 +403,99 @@ func (r *RelOps) RelMutationEpoch() uint64 {
 		return 0
 	}
 	return scanner.RelMutationEpoch()
+}
+
+// nodeDocValuesMultiSnapshotter / nodeDocValuesOrdinalSnapshotter are the
+// OPTIONAL store capabilities behind DocValuesSnapshotMulti and the ordinal
+// snapshot doors (round 10): memory, badger, sharded; tiered the first only
+// (it numbers no node).
+type nodeDocValuesMultiSnapshotter interface {
+	DocValuesSnapshotMulti(labelTokens []uint16, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error)
+}
+
+type nodeDocValuesOrdinalSnapshotter interface {
+	DocValuesSnapshotOrdinal(labelToken uint16, propKeys []string) (snap types.NodeColumnChunkReader, gen uint64, ok bool, err error)
+	DocValuesSnapshotMultiOrdinal(labelTokens []uint16, propKeys []string) (snap types.NodeColumnChunkReader, gen uint64, ok bool, err error)
+}
+
+// labelTokens resolves labels to tokens; known=false when one is unknown
+// (an empty intersection the caller declines to the general path, as
+// ForEachDocValuesMulti does).
+func (c *Core) labelTokens(labels []string) (toks []uint16, known bool, err error) {
+	toks = make([]uint16, 0, len(labels))
+	err = c.readUnderRLock(func() error {
+		for _, label := range labels {
+			tok, found := c.lookupLabelLocked(label)
+			if !found {
+				return nil
+			}
+			toks = append(toks, tok)
+		}
+		return nil
+	})
+	return toks, err == nil && len(toks) == len(labels), err
+}
+
+// DocValuesSnapshotMulti is DocValuesSnapshot over a LABEL INTERSECTION
+// (sigma-tkgd round 10 request 5a): the members and values
+// ForEachDocValuesMulti streams, as a by-position snapshot whose chunks
+// (types.NodeColumnChunkReader, type-assert it) carry the snapshot's
+// dictionary codes. ok=false (no error) where ForEachDocValuesMulti
+// declines or the store has no snapshot of an intersection; an empty
+// intersection of known labels is served (an empty snapshot).
+func (n *NodeOps) DocValuesSnapshotMulti(labels []string, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, 0, false, err
+	}
+	snapper, native := c.store.(nodeDocValuesMultiSnapshotter)
+	if !native || len(labels) == 0 {
+		return nil, 0, false, nil
+	}
+	toks, known, err := c.labelTokens(labels)
+	if err != nil || !known {
+		return nil, 0, false, err
+	}
+	return snapper.DocValuesSnapshotMulti(toks, propKeys)
+}
+
+// DocValuesSnapshotOrdinal is DocValuesSnapshot as typed chunks that carry
+// each member's dense node ordinal beside its ID (types.ColumnChunk.Ordinals,
+// round 10 request 5b): the rows, order, ordinals and gen of
+// ForEachDocValuesOrdinal. ok=false (no error) where ForEachDocValuesOrdinal
+// declines (a store that numbers no node: tiered, external stores, badger
+// DisableOrdinals) or the snapshot does not read as chunks.
+func (n *NodeOps) DocValuesSnapshotOrdinal(label string, propKeys []string) (snap types.NodeColumnChunkReader, gen uint64, ok bool, err error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, 0, false, err
+	}
+	snapper, native := c.store.(nodeDocValuesOrdinalSnapshotter)
+	if !native {
+		return nil, 0, false, nil
+	}
+	toks, known, err := c.labelTokens([]string{label})
+	if err != nil || !known {
+		return nil, 0, false, err
+	}
+	return snapper.DocValuesSnapshotOrdinal(toks[0], propKeys)
+}
+
+// DocValuesSnapshotMultiOrdinal is DocValuesSnapshotMulti with ordinals,
+// under DocValuesSnapshotOrdinal's contract (an empty intersection of known
+// labels is served).
+func (n *NodeOps) DocValuesSnapshotMultiOrdinal(labels []string, propKeys []string) (snap types.NodeColumnChunkReader, gen uint64, ok bool, err error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, 0, false, err
+	}
+	snapper, native := c.store.(nodeDocValuesOrdinalSnapshotter)
+	if !native || len(labels) == 0 {
+		return nil, 0, false, nil
+	}
+	toks, known, err := c.labelTokens(labels)
+	if err != nil || !known {
+		return nil, 0, false, err
+	}
+	return snapper.DocValuesSnapshotMultiOrdinal(toks, propKeys)
 }

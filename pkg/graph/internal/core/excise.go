@@ -23,12 +23,15 @@ import (
 // newer belief and fills it again.
 
 // validateExciseInterval is the interval check of the excise doors: a
-// non-empty bounded range (b = 0, an open tail, is CloseVersion's job).
+// non-empty bounded range (b = 0, an open tail, is CloseVersion's job). A
+// negative bound is a real one (types.UnboundedValidFrom included, the rows
+// of an UntimedUnbounded store start there); only 0 is refused, the instant
+// no stored row can start a piece at (ValidFrom 0 is unset).
 func validateExciseInterval(a, b types.Instant) error {
 	if b == 0 {
 		return fmt.Errorf("%w: excise needs a bounded end (use CloseVersion for an open tail)", ErrInvalidTimeRange)
 	}
-	if a <= 0 || a >= b {
+	if a == 0 || a >= b {
 		return fmt.Errorf("%w: excise range [%d, %d) is empty or inverted", ErrInvalidTimeRange, a, b)
 	}
 	return nil

@@ -50,6 +50,7 @@ type Ops interface {
 	ForEachByLabelPropertyRangeAnyVersion(label, key string, min, max float64, inclMin, inclMax bool, pin types.Instant, fn func(*types.Node) bool) error
 	RangeCardinalityAnyVersion(label, key string, min, max float64, inclMin, inclMax bool, pin types.Instant) (storepkg.RangeAnyVersionCount, bool, error)
 	CountTimelineByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error)
+	ValidHullByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) (storepkg.ValidHull, bool, error)
 	ForEachByLabelOrdinals(label string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
 	ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
@@ -59,6 +60,9 @@ type Ops interface {
 	ForEachDocValuesOrdinal(label string, propKeys []string, fn func(types.NodeID, uint32, []any, []bool) bool) (uint64, bool, error)
 	ForEachDocValuesMultiOrdinal(labels []string, propKeys []string, fn func(types.NodeID, uint32, []any, []bool) bool) (uint64, bool, error)
 	DocValuesSnapshot(label string, propKeys []string) (types.NodeColumnReader, uint64, bool, error)
+	DocValuesSnapshotMulti(labels []string, propKeys []string) (types.NodeColumnReader, uint64, bool, error)
+	DocValuesSnapshotOrdinal(label string, propKeys []string) (types.NodeColumnChunkReader, uint64, bool, error)
+	DocValuesSnapshotMultiOrdinal(labels []string, propKeys []string) (types.NodeColumnChunkReader, uint64, bool, error)
 	DocValuesSnapshotAsOf(label string, propKeys []string, txAt types.Instant) (types.NodeColumnReader, uint64, bool, error)
 	ForEachDocValuesAsOf(label string, propKeys []string, txAt types.Instant, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	NodeMutationEpoch() uint64
@@ -623,12 +627,36 @@ func (a *API) RangeCardinalityAnyVersion(label, key string, min, max float64, in
 // exact=false declines (opts.MaxSegments exceeded, writers moving the
 // label's state across three builds, a store whose history the scan cannot
 // read). An unknown label: empty, exact.
+//
+// opts.CurrentRows (round 10, pin must be 0) counts the label's current rows
+// instead, each over its own valid interval: the rows ForEachByLabel(label,
+// QueryOpts{}) hands out, a member's earlier versions left out (see
+// store.CountTimelineOpts.CurrentRows; not cached).
 func (a *API) CountTimelineByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
 	ops, err := a.ready()
 	if err != nil {
 		return nil, false, err
 	}
 	return ops.CountTimelineByLabel(label, pin, opts)
+}
+
+// ValidHullByLabel is the hull of the valid instants at which label's
+// members hold (sigma-tkgd round 10 request 2a): the first segment's From
+// and the last segment's end of CountTimelineByLabel(label, pin, opts), as a
+// store.ValidHull with explicit Empty and OpenEnd flags (From
+// types.UnboundedValidFrom: some member holds from -inf). Same pin, options
+// (opts.MaxSegments does not apply), cache and declines as
+// CountTimelineByLabel: after the first call at a pin it is answered from
+// the cached timeline in O(1) until a write changes the state at the pin;
+// the first call costs the timeline's build (one effective scan of the
+// label). With opts.CurrentRows: the hull of the current rows, one pass over
+// them per call.
+func (a *API) ValidHullByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) (storepkg.ValidHull, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.ValidHull{}, false, err
+	}
+	return ops.ValidHullByLabel(label, pin, opts)
 }
 
 // ForEachByLabelOrdinals streams the nodes ForEachByLabel(label, opts)
@@ -763,6 +791,45 @@ func (a *API) DocValuesSnapshot(label string, propKeys []string) (types.NodeColu
 		return nil, 0, false, err
 	}
 	return ops.DocValuesSnapshot(label, propKeys)
+}
+
+// DocValuesSnapshotMulti is DocValuesSnapshot over a LABEL INTERSECTION
+// (sigma-tkgd round 10 request 5a): the members and values
+// ForEachDocValuesMulti streams, as a by-position snapshot that reads typed
+// chunks with the snapshot's dictionary codes (type-assert
+// types.NodeColumnChunkReader; memory, badger, sharded, tiered). Same gen
+// and decline contract as ForEachDocValuesMulti (an empty intersection of
+// known labels is served as an empty snapshot).
+func (a *API) DocValuesSnapshotMulti(labels []string, propKeys []string) (types.NodeColumnReader, uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, 0, false, err
+	}
+	return ops.DocValuesSnapshotMulti(labels, propKeys)
+}
+
+// DocValuesSnapshotOrdinal is DocValuesSnapshot as typed chunks whose
+// Ordinals carry each member's dense node ordinal beside its ID (round 10
+// request 5b): the rows, order, ordinals and gen of ForEachDocValuesOrdinal.
+// ok=false where ForEachDocValuesOrdinal declines (tiered, external stores,
+// badger DisableOrdinals).
+func (a *API) DocValuesSnapshotOrdinal(label string, propKeys []string) (types.NodeColumnChunkReader, uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, 0, false, err
+	}
+	return ops.DocValuesSnapshotOrdinal(label, propKeys)
+}
+
+// DocValuesSnapshotMultiOrdinal is DocValuesSnapshotMulti with ordinals
+// (ForEachDocValuesMultiOrdinal's rows), under DocValuesSnapshotOrdinal's
+// contract.
+func (a *API) DocValuesSnapshotMultiOrdinal(labels []string, propKeys []string) (types.NodeColumnChunkReader, uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, 0, false, err
+	}
+	return ops.DocValuesSnapshotMultiOrdinal(labels, propKeys)
 }
 
 // DocValuesSnapshotAsOf is the transaction-time (AS OF) analogue of

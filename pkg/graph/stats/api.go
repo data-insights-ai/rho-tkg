@@ -50,6 +50,8 @@ type Ops interface {
 	LabelTimeStats(label string) (storepkg.MemberTimeStats, bool, error)
 	PropertyValueStats(label, key string, pin types.Instant) (storepkg.PropertyValueStats, bool, error)
 	RelPropertyValueStats(typeName, key string, pin types.Instant) (storepkg.PropertyValueStats, bool, error)
+	PropertyTypeClassCountsAt(label, key string, pin types.Instant) (storepkg.PropertyTypeClassCounts, bool, error)
+	RelPropertyTypeClassCountsAt(typeName, key string, pin types.Instant) (storepkg.PropertyTypeClassCounts, bool, error)
 	RelTypeTimeStats(typeName string) (storepkg.MemberTimeStats, bool, error)
 	RelCountByType(typeName string) (int, error)
 	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
@@ -365,6 +367,39 @@ func (a *API) RelPropertyValueStats(typeName, key string, pin types.Instant) (st
 		return storepkg.PropertyValueStats{}, false, err
 	}
 	return ops.RelPropertyValueStats(typeName, key, pin)
+}
+
+// PropertyTypeClassCountsAt is PropertyTypeClassCounts over every version
+// recorded at pin (sigma-tkgd round 10 request 3): each row of the label
+// recorded at pin (every valid-time version, a deleted entity's rows before
+// the delete included, retracted lives dropped; the rows
+// ByLabelAndProperty(label, key, v, {ValidStart: types.UnboundedValidFrom,
+// ValidEnd: math.MaxInt64, TxAt: pin}) reads) counts once in the class of
+// its key's value (types.PropertyTypeClass), or in Missing without the key.
+// NaN + Other == 0 proves that a seek by any value through the equality door
+// finds every row the value matches. No property index needed; the first
+// call at a pin reads the label's members' chains, later calls are answered
+// from a cache until a write changes the state at pin. pin must be positive
+// (ErrInvalidTimeRange; the current state is PropertyTypeClassCounts); a
+// pin below a retention or compaction watermark fails as the equality door
+// does; exact=false when writers moved the state across three builds. An
+// unknown label: zero counts, exact.
+func (a *API) PropertyTypeClassCountsAt(label, key string, pin types.Instant) (storepkg.PropertyTypeClassCounts, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyTypeClassCounts{}, false, err
+	}
+	return ops.PropertyTypeClassCountsAt(label, key, pin)
+}
+
+// RelPropertyTypeClassCountsAt is PropertyTypeClassCountsAt over a
+// relationship type's rows recorded at pin.
+func (a *API) RelPropertyTypeClassCountsAt(typeName, key string, pin types.Instant) (storepkg.PropertyTypeClassCounts, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyTypeClassCounts{}, false, err
+	}
+	return ops.RelPropertyTypeClassCountsAt(typeName, key, pin)
 }
 
 // LabelTimeStats returns store.MemberTimeStats for label: current members,

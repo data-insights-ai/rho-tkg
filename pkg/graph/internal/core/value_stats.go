@@ -39,39 +39,8 @@ type valueStatsKey struct {
 	key string
 }
 
-type valueStatsEntry struct {
-	epoch uint64
-	stats storepkg.PropertyValueStats
-}
-
 // valueStatsAttempts bounds the retries of a read that writers race.
 const valueStatsAttempts = 3
-
-func (a *asOfColumnCache) getValueStats(key valueStatsKey, epoch uint64) (storepkg.PropertyValueStats, bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	e, ok := a.valueStats[key]
-	if !ok || e.epoch != epoch {
-		return storepkg.PropertyValueStats{}, false
-	}
-	return e.stats, true
-}
-
-func (a *asOfColumnCache) putValueStats(key valueStatsKey, epoch uint64, stats storepkg.PropertyValueStats) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.valueStats == nil {
-		a.valueStats = make(map[valueStatsKey]valueStatsEntry)
-	}
-	if len(a.valueStats) >= countTimelineCap {
-		for k, e := range a.valueStats {
-			if e.epoch != epoch || len(a.valueStats) >= countTimelineCap {
-				delete(a.valueStats, k)
-			}
-		}
-	}
-	a.valueStats[key] = valueStatsEntry{epoch: epoch, stats: stats}
-}
 
 // valueTally folds rows into value statistics by index key.
 type valueTally struct {
@@ -220,18 +189,11 @@ func (c *Core) currentValueStats(rel bool, tok uint16, key string) (storepkg.Pro
 }
 
 // pinnedValueStats counts the rows recorded at pin per value from the
-// sidecar's members of every value; cached under the cut epoch.
+// sidecar's members of every value; memoised under the cut epoch
+// (cut_memo.go).
 func (c *Core) pinnedValueStats(rel bool, tok uint16, key string, pin types.Instant) (storepkg.PropertyValueStats, bool, error) {
-	var zero storepkg.PropertyValueStats
-	a := c.asOfColumns
-	a.notePin(pin)
 	ckey := valueStatsKey{cut: stateCutKey{rel: rel, tok: tok, pin: pin}, key: key}
-	for range valueStatsAttempts {
-		epoch := a.cutEpoch(rel)
-		if s, ok := a.getValueStats(ckey, epoch); ok {
-			return s, true, nil
-		}
-		landed := c.pinLanded(pin)
+	return memoAtPin(c, &c.asOfColumns.valueStats, rel, pin, ckey, func() (storepkg.PropertyValueStats, bool, error) {
 		var tally valueTally
 		served := false
 		err := c.readUnderRLock(func() error {
@@ -244,21 +206,13 @@ func (c *Core) pinnedValueStats(rel bool, tok uint16, key string, pin types.Inst
 			return err
 		})
 		if errors.Is(err, storepkg.ErrIndexNotFound) {
-			return zero, false, nil
+			return storepkg.PropertyValueStats{}, false, nil
 		}
 		if err != nil || !served {
-			return zero, false, err
+			return storepkg.PropertyValueStats{}, false, err
 		}
-		if a.cutEpoch(rel) != epoch {
-			continue
-		}
-		out := tally.stats()
-		if landed {
-			a.putValueStats(ckey, epoch, out)
-		}
-		return out, true, nil
-	}
-	return zero, false, nil
+		return tally.stats(), true, nil
+	})
 }
 
 // nodeValueTallyLocked tallies every row recorded at pin of the sidecar's

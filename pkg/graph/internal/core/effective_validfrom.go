@@ -53,13 +53,13 @@ func fallbackCands[T ~int64](ids []T) []validEndCand {
 	return out
 }
 
-// streamValidFrom reads each candidate's timeline (nil read = unknown entity;
-// ascending ID, via streamEntityTimelines), streams the segments keep accepts when
-// one ends at or after validFrom or is open, and refines the index with the exact
-// end when the candidate was read at a pin at or above its stamp.
-func streamValidFrom[S any](c *Core, cands []validEndCand, pin, validFrom types.Instant,
-	read func(rd entityReads, id int64) ([]S, error), to func(S) types.Instant, keep func(S) bool,
-	refine func(id int64, gen uint64, end types.Instant), fn func(S) bool) error {
+// streamBounded reads each candidate's timeline (nil read = unknown entity;
+// ascending ID, via streamEntityTimelines), hands it to pick, and refines the
+// index with the exact end when the candidate was read at a pin at or above
+// its stamp. pick streams the segments its door keeps; false stops.
+func streamBounded[S any](c *Core, cands []validEndCand, pin types.Instant,
+	read func(rd entityReads, id int64) ([]S, error), to func(S) types.Instant,
+	refine func(id int64, gen uint64, end types.Instant), pick func(segs []S) bool) error {
 	cands = slices.Clone(cands)
 	slices.SortFunc(cands, func(a, b validEndCand) int { return cmp.Compare(a.ID, b.ID) })
 	return streamEntityTimelines(c, cands, func(rd entityReads, cd validEndCand) ([]S, error) {
@@ -73,6 +73,14 @@ func streamValidFrom[S any](c *Core, cands []validEndCand, pin, validFrom types.
 				refine(cd.ID, cd.Gen, end)
 			}
 		}
+		return pick(segs)
+	})
+}
+
+// pickFrom is the From doors' pick: the whole kept timeline of an entity
+// with a kept segment ending at or after validFrom, or open.
+func pickFrom[S any](validFrom types.Instant, to func(S) types.Instant, keep func(S) bool, fn func(S) bool) func(segs []S) bool {
+	return func(segs []S) bool {
 		reaches := false
 		for _, s := range segs {
 			if keep(s) && (to(s) == 0 || to(s) >= validFrom) {
@@ -89,7 +97,19 @@ func streamValidFrom[S any](c *Core, cands []validEndCand, pin, validFrom types.
 			}
 		}
 		return true
-	})
+	}
+}
+
+// pickWindow is the Window doors' pick: the kept segments that meet window.
+func pickWindow[S any](window temporal.Window, span func(S) (types.Instant, types.Instant), keep func(S) bool, fn func(S) bool) func(segs []S) bool {
+	return func(segs []S) bool {
+		for _, s := range segs {
+			if from, to := span(s); keep(s) && window.Meets(from, to) && !fn(s) {
+				return false
+			}
+		}
+		return true
+	}
 }
 
 // segmentsEnd is the effective valid end of a timeline: store.ValidEndOpen when a
@@ -117,17 +137,65 @@ func segmentsEnd[S any](segs []S, to func(S) types.Instant) types.Instant {
 // type from its first call. Tiered does the same per shard (opening closed cold
 // shards) and never refines. Sharded reads every candidate of the unbounded door.
 func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(temporal.RelSegment) bool) error {
-	c := t.c
-	if err := c.checkOpen(); err != nil {
+	if err := t.c.checkOpen(); err != nil {
 		return err
 	}
 	if fn == nil {
 		return grapherr.ErrNilCallback
 	}
+	return t.c.relEffectiveByTypeBounded(typeName, pin, validFrom, func(keep func(temporal.RelSegment) bool) func([]temporal.RelSegment) bool {
+		return pickFrom(validFrom, relSegTo, keep, fn)
+	})
+}
+
+// ForEachRelEffectiveByTypeWindow is ForEachRelEffectiveByType limited to the
+// segments that meet window (temporal.Window), candidates as
+// ForEachRelEffectiveByTypeFrom from the window's first start.
+func (t *TempOps) ForEachRelEffectiveByTypeWindow(typeName string, pin types.Instant, window temporal.Window, fn func(temporal.RelSegment) bool) error {
+	if err := t.c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := window.Validate(); err != nil {
+		return err
+	}
+	if len(window) == 0 {
+		return t.c.relEffectiveByTypeGates(typeName, pin) // the empty window meets nothing
+	}
+	return t.c.relEffectiveByTypeBounded(typeName, pin, window[0].From, func(keep func(temporal.RelSegment) bool) func([]temporal.RelSegment) bool {
+		return pickWindow(window, relSegSpan, keep, fn)
+	})
+}
+
+func relSegTo(s temporal.RelSegment) types.Instant { return s.ValidTo }
+
+func relSegSpan(s temporal.RelSegment) (types.Instant, types.Instant) { return s.ValidFrom, s.ValidTo }
+
+func nodeSegTo(s temporal.NodeSegment) types.Instant { return s.ValidTo }
+
+func nodeSegSpan(s temporal.NodeSegment) (types.Instant, types.Instant) {
+	return s.ValidFrom, s.ValidTo
+}
+
+// relEffectiveByTypeGates are the bounded type doors' checks.
+func (c *Core) relEffectiveByTypeGates(typeName string, pin types.Instant) error {
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return err
 	}
-	if err := c.validateEffectiveScanPin(pin, c.relTypeRetentionScope(typeName)); err != nil {
+	return c.validateEffectiveScanPin(pin, c.relTypeRetentionScope(typeName))
+}
+
+// relEffectiveByTypeBounded is the body of the bounded type doors: the
+// gates, the candidates whose valid end can reach validFrom, and the stream
+// through the door's pick (built over the type's keep predicate).
+func (c *Core) relEffectiveByTypeBounded(typeName string, pin, validFrom types.Instant,
+	pickOf func(keep func(temporal.RelSegment) bool) func([]temporal.RelSegment) bool) error {
+	if err := c.relEffectiveByTypeGates(typeName, pin); err != nil {
 		return err
 	}
 	var (
@@ -156,14 +224,13 @@ func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom 
 			c.relValidEnds.RefineRelValidEnd(types.RelID(id), gen, end)
 		}
 	}
-	return streamValidFrom(c, cands, pin, validFrom,
+	return streamBounded(c, cands, pin,
 		func(rd entityReads, id int64) ([]temporal.RelSegment, error) {
 			segs, err := c.relEffectiveTimelineFrom(rd, types.RelID(id), pin)
 			return skipUnknown(segs, err, storepkg.ErrRelNotFound)
 		},
-		func(s temporal.RelSegment) types.Instant { return s.ValidTo },
-		func(s temporal.RelSegment) bool { return s.Rel.HasTypeTokenRaw(tok) },
-		refine, fn)
+		relSegTo, refine,
+		pickOf(func(s temporal.RelSegment) bool { return s.Rel.HasTypeTokenRaw(tok) }))
 }
 
 // ForEachNodeEffectiveByLabelsFrom is ForEachNodeEffectiveByLabels restricted to
@@ -172,19 +239,55 @@ func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom 
 // index bounds a node by its whole timeline, so a node that once carried the label
 // is read and then skipped.
 func (t *TempOps) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFrom types.Instant, fn func(temporal.NodeSegment) bool) error {
-	c := t.c
-	if err := c.checkOpen(); err != nil {
+	if err := t.c.checkOpen(); err != nil {
 		return err
 	}
 	if fn == nil {
 		return grapherr.ErrNilCallback
+	}
+	return t.c.nodeEffectiveByLabelsBounded(labels, pin, validFrom, func(keep func(temporal.NodeSegment) bool) func([]temporal.NodeSegment) bool {
+		return pickFrom(validFrom, nodeSegTo, keep, fn)
+	})
+}
+
+// ForEachNodeEffectiveByLabelsWindow is ForEachNodeEffectiveByLabels limited
+// to the segments that meet window (temporal.Window), candidates as
+// ForEachNodeEffectiveByLabelsFrom from the window's first start.
+func (t *TempOps) ForEachNodeEffectiveByLabelsWindow(labels []string, pin types.Instant, window temporal.Window, fn func(temporal.NodeSegment) bool) error {
+	if err := t.c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := window.Validate(); err != nil {
+		return err
+	}
+	if len(window) == 0 {
+		return t.c.nodeEffectiveByLabelsGates(labels, pin) // the empty window meets nothing
+	}
+	return t.c.nodeEffectiveByLabelsBounded(labels, pin, window[0].From, func(keep func(temporal.NodeSegment) bool) func([]temporal.NodeSegment) bool {
+		return pickWindow(window, nodeSegSpan, keep, fn)
+	})
+}
+
+// nodeEffectiveByLabelsGates are the bounded label doors' checks.
+func (c *Core) nodeEffectiveByLabelsGates(labels []string, pin types.Instant) error {
+	if err := c.checkOpen(); err != nil {
+		return err
 	}
 	for _, label := range labels {
 		if err := c.validateIndexLabel(label); err != nil {
 			return err
 		}
 	}
-	if err := c.validateEffectiveScanPin(pin, scopeNodes); err != nil {
+	return c.validateEffectiveScanPin(pin, scopeNodes)
+}
+
+// nodeEffectiveByLabelsBounded is relEffectiveByTypeBounded for labels.
+func (c *Core) nodeEffectiveByLabelsBounded(labels []string, pin, validFrom types.Instant,
+	pickOf func(keep func(temporal.NodeSegment) bool) func([]temporal.NodeSegment) bool) error {
+	if err := c.nodeEffectiveByLabelsGates(labels, pin); err != nil {
 		return err
 	}
 	var (
@@ -217,12 +320,11 @@ func (t *TempOps) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFr
 			c.nodeValidEnds.RefineNodeValidEnd(types.NodeID(id), gen, end)
 		}
 	}
-	return streamValidFrom(c, cands, pin, validFrom,
+	return streamBounded(c, cands, pin,
 		func(rd entityReads, id int64) ([]temporal.NodeSegment, error) {
 			segs, err := c.nodeEffectiveTimelineFrom(rd, types.NodeID(id), pin)
 			return skipUnknown(segs, err, storepkg.ErrNodeNotFound)
 		},
-		func(s temporal.NodeSegment) types.Instant { return s.ValidTo },
-		func(s temporal.NodeSegment) bool { return slices.ContainsFunc(toks, s.Node.HasLabelTokenRaw) },
-		refine, fn)
+		nodeSegTo, refine,
+		pickOf(func(s temporal.NodeSegment) bool { return slices.ContainsFunc(toks, s.Node.HasLabelTokenRaw) }))
 }

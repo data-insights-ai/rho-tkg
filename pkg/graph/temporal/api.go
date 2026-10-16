@@ -69,6 +69,10 @@ type Ops interface {
 	ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, fn func(NodeSegment) bool) error
 	ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(RelSegment) bool) error
 	ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFrom types.Instant, fn func(NodeSegment) bool) error
+	ForEachNodeEffectiveByLabelsWindow(labels []string, pin types.Instant, window Window, fn func(NodeSegment) bool) error
+	ForEachRelEffectiveByTypeWindow(typeName string, pin types.Instant, window Window, fn func(RelSegment) bool) error
+	ForEachRelEffectiveAtNodesWindow(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, window Window, fn func(RelSegment) bool) error
+	ScanRelEffectiveColumnsAtNodes(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, window Window, props []string, fn func(*storepkg.RelColumnBatch) bool) error
 	RelsEffectivePage(ctx context.Context, pin Pin, f Filter, after types.RelID, limit int) ([]RelSegment, types.RelID, error)
 	NodesEffectivePage(ctx context.Context, pin Pin, f Filter, after types.NodeID, limit int) ([]NodeSegment, types.NodeID, error)
 
@@ -670,6 +674,69 @@ func (a *API) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFrom t
 	return ops.ForEachNodeEffectiveByLabelsFrom(labels, pin, validFrom, fn)
 }
 
+// ForEachNodeEffectiveByLabelsWindow is ForEachNodeEffectiveByLabels limited
+// to the segments that meet window (sigma-tkgd round 10 request 2b): for
+// every valid instant t inside the window the streamed segments containing t
+// are exactly ForEachNodeEffectiveByLabels' (each node's segments carrying
+// one of the labels, as recorded at pin); a segment outside the window is
+// not streamed, so a node's streamed segments need not be contiguous. The
+// window is a list of disjoint half-open intervals, ascending (Window); the
+// empty window streams nothing. Candidates come from the valid-end index as
+// for ForEachNodeEffectiveByLabelsFrom(labels, pin, window[0].From), so
+// entities that end before the window are not read. Gates and errors:
+// ForEachNodeEffectiveByLabels', ErrInvalidTimeRange for a window that is
+// not ascending and disjoint.
+func (a *API) ForEachNodeEffectiveByLabelsWindow(labels []string, pin types.Instant, window Window, fn func(NodeSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachNodeEffectiveByLabelsWindow(labels, pin, window, fn)
+}
+
+// ForEachRelEffectiveByTypeWindow is ForEachRelEffectiveByType limited to
+// the segments that meet window, as ForEachNodeEffectiveByLabelsWindow
+// (candidates as ForEachRelEffectiveByTypeFrom from window[0].From).
+// DECLARED view: not masked by endpoint validity.
+func (a *API) ForEachRelEffectiveByTypeWindow(typeName string, pin types.Instant, window Window, fn func(RelSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachRelEffectiveByTypeWindow(typeName, pin, window, fn)
+}
+
+// ForEachRelEffectiveAtNodesWindow is ForEachRelEffectiveAtNodes (a lookup by
+// start or end node) limited to the segments that meet window, as
+// ForEachNodeEffectiveByLabelsWindow. Gates and errors:
+// ForEachRelEffectiveAtNodes' and the window's ErrInvalidTimeRange.
+func (a *API) ForEachRelEffectiveAtNodesWindow(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, window Window, fn func(RelSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachRelEffectiveAtNodesWindow(nodeIDs, dir, relTypes, pin, window, fn)
+}
+
+// ScanRelEffectiveColumnsAtNodes is the typed form of
+// ForEachRelEffectiveAtNodesWindow (sigma-tkgd round 10 request 1): the same
+// segments as store.RelColumnBatch rows (IDs, StartIDs, EndIDs, the
+// requested properties typed by the shared column rules, and each segment's
+// own valid span in ValidFrom / ValidTo, ValidTo 0 open), so a lookup by
+// start or end node at a pin reads typed values without boxing them one by
+// one. A relationship appears once per streamed segment. Ordinals are 0 (a
+// read coordinate numbers no row). RelType is the type when relTypes names
+// one, else empty (the rows mix the named types). A column holding integers
+// and floats refuses with ErrMixedNumericColumn, as every column scan does.
+// fn must not retain the batch.
+func (a *API) ScanRelEffectiveColumnsAtNodes(nodeIDs []types.NodeID, dir Direction, relTypes []string, pin types.Instant, window Window, props []string, fn func(*storepkg.RelColumnBatch) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ScanRelEffectiveColumnsAtNodes(nodeIDs, dir, relTypes, pin, window, props, fn)
+}
+
 // NodesAtTx returns nodes valid at validAt as known at txAt.
 // txAt == 0 is equivalent to NodesAt(validAt).
 func (a *API) NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, error) {
@@ -791,8 +858,9 @@ func (a *API) SetRelVersionIntervalWithTx(ctx context.Context, id types.RelID, v
 // current slot and never answer NodeAsOf. A later SetNodeVersionInterval over
 // [a, b) fills the hole again.
 //
-// Refusals, nothing written: b == 0 (an open tail is CloseVersion's), a <= 0
-// or a >= b (ErrInvalidTimeRange); no version valid anywhere in [a, b)
+// Refusals, nothing written: b == 0 (an open tail is CloseVersion's), a == 0
+// or a >= b (ErrInvalidTimeRange; a negative a, types.UnboundedValidFrom
+// included, is a real start since v4.59.0); no version valid anywhere in [a, b)
 // (ErrNoVersionValidAt); an unknown node (ErrNodeNotFound); a hard-deleted one
 // (ErrEntityDeleted). Twins with the same rules: GraphTx.ExciseNodeValidity
 // and BatchBuilder.ExciseNodeValidity.

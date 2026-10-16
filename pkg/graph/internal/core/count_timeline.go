@@ -2,9 +2,11 @@ package core
 
 import (
 	"cmp"
+	"fmt"
 	"math"
 	"slices"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -29,46 +31,6 @@ import (
 type countTimelineKey struct {
 	cut     stateCutKey
 	untimed bool
-}
-
-// countTimelineEntry is a cached timeline and the cut epoch it was built at.
-type countTimelineEntry struct {
-	epoch uint64
-	segs  []storepkg.CountSegment
-}
-
-// countTimelineCap bounds the cached timelines per graph (each is at most
-// two segments per member segment; typically a few).
-const countTimelineCap = 256
-
-// countTimelineAttempts is how many builds a call tries while writers move
-// the cut epoch under it before it declines.
-const countTimelineAttempts = 3
-
-func (a *asOfColumnCache) getTimeline(key countTimelineKey, epoch uint64) ([]storepkg.CountSegment, bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	e, ok := a.timelines[key]
-	if !ok || e.epoch != epoch {
-		return nil, false
-	}
-	return e.segs, true
-}
-
-func (a *asOfColumnCache) putTimeline(key countTimelineKey, epoch uint64, segs []storepkg.CountSegment) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.timelines == nil {
-		a.timelines = make(map[countTimelineKey]countTimelineEntry)
-	}
-	if len(a.timelines) >= countTimelineCap {
-		for k, e := range a.timelines {
-			if e.epoch != epoch || len(a.timelines) >= countTimelineCap {
-				delete(a.timelines, k)
-			}
-		}
-	}
-	a.timelines[key] = countTimelineEntry{epoch: epoch, segs: segs}
 }
 
 // timelineSpan is one member segment's valid span.
@@ -146,47 +108,93 @@ func genesisUntimed[T interface {
 	return false
 }
 
-// countTimeline reads the timeline of key at its pin: the cached one, else
-// built from the effective scan (and cached when the pin has landed and the
-// epoch held). ok=false declines.
+// countTimeline reads the timeline of key at its pin: the memoised one,
+// else built from the effective scan (cut_memo.go). ok=false declines.
 func (c *Core) countTimeline(key stateCutKey, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
-	a := c.asOfColumns
-	a.notePin(key.pin) // before the epoch is read (notePin)
 	tkey := countTimelineKey{cut: key, untimed: opts.UntimedFromMinusInf}
-	for range countTimelineAttempts {
-		epoch := a.cutEpoch(key.rel)
-		if segs, ok := a.getTimeline(tkey, epoch); ok {
-			if opts.MaxSegments > 0 && len(segs) > opts.MaxSegments {
-				return nil, false, nil
-			}
-			return slices.Clone(segs), true, nil
-		}
-		landed := c.pinLanded(key.pin)
+	segs, ok, err := memoAtPin(c, &c.asOfColumns.timelines, key.rel, key.pin, tkey, func() ([]storepkg.CountSegment, bool, error) {
 		spans, err := c.timelineSpans(key, opts.UntimedFromMinusInf)
 		if err != nil {
 			return nil, false, err
 		}
-		if a.cutEpoch(key.rel) != epoch {
-			continue // a history rewrite raced the read
-		}
 		segs, ok := sweepCountTimeline(spans, opts.MaxSegments)
-		if !ok {
-			return nil, false, nil
-		}
-		if landed {
-			a.putTimeline(tkey, epoch, segs)
-		}
-		return slices.Clone(segs), true, nil
+		return segs, ok, nil
+	})
+	if err != nil || !ok || (opts.MaxSegments > 0 && len(segs) > opts.MaxSegments) {
+		return nil, false, err
 	}
-	return nil, false, nil
+	return slices.Clone(segs), true, nil
+}
+
+// timelineRow is what the untimed rule reads of a row (Node, Relationship).
+type timelineRow interface {
+	ValidRange() (from, to types.Instant, ok bool)
+	TxStamps() (txFrom, txTo, deletedAt types.Instant)
+	Version() uint32
+}
+
+// timelineSpanSet collects member spans; under untimed an entity's first
+// span that starts at an untimed create starts at -inf instead
+// (store.CountTimelineOpts.UntimedFromMinusInf), the spans whose start the
+// genesis row decides listed for resolveGenesis.
+type timelineSpanSet struct {
+	untimed    bool
+	spans      []timelineSpan
+	genesis    []int // spans whose start the genesis row decides
+	genesisIDs []int64
+}
+
+// add appends the span [from, to) of entity id on row; first marks the
+// entity's first span of the stream.
+func (s *timelineSpanSet) add(id int64, first bool, from, to types.Instant, row timelineRow) {
+	s.spans = append(s.spans, timelineSpan{from, to})
+	if !s.untimed || !first {
+		return
+	}
+	vf, _, _ := row.ValidRange()
+	tx, _, _ := row.TxStamps()
+	yes, ask := untimedSegmentStart(from, vf, tx, row.Version())
+	if yes {
+		s.spans[len(s.spans)-1].from = math.MinInt64
+	} else if ask {
+		s.genesis, s.genesisIDs = append(s.genesis, len(s.spans)-1), append(s.genesisIDs, id)
+	}
+}
+
+// resolveGenesis starts at -inf every listed span whose entity's genesis
+// row is an untimed create at the span's start.
+func (c *Core) resolveGenesis(rel bool, s *timelineSpanSet) error {
+	if len(s.genesis) == 0 {
+		return nil
+	}
+	return c.readUnderRLock(func() error {
+		for k, i := range s.genesis {
+			var yes bool
+			if rel {
+				h, err := c.getRelHistory(types.RelID(s.genesisIDs[k]))
+				if err != nil {
+					return err
+				}
+				yes = genesisUntimed(h, s.spans[i].from)
+			} else {
+				h, err := c.getNodeHistory(types.NodeID(s.genesisIDs[k]))
+				if err != nil {
+					return err
+				}
+				yes = genesisUntimed(h, s.spans[i].from)
+			}
+			if yes {
+				s.spans[i].from = math.MinInt64
+			}
+		}
+		return nil
+	})
 }
 
 // timelineSpans is every segment of key's effective scan at its pin, an
 // untimed first segment from -inf under untimed.
 func (c *Core) timelineSpans(key stateCutKey, untimed bool) ([]timelineSpan, error) {
-	var spans []timelineSpan
-	var genesis []int // spans whose start the genesis row decides
-	var genesisIDs []int64
+	set := timelineSpanSet{untimed: untimed}
 	var last int64
 	first := func(id int64) bool {
 		f := id != last
@@ -205,17 +213,7 @@ func (c *Core) timelineSpans(key stateCutKey, untimed bool) ([]timelineSpan, err
 		err := c.streamRelTimelines(ascending(ids), key.pin, func(r *types.Relationship) bool { return r.HasTypeTokenRaw(key.tok) },
 			func(s temporal.RelSegment) bool {
 				id := int64(s.Rel.ID())
-				spans = append(spans, timelineSpan{s.ValidFrom, s.ValidTo})
-				if untimed && first(id) {
-					vf, _, _ := s.Rel.ValidRange()
-					tx, _, _ := s.Rel.TxStamps()
-					yes, ask := untimedSegmentStart(s.ValidFrom, vf, tx, s.Rel.Version())
-					if yes {
-						spans[len(spans)-1].from = math.MinInt64
-					} else if ask {
-						genesis, genesisIDs = append(genesis, len(spans)-1), append(genesisIDs, id)
-					}
-				}
+				set.add(id, first(id), s.ValidFrom, s.ValidTo, s.Rel)
 				return true
 			})
 		if err != nil {
@@ -233,49 +231,51 @@ func (c *Core) timelineSpans(key stateCutKey, untimed bool) ([]timelineSpan, err
 		err := c.streamNodeTimelines(ascending(ids), key.pin, func(n *types.Node) bool { return n.HasLabelTokenRaw(key.tok) },
 			func(s temporal.NodeSegment) bool {
 				id := int64(s.Node.ID())
-				spans = append(spans, timelineSpan{s.ValidFrom, s.ValidTo})
-				if untimed && first(id) {
-					vf, _, _ := s.Node.ValidRange()
-					tx, _, _ := s.Node.TxStamps()
-					yes, ask := untimedSegmentStart(s.ValidFrom, vf, tx, s.Node.Version())
-					if yes {
-						spans[len(spans)-1].from = math.MinInt64
-					} else if ask {
-						genesis, genesisIDs = append(genesis, len(spans)-1), append(genesisIDs, id)
-					}
-				}
+				set.add(id, first(id), s.ValidFrom, s.ValidTo, s.Node)
 				return true
 			})
 		if err != nil {
 			return nil, err
 		}
 	}
-	if len(genesis) == 0 {
-		return spans, nil
+	err := c.resolveGenesis(key.rel, &set)
+	return set.spans, err
+}
+
+// currentRowsTimeline is the timeline of the current rows of a label
+// (type), the rows ForEachByLabel(label, QueryOpts{}) / ForEachByType hand
+// out, each over its own valid interval: from its valid-from (an unset one
+// is the row's derived start, storeutil.NodeValidFrom, its TxFrom), to its
+// valid-to (open when unset), under untimed from -inf where the row starts
+// at an untimed create (the pinned timeline's rule, timelineSpanSet). Not
+// memoised: every write of a member changes it.
+func (c *Core) currentRowsTimeline(rel bool, name string, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
+	set := timelineSpanSet{untimed: opts.UntimedFromMinusInf}
+	var err error
+	if rel {
+		err = c.Rels.ForEachByType(name, storepkg.QueryOpts{}, func(r *types.Relationship) bool {
+			_, to, _ := r.ValidRange()
+			set.add(int64(r.ID()), true, storeutil.RelValidFrom(r), to, r)
+			return true
+		})
+	} else {
+		err = c.Nodes.ForEachByLabel(name, storepkg.QueryOpts{}, func(n *types.Node) bool {
+			_, to, _ := n.ValidRange()
+			set.add(int64(n.ID()), true, storeutil.NodeValidFrom(n), to, n)
+			return true
+		})
 	}
-	err := c.readUnderRLock(func() error {
-		for k, i := range genesis {
-			var yes bool
-			if key.rel {
-				h, err := c.getRelHistory(types.RelID(genesisIDs[k]))
-				if err != nil {
-					return err
-				}
-				yes = genesisUntimed(h, spans[i].from)
-			} else {
-				h, err := c.getNodeHistory(types.NodeID(genesisIDs[k]))
-				if err != nil {
-					return err
-				}
-				yes = genesisUntimed(h, spans[i].from)
-			}
-			if yes {
-				spans[i].from = math.MinInt64
-			}
-		}
-		return nil
-	})
-	return spans, err
+	if err == nil {
+		err = c.resolveGenesis(rel, &set)
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	segs, ok := sweepCountTimeline(set.spans, opts.MaxSegments)
+	if !ok {
+		return nil, false, nil
+	}
+	return segs, true, nil
 }
 
 // countTimelinePin is the pin a timeline reads: pin, or the commit clock
@@ -294,46 +294,84 @@ func (c *Core) countTimelinePin(pin types.Instant) (types.Instant, bool, error) 
 // CountTimelineByLabel is the number of label's members holding at each
 // valid instant as recorded at pin (see nodes.API.CountTimelineByLabel).
 func (n *NodeOps) CountTimelineByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
-	c := n.c
-	if err := c.checkOpen(); err != nil {
-		return nil, false, err
-	}
-	if err := c.validateIndexLabel(label); err != nil {
-		return nil, false, err
-	}
-	at, ok, err := c.countTimelinePin(pin)
-	if err != nil || !ok {
-		return nil, err == nil, err
-	}
-	if err := c.validateTemporalQueryOptsScan(storepkg.QueryOpts{ValidAt: 1, TxAt: at}, scopeNodes); err != nil {
-		return nil, false, err
-	}
-	tok, known := c.stateCutToken(false, label)
-	if !known {
-		return nil, true, c.checkOpen()
-	}
-	return c.countTimeline(stateCutKey{tok: tok, pin: at}, opts)
+	return n.c.countTimelineDoor(false, label, pin, opts)
 }
 
 // CountTimelineByType is CountTimelineByLabel for a relationship type.
 func (r *RelOps) CountTimelineByType(typeName string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
-	c := r.c
+	return r.c.countTimelineDoor(true, typeName, pin, opts)
+}
+
+// countTimelineDoor is the body of CountTimelineByLabel / ByType: the
+// timeline at pin, or with opts.CurrentRows (pin must be 0) of the current
+// rows.
+func (c *Core) countTimelineDoor(rel bool, name string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, false, err
 	}
-	if err := c.validateRelTypeQueryName(typeName); err != nil {
+	var err error
+	if rel {
+		err = c.validateRelTypeQueryName(name)
+	} else {
+		err = c.validateIndexLabel(name)
+	}
+	if err != nil {
 		return nil, false, err
+	}
+	if opts.CurrentRows {
+		if pin != 0 {
+			return nil, false, fmt.Errorf("%w: CurrentRows reads the current rows, which no pin %d selects", ErrInvalidTimeRange, pin)
+		}
+		return c.currentRowsTimeline(rel, name, opts)
 	}
 	at, ok, err := c.countTimelinePin(pin)
 	if err != nil || !ok {
 		return nil, err == nil, err
 	}
-	if err := c.validateTemporalQueryOptsScan(storepkg.QueryOpts{ValidAt: 1, TxAt: at}, c.relTypeRetentionScope(typeName)); err != nil {
+	scope := scopeNodes
+	if rel {
+		scope = c.relTypeRetentionScope(name)
+	}
+	if err := c.validateTemporalQueryOptsScan(storepkg.QueryOpts{ValidAt: 1, TxAt: at}, scope); err != nil {
 		return nil, false, err
 	}
-	tok, known := c.stateCutToken(true, typeName)
+	tok, known := c.stateCutToken(rel, name)
 	if !known {
 		return nil, true, c.checkOpen()
 	}
-	return c.countTimeline(stateCutKey{rel: true, tok: tok, pin: at}, opts)
+	return c.countTimeline(stateCutKey{rel: rel, tok: tok, pin: at}, opts)
+}
+
+// ValidHullByLabel is the hull of the valid instants at which label's
+// members hold (see nodes.API.ValidHullByLabel).
+func (n *NodeOps) ValidHullByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) (storepkg.ValidHull, bool, error) {
+	return n.c.validHull(false, label, pin, opts)
+}
+
+// ValidHullByType is ValidHullByLabel for a relationship type.
+func (r *RelOps) ValidHullByType(typeName string, pin types.Instant, opts storepkg.CountTimelineOpts) (storepkg.ValidHull, bool, error) {
+	return r.c.validHull(true, typeName, pin, opts)
+}
+
+// validHull reads the hull off the count timeline's ends (one rule: the
+// hull is where the count is positive). MaxSegments does not apply.
+func (c *Core) validHull(rel bool, name string, pin types.Instant, opts storepkg.CountTimelineOpts) (storepkg.ValidHull, bool, error) {
+	opts.MaxSegments = 0
+	segs, ok, err := c.countTimelineDoor(rel, name, pin, opts)
+	if err != nil || !ok {
+		return storepkg.ValidHull{}, false, err
+	}
+	return hullOf(segs), true, nil
+}
+
+// hullOf is the hull of a count timeline (ascending, positive counts).
+func hullOf(segs []storepkg.CountSegment) storepkg.ValidHull {
+	if len(segs) == 0 {
+		return storepkg.ValidHull{Empty: true}
+	}
+	last := segs[len(segs)-1]
+	// A segment's To == 0 is an open end: no stored row starts or ends at
+	// the instant 0 (ValidFrom 0 is unset, ValidTo 0 open), so no member
+	// span, hence no sweep boundary, lies at 0.
+	return storepkg.ValidHull{From: segs[0].From, To: last.To, OpenEnd: last.To == 0}
 }

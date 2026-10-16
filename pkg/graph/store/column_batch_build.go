@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -130,6 +131,32 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 // up.
 func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 	fn func(*RelColumnBatch) bool) error {
+	return scanColumnsFromRels(rels, func(_ int, r *types.Relationship) (int64, int64) {
+		vf, vt, _ := r.ValidRange()
+		return int64(vf), int64(vt)
+	}, props, fn)
+}
+
+// ScanColumnsFromRelSegments is ScanColumnsFromRels over pieces of rows: row
+// i is rels[i] over the valid span [validFrom[i], validTo[i]) (an effective
+// timeline segment, validTo 0 open), which the batch's ValidFrom / ValidTo
+// carry instead of the row's stored interval. A row may repeat (several
+// segments of one relationship). len(validFrom) and len(validTo) must equal
+// len(rels).
+func ScanColumnsFromRelSegments(rels []*types.Relationship, validFrom, validTo []types.Instant, props []string,
+	fn func(*RelColumnBatch) bool) error {
+	if len(validFrom) != len(rels) || len(validTo) != len(rels) {
+		return fmt.Errorf("%w: %d rows, %d valid-from, %d valid-to", ErrInvalidStoreMutation, len(rels), len(validFrom), len(validTo))
+	}
+	return scanColumnsFromRels(rels, func(i int, _ *types.Relationship) (int64, int64) {
+		return int64(validFrom[i]), int64(validTo[i])
+	}, props, fn)
+}
+
+// scanColumnsFromRels is the relationship row path; span gives row i's
+// valid interval.
+func scanColumnsFromRels(rels []*types.Relationship, span func(i int, r *types.Relationship) (int64, int64), props []string,
+	fn func(*RelColumnBatch) bool) error {
 
 	if len(rels) == 0 {
 		return nil
@@ -160,16 +187,16 @@ func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 		batch.reset(len(props))
 	}
 
-	for _, r := range rels {
+	for i, r := range rels {
 		batch.IDs = append(batch.IDs, r.InternalID())
 		batch.Ordinals = append(batch.Ordinals, r.Ordinal())
 		batch.StartOrdinals = append(batch.StartOrdinals, r.StartOrdinal())
 		batch.EndOrdinals = append(batch.EndOrdinals, r.EndOrdinal())
 		batch.StartIDs = append(batch.StartIDs, r.StartNodeID())
 		batch.EndIDs = append(batch.EndIDs, r.EndNodeID())
-		vf, vt, _ := r.ValidRange()
-		batch.ValidFrom = append(batch.ValidFrom, int64(vf))
-		batch.ValidTo = append(batch.ValidTo, int64(vt))
+		vf, vt := span(i, r)
+		batch.ValidFrom = append(batch.ValidFrom, vf)
+		batch.ValidTo = append(batch.ValidTo, vt)
 		for c, key := range props {
 			raw, found := r.GetProperty(key)
 			kind, i64, f64, str, b, ok := classifyScalar(raw)

@@ -32,6 +32,16 @@ func chunkCell(t *testing.T, chunk *types.ColumnChunk, c, i int) any {
 		return v.Ints[i]
 	case types.ColumnVectorString:
 		return v.Dict[v.Codes[i]]
+	case types.ColumnVectorMixed:
+		switch v.Tags[i] {
+		case types.ColumnVectorInt:
+			return v.Ints[i]
+		case types.ColumnVectorFloat:
+			return v.Flts[i]
+		case types.ColumnVectorString:
+			return v.Dict[v.Codes[i]]
+		}
+		t.Fatalf("column %d row %d: mixed tag %d", c, i, v.Tags[i])
 	}
 	t.Fatalf("column %d: kind %d", c, v.Kind)
 	return nil

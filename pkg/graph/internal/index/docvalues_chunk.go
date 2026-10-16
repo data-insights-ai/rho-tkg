@@ -10,9 +10,15 @@ import (
 // types.NodeColumnChunkReader): the snapshot's typed storage copied into the
 // caller's vectors, no boxing, no allocation once the chunk has capacity. A
 // composite snapshot (tiered shards, sharded slots) reads its parts through
-// ChunkConcat, which unifies the parts' column kinds and dictionaries.
+// ChunkConcat, which unifies the parts' column kinds and dictionaries (a
+// column of strings on one part and numbers on another reads as
+// types.ColumnVectorMixed, round 10). An OrdinalSnapshot (round 10) also
+// hands out the members' node ordinals.
 
-var _ types.NodeColumnChunkReader = (*PointSnapshot[types.NodeID])(nil)
+var (
+	_ types.NodeColumnChunkReader = (*PointSnapshot[types.NodeID])(nil)
+	_ types.NodeColumnChunkReader = (*OrdinalSnapshot)(nil)
+)
 
 // chunkKind is the vector kind of a built column.
 func (c *docColumn) chunkKind() types.ColumnVectorKind {
@@ -61,7 +67,7 @@ func sizeChunk(chunk *types.ColumnChunk, n, width int) {
 func sizeVector(v *types.ColumnVector, kind types.ColumnVectorKind, n int) {
 	v.Kind = kind
 	v.Present = resized(v.Present, n)
-	v.Ints, v.Flts, v.IsFloat, v.Codes = v.Ints[:0], v.Flts[:0], v.IsFloat[:0], v.Codes[:0]
+	v.Ints, v.Flts, v.IsFloat, v.Codes, v.Tags = v.Ints[:0], v.Flts[:0], v.IsFloat[:0], v.Codes[:0], v.Tags[:0]
 	v.Dict = nil
 	switch kind {
 	case types.ColumnVectorInt:
@@ -72,12 +78,15 @@ func sizeVector(v *types.ColumnVector, kind types.ColumnVectorKind, n int) {
 		v.Ints, v.Flts, v.IsFloat = resized(v.Ints, n), resized(v.Flts, n), resized(v.IsFloat, n)
 	case types.ColumnVectorString:
 		v.Codes = resized(v.Codes, n)
+	case types.ColumnVectorMixed:
+		v.Ints, v.Flts = resized(v.Ints, n), resized(v.Flts, n)
+		v.Codes, v.Tags = resized(v.Codes, n), resized(v.Tags, n)
 	}
 }
 
 // fillVector writes rows [from, to) of c into v at at, v sized for kind
-// (c's own kind or a wider one: Numeric over Int or Float). remap, when
-// non-nil, maps c's dictionary codes to v's.
+// (c's own kind or a wider one: Numeric over Int or Float, Mixed over any).
+// remap, when non-nil, maps c's dictionary codes to v's.
 func (c *docColumn) fillVector(v *types.ColumnVector, at, from, to int, remap []uint32) {
 	n := to - from
 	present := v.Present[at : at+n]
@@ -91,6 +100,8 @@ func (c *docColumn) fillVector(v *types.ColumnVector, at, from, to int, remap []
 		i += k
 	}
 	switch v.Kind {
+	case types.ColumnVectorMixed:
+		c.fillMixed(v, at, from, present, remap)
 	case types.ColumnVectorString:
 		codes := v.Codes[at : at+n]
 		if c.typ != ColString { // an all-absent part: zero slots
@@ -152,15 +163,47 @@ func (c *docColumn) fillVector(v *types.ColumnVector, at, from, to int, remap []
 	}
 }
 
+// fillMixed writes the rows of c (present as given) into the Mixed vector
+// v at at: each present row tagged with its own kind, a string's code
+// through remap when non-nil.
+func (c *docColumn) fillMixed(v *types.ColumnVector, at, from int, present []bool, remap []uint32) {
+	n := len(present)
+	ints, flts, codes, tags := v.Ints[at:at+n], v.Flts[at:at+n], v.Codes[at:at+n], v.Tags[at:at+n]
+	clear(ints)
+	clear(flts)
+	clear(codes)
+	clear(tags)
+	for i, p := range present {
+		if !p {
+			continue
+		}
+		row := from + i
+		if c.typ == ColString {
+			code := c.codes[row]
+			if remap != nil {
+				code = remap[code]
+			}
+			codes[i], tags[i] = code, types.ColumnVectorString
+			continue
+		}
+		if iv, fv, isFloat := c.numericAt(row); isFloat {
+			flts[i], tags[i] = fv, types.ColumnVectorFloat
+		} else {
+			ints[i], tags[i] = iv, types.ColumnVectorInt
+		}
+	}
+}
+
 // ReadChunk fills chunk with the members at positions [from, to)
 // (types.NodeColumnChunkReader); bounds outside 0 <= from <= to <= Len()
-// panic.
+// panic. chunk.Ordinals is left empty.
 func (s *PointSnapshot[T]) ReadChunk(from, to int, chunk *types.ColumnChunk) {
 	if from < 0 || to < from || to > len(s.l.ids) {
 		panic("column snapshot: chunk out of range")
 	}
 	n := to - from
 	sizeChunk(chunk, n, len(s.cols))
+	chunk.Ordinals = chunk.Ordinals[:0]
 	for i, id := range s.l.ids[from:to] {
 		chunk.IDs[i] = types.NodeID(id.SnowflakeID())
 	}
@@ -174,16 +217,54 @@ func (s *PointSnapshot[T]) ReadChunk(from, to int, chunk *types.ColumnChunk) {
 	}
 }
 
+// OrdinalSnapshot is a PointSnapshot whose chunks also carry the members'
+// node ordinals (ColumnChunk.Ordinals), ords[i] the ordinal of position i
+// (the ForEachRowOrdinal alignment).
+type OrdinalSnapshot struct {
+	*PointSnapshot[types.NodeID]
+	ords []uint32
+}
+
+// NewOrdinalSnapshot binds ords (one per member, in position order) to
+// snap; ok=false when the lengths differ.
+func NewOrdinalSnapshot(snap *PointSnapshot[types.NodeID], ords []uint32) (*OrdinalSnapshot, bool) {
+	if snap == nil || len(ords) != snap.Len() {
+		return nil, false
+	}
+	return &OrdinalSnapshot{PointSnapshot: snap, ords: ords}, true
+}
+
+// LabelOrdinalSnapshot binds col's rows to propKeys with their ordinals
+// (ords in col's row order, as ForEachRowOrdinal takes them); ok=false
+// where NewPointSnapshot declines or the ordinals do not match the rows.
+func LabelOrdinalSnapshot(col *LabelDocValues, propKeys []string, ords []uint32) (*OrdinalSnapshot, bool) {
+	ps, ok := col.NewPointSnapshot(propKeys)
+	if !ok {
+		return nil, false
+	}
+	return NewOrdinalSnapshot(ps, ords)
+}
+
+// ReadChunk is PointSnapshot.ReadChunk with chunk.Ordinals filled.
+func (s *OrdinalSnapshot) ReadChunk(from, to int, chunk *types.ColumnChunk) {
+	s.PointSnapshot.ReadChunk(from, to, chunk)
+	chunk.Ordinals = append(chunk.Ordinals[:0], s.ords[from:to]...)
+}
+
 // ChunkConcat reads the rows of several part snapshots concatenated in
 // order (a tiered label over its shards, a sharded label over its slots) as
 // typed chunks: per column the parts' kinds unified (integers and floats to
-// Numeric; a part without a present value takes any kind) and, for a string
-// column, the parts' dictionaries merged once (first use) with a code table
-// per part.
+// Numeric, strings and numbers to Mixed; a part without a present value
+// takes any kind) and, for a string or mixed column, the parts'
+// dictionaries merged once (first use) with a code table per part. When
+// every part is an OrdinalSnapshot the chunks carry ordinals too.
 type ChunkConcat struct {
 	parts   []*PointSnapshot[types.NodeID]
-	offsets []int // offsets[i] = first row of part i; offsets[len] = Len
+	ords    [][]uint32 // per part, when withOrds
+	offsets []int      // offsets[i] = first row of part i; offsets[len] = Len
 	kinds   []types.ColumnVectorKind
+	// withOrds: every part carries ordinals (OrdinalSnapshot).
+	withOrds bool
 
 	once  sync.Once
 	dicts [][]string   // per column (string columns)
@@ -192,17 +273,22 @@ type ChunkConcat struct {
 
 // NewChunkConcat returns the chunk reader over parts (nil entries are
 // parts without members), or ok=false where a part is not a point snapshot
-// of this package or a column holds strings in one part and numbers in
-// another (no vector holds both; such a snapshot reads by RowAt).
+// of this package (PointSnapshot or OrdinalSnapshot) or the parts bind
+// different column counts.
 func NewChunkConcat(parts []types.NodeColumnReader) (*ChunkConcat, bool) {
-	c := &ChunkConcat{offsets: make([]int, 1, len(parts)+1)}
+	c := &ChunkConcat{offsets: make([]int, 1, len(parts)+1), withOrds: true}
 	width := -1
 	for _, r := range parts {
-		if r == nil {
+		var p *PointSnapshot[types.NodeID]
+		switch x := r.(type) {
+		case nil:
 			continue
-		}
-		p, ok := r.(*PointSnapshot[types.NodeID])
-		if !ok {
+		case *PointSnapshot[types.NodeID]:
+			p, c.withOrds = x, false
+		case *OrdinalSnapshot:
+			p = x.PointSnapshot
+			c.ords = append(c.ords, x.ords)
+		default:
 			return nil, false
 		}
 		if width >= 0 && len(p.cols) != width {
@@ -211,6 +297,9 @@ func NewChunkConcat(parts []types.NodeColumnReader) (*ChunkConcat, bool) {
 		width = len(p.cols)
 		c.parts = append(c.parts, p)
 		c.offsets = append(c.offsets, c.offsets[len(c.offsets)-1]+p.Len())
+	}
+	if !c.withOrds {
+		c.ords = nil
 	}
 	if width < 0 {
 		width = 0
@@ -227,8 +316,8 @@ func NewChunkConcat(parts []types.NodeColumnReader) (*ChunkConcat, bool) {
 			switch {
 			case kind == 0 || kind == pk:
 				kind = pk
-			case kind == types.ColumnVectorString || pk == types.ColumnVectorString:
-				return nil, false
+			case kind == types.ColumnVectorMixed || kind == types.ColumnVectorString || pk == types.ColumnVectorString:
+				kind = types.ColumnVectorMixed
 			default:
 				kind = types.ColumnVectorNumeric
 			}
@@ -251,7 +340,7 @@ func (c *ChunkConcat) mergeDicts() {
 	c.dicts = make([][]string, len(c.kinds))
 	c.remap = make([][][]uint32, len(c.kinds))
 	for k, kind := range c.kinds {
-		if kind != types.ColumnVectorString {
+		if kind != types.ColumnVectorString && kind != types.ColumnVectorMixed {
 			continue
 		}
 		index := map[string]uint32{}
@@ -287,9 +376,13 @@ func (c *ChunkConcat) ReadChunk(from, to int, chunk *types.ColumnChunk) {
 	c.once.Do(c.mergeDicts)
 	n := to - from
 	sizeChunk(chunk, n, len(c.kinds))
+	chunk.Ordinals = chunk.Ordinals[:0]
+	if c.withOrds {
+		chunk.Ordinals = resized(chunk.Ordinals, n)
+	}
 	for k, kind := range c.kinds {
 		sizeVector(&chunk.Cols[k], kind, n)
-		if kind == types.ColumnVectorString {
+		if kind == types.ColumnVectorString || kind == types.ColumnVectorMixed {
 			chunk.Cols[k].Dict = c.dicts[k]
 		}
 	}
@@ -303,9 +396,12 @@ func (c *ChunkConcat) ReadChunk(from, to int, chunk *types.ColumnChunk) {
 		for i, id := range p.l.ids[pf:pt] {
 			chunk.IDs[at+i] = id
 		}
+		if c.withOrds {
+			copy(chunk.Ordinals[at:], c.ords[pi][pf:pt])
+		}
 		for k, col := range p.cols {
 			var remap []uint32
-			if c.kinds[k] == types.ColumnVectorString {
+			if c.kinds[k] == types.ColumnVectorString || c.kinds[k] == types.ColumnVectorMixed {
 				remap = c.remap[k][pi]
 			}
 			col.fillVector(&chunk.Cols[k], at, pf, pt, remap)

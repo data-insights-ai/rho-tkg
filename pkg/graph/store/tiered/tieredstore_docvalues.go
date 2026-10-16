@@ -168,9 +168,34 @@ func (ts *Store) ForEachDocValuesMulti(labelTokens []uint16, propKeys []string,
 // DocValuesSnapshot returns a random-access point-lookup handle spanning every
 // shard contributing a member of labelToken. See tieredColumnSnapshot.
 func (ts *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
-	var readers []types.NodeColumnReader
-	gen, ok, err = ts.foldDocValues([]uint16{labelToken}, func(store *BadgerStore) (bool, error) {
+	return ts.snapshotOver([]uint16{labelToken}, false, func(store *BadgerStore) (types.NodeColumnReader, bool, error) {
 		s, _, shardOK, shardErr := store.DocValuesSnapshot(labelToken, propKeys)
+		return s, shardOK, shardErr
+	})
+}
+
+// DocValuesSnapshotMulti is DocValuesSnapshot over a LABEL INTERSECTION
+// (round 10), under ForEachDocValuesMulti's contract (an intersection empty
+// on every shard is served: an empty snapshot). Tiered numbers no node, so
+// it has no ordinal snapshot doors.
+func (ts *Store) DocValuesSnapshotMulti(labelTokens []uint16, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
+	if len(labelTokens) == 0 {
+		return nil, 0, false, nil
+	}
+	return ts.snapshotOver(labelTokens, true, func(store *BadgerStore) (types.NodeColumnReader, bool, error) {
+		s, _, shardOK, shardErr := store.DocValuesSnapshotMulti(labelTokens, propKeys)
+		return s, shardOK, shardErr
+	})
+}
+
+// snapshotOver folds the shards holding members of tokens through read into
+// one reader over their rows in shard-fold order, reading as chunks where
+// the shards' snapshots concatenate (indexpkg.NewChunkConcat).
+func (ts *Store) snapshotOver(tokens []uint16, emptyServes bool,
+	read func(store *BadgerStore) (types.NodeColumnReader, bool, error)) (types.NodeColumnReader, uint64, bool, error) {
+	var readers []types.NodeColumnReader
+	gen, ok, err := ts.foldDocValuesServingEmpty(tokens, emptyServes, func(store *BadgerStore) (bool, error) {
+		s, shardOK, shardErr := read(store)
 		if shardErr != nil || !shardOK {
 			return shardOK, shardErr
 		}
@@ -189,9 +214,9 @@ func (ts *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap t
 
 // tieredChunkSnapshot is a tieredColumnSnapshot whose shards' columns also
 // read as typed chunks (types.NodeColumnChunkReader, sigma-tkgd round 9):
-// the shards' rows concatenated in shard-fold order, as RowAt reads them. A
-// label whose column holds strings on one shard and numbers on another is
-// served by tieredColumnSnapshot alone (no vector holds both).
+// the shards' rows concatenated in shard-fold order, as RowAt reads them; a
+// column holding strings on one shard and numbers on another reads as
+// types.ColumnVectorMixed (round 10).
 type tieredChunkSnapshot struct {
 	*tieredColumnSnapshot
 	chunks *indexpkg.ChunkConcat

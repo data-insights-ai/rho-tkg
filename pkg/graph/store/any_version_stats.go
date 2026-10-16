@@ -31,6 +31,33 @@ type CountTimelineOpts struct {
 	// MaxSegments, above zero, declines (exact=false) a timeline of more
 	// segments instead of building it.
 	MaxSegments int
+	// CurrentRows counts the current rows instead of the state at a pin (the
+	// pin must be 0, else ErrInvalidTimeRange): each member's head row, the
+	// row ForEachByLabel(label, QueryOpts{}) / ForEachByType hands out, over
+	// its own valid interval [valid-from, valid-to): an unset valid-from is
+	// the row's derived start (its TxFrom), an unset valid-to an open end;
+	// with UntimedFromMinusInf a row that starts at an untimed create holds
+	// from -inf. A member's earlier versions and a deleted entity count
+	// nowhere (an unpinned read takes each member's current row as it is).
+	// Not cached: one pass over the members' current rows per call.
+	CurrentRows bool
+}
+
+// ValidHull is the hull of the valid instants at which a label's (type's)
+// members hold (ValidHullByLabel / ValidHullByType): the least instant
+// From and the end of the latest span, with explicit flags for the empty
+// hull and the open end (no sentinel stands for either).
+type ValidHull struct {
+	// Empty: no member holds at any valid instant; the other fields are zero.
+	Empty bool
+	// From is the earliest instant at which a member holds;
+	// types.UnboundedValidFrom (math.MinInt64) when one holds from -inf.
+	From types.Instant
+	// To ends the hull when OpenEnd is false: no member holds at To or
+	// after; 0 when OpenEnd.
+	To types.Instant
+	// OpenEnd: some member holds with no end (+inf).
+	OpenEnd bool
 }
 
 // PropertyValueStats states the values of an indexed property: Distinct

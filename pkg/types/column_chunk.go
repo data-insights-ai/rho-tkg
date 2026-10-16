@@ -15,13 +15,20 @@ const (
 	ColumnVectorNumeric
 	// ColumnVectorString: Dict[Codes[i]] is the value.
 	ColumnVectorString
+	// ColumnVectorMixed: strings and numbers mixed (a composite snapshot,
+	// tiered or sharded, whose column holds strings on one part and numbers
+	// on another). Tags[i] is row i's own kind, ColumnVectorInt (Ints[i]),
+	// ColumnVectorFloat (Flts[i]) or ColumnVectorString (Dict[Codes[i]]);
+	// an absent row (Present[i] false) has tag 0 and zero slots.
+	ColumnVectorMixed
 )
 
 // ColumnVector is one column of a ColumnChunk, one slot per row of the
 // chunk. A row whose Present is false lacks the property (RowAt's nil); its
 // slots are zero. Only the slices of the column's kind are filled: Ints for
 // Int, Flts for Float, Ints, Flts and IsFloat for Numeric, Codes for
-// String; the others are left empty (their capacity kept).
+// String, Tags, Ints, Flts and Codes for Mixed; the others are left empty
+// (their capacity kept).
 //
 // Dict is the snapshot's dictionary of a String column, shared by every
 // chunk of the snapshot and every goroutine reading it: READ-ONLY. A code
@@ -34,6 +41,7 @@ type ColumnVector struct {
 	Flts    []float64
 	IsFloat []bool
 	Codes   []uint32
+	Tags    []ColumnVectorKind
 	Dict    []string
 }
 
@@ -42,9 +50,15 @@ type ColumnVector struct {
 // from+i, Cols[c] the snapshot's c-th requested key. The reader reuses the
 // slices' capacity, so a chunk read again allocates nothing; the caller
 // owns the chunk (one per goroutine).
+//
+// Ordinals is parallel to IDs when the snapshot comes from an ordinal door
+// (nodes.API.DocValuesSnapshotOrdinal / DocValuesSnapshotMultiOrdinal):
+// each member's dense node ordinal, the one ForEachDocValuesOrdinal hands
+// out. Every other snapshot leaves it empty (capacity kept).
 type ColumnChunk struct {
-	IDs  []NodeID
-	Cols []ColumnVector
+	IDs      []NodeID
+	Ordinals []uint32
+	Cols     []ColumnVector
 }
 
 // NodeColumnChunkReader is an OPTIONAL extension of NodeColumnRowReader a

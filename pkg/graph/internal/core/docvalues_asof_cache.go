@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -80,12 +81,12 @@ type asOfColumnCache struct {
 	cutBuilds   atomic.Int64
 	relCutEpoch atomic.Uint64 // cutEpoch
 
-	// timelines are the count timelines (count_timeline.go), each with the
-	// cut epoch it was built at; created on first use.
-	timelines map[countTimelineKey]countTimelineEntry
-	// valueStats are the property value statistics at pins
-	// (value_stats.go), like timelines.
-	valueStats map[valueStatsKey]valueStatsEntry
+	// Values memoised at pins under the cut epoch (cut_memo.go): the count
+	// timelines (count_timeline.go), the property value statistics
+	// (value_stats.go) and value classes (value_classes.go).
+	timelines  cutMemo[countTimelineKey, []storepkg.CountSegment]
+	valueStats cutMemo[valueStatsKey, storepkg.PropertyValueStats]
+	valueClass cutMemo[valueStatsKey, storepkg.PropertyTypeClassCounts]
 }
 
 type asOfCacheKey struct {
@@ -231,7 +232,7 @@ func (a *asOfColumnCache) clear() {
 	a.cutOrder, a.cutBytes, a.cutSeen = nil, 0, nil
 	a.cutDeclined = make(map[stateCutKey]uint64)
 	// Value statistics hold a property value (MaxValue): erased with the rest.
-	a.timelines, a.valueStats = nil, nil
+	a.timelines, a.valueStats, a.valueClass = nil, nil, nil
 	a.mu.Unlock()
 }
 

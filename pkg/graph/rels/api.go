@@ -52,6 +52,7 @@ type Ops interface {
 	ForEachByTypePropertyRangeAnyVersion(typeName, key string, min, max float64, inclMin, inclMax bool, pin types.Instant, fn func(*types.Relationship) bool) error
 	RangeCardinalityAnyVersion(typeName, key string, min, max float64, inclMin, inclMax bool, pin types.Instant) (storepkg.RangeAnyVersionCount, bool, error)
 	CountTimelineByType(typeName string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error)
+	ValidHullByType(typeName string, pin types.Instant, opts storepkg.CountTimelineOpts) (storepkg.ValidHull, bool, error)
 	ForEachByTypeOrdinals(typeName string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ForEachIDByTypePropertyRangeOrdered(ctx context.Context, typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
 	ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
@@ -594,6 +595,16 @@ func (a *API) CountTimelineByType(typeName string, pin types.Instant, opts store
 		return nil, false, err
 	}
 	return ops.CountTimelineByType(typeName, pin, opts)
+}
+
+// ValidHullByType is the relationship mirror of nodes.API.ValidHullByLabel
+// (round 10 request 2a): the hull of CountTimelineByType's segments.
+func (a *API) ValidHullByType(typeName string, pin types.Instant, opts storepkg.CountTimelineOpts) (storepkg.ValidHull, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.ValidHull{}, false, err
+	}
+	return ops.ValidHullByType(typeName, pin, opts)
 }
 
 // ForEachIDByTypePropertyRangeOrdered is the relationship mirror of

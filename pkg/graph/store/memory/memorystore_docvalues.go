@@ -438,3 +438,48 @@ func (ms *Store) refreshLabelColumnsLocked(token uint16, set map[types.NodeID]st
 	ms.clearAppendDeltaFor(token)
 	return col
 }
+
+// DocValuesSnapshotMulti is DocValuesSnapshot over a LABEL INTERSECTION
+// (sigma-tkgd round 10): the snapshot ForEachDocValuesMulti reads, bound
+// to propKeys, with ForEachDocValuesMulti's rows, order, gen and decline
+// contract (an empty intersection is served: an empty snapshot).
+func (ms *Store) DocValuesSnapshotMulti(toks []uint16, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
+	col, _, gen, ok, err := ms.multiDocColumns(toks, propKeys, false)
+	if err != nil || !ok {
+		return nil, gen, false, err
+	}
+	ps, pok := col.NewPointSnapshot(propKeys)
+	if !pok {
+		return nil, gen, false, nil
+	}
+	return ps, gen, true, nil
+}
+
+// DocValuesSnapshotOrdinal is DocValuesSnapshot whose chunks carry each
+// member's node ordinal (types.ColumnChunk.Ordinals), the ordinals
+// ForEachDocValuesOrdinal hands out (round 10).
+func (ms *Store) DocValuesSnapshotOrdinal(labelToken uint16, propKeys []string) (snap types.NodeColumnChunkReader, gen uint64, ok bool, err error) {
+	col, ords, gen, ok, err := ms.labelDocColumns(labelToken, propKeys, true)
+	if err != nil || !ok {
+		return nil, gen, false, err
+	}
+	os, sok := indexpkg.LabelOrdinalSnapshot(col, propKeys, ords)
+	if !sok {
+		return nil, gen, false, nil
+	}
+	return os, gen, true, nil
+}
+
+// DocValuesSnapshotMultiOrdinal is DocValuesSnapshotMulti with ordinals,
+// as DocValuesSnapshotOrdinal.
+func (ms *Store) DocValuesSnapshotMultiOrdinal(toks []uint16, propKeys []string) (snap types.NodeColumnChunkReader, gen uint64, ok bool, err error) {
+	col, ords, gen, ok, err := ms.multiDocColumns(toks, propKeys, true)
+	if err != nil || !ok {
+		return nil, gen, false, err
+	}
+	os, sok := indexpkg.LabelOrdinalSnapshot(col, propKeys, ords)
+	if !sok {
+		return nil, gen, false, nil
+	}
+	return os, gen, true, nil
+}

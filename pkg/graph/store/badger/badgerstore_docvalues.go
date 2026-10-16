@@ -615,3 +615,55 @@ func (bs *Store) countRefresh(patched bool) {
 	}
 	bs.columnExtends.Add(1)
 }
+
+// DocValuesSnapshotMulti is DocValuesSnapshot over a LABEL INTERSECTION
+// (sigma-tkgd round 10): the snapshot ForEachDocValuesMulti reads, bound
+// to propKeys, under its decline contract (an empty intersection is served:
+// an empty snapshot).
+func (bs *Store) DocValuesSnapshotMulti(toks []uint16, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
+	col, _, gen, ok, err := bs.multiDocColumns(toks, propKeys)
+	if err != nil || !ok {
+		return nil, gen, false, err
+	}
+	ps, pok := col.NewPointSnapshot(propKeys)
+	if !pok {
+		return nil, gen, false, nil
+	}
+	return ps, gen, true, nil
+}
+
+// DocValuesSnapshotOrdinal is DocValuesSnapshot whose chunks carry each
+// member's node ordinal (types.ColumnChunk.Ordinals), those
+// ForEachDocValuesOrdinal hands out (round 10). ok=false where
+// ForEachDocValuesOrdinal declines (DisableOrdinals among them).
+func (bs *Store) DocValuesSnapshotOrdinal(labelToken uint16, propKeys []string) (snap types.NodeColumnChunkReader, gen uint64, ok bool, err error) {
+	if bs != nil && !bs.HasOrdinals() {
+		return nil, 0, false, bs.checkOpen()
+	}
+	col, gen, ok, err := bs.labelDocColumns(labelToken, propKeys)
+	if err != nil || !ok {
+		return nil, gen, false, err
+	}
+	os, sok := indexpkg.LabelOrdinalSnapshot(col, propKeys, bs.labelColumnOrdinals(labelToken, col))
+	if !sok {
+		return nil, gen, false, nil
+	}
+	return os, gen, true, nil
+}
+
+// DocValuesSnapshotMultiOrdinal is DocValuesSnapshotMulti with ordinals, as
+// DocValuesSnapshotOrdinal.
+func (bs *Store) DocValuesSnapshotMultiOrdinal(toks []uint16, propKeys []string) (snap types.NodeColumnChunkReader, gen uint64, ok bool, err error) {
+	if bs != nil && !bs.HasOrdinals() {
+		return nil, 0, false, bs.checkOpen()
+	}
+	col, key, gen, ok, err := bs.multiDocColumns(toks, propKeys)
+	if err != nil || !ok {
+		return nil, gen, false, err
+	}
+	os, sok := indexpkg.LabelOrdinalSnapshot(col, propKeys, bs.multiColumnOrdinals(key, col))
+	if !sok {
+		return nil, gen, false, nil
+	}
+	return os, gen, true, nil
+}

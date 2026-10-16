@@ -90,12 +90,41 @@ func TestChunkConcatAcrossParts(t *testing.T) {
 		t.Fatalf("merged dictionary %v, want 4 distinct terms", d)
 	}
 
+	// Strings on one part and numbers on another: a mixed vector (round 10),
+	// each row tagged with its own kind, codes through the merged dictionary.
 	mixed := []types.NodeColumnReader{
-		chunkPart(t, 100, keys, []map[string]any{{"n": int64(1)}}),
-		chunkPart(t, 200, keys, []map[string]any{{"n": "x"}}),
+		chunkPart(t, 100, keys, []map[string]any{{"n": int64(1)}, {"n": 2.5}, {}}),
+		chunkPart(t, 200, keys, []map[string]any{{"n": "x"}, {"n": "y"}}),
+		chunkPart(t, 300, keys, []map[string]any{{"n": "y"}, {}}),
+		chunkPart(t, 400, keys, []map[string]any{{"n": int64(-4)}}),
 	}
-	if _, ok := NewChunkConcat(mixed); ok {
-		t.Fatal("strings on one part and numbers on another: not declined")
+	mc, ok := NewChunkConcat(mixed)
+	if !ok || mc.kinds[0] != types.ColumnVectorMixed {
+		t.Fatalf("strings and numbers: ok=%v kinds %v, want mixed", ok, mc.kinds)
+	}
+	mc.ReadChunk(0, mc.Len(), &chunk)
+	m := chunk.Cols[0]
+	wantMixed := []any{int64(1), 2.5, nil, "x", "y", "y", nil, int64(-4)}
+	for i, w := range wantMixed {
+		var got any
+		if m.Present[i] {
+			switch m.Tags[i] {
+			case types.ColumnVectorInt:
+				got = m.Ints[i]
+			case types.ColumnVectorFloat:
+				got = m.Flts[i]
+			case types.ColumnVectorString:
+				got = m.Dict[m.Codes[i]]
+			}
+		} else if m.Tags[i] != 0 {
+			t.Fatalf("absent row %d tagged %d", i, m.Tags[i])
+		}
+		if fmt.Sprintf("%T %v", got, got) != fmt.Sprintf("%T %v", w, w) {
+			t.Fatalf("mixed row %d: %T %v, want %T %v", i, got, got, w, w)
+		}
+	}
+	if len(m.Dict) != 2 || m.Codes[4] != m.Codes[5] {
+		t.Fatalf("mixed dictionary %v codes %v: one code per term", m.Dict, m.Codes)
 	}
 	if _, ok := NewChunkConcat([]types.NodeColumnReader{fakeReader{}}); ok {
 		t.Fatal("a foreign reader: not declined")
@@ -122,3 +151,59 @@ type fakeReader struct{}
 
 func (fakeReader) Row(types.NodeID, []any, []bool) bool { return false }
 func (fakeReader) Epoch() uint64                        { return 0 }
+
+// TestChunkConcatOrdinals (round 10): a concatenation of ordinal snapshots
+// fills ColumnChunk.Ordinals across part boundaries; one plain part leaves
+// every chunk without ordinals; a plain snapshot clears a reused chunk's
+// ordinals; NewOrdinalSnapshot refuses ordinals of another length.
+func TestChunkConcatOrdinals(t *testing.T) {
+	keys := []string{"n"}
+	part := func(base int64, n int, ord0 uint32) (*OrdinalSnapshot, *PointSnapshot[types.NodeID]) {
+		rows := make([]map[string]any, n)
+		ords := make([]uint32, n)
+		for k := range rows {
+			rows[k] = map[string]any{"n": int64(k)}
+			ords[k] = ord0 + uint32(k)
+		}
+		p := chunkPart(t, base, keys, rows).(*PointSnapshot[types.NodeID])
+		os, ok := NewOrdinalSnapshot(p, ords)
+		if !ok {
+			t.Fatal("ordinals refused")
+		}
+		return os, p
+	}
+	a, _ := part(100, 3, 10)
+	b, bPlain := part(200, 2, 50)
+	c, ok := NewChunkConcat([]types.NodeColumnReader{a, nil, b})
+	if !ok {
+		t.Fatal("ordinal parts declined")
+	}
+	var chunk types.ColumnChunk
+	c.ReadChunk(1, 5, &chunk)
+	if want := []uint32{11, 12, 50, 51}; fmt.Sprint(chunk.Ordinals) != fmt.Sprint(want) {
+		t.Fatalf("ordinals %v, want %v", chunk.Ordinals, want)
+	}
+	a.ReadChunk(0, 2, &chunk)
+	if fmt.Sprint(chunk.Ordinals) != "[10 11]" {
+		t.Fatalf("single ordinal snapshot: %v", chunk.Ordinals)
+	}
+	plain, ok := NewChunkConcat([]types.NodeColumnReader{a, bPlain})
+	if !ok {
+		t.Fatal("mixed ordinal and plain parts declined")
+	}
+	plain.ReadChunk(0, plain.Len(), &chunk)
+	if len(chunk.Ordinals) != 0 {
+		t.Fatalf("a plain part: %d ordinals handed out", len(chunk.Ordinals))
+	}
+	a.ReadChunk(0, 3, &chunk)
+	bPlain.ReadChunk(0, 1, &chunk)
+	if len(chunk.Ordinals) != 0 {
+		t.Fatal("a plain snapshot left a reused chunk's ordinals")
+	}
+	if _, ok := NewOrdinalSnapshot(bPlain, []uint32{1}); ok {
+		t.Fatal("ordinals of another length accepted")
+	}
+	if _, ok := NewOrdinalSnapshot(nil, nil); ok {
+		t.Fatal("a nil snapshot accepted")
+	}
+}

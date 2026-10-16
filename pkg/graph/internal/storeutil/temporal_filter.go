@@ -85,9 +85,19 @@ func EnvelopeOverlaps(from, to types.Instant, opts storepkg.QueryOpts) bool {
 		return from <= opts.ValidAt && (to == 0 || to > opts.ValidAt)
 	}
 	if opts.HasValidInterval() {
-		return from < opts.ValidEnd && (to == 0 || to > opts.ValidStart)
+		return IntervalMeets(from, to, opts.ValidStart, opts.ValidEnd)
 	}
 	return true
+}
+
+// IntervalMeets reports whether the valid interval [from, to) (to == 0: open
+// ended, the stored rows' convention) meets the half-open window [start, end):
+// from < end and (to open or to > start). start and end are real instants
+// (types.UnboundedValidFrom and math.MaxInt64 are the far ends; 0 is the
+// instant 0, not "unset"). The one overlap rule of the interval filters, the
+// chain resolvers' interval kind and the windowed effective reads.
+func IntervalMeets(from, to, start, end types.Instant) bool {
+	return from < end && (to == 0 || to > start)
 }
 
 // MatchesTemporalFilter evaluates whether an entity passes the temporal
@@ -118,7 +128,7 @@ func MatchesTemporalFilterFrom(from types.Instant, tm *types.TemporalMetadata, o
 		if opts.ValidStart >= opts.ValidEnd {
 			return false
 		}
-		return from < opts.ValidEnd && (to == 0 || to > opts.ValidStart)
+		return IntervalMeets(from, to, opts.ValidStart, opts.ValidEnd)
 	}
 	return true // no filter
 }

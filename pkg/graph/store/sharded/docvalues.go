@@ -215,9 +215,79 @@ func (s *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap ty
 	if s == nil {
 		return nil, 0, false, ErrNilStore
 	}
-	readers := make([]types.NodeColumnReader, len(s.shards))
-	gen, ok, err = s.foldDocValues([]uint16{labelToken}, func(idx int, shard *badger.Store) (bool, error) {
+	return s.snapshotOver([]uint16{labelToken}, false, func(shard *badger.Store) (types.NodeColumnReader, bool, error) {
 		r, _, shardOK, err := shard.DocValuesSnapshot(labelToken, propKeys)
+		return r, shardOK, err
+	})
+}
+
+// DocValuesSnapshotMulti is DocValuesSnapshot over the intersection of
+// labelTokens (round 10), under ForEachDocValuesMulti's contract (an empty
+// intersection everywhere is served: an empty snapshot).
+func (s *Store) DocValuesSnapshotMulti(labelTokens []uint16, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
+	if s == nil {
+		return nil, 0, false, ErrNilStore
+	}
+	if len(labelTokens) == 0 {
+		return nil, 0, false, nil
+	}
+	return s.snapshotOver(labelTokens, true, func(shard *badger.Store) (types.NodeColumnReader, bool, error) {
+		r, _, shardOK, err := shard.DocValuesSnapshotMulti(labelTokens, propKeys)
+		return r, shardOK, err
+	})
+}
+
+// DocValuesSnapshotOrdinal is DocValuesSnapshot whose chunks carry the
+// slots' node ordinals (types.ColumnChunk.Ordinals; slots number from the
+// shared allocator), round 10. ok=false where a slot declines.
+func (s *Store) DocValuesSnapshotOrdinal(labelToken uint16, propKeys []string) (snap types.NodeColumnChunkReader, gen uint64, ok bool, err error) {
+	if s == nil {
+		return nil, 0, false, ErrNilStore
+	}
+	return s.chunkSnapshotOver([]uint16{labelToken}, false, func(shard *badger.Store) (types.NodeColumnReader, bool, error) {
+		r, _, shardOK, err := shard.DocValuesSnapshotOrdinal(labelToken, propKeys)
+		return r, shardOK, err
+	})
+}
+
+// DocValuesSnapshotMultiOrdinal is DocValuesSnapshotMulti with ordinals.
+func (s *Store) DocValuesSnapshotMultiOrdinal(labelTokens []uint16, propKeys []string) (snap types.NodeColumnChunkReader, gen uint64, ok bool, err error) {
+	if s == nil {
+		return nil, 0, false, ErrNilStore
+	}
+	if len(labelTokens) == 0 {
+		return nil, 0, false, nil
+	}
+	return s.chunkSnapshotOver(labelTokens, true, func(shard *badger.Store) (types.NodeColumnReader, bool, error) {
+		r, _, shardOK, err := shard.DocValuesSnapshotMultiOrdinal(labelTokens, propKeys)
+		return r, shardOK, err
+	})
+}
+
+// chunkSnapshotOver is snapshotOver for the doors that hand out chunks
+// only: ok=false where the slots' snapshots do not concatenate as chunks.
+func (s *Store) chunkSnapshotOver(tokens []uint16, emptyServes bool,
+	read func(shard *badger.Store) (types.NodeColumnReader, bool, error)) (types.NodeColumnChunkReader, uint64, bool, error) {
+	snap, gen, ok, err := s.snapshotOver(tokens, emptyServes, read)
+	if err != nil || !ok {
+		return nil, gen, false, err
+	}
+	chunks, chunked := snap.(*chunkSnapshot)
+	if !chunked {
+		return nil, gen, false, nil
+	}
+	return chunks, gen, true, nil
+}
+
+// snapshotOver folds the slots holding members of tokens (emptyServes: the
+// intersection doors, served empty where no slot holds one) through read
+// into one reader: the slots' rows concatenated in slot order, as chunks
+// where the slots' snapshots concatenate (indexpkg.NewChunkConcat).
+func (s *Store) snapshotOver(tokens []uint16, emptyServes bool,
+	read func(shard *badger.Store) (types.NodeColumnReader, bool, error)) (types.NodeColumnReader, uint64, bool, error) {
+	readers := make([]types.NodeColumnReader, len(s.shards))
+	gen, ok, err := s.foldDocValuesServingEmpty(tokens, emptyServes, func(idx int, shard *badger.Store) (bool, error) {
+		r, shardOK, err := read(shard)
 		if err != nil || !shardOK {
 			return shardOK, err
 		}
@@ -249,9 +319,9 @@ func (s *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap ty
 
 // chunkSnapshot is a columnSnapshot whose slots' columns also read as typed
 // chunks (types.NodeColumnChunkReader, sigma-tkgd round 9): the slots' rows
-// concatenated in slot order, as RowAt reads them. A label whose column
-// holds strings on one slot and numbers on another is served by
-// columnSnapshot alone (no vector holds both).
+// concatenated in slot order, as RowAt reads them; a column holding strings
+// on one slot and numbers on another reads as types.ColumnVectorMixed
+// (round 10).
 type chunkSnapshot struct {
 	*columnSnapshot
 	chunks *indexpkg.ChunkConcat

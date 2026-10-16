@@ -399,7 +399,7 @@ func (c *Core) eachNodeChainDuring(chain []*types.Node, start, end types.Instant
 		}
 		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start), outside
 		// the spans an excise voided.
-		if vStart < end && (vEnd == 0 || vEnd > start) && uncovered(mask, max(vStart, start), minEnd(vEnd, end)) {
+		if storeutil.IntervalMeets(vStart, vEnd, start, end) && uncovered(mask, max(vStart, start), minEnd(vEnd, end)) {
 			if (pred == nil || pred(chain[i])) && !fn(chain[i]) {
 				return
 			}
@@ -511,7 +511,7 @@ func (c *Core) eachRelChainDuring(chain []*types.Relationship, start, end types.
 		}
 		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start), outside
 		// the spans an excise voided.
-		if vStart < end && (vEnd == 0 || vEnd > start) && uncovered(mask, max(vStart, start), minEnd(vEnd, end)) {
+		if storeutil.IntervalMeets(vStart, vEnd, start, end) && uncovered(mask, max(vStart, start), minEnd(vEnd, end)) {
 			if (pred == nil || pred(chain[i])) && !fn(chain[i]) {
 				return
 			}

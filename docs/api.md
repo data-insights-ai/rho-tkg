@@ -298,7 +298,7 @@ Void rows. A void row never holds the current slot and never answers `NodeAsOf` 
 
 Twins. `ExciseNodeValidityWithTx(ctx, id, a, b, txFrom)` / `ExciseRelValidityWithTx` record it at a caller instant with the rules of `SetNodeVersionIntervalWithTx` (`Config.AllowTxBackfill`). `GraphTx.ExciseNodeValidity[WithTx]` / `ExciseRelValidity[WithTx]` (Rollback removes the rows; a refusal leaves the transaction open) and `BatchBuilder` doors of the same names (interval checked at queue time; a refused `*WithTx` refuses the whole unit and must be the only op of its unit on the entity).
 
-Errors, nothing written: `b == 0` (an open tail is `CloseVersion`'s), `a <= 0` or `a >= b` `ErrInvalidTimeRange`; no version valid in `[a, b)` (also the hole itself) `ErrNoVersionValidAt`; unknown `ErrNodeNotFound` / `ErrRelNotFound`; hard-deleted `ErrEntityDeleted`. Cost: one entity-lock write of the versions overlapping `[a, b)` plus one. Tests: `TestExciseNodeValidity` / `TestExciseRelValidity` (memory, badger, tiered, sharded with reopen), `TestVoidRow_FormatVersion5`, the bitemporal oracle harness.
+Errors, nothing written: `b == 0` (an open tail is `CloseVersion`'s), `a == 0` or `a >= b` `ErrInvalidTimeRange` (a negative `a`, `types.UnboundedValidFrom` included, is a real start since v4.59.0); no version valid in `[a, b)` (also the hole itself) `ErrNoVersionValidAt`; unknown `ErrNodeNotFound` / `ErrRelNotFound`; hard-deleted `ErrEntityDeleted`. Cost: one entity-lock write of the versions overlapping `[a, b)` plus one. Tests: `TestExciseNodeValidity` / `TestExciseRelValidity` (memory, badger, tiered, sharded with reopen), `TestVoidRow_FormatVersion5`, the bitemporal oracle harness.
 
 ### Events (`g.Events`)
 
