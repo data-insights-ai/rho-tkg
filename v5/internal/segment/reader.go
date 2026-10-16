@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
@@ -419,13 +421,13 @@ func (s *Segment) build(i int, v *rowVals) (*Row, error) {
 		if !v.propSet[c] {
 			continue
 		}
-		var val any
+		var val graphstate.Scalar
 		if p.col.Kind == KindString {
 			str, err := p.strs.at(i)
 			if err != nil {
 				return nil, err
 			}
-			val = str
+			val = graphstate.String(str)
 		} else {
 			x, ok := kindValue(p.col.Kind, v.propInts[c])
 			if !ok {
@@ -463,33 +465,24 @@ func parseFallback(b []byte, dst []Property) ([]Property, error) {
 		}
 		kl := int(binary.LittleEndian.Uint16(b))
 		b = b[2:]
-		if kl == 0 || len(b) < kl+1 {
+		if kl == 0 || len(b) < kl {
 			return nil, fmt.Errorf("key of %d bytes in %d", kl, len(b))
 		}
 		key := string(b[:kl])
-		tag := Kind(b[kl])
-		b = b[kl+1:]
-		var val any
-		if tag == KindString {
-			if len(b) < 4 {
-				return nil, errors.New("truncated string length")
-			}
-			l := int(binary.BigEndian.Uint32(b))
-			b = b[4:]
-			if l > len(b) {
-				return nil, fmt.Errorf("string of %d bytes in %d", l, len(b))
-			}
-			val, b = string(b[:l]), b[l:]
-		} else {
-			if tag < KindBool || tag > KindFloat64 || len(b) < 8 {
-				return nil, fmt.Errorf("value tag %d with %d bytes", tag, len(b))
-			}
-			x, ok := kindValue(tag, int64(binary.BigEndian.Uint64(b))) // #nosec G115 -- bit pattern
-			if !ok {
-				return nil, fmt.Errorf("property %q does not fit kind %d", key, tag)
-			}
-			val, b = x, b[8:]
+		b = b[kl:]
+		if len(b) < 4 {
+			return nil, errors.New("truncated value length")
 		}
+		l := int(binary.BigEndian.Uint32(b))
+		b = b[4:]
+		if l < 1 || l > len(b) {
+			return nil, fmt.Errorf("value of %d bytes in %d", l, len(b))
+		}
+		val, err := graphstate.DecodeWire(b[:l], temporal.Axis{}, false, temporal.Limits{})
+		if err != nil || kindOf(val) == 0 {
+			return nil, fmt.Errorf("property %q is not a storable scalar", key)
+		}
+		b = b[l:]
 		dst = append(dst, Property{Key: key, Value: val})
 	}
 	return dst, nil

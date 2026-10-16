@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
@@ -177,7 +178,7 @@ func TestValidateSchema(t *testing.T) {
 	}
 	for _, s := range []Schema{
 		{TypeName: ""},
-		{TypeName: "X", Columns: []Column{{"a", KindInt}, {"a", KindBool}}},
+		{TypeName: "X", Columns: []Column{{"a", KindI64}, {"a", KindBool}}},
 		{TypeName: "X", Columns: []Column{{"a", 99}}},
 	} {
 		if err := ValidateSchema(s); !errors.Is(err, ErrInvalidSchema) {
@@ -192,13 +193,13 @@ func TestBatch_TypedColumnsMatchRows(t *testing.T) {
 	rows := corpus(t, 6000, 9)
 	seg := mustOpen(t, mustEncode(t, rows, Options{}, 1024))
 	want := scanAll(t, seg)
-	get := func(r Row, key string) (any, bool) {
+	get := func(r Row, key string) (graphstate.Scalar, bool) {
 		for _, p := range r.Props {
 			if p.Key == key {
 				return p.Value, true
 			}
 		}
-		return nil, false
+		return graphstate.Scalar{}, false
 	}
 	strSeen, intSeen := false, false
 	err := seg.ScanBatches(func(b *Batch) bool {
@@ -207,7 +208,7 @@ func TestBatch_TypedColumnsMatchRows(t *testing.T) {
 				strSeen = true
 				for k := 0; k < b.N; k++ {
 					v, has := get(want[b.Base+k], col.Name)
-					s, isStr := v.(string)
+					s, isStr := v.StringValue()
 					if present(k) != (has && isStr) {
 						t.Fatalf("row %d col %s: presence %t, row has %v", b.Base+k, col.Name, present(k), v)
 					}
@@ -229,7 +230,7 @@ func TestBatch_TypedColumnsMatchRows(t *testing.T) {
 					v, has := get(want[b.Base+k], col.Name)
 					declared := has && kindOf(v) == col.Kind
 					if present(k) != declared {
-						t.Fatalf("row %d col %s: presence %t, row has %T", b.Base+k, col.Name, present(k), v)
+						t.Fatalf("row %d col %s: presence %t, row has kind %d", b.Base+k, col.Name, present(k), v.Kind())
 					}
 					if declared && vals[k] != valueBits(v) {
 						t.Fatalf("row %d col %s: stored %d, row value bits %d", b.Base+k, col.Name, vals[k], valueBits(v))

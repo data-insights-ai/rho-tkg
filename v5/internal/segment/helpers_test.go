@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
@@ -62,22 +63,24 @@ func rowsFromBytes(in []byte) []Row {
 		r.ValidFrom, r.ValidTo, r.TxFrom, r.TxTo = coord(), coord(), coord(), coord()
 		for p := int(s.u8() % 4); p > 0; p-- {
 			key := keys[s.u8()%byte(len(keys))]
-			var v any
-			switch s.u8() % 7 {
+			var v graphstate.Scalar
+			switch s.u8() % 6 {
 			case 0:
-				v = s.u8()%2 == 0
+				v = graphstate.Bool(s.u8()%2 == 0)
 			case 1:
-				v = int64(s.u64())
+				v = graphstate.I64(int64(s.u64()))
 			case 2:
-				v = string(in[:min(len(in), int(s.u8()%8))])
+				v = graphstate.String(string(in[:min(len(in), int(s.u8()%8))]))
 			case 3:
-				v = math.Float64frombits(s.u64())
+				f, err := graphstate.F64(math.Float64frombits(s.u64()))
+				if err != nil { // NaN/Inf are not storable F64
+					f = graphstate.Null()
+				}
+				v = f
 			case 4:
-				v = uint8(s.u8())
-			case 5:
-				v = float32(math.Float32frombits(uint32(s.u64())))
+				v = graphstate.Null()
 			default:
-				v = []int{1}
+				v = graphstate.Scalar{}
 			}
 			r.Props = append(r.Props, Property{key, v})
 		}

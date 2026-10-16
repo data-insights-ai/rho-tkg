@@ -9,6 +9,7 @@ import (
 	"math"
 	"slices"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
@@ -103,11 +104,12 @@ func (c Coord) Bound(axis temporal.Axis, inclusive bool) (temporal.Bound, error)
 	return temporal.Bound{}, fmt.Errorf("%w: invalid coordinate", ErrInvalidRow)
 }
 
-// Property is one named scalar value. Value must be one of the Go kinds of
-// Kind (bool, the sized and unsized integers, float32/64, string).
+// Property is one named scalar value. Value must be a graphstate.Scalar of
+// kind I64, F64, Bool or String (null, scope, descriptor and the zero Scalar
+// are refused with ErrInvalidRow).
 type Property struct {
 	Key   string
-	Value any
+	Value graphstate.Scalar
 }
 
 // Row is one relationship assertion revision as the codec carries it. It is
@@ -131,134 +133,76 @@ type Row struct {
 	Props []Property
 }
 
-// ValueBits maps a declared-kind value to the int64 a column stores: the
-// integer (uint64 bit-cast), 0/1 for bool, the IEEE-754 bits for floats
-// (0 for any other value).
-func ValueBits(v any) int64 { return valueBits(v) }
+// valid reports whether k is a storable column kind.
+func (k Kind) valid() bool {
+	return k == KindString || k == KindBool || k == KindI64 || k == KindF64
+}
 
-func valueBits(v any) int64 {
-	switch x := v.(type) {
-	case bool:
-		if x {
-			return 1
-		}
-		return 0
-	case int:
-		return int64(x)
-	case int8:
-		return int64(x)
-	case int16:
-		return int64(x)
-	case int32:
-		return int64(x)
-	case int64:
+// kindOf returns the column Kind a value would fill (0 for a value no column
+// can hold).
+func kindOf(v graphstate.Scalar) Kind {
+	if k := Kind(v.Kind()); k.valid() {
+		return k
+	}
+	return 0
+}
+
+// ValueBits maps a non-string value to the int64 a column stores: the integer
+// for I64, 0/1 for Bool, the IEEE-754 bits for F64 (0 for anything else).
+func ValueBits(v graphstate.Scalar) int64 { return valueBits(v) }
+
+func valueBits(v graphstate.Scalar) int64 {
+	if x, ok := v.Int64Value(); ok {
 		return x
-	case uint:
-		return int64(x) // #nosec G115 -- bit-cast, restored by kindValue
-	case uint8:
-		return int64(x)
-	case uint16:
-		return int64(x)
-	case uint32:
-		return int64(x)
-	case uint64:
-		return int64(x) // #nosec G115 -- bit-cast, restored by kindValue
-	case float32:
-		return int64(math.Float32bits(x))
-	case float64:
+	}
+	if x, ok := v.BoolValue(); ok && x {
+		return 1
+	}
+	if x, ok := v.Float64Value(); ok {
 		return int64(math.Float64bits(x)) // #nosec G115 -- bit pattern
 	}
 	return 0
 }
 
-// kindOf returns the declared Kind of a scalar value (0 for anything else).
-func kindOf(v any) Kind {
-	switch v.(type) {
-	case bool:
-		return KindBool
-	case int:
-		return KindInt
-	case int8:
-		return KindInt8
-	case int16:
-		return KindInt16
-	case int32:
-		return KindInt32
-	case int64:
-		return KindInt64
-	case uint:
-		return KindUint
-	case uint8:
-		return KindUint8
-	case uint16:
-		return KindUint16
-	case uint32:
-		return KindUint32
-	case uint64:
-		return KindUint64
-	case float32:
-		return KindFloat32
-	case float64:
-		return KindFloat64
-	case string:
-		return KindString
-	}
-	return 0
-}
-
-// kindValue turns a stored int64 back into a value of kind k, rejecting a
+// kindValue turns a stored int64 back into a Scalar of kind k, rejecting a
 // value the kind cannot hold (a corrupt column, never a truncation).
-func kindValue(k Kind, x int64) (any, bool) {
+func kindValue(k Kind, x int64) (graphstate.Scalar, bool) {
 	switch k {
 	case KindBool:
-		return x == 1, x == 0 || x == 1
-	case KindInt:
-		return int(x), true
-	case KindInt8:
-		return int8(x), x >= math.MinInt8 && x <= math.MaxInt8 // #nosec G115 -- range checked
-	case KindInt16:
-		return int16(x), x >= math.MinInt16 && x <= math.MaxInt16 // #nosec G115 -- range checked
-	case KindInt32:
-		return int32(x), x >= math.MinInt32 && x <= math.MaxInt32 // #nosec G115 -- range checked
-	case KindInt64:
-		return x, true
-	case KindUint:
-		return uint(x), true // #nosec G115 -- bit-cast back
-	case KindUint8:
-		return uint8(x), x >= 0 && x <= math.MaxUint8 // #nosec G115 -- range checked
-	case KindUint16:
-		return uint16(x), x >= 0 && x <= math.MaxUint16 // #nosec G115 -- range checked
-	case KindUint32:
-		return uint32(x), x >= 0 && x <= math.MaxUint32 // #nosec G115 -- range checked
-	case KindUint64:
-		return uint64(x), true // #nosec G115 -- bit-cast back
-	case KindFloat32:
-		return math.Float32frombits(uint32(x)), x >= 0 && x <= math.MaxUint32 // #nosec G115 -- range checked
-	case KindFloat64:
-		return math.Float64frombits(uint64(x)), true // #nosec G115 -- bit pattern
+		return graphstate.Bool(x == 1), x == 0 || x == 1
+	case KindI64:
+		return graphstate.I64(x), true
+	case KindF64:
+		// Canonical F64 is finite and never -0 (graphstate.F64 folds it).
+		f := math.Float64frombits(uint64(x)) // #nosec G115 -- bit pattern
+		v, err := graphstate.F64(f)
+		return v, err == nil && uint64(x) != 1<<63 // #nosec G115 -- bit pattern
 	}
-	return nil, false
+	return graphstate.Scalar{}, false
 }
 
-// appendValue appends the tagged, fixed-width big-endian encoding of a scalar
-// (tag byte = Kind; strings carry a u32 length). It is the one value encoding
-// of both the row hash and the fallback column (v4 had two: the integrity
-// hash bytes and the entity wire). ok is false for a non-scalar value.
-func appendValue(b []byte, v any) ([]byte, bool) {
-	k := kindOf(v)
-	if k == 0 {
+// wireLimits bounds one value's kind-preserving wire (graphstate's maximum).
+var wireLimits = graphstate.Limits{MaxReadBytes: 64 << 20}
+
+// appendValue appends u32 length | graphstate wire (kind byte + payload) of a
+// scalar: the one value encoding of both the row hash and the fallback
+// column. ok is false for a value the segment cannot store.
+func appendValue(b []byte, v graphstate.Scalar) ([]byte, bool) {
+	if kindOf(v) == 0 {
 		return b, false
 	}
-	b = append(b, byte(k))
-	if s, isStr := v.(string); isStr {
-		b = binary.BigEndian.AppendUint32(b, uint32(len(s))) // #nosec G115 -- bounded by maxStringLen
-		return append(b, s...), true
+	at := len(b)
+	b = append(b, 0, 0, 0, 0)
+	b, err := v.AppendWire(b, wireLimits)
+	if err != nil {
+		return b[:at], false
 	}
-	return binary.BigEndian.AppendUint64(b, uint64(valueBits(v))), true // #nosec G115 -- bit pattern
+	binary.BigEndian.PutUint32(b[at:], uint32(len(b)-at-4)) // #nosec G115 -- bounded by wireLimits
+	return b, true
 }
 
 // maxStringLen bounds one string property value (u32 length prefixes).
-const maxStringLen = 1<<31 - 1
+const maxStringLen = 64<<20 - 2
 
 // sortedProps returns a copy of ps sorted by key, after checking keys are
 // non-empty, at most 65535 bytes and unique and values are scalars.
@@ -272,11 +216,11 @@ func sortedProps(ps []Property) ([]Property, error) {
 		if i > 0 && out[i-1].Key == p.Key {
 			return nil, fmt.Errorf("%w: property %q twice", ErrInvalidRow, p.Key)
 		}
-		if s, isStr := p.Value.(string); isStr && len(s) > maxStringLen {
+		if s, isStr := p.Value.StringValue(); isStr && len(s) > maxStringLen {
 			return nil, fmt.Errorf("%w: property %q string of %d bytes", ErrInvalidRow, p.Key, len(s))
 		}
 		if kindOf(p.Value) == 0 {
-			return nil, fmt.Errorf("%w: property %q has unsupported value type %T", ErrInvalidRow, p.Key, p.Value)
+			return nil, fmt.Errorf("%w: property %q has unsupported scalar kind %d", ErrInvalidRow, p.Key, p.Value.Kind())
 		}
 	}
 	return out, nil
@@ -318,7 +262,7 @@ func RowHash(typeName string, r *Row) ([32]byte, error) {
 // rowHash hashes r whose properties are already sorted and validated.
 func rowHash(typeName string, r *Row, ps []Property) [32]byte {
 	b := make([]byte, 0, 128)
-	b = append(b, "tkg5.segment.row.v1\x00"...)
+	b = append(b, "tkg5.segment.row.v2\x00"...)
 	b = binary.BigEndian.AppendUint16(b, uint16(len(typeName))) // #nosec G115 -- validated <= 65535
 	b = append(b, typeName...)
 	b = binary.BigEndian.AppendUint64(b, uint64(r.ID))    // #nosec G115 -- positive
@@ -362,7 +306,7 @@ func rowDiff(want, got *Row) string {
 		wb, _ = appendValue(wb[:0], wp.Value)
 		gb, _ = appendValue(gb[:0], gp.Value)
 		if !bytes.Equal(wb, gb) {
-			return fmt.Sprintf("property %q: %T(%v), want %T(%v)", wp.Key, gp.Value, gp.Value, wp.Value, wp.Value)
+			return fmt.Sprintf("property %q: %s, want %s", wp.Key, gp.Value.Render(), wp.Value.Render())
 		}
 	}
 	return ""
