@@ -230,6 +230,8 @@ func (a *asOfColumnCache) clear() {
 	a.cuts = make(map[stateCutKey]*stateCut)
 	a.cutOrder, a.cutBytes, a.cutSeen = nil, 0, nil
 	a.cutDeclined = make(map[stateCutKey]uint64)
+	// Value statistics hold a property value (MaxValue): erased with the rest.
+	a.timelines, a.valueStats = nil, nil
 	a.mu.Unlock()
 }
 

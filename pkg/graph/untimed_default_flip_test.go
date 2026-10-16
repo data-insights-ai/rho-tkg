@@ -15,7 +15,9 @@ import (
 	"testing"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -187,4 +189,68 @@ func TestUntimedDefaultFlip(t *testing.T) {
 		}
 		uvsCheckFirst(t, tx, uvdAdd(t, tx), false, "memory, explicit TxFrom")
 	})
+}
+
+// noMetaStore hides the wrapped store's MetaKV (an external store that cannot
+// persist the mode).
+type noMetaStore struct{ storepkg.MandatoryStore }
+
+// TestUntimedDefaultWithoutMetaKV (review of the flip): a store without
+// MetaKV cannot persist the mode, so a later session cannot tell it was new;
+// the default stays UntimedFromTxFrom in every session, never a mix.
+func TestUntimedDefaultWithoutMetaKV(t *testing.T) {
+	t.Parallel()
+	st := memory.New()
+	for i := range 2 {
+		g, err := graphpkg.New(graphpkg.Config{Store: noMetaStore{st}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := uvdAdd(t, g)
+		if _, err := g.Temporal().NodeAt(id, uvsFar); err == nil {
+			t.Errorf("session %d: a default create on a store without MetaKV is valid at far (unbounded), want the TxFrom start", i)
+		}
+	}
+}
+
+// TestUntimedDefaultAdoptLogsTxFrom (review of the flip): a fresh default
+// store logs ChangeMeta(unbounded) at its first open; an import that adopts a
+// TxFrom export logs the switch too, so a replica following the feed ends in
+// the store's mode.
+func TestUntimedDefaultAdoptLogsTxFrom(t *testing.T) {
+	t.Parallel()
+	src, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedFromTxFrom})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	uvdAdd(t, src)
+	var buf bytes.Buffer
+	if err := src.IO().Export(&buf); err != nil {
+		t.Fatal(err)
+	}
+	dst, err := graphpkg.New(graphpkg.Config{Store: memory.New(memory.WithChangeLog())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dst.Close()
+	if err := dst.IO().Import(bytes.NewReader(buf.Bytes()), tkgio.ImportOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dst.Index().CreateTemporal("U"); err != nil {
+		t.Fatal(err)
+	}
+	uvsCheckFirst(t, dst, uvdAdd(t, dst), false, "adopted TxFrom export")
+	metas := 0
+	if err := dst.Replication().ForEachChange(0, func(rec storepkg.ChangeRecord) bool {
+		if rec.Tag == storepkg.ChangeMeta {
+			metas++
+		}
+		return true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if metas != 2 {
+		t.Fatalf("ChangeMeta records = %d, want 2 (unbounded at the first open, TxFrom at the adopt)", metas)
+	}
 }

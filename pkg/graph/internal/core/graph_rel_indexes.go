@@ -31,6 +31,9 @@ func (i *IndexOps) CreateRelPropertyWithOptions(typeName, propertyKey string, op
 	if err := c.checkWritable(); err != nil {
 		return err
 	}
+	// Value statistics at pins are cached per (type, key) and answer
+	// only while the index serves them: index DDL drops them (R9-3).
+	defer c.asOfColumns.bump()
 	if err := storepkg.ValidatePropertyIndexOptions(opts); err != nil {
 		return err
 	}
@@ -86,6 +89,9 @@ func (i *IndexOps) DeleteRelProperty(typeName, propertyKey string) error {
 	if err := c.checkWritable(); err != nil {
 		return err
 	}
+	// Value statistics at pins are cached per (type, key) and answer
+	// only while the index serves them: index DDL drops them (R9-3).
+	defer c.asOfColumns.bump()
 	return c.readUnderRLock(func() error {
 		if err := c.validateIndexName(typeName); err != nil {
 			return err

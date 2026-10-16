@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -870,5 +871,82 @@ func TestRound9DoorsAfterReopen(t *testing.T) {
 	after := read(g)
 	if fmt.Sprint(before) != fmt.Sprint(after) {
 		t.Fatalf("after reopen:\n %+v\nbefore:\n %+v", after, before)
+	}
+}
+
+// TestRound9RelDoorsHonourRetention (review): the relationship any-version
+// doors and RelPropertyValueStats at a pin below a type's purge watermark
+// fail closed like the equality door, instead of answering from the purged
+// sidecar (they checked the node retention scope).
+func TestRound9RelDoorsHonourRetention(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	g, err := graphpkg.New(graphpkg.Config{BadgerInMemory: true, AllowRetentionPurge: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	if err := g.Index().CreateRelProperty("EVENT", "w"); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := g.Nodes().Add(ctx, []string{"A"}, nil)
+	b, _ := g.Nodes().Add(ctx, []string{"A"}, nil)
+	if _, err := g.Rels().Add(ctx, "EVENT", a, b, map[string]any{"w": int64(5)}); err != nil {
+		t.Fatal(err)
+	}
+	pin, _ := g.Temporal().NowTx()
+	if _, err := g.Temporal().AdvanceClock(pin + 10); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := g.Temporal().NowTx()
+	if _, err := g.Temporal().AdvanceClock(before + 10); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Rels().Add(ctx, "EVENT", a, b, map[string]any{"w": int64(6)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Admin().PurgeExpiredRels(ctx, adminpkg.RelPurgePolicy{Type: "EVENT", Before: before}); err != nil {
+		t.Fatal(err)
+	}
+	opts := storepkg.QueryOpts{ValidStart: 1, ValidEnd: math.MaxInt64, TxAt: pin}
+	if _, err := g.Rels().ByTypeAndProperty("EVENT", "w", int64(5), opts); !errors.Is(err, graphpkg.ErrRetentionExpired) {
+		t.Fatalf("setup: equality door below the watermark: err = %v, want ErrRetentionExpired", err)
+	}
+	if _, _, err := g.Rels().RangeCardinalityAnyVersion("EVENT", "w", 0, 10, true, true, pin); !errors.Is(err, graphpkg.ErrRetentionExpired) {
+		t.Errorf("RangeCardinalityAnyVersion below the watermark: err = %v, want ErrRetentionExpired", err)
+	}
+	if err := g.Rels().ForEachByTypePropertyRangeAnyVersion("EVENT", "w", 0, 10, true, true, pin, func(*types.Relationship) bool { return true }); !errors.Is(err, graphpkg.ErrRetentionExpired) {
+		t.Errorf("ForEachByTypePropertyRangeAnyVersion below the watermark: err = %v, want ErrRetentionExpired", err)
+	}
+	if _, _, err := g.Stats().RelPropertyValueStats("EVENT", "w", pin); !errors.Is(err, graphpkg.ErrRetentionExpired) {
+		t.Errorf("RelPropertyValueStats below the watermark: err = %v, want ErrRetentionExpired", err)
+	}
+}
+
+// TestPropertyValueStatsDeclineAfterIndexDrop (review): a cached value
+// statistic at a pin no longer answers once its index is dropped.
+func TestPropertyValueStatsDeclineAfterIndexDrop(t *testing.T) {
+	t.Parallel()
+	for _, b := range allStoreBackends()[:2] {
+		t.Run(b.name, func(t *testing.T) {
+			g := b.open(t)
+			ctx := context.Background()
+			if err := g.Index().CreateProperty("L", "k"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := g.Nodes().Add(ctx, []string{"L"}, map[string]any{"k": int64(1)}); err != nil {
+				t.Fatal(err)
+			}
+			pin, _ := g.Temporal().NowTx()
+			if _, ok, err := g.Stats().PropertyValueStats("L", "k", pin); err != nil || !ok {
+				t.Fatalf("setup: PropertyValueStats at pin: ok=%v err=%v", ok, err)
+			}
+			if err := g.Index().DeleteProperty("L", "k"); err != nil {
+				t.Fatal(err)
+			}
+			if s, ok, err := g.Stats().PropertyValueStats("L", "k", pin); err != nil || ok {
+				t.Fatalf("PropertyValueStats after the index was dropped: %+v ok=%v err=%v, want a decline", s, ok, err)
+			}
+		})
 	}
 }

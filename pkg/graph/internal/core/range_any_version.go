@@ -159,9 +159,12 @@ func (c *Core) relChainOf(id types.RelID) ([]*types.Relationship, error) {
 	return chain, nil
 }
 
-// anyVersionArgs validates a door's arguments; skip reports a call that
+// anyVersionArgs validates a door's arguments; scope is the retention scope
+// the pin is checked against (scopeNodes, or the relationship type's
+// relTypeRetentionScope, so a pin below a purge watermark fails closed as the
+// equality door does); skip reports a call that
 // visits nothing (pin <= 0, a NaN bound: no value is in such a range).
-func (c *Core) anyVersionArgs(validateName func() error, key string, min, max float64, pin types.Instant) (skip bool, err error) {
+func (c *Core) anyVersionArgs(validateName func() error, scope retentionScope, key string, min, max float64, pin types.Instant) (skip bool, err error) {
 	if err := c.checkOpen(); err != nil {
 		return false, err
 	}
@@ -174,7 +177,7 @@ func (c *Core) anyVersionArgs(validateName func() error, key string, min, max fl
 	if pin <= 0 || math.IsNaN(min) || math.IsNaN(max) {
 		return true, nil
 	}
-	return false, c.validateTemporalQueryOptsScan(anyVersionPinOpts(pin), scopeNodes)
+	return false, c.validateTemporalQueryOptsScan(anyVersionPinOpts(pin), scope)
 }
 
 // ForEachByLabelPropertyRangeAnyVersion visits, once each in ascending ID
@@ -188,7 +191,7 @@ func (n *NodeOps) ForEachByLabelPropertyRangeAnyVersion(label, key string, min, 
 	if fn == nil {
 		return grapherr.ErrNilCallback
 	}
-	skip, err := c.anyVersionArgs(func() error { return c.validateIndexLabel(label) }, key, min, max, pin)
+	skip, err := c.anyVersionArgs(func() error { return c.validateIndexLabel(label) }, scopeNodes, key, min, max, pin)
 	if err != nil || skip {
 		return err
 	}
@@ -225,7 +228,7 @@ func (n *NodeOps) ForEachByLabelPropertyRangeAnyVersion(label, key string, min, 
 func (n *NodeOps) RangeCardinalityAnyVersion(label, key string, min, max float64, inclMin, inclMax bool, pin types.Instant) (storepkg.RangeAnyVersionCount, bool, error) {
 	c := n.c
 	var count storepkg.RangeAnyVersionCount
-	skip, err := c.anyVersionArgs(func() error { return c.validateIndexLabel(label) }, key, min, max, pin)
+	skip, err := c.anyVersionArgs(func() error { return c.validateIndexLabel(label) }, scopeNodes, key, min, max, pin)
 	if err != nil || skip {
 		return count, err == nil, err
 	}
@@ -260,7 +263,7 @@ func (r *RelOps) ForEachByTypePropertyRangeAnyVersion(typeName, key string, min,
 	if fn == nil {
 		return grapherr.ErrNilCallback
 	}
-	skip, err := c.anyVersionArgs(func() error { return c.validateRelTypeQueryName(typeName) }, key, min, max, pin)
+	skip, err := c.anyVersionArgs(func() error { return c.validateRelTypeQueryName(typeName) }, c.relTypeRetentionScope(typeName), key, min, max, pin)
 	if err != nil || skip {
 		return err
 	}
@@ -295,7 +298,7 @@ func (r *RelOps) ForEachByTypePropertyRangeAnyVersion(typeName, key string, min,
 func (r *RelOps) RangeCardinalityAnyVersion(typeName, key string, min, max float64, inclMin, inclMax bool, pin types.Instant) (storepkg.RangeAnyVersionCount, bool, error) {
 	c := r.c
 	var count storepkg.RangeAnyVersionCount
-	skip, err := c.anyVersionArgs(func() error { return c.validateRelTypeQueryName(typeName) }, key, min, max, pin)
+	skip, err := c.anyVersionArgs(func() error { return c.validateRelTypeQueryName(typeName) }, c.relTypeRetentionScope(typeName), key, min, max, pin)
 	if err != nil || skip {
 		return count, err == nil, err
 	}

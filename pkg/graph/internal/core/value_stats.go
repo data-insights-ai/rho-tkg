@@ -151,7 +151,11 @@ func (c *Core) propertyValueStats(rel bool, name, key string, pin types.Instant)
 	if pin == 0 {
 		return c.currentValueStats(rel, tok, key)
 	}
-	if err := c.validateTemporalQueryOptsScan(anyVersionPinOpts(pin), scopeNodes); err != nil {
+	scope := scopeNodes
+	if rel {
+		scope = c.relTypeRetentionScope(name)
+	}
+	if err := c.validateTemporalQueryOptsScan(anyVersionPinOpts(pin), scope); err != nil {
 		return zero, false, err
 	}
 	return c.pinnedValueStats(rel, tok, key, pin)
