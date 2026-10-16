@@ -791,6 +791,9 @@ func TestRegistryFixedSimultaneousLayoutAndLedger(t *testing.T) {
 }
 
 func TestRegistryLegalNearMaximumAndOversize(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// Independent complete BE grammar; no candidate encoder creates the input.
 	rows, _ := registryVectors(t)
 	base := registryBytes(t, rows["base"].PIJ)

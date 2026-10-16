@@ -10,6 +10,9 @@ import (
 )
 
 func TestRangeMovePrepareNativeOriginalSurvivesPlacementAndRejectsChangedInputs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, original, _, _ := rangeMoveCoordinatorFixture(t, 64)
 	h := n.hosts[0][0]
 	intent, err := h.PrepareRangeMove(t.Context(), original.id, original.publication.RangeID, 8, original.maxPages, original.pageRows, original.pageBytes)
@@ -35,6 +38,9 @@ func TestRangeMovePrepareNativeOriginalSurvivesPlacementAndRejectsChangedInputs(
 }
 
 func TestRangeMovePrepareNativeBoundaryRefusalsDoNotAcquireOwners(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, _, _ := rangeMoveCoordinatorFixture(t, 64)
 	h := n.hosts[0][0]
 	cancelled, cancel := context.WithCancel(t.Context())

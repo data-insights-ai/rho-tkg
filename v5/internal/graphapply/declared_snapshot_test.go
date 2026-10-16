@@ -232,6 +232,9 @@ func assertDeclaredSnapshotView(t *testing.T, view *raftlog.ApplicationView, g *
 }
 
 func TestDeclaredInitSnapshotRetainedControlHistoryTailAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	testDeclaredInitSnapshotRetainedControlHistoryTailAndReopen(t, declaredSemanticContractID(), types.DefaultAxisBinding{})
 }
 func testDeclaredInitSnapshotRetainedControlHistoryTailAndReopen(t *testing.T, agreement raftlog.ApplicationSemanticContractID, binding types.DefaultAxisBinding) {

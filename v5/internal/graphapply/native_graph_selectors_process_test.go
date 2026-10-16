@@ -166,6 +166,9 @@ func nativeSelectorsScoped(t *testing.T, c *nativeSelectorsClient, s nativeSelec
 // Genuine OS-child source-authored family. It is not a unit-suite shortcut,
 // runtime/capacity receipt or a claim that unlike engine retention is equal.
 func TestNativeGraphSnapshotSelectorsWorkloadCell(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if testing.Short() || os.Getenv("RHO_GRAPH_NATIVE_WORKLOAD") != nativeSelectorsFormat {
 		t.Skip("explicit native selectors workload required")
 	}

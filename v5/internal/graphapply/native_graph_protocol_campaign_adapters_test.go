@@ -213,6 +213,9 @@ func nativeProtocolCheck(t *testing.T, ctx context.Context, path string, program
 }
 
 func TestNativeProtocolP01ScopeAUsesActualParticipantStorageBatches(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for i, recipe := range nativeProtocolScopeInventory() {
 		if testing.Short() && i != 0 && i != 11 && i != 36 && i != 47 {
 			continue
@@ -788,6 +791,9 @@ func nativeProtocolFenceStageCase(t *testing.T, recipe nativeProtocolFenceRecipe
 }
 
 func TestNativeProtocolP02ActualApplyFloorsStraddleHeldPrepareAcrossNativeBatches(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for i, recipe := range nativeProtocolFenceInventory() {
 		if testing.Short() && i != 0 && i != 11 && i != 36 && i != 47 && i != 48 && i != 75 {
 			continue
@@ -1043,6 +1049,9 @@ func nativeProtocolLiveP06Write(t *testing.T, ctx context.Context, f *pairedGrap
 }
 
 func TestNativeProtocolFirstLiveP06UsesActualAuthorityReplyAndOriginalContext(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for i, recipe := range nativeProtocolLiveP06Inventory() {
 		if testing.Short() && i != 0 && i != 7 && i != 16 && i != 23 {
 			continue
@@ -1429,6 +1438,9 @@ func mustNativeProtocolResponse(t *testing.T, wire []byte) processResponse {
 }
 
 func TestNativeProtocolP03KeepsDurableDecisionThroughApplicableNativeTransitions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for i, recipe := range nativeProtocolCoordinatorInventory() {
 		if testing.Short() && i != 0 && i != 19 && i != 24 && i != 47 {
 			continue
@@ -1535,6 +1547,9 @@ func nativeProtocolPartialWrite(t *testing.T, ctx context.Context, f *pairedGrap
 }
 
 func TestNativeProtocolP03PartialInstallKeepsUnavailableAndOriginalRecoveryDistinct(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for i, r := range nativeProtocolPartialInventory() {
 		if testing.Short() && i != 0 && i != 7 && i != 16 && i != 23 {
 			continue
@@ -1754,6 +1769,9 @@ func nativeProtocolConditionalCase(t *testing.T, recipe nativeProtocolConditiona
 }
 
 func TestNativeProtocolP05DependencyScenariosKeepActualNativeOccurrences(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for i, recipe := range nativeProtocolConditionalInventory() {
 		if testing.Short() && i != 0 && i != 24 && i != 48 && i != 96 && i != 191 && i != 215 {
 			continue
@@ -1901,6 +1919,9 @@ func nativeProtocolFrozenWrite(t *testing.T, ctx context.Context, f *pairedGraph
 }
 
 func TestNativeProtocolP04QueuedOriginalsKeepFrozenIdentityAtActualNativeBoundaries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for i, recipe := range nativeProtocolFrozenInventory() {
 		if testing.Short() && i != 0 && i != 15 && i != 43 && i != 44 && i != 87 {
 			continue

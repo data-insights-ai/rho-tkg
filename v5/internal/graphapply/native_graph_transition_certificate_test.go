@@ -21,6 +21,9 @@ func nativeTransitionCertificateInventory() []nativeTransitionCutRecipe {
 }
 
 func TestNativeFirstCertificateInventoryAndOriginalIndexRemainDistinctFromReplies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seen := make(map[nativeTransitionCutRecipe]bool)
 	for _, recipe := range nativeTransitionCertificateInventory() {
 		if !nativeTransitionCertificateRecipeValid(recipe) || seen[recipe] {
@@ -49,6 +52,9 @@ func TestNativeFirstCertificateInventoryAndOriginalIndexRemainDistinctFromReplie
 }
 
 func TestNativeFirstCertificatePublicationKeepsDistinctOldStateAndStoredOriginalThroughRestart(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, recipe := range nativeTransitionCertificateInventory() {
 		if testing.Short() && !(recipe.Partition == 3 && recipe.Side == "before-submit" || recipe.Partition == 8 && recipe.Side == "after-applied") {
 			continue

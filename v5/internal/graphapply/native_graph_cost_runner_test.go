@@ -106,6 +106,9 @@ func TestNativeGraphCostRecordPagesRejectWrongBoundaryGapAndOversize(t *testing.
 // Inert codec adversaries only; actual outcome/CDC production and multi-page
 // native histories are exercised by TestNativeGraphCostSmallActualProcesses.
 func TestNativeGraphCostBatchedCDCStillRequiresExactOriginalAndEveryEffect(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, ctx := range []context.Context{nil, t.Context()} {
 		if out, err := nativeGraphCostCoordinatorManifest(ctx, nil, crossProcessResult{}); !errors.Is(err, errInvalid) || out != nil {
 			t.Fatal("nil receipt owner", out, err)

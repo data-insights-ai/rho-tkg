@@ -19,6 +19,9 @@ import (
 // Finite P02 schedules use real votes, fences, elections and retained originals.
 // They do not certify the complete P02/network/storage campaign family.
 func TestPrepareFenceP02ActualOrderingAcrossElection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, schedule := range []string{"delayed-A-prepare", "A-before-B-after", "persisted-fence-before-application"} {
 		passed := t.Run(schedule, func(t *testing.T) {
 			if schedule == "persisted-fence-before-application" {

@@ -10,6 +10,9 @@ import (
 )
 
 func TestNativeNamespaceSelectorsRequireActualMarkerLineageAndNativeCaller(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seen := make(map[string]bool)
 	for _, kind := range nativeTransitionNamespaceInventory() {
 		if !nativeFaultKind(kind) || seen[kind] {
@@ -43,6 +46,9 @@ func TestNativeNamespaceSelectorsRequireActualMarkerLineageAndNativeCaller(t *te
 }
 
 func TestNativeNamespacePublicationBeforeAfterReopensActualOldAndCurrentSources(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range nativeTransitionNamespaceInventory() {
 		if testing.Short() && kind != "options-rename-before" && kind != "manifest-directory-sync-after" {
 			continue

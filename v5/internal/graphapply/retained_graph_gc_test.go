@@ -108,6 +108,9 @@ func collectedGraphNetworkWithSchemas(t *testing.T, adjust func(*raftlog.Applica
 	return n
 }
 func TestCollectedGraphRetentionNativeStageOriginalAndCurrentSource(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := collectedGraphNetwork(t)
 	h := n.hosts[0][0]
 	for _, id := range []raftlog.ApplicationSemanticContractID{collectedGraphSemanticContractID(), retainedGraphSemanticContractID(), conditionalGraphSemanticContractID()} {

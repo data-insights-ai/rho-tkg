@@ -13,6 +13,9 @@ import (
 )
 
 func TestGraphRangeMoveSixProcessesOwnInvocationCancellationResumesOriginal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetworkProfile(t, true)
 	graphE17SubmitLocal(t, n, 1, graphE17Prepare(t, n, 1, certifiedRangeSet, 1, graphE17GrantInput(5, 7)), reasonNone)
 	var baseline [2]uint64

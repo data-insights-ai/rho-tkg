@@ -155,6 +155,9 @@ func recoveryQueueUnchanged(t *testing.T, m *declaredMaterializer, before uint64
 }
 
 func TestRecoveryCapacityCrossQueuedOriginalReserveAndUse(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, register := n.crossPlan(ops, claims, 24)
@@ -262,6 +265,9 @@ func TestRecoveryCapacityCrossQueuedOriginalReserveAndUse(t *testing.T) {
 }
 
 func TestRecoveryCapacityRangeQueuedFenceAndCapture(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, coordinator, intent, wires, _ := rangeMoveCoordinatorFixture(t, 32)
 	bases := [2]uint64{n.hosts[0][0].driver.Applied(), n.hosts[1][0].driver.Applied()}
 	base := bases[0]
@@ -375,6 +381,9 @@ func TestRecoveryCapacityRangeQueuedFenceAndCapture(t *testing.T) {
 }
 
 func TestRecoveryCapacityOwnerRetirementBeforeNewCommand(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"fence", "cross"} {
 		t.Run(kind, func(t *testing.T) {
 			n, coordinator, intent, wires, _ := rangeMoveCoordinatorFixture(t, 32)

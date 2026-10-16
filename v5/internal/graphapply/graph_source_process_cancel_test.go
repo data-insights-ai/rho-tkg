@@ -63,6 +63,9 @@ func processCancelWireFixture(t *testing.T) (*graphProcessMux, func() processReq
 }
 
 func TestGraphSourceProcessRelayLossDeliversErrorWithoutCapturedReply(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, loss := range []bool{true, false} {
 		t.Run(map[bool]string{true: "lost-reply", false: "native-refusal"}[loss], func(t *testing.T) {
 			origin, receive, _ := processCancelWireFixture(t)
@@ -205,6 +208,9 @@ func TestGraphSourceProcessCanceledExchangePeerDeathCannotBeTerminalSuccess(t *t
 }
 
 func TestGraphSourceProcessCanceledExchangeDeadlineRetiresUnconfirmedOwner(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	m, receive, _ := processCancelWireFixture(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

@@ -9,6 +9,9 @@ import (
 // RED: the recovery admission door must bound a delivered PGQ2 frame before
 // slicing its checksum. It is a verifier input, never an admitted proposal.
 func TestCrossRecoveryTruncatedPGQ2MustNotPanic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	h := n.hosts[0][0]
 	view, err := h.machine.store.ApplicationView(h.driver.Applied())

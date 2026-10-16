@@ -102,6 +102,9 @@ func coordinatorNativeFixture(t *testing.T) (*allocationTestNetwork, *crossProce
 }
 
 func TestCoordinatorFaultWireKeepsCutSubmitsSeparateFromCrossFaults(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, _, _, wires := coordinatorNativeFixture(t)
 	for _, wire := range wires {
 		wire.dropRegister, wire.dropDecisionReply = true, true
@@ -137,6 +140,9 @@ func TestCoordinatorFaultWireKeepsCutSubmitsSeparateFromCrossFaults(t *testing.T
 }
 
 func TestCrossProcessCoordinatorSuccessiveRunReadAndExactResume(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, ops, claims, wires := coordinatorNativeFixture(t)
 	id := n.requestID()
 	first, err := c.Run(t.Context(), id, ops, 37, claims)
@@ -186,6 +192,9 @@ func TestCrossProcessCoordinatorSuccessiveRunReadAndExactResume(t *testing.T) {
 	}
 }
 func TestCrossProcessCoordinatorDroppedRegistrationResendsOriginalBytes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	_, c, ops, claims, wires := coordinatorNativeFixture(t)
 	wires[0].dropRegister = true
 	id := requestID{211}
@@ -203,6 +212,9 @@ func TestCrossProcessCoordinatorDroppedRegistrationResendsOriginalBytes(t *testi
 	}
 }
 func TestCrossProcessCoordinatorEarlyNORequiresAbsentProofAndResolvesPresent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, ops, claims, wires := coordinatorNativeFixture(t)
 	before := [2]raftlog.ApplicationRoot{}
 	indexes := [2]uint64{}
@@ -286,6 +298,9 @@ func TestCrossProcessCoordinatorEarlyNORequiresAbsentProofAndResolvesPresent(t *
 }
 
 func TestCrossProcessCoordinatorLostDecisionReplyRecoversDurableDecision(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, ops, claims, wires := coordinatorNativeFixture(t)
 	wires[0].dropDecisionReply = true
 	id := n.requestID()
@@ -314,6 +329,9 @@ func TestCrossProcessCoordinatorLostDecisionReplyRecoversDurableDecision(t *test
 }
 
 func TestCrossProcessCoordinatorNilAndCancelledAdmission(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, c := range []*crossProcessCoordinator{nil, {}} {
 		result, err := c.Run(t.Context(), requestID{1}, nil, 1, nil)
 		if !errors.Is(err, errInvalid) || result != (crossProcessResult{}) {
@@ -341,6 +359,9 @@ func TestCrossProcessCoordinatorNilAndCancelledAdmission(t *testing.T) {
 }
 
 func TestCrossProcessCapturedMetadataDoesNotReplaceUnavailableGraphData(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, ops, claims, wires := coordinatorNativeFixture(t)
 	if _, err := c.Run(t.Context(), n.requestID(), ops, 37, claims); err != nil {
 		t.Fatal(err)
@@ -362,6 +383,9 @@ func TestCrossProcessCapturedMetadataDoesNotReplaceUnavailableGraphData(t *testi
 }
 
 func TestCrossProcessIncidentPhysicalWorkLimitRefusesWithoutPartialSet(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, ops, claims, _ := coordinatorNativeFixture(t)
 	if _, err := c.Run(t.Context(), n.requestID(), ops, 37, claims); err != nil {
 		t.Fatal(err)
@@ -380,6 +404,9 @@ func TestCrossProcessIncidentPhysicalWorkLimitRefusesWithoutPartialSet(t *testin
 }
 
 func TestCrossProcessCoordinatorGenuineFactoryAndPendingIntentRefusals(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	_, c, ops, claims, wires := coordinatorNativeFixture(t)
 	if _, err := newCrossProcessCoordinator(c.host, map[uint64]graphPeerWireTransport{3: nil, 8: nil}); !errors.Is(err, errInvalid) {
 		t.Fatal("unwired genuine scope", err)
@@ -439,6 +466,9 @@ func (w *coordinatorPausedLookupWire) RoundTrip(ctx context.Context, wire []byte
 }
 
 func TestCrossProcessCoordinatorBusyAndFrozenPendingCapacity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Run("busy genuine lookup", func(t *testing.T) {
 		n, c, ops, claims, wires := coordinatorNativeFixture(t)
 		paused := &coordinatorPausedLookupWire{graphPeerWireTransport: wires[0], entered: make(chan struct{}, 1), release: make(chan struct{})}

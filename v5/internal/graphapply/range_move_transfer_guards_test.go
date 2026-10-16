@@ -82,6 +82,9 @@ func rangeMoveTransferCapturedFloor(t *testing.T, h *allocationHost, move [16]by
 }
 
 func TestRangeMoveSuccessfulHandoffCarriesBothCapturedClockFloorsBeforeFresh(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// Each owner is independently the maximum. Ignoring either capture must
 	// fail one case; a target-only maximum would not detect a dropped source floor.
 	for _, tc := range []struct {
@@ -154,6 +157,9 @@ func TestRangeMoveSuccessfulHandoffCarriesBothCapturedClockFloorsBeforeFresh(t *
 }
 
 func TestRangeMoveCompletedHandoffCopiesNativeCrossDecisionsAndDedupWithKeeperOffline(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, _, transports := rangeMoveCoordinatorFixture(t, 64)
 	source, target := n.hosts[0][0], n.hosts[1][0]
 	origin := source.machine.ns

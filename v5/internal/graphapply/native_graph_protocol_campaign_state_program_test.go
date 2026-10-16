@@ -26,6 +26,9 @@ import (
 )
 
 func TestNativeProtocolPendingMoveCatchupUsesCommittedAppliedPrefix(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, coordinator, intent, _, _ := rangeMoveCoordinatorFixture(t, 64)
 	lost := &movePoolLostDescribeReply{graphPeerWireTransport: coordinator.base.transports[3]}
 	coordinator.base.transports[3] = lost
@@ -66,6 +69,9 @@ func TestNativeProtocolPendingMoveCatchupUsesCommittedAppliedPrefix(t *testing.T
 }
 
 func TestNativeProtocolStateActionKeepsActualRetainedOwnership(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	n := collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
@@ -148,6 +154,9 @@ func TestNativeProtocolStateActionKeepsActualRetainedOwnership(t *testing.T) {
 }
 
 func TestNativeProtocolStateHeldSnapshotKeepsCumulativeProjectionBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	n := collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
@@ -202,6 +211,9 @@ func TestNativeProtocolStateHeldSnapshotKeepsCumulativeProjectionBudget(t *testi
 }
 
 func TestNativeProtocolStateSnapshotProjectionKeepsOldValuesAfterMutation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	n := collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
@@ -321,6 +333,9 @@ func TestNativeProtocolStateSnapshotProjectionKeepsOldValuesAfterMutation(t *tes
 }
 
 func TestNativeProtocolStateReplayBarrierRequiresNewNativeInstallation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, coordinator, ops, claims, _ := coordinatorNativeFixture(t)
 	id := n.requestID()
 	result, err := coordinator.Run(t.Context(), id, ops, 37, claims)
@@ -440,6 +455,9 @@ func TestNativeProtocolStateReplayBarrierRequiresNewNativeInstallation(t *testin
 }
 
 func TestNativeProtocolPooledStateLeaderAndMessagePrograms(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, layout := range []string{"original", "rotated"} {
 		for _, message := range []string{"literal", "delay", "reorder", "duplicate"} {
 			spec := nativeProtocolProgramSpec{Version: 1, Layout: layout, Message: message}
@@ -476,6 +494,9 @@ func TestNativeProtocolPooledStateLeaderAndMessagePrograms(t *testing.T) {
 }
 
 func TestNativeProtocolStateProgramsKeepNativeIdentityAndCausalWindows(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx, cancel := nativeProtocolStateCheckerContext(t, time.Now().Add(-time.Second).UnixNano())
 	defer cancel()
 	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -537,6 +558,9 @@ func TestNativeProtocolStateProgramsKeepNativeIdentityAndCausalWindows(t *testin
 }
 
 func TestNativeProtocolPoolProofDoesNotCancelSharedClientLifetime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// An expired diagnostic operation must fail before IPC. It cannot replace
 	// the shared feed client's independently retained original context.
 	original := t.Context()
@@ -555,6 +579,9 @@ func TestNativeProtocolPoolProofDoesNotCancelSharedClientLifetime(t *testing.T) 
 }
 
 func TestNativeProtocolMoveBoundaryReportsEarlyFailureWithoutRenewingDeadline(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := t.Context()
 	done := make(chan graphProcessAnswer, 1)
 	done <- graphProcessAnswer{err: errInvalid}
@@ -570,6 +597,9 @@ func TestNativeProtocolMoveBoundaryReportsEarlyFailureWithoutRenewingDeadline(t 
 }
 
 func TestNativeProtocolPooledMoveFactoryKeepsActualIntentAndFinitePools(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Setenv("RHO_GRAPH_FAULT_FAMILY_PROCESS", "1")
 	t.Setenv("RHO_GRAPH_DURABLE_MODEL", "off")
 	n := collectedGraphNetworkWithRecovery(t, nil, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4})
@@ -605,6 +635,9 @@ func TestNativeProtocolPooledMoveFactoryKeepsActualIntentAndFinitePools(t *testi
 }
 
 func TestNativeProtocolStateStartBindsParentAndChildAgreement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// The parent is an ordinary test process, not an already selected replica.
 	// Starting the fixture must bind every required role before it validates
 	// its first genuine proposal; child-only extraEnv cannot repair this parent.
@@ -647,6 +680,9 @@ func TestNativeProtocolStateStartBindsParentAndChildAgreement(t *testing.T) {
 }
 
 func TestNativeProtocolStateCompoundCleanupKeepsPrimitiveControlSlot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, action := range []string{"close", "snapshot-close", "release", "expire", "cancel", "pin-close"} {
 		body, err := json.Marshal(nativeProtocolStateControl{Version: 1, Cookie: [16]byte{1}, Sequence: 1, Action: action})
 		if err != nil {
@@ -689,6 +725,9 @@ func TestNativeProtocolStateCompoundCleanupKeepsPrimitiveControlSlot(t *testing.
 }
 
 func TestNativeProtocolPooledTailBackpressurePreservesMoveOwner(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	n, publisher, ops, wires := retainedPublisherFromNetwork(t, collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
@@ -893,6 +932,9 @@ func TestNativeProtocolPooledTailBackpressurePreservesMoveOwner(t *testing.T) {
 }
 
 func TestNativeProtocolStateTailPolicyIsExplicitAndBounded(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if err := nativeProtocolStatePooledTailPolicy(nil); !errors.Is(err, errInvalid) {
 		t.Fatal("nil policy", err)
 	}
@@ -995,6 +1037,9 @@ func nativeProtocolAssertManifestProofRefusals(t *testing.T, intent rangeMoveInt
 }
 
 func TestNativeCollectedRangeMoveImportZeroPrefixAndRetainedOldView(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, profile := range []struct {
 		name      string
 		agreement raftlog.ApplicationSemanticContractID
@@ -1060,6 +1105,9 @@ func TestNativeCollectedRangeMoveImportZeroPrefixAndRetainedOldView(t *testing.T
 }
 
 func TestNativeMoveReplayBatchKeepsDeclarationBindingAndRecordCharges(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, _, _, _ := rangeMoveCoordinatorFixture(t, 32)
 	window, err := temporal.All(graphGenesisBinding(t).Axis())
 	if err != nil {
@@ -1113,6 +1161,9 @@ func TestNativeMoveReplayBatchKeepsDeclarationBindingAndRecordCharges(t *testing
 }
 
 func TestNativeProtocolStateSourceGetReuseOwnsInvocationAndCopies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := t.Context()
 	source, _ := authenticatedNativeSourceFixture(t, ctx)
 	defer func() {
@@ -1286,6 +1337,9 @@ func TestNativeProtocolStateSourceGetReuseOwnsInvocationAndCopies(t *testing.T) 
 }
 
 func TestNativeProtocolStateSourceGetReuseRetiresDelayedReply(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := t.Context()
 	source, transport := authenticatedNativeSourceFixture(t, ctx)
 	defer func() {

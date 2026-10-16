@@ -9,6 +9,9 @@ import (
 )
 
 func TestRangeMoveNativeReadDirectMatchesCompletedQueryAndCancellation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, _, _ := rangeMoveCoordinatorFixture(t, 64)
 	h := n.hosts[0][0]
 	question := rangeMoveReadBudget(h.machine.limits)
@@ -54,6 +57,9 @@ func TestRangeMoveNativeReadDirectMatchesCompletedQueryAndCancellation(t *testin
 }
 
 func TestRangeMoveNativeReadDirectNilInvalidCancelledAndClosed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, _, _ := rangeMoveCoordinatorFixture(t, 64)
 	h := n.hosts[0][0]
 	q := rangeMoveReadBudget(h.machine.limits)

@@ -45,6 +45,9 @@ func TestNativeGraphCostMillionFactProfileUsesBoundedGrantBlocks(t *testing.T) {
 // The same production Reserve/read/install and original graph/history/CDC
 // runner crosses the HOME grant boundary, then admits the remote endpoint.
 func TestNativeGraphCostMultipleGrantsSmallActualProcesses(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, cell := range []struct {
 		name  string
 		cross uint64

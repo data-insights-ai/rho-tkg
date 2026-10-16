@@ -15,6 +15,9 @@ import (
 )
 
 func TestPartitionSameAxisIDDifferentDefinitionRejectsCommittedThenProgresses(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	network, routing := partitionIntegrationNetwork(t)
 	handle := network.activate(0, [16]byte{1})
 	network.acquire(0, handle, 1, 16)
@@ -83,6 +86,9 @@ func TestPartitionSameAxisIDDifferentDefinitionRejectsCommittedThenProgresses(t 
 }
 
 func TestPartitionCheckedStagerRetainsAllNineDependencyKindsAndRefusesNilBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	request := partitionCodecRequest(t, 0, defaultMaterializerLimits())
 	network := newPartitionWriteNetworkWithRouting(t, request, partitionWriteSchemas())
 	handle := network.activate(0, [16]byte{1})
@@ -216,6 +222,9 @@ func TestPartitionAxisBusinessMarkerNeverMasksDerivedRebindingOrCorruption(t *te
 }
 
 func TestPartitionSameRequestAbsentAxisConflictsRefuseBeforeEffects(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	network, routing := partitionIntegrationNetwork(t)
 	handle := network.activate(0, [16]byte{1})
 	network.acquire(0, handle, 1, 16)
@@ -263,6 +272,9 @@ func TestPartitionSameRequestAbsentAxisConflictsRefuseBeforeEffects(t *testing.T
 }
 
 func TestPartitionActualGraphReplayMismatchNoopAndGuardedConflictPreserveOriginal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	r := partitionCodecRequest(t, 1, defaultMaterializerLimits())
 	n := newPartitionWriteNetworkWithRouting(t, r, []graphstate.PropertyDefinition{{Name: "members", Owner: graphstate.Node, Type: graphstate.ScalarI64, Cardinality: graphstate.SetCardinality}})
 	handle := n.activate(0, [16]byte{1})
@@ -386,6 +398,9 @@ func TestPartitionActualGraphReplayMismatchNoopAndGuardedConflictPreserveOrigina
 }
 
 func TestPartitionHostDirectNilClosedAndOrdinaryClaimRefusals(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	var nilHost *allocationHost
 	if p, err := nilHost.PreparePartitionGraphOperations(requestID{1}, nil, 1, nil); !errors.Is(err, errInvalid) || len(p.wire) != 0 {
 		t.Fatal(err)

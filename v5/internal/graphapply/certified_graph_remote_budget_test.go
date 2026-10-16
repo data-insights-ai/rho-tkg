@@ -64,6 +64,9 @@ func (f *failedCertifiedReplyTransport) RoundTrip(ctx context.Context, request [
 }
 
 func TestRemoteCertifiedReadFailureRetiresOriginalGrantWithoutBudgetReset(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, tc := range []struct {
 		fault    string
 		want     error
@@ -131,6 +134,9 @@ func TestRemoteCertifiedReadFailureRetiresOriginalGrantWithoutBudgetReset(t *tes
 }
 
 func TestRemoteCertifiedReadAdmissionRefusesMissingScopeAndMalformedQueryWithoutWork(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	c := remoteCertifiedFixture(t, n)
 	backend := remoteCertifiedReceiptBackend(t, c)

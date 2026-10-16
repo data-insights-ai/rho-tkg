@@ -57,6 +57,9 @@ func (p *p01DecisionReplyPause) RoundTrip(ctx context.Context, wire []byte) ([]b
 // Six genuine native disk voters, not six OS processes. P01's missing
 // conjunction is B's immutable COMMIT with A still prepared and DATA scope A.
 func TestCertifiedGraphP01CoordinatorOutsideRequestedDataScope(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, mode := range []graphReadMode{graphReadFresh, graphReadAfter} {
 		name := "Fresh"
 		if mode == graphReadAfter {

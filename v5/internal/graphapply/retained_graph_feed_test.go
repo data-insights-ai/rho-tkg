@@ -88,6 +88,9 @@ func (w *retainedFeedFaultWire) RoundTrip(ctx context.Context, wire []byte) ([]b
 }
 
 func TestRetainedFeedNativeCompletePagesOriginalACKAndSnapshot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Run("pages and ACK", retainedFeedPagesAndACK)
 	t.Run("coarse order and incoming bank", retainedFeedCoarseCommitOrderAndIncomingBank)
 	t.Run("move lineage and collected originals", retainedFeedMoveAndCollectedOriginals)
@@ -1310,6 +1313,9 @@ func retainedFeedSnapshotAdmission(t *testing.T) {
 }
 
 func TestNativeProtocolPooledFeedPublicationStagesOnRealQuorum(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
@@ -1335,6 +1341,9 @@ func TestNativeProtocolPooledFeedPublicationStagesOnRealQuorum(t *testing.T) {
 }
 
 func TestRetainedFeedCursorOwnsBoundedParticipantDecode(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// Codec values are descriptive; genuine native installation is checked by
 	// TestNativeProtocolPooledFeedPublicationStagesOnRealQuorum.
 	for _, count := range []int{1, 2, maxGraphPins} {
@@ -1383,6 +1392,9 @@ func TestRetainedFeedCursorOwnsBoundedParticipantDecode(t *testing.T) {
 // The actual Page3 residual fits these native records, despite the configured
 // one-MiB change ceiling. No new reader, grant, or retained owner is created.
 func TestRetainedFeedHistoryUsesFundedResidualForActualFrames(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := collectedGraphNetworkWithRecovery(t, nil, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4})
 	h := n.hosts[0][0]
 	m := h.machine
@@ -1503,6 +1515,9 @@ func TestRetainedFeedHistoryUsesFundedResidualForActualFrames(t *testing.T) {
 }
 
 func TestRetainedFeedPooledImportCensusUsesActualRecoveryWork(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, p, _, _ := retainedPublisherFromNetwork(t, collectedGraphNetworkWithRecovery(t, func(policy *raftlog.ApplicationPolicy) {
 		policy.RetainedApplicationBytes, policy.RetainedApplicationRecords = 256<<20, 131072
 		if err := nativeProtocolStatePooledTailPolicy(policy); err != nil {

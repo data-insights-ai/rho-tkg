@@ -52,6 +52,9 @@ func (w *nativeColumnRetentionWire) RoundTrip(ctx context.Context, wire []byte) 
 }
 
 func TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := collectedGraphNetworkWithAgreement(t, nil, durableColumnGraphSemanticContractID())
 	ops, claims := crossEdgeFixture(t, n)
 	c := remoteCertifiedFixture(t, n)
@@ -280,6 +283,9 @@ func TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement(t *
 }
 
 func TestNativeColumnIssuanceAndCancellationPreserveInterruptedCreation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := collectedGraphNetworkWithAgreement(t, nil, durableColumnGraphSemanticContractID())
 	crossEdgeFixture(t, n)
 	c := remoteCertifiedFixture(t, n)

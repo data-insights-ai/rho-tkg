@@ -96,6 +96,9 @@ func rangeMoveKeeperResume(t *testing.T, c *rangeMoveCoordinator, resume rangeMo
 }
 
 func TestRangeMoveLookupOriginalKeepsLateRefusalAndCapturedSourceCoordinates(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, _, transports := rangeMoveCoordinatorFixture(t, 64)
 	source, target := n.hosts[0][0], n.hosts[1][0]
 	origin := source.machine.ns
@@ -249,6 +252,9 @@ func TestRangeMoveLookupOriginalKeepsLateRefusalAndCapturedSourceCoordinates(t *
 }
 
 func TestRangeMoveLookupOriginalCompletedKeeperAbsenceIgnoresTargetCollision(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, intent, _, _ := rangeMoveCoordinatorFixture(t, 64)
 	source, target := n.hosts[0][0], n.hosts[1][0]
 	id := requestID{114}

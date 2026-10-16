@@ -14,6 +14,9 @@ import (
 // Four finite six-process cells. This does not accept the remaining P01-P09,
 // storage/network campaigns, FoundationDB comparison or the whole V2 phase.
 func TestPreparedLockP06FirstYESLeaderKillOriginalRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, coordinator := range []uint64{3, 8} {
 		for _, commit := range []bool{true, false} {
 			t.Run(fmt.Sprintf("coordinator%d/commit%t", coordinator, commit), func(t *testing.T) {

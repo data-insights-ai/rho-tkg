@@ -124,6 +124,9 @@ func rangeMoveLateFenceAssertQuiescent(t *testing.T, h *allocationHost, intent r
 // allowing a source-authorized target Fence already in flight to install an
 // orphan admission reservation afterward. A second Resume is not a repair law.
 func TestRangeMoveCoordinatorCompletedAbortRejectsDelayedGenuineTargetFence(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, _, transports := rangeMoveCoordinatorFixture(t, 8)
 	for group := range 2 {
 		for member := range 3 {

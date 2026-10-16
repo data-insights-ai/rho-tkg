@@ -257,6 +257,9 @@ func nativeLifecycleNormalizeRecords(records []nativeLifecycleRecord, ids []life
 }
 
 func TestNativeGraphLifecycleSevenStepsCertifiedTrace(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newNativeLifecycleNetwork(t)
 
 	var trafficMu sync.Mutex

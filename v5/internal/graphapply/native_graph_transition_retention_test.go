@@ -425,6 +425,9 @@ func nativeRetentionCase(t *testing.T, side string) {
 }
 
 func TestNativeRetentionReaderAndGCSyncKeepOriginalCursorAndCurrentAcrossRestart(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, side := range []string{"before", "after"} {
 		t.Run(side, func(t *testing.T) { nativeRetentionCase(t, side) })
 	}

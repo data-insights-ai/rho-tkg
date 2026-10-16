@@ -13,6 +13,9 @@ import (
 )
 
 func TestNativeProtocolDrainClassifiesRetiringPacketBeforeTakingLiveRoster(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// Ordering of the existing owner ledger only. This inert guard neither
 	// manufactures a native loss receipt nor classifies any real process kill.
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
@@ -66,6 +69,9 @@ func TestNativeProtocolDrainClassifiesRetiringPacketBeforeTakingLiveRoster(t *te
 }
 
 func TestNativeProtocolProgramAttachmentWaitsForOriginalPacketDrain(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// Resource-owner admission only: these queue counters are not a native
 	// message, process, cut or stable-boundary witness.
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
@@ -131,6 +137,9 @@ func TestNativeProtocolProgramAttachmentWaitsForOriginalPacketDrain(t *testing.T
 }
 
 func TestNativeProtocolProgramPendingAttachmentKeepsSingleOwnerAndOriginalCancellation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// Inert owner admission: no native command, election or packet is certified
 	// here. The owning OS case supplies those independent real witnesses.
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
@@ -175,6 +184,9 @@ func TestNativeProtocolProgramPendingAttachmentKeepsSingleOwnerAndOriginalCancel
 }
 
 func TestNativeProtocolCampaignLeaderAndMessagePrograms(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, layout := range []string{"original", "rotated"} {
 		for _, message := range []string{"literal", "delay", "reorder", "duplicate"} {
 			spec := nativeProtocolProgramSpec{1, layout, message}
@@ -245,6 +257,9 @@ func TestNativeProtocolCampaignLeaderAndMessagePrograms(t *testing.T) {
 }
 
 func TestNativeProtocolFrozenProgramPreservesActualQueueMemberAndFollower(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, recipe := range nativeProtocolFrozenInventory() {
 		for _, layout := range []string{"original", "rotated"} {
 			spec := nativeProtocolProgramSpec{1, layout, "literal"}
@@ -270,6 +285,9 @@ func TestNativeProtocolFrozenProgramPreservesActualQueueMemberAndFollower(t *tes
 }
 
 func TestNativeProtocolLocalFenceMessageApplicabilityPreservesNativeEmissionOrder(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, recipe := range nativeProtocolFenceInventory() {
 		for _, message := range []string{"literal", "delay", "reorder", "duplicate"} {
 			spec := nativeProtocolProgramSpec{1, "rotated", message}
@@ -282,6 +300,9 @@ func TestNativeProtocolLocalFenceMessageApplicabilityPreservesNativeEmissionOrde
 }
 
 func TestNativeProtocolProgramRejectsNominalLayoutAndRetainsOriginalOwner(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, layout := range []string{"original", "rotated"} {
 		for _, message := range []string{"literal", "delay", "reorder", "duplicate"} {
 			if !(nativeProtocolProgramSpec{1, layout, message}).valid() {
@@ -323,6 +344,9 @@ func TestNativeProtocolProgramRejectsNominalLayoutAndRetainsOriginalOwner(t *tes
 }
 
 func TestNativeProtocolStateRecoverySelectionRejectsUnboundPooledProfile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Setenv("RHO_GRAPH_PROTOCOL_STATE_RECOVERY", "")
 	if got, err := nativeProtocolStateAgreement(); err != nil || got != rangeMoveSpanSemanticContractID() {
 		t.Fatal("literal old state agreement changed", err)

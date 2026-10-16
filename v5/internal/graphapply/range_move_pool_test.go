@@ -17,6 +17,9 @@ import (
 
 // Authored direct guards; execution and 1M completion qualification are separate.
 func TestRangeMovePooledWireDebtAndRefusalBoundaries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if !rangeMoveGraphBatches(rangeMovePooledSemanticContractID()) || !retainedOnlyFeedAgreement(rangeMovePooledSemanticContractID()) || rangeMoveStatusFormat(rangeMovePooledSemanticContractID()) != 3 {
 		t.Fatal("fresh capability chain")
 	}
@@ -103,6 +106,9 @@ func TestRangeMovePooledWireDebtAndRefusalBoundaries(t *testing.T) {
 }
 
 func TestRangeMovePooledNativeOriginalRefusalUndoAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, mode := range []string{"commit", "partial-undo", "describe-zero-limit", "target-next-limit"} {
 		t.Run(mode, func(t *testing.T) {
 			network := collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {

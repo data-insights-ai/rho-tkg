@@ -168,6 +168,9 @@ func newPartitionWriteNetworkWithRouting(t *testing.T, r declaredInitCommand, sc
 }
 
 func TestPartitionPublicationCoInstallsActualRangesAndLogicalReplayOnSixDiskReplicas(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, routing := newPartitionWriteNetwork(t)
 	old := n.hosts[1][0].driver.Applied()
 	before, err := n.hosts[1][0].machine.store.ApplicationView(old)
@@ -266,6 +269,9 @@ func TestPartitionPublicationCoInstallsActualRangesAndLogicalReplayOnSixDiskRepl
 }
 
 func TestPartitionCheckedReaderNeverClaimsUnknownOrRemoteEntityAbsence(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _ := newPartitionWriteNetwork(t)
 	remote := n.activate(1, [16]byte{2})
 	n.acquire(1, remote, 1, 4)
@@ -293,6 +299,9 @@ func TestPartitionCheckedReaderNeverClaimsUnknownOrRemoteEntityAbsence(t *testin
 }
 
 func TestPartitionUniqueLocalMissCannotClaimAbsenceWithRemoteIdentityOwner(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	l := defaultMaterializerLimits()
 	r := partitionCodecRequest(t, 0, l)
 	owners := []graphstore.BucketOwnership{{Kind: graphstore.IdentityRoutingBucket, Partition: 8, Epoch: 1}, {Kind: graphstore.UniqueRoutingBucket, Partition: 3, Epoch: 1}, {Kind: graphstore.AxisRoutingBucket, Partition: 3, Epoch: 1}}
@@ -330,6 +339,9 @@ func TestPartitionUniqueLocalMissCannotClaimAbsenceWithRemoteIdentityOwner(t *te
 }
 
 func TestPartitionPublicationRoundDirectRetainedReadersAndAtomicRefusals(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, routing := newPartitionWriteNetwork(t)
 	handle := n.activate(0, [16]byte{1})
 	n.acquire(0, handle, 1, 4)
@@ -501,6 +513,9 @@ func TestPartitionPublicationRoundDirectRetainedReadersAndAtomicRefusals(t *test
 }
 
 func TestFinalReviewRegressedRangeEpochStaysCorruptThroughMaterializerAndGrantAdmission(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, routing := newPartitionWriteNetwork(t)
 	handle := n.activate(0, [16]byte{1})
 	n.acquire(0, handle, 1, 16)

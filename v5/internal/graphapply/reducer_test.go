@@ -141,6 +141,9 @@ func initializedFixture(t *testing.T) *allocationFixture {
 	return f
 }
 func TestAllocationRetryBeforeFencesAndPayloadComparison(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := initializedFixture(t)
 	reserve := codecRequests(t)[3]
 	first, index := f.commit(t, reserve)
@@ -237,6 +240,9 @@ func TestAllocationRetryBeforeFencesAndPayloadComparison(t *testing.T) {
 	}
 }
 func TestRecipientSequenceGapsServiceRotationAndForeignHome(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := initializedFixture(t)
 	reserve := codecRequests(t)[3]
 	reserve.sequence = 3
@@ -289,6 +295,9 @@ func TestRecipientSequenceGapsServiceRotationAndForeignHome(t *testing.T) {
 	}
 }
 func TestBootstrapRejectionsCannotPoisonEmptyProof(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := openFixture(t, vfs.NewMem())
 	init := codecRequests(t)[0]
 	wire, _ := encodeRequest(init, defaultLimits())
@@ -346,6 +355,9 @@ func TestBootstrapRejectionsCannotPoisonEmptyProof(t *testing.T) {
 	}
 }
 func TestInitStageAndOutputLimitsAreRecoverableOrOperational(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	init := codecRequests(t)[0]
 	data, _ := encodeRequest(init, defaultLimits())
 	for _, dimension := range []string{"stage", "output"} {
@@ -399,6 +411,9 @@ func TestInitStageAndOutputLimitsAreRecoverableOrOperational(t *testing.T) {
 	}
 }
 func TestMissingStateProofAndOperationalBoundaries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := openFixture(t, vfs.NewMem())
 	init := codecRequests(t)[0]
 	data, _ := encodeRequest(init, defaultLimits())
@@ -458,6 +473,9 @@ func TestMissingStateProofAndOperationalBoundaries(t *testing.T) {
 	}
 }
 func TestAllocationOverflowAndRealInstallQuota(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := initializedFixture(t)
 	reserve := codecRequests(t)[3]
 	// A valid historical allocator checkpoint at the final high-water refuses
@@ -532,6 +550,9 @@ func TestAllocationOverflowAndRealInstallQuota(t *testing.T) {
 }
 
 func TestPurePreflightDoesNotReserveActualQuota(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	probe := initializedFixture(t)
 	before, err := probe.store.ApplicationUsage()
 	if err != nil {
@@ -574,6 +595,9 @@ func TestPurePreflightDoesNotReserveActualQuota(t *testing.T) {
 }
 
 func TestControlRejectionsNeverChangeAllocatorOrRecipient(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := openFixture(t, vfs.NewMem())
 	f.commit(t, codecRequests(t)[0])
 	reserve := codecRequests(t)[3]
@@ -649,6 +673,9 @@ func TestControlRejectionsNeverChangeAllocatorOrRecipient(t *testing.T) {
 	}
 }
 func TestStoredBindingsAndReadBudgetsFailClosed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"allocator", "recipient", "grant", "dedup", "tombstone"} {
 		t.Run(kind, func(t *testing.T) {
 			f := initializedFixture(t)
@@ -725,6 +752,9 @@ func TestStoredBindingsAndReadBudgetsFailClosed(t *testing.T) {
 }
 
 func TestStageAndProofInputsCannotInventFreshness(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := openFixture(t, vfs.NewMem())
 	view, _ := f.store.ApplicationView(1)
 	defer view.Close()
@@ -810,6 +840,9 @@ func assertControlRejection(t *testing.T, f *allocationFixture, r request, want 
 	}
 }
 func TestOutputLedgerCoversTypedResultAndBuffers(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := initializedFixture(t)
 	r := codecRequests(t)[3]
 	data, _ := encodeRequest(r, defaultLimits())

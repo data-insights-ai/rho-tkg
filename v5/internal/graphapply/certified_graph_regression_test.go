@@ -8,6 +8,9 @@ import (
 // seam. A publication changes snapshot-visible routing even before any entity
 // is written, so an entity-write-only round map cannot reproduce that snapshot.
 func TestCertifiedReadPublicationNeedsMappedRound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	h := n.hosts[0][0]
 	before, err := h.machine.observeAllocation(allocationQuery{kind: observeConfiguration, nonce: [16]byte{1}}, h.driver.Applied())
@@ -49,6 +52,9 @@ func TestCertifiedReadPublicationNeedsMappedRound(t *testing.T) {
 // Guard: the historical write-only agreement remains a separate binding, and
 // cannot be reopened using a factory that promises missing cut prerequisites.
 func TestCertifiedGraphFactoryRefusesWriteOnlyBinding(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	h := n.hosts[0][0]
 	if _, e := newCertifiedGraphMaterializer(h.machine.store, h.machine.ns, n.d, h.machine.limits); e == nil {

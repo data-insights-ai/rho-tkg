@@ -181,6 +181,9 @@ func rangeMoveImportGuardRefusal(t *testing.T, n *allocationTestNetwork, group i
 }
 
 func TestRangeMoveNativeDescribeAndImportRefusalsPreserveOriginalContinuationAndCredits(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, wires, transports := rangeMoveCoordinatorFixture(t, 64)
 	sourceGate := &rangeMoveImportGuardGate{graphPeerWireTransport: transports[3], mode: 1}
 	targetGate := &rangeMoveImportGuardGate{graphPeerWireTransport: transports[8]}

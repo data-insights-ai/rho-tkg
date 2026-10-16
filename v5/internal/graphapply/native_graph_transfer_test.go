@@ -57,6 +57,9 @@ func TestNativeTransferAdmissionKeepsHardCapsAndRequiresExplicitPools(t *testing
 }
 
 func TestNativeTransferProgressNeedsAppliedPhaseOrPage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, _, _ := retainedPublisherFromNetwork(t, collectedGraphNetworkWithRecovery(t, func(policy *raftlog.ApplicationPolicy) {
 		policy.RetainedApplicationBytes, policy.RetainedApplicationRecords = 512<<20, 262144
 	}, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4}))
@@ -95,6 +98,9 @@ func TestNativeTransferProgressNeedsAppliedPhaseOrPage(t *testing.T) {
 }
 
 func TestNativeTransferPooledRefusalBindsActualFailedCommand(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, publisher, _, _ := retainedPublisherFromNetwork(t, collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
 		p.MaxTailEntries = 8
 		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 512<<20, 262144
@@ -154,6 +160,9 @@ func TestNativeTransferPooledRefusalBindsActualFailedCommand(t *testing.T) {
 }
 
 func TestNativeTransferDecisionProofSurvivesActualRawACKPrefixGC(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Setenv(nativeTransferProcessFlag, "1")
 	n, p, ops, _ := retainedPublisherFromNetwork(t, collectedGraphNetworkWithRecovery(t, func(policy *raftlog.ApplicationPolicy) {
 		policy.RetainedApplicationBytes, policy.RetainedApplicationRecords = 512<<20, 262144
@@ -259,6 +268,9 @@ func (w *nativeTransferMoveCapture) RoundTrip(ctx context.Context, wire []byte) 
 // column classifier used by the workload. An imported graph is not fabricated
 // business CDC; the current graph remains separately observable at its owner.
 func TestNativeTransferColumnsJoinPooledOriginalsAndPreserveMoveCDC(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, publisher, _, _ := retainedPublisherFromNetwork(t, collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
 		p.MaxTailEntries = 8
 		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 512<<20, 262144

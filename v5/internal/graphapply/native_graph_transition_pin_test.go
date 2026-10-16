@@ -29,6 +29,9 @@ func nativeTransitionPinInventory() []nativeTransitionPinRecipe {
 }
 
 func TestNativePinTransitionInventoryKeepsCreationPublicationAndTerminalDistinct(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, actual := range []error{errRetainedPinPending, replica.ErrUnavailable, context.Canceled, context.DeadlineExceeded, errRemoteOperationFailure, fmt.Errorf("wrapped: %w", replica.ErrUnavailable), errors.Join(errRetainedPinPending, replica.ErrUnavailable, context.Canceled)} {
 		if nativeTransitionPinErrorClass(actual) != "pending-or-unavailable" {
 			t.Fatal("genuine interruption classification", actual)
@@ -83,6 +86,9 @@ func TestNativePinTransitionInventoryKeepsCreationPublicationAndTerminalDistinct
 }
 
 func TestNativePinTransitionsRecoverExactOriginalThroughActualCohortReplacement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, recipe := range nativeTransitionPinInventory() {
 		if testing.Short() && !(recipe.Phase == pinIssue && recipe.Partition == 3 && recipe.Side == "before-submit" || recipe.Phase == pinPublish && recipe.Partition == 8 && recipe.Side == "after-applied") {
 			continue

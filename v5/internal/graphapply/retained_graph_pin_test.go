@@ -147,6 +147,9 @@ func retainedPinBank(t *testing.T, n *allocationTestNetwork, expected []raftlog.
 }
 
 func TestRetainedGraphPinParticipantLedgerOriginalsAndReplicatedExpiry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := retainedPinNetwork(t)
 	ops, _ := crossEdgeFixture(t, n)
 	coordinator, _ := certifiedCoordinator(n)

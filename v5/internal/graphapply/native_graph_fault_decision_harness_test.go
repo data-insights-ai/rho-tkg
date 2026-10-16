@@ -783,6 +783,9 @@ func nativeDecisionWrite(t *testing.T, dir string, artifact nativeDecisionArtifa
 }
 
 func TestNativeComposedFaultQueuedCapacityDecisionsKeepFirstOriginal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, order := range []string{"commit-first", "abort-first"} {
 		t.Run(order, func(t *testing.T) {
 			nativeDecisionCase(t, order)
@@ -1385,6 +1388,9 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 }
 
 func TestNativeDecisionFactoryKeepsActualRecipientOnOriginalOwnerAcrossSourceRotation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Setenv("RHO_GRAPH_LIFECYCLE_PROCESS", "1")
 	n := newCertifiedGraphNetwork(t)
 	recipient := n.activate(0, [16]byte{1})
@@ -1441,6 +1447,9 @@ func TestNativeDecisionFactoryKeepsActualRecipientOnOriginalOwnerAcrossSourceRot
 }
 
 func TestNativeDecisionCertifiedCapacityReadKeepsDeclaredProbeGrant(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	ops = append(ops, graphstate.Operation{Kind: graphstate.Set, Owner: 1, Life: 2, Scope: ops[0].Scope, Name: "p", Value: graphstate.I64(5), ValueID: 5})
@@ -1481,6 +1490,9 @@ func TestNativeDecisionCertifiedCapacityReadKeepsDeclaredProbeGrant(t *testing.T
 }
 
 func TestNativeDecisionSubmissionSeamChecksContextAfterCallbackWithoutHostLock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, ops, claims, _ := coordinatorNativeFixture(t)
 	id := n.requestID()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -1523,6 +1535,9 @@ func TestNativeDecisionSubmissionSeamChecksContextAfterCallbackWithoutHostLock(t
 }
 
 func TestNativeDecisionOwnerCloseRetiresActualCandidateWithoutImportingWire(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, ops, claims, _ := coordinatorNativeFixture(t)
 	id := n.requestID()
 	proposal, err := c.host.PreparePartitionGraphOperations(id, ops, 37, claims)

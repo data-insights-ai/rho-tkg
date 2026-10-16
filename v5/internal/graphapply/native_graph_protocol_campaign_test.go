@@ -12,6 +12,9 @@ import (
 )
 
 func TestNativeProtocolPendingDiagnosticPreservesOrdinaryP05AndRefusesJoinedErrors(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, actual := range []error{replica.ErrUnavailable, errors.Join(errCrossProcessPending, replica.ErrUnavailable), graphWireError{mask: 1<<3 | 1<<10}, processRemoteError{mask: 1 << 7, code: 3}} {
 		if !nativeProtocolPendingLoss(actual) {
 			t.Fatal("actual known unavailable source cause refused", actual)
@@ -30,6 +33,9 @@ func TestNativeProtocolPendingDiagnosticPreservesOrdinaryP05AndRefusesJoinedErro
 }
 
 func TestNativeProtocolConditionalBootstrapMatchesActualExplicitChildAgreement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Setenv("RHO_GRAPH_CONDITIONAL_PROCESS", "1")
 	if !pairedFaultConditionalFixture() {
 		t.Fatal("actual conditional child was relabelled as ordinary certified")
@@ -43,6 +49,9 @@ func TestNativeProtocolConditionalBootstrapMatchesActualExplicitChildAgreement(t
 }
 
 func TestNativeProtocolLiveP06RegistryKeepsFirstCallAndRecoveryCausalityDistinct(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seen := make(map[nativeProtocolLiveP06Recipe]bool)
 	prepares, decisions := 0, 0
 	for _, row := range nativeProtocolLiveP06Inventory() {
@@ -70,6 +79,9 @@ func TestNativeProtocolLiveP06RegistryKeepsFirstCallAndRecoveryCausalityDistinct
 }
 
 func TestNativeProtocolP01RegistryPreservesScopeAndActualParticipantOccurrences(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seen := make(map[nativeProtocolScopeRecipe]bool)
 	for _, row := range nativeProtocolScopeInventory() {
 		if !row.valid() || seen[row] {
@@ -92,6 +104,9 @@ func TestNativeProtocolP01RegistryPreservesScopeAndActualParticipantOccurrences(
 }
 
 func TestNativeProtocolP03RegistrySeparatesPreDecisionAndQuorumLossCausality(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seen := make(map[nativeProtocolCoordinatorRecipe]bool)
 	early, outage, otherResolve := 0, 0, 0
 	for _, r := range nativeProtocolCoordinatorInventory() {
@@ -121,6 +136,9 @@ func TestNativeProtocolP03RegistrySeparatesPreDecisionAndQuorumLossCausality(t *
 }
 
 func TestNativeProtocolP03PartialRegistrySeparatesLiveInstallFromRecoveryOutage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seen := make(map[nativeProtocolPartialRecipe]bool)
 	early, outage := 0, 0
 	for _, row := range nativeProtocolPartialInventory() {
@@ -140,6 +158,9 @@ func TestNativeProtocolP03PartialRegistrySeparatesLiveInstallFromRecoveryOutage(
 }
 
 func TestNativeProtocolP05RegistryKeepsEveryActualDependencyMutation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seen := make(map[nativeProtocolConditionalRecipe]bool)
 	counts := make(map[string]int)
 	for _, row := range nativeProtocolConditionalInventory() {
@@ -169,6 +190,9 @@ func TestNativeProtocolP05RegistryKeepsEveryActualDependencyMutation(t *testing.
 }
 
 func TestNativeProtocolP04RegistryDoesNotInventUnpreparedParticipantOrWireAuthority(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seen := make(map[nativeProtocolFrozenRecipe]bool)
 	a, b, candidates := 0, 0, 0
 	for _, row := range nativeProtocolFrozenInventory() {
@@ -204,6 +228,9 @@ func TestNativeProtocolP04RegistryDoesNotInventUnpreparedParticipantOrWireAuthor
 }
 
 func TestNativeProtocolPlanningCaptureSpendsBoundedSourceCopiesWithoutCreatingReplies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// Codec-only input. No server, source owner, certificate or native reply is
 	// present, so this cannot qualify an actual campaign cell.
 	wire, err := encodeGraphSourceRequest(graphSourceRequest{kind: sourceOpen, sequence: 1, nonce: [16]byte{1}})
@@ -232,6 +259,9 @@ func TestNativeProtocolPlanningCaptureSpendsBoundedSourceCopiesWithoutCreatingRe
 }
 
 func TestNativeProtocolP02LiveRegistryDoesNotRelabelPersistenceStageOrRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seen := make(map[nativeProtocolFenceRecipe]bool)
 	for _, row := range nativeProtocolFenceLiveInventory() {
 		if !row.valid() || seen[row] {
@@ -271,6 +301,9 @@ func TestNativeProtocolP02LiveRegistryDoesNotRelabelPersistenceStageOrRecovery(t
 }
 
 func TestNativeProtocolFenceSelectorRequiresActualCutFamilyAndWholeScope(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// Inert codec/diagnostic refusal only. This scope and wire have no Host,
 	// configured native store, source owner or proposal admission authority.
 	scope := allocationScope{graph: [16]byte{1}, partition: 3, group: [16]byte{1}, ownership: 1, topology: 1, declaration: [32]byte{1}, semantic: certifiedGraphSemanticContractID()}
@@ -313,6 +346,9 @@ func TestNativeProtocolFenceSelectorRequiresActualCutFamilyAndWholeScope(t *test
 // Inert callback/owner guards only: the mux below has no child, service, native
 // proposal, vote or receipt. It cannot supply any campaign semantic evidence.
 func TestNativeProtocolReplyHoldKeepsOneLiveContextAndSpentDiagnosticGrant(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	hub := &graphProcessHub{}

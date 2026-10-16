@@ -12,6 +12,9 @@ import (
 // authenticated native services. The OS-process test remains the deployment
 // witness; these genuine six native voters do not claim six OS processes.
 func TestRemoteCertifiedGraphE18NativeIndexStartingHydrationAtSameCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	edge, claims := crossEdgeFixture(t, n)
 	sourceGrant := claims[0].grant

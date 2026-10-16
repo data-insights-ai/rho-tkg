@@ -192,6 +192,9 @@ func (s *nativeTransferAllocator) close() {
 // Full source-authored workload parent. Capacity refusal remains a failed cell;
 // this path never converts ABORT/limit or a copied recipe into successful moves.
 func TestNativeGraphTransferWorkloadCell(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if testing.Short() || os.Getenv("RHO_GRAPH_NATIVE_WORKLOAD") != nativeTransferFormat {
 		t.Skip("explicit pooled native transfer workload required")
 	}

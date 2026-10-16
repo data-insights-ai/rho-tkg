@@ -450,6 +450,9 @@ func inventoryLargePIJ(t *testing.T) []byte {
 	return pij
 }
 func TestRegisteredInventoryFullFormatBeyondEightMiB(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	s, cfg := inventoryTestStoreConfig(t)
 	inventoryGenesis(t, s, inventoryLiteral(t, "OriginHCR378"))
 	large := inventoryLargePIJ(t)

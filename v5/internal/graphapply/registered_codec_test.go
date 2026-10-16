@@ -56,6 +56,9 @@ func registeredAssertReadRefusal(t *testing.T, wire []byte, limits registeredFor
 }
 
 func TestRegisteredReadBudgetAndSizePriority(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	_, _, _, limits := registeredCodecFixture(t)
 	wire := registeredFixtureHex(t, registeredPreparedFixtureHex)
 	bad := limits
@@ -72,6 +75,9 @@ func TestRegisteredReadBudgetAndSizePriority(t *testing.T) {
 }
 
 func TestRegisteredTypedAxisRefusalsAndWorkExhaustion(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for name, change := range map[string]func(*registeredBootstrapSpec){
 		"blank-reference":        func(s *registeredBootstrapSpec) { s.domain.axes[0].Reference = " " },
 		"blank-unit":             func(s *registeredBootstrapSpec) { s.domain.axes[0].CanonicalUnit = " " },

@@ -54,6 +54,9 @@ func allocationP08Mint(t *testing.T, n *certifiedProcessNetwork, actor, alias ui
 	}
 }
 func TestAllocationP08NativeSixProcessesActualCachedCursorIssuance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetworkSetup(t, true, true)
 	// Setup installs grants but no graph entity, life or value. Only these actual
 	// child-owned Acquire/Next operations issue the graph-qualified IDs below.
@@ -273,6 +276,9 @@ func allocationP08GraphSetup(t *testing.T, n *certifiedProcessNetwork) (uint64, 
 	return a, b
 }
 func TestAllocationP08NativeSixProcessesGraphClaimsSurviveServiceOnlyRotation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetworkSetup(t, true, true)
 	a, _ := allocationP08GraphSetup(t, n)
 	allocationP08Submit(t, n, allocationP08Prepare(t, n, 3, a, 1, nil), reasonNone)
@@ -439,6 +445,9 @@ func allocationP08Replace(t *testing.T, n *certifiedProcessNetwork, id uint64) {
 	t.Logf("actual P08 same-directory replacement: voter%d oldPID%d newPID%d; old incarnation reaped", id, prior.cmd.Process.Pid, replacement.cmd.Process.Pid)
 }
 func TestAllocationP08NativeSixProcessesBeforeQuorumReservationRemainsUnknownUntilOverwrite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetworkSetup(t, true, true)
 	a, _ := allocationP08GraphSetup(t, n)
 	started := allocationP08Call(t, n.all[4], processRequest{op: processP08BeginAcquire, index: 2, entity: 16})
@@ -534,6 +543,9 @@ func allocationP08AcquireReserved(t *testing.T, n *certifiedProcessNetwork, acto
 	return alias, request
 }
 func TestAllocationP08NativeSixProcessesCommittedUnknownGrantRestartAndDelayedAcknowledgement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetworkSetup(t, true, true)
 	a, b := allocationP08GraphSetup(t, n)
 	oldHandle, oldCut := graphE17Open(t, n, 5, graphReadFresh, graphCut{})
@@ -621,6 +633,9 @@ func TestAllocationP08NativeSixProcessesCommittedUnknownGrantRestartAndDelayedAc
 }
 
 func TestAllocationP08NativeSixProcessesImmediateAfterQuorumReservationBurnsUnknownBlock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetworkSetup(t, true, true)
 	a, _ := allocationP08GraphSetup(t, n)
 	started := allocationP08Call(t, n.all[4], processRequest{op: processP08BeginAcquire, index: 2, entity: 16})
@@ -666,6 +681,9 @@ func TestAllocationP08NativeSixProcessesImmediateAfterQuorumReservationBurnsUnkn
 }
 
 func TestAllocationP08NativeSixProcessesRetiredRecipientNewClaimsRefuseAndCurrentClaimsApply(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetworkSetup(t, true, true)
 	_, old := allocationP08GraphSetup(t, n)
 	allocationP08ReplaceRecipient(t, n)

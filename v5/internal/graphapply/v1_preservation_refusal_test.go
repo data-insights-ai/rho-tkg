@@ -9,6 +9,9 @@ import (
 )
 
 func TestV1OlderWireDoorsRefuseNewMetadataWithoutErasure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	l := defaultMaterializerLimits()
 	r := graphCodecRequest(t)
 	r.operations[0].Record.Interpretation = graphstate.InterpretationOccurrence
@@ -60,6 +63,9 @@ func TestV1OlderWireDoorsRefuseNewMetadataWithoutErasure(t *testing.T) {
 }
 
 func TestV1ActualLegacyInitializationRefusesDescriptorSchema(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	r := graphInit(t)
 	r.schemas = []graphstate.PropertyDefinition{{Name: "source", Owner: graphstate.Node, Type: graphstate.ScalarDescriptor, Cardinality: graphstate.ScalarCardinality}}
 	wire, err := encodeGraphRequest(r, defaultMaterializerLimits())

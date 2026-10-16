@@ -1509,6 +1509,9 @@ func TestReplicatedProcessProtocolBoundaries(t *testing.T) {
 }
 
 func TestReplicatedProcessShutdownReapsFailedCloseRPC(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if os.Getenv("RHO_GRAPH_PROCESS_CHILD") == "1" {
 		t.Skip("parent only")
 	}

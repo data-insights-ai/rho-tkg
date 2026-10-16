@@ -10,6 +10,9 @@ import (
 // Diagnostic only: measure the accepted materializer's real same-view prelude.
 // It never stages graph operations on GR3 or promotes its local catalog to Full.
 func TestPartitionStageCheckedGenesisPreludeReportsActualConsumedWork(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newGraphGenesisNetwork(t)
 	home := n.hosts[0][0]
 	binding := graphGenesisBinding(t)

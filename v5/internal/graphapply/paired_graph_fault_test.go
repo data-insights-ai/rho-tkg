@@ -18,6 +18,9 @@ import (
 )
 
 func TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := newPairedGraphFaultNetwork(t)
 	initial := f.observe(4, graphReadFresh, graphCut{}, false)
 	f.assertView(initial.View, 0)
@@ -233,6 +236,9 @@ func TestNativePairedGraphFaultSixOperationsActualProcessesAndRetainedCuts(t *te
 func pairedFaultInstance(id uint64, p *graphProcess) string { return pairedGraphFaultInstance(id, p) }
 
 func TestNativePairedGraphFaultTransportRefusesUnscheduledErrorsAndBoundsDrops(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	called := 0
 	filter := func(replica.Packet) (bool, error) { called++; return true, nil }
 	for count := 1; count <= processDeliveries; count++ {
@@ -253,6 +259,9 @@ func TestNativePairedGraphFaultTransportRefusesUnscheduledErrorsAndBoundsDrops(t
 }
 
 func TestNativePairedGraphFaultPendingReplyRequiresExactTerminalNativeRefusal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	incarnation := [16]byte{7}
 	wireErr := graphWireError{graphErrorMask(replica.ErrUnavailable)}
 	joined := errors.Join(errGraphCutPending, wireErr)
@@ -317,6 +326,9 @@ func TestNativePairedGraphFaultPendingReplyRequiresExactTerminalNativeRefusal(t 
 }
 
 func TestNativePairedGraphFaultReconnectRefusesInvalidAndBusyActualOwners(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := newPairedGraphFaultNetwork(t)
 	// Invalid association must not alter the live connection; the actual seed
 	// then runs over the original authenticated1/4 streams.
@@ -355,6 +367,9 @@ func TestNativePairedGraphFaultReconnectRefusesInvalidAndBusyActualOwners(t *tes
 }
 
 func TestNativePairedGraphFaultNoOpUsesActualRetainedNormalEntry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	var missing context.Context
 	if wire, err := pairedGraphFaultRecordWire(missing, nil, 0); wire != nil || !errors.Is(err, errInvalid) {
 		t.Fatal("nil record inspection", err)

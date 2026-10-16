@@ -37,6 +37,9 @@ func boundMaterializerStore(t *testing.T, id raftlog.ApplicationSemanticContract
 }
 
 func TestMaterializerSemanticBindingBeforeRestoreAndPreservesStore(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seed := openGraphFixture(t)
 	_, image, err := seed.s.Checkpoint()
 	if err != nil {
@@ -127,6 +130,9 @@ func TestMaterializerSemanticBindingBeforeRestoreAndPreservesStore(t *testing.T)
 }
 
 func TestMaterializerLegacyBindingCompatibilityAndClosedSentinel(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := openGraphFixture(t)
 	if f.s.ApplicationBinding() != (raftlog.ApplicationBinding{}) {
 		t.Fatal("legacy fixture acquired binding")

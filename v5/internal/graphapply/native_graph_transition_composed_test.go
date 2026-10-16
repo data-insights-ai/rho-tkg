@@ -13,6 +13,9 @@ import (
 )
 
 func TestNativeComposedReplayRecipesKeepGenuineCausalInventoryAndFiniteActions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	count := 0
 	for _, first := range []string{"A", "B"} {
 		for _, phase := range []string{"registered", "prepared"} {
@@ -51,6 +54,9 @@ func TestNativeComposedReplayRecipesKeepGenuineCausalInventoryAndFiniteActions(t
 // external recorded controller can reauthenticate a completed failed capture
 // and minimize only the SAME independent semantic failure across fresh cohorts.
 func TestNativeComposedTransitionRecordedReplayCell(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	raw := os.Getenv("RHO_GRAPH_COMPOSED_RECIPE")
 	if raw == "" {
 		t.Skip("explicit fresh native composed recorded replay cell")

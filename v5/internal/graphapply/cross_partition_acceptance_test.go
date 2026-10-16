@@ -16,9 +16,15 @@ import (
 // Guards the actual incoming-bank path: replaying the old log, keeping only
 // current graph state, or dropping the private prepare/lock cannot satisfy it.
 func TestCrossPartitionPreparedFollowerSnapshotKeepsKernelLockAndCompletionAcrossReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	testCrossPartitionPreparedSnapshot(t, false)
 }
 func TestCertifiedGraphActualAS5ActivationKeepsHeldCertifiedSourceAndReopensCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	testCrossPartitionPreparedSnapshot(t, true)
 }
 func testCrossPartitionPreparedSnapshot(t *testing.T, certified bool) {
@@ -272,6 +278,9 @@ func crossAcceptanceState(t *testing.T, h *allocationHost, tx [16]byte, prepared
 }
 
 func TestCrossPartitionRecoveryVerifierNilAndForeignViewRefuse(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	h := n.hosts[0][0]
 	if _, err := h.machine.VerifyApplicationRecovery(t.Context(), nil, nil); !errors.Is(err, errInvalid) {
@@ -299,6 +308,9 @@ func crossCapacityNetwork(t *testing.T) *allocationTestNetwork {
 }
 
 func TestCrossPartitionReservedCompletionSurvivesOrdinaryCliffForwardingAndExactQueuedRetry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := crossCapacityNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, register := n.crossPlan(ops, claims, 24)
@@ -395,6 +407,9 @@ func TestCrossPartitionReservedCompletionSurvivesOrdinaryCliffForwardingAndExact
 }
 
 func TestCrossPartitionInsufficientCompletionCapacityRefusesRegistrationBeforeYES(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := crossCapacityNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, register := n.crossPlan(ops, claims, 24)
@@ -448,6 +463,9 @@ func TestCrossPartitionInsufficientCompletionCapacityRefusesRegistrationBeforeYE
 }
 
 func TestCrossPartitionUnissuedCompletedReadSequenceMustNotCreateTransaction(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	sources := []allocationProof{n.read(0, allocationQuery{kind: observeConfiguration}), n.read(1, allocationQuery{kind: observeConfiguration})}
@@ -467,6 +485,9 @@ func TestCrossPartitionUnissuedCompletedReadSequenceMustNotCreateTransaction(t *
 }
 
 func TestCrossPartitionSourceProofsRemainSafeWhileForeignHostCompletesReads(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	sources := []allocationProof{n.read(0, allocationQuery{kind: observeConfiguration}), n.read(1, allocationQuery{kind: observeConfiguration})}
@@ -485,6 +506,9 @@ func TestCrossPartitionSourceProofsRemainSafeWhileForeignHostCompletesReads(t *t
 }
 
 func TestCrossPartitionMixedPendingReadsMustShareSixteenRequestLimit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	h := n.hosts[0][0]
 	for i := range 16 {
@@ -506,6 +530,9 @@ func TestCrossPartitionMixedPendingReadsMustShareSixteenRequestLimit(t *testing.
 }
 
 func TestCrossPartitionStatusAndManifestMustShareSourceRowBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	_, p := n.crossPlan(ops, claims, 24)
@@ -520,6 +547,9 @@ func TestCrossPartitionStatusAndManifestMustShareSourceRowBudget(t *testing.T) {
 }
 
 func TestCrossPartitionPlanningCannotSpendSourceBudgetAgainForEachParticipant(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	sources := []allocationProof{n.read(0, allocationQuery{kind: observeConfiguration}), n.read(1, allocationQuery{kind: observeConfiguration})}
@@ -543,6 +573,9 @@ func TestCrossPartitionPlanningCannotSpendSourceBudgetAgainForEachParticipant(t 
 }
 
 func TestCrossPartitionRegisteredIdentityCannotEnterLocalGraphDoor(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, register := n.crossPlan(ops, claims, 24)
@@ -567,6 +600,9 @@ func TestCrossPartitionRegisteredIdentityCannotEnterLocalGraphDoor(t *testing.T)
 }
 
 func TestCrossPartitionTwoCoordinatorsMustNotDeadlockOnCompletionReservations(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	ids := crossRequestsWithLoser(n, 1)
@@ -675,6 +711,9 @@ func (n *allocationTestNetwork) capacityRead(group int, proposal allocationPropo
 }
 
 func TestCrossPartitionAbortBeforeCoordinatorPrepareMustRetireOnlyItsUnusedCredits(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	claims[0].grant.sequence = 2
@@ -723,6 +762,9 @@ func TestCrossPartitionAbortBeforeCoordinatorPrepareMustRetireOnlyItsUnusedCredi
 }
 
 func TestCrossPartitionManifestProofAndAggregateRefusalsLeaveNoOutput(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, register := n.crossPlan(ops, claims, 24)
@@ -824,6 +866,9 @@ func TestCrossPartitionManifestProofAndAggregateRefusalsLeaveNoOutput(t *testing
 }
 
 func TestCrossPartitionCorruptPreparedStatusAndLocksCannotRestoreOrStage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, register := n.crossPlan(ops, claims, 24)
@@ -901,6 +946,9 @@ func TestCrossPartitionCorruptPreparedStatusAndLocksCannotRestoreOrStage(t *test
 }
 
 func TestCrossPartitionStagingRefusalsKeepAllEffectsPrivate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	_, register := n.crossPlan(ops, claims, 24)
@@ -946,6 +994,9 @@ func TestCrossPartitionStagingRefusalsKeepAllEffectsPrivate(t *testing.T) {
 }
 
 func TestCrossPartitionControlReadersRefusePartialSourceOrOwnedResults(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, register := n.crossPlan(ops, claims, 24)

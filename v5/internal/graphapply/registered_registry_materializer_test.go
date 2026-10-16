@@ -353,6 +353,9 @@ func TestRegisteredRegistryPendingAndOwnedOutputs(t *testing.T) {
 }
 
 func TestRegisteredRegistryLargeOriginalJournalAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	s, cfg := inventoryTestStoreConfig(t)
 	inventoryGenesis(t, s, inventoryLiteral(t, "OriginHCR378"))
 	m := registryUnitMachine(t, s, registryUnitLimits())

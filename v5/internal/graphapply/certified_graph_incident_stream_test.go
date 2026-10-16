@@ -14,6 +14,9 @@ import (
 )
 
 func TestCertifiedIncidentStreamRetainsCutAndCommitsOnlyHydratedChunks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	second := ops[0]

@@ -48,6 +48,9 @@ func (w *retainedOnlyFaultWire) RoundTrip(ctx context.Context, wire []byte) ([]b
 // This parent authors real native work but has not been executed. Native rolling
 // source protection is intentionally more conservative than detached FDB CDC.
 func TestRetainedOnlyFeedNativeACKAnchorCollectionAndOriginalRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	var absent *retainedFeedOwner
 	if err := absent.ToRetainedOnly(t.Context(), [16]byte{1}); !errors.Is(err, errInvalid) {
 		t.Fatal("nil owner", err)

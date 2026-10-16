@@ -240,6 +240,9 @@ func graphE17AssertNativeMoveReceipts(t *testing.T, n *certifiedProcessNetwork, 
 // permutations are deliberately separate; reopening At here opens a new actual
 // certified read session against persisted old certificates, not a child restart.
 func TestGraphRangeMoveSixProcessesActivatesAllocatedRangeWithoutChangingIDs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetworkProfile(t, true)
 	publication, oldOwner := graphE17Placement(t, n, 1, 1)
 	otherSource, otherSourceOwner := graphE17Placement(t, n, 1, 2)

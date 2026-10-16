@@ -16,6 +16,9 @@ import (
 // not a defect in a path explicitly documented as noncertified. After the
 // production seam exists the same acceptance binds the certified read API.
 func TestRemoteE15CertifiedReadClosesDelayedBAndRetainsOldCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetwork(t)
 	oracle := newCertifiedProcessOracle()
 	input, err := encodeGraphProcessObserveIDs([]uint64{1, 3, 17})

@@ -25,6 +25,9 @@ type nativeProtocolPredecessorArtifact struct {
 }
 
 func TestNativeProtocolPredecessorProgramsKeepExactReadyInventory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	rows := nativeProtocolPredecessorInventory()
 	counts := map[string]int{}
 	names := map[string]bool{}
@@ -71,6 +74,9 @@ func TestNativeProtocolPredecessorProgramsKeepExactReadyInventory(t *testing.T) 
 // literal program adapters. Only the private, explicitly admitted companion
 // owner changes delivery. No case asserts selected-command Raft emission.
 func TestNativeProtocolReadyLossWithServiceAndPredecessorMessages(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, layout := range []string{"original", "rotated"} {
 		for _, mode := range []string{"delay", "reorder", "duplicate"} {
 			for index, recipe := range nativeProtocolPredecessorInventory() {

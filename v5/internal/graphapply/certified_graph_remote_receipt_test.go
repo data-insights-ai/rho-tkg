@@ -27,6 +27,9 @@ func remoteCertifiedReceiptBackend(t *testing.T, c *crossProcessCoordinator) *re
 // RED: a genuine completed floor read is not a committed local mutation receipt.
 // Generic proof validity must not silently turn its empty receipt into round0.
 func TestRemoteCertifiedReceiptRoundRejectsGenuineFloorProofAsLocalReceipt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, valid := certifiedReceiptIssuer(t, true)
 	_, transport := certifiedCoordinator(n)
 	nonce, err := graphReadNonce()
@@ -58,6 +61,9 @@ func TestRemoteCertifiedReceiptRoundRejectsGenuineFloorProofAsLocalReceipt(t *te
 // RED: validating immutable native receipt provenance must not re-export live
 // authority through its stopped issuer. Reopened sources check current binding.
 func TestRemoteCertifiedReceiptRoundPreservesNativeCommitAfterIssuerCloseReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, receipt := certifiedReceiptIssuer(t, false)
 	original := receipt.proof.owner
 	want := receipt.proof.status.round

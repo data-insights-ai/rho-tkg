@@ -2876,6 +2876,9 @@ func TestGraphSourceProcessEnvelopeRejectsUnboundAndExtraInput(t *testing.T) {
 // This guard waits for an actually queued peer call, then exercises real Host
 // event progress and cancellation. It makes no certified-cut claim.
 func TestGraphSourceSixProcessesPausedPeerKeepsNativeLaneAndCancels(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetwork(t)
 	n.all[4].call(t, processRequest{op: processSourcePause, entity: 1})
 	source := n.all[1].call(t, processRequest{op: processCertifiedAction, entity: certifiedCreateCrossEdge, index: 3})

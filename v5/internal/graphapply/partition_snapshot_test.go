@@ -56,6 +56,9 @@ func partitionSnapshotSubmit(t *testing.T, transport *declaredSnapshotTransport,
 }
 
 func TestPartitionNonemptyGraphSnapshotRetainedHistoryFailoverAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	network, routing := partitionIntegrationNetwork(t)
 	var firsts, originalIndexes [2]uint64
 	var descriptors, integers [2]graphstate.Scalar

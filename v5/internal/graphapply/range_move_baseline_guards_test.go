@@ -86,6 +86,9 @@ func rangeMoveBaselineGuardInstallMalformed(t *testing.T, s *raftlog.Store, base
 }
 
 func TestRangeMoveCatalogBaselineOwnsExactRetainedCaptureAndRefusesMalformedImportData(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, _, transports := rangeMoveCoordinatorFixture(t, 64)
 	gate := &rangeMoveAdmissionImportGate{graphPeerWireTransport: transports[8], sequence: 3}
 	transports[8] = gate

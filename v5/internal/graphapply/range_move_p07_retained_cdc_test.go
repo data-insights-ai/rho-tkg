@@ -455,6 +455,9 @@ func p07AssertCompleteCDC(t *testing.T, n *allocationTestNetwork, records [2][]p
 // One composition over actual disk-backed native Hosts/Drivers (six in-process
 // voters). This is not the separate six-OS-child paired oracle or a new feed API.
 func TestRangeMoveP07LostCommittedRequestRetainedCutAndCDCThroughReclaim(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, fixtureWires, _ := rangeMoveCoordinatorFixture(t, 64)
 	keeper := &rangeMoveKeeperWire{graphPeerWireTransport: fixtureWires[0].nativeGraphTestTransport}
 	fault := &p07LostDecisionWire{graphPeerWireTransport: keeper, limits: n.hosts[0][0].machine.limits}

@@ -72,6 +72,9 @@ func rangeMoveAdmissionSubmit(t *testing.T, n *allocationTestNetwork, group int,
 }
 
 func TestRangeMoveAdmissionWrongSourcePlacementRefusesWithoutRecoveryOwner(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, tc := range []struct {
 		name string
 		edit func(*rangeMoveIntent)
@@ -227,6 +230,9 @@ func rangeMoveAdmissionAssertUndoCredits(t *testing.T, reservation raftlog.Appli
 }
 
 func TestRangeMoveAdmissionNumberedUndoRetainsCreditsUntilFinalAbort(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, _, transports := rangeMoveCoordinatorFixture(t, 64)
 	intent.pageBytes = 8 << 10
 	gate := &rangeMoveAdmissionImportGate{graphPeerWireTransport: transports[8], sequence: 3}

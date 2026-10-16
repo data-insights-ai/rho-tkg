@@ -248,6 +248,9 @@ func rangeMoveTransitionDecisionGuards(t *testing.T, n *allocationTestNetwork, i
 }
 
 func TestRangeMoveTransitionsRefuseStaleClosureAndAbortAfterCommitThenOriginalResume(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, wires, transports := rangeMoveCoordinatorFixture(t, 64)
 	intentWire, err := encodeRangeMoveIntent(intent)
 	if err != nil {

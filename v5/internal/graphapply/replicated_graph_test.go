@@ -304,6 +304,9 @@ func (n *certifiedProcessNetwork) compare(t *testing.T, oracle *certifiedProcess
 }
 
 func TestReplicatedCertifiedGraphSixProcessesLocalControls(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetwork(t)
 	o := newCertifiedProcessOracle()
 	n.compare(t, o)
@@ -313,6 +316,9 @@ func TestReplicatedCertifiedGraphSixProcessesLocalControls(t *testing.T) {
 	n.compare(t, o)
 }
 func TestReplicatedCertifiedGraphSixProcessesCrossEdge(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetwork(t)
 	oracle := newCertifiedProcessOracle()
 	n.compare(t, oracle)
@@ -378,6 +384,9 @@ func TestReplicatedCertifiedGraphSixProcessesCrossEdge(t *testing.T) {
 }
 
 func TestReplicatedCertifiedGraphSixProcessesLocalCrossEdgeRefusalRemainsHealthy(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetwork(t)
 	oracle := newCertifiedProcessOracle()
 	n.compare(t, oracle)
@@ -579,6 +588,9 @@ func deliverUntilLeaderDeath(t *testing.T, n *tinyGraphTransport) {
 }
 
 func TestReplicatedGraphLeaderDiesAfterCommitBeforeReceipt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if os.Getenv("RHO_GRAPH_PROCESS_CHILD") == "1" {
 		t.Skip("parent only")
 	}
@@ -993,6 +1005,9 @@ func assertHeldPhantom(t *testing.T, p *graphProcess, handle uint64, image []byt
 }
 
 func TestReplicatedGraphSnapshotHeldViewTailAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if os.Getenv("RHO_GRAPH_PROCESS_CHILD") == "1" {
 		t.Skip("parent only")
 	}
@@ -1334,6 +1349,9 @@ type tinyProcessMeasurement struct {
 }
 
 func TestReplicatedGraphSixProcessesOrdinaryAndHistory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if os.Getenv("RHO_GRAPH_PROCESS_CHILD") == "1" {
 		t.Skip("parent only")
 	}

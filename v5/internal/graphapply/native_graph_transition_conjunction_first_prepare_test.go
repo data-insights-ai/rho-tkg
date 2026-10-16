@@ -352,6 +352,9 @@ func nativeP06FirstPrepareCase(t *testing.T, recipe nativeP06ConjunctionRecipe, 
 }
 
 func TestNativePreparedLockP06FirstPrepareKeepsActualUnknownAndStoredYESAcrossSyncDeath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for i, recipe := range nativeP06ConjunctionRecipes() {
 		if testing.Short() && i != 0 && i != 3 && i != 8 && i != 15 {
 			continue
@@ -361,6 +364,9 @@ func TestNativePreparedLockP06FirstPrepareKeepsActualUnknownAndStoredYESAcrossSy
 }
 
 func TestNativeP06FirstPrepareRegistryNeverInventsMissingYESReply(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seen := make(map[string]bool)
 	for _, recipe := range nativeP06ConjunctionRecipes() {
 		name := nativeP06FirstPrepareName(recipe)

@@ -50,6 +50,9 @@ func TestNativeTransferTransitionInventoryKeepsActualPhaseSidesAndPagesFinite(t 
 }
 
 func TestNativeTransferTransitionsPreserveFactoryOriginalAcrossReassociationAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, recipe := range nativeTransitionMoveInventory() {
 		// Short mode exercises two genuine process cells, including the
 		// before-first-Fence lost-owner refusal and returned target activation.

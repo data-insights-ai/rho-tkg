@@ -13,6 +13,9 @@ import (
 )
 
 func TestRangeMoveIntrinsicSourceAdmissionIsTerminalWithoutFenceAndKeepsOriginalRetry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, intent, wires, _ := rangeMoveCoordinatorFixture(t, 64)
 	intent.maxPages = 1024
 	var before [6]raftlog.ApplicationRoot

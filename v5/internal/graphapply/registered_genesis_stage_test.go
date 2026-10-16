@@ -194,6 +194,9 @@ func (g *registeredStageTestGroup) retainedOrigin(j int, key, want []byte) {
 
 // Breaks replay using current/new term, replacement, and reopen guessing source.
 func TestRegisteredGenesisHigherTermReplayReopenAndRefuseReplacement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	g := newRegisteredStageTestGroup(t, 5, 6)
 	command := registeredStageHex(t, "474a5131000100000000f44a47533100010500000000000000000000000000000000000000000000010600000000000000000000000000000001000000000000000100000000000000010000008cf9686b196a04e763a26de24b71981267151af29afcc3eca5394c41282e795ec3000000000000000103000000000000000100000000000000020000000000000003358026a048d72e4de703da156369117d06cfa1877da82291f3d23416afd9626d0000000000000002000000000000040000000000001000000000000000010000000000000000100000000000002000000000000000001000000000000040000000000000001000000000000000010000")
 	key := registeredStageHex(t, "484b533101050000000000000000000000000000000000000000000001060000000000000000000000000000000001")
@@ -327,6 +330,9 @@ func TestRegisteredGenesisHigherTermReplayReopenAndRefuseReplacement(t *testing.
 
 // Guard: reopening advanced application state without Origin never repairs it.
 func TestRegisteredGenesisMissingOriginReopenRefuses(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	g := newRegisteredStageTestGroup(t, 7, 8)
 	for j := range 3 {
 		if err := g.drivers[j].Close(); err != nil {

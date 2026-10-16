@@ -62,6 +62,9 @@ func TestGraphSourceWireRequestAdmissionSymmetry(t *testing.T) {
 }
 
 func TestGraphSourceWireInfoReadLimitAdmissionSymmetry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	_, server, info, _ := sourceSessionFixture(t)
 	t.Cleanup(func() { _ = server.close() })
 	for _, tc := range []struct {
@@ -310,6 +313,9 @@ func wireGuardInfoZero(t *testing.T, i graphSourceInfo, err, want error) {
 }
 
 func TestGraphSourceWireInfoNativeFieldsOwnershipAndMismatchGuard(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	_, server, info, _ := sourceSessionFixture(t)
 	t.Cleanup(func() { _ = server.close() })
 	wire, err := encodeGraphSourceInfo(info)
@@ -374,6 +380,9 @@ func TestGraphSourceWireInfoNativeFieldsOwnershipAndMismatchGuard(t *testing.T) 
 }
 
 func TestGraphSourceWireInfoZeroIssuerCannotBecomeSession(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	_, server, info, _ := sourceSessionFixture(t)
 	t.Cleanup(func() { _ = server.close() })
 	// Equality of two empty issuer/session arrays is not a session identity.

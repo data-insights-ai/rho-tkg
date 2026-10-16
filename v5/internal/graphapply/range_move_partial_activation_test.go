@@ -179,6 +179,9 @@ func rangeMovePartialAssertOwner(t *testing.T, h *allocationHost, move [16]byte,
 }
 
 func TestRangeMovePartialActivationRestoresOriginalCommitAndOldCertifiedCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, mode := range []string{"source-not-delivered", "source-committed-lost-reply"} {
 		t.Run(mode, func(t *testing.T) {
 			n, _, intent, fixtureWires, _ := rangeMoveCoordinatorFixture(t, 64)

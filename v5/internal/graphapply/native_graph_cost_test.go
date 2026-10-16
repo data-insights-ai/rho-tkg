@@ -708,6 +708,9 @@ func runNativeGraphCostWithBlock(t *testing.T, s nativeGraphCostSpec, block uint
 	t.Log("native cost actual result", filepath.Join(n.dir, "native-cost-result.json"))
 }
 func TestNativeGraphCostSmallActualProcesses(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, cell := range []struct {
 		name         string
 		facts, cross uint64
@@ -887,6 +890,9 @@ func TestNativeGraphCostProfileAndRouting(t *testing.T) {
 // A later retained SAME-request entry is genuine zero-output replay, while its
 // original typed CDC remains at the earlier index after a subsequent mutation.
 func TestNativeGraphCostReplayOriginalRetainsActualEntryAndOldCDC(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	h := n.hosts[0][0]

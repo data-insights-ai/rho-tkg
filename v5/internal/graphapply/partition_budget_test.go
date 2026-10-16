@@ -13,6 +13,9 @@ import (
 )
 
 func TestCollectedAndPooledPartitionWritesShareInitializationBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, profile := range []struct {
 		name     string
 		semantic raftlog.ApplicationSemanticContractID
@@ -66,6 +69,9 @@ func TestCollectedAndPooledPartitionWritesShareInitializationBudget(t *testing.T
 }
 
 func TestPartitionAggregateOutputRefusalPrecedes128OperationInputClones(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	r := partitionCodecRequest(t, 0, defaultMaterializerLimits())
 	n := newPartitionWriteNetworkWithRouting(t, r, partitionWriteSchemas())
 	handle := n.activate(0, [16]byte{1})
