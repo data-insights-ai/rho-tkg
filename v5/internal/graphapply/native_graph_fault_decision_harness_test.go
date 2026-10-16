@@ -790,6 +790,58 @@ func TestNativeComposedFaultQueuedCapacityDecisionsKeepFirstOriginal(t *testing.
 	}
 }
 
+// The caller serializes this inert diagnostic capture; it grants no native authority.
+func nativeDecisionCaptureCapacity(campaign bool, capacity *pairedFaultBoundary, charge *nativeProtocolHoldCharge, request, reply []byte) error {
+	if campaign && len(request) >= 5 && len(request) <= processFrameBytes && bytes.Equal(request[:4], []byte("GSQ\x01")) && request[4] >= sourceOpen && request[4] <= sourceReplacementRead {
+		if request[4] != sourceCrossRead {
+			return nil // Ordinary source traffic keeps its real response and global grants.
+		}
+		// Borrow only the fixed service envelope fields to classify the command.
+		// No seal/nonce/proof authority comes from this diagnostic prefilter; the
+		// actual service already checks the full request. Relevant or malformed
+		// cross-read candidates still pay for the complete decoder below.
+		c := graphCursor{b: request[5:]}
+		c.take(8 + 16 + 40 + 8) // sequence, nonce, cookie, maximum and rows
+		for range 3 {
+			c.field(64 << 10) // key, upper, after (bounded borrowed slices)
+		}
+		command := c.field(1 << 20)
+		c.take(16) // transaction
+		phase := c.tag()
+		c.take(32) // native envelope seal, validated only by the full decoder
+		if c.err == nil && len(c.b) == 0 && phase <= byte(crossResolve) && !bytes.HasPrefix(command, []byte("GCQ\x01")) {
+			return nil
+		}
+	}
+	if campaign {
+		if charge.Candidates >= 128 || len(request) > processFrameBytes || len(reply) > processFrameBytes {
+			return errLimit
+		}
+		charge.Candidates++
+		charge.Work += uint64(4096 + 32*(len(request)+len(reply)))
+	}
+	q, err := decodeGraphSourceRequest(request)
+	if err != nil || q.kind != sourceCrossRead || !bytes.HasPrefix(q.command, []byte("GCQ\x01")) {
+		return err
+	}
+	if len(capacity.Request) != 0 {
+		return errInvalid
+	}
+	if campaign {
+		if len(request)+len(reply) > nativeProtocolReplyBytes {
+			return errLimit
+		}
+		charge.Output = uint64(8192 + 8*(len(request)+len(reply)))
+		charge.Retained = uint64(len(request) + len(reply))
+		capacity.Request, capacity.Reply = make([]byte, len(request)), make([]byte, len(reply))
+		copy(capacity.Request, request)
+		copy(capacity.Reply, reply)
+	} else {
+		*capacity = pairedFaultBoundary{Request: bytes.Clone(request), Reply: bytes.Clone(reply)}
+	}
+	return nil
+}
+
 func nativeDecisionCase(t *testing.T, order string, campaign ...nativeProtocolFrozenRecipe) {
 	nativeDecisionCaseOwned(t, order, nil, campaign...)
 }
@@ -996,38 +1048,9 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 		if origin != bOwner || partition != 3 {
 			return nil
 		}
-		if len(campaign) == 1 {
-			captureMu.Lock()
-			if capacityCharge.Candidates >= 128 || len(request) > processFrameBytes || len(reply) > processFrameBytes {
-				captureMu.Unlock()
-				return errLimit
-			}
-			capacityCharge.Candidates++
-			capacityCharge.Work += uint64(4096 + 32*(len(request)+len(reply)))
-			captureMu.Unlock()
-		}
-		q, err := decodeGraphSourceRequest(request)
-		if err != nil || q.kind != sourceCrossRead || !bytes.HasPrefix(q.command, []byte("GCQ\x01")) {
-			return err
-		}
 		captureMu.Lock()
 		defer captureMu.Unlock()
-		if len(capacity.Request) != 0 {
-			return errInvalid
-		}
-		if len(campaign) == 1 {
-			if len(request)+len(reply) > nativeProtocolReplyBytes {
-				return errLimit
-			}
-			capacityCharge.Output = uint64(8192 + 8*(len(request)+len(reply)))
-			capacityCharge.Retained = uint64(len(request) + len(reply))
-			capacity.Request, capacity.Reply = make([]byte, len(request)), make([]byte, len(reply))
-			copy(capacity.Request, request)
-			copy(capacity.Reply, reply)
-		} else {
-			capacity = pairedFaultBoundary{Request: bytes.Clone(request), Reply: bytes.Clone(reply)}
-		}
-		return nil
+		return nativeDecisionCaptureCapacity(len(campaign) == 1, &capacity, &capacityCharge, request, reply)
 	}
 	hub.mu.Unlock()
 	defer func() { hub.mu.Lock(); hub.afterRelay = nil; hub.mu.Unlock() }()
@@ -1531,5 +1554,59 @@ func TestNativeDecisionOwnerCloseRetiresActualCandidateWithoutImportingWire(t *t
 	recovered, err := c.Run(t.Context(), id, ops, 37, claims)
 	if err != nil || !recovered.decision.commit || recovered.resume != pending.resume {
 		t.Fatal("original after lost owner did not recover genuinely", err, recovered)
+	}
+}
+
+// Canonical service-codec regression only: these inert bytes confer no capacity
+// or proposal authority. The separate six-voter capacity test supplies that proof.
+func TestNativeDecisionCapacityObserverIgnoresOtherServiceTraffic(t *testing.T) {
+	var capacity pairedFaultBoundary
+	var charge nativeProtocolHoldCharge
+	for i := range 129 {
+		for _, kind := range []byte{sourceClose, sourceGet, sourceCertifiedOpen, sourceCutRead, sourceCrossRead} {
+			request, err := encodeGraphSourceRequest(graphSourceRequest{kind: kind, sequence: uint64(i + 1), nonce: [16]byte{1}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := nativeDecisionCaptureCapacity(true, &capacity, &charge, request, nil); err != nil {
+				t.Fatal("unrelated canonical service traffic exhausted capacity observer", i, kind, charge, err)
+			}
+		}
+	}
+	if charge != (nativeProtocolHoldCharge{}) || len(capacity.Request)+len(capacity.Reply) != 0 {
+		t.Fatal("unrelated traffic spent capacity candidate grant", charge)
+	}
+	command, err := encodeCapacityQuestion(allocationProposal{target: wireGuardScope(), wire: []byte("inert-original")}, graphCapacityLimits{128, 128 << 10, 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := encodeGraphSourceRequest(graphSourceRequest{kind: sourceCrossRead, sequence: 130, nonce: [16]byte{1}, command: command})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply, err := encodeGraphWireResponse(graphWireResponse{peer: graphPeerIdentity{scope: wireGuardScope(), voter: 1}, issuer: [16]byte{2}, kind: sourceCrossRead, sequence: 130, nonce: [16]byte{1}, err: replica.ErrUnavailable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := nativeDecisionCaptureCapacity(true, &capacity, &charge, request, reply); err != nil || !bytes.Equal(capacity.Request, request) || !bytes.Equal(capacity.Reply, reply) || charge.Candidates != 1 || charge.Work != uint64(4096+32*(len(request)+len(reply))) || charge.Output != uint64(8192+8*(len(request)+len(reply))) || charge.Retained != uint64(len(request)+len(reply)) {
+		t.Fatal("actual GCQ codec candidate lost exact prepaid capture", charge, err)
+	}
+	if err := nativeDecisionCaptureCapacity(true, &capacity, &charge, request, reply); !errors.Is(err, errInvalid) || charge.Candidates != 2 || !bytes.Equal(capacity.Request, request) || !bytes.Equal(capacity.Reply, reply) {
+		t.Fatal("second candidate overwrote immutable capture", charge, err)
+	}
+	for _, malformed := range [][]byte{nil, []byte("GSQ\x01\x06"), bytes.Clone(request)} {
+		if len(malformed) == len(request) {
+			malformed[len(malformed)-1] ^= 1
+		}
+		var rejected pairedFaultBoundary
+		var consumed nativeProtocolHoldCharge
+		if err := nativeDecisionCaptureCapacity(true, &rejected, &consumed, malformed, reply); err == nil || consumed.Candidates != 1 || consumed.Work != uint64(4096+32*(len(malformed)+len(reply))) || len(rejected.Request)+len(rejected.Reply) != 0 {
+			t.Fatal("malformed relevant candidate escaped full decode/refusal grant", consumed, err)
+		}
+	}
+	limited := nativeProtocolHoldCharge{Candidates: 128}
+	var rejected pairedFaultBoundary
+	if err := nativeDecisionCaptureCapacity(true, &rejected, &limited, request, reply); !errors.Is(err, errLimit) || limited != (nativeProtocolHoldCharge{Candidates: 128}) || len(rejected.Request)+len(rejected.Reply) != 0 {
+		t.Fatal("actual capacity candidate cap changed", limited, err)
 	}
 }
