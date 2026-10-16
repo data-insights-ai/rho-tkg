@@ -69,6 +69,9 @@ func (m *retainedPrefixApplication) Stage(e Entry, _ raftlog.ApplicationBudget) 
 	return b, nil
 }
 func TestApplicationSnapshotIgnoredAfterNativeRestoreFailureMustFundRetainedPrefixBeforeClaim(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	nodes := make(map[uint64]*Driver)
 	configs := make(map[uint64]raftlog.Config)
 	var targetMachine *retainedPrefixApplication

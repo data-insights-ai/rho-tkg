@@ -711,6 +711,9 @@ func processEdge() Tx {
 // Each subtest has exactly TWO logical groups x THREE separate disk/process
 // replicas. No extra voter, server binary or controller-owned application state.
 func TestTwoGroupsSixProcessesDurableBoundaryRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, stage := range []string{"first-prepare", "both-prepares", "decision-before-response", "A-before-B", "checkpoint-unresolved", "quorum-loss"} {
 		t.Run(stage, func(t *testing.T) {
 			n := newProcessCluster(t)
