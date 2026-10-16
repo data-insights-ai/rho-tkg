@@ -125,8 +125,8 @@ func TestTypedValuesAndPassiveScopeProperty(t *testing.T) {
 		t.Fatal("signed zero not canonical")
 	}
 	one, _ := F64(1)
-	if equal, err := one.Equal(I64(1), Limits{}); err != nil || equal {
-		t.Fatal("coerced I64 to F64", err)
+	if equal, err := one.Equal(I64(1), Limits{}); err != nil || !equal || one.Kind() != ScalarF64 {
+		t.Fatal("numeric equality I64(1)=F64(1.0) must hold, kinds stay distinct", err)
 	}
 	for _, f := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
 		if _, err := F64(f); !errors.Is(err, ErrInvalidInput) {

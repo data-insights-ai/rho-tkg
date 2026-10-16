@@ -101,18 +101,94 @@ func (v Scalar) Float64Value() (float64, bool) { return v.f64, v.kind == ScalarF
 // Scope returns only a preserved immutable temporal property value.
 func (v Scalar) Scope() (temporal.Scope, bool) { return v.scope, v.kind == ScalarScope }
 
-// EqualityKey is a deterministic typed key, not an ordered index key. Descriptor
-// keys identify exact preserved envelopes, never payload semantic equivalence.
+// ErrCorruptWire reports stored scalar bytes that are not a canonical wire value.
+var ErrCorruptWire = errors.New("graphstate: corrupt scalar wire")
+
+// EqualityKey is a deterministic typed key, not an ordered index key. Numbers
+// key by value: an integral F64 inside the int64 range keys as the same I64, so
+// I64(3) and F64(3.0) share a key (Cypher exact equality) while 2^53+1 never
+// collides with 2^53. Descriptor keys identify exact preserved envelopes, never
+// payload semantic equivalence. Use AppendWire for the kind-preserving stored form.
 func (v Scalar) EqualityKey(l Limits) (string, error) {
-	l, err := l.resolve()
-	if err != nil {
-		return "", err
+	if v.kind == ScalarF64 && !math.IsNaN(v.f64) && !math.IsInf(v.f64, 0) &&
+		v.f64 == math.Trunc(v.f64) && v.f64 >= -(1<<63) && v.f64 < 1<<63 {
+		v = I64(int64(v.f64))
 	}
-	b, err := v.bytes(l)
+	b, err := v.AppendWire(nil, l)
 	if err != nil {
 		return "", err
 	}
 	return string(b), nil
+}
+
+// AppendWire appends the kind-preserving stored encoding: kind byte plus payload.
+// Unlike EqualityKey, F64(3.0) stays F64. DecodeWire is its inverse.
+func (v Scalar) AppendWire(dst []byte, l Limits) ([]byte, error) {
+	l, err := l.resolve()
+	if err != nil {
+		return nil, err
+	}
+	b, err := v.bytes(l)
+	if err != nil {
+		return nil, err
+	}
+	return append(dst, b...), nil
+}
+
+// DecodeWire is the one decoder of AppendWire output. A scope needs its decoded
+// axis and every other kind forbids one; any other mismatch is ErrCorruptWire,
+// and temporal resource refusals also wrap ErrResourceLimit.
+func DecodeWire(wire []byte, axis temporal.Axis, hasAxis bool, tl temporal.Limits) (Scalar, error) {
+	if len(wire) == 0 {
+		return Scalar{}, ErrCorruptWire
+	}
+	kind := ScalarKind(wire[0])
+	if hasAxis != (kind == ScalarScope) {
+		return Scalar{}, ErrCorruptWire
+	}
+	body := wire[1:]
+	switch kind {
+	case ScalarNull:
+		if len(body) == 0 {
+			return Null(), nil
+		}
+	case ScalarString:
+		return String(string(body)), nil
+	case ScalarBool:
+		if len(body) == 1 && body[0] <= 1 {
+			return Bool(body[0] == 1), nil
+		}
+	case ScalarI64:
+		if len(body) == 8 {
+			return I64(int64(binary.BigEndian.Uint64(body))), nil // #nosec G115 -- exact two's-complement payload.
+		}
+	case ScalarF64:
+		if len(body) == 8 {
+			if bits := binary.BigEndian.Uint64(body); bits != 1<<63 {
+				if v, err := F64(math.Float64frombits(bits)); err == nil {
+					return v, nil
+				}
+			}
+		}
+	case ScalarDescriptor:
+		d, err := temporal.DecodeOpaqueDescriptor(body, tl)
+		if err == nil {
+			if v, err := DescriptorValue(d); err == nil {
+				return v, nil
+			}
+		} else if errors.Is(err, temporal.ErrResourceLimit) {
+			return Scalar{}, errors.Join(ErrResourceLimit, err)
+		}
+	case ScalarScope:
+		s, err := temporal.DecodeScope(body, axis, tl)
+		if err == nil {
+			return ScopeValue(s), nil
+		}
+		if errors.Is(err, temporal.ErrResourceLimit) {
+			return Scalar{}, errors.Join(ErrResourceLimit, err)
+		}
+	}
+	return Scalar{}, ErrCorruptWire
 }
 func (v Scalar) bytes(l Limits) ([]byte, error) {
 	if v.kind < ScalarNull || v.kind > ScalarDescriptor {
@@ -184,9 +260,18 @@ func (v Scalar) retainedBytes(canonicalBytes int) int {
 	return n
 }
 
-// Equal compares declared typed values with finite-F64 numeric zero semantics.
+// Equal is Cypher exact equality: numbers compare by value (I64(3) = F64(3.0)),
+// kinds otherwise never coerce, and null equals nothing, itself included.
 // Descriptor equality means exact envelope identity only, not solver equality.
+// Identity checks that must treat two nulls as the same value use Identical.
 func (v Scalar) Equal(other Scalar, l Limits) (bool, error) {
+	same, err := v.Identical(other, l)
+	return same && v.kind != ScalarNull, err
+}
+
+// Identical reports equal EqualityKeys: Equal, except that null is identical to
+// null. It is the relation for value identity, interning and dependency checks.
+func (v Scalar) Identical(other Scalar, l Limits) (bool, error) {
 	l, err := l.resolve()
 	if err != nil {
 		return false, err

@@ -163,7 +163,7 @@ func (e *engine) reservePredicate(a, b temporal.Scope) error {
 
 func (e *engine) scalarEqual(a, b Scalar) (bool, error) {
 	if e.budget == nil {
-		return a.Equal(b, e.limits)
+		return a.Identical(b, e.limits)
 	}
 	left, err := e.budget.ScalarKey(a, e.limits)
 	if err != nil {
