@@ -8,6 +8,8 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
+0. **v5 is PAUSED (René 2026-10-16, row 61).** Work lives on the local branch `v5-takeover` (not pushed; origin/v5 untouched). Do not resume without René. Reason: real ai-soc import showed ~92 records/op, 11x v4 disk, ~200 writes/s; options in tasks/todo.md (WP-38 merged = raised caps). Focus: v4 main.
+
 **Release note v4.57.0 (Markus, 2026-10-16; CI green):** sigma round 9 doors (any-version ranges at a pin, count
 timelines, property value statistics, typed column chunks) and the scheduled flip: `Config.UntimedValidStart` zero value
 is now `UntimedDefault` (new stores unbounded, existing stores keep their persisted mode); constants renumbered (use the
