@@ -1037,13 +1037,34 @@ func (c *Core) forEachRelHistoryIDByDepthTrusted(depth storepkg.ShardDepth, fn f
 
 // hasTemporalFilter reports whether opts carries a temporal filter that
 // requires history-aware resolution: a valid-time filter
-// (QueryOpts.HasValidTimeFilter — the one rule for ValidAt and the
-// [ValidStart, ValidEnd) interval, where only 0 is unset) or a transaction pin
-// (TxAt, TxPin). A lone ValidStart or ValidEnd is no filter, so
+// (QueryOpts.HasValidTimeFilter) or a transaction pin (HasTxAt, HasTxPin) —
+// the QueryOpts presence rule, where an unflagged 0 is unset. An unflagged
+// lone ValidStart or ValidEnd is no filter, so
 // AllNodes(storepkg.QueryOpts{ValidStart: t}) takes the non-temporal path.
 func hasTemporalFilter(opts storepkg.QueryOpts) bool {
-	return opts.HasValidTimeFilter() || opts.TxAt != 0 || opts.TxPin != 0
+	return opts.HasValidTimeFilter() || opts.HasTxAt() || opts.HasTxPin()
 }
+
+// pinInstant is the instant a present pin hands the code below, which reads
+// 0 as "no pin": a pin at 0 becomes -1, an absent pin is 0. Both pins select
+// the same rows: a recorded belief has a positive TxFrom (ErrInvalidTxFrom;
+// as-of candidates need 0 < TxFrom) and the compaction and retention
+// watermarks are positive, so nothing lies in [-1, 0].
+func pinInstant(at types.Instant, present bool) types.Instant {
+	switch {
+	case !present:
+		return 0
+	case at == 0:
+		return -1
+	}
+	return at
+}
+
+// txAtOf is opts' TxAt pin for the tx-time code (pinInstant).
+func txAtOf(opts storepkg.QueryOpts) types.Instant { return pinInstant(opts.TxAt, opts.HasTxAt()) }
+
+// txPinOf is opts' TxPin pin for the tx-time code (pinInstant).
+func txPinOf(opts storepkg.QueryOpts) types.Instant { return pinInstant(opts.TxPin, opts.HasTxPin()) }
 
 // effectiveTxPin returns the transaction-time pin a candidate must have been
 // recorded by (TxPin, else TxAt). A member whose earliest label/type acquisition
@@ -1051,10 +1072,10 @@ func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 // label/type at the pin and is safely pruned from the K1 candidate set. Returns
 // 0 for a pure valid-time filter (no transaction-time pin → no such pruning).
 func effectiveTxPin(opts storepkg.QueryOpts) types.Instant {
-	if opts.TxPin != 0 {
-		return opts.TxPin
+	if opts.HasTxPin() {
+		return txPinOf(opts)
 	}
-	return opts.TxAt
+	return txAtOf(opts)
 }
 
 // membershipSidecarUsable reports whether a temporal read with this depth may
@@ -1115,7 +1136,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 			}
 			var err error
 			if windowed {
-				err = c.relPropTxWindow.ForEachRelPropertyTxMemberDuring(tok, key, valueKey, start, end, opts.TxAt, member)
+				err = c.relPropTxWindow.ForEachRelPropertyTxMemberDuring(tok, key, valueKey, start, end, txAtOf(opts), member)
 			} else {
 				err = c.relPropTxMembers.ForEachRelPropertyTxMember(tok, key, valueKey, member)
 			}
@@ -1160,7 +1181,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 // no valid-time filter or the point has no representable successor.
 func validWindow(opts storepkg.QueryOpts) (start, end types.Instant, ok bool) {
 	switch {
-	case opts.ValidAt != 0:
+	case opts.HasValidAt():
 		if opts.ValidAt == math.MaxInt64 {
 			return 0, 0, false
 		}
@@ -1232,7 +1253,7 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 			}
 			var err error
 			if windowed {
-				err = c.nodePropTxWindow.ForEachNodePropertyTxMemberDuring(tok, key, vk, start, end, opts.TxAt, member)
+				err = c.nodePropTxWindow.ForEachNodePropertyTxMemberDuring(tok, key, vk, start, end, txAtOf(opts), member)
 			} else {
 				err = c.nodePropTxMembers.ForEachNodePropertyTxMember(tok, key, vk, member)
 			}
@@ -1284,7 +1305,7 @@ func validateTemporalQueryOpts(opts storepkg.QueryOpts) error {
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return err
 	}
-	if opts.TxPin != 0 && (opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0) {
+	if opts.HasTxPin() && (opts.HasValidAt() || opts.HasValidBound() || opts.HasTxAt()) {
 		return ErrConflictingTemporalOpts
 	}
 	return nil
@@ -1312,7 +1333,7 @@ func validateTemporalQueryOpts(opts storepkg.QueryOpts) error {
 // resolution or already resolve their bound once via resolveOpenEndInstant at
 // their own entry point (findNodeVersionMatchingDuringTx / the interval arm).
 func (c *Core) normalizeTxAtOnlyOpts(opts storepkg.QueryOpts) storepkg.QueryOpts {
-	if opts.TxAt != 0 && opts.TxPin == 0 && opts.ValidAt == 0 && opts.ValidStart == 0 && opts.ValidEnd == 0 {
+	if opts.HasTxAt() && !opts.HasTxPin() && !opts.HasValidAt() && !opts.HasValidBound() {
 		opts.ValidAt = c.readNow()
 	}
 	return opts
@@ -1329,13 +1350,13 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 	if c.chainLoadTestHook != nil {
 		c.chainLoadTestHook()
 	}
-	if opts.TxPin != 0 {
+	if opts.HasTxPin() {
 		// Belief-state pin: pure knowledge-time resolution, NO valid-time
 		// filter. Delegate to the SAME resolver the named as-of door uses
 		// (nodeAsOfLocked feeds NodeAsOf / NodesAsOf) so the two doors agree by
 		// construction — the version-ordered retraction rule (lesson 62) is
 		// inherited, never re-implemented. Absent → the loop's skip sentinel.
-		n, err := c.nodeAsOfLocked(id, opts.TxPin)
+		n, err := c.nodeAsOfLocked(id, txPinOf(opts))
 		if err != nil {
 			if errors.Is(err, ErrNoVersionAsOf) {
 				return nil, storepkg.ErrNoVersionValidAt
@@ -1347,8 +1368,8 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 		}
 		return n, nil
 	}
-	if opts.ValidAt != 0 {
-		n, err := c.nodeAtLockedTx(id, opts.ValidAt, opts.TxAt)
+	if opts.HasValidAt() {
+		n, err := c.nodeAtLockedTx(id, opts.ValidAt, txAtOf(opts))
 		if err != nil {
 			return nil, err
 		}
@@ -1358,12 +1379,12 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 		return n, nil
 	}
 	if opts.HasValidInterval() {
-		return c.findNodeVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, opts.TxAt, pred)
+		return c.findNodeVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, txAtOf(opts), pred)
 	}
-	if opts.TxAt != 0 {
+	if opts.HasTxAt() {
 		// TX-only filter: return version visible at txAt as of "now" valid time
 		// — i.e. whatever was current-or-most-recent at txAt.
-		n, err := c.nodeAtLockedTx(id, c.readNow(), opts.TxAt)
+		n, err := c.nodeAtLockedTx(id, c.readNow(), txAtOf(opts))
 		if err != nil {
 			return nil, err
 		}
@@ -1380,10 +1401,10 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 	if c.chainLoadTestHook != nil {
 		c.chainLoadTestHook()
 	}
-	if opts.TxPin != 0 {
+	if opts.HasTxPin() {
 		// Belief-state pin — see findNodeVersionForOpts. Delegates to the same
 		// relAsOfLocked the named RelAsOf / RelsAsOf door uses.
-		r, err := c.relAsOfLocked(id, opts.TxPin)
+		r, err := c.relAsOfLocked(id, txPinOf(opts))
 		if err != nil {
 			if errors.Is(err, ErrNoVersionAsOf) {
 				return nil, storepkg.ErrNoVersionValidAt
@@ -1395,8 +1416,8 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 		}
 		return r, nil
 	}
-	if opts.ValidAt != 0 {
-		r, err := c.relAtLockedTx(id, opts.ValidAt, opts.TxAt)
+	if opts.HasValidAt() {
+		r, err := c.relAtLockedTx(id, opts.ValidAt, txAtOf(opts))
 		if err != nil {
 			return nil, err
 		}
@@ -1406,10 +1427,10 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 		return r, nil
 	}
 	if opts.HasValidInterval() {
-		return c.findRelVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, opts.TxAt, pred)
+		return c.findRelVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, txAtOf(opts), pred)
 	}
-	if opts.TxAt != 0 {
-		r, err := c.relAtLockedTx(id, c.readNow(), opts.TxAt)
+	if opts.HasTxAt() {
+		r, err := c.relAtLockedTx(id, c.readNow(), txAtOf(opts))
 		if err != nil {
 			return nil, err
 		}

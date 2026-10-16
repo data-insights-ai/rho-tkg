@@ -77,7 +77,7 @@ func (n *NodeOps) forEachIDOrdered(ctx context.Context, label string, opts store
 	if err := c.validateIndexLabel(label); err != nil {
 		return err
 	}
-	if temporalOpts(opts) {
+	if opts.HasTimeCoordinate() {
 		return storepkg.ErrIndexNotFound
 	}
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
@@ -132,7 +132,7 @@ func (r *RelOps) forEachIDOrdered(ctx context.Context, typeName string, opts sto
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return err
 	}
-	if temporalOpts(opts) {
+	if opts.HasTimeCoordinate() {
 		return storepkg.ErrIndexNotFound
 	}
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {

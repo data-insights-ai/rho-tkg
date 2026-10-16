@@ -353,11 +353,7 @@ func (c *Core) checkRelPointCompaction(id types.RelID, txPin types.Instant) erro
 // whole scan fails closed with ErrHistoryCompacted rather than returning a
 // silently-incomplete result set.
 func (c *Core) checkScanCompaction(opts storepkg.QueryOpts) error {
-	pin := opts.TxAt
-	if opts.TxPin != 0 {
-		pin = opts.TxPin
-	}
-	return c.checkScanCompactionAt(pin)
+	return c.checkScanCompactionAt(effectiveTxPin(opts))
 }
 
 func (c *Core) checkScanCompactionAt(pin types.Instant) error {

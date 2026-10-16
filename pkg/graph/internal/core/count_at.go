@@ -108,8 +108,8 @@ func (c *Core) countNodesByLabelLocked(label string, opts storepkg.QueryOpts) (i
 		nodes, err := c.nodesByLabelLocked(label, opts)
 		return len(nodes), err
 	}
-	if opts.TxPin != 0 && unpaged(opts) {
-		key := asOfCacheKey{label: tok, txAt: int64(opts.TxPin)}
+	if opts.HasTxPin() && unpaged(opts) {
+		key := asOfCacheKey{label: tok, txAt: int64(txPinOf(opts))}
 		if n, hit := c.asOfColumns.memberCount(key, c.asOfColumns.currentEpoch()); hit {
 			return n, nil
 		}
@@ -145,30 +145,32 @@ func (c *Core) countNodesByLabelLocked(label string, opts storepkg.QueryOpts) (i
 // bitemporal oracle. A node without history rows is decided by singleVersionNodes.
 func (c *Core) nodeCurrentDecides(id types.NodeID, current *types.Node, opts storepkg.QueryOpts, pred func(*types.Node) bool) (decided, matched bool, err error) {
 	switch {
-	case opts.TxPin != 0:
+	case opts.HasTxPin():
+		pin := txPinOf(opts)
 		if c.txTimeQuery != nil {
 			return false, false, nil
 		}
-		if err := c.checkNodePointCompaction(id, opts.TxPin); err != nil {
+		if err := c.checkNodePointCompaction(id, pin); err != nil {
 			return true, false, err
 		}
-		if err := c.checkNodePointRetention(id, opts.TxPin); err != nil {
+		if err := c.checkNodePointRetention(id, pin); err != nil {
 			return true, false, err
 		}
-		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= opts.TxPin && tm.TxTo == 0 {
+		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= pin && tm.TxTo == 0 {
 			if above, err := c.nodeHasHistoryAbove(id, current.Version()); err != nil || above {
 				return err != nil, false, err // a row above the current version decides: resolve the chain
 			}
 			return true, pred(current), nil
 		}
-	case opts.ValidAt != 0:
-		if err := c.checkNodePointCompaction(id, opts.TxAt); err != nil {
+	case opts.HasValidAt():
+		txAt := txAtOf(opts)
+		if err := c.checkNodePointCompaction(id, txAt); err != nil {
 			return true, false, err
 		}
-		if err := c.checkNodePointRetention(id, opts.TxAt); err != nil {
+		if err := c.checkNodePointRetention(id, txAt); err != nil {
 			return true, false, err
 		}
-		if c.nodeCurrentAnswersAt(current, opts.ValidAt, opts.TxAt) {
+		if c.nodeCurrentAnswersAt(current, opts.ValidAt, txAt) {
 			return true, pred(current), nil
 		}
 	}
@@ -212,30 +214,32 @@ func (c *Core) countRelsByTypeLocked(typeName string, opts storepkg.QueryOpts) (
 // relCurrentDecides is nodeCurrentDecides for relationships.
 func (c *Core) relCurrentDecides(id types.RelID, current *types.Relationship, opts storepkg.QueryOpts, pred func(*types.Relationship) bool) (decided, matched bool, err error) {
 	switch {
-	case opts.TxPin != 0:
+	case opts.HasTxPin():
+		pin := txPinOf(opts)
 		if c.txTimeQuery != nil {
 			return false, false, nil
 		}
-		if err := c.checkRelPointCompaction(id, opts.TxPin); err != nil {
+		if err := c.checkRelPointCompaction(id, pin); err != nil {
 			return true, false, err
 		}
-		if err := c.checkRelPointRetention(opts.TxPin); err != nil {
+		if err := c.checkRelPointRetention(pin); err != nil {
 			return true, false, err
 		}
-		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= opts.TxPin && tm.TxTo == 0 {
+		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= pin && tm.TxTo == 0 {
 			if above, err := c.relHasHistoryAbove(id, current.Version()); err != nil || above {
 				return err != nil, false, err // a row above the current version decides: resolve the chain
 			}
 			return true, pred(current), nil
 		}
-	case opts.ValidAt != 0:
-		if err := c.checkRelPointCompaction(id, opts.TxAt); err != nil {
+	case opts.HasValidAt():
+		txAt := txAtOf(opts)
+		if err := c.checkRelPointCompaction(id, txAt); err != nil {
 			return true, false, err
 		}
-		if err := c.checkRelPointRetention(opts.TxAt); err != nil {
+		if err := c.checkRelPointRetention(txAt); err != nil {
 			return true, false, err
 		}
-		if c.relCurrentAnswersAt(current, opts.ValidAt, opts.TxAt) {
+		if c.relCurrentAnswersAt(current, opts.ValidAt, txAt) {
 			return true, pred(current), nil
 		}
 	}

@@ -167,7 +167,7 @@ func (c *Core) searchNearestLocked(label, propertyKey string, query []float32, k
 	// rule 17) AFTER validateTemporalQueryOptsScan ran in the callers, so a
 	// TxPin combined with another temporal opt still surfaces the more specific
 	// ErrConflictingTemporalOpts.
-	if opts.TxPin != 0 {
+	if opts.HasTxPin() {
 		return nil, ErrVectorSearchTxPinUnsupported
 	}
 	// Resolve a TxAt-only "now" fallback ONCE for the whole search (which

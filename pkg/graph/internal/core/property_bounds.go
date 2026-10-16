@@ -34,7 +34,7 @@ func (s *StatOps) PropertyBounds(label, propKey string, opts storepkg.QueryOpts)
 		return zero, false, ErrGraphClosed
 	}
 	bounds, native := c.store.(storepkg.NodePropertyBoundsCapability)
-	if !native || !c.storeRowsTrust || temporalOpts(opts) {
+	if !native || !c.storeRowsTrust || opts.HasTimeCoordinate() {
 		return zero, false, nil
 	}
 	tok, ok := c.labels.Lookup(label)
@@ -62,7 +62,7 @@ func (s *StatOps) RelPropertyBounds(typeName, propKey string, opts storepkg.Quer
 		return zero, false, ErrGraphClosed
 	}
 	bounds, native := c.store.(storepkg.RelPropertyBoundsCapability)
-	if !native || !c.storeRowsTrust || temporalOpts(opts) {
+	if !native || !c.storeRowsTrust || opts.HasTimeCoordinate() {
 		return zero, false, nil
 	}
 	tok, ok := c.lookupRelTypeQueryToken(typeName)

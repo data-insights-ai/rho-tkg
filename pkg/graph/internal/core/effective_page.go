@@ -159,19 +159,30 @@ func listSource[ID ~int64](ids []ID, after ID) *pageSource[ID] {
 	return &pageSource[ID]{buf: above(ids, after), seen: after, done: true}
 }
 
-// pageQueryOpts returns pin as store query options: the transaction pin and
+// pageQueryOpts returns pin as store query options — the transaction pin and
 // the valid-time filter, which both the envelope prune and the segment
-// predicate (pageValidKeep) read. An open interval [s, inf) ends at
-// math.MaxInt64, since QueryOpts reads ValidEnd 0 as no interval.
-func pageQueryOpts(pin temporal.Pin) storepkg.QueryOpts {
-	opts := storepkg.QueryOpts{TxPin: pin.Tx, ValidAt: pin.ValidAt}
-	if pin.ValidStart != 0 {
-		opts.ValidStart, opts.ValidEnd = pin.ValidStart, pin.ValidEnd
-		if opts.ValidEnd == 0 {
-			opts.ValidEnd = math.MaxInt64
-		}
+// predicate (pageValidKeep) read — or ErrInvalidTimeRange. Presence is the
+// QueryOpts rule (Pin.ValidAtSet / ValidWindowSet are its flags); on top, a
+// Pin's point and window are exclusive, and an unflagged lone ValidStart is
+// the open window [ValidStart, inf), ending at math.MaxInt64 (an unflagged
+// lone ValidEnd is refused).
+func pageQueryOpts(pin temporal.Pin) (storepkg.QueryOpts, error) {
+	opts := storepkg.QueryOpts{
+		TxPin: pin.Tx, ValidAt: pin.ValidAt, ValidAtSet: pin.ValidAtSet,
+		ValidStart: pin.ValidStart, ValidEnd: pin.ValidEnd, ValidWindowSet: pin.ValidWindowSet,
 	}
-	return opts
+	switch {
+	case opts.HasValidAt() && opts.HasValidBound():
+		return opts, fmt.Errorf("%w: ValidAt and [ValidStart, ValidEnd) are exclusive", ErrInvalidTimeRange)
+	case opts.HasValidBound() && !opts.HasValidInterval():
+		if !(storepkg.QueryOpts{ValidStart: opts.ValidStart}).HasValidBound() {
+			return opts, fmt.Errorf("%w: ValidEnd %d without ValidStart", ErrInvalidTimeRange, opts.ValidEnd)
+		}
+		opts.ValidEnd, opts.ValidWindowSet = math.MaxInt64, true
+	case opts.HasValidInterval() && opts.ValidStart >= opts.ValidEnd:
+		return opts, fmt.Errorf("%w: valid interval [%d, %d)", ErrInvalidTimeRange, opts.ValidStart, opts.ValidEnd)
+	}
+	return opts, nil
 }
 
 // pageValidKeep returns the segment predicate of opts' valid-time filter: the
@@ -181,55 +192,50 @@ func pageValidKeep(opts storepkg.QueryOpts) func(from, to types.Instant) bool {
 }
 
 // validatePage checks the arguments both paged doors share and returns the
-// value's equal keys (property_equal.go; none for NaN, which matches nothing).
-func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after int64, limit int, scope retentionScope) (equalKeys, error) {
+// value's equal keys (property_equal.go; none for NaN, which matches nothing)
+// and pin as query options (pageQueryOpts).
+func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after int64, limit int, scope retentionScope) (equalKeys, storepkg.QueryOpts, error) {
 	if err := c.checkOpen(); err != nil {
-		return nil, err
+		return nil, storepkg.QueryOpts{}, err
 	}
 	if err := checkCtx(ctx); err != nil {
-		return nil, err
+		return nil, storepkg.QueryOpts{}, err
 	}
 	if limit < 1 || limit > MaxEffectivePageLimit {
-		return nil, fmt.Errorf("%w: %d (want 1..%d)", ErrInvalidQueryLimit, limit, MaxEffectivePageLimit)
+		return nil, storepkg.QueryOpts{}, fmt.Errorf("%w: %d (want 1..%d)", ErrInvalidQueryLimit, limit, MaxEffectivePageLimit)
 	}
 	if after < 0 {
-		return nil, fmt.Errorf("%w: %d", ErrInvalidQueryCursor, after)
+		return nil, storepkg.QueryOpts{}, fmt.Errorf("%w: %d", ErrInvalidQueryCursor, after)
 	}
-	// 0 is the only unset value; a negative instant is a real one (QueryOpts
-	// rule, ledger row 60).
-	interval := pin.ValidStart != 0 || pin.ValidEnd != 0
-	switch {
-	case pin.ValidAt != 0 && interval:
-		return nil, fmt.Errorf("%w: ValidAt and [ValidStart, ValidEnd) are exclusive", ErrInvalidTimeRange)
-	case interval && (pin.ValidStart == 0 || pin.ValidEnd != 0 && pin.ValidStart >= pin.ValidEnd):
-		return nil, fmt.Errorf("%w: valid interval [%d, %d)", ErrInvalidTimeRange, pin.ValidStart, pin.ValidEnd)
+	opts, err := pageQueryOpts(pin)
+	if err != nil {
+		return nil, opts, err
 	}
 	if f.Prop == "" {
-		return nil, fmt.Errorf("%w: filter property", ErrEmptyName)
+		return nil, storepkg.QueryOpts{}, fmt.Errorf("%w: filter property", ErrEmptyName)
 	}
 	if err := c.validateIndexPropertyKey(f.Prop); err != nil {
-		return nil, err
+		return nil, storepkg.QueryOpts{}, err
 	}
 	if err := types.ValidatePropertyValue(f.Eq); err != nil {
-		return nil, fmt.Errorf("graph: effective page filter value: %w", err)
+		return nil, storepkg.QueryOpts{}, fmt.Errorf("graph: effective page filter value: %w", err)
 	}
 	if types.IndexablePropertyValueKey(f.Eq) == "" {
-		return nil, fmt.Errorf("graph: effective page filter value %T has no index key (a scalar is required): %w", f.Eq, types.ErrUnsupportedValueType)
+		return nil, storepkg.QueryOpts{}, fmt.Errorf("graph: effective page filter value %T has no index key (a scalar is required): %w", f.Eq, types.ErrUnsupportedValueType)
 	}
 	if err := c.validateEffectiveScanPin(pin.Tx, scope); err != nil {
-		return nil, err
+		return nil, storepkg.QueryOpts{}, err
 	}
-	return types.EqualIndexKeys(f.Eq), nil
+	return types.EqualIndexKeys(f.Eq), opts, nil
 }
 
 // RelsEffectivePage implements temporal.API.RelsEffectivePage.
 func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after types.RelID, limit int) ([]temporal.RelSegment, types.RelID, error) {
 	c := t.c
-	keys, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeAllRels)
+	keys, opts, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeAllRels)
 	if err != nil {
 		return nil, 0, err
 	}
-	opts := pageQueryOpts(pin)
 	var srcs []*pageSource[types.RelID]
 	if err := c.readUnderRLock(func() error {
 		n := c.relTypes.Len()
@@ -294,7 +300,7 @@ func (c *Core) relPageSources(tok uint16, key string, keys equalKeys, opts store
 	if c.relPropTxPage != nil {
 		srcs := make([]*pageSource[types.RelID], 0, len(keys))
 		for _, vk := range keys {
-			src := sidecarSource(opts.TxPin, after, c.storeRowsTrust, storepkg.ValidateRelID,
+			src := sidecarSource(txPinOf(opts), after, c.storeRowsTrust, storepkg.ValidateRelID,
 				func(after types.RelID, n int, fn func(types.RelID, types.Instant) bool) error {
 					return c.relPropTxPage.ForEachRelPropertyTxMemberAfter(tok, key, vk, after, n, fn)
 				})
@@ -324,11 +330,10 @@ func (c *Core) relPageSources(tok uint16, key string, keys equalKeys, opts store
 // NodesEffectivePage implements temporal.API.NodesEffectivePage.
 func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after types.NodeID, limit int) ([]temporal.NodeSegment, types.NodeID, error) {
 	c := t.c
-	keys, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeNodes)
+	keys, opts, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeNodes)
 	if err != nil {
 		return nil, 0, err
 	}
-	opts := pageQueryOpts(pin)
 	var srcs []*pageSource[types.NodeID]
 	if err := c.readUnderRLock(func() error {
 		n := c.labels.Len()
@@ -390,7 +395,7 @@ func (c *Core) nodePageSources(tok uint16, key string, keys equalKeys, opts stor
 	if c.nodePropTxPage != nil {
 		srcs := make([]*pageSource[types.NodeID], 0, len(keys))
 		for _, vk := range keys {
-			src := sidecarSource(opts.TxPin, after, c.storeRowsTrust, storepkg.ValidateNodeID,
+			src := sidecarSource(txPinOf(opts), after, c.storeRowsTrust, storepkg.ValidateNodeID,
 				func(after types.NodeID, n int, fn func(types.NodeID, types.Instant) bool) error {
 					return c.nodePropTxPage.ForEachNodePropertyTxMemberAfter(tok, key, vk, after, n, fn)
 				})

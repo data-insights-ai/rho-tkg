@@ -32,13 +32,27 @@ type QueryOpts struct {
 
 	// Temporal filters — zero values = no filter (backward-compatible).
 	// ValidAt takes precedence if both ValidAt and ValidStart/ValidEnd are set.
-	// 0 is the only "unset" value: a negative instant is a real one (a row may
-	// be valid before the epoch, or from -inf: types.UnboundedValidFrom), so
-	// [types.UnboundedValidFrom, math.MaxInt64) is "any valid time" with a real
-	// interval filter. HasValidInterval / HasValidTimeFilter are the one rule.
+	// Without its presence flag (below), 0 is the only "unset" value: a
+	// negative instant is a real one (a row may be valid before the epoch, or
+	// from -inf: types.UnboundedValidFrom), so [types.UnboundedValidFrom,
+	// math.MaxInt64) is "any valid time" with a real interval filter. The Has*
+	// methods are the one rule.
 	ValidAt    types.Instant // Point-in-time filter (valid time). 0 = disabled.
 	ValidStart types.Instant // Interval filter start. Both must be non-zero for an interval filter.
 	ValidEnd   types.Instant // Interval filter end (exclusive). 0 = disabled.
+
+	// Explicit presence (v4.59.0): each flag makes its time filter a filter
+	// whatever its instants are, so 0 and negative instants are ordinary
+	// instants (AT TIME 0, BETWEEN x AND 0). ValidAtSet: ValidAt is a point
+	// filter. ValidWindowSet: [ValidStart, ValidEnd) is an interval filter,
+	// either bound may be 0. TxAtSet / TxPinSet: TxAt / TxPin is a pin. An
+	// unset flag keeps the zero-means-unset reading above. The precedence and
+	// conflict rules are unchanged (ValidAt over the window; TxPin excludes
+	// the rest). Every door reads presence through the Has* methods below.
+	ValidAtSet     bool
+	ValidWindowSet bool
+	TxAtSet        bool
+	TxPinSet       bool
 
 	// TxAt restricts the chain to versions recorded by the given transaction
 	// time: TxFrom <= TxAt only. 0 = no TX filter (current behaviour: any
@@ -104,19 +118,58 @@ type QueryOpts struct {
 	NoSort bool
 }
 
-// HasValidInterval reports whether ValidStart and ValidEnd form a valid-time
-// interval filter [ValidStart, ValidEnd): both are set (non-zero). A negative
-// bound, types.UnboundedValidFrom included, is a real bound; a lone bound is no
-// filter. It does not look at ValidAt, which takes precedence. Every door and
-// store decides "interval filter or not" here (ledger row 60, v4.58.1).
+// The Has* methods are the one presence rule for the time filters: every door
+// and store decides "is this filter present" here, never on a raw field. A
+// set presence flag makes its filter present at any instant (0 and negative
+// included); unset, 0 is "no filter" (ledger rows 60 and 63).
+
+// HasValidAt reports whether ValidAt is a point filter: ValidAtSet, or a
+// non-zero ValidAt. It takes precedence over the interval.
+func (o QueryOpts) HasValidAt() bool {
+	return o.ValidAtSet || o.ValidAt != 0
+}
+
+// HasValidInterval reports whether [ValidStart, ValidEnd) is a valid-time
+// interval filter: ValidWindowSet (either bound may be 0), or both bounds
+// non-zero. A negative bound, types.UnboundedValidFrom included, is a real
+// bound; an unflagged lone bound is no filter. It does not look at ValidAt,
+// which takes precedence.
 func (o QueryOpts) HasValidInterval() bool {
-	return o.ValidStart != 0 && o.ValidEnd != 0
+	return o.ValidWindowSet || o.ValidStart != 0 && o.ValidEnd != 0
 }
 
 // HasValidTimeFilter reports whether opts carries a valid-time filter: a point
-// ValidAt (non-zero) or an interval (HasValidInterval). It ignores TxAt and
-// TxPin: a store's current-row push-down holds no answer for them; the graph
-// layer routes every temporal filter through its history-aware fold.
+// (HasValidAt) or an interval (HasValidInterval). It ignores TxAt and TxPin: a
+// store's current-row push-down holds no answer for them; the graph layer
+// routes every temporal filter through its history-aware fold.
 func (o QueryOpts) HasValidTimeFilter() bool {
-	return o.ValidAt != 0 || o.HasValidInterval()
+	return o.HasValidAt() || o.HasValidInterval()
+}
+
+// HasTxAt reports whether TxAt is a transaction-time pin: TxAtSet, or a
+// non-zero TxAt.
+func (o QueryOpts) HasTxAt() bool {
+	return o.TxAtSet || o.TxAt != 0
+}
+
+// HasTxPin reports whether TxPin is a belief-state pin: TxPinSet, or a
+// non-zero TxPin.
+func (o QueryOpts) HasTxPin() bool {
+	return o.TxPinSet || o.TxPin != 0
+}
+
+// HasTimeCoordinate reports whether opts names any time coordinate: a present
+// filter (HasValidTimeFilter, HasTxAt, HasTxPin) or an unflagged lone
+// interval bound. The doors that answer from current values only (index
+// counts, ordered and prefix seeks) decline or fold on it, and TxPin
+// conflicts with any of it, as before v4.59.0.
+func (o QueryOpts) HasTimeCoordinate() bool {
+	return o.HasValidAt() || o.HasValidBound() || o.HasTxAt() || o.HasTxPin()
+}
+
+// HasValidBound reports whether opts names an interval bound: ValidWindowSet,
+// or either bound non-zero (a lone bound included, which HasValidInterval
+// does not count as a filter).
+func (o QueryOpts) HasValidBound() bool {
+	return o.ValidWindowSet || o.ValidStart != 0 || o.ValidEnd != 0
 }
