@@ -1262,3 +1262,141 @@ func TestRound10IntervalEndIsExclusive(t *testing.T) {
 		}
 	})
 }
+
+// TestRound10ByIDsAnyVersion (request 6): on every backend and untimed mode,
+// at pins across random histories, ForEachByIDsAnyVersion hands out, per
+// node of a shuffled ID set with repeats, every row recorded at the pin in
+// ascending ID order: the label's rows among them are exactly the rows
+// PropertyTypeClassCountsAt counts (one rule for "every version at a pin"),
+// they include every row the effective scan shows winning a valid instant,
+// every row was written at or before the pin, a node created after the pin
+// gives nothing; the relationship mirror likewise against
+// RelPropertyTypeClassCountsAt; a later write leaves a pin's answer
+// (two-phase); a bad pin, ID or callback is refused before any row.
+func TestRound10ByIDsAnyVersion(t *testing.T) {
+	_, _, seeds := r10Size()
+	for _, b := range r10Backends() {
+		t.Run(b.name, func(t *testing.T) {
+			for _, seed := range seeds {
+				g := b.open(t)
+				w := r10History(t, b, g, seed)
+				rng := rand.New(rand.NewPCG(seed, 6))
+				ids := slices.Clone(w.nodes)
+				ids = append(ids, w.nodes[:3]...)
+				rng.Shuffle(len(ids), func(i, j int) { ids[i], ids[j] = ids[j], ids[i] })
+				rids := slices.Clone(w.rels)
+				rids = append(rids, w.rels[len(w.rels)-2:]...)
+				rng.Shuffle(len(rids), func(i, j int) { rids[i], rids[j] = rids[j], rids[i] })
+				type key struct {
+					id      int64
+					version uint32
+				}
+				answers := map[types.Instant][]key{}
+				for _, pin := range r10ProbePins(w) {
+					var got []key
+					var labelRows int64
+					var last types.NodeID
+					if err := g.Nodes().ForEachByIDsAnyVersion(ids, pin, func(n *types.Node) bool {
+						if n.ID() < last {
+							t.Fatalf("pin %d: node %d after %d", pin, n.ID(), last)
+						}
+						last = n.ID()
+						if tx, _, _ := n.TxStamps(); tx > pin {
+							t.Fatalf("pin %d: row of node %d written at %d", pin, n.ID(), tx)
+						}
+						got = append(got, key{int64(n.ID()), n.Version()})
+						if g.Nodes().HasLabel(n, w.label) {
+							labelRows++
+						}
+						return true
+					}); err != nil {
+						t.Fatal(err)
+					}
+					answers[pin] = got
+					counts, exact, err := g.Stats().PropertyTypeClassCountsAt(w.label, "v", pin)
+					if err != nil || !exact {
+						t.Fatalf("pin %d class counts: %v %v", pin, exact, err)
+					}
+					if want := counts.Present() + counts.Missing; labelRows != want {
+						t.Fatalf("pin %d: %d rows carry the label, value classes count %d (%+v)", pin, labelRows, want, counts)
+					}
+					emitted := map[key]bool{}
+					for _, k := range got {
+						if emitted[k] {
+							t.Fatalf("pin %d: row %v handed out twice", pin, k)
+						}
+						emitted[k] = true
+					}
+					if err := g.Temporal().ForEachNodeEffectiveByLabel(w.label, pin, func(s temporal.NodeSegment) bool {
+						if !emitted[key{int64(s.Node.ID()), s.Node.Version()}] {
+							t.Fatalf("pin %d: winning row %d v%d not handed out", pin, s.Node.ID(), s.Node.Version())
+						}
+						return true
+					}); err != nil {
+						t.Fatal(err)
+					}
+					var relRows int64
+					var lastRel types.RelID
+					if err := g.Rels().ForEachByIDsAnyVersion(rids, pin, func(r *types.Relationship) bool {
+						if r.ID() < lastRel {
+							t.Fatalf("pin %d: rel %d after %d", pin, r.ID(), lastRel)
+						}
+						lastRel = r.ID()
+						relRows++
+						return true
+					}); err != nil {
+						t.Fatal(err)
+					}
+					var wantRel int64
+					for _, typ := range []string{"R", "S"} {
+						rc, rexact, err := g.Stats().RelPropertyTypeClassCountsAt(typ, "w", pin)
+						if err != nil || !rexact {
+							t.Fatalf("pin %d rel class counts: %v %v", pin, rexact, err)
+						}
+						wantRel += rc.Present() + rc.Missing
+					}
+					if relRows != wantRel {
+						t.Fatalf("pin %d: %d relationship rows, value classes count %d", pin, relRows, wantRel)
+					}
+				}
+				// Phase 2: later writes, a node created after every pin.
+				ctx := context.Background()
+				late, err := g.Nodes().Add(ctx, []string{w.label}, map[string]any{"v": int64(1)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, id := range w.nodes[r10Witnesses:] {
+					_, _ = g.Nodes().Update(ctx, id, map[string]any{"v": "later", "tkg_valid_from": types.Instant(95000)})
+				}
+				for pin, want := range answers {
+					var got []key
+					if err := g.Nodes().ForEachByIDsAnyVersion(append(slices.Clone(ids), late.ID()), pin, func(n *types.Node) bool {
+						got = append(got, key{int64(n.ID()), n.Version()})
+						return true
+					}); err != nil {
+						t.Fatal(err)
+					}
+					if !slices.Equal(got, want) {
+						t.Fatalf("pin %d after later writes: %d rows, want the pin's %d", pin, len(got), len(want))
+					}
+				}
+			}
+			g := b.open(t)
+			pin, _ := g.Temporal().NowTx()
+			for _, p := range []types.Instant{0, -1} {
+				if err := g.Nodes().ForEachByIDsAnyVersion(nil, p, func(*types.Node) bool { return true }); !errors.Is(err, graphpkg.ErrInvalidTimeRange) {
+					t.Fatalf("pin %d: %v", p, err)
+				}
+			}
+			if err := g.Nodes().ForEachByIDsAnyVersion([]types.NodeID{0}, pin, func(*types.Node) bool { t.Fatal("row"); return false }); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("invalid ID: %v", err)
+			}
+			if err := g.Rels().ForEachByIDsAnyVersion([]types.RelID{-3}, pin, func(*types.Relationship) bool { t.Fatal("row"); return false }); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+				t.Fatalf("invalid rel ID: %v", err)
+			}
+			if err := g.Nodes().ForEachByIDsAnyVersion(nil, pin, nil); !errors.Is(err, grapherr.ErrNilCallback) {
+				t.Fatalf("nil callback: %v", err)
+			}
+		})
+	}
+}

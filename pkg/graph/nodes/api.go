@@ -51,6 +51,7 @@ type Ops interface {
 	RangeCardinalityAnyVersion(label, key string, min, max float64, inclMin, inclMax bool, pin types.Instant) (storepkg.RangeAnyVersionCount, bool, error)
 	CountTimelineByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error)
 	ValidHullByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) (storepkg.ValidHull, bool, error)
+	ForEachByIDsAnyVersion(ids []types.NodeID, pin types.Instant, fn func(*types.Node) bool) error
 	ForEachByLabelOrdinals(label string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
 	ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
@@ -791,6 +792,29 @@ func (a *API) DocValuesSnapshot(label string, propKeys []string) (types.NodeColu
 		return nil, 0, false, err
 	}
 	return ops.DocValuesSnapshot(label, propKeys)
+}
+
+// ForEachByIDsAnyVersion streams, for each node of ids, every row recorded at
+// pin (sigma-tkgd round 10 request 6): every valid-time version known at the
+// pin, those of a node deleted before the pin included, a retracted life
+// dropped — the rows the any-version equality reads
+// (ByLabelAndProperty(..., {ValidStart: types.UnboundedValidFrom, ValidEnd:
+// MaxInt64, TxAt: pin})), whatever their labels. Nodes in ascending ID order,
+// a repeated ID once, an unknown ID or one created after the pin nothing; a
+// node's rows newest first. The set is read in key order through the
+// effective scans' path (one store snapshot per chunk of 256 IDs on badger,
+// each node under its entity lock); fn runs without graph locks and gets the
+// store's shared frozen rows (DeepCopy to mutate); false stops. Errors: pin
+// <= 0 ErrInvalidTimeRange, a pin above the commit clock ErrTxPinTooNew, an
+// invalid ID ErrInvalidStoreMutation (before any row), a node whose history
+// was compacted or purged below the pin as NodeEffectiveTimeline fails,
+// ErrNilCallback.
+func (a *API) ForEachByIDsAnyVersion(ids []types.NodeID, pin types.Instant, fn func(*types.Node) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByIDsAnyVersion(ids, pin, fn)
 }
 
 // DocValuesSnapshotMulti is DocValuesSnapshot over a LABEL INTERSECTION

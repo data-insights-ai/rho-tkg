@@ -2,6 +2,7 @@ package nodes
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -13,6 +14,12 @@ import (
 func (s *nodeOpsSpy) ValidHullByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) (storepkg.ValidHull, bool, error) {
 	s.record("ValidHullByLabel:" + label)
 	return storepkg.ValidHull{From: 3, To: 9}, true, s.err
+}
+
+func (s *nodeOpsSpy) ForEachByIDsAnyVersion(ids []types.NodeID, pin types.Instant, fn func(*types.Node) bool) error {
+	s.record(fmt.Sprintf("ForEachByIDsAnyVersion:%v@%d", ids, pin))
+	fn(types.NewNode(7, 0, nil))
+	return s.err
 }
 
 func (s *nodeOpsSpy) DocValuesSnapshotMulti(labels []string, propKeys []string) (types.NodeColumnReader, uint64, bool, error) {
@@ -48,7 +55,14 @@ func TestRound10DoorsForward(t *testing.T) {
 	if _, gen, ok, err := a.DocValuesSnapshotMultiOrdinal([]string{"A", "C"}, nil); !errors.Is(err, wantErr) || !ok || gen != 6 {
 		t.Fatalf("DocValuesSnapshotMultiOrdinal = %v %v %v", gen, ok, err)
 	}
-	if got := strings.Join(spy.calls, ","); got != "ValidHullByLabel:X,DocValuesSnapshotMulti:A+B,DocValuesSnapshotOrdinal:A,DocValuesSnapshotMultiOrdinal:A+C" {
+	var seen int
+	if err := a.ForEachByIDsAnyVersion([]types.NodeID{9, 8}, 11, func(*types.Node) bool { seen++; return true }); !errors.Is(err, wantErr) || seen != 1 {
+		t.Fatalf("ForEachByIDsAnyVersion = %v, %d rows", err, seen)
+	}
+	if err := nilAPIForEach(); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ForEachByIDsAnyVersion: %v", err)
+	}
+	if got := strings.Join(spy.calls, ","); got != "ValidHullByLabel:X,DocValuesSnapshotMulti:A+B,DocValuesSnapshotOrdinal:A,DocValuesSnapshotMultiOrdinal:A+C,ForEachByIDsAnyVersion:[9 8]@11" {
 		t.Fatalf("calls %s", got)
 	}
 	var nilAPI *API
@@ -64,4 +78,9 @@ func TestRound10DoorsForward(t *testing.T) {
 	if _, _, _, err := nilAPI.DocValuesSnapshotMultiOrdinal([]string{"A"}, nil); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil DocValuesSnapshotMultiOrdinal: %v", err)
 	}
+}
+
+func nilAPIForEach() error {
+	var nilAPI *API
+	return nilAPI.ForEachByIDsAnyVersion([]types.NodeID{1}, 1, func(*types.Node) bool { return true })
 }
