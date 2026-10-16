@@ -42,6 +42,36 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
   as the new `types.ColumnVectorMixed` (per row `ColumnVector.Tags`: `ColumnVectorInt`, `ColumnVectorFloat`,
   `ColumnVectorString`, 0 when absent); before, such a snapshot had no `ReadChunk`. **sigma-tkgd**: a consumer that
   switches on `ColumnVector.Kind` handles `ColumnVectorMixed`; `SplitColumns` now finds `ReadChunk` on those snapshots.
+- **Every version of an ID set at a pin** (request 6). `Nodes().ForEachByIDsAnyVersion(ids, pin, fn)` /
+  `Rels().ForEachByIDsAnyVersion`: per entity of the set (ascending, a repeat once, an unknown ID nothing) every row
+  recorded at the pin, the any-version equality's rows, read in key order through the effective scans' chunked path
+  (one store snapshot per 256 IDs on badger); the per-entity gates of `NodesEffectiveByIDs`.
+- **Sharded and tiered serve what their indexes can** (round 10 "store gaps", twodriver D5; both refused before):
+  the ordered range and prefix walks over node and relationship property indexes
+  (`Nodes().ForEachByLabelPropertyRangeOrdered` / `...Prefix`, the `Rels()` mirrors; one merge of the parts' walks
+  in the index's order, `index.MergeNumericOrdered` / `MergeStringOrdered`: lazy over sharded slots, a LIMIT reads
+  about k rows per slot; tiered reads each shard's rows in range, then merges), the stated bounds
+  (`Stats().PropertyBounds` / `RelPropertyBounds`, `index.FoldPropertyBounds`; each part at its own moment); on tiered
+  also `RelPropertyTypeClassCounts` and exact `RangeCardinality` for nodes and relationships (the shards summed, one
+  fold `foldShards`). A part without a usable index (none, Elements, building) fails a walk with `ErrIndexNotFound`
+  and makes a count or bound decline, as one badger store does. Sharded rows are validated and copied per walked
+  row (the graph does not trust them); the doors resolve their store capability once at open (`nativeCapability`, a
+  wrapper that only inherits a capability is refused). Ordinals on tiered stay refused: a cold shard that idle-closes
+  and reopens would renumber its entities (dense ordinals are rebuilt per open).
+- **`CapabilitiesOf` states what a declared index serves** (pattern 5 of sigma's checklist): new
+  `IndexAcceleration.OrderedPropertyScan`, `OrderedRelPropertyScan`, `PropertyBounds`, `RelPropertyBounds`,
+  `RelPropertyTypeClassCounts`, each equal to the call on every in-tree backend
+  (`TestCapabilitiesOf_MatchesServedCalls`); `RelPropertyIndex` keeps its meaning (a create succeeds). The ordered
+  walks' store capabilities are exported (`store.NodeOrderedRangeScanCapability`, `NodePrefixScanCapability`,
+  `RelOrderedRangeScanCapability`, `RelPrefixScanCapability`; were core-private); `PropertyTypeClassCounts.Add`.
+  **sigma-tkgd** (`TestStoreAnswersArePinned`, measured against this branch): tiered `walkable`, `nodeRanges`,
+  `relRanges`, `nodeBounds`, `relBounds` false -> true; sharded `walkable`, `nodeBounds`, `relBounds` false -> true;
+  every other answer and memory / badger unchanged; the rest of twodriver passes.
+- Tests: `TestRound10ByIDsAnyVersion`, `TestRound10CompositeOrderedWalksAndStats` (memory, badger, sharded, a sharded
+  store spread over slots by ingest lanes, tiered across the reference and an event shard; brute-force order, LIMIT,
+  counts, bounds, class counts, before and after moves and deletes), `TestRound10CompositeWalkRefusesWithoutIndex`,
+  `TestCapabilitiesOf_MatchesServedCalls`, `TestRelPropertyTypeClassCounts_Tiered`; `TestPropertyBounds` and the
+  tiered class-count test asserted the old refusals and now assert the answers.
 - Tests: `TestRound10WindowDoorsMatchOracle`, `TestRound10CurrentRowsTimelineAndHull`, `TestRound10ClassCountsAtPin`
   (random histories over every op kind, a coverage check at every size: untimed, `UnboundedValidFrom`, negative and
   closed-before-the-epoch creates, timed and untimed updates, closes, deletes, retractions, relabels, re-imports,
@@ -50,7 +80,7 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
   `TestRound10WindowDoorsRefuse`, `TestRound10IntervalEndIsExclusive`, `TestRound10HullTwoPhase`,
   `TestRound10ClassCountsExact`, `TestRound10SnapshotMultiAndOrdinals`, `TestRound10MixedColumnAcrossParts`,
   `TestShardedMixedColumnChunks`, `TestChunkConcatOrdinals`, `TestWindowValidateAndMeets`, forwarding tests in nodes,
-  rels, stats, temporal; 21 mutants killed (`tasks/evidence/round10/mutants.txt`).
+  rels, stats, temporal; 28 mutants killed (`tasks/evidence/round10/mutants.txt`).
 
 ### Changed
 
@@ -60,7 +90,9 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
   the epoch; now only `a == 0` is refused (no stored piece can start at the unset valid-from). A relaxation: nothing
   that succeeded fails. Test: `TestRound10ExciseNegativeStart`; the refusal case "negative a" of
   `TestExciseNodeValidity` pinned the old rule and is removed.
-- Internal, no behaviour change: the count timelines and the value statistics at a pin share one memo
+- Internal, no behaviour change: one point rule and one overlap rule (`storeutil.IntervalCovers` / `IntervalMeets`)
+  for the interval filters, the chain resolvers, the label-scan and adjacency probes and the windows. The count
+  timelines and the value statistics at a pin share one memo
   (`cut_memo.go`: one type, one build loop under the cut epoch, cleared by an exact erasure); the intersection doors
   share one label-token lookup; tiered and sharded build every DocValues snapshot through one fold (`snapshotOver`).
 
