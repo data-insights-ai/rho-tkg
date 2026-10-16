@@ -165,6 +165,18 @@ func nativeProtocolStateTerminalControl(r processRequest) bool {
 	return err == nil && nativeProtocolStateTerminal(c.Action)
 }
 
+// The second result retains terminal cleanup lifetime independently of worker
+// classification. It never admits another owner, grant or worker slot.
+func nativeProtocolStateWorkerClass(r processRequest, primitiveControl bool) (control, terminal bool) {
+	if nativeProtocolStateTerminalControl(r) {
+		// These compound owners may relay native Close/Cancel back to this
+		// child. Keep the one reserved control slot for that primitive RPC;
+		// the orchestrator uses the existing ordinary slots and cleanup ctx.
+		return false, true
+	}
+	return primitiveControl, primitiveControl
+}
+
 type nativeProtocolStateOwner struct {
 	mu                               sync.Mutex
 	ctx, cleanup                     context.Context

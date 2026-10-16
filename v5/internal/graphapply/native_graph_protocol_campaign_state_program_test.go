@@ -212,3 +212,45 @@ func TestNativeProtocolStateStartBindsParentAndChildAgreement(t *testing.T) {
 		t.Fatal("literal Recovery3 agreement changed", err)
 	}
 }
+
+func TestNativeProtocolStateCompoundCleanupKeepsPrimitiveControlSlot(t *testing.T) {
+	for _, action := range []string{"close", "snapshot-close", "release", "expire", "cancel", "pin-close"} {
+		body, err := json.Marshal(nativeProtocolStateControl{Version: 1, Cookie: [16]byte{1}, Sequence: 1, Action: action})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := processRequest{op: processNativeTransitionControl, data: append([]byte(nativeProtocolStateMarker), body...)}
+		if !nativeProtocolStateTerminalControl(r) {
+			t.Fatal("actual encoded terminal not recognized", action)
+		}
+		control, terminal := nativeProtocolStateWorkerClass(r, true)
+		if control || !terminal {
+			t.Fatal("compound cleanup occupies primitive slot or loses terminal lifetime", action, control, terminal)
+		}
+		// A malformed/sibling request cannot adopt NPS terminal lifetime.
+		r.index = 1
+		if control, terminal = nativeProtocolStateWorkerClass(r, false); control || terminal {
+			t.Fatal("malformed terminal admitted", action)
+		}
+	}
+	primitive, err := encodeGraphSourceRequest(graphSourceRequest{kind: sourceClose, sequence: 1, nonce: [16]byte{1}, cookie: graphSourceCookie{issuer: [16]byte{2}, sequence: 3, secret: [16]byte{4}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeGraphSourceRequest(primitive)
+	if err != nil || decoded.kind != sourceClose {
+		t.Fatal("actual native close framing", err)
+	}
+	if control, terminal := nativeProtocolStateWorkerClass(processRequest{op: processSourceServe, entity: 2, data: primitive}, true); !control || !terminal {
+		t.Fatal("nested native close lost reserved lane or cleanup lifetime")
+	}
+	for _, control := range []bool{false, true} {
+		// Primitive native cleanup and all unrelated request classes remain on
+		// their existing lane, with exactly the original lifetime selection.
+		r := processRequest{op: processSourceServe}
+		actual, terminal := nativeProtocolStateWorkerClass(r, control)
+		if actual != control || terminal != control {
+			t.Fatal("primitive or unrelated lane changed", control)
+		}
+	}
+}

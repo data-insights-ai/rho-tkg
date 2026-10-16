@@ -1951,6 +1951,10 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	}
 	launch := func(r processRequest) error {
 		control := isSourceClose(r)
+		terminal := control
+		if protocolState != nil {
+			control, terminal = nativeProtocolStateWorkerClass(r, control)
+		}
 		if control {
 			if len(controlWorkers) >= 1 {
 				return errLimit
@@ -1964,7 +1968,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		workerParent := ctx
 		if protocolState != nil {
 			workerParent = protocolState.ctx
-			if control {
+			if terminal {
 				workerParent = protocolState.cleanup
 			}
 		}
