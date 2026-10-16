@@ -403,10 +403,13 @@ type pageState struct {
 	sel    Selector
 	proj   Projection
 	refs   []Ref
-	next   int                   // lookup: next ref; scan: next candidate
-	cands  []graphstate.EntityID // scan: index candidates, ascending
-	nextID uint64                // scan without an index: next ID of the range
-	lastID uint64                // scan without an index: last minted ID at the cut
+	next   int                       // lookup: next ref; scan: next candidate
+	cands  []graphstate.EntityID     // scan: index candidates, ascending
+	paged  bool                      // scan without an index: page over the stored entity records
+	idPage []graphstore.EntityKindID // the current page of stored entities
+	idNext int                       // next entry of idPage
+	idLast graphstate.EntityID       // last ID fetched: the next page starts after it
+	idDone bool                      // idPage is the last page
 	match  *matcher
 	rows   []Entity // timeline: the current chunk; lookup, scan: carry-over
 	off    int
@@ -540,52 +543,56 @@ func (r *reader) candidates(sel Selector, m *matcher, st *pageState) error {
 	return nil
 }
 
-// mintedRange sets st to walk the IDs minted at the cut.
+// mintedRange sets st to page over the entity records stored at the cut (the
+// reserved import range and the minted one alike; the IDs may be sparse).
 func (r *reader) mintedRange(st *pageState) error {
-	row, found, err := r.view.Get(r.ctx, allocName, 4096)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return nil
-	}
-	a, err := decodeAllocState(row.Value)
-	if err != nil {
-		return err
-	}
-	_, hi, err := a.minted()
-	lo := uint64(1) // imported entities live in the reserved range below the minted one
-	if err != nil {
-		return err
-	}
-	st.nextID, st.lastID = lo, hi
+	st.paged = true
 	return nil
 }
+
+// entityChunk is how many stored entity records one fetch reads.
+const entityChunk = 64
 
 // candidate returns the next candidate ref, or ok=false when none is left.
 // Index candidates count toward the false-candidate statistics.
 func (st *pageState) candidate(rd *reader) (Ref, bool, error) {
 	for {
 		var id graphstate.EntityID
+		var kind graphstate.EntityKind
 		switch {
 		case st.next < len(st.cands):
 			id = st.cands[st.next]
 			st.next++
 			rd.e.scanCandidates.Add(1)
-		case st.nextID != 0 && st.nextID <= st.lastID:
-			id = graphstate.EntityID(st.nextID)
-			st.nextID++
+			rec, found, err := rd.record(id)
+			if err != nil {
+				return Ref{}, false, err
+			}
+			if !found {
+				continue
+			}
+			kind = rec.Kind
+		case st.paged:
+			if st.idNext >= len(st.idPage) {
+				if st.idDone {
+					return Ref{}, false, nil
+				}
+				page, complete, err := rd.rv.EntityIDs(rd.ctx, st.idLast, entityChunk)
+				if err != nil {
+					return Ref{}, false, err
+				}
+				st.idPage, st.idNext, st.idDone = page, 0, complete
+				if len(page) > 0 {
+					st.idLast = page[len(page)-1].ID
+				}
+				continue
+			}
+			id, kind = st.idPage[st.idNext].ID, st.idPage[st.idNext].Kind
+			st.idNext++
 		default:
 			return Ref{}, false, nil
 		}
-		rec, found, err := rd.record(id)
-		if err != nil {
-			return Ref{}, false, err
-		}
-		if !found {
-			continue
-		}
-		if rec.Kind == graphstate.Node {
+		if kind == graphstate.Node {
 			ref, err := NodeRef(types.NodeID(id))
 			return ref, err == nil, err
 		}
