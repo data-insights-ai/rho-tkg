@@ -110,7 +110,7 @@ func TestSnapshotReadsUseConfigLimitsAndAxes(t *testing.T) {
 	// tight configured limits refuse what default limits accept
 	tight := goodConfig(t)
 	tight.Limits = temporal.Limits{MaxDescriptorBytes: 8}
-	ts := &Snapshot{cfg: tight}
+	ts := &Snapshot{cfg: tight, eng: stubSnap{}}
 	if _, err := ts.Scan(ctx, ScanRequest{Selector: goodSel(t), Paging: pl}); !errors.Is(err, ErrInvalidScope) {
 		t.Errorf("scan under tight limits: %v", err)
 	}

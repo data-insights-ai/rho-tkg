@@ -26,8 +26,8 @@ func goodConfig(t testing.TB) Config {
 	return Config{Dir: t.TempDir(), GraphID: g, DefaultAxis: binding(t, g), KnowledgeAxis: bindingOn(t, g, 20), Durability: DurabilityCommit}
 }
 
-// unbacked is a snapshot with the test config and no engine.
-func unbacked(t testing.TB) *Snapshot { return &Snapshot{cfg: goodConfig(t)} }
+// unbacked is a snapshot with the test config over the stub engine.
+func unbacked(t testing.TB) *Snapshot { return &Snapshot{cfg: goodConfig(t), eng: stubSnap{}} }
 
 func axis(t testing.TB) temporal.Axis { return binding(t, types.GraphID{3}).Axis() }
 
@@ -99,13 +99,6 @@ func TestSentinelsAreDistinctAndMatchable(t *testing.T) {
 	}
 	if !errors.Is(ErrInvalidID, types.ErrInvalidID) {
 		t.Fatal("ErrInvalidID must be the types sentinel")
-	}
-}
-
-func TestOpenWithoutEngineReturnsNotImplemented(t *testing.T) {
-	g, err := Open(context.Background(), goodConfig(t))
-	if !errors.Is(err, ErrNotImplemented) || g != nil {
-		t.Fatalf("got %v %v", g, err)
 	}
 }
 
@@ -309,12 +302,16 @@ func TestSnapshotSpec(t *testing.T) {
 }
 
 func TestOpenSnapshotWithoutEngine(t *testing.T) {
-	var g Graph
+	g := Graph{cfg: goodConfig(t), eng: stubEngine{}}
 	if _, err := g.OpenSnapshot(context.Background(), SnapshotSpec{}); !errors.Is(err, ErrInvalidSnapshotSpec) {
 		t.Fatal(err)
 	}
 	if _, err := g.OpenSnapshot(context.Background(), Fresh()); !errors.Is(err, ErrNotImplemented) {
 		t.Fatal(err)
+	}
+	var zero Graph
+	if _, err := zero.OpenSnapshot(context.Background(), Fresh()); !errors.Is(err, ErrClosed) {
+		t.Fatal("zero Graph", err)
 	}
 	var nilG *Graph
 	if _, err := nilG.OpenSnapshot(context.Background(), Fresh()); !errors.Is(err, ErrClosed) {
@@ -329,7 +326,7 @@ func TestOpenSnapshotWithoutEngine(t *testing.T) {
 }
 
 func TestUpdateValidatesArguments(t *testing.T) {
-	var g Graph
+	g := Graph{cfg: goodConfig(t), eng: stubEngine{}}
 	if _, err := g.Update(context.Background(), nil); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatal("nil fn", err)
 	}

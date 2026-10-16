@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 
 	conformance "github.com/data-insights-ai/rho-tkg/tools/v5-conformance"
@@ -66,6 +67,9 @@ func (Adapter) Open(t testing.TB, o conformance.Options) (conformance.Graph, err
 	}
 	g, err := graph.Open(context.Background(), cfg)
 	if errors.Is(err, graph.ErrNotImplemented) {
+		if os.Getenv("V5_CONFORMANCE_STRICT") != "" { // red proof: a missing engine fails instead of skipping
+			return nil, err
+		}
 		return nil, notImplemented{err}
 	}
 	if err != nil {

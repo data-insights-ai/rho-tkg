@@ -3,6 +3,8 @@ package graph
 import (
 	"fmt"
 	"math"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 )
 
 // ValueKind is the type of a Value.
@@ -91,34 +93,19 @@ func (v Value) Validate() error {
 	return nil
 }
 
-// Equal is Cypher equality (see Value). Invalid values and null equal nothing.
+// Equal is Cypher equality (see Value): the engine's Scalar.Equal, so there is
+// one numeric rule. Invalid values and null equal nothing.
 func (v Value) Equal(o Value) bool {
-	if v.Validate() != nil || o.Validate() != nil || v.kind == KindNull || o.kind == KindNull {
+	a, err := valueToScalar(v)
+	if err != nil {
 		return false
 	}
-	switch {
-	case v.kind == KindString && o.kind == KindString:
-		return v.s == o.s
-	case v.kind == KindBool && o.kind == KindBool:
-		return v.b == o.b
-	case v.kind == KindInt && o.kind == KindInt:
-		return v.i == o.i
-	case v.kind == KindFloat && o.kind == KindFloat:
-		return v.f == o.f
-	case v.kind == KindInt && o.kind == KindFloat:
-		return intEqualsFloat(v.i, o.f)
-	case v.kind == KindFloat && o.kind == KindInt:
-		return intEqualsFloat(o.i, v.f)
-	}
-	return false
-}
-
-// intEqualsFloat is exact: f must be integral and inside the int64 range.
-func intEqualsFloat(i int64, f float64) bool {
-	if f != math.Trunc(f) || f < -(1<<63) || f >= 1<<63 {
+	b, err := valueToScalar(o)
+	if err != nil {
 		return false
 	}
-	return int64(f) == i
+	eq, err := a.Equal(b, graphstate.Limits{})
+	return err == nil && eq
 }
 
 func checkProps(m map[string]Value) error {

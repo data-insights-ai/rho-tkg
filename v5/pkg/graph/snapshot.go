@@ -198,11 +198,10 @@ type Entity struct {
 	Known    temporal.Scope
 }
 
-// Page is one bounded batch. Done is true when Next is the zero Cursor.
+// Page is one bounded batch; the zero Next Cursor ends the walk.
 type Page struct {
 	Rows []Entity
 	Next Cursor
-	Done bool
 }
 
 // PageLimits bounds one page of any read door: Rows is 1..MaxPageRows and
@@ -330,7 +329,7 @@ type Snapshot struct {
 }
 
 func (s *Snapshot) pre(ctx context.Context) error {
-	if s == nil {
+	if s == nil || s.eng == nil {
 		return ErrClosed
 	}
 	if ctx == nil {
@@ -361,7 +360,7 @@ func (s *Snapshot) Scan(ctx context.Context, r ScanRequest) (Page, error) {
 		return Page{}, err
 	}
 	if s.eng == nil {
-		return Page{}, ErrNotImplemented
+		return Page{}, ErrClosed
 	}
 	return s.eng.scan(ctx, r)
 }
@@ -379,7 +378,7 @@ func (s *Snapshot) Resume(ctx context.Context, c Cursor, p PageLimits) (Page, er
 		return Page{}, err
 	}
 	if s.eng == nil {
-		return Page{}, ErrNotImplemented
+		return Page{}, ErrClosed
 	}
 	return s.eng.resume(ctx, c, p)
 }
@@ -396,7 +395,7 @@ func (s *Snapshot) Lookup(ctx context.Context, r LookupRequest) (Page, error) {
 		return Page{}, err
 	}
 	if s.eng == nil {
-		return Page{}, ErrNotImplemented
+		return Page{}, ErrClosed
 	}
 	return s.eng.lookup(ctx, r)
 }
@@ -414,7 +413,7 @@ func (s *Snapshot) Timeline(ctx context.Context, r TimelineRequest) (Page, error
 		return Page{}, err
 	}
 	if s.eng == nil {
-		return Page{}, ErrNotImplemented
+		return Page{}, ErrClosed
 	}
 	return s.eng.timeline(ctx, r)
 }
@@ -425,7 +424,7 @@ func (s *Snapshot) Close() error {
 		return ErrClosed
 	}
 	if s.eng == nil {
-		return ErrNotImplemented
+		return ErrClosed
 	}
 	return s.eng.close()
 }
