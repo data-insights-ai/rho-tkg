@@ -115,9 +115,12 @@ func BenchmarkRound9Doors(b *testing.B) {
 			}
 		})
 		run("timeline-first", func(b *testing.B) {
-			p := pin
+			k := 0
 			for b.Loop() {
-				p-- // a pin not built yet (the writes below pin are the same)
+				// 300 pins over the last writes, more than the cache holds
+				// (countTimelineCap), so every call builds.
+				k++
+				p := pin - types.Instant(k%300)
 				if _, exact, err := g.Nodes().CountTimelineByLabel("Idx", p, storepkg.CountTimelineOpts{UntimedFromMinusInf: true}); err != nil || !exact {
 					b.Fatal(exact, err)
 				}

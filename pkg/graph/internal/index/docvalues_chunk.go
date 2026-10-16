@@ -81,8 +81,14 @@ func sizeVector(v *types.ColumnVector, kind types.ColumnVectorKind, n int) {
 func (c *docColumn) fillVector(v *types.ColumnVector, at, from, to int, remap []uint32) {
 	n := to - from
 	present := v.Present[at : at+n]
-	for i := range present {
-		present[i] = c.present.get(from + i)
+	for i := 0; i < n; { // a word of the bitset at a time
+		bit := from + i
+		w, k := c.present[bit>>6]>>uint(bit&63), min(64-bit&63, n-i)
+		for j := range present[i : i+k] {
+			present[i+j] = w&1 != 0
+			w >>= 1
+		}
+		i += k
 	}
 	switch v.Kind {
 	case types.ColumnVectorString:
@@ -93,11 +99,11 @@ func (c *docColumn) fillVector(v *types.ColumnVector, at, from, to int, remap []
 		}
 		src := c.codes[from:to]
 		if remap == nil {
-			copy(codes, src)
-		} else {
-			for i, code := range src {
-				codes[i] = remap[code]
-			}
+			copy(codes, src) // an absent row's code is 0 by construction
+			return
+		}
+		for i, code := range src {
+			codes[i] = remap[code]
 		}
 		for i, p := range present {
 			if !p {

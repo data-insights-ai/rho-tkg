@@ -1,9 +1,10 @@
 package index
 
 import (
+	"sync/atomic"
+
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
-	"sync/atomic"
 )
 
 // PropertyIndexKey uniquely identifies a property index by label token and property key.
