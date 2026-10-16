@@ -334,6 +334,19 @@ def active_manifest(names):
     return selected
 
 
+def required_wal_outcome(wire, certificate):
+    # sourceIndex names the business image, not the later GSO certificate
+    # control entry. This fixed fixture's business source is a real Resolve.
+    require(len(certificate) == 356 and certificate[:16] == P.GRAPH and int.from_bytes(certificate[16:24], "big") == 3, "required WAL certificate namespace")
+    status = P.status(wire)
+    body = P.body(wire, b"GCS\1")
+    require(status["partition"] == 3 and status["phase"] == 4 and status["commit"] is True and body[98] == 0
+            and any(status["tx"]) and any(status["digest"])
+            and status["index"] == int.from_bytes(certificate[176:184], "big") > 0
+            and status["round"] == int.from_bytes(certificate[168:176], "big") > 0,
+            "acknowledged applied COMMIT Resolve at exact certificate source index/round")
+
+
 def corruption(data, selected):
     case, receipt = data["Case"], data["Corruption"]
     require((receipt is not None) == case.startswith("durable-native-"), "native corruption case inventory")
@@ -353,8 +366,7 @@ def corruption(data, selected):
         certs = [P.body(P.raw(c), b"GSC\1") for c in data["Before"]["Cut"]["Certificates"]]
         certificate = next(c for c in certs if int.from_bytes(c[16:24], "big") == 3)
         require(P.raw(receipt["RequiredImage"]) == certificate[184:356], "acknowledged actual native image not bound to selected WAL")
-        outcome = P.body(P.raw(receipt["RequiredOutcome"]), b"GSO\1")
-        require(len(outcome) == 18 and int.from_bytes(outcome[10:18], "big") == int.from_bytes(certificate[176:184], "big"), "acknowledged actual source index/outcome")
+        required_wal_outcome(P.raw(receipt["RequiredOutcome"]), certificate)
     else:
         require(path == receipt["ActiveManifest"] and receipt["EligibleWALs"] == 0 and not P.raw(receipt["RequiredImage"]) and not P.raw(receipt["RequiredOutcome"]), "not selected required active manifest")
     expected_work = data["Model"]["Recovery"]["WorkBytes"] + 4 * POLICY["CatalogBytes"] + 8192 + 8 * file["Bytes"] + 2 * POLICY["CopyBytes"] + 8192

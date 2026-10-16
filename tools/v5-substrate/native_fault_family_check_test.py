@@ -16,6 +16,29 @@ SPEC.loader.exec_module(F)
 
 
 class NativeFaultFamilyGuards(unittest.TestCase):
+    def test_corrupted_wal_requires_actual_resolve_at_certificate_source(self):
+        # Exact source bytes from the genuine .log RED artifact. These inert
+        # codec fixtures are not a new process or corruption qualification.
+        wire = base64.b64decode("R0NTAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAx+ZvCIHNZwJYsMljn8hfamXy6yH7dkwhySe1kINmDGxFh5/+yTtdIYf79sxmJTPQgQAAAAAAAAAGQAAAAAAAAAEAAAAAAAAAAYCAL79aXIyZr3son/jilMpxsJQoZSSKn4QDo3k07QgA68c")
+        certificate = F.P.body(base64.b64decode("R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxbmxsd6FADuA9DY875OJZY71rgP6GlHHOCs6i03bF9QoAAAAAAAAAAYAAAAAAAAAGwAAAAAAAAAGAAAAAAAAABlHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAABQAAAAAAAAAIOTyV74zR45q5btxtlawXmF0Im3tgrSE9oQKGpAhPYBAAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwsY+eM2bR9S+5R2o/y6F9T1w0SuuIrUStb4bZ9zWdLKZlsUMepRlkILqQhg0X7EkBewZSLuTb9aiirMcaS0RsSM="), b"GSC\1")
+        F.required_wal_outcome(wire, certificate)
+        body = F.P.body(wire, b"GCS\1")
+        def encoded(offset, replacement):
+            changed = b"GCS\1" + body[:offset] + replacement + body[offset + len(replacement):]
+            return changed + hashlib.sha256(changed).digest()
+        for offset, replacement in ((72,b"\1"),(72,b"\2"),(72,b"\3"),
+                                    (97,b"\0"),(97,b"\1"),(98,b"\1"),
+                                    (16,struct.pack(">Q",8)),(0,b"x"*16),
+                                    (73,struct.pack(">Q",26)),(89,struct.pack(">Q",7)),
+                                    (24,bytes(16)),(40,bytes(32))):
+            with self.subTest(offset=offset,replacement=replacement), self.assertRaises(ValueError):
+                F.required_wal_outcome(encoded(offset,replacement), certificate)
+        for changed in (wire[:-1], wire[:-1]+bytes([wire[-1]^1])):
+            with self.assertRaises(ValueError): F.required_wal_outcome(changed, certificate)
+        cut_control = b"GSO\1\1\1" + struct.pack(">2Q", 6, 25)
+        with self.assertRaises(ValueError):
+            F.required_wal_outcome(cut_control + hashlib.sha256(cut_control).digest(), certificate)
+
     def test_sender_loss_has_exact_separate_profile_and_two_inflight_boundaries(self):
         self.assertEqual(F.SENDER_CASES, {"snapshot-sender-before-append", "snapshot-sender-after-append"})
         self.assertTrue(F.SENDER_CASES.isdisjoint(F.CASES | F.EXPLORATIONS))
