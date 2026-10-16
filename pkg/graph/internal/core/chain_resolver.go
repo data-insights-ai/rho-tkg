@@ -129,6 +129,16 @@ func versionOrdered[T storeutil.TemporalRow](chain []T) []T {
 	return out
 }
 
+// preCorrectionChain is the chain a valid-time correction resolves against:
+// history then current (non-nil: a deleted entity is refused before), in
+// version order (versionOrdered, the resolver's input contract). The cascade
+// kernels and the caller-instant pre-flight build it here.
+func preCorrectionChain[T storeutil.TemporalRow](history []T, current T) []T {
+	chain := make([]T, 0, len(history)+1)
+	chain = append(chain, history...)
+	return versionOrdered(append(chain, current))
+}
+
 // chainWriteOrder is the comparator of a chain's write order: by life, then
 // ascending version. A life is the span up to a hard delete the chain holds
 // (lifeEnds); a row's life is the number of deletes recorded before it. A

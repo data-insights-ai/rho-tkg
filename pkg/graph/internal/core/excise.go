@@ -243,10 +243,10 @@ func (b *BatchBuilder) ExciseNodeValidity(id types.NodeID, from, to types.Instan
 
 // ExciseNodeValidityWithTx queues the excise at the caller's transaction
 // instant txFrom: txFrom is gated at queue time (ErrInvalidTxFrom, then
-// ErrTxBackfillDisabled), the deleted-entity refusal and the order rule run in
-// Execute's whole-unit pre-flight, so such a refusal refuses the whole batch
-// with nothing written. The excise must be the only op of the batch on the
-// node.
+// ErrTxBackfillDisabled), the deleted-entity refusal, the order rule and no
+// version valid in [from, to) (ErrNoVersionValidAt) run in Execute's
+// whole-unit pre-flight, so such a refusal refuses the whole batch with
+// nothing written. The excise must be the only op of the batch on the node.
 func (b *BatchBuilder) ExciseNodeValidityWithTx(id types.NodeID, from, to, txFrom types.Instant) error {
 	return b.queueNodeCascade(id, from, to, nil, txFrom, true, true)
 }
@@ -258,7 +258,9 @@ func (b *BatchBuilder) ExciseRelValidity(id types.RelID, from, to types.Instant)
 }
 
 // ExciseRelValidityWithTx is the relationship counterpart of
-// BatchBuilder.ExciseNodeValidityWithTx.
+// BatchBuilder.ExciseNodeValidityWithTx: the same pre-flight refusals, no
+// version valid in [from, to) (ErrNoVersionValidAt) among them, refuse the
+// whole batch with nothing written.
 func (b *BatchBuilder) ExciseRelValidityWithTx(id types.RelID, from, to, txFrom types.Instant) error {
 	return b.queueRelCascade(id, from, to, nil, txFrom, true, true)
 }

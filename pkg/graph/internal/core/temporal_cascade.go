@@ -183,10 +183,7 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 	// belief — no holes, no leaks.
 	var preChain []*types.Node
 	if !fromHead {
-		preChain = make([]*types.Node, 0, len(history)+1)
-		preChain = append(preChain, history...)
-		preChain = append(preChain, current) // non-nil: a deleted entity was refused above
-		preChain = versionOrdered(preChain)  // the resolver's input contract (lesson 73)
+		preChain = preCorrectionChain(history, current) // a deleted entity was refused above
 	}
 
 	// Resumption: re-assert, from newVT onward, whatever value held AT newVT in
@@ -246,8 +243,12 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 			return nil, err
 		}
 	}
+	if void {
+		if err := exciseNoVersionErr(segments, newVF, newVT); err != nil {
+			return nil, err
+		}
+	}
 	var newVer *types.Node // the appended row covering newVF — the return value
-	voids := 0
 	for _, seg := range segments {
 		if void && seg.gap {
 			continue // nothing valid there: no absence to record
@@ -258,16 +259,12 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 		}
 		if void {
 			row.Temporal().Void = true
-			voids++
 		}
 		if newVer == nil {
 			newVer = row
 		}
 		appended = append(appended, row)
 		prevHashes = append(prevHashes, nodeHashOf(seg.base))
-	}
-	if void && voids == 0 {
-		return nil, fmt.Errorf("%w: excise [%d, %d): no version is valid there", storepkg.ErrNoVersionValidAt, newVF, newVT)
 	}
 	// Provisional versions in build order, all above every stored version, so
 	// the newest-belief comparison below ranks appended rows above existing
@@ -550,6 +547,20 @@ func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *t
 	return segs, nil
 }
 
+// exciseNoVersionErr is the excise's refusal when no version is valid in
+// [newVF, newVT) as believed before the call: every piece of segments (split
+// at gaps) is a gap. The cascade kernels and the caller-instant pre-flight
+// (checkNodeCallerCascade / checkRelCallerCascade) decide it here, on the same
+// pieces, so a batch or ingest unit is refused before any write.
+func exciseNoVersionErr[T any](segments []correctionSegment[T], newVF, newVT types.Instant) error {
+	for _, seg := range segments {
+		if !seg.gap {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: excise [%d, %d): no version is valid there", storepkg.ErrNoVersionValidAt, newVF, newVT)
+}
+
 // correctionTemporal returns the temporal block for an appended correction
 // row: the template's entity-level stamps (CreatedAt, …) with the piece's
 // valid interval and the correction's transaction time. The base row supplies
@@ -789,10 +800,7 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 	// newer belief winning on overlap. See the node cascade for the rationale.
 	var preChain []*types.Relationship
 	if !fromHead {
-		preChain = make([]*types.Relationship, 0, len(history)+1)
-		preChain = append(preChain, history...)
-		preChain = append(preChain, current) // non-nil: a deleted entity was refused above
-		preChain = versionOrdered(preChain)  // the resolver's input contract (lesson 73)
+		preChain = preCorrectionChain(history, current) // a deleted entity was refused above
 	}
 
 	// BACKLOG 10b: explicit resumption ValidTo via relResumptionEnd — see the
@@ -826,8 +834,12 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 			return nil, err
 		}
 	}
+	if void {
+		if err := exciseNoVersionErr(segments, newVF, newVT); err != nil {
+			return nil, err
+		}
+	}
 	var newVer *types.Relationship // the appended row covering newVF — the return value
-	voids := 0
 	for _, seg := range segments {
 		if void && seg.gap {
 			continue // nothing valid there: no absence to record
@@ -838,16 +850,12 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 		}
 		if void {
 			row.Temporal().Void = true
-			voids++
 		}
 		if newVer == nil {
 			newVer = row
 		}
 		appended = append(appended, row)
 		prevHashes = append(prevHashes, relHashOf(seg.base))
-	}
-	if void && voids == 0 {
-		return nil, fmt.Errorf("%w: excise [%d, %d): no version is valid there", storepkg.ErrNoVersionValidAt, newVF, newVT)
 	}
 	// Provisional versions — see the node cascade.
 	firstVersion := nextVersion
