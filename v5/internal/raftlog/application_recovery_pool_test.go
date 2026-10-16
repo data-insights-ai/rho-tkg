@@ -8,6 +8,8 @@ import (
 	"math"
 	"slices"
 	"testing"
+
+	"github.com/cockroachdb/pebble/v2"
 )
 
 func TestApplicationRecoveryPooledCandidateBoundAndExactView(t *testing.T) {
@@ -116,7 +118,7 @@ func TestApplicationRecoveryPooledCandidateBoundAndExactView(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, _, err = read.RecoveryStepBudget(t.Context(), currentUse, read.ReadLimits())
+	got, _, err = read.RecoveryStepBudget(t.Context(), currentUse, ReadBudget{Rows: 2, Bytes: 32 << 10})
 	if err != nil || got.Pool != now.Pool {
 		t.Fatal("AS9 prepared pool", got, err)
 	}
@@ -339,5 +341,108 @@ func TestApplicationRecoveryBytePoolCodecBoundsAndOldSpanIsolation(t *testing.T)
 		if _, err := (applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{4}}).reserve(candidate, p, l); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("fresh reservation admitted partial/overlapping/refilled bands: %v", err)
 		}
+	}
+}
+
+func TestApplicationRecoveryStepBudgetChargesActualNativeRoot(t *testing.T) {
+	s, _, verifier := recoveryPoolStore(t)
+	spanRecoveryInstall(t, s, verifier, "register")
+	spanRecoveryInstall(t, s, verifier, "ticket")
+	old := viewApplication(t, s, s.meta.Applied)
+	defer func() {
+		if err := old.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	use := ApplicationRecoveryUse{ID: verifier.reserve.ID, Digest: verifier.reserve.Digest, CommandDigest: [32]byte{1}, Phase: 100}
+	before, work, err := old.RecoveryStepBudget(t.Context(), use, ReadBudget{Rows: 2, Bytes: 32 << 10})
+	if err != nil || before.Maximum.Phase != 100 || before.Pool != verifier.reserve.Spans[0].BytePool || work.Records != 2 || work.Bytes > 32<<10 {
+		t.Fatal("small actual RS4 must fit its funded native work", before, work, err)
+	}
+	spanRecoveryInstall(t, s, verifier, "step")
+	current := viewApplication(t, s, s.meta.Applied)
+	defer func() {
+		if err := current.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	next := use
+	next.Phase++
+	after, afterWork, err := current.RecoveryStepBudget(t.Context(), next, ReadBudget{Rows: 2, Bytes: 32 << 10})
+	if err != nil || after.Maximum.Phase != 101 || after.Pool.RetainedRemaining >= before.Pool.RetainedRemaining || after.Pool.LogRemaining >= before.Pool.LogRemaining || afterWork.Records != 2 || afterWork.Bytes > 32<<10 {
+		t.Fatal("actual debit/current pool lost", after, afterWork, err)
+	}
+	retained, retainedWork, err := old.RecoveryStepBudget(t.Context(), use, ReadBudget{Rows: 2, Bytes: 32 << 10})
+	if err != nil || retained != before || retainedWork != work {
+		t.Fatal("old cut substituted current pool", retained, retainedWork, err)
+	}
+	for _, b := range []ReadBudget{{Rows: 1, Bytes: 32 << 10}, {Rows: 2, Bytes: work.Bytes - 1}} {
+		out, spent, err := old.RecoveryStepBudget(t.Context(), use, b)
+		if !errors.Is(err, ErrLimit) || out != (ApplicationRecoveryStepBudget{}) || spent.Bytes > b.Bytes || spent.Records > b.Rows {
+			t.Fatal("unfunded native root returned capacity", out, spent, err)
+		}
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	for _, item := range []struct {
+		ctx  context.Context
+		want error
+	}{{nil, ErrInvalid}, {canceled, context.Canceled}} {
+		out, spent, err := old.RecoveryStepBudget(item.ctx, use, ReadBudget{Rows: 2, Bytes: 32 << 10})
+		if !errors.Is(err, item.want) || out != (ApplicationRecoveryStepBudget{}) || spent != (ApplicationProofWork{}) {
+			t.Fatal("invalid lifetime returned native capacity/work", out, spent, err)
+		}
+	}
+}
+
+func TestApplicationRecoveryStepBudgetRefusesDamagedNativeRoot(t *testing.T) {
+	for _, kind := range []string{"oversized", "checksum", "foreign-index", "resealed-pool"} {
+		t.Run(kind, func(t *testing.T) {
+			s, _, verifier := recoveryPoolStore(t)
+			spanRecoveryInstall(t, s, verifier, "register")
+			oldIndex := s.meta.Applied
+			spanRecoveryInstall(t, s, verifier, "ticket")
+			v := viewApplication(t, s, s.meta.Applied)
+			key := appIndexKey(recoveryRootTag+v.bank, v.index)
+			raw, closer, err := s.db.Get(key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			changed := bytes.Clone(raw)
+			if err = closer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			switch kind {
+			case "oversized":
+				changed = make([]byte, appFrameBytes+maxMetadataBytes+1)
+			case "checksum":
+				changed[len(changed)-1] ^= 1
+			case "foreign-index":
+				raw, closer, err := s.db.Get(appIndexKey(recoveryRootTag+v.bank, oldIndex))
+				if err != nil {
+					t.Fatal(err)
+				}
+				changed = bytes.Clone(raw)
+				if err = closer.Close(); err != nil {
+					t.Fatal(err)
+				}
+			case "resealed-pool":
+				forged := s.meta.Recovery
+				forged.Reservation = cloneRecoveryReservation(forged.Reservation)
+				forged.Reservation.Spans[0].BytePool.RetainedRemaining--
+				changed = appFrame(key, appendNativeRecoveryRoot(forged), false)
+			}
+			if err = s.db.Set(key, changed, pebble.Sync); err != nil {
+				t.Fatal(err)
+			}
+			use := ApplicationRecoveryUse{ID: verifier.reserve.ID, Digest: verifier.reserve.Digest, CommandDigest: [32]byte{1}, Phase: 100}
+			out, work, err := v.RecoveryStepBudget(t.Context(), use, ReadBudget{2, 32 << 10})
+			if !errors.Is(err, ErrCorrupt) || out != (ApplicationRecoveryStepBudget{}) || work.Records > 2 || work.Bytes > 32<<10 {
+				t.Fatal("damaged native capacity admitted", out, work, err)
+			}
+			if err := v.Close(); !errors.Is(err, ErrPoisoned) || !errors.Is(err, ErrCorrupt) {
+				t.Fatal("native corruption cause lost", err)
+			}
+		})
 	}
 }

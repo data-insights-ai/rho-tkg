@@ -1501,3 +1501,101 @@ func TestRetainedFeedHistoryUsesFundedResidualForActualFrames(t *testing.T) {
 		}
 	}
 }
+
+func TestRetainedFeedPooledImportCensusUsesActualRecoveryWork(t *testing.T) {
+	n, p, _, _ := retainedPublisherFromNetwork(t, collectedGraphNetworkWithRecovery(t, func(policy *raftlog.ApplicationPolicy) {
+		policy.RetainedApplicationBytes, policy.RetainedApplicationRecords = 256<<20, 131072
+		if err := nativeProtocolStatePooledTailPolicy(policy); err != nil {
+			t.Fatal(err)
+		}
+	}, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4}))
+	owner, err := beginRetainedFeed(t.Context(), p, n.requestID(), graphReadRequest{mode: graphReadFresh}, 100, retainedFeedGuardPolicy(64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := owner.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if _, err = owner.Publish(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	old, err := owner.OpenSnapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := old.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	assertCertifiedProjection(t, certifiedView(t, old), 1, true, nil)
+	h := n.hosts[1][0]
+	first := h.driver.Applied() + 1
+	intent, err := n.hosts[0][0].PreparePooledRangeMove(t.Context(), n.requestID(), 1, 8, 64, 32, 16<<10, rangeMovePools{2 << 20, 8 << 20, 8 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	move, err := newRangeMoveCoordinatorOn(p.coordinator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := runRangeMoveToCompletion(t, move, intent)
+	if err != nil || !completed.committed {
+		t.Fatal("genuine bounded move completion", err)
+	}
+	last := h.driver.Applied()
+	if last < first || last-first >= retainedFeedProgressBatch {
+		t.Fatal("native partial prefix outside census", first, last)
+	}
+	view, err := h.machine.store.ApplicationView(last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := view.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	imports, activation := 0, uint64(0)
+	for index := first; index <= last; index++ {
+		wire, err := view.ApplicationRecord(t.Context(), index, true, 64<<10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !moveStatusWireFor(h.machine.SemanticContractID(), wire) {
+			continue
+		}
+		status, err := decodeRangeMoveStatus(wire)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status.index != index {
+			continue
+		}
+		if status.phase == rangeMoveImport && status.sequence > 0 {
+			imports++
+		}
+		if status.phase == rangeMoveActivate {
+			activation = index
+		}
+	}
+	if imports < 4 || activation <= first {
+		t.Fatal("missing actual consecutive imports/activation", imports, activation)
+	}
+	base, err := view.RootBounded(t.Context(), 172)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arena, err := graphstate.NewOutputBudget(h.machine.limits.outputBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := feedReader(t.Context(), h.machine, view, base, arena)
+	frame, err := h.machine.feedProgress(&q, first, activation-1, 64<<10, first)
+	if err != nil || frame.index != first || frame.progressNext != activation || frame.census == ([32]byte{}) || q.bytes >= 4<<20 || q.rows >= 1024 {
+		t.Fatal("actual consecutive import frames exceed original reader", q.rows, q.bytes, first, last, err)
+	}
+	assertCertifiedProjection(t, certifiedView(t, old), 1, true, nil)
+}

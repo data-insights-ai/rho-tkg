@@ -36,18 +36,51 @@ func (v *ApplicationView) RecoveryStepBudget(ctx context.Context, use Applicatio
 		return out, work, err
 	}
 	defer v.unlock()
-	const extra = 1024 + 8*maxMetadataBytes
+	const fixed = 1024
 	if v.s.meta.Recovery.Config.Version != 4 {
 		return out, work, ErrInvalid
 	}
-	if work.Records >= budget.Rows || extra > budget.Bytes-work.Bytes {
+	if work.Records >= budget.Rows || fixed > budget.Bytes-work.Bytes {
 		return out, work, ErrLimit
 	}
 	work.Records++
+	work.Bytes += fixed
+	key := appIndexKey(recoveryRootTag+v.bank, v.index)
+	raw, closer, err := v.s.db.Get(key)
+	if err != nil {
+		return out, work, v.fail(storedReadFailure(err))
+	}
+	defer func() {
+		if closeErr := closer.Close(); closeErr != nil {
+			err = errors.Join(err, v.fail(closeErr))
+		}
+	}()
+	policy := v.s.applicationPolicy
+	maximum := min(policy.MaxValueBytes, maxMetadataBytes)
+	if len(raw) < appFrameBytes || len(raw)-appFrameBytes > maximum {
+		return out, work, v.fail(ErrCorrupt)
+	}
+	// The fixed grant funds lookup/length inspection; actual delivered length
+	// funds frame hashing, the same native decoder and owned spans/terminal bank
+	// BEFORE any of those operations. The hard64KiB bound checks multiplication.
+	extra := 8 * (len(raw) - appFrameBytes)
+	if extra > budget.Bytes-work.Bytes {
+		return out, work, ErrLimit
+	}
 	work.Bytes += extra
-	r, _, err := v.s.loadNativeRecoveryRootAt(v.bank, v.index)
+	if err := ctx.Err(); err != nil {
+		return out, work, err
+	}
+	data, deleted, err := inspectAppFrame(key, raw, maximum)
+	if err != nil || deleted {
+		return out, work, v.fail(ErrCorrupt)
+	}
+	r, _, err := readNativeRecoveryRoot(data, policy, v.s.limits)
 	if err != nil {
 		return out, work, v.fail(err)
+	}
+	if data[2] != byte(v.s.meta.Recovery.Config.Version) {
+		return out, work, v.fail(ErrCorrupt)
 	}
 	m := applicationRecoveryMetadata{Config: ApplicationRecoveryConfig{Version: 4}, Reservation: r}
 	out.Maximum, err = m.credit(use)
