@@ -168,8 +168,14 @@ func validGraphName(s string, l materializerLimits) bool {
 func validSchema(d graphstate.PropertyDefinition, l materializerLimits) bool {
 	return validGraphName(d.Name, l) && (d.Owner == graphstate.Node || d.Owner == graphstate.Relationship) && d.Type >= graphstate.ScalarString && d.Type <= graphstate.ScalarScope && (d.Cardinality == graphstate.ScalarCardinality || d.Cardinality == graphstate.SetCardinality) && d.Unique <= graphstate.UniqueMembers && (d.Unique != graphstate.UniqueScalar || d.Cardinality == graphstate.ScalarCardinality) && (d.Unique != graphstate.UniqueMembers || d.Cardinality == graphstate.SetCardinality)
 }
+
+// oplogRefusesKind: Bytes and List live in the local engine only; carrying them
+// through the distributed op log is WP-28, so both directions fail closed.
+func oplogRefusesKind(k graphstate.ScalarKind) bool {
+	return k == graphstate.ScalarBytes || k == graphstate.ScalarList
+}
 func writeSchema(w *boundedWriter, d graphstate.PropertyDefinition) {
-	if d.Type == graphstate.ScalarDescriptor {
+	if d.Type == graphstate.ScalarDescriptor || oplogRefusesKind(d.Type) {
 		if w.err == nil {
 			w.err = errors.Join(errInvalid, graphstate.ErrUnsupported)
 		}
@@ -368,7 +374,7 @@ func writeScalar(w *boundedWriter, s graphstate.Scalar, t axisTable, l materiali
 	writeTypedScalar(w, s, t, l, false)
 }
 func writeTypedScalar(w *boundedWriter, s graphstate.Scalar, t axisTable, l materializerLimits, declarations bool) {
-	if !declarations && s.Kind() == graphstate.ScalarDescriptor {
+	if !declarations && s.Kind() == graphstate.ScalarDescriptor || oplogRefusesKind(s.Kind()) {
 		if w.err == nil {
 			w.err = errors.Join(errInvalid, graphstate.ErrUnsupported)
 		}
@@ -421,6 +427,10 @@ func readTypedScalar(c *graphCursor, t axisTable, l materializerLimits, declarat
 		return graphstate.Scalar{}
 	}
 	if (graphstate.ScalarKind(b[0]) == graphstate.ScalarScope) != (a.Descriptor().ID != (temporal.AxisID{})) {
+		c.err = errCorrupt
+		return graphstate.Scalar{}
+	}
+	if oplogRefusesKind(graphstate.ScalarKind(b[0])) {
 		c.err = errCorrupt
 		return graphstate.Scalar{}
 	}

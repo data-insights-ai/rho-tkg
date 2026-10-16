@@ -239,7 +239,7 @@ func readAxis(src []byte, n Namespace, l Limits) (temporal.Axis, error) {
 	return a, nil
 }
 func validProperty(d graphstate.PropertyDefinition, l Limits) bool {
-	return validName(d.Name, l) && (d.Owner == graphstate.Node || d.Owner == graphstate.Relationship) && d.Type >= graphstate.ScalarString && d.Type <= graphstate.ScalarDescriptor && (d.Cardinality == graphstate.ScalarCardinality || d.Cardinality == graphstate.SetCardinality) && d.Unique <= graphstate.UniqueMembers && (d.Unique != graphstate.UniqueScalar || d.Cardinality == graphstate.ScalarCardinality) && (d.Unique != graphstate.UniqueMembers || d.Cardinality == graphstate.SetCardinality) && (d.Type != graphstate.ScalarDescriptor || d.Cardinality == graphstate.ScalarCardinality && d.Unique == graphstate.UniqueNone)
+	return validName(d.Name, l) && (d.Owner == graphstate.Node || d.Owner == graphstate.Relationship) && d.Type >= graphstate.ScalarString && d.Type <= graphstate.ScalarList && (d.Cardinality == graphstate.ScalarCardinality || d.Cardinality == graphstate.SetCardinality) && d.Unique <= graphstate.UniqueMembers && (d.Unique != graphstate.UniqueScalar || d.Cardinality == graphstate.ScalarCardinality) && (d.Unique != graphstate.UniqueMembers || d.Cardinality == graphstate.SetCardinality) && (d.Type != graphstate.ScalarDescriptor || d.Cardinality == graphstate.ScalarCardinality && d.Unique == graphstate.UniqueNone)
 }
 func encodeProperty(n Namespace, d graphstate.PropertyDefinition, l Limits) ([]byte, error) {
 	if d.Type == graphstate.ScalarDescriptor && (d.Cardinality != graphstate.ScalarCardinality || d.Unique != graphstate.UniqueNone) {

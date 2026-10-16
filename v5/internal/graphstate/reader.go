@@ -272,7 +272,7 @@ func (e *engine) property(owner EntityKind, name string) (PropertyDefinition, er
 		return PropertyDefinition{}, ErrSchemaMismatch
 	}
 	d := read.Record
-	if d.Name != name || d.Owner != owner || d.Type < ScalarString || d.Type > ScalarDescriptor || (d.Cardinality != ScalarCardinality && d.Cardinality != SetCardinality) {
+	if d.Name != name || d.Owner != owner || d.Type < ScalarString || d.Type > ScalarList || (d.Cardinality != ScalarCardinality && d.Cardinality != SetCardinality) {
 		return PropertyDefinition{}, ErrSchemaMismatch
 	}
 	if d.Type == ScalarDescriptor && (d.Cardinality != ScalarCardinality || d.Unique != UniqueNone) {
