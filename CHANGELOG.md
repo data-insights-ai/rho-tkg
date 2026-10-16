@@ -82,6 +82,16 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
   `TestShardedMixedColumnChunks`, `TestChunkConcatOrdinals`, `TestWindowValidateAndMeets`, forwarding tests in nodes,
   rels, stats, temporal; 28 mutants killed (`tasks/evidence/round10/mutants.txt`).
 
+### Fixed
+
+- **A property index being built answers no door that reads it whole** (found by the round 10 review). The ordered
+  range and prefix walks (`Nodes().ForEachByLabelPropertyRangeOrdered` / `...Prefix`, the `Rels()` mirrors) and
+  `RangeCardinality` answered from the entries a build had merged so far (a partial top-k, an `exact=true` count too
+  short) on memory and badger, and through them on sharded and tiered; the equality counts, bounds, value pages and
+  value statistics already declined. One rule now, `index.PropertyIndex.serves` (a plain, built index): during a
+  build the walks return `ErrIndexNotFound` and the count declines, as documented. Test
+  `TestPropertyIndexDeclinesWhileBuilding`.
+
 ### Changed
 
 - **An excise may start at a negative instant** (`ExciseNodeValidity` / `ExciseRelValidity`, `*WithTx`, the `GraphTx`
