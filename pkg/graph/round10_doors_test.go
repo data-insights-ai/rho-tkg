@@ -177,14 +177,15 @@ func r10History(t *testing.T, b storeBackend, g *graphpkg.Graph, seed uint64) *r
 		// start: an untimed start is its TxFrom on an UntimedFromTxFrom
 		// store, so the clock bounds it from below there.
 		next := func(m map[int]types.Instant) types.Instant {
-			base := m[i]
-			if base == 0 {
+			base, recorded := m[i]
+			switch {
+			case !recorded || base == 0: // no timed start: the row starts at its TxFrom at most
 				now, err := g.Temporal().NowTx()
 				if err != nil {
 					t.Fatal(err)
 				}
 				base = now
-			} else if base == types.UnboundedValidFrom {
+			case base == types.UnboundedValidFrom:
 				base = -3000
 			}
 			m[i] = base + 1 + types.Instant(rng.IntN(400))
@@ -341,10 +342,7 @@ func relSegKey(s temporal.RelSegment) string {
 // r10Backends are the four backends with backfill allowed, under both
 // untimed modes.
 func r10Backends() []storeBackend {
-	var out []storeBackend
-	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {
-		out = append(out, b)
-	}
+	out := allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true })
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true; txFromCfg(c) }) {
 		b.name += "-txfrom"
 		out = append(out, b)
