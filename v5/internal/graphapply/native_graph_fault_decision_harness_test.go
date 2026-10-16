@@ -865,11 +865,40 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 			return nativeProtocolDecisionRetire(f, ch, cancel, tx)
 		}
 	}
+	// Two fixed metadata summaries use the already prepaid campaign artifact
+	// allowance. No request/reply payload is retained or replayed as authority.
+	type sourceSummary struct {
+		Seen, RequestDecoded, ReplyDecoded bool
+		Kind, ReplyKind                    byte
+		Sequence, ReplySequence            uint64
+		RequestNonce, ReplyNonce           [16]byte
+		Cookie                             graphSourceCookie
+		Peer                               graphPeerIdentity
+		Issuer, FirstIssuer                [16]byte
+		IssuerChanged                      bool
+		Mask                               uint16
+		Command                            [4]byte
+		RequestBytes, ReplyBytes           int
+	}
+	var sourceMu sync.Mutex
+	var sourceSummaries [2]sourceSummary
+	trackingSources := false
 	observe := func(stage string, actor uint64, mode graphReadMode, cut graphCut) p06Observation {
+		sourceMu.Lock()
+		trackingSources = len(campaign) == 1
+		sourceSummaries = [2]sourceSummary{}
+		sourceMu.Unlock()
 		completed := false
 		defer func() {
+			sourceMu.Lock()
+			trackingSources = false
+			summaries := sourceSummaries
+			sourceMu.Unlock()
 			if !completed && len(campaign) == 1 {
 				t.Logf("P04 certified observation interrupted: stage%q actor%d pid%d mode%d certificates%d readStarts%d", stage, actor, f.n.all[actor].cmd.Process.Pid, mode, len(cut.certificates), f.reads)
+				for part, summary := range summaries {
+					t.Logf("P04 actual observation source summary: partition%d metadata%+v", []uint64{3, 8}[part], summary)
+				}
 			}
 		}()
 		result := p06Observe(f, actor, mode, cut)
@@ -944,6 +973,26 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 	var capacityCharge nativeProtocolHoldCharge
 	hub.mu.Lock()
 	hub.afterRelay = func(ctx context.Context, origin, partition uint64, request, reply []byte) error {
+		if origin == bOwner && (partition == 3 || partition == 8) && len(request) <= processFrameBytes && len(reply) <= processFrameBytes {
+			sourceMu.Lock()
+			part := 0
+			if partition == 8 {
+				part = 1
+			}
+			if trackingSources && sourceSummaries[part].Mask == 0 && !sourceSummaries[part].IssuerChanged {
+				q, requestErr := decodeGraphSourceRequest(request)
+				r, replyErr := decodeGraphWireResponse(reply)
+				summary := sourceSummary{Seen: true, RequestDecoded: requestErr == nil, ReplyDecoded: replyErr == nil, Kind: q.kind, ReplyKind: r.kind, Sequence: q.sequence, ReplySequence: r.sequence, RequestNonce: q.nonce, ReplyNonce: r.nonce, Cookie: q.cookie, Peer: r.peer, Issuer: r.issuer, Mask: graphErrorMask(r.err), RequestBytes: len(request), ReplyBytes: len(reply)}
+				summary.FirstIssuer = sourceSummaries[part].FirstIssuer
+				if summary.FirstIssuer == ([16]byte{}) && replyErr == nil {
+					summary.FirstIssuer = r.issuer
+				}
+				summary.IssuerChanged = replyErr == nil && summary.FirstIssuer != r.issuer
+				copy(summary.Command[:], q.command)
+				sourceSummaries[part] = summary // First native error survives cleanup traffic.
+			}
+			sourceMu.Unlock()
+		}
 		if origin != bOwner || partition != 3 {
 			return nil
 		}
