@@ -1,7 +1,7 @@
 package core
 
 // Executable audit for item C (scan-temporal-opts): a store answers QueryOpts
-// from CURRENT rows only (storeutil.HasTemporalFilter is a valid-time gate on the
+// from CURRENT rows only (QueryOpts.HasValidTimeFilter is a valid-time gate on the
 // live row and has no notion of TxAt / TxPin). So no graph door may forward an
 // ACTIVE temporal filter — ValidAt, ValidStart+ValidEnd, TxAt or TxPin — to a
 // store query method; under such opts every door must take the history-aware

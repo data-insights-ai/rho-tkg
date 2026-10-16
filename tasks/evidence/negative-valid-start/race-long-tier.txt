@@ -1,0 +1,16 @@
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	12.498s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	1.133s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	4.054s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	22.559s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	1.358s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	3.256s
+--- FAIL: TestEffectivePage_DifferentialRandom (0.06s)
+--- FAIL: TestEffectivePage_ValidPruneDifferential (0.08s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	4.317s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	1.125s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	1.030s
+FAIL
+TestEffectivePage_DifferentialRandom / ValidPruneDifferential: 'generator never ran interval' fails identically on main ab9a41a4 under -race without -short (pre-existing; passes with -short -race and full non-race)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	8.781s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.156s [no tests to run]

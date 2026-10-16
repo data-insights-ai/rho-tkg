@@ -135,7 +135,7 @@ func TestMatchesTemporalFilter_InvalidIntervalDoesNotMatchOpenEndedEntity(t *tes
 		if MatchesTemporalFilter(id, tm, opts) {
 			t.Fatalf("invalid interval %+v matched open-ended entity", opts)
 		}
-		if !HasTemporalFilter(opts) {
+		if !opts.HasValidTimeFilter() {
 			t.Fatalf("invalid active interval %+v should still be treated as temporal", opts)
 		}
 	}

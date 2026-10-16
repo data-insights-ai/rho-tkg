@@ -32,7 +32,7 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		if opts.ValidAt != 0 {
 			ids = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidInterval() {
 			ids = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -53,7 +53,7 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		if opts.ValidAt != 0 {
 			nids = hfi.CandidatesUpTo(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidInterval() {
 			nids = hfi.CandidatesUpTo(opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -93,7 +93,7 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 
 	// Unbounded large scans decode badger misses across cores (decode is the serial
 	// floor); Limit'd scans keep the serial early-stopping door. Label and temporal
@@ -216,7 +216,7 @@ func (bs *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	// Temporal pre-filter via Peek.
 	nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 
-	if storepkg.HasTemporalFilter(opts) {
+	if opts.HasValidTimeFilter() {
 		return bs.fetchNodesWithTemporalFilterPage(nids, opts)
 	}
 	nids = storepkg.PaginateNodeIDs(nids, opts.After, opts.Limit)
@@ -443,7 +443,7 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, target
 		return nil, nil
 	}
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	var result []*types.Node
 	for _, nid := range nids {
 		n, err := bs.prefetchNodeScan(nid)
@@ -493,7 +493,7 @@ func (bs *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 		return nil, nil
 	}
 	storepkg.SortNodeIDs(nids)
-	if storepkg.HasTemporalFilter(opts) {
+	if opts.HasValidTimeFilter() {
 		var err error
 		nids, err = bs.filterNodeIDsByTemporalFetch(nids, opts)
 		if err != nil {

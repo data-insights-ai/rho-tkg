@@ -345,7 +345,7 @@ func (ms *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]
 // past opts.After; n of them at most) to the label's current matches, then
 // opts' temporal filter, then at most opts.Limit.
 func (ms *Store) nodesByLabelPropertiesFrom(labelToken uint16, values map[string]any, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Node {
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	result := make([]*types.Node, 0, resultCap(opts.Limit, n))
 	for raw := range ids {
 		id := types.NodeID(raw)
@@ -981,7 +981,7 @@ func (ms *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	result := make([]*types.Node, 0, len(ids))
 	for _, id := range ids {
 		if n, ok := ms.nodes[types.NodeID(id)]; ok {
@@ -1001,7 +1001,7 @@ func (ms *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 }
 
 func (ms *Store) vectorTemporalFilter(vi *indexpkg.VectorIndex, key indexpkg.VectorIndexKey, dims int, opts QueryOpts) (func(snowflake.ID) bool, error) {
-	if !storepkg.HasTemporalFilter(opts) {
+	if !opts.HasValidTimeFilter() {
 		return nil, nil
 	}
 	ids := vi.IDs()
@@ -1167,7 +1167,7 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 
 // nodesByLabelPropertyFrom is nodesByLabelPropertiesFrom for one key.
 func (ms *Store) nodesByLabelPropertyFrom(labelToken uint16, propKey, targetKey string, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Node {
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	result := make([]*types.Node, 0, resultCap(opts.Limit, n))
 	for raw := range ids {
 		id := types.NodeID(raw)

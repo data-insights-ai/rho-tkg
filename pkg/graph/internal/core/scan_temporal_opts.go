@@ -10,7 +10,7 @@ import (
 // These doors have the shape of ByLabel / ByType (rule 17): a label or type plus
 // QueryOpts. Their fast paths hand opts to a store, and a store answers from
 // CURRENT rows only — it filters the live row by valid time and has no notion of
-// TxAt / TxPin (storeutil.HasTemporalFilter checks valid time only). So whenever
+// TxAt / TxPin (QueryOpts.HasValidTimeFilter checks valid time only). So whenever
 // hasTemporalFilter(opts) holds (ValidAt, ValidStart+ValidEnd, TxAt or TxPin) the
 // doors below take the history-aware path instead: the SAME candidate fold and
 // chain resolver ByLabel / ByType use (nodesByLabelLocked / relsByTypeLocked), so

@@ -286,7 +286,7 @@ func shardNodesByLabelAndProperty(store *BadgerStore, elements bool, labelToken 
 	if err != nil {
 		return nil, err
 	}
-	temporal := storeutil.HasTemporalFilter(opts)
+	temporal := opts.HasValidTimeFilter()
 	return slices.DeleteFunc(nodes, func(n *types.Node) bool {
 		return !n.HasPropertyIndexKey(key, elements, targetKey) ||
 			(temporal && !storeutil.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts))

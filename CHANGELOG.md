@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A negative valid-time bound is a real one; only 0 is unset** (PATCH v4.58.1; sigma-tkgd row 60, blocks sigma's tag).
+  Under `UntimedUnbounded` an untimed row closed at `tkg_valid_to` 1 holds over (-inf, 1), and an explicit
+  `[-5000, -4000)` is legal, but `QueryOpts` read any `ValidStart` / `ValidEnd <= 0` as "no interval filter", so no
+  generic door could reach valid time <= 0 (sigma's pinned push-down
+  `ByTypeAndProperty(..., {TxAt: pin, ValidStart: types.UnboundedValidFrom, ValidEnd: MaxInt64})` answered "valid now").
+  Now `[ValidStart, ValidEnd)` is an interval filter when both are non-zero, so
+  `{ValidStart: types.UnboundedValidFrom, ValidEnd: math.MaxInt64}` is "any valid time" with a real filter; a lone bound
+  stays no filter (the reversed-interval refusal is under Changed). One rule, `store.QueryOpts.HasValidInterval()` /
+  `HasValidTimeFilter()`, replaces 32 inline sign guards (core resolver, adjacency and label-scan probes, memory /
+  badger / sharded / tiered push-down, envelope and HF prunes, columnar window, `ValidateQueryOpts`, effective pages,
+  Relating) and `storeutil.HasTemporalFilter` (deleted, 41 callers). The badger
+  column scans (`ScanNodeColumns` / `ScanRelColumns`) carry an explicit `filtered` flag in their valid window instead
+  of reading an end of 0 as "no filter": `ValidAt: -1` (window `[-1, 0)`) returned every row on badger while memory
+  filtered. Same family: `NodesEffectivePage` /
+  `RelsEffectivePage` accept negative `ValidAt` / `ValidStart` / `ValidEnd` (were `ErrInvalidTimeRange`);
+  `NodesRelating` / `RelsRelating` accept a negative `from` (`from == 0` stays `ErrInvalidTimeRange`); the any-version
+  doors (`ForEachBy*PropertyRangeAnyVersion`, `RangeCardinalityAnyVersion`, `PropertyValueStats` /
+  `RelPropertyValueStats` at a pin) use `[types.UnboundedValidFrom, MaxInt64)` instead of `[1, MaxInt64)`, so a version
+  valid only before the epoch counts. `NodesDuring*` / `RelsDuring*` already took negative bounds. Tests:
+  `TestNegativeValidStartIsARealIntervalStart` (every door, memory / badger / sharded / tiered, with and without
+  indexes, cross-door agreement, 0 pinned as unset), `TestStoreNegativeValidIntervalIsAFilter`,
+  `TestQueryOptsHasValidInterval`.
+
+### Changed
+
+- **A reversed valid interval with a negative bound is refused** (PATCH v4.58.1, row 60; the sibling doors now share
+  one rule, docs/stability.md): `QueryOpts{ValidStart: -4000, ValidEnd: -5000}` or `{ValidStart: 5, ValidEnd: -5}`
+  returns `ErrInvalidTimeRange` from every generic door and `ValidateQueryOpts`, as a reversed positive interval always
+  did; before, a bound `<= 0` disabled the interval and the read answered unfiltered.
+
 ## [4.58.0] - 2026-10-16
 
 ### Added

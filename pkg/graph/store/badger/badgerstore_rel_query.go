@@ -50,7 +50,7 @@ func (bs *Store) fetchRelationshipsByTypeIDs(token uint16, ids []types.RelID, op
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	rels := make([]*types.Relationship, 0, capForLimit(opts.Limit))
 	for _, rid := range ids {
 		id := rid.SnowflakeID()
@@ -544,7 +544,7 @@ func (bs *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	// Temporal pre-filter via Peek.
 	rids = bs.filterRelIDsByTemporalPeek(rids, opts)
 
-	if storepkg.HasTemporalFilter(opts) {
+	if opts.HasValidTimeFilter() {
 		return bs.fetchRelsWithTemporalFilterPage(rids, opts)
 	}
 	rids = storepkg.PaginateRelIDs(rids, opts.After, opts.Limit)
@@ -673,7 +673,7 @@ func (bs *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 		return nil, nil
 	}
 	storepkg.SortRelIDs(rids)
-	if storepkg.HasTemporalFilter(opts) {
+	if opts.HasValidTimeFilter() {
 		var err error
 		rids, err = bs.filterRelIDsByTemporalFetch(rids, opts)
 		if err != nil {

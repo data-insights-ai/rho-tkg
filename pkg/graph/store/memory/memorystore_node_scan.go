@@ -46,7 +46,7 @@ func (ms *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 	}
 	ids = storepkg.PaginateNodeIDs(ids, opts.After, 0)
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	emitted := 0
 	for _, id := range ids {
 		ms.mu.RLock()

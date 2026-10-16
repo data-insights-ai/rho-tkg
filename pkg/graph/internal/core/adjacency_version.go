@@ -168,7 +168,7 @@ func (c *Core) singleVersionAdjacency(opts storepkg.QueryOpts) singleVersionAdja
 	switch {
 	case opts.ValidAt != 0:
 		probe = chainProbe{kind: probePoint, validAt: opts.ValidAt}
-	case opts.ValidStart > 0 && opts.ValidEnd > 0:
+	case opts.HasValidInterval():
 		probe = chainProbe{kind: probeInterval, validStart: opts.ValidStart, validEnd: opts.ValidEnd}
 	default:
 		return singleVersionAdjacencyResolver{}

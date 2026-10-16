@@ -1003,7 +1003,7 @@ func (bs *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 		return nil, nil
 	}
 	// Fetch nodes in distance order — do NOT sort by ID (would destroy distance ranking).
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	result := make([]*types.Node, 0, len(rawIDs))
 	for _, id := range rawIDs {
 		n, err := bs.prefetchNode(types.NodeID(id))
@@ -1028,7 +1028,7 @@ func (bs *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 }
 
 func (bs *Store) vectorTemporalFilter(key indexpkg.VectorIndexKey, dims int, opts QueryOpts) (func(snowflake.ID) bool, func() error) {
-	if !storepkg.HasTemporalFilter(opts) {
+	if !opts.HasValidTimeFilter() {
 		return nil, func() error { return nil }
 	}
 	var filterErr error

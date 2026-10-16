@@ -1,6 +1,8 @@
 package badger
 
 import (
+	"math"
+
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -60,7 +62,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 	// columns. Anything else (property predicates, pagination, tx-time) is the row
 	// path's job — declining is correct, and quietly ignoring an opt would return
 	// rows the caller did not ask for.
-	qFrom, qTo, temporalOnly := columnarValidTimeWindow(opts)
+	window, temporalOnly := columnarValidTimeWindow(opts)
 	if !temporalOnly {
 		return false
 	}
@@ -108,12 +110,12 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 
 	for start := 0; start < len(ids); start += storecontract.ColumnScanBatchRows {
 		// Zone-map skip: the whole block provably cannot match, so it costs nothing.
-		if !col.BlockCanMatch(start, qFrom, qTo) {
+		if !window.blockCanMatch(col, start) {
 			continue
 		}
 		end := min(start+storecontract.ColumnScanBatchRows, len(ids))
 		resetColumnBatch(batch, len(props))
-		if unfilteredWindow(qTo) {
+		if !window.filtered {
 			batch.IDs = append(batch.IDs, ids[start:end]...)
 			batch.Ordinals = append(batch.Ordinals, ords[start:end]...)
 			batch.ValidFrom = append(batch.ValidFrom, vf[start:end]...)
@@ -125,7 +127,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 			}
 		} else {
 			for ord := start; ord < end; ord++ {
-				if !validTimeMatches(eff[ord], vt[ord], qFrom, qTo) {
+				if !window.matches(eff[ord], vt[ord]) {
 					continue
 				}
 				batch.IDs = append(batch.IDs, ids[ord])
@@ -147,44 +149,60 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 	return true
 }
 
-// columnarValidTimeWindow normalises opts into a half-open [start, end) window with
+// validWindow is the valid-time filter of a column scan: the half-open
+// [from, to) when filtered, every row otherwise. The flag, not a magic bound,
+// says "no filter": every instant (0 and negatives included) is a real bound.
+type validWindow struct {
+	from, to int64
+	filtered bool
+}
+
+// matches is the per-row predicate the zone map approximates per block: a row
+// [f, t) matches when f < to and (t == 0 || t > from). A validTo of 0 is
+// OPEN-ENDED, not "ends at 0".
+func (w validWindow) matches(f, t int64) bool {
+	return !w.filtered || f < w.to && (t == 0 || t > w.from)
+}
+
+// columnarValidTimeWindow normalises opts into the scan's validWindow with
 // EXACTLY storeutil's semantics, reporting whether the columnar path may serve it.
 //
 // This must not be re-derived by hand. The canonical rules (storeutil.
 // MatchesTemporalFilter) are: ValidAt takes precedence; an interval needs BOTH
-// ValidStart and ValidEnd set, and a start >= end matches nothing; the interval test
-// is `from < end && (to == 0 || to > start)` — a STRICT upper bound, so a row
-// starting exactly at ValidEnd does NOT match. Guessing `from <= end` here made the
-// columnar path return one row the row path rejected.
+// ValidStart and ValidEnd set (QueryOpts.HasValidInterval), and a start >= end
+// matches nothing; the interval test is `from < end && (to == 0 || to > start)` —
+// a STRICT upper bound, so a row starting exactly at ValidEnd does NOT match.
+// Guessing `from <= end` here made the columnar path return one row the row path
+// rejected.
 //
 // A point filter ValidAt=t is the interval [t, t+1): `from < t+1` is `from <= t`,
-// and `to > t` is unchanged — so one predicate serves both shapes.
-func columnarValidTimeWindow(opts storecontract.QueryOpts) (start, end int64, ok bool) {
+// and `to > t` is unchanged — so one predicate serves both shapes. ValidAt -1 is
+// the window [-1, 0), a real one (ledger row 60). t = MaxInt64 saturates.
+func columnarValidTimeWindow(opts storecontract.QueryOpts) (w validWindow, ok bool) {
 	if opts.ValidAt != 0 {
-		return int64(opts.ValidAt), int64(opts.ValidAt) + 1, true
-	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
-		if opts.ValidStart >= opts.ValidEnd {
-			return 0, 0, false // matches nothing — let the row path own the empty answer
+		at := int64(opts.ValidAt)
+		to := at + 1
+		if at == math.MaxInt64 {
+			to = at
 		}
-		return int64(opts.ValidStart), int64(opts.ValidEnd), true
+		return validWindow{from: at, to: to, filtered: true}, true
 	}
-	return 0, 0, true // no active filter (a lone ValidStart or ValidEnd is not one)
+	if opts.HasValidInterval() {
+		if opts.ValidStart >= opts.ValidEnd {
+			return validWindow{}, false // matches nothing — let the row path own the empty answer
+		}
+		return validWindow{from: int64(opts.ValidStart), to: int64(opts.ValidEnd), filtered: true}, true
+	}
+	return validWindow{}, true // no active filter (a lone ValidStart or ValidEnd is not one)
 }
 
-// validTimeMatches is the per-row predicate the zone map approximates per block.
-// end == 0 means no filter. A validTo of 0 is OPEN-ENDED, not "ends at 0".
-func validTimeMatches(f, t, start, end int64) bool {
-	if end == 0 {
-		return true
-	}
-	return f < end && (t == 0 || t > start)
+// blockCanMatch reports whether the zone map leaves the block at start to scan:
+// always without a filter.
+func (w validWindow) blockCanMatch(col interface {
+	BlockCanMatch(start int, qFrom, qTo int64) bool
+}, start int) bool {
+	return !w.filtered || col.BlockCanMatch(start, w.from, w.to)
 }
-
-// unfilteredWindow reports whether every row of [start, end) passes the valid-time
-// window: true without a filter (end == 0), so the scan copies the block's
-// rows as runs instead of testing and appending them one by one.
-func unfilteredWindow(qTo int64) bool { return qTo == 0 }
 
 func columnKindOf(v indexpkg.ColumnView) storecontract.ColumnKind {
 	if v.Type == indexpkg.ColString {

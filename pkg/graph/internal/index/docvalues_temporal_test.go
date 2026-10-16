@@ -91,10 +91,10 @@ func TestTemporal_FutureBlockIsSkippable(t *testing.T) {
 	if l.BlockCanMatch(0, 100, 200) {
 		t.Error("block whose rows all start at 9000 was not skipped for a query ending at 200")
 	}
-	// An open-ended QUERY (qTo == 0) has no upper bound, so this arm must not fire.
-	if !l.BlockCanMatch(0, 100, 0) {
-		t.Error("open-ended query (qTo=0) was treated as ending at 0 and skipped a " +
-			"block it must scan")
+	// qTo == 0 is a real bound, not "no filter" (a caller without a filter does
+	// not ask): the window [-100, 0) ends before every row of the block.
+	if l.BlockCanMatch(0, -100, 0) {
+		t.Error("window [-100, 0) kept a block whose rows all start at 9000")
 	}
 }
 
@@ -119,7 +119,7 @@ func TestTemporal_SkipNeverDropsAMatchingRow(t *testing.T) {
 
 	for _, q := range [][2]int64{
 		{0, 10}, {500, 600}, {5_000, 5_001}, {8_000, 9_000},
-		{0, 0}, {100_000, 200_000}, {3_000, 3_000},
+		{0, 0}, {100_000, 200_000}, {3_000, 3_000}, {-50, 0}, {-50, 5}, {-1 << 63, 1},
 	} {
 		for start := 0; start < n; start += zoneBlockSize {
 			if l.BlockCanMatch(start, q[0], q[1]) {
@@ -129,7 +129,7 @@ func TestTemporal_SkipNeverDropsAMatchingRow(t *testing.T) {
 			end := min(start+zoneBlockSize, n)
 			for ord := start; ord < end; ord++ {
 				f, to := vf[ord], vt[ord]
-				matches := (q[1] == 0 || f <= q[1]) && (to == 0 || to > q[0])
+				matches := f < q[1] && (to == 0 || to > q[0])
 				if matches {
 					t.Fatalf("query [%d,%d] SKIPPED block at %d, but ordinal %d "+
 						"(valid [%d,%d]) matches — the zone map dropped a live row",

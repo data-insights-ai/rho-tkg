@@ -195,10 +195,10 @@ func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Fi
 	if after < 0 {
 		return nil, fmt.Errorf("%w: %d", ErrInvalidQueryCursor, after)
 	}
+	// 0 is the only unset value; a negative instant is a real one (QueryOpts
+	// rule, ledger row 60).
 	interval := pin.ValidStart != 0 || pin.ValidEnd != 0
 	switch {
-	case pin.ValidAt < 0 || pin.ValidStart < 0 || pin.ValidEnd < 0:
-		return nil, fmt.Errorf("%w: negative valid-time filter", ErrInvalidTimeRange)
 	case pin.ValidAt != 0 && interval:
 		return nil, fmt.Errorf("%w: ValidAt and [ValidStart, ValidEnd) are exclusive", ErrInvalidTimeRange)
 	case interval && (pin.ValidStart == 0 || pin.ValidEnd != 0 && pin.ValidStart >= pin.ValidEnd):

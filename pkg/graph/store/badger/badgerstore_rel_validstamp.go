@@ -135,7 +135,7 @@ func (bs *Store) ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, i
 		return err
 	}
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	if hasTemporal {
 		bs.ensureRelValidIdxBuilt() // lazy first-use build (no-op once built)
 	}
@@ -225,7 +225,7 @@ func (bs *Store) ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incomi
 		return err
 	}
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	if hasTemporal {
 		bs.ensureRelValidIdxBuilt() // lazy first-use build (no-op once built)
 	}

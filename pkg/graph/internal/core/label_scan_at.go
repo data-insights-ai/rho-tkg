@@ -211,7 +211,7 @@ func pureValidTimeProbe(opts storepkg.QueryOpts) (chainProbe, bool) {
 	switch {
 	case opts.ValidAt != 0:
 		return chainProbe{kind: probePoint, validAt: opts.ValidAt}, true
-	case opts.ValidStart > 0 && opts.ValidEnd > 0:
+	case opts.HasValidInterval():
 		return chainProbe{kind: probeInterval, validStart: opts.ValidStart, validEnd: opts.ValidEnd}, true
 	}
 	return chainProbe{}, false
