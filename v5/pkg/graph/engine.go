@@ -158,6 +158,7 @@ func readBudget() graphstore.OwnershipBudget {
 type pebbleEngine struct {
 	mu                       sync.Mutex
 	scanCandidates, scanHits atomic.Uint64
+	scanPages                atomic.Uint64 // entity record pages fetched by unindexed scans
 	cfg                      Config
 	store                    *raftlog.Store
 	decl                     graphstore.OwnershipDeclaration

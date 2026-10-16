@@ -216,7 +216,7 @@ func TestReopenSecondLifeOverlapRefused(t *testing.T) {
 	}
 	defer g2.Close()
 	check(g2)
-	update(t, g2, func(tx Tx) error { return tx.End(End{Target: ra, Scope: spanMS(t, 0, 280)}) })
+	update(t, g2, func(tx Tx) error { return tx.End(End{Target: ra, Scope: spanMS(t, 200, 280)}) })
 	update(t, g2, func(tx Tx) error {
 		return tx.Correct(Correct{Target: ra, Set: map[string]Value{"n": Int(9)}, Scope: spanMS(t, 250, 270)})
 	})
