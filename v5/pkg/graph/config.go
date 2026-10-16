@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
@@ -15,12 +16,28 @@ type Durability uint8
 
 // Durability levels.
 const (
-	// DurabilityBuffered acknowledges before the log is synced. Memory graphs
-	// may only use this level.
+	// DurabilityBuffered is the level a memory graph must use. The engine syncs
+	// every commit of a directory graph either way (raftlog.Store.Persist and
+	// InstallApplication have no relaxed mode), so on a directory graph it
+	// behaves as DurabilityCommit; the two differ only in what Validate allows.
 	DurabilityBuffered Durability = iota + 1
 	// DurabilityCommit syncs before Update returns; failure is ErrCommitNotDurable.
 	DurabilityCommit
 )
+
+// PropertySchema declares one typed scalar property. A value of another kind
+// (other than Null) is refused. Unique makes the property a unique claim over
+// all nodes (GetOrCreate); only node properties can be unique.
+type PropertySchema struct {
+	Key    string
+	Kind   ValueKind
+	Unique bool
+}
+
+// Allocation seeds the entity ID counter of a new graph: the first ID is Seed+1.
+// An importer sets it above the largest imported ID. It is read only when the
+// graph is created; a stored graph keeps its own counter.
+type Allocation struct{ Seed uint64 }
 
 // Config describes one graph. Exactly one of Dir and Memory is set.
 type Config struct {
@@ -39,6 +56,14 @@ type Config struct {
 	// where knowledge is meant. Known filters by recorded evidence; the snapshot's
 	// cut bounds what exists at all.
 	KnowledgeAxis types.DefaultAxisBinding
+	// NodeProperties and RelProperties seed the typed property schema at
+	// genesis; reopening with a different seed is ErrInvalidConfig. Any other key
+	// is declared by its first write (see Tx): its kind is the first value's
+	// kind, fixed from then on. Only a seed can be Unique.
+	NodeProperties []PropertySchema
+	RelProperties  []PropertySchema
+	// Allocation seeds the ID counter (see Allocation).
+	Allocation Allocation
 	// Durability is required.
 	Durability Durability
 	// Limits bounds temporal values; the zero value means temporal defaults.
@@ -72,6 +97,15 @@ func (c Config) Validate() error {
 	if sameAxis(c.KnowledgeAxis.Axis(), c.DefaultAxis.Axis()) {
 		return bad("KnowledgeAxis must differ from DefaultAxis")
 	}
+	if c.Allocation.Seed >= math.MaxInt64 {
+		return bad("Allocation.Seed must be below the largest public ID")
+	}
+	if err := checkSchema(c.NodeProperties, true); err != nil {
+		return err
+	}
+	if err := checkSchema(c.RelProperties, false); err != nil {
+		return err
+	}
 	switch c.Durability {
 	case DurabilityBuffered:
 	case DurabilityCommit:
@@ -92,15 +126,15 @@ type engine interface {
 	close() error
 }
 
-// Graph is an open graph. Until an engine exists every door validates its
-// arguments and then returns ErrNotImplemented; a nil *Graph is ErrClosed.
+// Graph is an open graph. Every door validates its arguments first; a nil or
+// zero Graph, and a closed one, is ErrClosed.
 type Graph struct {
 	cfg Config
 	eng engine
 }
 
-// Open validates cfg and opens the graph. Until an engine exists it returns a
-// nil Graph and ErrNotImplemented (after validation, so config errors win).
+// Open validates cfg and opens (or creates) the one-partition graph. Config
+// errors win; a stored graph that disagrees with cfg is ErrInvalidConfig.
 func Open(ctx context.Context, cfg Config) (*Graph, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("%w: nil context", ErrInvalidConfig)
@@ -111,16 +145,17 @@ func Open(ctx context.Context, cfg Config) (*Graph, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return nil, ErrNotImplemented
+	eng, err := openEngine(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &Graph{cfg: cfg, eng: eng}, nil
 }
 
-// Close releases the graph. Closing a nil Graph is ErrClosed.
+// Close releases the graph. Closing a nil, zero or closed Graph is ErrClosed.
 func (g *Graph) Close() error {
-	if g == nil {
+	if g == nil || g.eng == nil {
 		return ErrClosed
-	}
-	if g.eng == nil {
-		return ErrNotImplemented
 	}
 	return g.eng.close()
 }
@@ -136,7 +171,7 @@ func (g *Graph) Update(ctx context.Context, fn func(Tx) error) (Receipt, error) 
 		return Receipt{}, fmt.Errorf("%w: nil context or function", ErrInvalidRequest)
 	}
 	if g.eng == nil {
-		return Receipt{}, ErrNotImplemented
+		return Receipt{}, ErrClosed
 	}
 	return g.eng.update(ctx, fn)
 }
@@ -154,11 +189,28 @@ func (g *Graph) OpenSnapshot(ctx context.Context, spec SnapshotSpec) (*Snapshot,
 		return nil, err
 	}
 	if g.eng == nil {
-		return nil, ErrNotImplemented
+		return nil, ErrClosed
 	}
 	se, err := g.eng.openSnapshot(ctx, spec)
 	if err != nil {
 		return nil, err
 	}
 	return &Snapshot{eng: se, cfg: g.cfg}, nil
+}
+
+func checkSchema(ps []PropertySchema, node bool) error {
+	seen := map[string]bool{}
+	for _, p := range ps {
+		if p.Key == "" || seen[p.Key] {
+			return fmt.Errorf("%w: property schema key empty or duplicated", ErrInvalidConfig)
+		}
+		seen[p.Key] = true
+		if _, err := kindToScalar(p.Kind); err != nil {
+			return err
+		}
+		if p.Unique && (!node || p.Kind == KindFloat) {
+			return fmt.Errorf("%w: only node properties of non-float kind can be unique", ErrInvalidConfig)
+		}
+	}
+	return nil
 }

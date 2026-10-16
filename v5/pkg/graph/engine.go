@@ -1,0 +1,528 @@
+package graph
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"os"
+	"slices"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/cockroachdb/pebble/v2/vfs"
+	"go.etcd.io/raft/v3"
+	pb "go.etcd.io/raft/v3/raftpb"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
+)
+
+// One partition bound to the graphstore seams: genesis is
+// raftlog.Store.Initialize + graphstore.InitializeDeclaredPartitionWithDefaultAxis
+// (+ the routing and range rows of a single-partition declaration); every Update
+// is StagePartitionOperations + Persist + raftlog.Store.InstallApplication; every
+// read is OpenPartitionGraphReadView at one application index. No replica.
+const (
+	partitionID = 1
+	ownerEpoch  = 1
+	// A value dictionary handle is commitIndex<<valSeqBits | seq.
+	valSeqBits = 20
+)
+
+var (
+	contractID = sha256.Sum256([]byte("rho-tkg:v5/pkg/graph:single-partition:v1"))
+	lifeID     = graphstate.LifeID(1)
+	allocName  = []byte("rho-tkg:v5/pkg/graph:id-allocator:v1")
+	endPrefix  = []byte("rho-tkg:v5/pkg/graph:end:v1/")
+)
+
+// endKey names the engine row holding an entity's End position (End closes the
+// life; Retract does not, and the stored cells alone cannot tell them apart).
+func endKey(id graphstate.EntityID) []byte {
+	return binary.BigEndian.AppendUint64(slices.Clone(endPrefix), uint64(id))
+}
+
+// endAt reads the entity's committed End position at index.
+func (e *pebbleEngine) endAt(ctx context.Context, index uint64, id graphstate.EntityID) (temporal.Position, bool, error) {
+	view, err := e.store.ApplicationView(index)
+	if err != nil {
+		return temporal.Position{}, false, err
+	}
+	defer view.Close()
+	row, found, err := view.Get(ctx, endKey(id), 4096)
+	if err != nil || !found {
+		return temporal.Position{}, false, err
+	}
+	p, err := temporal.DecodePosition(row.Value, e.cfg.DefaultAxis.Axis(), e.cfg.Limits)
+	if err != nil {
+		return temporal.Position{}, false, fmt.Errorf("%w: stored End: %v", ErrCommitNotDurable, err)
+	}
+	return p, true, nil
+}
+
+func readBudget() graphstore.OwnershipBudget {
+	return graphstore.OwnershipBudget{SourceRows: 65536, SourceBytes: 64 << 20, OutputBytes: 64 << 20}
+}
+
+type pebbleEngine struct {
+	mu                       sync.Mutex
+	scanCandidates, scanHits atomic.Uint64
+	cfg                      Config
+	store                    *raftlog.Store
+	decl                     graphstore.OwnershipDeclaration
+	ns                       graphstore.Namespace
+	conf                     [32]byte
+	binding                  types.DefaultAxisBinding
+	node                     map[string]graphstate.PropertyDefinition
+	rel                      map[string]graphstate.PropertyDefinition
+	closed                   atomic.Bool
+	broken                   atomic.Pointer[error]
+	nonce                    atomic.Uint64
+	alloc                    allocState
+}
+
+var _ engine = (*pebbleEngine)(nil)
+
+func openEngine(ctx context.Context, cfg Config) (*pebbleEngine, error) {
+	gid := graphstate.GraphID(cfg.GraphID)
+	group := [16]byte(cfg.GraphID)
+	decl, err := graphstore.NewOwnershipDeclaration(gid, 1, []graphstore.PartitionOwnership{{Partition: partitionID, OwnershipEpoch: ownerEpoch, Group: group}}, graphstore.Limits{})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+	e := &pebbleEngine{cfg: cfg, decl: decl, ns: graphstore.Namespace{Graph: gid, Partition: partitionID}, binding: cfg.DefaultAxis,
+		node: map[string]graphstate.PropertyDefinition{}, rel: map[string]graphstate.PropertyDefinition{}}
+	e.conf = sha256.Sum256(append([]byte("rho-tkg:v5/pkg/graph:configuration:v1"), cfg.GraphID[:]...))
+	for _, p := range cfg.NodeProperties {
+		k, _ := kindToScalar(p.Kind)
+		d := graphstate.PropertyDefinition{Name: p.Key, Owner: graphstate.Node, Type: k, Cardinality: graphstate.ScalarCardinality}
+		if p.Unique {
+			d.Unique = graphstate.UniqueScalar
+		}
+		e.node[p.Key] = d
+	}
+	for _, p := range cfg.RelProperties {
+		k, _ := kindToScalar(p.Kind)
+		e.rel[p.Key] = graphstate.PropertyDefinition{Name: p.Key, Owner: graphstate.Relationship, Type: k, Cardinality: graphstate.ScalarCardinality}
+	}
+	var fs vfs.FS
+	dir, create := "mem", true
+	if cfg.Memory {
+		fs = vfs.NewMem()
+	} else {
+		fs = vfs.Default
+		dir = cfg.Dir
+		if ents, err := os.ReadDir(dir); err == nil && len(ents) > 0 {
+			create = false
+		}
+	}
+	rc := raftConfig(fs, dir, create, e.ns, group)
+	st, err := raftlog.Open(rc)
+	if err != nil {
+		return nil, fmt.Errorf("%w: open store: %v", ErrInvalidConfig, err)
+	}
+	e.store = st
+	if create {
+		err = e.genesis(ctx)
+	} else {
+		err = e.recover(ctx)
+	}
+	if err != nil {
+		_ = st.Close()
+		return nil, err
+	}
+	return e, nil
+}
+
+func raftConfig(fs vfs.FS, dir string, create bool, ns graphstore.Namespace, group [16]byte) raftlog.Config {
+	p := raftlog.DefaultApplicationPolicy(1)
+	p.MaxInstallWrites = 4096
+	p.RetainedApplicationRecords = 1 << 20
+	p.RetainedApplicationBytes = 256 << 20
+	return raftlog.Config{Dir: dir, FS: fs, Create: create, Application: p, Limits: raftlog.DefaultLimits(), SemanticContractID: contractID,
+		Replication:   raftlog.ApplicationReplicationConfig{Voters: [3]uint64{1, 2, 3}},
+		Generations:   raftlog.ApplicationGenerationLimits{MaxBytes: 1 << 30, MaxRecords: 1 << 21},
+		PublishedCuts: raftlog.ApplicationPublishedCutLimits{MaxTransferChunks: 1024},
+		Transfer: raftlog.ApplicationTransferConfig{Identity: raftlog.ApplicationIdentity{Graph: ns.Graph, Partition: ns.Partition, Group: group}, Contract: raftlog.ApplicationContractForPolicy(p),
+			Limits: raftlog.ApplicationTransferLimits{MaxExports: 2, MaxChunkRows: 64, MaxChunkBytes: 256 << 10, MaxStagedBytes: 16 << 20, MaxStagedRecords: 8192, MaxPinnedLogicalBytes: 64 << 20}}}
+}
+
+func (e *pebbleEngine) genesis(ctx context.Context) error {
+	seed, err := graphstore.NewOwnershipRoot(e.ns, e.decl)
+	if err != nil {
+		return err
+	}
+	image, err := graphstore.EncodeRoot(seed)
+	if err != nil {
+		return err
+	}
+	if err := e.store.Initialize([]uint64{1, 2, 3}, image); err != nil {
+		return fmt.Errorf("%w: initialize: %v", ErrInvalidConfig, err)
+	}
+	idx, prev, err := e.store.Checkpoint()
+	if err != nil {
+		return err
+	}
+	view, err := e.store.ApplicationView(idx)
+	if err != nil {
+		return err
+	}
+	defer view.Close()
+	var schemas []graphstate.PropertyDefinition
+	for _, p := range e.cfg.NodeProperties {
+		schemas = append(schemas, e.node[p.Key])
+	}
+	for _, p := range e.cfg.RelProperties {
+		schemas = append(schemas, e.rel[p.Key])
+	}
+	effects, _, err := graphstore.InitializeDeclaredPartitionWithDefaultAxis(ctx, view, e.decl, e.binding, schemas, graphstore.Limits{}, graphstore.GraphLimits{}, readBudget())
+	if err != nil {
+		return fmt.Errorf("%w: genesis: %v", ErrInvalidConfig, err)
+	}
+	root, err := effects.Root.AdvanceEffects(sha256.Sum256([]byte("rho-tkg:v5/pkg/graph:genesis")))
+	if err != nil {
+		return err
+	}
+	rows, err := e.routingRows()
+	if err != nil {
+		return err
+	}
+	e.alloc, err = newAllocState(e.cfg)
+	if err != nil {
+		return err
+	}
+	ar, err := e.alloc.row()
+	if err != nil {
+		return err
+	}
+	rows = append(rows, ar)
+	writes := append(slices.Clone(effects.Writes), rows...)
+	slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
+	img, err := graphstore.EncodeRoot(root)
+	if err != nil {
+		return err
+	}
+	return e.install(idx+1, sha256.Sum256(prev), img, writes)
+}
+
+// routingRows is the single-partition routing definition and one published
+// range holding every public ID.
+func (e *pebbleEngine) routingRows() ([]raftlog.KV, error) {
+	routing, err := graphstore.NewPartitionRouting(e.decl, 1, 0, []graphstore.BucketOwnership{
+		{Kind: graphstore.IdentityRoutingBucket, Partition: partitionID, Epoch: 1},
+		{Kind: graphstore.UniqueRoutingBucket, Partition: partitionID, Epoch: 1},
+		{Kind: graphstore.AxisRoutingBucket, Partition: partitionID, Epoch: 1}}, graphstore.Limits{})
+	if err != nil {
+		return nil, err
+	}
+	def, err := graphstore.EncodePartitionRoutingBinding(routing, e.decl, e.binding, e.conf, graphstore.Limits{})
+	if err != nil {
+		return nil, err
+	}
+	const last = uint64(1<<63 - 1)
+	pub := graphstore.RangePublication{Graph: e.ns.Graph, RangeID: 1, First: 1, Last: last, InitialPartition: partitionID, InitialEpoch: ownerEpoch, Configuration: e.conf, SourcePartition: partitionID, SourceIndex: 1}
+	pw, err := graphstore.EncodeRangePublication(pub)
+	if err != nil {
+		return nil, err
+	}
+	ow, err := graphstore.EncodeRangeOwnership(graphstore.RangeOwnership{Graph: e.ns.Graph, RangeID: 1, Partition: partitionID, Epoch: ownerEpoch, Configuration: e.conf})
+	if err != nil {
+		return nil, err
+	}
+	return []raftlog.KV{{Key: graphstore.RoutingDefinitionKey(e.ns), Value: def}, {Key: graphstore.RangePublicationKey(e.ns, 1), Value: pw},
+		{Key: graphstore.RangeOwnershipKey(e.ns, 1), Value: ow}, {Key: graphstore.RangeEndKey(e.ns, last), Value: pw}}, nil
+}
+
+// recover validates the stored schema and default axis against the Config.
+func (e *pebbleEngine) recover(ctx context.Context) error {
+	idx, _, err := e.store.Checkpoint()
+	if err != nil || idx == 0 {
+		return fmt.Errorf("%w: store holds no graph", ErrInvalidConfig)
+	}
+	view, err := e.store.ApplicationView(idx)
+	if err != nil {
+		return err
+	}
+	defer view.Close()
+	c, _, err := graphstore.OpenPartitionCatalogWithDefaultAxis(ctx, view, e.ns, ownerEpoch, e.binding, graphstore.Limits{}, graphstore.GraphLimits{}, readBudget())
+	if err != nil {
+		return fmt.Errorf("%w: stored graph does not match the config: %v", ErrInvalidConfig, err)
+	}
+	row, found, err := view.Get(ctx, allocName, 4096)
+	if err != nil || !found {
+		return fmt.Errorf("%w: stored graph has no ID allocator", ErrInvalidConfig)
+	}
+	if e.alloc, err = decodeAllocState(row.Value); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+	for _, defs := range []map[string]graphstate.PropertyDefinition{e.node, e.rel} {
+		for name, want := range defs {
+			got, found, err := c.Property(ctx, want.Owner, name)
+			if err != nil || !found || got != want {
+				return fmt.Errorf("%w: stored property schema differs from the config", ErrInvalidConfig)
+			}
+		}
+	}
+	return nil
+}
+
+// install persists the raft entry for index and installs the batch.
+func (e *pebbleEngine) install(index uint64, prevImageHash [32]byte, image []byte, writes []raftlog.KV) error {
+	term := uint64(2)
+	commit := index
+	typ := pb.EntryNormal
+	data := binary.BigEndian.AppendUint64([]byte("rho-v5 commit "), index)
+	if err := e.store.Persist(raft.Ready{HardState: &pb.HardState{Term: &term, Commit: &commit}, Entries: []*pb.Entry{{Index: &index, Term: &term, Type: &typ, Data: data}}}); err != nil {
+		return err
+	}
+	b := raftlog.ApplicationBatch{BaseGeneration: e.store.ApplicationGeneration(), BaseIndex: index - 1, BaseImageHash: prevImageHash, Image: image, Writes: writes}
+	return e.store.InstallApplication(index, b)
+}
+
+// ceiling is the commit instant on the knowledge axis: the local wall clock in
+// milliseconds at the time of the call (the engine has none of its own). A clock
+// that steps back lets an earlier Recorded pass and a later one fail; it never
+// orders commits, which the application index does. It is the zero Position when
+// the Config has no KnowledgeAxis.
+func (e *pebbleEngine) ceiling() temporal.Position {
+	ax := e.cfg.KnowledgeAxis.Axis()
+	if ax.DefinitionHash() == (temporal.Axis{}).DefinitionHash() {
+		return temporal.Position{}
+	}
+	p, err := types.InstantPosition(ax, types.Instant(time.Now().UnixMilli()), e.cfg.Limits)
+	if err != nil {
+		return temporal.Position{}
+	}
+	return p
+}
+
+func (e *pebbleEngine) check() error {
+	if e.closed.Load() {
+		return ErrClosed
+	}
+	if p := e.broken.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
+func (e *pebbleEngine) close() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed.Swap(true) {
+		return ErrClosed
+	}
+	return e.store.Close()
+}
+
+// ---- tokens ----
+
+const (
+	tokCut     = 'C'
+	tokReceipt = 'R'
+)
+
+func (e *pebbleEngine) token(kind byte, index uint64) []byte {
+	b := []byte{'R', 'V', '5', kind, 1}
+	b = append(b, e.ns.Graph[:]...)
+	return binary.BigEndian.AppendUint64(b, index)
+}
+
+func (e *pebbleEngine) parseToken(kind byte, b []byte) (uint64, bool) {
+	if len(b) != 5+16+8 || !bytes.Equal(b[:5], []byte{'R', 'V', '5', kind, 1}) || !bytes.Equal(b[5:21], e.ns.Graph[:]) {
+		return 0, false
+	}
+	i := binary.BigEndian.Uint64(b[21:])
+	return i, i > 0
+}
+
+// ---- update ----
+
+func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if err := e.check(); err != nil {
+		return Receipt{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return Receipt{}, err
+	}
+	base, prev, err := e.store.Checkpoint()
+	if err != nil {
+		return Receipt{}, err
+	}
+	next := base + 1
+	tx := &engineTx{e: e, ctx: ctx, base: base, next: next, alloc: e.alloc}
+	fnErr := func() (err error) {
+		defer func() { tx.done = true }()
+		return fn(tx)
+	}()
+	if fnErr != nil {
+		return Receipt{}, fnErr
+	}
+	if tx.err != nil {
+		return Receipt{}, tx.err
+	}
+	if len(tx.ops) == 0 {
+		return Receipt{tok: e.token(tokReceipt, base)}, nil
+	}
+	rev, err := state.NewRevision(next, 0)
+	if err != nil {
+		return Receipt{}, err
+	}
+	for i := range tx.ops {
+		if tx.ops[i].ValueID != 0 {
+			tx.ops[i].ValueID = graphstate.ValueID(next<<valSeqBits | uint64(tx.ops[i].ValueID))
+		}
+	}
+	view, err := e.store.ApplicationView(base)
+	if err != nil {
+		return Receipt{}, err
+	}
+	defer view.Close()
+	effects, _, err := graphstore.StagePartitionOperations(ctx, view, e.decl, e.binding, e.conf, tx.ops, rev, graphstore.Limits{MaxStageRecords: 4096, MaxReadRows: 65536, MaxReadBytes: 64 << 20}, graphstore.GraphLimits{MaxOutputBytes: 64 << 20, MaxSourceRows: 1 << 20, MaxSourceBytes: 64 << 20, RecordedCeiling: tx.ceil(), Pages: graphstore.PageLimits{MaxPatches: 4096, MaxTailAtoms: 4096, MaxWorkRecords: 65536, MaxWorkBytes: 32 << 20}}, readBudget(), tx.decls...)
+	if err != nil {
+		return Receipt{}, mapStageErr(err)
+	}
+	digest := sha256.Sum256(binary.BigEndian.AppendUint64(append([]byte("rho-v5 commit:"), prev...), next))
+	root, err := effects.Root.AdvanceEffects(digest)
+	if err != nil {
+		return Receipt{}, err
+	}
+	img, err := graphstore.EncodeRoot(root)
+	if err != nil {
+		return Receipt{}, err
+	}
+	writes := slices.Clone(effects.Writes)
+	if tx.alloc.dirty(e.alloc) {
+		ar, err := tx.alloc.row()
+		if err != nil {
+			return Receipt{}, err
+		}
+		writes = append(writes, ar)
+	}
+	for id, p := range tx.ends {
+		v, err := temporal.AppendPosition(nil, p, e.cfg.Limits)
+		if err != nil {
+			return Receipt{}, fmt.Errorf("%w: %v", ErrInvalidScope, err)
+		}
+		writes = append(writes, raftlog.KV{Key: endKey(id), Value: v})
+	}
+	slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
+	if err := e.commit(next, prev, img, writes); err != nil {
+		return Receipt{}, err
+	}
+	e.alloc = tx.alloc
+	for _, d := range tx.decls {
+		e.defs(d.Owner)[d.Name] = d
+	}
+	return Receipt{tok: e.token(tokReceipt, next)}, nil
+}
+
+// commit installs one batch at index over the image prev; a limit refusal leaves
+// the store usable, any other failure stops the engine.
+func (e *pebbleEngine) commit(index uint64, prev, image []byte, writes []raftlog.KV) error {
+	if err := e.install(index, sha256.Sum256(prev), image, writes); err != nil {
+		if errors.Is(err, raftlog.ErrLimit) {
+			return fmt.Errorf("%w: commit exceeds the install limit: %v", ErrInvalidRequest, err)
+		}
+		be := fmt.Errorf("%w: %v", ErrCommitNotDurable, err)
+		e.broken.Store(&be)
+		return be
+	}
+	return nil
+}
+
+func (e *pebbleEngine) defs(owner graphstate.EntityKind) map[string]graphstate.PropertyDefinition {
+	if owner == graphstate.Node {
+		return e.node
+	}
+	return e.rel
+}
+
+// definition finds a declared property: seeds and earlier declarations are in
+// the maps, anything else is read from the committed catalog.
+func (e *pebbleEngine) definition(ctx context.Context, index uint64, owner graphstate.EntityKind, name string) (graphstate.PropertyDefinition, bool, error) {
+	if d, ok := e.defs(owner)[name]; ok {
+		return d, true, nil
+	}
+	view, err := e.store.ApplicationView(index)
+	if err != nil {
+		return graphstate.PropertyDefinition{}, false, err
+	}
+	defer view.Close()
+	c, _, err := graphstore.OpenPartitionCatalogWithDefaultAxis(ctx, view, e.ns, ownerEpoch, e.binding, graphstore.Limits{}, graphstore.GraphLimits{}, readBudget())
+	if err != nil {
+		return graphstate.PropertyDefinition{}, false, err
+	}
+	d, found, err := c.Property(ctx, owner, name)
+	if err == nil && found {
+		e.defs(owner)[name] = d
+	}
+	return d, found, err
+}
+
+func mapStageErr(err error) error {
+	switch {
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return err
+	case errors.Is(err, graphstate.ErrNotFound):
+		return fmt.Errorf("%w: %v", ErrNotFound, err)
+	case errors.Is(err, graphstate.ErrUniqueOverlap):
+		return fmt.Errorf("%w: %v", ErrUniqueViolation, err)
+	case errors.Is(err, graphstate.ErrTypeMismatch), errors.Is(err, graphstate.ErrSchemaMismatch):
+		return fmt.Errorf("%w: %v", ErrInvalidValue, err)
+	case errors.Is(err, graphstate.ErrValidityRequired), errors.Is(err, graphstate.ErrEmptyMutation), errors.Is(err, graphstate.ErrOwnerValidity), errors.Is(err, graphstate.ErrLifecycleOverlap):
+		return fmt.Errorf("%w: %v", ErrInvalidScope, err)
+	case errors.Is(err, graphstate.ErrResourceLimit), errors.Is(err, graphstore.ErrResourceLimit):
+		return fmt.Errorf("%w: %v", ErrInvalidRequest, err)
+	case errors.Is(err, graphstate.ErrAlreadyExists):
+		return fmt.Errorf("%w: %v", ErrConflict, err)
+	}
+	return fmt.Errorf("%w: %v", ErrInvalidOp, err)
+}
+
+// ---- snapshot ----
+
+func (e *pebbleEngine) openSnapshot(ctx context.Context, spec SnapshotSpec) (snapshotEngine, error) {
+	// No e.mu: a snapshot may be opened from inside an Update function.
+	if err := e.check(); err != nil {
+		return nil, err
+	}
+	applied, _, err := e.store.Checkpoint()
+	if err != nil {
+		return nil, err
+	}
+	index := applied
+	switch spec.kind {
+	case snapAt:
+		i, ok := e.parseToken(tokCut, spec.cut.tok)
+		if !ok || i > applied {
+			return nil, fmt.Errorf("%w: not a cut of this graph", ErrInvalidCut)
+		}
+		index = i
+	case snapAfter:
+		i, ok := e.parseToken(tokReceipt, spec.rcpt.tok)
+		if !ok || i > applied {
+			return nil, fmt.Errorf("%w: not a receipt of this graph", ErrInvalidReceipt)
+		}
+	}
+	// Probe: the view must still be retained.
+	v, err := e.store.ApplicationView(index)
+	if err != nil {
+		if errors.Is(err, raftlog.ErrApplicationExpired) {
+			return nil, ErrSnapshotExpired
+		}
+		return nil, err
+	}
+	_ = v.Close()
+	return &engineSnap{e: e, index: index, nonce: e.nonce.Add(1), cuts: Cut{tok: e.token(tokCut, index)}, pages: map[uint64]*pageState{}}, nil
+}

@@ -316,9 +316,15 @@ func natExcise(t *testing.T, a Adapter) {
 	}{{100, after, "a"}, {149, after, "a"}, {150, after, nil}, {199, after, nil}, {200, after, "a"}, {299, after, "a"}, {300, after, nil}, {170, before, "a"}} {
 		wantAtTx(t, g, n.ID, c.valid, c.tx, "k", c.want)
 	}
-	if v := voidRows(t, g, n.ID); len(v) != 1 || v[0].ValidFrom != 150 || v[0].ValidTo != 200 {
-		t.Fatalf("void rows = %+v, want one covering [150,200)", v)
+	// The hole is read through the history (Timeline in v5): the state before the
+	// excise stays addressable. Void rows are a v4 representation; the compat
+	// excise cases assert them.
+	h, err := g.NodeHistory(n.ID)
+	ok(t, err)
+	if len(h) < 1 {
+		t.Fatalf("the excise left no earlier state in the history")
 	}
+	wantProps(t, "history keeps the unsplit state", h[0].Props, map[string]any{"k": "a"})
 	for _, pin := range []int64{before, after} {
 		got, err := g.NodeAsOf(n.ID, pin)
 		ok(t, err)

@@ -14,8 +14,11 @@ import (
 // Identity is by kind: what is stored is what is read back, an integer stays an
 // integer and a float stays a float.
 //
-//	native  v5's rule: Lookup, effective-page Filter and GetOrCreateByKey agree
-//	        on 3 vs 3.0; one stored row each; kind preserved on read-back.
+//	native  v5's rule: a key has one kind, its first value's. An exact numeric of
+//	        the other numeric kind converts (3.0 into an int key), anything else
+//	        (3.5 or "3" into an int key) is refused. Lookup, effective-page
+//	        Filter, Count and GetOrCreateByKey agree on 3 vs 3.0; one stored row
+//	        per write. Mixed kinds under one key are v4's rule (compat).
 //	compat  v4's rule (branch v4-numeric-eq, pkg/types/property_equal.go): every
 //	        width of the same exact value (int8, uint, float32, float64 ...), the
 //	        count of an equality door equals its rows, no rounding past 2^53.
@@ -23,14 +26,14 @@ import (
 //	        as lookup == filtered scan.
 //	both    the ID boundaries.
 //
-// Gap: the Graph interface has no Statistics door, so the native Statistics case
-// waits for an adapter method (adapter.go is not owned by this file).
 
 func init() {
 	register("NumericRule",
 		native("LookupAgreesOn3And3Point0", numLookupAgrees),
 		native("ScanFilterAgreesOn3And3Point0", numScanAgrees),
 		native("GetOrCreateAgreesOn3And3Point0", numGetOrCreateAgrees),
+		native("CountAgreesOn3And3Point0", numCountAgrees),
+		native("TypedKeyRefusesOtherKinds", numTypedKey),
 		native("NaNAndOtherKindsMatchNothing", numNothingMatches),
 		compat("EveryWidthOfTheSameValueIsOneRule", numWidths),
 		compat("LookupEqualsFilteredScan", numCountEqualsRows),
@@ -119,8 +122,6 @@ func numLookupAgrees(t *testing.T, a Adapter) {
 	i3 := addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": 3}})
 	f3 := addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": 3.0}})
 	i4 := addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": 4}})
-	f35 := addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": 3.5}})
-	addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": "3"}})
 
 	both3 := sortedIDs([]Node{i3, f3})
 	wantIDs(t, "lookup 3", lookupIDs(t, g, "N", "v", 3), both3)
@@ -128,30 +129,13 @@ func numLookupAgrees(t *testing.T, a Adapter) {
 	wantIDs(t, "lookup int64(3)", lookupIDs(t, g, "N", "v", int64(3)), both3)
 	wantIDs(t, "lookup 4", lookupIDs(t, g, "N", "v", 4), []int64{i4.ID})
 	wantIDs(t, "lookup 4.0", lookupIDs(t, g, "N", "v", 4.0), []int64{i4.ID})
-	wantIDs(t, "lookup 3.5", lookupIDs(t, g, "N", "v", 3.5), []int64{f35.ID})
-	wantIDs(t, "lookup 3.25", lookupIDs(t, g, "N", "v", 3.25), nil)
-
-	// Kind is preserved on every read-back; two rows, not one merged row.
-	for _, n := range []Node{mustGet(t, g, i3.ID), mustGet(t, g, f3.ID)} {
-		want := map[int64]string{i3.ID: "int", f3.ID: "float"}[n.ID]
-		wantKind(t, "Get", n, "v", want)
-	}
-	ns, err := g.NodesByLabelAndProperty("N", "v", 3, Query{})
-	ok(t, err)
-	for _, n := range ns {
-		wantKind(t, "lookup read-back", n, "v", map[int64]string{i3.ID: "int", f3.ID: "float"}[n.ID])
-	}
+	wantIDs(t, "lookup 3.5", lookupIDs(t, g, "N", "v", 3.5), nil)
+	wantIDs(t, "lookup string 3", lookupIDs(t, g, "N", "v", "3"), nil)
 	all, err := g.NodesByLabel("N", Query{})
 	ok(t, err)
-	if len(all) != 5 {
-		t.Fatalf("%d N nodes, want 5 (one stored row per write)", len(all))
+	if len(all) != 3 {
+		t.Fatalf("%d N nodes, want 3 (one stored row per write)", len(all))
 	}
-
-	// An update changes the stored kind; the lookups follow.
-	_, err = g.UpdateNode(ctx, i3.ID, map[string]any{"v": 3.0}, 0)
-	ok(t, err)
-	wantKind(t, "after update", mustGet(t, g, i3.ID), "v", "float")
-	wantIDs(t, "lookup 3 after update", lookupIDs(t, g, "N", "v", 3), both3)
 }
 
 func numScanAgrees(t *testing.T, a Adapter) {
@@ -160,7 +144,6 @@ func numScanAgrees(t *testing.T, a Adapter) {
 	i3 := addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": 3}})
 	f3 := addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": 3.0}})
 	i4 := addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": 4}})
-	addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": "3"}})
 
 	both3 := sortedIDs([]Node{i3, f3})
 	for _, c := range []struct {
@@ -172,6 +155,7 @@ func numScanAgrees(t *testing.T, a Adapter) {
 		{"filter 3.0", 3.0, both3},
 		{"filter 4.0", 4.0, []int64{i4.ID}},
 		{"filter 3.5", 3.5, nil},
+		{"filter string 3", "3", nil},
 	} {
 		got := scanIDs(t, g, "v", c.eq)
 		wantIDs(t, c.what, got, c.want)
@@ -186,6 +170,9 @@ func numGetOrCreateAgrees(t *testing.T, a Adapter) {
 		// also under v4.57.1; the 3 vs 3.0 identity is the v5 rule.
 		t.Skip("v4 GetOrCreateByKey refuses float keys; 3 vs 3.0 identity is v5-only")
 	}
+	// A key has one kind (its first value's): an exact numeric of the other kind
+	// converts, an inexact one is refused. So 3, 3.0 and int64(3) are one identity
+	// and the stored kind is the key's.
 	g := open(t, a, false)
 	first, created, err := g.GetOrCreateByKey(ctx, "K", "k", 3, nil)
 	ok(t, err)
@@ -201,37 +188,34 @@ func numGetOrCreateAgrees(t *testing.T, a Adapter) {
 		}
 		wantKind(t, fmt.Sprintf("GetOrCreate(%v) hit", v), again, "k", "int")
 	}
-	// The other way round: a float stored first keeps its kind for an integer hit.
-	fl, created, err := g.GetOrCreateByKey(ctx, "K", "k", 5.0, nil)
-	ok(t, err)
-	if !created {
-		t.Fatalf("GetOrCreate(5.0) did not create")
+	// 3.5 does not fit an integer key: refused, nothing created.
+	_, created, err = g.GetOrCreateByKey(ctx, "K", "k", 3.5, nil)
+	if err == nil || created {
+		t.Fatalf("GetOrCreate(3.5) on an integer key: created=%v err=%v, want a refusal", created, err)
 	}
-	hit, created, err := g.GetOrCreateByKey(ctx, "K", "k", 5, nil)
-	ok(t, err)
-	if created || hit.ID != fl.ID {
-		t.Fatalf("GetOrCreate(5) after 5.0: created=%v id=%d, want the existing node %d", created, hit.ID, fl.ID)
-	}
-	wantKind(t, "5 over 5.0", hit, "k", "float")
-	// A different value is a different identity.
-	other, created, err := g.GetOrCreateByKey(ctx, "K", "k", 3.5, nil)
-	ok(t, err)
-	if !created || other.ID == first.ID {
-		t.Fatalf("GetOrCreate(3.5) must mint a new node")
-	}
+	is(t, "3.5 on an integer key", err, ErrInvalidArgument)
 	ns, err := g.NodesByLabel("K", Query{})
 	ok(t, err)
-	if len(ns) != 3 {
-		t.Fatalf("%d K nodes, want 3 (3, 5.0, 3.5)", len(ns))
+	if len(ns) != 1 {
+		t.Fatalf("%d K nodes, want 1", len(ns))
 	}
 }
 
 func numNothingMatches(t *testing.T, a Adapter) {
 	needNumericRule(t, a)
 	g := open(t, a, false)
-	addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": math.NaN()}})
+	if isV5(a) {
+		// v5 values are finite: a non-finite number is refused at the write, so it
+		// can neither be stored nor matched.
+		for _, f := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+			_, err := g.AddNode(ctx, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": f}})
+			is(t, fmt.Sprintf("write %v", f), err, ErrInvalidArgument)
+		}
+	} else {
+		addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": math.NaN()}})
+	}
 	addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": 3}})
-	addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": "NaN"}})
+	addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"s": "NaN"}})
 	wantIDs(t, "lookup NaN", lookupIDs(t, g, "N", "v", math.NaN()), nil)
 	wantIDs(t, "filter NaN", scanIDs(t, g, "v", math.NaN()), nil)
 	wantIDs(t, "lookup string 3 finds no number", lookupIDs(t, g, "N", "v", "3"), nil)
@@ -333,5 +317,55 @@ func numIDBoundaries(t *testing.T, a Adapter) {
 	cur := mustGet(t, g, n.ID)
 	if cur.Version != 0 {
 		t.Fatalf("refused writes changed node %d: %+v", n.ID, cur)
+	}
+}
+
+// numCountAgrees: the count door equals the rows of the lookup for 3 vs 3.0.
+func numCountAgrees(t *testing.T, a Adapter) {
+	needNumericRule(t, a)
+	g := open(t, a, false)
+	for _, v := range []any{3, 3.0, 4} {
+		addNode(t, g, NodeSpec{Labels: []string{"N"}, Props: map[string]any{"v": v}})
+	}
+	for _, probe := range []any{3, 3.0, 4, 3.5, 3.25, "3"} {
+		rows := lookupIDs(t, g, "N", "v", probe)
+		c, err := g.CountByLabelPropertyValue("N", "v", probe)
+		ok(t, err)
+		if c != len(rows) {
+			t.Fatalf("probe %T(%v): count %d, lookup %d rows", probe, probe, c, len(rows))
+		}
+	}
+}
+
+// numTypedKey: v5's one-kind-per-key rule. The first value declares the key's
+// kind; an exact numeric of the other numeric kind converts and reads back in
+// the key's kind; 3.5 or "3" into an int key, a number into a string key are
+// refused and change nothing. v4 keys are dynamically typed (compat).
+func numTypedKey(t *testing.T, a Adapter) {
+	if !isV5(a) {
+		t.Skip("v4 property keys are dynamically typed; the typed-key rule is v5-only")
+	}
+	g := open(t, a, false)
+	n := addNode(t, g, NodeSpec{Labels: []string{"T"}, Props: map[string]any{"i": 3, "f": 2.5, "s": "x"}})
+	m := addNode(t, g, NodeSpec{Labels: []string{"T"}, Props: map[string]any{"i": 4.0, "f": 2}})
+	wantKind(t, "4.0 into an int key", mustGet(t, g, m.ID), "i", "int")
+	wantKind(t, "2 into a float key", mustGet(t, g, m.ID), "f", "float")
+	for _, c := range []struct {
+		key string
+		v   any
+	}{{"i", 3.5}, {"i", "3"}, {"i", true}, {"f", "2.5"}, {"s", 1}, {"s", 1.5}} {
+		_, err := g.AddNode(ctx, NodeSpec{Labels: []string{"T"}, Props: map[string]any{c.key: c.v}})
+		is(t, fmt.Sprintf("AddNode %s=%T(%v)", c.key, c.v, c.v), err, ErrInvalidArgument)
+		_, err = g.UpdateNode(ctx, n.ID, map[string]any{c.key: c.v}, 0)
+		is(t, fmt.Sprintf("UpdateNode %s=%T(%v)", c.key, c.v, c.v), err, ErrInvalidArgument)
+	}
+	cur := mustGet(t, g, n.ID)
+	if cur.Version != 0 || cur.Props["i"] != int64(3) {
+		t.Fatalf("refused updates changed node %d: %+v", n.ID, cur)
+	}
+	ns, err := g.NodesByLabel("T", Query{})
+	ok(t, err)
+	if len(ns) != 2 {
+		t.Fatalf("%d T nodes, want 2: a refused write created a node", len(ns))
 	}
 }

@@ -38,7 +38,8 @@ type SnapshotSpec struct {
 // Fresh reads the newest committed state.
 func Fresh() SnapshotSpec { return SnapshotSpec{kind: snapFresh} }
 
-// Stable reads the newest certified-stable state.
+// Stable reads the newest certified-stable state. One partition has no
+// certification lag, so it is the same cut as Fresh.
 func Stable() SnapshotSpec { return SnapshotSpec{kind: snapStable} }
 
 // At reads exactly at c.
@@ -146,9 +147,10 @@ func (s Selector) Validate(l temporal.Limits) error {
 
 // Projection chooses what a row carries.
 type Projection struct {
-	Properties []string // empty = none
-	Provenance bool     // gap row 26
-	Revisions  bool
+	Properties    []string // names of the properties to return; empty = none
+	AllProperties bool     // return every property of the row (keys are not known up front)
+	Provenance    bool     // gap row 26
+	Revisions     bool
 }
 
 func (p Projection) validate() error {
@@ -196,13 +198,16 @@ type Entity struct {
 	Props    map[string]Value
 	Valid    temporal.Scope
 	Known    temporal.Scope
+	// Revision is the commit that produced this Timeline row (a store-local
+	// sequence, not an ordering of cuts across graphs); zero unless the
+	// Projection asked for Revisions.
+	Revision uint64
 }
 
-// Page is one bounded batch. Done is true when Next is the zero Cursor.
+// Page is one bounded batch; the zero Next Cursor ends the walk.
 type Page struct {
 	Rows []Entity
 	Next Cursor
-	Done bool
 }
 
 // PageLimits bounds one page of any read door: Rows is 1..MaxPageRows and
@@ -228,12 +233,13 @@ func (p PageLimits) Validate() error {
 	return nil
 }
 
-// ScanRequest starts a scan (gap rows 9-10, 21-22).
-//
-// TODO(takeover plan, S2 wrapper vs engine): Labels and Equals need label and
-// property-equality index pages the engine does not have yet (ReadView offers
-// per-owner pages and unique candidates only; review MAJOR 7). The request is
-// final; the engine work (V4.2/V3.2) is not wrapper work.
+// ScanRequest starts a scan (gap rows 9-10, 21-22): the rows of every entity
+// matching Selector, in ID order, one row per segment of Valid where it is
+// active and matches (all Labels held, RelType, every Equals by the numeric
+// rule). Candidates come from the equality or label index; without Labels or
+// Equals the scan walks every entity. A Known scope other than All is
+// ErrNotImplemented (the evidence filter, WP-30). One scan's index candidates
+// must fit one read budget, else ErrInvalidRequest.
 type ScanRequest struct {
 	Selector   Selector
 	Projection Projection
@@ -330,7 +336,7 @@ type Snapshot struct {
 }
 
 func (s *Snapshot) pre(ctx context.Context) error {
-	if s == nil {
+	if s == nil || s.eng == nil {
 		return ErrClosed
 	}
 	if ctx == nil {
@@ -361,7 +367,7 @@ func (s *Snapshot) Scan(ctx context.Context, r ScanRequest) (Page, error) {
 		return Page{}, err
 	}
 	if s.eng == nil {
-		return Page{}, ErrNotImplemented
+		return Page{}, ErrClosed
 	}
 	return s.eng.scan(ctx, r)
 }
@@ -379,7 +385,7 @@ func (s *Snapshot) Resume(ctx context.Context, c Cursor, p PageLimits) (Page, er
 		return Page{}, err
 	}
 	if s.eng == nil {
-		return Page{}, ErrNotImplemented
+		return Page{}, ErrClosed
 	}
 	return s.eng.resume(ctx, c, p)
 }
@@ -396,7 +402,7 @@ func (s *Snapshot) Lookup(ctx context.Context, r LookupRequest) (Page, error) {
 		return Page{}, err
 	}
 	if s.eng == nil {
-		return Page{}, ErrNotImplemented
+		return Page{}, ErrClosed
 	}
 	return s.eng.lookup(ctx, r)
 }
@@ -414,7 +420,7 @@ func (s *Snapshot) Timeline(ctx context.Context, r TimelineRequest) (Page, error
 		return Page{}, err
 	}
 	if s.eng == nil {
-		return Page{}, ErrNotImplemented
+		return Page{}, ErrClosed
 	}
 	return s.eng.timeline(ctx, r)
 }
@@ -425,7 +431,7 @@ func (s *Snapshot) Close() error {
 		return ErrClosed
 	}
 	if s.eng == nil {
-		return ErrNotImplemented
+		return ErrClosed
 	}
 	return s.eng.close()
 }

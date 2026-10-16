@@ -378,6 +378,11 @@ func (w *wrap) NodesByLabelAndProperty(label, key string, value any, q conforman
 	return w.nodes(w.g.Nodes().ByLabelAndProperty(label, key, value, opts(q)))
 }
 
+func (w *wrap) CountByLabelPropertyValue(label, key string, value any) (int, error) {
+	c, _, err := w.g.Nodes().CountByLabelPropertyValue(label, key, value, store.QueryOpts{})
+	return int(c), mapErr(err)
+}
+
 func (w *wrap) NodeAsOf(id int64, tx int64) (conformance.Node, error) {
 	n, err := w.g.Temporal().NodeAsOf(types.NodeID(id), inst(tx))
 	if err != nil {

@@ -14,6 +14,7 @@ func init() {
 		both("ByLabelValidTimeSelectors", lookupLabelValidTime),
 		both("ByLabelRefusals", lookupLabelRefusals),
 		both("ByLabelAndPropertyIsTypeStrictAndHistorical", lookupProperty),
+		compat("ByLabelAndPropertyStringAndIntegerUnderOneKey", lookupPropertyMixedKinds),
 		compat("ByLabelAndPropertyBitemporal", lookupPropertyBitemporal),
 	)
 }
@@ -188,7 +189,7 @@ func lookupLabelRefusals(t *testing.T, a Adapter) {
 func lookupProperty(t *testing.T, a Adapter) {
 	g := open(t, a, true)
 	one := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"v": 1}, TxFrom: ts(1000)})
-	str := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"v": "1"}, TxFrom: ts(1000)})
+	str := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"s": "1"}, TxFrom: ts(1000)})
 	two := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"v": 2}, TxFrom: ts(1000)})
 	noKey := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"w": 1}, TxFrom: ts(1000)})
 	_ = noKey
@@ -204,7 +205,9 @@ func lookupProperty(t *testing.T, a Adapter) {
 		return sortedIDs(ns)
 	}
 	wantIDs(t, "v=1 (integer)", get("E", "v", 1, Query{}), []int64{one.ID})
-	wantIDs(t, `v="1" (string)`, get("E", "v", "1", Query{}), []int64{str.ID})
+	wantIDs(t, `v="1" (a string is no integer)`, get("E", "v", "1", Query{}), nil)
+	wantIDs(t, `s="1" (string)`, get("E", "s", "1", Query{}), []int64{str.ID})
+	wantIDs(t, "s=1 (an integer is no string)", get("E", "s", 1, Query{}), nil)
 	wantIDs(t, "v=2", get("E", "v", 2, Query{}), []int64{two.ID})
 	wantIDs(t, "v=3 (absent value)", get("E", "v", 3, Query{}), nil)
 	wantIDs(t, "key w holds no v", get("E", "w", 2, Query{}), nil)
@@ -218,11 +221,34 @@ func lookupProperty(t *testing.T, a Adapter) {
 
 	wantIDs(t, "v=1 now", get("E", "v", 1, Query{}), nil)
 	wantIDs(t, "v=3 now", get("E", "v", 3, Query{}), []int64{one.ID})
-	wantIDs(t, `v="1" now (deleted)`, get("E", "v", "1", Query{}), nil)
+	wantIDs(t, `s="1" now (deleted)`, get("E", "s", "1", Query{}), nil)
 	// The same questions at the pin before the mutations give the old answers.
 	wantIDs(t, "v=1 at the pin", get("E", "v", 1, Query{TxPin: pin}), []int64{one.ID})
 	wantIDs(t, "v=3 at the pin", get("E", "v", 3, Query{TxPin: pin}), nil)
-	wantIDs(t, `v="1" at the pin`, get("E", "v", "1", Query{TxPin: pin}), []int64{str.ID})
+	wantIDs(t, `s="1" at the pin`, get("E", "s", "1", Query{TxPin: pin}), []int64{str.ID})
+}
+
+// lookupPropertyMixedKinds: v4 keys are dynamically typed, so an integer 1 and
+// a string "1" under one key are two values; the lookup is type-strict now and
+// at a pin. v5 keys have one kind (NumericRule/TypedKeyRefusesOtherKinds).
+func lookupPropertyMixedKinds(t *testing.T, a Adapter) {
+	g := open(t, a, true)
+	one := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"v": 1}, TxFrom: ts(1000)})
+	str := addNode(t, g, NodeSpec{Labels: []string{"E"}, Props: map[string]any{"v": "1"}, TxFrom: ts(1000)})
+	pin, err := g.CommittedTx()
+	ok(t, err)
+	get := func(v any, q Query) []int64 {
+		t.Helper()
+		ns, err := g.NodesByLabelAndProperty("E", "v", v, q)
+		ok(t, err)
+		return sortedIDs(ns)
+	}
+	wantIDs(t, "v=1 (integer)", get(1, Query{}), []int64{one.ID})
+	wantIDs(t, `v="1" (string)`, get("1", Query{}), []int64{str.ID})
+	ok(t, g.DeleteNode(ctx, str.ID, 0))
+	wantIDs(t, `v="1" now (deleted)`, get("1", Query{}), nil)
+	wantIDs(t, "v=1 now", get(1, Query{}), []int64{one.ID})
+	wantIDs(t, `v="1" at the pin`, get("1", Query{TxPin: pin}), []int64{str.ID})
 }
 
 // lookupPropertyBitemporal: a value valid only in a window, asked at valid

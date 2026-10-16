@@ -178,15 +178,18 @@ func StagePartitionOperationsWithOutputBudget(ctx context.Context, view *raftlog
 	if output == nil {
 		return GraphEffects{}, PageWork{}, ErrInvalid
 	}
-	return stagePartitionOperationsBudget(ctx, view, d, binding, configuration, ops, revision, l, g, budget, output)
+	return stagePartitionOperationsBudget(ctx, view, d, binding, configuration, ops, revision, l, g, budget, output, nil)
 }
 
 // StagePartitionOperations admits typed operations through the checked reader,
 // shared Plan and shared stager. It never installs or admits raw caller Delta.
-func StagePartitionOperations(ctx context.Context, view *raftlog.ApplicationView, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, ops []graphstate.Operation, revision state.Revision, l Limits, g GraphLimits, budget OwnershipBudget) (GraphEffects, PageWork, error) {
-	return stagePartitionOperationsBudget(ctx, view, d, binding, configuration, ops, revision, l, g, budget, nil)
+// decls are property declarations staged (Stage.Property, add-only, a changed
+// definition is ErrRebinding) in the same effects before the ops, which plan
+// against them: an embedding declares a key on first use in one commit.
+func StagePartitionOperations(ctx context.Context, view *raftlog.ApplicationView, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, ops []graphstate.Operation, revision state.Revision, l Limits, g GraphLimits, budget OwnershipBudget, decls ...graphstate.PropertyDefinition) (GraphEffects, PageWork, error) {
+	return stagePartitionOperationsBudget(ctx, view, d, binding, configuration, ops, revision, l, g, budget, nil, decls)
 }
-func stagePartitionOperationsBudget(ctx context.Context, view *raftlog.ApplicationView, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, ops []graphstate.Operation, revision state.Revision, l Limits, g GraphLimits, budget OwnershipBudget, supplied *graphstate.OutputBudget) (GraphEffects, PageWork, error) {
+func stagePartitionOperationsBudget(ctx context.Context, view *raftlog.ApplicationView, d OwnershipDeclaration, binding types.DefaultAxisBinding, configuration [32]byte, ops []graphstate.Operation, revision state.Revision, l Limits, g GraphLimits, budget OwnershipBudget, supplied *graphstate.OutputBudget, decls []graphstate.PropertyDefinition) (GraphEffects, PageWork, error) {
 	if err := budget.validate(); err != nil {
 		return GraphEffects{}, PageWork{}, err
 	}
@@ -205,7 +208,27 @@ func stagePartitionOperationsBudget(ctx context.Context, view *raftlog.Applicati
 	}
 	resolved := v.limits
 	resolved.MaxOutputBytes = min(resolved.MaxOutputBytes, budget.OutputBytes)
-	return stageOpenedOperations(ctx, v.c, v, ops, revision, resolved, nil)
+	return stageOpenedOperations(ctx, v.c, v, ops, revision, resolved, nil, decls)
+}
+
+// declaredView answers the planner's schema reads with the declarations staged
+// beside the ops; every other read is the checked view's.
+type declaredView struct {
+	*ReadView
+	decls []graphstate.PropertyDefinition
+}
+
+func (v declaredView) Property(ctx context.Context, owner graphstate.EntityKind, name string) (graphstate.PropertyRead, error) {
+	r, err := v.ReadView.Property(ctx, owner, name)
+	if err != nil || r.Found {
+		return r, err
+	}
+	for _, d := range v.decls {
+		if d.Owner == owner && d.Name == name {
+			r.Found, r.Record = true, d
+		}
+	}
+	return r, nil
 }
 func (s *partitionReadScope) bucket(q *reader, kind RoutingBucketKind, key []byte) error {
 	owner, err := s.routing.Bucket(kind, key)
