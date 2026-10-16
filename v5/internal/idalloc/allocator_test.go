@@ -34,7 +34,7 @@ func TestAuthorityStateAndDigest(t *testing.T) {
 		t.Fatal("authority not preserved")
 	}
 	v, err := Inspect(&s)
-	if err != nil || v != (View{Graph: r.Graph, Authority: r.Authority, MaxBlock: 100}) {
+	if err != nil || v != (View{Graph: r.Graph, Authority: r.Authority, MaxBlock: 100, MaxID: math.MaxUint64}) {
 		t.Fatalf("view %+v: %v", v, err)
 	}
 	for _, a := range []Authority{{}, {owner: [16]byte{1}}, {epoch: 1}} {

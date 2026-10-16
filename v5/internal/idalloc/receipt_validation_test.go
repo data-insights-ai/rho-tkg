@@ -16,11 +16,11 @@ func receiptImage(t *testing.T, r Request, first uint64) []byte {
 		t.Fatal(err)
 	}
 	binary.BigEndian.PutUint64(image[45:53], first+r.Count-1)
-	binary.BigEndian.PutUint64(image[61:69], r.Sequence)
-	binary.BigEndian.PutUint64(image[69:77], r.Count)
-	binary.BigEndian.PutUint64(image[77:85], first)
+	binary.BigEndian.PutUint64(image[69:77], r.Sequence)
+	binary.BigEndian.PutUint64(image[77:85], r.Count)
+	binary.BigEndian.PutUint64(image[85:93], first)
 	d := r.Digest()
-	copy(image[85:117], d[:])
+	copy(image[93:125], d[:])
 	checksum(image)
 	return image
 }
