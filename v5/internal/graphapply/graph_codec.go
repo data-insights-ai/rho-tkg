@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
-	"math"
 	"strings"
 	"unicode/utf8"
 
@@ -394,12 +393,12 @@ func writeTypedScalar(w *boundedWriter, s graphstate.Scalar, t axisTable, l mate
 		}
 		vl.Component.Temporal.MaxValueBytes = min(vl.Component.Temporal.MaxValueBytes, vl.MaxReadBytes-1)
 	}
-	key, err := s.EqualityKey(vl)
+	wire, err := s.AppendWire(nil, vl)
 	if err != nil {
 		w.err = errors.Join(errInvalid, err)
 		return
 	}
-	w.text(key)
+	w.field(wire)
 	n := 0
 	if v, ok := s.Scope(); ok {
 		n = t.index(v.Axis())
@@ -426,30 +425,10 @@ func readTypedScalar(c *graphCursor, t axisTable, l materializerLimits, declarat
 		return graphstate.Scalar{}
 	}
 	switch graphstate.ScalarKind(b[0]) {
-	case graphstate.ScalarNull:
-		if len(b) == 1 {
-			return graphstate.Null()
-		}
-	case graphstate.ScalarString:
-		return graphstate.String(string(b[1:]))
-	case graphstate.ScalarBool:
-		if len(b) == 2 && b[1] <= 1 {
-			return graphstate.Bool(b[1] == 1)
-		}
-	case graphstate.ScalarI64:
-		if len(b) == 9 {
-			return graphstate.I64(int64(binary.BigEndian.Uint64(b[1:])))
-		} // #nosec G115 -- exact two's-complement payload.
-	case graphstate.ScalarF64:
-		if len(b) == 9 && binary.BigEndian.Uint64(b[1:]) != 1<<63 {
-			v, err := graphstate.F64(math.Float64frombits(binary.BigEndian.Uint64(b[1:])))
-			if err == nil {
-				return v
-			}
-		}
 	case graphstate.ScalarDescriptor:
 		if !declarations {
-			break
+			c.err = errCorrupt
+			return graphstate.Scalar{}
 		}
 		// Every reference requires at least60 wire bytes (16 ID+4 schema+
 		// 32 integrity+two4-byte field lengths). Bound fixed slots and all
@@ -457,29 +436,17 @@ func readTypedScalar(c *graphCursor, t axisTable, l materializerLimits, declarat
 		if !c.charge(768 + 128*(len(b)/60) + 8*len(b)) {
 			return graphstate.Scalar{}
 		}
-		d, err := temporal.DecodeOpaqueDescriptor(b[1:], l.catalog.Temporal)
-		if err != nil {
-			c.err = errors.Join(errCorrupt, err)
-			return graphstate.Scalar{}
-		}
-		value, err := graphstate.DescriptorValue(d)
-		if err != nil {
-			c.err = errors.Join(errCorrupt, err)
-		}
-		return value
 	case graphstate.ScalarScope:
 		if !preflightScopeBacking(c, b[1:], l) {
 			return graphstate.Scalar{}
 		}
-		s, err := temporal.DecodeScope(b[1:], a, l.catalog.Temporal)
-		if err == nil {
-			return graphstate.ScopeValue(s)
-		}
+	}
+	v, err := graphstate.DecodeWire(b, a, a.Descriptor().ID != (temporal.AxisID{}), l.catalog.Temporal)
+	if err != nil {
 		c.err = errors.Join(errCorrupt, err)
 		return graphstate.Scalar{}
 	}
-	c.err = errCorrupt
-	return graphstate.Scalar{}
+	return v
 }
 func writeEntity(w *boundedWriter, e graphstate.EntityRecord, t axisTable) {
 	writeTypedEntity(w, e, t, false)

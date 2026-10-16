@@ -118,7 +118,7 @@ func TestEveryTypedScalarRequestBranchAndHostilePayload(t *testing.T) {
 			t.Fatal(value.Kind(), err)
 		}
 		if value.Kind() != graphstate.ScalarInvalid {
-			same, err := got.operations[1].Value.Equal(value, l.graph.Planner)
+			same, err := got.operations[1].Value.Identical(value, l.graph.Planner)
 			if err != nil || !same {
 				t.Fatal(value, err)
 			}
