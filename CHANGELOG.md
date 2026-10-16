@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.58.0] - 2026-10-16
+
 ### Added
 
 - **Tiered: relationship property indexes and node property indexes on event labels, built per shard** (MINOR, v4.58.0;
@@ -52,7 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`TestElementsIndexBackfillIndexesEveryElement`). The open image format is raised to 3 (`TKGOI\x03`, as v4.54.0 did):
   the first open of a badger store (and of every sharded slot and tiered shard) after the upgrade does not trust a
   format-2 image and rebuilds the indexes from the rows, so an Elements index built before answers every element with no
-  consumer action (`TestOpenImageFormat2ElementsIndexRebuiltAfterUpgrade`); that one open costs a full rebuild. Downgrade:
+  consumer action (`TestOpenImageFormat2ElementsIndexRebuiltAfterUpgrade`); that one open costs a full rebuild, once per directory: v4.55 measured a full rebuild at 10.3-10.5 s on ai-soc's 519 K-node / 436 K-rel shape (~11 µs per entity), so about 9 s at 790 K and 2-3 min at 12.6 M entities, then the clean-reopen time returns. The rebuild is unconditional (also without an Elements index); a read-only open rebuilds each time until a writable `Close`. Downgrade:
   v4.57.1 treats the format-3 image as unknown and rebuilds too. While a property index is still building, the lookup
   scans with the declared index's match: badger's scan fallback matched plain equality for an Elements index
   (`TestElementsIndexLookupWhileBuilding`), and memory answered from the partial postings, missing every row the backfill

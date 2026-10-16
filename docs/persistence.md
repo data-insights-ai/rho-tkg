@@ -248,6 +248,8 @@ First writable open on v4.54.0 (one-time work, no action needed):
 - a writable open raises the marker to 4 (binary hashes); hex rows already on disk stay readable and are rewritten as they change;
 - v4.52.1 or earlier cannot open the store afterwards. Roll back only to v4.52.2 or v4.53.0 (they read markers 4 and 5, not 6), and only before the first excise.
 
+First writable open on v4.58.0: the open image is format 3 (`TKGOI\x03`), so every badger directory (each sharded slot, each tiered shard as it opens) is rebuilt from its rows once and a clean `Close` writes the new image; a read-only open rebuilds in RAM on every open until a writable `Close`; downgrade to v4.57.1 rebuilds once more (it compares the full magic) — no marker change, no refusal.
+
 Consumers: untimed rows start at their `TxFrom`, an update setting only `tkg_valid_to` closes the version, and the excise doors exist; see api.md and the 4.54.0 CHANGELOG entry.
 
 Marker 7 (v4.56.0, `Config.UntimedValidStart`): a store created under `UntimedUnbounded`, or converted with `Admin().SetUntimedValidStart(ctx, UntimedUnbounded)` (raised when the conversion starts), is refused by v4.55.3 and earlier. Since v4.57.0 a NEW store under the default (`UntimedDefault`) is an `UntimedUnbounded` store and carries marker 7 from its first open: set `UntimedFromTxFrom` explicitly for a new store that v4.55.3 or earlier must still open. A `UntimedFromTxFrom` store, every store with rows written before the option and every store created under v4.56.x defaults, keeps its marker and stays readable by v4.54.0 and later. Convert only once every reader, replica and importer runs v4.56.0 or later; there is no way back short of a copy made before the conversion.
