@@ -1177,11 +1177,11 @@ func nativeFaultReap(t *testing.T, p *graphProcess, member uint64, dir string, r
 	}
 	_, _, transition := nativeTransitionSelector(receipt.Kind)
 	torn := receipt.Kind == "torn-wal-kill" || transition
-	if !ok || torn && (!status.Signaled() || status.Signal() != syscall.SIGKILL) || !torn && (status.Signaled() || p.cmd.ProcessState.ExitCode() != 1) {
-		t.Fatal("native matched IO did not cause actual failure exit", p.closeErr, status)
-	}
 	stderr, overflow := p.stderr.state()
 	stdout, outputOverflow := output.state()
+	if !ok || torn && (!status.Signaled() || status.Signal() != syscall.SIGKILL) || !torn && (status.Signaled() || p.cmd.ProcessState.ExitCode() != 1) {
+		t.Fatalf("native matched IO did not cause actual failure exit: member=%d pid=%d kind=%q exit=%d status=%v stderr=%q stderrOverflow=%t stdout=%q stdoutOverflow=%t: %v", member, p.cmd.Process.Pid, receipt.Kind, p.cmd.ProcessState.ExitCode(), status, stderr, overflow, stdout, outputOverflow, p.closeErr)
+	}
 	if overflow || outputOverflow {
 		t.Fatal("native failure diagnostic exceeded bound")
 	}
