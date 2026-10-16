@@ -1,6 +1,7 @@
 package importmap
 
 import (
+	"encoding/hex"
 	"math"
 	"strconv"
 	"strings"
@@ -25,6 +26,52 @@ const (
 
 var intBits = map[string]int{"int": 64, "int8": 8, "int16": 16, "int32": 32, "int64": 64}
 var uintBits = map[string]int{"uint": 64, "uint8": 8, "uint16": 16, "uint32": 32, "uint64": 64}
+
+// mapList maps a flat v4 slice property (sigma's ov_support []int64, []string,
+// []any of scalars) to a graph.List. The first element that does not map names
+// the whole list's ambiguity (its own kind; a nested slice is "list"), and the
+// list is dropped whole. V is []Typed from a live export or []any after a
+// JSON round trip of expected.json; absent V is an empty list.
+func mapList(t fixtures.Typed) (graph.Value, string) {
+	var raw []any
+	switch x := t.V.(type) {
+	case nil:
+	case []fixtures.Typed:
+		for _, e := range x {
+			raw = append(raw, e)
+		}
+	case []any:
+		raw = x
+	default:
+		return graph.Value{}, KindMalformed
+	}
+	vals := make([]graph.Value, 0, len(raw))
+	for _, r := range raw {
+		var e fixtures.Typed
+		switch x := r.(type) {
+		case fixtures.Typed:
+			e = x
+		case map[string]any:
+			e.T, _ = x["t"].(string)
+			e.V = x["v"]
+		default:
+			return graph.Value{}, KindMalformed
+		}
+		v, bad := MapValue(e)
+		if bad != "" {
+			return graph.Value{}, bad
+		}
+		if v.Kind() == graph.KindList {
+			return graph.Value{}, KindList // lists do not nest
+		}
+		vals = append(vals, v)
+	}
+	l, err := graph.List(vals)
+	if err != nil {
+		return graph.Value{}, KindMalformed
+	}
+	return l, ""
+}
 
 // MapValue maps one v4 property value. kind is "" when the value maps; else
 // the returned Value is the zero Value and kind names the ambiguity.
@@ -84,11 +131,15 @@ func MapValue(t fixtures.Typed) (graph.Value, string) {
 		}
 		return v, ""
 	case strings.HasPrefix(t.T, "[]"):
-		return graph.Value{}, KindList
+		return mapList(t)
 	case t.T == "map":
 		return graph.Value{}, KindMap
 	case t.T == "bytes":
-		return graph.Value{}, KindBytes
+		b, err := hex.DecodeString(text)
+		if err != nil {
+			return graph.Value{}, KindMalformed
+		}
+		return graph.Bytes(b), ""
 	case t.T == "time":
 		return graph.Value{}, KindTime
 	case strings.HasPrefix(t.T, "temporal"):

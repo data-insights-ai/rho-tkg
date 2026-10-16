@@ -83,7 +83,7 @@ func TestAmbiguityReportIsExactAndStable(t *testing.T) {
 		}
 		golden(t, n+".ambiguities.json", a.AmbiguityJSON())
 		// The four fixtures hold only these kinds; malformed or unsupported would be a mapper gap.
-		expected := map[string]bool{KindList: true, KindMap: true, KindBytes: true, KindTemporal: true, KindUintOverMaxInt64: true,
+		expected := map[string]bool{KindMap: true, KindTemporal: true, KindUintOverMaxInt64: true,
 			KindVoidRow: true, KindReimportAfterDel: true}
 		for _, x := range a.Ambiguities {
 			if !expected[x.Kind] {

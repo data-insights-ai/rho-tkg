@@ -129,7 +129,7 @@ func TestAmbiguousPropertyIsDroppedAndReported(t *testing.T) {
 	mk := func() map[string]fixtures.Typed {
 		return map[string]fixtures.Typed{
 			"big": ty("uint64", "18446744073709551615"),
-			"l":   {T: "[]int64", V: []fixtures.Typed{ty("int64", "1")}}}
+			"l":   {T: "map", V: map[string]fixtures.Typed{"a": ty("bool", "true")}}}
 	}
 	a := row(1, 0, 0, 0, 3000, mk())
 	b := row(1, 1, 0, 0, 4000, mk())
@@ -141,7 +141,7 @@ func TestAmbiguousPropertyIsDroppedAndReported(t *testing.T) {
 	for _, x := range r.Ambiguities {
 		rows = append(rows, x.Entity+"/"+strconv.FormatInt(x.ID, 10)+"/v"+strconv.FormatUint(uint64(x.Version), 10)+"/"+x.Key+"/"+x.Kind)
 	}
-	want := []string{"node/1/v0/big/uint_over_maxint64", "node/1/v0/l/list", "node/1/v1//empty_correction", "node/1/v1/big/uint_over_maxint64", "node/1/v1/l/list"}
+	want := []string{"node/1/v0/big/uint_over_maxint64", "node/1/v0/l/map", "node/1/v1//empty_correction", "node/1/v1/big/uint_over_maxint64", "node/1/v1/l/map"}
 	if len(rows) != len(want) {
 		t.Fatalf("rows %v want %v", rows, want)
 	}

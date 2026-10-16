@@ -1,6 +1,7 @@
 package importmap
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -54,9 +55,10 @@ func (s Scope) Empty() bool {
 // PropValue is a mapped property value.
 type PropValue struct{ graph.Value }
 
-// MarshalJSON writes {"k": kind, "v": text}.
+// MarshalJSON writes {"k": kind, "v": text}; bytes are hex, a list is {"k":"list","e":[...]}.
 func (p PropValue) MarshalJSON() ([]byte, error) {
 	var k, v string
+	var elems []PropValue
 	switch p.Kind() {
 	case graph.KindNull:
 		k = "null"
@@ -75,13 +77,25 @@ func (p PropValue) MarshalJSON() ([]byte, error) {
 		k = "f64"
 		f, _ := p.AsFloat()
 		v = strconv.FormatFloat(f, 'g', -1, 64)
+	case graph.KindBytes:
+		k = "bytes"
+		b, _ := p.AsBytes()
+		v = hex.EncodeToString(b)
+	case graph.KindList:
+		k = "list"
+		els, _ := p.AsList()
+		elems = make([]PropValue, len(els))
+		for i, e := range els {
+			elems[i] = PropValue{e}
+		}
 	default:
 		return nil, fmt.Errorf("importmap: invalid value")
 	}
 	return json.Marshal(struct {
-		K string `json:"k"`
-		V string `json:"v,omitempty"`
-	}{k, v})
+		K string      `json:"k"`
+		V string      `json:"v,omitempty"`
+		E []PropValue `json:"e,omitempty"`
+	}{k, v, elems})
 }
 
 // Op is one v5 write, in plain data. Op is create_node, create_rel, correct,
