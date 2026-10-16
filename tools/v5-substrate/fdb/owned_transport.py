@@ -277,6 +277,30 @@ def readback(evidence, names, peers, network, deadline):
     return out
 
 
+KERNEL_DEFAULT_TUNNELS = {
+    "tunl0": ("ipip", "0.0.0.0"), "gre0": ("gre", "0.0.0.0"),
+    "gretap0": ("ether", "00:00:00:00:00:00"), "erspan0": ("ether", "00:00:00:00:00:00"),
+    "ip_vti0": ("ipip", "0.0.0.0"), "ip6_vti0": ("tunnel6", "::"),
+    "sit0": ("sit", "0.0.0.0"), "ip6tnl0": ("tunnel6", "::"), "ip6gre0": ("gre6", "::"),
+}
+
+
+def inert_kernel_default(link):
+    kind, address = KERNEL_DEFAULT_TUNNELS[link["ifname"]]
+    flags = ["BROADCAST", "MULTICAST"] if kind == "ether" else ["NOARP"]
+    require(link["link_type"] == kind and link["address"] == address
+            and link["broadcast"] == ("ff:ff:ff:ff:ff:ff" if kind == "ether" else address)
+            and link["operstate"] == "DOWN" and link["qdisc"] == "noop"
+            and type(link["flags"]) is list and sorted(link["flags"]) == sorted(flags)
+            and link.get("link") is None and "link_index" not in link and "link_netnsid" not in link
+            and link.get("addr_info", []) == [], "only actual inert default tunnel identity, no assigned address or peer")
+    integer(link["ifindex"], 1, (1 << 31)-1)
+    for direction in ("rx", "tx"):
+        counters = link["stats64"][direction]
+        require(type(counters) is dict and {"bytes", "packets", "errors", "dropped"} <= counters.keys()
+                and all(type(n) is int and n == 0 for n in counters.values()), "default tunnel has no traffic/error/drop history")
+
+
 def validate_readback(rows, peers, policy, armed):
     require(len(rows) == 5, "complete actual readback")
     injected = policy["Transport"]["kind"] == "injected-rtt" and armed
@@ -284,8 +308,12 @@ def validate_readback(rows, peers, policy, armed):
     for target, row in enumerate(rows):
         require(row["Peer"] == peers[target], "same exact observed peer")
         qdiscs, filters = row["Qdisc"], row["Filters"]
-        require(type(qdiscs) is list and type(filters) is list and len(qdiscs) <= 7 and len(row["Links"]) <= 6, "fixed native namespace inventory")
         expected = {f"rhoi{source}" for source in range(5) if source != target} if injected else set()
+        links = row["Links"]
+        # At most two required links, four owned IFBs and the nine exact inert
+        # kernel defaults observed in fresh namespaces. Raw/frame caps stay fixed.
+        require(type(qdiscs) is list and type(filters) is list and type(links) is list and len(qdiscs) <= 7
+                and len(links) <= 2 + len(expected) + len(KERNEL_DEFAULT_TUNNELS), "fixed native namespace inventory")
         qdisc_pairs={("noqueue","lo"),("noqueue","eth0")}|({("clsact","eth0")}|{("netem",dev) for dev in expected} if injected else set())
         require(len(qdiscs)==len(qdisc_pairs) and {(q["kind"],q["dev"]) for q in qdiscs}==qdisc_pairs,"exact nonduplicated root/hook qdisc inventory")
         netems = {q["dev"]: q for q in qdiscs if q["kind"] == "netem"}
@@ -293,7 +321,12 @@ def validate_readback(rows, peers, policy, armed):
         for q in qdiscs:
             require(q["kind"] == "noqueue" and q["dev"] in ("lo", "eth0") or injected and (q["kind"] == "clsact" and q["dev"] == "eth0" or q["kind"] == "netem" and q["dev"] in expected), "no foreign qdisc adopted")
         require(sum(q["kind"] == "clsact" for q in qdiscs) == (1 if injected else 0), "actual receiver ingress hook")
-        require({link["ifname"] for link in row["Links"]} == {"lo","eth0"}|expected, "complete exclusively owned link inventory")
+        names = {link["ifname"] for link in links}
+        required = {"lo", "eth0"} | expected
+        require(len(names) == len(links) and required <= names <= required | KERNEL_DEFAULT_TUNNELS.keys(), "complete nonduplicated owned/inert link inventory")
+        for link in links:
+            if link["ifname"] in KERNEL_DEFAULT_TUNNELS:
+                inert_kernel_default(link)
         for device, q in netems.items():
             options = q["options"]
             require(q.get("root") is True and q["handle"]==str(100+int(device[4:]))+":","exact owned root netem handle, no child substitute")

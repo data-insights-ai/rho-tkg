@@ -17,7 +17,49 @@ def request():
             "BudgetSeconds":31_536_000,"QueuePackets":1024,"SampleMillis":60000,"MaxSamples":525602,"MaxArtifactBytes":1<<44,"ToolsDirectory":"@pinned-prebuild"}
 
 
+def kernel_defaults():
+    # Actual pinned-ip JSON shapes from the failed fresh five-namespace run.
+    values=(("tunl0","ipip","0.0.0.0"),("gre0","gre","0.0.0.0"),
+            ("gretap0","ether","00:00:00:00:00:00"),("erspan0","ether","00:00:00:00:00:00"),
+            ("ip_vti0","ipip","0.0.0.0"),("ip6_vti0","tunnel6","::"),
+            ("sit0","sit","0.0.0.0"),("ip6tnl0","tunnel6","::"),("ip6gre0","gre6","::"))
+    return [{"ifindex":i+2,"ifname":name,"link":None,"link_type":kind,"address":address,
+             "broadcast":"ff:ff:ff:ff:ff:ff" if kind=="ether" else address,
+             "flags":["BROADCAST","MULTICAST"] if kind=="ether" else ["NOARP"],"operstate":"DOWN","qdisc":"noop",
+             "stats64":{direction:{"bytes":0,"packets":0,"errors":0,"dropped":0} for direction in ("rx","tx")}}
+            for i,(name,kind,address) in enumerate(values)]
+
+
 class OwnedTransportGuards(unittest.TestCase):
+    def test_inert_kernel_defaults_are_finite_not_foreign_owned_traffic(self):
+        peers=[{"Role":r} for r in owned.ROLES]
+        base=[{"ifname":"lo"},{"ifname":"eth0","stats64":{"rx":{"dropped":0},"tx":{"dropped":0}}}]
+        rows=[{"Peer":peer,"Qdisc":[{"kind":"noqueue","dev":dev} for dev in ("lo","eth0")],"Filters":[],"Links":copy.deepcopy(base)+kernel_defaults()} for peer in peers]
+        policy={"Transport":{"kind":"local"}}
+        self.assertEqual(owned.validate_readback(rows,peers,policy,False),0)
+        for field,value in (("ifname","tunl1"),("link_type","ether"),("operstate","UP"),("flags",["NOARP","UP"]),
+                            ("qdisc","fq_codel"),("address","192.0.2.1"),("broadcast","192.0.2.2"),
+                            ("link_index",99),("addr_info",[{"local":"192.0.2.1"}]),("ifindex",0)):
+            bad=copy.deepcopy(rows);bad[0]["Links"][2][field]=value
+            with self.assertRaises(ValueError):owned.validate_readback(bad,peers,policy,False)
+        for direction,counter,value in (("rx","bytes",1),("tx","packets",1),("rx","errors",True)):
+            bad=copy.deepcopy(rows);bad[0]["Links"][2]["stats64"][direction][counter]=value
+            with self.assertRaises(ValueError):owned.validate_readback(bad,peers,policy,False)
+        bad=copy.deepcopy(rows);del bad[0]["Links"][2]["stats64"]["rx"]["dropped"]
+        with self.assertRaises(ValueError):owned.validate_readback(bad,peers,policy,False)
+        for missing in (0,1):
+            bad=copy.deepcopy(rows);del bad[0]["Links"][missing]
+            with self.assertRaises(ValueError):owned.validate_readback(bad,peers,policy,False)
+        bad=copy.deepcopy(rows);bad[0]["Links"].append(copy.deepcopy(bad[0]["Links"][2]))
+        with self.assertRaises(ValueError):owned.validate_readback(bad,peers,policy,False)
+        bad=copy.deepcopy(rows);bad[0]["Qdisc"].append({"kind":"noop","dev":"tunl0"})
+        with self.assertRaises(ValueError):owned.validate_readback(bad,peers,policy,False)
+        bad=copy.deepcopy(rows);bad[0]["Filters"].append({"kind":"flower"})
+        with self.assertRaises(ValueError):owned.validate_readback(bad,peers,policy,False)
+        # Hosts without tunnel modules retain the literal two-interface path.
+        for row in rows:row["Links"]=copy.deepcopy(base)
+        self.assertEqual(owned.validate_readback(rows,peers,policy,False),0)
+
     def test_exact_net_admin_spellings_preserve_native_namespace_guards(self):
         row={"Id":"01"*32,"Image":"sha256:"+"02"*32,
              "State":{"Running":True,"OOMKilled":False,"Pid":17},
@@ -81,6 +123,9 @@ class OwnedTransportGuards(unittest.TestCase):
                 filters.append({"kind":"flower","pref":100+source,"options":{"keys":{"eth_type":"ipv4","src_ip":peers[source]["IP"]+"/32","dst_ip":peer["IP"]+"/32"},"skip_hw":True,"actions":[{"kind":"mirred","to_dev":dev,"mirred_action":"redirect","direction":"egress"}]}})
             rows.append({"Peer":peer,"Qdisc":q,"Filters":filters,"Links":links})
         self.assertEqual(owned.validate_readback(rows,peers,value,True),0)
+        with_defaults=copy.deepcopy(rows)
+        for row in with_defaults:row["Links"]+=kernel_defaults()
+        self.assertEqual(owned.validate_readback(with_defaults,peers,value,True),0)
         bad=copy.deepcopy(rows);bad[0]["Filters"][0]["options"]["keys"]["dst_ip"]="10.0.0.255/32"
         with self.assertRaises(ValueError): owned.validate_readback(bad,peers,value,True)
         bad=copy.deepcopy(rows);bad[0]["Qdisc"][1]=copy.deepcopy(bad[0]["Qdisc"][3])
