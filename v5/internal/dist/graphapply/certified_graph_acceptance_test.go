@@ -205,6 +205,17 @@ func assertCertifiedProjection(t *testing.T, v graphstate.ReadView, id graphstat
 		t.Fatal("exact projection", id, p, e)
 	}
 }
+
+// assertUnroutedProjection pins the engine rule (graphstore.ErrRoutingUnknown,
+// partition_routing.go): an ID outside every published range is unknown, never
+// proven absent, and never projects as an entity.
+func assertUnroutedProjection(t *testing.T, v graphstate.ReadView, id graphstate.EntityID) {
+	t.Helper()
+	p, e := graphstate.Project(t.Context(), v, id, certifiedPoint(t), graphstate.Effective, defaultMaterializerLimits().graph.Planner)
+	if !errors.Is(e, graphstore.ErrRoutingUnknown) || p.Exists || p.Active {
+		t.Fatal("unrouted projection proved absence or presence", id, p, e)
+	}
+}
 func assertCertifiedIncident(t *testing.T, v graphstate.ReadView, scope temporal.Scope, owner graphstate.EntityID, life graphstate.LifeID, want []graphstate.EntityID) {
 	t.Helper()
 	p, e := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: owner, Life: life, Window: scope}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})

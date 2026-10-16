@@ -441,7 +441,7 @@ func nativeGraphCostIncidentEncodeReceipt(r nativeGraphCostIncidentReceipt) ([]b
 		return nil, errLimit
 	}
 	return boundedEncoding(nativeGraphCostPageBytes, func(w *boundedWriter) {
-		w.add([]byte("GCIR1"))
+		w.add([]byte("GCR\x01"))
 		w.field(metadata)
 		w.u32(len(rows))
 		for _, row := range rows {
@@ -463,7 +463,7 @@ func nativeGraphCostIncidentDecodeReceipt(wire []byte) (nativeGraphCostIncidentR
 	if len(wire) > nativeGraphCostPageBytes {
 		return r, errLimit
 	}
-	body, err := graphBody(wire, "GCIR1", nativeGraphCostPageBytes)
+	body, err := graphBody(wire, "GCR\x01", nativeGraphCostPageBytes)
 	if err != nil {
 		return r, err
 	}

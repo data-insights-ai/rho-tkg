@@ -110,7 +110,7 @@ func TestRangeMoveCodecCanonicalRoundTrips(t *testing.T) {
 	}
 	command := rangeMoveCommand{scope: intent.target, phase: rangeMoveImport, intent: intentWire, sequence: 2, data: []byte{1, 2, 3}, proofs: []rangeMoveStatus{rangeMoveCodecStatus(t)}}
 	wire, err := encodeRangeMoveCommand(command)
-	if err != nil || !isRangeMoveWire(wire) || isRangeMoveWire(nil) || isRangeMoveWire([]byte("GMQ\x02")) {
+	if err != nil || !isRangeMoveWire(wire) || isRangeMoveWire(nil) || isRangeMoveWire([]byte("GMQ\x04")) {
 		t.Fatal("command wire discriminator", err)
 	}
 	got, err := decodeRangeMoveCommand(wire)
@@ -205,7 +205,7 @@ func TestRangeMoveCodecRefusesMalformedFramesWithoutPartialValues(t *testing.T) 
 			badSeal := bytes.Clone(tc.wire)
 			badSeal[len(badSeal)-1] ^= 1
 			wrongVersion := bytes.Clone(tc.wire)
-			wrongVersion[3]++
+			wrongVersion[3] = 0x7f // versions 1-3 are all supported; any other byte is unknown
 			trailing := seal(append(bytes.Clone(tc.wire[:len(tc.wire)-32]), 0))
 			for _, bad := range [][]byte{badSeal, rangeMoveCodecReseal(wrongVersion), trailing} {
 				if zero, err := tc.decode(bad); !zero || !errors.Is(err, errCorrupt) {

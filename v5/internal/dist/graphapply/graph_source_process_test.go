@@ -168,8 +168,20 @@ func attachGraphProcessMuxesWithWorkload(t *testing.T, all map[uint64]*graphProc
 		}
 	}
 	hub.wg.Go(hub.packetLoop)
-	// Network cleanup is registered later and closes/reaps children first.
-	t.Cleanup(func() { cancel(); hub.wg.Wait() })
+	// The read loops end only at child EOF. A restart re-attaches a hub AFTER the
+	// network's reaping cleanup was registered, so this cleanup can run first:
+	// reap this hub's own children before waiting (shutdown is idempotent; the
+	// network cleanup still reports the same closeErr).
+	// Graceful close still needs the live hub, so cancel only afterwards.
+	t.Cleanup(func() {
+		for _, m := range hub.peers {
+			ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+			_ = m.p.shutdown(ctx, t.Failed())
+			stop()
+		}
+		cancel()
+		hub.wg.Wait()
+	})
 }
 func (h *graphProcessHub) changed() {
 	select {

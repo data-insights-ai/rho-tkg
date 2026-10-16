@@ -22,5 +22,5 @@ func (p *PreparedApplicationSnapshot) ApplicationContract(ctx context.Context) (
 	if err := ctx.Err(); err != nil {
 		return ApplicationContract{}, err
 	}
-	return ApplicationContractForPolicyWithRecovery(s.meta.App.Policy, s.meta.Controls.Config, s.meta.Recovery.Config)
+	return ApplicationContractForPolicyWithRetention(s.meta.App.Policy, s.meta.Controls.Config, s.meta.Recovery.Config, s.meta.Retention.Config)
 }

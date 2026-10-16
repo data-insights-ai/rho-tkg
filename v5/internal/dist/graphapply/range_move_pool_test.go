@@ -154,6 +154,7 @@ func TestRangeMovePooledNativeOriginalRefusalUndoAndReopen(t *testing.T) {
 				}
 				assertMovePoolSnapshotAudit(t, n, 1)
 				crossReopenAll(t, n)
+				coordinator = movePoolReboundCoordinator(t, n)
 				result, e := runMovePoolResume(t, coordinator, pending.resume)
 				if !errors.Is(e, errLimit) || result.committed || result.source.phase != rangeMoveAbort || result.target.phase != rangeMoveAbort {
 					t.Fatal("lost refusal did not resolve through real ABORT/undo", result, e)
@@ -237,8 +238,8 @@ func TestRangeMovePooledNativeOriginalRefusalUndoAndReopen(t *testing.T) {
 				t.Fatal("GMP5 substituted", err)
 			}
 			crossReopenAll(t, n)
+			coordinator = movePoolReboundCoordinator(t, n)
 			if mode == "commit" {
-				gate.sequence = 0
 				done := rangeMoveKeeperResume(t, coordinator, pending.resume)
 				if !done.committed {
 					t.Fatal("actual completion")
@@ -270,7 +271,7 @@ func TestRangeMovePooledNativeOriginalRefusalUndoAndReopen(t *testing.T) {
 				v, close := crossView(t, n, member, [2]uint64{})
 				assertCertifiedProjection(t, v, 1, true, nil)
 				assertCertifiedProjection(t, v, 17, true, nil)
-				assertCertifiedProjection(t, v, 999, false, nil)
+				assertUnroutedProjection(t, v, 999)
 				close()
 			}
 		})
@@ -363,4 +364,29 @@ func assertMovePoolSnapshotAudit(t *testing.T, n *allocationTestNetwork, group i
 	if err = owner.Finish(t.Context(), replica.ApplicationAuditBudget{WorkBytes: 64 << 20, OwnedBytes: 64 << 20}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// crossReopenAll closes every host; the old graph peer services and the
+// coordinator bound to them answer "replica: stopped". A restarted keeper
+// resumes through fresh services over the reopened hosts.
+func movePoolReboundCoordinator(t *testing.T, n *allocationTestNetwork) *rangeMoveCoordinator {
+	t.Helper()
+	transports := make(map[uint64]graphPeerWireTransport)
+	for group, partition := range []uint64{3, 8} {
+		h := n.hosts[group][0]
+		server, err := newGraphSourceServer(t.Context(), h, defaultGraphSourceLimits(h.machine.limits))
+		if err != nil {
+			t.Fatal(err)
+		}
+		service, err := newGraphPeerService(h, server, &nativeGraphTestPump{n: n, group: group, host: h})
+		if err != nil {
+			t.Fatal(err)
+		}
+		transports[partition] = &nativeGraphTestTransport{service: service}
+	}
+	c, err := newRangeMoveCoordinator(n.hosts[0][0], transports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
 }

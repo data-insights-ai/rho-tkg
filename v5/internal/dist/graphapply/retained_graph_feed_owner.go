@@ -650,6 +650,26 @@ func (o *retainedFeedOwner) Page(ctx context.Context, request [16]byte, boundary
 		}
 	}
 	stage = "merge"
+	// Protocol-only census precedes business envelopes only where it may still
+	// hide an earlier one: a census that stops before its partition's observed
+	// tip. A census that reached the tip hides nothing, so a complete envelope
+	// elsewhere is delivered first; otherwise every page's own seal/ACK tail
+	// would be new progress and starve the envelope forever.
+	if progress {
+		blocking := false
+		for i, f := range frames {
+			if f != nil && heads[i].kind == 0 && f.progressNext <= page.tips[i].index {
+				blocking = true
+			}
+		}
+		if !blocking {
+			head, _, e := completeFeedEnvelope(heads, parts)
+			if e != nil && !errors.Is(e, errRetainedFeedPending) {
+				return zero, e
+			}
+			progress = e != nil || head.kind == 0
+		}
+	}
 	if progress {
 		for i, f := range frames {
 			if f != nil && heads[i].kind == 0 {

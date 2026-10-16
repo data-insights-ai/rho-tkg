@@ -7,6 +7,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 )
@@ -36,7 +37,9 @@ func TestRangeMoveGraphBatchFormatAndNativeUndo(t *testing.T) {
 				p.RetainedApplicationBytes = 512 << 20
 				p.RetainedApplicationRecords = 262144
 			}, rangeMoveGraphBatchSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 3})
-			n, p, _, _ := retainedPublisherFromNetwork(t, network)
+			// Production batches never mix logical families: a multi-subpage native
+			// batch needs several entity records, so group 0 holds three nodes.
+			n, p, _, _ := retainedPublisherFromNetworkNodes(t, network, [][]graphstate.EntityID{{1, 5, 7}, {17}})
 			h := n.hosts[0][0]
 			if _, err := newRangeMoveGraphBatchMaterializer(h.machine.store, h.machine.ns, n.d, h.machine.limits); err != nil {
 				t.Fatal("explicit fresh constructor", err)
@@ -100,7 +103,7 @@ func TestRangeMoveGraphBatchFormatAndNativeUndo(t *testing.T) {
 					v, close := crossView(t, n, member, [2]uint64{})
 					assertCertifiedProjection(t, v, 1, true, nil)
 					assertCertifiedProjection(t, v, 17, true, nil)
-					assertCertifiedProjection(t, v, 999, false, nil)
+					assertUnroutedProjection(t, v, 999)
 					close()
 				}
 				moveSpanAudit(t, n, 1)
@@ -132,7 +135,7 @@ func TestRangeMoveGraphBatchFormatAndNativeUndo(t *testing.T) {
 				v, close := crossView(t, n, member, [2]uint64{})
 				assertCertifiedProjection(t, v, 1, true, nil)
 				assertCertifiedProjection(t, v, 17, true, nil)
-				assertCertifiedProjection(t, v, 999, false, nil)
+				assertUnroutedProjection(t, v, 999)
 				close()
 			}
 		})

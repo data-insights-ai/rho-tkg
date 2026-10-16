@@ -70,7 +70,12 @@ func retainedPublisherFixture(t *testing.T) (*allocationTestNetwork, *retainedPi
 }
 func retainedPublisherFromNetwork(t *testing.T, n *allocationTestNetwork) (*allocationTestNetwork, *retainedPinPublisher, []graphstate.Operation, []*retainedPublisherWire) {
 	t.Helper()
-	ops, _ := crossEdgeFixture(t, n)
+	return retainedPublisherFromNetworkNodes(t, n, [][]graphstate.EntityID{{1}, {17}})
+}
+
+func retainedPublisherFromNetworkNodes(t *testing.T, n *allocationTestNetwork, owners [][]graphstate.EntityID) (*allocationTestNetwork, *retainedPinPublisher, []graphstate.Operation, []*retainedPublisherWire) {
+	t.Helper()
+	ops, _ := crossEdgeFixtureNodes(t, n, owners)
 	transports := make(map[uint64]graphPeerWireTransport)
 	wires := make([]*retainedPublisherWire, 2)
 	for group, partition := range []uint64{3, 8} {
