@@ -1,0 +1,12 @@
+# mutant: pkg/graph/internal/core/value_stats.go
+# - '\tpred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }'
+# + '\tpred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }\n\tpin = math.MaxInt64 - 1'
+$ go test -run 'TestPropertyValueStats' ./pkg/graph/
+--- FAIL: TestPropertyValueStatsMatchesIndex (0.02s)
+    --- FAIL: TestPropertyValueStatsMatchesIndex/memory (0.00s)
+        round9_doors_test.go:687: pin 1792129758656: {Distinct:14 Rows:73 MaxRows:13 MaxValue:10} exact true, want distinct 11, rows >= 30, max >= 5
+    --- FAIL: TestPropertyValueStatsMatchesIndex/badger (0.00s)
+        round9_doors_test.go:687: pin 1792129758659: {Distinct:14 Rows:73 MaxRows:13 MaxValue:10} exact true, want distinct 11, rows >= 30, max >= 5
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.350s
+FAIL

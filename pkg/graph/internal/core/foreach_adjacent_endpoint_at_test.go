@@ -21,7 +21,7 @@ import (
 func TestRelMatchesValidTime_UnsetValidFromUsesSnowflakeFallback(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestForEachAdjacentEndpointAt_ParityBothBackends(t *testing.T) {
 		build func(t *testing.T) *Core
 	}{
 		{name: "memory_fallback", build: func(t *testing.T) *Core {
-			g, err := New(Config{Store: memory.New()})
+			g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 			if err != nil {
 				t.Fatalf("New(memory): %v", err)
 			}
@@ -80,7 +80,7 @@ func TestForEachAdjacentEndpointAt_ParityBothBackends(t *testing.T) {
 			if err != nil {
 				t.Fatalf("badger.New: %v", err)
 			}
-			g, err := New(Config{Store: bs})
+			g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: bs})
 			if err != nil {
 				t.Fatalf("New(badger): %v", err)
 			}

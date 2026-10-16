@@ -1,0 +1,8 @@
+# mutant: pkg/graph/internal/core/range_any_version.go
+# - 'return ok && n.HasLabelTokenRaw(tok) && inRangeExact(v, min, max, inclMin, inclMax)'
+# + 'return ok && n.HasLabelTokenRaw(tok) && inRangeExact(v, min, max, inclMin, inclMax) && n == chain[len(chain)-1]'
+$ go test -run 'TestRangeAnyVersion' ./pkg/graph/
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph [build failed]
+FAIL
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+pkg/graph/internal/core/range_any_version.go:70:95: undefined: chain

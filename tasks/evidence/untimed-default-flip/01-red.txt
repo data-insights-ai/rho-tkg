@@ -1,0 +1,20 @@
+--- FAIL: TestUntimedDefaultFlip (0.00s)
+    --- FAIL: TestUntimedDefaultFlip/memory (0.00s)
+        untimed_default_flip_test.go:176: memory, default: NodeAt(far) valid = false (graph: no version valid at the given time), want true
+        untimed_default_flip_test.go:176: memory, default: ByLabel(U, ValidAt far) lists it = false, want true
+        untimed_default_flip_test.go:178: SetUntimedValidStart(UntimedDefault): err = <nil>, want ErrInvalidUntimedValidStart
+    --- FAIL: TestUntimedDefaultFlip/badger (0.67s)
+        untimed_default_flip_test.go:108: new store, default: NodeAt(far) valid = false (graph: no version valid at the given time), want true
+        untimed_default_flip_test.go:108: new store, default: ByLabel(U, ValidAt far) lists it = false, want true
+        untimed_default_flip_test.go:113: new default store key = [0], want [1]
+    --- FAIL: TestUntimedDefaultFlip/sharded (1.10s)
+        untimed_default_flip_test.go:108: new store, default: NodeAt(far) valid = false (graph: no version valid at the given time), want true
+        untimed_default_flip_test.go:108: new store, default: ByLabel(U, ValidAt far) lists it = false, want true
+        untimed_default_flip_test.go:113: new default store key = [0], want [1]
+    --- FAIL: TestUntimedDefaultFlip/tiered (1.32s)
+        untimed_default_flip_test.go:108: new store, default: NodeAt(far) valid = false (graph: no version valid at the given time), want true
+        untimed_default_flip_test.go:108: new store, default: ByLabel(U, ValidAt far) lists it = false, want true
+        untimed_default_flip_test.go:113: new default store key = [0], want [1]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.668s
+FAIL

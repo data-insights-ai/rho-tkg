@@ -1,6 +1,7 @@
 package tiered
 
 import (
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -179,7 +180,28 @@ func (ts *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap t
 	if err != nil || !ok {
 		return nil, gen, ok, err
 	}
-	return &tieredColumnSnapshot{readers: readers, epoch: gen}, gen, true, nil
+	snapshot := &tieredColumnSnapshot{readers: readers, epoch: gen}
+	if chunks, chunked := indexpkg.NewChunkConcat(readers); chunked {
+		return &tieredChunkSnapshot{tieredColumnSnapshot: snapshot, chunks: chunks}, gen, true, nil
+	}
+	return snapshot, gen, true, nil
+}
+
+// tieredChunkSnapshot is a tieredColumnSnapshot whose shards' columns also
+// read as typed chunks (types.NodeColumnChunkReader, sigma-tkgd round 9):
+// the shards' rows concatenated in shard-fold order, as RowAt reads them. A
+// label whose column holds strings on one shard and numbers on another is
+// served by tieredColumnSnapshot alone (no vector holds both).
+type tieredChunkSnapshot struct {
+	*tieredColumnSnapshot
+	chunks *indexpkg.ChunkConcat
+}
+
+var _ types.NodeColumnChunkReader = (*tieredChunkSnapshot)(nil)
+
+// ReadChunk implements types.NodeColumnChunkReader.
+func (s *tieredChunkSnapshot) ReadChunk(from, to int, chunk *types.ColumnChunk) {
+	s.chunks.ReadChunk(from, to, chunk)
 }
 
 // tieredColumnSnapshot implements types.NodeColumnReader over a label spanning

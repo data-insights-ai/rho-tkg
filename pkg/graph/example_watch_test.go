@@ -28,13 +28,17 @@ func Example_watch() {
 		}
 		fmt.Println("tag:", rec.Tag)
 		count++
-		if count == 2 {
+		if count == 3 {
 			cancel()
 		}
 	}
 	fmt.Println("Watched records:", count)
+	// A new store's feed starts with one Meta record: the store's untimed
+	// valid-start mode (UntimedUnbounded, the default for new stores since
+	// v4.57.0), which a replica applies.
 	// Output:
+	// tag: Meta
 	// tag: NodePut
 	// tag: NodePut
-	// Watched records: 2
+	// Watched records: 3
 }

@@ -3,6 +3,7 @@ package nodes
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
@@ -842,4 +843,48 @@ func (s *nodeOpsSpy) RangeCardinalityAt(label, propKey string, min, max float64,
 func (s *nodeOpsSpy) ForEachByLabelOrdinals(label string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	s.record("ForEachByLabelOrdinals")
 	return s.err
+}
+
+func (s *nodeOpsSpy) ForEachByLabelPropertyRangeAnyVersion(label, key string, min, max float64, inclMin, inclMax bool, pin types.Instant, fn func(*types.Node) bool) error {
+	s.record("ForEachByLabelPropertyRangeAnyVersion")
+	return s.err
+}
+
+func (s *nodeOpsSpy) RangeCardinalityAnyVersion(label, key string, min, max float64, inclMin, inclMax bool, pin types.Instant) (storepkg.RangeAnyVersionCount, bool, error) {
+	s.record("RangeCardinalityAnyVersion")
+	return storepkg.RangeAnyVersionCount{Entities: 2, Rows: 3}, true, s.err
+}
+
+func (s *nodeOpsSpy) CountTimelineByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
+	s.record("CountTimelineByLabel")
+	return []storepkg.CountSegment{{From: 1, To: 2, Count: 1}}, true, s.err
+}
+
+// TestRound9DoorsForward: the round 9 doors forward to Ops, and a nil API
+// reports the nil graph.
+func TestRound9DoorsForward(t *testing.T) {
+	spy := &nodeOpsSpy{}
+	a := New(spy)
+	if err := a.ForEachByLabelPropertyRangeAnyVersion("X", "k", 0, 1, true, true, 5, func(*types.Node) bool { return true }); err != nil {
+		t.Fatal(err)
+	}
+	if c, ok, err := a.RangeCardinalityAnyVersion("X", "k", 0, 1, true, true, 5); err != nil || !ok || c.Rows != 3 || c.Entities != 2 {
+		t.Fatalf("RangeCardinalityAnyVersion = %+v %v %v", c, ok, err)
+	}
+	if segs, ok, err := a.CountTimelineByLabel("X", 5, storepkg.CountTimelineOpts{}); err != nil || !ok || len(segs) != 1 {
+		t.Fatalf("CountTimelineByLabel = %v %v %v", segs, ok, err)
+	}
+	if got := strings.Join(spy.calls, ","); got != "ForEachByLabelPropertyRangeAnyVersion,RangeCardinalityAnyVersion,CountTimelineByLabel" {
+		t.Fatalf("calls %s", got)
+	}
+	var nilAPI *API
+	if err := nilAPI.ForEachByLabelPropertyRangeAnyVersion("X", "k", 0, 1, true, true, 5, nil); err == nil {
+		t.Fatal("nil API: no error")
+	}
+	if _, _, err := nilAPI.RangeCardinalityAnyVersion("X", "k", 0, 1, true, true, 5); err == nil {
+		t.Fatal("nil API: no error")
+	}
+	if _, _, err := nilAPI.CountTimelineByLabel("X", 5, storepkg.CountTimelineOpts{}); err == nil {
+		t.Fatal("nil API: no error")
+	}
 }

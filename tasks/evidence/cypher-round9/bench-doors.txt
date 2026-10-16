@@ -1,0 +1,52 @@
+goos: darwin
+cpu: Apple M4 Max
+BenchmarkRound9Doors/memory/range-at         	    2301	    485682 ns/op	  448823 B/op	    7180 allocs/op
+BenchmarkRound9Doors/memory/range-at         	    4884	    449582 ns/op	  440320 B/op	    7041 allocs/op
+BenchmarkRound9Doors/memory/range-at         	    4671	    443226 ns/op	  440320 B/op	    7041 allocs/op
+BenchmarkRound9Doors/memory/range-any        	    4328	    486527 ns/op	  449480 B/op	    7052 allocs/op
+BenchmarkRound9Doors/memory/range-any        	    4380	    460682 ns/op	  449480 B/op	    7052 allocs/op
+BenchmarkRound9Doors/memory/range-any        	    4513	    465642 ns/op	  449480 B/op	    7052 allocs/op
+BenchmarkRound9Doors/memory/range-any-count  	    4698	    470401 ns/op	  440120 B/op	    7040 allocs/op
+BenchmarkRound9Doors/memory/range-any-count  	    4532	    453867 ns/op	  440120 B/op	    7040 allocs/op
+BenchmarkRound9Doors/memory/range-any-count  	    4548	    459522 ns/op	  440120 B/op	    7040 allocs/op
+BenchmarkRound9Doors/memory/timeline-cached  	   87794	     12303 ns/op	   26134 B/op	      22 allocs/op
+BenchmarkRound9Doors/memory/timeline-cached  	  242772	      4119 ns/op	   24576 B/op	       1 allocs/op
+BenchmarkRound9Doors/memory/timeline-cached  	  532610	      2386 ns/op	   24576 B/op	       1 allocs/op
+BenchmarkRound9Doors/memory/values-cached    	 3342325	       373.1 ns/op	     352 B/op	       5 allocs/op
+BenchmarkRound9Doors/memory/values-cached    	 3405343	       355.8 ns/op	     352 B/op	       5 allocs/op
+BenchmarkRound9Doors/memory/values-cached    	 3321436	       369.1 ns/op	     352 B/op	       5 allocs/op
+BenchmarkRound9Doors/memory/values-after-write         	   12012	     99961 ns/op	     400 B/op	       6 allocs/op
+BenchmarkRound9Doors/memory/values-after-write         	   10000	    100763 ns/op	     400 B/op	       6 allocs/op
+BenchmarkRound9Doors/memory/values-after-write         	   10000	    103967 ns/op	     400 B/op	       6 allocs/op
+BenchmarkRound9Doors/memory/values-pin                 	11774848	        91.77 ns/op	       9 B/op	       0 allocs/op
+BenchmarkRound9Doors/memory/values-pin                 	15443161	        76.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRound9Doors/memory/values-pin                 	15674424	        76.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRound9Doors/badger/range-at                   	     548	   1872691 ns/op	 1954769 B/op	   29672 allocs/op
+BenchmarkRound9Doors/badger/range-at                   	     835	   1336463 ns/op	 1498340 B/op	   23041 allocs/op
+BenchmarkRound9Doors/badger/range-at                   	     894	   1321110 ns/op	 1498339 B/op	   23041 allocs/op
+BenchmarkRound9Doors/badger/range-any                  	     904	   1351367 ns/op	 1507500 B/op	   23052 allocs/op
+BenchmarkRound9Doors/badger/range-any                  	     877	   1346118 ns/op	 1507500 B/op	   23052 allocs/op
+BenchmarkRound9Doors/badger/range-any                  	     920	   1321018 ns/op	 1507500 B/op	   23052 allocs/op
+BenchmarkRound9Doors/badger/range-any-count            	     910	   1319313 ns/op	 1498139 B/op	   23040 allocs/op
+BenchmarkRound9Doors/badger/range-any-count            	     910	   1326080 ns/op	 1498140 B/op	   23040 allocs/op
+BenchmarkRound9Doors/badger/range-any-count            	     918	   1310172 ns/op	 1498139 B/op	   23040 allocs/op
+BenchmarkRound9Doors/badger/timeline-cached            	  218281	      4842 ns/op	   27591 B/op	      40 allocs/op
+BenchmarkRound9Doors/badger/timeline-cached            	  802375	      1844 ns/op	   24576 B/op	       1 allocs/op
+BenchmarkRound9Doors/badger/timeline-cached            	  826970	      1777 ns/op	   24576 B/op	       1 allocs/op
+BenchmarkRound9Doors/badger/values-cached              	 5068602	       238.0 ns/op	     352 B/op	       5 allocs/op
+BenchmarkRound9Doors/badger/values-cached              	 5152224	       239.8 ns/op	     352 B/op	       5 allocs/op
+BenchmarkRound9Doors/badger/values-cached              	 5231308	       239.1 ns/op	     352 B/op	       5 allocs/op
+BenchmarkRound9Doors/badger/values-after-write         	   10000	    105170 ns/op	     438 B/op	       6 allocs/op
+BenchmarkRound9Doors/badger/values-after-write         	   10000	    108057 ns/op	     423 B/op	       6 allocs/op
+BenchmarkRound9Doors/badger/values-after-write         	   11598	    102889 ns/op	     421 B/op	       6 allocs/op
+BenchmarkRound9Doors/badger/values-pin                 	 5772884	       173.9 ns/op	      97 B/op	       1 allocs/op
+BenchmarkRound9Doors/badger/values-pin                 	15686734	        76.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRound9Doors/badger/values-pin                 	15022376	        76.56 ns/op	       0 B/op	       0 allocs/op
+goos: darwin
+cpu: Apple M4 Max
+BenchmarkRound9Doors/memory/timeline-first         	       5	 160708700 ns/op	133042904 B/op	 1900157 allocs/op
+BenchmarkRound9Doors/memory/timeline-first         	       5	 156866533 ns/op	132096593 B/op	 1900046 allocs/op
+BenchmarkRound9Doors/memory/timeline-first         	       5	 156910817 ns/op	132096300 B/op	 1900040 allocs/op
+BenchmarkRound9Doors/badger/timeline-first         	       5	 504545842 ns/op	557760104 B/op	 7273808 allocs/op
+BenchmarkRound9Doors/badger/timeline-first         	       5	 462099758 ns/op	532622416 B/op	 6913437 allocs/op
+BenchmarkRound9Doors/badger/timeline-first         	       5	 470890433 ns/op	532622329 B/op	 6913435 allocs/op

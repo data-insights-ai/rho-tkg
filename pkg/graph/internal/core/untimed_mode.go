@@ -29,21 +29,42 @@ import (
 type UntimedValidStart uint8
 
 const (
-	// UntimedFromTxFrom (the default) starts it at its TxFrom (backlog 62).
-	UntimedFromTxFrom UntimedValidStart = iota
+	// UntimedDefault (the zero value, v4.57.0) keeps the mode an existing
+	// store was written under (its persisted mode; UntimedFromTxFrom for a
+	// store with rows and no persisted mode) and makes a new store an
+	// UntimedUnbounded store. It is a Config value only:
+	// Admin().SetUntimedValidStart names the target mode.
+	UntimedDefault UntimedValidStart = iota
+	// UntimedFromTxFrom starts it at its TxFrom (backlog 62); the default
+	// for new stores up to v4.56.x.
+	UntimedFromTxFrom
 	// UntimedUnbounded starts it at -inf (types.UnboundedValidFrom): the
 	// entity is valid at every instant before its first change. A later
-	// version without a valid-from still starts at its TxFrom.
+	// version without a valid-from still starts at its TxFrom. The default
+	// for new stores from v4.57.0.
 	UntimedUnbounded
 )
 
 // untimedValidStartMeta is the MetaKV key persisting the mode a store's rows
-// are written under: one byte, 0 = UntimedFromTxFrom, 1 = UntimedUnbounded,
-// untimedConverting = a conversion to UntimedUnbounded started and did not
-// finish (Admin().SetUntimedValidStart).
+// are written under: one byte, untimedByteTxFrom, untimedByteUnbounded or
+// untimedConverting (a conversion to UntimedUnbounded started and did not
+// finish, Admin().SetUntimedValidStart). The bytes are the v4.56.0 encoding;
+// they are not the UntimedValidStart values (v4.57.0 put UntimedDefault at 0).
 const untimedValidStartMeta = "untimed_valid_start"
 
-const untimedConverting byte = 2
+const (
+	untimedByteTxFrom    byte = 0
+	untimedByteUnbounded byte = 1
+	untimedConverting    byte = 2
+)
+
+// untimedModeOfByte is the mode a persisted key byte (not converting) names.
+func untimedModeOfByte(b byte) UntimedValidStart {
+	if b == untimedByteTxFrom {
+		return UntimedFromTxFrom
+	}
+	return UntimedUnbounded
+}
 
 // untimedStart is THE place the mode decides: the valid-from a create stores.
 // first reports that the row is the entity's first version (a generated ID,
@@ -125,24 +146,53 @@ func (c *Core) stampQueuedUntimedStart(tm *types.TemporalMetadata) bool {
 // mode, also over a key, and so does a store without stable storage. A key
 // naming an unfinished conversion opens only under UntimedUnbounded, which
 // finishes it (resumeUntimedConversion).
-func (c *Core) resolveUntimedMode() error {
+//
+// Under UntimedDefault (defaultMode) the mode is the store's: its key (a key
+// naming an unfinished conversion is UntimedUnbounded, and the open finishes
+// it), else UntimedFromTxFrom for a durable store with rows (written before
+// v4.56.0), else UntimedUnbounded (a new store, or one without stable
+// storage: the v4.57.0 default). A store without MetaKV cannot persist the
+// mode and stays UntimedFromTxFrom. untimedUnbounded is set from the decision.
+func (c *Core) resolveUntimedMode(defaultMode bool) error {
 	mk := c.metaKV
 	if mk == nil {
+		// Without MetaKV the mode cannot be persisted, so no session can
+		// tell a new store from one an earlier session wrote: the default
+		// stays UntimedFromTxFrom (the pre-v4.57.0 zero value) in every
+		// session, never a mix of both rules.
+		if defaultMode {
+			c.untimedUnbounded.Store(false)
+		}
 		return nil
 	}
 	v, err := mk.MetaGet(untimedValidStartMeta)
 	if err != nil {
 		return fmt.Errorf("graph: read untimed valid-start mode: %w", err)
 	}
+	hasKey := len(v) == 1
+	if len(v) > 1 || (hasKey && v[0] > untimedConverting) {
+		return fmt.Errorf("graph: untimed valid-start mode %x: %w", v, storepkg.ErrCorruptWire)
+	}
+	if defaultMode {
+		unbounded := true
+		if hasKey {
+			unbounded = v[0] != untimedByteTxFrom
+		} else if df, ok := c.store.(storepkg.DurableFlushCapability); ok && df.DurableFlushSupported() {
+			// A store without stable storage was never written by an
+			// earlier session: it is new.
+			_, found, err := c.sampleRowHashed()
+			if err != nil {
+				return fmt.Errorf("graph: untimed valid-start mode: %w", err)
+			}
+			unbounded = !found
+		}
+		c.untimedUnbounded.Store(unbounded)
+	}
 	want := UntimedFromTxFrom
 	if c.untimedUnbounded.Load() {
 		want = UntimedUnbounded
 	}
-	hasKey := len(v) == 1
-	switch {
-	case len(v) > 1 || (hasKey && v[0] > untimedConverting):
-		return fmt.Errorf("graph: untimed valid-start mode %x: %w", v, storepkg.ErrCorruptWire)
-	case hasKey && v[0] == byte(want):
+	if hasKey && v[0] == untimedModeByteOf(want) {
 		return nil
 	}
 	if df, ok := c.store.(storepkg.DurableFlushCapability); !ok || !df.DurableFlushSupported() {
@@ -166,7 +216,7 @@ func (c *Core) resolveUntimedMode() error {
 		}
 		c.untimedResume = true
 	case hasKey:
-		return untimedModeMismatch(UntimedValidStart(v[0]), want)
+		return untimedModeMismatch(untimedModeOfByte(v[0]), want)
 	case want != UntimedFromTxFrom:
 		return untimedModeMismatch(UntimedFromTxFrom, want)
 	default:
@@ -224,16 +274,40 @@ func (c *Core) persistUntimedMode() error {
 }
 
 func (c *Core) untimedModeByte() byte {
-	if c.untimedUnbounded.Load() {
-		return byte(UntimedUnbounded)
+	return untimedModeByteOf(untimedModeOf(c.untimedUnbounded.Load()))
+}
+
+// untimedModeByteOf is the persisted key byte of mode (UntimedFromTxFrom or
+// UntimedUnbounded).
+func untimedModeByteOf(mode UntimedValidStart) byte {
+	if mode == UntimedUnbounded {
+		return untimedByteUnbounded
 	}
-	return byte(UntimedFromTxFrom)
+	return untimedByteTxFrom
 }
 
 // writeUntimedMode persists the mode key b and, once it is written, mirrors
 // it in untimedIncomplete (b == untimedConverting): the in-process guard and
 // the persisted key change together.
 func (c *Core) writeUntimedMode(b byte) error {
+	return c.writeUntimedModeLogged(b, false)
+}
+
+// writeUntimedModeLogged is writeUntimedMode; logTxFrom also writes a
+// UntimedFromTxFrom key through the change-logged path (without raising the
+// format marker), for a store whose feed may already carry an unbounded
+// ChangeMeta record (an import adopting a TxFrom export into a store whose
+// first open persisted UntimedUnbounded): a replica must follow the switch.
+func (c *Core) writeUntimedModeLogged(b byte, logTxFrom bool) error {
+	if logTxFrom && b == untimedByteTxFrom && c.metaKV != nil {
+		if fm, ok := c.metaKV.(storepkg.MetaFormatMarkerCapability); ok {
+			if err := fm.MetaSetDurableRaising(untimedValidStartMeta, []byte{b}, 0); err != nil {
+				return err
+			}
+			c.untimedIncomplete.Store(false)
+			return nil
+		}
+	}
 	if err := c.writeUntimedModeKey(b); err != nil {
 		return err
 	}
@@ -250,7 +324,7 @@ func (c *Core) writeUntimedModeKey(b byte) error {
 	// with the key, so a release that ignores the key refuses the store
 	// instead of writing TxFrom-start creates into it; a TxFrom store keeps
 	// its marker.
-	if fm, ok := c.metaKV.(storepkg.MetaFormatMarkerCapability); ok && b != byte(UntimedFromTxFrom) {
+	if fm, ok := c.metaKV.(storepkg.MetaFormatMarkerCapability); ok && b != untimedByteTxFrom {
 		return fm.MetaSetDurableRaising(untimedValidStartMeta, val, storeutil.UntimedUnboundedStoreFormatVersion)
 	}
 	if d, ok := c.metaKV.(interface {
@@ -297,7 +371,7 @@ func (c *Core) restoreUntimedModeAfterReset() error {
 // conversion stays marked unfinished; call again).
 func (a *AdminOps) SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) error {
 	c := a.c
-	if mode > UntimedUnbounded {
+	if mode == UntimedDefault || mode > UntimedUnbounded {
 		return ErrInvalidUntimedValidStart
 	}
 	if err := c.checkWritable(); err != nil {
@@ -332,7 +406,7 @@ func (a *AdminOps) SetUntimedValidStart(ctx context.Context, mode UntimedValidSt
 		return fmt.Errorf("graph: flush the converted rows: %w", err)
 	}
 	c.untimedUnbounded.Store(true)
-	if err := c.writeUntimedMode(byte(UntimedUnbounded)); err != nil {
+	if err := c.writeUntimedMode(untimedByteUnbounded); err != nil {
 		return fmt.Errorf("graph: persist untimed valid-start mode: %w", err)
 	}
 	return nil
@@ -524,7 +598,7 @@ func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
 		return fmt.Errorf("graph: apply: untimed valid-start mode %x: %w", body.Value, storepkg.ErrCorruptWire)
 	}
 	v := body.Value[0]
-	c.untimedUnbounded.Store(v != byte(UntimedFromTxFrom))
+	c.untimedUnbounded.Store(v != untimedByteTxFrom)
 	c.asOfColumns.bump() // the conversion's rewritten history rows follow in the feed
 	return c.writeUntimedMode(v)
 }
@@ -573,7 +647,7 @@ func (c *Core) adoptImportUntimedModeLocked(srcUnbounded bool) error {
 		return nil
 	}
 	c.untimedUnbounded.Store(srcUnbounded)
-	if err := c.writeUntimedMode(byte(untimedModeOf(srcUnbounded))); err != nil {
+	if err := c.writeUntimedModeLogged(untimedModeByteOf(untimedModeOf(srcUnbounded)), true); err != nil {
 		return fmt.Errorf("import: persist the adopted untimed valid-start mode: %w", err)
 	}
 	return nil

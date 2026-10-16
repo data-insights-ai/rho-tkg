@@ -79,6 +79,13 @@ type asOfColumnCache struct {
 	cutDeclined map[stateCutKey]uint64
 	cutBuilds   atomic.Int64
 	relCutEpoch atomic.Uint64 // cutEpoch
+
+	// timelines are the count timelines (count_timeline.go), each with the
+	// cut epoch it was built at; created on first use.
+	timelines map[countTimelineKey]countTimelineEntry
+	// valueStats are the property value statistics at pins
+	// (value_stats.go), like timelines.
+	valueStats map[valueStatsKey]valueStatsEntry
 }
 
 type asOfCacheKey struct {
@@ -223,6 +230,8 @@ func (a *asOfColumnCache) clear() {
 	a.cuts = make(map[stateCutKey]*stateCut)
 	a.cutOrder, a.cutBytes, a.cutSeen = nil, 0, nil
 	a.cutDeclined = make(map[stateCutKey]uint64)
+	// Value statistics hold a property value (MaxValue): erased with the rest.
+	a.timelines, a.valueStats = nil, nil
 	a.mu.Unlock()
 }
 

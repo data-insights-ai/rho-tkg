@@ -42,7 +42,20 @@ func (c *Core) nodeRangeCandidatesAt(tok uint16, propKey string, min, max float6
 	if !ok || !c.storeRowsTrust || !c.membershipSidecarUsable(opts.Depth) || math.IsNaN(min) || math.IsNaN(max) {
 		return nil, false, nil
 	}
-	pinTx := effectiveTxPin(opts)
+	ids, err = nodeRangeCandidates(ranger, tok, propKey, min, max, effectiveTxPin(opts))
+	if err != nil {
+		if errors.Is(err, storepkg.ErrIndexNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return ids, true, nil
+}
+
+// nodeRangeCandidates is the sidecar's range members (bounds widened, see
+// rangeCandidateWiden) first recorded at or before pinTx (0: every one),
+// ascending; the store's ErrIndexNotFound is returned as is.
+func nodeRangeCandidates(ranger storepkg.NodePropertyTxMemberRangeCapability, tok uint16, propKey string, min, max float64, pinTx types.Instant) (ids []types.NodeID, err error) {
 	err = ranger.ForEachNodePropertyTxMemberInRange(tok, propKey, min-rangeCandidateWiden(min), max+rangeCandidateWiden(max),
 		func(id types.NodeID, firstTx types.Instant) bool {
 			if pinTx == 0 || firstTx == 0 || firstTx <= pinTx {
@@ -51,13 +64,10 @@ func (c *Core) nodeRangeCandidatesAt(tok uint16, propKey string, min, max float6
 			return true
 		})
 	if err != nil {
-		if errors.Is(err, storepkg.ErrIndexNotFound) {
-			return nil, false, nil
-		}
-		return nil, false, err
+		return nil, err
 	}
 	slices.Sort(ids)
-	return ids, true, nil
+	return ids, nil
 }
 
 // relRangeCandidatesAt is nodeRangeCandidatesAt for a relationship type.
@@ -66,7 +76,20 @@ func (c *Core) relRangeCandidatesAt(tok uint16, propKey string, min, max float64
 	if !ok || !c.storeRowsTrust || !c.membershipSidecarUsable(opts.Depth) || math.IsNaN(min) || math.IsNaN(max) {
 		return nil, false, nil
 	}
-	pinTx := effectiveTxPin(opts)
+	ids, err = relRangeCandidates(ranger, tok, propKey, min, max, effectiveTxPin(opts))
+	if err != nil {
+		if errors.Is(err, storepkg.ErrIndexNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return ids, true, nil
+}
+
+// relRangeCandidates is the sidecar's range members (bounds widened, see
+// rangeCandidateWiden) first recorded at or before pinTx (0: every one),
+// ascending; the store's ErrIndexNotFound is returned as is.
+func relRangeCandidates(ranger storepkg.RelPropertyTxMemberRangeCapability, tok uint16, propKey string, min, max float64, pinTx types.Instant) (ids []types.RelID, err error) {
 	err = ranger.ForEachRelPropertyTxMemberInRange(tok, propKey, min-rangeCandidateWiden(min), max+rangeCandidateWiden(max),
 		func(id types.RelID, firstTx types.Instant) bool {
 			if pinTx == 0 || firstTx == 0 || firstTx <= pinTx {
@@ -75,13 +98,10 @@ func (c *Core) relRangeCandidatesAt(tok uint16, propKey string, min, max float64
 			return true
 		})
 	if err != nil {
-		if errors.Is(err, storepkg.ErrIndexNotFound) {
-			return nil, false, nil
-		}
-		return nil, false, err
+		return nil, err
 	}
 	slices.Sort(ids)
-	return ids, true, nil
+	return ids, nil
 }
 
 // nodesInRangeAtLocked is the version list forEachNodeInRangeTemporal folds:

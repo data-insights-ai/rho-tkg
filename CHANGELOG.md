@@ -19,6 +19,102 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   backends), `TestBatchExciseNoVersionPartialRange` (a partly valid range succeeds with one void piece over its valid
   part); `tasks/evidence/batch-excise-no-version/`.
 
+## [4.57.0] - 2026-10-16
+
+Minor release: sigma-tkgd round 9 (four additive doors) and the default change of `Config.UntimedValidStart` for new
+stores that v4.56.0 announced under Deprecated. Migration: see "Changed" below.
+
+### Added
+
+- **Ranges over any version recorded at a pin** (sigma-tkgd round 9 R9-1, backlog 16 as a new door).
+  `Nodes().ForEachByLabelPropertyRangeAnyVersion` / `RangeCardinalityAnyVersion` and the `Rels()` twins over a type: the
+  entities of which some row recorded at the pin (every valid-time version, deleted entities' rows before the delete,
+  retracted lives dropped) carries the label and a numeric value in range, the union over the range of
+  `ByLabelAndProperty`'s matches at `{ValidStart 1, ValidEnd MaxInt64, TxAt pin}`; the count states the entities and their
+  rows in range. Candidates from the property index's membership sidecar, each chain tested with the equality door's
+  resolver (now a visitor, `eachNodeChainDuring`, shared). `ErrIndexNotFound` without an index,
+  `ErrCapabilityNotSupported` on tiered, sharded and external stores and for an Elements index (the count declines); a
+  pin below a retention watermark fails closed like the equality door (the relationship doors and
+  `RelPropertyValueStats` check the type's purge watermark; review fix). "Any version" is the equality door's valid
+  window `[1, MaxInt64)`.
+  The resolved-version range doors are unchanged. 100,000 nodes, 500 in range: 0.46-0.49 ms memory, 1.31-1.35 ms badger, level with `RangeCardinalityAt` (target: within 2x).
+- **Count timelines** (R9-2). `Nodes().CountTimelineByLabel` / `Rels().CountTimelineByType(name, pin, store.CountTimelineOpts)`:
+  the members holding at each valid instant at a pin (0: the commit clock) as maximal constant-count segments, equal to
+  `CountByLabelAt` / `CountByTypeAt` at every instant; `UntimedFromMinusInf` (sigma's untimed rule on an `UntimedTxFrom`
+  store) and `MaxSegments`. Built from the effective scan the state cuts read, cached under their invalidation. States the
+  valid-time hull at a pin (backlog 71, of every believed row). 100,000 members: first call at a pin 157 ms memory / 470 ms badger (one fold; target "under 5 ms after the cut" missed: the cut keeps no version stamps the untimed rule needs), cached 1.8-2.4 µs (target 1 µs missed by the segment copy).
+- **Value statistics of an indexed property** (R9-3). `Stats().PropertyValueStats` / `RelPropertyValueStats(name, key, pin)`:
+  distinct values as the index keys them, rows, the heaviest value's rows and value. Current state from the index (computed
+  at the first call after a mutation, cached in the index; a write stores one nil pointer), at a pin per version from the
+  sidecar's members of every value (new optional `store.NodePropertyTxMemberAnyCapability` /
+  `RelPropertyTxMemberAnyCapability`, memory and badger). Declines without an index, while it is built, for an Elements
+  index, badger `PropertyIndexOnDisk` (current state), tiered, sharded, external stores. Current cached 0.24-0.36 µs, first call after a write 0.10 ms, at a pin cached 76 ns; indexed update write path level with v4.56.1.
+- **Typed chunks of a column snapshot** (R9-4, sigma-tkgd W10). Column snapshots implement the optional
+  `types.NodeColumnChunkReader`: `ReadChunk(from, to, *types.ColumnChunk)` hands out positions as typed vectors
+  (`types.ColumnVector`: ints, floats, a mixed numeric column with `IsFloat`, dictionary codes into the snapshot's shared
+  dictionary, presence), the values `RowAt` boxes, into reused buffers; memory, badger, tiered and sharded (shards
+  concatenated, kinds unified, dictionaries merged once). 0.77-0.80 ns per row and column for the read; a consumer pass 1.3 ns against 4.3 ns through `RowAt` (3.2x; target 5x missed because `RowAt` hands out cached boxed views and allocates nothing).
+- Tests: `TestRangeAnyVersionMatchesEquality`, `TestRangeAnyVersionEarlierVersion`, `TestCountTimelineMatchesCountByLabelAt`,
+  `TestCountTimelineFollowsWrites`, `TestPropertyValueStatsMatchesIndex`, `TestPropertyValueStatsPerVersion`,
+  `TestRound9DoorsAfterReopen`, `TestRound9RelDoorsHonourRetention`, `TestPropertyValueStatsDeclineAfterIndexDrop`
+  (value statistics cached at a pin are dropped by property-index DDL and by an exact erasure), `TestColumnChunksMatchRowAt`, `TestColumnChunkReuseAndBounds`, `TestChunkConcatAcrossParts`,
+  forwarding tests in nodes, rels and stats; mutants in `tasks/evidence/cypher-round9/`; benchmarks
+  `BenchmarkRound9Doors`, `BenchmarkColumnChunks`, `BenchmarkIndexedUpdateWritePath`.
+
+### Changed
+
+- **`Config.UntimedValidStart`: a NEW store is an `UntimedUnbounded` store by default** (backlog 73; announced under
+  Deprecated in v4.56.0; René, sigma-tkgd and ai-soc chose `UntimedUnbounded`). The zero value is now
+  `graph.UntimedDefault`: it opens an existing store under the mode the store was written under (its persisted key, or
+  `UntimedFromTxFrom` for a store with rows and no key) and makes a store that is empty at its first open an
+  `UntimedUnbounded` store (an untimed first version starts at -inf; store format marker 7 from that open). So a store
+  created under v4.56.x defaults keeps starting untimed first versions at their `TxFrom`, for old rows and new creates,
+  and no reopen fails because the default changed. The explicit values still select either mode and still fail with
+  `ErrUntimedModeMismatch` on a store of the other mode; a store marked "converting" is finished by a default open as by
+  an `UntimedUnbounded` one. `Admin().SetUntimedValidStart(ctx, UntimedDefault)` is `ErrInvalidUntimedValidStart` (a
+  conversion names its target). The constant values moved to make room for the zero value (`UntimedDefault` 0,
+  `UntimedFromTxFrom` 1, `UntimedUnbounded` 2): code that names the constants needs no change, code that converts
+  numbers to the type does; the persisted key bytes are unchanged (0 TxFrom, 1 unbounded, 2 converting). Rollback:
+  v4.56.x reads the same key, but its zero value is `UntimedFromTxFrom`, so it opens a store created under the v4.57.0
+  default only with `UntimedValidStart = UntimedUnbounded` set explicitly (else `ErrUntimedModeMismatch`). A store
+  without MetaKV (an external store) cannot persist the mode, so no session can tell it was new: under the default it
+  stays `UntimedFromTxFrom` in every session, as before. An `IO().Import` that adopts a TxFrom export into a store whose
+  first open persisted `UntimedUnbounded` logs the switch as a `ChangeMeta` record too (no marker raise), so a replica
+  following the feed ends in the store's mode. Test: `TestUntimedDefaultFlip` (badger, tiered, sharded, memory: a store written under v4.56.x
+  defaults, key byte 0, and a legacy store without a key keep the TxFrom start under the default for old and new rows;
+  a new default store is unbounded, persists byte 1 and refuses an explicit `UntimedFromTxFrom` reopen; an explicit
+  `UntimedFromTxFrom` new store stays TxFrom; a default open finishes an interrupted conversion; a v4.56.x store
+  converted under the default reopens unbounded). Red run, green run and a mutant (a default open that ignores the key):
+  `tasks/evidence/untimed-default-flip/`. The suite's tests that assert the TxFrom start of an untimed create (backlog 62)
+  now name `UntimedFromTxFrom` (test helpers `txFromCfg`, `withTxFrom`); the rest run under the new default. Review
+  (Opus, one round) tests: `TestUntimedDefaultWithoutMetaKV`, `TestUntimedDefaultAdoptLogsTxFrom`.
+
+  **Migration.**
+  - *Keep the old rule for new stores:* set `Config.UntimedValidStart = graph.UntimedFromTxFrom`. Needed where a test,
+    fixture or service creates fresh stores and expects an untimed create to start at its `TxFrom` (reads before the
+    create's `TxFrom` now answer the entity), and for a new store that v4.55.3 or earlier must still open (marker 7).
+  - *ai-soc* sets `UntimedValidStart: UntimedUnbounded` for its new stores (v4.56.0, PIN18): nothing to change; dropping
+    the explicit setting is equivalent for new stores. An explicit `UntimedUnbounded` on a store written under v4.56.x
+    defaults still fails with `ErrUntimedModeMismatch` (convert it with `Admin().SetUntimedValidStart(ctx,
+    UntimedUnbounded)`, or open it under `UntimedDefault` to keep its TxFrom rule).
+  - *sigma-tkgd* (main 1d79a1de) sets no mode: `cmd/tkgd/storeconfig.go` `graphConfig` and its test fixtures run under the
+    default, so with v4.57.0 its NEW stores become `UntimedUnbounded` while existing stores keep the TxFrom start. Its
+    `go test -short ./...` against this release fails 36 top-level tests that assert the TxFrom start (e.g.
+    `TestUntimedRowFollowsTheStoreOnEveryDoor`, `TestTemporalQuery_BitemporalUnsetValidFrom_NotEpochValid`, `TestTCK`);
+    all pass on v4.56.1 and on the round 9 doors without the flip. To keep today's behaviour set
+    `UntimedValidStart: graph.UntimedFromTxFrom` in `graphConfig` and in the test fixtures that call `graph.New`; to adopt
+    the new default, update those tests to the -inf start (sigma already maps `types.UnboundedValidFrom` to -inf).
+  - *Replicas:* a primary in `UntimedFromTxFrom` emits no `ChangeMeta`, so a NEW replica store bootstrapped from the
+    change feed alone under the default would take `UntimedUnbounded`; configure such a replica `UntimedFromTxFrom`
+    explicitly (an `IO().Import` bootstrap adopts the export's mode, and an existing replica store keeps its key).
+  - *Change-feed consumers:* a new store's change feed now starts with one `ChangeMeta` record (the mode key, written
+    durably at the first open, as v4.56.0 did for a store created `UntimedUnbounded`); `replication.DecodeChangeIdentity`
+    answers `ErrNoEntityIdentity` for it. Skip meta records (sigma-tkgd's mirror watcher already does); counts of records
+    or LSNs taken from an empty store are one higher. The examples `Example_changeFeed` / `Example_watch` show it.
+  - *Imports:* an `IO().Import` into an empty store still adopts the export's mode; a full export of a TxFrom store into
+    a fresh default store therefore yields a TxFrom store, as before (it keeps the marker 7 its first open stamped, so
+    v4.55.3 and earlier do not open it).
+
 ## [4.56.1] - 2026-10-15
 
 ### Changed

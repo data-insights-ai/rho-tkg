@@ -28,6 +28,9 @@ func (i *IndexOps) CreatePropertyWithOptions(label, propertyKey string, opts sto
 	if err := c.checkWritable(); err != nil {
 		return err
 	}
+	// Value statistics at pins are cached per (type, key) and answer
+	// only while the index serves them: index DDL drops them (R9-3).
+	defer c.asOfColumns.bump()
 	if err := storepkg.ValidatePropertyIndexOptions(opts); err != nil {
 		return err
 	}
@@ -88,6 +91,9 @@ func (i *IndexOps) DeleteProperty(label, propertyKey string) error {
 	if err := c.checkWritable(); err != nil {
 		return err
 	}
+	// Value statistics at pins are cached per (type, key) and answer
+	// only while the index serves them: index DDL drops them (R9-3).
+	defer c.asOfColumns.bump()
 	return c.readUnderRLock(func() error {
 		if err := c.validateIndexLabel(label); err != nil {
 			return err

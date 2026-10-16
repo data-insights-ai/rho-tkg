@@ -1,0 +1,8 @@
+=== RUN   TestUntimedDefaultFlip
+=== RUN   TestUntimedDefaultFlip/badger
+=== RUN   TestUntimedDefaultFlip/tiered
+=== RUN   TestUntimedDefaultFlip/sharded
+=== RUN   TestUntimedDefaultFlip/memory
+--- PASS: TestUntimedDefaultFlip (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	3.145s

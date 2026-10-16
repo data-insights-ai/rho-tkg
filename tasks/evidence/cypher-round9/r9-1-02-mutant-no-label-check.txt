@@ -1,0 +1,12 @@
+# mutant: pkg/graph/internal/core/range_any_version.go
+# - 'return ok && n.HasLabelTokenRaw(tok) && inRangeExact'
+# + 'return ok && inRangeExact'
+$ go test -run 'TestRangeAnyVersion' ./pkg/graph/
+--- FAIL: TestRangeAnyVersionEarlierVersion (0.01s)
+    --- FAIL: TestRangeAnyVersionEarlierVersion/memory (0.00s)
+        round9_doors_test.go:337: label dropped on a later version: {Entities:1 Rows:3} true <nil>, want 1 entity 1 row
+    --- FAIL: TestRangeAnyVersionEarlierVersion/badger (0.01s)
+        round9_doors_test.go:337: label dropped on a later version: {Entities:1 Rows:3} true <nil>, want 1 entity 1 row
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.401s
+FAIL

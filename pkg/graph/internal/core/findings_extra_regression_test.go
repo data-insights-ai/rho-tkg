@@ -71,7 +71,7 @@ func (s *temporalCandidateCountingStore) NodesByLabelAndProperty(token uint16, k
 func newTemporalCandidateCountingGraph(t *testing.T) (*Core, *temporalCandidateCountingStore) {
 	t.Helper()
 	store := &temporalCandidateCountingStore{Store: memory.New()}
-	g, err := New(Config{Store: store})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: store})
 	if err != nil {
 		t.Fatalf("New graph: %v", err)
 	}
@@ -480,7 +480,7 @@ func (s *failPutNodesBatchStore) PutNodesBatch(nodes []*types.Node) error {
 func TestBatchExecute_RelSkipsAfterNodeBatchFailure(t *testing.T) {
 	injected := errors.New("injected PutNodesBatch failure")
 	store := &failPutNodesBatchStore{Store: memory.New(), err: injected}
-	g, err := New(Config{Store: store})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: store})
 	if err != nil {
 		t.Fatalf("New graph: %v", err)
 	}
@@ -538,7 +538,7 @@ func TestBatchExecute_RelSkipsAfterNodeBatchFailure(t *testing.T) {
 // (snowflake-derived vStart >= 1.75e12 is never less than 0) and the query
 // silently returns an empty slice for a still-live entity.
 func TestGetNodesValidDuring_EndZero_IncludesLiveEntities(t *testing.T) {
-	g, err := New(Config{})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -560,7 +560,7 @@ func TestGetNodesValidDuring_EndZero_IncludesLiveEntities(t *testing.T) {
 }
 
 func TestGetRelationshipsValidDuring_EndZero_IncludesLiveEntities(t *testing.T) {
-	g, err := New(Config{})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -591,7 +591,7 @@ func TestGetRelationshipsValidDuring_EndZero_IncludesLiveEntities(t *testing.T) 
 // pointer that AddNode returned.
 func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *testing.T) {
 	injected := errors.New("injected PutNodesBatch failure for rollback test")
-	g, err := New(Config{Store: &failPutNodesBatchStore{Store: memory.New(), err: injected}})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: &failPutNodesBatchStore{Store: memory.New(), err: injected}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -622,8 +622,9 @@ func TestBatchExecute_FailedPutNodesBatch_RollsBackTxFromOnReturnedEntity(t *tes
 func TestTemporalQueries_ComposeDepthFilter(t *testing.T) {
 	ts := newTestTieredStore(t)
 	g, err := New(Config{
-		Store:      ts,
-		Validation: ValidationLimits{AllowSelfLoops: true},
+		UntimedValidStart: UntimedFromTxFrom,
+		Store:             ts,
+		Validation:        ValidationLimits{AllowSelfLoops: true},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -738,7 +739,7 @@ func TestTemporalQueries_ComposeDepthFilter(t *testing.T) {
 // never actually committed.
 func TestBatchExecute_FailedPutRelationship_RollsBackReturnedEntityState(t *testing.T) {
 	injected := errors.New("injected PutRelationship failure for rollback test")
-	g, err := New(Config{Store: &failPutRelationshipStore{Store: memory.New(), err: injected}})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: &failPutRelationshipStore{Store: memory.New(), err: injected}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -803,7 +804,7 @@ func (s *failPutRelationshipStore) PutRelationship(r *types.Relationship) error 
 // body runs several times, then asserting that no node whose vStart
 // fell after the captured upper bound appears in the result.
 func TestGetNodesValidDuring_OpenEnd_SnapshotUpperBound(t *testing.T) {
-	g, err := New(Config{})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

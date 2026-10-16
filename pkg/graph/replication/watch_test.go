@@ -62,14 +62,14 @@ func newWatchGraph(t *testing.T, backend string) *graphpkg.Graph {
 	var err error
 	switch backend {
 	case "memory":
-		g, err = graphpkg.New(graphpkg.Config{Store: memory.New(memory.WithChangeLog())})
+		g, err = graphpkg.New(graphpkg.Config{Store: memory.New(memory.WithChangeLog()), UntimedValidStart: graphpkg.UntimedFromTxFrom}) // no ChangeMeta record at open
 	case "badger":
 		// SyncWrites forces every mutation to flush synchronously (disables
 		// the async write buffer), so a change-log record is durably visible
 		// to ChangeFeed/ForEachChange/Watch the instant Add returns — without
 		// it, records only surface after the 100ms FlushInterval and these
 		// tests' exactness assertions would be racing the flush loop.
-		g, err = graphpkg.New(graphpkg.Config{BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
+		g, err = graphpkg.New(graphpkg.Config{BadgerInMemory: true, ChangeLog: true, SyncWrites: true, UntimedValidStart: graphpkg.UntimedFromTxFrom})
 	default:
 		t.Fatalf("unknown backend %q", backend)
 		return nil

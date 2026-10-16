@@ -22,7 +22,7 @@ func frozenTestBackends(t *testing.T) map[string]func(t *testing.T) *graphpkg.Gr
 	t.Helper()
 	return map[string]func(t *testing.T) *graphpkg.Graph{
 		"memory": func(t *testing.T) *graphpkg.Graph {
-			g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 6})
+			g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 6, UntimedValidStart: graphpkg.UntimedFromTxFrom})
 			if err != nil {
 				t.Fatalf("graph.New(memory): %v", err)
 			}
@@ -33,7 +33,7 @@ func frozenTestBackends(t *testing.T) map[string]func(t *testing.T) *graphpkg.Gr
 			if err != nil {
 				t.Fatalf("badger.New: %v", err)
 			}
-			g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 7, Store: bs})
+			g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 7, Store: bs, UntimedValidStart: graphpkg.UntimedFromTxFrom})
 			if err != nil {
 				t.Fatalf("graph.New(badger): %v", err)
 			}

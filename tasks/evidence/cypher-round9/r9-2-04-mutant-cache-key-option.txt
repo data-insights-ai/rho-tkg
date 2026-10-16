@@ -1,0 +1,16 @@
+# mutant: pkg/graph/internal/core/count_timeline.go
+# - '\ttkey := countTimelineKey{cut: key, untimed: opts.UntimedFromMinusInf}'
+# + '\ttkey := countTimelineKey{cut: key}'
+$ go test -run 'TestCountTimeline' ./pkg/graph/
+--- FAIL: TestCountTimelineMatchesCountByLabelAt (0.02s)
+    --- FAIL: TestCountTimelineMatchesCountByLabelAt/memory (0.00s)
+        round9_doors_test.go:463: pin 1792129749073 untimed true at 1: timeline 0, want 1 (segments [{1792129749071 0 1}])
+    --- FAIL: TestCountTimelineMatchesCountByLabelAt/badger (0.00s)
+        round9_doors_test.go:463: pin 1792129749076 untimed true at 1: timeline 0, want 1 (segments [{1792129749074 0 1}])
+    --- FAIL: TestCountTimelineMatchesCountByLabelAt/tiered (0.01s)
+        round9_doors_test.go:463: pin 1792129749084 untimed true at 1792129749081: timeline 0, want 1 (segments [{1792129749082 0 1}])
+    --- FAIL: TestCountTimelineMatchesCountByLabelAt/sharded (0.00s)
+        round9_doors_test.go:463: pin 1792129749087 untimed true at 999: timeline 0, want 1 (segments [{1792129749085 0 1}])
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.396s
+FAIL
