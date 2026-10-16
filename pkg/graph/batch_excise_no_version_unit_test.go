@@ -18,18 +18,27 @@ import (
 // documented exception (excise.go BatchBuilder.ExciseNodeValidity godoc: the
 // kernel's refusals fail that op alone) and is pinned as such.
 //
-// Break-the-code cases: the failing excise queued first, in the middle and
-// last beside an AddNode and an UpdateNode of another node; memory, badger,
-// tiered, sharded.
+// Break-the-code cases: the failing excise (node, and the relationship twin
+// ExciseRelValidityWithTx) queued first, in the middle and last beside an
+// AddNode and an UpdateNode of another node; memory, badger, tiered, sharded.
 func TestBatchExciseNoVersionRefusesUnit(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
+	type variant struct {
+		rel, withTx bool
+	}
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {
-		for _, withTx := range []bool{true, false} {
+		for _, v := range []variant{{false, true}, {false, false}, {true, true}, {true, false}} {
 			for _, pos := range []string{"first", "middle", "last"} {
-				name := b.name + "/plain/" + pos
+				rel, withTx := v.rel, v.withTx
+				name := b.name + "/node"
+				if rel {
+					name = b.name + "/rel"
+				}
 				if withTx {
-					name = b.name + "/withTx/" + pos
+					name += "/withTx/" + pos
+				} else {
+					name += "/plain/" + pos
 				}
 				t.Run(name, func(t *testing.T) {
 					g := b.open(t)
@@ -41,6 +50,33 @@ func TestBatchExciseNoVersionRefusesUnit(t *testing.T) {
 						return n.ID()
 					}
 					target, other := add(), add()
+					// The relationship twin's target also starts at k(10).
+					var targetRel types.RelID
+					if rel {
+						from, err := g.Nodes().Get(ctx, target)
+						if err != nil {
+							t.Fatal(err)
+						}
+						to, err := g.Nodes().Get(ctx, other)
+						if err != nil {
+							t.Fatal(err)
+						}
+						r, err := g.Rels().Add(ctx, "R", from, to, map[string]any{"tkg_valid_from": k(10), "s": "v"})
+						if err != nil {
+							t.Fatal(err)
+						}
+						targetRel = r.ID()
+					}
+					targetHistory := func() int {
+						if !rel {
+							return historyLen(t, g, target)
+						}
+						h, err := g.Rels().History(targetRel)
+						if err != nil {
+							t.Fatalf("Rels().History(%d): %v", targetRel, err)
+						}
+						return len(h)
+					}
 					at := nowTx(t, g)
 					bb, err := g.Batch().New()
 					if err != nil {
@@ -49,10 +85,15 @@ func TestBatchExciseNoVersionRefusesUnit(t *testing.T) {
 					excise := func() {
 						// Nothing is valid in [k(1), k(5)): the node starts at k(10).
 						var err error
-						if withTx {
+						switch {
+						case !rel && withTx:
 							err = bb.ExciseNodeValidityWithTx(target, k(1), k(5), at)
-						} else {
+						case !rel:
 							err = bb.ExciseNodeValidity(target, k(1), k(5))
+						case withTx:
+							err = bb.ExciseRelValidityWithTx(targetRel, k(1), k(5), at)
+						default:
+							err = bb.ExciseRelValidity(targetRel, k(1), k(5))
 						}
 						if err != nil {
 							t.Fatalf("queue excise: %v", err)
@@ -104,15 +145,15 @@ func TestBatchExciseNoVersionRefusesUnit(t *testing.T) {
 					}
 					s, _ := o.GetProperty("s")
 					if withTx {
-						if len(ghosts) != 0 || s != "v" || historyLen(t, g, target) != 0 || historyLen(t, g, other) != 0 {
+						if len(ghosts) != 0 || s != "v" || targetHistory() != 0 || historyLen(t, g, other) != 0 {
 							t.Fatalf("refused unit wrote: ghosts=%d other.s=%v target history=%d other history=%d; want nothing written",
-								len(ghosts), s, historyLen(t, g, target), historyLen(t, g, other))
+								len(ghosts), s, targetHistory(), historyLen(t, g, other))
 						}
 						return
 					}
 					// Plain excise: documented per-op failure, the other ops kept.
-					if len(ghosts) != 1 || s != "changed" || historyLen(t, g, target) != 0 {
-						t.Fatalf("plain excise: ghosts=%d other.s=%v target history=%d; want 1, changed, 0", len(ghosts), s, historyLen(t, g, target))
+					if len(ghosts) != 1 || s != "changed" || targetHistory() != 0 {
+						t.Fatalf("plain excise: ghosts=%d other.s=%v target history=%d; want 1, changed, 0", len(ghosts), s, targetHistory())
 					}
 				})
 			}

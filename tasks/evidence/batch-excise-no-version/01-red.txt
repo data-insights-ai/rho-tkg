@@ -1,0 +1,127 @@
+=== RUN   TestBatchExciseNoVersionRefusesUnit
+=== PAUSE TestBatchExciseNoVersionRefusesUnit
+=== CONT  TestBatchExciseNoVersionRefusesUnit
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/node/withTx/first
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/node/withTx/middle
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/node/withTx/last
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/node/plain/first
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/node/plain/middle
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/node/plain/last
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/rel/withTx/first
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/rel/withTx/middle
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/rel/withTx/last
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/rel/plain/first
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/rel/plain/middle
+=== RUN   TestBatchExciseNoVersionRefusesUnit/memory/rel/plain/last
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/node/withTx/first
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/node/withTx/middle
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/node/withTx/last
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/node/plain/first
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/node/plain/middle
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/node/plain/last
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/rel/withTx/first
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/rel/withTx/middle
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/rel/withTx/last
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/rel/plain/first
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/rel/plain/middle
+=== RUN   TestBatchExciseNoVersionRefusesUnit/badger/rel/plain/last
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/node/withTx/first
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/node/withTx/middle
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/node/withTx/last
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/node/plain/first
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/node/plain/middle
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/node/plain/last
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/rel/withTx/first
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/rel/withTx/middle
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/rel/withTx/last
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/rel/plain/first
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/rel/plain/middle
+=== RUN   TestBatchExciseNoVersionRefusesUnit/tiered/rel/plain/last
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/node/withTx/first
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/node/withTx/middle
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/node/withTx/last
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/node/plain/first
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/node/plain/middle
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/node/plain/last
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/rel/withTx/first
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/rel/withTx/middle
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/rel/withTx/last
+    batch_excise_no_version_unit_test.go:149: refused unit wrote: ghosts=1 other.s=changed target history=0 other history=1; want nothing written
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/rel/plain/first
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/rel/plain/middle
+=== RUN   TestBatchExciseNoVersionRefusesUnit/sharded/rel/plain/last
+--- FAIL: TestBatchExciseNoVersionRefusesUnit (0.85s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/memory/node/withTx/first (0.00s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/memory/node/withTx/middle (0.00s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/memory/node/withTx/last (0.00s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/memory/node/plain/first (0.00s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/memory/node/plain/middle (0.00s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/memory/node/plain/last (0.00s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/memory/rel/withTx/first (0.00s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/memory/rel/withTx/middle (0.00s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/memory/rel/withTx/last (0.00s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/memory/rel/plain/first (0.00s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/memory/rel/plain/middle (0.00s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/memory/rel/plain/last (0.00s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/badger/node/withTx/first (0.01s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/badger/node/withTx/middle (0.01s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/badger/node/withTx/last (0.00s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/badger/node/plain/first (0.04s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/badger/node/plain/middle (0.05s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/badger/node/plain/last (0.04s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/badger/rel/withTx/first (0.02s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/badger/rel/withTx/middle (0.01s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/badger/rel/withTx/last (0.01s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/badger/rel/plain/first (0.03s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/badger/rel/plain/middle (0.02s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/badger/rel/plain/last (0.01s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/tiered/node/withTx/first (0.02s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/tiered/node/withTx/middle (0.02s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/tiered/node/withTx/last (0.01s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/tiered/node/plain/first (0.05s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/tiered/node/plain/middle (0.08s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/tiered/node/plain/last (0.05s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/tiered/rel/withTx/first (0.02s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/tiered/rel/withTx/middle (0.02s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/tiered/rel/withTx/last (0.02s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/tiered/rel/plain/first (0.02s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/tiered/rel/plain/middle (0.02s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/tiered/rel/plain/last (0.02s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/sharded/node/withTx/first (0.02s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/sharded/node/withTx/middle (0.02s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/sharded/node/withTx/last (0.02s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/sharded/node/plain/first (0.02s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/sharded/node/plain/middle (0.02s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/sharded/node/plain/last (0.02s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/sharded/rel/withTx/first (0.02s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/sharded/rel/withTx/middle (0.02s)
+    --- FAIL: TestBatchExciseNoVersionRefusesUnit/sharded/rel/withTx/last (0.02s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/sharded/rel/plain/first (0.02s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/sharded/rel/plain/middle (0.02s)
+    --- PASS: TestBatchExciseNoVersionRefusesUnit/sharded/rel/plain/last (0.04s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.909s
+FAIL
