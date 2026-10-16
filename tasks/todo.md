@@ -234,7 +234,7 @@ Test proportionality: graphapply 120 k test LOC for 40.7 k src (709 `Test` funcs
 | v4.56.0 | a08c0d52 | Config.UntimedValidStart (73, René + sigma + ai-soc: Unbounded first version, explicit conversion, marker 7), endpoint constraint over the current life, Reset keeps schema_version |
 | v4.56.1 | 5d8b5917 | one-pass property sidecar build in the open image (74, ai-soc), effective pages pruned by the temporal envelope (75, ai-soc), envelope fold on re-create/re-type |
 | v4.57.0 | 1d749a86 | sigma-tkgd round 9 doors (any-version ranges at a pin, count timelines, property value statistics, typed column chunks; row 56), `Config.UntimedValidStart` default for NEW stores `UntimedUnbounded` (73, row 57) |
-| v4.57.1 | SHA | batch WithTx excise refuses the whole unit (row 52), one numeric equality rule across every equality door (row 54, WP-02), fast test tier (WP-14) |
+| v4.57.1 | dd5c684c | batch WithTx excise refuses the whole unit (row 52), one numeric equality rule across every equality door (row 54, WP-02), fast test tier (WP-14) |
 
 ## Open decisions for René (my default in bold)
 
