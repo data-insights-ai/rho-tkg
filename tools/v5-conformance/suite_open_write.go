@@ -47,7 +47,7 @@ func openPersistsHistory(t *testing.T, a Adapter) {
 	wantProps(t, "current after refused update", mustGet(t, g, n.ID).Props, map[string]any{"v": 3})
 }
 
-func mustGet(t *testing.T, g Graph, id uint64) Node {
+func mustGet(t *testing.T, g Graph, id int64) Node {
 	t.Helper()
 	n, err := g.GetNode(ctx, id)
 	ok(t, err)

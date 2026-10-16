@@ -106,7 +106,7 @@ func marshalID(v int64) ([]byte, error) {
 	return strconv.AppendInt(nil, v, 10), nil
 }
 
-// parseID accepts exactly the output of strconv.FormatUint for a nonzero value.
+// parseID accepts exactly the output of strconv.FormatInt for a positive value.
 func parseID(b []byte) (int64, error) {
 	if len(b) == 0 || len(b) > 19 || b[0] == '0' {
 		return 0, ErrInvalidID

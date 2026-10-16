@@ -18,7 +18,7 @@ func init() {
 }
 
 // atTx asserts what NodeAtTx(valid, tx) answers: a property value, or a refusal.
-func wantAtTx(t *testing.T, g Graph, id uint64, valid, tx int64, k string, want any) {
+func wantAtTx(t *testing.T, g Graph, id int64, valid, tx int64, k string, want any) {
 	t.Helper()
 	n, err := g.NodeAtTx(id, valid, tx)
 	if want == nil {
@@ -63,8 +63,8 @@ func ivNodeCorrection(t *testing.T, a Adapter) {
 	// The valid-time selector of the label door agrees with the point door.
 	for _, c := range []struct {
 		valid int64
-		want  []uint64
-	}{{120, []uint64{n.ID}}, {250, []uint64{n.ID}}, {300, nil}, {50, nil}} {
+		want  []int64
+	}{{120, []int64{n.ID}}, {250, []int64{n.ID}}, {300, nil}, {50, nil}} {
 		ns, err := g.NodesByLabel("Q", Query{ValidAt: c.valid, TxAt: 2500})
 		ok(t, err)
 		wantIDs(t, "ByLabel valid-time", ids(ns), c.want)

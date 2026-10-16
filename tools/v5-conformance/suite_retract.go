@@ -34,8 +34,8 @@ func retractNode(t *testing.T, a Adapter) {
 	wantAtTx(t, g, x.ID, 150, 3500, "v", nil)
 	for _, c := range []struct {
 		pin  int64
-		want []uint64
-	}{{2500, []uint64{x.ID}}, {3500, nil}} {
+		want []int64
+	}{{2500, []int64{x.ID}}, {3500, nil}} {
 		ns, err := g.NodesByLabel("R", Query{TxPin: c.pin})
 		ok(t, err)
 		wantIDs(t, "ByLabel at the pin", ids(ns), c.want)
@@ -130,7 +130,7 @@ func retractPlain(t *testing.T, a Adapter) {
 	wantNoNodeAsOf(t, g, n.ID, after)
 	ns, err := g.NodesByLabel("R", Query{TxPin: before})
 	ok(t, err)
-	wantIDs(t, "ByLabel at the earlier pin", ids(ns), []uint64{n.ID})
+	wantIDs(t, "ByLabel at the earlier pin", ids(ns), []int64{n.ID})
 	ns, err = g.NodesByLabel("R", Query{TxPin: after})
 	ok(t, err)
 	if len(ns) != 0 {
@@ -159,13 +159,13 @@ func retractRel(t *testing.T, a Adapter) {
 	is(t, "retract twice", g.RetractRel(ctx, retracted.ID, 2600), ErrNotFound)
 
 	flt := Filter{Prop: "est", Eq: "e1"}
-	segsAt := func(tx, valid int64) []uint64 {
+	segsAt := func(tx, valid int64) []int64 {
 		return relSegIDs(flattenSegs(walk(t, g, Pin{Tx: tx, ValidAt: valid}, flt, 10)))
 	}
 	// Before the retraction both relationships answer; after it only the deleted one does,
 	// for valid instants before the delete.
-	wantIDs(t, "pin 2000", segsAt(2000, 0), []uint64{retracted.ID, deleted.ID})
-	wantIDs(t, "pin 3000 valid 2000", segsAt(3000, 2000), []uint64{deleted.ID})
+	wantIDs(t, "pin 2000", segsAt(2000, 0), []int64{retracted.ID, deleted.ID})
+	wantIDs(t, "pin 3000 valid 2000", segsAt(3000, 2000), []int64{deleted.ID})
 	wantIDs(t, "pin 3000 valid 3000", segsAt(3000, 3000), nil)
 	rs, err := g.RelsByType("R", Query{TxPin: 3000})
 	ok(t, err)

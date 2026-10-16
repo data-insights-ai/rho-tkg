@@ -18,8 +18,8 @@ func init() {
 	)
 }
 
-func nodeSegIDs(segs []NodeSegment) []uint64 {
-	var out []uint64
+func nodeSegIDs(segs []NodeSegment) []int64 {
+	var out []int64
 	for _, s := range segs {
 		if len(out) == 0 || out[len(out)-1] != s.Node.ID {
 			out = append(out, s.Node.ID)
@@ -31,7 +31,7 @@ func nodeSegIDs(segs []NodeSegment) []uint64 {
 func walkNodes(t *testing.T, g Graph, pin Pin, f Filter, limit int) [][]NodeSegment {
 	t.Helper()
 	var pages [][]NodeSegment
-	var after uint64
+	var after int64
 	for guard := 0; ; guard++ {
 		if guard > 100 {
 			t.Fatalf("keyset walk does not terminate")
@@ -67,8 +67,8 @@ func walkNodes(t *testing.T, g Graph, pin Pin, f Filter, limit int) [][]NodeSegm
 	}
 }
 
-func flattenNodes(pages [][]NodeSegment) []uint64 {
-	var out []uint64
+func flattenNodes(pages [][]NodeSegment) []int64 {
+	var out []int64
 	for _, p := range pages {
 		out = append(out, nodeSegIDs(p)...)
 	}
@@ -87,8 +87,8 @@ func nodeFixture(t *testing.T, g Graph, n int, estates []string, valid Interval)
 	return out
 }
 
-func nodeIDsOf(ns []Node, idx ...int) []uint64 {
-	var out []uint64
+func nodeIDsOf(ns []Node, idx ...int) []int64 {
+	var out []int64
 	for _, i := range idx {
 		out = append(out, ns[i].ID)
 	}
@@ -140,7 +140,7 @@ func nodePagePins(t *testing.T, a Adapter) {
 	ok(t, err)
 	ok(t, g.DeleteNode(ctx, ns[2].ID, 5000))
 	e1, e2 := Filter{Prop: "est", Eq: "e1"}, Filter{Prop: "est", Eq: "e2"}
-	at := func(p Pin, f Filter) []uint64 { return flattenNodes(walkNodes(t, g, p, f, 10)) }
+	at := func(p Pin, f Filter) []int64 { return flattenNodes(walkNodes(t, g, p, f, 10)) }
 
 	wantIDs(t, "e1 @3500", at(Pin{Tx: 3500}, e1), nodeIDsOf(ns, 0, 2, 4))
 	wantIDs(t, "e2 @3500", at(Pin{Tx: 3500}, e2), nodeIDsOf(ns, 1, 3))
@@ -242,8 +242,8 @@ func nodePageCursorEdges(t *testing.T, a Adapter) {
 	}
 	for _, c := range []struct {
 		name  string
-		after uint64
-		want  []uint64
+		after int64
+		want  []int64
 	}{
 		{"cursor zero starts at the beginning", 0, nodeIDsOf(ns, 0, 2)},
 		{"cursor before the first ID", 1, nodeIDsOf(ns, 0, 2)},
@@ -264,7 +264,7 @@ func nodePageCursorEdges(t *testing.T, a Adapter) {
 		}
 	}
 	// A cursor that is not a valid positive int64 ID is invalid, not "past the end".
-	for _, bad := range []uint64{math.MaxInt64 + 1, math.MaxUint64} {
+	for _, bad := range []int64{-1, math.MinInt64} {
 		segs, next, err := g.NodesEffectivePage(ctx, pin, flt, bad, 10)
 		if err == nil {
 			t.Fatalf("cursor %d accepted (%d rows)", bad, len(segs))
@@ -300,12 +300,12 @@ func relPageCursorEdges(t *testing.T, a Adapter) {
 	pin := Pin{Tx: 3000}
 	for _, c := range []struct {
 		name  string
-		after uint64
-		want  []uint64
+		after int64
+		want  []int64
 	}{
-		{"cursor zero", 0, []uint64{rs[0].ID, rs[2].ID}},
-		{"cursor on a matching ID is exclusive", rs[0].ID, []uint64{rs[2].ID}},
-		{"cursor on a non-matching ID", rs[1].ID, []uint64{rs[2].ID}},
+		{"cursor zero", 0, []int64{rs[0].ID, rs[2].ID}},
+		{"cursor on a matching ID is exclusive", rs[0].ID, []int64{rs[2].ID}},
+		{"cursor on a non-matching ID", rs[1].ID, []int64{rs[2].ID}},
 		{"cursor on the last matching ID", rs[2].ID, nil},
 		{"cursor past every ID", rs[3].ID + 1, nil},
 		{"cursor at MaxInt64", math.MaxInt64, nil},
@@ -319,7 +319,7 @@ func relPageCursorEdges(t *testing.T, a Adapter) {
 			t.Fatalf("%s: short page returned next=%d", c.name, next)
 		}
 	}
-	for _, bad := range []uint64{math.MaxInt64 + 1, math.MaxUint64} {
+	for _, bad := range []int64{-1, math.MinInt64} {
 		segs, next, err := g.RelsEffectivePage(ctx, pin, flt, bad, 10)
 		if err == nil {
 			t.Fatalf("cursor %d accepted (%d rows)", bad, len(segs))

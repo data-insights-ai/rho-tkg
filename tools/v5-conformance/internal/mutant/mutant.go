@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"testing"
 
 	conformance "github.com/data-insights-ai/rho-tkg/tools/v5-conformance"
@@ -118,28 +117,28 @@ func (g *graph) Reopen() error {
 
 func (g *graph) revived() bool { return g.on["close-then-read-works"] && g.closed }
 
-func (g *graph) NodeAsOf(id uint64, tx int64) (conformance.Node, error) {
+func (g *graph) NodeAsOf(id int64, tx int64) (conformance.Node, error) {
 	if g.on["asof-current"] {
 		return g.Graph.GetNode(context.Background(), id)
 	}
 	return g.Graph.NodeAsOf(id, tx)
 }
 
-func (g *graph) RelAsOf(id uint64, tx int64) (conformance.Rel, error) {
+func (g *graph) RelAsOf(id int64, tx int64) (conformance.Rel, error) {
 	if g.on["asof-current"] {
 		return g.Graph.GetRel(context.Background(), id)
 	}
 	return g.Graph.RelAsOf(id, tx)
 }
 
-func (g *graph) NodeHistory(id uint64) ([]conformance.Node, error) {
+func (g *graph) NodeHistory(id int64) ([]conformance.Node, error) {
 	if g.on["history-empty"] {
 		return nil, nil
 	}
 	return g.Graph.NodeHistory(id)
 }
 
-func (g *graph) RelHistory(id uint64) ([]conformance.Rel, error) {
+func (g *graph) RelHistory(id int64) ([]conformance.Rel, error) {
 	if g.on["history-empty"] {
 		return nil, nil
 	}
@@ -175,11 +174,11 @@ func (d directTx) AddNode(s conformance.NodeSpec) (conformance.Node, error) {
 	return d.g.AddNode(d.ctx, s)
 }
 func (d directTx) AddRel(s conformance.RelSpec) (conformance.Rel, error) { return d.g.AddRel(d.ctx, s) }
-func (d directTx) UpdateNode(id uint64, p map[string]any) (conformance.Node, error) {
+func (d directTx) UpdateNode(id int64, p map[string]any) (conformance.Node, error) {
 	return d.g.UpdateNode(d.ctx, id, p, 0)
 }
-func (d directTx) DeleteNode(id uint64) error { return d.g.DeleteNode(d.ctx, id, 0) }
-func (d directTx) GetNode(id uint64) (conformance.Node, error) {
+func (d directTx) DeleteNode(id int64) error { return d.g.DeleteNode(d.ctx, id, 0) }
+func (d directTx) GetNode(id int64) (conformance.Node, error) {
 	return d.g.GetNode(d.ctx, id)
 }
 
@@ -198,39 +197,39 @@ func (g *graph) Tx(ctx context.Context, fn func(conformance.Tx) error) error {
 	return err
 }
 
-func (g *graph) SetNodeVersionInterval(ctx context.Context, id uint64, from, to int64, props map[string]any, txFrom int64) (conformance.Node, error) {
+func (g *graph) SetNodeVersionInterval(ctx context.Context, id int64, from, to int64, props map[string]any, txFrom int64) (conformance.Node, error) {
 	if g.on["interval-ignored"] {
 		return g.Graph.UpdateNode(ctx, id, props, txFrom)
 	}
 	return g.Graph.SetNodeVersionInterval(ctx, id, from, to, props, txFrom)
 }
 
-func (g *graph) SetRelVersionInterval(ctx context.Context, id uint64, from, to int64, props map[string]any, txFrom int64) (conformance.Rel, error) {
+func (g *graph) SetRelVersionInterval(ctx context.Context, id int64, from, to int64, props map[string]any, txFrom int64) (conformance.Rel, error) {
 	if g.on["interval-ignored"] {
 		return g.Graph.UpdateRel(ctx, id, props, txFrom)
 	}
 	return g.Graph.SetRelVersionInterval(ctx, id, from, to, props, txFrom)
 }
 
-func (g *graph) CloseNodeVersion(ctx context.Context, id uint64, t int64) error {
+func (g *graph) CloseNodeVersion(ctx context.Context, id int64, t int64) error {
 	if g.on["close-noop"] {
 		return nil
 	}
 	return g.Graph.CloseNodeVersion(ctx, id, t)
 }
 
-func (g *graph) CloseRelVersion(ctx context.Context, id uint64, t int64) error {
+func (g *graph) CloseRelVersion(ctx context.Context, id int64, t int64) error {
 	if g.on["close-noop"] {
 		return nil
 	}
 	return g.Graph.CloseRelVersion(ctx, id, t)
 }
 
-func (g *graph) RelsEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after uint64, limit int) ([]conformance.RelSegment, uint64, error) {
+func (g *graph) RelsEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after int64, limit int) ([]conformance.RelSegment, int64, error) {
 	if g.on["page-ignores-cursor"] {
 		after = 0
 	}
-	if g.on["page-cursor-unchecked"] && after > math.MaxInt64 {
+	if g.on["page-cursor-unchecked"] && after < 0 {
 		after = 0
 	}
 	if g.on["page-limit-unchecked"] && (limit <= 0 || limit > 10000) {
@@ -243,11 +242,11 @@ func (g *graph) RelsEffectivePage(ctx context.Context, pin conformance.Pin, f co
 	return segs, next, err
 }
 
-func (g *graph) NodesEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after uint64, limit int) ([]conformance.NodeSegment, uint64, error) {
+func (g *graph) NodesEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after int64, limit int) ([]conformance.NodeSegment, int64, error) {
 	if g.on["nodes-page-ignores-cursor"] {
 		after = 0
 	}
-	if g.on["page-cursor-unchecked"] && after > math.MaxInt64 {
+	if g.on["page-cursor-unchecked"] && after < 0 {
 		after = 0
 	}
 	if g.on["nodes-page-ignores-pin"] && pin.Tx > 0 && pin.Tx < 1<<59 {
@@ -299,7 +298,7 @@ func (g *graph) AddNode(ctx context.Context, s conformance.NodeSpec) (conformanc
 	return g.Graph.AddNode(ctx, s)
 }
 
-func (g *graph) UpdateNode(ctx context.Context, id uint64, props map[string]any, txFrom int64) (conformance.Node, error) {
+func (g *graph) UpdateNode(ctx context.Context, id int64, props map[string]any, txFrom int64) (conformance.Node, error) {
 	if g.on["caller-instant-ignored"] {
 		txFrom = 0
 	}
@@ -310,42 +309,42 @@ func (g *graph) UpdateNode(ctx context.Context, id uint64, props map[string]any,
 	return n, err
 }
 
-func (g *graph) DeleteNode(ctx context.Context, id uint64, txTo int64) error {
+func (g *graph) DeleteNode(ctx context.Context, id int64, txTo int64) error {
 	if g.on["caller-instant-ignored"] {
 		txTo = 0
 	}
 	return g.Graph.DeleteNode(ctx, id, txTo)
 }
 
-func (g *graph) GetNode(ctx context.Context, id uint64) (conformance.Node, error) {
+func (g *graph) GetNode(ctx context.Context, id int64) (conformance.Node, error) {
 	if g.revived() {
 		return conformance.Node{ID: id}, nil
 	}
 	return g.Graph.GetNode(ctx, id)
 }
 
-func (d directTx) UpdateNodeWithTx(id uint64, p map[string]any, tx int64) (conformance.Node, error) {
+func (d directTx) UpdateNodeWithTx(id int64, p map[string]any, tx int64) (conformance.Node, error) {
 	return d.g.UpdateNode(d.ctx, id, p, tx)
 }
-func (d directTx) DeleteNodeWithTx(id uint64, tx int64) error { return d.g.DeleteNode(d.ctx, id, tx) }
-func (d directTx) SetNodeVersionIntervalWithTx(id uint64, f, to int64, p map[string]any, tx int64) (conformance.Node, error) {
+func (d directTx) DeleteNodeWithTx(id int64, tx int64) error { return d.g.DeleteNode(d.ctx, id, tx) }
+func (d directTx) SetNodeVersionIntervalWithTx(id int64, f, to int64, p map[string]any, tx int64) (conformance.Node, error) {
 	return d.g.SetNodeVersionInterval(d.ctx, id, f, to, p, tx)
 }
-func (d directTx) ExciseNodeValidityWithTx(id uint64, a, b, tx int64) error {
+func (d directTx) ExciseNodeValidityWithTx(id int64, a, b, tx int64) error {
 	return d.g.ExciseNodeValidity(d.ctx, id, a, b, tx)
 }
-func (d directTx) UpdateRelWithTx(id uint64, p map[string]any, tx int64) (conformance.Rel, error) {
+func (d directTx) UpdateRelWithTx(id int64, p map[string]any, tx int64) (conformance.Rel, error) {
 	return d.g.UpdateRel(d.ctx, id, p, tx)
 }
 
 // plainTwinTx routes the caller-instant twins to the graph-clock doors.
 type plainTwinTx struct{ conformance.Tx }
 
-func (p plainTwinTx) UpdateNodeWithTx(id uint64, props map[string]any, _ int64) (conformance.Node, error) {
+func (p plainTwinTx) UpdateNodeWithTx(id int64, props map[string]any, _ int64) (conformance.Node, error) {
 	return p.Tx.UpdateNode(id, props)
 }
-func (p plainTwinTx) DeleteNodeWithTx(id uint64, _ int64) error { return p.Tx.DeleteNode(id) }
-func (p plainTwinTx) ExciseNodeValidityWithTx(id uint64, a, b, _ int64) error {
+func (p plainTwinTx) DeleteNodeWithTx(id int64, _ int64) error { return p.Tx.DeleteNode(id) }
+func (p plainTwinTx) ExciseNodeValidityWithTx(id int64, a, b, _ int64) error {
 	return p.Tx.ExciseNodeValidityWithTx(id, a, b, 1)
 }
 
@@ -359,21 +358,21 @@ func (d directBatch) AddNode(s conformance.NodeSpec) error {
 	_, err := d.g.AddNode(d.ctx, s)
 	return err
 }
-func (d directBatch) UpdateNodeWithTx(id uint64, p map[string]any, tx int64) error {
+func (d directBatch) UpdateNodeWithTx(id int64, p map[string]any, tx int64) error {
 	_, err := d.g.UpdateNode(d.ctx, id, p, tx)
 	return err
 }
-func (d directBatch) DeleteNodeWithTx(id uint64, tx int64) error {
+func (d directBatch) DeleteNodeWithTx(id int64, tx int64) error {
 	return d.g.DeleteNode(d.ctx, id, tx)
 }
-func (d directBatch) SetNodeVersionIntervalWithTx(id uint64, f, to int64, p map[string]any, tx int64) error {
+func (d directBatch) SetNodeVersionIntervalWithTx(id int64, f, to int64, p map[string]any, tx int64) error {
 	_, err := d.g.SetNodeVersionInterval(d.ctx, id, f, to, p, tx)
 	return err
 }
-func (d directBatch) ExciseNodeValidityWithTx(id uint64, a, b, tx int64) error {
+func (d directBatch) ExciseNodeValidityWithTx(id int64, a, b, tx int64) error {
 	return d.g.ExciseNodeValidity(d.ctx, id, a, b, tx)
 }
-func (d directBatch) UpdateRelWithTx(id uint64, p map[string]any, tx int64) error {
+func (d directBatch) UpdateRelWithTx(id int64, p map[string]any, tx int64) error {
 	_, err := d.g.UpdateRel(d.ctx, id, p, tx)
 	return err
 }
@@ -389,7 +388,7 @@ func (g *graph) BatchRun(ctx context.Context, fn func(conformance.Batch) error) 
 	return err
 }
 
-func (g *graph) ExciseNodeValidity(ctx context.Context, id uint64, a, b, txFrom int64) error {
+func (g *graph) ExciseNodeValidity(ctx context.Context, id int64, a, b, txFrom int64) error {
 	switch {
 	case g.on["excise-noop"]:
 		return nil
@@ -403,7 +402,7 @@ func (g *graph) ExciseNodeValidity(ctx context.Context, id uint64, a, b, txFrom 
 	return g.Graph.ExciseNodeValidity(ctx, id, a, b, txFrom)
 }
 
-func (g *graph) ExciseRelValidity(ctx context.Context, id uint64, a, b, txFrom int64) error {
+func (g *graph) ExciseRelValidity(ctx context.Context, id int64, a, b, txFrom int64) error {
 	switch {
 	case g.on["excise-noop"]:
 		return nil
@@ -417,7 +416,7 @@ func (g *graph) ExciseRelValidity(ctx context.Context, id uint64, a, b, txFrom i
 	return g.Graph.ExciseRelValidity(ctx, id, a, b, txFrom)
 }
 
-func (g *graph) RetractNode(ctx context.Context, id uint64, txTo int64) error {
+func (g *graph) RetractNode(ctx context.Context, id int64, txTo int64) error {
 	switch {
 	case g.on["retract-as-delete"]:
 		return g.Graph.DeleteNode(ctx, id, txTo)
@@ -429,7 +428,7 @@ func (g *graph) RetractNode(ctx context.Context, id uint64, txTo int64) error {
 	return g.Graph.RetractNode(ctx, id, txTo)
 }
 
-func (g *graph) RetractRel(ctx context.Context, id uint64, txTo int64) error {
+func (g *graph) RetractRel(ctx context.Context, id int64, txTo int64) error {
 	switch {
 	case g.on["retract-as-delete"]:
 		return g.Graph.DeleteRel(ctx, id, txTo)

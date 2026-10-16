@@ -43,8 +43,8 @@ func newPageFixture(t *testing.T, a Adapter, n int, estates []string, open bool)
 
 func openMem(t *testing.T, a Adapter) Graph { return open(t, a, true) }
 
-func (f *pageFixture) ofEstate(est string) []uint64 {
-	var out []uint64
+func (f *pageFixture) ofEstate(est string) []int64 {
+	var out []int64
 	for i, r := range f.rels {
 		if f.rels[i].Props["est"] == est {
 			out = append(out, r.ID)
@@ -55,8 +55,8 @@ func (f *pageFixture) ofEstate(est string) []uint64 {
 
 // relSegIDs lists the distinct relationship IDs of a page in order: a page
 // holds at most limit relationships, each with all of its matching segments.
-func relSegIDs(segs []RelSegment) []uint64 {
-	var out []uint64
+func relSegIDs(segs []RelSegment) []int64 {
+	var out []int64
 	for _, s := range segs {
 		if len(out) == 0 || out[len(out)-1] != s.Rel.ID {
 			out = append(out, s.Rel.ID)
@@ -70,7 +70,7 @@ func relSegIDs(segs []RelSegment) []uint64 {
 func walk(t *testing.T, g Graph, pin Pin, f Filter, limit int) [][]RelSegment {
 	t.Helper()
 	var pages [][]RelSegment
-	var after uint64
+	var after int64
 	for guard := 0; ; guard++ {
 		if guard > 100 {
 			t.Fatalf("keyset walk does not terminate")
@@ -106,8 +106,8 @@ func walk(t *testing.T, g Graph, pin Pin, f Filter, limit int) [][]RelSegment {
 	}
 }
 
-func flatten(pages [][]RelSegment) []uint64 {
-	var out []uint64
+func flatten(pages [][]RelSegment) []int64 {
+	var out []int64
 	for _, p := range pages {
 		out = append(out, relSegIDs(p)...)
 	}
@@ -173,18 +173,18 @@ func pagePins(t *testing.T, a Adapter) {
 
 	e1 := Filter{Prop: "est", Eq: "e1"}
 	e2 := Filter{Prop: "est", Eq: "e2"}
-	at := func(p Pin, flt Filter) []uint64 {
+	at := func(p Pin, flt Filter) []int64 {
 		return flatten(walk(t, f.g, p, flt, 10))
 	}
 	r := f.rels
-	wantIDs(t, "e1 @3500", at(Pin{Tx: 3500}, e1), []uint64{r[0].ID, r[2].ID, r[4].ID})
-	wantIDs(t, "e2 @3500", at(Pin{Tx: 3500}, e2), []uint64{r[1].ID, r[3].ID})
+	wantIDs(t, "e1 @3500", at(Pin{Tx: 3500}, e1), []int64{r[0].ID, r[2].ID, r[4].ID})
+	wantIDs(t, "e2 @3500", at(Pin{Tx: 3500}, e2), []int64{r[1].ID, r[3].ID})
 	// The move is a valid-time change at 4000: with no valid-time filter the
 	// relationship keeps its e1 segment [100,4000) and gains an e2 segment [4000,inf).
-	wantIDs(t, "e1 @4500, any valid time", at(Pin{Tx: 4500}, e1), []uint64{r[0].ID, r[2].ID, r[4].ID})
-	wantIDs(t, "e1 @4500 valid 5000", at(Pin{Tx: 4500, ValidAt: 5000}, e1), []uint64{r[2].ID, r[4].ID})
-	wantIDs(t, "e2 @4500 valid 5000", at(Pin{Tx: 4500, ValidAt: 5000}, e2), []uint64{r[0].ID, r[1].ID, r[3].ID})
-	wantIDs(t, "e1 @4500 valid 3000 (before the move)", at(Pin{Tx: 4500, ValidAt: 3000}, e1), []uint64{r[0].ID, r[2].ID, r[4].ID})
+	wantIDs(t, "e1 @4500, any valid time", at(Pin{Tx: 4500}, e1), []int64{r[0].ID, r[2].ID, r[4].ID})
+	wantIDs(t, "e1 @4500 valid 5000", at(Pin{Tx: 4500, ValidAt: 5000}, e1), []int64{r[2].ID, r[4].ID})
+	wantIDs(t, "e2 @4500 valid 5000", at(Pin{Tx: 4500, ValidAt: 5000}, e2), []int64{r[0].ID, r[1].ID, r[3].ID})
+	wantIDs(t, "e1 @4500 valid 3000 (before the move)", at(Pin{Tx: 4500, ValidAt: 3000}, e1), []int64{r[0].ID, r[2].ID, r[4].ID})
 	segs, _, err := f.g.RelsEffectivePage(ctx, Pin{Tx: 4500}, e1, 0, 1)
 	ok(t, err)
 	if len(segs) != 1 || segs[0].Rel.ID != moved.ID || segs[0].ValidFrom != 100 || segs[0].ValidTo != 4000 {
@@ -196,14 +196,14 @@ func pagePins(t *testing.T, a Adapter) {
 		t.Fatalf("moved relationship under e2 = %+v, want one open segment from 4000", segs)
 	}
 	// At the pin before the update the relationship was only ever e1.
-	wantIDs(t, "e2 @3500 does not hold the moved rel", at(Pin{Tx: 3500}, e2), []uint64{r[1].ID, r[3].ID})
-	wantIDs(t, "e1 @2005 (only the first existed)", at(Pin{Tx: 2005}, e1), []uint64{r[0].ID})
+	wantIDs(t, "e2 @3500 does not hold the moved rel", at(Pin{Tx: 3500}, e2), []int64{r[1].ID, r[3].ID})
+	wantIDs(t, "e1 @2005 (only the first existed)", at(Pin{Tx: 2005}, e1), []int64{r[0].ID})
 	wantIDs(t, "e1 @1999 (before any)", at(Pin{Tx: 1999}, e1), nil)
 	// The delete ends validity at 5000: the segment survives for earlier valid
 	// instants at a later pin and is gone for later ones.
-	wantIDs(t, "e1 @5500 valid 3999", at(Pin{Tx: 5500, ValidAt: 3999}, e1), []uint64{r[0].ID, r[2].ID, r[4].ID})
-	wantIDs(t, "e1 @5500 valid 6000", at(Pin{Tx: 5500, ValidAt: 6000}, e1), []uint64{r[4].ID})
-	wantIDs(t, "e1 @4500 valid 6000 (delete not yet recorded)", at(Pin{Tx: 4500, ValidAt: 6000}, e1), []uint64{r[2].ID, r[4].ID})
+	wantIDs(t, "e1 @5500 valid 3999", at(Pin{Tx: 5500, ValidAt: 3999}, e1), []int64{r[0].ID, r[2].ID, r[4].ID})
+	wantIDs(t, "e1 @5500 valid 6000", at(Pin{Tx: 5500, ValidAt: 6000}, e1), []int64{r[4].ID})
+	wantIDs(t, "e1 @4500 valid 6000 (delete not yet recorded)", at(Pin{Tx: 4500, ValidAt: 6000}, e1), []int64{r[2].ID, r[4].ID})
 	_ = deleted
 }
 
@@ -283,7 +283,7 @@ func pageStable(t *testing.T, a Adapter) {
 	flt := Filter{Prop: "est", Eq: "e1"}
 	first, next, err := f.g.RelsEffectivePage(ctx, pin, flt, 0, 3)
 	ok(t, err)
-	wantIDs(t, "first page", relSegIDs(first), []uint64{f.rels[0].ID, f.rels[1].ID, f.rels[2].ID})
+	wantIDs(t, "first page", relSegIDs(first), []int64{f.rels[0].ID, f.rels[1].ID, f.rels[2].ID})
 	if next != f.rels[2].ID {
 		t.Fatalf("cursor = %d, want %d", next, f.rels[2].ID)
 	}
@@ -297,13 +297,13 @@ func pageStable(t *testing.T, a Adapter) {
 
 	rest, _, err := f.g.RelsEffectivePage(ctx, pin, flt, next, 10)
 	ok(t, err)
-	wantIDs(t, "second page at the old pin", relSegIDs(rest), []uint64{f.rels[3].ID, f.rels[4].ID, f.rels[5].ID})
+	wantIDs(t, "second page at the old pin", relSegIDs(rest), []int64{f.rels[3].ID, f.rels[4].ID, f.rels[5].ID})
 	// The present pin sees the writes.
 	nowPin, err := f.g.CommittedTx()
 	ok(t, err)
 	present := flatten(walk(t, f.g, Pin{Tx: nowPin, ValidAt: 6000}, flt, 10))
 	// At valid 6000: rel 3 was deleted (ended 5000), rel 4 moved to e2 at 4500.
-	wantIDs(t, "present", present, []uint64{f.rels[0].ID, f.rels[1].ID, f.rels[2].ID, f.rels[5].ID, extra.ID})
+	wantIDs(t, "present", present, []int64{f.rels[0].ID, f.rels[1].ID, f.rels[2].ID, f.rels[5].ID, extra.ID})
 }
 
 // pagePerRel: every segment equals the per-relationship bitemporal read at a

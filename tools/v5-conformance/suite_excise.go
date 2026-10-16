@@ -15,7 +15,7 @@ func init() {
 }
 
 // voidRows returns the void rows among a node's history and current row.
-func voidRows(t *testing.T, g Graph, id uint64) []Node {
+func voidRows(t *testing.T, g Graph, id int64) []Node {
 	t.Helper()
 	h, err := g.NodeHistory(id)
 	ok(t, err)
@@ -51,8 +51,8 @@ func exciseNodeHole(t *testing.T, a Adapter) {
 	// The label door and the property door agree with the point door.
 	for _, c := range []struct {
 		valid int64
-		want  []uint64
-	}{{120, []uint64{n.ID}}, {170, nil}, {250, []uint64{n.ID}}} {
+		want  []int64
+	}{{120, []int64{n.ID}}, {170, nil}, {250, []int64{n.ID}}} {
 		ns, err := g.NodesByLabel("X", Query{ValidAt: c.valid, TxAt: 2500})
 		ok(t, err)
 		wantIDs(t, "ByLabel inside/outside the hole", ids(ns), c.want)

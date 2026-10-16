@@ -99,15 +99,15 @@ func addRel(t *testing.T, g Graph, s RelSpec) Rel {
 	return r
 }
 
-func ids(ns []Node) []uint64 {
-	out := make([]uint64, len(ns))
+func ids(ns []Node) []int64 {
+	out := make([]int64, len(ns))
 	for i, n := range ns {
 		out[i] = n.ID
 	}
 	return out
 }
 
-func wantIDs(t *testing.T, what string, got, want []uint64) {
+func wantIDs(t *testing.T, what string, got, want []int64) {
 	t.Helper()
 	if len(got) == 0 && len(want) == 0 {
 		return
@@ -117,7 +117,7 @@ func wantIDs(t *testing.T, what string, got, want []uint64) {
 	}
 }
 
-func sortedIDs(ns []Node) []uint64 {
+func sortedIDs(ns []Node) []int64 {
 	out := ids(ns)
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
@@ -137,7 +137,7 @@ func wantProps(t *testing.T, what string, got, want map[string]any) {
 	}
 }
 
-func wantNodeAsOf(t *testing.T, g Graph, id uint64, pin int64, want map[string]any, version uint32) {
+func wantNodeAsOf(t *testing.T, g Graph, id int64, pin int64, want map[string]any, version uint32) {
 	t.Helper()
 	n, err := g.NodeAsOf(id, pin)
 	if err != nil {
@@ -149,7 +149,7 @@ func wantNodeAsOf(t *testing.T, g Graph, id uint64, pin int64, want map[string]a
 	}
 }
 
-func wantNoNodeAsOf(t *testing.T, g Graph, id uint64, pin int64) {
+func wantNoNodeAsOf(t *testing.T, g Graph, id int64, pin int64) {
 	t.Helper()
 	n, err := g.NodeAsOf(id, pin)
 	if err == nil {
@@ -160,7 +160,7 @@ func wantNoNodeAsOf(t *testing.T, g Graph, id uint64, pin int64) {
 
 // historyUnchanged snapshots a node's history and current row and returns a
 // check that fails when a refused write changed either.
-func historyUnchanged(t *testing.T, g Graph, id uint64) func() {
+func historyUnchanged(t *testing.T, g Graph, id int64) func() {
 	t.Helper()
 	before, err := g.NodeHistory(id)
 	ok(t, err)

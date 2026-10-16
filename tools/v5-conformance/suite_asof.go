@@ -73,7 +73,7 @@ func asofNodeClockPins(t *testing.T, a Adapter) {
 	wantNoNodeAsOf(t, g, n.ID, p3) // the delete is recorded by p3
 	ns, err := g.NodesByLabel("P", Query{TxPin: p2})
 	ok(t, err)
-	wantIDs(t, "ByLabel at p2", ids(ns), []uint64{n.ID})
+	wantIDs(t, "ByLabel at p2", ids(ns), []int64{n.ID})
 	ns, err = g.NodesByLabel("P", Query{TxPin: p3})
 	ok(t, err)
 	if len(ns) != 0 {

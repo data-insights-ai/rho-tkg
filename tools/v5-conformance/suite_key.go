@@ -83,7 +83,7 @@ func keyDistinct(t *testing.T, a Adapter) {
 func keyConcurrent(t *testing.T, a Adapter) {
 	g := open(t, a, true)
 	const callers = 32
-	got := make([]uint64, callers)
+	got := make([]int64, callers)
 	created := make([]bool, callers)
 	errs := make([]error, callers)
 	var wg sync.WaitGroup
@@ -169,7 +169,7 @@ func keyAfterDelete(t *testing.T, a Adapter) {
 	wantNodeAsOf(t, g, first.ID, pin, map[string]any{"id": "k", "gen": 1}, 0)
 	ns, err := g.NodesByLabelAndProperty("U", "id", "k", Query{})
 	ok(t, err)
-	wantIDs(t, "current holders of the key", ids(ns), []uint64{second.ID})
+	wantIDs(t, "current holders of the key", ids(ns), []int64{second.ID})
 }
 
 func keyReopen(t *testing.T, a Adapter) {

@@ -3,7 +3,7 @@
 // (docs/v5-gap-to-main.md, PLAN section 8a, V4.6).
 //
 // The suite is written against the small Adapter interface below, in neutral
-// types (uint64 IDs, int64 millisecond instants, plain property maps), so it
+// types (int64 IDs as in the v5 public convention, int64 millisecond instants, plain property maps), so it
 // imports no rho-tkg package. internal/v4adapter plugs rho-tkg v4.56.1 in
 // today; a v5 facade implements the same interface later and runs the same
 // Run function. Every test mutates first and then reads a historical cut, and
@@ -37,7 +37,7 @@ type Interval struct{ From, To int64 }
 
 // Node is one stored version of a node.
 type Node struct {
-	ID        uint64
+	ID        int64
 	Labels    []string
 	Props     map[string]any
 	Version   uint32
@@ -50,9 +50,9 @@ type Node struct {
 
 // Rel is one stored version of a relationship.
 type Rel struct {
-	ID        uint64
+	ID        int64
 	Type      string
-	From, To  uint64
+	From, To  int64
 	Props     map[string]any
 	Version   uint32
 	ValidFrom int64
@@ -74,7 +74,7 @@ type NodeSpec struct {
 // RelSpec creates a relationship; TxFrom as for NodeSpec.
 type RelSpec struct {
 	Type     string
-	From, To uint64
+	From, To int64
 	Props    map[string]any
 	Valid    Interval
 	TxFrom   int64
@@ -83,7 +83,7 @@ type RelSpec struct {
 // Query selects entities. The zero value selects the current state.
 type Query struct {
 	Limit, ValidAt, ValidStart, ValidEnd, TxAt, TxPin int64
-	After                                             uint64
+	After                                             int64
 }
 
 // Pin is the temporal coordinate of the paged effective doors.
@@ -121,44 +121,44 @@ type Graph interface {
 	Reopen() error
 
 	AddNode(ctx context.Context, s NodeSpec) (Node, error)
-	UpdateNode(ctx context.Context, id uint64, props map[string]any, txFrom int64) (Node, error)
-	DeleteNode(ctx context.Context, id uint64, txTo int64) error
+	UpdateNode(ctx context.Context, id int64, props map[string]any, txFrom int64) (Node, error)
+	DeleteNode(ctx context.Context, id int64, txTo int64) error
 	GetOrCreateByKey(ctx context.Context, label, key string, value any, extra map[string]any) (Node, bool, error)
 	AddRel(ctx context.Context, s RelSpec) (Rel, error)
-	UpdateRel(ctx context.Context, id uint64, props map[string]any, txFrom int64) (Rel, error)
-	DeleteRel(ctx context.Context, id uint64, txTo int64) error
+	UpdateRel(ctx context.Context, id int64, props map[string]any, txFrom int64) (Rel, error)
+	DeleteRel(ctx context.Context, id int64, txTo int64) error
 
 	// SetNodeVersionInterval and SetRelVersionInterval correct a version's valid
 	// span; txFrom != 0 selects the *WithTx door.
-	SetNodeVersionInterval(ctx context.Context, id uint64, from, to int64, props map[string]any, txFrom int64) (Node, error)
-	SetRelVersionInterval(ctx context.Context, id uint64, from, to int64, props map[string]any, txFrom int64) (Rel, error)
-	CloseNodeVersion(ctx context.Context, id uint64, t int64) error
-	CloseRelVersion(ctx context.Context, id uint64, t int64) error
+	SetNodeVersionInterval(ctx context.Context, id int64, from, to int64, props map[string]any, txFrom int64) (Node, error)
+	SetRelVersionInterval(ctx context.Context, id int64, from, to int64, props map[string]any, txFrom int64) (Rel, error)
+	CloseNodeVersion(ctx context.Context, id int64, t int64) error
+	CloseRelVersion(ctx context.Context, id int64, t int64) error
 
 	// Tx runs fn in one transaction: commit when fn returns nil, else roll back
 	// and return fn's error.
 	Tx(ctx context.Context, fn func(Tx) error) error
 
-	GetNode(ctx context.Context, id uint64) (Node, error)
-	GetRel(ctx context.Context, id uint64) (Rel, error)
+	GetNode(ctx context.Context, id int64) (Node, error)
+	GetRel(ctx context.Context, id int64) (Rel, error)
 	NodesByLabel(label string, q Query) ([]Node, error)
 	RelsByType(typ string, q Query) ([]Rel, error)
 	NodesByLabelAndProperty(label, key string, value any, q Query) ([]Node, error)
 
-	NodeAsOf(id uint64, tx int64) (Node, error)
-	RelAsOf(id uint64, tx int64) (Rel, error)
-	NodeAt(id uint64, validAt int64) (Node, error)
-	NodeAtTx(id uint64, validAt, tx int64) (Node, error)
-	RelAtTx(id uint64, validAt, tx int64) (Rel, error)
-	NodeHistory(id uint64) ([]Node, error)
-	RelHistory(id uint64) ([]Rel, error)
+	NodeAsOf(id int64, tx int64) (Node, error)
+	RelAsOf(id int64, tx int64) (Rel, error)
+	NodeAt(id int64, validAt int64) (Node, error)
+	NodeAtTx(id int64, validAt, tx int64) (Node, error)
+	RelAtTx(id int64, validAt, tx int64) (Rel, error)
+	NodeHistory(id int64) ([]Node, error)
+	RelHistory(id int64) ([]Rel, error)
 
 	// CommittedTx is the newest committed transaction instant, usable as a pin.
 	CommittedTx() (int64, error)
 
 	// RelsEffectivePage is one keyset page of effective relationship segments
 	// (limit 1..10000); next is the last ID of a full page, else 0.
-	RelsEffectivePage(ctx context.Context, pin Pin, f Filter, after uint64, limit int) ([]RelSegment, uint64, error)
+	RelsEffectivePage(ctx context.Context, pin Pin, f Filter, after int64, limit int) ([]RelSegment, int64, error)
 
 	// BatchRun queues operations on a batch builder and executes them as one
 	// unit when fn returns nil; a refused queued operation or execution writes
@@ -166,14 +166,14 @@ type Graph interface {
 	BatchRun(ctx context.Context, fn func(Batch) error) error
 	// ExciseNodeValidity and ExciseRelValidity end validity over [a, b) and keep
 	// the entity outside it; txFrom != 0 selects the caller-instant door.
-	ExciseNodeValidity(ctx context.Context, id uint64, a, b, txFrom int64) error
-	ExciseRelValidity(ctx context.Context, id uint64, a, b, txFrom int64) error
+	ExciseNodeValidity(ctx context.Context, id int64, a, b, txFrom int64) error
+	ExciseRelValidity(ctx context.Context, id int64, a, b, txFrom int64) error
 	// NodesEffectivePage is RelsEffectivePage for nodes.
-	NodesEffectivePage(ctx context.Context, pin Pin, f Filter, after uint64, limit int) ([]NodeSegment, uint64, error)
+	NodesEffectivePage(ctx context.Context, pin Pin, f Filter, after int64, limit int) ([]NodeSegment, int64, error)
 	// RetractNode and RetractRel say the entity was never true (belief
 	// retraction, not a validity end); txTo != 0 selects the caller-instant door.
-	RetractNode(ctx context.Context, id uint64, txTo int64) error
-	RetractRel(ctx context.Context, id uint64, txTo int64) error
+	RetractNode(ctx context.Context, id int64, txTo int64) error
+	RetractRel(ctx context.Context, id int64, txTo int64) error
 }
 
 // NodeSegment is one effective valid-time segment of a node.
@@ -186,11 +186,11 @@ type NodeSegment struct {
 // take effect together.
 type Batch interface {
 	AddNode(s NodeSpec) error
-	UpdateNodeWithTx(id uint64, props map[string]any, txFrom int64) error
-	DeleteNodeWithTx(id uint64, txTo int64) error
-	SetNodeVersionIntervalWithTx(id uint64, from, to int64, props map[string]any, txFrom int64) error
-	ExciseNodeValidityWithTx(id uint64, a, b, txFrom int64) error
-	UpdateRelWithTx(id uint64, props map[string]any, txFrom int64) error
+	UpdateNodeWithTx(id int64, props map[string]any, txFrom int64) error
+	DeleteNodeWithTx(id int64, txTo int64) error
+	SetNodeVersionIntervalWithTx(id int64, from, to int64, props map[string]any, txFrom int64) error
+	ExciseNodeValidityWithTx(id int64, a, b, txFrom int64) error
+	UpdateRelWithTx(id int64, props map[string]any, txFrom int64) error
 }
 
 // Tx is the transaction handle of Graph.Tx. Reads see the transaction's own
@@ -198,16 +198,16 @@ type Batch interface {
 type Tx interface {
 	AddNode(s NodeSpec) (Node, error)
 	AddRel(s RelSpec) (Rel, error)
-	UpdateNode(id uint64, props map[string]any) (Node, error)
-	DeleteNode(id uint64) error
-	GetNode(id uint64) (Node, error)
+	UpdateNode(id int64, props map[string]any) (Node, error)
+	DeleteNode(id int64) error
+	GetNode(id int64) (Node, error)
 
 	// Caller-instant twins (appended).
-	UpdateNodeWithTx(id uint64, props map[string]any, txFrom int64) (Node, error)
-	DeleteNodeWithTx(id uint64, txTo int64) error
-	SetNodeVersionIntervalWithTx(id uint64, from, to int64, props map[string]any, txFrom int64) (Node, error)
-	ExciseNodeValidityWithTx(id uint64, a, b, txFrom int64) error
-	UpdateRelWithTx(id uint64, props map[string]any, txFrom int64) (Rel, error)
+	UpdateNodeWithTx(id int64, props map[string]any, txFrom int64) (Node, error)
+	DeleteNodeWithTx(id int64, txTo int64) error
+	SetNodeVersionIntervalWithTx(id int64, from, to int64, props map[string]any, txFrom int64) (Node, error)
+	ExciseNodeValidityWithTx(id int64, a, b, txFrom int64) error
+	UpdateRelWithTx(id int64, props map[string]any, txFrom int64) (Rel, error)
 }
 
 // Factory builds the Adapter for one test.

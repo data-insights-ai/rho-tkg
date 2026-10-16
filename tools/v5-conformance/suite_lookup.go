@@ -57,8 +57,8 @@ func lookupLabelPages(t *testing.T, a Adapter) {
 	wantIDs(t, "ByLabel(L)", sortedIDs(whole), want)
 
 	// Walk the keyset: pages of 3 then 3 then 1, each ascending, no overlap, no gap.
-	var walked []uint64
-	var after uint64
+	var walked []int64
+	var after int64
 	pageSizes := []int{}
 	for {
 		page, err := g.NodesByLabel("L", Query{Limit: 3, After: after})
@@ -89,7 +89,7 @@ func lookupLabelPages(t *testing.T, a Adapter) {
 	// A node with two labels is listed under both, a node with one only under its own.
 	m, err := g.NodesByLabel("M", Query{})
 	ok(t, err)
-	var wantM []uint64
+	var wantM []int64
 	for i, n := range all {
 		if i%2 == 0 {
 			wantM = append(wantM, n.ID)
@@ -131,17 +131,17 @@ func lookupLabelPins(t *testing.T, a Adapter) {
 	ok(t, err)
 	wantIDs(t, "set at the pin", sortedIDs(at), sortedIDs([]Node{x, y}))
 	for _, n := range at {
-		want := map[uint64]string{x.ID: "x0", y.ID: "y0"}[n.ID]
+		want := map[int64]string{x.ID: "x0", y.ID: "y0"}[n.ID]
 		wantProps(t, fmt.Sprintf("node %d at the pin", n.ID), n.Props, map[string]any{"v": want})
 	}
 	for _, n := range now {
-		want := map[uint64]string{x.ID: "x1", z.ID: "z0"}[n.ID]
+		want := map[int64]string{x.ID: "x1", z.ID: "z0"}[n.ID]
 		wantProps(t, fmt.Sprintf("node %d now", n.ID), n.Props, map[string]any{"v": want})
 	}
 	// Paging composes with the pin.
 	page, err := g.NodesByLabel("L", Query{TxPin: pin, Limit: 1, After: x.ID})
 	ok(t, err)
-	wantIDs(t, "pinned page after x", ids(page), []uint64{y.ID})
+	wantIDs(t, "pinned page after x", ids(page), []int64{y.ID})
 }
 
 func lookupLabelValidTime(t *testing.T, a Adapter) {
@@ -195,7 +195,7 @@ func lookupProperty(t *testing.T, a Adapter) {
 	pin, err := g.CommittedTx()
 	ok(t, err)
 
-	get := func(label, key string, v any, q Query) []uint64 {
+	get := func(label, key string, v any, q Query) []int64 {
 		t.Helper()
 		ns, err := g.NodesByLabelAndProperty(label, key, v, q)
 		if err != nil {
@@ -203,9 +203,9 @@ func lookupProperty(t *testing.T, a Adapter) {
 		}
 		return sortedIDs(ns)
 	}
-	wantIDs(t, "v=1 (integer)", get("E", "v", 1, Query{}), []uint64{one.ID})
-	wantIDs(t, `v="1" (string)`, get("E", "v", "1", Query{}), []uint64{str.ID})
-	wantIDs(t, "v=2", get("E", "v", 2, Query{}), []uint64{two.ID})
+	wantIDs(t, "v=1 (integer)", get("E", "v", 1, Query{}), []int64{one.ID})
+	wantIDs(t, `v="1" (string)`, get("E", "v", "1", Query{}), []int64{str.ID})
+	wantIDs(t, "v=2", get("E", "v", 2, Query{}), []int64{two.ID})
 	wantIDs(t, "v=3 (absent value)", get("E", "v", 3, Query{}), nil)
 	wantIDs(t, "key w holds no v", get("E", "w", 2, Query{}), nil)
 	wantIDs(t, "unknown label", get("Nope", "v", 1, Query{}), nil)
@@ -217,12 +217,12 @@ func lookupProperty(t *testing.T, a Adapter) {
 	ok(t, g.DeleteNode(ctx, str.ID, 0))
 
 	wantIDs(t, "v=1 now", get("E", "v", 1, Query{}), nil)
-	wantIDs(t, "v=3 now", get("E", "v", 3, Query{}), []uint64{one.ID})
+	wantIDs(t, "v=3 now", get("E", "v", 3, Query{}), []int64{one.ID})
 	wantIDs(t, `v="1" now (deleted)`, get("E", "v", "1", Query{}), nil)
 	// The same questions at the pin before the mutations give the old answers.
-	wantIDs(t, "v=1 at the pin", get("E", "v", 1, Query{TxPin: pin}), []uint64{one.ID})
+	wantIDs(t, "v=1 at the pin", get("E", "v", 1, Query{TxPin: pin}), []int64{one.ID})
 	wantIDs(t, "v=3 at the pin", get("E", "v", 3, Query{TxPin: pin}), nil)
-	wantIDs(t, `v="1" at the pin`, get("E", "v", "1", Query{TxPin: pin}), []uint64{str.ID})
+	wantIDs(t, `v="1" at the pin`, get("E", "v", "1", Query{TxPin: pin}), []int64{str.ID})
 }
 
 // lookupPropertyBitemporal: a value valid only in a window, asked at valid
@@ -233,20 +233,20 @@ func lookupPropertyBitemporal(t *testing.T, a Adapter) {
 	_, err := g.SetNodeVersionInterval(ctx, n.ID, 150, 300, map[string]any{"s": "b"}, 2000)
 	ok(t, err)
 
-	get := func(v string, q Query) []uint64 {
+	get := func(v string, q Query) []int64 {
 		t.Helper()
 		ns, err := g.NodesByLabelAndProperty("B", "s", v, q)
 		ok(t, err)
 		return ids(ns)
 	}
 	// Before the correction was recorded (TxAt 1500): "a" answers across [100,200).
-	wantIDs(t, "a @valid 120 tx 1500", get("a", Query{ValidAt: 120, TxAt: 1500}), []uint64{n.ID})
-	wantIDs(t, "a @valid 170 tx 1500", get("a", Query{ValidAt: 170, TxAt: 1500}), []uint64{n.ID})
+	wantIDs(t, "a @valid 120 tx 1500", get("a", Query{ValidAt: 120, TxAt: 1500}), []int64{n.ID})
+	wantIDs(t, "a @valid 170 tx 1500", get("a", Query{ValidAt: 170, TxAt: 1500}), []int64{n.ID})
 	wantIDs(t, "b @valid 170 tx 1500", get("b", Query{ValidAt: 170, TxAt: 1500}), nil)
 	// After it (TxAt 2500): "a" keeps [100,150), "b" owns [150,300).
-	wantIDs(t, "a @valid 120 tx 2500", get("a", Query{ValidAt: 120, TxAt: 2500}), []uint64{n.ID})
+	wantIDs(t, "a @valid 120 tx 2500", get("a", Query{ValidAt: 120, TxAt: 2500}), []int64{n.ID})
 	wantIDs(t, "a @valid 170 tx 2500", get("a", Query{ValidAt: 170, TxAt: 2500}), nil)
-	wantIDs(t, "b @valid 170 tx 2500", get("b", Query{ValidAt: 170, TxAt: 2500}), []uint64{n.ID})
-	wantIDs(t, "b @valid 250 tx 2500", get("b", Query{ValidAt: 250, TxAt: 2500}), []uint64{n.ID})
+	wantIDs(t, "b @valid 170 tx 2500", get("b", Query{ValidAt: 170, TxAt: 2500}), []int64{n.ID})
+	wantIDs(t, "b @valid 250 tx 2500", get("b", Query{ValidAt: 250, TxAt: 2500}), []int64{n.ID})
 	wantIDs(t, "b @valid 300 tx 2500 (exclusive end)", get("b", Query{ValidAt: 300, TxAt: 2500}), nil)
 }

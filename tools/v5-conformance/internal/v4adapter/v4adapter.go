@@ -114,7 +114,7 @@ func (w *wrap) node(n *types.Node) conformance.Node {
 	vf, vt, _ := n.ValidRange()
 	tf, tt, _ := n.TxStamps()
 	return conformance.Node{
-		ID: uint64(n.ID()), Labels: w.g.Nodes().Labels(n), Props: n.PropertiesMap(),
+		ID: int64(n.ID()), Labels: w.g.Nodes().Labels(n), Props: n.PropertiesMap(),
 		Version: n.Version(), ValidFrom: int64(vf), ValidTo: int64(vt),
 		TxFrom: int64(tf), TxTo: int64(tt), Void: n.Temporal() != nil && n.Temporal().Void,
 	}
@@ -127,7 +127,7 @@ func (w *wrap) rel(r *types.Relationship) conformance.Rel {
 	vf, vt, _ := r.ValidRange()
 	tf, tt, _ := r.TxStamps()
 	return conformance.Rel{
-		ID: uint64(r.ID()), Type: w.g.Rels().Type(r), From: uint64(r.StartNodeID()), To: uint64(r.EndNodeID()),
+		ID: int64(r.ID()), Type: w.g.Rels().Type(r), From: int64(r.StartNodeID()), To: int64(r.EndNodeID()),
 		Props: r.PropertiesMap(), Version: r.Version(), ValidFrom: int64(vf), ValidTo: int64(vt),
 		TxFrom: int64(tf), TxTo: int64(tt), Void: r.Temporal() != nil && r.Temporal().Void,
 	}
@@ -187,7 +187,7 @@ func (w *wrap) AddNode(ctx context.Context, s conformance.NodeSpec) (conformance
 	return w.node(n), nil
 }
 
-func (w *wrap) UpdateNode(ctx context.Context, id uint64, props map[string]any, txFrom int64) (conformance.Node, error) {
+func (w *wrap) UpdateNode(ctx context.Context, id int64, props map[string]any, txFrom int64) (conformance.Node, error) {
 	var n *types.Node
 	var err error
 	if txFrom != 0 {
@@ -201,7 +201,7 @@ func (w *wrap) UpdateNode(ctx context.Context, id uint64, props map[string]any, 
 	return w.node(n), nil
 }
 
-func (w *wrap) DeleteNode(ctx context.Context, id uint64, txTo int64) error {
+func (w *wrap) DeleteNode(ctx context.Context, id int64, txTo int64) error {
 	if txTo != 0 {
 		return mapErr(w.g.Nodes().DeleteWithTx(ctx, types.NodeID(id), inst(txTo)))
 	}
@@ -238,7 +238,7 @@ func (w *wrap) AddRel(ctx context.Context, s conformance.RelSpec) (conformance.R
 	return w.rel(r), nil
 }
 
-func (w *wrap) UpdateRel(ctx context.Context, id uint64, props map[string]any, txFrom int64) (conformance.Rel, error) {
+func (w *wrap) UpdateRel(ctx context.Context, id int64, props map[string]any, txFrom int64) (conformance.Rel, error) {
 	var r *types.Relationship
 	var err error
 	if txFrom != 0 {
@@ -252,14 +252,14 @@ func (w *wrap) UpdateRel(ctx context.Context, id uint64, props map[string]any, t
 	return w.rel(r), nil
 }
 
-func (w *wrap) DeleteRel(ctx context.Context, id uint64, txTo int64) error {
+func (w *wrap) DeleteRel(ctx context.Context, id int64, txTo int64) error {
 	if txTo != 0 {
 		return mapErr(w.g.Rels().DeleteWithTx(ctx, types.RelID(id), inst(txTo)))
 	}
 	return mapErr(w.g.Rels().Delete(ctx, types.RelID(id)))
 }
 
-func (w *wrap) SetNodeVersionInterval(ctx context.Context, id uint64, from, to int64, props map[string]any, txFrom int64) (conformance.Node, error) {
+func (w *wrap) SetNodeVersionInterval(ctx context.Context, id int64, from, to int64, props map[string]any, txFrom int64) (conformance.Node, error) {
 	var n *types.Node
 	var err error
 	if txFrom != 0 {
@@ -273,7 +273,7 @@ func (w *wrap) SetNodeVersionInterval(ctx context.Context, id uint64, from, to i
 	return w.node(n), nil
 }
 
-func (w *wrap) SetRelVersionInterval(ctx context.Context, id uint64, from, to int64, props map[string]any, txFrom int64) (conformance.Rel, error) {
+func (w *wrap) SetRelVersionInterval(ctx context.Context, id int64, from, to int64, props map[string]any, txFrom int64) (conformance.Rel, error) {
 	var r *types.Relationship
 	var err error
 	if txFrom != 0 {
@@ -287,11 +287,11 @@ func (w *wrap) SetRelVersionInterval(ctx context.Context, id uint64, from, to in
 	return w.rel(r), nil
 }
 
-func (w *wrap) CloseNodeVersion(ctx context.Context, id uint64, t int64) error {
+func (w *wrap) CloseNodeVersion(ctx context.Context, id int64, t int64) error {
 	return mapErr(w.g.Nodes().CloseVersion(ctx, types.NodeID(id), inst(t)))
 }
 
-func (w *wrap) CloseRelVersion(ctx context.Context, id uint64, t int64) error {
+func (w *wrap) CloseRelVersion(ctx context.Context, id int64, t int64) error {
 	return mapErr(w.g.Rels().CloseVersion(ctx, types.RelID(id), inst(t)))
 }
 
@@ -325,7 +325,7 @@ func (t *txWrap) AddRel(s conformance.RelSpec) (conformance.Rel, error) {
 	return t.w.rel(r), nil
 }
 
-func (t *txWrap) UpdateNode(id uint64, props map[string]any) (conformance.Node, error) {
+func (t *txWrap) UpdateNode(id int64, props map[string]any) (conformance.Node, error) {
 	n, err := t.tx.UpdateNode(types.NodeID(id), props)
 	if err != nil {
 		return conformance.Node{}, mapErr(err)
@@ -333,9 +333,9 @@ func (t *txWrap) UpdateNode(id uint64, props map[string]any) (conformance.Node, 
 	return t.w.node(n), nil
 }
 
-func (t *txWrap) DeleteNode(id uint64) error { return mapErr(t.tx.DeleteNode(types.NodeID(id))) }
+func (t *txWrap) DeleteNode(id int64) error { return mapErr(t.tx.DeleteNode(types.NodeID(id))) }
 
-func (t *txWrap) GetNode(id uint64) (conformance.Node, error) {
+func (t *txWrap) GetNode(id int64) (conformance.Node, error) {
 	n, err := t.tx.GetNode(types.NodeID(id))
 	if err != nil {
 		return conformance.Node{}, mapErr(err)
@@ -350,7 +350,7 @@ func opts(q conformance.Query) store.QueryOpts {
 	}
 }
 
-func (w *wrap) GetNode(ctx context.Context, id uint64) (conformance.Node, error) {
+func (w *wrap) GetNode(ctx context.Context, id int64) (conformance.Node, error) {
 	n, err := w.g.Nodes().Get(ctx, types.NodeID(id))
 	if err != nil {
 		return conformance.Node{}, mapErr(err)
@@ -358,7 +358,7 @@ func (w *wrap) GetNode(ctx context.Context, id uint64) (conformance.Node, error)
 	return w.node(n), nil
 }
 
-func (w *wrap) GetRel(ctx context.Context, id uint64) (conformance.Rel, error) {
+func (w *wrap) GetRel(ctx context.Context, id int64) (conformance.Rel, error) {
 	r, err := w.g.Rels().Get(ctx, types.RelID(id))
 	if err != nil {
 		return conformance.Rel{}, mapErr(err)
@@ -378,7 +378,7 @@ func (w *wrap) NodesByLabelAndProperty(label, key string, value any, q conforman
 	return w.nodes(w.g.Nodes().ByLabelAndProperty(label, key, value, opts(q)))
 }
 
-func (w *wrap) NodeAsOf(id uint64, tx int64) (conformance.Node, error) {
+func (w *wrap) NodeAsOf(id int64, tx int64) (conformance.Node, error) {
 	n, err := w.g.Temporal().NodeAsOf(types.NodeID(id), inst(tx))
 	if err != nil {
 		return conformance.Node{}, mapErr(err)
@@ -386,7 +386,7 @@ func (w *wrap) NodeAsOf(id uint64, tx int64) (conformance.Node, error) {
 	return w.node(n), nil
 }
 
-func (w *wrap) RelAsOf(id uint64, tx int64) (conformance.Rel, error) {
+func (w *wrap) RelAsOf(id int64, tx int64) (conformance.Rel, error) {
 	r, err := w.g.Temporal().RelAsOf(types.RelID(id), inst(tx))
 	if err != nil {
 		return conformance.Rel{}, mapErr(err)
@@ -394,7 +394,7 @@ func (w *wrap) RelAsOf(id uint64, tx int64) (conformance.Rel, error) {
 	return w.rel(r), nil
 }
 
-func (w *wrap) NodeAt(id uint64, validAt int64) (conformance.Node, error) {
+func (w *wrap) NodeAt(id int64, validAt int64) (conformance.Node, error) {
 	n, err := w.g.Temporal().NodeAt(types.NodeID(id), inst(validAt))
 	if err != nil {
 		return conformance.Node{}, mapErr(err)
@@ -402,7 +402,7 @@ func (w *wrap) NodeAt(id uint64, validAt int64) (conformance.Node, error) {
 	return w.node(n), nil
 }
 
-func (w *wrap) NodeAtTx(id uint64, validAt, tx int64) (conformance.Node, error) {
+func (w *wrap) NodeAtTx(id int64, validAt, tx int64) (conformance.Node, error) {
 	n, err := w.g.Temporal().NodeAtTx(types.NodeID(id), inst(validAt), inst(tx))
 	if err != nil {
 		return conformance.Node{}, mapErr(err)
@@ -410,7 +410,7 @@ func (w *wrap) NodeAtTx(id uint64, validAt, tx int64) (conformance.Node, error) 
 	return w.node(n), nil
 }
 
-func (w *wrap) RelAtTx(id uint64, validAt, tx int64) (conformance.Rel, error) {
+func (w *wrap) RelAtTx(id int64, validAt, tx int64) (conformance.Rel, error) {
 	r, err := w.g.Temporal().RelAtTx(types.RelID(id), inst(validAt), inst(tx))
 	if err != nil {
 		return conformance.Rel{}, mapErr(err)
@@ -418,11 +418,11 @@ func (w *wrap) RelAtTx(id uint64, validAt, tx int64) (conformance.Rel, error) {
 	return w.rel(r), nil
 }
 
-func (w *wrap) NodeHistory(id uint64) ([]conformance.Node, error) {
+func (w *wrap) NodeHistory(id int64) ([]conformance.Node, error) {
 	return w.nodes(w.g.Nodes().History(types.NodeID(id)))
 }
 
-func (w *wrap) RelHistory(id uint64) ([]conformance.Rel, error) {
+func (w *wrap) RelHistory(id int64) ([]conformance.Rel, error) {
 	return w.rels(w.g.Rels().History(types.RelID(id)))
 }
 
@@ -431,7 +431,7 @@ func (w *wrap) CommittedTx() (int64, error) {
 	return int64(t), mapErr(err)
 }
 
-func (w *wrap) RelsEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after uint64, limit int) ([]conformance.RelSegment, uint64, error) {
+func (w *wrap) RelsEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after int64, limit int) ([]conformance.RelSegment, int64, error) {
 	segs, next, err := w.g.Temporal().RelsEffectivePage(ctx,
 		temporal.Pin{Tx: inst(pin.Tx), ValidAt: inst(pin.ValidAt), ValidStart: inst(pin.ValidStart), ValidEnd: inst(pin.ValidEnd)},
 		temporal.Filter{Prop: f.Prop, Eq: f.Eq}, types.RelID(after), limit)
@@ -442,10 +442,10 @@ func (w *wrap) RelsEffectivePage(ctx context.Context, pin conformance.Pin, f con
 	for i, s := range segs {
 		out[i] = conformance.RelSegment{ValidFrom: int64(s.ValidFrom), ValidTo: int64(s.ValidTo), Rel: w.rel(s.Rel)}
 	}
-	return out, uint64(next), nil
+	return out, int64(next), nil
 }
 
-func (t *txWrap) UpdateNodeWithTx(id uint64, props map[string]any, txFrom int64) (conformance.Node, error) {
+func (t *txWrap) UpdateNodeWithTx(id int64, props map[string]any, txFrom int64) (conformance.Node, error) {
 	n, err := t.tx.UpdateNodeWithTx(types.NodeID(id), props, inst(txFrom))
 	if err != nil {
 		return conformance.Node{}, mapErr(err)
@@ -453,11 +453,11 @@ func (t *txWrap) UpdateNodeWithTx(id uint64, props map[string]any, txFrom int64)
 	return t.w.node(n), nil
 }
 
-func (t *txWrap) DeleteNodeWithTx(id uint64, txTo int64) error {
+func (t *txWrap) DeleteNodeWithTx(id int64, txTo int64) error {
 	return mapErr(t.tx.DeleteNodeWithTx(types.NodeID(id), inst(txTo)))
 }
 
-func (t *txWrap) SetNodeVersionIntervalWithTx(id uint64, from, to int64, props map[string]any, txFrom int64) (conformance.Node, error) {
+func (t *txWrap) SetNodeVersionIntervalWithTx(id int64, from, to int64, props map[string]any, txFrom int64) (conformance.Node, error) {
 	n, err := t.tx.SetNodeVersionIntervalWithTx(types.NodeID(id), inst(from), inst(to), props, inst(txFrom))
 	if err != nil {
 		return conformance.Node{}, mapErr(err)
@@ -465,11 +465,11 @@ func (t *txWrap) SetNodeVersionIntervalWithTx(id uint64, from, to int64, props m
 	return t.w.node(n), nil
 }
 
-func (t *txWrap) ExciseNodeValidityWithTx(id uint64, a, b, txFrom int64) error {
+func (t *txWrap) ExciseNodeValidityWithTx(id int64, a, b, txFrom int64) error {
 	return mapErr(t.tx.ExciseNodeValidityWithTx(types.NodeID(id), inst(a), inst(b), inst(txFrom)))
 }
 
-func (t *txWrap) UpdateRelWithTx(id uint64, props map[string]any, txFrom int64) (conformance.Rel, error) {
+func (t *txWrap) UpdateRelWithTx(id int64, props map[string]any, txFrom int64) (conformance.Rel, error) {
 	r, err := t.tx.UpdateRelationshipWithTx(types.RelID(id), props, inst(txFrom))
 	if err != nil {
 		return conformance.Rel{}, mapErr(err)
@@ -492,41 +492,41 @@ func (b batchWrap) AddNode(s conformance.NodeSpec) error {
 	return mapErr(err)
 }
 
-func (b batchWrap) UpdateNodeWithTx(id uint64, props map[string]any, txFrom int64) error {
+func (b batchWrap) UpdateNodeWithTx(id int64, props map[string]any, txFrom int64) error {
 	return mapErr(b.b.UpdateNodeWithTx(types.NodeID(id), props, inst(txFrom)))
 }
 
-func (b batchWrap) DeleteNodeWithTx(id uint64, txTo int64) error {
+func (b batchWrap) DeleteNodeWithTx(id int64, txTo int64) error {
 	return mapErr(b.b.DeleteNodeWithTx(types.NodeID(id), inst(txTo)))
 }
 
-func (b batchWrap) SetNodeVersionIntervalWithTx(id uint64, from, to int64, props map[string]any, txFrom int64) error {
+func (b batchWrap) SetNodeVersionIntervalWithTx(id int64, from, to int64, props map[string]any, txFrom int64) error {
 	return mapErr(b.b.SetNodeVersionIntervalWithTx(types.NodeID(id), inst(from), inst(to), props, inst(txFrom)))
 }
 
-func (b batchWrap) ExciseNodeValidityWithTx(id uint64, a, c, txFrom int64) error {
+func (b batchWrap) ExciseNodeValidityWithTx(id int64, a, c, txFrom int64) error {
 	return mapErr(b.b.ExciseNodeValidityWithTx(types.NodeID(id), inst(a), inst(c), inst(txFrom)))
 }
 
-func (b batchWrap) UpdateRelWithTx(id uint64, props map[string]any, txFrom int64) error {
+func (b batchWrap) UpdateRelWithTx(id int64, props map[string]any, txFrom int64) error {
 	return mapErr(b.b.UpdateRelationshipWithTx(types.RelID(id), props, inst(txFrom)))
 }
 
-func (w *wrap) ExciseNodeValidity(ctx context.Context, id uint64, a, b, txFrom int64) error {
+func (w *wrap) ExciseNodeValidity(ctx context.Context, id int64, a, b, txFrom int64) error {
 	if txFrom != 0 {
 		return mapErr(w.g.Temporal().ExciseNodeValidityWithTx(ctx, types.NodeID(id), inst(a), inst(b), inst(txFrom)))
 	}
 	return mapErr(w.g.Temporal().ExciseNodeValidity(ctx, types.NodeID(id), inst(a), inst(b)))
 }
 
-func (w *wrap) ExciseRelValidity(ctx context.Context, id uint64, a, b, txFrom int64) error {
+func (w *wrap) ExciseRelValidity(ctx context.Context, id int64, a, b, txFrom int64) error {
 	if txFrom != 0 {
 		return mapErr(w.g.Temporal().ExciseRelValidityWithTx(ctx, types.RelID(id), inst(a), inst(b), inst(txFrom)))
 	}
 	return mapErr(w.g.Temporal().ExciseRelValidity(ctx, types.RelID(id), inst(a), inst(b)))
 }
 
-func (w *wrap) NodesEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after uint64, limit int) ([]conformance.NodeSegment, uint64, error) {
+func (w *wrap) NodesEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after int64, limit int) ([]conformance.NodeSegment, int64, error) {
 	segs, next, err := w.g.Temporal().NodesEffectivePage(ctx,
 		temporal.Pin{Tx: inst(pin.Tx), ValidAt: inst(pin.ValidAt), ValidStart: inst(pin.ValidStart), ValidEnd: inst(pin.ValidEnd)},
 		temporal.Filter{Prop: f.Prop, Eq: f.Eq}, types.NodeID(after), limit)
@@ -537,17 +537,17 @@ func (w *wrap) NodesEffectivePage(ctx context.Context, pin conformance.Pin, f co
 	for i, s := range segs {
 		out[i] = conformance.NodeSegment{ValidFrom: int64(s.ValidFrom), ValidTo: int64(s.ValidTo), Node: w.node(s.Node)}
 	}
-	return out, uint64(next), nil
+	return out, int64(next), nil
 }
 
-func (w *wrap) RetractNode(ctx context.Context, id uint64, txTo int64) error {
+func (w *wrap) RetractNode(ctx context.Context, id int64, txTo int64) error {
 	if txTo != 0 {
 		return mapErr(w.g.Nodes().RetractWithTx(ctx, types.NodeID(id), inst(txTo)))
 	}
 	return mapErr(w.g.Nodes().Retract(ctx, types.NodeID(id)))
 }
 
-func (w *wrap) RetractRel(ctx context.Context, id uint64, txTo int64) error {
+func (w *wrap) RetractRel(ctx context.Context, id int64, txTo int64) error {
 	if txTo != 0 {
 		return mapErr(w.g.Rels().RetractWithTx(ctx, types.RelID(id), inst(txTo)))
 	}

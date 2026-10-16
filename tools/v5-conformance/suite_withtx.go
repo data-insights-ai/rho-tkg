@@ -148,7 +148,7 @@ func twinTxRefusals(t *testing.T, a Adapter) {
 	}))
 	wantNodeAsOf(t, f.g, f.n.ID, 1500, map[string]any{"v": 1}, 0)
 	wantNodeAsOf(t, f.g, f.n.ID, 2500, map[string]any{"v": 2}, 1)
-	for _, id := range []uint64{f.m.ID, f.k.ID} {
+	for _, id := range []int64{f.m.ID, f.k.ID} {
 		if h, _ := f.g.NodeHistory(id); len(h) != 0 {
 			t.Fatalf("a refused twin wrote history: %+v", h)
 		}
