@@ -1,0 +1,16 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    paired_graph_fault_harness_test.go:745: paired actual healthy quorum leader6 applied31
+    native_graph_transition_conjunction_harness_test.go:388: fresh fixture actual native RPC 69 graphapply: remote source operation refused
+        remote tag=2: P05 observe handle=1 conditional=true stage=lifecycle owner=0 life=0 point=0 name="" work={Records:1223 Bytes:1237020 DirectoryPages:164 CheckpointPages:0 PatchPages:35 DecodedCells:35} sourceUnavailable=false [source partition=3 voter=2 calls=1024/1024 rows=1300/16384 bytes=1175157/16777216 outputRemaining=10058224] [source partition=8 voter=6 calls=1024/1024 rows=1300/16384 bytes=1175157/16777216 outputRemaining=10058224]: graphapply: resource limit
+    historical_dependency_p05_test.go:758: P05 observation interrupted: actual actor=1 handle=1
+    paired_graph_fault_harness_test.go:421: paired current child cleanup 1 exit status 1
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 17827 exit status 1
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=7 all-reaped=true successful=5 intentional-kills=1 calls=12984 bootstrapPackets=332 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (6.36s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (6.36s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after (6.36s)
+FAIL

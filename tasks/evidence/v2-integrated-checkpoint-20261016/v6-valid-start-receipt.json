@@ -1,0 +1,55 @@
+{
+  "revision": "155214aaf64cc761c6810e72fffb2b59a6d4f0f5",
+  "parent": "2d2ce031aec0e48d2131ddcd9720fa11c83105c4",
+  "tree": "/private/var/tmp/rho-v5-current-valid-start-20261016",
+  "scope": "V6.2 current-v4 valid-start/provenance preflight subset only",
+  "files": [
+    {
+      "path": "tools/v5-migrate/preflight.go",
+      "sourceSHA256": "3b9014591456dc25384a2529817d6636b2b4f899ec1191c85224e53a6de6e203",
+      "parentBlob": "2359e9269a16c21c95460a47a2dfac7bd4be26b3",
+      "parentSHA256": "811233b5eb93eea7b8075d3e1ac193ccc5f2de6303101ac4532f55233c2b506a"
+    },
+    {
+      "path": "tools/v5-migrate/preflight_test.go",
+      "sourceSHA256": "c90de7c40545b9566c96c9b0b207811a0c671142ad5e8dff1fc1b610b9358e25",
+      "parentBlob": "1b0e3e6f54f792ce593d915560ec1d3a8ccdf8b2",
+      "parentSHA256": "7485b02ee04c71e20ca9eb36763ba8615e8f6bbe759d105d6fa1af51364ceb36"
+    },
+    {
+      "path": "tools/v5-migrate/faults_test.go",
+      "sourceSHA256": "ba4fa648a0f602a8f931e2d59d06e6d8d4bba8dfcfab2098fbe4ba388db85ad6",
+      "parentBlob": "c2df89376ce5c487a9c66da134cc2cd509c01f10",
+      "parentSHA256": "c37f202143a0e42889741afab3181068f8269da0189087e7e1bd7810f78a43a2"
+    },
+    {
+      "path": "tools/v5-migrate/README.md",
+      "sourceSHA256": "e9f1cbf27939b8280de84226b39c02c22f0841270a93168114389d01e825ce9c",
+      "parentBlob": "1be69d117bad27503930ad1ab0a44e589d8a51b7",
+      "parentSHA256": "e8fbaeac92dd1331d0641cb73e6d0b6f6c988ae678f5f101f0216dac41dd1b42"
+    }
+  ],
+  "evidenceDirectory": "/private/var/tmp/rho-v5-current-valid-start-evidence-20261016",
+  "evidence": {
+    "baseline-existing.log": "4b985efbb2bc93b7b0efea29ffbe1ca77c297b2acd6cba787ab9b87ee98af0b4",
+    "direct-red.log": "65666f43f9c42c9bc132095562d5011c0fc5afc0de78700d0e145f9c7c12cdab",
+    "direct-green.log": "5f89c3a85a4e0e30aa07ce5347386a77210e928769e42a29b7c5d0038365ac49",
+    "infinity-width-red.log": "edb5bb15c03b0aedb57a43118d55d6a6f4f744f626c76a2aecc058d3d6d96711",
+    "adversarial-green.log": "c811f6ab9686af123e65aa2e920608d95ad495d1f76faa5dc4449fb8f86456b0",
+    "targeted-green.log": "1fed24864465defe6cbce38e6504dc5e3ec8b37e8e340202c1b40929cede95e8",
+    "race-green.log": "ca6b6508bdc4f497d971fa68f963966ad87c16ed8e6830e08c2559b395e5fb5f",
+    "targeted.cover": "ce7d794d8526636a35c980ceff49bac54e7db4def379edc7c863ff8bb60b9644",
+    "coverage.txt": "13e8db1aeb1deeb8fd307b0e77f5749b1cd3a397da6e348569bb5fecac4f52ed"
+  },
+  "validation": {
+    "compiler": "Go1.26.9 darwin/arm64",
+    "limits": "GOMAXPROCS2, GOFLAGS-p=1, fixed90s targeted command deadlines, final targeted/race GOMEMLIMIT2GiB; default Go cache",
+    "baseline": "existing2legacy-assumption tests RED0.795s on unchanged currentv4 source; corrected their expected source timeline to actualTxFrom100, rawMint preserved",
+    "semantic": "actual node+rel RED0.443s then GREEN1.032s; infinity-width rawaudit RED0.379s before exclusion",
+    "targeted": "12 owning parents GREEN0.279s,96.4%statements, publicPreflightNode/Rel100%, finish95.3%, mapSpanForPolicy83.3%",
+    "race": "focused owning new/changed guards GREEN1.398s",
+    "format": "pinned gofmt and git diff --check",
+    "notRun": "no full repository suite, OS/cohort/DB/server, benchmark, deploy, push or module changes"
+  },
+  "contract": "Source.ValidStartPolicy fixedValidStartTxFromUnboundedV1 requires explicit nonblank Source writer/format/reader/capture/evidence; Source provenance remains callerclaim, noDBauthentication inference. Value0 retains historical rawaudit/finiteMin policy. Exact row-qualified one-tick provenance remains mandatory. Report.Source copied by value. No transaction/cut/history completeness inferred."
+}

@@ -1,0 +1,22 @@
+{
+  "commit": "0be47841a43e6b1348ec14c15cc85566eff2fe3e",
+  "parent": "17cd4379ed4b838eb3ad1957eca2cbe61368c6dd",
+  "tree": "/var/tmp/rho-v5-p01-client-limit-20261016",
+  "clean": true,
+  "paths": {
+    "v5/internal/graphapply/native_graph_transition_scope_harness_test.go": {
+      "parentBlob": "7fe45aca6b0b273e02c2693b37af8c75be1cce3e",
+      "blob": "3e198aca0d6fa76d3f9420f68524d36058b27aec",
+      "sha256": "28ca2f677157926aa8264f59eb605b1d131275d67659a5d0bb95c5356e3c0a21"
+    },
+    "v5/internal/graphapply/native_graph_transition_scope_test.go": {
+      "parentBlob": "4a25c313444a3f34516fec3e039f43334d9e7f70",
+      "blob": "ac113ef04991f67a7a497e30848641aefd4e58f1",
+      "sha256": "d35f17b8e8d4554524e14606c2db3e861e0f0218d8a8ff0331b8b9324d6c6db7"
+    }
+  },
+  "rootCause": "Fixture freshOpen blocked on B and same actor2 held Observe consumed both ordinary workers while rotated source2 needed third self-serve. Real worker admission refused before GSR; no source death or native quota defect.",
+  "red": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p01-source-detail-703bdcb7.log",
+  "green": "/private/var/tmp/rho-v5-p01-a-only-read-direct-20261016/caller-guards-final-green.log",
+  "runtimeStatus": "No author OS rerun; root exact P01 owning-case GREEN still required."
+}

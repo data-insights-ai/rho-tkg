@@ -1,0 +1,95 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p02-A-before-B-after-phase2-p8-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_protocol_campaign_program_test.go:28: paired actual healthy quorum leader6 applied26
+    native_graph_protocol_campaign_program_test.go:28: paired elected actual leader1 round1 while3 down
+    native_graph_protocol_campaign_program_test.go:28: paired elected actual leader4 round1 while6 down
+    native_graph_protocol_campaign_program_test.go:28: paired actual healthy quorum leader1 applied43
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet1 4->5 typeMsgHeartbeat term4 logTerm0 index0 commit36 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet2 5->4 typeMsgHeartbeatResp term4 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet3 4->5 typeMsgHeartbeat term4 logTerm0 index0 commit36 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet4 5->4 typeMsgHeartbeatResp term4 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    native_graph_protocol_campaign_program_test.go:28: paired actual healthy quorum leader4 applied36
+    native_graph_protocol_campaign_program_test.go:28: actual live transition complete source artifact /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/protocol-three-state-diagnostic-owned/artifacts/rho-paired-graph-fault-691896615/p02-A-before-B-after-phase2-p8-k2-after.jsonl
+    native_graph_protocol_campaign_program_test.go:28: independent protocol/storage/original/serial checker exit status 1 Traceback (most recent call last):
+          File "/private/var/tmp/rho-v5-history-clean-20261012/v5/internal/graphapply/../../../tools/v5-substrate/native_protocol_campaign_program_check.py", line 307, in <module>
+            main()
+            ~~~~^^
+          File "/private/var/tmp/rho-v5-history-clean-20261012/v5/internal/graphapply/../../../tools/v5-substrate/native_protocol_campaign_program_check.py", line 303, in main
+            print(json.dumps(check(H.load(args.artifact, program=True)), sort_keys=True))
+                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          File "/private/var/tmp/rho-v5-history-clean-20261012/v5/internal/graphapply/../../../tools/v5-substrate/native_protocol_campaign_program_check.py", line 295, in check
+            result = H.check_scope(a, program_roles=roles) if "P01" in a["Evidence"] else H.check_live(a, program_roles=roles) if "Completion" in a["Evidence"] else H.check_coordinator(a, program_roles=roles) if "P03" in a["Evidence"] else H.check_partial(a, program_roles=roles) if "Partial" in a["Evidence"] else H.check_frozen(a, program_roles=roles) if "P04" in a["Evidence"] else H.check_conditional(a, program_roles=roles) if "P05" in a["Evidence"] else H.check_fence(a, program_roles=roles)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                            ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+          File "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/native_protocol_campaign_check.py", line 570, in check_fence
+            require(command["proof_wires"] == [outcomes[key] for key in keys], "actual earlier original phase authority bytes")
+                                               ~~~~~~~~^^^^^
+        KeyError: (8, 1)
+        
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=13869 bootstrapPackets=396 admitted=397312
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p04-commit-first-B-phase3-p8-all-YES-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_transition_conjunction_harness_test.go:382: fresh fixture actual native RPC 30 graphapply: remote source operation refused
+        remote tag=1: graphapply: invalid input
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=6 all-reaped=true successful=6 intentional-kills=0 calls=3115 bootstrapPackets=320 admitted=397312
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_protocol_campaign_adapters_test.go:1667: P05 diagnostic selector exhausted before genuine occurrence
+    paired_graph_fault_harness_test.go:421: paired current child cleanup 1 exit status 1
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 50825 exit status 1
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=6 all-reaped=true successful=5 intentional-kills=0 calls=6258 bootstrapPackets=320 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (16.54s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (16.54s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p02-A-before-B-after-phase2-p8-k2-after (7.92s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p04-commit-first-B-phase3-p8-all-YES-k2-after (3.72s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after (4.89s)
+=== RUN   TestNativeProtocolPooledStateLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder/move-phase1-p3-page0-kind1-before
+    native_graph_protocol_campaign_state_program_test.go:162: certified process durable directories /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/protocol-three-state-diagnostic-owned/artifacts/rho-certified-process-1275871715
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=1 identity=f5e8b27bb2837b96000000000000000b index=3 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=8 kind=1 identity=f5e8b27bb2837b96000000000000001a index=3 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=2 identity=f5e8b27bb2837b960000000000000020 index=4 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=3 identity=f5e8b27bb2837b96000000000000002f index=5 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=3 identity=f5e8b27bb2837b96000000000000003e index=6 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=3 identity=f5e8b27bb2837b96000000000000004d index=7 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=3 identity=f5e8b27bb2837b96000000000000005c index=8 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=4 identity=f5e8b27bb2837b960000000000000074 index=9 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=5 identity=f5e8b27bb2837b960000000000000083 index=10 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=4 identity=f5e8b27bb2837b960000000000000096 index=11 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=5 identity=f5e8b27bb2837b9600000000000000a5 index=12 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=4 target=3 kind=2 identity=f503f320f05909470000000000000023 index=13 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=3 identity=f5e8b27bb2837b9600000000000000be index=14 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=8 kind=3 identity=f5e8b27bb2837b9600000000000000c9 index=4 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=4 target=3 kind=3 identity=f503f320f05909470000000000000034 index=15 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=3 identity=f5e8b27bb2837b9600000000000000d9 index=16 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=8 kind=3 identity=f5e8b27bb2837b9600000000000000e8 index=5 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=4 identity=f5e8b27bb2837b9600000000000000f2 index=17 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=8 kind=5 identity=f5e8b27bb2837b960000000000000101 index=6 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=1 target=3 kind=7 identity=f5e8b27bb2837b960000000000000103 index=18 reason=0
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=4 target=8 kind=7 identity=f503f320f05909470000000000000052 index=7 reason=0
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet1 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit42 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet2 2->1 typeMsgApp term3 logTerm3 index43 commit43 rejectfalse hint0 entries0 decode<nil>
+    native_graph_protocol_campaign_state_test.go:1007: paired native committed/apply catch-up actor2 applied43
+    native_graph_protocol_campaign_state_harness_test.go:856: actual certified child operation: actor=2 target=3 kind=16 identity=00b983a5479b9d9000000000000013cd index=63 reason=0
+    native_graph_protocol_campaign_state_program_test.go:162: changed K body advanced native prefix despite invalid refusal: before=[64 52] after=[65 53] exchange=*errors.joinError graphMask=0001 processCode=1 processMask=0010
+    native_graph_protocol_campaign_state_harness_test.go:748: certified child cleanup 2 exit status 1
+    native_graph_protocol_campaign_state_harness_test.go:757: certified child not reaped successfully 2
+    native_graph_protocol_campaign_state_harness_test.go:748: certified child cleanup 5 context canceled
+        signal: broken pipe
+    native_graph_protocol_campaign_state_harness_test.go:757: certified child not reaped successfully 5
+    native_graph_protocol_campaign_state_harness_test.go:748: certified child cleanup 6 context canceled
+        signal: broken pipe
+    native_graph_protocol_campaign_state_harness_test.go:757: certified child not reaped successfully 6
+    native_graph_protocol_campaign_state_harness_test.go:781: E17 counted phase ledger: maximum=48128 pages=128 public=2/16 nativeVoter=0/4
+    native_graph_protocol_campaign_state_harness_test.go:793: certified cleanup: reaped=6 successfully-reaped=3 of6; calls=9581 packets=415 maxFrame=5206/15704 maxQueueBytes=3452/3557
+--- FAIL: TestNativeProtocolPooledStateLeaderAndMessagePrograms (10.71s)
+    --- FAIL: TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder (10.71s)
+        --- FAIL: TestNativeProtocolPooledStateLeaderAndMessagePrograms/rotated/reorder/move-phase1-p3-page0-kind1-before (10.70s)
+FAIL

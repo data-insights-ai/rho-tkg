@@ -1,0 +1,29 @@
+{
+  "commit": "572b6ce3dc68beec66ac904cf2a9e1f27b39bde9",
+  "parent": "c5fa399a5c7e5ddeb2b8dabc2b88b72f5e1ecfdf",
+  "tree": "/private/var/tmp/rho-v5-state-replay-lock-20261016",
+  "status": "clean frozen one-path successor",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_harness_test.go",
+      "blob": "b877268f2242e97411122938112f6499a66ed54e",
+      "sha256": "bfe9b6af608a835fb20c2bcb030f61adda7f1efa337664851d8acdc1fb1cbc00",
+      "parent_blob": "82ee63e4d5968109657a1dc181d2b9eaf720ae7a",
+      "parent_sha256": "2075aef20df3428f03f7c5c5104ea10e2c6111f5ad9004adf400775b6794ce36"
+    }
+  ],
+  "correction": "Immediately after authenticated Run+drain restore prior callback exactly once under hub lock; snapshot two existing slice headers under capture mutex, release mutex before every voter RPC. No second payload ownership.",
+  "safety_argument": "drainGraphProcessMuxes waits all tracked pending RPCs and relays on the actual live cohort; beforeRelay is invoked within tracked relay ownership, whose record is retired only after callback/response completion. No capture callback remains active after drain; hook detached before follow-on remote calls.",
+  "qualification": {
+    "command": "GOMAXPROCS=2 GOWORK=off GOTOOLCHAIN=local pinnedGo1.26.9 test -p=1 -count=1 -v -run ^(TestNativeProtocolStateReplayBarrierRequiresNewNativeInstallation|TestNativeProtocolStateActionKeepsActualRetainedOwnership)$ -timeout=60s ./internal/graphapply",
+    "exit": 0,
+    "package_seconds": 3.67,
+    "log": "/private/var/tmp/rho-v5-state-replay-lock-evidence-20261016/direct.log",
+    "scope": "Two existing in-process direct data/oracle guards only. Live RPC/callback barrier remains root OS rerun; no author OS cohort."
+  },
+  "bounds_unchanged": "two64KiB buffers/16candidates, original deadlines, worker/queue/native/policy caps",
+  "assertions_unchanged": true,
+  "pinned_gofmt": "clean",
+  "git_whitespace": "clean",
+  "production_change": false
+}

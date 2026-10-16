@@ -1,0 +1,1 @@
+{"case": "p02-A-before-B-after-phase2-p8-k2-after", "program": {"Layout": "rotated", "Message": "reorder", "Version": 1}, "records": 70, "scope": "actual finite P02 native/source/old-cut conjunction; leader/message programs remain distinct", "serial_witness": ["edge-create"]}

@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-p02-phase-authority-check-fix-20261016/tools/v5-substrate/native_protocol_campaign_program_check.py", line 307, in <module>
+    main()
+    ~~~~^^
+  File "/private/var/tmp/rho-v5-p02-phase-authority-check-fix-20261016/tools/v5-substrate/native_protocol_campaign_program_check.py", line 303, in main
+    print(json.dumps(check(H.load(args.artifact, program=True)), sort_keys=True))
+                     ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-p02-phase-authority-check-fix-20261016/tools/v5-substrate/native_protocol_campaign_program_check.py", line 295, in check
+    result = H.check_scope(a, program_roles=roles) if "P01" in a["Evidence"] else H.check_live(a, program_roles=roles) if "Completion" in a["Evidence"] else H.check_coordinator(a, program_roles=roles) if "P03" in a["Evidence"] else H.check_partial(a, program_roles=roles) if "Partial" in a["Evidence"] else H.check_frozen(a, program_roles=roles) if "P04" in a["Evidence"] else H.check_conditional(a, program_roles=roles) if "P05" in a["Evidence"] else H.check_fence(a, program_roles=roles)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-p02-phase-authority-check-fix-20261016/tools/v5-substrate/native_protocol_campaign_check.py", line 570, in check_fence
+    require(command["proof_wires"] == [outcomes[key] for key in keys], "actual earlier original phase authority bytes")
+                                       ~~~~~~~~^^^^^
+KeyError: (8, 1)

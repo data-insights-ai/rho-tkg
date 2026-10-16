@@ -1,0 +1,14 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p04-commit-first-B-phase3-p8-all-YES-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_transition_conjunction_harness_test.go:382: fresh fixture actual native RPC 75 context deadline exceeded
+        graphapply: remote source operation refused
+        remote tag=6: context canceled
+        context deadline exceeded
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=6 all-reaped=true successful=6 intentional-kills=0 calls=3825 bootstrapPackets=320 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (13.44s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (13.43s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p04-commit-first-B-phase3-p8-all-YES-k2-after (13.42s)
+FAIL

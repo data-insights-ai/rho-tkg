@@ -1,0 +1,6 @@
+=== RUN   TestNativeChangedKClassifyActualRecords
+    zz_changed_k_evidence_test.go:20: ACTUAL member2 entry65 commandPhase4 part3 tx0c436d31085b4161fcdfa3e075f8bb88 digestfd6a5bdf1626c778c14a652e9ce5464aed3e0f95a6e22c9af80fff954e9527c4 outcomePhase4 originalIndex42 why0 committrue CDC0 sameRoottrue
+    zz_changed_k_evidence_test.go:20: ACTUAL member6 entry53 commandPhase4 part8 tx0c436d31085b4161fcdfa3e075f8bb88 digestfd6a5bdf1626c778c14a652e9ce5464aed3e0f95a6e22c9af80fff954e9527c4 outcomePhase4 originalIndex32 why0 committrue CDC0 sameRoottrue
+--- PASS: TestNativeChangedKClassifyActualRecords (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	0.411s

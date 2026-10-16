@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Added an explicit source valid-start policy to the narrow v5 migration
+  preflight. Opted-in sources preserve TxFrom-based or unbounded first-version
+  validity with required provenance; the default legacy audit mapping remains
+  unchanged. This subset does not qualify the current v4 reader or importer.
+
 - Added internal v5 range handoff through native source/target admission fences,
   bounded resumable graph and protocol-history pages, a durable handoff decision
   and separate placement activation. Original IDs, typed cells and revisions,

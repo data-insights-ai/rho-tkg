@@ -1,0 +1,20 @@
+E
+======================================================================
+ERROR: test_p02_captured_phase_authority_uses_partition_then_phase (native_protocol_campaign_check_test.ActualVoteReadGuards.test_p02_captured_phase_authority_uses_partition_then_phase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-p02-phase-authority-check-fix-20261016/tools/v5-substrate/native_protocol_campaign_check_test.py", line 195, in test_p02_captured_phase_authority_uses_partition_then_phase
+    statuses,outcomes,commands,manifest=check()
+                                        ~~~~~^^
+  File "/private/var/tmp/rho-v5-p02-phase-authority-check-fix-20261016/tools/v5-substrate/native_protocol_campaign_check_test.py", line 194, in check
+    def check(rows=rows,records=records):return C.fence_phases(rows,records,scopes,peers,5,8,sources)
+                                                ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-p02-phase-authority-check-fix-20261016/tools/v5-substrate/native_protocol_campaign_check.py", line 523, in fence_phases
+    require(command["proof_wires"] == [outcomes[key] for key in keys], "actual earlier original phase authority bytes")
+                                       ~~~~~~~~^^^^^
+KeyError: (8, 1)
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (errors=1)

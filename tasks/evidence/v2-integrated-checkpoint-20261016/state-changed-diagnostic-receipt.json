@@ -1,0 +1,24 @@
+{
+  "commit": "fa0f8c5e8d4aa3255064d0a4b7b6213bb703b201",
+  "parent": "64b48a59f22c470242e3c3b86df1fee1548112ec",
+  "tree": "/private/var/tmp/rho-v5-state-changed-original-20261016",
+  "status": "clean frozen diagnostic only",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_test.go",
+      "blob": "1ed3bbb076155f23691999d3b10b458171794920",
+      "sha256": "ab1f91b52351e2898ac3b28341f2ec2c66935175318af68effc567bfe904c13f",
+      "parent_blob": "cc856082023ae5497db2ee7745b5216b93d73fdb",
+      "parent_sha256": "6e5a806b011de2bad80c1d884e02ba6e1508c6768e0e37cb2d73d5943b16b9f6"
+    }
+  ],
+  "actual_red": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/state-ownership-fixed-64b48a59.log",
+  "finding": "Existing log prints only graphWireError.Error and combines wrong-refusal classification with native-prefix movement; cannot distinguish real new effect from a typed refusal. No production cause established.",
+  "change": "Split equivalent strict assertions; expose bounded actual exchange type/graph error mask, process error code/cause mask/detail<=256chars/aux length and exact before/after indexes if invalid refusal is present. No success or missing-effect assumption.",
+  "unchanged": "errInvalid remains mandatory; native prefix equality remains mandatory; actual changed K and immutable original/root/CDC oracle remain unchanged.",
+  "pinned_gofmt": "clean",
+  "git_whitespace": "clean",
+  "tests_run": false,
+  "no_os_cohort": true,
+  "production_change": false
+}

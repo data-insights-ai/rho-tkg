@@ -1,0 +1,425 @@
+{
+  "source": "2d2ce031",
+  "basis": "New proposed planning weights per phase, 100 points each. Only explicitly accepted bounded packages earn points; active/source-only packages earn zero until their defined scope is accepted. Not elapsed work, time remaining, production readiness or overall project percentage. Historical acceptance retains exact source/evidence scope.",
+  "phases": [
+    {
+      "phase": "V0",
+      "title": "Specification",
+      "packages": [
+        {
+          "id": "V0.1",
+          "weight": 100,
+          "status": "accepted",
+          "title": "Reviewed specification and independent models",
+          "scope": "Temporal concepts and rho/sigma boundary; units/profiles/import policy; consumer inventory; reference cases, failure outcomes and resource/dataset profiles."
+        }
+      ],
+      "acceptedPercent": 100
+    },
+    {
+      "phase": "V1",
+      "title": "Temporal values and state",
+      "packages": [
+        {
+          "id": "V1.1",
+          "weight": 100,
+          "status": "accepted",
+          "title": "Values/state acceptance",
+          "scope": "Exact coordinates/profiles/regions, reducers, ordering and descriptor preservation; reviewed corpus, differential/boundary/fuzz/codec and node/relationship historical parity."
+        }
+      ],
+      "acceptedPercent": 100
+    },
+    {
+      "phase": "V2",
+      "title": "Distributed correctness and engine decision",
+      "packages": [
+        {
+          "id": "V2.1",
+          "weight": 8,
+          "status": "accepted",
+          "title": "Replicated substrate baseline",
+          "scope": "Recorded native log/VFS, nonempty snapshot activation, durable reopen and bounded recovery baseline; broad fault campaigns remain V2.9."
+        },
+        {
+          "id": "V2.2",
+          "weight": 8,
+          "status": "accepted",
+          "title": "Local writes and allocation baseline",
+          "scope": "Graph genesis/default axis, partition-local writes, shared allocation and accepted finite P08 issuance/exhaustion evidence; broader reuse/fencing/reclamation remain V2.8."
+        },
+        {
+          "id": "V2.3",
+          "weight": 10,
+          "status": "accepted",
+          "title": "Cross-partition transaction kernel",
+          "scope": "Recorded two-partition/three-replica prepare/decision/resolve, retained originals, conflict fencing and atomic graph effects; remaining schedules remain V2.7/9."
+        },
+        {
+          "id": "V2.4",
+          "weight": 8,
+          "status": "accepted",
+          "title": "Certified read foundations",
+          "scope": "Accepted finite E15/E16 current/historical reads and E18 index-starting hydration with authenticated native sources and cuts."
+        },
+        {
+          "id": "V2.5",
+          "weight": 4,
+          "status": "accepted",
+          "title": "Finite range handoff baseline",
+          "scope": "Accepted finite E17 handoff, retained history and certified source/target lineage; interruptions/GC and general rebalance remain open."
+        },
+        {
+          "id": "V2.6",
+          "weight": 4,
+          "status": "accepted",
+          "title": "Selected recovery/storage components",
+          "scope": "Recorded P03/P06 and selected WAL/manifest/OPTIONS recovery components; evidence applies to its exact source/cases, not the full families."
+        },
+        {
+          "id": "V2.7",
+          "weight": 10,
+          "status": "active",
+          "title": "Remaining transaction fault schedules",
+          "scope": "Complete P01\u2013P06 requirement-to-case coverage: outside-scope coordinator; prepare/fence ordering; partial installation; frozen participants/digest/decision; absent keys/ranges, temporal predicates and endpoint-life ABA; conflicts through failover. Selected rotated/reordered P01 and P02 pass; P04/P05 and state recovery remain open."
+        },
+        {
+          "id": "V2.8",
+          "weight": 10,
+          "status": "active",
+          "title": "Ownership, identities and reclamation",
+          "scope": "P07/P09 interruptions during transfer/publication, production identity reuse and stale fencing, retry-payload refusal, snapshot/feed lineage, expiration and application GC; preserve original results and expired/unavailable versus empty."
+        },
+        {
+          "id": "V2.9",
+          "weight": 10,
+          "status": "open",
+          "title": "Composed network, scheduler and storage faults",
+          "scope": "Loss/duplication/reorder/asymmetry, isolated leaders/quorum/domain loss; pause/ticks/clock jumps; torn/short writes, EIO/ENOSPC/sync/rename/manifest/corrupt pages; bounded conflicting exploration followed by recorded-seed soak and independent oracles."
+        },
+        {
+          "id": "V2.10",
+          "weight": 8,
+          "status": "open",
+          "title": "Equivalent FoundationDB fault/publication evidence",
+          "scope": "Actual role/domain loss, unknown commits, pins/GC and chunk/manifest failures; complete histories/index/CDC, owned cleanup and all-client/server accounting under equivalent declared fault/durability semantics."
+        },
+        {
+          "id": "V2.11",
+          "weight": 5,
+          "status": "open",
+          "title": "Eight-workload functional comparison",
+          "scope": "All declared native/FDB workloads, both layouts, writers 1/8/32, native 1M multi-grant setup and bounded comparator state. Tiny one-writer KV/columns and eight-writer KV pairs pass only their finite cells."
+        },
+        {
+          "id": "V2.12",
+          "weight": 10,
+          "status": "open",
+          "title": "Complete measurement matrix and improvements",
+          "scope": "10k/100k/1M facts, cross 0/10/50/100%, writers 1/8/32, five fresh repetitions, all declared workloads/layouts/transports: 11,520 paired cells / 23,040 engine runs. Record bytes, memory, latency, throughput, retries/recovery and complete outputs; correct measured regressions and remeasure affected scope."
+        },
+        {
+          "id": "V2.13",
+          "weight": 3,
+          "status": "open",
+          "title": "Written engine decision",
+          "scope": "Choose native versus FoundationDB from measured correctness, deployment, storage/time, maintenance and embedding evidence; record limitations and justified costs."
+        },
+        {
+          "id": "V2.14",
+          "weight": 2,
+          "status": "open",
+          "title": "Coordinated V2 acceptance",
+          "scope": "One integrated requirement/evidence audit and required current gates after implementation/correctness/measurement/improvement; all A\u2013F closure rows accepted."
+        }
+      ],
+      "acceptedPercent": 42
+    },
+    {
+      "phase": "V3",
+      "title": "Compact engine",
+      "packages": [
+        {
+          "id": "V3.1",
+          "weight": 10,
+          "status": "accepted",
+          "title": "Integer coordinate-block candidate",
+          "scope": "Accepted bounded int64 Z/integer-valued Q candidate and three layouts at recorded source; this is not the integrated storage engine."
+        },
+        {
+          "id": "V3.2",
+          "weight": 10,
+          "status": "active",
+          "title": "Exact rational coordinate blocks",
+          "scope": "Fractional/wide canonical coordinates in bounded arenas/offsets with shared axis, exact membership and owned/borrowed access; canonicality/axis/limit/ownership adversaries. Standalone internal implementation started; integration remains later packages."
+        },
+        {
+          "id": "V3.3",
+          "weight": 15,
+          "status": "open",
+          "title": "Other typed blocks and MVCC memtable",
+          "scope": "Arena-backed mutations; typed values/dictionaries/ordinals; wide integers, regions, uncertainty/correlation and symbolic descriptors; compact point-only rows, occupancy, mixed/sparse layouts and materialized-row costs."
+        },
+        {
+          "id": "V3.4",
+          "weight": 15,
+          "status": "open",
+          "title": "Paged catalog and index integration",
+          "scope": "Wire compact blocks into identity/location/catalog/adjacency/revision/point/interval indexes; predicate pruning and possible-support bounds; long spans and distinct current/historical paths."
+        },
+        {
+          "id": "V3.5",
+          "weight": 20,
+          "status": "open",
+          "title": "Seal, merge and bounded recovery",
+          "scope": "Applied log to memtable/immutable segments/atomic durable manifest, merge and safe reclamation; retained cuts, multiplicity, knowledge and provenance; bounded replay; integrity-before-use and scrub; no second graph-truth WAL."
+        },
+        {
+          "id": "V3.6",
+          "weight": 10,
+          "status": "open",
+          "title": "Aggregate database budgets",
+          "scope": "Bound memtables/caches/dictionaries/indexes/locks/transactions/reads/changes/retained metadata together; spill/backpressure, concurrent partitions/scans and bounded catalog/open/manifest growth."
+        },
+        {
+          "id": "V3.7",
+          "weight": 10,
+          "status": "open",
+          "title": "Large-data correctness and byte ledger",
+          "scope": "790K/3.15M/12.6M source rows with correct HOP denominators; seal/merge/crash/reopen oracles; heap/RSS/PSS/mmap/page-cache/disk/log/index/catalog/replica steady and peak costs, no per-fact resident growth and bounded replay; actual active-versus-ended-population gate including historical access."
+        },
+        {
+          "id": "V3.8",
+          "weight": 10,
+          "status": "open",
+          "title": "Physical choices and v4 fast path",
+          "scope": "Homogeneous/sparse/tagged thresholds, metadata amplification and catalog/backend candidates; equivalent durable single-partition v4 comparison, cold/warm/restart/compaction, five runs/dispersion and reviewed regressions."
+        }
+      ],
+      "acceptedPercent": 10
+    },
+    {
+      "phase": "V4",
+      "title": "Public reads and changes",
+      "packages": [
+        {
+          "id": "V4.1",
+          "weight": 15,
+          "status": "open",
+          "title": "Public graph, identity and write surface",
+          "scope": "Graph open/close, opaque IDs, create/correct/close/retract and 45-family successor-or-explicit-decline mapping."
+        },
+        {
+          "id": "V4.2",
+          "weight": 20,
+          "status": "open",
+          "title": "Scoped snapshot/session API",
+          "scope": "Fresh/Stable/At/After, cut/owner lifetimes, bounded rows/bytes, cancellation, borrow lifetime and resumable cursors."
+        },
+        {
+          "id": "V4.3",
+          "weight": 20,
+          "status": "open",
+          "title": "Typed projected access and negotiation",
+          "scope": "Lookup/Scan/Expand; label/type/property and native/residual capability negotiation; capabilities, statistics and ExplainAccess."
+        },
+        {
+          "id": "V4.4",
+          "weight": 15,
+          "status": "open",
+          "title": "Complete histories and cross-door parity",
+          "scope": "Timeline/Occurrences and named/generic/row/column exact sets; deleted/recreated entities, declared/effective views, phantom refusals and mutation-then-old-cut tests."
+        },
+        {
+          "id": "V4.5",
+          "weight": 20,
+          "status": "open",
+          "title": "Public changes and leased handoff",
+          "scope": "Changes/WatchChanges, atomic before/after selector entry/exit groups, gap-free scan-at-C to feed-after-C, replay/expiry/concurrency/backpressure."
+        },
+        {
+          "id": "V4.6",
+          "weight": 10,
+          "status": "open",
+          "title": "Pinned Sigma access adapter",
+          "scope": "Actual pinned access build, nonempty NodeByIDAt, column/ordinal/epoch/history/runtime/writer contracts and E09\u2013E13/E21 input preservation; consumer-repository proofs."
+        }
+      ],
+      "acceptedPercent": 0
+    },
+    {
+      "phase": "V5",
+      "title": "Integrated distributed access",
+      "packages": [
+        {
+          "id": "V5.1",
+          "weight": 10,
+          "status": "accepted",
+          "title": "Finite two-partition access foundation",
+          "scope": "Accepted E15\u2013E18 certified historical reads, remote hydration, incidence/canonical parity and finite handoff; arbitrary partition counts remain open."
+        },
+        {
+          "id": "V5.2",
+          "weight": 15,
+          "status": "open",
+          "title": "Locality and endpoint ownership",
+          "scope": "General 1/2/4/8-partition routing, one canonical relationship owner, synchronous in/out postings and placement/epoch/rebalance; any async alternative needs complete coverage/delta/fallback."
+        },
+        {
+          "id": "V5.3",
+          "weight": 15,
+          "status": "open",
+          "title": "Distributed temporal/history access",
+          "scope": "Selectors/projections/profiles and explicit declared/effective views; current/complete history, corrections/deletions/long spans/uncertain support; exact decline and statistics."
+        },
+        {
+          "id": "V5.4",
+          "weight": 20,
+          "status": "open",
+          "title": "Distributed read doors and pagination",
+          "scope": "Lookup/Scan/Expand/Timeline/Occurrences, deterministic merge ordering and cursors bound to cut, selector/profile versions and partition lineage; global row/byte/buffer limits, cancellation and backpressure."
+        },
+        {
+          "id": "V5.5",
+          "weight": 15,
+          "status": "open",
+          "title": "Cuts and snapshot-to-feed integration",
+          "scope": "Scoped modes, Fresh-cost choices, gap-free leased handoff, complete transaction envelopes/completed cuts, selector changes, deduplication/replay/expiry and rebalance lineage; no external exactly-once claim."
+        },
+        {
+          "id": "V5.6",
+          "weight": 15,
+          "status": "open",
+          "title": "Distributed acceptance matrix",
+          "scope": "All read/expand/feed doors at 1/2/4/8 partitions with three replicas, cross 0/10/50/100%, stalls/cross-edges/pagination/leader loss/rebalance, local and injected 1/20/100ms RTT plus observed jitter, complete outputs and aggregate costs."
+        },
+        {
+          "id": "V5.7",
+          "weight": 10,
+          "status": "open",
+          "title": "Pinned Sigma workload parity",
+          "scope": "Owning-repository adapters/build, identical inputs/results, complete historical/supported-profile data, nonempty mutation-then-historical workloads and output stress; attribute reasoning-layer failures to Sigma."
+        }
+      ],
+      "acceptedPercent": 10
+    },
+    {
+      "phase": "V6",
+      "title": "Migration and operations",
+      "packages": [
+        {
+          "id": "V6.1",
+          "weight": 10,
+          "status": "accepted",
+          "title": "Historical narrow migration preflight",
+          "scope": "Only the recorded retained-state v4.51.7 preflight qualification: raw owned identity/audit/one-tick provenance/ambiguity; not current-v4 or destination/history-complete migration."
+        },
+        {
+          "id": "V6.2",
+          "weight": 20,
+          "status": "active",
+          "title": "Current-v4 reader and source policy",
+          "scope": "Current v4.56.1 binary hashes/store markers, void/retention watermarks/refusals, valid-start/unbounded policy, interrupted conversion/reset and writer/format provenance; fresh qualification. Valid-start/provenance implementation subset started independently of V2."
+        },
+        {
+          "id": "V6.3",
+          "weight": 25,
+          "status": "open",
+          "title": "Destination importer",
+          "scope": "IDs/endpoints/lives/types/raw evidence, versioned hashes and synthetic import cuts, explicit collisions/ambiguity/latest-only behavior and rollback; do not infer atomic transaction groups from TxFrom."
+        },
+        {
+          "id": "V6.4",
+          "weight": 20,
+          "status": "open",
+          "title": "Graph backup and different-topology restore",
+          "scope": "Versioned full/delta backup, base identity/corruption/replay refusal and restore under different topology with retained-cut/CDC agreement."
+        },
+        {
+          "id": "V6.5",
+          "weight": 10,
+          "status": "open",
+          "title": "Retention, exact erase and reset",
+          "scope": "Closure across current/history/indexes and feed leases; explicit expired/unavailable versus absent; public operational contracts beyond internal GC."
+        },
+        {
+          "id": "V6.6",
+          "weight": 5,
+          "status": "open",
+          "title": "Segment tiering/archive",
+          "scope": "Cold/warm/archive restoration, answer equality and bounded resource proof."
+        },
+        {
+          "id": "V6.7",
+          "weight": 10,
+          "status": "open",
+          "title": "Actual consumer migrations",
+          "scope": "Sigma and ai-soc repository commits and adapter tests for every named semantic change; consumer migration is not complete from rho-only smoke tests."
+        }
+      ],
+      "acceptedPercent": 10
+    },
+    {
+      "phase": "V7",
+      "title": "Release qualification",
+      "packages": [
+        {
+          "id": "V7.1",
+          "weight": 15,
+          "status": "open",
+          "title": "Versioned contracts and limits",
+          "scope": "Public API/wire/descriptors, compatibility and documented operational/resource limits."
+        },
+        {
+          "id": "V7.2",
+          "weight": 15,
+          "status": "open",
+          "title": "Complete current quality gates",
+          "scope": "Current integrated CI/race/coverage/security/scanners and direct public-method coverage; no old source-only green status substituted."
+        },
+        {
+          "id": "V7.3",
+          "weight": 20,
+          "status": "open",
+          "title": "Full distributed correctness/scaling evidence",
+          "scope": "Specified partition/replica/RTT/process/VFS and cleanup/resource ledgers, combining V2 and V5 requirements."
+        },
+        {
+          "id": "V7.4",
+          "weight": 10,
+          "status": "open",
+          "title": "Pinned consumer/integration suites",
+          "scope": "Existing consumer suites plus agreed nonempty integration fixtures at recorded versions."
+        },
+        {
+          "id": "V7.5",
+          "weight": 10,
+          "status": "open",
+          "title": "Native v5 versus v4 comparison",
+          "scope": "Complete correctness/resource adapters and representative datasets; distinct source-row/graph-fact denominators."
+        },
+        {
+          "id": "V7.6",
+          "weight": 10,
+          "status": "open",
+          "title": "Graph-vendor functional adapters",
+          "scope": "Actual supported Neo4j/TigerGraph/Memgraph editions/versions/durability and current/history/restart adapters, beyond the existing unfinished TigerGraph candidate."
+        },
+        {
+          "id": "V7.7",
+          "weight": 20,
+          "status": "open",
+          "title": "Measurements, reviewed costs and release",
+          "scope": "At least five randomized runs/profile, p50/p95/p99/useful throughput/full outputs, all service/client/replica space and steady/peak memory without double counting; comparative matrix, causally isolated excess-cost justification, settled acceptance thresholds and separately authorized release."
+        }
+      ],
+      "acceptedPercent": 0
+    }
+  ],
+  "scopeAuthority": "docs/v5/PLAN.md section8 and original A\u2013F V2 closure queue; no exit scope removed",
+  "parallelNow": [
+    "V3.2 internal exact rational coordinate blocks",
+    "V6.2 current-v4 valid-start/provenance preflight subset"
+  ],
+  "priority": "Finish V2 on 2026-10-16; all three implementation agents assigned to V2, V3 candidate frozen and further V6 work parked."
+}

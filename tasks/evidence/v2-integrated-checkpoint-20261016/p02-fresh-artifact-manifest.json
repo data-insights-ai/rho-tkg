@@ -1,0 +1,12 @@
+{
+  "archive": "p02-rotated-reorder-complete-0a21fa05.tar.gz",
+  "archiveSHA256": "4b896ec9684349cfcc628520f3d9676bdc5b74ef698629606d057e626f44d41f",
+  "artifactSHA256": "0296c11e420d9a1fb17ec5f39c77e82d8f8544baa51fc780e288d08522819c7f",
+  "artifact": "p02-A-before-B-after-phase2-p8-k2-after.jsonl",
+  "nativeBinarySource": "9cb54754",
+  "nativeBinarySHA256": "d6bb1ea997022d77365b1b70e1f2a1d23e110b41d5cd5da12cd0b4f577c8fe5d",
+  "checkerSource": "0a21fa05",
+  "originalLeafDeadlineSeconds": 180,
+  "watchdogLimitSeconds": 240,
+  "scope": "Full single selected P02 rotated/reorder native process execution and original source/history/cut oracle; not whole P02 family or V2"
+}

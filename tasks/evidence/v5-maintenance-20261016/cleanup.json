@@ -1,0 +1,301 @@
+{
+  "dedicatedBuildCache": {
+    "path": "/private/var/tmp/rho-v5-go-build-cache-go1.26.9",
+    "beforeKiB": 13783160,
+    "afterKiB": 832,
+    "command": "pinned Go1.26.9 go clean -cache",
+    "fuzzCachePreserved": true,
+    "activeReferencesBefore": 0,
+    "allAgentsConfirmedIdle": true
+  },
+  "removedBinaries": [
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-step-stage.test",
+      "bytes": 54576354,
+      "sha256": "6aa0ac67fa45e4794bf9a8a3916ff8aca7964db984a8261af1f0b06dda603486",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-state-d-fixed.test",
+      "bytes": 54413282,
+      "sha256": "85855b0d7f9fc8a370dce1ba97b72e829b76f0f545d1109a777dadfba585b7df",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-changed-refusal.test",
+      "bytes": 54654306,
+      "sha256": "dde07bc46a4f78589e3031b0557edff5d080bd225ca8c78aa1f45e9084dce7a1",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-reply-routing.test",
+      "bytes": 54547122,
+      "sha256": "022237d0311aa739e842c1365e359996793da12a9aaea0e9242fede2cd909be5",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-dae78f7e.test",
+      "bytes": 54358018,
+      "sha256": "e03c8f354da9c38bb80545053750459eea7909b1d2d63829d9a24e5e09f08d44",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply.test",
+      "bytes": 54320274,
+      "sha256": "172cc147f3d0ec43a115f86ff3f13099603d50e493a21398a35c62a272bffb66",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-8daa85b6.test",
+      "bytes": 54320962,
+      "sha256": "145f42389df1ba2cac9ba322a3dc06ec34187d1202ae02e1ebf809037d17ee88",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-decision-owner.test",
+      "bytes": 54672562,
+      "sha256": "b0267e66b731f53e7ca1ac5965b927c7a8722f06469194c1a68a8bb41d04d707",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-bootstrap-column.test",
+      "bytes": 54549266,
+      "sha256": "f19ecb6a65485806586173d20772417d9203241b7169258076640bfe89f58f71",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-submit-candidates.test",
+      "bytes": 54690514,
+      "sha256": "9a01c2a43511260fb2c22c9bb6e64b0133a321224c0df5fe9c19766747189f72",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-84d9fcaa.test",
+      "bytes": 54358834,
+      "sha256": "1477100a8d75eb448d5d724b04a5fcf1b5211c8b78312e76fad54d03bb0e3a25",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-cursor-parent-fixed.test",
+      "bytes": 54432914,
+      "sha256": "b229045294603e8d07c73bfd9d126e978c2bfe9296e36b48165bc5f7c5ab19b8",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-scope-diagnostic.test",
+      "bytes": 54565682,
+      "sha256": "e13975722d709a062b0e811fc2375325732faf2c8f35dff5f1f7ea50d1996177",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-scoped-caller.test",
+      "bytes": 54671618,
+      "sha256": "d6bb1ea997022d77365b1b70e1f2a1d23e110b41d5cd5da12cd0b4f577c8fe5d",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-659bdad5.test",
+      "bytes": 54411602,
+      "sha256": "6da4b28fa8ccaea9a3e315021ad96480345b432ac01d7b4c3a90f84c4a8fa2af",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-batch-fixed.test",
+      "bytes": 54576354,
+      "sha256": "620cb10a4ea82f5991c8f2757a822b5323801c90292d476350098109276c52d7",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-move-catchup.test",
+      "bytes": 54618658,
+      "sha256": "ba2fc70e5e40c2853e3c8360508624247f2e7da39112d685229915d4a2975197",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-state-ownership.test",
+      "bytes": 54654402,
+      "sha256": "41b8329fecaf324bf09f58de0996d6e6c926fd414dfb06dd4566696d6b953682",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-columns-metadata.test",
+      "bytes": 54583954,
+      "sha256": "edc6bf340a2c8470ca945779bc4224c09a3381378dbb83354f2612759daf309a",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-import-fixed.test",
+      "bytes": 54558946,
+      "sha256": "b7c02cbaeccacc38d56584b92213e925abb589a53d294e201a06d420f31c30d5",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-step-context.test",
+      "bytes": 54558866,
+      "sha256": "e2d22b33063c0e763b0788611989d8da4782b7920918e36b3b1274b4f285f38e",
+      "reason": "Obsolete rebuildable root test executable; source commits and original receipts retained"
+    }
+  ],
+  "preservedCurrentBinary": {
+    "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-replay-relay.test",
+    "sha256": "5e55a28f6f0425283db503391eab511048863439a08d232309f2d65292764e9b"
+  },
+  "stoppedPrograms": [],
+  "programScan": "No remaining rho native/FDB test programs found; no unrelated process stopped",
+  "scope": "Owned obsolete rho temporary cache and rebuildable executables only; source/history/receipts preserved",
+  "removedWorktrees": [
+    {
+      "path": "/private/var/tmp/rho-v5-bounded-exploration-20261015",
+      "branch": "v6-bounded-exploration-20261015",
+      "HEAD": "5126c2b579d8b43cebaac8685e2c90d1d6d7ec90",
+      "KiB": 232340,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-compiler-ci-fix-20261016",
+      "branch": "agent-v2-compiler-ci-fix-20261016",
+      "HEAD": "2eb85325a9ed7360109355c1f24eff9729121e01",
+      "KiB": 233048,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-final-protocol-ci-20261016",
+      "branch": "agent-v2-final-protocol-ci-20261016",
+      "HEAD": "bcfbc9aff3935d0f5b3ad9e8cf05480f9f4c5e08",
+      "KiB": 233044,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-native-snapshot-sender-20261016",
+      "branch": "agent-v2-snapshot-sender-20261016",
+      "HEAD": "5a465f9bd85fc059d11ebb263331e4e022281f53",
+      "KiB": 232940,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-native-transfer-python-20261015",
+      "branch": "agent-v2-native-transfer-python-20261015",
+      "HEAD": "488afc5ec9fa52ba99fa6a74d3f67d3556757b43",
+      "KiB": 232672,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p01-a-only-read-20261016",
+      "branch": "agent-v6-p01-source-capture-diagnostic-20261016",
+      "HEAD": "4b5b295a8c3d81baf8d53a5a7b9106169e3ad6ec",
+      "KiB": 248800,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p01-checker-role-20261016",
+      "branch": "agent-v6-p01-checker-role-20261016",
+      "HEAD": "11be804febc196e957846b09007caa8f3b32fb6f",
+      "KiB": 257668,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p01-client-limit-20261016",
+      "branch": "agent-v6-p01-client-limit-20261016",
+      "HEAD": "0be47841a43e6b1348ec14c15cc85566eff2fe3e",
+      "KiB": 257644,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p04-recipient-owner-20261016",
+      "branch": "agent-v6-p04-recipient-owner-20261016",
+      "HEAD": "2fe13efea892e06d62ffedfd5def004f7c348941",
+      "KiB": 257648,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-pooled-state-check-20261015",
+      "branch": "agent-v2-pooled-state-check-20261015",
+      "HEAD": "50fee6ed6f61ebaa29b890e81d8cae58baa1d1aa",
+      "KiB": 232716,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-protocol-ci-associations-20261016",
+      "branch": "agent-v2-protocol-ci-associations-20261016",
+      "HEAD": "9cc97ddf9661f2406c92ffe2acf96a76049844f5",
+      "KiB": 232860,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-relay-error-payload-20261016",
+      "branch": "agent-v6-relay-error-payload-20261016",
+      "HEAD": "9e42a048d5eeaaec2cc38b424fdf3efc511b25e8",
+      "KiB": 257664,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-sender-publication-proof-20261016",
+      "branch": "agent-v2-sender-publication-proof-20261016",
+      "HEAD": "6b1817994a953e1f952cb034cdeb891f122335ed",
+      "KiB": 233156,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-sender-refusal-fix-20261016",
+      "branch": "agent-v2-sender-refusal-fix-20261016",
+      "HEAD": "f024d887e6a6b42742af135547cce44e587238a0",
+      "KiB": 233048,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-sender-session-fix-20261016",
+      "branch": "agent-v2-sender-session-fix-final-20261016",
+      "HEAD": "92ddb752c1b3f61426eb2c2016780cb1e31e2f93",
+      "KiB": 233148,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-sustained-seed-20261015",
+      "branch": "agent-v2-sustained-seed-20261015",
+      "HEAD": "bca47bd90162c3ce307fb1ea6e4a551dde93336f",
+      "KiB": 232352,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-transfer-pair-20261015",
+      "branch": "v6-transfer-pair-20261015",
+      "HEAD": "b296ade778dab2063b2956be0326093ad56a0f15",
+      "KiB": 232320,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-fdb-inert-kernel-links-20261016",
+      "branch": "agent/fdb-inert-kernel-links-20261016",
+      "HEAD": "c1a73299a8469d9aeb924e77c74140c1bee04bcb",
+      "KiB": 234864,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-fdb-owned-capability-20261016",
+      "branch": "agent/fdb-owned-capability-20261016",
+      "HEAD": "3edc9c0b8daba408f5b87709051667a03671f01a",
+      "KiB": 234008,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-fdb-owned-tools-xz-20261016",
+      "branch": "agent/fdb-owned-tools-xz-20261016",
+      "HEAD": "db5b05e6b4fdf438ae5267b8a4f64bfd610038ba",
+      "KiB": 234008,
+      "sourceCommitRetained": true
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-fdb-prebuild-corrections-20261016",
+      "branch": "agent/fdb-prebuild-corrections-20261016",
+      "HEAD": "63f974054994d60706635f7e772e754d9e6e9a0e",
+      "KiB": 233992,
+      "sourceCommitRetained": true
+    }
+  ],
+  "preservedCandidates": [
+    {
+      "path": "/private/var/tmp/rho-v5-fdb-tiny-evidence-20261016",
+      "reason": "ignored/untracked original evidence remains"
+    }
+  ]
+}

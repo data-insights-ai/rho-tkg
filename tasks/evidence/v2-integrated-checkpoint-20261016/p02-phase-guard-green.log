@@ -1,0 +1,18 @@
+F
+======================================================================
+FAIL: test_p02_captured_phase_authority_uses_partition_then_phase (native_protocol_campaign_check_test.ActualVoteReadGuards.test_p02_captured_phase_authority_uses_partition_then_phase)
+----------------------------------------------------------------------
+ValueError: P06 refused: truncated original
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-p02-phase-authority-check-fix-20261016/tools/v5-substrate/native_protocol_campaign_check_test.py", line 226, in test_p02_captured_phase_authority_uses_partition_then_phase
+    with self.assertRaisesRegex(ValueError,"earlier original phase authority"):
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: "earlier original phase authority" does not match "P06 refused: truncated original"
+
+----------------------------------------------------------------------
+Ran 1 test in 0.002s
+
+FAILED (failures=1)

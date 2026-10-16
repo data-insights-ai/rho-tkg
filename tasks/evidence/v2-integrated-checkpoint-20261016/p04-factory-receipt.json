@@ -1,0 +1,17 @@
+{
+  "revision": "2fe13efea892e06d62ffedfd5def004f7c348941",
+  "parent": "0be47841a43e6b1348ec14c15cc85566eff2fe3e",
+  "tree": "/var/tmp/rho-v5-p04-recipient-owner-20261016",
+  "scope": [
+    "v5/internal/graphapply/native_graph_fault_decision_harness_test.go"
+  ],
+  "sourceSHA256": "dd9a69129287696a9028c127ea03c26da122819b6fe79fe303379b99b49c3d46",
+  "parentBlob": "af3a525b1adbd7e8cce842fbbedd6adc13e4e55e",
+  "parentSHA256": "90454167916fb03201e29b6e3b65c8c6538a7287c06e91f50b7e18d531d7b327",
+  "evidence": {
+    "direct-red.log": "58144f465c54260754ffda19109d4aa938efc1ac37224145910ac537ade44677",
+    "direct-green.log": "698c6bb1305c9b798d37a0e19feee9451e305a2a85b8ae9bf8308f96a5bd298a"
+  },
+  "qualification": "actual native six-voter direct regression RED 1.133s then GREEN 1.132s; pinned Go1.26.9 gofmt and git diff --check; no author OS cohort; root owns exact P04 OS rerun",
+  "preserved": "source A leader and B decision owner remain elected 2/6; factory actual Recipient remains original process1; no authority copied or budget widened"
+}

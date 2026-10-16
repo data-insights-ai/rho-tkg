@@ -1,0 +1,16 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p01-mode1-phase2-p3-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_transition_scope_harness_test.go:199: P01 actual held source voter2 issuer02525fa1ae790c408a49719e276d4ba2 cookie-issuer02525fa1ae790c408a49719e276d4ba2 cookie-sequence4 certificate-partition3 certificate-index20 source-index18 root-index18 limits{Rows:4096 Bytes:2097152}
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet1 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit23 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet2 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit23 rejectfalse hint0 entries0 decode<nil>
+    native_graph_protocol_campaign_program_test.go:22: paired actual healthy quorum leader2 applied23
+    native_graph_protocol_campaign_program_test.go:22: unavailable B did not refuse without a cut context deadline exceeded
+        graphapply: remote source operation refused 6 7168
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=2060 bootstrapPackets=328 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (180.06s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (180.06s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p01-mode1-phase2-p3-k2-after (180.06s)
+FAIL

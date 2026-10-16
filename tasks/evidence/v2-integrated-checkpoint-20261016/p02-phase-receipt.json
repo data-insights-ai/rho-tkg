@@ -1,0 +1,48 @@
+{
+  "actualArtifact": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/protocol-three-state-diagnostic-owned/artifacts/rho-paired-graph-fault-691896615/p02-A-before-B-after-phase2-p8-k2-after.jsonl",
+  "actualArtifactSHA256": "33a5c18c03069f51df220f21b453ee16f99a2c36ec10774f03e72b5d82e0a18d",
+  "commit": "e5ec31b743f98b14bfd87ec3769d51831a214c27",
+  "evidence": {
+    "actual-green.log": "0f7b0ae6ca70a88c7074b7707a627c11fe64c982155defde831a088443c64840",
+    "actual-red.log": "8b422a3e55466731c0d9efea4c20ce1215a0225a72cc5e3d8baa539114786221",
+    "guard-green.log": "cdcd80fd5a0f3bba82a0f6eff5d6868c3ce57e7cdf2985dd58345af80dd84cb0",
+    "guard-red.log": "73e35d04f6d599472cb2c252abf22d5a7129bfeddc19cccbe307aef07567cce1",
+    "guards-green.log": "32ca6938bd9fc75d09169cf4bd68b8f454680860c8c9b723694d02f9a87f81f1",
+    "p02-A-before-B-after-phase2-p8-k2-after.jsonl": "33a5c18c03069f51df220f21b453ee16f99a2c36ec10774f03e72b5d82e0a18d",
+    "phase-fixture.json": "b9846547241fae8aa90fe115b7ec1abbe3b19b79be09a0b5eec540d70f608d26",
+    "phase-fixture.z64": "667fd3226681eb03765a03189504eb3f1f3032b8d7466285db71a17d557e4e54"
+  },
+  "fullOracle": {
+    "case": "p02-A-before-B-after-phase2-p8-k2-after",
+    "program": {
+      "Layout": "rotated",
+      "Message": "reorder",
+      "Version": 1
+    },
+    "records": 70,
+    "scope": "actual finite P02 native/source/old-cut conjunction; leader/message programs remain distinct",
+    "serial_witness": [
+      "edge-create"
+    ]
+  },
+  "guardsPassed": 31,
+  "nativeCohortRun": false,
+  "parent": "17bafc8bd90e5a55f6e6667055669bfc7053943b",
+  "paths": [
+    {
+      "blob": "f89dce93bc5ac764d1e89d133253db3945c5b2ec",
+      "parentBlob": "8a6312dfbca9c65d437979d7d0e6d2a4bde8814d",
+      "parentSHA256": "a9c113476ffaed90c936ca68904e6136c94f8ee55c42d1c61a162562e7cd52db",
+      "path": "tools/v5-substrate/native_protocol_campaign_check.py",
+      "sha256": "67796378225d2db16111a1f5884fe11834ed73e0b2da2c281e84ba8361fd9e8c"
+    },
+    {
+      "blob": "2e7728bc0a230fbe113485796cc09c28851d00f6",
+      "parentBlob": "6adbcaaf6ebad6cfdfc0df642f965a936435862f",
+      "parentSHA256": "e817642953aa2a6fe3dae0cd185fd3e93128c344cf898dbfaea4215fa9ade580",
+      "path": "tools/v5-substrate/native_protocol_campaign_check_test.py",
+      "sha256": "005ea178adc6cee69695cbfde17b58ce03155f37272fc2a6cc470645376b0992"
+    }
+  ],
+  "scope": "Immutable actual P02 artifact full oracle RED->GREEN. Phase authority map corrected only; original exact source/native/cut/CDC/election/message/serial checks retained."
+}

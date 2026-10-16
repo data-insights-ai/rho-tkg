@@ -1,0 +1,23 @@
+{
+  "author": "264c0907cc260950e455b81db408b985c27b5dff",
+  "parent": "421457541664e78e2326b812c5633488236bad2c",
+  "worktree": "/var/tmp/rho-v5-p04-caller-outcome-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_fault_decision_harness_test.go",
+      "parentBlob": "173d71b93bc52130df398fcff153720950723cdd",
+      "parentSHA256": "bc8fa7917bab999df2a47fb2b928eaf555910e315716da0d1186822b19847a5b",
+      "sourceBlob": "4ac3b9b9551a8f7222d2f5931dda27e835cee6c2",
+      "sourceSHA256": "4d899742ece8d870bed5db879de6c3071ccd20d0a50a529b949bfca797f7262e"
+    }
+  ],
+  "actualRedLog": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/relay-replay-three-2d2ce031.log",
+  "scope": "Existing fresh native Mask1/Mask3 wait races exact original caller; unused control exchange canceled and awaited; genuine native receipt and literal path unchanged; diagnostic not root-cause/capacity acceptance",
+  "verification": {
+    "pinnedGofmt": "Go1.26.9",
+    "gitWhitespace": true,
+    "compile": false,
+    "tests": false,
+    "nativeCohort": false
+  }
+}

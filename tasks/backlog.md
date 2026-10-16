@@ -150,6 +150,122 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 | V6 | Existing retained-state preflight cases narrowly qualify v4.51.5 at `da5d32e6` (ten gates, 96.2%, both public functions 100%). New retention/refusal cases, destination importer, consumer-repository migrations, retained-cut/CDC agreement and restore on a different topology remain open; historical qualifications are unchanged |
 | V7 | Versioned contracts/limits, full CI/race/coverage/security, distributed matrix and consumer suites; measured comparative space/time acceptance against Neo4j/TigerGraph/Memgraph plus v4, with reviewed excess-cost exceptions |
 
+### Weighted delivery packages (2026-10-16)
+
+Deadline priority: finish V2 on 2026-10-16. All three implementation agents now
+work only on V2; the authored V3 rational-block candidate is frozen and further
+V6 work is parked. The explicit source-validity preflight subset is integrated,
+but it does not close the current-reader migration package. The complete V2
+measurement matrix remains outstanding and is a material deadline risk.
+
+The original V0–V7 exits remain unchanged. The smaller packages below make completion visible; each is closed only with evidence for its stated scope. These are **new planning weights**, totaling 100 points per phase, not estimates of hours spent or time remaining. Only accepted packages earn points; partially authored or currently failing packages earn none. Historical receipts retain their exact source scope. There is no unweighted overall-project percentage.
+
+| Phase | Accepted points | Remaining points | Current focus |
+|---|---:|---:|---|
+| V0 Specification | 100% | 0% | Accepted specification baseline |
+| V1 Temporal values and state | 100% | 0% | Accepted values/state baseline |
+| V2 Distributed correctness and engine decision | 42% | 58% | Finish demonstrated integration failures, remaining fault schedules, comparison and engine decision |
+| V3 Compact engine | 10% | 90% | Rational block candidate frozen; V2 takes priority |
+| V4 Public reads and changes | 0% | 100% | Public graph/read/change surface and actual Sigma adapter |
+| V5 Integrated distributed access | 10% | 90% | Generalize finite foundations to integrated multi-partition access |
+| V6 Migration and operations | 10% | 90% | Explicit valid-start preflight integrated; further V6 work parked |
+| V7 Release qualification | 0% | 100% | Release, full comparative measurements and consumer acceptance |
+
+Every open requirement is assigned to a package below. Detailed existing acceptance receipts and the V2 A–F queue remain authoritative for the underlying evidence; a package weight does not waive those requirements. V2.1–6 and V5.1 deliberately name finite foundations rather than claiming full fault-family or public-access acceptance. V6.1 is historical preflight only.
+
+**V0 — Specification**
+
+| Package | Weight in phase | State | Required scope / remaining work |
+|---|---:|---|---|
+| V0.1 Reviewed specification and independent models | 100% | accepted | Temporal concepts and rho/sigma boundary; units/profiles/import policy; consumer inventory; reference cases, failure outcomes and resource/dataset profiles. |
+
+**V1 — Temporal values and state**
+
+| Package | Weight in phase | State | Required scope / remaining work |
+|---|---:|---|---|
+| V1.1 Values/state acceptance | 100% | accepted | Exact coordinates/profiles/regions, reducers, ordering and descriptor preservation; reviewed corpus, differential/boundary/fuzz/codec and node/relationship historical parity. |
+
+**V2 — Distributed correctness and engine decision**
+
+| Package | Weight in phase | State | Required scope / remaining work |
+|---|---:|---|---|
+| V2.1 Replicated substrate baseline | 8% | accepted | Recorded native log/VFS, nonempty snapshot activation, durable reopen and bounded recovery baseline; broad fault campaigns remain V2.9. |
+| V2.2 Local writes and allocation baseline | 8% | accepted | Graph genesis/default axis, partition-local writes, shared allocation and accepted finite P08 issuance/exhaustion evidence; broader reuse/fencing/reclamation remain V2.8. |
+| V2.3 Cross-partition transaction kernel | 10% | accepted | Recorded two-partition/three-replica prepare/decision/resolve, retained originals, conflict fencing and atomic graph effects; remaining schedules remain V2.7/9. |
+| V2.4 Certified read foundations | 8% | accepted | Accepted finite E15/E16 current/historical reads and E18 index-starting hydration with authenticated native sources and cuts. |
+| V2.5 Finite range handoff baseline | 4% | accepted | Accepted finite E17 handoff, retained history and certified source/target lineage; interruptions/GC and general rebalance remain open. |
+| V2.6 Selected recovery/storage components | 4% | accepted | Recorded P03/P06 and selected WAL/manifest/OPTIONS recovery components; evidence applies to its exact source/cases, not the full families. |
+| V2.7 Remaining transaction fault schedules | 10% | active | Complete P01–P06 requirement-to-case coverage: outside-scope coordinator; prepare/fence ordering; partial installation; frozen participants/digest/decision; absent keys/ranges, temporal predicates and endpoint-life ABA; conflicts through failover. Selected rotated/reordered P01 and P02 cases pass; P04/P05 and state recovery still have open qualification. |
+| V2.8 Ownership, identities and reclamation | 10% | active | P07/P09 interruptions during transfer/publication, production identity reuse and stale fencing, retry-payload refusal, snapshot/feed lineage, expiration and application GC; preserve original results and expired/unavailable versus empty. |
+| V2.9 Composed network, scheduler and storage faults | 10% | open | Loss/duplication/reorder/asymmetry, isolated leaders/quorum/domain loss; pause/ticks/clock jumps; torn/short writes, EIO/ENOSPC/sync/rename/manifest/corrupt pages; bounded conflicting exploration followed by recorded-seed soak and independent oracles. |
+| V2.10 Equivalent FoundationDB fault/publication evidence | 8% | open | Actual role/domain loss, unknown commits, pins/GC and chunk/manifest failures; complete histories/index/CDC, owned cleanup and all-client/server accounting under equivalent declared fault/durability semantics. |
+| V2.11 Eight-workload functional comparison | 5% | open | All declared native/FDB workloads, both layouts, writers 1/8/32, native 1M multi-grant setup and bounded comparator state. Tiny one-writer KV/columns and eight-writer KV pairs pass only their finite cells. |
+| V2.12 Complete measurement matrix and improvements | 10% | open | 10k/100k/1M facts, cross 0/10/50/100%, writers 1/8/32, five fresh repetitions, all declared workloads/layouts/transports: 11,520 paired cells / 23,040 engine runs. Record bytes, memory, latency, throughput, retries/recovery and complete outputs; correct measured regressions and remeasure affected scope. |
+| V2.13 Written engine decision | 3% | open | Choose native versus FoundationDB from measured correctness, deployment, storage/time, maintenance and embedding evidence; record limitations and justified costs. |
+| V2.14 Coordinated V2 acceptance | 2% | open | One integrated requirement/evidence audit and required current gates after implementation/correctness/measurement/improvement; all A–F closure rows accepted. |
+
+**V3 — Compact engine**
+
+| Package | Weight in phase | State | Required scope / remaining work |
+|---|---:|---|---|
+| V3.1 Integer coordinate-block candidate | 10% | accepted | Accepted bounded int64 Z/integer-valued Q candidate and three layouts at recorded source; this is not the integrated storage engine. |
+| V3.2 Exact rational coordinate blocks | 10% | active | Fractional/wide canonical coordinates in bounded arenas/offsets with shared axis, exact membership and owned/borrowed access; canonicality/axis/limit/ownership adversaries. Standalone internal implementation started; integration remains later packages. |
+| V3.3 Other typed blocks and MVCC memtable | 15% | open | Arena-backed mutations; typed values/dictionaries/ordinals; wide integers, regions, uncertainty/correlation and symbolic descriptors; compact point-only rows, occupancy, mixed/sparse layouts and materialized-row costs. |
+| V3.4 Paged catalog and index integration | 15% | open | Wire compact blocks into identity/location/catalog/adjacency/revision/point/interval indexes; predicate pruning and possible-support bounds; long spans and distinct current/historical paths. |
+| V3.5 Seal, merge and bounded recovery | 20% | open | Applied log to memtable/immutable segments/atomic durable manifest, merge and safe reclamation; retained cuts, multiplicity, knowledge and provenance; bounded replay; integrity-before-use and scrub; no second graph-truth WAL. |
+| V3.6 Aggregate database budgets | 10% | open | Bound memtables/caches/dictionaries/indexes/locks/transactions/reads/changes/retained metadata together; spill/backpressure, concurrent partitions/scans and bounded catalog/open/manifest growth. |
+| V3.7 Large-data correctness and byte ledger | 10% | open | 790K/3.15M/12.6M source rows with correct HOP denominators; seal/merge/crash/reopen oracles; heap/RSS/PSS/mmap/page-cache/disk/log/index/catalog/replica steady and peak costs, no per-fact resident growth and bounded replay; actual active-versus-ended-population gate including historical access. |
+| V3.8 Physical choices and v4 fast path | 10% | open | Homogeneous/sparse/tagged thresholds, metadata amplification and catalog/backend candidates; equivalent durable single-partition v4 comparison, cold/warm/restart/compaction, five runs/dispersion and reviewed regressions. |
+
+**V4 — Public reads and changes**
+
+| Package | Weight in phase | State | Required scope / remaining work |
+|---|---:|---|---|
+| V4.1 Public graph, identity and write surface | 15% | open | Graph open/close, opaque IDs, create/correct/close/retract and 45-family successor-or-explicit-decline mapping. |
+| V4.2 Scoped snapshot/session API | 20% | open | Fresh/Stable/At/After, cut/owner lifetimes, bounded rows/bytes, cancellation, borrow lifetime and resumable cursors. |
+| V4.3 Typed projected access and negotiation | 20% | open | Lookup/Scan/Expand; label/type/property and native/residual capability negotiation; capabilities, statistics and ExplainAccess. |
+| V4.4 Complete histories and cross-door parity | 15% | open | Timeline/Occurrences and named/generic/row/column exact sets; deleted/recreated entities, declared/effective views, phantom refusals and mutation-then-old-cut tests. |
+| V4.5 Public changes and leased handoff | 20% | open | Changes/WatchChanges, atomic before/after selector entry/exit groups, gap-free scan-at-C to feed-after-C, replay/expiry/concurrency/backpressure. |
+| V4.6 Pinned Sigma access adapter | 10% | open | Actual pinned access build, nonempty NodeByIDAt, column/ordinal/epoch/history/runtime/writer contracts and E09–E13/E21 input preservation; consumer-repository proofs. |
+
+**V5 — Integrated distributed access**
+
+| Package | Weight in phase | State | Required scope / remaining work |
+|---|---:|---|---|
+| V5.1 Finite two-partition access foundation | 10% | accepted | Accepted E15–E18 certified historical reads, remote hydration, incidence/canonical parity and finite handoff; arbitrary partition counts remain open. |
+| V5.2 Locality and endpoint ownership | 15% | open | General 1/2/4/8-partition routing, one canonical relationship owner, synchronous in/out postings and placement/epoch/rebalance; any async alternative needs complete coverage/delta/fallback. |
+| V5.3 Distributed temporal/history access | 15% | open | Selectors/projections/profiles and explicit declared/effective views; current/complete history, corrections/deletions/long spans/uncertain support; exact decline and statistics. |
+| V5.4 Distributed read doors and pagination | 20% | open | Lookup/Scan/Expand/Timeline/Occurrences, deterministic merge ordering and cursors bound to cut, selector/profile versions and partition lineage; global row/byte/buffer limits, cancellation and backpressure. |
+| V5.5 Cuts and snapshot-to-feed integration | 15% | open | Scoped modes, Fresh-cost choices, gap-free leased handoff, complete transaction envelopes/completed cuts, selector changes, deduplication/replay/expiry and rebalance lineage; no external exactly-once claim. |
+| V5.6 Distributed acceptance matrix | 15% | open | All read/expand/feed doors at 1/2/4/8 partitions with three replicas, cross 0/10/50/100%, stalls/cross-edges/pagination/leader loss/rebalance, local and injected 1/20/100ms RTT plus observed jitter, complete outputs and aggregate costs. |
+| V5.7 Pinned Sigma workload parity | 10% | open | Owning-repository adapters/build, identical inputs/results, complete historical/supported-profile data, nonempty mutation-then-historical workloads and output stress; attribute reasoning-layer failures to Sigma. |
+
+**V6 — Migration and operations**
+
+| Package | Weight in phase | State | Required scope / remaining work |
+|---|---:|---|---|
+| V6.1 Historical narrow migration preflight | 10% | accepted | Only the recorded retained-state v4.51.7 preflight qualification: raw owned identity/audit/one-tick provenance/ambiguity; not current-v4 or destination/history-complete migration. |
+| V6.2 Current-v4 reader and source policy | 20% | active | Current v4.56.1 binary hashes/store markers, void/retention watermarks/refusals, valid-start/unbounded policy, interrupted conversion/reset and writer/format provenance; fresh qualification. Explicit valid-start/provenance subset integrated at d70da434; broader current-reader qualification remains parked. |
+| V6.3 Destination importer | 25% | open | IDs/endpoints/lives/types/raw evidence, versioned hashes and synthetic import cuts, explicit collisions/ambiguity/latest-only behavior and rollback; do not infer atomic transaction groups from TxFrom. |
+| V6.4 Graph backup and different-topology restore | 20% | open | Versioned full/delta backup, base identity/corruption/replay refusal and restore under different topology with retained-cut/CDC agreement. |
+| V6.5 Retention, exact erase and reset | 10% | open | Closure across current/history/indexes and feed leases; explicit expired/unavailable versus absent; public operational contracts beyond internal GC. |
+| V6.6 Segment tiering/archive | 5% | open | Cold/warm/archive restoration, answer equality and bounded resource proof. |
+| V6.7 Actual consumer migrations | 10% | open | Sigma and ai-soc repository commits and adapter tests for every named semantic change; consumer migration is not complete from rho-only smoke tests. |
+
+**V7 — Release qualification**
+
+| Package | Weight in phase | State | Required scope / remaining work |
+|---|---:|---|---|
+| V7.1 Versioned contracts and limits | 15% | open | Public API/wire/descriptors, compatibility and documented operational/resource limits. |
+| V7.2 Complete current quality gates | 15% | open | Current integrated CI/race/coverage/security/scanners and direct public-method coverage; no old source-only green status substituted. |
+| V7.3 Full distributed correctness/scaling evidence | 20% | open | Specified partition/replica/RTT/process/VFS and cleanup/resource ledgers, combining V2 and V5 requirements. |
+| V7.4 Pinned consumer/integration suites | 10% | open | Existing consumer suites plus agreed nonempty integration fixtures at recorded versions. |
+| V7.5 Native v5 versus v4 comparison | 10% | open | Complete correctness/resource adapters and representative datasets; distinct source-row/graph-fact denominators. |
+| V7.6 Graph-vendor functional adapters | 10% | open | Actual supported Neo4j/TigerGraph/Memgraph editions/versions/durability and current/history/restart adapters, beyond the existing unfinished TigerGraph candidate. |
+| V7.7 Measurements, reviewed costs and release | 20% | open | At least five randomized runs/profile, p50/p95/p99/useful throughput/full outputs, all service/client/replica space and steady/peak memory without double counting; comparative matrix, causally isolated excess-cost justification, settled acceptance thresholds and separately authorized release. |
+
+Independent V3.2 and V6.2 work is parked under the current V2 deadline priority. V3 storage integration/format decisions, V4 public freeze, V5 integration, destination import and final comparative/release acceptance keep their original dependencies. Consumer reasoning remains Sigma-owned.
+
 ### V2 closure queue (2026-10-14)
 
 Exit authority remains [PLAN §8](../docs/v5/PLAN.md#8-implementation-sequence)
@@ -1245,9 +1361,12 @@ records the following finite scope:
   The next allocator transfer preserves the exact observed native view count,
   view bytes and pins on the same process incarnation; direct added/dropped-owner
   guards and scoped race checks pass. The actual case advances through both
-  corrections, then refuses a changed-K request with a remote source error.
-  Its precise cause remains under diagnosis; no changed-body effect or full
-  state-case pass is established. All eight owned processes exit without forced
+  corrections and the exact changed-K refusal. A preceding SAME-K replay now
+  waits for its actual newly installed Resolve originals on all six voters,
+  keeping the changed-K zero-effect assertion strict. Capture locks release
+  before voter RPCs. The next repeated held snapshot projection reaches a
+  source resource limit; passive source-budget diagnostics are in progress.
+  No full state-case pass is established. All eight owned processes exit without forced
   cleanup. Six focused import/replay parents also pass
   race checks; their partial coverage does not establish the full coverage gate.
 - FoundationDB's first actual prebuild exposed seven compiler diagnostics.
@@ -1280,11 +1399,18 @@ records the following finite scope:
   The eight-writer KV tiny pair also passes the full comparator
   and independent root replay: 40 typed answers, all 13 native process identities
   exited, FDB 43 commits/51 aborted attempts and successful cleanup. Larger
-  runs and comparative cost remain open. A first previously
-  unexecuted rotated/reordered P01 scoped-read case fails with a native Limit
-  wrapped as immutable-source unavailable; fail-fast leaves the selected P02,
-  P04 and P05 cases unexecuted. The actual held source is the surviving voter
-  2 under the original 4,096-row/2 MiB grant. The refusal remains under diagnosis.
+  runs and comparative cost remain open. Selected rotated/reordered P01 and
+  P02 cases now pass complete native execution and independent full-artifact
+  checks. P01 keeps the held source on surviving voter 2 with its original
+  grant; only an unrelated fresh caller moves off its two-worker source. The
+  relay omits success payloads on actual transport errors, and strict checkers
+  preserve actual caller roles, native GR3 root modes and P02 phase coordinates.
+  P04 preserves the original recipient owner but still waits for its first
+  authentic capacity candidate; a bounded original-caller diagnostic is
+  integrated. P05 reaches the selected real process kill and healthy quorum
+  apply, then exhausts the SAME held source's 1,024 cumulative calls during its
+  second full observation; row, byte and output allowances remain available.
+  All three remaining failures retain their original deadlines and quotas.
 
 These components do not close their full fault families, the process inventory,
 engine comparison, measurements or V2. Original deadlines, quotas, complete

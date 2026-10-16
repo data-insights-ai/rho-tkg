@@ -1,0 +1,93 @@
+{
+  "commit": "c5fa399a5c7e5ddeb2b8dabc2b88b72f5e1ecfdf",
+  "parent": "17bafc8bd90e5a55f6e6667055669bfc7053943b",
+  "tree": "/private/var/tmp/rho-v5-state-changed-controls-20261016",
+  "status": "clean frozen test-support correction",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_harness_test.go",
+      "blob": "82ee63e4d5968109657a1dc181d2b9eaf720ae7a",
+      "sha256": "2075aef20df3428f03f7c5c5104ea10e2c6111f5ad9004adf400775b6794ce36",
+      "parent_blob": "5756791bbd0fb37ab768df4ba4e28be2e94e8328",
+      "parent_sha256": "ccb79787b648c8a83fc95993b872e057305baadaca71bfc2852301fea8d5fd88"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_test.go",
+      "blob": "98f8edbf688239083d5276da04a83833c7cf63cd",
+      "sha256": "355f0f2209fd7d9b2699273cc47d45cac9dea63da42caaf836f9852bc4d2baea",
+      "parent_blob": "1ed3bbb076155f23691999d3b10b458171794920",
+      "parent_sha256": "ab1f91b52351e2898ac3b28341f2ec2c66935175318af68effc567bfe904c13f"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_program_test.go",
+      "blob": "21925c41be3cf5113e6bd2dc703c84a7f2661015",
+      "sha256": "dad0ef3e87212fa22a8edd2649468388d53f236988f54d3ae1e5a3729fa3f0e8",
+      "parent_blob": "968d619e0f43087321174e354ba1db878480aedf",
+      "parent_sha256": "b83216f1dcaf303c20df6da9d252133e9e5a3c7b771f7b59f2a3ffc8bd386864"
+    }
+  ],
+  "actual_cause": "Preceding successful SAME-K Run submits two genuine duplicate Resolve controls. Child pollSubmit may return the already-authenticated terminal status while those accepted duplicate native proposals still await packet/application completion. Their later installation was incorrectly attributed to the changed-K request.",
+  "native_evidence": {
+    "root_red": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/protocol-three-state-diagnostic-17bafc8b.log",
+    "actual_records": "/private/var/tmp/rho-v5-state-changed-controls-evidence-20261016/actual-records.json",
+    "read_only_native_decoder_log": "/private/var/tmp/rho-v5-state-changed-controls-evidence-20261016/native-readonly-originals.log",
+    "graph_decoder_log": "/private/var/tmp/rho-v5-state-changed-controls-evidence-20261016/classify.log",
+    "joins": [
+      {
+        "member": "2",
+        "new_index": 65,
+        "retained_original_index": 42,
+        "original_command_compacted": true,
+        "byte_identical_original_outcome": true,
+        "new_command_sha256": "7b888ad117c083a41b43a37e3b8bcfb87a23b168bc3d7404c1705b9896f313ac",
+        "new_cdc_bytes": 0,
+        "original_cdc_bytes": 566,
+        "unchanged_root_sha256": "9b45633cddbaec0a151f80d1a4ae91a591cc7c20a77479c23079cc177b7ee2f7"
+      },
+      {
+        "member": "6",
+        "new_index": 53,
+        "retained_original_index": 32,
+        "original_command_compacted": true,
+        "byte_identical_original_outcome": true,
+        "new_command_sha256": "d49e6cc3c62d07dc3651c29703538647e4ad7807ba7c2f2b8279d6bef6de9b8a",
+        "new_cdc_bytes": 0,
+        "original_cdc_bytes": 206,
+        "unchanged_root_sha256": "89ffcefa0d685b3126852cadd17c097483afdaefa240e9fabbfdd4e3b9b89a04"
+      }
+    ]
+  },
+  "correction": "Bracket preceding SAME Run with existing original-context native mux drain; bounded chained callback captures its two actual submitted commands. Require one NEW committed/applied native install per participant on all six required voters, exact Resolve command/proof/business/original identity, unchanged roots/noCDC; take changed-caller baseline afterward. Changed-K still MUST return errInvalid and cause zero native prefix advance.",
+  "qualification": {
+    "direct_test": "TestNativeProtocolStateReplayBarrierRequiresNewNativeInstallation",
+    "normal_green_seconds": 2.153,
+    "mutation_red": {
+      "log": "/private/var/tmp/rho-v5-state-changed-controls-evidence-20261016/premature-mutation-red.log",
+      "package_seconds": 2.013,
+      "exit": 1,
+      "mutation": "Remove only requirement that applied advances by exactly one; old terminal source reply incorrectly qualifies and direct guard fails. Mutation restored before GREEN/freeze."
+    },
+    "focused_race": {
+      "tests": [
+        "TestNativeProtocolStateReplayBarrierRequiresNewNativeInstallation",
+        "TestNativeProtocolStateActionKeepsActualRetainedOwnership"
+      ],
+      "exit": 0,
+      "seconds": 8.184,
+      "new_replay_test_seconds": 2.77,
+      "log": "/private/var/tmp/rho-v5-state-changed-controls-evidence-20261016/race.log",
+      "profile": "/private/var/tmp/rho-v5-state-changed-controls-evidence-20261016/coverage.out",
+      "race_report": false,
+      "package_coverage": 26.8,
+      "scope": "two direct in-process parents only; not OS or fullgate"
+    },
+    "adversarial": "Reject premature old terminal body; actual captured Register/Prepare/Decide commands; wrong immutable-original record; repeated original CDC; late real business write. Changed body genuine Run returns invalid with no decision or prefix change.",
+    "toolchain": "Go1.26.9 darwin-arm64, GOMAXPROCS2, -p1, GOWORKoff/GOTOOLCHAINlocal"
+  },
+  "production_or_child_changes": false,
+  "native_caps_budgets_deadlines_changed": false,
+  "oracle_relaxation": false,
+  "no_os_cohort": true,
+  "pinned_gofmt": "clean",
+  "git_whitespace": "clean"
+}
