@@ -326,6 +326,11 @@ func exportMoveReplayBatch(q *reader, n namespace, before rangeMoveReplayCursor,
 		return out, outputBudgetFailure(err)
 	}
 	out.pages = make([]rangeMoveReplayPage, 0, rows)
+	// A first page that cannot fit refuses before any native subcall, including
+	// the declaration read (a framing refusal must not consume source work).
+	if before.complete || maximum-rangeMoveBatchFramingBytes-4 < 1024+4*(len(before.after)+len(before.key))+2048 {
+		return rangeMoveReplayBatch{}, errLimit
+	}
 	declaration, err := rangeMoveReplayReader(q, n)
 	if err != nil {
 		return rangeMoveReplayBatch{}, err
