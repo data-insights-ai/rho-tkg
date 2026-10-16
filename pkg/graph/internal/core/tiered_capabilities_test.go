@@ -19,7 +19,10 @@ import (
 // TestTieredTxMembershipAndValidEndMatchBadger (backlog 58): the same writes,
 // updates, deletes, valid-time closes and history on badger and on a disk tiered
 // store (reference shard, event shards, archive, a closed cold shard) must give
-// the same tx-membership, property-membership and valid-end capability answers
+// the same tx-membership, property-membership (since v4.58.0 the tiered
+// property sidecar is the union of every shard's, so Case members off the
+// reference shard — s5 on an event shard, c3 on the archive — are listed as on
+// badger) and valid-end capability answers
 // (candidates: a superset of what streams) and the same core door answers.
 func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
@@ -189,7 +192,7 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 	}
 
 	// capabilities renders graph i's capability answers (name -> first tx tick).
-	capabilities := func(i int, phase string, propertyDeclines bool) map[string]string {
+	capabilities := func(i int, phase string) map[string]string {
 		g := graphs[i]
 		out := map[string]string{}
 		label := func(name string) uint16 {
@@ -267,14 +270,6 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 					return c.ForEachNodePropertyTxMember(label("Case"), "status", types.IndexablePropertyValueKey(v),
 						func(id types.NodeID, tx types.Instant) bool { return fn(int64(id), tx) })
 				})
-				if propertyDeclines {
-					// Case members off the reference shard (s5 on an event
-					// shard, c3 on the archive): no sidecar covers them.
-					if want := "error: " + storepkg.ErrIndexNotFound.Error(); i == 1 && out[key] != want {
-						t.Errorf("[%s] tiered %s = %q, want the decline %q", phase, key, out[key], want)
-					}
-					delete(out, key)
-				}
 			}
 		}
 		if c, ok := g.store.(storepkg.RelPropertyTxMembershipCapability); !ok {
@@ -315,14 +310,14 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 	}
 
 	var r2Gone types.Instant // badger's pin after r2's delete
-	compare := func(phase string, pin [2]types.Instant, propertyDeclines bool) {
+	compare := func(phase string, pin [2]types.Instant) {
 		t.Helper()
 		for _, side := range []struct {
 			what string
 			get  func(i int) map[string]string
 		}{
 			{"core", func(i int) map[string]string { return answers(i, pin[i]) }},
-			{"store", func(i int) map[string]string { return capabilities(i, phase, propertyDeclines) }},
+			{"store", func(i int) map[string]string { return capabilities(i, phase) }},
 		} {
 			want, got := side.get(0), side.get(1)
 			keys := make([]string, 0, len(want))
@@ -364,7 +359,7 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 	addRel("r1", "LINK", "s1", "s2")
 	addRel("o1", "OWNS", "c1", "s1")
 	pinA := nowTx()
-	compare("A: one event shard", pinA, false) // also builds every index the writes below maintain
+	compare("A: one event shard", pinA) // also builds every index the writes below maintain
 	setNode("c1", map[string]any{"status": "closed"})
 	setRel("r1", map[string]any{"w": 2})
 	rotate()
@@ -386,7 +381,7 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 	})
 	pinB := nowTx()
 	r2Gone = pinB[0]
-	compare("B: two event shards", pinB, false)
+	compare("B: two event shards", pinB)
 	rotate()
 	addNode("s4", []string{"Sig"}, nil)
 	addNode("s5", []string{"Sig", "Case"}, map[string]any{"status": "open"}) // a Case member on an event shard
@@ -401,7 +396,7 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 	must(ts.ArchiveNode(types.NodeID(ids[1]["c3"])))
 	pinC := nowTx()
 	for _, pin := range [][2]types.Instant{pinA, pinB, pinC} {
-		compare(fmt.Sprintf("C: three event shards + archive, pin %s", tk(pin[0])), pin, true)
+		compare(fmt.Sprintf("C: three event shards + archive, pin %s", tk(pin[0])), pin)
 	}
 
 	// A depth-scoped read keeps its depth: only the hot shard's Sig nodes.
@@ -443,6 +438,6 @@ func TestTieredTxMembershipAndValidEndMatchBadger(t *testing.T) {
 		t.Fatalf("setup: cold shard %s still open", first.Name())
 	}
 	for _, pin := range [][2]types.Instant{pinA, pinC} {
-		compare(fmt.Sprintf("D: cold first shard, pin %s", tk(pin[0])), pin, true)
+		compare(fmt.Sprintf("D: cold first shard, pin %s", tk(pin[0])), pin)
 	}
 }

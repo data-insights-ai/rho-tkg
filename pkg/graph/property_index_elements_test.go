@@ -178,13 +178,8 @@ func TestPropertyIndexElementsContains(t *testing.T) {
 		}
 
 		// Relationship parity.
+		// (tiered since v4.58.0: built on every shard, same answers.)
 		err = g.Index().CreateRelPropertyWithOptions("SUPPORTS", "ov", elementsOpts)
-		if b.tiered {
-			if !errors.Is(err, graphpkg.ErrCapabilityNotSupported) {
-				t.Errorf("tiered rel Elements index: %v, want ErrCapabilityNotSupported", err)
-			}
-			return
-		}
 		if err != nil {
 			t.Fatal(err)
 		}
