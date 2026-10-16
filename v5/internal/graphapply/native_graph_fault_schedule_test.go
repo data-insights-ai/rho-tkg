@@ -746,7 +746,7 @@ func TestNativeComposedFaultActualWALFailureRecoversOriginalDecision(t *testing.
 				t.Fatal("old IO cookie entered replacement owner", transport, processResponseError(refusal))
 			}
 			retained := p06Observe(f, 6, graphReadAt, oldCut)
-			reopened := p06Observe(f, 1, graphReadAt, oldCut)
+			reopened := nativeP06InitialLocalOld(f, 1, oldCut)
 			if !reflect.DeepEqual(old, retained) || !reflect.DeepEqual(old, reopened) {
 				t.Fatal("IO recovery substituted current at old cut")
 			}
@@ -778,7 +778,7 @@ func TestNativeComposedFaultDirectorySyncFailsGenuineSameDirectoryReopen(t *test
 	p03Reconnect(f, 6)
 	recovered := p06Observe(f, 6, graphReadFresh, graphCut{})
 	retained := p06Observe(f, 6, graphReadAt, cut)
-	reopened := p06Observe(f, 1, graphReadAt, cut)
+	reopened := nativeP06InitialLocalOld(f, 1, cut)
 	if !reflect.DeepEqual(old, retained) || !reflect.DeepEqual(old, reopened) || !reflect.DeepEqual(old.Native, recovered.Native) {
 		t.Fatal("directory reopen failure changed graph/old cut")
 	}
