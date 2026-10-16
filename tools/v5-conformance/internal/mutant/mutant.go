@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"testing"
 
 	conformance "github.com/data-insights-ai/rho-tkg/tools/v5-conformance"
@@ -14,30 +15,34 @@ import (
 
 // Names lists every mutant.
 var Names = []string{
-	"asof-current",            // NodeAsOf/RelAsOf ignore the pin and return the current row
-	"history-empty",           // NodeHistory/RelHistory forget superseded versions
-	"goc-always-creates",      // GetOrCreateByKey mints a node on every call
-	"goc-updates-on-hit",      // a GetOrCreateByKey hit applies the extra properties as a new version
-	"tx-autocommit",           // Tx writes straight through, so a failed callback does not roll back
-	"tx-swallows-error",       // Tx returns nil when the callback failed
-	"interval-ignored",        // SetNode/RelVersionInterval degrade to a plain update
-	"close-noop",              // CloseNode/RelVersion report success and change nothing
-	"page-ignores-cursor",     // RelsEffectivePage restarts at the first ID on every page
-	"page-limit-unchecked",    // RelsEffectivePage turns an invalid limit into a default
-	"scan-ignores-pin",        // NodesByLabel and NodesByLabelAndProperty drop TxPin
-	"property-loose-equality", // NodesByLabelAndProperty equates 1 and "1"
-	"caller-instant-ignored",  // Update/Delete/Add drop the caller's transaction instant
-	"invalid-labels-accepted", // AddNode with no labels gets a default label
-	"unknown-update-creates",  // UpdateNode of an unknown ID succeeds silently
-	"reopen-forgets-writes",   // Reopen on a persistent graph opens an empty directory
-	"close-then-read-works",   // doors keep answering after Close
-	"tx-twin-ignores-instant", // Tx *WithTx twins drop the caller instant
-	"batch-eager",             // BatchRun writes through immediately, so a refused unit leaves its queued writes
-	"batch-swallows-refusal",  // BatchRun reports success for a refused unit
-	"excise-noop",             // Excise* report success and change nothing
-	"excise-as-close",         // Excise closes the version at the start of the range
-	"excise-swaps-range",      // Excise accepts an inverted range by swapping it
-	"excise-ignores-instant",  // Excise drops the caller instant
+	"asof-current",              // NodeAsOf/RelAsOf ignore the pin and return the current row
+	"history-empty",             // NodeHistory/RelHistory forget superseded versions
+	"goc-always-creates",        // GetOrCreateByKey mints a node on every call
+	"goc-updates-on-hit",        // a GetOrCreateByKey hit applies the extra properties as a new version
+	"tx-autocommit",             // Tx writes straight through, so a failed callback does not roll back
+	"tx-swallows-error",         // Tx returns nil when the callback failed
+	"interval-ignored",          // SetNode/RelVersionInterval degrade to a plain update
+	"close-noop",                // CloseNode/RelVersion report success and change nothing
+	"page-ignores-cursor",       // RelsEffectivePage restarts at the first ID on every page
+	"page-limit-unchecked",      // RelsEffectivePage turns an invalid limit into a default
+	"scan-ignores-pin",          // NodesByLabel and NodesByLabelAndProperty drop TxPin
+	"property-loose-equality",   // NodesByLabelAndProperty equates 1 and "1"
+	"caller-instant-ignored",    // Update/Delete/Add drop the caller's transaction instant
+	"invalid-labels-accepted",   // AddNode with no labels gets a default label
+	"unknown-update-creates",    // UpdateNode of an unknown ID succeeds silently
+	"reopen-forgets-writes",     // Reopen on a persistent graph opens an empty directory
+	"close-then-read-works",     // doors keep answering after Close
+	"tx-twin-ignores-instant",   // Tx *WithTx twins drop the caller instant
+	"batch-eager",               // BatchRun writes through immediately, so a refused unit leaves its queued writes
+	"batch-swallows-refusal",    // BatchRun reports success for a refused unit
+	"excise-noop",               // Excise* report success and change nothing
+	"excise-as-close",           // Excise closes the version at the start of the range
+	"excise-swaps-range",        // Excise accepts an inverted range by swapping it
+	"excise-ignores-instant",    // Excise drops the caller instant
+	"nodes-page-ignores-cursor", // NodesEffectivePage restarts at the first ID on every page
+	"nodes-page-ignores-pin",    // NodesEffectivePage reads at the present instead of the pin
+	"page-cursor-unchecked",     // an out-of-range cursor is treated as zero (both paged doors)
+	"page-tail-cursor",          // a short last page still returns a cursor (both paged doors)
 }
 
 // Wrap returns an Adapter whose graphs carry the named mutants ("all" selects every one).
@@ -222,10 +227,36 @@ func (g *graph) RelsEffectivePage(ctx context.Context, pin conformance.Pin, f co
 	if g.on["page-ignores-cursor"] {
 		after = 0
 	}
+	if g.on["page-cursor-unchecked"] && after > math.MaxInt64 {
+		after = 0
+	}
 	if g.on["page-limit-unchecked"] && (limit <= 0 || limit > 10000) {
 		limit = 10
 	}
-	return g.Graph.RelsEffectivePage(ctx, pin, f, after, limit)
+	segs, next, err := g.Graph.RelsEffectivePage(ctx, pin, f, after, limit)
+	if g.on["page-tail-cursor"] && err == nil && next == 0 && len(segs) > 0 {
+		next = segs[len(segs)-1].Rel.ID
+	}
+	return segs, next, err
+}
+
+func (g *graph) NodesEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after uint64, limit int) ([]conformance.NodeSegment, uint64, error) {
+	if g.on["nodes-page-ignores-cursor"] {
+		after = 0
+	}
+	if g.on["page-cursor-unchecked"] && after > math.MaxInt64 {
+		after = 0
+	}
+	if g.on["nodes-page-ignores-pin"] && pin.Tx > 0 && pin.Tx < 1<<59 {
+		if now, err := g.Graph.CommittedTx(); err == nil {
+			pin.Tx = now
+		}
+	}
+	segs, next, err := g.Graph.NodesEffectivePage(ctx, pin, f, after, limit)
+	if g.on["page-tail-cursor"] && err == nil && next == 0 && len(segs) > 0 {
+		next = segs[len(segs)-1].Node.ID
+	}
+	return segs, next, err
 }
 
 func (g *graph) NodesByLabel(label string, q conformance.Query) ([]conformance.Node, error) {
