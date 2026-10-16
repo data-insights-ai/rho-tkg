@@ -288,14 +288,15 @@ def live_initial(rows, scopes, actor, coordinator, phase, manifest, tx, records,
             continue
         _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes,
                                                         voters[row["Partition"]])
-        stored = records[status["partition"], status["index"]]
+        stored = records.get((status["partition"], status["index"]))
+        require(stored is not None, "first-live retained original missing from complete source prefix")
         if expected[0] == 1:
             matched = status["floor"] == 0 and P.status(P.raw(stored["Outcome"])) == dict(status, floor=floors[coordinator])
         else:
             matched = P.raw(stored["Outcome"]) == outcome
         require(actual_manifest == manifest and status["tx"] == tx and status["phase"] == expected[0] and matched,
                 "first-live success differs from its actual retained original")
-        originals[expected] = outcome
+        originals[expected[1], expected[0]] = outcome # Native original namespace, then phase.
     return selected
 
 

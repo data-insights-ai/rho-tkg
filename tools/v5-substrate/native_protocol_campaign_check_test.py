@@ -109,6 +109,75 @@ P02_PHASES = (
 )
 
 
+# Actual rotated/reorder first-live P06 artifact e75607235958d6ed8fff230d307b9b8484aa8ebab8a6b91cc13a506fcbecb301.
+P06_LIVE_PHASES = (
+    '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'
+    '5uOrOb5cIf1l57f/Bykqiiw='
+)
+
 class ActualVoteReadGuards(unittest.TestCase):
     def test_frozen_registry_has_actual_a_no_path_and_b_two_private_candidates(self):
         names, counts, candidates = set(), {"A":0, "B":0}, 0
@@ -225,6 +294,38 @@ class ActualVoteReadGuards(unittest.TestCase):
             changed=copy.deepcopy(rows);changed[1]=replace_proofs(rows[1],proofs)
             with self.assertRaisesRegex(ValueError,"earlier original phase authority"):
                 check(rows=changed)
+
+    def test_first_live_prior_authority_uses_native_partition_phase_coordinates(self):
+        f = json.loads(zlib.decompress(base64.b64decode(P06_LIVE_PHASES)))
+        rows = f["Rows"]
+        scopes = {int(k):base64.b64decode(v) for k,v in f["Scopes"].items()}
+        records = {(r["Partition"], r["Index"]):r for r in f["Records"]}
+        floors = {int(k):v for k,v in f["Floors"].items()}
+        manifest, tx = C.P.raw(f["Manifest"]), bytes.fromhex(f["Tx"])
+        def check(rows=rows, records=records):
+            return C.live_initial(rows, scopes, 5, 8, 2, manifest, tx, records, floors, {3:2,8:6})
+        selected = check()
+        self.assertEqual(selected, C.C.source_request(rows[-1], scopes, 5)[0])
+        self.assertFalse(C.P.raw(rows[-1]["Reply"]))  # Actual captured unknown, never a fabricated reply.
+        registration = C.P.peer_phase(C.P.raw(rows[0]["Request"]), C.P.raw(rows[0]["Reply"]), scopes, 6)[2]
+        key = (8, registration["index"])
+        missing = dict(records); del missing[key]
+        with self.assertRaisesRegex(ValueError, "retained original"):
+            check(records=missing)
+        wrong_phase = copy.deepcopy(records)
+        wrong_phase[key]["Outcome"] = next(r["Outcome"] for r in f["Records"] if C.P.status(C.P.raw(r["Outcome"]))["phase"] == 2)
+        with self.assertRaisesRegex(ValueError, "retained original"):
+            check(records=wrong_phase)
+        # A different REAL captured Register is still foreign authority, even
+        # when its command phase/partition match. No status is synthesized.
+        other = json.loads(zlib.decompress(base64.b64decode(P02_PHASES)))
+        foreign = next(r["Outcome"] for r in other["Records"] if C.P.raw(r["Outcome"])[:4] == b"GCS\1" and C.P.status(C.P.raw(r["Outcome"]))["phase"] == 1)
+        self.assertNotEqual(C.P.status(C.P.raw(foreign))["tx"], tx)
+        changed = copy.deepcopy(records); changed[key]["Outcome"] = foreign
+        with self.assertRaisesRegex(ValueError, "retained original"):
+            check(records=changed)
+        with self.assertRaises(ValueError):
+            check(rows=list(reversed(rows)))
 
     def test_p02_planning_floor_split_preserves_before_and_after_fence_order(self):
         for stage, floor, bound in ((False, 9, 10), (True, 10, 10), (True, 11, 10)):
