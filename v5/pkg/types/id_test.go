@@ -16,49 +16,49 @@ import (
 type idKind struct {
 	name   string
 	typ    reflect.Type
-	newID  func(uint64) (uint64, error)
-	parse  func(string) (uint64, error)
-	str    func(uint64) string
-	isZero func(uint64) bool
-	marsh  func(uint64) ([]byte, error)
-	unmar  func(prev uint64, b []byte) (uint64, error)
+	newID  func(int64) (int64, error)
+	parse  func(string) (int64, error)
+	str    func(int64) string
+	isZero func(int64) bool
+	marsh  func(int64) ([]byte, error)
+	unmar  func(prev int64, b []byte) (int64, error)
 }
 
 func kinds() []idKind {
 	return []idKind{{
 		name:   "NodeID",
 		typ:    reflect.TypeOf(types.NodeID(0)),
-		newID:  func(v uint64) (uint64, error) { id, err := types.NewNodeID(v); return id.Uint64(), err },
-		parse:  func(s string) (uint64, error) { id, err := types.ParseNodeID(s); return id.Uint64(), err },
-		str:    func(v uint64) string { return types.NodeID(v).String() },
-		isZero: func(v uint64) bool { return types.NodeID(v).IsZero() },
-		marsh:  func(v uint64) ([]byte, error) { return types.NodeID(v).MarshalText() },
-		unmar: func(prev uint64, b []byte) (uint64, error) {
+		newID:  func(v int64) (int64, error) { id, err := types.NewNodeID(v); return id.Int64(), err },
+		parse:  func(s string) (int64, error) { id, err := types.ParseNodeID(s); return id.Int64(), err },
+		str:    func(v int64) string { return types.NodeID(v).String() },
+		isZero: func(v int64) bool { return types.NodeID(v).IsZero() },
+		marsh:  func(v int64) ([]byte, error) { return types.NodeID(v).MarshalText() },
+		unmar: func(prev int64, b []byte) (int64, error) {
 			id := types.NodeID(prev)
 			err := id.UnmarshalText(b)
-			return id.Uint64(), err
+			return id.Int64(), err
 		},
 	}, {
 		name:   "RelID",
 		typ:    reflect.TypeOf(types.RelID(0)),
-		newID:  func(v uint64) (uint64, error) { id, err := types.NewRelID(v); return id.Uint64(), err },
-		parse:  func(s string) (uint64, error) { id, err := types.ParseRelID(s); return id.Uint64(), err },
-		str:    func(v uint64) string { return types.RelID(v).String() },
-		isZero: func(v uint64) bool { return types.RelID(v).IsZero() },
-		marsh:  func(v uint64) ([]byte, error) { return types.RelID(v).MarshalText() },
-		unmar: func(prev uint64, b []byte) (uint64, error) {
+		newID:  func(v int64) (int64, error) { id, err := types.NewRelID(v); return id.Int64(), err },
+		parse:  func(s string) (int64, error) { id, err := types.ParseRelID(s); return id.Int64(), err },
+		str:    func(v int64) string { return types.RelID(v).String() },
+		isZero: func(v int64) bool { return types.RelID(v).IsZero() },
+		marsh:  func(v int64) ([]byte, error) { return types.RelID(v).MarshalText() },
+		unmar: func(prev int64, b []byte) (int64, error) {
 			id := types.RelID(prev)
 			err := id.UnmarshalText(b)
-			return id.Uint64(), err
+			return id.Int64(), err
 		},
 	}}
 }
 
 func TestIDShape(t *testing.T) {
-	// Opaque 64-bit, no clock or placement (PLAN:63): exactly a uint64, no extra state.
+	// Opaque 64-bit, no clock or placement (PLAN:63): exactly a int64, no extra state.
 	for _, k := range kinds() {
-		if k.typ.Kind() != reflect.Uint64 || k.typ.Size() != 8 {
-			t.Fatalf("%s: kind=%v size=%d, want uint64/8", k.name, k.typ.Kind(), k.typ.Size())
+		if k.typ.Kind() != reflect.Int64 || k.typ.Size() != 8 {
+			t.Fatalf("%s: kind=%v size=%d, want int64/8", k.name, k.typ.Kind(), k.typ.Size())
 		}
 	}
 	if reflect.TypeOf(types.NodeID(0)) == reflect.TypeOf(types.RelID(0)) {
@@ -79,14 +79,14 @@ func TestIDShape(t *testing.T) {
 func TestNewIDBoundaries(t *testing.T) {
 	cases := []struct {
 		name string
-		in   uint64
+		in   int64
 		ok   bool
 	}{
 		{"zero refused", 0, false},
 		{"one", 1, true},
 		{"max int64", math.MaxInt64, true},
-		{"max int64 plus one", math.MaxInt64 + 1, true},
-		{"max uint64", math.MaxUint64, true},
+		{"minus one refused", -1, false},
+		{"min int64 refused", math.MinInt64, false},
 	}
 	for _, k := range kinds() {
 		for _, c := range cases {
@@ -103,18 +103,18 @@ func TestNewIDBoundaries(t *testing.T) {
 
 func TestIsZero(t *testing.T) {
 	for _, k := range kinds() {
-		if !k.isZero(0) || k.isZero(1) || k.isZero(math.MaxUint64) {
+		if !k.isZero(0) || k.isZero(1) || k.isZero(math.MaxInt64) {
 			t.Errorf("%s IsZero wrong", k.name)
 		}
 	}
 }
 
 func TestParseFormatRoundTrip(t *testing.T) {
-	vals := []uint64{1, 2, 9, 10, 1 << 31, 1<<32 + 5, math.MaxInt64, math.MaxInt64 + 1, math.MaxUint64}
+	vals := []int64{1, 2, 9, 10, 1 << 31, 1<<32 + 5, math.MaxInt64, math.MaxInt64}
 	for _, k := range kinds() {
 		for _, v := range vals {
 			s := k.str(v)
-			if s != strconv.FormatUint(v, 10) {
+			if s != strconv.FormatInt(v, 10) {
 				t.Errorf("%s String(%d)=%q want canonical decimal", k.name, v, s)
 			}
 			got, err := k.parse(s)
@@ -136,8 +136,9 @@ func TestParseFormatRoundTrip(t *testing.T) {
 func TestParseInvalid(t *testing.T) {
 	bad := []string{
 		"", " ", "0", "00", "-1", "-0", "+1", " 1", "1 ", "1\n", "0x10", "1_000", "1e3", "1.0", "١٢٣", // non-ASCII digits
-		"01",                   // leading zero is not canonical
-		"18446744073709551616", // MaxUint64 + 1
+		"01",                  // leading zero is not canonical
+		"9223372036854775808", // MaxInt64 + 1
+		"18446744073709551615", "18446744073709551616", "-9223372036854775808", "-9223372036854775809",
 		"99999999999999999999999999",
 		"abc", "1a", "NaN", "null", strings.Repeat("9", 4096),
 	}
@@ -147,7 +148,7 @@ func TestParseInvalid(t *testing.T) {
 			if !errors.Is(err, types.ErrInvalidID) || got != 0 {
 				t.Errorf("%s Parse(%.24q)=%d,%v want 0,ErrInvalidID", k.name, s, got, err)
 			}
-			prev := uint64(42)
+			prev := int64(42)
 			after, err := k.unmar(prev, []byte(s))
 			if !errors.Is(err, types.ErrInvalidID) || after != prev {
 				t.Errorf("%s UnmarshalText(%.24q) err=%v after=%d, want ErrInvalidID and receiver unchanged", k.name, s, err, after)
@@ -178,8 +179,8 @@ func TestStringOfZeroIsNotAValidID(t *testing.T) {
 }
 
 func TestIDsAreComparableMapKeys(t *testing.T) {
-	m := map[types.NodeID]types.RelID{1: 2, math.MaxUint64: 3}
-	if m[1] != 2 || m[math.MaxUint64] != 3 || len(m) != 2 {
+	m := map[types.NodeID]types.RelID{1: 2, math.MaxInt64: 3}
+	if m[1] != 2 || m[math.MaxInt64] != 3 || len(m) != 2 {
 		t.Fatal("IDs must be usable as map keys")
 	}
 }
