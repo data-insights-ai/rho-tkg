@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -1241,6 +1242,130 @@ func cancelGraphProcessQueued(sequence uint64, paused *[]processRequest, barrier
 	return nil
 }
 
+func graphProcessAllocationReply(o *certifiedProcessOwners, active *graphProcessPumpCall, event *allocationEvent) (allocationReply, bool, error) {
+	if len(event.replies) == 0 {
+		return allocationReply{}, false, nil
+	}
+	if len(event.replies) > 16 || active.id == (allocationReadID{}) || active.id == o.readID {
+		return allocationReply{}, false, errInvalid
+	}
+	// Validate both original consumers before removing or delivering any reply.
+	// A synchronous fixture read can complete beside the live source read.
+	source, bootstrap := -1, -1
+	for i, reply := range event.replies {
+		switch reply.id {
+		case active.id:
+			if source != -1 || reply.question != active.allocation || reply.err == nil && (reply.proof.owner != o.host || reply.proof.id != active.id || reply.proof.question != active.allocation) || reply.err != nil && reply.proof != (allocationProof{}) {
+				return allocationReply{}, false, errInvalid
+			}
+			source = i
+		case o.readID:
+			if bootstrap != -1 || o.ready || reply.question != o.question || reply.proof.owner != o.host || reply.proof.id != o.readID || reply.proof.question != o.question {
+				return allocationReply{}, false, errInvalid
+			}
+			bootstrap = i
+		default:
+			return allocationReply{}, false, errInvalid
+		}
+	}
+	if source == -1 {
+		return allocationReply{}, false, nil
+	}
+	reply := event.replies[source]
+	event.replies = append(event.replies[:source], event.replies[source+1:]...)
+	return reply, true, nil
+}
+
+func TestGraphProcessAllocationRepliesKeepExactLiveConsumers(t *testing.T) {
+	// Inert event-routing fixtures only: these values mint no Host/source proof.
+	host := new(allocationHost)
+	sourceID := allocationReadID{session: [16]byte{1}, sequence: 1}
+	bootstrapID := allocationReadID{session: [16]byte{1}, sequence: 2}
+	sourceQuery := allocationQuery{kind: observeConfiguration, nonce: [16]byte{1}}
+	bootstrapQuery := allocationQuery{kind: observeConfiguration, nonce: [16]byte{2}}
+	reply := func(id allocationReadID, query allocationQuery) allocationReply {
+		return allocationReply{id: id, question: query, proof: allocationProof{owner: host, id: id, question: query}}
+	}
+	source, bootstrap := reply(sourceID, sourceQuery), reply(bootstrapID, bootstrapQuery)
+	failedSource := source
+	failedSource.err, failedSource.proof = context.Canceled, allocationProof{}
+	for _, tc := range []struct {
+		name              string
+		replies           []allocationReply
+		source, bootstrap bool
+	}{
+		{"source-only", []allocationReply{source}, true, false},
+		{"bootstrap-only", []allocationReply{bootstrap}, false, true},
+		{"source-and-bootstrap", []allocationReply{source, bootstrap}, true, true},
+		{"bootstrap-and-source", []allocationReply{bootstrap, source}, true, true},
+		{"failed-source-and-bootstrap", []allocationReply{failedSource, bootstrap}, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			owners := &certifiedProcessOwners{host: host, readID: bootstrapID, question: bootstrapQuery}
+			active := &graphProcessPumpCall{ctx: t.Context(), kind: sourceOpen, id: sourceID, allocation: sourceQuery}
+			event := allocationEvent{replies: slices.Clone(tc.replies)}
+			got, found, err := graphProcessAllocationReply(owners, active, &event)
+			if err != nil || found != tc.source || found && (got.id != sourceID || got.question != sourceQuery || got.err == nil && got.proof.owner != host) {
+				t.Fatal("source reply crossed its original consumer", found, err)
+			}
+			for _, expected := range tc.replies {
+				if expected.id == sourceID && got != expected {
+					t.Fatal("routing changed the original source result")
+				}
+			}
+			if err := owners.event(event); err != nil || owners.ready != tc.bootstrap || owners.ready && owners.proof.id != bootstrapID {
+				t.Fatal("bootstrap reply crossed its original consumer", owners.ready, err)
+			}
+			if active.id != sourceID || active.allocation != sourceQuery || active.ctx != t.Context() {
+				t.Fatal("routing changed the live source owner")
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name   string
+		change func(*certifiedProcessOwners, *[]allocationReply)
+	}{
+		{"unknown", func(_ *certifiedProcessOwners, rs *[]allocationReply) { (*rs)[1].id.sequence++ }},
+		{"duplicate-source", func(_ *certifiedProcessOwners, rs *[]allocationReply) { *rs = append(*rs, source) }},
+		{"duplicate-bootstrap", func(_ *certifiedProcessOwners, rs *[]allocationReply) { *rs = append(*rs, bootstrap) }},
+		{"source-question", func(_ *certifiedProcessOwners, rs *[]allocationReply) { (*rs)[0].question = bootstrapQuery }},
+		{"source-owner", func(_ *certifiedProcessOwners, rs *[]allocationReply) { (*rs)[0].proof.owner = new(allocationHost) }},
+		{"source-proof-id", func(_ *certifiedProcessOwners, rs *[]allocationReply) { (*rs)[0].proof.id = bootstrapID }},
+		{"source-proof-question", func(_ *certifiedProcessOwners, rs *[]allocationReply) { (*rs)[0].proof.question = bootstrapQuery }},
+		{"failed-source-proof", func(_ *certifiedProcessOwners, rs *[]allocationReply) { (*rs)[0].err = context.Canceled }},
+		{"bootstrap-question", func(_ *certifiedProcessOwners, rs *[]allocationReply) { (*rs)[1].question = sourceQuery }},
+		{"bootstrap-owner", func(_ *certifiedProcessOwners, rs *[]allocationReply) { (*rs)[1].proof.owner = new(allocationHost) }},
+		{"bootstrap-proof-id", func(_ *certifiedProcessOwners, rs *[]allocationReply) { (*rs)[1].proof.id = sourceID }},
+		{"bootstrap-proof-question", func(_ *certifiedProcessOwners, rs *[]allocationReply) { (*rs)[1].proof.question = sourceQuery }},
+		{"bootstrap-already-ready", func(o *certifiedProcessOwners, _ *[]allocationReply) { o.ready = true }},
+		{"bootstrap-overwritten", func(o *certifiedProcessOwners, _ *[]allocationReply) { o.readID.sequence++ }},
+		{"consumer-collision", func(o *certifiedProcessOwners, _ *[]allocationReply) { o.readID = sourceID }},
+		{"native-reply-bound", func(_ *certifiedProcessOwners, rs *[]allocationReply) { *rs = make([]allocationReply, 17) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			owners := &certifiedProcessOwners{host: host, readID: bootstrapID, question: bootstrapQuery}
+			active := &graphProcessPumpCall{ctx: t.Context(), kind: sourceOpen, id: sourceID, allocation: sourceQuery}
+			replies := []allocationReply{source, bootstrap}
+			tc.change(owners, &replies)
+			before := slices.Clone(replies)
+			ready, proof := owners.ready, owners.proof
+			event := allocationEvent{replies: replies}
+			got, found, err := graphProcessAllocationReply(owners, active, &event)
+			if !errors.Is(err, errInvalid) || found || got != (allocationReply{}) {
+				t.Fatal("malformed mixed event delivered a source reply", found, err)
+			}
+			if len(event.replies) != len(before) || owners.ready != ready || owners.proof != proof {
+				t.Fatal("refusal changed a consumer")
+			}
+			for i := range before {
+				if event.replies[i] != before[i] {
+					t.Fatal("refusal consumed or changed a reply")
+				}
+			}
+		})
+	}
+}
+
 func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProcessOwners, init declaredInitCommand) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -1689,6 +1814,15 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 		active = nil
 	}
 	emit := func(e allocationEvent) error {
+		var opened *graphProcessPumpCall
+		var openReply allocationReply
+		var replyIDs [16]allocationReadID
+		replyCount := min(len(e.replies), len(replyIDs))
+		if protocolState != nil {
+			for i := range replyCount {
+				replyIDs[i] = e.replies[i].id
+			}
+		}
 		if err := p08.event(&e); err != nil {
 			return err
 		}
@@ -1706,12 +1840,15 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					e.moveReplies = nil
 				}
 			case sourceOpen:
-				if len(e.replies) > 0 {
-					if len(e.replies) != 1 || e.replies[0].id != active.id {
-						return errInvalid
+				reply, found, err := graphProcessAllocationReply(o, active, &e)
+				if err != nil {
+					if protocolState != nil {
+						return fmt.Errorf("D source allocation routing: active=%+v bootstrap=%+v ready=%t replies=%+v: %w", active.id, o.readID, o.ready, replyIDs[:replyCount], err)
 					}
-					finish(active, graphProcessPumpReply{allocation: e.replies[0]})
-					e.replies = nil
+					return err
+				}
+				if found {
+					opened, openReply = active, reply
 				}
 			case sourceCrossRead:
 				if active.capacity {
@@ -1753,7 +1890,13 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			return errInvalid
 		}
 		if err := o.event(e); err != nil {
+			if protocolState != nil {
+				return fmt.Errorf("D bootstrap event routing: bootstrap=%+v ready=%t allocationReplies=%+v cross=%d cut=%d capacity=%d snapshots=%d: %w", o.readID, o.ready, replyIDs[:replyCount], len(e.crossReplies), len(e.cutReplies), len(e.capacityReplies), len(e.snapshotSends), err)
+			}
 			return err
+		}
+		if opened != nil {
+			finish(opened, graphProcessPumpReply{allocation: openReply})
 		}
 		if len(e.packets) > 0 {
 			handles, err := pairedSnapshotHandles(snapshots, e)
