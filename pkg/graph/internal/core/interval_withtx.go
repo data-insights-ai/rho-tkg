@@ -63,12 +63,14 @@ func temporalsOf[T interface {
 	return append(out, current.Temporal())
 }
 
-// checkNodeCallerCascade is every refusal a caller-instant node correction can
-// meet before the kernel builds rows: a missing or hard-deleted node
-// (cascadeMissingNodeErr: ErrNodeNotFound, or ErrEntityDeleted) and the order
-// rule. The Batch/ingest pre-flight runs it; the kernel runs the same checks
-// in the same order. Takes the node's entity lock.
-func (c *Core) checkNodeCallerCascade(id types.NodeID, at types.Instant) error {
+// checkNodeCallerCascade is every refusal a caller-instant node correction
+// over [validFrom, validTo) can meet before the kernel builds rows: a missing
+// or hard-deleted node (cascadeMissingNodeErr: ErrNodeNotFound, or
+// ErrEntityDeleted), the order rule and, for an excise (void), no version
+// valid there (exciseNoVersionErr over nodeCorrectionSegments: ErrNoVersionValidAt).
+// The Batch/ingest pre-flight runs it; the kernel runs the same checks in the
+// same order. Takes the node's entity lock.
+func (c *Core) checkNodeCallerCascade(id types.NodeID, validFrom, validTo, at types.Instant, void bool) error {
 	c.entityLocks.LockEntity(id.SnowflakeID())
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 	current, err := c.getCurrentNode(id)
@@ -78,15 +80,26 @@ func (c *Core) checkNodeCallerCascade(id types.NodeID, at types.Instant) error {
 	if err != nil {
 		return err
 	}
-	chain, err := c.nodeChainTemporals(id, current)
+	history, err := c.getNodeHistory(id)
 	if err != nil {
 		return err
 	}
-	return checkTxOrder(at, 0, chain...)
+	if err := checkTxOrder(at, 0, temporalsOf(history, current)...); err != nil {
+		return err
+	}
+	if !void {
+		return nil
+	}
+	preChain := versionOrdered(append(append(make([]*types.Node, 0, len(history)+1), history...), current))
+	segments, err := c.nodeCorrectionSegments(preChain, current, validFrom, validTo, true)
+	if err != nil {
+		return err
+	}
+	return exciseNoVersionErr(segments, validFrom, validTo)
 }
 
 // checkRelCallerCascade mirrors checkNodeCallerCascade for relationships.
-func (c *Core) checkRelCallerCascade(id types.RelID, at types.Instant) error {
+func (c *Core) checkRelCallerCascade(id types.RelID, validFrom, validTo, at types.Instant, void bool) error {
 	c.entityLocks.LockEntity(id.SnowflakeID())
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
 	current, err := c.getCurrentRelationship(id)
@@ -96,11 +109,22 @@ func (c *Core) checkRelCallerCascade(id types.RelID, at types.Instant) error {
 	if err != nil {
 		return err
 	}
-	chain, err := c.relChainTemporals(id, current)
+	history, err := c.getRelHistory(id)
 	if err != nil {
 		return err
 	}
-	return checkTxOrder(at, 0, chain...)
+	if err := checkTxOrder(at, 0, temporalsOf(history, current)...); err != nil {
+		return err
+	}
+	if !void {
+		return nil
+	}
+	preChain := versionOrdered(append(append(make([]*types.Relationship, 0, len(history)+1), history...), current))
+	segments, err := c.relCorrectionSegments(preChain, current, validFrom, validTo, true)
+	if err != nil {
+		return err
+	}
+	return exciseNoVersionErr(segments, validFrom, validTo)
 }
 
 // SetNodeVersionIntervalWithTx records the valid-time correction of

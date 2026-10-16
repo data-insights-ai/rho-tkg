@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A batch caller-instant excise with no valid version refuses the whole unit** (v4.54.0 promise). A unit queuing
+  `BatchBuilder.ExciseNodeValidityWithTx` / `ExciseRelValidityWithTx` over a range where no version is valid wrote the
+  unit's other ops (an `AddNode`, an `UpdateNode`) and failed the excise alone with `ErrNoVersionValidAt`, on memory,
+  badger, tiered and sharded: the whole-unit pre-flight (`checkNodeCallerCascade` / `checkRelCallerCascade`) checked
+  existence and the order rule only, and the refusal fired at apply. The pre-flight now decides it on the kernel's own
+  pieces (`nodeCorrectionSegments` / `relCorrectionSegments`, one `exciseNoVersionErr` for both), so the unit is refused
+  with nothing written; the concurrent ingest pre-flight runs the same check. The plain `ExciseNodeValidity` /
+  `ExciseRelValidity` batch ops keep their documented per-op failure. Test: `TestBatchExciseNoVersionRefusesUnit` (node
+  and relationship, excise first, middle, last; four backends; `tasks/evidence/batch-excise-no-version/`).
+
 ## [4.56.1] - 2026-10-15
 
 ### Changed

@@ -116,7 +116,8 @@ func (c *Core) nodeAdjacentRelIDs(id types.NodeID) ([]types.RelID, error) {
 //     (the node and every cascaded relationship), checkRelCallerUpdate,
 //     checkRelCallerDelete, and for the valid-time corrections
 //     checkNodeCallerCascade / checkRelCallerCascade (a hard-deleted entity:
-//     ErrEntityDeleted; the order rule over the whole chain).
+//     ErrEntityDeleted; the order rule over the whole chain; an excise with
+//     no version valid in its range: ErrNoVersionValidAt).
 //
 // Under Batch.Execute's exclusive lock nothing lands between this check and
 // the write. The concurrent ingest mode runs under the shared lock: a racing
@@ -231,7 +232,7 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 		if nodeTouched[pc.id] > 1 {
 			return refuse(another("node", int64(pc.id), pc.at))
 		}
-		if err := c.checkNodeCallerCascade(pc.id, pc.at); err != nil {
+		if err := c.checkNodeCallerCascade(pc.id, pc.validFrom, pc.validTo, pc.at, pc.void); err != nil {
 			return refuse(err)
 		}
 	}
@@ -246,7 +247,7 @@ func (c *Core) precheckCallerTxOps(u callerTxUnit) error {
 		if relTouched[pc.id] > 1 {
 			return refuse(another("relationship", int64(pc.id), pc.at))
 		}
-		if err := c.checkRelCallerCascade(pc.id, pc.at); err != nil {
+		if err := c.checkRelCallerCascade(pc.id, pc.validFrom, pc.validTo, pc.at, pc.void); err != nil {
 			return refuse(err)
 		}
 	}
