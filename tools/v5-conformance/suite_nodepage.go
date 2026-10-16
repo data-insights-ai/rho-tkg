@@ -246,7 +246,7 @@ func nodePageCursorEdges(t *testing.T, a Adapter) {
 		want  []int64
 	}{
 		{"cursor zero starts at the beginning", 0, nodeIDsOf(ns, 0, 2)},
-		{"cursor before the first ID", 1, nodeIDsOf(ns, 0, 2)},
+		{"cursor before the first ID", max(ns[0].ID-1, 0), nodeIDsOf(ns, 0, 2)},
 		{"cursor on a matching ID is exclusive", ns[0].ID, nodeIDsOf(ns, 2)},
 		{"cursor on a non-matching ID", ns[1].ID, nodeIDsOf(ns, 2)},
 		{"cursor between IDs", ns[0].ID + 1, nodeIDsOf(ns, 2)},

@@ -561,7 +561,7 @@ func (w *wrap) RetractRel(ctx context.Context, id int64, txTo int64) error {
 	return mapErr(w.g.Rels().Retract(ctx, types.RelID(id)))
 }
 
-// Profiles: the v5compat facade serves both the native and the compat semantics.
-func (Adapter) Profiles() []conformance.Profile {
-	return []conformance.Profile{conformance.Native, conformance.Compat}
-}
+// Profiles: the façade implements the v4 contract (caller stamps as pins,
+// ErrTxOrder, ms pins, keyset cursors), so it serves the compat profile; the
+// native profile is served by the v5 adapter.
+func (Adapter) Profiles() []conformance.Profile { return []conformance.Profile{conformance.Compat} }
