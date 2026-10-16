@@ -22,32 +22,34 @@ import (
 
 // recordRelRowLocked records one relationship row the store keeps (current or
 // history) into every built membership sidecar (K1 rel-type set and property
-// sets). Every row, not only creates: a row's TxFrom lowers the member's bound.
-// Caller holds ms.mu (write).
-func (ms *Store) recordRelRowLocked(r *types.Relationship) {
+// sets). Every row, not only creates: a row's TxFrom lowers the member's bound,
+// and its valid-time span joins the member's spans (ledger row 62). Caller
+// holds ms.mu (write).
+func (ms *Store) recordRelRowLocked(r *types.Relationship, current bool) {
 	ms.recordRelTypeMemberLocked(r)
-	ms.recordRelPropTxLocked(r)
+	ms.recordRelPropTxLocked(r, current)
 }
 
 // recordNodeRowLocked is recordRelRowLocked for node rows (K1 label set and
 // node property sets). Caller holds ms.mu (write).
-func (ms *Store) recordNodeRowLocked(n *types.Node) {
+func (ms *Store) recordNodeRowLocked(n *types.Node, current bool) {
 	ms.recordNodeLabelMembersLocked(n)
-	ms.recordNodePropTxLocked(n)
+	ms.recordNodePropTxLocked(n, current)
 }
 
 // recordRelPropTxLocked records r's indexable values into the built rel
-// sidecars of its type. Caller holds ms.mu (write).
-func (ms *Store) recordRelPropTxLocked(r *types.Relationship) {
+// sidecars of its type, as a current or a history row. Caller holds ms.mu
+// (write).
+func (ms *Store) recordRelPropTxLocked(r *types.Relationship, current bool) {
 	if len(ms.relPropTxMembers) == 0 || r == nil {
 		return
 	}
 	tok := r.TypeToken().Value()
 	id := r.ID()
-	tx := relTxFrom(r)
+	ri := indexpkg.RelRowInfo(r)
 	r.ForEachIndexKey(indexpkg.RelElementsOf(ms.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
 		if m := ms.relPropTxMembers[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; m != nil {
-			m.Record(valueKey, id, tx)
+			m.RecordRow(valueKey, id, ri, current)
 		}
 		return true
 	})
@@ -55,17 +57,89 @@ func (ms *Store) recordRelPropTxLocked(r *types.Relationship) {
 
 // recordNodePropTxLocked records n's indexable values into the built node
 // sidecars of every label the row carries. Caller holds ms.mu (write).
-func (ms *Store) recordNodePropTxLocked(n *types.Node) {
+func (ms *Store) recordNodePropTxLocked(n *types.Node, current bool) {
 	if len(ms.nodePropTxMembers) == 0 || n == nil {
 		return
 	}
 	id := n.ID()
-	tx := nodeTxFrom(n)
+	ri := indexpkg.NodeRowInfo(n)
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		label := n.LabelTokenRawAt(i)
 		n.ForEachIndexKey(indexpkg.ElementsOf(ms.propertyIndexes, label), func(propertyKey, valueKey string) bool {
 			if m := ms.nodePropTxMembers[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}]; m != nil {
-				m.Record(valueKey, id, tx)
+				m.RecordRow(valueKey, id, ri, current)
+			}
+			return true
+		})
+	}
+}
+
+// recordRelReplacedLocked records prev, the copy of a current row an update
+// door moves to history, replaced by next (ledger row 62): K1 as any row,
+// and in the property sidecars prev ends at next (indexpkg.RecordReplaced).
+func (ms *Store) recordRelReplacedLocked(prev, next *types.Relationship) {
+	ms.recordRelTypeMemberLocked(prev)
+	if len(ms.relPropTxMembers) == 0 || prev == nil || next == nil {
+		return
+	}
+	tok := prev.TypeToken().Value()
+	id := prev.ID()
+	old, nx := indexpkg.RelRowInfo(prev), indexpkg.RelRowInfo(next)
+	prev.ForEachIndexKey(indexpkg.RelElementsOf(ms.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
+		if sc := ms.relPropTxMembers[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; sc != nil {
+			sc.RecordReplaced(valueKey, id, old, nx)
+		}
+		return true
+	})
+}
+
+// recordNodeReplacedLocked is recordRelReplacedLocked for a node row.
+func (ms *Store) recordNodeReplacedLocked(prev, next *types.Node) {
+	ms.recordNodeLabelMembersLocked(prev)
+	if len(ms.nodePropTxMembers) == 0 || prev == nil || next == nil {
+		return
+	}
+	id := prev.ID()
+	old, nx := indexpkg.NodeRowInfo(prev), indexpkg.NodeRowInfo(next)
+	for i := 0; i < prev.LabelTokenCount(); i++ {
+		label := prev.LabelTokenRawAt(i)
+		prev.ForEachIndexKey(indexpkg.ElementsOf(ms.propertyIndexes, label), func(propertyKey, valueKey string) bool {
+			if sc := ms.nodePropTxMembers[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}]; sc != nil {
+				sc.RecordReplaced(valueKey, id, old, nx)
+			}
+			return true
+		})
+	}
+}
+
+// forgetRelPropTxCurrentLocked notes that r, the current row a delete removes,
+// is no current row any more: its members keep their history envelopes only
+// (ledger row 62). Caller holds ms.mu (write).
+func (ms *Store) forgetRelPropTxCurrentLocked(r *types.Relationship) {
+	if len(ms.relPropTxMembers) == 0 || r == nil {
+		return
+	}
+	tok := r.TypeToken().Value()
+	id := r.ID()
+	r.ForEachIndexKey(indexpkg.RelElementsOf(ms.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
+		if m := ms.relPropTxMembers[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; m != nil {
+			m.ForgetCurrent(valueKey, id)
+		}
+		return true
+	})
+}
+
+// forgetNodePropTxCurrentLocked is forgetRelPropTxCurrentLocked for a node.
+func (ms *Store) forgetNodePropTxCurrentLocked(n *types.Node) {
+	if len(ms.nodePropTxMembers) == 0 || n == nil {
+		return
+	}
+	id := n.ID()
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		label := n.LabelTokenRawAt(i)
+		n.ForEachIndexKey(indexpkg.ElementsOf(ms.propertyIndexes, label), func(propertyKey, valueKey string) bool {
+			if m := ms.nodePropTxMembers[indexpkg.PropertyIndexKey{LabelToken: label, PropertyKey: propertyKey}]; m != nil {
+				m.ForgetCurrent(valueKey, id)
 			}
 			return true
 		})
@@ -93,28 +167,34 @@ func (ms *Store) relPropTxSidecarLocked(key indexpkg.RelPropertyIndexKey) (*inde
 	start := time.Now()
 	m := indexpkg.NewPropertyTxMembers[types.RelID]()
 	elements := idx.Elements()
-	record := func(r *types.Relationship) {
+	// Every row of the type, so a replaced row is ended by its replacing row
+	// (indexpkg.RowScan, ledger row 62).
+	var scan indexpkg.RowScan[types.RelID]
+	record := func(r *types.Relationship, current bool) {
 		if !r.HasTypeTokenRaw(key.RelTypeToken) {
 			return
 		}
+		var vks []string
 		r.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
-			m.Record(vk, r.ID(), relTxFrom(r))
+			vks = append(vks, vk)
 			return true
 		})
+		scan.Add(r.ID(), indexpkg.RelRowInfo(r), current, vks)
 	}
 	// ADR-0011: every current row, sealed included; a decode error leaves the
 	// sidecar unbuilt (it must be a superset).
 	if err := ms.forEachCurrentRelLocked(func(r *types.Relationship) bool {
-		record(r)
+		record(r, true)
 		return true
 	}); err != nil {
 		return nil, err
 	}
 	for _, versions := range ms.relHistory {
 		for _, r := range versions {
-			record(r)
+			record(r, false)
 		}
 	}
+	scan.Into(m)
 	if ms.relPropTxMembers == nil {
 		ms.relPropTxMembers = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyTxMembers[types.RelID])
 	}
@@ -136,23 +216,27 @@ func (ms *Store) nodePropTxSidecarLocked(key indexpkg.PropertyIndexKey) *indexpk
 	start := time.Now()
 	m := indexpkg.NewPropertyTxMembers[types.NodeID]()
 	elements := idx.Elements()
-	record := func(n *types.Node) {
+	var scan indexpkg.RowScan[types.NodeID] // see relPropTxSidecarLocked
+	record := func(n *types.Node, current bool) {
 		if !n.HasLabelTokenRaw(key.LabelToken) {
 			return
 		}
+		var vks []string
 		n.ForEachPropertyIndexKey(key.PropertyKey, elements, func(vk string) bool {
-			m.Record(vk, n.ID(), nodeTxFrom(n))
+			vks = append(vks, vk)
 			return true
 		})
+		scan.Add(n.ID(), indexpkg.NodeRowInfo(n), current, vks)
 	}
 	for _, n := range ms.nodes {
-		record(n)
+		record(n, true)
 	}
 	for _, versions := range ms.nodeHistory {
 		for _, n := range versions {
-			record(n)
+			record(n, false)
 		}
 	}
+	scan.Into(m)
 	if ms.nodePropTxMembers == nil {
 		ms.nodePropTxMembers = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyTxMembers[types.NodeID])
 	}

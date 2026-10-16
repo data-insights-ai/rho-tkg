@@ -597,6 +597,9 @@ type Store struct {
 	// Test-only.
 	propTxScanTestHook  func()
 	propTxBuildTestHook func()
+	// propTxInstallLockedTestHook runs under idxMu at a build's install with the
+	// scanned rows still waiting to be recorded (ledger row 62 review: 0).
+	propTxInstallLockedTestHook func(pendingRows int)
 
 	// bulkAsOfScanTestHook runs in NodesAsOf/RelsAsOf once per candidate before its
 	// as-of read, so tests land a flush() commit mid-scan (backlog 18k). Test-only.

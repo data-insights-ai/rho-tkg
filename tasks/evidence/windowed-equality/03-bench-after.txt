@@ -1,0 +1,18 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkWindowedEqualitySeek/memory-32         	  157663	      7396 ns/op	        10.00 chains/op	    7302 B/op	     128 allocs/op
+BenchmarkWindowedEqualitySeek/memory-32         	  173547	      6709 ns/op	        10.00 chains/op	    7302 B/op	     128 allocs/op
+BenchmarkWindowedEqualitySeek/memory-32         	  166633	      6906 ns/op	        10.00 chains/op	    7302 B/op	     128 allocs/op
+BenchmarkWindowedEqualitySeek/badger-32         	   53180	     21823 ns/op	        10.00 chains/op	   16328 B/op	     282 allocs/op
+BenchmarkWindowedEqualitySeek/badger-32         	   64406	     22667 ns/op	        10.00 chains/op	   16327 B/op	     282 allocs/op
+BenchmarkWindowedEqualitySeek/badger-32         	   45033	     22850 ns/op	        10.00 chains/op	   16327 B/op	     282 allocs/op
+BenchmarkWindowedEqualitySeek/sharded-32        	   51066	     23217 ns/op	        10.00 chains/op	   21339 B/op	     340 allocs/op
+BenchmarkWindowedEqualitySeek/sharded-32        	   42956	     28945 ns/op	        10.00 chains/op	   21338 B/op	     340 allocs/op
+BenchmarkWindowedEqualitySeek/sharded-32        	   48666	     25005 ns/op	        10.00 chains/op	   21338 B/op	     340 allocs/op
+BenchmarkWindowedEqualitySeek/tiered-32         	   45088	     30308 ns/op	        10.00 chains/op	   22345 B/op	     379 allocs/op
+BenchmarkWindowedEqualitySeek/tiered-32         	   44077	     27543 ns/op	        10.00 chains/op	   22344 B/op	     379 allocs/op
+BenchmarkWindowedEqualitySeek/tiered-32         	   44800	     26919 ns/op	        10.00 chains/op	   22344 B/op	     379 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	22.479s

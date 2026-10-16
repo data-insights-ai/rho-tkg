@@ -114,7 +114,7 @@ func vfCheck(t *testing.T, g *Core, rel bool, name string, pin, from types.Insta
 // later writes reach the index through maintenance rather than through the
 // first query's re-read. The names are registered first (a token must exist to
 // be tracked).
-func primeValidEndIndex(t *testing.T, g *Core, relTypes, labels []string) {
+func primeValidEndIndex(t testing.TB, g *Core, relTypes, labels []string) {
 	t.Helper()
 	pin, err := g.Temporal.NowTx()
 	if err != nil {
@@ -481,7 +481,7 @@ func TestEffectiveValidFrom_MatchesUnboundedOracle(t *testing.T) {
 	}
 	for _, be := range txbBackends() {
 		inner := be.open
-		primed := txbBackend{name: be.name, open: func(t *testing.T, allow bool) *Core {
+		primed := txbBackend{name: be.name, open: func(t testing.TB, allow bool) *Core {
 			g := inner(t, allow)
 			primeValidEndIndex(t, g, oracleRelTypes, append(slices.Clone(oracleNodeLabels), "Re"))
 			return g

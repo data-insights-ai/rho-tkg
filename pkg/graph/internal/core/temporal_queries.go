@@ -1066,13 +1066,12 @@ func (c *Core) nodesByLabelPropertyAtLocked(label, key string, value any, at typ
 	if wantKeys == nil {
 		return nil, nil
 	}
-	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
-	if err != nil {
-		return nil, err
-	}
-	currentIDs, err := c.nodeIDsFromLabelRows(tok, currentMatching)
-	if err != nil {
-		return nil, err
+	currentIDs := func() ([]types.NodeID, error) {
+		currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
+		if err != nil {
+			return nil, err
+		}
+		return c.nodeIDsFromLabelRows(tok, currentMatching)
 	}
 	elements, err := c.nodeIndexElements(tok, key)
 	if err != nil {
@@ -1143,13 +1142,12 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 	if wantKeys == nil {
 		return nil, nil
 	}
-	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
-	if err != nil {
-		return nil, err
-	}
-	currentIDs, err := c.nodeIDsFromLabelRows(tok, currentMatching)
-	if err != nil {
-		return nil, err
+	currentIDs := func() ([]types.NodeID, error) {
+		currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{})
+		if err != nil {
+			return nil, err
+		}
+		return c.nodeIDsFromLabelRows(tok, currentMatching)
 	}
 	// Gather the full-history candidate id set (id enumeration only), then apply
 	// the B4 Step-1 envelope prune before the expensive per-id chain resolve.
@@ -1267,10 +1265,7 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 	if wantKeys == nil {
 		return nil, nil
 	}
-	currentIDs, err := c.relPropertyCurrentIDs(tok, key, value)
-	if err != nil {
-		return nil, err
-	}
+	currentIDs := func() ([]types.RelID, error) { return c.relPropertyCurrentIDs(tok, key, value) }
 	elements, err := c.relIndexElements(tok, key)
 	if err != nil {
 		return nil, err
@@ -1665,10 +1660,7 @@ func (c *Core) relsByTypePropertyDuringLocked(relType, key string, value any, st
 	if wantKeys == nil {
 		return nil, nil
 	}
-	currentIDs, err := c.relPropertyCurrentIDs(tok, key, value)
-	if err != nil {
-		return nil, err
-	}
+	currentIDs := func() ([]types.RelID, error) { return c.relPropertyCurrentIDs(tok, key, value) }
 	elements, err := c.relIndexElements(tok, key)
 	if err != nil {
 		return nil, err

@@ -1,0 +1,8 @@
+BenchmarkWindowViewWrite-32    	    3000	     21630 ns/op	   10912 B/op	       1 allocs/op
+BenchmarkWindowViewWrite-32    	    3000	     21971 ns/op	   10912 B/op	       1 allocs/op
+BenchmarkWindowViewWrite-32    	    3000	     23231 ns/op	   10912 B/op	       1 allocs/op
+BenchmarkWindowViewFold-32     	    3000	  17311489 ns/op	 8036353 B/op	       1 allocs/op
+BenchmarkWindowViewFold-32     	    3000	  18187859 ns/op	 8036359 B/op	       1 allocs/op
+BenchmarkWindowViewFold-32     	    3000	  23558481 ns/op	 8036363 B/op	       1 allocs/op
+BenchmarkRowScanIntoVsMerge-32                 	       3	 209812006 ns/op	       116.2 into-ms	        94.56 merge-ms
+BenchmarkPropertyTxMembersBytesWithViews-32    	       3	 157186175 ns/op	       184.3 B/member	       264.4 B/member-views

@@ -71,7 +71,7 @@ func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	}
 
 	// Write history entry.
-	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState)
+	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState, updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
 
 	// Remove only the specified token from the label index.
@@ -155,7 +155,7 @@ func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	}
 
 	// Write history entry.
-	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState)
+	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState, updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
 
 	// Add tok to the label index.
@@ -229,7 +229,7 @@ func (ms *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 		return err
 	}
 	// Write tombstone to history before deleting live entity.
-	ms.putRelHistoryRowLocked(rid, prevVersion, tombstone)
+	ms.putRelHistoryRowLocked(rid, prevVersion, tombstone, nil)
 	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone)) // BACKLOG 10c
 
 	if err := ms.deleteRelLocked(rid); err != nil {
@@ -330,12 +330,12 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 	}
 
 	// Write node tombstone to history.
-	ms.putNodeHistoryRowLocked(nid, prevNodeVersion, nodeTombstone)
+	ms.putNodeHistoryRowLocked(nid, prevNodeVersion, nodeTombstone, nil)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(nodeTombstone)) // BACKLOG 10c
 
 	// Write rel tombstones to history.
 	for _, rt := range relTombstones {
-		ms.putRelHistoryRowLocked(rt.ID, rt.PrevVersion, rt.Tombstone)
+		ms.putRelHistoryRowLocked(rt.ID, rt.PrevVersion, rt.Tombstone, nil)
 		ms.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone)) // BACKLOG 10c
 	}
 
@@ -354,6 +354,7 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 	rawID := nid.SnowflakeID()
 	ms.removeNodePropertyKeyCounts(n)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
+	ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
 	ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
@@ -396,7 +397,7 @@ func (ms *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 		return err
 	}
 
-	ms.putNodeHistoryRowLocked(nid, version, n)
+	ms.putNodeHistoryRowLocked(nid, version, n, nil)
 	ms.extendNodeVersionTemporalLocked(n, nid.SnowflakeID()) // backlog 56: a covered node's envelope holds every row
 	ms.recordNodeLabelMembersLocked(n)                       // a historical version may carry labels the current row dropped
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))     // BACKLOG 10c — the cascade's bounded-correction append door
@@ -606,7 +607,7 @@ func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 		return err
 	}
 
-	ms.putRelHistoryRowLocked(rid, version, r)
+	ms.putRelHistoryRowLocked(rid, version, r, nil)
 	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership (history version)
 	// A covered relationship's envelope covers every row since the index existed
 	// (a delete keeps it), so this version's interval joins it. An uncovered one
@@ -847,7 +848,7 @@ func (ms *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	}
 
 	// Write history entry.
-	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState)
+	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState, current)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
 
 	ms.removeNodePropertyKeyCounts(old)
@@ -927,7 +928,7 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	}
 
 	// Write history entry.
-	ms.putRelHistoryRowLocked(id, prevVersion, prevState)
+	ms.putRelHistoryRowLocked(id, prevVersion, prevState, current)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(prevState)) // BACKLOG 10c
 
 	// K3b: refresh the rel property index (property values may have changed).

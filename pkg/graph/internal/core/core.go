@@ -108,6 +108,11 @@ type Core struct {
 	// discipline; nil = every type takes its ever-member gather.
 	relPropTxPage  storepkg.RelPropertyTxMemberPageCapability
 	nodePropTxPage storepkg.NodePropertyTxMemberPageCapability
+	// relPropTxWindow / nodePropTxWindow narrow those sidecars to the members
+	// whose rows may meet a valid-time window (ledger row 62), resolved with
+	// the same discipline; nil = the whole value's members.
+	relPropTxWindow  storepkg.RelPropertyTxMemberWindowCapability
+	nodePropTxWindow storepkg.NodePropertyTxMemberWindowCapability
 	// chainLoadTestHook, when set (tests only), is called once per candidate a
 	// generic temporal door hands to the per-entity resolver
 	// (findNodeVersionForOpts / findRelVersionForOpts), and once per entity a
@@ -1732,6 +1737,25 @@ func nodePropertyTxMemberPageCapability(store storepkg.MandatoryStore) storepkg.
 	return cap
 }
 
+// nativeCapability resolves an optional capability C with the discipline of
+// relPropertyTxMemberPageCapability: an exact native store's, or a wrapper's
+// own method, never one a wrapper only promotes from an embedded native store
+// (that one answers for the inner store, not the wrapper's rows).
+func nativeCapability[C any](store storepkg.MandatoryStore, method string) C {
+	var zero C
+	cap, ok := store.(C)
+	if !ok {
+		return zero
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*C)(nil)).Elem(), method) {
+		return zero
+	}
+	return cap
+}
+
 // changeFeedCapability resolves the optional change-log capability. Only the
 // exact native single-shard backends (memory, badger) own a coherent global
 // LSN sequence. A wrapper that merely EMBEDS a native store (e.g. a future
@@ -2151,6 +2175,8 @@ func New(config Config) (*Core, error) {
 	c.nodePropTxMembers = nodePropertyTxMembershipCapability(store)
 	c.relPropTxPage = relPropertyTxMemberPageCapability(store)
 	c.nodePropTxPage = nodePropertyTxMemberPageCapability(store)
+	c.relPropTxWindow = nativeCapability[storepkg.RelPropertyTxMemberWindowCapability](store, "ForEachRelPropertyTxMemberDuring")
+	c.nodePropTxWindow = nativeCapability[storepkg.NodePropertyTxMemberWindowCapability](store, "ForEachNodePropertyTxMemberDuring")
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)

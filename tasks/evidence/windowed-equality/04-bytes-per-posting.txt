@@ -1,0 +1,12 @@
+== v4-wineq-red
+BenchmarkPropertyTxMembersBytesPerPosting/postings=1000000/perValue=200-32         	       1	 210450017 ns/op	        25.26 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=1000000/perValue=20000-32       	       1	 179403319 ns/op	        29.56 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=1000000/perValue=1-32           	       1	 390588788 ns/op	       116.6 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=10000000/perValue=200-32        	       1	2918806885 ns/op	        25.16 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=10000000/perValue=1-32          	       1	4846949300 ns/op	        96.60 B/posting
+== v4-wineq-wt
+BenchmarkPropertyTxMembersBytesPerPosting/postings=1000000/perValue=200-32         	       1	 428681614 ns/op	       110.2 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=1000000/perValue=20000-32       	       1	 387437741 ns/op	       144.3 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=1000000/perValue=1-32           	       1	 557621045 ns/op	       250.5 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=10000000/perValue=200-32        	       1	5309376096 ns/op	       110.1 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=10000000/perValue=1-32          	       1	6620654890 ns/op	       204.0 B/posting

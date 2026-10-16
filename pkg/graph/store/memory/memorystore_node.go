@@ -204,6 +204,7 @@ func (ms *Store) DeleteNode(nid types.NodeID) error {
 
 	rawID := nid.SnowflakeID()
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
+	ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
 	ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
@@ -494,6 +495,7 @@ func (ms *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 
 	rawID := nid.SnowflakeID()
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
+	ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
 	ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
@@ -627,6 +629,7 @@ func (ms *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		ms.removeNodePropertyKeyCounts(n)
 		rawID := id.SnowflakeID()
 		indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
+		ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
 		ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 		indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 		indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)

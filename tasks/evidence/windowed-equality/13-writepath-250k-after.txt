@@ -1,0 +1,18 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkWindowedEqualityWritePath/memory/members=1000-32         	   20000	      4620 ns/op	    2662 B/op	      38 allocs/op
+BenchmarkWindowedEqualityWritePath/memory/members=1000-32         	   20000	      4505 ns/op	    2658 B/op	      38 allocs/op
+BenchmarkWindowedEqualityWritePath/memory/members=1000-32         	   20000	      4465 ns/op	    2656 B/op	      38 allocs/op
+BenchmarkWindowedEqualityWritePath/badger/members=1000-32         	   20000	      9329 ns/op	    5211 B/op	      72 allocs/op
+BenchmarkWindowedEqualityWritePath/badger/members=1000-32         	   20000	     10377 ns/op	    5200 B/op	      71 allocs/op
+BenchmarkWindowedEqualityWritePath/badger/members=1000-32         	   20000	     10137 ns/op	    5209 B/op	      72 allocs/op
+BenchmarkWindowedEqualityWritePath/memory/members=250000-32       	   20000	      8443 ns/op	    3967 B/op	      40 allocs/op
+BenchmarkWindowedEqualityWritePath/memory/members=250000-32       	   20000	      6595 ns/op	    3967 B/op	      40 allocs/op
+BenchmarkWindowedEqualityWritePath/memory/members=250000-32       	   20000	      6493 ns/op	    3967 B/op	      40 allocs/op
+BenchmarkWindowedEqualityWritePath/badger/members=250000-32       	   20000	     17015 ns/op	    8907 B/op	     106 allocs/op
+BenchmarkWindowedEqualityWritePath/badger/members=250000-32       	   20000	     16134 ns/op	    8915 B/op	     107 allocs/op
+BenchmarkWindowedEqualityWritePath/badger/members=250000-32       	   20000	     15848 ns/op	    8860 B/op	     105 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	20.789s

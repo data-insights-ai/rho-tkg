@@ -21,14 +21,16 @@ import (
 // after every shard is checked in, outside every lock.
 
 var (
-	_ storecontract.LabelTxMembershipCapability        = (*Store)(nil)
-	_ storecontract.RelTypeTxMembershipCapability      = (*Store)(nil)
-	_ storecontract.LabelTxMemberLookupCapability      = (*Store)(nil)
-	_ storecontract.RelTypeTxMemberLookupCapability    = (*Store)(nil)
-	_ storecontract.NodePropertyTxMembershipCapability = (*Store)(nil)
-	_ storecontract.RelPropertyTxMembershipCapability  = (*Store)(nil)
-	_ storecontract.RelValidEndCapability              = (*Store)(nil)
-	_ storecontract.NodeValidEndCapability             = (*Store)(nil)
+	_ storecontract.LabelTxMembershipCapability          = (*Store)(nil)
+	_ storecontract.RelTypeTxMembershipCapability        = (*Store)(nil)
+	_ storecontract.LabelTxMemberLookupCapability        = (*Store)(nil)
+	_ storecontract.RelTypeTxMemberLookupCapability      = (*Store)(nil)
+	_ storecontract.NodePropertyTxMembershipCapability   = (*Store)(nil)
+	_ storecontract.RelPropertyTxMembershipCapability    = (*Store)(nil)
+	_ storecontract.NodePropertyTxMemberWindowCapability = (*Store)(nil) // ledger row 62
+	_ storecontract.RelPropertyTxMemberWindowCapability  = (*Store)(nil)
+	_ storecontract.RelValidEndCapability                = (*Store)(nil)
+	_ storecontract.NodeValidEndCapability               = (*Store)(nil)
 )
 
 // allShards runs read on the reference shard, the archive (when one exists)
@@ -245,6 +247,28 @@ func (ts *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, va
 		return bs.RelPropertyIndexOptions(relTypeToken, propertyKey)
 	}, func(bs *BadgerStore, f func(types.RelID, types.Instant) bool) error {
 		return bs.ForEachRelPropertyTxMember(relTypeToken, propertyKey, valueKey, f)
+	}, fn)
+}
+
+// ForEachNodePropertyTxMemberDuring implements
+// store.NodePropertyTxMemberWindowCapability (ledger row 62): every shard's
+// windowed answer, united like the full enumeration (unionPropertyTxMembers).
+func (ts *Store) ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+		return bs.PropertyIndexOptions(labelToken, propertyKey)
+	}, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
+		return bs.ForEachNodePropertyTxMemberDuring(labelToken, propertyKey, valueKey, validStart, validEnd, txAt, f)
+	}, fn)
+}
+
+// ForEachRelPropertyTxMemberDuring implements
+// store.RelPropertyTxMemberWindowCapability (see
+// ForEachNodePropertyTxMemberDuring).
+func (ts *Store) ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+		return bs.RelPropertyIndexOptions(relTypeToken, propertyKey)
+	}, func(bs *BadgerStore, f func(types.RelID, types.Instant) bool) error {
+		return bs.ForEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, valueKey, validStart, validEnd, txAt, f)
 	}, fn)
 }
 

@@ -35,8 +35,9 @@ type histStampsEntry struct {
 }
 
 // putNodeHistoryRowLocked stores row as node nid's history version v: the one
-// place a node history row is written. Caller holds ms.mu (write).
-func (ms *Store) putNodeHistoryRowLocked(nid types.NodeID, v uint32, row *types.Node) {
+// place a node history row is written. by is the current row that replaced
+// row (an update door's demoted row), else nil. Caller holds ms.mu (write).
+func (ms *Store) putNodeHistoryRowLocked(nid types.NodeID, v uint32, row, by *types.Node) {
 	inner, ok := ms.nodeHistory[nid]
 	if !ok {
 		inner = make(map[uint32]*types.Node)
@@ -45,7 +46,7 @@ func (ms *Store) putNodeHistoryRowLocked(nid types.NodeID, v uint32, row *types.
 	}
 	before := len(inner)
 	_, overwrite := inner[v]
-	inner[v] = ms.historyNode(row)
+	inner[v] = ms.historyNode(row, by)
 	if top, ok := ms.nodeHistTop[nid]; !ok || v > top {
 		if ms.nodeHistTop == nil {
 			ms.nodeHistTop = make(map[types.NodeID]uint32)
@@ -66,7 +67,7 @@ func (ms *Store) putNodeHistoryRowLocked(nid types.NodeID, v uint32, row *types.
 }
 
 // putRelHistoryRowLocked is putNodeHistoryRowLocked for relationships.
-func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row *types.Relationship) {
+func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row, by *types.Relationship) {
 	inner, ok := ms.relHistory[rid]
 	if !ok {
 		inner = make(map[uint32]*types.Relationship)
@@ -76,7 +77,7 @@ func (ms *Store) putRelHistoryRowLocked(rid types.RelID, v uint32, row *types.Re
 	before := len(inner)
 	_, overwrite := inner[v]
 	ms.noteHistoryRowExAdjLocked(rid, row) // backlog 50
-	inner[v] = ms.historyRel(row)
+	inner[v] = ms.historyRel(row, by)
 	if top, ok := ms.relHistTop[rid]; !ok || v > top {
 		if ms.relHistTop == nil {
 			ms.relHistTop = make(map[types.RelID]uint32)

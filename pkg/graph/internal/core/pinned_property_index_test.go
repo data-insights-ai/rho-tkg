@@ -565,8 +565,15 @@ func TestPinnedPropertyLookupLoadsOnlyEverMembers(t *testing.T) {
 					if len(rels) != 5 {
 						t.Fatalf("%s %+v: %d matches, want 5", stage, opts, len(rels))
 					}
-					if loads != everMembers {
-						t.Fatalf("%s %+v: lookup loaded %d chains, want %d (the value's ever-members)", stage, opts, loads, everMembers)
+					// A valid-time lookup loads only the members whose rows
+					// meet the window (ledger row 62): the 5 current ones, not
+					// the 3 moved away nor the 2 deleted.
+					want := everMembers
+					if opts.ValidAt != 0 {
+						want = 5
+					}
+					if loads != want {
+						t.Fatalf("%s %+v: lookup loaded %d chains, want %d", stage, opts, loads, want)
 					}
 				}
 			}
@@ -627,8 +634,15 @@ func TestPinnedPropertyLookupLoadsOnlyEverMembers(t *testing.T) {
 					if len(nodes) != 5 {
 						t.Fatalf("%s %+v: %d matches, want 5", stage, opts, len(nodes))
 					}
-					if loads != everMembers {
-						t.Fatalf("%s %+v: lookup loaded %d chains, want %d (the value's ever-members)", stage, opts, loads, everMembers)
+					// A valid-time lookup loads only the members whose rows
+					// meet the window (ledger row 62): the 5 current ones, not
+					// the 3 moved away nor the 2 deleted.
+					want := everMembers
+					if opts.ValidAt != 0 {
+						want = 5
+					}
+					if loads != want {
+						t.Fatalf("%s %+v: lookup loaded %d chains, want %d", stage, opts, loads, want)
 					}
 				}
 			}

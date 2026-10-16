@@ -63,13 +63,12 @@ func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts 
 	if keys == nil {
 		return nil, nil
 	}
-	currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
-	if err != nil {
-		return nil, err
-	}
-	currentIDs, err := c.nodeIDsFromLabelRows(tok, currentMatching)
-	if err != nil {
-		return nil, err
+	currentIDs := func() ([]types.NodeID, error) {
+		currentMatching, err := c.nodesByLabelAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
+		if err != nil {
+			return nil, err
+		}
+		return c.nodeIDsFromLabelRows(tok, currentMatching)
 	}
 
 	elements, err := c.nodeIndexElements(tok, key)
@@ -169,13 +168,12 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 	if !temporal {
 		return c.nodesByLabelAndProperties(tok, values, opts)
 	}
-	currentMatching, err := c.nodesByLabelAndProperties(tok, values, storepkg.QueryOpts{Depth: opts.Depth})
-	if err != nil {
-		return nil, err
-	}
-	currentIDs, err := c.nodeIDsFromLabelRows(tok, currentMatching)
-	if err != nil {
-		return nil, err
+	currentIDs := func() ([]types.NodeID, error) {
+		currentMatching, err := c.nodesByLabelAndProperties(tok, values, storepkg.QueryOpts{Depth: opts.Depth})
+		if err != nil {
+			return nil, err
+		}
+		return c.nodeIDsFromLabelRows(tok, currentMatching)
 	}
 
 	var result []*types.Node
