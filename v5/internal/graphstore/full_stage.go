@@ -3,6 +3,7 @@ package graphstore
 import (
 	"cmp"
 	"context"
+	"encoding/binary"
 	"errors"
 	"strings"
 
@@ -715,6 +716,11 @@ func stageOpenedOperations(ctx context.Context, c *Catalog, v *ReadView, ops []g
 		if err := stageOperationEvidence(&p, owned, revision); err != nil {
 			return err
 		}
+		if v.limits.RevisionRows {
+			if err := stageOperationRevisions(&p, owned, revision); err != nil {
+				return err
+			}
+		}
 		if err := p.budget(); err != nil {
 			return err
 		}
@@ -1031,4 +1037,120 @@ func (v *ReadView) Evidence(ctx context.Context, owner graphstate.EntityID, revi
 		return nil, err
 	}
 	return out, nil
+}
+
+// stageOperationRevisions writes one revision row per owner the operations touch.
+func stageOperationRevisions(p *pageStage, ops []graphstate.Operation, revision state.Revision) error {
+	seen := map[graphstate.EntityID]bool{}
+	for _, op := range ops {
+		if seen[op.Owner] {
+			continue
+		}
+		seen[op.Owner] = true
+		owner := op.Owner
+		if err := p.withPrimary(owner, func(p *pageStage) error { return p.q.stageRevision(owner, revision.ID()) }); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (q *reader) stageRevision(owner graphstate.EntityID, revision uint64) error {
+	if t := q.transaction(); t != nil && t.installation != nil {
+		partition, err := t.owner(q, uint64(owner))
+		if err != nil {
+			return err
+		}
+		if partition != q.c.root.namespace.Partition {
+			return q.onPartition(partition, func() error { return q.stageRevision(owner, revision) })
+		}
+	}
+	if q.route != nil {
+		if err := q.route.owner(q, uint64(owner)); err != nil {
+			return err
+		}
+	}
+	n := q.c.root.namespace
+	if _, found, err := q.get(revisionKey(n, owner, revision)); err != nil {
+		return err
+	} else if found {
+		return callerError(graphstate.ErrAlreadyExists)
+	}
+	b := binary.BigEndian.AppendUint64(recordHeader(n, revisionRecord), uint64(owner))
+	return q.put(revisionKey(n, owner, revision), binary.BigEndian.AppendUint64(b, revision))
+}
+
+// Revisions lists, ascending, up to limit revisions of owner greater than after
+// (zero starts at the beginning); complete is false when more follow. Only
+// graphs staged with GraphLimits.RevisionRows have rows.
+func (v *ReadView) Revisions(ctx context.Context, owner graphstate.EntityID, after uint64, limit int) (revs []uint64, complete bool, err error) {
+	if v == nil || owner == 0 || limit < 1 {
+		return nil, false, ErrInvalid
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if err := v.check(ctx); err != nil {
+		return nil, false, err
+	}
+	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	if err != nil {
+		return nil, false, err
+	}
+	n := v.c.root.namespace
+	lower := revisionPrefix(n, owner)
+	upper := prefixEnd(lower)
+	var cursor []byte
+	if after > 0 {
+		cursor = revisionKey(n, owner, after)
+	}
+	complete = true
+	err = func() error {
+		if v.route != nil {
+			if err := v.route.owner(q.q, uint64(owner)); err != nil {
+				return err
+			}
+		}
+		for {
+			rows := min(limit-len(revs)+1, q.q.maxRows-q.q.rows, v.c.source().ReadLimits().Rows)
+			bytesLeft := min(q.q.maxBytes-q.q.bytes, v.c.source().ReadLimits().Bytes)
+			if rows < 1 || bytesLeft < 1 {
+				return ErrResourceLimit
+			}
+			page, err := v.c.source().Scan(ctx, lower, upper, cursor, raftlog.ReadBudget{Rows: rows, Bytes: bytesLeft})
+			if err != nil {
+				if errors.Is(err, raftlog.ErrLimit) {
+					return ErrResourceLimit
+				}
+				return err
+			}
+			q.q.rows += page.Visited
+			if err := q.q.materialize(page.Bytes); err != nil {
+				return err
+			}
+			for _, row := range page.Rows {
+				if len(row.Key) != len(lower)+8 || row.Deleted {
+					return ErrCorrupt
+				}
+				if len(revs) == limit {
+					complete = false
+					return nil
+				}
+				revs = append(revs, binary.BigEndian.Uint64(row.Key[len(lower):]))
+			}
+			if page.Complete {
+				return nil
+			}
+			if len(page.Next) == 0 {
+				return ErrCorrupt
+			}
+			cursor = page.Next
+		}
+	}()
+	if err = v.finish(q, err); err != nil {
+		return nil, false, err
+	}
+	if err := v.output(64 + 8*len(revs)); err != nil {
+		return nil, false, err
+	}
+	return revs, complete, nil
 }

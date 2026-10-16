@@ -903,6 +903,11 @@ func ExportRangeMovePage(ctx context.Context, source ApplicationReadSource, d Ra
 		} else if held {
 			return page, work, callerError(graphstate.ErrUnsupported)
 		}
+		if _, held, e := rangeMoveCatalogNext(q, d, &probe, revisionRecord); e != nil {
+			return page, work, e
+		} else if held {
+			return page, work, callerError(graphstate.ErrUnsupported)
+		}
 	}
 	key, payload, next, found, e := rangeMoveNextRow(q, d, c)
 	if e != nil {
