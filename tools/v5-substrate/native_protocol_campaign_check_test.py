@@ -178,6 +178,31 @@ P06_LIVE_PHASES = (
     '5uOrOb5cIf1l57f/Bykqiiw='
 )
 
+
+P03_REOPENED = (
+    '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'
+    'DRpu0HCDhhuWbXh1vIaGG//+BWJFcdE='
+)
+
 class ActualVoteReadGuards(unittest.TestCase):
     def test_frozen_registry_has_actual_a_no_path_and_b_two_private_candidates(self):
         names, counts, candidates = set(), {"A":0, "B":0}, 0
@@ -333,6 +358,36 @@ class ActualVoteReadGuards(unittest.TestCase):
         for stage, floor, bound in ((False, 10, 10), (False, 11, 10), (True, 9, 10), (True, 0, 10), (True, 10, 0)):
             with self.assertRaises(ValueError):
                 C.fence_planning_floor(stage, floor, bound)
+
+    def test_p03_actual_reopened_observation_joins_raw_original_cut(self):
+        # Exact observations from immutable artifact SHA256
+        # 2ebf8df287fa2a4f3a82af89515b25779a270e212898121ab7b102b19fe452bd;
+        # authenticated history SHA256
+        # 4fe6cf35da7cca97dfebb510f519f202dfdc1680a012d96d6478dfde601a4418.
+        # This fixture is inert; the full oracle authenticates native authority.
+        evidence = json.loads(zlib.decompress(base64.b64decode(P03_REOPENED)))
+        prior = evidence["P03"]["steps"][3]
+        old = {"Cut":prior["Cut"], "View":prior["After"], "Native":prior["RawObservation"]}
+        self.assertIsNone(old["View"]["Entities"][0]["Labels"])
+        self.assertEqual(C.coordinator_reopened(evidence), old)
+        for section, field, value in (("Cut", "Certificates", []),):
+            changed = copy.deepcopy(evidence)
+            changed["TargetReopened"][section][field] = value
+            with self.assertRaises(ValueError):
+                C.coordinator_reopened(changed)
+        for path, value in (
+            (("View", "Entities", 0, "Labels"), ["phantom"]),
+            (("View", "Entities", 0, "Labels"), []),
+            (("Native", "lives", 0, "life"), 99),
+            (("Native", "entities", 1, "property", "i64"), 99),
+        ):
+            changed = copy.deepcopy(evidence)
+            owner = changed["TargetReopened"]
+            for key in path[:-1]:
+                owner = owner[key]
+            owner[path[-1]] = value
+            with self.assertRaises(ValueError):
+                C.coordinator_reopened(changed)
 
     def test_p03_program_recovery_keeps_surviving_original_caller(self):
         # Inert role derivation only. Native originals and process receipts

@@ -787,6 +787,15 @@ def coordinator_surviving_call(response, pending):
             "P03 recovery remains on the surviving original caller incarnation/sequence")
 
 
+def coordinator_reopened(e):
+    # load authenticated this raw sidecar, and coordinator_history validated
+    # its normalized semantics. Compare BOTH actual observations in raw form.
+    prior = e["P03"]["steps"][3]
+    old = {"Cut":prior["Cut"], "View":prior["After"], "Native":prior["RawObservation"]}
+    T.semantic(e["TargetReopened"] == old, "P03-same-directory-old-data-index")
+    return old
+
+
 def check_coordinator(a, *, program_roles=None):
     e, r = a["Evidence"], a["Evidence"]["Recipe"]
     require(set(e) == COORDINATOR_EVIDENCE | ({"Program"} if program_roles is not None else set()) and a["Case"] == coordinator_recipe(r), "actual finite P03 route")
@@ -807,15 +816,13 @@ def check_coordinator(a, *, program_roles=None):
     tx = bytes.fromhex(op["Transaction"])
     decision = originals[tx, co, 3]
     wire = P.raw(records[co, decision["index"]]["Outcome"])
-    prior = trace["steps"][3]
-    old = {"Cut":prior["Cut"], "View":prior["After"], "Native":prior["RawObservation"]}
+    old = coordinator_reopened(e)
     scopes, _ = P.cut(old)
     decoded = C.C.decision_command(selected)
     require((decoded["phase"], decoded["partition"]) == (r["Phase"], r["Partition"]) and
             P.body(decoded["manifest"], b"GCM\1")[:16] == tx, "selected actual P03 command/qualified original")
     original = C.C.decision_manifest(P.raw(trace["steps"][4]["OriginalRequest"]["Payload"]), decoded["manifest"], co, scopes, old)
     require(original["tx"] == tx and original["digest"] == decision["digest"], "whole actual business/manifest/configuration identity")
-    T.semantic(e["TargetReopened"] == old, "P03-same-directory-old-data-index")
     killed = e["BeforeRecovery"]
     first_rejoin = trace["faults"][0]["ProcessEvidence"][2]
     native_kill, native_rejoin = e["TargetProcesses"]
