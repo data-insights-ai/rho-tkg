@@ -2,7 +2,10 @@ module github.com/data-insights-ai/rho-tkg/tools/v5-import-fixtures
 
 go 1.26.9
 
-require github.com/data-insights-ai/rho-tkg/v4 v4.56.1
+require (
+	github.com/data-insights-ai/rho-tkg/v4 v4.56.1
+	github.com/vmihailenco/msgpack/v5 v5.4.1
+)
 
 require (
 	github.com/bds421/rho-mclock v0.2.1 // indirect
@@ -15,7 +18,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/klauspost/compress v1.18.7 // indirect
-	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.42.0 // indirect
