@@ -1,0 +1,10 @@
+--- FAIL: TestGraphProcessAllocationRepliesKeepExactLiveConsumers (0.00s)
+    --- FAIL: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-only (0.00s)
+        graph_source_process_test.go:1283: source reply crossed its original consumer false graphapply: invalid input
+    --- FAIL: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-and-bootstrap (0.00s)
+        graph_source_process_test.go:1283: source reply crossed its original consumer false graphapply: invalid input
+    --- FAIL: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-and-source (0.00s)
+        graph_source_process_test.go:1283: source reply crossed its original consumer false graphapply: invalid input
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	0.432s
+FAIL

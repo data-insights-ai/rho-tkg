@@ -1,0 +1,812 @@
+{
+  "format": "fdb-create-update-v2",
+  "family": "partition-local-create-update",
+  "spec": {
+    "version": 2,
+    "family": "partition-local-create-update",
+    "facts": 20,
+    "crossPercent": 100,
+    "writers": 8,
+    "layout": "kv"
+  },
+  "runGraph": "graph-workload-create-update-v2-kv-e9705db912c4254e67dea013746c8428",
+  "attempts": 94,
+  "committed": 43,
+  "aborted": 51,
+  "spool": {
+    "policy": {
+      "max_disk_bytes": 1073741824,
+      "cache_bytes": 8388608,
+      "max_key_bytes": 4096,
+      "max_value_bytes": 524288
+    },
+    "page_bytes": 4096,
+    "sqlite_version": "3.53.2",
+    "walk_plan": "SEARCH state USING PRIMARY KEY (namespace=? AND key>?)",
+    "journal_mode": "off",
+    "mmap_bytes": 0,
+    "temp_store": "memory; no SQL temp tables/sorts",
+    "cached_statements": 8,
+    "cache_is_process_rss_limit": false,
+    "peak_file_bytes": 2551808,
+    "peak_allocated_bytes": 2551808
+  },
+  "columnTiming": [],
+  "sourceTiming": [
+    {
+      "Call": "SourceScan",
+      "Name": "old-fresh",
+      "Cut": {
+        "Graph": "graph-workload-create-update-v2-kv-e9705db912c4254e67dea013746c8428",
+        "Topology": 1,
+        "Epochs": [
+          7,
+          11
+        ],
+        "Scope": "AAE=",
+        "Round": 23,
+        "Groups": [
+          22,
+          1
+        ]
+      },
+      "Rows": [
+        42,
+        21
+      ],
+      "Nanos": 283287126
+    },
+    {
+      "Call": "SourceOpen",
+      "Name": "old-fresh",
+      "Cut": {
+        "Graph": "graph-workload-create-update-v2-kv-e9705db912c4254e67dea013746c8428",
+        "Topology": 1,
+        "Epochs": [
+          7,
+          11
+        ],
+        "Scope": "AAE=",
+        "Round": 23,
+        "Groups": [
+          22,
+          1
+        ]
+      },
+      "Rows": [
+        42,
+        21
+      ],
+      "Nanos": 34618417
+    },
+    {
+      "Call": "SourceScan",
+      "Name": "held-old-after-update",
+      "Cut": {
+        "Graph": "graph-workload-create-update-v2-kv-e9705db912c4254e67dea013746c8428",
+        "Topology": 1,
+        "Epochs": [
+          7,
+          11
+        ],
+        "Scope": "AAE=",
+        "Round": 23,
+        "Groups": [
+          22,
+          1
+        ]
+      },
+      "Rows": [
+        42,
+        21
+      ],
+      "Nanos": 599627042
+    },
+    {
+      "Call": "SourceScan",
+      "Name": "fresh-current",
+      "Cut": {
+        "Graph": "graph-workload-create-update-v2-kv-e9705db912c4254e67dea013746c8428",
+        "Topology": 1,
+        "Epochs": [
+          7,
+          11
+        ],
+        "Scope": "AAE=",
+        "Round": 43,
+        "Groups": [
+          42,
+          1
+        ]
+      },
+      "Rows": [
+        42,
+        21
+      ],
+      "Nanos": 681359084
+    },
+    {
+      "Call": "SourceOpen",
+      "Name": "fresh-current",
+      "Cut": {
+        "Graph": "graph-workload-create-update-v2-kv-e9705db912c4254e67dea013746c8428",
+        "Topology": 1,
+        "Epochs": [
+          7,
+          11
+        ],
+        "Scope": "AAE=",
+        "Round": 43,
+        "Groups": [
+          42,
+          1
+        ]
+      },
+      "Rows": [
+        42,
+        21
+      ],
+      "Nanos": 38902667
+    },
+    {
+      "Call": "SourceScanPoints",
+      "Name": "fresh-current",
+      "Cut": {
+        "Graph": "graph-workload-create-update-v2-kv-e9705db912c4254e67dea013746c8428",
+        "Topology": 1,
+        "Epochs": [
+          7,
+          11
+        ],
+        "Scope": "AAE=",
+        "Round": 43,
+        "Groups": [
+          42,
+          1
+        ]
+      },
+      "Probes": 3,
+      "Nanos": 661299000
+    }
+  ],
+  "nearestRankTiming": [
+    {
+      "call": "SourceOpen",
+      "samples": 2,
+      "p50Nanos": 34618417,
+      "p95Nanos": 38902667,
+      "p99Nanos": 38902667
+    },
+    {
+      "call": "SourceScan",
+      "samples": 3,
+      "p50Nanos": 599627042,
+      "p95Nanos": 681359084,
+      "p99Nanos": 681359084
+    },
+    {
+      "call": "SourceScanPoints",
+      "samples": 1,
+      "p50Nanos": 661299000,
+      "p95Nanos": 661299000,
+      "p99Nanos": 661299000
+    }
+  ],
+  "rowSemantics": "mixed-or-cross-partition-create-update",
+  "businessPhases": [
+    {
+      "Phase": "create",
+      "Attempts": 45,
+      "Aborted": 25,
+      "Committed": 20,
+      "SingleParticipant": 0,
+      "MultiParticipant": 20,
+      "ReadParticipants": [
+        20,
+        20
+      ],
+      "WriteParticipants": [
+        20,
+        20
+      ],
+      "StartedUnixNanos": 1792114808180093139,
+      "FinishedUnixNanos": 1792114810022639167,
+      "WallNanos": 1845003542,
+      "usefulTransactionsPerSecond": 10.840087590465991,
+      "p50Nanos": 770272750,
+      "p95Nanos": 1587925792,
+      "p99Nanos": 1819182083
+    },
+    {
+      "Phase": "update",
+      "Attempts": 46,
+      "Aborted": 26,
+      "Committed": 20,
+      "SingleParticipant": 0,
+      "MultiParticipant": 20,
+      "ReadParticipants": [
+        20,
+        20
+      ],
+      "WriteParticipants": [
+        20,
+        20
+      ],
+      "StartedUnixNanos": 1792114810410580751,
+      "FinishedUnixNanos": 1792114812387875168,
+      "WallNanos": 1977294293,
+      "usefulTransactionsPerSecond": 10.114832208237198,
+      "p50Nanos": 640277125,
+      "p95Nanos": 1656536542,
+      "p99Nanos": 1960543459
+    }
+  ],
+  "businessScope": "setup3 excluded; actual business read/write participants, one ordinary global FDB commit path; complete phase wall, never sum of parallel operation latencies",
+  "scope": "one actual source-scan reference or genuine immutable-column publication/native+cache scan lifecycle; source KV retain-all, derived GC only; no native parity/full matrix/capacity acceptance",
+  "transport": {
+    "policySHA256": "6643ff127a7e5ddc903cd23b74a8f587ca10db2a05a179fd9f8e5f86fd6b1868",
+    "networkSamples": 6,
+    "rssSamples": 13,
+    "observedTCPConnectEchoNanos": {
+      "before": [
+        {
+          "source": 1,
+          "target": 0,
+          "min": 191000,
+          "p50": 253208,
+          "p95": 585125,
+          "p99": 585125,
+          "max": 585125
+        },
+        {
+          "source": 2,
+          "target": 0,
+          "min": 127625,
+          "p50": 206041,
+          "p95": 411125,
+          "p99": 411125,
+          "max": 411125
+        },
+        {
+          "source": 3,
+          "target": 0,
+          "min": 120709,
+          "p50": 174958,
+          "p95": 462000,
+          "p99": 462000,
+          "max": 462000
+        },
+        {
+          "source": 4,
+          "target": 0,
+          "min": 119125,
+          "p50": 206375,
+          "p95": 334500,
+          "p99": 334500,
+          "max": 334500
+        },
+        {
+          "source": 0,
+          "target": 1,
+          "min": 123417,
+          "p50": 164916,
+          "p95": 426125,
+          "p99": 426125,
+          "max": 426125
+        },
+        {
+          "source": 2,
+          "target": 1,
+          "min": 98084,
+          "p50": 184417,
+          "p95": 413291,
+          "p99": 413291,
+          "max": 413291
+        },
+        {
+          "source": 3,
+          "target": 1,
+          "min": 101333,
+          "p50": 186208,
+          "p95": 370916,
+          "p99": 370916,
+          "max": 370916
+        },
+        {
+          "source": 4,
+          "target": 1,
+          "min": 201834,
+          "p50": 266125,
+          "p95": 330916,
+          "p99": 330916,
+          "max": 330916
+        },
+        {
+          "source": 0,
+          "target": 2,
+          "min": 140000,
+          "p50": 245917,
+          "p95": 554000,
+          "p99": 554000,
+          "max": 554000
+        },
+        {
+          "source": 1,
+          "target": 2,
+          "min": 210625,
+          "p50": 294375,
+          "p95": 487542,
+          "p99": 487542,
+          "max": 487542
+        },
+        {
+          "source": 3,
+          "target": 2,
+          "min": 107542,
+          "p50": 151334,
+          "p95": 317667,
+          "p99": 317667,
+          "max": 317667
+        },
+        {
+          "source": 4,
+          "target": 2,
+          "min": 85000,
+          "p50": 147334,
+          "p95": 408083,
+          "p99": 408083,
+          "max": 408083
+        },
+        {
+          "source": 0,
+          "target": 3,
+          "min": 49917,
+          "p50": 54833,
+          "p95": 6661792,
+          "p99": 6661792,
+          "max": 6661792
+        },
+        {
+          "source": 1,
+          "target": 3,
+          "min": 125916,
+          "p50": 175250,
+          "p95": 613000,
+          "p99": 613000,
+          "max": 613000
+        },
+        {
+          "source": 2,
+          "target": 3,
+          "min": 130791,
+          "p50": 278959,
+          "p95": 551625,
+          "p99": 551625,
+          "max": 551625
+        },
+        {
+          "source": 4,
+          "target": 3,
+          "min": 164000,
+          "p50": 276458,
+          "p95": 337750,
+          "p99": 337750,
+          "max": 337750
+        },
+        {
+          "source": 0,
+          "target": 4,
+          "min": 128625,
+          "p50": 273167,
+          "p95": 325916,
+          "p99": 325916,
+          "max": 325916
+        },
+        {
+          "source": 1,
+          "target": 4,
+          "min": 105041,
+          "p50": 135959,
+          "p95": 358708,
+          "p99": 358708,
+          "max": 358708
+        },
+        {
+          "source": 2,
+          "target": 4,
+          "min": 64500,
+          "p50": 211042,
+          "p95": 679959,
+          "p99": 679959,
+          "max": 679959
+        },
+        {
+          "source": 3,
+          "target": 4,
+          "min": 232541,
+          "p50": 300083,
+          "p95": 476209,
+          "p99": 476209,
+          "max": 476209
+        }
+      ],
+      "armed": [
+        {
+          "source": 1,
+          "target": 0,
+          "min": 196041,
+          "p50": 213333,
+          "p95": 410291,
+          "p99": 410291,
+          "max": 410291
+        },
+        {
+          "source": 2,
+          "target": 0,
+          "min": 171250,
+          "p50": 293042,
+          "p95": 525458,
+          "p99": 525458,
+          "max": 525458
+        },
+        {
+          "source": 3,
+          "target": 0,
+          "min": 215041,
+          "p50": 250917,
+          "p95": 571417,
+          "p99": 571417,
+          "max": 571417
+        },
+        {
+          "source": 4,
+          "target": 0,
+          "min": 126500,
+          "p50": 360583,
+          "p95": 482334,
+          "p99": 482334,
+          "max": 482334
+        },
+        {
+          "source": 0,
+          "target": 1,
+          "min": 50916,
+          "p50": 67750,
+          "p95": 823125,
+          "p99": 823125,
+          "max": 823125
+        },
+        {
+          "source": 2,
+          "target": 1,
+          "min": 109791,
+          "p50": 336917,
+          "p95": 742042,
+          "p99": 742042,
+          "max": 742042
+        },
+        {
+          "source": 3,
+          "target": 1,
+          "min": 211750,
+          "p50": 266167,
+          "p95": 510417,
+          "p99": 510417,
+          "max": 510417
+        },
+        {
+          "source": 4,
+          "target": 1,
+          "min": 155625,
+          "p50": 242417,
+          "p95": 398250,
+          "p99": 398250,
+          "max": 398250
+        },
+        {
+          "source": 0,
+          "target": 2,
+          "min": 220667,
+          "p50": 291125,
+          "p95": 472125,
+          "p99": 472125,
+          "max": 472125
+        },
+        {
+          "source": 1,
+          "target": 2,
+          "min": 198375,
+          "p50": 285583,
+          "p95": 550667,
+          "p99": 550667,
+          "max": 550667
+        },
+        {
+          "source": 3,
+          "target": 2,
+          "min": 217084,
+          "p50": 284542,
+          "p95": 496625,
+          "p99": 496625,
+          "max": 496625
+        },
+        {
+          "source": 4,
+          "target": 2,
+          "min": 97792,
+          "p50": 313041,
+          "p95": 496500,
+          "p99": 496500,
+          "max": 496500
+        },
+        {
+          "source": 0,
+          "target": 3,
+          "min": 155417,
+          "p50": 266542,
+          "p95": 478208,
+          "p99": 478208,
+          "max": 478208
+        },
+        {
+          "source": 1,
+          "target": 3,
+          "min": 175417,
+          "p50": 246750,
+          "p95": 500000,
+          "p99": 500000,
+          "max": 500000
+        },
+        {
+          "source": 2,
+          "target": 3,
+          "min": 191500,
+          "p50": 330708,
+          "p95": 560250,
+          "p99": 560250,
+          "max": 560250
+        },
+        {
+          "source": 4,
+          "target": 3,
+          "min": 178541,
+          "p50": 271291,
+          "p95": 390375,
+          "p99": 390375,
+          "max": 390375
+        },
+        {
+          "source": 0,
+          "target": 4,
+          "min": 181500,
+          "p50": 219833,
+          "p95": 319541,
+          "p99": 319541,
+          "max": 319541
+        },
+        {
+          "source": 1,
+          "target": 4,
+          "min": 181250,
+          "p50": 369625,
+          "p95": 757833,
+          "p99": 757833,
+          "max": 757833
+        },
+        {
+          "source": 2,
+          "target": 4,
+          "min": 64458,
+          "p50": 301667,
+          "p95": 569625,
+          "p99": 569625,
+          "max": 569625
+        },
+        {
+          "source": 3,
+          "target": 4,
+          "min": 198792,
+          "p50": 262250,
+          "p95": 419125,
+          "p99": 419125,
+          "max": 419125
+        }
+      ],
+      "after": [
+        {
+          "source": 1,
+          "target": 0,
+          "min": 186500,
+          "p50": 282417,
+          "p95": 542792,
+          "p99": 542792,
+          "max": 542792
+        },
+        {
+          "source": 2,
+          "target": 0,
+          "min": 160584,
+          "p50": 270292,
+          "p95": 478000,
+          "p99": 478000,
+          "max": 478000
+        },
+        {
+          "source": 3,
+          "target": 0,
+          "min": 189166,
+          "p50": 241542,
+          "p95": 441750,
+          "p99": 441750,
+          "max": 441750
+        },
+        {
+          "source": 4,
+          "target": 0,
+          "min": 161625,
+          "p50": 275042,
+          "p95": 392708,
+          "p99": 392708,
+          "max": 392708
+        },
+        {
+          "source": 0,
+          "target": 1,
+          "min": 280416,
+          "p50": 538791,
+          "p95": 1982959,
+          "p99": 1982959,
+          "max": 1982959
+        },
+        {
+          "source": 2,
+          "target": 1,
+          "min": 212125,
+          "p50": 281125,
+          "p95": 698625,
+          "p99": 698625,
+          "max": 698625
+        },
+        {
+          "source": 3,
+          "target": 1,
+          "min": 102792,
+          "p50": 1080458,
+          "p95": 3240041,
+          "p99": 3240041,
+          "max": 3240041
+        },
+        {
+          "source": 4,
+          "target": 1,
+          "min": 101208,
+          "p50": 216334,
+          "p95": 948167,
+          "p99": 948167,
+          "max": 948167
+        },
+        {
+          "source": 0,
+          "target": 2,
+          "min": 97625,
+          "p50": 360958,
+          "p95": 1841000,
+          "p99": 1841000,
+          "max": 1841000
+        },
+        {
+          "source": 1,
+          "target": 2,
+          "min": 157292,
+          "p50": 317709,
+          "p95": 552209,
+          "p99": 552209,
+          "max": 552209
+        },
+        {
+          "source": 3,
+          "target": 2,
+          "min": 151666,
+          "p50": 256792,
+          "p95": 429625,
+          "p99": 429625,
+          "max": 429625
+        },
+        {
+          "source": 4,
+          "target": 2,
+          "min": 222958,
+          "p50": 302625,
+          "p95": 466209,
+          "p99": 466209,
+          "max": 466209
+        },
+        {
+          "source": 0,
+          "target": 3,
+          "min": 159625,
+          "p50": 230417,
+          "p95": 420542,
+          "p99": 420542,
+          "max": 420542
+        },
+        {
+          "source": 1,
+          "target": 3,
+          "min": 181000,
+          "p50": 282667,
+          "p95": 498041,
+          "p99": 498041,
+          "max": 498041
+        },
+        {
+          "source": 2,
+          "target": 3,
+          "min": 229458,
+          "p50": 317583,
+          "p95": 625333,
+          "p99": 625333,
+          "max": 625333
+        },
+        {
+          "source": 4,
+          "target": 3,
+          "min": 195875,
+          "p50": 400958,
+          "p95": 2247666,
+          "p99": 2247666,
+          "max": 2247666
+        },
+        {
+          "source": 0,
+          "target": 4,
+          "min": 172417,
+          "p50": 341708,
+          "p95": 479541,
+          "p99": 479541,
+          "max": 479541
+        },
+        {
+          "source": 1,
+          "target": 4,
+          "min": 103334,
+          "p50": 125208,
+          "p95": 238334,
+          "p99": 238334,
+          "max": 238334
+        },
+        {
+          "source": 2,
+          "target": 4,
+          "min": 186708,
+          "p50": 288917,
+          "p95": 450833,
+          "p99": 450833,
+          "max": 450833
+        },
+        {
+          "source": 3,
+          "target": 4,
+          "min": 93042,
+          "p50": 127292,
+          "p95": 317667,
+          "p99": 317667,
+          "max": 317667
+        }
+      ]
+    },
+    "configuredAddedOneWayMicros": 0,
+    "drops": 0,
+    "sampledAggregateRSSKiB": 489708,
+    "sameContainerCgroupPeakBytes": [
+      78733312,
+      64004096,
+      70746112,
+      70717440,
+      39002112
+    ],
+    "toolingArtifactFileBytes": 7171216,
+    "scope": "actual inter-namespace receiver ingress, one host; intra-namespace/co-resident traffic and native baseline unchanged; process/cgroup/tooling counters distinct, no equal-RTT/every-packet or capacity promise",
+    "nativeRetainedBindingBytes": 3078
+  }
+}

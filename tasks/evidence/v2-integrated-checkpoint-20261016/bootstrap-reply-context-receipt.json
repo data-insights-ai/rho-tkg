@@ -1,0 +1,19 @@
+{
+  "commit": "d0171ae5da34b890abe358a11e7670a6e62dd45a",
+  "parent": "c57831b1535d2f8324afaf861f755e95337a307b",
+  "worktree": "/var/tmp/rho-v5-bootstrap-reply-context-20261016",
+  "path": "v5/internal/graphapply/graph_source_process_test.go",
+  "parentBlob": "f20edb3c52639b826e098aabde8da8e8cd775a27",
+  "parentSHA256": "70d38026741b0d566b2b777016c87641fe3a12409b8de6e537b86686b6258cb2",
+  "blob": "d03b3c5c47b4feb4259a499b9fb7bb736cd1e449",
+  "sha256": "5a7155b729cd8d0c920275404aa499d54871a48ee3cd0c8c182c1cd5ddfb70eb",
+  "scope": "Telemetry only, D routing failures only; shared emitter behavior/cancellation/quotas/deadline/wire codes unchanged. No failed assertion shipped.",
+  "diagnostic": "Exact expected bootstrap and active id/query; up to existing native16 actual allocation replies with id/query/proof Host match/proof id/query/native code/cause mask/error detail. Existing response4KiB detail cap unchanged. No payload or pointer address dump.",
+  "redGuard": "External error-contract-red.patch asserts actual Host error-reply contract (exact id/question plus zero proof); current o.event returns invalid before native errLimit. Direct targeted RED0.400s demonstrates masking only, not the unobserved native error in the OS artifact.",
+  "redLogSHA256": "f3915bb061f0132a5cdbbf3c5d131d74cc66a77361817081ab34fbf293e979a5",
+  "redPatchSHA256": "844fa6bc444771cce87f034e732639d390630f1473d7c3eac0298ab9d2526c69",
+  "redCommand": "GOMAXPROCS=2 GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -vet=off -run '^TestGraphProcessBootstrapErrorPreservesNativeCause$' -count=1 -timeout=60s ./internal/graphapply",
+  "format": "Pinned Go1.26.9 gofmt and git diff --check clean",
+  "actualEvidence": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/state-reply-routing-c57831b1.log",
+  "remaining": "Root combined compile and ONE exact OS state case to expose the actual native bootstrap error or proof/question mismatch; no behavioral correction inferred yet."
+}

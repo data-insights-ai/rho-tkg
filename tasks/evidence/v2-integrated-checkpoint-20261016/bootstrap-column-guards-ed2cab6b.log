@@ -1,0 +1,125 @@
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-only
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-only
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-and-bootstrap
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-and-source
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/failed-source-and-bootstrap
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/unknown
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/duplicate-source
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/duplicate-bootstrap
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-question
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-owner
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-proof-id
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-proof-question
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/failed-source-proof
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-question
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-owner
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-proof-id
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-proof-question
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-already-ready
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-overwritten
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/consumer-collision
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/native-reply-bound
+--- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-only (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-only (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-and-bootstrap (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-and-source (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/failed-source-and-bootstrap (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/unknown (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/duplicate-source (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/duplicate-bootstrap (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-question (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-owner (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-proof-id (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-proof-question (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/failed-source-proof (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-question (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-owner (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-proof-id (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-proof-question (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-already-ready (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-overwritten (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/consumer-collision (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/native-reply-bound (0.00s)
+=== RUN   TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass
+--- PASS: TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass (0.00s)
+=== RUN   TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue
+2026/10/16 03:46:22 Found 0 WALs
+raft2026/10/16 03:46:22 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:22 INFO: 1 became follower at term 1
+raft2026/10/16 03:46:22 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 03:46:22 Found 0 WALs
+raft2026/10/16 03:46:22 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:22 INFO: 2 became follower at term 1
+raft2026/10/16 03:46:22 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 03:46:22 Found 0 WALs
+raft2026/10/16 03:46:22 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:22 INFO: 3 became follower at term 1
+raft2026/10/16 03:46:22 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/16 03:46:22 INFO: 1 is starting a new election at term 1
+raft2026/10/16 03:46:22 INFO: 1 became pre-candidate at term 1
+raft2026/10/16 03:46:22 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/16 03:46:22 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/16 03:46:22 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/16 03:46:22 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:22 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 03:46:22 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 03:46:22 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/16 03:46:22 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:22 INFO: 1 became candidate at term 2
+raft2026/10/16 03:46:22 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/16 03:46:22 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/16 03:46:22 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/16 03:46:22 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:22 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 03:46:22 INFO: 2 became follower at term 2
+raft2026/10/16 03:46:22 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 03:46:22 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 03:46:22 INFO: 3 became follower at term 2
+raft2026/10/16 03:46:22 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 03:46:22 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/16 03:46:22 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:22 INFO: 1 became leader at term 2
+2026/10/16 03:46:22 Found 0 WALs
+raft2026/10/16 03:46:22 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:22 INFO: 1 became follower at term 1
+raft2026/10/16 03:46:22 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 03:46:22 Found 0 WALs
+raft2026/10/16 03:46:22 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:22 INFO: 2 became follower at term 1
+raft2026/10/16 03:46:22 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 03:46:22 Found 0 WALs
+raft2026/10/16 03:46:22 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:22 INFO: 3 became follower at term 1
+raft2026/10/16 03:46:22 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/16 03:46:22 INFO: 1 is starting a new election at term 1
+raft2026/10/16 03:46:22 INFO: 1 became pre-candidate at term 1
+raft2026/10/16 03:46:22 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/16 03:46:22 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/16 03:46:22 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/16 03:46:22 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:22 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 03:46:22 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 03:46:22 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/16 03:46:22 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:22 INFO: 1 became candidate at term 2
+raft2026/10/16 03:46:22 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/16 03:46:22 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/16 03:46:22 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/16 03:46:22 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:22 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 03:46:22 INFO: 2 became follower at term 2
+raft2026/10/16 03:46:22 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 03:46:22 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 03:46:22 INFO: 3 became follower at term 2
+raft2026/10/16 03:46:22 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 03:46:22 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/16 03:46:22 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:22 INFO: 1 became leader at term 2
+=== RUN   TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue/partition
+=== RUN   TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue/local
+--- PASS: TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue (2.17s)
+    --- PASS: TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue/partition (0.01s)
+    --- PASS: TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue/local (0.00s)
+PASS

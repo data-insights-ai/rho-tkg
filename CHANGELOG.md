@@ -450,6 +450,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Native v5 column captures now include the genesis key in the native read
+  bound, preserving the existing configuration value limit. Local and
+  partition captures retain the exact original configuration and historical cut.
+
 - Partial v5 range imports now record installed lineage totals and retain the
   accepted source manifest proof separately from target progress. Reopen checks
   verify the complete manifest without treating its final page count as an

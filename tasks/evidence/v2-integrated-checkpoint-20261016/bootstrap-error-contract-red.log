@@ -1,0 +1,5 @@
+--- FAIL: TestGraphProcessBootstrapErrorPreservesNativeCause (0.00s)
+    graph_source_process_test.go:1377: native failed read changed its cause graphapply: invalid input
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	0.400s
+FAIL

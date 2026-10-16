@@ -1,0 +1,20 @@
+{
+  "authorCommit": "9ba745e60c6771c5733b4b36834645b176a152d3",
+  "parent": "9f532523de234a8d91bd4d17a5b304ddfa3024c6",
+  "worktree": "/var/tmp/rho-v5-source-reply-routing-fix-20261016",
+  "paths": [{
+    "path": "v5/internal/graphapply/graph_source_process_test.go",
+    "parentBlob": "be670c5579aecfb13dea4b04ea7f15960d124a8e",
+    "blob": "f20edb3c52639b826e098aabde8da8e8cd775a27",
+    "sha256": "70d38026741b0d566b2b777016c87641fe3a12409b8de6e537b86686b6258cb2"
+  }],
+  "rootCause": "The live sourceOpen consumer previously rejected any allocation reply not equal to its id and rejected coalesced replies, including the independently owned synchronous bootstrap read. Native Host can complete both original reads in one event.",
+  "behavior": "Validate the complete bounded reply set against both original id/question/Host bindings before mutation; remove only the source reply and deliver it only after the unchanged bootstrap consumer accepts its event. Unknown, duplicate, overwritten and foreign replies remain invalid. Error-valued source replies preserve their original error and zero proof. D-only bounded failure context identifies routing consumer and actual read ids.",
+  "bounds": "Native allocationHost.event already refuses more than 16 completed reads. At most one reply per actual source and bootstrap id is accepted. No new read, quota, context, deadline or grant.",
+  "red": {"path": "red.log", "sha256": "d726f26d6fd573ba5456f7fecdbe0e369941e57df28fcf6b2b90a5aa5c286d1f", "result": "bootstrap-only and both coalesced orders fail under old routing"},
+  "green": {"path": "green.log", "sha256": "b37d74b0997889409bbc16f82469c34959bac6bb2121a071e98d9657ea80a15b", "result": "PASS 0.425s; 5 positive and 16 adversarial subcases"},
+  "command": "GOMAXPROCS=2 GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -vet=off -run '^TestGraphProcessAllocationRepliesKeepExactLiveConsumers$' -count=1 -timeout=60s ./internal/graphapply",
+  "format": "Pinned Go1.26.9 gofmt clean; git diff --check clean",
+  "actualEvidence": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/state-step-stage-f41d846a.log",
+  "scope": "Direct in-process routing regression only; no OS cohort rerun or V2 acceptance claimed. Root owns next integrated exact state-cell execution."
+}

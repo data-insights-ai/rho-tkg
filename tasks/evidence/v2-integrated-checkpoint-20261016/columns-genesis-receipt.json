@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "commit": "e491c6c5f039b16537d9874f152c2bd855cd3875",
+  "parent": "49f295f356fb700db04b730bce481d3fd375bcbf",
+  "tree": "/private/var/tmp/rho-v5-columns-source-capture-fix-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_columns_source.go",
+      "parentBlob": "01c2a8d7f8b68033224b423dac97ac406bd43eed",
+      "blob": "315392dce094ef3bbc6a0199a818a405bd88200a",
+      "sha256": "767e3458275d961db92c40db31138724653434c07fd3826d1dc25f80020ce2de"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_columns_test.go",
+      "parentBlob": "201b2f1100ff793fe0383510b10d59c8c86c3c2a",
+      "blob": "8c6b488008bc159f1f6ec25ae4a8b23672148b83",
+      "sha256": "cc5fffd48a5ad89579d698ff997fb89147dd3044f7e710d8bac875cbded86dd1"
+    }
+  ],
+  "cause": "ApplicationView.Get bounds whole key+value; both column constructors supplied only 250-byte config value maximum, omitting the 27-byte key. Existing policy/work/value codec unchanged.",
+  "red": {
+    "log": "constructors-red.log",
+    "seconds": 2.02,
+    "subcases": [
+      "partition",
+      "local"
+    ],
+    "actualPartitionRPCs": 68
+  },
+  "green": {
+    "log": "constructors-green.log",
+    "packageSeconds": 2.541,
+    "tests": [
+      "TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue/partition",
+      "TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue/local",
+      "TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass"
+    ]
+  },
+  "remainingFinding": {
+    "log": "broader-followthrough.log",
+    "test": "TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor",
+    "location": "native_graph_columns_test.go:311",
+    "error": "graphapply: corrupt allocation/request record",
+    "phase": "store.publish after successful source capture",
+    "scope": "separate demonstrated follow-through; not fixed or waived"
+  },
+  "checks": [
+    "pinned Go1.26.9 gofmt",
+    "git diff --check"
+  ],
+  "noOSCohort": true
+}

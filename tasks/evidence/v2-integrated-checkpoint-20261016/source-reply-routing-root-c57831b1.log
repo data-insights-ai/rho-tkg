@@ -1,0 +1,45 @@
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-only
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-only
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-and-bootstrap
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-and-source
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/failed-source-and-bootstrap
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/unknown
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/duplicate-source
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/duplicate-bootstrap
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-question
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-owner
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-proof-id
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-proof-question
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/failed-source-proof
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-question
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-owner
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-proof-id
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-proof-question
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-already-ready
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-overwritten
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/consumer-collision
+=== RUN   TestGraphProcessAllocationRepliesKeepExactLiveConsumers/native-reply-bound
+--- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-only (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-only (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-and-bootstrap (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-and-source (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/failed-source-and-bootstrap (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/unknown (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/duplicate-source (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/duplicate-bootstrap (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-question (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-owner (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-proof-id (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/source-proof-question (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/failed-source-proof (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-question (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-owner (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-proof-id (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-proof-question (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-already-ready (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/bootstrap-overwritten (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/consumer-collision (0.00s)
+    --- PASS: TestGraphProcessAllocationRepliesKeepExactLiveConsumers/native-reply-bound (0.00s)
+PASS

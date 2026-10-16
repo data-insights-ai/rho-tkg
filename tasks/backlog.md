@@ -1220,7 +1220,7 @@ pass current/synced WAL recovery, WAL/manifest corruption and OPTIONS rename in 
 and explicit independent Python checks. This receipt corrects the earlier claim
 that Go automatically invoked the WAL checker; original logs remain unchanged.
 
-The [current query/recovery checkpoint](evidence/v2-integrated-checkpoint-20261016/qualification-pair-372f74eb.json)
+The [current query/recovery checkpoint](evidence/v2-integrated-checkpoint-20261016/qualification-ed2cab6b.json)
 records the following finite scope:
 
 - The 20-fact, 100%-cross, one-writer KV/local native workload completes all
@@ -1240,9 +1240,11 @@ records the following finite scope:
   old/current answers; batch reducers validate ownership once on the same
   captured view while retaining all per-record charges and original limits.
   The process case remains open: an actual replacement-follower reply reaches
-  the leader and fails inside source-event emission after Host Step succeeds.
-  All eight owned processes exit; the stage-diagnostic run fails after 7.48
-  seconds, not at its timeout. Six focused import/replay parents also pass
+  the leader; Host Step succeeds, but a bootstrap configuration read returns
+  range-move-pending while the original move is fenced. The fixture masks that
+  zero-proof refusal as invalid. Recovery readiness must preserve the real
+  pending authority; no full state-case pass is claimed. All eight owned
+  processes exit. Six focused import/replay parents also pass
   race checks; their partial coverage does not establish the full coverage gate.
 - FoundationDB's first actual prebuild exposed seven compiler diagnostics.
   Their fixes compile; the pinned tool build additionally needed `xz-utils`.
@@ -1255,7 +1257,17 @@ records the following finite scope:
   run identity now also passes the complete existing pair comparator: 40 typed
   answers agree, including retained history/original/CDC checks, with all 13
   native process identities exited. Root independently replays the full pair
-  to the identical proof. The other layout, larger runs and cost remain open.
+  to the identical proof. The [columns counterpart](evidence/v2-integrated-checkpoint-20261016/columns-root-review-49f295f3.json)
+  also passes the full FoundationDB oracle and independent root replay, with
+  successful cleanup. Native columns' original old-seal failure is preserved
+  with all seven owned processes exited. Both constructors now account for the
+  complete native key/value read while retaining the configuration value limit;
+  root's direct local/partition capture and old-cut guards pass. An existing
+  test now reaches a separate publication refusal, under investigation before
+  another OS run. The eight-writer KV tiny pair also passes the full comparator
+  and independent root replay: 40 typed answers, all 13 native process identities
+  exited, FDB 43 commits/51 aborted attempts and successful cleanup. Columns
+  pairing, larger runs and comparative cost remain open.
 
 These components do not close their full fault families, the process inventory,
 engine comparison, measurements or V2. Original deadlines, quotas, complete

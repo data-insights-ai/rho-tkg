@@ -1,0 +1,8 @@
+{
+  "source": "49f295f3",
+  "FDB": "full independent oracle PASS; exact author proof equality, 43commits/0aborts, originalsuccessfulcleanup",
+  "native": "actual20.67s sourcecapture refusal at old-seal; all7owned processes exited, noforcedcleanup; no pairverdict",
+  "FDBProofSHA256": "c96ff50feebe83af3ba99f7f694dbd6c3f4de72ce053dd02a0aed5bd241ebc32",
+  "archives": "all211 FDBfiles and16native files independently hash verified against bundled manifests",
+  "scope": "second layout tiny correctness execution; native remains RED and no capacity/performance/fullphase acceptance"
+}
