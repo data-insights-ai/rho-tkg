@@ -39,6 +39,18 @@ func TestStoreNegativeValidIntervalIsAFilter(t *testing.T) {
 		{"end 0 is unset", -4000, 0, []int64{1, 2, 3, 4}, false},
 		{"reversed negative", -4000, -5000, nil, true},
 	}
+	// Point filters, served by the column scans too (ValidAt -1 once made
+	// badger's columnar window [-1, 0), read as "no filter").
+	points := []struct {
+		at   types.Instant
+		want []int64
+	}{
+		{-1, []int64{1}},
+		{-4500, []int64{1, 2}},
+		{-6500, []int64{1, 3}},
+		{2, []int64{}},
+		{20_000, []int64{4}},
+	}
 	for _, b := range stampsBackends() {
 		for _, index := range []string{"", "temporal", "highfrequency"} {
 			name := b.name
@@ -75,6 +87,9 @@ func TestStoreNegativeValidIntervalIsAFilter(t *testing.T) {
 				for _, r := range rows {
 					n := types.NewNode(currentNodeID(r.id), 1, nil)
 					n.SetTemporal(&types.TemporalMetadata{ValidFrom: r.from, ValidTo: r.to, TxFrom: 1000})
+					if err := n.SetProperty("w", r.id); err != nil {
+						t.Fatal(err)
+					}
 					if err := st.PutNode(n); err != nil {
 						t.Fatal(err)
 					}
@@ -82,6 +97,9 @@ func TestStoreNegativeValidIntervalIsAFilter(t *testing.T) {
 				for _, r := range rows {
 					rel := types.NewRelationship(currentRelID(r.id+10), 5, currentNodeID(1), currentNodeID(2))
 					rel.SetTemporal(&types.TemporalMetadata{ValidFrom: r.from, ValidTo: r.to, TxFrom: 1000})
+					if err := rel.SetProperty("w", r.id); err != nil {
+						t.Fatal(err)
+					}
 					if err := st.PutRelationship(rel); err != nil {
 						t.Fatal(err)
 					}
@@ -124,6 +142,41 @@ func TestStoreNegativeValidIntervalIsAFilter(t *testing.T) {
 					check("RelationshipsByType", relIDs(rs), err)
 					rs, err = st.AllRelationships(opts)
 					check("AllRelationships", relIDs(rs), err)
+				}
+				for _, p := range points {
+					opts := storecontract.QueryOpts{ValidAt: p.at}
+					want := func(door string, got []int64, err error) {
+						t.Helper()
+						if err != nil || !slices.Equal(got, p.want) {
+							t.Errorf("ValidAt %d %s = (%v, %v), want %v", p.at, door, got, err, p.want)
+						}
+					}
+					ns, err := st.NodesByLabel(1, opts)
+					want("NodesByLabel", nodeIDs(ns), err)
+					rs, err := st.RelationshipsByType(5, opts)
+					want("RelationshipsByType", relIDs(rs), err)
+					if cs, ok := st.(storecontract.NodeColumnScanCapability); ok {
+						got := []int64{}
+						err := cs.ScanNodeColumns(1, []string{"w"}, opts, func(b *storecontract.ColumnBatch) bool {
+							for _, id := range b.IDs {
+								got = append(got, int64(id)-int64(currentNodeID(0)))
+							}
+							return true
+						})
+						slices.Sort(got)
+						want("ScanNodeColumns", got, err)
+					}
+					if cs, ok := st.(storecontract.RelColumnScanCapability); ok {
+						got := []int64{}
+						err := cs.ScanRelColumns(5, []string{"w"}, opts, func(b *storecontract.RelColumnBatch) bool {
+							for _, id := range b.IDs {
+								got = append(got, int64(id)-int64(currentRelID(10)))
+							}
+							return true
+						})
+						slices.Sort(got)
+						want("ScanRelColumns", got, err)
+					}
 				}
 			})
 		}

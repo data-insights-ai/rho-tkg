@@ -242,13 +242,15 @@ func (l *DocValues[T]) setEff(ord int, eff int64) {
 // any row matching the half-open query window [qFrom, qTo). A false means the whole
 // block is skippable; a true means "maybe", so the caller still tests rows.
 //
-// qTo == 0 means NO FILTER (never skip). The row predicate this approximates is
-// storeutil's: a row [f,t) matches when f < qTo and (t == 0 || t > qFrom). The
-// upper bound is STRICT — a block whose earliest row starts exactly at qTo cannot
-// match, and using >= here rather than > would wrongly retain it.
+// [qFrom, qTo) is a real window, every instant (0 and negatives included) a real
+// bound: a caller without a valid-time filter does not ask (the badger column
+// scans' validWindow). The row predicate this approximates is storeutil's: a row
+// [f,t) matches when f < qTo and (t == 0 || t > qFrom). The upper bound is
+// STRICT — a block whose earliest row starts exactly at qTo cannot match, and
+// using >= here rather than > would wrongly retain it.
 func (l *DocValues[T]) BlockCanMatch(start int, qFrom, qTo int64) bool {
-	if !l.hasTemporal || qTo == 0 {
-		return true // no zone map, or no filter — never skip
+	if !l.hasTemporal {
+		return true // no zone map — never skip
 	}
 	b := start / zoneBlockSize
 	if b < 0 || b >= len(l.zoneMinFrom) {

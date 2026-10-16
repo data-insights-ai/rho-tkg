@@ -46,7 +46,7 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 	// Only the temporal shape of QueryOpts is answerable from the snapshot's own
 	// columns; anything else is the row path's job. Quietly ignoring an opt would
 	// return rows the caller did not ask for.
-	qFrom, qTo, temporalOnly := columnarValidTimeWindow(opts)
+	window, temporalOnly := columnarValidTimeWindow(opts)
 	if !temporalOnly {
 		return false
 	}
@@ -93,12 +93,12 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 
 	for start := 0; start < len(ids); start += storecontract.ColumnScanBatchRows {
 		// Zone-map skip: the whole block provably cannot match, so it costs nothing.
-		if !col.BlockCanMatch(start, qFrom, qTo) {
+		if !window.blockCanMatch(col, start) {
 			continue
 		}
 		end := min(start+storecontract.ColumnScanBatchRows, len(ids))
 		resetRelColumnBatch(batch, len(props))
-		if unfilteredWindow(qTo) {
+		if !window.filtered {
 			// Every row of the block: the snapshot's arrays copied as runs
 			// (round 6 request 10), no test or append per row.
 			batch.IDs = append(batch.IDs, ids[start:end]...)
@@ -116,7 +116,7 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 			}
 		} else {
 			for ord := start; ord < end; ord++ {
-				if !validTimeMatches(eff[ord], vt[ord], qFrom, qTo) {
+				if !window.matches(eff[ord], vt[ord]) {
 					continue
 				}
 				batch.IDs = append(batch.IDs, ids[ord])

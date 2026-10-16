@@ -1,0 +1,22 @@
+--- FAIL: TestStoreNegativeValidIntervalIsAFilter (0.00s)
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/badger/highfrequency (0.01s)
+        negative_valid_start_test.go:167: ValidAt -1 ScanNodeColumns = ([1 2 3 4], <nil>), want [1]
+        negative_valid_start_test.go:178: ValidAt -1 ScanRelColumns = ([1 2 3 4], <nil>), want [1]
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/badger-delta (0.01s)
+        negative_valid_start_test.go:167: ValidAt -1 ScanNodeColumns = ([1 2 3 4], <nil>), want [1]
+        negative_valid_start_test.go:178: ValidAt -1 ScanRelColumns = ([1 2 3 4], <nil>), want [1]
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/badger (0.01s)
+        negative_valid_start_test.go:167: ValidAt -1 ScanNodeColumns = ([1 2 3 4], <nil>), want [1]
+        negative_valid_start_test.go:178: ValidAt -1 ScanRelColumns = ([1 2 3 4], <nil>), want [1]
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/badger/temporal (0.01s)
+        negative_valid_start_test.go:167: ValidAt -1 ScanNodeColumns = ([1 2 3 4], <nil>), want [1]
+        negative_valid_start_test.go:178: ValidAt -1 ScanRelColumns = ([1 2 3 4], <nil>), want [1]
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/badger-delta/temporal (0.01s)
+        negative_valid_start_test.go:167: ValidAt -1 ScanNodeColumns = ([1 2 3 4], <nil>), want [1]
+        negative_valid_start_test.go:178: ValidAt -1 ScanRelColumns = ([1 2 3 4], <nil>), want [1]
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/badger-delta/highfrequency (0.01s)
+        negative_valid_start_test.go:167: ValidAt -1 ScanNodeColumns = ([1 2 3 4], <nil>), want [1]
+        negative_valid_start_test.go:178: ValidAt -1 ScanRelColumns = ([1 2 3 4], <nil>), want [1]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.020s
+FAIL
