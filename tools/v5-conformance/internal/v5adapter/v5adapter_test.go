@@ -1,11 +1,9 @@
 package v5adapter
 
 import (
-	"errors"
 	"testing"
 
 	conformance "github.com/data-insights-ai/rho-tkg/tools/v5-conformance"
-	"github.com/data-insights-ai/rho-tkg/v5/pkg/graph"
 )
 
 func TestConfigValidForBothModes(t *testing.T) {
@@ -20,10 +18,15 @@ func TestConfigValidForBothModes(t *testing.T) {
 	}
 }
 
-func TestOpenReportsBothSentinels(t *testing.T) {
-	_, err := Adapter{}.Open(t, conformance.Options{})
-	if !errors.Is(err, graph.ErrNotImplemented) || !errors.Is(err, conformance.ErrNotImplemented) {
-		t.Fatal(err)
+func TestOpenAndCloseBothModes(t *testing.T) {
+	for _, o := range []conformance.Options{{}, {Dir: t.TempDir()}} {
+		g, err := Adapter{}.Open(t, o)
+		if err != nil {
+			t.Fatalf("%+v: %v", o, err)
+		}
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

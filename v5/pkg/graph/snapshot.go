@@ -196,6 +196,10 @@ type Entity struct {
 	Props    map[string]Value
 	Valid    temporal.Scope
 	Known    temporal.Scope
+	// Revision is the commit that produced this Timeline row (a store-local
+	// sequence, not an ordering of cuts across graphs); zero unless the
+	// Projection asked for Revisions.
+	Revision uint64
 }
 
 // Page is one bounded batch; the zero Next Cursor ends the walk.

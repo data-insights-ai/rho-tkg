@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"go.etcd.io/raft/v3"
@@ -20,6 +21,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
@@ -58,8 +60,8 @@ type pebbleEngine struct {
 	node    map[string]graphstate.PropertyDefinition
 	rel     map[string]graphstate.PropertyDefinition
 	closed  atomic.Bool
-	broken  error
-	nonce   uint64
+	broken  atomic.Pointer[error]
+	nonce   atomic.Uint64
 }
 
 var _ engine = (*pebbleEngine)(nil)
@@ -244,11 +246,28 @@ func (e *pebbleEngine) install(index uint64, prevImageHash [32]byte, image []byt
 	return e.store.InstallApplication(index, b)
 }
 
+// ceiling is the commit instant on the knowledge axis (the zero Position when
+// the Config has no KnowledgeAxis).
+func (e *pebbleEngine) ceiling() temporal.Position {
+	ax := e.cfg.KnowledgeAxis.Axis()
+	if ax.DefinitionHash() == (temporal.Axis{}).DefinitionHash() {
+		return temporal.Position{}
+	}
+	p, err := types.InstantPosition(ax, types.Instant(time.Now().UnixMilli()), e.cfg.Limits)
+	if err != nil {
+		return temporal.Position{}
+	}
+	return p
+}
+
 func (e *pebbleEngine) check() error {
 	if e.closed.Load() {
 		return ErrClosed
 	}
-	return e.broken
+	if p := e.broken.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 func (e *pebbleEngine) close() error {
@@ -320,7 +339,7 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 		return Receipt{}, err
 	}
 	defer view.Close()
-	effects, _, err := graphstore.StagePartitionOperations(ctx, view, e.decl, e.binding, e.conf, tx.ops, rev, graphstore.Limits{}, graphstore.GraphLimits{}, readBudget())
+	effects, _, err := graphstore.StagePartitionOperations(ctx, view, e.decl, e.binding, e.conf, tx.ops, rev, graphstore.Limits{}, graphstore.GraphLimits{RecordedCeiling: tx.ceil()}, readBudget())
 	if err != nil {
 		return Receipt{}, mapStageErr(err)
 	}
@@ -337,8 +356,9 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 		if errors.Is(err, raftlog.ErrLimit) {
 			return Receipt{}, fmt.Errorf("%w: commit exceeds the install limit: %v", ErrInvalidRequest, err)
 		}
-		e.broken = fmt.Errorf("%w: %v", ErrCommitNotDurable, err)
-		return Receipt{}, e.broken
+		be := fmt.Errorf("%w: %v", ErrCommitNotDurable, err)
+		e.broken.Store(&be)
+		return Receipt{}, be
 	}
 	return Receipt{tok: e.token(tokReceipt, next)}, nil
 }
@@ -366,8 +386,7 @@ func mapStageErr(err error) error {
 // ---- snapshot ----
 
 func (e *pebbleEngine) openSnapshot(ctx context.Context, spec SnapshotSpec) (snapshotEngine, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	// No e.mu: a snapshot may be opened from inside an Update function.
 	if err := e.check(); err != nil {
 		return nil, err
 	}
@@ -398,6 +417,5 @@ func (e *pebbleEngine) openSnapshot(ctx context.Context, spec SnapshotSpec) (sna
 		return nil, err
 	}
 	_ = v.Close()
-	e.nonce++
-	return &engineSnap{e: e, index: index, nonce: e.nonce, cuts: Cut{tok: e.token(tokCut, index)}, pages: map[uint64]*pageState{}}, nil
+	return &engineSnap{e: e, index: index, nonce: e.nonce.Add(1), cuts: Cut{tok: e.token(tokCut, index)}, pages: map[uint64]*pageState{}}, nil
 }

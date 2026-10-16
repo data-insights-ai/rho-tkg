@@ -24,6 +24,8 @@ type engineTx struct {
 	vals    uint64
 	done    bool
 	err     error
+	rec     temporal.Position
+	ceiling temporal.Position
 	claims  map[string]types.NodeID
 	created map[types.NodeID]bool
 }
@@ -44,8 +46,15 @@ func (t *engineTx) pre(op Op) error {
 	if err := CheckOp(t.e.cfg, op); err != nil {
 		return t.fail(err)
 	}
-	if !isZeroPosition(op.recorded()) {
-		return t.fail(fmt.Errorf("%w: Recorded needs the engine's caller-instant evidence (WP-04)", ErrNotImplemented))
+	t.rec = op.recorded()
+	if !isZeroPosition(t.rec) {
+		if isZeroPosition(t.e.ceiling()) {
+			return t.fail(fmt.Errorf("%w: Recorded needs a KnowledgeAxis", ErrInvalidScope))
+		}
+		// The engine has no clock: the commit's own knowledge instant is the ceiling.
+		if o, err := temporal.ComparePositions(t.rec, t.ceil(), t.e.cfg.Limits); err != nil || o == temporal.Greater {
+			return t.fail(fmt.Errorf("%w: Recorded is after the commit", ErrInvalidScope))
+		}
 	}
 	return nil
 }
@@ -63,7 +72,18 @@ func (t *engineTx) newValueID() graphstate.ValueID {
 	return graphstate.ValueID(t.next<<valSeqBits | t.vals)
 }
 
-func (t *engineTx) add(op graphstate.Operation) { t.ops = append(t.ops, op) }
+func (t *engineTx) add(op graphstate.Operation) {
+	op.Recorded = t.rec
+	t.ops = append(t.ops, op)
+}
+
+// ceil is the commit instant on the knowledge axis, fixed for the Update.
+func (t *engineTx) ceil() temporal.Position {
+	if isZeroPosition(t.ceiling) {
+		t.ceiling = t.e.ceiling()
+	}
+	return t.ceiling
+}
 
 func (t *engineTx) schema(node bool, key string, v Value) (graphstate.Scalar, error) {
 	defs := t.e.rel

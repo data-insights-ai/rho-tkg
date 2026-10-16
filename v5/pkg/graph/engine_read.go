@@ -251,7 +251,8 @@ func (r *reader) rows(ref Ref, sel Selector, proj Projection) ([]Entity, error) 
 		return nil, err
 	}
 	var out []Entity
-	for _, sg := range segs {
+	lastSeg := -2
+	for si, sg := range segs {
 		pr, err := graphstate.Project(r.ctx, r.rv, id, sg.at, visibility(sel.View), graphstate.Limits{})
 		if err != nil {
 			return nil, err
@@ -259,6 +260,8 @@ func (r *reader) rows(ref Ref, sel Selector, proj Projection) ([]Entity, error) 
 		if !pr.Exists || !pr.Active {
 			continue
 		}
+		adjacent := lastSeg == si-1
+		lastSeg = si
 		ent := Entity{Ref: ref, Labels: slices.Clone(pr.Labels), Valid: sg.scope, Known: sel.Known}
 		if !wantNode {
 			ent.RelType, ent.From, ent.To = rec.Type, types.NodeID(rec.Source), types.NodeID(rec.Target)
@@ -276,7 +279,7 @@ func (r *reader) rows(ref Ref, sel Selector, proj Projection) ([]Entity, error) 
 				ent.Props[pv.Name] = v
 			}
 		}
-		if n := len(out); n > 0 && sameContent(out[n-1], ent) {
+		if n := len(out); n > 0 && adjacent && sameContent(out[n-1], ent) {
 			if merged, ok := mergeScopes(out[n-1].Valid, ent.Valid); ok {
 				out[n-1].Valid = merged
 				continue
@@ -419,7 +422,7 @@ func (s *engineSnap) lookup(ctx context.Context, r LookupRequest) (Page, error) 
 		return Page{}, err
 	}
 	if r.Projection.Provenance || r.Projection.Revisions {
-		return Page{}, fmt.Errorf("%w: provenance and revisions projections are not implemented", ErrNotImplemented)
+		return Page{}, fmt.Errorf("%w: provenance and revisions projections are not implemented for Lookup", ErrNotImplemented)
 	}
 	var refs []Ref
 	for _, n := range r.Nodes {
@@ -437,8 +440,8 @@ func (s *engineSnap) timeline(ctx context.Context, r TimelineRequest) (Page, err
 	if err := s.live(); err != nil {
 		return Page{}, err
 	}
-	if r.Projection.Provenance || r.Projection.Revisions {
-		return Page{}, fmt.Errorf("%w: provenance and revisions projections are not implemented", ErrNotImplemented)
+	if r.Projection.Provenance {
+		return Page{}, fmt.Errorf("%w: the provenance projection is not implemented", ErrNotImplemented)
 	}
 	rows, err := s.timelineRows(ctx, r)
 	if err != nil {
@@ -603,6 +606,11 @@ func (s *engineSnap) timelineRows(ctx context.Context, r TimelineRequest) ([]Ent
 		rd.close()
 		if err != nil {
 			return nil, err
+		}
+		if r.Projection.Revisions {
+			for i := range rows {
+				rows[i].Revision = rev
+			}
 		}
 		out = append(out, rows...)
 	}

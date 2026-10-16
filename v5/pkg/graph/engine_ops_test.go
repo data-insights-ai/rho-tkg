@@ -203,9 +203,6 @@ func TestRelationshipAndRefusals(t *testing.T) {
 		ghost, _ := NodeRef(424242)
 		return tx.Set(Set{Target: ghost, Key: "n", Value: Int(1), Scope: all})
 	})
-	refuse("recorded not implemented", ErrNotImplemented, func(tx Tx) error {
-		return tx.Set(Set{Target: na, Key: "n", Value: Int(1), Scope: all, Recorded: recAt(t, knowledgeAxis(t), 5)})
-	})
 	refuse("wrong axis scope", ErrInvalidScope, func(tx Tx) error {
 		return tx.Set(Set{Target: na, Key: "n", Value: Int(1), Scope: otherAxisScope(t)})
 	})
@@ -300,4 +297,51 @@ func TestOpenReopenRejectsDifferentSchema(t *testing.T) {
 		t.Fatalf("same schema: %v", err)
 	}
 	_ = g.Close()
+}
+
+// TestUpdateRefusesOffAxisRecorded: Recorded is evidence on the knowledge axis
+// no later than the commit's own instant (the engine has no clock; Update
+// supplies it as GraphLimits.RecordedCeiling).
+func TestUpdateRefusesOffAxisRecorded(t *testing.T) {
+	g := openMem(t)
+	ctx := context.Background()
+	all := scopeAll(t)
+	var id types.NodeID
+	update(t, g, func(tx Tx) (err error) {
+		id, err = tx.CreateNode(CreateNode{Scope: all})
+		return
+	})
+	ref, _ := NodeRef(id)
+	set := func(rec temporal.Position) error {
+		_, err := g.Update(ctx, func(tx Tx) error {
+			return tx.Set(Set{Target: ref, Key: "n", Value: Int(1), Scope: all, Recorded: rec})
+		})
+		return err
+	}
+	known := knowledgeAxis(t)
+	if err := set(recAt(t, axis(t), 1000)); !errors.Is(err, ErrInvalidScope) {
+		t.Errorf("valid-axis instant: %v", err)
+	}
+	if err := set(recAt(t, otherAxisScope(t).Axis(), 1000)); !errors.Is(err, ErrInvalidScope) {
+		t.Errorf("off-axis instant: %v", err)
+	}
+	if err := set(recAt(t, known, 1<<50)); err == nil || !errors.Is(err, ErrInvalidScope) {
+		t.Errorf("future instant (after the commit): %v", err)
+	}
+	if err := set(recAt(t, known, 1000)); err != nil {
+		t.Errorf("past instant on the knowledge axis: %v", err)
+	}
+	if err := set(recAt(t, known, 0)); err != nil {
+		t.Errorf("instant 0 is a coordinate: %v", err)
+	}
+	// Unset KnowledgeAxis: any non-zero Recorded is refused, zero still commits.
+	cfg := g.cfg
+	cfg.KnowledgeAxis = types.DefaultAxisBinding{}
+	tx := &engineTx{e: &pebbleEngine{cfg: cfg}, ctx: ctx, next: 99}
+	if err := tx.Set(Set{Target: ref, Key: "n", Value: Int(1), Scope: all, Recorded: recAt(t, known, 1000)}); !errors.Is(err, ErrInvalidScope) {
+		t.Errorf("unset KnowledgeAxis: %v", err)
+	}
+	if err := tx.AddLabel(AddLabel{Target: id, Label: "L", Scope: all}); err != nil {
+		t.Errorf("unset KnowledgeAxis, zero Recorded: %v", err)
+	}
 }
