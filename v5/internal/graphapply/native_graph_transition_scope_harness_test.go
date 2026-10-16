@@ -170,7 +170,30 @@ func nativeTransitionScopeCaseOwned(t *testing.T, mode graphReadMode, program *n
 			t.Fatal("actual complete old graph cut for selected native replacement", err)
 		}
 	}
+	hub := f.n.all[2].mux.hub
+	hub.mu.Lock()
+	priorCapture := hub.afterRelay
+	hub.afterRelay = func(caller context.Context, origin, partition uint64, wire, reply []byte) error {
+		if origin == 2 && partition == 3 {
+			request, requestErr := decodeGraphSourceRequest(wire)
+			response, responseErr := decodeGraphWireResponse(reply)
+			if requestErr == nil && responseErr == nil && request.kind == sourceCertifiedOpen && response.err == nil {
+				info, infoErr := decodeGraphCertifiedSourceInfo(response.body)
+				if infoErr == nil {
+					t.Logf("P01 actual held source voter%d issuer%x cookie-issuer%x cookie-sequence%d certificate-partition%d certificate-index%d source-index%d root-index%d limits%+v", response.peer.voter, response.issuer, info.cookie.issuer, info.cookie.sequence, info.certificate.scope.partition, info.certificate.index, info.certificate.sourceIndex, info.root.Index, info.limits)
+				}
+			}
+		}
+		if priorCapture != nil {
+			return priorCapture(caller, origin, partition, wire, reply)
+		}
+		return nil
+	}
+	hub.mu.Unlock()
 	oldHandle, oldCut, old := nativeTransitionScopeOpen(t, f, ctx, 2, graphE15ReadRequest{mode: graphReadFresh, partitions: []uint64{3}})
+	hub.mu.Lock()
+	hub.afterRelay = priorCapture
+	hub.mu.Unlock()
 	oldClosed := false
 	defer func() {
 		if !oldClosed {
@@ -247,7 +270,7 @@ func nativeTransitionScopeCaseOwned(t *testing.T, mode graphReadMode, program *n
 	if !errors.Is(decodeErr, errCrossProcessPending) || resume.resume.tx != tx || resume.decision != (crossStatus{}) || !errors.Is(pending.err, context.Canceled) {
 		t.Fatal("unknown original changed to success/ABORT", pending.err, decodeErr)
 	}
-	hub := f.n.all[1].mux.hub
+	hub = f.n.all[1].mux.hub
 	hub.mu.Lock()
 	if gate == nil || campaign[0].Phase != crossResolve {
 		hub.beforeRelay = nil
@@ -272,6 +295,13 @@ func nativeTransitionScopeCaseOwned(t *testing.T, mode graphReadMode, program *n
 	defer unblock()
 	hub.mu.Lock()
 	hub.afterRelay = func(caller context.Context, origin, partition uint64, wire, reply []byte) error {
+		if origin == reader && partition == 3 {
+			request, requestErr := decodeGraphSourceRequest(wire)
+			response, responseErr := decodeGraphWireResponse(reply)
+			if requestErr == nil && responseErr == nil && response.err != nil {
+				t.Logf("P01 actual held-source refusal voter%d issuer%x kind%d sequence%d cookie-issuer%x cookie-sequence%d maximum%d rows%d key-bytes%d mask%04x", response.peer.voter, response.issuer, request.kind, request.sequence, request.cookie.issuer, request.cookie.sequence, request.maximum, request.rows, len(request.key), graphErrorMask(response.err))
+			}
+		}
 		if origin != reader || partition != 8 {
 			return nil
 		}
