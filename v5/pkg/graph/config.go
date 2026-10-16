@@ -68,6 +68,10 @@ type Config struct {
 	Durability Durability
 	// Limits bounds temporal values; the zero value means temporal defaults.
 	Limits temporal.Limits
+	// Storage sizes the retained-record quotas and Pebble caches; the zero value
+	// means the defaults (see StorageLimits). A reopened directory graph keeps
+	// its stored quotas.
+	Storage StorageLimits
 }
 
 // Validate checks the config without touching storage. Errors wrap
@@ -84,6 +88,9 @@ func (c Config) Validate() error {
 	}
 	if err := c.Limits.Validate(); err != nil {
 		return fmt.Errorf("%w: limits: %v", ErrInvalidConfig, err)
+	}
+	if err := c.Storage.validate(); err != nil {
+		return err
 	}
 	if c.GraphID == (types.GraphID{}) {
 		return bad("GraphID is zero")
