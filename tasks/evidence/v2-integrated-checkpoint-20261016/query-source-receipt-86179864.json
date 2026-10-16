@@ -1,0 +1,57 @@
+{
+  "revision": "86179864933bfc6f89bdcb78df31edc2a2f43575",
+  "parent": "fa1b1717e050798da3d165968b215b9b23d2df97",
+  "tree": "/private/var/tmp/rho-v5-native-create-update-query-fix-20261016",
+  "clean": true,
+  "files": [
+    {
+      "path": "tools/v5-substrate/native_late_correction_check.py",
+      "parentBlob": "adcd92a6e4d18d3aa812b268a777040f45b5114b",
+      "parentSHA256": "f9df7bc7a11ef8a228771a84cb86681cb9ebe5a217deba332f0400a3ac4b6326",
+      "sha256": "a3de6999bcb57c84af776a492e7d8e8d5b1c413548bd91548b26781e4681a1a1"
+    },
+    {
+      "path": "tools/v5-substrate/native_selectors_check.py",
+      "parentBlob": "8c99064fe94e39bcf42d8dedec4187c98ff33c33",
+      "parentSHA256": "eb3c12bf0202e0f924d788b47d7bf61a626336bf6e4652afddc3c5e34afbde41",
+      "sha256": "4015bcc1599dec26b7f9fde2cf79917279a0dc126fdac26dbc74ed2e8e108722"
+    },
+    {
+      "path": "tools/v5-substrate/native_selectors_check_test.py",
+      "parentBlob": "009eef0aa0bc1064ee1faccd6d0ad0f27196f012",
+      "parentSHA256": "c7f4e709090f14a79cfe24d2d81c29dd1ecc5f6c50d0b3c9f0d1cdbfbbb71c7f",
+      "sha256": "670e81127c4a0091a0b47218637fcbe31c4ba3c947990de72e232ff0e55d3be0"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_create_update_test.go",
+      "parentBlob": "baca8daea1ef7fcccf12b329687e18f10c5e74e8",
+      "parentSHA256": "a31154c2e72fc66abdd2603ec9a903a41729070c827a9877e77e9c5ed6a08202",
+      "sha256": "c04723e936f287e5e0001c7caabdfa6213b196b29eca9c0794621b6fba5ed983"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_selectors_harness_test.go",
+      "parentBlob": "c58ca4e5668e475937e921add683c4786ba412c4",
+      "parentSHA256": "c03c5280a8f31037d51f2877ef64518e0ce26b52ebe468c581707a927726e171",
+      "sha256": "901418527a0efd26332030c4054b1de912e167f1eac62942b9e369d8aad62f55"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_selectors_sessions_harness_test.go",
+      "parentBlob": "d609420939a9481a892b494a23e0e31bc22258a4",
+      "parentSHA256": "089ec6a111e69f551a64c0a148682076462f7365dbe7c379398a660c7ea3a9f6",
+      "sha256": "ff29f27bc96bc87dd77d50e1429734f938592a60af89425df17d066b49a15f95"
+    }
+  ],
+  "evidence": "/private/var/tmp/rho-v5-create-update-query-qualification-20261016",
+  "status": {
+    "directHydrationHistory": "PASS2.782s",
+    "admissionBeforeFix": "RED",
+    "selectorPythonGuards": "PASS9",
+    "correctionPythonGuards": "PASS2",
+    "selectorDirect": "PASS",
+    "native20FactProcess": "PASS32.57s",
+    "watchdog": "completed/all-owned-exited/no-forced-cleanup",
+    "independentRawOracle": "RED native column actual native root",
+    "FDB": "not launched",
+    "existingGuard": "preexisting separate RED; correction follows separately"
+  }
+}

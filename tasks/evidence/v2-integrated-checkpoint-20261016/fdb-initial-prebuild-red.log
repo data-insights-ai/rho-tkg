@@ -1,0 +1,11 @@
+/tmp/headers.tgz: OK
+/usr/local/include/foundationdb/fdb_c_types.h: OK
+# github.com/data-insights-ai/rho-tkg/tools/v5-substrate/fdb
+./graph_feed_page.go:85:28: cannot use row.IDKey (variable of type []byte) as fdb.KeyConvertible value in argument to tr.Get: []byte does not implement fdb.KeyConvertible (missing method FDBKey)
+./graph_feed_page.go:89:33: cannot use row.RequestKey (variable of type []byte) as fdb.KeyConvertible value in argument to tr.Get: []byte does not implement fdb.KeyConvertible (missing method FDBKey)
+./graph_owner_census.go:313:42: cannot use end (variable of interface type fdb.KeyConvertible) as []byte value in argument to bytes.Compare
+./graph_owner_census.go:338:23: cannot use prefixRange(prefix).End (value of interface type fdb.KeyConvertible) as []byte value in argument to bytes.Clone
+./graph_platform_fault.go:341:72: cannot use []string{…}[x.Coordinator] (variable of type string) as uint8 value in struct literal
+./graph_workload_edge_unique_run.go:220:25: undefined: err
+./graph_workload_edge_unique_run.go:221:13: undefined: err
+launcher refused: [Errno 2] No such file or directory: '/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/fdb/artifacts/rho-v5-fdb-1792112053-23322/owned-tools'

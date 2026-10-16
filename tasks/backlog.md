@@ -1206,53 +1206,47 @@ the hard-state vote field. All seven source hashes and six complete existing
 parents were checked with pinned formatting and whitespace. The first integrated
 qualification checkpoint is recorded below.
 
-The finite source-closure audit found no additional package beyond these
-integrated state/sender changes and their final CI associations. Those final
-associations are integrated at `099c846c`, closing source expansion. Focused runtime corrections address demonstrated compiler, ownership and
-source-admission failures. The selected P06 and sender cases now pass; pooled
-state publication passes, while full recovery qualification remains open. New campaigns
-are not required merely because other integrated source remains unexecuted.
-CI selection/dependency associations are source-integrated at `4c336669` for
-the integrated protocol core, leader/message program, Ready companion and
-pooled-state parents/guards, including their private Go attachments and
-transitive Python/data dependencies. Existing workflow/run budgets are unchanged.
-The two selector files and complete current parents passed source/hash and
-whitespace review. The final P06/state/sender associations are integrated above.
+Source expansion closed at `099c846c`. Focused correctness work now fixes
+observed failures in the integrated implementation; new campaigns are not
+required merely because other source remains unexecuted. The existing CI
+selection/dependency associations are integrated at `4c336669`, with their
+original workflow/run budgets unchanged.
+
 The [first integrated checkpoint](evidence/v2-integrated-checkpoint-20261016/receipt.json)
-records the initial compiler failures and corrections. All twelve v5 packages
-compile at `8daa85b6`; the compile-only command runs no test cases. Root execution
-passes 24 compact Python guards, three Go guards, the new state-bootstrap guard,
-the corrected CI selection case and the two corrected signature callers.
-Those initial process failures and cleanup observations remain historical.
-The [integrated follow-up at `659bdad5`](evidence/v2-integrated-checkpoint-20261016/followup-659bdad5.json)
-passes the selected rotated/reordered P06 decision case and both actual
-snapshot-sender interruption cases, including their complete independent
-history/cut oracles. Five direct Go guards and the collected/pooled production
-budget regressions pass. A later production correction funds nonempty retained-feed cursor decoding;
-publication now passes in the real pooled quorum and the selected OS case.
-That OS case next fails after 4.41 seconds in NPS Close: compound orchestration
-occupies the one primitive cleanup slot needed by its nested native Close RPC.
-That run's six children exit cleanly without forced cleanup. The classification
-correction is integrated at `124562cb`, preserving the same two ordinary/one
-primitive cleanup slots and terminal context. Its direct regression passes;
-the author OS run clears Close and next fails after 5.52 seconds on a local
-allocator proof requested after rotation. The [allocator/bootstrap corrections](evidence/v2-integrated-checkpoint-20261016/qualification-0d600046.json)
-preserve the genuine pre-election proposal and give initial voters the same
-existing snapshot-owner role as replacements. Root bootstrap/worker guards pass.
-The author process run now reaches selected Fence loss, replacement and healthy
-quorum, then fails at the same move's Resume resource allowance. Full case
-qualification remains open. The separate tiny comparison commits all 20 creates
-but its first scan exhausts the shared RPC allowance during hydration; that
-demonstrated query failure is under correction before any measurements.
-The [subsequent corrections](evidence/v2-integrated-checkpoint-20261016/corrections-3ebb46ac.json)
-restore shared-client context, prepare genuine pooled intents and expose early
-move errors; all three direct regression tests pass independently. The [five-leaf storage qualification](evidence/v2-integrated-checkpoint-20261016/qualification-264ec502.json)
-passes current/synced WAL recovery, WAL/manifest corruption and OPTIONS rename
-in Go and explicit independent Python checks. This receipt corrects the earlier
-claim that Go invoked the WAL checker automatically; all five complete artifacts,
-commands and cleanup reports are retained. These selected leaves do not close D.
-No full process-family acceptance, measurement, engine selection or V2 closure
-follows from these focused checkpoints.
+records compilation and initial guard results. The [P06/sender follow-up](evidence/v2-integrated-checkpoint-20261016/followup-659bdad5.json)
+passes the selected rotated/reordered decision case and both snapshot-sender
+interruptions, including independent history/cut oracles. The [five storage leaves](evidence/v2-integrated-checkpoint-20261016/qualification-264ec502.json)
+pass current/synced WAL recovery, WAL/manifest corruption and OPTIONS rename in Go
+and explicit independent Python checks. This receipt corrects the earlier claim
+that Go automatically invoked the WAL checker; original logs remain unchanged.
+
+The [current query/recovery checkpoint](evidence/v2-integrated-checkpoint-20261016/qualification-30a6ec66.json)
+records the following finite scope:
+
+- The 20-fact, 100%-cross, one-writer KV/local native workload completes all
+  five old/current/reopened observations. Its complete original/source/voter,
+  typed history and CDC artifact independently passes on integrated source.
+  The original controller receipt that failed its old checker is preserved;
+  the new proof is separate. Hydration now prepays bounded same-cut captures
+  from one whole-query allowance, with unchanged per-invocation RPC cap and
+  deadline. Its unoptimized read costs are recorded, not efficiency acceptance.
+- Pooled publication and bootstrap/cleanup guards pass. The allocator proposal
+  is captured before election, and initial/replacement snapshot roles agree.
+  An explicit 19-entry D-only tail window admits the unchanged recovery pools
+  within 256 MiB; native overflow backpressures and drain preserves the owner.
+  The full process case remains open: target Import0 must preserve actual
+  installed-prefix totals separately from its immutable source manifest proof.
+  That demonstrated production correction is under qualification.
+- FoundationDB's first actual prebuild exposed seven compiler diagnostics.
+  Their fixes compile; the pinned tool build additionally needed `xz-utils`.
+  The next run reaches four real zones, healthy triple replication and smoke,
+  then stops at the Docker capability-name check before business admission.
+  Early-failure receipts now preserve primary failures and absent stages;
+  actual cleanup is recorded. No FDB workload or paired result is accepted.
+
+These components do not close their full fault families, the process inventory,
+engine comparison, measurements or V2. Original deadlines, quotas, complete
+matrix dimensions and A–F acceptance requirements remain in force.
 FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing
 authority; these prefixes do not establish physical server placement. Source

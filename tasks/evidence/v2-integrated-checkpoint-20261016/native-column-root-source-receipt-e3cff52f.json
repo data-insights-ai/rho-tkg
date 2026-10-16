@@ -1,0 +1,20 @@
+{
+  "commit": "e3cff52f410b520b4158132c223cd1036b8e4d31",
+  "parent": "4ca45a3275e345b19c859a2b4a9bfdfaf847e70c",
+  "paths": [
+    {
+      "path": "tools/v5-substrate/native_columns_check.py",
+      "blob": "01b3c63ca9427eae468ba09a6f7ac12c698e239e",
+      "parentBlob": "949479afbbd6c54dbb0c8a24969da2d25769d457",
+      "sha256": "f5c9c8931628d980adb51a552d5fd4b78a5d5229d7fc9159685fb5f84f9e5b4d"
+    },
+    {
+      "path": "tools/v5-substrate/native_columns_check_test.py",
+      "blob": "e5aaebd3c27ce16aa16bc333ff6a84eaca1d2b1b",
+      "parentBlob": "31c9c258cefb57951ea5e21cc73718b70c68e54f",
+      "sha256": "5703eba99901dae20000f7e3bdf39fc57e650df90975436f85533d38ca7ad42b"
+    }
+  ],
+  "evidence": "/private/var/tmp/rho-v5-native-column-root-evidence-20261016",
+  "fullOracle": "progresses beyond root; blocked by separately traced allocation CDC check"
+}

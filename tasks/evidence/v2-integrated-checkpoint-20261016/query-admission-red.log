@@ -1,0 +1,5 @@
+--- FAIL: TestNativeScalarQueryAdmissionPrepaysHydrationAndSeparateExports (0.00s)
+    native_graph_create_update_test.go:124: complete queries borrowed the separate raw-export/retry grants 3369 145 3200 1088
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	0.657s
+FAIL

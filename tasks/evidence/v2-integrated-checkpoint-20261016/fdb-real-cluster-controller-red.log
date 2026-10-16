@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+  File "/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/workload_matrix.py", line 316, in execute
+    require(completed.returncode == 0, "fresh launcher failed; raw partial evidence retained, no completion receipt")
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/workload_matrix.py", line 37, in require
+    raise ValueError(message)
+ValueError: fresh launcher failed; raw partial evidence retained, no completion receipt

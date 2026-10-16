@@ -1,0 +1,58 @@
+{
+  "tree": "/private/var/tmp/rho-v5-native-scalar-oracle-fix-20261016",
+  "commits": [
+    {
+      "commit": "92056c314110d43e6baa1eb64a932af00f4e04ed",
+      "parent": "921cca7dd2d95ad5967d5c65dd843c544bb502c8",
+      "paths": [
+        {
+          "path": "tools/v5-substrate/native_feed_check.py",
+          "blob": "e2e4fe285e2630e4a1d23404612895aceb429806",
+          "parentBlob": "f3900d339dcacfcfd41c2665d8025d0fe8671a2b",
+          "sha256": "4ee7504aedc7e5b4f95e2802455d1380dc65fa21735b67f3cc342867a65e9cb8"
+        },
+        {
+          "path": "tools/v5-substrate/native_feed_check_test.py",
+          "blob": "462585e9e59d59fa9f371e949b8375d6501ced44",
+          "parentBlob": "c5c0ae8ee65b81491ac8308a7783f78cc381ca44",
+          "sha256": "f94eee045d4ae13035c34149fb828f879fd29a5ccdf2b59011483d4407a663b1"
+        }
+      ]
+    },
+    {
+      "commit": "363e44a4bc5fcec0b0b89c2f4dd59a39f8a08e9c",
+      "parent": "92056c314110d43e6baa1eb64a932af00f4e04ed",
+      "paths": [
+        {
+          "path": "tools/v5-substrate/native_selectors_check.py",
+          "blob": "74dad2e886c3a1db4a2bd9eb953ac2826c05640b",
+          "parentBlob": "2196548b8e81bfae523db68692b70bb2a8c10ed3",
+          "sha256": "f6e79afe3767a5904686287eb8ac896839c12867da184ac4d61a14224e331b58"
+        },
+        {
+          "path": "tools/v5-substrate/native_selectors_check_test.py",
+          "blob": "81136983f2718ad99df5622f467a4265088f8158",
+          "parentBlob": "56990b4c03dbd950b43478d9ed347d4f7fc411da",
+          "sha256": "637be6f3ea1acb54b656f054532cc7ab95a4f011a15f7060a70e98b9652b1daf"
+        }
+      ]
+    }
+  ],
+  "root2AlreadyIntegrated": "921cca7d",
+  "guards": 26,
+  "evidence": {
+    "selectors-red.log": "abe13fe1a2814c44fe93341c6a1d0cfec838d7fc4e59ef4bc84949f52e41e125",
+    "allocation-red.log": "71f261758ce15a0c48bafd8c74f98fea15ca08a37f4fc34360c95a5cf518dbba",
+    "allocation-green.log": "ad39657e9a93015fea4ac1851d18700cb486bc60497c740c21a23113b02c3119",
+    "full-green.log": "af1eaf69eefa5f97a17dca69a02135a1290a40fc622b3e1e7bf8e1bacc814471",
+    "all-guards.log": "a56762d82a0830c950025ee7cb7a5cc9c55241bd2d255b8070b59f95d4256ef4",
+    "cell-diagnostic.log": "3e515f054422856b427b48ba5bb89c72a03a68679ff58c38810f1843db60c62f",
+    "direct-red.log": "b148d044fbab7746740ec83a92d5fa89597b5fa74a6951765be7894aa371016b",
+    "frozen-full-green.log": "ade675ab5d3a100623ae8a2f00a5f6bd486fa2f03c79ecb2afd676b5e17e20bb",
+    "point-diagnostic.log": "4ceb1bb62e48a7560fc01ef6eb18ed16dd601bd56912f5e7846d8043e049863b",
+    "full-red.log": "7a082b7412237c75e37c2aacac70bbee461e4cca150cbd0656684ad51e41b94f",
+    "direct-green.log": "d094b1bd2c8318c96097f80c50da282add5b2972970a77046de8db6c8935f6ca"
+  },
+  "capturedArtifact": "/private/var/tmp/rho-v5-create-update-query-qualification-20261016/native-kv",
+  "noNativeRerun": true
+}

@@ -1,0 +1,276 @@
+[
+    {
+        "Id": "bed66b7c4f288602cd7eddc49b19515028ed056a6a4d3f986ff5e5b11dda9c12",
+        "Created": "2026-10-16T01:03:44.350296719Z",
+        "Path": "/bin/bash",
+        "Args": [
+            "-c",
+            "printf \"%s\\n\" \"$FDB_CLUSTER_FILE_CONTENTS\" \u003e /var/fdb/fdb.cluster; exec fdbserver -C /var/fdb/fdb.cluster -p auto:4500 -l 0.0.0.0:4500 --datadir /var/fdb/data --logdir /var/fdb/logs --locality-zoneid=\"$HOSTNAME\" --locality-machineid=\"$HOSTNAME\" --memory \"${FDB_RESIDENT_MIB}MiB\" --storage-memory \"${FDB_CACHE_MIB}MiB\" --cache-memory \"${FDB_CACHE_MIB}MiB\" --maxlogssize 20MiB"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 4607,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-10-16T01:03:44.620279344Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db",
+        "ResolvConfPath": "/var/lib/docker/containers/bed66b7c4f288602cd7eddc49b19515028ed056a6a4d3f986ff5e5b11dda9c12/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/bed66b7c4f288602cd7eddc49b19515028ed056a6a4d3f986ff5e5b11dda9c12/hostname",
+        "HostsPath": "/var/lib/docker/containers/bed66b7c4f288602cd7eddc49b19515028ed056a6a4d3f986ff5e5b11dda9c12/hosts",
+        "LogPath": "/var/lib/docker/containers/bed66b7c4f288602cd7eddc49b19515028ed056a6a4d3f986ff5e5b11dda9c12/bed66b7c4f288602cd7eddc49b19515028ed056a6a4d3f986ff5e5b11dda9c12-json.log",
+        "Name": "/rho-v5-fdb-1792112594-45357-zone0",
+        "RestartCount": 0,
+        "Driver": "overlayfs",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "rho-v5-fdb-1792112594-45357",
+            "PortBindings": {},
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": [
+                "CAP_NET_ADMIN"
+            ],
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": [],
+            "DnsSearch": [],
+            "ExtraHosts": null,
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 536870912,
+            "NanoCpus": 375000000,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": [],
+            "BlkioDeviceReadBps": [],
+            "BlkioDeviceWriteBps": [],
+            "BlkioDeviceReadIOps": [],
+            "BlkioDeviceWriteIOps": [],
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": [],
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 1073741824,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": [],
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "Mounts": [
+                {
+                    "Type": "bind",
+                    "Source": "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/fdb/artifacts/rho-v5-fdb-1792112594-45357/owned-tools",
+                    "Target": "/owned-tools",
+                    "ReadOnly": true
+                },
+                {
+                    "Type": "bind",
+                    "Source": "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/fdb/artifacts/rho-v5-fdb-1792112594-45357/transport-probe",
+                    "Target": "/usr/local/bin/transport-probe",
+                    "ReadOnly": true
+                },
+                {
+                    "Type": "volume",
+                    "Source": "rho-v5-fdb-1792112594-45357-data0",
+                    "Target": "/var/fdb/data"
+                }
+            ],
+            "MaskedPaths": [
+                "/proc/acpi",
+                "/proc/asound",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/sys/devices/virtual/powercap",
+                "/sys/firmware"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "Storage": {
+            "RootFS": {
+                "Snapshot": {
+                    "Name": "overlayfs"
+                }
+            }
+        },
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/fdb/artifacts/rho-v5-fdb-1792112594-45357/owned-tools",
+                "Destination": "/owned-tools",
+                "Mode": "",
+                "RW": false,
+                "Propagation": "rprivate"
+            },
+            {
+                "Type": "bind",
+                "Source": "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/fdb/artifacts/rho-v5-fdb-1792112594-45357/transport-probe",
+                "Destination": "/usr/local/bin/transport-probe",
+                "Mode": "",
+                "RW": false,
+                "Propagation": "rprivate"
+            },
+            {
+                "Type": "volume",
+                "Name": "rho-v5-fdb-1792112594-45357-data0",
+                "Source": "/var/lib/docker/volumes/rho-v5-fdb-1792112594-45357-data0/_data",
+                "Destination": "/var/fdb/data",
+                "Driver": "local",
+                "Mode": "z",
+                "RW": true,
+                "Propagation": ""
+            }
+        ],
+        "Config": {
+            "Hostname": "zone0",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "FDB_CLUSTER_FILE_CONTENTS=rho_spike:rhov5179211262445357@172.18.0.10:4500,172.18.0.11:4500,172.18.0.12:4500",
+                "FDB_RESIDENT_MIB=384",
+                "FDB_CACHE_MIB=64",
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "FDB_PORT=4500",
+                "FDB_CLUSTER_FILE=/var/fdb/fdb.cluster",
+                "FDB_NETWORKING_MODE=container",
+                "FDB_COORDINATOR=",
+                "FDB_COORDINATOR_PORT=4500",
+                "FDB_PROCESS_CLASS=unset"
+            ],
+            "Cmd": [
+                "-c",
+                "printf \"%s\\n\" \"$FDB_CLUSTER_FILE_CONTENTS\" \u003e /var/fdb/fdb.cluster; exec fdbserver -C /var/fdb/fdb.cluster -p auto:4500 -l 0.0.0.0:4500 --datadir /var/fdb/data --logdir /var/fdb/logs --locality-zoneid=\"$HOSTNAME\" --locality-machineid=\"$HOSTNAME\" --memory \"${FDB_RESIDENT_MIB}MiB\" --storage-memory \"${FDB_CACHE_MIB}MiB\" --cache-memory \"${FDB_CACHE_MIB}MiB\" --maxlogssize 20MiB"
+            ],
+            "Image": "foundationdb/foundationdb@sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db",
+            "Volumes": {
+                "/var/fdb/data": {}
+            },
+            "WorkingDir": "/",
+            "Entrypoint": [
+                "/bin/bash"
+            ],
+            "Labels": {
+                "io.buildah.version": "1.33.7",
+                "license": "BSD-3-Clause",
+                "name": "rockylinux",
+                "org.foundationdb.build_date": "2026-04-20T17:30:00+0000",
+                "org.foundationdb.commit": "3ea44ce1d9",
+                "org.foundationdb.version": "7.3.77",
+                "org.opencontainers.image.authors": "Magauer Lukas, Neil Hanlon, Louis Abel",
+                "org.opencontainers.image.license": "BSD-3-Clause",
+                "org.opencontainers.image.name": "rockylinux",
+                "org.opencontainers.image.url": "https://github.com/rocky-linux/rocky-toolbox-images",
+                "org.opencontainers.image.vendor": "Rocky Enterprise Software Foundation",
+                "org.opencontainers.image.version": "9-minimal",
+                "vendor": "Rocky Enterprise Software Foundation",
+                "version": "9-minimal"
+            }
+        },
+        "NetworkSettings": {
+            "SandboxID": "3e8dfbb12f9e8b950856b7ed9fe43958ef8489538d973c27d9e43922e7b6b64c",
+            "SandboxKey": "/var/run/docker/netns/3e8dfbb12f9e",
+            "Ports": {},
+            "Networks": {
+                "rho-v5-fdb-1792112594-45357": {
+                    "IPAMConfig": {
+                        "IPv4Address": "172.18.0.10"
+                    },
+                    "Links": null,
+                    "Aliases": null,
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "90706c0fa812a0d07a1044d4bc42f15a147206a9badc7e8c48cbcf33821681b3",
+                    "EndpointID": "e584bb8072d09cf99429847ed51bb1a47dfba141425a9b60da34bd44fb7d024d",
+                    "Gateway": "",
+                    "IPAddress": "172.18.0.10",
+                    "MacAddress": "d6:8a:ab:38:52:77",
+                    "IPPrefixLen": 16,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": [
+                        "rho-v5-fdb-1792112594-45357-zone0",
+                        "bed66b7c4f28",
+                        "zone0"
+                    ]
+                }
+            }
+        },
+        "ImageManifestDescriptor": {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db",
+            "size": 2945,
+            "platform": {
+                "architecture": "arm64",
+                "os": "linux"
+            }
+        }
+    }
+]

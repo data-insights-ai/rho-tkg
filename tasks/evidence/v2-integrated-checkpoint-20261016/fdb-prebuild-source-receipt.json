@@ -1,0 +1,50 @@
+{
+  "revision": "63f974054994d60706635f7e772e754d9e6e9a0e",
+  "parent": "921cca7dd2d95ad5967d5c65dd843c544bb502c8",
+  "tree": "/private/var/tmp/rho-v5-fdb-prebuild-corrections-20261016",
+  "clean": true,
+  "files": [
+    {
+      "path": "tools/v5-substrate/fdb/graph_feed_page.go",
+      "parentBlob": "39a7e66a95befdbc926c7e25fb22cf29d164b0f0",
+      "parentSHA256": "40f478302c7ad2a809d9db8e62067d15776e96d4ceedc768d733561aae8e1fc8",
+      "sha256": "ba0f50068e17c0a41262b1e5f01341398ccc551aae5c78f3d9e65ce158576406"
+    },
+    {
+      "path": "tools/v5-substrate/fdb/graph_owner_census.go",
+      "parentBlob": "f88064b84a2684128afdc29ad6a135f0a067b2d4",
+      "parentSHA256": "974e9000df804257b5c7fe240abbe210a6a8c289e50121099742dd4cf81515da",
+      "sha256": "7b3c5f7b96e29d0e012d2ca0f5e66c883c1eadce749129a85ac27d31635c8dea"
+    },
+    {
+      "path": "tools/v5-substrate/fdb/graph_platform_fault.go",
+      "parentBlob": "638cca19d1a212f690d85e30bb12fe8a9e478683",
+      "parentSHA256": "8290bbd31ac7275d352201c94feecceb2fb1cdf57c610852f65137f7278d317f",
+      "sha256": "ee219d21ff913aca4e6a45339e987ff095915ad3b544952ac60aef476bdcb065"
+    },
+    {
+      "path": "tools/v5-substrate/fdb/graph_workload_edge_unique_run.go",
+      "parentBlob": "cfcbd34a30ead58f3b792cbb8188ef349146c664",
+      "parentSHA256": "04e2a635a3d9bdd9c54d8cefd1d2f8328fc8a02aeb1e09ab6bc1906dbf31a3b4",
+      "sha256": "048eee1d1f24ae1604a49d15d981ec749847460e7aebf35c7be9309cf0ddbc97"
+    },
+    {
+      "path": "tools/v5-substrate/fdb/launcher.py",
+      "parentBlob": "37b92992cd57482f41a035175d76af739fab5bd0",
+      "parentSHA256": "b3ece33cf306923ae145b2dc461a87b78efbd89a6a78955fcdb18f624aec9573",
+      "sha256": "1ca07a28f1f87a3e243a43f75d306bcb88e7305011117514dce12a31746282fa"
+    },
+    {
+      "path": "tools/v5-substrate/fdb/launcher_test.py",
+      "parentBlob": "fea7d6977d42d2d16c28d4d67f6d40c9a22f2ef3",
+      "parentSHA256": "76eda938f68efceb8409772f1ef6a4213c0ace1529d44f98b855f4bc86ca37b9",
+      "sha256": "847323c5b69bf87b917129c82e565bfb83e9805b10304551575544215130203c"
+    }
+  ],
+  "evidence": "/private/var/tmp/rho-v5-fdb-tiny-counterpart-20261016.dhrCvX",
+  "compileRED": "actual bounded pinned Docker prebuild7 diagnostics; prebuild.log preserved",
+  "receiptRED": "receipt-guard-red.log",
+  "receiptGREEN": "receipt-guard-green.log seven guards PASS",
+  "sourceChecks": "Go1.26.9 modern guidelines and pinned SDK APIs read; pinned gofmt and Git whitespace PASS",
+  "limits": "No quota, dependency, workload, deadline, setup or cleanup widening. Go compile not rerun before freeze; no cluster/workload launched."
+}

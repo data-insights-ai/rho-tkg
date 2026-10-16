@@ -1,0 +1,172 @@
+{
+  "result": "PASS",
+  "checker_source_commit": "0c4fda35",
+  "elapsed_seconds": 0.2598135001026094,
+  "scope": "Independent root replay of complete unchanged tiny native artifact, not full pair/V2/cost acceptance. Original RED controller receipt preserved.",
+  "original_files_sha256": {
+    "request.json": "dea49d6efe7c94b96287d2933a54fa20ed9b55d883fc919bf08dc070b06f917f",
+    "receipt.json": "ed999d1fc380708ae31e3837a0f9098cf503837241a64b15f83188b4a147b9cd",
+    "watchdog.json": "24a4c4889f5a83f5c236383812f3515e4b4ea9cf73b3a3e01cdc949beab1d71f"
+  },
+  "proof": {
+    "format": "native-create-update-workload-v1",
+    "family": "partition-local-create-update",
+    "spec": {
+      "version": 1,
+      "family": "partition-local-create-update",
+      "facts": 20,
+      "crossPercent": 100,
+      "writers": 1,
+      "layout": "kv"
+    },
+    "run": "f355538e55e9ae4e0d1be5f762e8cbfc",
+    "logicalAnswersSHA256": "4ba4d27d341d14cefcfd1708e9b27efe3b1da99886dac812d38ae87b0f3410fe",
+    "retentionContract": "snapshot-C-retained-full-prefix-v1",
+    "transport": {
+      "kind": "local",
+      "targetRTTMillis": 0,
+      "jitterMillis": 0,
+      "seed": 20261009
+    },
+    "rowSemantics": "mixed-or-cross-partition-create-update",
+    "businessTiming": [
+      {
+        "Phase": "create",
+        "StartNanos": 1711277667,
+        "StopNanos": 11957651250,
+        "WallNanos": 10246373583,
+        "SingleParticipant": 0,
+        "MultiParticipant": 20,
+        "ReadParticipants": [
+          20,
+          20
+        ],
+        "WriteParticipants": [
+          20,
+          20
+        ],
+        "single": 0,
+        "multi": 20,
+        "attempts": 20,
+        "aborted": 0,
+        "protocolParticipantInstalls": 40,
+        "p50Nanos": 1478217583,
+        "p95Nanos": 1639726833,
+        "p99Nanos": 1748282959,
+        "usefulTransactionsPerSecond": 1.9519100917013676
+      },
+      {
+        "Phase": "update",
+        "StartNanos": 13505805042,
+        "StopNanos": 25955566667,
+        "WallNanos": 12449761625,
+        "SingleParticipant": 0,
+        "MultiParticipant": 20,
+        "ReadParticipants": [
+          20,
+          20
+        ],
+        "WriteParticipants": [
+          20,
+          0
+        ],
+        "single": 0,
+        "multi": 20,
+        "attempts": 20,
+        "aborted": 0,
+        "protocolParticipantInstalls": 40,
+        "p50Nanos": 1723481916,
+        "p95Nanos": 2329012333,
+        "p99Nanos": 2400895708,
+        "usefulTransactionsPerSecond": 1.606456460968585
+      }
+    ],
+    "sourceTiming": {
+      "samples": [
+        {
+          "name": "old-fresh",
+          "OpenNanos": 515206291,
+          "ScanNanos": 854120542,
+          "PointsNanos": 178443208,
+          "ScopeRefusalNanos": 0,
+          "Rows": 20
+        },
+        {
+          "name": "same-pin-old-after-update",
+          "OpenNanos": 63185333,
+          "ScanNanos": 919076834,
+          "PointsNanos": 195884666,
+          "ScopeRefusalNanos": 0,
+          "Rows": 20
+        },
+        {
+          "name": "fresh-current",
+          "OpenNanos": 642659500,
+          "ScanNanos": 1112093166,
+          "PointsNanos": 214225208,
+          "ScopeRefusalNanos": 0,
+          "Rows": 20
+        },
+        {
+          "name": "reopened-old",
+          "OpenNanos": 31654541,
+          "ScanNanos": 856128541,
+          "PointsNanos": 181727250,
+          "ScopeRefusalNanos": 0,
+          "Rows": 20
+        },
+        {
+          "name": "reopened-final",
+          "OpenNanos": 52627333,
+          "ScanNanos": 935589125,
+          "PointsNanos": 182093750,
+          "ScopeRefusalNanos": 0,
+          "Rows": 20
+        }
+      ],
+      "nearestRank": [
+        {
+          "call": "Open",
+          "samples": 5,
+          "p50Nanos": 63185333,
+          "p95Nanos": 642659500,
+          "p99Nanos": 642659500
+        },
+        {
+          "call": "Scan",
+          "samples": 5,
+          "p50Nanos": 919076834,
+          "p95Nanos": 1112093166,
+          "p99Nanos": 1112093166
+        },
+        {
+          "call": "Points",
+          "samples": 5,
+          "p50Nanos": 182093750,
+          "p95Nanos": 214225208,
+          "p99Nanos": 214225208
+        }
+      ],
+      "scope": "actual complete source operations through EOF/retry/wait; scan-based Points, no indexed/per-key claim"
+    },
+    "spool": {
+      "policy": {
+        "max_disk_bytes": 1073741824,
+        "cache_bytes": 8388608,
+        "max_key_bytes": 4096,
+        "max_value_bytes": 524288
+      },
+      "page_bytes": 4096,
+      "sqlite_version": "3.53.2",
+      "walk_plan": "SEARCH state USING PRIMARY KEY (namespace=? AND key>?)",
+      "journal_mode": "off",
+      "mmap_bytes": 0,
+      "temp_store": "memory; no SQL temp tables/sorts",
+      "cached_statements": 8,
+      "cache_is_process_rss_limit": false,
+      "peak_file_bytes": 5144576,
+      "peak_allocated_bytes": 5144576
+    },
+    "scope": "genuine native local Submit versus explicit mixed/cross variants, complete original/source/voter/old-current/column/cache/reopen joins; setup excluded; planned installed-grant IDs, not Recipient.Next; no efficiency/capacity/full-matrix or nonlocal engine-parity acceptance"
+  }
+}

@@ -1,0 +1,23 @@
+Traceback (most recent call last):
+  File "<stdin>", line 7, in <module>
+  File "/private/var/tmp/rho-v5-native-column-root-checker-fix-20261016/tools/v5-substrate/native_create_update_check.py", line 121, in verify
+    return _verify(directory,spool_directory,policy,binary_sha=binary_sha,expected_spec=expected_spec,expected_run=expected_run,expected_deadline=expected_deadline,expected_seconds=expected_seconds,shared_spool=shared_spool)
+  File "/private/var/tmp/rho-v5-native-column-root-checker-fix-20261016/tools/v5-substrate/native_create_update_check.py", line 138, in _verify
+    cuts={name:source.cut(end[name]) for name in ("Initial","Old","Final","Reopened")}
+               ~~~~~~~~~~^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-native-column-root-checker-fix-20261016/tools/v5-substrate/native_selectors_check.py", line 79, in cut
+    result=[column.certificate(raw,base64.b64encode(c.field(512)).decode()) for _ in range(count)]
+            ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-native-column-root-checker-fix-20261016/tools/v5-substrate/native_columns_check.py", line 71, in certificate
+    root(api, body[184:], partition)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-native-column-root-checker-fix-20261016/tools/v5-substrate/native_columns_check.py", line 77, in root
+    api.require(len(image) == 172 and image[:3] == b"GR\3" and image[3] in (1, 2, 3)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                and image[4:20].hex() == api.GRAPH and image[20:28] == struct.pack(">Q", partition)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                and hashlib.sha256(image[:-32]).digest() == image[-32:], "native column actual native root")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-native-column-root-checker-fix-20261016/tools/v5-substrate/compare-cost-cdc.py", line 57, in require
+    raise ValueError("cost CDC refused: " + message)
+ValueError: cost CDC refused: native column actual native root

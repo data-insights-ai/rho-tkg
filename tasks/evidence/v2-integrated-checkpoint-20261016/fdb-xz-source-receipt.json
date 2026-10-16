@@ -1,0 +1,13 @@
+{
+  "revision": "db5b05e6b4fdf438ae5267b8a4f64bfd610038ba",
+  "parent": "67cce443e97ba16968827c389b70db4a57ceba93",
+  "tree": "/private/var/tmp/rho-v5-fdb-owned-tools-xz-20261016",
+  "clean": true,
+  "path": "tools/v5-substrate/fdb/build-owned-tools.sh",
+  "parentBlob": "7f8379fb23dfa227f83fb00c4e8acead726ea06a",
+  "parentSHA256": "5d821623340887c731e782652b21ccf537b146a5d29cfc6dba567f87daaf6414",
+  "sha256": "8860b098b30112c64ce0fabbb42ea4a5fd0f0d82cd3eca0a55ffd325cc328d29",
+  "RED": "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/fdb/artifacts/rho-v5-fdb-1792112420-38742/prebuild.log",
+  "checks": "Full existing script/Dockerfile dependency source read; bash -n and git diff --check PASS. No build/container/workload rerun before freeze.",
+  "scope": "Add xz-utils to same immutable20261001T000000Z Debian snapshot install; tar --xz needs xz external executable. curl/tar/sha already reached in RED; compiler/libc/binutils remain pinned-base dependencies and bison/flex explicit existing packages. Actual installed package versions remain covered by existing dpkg-query full build manifest. No source/image/hash/deadline/resource changes."
+}

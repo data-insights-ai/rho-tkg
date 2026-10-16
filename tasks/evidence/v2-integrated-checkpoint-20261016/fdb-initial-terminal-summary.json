@@ -1,0 +1,47 @@
+{
+  "status": "prebuild-compiler-failure",
+  "sourceHead": "921cca7dd2d95ad5967d5c65dd843c544bb502c8",
+  "artifactDirectory": "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/fdb/artifacts/rho-v5-fdb-1792112053-23322",
+  "workloadStarted": false,
+  "clusterStarted": false,
+  "controllerExit": 1,
+  "prebuildExit": 1,
+  "prebuildElapsedSeconds": 7.965076917316765,
+  "prebuildMemoryPeak": 551075840,
+  "prebuildState": {
+    "Status": "exited",
+    "Running": false,
+    "ExitCode": 1,
+    "OOMKilled": false
+  },
+  "cleanupCommands": [
+    {
+      "command": [
+        "docker",
+        "rm",
+        "-f",
+        "rho-v5-fdb-1792112053-23322-prebuild"
+      ],
+      "deadline_seconds": 45.0,
+      "elapsed_seconds": 0.035689915996044874,
+      "exit": 0,
+      "deadline_expired": false
+    },
+    {
+      "command": [
+        "docker",
+        "image",
+        "rm",
+        "rho-v5-fdb-1792112053-23322-source"
+      ],
+      "deadline_seconds": 45.0,
+      "elapsed_seconds": 0.07259404100477695,
+      "exit": 0,
+      "deadline_expired": false
+    }
+  ],
+  "receiptAbsent": true,
+  "reason": "owned-tools iterator assumes successful prebuild; immutable absence preserved",
+  "prebuildLogSHA256": "f2845947f26abe3448dbf73d1b614cfa194d0b03dbb3201a139108c3b3c410e2",
+  "controllerStderrSHA256": "b2f342ad8ca2aed54010f78b283f9bcd6bdeb968684303e31dffcfed76a199b3"
+}

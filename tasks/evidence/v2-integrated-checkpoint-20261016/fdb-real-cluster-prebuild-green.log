@@ -1,0 +1,315 @@
+/tmp/headers.tgz: OK
+/usr/local/include/foundationdb/fdb_c_types.h: OK
+Get:1 https://snapshot.debian.org/archive/debian/20261001T000000Z trixie InRelease [140 kB]
+Get:2 https://snapshot.debian.org/archive/debian/20261001T000000Z trixie/main arm64 Packages [9614 kB]
+Fetched 9755 kB in 1s (10.0 MB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following additional packages will be installed:
+  m4
+Suggested packages:
+  bison-doc build-essential flex-doc m4-doc
+Recommended packages:
+  libfl-dev
+The following NEW packages will be installed:
+  bison flex m4 xz-utils
+0 upgraded, 4 newly installed, 0 to remove and 0 not upgraded.
+Need to get 2504 kB of archives.
+After this operation, 6836 kB of additional disk space will be used.
+Get:1 https://snapshot.debian.org/archive/debian/20261001T000000Z trixie/main arm64 m4 arm64 1.4.19-8 [285 kB]
+Get:2 https://snapshot.debian.org/archive/debian/20261001T000000Z trixie/main arm64 flex arm64 2.6.4-8.2+b4 [412 kB]
+Get:3 https://snapshot.debian.org/archive/debian/20261001T000000Z trixie/main arm64 xz-utils arm64 5.8.1-1+deb13u1 [658 kB]
+Get:4 https://snapshot.debian.org/archive/debian/20261001T000000Z trixie/main arm64 bison arm64 2:3.8.2+dfsg-1+b2 [1149 kB]
+debconf: unable to initialize frontend: Dialog
+debconf: (TERM is not set, so the dialog frontend is not usable.)
+debconf: falling back to frontend: Readline
+debconf: unable to initialize frontend: Readline
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Teletype
+debconf: unable to initialize frontend: Teletype
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Noninteractive
+Fetched 2504 kB in 1s (2631 kB/s)
+Selecting previously unselected package m4.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 16886 files and directories currently installed.)
+Preparing to unpack .../archives/m4_1.4.19-8_arm64.deb ...
+Unpacking m4 (1.4.19-8) ...
+Selecting previously unselected package flex.
+Preparing to unpack .../flex_2.6.4-8.2+b4_arm64.deb ...
+Unpacking flex (2.6.4-8.2+b4) ...
+Selecting previously unselected package xz-utils.
+Preparing to unpack .../xz-utils_5.8.1-1+deb13u1_arm64.deb ...
+Unpacking xz-utils (5.8.1-1+deb13u1) ...
+Selecting previously unselected package bison.
+Preparing to unpack .../bison_2%3a3.8.2+dfsg-1+b2_arm64.deb ...
+Unpacking bison (2:3.8.2+dfsg-1+b2) ...
+Setting up m4 (1.4.19-8) ...
+Setting up xz-utils (5.8.1-1+deb13u1) ...
+update-alternatives: using /usr/bin/xz to provide /usr/bin/lzma (lzma) in auto mode
+Setting up bison (2:3.8.2+dfsg-1+b2) ...
+update-alternatives: using /usr/bin/bison.yacc to provide /usr/bin/yacc (yacc) in auto mode
+Setting up flex (2.6.4-8.2+b4) ...
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100  903k  100  903k    0     0  3351k      0 --:--:-- --:--:-- --:--:-- 3359k
+source.tar.xz: OK
+TC schedulers
+
+lib directory: /usr/lib
+libc has setns: yes
+libc has name_to_handle_at: yes
+SELinux support: no
+libtirpc support: no
+libbpf support: no
+ELF support: no
+libmnl support: no
+Berkeley DB: no
+need for strlcpy: no
+libcap support: no
+color output: never
+
+lib
+    CC       libgenl.o
+    CC       libnetlink.o
+libnetlink.c:152:2: warning: #warning "libmnl required for error support" [-Wcpp]
+  152 | #warning "libmnl required for error support"
+      |  ^~~~~~~
+    CC       utils.o
+    CC       utils_math.o
+    CC       rt_names.o
+    CC       ll_map.o
+    CC       ll_types.o
+    CC       ll_proto.o
+    CC       ll_addr.o
+    CC       inet_proto.o
+    CC       namespace.o
+    CC       json_writer.o
+    CC       json_print.o
+    CC       json_print_math.o
+    CC       names.o
+    CC       color.o
+    CC       bpf_legacy.o
+    CC       bpf_glue.o
+    CC       exec.o
+    CC       fs.o
+    CC       cg_map.o
+    CC       ppp_proto.o
+    CC       selinux.o
+    CC       ax25_ntop.o
+    CC       rose_ntop.o
+    CC       mpls_ntop.o
+    CC       mpls_pton.o
+    CC       netrom_ntop.o
+    AR       libnetlink.a
+    AR       libutil.a
+
+ip
+    CC       ip.o
+    CC       ipaddress.o
+    CC       ipaddrlabel.o
+    CC       iproute.o
+    CC       iprule.o
+    CC       ipnetns.o
+    CC       rtm_map.o
+    CC       iptunnel.o
+    CC       ip6tunnel.o
+    CC       tunnel.o
+    CC       ipneigh.o
+    CC       ipntable.o
+    CC       iplink.o
+    CC       ipmaddr.o
+    CC       ipmonitor.o
+    CC       ipmroute.o
+    CC       ipprefix.o
+    CC       iptuntap.o
+    CC       iptoken.o
+    CC       ipxfrm.o
+    CC       xfrm_state.o
+    CC       xfrm_policy.o
+    CC       xfrm_monitor.o
+    CC       iplink_dummy.o
+    CC       iplink_ifb.o
+    CC       iplink_nlmon.o
+    CC       iplink_team.o
+    CC       iplink_vcan.o
+    CC       iplink_vxcan.o
+    CC       iplink_vlan.o
+    CC       link_veth.o
+    CC       link_gre.o
+    CC       iplink_can.o
+    CC       iplink_xdp.o
+    CC       iplink_macvlan.o
+    CC       ipl2tp.o
+    CC       link_vti.o
+    CC       link_vti6.o
+    CC       link_xfrm.o
+    CC       iplink_vxlan.o
+    CC       tcp_metrics.o
+    CC       iplink_ipoib.o
+    CC       ipnetconf.o
+    CC       link_ip6tnl.o
+    CC       link_iptnl.o
+    CC       link_gre6.o
+    CC       iplink_bond.o
+    CC       iplink_bond_slave.o
+    CC       iplink_hsr.o
+    CC       iplink_bridge.o
+    CC       iplink_bridge_slave.o
+    CC       iplink_dsa.o
+    CC       ipfou.o
+    CC       iplink_ipvlan.o
+    CC       iplink_geneve.o
+    CC       iplink_vrf.o
+    CC       iproute_lwtunnel.o
+    CC       ipmacsec.o
+    CC       ipila.o
+    CC       ipvrf.o
+    CC       iplink_xstats.o
+    CC       ipseg6.o
+    CC       iplink_netdevsim.o
+    CC       iplink_rmnet.o
+    CC       ipnexthop.o
+    CC       ipmptcp.o
+    CC       iplink_bareudp.o
+    CC       iplink_wwan.o
+    CC       ipioam6.o
+    CC       iplink_amt.o
+    CC       iplink_batadv.o
+    CC       iplink_gtp.o
+    CC       iplink_virt_wifi.o
+    CC       iplink_netkit.o
+    CC       ipstats.o
+files="ip.c ip6tunnel.c ipaddress.c ipaddrlabel.c ipfou.c ipila.c ipioam6.c ipl2tp.c iplink.c iplink_amt.c iplink_bareudp.c iplink_batadv.c iplink_bond.c iplink_bond_slave.c iplink_bridge.c iplink_bridge_slave.c iplink_can.c iplink_dsa.c iplink_dummy.c iplink_geneve.c iplink_gtp.c iplink_hsr.c iplink_ifb.c iplink_ipoib.c iplink_ipvlan.c iplink_macvlan.c iplink_netdevsim.c iplink_netkit.c iplink_nlmon.c iplink_rmnet.c iplink_team.c iplink_vcan.c iplink_virt_wifi.c iplink_vlan.c iplink_vrf.c iplink_vxcan.c iplink_vxlan.c iplink_wwan.c iplink_xdp.c iplink_xstats.c ipmacsec.c ipmaddr.c ipmonitor.c ipmptcp.c ipmroute.c ipneigh.c ipnetconf.c ipnetns.c ipnexthop.c ipntable.c ipprefix.c iproute.c iproute_lwtunnel.c iprule.c ipseg6.c ipstats.c iptoken.c iptunnel.c iptuntap.c ipvrf.c ipxfrm.c link_gre.c link_gre6.c link_ip6tnl.c link_iptnl.c link_veth.c link_vti.c link_vti6.c link_xfrm.c rtm_map.c rtmon.c static-syms.c tcp_metrics.c tunnel.c xfrm_monitor.c xfrm_policy.c xfrm_state.c" ; \
+for s in `grep -B 3 '\<dlsym' $files | sed -n '/snprintf/{s:.*"\([^"]*\)".*:\1:;s:%s::;p}'` ; do \
+	sed -n '/'$s'[^ ]* =/{s:.* \([^ ]*'$s'[^ ]*\) .*:extern char \1[] __attribute__((weak)); if (!strcmp(sym, "\1")) return \1;:;p}' $files ; \
+done > static-syms.h
+    CC       rtmon.o
+    CC       static-syms.o
+    LINK     rtmon
+/usr/bin/ld: ../lib/libutil.a(utils.o): in function `format_host_r':
+utils.c:(.text+0x1c24): warning: Using 'gethostbyaddr' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: utils.c:(.text+0x1ca0): warning: Using 'sethostent' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+    LINK     ip
+/usr/bin/ld: iptuntap.o: in function `tun_print_opt':
+iptuntap.c:(.text+0xc0c): warning: Using 'getgrgid' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: iptuntap.o: in function `parse_args':
+iptuntap.c:(.text+0x1c8): warning: Using 'getgrnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: ../lib/libutil.a(utils.o): in function `format_host_r':
+utils.c:(.text+0x1c24): warning: Using 'gethostbyaddr' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: utils.c:(.text+0x1ca0): warning: Using 'sethostent' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: ipxfrm.o: in function `strxf_proto':
+ipxfrm.c:(.text+0xed4): warning: Using 'getprotobynumber' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: ipxfrm.o: in function `xfrm_selector_parse':
+ipxfrm.c:(.text+0x3400): warning: Using 'getprotobyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: iptuntap.o: in function `parse_args':
+iptuntap.c:(.text+0x130): warning: Using 'getpwnam' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: iptuntap.o: in function `tun_print_opt':
+iptuntap.c:(.text+0xbd4): warning: Using 'getpwuid' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+
+tc
+    CC       tc.o
+    CC       tc_qdisc.o
+    CC       tc_class.o
+    CC       tc_filter.o
+    CC       tc_util.o
+    CC       tc_monitor.o
+    CC       tc_exec.o
+    CC       m_police.o
+    CC       m_estimator.o
+    CC       m_action.o
+    CC       m_ematch.o
+    YACC     emp_ematch.tab.c
+    LEX      emp_ematch.lex.c
+    CC       q_fifo.o
+    CC       q_sfq.o
+    CC       q_red.o
+    CC       q_prio.o
+    CC       q_skbprio.o
+    CC       q_tbf.o
+    CC       q_multiq.o
+    CC       q_netem.o
+    CC       q_choke.o
+    CC       q_sfb.o
+    CC       f_u32.o
+    CC       f_route.o
+    CC       f_fw.o
+    CC       f_basic.o
+    CC       f_bpf.o
+    CC       f_flow.o
+    CC       f_cgroup.o
+    CC       f_flower.o
+    CC       q_gred.o
+    CC       q_ingress.o
+    CC       q_hfsc.o
+    CC       q_htb.o
+    CC       q_drr.o
+    CC       q_qfq.o
+    CC       m_gact.o
+    CC       m_mirred.o
+    CC       m_mpls.o
+    CC       m_nat.o
+    CC       m_pedit.o
+    CC       m_ife.o
+    CC       m_skbedit.o
+    CC       m_skbmod.o
+    CC       m_csum.o
+    CC       m_simple.o
+    CC       m_vlan.o
+    CC       m_connmark.o
+    CC       m_ctinfo.o
+    CC       m_bpf.o
+    CC       m_tunnel_key.o
+    CC       m_sample.o
+    CC       m_ct.o
+    CC       m_gate.o
+    CC       p_ip.o
+    CC       p_ip6.o
+    CC       p_icmp.o
+    CC       p_eth.o
+    CC       p_tcp.o
+    CC       p_udp.o
+    CC       em_nbyte.o
+    CC       em_cmp.o
+    CC       em_u32.o
+    CC       em_canid.o
+    CC       em_meta.o
+    CC       q_mqprio.o
+    CC       q_codel.o
+    CC       q_fq_codel.o
+    CC       q_fq.o
+    CC       q_pie.o
+    CC       q_fq_pie.o
+    CC       q_cake.o
+    CC       q_hhf.o
+    CC       q_clsact.o
+    CC       e_bpf.o
+    CC       f_matchall.o
+    CC       q_cbs.o
+    CC       q_etf.o
+    CC       q_taprio.o
+    CC       q_plug.o
+    CC       q_ets.o
+    CC       tc_core.o
+    CC       tc_red.o
+    CC       tc_estimator.o
+    CC       tc_stab.o
+    CC       tc_qevent.o
+files="e_bpf.c em_canid.c em_cmp.c em_ipset.c em_ipt.c em_meta.c em_nbyte.c em_u32.c f_basic.c f_bpf.c f_cgroup.c f_flow.c f_flower.c f_fw.c f_matchall.c f_route.c f_u32.c m_action.c m_bpf.c m_connmark.c m_csum.c m_ct.c m_ctinfo.c m_ematch.c m_estimator.c m_gact.c m_gate.c m_ife.c m_mirred.c m_mpls.c m_nat.c m_pedit.c m_police.c m_sample.c m_simple.c m_skbedit.c m_skbmod.c m_tunnel_key.c m_vlan.c p_eth.c p_icmp.c p_ip.c p_ip6.c p_tcp.c p_udp.c q_cake.c q_cbs.c q_choke.c q_clsact.c q_codel.c q_drr.c q_etf.c q_ets.c q_fifo.c q_fq.c q_fq_codel.c q_fq_pie.c q_gred.c q_hfsc.c q_hhf.c q_htb.c q_ingress.c q_mqprio.c q_multiq.c q_netem.c q_pie.c q_plug.c q_prio.c q_qfq.c q_red.c q_sfb.c q_sfq.c q_skbprio.c q_taprio.c q_tbf.c static-syms.c tc.c tc_class.c tc_core.c tc_estimator.c tc_exec.c tc_filter.c tc_monitor.c tc_qdisc.c tc_qevent.c tc_red.c tc_stab.c tc_util.c" ; \
+for s in `grep -B 3 '\<dlsym' $files | sed -n '/snprintf/{s:.*"\([^"]*\)".*:\1:;s:%s::;p}'` ; do \
+	sed -n '/'$s'[^ ]* =/{s:.* \([^ ]*'$s'[^ ]*\) .*:extern char \1[] __attribute__((weak)); if (!strcmp(sym, "\1")) return \1;:;p}' $files ; \
+done > static-syms.h
+    CC       emp_ematch.tab.o
+    CC       emp_ematch.lex.o
+    AR       libtc.a
+    CC       static-syms.o
+    LINK     tc
+/usr/bin/ld: ../lib/libutil.a(utils.o): in function `format_host_r':
+utils.c:(.text+0x1c24): warning: Using 'gethostbyaddr' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: utils.c:(.text+0x1ca0): warning: Using 'sethostent' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: ../lib/libutil.a(inet_proto.o): in function `inet_proto_n2a':
+inet_proto.c:(.text+0x30): warning: Using 'getprotobynumber' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: ../lib/libutil.a(inet_proto.o): in function `inet_proto_a2n':
+inet_proto.c:(.text+0x13c): warning: Using 'getprotobyname' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+rm emp_ematch.lex.c

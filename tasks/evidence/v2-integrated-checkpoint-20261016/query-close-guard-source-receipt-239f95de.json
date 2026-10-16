@@ -1,0 +1,14 @@
+{
+  "revision": "239f95deea4784cf71daf902423b88b24741e4bd",
+  "parent": "86179864933bfc6f89bdcb78df31edc2a2f43575",
+  "tree": "/private/var/tmp/rho-v5-native-create-update-close-guard-20261016",
+  "clean": true,
+  "path": "v5/internal/graphapply/native_graph_create_update_test.go",
+  "parentBlob": "fcfcec29a56191883b1bc4161932ec24cc67c168",
+  "parentSHA256": "c04723e936f287e5e0001c7caabdfa6213b196b29eca9c0794621b6fba5ed983",
+  "sha256": "381558a6c086ae4db33f0be19b3e802235f693bfa49fcf8ef466768d2cc36577",
+  "evidence": "/private/var/tmp/rho-v5-create-update-query-qualification-20261016",
+  "red": "pristine original fa1b test overlaid at actual canonical path reproduces remote-participant reason9",
+  "green": "targeted existing and new direct guards PASS8.184s; focused race+coverage PASS13.968s; no OS cohort rerun needed for guard-only successor",
+  "scope": "Test setup uses real coordinator for actual cross dependencies; assertions and production behavior unchanged; checked current source Close"
+}

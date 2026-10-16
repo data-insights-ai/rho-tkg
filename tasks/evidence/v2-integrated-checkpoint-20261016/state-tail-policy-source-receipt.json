@@ -1,0 +1,32 @@
+{
+  "commit": "42525a31b0a96b0ce28152379f7ebb580ca82bf4",
+  "parent": "0d6000463c576a191ff8f933f6fb75ac73d3a470",
+  "tree": "/var/tmp/rho-v5-state-move-limit-fix-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_harness_test.go",
+      "sha256": "2ada66a2a5dfef8ffb2fd11142204cb1c23244e862cd631e3e4826ab09a72d6b",
+      "blob": "1cfdd40d5e8ffe3f7d59db00933c07de86288d10",
+      "parentBlob": "a7e0624bcac8b5988e1b3ead74f220db4fc7b50f"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_program_test.go",
+      "sha256": "e3b950f0e68bf2deecff16d6619d6ac84e59d4f1eb30bb2826bbabaacab223fe",
+      "blob": "11d3dd7b32933dbec33b5d4821b6383653e5d1fe",
+      "parentBlob": "8485727c05064ca1a721860bb5f121fe240f6dac"
+    },
+    {
+      "path": "v5/internal/graphapply/replicated_process_test.go",
+      "sha256": "cb69d459415a3749b495edaa7578ec964a69fb7cfc6916a4a08bd274011faad0",
+      "blob": "8751e01f4bc3e39b889f22adc8fd68c4d4ea8b2e",
+      "parentBlob": "a56364f55c8d71ee11c4d66ed644663e51f0c722"
+    }
+  ],
+  "red": "/private/var/tmp/rho-v5-state-move-limit-evidence-20261016/direct-red.log",
+  "green": "/private/var/tmp/rho-v5-state-move-limit-evidence-20261016/tail-green-2.log",
+  "tests": [
+    "TestNativeProtocolPooledTailBackpressurePreservesMoveOwner",
+    "TestNativeProtocolStateTailPolicyIsExplicitAndBounded"
+  ],
+  "limitation": "Only admission/backpressure/drain; subsequent genuine target Import0 has independently demonstrated strict-baseline summary defect; no OS rerun or full completion claimed."
+}

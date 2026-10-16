@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "scope": "Finite native query correctness, independent complete artifact verification and source corrections. Not complete paired-cell, V2, cost or release acceptance.",
+  "source_commit": "30a6ec66",
+  "integrated_changes": {
+    "4dc7e7a2": "Authenticate identical retained pin/cut for each bounded hydration; prepay complete query and separate export/retry grants. Fixed per-invocation1024-RPC cap and original deadline remain unchanged.",
+    "11bf9971": "Existing cross-relationship closure guard uses real distributed coordinator; strict historical/refusal assertions remain. New test checks Close errors.",
+    "921cca7d": "Independent checker recognizes exact declared GR3 native root modes3/4/5, preserving172-byte format, namespace and seal checks.",
+    "0084629f": "Explicit D-only19-entry native tail admission/backpressure window fits unchanged256MiB retained backing and4MiB install bound; legacy/default and Cost12 policies unchanged.",
+    "9f0ec60c": "Checker binds exact allocator control/routing CDC to originals and installed grants, canonical sealed-axis encoding and empty label output.",
+    "0c4fda35": "Selector checker admits exactly null/empty-array label encodings while retaining strict typed node/relationship/history joins.",
+    "67cce443": "Four FDB source files aligned to actual pinned SDK and types; early prebuild failures emit truthful receipt with missing-stage artifacts.",
+    "30a6ec66": "Pinned Debian snapshot installs xz-utils required by the pinned, hash-verified iproute2 archive."
+  },
+  "root_results": {
+    "go": "Two direct query/history/exhaustion and source-admission guards PASS4.08s using author query binary; all owned exited, no forced cleanup. This is independent execution of selected source, not a new full integrated-module build.",
+    "python": "28 selected native root/feed/selector/correction guards PASS; seven FDB launcher guards PASS.",
+    "full_native_oracle": "PASS on integrated0c4fda35: complete unchanged20-fact native artifact replay with exact request/binary/spec/run/deadline/hash and process-cleanup joins; logical answer SHA2564ba4d27d341d14cefcfd1708e9b27efe3b1da99886dac812d38ae87b0f3410fe. Original RED controller receipt remains unchanged."
+  },
+  "author_results": {
+    "go": "New+existing strict guards PASS8.184s after authentic closure; focused race/coverage PASS13.968s, package24.4% is partial-target coverage only, not the full coverage gate.",
+    "process": "Exact20-fact,100% cross,one writer,kv/local native parent PASS32.57s; all13 owned process identities exited, no forced cleanup; sampled aggregate peak280.6875MiB. Correctness smoke, not capacity measurement.",
+    "full_oracle": "PASS after strict producer-contract corrections; independently repeated by root, without rerunning or changing native artifacts.",
+    "cost_observation": "Each of five observations uses30 source captures; per-observation actual reads are10.7k\u201311.4k records/18.3\u201319.1MB. Conservative per-entity hydration is unoptimized; no efficiency/comparison claim."
+  },
+  "archive": {
+    "path": "tiny-create-update-kv-86179864.tar.gz",
+    "sha256": "f1be7df6b4d2f5892951eb53a24fc909836d10c6347c3f3c00989da4a6af1f89",
+    "bytes": 548971,
+    "contents": "All13 selected native request/receipt/watchdog/output and raw artifact files, no database directories. Original completedCell=false/proof=null receipt preserved unchanged."
+  },
+  "FDB": "Actual corrected prebuild passes Go and pinned owned-tool compilation, then four owned zones become healthy triple-replicated and smoke passes. Business admission stops at the capability-name check (Docker CAP_NET_ADMIN vs NET_ADMIN literal), before any workload release. Actual receipt exit1/cleanup0/successfalse; all7 owned containers,4 volumes,network and2 images removed with exit0. A narrow exact capability-spelling correction is under source review; no FDB workload/pair acceptance.",
+  "remaining": "Complete demonstrated Import0 summary/manifest correction and process recovery qualification; actual FDB counterpart/full pair, remaining correctness inventory, measurements/engine decision and coordinated gates stay open.",
+  "files_sha256": {
+    "query-source-receipt-86179864.json": "e4ec88d239e9e5b4e6e8976f6b17027ee4a5aa5dca189b77421af04c26a48ffc",
+    "query-close-guard-source-receipt-239f95de.json": "dac64038b05792b5981dc835168c4351c77a0b71e4b755da8b52b9a786a91bfc",
+    "query-hydration-red.log": "4c59d01a75f1f63283fdf49803aef59b9cf63b9a0957e02935aa87dfbd88b275",
+    "query-admission-red.log": "c7b933a459bfb342070d0c5121709eaf595bb900288850a54d08e8e522f2f4f4",
+    "query-author-direct-green.log": "5ce946eff3e9abf3f26acdd6516007bbeb9c39e330b21f66444f74c273569c7d",
+    "query-old-guard-baseline-red.log": "425f406dc965f8b01f8457e4f117c4c7ac4238462a713ce875963a17c62b9474",
+    "query-close-guard-green.log": "b3cb7ec1a5b6b30c02184a40f5a0d6ac56e069d27fc7c6ecc5a2b99416dec344",
+    "query-author-focused-race-cover.log": "bd89cf51a0601ea064b7cfa93168493328b051ac9061a5d3a4cf23a0f4ccaa66",
+    "query-root-guards-4dc7e7a2.log": "0500c6bdaf8d3bec9abe1527d074855e1ca3aad932aa291206d1cbed8adf81ec",
+    "query-root-guards-4dc7e7a2.json": "132da9eaa2a38309ff052fb4e1cbebaf9ced8ab80bf2e99b169ddbb7e0aeac70",
+    "query-root-python-921cca7d.log": "474dae795f951822d9efb3cb10d4f6cb5ba05f2e84b3534f42c92c4745add0d8",
+    "native-column-root-source-receipt-e3cff52f.json": "a4eeeac03237ff02fa95b6bb21f4e6ce3df245235525a524b9e9ac2aaad71e6b",
+    "native-scalar-oracle-source-receipt.json": "24d325019acf38da484f0ffe12177a76b6adf8e5eec62f4af30d80e6600c4c46",
+    "native-scalar-oracle-author-full-green.json": "ade675ab5d3a100623ae8a2f00a5f6bd486fa2f03c79ecb2afd676b5e17e20bb",
+    "native-scalar-oracle-author-red.log": "7a082b7412237c75e37c2aacac70bbee461e4cca150cbd0656684ad51e41b94f",
+    "native-oracle-root-0c4fda35.json": "d4a94133877af44e5441e182ca5464eab6599f51a89e81583c2e37aeed6cbe4b",
+    "native-oracle-guards-0c4fda35.log": "dca4de4665f3bb51719819f69ce884c4c400ba573b81bd4322a8bbd5684f8278",
+    "state-tail-policy-source-receipt.json": "d23d1d93b60952e47281e2988e1c38c7f510a95a53c63b8cf7ef7bd33702191a",
+    "state-tail-policy-direct-red.log": "ca3b6eb5f4d483a16a933409a7acf228f2bb683c22a27f322a36428f92fb67cf",
+    "state-tail-policy-direct-green.log": "b3a58a5ec078c5464a0edcff6d3a023e7eb5a50d0882a825a91787ff7593928d",
+    "fdb-prebuild-source-receipt.json": "66d5f766abb2c10e55e8047214fb96b162d68829fe8ccbee3e5ed0a635ce30f3",
+    "fdb-xz-source-receipt.json": "e404bb57db729c0936632ff4f28939ef14b7d2f33df58b766ff322bcc0145fb8",
+    "fdb-initial-prebuild-red.log": "f2845947f26abe3448dbf73d1b614cfa194d0b03dbb3201a139108c3b3c410e2",
+    "fdb-initial-terminal-summary.json": "48f395a205e3c44ab449f771450f474ca31148f64b104fb607ca41645528904c",
+    "fdb-xz-prebuild-red.log": "18a5f615f6f3bbfd3f089c54d7467a3292ea429fd609ffa85681a4c9449e6e1f",
+    "fdb-xz-prebuild-red-receipt.json": "502762ada9d0536ae9664110e9140835dcf47f91827eb19eff3c1c66ecace5e4",
+    "fdb-launcher-guards.log": "b5985bb5d4095da848c1e4e38b9358c2d452a471f0f3fb2fd143db7544944125",
+    "fdb-real-cluster-prebuild-green.log": "5cd0017aef0e7d0b43ac66b52953113316dae730e12429cb05de1518dd1ea6b6",
+    "fdb-real-cluster-red-receipt.json": "9f6feea1a5d8b943a2b2afe3d6a042f53b4500a79d66fac76c8b9492b3f63250",
+    "fdb-real-cluster-commands.jsonl": "87901ae3755760d7ff3cade03b235fddeb2c435250f7da0b70e56b7200dcc5c3",
+    "fdb-real-cluster-status.json": "dfe744b9cb7a1ce1c8526d6c40c1937de16ea3105361a3a911595a76ad486ae7",
+    "fdb-real-cluster-zone0-inspect.json": "ba081283e929d99b3cb9305cdd32b07448a2c06f19eb51bc798992a5ad333bcb",
+    "fdb-real-cluster-cleanup.txt": "8b68978e33f85d7b6e341974858001d243993f0d2eb86b4f7a89e6efc289d5de",
+    "fdb-real-cluster-controller-red.log": "b2f342ad8ca2aed54010f78b283f9bcd6bdeb968684303e31dffcfed76a199b3"
+  },
+  "D_policy": "Author direct firstFence, native tail overflow/backpressure and drain preserve genuine recovery owner. Complete move/import and process case remain unaccepted; a demonstrated target Import0 prefix-summary/manifest-digest defect is under separate production correction."
+}

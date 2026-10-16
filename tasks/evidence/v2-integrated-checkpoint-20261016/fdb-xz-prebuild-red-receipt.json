@@ -1,0 +1,38 @@
+{
+  "exit": 2,
+  "cleanup_exit": 0,
+  "success": false,
+  "sha256": {
+    "build-go-version.txt": "dc82704fc0bd69d611ddf7944dbde619ba912123fc785f1a64d9d2809ff63b93",
+    "build-memory-peak.txt": "8b28e98ba9f30b47e13047a0920ff7fb08b309487baf24fa101473e02856d616",
+    "build-memory-stat.txt": "f605c40e34297ae0d1269b2996fe949fadc51295d550ec11418da31ad18cdb9a",
+    "build-source.log": "2576125b19af5855bf214ec1b4fbd3ceb2ac2fab0a5c859159905196e4de2374",
+    "cleanup.txt": "8c0968344cdc9c42cbb2bbb14910787ea5314a6562bee34981293a98bb857a24",
+    "commands.jsonl": "249389236343d236cee2179928306a30bccf1e4c250b0f38864422f56cc3b617",
+    "docker-info.json": "c8e1274f53c5de4e35d19dc359a1bfffa6dc7f8503fdea6309f8bc4136a352ca",
+    "docker-version.txt": "b4d59e757c1ef003d918e33c9f93628ae99b529cbe796fe3ac2450d2fbd6e9fe",
+    "host.txt": "06897966d18ab2957ac35e8e09140e74b684e5f1eb9272dd5d06cfe082f85c20",
+    "prebuild.log": "18a5f615f6f3bbfd3f089c54d7467a3292ea429fd609ffa85681a4c9449e6e1f",
+    "profile.json": "0417746b92b5b9e51fd15dd90404ee26bd92c8562bd573ccb5029de514128482",
+    "pull-runtime.log": "ed4d9a214c3d388a07e301e6ac5d2b040654b4b6248d6584ef521372b4d09cc5",
+    "rho-v5-fdb-1792112420-38742-prebuild-final-inspect.json": "1087fd3a7efe497216a82abc6f03947f649a2e76e6da132a7880aab6e5de7937",
+    "rho-v5-fdb-1792112420-38742-prebuild.log": "18a5f615f6f3bbfd3f089c54d7467a3292ea429fd609ffa85681a4c9449e6e1f",
+    "source-head.txt": "ede402dfa13982bcdd9d1f2cf491382474ffb512d4f50df17cc59a835099e969",
+    "source-sha256.txt": "0a8c78e7d00dad0a3c0c25eb391fc576f85058a716293593c61d5c6ac9b8b059",
+    "source-status.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "transport-probe-source-sha256.txt": "9cfc558d45416bac3eb5604589f814190209ab417df6e9a9671550c8664455f4",
+    "workload-controller-source-sha256.txt": "9bba4ffa3e431598e542e22772b01118e6ae8c9a798bc4f6d7451acd73be6050"
+  },
+  "mode": "workload-cell",
+  "scope": "one host/four logical FDB zones; actual owned ingress transport/fixed original budget, strict-local0 business create/update baseline and explicit mixed/cross10/50/100 variants, authentic complete read/write footprints and full phase wall/operation timings, raw retained old/current/original/CDC and optional native/cache columns; setup excluded, fixed declared IDs not allocator issuance; configured delay and actual probes/resources retained; no native parity/full matrix/capacity acceptance",
+  "missingOwnedArtifacts": [
+    "owned-tools/tc",
+    "owned-tools/ip",
+    "owned-tools/manifest.json",
+    "owned-tools/build.txt",
+    "owned-tools/elf.txt",
+    "transport-probe",
+    "transport-admission.json",
+    "transport-complete.json"
+  ]
+}
