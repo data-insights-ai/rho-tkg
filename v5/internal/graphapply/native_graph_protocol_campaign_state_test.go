@@ -352,6 +352,7 @@ type nativeProtocolStateArtifact struct {
 	Program                                   *nativeProtocolStateProgramEvidence `json:",omitempty"`
 	program                                   *nativeProtocolStateProgram
 	capture                                   *nativeProtocolPoolCapture
+	moveReserve                               allocationProposal
 }
 
 func nativeProtocolStateStart(t *testing.T) (context.Context, [16]byte, int64) {
@@ -607,6 +608,14 @@ func nativeProtocolStateCaseAt(t *testing.T, recipe nativeProtocolStateRecipe, p
 		a.Pooled = &nativeProtocolStatePooledEvidence{Version: 1, Semantic: rangeMovePooledSemanticContractID()}
 		if len(programs) == 1 {
 			a.Version, a.Profile = 3, nativeProtocolStateProgramProfile
+			if recipe.Family == "move" {
+				// The allocator still belongs to actual leader/session1 here.
+				// Keep its genuine proposal, never its private proof, across
+				// the program's later election to a different native leader.
+				n.read(t, 1, observeRecipient, 1)
+				n.read(t, 1, observeAllocator, 0)
+				a.moveReserve = nativeProtocolStatePrepare(t, n, 1, certifiedReserve, 0, graphE17GrantInput(3, 4))
+			}
 			a.program = newNativeProtocolStateProgram(t, ctx, f, recipe, programs[0])
 		} else if len(programs) != 0 {
 			t.Fatal("one finite state program")
@@ -915,9 +924,16 @@ func nativeProtocolStateMove(t *testing.T, ctx context.Context, f *pairedGraphFa
 	// from these saved bytes. A later allocator epoch transfer fences the saved
 	// genuine reservation independently of graph placement.
 	delayed := nativeProtocolStatePrepare(t, n, 1, certifiedHealthyLabel, 1, nil)
-	n.read(t, 1, observeRecipient, 1)
-	n.read(t, 1, observeAllocator, 0)
-	oldReserve := nativeProtocolStatePrepare(t, n, 1, certifiedReserve, 0, graphE17GrantInput(3, 4))
+	oldReserve := a.moveReserve
+	if a.program == nil {
+		// Literal fixtures have not rotated: preserve their original factory
+		// order and actual owner1 proof acquisition.
+		n.read(t, 1, observeRecipient, 1)
+		n.read(t, 1, observeAllocator, 0)
+		oldReserve = nativeProtocolStatePrepare(t, n, 1, certifiedReserve, 0, graphE17GrantInput(3, 4))
+	} else if len(oldReserve.wire) == 0 {
+		t.Fatal("missing genuine pre-election allocator proposal")
+	}
 	factory := nativeFaultFamilyCall(t, n.all[2], nativeFaultFamilyControl{Version: 1, Action: "inspect"})
 	owner := nativeLogicalTransitionCall(t, n.all[2], nativeLogicalTransitionControl{Version: 1, Action: "inspect"})
 	pages := graphE17AdmittedMovePages
@@ -1030,12 +1046,16 @@ func nativeProtocolStateMove(t *testing.T, ctx context.Context, f *pairedGraphFa
 	}
 	if a.Recipe.Phase != byte(rangeMoveAbort) {
 		nativeProtocolStateRefuse(t, f, a, "old-owner-write", delayed, reasonRemoteParticipant)
-		n.read(t, 1, observeAllocator, 0)
-		a.AllocatorBefore = p06ProcessWire(t, n.all[1].call(t, processRequest{op: processP08Metadata}))
-		nativeProtocolStateAction(t, n, 1, certifiedP08Transfer, 0, nil)
+		allocator := uint64(1)
+		if a.program != nil {
+			allocator = n.leaders[0]
+		}
+		n.read(t, allocator, observeAllocator, 0)
+		a.AllocatorBefore = p06ProcessWire(t, n.all[allocator].call(t, processRequest{op: processP08Metadata}))
+		nativeProtocolStateAction(t, n, allocator, certifiedP08Transfer, 0, nil)
 		nativeProtocolStateRefuse(t, f, a, "old-allocator-epoch", oldReserve, reasonStale)
-		a.AllocatorAfter = p06ProcessWire(t, n.all[1].call(t, processRequest{op: processP08Metadata}))
-		oldState := allocationP08Observe(t, n, 1, nil)
+		a.AllocatorAfter = p06ProcessWire(t, n.all[allocator].call(t, processRequest{op: processP08Metadata}))
+		oldState := allocationP08Observe(t, n, allocator, nil)
 		inspection, err := idalloc.Inspect(&oldState.allocator)
 		if err != nil || inspection.HighWater != 32 {
 			t.Fatal("stale reserve changed allocation high water", err)
@@ -1054,8 +1074,14 @@ func nativeProtocolStateRefuse(t *testing.T, f *pairedGraphFaultNetwork, a *nati
 	if err != nil {
 		t.Fatal(err)
 	}
+	leader := uint64(1)
+	if a.program != nil {
+		leader = f.n.leaders[0]
+	}
 	before := f.n.all[1].call(t, processRequest{op: processStateOp})
-	f.n.groups[0].event(t, 1, processRequest{op: processPropose, data: wire})
+	f.n.groups[0].event(t, leader, processRequest{op: processPropose, data: wire})
+	// The fair native packet drain above catches up this same original voter;
+	// recording it does not grant that follower submission/read authority.
 	after := f.n.all[1].call(t, processRequest{op: processStateOp})
 	record := f.n.all[1].call(t, processRequest{op: processEntryRecord, index: after.applied})
 	var outcome outcome
