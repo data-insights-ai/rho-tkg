@@ -24,7 +24,7 @@ Coverage spans three sources:
 | `ErrIndexExists` | store | Property index already exists at the given name (node OR relationship) | `g.Index().CreateProperty()`, `g.Index().CreateRelProperty()` |
 | `ErrIndexNotFound` | store | Property index not found (also returned by the range doors when no usable index exists for non-temporal opts, so callers fall back to a scan; a temporal `QueryOpts` needs no index) | `g.Index().SearchNearest()`, `g.Index().DeleteRelProperty()`, `g.Rels().ForEachByTypePropertyRange()`, index mutation/removal doors |
 | `ErrElementsIndexUnsupported` | store | An operation that needs value equality on a key with an Elements property index (`PropertyIndexOptions.Elements`, backlog 63), or Elements with RangeCounts | `g.Index().CreatePropertyWithOptions()` / `CreateRelPropertyWithOptions()`, `g.Constraints().CreateUnique()`, `g.Nodes().GetOrCreateByKey()`, `g.Nodes().ByLabelAndProperties()`, `g.Index().CreateComposite()`; see api.md "Elements index" |
-| `ErrRelPropertyIndexUnsupported` | store | The backend recognizes relationship property indexes but declines to CREATE them (the tiered store — rel values are scattered across timestamp-routed event shards). Query still works via the type-scan fallback. Distinct from `ErrCapabilityNotSupported` | `g.Index().CreateRelProperty()` on a tiered-backed graph |
+| `ErrRelPropertyIndexUnsupported` | store | The backend recognizes relationship property indexes but declines to CREATE them in its configuration; it reports `RelPropertyIndexSupported() == false`, so `store.CapabilitiesOf` shows the capability absent. No in-tree backend returns it since v4.58.0 (tiered builds the index per shard). Query still works via the type-scan fallback. Distinct from `ErrCapabilityNotSupported` | `g.Index().CreateRelProperty()` |
 | `ErrTemporalIndexExists` | store | Temporal index already exists | `g.Index().CreateTemporal()`, `g.Index().CreateHighFrequency()` |
 | `ErrTemporalIndexNotFound` | store | Temporal index not found | `g.Index().DeleteTemporal()`, `g.Index().DeleteHighFrequency()` |
 | `ErrVectorIndexExists` | store | Vector index already exists | `g.Index().CreateVector()` |
@@ -45,7 +45,6 @@ Coverage spans three sources:
 | `ErrIndexProviderNotFound` | index | No index provider registered with that name | `g.Index().SearchNearest()` when provider not found |
 | `ErrIndexProviderEmptyName` | index | Index provider name cannot be empty | `g.Index().RegisterProvider()` |
 | `ErrOrderedScanTemporal` | store | **LEGACY — no longer returned by anything.** The ordered / prefix range doors used to decline temporal `QueryOpts` with it; they now SERVE those opts via a sound full fold (values resolved at the pin, then sorted — see query-planners.md). Kept exported so an `errors.Is` match still compiles | none (historically `g.Nodes().ForEachByLabelPropertyRangeOrdered()`) |
-| `ErrRelPropertyIndexUnsupported` | store | Backend lacks relationship property-index capability | `g.Index().CreateRelProperty()`, `g.Rels().ByTypeAndProperty()` |
 
 ## Registry
 
@@ -189,7 +188,7 @@ Sentinels enforcing `tiered.Store`'s reference-vs-event primary-label class boun
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
 | `ErrNotReferenceEntity` | tiered | The target entity is not a reference entity — event entities cannot be archived | `g.Tier().Archive()` / `Restore()` on an event-classed node |
-| `ErrEventPropertyIndex` | tiered | Property indexes are reference-entities-only on a tiered store | `g.Index().CreateProperty()` on an event-classed label |
+| `ErrEventPropertyIndex` | tiered | **Deprecated — no longer returned since v4.58.0** (property indexes cover every label on every tiered shard). Kept exported so an `errors.Is` match still compiles | none (historically `g.Index().CreateProperty()` on an event-classed label) |
 | `ErrPrimaryLabelClassMutation` | tiered | A label mutation would change the primary label's reference↔event ontology class (routing depends on this class, so flipping it mid-flight would fragment the version chain across shards) | `g.Nodes().AddLabel()` / `RemoveLabel()` — surfaced from the store-level label-token doors (`AddNodeLabelToken` / `RemoveNodeLabelToken` and their `WithHistory` variants) |
 
 ## Column Scans (Experimental)
