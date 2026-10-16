@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -420,6 +421,89 @@ func (e *graphAuthenticatedEndpoint) callUsing(ctx context.Context, request grap
 	return r, nil
 }
 
+// A private context token limits reuse to ONE fixture projection. Neither the
+// token nor a completed read grants source/readiness/installation authority.
+type graphSourceGetOwner struct{ closed atomic.Bool }
+type graphSourceGetContextKey struct{}
+type graphSourceGetReuse struct {
+	owner    *graphSourceGetOwner
+	cookie   graphSourceCookie
+	root     raftlog.ApplicationRoot
+	endpoint *graphAuthenticatedEndpoint
+	arena    *graphstate.OutputBudget
+	entries  []graphSourceGetEntry
+	bytes    int
+}
+type graphSourceGetEntry struct {
+	row   raftlog.KV
+	key   []byte
+	found bool
+}
+
+const graphSourceGetEntries = 128
+const graphSourceGetBytes = 1 << 20
+
+// beginGetReuse is explicit operation admission, never a source default. The
+// source's ordinary request gate serializes setup/removal and Get as before.
+func (s *remoteGraphSource) beginGetReuse(ctx context.Context, owner *graphSourceGetOwner, arena *graphstate.OutputBudget) error {
+	if s == nil || owner == nil || arena == nil {
+		return errInvalid
+	}
+	if err := s.mu.lock(ctx); err != nil {
+		return err
+	}
+	defer s.mu.unlock()
+	if owner.closed.Load() || s.closed || s.ctx.Err() != nil || time.Now().After(s.deadline) {
+		return graphstore.ErrSourceUnavailable
+	}
+	if s.getReuse != nil {
+		return graphstore.ErrSourceUnavailable
+	}
+	s.endpoint.budget.mu.Lock()
+	defer s.endpoint.budget.mu.Unlock()
+	if s.endpoint.budget.output != arena {
+		return errInvalid
+	}
+	if err := arena.Reserve(512 + len(s.info.root.Image) + graphSourceGetEntries*96); err != nil {
+		return outputBudgetFailure(err)
+	}
+	root := s.info.root
+	root.Image = owned(root.Image)
+	s.getReuse = &graphSourceGetReuse{owner: owner, cookie: s.info.cookie, root: root, endpoint: s.endpoint, arena: arena, entries: make([]graphSourceGetEntry, 0, graphSourceGetEntries)}
+	return nil
+}
+func (s *remoteGraphSource) endGetReuse(owner *graphSourceGetOwner) error {
+	if s == nil || owner == nil {
+		return errInvalid
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := s.mu.lock(ctx); err != nil {
+		return err
+	}
+	defer s.mu.unlock()
+	if s.getReuse == nil || s.getReuse.owner != owner {
+		return errInvalid
+	}
+	s.getReuse = nil
+	return nil
+}
+func (r *graphSourceGetReuse) check(s *remoteGraphSource) error {
+	root := s.info.root
+	if r.owner.closed.Load() || r.endpoint != s.endpoint || r.cookie != s.info.cookie || r.root.Generation != root.Generation || r.root.Index != root.Index || r.root.ImageHash != root.ImageHash || !bytes.Equal(r.root.Image, root.Image) {
+		return graphstore.ErrSourceUnavailable
+	}
+	return nil
+}
+func (r *graphSourceGetReuse) reserve(n int) error {
+	r.endpoint.budget.mu.Lock()
+	defer r.endpoint.budget.mu.Unlock()
+	if r.endpoint.budget.output != r.arena {
+		return errInvalid
+	}
+	return outputBudgetFailure(r.arena.Reserve(n))
+}
+
 type remoteGraphSource struct {
 	mu        graphRequestGate
 	endpoint  *graphAuthenticatedEndpoint
@@ -432,6 +516,7 @@ type remoteGraphSource struct {
 	closed    bool
 	closeErr  error
 	cleanup   *graphRemoteBudget
+	getReuse  *graphSourceGetReuse
 }
 
 func (e *graphAuthenticatedEndpoint) openSource(ctx context.Context) (*remoteGraphSource, error) {
@@ -562,6 +647,32 @@ func (s *remoteGraphSource) Get(ctx context.Context, key []byte, maximum int) (r
 	if maximum < 0 || maximum > min(s.info.limits.Bytes, graphSourceFrameBytes-1024) {
 		return raftlog.KV{}, false, errLimit
 	}
+	var reuse *graphSourceGetReuse
+	if owner, ok := ctx.Value(graphSourceGetContextKey{}).(*graphSourceGetOwner); ok {
+		reuse = s.getReuse
+		if reuse == nil || reuse.owner != owner {
+			return raftlog.KV{}, false, graphstore.ErrSourceUnavailable
+		}
+		if err := reuse.check(s); err != nil {
+			return raftlog.KV{}, false, err
+		}
+		for _, e := range reuse.entries {
+			if !bytes.Equal(e.key, key) {
+				continue
+			}
+			if len(e.row.Key)+len(e.row.Value) > maximum {
+				// Preserve the native provider's exact error classification/cost.
+				break
+			}
+			if err := reuse.reserve(64 + len(e.row.Key) + len(e.row.Value)); err != nil {
+				return raftlog.KV{}, false, err
+			}
+			row := e.row
+			row.Key = owned(row.Key)
+			row.Value = owned(row.Value)
+			return row, e.found, nil
+		}
+	}
 	r, err := s.endpoint.call(ctx, graphSourceRequest{kind: sourceGet, cookie: s.info.cookie, key: key, maximum: maximum}, maximum+1024)
 	if err != nil {
 		return raftlog.KV{}, false, err
@@ -582,6 +693,11 @@ func (s *remoteGraphSource) Get(ctx context.Context, key []byte, maximum int) (r
 		if err := s.endpoint.budget.receive(0, 1); err != nil {
 			return raftlog.KV{}, false, err
 		}
+		if reuse != nil {
+			if err := reuse.retain(s, key, raftlog.KV{}, false); err != nil {
+				return raftlog.KV{}, false, err
+			}
+		}
 		return raftlog.KV{}, false, nil
 	}
 	row := readSourceKV(&c, maximum)
@@ -592,7 +708,28 @@ func (s *remoteGraphSource) Get(ctx context.Context, key []byte, maximum int) (r
 		return raftlog.KV{}, false, err
 	}
 	row.Key, row.Value = owned(row.Key), owned(row.Value)
+	if reuse != nil {
+		if err := reuse.retain(s, key, row, true); err != nil {
+			return raftlog.KV{}, false, err
+		}
+	}
 	return row, true, nil
+}
+func (r *graphSourceGetReuse) retain(s *remoteGraphSource, key []byte, row raftlog.KV, found bool) error {
+	if err := r.check(s); err != nil {
+		return err
+	}
+	cost := len(key) + len(row.Key) + len(row.Value)
+	if len(r.entries) == graphSourceGetEntries || cost > graphSourceGetBytes-r.bytes {
+		return nil
+	}
+	if err := r.reserve(cost); err != nil {
+		return err
+	}
+	row.Key, row.Value = owned(row.Key), owned(row.Value)
+	r.entries = append(r.entries, graphSourceGetEntry{key: owned(key), row: row, found: found})
+	r.bytes += cost
+	return nil
 }
 func (s *remoteGraphSource) Scan(ctx context.Context, lower, upper, after []byte, b raftlog.ReadBudget) (raftlog.ApplicationPage, error) {
 	if s == nil || ctx == nil {

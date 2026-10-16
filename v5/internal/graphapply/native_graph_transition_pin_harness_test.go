@@ -205,6 +205,12 @@ func nativeTransitionPinProjectionFor(ctx context.Context, host *allocationHost,
 		if err != nil {
 			return nil, err
 		}
+		var finish func() error
+		ctx, finish, err = nativeTransitionPinGetReuse(ctx, read, arena)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { err = errors.Join(err, finish()) }()
 		view, err = newNativeObservationRead(view, arena, host.machine.limits.graph.Planner.Component, owners[:count])
 		if err != nil {
 			return nil, err
@@ -262,6 +268,51 @@ func nativeTransitionPinProjectionFor(ctx context.Context, host *allocationHost,
 		snapshot.Entities = append(snapshot.Entities, e)
 	}
 	return snapshot, ctx.Err()
+}
+
+// The token is private to this invocation; unrelated calls on the SAME source
+// keep using ordinary Get. Setup and cleanup take no request/callback mutex
+// across an RPC, and an ended token cannot be borrowed by a later observation.
+func nativeTransitionPinGetReuse(ctx context.Context, read *certifiedGraphRead, arena *graphstate.OutputBudget) (context.Context, func() error, error) {
+	var sources [16]*remoteGraphSource
+	if ctx == nil || read == nil || arena == nil {
+		return nil, nil, errInvalid
+	}
+	read.mu.Lock()
+	if read.closed || len(read.sources) == 0 || len(read.sources) > len(sources) {
+		read.mu.Unlock()
+		return nil, nil, graphstore.ErrClosed
+	}
+	count := len(read.sources)
+	for i, source := range read.sources {
+		if wrapper, ok := source.(*retainedFeedSnapshotSource); ok {
+			source = wrapper.certifiedGraphSource
+		}
+		remote, ok := source.(*remoteGraphSource)
+		if !ok || remote == nil {
+			read.mu.Unlock()
+			return nil, nil, errInvalid
+		}
+		sources[i] = remote
+	}
+	read.mu.Unlock()
+	owner := new(graphSourceGetOwner)
+	admitted := 0
+	finish := func() error {
+		owner.closed.Store(true)
+		var err error
+		for _, source := range sources[:admitted] {
+			err = errors.Join(err, source.endGetReuse(owner))
+		}
+		return err
+	}
+	for _, source := range sources[:count] {
+		if err := source.beginGetReuse(ctx, owner, arena); err != nil {
+			return nil, nil, errors.Join(err, finish())
+		}
+		admitted++
+	}
+	return context.WithValue(ctx, graphSourceGetContextKey{}, owner), finish, nil
 }
 
 func nativeTransitionPinObservationSources(read *certifiedGraphRead) (arena *graphstate.OutputBudget, owners [16]context.Context, count int, err error) {

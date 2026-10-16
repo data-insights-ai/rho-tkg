@@ -13,10 +13,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
@@ -1086,5 +1088,267 @@ func TestNativeMoveReplayBatchKeepsDeclarationBindingAndRecordCharges(t *testing
 	refused = rangeMoveReplayNativeReader(t, n.hosts[1][0], 32<<20)
 	if _, err := stageMoveReplayBatch(refused, undeclared, refused.ns, [16]byte{91}, batch, rangeMoveReplayStart()); !errors.Is(err, errInvalid) || len(refused.writes) != 0 {
 		t.Fatal("undeclared origin reached batch effects", err)
+	}
+}
+
+func TestNativeProtocolStateSourceGetReuseOwnsInvocationAndCopies(t *testing.T) {
+	ctx := t.Context()
+	source, _ := authenticatedNativeSourceFixture(t, ctx)
+	defer func() {
+		if err := source.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	page, err := source.Scan(ctx, nil, nil, nil, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
+	if err != nil || len(page.Rows) != 1 {
+		t.Fatal("genuine row", page, err)
+	}
+	key := bytes.Clone(page.Rows[0].Key)
+	arena := source.endpoint.budget.output.(*graphstate.OutputBudget)
+	owner := new(graphSourceGetOwner)
+	if err := source.beginGetReuse(ctx, owner, arena); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		owner.closed.Store(true)
+		if err := source.endGetReuse(owner); err != nil {
+			t.Error(err)
+		}
+	}()
+	selected := context.WithValue(ctx, graphSourceGetContextKey{}, owner)
+	calls := source.endpoint.budget.calls
+	var original raftlog.KV
+	for i := range 8 {
+		row, found, err := source.Get(selected, key, 4096)
+		if err != nil || !found {
+			t.Fatal("native same key", row, found, err)
+		}
+		if i == 0 {
+			original = raftlog.KV{Key: bytes.Clone(row.Key), Value: bytes.Clone(row.Value)}
+		}
+		if !bytes.Equal(row.Key, original.Key) || !bytes.Equal(row.Value, original.Value) {
+			t.Fatal("caller mutated cached original")
+		}
+		row.Key[0] ^= 0xff
+		if len(row.Value) > 0 {
+			row.Value[0] ^= 0xff
+		}
+	}
+	if actual := source.endpoint.budget.calls - calls; actual != 1 {
+		t.Fatalf("same actual key repeated %d RPCs, want1", actual)
+	}
+	// Concurrent unrelated contexts must go to the genuine server every time.
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, caller := range []context.Context{selected, ctx} {
+		wg.Go(func() {
+			for range 3 {
+				row, found, err := source.Get(caller, key, 4096)
+				if err != nil || !found || !bytes.Equal(row.Value, original.Value) {
+					errs <- errors.Join(err, errCorrupt)
+					return
+				}
+			}
+			errs <- nil
+		})
+	}
+	wg.Wait()
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if actual := source.endpoint.budget.calls - calls; actual != 4 {
+		t.Fatal("unrelated context borrowed reuse", actual)
+	}
+	absent := append(bytes.Clone(key), 0xff)
+	before := source.endpoint.budget.calls
+	for range 2 {
+		row, found, err := source.Get(selected, absent, 4096)
+		if err != nil || found || len(row.Key)+len(row.Value) != 0 {
+			t.Fatal("complete absence", row, found, err)
+		}
+	}
+	if source.endpoint.budget.calls-before != 1 {
+		t.Fatal("complete absence refetched")
+	}
+	// Native Get permits a complete never-written absence even at maximum0.
+	// Compare that actual result, rather than assuming maximum0 means default.
+	native, found, err := source.Get(ctx, absent, 0)
+	if err != nil || found || len(native.Key)+len(native.Value) != 0 {
+		t.Fatal("native absent maximum0", native, found, err)
+	}
+	cached, found, err := source.Get(selected, absent, 0)
+	if err != nil || found || len(cached.Key)+len(cached.Value) != 0 {
+		t.Fatal("cached absent maximum0", cached, found, err)
+	}
+	if err := source.mu.lock(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waiting, stop := context.WithTimeout(selected, 10*time.Millisecond)
+	_, _, waitErr := source.Get(waiting, key, 4096)
+	stop()
+	source.mu.unlock()
+	if !errors.Is(waitErr, context.DeadlineExceeded) {
+		t.Fatal("expired waiter returned a cache hit", waitErr)
+	}
+
+	canceled, cancel := context.WithCancel(selected)
+	cancel()
+	if _, _, err := source.Get(canceled, key, 4096); !errors.Is(err, context.Canceled) {
+		t.Fatal("cancel hit", err)
+	}
+	if _, _, err := source.Get(selected, key, len(original.Key)+len(original.Value)-1); !errors.Is(err, raftlog.ErrLimit) {
+		t.Fatal("maximum bypass", err)
+	}
+	root := source.info.root
+	source.info.root.Index++
+	if _, _, err := source.Get(selected, key, 4096); !errors.Is(err, graphstore.ErrSourceUnavailable) {
+		t.Fatal("root bypass", err)
+	}
+	source.info.root = root
+	cookie := source.info.cookie
+	source.info.cookie.sequence++
+	if _, _, err := source.Get(selected, key, 4096); !errors.Is(err, graphstore.ErrSourceUnavailable) {
+		t.Fatal("cookie bypass", err)
+	}
+	source.info.cookie = cookie
+	// A failed Get may neither consume a slot nor later masquerade as absence.
+	unknown := append(bytes.Clone(key), 0xfe)
+	count := len(source.getReuse.entries)
+	if _, _, err := source.Get(selected, unknown, graphSourceFrameBytes); !errors.Is(err, errLimit) {
+		t.Fatal("bad limit", err)
+	}
+	if len(source.getReuse.entries) != count {
+		t.Fatal("failed read cached")
+	}
+	if err := source.beginGetReuse(ctx, new(graphSourceGetOwner), arena); !errors.Is(err, graphstore.ErrSourceUnavailable) {
+		t.Fatal("overlapping owner", err)
+	}
+	// The finite retained window never grows with the number of distinct misses.
+	for i := range graphSourceGetEntries + 2 {
+		absent := append(bytes.Clone(key), byte(i>>8), byte(i), 0xfd)
+		if _, found, err := source.Get(selected, absent, 4096); err != nil || found {
+			t.Fatal("native absent capacity", found, err)
+		}
+	}
+	if len(source.getReuse.entries) != graphSourceGetEntries || source.getReuse.bytes > graphSourceGetBytes {
+		t.Fatal("unbounded retained window")
+	}
+	overflow := append(bytes.Clone(key), 0xfb, 0xfc)
+	before = source.endpoint.budget.calls
+	for range 2 {
+		if _, found, err := source.Get(selected, overflow, 4096); err != nil || found {
+			t.Fatal("overflow must still use native source", found, err)
+		}
+	}
+	if source.endpoint.budget.calls-before != 2 {
+		t.Fatal("overflow implicitly expanded window")
+	}
+	// Hit copies remain charged even after the first native result was funded.
+	if err := arena.Reserve(arena.Remaining()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := source.Get(selected, key, 4096); !errors.Is(err, errLimit) {
+		t.Fatal("exhausted original output bypassed", err)
+	}
+	owner.closed.Store(true)
+	if _, _, err := source.Get(selected, key, 4096); !errors.Is(err, graphstore.ErrSourceUnavailable) {
+		t.Fatal("ended token hit", err)
+	}
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := source.Get(selected, key, 4096); !errors.Is(err, graphstore.ErrSourceUnavailable) {
+		t.Fatal("closed owner hit", err)
+	}
+}
+
+func TestNativeProtocolStateSourceGetReuseRetiresDelayedReply(t *testing.T) {
+	ctx := t.Context()
+	source, transport := authenticatedNativeSourceFixture(t, ctx)
+	defer func() {
+		if err := source.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	arena := source.endpoint.budget.output.(*graphstate.OutputBudget)
+	owner := new(graphSourceGetOwner)
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := source.beginGetReuse(canceled, owner, arena); !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled admission", err)
+	}
+	if err := source.beginGetReuse(ctx, nil, arena); !errors.Is(err, errInvalid) {
+		t.Fatal("nil owner", err)
+	}
+	wrong, _ := graphstate.NewOutputBudget(32 << 20)
+	if err := source.beginGetReuse(ctx, owner, wrong); !errors.Is(err, errInvalid) {
+		t.Fatal("foreign output arena", err)
+	}
+	if err := source.beginGetReuse(ctx, owner, arena); err != nil {
+		t.Fatal(err)
+	}
+	selected := context.WithValue(ctx, graphSourceGetContextKey{}, owner)
+	transport.pause.Store(true)
+	done := make(chan error, 1)
+	var wg sync.WaitGroup
+	wg.Go(func() { _, _, err := source.Get(selected, []byte("actual-native-absence"), 4096); done <- err })
+	select {
+	case <-transport.entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("native delayed reply was not reached")
+	}
+	owner.closed.Store(true)
+	close(transport.release)
+	wg.Wait()
+	if err := <-done; !errors.Is(err, graphstore.ErrSourceUnavailable) {
+		t.Fatal("retired reply inserted into scope", err)
+	}
+	if len(source.getReuse.entries) != 0 {
+		t.Fatal("late reply retained")
+	}
+	if err := source.endGetReuse(owner); err != nil {
+		t.Fatal(err)
+	}
+	next := new(graphSourceGetOwner)
+	if err := source.beginGetReuse(ctx, next, arena); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		next.closed.Store(true)
+		if err := source.endGetReuse(next); err != nil {
+			t.Error(err)
+		}
+	}()
+	if err := source.endGetReuse(owner); !errors.Is(err, errInvalid) {
+		t.Fatal("old owner removed new scope", err)
+	}
+	if _, _, err := source.Get(selected, []byte("actual-native-absence"), 4096); !errors.Is(err, graphstore.ErrSourceUnavailable) {
+		t.Fatal("old token borrowed new owner", err)
+	}
+	fresh := context.WithValue(ctx, graphSourceGetContextKey{}, next)
+	transport.pause.Store(false)
+	if _, found, err := source.Get(fresh, []byte("actual-native-absence"), 4096); err != nil || found {
+		t.Fatal("new native absence", found, err)
+	}
+	// A full retained-byte window bypasses insertion, without widening the cap.
+	reuse := source.getReuse
+	saved := reuse.bytes
+	reuse.bytes = graphSourceGetBytes
+	calls := source.endpoint.budget.calls
+	for range 2 {
+		if _, found, err := source.Get(fresh, []byte("another-actual-absence"), 4096); err != nil || found {
+			t.Fatal(found, err)
+		}
+	}
+	if source.endpoint.budget.calls-calls != 2 || len(reuse.entries) != 1 {
+		t.Fatal("retained byte cap expanded")
+	}
+	reuse.bytes = saved
+	// Original owner cancellation refuses a previously cached complete absence.
+	source.cancel()
+	if _, _, err := source.Get(fresh, []byte("actual-native-absence"), 4096); !errors.Is(err, context.Canceled) || !errors.Is(err, graphstore.ErrSourceUnavailable) {
+		t.Fatal("source lifetime bypass", err)
 	}
 }
