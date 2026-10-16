@@ -39,7 +39,7 @@ func TestCatalogCanonicalRecordBoundaries(t *testing.T) {
 		}
 	}
 	for _, v := range []graphstate.Scalar{graphstate.Null(), graphstate.String("\x00exact\xff"), graphstate.Bool(false), graphstate.Bool(true), graphstate.I64(math.MinInt64), graphstate.I64(math.MaxInt64)} {
-		key, err := v.EqualityKey(l.valueLimits())
+		key, err := v.IdentityKey(l.valueLimits())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -166,7 +166,7 @@ func FuzzCatalogDecoders(f *testing.F) {
 			}
 		}
 		if entry, key, ordinal, err := readValue(input, n, l); err == nil {
-			canonical, e := entry.Value.EqualityKey(l.valueLimits())
+			canonical, e := entry.Value.IdentityKey(l.valueLimits())
 			if e != nil || !bytes.Equal(key, []byte(canonical)) {
 				t.Fatal("value equality bytes changed", e)
 			}

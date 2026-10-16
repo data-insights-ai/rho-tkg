@@ -459,14 +459,6 @@ func readValue(src []byte, n Namespace, l Limits) (ValueEntry, []byte, uint64, e
 	if err != nil {
 		return ValueEntry{}, nil, 0, err
 	}
-	// The record stores the wire; identity is the numeric-canonical EqualityKey.
-	if k := v.Kind(); k == graphstate.ScalarI64 || k == graphstate.ScalarF64 {
-		ek, err := v.EqualityKey(l.valueLimits())
-		if err != nil {
-			return ValueEntry{}, nil, 0, ErrCorrupt
-		}
-		key = []byte(ek)
-	}
 	if c.done() != nil {
 		return ValueEntry{}, nil, 0, ErrCorrupt
 	}

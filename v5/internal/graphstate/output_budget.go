@@ -230,7 +230,7 @@ func (b *OutputBudget) ScalarKey(v Scalar, l Limits) (string, error) {
 	if err := b.Reserve(128 + 8*size); err != nil {
 		return "", err
 	}
-	return v.EqualityKey(l)
+	return v.IdentityKey(l)
 }
 
 // Child adds one finite local cap to this same operation ledger. Every successful

@@ -436,7 +436,7 @@ func (q *pageReader) equalityKey(value graphstate.Scalar) (string, error) {
 	l := q.q.c.limits.valueLimits()
 	l.MaxReadBytes = min(l.MaxReadBytes, available/2)
 	// Scope encoding is bounded before allocating; exact string/numeric sizes are
-	// checked by Scalar.EqualityKey before append and the retained key is charged.
+	// checked by Scalar.IdentityKey before append and the retained key is charged.
 	if value.Kind() == graphstate.ScalarScope {
 		l.Component.Temporal.MaxValueBytes = min(l.Component.Temporal.MaxValueBytes, l.MaxReadBytes-1)
 		if l.Component.Temporal.MaxValueBytes < 1 {
@@ -448,7 +448,7 @@ func (q *pageReader) equalityKey(value graphstate.Scalar) (string, error) {
 	if q.q.arena != nil {
 		key, err = q.q.arena.ScalarKey(value, l)
 	} else {
-		key, err = value.EqualityKey(l)
+		key, err = value.IdentityKey(l)
 	}
 	if err != nil {
 		return "", callerError(err)

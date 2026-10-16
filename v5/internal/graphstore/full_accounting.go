@@ -103,7 +103,7 @@ func (q *pageReader) exactComponentOutput(s state.State, w temporal.Scope, budge
 }
 func scalarVariableOwned(value graphstate.Scalar, keyBytes int, l Limits) (int, error) {
 	if value.Kind() == graphstate.ScalarDescriptor {
-		key, err := value.EqualityKey(l.valueLimits())
+		key, err := value.IdentityKey(l.valueLimits())
 		if err != nil {
 			return 0, err
 		}

@@ -567,7 +567,7 @@ func (c *Catalog) Value(ctx context.Context, ref ValueRef) (ValueEntry, bool, er
 	return r, found, nil
 }
 
-// LookupLocalValueIdentity compares the exact EqualityKey, never just its hash.
+// LookupLocalValueIdentity compares the exact IdentityKey (kind-preserving wire), never just its hash.
 // First-seen canonical lookup is stable when later equal-content aliases arrive.
 // This is partition-local lookup, NOT graph-wide uniqueness or routing.
 func (c *Catalog) LookupLocalValueIdentity(ctx context.Context, value graphstate.Scalar) (ValueEntry, bool, error) {
@@ -575,7 +575,7 @@ func (c *Catalog) LookupLocalValueIdentity(ctx context.Context, value graphstate
 	if err != nil {
 		return ValueEntry{}, false, err
 	}
-	key, err := value.EqualityKey(c.limits.valueLimits())
+	key, err := value.IdentityKey(c.limits.valueLimits())
 	if err != nil {
 		return ValueEntry{}, false, c.failure(callerError(err))
 	}
@@ -942,7 +942,7 @@ func (q *reader) stageValue(ref ValueRef, value graphstate.Scalar, key string) e
 // It does not certify allocator claims or graph-wide canonical uniqueness.
 func (s *Stage) Value(ctx context.Context, ref ValueRef, value graphstate.Scalar) error {
 	return s.operation(ctx, func(q *reader) error {
-		key, err := value.EqualityKey(q.c.limits.valueLimits())
+		key, err := value.IdentityKey(q.c.limits.valueLimits())
 		if err != nil {
 			return callerError(err)
 		}
@@ -961,7 +961,7 @@ func (s *Stage) InternLocal(ctx context.Context, fresh ValueRef, value graphstat
 		if fresh.ID == 0 {
 			return ErrInvalid
 		}
-		key, err := value.EqualityKey(q.c.limits.valueLimits())
+		key, err := value.IdentityKey(q.c.limits.valueLimits())
 		if err != nil {
 			return callerError(err)
 		}

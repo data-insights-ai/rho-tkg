@@ -163,7 +163,7 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 			if v.arena != nil {
 				key, err = v.arena.ScalarKey(op.Value, l)
 			} else {
-				key, err = op.Value.EqualityKey(l)
+				key, err = op.Value.IdentityKey(l)
 			}
 			if err != nil {
 				return nil, callerError(err)
@@ -206,11 +206,7 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 					}
 				}
 			}
-			wire, err := op.Value.AppendWire(nil, l)
-			if err != nil {
-				return nil, callerError(err)
-			}
-			op.Value, err = decodeScalar(wire, valueAxis, hasAxis, v.c.limits)
+			op.Value, err = decodeScalar([]byte(key), valueAxis, hasAxis, v.c.limits)
 			if err != nil {
 				return nil, callerError(err)
 			}

@@ -16,69 +16,50 @@ func f64Value(t testing.TB, v float64) graphstate.Scalar {
 	return s
 }
 
+// The dictionary is kind-preserving: I64(3) and F64(3.0) are distinct values with
+// distinct IDs; they are equal only through Scalar.Equal (query evaluation).
 func TestValueIdentityCrossKind(t *testing.T) {
 	db, root := newStore(t, vfs.NewMem())
 	c := openCatalog(t, db, 1, Limits{})
 	s := stage(t, c)
-	if err := s.Value(t.Context(), refValue(1), f64Value(t, 3.0)); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Value(t.Context(), refValue(2), graphstate.I64(7)); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Value(t.Context(), refValue(3), f64Value(t, 2.5)); err != nil {
-		t.Fatal(err)
-	}
-	root, index := commitStage(t, db, root, s)
-	cat := openCatalog(t, db, index, Limits{})
-
-	// stored F64(3.0) found by I64(3)
-	e, found, err := cat.LookupLocalValueIdentity(t.Context(), graphstate.I64(3))
-	if err != nil || !found || e.Ref.ID != 1 {
-		t.Fatal(e, found, err)
-	}
-	// ... and the stored value keeps its kind
-	v, found, err := cat.Value(t.Context(), refValue(1))
-	if err != nil || !found || v.Value.Kind() != graphstate.ScalarF64 {
-		t.Fatal(v, found, err)
-	}
-	// stored I64(7) found by F64(7.0), keeps I64
-	e, found, err = cat.LookupLocalValueIdentity(t.Context(), f64Value(t, 7.0))
-	if err != nil || !found || e.Ref.ID != 2 {
-		t.Fatal(e, found, err)
-	}
-	if v, _, _ := cat.Value(t.Context(), refValue(2)); v.Value.Kind() != graphstate.ScalarI64 {
-		t.Fatal(v.Value.Kind())
-	}
-	// non-equal numbers are not found
-	for _, miss := range []graphstate.Scalar{graphstate.I64(2), graphstate.I64(4), f64Value(t, 3.5), graphstate.String("3"), graphstate.Bool(true)} {
-		if _, found, err := cat.LookupLocalValueIdentity(t.Context(), miss); err != nil || found {
-			t.Fatal(miss.Render(), found, err)
+	for id, v := range map[uint64]graphstate.Scalar{1: f64Value(t, 3.0), 2: graphstate.I64(3), 3: graphstate.I64(7), 4: f64Value(t, 2.5)} {
+		if err := s.Value(t.Context(), refValue(id), v); err != nil {
+			t.Fatal(id, err)
 		}
 	}
-
-	// a second writer interning I64(3) and F64(3.0) gets the existing identity
+	_, index := commitStage(t, db, root, s)
+	cat := openCatalog(t, db, index, Limits{})
+	for _, tc := range []struct {
+		probe graphstate.Scalar
+		id    graphstate.ValueID
+		found bool
+	}{
+		{f64Value(t, 3.0), 1, true}, {graphstate.I64(3), 2, true}, {graphstate.I64(7), 3, true},
+		{f64Value(t, 7.0), 0, false}, {f64Value(t, 2.5), 4, true}, {graphstate.I64(2), 0, false},
+		{graphstate.String("3"), 0, false}, {graphstate.Bool(true), 0, false},
+	} {
+		e, found, err := cat.LookupLocalValueIdentity(t.Context(), tc.probe)
+		if err != nil || found != tc.found || (found && e.Ref.ID != tc.id) {
+			t.Fatal(tc.probe.Render(), tc.probe.Kind(), e.Ref, found, err)
+		}
+	}
+	for id, kind := range map[uint64]graphstate.ScalarKind{1: graphstate.ScalarF64, 2: graphstate.ScalarI64} {
+		v, found, err := cat.Value(t.Context(), refValue(id))
+		if err != nil || !found || v.Value.Kind() != kind {
+			t.Fatal(id, v.Value.Kind(), found, err)
+		}
+	}
+	a, _, _ := cat.Value(t.Context(), refValue(1))
+	b, _, _ := cat.Value(t.Context(), refValue(2))
+	if eq, err := a.Value.Equal(b.Value, graphstate.Limits{}); err != nil || !eq {
+		t.Fatal("Equal must still relate them", eq, err)
+	}
+	// interning keeps both kinds apart
 	next := stage(t, cat)
-	got, err := next.InternLocal(t.Context(), refValue(10), graphstate.I64(3))
-	if err != nil || got != refValue(1) {
+	if got, err := next.InternLocal(t.Context(), refValue(10), graphstate.I64(3)); err != nil || got != refValue(2) {
 		t.Fatal(got, err)
 	}
-	got, err = next.InternLocal(t.Context(), refValue(11), f64Value(t, 7.0))
-	if err != nil || got != refValue(2) {
+	if got, err := next.InternLocal(t.Context(), refValue(11), f64Value(t, 3.0)); err != nil || got != refValue(1) {
 		t.Fatal(got, err)
-	}
-}
-
-func TestValueIdentityTwoWritersOneIdentity(t *testing.T) {
-	db, _ := newStore(t, vfs.NewMem())
-	c := openCatalog(t, db, 1, Limits{})
-	s := stage(t, c)
-	a, err := s.InternLocal(t.Context(), refValue(1), f64Value(t, 3.0))
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := s.InternLocal(t.Context(), refValue(2), graphstate.I64(3))
-	if err != nil || a != b {
-		t.Fatal(a, b, err)
 	}
 }

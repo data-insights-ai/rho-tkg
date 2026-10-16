@@ -5,6 +5,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
@@ -113,5 +114,54 @@ func TestScalarWireRoundTripKeepsKind(t *testing.T) {
 	// an axis supplied for a non-scope kind is corrupt too
 	if _, err := DecodeWire(w, axis, true, temporal.Limits{}); !errors.Is(err, ErrCorruptWire) {
 		t.Errorf("axis on F64: %v", err)
+	}
+}
+
+// A value dictionary keyed by the numeric-canonical key would hand the F64 ValueID
+// to an I64 property and every projection of it would be contradictory.
+func TestIntegerPropertyAfterFloatPropertyProjectsAsInteger(t *testing.T) {
+	v := newFixtureView(t)
+	all, _ := temporal.All(v.axis)
+	v.defs[ownerSchemaKey{Node, "f"}] = PropertyDefinition{Name: "f", Owner: Node, Type: ScalarF64, Cardinality: ScalarCardinality}
+	v.defs[ownerSchemaKey{Node, "i"}] = PropertyDefinition{Name: "i", Owner: Node, Type: ScalarI64, Cardinality: ScalarCardinality}
+	rev, _ := state.NewRevision(1, 1)
+	f3 := mustF64(t, 3.0)
+	d, err := Plan(t.Context(), v, []Operation{
+		{Kind: CreateNode, Owner: 1, Life: 1, Scope: all},
+		{Kind: Set, Owner: 1, Life: 1, Scope: all, Name: "f", Value: f3, ValueID: 1},
+	}, rev, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v.install(t, d)
+	rev2, _ := state.NewRevision(2, 1)
+	d, err = Plan(t.Context(), v, []Operation{
+		{Kind: Set, Owner: 1, Life: 1, Scope: all, Name: "i", Value: I64(3), ValueID: 2},
+	}, rev2, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v.install(t, d)
+	got, err := Project(t.Context(), v, 1, testPosition(t, v.axis, 1), Effective, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prop := func(name string) Scalar {
+		for _, p := range got.Properties {
+			if p.Name == name {
+				return p.Scalar
+			}
+		}
+		t.Fatal("missing property", name)
+		return Scalar{}
+	}
+	if k := prop("i").Kind(); k != ScalarI64 {
+		t.Fatal("i projected as", k)
+	}
+	if k := prop("f").Kind(); k != ScalarF64 {
+		t.Fatal("f projected as", k)
+	}
+	if eq, _ := prop("i").Equal(prop("f"), Limits{}); !eq {
+		t.Fatal("I64(3) and F64(3.0) must still be Equal")
 	}
 }

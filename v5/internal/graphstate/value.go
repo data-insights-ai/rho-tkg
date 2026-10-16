@@ -121,6 +121,14 @@ func (v Scalar) EqualityKey(l Limits) (string, error) {
 	return string(b), nil
 }
 
+// IdentityKey is the kind-preserving wire as a string: the key of the value
+// dictionary (interning, ValueID lookup, set order). I64(3) and F64(3.0) are
+// distinct identities there; they meet only through Equal and EqualityKey.
+func (v Scalar) IdentityKey(l Limits) (string, error) {
+	b, err := v.AppendWire(nil, l)
+	return string(b), err
+}
+
 // AppendWire appends the kind-preserving stored encoding: kind byte plus payload.
 // Unlike EqualityKey, F64(3.0) stays F64. DecodeWire is its inverse.
 func (v Scalar) AppendWire(dst []byte, l Limits) ([]byte, error) {
@@ -260,18 +268,12 @@ func (v Scalar) retainedBytes(canonicalBytes int) int {
 	return n
 }
 
-// Equal is Cypher exact equality: numbers compare by value (I64(3) = F64(3.0)),
+// Equal is Cypher exact equality, consumed by query evaluation (pkg/graph, WP-08)
+// and never by the value dictionary: numbers compare by value (I64(3) = F64(3.0)),
 // kinds otherwise never coerce, and null equals nothing, itself included.
 // Descriptor equality means exact envelope identity only, not solver equality.
-// Identity checks that must treat two nulls as the same value use Identical.
+// Value identity uses Identical.
 func (v Scalar) Equal(other Scalar, l Limits) (bool, error) {
-	same, err := v.Identical(other, l)
-	return same && v.kind != ScalarNull, err
-}
-
-// Identical reports equal EqualityKeys: Equal, except that null is identical to
-// null. It is the relation for value identity, interning and dependency checks.
-func (v Scalar) Identical(other Scalar, l Limits) (bool, error) {
 	l, err := l.resolve()
 	if err != nil {
 		return false, err
@@ -281,6 +283,25 @@ func (v Scalar) Identical(other Scalar, l Limits) (bool, error) {
 		return false, err
 	}
 	b, err := other.EqualityKey(l)
+	if err != nil {
+		return false, err
+	}
+	return a == b && v.kind != ScalarNull, nil
+}
+
+// Identical reports equal IdentityKeys (kind-preserving wire): same kind, same
+// value, and null identical to null. It is the relation for value identity,
+// interning and dependency checks, where I64(3) and F64(3.0) are different values.
+func (v Scalar) Identical(other Scalar, l Limits) (bool, error) {
+	l, err := l.resolve()
+	if err != nil {
+		return false, err
+	}
+	a, err := v.IdentityKey(l)
+	if err != nil {
+		return false, err
+	}
+	b, err := other.IdentityKey(l)
 	if err != nil {
 		return false, err
 	}
