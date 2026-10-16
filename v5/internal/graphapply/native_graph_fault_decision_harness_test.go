@@ -814,7 +814,24 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 	if len(campaign) == 1 {
 		call = f.call
 		control = func(p *graphProcess, r nativeDecisionControl) (nativeDecisionReceipt, processResponse) {
-			return nativeProtocolDecisionCall(f, p, r)
+			completed := false
+			defer func() {
+				if !completed {
+					actor := uint64(0)
+					for member := uint64(1); member <= 6; member++ {
+						if f.n.all[member] == p {
+							actor = member
+							break
+						}
+					}
+					// f.call already prints the actual typed transport/native
+					// cause. Add only the bounded parent control coordinate.
+					t.Logf("P04 native decision control interrupted: actor%d pid%d action%q mask%d sequence%d", actor, p.cmd.Process.Pid, r.Action[:min(len(r.Action), 64)], r.Mask, r.Sequence)
+				}
+			}()
+			receipt, response := nativeProtocolDecisionCall(f, p, r)
+			completed = true
+			return receipt, response
 		}
 		retire = func(ch <-chan graphProcessAnswer, cancel context.CancelFunc, tx [16]byte) []byte {
 			return nativeProtocolDecisionRetire(f, ch, cancel, tx)
