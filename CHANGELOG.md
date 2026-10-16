@@ -49,8 +49,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the first open of a badger store (and of every sharded slot and tiered shard) after the upgrade does not trust a
   format-2 image and rebuilds the indexes from the rows, so an Elements index built before answers every element with no
   consumer action (`TestOpenImageFormat2ElementsIndexRebuiltAfterUpgrade`); that one open costs a full rebuild. Downgrade:
-  v4.57.1 treats the format-3 image as unknown and rebuilds too. While an Elements index is still building, badger's scan
-  fallback now matches "contains" as the finished index does (was plain equality; `TestElementsIndexLookupWhileBuilding`).
+  v4.57.1 treats the format-3 image as unknown and rebuilds too. While a property index is still building, the lookup
+  scans with the declared index's match: badger's scan fallback matched plain equality for an Elements index
+  (`TestElementsIndexLookupWhileBuilding`), and memory answered from the partial postings, missing every row the backfill
+  had not merged yet (`TestPropertyIndexLookupWhileBuilding`, node and relationship, plain and Elements).
 
 ## [4.57.1] - 2026-10-16
 
