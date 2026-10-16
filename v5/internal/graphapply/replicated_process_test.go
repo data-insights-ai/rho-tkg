@@ -1987,6 +1987,9 @@ func certifiedGraphProcessChild(t *testing.T, id uint64) {
 	}
 	if pooledState {
 		agreement, materializer = rangeMovePooledSemanticContractID(), newRangeMovePooledMaterializer
+		if err := nativeProtocolStatePooledTailPolicy(&p); err != nil {
+			t.Fatal("D-only pooled tail admission", err)
+		}
 	}
 	controls, recovery := raftlog.ApplicationControlConfig{Version: 1}, raftlog.ApplicationRecoveryConfig{Version: 1}
 	if retention || durableColumns || workload != nil || feed || feedRetained {

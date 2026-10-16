@@ -1,17 +1,21 @@
 package graphapply
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
 func TestNativeProtocolPooledStateLeaderAndMessagePrograms(t *testing.T) {
@@ -260,5 +264,134 @@ func TestNativeProtocolStateCompoundCleanupKeepsPrimitiveControlSlot(t *testing.
 		if actual != control || terminal != control {
 			t.Fatal("primitive or unrelated lane changed", control)
 		}
+	}
+}
+
+func TestNativeProtocolPooledTailBackpressurePreservesMoveOwner(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	n, publisher, ops, wires := retainedPublisherFromNetwork(t, collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
+		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 256<<20, 131072
+		if err := nativeProtocolStatePooledTailPolicy(p); err != nil {
+			t.Fatal(err)
+		}
+	}, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4}))
+	policy := retainedFeedGuardPolicy(64)
+	deadline, _ := ctx.Deadline()
+	policy.deadlineUnixNanos = deadline.UnixNano()
+	feed, err := beginRetainedFeed(ctx, publisher, n.requestID(), graphReadRequest{mode: graphReadFresh}, 1, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := feed.Publish(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := feed.OpenSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := beginRetainedFeed(ctx, publisher, n.requestID(), graphReadRequest{mode: graphReadFresh}, 1, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := foreign.Publish(ctx)
+	if err != nil || bytes.Equal(other.definition, token.definition) {
+		t.Fatal(err)
+	}
+	if err = foreign.Release(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = foreign.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = held.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = feed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	feed, err = openRetainedFeed(ctx, publisher, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err = feed.OpenSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := held.Close(); err != nil {
+			t.Error(err)
+		}
+		if err := feed.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	intent, err := n.hosts[0][0].PreparePooledRangeMove(ctx, n.requestID(), 1, 8, graphE17AdmittedMovePages, 8, 16<<10, rangeMovePools{2 << 20, 8 << 20, 8 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := n.hosts[0][0]
+	// Queue only genuine pre-fence originals. They must remain unable to
+	// mutate the fenced graph while exercising the actual native tail limit.
+	queued := make([]allocationProposal, nativeProtocolStateTailEntries)
+	for i := range queued {
+		queued[i], err = h.PreparePartitionGraphOperations(n.requestID(), []graphstate.Operation{{Kind: graphstate.AddLabel, Owner: 1, Life: 2, Scope: ops[0].Scope, Name: "must-not-install"}}, uint64(100+i), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	publisher.coordinator.transports[8] = &rangeMoveCoordinatorWire{nativeGraphTestTransport: &nativeGraphTestTransport{service: wires[1].service}, dropFence: true}
+	move, err := newRangeMoveCoordinatorOn(publisher.coordinator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := move.Run(ctx, intent)
+	if !errors.Is(err, errRangeMovePending) || !errors.Is(err, io.EOF) || pending.source.phase != rangeMoveFence || pending.source.result != rangeMoveApplied {
+		t.Fatal("actual source Fence before unknown target", pending, err)
+	}
+	protected := rangeMoveAdmissionOwner(t, h)
+	var deliveries []replica.Packet
+	for i := range nativeProtocolStateTailEntries - 1 {
+		event, err := h.Submit(queued[i])
+		if err != nil {
+			t.Fatal("finite pending tail refused before admitted window", i, err)
+		}
+		deliveries = append(deliveries, event.packets...)
+	}
+	if _, err := h.Submit(queued[nativeProtocolStateTailEntries-1]); !errors.Is(err, raftlog.ErrLimit) {
+		t.Fatal("native tail did not backpressure", err)
+	}
+	n.pump(0, allocationEvent{packets: deliveries})
+	if owner := rangeMoveAdmissionOwner(t, h); owner != protected {
+		t.Fatal("backpressure lost recovery owner", owner, protected)
+	}
+}
+
+func TestNativeProtocolStateTailPolicyIsExplicitAndBounded(t *testing.T) {
+	if err := nativeProtocolStatePooledTailPolicy(nil); !errors.Is(err, errInvalid) {
+		t.Fatal("nil policy", err)
+	}
+	base := raftlog.DefaultApplicationPolicy(1)
+	base.RetainedApplicationBytes = 256 << 20
+	for _, mutate := range []func(*raftlog.ApplicationPolicy){
+		func(p *raftlog.ApplicationPolicy) { p.MaxTailEntries-- },
+		func(p *raftlog.ApplicationPolicy) { p.MaxInstallBytes-- },
+		func(p *raftlog.ApplicationPolicy) { p.RetainedApplicationBytes-- },
+	} {
+		p := base
+		mutate(&p)
+		before := p
+		if err := nativeProtocolStatePooledTailPolicy(&p); !errors.Is(err, errInvalid) || p != before {
+			t.Fatal("foreign policy changed", err)
+		}
+	}
+	p := base
+	if err := nativeProtocolStatePooledTailPolicy(&p); err != nil || p.MaxTailEntries != 19 {
+		t.Fatal("explicit D-only admission", err, p.MaxTailEntries)
+	}
+	p.MaxTailEntries = base.MaxTailEntries
+	if p != base {
+		t.Fatal("other budgets changed")
 	}
 }

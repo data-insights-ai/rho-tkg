@@ -32,6 +32,21 @@ const nativeProtocolStateCalls = 384
 const nativeProtocolStateTerminalCalls = 32
 const nativeProtocolStatePages = 64
 
+// A declared D-only native admission window, not an assertion that every
+// message schedule produces this many entries. Overflow must backpressure.
+const nativeProtocolStateTailEntries = processSourcePending + processSourceWorkers + 1
+
+func nativeProtocolStatePooledTailPolicy(p *raftlog.ApplicationPolicy) error {
+	if p == nil || p.MaxTailEntries != 64 || p.MaxInstallBytes != 4<<20 || p.RetainedApplicationBytes != 256<<20 {
+		return errInvalid
+	}
+	// Existing 16 queued calls, two source workers and the native admission's
+	// one internal no-op motivate this finite window. Its 19*4MiB protection
+	// leaves room for the original pools in the SAME 256MiB retained backing.
+	p.MaxTailEntries = nativeProtocolStateTailEntries
+	return nil
+}
+
 // A D-only constructor, not a cost profile. Exact old constructors retain their
 // agreement and observer refusals. This check runs BEFORE native Open, including
 // reopen; a copied recipe cannot select a profile after storage is acquired.
