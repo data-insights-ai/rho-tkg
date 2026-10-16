@@ -1,0 +1,280 @@
+// Package mutant wraps an Adapter with deliberately broken doors. Each mutant
+// is a plausible implementation mistake; the suite must fail for every one of
+// them (see ./run-mutants.sh and evidence/).
+package mutant
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+
+	conformance "github.com/data-insights-ai/rho-tkg/tools/v5-conformance"
+)
+
+// Names lists every mutant.
+var Names = []string{
+	"asof-current",            // NodeAsOf/RelAsOf ignore the pin and return the current row
+	"history-empty",           // NodeHistory/RelHistory forget superseded versions
+	"goc-always-creates",      // GetOrCreateByKey mints a node on every call
+	"goc-updates-on-hit",      // a GetOrCreateByKey hit applies the extra properties as a new version
+	"tx-autocommit",           // Tx writes straight through, so a failed callback does not roll back
+	"tx-swallows-error",       // Tx returns nil when the callback failed
+	"interval-ignored",        // SetNode/RelVersionInterval degrade to a plain update
+	"close-noop",              // CloseNode/RelVersion report success and change nothing
+	"page-ignores-cursor",     // RelsEffectivePage restarts at the first ID on every page
+	"page-limit-unchecked",    // RelsEffectivePage turns an invalid limit into a default
+	"scan-ignores-pin",        // NodesByLabel and NodesByLabelAndProperty drop TxPin
+	"property-loose-equality", // NodesByLabelAndProperty equates 1 and "1"
+	"caller-instant-ignored",  // Update/Delete/Add drop the caller's transaction instant
+	"invalid-labels-accepted", // AddNode with no labels gets a default label
+	"unknown-update-creates",  // UpdateNode of an unknown ID succeeds silently
+	"reopen-forgets-writes",   // Reopen on a persistent graph opens an empty directory
+	"close-then-read-works",   // doors keep answering after Close
+}
+
+// Wrap returns an Adapter whose graphs carry the named mutants ("all" selects every one).
+func Wrap(base conformance.Adapter, names []string) conformance.Adapter {
+	on := map[string]bool{}
+	for _, n := range names {
+		if n == "all" {
+			for _, m := range Names {
+				on[m] = true
+			}
+			continue
+		}
+		on[n] = true
+	}
+	for n := range on {
+		known := false
+		for _, m := range Names {
+			known = known || m == n
+		}
+		if !known {
+			panic(fmt.Sprintf("unknown mutant %q", n))
+		}
+	}
+	return adapter{base: base, on: on}
+}
+
+type adapter struct {
+	base conformance.Adapter
+	on   map[string]bool
+}
+
+func (a adapter) Open(t testing.TB, o conformance.Options) (conformance.Graph, error) {
+	g, err := a.base.Open(t, o)
+	if err != nil {
+		return nil, err
+	}
+	return &graph{Graph: g, on: a.on, opts: o, t: t, base: a.base}, nil
+}
+
+type graph struct {
+	conformance.Graph
+	on     map[string]bool
+	opts   conformance.Options
+	t      testing.TB
+	base   conformance.Adapter
+	closed bool
+}
+
+func (g *graph) Close() error {
+	g.closed = true
+	return g.Graph.Close()
+}
+
+func (g *graph) Reopen() error {
+	if g.on["reopen-forgets-writes"] {
+		if err := g.Graph.Close(); err != nil {
+			return err
+		}
+		fresh := g.opts
+		fresh.Dir = g.t.TempDir()
+		ng, err := g.base.Open(g.t, fresh)
+		if err != nil {
+			return err
+		}
+		g.Graph = ng
+		return nil
+	}
+	return g.Graph.Reopen()
+}
+
+func (g *graph) revived() bool { return g.on["close-then-read-works"] && g.closed }
+
+func (g *graph) NodeAsOf(id uint64, tx int64) (conformance.Node, error) {
+	if g.on["asof-current"] {
+		return g.Graph.GetNode(context.Background(), id)
+	}
+	return g.Graph.NodeAsOf(id, tx)
+}
+
+func (g *graph) RelAsOf(id uint64, tx int64) (conformance.Rel, error) {
+	if g.on["asof-current"] {
+		return g.Graph.GetRel(context.Background(), id)
+	}
+	return g.Graph.RelAsOf(id, tx)
+}
+
+func (g *graph) NodeHistory(id uint64) ([]conformance.Node, error) {
+	if g.on["history-empty"] {
+		return nil, nil
+	}
+	return g.Graph.NodeHistory(id)
+}
+
+func (g *graph) RelHistory(id uint64) ([]conformance.Rel, error) {
+	if g.on["history-empty"] {
+		return nil, nil
+	}
+	return g.Graph.RelHistory(id)
+}
+
+func (g *graph) GetOrCreateByKey(ctx context.Context, label, key string, value any, extra map[string]any) (conformance.Node, bool, error) {
+	switch {
+	case g.on["goc-always-creates"]:
+		props := map[string]any{key: value}
+		for k, v := range extra {
+			props[k] = v
+		}
+		n, err := g.Graph.AddNode(ctx, conformance.NodeSpec{Labels: []string{label}, Props: props})
+		return n, err == nil, err
+	case g.on["goc-updates-on-hit"]:
+		n, created, err := g.Graph.GetOrCreateByKey(ctx, label, key, value, extra)
+		if err == nil && !created && len(extra) > 0 {
+			n, err = g.Graph.UpdateNode(ctx, n.ID, extra, 0)
+		}
+		return n, created, err
+	}
+	return g.Graph.GetOrCreateByKey(ctx, label, key, value, extra)
+}
+
+// directTx writes through to the graph without a transaction.
+type directTx struct {
+	g   conformance.Graph
+	ctx context.Context
+}
+
+func (d directTx) AddNode(s conformance.NodeSpec) (conformance.Node, error) {
+	return d.g.AddNode(d.ctx, s)
+}
+func (d directTx) AddRel(s conformance.RelSpec) (conformance.Rel, error) { return d.g.AddRel(d.ctx, s) }
+func (d directTx) UpdateNode(id uint64, p map[string]any) (conformance.Node, error) {
+	return d.g.UpdateNode(d.ctx, id, p, 0)
+}
+func (d directTx) DeleteNode(id uint64) error { return d.g.DeleteNode(d.ctx, id, 0) }
+func (d directTx) GetNode(id uint64) (conformance.Node, error) {
+	return d.g.GetNode(d.ctx, id)
+}
+
+func (g *graph) Tx(ctx context.Context, fn func(conformance.Tx) error) error {
+	if g.on["tx-autocommit"] && fn != nil && ctx.Err() == nil {
+		return fn(directTx{g: g.Graph, ctx: ctx})
+	}
+	err := g.Graph.Tx(ctx, fn)
+	if g.on["tx-swallows-error"] && err != nil && fn != nil && ctx.Err() == nil {
+		return nil
+	}
+	return err
+}
+
+func (g *graph) SetNodeVersionInterval(ctx context.Context, id uint64, from, to int64, props map[string]any, txFrom int64) (conformance.Node, error) {
+	if g.on["interval-ignored"] {
+		return g.Graph.UpdateNode(ctx, id, props, txFrom)
+	}
+	return g.Graph.SetNodeVersionInterval(ctx, id, from, to, props, txFrom)
+}
+
+func (g *graph) SetRelVersionInterval(ctx context.Context, id uint64, from, to int64, props map[string]any, txFrom int64) (conformance.Rel, error) {
+	if g.on["interval-ignored"] {
+		return g.Graph.UpdateRel(ctx, id, props, txFrom)
+	}
+	return g.Graph.SetRelVersionInterval(ctx, id, from, to, props, txFrom)
+}
+
+func (g *graph) CloseNodeVersion(ctx context.Context, id uint64, t int64) error {
+	if g.on["close-noop"] {
+		return nil
+	}
+	return g.Graph.CloseNodeVersion(ctx, id, t)
+}
+
+func (g *graph) CloseRelVersion(ctx context.Context, id uint64, t int64) error {
+	if g.on["close-noop"] {
+		return nil
+	}
+	return g.Graph.CloseRelVersion(ctx, id, t)
+}
+
+func (g *graph) RelsEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after uint64, limit int) ([]conformance.RelSegment, uint64, error) {
+	if g.on["page-ignores-cursor"] {
+		after = 0
+	}
+	if g.on["page-limit-unchecked"] && (limit <= 0 || limit > 10000) {
+		limit = 10
+	}
+	return g.Graph.RelsEffectivePage(ctx, pin, f, after, limit)
+}
+
+func (g *graph) NodesByLabel(label string, q conformance.Query) ([]conformance.Node, error) {
+	if g.on["scan-ignores-pin"] {
+		q.TxPin = 0
+	}
+	return g.Graph.NodesByLabel(label, q)
+}
+
+func (g *graph) NodesByLabelAndProperty(label, key string, value any, q conformance.Query) ([]conformance.Node, error) {
+	if g.on["scan-ignores-pin"] {
+		q.TxPin = 0
+	}
+	if g.on["property-loose-equality"] {
+		all, err := g.Graph.NodesByLabel(label, q)
+		if err != nil {
+			return nil, err
+		}
+		var out []conformance.Node
+		for _, n := range all {
+			if v, ok := n.Props[key]; ok && fmt.Sprint(v) == fmt.Sprint(value) {
+				out = append(out, n)
+			}
+		}
+		return out, nil
+	}
+	return g.Graph.NodesByLabelAndProperty(label, key, value, q)
+}
+
+func (g *graph) AddNode(ctx context.Context, s conformance.NodeSpec) (conformance.Node, error) {
+	if g.on["caller-instant-ignored"] {
+		s.TxFrom = 0
+	}
+	if g.on["invalid-labels-accepted"] && len(s.Labels) == 0 {
+		s.Labels = []string{"Default"}
+	}
+	return g.Graph.AddNode(ctx, s)
+}
+
+func (g *graph) UpdateNode(ctx context.Context, id uint64, props map[string]any, txFrom int64) (conformance.Node, error) {
+	if g.on["caller-instant-ignored"] {
+		txFrom = 0
+	}
+	n, err := g.Graph.UpdateNode(ctx, id, props, txFrom)
+	if g.on["unknown-update-creates"] && errors.Is(err, conformance.ErrNotFound) {
+		return conformance.Node{ID: id, Props: props}, nil
+	}
+	return n, err
+}
+
+func (g *graph) DeleteNode(ctx context.Context, id uint64, txTo int64) error {
+	if g.on["caller-instant-ignored"] {
+		txTo = 0
+	}
+	return g.Graph.DeleteNode(ctx, id, txTo)
+}
+
+func (g *graph) GetNode(ctx context.Context, id uint64) (conformance.Node, error) {
+	if g.revived() {
+		return conformance.Node{ID: id}, nil
+	}
+	return g.Graph.GetNode(ctx, id)
+}

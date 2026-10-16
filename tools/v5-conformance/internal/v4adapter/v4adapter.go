@@ -1,0 +1,446 @@
+// Package v4adapter plugs rho-tkg v4.56.1 into the conformance suite.
+package v4adapter
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+
+	conformance "github.com/data-insights-ai/rho-tkg/tools/v5-conformance"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// Adapter opens rho-tkg v4 graphs.
+type Adapter struct{}
+
+// Open implements conformance.Adapter.
+func (Adapter) Open(t testing.TB, o conformance.Options) (conformance.Graph, error) {
+	cfg := graph.Config{AllowTxBackfill: o.AllowTxBackfill}
+	if o.Dir != "" {
+		cfg.BadgerDir = o.Dir
+	}
+	g, err := graph.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	w := &wrap{g: g, cfg: cfg}
+	t.Cleanup(func() { _ = w.g.Close() })
+	return w, nil
+}
+
+type wrap struct {
+	g   *graph.Graph
+	cfg graph.Config
+}
+
+type class struct {
+	from error
+	to   error
+}
+
+var classes = []class{
+	{graph.ErrNodeNotFound, conformance.ErrNotFound},
+	{graph.ErrRelNotFound, conformance.ErrNotFound},
+	{graph.ErrNoVersionAsOf, conformance.ErrNoVersionAsOf},
+	{graph.ErrNoVersionValidAt, conformance.ErrNoVersionValidAt},
+	{graph.ErrInvalidTimeRange, conformance.ErrInvalidTimeRange},
+	{graph.ErrEntityDeleted, conformance.ErrEntityDeleted},
+	{graph.ErrAlreadyClosed, conformance.ErrVersionClosed},
+	{graph.ErrGraphClosed, conformance.ErrClosed},
+	{graph.ErrNilGraph, conformance.ErrClosed},
+	{graph.ErrTxBackfillDisabled, conformance.ErrTxOrder},
+	{graph.ErrInvalidTxFrom, conformance.ErrTxOrder},
+	{graph.ErrTxOrder, conformance.ErrTxOrder},
+	{graph.ErrConflictingTemporalOpts, conformance.ErrConflictingOpts},
+	{graph.ErrTxPinTooNew, conformance.ErrPinTooNew},
+	{graph.ErrNoLabels, conformance.ErrInvalidArgument},
+	{graph.ErrZeroID, conformance.ErrInvalidArgument},
+	{graph.ErrInvalidID, conformance.ErrInvalidArgument},
+	{graph.ErrInvalidQueryLimit, conformance.ErrInvalidArgument},
+	{graph.ErrInvalidQueryCursor, conformance.ErrInvalidArgument},
+	{graph.ErrEmptyName, conformance.ErrInvalidArgument},
+	{graph.ErrUniqueUnsupportedType, conformance.ErrInvalidArgument},
+	{types.ErrUnsupportedValueType, conformance.ErrInvalidArgument},
+	{types.ErrEmptyPropertyKey, conformance.ErrInvalidArgument},
+	{store.ErrInvalidStoreMutation, conformance.ErrInvalidArgument},
+	{graph.ErrSelfLoop, conformance.ErrInvalidArgument},
+}
+
+// mapErr keeps the original error in the chain next to every neutral class
+// it matches.
+func mapErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	var all []error
+	for _, c := range classes {
+		if errors.Is(err, c.from) {
+			all = append(all, c.to)
+		}
+	}
+	if len(all) == 0 {
+		return err
+	}
+	return fmt.Errorf("%w (%w)", errors.Join(all...), err)
+}
+
+func (w *wrap) Close() error { return mapErr(w.g.Close()) }
+
+func (w *wrap) Reopen() error {
+	if w.cfg.BadgerDir == "" {
+		return errors.New("v4adapter: Reopen needs a persistent graph")
+	}
+	if err := w.g.Close(); err != nil {
+		return mapErr(err)
+	}
+	g, err := graph.New(w.cfg)
+	if err != nil {
+		return mapErr(err)
+	}
+	w.g = g
+	return nil
+}
+
+func inst(v int64) types.Instant { return types.Instant(v) }
+
+func (w *wrap) node(n *types.Node) conformance.Node {
+	if n == nil {
+		return conformance.Node{}
+	}
+	vf, vt, _ := n.ValidRange()
+	tf, tt, _ := n.TxStamps()
+	return conformance.Node{
+		ID: uint64(n.ID()), Labels: w.g.Nodes().Labels(n), Props: n.PropertiesMap(),
+		Version: n.Version(), ValidFrom: int64(vf), ValidTo: int64(vt),
+		TxFrom: int64(tf), TxTo: int64(tt), Void: n.Temporal() != nil && n.Temporal().Void,
+	}
+}
+
+func (w *wrap) rel(r *types.Relationship) conformance.Rel {
+	if r == nil {
+		return conformance.Rel{}
+	}
+	vf, vt, _ := r.ValidRange()
+	tf, tt, _ := r.TxStamps()
+	return conformance.Rel{
+		ID: uint64(r.ID()), Type: w.g.Rels().Type(r), From: uint64(r.StartNodeID()), To: uint64(r.EndNodeID()),
+		Props: r.PropertiesMap(), Version: r.Version(), ValidFrom: int64(vf), ValidTo: int64(vt),
+		TxFrom: int64(tf), TxTo: int64(tt), Void: r.Temporal() != nil && r.Temporal().Void,
+	}
+}
+
+func withValid(props map[string]any, v conformance.Interval) map[string]any {
+	if v == (conformance.Interval{}) {
+		return props
+	}
+	out := make(map[string]any, len(props)+2)
+	for k, x := range props {
+		out[k] = x
+	}
+	if v.From != 0 {
+		out["tkg_valid_from"] = inst(v.From)
+	}
+	if v.To != 0 {
+		out["tkg_valid_to"] = inst(v.To)
+	}
+	return out
+}
+
+func (w *wrap) nodes(ns []*types.Node, err error) ([]conformance.Node, error) {
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]conformance.Node, len(ns))
+	for i, n := range ns {
+		out[i] = w.node(n)
+	}
+	return out, nil
+}
+
+func (w *wrap) rels(rs []*types.Relationship, err error) ([]conformance.Rel, error) {
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]conformance.Rel, len(rs))
+	for i, r := range rs {
+		out[i] = w.rel(r)
+	}
+	return out, nil
+}
+
+func (w *wrap) AddNode(ctx context.Context, s conformance.NodeSpec) (conformance.Node, error) {
+	props := withValid(s.Props, s.Valid)
+	var n *types.Node
+	var err error
+	if s.TxFrom != 0 {
+		n, err = w.g.Nodes().AddWithTx(ctx, s.Labels, props, inst(s.TxFrom))
+	} else {
+		n, err = w.g.Nodes().Add(ctx, s.Labels, props)
+	}
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return w.node(n), nil
+}
+
+func (w *wrap) UpdateNode(ctx context.Context, id uint64, props map[string]any, txFrom int64) (conformance.Node, error) {
+	var n *types.Node
+	var err error
+	if txFrom != 0 {
+		n, err = w.g.Nodes().UpdateWithTx(ctx, types.NodeID(id), props, inst(txFrom))
+	} else {
+		n, err = w.g.Nodes().Update(ctx, types.NodeID(id), props)
+	}
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return w.node(n), nil
+}
+
+func (w *wrap) DeleteNode(ctx context.Context, id uint64, txTo int64) error {
+	if txTo != 0 {
+		return mapErr(w.g.Nodes().DeleteWithTx(ctx, types.NodeID(id), inst(txTo)))
+	}
+	return mapErr(w.g.Nodes().Delete(ctx, types.NodeID(id)))
+}
+
+func (w *wrap) GetOrCreateByKey(ctx context.Context, label, key string, value any, extra map[string]any) (conformance.Node, bool, error) {
+	n, created, err := w.g.Nodes().GetOrCreateByKey(ctx, label, key, value, extra)
+	if err != nil {
+		return conformance.Node{}, false, mapErr(err)
+	}
+	return w.node(n), created, nil
+}
+
+func (w *wrap) AddRel(ctx context.Context, s conformance.RelSpec) (conformance.Rel, error) {
+	props := withValid(s.Props, s.Valid)
+	var r *types.Relationship
+	var err error
+	if s.TxFrom != 0 {
+		var a, b *types.Node
+		if a, err = w.g.Nodes().Get(ctx, types.NodeID(s.From)); err != nil {
+			return conformance.Rel{}, mapErr(err)
+		}
+		if b, err = w.g.Nodes().Get(ctx, types.NodeID(s.To)); err != nil {
+			return conformance.Rel{}, mapErr(err)
+		}
+		r, err = w.g.Rels().AddWithTx(ctx, s.Type, a, b, props, inst(s.TxFrom))
+	} else {
+		r, err = w.g.Rels().AddByID(ctx, s.Type, types.NodeID(s.From), types.NodeID(s.To), props)
+	}
+	if err != nil {
+		return conformance.Rel{}, mapErr(err)
+	}
+	return w.rel(r), nil
+}
+
+func (w *wrap) UpdateRel(ctx context.Context, id uint64, props map[string]any, txFrom int64) (conformance.Rel, error) {
+	var r *types.Relationship
+	var err error
+	if txFrom != 0 {
+		r, err = w.g.Rels().UpdateWithTx(ctx, types.RelID(id), props, inst(txFrom))
+	} else {
+		r, err = w.g.Rels().Update(ctx, types.RelID(id), props)
+	}
+	if err != nil {
+		return conformance.Rel{}, mapErr(err)
+	}
+	return w.rel(r), nil
+}
+
+func (w *wrap) DeleteRel(ctx context.Context, id uint64, txTo int64) error {
+	if txTo != 0 {
+		return mapErr(w.g.Rels().DeleteWithTx(ctx, types.RelID(id), inst(txTo)))
+	}
+	return mapErr(w.g.Rels().Delete(ctx, types.RelID(id)))
+}
+
+func (w *wrap) SetNodeVersionInterval(ctx context.Context, id uint64, from, to int64, props map[string]any, txFrom int64) (conformance.Node, error) {
+	var n *types.Node
+	var err error
+	if txFrom != 0 {
+		n, err = w.g.Temporal().SetNodeVersionIntervalWithTx(ctx, types.NodeID(id), inst(from), inst(to), props, inst(txFrom))
+	} else {
+		n, err = w.g.Temporal().SetNodeVersionInterval(ctx, types.NodeID(id), inst(from), inst(to), props)
+	}
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return w.node(n), nil
+}
+
+func (w *wrap) SetRelVersionInterval(ctx context.Context, id uint64, from, to int64, props map[string]any, txFrom int64) (conformance.Rel, error) {
+	var r *types.Relationship
+	var err error
+	if txFrom != 0 {
+		r, err = w.g.Temporal().SetRelVersionIntervalWithTx(ctx, types.RelID(id), inst(from), inst(to), props, inst(txFrom))
+	} else {
+		r, err = w.g.Temporal().SetRelVersionInterval(ctx, types.RelID(id), inst(from), inst(to), props)
+	}
+	if err != nil {
+		return conformance.Rel{}, mapErr(err)
+	}
+	return w.rel(r), nil
+}
+
+func (w *wrap) CloseNodeVersion(ctx context.Context, id uint64, t int64) error {
+	return mapErr(w.g.Nodes().CloseVersion(ctx, types.NodeID(id), inst(t)))
+}
+
+func (w *wrap) CloseRelVersion(ctx context.Context, id uint64, t int64) error {
+	return mapErr(w.g.Rels().CloseVersion(ctx, types.RelID(id), inst(t)))
+}
+
+type txWrap struct {
+	w  *wrap
+	tx *graph.GraphTx
+}
+
+func (w *wrap) Tx(ctx context.Context, fn func(conformance.Tx) error) error {
+	if fn == nil {
+		return fmt.Errorf("%w: nil transaction callback", conformance.ErrInvalidArgument)
+	}
+	return mapErr(w.g.Tx().RunContext(ctx, func(tx *graph.GraphTx) error {
+		return fn(&txWrap{w: w, tx: tx})
+	}))
+}
+
+func (t *txWrap) AddNode(s conformance.NodeSpec) (conformance.Node, error) {
+	n, err := t.tx.AddNode(s.Labels, withValid(s.Props, s.Valid))
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return t.w.node(n), nil
+}
+
+func (t *txWrap) AddRel(s conformance.RelSpec) (conformance.Rel, error) {
+	r, err := t.tx.AddRelationshipByID(s.Type, types.NodeID(s.From), types.NodeID(s.To), withValid(s.Props, s.Valid))
+	if err != nil {
+		return conformance.Rel{}, mapErr(err)
+	}
+	return t.w.rel(r), nil
+}
+
+func (t *txWrap) UpdateNode(id uint64, props map[string]any) (conformance.Node, error) {
+	n, err := t.tx.UpdateNode(types.NodeID(id), props)
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return t.w.node(n), nil
+}
+
+func (t *txWrap) DeleteNode(id uint64) error { return mapErr(t.tx.DeleteNode(types.NodeID(id))) }
+
+func (t *txWrap) GetNode(id uint64) (conformance.Node, error) {
+	n, err := t.tx.GetNode(types.NodeID(id))
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return t.w.node(n), nil
+}
+
+func opts(q conformance.Query) store.QueryOpts {
+	return store.QueryOpts{
+		Limit: int(q.Limit), After: types.EntityID(q.After), ValidAt: inst(q.ValidAt),
+		ValidStart: inst(q.ValidStart), ValidEnd: inst(q.ValidEnd), TxAt: inst(q.TxAt), TxPin: inst(q.TxPin),
+	}
+}
+
+func (w *wrap) GetNode(ctx context.Context, id uint64) (conformance.Node, error) {
+	n, err := w.g.Nodes().Get(ctx, types.NodeID(id))
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return w.node(n), nil
+}
+
+func (w *wrap) GetRel(ctx context.Context, id uint64) (conformance.Rel, error) {
+	r, err := w.g.Rels().Get(ctx, types.RelID(id))
+	if err != nil {
+		return conformance.Rel{}, mapErr(err)
+	}
+	return w.rel(r), nil
+}
+
+func (w *wrap) NodesByLabel(label string, q conformance.Query) ([]conformance.Node, error) {
+	return w.nodes(w.g.Nodes().ByLabel(label, opts(q)))
+}
+
+func (w *wrap) RelsByType(typ string, q conformance.Query) ([]conformance.Rel, error) {
+	return w.rels(w.g.Rels().ByType(typ, opts(q)))
+}
+
+func (w *wrap) NodesByLabelAndProperty(label, key string, value any, q conformance.Query) ([]conformance.Node, error) {
+	return w.nodes(w.g.Nodes().ByLabelAndProperty(label, key, value, opts(q)))
+}
+
+func (w *wrap) NodeAsOf(id uint64, tx int64) (conformance.Node, error) {
+	n, err := w.g.Temporal().NodeAsOf(types.NodeID(id), inst(tx))
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return w.node(n), nil
+}
+
+func (w *wrap) RelAsOf(id uint64, tx int64) (conformance.Rel, error) {
+	r, err := w.g.Temporal().RelAsOf(types.RelID(id), inst(tx))
+	if err != nil {
+		return conformance.Rel{}, mapErr(err)
+	}
+	return w.rel(r), nil
+}
+
+func (w *wrap) NodeAt(id uint64, validAt int64) (conformance.Node, error) {
+	n, err := w.g.Temporal().NodeAt(types.NodeID(id), inst(validAt))
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return w.node(n), nil
+}
+
+func (w *wrap) NodeAtTx(id uint64, validAt, tx int64) (conformance.Node, error) {
+	n, err := w.g.Temporal().NodeAtTx(types.NodeID(id), inst(validAt), inst(tx))
+	if err != nil {
+		return conformance.Node{}, mapErr(err)
+	}
+	return w.node(n), nil
+}
+
+func (w *wrap) RelAtTx(id uint64, validAt, tx int64) (conformance.Rel, error) {
+	r, err := w.g.Temporal().RelAtTx(types.RelID(id), inst(validAt), inst(tx))
+	if err != nil {
+		return conformance.Rel{}, mapErr(err)
+	}
+	return w.rel(r), nil
+}
+
+func (w *wrap) NodeHistory(id uint64) ([]conformance.Node, error) {
+	return w.nodes(w.g.Nodes().History(types.NodeID(id)))
+}
+
+func (w *wrap) RelHistory(id uint64) ([]conformance.Rel, error) {
+	return w.rels(w.g.Rels().History(types.RelID(id)))
+}
+
+func (w *wrap) CommittedTx() (int64, error) {
+	t, err := w.g.Temporal().CommittedTx()
+	return int64(t), mapErr(err)
+}
+
+func (w *wrap) RelsEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after uint64, limit int) ([]conformance.RelSegment, uint64, error) {
+	segs, next, err := w.g.Temporal().RelsEffectivePage(ctx,
+		temporal.Pin{Tx: inst(pin.Tx), ValidAt: inst(pin.ValidAt), ValidStart: inst(pin.ValidStart), ValidEnd: inst(pin.ValidEnd)},
+		temporal.Filter{Prop: f.Prop, Eq: f.Eq}, types.RelID(after), limit)
+	if err != nil {
+		return nil, 0, mapErr(err)
+	}
+	out := make([]conformance.RelSegment, len(segs))
+	for i, s := range segs {
+		out[i] = conformance.RelSegment{ValidFrom: int64(s.ValidFrom), ValidTo: int64(s.ValidTo), Rel: w.rel(s.Rel)}
+	}
+	return out, uint64(next), nil
+}
