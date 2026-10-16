@@ -133,6 +133,9 @@ func TestApplicationRetentionSnapshotOwnsSparseStateAndReadyBanks(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got, err := prepared.ApplicationContract(t.Context()); err != nil || got != contract {
+		t.Fatal("prepared snapshot ignored the store's retention config", got, contract, err)
+	}
 	view, err := prepared.OpenReadView(t.Context(), m.Index, policy.MaxImageBytes)
 	if err != nil {
 		t.Fatal(err)
