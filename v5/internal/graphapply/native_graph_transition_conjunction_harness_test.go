@@ -188,6 +188,12 @@ func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partiti
 	if origin != g.selector.Actor || partition != g.selector.Partition {
 		return nil
 	}
+	// Only the fixed service header is inspected here. Other operations still
+	// reach their ordinary full decoder and original endpoint/transport grants;
+	// they cannot spend the separate full-Submit diagnostic candidate budget.
+	if len(request) >= 5 && len(request) <= processFrameBytes && bytes.Equal(request[:4], []byte("GSQ\x01")) && request[4] >= sourceOpen && request[4] <= sourceReplacementRead && request[4] != sourceSubmit {
+		return nil
+	}
 	g.mu.Lock()
 	if g.arm.Sequence != 0 || g.refused {
 		g.mu.Unlock()

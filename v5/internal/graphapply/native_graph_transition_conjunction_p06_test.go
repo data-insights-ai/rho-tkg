@@ -603,3 +603,110 @@ func TestNativeConjunctionRegistryDeadlineAndGateOwnership(t *testing.T) {
 		t.Fatal("native invalid/limit/expiry or raw caller death qualified as unknown Decide")
 	}
 }
+
+func TestNativeConjunctionGateReadTrafficPreservesFourthPrepareCandidate(t *testing.T) {
+	n := newCrossPartitionNetwork(t)
+	ops, claims := crossEdgeFixture(t, n)
+	tx, registration := n.crossPlan(ops, claims, 24)
+	n.crossSubmit(0, registration)
+	var id [16]byte
+	copy(id[:], tx.manifest[4:20])
+	registered := n.crossReadPhase(0, id, crossRegister)
+	first, err := n.hosts[0][0].PrepareCrossParticipant(tx, 3, registered, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.crossSubmit(0, first)
+	vote := n.crossReadPhase(0, id, crossPrepare)
+	prepare, err := n.hosts[0][0].PrepareCrossParticipant(tx, 8, registered, []crossProof{vote})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal, err := encodeGraphSourceProposal(prepare)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	// The actual native Prepare below is diagnostic input only. Its fourth
+	// occurrence must reach the native-owner door, whose absent transport is
+	// deliberately refused; no synthetic arm/receipt becomes authority.
+	absentOwner := errors.New("guard: native owner transport unavailable")
+	newGate := func() *nativeConjunctionBatchGate {
+		return &nativeConjunctionBatchGate{ctx: ctx, selector: nativeConjunctionSelector{Actor: 1, Partition: 8, Member: 5, Phase: crossPrepare, Occurrence: 4, Kind: raftlog.StableStorageApplication, Side: "after"}, target: &graphProcess{mux: &graphProcessMux{err: absentOwner}}}
+	}
+	request := func(kind byte, sequence uint64, command []byte) []byte {
+		wire, e := encodeGraphSourceRequest(graphSourceRequest{kind: kind, sequence: sequence, nonce: [16]byte{1}, maximum: 128, command: command})
+		if e != nil {
+			t.Fatal(e)
+		}
+		return wire
+	}
+	gate := newGate()
+	prior := 0
+	gate.priorBefore = func(context.Context, uint64, uint64, []byte) error { prior++; return nil }
+	for i := range 129 {
+		if err := gate.before(ctx, 1, 8, request(sourceGet, uint64(i+1), nil)); err != nil {
+			t.Fatal("native-encoded read traffic changed the service path", err)
+		}
+	}
+	if gate.refused || gate.candidates != 0 || gate.decodeWork != 0 || gate.encounters != 0 {
+		t.Fatal("unrelated native read traffic exhausted Submit selector", gate.refused, gate.candidates, gate.decodeWork, gate.encounters)
+	}
+	for i := range 4 {
+		err := gate.before(ctx, 1, 8, request(sourceSubmit, uint64(i+130), proposal))
+		if i < 3 && err != nil || i == 3 && (!errors.Is(err, absentOwner) || !errors.Is(err, errCorrupt)) {
+			t.Fatal("fourth actual Prepare did not reach its real native-owner door", i, err)
+		}
+	}
+	if prior != 133 || gate.candidates != 4 || gate.encounters != 4 || gate.decodeWork != 4*(4096+32*processFrameBytes) || gate.refused || gate.arm.Sequence != 0 || len(gate.selected) != 0 {
+		t.Fatal("read classification changed exact full Submit funding/occurrence or fabricated native authority")
+	}
+	for _, malformed := range [][]byte{nil, []byte("GSQ\x01"), {'G', 'S', 'Q', 1, sourceSubmit}, request(sourceSubmit, 1, []byte("not-a-proposal"))} {
+		g := newGate()
+		if err := g.before(ctx, 1, 8, malformed); err == nil || g.candidates != 1 || g.decodeWork != 4096+32*processFrameBytes || g.encounters != 0 || g.arm.Sequence != 0 {
+			t.Fatal("malformed relevant candidate escaped its full decode grant", err)
+		}
+	}
+	// The fixed-header bypass confers no service authentication: malformed read
+	// bodies remain invalid at the unchanged full native service decoder.
+	badRead := request(sourceGet, 1, nil)
+	badRead[len(badRead)-1] ^= 1
+	g := newGate()
+	if err := g.before(ctx, 1, 8, badRead); err != nil || g.candidates != 0 {
+		t.Fatal("read classification performed a hidden full diagnostic decode", err)
+	}
+	if _, err := decodeGraphSourceRequest(badRead); !errors.Is(err, errCorrupt) {
+		t.Fatal("header classification authenticated a corrupt service request", err)
+	}
+	for _, oversized := range [][]byte{make([]byte, processFrameBytes+1), append(request(sourceGet, 1, nil), make([]byte, processFrameBytes)...)} {
+		g := newGate()
+		if err := g.before(ctx, 1, 8, oversized); err != nil || !g.refused || g.candidates != 0 || g.decodeWork != 0 {
+			t.Fatal("oversized header gained decode or diagnostic qualification", err)
+		}
+	}
+	g = newGate()
+	g.candidates, g.decodeWork = 128, 128*(4096+32*processFrameBytes)
+	if err := g.before(ctx, 1, 8, request(sourceSubmit, 1, proposal)); err != nil || !g.refused || g.candidates != 128 || g.decodeWork != 128*(4096+32*processFrameBytes) {
+		t.Fatal("Submit candidate limit was enlarged or refunded", err)
+	}
+	if _, _, _, _, err := g.evidence(); !errors.Is(err, errCrossProcessPending) {
+		t.Fatal("exhausted selector gained native evidence", err)
+	}
+	g = newGate()
+	dead, stop := context.WithCancel(ctx)
+	stop()
+	g.ctx = dead
+	if err := g.before(ctx, 1, 8, request(sourceSubmit, 1, proposal)); !errors.Is(err, context.Canceled) || !errors.Is(err, errCrossProcessPending) || g.candidates != 1 || g.encounters != 0 || g.arm.Sequence != 0 {
+		t.Fatal("Submit renewed an expired original context", err)
+	}
+	foreign, err := encodeGraphSourceProposal(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g = newGate()
+	g.selector.Occurrence = 1
+	if err := g.before(ctx, 1, 8, request(sourceSubmit, 1, foreign)); !errors.Is(err, errInvalid) || g.candidates != 1 || g.decodeWork != 4096+32*processFrameBytes || g.arm.Sequence != 0 {
+		t.Fatal("foreign native namespace bypassed paid Submit validation", err)
+	}
+}
