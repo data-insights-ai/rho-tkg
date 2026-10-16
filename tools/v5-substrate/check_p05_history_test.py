@@ -43,7 +43,87 @@ def fixture():
     return old, condition, outer
 
 
+def cut_frame():
+    _, condition, _ = fixture()
+    scopes = {BRIDGE.certificate(p[0])["partition"]: BRIDGE.certificate(p[0])["scope"] for p in BRIDGE.condition(condition)}
+    scope, configuration, nonce = scopes[3], b"d"*32, b"n"*16
+    command = BRIDGE.seal(b"GSQ\1"+b"\1"+scope+configuration+U64(12))
+    outcome = BRIDGE.seal(b"GSO\1"+bytes([1, 1])+U64(12)+U64(21))
+    proposal = BRIDGE.seal(b"GSC\1"+BRIDGE.field(BRIDGE.seal(b"APS\1"+scope))+BRIDGE.field(command))
+    request = BRIDGE.seal(b"GSQ\1"+b"\10"+U64(7)+nonce+bytes(48)+BRIDGE.field(b"")*3+BRIDGE.field(proposal)+bytes(17))
+    reply = BRIDGE.seal(b"GSR\1"+BRIDGE.field(BRIDGE.seal(b"APS\1"+scope))+U64(1)+b"i"*16+b"\10"+U64(7)+nonce+bytes(2)+BRIDGE.field(outcome))
+    encoded = lambda value: base64.b64encode(value).decode()
+    return scopes, dict(Origin=2, Partition=3, Request=encoded(request), Reply=encoded(reply)), command, outcome
+
+
 class P05SourceGuards(unittest.TestCase):
+    def test_submitted_cut_control_is_typed_without_becoming_business(self):
+        scopes, frame, _, _ = cut_frame()
+        manifests, replies, conflicts, captures = BRIDGE.frames([frame], scopes)
+        self.assertEqual((manifests, replies, conflicts, captures), ({}, [], 0, set()))
+
+    def test_cut_controls_bind_scope_configuration_and_actual_retained_output(self):
+        scopes, frame, command, outcome = cut_frame()
+        controls = []
+        BRIDGE.frames([frame], scopes, controls=controls)
+        self.assertEqual(len(controls), 1)
+        record = dict(Partition=3, Index=21, Outcome=base64.b64encode(outcome).decode(), CDC=None)
+        BRIDGE.bind_cut_controls(controls, {(3, 21): record}, b"d"*32)
+        # The old cross-phase codec stays closed to cut controls.
+        with self.assertRaises(ValueError):
+            BRIDGE.gct(command)
+        alter = lambda wire, start, value: BRIDGE.seal(wire[:-32][:start] + value + wire[:-32][start+len(value):])
+        for bad_command, bad_outcome in (
+            (alter(command, 5, b"x"), outcome),
+            (alter(command, 4, b"\3"), outcome),
+            (alter(command, 125, bytes(32)), outcome),
+            (alter(command, 157, U64(0)), outcome),
+            (command, alter(outcome, 4, b"\2")),
+            (command, alter(outcome, 5, b"\5")),
+            (command, alter(outcome, 6, U64(13))),
+            (command, alter(outcome, 14, U64(0))),
+            (command, outcome[:-1]),
+        ):
+            with self.subTest(command=bad_command[:8], outcome=bad_outcome[:8]), self.assertRaises(ValueError):
+                BRIDGE.cut_control(bad_command, bad_outcome, scopes[3])
+        for mutated in ({}, {(3, 21): {**record, "Outcome": base64.b64encode(alter(outcome, 6, U64(13))).decode()}},
+                        {(3, 21): {**record, "CDC": base64.b64encode(b"unexpected").decode()}}):
+            with self.subTest(record=mutated), self.assertRaises(ValueError):
+                BRIDGE.bind_cut_controls(controls, mutated, b"d"*32)
+        with self.assertRaises(ValueError):
+            BRIDGE.bind_cut_controls(controls, {(3, 21): record}, b"x"*32)
+        for offset, replacement in ((164, U64(2)), (172, bytes(16))):
+            bad = copy.deepcopy(frame)
+            bad["Reply"] = base64.b64encode(alter(BRIDGE.raw(frame["Reply"]), offset, replacement)).decode()
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                BRIDGE.frames([bad], scopes)
+        forged = BRIDGE.cut_control(command, alter(outcome, 14, U64(22)), scopes[3])
+        with self.assertRaises(ValueError):
+            BRIDGE.bind_cut_controls([forged], {(3, 21): record}, b"d"*32)
+
+    def test_register_reply_normalizes_only_native_register_floor(self):
+        manifest, _, _ = fixture()
+        m = BRIDGE.manifest(manifest)
+        registered = (BRIDGE.GRAPH + U64(3) + m["tx"] + m["digest"] + b"\1" +
+                      U64(21) + U64(m["floors"][3]) + U64(0) + bytes(2))
+        original = BRIDGE.seal(b"GCS\1" + registered)
+        projected = BRIDGE.seal(b"GCS\1" + registered[:81] + bytes(8) + registered[89:])
+        record = dict(Partition=3, Index=21, Outcome=base64.b64encode(original).decode(), CDC=None)
+        BRIDGE.bind_phase_reply(BRIDGE.status(projected), projected, record, m)
+        alter = lambda wire, start, value: BRIDGE.seal(wire[:-32][:start] + value + wire[:-32][start+len(value):])
+        for wrong in (original, alter(projected, 4+73, U64(22)), alter(projected, 4+98, b"\1")):
+            with self.subTest(reply=wrong[-8:]), self.assertRaises(ValueError):
+                BRIDGE.bind_phase_reply(BRIDGE.status(wrong), wrong, record, m)
+        for start, value in ((4+81, U64(8)), (4+89, U64(1)), (4+97, b"\1"), (4+98, b"\1")):
+            bad = {**record, "Outcome": base64.b64encode(alter(original, start, value)).decode()}
+            with self.subTest(offset=start), self.assertRaises(ValueError):
+                BRIDGE.bind_phase_reply(BRIDGE.status(projected), projected, bad, m)
+        prepare = alter(original, 4+72, b"\2")
+        raw_prepare = {**record, "Outcome": base64.b64encode(prepare).decode()}
+        BRIDGE.bind_phase_reply(BRIDGE.status(prepare), prepare, raw_prepare, m)
+        with self.assertRaises(ValueError):
+            BRIDGE.bind_phase_reply(BRIDGE.status(prepare), alter(prepare, 4+81, bytes(8)), raw_prepare, m)
+
     def test_fixed_writes_refuse_collateral_or_wrong_scalar(self):
         before, expected = {"A/winner": 0, "B/loser": 0}, {"A/winner": 5}
         writes = BRIDGE.checked_writes(before, {"A/winner": 5, "B/loser": 0}, expected)

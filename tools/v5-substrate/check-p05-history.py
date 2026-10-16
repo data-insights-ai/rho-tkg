@@ -158,7 +158,31 @@ def program_source_voter(context, partition, ordinal, count):
     return leaders[0 if partition == 3 else 1]
 
 
-def frames(encoded, scopes, *, program_sources=None):
+
+def cut_control(command, reply, scope):
+    """Typed native GSQ/GSO correspondence, never a graph-cut certificate."""
+    c = Cursor(body(command, b"GSQ\1"))
+    phase, actual_scope, configuration, round_ = c.number(1), c.take(120), c.take(32), c.number()
+    c.end()
+    require(phase in (1, 2) and actual_scope == scope and any(configuration) and
+            0 < round_ < (1 << 64)-1, "submitted cut command scope/configuration/round")
+    r = Cursor(body(reply, b"GSO\1"))
+    actual_phase, disposition, actual_round, index = r.number(1), r.number(1), r.number(), r.number()
+    r.end()
+    require(actual_phase == phase and disposition in (1, 2, 3, 4) and actual_round == round_ and index > 0,
+            "submitted cut result phase/status/round/index")
+    return dict(partition=int.from_bytes(scope[16:24], "big"), configuration=configuration,
+                phase=phase, status=disposition, round=round_, index=index, outcome=reply)
+
+
+def bind_cut_controls(controls, retained, configuration):
+    for control in controls:
+        key = control["partition"], control["index"]
+        require(control["configuration"] == configuration and key in retained and
+                raw(retained[key]["Outcome"]) == control["outcome"] and not raw(retained[key]["CDC"]),
+                "submitted cut control differs from actual configuration/retained original/empty CDC")
+
+def frames(encoded, scopes, *, program_sources=None, controls=None):
     manifests, replies, conflicts, captures = {}, [], 0, set()
     for ordinal, frame in enumerate(encoded):
         require(frame["Origin"] in range(1, 7) and frame["Partition"] in (3, 8), "frame process mapping")
@@ -179,7 +203,13 @@ def frames(encoded, scopes, *, program_sources=None):
         if kind == 8:
             p = Cursor(body(command, b"GSC\1"))
             require(body(p.field(156), b"APS\1") == scope, "submitted target scope")
-            phase, partition, original = gct(p.field()); p.end()
+            submitted = p.field(); p.end()
+            if submitted[:4] == b"GSQ\1":
+                control = cut_control(submitted, reply, scope)
+                if controls is not None:
+                    controls.append(control)
+                continue
+            phase, partition, original = gct(submitted)
             m, s = manifest(original), status(reply)
             require(partition == frame["Partition"] == s["partition"] and phase == s["phase"] and s["tx"] == m["tx"] and s["digest"] == m["digest"], "outer original/actual phase digest")
             require(m["tx"] not in manifests or manifests[m["tx"]][0] == original, "original manifest changed")
@@ -214,6 +244,22 @@ def frames(encoded, scopes, *, program_sources=None):
             require(set(condition(m["condition"])) <= captures, "condition lacks matching literal authenticated native capture")
     return manifests, replies, conflicts, captures
 
+
+
+def bind_phase_reply(s, reply, record, m):
+    original = raw(record["Outcome"])
+    if s["phase"] == 1:
+        # observeCrossTransaction projects the immutable R control's Index and
+        # identity with zero floor. The native original retains its actual
+        # coordinator floor; no other field or phase is normalized.
+        stored = status(original)
+        require(stored["phase"] == 1 and stored["partition"] == m["coordinator"] and
+                stored["floor"] == m["floors"][m["coordinator"]], "actual retained Register coordinator floor")
+        projected = bytearray(body(original, b"GCS\1"))
+        require(projected[89:99] == bytes(10), "retained Register has no decision/vote/refusal")
+        projected[81:89] = bytes(8)
+        original = seal(b"GCS\1" + projected)
+    require(original == reply, "reply differs from actual retained original")
 
 def records(encoded, manifests):
     retained, phases, decisions = {}, {}, {}
@@ -440,11 +486,13 @@ def check(data, *, program_sources=None):
     require([p[0] for p in initial_condition] == old_certificates, "captured condition/old cut identity")
     if program_sources is not None:
         require(bool(program_sources["reopen_after"]) == (data["Schedule"] == "write-skew-A-first"), "actual sole cohort-reopen scenario")
-    manifests, replies, conflicts, captures = frames(data["Phases"], scopes, program_sources=program_sources)
+    controls = []
+    manifests, replies, conflicts, captures = frames(data["Phases"], scopes, program_sources=program_sources, controls=controls)
     require(set(initial_condition) <= captures, "old condition lacks exact native capture replies")
     retained, decisions = records(data["Records"], manifests)
+    bind_cut_controls(controls, retained, certificate(old_certificates[0])["configuration"])
     for s, reply in replies:
-        require(raw(retained[(s["partition"], s["index"])]["Outcome"]) == reply, "reply differs from actual retained original")
+        bind_phase_reply(s, reply, retained[(s["partition"], s["index"])], manifests[s["tx"]][1])
     for control in data["Controls"] or []:
         require(retained[(control["Partition"], control["Index"])] == control, "range control/raw prefix differs")
     initial, current = projected(data["Old"]), projected(data["Current"])
