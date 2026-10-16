@@ -28,7 +28,7 @@ func TestScalarBytesAndListWireRoundTrip(t *testing.T) {
 	l := Limits{}
 	good := []Scalar{
 		Bytes(nil), Bytes([]byte{}), Bytes([]byte{0}), Bytes([]byte("\x00\xff\x00")),
-		mustList(t), mustList(t, I64(1), I64(2)), mustList(t, mustF64(t, 2.5), String("x"), Bool(true), Null(), Bytes([]byte{1})),
+		mustList(t), mustList(t, I64(1), I64(2)), mustList(t, mustF64(t, 2.5), String("x"), Bool(true), Bytes([]byte{1})),
 	}
 	for i, v := range good {
 		w, err := v.AppendWire(nil, l)
@@ -73,6 +73,12 @@ func TestScalarBytesAndListWireRoundTrip(t *testing.T) {
 	if _, err := List([]Scalar{{}}); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("zero element: %v", err)
 	}
+	// a list holds no null (one equality rule: EqualityKey and Equal agree).
+	for _, els := range [][]Scalar{{Null()}, {I64(1), Null()}, {Null(), I64(1)}} {
+		if _, err := List(els); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("null element %v: %v", els, err)
+		}
+	}
 	// truncated list element, trailing junk, nested list on the wire, bad F64 element.
 	w, _ := mustList(t, String("abc"), I64(1)).AppendWire(nil, l)
 	for _, bad := range [][]byte{
@@ -83,6 +89,7 @@ func TestScalarBytesAndListWireRoundTrip(t *testing.T) {
 		{byte(ScalarList), 0, 0, 0, 0},    // zero-length element (no kind byte)
 		{byte(ScalarList), 0, 0, 0, 1, byte(ScalarList)},                              // nested list
 		{byte(ScalarList), 0, 0, 0, 1, 0},                                             // invalid element kind
+		{byte(ScalarList), 0, 0, 0, 1, byte(ScalarNull)},                              // null element
 		{byte(ScalarList), 0, 0, 0, 9, byte(ScalarF64), 0x7f, 0xf8, 0, 0, 0, 0, 0, 0}, // NaN
 		{byte(ScalarList), 0xff, 0xff, 0xff, 0xff},                                    // huge length
 	} {
@@ -108,9 +115,9 @@ func TestScalarBytesAndListWireRoundTrip(t *testing.T) {
 		t.Fatal("bytes and string share a wire")
 	}
 	// the elements come back in order with their kinds.
-	lv := mustList(t, I64(3), mustF64(t, 3), Null())
+	lv := mustList(t, I64(3), mustF64(t, 3), Bytes(nil))
 	els, ok := lv.ListValue()
-	if !ok || len(els) != 3 || els[0].Kind() != ScalarI64 || els[1].Kind() != ScalarF64 || els[2].Kind() != ScalarNull {
+	if !ok || len(els) != 3 || els[0].Kind() != ScalarI64 || els[1].Kind() != ScalarF64 || els[2].Kind() != ScalarBytes {
 		t.Fatalf("elements %v", els)
 	}
 }
@@ -153,8 +160,6 @@ func TestScalarBytesAndListKeys(t *testing.T) {
 		{"list frame ambiguity", mustList(t, String("ab"), String("c")), mustList(t, String("a"), String("bc")), false, false},
 		{"list bool vs int", mustList(t, Bool(true)), mustList(t, I64(1)), false, false},
 		{"list bytes elements", mustList(t, Bytes([]byte{1})), mustList(t, Bytes([]byte{1})), true, true},
-		{"list null never equal", mustList(t, Null()), mustList(t, Null()), true, false},
-		{"list null among values", mustList(t, I64(1), Null()), mustList(t, I64(1), Null()), true, false},
 		{"list vs scalar", mustList(t, I64(3)), I64(3), false, false},
 	}
 	for _, c := range cases {

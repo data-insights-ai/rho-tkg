@@ -59,7 +59,7 @@ func TestValueBytesEqualIsBytewise(t *testing.T) {
 }
 
 // TestValueListEquality: elementwise by the numeric rule, in order; nested
-// lists and null-holding lists.
+// lists and null elements are refused.
 func TestValueListEquality(t *testing.T) {
 	f3 := mustFloat(t, 3)
 	cases := []struct {
@@ -74,7 +74,6 @@ func TestValueListEquality(t *testing.T) {
 		{"empty", mustVList(t), mustVList(t), true},
 		{"empty vs bytes", mustVList(t), Bytes(nil), false},
 		{"bool vs int", mustVList(t, Bool(true)), mustVList(t, Int(1)), false},
-		{"null inside", mustVList(t, Null()), mustVList(t, Null()), false},
 		{"bytes inside", mustVList(t, Bytes([]byte{1})), mustVList(t, Bytes([]byte{1})), true},
 		{"list vs int", mustVList(t, Int(3)), Int(3), false},
 	}
@@ -88,6 +87,11 @@ func TestValueListEquality(t *testing.T) {
 	}
 	if _, err := List([]Value{{}}); !errors.Is(err, ErrInvalidValue) {
 		t.Fatalf("zero element: %v", err)
+	}
+	for _, els := range [][]Value{{Null()}, {Int(1), Null()}, {Null(), Int(1)}} {
+		if _, err := List(els); !errors.Is(err, ErrInvalidValue) {
+			t.Fatalf("null element %v: %v", els, err)
+		}
 	}
 	l := mustVList(t, Int(3), f3, String("x"))
 	els, ok := l.AsList()
@@ -106,7 +110,7 @@ func TestValueListEquality(t *testing.T) {
 
 // TestValueBytesListScalarRoundTrip: the one conversion file keeps both kinds.
 func TestValueBytesListScalarRoundTrip(t *testing.T) {
-	for _, v := range []Value{Bytes(nil), Bytes([]byte{0, 9}), mustVList(t), mustVList(t, Int(1), mustFloat(t, 1), Null(), String("s"), Bool(true), Bytes([]byte{7}))} {
+	for _, v := range []Value{Bytes(nil), Bytes([]byte{0, 9}), mustVList(t), mustVList(t, Int(1), mustFloat(t, 1), String("s"), Bool(true), Bytes([]byte{7}))} {
 		s, err := valueToScalar(v)
 		if err != nil {
 			t.Fatal(err)

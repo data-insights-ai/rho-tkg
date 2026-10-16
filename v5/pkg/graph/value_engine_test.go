@@ -84,44 +84,36 @@ func TestBytesAndListEqualityScan(t *testing.T) {
 	}
 }
 
-// The scan decides with Value.Equal, not with key equality: a stored list that
-// holds a null is found by no equality scan, while the same lists without a
-// null, and bytes, still are.
-func TestScanEqualityDecidesWithValueEqual(t *testing.T) {
-	g, err := Open(context.Background(), bareConfig(t, t.TempDir()))
+// GetOrCreate on a unique List property finds the holder instead of creating a
+// second node or reporting a unique violation; a different list is a new claim.
+func TestUniqueListGetOrCreateFindsHolder(t *testing.T) {
+	cfg := bareConfig(t, t.TempDir())
+	cfg.NodeProperties = []PropertySchema{{Key: "l", Kind: KindList, Unique: true}}
+	g, err := Open(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer g.Close()
 	all := scopeAll(t)
-	withNull := mustVList(t, Int(3), Null())
-	var a, b types.NodeID
-	update(t, g, func(tx Tx) (err error) {
-		if a, err = tx.CreateNode(CreateNode{Props: map[string]Value{"l": withNull, "w": Bytes(nil)}, Scope: all}); err != nil {
-			return
-		}
-		b, err = tx.CreateNode(CreateNode{Props: map[string]Value{"l": mustVList(t, Int(3), Int(4))}, Scope: all})
-		return err
-	})
-	sel := func(k string, v Value) Selector {
-		return Selector{View: ViewDeclared, Valid: all, Known: knownAll(t), Equals: []PropertyEq{{Key: k, Value: v}}}
+	get := func(v Value) (id types.NodeID, created bool) {
+		t.Helper()
+		update(t, g, func(tx Tx) (err error) {
+			id, created, err = tx.GetOrCreate(GetOrCreate{Label: "L", Key: "l", Value: v, Scope: all})
+			return err
+		})
+		return
 	}
-	if withNull.Equal(withNull) {
-		t.Fatal("Value.Equal precondition")
+	a, created := get(mustVList(t, Int(3), Int(4)))
+	if !created {
+		t.Fatal("first claim not created")
 	}
-	for _, c := range []struct {
-		name string
-		s    Selector
-		want []string
-	}{
-		{"[3,null]", sel("l", withNull), nil},
-		{"[3.0,null]", sel("l", mustVList(t, mustFloat(t, 3), Null())), nil},
-		{"[3,4] float", sel("l", mustVList(t, mustFloat(t, 3), Int(4))), []string{n(b)}},
-		{"empty bytes", sel("w", Bytes([]byte{})), []string{n(a)}},
-	} {
-		got, err := scanAll(t, g, c.s, 10)
-		if err != nil || !slices.Equal(got.ids, c.want) {
-			t.Errorf("%s: got %v err %v want %v", c.name, got.ids, err, c.want)
-		}
+	if id, created := get(mustVList(t, Int(3), Int(4))); created || id != a {
+		t.Errorf("repeat: id %v created %t, want holder %v", id, created, a)
+	}
+	if id, created := get(mustVList(t, Int(4), Int(3))); !created || id == a {
+		t.Errorf("reversed list: id %v created %t", id, created)
+	}
+	if id, created := get(mustVList(t)); !created || id == a {
+		t.Errorf("empty list: id %v created %t", id, created)
 	}
 }

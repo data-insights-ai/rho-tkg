@@ -23,8 +23,8 @@ const (
 	KindFloat
 	// KindBytes is an exact byte string, distinct from a string; nil and empty are one value.
 	KindBytes
-	// KindList is a flat ordered list of null, string, bool, int, float or bytes
-	// elements; lists do not nest.
+	// KindList is a flat ordered list of string, bool, int, float or bytes
+	// elements; lists do not nest and hold no null.
 	KindList
 )
 
@@ -40,9 +40,8 @@ const (
 //
 // Bytes compare bytewise and never equal a String. A List compares in order,
 // element by element, by the same numeric rule (List{Int(3)} equals
-// List{Float(3)}); a list that holds a null never equals anything, itself
-// included (Cypher: the comparison is unknown). Constructors and accessors copy,
-// so a Value is immutable.
+// List{Float(3)}); a list holds no null, so list equality is never unknown.
+// Constructors and accessors copy, so a Value is immutable.
 //
 // Float values are finite; signed zero is normalised to +0. Callers that hold
 // an `any` convert once at their edge (compat layer), which is where the v4
@@ -82,12 +81,12 @@ func Float(v float64) (Value, error) {
 // Bytes is an exact byte string; the input is copied.
 func Bytes(b []byte) Value { return Value{kind: KindBytes, s: string(b)} }
 
-// List is a flat list. A nested list, the zero Value or an unknown kind as an
-// element is ErrInvalidValue.
+// List is a flat list. A null, a nested list, the zero Value or an unknown
+// kind as an element is ErrInvalidValue.
 func List(vs []Value) (Value, error) {
 	out := make([]Value, len(vs))
 	for i, e := range vs {
-		if e.kind < KindNull || e.kind > KindBytes {
+		if e.kind <= KindNull || e.kind > KindBytes {
 			return Value{}, fmt.Errorf("%w: list element %d has kind %d", ErrInvalidValue, i, e.kind)
 		}
 		out[i] = e

@@ -25,7 +25,7 @@ const (
 	ScalarDescriptor
 	// ScalarBytes is an exact byte string, distinct from a string; nil and empty are one value.
 	ScalarBytes
-	// ScalarList is a flat ordered list of null, string, bool, i64, f64 or bytes
+	// ScalarList is a flat ordered list of string, bool, i64, f64 or bytes
 	// elements. Lists do not nest; kinds are kept per element.
 	ScalarList
 )
@@ -73,9 +73,9 @@ func F64(v float64) (Scalar, error) {
 // the same value, and Bytes never equals a String with the same bytes.
 func Bytes(b []byte) Scalar { return Scalar{kind: ScalarBytes, text: string(b)} }
 
-// List constructs a flat list. Elements keep their kinds and order; a nested
-// list, scope, descriptor or zero element is ErrInvalidInput. A null element is
-// allowed (identity keeps it) but a list holding one never Equals anything.
+// List constructs a flat list. Elements keep their kinds and order; a null,
+// nested list, scope, descriptor or zero element is ErrInvalidInput. Without
+// null elements, Equal and EqualityKey are one rule for every non-null value.
 func List(elems []Scalar) (Scalar, error) {
 	var body []byte
 	for _, e := range elems {
@@ -100,7 +100,7 @@ const maxWire = 64 << 20
 
 func listElementKind(k ScalarKind) bool {
 	switch k {
-	case ScalarNull, ScalarString, ScalarBool, ScalarI64, ScalarF64, ScalarBytes:
+	case ScalarString, ScalarBool, ScalarI64, ScalarF64, ScalarBytes:
 		return true
 	}
 	return false
@@ -416,18 +416,7 @@ func (v Scalar) Equal(other Scalar, l Limits) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return a == b && v.kind != ScalarNull && !v.listHasNull(), nil
-}
-
-// listHasNull reports a list with a null element: Cypher equality is unknown there.
-func (v Scalar) listHasNull() bool {
-	els, _ := v.ListValue()
-	for _, e := range els {
-		if e.kind == ScalarNull {
-			return true
-		}
-	}
-	return false
+	return a == b && v.kind != ScalarNull, nil
 }
 
 // Identical reports equal IdentityKeys (kind-preserving wire): same kind, same

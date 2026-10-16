@@ -24,7 +24,7 @@ func TestSegmentBytesListFallbackRoundTrip(t *testing.T) {
 	rows := []Row{
 		mkRow(1, 0, 1, 2, Property{"fact_wire", sBytes([]byte{0, 0xff, 0})}, Property{"ov_support", sList(t, sI(3), sI(-7))}, Property{"s", sS("x")}),
 		mkRow(2, 0, 1, 3, Property{"fact_wire", sBytes(nil)}, Property{"ov_support", sList(t)}),
-		mkRow(3, 0, 1, 4, Property{"s", sBytes([]byte("x"))}, Property{"i", sList(t, sF(t, 3), sS("a"), sB(true), graphstate.Null(), sBytes([]byte{1}))}), // declared columns hold other kinds
+		mkRow(3, 0, 1, 4, Property{"s", sBytes([]byte("x"))}, Property{"i", sList(t, sF(t, 3), sS("a"), sB(true), sBytes([]byte{1}))}), // declared columns hold other kinds
 	}
 	data := mustEncodeS(t, kindsSchema(), rows)
 	seg := mustOpen(t, data)
