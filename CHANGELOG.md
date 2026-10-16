@@ -30,23 +30,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
   | backend | main | this change | chains | allocs |
   |---|---|---|---|---|
-  | memory | 36 ms | 6.8 µs | 50,000 to 10 | 510,167 to 128 |
-  | badger | 465 ms | 19.6 µs | 50,000 to 10 | 3.9 M to 282 |
-  | sharded | 510 ms | 22.6 µs | 50,000 to 10 | 4.4 M to 340 |
-  | tiered | 470 ms | 25.6 µs | 50,000 to 10 | 4.2 M to 379 |
+  | memory | 36 ms | 6.6-7.4 µs | 50,000 to 10 | 510,167 to 128 |
+  | badger | 465 ms | 19-23 µs | 50,000 to 10 | 3.9 M to 282 |
+  | sharded | 510 ms | 22-29 µs | 50,000 to 10 | 4.4 M to 340 |
+  | tiered | 470 ms | 25-30 µs | 50,000 to 10 | 4.2 M to 379 |
 
   (`03-bench-before.txt` / `03-bench-after.txt`).
-  Cost: sidecar RAM 25 to 110 B per posting at 200 members per value (117 to 250 B with one member per value;
-  `BenchmarkPropertyTxMembersBytesPerPosting`, `04-bytes-per-posting.txt`); a view per value a windowed lookup asked
-  for (built once, O(n log n), kept by every write, O(1) amortised plus a fold every ~2 sqrt(n) changes); an indexed
-  update with the view open 4.0 to 5.1 µs on memory and 9.2 to 10.2 µs on badger, +2-3 allocations
-  (`BenchmarkWindowedEqualityWritePath`). Open image: the sidecars are written as new sections with their spans; an image of v4.58.1 or
+  Cost (measured, `tasks/evidence/windowed-equality/`): sidecar RAM 25 to 110 B per posting at 200 members per
+  value (117 to 250 B with one member per value; `BenchmarkPropertyTxMembersBytesPerPosting`); one value of 250,000
+  members 184 B per member, 233 B with its window views open (`BenchmarkPropertyTxMembersBytesWithViews`). A value's
+  views are built by its first windowed lookup (O(n log n)) and kept by every write: a change is pending until about
+  2 sqrt(n) have gathered, then one O(n) merge folds them (2.6-4.3 ms at 250,000 members, `BenchmarkWindowViewFold`),
+  so a write costs O(sqrt(n)) amortised: an indexed update with the view open 4.0 to 4.5 µs (memory) and 9.2 to 10 µs
+  (badger) at 1,000 members, 4.1 to 6.5-8.4 µs and 13.2 to 16 µs at 250,000 (`BenchmarkWindowedEqualityWritePath`).
+  A build pass records its scan into its private scratch before it takes the index lock and adopts it under the lock
+  after folding in the writes recorded meanwhile: 250,000 rows with 1,000 concurrent writes hold the lock 0.3-0.5 ms
+  (recording and merging under it took 160-210 ms; `BenchmarkRowScanIntoVsMerge`). The build keeps the rows carrying
+  a value in full and of the others only (ID, version, TxFrom, valid-from). Open image: the sidecars are written as new sections with their spans; an image of v4.58.1 or
   older restores no sidecar (the first lookup per kind rebuilds them in one scan, backlog 74), and v4.58.1 or older
   rejects the new image and rebuilds from the rows. Tests: `TestWindowedEqualitySeekCost` (chain loads equal the 10
   matches, allocations flat in the value's size; memory, badger, sharded, tiered; sidecar built before or after the
   writes), `TestWindowedEqualitySeekAgrees` (random histories with revisions, closes, deletes, retractions, excisions,
   untimed, `UntimedUnbounded` and negative starts, int 3 and float 3.0; every window shape incl. a = b, open end,
-  `UnboundedValidFrom`, points, TxAt before/after; against the unindexed fold), `TestPropTxWindow_WritePathImageScanAgree`,
+  `UnboundedValidFrom`, points, TxAt before/after; against the unindexed fold), `TestWindowedEqualitySeekAgreesMoreDoors`
+  (SetVersionInterval cascades, `AddWithTx` / `UpdateWithTx` backfills, label add / remove; `ByLabelAndProperties`, the
+  named `*PropertyAt` / `*PropertyDuring` doors), `TestWindowedEqualitySeekReplica` (rows written by change-feed apply),
+  `TestWindowedEqualitySeekConcurrentWriter` (pinned windowed readers beside a writer, `-race`),
+  `TestPropTxWindow_InstallRecordsOutsideLock`, `TestPropTxWindow_WritePathImageScanAgree`,
   `TestPropertyTxMembersWindow*`, `TestRowScanEndsReplacedRows`; `TestPinnedPropertyLookupLoadsOnlyEverMembers` now
   expects 5 chains (the current members), not 10, under `ValidAt`. Evidence `tasks/evidence/windowed-equality/`.
 

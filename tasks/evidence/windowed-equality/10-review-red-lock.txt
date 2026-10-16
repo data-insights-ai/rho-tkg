@@ -1,0 +1,5 @@
+--- FAIL: TestPropTxWindow_InstallRecordsOutsideLock (0.04s)
+    badgerstore_propertytxmembers_window_test.go:162: 50 scanned rows recorded under idxMu, want 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.047s
+FAIL

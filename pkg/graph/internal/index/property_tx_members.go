@@ -150,16 +150,17 @@ func (m *PropertyTxMembers[ID]) update(vk string, id ID, fn func(*txPosting)) {
 		if m.numeric != nil {
 			m.numeric.add(vk)
 		}
-		m.windowSet(vk, id, q)
+		m.windowSet(vk, id, txPosting{}, false, q)
 		return
 	}
 	if ps.id == id {
 		q := ps.p
 		fn(&q)
 		if q != ps.p {
+			old := ps.p
 			ps.p = q
 			m.values[vk] = ps
-			m.windowSet(vk, id, q)
+			m.windowSet(vk, id, old, true, q)
 		}
 		return
 	}
@@ -181,7 +182,7 @@ func (m *PropertyTxMembers[ID]) update(vk string, id ID, fn func(*txPosting)) {
 		m.postings++
 		m.orderNew(vk, id)
 	}
-	m.windowSet(vk, id, q)
+	m.windowSet(vk, id, prev, member, q)
 }
 
 // orderNew adds a new member of vk to vk's ordered view, when one is open.
@@ -266,6 +267,11 @@ func (m *PropertyTxMembers[ID]) Merge(other *PropertyTxMembers[ID]) {
 			m.update(vk, id, func(q *txPosting) { q.unite(add) })
 		}
 	}
+}
+
+// HasViews reports whether any ordered, numeric or window view is open.
+func (m *PropertyTxMembers[ID]) HasViews() bool {
+	return m != nil && (len(m.ordered) > 0 || len(m.windows) > 0 || m.numeric != nil)
 }
 
 // ForEachValue calls fn once per value with its members (the open image's

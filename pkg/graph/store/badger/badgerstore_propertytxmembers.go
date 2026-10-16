@@ -385,15 +385,36 @@ func runPropTxPass[K comparable, ID cmp.Ordered](bs *Store, pass *propTxPass, ge
 	scan func([]*propTxTarget[K, ID]) error) (installed bool, err error) {
 	scanned := false
 	defer func() {
+		if scanned {
+			// Record the scan into the pass's private scratch before the lock:
+			// under idxMu only the merge into the live sidecar runs.
+			for _, t := range targets {
+				t.rows.Into(t.scratch)
+			}
+		}
 		bs.idxMu.Lock()
+		if bs.propTxInstallLockedTestHook != nil {
+			n := 0
+			for _, t := range targets {
+				n += t.rows.Len()
+			}
+			bs.propTxInstallLockedTestHook(n)
+		}
 		installed = scanned && bs.propTxGen == gen
 		for _, t := range targets {
 			if (*sidecars)[t.key] != t.sc {
 				continue // dropped while scanning
 			}
 			if installed {
-				t.rows.Into(t.scratch)
-				t.sc.members.Merge(t.scratch)
+				if t.sc.members.HasViews() {
+					t.sc.members.Merge(t.scratch)
+				} else {
+					// The live sidecar holds only the writes recorded while the
+					// pass ran: fold those into the scan and adopt it, so the
+					// lock is held for them, not for the scan (unions commute).
+					t.scratch.Merge(t.sc.members)
+					t.sc.members = t.scratch
+				}
 				t.sc.built = true
 			}
 			t.sc.pass = nil

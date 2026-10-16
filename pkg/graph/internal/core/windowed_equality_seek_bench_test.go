@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -64,27 +65,30 @@ func BenchmarkWindowedEqualitySeek(b *testing.B) {
 // BenchmarkWindowedEqualityWritePath (ledger row 62): the write cost the
 // windowed sidecar adds — an untimed Update of an indexed relationship
 // (same value) after a windowed lookup built the sidecar and opened the
-// value's view, 1,000 members, memory and badger. Runs on the base too.
+// value's view, for a value of 1,000 and of 250,000 members, memory and
+// badger. Runs on the base too.
 func BenchmarkWindowedEqualityWritePath(b *testing.B) {
-	for _, be := range txbBackends()[:2] {
-		b.Run(be.name, func(b *testing.B) {
-			fx := newWEFixture(b, be.open(b, false), true)
-			ids := make([]int64, 1000)
-			for i := range ids {
-				ids[i] = fx.add(b, map[string]any{weKey: "v"})
-			}
-			if _, err := fx.query(weKey, "v", storepkg.QueryOpts{ValidStart: fx.x, ValidEnd: math.MaxInt64}); err != nil {
-				b.Fatal(err)
-			}
-			b.ReportAllocs()
-			i := 0
-			for b.Loop() {
-				fx.tick(1)
-				if err := fx.update(ids[i%len(ids)], map[string]any{weKey: "v", "n": i}); err != nil {
+	for _, members := range []int{1000, 250_000} {
+		for _, be := range txbBackends()[:2] {
+			b.Run(fmt.Sprintf("%s/members=%d", be.name, members), func(b *testing.B) {
+				fx := newWEFixture(b, be.open(b, false), true)
+				ids := make([]int64, members)
+				for i := range ids {
+					ids[i] = fx.add(b, map[string]any{weKey: "v"})
+				}
+				if _, err := fx.query(weKey, "v", storepkg.QueryOpts{ValidStart: fx.x, ValidEnd: math.MaxInt64}); err != nil {
 					b.Fatal(err)
 				}
-				i++
-			}
-		})
+				b.ReportAllocs()
+				i := 0
+				for b.Loop() {
+					fx.tick(1)
+					if err := fx.update(ids[i%len(ids)], map[string]any{weKey: "v", "n": i}); err != nil {
+						b.Fatal(err)
+					}
+					i++
+				}
+			})
+		}
 	}
 }

@@ -319,7 +319,7 @@ func TestRowScanEndsReplacedRows(t *testing.T) {
 	if got := windowIDs(t, m, "v", 500, inf, 19); !slices.Equal(got, []int64{1, 2, 3}) {
 		t.Fatalf("pin before the replacement: %v", got)
 	}
-	if s.rows != nil {
+	if s.rows != nil || s.reps != nil {
 		t.Fatal("Into keeps the rows")
 	}
 }

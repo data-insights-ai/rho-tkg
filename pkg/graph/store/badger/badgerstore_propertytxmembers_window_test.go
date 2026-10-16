@@ -138,3 +138,27 @@ func TestPropTxWindow_WritePathImageScanAgree(t *testing.T) {
 		t.Fatalf("rebuild scanned %d times, want 1", n)
 	}
 }
+
+// TestPropTxWindow_InstallRecordsOutsideLock — a build pass records its
+// scanned rows into the pass's private scratch before it takes idxMu: under
+// the lock only the merge into the live sidecar runs (review of ledger row
+// 62: the pairing and recording of 250,000 rows held every writer).
+func TestPropTxWindow_InstallRecordsOutsideLock(t *testing.T) {
+	bs := newFlushParkStore(t, nil)
+	putTestNode(t, bs, 1, 9, nil)
+	putTestNode(t, bs, 2, 9, nil)
+	if err := bs.CreateRelPropertyIndex(ptxT, "seat"); err != nil {
+		t.Fatal(err)
+	}
+	for i := int64(0); i < 50; i++ {
+		if err := bs.PutRelationship(winRel(100+i, 1, 0, 100, 0, 100, 0)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pending := -1
+	bs.propTxInstallLockedTestHook = func(n int) { pending = n }
+	_ = winDump(t, bs)
+	if pending != 0 {
+		t.Fatalf("%d scanned rows recorded under idxMu, want 0", pending)
+	}
+}
