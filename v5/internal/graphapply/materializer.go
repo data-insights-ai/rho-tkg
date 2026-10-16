@@ -132,7 +132,7 @@ func (m *materializer) Restore(index uint64, image []byte) (err error) {
 // and descriptor/fingerprint scratch. Four image copies are charged separately.
 // Variable tree-root decode backing is bounded by the source ledger within the
 // remaining output headroom. This is conservative representation, not heap/RSS.
-const readinessMetadataBytes = 4096
+const readinessMetadataBytes = 4608
 
 func (m *materializer) checkInitialized(q *reader, c *graphstore.Catalog, root graphstore.Root) error {
 	retained := graphResultMetadataBytes + readinessMetadataBytes + 4*cap(q.base.Image)
