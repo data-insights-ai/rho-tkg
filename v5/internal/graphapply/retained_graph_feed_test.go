@@ -426,7 +426,14 @@ func retainedFeedPagesAndACK(t *testing.T) {
 		body[identityOffset] = identity.kind
 		copy(body[identityOffset+1:identityOffset+17], identity.tx[:])
 		binary.BigEndian.PutUint64(body[identityOffset+17:identityOffset+25], identity.round)
-		command := recovered.command(recovered.pin.invocation.endpoints[3], feedSealPage, protocol.request, seal(body))
+		// Keep the real page envelope valid so only its deliberately changed
+		// business identity can explain the ErrInvalid below.
+		pageWire := seal(append([]byte("GFP\x01"), body...))
+		checkedBody, err := graphBody(pageWire, "GFP\x01", policy.pageBytes)
+		if err != nil || !bytes.Equal(checkedBody, body) {
+			t.Fatal("adversarial identity lost page framing/checksum", identity, err)
+		}
+		command := recovered.command(recovered.pin.invocation.endpoints[3], feedSealPage, protocol.request, pageWire)
 		wire, err := encodeRetainedFeedCommand(command)
 		if err != nil {
 			t.Fatal(err)
