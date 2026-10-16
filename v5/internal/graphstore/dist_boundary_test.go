@@ -11,7 +11,14 @@ import (
 // package under internal/dist (graphapply, txnproto, replica).
 func TestSinglePartitionPathDoesNotDependOnDist(t *testing.T) {
 	for _, root := range []string{"../../pkg/graph", ".", "../raftlog"} {
-		out, err := exec.Command("go", "list", "-deps", root).CombinedOutput()
+		args := []string{"list", "-test", "-deps", root}
+		if root == "." {
+			// ownership_replica_test.go drives the replica package through
+			// graphstore's unexported ownership helpers and cannot move into
+			// dist without exporting them; only its test tier is exempt.
+			args = []string{"list", "-deps", root}
+		}
+		out, err := exec.Command("go", args...).CombinedOutput()
 		if err != nil {
 			t.Fatalf("go list -deps %s: %v\n%s", root, err, out)
 		}

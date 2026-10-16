@@ -46,3 +46,4 @@ bench/local-*
 tools/graph-compare/artifacts/
 tools/graph-compare/__pycache__/
 coverage.test.log
+__pycache__/

@@ -1,4 +1,4 @@
-package raftlog_test
+package replica_test
 
 import (
 	"errors"
