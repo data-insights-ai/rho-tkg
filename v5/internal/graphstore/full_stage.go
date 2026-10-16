@@ -594,12 +594,14 @@ func stageOperationsWithOutputBudget(ctx context.Context, c *Catalog, ops []grap
 	if err != nil {
 		return GraphEffects{}, PageWork{}, err
 	}
-	return stageOpenedOperations(ctx, c, v, ops, revision, l, guard)
+	return stageOpenedOperations(ctx, c, v, ops, revision, l, guard, nil)
 }
 
 // stageOpenedOperations shares the complete planner/index installation algorithm
 // after its caller has admitted the precise GR2 or checked partition read scope.
-func stageOpenedOperations(ctx context.Context, c *Catalog, v *ReadView, ops []graphstate.Operation, revision state.Revision, l GraphLimits, guard *SemanticGuard) (effects GraphEffects, work PageWork, err error) {
+// decls are staged with Stage.Property before the ops and planned as declared,
+// so declarations and operations commit as one batch or not at all.
+func stageOpenedOperations(ctx context.Context, c *Catalog, v *ReadView, ops []graphstate.Operation, revision state.Revision, l GraphLimits, guard *SemanticGuard, decls []graphstate.PropertyDefinition) (effects GraphEffects, work PageWork, err error) {
 	var stagedWork PageWork
 	defer func() {
 		work = addWork(v.Work(), stagedWork)
@@ -655,6 +657,15 @@ func stageOpenedOperations(ctx context.Context, c *Catalog, v *ReadView, ops []g
 	defer func() { _ = s.Close() }()
 	s.route = v.route
 	s.arena = arena
+	for _, d := range decls {
+		if err := s.Property(ctx, d); err != nil {
+			return GraphEffects{}, PageWork{}, err
+		}
+	}
+	var plan graphstate.ReadView = v
+	if len(decls) > 0 {
+		plan = declaredView{v, decls}
+	}
 	var delta graphstate.Delta
 	var groups []ComponentChangeGroup
 	err = s.operation(ctx, func(base *reader) error {
@@ -676,7 +687,7 @@ func stageOpenedOperations(ctx context.Context, c *Catalog, v *ReadView, ops []g
 		v.limits.MaxSourceBytes -= reserved
 		planner := l.Planner
 		planner.MaxDeltaBytes = min(cmp.Or(planner.MaxDeltaBytes, graphstate.DefaultLimits().MaxDeltaBytes), l.MaxOutputBytes)
-		planned, err := graphstate.PlanWithOutputBudget(ctx, v, owned, revision, planner, v.arena)
+		planned, err := graphstate.PlanWithOutputBudget(ctx, plan, owned, revision, planner, v.arena)
 		v.limits.MaxSourceBytes = original
 		if err != nil {
 			return planFailure(err)
