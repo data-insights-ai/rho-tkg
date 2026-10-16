@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 )
 
@@ -338,11 +339,44 @@ func TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor(
 			if err != nil || !isAllocationProtocolCommand(o.kind) {
 				continue
 			}
+			refuse := func(name string, candidate nativeColumnFrame, claimed outcome) {
+				t.Helper()
+				if _, err := source.allocationMetadataFrame(t.Context(), g, candidate, claimed); !errors.Is(err, errCorrupt) {
+					t.Fatal("metadata cross-field refusal", name, err)
+				}
+			}
+			encoded := func(changed outcome) []byte {
+				t.Helper()
+				wire, err := encodeDeclaredOutcome(changed)
+				if err != nil {
+					t.Fatal("canonical adversarial outcome", err)
+				}
+				return wire
+			}
 			if len(frame.Rows) != 0 {
 				t.Fatal("allocation metadata invented business rows")
 			}
 			if o.index < index {
 				replays++
+				// Feed the raw replay observation back through the reducer. Its
+				// earlier-original sidecars must come from the actual native view.
+				raw := frame
+				raw.OriginalOutcome, raw.OriginalCDC = nil, nil
+				bad, changed := raw, o
+				changed.disposition = applied
+				bad.Outcome = encoded(changed)
+				refuse("earlier-index without replay disposition", bad, changed)
+				bad, changed = raw, o
+				changed.hash[0] ^= 1
+				bad.Outcome = encoded(changed)
+				refuse("replay differs from immutable original hash", bad, changed)
+				bad, changed = raw, o
+				changed.index = initial.certificates[g].index // Actual stored GSO, not an allocation original.
+				bad.Outcome = encoded(changed)
+				refuse("replay redirected to another genuine native original", bad, changed)
+				bad = raw
+				bad.CDC = bytes.Clone(frame.OriginalCDC)
+				refuse("replay emitted a second CDC", bad, o)
 				original, err := decodeDeclaredOutcome(frame.OriginalOutcome, o.ns)
 				if err != nil || original.index != o.index || original.identity != o.identity || original.hash != o.hash || original.disposition == requestReplay || len(frame.OriginalCDC) == 0 {
 					t.Fatal("allocation replay lost its actual original", err)
@@ -368,6 +402,49 @@ func TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor(
 			if len(frame.CDC) == 0 {
 				continue
 			}
+			changed := o
+			changed.identity[0] ^= 1
+			refuse("claim differs from the actual outcome identity", frame, changed)
+			bad := frame
+			bad.CDC = encoded(changed)
+			refuse("successful CDC names a different original", bad, o)
+			changed = o
+			changed.disposition = requestReplay
+			bad = frame
+			bad.Outcome = encoded(changed)
+			refuse("current-index outcome claimed replay", bad, changed)
+			changed = o
+			changed.reason = reasonMismatch
+			bad = frame
+			bad.Outcome = encoded(changed)
+			refuse("refused outcome retained successful CDC", bad, changed)
+			if o.kind != reserveDeclaredGrant {
+				changed = o
+				changed.disposition = controlRecovery
+				bad = frame
+				bad.Outcome = encoded(changed)
+				refuse("non-applied recovery retained successful CDC", bad, changed)
+			}
+			bad = frame
+			bad.Root = initial.certificates[g].image
+			if bad.Root == frame.Root {
+				// A later genuine graph mutation supplies a distinct valid image
+				// for lean metadata whose earlier image still equals the initial.
+				bad.Root = source.final[g].image
+			}
+			if bad.Root == frame.Root {
+				t.Fatal("metadata root-mismatch fixture did not diverge")
+			}
+			refuse("metadata paired with a different genuine graph image", bad, o)
+			emptyRoot := bad.Root
+			if !bytes.Equal(frame.Outcome, frame.CDC) {
+				// A routing record's genuine after-image differs from its
+				// before-image; omitting its CDC cannot explain that change.
+				emptyRoot = frame.Root
+			}
+			if err := source.checkAllocationMetadata(t.Context(), g, o, frame.Outcome, nil, emptyRoot[:]); !errors.Is(err, errCorrupt) {
+				t.Fatal("empty CDC paired with a changed graph image", err)
+			}
 			if bytes.Equal(frame.Outcome, frame.CDC) {
 				lean++
 			} else {
@@ -390,8 +467,58 @@ func TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor(
 				if _, err := source.allocationMetadataFrame(t.Context(), g, bad, o); !errors.Is(err, errCorrupt) {
 					t.Fatal("routing metadata accepted a resealed foreign configuration", err)
 				}
+				c := graphCursor{b: body}
+				c.take(16 + 8 + 32)
+				original := c.field(graphOutcomeBytes)
+				publication, err := graphstore.DecodeRangePublication(c.field(source.hosts[g].machine.limits.changeBytes))
+				if err != nil {
+					t.Fatal(err)
+				}
+				owner, err := graphstore.DecodeRangeOwnership(c.field(source.hosts[g].machine.limits.changeBytes))
+				if err != nil || c.err != nil || len(c.b) != 0 {
+					t.Fatal("genuine routing metadata", err, c.err)
+				}
+				routingCDC := func(p graphstore.RangePublication, owner graphstore.RangeOwnership) []byte {
+					t.Helper()
+					pWire, pe := graphstore.EncodeRangePublication(p)
+					oWire, oe := graphstore.EncodeRangeOwnership(owner)
+					if pe != nil || oe != nil {
+						t.Fatal("canonical adversarial routing fields", pe, oe)
+					}
+					logical, err := boundedEncoding(source.hosts[g].machine.limits.changeBytes, func(w *boundedWriter) {
+						w.add([]byte("RCD\x01"))
+						w.add(o.ns.graph[:])
+						w.u64(o.ns.partition)
+						w.add(source.final[g].configuration[:])
+						w.field(original)
+						w.field(pWire)
+						w.field(oWire)
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					wire, err := encodeChangeEnvelope(o, logical, source.hosts[g].machine.limits)
+					if err != nil {
+						t.Fatal(err)
+					}
+					return wire
+				}
+				altered := publication
+				altered.SourceIndex++
+				bad = frame
+				bad.CDC = routingCDC(altered, owner)
+				refuse("routing source index differs from genuine original/effect", bad, o)
+				otherOwner := owner
+				if otherOwner.Partition == 3 {
+					otherOwner.Partition = 8
+				} else {
+					otherOwner.Partition = 3
+				}
+				bad = frame
+				bad.CDC = routingCDC(publication, otherOwner)
+				refuse("routing owner differs from genuine source/effect", bad, o)
 			}
-			bad := frame
+			bad = frame
 			bad.Rows = []nativeColumnRow{{Owner: 999}}
 			if _, err := source.allocationMetadataFrame(t.Context(), g, bad, o); !errors.Is(err, errCorrupt) {
 				t.Fatal("metadata accepted fabricated business rows", err)
