@@ -124,6 +124,32 @@ class NativeTransferGuards(unittest.TestCase):
         end={"spec":self.spec,"FramesCeiling":1000,"Admission":{"BudgetSeconds":1800},"ControlExtraInvocations":1}
         with patch.object(check,"lines",return_value=iter(rows)):
             self.assertEqual(len(list(check.controls(Path("inert"),end))),3)
+        # Canonical producer codec fixture, not captured OS evidence:
+        # nativeTransferClient.exchange resets its reply before decoding aux;
+        # graphProcessMux.send can return errLimit with no response when the
+        # existing pending-call grant is full. SAME move input stays unchanged.
+        absent=copy.deepcopy(rows)
+        absent[1]["Reply"]={"Version":0,"Action":"","Body":None,"Nanos":0}
+        absent[1]["Error"]="graphapply: resource limit"
+        with patch.object(check,"lines",return_value=iter(absent)):
+            self.assertEqual(len(list(check.controls(Path("inert"),end))),3)
+        with patch.object(check,"lines",return_value=iter(absent)):
+            with self.assertRaises(ValueError):list(check.controls(Path("inert"),{**end,"ControlExtraInvocations":0}))
+        with patch.object(check,"lines",return_value=iter(absent[:2])):
+            with self.assertRaises(ValueError):list(check.controls(Path("inert"),end))
+        malformed=[]
+        for name,value in (("Version",False),("Action","move-run"),("Body",""),("Body",encoded(done)),("Nanos",False),("Nanos",1),("Failure",0),("Failure",2)):
+            bad=copy.deepcopy(absent);bad[1]["Reply"][name]=value;malformed.append(bad)
+        for error in (None,"",False,1):
+            bad=copy.deepcopy(absent)
+            if error is None:del bad[1]["Error"]
+            else:bad[1]["Error"]=error
+            malformed.append(bad)
+        bad=copy.deepcopy(rows);bad[1]["Reply"]["Action"]="foreign";malformed.append(bad)
+        for bad in malformed:
+            with self.subTest(reply=bad[1]["Reply"],error=bad[1].get("Error")):
+                with patch.object(check,"lines",return_value=iter(bad)):
+                    with self.assertRaises(ValueError):list(check.controls(Path("inert"),end))
         with patch.object(check,"lines",return_value=iter(rows)):
             with self.assertRaises(ValueError):list(check.controls(Path("inert"),{**end,"ControlExtraInvocations":0}))
         changed=copy.deepcopy(rows);changed[-1]["Input"]["Original"]=encoded(intent[:-1])

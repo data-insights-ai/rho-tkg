@@ -276,7 +276,16 @@ def controls(directory,end):
         q,r=row["Input"],row["Reply"];number=integer(row["Call"],1,maximum);n=integer(row["Attempt"],1,8)
         fields(q,"Version Action Request Sequence Count Cursor Range Origin Original Key Control Feed Query")
         fields(r,"Version Action Body Nanos"+(" Failure" if "Failure" in r else ""))
-        require(integer(row["Member"],1,6) and integer(q["Version"],1,1) and integer(r["Version"],0,1) and integer(r.get("Failure",0),0,9)>=0,"actual native wrapper identity")
+        require(integer(row["Member"],1,6) and integer(q["Version"],1,1),"actual native wrapper identity")
+        version=integer(r["Version"],0,1);integer(r.get("Failure",0),0,9)
+        if "Error" in row:require(type(row["Error"]) is str and bool(row["Error"]),"actual reported transport/service error")
+        if version==0:
+            # No aux bytes leave the producer's zero reply untouched. This is
+            # uncertainty only: no result/body/failure authority was returned.
+            require(row.get("Error") and raw.same(r,{"Version":0,"Action":"","Body":None,"Nanos":0}),"absent native wrapper requires exact zero reply and real error")
+        else:
+            require(r["Action"]==q["Action"],"same actual native reply action/version")
+            integer(r["Nanos"])
         if number==call:
             require(prior is not None and prior.get("Error") and encoded(q)==encoded(prior["Input"]) and n==attempt+1,"unknown retry cannot replace input/original/request")
             extra+=1
