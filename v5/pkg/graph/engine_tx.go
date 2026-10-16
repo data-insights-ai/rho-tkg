@@ -350,17 +350,9 @@ func (t *engineTx) lifeFor(id graphstate.EntityID, scope temporal.Scope) (graphs
 		return life, nil
 	}
 	if !t.fresh[id] {
-		c, ok := t.lives[id]
-		if !ok {
-			var err error
-			c.spans, c.max, err = t.e.livesOf(t.ctx, t.base, id)
-			if err != nil {
-				return 0, err
-			}
-			if t.lives == nil {
-				t.lives = map[graphstate.EntityID]committedLives{}
-			}
-			t.lives[id] = c
+		c, err := t.committedLivesOf(id)
+		if err != nil {
+			return 0, err
 		}
 		maxLife = max(maxLife, c.max)
 		if life, n, err := hit(c.spans); err != nil {
@@ -375,6 +367,77 @@ func (t *engineTx) lifeFor(id graphstate.EntityID, scope temporal.Scope) (graphs
 		return 0, fmt.Errorf("%w: the scope lies in no life of an entity with several lives", ErrInvalidScope)
 	}
 	return lifeID, nil
+}
+
+// committedLivesOf is the committed lives of id, read once per Update.
+func (t *engineTx) committedLivesOf(id graphstate.EntityID) (committedLives, error) {
+	c, ok := t.lives[id]
+	if ok {
+		return c, nil
+	}
+	var err error
+	c.spans, c.max, err = t.e.livesOf(t.ctx, t.base, id)
+	if err != nil {
+		return c, err
+	}
+	if t.lives == nil {
+		t.lives = map[graphstate.EntityID]committedLives{}
+	}
+	t.lives[id] = c
+	return c, nil
+}
+
+// nextLifeStart is the earliest start, at or after p, of a life of id other
+// than life (the bound of an End's tail). ok is false when none follows.
+func (t *engineTx) nextLifeStart(id graphstate.EntityID, life graphstate.LifeID, p temporal.Position) (temporal.Bound, bool, error) {
+	if !t.e.multi && !t.reopened {
+		return temporal.Bound{}, false, nil
+	}
+	spans := slices.Clone(t.spans[id])
+	if !t.fresh[id] {
+		c, err := t.committedLivesOf(id)
+		if err != nil {
+			return temporal.Bound{}, false, err
+		}
+		spans = append(spans, c.spans...)
+	}
+	var bestPos temporal.Position
+	found := false
+	for _, sp := range spans {
+		if sp.life == life {
+			continue
+		}
+		slo, _, ok := sp.scope.Bounds()
+		if !ok {
+			continue
+		}
+		q, finite := slo.Position()
+		if !finite {
+			continue
+		}
+		if c, err := temporal.ComparePositions(q, p, t.e.cfg.Limits); err != nil {
+			return temporal.Bound{}, false, err
+		} else if c == temporal.Less {
+			continue
+		}
+		if found {
+			if c, err := temporal.ComparePositions(q, bestPos, t.e.cfg.Limits); err != nil {
+				return temporal.Bound{}, false, err
+			} else if c != temporal.Less {
+				continue
+			}
+		}
+		bestPos, found = q, true
+	}
+	if !found {
+		return temporal.Bound{}, false, nil
+	}
+	// The tail is [p, start): the next life's first instant is excluded.
+	end, err := temporal.FiniteBound(bestPos, false)
+	if err != nil {
+		return temporal.Bound{}, false, err
+	}
+	return end, true, nil
 }
 
 // Reopen starts the next life of the target over Scope.
@@ -441,9 +504,28 @@ func (t *engineTx) End(o End) error {
 		return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
 	}
 	id, _ := target(o.Target)
-	life, err := t.lifeFor(id, tail)
+	// The life is the one holding the point p (the first instant the entity is
+	// gone); a p exactly at the life's end lies in none, so the scope before it names it.
+	at, err := temporal.Point(p)
 	if err != nil {
+		return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
+	}
+	life, err := t.lifeFor(id, at)
+	if err != nil {
+		if !errors.Is(err, ErrInvalidScope) {
+			return t.fail(err)
+		}
+		if life, err = t.lifeFor(id, o.Scope); err != nil {
+			return t.fail(err)
+		}
+	}
+	// A later life stands: the tail stops where it starts.
+	if next, ok, err := t.nextLifeStart(id, life, p); err != nil {
 		return t.fail(err)
+	} else if ok {
+		if tail, err = temporal.Span(o.Scope.Axis(), lo, next, t.e.cfg.Limits); err != nil {
+			return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
+		}
 	}
 	prior, ok, err := t.endOf(id, life)
 	if err != nil {
