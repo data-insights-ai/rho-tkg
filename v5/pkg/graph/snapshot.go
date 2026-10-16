@@ -25,6 +25,7 @@ const (
 	snapStable
 	snapAt
 	snapAfter
+	snapKnown
 )
 
 // SnapshotSpec chooses the knowledge boundary of a snapshot. It never implies
@@ -33,6 +34,7 @@ type SnapshotSpec struct {
 	kind snapKind
 	cut  Cut
 	rcpt Receipt
+	at   types.Instant
 }
 
 // Fresh reads the newest committed state.
@@ -48,10 +50,15 @@ func At(c Cut) SnapshotSpec { return SnapshotSpec{kind: snapAt, cut: c} }
 // After reads a state that includes the commit r (read-your-writes).
 func After(r Receipt) SnapshotSpec { return SnapshotSpec{kind: snapAfter, rcpt: r} }
 
+// AtKnown reads the newest commit whose knowledge instant (Receipt.KnowledgeInstant)
+// is at or before instant; an instant before the first commit reads the empty
+// graph. Its Cut reopens with At.
+func AtKnown(instant types.Instant) SnapshotSpec { return SnapshotSpec{kind: snapKnown, at: instant} }
+
 // Validate reports ErrInvalidSnapshotSpec for the zero spec or a zero Cut/Receipt.
 func (s SnapshotSpec) Validate() error {
 	switch s.kind {
-	case snapFresh, snapStable:
+	case snapFresh, snapStable, snapKnown:
 		return nil
 	case snapAt:
 		if !s.cut.IsZero() {

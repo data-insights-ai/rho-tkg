@@ -53,7 +53,9 @@ func (r *reader) close() {
 	_ = r.view.Close()
 }
 
-var pageBudget = graphstate.ReadBudget{Rows: 256, Bytes: 1 << 20}
+// pageBudget bounds the source rows of one component page: an entity with a few
+// dozen revisions of one property needs more than the 256 it once had.
+var pageBudget = graphstate.ReadBudget{Rows: 4096, Bytes: 8 << 20}
 
 // readsPerView bounds the entities one fill reads through one read view.
 const readsPerView = 128
@@ -112,8 +114,7 @@ type segment struct {
 
 // segments splits window at every piece boundary of the entity's components.
 // Segments are lower-inclusive, upper-exclusive; a Point window is one segment.
-// revisions collects the revision IDs of the surviving pieces (Timeline).
-func (r *reader) segments(id graphstate.EntityID, window temporal.Scope, revisions map[uint64]bool) ([]segment, error) {
+func (r *reader) segments(id graphstate.EntityID, window temporal.Scope) ([]segment, error) {
 	l := r.e.cfg.Limits
 	ax := window.Axis()
 	if window.Kind() == temporal.ScopeEmpty {
@@ -136,11 +137,6 @@ func (r *reader) segments(id graphstate.EntityID, window temporal.Scope, revisio
 		}
 		for _, pg := range pages {
 			for _, pc := range pg.Data.Pieces() {
-				if revisions != nil {
-					if rev := pc.Cell().Revision().ID(); rev != 0 {
-						revisions[rev] = true
-					}
-				}
 				for _, part := range pc.Scope().Parts() {
 					lo, hi, ok := part.Bounds()
 					if !ok {
@@ -255,7 +251,7 @@ func (r *reader) rows(ref Ref, sel Selector, proj Projection, m *matcher) ([]Ent
 	if m != nil && !m.entity(rec) {
 		return nil, nil
 	}
-	segs, err := r.segments(id, sel.Valid, nil)
+	segs, err := r.segments(id, sel.Valid)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +337,7 @@ func (e *pebbleEngine) findClaim(ctx context.Context, index uint64, def graphsta
 			return 0, false, mapStageErr(err)
 		}
 		for _, cl := range pg.Claims {
-			segs, err := r.segments(cl.Owner, scope, nil)
+			segs, err := r.segments(cl.Owner, scope)
 			if err != nil {
 				return 0, false, err
 			}
@@ -395,8 +391,13 @@ type pageState struct {
 	nextID uint64                // scan without an index: next ID of the range
 	lastID uint64                // scan without an index: last minted ID at the cut
 	match  *matcher
-	rows   []Entity // timeline: all rows; lookup: carry-over
+	rows   []Entity // timeline: the current chunk; lookup, scan: carry-over
 	off    int
+	kb     *knownBound // nil: no Known filtering
+	tlID   graphstate.EntityID
+	tlRef  Ref
+	tlAt   uint64 // timeline: last revision read
+	tlDone bool
 }
 
 type engineSnap struct {
@@ -404,6 +405,7 @@ type engineSnap struct {
 	index  uint64
 	nonce  uint64
 	cuts   Cut
+	vInst  int64 // knowledge instant of the view's newest commit (-1: none)
 	mu     sync.Mutex
 	closed bool
 	seq    uint64
@@ -432,12 +434,13 @@ func (s *engineSnap) close() error {
 // without either it walks the minted ID range at the cut. The index lists
 // owners at the latest knowledge in any valid time, so every candidate is
 // rechecked per segment (labels, type and values at that position). A Known
-// bound other than All stays refused (requireKnownAll) until WP-30.
+// bound below the view skips the index (its postings hold the latest knowledge).
 func (s *engineSnap) scan(ctx context.Context, r ScanRequest) (Page, error) {
 	if err := s.live(); err != nil {
 		return Page{}, err
 	}
-	if err := requireKnownAll(r.Selector); err != nil {
+	kb, err := s.bound(r.Selector)
+	if err != nil {
 		return Page{}, err
 	}
 	if r.Projection.Provenance || r.Projection.Revisions {
@@ -447,7 +450,7 @@ func (s *engineSnap) scan(ctx context.Context, r ScanRequest) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
-	st := &pageState{kind: pageScan, sel: r.Selector, proj: r.Projection, match: m}
+	st := &pageState{kind: pageScan, sel: r.Selector, proj: r.Projection, match: m, kb: kb}
 	if m.none {
 		return Page{}, nil
 	}
@@ -485,6 +488,9 @@ func (r *reader) candidates(sel Selector, m *matcher, st *pageState) error {
 		return nil, ErrInvalidRequest
 	}
 	switch {
+	case st.kb != nil:
+		// Postings hold the latest knowledge: a bound below the view walks every entity.
+		return r.mintedRange(st)
 	case len(m.eq) > 0:
 		owners := []graphstate.EntityKind{graphstate.Node, graphstate.Relationship}
 		if len(sel.Labels) > 0 {
@@ -512,23 +518,29 @@ func (r *reader) candidates(sel Selector, m *matcher, st *pageState) error {
 		}
 		st.cands = ids
 	default:
-		row, found, err := r.view.Get(r.ctx, allocName, 4096)
-		if err != nil {
-			return err
-		}
-		if !found {
-			return nil
-		}
-		a, err := decodeAllocState(row.Value)
-		if err != nil {
-			return err
-		}
-		lo, hi, err := a.minted()
-		if err != nil {
-			return err
-		}
-		st.nextID, st.lastID = lo, hi
+		return r.mintedRange(st)
 	}
+	return nil
+}
+
+// mintedRange sets st to walk the IDs minted at the cut.
+func (r *reader) mintedRange(st *pageState) error {
+	row, found, err := r.view.Get(r.ctx, allocName, 4096)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	a, err := decodeAllocState(row.Value)
+	if err != nil {
+		return err
+	}
+	lo, hi, err := a.minted()
+	if err != nil {
+		return err
+	}
+	st.nextID, st.lastID = lo, hi
 	return nil
 }
 
@@ -627,20 +639,136 @@ func (m *matcher) state(pr graphstate.Projection) bool {
 	return true
 }
 
-// requireKnownAll: the Known filter by recorded evidence is a later WP; a scope other
-// than All is refused rather than echoed as if it had been applied.
-func requireKnownAll(sel Selector) error {
-	if sel.Known.Kind() != temporal.ScopeAll {
-		return fmt.Errorf("%w: only Known = All is supported; the evidence filter is not built", ErrNotImplemented)
+// knownBound is the upper bound of a Known scope: the state as known up to hi.
+// A revision is known when its recorded evidence (the latest instant of its
+// Recorded values), else its commit knowledge instant, is within the bound. The
+// lower bound is not applied: knowledge accumulates, so "known at t" is
+// "known by t".
+type knownBound struct {
+	hi        temporal.Position
+	inclusive bool
+	limits    temporal.Limits
+}
+
+func (b *knownBound) allows(k temporal.Position) bool {
+	o, err := temporal.ComparePositions(k, b.hi, b.limits)
+	return err == nil && (o == temporal.Less || o == temporal.Equal && b.inclusive)
+}
+
+// bound returns the filter of sel.Known, or nil when it admits everything the
+// snapshot's view holds (All, an unbounded top, or a bound at or above the view's
+// newest commit instant).
+func (s *engineSnap) bound(sel Selector) (*knownBound, error) {
+	k := sel.Known
+	if k.Kind() == temporal.ScopeAll {
+		return nil, nil
 	}
-	return nil
+	var hi temporal.Bound
+	switch k.Kind() {
+	case temporal.ScopePoint, temporal.ScopeSpan, temporal.ScopeRegion:
+		_, h, ok := k.Bounds()
+		if !ok {
+			return nil, fmt.Errorf("%w: Known scope has no bounds", ErrInvalidScope)
+		}
+		hi = h
+	default:
+		return nil, fmt.Errorf("%w: Known must be All, a point or a span", ErrInvalidScope)
+	}
+	p, fin := hi.Position()
+	if !fin {
+		return nil, nil
+	}
+	kb := &knownBound{hi: p, inclusive: hi.Inclusive() || k.Kind() == temporal.ScopePoint, limits: s.e.cfg.Limits}
+	if s.vInst >= 0 {
+		if vp, err := s.e.instantPosition(s.vInst); err == nil && kb.allows(vp) {
+			return nil, nil
+		}
+	}
+	return kb, nil
+}
+
+// knowledge is when the owner's revision became known: the latest Recorded
+// instant it carried, else its commit's knowledge instant.
+func (r *reader) knowledge(id graphstate.EntityID, rev uint64) (temporal.Position, error) {
+	ev, err := r.rv.Evidence(r.ctx, id, rev)
+	if err != nil {
+		return temporal.Position{}, err
+	}
+	if len(ev) > 0 {
+		best := ev[0].Recorded
+		for _, e := range ev[1:] {
+			if o, err := temporal.ComparePositions(e.Recorded, best, r.e.cfg.Limits); err == nil && o == temporal.Greater {
+				best = e.Recorded
+			}
+		}
+		return best, nil
+	}
+	row, found, err := r.view.Get(r.ctx, commitInstantKey(rev), 64)
+	if err != nil {
+		return temporal.Position{}, err
+	}
+	if !found || len(row.Value) != 8 {
+		return temporal.Position{}, fmt.Errorf("%w: no commit instant for revision %d", ErrCommitNotDurable, rev)
+	}
+	return r.e.instantPosition(int64(binary.BigEndian.Uint64(row.Value))) // #nosec G115 -- written from an int64
+}
+
+const revisionChunk = 64
+
+// knownIndex is the view index that shows id as known under kb: the newest
+// revision such that it and every earlier revision of id are known. (A later
+// revision recorded earlier than a predecessor stays hidden rather than
+// exposing the predecessor.) Zero: nothing of id is known. rd reads the
+// snapshot's view.
+func (rd *reader) knownIndex(id graphstate.EntityID, kb *knownBound) (uint64, error) {
+	var eff, after uint64
+	for {
+		revs, complete, err := rd.rv.Revisions(rd.ctx, id, after, revisionChunk)
+		if err != nil {
+			return 0, err
+		}
+		for _, rev := range revs {
+			k, err := rd.knowledge(id, rev)
+			if err != nil {
+				return 0, err
+			}
+			if !kb.allows(k) {
+				return eff, nil
+			}
+			eff = rev
+		}
+		if complete || len(revs) == 0 {
+			return eff, nil
+		}
+		after = revs[len(revs)-1]
+	}
+}
+
+// rowsFor is rd.rows, at the view that shows the entity as known under kb.
+func (s *engineSnap) rowsFor(ctx context.Context, rd *reader, ref Ref, st *pageState) ([]Entity, error) {
+	m := st.match
+	if st.kb == nil {
+		return rd.rows(ref, st.sel, st.proj, m)
+	}
+	id, _ := target(ref)
+	eff, err := rd.knownIndex(id, st.kb)
+	if err != nil || eff == 0 {
+		return nil, err
+	}
+	at, err := s.e.readerAt(ctx, eff)
+	if err != nil {
+		return nil, err
+	}
+	defer at.close()
+	return at.rows(ref, st.sel, st.proj, m)
 }
 
 func (s *engineSnap) lookup(ctx context.Context, r LookupRequest) (Page, error) {
 	if err := s.live(); err != nil {
 		return Page{}, err
 	}
-	if err := requireKnownAll(r.Selector); err != nil {
+	kb, err := s.bound(r.Selector)
+	if err != nil {
 		return Page{}, err
 	}
 	if r.Projection.Provenance || r.Projection.Revisions {
@@ -655,24 +783,22 @@ func (s *engineSnap) lookup(ctx context.Context, r LookupRequest) (Page, error) 
 		ref, _ := RelRef(id)
 		refs = append(refs, ref)
 	}
-	return s.fill(ctx, &pageState{kind: pageLookup, sel: r.Selector, proj: r.Projection, refs: refs}, r.Paging)
+	return s.fill(ctx, &pageState{kind: pageLookup, sel: r.Selector, proj: r.Projection, refs: refs, kb: kb}, r.Paging)
 }
 
 func (s *engineSnap) timeline(ctx context.Context, r TimelineRequest) (Page, error) {
 	if err := s.live(); err != nil {
 		return Page{}, err
 	}
-	if err := requireKnownAll(r.Selector); err != nil {
+	kb, err := s.bound(r.Selector)
+	if err != nil {
 		return Page{}, err
 	}
 	if r.Projection.Provenance {
 		return Page{}, fmt.Errorf("%w: the provenance projection is not implemented", ErrNotImplemented)
 	}
-	rows, err := s.timelineRows(ctx, r)
-	if err != nil {
-		return Page{}, err
-	}
-	return s.fill(ctx, &pageState{kind: pageTimeline, rows: rows}, r.Paging)
+	id, _ := target(r.Ref)
+	return s.fill(ctx, &pageState{kind: pageTimeline, sel: r.Selector, proj: r.Projection, kb: kb, tlID: id, tlRef: r.Ref}, r.Paging)
 }
 
 func (s *engineSnap) resume(ctx context.Context, c Cursor, p PageLimits) (Page, error) {
@@ -759,7 +885,16 @@ func (s *engineSnap) fill(ctx context.Context, st *pageState, p PageLimits) (Pag
 			st.off++
 		}
 		st.rows, st.off = nil, 0
-		if st.kind == pageTimeline || st.kind == pageLookup && st.next >= len(st.refs) {
+		if st.kind == pageTimeline {
+			if st.tlDone {
+				return page, nil
+			}
+			if err := s.timelineChunk(ctx, st); err != nil {
+				return Page{}, err
+			}
+			continue
+		}
+		if st.kind == pageLookup && st.next >= len(st.refs) {
 			return page, nil
 		}
 		if err := open(); err != nil {
@@ -779,7 +914,7 @@ func (s *engineSnap) fill(ctx context.Context, st *pageState, p PageLimits) (Pag
 			} else if !ok {
 				return page, nil
 			}
-			rows, err := rd.rows(ref, st.sel, st.proj, st.match)
+			rows, err := s.rowsFor(ctx, rd, ref, st)
 			if err != nil {
 				return Page{}, err
 			}
@@ -792,7 +927,7 @@ func (s *engineSnap) fill(ctx context.Context, st *pageState, p PageLimits) (Pag
 			}
 			continue
 		}
-		rows, err := rd.rows(ref, st.sel, st.proj, nil)
+		rows, err := s.rowsFor(ctx, rd, ref, st)
 		if err != nil {
 			return Page{}, err
 		}
@@ -825,80 +960,57 @@ func parseCursor(c Cursor) (nonce, tok uint64, ok bool) {
 	return binary.BigEndian.Uint64(c.b[4:]), binary.BigEndian.Uint64(c.b[12:]), true
 }
 
-// timelineRows: one row set per commit that touched the entity, oldest first.
-// The touched commits are found from the revision IDs of the surviving pieces
-// at the cut, then at the index before each of them (superseded pieces are gone
-// from the component state, but each earlier view still holds them).
-func (s *engineSnap) timelineRows(ctx context.Context, r TimelineRequest) ([]Entity, error) {
-	id, _ := target(r.Ref)
-	touched := map[uint64]bool{}
-	todo := []uint64{s.index}
-	seenView := map[uint64]bool{}
-	window, err := temporal.All(r.Selector.Valid.Axis())
+// timelineChunk reads the next revisions of the timeline's entity from the
+// per-owner revision rows (one chunk, not the whole history) and turns each into
+// its rows at the view of that commit, oldest first.
+func (s *engineSnap) timelineChunk(ctx context.Context, st *pageState) error {
+	rd, err := s.e.readerAt(ctx, s.index)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	for len(todo) > 0 {
-		at := todo[len(todo)-1]
-		todo = todo[:len(todo)-1]
-		if at == 0 || seenView[at] {
-			continue
-		}
-		seenView[at] = true
-		rd, err := s.e.readerAt(ctx, at)
-		if err != nil {
-			return nil, err
-		}
-		revs := map[uint64]bool{}
-		_, found, err := rd.record(id)
-		if err == nil && found {
-			_, err = rd.segments(id, window, revs)
-		}
-		rd.close()
-		if err != nil {
-			return nil, err
-		}
-		for rev := range revs {
-			if rev <= at && !touched[rev] {
-				touched[rev] = true
+	revs, complete, err := rd.rv.Revisions(ctx, st.tlID, st.tlAt, revisionChunk)
+	if err == nil && st.kb != nil {
+		for i, rev := range revs {
+			var k temporal.Position
+			if k, err = rd.knowledge(st.tlID, rev); err != nil {
+				break
 			}
-			if rev > 1 {
-				todo = append(todo, rev-1)
+			if !st.kb.allows(k) {
+				revs, complete = revs[:i], true // the known prefix ends here
+				break
 			}
 		}
 	}
-	order := make([]uint64, 0, len(touched))
-	for rev := range touched {
-		order = append(order, rev)
+	rd.close()
+	if err != nil {
+		return err
 	}
-	slices.Sort(order)
-	var out []Entity
-	for _, rev := range order {
-		rd, err := s.e.readerAt(ctx, rev)
+	for _, rev := range revs {
+		at, err := s.e.readerAt(ctx, rev)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		rows, err := rd.rows(r.Ref, r.Selector, r.Projection, nil)
+		rows, err := at.rows(st.tlRef, st.sel, st.proj, nil)
 		if err == nil {
 			var known temporal.Scope
-			if known, err = rd.knownOf(id, rev, r.Selector.Known); err == nil {
+			if known, err = at.knownOf(st.tlID, rev, st.sel.Known); err == nil {
 				for i := range rows {
 					rows[i].Known = known
+					if st.proj.Revisions {
+						rows[i].Revision = rev
+					}
 				}
 			}
 		}
-		rd.close()
+		at.close()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if r.Projection.Revisions {
-			for i := range rows {
-				rows[i].Revision = rev
-			}
-		}
-		out = append(out, rows...)
+		st.rows = append(st.rows, rows...)
+		st.tlAt = rev
 	}
-	return out, nil
+	st.tlDone = complete || len(revs) == 0
+	return nil
 }
 
 // before returns a position strictly earlier than p: the immediate predecessor
