@@ -1,0 +1,31 @@
+=== RUN   TestBatchExciseNoVersionPartialRange
+=== PAUSE TestBatchExciseNoVersionPartialRange
+=== CONT  TestBatchExciseNoVersionPartialRange
+=== RUN   TestBatchExciseNoVersionPartialRange/memory/node
+    batch_excise_no_version_unit_test.go:210: Execute: graph: batch execution had failed operations: refused before any write: batch ExciseNodeValidityWithTx (ID 816436539821916160): graph: no version valid at the given time: mutation (<nil>); want success
+=== RUN   TestBatchExciseNoVersionPartialRange/memory/rel
+    batch_excise_no_version_unit_test.go:210: Execute: graph: batch execution had failed operations: refused before any write: batch ExciseRelValidityWithTx (ID 816436539835319296): graph: no version valid at the given time: mutation (<nil>); want success
+=== RUN   TestBatchExciseNoVersionPartialRange/badger/node
+    batch_excise_no_version_unit_test.go:210: Execute: graph: batch execution had failed operations: refused before any write: batch ExciseNodeValidityWithTx (ID 816436540101787648): graph: no version valid at the given time: mutation (<nil>); want success
+=== RUN   TestBatchExciseNoVersionPartialRange/badger/rel
+    batch_excise_no_version_unit_test.go:210: Execute: graph: batch execution had failed operations: refused before any write: batch ExciseRelValidityWithTx (ID 816436540246950912): graph: no version valid at the given time: mutation (<nil>); want success
+=== RUN   TestBatchExciseNoVersionPartialRange/tiered/node
+    batch_excise_no_version_unit_test.go:210: Execute: graph: batch execution had failed operations: refused before any write: batch ExciseNodeValidityWithTx (ID 816436542157619200): graph: no version valid at the given time: mutation (<nil>); want success
+=== RUN   TestBatchExciseNoVersionPartialRange/tiered/rel
+    batch_excise_no_version_unit_test.go:210: Execute: graph: batch execution had failed operations: refused before any write: batch ExciseRelValidityWithTx (ID 816436542527505408): graph: no version valid at the given time: mutation (<nil>); want success
+=== RUN   TestBatchExciseNoVersionPartialRange/sharded/node
+    batch_excise_no_version_unit_test.go:210: Execute: graph: batch execution had failed operations: refused before any write: batch ExciseNodeValidityWithTx (ID 816436545595637760): graph: no version valid at the given time: mutation (<nil>); want success
+=== RUN   TestBatchExciseNoVersionPartialRange/sharded/rel
+    batch_excise_no_version_unit_test.go:210: Execute: graph: batch execution had failed operations: refused before any write: batch ExciseRelValidityWithTx (ID 816436548214555648): graph: no version valid at the given time: mutation (<nil>); want success
+--- FAIL: TestBatchExciseNoVersionPartialRange (0.26s)
+    --- FAIL: TestBatchExciseNoVersionPartialRange/memory/node (0.00s)
+    --- FAIL: TestBatchExciseNoVersionPartialRange/memory/rel (0.00s)
+    --- FAIL: TestBatchExciseNoVersionPartialRange/badger/node (0.01s)
+    --- FAIL: TestBatchExciseNoVersionPartialRange/badger/rel (0.01s)
+    --- FAIL: TestBatchExciseNoVersionPartialRange/tiered/node (0.06s)
+    --- FAIL: TestBatchExciseNoVersionPartialRange/tiered/rel (0.01s)
+    --- FAIL: TestBatchExciseNoVersionPartialRange/sharded/node (0.09s)
+    --- FAIL: TestBatchExciseNoVersionPartialRange/sharded/rel (0.08s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.312s
+FAIL

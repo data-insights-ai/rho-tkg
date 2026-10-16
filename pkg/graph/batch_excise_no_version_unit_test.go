@@ -160,3 +160,73 @@ func TestBatchExciseNoVersionRefusesUnit(t *testing.T) {
 		}
 	}
 }
+
+// TestBatchExciseNoVersionPartialRange: the boundary of the whole-unit
+// refusal. A batch caller-instant excise over [k(5), k(15)) of an entity valid
+// from k(10) is partly valid: it must succeed and write one void piece over
+// [k(10), k(15)) only (the gap [k(5), k(10)) records nothing). Node and
+// relationship; memory, badger, tiered, sharded.
+func TestBatchExciseNoVersionPartialRange(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {
+		for _, rel := range []bool{false, true} {
+			name := b.name + "/node"
+			if rel {
+				name = b.name + "/rel"
+			}
+			t.Run(name, func(t *testing.T) {
+				g := b.open(t)
+				add := func() *types.Node {
+					n, err := g.Nodes().Add(ctx, []string{"D"}, map[string]any{"tkg_valid_from": k(10), "s": "v"})
+					if err != nil {
+						t.Fatal(err)
+					}
+					return n
+				}
+				target, other := add(), add()
+				var targetRel types.RelID
+				if rel {
+					r, err := g.Rels().Add(ctx, "R", target, other, map[string]any{"tkg_valid_from": k(10), "s": "v"})
+					if err != nil {
+						t.Fatal(err)
+					}
+					targetRel = r.ID()
+				}
+				bb, err := g.Batch().New()
+				if err != nil {
+					t.Fatal(err)
+				}
+				at := nowTx(t, g)
+				if rel {
+					err = bb.ExciseRelValidityWithTx(targetRel, k(5), k(15), at)
+				} else {
+					err = bb.ExciseNodeValidityWithTx(target.ID(), k(5), k(15), at)
+				}
+				if err != nil {
+					t.Fatalf("queue excise: %v", err)
+				}
+				if res, err := bb.Execute(); err != nil {
+					t.Fatalf("Execute: %v (%+v); want success", err, res)
+				}
+				var voids [][2]types.Instant
+				if rel {
+					h, err := g.Rels().History(targetRel)
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, r := range h {
+						if tm := r.Temporal(); tm.Void {
+							voids = append(voids, [2]types.Instant{tm.ValidFrom, tm.ValidTo})
+						}
+					}
+				} else {
+					voids, _ = nodeVoidRows(t, g, target.ID())
+				}
+				if len(voids) != 1 || voids[0] != [2]types.Instant{k(10), k(15)} {
+					t.Fatalf("void pieces %v; want [[%d %d]]", voids, k(10), k(15))
+				}
+			})
+		}
+	}
+}

@@ -14,9 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   badger, tiered and sharded: the whole-unit pre-flight (`checkNodeCallerCascade` / `checkRelCallerCascade`) checked
   existence and the order rule only, and the refusal fired at apply. The pre-flight now decides it on the kernel's own
   pieces (`nodeCorrectionSegments` / `relCorrectionSegments`, one `exciseNoVersionErr` for both), so the unit is refused
-  with nothing written; the concurrent ingest pre-flight runs the same check. The plain `ExciseNodeValidity` /
-  `ExciseRelValidity` batch ops keep their documented per-op failure. Test: `TestBatchExciseNoVersionRefusesUnit` (node
-  and relationship, excise first, middle, last; four backends; `tasks/evidence/batch-excise-no-version/`).
+  with nothing written. The plain `ExciseNodeValidity` / `ExciseRelValidity` batch ops keep their documented per-op
+  failure. Tests: `TestBatchExciseNoVersionRefusesUnit` (node and relationship, excise first, middle, last; four
+  backends), `TestBatchExciseNoVersionPartialRange` (a partly valid range succeeds with one void piece over its valid
+  part); `tasks/evidence/batch-excise-no-version/`.
 
 ## [4.56.1] - 2026-10-15
 

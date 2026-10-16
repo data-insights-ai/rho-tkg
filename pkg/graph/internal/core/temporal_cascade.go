@@ -183,10 +183,7 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 	// belief — no holes, no leaks.
 	var preChain []*types.Node
 	if !fromHead {
-		preChain = make([]*types.Node, 0, len(history)+1)
-		preChain = append(preChain, history...)
-		preChain = append(preChain, current) // non-nil: a deleted entity was refused above
-		preChain = versionOrdered(preChain)  // the resolver's input contract (lesson 73)
+		preChain = preCorrectionChain(history, current) // a deleted entity was refused above
 	}
 
 	// Resumption: re-assert, from newVT onward, whatever value held AT newVT in
@@ -803,10 +800,7 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 	// newer belief winning on overlap. See the node cascade for the rationale.
 	var preChain []*types.Relationship
 	if !fromHead {
-		preChain = make([]*types.Relationship, 0, len(history)+1)
-		preChain = append(preChain, history...)
-		preChain = append(preChain, current) // non-nil: a deleted entity was refused above
-		preChain = versionOrdered(preChain)  // the resolver's input contract (lesson 73)
+		preChain = preCorrectionChain(history, current) // a deleted entity was refused above
 	}
 
 	// BACKLOG 10b: explicit resumption ValidTo via relResumptionEnd — see the

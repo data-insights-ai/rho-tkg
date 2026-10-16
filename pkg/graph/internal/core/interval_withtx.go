@@ -90,7 +90,7 @@ func (c *Core) checkNodeCallerCascade(id types.NodeID, validFrom, validTo, at ty
 	if !void {
 		return nil
 	}
-	preChain := versionOrdered(append(append(make([]*types.Node, 0, len(history)+1), history...), current))
+	preChain := preCorrectionChain(history, current)
 	segments, err := c.nodeCorrectionSegments(preChain, current, validFrom, validTo, true)
 	if err != nil {
 		return err
@@ -119,7 +119,7 @@ func (c *Core) checkRelCallerCascade(id types.RelID, validFrom, validTo, at type
 	if !void {
 		return nil
 	}
-	preChain := versionOrdered(append(append(make([]*types.Relationship, 0, len(history)+1), history...), current))
+	preChain := preCorrectionChain(history, current)
 	segments, err := c.relCorrectionSegments(preChain, current, validFrom, validTo, true)
 	if err != nil {
 		return err
