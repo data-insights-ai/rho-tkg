@@ -400,6 +400,50 @@ func TestPartitionTransactionKernelSequentialCDCBeforeTagsAndLocalDurableRestore
 	if err != nil || !slices.Equal(fresh.Entities, []graphstate.EntityID{17}) || !slices.Equal(fresh.Values, []graphstate.ValueID{18, 19}) || len(fresh.Lives) != 1 || fresh.Lives[0].Owner != 17 || fresh.Lives[0].Life != 1 {
 		t.Fatal("fresh grant metadata exact set", fresh, err)
 	}
+	combinedOutput := transactionTestOutput(t)
+	combined, combinedRound, identities, err := InspectPreparedKernelMetadata(wire, Limits{}, GraphLimits{}, combinedOutput)
+	if err != nil || !sameKernelBinding(combined, expected) || !bytes.Equal(combined.CapturedBase.Image, expected.CapturedBase.Image) || combinedRound != provisional || !slices.Equal(identities.Entities, fresh.Entities) || !slices.Equal(identities.Lives, fresh.Lives) || !slices.Equal(identities.Values, fresh.Values) || identities.WriteRecords != fresh.WriteRecords || identities.WriteBytes != fresh.WriteBytes || identities.Groups != fresh.Groups || identities.ChangeBytes != fresh.ChangeBytes {
+		t.Fatal("single canonical decode changed exact binding/identities/credits", combined, combinedRound, identities, err)
+	}
+	separateOutput := transactionTestOutput(t)
+	if _, _, err := InspectPreparedPartitionKernel(wire, Limits{}, GraphLimits{}, separateOutput); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InspectPreparedKernelIdentities(wire, Limits{}, GraphLimits{}, separateOutput); err != nil || combinedOutput.Used() >= separateOutput.Used() {
+		t.Fatal("single inspection retained duplicate decode cost", combinedOutput.Used(), separateOutput.Used(), err)
+	}
+	// Every returned variable-length field is owned independently of both the
+	// delivered bytes and a subsequent inspection; metadata grants no stageability.
+	combined.CapturedBase.Image[0] ^= 1
+	identities.Entities[0]++
+	identities.Lives[0].Life++
+	identities.Values[0]++
+	readAgain, roundAgain, idsAgain, err := InspectPreparedKernelMetadata(wire, Limits{}, GraphLimits{}, transactionTestOutput(t))
+	if err != nil || !bytes.Equal(readAgain.CapturedBase.Image, expected.CapturedBase.Image) || roundAgain != provisional || !slices.Equal(idsAgain.Entities, fresh.Entities) || !slices.Equal(idsAgain.Lives, fresh.Lives) || !slices.Equal(idsAgain.Values, fresh.Values) {
+		t.Fatal("combined metadata retained caller-owned aliases", readAgain, roundAgain, idsAgain, err)
+	}
+	identityCost := 192 + 8*len(fresh.Entities) + 64*len(fresh.Lives) + 8*len(fresh.Values)
+	for _, cap := range []int{combinedOutput.Used() - 1, combinedOutput.Used() - identityCost - 1} {
+		output, err := graphstate.NewOutputBudget(cap)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, r, ids, err := InspectPreparedKernelMetadata(wire, Limits{}, GraphLimits{}, output)
+		if !errors.Is(err, ErrResourceLimit) || b.TxID != ([16]byte{}) || r.ID() != 0 || len(ids.Entities) != 0 || len(ids.Lives) != 0 || len(ids.Values) != 0 || output.Used() > cap {
+			t.Fatal("partial binding/identity extraction escaped its prepaid budget", cap, b, r, ids, err)
+		}
+	}
+	for _, test := range []struct {
+		wire []byte
+		l    Limits
+		g    GraphLimits
+		want error
+	}{{wire: wire, l: Limits{MaxRecordBytes: -1}, want: ErrInvalid}, {wire: wire, g: GraphLimits{MaxOutputBytes: -1}, want: ErrInvalid}, {wire: make([]byte, DefaultLimits().MaxRecordBytes+1), want: ErrResourceLimit}} {
+		b, r, ids, err := InspectPreparedKernelMetadata(test.wire, test.l, test.g, transactionTestOutput(t))
+		if !errors.Is(err, test.want) || b.TxID != ([16]byte{}) || r.ID() != 0 || len(ids.Entities) != 0 || len(ids.Lives) != 0 || len(ids.Values) != 0 {
+			t.Fatal("combined policy refusal returned partial metadata", b, r, ids, err)
+		}
+	}
 	broken := exactCopy(wire)
 	broken[len(broken)-1] ^= 1
 	if binding, rev, err := InspectPreparedPartitionKernel(broken, Limits{}, GraphLimits{}, transactionTestOutput(t)); !errors.Is(err, ErrCorrupt) || binding.TxID != ([16]byte{}) || rev.ID() != 0 {
@@ -701,6 +745,9 @@ func TestPartitionTransactionKernelPublicNilAndBudgetGuards(t *testing.T) {
 		_, _, err := InspectPreparedPartitionKernel(nil, Limits{}, GraphLimits{}, nil)
 		return err
 	}, func() error { _, err := InspectPreparedKernelIdentities(nil, Limits{}, GraphLimits{}, nil); return err }, func() error {
+		_, _, _, err := InspectPreparedKernelMetadata(nil, Limits{}, GraphLimits{}, nil)
+		return err
+	}, func() error {
 		_, err := PreparedKernelControlKey(PreparedKernelBinding{}, transactionTestOutput(t))
 		return err
 	}, func() error {
@@ -716,6 +763,9 @@ func TestPartitionTransactionKernelPublicNilAndBudgetGuards(t *testing.T) {
 	}
 	if ids, err := InspectPreparedKernelIdentities(nil, Limits{}, GraphLimits{}, transactionTestOutput(t)); !errors.Is(err, ErrCorrupt) || len(ids.Entities) != 0 {
 		t.Fatal(ids, err)
+	}
+	if b, r, ids, err := InspectPreparedKernelMetadata(nil, Limits{}, GraphLimits{}, transactionTestOutput(t)); !errors.Is(err, ErrCorrupt) || b.TxID != ([16]byte{}) || r.ID() != 0 || len(ids.Entities) != 0 {
+		t.Fatal("combined malformed bytes returned partial metadata", b, r, ids, err)
 	}
 }
 
@@ -757,6 +807,17 @@ func TestPartitionTransactionKernelCanonicalByteMutationsAndConsumptiveAdmission
 			changed = sealRecord(changed[:len(changed)-32])
 		}
 		read, round, err := InspectPreparedPartitionKernel(changed, Limits{}, GraphLimits{}, transactionTestOutput(t))
+		combined, combinedRound, ids, combinedErr := InspectPreparedKernelMetadata(changed, Limits{}, GraphLimits{}, transactionTestOutput(t))
+		if (err == nil) != (combinedErr == nil) {
+			t.Fatal("combined canonical validation diverged", offset, err, combinedErr)
+		}
+		if combinedErr == nil {
+			if !sameKernelBinding(combined, read) || combinedRound != round {
+				t.Fatal("combined changed namespace/identity/schema interpretation", offset, combined, read)
+			}
+		} else if combined.TxID != ([16]byte{}) || combinedRound.ID() != 0 || len(ids.Entities) != 0 || len(ids.Lives) != 0 || len(ids.Values) != 0 || !errors.Is(combinedErr, ErrCorrupt) && !errors.Is(combinedErr, ErrResourceLimit) {
+			t.Fatal("combined refused bytes exposed partial metadata or lost sentinel", offset, combined, combinedRound, ids, combinedErr)
+		}
 		if err == nil {
 			if sameKernelBinding(read, expected) && round == revision {
 				t.Fatal("changed canonical bytes retained original interpretation", offset)
@@ -785,6 +846,21 @@ func TestPartitionTransactionKernelCanonicalByteMutationsAndConsumptiveAdmission
 			}
 		} else if !sameKernelBinding(read, expected) || round != revision {
 			t.Fatal("admitted inspector changed binding", cap, read, round)
+		}
+		combinedOutput, err := graphstate.NewOutputBudget(cap)
+		if err != nil {
+			t.Fatal(err)
+		}
+		combined, combinedRound, ids, err := InspectPreparedKernelMetadata(wire, Limits{}, GraphLimits{}, combinedOutput)
+		if combinedOutput.Used() > cap {
+			t.Fatal("combined inspection exceeded ancestor budget", cap, combinedOutput.Used())
+		}
+		if err != nil {
+			if !errors.Is(err, ErrResourceLimit) || combined.TxID != ([16]byte{}) || combinedRound.ID() != 0 || len(ids.Entities) != 0 || len(ids.Lives) != 0 || len(ids.Values) != 0 {
+				t.Fatal("combined budget refusal returned partial metadata", cap, combined, combinedRound, ids, err)
+			}
+		} else if !sameKernelBinding(combined, expected) || combinedRound != revision || !slices.Equal(ids.Entities, []graphstate.EntityID{17}) || !slices.Equal(ids.Values, []graphstate.ValueID{18}) {
+			t.Fatal("combined admitted metadata changed", cap, combined, combinedRound, ids)
 		}
 	}
 	for _, invoke := range []func(*graphstate.OutputBudget) error{func(b *graphstate.OutputBudget) error { _, err := template.Participants(b); return err }, func(b *graphstate.OutputBudget) error { _, err := template.Dependencies(b); return err }, func(b *graphstate.OutputBudget) error { _, err := template.Bases(b); return err }, func(b *graphstate.OutputBudget) error {

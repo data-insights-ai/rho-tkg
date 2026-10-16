@@ -1314,6 +1314,46 @@ func TestNativeDecisionFactoryKeepsActualRecipientOnOriginalOwnerAcrossSourceRot
 	}
 }
 
+func TestNativeDecisionCertifiedCapacityReadKeepsDeclaredProbeGrant(t *testing.T) {
+	n := newCertifiedGraphNetwork(t)
+	ops, claims := crossEdgeFixture(t, n)
+	ops = append(ops, graphstate.Operation{Kind: graphstate.Set, Owner: 1, Life: 2, Scope: ops[0].Scope, Name: "p", Value: graphstate.I64(5), ValueID: 5})
+	claims = append(claims, freshBinding{role: valueBinding, id: 5, grant: claims[0].grant})
+	ids := crossRequestsWithLoser(n, 1)
+	var originals [2]crossTransaction
+	var registrations [2]crossProof
+	for group := range 2 {
+		actualClaims := append([]freshBinding(nil), claims...)
+		if group == 0 {
+			actualClaims[0].grant.sequence = 2 // SAME genuinely uninstalled A claim as P04.
+		}
+		tx, proposal := crossPlanAt(n, group, ids[group], ops, actualClaims, 3)
+		originals[group] = tx
+		status := n.crossSubmit(group, proposal)
+		registrations[group] = n.crossReadPhase(group, status.tx, crossRegister)
+	}
+	// A is genuinely registered but its Prepare has not been submitted. Its
+	// native recovery reservation, not a fabricated NO, blocks B's actual A entry.
+	blocked, err := n.hosts[1][0].PrepareCrossParticipant(originals[1], 3, registrations[1], nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.hosts[0][0].Submit(blocked); !errors.Is(err, raftlog.ErrLimit) {
+		t.Fatal("actual registered A must block B Prepare", err)
+	}
+	pump := &capacityNativeTestPump{&nativeGraphTestPump{n: n, group: 0, host: n.hosts[0][0]}}
+	grant := graphCapacityLimits{rows: 128, bytes: 128 << 10, output: 1 << 20}
+	question := [16]byte{9}
+	reply, err := pump.Capacity(t.Context(), blocked, question, grant)
+	if err != nil || reply.err != nil {
+		t.Fatal("genuine certified-capacity probe within unchanged declared grant", err, reply.err)
+	}
+	p := reply.proof
+	if p.owner != pump.host || p.observation.desired != registrations[1].status.tx || p.observation.holder != registrations[0].status.tx || p.observation.nonce != question || p.observation.prepareHash != sha256.Sum256(blocked.wire) || p.work.Records < 1 || p.work.Records > grant.rows || p.work.Bytes < 1 || p.work.Bytes > grant.bytes || p.output < 1 || p.output > grant.output {
+		t.Fatal("actual capacity proof/ownership/grant binding", p)
+	}
+}
+
 func TestNativeDecisionSubmissionSeamChecksContextAfterCallbackWithoutHostLock(t *testing.T) {
 	n, c, ops, claims, _ := coordinatorNativeFixture(t)
 	id := n.requestID()

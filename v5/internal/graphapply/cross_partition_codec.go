@@ -264,15 +264,11 @@ func decodeCrossManifest(wire []byte, l materializerLimits, arena *graphstate.Ou
 		if c.err != nil {
 			return crossManifest{}, c.err
 		}
-		binding, rev, e := graphstore.InspectPreparedPartitionKernel(m.parts[i].kernel, l.catalog, l.graph, arena)
+		binding, rev, identities, e := graphstore.InspectPreparedKernelMetadata(m.parts[i].kernel, l.catalog, l.graph, arena)
 		if e != nil {
 			return crossManifest{}, e
 		}
 		m.parts[i].binding = binding
-		identities, e := graphstore.InspectPreparedKernelIdentities(m.parts[i].kernel, l.catalog, l.graph, arena)
-		if e != nil {
-			return crossManifest{}, e
-		}
 		m.parts[i].identities = identities
 		if binding.Partition != partition || binding.TxID != m.tx || binding.Configuration != m.configuration || binding.DeclarationDigest != m.declaration || binding.RoutingDigest != m.routing || binding.TemplateDigest != m.template || i > 0 && partition <= m.parts[i-1].binding.Partition {
 			return crossManifest{}, errCorrupt

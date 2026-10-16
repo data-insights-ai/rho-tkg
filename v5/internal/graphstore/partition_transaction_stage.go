@@ -291,6 +291,10 @@ func InspectPreparedKernelIdentities(wire []byte, l Limits, g GraphLimits, outpu
 	if err != nil {
 		return PreparedKernelIdentities{}, storedKernelError(err)
 	}
+	return kernel.identities(arena, l)
+}
+
+func (kernel *PreparedPartitionKernel) identities(arena *graphstate.OutputBudget, l Limits) (PreparedKernelIdentities, error) {
 	delta := kernel.part.effects.Delta
 	cost := 192 + 8*len(delta.Entities) + 64*len(delta.Lives) + 8*len(delta.Values)
 	if err := arena.Reserve(cost); err != nil {
@@ -317,6 +321,43 @@ func InspectPreparedKernelIdentities(wire []byte, l Limits, g GraphLimits, outpu
 		out.Values[n] = value.ID
 	}
 	return out, nil
+}
+
+// InspectPreparedKernelMetadata validates canonical bounded bytes once and owns
+// both binding/revision and fresh-identity metadata. It confers no stageability
+// or transaction authority; callers still validate their complete outer binding.
+func InspectPreparedKernelMetadata(wire []byte, l Limits, g GraphLimits, output *graphstate.OutputBudget) (PreparedKernelBinding, state.Revision, PreparedKernelIdentities, error) {
+	if output == nil {
+		return PreparedKernelBinding{}, state.Revision{}, PreparedKernelIdentities{}, ErrInvalid
+	}
+	l, err := l.resolve()
+	if err != nil {
+		return PreparedKernelBinding{}, state.Revision{}, PreparedKernelIdentities{}, err
+	}
+	g, err = g.resolve()
+	if err != nil {
+		return PreparedKernelBinding{}, state.Revision{}, PreparedKernelIdentities{}, err
+	}
+	if len(wire) > l.MaxRecordBytes {
+		return PreparedKernelBinding{}, state.Revision{}, PreparedKernelIdentities{}, ErrResourceLimit
+	}
+	arena, err := selectedGraphOutputBudget(g, output)
+	if err != nil {
+		return PreparedKernelBinding{}, state.Revision{}, PreparedKernelIdentities{}, err
+	}
+	kernel, err := decodePreparedKernel(wire, l, g, arena)
+	if err != nil {
+		return PreparedKernelBinding{}, state.Revision{}, PreparedKernelIdentities{}, storedKernelError(err)
+	}
+	binding, err := kernel.Binding(arena)
+	if err != nil {
+		return PreparedKernelBinding{}, state.Revision{}, PreparedKernelIdentities{}, err
+	}
+	identities, err := kernel.identities(arena, l)
+	if err != nil {
+		return PreparedKernelBinding{}, state.Revision{}, PreparedKernelIdentities{}, err
+	}
+	return binding, kernel.provisional, identities, nil
 }
 
 func appendBase(dst []byte, b raftlog.ApplicationRoot) []byte {
