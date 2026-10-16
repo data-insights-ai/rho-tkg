@@ -329,6 +329,7 @@ type snapshotEngine interface {
 	resume(ctx context.Context, c Cursor, p PageLimits) (Page, error)
 	lookup(ctx context.Context, r LookupRequest) (Page, error)
 	timeline(ctx context.Context, r TimelineRequest) (Page, error)
+	meta(ctx context.Context, key string) ([]byte, bool, error)
 	cut() Cut
 	close() error
 }
@@ -430,6 +431,19 @@ func (s *Snapshot) Timeline(ctx context.Context, r TimelineRequest) (Page, error
 		return Page{}, ErrClosed
 	}
 	return s.eng.timeline(ctx, r)
+}
+
+// Meta returns the value Tx.SetMeta stored under key as of this snapshot's cut,
+// and whether there is one. A key outside 1..MaxMetaKeyBytes bytes is
+// ErrInvalidRequest.
+func (s *Snapshot) Meta(ctx context.Context, key string) ([]byte, bool, error) {
+	if err := s.pre(ctx); err != nil {
+		return nil, false, err
+	}
+	if err := checkMetaKey(key); err != nil {
+		return nil, false, err
+	}
+	return s.eng.meta(ctx, key)
 }
 
 // Close releases the snapshot.

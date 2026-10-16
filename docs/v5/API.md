@@ -24,15 +24,16 @@ raftlog seams. The distributed engine (`internal/dist`) is not part of it.
 
 - `Open(ctx, Config) (*Graph, error)`, `Graph.Close`, `Graph.Update(ctx, func(Tx) error) (Receipt, error)`, `Graph.OpenSnapshot`.
 - `Config`: `Dir` or `Memory`, `GraphID`, `DefaultAxis` and `KnowledgeAxis` (two different axes, `types.DefaultAxisBinding`), `Allocation{Seed}`, `Durability` (`DurabilityBuffered`, `DurabilityCommit`; a memory graph cannot be `DurabilityCommit`), `Limits` (`temporal.Limits`), property seeds `PropertySchema{Key, Kind, Unique}`. `Config.Validate`.
-- `Tx` (interface, valid inside `Update` only): `CreateNode`, `CreateRel`, `Correct`, `End`, `AddLabel`, `RemoveLabel`, `Set`, `Unset`, `Retract`, `GetOrCreate`. Ops: `CreateNode`, `CreateRel`, `Correct`, `End`, `AddLabel`, `RemoveLabel`, `Set`, `Unset`, `Retract`, `GetOrCreate`; each has `Validate(temporal.Limits)` (`CreateNode.Validate`, `CreateRel.Validate`, `Correct.Validate`, `End.Validate`, `AddLabel.Validate`, `RemoveLabel.Validate`, `Set.Validate`, `Unset.Validate`, `Retract.Validate`, `GetOrCreate.Validate`); `Op` is the closed interface, `CheckOp(Config, Op)` validates without an engine.
+- `Tx` (interface, valid inside `Update` only): `CreateNode`, `CreateRel`, `Correct`, `End`, `AddLabel`, `RemoveLabel`, `Set`, `Unset`, `Retract`, `GetOrCreate`, `Reopen`, `SetMeta`. Ops: `CreateNode`, `CreateRel`, `Correct`, `End`, `AddLabel`, `RemoveLabel`, `Set`, `Unset`, `Retract`, `GetOrCreate`, `Reopen`; each has `Validate(temporal.Limits)` (`CreateNode.Validate`, `CreateRel.Validate`, `Correct.Validate`, `End.Validate`, `AddLabel.Validate`, `RemoveLabel.Validate`, `Set.Validate`, `Unset.Validate`, `Retract.Validate`, `GetOrCreate.Validate`, `Reopen.Validate`); `Op` is the closed interface, `CheckOp(Config, Op)` validates without an engine.
 - Every op carries an explicit `Scope` (valid time) and an optional `Recorded` position on `Config.KnowledgeAxis`; zero `Recorded` means "at commit". There is no implicit "now".
 - A key is declared by the first `Set` that writes it (add-only, same commit); a later value of another kind is `ErrInvalidValue`, an exact numeric converts (3.0 into an int key).
-- IDs come from the engine allocator (`Config.Allocation`); `types.NodeID` / `types.RelID` are 1..MaxInt64.
+- IDs come from the engine allocator (`Config.Allocation`); `types.NodeID` / `types.RelID` are 1..MaxInt64. Nodes and relationships share one ID space.
+- Import doors: `CreateNode.ID` / `CreateRel.ID` (zero = allocate) may name an ID in the reserved range `1..Allocation.Seed` (above it or negative: `ErrInvalidID`; an existing ID, also earlier in the same Update: `ErrAlreadyExists`). `Reopen` / `Tx.Reopen` starts the next life of the same ID over a scope outside every earlier life (`ErrInvalidScope` on overlap); later ops resolve to the life their scope falls in, a scope spanning two lives is `ErrInvalidScope`. A relationship refers to its endpoints by identity: its scope may extend beyond their lives; `ViewDeclared` shows all of it, `ViewEffective` only where both endpoints are present. `Tx.SetMeta(key, value)` writes an engine KV row (`MaxMetaKeyBytes`, `MaxMetaValueBytes`) in the same commit; `Snapshot.Meta(ctx, key)` reads it at the cut. A scan with no index walks the whole ID space `1..last minted`.
 
 ### Reading
 
 - `SnapshotSpec` built by `Fresh()`, `Stable()`, `At(Cut)`, `After(Receipt)`, `AtKnown(types.Instant)` (the newest commit whose knowledge instant is at or before it; an earlier instant reads the empty graph; its `Cut` reopens with `At`); `SnapshotSpec.Validate`.
-- `Snapshot`: `Snapshot.Scan`, `Snapshot.Lookup`, `Snapshot.Timeline`, `Snapshot.Resume`, `Snapshot.Cut`, `Snapshot.Close`.
+- `Snapshot`: `Snapshot.Scan`, `Snapshot.Lookup`, `Snapshot.Timeline`, `Snapshot.Resume`, `Snapshot.Meta`, `Snapshot.Cut`, `Snapshot.Close`.
 - Requests: `ScanRequest`, `LookupRequest`, `TimelineRequest`, each with `Validate(temporal.Limits)` (`ScanRequest.Validate`, `LookupRequest.Validate`, `TimelineRequest.Validate`); `Selector` (`View`, `Valid`, `Known`, `Labels`, `RelType`, `Equals []PropertyEq`; `Selector.Validate`, `CheckSelector(Config, Selector)`); `Projection`; `PageLimits` (`Rows`, `MaxBytes`; `PageLimits.Validate`); results `Page` and `Entity`.
 - `View`: `ViewDeclared`, `ViewEffective`. Every read names its view, its valid scope and its knowledge scope.
 - Tokens are opaque, serialisable and minted by the engine only: `Receipt` (`Receipt.Bytes`, `Receipt.IsZero`, `Receipt.KnowledgeInstant` (the commit's strictly increasing knowledge instant on `Config.KnowledgeAxis`), `ParseReceipt`), `Cut` (`Cut.Bytes`, `Cut.IsZero`, `ParseCut`), `Cursor` (`Cursor.Bytes`, `Cursor.IsZero`, `Cursor.Validate`, `ParseCursor`).
@@ -65,6 +66,7 @@ Match with `errors.Is`.
 | `ErrClosed` | nil, zero or closed `Graph` / `Snapshot` |
 | `ErrTxDone` | `Tx` used after its `Update` returned |
 | `ErrNotFound` | target absent |
+| `ErrAlreadyExists` | explicit `CreateNode.ID` / `CreateRel.ID` already exists |
 | `ErrConflict` | write conflict |
 | `ErrUniqueViolation` | unique claim held by another node |
 | `ErrCommitNotDurable` | commit accepted, durability not confirmed |

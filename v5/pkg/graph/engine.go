@@ -42,7 +42,54 @@ var (
 	lifeID     = graphstate.LifeID(1)
 	allocName  = []byte("rho-tkg:v5/pkg/graph:id-allocator:v1")
 	instantKey = []byte("rho-tkg:v5/pkg/graph:commit-instant:v1:")
+	multiName  = []byte("rho-tkg:v5/pkg/graph:multi-life:v1")
+	metaPrefix = []byte("rho-tkg:v5/pkg/graph:meta:v1:")
 )
+
+// metaKey is the engine row of a Tx.SetMeta key.
+func metaKey(key string) []byte { return append(bytes.Clone(metaPrefix), key...) }
+
+// lifeSpan is the valid-time extent of one life of an entity.
+type lifeSpan struct {
+	life  graphstate.LifeID
+	scope temporal.Scope
+}
+
+// livesOf reads the entity's lives at index: the extent of each present
+// Presence piece, and the highest life number (probed: lives are dense).
+func (e *pebbleEngine) livesOf(ctx context.Context, index uint64, id graphstate.EntityID) (spans []lifeSpan, maxLife graphstate.LifeID, err error) {
+	r, err := e.readerAt(ctx, index)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer r.close()
+	window, err := temporal.All(e.cfg.DefaultAxis.Axis())
+	if err != nil {
+		return nil, 0, err
+	}
+	pages, err := r.pieces(graphstate.ComponentKey{Owner: id, Kind: graphstate.Presence}, window)
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, pg := range pages {
+		for _, pc := range pg.Data.Pieces() {
+			if pc.Cell().Present() {
+				spans = append(spans, lifeSpan{graphstate.LifeID(pc.Cell().Value().ID()), pc.Scope()})
+			}
+		}
+	}
+	for n := graphstate.LifeID(1); n < 1<<16; n++ {
+		lr, err := r.rv.Life(ctx, id, n)
+		if err != nil {
+			return nil, 0, err
+		}
+		if !lr.Found {
+			break
+		}
+		maxLife = n
+	}
+	return spans, maxLife, nil
+}
 
 // commitInstantKey is the row holding the knowledge instant (milliseconds) of
 // the commit at index.
@@ -50,9 +97,9 @@ func commitInstantKey(index uint64) []byte {
 	return binary.BigEndian.AppendUint64(append([]byte(nil), instantKey...), index)
 }
 
-// endAt reads the entity's committed End position at index from its LifeEnd
-// cells: the lowest lower bound of the regions an End marked.
-func (e *pebbleEngine) endAt(ctx context.Context, index uint64, id graphstate.EntityID) (temporal.Position, bool, error) {
+// endAt reads the committed End position of one life of the entity at index from
+// its LifeEnd cells: the lowest lower bound of the regions an End marked.
+func (e *pebbleEngine) endAt(ctx context.Context, index uint64, id graphstate.EntityID, life graphstate.LifeID) (temporal.Position, bool, error) {
 	r, err := e.readerAt(ctx, index)
 	if err != nil {
 		return temporal.Position{}, false, err
@@ -70,7 +117,7 @@ func (e *pebbleEngine) endAt(ctx context.Context, index uint64, id graphstate.En
 	found := false
 	for _, pg := range pages {
 		for _, pc := range pg.Data.Pieces() {
-			if !pc.Cell().Present() {
+			if !pc.Cell().Present() || graphstate.LifeID(pc.Cell().Value().ID()) != life {
 				continue
 			}
 			for _, part := range pc.Scope().Parts() {
@@ -95,6 +142,15 @@ func (e *pebbleEngine) endAt(ctx context.Context, index uint64, id graphstate.En
 	return end, found, nil
 }
 
+func sortedMetaKeys(m map[string][]byte) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	slices.Sort(ks)
+	return ks
+}
+
 func readBudget() graphstore.OwnershipBudget {
 	return graphstore.OwnershipBudget{SourceRows: 65536, SourceBytes: 64 << 20, OutputBytes: 64 << 20}
 }
@@ -114,6 +170,7 @@ type pebbleEngine struct {
 	broken                   atomic.Pointer[error]
 	nonce                    atomic.Uint64
 	alloc                    allocState
+	multi                    bool // some entity has had a second life (persisted); false: every entity has life 1 only
 	now                      func() int64
 	last                     atomic.Int64 // knowledge instant of the newest commit
 	first                    uint64       // application index of the first commit (genesis); earlier indexes have no instant row
@@ -298,6 +355,10 @@ func (e *pebbleEngine) recover(ctx context.Context) error {
 	if e.alloc, err = decodeAllocState(row.Value); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
+	_, e.multi, err = view.Get(ctx, multiName, 64)
+	if err != nil {
+		return err
+	}
 	irow, found, err := view.Get(ctx, commitInstantKey(idx), 64)
 	if err != nil || !found || len(irow.Value) != 8 {
 		return fmt.Errorf("%w: stored graph has no commit knowledge instant", ErrInvalidConfig)
@@ -426,7 +487,7 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 	if tx.err != nil {
 		return Receipt{}, tx.err
 	}
-	if len(tx.ops) == 0 {
+	if len(tx.ops) == 0 && len(tx.meta) == 0 {
 		return Receipt{tok: e.receiptToken(base, e.last.Load())}, nil
 	}
 	rev, err := state.NewRevision(next, 0)
@@ -465,12 +526,19 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 		writes = append(writes, ar)
 	}
 	writes = append(writes, instantRow(next, inst))
+	if tx.reopened && !e.multi {
+		writes = append(writes, raftlog.KV{Key: multiName, Value: []byte{1}})
+	}
+	for _, k := range sortedMetaKeys(tx.meta) {
+		writes = append(writes, raftlog.KV{Key: metaKey(k), Value: tx.meta[k]})
+	}
 	slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
 	if err := e.commit(next, prev, img, writes); err != nil {
 		return Receipt{}, err
 	}
 	e.last.Store(inst)
 	e.alloc = tx.alloc
+	e.multi = e.multi || tx.reopened
 	for _, d := range tx.decls {
 		e.defs(d.Owner)[d.Name] = d
 	}
@@ -535,7 +603,7 @@ func mapStageErr(err error) error {
 	case errors.Is(err, graphstate.ErrResourceLimit), errors.Is(err, graphstore.ErrResourceLimit):
 		return fmt.Errorf("%w: %v", ErrInvalidRequest, err)
 	case errors.Is(err, graphstate.ErrAlreadyExists):
-		return fmt.Errorf("%w: %v", ErrConflict, err)
+		return fmt.Errorf("%w: %v", ErrAlreadyExists, err)
 	}
 	return fmt.Errorf("%w: %v", ErrInvalidOp, err)
 }
