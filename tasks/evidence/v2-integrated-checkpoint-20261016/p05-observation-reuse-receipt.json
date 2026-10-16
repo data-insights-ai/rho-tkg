@@ -1,0 +1,66 @@
+{
+  "revision": "a980359320e8ca0fab49a8d4f0a7be4ef211ff34",
+  "parent": "d70da43470bd19426e5b1d758d0d2affe6c54947",
+  "tree": "/private/var/tmp/rho-v5-p05-observation-reuse-20261016",
+  "status": "",
+  "scope": "Four private fixture/test paths. SAME conditional source/cut and1024-call grant preserved; invocation-local actual immutable read reuse only. No engine protocol/quota/deadline changes. Original OS rerun/root qualification pending.",
+  "directEvidence": {
+    "RED": "same native immutable Entity repeated8actual RPCs67->75; scalar-only full P05 second observation also fails",
+    "GREEN": "full P05schemas genuine conditional six-voter initial->Set6->Set5->Close->Reopen7->SAME held complete observation->different current; calls506->951/1024; targeted adversarial guards and race9.347s PASS"
+  },
+  "files": [
+    {
+      "path": "v5/internal/graphapply/historical_dependency_p05_test.go",
+      "sha256": "116623bf21236e421978c1056b917736854ba57c39497e403b40ddac145fb6d3",
+      "blob": "0e1e3e0f018c7c7d117e23c517d1b4d7c443139c",
+      "parentBlob": "a355d873d660ccfeb97e4400f26fbe03b879a159",
+      "parentSHA256": "125fb6f7ff12677512ab72e9b186f8b25ac77094093dd0b7b142f17efa1f9f73"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_lifecycle_harness_test.go",
+      "sha256": "d6e3ab71172127377bdd96e2c91ef3b5e48301c15e018c4674a33dd415142fe5",
+      "blob": "1ce9cc47b6e2cf3f9f96419f5694b5406b16493f",
+      "parentBlob": "a01f294ea42fa7014ffe5e47d9080e4cc4d4684b",
+      "parentSHA256": "104ec50577568229887c85ad518e9f9dcfd0f03728f639d72d49de8a5a718a4e"
+    },
+    {
+      "path": "v5/internal/graphapply/native_observation_read_harness_test.go",
+      "sha256": "59b525e367f7edfc3e428b75f07d0dd95b9f7359d294ec55909240cd7fe8acfc",
+      "blob": "edec70ef174eb9c25b7afff40c9f743179c2282f",
+      "parentBlob": "NEW"
+    },
+    {
+      "path": "v5/internal/graphapply/retained_graph_gc_test.go",
+      "sha256": "f97856352665d2370c8c8248eacb69b79f9aafc4ea49e63ec6f5c93d946d3c82",
+      "blob": "8eb4b78c2e4c6e74f15d9398304591f1fb1bcb29",
+      "parentBlob": "7d3b60609f555634d8b1ea8c3b5282c987769ccf",
+      "parentSHA256": "d4b5476dff17e51d2cfa80689e3ce6f91845d4a91547388fe1f3c7ff39a73804"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "/private/var/tmp/rho-v5-p05-observation-reuse-evidence-20261016/direct-red.log",
+      "sha256": "189a5dd1f751a6afbf2871ff571ae318a1837d9793515ae141d22295c676a216"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p05-observation-reuse-evidence-20261016/scalar-full.log",
+      "sha256": "9ff96acc69dc3371f12114b45521c1066f97cb9fb6f4266b66b6678beb19be79"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p05-observation-reuse-evidence-20261016/full-green.log",
+      "sha256": "dd0c4690d11e77ea3ed9e49d40ba9db5de16544a9616d068df27868f443a3b57"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p05-observation-reuse-evidence-20261016/guards-green.log",
+      "sha256": "18da582eb96c8bcae4b1145169872fff54c631518c8aa163f0588bdfc3f659a3"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p05-observation-reuse-evidence-20261016/race-green.log",
+      "sha256": "6f450c87786b2aa6ed37573d3d4edd6b71a77ad27329ea633875b7dd14eb9acf"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p05-observation-reuse-evidence-20261016/final-race-green.log",
+      "sha256": "1d1614a0bfbe6a78d6a595d22f17b18ac912ee975579a20db1cd09d0d52252e5"
+    }
+  ]
+}

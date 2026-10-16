@@ -1,0 +1,152 @@
+=== RUN   TestP05ObservationReuseKeepsActualCutAndBounds
+2026/10/16 08:48:40 Found 0 WALs
+raft2026/10/16 08:48:40 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:40 INFO: 1 became follower at term 1
+raft2026/10/16 08:48:40 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 08:48:40 Found 0 WALs
+raft2026/10/16 08:48:40 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:40 INFO: 2 became follower at term 1
+raft2026/10/16 08:48:40 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 08:48:40 Found 0 WALs
+raft2026/10/16 08:48:40 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:40 INFO: 3 became follower at term 1
+raft2026/10/16 08:48:40 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/16 08:48:40 INFO: 1 is starting a new election at term 1
+raft2026/10/16 08:48:40 INFO: 1 became pre-candidate at term 1
+raft2026/10/16 08:48:40 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/16 08:48:40 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/16 08:48:40 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/16 08:48:40 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:40 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 08:48:40 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 08:48:40 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/16 08:48:40 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:40 INFO: 1 became candidate at term 2
+raft2026/10/16 08:48:40 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/16 08:48:40 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/16 08:48:40 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/16 08:48:40 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:40 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 08:48:40 INFO: 2 became follower at term 2
+raft2026/10/16 08:48:40 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 08:48:40 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 08:48:40 INFO: 3 became follower at term 2
+raft2026/10/16 08:48:40 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 08:48:40 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/16 08:48:40 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:40 INFO: 1 became leader at term 2
+2026/10/16 08:48:40 Found 0 WALs
+raft2026/10/16 08:48:41 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:41 INFO: 1 became follower at term 1
+raft2026/10/16 08:48:41 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 08:48:41 Found 0 WALs
+raft2026/10/16 08:48:41 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:41 INFO: 2 became follower at term 1
+raft2026/10/16 08:48:41 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 08:48:41 Found 0 WALs
+raft2026/10/16 08:48:41 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:41 INFO: 3 became follower at term 1
+raft2026/10/16 08:48:41 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/16 08:48:41 INFO: 1 is starting a new election at term 1
+raft2026/10/16 08:48:41 INFO: 1 became pre-candidate at term 1
+raft2026/10/16 08:48:41 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/16 08:48:41 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/16 08:48:41 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/16 08:48:41 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:41 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 08:48:41 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 08:48:41 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/16 08:48:41 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:41 INFO: 1 became candidate at term 2
+raft2026/10/16 08:48:41 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/16 08:48:41 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/16 08:48:41 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/16 08:48:41 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:41 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 08:48:41 INFO: 2 became follower at term 2
+raft2026/10/16 08:48:41 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 08:48:41 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 08:48:41 INFO: 3 became follower at term 2
+raft2026/10/16 08:48:41 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 08:48:41 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/16 08:48:41 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:41 INFO: 1 became leader at term 2
+--- PASS: TestP05ObservationReuseKeepsActualCutAndBounds (2.89s)
+=== RUN   TestP05FullObservationsKeepSameConditionalSourceAndOriginalAllowance
+2026/10/16 08:48:43 Found 0 WALs
+raft2026/10/16 08:48:43 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:43 INFO: 1 became follower at term 1
+raft2026/10/16 08:48:43 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 08:48:43 Found 0 WALs
+raft2026/10/16 08:48:43 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:43 INFO: 2 became follower at term 1
+raft2026/10/16 08:48:43 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 08:48:43 Found 0 WALs
+raft2026/10/16 08:48:43 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:43 INFO: 3 became follower at term 1
+raft2026/10/16 08:48:43 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/16 08:48:43 INFO: 1 is starting a new election at term 1
+raft2026/10/16 08:48:43 INFO: 1 became pre-candidate at term 1
+raft2026/10/16 08:48:43 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/16 08:48:43 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/16 08:48:43 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/16 08:48:43 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:43 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 08:48:43 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 08:48:43 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/16 08:48:43 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:43 INFO: 1 became candidate at term 2
+raft2026/10/16 08:48:43 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/16 08:48:43 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/16 08:48:43 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/16 08:48:43 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:43 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 08:48:43 INFO: 2 became follower at term 2
+raft2026/10/16 08:48:43 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 08:48:43 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 08:48:43 INFO: 3 became follower at term 2
+raft2026/10/16 08:48:43 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 08:48:43 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/16 08:48:43 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:43 INFO: 1 became leader at term 2
+2026/10/16 08:48:43 Found 0 WALs
+raft2026/10/16 08:48:43 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:43 INFO: 1 became follower at term 1
+raft2026/10/16 08:48:43 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 08:48:43 Found 0 WALs
+raft2026/10/16 08:48:43 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:43 INFO: 2 became follower at term 1
+raft2026/10/16 08:48:43 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 08:48:43 Found 0 WALs
+raft2026/10/16 08:48:44 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/16 08:48:44 INFO: 3 became follower at term 1
+raft2026/10/16 08:48:44 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/16 08:48:44 INFO: 1 is starting a new election at term 1
+raft2026/10/16 08:48:44 INFO: 1 became pre-candidate at term 1
+raft2026/10/16 08:48:44 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/16 08:48:44 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/16 08:48:44 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/16 08:48:44 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:44 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 08:48:44 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 08:48:44 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/16 08:48:44 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:44 INFO: 1 became candidate at term 2
+raft2026/10/16 08:48:44 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/16 08:48:44 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/16 08:48:44 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/16 08:48:44 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:44 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 08:48:44 INFO: 2 became follower at term 2
+raft2026/10/16 08:48:44 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 08:48:44 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 08:48:44 INFO: 3 became follower at term 2
+raft2026/10/16 08:48:44 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 08:48:44 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/16 08:48:44 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 08:48:44 INFO: 1 became leader at term 2
+    historical_dependency_p05_test.go:2017: first complete actual P05 observation calls=506
+    historical_dependency_p05_test.go:2042: full genuine observations shared calls first=506 final=951 cap=1024
+--- PASS: TestP05FullObservationsKeepSameConditionalSourceAndOriginalAllowance (4.93s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	9.347s

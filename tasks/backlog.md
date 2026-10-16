@@ -1410,10 +1410,18 @@ records the following finite scope:
   preserve actual caller roles, native GR3 root modes and P02 phase coordinates.
   P04 preserves the original recipient owner. Its real capacity request
   returns authenticated graphstore/graphstate resource-limit causes before the
-  first candidate, reproduced by a genuine in-process native capacity read. P05 reaches the selected real process kill and healthy quorum
+  first candidate, reproduced by a genuine in-process native capacity read.
+  Single canonical kernel inspection now removes the duplicate decode under the
+  same original grant, with 100% coverage of the combined inspector and scoped
+  race passes. The actual case advances through both candidates and the selected
+  kill; its next read remains unavailable. P05 reaches the selected real process kill and healthy quorum
   apply, then exhausts the SAME held source's 1,024 cumulative calls during its
   second full observation; row, byte and output allowances remain available.
-  All three remaining failures retain their original deadlines and quotas.
+  Invocation-local scalar and complete-page reuse preserves the original
+  source/cut/lifetime and budgets. P05 now completes the native workflow but its
+  checker must validate captured GSQ/GSO controls alongside transactions; state
+  still exhausts 1,024 calls on a later projection. All open failures retain their
+  original deadlines and quotas.
 
 These components do not close their full fault families, the process inventory,
 engine comparison, measurements or V2. Original deadlines, quotas, complete

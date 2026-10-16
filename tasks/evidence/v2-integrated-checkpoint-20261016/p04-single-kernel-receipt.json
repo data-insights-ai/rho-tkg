@@ -1,0 +1,52 @@
+{
+  "commit": "d99ced16a367e1e2fd11dde137ef3ffb2c8a8568",
+  "parent": "ce81529375e8d198e2fd187c0e83f729c62b9bd6",
+  "worktree": "/private/var/tmp/rho-v5-p04-certified-capacity-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/cross_partition_codec.go",
+      "parentBlob": "9d944928fa33516e953d398496df03c9e1d322f1",
+      "parentSHA256": "26cf9ad2bf9e409120f6b59130f08e7fae74e6b391bc5a6b946842f4754f4316",
+      "blob": "2b5d7ae689f2b5e19f01633efef9ab61900c1438",
+      "sha256": "6a8b8cbc3d113e0420111821ffb8825e0899fc2e305abb0ff7eb3f0e04188283"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_fault_decision_harness_test.go",
+      "parentBlob": "51ad76e8ae5a4586a4b6c4d1d46da30c6fdf90e3",
+      "parentSHA256": "50e90bade3277ca9e7470577650b66bfeaa18fb4fd389cf9818d5604e03637a8",
+      "blob": "49eb6fdce063653b7821f9fc9b2fd315b1d6ccd1",
+      "sha256": "0d9c7df8d17dbe3e71b795602e56f27df29ba19a74993aa6b8cc1569377b3596"
+    },
+    {
+      "path": "v5/internal/graphstore/partition_transaction_stage.go",
+      "parentBlob": "f78209fb2bf7b1cf28fbea306b52265f50f6f2ca",
+      "parentSHA256": "1df0a3d0966df9c2d75eac120ac45dde8f6559c101c6486f0e699f9189117d5e",
+      "blob": "4b7f1fa0c5d77e535f9f310473d14acb4e845d1b",
+      "sha256": "45849fe3c5b9d27d385537d84b47d827590f892d47f6b4ac19d5bc55d3a6318e"
+    },
+    {
+      "path": "v5/internal/graphstore/partition_transaction_stage_test.go",
+      "parentBlob": "6c0845ad0d67043f67efe3a8b20e184809dd3f3e",
+      "parentSHA256": "254f9904af2098eb88e3548691876b229abedf906877f3cf517124b70005ee79",
+      "blob": "e75be67cbf64609581c1b35b5641eff93946f063",
+      "sha256": "c7895b7689d4815a254b1bfb8d76781394ac7bed7a51ca612648941119b68e81"
+    }
+  ],
+  "evidenceSHA256": {
+    "direct-red.log": "d541bb0566071d699c28843be0848a22df3775428a5a9dfb01f58ad9282db4cc",
+    "stage-diagnostic.log": "07e86920b29db7e7d3e6fc5da47423fd0f6fbb0d9743c131048fe10c621fc8d0",
+    "direct-green.log": "0154c867027074021e5fbdb3105bca4410c2364014db6e1f7f631cf2eb6167bd",
+    "graphstore-green.log": "2b92b6006d4d09fcbb637013c0b532cac51c525c649bd3093789e90e27162f67",
+    "focused-race.log": "c99c44856af0de1eee000ef5f47d9ccc446f510be62de5f83dc7752fb52688b7",
+    "focused-race.cover": "22ee92e1ea567ebbe0e957ef3854a1073005eeed49c01d9045a1505757308def"
+  },
+  "scope": "4 approved existing paths; no quotas, wire or authority change; temporary stage diagnostic removed",
+  "tests": {
+    "red": "genuine blocked capacity probe under original128rows/128KiB/1MiB refused with graphstore+graphstate resource sentinel",
+    "green": "same probe PASS1.644s",
+    "focusedRace": "graphstore3.762s; graphapply3.494s, four exact parents",
+    "coverage": "InspectPreparedKernelMetadata100%; identities95%; package percentages scoped only, not full gate"
+  },
+  "osRuns": 0,
+  "format": "pinned Go1.26.9 gofmt; git diff --check"
+}

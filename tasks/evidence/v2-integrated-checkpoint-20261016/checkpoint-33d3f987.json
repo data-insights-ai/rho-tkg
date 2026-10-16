@@ -1,0 +1,91 @@
+{
+  "source": "33d3f987",
+  "scope": "Production single-decode native capacity correction and invocation-local owned read reuse integrated; P04 past actual queued candidates/kill, next read unavailable. P05 complete native workflow but GSQ control checker open. State held source still1024calls exhausted. No full phase/family acceptance.",
+  "files": [
+    {
+      "path": "p05-reuse-fixed-577a88a5.log",
+      "bytes": 4461,
+      "sha256": "0eeb28c6655856e9d714fa9de9939ee47014062641facd27dc28eafd5bea7142"
+    },
+    {
+      "path": "p05-reuse-fixed-577a88a5.json",
+      "bytes": 1698,
+      "sha256": "e9dc66ae29cad2cfebf68344fde59246305944728509f97d91a03afb2fe62587"
+    },
+    {
+      "path": "p04-single-kernel-fixed-33d3f987.log",
+      "bytes": 1420,
+      "sha256": "0484268b495e419eeff2bbfda98e8030948f6d7e523707cb53c66320336f0b4b"
+    },
+    {
+      "path": "p04-single-kernel-fixed-33d3f987.json",
+      "bytes": 1618,
+      "sha256": "93bb5b372e8cba3a8022b9f8ce4990baea8f4c69490179135393fd03be3fa960"
+    },
+    {
+      "path": "state-reuse-fixed-33d3f987.log",
+      "bytes": 6982,
+      "sha256": "dcf3eb8e52d1c15f2a577b933e14199f786cd29e742381549f1f72b248b8a1a6"
+    },
+    {
+      "path": "state-reuse-fixed-33d3f987.json",
+      "bytes": 1609,
+      "sha256": "51f971216ced31f24c1968395648909ed8caf591f126dd36077737c3d321d99b"
+    },
+    {
+      "path": "p05-observation-reuse-receipt.json",
+      "bytes": 3414,
+      "sha256": "9482662c5196518bad2f415ebe0af5b897b16d40452e64e3a763f43013c685a2"
+    },
+    {
+      "path": "state-observation-reuse-receipt.json",
+      "bytes": 2602,
+      "sha256": "7bde53593496660cc0fc1b47e49783a55a0bc6f3f498f046aeaab7a0ff40a7d9"
+    },
+    {
+      "path": "p04-single-kernel-receipt.json",
+      "bytes": 2882,
+      "sha256": "3b90ac1db4514e3ac9203b894a5d3a77b18d2670526cb2de5dfb35f4baa470a2"
+    },
+    {
+      "path": "p05-observation-direct-red.log",
+      "bytes": 6045,
+      "sha256": "189a5dd1f751a6afbf2871ff571ae318a1837d9793515ae141d22295c676a216"
+    },
+    {
+      "path": "p05-observation-scalar-red.log",
+      "bytes": 6122,
+      "sha256": "9ff96acc69dc3371f12114b45521c1066f97cb9fb6f4266b66b6678beb19be79"
+    },
+    {
+      "path": "p05-observation-full-green.log",
+      "bytes": 12124,
+      "sha256": "dd0c4690d11e77ea3ed9e49d40ba9db5de16544a9616d068df27868f443a3b57"
+    },
+    {
+      "path": "p05-observation-final-race.log",
+      "bytes": 12124,
+      "sha256": "1d1614a0bfbe6a78d6a595d22f17b18ac912ee975579a20db1cd09d0d52252e5"
+    },
+    {
+      "path": "p04-capacity-direct-red.log",
+      "bytes": 6171,
+      "sha256": "d541bb0566071d699c28843be0848a22df3775428a5a9dfb01f58ad9282db4cc"
+    },
+    {
+      "path": "p04-capacity-direct-green.log",
+      "bytes": 71,
+      "sha256": "0154c867027074021e5fbdb3105bca4410c2364014db6e1f7f631cf2eb6167bd"
+    },
+    {
+      "path": "state-observation-integrated-race.log",
+      "bytes": 13287,
+      "sha256": "359dff05b1998fb4be8f079b114dccbddbc4e676332e340e2ca1899644207d69"
+    },
+    {
+      "path": "p05-complete-native-checker-red-577a88a5.tar.gz",
+      "bytes": 14771,
+      "sha256": "8ef2ed76c8bf00ef494c594a3ef8915ab411401a98d6561620ffefa9fae6746f"
+    }
+  ]
+}
