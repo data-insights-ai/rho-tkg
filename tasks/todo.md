@@ -248,7 +248,7 @@ Test proportionality: graphapply 120 k test LOC for 40.7 k src (709 `Test` funcs
 | v4.57.0 | 1d749a86 | sigma-tkgd round 9 doors (any-version ranges at a pin, count timelines, property value statistics, typed column chunks; row 56), `Config.UntimedValidStart` default for NEW stores `UntimedUnbounded` (73, row 57) |
 | v4.57.1 | dd5c684c | batch WithTx excise refuses the whole unit (row 52), one numeric equality rule across every equality door (row 54, WP-02), fast test tier (WP-14) |
 | v4.58.0 | 42db6281 (release commit bc824ad8) | tiered property indexes per shard with a truthful capability report (row 59, WP-31), one chain builder (WP-21), Elements backfill fix with open image format 3 |
-| v4.58.1 | df9268c8 | a negative valid start is a real interval start in every door (row 60): one `HasValidInterval` rule, badger column window flag, any-version doors from `UnboundedValidFrom` |
+| v4.58.1 | df9268c8 | a negative valid start is a real interval start in every door (row 60): one `HasValidInterval` rule, badger column window flag, any-version doors from `UnboundedValidFrom`; tag → df9268c8; GitHub CI run 38911398936 success; consumers build + vet; sigma-tkgd-c3 notified 2026-10-16 |
 
 ## Open decisions for René (my default in bold)
 
