@@ -17,6 +17,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
 func TestNativeProtocolPooledStateLeaderAndMessagePrograms(t *testing.T) {
@@ -579,7 +580,7 @@ func TestNativeCollectedRangeMoveImportZeroPrefixAndRetainedOldView(t *testing.T
 		name      string
 		agreement raftlog.ApplicationSemanticContractID
 		recovery  uint32
-	}{{"collected", collectedGraphSemanticContractID(), 2}} {
+	}{{"collected", collectedGraphSemanticContractID(), 2}, {"span", rangeMoveSpanSemanticContractID(), 3}, {"batched", rangeMoveGraphBatchSemanticContractID(), 3}} {
 		t.Run(profile.name, func(t *testing.T) {
 			n, publisher, ops, _ := retainedPublisherFromNetwork(t, collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
 				p.RetainedApplicationBytes, p.RetainedApplicationRecords, p.MaxTailEntries = 256<<20, 131072, nativeProtocolStateTailEntries
@@ -636,5 +637,58 @@ func TestNativeCollectedRangeMoveImportZeroPrefixAndRetainedOldView(t *testing.T
 			closeCurrent()
 			assertCertifiedProjection(t, view, 1, true, nil)
 		})
+	}
+}
+
+func TestNativeMoveReplayBatchKeepsDeclarationBindingAndRecordCharges(t *testing.T) {
+	n, _, _, _, _ := rangeMoveCoordinatorFixture(t, 32)
+	window, err := temporal.All(graphGenesisBinding(t).Axis())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 16 {
+		proposal, err := n.hosts[0][0].PreparePartitionGraphOperations(n.requestID(), []graphstate.Operation{{Kind: graphstate.AddLabel, Owner: 1, Life: 2, Scope: window, Name: fmt.Sprintf("original-%d", i)}}, uint64(400+i), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n.submitPartitionGraph(0, proposal, reasonNone)
+	}
+	source := rangeMoveReplayNativeReader(t, n.hosts[0][0], 32<<20)
+	batch, err := exportMoveReplayBatch(source, source.ns, rangeMoveReplayStart(), 64<<10, 16)
+	if err != nil || len(batch.pages) < 16 {
+		t.Fatal("actual bounded multi-original export", len(batch.pages), err)
+	}
+	target := rangeMoveReplayNativeReader(t, n.hosts[1][0], 32<<20)
+	before := target.arena.Used()
+	cursor, err := stageMoveReplayBatch(target, source.ns, target.ns, [16]byte{91}, batch, rangeMoveReplayStart())
+	if err != nil || !rangeMoveReplaySame(cursor, batch.pages[len(batch.pages)-1].next) || len(target.writes) < 16 {
+		t.Fatal("actual bounded target reduction", len(target.writes), err)
+	}
+	payload := 0
+	for _, row := range target.writes {
+		if row.Deleted || !bytes.HasPrefix(row.Key, recordKey(target.ns, 20)) {
+			t.Fatal("replay reducer changed ownership namespace")
+		}
+		payload += len(row.Key) + len(row.Value)
+	}
+	if source.rows == 0 || target.rows == 0 || source.arena.Used() <= 2*rangeMoveReplayRecordBytes+8192 || target.arena.Used() <= before+2*rangeMoveReplayRecordBytes+8192+payload {
+		t.Fatal("batch omitted declaration or record work/ownership charges")
+	}
+	foreign := source.ns
+	foreign.graph[0] ^= 1
+	refused := rangeMoveReplayNativeReader(t, n.hosts[1][0], 32<<20)
+	if _, err := stageMoveReplayBatch(refused, foreign, refused.ns, [16]byte{91}, batch, rangeMoveReplayStart()); !errors.Is(err, errInvalid) || len(refused.writes) != 0 {
+		t.Fatal("foreign source graph reached batch effects", err)
+	}
+	wrongView := rangeMoveReplayNativeReader(t, n.hosts[1][0], 32<<20)
+	wrongView.ns = source.ns
+	if _, err := exportMoveReplayBatch(wrongView, source.ns, rangeMoveReplayStart(), 64<<10, 16); !errors.Is(err, errInvalid) {
+		t.Fatal("declaration reused on a different native view", err)
+	}
+	undeclared := source.ns
+	undeclared.partition = 999
+	refused = rangeMoveReplayNativeReader(t, n.hosts[1][0], 32<<20)
+	if _, err := stageMoveReplayBatch(refused, undeclared, refused.ns, [16]byte{91}, batch, rangeMoveReplayStart()); !errors.Is(err, errInvalid) || len(refused.writes) != 0 {
+		t.Fatal("undeclared origin reached batch effects", err)
 	}
 }

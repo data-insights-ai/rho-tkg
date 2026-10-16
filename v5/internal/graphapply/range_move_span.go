@@ -326,6 +326,12 @@ func exportMoveReplayBatch(q *reader, n namespace, before rangeMoveReplayCursor,
 		return out, outputBudgetFailure(err)
 	}
 	out.pages = make([]rangeMoveReplayPage, 0, rows)
+	declaration, err := rangeMoveReplayReader(q, n)
+	if err != nil {
+		return rangeMoveReplayBatch{}, err
+	}
+	// One immutable declaration from this exact captured view, not one full
+	// declaration allocation per page. No ownership escapes the atomic batch.
 	// One shared reader ledger/arena, not32 independent full grants. The wire
 	// allowance also pays every subframe cursor/header before another call.
 	size := rangeMoveBatchFramingBytes
@@ -336,7 +342,7 @@ func exportMoveReplayBatch(q *reader, n namespace, before rangeMoveReplayCursor,
 		if remaining < framing+2048 {
 			break
 		}
-		p, err := exportRangeMoveReplayPage(q, n, cursor, raftlog.ReadBudget{Rows: 1, Bytes: remaining - framing})
+		p, err := exportRangeMoveReplayPageDeclared(q, n, cursor, raftlog.ReadBudget{Rows: 1, Bytes: remaining - framing}, declaration)
 		if err != nil {
 			return rangeMoveReplayBatch{}, err
 		}
@@ -366,12 +372,16 @@ func stageMoveReplayBatch(q *reader, origin, target namespace, move [16]byte, b 
 	if q == nil || len(b.pages) == 0 || len(b.pages) > rangeMoveSpanBatchRows {
 		return cursor, errInvalid
 	}
+	declaration, err := rangeMoveReplayReader(q, target)
+	if err != nil {
+		return before, err
+	}
 	for i, p := range b.pages {
 		if !rangeMoveReplaySame(cursor, p.before) || i < len(b.pages)-1 && len(p.key) > 0 && !p.recordDone {
 			return before, errInvalid
 		}
 		start := len(q.writes)
-		if err := stageRangeMoveReplayPage(q, origin, target, move, p); err != nil {
+		if err := stageRangeMoveReplayPageDeclared(q, origin, target, move, p, declaration); err != nil {
 			return before, err
 		}
 		if err := coalesceMoveReplayWrites(q, start); err != nil {

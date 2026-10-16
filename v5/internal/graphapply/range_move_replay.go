@@ -410,6 +410,18 @@ func exportRangeMoveReplayPage(q *reader, source namespace, prior rangeMoveRepla
 	if err != nil {
 		return page, err
 	}
+	return exportRangeMoveReplayPageDeclared(q, source, prior, budget, declaration)
+}
+
+// Called only inside the same captured-view operation that read declaration.
+// Each page still checks its full origin/path and pays all record/output work.
+func exportRangeMoveReplayPageDeclared(q *reader, source namespace, prior rangeMoveReplayCursor, budget raftlog.ReadBudget, declaration graphstore.OwnershipDeclaration) (page rangeMoveReplayPage, err error) {
+	if q == nil || q.view == nil || q.ctx == nil || q.ns != source || !rangeMoveReplayCursorValid(prior) || prior.complete || budget.Rows < 1 || budget.Bytes <= 1024 || budget.Bytes > rangeMoveReplayPageBytes {
+		return page, errInvalid
+	}
+	if err := q.ctx.Err(); err != nil {
+		return page, err
+	}
 	c := prior
 	if c.family == 0 {
 		c = rangeMoveReplayStart()
@@ -565,6 +577,18 @@ func stageRangeMoveReplayPage(q *reader, origin, target namespace, move [16]byte
 	}
 	declaration, err := rangeMoveReplayReader(q, target)
 	if err != nil {
+		return err
+	}
+	return stageRangeMoveReplayPageDeclared(q, origin, target, move, page, declaration)
+}
+
+// The reducer emits only fragment keys and inherited-original keys, so no
+// subframe can change this operation's captured ownership declaration.
+func stageRangeMoveReplayPageDeclared(q *reader, origin, target namespace, move [16]byte, page rangeMoveReplayPage, declaration graphstore.OwnershipDeclaration) error {
+	if q == nil || q.view == nil || q.ctx == nil || q.ns != target || move == ([16]byte{}) || !origin.valid() || origin.graph != target.graph || origin.partition == target.partition || !rangeMoveReplayPageValid(page) || !rangeMoveReplayScopePaths(page.before, origin) || !rangeMoveReplayScopePaths(page.next, origin) {
+		return errInvalid
+	}
+	if err := q.ctx.Err(); err != nil {
 		return err
 	}
 	if _, found := declaration.Partition(origin.partition); !found {
