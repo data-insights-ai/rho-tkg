@@ -317,7 +317,8 @@ def check_scope(a, *, program_roles=None):
     B.processes(e["TargetProcesses"], None, a["Case"], e["Batch"])
     require(type(e["TargetTransportLoss"]) is str and 0 < len(e["TargetTransportLoss"]) <= 4096,
             "actual selected native target transport death")
-    result = Q.check(d, failure_member=2, selected_processes=e["TargetProcesses"], program_roles=program_roles)
+    reader = Q.scope_reader(selected_processes=e["TargetProcesses"], program_roles=program_roles)
+    result = Q.check(d, failure_member=reader, selected_processes=e["TargetProcesses"], program_roles=program_roles)
     originals = {}
     for row in d["Records"]:
         outcome = P.raw(row["Outcome"])

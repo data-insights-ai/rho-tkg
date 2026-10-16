@@ -260,8 +260,24 @@ def program_scope_roles(context):
     require(type(context) is dict and set(context) == {"leaders", "target"}, "explicit authenticated program role context")
     leaders, target = context["leaders"], context["target"]
     require(type(leaders) is tuple and leaders in ((1, 4), (2, 6)) and all(type(v) is int for v in leaders), "actual supported elected leader layout")
-    require(type(target) is int and target in range(1, 7) and target not in leaders and target not in (2, 5), "selected native target preserves caller and retained reader")
+    reader = 3 if leaders[0] == 2 else 2
+    require(type(target) is int and target in range(1, 7) and target not in leaders and target not in (reader, 2, 5), "selected native target preserves caller and retained reader")
     return leaders, target
+
+
+def scope_reader(*, selected_processes=None, program_roles=None):
+    if program_roles is None:
+        return 3 if selected_processes is None else 2
+    require(selected_processes is not None, "fresh role context requires separately authenticated actual process loss")
+    leaders, _ = program_scope_roles(program_roles)
+    return 3 if leaders[0] == 2 else 2
+
+
+def response_incarnation(wire, member, stopped):
+    native = C.process_response(wire)
+    require(type(member) is int and member in stopped and
+            stopped[member][0]["Instance"].endswith("/" + native["incarnation"].hex()),
+            "actual request/result source incarnation")
 
 
 def check(data, *, failure_member=3, selected_processes=None, program_roles=None):
@@ -269,7 +285,7 @@ def check(data, *, failure_member=3, selected_processes=None, program_roles=None
     # Recheck its actual incarnation lineage here before allowing it to explain
     # a prepared reply from the selected process's earlier incarnation. Ordinary
     # check(data) retains its exact actor3/cohort-only contract.
-    require(failure_member == 3 if selected_processes is None else failure_member == 2,
+    require(type(failure_member) is int and failure_member == scope_reader(selected_processes=selected_processes, program_roles=program_roles),
             "ordinary scope reader or explicit fresh campaign reader")
     leaders, selected_target = (1, 4), None
     if program_roles is not None:
@@ -336,8 +352,7 @@ def check(data, *, failure_member=3, selected_processes=None, program_roles=None
         require(stopped[row["Member"]][0]["Instance"].endswith(actual) or
                 selected.get(row["Member"], "").endswith(actual), "prepared reply bound to its actual retired native process")
     for field, member in (("Failure", failure_member), ("PendingCaller", 5), ("Retry", 5)):
-        native = C.process_response(P.raw(data[field]))
-        require(stopped[member][0]["Instance"].endswith("/" + native["incarnation"].hex()), "actual request/result source incarnation")
+        response_incarnation(P.raw(data[field]), member, stopped)
     return dict(mode=data["Mode"], coordinator=8, dataScope=[3], serial_witness=witness, records=len(records),
                 scope="finite genuine six-OS-child P01 source bridge; no full storage/network family or runtime acceptance")
 
