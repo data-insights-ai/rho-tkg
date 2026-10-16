@@ -93,7 +93,7 @@ func TestScalarWireRoundTripKeepsKind(t *testing.T) {
 		"empty":         {},
 		"unknown kind":  {200, 0},
 		"invalid kind":  {byte(ScalarInvalid)},
-		"kind past max": {byte(ScalarDescriptor) + 1},
+		"kind past max": {byte(ScalarList) + 1},
 		"truncated i64": {byte(ScalarI64), 0, 0, 0},
 		"oversize i64":  append([]byte{byte(ScalarI64)}, make([]byte, 9)...),
 		"truncated f64": {byte(ScalarF64), 1},

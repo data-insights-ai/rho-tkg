@@ -62,8 +62,9 @@
 //   - Fallback column. v4 used the entity wire (msgpack) for properties
 //     outside the schema and supported nested slices/maps/temporal values. v5
 //     uses graphstate's kind-preserving wire (Scalar.AppendWire/DecodeWire, length
-//     prefixed; model.go appendValue) and supports only I64, F64, Bool and
-//     String; other values are refused with ErrInvalidRow. Format 2 replaced
+//     prefixed; model.go appendValue) and supports I64, F64, Bool, String, Bytes
+//     and List (Bytes and List have no column: always fallback, so the format
+//     did not change); other values are refused with ErrInvalidRow. Format 2 replaced
 //     the format-1 13-width model (int8..uint64, float32).
 //   - Page index entries cover valid_from, valid_to, tx_from, tx_to and rel_id
 //     (min/max over finite values, flags for non-finite ones).
