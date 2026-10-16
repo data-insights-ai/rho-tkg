@@ -1816,12 +1816,33 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 	emit := func(e allocationEvent) error {
 		var opened *graphProcessPumpCall
 		var openReply allocationReply
-		var replyIDs [16]allocationReadID
-		replyCount := min(len(e.replies), len(replyIDs))
-		if protocolState != nil {
-			for i := range replyCount {
-				replyIDs[i] = e.replies[i].id
+		routingError := func(consumer string, cause error) error {
+			if protocolState == nil {
+				return cause
 			}
+			var replies [16]struct {
+				ID, ProofID          allocationReadID
+				Question, ProofQuery allocationQuery
+				ProofOwner           bool
+				NativeCode           byte
+				NativeCauses         uint16
+				NativeDetail         string
+			}
+			count := min(len(e.replies), len(replies))
+			for i, reply := range e.replies[:count] {
+				actual := &replies[i]
+				actual.ID, actual.Question = reply.id, reply.question
+				actual.ProofOwner = reply.proof.owner == o.host
+				actual.ProofID, actual.ProofQuery = reply.proof.id, reply.proof.question
+				actual.NativeCode, actual.NativeDetail = processError(reply.err)
+				actual.NativeCauses = processCauseMask(reply.err)
+			}
+			var activeID allocationReadID
+			var activeQuery allocationQuery
+			if active != nil {
+				activeID, activeQuery = active.id, active.allocation
+			}
+			return fmt.Errorf("D %s routing: bootstrap=%+v question=%+v ready=%t active=%+v activeQuestion=%+v allocationReplies=%+v total=%d cross=%d cut=%d capacity=%d snapshots=%d: %w", consumer, o.readID, o.question, o.ready, activeID, activeQuery, replies[:count], len(e.replies), len(e.crossReplies), len(e.cutReplies), len(e.capacityReplies), len(e.snapshotSends), cause)
 		}
 		if err := p08.event(&e); err != nil {
 			return err
@@ -1842,10 +1863,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			case sourceOpen:
 				reply, found, err := graphProcessAllocationReply(o, active, &e)
 				if err != nil {
-					if protocolState != nil {
-						return fmt.Errorf("D source allocation routing: active=%+v bootstrap=%+v ready=%t replies=%+v: %w", active.id, o.readID, o.ready, replyIDs[:replyCount], err)
-					}
-					return err
+					return routingError("source allocation", err)
 				}
 				if found {
 					opened, openReply = active, reply
@@ -1890,10 +1908,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			return errInvalid
 		}
 		if err := o.event(e); err != nil {
-			if protocolState != nil {
-				return fmt.Errorf("D bootstrap event routing: bootstrap=%+v ready=%t allocationReplies=%+v cross=%d cut=%d capacity=%d snapshots=%d: %w", o.readID, o.ready, replyIDs[:replyCount], len(e.crossReplies), len(e.cutReplies), len(e.capacityReplies), len(e.snapshotSends), err)
-			}
-			return err
+			return routingError("bootstrap event", err)
 		}
 		if opened != nil {
 			finish(opened, graphProcessPumpReply{allocation: openReply})
