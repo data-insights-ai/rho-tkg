@@ -1242,6 +1242,12 @@ func nativeProtocolCoordinatorCase(t *testing.T, recipe nativeProtocolCoordinato
 	}
 	var native nativeProtocolBatchEvidence
 	if gate != nil {
+		if err := gate.awaitLoss(); err != nil {
+			t.Fatal("P03 selected follower lacks authenticated native receipt/loss", err)
+		}
+		// Keep the genuine Decide reply held while native packets finish. A
+		// full relay drain would wait for that same deliberately held reply.
+		f.packetDrain()
 		native = nativeProtocolFinishBatch(t, f, gate, old, true)
 	}
 	actualD, scope, committed := p03CommittedDecision(f, boundary, proposals[4], leader, recipe.Coordinator)

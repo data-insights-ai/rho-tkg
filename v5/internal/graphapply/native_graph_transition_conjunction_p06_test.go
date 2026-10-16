@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
@@ -709,4 +711,111 @@ func TestNativeConjunctionGateReadTrafficPreservesFourthPrepareCandidate(t *test
 	if err := g.before(ctx, 1, 8, request(sourceSubmit, 1, foreign)); !errors.Is(err, errInvalid) || g.candidates != 1 || g.decodeWork != 4096+32*processFrameBytes || g.arm.Sequence != 0 {
 		t.Fatal("foreign native namespace bypassed paid Submit validation", err)
 	}
+}
+
+func TestNativeConjunctionFollowerReceiptWaitsForAuthenticatedLoss(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+		command := []byte("inert native receipt routing selection; not proposal authority")
+		control := nativeBatchControl{Version: 1, Action: "arm", Cookie: [16]byte{1}, Sequence: 1, Kind: raftlog.StableStorageApplication, Side: "before", CommandSHA256: sha256.Sum256(command)}
+		deadline, _ := ctx.Deadline()
+		arm := nativeBatchReceipt{Version: 1, Profile: nativeBatchProfile, Cookie: control.Cookie, Run: [16]byte{2}, Member: 1, PID: uint64(os.Getpid()), Sequence: 1, Control: control, State: "armed", DeadlineUnixNanos: deadline.UnixNano()}
+		hub := &graphProcessHub{peers: make(map[uint64]*graphProcessMux), idle: make(chan struct{}, 1)}
+		target := &graphProcess{mux: &graphProcessMux{hub: hub, err: io.EOF}}
+		hub.peers[1] = target.mux
+		target.mux.p = target
+		f := &pairedGraphFaultNetwork{t: t, parent: ctx, down: make(map[uint64]bool)}
+		gate := &nativeConjunctionBatchGate{ctx: ctx, f: f, hub: hub, target: target, selector: nativeConjunctionSelector{Actor: 3, Partition: 3, Member: 1, Phase: crossDecide, Kind: control.Kind, Side: control.Side}, dir: t.TempDir(), owner: arm, arm: arm, selected: command, lost: make(chan struct{})}
+		f.conjunctionGate = gate
+		answer := make(chan error, 1)
+		go func() { answer <- gate.awaitLoss() }()
+		synctest.Wait()
+		select {
+		case err := <-answer:
+			t.Fatal("selected follower became ready before its native receipt/loss", err)
+		default:
+		}
+		if gate.readCount() != 0 || gate.evidenceTaken {
+			t.Fatal("waiting consumed missing receipt or transferred selected command")
+		}
+		job := graphProcessPacketJob{origin: 2, packet: replica.Packet{From: 2, To: 1}}
+		if gate.failed(job, io.EOF) {
+			t.Fatal("missing native receipt authenticated transport loss")
+		}
+		// This canonical inert receipt exercises the real file decoder and gate
+		// binding. Only the OS semantic parent proves actual Sync/self-SIGKILL.
+		receipt := arm
+		receipt.State, receipt.Attempts, receipt.Work, receipt.Entries, receipt.Output, receipt.Count = "observing", 1, 4096, 2, 2*nativeBatchReceiptBytes+1024, 1
+		receipt.Events[0] = raftlog.StableStorageObservation{Selection: raftlog.StableStorageSelection{Cookie: control.Cookie, Sequence: control.Sequence, CommandSHA256: control.CommandSHA256}, Kind: control.Kind, Stage: 1, Matches: 1, EntryCount: 1, Position: 1, FirstIndex: 43, LastIndex: 43, Index: 43, Term: 2, CommandBytes: uint64(len(command)), CommandSHA256: control.CommandSHA256, EntryManifestSHA256: [32]byte{3}, BatchBytes: 128, BatchPayloadSHA256: [32]byte{4}, Work: raftlog.StableStorageWork{Entries: 2, Bytes: 4096, OutputBytes: 1024}}
+		if err := nativeBatchPersist(gate.dir, receipt); err != nil {
+			t.Fatal(err)
+		}
+		foreign := job
+		foreign.packet.To = 3
+		if gate.failed(foreign, io.EOF) || gate.failed(job, errLimit) {
+			t.Fatal("foreign target/native refusal authenticated selected loss")
+		}
+		gate.mu.Lock()
+		gate.arm.PID++
+		gate.mu.Unlock()
+		if gate.failed(job, io.EOF) {
+			t.Fatal("foreign process receipt authenticated selected loss")
+		}
+		gate.mu.Lock()
+		gate.arm = arm
+		gate.mu.Unlock()
+		synctest.Wait()
+		select {
+		case err := <-answer:
+			t.Fatal("unmatched loss released native evidence waiter", err)
+		default:
+		}
+		if !gate.failed(job, io.EOF) {
+			t.Fatal("exact native receipt/target loss was refused")
+		}
+		if err := <-answer; err != nil {
+			t.Fatal("authenticated loss did not release original waiter", err)
+		}
+		actualArm, actual, selected, reads, err := gate.evidence()
+		if err != nil || actualArm != arm || actual != receipt || !bytes.Equal(selected, command) || reads != 4 || !f.down[1] {
+			t.Fatal("receipt/command/owner changed across causal wait", err, reads)
+		}
+	})
+}
+
+func TestNativeConjunctionFollowerReceiptWaitKeepsOriginalContext(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+		gate := &nativeConjunctionBatchGate{ctx: ctx, arm: nativeBatchReceipt{Sequence: 1}, selected: []byte{1}, lost: make(chan struct{})}
+		answer := make(chan error, 1)
+		go func() { answer <- gate.awaitLoss() }()
+		synctest.Wait()
+		cancel()
+		if err := <-answer; !errors.Is(err, context.Canceled) || !errors.Is(err, errCrossProcessPending) {
+			t.Fatal("native receipt wait escaped its original cancellation", err)
+		}
+		close(gate.lost)
+		if err := gate.awaitLoss(); !errors.Is(err, context.Canceled) || gate.readCount() != 0 || gate.evidenceTaken {
+			t.Fatal("late native loss revived expired evidence ownership", err)
+		}
+		for _, mutation := range []func(*nativeConjunctionBatchGate){
+			func(g *nativeConjunctionBatchGate) { g.arm.Sequence = 0 },
+			func(g *nativeConjunctionBatchGate) { g.selected = nil },
+			func(g *nativeConjunctionBatchGate) { g.closed = true },
+			func(g *nativeConjunctionBatchGate) { g.refused = true },
+			func(g *nativeConjunctionBatchGate) { g.evidenceTaken = true },
+		} {
+			g := &nativeConjunctionBatchGate{ctx: t.Context(), arm: nativeBatchReceipt{Sequence: 1}, selected: []byte{1}, lost: make(chan struct{})}
+			mutation(g)
+			close(g.lost)
+			if err := g.awaitLoss(); !errors.Is(err, errCrossProcessPending) || g.readCount() != 0 {
+				t.Fatal("unowned native loss gained evidence admission", err)
+			}
+		}
+		if err := (*nativeConjunctionBatchGate)(nil).awaitLoss(); !errors.Is(err, errInvalid) {
+			t.Fatal("nil native gate became evidence owner", err)
+		}
+	})
 }

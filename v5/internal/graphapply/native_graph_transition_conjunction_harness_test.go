@@ -185,7 +185,7 @@ func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partiti
 	var observed crossCommand
 	var actualArm nativeBatchReceipt
 	defer func() {
-		if resultErr == nil || g.f.parent == nil {
+		if resultErr == nil || g.f == nil || g.f.parent == nil {
 			return
 		}
 		g.mu.Lock()
@@ -349,6 +349,33 @@ func (g *nativeConjunctionBatchGate) readCount() uint64 {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.reads
+}
+
+// A successful leader reply need not cover a selected follower's Sync. Only
+// failed's exact receipt/target binding releases this wait; packet/relay idle
+// and caller success are not native evidence. No receipt is read or consumed.
+func (g *nativeConjunctionBatchGate) awaitLoss() error {
+	if g == nil || g.ctx == nil || g.lost == nil {
+		return errInvalid
+	}
+	g.mu.Lock()
+	owned := g.arm.Sequence != 0 && len(g.selected) != 0 && !g.evidenceTaken && !g.closed && !g.refused
+	g.mu.Unlock()
+	if !owned || g.ctx.Err() != nil {
+		return errors.Join(errCrossProcessPending, g.ctx.Err())
+	}
+	select {
+	case <-g.lost:
+	case <-g.ctx.Done():
+		return errors.Join(errCrossProcessPending, g.ctx.Err())
+	}
+	g.mu.Lock()
+	owned = !g.evidenceTaken && !g.closed && !g.refused
+	g.mu.Unlock()
+	if !owned || g.ctx.Err() != nil {
+		return errors.Join(errCrossProcessPending, g.ctx.Err())
+	}
+	return nil
 }
 
 func (g *nativeConjunctionBatchGate) evidence() (nativeBatchReceipt, nativeBatchReceipt, []byte, uint64, error) {
