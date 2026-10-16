@@ -30,7 +30,7 @@ class StateProgramChecks(unittest.TestCase):
 
     def test_native_catchup_reuses_common_join_with_actual_program_cohort(self):
         a,restored,raw = catchup_sample()
-        leader = W.R.response(raw["Catchup"]["LeaderState"])
+        leader = W.R.response(raw["Catchup"]["ActorState"])
         election = native_response(b"",leader["image"],incarnation=leader["incarnation"],stats=leader["stats"],sequence=8,applied=7)
         a["Program"] = dict(Cohort=[dict(Member=m,Instance=f"voter{m}/pid{100+m}/"+(bytes([m])*16).hex()) for m in range(1,7)],
                             Program=dict(Elections=[dict(State=election),{}]))
@@ -38,7 +38,7 @@ class StateProgramChecks(unittest.TestCase):
         self.assertTrue(W.C.replacement_catchup(a,restored,roles))
         for change in (lambda x:x["Program"]["Cohort"][0].update(Instance="foreign-process"),
                        lambda x:x["Program"]["Program"]["Elections"][0].update(State=native_response(b"",leader["image"],stats=leader["stats"],applied=7)),
-                       lambda x:x["Program"]["Program"]["Elections"][0].update(State=raw["Catchup"]["LeaderState"])):
+                       lambda x:x["Program"]["Program"]["Elections"][0].update(State=raw["Catchup"]["ActorState"])):
             bad = copy.deepcopy(a);change(bad)
             self.refused(W.C.replacement_catchup,bad,restored,roles)
 

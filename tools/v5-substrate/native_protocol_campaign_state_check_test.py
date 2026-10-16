@@ -90,7 +90,7 @@ def catchup_sample():
     command,_ = pooled_sample()
     a = dict(Recipe=dict(Family="move",Partition=3),Arm={"native":"arm"},
              Batch=dict(Control=dict(Kind=1),Events=[dict(Index=99)]),Command=encoded(command))
-    proof = dict(Version=1,Leader=1,Arm=a["Arm"],Batch=a["Batch"],Command=a["Command"],LeaderState=state(1,10),
+    proof = dict(Version=1,Actor=1,Arm=a["Arm"],Batch=a["Batch"],Command=a["Command"],ActorState=state(1,10),
                  Voters=[dict(Member=m,PID=100+m,Instance=instance(m),State=state(m,11)) for m in (1,2,3)])
     restored = dict(Member=3,Instance=instance(3),PreviousInstance="old-voter3",Volume="owned/3",RecoveryRaw=state(3,12))
     raw = dict(Member=3,PID=103,Instance=instance(3),PreviousInstance="old-voter3",Volume="owned/3",Ready=True,
@@ -108,13 +108,14 @@ class NativeProtocolStateGuard(unittest.TestCase):
             lambda a,r,p:p.update(ReadyKind="invented"),
             lambda a,r,p:p["Catchup"]["Voters"].pop(),
             lambda a,r,p:p["Catchup"]["Voters"][0].update(Member=True),
-            lambda a,r,p:p["Catchup"].update(Leader=2),
+            lambda a,r,p:p["Catchup"].update(Actor=2),
+            lambda a,r,p:p["Catchup"].update(Leader=1),
             lambda a,r,p:p["Catchup"].update(Command=encoded(b"foreign-original")),
             lambda a,r,p:p["Catchup"].update(Batch={**a["Batch"],"Events":[dict(Index=8)]}),
             lambda a,r,p:p["Catchup"].update(Arm={"foreign":"owner"}),
             lambda a,r,p:p["Catchup"]["Voters"][2].update(Instance="retired-incarnation"),
-            lambda a,r,p:p["Catchup"].update(LeaderState=native_response(b"",C.R.response(p["Catchup"]["LeaderState"])["image"],ready=1)),
-            lambda a,r,p:p["Catchup"]["Voters"][0].update(State=p["Catchup"]["LeaderState"]),
+            lambda a,r,p:p["Catchup"].update(ActorState=native_response(b"",C.R.response(p["Catchup"]["ActorState"])["image"],ready=1)),
+            lambda a,r,p:p["Catchup"]["Voters"][0].update(State=p["Catchup"]["ActorState"]),
             lambda a,r,p:a["Recipe"].update(Family="pin"),
             lambda a,r,p:p.update(PID=999),
         ):

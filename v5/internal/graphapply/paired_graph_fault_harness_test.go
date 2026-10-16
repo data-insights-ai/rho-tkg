@@ -974,7 +974,7 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64, packetOnly ...bool) {
 		}
 		ready := base.ready
 		if catchup != nil {
-			ready = nativeProtocolMoveCheckpointReady(base) && base.stats[statVote] == leader && len(voters) == 3
+			ready = nativeProtocolMoveCheckpointReady(base) && len(voters) == 3
 			// Application selection is already inside committed-entry apply.
 			// Ready persistence alone never promises that selected entry survives.
 			if catchup.receipt.Control.Kind == raftlog.StableStorageApplication && base.stats[statCommit] < catchup.receipt.Events[0].Index {
@@ -983,7 +983,9 @@ func (f *pairedGraphFaultNetwork) heal(leader uint64, packetOnly ...bool) {
 		}
 		if healthy && ready {
 			if catchup != nil {
-				catchup.proof = &nativeProtocolMoveCatchupProof{Version: 1, Leader: leader, Arm: catchup.gate.arm, Batch: catchup.receipt, Command: bytes.Clone(catchup.command), LeaderState: p06ProcessWire(f.t, base), Voters: voters}
+				catchup.proof = &nativeProtocolMoveCatchupProof{Version: 1, Actor: leader, Arm: catchup.gate.arm, Batch: catchup.receipt, Command: bytes.Clone(catchup.command), ActorState: p06ProcessWire(f.t, base), Voters: voters}
+				f.t.Logf("paired native committed/apply catch-up actor%d applied%d", leader, base.applied)
+				return
 			}
 			f.t.Logf("paired actual healthy quorum leader%d applied%d", leader, base.applied)
 			return

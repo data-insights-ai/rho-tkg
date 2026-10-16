@@ -1035,12 +1035,12 @@ type nativeProtocolMoveCatchupVoter struct {
 	State       []byte
 }
 type nativeProtocolMoveCatchupProof struct {
-	Version     uint8
-	Leader      uint64
-	Arm, Batch  nativeBatchReceipt
-	Command     []byte
-	LeaderState []byte
-	Voters      []nativeProtocolMoveCatchupVoter
+	Version    uint8
+	Actor      uint64
+	Arm, Batch nativeBatchReceipt
+	Command    []byte
+	ActorState []byte
+	Voters     []nativeProtocolMoveCatchupVoter
 }
 
 // This live fixture binding permits only native committed/apply catch-up while
@@ -1050,7 +1050,7 @@ type nativeProtocolMoveCatchup struct {
 	gate    *nativeProtocolStateGate
 	receipt nativeBatchReceipt
 	command []byte
-	leader  uint64
+	actor   uint64
 	process *graphProcess
 	proof   *nativeProtocolMoveCatchupProof
 }
@@ -1087,23 +1087,23 @@ func (g *nativeProtocolStateGate) moveCatchup(receipt nativeBatchReceipt) (*nati
 	if err != nil || actual != receipt {
 		return nil, errors.Join(errInvalid, err)
 	}
-	leader := g.f.n.leaders[0]
+	actor := g.f.n.leaders[0]
 	if command.scope.partition == 8 {
-		leader = g.f.n.leaders[1]
+		actor = g.f.n.leaders[1]
 	}
-	return &nativeProtocolMoveCatchup{gate: g, receipt: actual, command: bytes.Clone(g.command), leader: leader, process: g.f.n.all[leader]}, nil
+	return &nativeProtocolMoveCatchup{gate: g, receipt: actual, command: bytes.Clone(g.command), actor: actor, process: g.f.n.all[actor]}, nil
 }
 
-func (c *nativeProtocolMoveCatchup) check(f *pairedGraphFaultNetwork, leader uint64) error {
-	if c == nil || c.gate == nil || c.gate.f != f || f.parent == nil || f.parent.Err() != nil || c.gate.ctx.Err() != nil || leader != c.leader || f.n.all[leader] != c.process || !nativeBatchReceiptValid(c.receipt, c.gate.arm) || !bytes.Equal(c.command, c.gate.command) {
+func (c *nativeProtocolMoveCatchup) check(f *pairedGraphFaultNetwork, actor uint64) error {
+	if c == nil || c.gate == nil || c.gate.f != f || f.parent == nil || f.parent.Err() != nil || c.gate.ctx.Err() != nil || actor != c.actor || f.n.all[actor] != c.process || !nativeBatchReceiptValid(c.receipt, c.gate.arm) || !bytes.Equal(c.command, c.gate.command) {
 		return errInvalid
 	}
 	command, err := decodeRangeMoveCommand(c.command)
-	ns, _ := certifiedProcessNamespace(leader)
+	ns, _ := certifiedProcessNamespace(actor)
 	if err != nil || command.scope.partition != ns.partition || command.scope.semantic != f.nativeAgreement() || c.receipt.Events[0].CommandSHA256 != sha256.Sum256(c.command) {
 		return errors.Join(errInvalid, err)
 	}
-	for id := range f.n.group(leader).nodes {
+	for id := range f.n.group(actor).nodes {
 		f.mu.Lock()
 		dead := f.down[id]
 		f.mu.Unlock()

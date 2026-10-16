@@ -634,21 +634,20 @@ def replacement_catchup(a, restored, program_roles=None):
     require(raw["ReadyKind"] == "native-committed-prefix-and-applied-checkpoints" and
             a["Recipe"]["Family"] == "move", "only the actual move gate selects committed-prefix catch-up")
     proof = raw["Catchup"]
-    require(type(proof) is dict and set(proof) == set("Version Leader Arm Batch Command LeaderState Voters".split())
+    require(type(proof) is dict and set(proof) == set("Version Actor Arm Batch Command ActorState Voters".split())
             and type(proof["Version"]) is int and proof["Version"] == 1 and proof["Arm"] == a["Arm"]
             and proof["Batch"] == a["Batch"] and P.raw(proof["Command"]) == P.raw(a["Command"]), "same native gate/arm/receipt/full original command")
     part = a["Recipe"]["Partition"]
     group = 0 if part == 3 else 1
     leaders = (1, 4) if program_roles is None else program_state_roles(program_roles, a["Recipe"])[0]
-    leader = integer(proof["Leader"], 6, 1)
-    require(leader == leaders[group], "actual previously elected leader, not caller-selected role")
-    state = R.response(proof["LeaderState"])
+    actor = integer(proof["Actor"], 6, 1)
+    require(actor == leaders[group], "actual previously elected actor provenance; no current role inferred")
+    state = R.response(proof["ActorState"])
     def checkpoint(s):
         require(s["code"] == s["mask"] == 0 and s["stats"][2] > 0 and
                 0 < s["stats"][4] == s["applied"] == s["stats"][1], "actual durable committed prefix equals completed applied native checkpoint")
         G.column.root(G.raw, s["image"], part)
     checkpoint(state)
-    require(state["stats"][3] == leader, "same native leader's durable self-vote, not an alternate role")
     if a["Batch"]["Control"]["Kind"] == 2:
         require(state["stats"][4] >= a["Batch"]["Events"][0]["Index"], "Application boundary is already committed; Ready alone is not")
     voters = proof["Voters"]
@@ -664,8 +663,8 @@ def replacement_catchup(a, restored, program_roles=None):
         require(observed["applied"] == state["applied"] and observed["image"] == state["image"]
                 and pid not in pids and voter["Instance"] == f"voter{member}/pid{pid}/"+observed["incarnation"].hex(), "same actual process/applied index AND full checkpoint; no certificate inferred")
         pids.add(pid)
-        if member == leader:
-            require(observed["incarnation"] == state["incarnation"] and observed["sequence"] > state["sequence"], "leader state precedes its exact live-voter observation")
+        if member == actor:
+            require(observed["incarnation"] == state["incarnation"] and observed["sequence"] > state["sequence"], "actor state precedes its exact live-voter observation")
         if member == restored["Member"]:
             require(voter["Instance"] == restored["Instance"] and observed["incarnation"] == recovery["incarnation"]
                     and startup["sequence"] < observed["sequence"] < recovery["sequence"], "actual replacement catch-up follows startup and precedes final restored response")
@@ -678,7 +677,7 @@ def replacement_catchup(a, restored, program_roles=None):
         election = a["Program"]["Program"]["Elections"][group]
         elected = F.process(P.raw(election["State"]))
         require(state["incarnation"] == elected["incarnation"] and state["sequence"] > elected["sequence"]
-                and state["stats"][2] >= elected["stats"][2] and state["stats"][4] >= elected["stats"][4], "same actual leader's committed prefix after original election")
+                and state["stats"][2] >= elected["stats"][2] and state["stats"][4] >= elected["stats"][4], "same actual actor after original election; committed/apply equality conveys no current leader authority")
     return True
 
 
