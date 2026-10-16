@@ -61,6 +61,88 @@ func TestNativeProtocolPendingMoveCatchupUsesCommittedAppliedPrefix(t *testing.T
 	}
 }
 
+func TestNativeProtocolStateActionKeepsActualRetainedOwnership(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	n := collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
+		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 256<<20, 131072
+	}, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4})
+	_, publisher, _, _ := retainedPublisherFromNetwork(t, n)
+	h := n.hosts[0][0]
+	stats := func() [statCount]uint64 {
+		t.Helper()
+		actual, _, _, err := processStats(h.machine.store)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return actual
+	}
+	clean := stats()
+	owner, err := beginRetainedFeed(ctx, publisher, n.requestID(), graphReadRequest{mode: graphReadFresh}, 1, retainedFeedGuardPolicy(nativeProtocolStatePages))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := owner.Close(); err != nil {
+			t.Error("actual retained feed cleanup", err)
+		}
+	}()
+	if _, err := owner.Publish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	held, err := owner.OpenSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := held.Close(); err != nil {
+			t.Error("actual held snapshot cleanup", err)
+		}
+	}()
+	before := stats()
+	if before[statViews] == 0 || before[statViewBytes] == 0 {
+		t.Fatal("genuine feed snapshot did not own native views", before)
+	}
+	proof := n.read(0, allocationQuery{kind: observeAllocator})
+	original, err := h.TransferAllocator(n.requestID(), proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	committed := n.submit(0, original)
+	after := stats()
+	t.Logf("actual retained ownership around allocator transfer: before views=%d viewBytes=%d pins=%d; after views=%d viewBytes=%d pins=%d", before[statViews], before[statViewBytes], before[statPinnedBytes], after[statViews], after[statViewBytes], after[statPinnedBytes])
+	if committed.reason != reasonNone || committed.disposition != applied || !nativeProtocolStateOwnershipUnchanged(before, after) {
+		t.Fatal("genuine retained owner mistaken for operation leak", committed, before, after)
+	}
+	assertCertifiedProjection(t, certifiedView(t, held), 1, true, nil)
+	// A genuinely additional native view is a leak relative to the SAME
+	// observed ownership. Closing it must restore that exact baseline.
+	extra, err := h.machine.store.ApplicationView(h.driver.Applied())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := extra.Close(); err != nil {
+			t.Error("additional native view cleanup", err)
+		}
+	}()
+	if leaked := stats(); nativeProtocolStateOwnershipUnchanged(before, leaked) {
+		t.Fatal("additional actual native view was not detected", before, leaked)
+	}
+	if err := extra.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if recovered := stats(); !nativeProtocolStateOwnershipUnchanged(before, recovered) {
+		t.Fatal("closing additional view did not restore exact baseline", before, recovered)
+	}
+	if err := held.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if released := stats(); nativeProtocolStateOwnershipUnchanged(before, released) || !nativeProtocolStateOwnershipUnchanged(clean, released) {
+		t.Fatal("dropping the existing held owner went undetected", before, released)
+	}
+}
+
 func TestNativeProtocolPooledStateLeaderAndMessagePrograms(t *testing.T) {
 	for _, layout := range []string{"original", "rotated"} {
 		for _, message := range []string{"literal", "delay", "reorder", "duplicate"} {

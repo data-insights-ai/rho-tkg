@@ -855,8 +855,26 @@ func nativeProtocolStateNetwork(t *testing.T, p08 bool) (*certifiedProcessNetwor
 func nativeProtocolStateAction(t *testing.T, n *certifiedProcessNetwork, actor, kind, index uint64, data []byte, bootstrap ...*[32]byte) (outcome, processResponse) {
 	return nativeProtocolStateActionProgram(t, n, actor, kind, index, data, nil, bootstrap...)
 }
+
+func nativeProtocolStateOwnershipUnchanged(before, after [statCount]uint64) bool {
+	return before[statViews] == after[statViews] && before[statViewBytes] == after[statViewBytes] && before[statPinnedBytes] == after[statPinnedBytes]
+}
+
 func nativeProtocolStateActionProgram(t *testing.T, n *certifiedProcessNetwork, actor, kind, index uint64, data []byte, program *nativeProtocolStateProgram, bootstrap ...*[32]byte) (outcome, processResponse) {
 	t.Helper()
+	// Source factories and old-cut/feed owners may remain live deliberately.
+	// Observe their actual native accounting before the factory runs, then
+	// require the committed action to preserve it on the SAME child instance.
+	type ownership struct {
+		process *graphProcess
+		state   processResponse
+	}
+	before := make(map[uint64]ownership, len(n.all))
+	if kind != certifiedOpenRecipient {
+		for id, p := range n.all {
+			before[id] = ownership{p, p.call(t, processRequest{op: processStateOp})}
+		}
+	}
 	r := n.all[actor].call(t, processRequest{op: processCertifiedAction, entity: kind, index: index, data: data})
 	if kind == certifiedOpenRecipient {
 		if len(r.aux) != 0 {
@@ -905,8 +923,9 @@ func nativeProtocolStateActionProgram(t *testing.T, n *certifiedProcessNetwork, 
 		if !bytes.Equal(got.outcome, result.outcome) || !bytes.Equal(got.changes, result.changes) {
 			t.Fatal("certified process voter outcome/CDC mismatch", id)
 		}
-		if actual.stats[statViews] != 0 || actual.stats[statPinnedBytes] != 0 {
-			t.Fatal("certified process operation leaked views/pins", id)
+		owned := before[id]
+		if owned.process != p || owned.state.incarnation != actual.incarnation || !nativeProtocolStateOwnershipUnchanged(owned.state.stats, actual.stats) {
+			t.Fatalf("certified process operation changed retained ownership: actor=%d kind=%d member=%d applied=%d before(instance=%x views=%d viewBytes=%d pins=%d) after(instance=%x views=%d viewBytes=%d pins=%d)", actor, kind, id, state.applied, owned.state.incarnation, owned.state.stats[statViews], owned.state.stats[statViewBytes], owned.state.stats[statPinnedBytes], actual.incarnation, actual.stats[statViews], actual.stats[statViewBytes], actual.stats[statPinnedBytes])
 		}
 	}
 	if kind != certifiedCreateCrossEdge && o.reason != reasonNone {
