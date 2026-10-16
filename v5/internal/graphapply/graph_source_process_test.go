@@ -724,7 +724,14 @@ func (m *graphProcessMux) relayLoop() {
 			}
 			cancel()
 			mask := graphErrorMask(err)
-			_, sendErr := m.send(processRequest{op: processSourceReply, index: e.sequence, entity: uint64(mask), data: r.aux}, nil)
+			body := r.aux
+			if err != nil {
+				// A lost transport reply carries no received native frame. The
+				// observer above may retain the actual bytes as inert evidence;
+				// sending them with an error violates the child's reply grammar.
+				body = nil
+			}
+			_, sendErr := m.send(processRequest{op: processSourceReply, index: e.sequence, entity: uint64(mask), data: body}, nil)
 			m.mu.Lock()
 			delete(m.relays, e.sequence)
 			m.hub.changed()
@@ -959,6 +966,23 @@ type graphProcessChildRelay struct {
 	next    uint64
 	pending map[uint64]chan graphProcessPumpReply
 	ctx     context.Context
+}
+
+func (o *graphProcessChildRelay) deliver(r processRequest) error {
+	if r.entity>>len(graphWireCauses) != 0 || r.entity != 0 && len(r.data) != 0 {
+		return errCorrupt
+	}
+	o.mu.Lock()
+	ch := o.pending[r.index]
+	o.mu.Unlock()
+	if ch != nil {
+		var replyErr error
+		if r.entity != 0 {
+			replyErr = graphWireError{uint16(r.entity)}
+		}
+		ch <- graphProcessPumpReply{body: bytes.Clone(r.data), err: replyErr}
+	}
+	return nil
 }
 
 func (p *graphProcessChildTransport) Peer() graphPeerIdentity { return p.peer }
@@ -2718,20 +2742,7 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 					response.aux, e = encodeCertifiedProcessFact(fact)
 				}
 			case processSourceReply:
-				if r.entity>>len(graphWireCauses) != 0 || r.entity != 0 && len(r.data) != 0 {
-					e = errCorrupt
-					break
-				}
-				relay.mu.Lock()
-				ch := relay.pending[r.index]
-				relay.mu.Unlock()
-				if ch != nil {
-					var replyErr error
-					if r.entity != 0 {
-						replyErr = graphWireError{uint16(r.entity)}
-					}
-					ch <- graphProcessPumpReply{body: bytes.Clone(r.data), err: replyErr}
-				}
+				e = relay.deliver(r)
 			case processSourceCancel:
 				if decisionBarrier != nil && decisionBarrier.sequence == r.index {
 					request := *decisionBarrier

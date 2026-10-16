@@ -1,18 +1,20 @@
 package graphapply
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"sync"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstore"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
 // These duplex pipes exercise the actual embedding mux/framing, not graph
 // authority. Withholding a terminal response is an explicit transport schedule.
-func processCancelWireFixture(t *testing.T) (*graphProcessMux, func() processRequest, func(processRequest, error)) {
+func processCancelWireFixture(t *testing.T) (*graphProcessMux, func() processRequest, func(processRequest, error, ...[]byte)) {
 	t.Helper()
 	requestReader, requestWriter := io.Pipe()
 	responseReader, responseWriter := io.Pipe()
@@ -42,9 +44,13 @@ func processCancelWireFixture(t *testing.T) (*graphProcessMux, func() processReq
 		}
 		return r
 	}
-	response := func(r processRequest, err error) {
+	response := func(r processRequest, err error, aux ...[]byte) {
 		t.Helper()
-		body, encodeErr := encodeProcessResponse(processResponse{incarnation: p.incarnation, sequence: r.sequence})
+		out := processResponse{incarnation: p.incarnation, sequence: r.sequence}
+		if len(aux) == 1 {
+			out.aux = aux[0]
+		}
+		body, encodeErr := encodeProcessResponse(out)
 		if encodeErr != nil {
 			t.Fatal(encodeErr)
 		}
@@ -54,6 +60,88 @@ func processCancelWireFixture(t *testing.T) (*graphProcessMux, func() processReq
 		}
 	}
 	return m, request, response
+}
+
+func TestGraphSourceProcessRelayLossDeliversErrorWithoutCapturedReply(t *testing.T) {
+	for _, loss := range []bool{true, false} {
+		t.Run(map[bool]string{true: "lost-reply", false: "native-refusal"}[loss], func(t *testing.T) {
+			origin, receive, _ := processCancelWireFixture(t)
+			target, request, reply := processCancelWireFixture(t)
+			origin.id = 2
+			origin.hub.peers = map[uint64]*graphProcessMux{4: target}
+			origin.relayQueue = make(chan graphProcessRelayJob, 1)
+			// Inert canonical GSR bytes test the two transport layers. A native
+			// refusal remains a received frame, not a lost transport reply.
+			n := newCertifiedGraphNetwork(t)
+			peer := graphPeerIdentity{scope: n.hosts[1][0].machine.scope(), voter: 4}
+			response := graphWireResponse{peer: peer, issuer: [16]byte{1}, kind: sourceCrossRead, sequence: 7, nonce: [16]byte{2}, body: []byte("captured native reply")}
+			if !loss {
+				response.body, response.err = nil, errInvalid
+			}
+			wire, err := encodeGraphWireResponse(response)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var captured []byte
+			origin.hub.afterRelay = func(ctx context.Context, actor, partition uint64, sent, received []byte) error {
+				if actor != 2 || partition != 8 || !bytes.Equal(sent, []byte("original question")) {
+					return errCorrupt
+				}
+				captured = bytes.Clone(received)
+				if loss {
+					return graphstore.ErrSourceUnavailable
+				}
+				return nil
+			}
+			done := make(chan struct{})
+			go func() { defer close(done); origin.relayLoop() }()
+			t.Cleanup(func() { origin.hub.cancel(); <-done })
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			origin.relayQueue <- graphProcessRelayJob{envelope: graphProcessEnvelope{sequence: 19, target: 8, body: []byte("original question")}, ctx: ctx, cancel: cancel}
+			requested := request()
+			if requested.op != processSourceServe || requested.entity != 2 || !bytes.Equal(requested.data, []byte("original question")) {
+				t.Fatal("actual mux changed source question", requested)
+			}
+			reply(requested, nil, wire)
+			forwarded := receive()
+			if forwarded.op != processSourceReply || forwarded.index != 19 || !bytes.Equal(captured, wire) {
+				t.Fatal("actual mux lost reply correlation/captured evidence", forwarded)
+			}
+			pending := make(chan graphProcessPumpReply, 1)
+			child := &graphProcessChildRelay{pending: map[uint64]chan graphProcessPumpReply{19: pending}}
+			if err := child.deliver(forwarded); err != nil {
+				t.Fatal("actual relay produced undeliverable child grammar", err)
+			}
+			got := <-pending
+			if loss {
+				if !errors.Is(got.err, graphstore.ErrSourceUnavailable) || graphErrorMask(got.err) != graphErrorMask(graphstore.ErrSourceUnavailable) || len(got.body) != 0 {
+					t.Fatal("lost reply smuggled native authority or changed refusal", got.err)
+				}
+			} else {
+				decoded, err := decodeGraphWireResponse(got.body)
+				if got.err != nil || forwarded.entity != 0 || !bytes.Equal(got.body, wire) || err != nil || !errors.Is(decoded.err, errInvalid) {
+					t.Fatal("received native refusal became transport loss", got.err, err)
+				}
+			}
+		})
+	}
+}
+
+func TestGraphSourceProcessRelayMalformedErrorCannotConsumePending(t *testing.T) {
+	for _, request := range []processRequest{
+		{index: 7, entity: uint64(graphErrorMask(graphstore.ErrSourceUnavailable)), data: []byte("forged success")},
+		{index: 7, entity: uint64(1) << len(graphWireCauses)},
+	} {
+		pending := make(chan graphProcessPumpReply, 1)
+		child := &graphProcessChildRelay{pending: map[uint64]chan graphProcessPumpReply{7: pending}}
+		if err := child.deliver(request); !errors.Is(err, errCorrupt) || len(pending) != 0 {
+			t.Fatal("malformed error consumed pending source request", err)
+		}
+		if err := child.deliver(processRequest{index: 8}); err != nil || len(pending) != 0 {
+			t.Fatal("foreign reply substituted for original request", err)
+		}
+	}
 }
 
 func TestGraphSourceProcessCanceledExchangeRetainsOriginalUntilTerminal(t *testing.T) {
