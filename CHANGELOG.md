@@ -450,6 +450,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Internal v5 retained-feed cursors now decode nonempty participant vectors
+  within a bound derived from their validated bytes. Native reads fund decoded
+  ownership and canonical scratch in the same output arena, preventing feed
+  initialization from stopping replicas on a zero decoder allowance.
+
 - Internal v5 local writes now share one output budget with collected and
   pooled initialization. Their first write no longer fails on a second budget
   join; output-limit refusal remains atomic and retained views remain unchanged.

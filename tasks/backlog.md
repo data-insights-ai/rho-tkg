@@ -1228,16 +1228,23 @@ The [integrated follow-up at `659bdad5`](evidence/v2-integrated-checkpoint-20261
 passes the selected rotated/reordered P06 decision case and both actual
 snapshot-sender interruption cases, including their complete independent
 history/cut oracles. Five direct Go guards and the collected/pooled production
-budget regressions pass. The pooled-state case still fails during feed
-publication: source-unavailable/pending at the elected remote leader persists
-until its original 300-second deadline, before the selected move interruption.
-All owned processes exit without forced cleanup; that state case nevertheless
-reports two nonclean child exits and is not accepted. The [subsequent corrections](evidence/v2-integrated-checkpoint-20261016/corrections-3ebb46ac.json)
+budget regressions pass. A later production correction funds nonempty retained-feed cursor decoding;
+publication now passes in the real pooled quorum and the selected OS case.
+That OS case next fails after 4.41 seconds in NPS Close: compound orchestration
+occupies the one primitive cleanup slot needed by its nested native Close RPC.
+That run's six children exit cleanly without forced cleanup. The classification
+correction is integrated at `124562cb`, preserving the same two ordinary/one
+primitive cleanup slots and terminal context. Its direct regression passes;
+the author OS run clears Close and next fails after 5.52 seconds on a local
+allocator proof requested after rotation. Capture of the genuine original-owner
+proposal before election and full case qualification remain open. The [subsequent corrections](evidence/v2-integrated-checkpoint-20261016/corrections-3ebb46ac.json)
 restore shared-client context, prepare genuine pooled intents and expose early
-move errors; all three direct regression tests pass independently. A current-disk
-torn-WAL case also passes with the unchanged complete oracle after correcting
-replacement-local historical source admission. The synced-image counterpart
-fails before bootstrap and remains under diagnosis. No full process-family acceptance, measurement, engine selection or V2 closure
+move errors; all three direct regression tests pass independently. The [five-leaf storage qualification](evidence/v2-integrated-checkpoint-20261016/qualification-264ec502.json)
+passes current/synced WAL recovery, WAL/manifest corruption and OPTIONS rename
+in Go and explicit independent Python checks. This receipt corrects the earlier
+claim that Go invoked the WAL checker automatically; all five complete artifacts,
+commands and cleanup reports are retained. These selected leaves do not close D.
+No full process-family acceptance, measurement, engine selection or V2 closure
 follows from these focused checkpoints.
 FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing

@@ -1,0 +1,31 @@
+Compilation (cwd respective author worktree/v5):
+env GOWORK=off GOTOOLCHAIN=local GOMAXPROCS=2 GOMEMLIMIT=2GiB GOFLAGS=-p=1 /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -c -vet=off -o <binary> ./internal/graphapply
+
+Each actual process leaf used a separate invocation, cwd respective author worktree/v5/internal/graphapply:
+env GOMAXPROCS=2 GOMEMLIMIT=2GiB RHO_GRAPH_PROCESS_ARTIFACT=<leaf>/artifacts TMPDIR=<leaf>/tmp python3 -B ../../../tools/v5-substrate/process_watchdog.py --rss-mib 4096 --seconds 120 --report <leaf>/report.json -- <binary> -test.v -test.count=1 -test.timeout=90s '<filter>'
+
+Actual substitutions (all prefixes canonical /private/var/tmp):
+1. Author cba20e3f /var/tmp/rho-v5-fault-replacement-source-20261016:
+leaf=/private/var/tmp/rho-v5-fault-replacement-evidence-20261016/wal-current
+binary=/private/var/tmp/rho-v5-fault-replacement-evidence-20261016/graphapply.test
+filter=-test.run=^TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage$/^torn-wal-current-disk$
+2. Author 2ff16f9b /var/tmp/rho-v5-durable-parent-fix-20261016:
+leaf=/private/var/tmp/rho-v5-durable-parent-evidence-20261016/wal-synced
+binary=/private/var/tmp/rho-v5-durable-parent-evidence-20261016/graphapply.test
+filter=-test.run=^TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage$/^torn-wal-synced-image$
+3. Author 233fab61 /var/tmp/rho-v5-native-refusal-diagnostic-20261016:
+leaf=/private/var/tmp/rho-v5-durable-parent-evidence-20261016/corrupt-log-fixed
+binary=/private/var/tmp/rho-v5-durable-parent-evidence-20261016/graphapply-refusal.test
+filter=-test.run=^TestNativeFaultFamilyCorruptedDurableNativeRecordsRefuseBeforeReady$/^\.log$
+4. Same author/binary, leaf=/private/var/tmp/rho-v5-durable-parent-evidence-20261016/corrupt-manifest
+filter=-test.run=^TestNativeFaultFamilyCorruptedDurableNativeRecordsRefuseBeforeReady$/^manifest$
+5. Same author/binary, leaf=/private/var/tmp/rho-v5-durable-parent-evidence-20261016/options
+filter=-test.run=^TestNativeFaultFamilyOptionsPublicationRenameFailsActualReopen$
+
+Explicit independent oracles (not embedded by Go; each check covers full artifact):
+python3 -B tools/v5-substrate/native_fault_family_check.py /private/var/tmp/rho-v5-fault-replacement-evidence-20261016/wal-current/artifacts/rho-paired-graph-fault-322877242/native-fault-family-torn-wal-current-disk.jsonl /private/var/tmp/rho-v5-durable-parent-evidence-20261016/wal-synced/artifacts/rho-paired-graph-fault-1957685434/native-fault-family-torn-wal-synced-image.jsonl
+# cwd producer worktree; log oracle-wal2.log
+python3 -B tools/v5-substrate/native_fault_family_check.py /private/var/tmp/rho-v5-durable-parent-evidence-20261016/corrupt-log-fixed/artifacts/rho-paired-graph-fault-2874065373/native-fault-family-durable-native-wal-corruption.jsonl /private/var/tmp/rho-v5-durable-parent-evidence-20261016/corrupt-manifest/artifacts/rho-paired-graph-fault-2297285775/native-fault-family-durable-native-manifest-corruption.jsonl
+# cwd b1b5ff02 /var/tmp/rho-v5-native-corruption-oracle-20261016; log /private/var/tmp/rho-v5-corruption-oracle-evidence-20261016/artifacts-green.log
+python3 -B tools/v5-substrate/native_fault_family_check.py /private/var/tmp/rho-v5-durable-parent-evidence-20261016/options/artifacts/rho-paired-graph-fault-2682865731/native-fault-family-options-rename-during-reopen.jsonl
+# cwd b1b5ff02 worktree; log options/oracle.log

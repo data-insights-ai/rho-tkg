@@ -1,0 +1,31 @@
+=== RUN   TestNativeFaultFamilyCorruptedDurableNativeRecordsRefuseBeforeReady
+=== RUN   TestNativeFaultFamilyCorruptedDurableNativeRecordsRefuseBeforeReady/manifest
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=1 identity=6f7a95e29cdfb104000000000000000a index=3 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=8 kind=1 identity=6f7a95e29cdfb1040000000000000018 index=3 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=2 identity=6f7a95e29cdfb104000000000000001d index=4 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=6f7a95e29cdfb104000000000000002b index=5 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=6f7a95e29cdfb1040000000000000039 index=6 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=6f7a95e29cdfb1040000000000000047 index=7 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=6f7a95e29cdfb1040000000000000055 index=8 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=4 identity=6f7a95e29cdfb104000000000000006c index=9 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=5 identity=6f7a95e29cdfb1040000000000000079 index=10 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=4 target=3 kind=2 identity=d6dfe57311bea1980000000000000017 index=11 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=6f7a95e29cdfb1040000000000000090 index=12 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=8 kind=3 identity=6f7a95e29cdfb104000000000000009a index=4 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=4 target=3 kind=3 identity=d6dfe57311bea1980000000000000025 index=13 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=6f7a95e29cdfb10400000000000000a8 index=14 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=8 kind=3 identity=6f7a95e29cdfb10400000000000000b6 index=5 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=4 identity=6f7a95e29cdfb10400000000000000bf index=15 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=8 kind=5 identity=6f7a95e29cdfb10400000000000000cc index=6 reason=0
+    native_graph_fault_family_test.go:700: paired SIGKILL voter1 pid84586 reaped=true
+    native_graph_fault_family_test.go:738: paired elected actual leader2 round10 while1 down
+    paired_graph_fault_harness_test.go:907: paired heal delivered packet1 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:907: paired heal delivered packet2 2->1 typeMsgApp term3 logTerm2 index29 commit30 rejectfalse hint0 entries1 decode<nil>
+    paired_graph_fault_harness_test.go:910: paired heal actual entry index30 term3 typeEntryNormal bytes0 prefix
+    paired_graph_fault_harness_test.go:907: paired heal delivered packet3 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit30 rejectfalse hint0 entries0 decode<nil>
+    native_graph_fault_family_test.go:740: paired actual healthy quorum leader2 applied30
+    native_graph_fault_family_test.go:762: native composed D genuine source artifact /private/var/tmp/rho-v5-durable-parent-evidence-20261016/corrupt-manifest/artifacts/rho-paired-graph-fault-2297285775/native-fault-family-durable-native-manifest-corruption.jsonl
+    paired_graph_fault_harness_test.go:445: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=4511 bootstrapPackets=286 admitted=397312
+--- PASS: TestNativeFaultFamilyCorruptedDurableNativeRecordsRefuseBeforeReady (11.85s)
+    --- PASS: TestNativeFaultFamilyCorruptedDurableNativeRecordsRefuseBeforeReady/manifest (11.85s)
+PASS

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "scope": "Finite correctness components only. Not full D, process-program inventory, V2, engine decision, cost or release acceptance.",
+  "source_commit": "124562cb9455a80870084e6b7378db6b11cdf1b7",
+  "source_changes": {
+    "51e65388": "Modeled filesystem permits only exact original parent metadata and real Sync, without publishing native names.",
+    "0b5e5f3b": "Fund nonempty retained-feed cursor decoding and canonical scratch in existing caller arena.",
+    "cefc2c5c": "Check real-quorum feed owner cleanup errors.",
+    "a0a7f840": "Emit exact actual native Open refusal error after durable typed receipt, preserving strict diagnostic binding.",
+    "264ec502": "Join corruption witness to actual typed GCS Resolve source, not later certificate control.",
+    "124562cb": "Compound NPS terminal operations retain cleanup context in existing ordinary worker lane; primitive nested cleanup keeps original reserved slot."
+  },
+  "root_results": {
+    "direct_go": "Five selected parents PASS: three modeled-filesystem guards plus participant cursor adversarial codec and real pooled quorum publication.",
+    "python_guards": "16 PASS on integrated oracle.",
+    "five_D_oracles": "All five complete individual artifacts PASS independent root Python execution, including serial/cut/native evidence. complete_slice=false: broader D inventory remains open.",
+    "state_process": "FAIL after4.41s at NPS close; publication now completes. All six children exited cleanly without forced cleanup. Actual nested native Close is refused by shared one-slot cleanup worker arbitration; correction pending.",
+    "state_classifier_author_run": "Direct encoded-control regression RED\u2192GREEN; OS case clears previous close failure and fails5.52s later at allocator proof request after election. All six reaped, five clean; no forced cleanup. This author-run is not root/full case acceptance."
+  },
+  "correction_to_prior_receipt": "corrections-3ebb46ac.json incorrectly described the WAL Go test as invoking an embedded independent checker. It writes the artifact only. Root subsequently executed the separate full checker successfully; the explicit command/report and all five artifacts are retained here. Earlier Go logs are unchanged.",
+  "state_process_binary": {
+    "source_commit": "cefc2c5c",
+    "sha256": "b229045294603e8d07c73bfd9d126e978c2bfe9296e36b48165bc5f7c5ab19b8",
+    "all_owned_exited": true,
+    "forced_cleanup": false
+  },
+  "remaining": "Fix rotated fixture allocator-proof capture/retained proposal ownership, then full existing correctness inventories, tiny native/FDB counterpart qualification, required measurements/engine verdict and final gates.",
+  "files_sha256": {
+    "cursor-parent-guards-cefc2c5c.log": "1d576e73b2d5705fc86a704d6e7f1012ab9051e28311c7204e9d53cae4dcd9d2",
+    "cursor-parent-guards-cefc2c5c.json": "cda9a7522c33dad4748882f113b643f468d7be17f78e0423647fcc74a2cbc7b8",
+    "d-five-oracles-264ec502.log": "edef5894c1182b2eb9a316c3f7389c426cecca406c00c597e3643ea4ee30353d",
+    "d-five-oracles-264ec502.json": "ad9a8d191477f433f75bc858aa7694183280aa60309d9fea9a53cd50ede4f7a7",
+    "corruption-oracle-guards.log": "f05c9dcb3ef455e95549d9840c0a8e99739ca260b9eed5a9c5a02556aeaec053",
+    "state-cursor-fixed-cefc2c5c.log": "94f655ef9e0dbb260173198df729eea4ebe2beb7f82490c55391d7132f4d5d90",
+    "state-cursor-fixed-cefc2c5c.json": "ee442dc8934205ec042aa75dc98b5dda73905144f6379394383b80dd448cc904",
+    "d-five-author-qualification.json": "99e8e6dc23a6fa22b7853fe840fdb413b327d393367220500f7af64b18b6b004",
+    "d-five-author-commands.txt": "04b78b8dd8cce9d5d3509609ee42bd57a07fb4cf23b49c6a3576ef5737f6799b",
+    "d-five-torn-wal-current-disk.jsonl": "5116c4d9c823e5efdb9cfcf82cd754a030cafceff50ab288b6b4d3554f0cd166",
+    "d-five-torn-wal-current-disk.log": "96ad798b2b2a7172180d49f4bc533bad7cfdcffa3a2dfc6c9ad397d0f955fc53",
+    "d-five-torn-wal-current-disk-watchdog.json": "ce2c82466e23dfed0ef74d91e40d6f8d561644a0c1994b322eb2b02ace9ae3b6",
+    "d-five-torn-wal-synced-image.jsonl": "cf64fcc64127317124cf94c81df5c207715bddff5d458059452593a6f104b091",
+    "d-five-torn-wal-synced-image.log": "bcc80d5b5d9d748343d4baa0f1698bb213c592efb4bd5a8d13ae39111d7391cd",
+    "d-five-torn-wal-synced-image-watchdog.json": "1255b0efdff63bc162fea3470e9b2fce4c8d7aa4f7860a9bea2650e6230c250a",
+    "d-five-durable-native-wal-corruption.jsonl": "2aab4fc59fb40bedad8465c227a336a95099f4a69e3083bdacc91b1f1afc04ca",
+    "d-five-durable-native-wal-corruption.log": "891360ee9214f1163b731c96ade644b8a4fe0248d38e7d4083fbe0289489a65e",
+    "d-five-durable-native-wal-corruption-watchdog.json": "0960f0aa8190fb32690983a7192ea145dedb7ffb1d91b8f7d7c1c89b78727188",
+    "d-five-durable-native-manifest-corruption.jsonl": "cbd9ea5cee0c964e647523dd03cd374e2d2b1104d371502afd31d9001ac2de66",
+    "d-five-durable-native-manifest-corruption.log": "49bf48c010f869a691e35df6050d7af86b438d48a39069039c7b072bfd2002ae",
+    "d-five-durable-native-manifest-corruption-watchdog.json": "b4d7f52d1e969bbd4a07211801184a1775c5e99ce1e8623d5e0ccaac4bc93ced",
+    "d-five-options-rename-during-reopen.jsonl": "0b1d0a6b6baa0b684bf2888056d78a960964c8c273a51a78671409ed57e5ea8d",
+    "d-five-options-rename-during-reopen.log": "116884602ab128a3ce1d29d140de3df2ed4bf094c499985c4ae3980d9599e340",
+    "d-five-options-rename-during-reopen-watchdog.json": "6aa7557edad44640f04327555b201807f0d26311a366eeb613bb74e47a84980f",
+    "state-worker-red-d2916602.log": "255da92e3c71aad94d51ea00d83851e045b9144732a30d00f18c2de16d3bcc3f",
+    "state-worker-guard-d2916602.log": "7d2df345ebd148f24707f80cf557c7c726bb3ae6e85d43583bf5af481db734a6",
+    "state-worker-process-d2916602.log": "f28057b4342b7dd80c16557f9b4f75addb1e629a9d674a98fe5d18be13389542",
+    "state-worker-process-d2916602.json": "a5fd68caa348c637c10a6beae7b2893a58aaf720d66f55a7a2929e18393e12ec"
+  },
+  "oracle_source_commit": "264ec502"
+}

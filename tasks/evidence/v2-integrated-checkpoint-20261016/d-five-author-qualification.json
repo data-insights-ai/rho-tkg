@@ -1,0 +1,19 @@
+{
+  "version":1,
+  "scope":"Five requested existing D leaves only; explicit synchronized-image model, no physical power-loss/full V2 acceptance or workload/capacity verdict.",
+  "sourceCommits":["cba20e3fc676732f727e0dba9f863d998a4b3bf9","2ff16f9bb35b7cb749795074ad2b14b21d5aafd9","233fab61e02a0ed279ac7eb359257cbf6bc2990e","b1b5ff021b875ee4f022d1026f0bfb0b4fe7b241"],
+  "commands":{"file":"commands.txt","sha256":"04b78b8dd8cce9d5d3509609ee42bd57a07fb4cf23b49c6a3576ef5737f6799b"},
+  "binary":"graphapply-refusal.test",
+  "binarySHA256":"eead5130702e677d517415930c2a3bb1004dcd3dc058ee53029ed2105eee9aed",
+  "results":[
+    {"case":"torn-wal-current-disk","GoSeconds":4.74,"Go":"PASS","Python":"PASS explicit complete oracle-wal2.log","artifactSHA256":"5116c4d9c823e5efdb9cfcf82cd754a030cafceff50ab288b6b4d3554f0cd166"},
+    {"case":"torn-wal-synced-image","GoSeconds":13.26,"Go":"PASS","Python":"PASS explicit complete oracle-wal2.log","artifactSHA256":"cf64fcc64127317124cf94c81df5c207715bddff5d458059452593a6f104b091"},
+    {"case":"durable-native-wal-corruption","GoSeconds":11.03,"Go":"PASS","Python":"PASS explicit complete corruption-oracle artifacts-green.log","artifactSHA256":"2aab4fc59fb40bedad8465c227a336a95099f4a69e3083bdacc91b1f1afc04ca"},
+    {"case":"durable-native-manifest-corruption","GoSeconds":11.85,"Go":"PASS","Python":"PASS explicit complete corruption-oracle artifacts-green.log","artifactSHA256":"cbd9ea5cee0c964e647523dd03cd374e2d2b1104d371502afd31d9001ac2de66"},
+    {"case":"options-rename-during-reopen","GoSeconds":3.40,"Go":"PASS","Python":"PASS explicit complete options/oracle.log","artifact":"options/artifacts/rho-paired-graph-fault-2682865731/native-fault-family-options-rename-during-reopen.jsonl","artifactSHA256":"0b1d0a6b6baa0b684bf2888056d78a960964c8c273a51a78671409ed57e5ea8d","logSHA256":"116884602ab128a3ce1d29d140de3df2ed4bf094c499985c4ae3980d9599e340","reportSHA256":"6aa7557edad44640f04327555b201807f0d26311a366eeb613bb74e47a84980f","oracleSHA256":"648d93007a60c843221d535981354df766b5582d0131680bd5f86124e3a48035"}
+  ],
+  "cleanup":"Every requested leaf watchdog reports all_owned_exited=true, forced_cleanup=false; actual failed pre-Ready candidates separately awaited/reaped by strict helper. All final commands exit0. Heavy slot released.",
+  "corrections":"Initial synced bootstrap and diagnostic-binding REDs retained; full Python corruption RED retained. No caps raised, parser weakened, native history replaced or failing cases skipped.",
+  "sourceReceipts":["/private/var/tmp/rho-v5-fault-replacement-evidence-20261016/receipt.json","source-receipt.json","refusal-source-receipt.json","/private/var/tmp/rho-v5-corruption-oracle-evidence-20261016/receipt.json"],
+  "compactGuards":"Three existing TestNativeDurable guards PASS; 16 independent Python grammar guards PASS; pinned Go1.26.9 compilation/gofmt and Git whitespace clean."
+}

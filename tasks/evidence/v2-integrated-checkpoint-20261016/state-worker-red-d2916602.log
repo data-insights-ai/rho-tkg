@@ -1,0 +1,5 @@
+--- FAIL: TestNativeProtocolStateCompoundCleanupKeepsPrimitiveControlSlot (0.00s)
+    native_graph_protocol_campaign_state_program_test.go:228: compound cleanup occupies primitive slot or loses terminal lifetime close true true
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	0.452s
+FAIL
