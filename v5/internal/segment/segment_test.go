@@ -66,8 +66,9 @@ func corpus(tb testing.TB, n int, seed uint64) []Row {
 		} else {
 			id += 1 + int64(rng.IntN(1<<20))
 		}
+		rowID := id
 		if i == 3 {
-			id = math.MaxInt64 - 1
+			rowID = math.MaxInt64 - 1
 		}
 		s, e := rng.IntN(len(nodes)), rng.IntN(len(nodes))
 		var props []Property
@@ -143,7 +144,7 @@ func corpus(tb testing.TB, n int, seed uint64) []Row {
 			txTo = Finite(v + 60_000)
 		}
 		rows = append(rows, Row{
-			ID: types.RelID(id), Start: types.NodeID(nodes[s]), End: types.NodeID(nodes[e]), Revision: rev,
+			ID: types.RelID(rowID), Start: types.NodeID(nodes[s]), End: types.NodeID(nodes[e]), Revision: rev,
 			ValidFrom: vf, ValidTo: vt, TxFrom: tx, TxTo: txTo, Props: props,
 		})
 	}
@@ -423,6 +424,11 @@ func TestRowHash_CoversEveryField(t *testing.T) {
 			t.Fatalf("mutation %q hashes like %q", name, prev)
 		}
 		seen[h] = name
+	}
+	lo, hi := base, base
+	lo.ValidTo, hi.ValidTo = NegInf(), PosInf() // same slot, different infinity
+	if a, _ := RowHash(testType, &lo); a == h0 {
+		t.Fatal("-inf and +inf valid_to hash alike")
 	}
 	if h, _ := RowHash("OTHER", &base); h == h0 {
 		t.Fatal("type name is not hashed")
@@ -718,6 +724,7 @@ func TestEncode_OversizeRowCountIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	maxRows = 2
 	if _, err := Open(data); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("Open of a segment above maxRows: %v, want ErrCorrupt", err)
 	}

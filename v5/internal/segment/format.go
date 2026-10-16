@@ -114,8 +114,11 @@ func readHeader(data []byte) (header, error) {
 	if !pow2UpTo4096(h.pageRows) {
 		return header{}, corrupt("header", "page size %d", h.pageRows)
 	}
-	if (h.rows == 0) != (h.nodes == 0) || h.nodes > 2*h.rows || h.rows > MaxRows {
+	if (h.rows == 0) != (h.nodes == 0) || h.nodes > 2*h.rows || h.rows > maxRows {
 		return header{}, corrupt("header", "%d rows over %d nodes", h.rows, h.nodes)
+	}
+	if h.rows > 0 && (h.idMin < 1 || h.idMax < h.idMin) {
+		return header{}, corrupt("header", "id range %d..%d", h.idMin, h.idMax)
 	}
 	return h, nil
 }
