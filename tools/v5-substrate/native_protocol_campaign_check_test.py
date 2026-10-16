@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Inert native codec guards, never vote/owner/source authority."""
 import copy
+import base64
+import json
+import zlib
 import struct
 import tempfile
 import unittest
@@ -24,6 +27,86 @@ def sample(*, source_index=12, observed_tx=None, read_issuer=bytes([4])*16):
                         (tx if observed_tx is None else observed_tx)+nonce+b"\2"+struct.pack(">Q", source_index)+G.field(status)+G.field(manifest))
     boundary = dict(Request=G.encoded(request), Reply=G.encoded(reply(6, 8, nonce, observed, read_issuer)))
     return boundary, submit, scopes
+
+
+P02_PHASES = (
+    'eNrtnVuToki3hv9L3ToRIqDCRMwF5/P5oPDFvgBRQFQQUJCJ+e9bq/pr7RqsU1f39OydGVERVFlCrsyVmStXPq/++aAnQbWsHn7/'
+    'z58PWpnG6e7h9/FvD3pQ1mmd5uffsN8ezOX+sKzqh98fzJFqEkZM/LeokKBa8GpizOGjyR3pkjmMBylEfHqh2Oj8bJowztdiSzqs'
+    'Qj5e3y8C9fId6evlbhPL+6Wxcl1U2MGkb1WhtNnODX9GeiHElIbsmW7mB5N9kzGpEyCljs1dR6Nz5lyJbGgaa2dAjRB7AFXOqp2p'
+    'ESnoLKpMbWKlcDyGN2N0p0/MoEwsMY2qQTwWIE/AoR0N1R2fLs72Ua4JqQ5hMOTL1T63PUUa5/9VCfsYp4k3Qm2J3qVDJMGKMTa/'
+    'Nsqj/WhkmCOGJGPm5eYlExiFKqpOy2u7uPtxFfLLxCCmsW7Aujaw09lMwwOUHiSF2XZxqeW1CrcrR9JmxKEYk7g7j9OVx26kttrP'
+    '/IjceGxyNKyaqBN2Zm7KfUm5Ssnty8ZmyZO6NrbioZDbzYbBVNwwhdGyPu6qpkbhYddebJFnDhPphOG91i5edFBlovT2TfPfv7HB'
+    '9fXF9fLxdWZ1p3kfnyPx5HEBb1B57h6CeVz7c/LowfFEsTNEoaBGsc4/rtEodP70w+aTaP3YxnI421Qht+n8mXoMt8ZTV8R9fvf4'
+    '2uPzVNe0CUPorVMyHwkHjdguMnV05MMppefJsPGM4YKh0q2fITMxmW0CLtUwrr9tzI3PRZvr71dfYAyGu6nbXZf7UqwXfYj4J238'
+    'tEI+eUp2M2CcZ//y5feG6Z9X+uYlzUpTNq/RSZNUfDQQKZnKZ8KzZnp6/h1f6fX/sSQJsxRZlxTXRAiaCZWUePHNva49Tfcaa/TZ'
+    'QGd5ngTyUquEkERWqZE2ezbt8x9i5uWizR12NaqPDW9qi8XKQ+AJXPlxeDhuD4gZIjEWQsiO4HaJzk1Hx32NDNOKwY4ndrtcrOKm'
+    '7Zy55iDLrEOXlguz8fafnnfWi7xzcH+hDDJNhIII4j15OPLVZmJEiuyOJSiP7Ek1WDuP/SY8m1sey8VPXR+KDKthpqiQz9Qlc4rH'
+    '6BFHV9JyxUKvrF83/SX9e9rDxsTCMsxqbC1ybyuIR4+vilQ9jMz1cnRclIujRCeJ0tVH5O7cLBS80TCvre803/Qu+09jiUqaEFGL'
+    'JTUahdvzPD5zmxBWc23NjNWOqBWaOf+wjkITk6cfMtB2Xvs4j8GjIuTaYgG76xAeZ++Ym84DSjcdxuVu6v7YjyUTWUTjvLKGKX1z'
+    'Lnv9Y4olBbwZcGG5sgm7nM1V1jbsY5CVe79bl7tdEJ8KHD6tJta1bcTecTt4u59Uk5iloyqeu6NAcbx0LkQpqy4WOFwGJiFknXes'
+    'V65KBFjVN58ty9hABINpd4JQDfbDqDFV7NS4LEtymYxnCLVUpq0BDYn9Y8dV5kig++clom+cUX3zNCWfuF0wR/1DjSukVvsLyFVJ'
+    'Dd9bh2KnaYdltKelHRKKw0K+vj/rqz899qjJLuNH7pIS8XjmlNyp8DcQ58YzDicliIIZ1+dmh30ldXvCUeETGc3dvDVTcZHAgjNq'
+    'OySoC4ZIbTUdjHAHIsvTpf5Syzuxwr59HhBu5u2r0xyFICpWyXaCQA0zGW0604GYKVxIk+0CnYzHcK7sV1G1G2TX/qGMvjVCf3sc'
+    'XHFbRZXYVsIcy28hEyGZGi5yGI1K0Yzw0hqsSCxbCo7xOM6Ziz9TDP12Wy9jgTqYkELdWWf7fIEmbuPc67PMR0O5c91h5yfFfRa7'
+    'clIUpfyTgcyw6FgJg5QfkgmNN4Yk+Vs78rZs4OaBMG28qw9TGfO+NrrpRLq9zJsff//z8URe/U0w3j53Pfom/TiHv8O3n8dYd+Iv'
+    'OuNeu6fPlxYzDytCZNfMHElPE5lMt7PyCAneInMgzJ8JGawi2hZ7fNDZx17dH9342LUdGIb/5Lrc9IJ5aT/+I+2nxvHb15nbNbTv'
+    'WTx7qYfwEZ/6Zr15Kt8b+/dN+ghFvGN+uBr7dD1/bq/4YXvJp2tycXu7vhhFcHFLXsfiTqSjsIUHzXoirDCO0RGSyIutr45Szy1m'
+    'Sb4+Xt+U34zF7M39+9hOUn2xSXy7TfHb/YN2HadhqO+1k+zfg/bFLqTW9O5vPtY+8dM6/L72yfvah3m6Zp+3xMi95KoSrDep9Y41'
+    'on/P3dcWdtO/r/z6JkZ+u62XmIiZXuZI6u3rsPjG+eDH+ZLs0sYn3OtrG/5YP7+bi7gZir2NRz6f2y51tR7jvOQd/XWJgUmdic7x'
+    'WfX2sfOeefWmfGYeqHYuOWHhM9aVfzBHxfTvYa5jlH/W/pe6kvLTWDbePpaZx0zvZSwzxHvjHaV/HTDe8lyCfFPc2LN+Xl/MzLfY'
+    'CV982Hwth37ZUzzLGby4L1KM3rF5fd16OR1K2K/0i9PnFDeXbs/rN3kBXnWXO/lENhI2jpJqTu+OJexEPLqfrrwV5HUKdITjiqjS'
+    '5DqfJEzzvrhJgy5tq7w3trxdo2/b7HY9ct7uw5d/JKWLD7Nv92Hmb01q9PXTrS/exBPmO/c+gnqJJ9x3xO6P4/n8/+R3r1ff5H6Z'
+    'Z3YyvW0jXt8z9RHh1f0VuWgEyC7KocPx7mjmmp1DTU8bnz+KezlRw2nZ4eVUan3+cmNScbMNTYTbtoomLEEfCJz2sOlYE31vOipj'
+    'fcJteF6jqkkKISGLGzfBFas5x9nwMNXzjtvu51VqoumYFyxELE6lsD7ixkmYjuiiiMWv9pD02Qb+c224HXWbmeUY5CHkWiR3CA2l'
+    'IXXdHTN0s1kfZwdimAfOYoFK3V62o2o+ouJnOZvbfe38gEMiu9enCmy2pDjVylOuHwWfGjHTTNcU66Dl0oELZuJN3EC9PbaiHscJ'
+    '8VourcXuHOc8vi9fcHh3yYVEs/Eln7o5/74O6LzV7EUj20R7+XFpotHWTz+zdQE/zZh1HczaKpirGw/GD/474y4QJ7wUJ/Q6eF+c'
+    'QBSPZ+aq/WvGwx+zKX5P7PlvPk/41P0jNTKgz7jX1/nmh+5t7xajNw8uvnDWf6nP4/l3NvpF54GP2URPsDVP7SFnMGC10BMKnT4k'
+    'ARbBtKdnIu+57qhRR1I0Qg5o3wJymX+4KPvwGeXNwaf27zmjnO/4KTxTHX+1Zp2hymYRRue6oPjjCAnQ1XIl47vhzB9OJ953nlEK'
+    'v+acYsfPziiFt59Rxi/E109ev4H1tZ/xO4Wq6q278Obnpd8tPW9T7qyQihwHcWGvVOA18XlnlN1oBDv4iFkmXihbcu55y+VAlAvJ'
+    'nxhy1FX1xuj4Aw3RXe8ZpbsxA190IlYv4Hx8mpjoPjXlrX9As4MoomE0P00GBDRp/a3z5jPKF3iYLzPkcu4N1K2xXDTSCfbdNlnB'
+    '482sTtLZIRIrcWTa0dxPqy5QPu+MUtbnc99GHHPCJlUtHJIkGU/PZmbFriBqRDvBLq0sUd3QtbefUQqvnCkJ7jhao7BPjjuilP3N'
+    'nGOH4dYNYE4MxtC22bmsOoq2UqfmzSeeUeJRtNEjk89n3AlKJxzH746pNbG2y4xCFlPZd5R2GuMENv36kNfzDMLb8wzxszyD8p15'
+    'BuYfzjOwNhrNwmEqW3NLX0hs5/pYphBzTAvD0bSNBQelXN5Y1s3pHXmG5+PkbXmG+H6egfwmz0C9I88gfCTPQBH38wzM9XlW/xgR'
+    '3pFniD+SZxB+cJ7BfJZnsO7lGcybLgswqtariZtnjpsJC+HkUUd1v9mrR281XKSSUChSaBjnSGFyXLc7ZCqpm40+yXgOn+XRcMbk'
+    '3Wps01BtNuh0GaFLCltDj8+ibGQ0xgYeY1e6KC0ka8iPtvUiGc8VYV/P3BoZK1xJzIoinUljMaGD+aiTSMRe8rVbeFFBrBaxT1iZ'
+    'm+YUUUjJft7B9/ZpuTEan2QGo2Hc8fe+BGVjn52fKmpjT+scXSMwhs9GBwgTmz/+eLiA1MXm9IRRW/9nUeb/umji8ta8iOCiqoem'
+    'OtychnWJKFd3pCOKdurdIGPxEjLLZtLKh1VefxlUvAmp9mupC4ruQ6DNBGqN0ltqA2yDt5hhZ27NE5WmVrwx6mQk4ThsPs7KE2zf'
+    'uCp792iGo9cjZ1x6iQ6LbRl5k7P7oKvhUiSnHBPW2GJoHOlJVUypYaauo9LcuNTQRhFkHFcbcbaB+dNpKJLdgdZnYgnnW/M0Q/94'
+    '+Ou3e8g98hJyH5Scy2np9ogLCSJj4Uh0sSpaEJ9eKJ54J3JPvzJ/UT/aTx0+m1rSQtlhodlhxXHsN+vDXljJB3qi18sDJ8lsmq8L'
+    'fqtcnAd9Qu6F19O7ALnvW44Acg+Q+88oALkHyD1A7gFyD5B7gNy/M50FkHuA3APkHiD3H67LTS8A5B4g9wC57/ElgNzf3gEg9wC5'
+    'v+0zgNz/GgjNuwpA7u+tn9cXAXJ//ygcIPev1B8g9wC5/w4bbkcdQO4Bcg+Qe4DcA+SeAMg9QO6vB9wAue9pH4DcA+SeAMg9QO6f'
+    '584Acn93nADk/nWbAXJ/D7l/dUz2xjlepDgSzK+PR3G1WDHMmA3NRqbXIQmpixOOmsmRHfgSVmfNjZ/di1tpRUwLeKPNIizrjB3u'
+    'CcQqprc4mnQ237IT3dwwlbZcDbfWGJ9PNHWELey2UEJB2mveUqx5yLIrK9KOOoxv2d2pOUXIHeyeCmC2dhfVySLINWyi00PmCPhk'
+    'nI8h2HVWVOSTBW4tGXu+M74H+/934dRfT+r0eBw0O8rKF/k8mHMk540d5jokuH27Mdd5UQ4tIToNOdxyVzL/ZQP5Nuyf6L4X+xf6'
+    'jou5b5YAPYpRycQXVTub4OlUPrkhJJwD1dSOJvNSLh2vPBCrQYcsG3ecEqXtT9sDgeokvdyueWiKHVZ4dgryVa47zF4ft0ocy8pL'
+    '2P+Ln7Sv+UsorYZsUlN22Q5DyYdbb5sRn14oYf1/+5P2z/PMm7B/8En7d9oFYP8A+/+MArB/gP0D7B9g/wD7B9j/O1NqAPsH2D/A'
+    '/gH2/+G63PQCwP4B9g+w/x5fAtj/7R0A9g+w/9s+A9j/r4HxvKsA7P/e+nl9EWD/94/jAfb/Sv0B9g+w/++w4XbUAewfYP8A+wfY'
+    'P8D+CYD9A+z/esANsP+e9gHYP8D+CYD9A+z/ee4MYP93xwnA/l+3GWD/97B/4RfA/onX8kXfW4ebM/pr7P3N2YJBKKFNbK0dw5ST'
+    'mSI5qlh7OhZOpzFPZkVdEX6oQkdb2nM5orkHGLcUTQvgxcLslpU+EPRNZ5rYyJc8ZdgWzGLG5iJzx9NIjRdaMg+oRDx1okYeLDQ8'
+    'sW1D4V4lDzb7DqqxBBetwzloAt848LdvHNjOa6HUWy80sgm2gk/bqJqJxZfJ5Sd944DwzZ7gS83337g0VyOx2uC+tsvQYUc6Aivl'
+    'esMhdXGgJ9vICuZMYi2PKmWQ+wHebdSD5W+2jUb7aTiC+SUFBzmpRUyLhLZHYfYW1buR83HpAdqNKbjNiW7YCNyO8Lzang1z4tPL'
+    '/xvpgQKkB0B68MmpTCA9eM9xP5AeAOkBkB4A6QGQHgDpAQGkB0B6AKQHQHoApAfv9ikgPQDSAyA9ANKDl/G4H+RLQHoApAdAevD8'
+    '6JkA0oMvx9FAegCkB3/rJyA9ANIDID145i9AegCkB0B6AKQHQHoApAc9g+PrATeQHvS0D5AeAOkBAaQHQHrwPHcGpAd3xwmQHrxu'
+    'M5AefFR68FOw/x8tf6D6Hhx8UwcaxTJXFo9MQXnODE+t4QGRV42lhvZA2SYCuzF2TIdt0niT1DY3Elo/OrYrUqXLbQVBOWuNfXdB'
+    'bY5JQuLGKp0YK3VxB+wm9wkbKwyt7RVpPVUZOcJHu6WbwS67RKpmJMnOTl6N6Q02I4D04G/Sg4MyMOoqIJQhRpFFw3GyMzpOvkwu'
+    'P0l6cJ2SOOOb7cGXq4oiyIF6HASzY7jTKzXA3O1+xkethh3lIFbHpuTWWM5IWIRUdqqRu6xIcyF35X0XBlwF2Tt6s7CbhGBDYz0U'
+    '8ZLedkWsYS9JD5CXpAchS0EdrdR6MNhqdTeElFIXc4X49ELxxDulB/+ub+egaPRJemC8nuYG0oO+6RxID4D04DMKkB4A6QGQHgDp'
+    'AZAeAOnBO9N6QHoApAdAegCkBx+uy00vAOkBkB4A6UGPLwHpwe0dgPQASA9u+wxID34NlOhdBUgP7q2f1xeB9OA+EgCkB6/UH0gP'
+    'gPTgO2y4HXVAegCkB0B6AKQHQHpAAOkBkB5cD7iB9KCnfYD0AEgPCCA9ANKD57kzID24O06A9OB1m4H04J70gPnR2D99k5O8Xn61'
+    'jSyJmCTTgFKXMdq1OOyrsV20CTKcz2U4iAi9w/drTD/A0jDsmP3WGpUjVNX3rBlOY9FjozLghDZ1PQOfyhJa76ZathuPzDtOSGKr'
+    'PF77+G4bpjqWzzeYe+CT4zCiFLbz3MxBXUPiJJcI9vH3YP//Lpz660mdHo+DZkdZ+SKfB3OO5Lyxw9x8xH9r1ErTyTZ8LNblYojT'
+    'UncKvnTx27B/ovte7P8mDruH/fN8yHSGuxWPajrjFwRObxFetYVUxOYoSjSwWx8SydIweXA0xmYgkW2mlIS5zLYuCSmMt1Azhd45'
+    'sNfB0H4/244kFhY+/I0D+sJzAl+GoFyID9DiHFooZXwgPr+8H/v/l33jwFuxf/CNA3faBWD/APv/jAKwf4D9A+wfYP8A+wfY/ztT'
+    'agD7B9g/wP4B9v/hutz0AsD+AfYPsP8eXwLY/+0dAPYPsP/bPgPY/6+B8byrAOz/3vp5c8QGsP+7x/EA+3+l/gD7B9j/d9hwO+oA'
+    '9g+wf4D9A+wfYP8EwP4B9n894AbYf0/7AOwfYP8EwP4B9v88dwaw/7vjBGD/r9sMsP9fGvsvYrcdINq80eg6Gmb0bLOZurQfNgrU'
+    'Wlg8hw906SywFF7T2DAwTKtaJ+m8qWRuqo9hlqvX0fq8jTlK1BjTljt46iQL545BBWTGwopRlXVUEPPFyggcZYjiqXqiKptsxEDi'
+    'iZxQ5Y0GPu3/75/2j3Ast7VwVaIEuebP4cRaQuUvnfmzPu3/hvWPvwnNv1xVFMGgyypM5fOmqqOiNW9F/hg+wGQ43TBDCE6OXA2f'
+    'usn5YdB+pxJbmVLGYlobJ19lhBiRbNHOQo3xquEeGRWsLsRQGuyqPx7++p/fHqxFXiyrh9//fEDObvGrqz/OHoy9Xs1/3Fsf/rqM'
+    'tEVeRueW/c+fzwQVwi5atg+/w/BvD9qhXuTb5WVA/hRnu96f7XO2x4e4VT4/rcOorHWLlQ8BW0iblPbbke4bIm872KBddTpsbpFH'
+    '3ci33xHxxTZk9F7bvl8/I/RxF9w3sZQexahk4ouqnU3wdCqf3BASzju+1I4m81IuHa88EKtBhyyb57bd9Bv68/tN6DGI3H9jG1cj'
+    'sdrgvrbL0GFHOgIr5XrDIXVxoCfbyArmTGItjyplkC/YNv75tn3u15284JPIz/fJz9V0vdBvk5/fb5+7cD0uRuwmz8v/LkaTx7l+'
+    '8tdf/wu+nt8x'
+)
 
 
 class ActualVoteReadGuards(unittest.TestCase):
@@ -99,6 +182,49 @@ class ActualVoteReadGuards(unittest.TestCase):
         for phase, part in ((1, 3), (3, 3), (0, 3)):
             with self.assertRaises(ValueError):
                 C.partial_recipe(dict(Phase=phase, Partition=part, Kind=1, Side="before"))
+
+    def test_p02_captured_phase_authority_uses_partition_then_phase(self):
+        # Six actual RPCs + native original projections from the immutable
+        # rotated/reorder P02 artifact, SHA25633a5c18c03069f51df220f21b453ee16
+        # f99a2c36ec10774f03e72b5d82e0a18d. No reconstructed authority.
+        f=json.loads(zlib.decompress(base64.b64decode(P02_PHASES)))
+        rows=f["Phases"];scopes={int(k):base64.b64decode(v) for k,v in f["Scopes"].items()}
+        records={(r["Partition"],r["Index"]):r for r in f["Records"]}
+        sources={int(k):dict(floor=v) for k,v in f["Floors"].items()};peers={3:2,8:6}
+        def check(rows=rows,records=records):return C.fence_phases(rows,records,scopes,peers,5,8,sources)
+        statuses,outcomes,commands,manifest=check()
+        expected={(8,1),(3,2),(8,2),(8,3),(3,4),(8,4)}
+        self.assertEqual(set(statuses),expected);self.assertEqual(set(outcomes),expected)
+        self.assertEqual(set(commands),{(phase,part) for part,phase in expected})
+        self.assertEqual(statuses[8,1]["index"],22)
+        for phase,part in ((1,8),(2,3),(2,8),(3,8),(4,3),(4,8)):
+            parsed=C.C.C.decision_command(commands[phase,part])
+            keys=[] if phase==1 else [(8,1)]+([(3,2)] if part==8 else []) if phase==2 else [(3,2),(8,2)] if phase==3 else [(8,3)]
+            self.assertEqual(parsed["proof_wires"],[outcomes[k] for k in keys])
+            self.assertEqual(parsed["manifest"],manifest)
+        with self.assertRaises(ValueError):check(rows=rows[1:])
+        missing=dict(records);del missing[8,22]
+        with self.assertRaises(ValueError):check(records=missing)
+        conflicted=copy.deepcopy(records);row=conflicted[8,22]
+        body=bytearray(C.P.body(C.P.raw(row["Outcome"]),b"GCS\1"));body[81:89]=struct.pack(">Q",sources[8]["floor"]+1)
+        row["Outcome"]=G.encoded(G.sealed(b"GCS\1",body))
+        with self.assertRaises(ValueError):check(records=conflicted)
+        def replace_proofs(row,proofs):
+            row=copy.deepcopy(row);command,parsed,_=C.C.source_request(row,scopes,5)
+            body=bytes([parsed["phase"]])+C.P.GRAPH+struct.pack(">Q",parsed["partition"])+G.field(parsed["manifest"])+struct.pack(">I",len(proofs))
+            body+=b"".join(C.P.body(p,b"GCS\1") for p in proofs)
+            altered=G.sealed(b"GCT\1",body)
+            request=C.P.raw(row["Request"]);q=C.P.Cursor(C.P.body(request,b"GSQ\1"))
+            header=q.take(1+8+16+48);fields=[q.field() for _ in range(3)]
+            proposal=q.field();tail=q.take(17);q.end()
+            p=C.P.Cursor(C.P.body(proposal,b"GSC\1"));target=p.field();self.assertEqual(p.field(),command);p.end()
+            proposal_new=G.sealed(b"GSC\1",G.field(target)+G.field(altered))
+            row["Request"]=G.encoded(G.sealed(b"GSQ\1",header+b"".join(G.field(v) for v in fields)+G.field(proposal_new)+tail))
+            return row
+        for proofs in ([],[outcomes[3,2]]):
+            changed=copy.deepcopy(rows);changed[1]=replace_proofs(rows[1],proofs)
+            with self.assertRaisesRegex(ValueError,"earlier original phase authority"):
+                check(rows=changed)
 
     def test_p02_planning_floor_split_preserves_before_and_after_fence_order(self):
         for stage, floor, bound in ((False, 9, 10), (True, 10, 10), (True, 11, 10)):

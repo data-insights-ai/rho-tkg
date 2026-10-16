@@ -502,6 +502,37 @@ def fence_prefix(records, operations, local_rows, names=("node-a", "node-b", "ed
     return originals
 
 
+def fence_phases(rows, records, scopes, peers, actor, co, sources):
+    require(type(rows) is list and len(rows) == 6, "actual six ordered P02 phase replies")
+    order = [(1, co), (2, 3), (2, 8), (3, co), (4, 3), (4, 8)]
+    statuses, outcomes, commands, manifest, correlations = {}, {}, {}, None, set()
+    for row, expected in zip(rows, order):
+        command_wire, command, correlation = C.source_request(row, scopes, actor)
+        _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes, peers[row["Partition"]])
+        manifest = actual_manifest if manifest is None else manifest
+        require((command["phase"], command["partition"]) == (status["phase"], status["partition"]) == expected and
+                actual_manifest == command["manifest"] == manifest and correlation not in correlations and command["conflict"] is None,
+                "actual first P02 source order/correlation/immutable manifest")
+        correlations.add(correlation)
+        if expected[0] == 1:
+            keys = []
+        elif expected[0] == 2:
+            keys = [(co, 1)] + ([(3, 2)] if expected[1] == 8 else [])
+        else:
+            keys = [(3, 2), (8, 2)] if expected[0] == 3 else [(co, 3)]
+        require(command["proof_wires"] == [outcomes[key] for key in keys], "actual earlier original phase authority bytes")
+        actual = records.get((expected[1], status["index"]))
+        require(actual is not None, "actual P02 phase original missing from complete source prefix")
+        if expected[0] == 1:
+            require(P.status(P.raw(actual["Outcome"])) == dict(status, floor=sources[co]["floor"]) and status["floor"] == status["round"] == 0,
+                    "actual Register projection versus stored installed floor")
+        else:
+            require(P.raw(actual["Outcome"]) == outcome, "actual returned P02 phase differs from retained original")
+        coordinate = expected[1], expected[0] # Native original namespace, then phase.
+        statuses[coordinate], outcomes[coordinate], commands[expected] = status, outcome, command_wire
+    return statuses, outcomes, commands, manifest
+
+
 def check_fence(a, *, program_roles=None):
     e, r = a["Evidence"], a["Evidence"]["Recipe"]
     stage = r["Schedule"] == "persisted-fence-before-application"
@@ -551,31 +582,7 @@ def check_fence(a, *, program_roles=None):
             "actual six replies and two genuine pre-fence planning captures")
     sources = {row["Partition"]:L.source_info(row, scopes, peers[row["Partition"]]) for row in d["SourceCaptures"]}
     require(set(sources) == {3, 8} and all(row["Origin"] == actor for row in d["SourceCaptures"]), "same actual planning caller/partitions")
-    order = [(1, co), (2, 3), (2, 8), (3, co), (4, 3), (4, 8)]
-    statuses, outcomes, commands, manifest, correlations = {}, {}, {}, None, set()
-    for row, expected in zip(d["Phases"], order):
-        command_wire, command, correlation = C.source_request(row, scopes, actor)
-        _, actual_manifest, status, outcome = P.peer_phase(P.raw(row["Request"]), P.raw(row["Reply"]), scopes, peers[row["Partition"]])
-        manifest = actual_manifest if manifest is None else manifest
-        require((command["phase"], command["partition"]) == (status["phase"], status["partition"]) == expected and
-                actual_manifest == command["manifest"] == manifest and correlation not in correlations and command["conflict"] is None,
-                "actual first P02 source order/correlation/immutable manifest")
-        correlations.add(correlation)
-        if expected[0] == 1:
-            keys = []
-        elif expected[0] == 2:
-            keys = [(co, 1)] + ([(3, 2)] if expected[1] == 8 else [])
-        else:
-            keys = [(3, 2), (8, 2)] if expected[0] == 3 else [(co, 3)]
-        require(command["proof_wires"] == [outcomes[key] for key in keys], "actual earlier original phase authority bytes")
-        actual = records.get((expected[1], status["index"]))
-        require(actual is not None, "actual P02 phase original missing from complete source prefix")
-        if expected[0] == 1:
-            require(P.status(P.raw(actual["Outcome"])) == dict(status, floor=sources[co]["floor"]) and status["floor"] == status["round"] == 0,
-                    "actual Register projection versus stored installed floor")
-        else:
-            require(P.raw(actual["Outcome"]) == outcome, "actual returned P02 phase differs from retained original")
-        statuses[expected], outcomes[expected], commands[expected] = status, outcome, command_wire
+    statuses, outcomes, commands, manifest = fence_phases(d["Phases"], records, scopes, peers, actor, co, sources)
     original = C.C.decision_manifest(P.raw(trace["steps"][2]["OriginalRequest"]["Payload"]), manifest, co, scopes, d["Old"])
     require(all(original["floors"][part] == sources[part]["floor"] for part in (3, 8)), "both actual planning opens bind the frozen installed floors")
     tx, digest = original["tx"], original["digest"]
