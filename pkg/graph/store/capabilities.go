@@ -761,23 +761,11 @@ type RelPropertyIndexOptionsCapability interface {
 // RelPropertyIndexCapability is the relationship mirror of PropertyIndexCapability,
 // keyed by rel-type token. OPTIONAL: without it the graph answers
 // RelsByTypeAndProperty by type scan + filter. Every in-tree backend creates it
-// (tiered and sharded on every shard since v4.58.0). A backend that implements it
-// but can decline the create at runtime (ErrRelPropertyIndexUnsupported) also
-// implements RelPropertyIndexSupportCapability.
+// (tiered and sharded on every shard since v4.58.0).
 type RelPropertyIndexCapability interface {
 	CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error
 	DropRelPropertyIndex(relTypeToken uint16, propertyKey string) error
 	RelationshipsByTypeAndProperty(relTypeToken uint16, key string, value any, opts QueryOpts) ([]*types.Relationship, error)
-}
-
-// RelPropertyIndexSupportCapability is OPTIONAL beside RelPropertyIndexCapability
-// (the DurableFlushSupported precedent): a backend whose relationship property
-// index creation depends on its configuration states at runtime whether
-// CreateRelPropertyIndex can succeed. CapabilitiesOf reports
-// IndexAcceleration.RelPropertyIndex only when it returns true; a backend
-// without it keeps the structural answer.
-type RelPropertyIndexSupportCapability interface {
-	RelPropertyIndexSupported() bool
 }
 
 // CompositePropertyIndexCapability is OPTIONAL: O(matches) EQUALITY lookup across

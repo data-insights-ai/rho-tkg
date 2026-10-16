@@ -11,7 +11,6 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // TestCapabilitiesOf_MatchesCreate (WP-31, sigma row 59): a consumer asks
@@ -134,42 +133,5 @@ func TestCapabilitiesOf_MatchesCreate(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// supportReportingStore is a store whose relationship property index creation
-// depends on its configuration: it reports the runtime answer through
-// store.RelPropertyIndexSupportCapability.
-type supportReportingStore struct {
-	storecontract.Store
-	supported bool
-}
-
-func (s supportReportingStore) CreateRelPropertyIndex(uint16, string) error {
-	if !s.supported {
-		return storecontract.ErrRelPropertyIndexUnsupported
-	}
-	return nil
-}
-func (s supportReportingStore) DropRelPropertyIndex(uint16, string) error { return nil }
-func (s supportReportingStore) RelationshipsByTypeAndProperty(uint16, string, any, storecontract.QueryOpts) ([]*types.Relationship, error) {
-	return nil, nil
-}
-func (s supportReportingStore) RelPropertyIndexSupported() bool { return s.supported }
-
-// TestCapabilitiesOf_RuntimeSupportedClearsFlag: a backend implementing the
-// capability structurally but declining at runtime is reported absent; true
-// keeps the structural answer; a backend without the reporter keeps it too.
-func TestCapabilitiesOf_RuntimeSupportedClearsFlag(t *testing.T) {
-	base := memory.New()
-	t.Cleanup(func() { _ = base.Close() })
-	for _, supported := range []bool{false, true} {
-		s := supportReportingStore{Store: base, supported: supported}
-		if got := storecontract.CapabilitiesOf(s).IndexAcceleration.RelPropertyIndex; got != supported {
-			t.Errorf("RelPropertyIndexSupported()=%v: CapabilitiesOf reports %v", supported, got)
-		}
-	}
-	if !storecontract.CapabilitiesOf(base).IndexAcceleration.RelPropertyIndex {
-		t.Error("memory (no runtime reporter) must keep the structural answer true")
 	}
 }

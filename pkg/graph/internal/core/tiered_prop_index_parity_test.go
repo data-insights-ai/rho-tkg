@@ -245,6 +245,29 @@ func TestTieredPropertyIndex_ParityAcrossBackends(t *testing.T) {
 					t.Errorf("%s: %d type/label scans on tiered, want 0 (keyed TxPin read)", qq.name, scans)
 				}
 			}
+			if ts == nil {
+				return
+			}
+			// The hook sees the fallback: a shard lacking its copy (an
+			// interrupted drop) makes the sidecar decline, the history fold
+			// scans, and the answer stays the same.
+			ts.MuForTest().RLock()
+			hot := ts.HotShardForTest().Store()
+			ts.MuForTest().RUnlock()
+			tok, ok := c.relTypes.Lookup("HOP")
+			if !ok {
+				t.Fatal("HOP not registered")
+			}
+			if err := hot.DropRelPropertyIndex(tok, "w"); err != nil {
+				t.Fatal(err)
+			}
+			scans = 0
+			if got, want := w.relQuery(t, int64(1), pinned(w)), []string{"a", "b", "early", "refR"}; !slices.Equal(got, want) {
+				t.Errorf("rel TxPin 1 with a shard lacking the index = %v, want %v", got, want)
+			}
+			if scans == 0 {
+				t.Error("rel TxPin 1 with a shard lacking the index: 0 scans, want the history fold's scans (the hook must see the fallback)")
+			}
 		})
 	}
 }

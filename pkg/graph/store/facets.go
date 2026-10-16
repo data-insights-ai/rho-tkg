@@ -152,11 +152,9 @@ type CapabilityReport struct {
 //
 // Index flags equal "a plain Create of that kind succeeds" on every in-tree
 // backend (TestCapabilitiesOf_MatchesCreate): a consumer asks CapabilitiesOf
-// instead of probing a Create. A capability whose creation a backend can decline
-// at runtime is reported through its runtime reporter
-// (RelPropertyIndexSupportCapability).
+// instead of probing a Create.
 //
-// IMPORTANT — apart from those runtime reporters this is a STRUCTURAL probe. It reports whether the concrete
+// IMPORTANT — this is a STRUCTURAL probe only. It reports whether the concrete
 // store's method set satisfies each capability; it does NOT reproduce the
 // wrapper-visibility guard that internal/core applies to its own cached handles
 // (the guard that suppresses an acceleration path a test/fault-injection/policy
@@ -185,9 +183,6 @@ func CapabilitiesOf(s MandatoryStore) CapabilityReport {
 
 	_, r.IndexAcceleration.PropertyIndex = s.(PropertyIndexCapability)
 	_, r.IndexAcceleration.RelPropertyIndex = s.(RelPropertyIndexCapability)
-	if rs, ok := s.(RelPropertyIndexSupportCapability); ok && r.IndexAcceleration.RelPropertyIndex {
-		r.IndexAcceleration.RelPropertyIndex = rs.RelPropertyIndexSupported()
-	}
 	_, r.IndexAcceleration.CompositePropertyIndex = s.(CompositePropertyIndexCapability)
 	_, r.IndexAcceleration.TemporalIndex = s.(TemporalIndexCapability)
 	_, r.IndexAcceleration.VectorIndex = s.(VectorIndexCapability)

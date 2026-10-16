@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -102,9 +101,8 @@ func buildRetractWorld(t *testing.T, g *Core) *rtWorld {
 	wall := txbWall()
 	w := &rtWorld{v0: wall - 600_000, v1: wall - 300_000}
 	// The declared property indexes put the pinned property lookups on their
-	// tx-membership sidecars where the backend has them; tiered refuses a
-	// property index on its event shards (the lookups fold history there).
-	if err := g.Index.CreateProperty("Pers", "k"); err != nil && !errors.Is(err, tiered.ErrEventPropertyIndex) && !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+	// tx-membership sidecars where the backend has them.
+	if err := g.Index.CreateProperty("Pers", "k"); err != nil && !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Fatalf("CreateProperty: %v", err)
 	}
 	addNode := func(label, k string, n int64) types.NodeID {

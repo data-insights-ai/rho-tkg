@@ -130,7 +130,7 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		// depending on the door, so re-exported centrally rather than in a
 		// single sub-API's own errors.go.
 		"NotReferenceEntity/graph=tiered":        {graphpkg.ErrNotReferenceEntity, tieredpkg.ErrNotReferenceEntity},
-		"EventPropertyIndex/graph=tiered":        {graphpkg.ErrEventPropertyIndex, tieredpkg.ErrEventPropertyIndex},
+		"EventPropertyIndex/graph=tiered":        {graphpkg.ErrEventPropertyIndex, tieredpkg.ErrEventPropertyIndex}, //nolint:staticcheck // SA1019: pins the deprecated alias identity
 		"PrimaryLabelClassMutation/graph=tiered": {graphpkg.ErrPrimaryLabelClassMutation, tieredpkg.ErrPrimaryLabelClassMutation},
 	}
 

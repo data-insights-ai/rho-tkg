@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
-	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
 // InventoryEpoch returns the index-inventory epoch (round 4 R1): a counter that
@@ -17,7 +16,7 @@ import (
 // applied ChangeClear). It does not advance for a create or drop the store
 // refused without a change (ErrIndexExists, ErrIndexNotFound and their
 // temporal and vector twins, ErrRelPropertyIndexUnsupported,
-// ErrCapabilityNotSupported, the tiered store's ErrEventPropertyIndex), for one rejected before the store (validation,
+// ErrCapabilityNotSupported), for one rejected before the store (validation,
 // closed or read-only graph), for data writes, or for reads. One atomic load,
 // the same on every backend (the counter lives here, not in the store).
 //
@@ -48,7 +47,6 @@ func indexDDLRefused(err error) bool {
 		storepkg.ErrTemporalIndexExists, storepkg.ErrTemporalIndexNotFound,
 		storepkg.ErrVectorIndexExists, storepkg.ErrVectorIndexNotFound,
 		storepkg.ErrRelPropertyIndexUnsupported, storepkg.ErrCapabilityNotSupported,
-		tieredpkg.ErrEventPropertyIndex,
 	} {
 		if errors.Is(err, s) {
 			return true

@@ -29,10 +29,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `RelPropertyIndexOptionsCapability` and `RelPropertyIndexIntrospectionCapability` (`HasRelProperty`, `RelPropertyOptions`).
 - **Truthful capability report** (row 59, "is there a capability query sigma can ask instead of trying
   CreateRelPropertyIndex?"): `store.CapabilitiesOf(s).IndexAcceleration` equals "a plain create succeeds" on every in-tree
-  backend (`TestCapabilitiesOf_MatchesCreate`, memory / badger / sharded / tiered, reference and event labels). New optional
-  `store.RelPropertyIndexSupportCapability` (`RelPropertyIndexSupported() bool`, the `DurableFlushSupported` precedent): a
-  backend that can decline the create at runtime reports false and `CapabilitiesOf` shows the capability absent.
+  backend (`TestCapabilitiesOf_MatchesCreate`, memory / badger / sharded / tiered, reference and event labels).
   `badger.Store.PropertyIndexDefs` / `RelPropertyIndexDefs` list the finished definitions with their options.
+
+### Deprecated
+
+- `tiered.ErrEventPropertyIndex` / `graph.ErrEventPropertyIndex`: no longer returned (property indexes cover every label
+  on every tiered shard); kept exported so an `errors.Is` match still compiles. **sigma-tkgd**: `ensureRelPropertyIndex`
+  now succeeds on tiered; the first create opens every cold shard and backfills each shard's rows once.
 
 ### Fixed
 
