@@ -105,6 +105,18 @@ and the source ID's actual `MintInstant()` remain distinct evidence; the timelin
 reader applies source fallback and later-version tiling before scope mapping.
 No global transaction order, certified cut, event or point is inferred.
 
+`Source.ValidStartPolicy` explicitly selects source interpretation. Its zero
+value, `ValidStartLegacy`, preserves the historical raw-row one-tick audit and
+finite int64 lower-bound mapping; actual segment bounds still come from the
+selected reader. `ValidStartTxFromUnboundedV1` is a fixed opt-in policy: unset
+`ValidFrom` is audited using `TxFrom`, then `UpdatedAt`, then the ID mint instant,
+and explicit `UnboundedValidFrom` maps to v5 negative infinity. The caller must
+record nonempty writer, format, capture, reader and evidence identities for this
+policy. These are caller-supplied provenance claims, not authentication of the
+database or an inference from a release/date. `Report.Source` retains the exact
+claim by value. Unknown policies or missing provenance refuse before source
+reads. The policy never replaces a row-qualified one-tick `SpanAttestation`.
+
 A genuine source one-tick row is admitted only with a caller-verified
 `SpanAttestation` binding source ID, node/relationship namespace, ID, version,
 hash/previous hash and complete raw temporal metadata, plus writer/format/evidence

@@ -26,7 +26,7 @@ func options(t *testing.T, pin v4types.Instant) Options {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Options{Source: Source{ID: "captured-store-A", Reader: "rho-v4.50.1 effective reader", Evidence: "source capture digest"}, Pin: pin, DefaultAxis: binding}
+	return Options{Source: Source{ID: "captured-store-A", Reader: "repository v4 effective reader used by this fixture", Evidence: "source capture digest"}, Pin: pin, DefaultAxis: binding}
 }
 
 func graphFor(t *testing.T, backend string) *v4graph.Graph {
@@ -314,7 +314,7 @@ func TestPreflightZeroFallbackExactKindsAndOwnedEvidence(t *testing.T) {
 				t.Fatalf("unexpected report %v", timelineShape(r))
 			}
 			row := r.Rows[0]
-			if row.Identity.Temporal.ValidFrom != 0 || row.MintInstant == 0 || r.Segments[0].RawFrom != row.MintInstant {
+			if row.Identity.Temporal.ValidFrom != 0 || row.MintInstant == 0 || row.Identity.Temporal.TxFrom != 100 || r.Segments[0].RawFrom != 100 {
 				t.Fatal("zero interpreted as coordinate or fallback changed")
 			}
 			lo, hi, ok := r.Segments[0].Scope.Bounds()
@@ -323,7 +323,7 @@ func TestPreflightZeroFallbackExactKindsAndOwnedEvidence(t *testing.T) {
 			}
 			p, _ := lo.Position()
 			ms, err := temporal.InstantMillis(p, temporal.Limits{})
-			if err != nil || ms != int64(row.MintInstant) || p.Profile() != temporal.ProfileRationalQ {
+			if err != nil || ms != 100 || p.Profile() != temporal.ProfileRationalQ {
 				t.Fatal("fallback not exact Q/ms")
 			}
 			got := rowProps(row)
@@ -458,6 +458,116 @@ func TestMapSpanExactExtremesAndFraction(t *testing.T) {
 	_, err = mapSpan(o.DefaultAxis.Axis(), 100, 200, temporal.Limits{MaxMagnitudeBits: 1})
 	if !errors.Is(err, temporal.ErrResourceLimit) {
 		t.Fatal("magnitude limit lost", err)
+	}
+}
+
+func currentValidityOptions(t *testing.T, pin v4types.Instant) Options {
+	t.Helper()
+	o := options(t, pin)
+	o.Source.Reader = "repository v4 effective reader used by this fixture"
+	o.Source.Writer = "fixture-owned v4 writer"
+	o.Source.Format = "explicit-valid-from and zero-start-TxFrom v1"
+	o.Source.ValidStartPolicy = ValidStartTxFromUnboundedV1
+	return o
+}
+
+func TestPreflightCurrentValidityRetainsUnboundedOldStateAfterMutation(t *testing.T) {
+	for _, rel := range []bool{false, true} {
+		t.Run(fmt.Sprintf("rel=%v", rel), func(t *testing.T) {
+			g, err := v4graph.New(v4graph.Config{Store: memory.New(), AllowTxBackfill: true, UntimedValidStart: v4graph.UntimedUnbounded})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := g.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			s := newSubject(t, g, rel, map[string]any{"value": "X"})
+			before, err := s.preflight(currentValidityOptions(t, 100))
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.update(map[string]any{"value": "Y", "tkg_valid_from": int64(200)}, 300)
+			other := newSubject(t, g, rel, map[string]any{"value": "phantom"})
+			other.end("retract", 200)
+			old, err := s.preflight(currentValidityOptions(t, 100))
+			if err != nil || len(old.Segments) != 1 || rowProps(old.Segments[0].Row)["value"] != "X" || !reflect.DeepEqual(rowProps(old.Segments[0].Row), rowProps(before.Segments[0].Row)) || old.Segments[0].RawFrom != before.Segments[0].RawFrom || old.Segments[0].RawTo != before.Segments[0].RawTo || !reflect.DeepEqual(old.Segments[0].Scope, before.Segments[0].Scope) {
+				t.Fatal("old pin changed after genuine mutation", err)
+			}
+			current, err := s.preflight(currentValidityOptions(t, 300))
+			if err != nil || len(current.Segments) != 2 {
+				t.Fatal("complete current timeline", err)
+			}
+			assertShape(t, current, fmt.Sprintf("[%d,200)=X", v4types.UnboundedValidFrom), "[200,0)=Y")
+			beyond, err := temporal.ParseRational("-9223372036854775809", temporal.Limits{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			point, err := temporal.RationalPosition(old.DefaultAxis.Axis(), beyond)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range []Report{old, current} {
+				lo, _, ok := r.Segments[0].Scope.Bounds()
+				inside, err := r.Segments[0].Scope.Contains(point, temporal.Limits{})
+				if !ok || lo.Kind() != temporal.BoundNegativeInfinity || !inside || err != nil || r.Rows[0].Identity.Temporal.ValidFrom != v4types.UnboundedValidFrom || r.Source.ValidStartPolicy != ValidStartTxFromUnboundedV1 {
+					t.Fatal("current source -infinity became finite or raw provenance changed", lo, err)
+				}
+				for _, row := range r.Rows {
+					if row.Identity.ID != s.id {
+						t.Fatal("phantom entity entered per-ID evidence")
+					}
+				}
+			}
+			assertPoint(t, old, 400, "X")
+			assertPoint(t, current, 199, "X")
+			assertPoint(t, current, 200, "Y")
+			legacy, err := s.preflight(options(t, 100))
+			if err != nil {
+				t.Fatal(err)
+			}
+			lo, _, _ := legacy.Segments[0].Scope.Bounds()
+			if lo.Kind() != temporal.BoundFinite {
+				t.Fatal("nil/default historical policy silently upgraded")
+			}
+		})
+	}
+}
+
+func TestPreflightCurrentValidityOneTickStillRequiresExactRowProvenance(t *testing.T) {
+	for _, rel := range []bool{false, true} {
+		t.Run(fmt.Sprintf("rel=%v", rel), func(t *testing.T) {
+			g := graphFor(t, "memory")
+			s := newSubject(t, g, rel, map[string]any{"value": "tick", "tkg_valid_to": int64(101)})
+			o := currentValidityOptions(t, 100)
+			r, err := s.preflight(o)
+			if !errors.Is(err, ErrAmbiguousHistory) || !reflect.DeepEqual(r.Findings, []Finding{{OneTickProvenanceUnknown, 0}}) || r.Segments[0].Scope.Kind() != temporal.ScopeInvalid {
+				t.Fatal("zero ValidFrom did not audit actual TxFrom one-tick", r.Findings, err)
+			}
+			att := SpanAttestation{SourceID: o.Source.ID, Row: r.Rows[0].Identity, Writer: o.Source.Writer, Format: o.Source.Format, Evidence: "row-qualified no-sentinel proof", ExcludesOneTickSentinels: true}
+			for _, change := range []func(*SpanAttestation){func(a *SpanAttestation) { a.Row.Temporal.TxFrom++ }, func(a *SpanAttestation) { a.Row.Kind = 0 }, func(a *SpanAttestation) { a.SourceID = "other-capture" }, func(a *SpanAttestation) { a.ExcludesOneTickSentinels = false }} {
+				bad := att
+				change(&bad)
+				o.VerifiedSpans = []SpanAttestation{bad}
+				if _, err := s.preflight(o); !errors.Is(err, ErrAmbiguousHistory) {
+					t.Fatal("policy claim replaced row-qualified provenance", err)
+				}
+			}
+			o.VerifiedSpans = []SpanAttestation{att}
+			accepted, err := s.preflight(o)
+			if err != nil || len(accepted.AcceptedSpans) != 1 || accepted.Source != o.Source {
+				t.Fatal("exact genuine one-tick provenance refused", err)
+			}
+			assertShape(t, accepted, "[100,101)=tick")
+			assertPoint(t, accepted, 99, nil)
+			assertPoint(t, accepted, 100, "tick")
+			assertPoint(t, accepted, 101, nil)
+			o.Source.Writer = "changed after call"
+			if accepted.Source.Writer == o.Source.Writer {
+				t.Fatal("returned source provenance aliases caller options")
+			}
+		})
 	}
 }
 

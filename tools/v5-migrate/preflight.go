@@ -40,7 +40,25 @@ const (
 // Evidence names the external capture/provenance evidence, not a v5 certificate.
 type Source struct {
 	ID, Reader, Writer, Format, Evidence string
+	ValidStartPolicy                     ValidStartPolicy
 }
+
+// ValidStartPolicy names a fixed source interpretation, not a release guess.
+// The caller authenticates the writer/format evidence outside this package.
+type ValidStartPolicy uint8
+
+const (
+	// ValidStartLegacy preserves the originally qualified raw-row audit and
+	// finite int64 lower-bound mapping. Effective segments still come from
+	// the selected source reader, whose identity the caller records in Source.
+	ValidStartLegacy ValidStartPolicy = iota
+	// ValidStartTxFromUnboundedV1 declares zero ValidFrom fallback in the order
+	// TxFrom, UpdatedAt, ID mint instant, and UnboundedValidFrom as -infinity.
+	// It requires explicit Writer/Format/Evidence provenance, not a date or
+	// version heuristic. It proves neither source authenticity nor history
+	// completeness, and never waives a row-qualified one-tick attestation.
+	ValidStartTxFromUnboundedV1
+)
 
 // RowIdentity binds an attestation to one exact source row. Temporal contains
 // every raw v4 temporal/audit field, including BaseEntityID and Retracted. v4's
@@ -236,6 +254,9 @@ func validateOptions(o Options) error {
 	if strings.TrimSpace(o.Source.ID) == "" || strings.TrimSpace(o.Source.Reader) == "" || strings.TrimSpace(o.Source.Evidence) == "" {
 		return ErrInvalidSource
 	}
+	if o.Source.ValidStartPolicy > ValidStartTxFromUnboundedV1 || o.Source.ValidStartPolicy == ValidStartTxFromUnboundedV1 && (strings.TrimSpace(o.Source.Writer) == "" || strings.TrimSpace(o.Source.Format) == "") {
+		return ErrInvalidSource
+	}
 	return o.DefaultAxis.Check(o.DefaultAxis.Graph(), o.DefaultAxis.Axis(), o.Limits)
 }
 
@@ -295,13 +316,17 @@ func finish(r Report, o Options) (Report, error) {
 		from := tm.ValidFrom
 		if from == 0 {
 			from = row.MintInstant
-			// Legacy non-genesis tiling starts at UpdatedAt. Actual mapped
-			// support still comes ONLY from the effective timeline reader.
-			if row.Identity.Version != 0 && tm.UpdatedAt != 0 {
+			if o.Source.ValidStartPolicy == ValidStartTxFromUnboundedV1 && tm.TxFrom != 0 {
+				from = tm.TxFrom
+			} else if (o.Source.ValidStartPolicy == ValidStartTxFromUnboundedV1 || row.Identity.Version != 0) && tm.UpdatedAt != 0 {
+				// Preserve the original legacy version gate unless the caller
+				// explicitly selected the fixed source policy. The effective
+				// timeline, never this audit calculation, supplies mapped bounds.
 				from = tm.UpdatedAt
 			}
 		}
-		if tm.ValidTo != 0 && from != math.MaxInt64 && tm.ValidTo == from+1 {
+		unbounded := o.Source.ValidStartPolicy == ValidStartTxFromUnboundedV1 && from == v4types.UnboundedValidFrom
+		if !unbounded && tm.ValidTo != 0 && from != math.MaxInt64 && tm.ValidTo == from+1 {
 			index := slices.IndexFunc(o.VerifiedSpans, func(a SpanAttestation) bool {
 				return a.SourceID == o.Source.ID && a.Row == row.Identity && a.ExcludesOneTickSentinels && strings.TrimSpace(a.Writer) != "" && strings.TrimSpace(a.Format) != "" && strings.TrimSpace(a.Evidence) != ""
 			})
@@ -338,7 +363,7 @@ func finish(r Report, o Options) (Report, error) {
 		return r, ErrAmbiguousHistory
 	}
 	for i := range r.Segments {
-		scope, err := mapSpan(o.DefaultAxis.Axis(), r.Segments[i].RawFrom, r.Segments[i].RawTo, o.Limits)
+		scope, err := mapSpanForPolicy(o.DefaultAxis.Axis(), r.Segments[i].RawFrom, r.Segments[i].RawTo, o.Limits, o.Source.ValidStartPolicy)
 		if err != nil {
 			return Report{}, err
 		}
@@ -348,13 +373,22 @@ func finish(r Report, o Options) (Report, error) {
 }
 
 func mapSpan(axis temporal.Axis, from, to v4types.Instant, l temporal.Limits) (temporal.Scope, error) {
-	start, err := v5types.InstantPosition(axis, v5types.Instant(from), l)
-	if err != nil {
-		return temporal.Scope{}, err
-	}
-	lo, err := temporal.FiniteBound(start, true)
-	if err != nil {
-		return temporal.Scope{}, err
+	return mapSpanForPolicy(axis, from, to, l, ValidStartLegacy)
+}
+
+func mapSpanForPolicy(axis temporal.Axis, from, to v4types.Instant, l temporal.Limits, policy ValidStartPolicy) (temporal.Scope, error) {
+	var lo temporal.Bound
+	if policy == ValidStartTxFromUnboundedV1 && from == v4types.UnboundedValidFrom {
+		lo = temporal.NegativeInfinity()
+	} else {
+		start, err := v5types.InstantPosition(axis, v5types.Instant(from), l)
+		if err != nil {
+			return temporal.Scope{}, err
+		}
+		lo, err = temporal.FiniteBound(start, true)
+		if err != nil {
+			return temporal.Scope{}, err
+		}
 	}
 	hi := temporal.PositiveInfinity()
 	if to != 0 {

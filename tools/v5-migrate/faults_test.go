@@ -310,7 +310,7 @@ func TestPreflightRawAuditAndLaterZeroTilingStaySeparate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			assertShape(t, r, fmt.Sprintf("[%d,%d)=X", mint, tx), fmt.Sprintf("[%d,0)=Y", tx))
+			assertShape(t, r, fmt.Sprintf("[100,%d)=X", tx), fmt.Sprintf("[%d,0)=Y", tx))
 			row := r.Rows[len(r.Rows)-1]
 			if row.Identity.Temporal.ValidFrom != 0 || row.MintInstant == tx || row.Identity.Temporal.UpdatedAt != tx || row.Identity.Temporal.CreatedBy != "original-author" || row.Identity.Temporal.UpdatedBy != "correcting-author" || row.Identity.Temporal.BaseEntityID() != 17 {
 				t.Fatal("raw audit/fallback evidence changed")
@@ -319,7 +319,70 @@ func TestPreflightRawAuditAndLaterZeroTilingStaySeparate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			assertShape(t, old, fmt.Sprintf("[%d,0)=X", row.MintInstant))
+			assertShape(t, old, "[100,0)=X")
 		})
+	}
+}
+
+func TestPreflightCurrentValidityRejectsUnboundPolicyBeforeSourceReads(t *testing.T) {
+	for _, rel := range []bool{false, true} {
+		t.Run(fmt.Sprintf("rel=%v", rel), func(t *testing.T) {
+			g, source := legacyGraph(t)
+			s := newSubject(t, g, rel, map[string]any{"value": "X"})
+			for _, change := range []func(*Source){
+				func(s *Source) { s.ID = " " },
+				func(s *Source) { s.Reader = " " },
+				func(s *Source) { s.Writer = " " },
+				func(s *Source) { s.Format = " " },
+				func(s *Source) { s.Evidence = " " },
+				func(s *Source) { s.ValidStartPolicy = 255 },
+			} {
+				o := currentValidityOptions(t, 100)
+				change(&o.Source)
+				source.historyCalls, source.currentCalls = 0, 0
+				r, err := s.preflight(o)
+				if !errors.Is(err, ErrInvalidSource) || !reflect.DeepEqual(r, Report{}) || source.historyCalls != 0 || source.currentCalls != 0 {
+					t.Fatal("unbound policy read source or produced evidence", r, err)
+				}
+			}
+		})
+	}
+}
+
+func TestPreflightValidityAuditUsesFixedFallbackWithoutInventingOracle(t *testing.T) {
+	// Inert raw-row audit inputs exercise fallback precedence; no source read,
+	// effective timeline, history completeness or graph authority is fabricated.
+	for _, kind := range []EntityKind{NodeKind, RelationshipKind} {
+		for _, tc := range []struct {
+			name             string
+			policy           ValidStartPolicy
+			from, tx, update v4types.Instant
+			mint             v4types.Instant
+			to               v4types.Instant
+			ambiguous        bool
+		}{
+			{"current-tx-before-updated", ValidStartTxFromUnboundedV1, 0, 100, 200, 300, 101, true},
+			{"current-genesis-updated-fallback", ValidStartTxFromUnboundedV1, 0, 0, 100, 300, 101, true},
+			{"current-mint-last", ValidStartTxFromUnboundedV1, 0, 0, 0, 100, 101, true},
+			{"legacy-genesis-mint-literal", ValidStartLegacy, 0, 100, 200, 300, 101, false},
+			{"legacy-real-tick-still-refuses", ValidStartLegacy, 0, 100, 200, 300, 301, true},
+			{"explicit-start-wins", ValidStartTxFromUnboundedV1, 10, 100, 200, 300, 11, true},
+			{"current-infinity-is-not-one-tick", ValidStartTxFromUnboundedV1, v4types.UnboundedValidFrom, 100, 200, 300, v4types.UnboundedValidFrom + 1, false},
+			{"legacy-minimum-is-finite-tick", ValidStartLegacy, v4types.UnboundedValidFrom, 100, 200, 300, v4types.UnboundedValidFrom + 1, true},
+		} {
+			t.Run(fmt.Sprintf("kind%d/%s", kind, tc.name), func(t *testing.T) {
+				o := currentValidityOptions(t, 100)
+				o.Source.ValidStartPolicy = tc.policy
+				row := EvidenceRow{Identity: RowIdentity{Kind: kind, ID: 17, HasTemporal: true, Temporal: v4types.TemporalMetadata{ValidFrom: tc.from, TxFrom: tc.tx, UpdatedAt: tc.update, ValidTo: tc.to}}, MintInstant: tc.mint}
+				input := Report{Source: o.Source, SourceChainVerified: true, Rows: []EvidenceRow{row}}
+				r, err := finish(input, o)
+				if errors.Is(err, ErrAmbiguousHistory) != tc.ambiguous || err != nil && !errors.Is(err, ErrAmbiguousHistory) || !reflect.DeepEqual(r.Rows, input.Rows) || len(r.Segments) != 0 {
+					t.Fatal("audit changed raw rows or invented effective support", r, err)
+				}
+				if tc.ambiguous && !reflect.DeepEqual(r.Findings, []Finding{{OneTickProvenanceUnknown, 0}}) || !tc.ambiguous && len(r.Findings) != 0 {
+					t.Fatal("wrong exact fallback/provenance finding", r.Findings)
+				}
+			})
+		}
 	}
 }
