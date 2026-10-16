@@ -23,7 +23,10 @@ import (
 func TestUntimedRowsStartAtTxFrom(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {
+	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) {
+		c.AllowTxBackfill = true
+		c.UntimedValidStart = graphpkg.UntimedFromTxFrom // the TxFrom rule under test (v4.57.0 default is unbounded)
+	}) {
 		t.Run(b.name, func(t *testing.T) {
 			t.Parallel()
 			g := b.open(t)
@@ -197,7 +200,7 @@ func TestUntimedRowsStartAtTxFrom(t *testing.T) {
 func TestOneBurstReadsConsistentlyAtOneInstant(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
+	forAllStoreBackendsTxFrom(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
 		now, err := g.Temporal().NowTx()
 		if err != nil {
 			t.Fatal(err)

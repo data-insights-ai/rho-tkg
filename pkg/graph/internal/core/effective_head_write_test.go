@@ -115,7 +115,7 @@ func TestTxRollbackKeepsRowsAboveCompactionGap(t *testing.T) {
 	ctx := context.Background()
 	for _, be := range r10AllBackends(t) {
 		t.Run(be.name, func(t *testing.T) {
-			g, err := New(be.cfg())
+			g, err := New(withTxFrom(be.cfg()))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -259,7 +259,7 @@ func TestVersionAllocatorAboveCompactionGap(t *testing.T) {
 	ctx := context.Background()
 	for _, be := range r10AllBackends(t) {
 		t.Run(be.name, func(t *testing.T) {
-			g, err := New(be.cfg())
+			g, err := New(withTxFrom(be.cfg()))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -296,7 +296,7 @@ func TestVersionAllocatorAboveCompactionGap(t *testing.T) {
 func TestTxRollbackAppendsAboveCompactionGap(t *testing.T) {
 	for _, be := range r10AllBackends(t) {
 		t.Run(be.name, func(t *testing.T) {
-			g, err := New(be.cfg())
+			g, err := New(withTxFrom(be.cfg()))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -358,7 +358,7 @@ func TestTxRollbackAppendsAboveCompactionGap(t *testing.T) {
 func TestStoreAsOfAboveCompactionGap(t *testing.T) {
 	for _, be := range r10Backends() {
 		t.Run(be.name, func(t *testing.T) {
-			g, err := New(be.cfg())
+			g, err := New(withTxFrom(be.cfg()))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -431,7 +431,7 @@ func BenchmarkR10CutPerFact(b *testing.B) {
 }
 
 func benchCutPerFact(b *testing.B, be r10Backend, versions int, warm bool) {
-	g, err := New(be.cfg())
+	g, err := New(withTxFrom(be.cfg()))
 	if err != nil {
 		b.Fatal(err)
 	}

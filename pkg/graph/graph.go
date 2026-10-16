@@ -234,11 +234,13 @@ type Config = core.Config
 // where an entity's first version without a valid-from starts (backlog 73).
 type UntimedValidStart = core.UntimedValidStart
 
-// The untimed valid-start modes: UntimedFromTxFrom (the default) starts an
-// entity's first version without a valid-from at its TxFrom, UntimedUnbounded
-// at -inf (types.UnboundedValidFrom). A later version without a valid-from
-// starts at its TxFrom under both.
+// The untimed valid-start modes: UntimedFromTxFrom starts an entity's first
+// version without a valid-from at its TxFrom, UntimedUnbounded at -inf
+// (types.UnboundedValidFrom). A later version without a valid-from starts at
+// its TxFrom under both. UntimedDefault (the zero value) keeps an existing
+// store's mode and makes a new store UntimedUnbounded (v4.57.0).
 const (
+	UntimedDefault    = core.UntimedDefault
 	UntimedFromTxFrom = core.UntimedFromTxFrom
 	UntimedUnbounded  = core.UntimedUnbounded
 )

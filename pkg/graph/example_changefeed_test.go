@@ -20,6 +20,8 @@ func Example_changeFeed() {
 		return true
 	})
 	fmt.Println("Change records:", count)
+	// The two creates and, first, one ChangeMeta record: a new store's
+	// untimed valid-start mode (UntimedUnbounded by default since v4.57.0).
 	// Output:
-	// Change records: 2
+	// Change records: 3
 }

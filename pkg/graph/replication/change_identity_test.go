@@ -22,7 +22,8 @@ import (
 // encoders actually write.
 
 func TestDecodeChangeIdentity_RealRecords(t *testing.T) {
-	g, err := graphpkg.New(graphpkg.Config{Store: memory.New(memory.WithChangeLog())})
+	// UntimedFromTxFrom: no ChangeMeta record at open, so feed[0] is n1.
+	g, err := graphpkg.New(graphpkg.Config{Store: memory.New(memory.WithChangeLog()), UntimedValidStart: graphpkg.UntimedFromTxFrom})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

@@ -17,9 +17,20 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+// withTxFrom pins cfg to UntimedFromTxFrom for a test written for the TxFrom
+// start of an untimed create (the v4.57.0 default makes a new store
+// UntimedUnbounded).
+func withTxFrom(cfg Config) Config {
+	cfg.UntimedValidStart = UntimedFromTxFrom
+	return cfg
+}
+
 func newTestGraph(t *testing.T) *Core {
 	t.Helper()
-	g, err := New(Config{Store: memory.New(), AllowReset: true})
+	// UntimedFromTxFrom: these tests assert the TxFrom start of an untimed
+	// create (backlog 62); the v4.57.0 default (UntimedUnbounded for a new
+	// store) is covered by TestUntimedDefaultFlip and TestUntimedValidStartModes.
+	g, err := New(Config{Store: memory.New(), AllowReset: true, UntimedValidStart: UntimedFromTxFrom})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

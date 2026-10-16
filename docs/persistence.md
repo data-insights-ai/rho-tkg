@@ -250,7 +250,7 @@ First writable open on v4.54.0 (one-time work, no action needed):
 
 Consumers: untimed rows start at their `TxFrom`, an update setting only `tkg_valid_to` closes the version, and the excise doors exist; see api.md and the 4.54.0 CHANGELOG entry.
 
-Marker 7 (v4.56.0, `Config.UntimedValidStart`): a store created under `UntimedUnbounded`, or converted with `Admin().SetUntimedValidStart(ctx, UntimedUnbounded)` (raised when the conversion starts), is refused by v4.55.3 and earlier. A `UntimedFromTxFrom` store, the default and every store with rows written before the option, keeps its marker and stays readable by v4.54.0 and later. Convert only once every reader, replica and importer runs v4.56.0 or later; there is no way back short of a copy made before the conversion.
+Marker 7 (v4.56.0, `Config.UntimedValidStart`): a store created under `UntimedUnbounded`, or converted with `Admin().SetUntimedValidStart(ctx, UntimedUnbounded)` (raised when the conversion starts), is refused by v4.55.3 and earlier. Since v4.57.0 a NEW store under the default (`UntimedDefault`) is an `UntimedUnbounded` store and carries marker 7 from its first open: set `UntimedFromTxFrom` explicitly for a new store that v4.55.3 or earlier must still open. A `UntimedFromTxFrom` store, every store with rows written before the option and every store created under v4.56.x defaults, keeps its marker and stays readable by v4.54.0 and later. Convert only once every reader, replica and importer runs v4.56.0 or later; there is no way back short of a copy made before the conversion.
 
 ## Tiered Persistence (`tiered.Store`)
 

@@ -537,7 +537,7 @@ func checkSegments(t *testing.T, segs []storepkg.CountSegment) {
 // pin stays the pin's after later writes, the current timeline (pin 0)
 // follows them, and a past-dated write at or below the pin moves it.
 func TestCountTimelineFollowsWrites(t *testing.T) {
-	for _, b := range allStoreBackends()[:2] {
+	for _, b := range allStoreBackendsWith(txFromCfg)[:2] { // an UntimedFromTxFrom store (UntimedFromMinusInf below)
 		t.Run(b.name, func(t *testing.T) {
 			g := b.open(t)
 			ctx := context.Background()

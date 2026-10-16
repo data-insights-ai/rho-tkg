@@ -19,7 +19,7 @@ import (
 func TestR9_ImportReplayErrorRollsBackNewCurrentHistoryAndRegistries(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestR9_ImportReplayErrorRollsBackNewCurrentHistoryAndRegistries(t *testing.
 func TestR9_ImportReplayErrorRestoresExistingHistoryAndRegistries(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestR9_ImportReplayErrorRestoresExistingHistoryAndRegistries(t *testing.T) 
 func TestR9_ImportRollbackSnapshotsOnlyTouchedHistorySuffixWithNativeTrim(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestR9_ImportRollbackSnapshotsOnlyTouchedHistorySuffixWithNativeTrim(t *tes
 func TestR9_ImportReplayErrorRestoresHistorySuffixAfterTrimRollback(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestR9_ImportRollbackHistoryFallbacks(t *testing.T) {
 	t.Parallel()
 
 	wrapped := &concreteRollbackHistoryFaultStore{Store: memory.New(), err: errors.New("history trim fault")}
-	g, err := New(Config{Store: wrapped})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: wrapped})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

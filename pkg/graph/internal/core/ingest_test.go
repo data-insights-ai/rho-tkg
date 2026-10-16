@@ -13,7 +13,7 @@ import (
 
 func newIngestGraph(t *testing.T) *Core {
 	t.Helper()
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -23,7 +23,7 @@ func newIngestGraph(t *testing.T) *Core {
 
 func newIngestGraphWithLog(t *testing.T) *Core {
 	t.Helper()
-	g, err := New(Config{Store: memory.New(memory.WithChangeLog())})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New(memory.WithChangeLog())})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -543,7 +543,7 @@ func TestIngestUniqueConstraintStorm(t *testing.T) {
 // TestIngestClosedRejectsNewSession — after Close the pipeline refuses new work.
 func TestIngestClosedRejectsNewSession(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

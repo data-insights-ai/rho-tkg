@@ -1,0 +1,7 @@
+mutant: a default open ignores the persisted key (always unbounded)
+        untimed_default_flip_test.go:69: open /var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestUntimedDefaultFlipbadger1378446870/001 under txfrom: graph: the store's rows are written under UntimedFromTxFrom, Config.UntimedValidStart is UntimedUnbounded; convert it once with Admin().SetUntimedValidStart(UntimedUnbounded): graph: store was written under the other untimed valid-start mode (Config.UntimedValidStart)
+        untimed_default_flip_test.go:69: open /var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestUntimedDefaultFlipsharded2065110559/001 under txfrom: graph: the store's rows are written under UntimedFromTxFrom, Config.UntimedValidStart is UntimedUnbounded; convert it once with Admin().SetUntimedValidStart(UntimedUnbounded): graph: store was written under the other untimed valid-start mode (Config.UntimedValidStart)
+        untimed_default_flip_test.go:69: open /var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestUntimedDefaultFliptiered573299079/001 under txfrom: graph: the store's rows are written under UntimedFromTxFrom, Config.UntimedValidStart is UntimedUnbounded; convert it once with Admin().SetUntimedValidStart(UntimedUnbounded): graph: store was written under the other untimed valid-start mode (Config.UntimedValidStart)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.139s
+FAIL

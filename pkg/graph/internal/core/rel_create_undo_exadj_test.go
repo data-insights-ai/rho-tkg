@@ -42,7 +42,7 @@ func TestRelCreateUndoLeavesNoExAdjacency(t *testing.T) {
 			return bs
 		}},
 	} {
-		g, err := New(Config{Store: b.store(t)})
+		g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: b.store(t)})
 		if err != nil {
 			t.Fatal(err)
 		}

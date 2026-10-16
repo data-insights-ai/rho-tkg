@@ -31,8 +31,11 @@ const (
 )
 
 func uvsModeName(m graphpkg.UntimedValidStart) string {
-	if m == graphpkg.UntimedUnbounded {
+	switch m {
+	case graphpkg.UntimedUnbounded:
 		return "unbounded"
+	case graphpkg.UntimedDefault:
+		return "default"
 	}
 	return "txfrom"
 }
@@ -63,7 +66,7 @@ func TestUntimedValidStartModes(t *testing.T) {
 	}
 	t.Run("convert/memory", func(t *testing.T) {
 		t.Parallel()
-		g, err := graphpkg.New(graphpkg.Config{})
+		g, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedFromTxFrom})
 		if err != nil {
 			t.Fatal(err)
 		}

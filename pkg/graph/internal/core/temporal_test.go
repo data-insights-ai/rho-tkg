@@ -36,7 +36,7 @@ func txNow(t testing.TB, g *Core) types.Instant {
 func TestGetNodesValidAt_Empty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	nodes, err := g.Temporal.NodesAt(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -49,7 +49,7 @@ func TestGetNodesValidAt_Empty(t *testing.T) {
 func TestGetNodesValidAt_NoTemporal(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	// Query at current time — node should be valid (ValidFrom derived from snowflake).
@@ -65,7 +65,7 @@ func TestGetNodesValidAt_NoTemporal(t *testing.T) {
 func TestGetNodesValidAt_ExplicitValidity(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
@@ -96,7 +96,7 @@ func TestGetNodesValidAt_ExplicitValidity(t *testing.T) {
 func TestGetNodesValidAt_Expired(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
@@ -117,7 +117,7 @@ func TestGetNodesValidAt_Expired(t *testing.T) {
 func TestGetNodesValidAt_Future(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
@@ -139,7 +139,7 @@ func TestGetNodesValidAt_Future(t *testing.T) {
 func TestGetNodesValidAt_Mixed(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 
 	// Node A: valid at query time (no explicit temporal).
 	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "A"})
@@ -168,7 +168,7 @@ func TestGetNodesValidAt_Mixed(t *testing.T) {
 func TestGetRelsValidAt_Empty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	rels, err := g.Temporal.RelsAt(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -181,7 +181,7 @@ func TestGetRelsValidAt_Empty(t *testing.T) {
 func TestGetRelsValidAt_ExplicitValidity(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
@@ -211,7 +211,7 @@ func TestGetRelsValidAt_ExplicitValidity(t *testing.T) {
 func TestGetRelsValidAt_Mixed(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
@@ -236,7 +236,7 @@ func TestGetRelsValidAt_Mixed(t *testing.T) {
 func TestGetNodesByLabelValidAt_Empty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	g.Resolve.GetOrCreateLabel("Person")
 	nodes, err := g.Temporal.NodesByLabelAt("Person", nowMs())
 	if err != nil {
@@ -250,7 +250,7 @@ func TestGetNodesByLabelValidAt_Empty(t *testing.T) {
 func TestGetNodesByLabelValidAt_Filtered(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Valid"})
 
 	nExpired, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Expired"})
@@ -270,7 +270,7 @@ func TestGetNodesByLabelValidAt_Filtered(t *testing.T) {
 func TestGetNodesByLabelValidAt_UnregisteredLabel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	nodes, err := g.Temporal.NodesByLabelAt("Unknown", nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -285,7 +285,7 @@ func TestGetNodesByLabelValidAt_UnregisteredLabel(t *testing.T) {
 func TestGetNodesValidDuring_Overlap(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
@@ -306,7 +306,7 @@ func TestGetNodesValidDuring_Overlap(t *testing.T) {
 func TestGetNodesValidDuring_NoOverlap(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
@@ -327,7 +327,7 @@ func TestGetNodesValidDuring_NoOverlap(t *testing.T) {
 func TestTemporalDuringRejectsInvalidRanges(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestTemporalDuringRejectsInvalidRanges(t *testing.T) {
 func TestGetNodesValidDuring_OpenEnded(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	id := n.ID()
 
@@ -396,7 +396,7 @@ func TestGetNodesValidDuring_OpenEnded(t *testing.T) {
 func TestGetRelsValidDuring_Overlap(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
@@ -418,7 +418,7 @@ func TestGetRelsValidDuring_Overlap(t *testing.T) {
 func TestGetRelsValidDuring_NoOverlap(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	r, _ := g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
@@ -440,7 +440,7 @@ func TestGetRelsValidDuring_NoOverlap(t *testing.T) {
 func TestGetRelsValidDuring_OpenEnded(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	// Rel without explicit ValidTo — open-ended.
@@ -461,7 +461,7 @@ func TestGetRelsValidDuring_OpenEnded(t *testing.T) {
 func TestGetNodeAt_CurrentVersion(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 
 	// Query at current time — should return the (only) version.
@@ -478,7 +478,7 @@ func TestGetNodeAt_CurrentVersion(t *testing.T) {
 func TestGetNodeAt_HistoricalVersion(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	clk := useTestClock(t, g)
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
@@ -520,7 +520,7 @@ func TestGetNodeAt_HistoricalVersion(t *testing.T) {
 func TestGetNodeAt_BeforeCreation(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 
 	// Query before the entity existed.
@@ -533,7 +533,7 @@ func TestGetNodeAt_BeforeCreation(t *testing.T) {
 func TestGetNodeAt_NotFound(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	_, err := g.Temporal.NodeAt(types.NodeID(999), nowMs())
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
@@ -544,7 +544,7 @@ func TestTemporalPointQueriesInvalidIDsRejectedBeforeStoreRead(t *testing.T) {
 	t.Parallel()
 
 	store := &versionInvalidIDProbeStore{MandatoryStore: memory.New()}
-	g, err := New(Config{Store: store})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: store})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -571,7 +571,7 @@ func TestTemporalPointQueriesInvalidIDsRejectedBeforeStoreRead(t *testing.T) {
 func TestGetNodeAt_ExplicitTemporal(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "explicit"})
 	id := n.ID()
 
@@ -608,7 +608,7 @@ func TestGetNodeAt_ExplicitTemporal(t *testing.T) {
 func TestGetNeighborsValidAt_AllValid(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "A"})
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "B"})
 	c, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "C"})
@@ -628,7 +628,7 @@ func TestGetNeighborsValidAt_AllValid(t *testing.T) {
 func TestGetNeighborsValidAt_SomeExpired(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "A"})
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "B"})
 	c, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "C"})
@@ -739,7 +739,7 @@ func contains(haystack []string, needle string) bool {
 func TestGetNeighborsValidAt_RelExpired(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "A"})
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "B"})
 
@@ -764,7 +764,7 @@ func TestGetNeighborsValidAt_RelExpired(t *testing.T) {
 func TestSnapshot_Empty(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	snap, err := g.Temporal.Snapshot(nowMs())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -780,7 +780,7 @@ func TestSnapshot_Empty(t *testing.T) {
 func TestSnapshot_CurrentTime(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
@@ -800,7 +800,7 @@ func TestSnapshot_CurrentTime(t *testing.T) {
 func TestSnapshot_PastTime(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
@@ -821,7 +821,7 @@ func TestSnapshot_PastTime(t *testing.T) {
 func TestSnapshot_DanglingRelExcluded(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	g.Rels.Add(context.Background(), "KNOWS", a, b, nil)
@@ -846,7 +846,7 @@ func TestSnapshot_DanglingRelExcluded(t *testing.T) {
 func TestSnapshot_SortedResults(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	// Add multiple nodes — they get ascending snowflake IDs.
 	n1, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	n2, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
@@ -880,7 +880,7 @@ func TestSnapshot_SortedResults(t *testing.T) {
 func TestGetNodeAt_AfterTruncation(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	clk := useTestClock(t, g)
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
@@ -937,7 +937,7 @@ func TestGetNodeAt_AfterTruncation(t *testing.T) {
 func TestDeleteNodePreservesHistory(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	useTestClock(t, g)
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
@@ -962,7 +962,7 @@ func TestDeleteNodePreservesHistory(t *testing.T) {
 func TestDeleteNodeTombstone_DeletedAt(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	useTestClock(t, g)
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
@@ -1001,7 +1001,7 @@ func TestDeleteNodeTombstone_DeletedAt(t *testing.T) {
 func TestDeleteRelPreservesHistory(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	useTestClock(t, g)
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
@@ -1035,7 +1035,7 @@ func TestDeleteRelPreservesHistory(t *testing.T) {
 func TestDeleteNodeCascade_RelHistoryPreserved(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	useTestClock(t, g)
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
@@ -1081,7 +1081,7 @@ func TestDeleteNodeCascade_RelHistoryPreserved(t *testing.T) {
 func TestGetNodeAt_DeletedEntity(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	useTestClock(t, g)
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
@@ -1110,7 +1110,7 @@ func TestGetNodeAt_DeletedEntity(t *testing.T) {
 func TestGetNodeAt_DeletedEntity_AfterDeletion(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	clk := useTestClock(t, g)
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
@@ -1132,7 +1132,7 @@ func TestGetNodeAt_DeletedEntity_AfterDeletion(t *testing.T) {
 func TestGetNodesValidAt_DeletedNode(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	clk := useTestClock(t, g)
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
@@ -1170,7 +1170,7 @@ func TestGetNodesValidAt_DeletedNode(t *testing.T) {
 func TestGetNodesValidAt_UpdatedNode(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	useTestClock(t, g)
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "v0"})
 	id := n.ID()
@@ -1196,7 +1196,7 @@ func TestGetNodesValidAt_UpdatedNode(t *testing.T) {
 func TestGetRelAt_Basic(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	clk := useTestClock(t, g)
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
@@ -1233,7 +1233,7 @@ func TestGetRelAt_Basic(t *testing.T) {
 func TestGetRelAt_DeletedEntity(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	clk := useTestClock(t, g)
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
@@ -1267,7 +1267,7 @@ func TestGetRelAt_DeletedEntity(t *testing.T) {
 func TestGetRelAt_NotFound(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	_, err := g.Temporal.RelAt(types.RelID(999), nowMs())
 	if !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("expected storepkg.ErrRelNotFound, got %v", err)
@@ -1277,7 +1277,7 @@ func TestGetRelAt_NotFound(t *testing.T) {
 func TestGetRelationshipsValidAt_DeletedRel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	clk := useTestClock(t, g)
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
@@ -1312,7 +1312,7 @@ func TestGetRelationshipsValidAt_DeletedRel(t *testing.T) {
 func TestSnapshot_IncludesDeletedNodes(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	clk := useTestClock(t, g)
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
@@ -1353,7 +1353,7 @@ func TestSnapshot_IncludesDeletedNodes(t *testing.T) {
 func TestGetNodesValidDuring_DeletedNode(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	clk := useTestClock(t, g)
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
 	id := n.ID()
@@ -1389,7 +1389,7 @@ func TestGetNodesValidDuring_DeletedNode(t *testing.T) {
 func TestGetRelationshipsValidDuring_DeletedRel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	clk := useTestClock(t, g)
 	a, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
 	b, _ := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
@@ -1427,7 +1427,7 @@ func TestGetRelationshipsValidDuring_DeletedRel(t *testing.T) {
 func TestNodesByLabelPropertyAndTime_Found(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	defer func() { _ = g.Close() }()
 
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
@@ -1451,7 +1451,7 @@ func TestNodesByLabelPropertyAndTime_Found(t *testing.T) {
 func TestNodesByLabelPropertyAndTime_PropertyMismatch(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	defer func() { _ = g.Close() }()
 
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
@@ -1474,7 +1474,7 @@ func TestNodesByLabelPropertyAndTime_PropertyMismatch(t *testing.T) {
 func TestNodesByLabelPropertyAndTime_TemporalMismatch(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	defer func() { _ = g.Close() }()
 
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
@@ -1497,7 +1497,7 @@ func TestNodesByLabelPropertyAndTime_TemporalMismatch(t *testing.T) {
 func TestNodesByLabelPropertyAndTime_UnregisteredLabel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	defer func() { _ = g.Close() }()
 
 	nodes, err := g.Temporal.NodesByLabelPropertyAt("Unknown", "name", "Alice", nowMs())
@@ -1512,7 +1512,7 @@ func TestNodesByLabelPropertyAndTime_UnregisteredLabel(t *testing.T) {
 func TestTemporalPropertyQueriesRejectInvalidTargets(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Validation: ValidationLimits{MaxPropertyKeyLength: 4}})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom, Validation: ValidationLimits{MaxPropertyKeyLength: 4}})
 	defer func() { _ = g.Close() }()
 
 	longKey := "abcde"
@@ -1584,7 +1584,7 @@ func TestTemporalPropertyQueriesRejectInvalidTargets(t *testing.T) {
 func TestTemporalPropertyQueriesRejectInvalidValuesBeforeEmptyShortcuts(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	defer func() { _ = g.Close() }()
 
 	tests := []struct {
@@ -1643,7 +1643,7 @@ func TestTemporalPropertyQueriesRejectInvalidValuesBeforeEmptyShortcuts(t *testi
 func TestTemporalNodesByLabelAtRejectsInvalidLabel(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{Validation: ValidationLimits{MaxNameLength: 4}})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom, Validation: ValidationLimits{MaxNameLength: 4}})
 	defer func() { _ = g.Close() }()
 
 	tests := []struct {
@@ -1669,7 +1669,7 @@ func TestTemporalNodesByLabelAtRejectsInvalidLabel(t *testing.T) {
 func TestNodesByLabelPropertyAndTime_WithPropertyIndex(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	defer func() { _ = g.Close() }()
 
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
@@ -1758,7 +1758,7 @@ func TestNodesByLabelPropertyTemporalQueriesNaNPayloadsMatchWithinExactType(t *t
 func TestNodesByLabelPropertyDuring_Found(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	defer func() { _ = g.Close() }()
 
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
@@ -1781,7 +1781,7 @@ func TestNodesByLabelPropertyDuring_Found(t *testing.T) {
 func TestNodesByLabelPropertyDuring_NoOverlap(t *testing.T) {
 	t.Parallel()
 
-	g, _ := New(Config{})
+	g, _ := New(Config{UntimedValidStart: UntimedFromTxFrom})
 	defer func() { _ = g.Close() }()
 
 	n, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})

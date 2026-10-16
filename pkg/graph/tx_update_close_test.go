@@ -25,7 +25,7 @@ func TestTxUpdateValidToClosesLikeCloseVersion(t *testing.T) {
 	ctx := context.Background()
 	const span = 1_000
 	end := func(tx types.Instant) map[string]any { return map[string]any{"tkg_valid_to": tx + span} }
-	for _, be := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {
+	for _, be := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true; txFromCfg(c) }) {
 		t.Run(be.name, func(t *testing.T) {
 			g := be.open(t)
 			add := func() (*types.Node, *types.Relationship) {

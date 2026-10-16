@@ -37,11 +37,14 @@ func TestDurableFlush_Badger_SyncsExactlyWhatWasWritten(t *testing.T) {
 	}
 	defer func() { _ = g.Close() }()
 	ctx := context.Background()
+	// New's own durable meta writes (a new store persists its untimed
+	// valid-start mode durably) are the baseline.
+	base := bs.DurableSyncCountForTest()
 
 	if err := bs.DurableFlush(); err != nil {
 		t.Fatalf("DurableFlush on an idle store: %v", err)
 	}
-	if n := bs.DurableSyncCountForTest(); n != 0 {
+	if n := bs.DurableSyncCountForTest() - base; n != 0 {
 		t.Fatalf("idle DurableFlush issued %d fsyncs, want 0", n)
 	}
 
@@ -57,13 +60,13 @@ func TestDurableFlush_Badger_SyncsExactlyWhatWasWritten(t *testing.T) {
 	if n := bs.PendingWriteCount(); n != 0 {
 		t.Fatalf("%d writes pending after DurableFlush, want 0", n)
 	}
-	if n := bs.DurableSyncCountForTest(); n != 1 {
+	if n := bs.DurableSyncCountForTest() - base; n != 1 {
 		t.Fatalf("DurableFlush after a write issued %d fsyncs, want 1", n)
 	}
 	if err := bs.DurableFlush(); err != nil {
 		t.Fatalf("second DurableFlush: %v", err)
 	}
-	if n := bs.DurableSyncCountForTest(); n != 1 {
+	if n := bs.DurableSyncCountForTest() - base; n != 1 {
 		t.Fatalf("a DurableFlush with nothing new fsynced again: %d, want 1", n)
 	}
 
@@ -76,7 +79,7 @@ func TestDurableFlush_Badger_SyncsExactlyWhatWasWritten(t *testing.T) {
 	if err := bs.DurableFlush(); err != nil {
 		t.Fatalf("DurableFlush after a plain Flush: %v", err)
 	}
-	if n := bs.DurableSyncCountForTest(); n != 2 {
+	if n := bs.DurableSyncCountForTest() - base; n != 2 {
 		t.Fatalf("rows written by a plain Flush were not fsynced by the next DurableFlush: %d fsyncs, want 2", n)
 	}
 }

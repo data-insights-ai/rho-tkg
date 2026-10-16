@@ -89,7 +89,7 @@ func relMemberTimeOracle(t *testing.T, g *graphpkg.Graph, typeName string, ids [
 // labels and types; served from the cache between writes (exact on memory
 // and badger), never stale after a write.
 func TestMemberTimeStats(t *testing.T) {
-	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
+	forAllStoreBackendsTxFrom(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		label := "Ref"
 		var ids []types.NodeID
