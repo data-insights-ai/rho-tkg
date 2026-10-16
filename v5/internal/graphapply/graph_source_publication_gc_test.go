@@ -119,6 +119,9 @@ func p09ActivateActualSnapshot(t *testing.T, transport *declaredSnapshotTranspor
 }
 
 func TestGraphSourcePublicationPinsActualRetiredBankAndRetainedCDCStart(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	deadline, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	n := newCertifiedGraphNetwork(t)

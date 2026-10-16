@@ -11,6 +11,9 @@ import (
 )
 
 func TestRangeMoveUndoCodecAndNativeInverseRefusalsPreserveStoredOriginals(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// One bounded actual six-voter fixture. Only the source's genuine native
 	// view is borrowed; no undo effects or adversarial codec data are installed.
 	n, _, _, _, _ := rangeMoveCoordinatorFixture(t, 48)

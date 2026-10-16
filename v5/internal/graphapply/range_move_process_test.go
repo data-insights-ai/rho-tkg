@@ -93,6 +93,9 @@ func graphRangeMoveNativeProbe(ctx context.Context, h *allocationHost, r process
 // A logical handoff does not authorize foreign AS5 bank replacement. This
 // genuine six-child refusal guard keeps the original immutable identity gate.
 func TestGraphRangeMoveSixProcessesForeignSnapshotRefusesCrossIdentity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetwork(t)
 	oracle := newCertifiedProcessOracle()
 	input, err := encodeGraphProcessObserveIDs([]uint64{1, 3, 17})

@@ -65,6 +65,9 @@ func crossFillOrdinaryWithReason(n *allocationTestNetwork, group int, scope grap
 }
 
 func TestCrossPartitionCapacityAbortMirrorsPriorityAndConflictSourceAtOrdinaryCliffs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, policy := range []string{"bytes", "records"} {
 		for _, loserGroup := range []int{0, 1} {
 			for _, sourceGroup := range []int{0, 1} {
@@ -157,6 +160,9 @@ func TestCrossPartitionCapacityAbortMirrorsPriorityAndConflictSourceAtOrdinaryCl
 }
 
 func TestCrossPartitionCapacityAbortCannotReverseCommitAndLatePrepareRecoversAbort(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	ids := crossRequestsWithLoser(n, 1)
@@ -239,6 +245,9 @@ func TestCrossPartitionCapacityAbortCannotReverseCommitAndLatePrepareRecoversAbo
 }
 
 func TestCrossPartitionCapacityConflictNeedsAvailableCompletedAuthority(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, register := n.crossPlan(ops, claims, 24)
@@ -392,6 +401,9 @@ func crossInstallFollowerSnapshot(t *testing.T, transport *declaredSnapshotTrans
 }
 
 func TestCrossPartitionCapacityAbortCauseAndPreparedOwnerSurviveFollowerSnapshotAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	ids := crossRequestsWithLoser(n, 0)
@@ -484,6 +496,9 @@ func TestCrossPartitionCapacityAbortCauseAndPreparedOwnerSurviveFollowerSnapshot
 }
 
 func TestCrossPartitionQueuedCommitAndCapacityAbortKeepFirstDecisionImmutable(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, policy := range []string{"default", "bytes", "records"} {
 		for _, abortFirst := range []bool{false, true} {
 			t.Run(fmt.Sprint(policy, "-abort-first-", abortFirst), func(t *testing.T) {

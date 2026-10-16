@@ -40,6 +40,9 @@ func TestNativeCutTransitionInventoryRequiresActualPhaseParticipantAndSide(t *te
 }
 
 func TestNativeCutTransitionsKeepConcurrentWholeTransactionAndOldSourceThroughRestart(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, recipe := range nativeTransitionCutInventory() {
 		if testing.Short() && !(recipe.Phase == graphCutFence && recipe.Partition == 3 && recipe.Side == "before-submit" || recipe.Phase == graphCutCertify && recipe.Partition == 8 && recipe.Side == "after-applied") {
 			continue

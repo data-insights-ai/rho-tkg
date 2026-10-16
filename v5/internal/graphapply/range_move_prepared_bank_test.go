@@ -48,6 +48,9 @@ func (g *preparedMoveDecisionGate) RoundTrip(ctx context.Context, wire []byte) (
 // original no-purpose replay. Prepared incoming state governs both classifiers;
 // the recipient's divergent active bank supplies neither baseline nor authority.
 func TestPreparedRangeMoveCrossRecoveryUsesIncomingBankNotActiveBaseline(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, phase := range []string{"import", "seal", "numbered-abort"} {
 		t.Run(phase, func(t *testing.T) {
 			n, _, intent, _, transports := rangeMoveCoordinatorFixture(t, 64)

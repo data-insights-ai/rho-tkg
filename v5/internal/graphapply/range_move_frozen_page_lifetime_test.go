@@ -86,6 +86,9 @@ func rangeMoveFrozenLifetimeSource(t *testing.T, owner context.Context) (*remote
 }
 
 func TestRangeMoveFrozenPageOwnershipInterruptsBackgroundCallerAndClosesBothViews(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, mode := range []string{"Close", "owner-cancel"} {
 		t.Run(mode, func(t *testing.T) {
 			owner, cancelOwner := context.WithCancel(t.Context())

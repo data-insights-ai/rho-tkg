@@ -459,6 +459,9 @@ func nativeProtocolStateRecords(t *testing.T, n *certifiedProcessNetwork, from, 
 }
 
 func TestNativeProtocolStateInventoryAndOwnedDoorRefuseNominalAuthority(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	seen := make(map[nativeProtocolStateRecipe]bool)
 	for _, r := range nativeProtocolStateInventory() {
 		if !r.valid() || seen[r] {
@@ -507,6 +510,9 @@ func TestNativeProtocolStateInventoryAndOwnedDoorRefuseNominalAuthority(t *testi
 }
 
 func TestNativeProtocolStateP07P08P09ExactStableTransitions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, recipe := range nativeProtocolStateInventory() {
 		t.Run(fmt.Sprintf("%s-phase%d-p%d-page%d-kind%d-%s", recipe.Family, recipe.Phase, recipe.Partition, recipe.Page, recipe.Kind, recipe.Side), func(t *testing.T) {
 			artifact := nativeProtocolStateCase(t, recipe)
@@ -527,6 +533,9 @@ func TestNativeProtocolStateP07P08P09ExactStableTransitions(t *testing.T) {
 }
 
 func TestNativeProtocolPooledStateTransitionsKeepActualUndoOriginals(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for index, recipe := range nativeProtocolStateInventory() {
 		if testing.Short() && index != 0 && index != 15 && index != 31 && index != 47 && index != 67 && index != 68 && index != 99 && index != 127 && index != 128 && index != 136 && index != 138 {
 			continue
@@ -551,6 +560,9 @@ func TestNativeProtocolPooledStateTransitionsKeepActualUndoOriginals(t *testing.
 }
 
 func TestNativeProtocolPooledProofDoorKeepsCanonicalBoundedNativeKeys(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	encode := func(c nativeProtocolStateControl) []byte {
 		body, e := json.Marshal(c)
 		if e != nil {

@@ -287,6 +287,9 @@ func TestRecipientFenceReplayDoesNotBypassNewSessionQuiescence(t *testing.T) {
 // Existing six-process recovery cases do not retain an old fence until AFTER
 // activation and issuance; this case would therefore fail on the old transition.
 func TestSixProcessesRecipientFenceReplayAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, home := range []uint64{1, 4} {
 		t.Run(fmt.Sprint(home), func(t *testing.T) {
 			n := newProcessClusterMode(t, true)

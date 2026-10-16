@@ -35,6 +35,9 @@ func remoteCertifiedFixture(t *testing.T, n *allocationTestNetwork) *crossProces
 }
 
 func TestRemoteCertifiedModesPreserveStableScopeAndRefuseFailedPublication(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	crossEdgeFixture(t, n)
 	c := remoteCertifiedFixture(t, n)
@@ -127,6 +130,9 @@ func TestRemoteCertifiedModesPreserveStableScopeAndRefuseFailedPublication(t *te
 }
 
 func TestRemoteCertifiedAfterRetainsAuthenticatedDecisionReceiptAcrossIssuerReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, nativeReceipt := certifiedReceiptIssuer(t, false)
 	c := remoteCertifiedFixture(t, n)
 	backend := remoteCertifiedReceiptBackend(t, c)
@@ -169,6 +175,9 @@ func TestRemoteCertifiedAfterRetainsAuthenticatedDecisionReceiptAcrossIssuerReop
 }
 
 func TestRemoteCertifiedFreshResolvesNativeEarlyAbortAndKeepsMissingParticipantAbsent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	decision := certifiedEarlyAbort(t, n)
 	c := remoteCertifiedFixture(t, n)
@@ -194,6 +203,9 @@ func TestRemoteCertifiedFreshResolvesNativeEarlyAbortAndKeepsMissingParticipantA
 }
 
 func TestRemoteCertifiedBackendRejectsChangedReceiptAndInvalidWriteWithoutEffects(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, receipt := certifiedReceiptIssuer(t, true)
 	c := remoteCertifiedFixture(t, n)
 	backend := remoteCertifiedReceiptBackend(t, c)
@@ -227,6 +239,9 @@ func TestRemoteCertifiedBackendRejectsChangedReceiptAndInvalidWriteWithoutEffect
 }
 
 func TestRemoteCertifiedCutCollectChargesPendingNativeManifestWork(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, p := n.crossPlan(ops, claims, 24)
@@ -254,6 +269,9 @@ func TestRemoteCertifiedCutCollectChargesPendingNativeManifestWork(t *testing.T)
 }
 
 func TestRemoteCertifiedNativeTransportFreshAndRetainedAt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	c := remoteCertifiedFixture(t, n)

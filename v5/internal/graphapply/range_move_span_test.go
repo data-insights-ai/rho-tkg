@@ -23,6 +23,9 @@ func moveSpanOutput(t *testing.T) *graphstate.OutputBudget {
 
 // Authored source guards only: execution/qualification is deliberately separate.
 func TestRangeMoveSpanBatchFramingAndFragments(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := namespace{graph: [16]byte{1}, partition: 3}
 	before := rangeMoveReplayStart()
 	page := func(c rangeMoveReplayCursor, id byte, value []byte) rangeMoveReplayPage {
@@ -311,6 +314,9 @@ func moveSpanInstalledFragments(t *testing.T, n *allocationTestNetwork, tx [16]b
 }
 
 func TestRangeMoveSpanNativeOriginalsReferencesAndUndo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Run("cross COMMIT ABORT and unused prepare", func(t *testing.T) {
 		n := moveSpanNetwork(t)
 		ops, claims := crossEdgeFixture(t, n)

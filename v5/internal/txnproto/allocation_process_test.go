@@ -228,6 +228,9 @@ func (n *processCluster) acquireIDs(home uint64, recipient string, seq, count ui
 }
 
 func TestSixProcessesRecipientIssuanceRecoveryAndCachedWriter(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newProcessClusterMode(t, true)
 	n.stage = "allocator-service"
 	service := n.read(1, Query{Kind: AllocatorState})
@@ -315,6 +318,9 @@ func TestSixProcessesRecipientIssuanceRecoveryAndCachedWriter(t *testing.T) {
 }
 
 func TestSixProcessesRecipientPendingFenceCrashRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, phase := range []string{"pending", "fenced"} {
 		t.Run(phase, func(t *testing.T) {
 			n := newProcessClusterMode(t, true)

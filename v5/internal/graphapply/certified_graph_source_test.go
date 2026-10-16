@@ -54,6 +54,9 @@ func assertCertifiedSourceInfoZero(t *testing.T, info graphCertifiedSourceInfo, 
 }
 
 func TestCertifiedGraphSourceInfoCodecOwnsNativeHistoricalMetadataAndRejectsInvalidFields(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	_, _, info := certifiedSourceInfoFixture(t)
 	wire, err := encodeGraphCertifiedSourceInfo(info)
 	if err != nil || len(wire) > 4096 {
@@ -111,6 +114,9 @@ func TestCertifiedGraphSourceInfoCodecOwnsNativeHistoricalMetadataAndRejectsInva
 }
 
 func TestCertifiedGraphSourceInfoDecoderRejectsTruncatedResealedAndOversizedMetadata(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	_, _, info := certifiedSourceInfoFixture(t)
 	wire, err := encodeGraphCertifiedSourceInfo(info)
 	if err != nil {
@@ -168,6 +174,9 @@ func TestCertifiedGraphSourceInfoDecoderRejectsTruncatedResealedAndOversizedMeta
 }
 
 func TestCertifiedGraphSourceNativeCaptureRetainsExactHistoricalRootAndOwnsSessionLifetime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, server, first := certifiedSourceInfoFixture(t)
 	h := n.hosts[0][0]
 	lease, err := server.lease(first.cookie)
@@ -217,6 +226,9 @@ func TestCertifiedGraphSourceNativeCaptureRetainsExactHistoricalRootAndOwnsSessi
 }
 
 func TestCertifiedGraphSourceNativeCaptureRefusesWrongMissingCancelledAndClosedAuthority(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, server, info := certifiedSourceInfoFixture(t)
 	if err := server.closeSource(info.cookie); err != nil {
 		t.Fatal(err)
@@ -286,6 +298,9 @@ func TestCertifiedGraphSourceNativeCaptureRefusesWrongMissingCancelledAndClosedA
 }
 
 func TestCertifiedGraphSourceAuthenticatedCaptureChecksBindingBudgetAndCancellationLifetime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	crossEdgeFixture(t, n)
 	native, _ := certifiedCoordinator(n)

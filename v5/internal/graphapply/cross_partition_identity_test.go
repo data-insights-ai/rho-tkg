@@ -67,6 +67,9 @@ func TestCrossPartitionTransactionIdentityQualifiesGraphCoordinatorAndRawRetryKe
 }
 
 func TestCrossPartitionSameRequestIDTwoCoordinatorsHaveRecoverableProgress(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, loserGroup := range []int{1, 0} {
 		t.Run(fmt.Sprint("loser-coordinator-", loserGroup), func(t *testing.T) {
 			n := newCrossPartitionNetwork(t)
@@ -217,6 +220,9 @@ func TestCrossPartitionSameRequestIDTwoCoordinatorsHaveRecoverableProgress(t *te
 }
 
 func TestCrossPartitionForeignIdentityPreservesCompletedLocalRequestReplay(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, _ := crossEdgeFixture(t, n)
 	id := requestID{80}
@@ -242,6 +248,9 @@ func TestCrossPartitionForeignIdentityPreservesCompletedLocalRequestReplay(t *te
 }
 
 func TestCrossPartitionSameCoordinatorLocalRequestKeyCannotRegisterCrossIdentity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, _ := crossEdgeFixture(t, n)
 	id := requestID{80}

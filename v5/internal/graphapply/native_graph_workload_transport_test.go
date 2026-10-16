@@ -14,6 +14,9 @@ import (
 
 // These compact direct guards are authored source, not a measured RTT result.
 func TestNativeWorkloadTransportOwnsFiniteQueueAndCancelsHeldFrames(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	spec := nativeWorkloadTransportSpec{Kind: "injected-rtt", TargetRTTMillis: 1, Seed: 20261009}
@@ -59,6 +62,9 @@ func TestNativeWorkloadTransportOwnsFiniteQueueAndCancelsHeldFrames(t *testing.T
 }
 
 func TestNativeWorkloadTransportRejectsUnfundedProfilesAndOrdersReadyFrames(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	base := nativeWorkloadTransportSpec{Kind: "local", Seed: 20261009}

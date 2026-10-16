@@ -11,6 +11,9 @@ import (
 )
 
 func TestRangeMoveLookupOriginalBoundaryRefusalsDoNotDispatchOrReturnPartialData(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, intent, wires, _ := rangeMoveCoordinatorFixture(t, 64)
 	encoded, err := encodeRangeMoveIntent(intent)
 	if err != nil {

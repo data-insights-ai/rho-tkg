@@ -28,6 +28,9 @@ import (
 // Missing-feature guard: the original unconditional Run has no historical-read
 // condition. These inert codec checks do not claim a runtime RED or a Run bug.
 func TestHistoricalDependencyP05ConditionCodecAndAgreement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	var missing *crossProcessCoordinator
 	if _, err := missing.OpenForUpdate(t.Context(), graphReadRequest{}); !errors.Is(err, errInvalid) {
 		t.Fatal("nil conditional open", err)
@@ -972,6 +975,9 @@ type p05Artifact struct {
 }
 
 func TestHistoricalDependencyP05ConditionalCrossWriteActualProcesses(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, schedule := range []string{"write-skew-A-first", "write-skew-B-first", "empty-range-and-absent-key-insertion", "temporal-life-value-ABA", "authority-fence-before-prepare"} {
 		if !t.Run(schedule, func(t *testing.T) { p05ConditionalCase(t, schedule, nil) }) {
 			return
@@ -1779,6 +1785,9 @@ func (c *p05CampaignCapture) prepayGate(ctx context.Context, wire []byte) error 
 }
 
 func TestP05ObservationReuseKeepsActualCutAndBounds(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, parts := n.crossPlan(ops, claims, 24)
@@ -1979,6 +1988,9 @@ func mustP05Point(t *testing.T, scope temporal.Scope, value int64) temporal.Posi
 }
 
 func TestP05FullObservationsKeepSameConditionalSourceAndOriginalAllowance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := collectedGraphNetworkWithSchemas(t, nil, conditionalGraphSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 1}, raftlog.ApplicationRetentionConfig{}, p05Schemas())
 	ops, claims := crossEdgeFixture(t, n)
 	grant := claims[0].grant

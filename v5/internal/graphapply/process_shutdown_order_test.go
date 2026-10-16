@@ -28,6 +28,9 @@ func (p *processShutdownWriteFault) Write(wire []byte) (int, error) {
 }
 
 func TestGraphProcessShutdownKillPrecedesInputEOFAndGracefulCloseRemainsClean(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, mode := range []string{"force", "close-rpc-error", "graceful"} {
 		t.Run(mode, func(t *testing.T) {
 			child := startGraphProcess(t, t.TempDir(), 1)

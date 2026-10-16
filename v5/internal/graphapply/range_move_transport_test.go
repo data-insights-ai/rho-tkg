@@ -197,6 +197,9 @@ func rangeMoveNativeAbsenceAuthority(t *testing.T) (*allocationHost, rangeMoveAu
 }
 
 func TestRangeMoveAuthoritySealBindsWholeNativeObservation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	_, native := rangeMoveNativeAbsenceAuthority(t)
 	for _, tc := range []struct {
 		name string
@@ -259,6 +262,9 @@ func TestRangeMoveObservationHashSeparatesIntentAndProgress(t *testing.T) {
 }
 
 func TestRangeMoveDecodedAbsenceCannotPrepareNativeCommand(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// This is an absence refusal, not evidence of an unauthorized accepted move.
 	// The decoder's separate seal/export assertions above establish inertness.
 	h, native := rangeMoveNativeAbsenceAuthority(t)

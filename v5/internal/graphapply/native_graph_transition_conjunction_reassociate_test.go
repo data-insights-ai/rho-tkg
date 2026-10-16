@@ -13,6 +13,9 @@ import (
 )
 
 func TestNativeConjunctionRetainedMoveKeepsSameIdleOriginalAndPublisher(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := collectedGraphNetworkWithRecovery(t, nil, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4})
 	_, publisher, _, wires := retainedPublisherFromNetwork(t, n)
 	c := publisher.coordinator
@@ -88,6 +91,9 @@ func TestNativeConjunctionRetainedMoveKeepsSameIdleOriginalAndPublisher(t *testi
 }
 
 func TestNativeP06ReplacementUsesUnusedRemoteServiceForExactOldCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, ops, claims, wires := coordinatorNativeFixture(t)
 	// coordinatorTestWire's fault injector accepts cross commands only. This
 	// read-focused guard also submits real cut commands, so use its underlying
@@ -229,6 +235,9 @@ func TestNativeConjunctionRetainedRoutingRequiresFreshCanonicalIdleOwner(t *test
 }
 
 func TestNativeConjunctionSameCoordinatorRetainsGenuineUnknownRegisterAndStreams(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, ops, claims, wires := coordinatorNativeFixture(t)
 	read, err := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, []uint64{3, 8})
 	if err != nil {
@@ -304,6 +313,9 @@ func TestNativeConjunctionSameCoordinatorRetainsGenuineUnknownRegisterAndStreams
 }
 
 func TestNativeConjunctionChangedPeerReplacesOnlyItsStreamAfterValidation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, ops, claims, wires := coordinatorNativeFixture(t)
 	wires[0].dropRegister = true
 	pending, err := c.Run(t.Context(), n.requestID(), ops, 37, claims)

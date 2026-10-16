@@ -36,6 +36,9 @@ func certifiedEarlyAbort(t *testing.T, n *allocationTestNetwork) crossProof {
 	return n.crossReadPhase(0, registered.tx, crossDecide)
 }
 func TestCertifiedGraphReviewEarlyAbortClosesWithoutResolvingAbsentParticipant(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	decision := certifiedEarlyAbort(t, n)
 	c, _ := certifiedCoordinator(n)
@@ -60,6 +63,9 @@ func TestCertifiedGraphReviewEarlyAbortClosesWithoutResolvingAbsentParticipant(t
 	}
 }
 func TestCertifiedGraphReviewOversizedScopeRefusesBeforeAllocation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	oversized := []uint64{3, 8, 99}
 	allocations := testing.AllocsPerRun(10, func() {
@@ -128,6 +134,9 @@ func certifiedFinishOtherAbort(t *testing.T, n *allocationTestNetwork, tx crossT
 	crossResolveAt(n, 1, n.crossReadPhase(1, registration.status.tx, crossDecide), 0, 1)
 }
 func TestCertifiedGraphReviewAbortSkipPreservesOtherOwnerAndDelayedPrepareBeforeCertificate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	decision, late, other, registration := certifiedAbortedLatePrepare(t, n)
 	c, tr := certifiedCoordinator(n)
@@ -185,6 +194,9 @@ func TestCertifiedGraphReviewAbortSkipPreservesOtherOwnerAndDelayedPrepareBefore
 	}
 }
 func TestCertifiedGraphReviewDelayedPrepareAfterCertificateKeepsOldCutAndNextFreshResolvesAbort(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	decision, late, other, registration := certifiedAbortedLatePrepare(t, n)
 	c, _ := certifiedCoordinator(n)
@@ -223,6 +235,9 @@ func TestCertifiedGraphReviewDelayedPrepareAfterCertificateKeepsOldCutAndNextFre
 	}
 }
 func TestCertifiedGraphReviewAbortNeedsCompletedManifestBoundParticipantAuthority(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, missing := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unavailable", true: "missing"}[missing], func(t *testing.T) {
 			n := newCertifiedGraphNetwork(t)
@@ -286,6 +301,9 @@ func certifiedReceiptIssuer(t *testing.T, local bool) (*allocationTestNetwork, g
 	return n, receipt
 }
 func TestCertifiedGraphReviewAfterRejectsGenuineUnrelatedAuthorityReceipts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, local := range []bool{true, false} {
 		for _, variant := range []string{"topology", "group", "ownership", "configuration"} {
 			t.Run(map[bool]string{true: "local", false: "cross"}[local]+"-"+variant, func(t *testing.T) {
@@ -342,6 +360,9 @@ func TestCertifiedGraphReviewAfterRejectsGenuineUnrelatedAuthorityReceipts(t *te
 }
 
 func TestCertifiedGraphReviewAfterReceiptSurvivesIssuerCloseAndGenuineFollowerReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, local := range []bool{true, false} {
 		t.Run(map[bool]string{true: "local", false: "cross"}[local], func(t *testing.T) {
 			n, receipt := certifiedReceiptIssuer(t, local)

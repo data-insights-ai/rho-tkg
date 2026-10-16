@@ -11,6 +11,9 @@ import (
 
 // Authored guards only. No child/workload/measurement acceptance is implied.
 func TestNativeGraphGuardedScalarProfilesAndCleanup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, version := range []int{13, 14} {
 		for _, facts := range []uint64{40, 10_000, 100_000, 1_000_000} {
 			for _, writers := range []int{1, 8, 32} {

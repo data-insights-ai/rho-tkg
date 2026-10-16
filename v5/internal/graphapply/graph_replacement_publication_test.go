@@ -118,6 +118,9 @@ func (w *recordedReplacementPublicationWire) RoundTrip(ctx context.Context, wire
 }
 
 func TestGraphReplacementAdmissionPublicationPastNativeReadRefusesAndFreshReadRetries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _ := replacementNativeNetwork(t, certifiedGraphSemanticContractID())
 	endpoint, transport, nativePump := replacementEndpointFixture(t, n, 0)
 	association := &replacementAssociationTest{}

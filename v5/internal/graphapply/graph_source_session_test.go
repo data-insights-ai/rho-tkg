@@ -55,6 +55,9 @@ func sourceSessionFixture(t *testing.T) (*allocationTestNetwork, *graphSourceSer
 }
 
 func TestGraphSourceExpiryCancelsPausedNativeData(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, s, info, l := sourceSessionFixture(t)
 	pause := &pausedGraphSourceData{ApplicationReadSource: l.view, entered: make(chan struct{}, 1), release: make(chan struct{})}
 	l.mu.Lock()
@@ -100,6 +103,9 @@ func TestGraphSourceExpiryCancelsPausedNativeData(t *testing.T) {
 }
 
 func TestGraphSourceHostCloseDetachesBeforeEventRefusal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, _, lease := sourceSessionFixture(t)
 	h := n.hosts[0][0]
 	lease.mu.Lock() // Controlled pending cleanup, independent of native disk IO.
@@ -142,6 +148,9 @@ func TestGraphSourceHostCloseDetachesBeforeEventRefusal(t *testing.T) {
 }
 
 func TestGraphSourceDirectCloseCancelsPausedNativeData(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, server, info, lease := sourceSessionFixture(t)
 	pause := &pausedGraphSourceData{ApplicationReadSource: lease.view, entered: make(chan struct{}, 1), release: make(chan struct{})}
 	lease.mu.Lock()
@@ -186,6 +195,9 @@ func TestGraphSourceDirectCloseCancelsPausedNativeData(t *testing.T) {
 }
 
 func TestGraphSourceSessionDirectAdmissionReplayAndLifetime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	crossEdgeFixture(t, n)
 	h := n.hosts[0][0]

@@ -16,6 +16,9 @@ import (
 // processes or physical hosts. Service-epoch rotation and fixed allocator HOME
 // relocation are distinct schedules: this test changes only one range owner.
 func TestAllocationP08CompletedRangeMoveFencesUnusedIDsWithCurrentRecipient(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, coordinator, intent, _, _ := rangeMoveCoordinatorFixture(t, 64)
 	source := n.hosts[0][0]
 	handle := source.recipients[[16]byte{1}]

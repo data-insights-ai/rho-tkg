@@ -133,6 +133,9 @@ func TestOpenVFSFaultsPreserveAcknowledgedPrefix(t *testing.T) {
 		}
 		t.Fatal("scheduled open fault did not fire")
 	}
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"create", "rename", "opendir", "enospc"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "db")

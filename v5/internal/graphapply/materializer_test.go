@@ -845,6 +845,9 @@ func TestMaterializerCrashChild(t *testing.T) {
 	t.Fatal("SIGKILL seam was not reached")
 }
 func TestMaterializerCommittedCrashNeverBecomesAbort(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if runtime.GOOS == "windows" {
 		t.Skip("SIGKILL evidence requires Unix")
 	}
@@ -1014,6 +1017,9 @@ func TestMaterializerConcreteOwnershipAndClosedSentinels(t *testing.T) {
 }
 
 func TestGraphMutationCrashRecoversFactsOutcomeCDCAndHistory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if runtime.GOOS == "windows" {
 		t.Skip("SIGKILL evidence requires Unix")
 	}

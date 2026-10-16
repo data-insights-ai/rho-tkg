@@ -10,6 +10,9 @@ import (
 // RED: cancellation at the actual committed-outcome lookup belongs to the
 // request. It must not escape on the process pump's fatal native event lane.
 func TestGraphProcessCutSubmissionCancellationIsOperationFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	h := n.hosts[0][0]
 	baseline := h.driver.Applied()

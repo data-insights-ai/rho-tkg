@@ -179,6 +179,9 @@ func rangeMoveFrozenGuardOpen(t *testing.T, c *rangeMoveCoordinator, move [16]by
 }
 
 func TestRangeMoveFrozenPageRejectsChangedCaptureManifestAndExpectedPageBindings(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, wires, transports := rangeMoveCoordinatorFixture(t, 64)
 	gate := &rangeMoveAdmissionImportGate{graphPeerWireTransport: transports[8], sequence: 0}
 	transports[8] = gate
@@ -275,6 +278,9 @@ func TestRangeMoveFrozenPageRejectsChangedCaptureManifestAndExpectedPageBindings
 }
 
 func TestRangeMoveOmittedActualFrozenReplyCannotAdvanceOrActivateAndResumeKeepsCapture(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, wires, transports := rangeMoveCoordinatorFixture(t, 64)
 	var atDrop [2][3]rangeMoveFrozenGuardState
 	fault := &rangeMoveFrozenGuardWire{graphPeerWireTransport: transports[3], drop: true}
@@ -366,6 +372,9 @@ func rangeMoveFrozenGuardTTLFixture(t *testing.T) (*allocationTestNetwork, *rang
 }
 
 func TestRangeMoveFrozenNativeTTLClosesCaptureAndManifestWithoutRecapture(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, wires, transports := rangeMoveFrozenGuardTTLFixture(t)
 	gate := &rangeMoveAdmissionImportGate{graphPeerWireTransport: transports[8], sequence: 0}
 	transports[8] = gate

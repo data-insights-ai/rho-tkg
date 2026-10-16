@@ -17,6 +17,9 @@ import (
 )
 
 func TestTrustedWriterWideSummaryAndRetainedRoot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	check := func(err error) {
 		t.Helper()
 		if err != nil {

@@ -18,6 +18,9 @@ import (
 )
 
 func TestNativeStorageTransitionSelectorsKeepGuaranteesAndFiniteOwnership(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	owner, err := newNativeFaultFS(t.TempDir(), 1)
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +92,9 @@ func nativeTransitionIndependentCheck(t *testing.T, artifact string) {
 }
 
 func TestNativeTransactionTransitionsUseActualTypedCallsAndAppliedEntries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, phase := range []byte{1, 2, 3, 4} {
 		for _, partition := range []uint64{3, 8} {
 			if (phase == 1 || phase == 3) && partition != 8 {
@@ -105,6 +111,9 @@ func TestNativeTransactionTransitionsUseActualTypedCallsAndAppliedEntries(t *tes
 }
 
 func TestNativeTransitionOwnerCloseCancelsGenuineCallWithoutDecisionOrAuthorityImport(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, coordinator, ops, claims, _ := coordinatorNativeFixture(t)
 	id := n.requestID()
 	owner, err := newNativeLogicalTransitionOwner(t.Context(), coordinator.host, 1)
@@ -187,6 +196,9 @@ func TestNativeTransitionOwnerCloseCancelsGenuineCallWithoutDecisionOrAuthorityI
 // Explicit finite replay entry. Ordinary CI selects the compact parents above;
 // the external recorded runner supplies its own real binary/run/resource owner.
 func TestNativeTransitionRecordedReplayCell(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	input := os.Getenv("RHO_GRAPH_TRANSITION_RECIPE")
 	if input == "" {
 		t.Skip("explicit recorded transition replay cell")
@@ -220,6 +232,9 @@ func TestNativeTransitionRecordedReplayCell(t *testing.T) {
 // separately authenticated first decision and complete prefix establish graph
 // recovery, while the receipt establishes only the named actual VFS boundary.
 func TestNativeStorageTransitionWALBeforeAfterRecoversSameOriginalAndOldCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"wal-write-before", "wal-write-after", "wal-sync-data-before", "wal-sync-data-after"} {
 		t.Run(kind, func(t *testing.T) {
 			t.Setenv("RHO_GRAPH_NATIVE_FAULT_PROCESS", "1")

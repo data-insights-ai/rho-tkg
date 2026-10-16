@@ -12,6 +12,9 @@ import (
 )
 
 func TestRangeMoveStagedTargetRejectsQueuedAllocationAndGraphMutators(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, _, transports := rangeMoveCoordinatorFixture(t, 64)
 	home, target := n.hosts[0][0], n.hosts[1][0]
 	recipient := n.read(0, allocationQuery{kind: observeRecipient, session: idalloc.RecipientSession{ID: [16]byte{2}}}).observation.recipient.session

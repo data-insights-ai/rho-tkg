@@ -152,6 +152,9 @@ func graphE18Assert(t *testing.T, all map[string][]graphE18Row, old bool) {
 }
 
 func TestRemoteCertifiedGraphE18SixProcessesHistoricalIndexStartingHydration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetwork(t)
 	n.indexReadPhases = 7
 	n.action(t, 4, certifiedCreateNode, 19, nil)

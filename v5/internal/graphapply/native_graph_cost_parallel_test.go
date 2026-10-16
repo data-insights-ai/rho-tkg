@@ -15,6 +15,9 @@ import (
 )
 
 func TestNativeGraphCostIndependentClientsSmallActualProcesses(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, writers := range []int{8, 32} {
 		for _, cell := range []struct {
 			name  string
@@ -31,6 +34,9 @@ func TestNativeGraphCostIndependentClientsSmallActualProcesses(t *testing.T) {
 }
 
 func TestNativeGraphCostRequestACKFindsOriginalBehindLaterAppliedEntry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, ops, _, _ := coordinatorNativeFixture(t)
 	h := n.hosts[0][0]
 	makeProposal := func(label string) allocationProposal {

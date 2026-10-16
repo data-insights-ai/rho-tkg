@@ -11,6 +11,9 @@ import (
 )
 
 func TestRangeMoveFrozenPageRefusesExhaustedRowsBeforeCapturedSource(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, wires, transports := rangeMoveCoordinatorFixture(t, 64)
 	// The exact target Import0 request is dropped before the real Host receives
 	// it, after the source has durably completed its graph+replay manifest.
@@ -80,6 +83,9 @@ func TestRangeMoveFrozenPageRefusesExhaustedRowsBeforeCapturedSource(t *testing.
 }
 
 func TestRangeMoveDurableGraphExportRefusesZeroRemainderBeforeOpeningCapture(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	source, lease, pause := rangeMoveFrozenLifetimeSource(t, t.Context())
 	defer close(pause.release)
 	defer source.Close()

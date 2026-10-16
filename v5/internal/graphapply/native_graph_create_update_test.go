@@ -14,6 +14,9 @@ import (
 )
 
 func TestNativeScalarQueryPagePreservesSharedSourceAllowance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := collectedGraphNetworkWithAgreement(t, nil, durableColumnGraphSemanticContractID())
 	ops, claims := crossEdgeFixture(t, n)
 	c := remoteCertifiedFixture(t, n)
@@ -139,6 +142,9 @@ func TestNativeScalarQueryAdmissionPrepaysHydrationAndSeparateExports(t *testing
 
 // Authored guards only; the actual six-process workload is qualified later.
 func TestNativeGraphCreateUpdateFreshProfileAndLocalChoice(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if _, err := newNativeCreateUpdateSessions(context.Background(), nil, nil); !errors.Is(err, errInvalid) {
 		t.Fatal("nil authentic query coordinator", err)
 	}

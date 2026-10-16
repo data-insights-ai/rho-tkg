@@ -215,6 +215,9 @@ func authenticatedNativeSourceFixture(t *testing.T, ctx context.Context) (*remot
 	return source, transport
 }
 func TestGraphSourceClientOwnerCancellationStopsPausedNativeReply(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	owner, cancelOwner := context.WithCancel(t.Context())
 	defer cancelOwner()
 	source, transport := authenticatedNativeSourceFixture(t, owner)
@@ -251,6 +254,9 @@ func TestGraphSourceClientOwnerCancellationStopsPausedNativeReply(t *testing.T) 
 	}
 }
 func TestGraphSourceClientCloseCancelsPausedLiveQuery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	source, transport := authenticatedNativeSourceFixture(t, t.Context())
 	transport.pause.Store(true)
 	defer close(transport.release)
@@ -285,6 +291,9 @@ func TestGraphSourceClientCloseCancelsPausedLiveQuery(t *testing.T) {
 }
 
 func TestGraphSourceAuthenticatedNativeRootAndGetRoundTrip(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"root", "found", "absent"} {
 		t.Run(kind, func(t *testing.T) {
 			source, transport := authenticatedNativeSourceFixture(t, t.Context())
@@ -325,6 +334,9 @@ func TestGraphSourceAuthenticatedNativeRootAndGetRoundTrip(t *testing.T) {
 }
 
 func TestGraphSourceClientCloseUsesPrepaidCapacityAfterCallLimit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	source, transport := authenticatedNativeSourceFixture(t, t.Context())
 	// Independent protocol ceiling: consume the remaining 1022 calls after the
 	// prepaid close slot and real sourceOpen, with zero-payload admissions.
@@ -353,6 +365,9 @@ func TestGraphSourceClientCloseUsesPrepaidCapacityAfterCallLimit(t *testing.T) {
 }
 
 func TestGraphSourceQueuedAuthenticatedStreamWaitUsesCurrentCancellation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	source, transport := authenticatedNativeSourceFixture(t, t.Context())
 	transport.pause.Store(true)
 	defer close(transport.release)
@@ -390,6 +405,9 @@ func TestGraphSourceQueuedAuthenticatedStreamWaitUsesCurrentCancellation(t *test
 	}
 }
 func TestGraphSourceQueuedNativeServiceWaitUsesCurrentCancellation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	source, transport := authenticatedNativeSourceFixture(t, t.Context())
 	lease, err := transport.service.sources.lease(source.info.cookie)
 	if err != nil {
@@ -439,6 +457,9 @@ func TestGraphSourceQueuedNativeServiceWaitUsesCurrentCancellation(t *testing.T)
 }
 
 func TestGraphSourceCapturedMetadataBoundsCancellationAndExpiry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	source, transport := authenticatedNativeSourceFixture(t, t.Context())
 	root, err := source.RootBounded(t.Context(), 172)
 	if err != nil || len(root.Image) != 172 || cap(root.Image) != 172 {
@@ -508,6 +529,9 @@ func (w *recordedNativeSourceWire) RoundTrip(ctx context.Context, wire []byte) (
 	return reply, err
 }
 func TestGraphSourceRemoteScanChargesNativeFutureVisitsInSharedLedger(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	source, transport := authenticatedNativeSourceFixture(t, t.Context())
 	defer source.Close()
 	pump := transport.service.pump.(*nativeGraphTestPump)
@@ -546,6 +570,9 @@ func TestGraphSourceRemoteScanChargesNativeFutureVisitsInSharedLedger(t *testing
 }
 
 func TestRemoteGraphSourceRootBindingLimitsDirectContract(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	source, _ := authenticatedNativeSourceFixture(t, t.Context())
 	root, err := source.Root()
 	if err != nil || len(root.Image) != 172 || cap(root.Image) != 172 {
@@ -619,6 +646,9 @@ func (w corruptedNativeSourceReply) RoundTrip(ctx context.Context, wire []byte) 
 	return encodeGraphWireResponse(parsed)
 }
 func TestGraphSourceAuthenticatedCompletionMismatchAndDirectNilRefusals(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	source, transport := authenticatedNativeSourceFixture(t, t.Context())
 	defer source.Close()
 	if _, err := newGraphAuthenticatedEndpoint(transport.service.host.machine.declaration, nil, source.endpoint.budget); !errors.Is(err, errInvalid) {
@@ -663,6 +693,9 @@ type fixedWrongGraphPeer struct {
 func (w *fixedWrongGraphPeer) Peer() graphPeerIdentity { return w.peer }
 
 func TestRemoteGraphSourceDirectDataAdmissionAndOwnerExpiry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	var missing *remoteGraphSource
 	if row, found, err := missing.Get(t.Context(), []byte("missing"), 1); !errors.Is(err, errInvalid) || found || len(row.Key)+len(row.Value) != 0 {
 		t.Fatal("nil Get published data", row, found, err)

@@ -19,6 +19,9 @@ import (
 // This test breaks a missing Genesis Stage, using actual durable quorum commit.
 // It retains the evidence directory and never fabricates a Raft entry or seed DB.
 func TestRegisteredMaterializerRealDriverGenesis(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	decode := func(text string) []byte {
 		t.Helper()
 		out, err := hex.DecodeString(text)

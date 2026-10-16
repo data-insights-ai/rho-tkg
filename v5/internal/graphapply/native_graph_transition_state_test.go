@@ -389,6 +389,9 @@ func nativeStateSnapshotCase(t *testing.T, kind raftlog.StableStateKind, side st
 // batch, including unclaimed retirement and last-reference physical cleanup.
 // GC/reader, genesis startup and whole P01–P09 conjunction remain separate.
 func TestNativeStateImportSyncBoundariesRecoverGenuineSourceAndRetainedCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []raftlog.StableStateKind{raftlog.StableStateImportBegin, raftlog.StableStateImportAppend, raftlog.StableStateImportSeal, raftlog.StableStateActivation, raftlog.StableStateImportRetire, raftlog.StableStateGenerationClear} {
 		for _, side := range []string{"before", "after"} {
 			t.Run(fmt.Sprintf("k%d-%s", kind, side), func(t *testing.T) { nativeStateSnapshotCase(t, kind, side) })

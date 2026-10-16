@@ -13,6 +13,9 @@ import (
 // Source-authored, unexecuted OS-child guard: actual native keepers and physical
 // derived directories survive process replacement. No parent Host is invented.
 func TestNativeColumnsDurableOSChildCreateReopenAndRetire(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if _, err := nativeColumnProcessPolicy(nil); !errors.Is(err, errInvalid) {
 		t.Fatal("nil fresh policy", err)
 	}

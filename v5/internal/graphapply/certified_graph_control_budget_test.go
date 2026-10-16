@@ -27,6 +27,9 @@ func (r *recordedCertifiedControlTransport) RoundTrip(ctx context.Context, reque
 // RED: zero allowances remain valid for native compatibility and inert codecs,
 // but an authenticated remote request must not receive native default budgets.
 func TestCertifiedGraphControlBudgetServiceRejectsZeroRemoteGrantBeforeNativeRead(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	c := remoteCertifiedFixture(t, n)
 	backend := remoteCertifiedReceiptBackend(t, c)
@@ -49,6 +52,9 @@ func TestCertifiedGraphControlBudgetServiceRejectsZeroRemoteGrantBeforeNativeRea
 // GUARD: the E15 whole-operation RED can refuse on framing alone. This direct
 // completed ReadIndex exercises the source grant at the native reader itself.
 func TestCertifiedGraphControlBudgetNativePendingManifestHonorsReadIndexGrant(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, register := n.crossPlan(ops, claims, 24)
@@ -104,6 +110,9 @@ func TestCertifiedGraphControlBudgetNativePendingManifestHonorsReadIndexGrant(t 
 }
 
 func TestCertifiedGraphControlBudgetAuthenticatedLedgerIncludesActualNativeWork(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, register := n.crossPlan(ops, claims, 24)

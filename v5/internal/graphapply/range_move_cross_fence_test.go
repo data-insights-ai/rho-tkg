@@ -116,6 +116,9 @@ func rangeMoveCrossFenceResume(t *testing.T, c *rangeMoveCoordinator, resume ran
 }
 
 func TestRangeMoveWaitsForOriginalRegisteredAndPreparedCrossSettlement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, phase := range []string{"registered-only", "both-YES"} {
 		t.Run(phase, func(t *testing.T) {
 			n, c, intent, wires, _ := rangeMoveCoordinatorFixture(t, 64)
@@ -252,6 +255,9 @@ func TestRangeMoveWaitsForOriginalRegisteredAndPreparedCrossSettlement(t *testin
 }
 
 func TestRangeMoveRejectsFirstDelayedCrossPrepareAndSettlesInertLateRegistration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, intent, _, _ := rangeMoveCoordinatorFixture(t, 64)
 	window, err := temporal.All(graphGenesisBinding(t).Axis())
 	if err != nil {

@@ -11,6 +11,9 @@ import (
 // Seventeen genuine facts cross the HOME grant boundary and the incident page
 // boundary. Both process cohorts use the same six physical voter directories.
 func TestNativeGraphCostPhysicalReopenAndIndexesSmallActualProcesses(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, cell := range []struct {
 		name  string
 		cross uint64

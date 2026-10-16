@@ -6,5 +6,8 @@ import "testing"
 // the missing same-Graph cross-edge path. Its breaking input now enters the
 // actual Host prepare/decision/resolve door; local remote-refusal guards remain.
 func TestCrossPartitionGraphPrepareResolveMissingCompleteEndpointEffects(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	testCrossPartitionHostTypedCrossEdgeCommitsBothEndpointPostings(t)
 }

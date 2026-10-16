@@ -94,6 +94,9 @@ func capacityNativeInvocation(t *testing.T, c *crossProcessCoordinator) (map[uin
 }
 
 func TestCrossProcessCapacityAuthenticatedPriorityAndImmutableDecision(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for loserGroup := range 2 {
 		t.Run(fmt.Sprintf("priority-loser%d", loserGroup), func(t *testing.T) {
 			n := newCrossPartitionNetwork(t)

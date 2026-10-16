@@ -57,6 +57,9 @@ func sourceAuthorityGuardEmptyExport(t *testing.T, p crossAuthority) {
 }
 
 func TestGraphSourceAuthorityCancelSuppressesAllThreeNativeReadFamilies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	h := n.hosts[0][0]
 	pump := &nativeGraphTestPump{n: n, group: 0, host: h}
@@ -125,6 +128,9 @@ func TestGraphSourceAuthorityCancelSuppressesAllThreeNativeReadFamilies(t *testi
 }
 
 func TestGraphSourceAuthorityLookupAdmissionQuotaAndFollowerRefuseWithoutProof(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	h := n.hosts[0][0]
 	pump := &nativeGraphTestPump{n: n, group: 0, host: h}
@@ -188,6 +194,9 @@ func TestGraphSourceAuthorityLookupAdmissionQuotaAndFollowerRefuseWithoutProof(t
 }
 
 func TestGraphSourceAuthorityCompletionRejectsMalformedChangedAndReplayedContext(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	h := n.hosts[0][0]
 	pump := &nativeGraphTestPump{n: n, group: 0, host: h}
@@ -269,6 +278,9 @@ func TestGraphSourceAuthorityCompletionRejectsMalformedChangedAndReplayedContext
 }
 
 func TestGraphSourceAuthorityExportAndProposalRejectAlteredNativeEvidence(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, coordinator, ops, claims, _ := coordinatorNativeFixture(t)
 	result, err := coordinator.Run(t.Context(), n.requestID(), ops, 37, claims)
 	if err != nil || !result.decision.commit {

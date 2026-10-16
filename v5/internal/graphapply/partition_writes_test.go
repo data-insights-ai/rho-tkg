@@ -60,6 +60,9 @@ func partitionNineOperations(t *testing.T, first uint64) ([]graphstate.Operation
 }
 
 func TestPartitionWritesNineNativeOperationsAreAdmittedWithActualReservedRanges(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	r := partitionCodecRequest(t, 0, defaultMaterializerLimits())
 	n := newPartitionWriteNetworkWithRouting(t, r, partitionWriteSchemas())
 	handle := n.activate(0, [16]byte{1})
@@ -127,6 +130,9 @@ func (n *allocationTestNetwork) submitPartitionGraph(group int, p allocationProp
 }
 
 func TestPartitionCommittedRemoteDependencyRejectsThenAllowsLocalWrite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	r := partitionCodecRequest(t, 0, defaultMaterializerLimits())
 	n := newPartitionWriteNetworkWithRouting(t, r, partitionWriteSchemas())
 	local := n.activate(0, [16]byte{1})

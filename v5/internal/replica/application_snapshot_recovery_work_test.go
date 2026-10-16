@@ -65,6 +65,9 @@ func (m *recoveryWorkApplication) Stage(e Entry, budget raftlog.ApplicationBudge
 }
 
 func TestApplicationSnapshotRecoveryStableUseTailMustFundActualEntryPassesBeforeClaim(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	nodes := make(map[uint64]*Driver)
 	var targetMachine *recoveryWorkApplication
 	for id := uint64(1); id <= 3; id++ {

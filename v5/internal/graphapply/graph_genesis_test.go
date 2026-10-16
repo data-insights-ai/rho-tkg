@@ -82,6 +82,9 @@ func assertGraphGenesisStored(t *testing.T, h *allocationHost, binding types.Def
 }
 
 func TestGraphGenesisTwoDiskPartitionsExactBindingRetryConflictAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newGraphGenesisNetwork(t)
 	home := n.hosts[0][0]
 	binding := graphGenesisBinding(t)
@@ -203,6 +206,9 @@ func TestGraphGenesisTwoDiskPartitionsExactBindingRetryConflictAndReopen(t *test
 }
 
 func TestGraphGenesisCodecSchemaAndAgreementCrossing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newGraphGenesisNetwork(t)
 	h := n.hosts[0][0]
 	b := graphGenesisBinding(t)
@@ -286,6 +292,9 @@ func TestGraphGenesisCodecSchemaAndAgreementCrossing(t *testing.T) {
 }
 
 func TestGraphGenesisNilProofGraphAndBudgetRefusals(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newGraphGenesisNetwork(t)
 	h := n.hosts[0][0]
 	binding := graphGenesisBinding(t)
@@ -355,6 +364,9 @@ func TestGraphGenesisNilProofGraphAndBudgetRefusals(t *testing.T) {
 }
 
 func TestGraphGenesisSnapshotRetainedBindingTailAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	testDeclaredInitSnapshotRetainedControlHistoryTailAndReopen(t, graphGenesisSemanticContractID(), graphGenesisBinding(t))
 }
 func assertGraphGenesisInitializationCDC(t *testing.T, envelope []byte, r declaredInitCommand, binding types.DefaultAxisBinding) {
@@ -392,6 +404,9 @@ func assertGraphGenesisInitializationCDC(t *testing.T, envelope []byte, r declar
 }
 
 func TestGraphGenesisMissingCrossedMetadataRefusesCurrentButRetainsOldView(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"missing-config", "old-config", "missing-axis", "crossed-axis", "crossed-view"} {
 		t.Run(kind, func(t *testing.T) {
 			n := newGraphGenesisNetwork(t)
@@ -496,6 +511,9 @@ func TestGraphGenesisIndependentConfigGolden(t *testing.T) {
 }
 
 func TestGraphGenesisTightDescriptorPolicyRefusesOperationallyBeforeEffects(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newGraphGenesisNetwork(t)
 	h := n.hosts[0][0]
 	binding := graphGenesisBinding(t)
@@ -545,6 +563,9 @@ func TestGraphGenesisTightDescriptorPolicyRefusesOperationallyBeforeEffects(t *t
 }
 
 func TestGraphGenesisCompletedProofCannotCrossAgreementOrOriginatingHost(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newGraphGenesisNetwork(t)
 	h := n.hosts[0][0]
 	binding := graphGenesisBinding(t)

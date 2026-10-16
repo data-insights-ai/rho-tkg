@@ -78,6 +78,9 @@ func p09PublicationFixture(t *testing.T, kind string) (*graphSourceServer, func(
 }
 
 func TestGraphSourcePublicationCancelledAfterNativeCaptureReturnsNoCookie(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"configuration", "certified", "move"} {
 		cancellations := []string{"operation", "owner"}
 		if kind == "configuration" {

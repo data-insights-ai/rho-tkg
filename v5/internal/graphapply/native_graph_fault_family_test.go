@@ -23,6 +23,9 @@ import (
 )
 
 func TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, modeled := range []bool{false, true} {
 		name := "torn-wal-current-disk"
 		if modeled {
@@ -141,6 +144,9 @@ func TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage(t 
 }
 
 func TestNativeFaultFamilyTwoConflictingOriginalsFenceAndRealTransferExploreCausalOrders(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	recorded := nativeTransitionComposedFromEnv(t)
 	// This finite OS-child slice complements the genuine native-host fence-first
 	// stale Register/first Prepare schedules in
@@ -443,6 +449,9 @@ func TestNativeFaultFamilyTwoConflictingOriginalsFenceAndRealTransferExploreCaus
 }
 
 func TestNativeFaultFamilySnapshotInterruptionAndAtomicKVPublicationRecoverWholeCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, name := range []string{"snapshot-chunk-interruption", "snapshot-atomic-kv-sync"} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("RHO_GRAPH_FAULT_FAMILY_PROCESS", "1")
@@ -561,6 +570,9 @@ func TestNativeFaultFamilySnapshotInterruptionAndAtomicKVPublicationRecoverWhole
 }
 
 func TestNativeFaultFamilyChildClockExpiryAndRollbackKeepOldAuthorityDead(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Setenv("RHO_GRAPH_FAULT_FAMILY_PROCESS", "1")
 	f := newPairedGraphFaultNetwork(t)
 	before := nativeFaultSeed(t, f)
@@ -675,6 +687,9 @@ func TestNativeFaultFamilyChildClockExpiryAndRollbackKeepOldAuthorityDead(t *tes
 }
 
 func TestNativeFaultFamilyCorruptedDurableNativeRecordsRefuseBeforeReady(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, suffix := range []string{".log", "manifest"} {
 		t.Run(suffix, func(t *testing.T) {
 			t.Setenv("RHO_GRAPH_FAULT_FAMILY_PROCESS", "1")
@@ -765,6 +780,9 @@ func TestNativeFaultFamilyCorruptedDurableNativeRecordsRefuseBeforeReady(t *test
 }
 
 func TestNativeFaultFamilyOldLeaderPacketStaysChargedAcrossGenuineElection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := newPairedGraphFaultNetwork(t)
 	before := nativeFaultSeed(t, f)
 	old := p06Observe(f, 6, graphReadFresh, graphCut{})
@@ -879,6 +897,9 @@ func TestNativeFaultFamilyOldLeaderPacketStaysChargedAcrossGenuineElection(t *te
 }
 
 func TestNativeFaultFamilyDirectedLossAndUnequalTicksPreserveOriginalAndOldCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, name := range []string{"unequal-ticks", "asymmetric-network", "partition-quorum-loss", "coordinator-quorum-loss", "logical-domain-loss"} {
 		t.Run(name, func(t *testing.T) {
 			f := newPairedGraphFaultNetwork(t)
@@ -987,6 +1008,9 @@ func TestNativeFaultFamilyDirectedLossAndUnequalTicksPreserveOriginalAndOldCut(t
 }
 
 func TestNativeFaultFamilyOptionsPublicationRenameFailsActualReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Setenv("RHO_GRAPH_NATIVE_FAULT_PROCESS", "1")
 	t.Setenv("RHO_GRAPH_FAULT_FAMILY_PROCESS", "1")
 	f := newPairedGraphFaultNetwork(t)
@@ -1019,6 +1043,9 @@ func TestNativeFaultFamilyOptionsPublicationRenameFailsActualReopen(t *testing.T
 }
 
 func TestNativeFaultFamilyLeaseClockCannotExtendOrReviveNativeOwner(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	crossEdgeFixture(t, n)
 	h := n.hosts[0][0]

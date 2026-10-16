@@ -98,6 +98,9 @@ func retainedPublisherFromNetwork(t *testing.T, n *allocationTestNetwork) (*allo
 }
 
 func TestRetainedPinPortablePublisherNeedsPostInstallLiveOwners(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Run("actual originals and held source ownership", func(t *testing.T) {
 		n, p, ops, wires := retainedPublisherFixture(t)
 		request, err := p.Begin(t.Context(), n.requestID(), graphReadRequest{mode: graphReadFresh}, 3)

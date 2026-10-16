@@ -62,6 +62,9 @@ func TestNativeScopeReadDoorPreservesLegacyBytesAndRejectsForeignScopeShapes(t *
 }
 
 func TestNativeP01CurrentDiagnosticKeepsFollowerHistoricalAndLeaderFreshRoles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, _ := crossEdgeFixture(t, n)
 	live := remoteCertifiedFixture(t, n)
@@ -158,6 +161,9 @@ func TestNativeP01CurrentDiagnosticKeepsFollowerHistoricalAndLeaderFreshRoles(t 
 }
 
 func TestNativeP01OutsideDataScopeFreshAndAfterResolveOrRefuseActualCoordinator(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, mode := range []graphReadMode{graphReadFresh, graphReadAfter} {
 		name := "Fresh"
 		if mode == graphReadAfter {

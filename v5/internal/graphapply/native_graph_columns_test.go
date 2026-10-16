@@ -21,6 +21,9 @@ func nativeColumnGuardPolicy() nativeColumnPolicy {
 // One real retained graph history, then a mutation. Publication never accepts
 // runner-produced JSON, caller counts or a copied certificate as completeness.
 func TestNativeColumnsPublishResumeCacheAndRetainedCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	c, _ := certifiedCoordinator(n)
 	cut := func() graphCut {
@@ -256,6 +259,9 @@ func TestNativeColumnsPublishResumeCacheAndRetainedCut(t *testing.T) {
 }
 
 func TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	remote := remoteCertifiedFixture(t, n)
 	cut := func() graphCut {
@@ -740,6 +746,9 @@ func TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass(t *testing.T) {
 }
 
 func TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := collectedGraphNetworkWithAgreement(t, nil, durableColumnGraphSemanticContractID())
 	ops, claims := crossEdgeFixture(t, n)
 	remote := remoteCertifiedFixture(t, n)

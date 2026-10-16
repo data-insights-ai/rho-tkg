@@ -182,6 +182,9 @@ func graphE17KillTargetFollower(t *testing.T, p *graphProcess) {
 // Leaders/coordinator1 and4 remain live with their original authenticated
 // streams. This does not prove coordinator/leader/quorum replacement.
 func TestGraphRangeMoveSixProcessesTargetVoterRestoresMidImportThenOriginalResume(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetworkProfile(t, true)
 	n.e17PublicPhases = 4
 	publication, owner := graphE17Placement(t, n, 1, 1)

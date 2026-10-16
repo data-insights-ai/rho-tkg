@@ -16,6 +16,9 @@ import (
 // This RED uses only existing native APIs. It fails on actual missing original
 // copy after a completed handoff, never on a missing replay helper symbol.
 func TestRangeMoveReplayHandoffPreservesSourceOriginalWithCollidingTargetRequest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, coordinator, intent, _, _ := rangeMoveCoordinatorFixture(t, 48)
 	intent.pageBytes = 8 << 10
 	id := requestID{79}
@@ -156,6 +159,9 @@ func rangeMoveReplayIntentAt(t *testing.T, n *allocationTestNetwork, group int, 
 }
 
 func TestRangeMoveReplaySecondHandoffKeepsFirstOriginWithCollidingRequest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, transports := rangeMoveReplayTwoHopFixture(t)
 	id := requestID{85}
 	window, err := temporal.All(graphGenesisBinding(t).Axis())
@@ -240,6 +246,9 @@ func rangeMoveReplayNativeCrossRecord(t *testing.T) (*allocationTestNetwork, nam
 }
 
 func TestRangeMoveReplayFragmentsPreserveNativeManifestAndCanonicalRowDigest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, source, originalKey, originalValue := rangeMoveReplayNativeCrossRecord(t)
 	initial := rangeMoveReplayStart()
 	initial.family = 9 // native GP R, discovered from actual ga11 inventory.
@@ -316,6 +325,9 @@ func TestRangeMoveReplayFragmentsPreserveNativeManifestAndCanonicalRowDigest(t *
 }
 
 func TestRangeMoveReplayNativeFutureKeyHolesAdvanceWithoutPhantomOriginal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, _, _, _ := rangeMoveCoordinatorFixture(t, 8)
 	h := n.hosts[0][0]
 	frozen := rangeMoveReplayNativeReader(t, h, 64<<20)
@@ -352,6 +364,9 @@ func TestRangeMoveReplayNativeFutureKeyHolesAdvanceWithoutPhantomOriginal(t *tes
 }
 
 func TestRangeMoveReplayScopesInertStagesAndPhantomLookup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, _, _, _ := rangeMoveCoordinatorFixture(t, 8)
 	source := rangeMoveReplayNativeReader(t, n.hosts[0][0], 64<<20)
 	page, err := exportRangeMoveReplayPage(source, source.ns, rangeMoveReplayCursor{}, raftlog.ReadBudget{Rows: 4, Bytes: 8192})
@@ -387,6 +402,9 @@ func TestRangeMoveReplayScopesInertStagesAndPhantomLookup(t *testing.T) {
 }
 
 func TestRangeMoveReplayCodecsRejectCorruptionTruncationAndNilBudgets(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, _, _, _ := rangeMoveCoordinatorFixture(t, 8)
 	q := rangeMoveReplayNativeReader(t, n.hosts[0][0], 64<<20)
 	page, err := exportRangeMoveReplayPage(q, q.ns, rangeMoveReplayCursor{}, raftlog.ReadBudget{Rows: 4, Bytes: 8192})
@@ -438,6 +456,9 @@ func TestRangeMoveReplayCodecsRejectCorruptionTruncationAndNilBudgets(t *testing
 }
 
 func TestRangeMoveReplayFirstOriginKeyBijectionAndInheritedInertStage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, _, _, _ := rangeMoveCoordinatorFixture(t, 8)
 	a, b := n.hosts[0][0].machine.ns, n.hosts[1][0].machine.ns
 	id := [16]byte{87}
@@ -499,6 +520,9 @@ func TestRangeMoveReplayFirstOriginKeyBijectionAndInheritedInertStage(t *testing
 }
 
 func TestRangeMoveReplayMissingNativePhaseAndFamilyEOFKeepExactTotals(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, source, _, _ := rangeMoveReplayNativeCrossRecord(t)
 	q := rangeMoveReplayNativeReader(t, n.hosts[1][0], 64<<20)
 	// Participants own actual ga11 statuses but only the coordinator records D.
@@ -526,6 +550,9 @@ func TestRangeMoveReplayMissingNativePhaseAndFamilyEOFKeepExactTotals(t *testing
 }
 
 func TestRangeMoveReplayDirectRefusalsPreserveZeroOutputs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if got, err := exportRangeMoveReplayPage(nil, namespace{}, rangeMoveReplayCursor{}, raftlog.ReadBudget{Rows: 1, Bytes: 4096}); !reflect.DeepEqual(got, rangeMoveReplayPage{}) || !errors.Is(err, errInvalid) {
 		t.Fatal("nil reader export", err)
 	}

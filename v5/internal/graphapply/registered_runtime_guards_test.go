@@ -119,6 +119,9 @@ func registeredGuardZeroState(t *testing.T, s *raftlog.Store, limits registeredO
 }
 
 func TestRegisteredRuntimeGuardPublicInitializeRootAndReadCaps(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// Independent GR2 Graph23/bootstrap bytes, supplied through actual Initialize.
 	seed := registeredStageHex(t, "47520202170000000000000000000000000000000000000000000001000000000000000100000000000000000000000000000001a9ff65b3a3e3456152bb49ccdb79a67ad6ee6b0b518f726b9b6caf4807e5cc020000000000000001000000000000000100000000000000004d821b4f0204d4230b1c7148412ecd78fdcee36289e36c547800e5fad9630807")
 	for _, tc := range []struct {
@@ -218,6 +221,9 @@ func TestRegisteredRuntimeGuardOperationAndClosedStore(t *testing.T) {
 }
 
 func TestRegisteredRuntimeGuardActualCommittedCommandsAndFences(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for j, tc := range []struct {
 		name   string
 		change func([]byte) []byte
@@ -299,6 +305,9 @@ func TestRegisteredRuntimeGuardActualCommittedCommandsAndFences(t *testing.T) {
 }
 
 func TestRegisteredRuntimeGuardOriginCurrentViewAndPinLimit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	g, machines := registeredGuardGroup(t, 45)
 	command, err := encodeGenesisCommand(machines[0].source, registeredJournalBudget{3314})
 	if err != nil {

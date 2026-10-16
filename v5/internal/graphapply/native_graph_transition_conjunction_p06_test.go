@@ -502,6 +502,9 @@ func prepareManifest(t *testing.T, proposal allocationProposal) []byte {
 }
 
 func TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for i, recipe := range nativeP06ConjunctionRecipes() {
 		// Four short cells retain both coordinators/outcomes/kinds/sides.
 		if testing.Short() && i != 0 && i != 7 && i != 9 && i != 14 {
@@ -512,6 +515,9 @@ func TestNativePreparedLockP06ExactDecideBatchesPreserveOriginalAndOldCut(t *tes
 }
 
 func TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for i, recipe := range nativeP06RecoveryConjunctionRecipes() {
 		// Four additional short cells retain both phases/participants, both
 		// coordinator/outcome/kind/side choices. Full keeps all64 exact rows.
@@ -523,6 +529,9 @@ func TestNativePreparedLockP06RecoveryPrepareAndResolveBatchesPreserveOriginal(t
 }
 
 func TestNativeConjunctionRegistryDeadlineAndGateOwnership(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	old, err := json.Marshal(nativeP06ConjunctionRecipes()[0])
 	if err != nil || string(old) != `{"Coordinator":3,"Commit":true,"Kind":1,"Side":"before"}` {
 		t.Fatal("Decide16 recipe bytes changed", err)
@@ -607,6 +616,9 @@ func TestNativeConjunctionRegistryDeadlineAndGateOwnership(t *testing.T) {
 }
 
 func TestNativeConjunctionGateReadTrafficPreservesFourthPrepareCandidate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, registration := n.crossPlan(ops, claims, 24)
@@ -714,6 +726,9 @@ func TestNativeConjunctionGateReadTrafficPreservesFourthPrepareCandidate(t *test
 }
 
 func TestNativeConjunctionFollowerReceiptWaitsForAuthenticatedLoss(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 		defer cancel()

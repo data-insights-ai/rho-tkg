@@ -137,6 +137,9 @@ func lifecycleNetwork(t *testing.T) (*allocationTestNetwork, provisionedLogicalG
 }
 
 func TestLogicalGraphLifecyclePendingChoicesBindOnlyAtCommittedInit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, original, candidate := lifecycleSeedNetwork(t)
 	candidate.maxBlock++
 	candidate.schemas = []graphstate.PropertyDefinition{{Name: "chosen-at-init", Owner: graphstate.Node, Type: graphstate.ScalarI64, Cardinality: graphstate.ScalarCardinality}}
@@ -190,6 +193,9 @@ func TestLogicalGraphLifecyclePendingChoicesBindOnlyAtCommittedInit(t *testing.T
 }
 
 func TestLogicalGraphLifecycleCommittedHistoryAndAllocatorReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, g, r := lifecycleNetwork(t)
 	handle := n.activate(0, [16]byte{1})
 	n.acquire(0, handle, 1, 16)
@@ -307,6 +313,9 @@ func TestLogicalGraphLifecycleCommittedHistoryAndAllocatorReopen(t *testing.T) {
 }
 
 func TestLogicalGraphLifecyclePartialProvisionAndOldIdentityRefusals(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, failAt := range []int{1, 2} {
 		t.Run(fmt.Sprintf("after%dseeds", failAt), func(t *testing.T) {
 			spec := lifecycleSpec()
@@ -384,6 +393,9 @@ func TestLogicalGraphLifecyclePartialProvisionAndOldIdentityRefusals(t *testing.
 }
 
 func TestLogicalGraphLifecycleActualMaterializerAgreements(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, agreement := range []raftlog.ApplicationSemanticContractID{partitionWriteSemanticContractID(), crossPartitionSemanticContractID(), certifiedGraphSemanticContractID(), rangeMoveSemanticContractID()} {
 		t.Run(fmt.Sprintf("%x", agreement[:4]), func(t *testing.T) {
 			spec := lifecycleSpec()

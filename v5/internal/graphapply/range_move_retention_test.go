@@ -30,6 +30,9 @@ func (w *retainedMoveKeeperFault) RoundTrip(ctx context.Context, wire []byte) ([
 // One authored six-voter composition. Native controls/roots, the portable pin,
 // move and local physical collection are genuine; this is not process acceptance.
 func TestCollectedGraphHandoffKeepsOriginalDurablePinAndFrozenLineage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, p, edgeOps, wires := retainedPublisherFromNetwork(t, collectedGraphNetworkWithPolicy(t, func(p *raftlog.ApplicationPolicy) {
 		p.RetainedApplicationBytes = 64 << 20
 		p.RetainedApplicationRecords = 32768

@@ -79,6 +79,9 @@ func replacementLogicalProjection(t *testing.T, p graphstate.Projection) graphst
 }
 
 func TestGraphReplacementRevocationFencesHostAndSourceBeforeAsyncClose(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, server, info := certifiedSourceInfoFixture(t)
 	h := n.hosts[0][0]
 	ctx, cancel := context.WithCancel(t.Context())
@@ -123,16 +126,25 @@ func TestGraphReplacementRevocationFencesHostAndSourceBeforeAsyncClose(t *testin
 }
 
 func TestGraphReplacementActivationNativeHistoryAllocatorAndLifetime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, name := range []string{"HOME", "non-HOME"} {
 		t.Run(name, func(t *testing.T) { graphReplacementNativeWorkflow(t, name == "non-HOME", nil) })
 	}
 }
 
 func TestGraphReplacementActivationAssociationCloseReentryCachesError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	graphReplacementNativeWorkflow(t, false, errors.New("replacement association cleanup fixture"))
 }
 
 func TestGraphReplacementActivationRefusalsAndReceivingReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, o := range []*graphReplacementReceiver{nil, {}} {
 		if packets, err := o.step(replica.Packet{}); packets != nil || !errors.Is(err, errInvalid) {
 			t.Fatal(packets, err)

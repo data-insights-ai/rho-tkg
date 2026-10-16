@@ -10,6 +10,9 @@ import (
 )
 
 func TestRangeMoveActiveCrossReplayRetainsCapacitySourceBindingValidation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, _, transports := rangeMoveCoordinatorFixture(t, 64)
 	window, err := temporal.All(graphGenesisBinding(t).Axis())
 	if err != nil {

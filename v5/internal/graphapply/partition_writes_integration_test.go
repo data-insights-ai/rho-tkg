@@ -157,6 +157,9 @@ func partitionProjectionFromView(t *testing.T, h *allocationHost, view *raftlog.
 	return p, v.Work()
 }
 func TestPartitionWritesBothGroupsPreserveTypedAuthorityHistoryAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, routing := partitionIntegrationNetwork(t)
 	var installed [2]uint64
 	var descriptors [2]graphstate.Scalar

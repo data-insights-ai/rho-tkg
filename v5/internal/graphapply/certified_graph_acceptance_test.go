@@ -213,6 +213,9 @@ func assertCertifiedIncident(t *testing.T, v graphstate.ReadView, scope temporal
 }
 
 func TestCertifiedGraphFreshE15WaitsForDelayedParticipantAndAfterIncludesCommit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	c, tr := certifiedCoordinator(n)
@@ -257,6 +260,9 @@ func TestCertifiedGraphFreshE15WaitsForDelayedParticipantAndAfterIncludesCommit(
 }
 
 func TestCertifiedGraphCollectionFenceRaceExcludesHigherInstalledState(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, _ := crossEdgeFixture(t, n)
 	c, tr := certifiedCoordinator(n)
@@ -288,6 +294,9 @@ func TestCertifiedGraphCollectionFenceRaceExcludesHigherInstalledState(t *testin
 	assertCertifiedProjection(t, certifiedView(t, current), 1, true, []string{"after-collection"})
 }
 func TestCertifiedGraphPreFenceCommitResolvesBelowReadFence(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, p := n.crossPlan(ops, claims, 24)
@@ -314,6 +323,9 @@ func TestCertifiedGraphPreFenceCommitResolvesBelowReadFence(t *testing.T) {
 	assertCertifiedProjection(t, certifiedView(t, fresh), 3, true, nil)
 }
 func TestCertifiedGraphE16UnresolvedLowPrepareBlocksHigherObservedRound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, register := n.crossPlan(ops, claims, 24)
@@ -376,6 +388,9 @@ func TestCertifiedGraphE16UnresolvedLowPrepareBlocksHigherObservedRound(t *testi
 	assertCertifiedProjection(t, certifiedView(t, fresh), 17, true, []string{"higher"})
 }
 func TestCertifiedGraphScopedReadCannotExpandAndEmptyPublishedAuthorityIsRetained(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	c, _ := certifiedCoordinator(n)
 	h := n.activate(0, [16]byte{1})
@@ -407,6 +422,9 @@ func TestCertifiedGraphScopedReadCannotExpandAndEmptyPublishedAuthorityIsRetaine
 	}
 }
 func TestCertifiedGraphFollowerBarrierReopenAndHeldCutHistory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	c, tr := certifiedCoordinator(n)
@@ -458,6 +476,9 @@ func TestCertifiedGraphFollowerBarrierReopenAndHeldCutHistory(t *testing.T) {
 	}
 }
 func TestCertifiedGraphNilCancellationMalformedCutAndCloseRace(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	var c *certifiedReadCoordinator
 	if _, e := c.Open(context.Background(), graphReadRequest{}, nil); !errors.Is(e, errInvalid) {
 		t.Fatal(e)
@@ -515,6 +536,9 @@ func TestCertifiedGraphNilCancellationMalformedCutAndCloseRace(t *testing.T) {
 }
 
 func TestCertifiedGraphAfterLocalReceiptIncludesActualMappedMutation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, _ := crossEdgeFixture(t, n)
 	c, tr := certifiedCoordinator(n)
@@ -559,6 +583,9 @@ func assertCertifiedClaim(t *testing.T, v graphstate.ReadView, window temporal.S
 	}
 }
 func TestCertifiedGraphE18OldCorrectionIndexAndEndpointLivesRemainExact(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, p := n.crossPlan(ops, claims, 24)
@@ -650,6 +677,9 @@ func assertCertifiedEffectiveClaim(t *testing.T, v graphstate.ReadView, window t
 }
 
 func TestCertifiedGraphQuorumLossProducesNoCutAndBoundsCancelledRequests(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	c, tr := certifiedCoordinator(n)
 	tr.isolated = true

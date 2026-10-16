@@ -177,6 +177,9 @@ func replacementRetirer(t *testing.T, n *allocationTestNetwork, a *replacementAs
 	}
 }
 func TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, agreement := range []raftlog.ApplicationSemanticContractID{partitionWriteSemanticContractID(), crossPartitionSemanticContractID(), certifiedGraphSemanticContractID(), rangeMoveSemanticContractID()} {
 		t.Run(fmt.Sprintf("%x", agreement[:4]), func(t *testing.T) {
 			n, _ := replacementNativeNetwork(t, agreement)
@@ -231,6 +234,9 @@ func TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements(t *testing.
 	}
 }
 func TestGraphReplacementAdmissionQuorumLossFollowerAndUnknownVoterRefuse(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"quorum-loss", "follower", "unknown-voter"} {
 		t.Run(kind, func(t *testing.T) {
 			n, _ := replacementNativeNetwork(t, partitionWriteSemanticContractID())
@@ -271,6 +277,9 @@ func TestGraphReplacementAdmissionQuorumLossFollowerAndUnknownVoterRefuse(t *tes
 	}
 }
 func TestGraphReplacementAdmissionReopenSourceSessionInvalidates(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, g := replacementNativeNetwork(t, partitionWriteSemanticContractID())
 	endpoint, wire, pump := replacementEndpointFixture(t, n, 0)
 	association := &replacementAssociationTest{}
@@ -331,6 +340,9 @@ func (w changedReplacementWire) RoundTrip(ctx context.Context, wire []byte) ([]b
 	return encodeGraphWireResponse(parsed)
 }
 func TestGraphReplacementAdmissionRejectsUnmatchedActualCompletions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"nonce", "target", "incarnation", "scope", "source", "body-session", "corrupt-body"} {
 		t.Run(kind, func(t *testing.T) {
 			n, _ := replacementNativeNetwork(t, partitionWriteSemanticContractID())
@@ -378,6 +390,9 @@ func TestGraphReplacementAdmissionRejectsUnmatchedActualCompletions(t *testing.T
 	}
 }
 func TestGraphReplacementAdmissionAssociationBindingAndLifetime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"wrong-peer", "nil-context", "zero-incarnation", "already-revoked", "nil-association", "typed-nil-association", "acquire-error", "live-revocation"} {
 		t.Run(kind, func(t *testing.T) {
 			n, _ := replacementNativeNetwork(t, partitionWriteSemanticContractID())
@@ -439,6 +454,9 @@ func TestGraphReplacementAdmissionAssociationBindingAndLifetime(t *testing.T) {
 	}
 }
 func TestGraphReplacementAdmissionCodecAndNilBoundaries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	var admission *graphReplacementAdmission
 	if !errors.Is(admission.check(), errInvalid) || !errors.Is(admission.close(), errInvalid) {
 		t.Fatal("nil owner")
@@ -539,6 +557,9 @@ func (w pausedReplacementWire) RoundTrip(ctx context.Context, wire []byte) ([]by
 	return nil, ctx.Err()
 }
 func TestGraphReplacementAdmissionRevocationCancelsActualPausedCompletion(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _ := replacementNativeNetwork(t, partitionWriteSemanticContractID())
 	endpoint, wire, _ := replacementEndpointFixture(t, n, 0)
 	entered := make(chan struct{})

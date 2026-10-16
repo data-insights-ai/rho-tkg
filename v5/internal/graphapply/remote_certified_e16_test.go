@@ -15,6 +15,9 @@ import (
 // This guard supplies the missing physical-process E16 proof. It changes no
 // engine behavior: a real later read fence is not resolution of an older YES.
 func TestRemoteE16PreparedCommit90AfterObserved100RequiresResolvedCertificate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedProcessNetwork(t)
 	oldOracle := newCertifiedProcessOracle()
 	freshRequest, err := encodeGraphE15ReadRequest(graphE15ReadRequest{mode: graphReadFresh})

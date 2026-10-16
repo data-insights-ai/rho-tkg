@@ -383,6 +383,9 @@ func TestCrossPartitionNilAndPrivateProofRefusals(t *testing.T) {
 }
 
 func TestCrossPartitionPendingVoteIsNotAbortAndStaleSourceDurablyAborts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, p := n.crossPlan(ops, claims, 24)
@@ -466,6 +469,9 @@ func TestCrossPartitionPendingVoteIsNotAbortAndStaleSourceDurablyAborts(t *testi
 }
 
 func TestCrossPartitionCompleteTypedCDCAndSequentialBeforeUseCommitRound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	local := n.activate(0, [16]byte{1})
 	n.acquire(0, local, 1, 16)
@@ -592,6 +598,9 @@ func crossReopenAll(t *testing.T, n *allocationTestNetwork) {
 }
 
 func TestCrossPartitionPreparedLocksAndOriginalTemplateSurviveLeaderLossReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, p := n.crossPlan(ops, claims, 24)
@@ -656,6 +665,9 @@ func TestCrossPartitionPreparedLocksAndOriginalTemplateSurviveLeaderLossReopen(t
 }
 
 func TestCrossPartitionActualGrantRefusalHasDurableNOAndImmutableAbort(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	claims[0].grant.sequence = 2

@@ -15,6 +15,9 @@ import (
 // P03 loses a real coordinator leader, rather than killing the submitting
 // client. The original client remains alive and receives its own pending reply.
 func TestNativeCoordinatorLeaderLossAfterDurableCommitBeforeCallerReply(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, cell := range []struct {
 		name                                       string
 		partition, leader, caller, next, recoverer uint64

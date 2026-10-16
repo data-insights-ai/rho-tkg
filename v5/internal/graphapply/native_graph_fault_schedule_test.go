@@ -22,6 +22,9 @@ import (
 )
 
 func TestNativeComposedFaultPartialInstallSurvivesDecisionLeaderLossAndDelayedResolve(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	nativeFaultPartialCase(t)
 }
 
@@ -657,6 +660,9 @@ func nativeFaultSeed(t *testing.T, f *pairedGraphFaultNetwork) pairedFaultObserv
 }
 
 func TestNativeComposedFaultActualWALFailureRecoversOriginalDecision(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"short-write", "write-eio", "write-enospc", "file-sync"} {
 		t.Run(kind, func(t *testing.T) {
 			t.Setenv("RHO_GRAPH_NATIVE_FAULT_PROCESS", "1")
@@ -757,6 +763,9 @@ func TestNativeComposedFaultActualWALFailureRecoversOriginalDecision(t *testing.
 }
 
 func TestNativeComposedFaultDirectorySyncFailsGenuineSameDirectoryReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	t.Setenv("RHO_GRAPH_NATIVE_FAULT_PROCESS", "1")
 	f := newPairedGraphFaultNetwork(t)
 	nativeFaultSeed(t, f)
@@ -787,6 +796,9 @@ func TestNativeComposedFaultDirectorySyncFailsGenuineSameDirectoryReopen(t *test
 }
 
 func TestNativeComposedFaultActualPacketsPreserveWholeTransactionAndOldCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, schedule := range []struct {
 		action string
 		delay  int
@@ -850,6 +862,9 @@ func TestNativeComposedFaultActualPacketsPreserveWholeTransactionAndOldCut(t *te
 }
 
 func TestNativeComposedFaultFrozenConflictKeepsOriginalRefusalThroughRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := newPairedGraphFaultNetwork(t)
 	before := nativeFaultSeed(t, f)
 	old := p06Observe(f, 6, graphReadFresh, graphCut{})

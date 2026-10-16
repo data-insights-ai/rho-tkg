@@ -103,6 +103,9 @@ func p04Graph(t *testing.T, n *allocationTestNetwork, ops []graphstate.Operation
 // Six actual disk-backed native Driver/Host voters; this is not six OS-child
 // acceptance. Existing queued COMMIT/capacity-ABORT schedules remain separate.
 func TestCrossProcessP04FrozenParticipantsEpochsAndDigestsSurviveDelayedVoteAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCrossPartitionNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	id := n.requestID()

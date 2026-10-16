@@ -14,6 +14,9 @@ import (
 )
 
 func TestSemanticContractIDFixedGoldenValueOwnershipAndMethod(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	// Independent fixed SHA-256 vectors, reviewed before implementation.
 	const expected = "a10ac0e55a14f64f4a7bcb652f138aefb742b6302d65a5da68aff3d866b50671"
 	id := SemanticContractID()
@@ -86,6 +89,9 @@ func semanticSpan(t *testing.T, a temporal.Axis, lo, hi int64, lowerClosed, uppe
 }
 
 func TestSemanticContractNativeValueConformance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, profile := range []temporal.Profile{temporal.ProfileIntegerZ, temporal.ProfileRationalQ} {
 		a := semanticAxis(t, profile)
 		point, err := temporal.Point(semanticPosition(t, a, 0))
@@ -164,6 +170,9 @@ func TestSemanticContractNativeValueConformance(t *testing.T) {
 }
 
 func TestSemanticContractRequestRecoveryAndLogicalEffects(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	f := readyGraphFixture(t)
 	r := graphCodecRequest(t)
 	original, created := f.commit(t, r)

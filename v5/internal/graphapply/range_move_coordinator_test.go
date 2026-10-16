@@ -144,6 +144,9 @@ func rangeMoveCoordinatorFixture(t *testing.T, maxPages int) (*allocationTestNet
 }
 
 func TestRangeMoveCoordinatorRunResumePreservesNonemptyOldView(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, intent, wires, _ := rangeMoveCoordinatorFixture(t, 32)
 	old, closeOld := crossView(t, n, 0, [2]uint64{})
 	defer closeOld()
@@ -184,6 +187,9 @@ func TestRangeMoveCoordinatorRunResumePreservesNonemptyOldView(t *testing.T) {
 }
 
 func TestRangeMoveCoordinatorUnknownFenceRetainsExactOriginal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	_, c, intent, wires, _ := rangeMoveCoordinatorFixture(t, 32)
 	wires[0].dropFence = true
 	pending, err := c.Run(t.Context(), intent)
@@ -202,6 +208,9 @@ func TestRangeMoveCoordinatorUnknownFenceRetainsExactOriginal(t *testing.T) {
 }
 
 func TestRangeMoveCoordinatorDurableDecisionSurvivesCoordinatorReplacement(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, intent, wires, transports := rangeMoveCoordinatorFixture(t, 32)
 	wires[0].dropDecision = true
 	pending, err := runRangeMoveToCompletion(t, c, intent)
@@ -224,6 +233,9 @@ func TestRangeMoveCoordinatorDurableDecisionSurvivesCoordinatorReplacement(t *te
 }
 
 func TestRangeMoveCoordinatorImmutablePageCapDurablyAborts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, c, intent, wires, transports := rangeMoveCoordinatorFixture(t, 1)
 	before, closeBefore := crossView(t, n, 0, [2]uint64{})
 	defer closeBefore()
@@ -248,6 +260,9 @@ func TestRangeMoveCoordinatorImmutablePageCapDurablyAborts(t *testing.T) {
 }
 
 func TestRangeMoveCoordinatorNilCancelledAndForeignResumeRefuse(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if got, err := newRangeMoveCoordinator(nil, nil); got != nil || !errors.Is(err, errInvalid) {
 		t.Fatal("nil Host admitted coordinator", err)
 	}
@@ -272,6 +287,9 @@ func TestRangeMoveCoordinatorNilCancelledAndForeignResumeRefuse(t *testing.T) {
 }
 
 func TestRangeMoveCoordinatorOperationLedgerExhaustionResumesWithoutAbort(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	_, c, intent, wires, _ := rangeMoveCoordinatorFixture(t, 32)
 	// Tighten client invocation work only. Native Host/page policies and the
 	// original immutable request caps retain their genuine configured values.
@@ -297,6 +315,9 @@ func TestRangeMoveCoordinatorOperationLedgerExhaustionResumesWithoutAbort(t *tes
 }
 
 func TestRangeMoveCoordinatorProtectedAbortUsesParentBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	output, err := graphstate.NewOutputBudget(1 << 20)
 	if err != nil {
 		t.Fatal(err)

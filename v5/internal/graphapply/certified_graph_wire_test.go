@@ -488,6 +488,9 @@ func TestGraphCutWireReplyKeepsRefusalsDistinctAndZero(t *testing.T) {
 }
 
 func TestGraphCutWireNativeCompletedReadStillDecodesWithoutProof(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	_, tr := certifiedCoordinator(n)
 	q := graphCutQuery{kind: 1, nonce: [16]byte{31}}

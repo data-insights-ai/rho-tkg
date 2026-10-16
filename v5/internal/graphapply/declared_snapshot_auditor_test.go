@@ -161,6 +161,9 @@ func finishDeclaredTestAudit(t *testing.T, a *declaredSnapshotAudit) {
 }
 
 func TestDeclaredSnapshotAuditorInitializedNodeRelationshipAndRetainedRoots(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, registration := n.crossPlan(ops, claims, 24)
@@ -290,6 +293,9 @@ func TestDeclaredSnapshotAuditorRefusesSeedWhileRestorePreservesSeed(t *testing.
 }
 
 func TestDeclaredSnapshotAuditorTransportValidSemanticPrerequisitesRefuse(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"missing-genesis", "missing-HOME-allocator", "wrong-max-block", "missing-routing", "missing-round-floor", "missing-certificate-fence", "orphan-YES-lock"} {
 		t.Run(kind, func(t *testing.T) {
 			n := newCertifiedGraphNetwork(t)
@@ -345,6 +351,9 @@ func TestDeclaredSnapshotAuditorTransportValidSemanticPrerequisitesRefuse(t *tes
 }
 
 func TestDeclaredSnapshotAuditorPreparedCompletionOwnerAndYESLock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, proposal := n.crossPlan(ops, claims, 24)
@@ -372,6 +381,9 @@ func TestDeclaredSnapshotAuditorPreparedCompletionOwnerAndYESLock(t *testing.T) 
 }
 
 func TestDeclaredSnapshotAuditorPreparedRangeMoveUsesRetainedInactiveBaseline(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n, _, intent, _, transports := rangeMoveCoordinatorFixture(t, 64)
 	gate := &rangeMoveAdmissionImportGate{graphPeerWireTransport: transports[8], sequence: 3}
 	transports[8] = gate
@@ -400,6 +412,9 @@ func TestDeclaredSnapshotAuditorPreparedRangeMoveUsesRetainedInactiveBaseline(t 
 }
 
 func TestDeclaredSnapshotAuditorConstructorContextBudgetsAndLifetime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	h := n.hosts[0][0]
 	receiver, prepared, _, c, _ := preparedDeclaredAuditFixture(t, h.machine.store, n.configs[0][2])
@@ -557,6 +572,9 @@ func TestDeclaredSnapshotAuditorConstructorContextBudgetsAndLifetime(t *testing.
 }
 
 func TestDeclaredSnapshotAuditorClosedStoreRetainsOriginalReadErrorAndReleasesBorrow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	h := n.hosts[0][0]
 	receiver, prepared, _, c, _ := preparedDeclaredAuditFixture(t, h.machine.store, n.configs[0][2])

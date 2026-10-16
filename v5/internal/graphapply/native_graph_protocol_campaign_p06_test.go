@@ -9,6 +9,9 @@ import (
 )
 
 func TestNativeP06ProgramsPreserveExactExistingSemanticInventory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	counts := map[string]int{}
 	seen := map[string]bool{}
 	for _, row := range nativeP06ProgramInventory() {
@@ -55,6 +58,9 @@ func TestNativeP06ProgramsPreserveExactExistingSemanticInventory(t *testing.T) {
 // Literal original184 remain in their unchanged existing parents. These are
 // only the required new leader/message coordinates over those SAME bodies.
 func TestNativeP06ExistingTransitionsWithActualLeaderAndMessagePrograms(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, layout := range []string{"original", "rotated"} {
 		for _, message := range []string{"literal", "delay", "reorder", "duplicate"} {
 			if layout == "original" && message == "literal" {

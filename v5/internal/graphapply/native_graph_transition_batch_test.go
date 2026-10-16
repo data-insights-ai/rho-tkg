@@ -331,6 +331,9 @@ func nativeBatchCrossCase(t *testing.T, phase byte, partition uint64, kind raftl
 // every P01–P09 recipe, physical power-loss or runtime qualification. Short keeps
 // both participants/operations/sides via PrepareA and DecideB; full retains all.
 func TestNativeTransactionExactReadyAndInstallBatchesRecoverOriginalAndOldCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, phase := range []byte{1, 2, 3, 4} {
 		for _, partition := range []uint64{3, 8} {
 			if (phase == 1 || phase == 3) && partition != 8 || testing.Short() && !(phase == 2 && partition == 3 || phase == 3 && partition == 8) {

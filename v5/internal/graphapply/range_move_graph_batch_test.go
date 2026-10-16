@@ -13,6 +13,9 @@ import (
 
 // Source-authored guards only, not executed transfer/capacity evidence.
 func TestRangeMoveGraphBatchFormatAndNativeUndo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	if rangeMoveGraphBatchSemanticContractID() == rangeMoveSpanSemanticContractID() || !rangeMoveSpans(rangeMoveGraphBatchSemanticContractID()) || !retainedOnlyFeedAgreement(rangeMoveGraphBatchSemanticContractID()) {
 		t.Fatal("fresh semantic capability")
 	}

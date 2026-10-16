@@ -227,6 +227,9 @@ func nativePublicationCase(t *testing.T, side string) {
 }
 
 func TestNativePublicationSyncBoundariesKeepActualCompactionOriginalAndLocalOldCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, side := range []string{"before", "after"} {
 		t.Run(side, func(t *testing.T) { nativePublicationCase(t, side) })
 	}

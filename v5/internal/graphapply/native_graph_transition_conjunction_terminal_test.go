@@ -245,6 +245,9 @@ func nativeP06TerminalCase(t *testing.T, s nativeP06PreparedFixture) {
 }
 
 func TestNativePreparedLockP06TerminalReplaysKeepCurrentOriginalAcrossSyncDeath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for i, recipe := range nativeP06TerminalRecipes() {
 		if testing.Short() && i != 0 && i != 22 && i != 29 && i != 47 {
 			continue

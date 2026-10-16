@@ -117,6 +117,9 @@ func nativeSnapshotSenderReplay(t *testing.T, f *pairedGraphFaultNetwork, actor 
 }
 
 func TestNativeSnapshotSenderLossRequiresExactReapedProcessAndApplicableBoundary(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	reply := processResponse{incarnation: [16]byte{1}, sequence: 2, code: 1, causeMask: processCauseMask(errInvalid)}
 	native := graphWireError{graphErrorMask(errInvalid)}
 	source := graphWireError{graphErrorMask(graphstore.ErrSourceUnavailable)}
@@ -435,6 +438,9 @@ func nativeSnapshotSenderCase(t *testing.T, side string) {
 }
 
 func TestNativeSnapshotSenderLossDuringImportKeepsWholeOriginalAndOldCut(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, side := range []string{"before", "after"} {
 		t.Run(side, func(t *testing.T) { nativeSnapshotSenderCase(t, side) })
 	}

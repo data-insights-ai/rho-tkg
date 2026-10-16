@@ -87,6 +87,9 @@ func rangeMoveDispatchNativeHome(t *testing.T, graph graphstate.GraphID) *alloca
 }
 
 func TestRangeMoveNativeStageDoesNotTreatGraphIDAsInitializationOpcode(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	for _, first := range []byte{7, 8} {
 		t.Run(strconv.Itoa(int(first)), func(t *testing.T) {
 			n := rangeMoveDispatchNativeHome(t, graphstate.GraphID{first})

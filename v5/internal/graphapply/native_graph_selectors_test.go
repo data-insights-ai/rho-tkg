@@ -11,6 +11,9 @@ import (
 
 // Authored guards; no source integration is execution or matrix qualification.
 func TestNativeSelectorsAdmissionAndPrivateReadIdentity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	s := nativeSelectorsSpec{Version: 1, Family: nativeSelectorsFamily, Facts: 40, CrossPercent: 50, Writers: 32, Layout: "columns"}
 	if err := nativeSelectorsValidate(s.cost()); err != nil {
 		t.Fatal(err)

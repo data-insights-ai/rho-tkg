@@ -15,6 +15,9 @@ import (
 )
 
 func TestCertifiedGraphCodecsAndPointerHelpersRefuseMissingAuthority(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	var host *allocationHost
 	for _, call := range []func() error{func() error { _, e := host.PrepareGraphFence(1); return e }, func() error { _, e := host.PrepareGraphCertificate(1); return e }, func() error { _, e := host.ReadGraphCut(graphCutQuery{}); return e }, func() error { return host.CancelGraphCutRead(allocationReadID{}) }, func() error { _, e := host.AtGraphCertificate(t.Context(), graphCertificate{}); return e }} {
 		if e := call(); !errors.Is(e, errInvalid) {
@@ -210,6 +213,9 @@ func TestCertifiedGraphCodecsAndPointerHelpersRefuseMissingAuthority(t *testing.
 	}
 }
 func TestCertifiedGraphAggregateBudgetsConstructorCleanupAndCumulativeReads(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	crossEdgeFixture(t, n)
 	c, _ := certifiedCoordinator(n)
@@ -279,6 +285,9 @@ func TestCertifiedGraphAggregateBudgetsConstructorCleanupAndCumulativeReads(t *t
 	}
 }
 func TestCertifiedGraphScopedReaderConstructorDirectAndBorrowLifetime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	crossEdgeFixture(t, n)
 	c, _ := certifiedCoordinator(n)
@@ -332,6 +341,9 @@ func TestCertifiedGraphScopedReaderConstructorDirectAndBorrowLifetime(t *testing
 }
 
 func TestCertifiedGraphStaleCertificateApplyAndPredecessorBudgetAreNonfatal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	h := n.hosts[0][0]
 	_, tr := certifiedCoordinator(n)
@@ -393,6 +405,9 @@ func TestCertifiedGraphStaleCertificateApplyAndPredecessorBudgetAreNonfatal(t *t
 	}
 }
 func TestCertifiedGraphYESLockRefusesPublicationWithoutStrandingCommit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	tx, p := n.crossPlan(ops, claims, 24)
@@ -430,6 +445,9 @@ func TestCertifiedGraphYESLockRefusesPublicationWithoutStrandingCommit(t *testin
 }
 
 func TestCertifiedGraphRegistrationOnlyOwnerPreventsClosureWithoutStoppingDriver(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	ops, claims := crossEdgeFixture(t, n)
 	_, registration := n.crossPlan(ops, claims, 24)
@@ -457,6 +475,9 @@ func TestCertifiedGraphRegistrationOnlyOwnerPreventsClosureWithoutStoppingDriver
 }
 
 func TestCertifiedGraphApplySourceLimitReturnsTypedOutcomeWithoutPartialFence(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	h := n.hosts[0][0]
 	proposal, e := h.PrepareGraphFence(17)
@@ -485,6 +506,9 @@ func TestCertifiedGraphApplySourceLimitReturnsTypedOutcomeWithoutPartialFence(t 
 }
 
 func TestCertifiedGraphInitialMapCannotBeInventedOrRebound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := newCertifiedGraphNetwork(t)
 	h := n.hosts[0][0]
 	cfg, e := h.currentConfiguration()
@@ -529,6 +553,9 @@ func TestCertifiedGraphInitialMapCannotBeInventedOrRebound(t *testing.T) {
 }
 
 func TestCertifiedGraphAtAppliedAuthorityWithoutPersistedCertificateIsUnavailable(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	issuer := newCertifiedGraphNetwork(t)
 	coordinator, _ := certifiedCoordinator(issuer)
 	read := certifiedOpen(t, coordinator, graphReadRequest{mode: graphReadFresh}, nil)

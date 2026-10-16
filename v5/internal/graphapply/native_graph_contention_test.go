@@ -136,6 +136,9 @@ func TestNativeContentionRequiredProfileAndWholeGenerationGrantAreFinite(t *test
 // and required workload policies retain their one-minute cap. Source authored
 // only: this guard has not been executed during implementation.
 func TestNativeContentionColumnDependencyPrepassSurvivesExpiryAndReopen(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	n := collectedGraphNetworkWithAgreement(t, nil, durableColumnGraphSemanticContractID())
 	ops, claims := crossEdgeFixture(t, n)
 	remote := remoteCertifiedFixture(t, n)

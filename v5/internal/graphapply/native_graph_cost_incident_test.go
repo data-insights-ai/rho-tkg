@@ -28,6 +28,9 @@ func nativeIncidentRefusal(t *testing.T, n *certifiedProcessNetwork, q nativeGra
 // Three actual cross facts separate two pages and retain exact cells at the old
 // cut after a genuine endpoint close. No large cost cell or timing claim here.
 func TestNativeGraphCostIncidentOwnerRetainsOldCutAndRefusesExhaustedLateCookies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("long tier: release gate")
+	}
 	spec := nativeGraphCostSpec{Version: 1, Facts: 3, CrossPercent: 100, Writers: 1}
 	n := newNativeGraphCostNetworkWithBlock(t, spec, spec.homeCount())
 	for phase := uint64(1); phase <= 3; phase++ {
