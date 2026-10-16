@@ -226,10 +226,15 @@ class Evidence:
         self.ledger.close()
 
 
+def net_admin(capabilities):
+    # Docker accepts the short flag but may inspect the canonical Linux name.
+    return type(capabilities) is list and any(cap in ("NET_ADMIN", "CAP_NET_ADMIN") for cap in capabilities)
+
+
 def inspect_peer(evidence, name, role, network, deadline):
     row = json.loads(evidence.docker(["inspect", name], deadline))[0]
     state, host = row["State"], row["HostConfig"]
-    require(state["Running"] and not state["OOMKilled"] and state["Pid"] > 0 and not host["Privileged"] and host["NetworkMode"] != "host" and "NET_ADMIN" in (host["CapAdd"] or []), "owned capped live network namespace")
+    require(state["Running"] and not state["OOMKilled"] and state["Pid"] > 0 and not host["Privileged"] and host["NetworkMode"] != "host" and net_admin(host["CapAdd"]), "owned capped live network namespace")
     networks = row["NetworkSettings"]["Networks"]
     require(set(networks) == {network}, "exact single owned network")
     linked = networks[network]
@@ -595,7 +600,7 @@ def verify(directory,p,spool):
             alias=native["Name"].removeprefix("/")
             require(alias==args[2] and (alias not in aliases or aliases[alias]==p["Peers"].index(peer)),"same owned alias/incarnation")
             aliases[alias]=p["Peers"].index(peer)
-            require(native["Image"]==peer["Image"] and not state["OOMKilled"] and not host["Privileged"] and host["NetworkMode"]!="host" and "NET_ADMIN" in host["CapAdd"] and host["Memory"]>0 and host["NanoCpus"]>0,"actual capped non-host owned incarnation")
+            require(native["Image"]==peer["Image"] and not state["OOMKilled"] and not host["Privileged"] and host["NetworkMode"]!="host" and net_admin(host["CapAdd"]) and host["Memory"]>0 and host["NanoCpus"]>0,"actual capped non-host owned incarnation")
             limit=integer(host["Memory"],1,(1<<63)-1)
             require(peer["Container"] not in memory_limits or memory_limits[peer["Container"]]==limit,"unchanged actual container memory cap")
             memory_limits[peer["Container"]]=limit

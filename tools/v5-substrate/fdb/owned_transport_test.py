@@ -18,6 +18,35 @@ def request():
 
 
 class OwnedTransportGuards(unittest.TestCase):
+    def test_exact_net_admin_spellings_preserve_native_namespace_guards(self):
+        row={"Id":"01"*32,"Image":"sha256:"+"02"*32,
+             "State":{"Running":True,"OOMKilled":False,"Pid":17},
+             "HostConfig":{"Privileged":False,"NetworkMode":"owned-network","CapAdd":["CAP_NET_ADMIN"]},
+             "NetworkSettings":{"Networks":{"owned-network":{"IPAddress":"10.0.0.10","NetworkID":"03"*32}}}}
+        def evidence(value):
+            e=mock.Mock()
+            e.docker.return_value=owned.canonical([value])
+            e.native.side_effect=[b"net:[101]\n",owned.canonical([{"addr_info":[{"family":"inet","local":"10.0.0.10"}]}])]
+            return e
+        expected={"Role":"zone0","Container":row["Id"],"Image":row["Image"],"IP":"10.0.0.10","NetNS":"net:[101]","Network":"03"*32,"PID":17}
+        for capabilities in (["NET_ADMIN"],["CAP_NET_ADMIN"]):
+            actual=copy.deepcopy(row);actual["HostConfig"]["CapAdd"]=capabilities
+            e=evidence(actual)
+            self.assertEqual(owned.inspect_peer(e,"owned-zone0","zone0","owned-network",123),expected)
+            e.docker.assert_called_once_with(["inspect","owned-zone0"],123)
+            self.assertEqual(e.native.call_count,2)
+        for capabilities in ([],None,"NET_ADMIN",["NET_ADMIN_EXTRA"],["CAP_CAP_NET_ADMIN"],["cap_net_admin"],["CAP_NET_ADMIN "]):
+            actual=copy.deepcopy(row);actual["HostConfig"]["CapAdd"]=capabilities
+            e=evidence(actual)
+            with self.assertRaises(ValueError):owned.inspect_peer(e,"owned-zone0","zone0","owned-network",123)
+            e.native.assert_not_called()
+        for section,key,value in (("State","Running",False),("State","OOMKilled",True),("State","Pid",0),
+                                  ("HostConfig","Privileged",True),("HostConfig","NetworkMode","host")):
+            actual=copy.deepcopy(row);actual[section][key]=value
+            with self.assertRaises(ValueError):owned.inspect_peer(evidence(actual),"owned-zone0","zone0","owned-network",123)
+        foreign=copy.deepcopy(row);foreign["NetworkSettings"]["Networks"]["other"]=foreign["NetworkSettings"]["Networks"].pop("owned-network")
+        with self.assertRaises(ValueError):owned.inspect_peer(evidence(foreign),"owned-zone0","zone0","owned-network",123)
+
     def test_retained_only_v3_preserves_v2_and_requires_exact_fresh_family(self):
         value=request();value["Version"]=3;value["Spec"]["version"]=3
         self.assertEqual(owned.validate_input(value),value)
