@@ -1316,7 +1316,11 @@ func TestNativeProtocolPooledFeedPublicationStagesOnRealQuorum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer owner.Close()
+	defer func() {
+		if err := owner.Close(); err != nil {
+			t.Error("close actual pooled feed owner", err)
+		}
+	}()
 	token, err := owner.Publish(ctx)
 	if err != nil || len(token.definition) == 0 || len(token.pin.publications) != 2 {
 		t.Fatal("actual pooled publication and all-participant cursor initialization", err)
