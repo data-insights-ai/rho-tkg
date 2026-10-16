@@ -6,6 +6,64 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Minor release: sigma-tkgd round 10 (additive doors, ledger row 62). Every door reuses the rule of the door it extends
+(one overlap rule, the equality door's rows, the count timeline, the shared column row path, the snapshot fold) and
+states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a time value.
+
+### Added
+
+- **Windowed effective reads** (request 2b). `Temporal().ForEachNodeEffectiveByLabelsWindow(labels, pin, window, fn)`,
+  `ForEachRelEffectiveByTypeWindow(type, pin, window, fn)`, `ForEachRelEffectiveAtNodesWindow(nodeIDs, dir, relTypes,
+  pin, window, fn)`: the effective scans limited to the segments that meet `temporal.Window` (disjoint half-open
+  `temporal.Interval`s, ascending; `Validate` refuses an empty, overlapping or unordered one with
+  `ErrInvalidTimeRange`; the empty window meets nothing; `UnboundedValidFrom` and `MaxInt64` are the far ends, 0 is the
+  instant 0). The label and type doors take candidates from the valid-end index from the window's first start (the
+  `...From` doors' body, now one `streamBounded` with a per-door pick). One overlap rule, `storeutil.IntervalMeets`,
+  serves the interval filter, the chain resolver's interval kind and the windows.
+- **Typed relationship lookup by endpoint** (request 1). `Temporal().ScanRelEffectiveColumnsAtNodes(nodeIDs, dir,
+  relTypes, pin, window, props, fn)`: the windowed adjacency segments as `store.RelColumnBatch` rows (IDs, endpoints,
+  typed properties, each segment's own span; ordinals 0), through the shared row path
+  (`store.ScanColumnsFromRelSegments`; a column of integers and floats refuses with `ErrMixedNumericColumn`).
+- **Validity hull** (request 2a, backlog 71 in part). `Nodes().ValidHullByLabel` / `Rels().ValidHullByType(name, pin,
+  store.CountTimelineOpts)` return `store.ValidHull{Empty, From, To, OpenEnd}`, the ends of the count timeline: at a pin
+  O(1) from the cached timeline after its first build; of the current rows one pass per call.
+- **Count timeline of the current rows** (request 4). `store.CountTimelineOpts.CurrentRows` (pin 0, else
+  `ErrInvalidTimeRange`): the rows `ForEachByLabel(label, QueryOpts{})` / `ForEachByType` hand out, each over its own
+  `[valid-from, valid-to)` (an unset valid-from is the row's `TxFrom`), `UntimedFromMinusInf` as for a pin; not cached.
+- **Value classes at a pin** (request 3). `Stats().PropertyTypeClassCountsAt` / `RelPropertyTypeClassCountsAt(name, key,
+  pin)`: `PropertyTypeClassCounts` per row recorded at the pin, the rows the any-version equality reads
+  (`ByLabelAndProperty(..., {ValidStart: types.UnboundedValidFrom, ValidEnd: MaxInt64, TxAt: pin})`), `Missing` for a
+  row without the key; the indexable classes equal `PropertyValueStats`' rows at the pin. No index needed. `pin <= 0`
+  is `ErrInvalidTimeRange`.
+- **Typed chunks for the doors that boxed** (request 5). `Nodes().DocValuesSnapshotMulti(labels, keys)` (memory,
+  badger, sharded, tiered), `DocValuesSnapshotOrdinal` / `DocValuesSnapshotMultiOrdinal` (a
+  `types.NodeColumnChunkReader` whose chunks carry `types.ColumnChunk.Ordinals`; memory, badger, sharded; they decline
+  where `ForEachDocValuesOrdinal` does). A tiered or sharded column of strings on one part and numbers on another reads
+  as the new `types.ColumnVectorMixed` (per row `ColumnVector.Tags`: `ColumnVectorInt`, `ColumnVectorFloat`,
+  `ColumnVectorString`, 0 when absent); before, such a snapshot had no `ReadChunk`. **sigma-tkgd**: a consumer that
+  switches on `ColumnVector.Kind` handles `ColumnVectorMixed`; `SplitColumns` now finds `ReadChunk` on those snapshots.
+- Tests: `TestRound10WindowDoorsMatchOracle`, `TestRound10CurrentRowsTimelineAndHull`, `TestRound10ClassCountsAtPin`
+  (random histories over every op kind, a coverage check at every size: untimed, `UnboundedValidFrom`, negative and
+  closed-before-the-epoch creates, timed and untimed updates, closes, deletes, retractions, relabels, re-imports,
+  excises at negative instants, valid-time rewrites; values in every width with equal int and float, NaN, above
+  2^53, lists and maps; four backends, both untimed modes; brute-force and cross-door oracles),
+  `TestRound10WindowDoorsRefuse`, `TestRound10IntervalEndIsExclusive`, `TestRound10HullTwoPhase`,
+  `TestRound10ClassCountsExact`, `TestRound10SnapshotMultiAndOrdinals`, `TestRound10MixedColumnAcrossParts`,
+  `TestShardedMixedColumnChunks`, `TestChunkConcatOrdinals`, `TestWindowValidateAndMeets`, forwarding tests in nodes,
+  rels, stats, temporal; 21 mutants killed (`tasks/evidence/round10/mutants.txt`).
+
+### Changed
+
+- **An excise may start at a negative instant** (`ExciseNodeValidity` / `ExciseRelValidity`, `*WithTx`, the `GraphTx`
+  and `BatchBuilder` twins: one check, `validateExciseInterval`). `a <= 0` was refused with `ErrInvalidTimeRange`, the
+  sign rule v4.58.1 removed from the read doors, so a row of an `UntimedUnbounded` store could not be excised before
+  the epoch; now only `a == 0` is refused (no stored piece can start at the unset valid-from). A relaxation: nothing
+  that succeeded fails. Test: `TestRound10ExciseNegativeStart`; the refusal case "negative a" of
+  `TestExciseNodeValidity` pinned the old rule and is removed.
+- Internal, no behaviour change: the count timelines and the value statistics at a pin share one memo
+  (`cut_memo.go`: one type, one build loop under the cut epoch, cleared by an exact erasure); the intersection doors
+  share one label-token lookup; tiered and sharded build every DocValues snapshot through one fold (`snapshotOver`).
+
 ## [4.59.0] - 2026-10-16
 
 ### Added
