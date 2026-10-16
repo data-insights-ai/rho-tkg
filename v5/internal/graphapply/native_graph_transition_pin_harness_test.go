@@ -210,7 +210,7 @@ func nativeTransitionPinProjectionFor(ctx context.Context, host *allocationHost,
 		if err != nil {
 			return nil, err
 		}
-		defer func() { err = errors.Join(err, finish()) }()
+		defer nativeTransitionPinFinishProjection(&snapshot, &err, finish)
 		view, err = newNativeObservationRead(view, arena, host.machine.limits.graph.Planner.Component, owners[:count])
 		if err != nil {
 			return nil, err
@@ -268,6 +268,13 @@ func nativeTransitionPinProjectionFor(ctx context.Context, host *allocationHost,
 		snapshot.Entities = append(snapshot.Entities, e)
 	}
 	return snapshot, ctx.Err()
+}
+
+func nativeTransitionPinFinishProjection(snapshot **nativeTransitionPinRead, err *error, finish func() error) {
+	*err = errors.Join(*err, finish())
+	if *err != nil {
+		*snapshot = nil
+	}
 }
 
 // The token is private to this invocation; unrelated calls on the SAME source

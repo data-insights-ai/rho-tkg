@@ -297,6 +297,27 @@ func TestNativeProtocolStateSnapshotProjectionKeepsOldValuesAfterMutation(t *tes
 			t.Fatal("phantom unallocated entity7", projection)
 		}
 	}
+
+	// A completed real projection is not a successful result if its owned
+	// cleanup fails. Retire a genuine source scope, then repeat its retirement
+	// through the exact deferred seam; this is an actual ownership refusal.
+	arena, _, _, err := nativeTransitionPinObservationSources(held)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, finish, err := nativeTransitionPinGetReuse(ctx, held, arena)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := finish(); err != nil {
+		t.Fatal(err)
+	}
+	completed := old
+	var cleanupErr error
+	nativeTransitionPinFinishProjection(&completed, &cleanupErr, finish)
+	if completed != nil || !errors.Is(cleanupErr, errInvalid) {
+		t.Fatal("failed cleanup returned a completed projection", completed, cleanupErr)
+	}
 }
 
 func TestNativeProtocolStateReplayBarrierRequiresNewNativeInstallation(t *testing.T) {
