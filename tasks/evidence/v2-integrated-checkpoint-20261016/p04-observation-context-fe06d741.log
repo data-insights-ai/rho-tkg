@@ -1,0 +1,18 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p04-commit-first-B-phase3-p8-all-YES-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_fault_decision_harness_test.go:1109: paired actual healthy quorum leader6 applied25
+    native_graph_transition_conjunction_harness_test.go:388: fresh failed native RPC context: targetPID18008 requestOp40 entity0 index0 sequence1265 incarnationbdcd350b15ecd50e3a5b80d47683d1d4 applied28 code2 causes20 detail"graphstore: immutable source unavailable\ngraphapply: remote source operation refused\ngraphstore: immutable source unavailable\ngraphapply: remote source operation refused"
+    native_graph_transition_conjunction_harness_test.go:389: fresh fixture actual native RPC 40 graphapply: remote source operation refused
+        remote tag=2: graphstore: immutable source unavailable
+        graphapply: remote source operation refused
+        graphstore: immutable source unavailable
+        graphapply: remote source operation refused
+    native_graph_fault_decision_harness_test.go:872: P04 certified observation interrupted: stage"after-first-decision-current" actor6 pid18008 mode1 certificates0 readStarts11
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=4599 bootstrapPackets=328 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (4.46s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (4.46s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p04-commit-first-B-phase3-p8-all-YES-k2-after (4.46s)
+FAIL

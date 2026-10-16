@@ -1420,7 +1420,12 @@ records the following finite scope:
   Invocation-local scalar and complete-page reuse preserves the original
   source/cut/lifetime and budgets. P05 now completes the native workflow but its
   checker must validate captured GSQ/GSO controls alongside transactions; state
-  still exhausts 1,024 calls on a later projection. All open failures retain their
+  now passes that held projection using bounded token-scoped exact source-Get
+  reuse, then fails a later feed-page read. P05 GSQ/GSO and Register projection
+  joins now pass the full oracle; a fresh complete ABA case and four additional
+  short representatives pass, while a later Resolve recipe remains open.
+  The P04 observer now charges its unchanged candidate bound only to actual
+  capacity traffic, with its original-case rerun pending. All open failures retain their
   original deadlines and quotas.
 
 These components do not close their full fault families, the process inventory,

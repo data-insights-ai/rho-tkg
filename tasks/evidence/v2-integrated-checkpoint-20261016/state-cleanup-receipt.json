@@ -1,0 +1,35 @@
+{
+  "commit": "f05cfa3c071a755ab089db55bd4d9d21d197078a",
+  "parent": "a5e156ce09a44f884916ae8d6afd375a5adba177",
+  "tree": "/private/var/tmp/rho-v5-state-projection-cleanup-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_program_test.go",
+      "blob": "e6b9cf035b8456d54cd8da2c46489f05302852ac",
+      "sha256": "bc8ed0f169374459e93005bf6bc5e8fb7f9cb48da16afb6e7d2f5dccc46e4f92",
+      "parent_blob": "b359b6cd1f900ee882884f705debfc74c6cf3b8a",
+      "parent_sha256": "498c3640b13ec13c0cef1fb66f64d5d7379f9362ebd09a56bd29be852b71f7ba"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_transition_pin_harness_test.go",
+      "blob": "bbd463bf4349d42a4c3828b5a6dbc093e7d348d6",
+      "sha256": "17c1383f48038f34ebcab8bb8e7208facd7520c77c09db04e2a0cff1587623e7",
+      "parent_blob": "d84c4286e88657360b391f46adef43634bc1096f",
+      "parent_sha256": "d2e1e26421bb7f5cb18b74a08bc664786db46c269a5927c7d5e58dfe02397abc"
+    }
+  ],
+  "red": "Same existing genuine two-phase parent FAIL6.600s: actual repeated native Get scope cleanup errInvalid left completed snapshot nonnil",
+  "green": "Same parent PASS6.597s",
+  "scope": "two test/helper paths only; no Get/production edits; no OS/broad retest",
+  "checks": "pinned gofmt1.26.9 + git whitespace clean",
+  "evidence": [
+    {
+      "path": "/private/var/tmp/rho-v5-state-snapshot-cache-evidence-20261016/cleanup-red.log",
+      "sha256": "e6c1c18cb2fe198a0d8d6578fa978e769ccde769773b4c7b0cbdb96523917203"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-state-snapshot-cache-evidence-20261016/cleanup-green.log",
+      "sha256": "a0f62ccafad3653a3fca75dcb5d0a4c4f42d3e894276fe46cd97b70573eec923"
+    }
+  ]
+}

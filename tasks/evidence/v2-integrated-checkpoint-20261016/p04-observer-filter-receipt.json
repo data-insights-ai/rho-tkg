@@ -1,0 +1,18 @@
+{
+  "commit": "18bb78ea408b3c8dbef5e345d08d0b02ad67ba58",
+  "parent": "e63e8ea40b72c5912fd661ae5fe8a8c098c703f7",
+  "tree": "/private/var/tmp/rho-v5-p04-capacity-observer-fix-20261016",
+  "path": "v5/internal/graphapply/native_graph_fault_decision_harness_test.go",
+  "parentBlob": "0a8300cdd052b109f174cc659ee426a0b7c4780d",
+  "parentSHA256": "721b79c76a840e54d81efff6012d2533c6a59d4df8d4366500fef84a64fb2f49",
+  "blob": "9e59e81d0565b3bfc3e7f054fa02118e8868c2a6",
+  "sha256": "db70700caa89791971cad21d14195ac22e6d8e4859e2aaaf8bb6905099aaf571",
+  "evidence": {
+    "direct-red.log": "985685fe820b8e581699a03a809cee8baa2ffda797be688936291f9695b2a862",
+    "focused-green-race.log": "30c9cc9c8e02045759f8d31bb84535493bbbd45e996c8083f5c0e17e646631da"
+  },
+  "cause": "P04 processCauseMask0x20 is graphapply errLimit (bit5), not SourceUnavailable. Raw source GSRs succeed; callback diagnostic candidate cap counts unrelated service traffic. Actual OS candidate count at failure not measured; direct canonical codec regression proves exact128 cliff.",
+  "fix": "Only bounded syntactic diagnostic preclassification before existing full GCQ decode/capture grant; same128 candidate cap and global actual native service limits, no authority from prefilter",
+  "verification": "RED129th unrelated canonical Close; GREEN scoped race2 exact parents; pinnedfmt+git diff --check",
+  "osRuns": 0
+}

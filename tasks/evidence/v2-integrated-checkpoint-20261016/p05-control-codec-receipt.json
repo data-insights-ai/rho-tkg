@@ -1,0 +1,81 @@
+{
+  "revision": "25cfcb74cae2fe2a81a8372ce4e1d995eaa377df",
+  "parent": "577a88a5adfc9f51243f6c75b3fa058e35a8ed45",
+  "tree": "/private/var/tmp/rho-v5-p05-control-codec-20261016",
+  "status": "",
+  "scope": "Two owning P05 Python checker/guard paths. Exact GSQ/GSO scoped/configured retained original joins; Register reply projects ONLY raw native floor tozero after verifying manifest coordinator floor. No GCT codec/engine changes, no process rerun.",
+  "files": [
+    {
+      "path": "tools/v5-substrate/check-p05-history.py",
+      "blob": "451d4f7395f8af5d3097fbe13999a435d8815642",
+      "sha256": "ac836bf96384ecfad05f33ec0b45cf4f1f3113e9088d052e4cb249de9f0faed1",
+      "parentBlob": "0966bf4a5964dc240effc1f5ddf7afb7e5f05621",
+      "parentSHA256": "dfe7797460df0e12f2fa2d79b3dccd5b953435ea9edbabdd879bf3974839dd7b"
+    },
+    {
+      "path": "tools/v5-substrate/check_p05_history_test.py",
+      "blob": "3bf5bf8c36bc89c8bbff95902d7f160315a594b9",
+      "sha256": "d0c9cba43cc43350239568fc6e9491e1b6f57f9c7a5aa4bbb76d7a8f0ac9e47e",
+      "parentBlob": "0a5afc72cc124d3fa42f43f026c1e0c58799227c",
+      "parentSHA256": "ba0da6cfd6548ed5635573e958d023fc1689b9084655bc23f6cd791c8522a189"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "/private/var/tmp/rho-v5-p05-oracle-codec-evidence-20261016/full-after-control.log",
+      "sha256": "f44b0d7c08078f3d240ad56b8a302b761864e09ab740557cfd39646aed065790"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p05-oracle-codec-evidence-20261016/full-after-register.log",
+      "sha256": "8f393750da8821d3fcf3e8d7fd15b75144be608e1f8576cf0904de8233009c43"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p05-oracle-codec-evidence-20261016/full-green.log",
+      "sha256": "8f393750da8821d3fcf3e8d7fd15b75144be608e1f8576cf0904de8233009c43"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p05-oracle-codec-evidence-20261016/full-red.log",
+      "sha256": "ac5194870bd17f8838571e2b6af19601ce6454b9aacbf3538107c93a21d6f5e0"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p05-oracle-codec-evidence-20261016/guard-green.log",
+      "sha256": "c73c7f8f9d70d2800a085cb5721f86021de702c305c8b12dfa984d4016bdc36a"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p05-oracle-codec-evidence-20261016/guard-red.log",
+      "sha256": "bbcdee2ab6588f994766391d6da94017555846023aaf28a7953febd6934de894"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-p05-oracle-codec-evidence-20261016/guards-final.log",
+      "sha256": "9f90da6a1e949d5145b00a5d656ee9a67e1a8917df5279de4219df40e1a074e7"
+    }
+  ],
+  "artifact": {
+    "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-reuse-fixed-owned/artifacts/rho-paired-graph-fault-3387074770/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after.jsonl",
+    "bytes": 72084,
+    "sha256": "8cc6e420a9a86c6980196f059180ea524ae4e3a8d9c8eae9486e8b52c5e73ff2"
+  },
+  "proof": {
+    "case": "p05-temporal-life-value-ABA-op4-phase2-p8-k2-after",
+    "program": {
+      "Layout": "rotated",
+      "Message": "reorder",
+      "Version": 1
+    },
+    "records": 66,
+    "scope": "P05 five genuine dependency scenarios plus selected native transition; source-only",
+    "serial_witness": [
+      "native-ABA-4",
+      "native-ABA-5",
+      "native-ABA-6",
+      "native-ABA-7"
+    ]
+  },
+  "guards": "9guardsPASS0.006s",
+  "replay": [
+    "python3",
+    "-B",
+    "/private/var/tmp/rho-v5-p05-control-codec-20261016/tools/v5-substrate/native_protocol_campaign_program_check.py",
+    "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-reuse-fixed-owned/artifacts/rho-paired-graph-fault-3387074770/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after.jsonl"
+  ]
+}

@@ -1,0 +1,14 @@
+F.........
+======================================================================
+FAIL: test_exact_five_supplied_genuine_captures (check_p05_history_test.P05GenuineReplay.test_exact_five_supplied_genuine_captures)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/check_p05_history_test.py", line 201, in test_exact_five_supplied_genuine_captures
+    self.assertEqual(len(data), 5)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+AssertionError: 0 != 5
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.006s
+
+FAILED (failures=1)

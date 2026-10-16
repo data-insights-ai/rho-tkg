@@ -1,0 +1,33 @@
+{
+  "author": "18f4788d5b63491ee30353982fa0294cd21231a6",
+  "parent": "fe06d7419b22fbc4f2711d9b4d21fd72120d6153",
+  "tree": "/private/var/tmp/rho-v5-p05-reopen-oracle-20261016",
+  "paths": [
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_program_check.py",
+      "parentBlob": "c41168a9a06695b992d688d34b48a3d234add951",
+      "parentSHA256": "b2fd675683ca83f178bb47f7ef706acb6b302e83ef62f9c4c4ce222678ea982a",
+      "sourceBlob": "bcb0091989929cdef6753b47ba8c5be00ea6e5d7",
+      "sourceSHA256": "baa853c0aae814463349a3271052e4477f1dd26d62e457a6da4277d62773306e"
+    },
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_program_check_test.py",
+      "parentBlob": "ad039199bcdb61dc195655ddadbc0355da27a8a4",
+      "parentSHA256": "037438c7b4ca7405a65ef4fba80e86730387525de479cb4e8053bcdb868ecf8a",
+      "sourceBlob": "0f41078b933c9be479246f48f959444c857c311c",
+      "sourceSHA256": "da4ca790de729421f023513a9589c10deb7ae210b891b917c42f45d61b1bfdc1"
+    }
+  ],
+  "status": "",
+  "scope": "Python-only actual P05 same-volume reopen oracle correction; no engine/runtime/source authority changes",
+  "evidence": "/private/var/tmp/rho-v5-p05-reopen-oracle-evidence-20261016",
+  "checks": {
+    "actualFullRed": true,
+    "directGuards": 10,
+    "fullWriteSkewRecords": 32,
+    "fullABARetainedRecords": 66,
+    "hostileActualMutations": 9,
+    "whitespace": "PASS"
+  },
+  "runtime": "No new OS process cohort; replayed immutable actual artifacts only"
+}

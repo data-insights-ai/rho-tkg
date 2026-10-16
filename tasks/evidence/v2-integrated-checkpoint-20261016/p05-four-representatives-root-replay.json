@@ -1,0 +1,74 @@
+[
+  {
+    "artifact": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-3440544320/p05-temporal-life-value-ABA-op1-phase1-p3-k1-before.jsonl",
+    "sha256": "124711e15532b66a0fd0d955096d2bd3a5e098c8709956974bd7eab91425838e",
+    "proof": {
+      "case": "p05-temporal-life-value-ABA-op1-phase1-p3-k1-before",
+      "program": {
+        "Layout": "rotated",
+        "Message": "reorder",
+        "Version": 1
+      },
+      "records": 66,
+      "scope": "P05 five genuine dependency scenarios plus selected native transition; source-only",
+      "serial_witness": [
+        "native-ABA-4",
+        "native-ABA-5",
+        "native-ABA-6",
+        "native-ABA-7"
+      ]
+    }
+  },
+  {
+    "artifact": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-3822719440/p05-write-skew-A-first-op1-phase1-p3-k1-before.jsonl",
+    "sha256": "06eb466ece2f36356dec74a12f4dc12ac925a0a8520052dcf3153c8ed67d0f14",
+    "proof": {
+      "case": "p05-write-skew-A-first-op1-phase1-p3-k1-before",
+      "program": {
+        "Layout": "rotated",
+        "Message": "reorder",
+        "Version": 1
+      },
+      "records": 32,
+      "scope": "P05 five genuine dependency scenarios plus selected native transition; source-only",
+      "serial_witness": [
+        "conditional-winner"
+      ]
+    }
+  },
+  {
+    "artifact": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-4199361493/p05-write-skew-B-first-op1-phase1-p8-k1-before.jsonl",
+    "sha256": "c7b41dbaf9439364312e401861e8ec8ff226bf908caa25c434db8cb2ae78210e",
+    "proof": {
+      "case": "p05-write-skew-B-first-op1-phase1-p8-k1-before",
+      "program": {
+        "Layout": "rotated",
+        "Message": "reorder",
+        "Version": 1
+      },
+      "records": 28,
+      "scope": "P05 five genuine dependency scenarios plus selected native transition; source-only",
+      "serial_witness": [
+        "conditional-winner"
+      ]
+    }
+  },
+  {
+    "artifact": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-480338611/p05-empty-range-and-absent-key-insertion-op1-phase1-p3-k1-before.jsonl",
+    "sha256": "a289647c0b49e00785dff486c339cfd92a2b40a2b11a270970e805add05fadad",
+    "proof": {
+      "case": "p05-empty-range-and-absent-key-insertion-op1-phase1-p3-k1-before",
+      "program": {
+        "Layout": "rotated",
+        "Message": "reorder",
+        "Version": 1
+      },
+      "records": 38,
+      "scope": "P05 five genuine dependency scenarios plus selected native transition; source-only",
+      "serial_witness": [
+        "unique-insertion",
+        "conditional-re-evaluation"
+      ]
+    }
+  }
+]

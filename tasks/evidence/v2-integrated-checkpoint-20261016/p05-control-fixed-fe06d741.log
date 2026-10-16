@@ -1,0 +1,12 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    paired_graph_fault_harness_test.go:745: paired actual healthy quorum leader6 applied31
+    native_graph_protocol_campaign_adapters_test.go:1728: actual live transition complete source artifact /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-control-fixed-owned/artifacts/rho-paired-graph-fault-1989275134/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after.jsonl
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=13132 bootstrapPackets=332 admitted=397312
+--- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms (7.87s)
+    --- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (7.87s)
+        --- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after (7.86s)
+PASS

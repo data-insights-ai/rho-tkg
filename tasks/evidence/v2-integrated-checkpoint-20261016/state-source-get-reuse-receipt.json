@@ -1,0 +1,81 @@
+{
+  "commit": "a5e156ce09a44f884916ae8d6afd375a5adba177",
+  "parent": "33d3f987d59dd3104f117a361e4225ff2e2d23f6",
+  "tree": "/var/tmp/rho-v5-state-source-get-reuse-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/graph_source_transport.go",
+      "blob": "efabee7b96efc189b4fe2e98fa3cf711b3bb4d82",
+      "sha256": "a4f7ec561167ca679446d6b059b5e408014cbac10269702b678c17547babc998",
+      "parent_blob": "4b55afcd7f82236d2d1e1f7074f80656b331d970",
+      "parent_sha256": "17d6c974c210c92788709265b5fb5137f2e7f7f7c3045091178e08e0471376f5"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_program_test.go",
+      "blob": "b359b6cd1f900ee882884f705debfc74c6cf3b8a",
+      "sha256": "498c3640b13ec13c0cef1fb66f64d5d7379f9362ebd09a56bd29be852b71f7ba",
+      "parent_blob": "ee8d905ea1f850687ee32ac40da11a5cba4cf81b",
+      "parent_sha256": "82c95701fb817fbbb79f385d2b5d8985bd5e9205ce666a691af86739c4b8e2d4"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_transition_pin_harness_test.go",
+      "blob": "d84c4286e88657360b391f46adef43634bc1096f",
+      "sha256": "d2e1e26421bb7f5cb18b74a08bc664786db46c269a5927c7d5e58dfe02397abc",
+      "parent_blob": "ef9cdc7d2b0cf940ab7e9e279778912b8d33fc69",
+      "parent_sha256": "61a2b7d8b5f04aebfb99bce44269df12e0e7e5d8062c14db8a68bab857d040e5"
+    }
+  ],
+  "bounds": {
+    "entries_per_source": 128,
+    "fixed_reservation_per_source": "512+actual root image bytes+128*96",
+    "maximum_retained_variable_bytes_per_source": 1048576,
+    "variable_backing": "actual original arena reservation BEFORE copying; no refunds",
+    "scope": "ONE synchronous fresh scalarNodes projection; original NPS owner busy guard; exact unexported context token; no new deadline or grant",
+    "unrelated_context": "literal Get; no cache borrowing",
+    "nil_default": "no active reuse owner; existing RPC path unchanged",
+    "cleanup": "closed token first; same source request gate; end removes only same owner"
+  },
+  "verification": {
+    "gofmt": "pinned1.26.9 clean",
+    "whitespace": "clean",
+    "normal": "four parents PASS10.161s",
+    "race_atomic": "samefour PASS17.762s",
+    "new_helpers_function_coverage": {
+      "beginGetReuse": 89.5,
+      "endGetReuse": 81.8,
+      "check": 100,
+      "reserve": 80,
+      "retain": 90.9,
+      "Get_changed_existing": 84.6
+    },
+    "partial_package_coverage": "26.0%; not whole gate; test helpers not instrumented",
+    "red": "Lookup-disabled mutation: genuine exact key made8actualRPCs vsrequired1; FAIL1.767s. This is a mutation guard; existing actualOS state1024-call exhaustion is the originalRED.",
+    "os": "none author; root owns exactcase"
+  },
+  "evidence": [
+    {
+      "path": "/private/var/tmp/rho-v5-state-snapshot-cache-evidence-20261016/get-trace.log",
+      "sha256": "907ceeb3e8c142c928f6d6b179d592a9b492d47a7022815693cfa4187f5ca8cf"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-state-snapshot-cache-evidence-20261016/lower-get-lookup-disabled-red.log",
+      "sha256": "cbb05bd3183aeb2d2a3298d082b4a661a5d507db925858e490e10b5b3ccb5cf5"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-state-snapshot-cache-evidence-20261016/get-reuse-normal.log",
+      "sha256": "94411c86721b462035733787d481aafb7aba62a53e78077ca724c41d38d6f97f"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-state-snapshot-cache-evidence-20261016/get-reuse-race.log",
+      "sha256": "3c8d66ed63a60fdb95dcb0b05dddacb72a494166956f27cc7476716cb5c556d6"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-state-snapshot-cache-evidence-20261016/get-reuse-race.cover",
+      "sha256": "ddf761a0e727b505fd96d458524c91987eae21c10c80ac6a9d7b0c7a5fe6a600"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-state-snapshot-cache-evidence-20261016/get-reuse-functions.txt",
+      "sha256": "114e60adb296518184fb04e25308c9fcf58356e3c7f89337e14bd49c29f3c5a9"
+    }
+  ]
+}

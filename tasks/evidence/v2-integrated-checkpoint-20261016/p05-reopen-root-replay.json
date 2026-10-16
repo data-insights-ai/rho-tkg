@@ -1,0 +1,1 @@
+{"case": "p05-write-skew-A-first-op1-phase1-p3-k1-before", "program": {"Layout": "rotated", "Message": "reorder", "Version": 1}, "records": 32, "scope": "P05 five genuine dependency scenarios plus selected native transition; source-only", "serial_witness": ["conditional-winner"]}

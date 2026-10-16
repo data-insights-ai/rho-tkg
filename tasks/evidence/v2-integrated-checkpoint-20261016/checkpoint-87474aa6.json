@@ -1,0 +1,146 @@
+{
+  "source": "87474aa6",
+  "scope": "Selected P01/P02/P05/P06 pass. Four additional P05 short representatives wholePASS; fifth P05Resolve failsbeforeselectedkill; sixth failfastunrun. State lowerGet passesheldsnapshot thenfailslaterfeedpage. P04observerfilter sourceintegrated runtimepending. No phase/family acceptance.",
+  "files": [
+    {
+      "path": "p05-control-fixed-fe06d741.log",
+      "bytes": 1347,
+      "sha256": "5d26be5eb38596e6d764a3dec86864be6d8db5ed096ad8461bb9138cb94ab522"
+    },
+    {
+      "path": "p05-control-fixed-fe06d741.json",
+      "bytes": 1693,
+      "sha256": "5a8c5815edd198c2d17922da0dc3b9814fab509ff63fb379d837cef77b5af7e0"
+    },
+    {
+      "path": "p04-observation-context-fe06d741.log",
+      "bytes": 1996,
+      "sha256": "0edfc8f40f242c4d9154ddef3beee2cd68fd7918519aa49afbcc94353c348714"
+    },
+    {
+      "path": "p04-observation-context-fe06d741.json",
+      "bytes": 1616,
+      "sha256": "1dd1a1bc62c29607b3c566581d5cc23f2ef1586313496f20b831f369053b6025"
+    },
+    {
+      "path": "p04-source-frames-e63e8ea4.log",
+      "bytes": 4215,
+      "sha256": "504d7c3606ed0fefd0dc5c8f97bc1775e527db46830e406a0d85b39ae8f1f282"
+    },
+    {
+      "path": "p04-source-frames-e63e8ea4.json",
+      "bytes": 1619,
+      "sha256": "f7448fc4e80f847bd80ba5e1d37a30b52c40e89a4ed7abb24d07eef7532ea358"
+    },
+    {
+      "path": "p05-six-representatives-fe06d741.log",
+      "bytes": 5324,
+      "sha256": "a4cbb315d77c4eafd98417fba8765926c45abfd8bcdd612ef9700f926b50e8e0"
+    },
+    {
+      "path": "p05-six-representatives-fe06d741.json",
+      "bytes": 2135,
+      "sha256": "abc35e6a4a04024dfffc301682d788f57a7c272a2a5a85fa755aa929faabb70e"
+    },
+    {
+      "path": "p05-six-representatives-fixed-e63e8ea4.log",
+      "bytes": 8132,
+      "sha256": "94f3d3bf068bd41ee26b784c04650660df52991306f1b44cb057bd8d1b66eee5"
+    },
+    {
+      "path": "p05-six-representatives-fixed-e63e8ea4.json",
+      "bytes": 4482,
+      "sha256": "3bb5257e46f2e150095a694bb74c9c537594196c8866db5d25a5097bd869dde1"
+    },
+    {
+      "path": "state-lower-get-fixed-89622533.log",
+      "bytes": 5899,
+      "sha256": "e5506c6bbae394585bc446082677aad2324c751548a326a8876cd69fda200633"
+    },
+    {
+      "path": "state-lower-get-fixed-89622533.json",
+      "bytes": 1611,
+      "sha256": "3460b58591635a56f9eb7a0c8bd4669556f8d73c7891d51f481875703979dac4"
+    },
+    {
+      "path": "p05-fresh-root-replay.json",
+      "bytes": 327,
+      "sha256": "8f393750da8821d3fcf3e8d7fd15b75144be608e1f8576cf0904de8233009c43"
+    },
+    {
+      "path": "p05-control-root-replay.json",
+      "bytes": 327,
+      "sha256": "8f393750da8821d3fcf3e8d7fd15b75144be608e1f8576cf0904de8233009c43"
+    },
+    {
+      "path": "p05-control-root-guards.log",
+      "bytes": 686,
+      "sha256": "8e82e724fb1c39a6ac8811faa65c4c0d262b5b598d5fb7a5b6c87fe799958842"
+    },
+    {
+      "path": "p05-reopen-root-replay.json",
+      "bytes": 281,
+      "sha256": "c6043bbdc1f34176779be988ad6fb9ebd3a61bdf3f3ff9651e41b9c4d2e3d633"
+    },
+    {
+      "path": "p05-reopen-root-guards.log",
+      "bytes": 109,
+      "sha256": "38eeff1237d74275801617a271eced659e08b1cad8069897d18e659ae40641d8"
+    },
+    {
+      "path": "p04-capacity-root-direct.log",
+      "bytes": 5937,
+      "sha256": "f2b0370a7111646e1094f657432d01d3f8af03afa67eda584821271b8a3f43f0"
+    },
+    {
+      "path": "kernel-metadata-root.log",
+      "bytes": 101,
+      "sha256": "644bfe6d99d6b20e10d7bc237cded5b9fa627f9e83210fe43b2bd46530e73262"
+    },
+    {
+      "path": "p05-control-codec-receipt.json",
+      "bytes": 3657,
+      "sha256": "64b8ecc07ea121fe652288093bbd898b2d7d864c904f9a7cd5043131d088b72f"
+    },
+    {
+      "path": "p05-reopen-oracle-receipt.json",
+      "bytes": 1485,
+      "sha256": "bf1a4fb0516145fd50b419c8205a2c84fcefbae7f22bdbb380cd339a4e2032e8"
+    },
+    {
+      "path": "state-source-get-reuse-receipt.json",
+      "bytes": 3914,
+      "sha256": "a216601e732e77b165b953879a1d7cf720a375a21ca728c5f89645ec376b8ac7"
+    },
+    {
+      "path": "state-cleanup-receipt.json",
+      "bytes": 1732,
+      "sha256": "7cd2e89c42f55e9c8b053411418ceeebdb835d4578c8203ee34daeb3e6c56a36"
+    },
+    {
+      "path": "p04-observer-filter-receipt.json",
+      "bytes": 1384,
+      "sha256": "e0773ba52abfde72148ad220d5fe03ba9d2422e5a4f53619eaa7d1500ea2fc85"
+    },
+    {
+      "path": "p05-late-gate-diagnostic-receipt.json",
+      "bytes": 820,
+      "sha256": "f08b3a0f877f3331c8deb9bdefa78b052d4c3c8934d208fc75aa25b2de72fed5"
+    },
+    {
+      "path": "p05-control-complete-fe06d741.tar.gz",
+      "bytes": 14783,
+      "sha256": "c569a4371e9327e0c4da203553bab52e0b605d63304f95d3b49b6332b40c386d"
+    },
+    {
+      "path": "p05-representative-complete-and-failed-e63e8ea4.tar.gz",
+      "bytes": 52951,
+      "sha256": "ca512dff154e6ad3c4323c0153f4f6ff5afe6a2e4a9eaf7621d492c53a569399"
+    },
+    {
+      "path": "p05-four-representatives-root-replay.json",
+      "bytes": 2837,
+      "sha256": "737df8cc494f9b857f57a812c5e9438d1dc1d45b4067aeaa6237ef9230d06780"
+    }
+  ]
+}

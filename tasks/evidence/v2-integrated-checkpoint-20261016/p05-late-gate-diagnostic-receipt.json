@@ -1,0 +1,13 @@
+{
+  "author": "ec7324136e06ec99631615d34c5fe8f350126007",
+  "parent": "13a070704e41088651c04997ad673232cfccfcce",
+  "tree": "/private/var/tmp/rho-v5-p05-late-gate-diagnostic-20261016",
+  "path": "v5/internal/graphapply/native_graph_transition_conjunction_harness_test.go",
+  "parentBlob": "fe7da838a8d5a95664fe8444ca7fa44f58b71ae1",
+  "parentSHA256": "3902242eec9fc91557c50dab9c05174eaf094f6200ca4616f45a812524f501b2",
+  "sourceBlob": "f3d36e431aa3f338fb98bc90a2fff475d4d2092f",
+  "sourceSHA256": "e470ed169a6a491c5a47cdd79592b31cde7ffe2f981bfac800c483e2ee1a6c01",
+  "scope": "Failure-only existing before-relay gate provenance. No extra RPC/capture/retry/caps/authority changes.",
+  "checks": "Pinned Go1.26.9 guidelines and gofmt; git diff --check PASS. No runtime or compile; root owns exact leaf.",
+  "status": ""
+}

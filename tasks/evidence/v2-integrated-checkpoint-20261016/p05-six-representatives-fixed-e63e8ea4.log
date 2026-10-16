@@ -1,0 +1,58 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-write-skew-A-first-op1-phase1-p3-k1-before
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet1 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit28 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet2 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit28 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:745: paired actual healthy quorum leader2 applied28
+    native_graph_protocol_campaign_program_test.go:76: paired actual healthy quorum leader1 applied32
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet1 4->5 typeMsgHeartbeat term4 logTerm0 index0 commit21 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet2 5->4 typeMsgHeartbeatResp term4 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet3 4->5 typeMsgHeartbeat term4 logTerm0 index0 commit21 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet4 5->4 typeMsgHeartbeatResp term4 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    native_graph_protocol_campaign_program_test.go:76: paired actual healthy quorum leader4 applied21
+    native_graph_protocol_campaign_adapters_test.go:1728: actual live transition complete source artifact /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-3822719440/p05-write-skew-A-first-op1-phase1-p3-k1-before.jsonl
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=4949 bootstrapPackets=388 admitted=397312
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-write-skew-B-first-op1-phase1-p8-k1-before
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    paired_graph_fault_harness_test.go:745: paired actual healthy quorum leader6 applied19
+    native_graph_protocol_campaign_adapters_test.go:1728: actual live transition complete source artifact /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-4199361493/p05-write-skew-B-first-op1-phase1-p8-k1-before.jsonl
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=4978 bootstrapPackets=332 admitted=397312
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-empty-range-and-absent-key-insertion-op1-phase1-p3-k1-before
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet1 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit28 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet2 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit28 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:745: paired actual healthy quorum leader2 applied28
+    native_graph_protocol_campaign_adapters_test.go:1728: actual live transition complete source artifact /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-480338611/p05-empty-range-and-absent-key-insertion-op1-phase1-p3-k1-before.jsonl
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=8600 bootstrapPackets=332 admitted=397312
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op1-phase1-p3-k1-before
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet1 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit32 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet2 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit32 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:745: paired actual healthy quorum leader2 applied32
+    native_graph_protocol_campaign_adapters_test.go:1728: actual live transition complete source artifact /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-3440544320/p05-temporal-life-value-ABA-op1-phase1-p3-k1-before.jsonl
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=13116 bootstrapPackets=332 admitted=397312
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op4-phase4-p8-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_transition_conjunction_harness_test.go:388: fresh failed native RPC context: targetPID28154 requestOp35 entity0 index0 sequence3184 incarnation82e70157218b844aeb617ed42c9a2420 applied49 code1 causes10 detail"graphapply: cross-process request pending; resume original identity\ngraphapply: cross-process request pending; resume original identity\ngraphstore: immutable source unavailable\ngraphapply: remote source operation refused"
+    native_graph_transition_conjunction_harness_test.go:389: fresh fixture actual native RPC 35 graphapply: remote source operation refused
+        remote tag=1: graphapply: cross-process request pending; resume original identity
+        graphapply: cross-process request pending; resume original identity
+        graphstore: immutable source unavailable
+        graphapply: remote source operation refused
+    paired_graph_fault_harness_test.go:421: paired current child cleanup 1 exit status 1
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 28154 exit status 1
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=6 all-reaped=true successful=5 intentional-kills=0 calls=7593 bootstrapPackets=320 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (38.77s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (38.77s)
+        --- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-write-skew-A-first-op1-phase1-p3-k1-before (5.85s)
+        --- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-write-skew-B-first-op1-phase1-p8-k1-before (9.67s)
+        --- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-empty-range-and-absent-key-insertion-op1-phase1-p3-k1-before (7.77s)
+        --- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op1-phase1-p3-k1-before (8.59s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op4-phase4-p8-k2-after (6.89s)
+FAIL
