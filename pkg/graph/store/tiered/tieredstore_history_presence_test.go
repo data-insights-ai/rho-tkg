@@ -179,6 +179,9 @@ func TestTieredHistoryPresence_RoutingShapes(t *testing.T) {
 // leaving the cold shard's RAM set unbuilt. Live (B on cold) and deleted
 // (D on cold) both agree with History.
 func TestTieredHistoryPresence_ColdClosedShard(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

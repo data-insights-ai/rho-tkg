@@ -40,6 +40,9 @@ func encTieredCfg(dir string, key []byte) Config {
 // encrypted SSTable is actually created on each shard, close, and reopen with
 // the SAME key. Every entity on every shard must still be readable.
 func TestTieredEncryptionMultiShardSmoke(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	cfg := encTieredCfg(dir, tieredKey32)
 

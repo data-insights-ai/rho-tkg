@@ -76,6 +76,9 @@ func TestShardCommitFloorSyncedByDurableFlush(t *testing.T) {
 // write it again, also when their stamps are below the floor already handed
 // over. The crash is a copy of the open store's directory.
 func TestShardCommitFloorRewrittenAfterClear(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	ts, tok := cfTieredStore(t, dir)
 	t.Cleanup(func() { _ = ts.Close() })

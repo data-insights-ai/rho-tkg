@@ -93,6 +93,9 @@ func TestTieredTemporalIndexOnDisk_ReachesEveryShard(t *testing.T) {
 // badger.Store rebuilds via the fast 0x0B-stream path (marker set at the
 // first open), not a full node-fetch rescan.
 func TestTieredTemporalIndexOnDisk_ReopenPersistence(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	cfg := Config{
 		DataDir:             dir,

@@ -97,6 +97,9 @@ func countID[T comparable](ids []T, id T) (c int) {
 // moved are discarded by the caller (Gate 2), so only unchanged-epoch answers
 // are checked.
 func TestRefArchiveReadersSeeMovedEntityOnce(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	all := QueryOpts{Depth: DepthAll}
 	docValues := func(m moveRace, multi bool) (int, bool, error) {
 		c := 0

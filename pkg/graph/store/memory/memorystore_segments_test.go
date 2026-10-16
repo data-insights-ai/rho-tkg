@@ -449,6 +449,9 @@ func (tw *segTwin) sealedLeftRowMaps() {
 }
 
 func TestSegments_StoreDifferentialOracle(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, seed := range []int64{11, 12} {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) {
 			r := rand.New(rand.NewSource(seed))
@@ -779,6 +782,9 @@ func TestSegments_ClearKeepsDeclaration(t *testing.T) {
 // row's ID is a duplicate, and a node whose only relationships are sealed is
 // still connected.
 func TestSegments_WriteDoorsSeeSealedRows(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	r := rand.New(rand.NewSource(21))
 	tw := newSegTwin(t, 0, 4)
 	for i := 0; i < 4200; i++ { // above the 4,096-row map-shrink threshold
@@ -823,6 +829,9 @@ func TestSegments_WriteDoorsSeeSealedRows(t *testing.T) {
 // offsets) stays small. The same 2,400 rows over 150 endpoints are sealed
 // once, and in 8 seals of 300 rows (each touching most endpoints).
 func TestSegments_NodeBytesDoNotGrowWithSegmentCount(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	const endpoints, rows, perSeal = 150, 2400, 300
 	build := func(sealEvery int) (*segTwin, int, int) {
 		r := rand.New(rand.NewSource(31))
@@ -864,6 +873,9 @@ func TestSegments_NodeBytesDoNotGrowWithSegmentCount(t *testing.T) {
 // high-cardinality column even fall back to plain strings). 9,600 rows with
 // 400 distinct actors are sealed once and in 8 seals of 1,200 rows.
 func TestSegments_StringColumnBytesDoNotGrowWithSegmentCount(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	const values, rows, perSeal = 400, 9600, 1200
 	build := func(sealEvery int) (*segTwin, int, int) {
 		r := rand.New(rand.NewSource(33))

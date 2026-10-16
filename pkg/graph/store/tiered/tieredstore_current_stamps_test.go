@@ -153,6 +153,9 @@ func TestTieredCurrentStamps_RowOnTwoShards(t *testing.T) {
 // An entity on a closed cold shard: the read opens the shard the way GetNode
 // does; a deleted one is not found.
 func TestTieredCurrentStamps_ColdClosedShard(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)

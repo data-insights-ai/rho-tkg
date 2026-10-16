@@ -8,6 +8,9 @@ import (
 )
 
 func TestTieredStore_ArchiveRestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	// Verify archive survives restart (disk-backed).
 	dir := t.TempDir()
 

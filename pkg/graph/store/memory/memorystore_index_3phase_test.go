@@ -118,6 +118,9 @@ func TestCreateRelPropertyIndex_ReleasesLockDuringScan(t *testing.T) {
 // state — no stale entries for deleted nodes, no stale (pre-update) values
 // for updated nodes — never the Phase-2-snapshot-time state.
 func TestCreatePropertyIndex_ConcurrentMutationDuringScanIsReconciled(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ms := New()
 	const n = 20_000
 	for i := 1; i <= n; i++ {

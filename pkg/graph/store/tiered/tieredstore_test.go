@@ -3112,6 +3112,9 @@ func TestTieredStore_IncomingRelsCrossEventShards(t *testing.T) {
 }
 
 func TestTieredStore_RestartWithWarmShards(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	ts1, err := New(Config{
@@ -3177,6 +3180,9 @@ func TestTieredStore_RestartWithWarmShards(t *testing.T) {
 }
 
 func TestTieredStore_RestartWarmShardWritable(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	ts1, err := New(Config{
@@ -3267,6 +3273,9 @@ func TestTieredStore_RestartPreservesHotShard(t *testing.T) {
 }
 
 func TestTieredStore_RestartSnowflakeResolution(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	ts1, err := New(Config{
@@ -3506,6 +3515,9 @@ func TestTieredStore_ColdShard_LazyOpen(t *testing.T) {
 }
 
 func TestTieredStore_ColdShard_IdleClose(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	// Disk-backed: idle-close closes the BadgerStore, lazy-reopen reads from disk.
 	// In-memory stores lose data on close, so this must use disk.
 	dir := t.TempDir()
@@ -3718,6 +3730,9 @@ func TestTieredStore_ColdShard_DemotionDuringRotation(t *testing.T) {
 }
 
 func TestTieredStore_ColdShard_ColdRestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	// Test disk-backed cold shard recovery from catalog.
 	dir := t.TempDir()
 
@@ -4708,6 +4723,9 @@ func TestTieredStore_NodeCreateDuplicateProbeUsesCheckoutClosedGate(t *testing.T
 // a corrupt WAL (simulating Ctrl-C / SIGKILL during flush) recovers transparently
 // on restart instead of returning ErrTruncateNeeded.
 func TestTieredStore_WarmShard_WALCorruptionRecovery(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	// Phase 1: create store, write data, rotate hot→warm, close cleanly.
@@ -4804,6 +4822,9 @@ func TestTieredStore_WarmShard_WALCorruptionRecovery(t *testing.T) {
 // TestTieredStore_ColdShard_WALCorruptionRecovery verifies that a cold shard
 // with a corrupt WAL recovers on lazy-open (L1 pattern — same fix as warm).
 func TestTieredStore_ColdShard_WALCorruptionRecovery(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	// Phase 1: write data, rotate, demote to cold, close.
@@ -4896,6 +4917,9 @@ func TestTieredStore_ColdShard_WALCorruptionRecovery(t *testing.T) {
 // TestTieredStore_WALCorruption_NonTruncateError verifies that non-truncation
 // errors (e.g., permission denied) are NOT masked by the recovery path.
 func TestTieredStore_WALCorruption_NonTruncateError(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	// Phase 1: create store, rotate to get a warm shard, close.
@@ -4949,6 +4973,9 @@ func TestTieredStore_WALCorruption_NonTruncateError(t *testing.T) {
 // the corrupt WAL entry survives recovery. The corruption only affects the
 // incomplete tail — earlier committed entries must be intact.
 func TestTieredStore_WALCorruption_DataIntegrity(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	ts1, err := New(Config{
@@ -5020,6 +5047,9 @@ func TestTieredStore_WALCorruption_DataIntegrity(t *testing.T) {
 // TestTieredStore_WALCorruption_ConcurrentColdAccess verifies that concurrent
 // cold shard access with a corrupt WAL doesn't panic or deadlock.
 func TestTieredStore_WALCorruption_ConcurrentColdAccess(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	ts1, err := New(Config{

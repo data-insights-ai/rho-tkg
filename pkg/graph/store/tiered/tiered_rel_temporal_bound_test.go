@@ -100,6 +100,9 @@ func TestTieredRelTemporalIndex_ColdDemotionFreesIndex(t *testing.T) {
 // a create (the DDL does not open it), not when a read lazily opens it. A
 // promotion back to warm rebuilds it from the anchor.
 func TestTieredRelTemporalIndex_ColdShardsNeverBuildUntilPromoted(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	cfg := Config{
 		DataDir:       dir,

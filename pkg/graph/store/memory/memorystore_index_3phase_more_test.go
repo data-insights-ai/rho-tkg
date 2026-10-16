@@ -68,6 +68,9 @@ func TestCreateCompositePropertyIndex_ReleasesLockDuringScan(t *testing.T) {
 }
 
 func TestCreateCompositePropertyIndex_ConcurrentMutationDuringScanIsReconciled(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ms := New()
 	const n = 20_000
 	for i := 1; i <= n; i++ {
@@ -397,6 +400,9 @@ func memVec(seed int64, dims int) []float32 {
 }
 
 func TestCreateVectorIndexWithOptions_ReleasesLockDuringScan(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ms := New()
 	const n = 5_000
 	const dims = 4
@@ -441,6 +447,9 @@ func TestCreateVectorIndexWithOptions_ReleasesLockDuringScan(t *testing.T) {
 }
 
 func TestCreateVectorIndexWithOptions_ConcurrentMutationDuringScanIsReconciled(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ms := New()
 	const n = 5_000
 	const dims = 4

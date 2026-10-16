@@ -15,6 +15,9 @@ import (
 // archived node and deletes, each shard's RAM state after a clean reopen must
 // equal a full rebuild of the same files.
 func TestTieredCleanReopenMatchesFullRebuild(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	cfg := Config{DataDir: dir, RefLabels: []string{"Case", "User"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}
 	ts, err := New(cfg)

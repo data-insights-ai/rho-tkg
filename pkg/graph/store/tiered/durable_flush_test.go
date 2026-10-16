@@ -59,6 +59,9 @@ func TestDurableFlush_DoesNotOpenClosedColdShard(t *testing.T) {
 // durable flush failing on that closed shard. The shard's own Close flushed the
 // rows; DurableFlush skips it without error and the rows are on disk.
 func TestDurableFlush_ShardClosedBetweenWriteAndFlushKeepsRows(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	cfg := Config{DataDir: dir, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}
 	ts, err := New(cfg)
@@ -152,6 +155,9 @@ func TestDurableFlush_ReachesOpenArchive(t *testing.T) {
 // Catches: a DurableFlush that stops at the first failing shard (the other
 // shards' groups stay unflushed) or that swallows a shard's error.
 func TestDurableFlush_FailedShardReportedOthersStillFlushed(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Run("reference-shard-fails", func(t *testing.T) {
 		ts, _, signalTok := newDurableTieredStore(t)
 		n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), signalTok, nil)

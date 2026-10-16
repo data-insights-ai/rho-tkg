@@ -13,6 +13,9 @@ import (
 // membership or valid-end candidates (the history fold lists it). The hook
 // waits a bounded time for the concurrent restore.
 func TestTxMembersFanoutListsNodeRestoredMidRead(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, tc := range []struct {
 		name string
 		list func(ts *Store, label uint16) (map[types.NodeID]bool, error)

@@ -132,6 +132,9 @@ func TestTieredStore_VectorIndex_LoadRejectsIndexedNodeDimensionMismatch(t *test
 }
 
 func TestTieredStore_VectorIndex_DropDefinitionSurvivesRestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	labelTok := createDiskTieredVectorIndex(t, dir)
 
@@ -213,6 +216,9 @@ func TestVectorIndexFileRollbackRemovesNewFile(t *testing.T) {
 }
 
 func TestTieredStore_VectorIndex_ClearRemovesPersistedDefinition(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	labelTok := createDiskTieredVectorIndex(t, dir)
 

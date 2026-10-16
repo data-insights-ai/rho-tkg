@@ -221,6 +221,9 @@ func TestTieredRelTemporalIndex_EveryShardAndNewHotShard(t *testing.T) {
 }
 
 func TestTieredRelTemporalIndex_SurvivesRestartAndColdReopen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	cfg := Config{
 		DataDir:       dir,
@@ -385,6 +388,9 @@ func TestTieredComposite_EveryShardAndNewHotShard(t *testing.T) {
 }
 
 func TestTieredComposite_SurvivesRestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	cfg := Config{
 		DataDir:       dir,
@@ -430,6 +436,9 @@ func TestTieredComposite_SurvivesRestart(t *testing.T) {
 // shard to the anchor; the extra definition must not survive, the missing
 // one must be rebuilt.
 func TestTieredShardIndexes_InterruptedDDLRepairedAtOpen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	cfg := Config{
 		DataDir:       dir,

@@ -207,6 +207,9 @@ func oracleOf(t *testing.T, nodes []types.NodeID, rows []*types.Relationship) *S
 // that measure the in-RAM shared dictionaries do not apply: files are
 // self-contained by design.
 func TestSegmentDir_S2SuiteOverMappedFiles(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	segTwinOnDisk, segTwinDirRoot = true, t.TempDir()
 	t.Cleanup(func() { segTwinOnDisk, segTwinsOnDisk, segTwinDirRoot = false, nil, "" })
 	for name, fn := range map[string]func(*testing.T){
@@ -250,6 +253,9 @@ func TestSegmentDir_S2SuiteOverMappedFiles(t *testing.T) {
 // working — new writes, updates of reopened sealed rows, more seals — and a
 // second reopen answers again.
 func TestSegmentDir_ReopenEqualsTheOracle(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	r := rand.New(rand.NewSource(101))
 	dir := t.TempDir()
 	tw := newSegTwin(t, 24<<10, 16)
@@ -397,6 +403,9 @@ func TestSegmentDir_ReopenMovesRowStoreDuplicatesOut(t *testing.T) {
 // seal: every row stays in the memtable (the store answers like its twin),
 // the directory keeps exactly its listed files, and the next seal succeeds.
 func TestSegmentDir_FailedSealStepKeepsStoreAndDirectory(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, step := range []string{segdir.StepSegmentWritten, segdir.StepSegmentSynced, segdir.StepManifestWritten} {
 		t.Run(step, func(t *testing.T) {
 			r := rand.New(rand.NewSource(107))
@@ -546,6 +555,9 @@ func testFlipWeightBit(t *testing.T, data []byte, row int) {
 // IntegrityBlockRows group; a damaged manifest fails with
 // ErrRelSegmentManifestInvalid.
 func TestSegmentDir_DamageFailsClosed(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, blockRows := range []int{1, 64, 4096} {
 		t.Run(fmt.Sprint("IntegrityBlockRows=", blockRows), func(t *testing.T) {
 			r := rand.New(rand.NewSource(109))
@@ -860,6 +872,9 @@ func TestSegmentDir_ClearEmptiesTheDirectory(t *testing.T) {
 // the mappings are released once the scan returns. A batch's Row door used
 // after the scan fails instead of reading an unmapped segment.
 func TestSegmentDir_ScanPinsMappingsAcrossClose(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, closer := range []string{"Close", "Clear"} {
 		t.Run(closer, func(t *testing.T) {
 			r := rand.New(rand.NewSource(137))
@@ -955,6 +970,9 @@ func TestSegmentDir_ScanPinsMappingsAcrossClose(t *testing.T) {
 // concurrency test over mapped files (the suite above) plus readers that
 // race the directory attach of a second store over another directory copy.
 func TestSegmentDir_ConcurrentReadersAndReopen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	r := rand.New(rand.NewSource(139))
 	dir := t.TempDir()
 	tw := newSegTwin(t, 16<<10, 12)
@@ -1068,6 +1086,9 @@ func TestSegmentDir_ConcurrentReadersAndReopen(t *testing.T) {
 // every store door the undeclared twin's answer, and ScanRelSegments the same
 // rows in the same order.
 func TestSegments_AnswersDoNotDependOnSealBoundaries(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	type layout struct {
 		name      string
 		budget    int64

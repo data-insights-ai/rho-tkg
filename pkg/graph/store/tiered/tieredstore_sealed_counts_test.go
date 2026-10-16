@@ -18,6 +18,9 @@ import (
 // shard's FILES BEING MOVED AWAY. A count that still answers when the shard
 // cannot be opened can only have come from the catalog.
 func TestSealedCountsSurviveARestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	cfg := openParallelCfg(dir)
@@ -111,6 +114,9 @@ func TestSealedCountsSurviveARestart(t *testing.T) {
 // between a write and the next close would leave the following start adopting
 // counts from before the write.
 func TestOpeningAShardUnsealsIt(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	cfg := openParallelCfg(dir)
 	cfg.ColdAfter = time.Millisecond
@@ -180,6 +186,9 @@ func TestOpeningAShardUnsealsIt(t *testing.T) {
 // would be adopted verbatim if the shard were demoted again, silently
 // under-reporting every write it took while warm.
 func TestPromotedShardDoesNotKeepItsSealedCounts(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	// Build a store, demote and close so counts get sealed.

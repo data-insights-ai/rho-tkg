@@ -195,6 +195,9 @@ func TestTieredStoreClear_ClearsTempIdxLabels(t *testing.T) {
 }
 
 func TestTieredStoreClear_ClearsClosedColdShard(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -303,6 +306,9 @@ func TestTieredStoreClearEventShard_ClosedFailsClosed(t *testing.T) {
 }
 
 func TestTieredStoreClear_ClearsRestartedWarmShard(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	reg := registrypkg.NewLabelRegistry()
 	signalTok, _ := reg.GetOrCreate("Signal")
