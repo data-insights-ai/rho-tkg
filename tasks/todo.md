@@ -253,7 +253,7 @@ Test proportionality: graphapply 120 k test LOC for 40.7 k src (709 `Test` funcs
 | v4.57.1 | dd5c684c | batch WithTx excise refuses the whole unit (row 52), one numeric equality rule across every equality door (row 54, WP-02), fast test tier (WP-14) |
 | v4.58.0 | 42db6281 (release commit bc824ad8) | tiered property indexes per shard with a truthful capability report (row 59, WP-31), one chain builder (WP-21), Elements backfill fix with open image format 3 |
 | v4.58.1 | df9268c8 | a negative valid start is a real interval start in every door (row 60): one `HasValidInterval` rule, badger column window flag, any-version doors from `UnboundedValidFrom`; tag → df9268c8; GitHub CI run 38911398936 success; consumers build + vet; sigma-tkgd-c3 notified 2026-10-16 |
-| v4.59.0 | 027bf788 | windowed equality seek (row 62): per-value valid-time view of the membership sidecar, O(log n + matches); explicit-presence time filters (row 63): `ValidAtSet` / `ValidWindowSet` / `TxAtSet` / `TxPinSet`, one `Has*` rule in every door |
+| v4.59.0 | 027bf788 | windowed equality seek (row 62): per-value valid-time view of the membership sidecar, O(log n + matches); explicit-presence time filters (row 63): `ValidAtSet` / `ValidWindowSet` / `TxAtSet` / `TxPinSet`, one `Has*` rule in every door; tag → 027bf788; GitHub CI run 38953715441 success; consumers build + vet; sigma-tkgd-c3 + ai-soc-main-e7 notified |
 
 ## Open decisions for René (my default in bold)
 
