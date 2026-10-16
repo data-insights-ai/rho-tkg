@@ -1,0 +1,1108 @@
+=== graph-level (pkg/graph TestNegativeValidStartIsARealIntervalStart) on main ab9a41a4
+--- FAIL: TestNegativeValidStartIsARealIntervalStart (0.00s)
+    --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/indexed (0.00s)
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/indexed/any_valid_time (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 4
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 4
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/indexed/neg_window (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/indexed/inside_neg (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/indexed/inf_tail (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/indexed/all_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 3
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 3
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/indexed/straddles_zero (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1]
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1]
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/indexed/reversed_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/indexed/positive_start_negative_end (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:263: NodesEffectivePage open negative start: graph: invalid time range: negative valid-time filter
+        negative_valid_start_test.go:263: NodesEffectivePage negative point: graph: invalid time range: negative valid-time filter
+    --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/noindex (0.00s)
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/noindex/any_valid_time (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 4
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 4
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/noindex/neg_window (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/noindex/inside_neg (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/noindex/inf_tail (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/noindex/all_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 3
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 3
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/noindex/straddles_zero (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1]
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1]
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/noindex/reversed_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/noindex/positive_start_negative_end (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:263: NodesEffectivePage open negative start: graph: invalid time range: negative valid-time filter
+        negative_valid_start_test.go:263: NodesEffectivePage negative point: graph: invalid time range: negative valid-time filter
+    --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/indexed (0.01s)
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/indexed/any_valid_time (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 4
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 4
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/indexed/neg_window (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/indexed/inside_neg (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/indexed/inf_tail (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/indexed/all_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 3
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 3
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/indexed/straddles_zero (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1]
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1]
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/indexed/reversed_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/indexed/positive_start_negative_end (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:263: NodesEffectivePage open negative start: graph: invalid time range: negative valid-time filter
+        negative_valid_start_test.go:263: NodesEffectivePage negative point: graph: invalid time range: negative valid-time filter
+    --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/noindex (0.01s)
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/noindex/any_valid_time (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 4
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 4
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/noindex/neg_window (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/noindex/inside_neg (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/noindex/inf_tail (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/noindex/all_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 3
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 3
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/noindex/straddles_zero (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1]
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1]
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/noindex/reversed_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/noindex/positive_start_negative_end (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:263: NodesEffectivePage open negative start: graph: invalid time range: negative valid-time filter
+        negative_valid_start_test.go:263: NodesEffectivePage negative point: graph: invalid time range: negative valid-time filter
+    --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/indexed (0.01s)
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/indexed/any_valid_time (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 4
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 4
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/indexed/neg_window (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/indexed/inside_neg (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/indexed/inf_tail (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/indexed/all_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 3
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 3
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/indexed/straddles_zero (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1]
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1]
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/indexed/reversed_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/indexed/positive_start_negative_end (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:263: NodesEffectivePage open negative start: graph: invalid time range: negative valid-time filter
+        negative_valid_start_test.go:263: NodesEffectivePage negative point: graph: invalid time range: negative valid-time filter
+    --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/noindex (0.01s)
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/noindex/any_valid_time (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 4
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 4
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/noindex/neg_window (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/noindex/inside_neg (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/noindex/inf_tail (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/noindex/all_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 3
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 3
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/noindex/straddles_zero (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1]
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1]
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/noindex/reversed_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/noindex/positive_start_negative_end (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:263: NodesEffectivePage open negative start: graph: invalid time range: negative valid-time filter
+        negative_valid_start_test.go:263: NodesEffectivePage negative point: graph: invalid time range: negative valid-time filter
+    --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/indexed (0.01s)
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/indexed/any_valid_time (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 4
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 4
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/indexed/neg_window (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/indexed/inside_neg (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/indexed/inf_tail (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/indexed/all_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 3
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 3
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/indexed/straddles_zero (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1]
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1]
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/indexed/reversed_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/tiered/indexed/positive_start_negative_end (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:263: NodesEffectivePage open negative start: graph: invalid time range: negative valid-time filter
+        negative_valid_start_test.go:263: NodesEffectivePage negative point: graph: invalid time range: negative valid-time filter
+    --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/noindex (0.01s)
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/noindex/any_valid_time (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 4
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg pos]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 4
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/noindex/neg_window (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/noindex/inside_neg (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/noindex/inf_tail (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 2
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 2
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/noindex/all_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:184: CountByLabelAt = 1, want 3
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1 inf neg]
+            negative_valid_start_test.go:199: CountByTypeAt = 1, want 3
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/noindex/straddles_zero (0.00s)
+            negative_valid_start_test.go:175: ByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:177: ByLabelAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:180: ForEachByLabel = [pos], want [closed1]
+            negative_valid_start_test.go:182: Nodes.All = [pos], want [closed1]
+            negative_valid_start_test.go:187: ByType = [pos], want [closed1]
+            negative_valid_start_test.go:189: ByTypeAndProperty = [pos], want [closed1]
+            negative_valid_start_test.go:192: ForEachByType = [pos], want [closed1]
+            negative_valid_start_test.go:194: Rels.All = [pos], want [closed1]
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt = [pos], want [closed1]
+            negative_valid_start_test.go:215: NodesRelating: graph: invalid time range
+            negative_valid_start_test.go:217: RelsRelating: graph: invalid time range
+            negative_valid_start_test.go:228: NodesEffectivePage: graph: invalid time range: negative valid-time filter
+            negative_valid_start_test.go:236: RelsEffectivePage: graph: invalid time range: negative valid-time filter
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/noindex/reversed_negative (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        --- FAIL: TestNegativeValidStartIsARealIntervalStart/sharded/noindex/positive_start_negative_end (0.00s)
+            negative_valid_start_test.go:175: ByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:177: ByLabelAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:180: ForEachByLabel: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:182: Nodes.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:184: CountByLabelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:187: ByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:189: ByTypeAndProperty: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:192: ForEachByType: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:194: Rels.All: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:197: ForEachAdjacentRelAt: err = <nil>, want ErrInvalidTimeRange
+            negative_valid_start_test.go:199: CountByTypeAt: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:263: NodesEffectivePage open negative start: graph: invalid time range: negative valid-time filter
+        negative_valid_start_test.go:263: NodesEffectivePage negative point: graph: invalid time range: negative valid-time filter
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.018s
+FAIL
+=== store-level (pkg/graph/store TestStoreNegativeValidIntervalIsAFilter) on main ab9a41a4
+--- FAIL: TestStoreNegativeValidIntervalIsAFilter (0.00s)
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/memory (0.00s)
+        negative_valid_start_test.go:105: neg window NodesByLabel = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:107: neg window AllNodes = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:109: neg window RelationshipsByType = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:111: neg window AllRelationships = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:105: inf tail NodesByLabel = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:107: inf tail AllNodes = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:109: inf tail RelationshipsByType = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:111: inf tail AllRelationships = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:105: reversed negative NodesByLabel: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:107: reversed negative AllNodes: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:109: reversed negative RelationshipsByType: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:111: reversed negative AllRelationships: err = <nil>, want ErrInvalidTimeRange
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/memory/indexed (0.00s)
+        negative_valid_start_test.go:105: neg window NodesByLabel = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:107: neg window AllNodes = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:109: neg window RelationshipsByType = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:111: neg window AllRelationships = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:105: inf tail NodesByLabel = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:107: inf tail AllNodes = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:109: inf tail RelationshipsByType = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:111: inf tail AllRelationships = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:105: reversed negative NodesByLabel: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:107: reversed negative AllNodes: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:109: reversed negative RelationshipsByType: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:111: reversed negative AllRelationships: err = <nil>, want ErrInvalidTimeRange
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/badger/indexed (0.01s)
+        negative_valid_start_test.go:105: neg window NodesByLabel = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:107: neg window AllNodes = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:109: neg window RelationshipsByType = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:111: neg window AllRelationships = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:105: inf tail NodesByLabel = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:107: inf tail AllNodes = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:109: inf tail RelationshipsByType = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:111: inf tail AllRelationships = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:105: reversed negative NodesByLabel: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:107: reversed negative AllNodes: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:109: reversed negative RelationshipsByType: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:111: reversed negative AllRelationships: err = <nil>, want ErrInvalidTimeRange
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/badger-delta (0.01s)
+        negative_valid_start_test.go:105: neg window NodesByLabel = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:107: neg window AllNodes = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:109: neg window RelationshipsByType = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:111: neg window AllRelationships = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:105: inf tail NodesByLabel = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:107: inf tail AllNodes = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:109: inf tail RelationshipsByType = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:111: inf tail AllRelationships = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:105: reversed negative NodesByLabel: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:107: reversed negative AllNodes: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:109: reversed negative RelationshipsByType: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:111: reversed negative AllRelationships: err = <nil>, want ErrInvalidTimeRange
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/badger (0.01s)
+        negative_valid_start_test.go:105: neg window NodesByLabel = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:107: neg window AllNodes = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:109: neg window RelationshipsByType = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:111: neg window AllRelationships = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:105: inf tail NodesByLabel = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:107: inf tail AllNodes = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:109: inf tail RelationshipsByType = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:111: inf tail AllRelationships = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:105: reversed negative NodesByLabel: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:107: reversed negative AllNodes: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:109: reversed negative RelationshipsByType: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:111: reversed negative AllRelationships: err = <nil>, want ErrInvalidTimeRange
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/badger-delta/indexed (0.01s)
+        negative_valid_start_test.go:105: neg window NodesByLabel = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:107: neg window AllNodes = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:109: neg window RelationshipsByType = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:111: neg window AllRelationships = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:105: inf tail NodesByLabel = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:107: inf tail AllNodes = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:109: inf tail RelationshipsByType = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:111: inf tail AllRelationships = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:105: reversed negative NodesByLabel: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:107: reversed negative AllNodes: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:109: reversed negative RelationshipsByType: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:111: reversed negative AllRelationships: err = <nil>, want ErrInvalidTimeRange
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/tiered/indexed (0.01s)
+        negative_valid_start_test.go:105: neg window NodesByLabel = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:107: neg window AllNodes = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:109: neg window RelationshipsByType = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:111: neg window AllRelationships = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:105: inf tail NodesByLabel = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:107: inf tail AllNodes = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:109: inf tail RelationshipsByType = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:111: inf tail AllRelationships = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:105: reversed negative NodesByLabel: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:107: reversed negative AllNodes: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:109: reversed negative RelationshipsByType: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:111: reversed negative AllRelationships: err = <nil>, want ErrInvalidTimeRange
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/tiered (0.01s)
+        negative_valid_start_test.go:105: neg window NodesByLabel = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:107: neg window AllNodes = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:109: neg window RelationshipsByType = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:111: neg window AllRelationships = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:105: inf tail NodesByLabel = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:107: inf tail AllNodes = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:109: inf tail RelationshipsByType = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:111: inf tail AllRelationships = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:105: reversed negative NodesByLabel: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:107: reversed negative AllNodes: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:109: reversed negative RelationshipsByType: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:111: reversed negative AllRelationships: err = <nil>, want ErrInvalidTimeRange
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/sharded/indexed (0.01s)
+        negative_valid_start_test.go:105: neg window NodesByLabel = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:107: neg window AllNodes = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:109: neg window RelationshipsByType = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:111: neg window AllRelationships = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:105: inf tail NodesByLabel = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:107: inf tail AllNodes = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:109: inf tail RelationshipsByType = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:111: inf tail AllRelationships = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:105: reversed negative NodesByLabel: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:107: reversed negative AllNodes: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:109: reversed negative RelationshipsByType: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:111: reversed negative AllRelationships: err = <nil>, want ErrInvalidTimeRange
+    --- FAIL: TestStoreNegativeValidIntervalIsAFilter/sharded (0.01s)
+        negative_valid_start_test.go:105: neg window NodesByLabel = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:107: neg window AllNodes = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:109: neg window RelationshipsByType = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:111: neg window AllRelationships = ([1 2 3 4], <nil>), want [1 2]
+        negative_valid_start_test.go:105: inf tail NodesByLabel = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:107: inf tail AllNodes = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:109: inf tail RelationshipsByType = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:111: inf tail AllRelationships = ([1 2 3 4], <nil>), want [1 3]
+        negative_valid_start_test.go:105: reversed negative NodesByLabel: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:107: reversed negative AllNodes: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:109: reversed negative RelationshipsByType: err = <nil>, want ErrInvalidTimeRange
+        negative_valid_start_test.go:111: reversed negative AllRelationships: err = <nil>, want ErrInvalidTimeRange
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.015s
+FAIL

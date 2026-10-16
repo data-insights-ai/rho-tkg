@@ -1,0 +1,14 @@
+--- FAIL: TestNegativeValidStartIsARealIntervalStart (0.00s)
+    --- FAIL: TestNegativeValidStartIsARealIntervalStart/memory/indexed (0.01s)
+        negative_valid_start_test.go:256: ForEachByLabelPropertyRangeAnyVersion = [pos], want [closed1 inf neg pos]
+        negative_valid_start_test.go:261: ForEachByTypePropertyRangeAnyVersion = [pos], want [closed1 inf neg pos]
+        negative_valid_start_test.go:264: PropertyValueStats at pin = ({Distinct:1 Rows:1 MaxRows:1 MaxValue:3}, true, <nil>), want 4 rows
+        negative_valid_start_test.go:267: RelPropertyValueStats at pin = ({Distinct:1 Rows:1 MaxRows:1 MaxValue:3}, true, <nil>), want 4 rows
+    --- FAIL: TestNegativeValidStartIsARealIntervalStart/badger/indexed (0.01s)
+        negative_valid_start_test.go:256: ForEachByLabelPropertyRangeAnyVersion = [pos], want [closed1 inf neg pos]
+        negative_valid_start_test.go:261: ForEachByTypePropertyRangeAnyVersion = [pos], want [closed1 inf neg pos]
+        negative_valid_start_test.go:264: PropertyValueStats at pin = ({Distinct:1 Rows:1 MaxRows:1 MaxValue:3}, true, <nil>), want 4 rows
+        negative_valid_start_test.go:267: RelPropertyValueStats at pin = ({Distinct:1 Rows:1 MaxRows:1 MaxValue:3}, true, <nil>), want 4 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.019s
+FAIL
