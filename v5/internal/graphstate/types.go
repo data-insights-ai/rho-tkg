@@ -273,8 +273,10 @@ type EqualityPredicate struct {
 
 // IndexView is the index-page capability of a complete read view: entity IDs
 // in ascending order, each once, bounded by rows and bytes, with an opaque
-// cursor that is valid only on the view that issued it. It is separate from
-// ReadView because the planner never needs it.
+// cursor that is valid only on the view that issued it. Pages are a candidate
+// set at the view's latest knowledge: callers recheck position AND value (rows
+// key by a SHA-256 of the value key; the page does not recheck the value). It
+// is separate from ReadView because the planner never needs it.
 type IndexView interface {
 	// LabelMembers lists nodes holding label in any life (labels are node-only).
 	LabelMembers(context.Context, string, Cursor, ReadBudget) (EntityPage, error)

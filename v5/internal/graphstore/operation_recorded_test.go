@@ -279,3 +279,35 @@ func TestRangeMoveExportRefusesRangeHoldingEvidence(t *testing.T) {
 		t.Fatal("range holding evidence was exported", err)
 	}
 }
+
+func TestRangeMoveRefusesIndexedStore(t *testing.T) {
+	for name, key := range map[string]func(Namespace, graphstate.EntityID) []byte{
+		"label": func(n Namespace, o graphstate.EntityID) []byte {
+			return appendIndexRowTail(labelPostingPrefix(n, "L"), o, 1)
+		},
+		"equality": func(n Namespace, o graphstate.EntityID) []byte {
+			return binary.BigEndian.AppendUint64(appendIndexRowTail(equalityPostingPrefix(n, graphstate.Node, "p", "k"), o, 1), 0)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			sources, d, binding, cfg, stores := transactionViewFixture(t)
+			actual, _ := sources[0].Root()
+			descriptor := rangeMoveTestPlan(t, sources, d, binding, cfg)
+			budget := raftlog.ReadBudget{Rows: 1, Bytes: 64 << 10}
+			if _, _, err := ExportRangeMovePage(t.Context(), sources[0], descriptor, RangeMoveCursor{}, budget, Limits{}, GraphLimits{}, transactionTestOutput(t)); err != nil {
+				t.Fatal("store without index rows must export", err)
+			}
+			root, err := DecodeRoot(actual.Image)
+			if err != nil {
+				t.Fatal(err)
+			}
+			row := raftlog.KV{Key: key(root.namespace, graphstate.EntityID(descriptor.Spec.Publication.First)), Value: []byte("index")}
+			held := ownershipView(t, stores[0], ownershipInstallRaw(t, stores[0], actual.Image, []raftlog.KV{row}))
+			sources[0] = held
+			descriptor = rangeMoveTestPlan(t, sources, d, binding, cfg)
+			if _, _, err := ExportRangeMovePage(t.Context(), held, descriptor, RangeMoveCursor{}, budget, Limits{}, GraphLimits{}, transactionTestOutput(t)); !errors.Is(err, graphstate.ErrUnsupported) {
+				t.Fatal("indexed store was exported", err)
+			}
+		})
+	}
+}

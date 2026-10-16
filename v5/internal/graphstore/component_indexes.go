@@ -240,6 +240,9 @@ const (
 	labelPostingRecord    recordKind = 0x18
 	equalityPostingRecord recordKind = 0x19
 )
+
+var _ graphstate.IndexView = (*ReadView)(nil)
+
 const indexEntityBytes = 16
 const indexScanBatch = 64
 
