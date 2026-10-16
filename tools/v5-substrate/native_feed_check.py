@@ -463,7 +463,6 @@ def authenticate_frame(frame, previous, s, spool, fresh, *, guarded_updates=Fals
             require(not cdc or status==1 and cdc==out,"actual pin metadata CDC")
             if fresh:
                 put(spool,b"pin-result",u64(part)+u64(index),encoded({"phase":phase,"status":status,"pin":pin.hex(),"digest":hash_.hex(),"publication":int.from_bytes(b[90:98],"big"),"epoch":int.from_bytes(b[98:106],"big"),"feed":int.from_bytes(b[106:114],"big")}))
-                if phase in (3,4,5,8) and status in (1,4,5):put(spool,b"pin-terminal",u64(part)+pin+hash_,out)
         else:
             pin,hash_,action=b[:32],b[32:64],b[96:112];phase,status=b[128],b[129]
             require(1<=phase<=4 and 1<=status<=6 and any(pin) and any(hash_) and any(action) and not cdc,"actual native feed result")
@@ -475,6 +474,14 @@ def authenticate_frame(frame, previous, s, spool, fresh, *, guarded_updates=Fals
             x=checked(value,magic,512)
             require(len(control)==59 and control[:3]==b"ga"+bytes([tag]) and control[3:19].hex()==raw.GRAPH and control[19:27]==u64(part)
                     and control[-16:]==action and at==original==index and any(x[:32]) and x[32:]==out,"actual immutable metadata original/control coordinate")
+            if fresh and magic==b"GPX\1":
+                # Native originals belong to issuer/action, not just pin and
+                # descriptor: Close and CancelIssue may both be installed.
+                put(spool,b"pin-action",control,u64(at)+value)
+                if phase in (3,4,5,8) and status in (1,4,5):
+                    terminal_key=u64(part)+pin+hash_
+                    if spool.find(b"pin-terminal",terminal_key) is None:
+                        spool.insert(b"pin-terminal",terminal_key,reg)
         return
     require(not reg and not cdc,"unrecognized metadata cannot be called empty")
     if out.startswith(b"GSO\1"):

@@ -93,6 +93,68 @@ class NativeFeedGuards(unittest.TestCase):
             with self.assertRaises(ValueError):check._scalar_allocation_cdc(seal(body),out,scope,config)
         with self.assertRaises(ValueError):check._scalar_allocation_cdc(wire[:-1]+b"x",out,scope,config)
 
+    def test_native_pin_terminals_preserve_distinct_action_originals(self):
+        # Actual Close/CancelIssue from the immutable columns RED artifact.
+        root=check.base64.b64decode('R1IDBQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAACAAAAAAAAAC0AAAAAAAAAgmI/KWLCbHrAOJXQgWIGXABA2nNHAVLDsmZ6o0zxvNCwAAAAAAAAAAkAAAAAAAAAAQAAAAAAAAAD5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsLwLga1R4pxCn1vG08QmjlPETd9/aClgxYSm2Ph5rb7+Q==',validate=True)
+        captured=[(197, 'R1BPAQUBW89bG8x/mjWOkbQEgKUT5ALlN/BaMrOCAhN1uKlei9Gl4/oYBFeg6vmKryc/ARRB1WH2UGjbSCWSj1jI3DvDtXnCMjtnN+EYyhkgRGDVV/IAAAAAAAAAxQAAAAAAAABpAAAAAAAAAAAAAAAAAAAAEHlo3iJtCGEWWMO/8fc6bUEeYGj8nRdfJeYdi1G/rTEc', 'TkNPMQAAADtnYRgBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOABl3rgsZSq5r/+IXtvxIUecIyO2c34RjKGSBEYNVX8gAAAAAAAADFAAAA2kdQWAH6HWwyyj0dXIosF22iknIuXb/rEK6dFsRwPPwGO4UDVkdQTwEFAVvPWxvMf5o1jpG0BIClE+QC5TfwWjKzggITdbipXovRpeP6GARXoOr5iq8nPwEUQdVh9lBo20glko9YyNw7w7V5wjI7ZzfhGMoZIERg1VfyAAAAAAAAAMUAAAAAAAAAaQAAAAAAAAAAAAAAAAAAABB5aN4ibQhhFljDv/H3Om1BHmBo/J0XXyXmHYtRv60xHGZzbGX588oPwCyAeyUk2n13EQUZtjVNPd69c0t7mpIQCOX+cyIzMBlqR+c1E517nOD5kN2IabjB2oUUdcQnR+g='), (198, 'R1BPAQgFW89bG8x/mjWOkbQEgKUT5ALlN/BaMrOCAhN1uKlei9Gl4/oYBFeg6vmKryc/ARRB1WH2UGjbSCWSj1jI3DvDtUEkV1mgMmKuGKgPv/1w51gAAAAAAAAAxgAAAAAAAABpAAAAAAAAAAAAAAAAAAAAEBPi/Zf5Ibjg7lZklzx48GSBUpdBmTNfzTYeFhPE7A0C', 'TkNPMQAAADtnYRgBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOABl3rgsZSq5r/+IXtvxIUQSRXWaAyYq4YqA+//XDnWAAAAAAAAADGAAAA2kdQWAE0fsOJBGpuEF+mE656Bk6QcbYQACTiJaBw2Qvl0WaysUdQTwEIBVvPWxvMf5o1jpG0BIClE+QC5TfwWjKzggITdbipXovRpeP6GARXoOr5iq8nPwEUQdVh9lBo20glko9YyNw7w7VBJFdZoDJirhioD7/9cOdYAAAAAAAAAMYAAAAAAAAAaQAAAAAAAAAAAAAAAAAAABAT4v2X+SG44O5WZJc8ePBkgVKXQZkzX802HhYTxOwNAsUxc5u87ZiGrGp/oj8y5zxhhP2N5i/qWyK0ElJsBwnqA2RHfxlYZlNtqAjGkT1osQEb5YTAhPxjz+ENrvDpyWk=')]
+        actual=[dict(Partition=3,Index=index,Root=list(root),Outcome=out,
+            CDC=out if check.base64.b64decode(out)[5]==1 else "",Registration=reg,
+            OriginalOutcome=None,OriginalCDC=None,Rows=[]) for index,out,reg in captured]
+        def rewritten(source,*,phase=None,index=None,action=None,command_hash=None):
+            changed=copy.deepcopy(source)
+            b=bytearray(check.checked(check.blob(changed["Outcome"]),b"GPO\1",256))
+            if phase is not None:b[0]=phase
+            if index is not None:b[82:90]=u64(index);changed["Index"]=index
+            if action is not None:b[66:82]=action
+            out=b"GPO\1"+b;out+=check.digest(out)
+            c=check.cursor(check.checked(check.blob(source["Registration"]),b"NCO1"))
+            key,_,value=c.field(4096),c.number(),c.field(32768);c.done()
+            key=key[:-16]+bytes(b[66:82]);original=check.checked(value,b"GPX\1",512)
+            value=b"GPX\1"+(original[:32] if command_hash is None else command_hash)+out;value+=check.digest(value)
+            field=lambda x:struct.pack(">I",len(x))+x
+            reg=b"NCO1"+field(key)+u64(changed["Index"])+field(value);reg+=check.digest(reg)
+            changed.update(Outcome=check.base64.b64encode(out).decode(),CDC=check.base64.b64encode(out).decode() if b[1]==1 else "",
+                Registration=check.base64.b64encode(reg).decode())
+            return changed
+        def authenticate(spool,f):check.authenticate_frame(f,root,self.spec,spool,True)
+        terminal=check.checked(check.blob(actual[0]["Outcome"]),b"GPO\1",256);key=u64(3)+terminal[2:66]
+        with tempfile.TemporaryDirectory() as path:
+            with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
+                for f in actual:authenticate(spool,f)
+                self.assertEqual(spool.lookup(b"pin-terminal",key),check.blob(actual[0]["Registration"]))
+                self.assertEqual(len(list(spool.walk(b"pin-action"))),2)
+                for f in actual:
+                    c=check.cursor(check.checked(check.blob(f["Registration"]),b"NCO1"))
+                    control,at,value=c.field(4096),c.number(),c.field(32768);c.done()
+                    self.assertEqual(spool.lookup(b"pin-action",control),u64(at)+value)
+                authenticate(spool,actual[0])
+            # Re-encoded codec fixtures also cover Release/Close action slots.
+            with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
+                authenticate(spool,rewritten(actual[0],phase=3,index=196,action=b"r"*16));authenticate(spool,actual[0])
+                self.assertEqual(len(list(spool.walk(b"pin-action"))),2)
+            for changed in (rewritten(actual[0],index=199),rewritten(actual[0],command_hash=b"x"*32)):
+                with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
+                    authenticate(spool,actual[0])
+                    with self.assertRaisesRegex(ValueError,"immutable original/frame changed"):authenticate(spool,changed)
+            with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
+                with self.assertRaises(ValueError):spool.lookup(b"pin-terminal",key)
+            for phase in (1,2,6,7):
+                with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
+                    authenticate(spool,rewritten(actual[0],phase=phase))
+                    with self.assertRaises(ValueError):spool.lookup(b"pin-terminal",key)
+            for name in ("missing", "wrong-phase", "bad-control", "bad-index"):
+                with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
+                    bad=copy.deepcopy(actual[0])
+                    if name=="missing":bad["Registration"]=None
+                    elif name=="wrong-phase":
+                        out=bytearray(check.blob(bad["Outcome"]));out[4]=8
+                        out[-32:]=check.digest(out[:-32]);bad["Outcome"]=check.base64.b64encode(out).decode();bad["CDC"]=bad["Outcome"]
+                    elif name=="bad-control":
+                        reg=bytearray(check.blob(bad["Registration"]));reg[27]^=1
+                        reg[-32:]=check.digest(reg[:-32]);bad["Registration"]=check.base64.b64encode(reg).decode()
+                    else:bad["Index"]+=1
+                    with self.assertRaises(ValueError):authenticate(spool,bad)
+
     def test_inline_axis_matches_only_identical_sealed_column_axis(self):
         # Actual first setup row, whose GCD5 definition is embedded unsealed.
         wire=check.base64.b64decode("HwAAAAAAAAAAAAAAAAAAAAIAAQAAAChwb3NpeC11bml4LWVwb2NoOjE5NzAtMDEtMDFUMDA6MDA6MDBaOnYxAAAAC21pbGxpc2Vjb25kOR57qCYlSq/t5hTTb+rDTZfr3y77RoDWT9CrnpEZ8vQ=",validate=True)
