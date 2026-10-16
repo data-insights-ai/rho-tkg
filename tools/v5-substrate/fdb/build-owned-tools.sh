@@ -10,7 +10,7 @@ cd /tmp/rho-iproute-build
 rm -f /etc/apt/sources.list /etc/apt/sources.list.d/*
 printf '%s\n' 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20261001T000000Z/ trixie main' > /etc/apt/sources.list
 apt-get -o Acquire::Retries=0 update
-apt-get -o Acquire::Retries=0 --no-install-recommends -y install bison flex
+apt-get -o Acquire::Retries=0 --no-install-recommends -y install bison flex xz-utils
 curl --fail --location --max-time 60 --output source.tar.xz https://mirrors.edge.kernel.org/pub/linux/utils/net/iproute2/iproute2-6.12.0.tar.xz
 printf '%s  source.tar.xz\n' "$source_sha" | sha256sum --check
 # Fixed archive hash authenticates names/content; no caller archive is extracted.
