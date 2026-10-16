@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/dist/replica"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
-	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
 type closedReplicationMachine struct{ restored bool }
