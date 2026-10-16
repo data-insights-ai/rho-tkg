@@ -76,14 +76,12 @@ func needNumericRule(t *testing.T, a Adapter) {
 	}
 }
 
-// kindOf is the stored kind of a read-back number: "int", "uint", "float" or the
+// kindOf is the stored kind of a read-back number: "int" (signed or unsigned), "float" or the
 // Go type for anything else. Widths do not matter.
 func kindOf(v any) string {
 	switch v.(type) {
-	case int, int8, int16, int32, int64:
-		return "int"
-	case uint, uint8, uint16, uint32, uint64:
-		return "uint"
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return "int" // kind, not width: v5 keeps integer vs float, not int64 vs uint64
 	case float32, float64:
 		return "float"
 	}

@@ -58,3 +58,7 @@ require (
 )
 
 replace github.com/data-insights-ai/rho-tkg/v5 => ../../v5
+
+require github.com/data-insights-ai/rho-tkg/v5compat v0.0.0
+
+replace github.com/data-insights-ai/rho-tkg/v5compat => ../../v5compat
