@@ -41,8 +41,8 @@ func hopRows(tb testing.TB, sz Size) []Row {
 				ID: types.RelID(len(rows) + 1), Start: types.NodeID(e.Start + 1), End: types.NodeID(e.End + 1),
 				ValidFrom: Finite(vf), ValidTo: Finite(vt), TxFrom: Finite(e.TxFrom), TxTo: PosInf(),
 				Props: []Property{
-					{"family", e.Props["family"]}, {"actor", e.Props["actor"]},
-					{"asset_class", e.Props["asset_class"]}, {"orch", e.Props["orch"]},
+					{"family", sS(str(e.Props["family"]))}, {"actor", sS(str(e.Props["actor"]))},
+					{"asset_class", sS(str(e.Props["asset_class"]))}, {"orch", sS(str(e.Props["orch"]))},
 				},
 			})
 			return nil
@@ -52,6 +52,8 @@ func hopRows(tb testing.TB, sz Size) []Row {
 	}
 	return rows
 }
+
+func str(v any) string { s, _ := v.(string); return s }
 
 type scaleResult struct {
 	name         string

@@ -5,29 +5,22 @@ import (
 	"fmt"
 	"hash/crc32"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
-// Kind is the exact Go kind of a declared column.
+// Kind is the engine Scalar kind of a declared column. The tags are the
+// graphstate.ScalarKind numbers, so a column tag, a fallback wire tag and the
+// row-hash tag are one byte. The format-1 width model (int8..uint64, float32)
+// is gone: format 2 stores I64, F64, Bool and String only.
 type Kind uint8
 
-// Declared column kinds (the scalar property kinds). The numbers are part of
-// the format (v4 used the same numbers as its property hash type tags).
+// Declared column kinds.
 const (
-	KindBool    Kind = 1
-	KindInt     Kind = 2
-	KindInt8    Kind = 3
-	KindInt16   Kind = 4
-	KindInt32   Kind = 5
-	KindInt64   Kind = 6
-	KindUint    Kind = 7
-	KindUint8   Kind = 8
-	KindUint16  Kind = 9
-	KindUint32  Kind = 10
-	KindUint64  Kind = 11
-	KindFloat32 Kind = 12
-	KindFloat64 Kind = 13
-	KindString  Kind = 14
+	KindString Kind = Kind(graphstate.ScalarString)
+	KindBool   Kind = Kind(graphstate.ScalarBool)
+	KindI64    Kind = Kind(graphstate.ScalarI64)
+	KindF64    Kind = Kind(graphstate.ScalarF64)
 )
 
 // Column is one declared property column.
@@ -62,7 +55,7 @@ const (
 	// MaxColumns bounds the declared columns (two sections each, u16 section
 	// count in the footer).
 	MaxColumns           = 1024
-	CurrentFormatVersion = 1
+	CurrentFormatVersion = 2
 	CurrentFooterVersion = 1
 )
 

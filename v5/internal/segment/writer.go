@@ -121,7 +121,7 @@ func encode(s Schema, rows []Row, opts Options, pageRows int) ([]byte, error) {
 			if c, ok := colIdx[p.Key]; ok && kindOf(p.Value) == s.Columns[c].Kind {
 				w.present[c][i] = 1
 				if s.Columns[c].Kind == KindString {
-					w.strs[c][i] = p.Value.(string)
+					w.strs[c][i], _ = p.Value.StringValue()
 				} else {
 					w.ints[c][i] = valueBits(p.Value)
 				}

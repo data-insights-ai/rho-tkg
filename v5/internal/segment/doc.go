@@ -41,7 +41,7 @@
 //   - Row model. v4 carried *types.Relationship with TemporalMetadata and
 //     RelIntegrity. v5 has Row: RelID/NodeID are int64 1..MaxInt64 (0 and
 //     negatives are refused on write and on read), Revision replaces Version,
-//     properties are scalar Property values.
+//     properties are graphstate.Scalar values of kind I64, F64, Bool or String.
 //   - Time. v4 stored types.Instant where 0 meant unset/open. v5 stores Coord:
 //     a finite int64 (zero is an ordinary coordinate) or an explicit -inf /
 //     +inf, matching temporal.BoundKind; CoordFromBound and Coord.Bound convert
@@ -61,8 +61,10 @@
 //     SHA-256 over a canonical encoding of the row (see model.go).
 //   - Fallback column. v4 used the entity wire (msgpack) for properties
 //     outside the schema and supported nested slices/maps/temporal values. v5
-//     uses the tagged scalar encoding of model.go (appendValue) and supports
-//     only the 14 scalar kinds; other values are refused with ErrInvalidRow.
+//     uses graphstate's kind-preserving wire (Scalar.AppendWire/DecodeWire, length
+//     prefixed; model.go appendValue) and supports only I64, F64, Bool and
+//     String; other values are refused with ErrInvalidRow. Format 2 replaced
+//     the format-1 13-width model (int8..uint64, float32).
 //   - Page index entries cover valid_from, valid_to, tx_from, tx_to and rel_id
 //     (min/max over finite values, flags for non-finite ones).
 //

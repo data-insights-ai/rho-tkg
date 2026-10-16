@@ -261,6 +261,9 @@ func readFooter(data []byte, start, end int) (footer, error) {
 			f.columns[i].Name = c.str16()
 			if b := c.bytes(1); b != nil {
 				f.columns[i].Kind = Kind(b[0])
+				if !f.columns[i].Kind.valid() {
+					return footer{}, corrupt("footer", "column %d has kind tag %d", i, b[0])
+				}
 			}
 		}
 	}
@@ -343,7 +346,7 @@ func (s Schema) validate() error {
 		if c.Name == "" || len(c.Name) > 1<<16-1-len(presencePrefix) {
 			return fmt.Errorf("%w: column name of %d bytes", ErrInvalidSchema, len(c.Name))
 		}
-		if c.Kind < KindBool || c.Kind > KindString {
+		if !c.Kind.valid() {
 			return fmt.Errorf("%w: column %q has unsupported kind %d", ErrInvalidSchema, c.Name, c.Kind)
 		}
 		if _, dup := seen[c.Name]; dup {

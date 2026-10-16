@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"hash/crc32"
 	"math"
 	"math/rand/v2"
@@ -24,13 +25,11 @@ import (
 
 const testType = "HOP"
 
-// testSchema declares one column of every supported kind.
+// testSchema declares columns of every supported kind (two each of I64, F64).
 func testSchema() Schema {
 	return Schema{TypeName: testType, Columns: []Column{
-		{"s", KindString}, {"b", KindBool}, {"i", KindInt}, {"i8", KindInt8},
-		{"i16", KindInt16}, {"i32", KindInt32}, {"i64", KindInt64}, {"u", KindUint},
-		{"u8", KindUint8}, {"u16", KindUint16}, {"u32", KindUint32}, {"u64", KindUint64},
-		{"f32", KindFloat32}, {"f64", KindFloat64},
+		{"s", KindString}, {"b", KindBool}, {"i", KindI64}, {"i64", KindI64},
+		{"f", KindF64}, {"f64", KindF64},
 	}}
 }
 
@@ -54,9 +53,8 @@ func corpus(tb testing.TB, n int, seed uint64) []Row {
 		nodes[i] = 1_000_000 + int64(i)*977 + int64(rng.IntN(50))
 	}
 	nodes[0], nodes[1] = 1, math.MaxInt64
-	extremesI := []int64{0, 1, -1, math.MaxInt64, math.MinInt64, 1 << 40}
-	extremesU := []uint64{0, 1, math.MaxUint64, 1 << 63}
-	extremesF := []float64{0, math.Copysign(0, -1), math.NaN(), math.Inf(1), math.Inf(-1), 1.5, -3.25e300, math.Float64frombits(0x7ff8000000000123)}
+	extremesI := []int64{0, 1, -1, math.MaxInt64, math.MinInt64, 1 << 40, 1<<53 + 1}
+	extremesF := []float64{0, math.Copysign(0, -1), 1.5, -3.25e300, math.MaxFloat64, math.SmallestNonzeroFloat64, 1 << 53, 3}
 	rows := make([]Row, 0, n)
 	id := int64(5_000_000_000)
 	for i := 0; i < n; i++ {
@@ -72,12 +70,12 @@ func corpus(tb testing.TB, n int, seed uint64) []Row {
 		}
 		s, e := rng.IntN(len(nodes)), rng.IntN(len(nodes))
 		var props []Property
-		put := func(k string, v any) {
+		put := func(k string, v graphstate.Scalar) {
 			if rng.IntN(9) != 0 { // sometimes absent
 				props = append(props, Property{k, v})
 			}
 		}
-		set := func(k string, v any) {
+		set := func(k string, v graphstate.Scalar) {
 			for j := range props {
 				if props[j].Key == k {
 					props[j].Value = v
@@ -87,31 +85,26 @@ func corpus(tb testing.TB, n int, seed uint64) []Row {
 			props = append(props, Property{k, v})
 		}
 		strs := []string{"", "a", "actor-1", "ünïcode", string([]byte{0, 255, 7})}
-		put("s", strs[rng.IntN(len(strs))])
-		put("b", rng.IntN(2) == 0)
-		put("i", int(extremesI[rng.IntN(len(extremesI))]))
-		put("i8", int8(rng.IntN(256)-128))
-		put("i16", int16(rng.IntN(65536)-32768))
-		put("i32", int32(rng.Uint32()))
-		put("i64", extremesI[rng.IntN(len(extremesI))])
-		put("u", uint(extremesU[rng.IntN(len(extremesU))]))
-		put("u8", uint8(rng.IntN(256)))
-		put("u16", uint16(rng.IntN(65536)))
-		put("u32", rng.Uint32())
-		put("u64", extremesU[rng.IntN(len(extremesU))])
-		put("f32", float32(extremesF[rng.IntN(len(extremesF))]))
-		put("f64", extremesF[rng.IntN(len(extremesF))])
-		switch rng.IntN(6) { // kind mismatches and undeclared properties
+		put("s", sS(strs[rng.IntN(len(strs))]))
+		put("b", sB(rng.IntN(2) == 0))
+		put("i", sI(extremesI[rng.IntN(len(extremesI))]))
+		put("i64", sI(extremesI[rng.IntN(len(extremesI))]))
+		put("f", sF(tb, extremesF[rng.IntN(len(extremesF))]))
+		put("f64", sF(tb, extremesF[rng.IntN(len(extremesF))]))
+		switch rng.IntN(7) { // kind mismatches and undeclared properties
 		case 0:
-			set("i64", "not an int")
+			set("i64", sS("not an int"))
 		case 1:
-			set("s", int64(42))
+			set("s", sI(42))
 		case 2:
-			set("extra", uint16(9))
-			set("tags", "a,b")
+			set("extra", sI(9))
+			set("tags", sS("a,b"))
 		case 3:
-			set("when", math.Float32frombits(0x7fc00001))
-			set("zero", false)
+			set("when", sF(tb, 2.5))
+			set("zero", sB(false))
+		case 4: // I64/F64 swapped into the other kind's column
+			set("i64", sF(tb, 3))
+			set("f64", sI(3))
 		}
 		rng.Shuffle(len(props), func(a, b int) { props[a], props[b] = props[b], props[a] })
 		vf := Finite(int64(1_787_443_200_000) + rng.Int64N(86_400_000))
@@ -166,17 +159,17 @@ func canon(r Row) Row {
 	return r
 }
 
-// assertSameRow is bit-exact equality (NaN payloads and -0 included).
+// assertSameRow is exact equality of kind and canonical value.
 func assertSameRow(tb testing.TB, want, got Row) {
 	tb.Helper()
 	want = canon(want)
 	if d := rowDiff(&want, &got); d != "" {
 		tb.Fatalf("row %d r%d: %s\n got %+v\nwant %+v", want.ID, want.Revision, d, got, want)
 	}
-	// Independent of rowDiff: the Go types survive.
+	// Independent of rowDiff: the Scalar kinds survive.
 	for k := range want.Props {
-		if reflect.TypeOf(want.Props[k].Value) != reflect.TypeOf(got.Props[k].Value) {
-			tb.Fatalf("row %d: property %q type %T, want %T", want.ID, want.Props[k].Key, got.Props[k].Value, want.Props[k].Value)
+		if want.Props[k].Value.Kind() != got.Props[k].Value.Kind() {
+			tb.Fatalf("row %d: property %q kind %d, want %d", want.ID, want.Props[k].Key, got.Props[k].Value.Kind(), want.Props[k].Value.Kind())
 		}
 	}
 }
@@ -380,7 +373,7 @@ func TestHashes_DefaultBlockSizeIs64(t *testing.T) {
 }
 
 func TestRowHash_CoversEveryField(t *testing.T) {
-	base := mkRow(5, 1, 2, 3, Property{"a", int64(1)}, Property{"b", "x"})
+	base := mkRow(5, 1, 2, 3, Property{"a", sI(1)}, Property{"b", sS("x")})
 	h0, err := RowHash(testType, &base)
 	if err != nil {
 		t.Fatal(err)
@@ -403,13 +396,12 @@ func TestRowHash_CoversEveryField(t *testing.T) {
 		"vt zero":  func(r *Row) { r.ValidTo = Finite(0) },
 		"tx":       func(r *Row) { r.TxFrom = Finite(31) },
 		"txto":     func(r *Row) { r.TxTo = Finite(0) },
-		"prop val": func(r *Row) { r.Props = []Property{{"a", int64(2)}, {"b", "x"}} },
+		"prop val": func(r *Row) { r.Props = []Property{{"a", sI(2)}, {"b", sS("x")}} },
 		"prop kind": func(r *Row) {
-			r.Props = []Property{{"a", int32(1)}, {"b", "x"}}
+			r.Props = []Property{{"a", sF(t, 1)}, {"b", sS("x")}}
 		},
-		"prop key": func(r *Row) { r.Props = []Property{{"a2", int64(1)}, {"b", "x"}} },
-		"prop add": func(r *Row) { r.Props = append(slices.Clone(r.Props), Property{"c", true}) },
-		"-0":       func(r *Row) { r.Props = []Property{{"a", math.Copysign(0, -1)}, {"b", "x"}} },
+		"prop key": func(r *Row) { r.Props = []Property{{"a2", sI(1)}, {"b", sS("x")}} },
+		"prop add": func(r *Row) { r.Props = append(slices.Clone(r.Props), Property{"c", sB(true)}) },
 	}
 	seen := map[[32]byte]string{h0: "base"}
 	for name, mut := range muts {
@@ -425,6 +417,13 @@ func TestRowHash_CoversEveryField(t *testing.T) {
 		}
 		seen[h] = name
 	}
+	// F64 -0 is canonicalised to +0 by the engine scalar: one value, one hash.
+	z, nz := base, base
+	z.Props = []Property{{"a", sF(t, 0)}}
+	nz.Props = []Property{{"a", sF(t, math.Copysign(0, -1))}}
+	if a, _ := RowHash(testType, &z); a != mustHash(t, &nz) {
+		t.Fatal("F64 -0 and +0 hash differently")
+	}
 	lo, hi := base, base
 	lo.ValidTo, hi.ValidTo = NegInf(), PosInf() // same slot, different infinity
 	if a, _ := RowHash(testType, &lo); a == h0 {
@@ -434,7 +433,7 @@ func TestRowHash_CoversEveryField(t *testing.T) {
 		t.Fatal("type name is not hashed")
 	}
 	bad := base
-	bad.Props = []Property{{"a", []int{1}}}
+	bad.Props = []Property{{"a", graphstate.Null()}}
 	if _, err := RowHash(testType, &bad); !errors.Is(err, ErrInvalidRow) {
 		t.Fatalf("non-scalar property: %v", err)
 	}
@@ -460,7 +459,7 @@ func TestIntegrity_TamperedColumnValueFailsItsGroupOnly(t *testing.T) {
 	// the content witness.
 	rows := make([]Row, 0, 300)
 	for i := 0; i < 300; i++ {
-		rows = append(rows, mkRow(uint32(10_000+i), 0, 1, int64(2+i), Property{"i64", int64(1000 + i)}))
+		rows = append(rows, mkRow(uint32(10_000+i), 0, 1, int64(2+i), Property{"i64", sI(int64(1000 + i))}))
 	}
 	data := mustEncode(t, rows, Options{IntegrityBlockRows: 64}, PageRows)
 	secs, err := sections(data)
@@ -498,7 +497,7 @@ func TestIntegrity_TamperedColumnValueFailsItsGroupOnly(t *testing.T) {
 }
 
 func TestFallback_MixedKindColumnKeepsKinds(t *testing.T) {
-	values := []any{int64(7), int(7), float64(7), "7", int32(7), uint64(7), true}
+	values := []graphstate.Scalar{sI(7), sF(t, 7), sS("7"), sB(true), sI(1 << 53), sF(t, 1<<53)}
 	rows := make([]Row, 0, len(values))
 	for i, v := range values {
 		rows = append(rows, mkRow(uint32(100+i), 0, 1, 2, Property{"i64", v}))
@@ -515,7 +514,7 @@ func TestFallback_MixedKindColumnKeepsKinds(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A column whose every value has the declared kind needs no fallback.
-	clean := []Row{mkRow(1, 0, 1, 2, Property{"i64", int64(1)})}
+	clean := []Row{mkRow(1, 0, 1, 2, Property{"i64", sI(1)})}
 	if n := mustOpen(t, mustEncode(t, clean, Options{}, PageRows)).sectionLen("fallback"); n != 0 {
 		t.Fatalf("fallback section of %d bytes for a clean column", n)
 	}
@@ -523,10 +522,9 @@ func TestFallback_MixedKindColumnKeepsKinds(t *testing.T) {
 
 func TestFallback_UndeclaredScalarsOfEveryKind(t *testing.T) {
 	props := []Property{
-		{"x.bool", true}, {"x.int", int(-3)}, {"x.i8", int8(-8)}, {"x.i16", int16(-16)}, {"x.i32", int32(-32)},
-		{"x.i64", int64(math.MinInt64)}, {"x.u", uint(7)}, {"x.u8", uint8(255)}, {"x.u16", uint16(65535)},
-		{"x.u32", uint32(math.MaxUint32)}, {"x.u64", uint64(math.MaxUint64)}, {"x.f32", float32(math.NaN())},
-		{"x.f64", math.Copysign(0, -1)}, {"x.s", "ü\x00z"}, {"x.empty", ""},
+		{"x.bool", sB(true)}, {"x.i64", sI(math.MinInt64)}, {"x.i64max", sI(math.MaxInt64)},
+		{"x.f64", sF(t, -3.25e300)}, {"x.f64min", sF(t, math.SmallestNonzeroFloat64)},
+		{"x.s", sS("ü\x00z")}, {"x.empty", sS("")},
 	}
 	rows := []Row{mkRow(1, 0, 1, 2, props...)}
 	for _, g := range scanAll(t, mustOpen(t, mustEncode(t, rows, Options{}, PageRows))) {
@@ -537,9 +535,9 @@ func TestFallback_UndeclaredScalarsOfEveryKind(t *testing.T) {
 // TestSeal_RowThatDoesNotRoundTripIsRefused pins the seal's refusal rule: a
 // decoded row that differs from its source fails the seal with ErrInvalidRow.
 func TestSeal_RowThatDoesNotRoundTripIsRefused(t *testing.T) {
-	sealed := []Row{mkRow(1, 0, 1, 2, Property{"i64", int64(2)})}
+	sealed := []Row{mkRow(1, 0, 1, 2, Property{"i64", sI(2)})}
 	data := mustEncode(t, sealed, Options{}, PageRows)
-	source := []Row{mkRow(1, 0, 1, 2, Property{"i64", int64(3)})}
+	source := []Row{mkRow(1, 0, 1, 2, Property{"i64", sI(3)})}
 	if err := verifySealed(data, source, []int{0}); !errors.Is(err, ErrInvalidRow) {
 		t.Fatalf("verifySealed on a differing row: %v, want ErrInvalidRow", err)
 	}
@@ -578,7 +576,7 @@ func TestEdge_EmptySegment(t *testing.T) {
 }
 
 func TestEdge_OneRow(t *testing.T) {
-	r := mkRow(42, 3, 5, 5, Property{"s", "only"})
+	r := mkRow(42, 3, 5, 5, Property{"s", sS("only")})
 	r.ValidFrom, r.TxFrom = Finite(0), Finite(0)
 	seg := mustOpen(t, mustEncode(t, []Row{r}, Options{IntegrityBlockRows: 4096}, PageRows))
 	got := scanAll(t, seg)
@@ -681,15 +679,15 @@ func TestEncode_RejectsInvalidInput(t *testing.T) {
 		"tx_from +inf":          {testSchema(), with(func(r *Row) { r.TxFrom = PosInf() }), ErrInvalidRow},
 		"tx_to -inf":            {testSchema(), with(func(r *Row) { r.TxTo = NegInf() }), ErrInvalidRow},
 		"unknown coord kind":    {testSchema(), with(func(r *Row) { r.ValidTo = Coord{kind: 9} }), ErrInvalidRow},
-		"nonscalar property":    {testSchema(), with(func(r *Row) { r.Props = []Property{{"a", []string{"x"}}} }), ErrInvalidRow},
-		"nil property value":    {testSchema(), with(func(r *Row) { r.Props = []Property{{"a", nil}} }), ErrInvalidRow},
-		"duplicate property":    {testSchema(), with(func(r *Row) { r.Props = []Property{{"a", 1}, {"a", 2}} }), ErrInvalidRow},
-		"empty property key":    {testSchema(), with(func(r *Row) { r.Props = []Property{{"", 1}} }), ErrInvalidRow},
-		"oversize property key": {testSchema(), with(func(r *Row) { r.Props = []Property{{string(make([]byte, 1<<16)), 1}} }), ErrInvalidRow},
+		"nonscalar property":    {testSchema(), with(func(r *Row) { r.Props = []Property{{"a", graphstate.Null()}} }), ErrInvalidRow},
+		"nil property value":    {testSchema(), with(func(r *Row) { r.Props = []Property{{"a", graphstate.Scalar{}}} }), ErrInvalidRow},
+		"duplicate property":    {testSchema(), with(func(r *Row) { r.Props = []Property{{"a", sI(1)}, {"a", sI(2)}} }), ErrInvalidRow},
+		"empty property key":    {testSchema(), with(func(r *Row) { r.Props = []Property{{"", sI(1)}} }), ErrInvalidRow},
+		"oversize property key": {testSchema(), with(func(r *Row) { r.Props = []Property{{string(make([]byte, 1<<16)), sI(1)}} }), ErrInvalidRow},
 		"empty type name":       {Schema{}, good, ErrInvalidSchema},
 		"oversize type name":    {Schema{TypeName: string(make([]byte, 1<<16))}, good, ErrInvalidSchema},
-		"duplicate column":      {Schema{TypeName: testType, Columns: []Column{{"a", KindInt64}, {"a", KindString}}}, good, ErrInvalidSchema},
-		"empty column name":     {Schema{TypeName: testType, Columns: []Column{{"", KindInt64}}}, good, ErrInvalidSchema},
+		"duplicate column":      {Schema{TypeName: testType, Columns: []Column{{"a", KindI64}, {"a", KindString}}}, good, ErrInvalidSchema},
+		"empty column name":     {Schema{TypeName: testType, Columns: []Column{{"", KindI64}}}, good, ErrInvalidSchema},
 		"unsupported kind":      {Schema{TypeName: testType, Columns: []Column{{"a", Kind(15)}}}, good, ErrInvalidSchema},
 		"kind zero":             {Schema{TypeName: testType, Columns: []Column{{"a", 0}}}, good, ErrInvalidSchema},
 		"too many columns":      {Schema{TypeName: testType, Columns: manyColumns(MaxColumns + 1)}, good, ErrInvalidSchema},
@@ -700,7 +698,7 @@ func TestEncode_RejectsInvalidInput(t *testing.T) {
 		}
 	}
 	// A reserved-looking name is an ordinary column in v5 (no tkg_ system keys).
-	if _, err := Encode(Schema{TypeName: testType, Columns: []Column{{"tkg_x", KindInt64}}}, good, Options{}); err != nil {
+	if _, err := Encode(Schema{TypeName: testType, Columns: []Column{{"tkg_x", KindI64}}}, good, Options{}); err != nil {
 		t.Errorf("tkg_ column refused: %v", err)
 	}
 	// Many max-size columns still fit.
@@ -747,7 +745,7 @@ func TestRowError_NamesTheRefusedRow(t *testing.T) {
 func manyColumns(n int) []Column {
 	cols := make([]Column, n)
 	for i := range cols {
-		cols[i] = Column{Name: fmt.Sprintf("c%d", i), Kind: KindInt64}
+		cols[i] = Column{Name: fmt.Sprintf("c%d", i), Kind: KindI64}
 	}
 	return cols
 }
@@ -932,10 +930,10 @@ func TestAlloc_LyingCountsDoNotAllocate(t *testing.T) {
 // accepts (resealed) but no valid row can hold are refused on read, never
 // returned as rows.
 func TestCorrupt_DecodedValuesThatCannotBeRowsAreRefused(t *testing.T) {
-	rows := []Row{mkRow(1, 0, 1, 2, Property{"i8", int8(5)}), mkRow(2, 0, 1, 3)}
+	rows := []Row{mkRow(1, 0, 1, 2, Property{"f", sF(t, 5)}), mkRow(2, 0, 1, 3)}
 	data := mustEncode(t, rows, Options{}, PageRows)
 	secs, _ := sections(data)
-	for _, name := range []string{colRelID, secNodes, "prop:i8"} {
+	for _, name := range []string{colRelID, secNodes, "prop:f"} {
 		var target sectionInfo
 		for _, s := range secs {
 			if s.name == name {
