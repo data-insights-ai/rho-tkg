@@ -8,12 +8,16 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **State (2026-10-16):** v4.57.0 (Markus, tag at 1d749a86) = sigma round 9 doors (todo row 56) + the
-   `Config.UntimedValidStart` default for NEW stores (row 57); merged into main. Unreleased on main, ships as **v4.57.1**
-   (patch): a batch caller-instant excise with no valid version refuses the whole unit (todo row 52, CHANGELOG
-   `[Unreleased]`). Next: gate, tag v4.57.1, notify sigma-tkgd and ai-soc (with the v4.57.0 migration points if Markus
-   has not sent them). Running beside it: v5 work (rows 45, 47-51) and the numeric-equality consolidation (row 54,
-   branch `v4-numeric-eq`). Ledger check: `scripts/check-ledger.sh`.
+**Release note v4.57.0 (Markus, 2026-10-16; CI green):** sigma round 9 doors (any-version ranges at a pin, count
+timelines, property value statistics, typed column chunks) and the scheduled flip: `Config.UntimedValidStart` zero value
+is now `UntimedDefault` (new stores unbounded, existing stores keep their persisted mode); constants renumbered (use the
+names). ai-soc: no change needed (sets `UntimedUnbounded` explicitly). sigma-tkgd: adopting with `UntimedFromTxFrom` set
+explicitly for now; its own decision on the new default follows. Details and migration notes: CHANGELOG `[4.57.0]`.
+
+1. **State (2026-10-16):** v4.57.0 (Markus, tag at 1d749a86; todo rows 56, 57) is merged into main. Unreleased on main,
+   ships as **v4.57.1** (patch): a batch caller-instant excise with no valid version refuses the whole unit (todo row 52,
+   CHANGELOG `[Unreleased]`). Next: gate, tag v4.57.1, notify sigma-tkgd and ai-soc. Running beside it: v5 work (rows 45,
+   47-51) and the numeric-equality consolidation (row 54, branch `v4-numeric-eq`). Ledger check: `scripts/check-ledger.sh`.
 2. **Consumers:**
    - ai-soc: PIN17 (v4.55.1) equality runs; PIN18 = rho v4.56.1 + sigma v0.11.11. ai-soc declares `CreateRelTemporal` on its 29
      estate-indexed rel types and sets `UntimedValidStart: UntimedUnbounded` for new stores (BA run copies are not converted).
@@ -24,9 +28,7 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
      deletes its own `untimedStart` / `rowFrom == 0` rule. No open request from sigma.
    - Answer new consumer requests the same day: ledger row first, Opus build agent (red test first), Opus-high review, merge,
      final Fable review, gate, tag, CI, notify (see section 2).
-3. **Default flip done (Markus, v4.57.0):** NEW stores default to `UntimedUnbounded` (zero value `UntimedDefault`; existing
-   stores keep their persisted mode). sigma-tkgd main sets no mode, so 36 of its `-short` tests assert the TxFrom start and
-   fail on v4.57.0 (CHANGELOG `[4.57.0]` Changed, migration): tell sigma when notifying. No further scheduled change.
+3. **No scheduled change left** (the v4.57.0 default flip is done, release note above).
 4. **Open work:** the open table of `tasks/backlog.md` (old items, no requester; sigma's optional 71). Nothing is blocking.
 5. **Watch origin:** run `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background. It exits only on a push by
    someone else to main/tags/other branches or a real PR/issue change; routine v5 pushes by Markus only go to its log. When
