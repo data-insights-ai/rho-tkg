@@ -8,19 +8,13 @@ import (
 
 // TestSinglePartitionPathDoesNotDependOnDist pins the WP-20 build boundary:
 // the v5.0 path (pkg/graph -> graphstore -> raftlog) must not pull in any
-// package under internal/dist (graphapply, txnproto, replica).
+// package under internal/dist (graphapply, txnproto, replica), test tier
+// included.
 func TestSinglePartitionPathDoesNotDependOnDist(t *testing.T) {
 	for _, root := range []string{"../../pkg/graph", ".", "../raftlog"} {
-		args := []string{"list", "-test", "-deps", root}
-		if root == "." {
-			// ownership_replica_test.go drives the replica package through
-			// graphstore's unexported ownership helpers and cannot move into
-			// dist without exporting them; only its test tier is exempt.
-			args = []string{"list", "-deps", root}
-		}
-		out, err := exec.Command("go", args...).CombinedOutput()
+		out, err := exec.Command("go", "list", "-test", "-deps", root).CombinedOutput()
 		if err != nil {
-			t.Fatalf("go list -deps %s: %v\n%s", root, err, out)
+			t.Fatalf("go list -test -deps %s: %v\n%s", root, err, out)
 		}
 		for _, p := range strings.Fields(string(out)) {
 			if strings.Contains(p, "/internal/dist/") || strings.HasSuffix(p, "/internal/dist") {
