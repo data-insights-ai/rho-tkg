@@ -191,3 +191,93 @@ func TestApplicationRecoverySpansQueueCodecOwnershipAndLegacyBytes(t *testing.T)
 		t.Fatal(c, err)
 	}
 }
+
+// Authored native lifecycle: the terminal command retires exactly the unused
+// span suffix at installation; reopen never resets, refills or drops credit.
+func TestRecoveryReservationRetiresExactUnusedSuffixAfterReopen(t *testing.T) {
+	reopen := func(t *testing.T, s *Store, cfg Config, v spanRecoveryVerifier) *Store {
+		t.Helper()
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+		cfg.Create = false
+		r, err := Open(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = r.Close() })
+		if err := r.BindApplicationRecoveryVerifier(r.ApplicationBinding(), v); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	register := func(t *testing.T, s *Store, v spanRecoveryVerifier) {
+		t.Helper()
+		persist(t, s, 2, 2, ent(2, 2, "register"))
+		if err := s.InstallApplication(2, ApplicationBatch{BaseGeneration: s.ApplicationGeneration(), BaseIndex: 1, BaseImageHash: sha256.Sum256([]byte("seed")), Image: []byte("seed"), RecoveryReserve: &v.reserve}); err != nil {
+			t.Fatal(err)
+		}
+		spanRecoveryInstall(t, s, v, "ticket")
+	}
+	retired := func(t *testing.T, s *Store, v spanRecoveryVerifier) {
+		t.Helper()
+		spanRecoveryInstall(t, s, v, "done")
+		if recoveryEntries(s.meta.Recovery.Reservation) != 0 || !sameTerminalBank(applicationTerminalBank(s.meta.Recovery.Terminal), applicationTerminalBank{v.terminal}) {
+			t.Fatal("unused suffix not retired exactly or terminal bank changed", s.meta.Recovery)
+		}
+	}
+	t.Run("zero unused credit", func(t *testing.T) {
+		s, cfg, v := spanRecoveryStoreWith(t, func(r *ApplicationRecoveryReservation) { r.Spans = r.Spans[2:] })
+		register(t, s, v)
+		s = reopen(t, s, cfg, v)
+		if len(s.meta.Recovery.Reservation.Spans) != 1 {
+			t.Fatal("reopen changed the single terminal span")
+		}
+		retired(t, s, v)
+	})
+	t.Run("reopen twice keeps spent and unspent credit", func(t *testing.T) {
+		s, cfg, v := spanRecoveryStore(t)
+		register(t, s, v)
+		spanRecoveryInstall(t, s, v, "step")
+		for range 2 {
+			s = reopen(t, s, cfg, v)
+			sp := s.meta.Recovery.Reservation.Spans
+			if len(sp) != 3 || sp[0].Next != 101 || sp[1].Next != 200 || sp[2].Next != 300 {
+				t.Fatal("reopen reset or refilled spans", sp)
+			}
+		}
+		retired(t, s, v)
+	})
+	t.Run("reservation older than terminal", func(t *testing.T) {
+		s, cfg, v := spanRecoveryStore(t)
+		register(t, s, v) // reservation at index 2, terminal ticket at 3
+		s = reopen(t, s, cfg, v)
+		retired(t, s, v)
+		if s.meta.Recovery.Reservation.ID != ([32]byte{}) {
+			t.Fatal("retired reservation survived")
+		}
+	})
+	t.Run("corrupt terminal entry refuses and keeps the suffix", func(t *testing.T) {
+		s, cfg, v := spanRecoveryStore(t)
+		register(t, s, v)
+		s = reopen(t, s, cfg, v)
+		before := cloneRecoveryReservation(s.meta.Recovery.Reservation)
+		s.meta.Recovery.Terminal = applicationTerminalBank{{ID: v.terminal.ID, Digest: v.terminal.Digest}}
+		base, image, err := s.Checkpoint()
+		if err != nil {
+			t.Fatal(err)
+		}
+		claim, err := s.AdmitApplicationRecovery(t.Context(), []byte("done"))
+		if err == nil {
+			purpose, perr := v.VerifyApplicationRecovery(t.Context(), []byte("done"), nil)
+			if perr != nil {
+				t.Fatal(perr)
+			}
+			persist(t, s, max(uint64(2), s.meta.Hard.GetTerm()), base+1, ent(base+1, 2, "done"))
+			err = s.InstallApplication(base+1, ApplicationBatch{BaseGeneration: s.ApplicationGeneration(), BaseIndex: base, BaseImageHash: sha256.Sum256(image), Image: image, RecoveryUse: purpose.Use, RecoveryAdmission: claim})
+		}
+		if !errors.Is(err, ErrInvalid) && !errors.Is(err, ErrCorrupt) || !sameRecoveryReservation(before, s.meta.Recovery.Reservation) {
+			t.Fatal("corrupt terminal bank retired the suffix", err)
+		}
+	})
+}
