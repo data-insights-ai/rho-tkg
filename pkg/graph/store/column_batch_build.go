@@ -142,11 +142,11 @@ func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 // timeline segment, validTo 0 open), which the batch's ValidFrom / ValidTo
 // carry instead of the row's stored interval. A row may repeat (several
 // segments of one relationship). len(validFrom) and len(validTo) must equal
-// len(rels).
+// len(rels), else an error (a caller's bug, no sentinel).
 func ScanColumnsFromRelSegments(rels []*types.Relationship, validFrom, validTo []types.Instant, props []string,
 	fn func(*RelColumnBatch) bool) error {
 	if len(validFrom) != len(rels) || len(validTo) != len(rels) {
-		return fmt.Errorf("%w: %d rows, %d valid-from, %d valid-to", ErrInvalidStoreMutation, len(rels), len(validFrom), len(validTo))
+		return fmt.Errorf("graph: column rows from segments: %d rows, %d valid-from, %d valid-to (lengths must match)", len(rels), len(validFrom), len(validTo))
 	}
 	return scanColumnsFromRels(rels, func(i int, _ *types.Relationship) (int64, int64) {
 		return int64(validFrom[i]), int64(validTo[i])

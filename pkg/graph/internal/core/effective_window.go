@@ -30,6 +30,9 @@ func (t *TempOps) ForEachRelEffectiveAtNodesWindow(nodeIDs []types.NodeID, dir t
 	if err := window.Validate(); err != nil {
 		return err
 	}
+	if len(window) == 0 {
+		return t.c.relEffectiveAtNodesGates(nodeIDs, dir, relTypes, pin) // the empty window meets nothing
+	}
 	return t.ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, func(s temporal.RelSegment) bool {
 		if !window.Meets(s.ValidFrom, s.ValidTo) {
 			return true
@@ -49,7 +52,9 @@ func (t *TempOps) ForEachRelEffectiveAtNodesWindow(nodeIDs []types.NodeID, dir t
 // numbers no row). RelType names the type when relTypes names exactly one,
 // else it is empty and the rows mix the named types. A column whose rows
 // hold integers and floats refuses with store.ErrMixedNumericColumn, as every
-// column scan does. fn must not retain the batch.
+// column scan does. The segments are gathered before the first batch (the
+// column kinds are decided over every row), so a call holds its rows in
+// memory: read a high-degree seed set in parts. fn must not retain the batch.
 func (t *TempOps) ScanRelEffectiveColumnsAtNodes(nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string,
 	pin types.Instant, window temporal.Window, props []string, fn func(*storepkg.RelColumnBatch) bool) error {
 	if err := t.c.checkOpen(); err != nil {

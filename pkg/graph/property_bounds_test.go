@@ -197,16 +197,17 @@ func relBoundsOracle(t *testing.T, g *graphpkg.Graph, typeName, key string) boun
 	return oracleBounds(values, present)
 }
 
-// TestPropertyBounds (sigma-tkgd round 8 request 1): on memory and badger
+// TestPropertyBounds (sigma-tkgd round 8 request 1): on every backend
 // Stats().PropertyBounds / RelPropertyBounds equal a brute-force pass over the
 // current rows (bounds, the stored value at each, the class partition with
 // Missing) through creates, updates that move the minimum and maximum away,
 // deletes of the extreme rows, label changes, and an index built over
-// existing rows; tiered and sharded decline (ok=false, no error).
+// existing rows (tiered and sharded fold their shards' bounds since v4.59.0;
+// tiered's nodes here span the reference and an event shard).
 func TestPropertyBounds(t *testing.T) {
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
-		native := b.name == "memory" || b.name == "badger"
+		native := true // every in-tree backend states bounds (sharded and tiered fold their parts, v4.59.0)
 		if err := g.Index().CreateProperty("Ref", "v"); err != nil {
 			t.Fatal(err)
 		}

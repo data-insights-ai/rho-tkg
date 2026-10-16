@@ -170,6 +170,19 @@ type Core struct {
 	// wrappers): the unbounded door's candidates, same answers.
 	relValidEnds  storepkg.RelValidEndCapability
 	nodeValidEnds storepkg.NodeValidEndCapability
+	// Ordered index walks and stated bounds (nativeCapability): nil = the
+	// store declines or a wrapper only inherits them. A store whose rows the
+	// graph does not trust (sharded) is served with every row validated and
+	// copied (trustedCurrentNode / trustedCurrentRel).
+	nodeOrderedRange storepkg.NodeOrderedRangeScanCapability
+	nodePrefixScan   storepkg.NodePrefixScanCapability
+	relOrderedRange  storepkg.RelOrderedRangeScanCapability
+	relPrefixScan    storepkg.RelPrefixScanCapability
+	nodeBounds       storepkg.NodePropertyBoundsCapability
+	relBounds        storepkg.RelPropertyBoundsCapability
+	// The DocValues snapshot doors of round 10 (docvalues.go), nativeCapability.
+	docMultiSnap   nodeDocValuesMultiSnapshotter
+	docOrdinalSnap nodeDocValuesOrdinalSnapshotter
 	// temporalCandidates — valid-time candidate prune: narrow a temporal
 	// ByLabel/ByType query's candidate set by the per-label valid-time envelope
 	// index before resolving each chain. nil = store declines (no temporal-index
@@ -1103,6 +1116,22 @@ var nativeStoreTypes = [...]reflect.Type{
 	// copied), but a wrapper embedding it must not have its overrides routed
 	// around through a capability it only inherits.
 	reflect.TypeOf((*sharded.Store)(nil)),
+}
+
+// nativeCapability returns store as the optional capability C when the store
+// serves C itself (the K1 discipline): an exact native store, or a store that
+// declares C's methods itself; a wrapper that merely embeds a native store is
+// refused (its own overrides would be routed around). ok=false otherwise.
+func nativeCapability[C any](store storepkg.MandatoryStore, methods ...string) (C, bool) {
+	var zero C
+	c, ok := store.(C)
+	if !ok {
+		return zero, false
+	}
+	if isExactNativeStore(store) || !embedsNativeCapability(store, reflect.TypeOf((*C)(nil)).Elem(), methods...) {
+		return c, true
+	}
+	return zero, false
 }
 
 func embedsNativeCapability(store storepkg.MandatoryStore, capability reflect.Type, directMethods ...string) bool {
@@ -2185,6 +2214,14 @@ func New(config Config) (*Core, error) {
 	c.currentStamps = currentStampsCapability(store)
 	c.memberIDs = memberIDsCapability(store)
 	c.relValidEnds, c.nodeValidEnds = validEndCapabilities(store)
+	c.nodeOrderedRange, _ = nativeCapability[storepkg.NodeOrderedRangeScanCapability](store, "ForEachNodeByLabelPropertyRangeOrdered")
+	c.nodePrefixScan, _ = nativeCapability[storepkg.NodePrefixScanCapability](store, "ForEachNodeByLabelPropertyPrefix")
+	c.relOrderedRange, _ = nativeCapability[storepkg.RelOrderedRangeScanCapability](store, "ForEachRelByTypePropertyRangeOrdered")
+	c.relPrefixScan, _ = nativeCapability[storepkg.RelPrefixScanCapability](store, "ForEachRelByTypePropertyPrefix")
+	c.nodeBounds, _ = nativeCapability[storepkg.NodePropertyBoundsCapability](store, "NodePropertyBounds")
+	c.relBounds, _ = nativeCapability[storepkg.RelPropertyBoundsCapability](store, "RelPropertyBounds")
+	c.docMultiSnap, _ = nativeCapability[nodeDocValuesMultiSnapshotter](store, "DocValuesSnapshotMulti")
+	c.docOrdinalSnap, _ = nativeCapability[nodeDocValuesOrdinalSnapshotter](store, "DocValuesSnapshotOrdinal", "DocValuesSnapshotMultiOrdinal")
 	// valid-time candidate prune is sound for ANY store that offers it (an
 	// unknown id is never pruned), so unlike the membership sidecar it needs no
 	// exact-native-store guard — a plain probe admits any store that implements it.

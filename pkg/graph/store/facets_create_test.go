@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // TestCapabilitiesOf_MatchesCreate (WP-31, sigma row 59): a consumer asks
@@ -130,6 +132,101 @@ func TestCapabilitiesOf_MatchesCreate(t *testing.T) {
 					if implemented && err != nil && !errors.Is(err, storecontract.ErrCapabilityNotSupported) && !errors.Is(err, storecontract.ErrRelPropertyIndexUnsupported) {
 						t.Errorf("%s label %d: Create failed with %v, want success or a capability sentinel", a.kind, label, err)
 					}
+				}
+			}
+		})
+	}
+}
+
+// TestCapabilitiesOf_MatchesServedCalls (sigma-tkgd round 10, pattern 5): the
+// flags that say what a declared index serves equal what the call does on
+// every in-tree backend: after a plain create of the node and relationship
+// property index, the ordered range and prefix walks answer without error,
+// the bounds are stated (ok) and the relationship class counts answer,
+// exactly where the report says so.
+func TestCapabilitiesOf_MatchesServedCalls(t *testing.T) {
+	open := map[string]func(t *testing.T) storecontract.Store{
+		"memory": func(t *testing.T) storecontract.Store { return memory.New() },
+		"badger": func(t *testing.T) storecontract.Store {
+			bs, err := badger.New(badger.Config{InMemory: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return bs
+		},
+		"sharded": func(t *testing.T) storecontract.Store {
+			st, err := sharded.New(sharded.Config{InMemory: true, SlotCount: 2})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return st
+		},
+		"tiered": func(t *testing.T) storecontract.Store {
+			ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			reg := registrypkg.NewLabelRegistry()
+			ts.SetLabelRegistry(reg)
+			if _, err := reg.GetOrCreate("Case"); err != nil {
+				t.Fatal(err)
+			}
+			return ts
+		},
+	}
+	for name, mk := range open {
+		t.Run(name, func(t *testing.T) {
+			s := mk(t)
+			t.Cleanup(func() { _ = s.Close() })
+			r := storecontract.CapabilitiesOf(s).IndexAcceleration
+			if err := s.(storecontract.PropertyIndexCapability).CreatePropertyIndex(1, "k"); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.(storecontract.RelPropertyIndexCapability).CreateRelPropertyIndex(1, "k"); err != nil {
+				t.Fatal(err)
+			}
+			served := func(err error) bool { return err == nil }
+			keepNode := func(*types.Node) bool { return true }
+			keepRel := func(*types.Relationship) bool { return true }
+			nodeWalk := false
+			if c, ok := s.(storecontract.NodeOrderedRangeScanCapability); ok {
+				p, pok := s.(storecontract.NodePrefixScanCapability)
+				nodeWalk = served(c.ForEachNodeByLabelPropertyRangeOrdered(1, "k", math.Inf(-1), math.Inf(1), true, true, true, keepNode)) &&
+					pok && served(p.ForEachNodeByLabelPropertyPrefix(1, "k", "", false, keepNode))
+			}
+			relWalk := false
+			if c, ok := s.(storecontract.RelOrderedRangeScanCapability); ok {
+				p, pok := s.(storecontract.RelPrefixScanCapability)
+				relWalk = served(c.ForEachRelByTypePropertyRangeOrdered(1, "k", math.Inf(-1), math.Inf(1), true, true, false, keepRel)) &&
+					pok && served(p.ForEachRelByTypePropertyPrefix(1, "k", "", true, keepRel))
+			}
+			nodeBounds, relBounds, relClasses := false, false, false
+			if c, ok := s.(storecontract.NodePropertyBoundsCapability); ok {
+				_, nodeBounds, _ = c.NodePropertyBounds(1, "k")
+			}
+			if c, ok := s.(storecontract.RelPropertyBoundsCapability); ok {
+				_, relBounds, _ = c.RelPropertyBounds(1, "k")
+			}
+			if c, ok := s.(storecontract.RelPropertyTypeClassCountsCapability); ok {
+				_, err := c.RelPropertyTypeClassCounts(1, "k")
+				relClasses = err == nil
+			}
+			for _, c := range []struct {
+				flag   string
+				report bool
+				call   bool
+			}{
+				{"OrderedPropertyScan", r.OrderedPropertyScan, nodeWalk},
+				{"OrderedRelPropertyScan", r.OrderedRelPropertyScan, relWalk},
+				{"PropertyBounds", r.PropertyBounds, nodeBounds},
+				{"RelPropertyBounds", r.RelPropertyBounds, relBounds},
+				{"RelPropertyTypeClassCounts", r.RelPropertyTypeClassCounts, relClasses},
+			} {
+				if c.report != c.call {
+					t.Errorf("%s: CapabilitiesOf reports %v, the call serves %v", c.flag, c.report, c.call)
+				}
+				if !c.call {
+					t.Errorf("%s: not served on %s (every in-tree backend serves it since v4.59.0)", c.flag, name)
 				}
 			}
 		})

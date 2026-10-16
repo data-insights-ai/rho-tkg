@@ -125,6 +125,20 @@ type CapabilityReport struct {
 		HighFrequencyIndex     bool
 		PropertyKeyStats       bool
 		PropertyStats          bool
+		// What a declared index serves beyond equality (sigma-tkgd round 10:
+		// an index that exists does not say that an ordered walk is served):
+		// OrderedPropertyScan / OrderedRelPropertyScan the ordered range and
+		// prefix walks (Nodes().ForEachByLabelPropertyRangeOrdered and
+		// ...Prefix, the Rels() mirrors), PropertyBounds / RelPropertyBounds
+		// the stated bounds (Stats().PropertyBounds), RelPropertyTypeClassCounts
+		// the relationship class counts. Each equals "the call serves a plain,
+		// built index" on every in-tree backend
+		// (TestCapabilitiesOf_MatchesServedCalls).
+		OrderedPropertyScan        bool
+		OrderedRelPropertyScan     bool
+		PropertyBounds             bool
+		RelPropertyBounds          bool
+		RelPropertyTypeClassCounts bool
 	}
 	ChangeLog struct {
 		Feed        bool
@@ -191,6 +205,15 @@ func CapabilitiesOf(s MandatoryStore) CapabilityReport {
 	_, r.IndexAcceleration.HighFrequencyIndex = s.(HighFrequencyIndexCapability)
 	_, r.IndexAcceleration.PropertyKeyStats = s.(NodePropertyKeyStatsCapability)
 	_, r.IndexAcceleration.PropertyStats = s.(NodePropertyStatsCapability)
+	_, nodeRange := s.(NodeOrderedRangeScanCapability)
+	_, nodePrefix := s.(NodePrefixScanCapability)
+	r.IndexAcceleration.OrderedPropertyScan = nodeRange && nodePrefix
+	_, relRange := s.(RelOrderedRangeScanCapability)
+	_, relPrefix := s.(RelPrefixScanCapability)
+	r.IndexAcceleration.OrderedRelPropertyScan = relRange && relPrefix
+	_, r.IndexAcceleration.PropertyBounds = s.(NodePropertyBoundsCapability)
+	_, r.IndexAcceleration.RelPropertyBounds = s.(RelPropertyBoundsCapability)
+	_, r.IndexAcceleration.RelPropertyTypeClassCounts = s.(RelPropertyTypeClassCountsCapability)
 
 	_, r.ChangeLog.Feed = s.(ChangeFeedCapability)
 	_, r.ChangeLog.StatusQuery = s.(ChangeLogStatusCapability)

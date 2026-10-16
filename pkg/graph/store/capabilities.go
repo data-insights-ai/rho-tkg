@@ -893,6 +893,17 @@ func (c PropertyTypeClassCounts) Present() int64 {
 	return c.Numeric + c.NaN + c.String + c.Bool + c.Other
 }
 
+// Add adds o's counts, class by class (Missing too), to c: the fold of a
+// composite store's disjoint parts (sharded slots, tiered shards).
+func (c *PropertyTypeClassCounts) Add(o PropertyTypeClassCounts) {
+	c.Numeric += o.Numeric
+	c.NaN += o.NaN
+	c.String += o.String
+	c.Bool += o.Bool
+	c.Other += o.Other
+	c.Missing += o.Missing
+}
+
 // DocValuesColumn is what a label's DocValues snapshot holds for one property
 // key, as nodes.API.DocValuesColumn states it without building the column.
 type DocValuesColumn uint8
@@ -927,6 +938,38 @@ func DocValuesColumnOf(counts PropertyTypeClassCounts, labelCount, maxRows int) 
 	}
 }
 
+// NodeOrderedRangeScanCapability is OPTIONAL: the label's nodes whose numeric
+// property value lies in [min, max] in the property index's order (the
+// ordered numeric view's float64 sort key, descending when desc, ties by node
+// ID ascending), candidates the caller re-checks exactly; fn false stops.
+// ErrIndexNotFound without a usable index on the pair (none, an Elements
+// index, one being built). Behind Nodes().ForEachByLabelPropertyRangeOrdered;
+// memory and badger read one index, sharded and tiered merge their parts'
+// walks in the same order (index.MergeNumericOrdered).
+type NodeOrderedRangeScanCapability interface {
+	ForEachNodeByLabelPropertyRangeOrdered(token uint16, propKey string, min, max float64, inclMin, inclMax, desc bool, fn func(*types.Node) bool) error
+}
+
+// NodePrefixScanCapability is OPTIONAL: the label's nodes whose string
+// property value starts with prefix in the string view's order (the value,
+// descending when desc, ties by node ID ascending), as
+// NodeOrderedRangeScanCapability. Behind Nodes().ForEachByLabelPropertyPrefix.
+type NodePrefixScanCapability interface {
+	ForEachNodeByLabelPropertyPrefix(token uint16, propKey, prefix string, desc bool, fn func(*types.Node) bool) error
+}
+
+// RelOrderedRangeScanCapability is NodeOrderedRangeScanCapability over a
+// relationship type's property index (Rels().ForEachByTypePropertyRangeOrdered).
+type RelOrderedRangeScanCapability interface {
+	ForEachRelByTypePropertyRangeOrdered(typeToken uint16, propKey string, min, max float64, inclMin, inclMax, desc bool, fn func(*types.Relationship) bool) error
+}
+
+// RelPrefixScanCapability is NodePrefixScanCapability over a relationship
+// type's property index (Rels().ForEachByTypePropertyPrefix).
+type RelPrefixScanCapability interface {
+	ForEachRelByTypePropertyPrefix(typeToken uint16, propKey, prefix string, desc bool, fn func(*types.Relationship) bool) error
+}
+
 // NodePropertyTypeClassCountsCapability is OPTIONAL: exact O(1) type-class
 // cardinalities for planners (the HLL NDV statistics are not exact enough for
 // ordering-soundness gates). See PropertyTypeClassCounts.
@@ -935,8 +978,9 @@ type NodePropertyTypeClassCountsCapability interface {
 }
 
 // RelPropertyTypeClassCountsCapability is OPTIONAL: the relationship mirror, the
-// gate for the rel ORDER BY r.prop LIMIT k push-down. Memory, badger and sharded
-// (slot counters summed) implement it; tiered declines.
+// gate for the rel ORDER BY r.prop LIMIT k push-down. Memory, badger, sharded
+// (slot counters summed) and tiered (shard counters summed, v4.59.0) implement
+// it.
 type RelPropertyTypeClassCountsCapability interface {
 	RelPropertyTypeClassCounts(relTypeToken uint16, propertyKey string) (PropertyTypeClassCounts, error)
 }

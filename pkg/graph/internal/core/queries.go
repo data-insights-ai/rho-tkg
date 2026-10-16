@@ -105,14 +105,14 @@ func (n *NodeOps) RangeCardinality(label, propKey string, min, max float64, incl
 
 // relRangeCardinalityScanner is the OPTIONAL store capability behind
 // RelOps.RangeCardinality — the relationship mirror of nodeRangeCardinalityScanner
-// (memory, badger and sharded; tiered declines).
+// (memory, badger, sharded and, since v4.59.0, tiered).
 type relRangeCardinalityScanner interface {
 	RelRangeCardinality(relTypeToken uint16, propKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error)
 }
 
 // RangeCardinality is the relationship mirror of NodeOps.RangeCardinality,
 // summed from the rel property index's buckets, no rel scan. exact=false
-// declines when the store lacks the capability (tiered), the index is absent
+// declines when the store lacks the capability, the index is absent
 // or poisoned, or a temporal filter is set. Bounds MUST capture the whole
 // predicate. Backs the ORDER BY r.prop LIMIT k push-down.
 func (r *RelOps) RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
@@ -265,12 +265,6 @@ func (n *NodeOps) ForEachByLabelPropertyRange(label, propKey string, min, max fl
 	return scanner.ForEachNodeByLabelPropertyRange(tok, propKey, min, max, inclMin, inclMax, opts, fn)
 }
 
-// nodeOrderedRangeScanner is the OPTIONAL store capability behind
-// NodeOps.ForEachByLabelPropertyRangeOrdered (ORDER BY prop [LIMIT k] path).
-type nodeOrderedRangeScanner interface {
-	ForEachNodeByLabelPropertyRangeOrdered(token uint16, propKey string, min, max float64, inclMin, inclMax, desc bool, fn func(*types.Node) bool) error
-}
-
 // ForEachByLabelPropertyRangeOrdered streams nodes carrying the label whose
 // NUMERIC propKey value lies in [min, max] to fn in CONTRACTUAL VALUE ORDER
 // (ascending, or descending when desc), ties by node ID ASCENDING in both
@@ -319,8 +313,8 @@ func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min,
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return err
 	}
-	scanner, native := c.store.(nodeOrderedRangeScanner)
-	if !native || !c.storeRowsTrust {
+	scanner := c.nodeOrderedRange
+	if scanner == nil {
 		return storepkg.ErrIndexNotFound
 	}
 	var tok uint16
@@ -335,13 +329,11 @@ func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min,
 		return nil
 	}
 	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
-	return scanner.ForEachNodeByLabelPropertyRangeOrdered(tok, propKey, min, max, inclMin, inclMax, desc, fn)
-}
-
-// nodePrefixScanner is the OPTIONAL store capability behind
-// NodeOps.ForEachByLabelPropertyPrefix (STARTS WITH [ORDER BY] [LIMIT k]).
-type nodePrefixScanner interface {
-	ForEachNodeByLabelPropertyPrefix(token uint16, propKey, prefix string, desc bool, fn func(*types.Node) bool) error
+	visit, rowErr := c.trustedNodeVisit(fn)
+	if err := scanner.ForEachNodeByLabelPropertyRangeOrdered(tok, propKey, min, max, inclMin, inclMax, desc, visit); err != nil {
+		return err
+	}
+	return *rowErr
 }
 
 // ForEachByLabelPropertyPrefix streams nodes carrying the label whose STRING
@@ -391,8 +383,8 @@ func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, de
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return err
 	}
-	scanner, native := c.store.(nodePrefixScanner)
-	if !native || !c.storeRowsTrust {
+	scanner := c.nodePrefixScan
+	if scanner == nil {
 		return storepkg.ErrIndexNotFound
 	}
 	var tok uint16
@@ -407,7 +399,11 @@ func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, de
 		return nil
 	}
 	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
-	return scanner.ForEachNodeByLabelPropertyPrefix(tok, propKey, prefix, desc, fn)
+	visit, rowErr := c.trustedNodeVisit(fn)
+	if err := scanner.ForEachNodeByLabelPropertyPrefix(tok, propKey, prefix, desc, visit); err != nil {
+		return err
+	}
+	return *rowErr
 }
 
 // nodeLabelCandidatesAt gathers the candidate IDs a label read at a temporal
@@ -2202,13 +2198,6 @@ func (r *RelOps) ForEachByTypePropertyRange(typeName, propKey string, min, max f
 	return scanner.ForEachRelByTypePropertyRange(tok, propKey, min, max, inclMin, inclMax, opts, fn)
 }
 
-// relOrderedRangeScanner is the OPTIONAL store capability behind
-// RelOps.ForEachByTypePropertyRangeOrdered, the mirror of
-// nodeOrderedRangeScanner (rel indexes are RAM-only).
-type relOrderedRangeScanner interface {
-	ForEachRelByTypePropertyRangeOrdered(typeToken uint16, propKey string, min, max float64, inclMin, inclMax, desc bool, fn func(*types.Relationship) bool) error
-}
-
 // ForEachByTypePropertyRangeOrdered streams relationships carrying the type
 // whose NUMERIC propKey value lies in [min, max] to fn in CONTRACTUAL VALUE
 // ORDER (ascending, or descending when desc), ties by rel ID ASCENDING in
@@ -2255,8 +2244,8 @@ func (r *RelOps) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return err
 	}
-	scanner, native := c.store.(relOrderedRangeScanner)
-	if !native || !c.storeRowsTrust {
+	scanner := c.relOrderedRange
+	if scanner == nil {
 		return storepkg.ErrIndexNotFound
 	}
 	var tok uint16
@@ -2271,13 +2260,11 @@ func (r *RelOps) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min
 		return nil
 	}
 	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
-	return scanner.ForEachRelByTypePropertyRangeOrdered(tok, propKey, min, max, inclMin, inclMax, desc, fn)
-}
-
-// relPrefixScanner is the OPTIONAL store capability behind
-// RelOps.ForEachByTypePropertyPrefix, the mirror of nodePrefixScanner.
-type relPrefixScanner interface {
-	ForEachRelByTypePropertyPrefix(typeToken uint16, propKey, prefix string, desc bool, fn func(*types.Relationship) bool) error
+	visit, rowErr := c.trustedRelVisit(fn)
+	if err := scanner.ForEachRelByTypePropertyRangeOrdered(tok, propKey, min, max, inclMin, inclMax, desc, visit); err != nil {
+		return err
+	}
+	return *rowErr
 }
 
 // ForEachByTypePropertyPrefix streams relationships carrying the type whose
@@ -2324,8 +2311,8 @@ func (r *RelOps) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, d
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return err
 	}
-	scanner, native := c.store.(relPrefixScanner)
-	if !native || !c.storeRowsTrust {
+	scanner := c.relPrefixScan
+	if scanner == nil {
 		return storepkg.ErrIndexNotFound
 	}
 	var tok uint16
@@ -2340,5 +2327,9 @@ func (r *RelOps) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, d
 		return nil
 	}
 	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
-	return scanner.ForEachRelByTypePropertyPrefix(tok, propKey, prefix, desc, fn)
+	visit, rowErr := c.trustedRelVisit(fn)
+	if err := scanner.ForEachRelByTypePropertyPrefix(tok, propKey, prefix, desc, visit); err != nil {
+		return err
+	}
+	return *rowErr
 }

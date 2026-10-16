@@ -109,7 +109,8 @@ func genesisUntimed[T interface {
 }
 
 // countTimeline reads the timeline of key at its pin: the memoised one,
-// else built from the effective scan (cut_memo.go). ok=false declines.
+// else built from the effective scan (cut_memo.go). ok=false declines. The
+// segments may be the memo's own: read-only (the doors copy them out).
 func (c *Core) countTimeline(key stateCutKey, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
 	tkey := countTimelineKey{cut: key, untimed: opts.UntimedFromMinusInf}
 	segs, ok, err := memoAtPin(c, &c.asOfColumns.timelines, key.rel, key.pin, tkey, func() ([]storepkg.CountSegment, bool, error) {
@@ -123,7 +124,7 @@ func (c *Core) countTimeline(key stateCutKey, opts storepkg.CountTimelineOpts) (
 	if err != nil || !ok || (opts.MaxSegments > 0 && len(segs) > opts.MaxSegments) {
 		return nil, false, err
 	}
-	return slices.Clone(segs), true, nil
+	return segs, true, nil
 }
 
 // timelineRow is what the untimed rule reads of a row (Node, Relationship).
@@ -294,17 +295,20 @@ func (c *Core) countTimelinePin(pin types.Instant) (types.Instant, bool, error) 
 // CountTimelineByLabel is the number of label's members holding at each
 // valid instant as recorded at pin (see nodes.API.CountTimelineByLabel).
 func (n *NodeOps) CountTimelineByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
-	return n.c.countTimelineDoor(false, label, pin, opts)
+	segs, ok, err := n.c.countTimelineDoor(false, label, pin, opts)
+	return slices.Clone(segs), ok, err
 }
 
 // CountTimelineByType is CountTimelineByLabel for a relationship type.
 func (r *RelOps) CountTimelineByType(typeName string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
-	return r.c.countTimelineDoor(true, typeName, pin, opts)
+	segs, ok, err := r.c.countTimelineDoor(true, typeName, pin, opts)
+	return slices.Clone(segs), ok, err
 }
 
 // countTimelineDoor is the body of CountTimelineByLabel / ByType: the
 // timeline at pin, or with opts.CurrentRows (pin must be 0) of the current
-// rows.
+// rows. The segments may be the memo's own (read-only): the doors copy them,
+// the hull reads two of them.
 func (c *Core) countTimelineDoor(rel bool, name string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, false, err
@@ -354,7 +358,8 @@ func (r *RelOps) ValidHullByType(typeName string, pin types.Instant, opts storep
 }
 
 // validHull reads the hull off the count timeline's ends (one rule: the
-// hull is where the count is positive). MaxSegments does not apply.
+// hull is where the count is positive), O(1) on a memoised timeline (no
+// copy). MaxSegments does not apply.
 func (c *Core) validHull(rel bool, name string, pin types.Instant, opts storepkg.CountTimelineOpts) (storepkg.ValidHull, bool, error) {
 	opts.MaxSegments = 0
 	segs, ok, err := c.countTimelineDoor(rel, name, pin, opts)

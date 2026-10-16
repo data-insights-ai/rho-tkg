@@ -329,7 +329,7 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 			entry := chain[i]
 			vStart, vEnd := c.nodeVersionBounds(chain, i)
 			vEnd = caps.end(entry, vEnd)
-			if vStart <= t && (vEnd == 0 || vEnd > t) {
+			if storeutil.IntervalCovers(vStart, vEnd, t) {
 				if isVoidRow(entry) {
 					return nil, storepkg.ErrNoVersionValidAt // an excised piece wins: absent
 				}
@@ -364,7 +364,7 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 			vEnd = capEnd(vEnd, superseded[i])
 		}
 		vEnd = caps.end(entry, vEnd)
-		if vStart <= t && (vEnd == 0 || vEnd > t) {
+		if storeutil.IntervalCovers(vStart, vEnd, t) {
 			if best == nil || nodeBeliefNewerThan(entry, best) {
 				best = entry
 			}
@@ -618,7 +618,7 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 			entry := chain[i]
 			vStart, vEnd := c.relVersionBounds(chain, i)
 			vEnd = caps.end(entry, vEnd)
-			if vStart <= t && (vEnd == 0 || vEnd > t) {
+			if storeutil.IntervalCovers(vStart, vEnd, t) {
 				if isVoidRow(entry) {
 					return nil, storepkg.ErrNoVersionValidAt // an excised piece wins: absent
 				}
@@ -645,7 +645,7 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 			vEnd = capEnd(vEnd, superseded[i])
 		}
 		vEnd = caps.end(entry, vEnd)
-		if vStart <= t && (vEnd == 0 || vEnd > t) {
+		if storeutil.IntervalCovers(vStart, vEnd, t) {
 			if best == nil || relBeliefNewerThan(entry, best) {
 				best = entry
 			}

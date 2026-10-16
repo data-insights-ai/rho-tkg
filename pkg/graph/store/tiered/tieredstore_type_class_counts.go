@@ -6,78 +6,18 @@ import (
 
 // NodePropertyTypeClassCounts satisfies store.NodePropertyTypeClassCountsCapability
 // by folding the exact per-shard counters over the same shards as
-// NodeCountByLabelAndPropertyKey, so both count the same rows.
+// NodeCountByLabelAndPropertyKey, so both count the same rows (foldShards).
 func (ts *Store) NodePropertyTypeClassCounts(token uint16, propertyKey string) (storecontract.PropertyTypeClassCounts, error) {
-	var total storecontract.PropertyTypeClassCounts
 	if err := ts.checkOpen(); err != nil {
-		return total, err
+		return storecontract.PropertyTypeClassCounts{}, err
 	}
 	if err := storecontract.ValidateLabelToken(token); err != nil {
-		return total, err
+		return storecontract.PropertyTypeClassCounts{}, err
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
-		return total, err
-	}
-
-	add := func(c storecontract.PropertyTypeClassCounts) {
-		total.Numeric += c.Numeric
-		total.NaN += c.NaN
-		total.String += c.String
-		total.Bool += c.Bool
-		total.Other += c.Other
-	}
-
-	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
-	defer move.unlock()
-	ref, refCheckin, err := ts.checkoutRefShard()
-	if err != nil {
 		return storecontract.PropertyTypeClassCounts{}, err
 	}
-	n, err := ref.NodePropertyTypeClassCounts(token, propertyKey)
-	refCheckin()
-	if err != nil {
-		return storecontract.PropertyTypeClassCounts{}, err
-	}
-	add(n)
-
-	ts.refArchiveGapHook()
-	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
-	if archiveErr != nil {
-		return storecontract.PropertyTypeClassCounts{}, archiveErr
-	}
-	if archive != nil {
-		an, err := archive.NodePropertyTypeClassCounts(token, propertyKey)
-		archiveCheckin()
-		if err != nil {
-			return storecontract.PropertyTypeClassCounts{}, err
-		}
-		add(an)
-	}
-	move.unlock()
-
-	ts.mu.RLock()
-	eventShards := ts.eventShardSnapshot(DepthAll)
-	ts.mu.RUnlock()
-
-	type result struct {
-		counts storecontract.PropertyTypeClassCounts
-		err    error
-	}
-	results := make([]result, len(eventShards))
-	queryEventShards(eventShards, func(i int, es *EventShard) {
-		store, release, err := es.checkoutStoreForRead(ts)
-		if err != nil {
-			results[i].err = err
-			return
-		}
-		defer release()
-		results[i].counts, results[i].err = store.NodePropertyTypeClassCounts(token, propertyKey)
-	})
-	for _, r := range results {
-		if r.err != nil {
-			return storecontract.PropertyTypeClassCounts{}, r.err
-		}
-		add(r.counts)
-	}
-	return total, nil
+	return sumClassCounts(foldShards(ts, func(store *BadgerStore) (storecontract.PropertyTypeClassCounts, error) {
+		return store.NodePropertyTypeClassCounts(token, propertyKey)
+	}))
 }

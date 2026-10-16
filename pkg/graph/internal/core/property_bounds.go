@@ -16,9 +16,10 @@ import (
 // answered by a walk): no property index on (label, propKey), an index being
 // built, an Elements index, an index holding an integer of magnitude past
 // 2^53, badger PropertyIndexOnDisk, planner statistics disabled, a store
-// without store.NodePropertyBoundsCapability (tiered, sharded, external
-// stores), an unknown label, or a temporal QueryOpts (the index holds current
-// values). Errors: a malformed label or key, ErrGraphClosed.
+// without store.NodePropertyBoundsCapability or a wrapper that only inherits
+// it (nativeCapability), an unknown label, or a temporal QueryOpts (the index
+// holds current values). Sharded and tiered fold their parts' bounds (each
+// part read at its own moment; ok=false when any part declines; v4.59.0). Errors: a malformed label or key, ErrGraphClosed.
 func (s *StatOps) PropertyBounds(label, propKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
 	c := s.c
 	var zero storepkg.PropertyBounds
@@ -33,8 +34,8 @@ func (s *StatOps) PropertyBounds(label, propKey string, opts storepkg.QueryOpts)
 	if c.closed.Load() {
 		return zero, false, ErrGraphClosed
 	}
-	bounds, native := c.store.(storepkg.NodePropertyBoundsCapability)
-	if !native || !c.storeRowsTrust || opts.HasTimeCoordinate() {
+	bounds := c.nodeBounds
+	if bounds == nil || opts.HasTimeCoordinate() {
 		return zero, false, nil
 	}
 	tok, ok := c.labels.Lookup(label)
@@ -61,8 +62,8 @@ func (s *StatOps) RelPropertyBounds(typeName, propKey string, opts storepkg.Quer
 	if c.closed.Load() {
 		return zero, false, ErrGraphClosed
 	}
-	bounds, native := c.store.(storepkg.RelPropertyBoundsCapability)
-	if !native || !c.storeRowsTrust || opts.HasTimeCoordinate() {
+	bounds := c.relBounds
+	if bounds == nil || opts.HasTimeCoordinate() {
 		return zero, false, nil
 	}
 	tok, ok := c.lookupRelTypeQueryToken(typeName)

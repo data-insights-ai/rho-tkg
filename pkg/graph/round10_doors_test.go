@@ -1139,14 +1139,14 @@ func TestRound10ClassCountsExact(t *testing.T) {
 			}
 			pin, _ := g.Temporal().NowTx()
 			got, ok, err := g.Stats().PropertyTypeClassCountsAt("P", "v", pin)
-			// a: two versions (int64 3, float64 3) plus the excise's
-			// resumption row (int64 3, from -20); the void piece wins
-			// nothing of its own but carries a's state (types.TemporalMetadata.Void):
-			// counted as the equality door reads it.
+			// a: two versions (int64 3 from -100, float64 3 from 50) plus the
+			// excise's resumption row (int64 3 from -20): Numeric 3; the void
+			// piece is no row the equality door reads (eachNodeChainDuring
+			// skips void rows), so it counts nowhere.
 			if err != nil || !ok {
 				t.Fatalf("counts: %v %v", ok, err)
 			}
-			if got.NaN != 1 || got.Other != 2 || got.Bool != 1 || got.Missing != 1 || got.String != 2 || got.Numeric < 2 {
+			if got.NaN != 1 || got.Other != 2 || got.Bool != 1 || got.Missing != 1 || got.String != 2 || got.Numeric != 3 {
 				t.Fatalf("counts %+v", got)
 			}
 			if err := g.Nodes().Delete(ctx, a); err != nil {
@@ -1171,7 +1171,7 @@ func TestRound10ClassCountsExact(t *testing.T) {
 }
 
 // TestRound10ExciseNegativeStart: an excise may start at a negative instant
-// and at types.UnboundedValidFrom (a real bound since v4.58.1); 0 stays
+// and at types.UnboundedValidFrom (a real bound since v4.59.0, as on the read doors since v4.58.1); 0 stays
 // refused (no stored piece can start at the unset valid-from).
 func TestRound10ExciseNegativeStart(t *testing.T) {
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {

@@ -448,8 +448,8 @@ func (n *NodeOps) DocValuesSnapshotMulti(labels []string, propKeys []string) (sn
 	if err := c.checkOpen(); err != nil {
 		return nil, 0, false, err
 	}
-	snapper, native := c.store.(nodeDocValuesMultiSnapshotter)
-	if !native || len(labels) == 0 {
+	snapper := c.docMultiSnap
+	if snapper == nil || len(labels) == 0 {
 		return nil, 0, false, nil
 	}
 	toks, known, err := c.labelTokens(labels)
@@ -470,8 +470,8 @@ func (n *NodeOps) DocValuesSnapshotOrdinal(label string, propKeys []string) (sna
 	if err := c.checkOpen(); err != nil {
 		return nil, 0, false, err
 	}
-	snapper, native := c.store.(nodeDocValuesOrdinalSnapshotter)
-	if !native {
+	snapper := c.docOrdinalSnap
+	if snapper == nil {
 		return nil, 0, false, nil
 	}
 	toks, known, err := c.labelTokens([]string{label})
@@ -489,8 +489,8 @@ func (n *NodeOps) DocValuesSnapshotMultiOrdinal(labels []string, propKeys []stri
 	if err := c.checkOpen(); err != nil {
 		return nil, 0, false, err
 	}
-	snapper, native := c.store.(nodeDocValuesOrdinalSnapshotter)
-	if !native || len(labels) == 0 {
+	snapper := c.docOrdinalSnap
+	if snapper == nil || len(labels) == 0 {
 		return nil, 0, false, nil
 	}
 	toks, known, err := c.labelTokens(labels)

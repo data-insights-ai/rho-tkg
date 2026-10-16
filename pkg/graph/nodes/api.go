@@ -500,6 +500,11 @@ func (a *API) ForEachByLabelPropertyRange(label, propKey string, min, max float6
 //
 // Non-temporal opts use the index-backed fast path and return
 // graph.ErrIndexNotFound when no usable ordered view exists for (label, propKey).
+// Sharded merges its slots' walks lazily in the same order (a LIMIT reads
+// about k rows per slot), tiered reads each shard's rows in range and merges
+// them (a LIMIT bounds what fn gets, not what is read); a part without a
+// usable index fails the walk (since v4.59.0, sharded and tiered refused
+// before).
 // A TEMPORAL QueryOpts combination is served by a sound full fold (values resolved
 // at the pin, sorted by value-at-t) — correct over a past belief/valid state,
 // needs no index, O(N log N). Same relaxed isolation and frozen-row contract as
@@ -522,6 +527,11 @@ func (a *API) ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max
 //
 // Non-temporal opts use the index-backed fast path and return
 // graph.ErrIndexNotFound when no usable ordered view exists for (label, propKey).
+// Sharded merges its slots' walks lazily in the same order (a LIMIT reads
+// about k rows per slot), tiered reads each shard's rows in range and merges
+// them (a LIMIT bounds what fn gets, not what is read); a part without a
+// usable index fails the walk (since v4.59.0, sharded and tiered refused
+// before).
 // A TEMPORAL QueryOpts combination is served by a sound full fold (values resolved
 // at the pin, sorted lexicographically) — correct over a past belief/valid state,
 // needs no index. Same relaxed isolation and frozen-row contract as ForEachByLabel.

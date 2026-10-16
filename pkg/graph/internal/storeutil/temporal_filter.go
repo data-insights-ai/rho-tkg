@@ -82,12 +82,19 @@ func SnowflakeInstant(id snowflake.ID) types.Instant {
 // neither, returns true (nothing to prune on).
 func EnvelopeOverlaps(from, to types.Instant, opts storepkg.QueryOpts) bool {
 	if opts.HasValidAt() {
-		return from <= opts.ValidAt && (to == 0 || to > opts.ValidAt)
+		return IntervalCovers(from, to, opts.ValidAt)
 	}
 	if opts.HasValidInterval() {
 		return IntervalMeets(from, to, opts.ValidStart, opts.ValidEnd)
 	}
 	return true
+}
+
+// IntervalCovers reports whether the valid interval [from, to) (to == 0:
+// open ended) holds at the instant at: from <= at and (to open or to > at).
+// The one point rule of the point filters and the point resolvers.
+func IntervalCovers(from, to, at types.Instant) bool {
+	return from <= at && (to == 0 || to > at)
 }
 
 // IntervalMeets reports whether the valid interval [from, to) (to == 0: open
@@ -122,7 +129,7 @@ func MatchesTemporalFilterFrom(from types.Instant, tm *types.TemporalMetadata, o
 		to = tm.ValidTo
 	}
 	if opts.HasValidAt() {
-		return from <= opts.ValidAt && (to == 0 || to > opts.ValidAt)
+		return IntervalCovers(from, to, opts.ValidAt)
 	}
 	if opts.HasValidInterval() {
 		if opts.ValidStart >= opts.ValidEnd {

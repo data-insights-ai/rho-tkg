@@ -192,8 +192,9 @@ func (s *StatOps) PropertyTypeClassCounts(label, propertyKey string) (storepkg.P
 // (rule 2, BACKLOG 5B): the exact per-(relType, property key) partition of the type's
 // current relationships by value class — the correctness gate for the rel ORDER BY
 // r.prop LIMIT k push-down. Missing = RelCountByType − Present. Backends without
-// store.RelPropertyTypeClassCountsCapability (tiered) return
-// storepkg.ErrCapabilityNotSupported.
+// store.RelPropertyTypeClassCountsCapability return
+// storepkg.ErrCapabilityNotSupported (every in-tree backend has it since
+// v4.59.0; sharded and tiered sum their parts).
 func (s *StatOps) RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
 	c := s.c
 	var zero storepkg.PropertyTypeClassCounts
@@ -266,9 +267,7 @@ func (s *StatOps) PropertyStats(label, propertyKey string) (storepkg.PropertySta
 // RelPropertyTypeClassCounts' "unregistered type → 0" convention. Backends
 // without store.RelPropertyStatsCapability return
 // storepkg.ErrCapabilityNotSupported — memory and badger implement it;
-// tiered does not (mirroring the precedent already set by
-// RelRangeCardinality/RelPropertyTypeClassCounts, neither of which tiered
-// implements either).
+// tiered and sharded do not.
 func (s *StatOps) RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error) {
 	c := s.c
 	if err := storepkg.ValidateIndexPropertyKey(propertyKey); err != nil {
@@ -386,7 +385,7 @@ func (s *StatOps) RangeCardinality(label, propKey string, min, max float64, incl
 
 // RelRangeCardinality forwards to Core.Rels.RangeCardinality — the relationship
 // mirror of RangeCardinality (rule 2). See RelOps.RangeCardinality for the contract
-// (rel property indexes are RAM-only, so tiered/sharded decline with exact=false).
+// (sharded and tiered sum their parts' counts, exact only when every part is).
 func (s *StatOps) RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	return s.c.Rels.RangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)
 }

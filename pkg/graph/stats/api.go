@@ -314,8 +314,10 @@ func (a *API) RelPropertyNDV(typeName, propertyKey string) (storepkg.PropertyNDV
 // where it cannot be stated exactly, never answered by a walk: no property
 // index on the pair, an index being built, an Elements index, an integer of
 // magnitude past 2^53 in the index, badger PropertyIndexOnDisk, planner
-// statistics disabled, tiered, sharded and external stores, an unknown label,
-// a temporal opts. Read-only: no write cost. Errors: a malformed label or
+// statistics disabled, an external store (or a wrapper that only inherits the
+// capability), an unknown label, a temporal opts. Sharded and tiered fold
+// their parts' bounds (each part read at its own moment; any part declining
+// declines; since v4.59.0). Read-only: no write cost. Errors: a malformed label or
 // key, ErrGraphClosed.
 func (a *API) PropertyBounds(label, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
 	ops, err := a.ready()
@@ -326,7 +328,7 @@ func (a *API) PropertyBounds(label, propertyKey string, opts storepkg.QueryOpts)
 }
 
 // RelPropertyBounds is the relationship mirror of PropertyBounds over a
-// relationship type's property index (memory and badger).
+// relationship type's property index (every in-tree backend since v4.59.0).
 func (a *API) RelPropertyBounds(typeName, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
 	ops, err := a.ready()
 	if err != nil {

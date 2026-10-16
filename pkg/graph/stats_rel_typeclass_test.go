@@ -2,7 +2,7 @@ package graph_test
 
 import (
 	"context"
-	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -113,9 +113,11 @@ func TestRelPropertyTypeClassCounts_Reopen(t *testing.T) {
 	}
 }
 
-// TestRelPropertyTypeClassCounts_TieredDeclines proves tiered declines the capability
-// (rel property indexes — the whole rel-ordering path — are RAM-only per-shard).
-func TestRelPropertyTypeClassCounts_TieredDeclines(t *testing.T) {
+// TestRelPropertyTypeClassCounts_Tiered: tiered folds its shards' exact
+// counters (v4.59.0; it declined before): relationships between reference
+// and event nodes (a cross-shard relationship's row lives on one shard),
+// counted once each, follow an update and a delete.
+func TestRelPropertyTypeClassCounts_Tiered(t *testing.T) {
 	ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Machine"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1})
 	if err != nil {
 		t.Fatalf("tiered.New: %v", err)
@@ -125,7 +127,36 @@ func TestRelPropertyTypeClassCounts_TieredDeclines(t *testing.T) {
 		t.Fatalf("graph.New: %v", err)
 	}
 	t.Cleanup(func() { _ = g.Close() })
-	if _, err := g.Stats().RelPropertyTypeClassCounts("KNOWS", "weight"); !errors.Is(err, store.ErrCapabilityNotSupported) {
-		t.Fatalf("tiered RelPropertyTypeClassCounts err = %v, want ErrCapabilityNotSupported", err)
+	ctx := context.Background()
+	m, _ := g.Nodes().Add(ctx, []string{"Machine"}, nil)
+	e, _ := g.Nodes().Add(ctx, []string{"Event"}, nil)
+	var ids []types.RelID
+	for i, w := range []any{int64(1), 2.5, "x", math.NaN(), true, []string{"l"}} {
+		from, to := m, e
+		if i%2 == 1 {
+			from, to = e, m
+		}
+		r, err := g.Rels().Add(ctx, "KNOWS", from, to, map[string]any{"weight": w})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, r.ID())
+	}
+	if _, err := g.Rels().Add(ctx, "KNOWS", m, e, nil); err != nil {
+		t.Fatal(err)
+	}
+	want := store.PropertyTypeClassCounts{Numeric: 2, NaN: 1, String: 1, Bool: 1, Other: 1, Missing: 1}
+	if c, err := g.Stats().RelPropertyTypeClassCounts("KNOWS", "weight"); err != nil || c != want {
+		t.Fatalf("tiered RelPropertyTypeClassCounts = %+v %v, want %+v", c, err, want)
+	}
+	if _, err := g.Rels().Update(ctx, ids[2], map[string]any{"weight": int64(9)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Rels().Delete(ctx, ids[3]); err != nil {
+		t.Fatal(err)
+	}
+	want = store.PropertyTypeClassCounts{Numeric: 3, Bool: 1, Other: 1, Missing: 1}
+	if c, err := g.Stats().RelPropertyTypeClassCounts("KNOWS", "weight"); err != nil || c != want {
+		t.Fatalf("after an update and a delete = %+v %v, want %+v", c, err, want)
 	}
 }

@@ -2,7 +2,6 @@ package core
 
 import (
 	"cmp"
-	"reflect"
 	"slices"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
@@ -27,17 +26,8 @@ import (
 // exact native store or one declaring the methods itself; a wrapper that merely
 // embeds a native store is refused (its writes may bypass index maintenance).
 func validEndCapabilities(store storepkg.MandatoryStore) (storepkg.RelValidEndCapability, storepkg.NodeValidEndCapability) {
-	trusted := func(capability reflect.Type, methods ...string) bool {
-		return isExactNativeStore(store) || !embedsNativeCapability(store, capability, methods...)
-	}
-	rel, _ := store.(storepkg.RelValidEndCapability)
-	if rel != nil && !trusted(reflect.TypeOf((*storepkg.RelValidEndCapability)(nil)).Elem(), "RelValidEndCandidates", "RefineRelValidEnd") {
-		rel = nil
-	}
-	node, _ := store.(storepkg.NodeValidEndCapability)
-	if node != nil && !trusted(reflect.TypeOf((*storepkg.NodeValidEndCapability)(nil)).Elem(), "NodeValidEndCandidates", "RefineNodeValidEnd") {
-		node = nil
-	}
+	rel, _ := nativeCapability[storepkg.RelValidEndCapability](store, "RelValidEndCandidates", "RefineRelValidEnd")
+	node, _ := nativeCapability[storepkg.NodeValidEndCapability](store, "NodeValidEndCandidates", "RefineNodeValidEnd")
 	return rel, node
 }
 

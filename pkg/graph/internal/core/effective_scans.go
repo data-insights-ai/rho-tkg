@@ -231,23 +231,7 @@ func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir tempora
 	if fn == nil {
 		return grapherr.ErrNilCallback
 	}
-	if dir != temporal.Outgoing && dir != temporal.Incoming {
-		return fmt.Errorf("%w: %d", ErrInvalidDirection, dir)
-	}
-	for _, id := range nodeIDs {
-		if err := storepkg.ValidateNodeID(id); err != nil {
-			return err
-		}
-	}
-	for _, name := range relTypes {
-		if err := c.validateRelTypeQueryName(name); err != nil {
-			return err
-		}
-	}
-	if err := c.validateEffectiveScanPin(pin, scopeNodes); err != nil {
-		return err
-	}
-	if err := c.checkRelTypesRetention(relTypes, pin); err != nil {
+	if err := c.relEffectiveAtNodesGates(nodeIDs, dir, relTypes, pin); err != nil {
 		return err
 	}
 	outgoing := dir == temporal.Outgoing
@@ -289,6 +273,28 @@ func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir tempora
 		return len(toks) == 0 || slices.ContainsFunc(toks, r.HasTypeTokenRaw)
 	}
 	return c.streamRelTimelines(ascending(ids), pin, keep, fn)
+}
+
+// relEffectiveAtNodesGates are ForEachRelEffectiveAtNodes' argument and pin
+// checks (its windowed form checks them for the empty window too).
+func (c *Core) relEffectiveAtNodesGates(nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string, pin types.Instant) error {
+	if dir != temporal.Outgoing && dir != temporal.Incoming {
+		return fmt.Errorf("%w: %d", ErrInvalidDirection, dir)
+	}
+	for _, id := range nodeIDs {
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return err
+		}
+	}
+	for _, name := range relTypes {
+		if err := c.validateRelTypeQueryName(name); err != nil {
+			return err
+		}
+	}
+	if err := c.validateEffectiveScanPin(pin, scopeNodes); err != nil {
+		return err
+	}
+	return c.checkRelTypesRetention(relTypes, pin)
 }
 
 // nodeLabelsCandidatesAt is nodeLabelCandidatesAt (TxPin: pin) for several

@@ -270,9 +270,9 @@ func (s singleVersionNodeResolver) firstVersionCovers(n *types.Node) (covered, o
 	switch s.probe.kind {
 	case probePoint:
 		t := s.probe.validAt
-		return vStart <= t && (vEnd == 0 || vEnd > t), true
+		return storeutil.IntervalCovers(vStart, vEnd, t), true
 	case probeInterval:
-		return vStart < s.probe.validEnd && (vEnd == 0 || vEnd > s.probe.validStart), true
+		return storeutil.IntervalMeets(vStart, vEnd, s.probe.validStart, s.probe.validEnd), true
 	}
 	return false, false
 }

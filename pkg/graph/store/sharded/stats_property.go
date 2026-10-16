@@ -67,11 +67,7 @@ func (s *Store) NodePropertyTypeClassCounts(labelToken uint16, propertyKey strin
 		return storecontract.PropertyTypeClassCounts{}, err
 	}
 	for _, c := range per {
-		sum.Numeric += c.Numeric
-		sum.NaN += c.NaN
-		sum.String += c.String
-		sum.Bool += c.Bool
-		sum.Other += c.Other
+		sum.Add(c)
 	}
 	return sum, nil
 }
@@ -161,11 +157,7 @@ func (s *Store) RelPropertyTypeClassCounts(relTypeToken uint16, propertyKey stri
 		return storecontract.PropertyTypeClassCounts{}, err
 	}
 	for _, c := range per {
-		sum.Numeric += c.Numeric
-		sum.NaN += c.NaN
-		sum.String += c.String
-		sum.Bool += c.Bool
-		sum.Other += c.Other
+		sum.Add(c)
 	}
 	return sum, nil
 }

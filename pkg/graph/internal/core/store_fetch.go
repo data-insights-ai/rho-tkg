@@ -1,6 +1,8 @@
 package core
 
 import (
+	"fmt"
+
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -427,4 +429,48 @@ func (c *Core) forEachRelID(fn func(types.RelID) bool) error {
 		return invalid
 	}
 	return err
+}
+
+// trustedNodeVisit wraps fn for the rows a store's walk hands out directly
+// (the ordered index walks): a store whose rows the graph does not trust
+// (sharded) has each row validated and copied first, the rule of
+// trustedCurrentNode; a malformed row stops the walk and its error is left
+// in the returned pointer.
+func (c *Core) trustedNodeVisit(fn func(*types.Node) bool) (func(*types.Node) bool, *error) {
+	rowErr := new(error)
+	if c.storeRowsTrust {
+		return fn, rowErr
+	}
+	return func(n *types.Node) bool {
+		if n == nil {
+			*rowErr = fmt.Errorf("%w: nil node row from an ordered walk", storepkg.ErrInvalidStoreMutation)
+			return false
+		}
+		row, err := c.trustedCurrentNode(n.ID(), n, nil)
+		if err != nil {
+			*rowErr = err
+			return false
+		}
+		return fn(row)
+	}, rowErr
+}
+
+// trustedRelVisit is trustedNodeVisit for relationships (trustedCurrentRel).
+func (c *Core) trustedRelVisit(fn func(*types.Relationship) bool) (func(*types.Relationship) bool, *error) {
+	rowErr := new(error)
+	if c.storeRowsTrust {
+		return fn, rowErr
+	}
+	return func(r *types.Relationship) bool {
+		if r == nil {
+			*rowErr = fmt.Errorf("%w: nil relationship row from an ordered walk", storepkg.ErrInvalidStoreMutation)
+			return false
+		}
+		row, err := c.trustedCurrentRel(r.ID(), r, nil)
+		if err != nil {
+			*rowErr = err
+			return false
+		}
+		return fn(row)
+	}, rowErr
 }

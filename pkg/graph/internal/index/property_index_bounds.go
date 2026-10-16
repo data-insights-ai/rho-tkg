@@ -1,6 +1,12 @@
 package index
 
-import storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+import (
+	"math"
+	"slices"
+
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
 
 // first returns the smallest key, ok=false when the set is empty.
 func (o *sortedChunks[T]) first() (T, bool) {
@@ -46,6 +52,45 @@ func (pi *PropertyIndex) NumericBounds() (min, max float64, minValue, maxValue a
 		return 0, 0, nil, nil, false, false // a key whose value the view cannot name
 	}
 	return lo, hi, loSets[0].value, hiSets[0].value, true, true
+}
+
+// FoldPropertyBounds is the PropertyBounds of a composite store from its
+// disjoint parts' (sharded slots, tiered shards, each an entity's only home):
+// the classes summed (Missing too), the least Min and the greatest Max with a
+// stored value at each; where parts hold equal keys in different widths the
+// value is the one a single index would name (typedSets' order:
+// types.EqualIndexValues of the key, then an inexact float32).
+func FoldPropertyBounds(parts []storepkg.PropertyBounds) storepkg.PropertyBounds {
+	var out storepkg.PropertyBounds
+	bounded := false
+	for _, p := range parts {
+		out.Classes.Add(p.Classes)
+		if !p.HasNumeric() {
+			continue
+		}
+		if !bounded || p.Min < out.Min || (p.Min == out.Min && boundValueRank(p.Min, p.MinValue) < boundValueRank(out.Min, out.MinValue)) {
+			out.Min, out.MinValue = p.Min, p.MinValue
+		}
+		if !bounded || p.Max > out.Max || (p.Max == out.Max && boundValueRank(p.Max, p.MaxValue) < boundValueRank(out.Max, out.MaxValue)) {
+			out.Max, out.MaxValue = p.Max, p.MaxValue
+		}
+		bounded = true
+	}
+	return out
+}
+
+// boundValueRank is v's position in typedSets' order at key k (lower is
+// named first).
+func boundValueRank(k float64, v any) int {
+	if v == nil {
+		return math.MaxInt
+	}
+	vk := types.IndexablePropertyValueKey(v)
+	keys := types.EqualIndexKeys(k)
+	if i := slices.Index(keys, vk); i >= 0 {
+		return i
+	}
+	return len(keys) // the inexact float32 typedSets adds last
 }
 
 // PropertyBoundsOf assembles store.PropertyBounds from an index, the exact

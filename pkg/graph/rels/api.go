@@ -466,8 +466,8 @@ func (a *API) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*t
 // the same property equality. Uses
 // the store-level rel property index for O(matches) lookup when one exists;
 // otherwise falls back to a type-scan + property filter, so it works on every
-// backend (including the tiered store, which declines rel-property-index
-// CREATION but still answers this query). Temporal opts fold current + history.
+// backend (tiered folds its shards, each by its index or a scan). Temporal
+// opts fold current + history.
 //
 // DECLARED view under a temporal filter: each relationship's own asserted
 // validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
@@ -509,7 +509,8 @@ func (a *API) ForEachByTypePropertyRange(typeName, propKey string, min, max floa
 //
 // Non-temporal opts use the index-backed fast path and return
 // store.ErrIndexNotFound when no usable rel property index exists for (type,
-// propKey). A TEMPORAL QueryOpts combination is served by a sound full fold
+// propKey). Sharded and tiered merge their parts' walks in the same order
+// (nodes.API.ForEachByLabelPropertyRangeOrdered, since v4.59.0). A TEMPORAL QueryOpts combination is served by a sound full fold
 // (values resolved at the pin, sorted by value) — correct over a past
 // belief/valid state, needs no index. Same relaxed isolation and frozen-row
 // contract as ForEachByType.
@@ -525,9 +526,10 @@ func (a *API) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, m
 // propKey value lies in [min,max] (inclusivity per flags) from the rel property
 // index, NO rel scan: two prefix sums on an index created with
 // PropertyIndexOptions.RangeCounts (O(log chunks) plus at most 512 counts
-// each), else the walk over the range's distinct values (the default). exact=false declines (the caller scans-and-counts) when the fast path is
-// unusable: no store capability (tiered: a rel index cannot span its event
-// shards), no/poisoned index, or a temporal filter in opts. The relationship mirror
+// each), else the walk over the range's distinct values (the default); sharded
+// and tiered sum their parts' counts (since v4.59.0 on tiered). exact=false
+// declines (the caller scans-and-counts) when the fast path is unusable: no
+// store capability, no/poisoned index on a part, or a temporal filter in opts. The relationship mirror
 // of nodes.API.RangeCardinality (rule 2) and the rel ordering-soundness primitive
 // for the ORDER BY r.prop LIMIT k push-down.
 func (a *API) RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
@@ -667,7 +669,8 @@ func (a *API) CountByTypePropertyValue(typeName, propKey string, value any, opts
 //
 // Non-temporal opts use the index-backed fast path and return
 // store.ErrIndexNotFound when no usable rel property index exists for (type,
-// propKey). A TEMPORAL QueryOpts combination is served by a sound full fold
+// propKey). Sharded and tiered merge their parts' walks in the same order
+// (nodes.API.ForEachByLabelPropertyRangeOrdered, since v4.59.0). A TEMPORAL QueryOpts combination is served by a sound full fold
 // (values resolved at the pin, sorted lexicographically) — correct over a past
 // belief/valid state, needs no index. Same relaxed isolation and frozen-row
 // contract as ForEachByType.
