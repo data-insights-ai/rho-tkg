@@ -36,6 +36,7 @@ class NativeRetainedFeedGuards(unittest.TestCase):
         with tempfile.TemporaryDirectory() as path:
             with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
                 with self.assertRaises(ValueError):check.original_before_ack(frame,image,spool,6)
+            with Spool(path,Policy(1<<20,65536,4096,check.LINE)) as spool:
                 spool.insert(b"frame",u64(3)+u64(first_index),check.encoded(first))
                 check.original_before_ack(frame,image,spool,6)
                 for bad,ack in ((frame,5),({**frame,"CDC":first["CDC"]},6),({**frame,"OriginalOutcome":None},6),({**frame,"Root":[1]+[0]*171},6)):

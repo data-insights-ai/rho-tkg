@@ -61,16 +61,21 @@ class NativeTransferGuards(unittest.TestCase):
 
     def test_old_current_and_ack_proof_are_all_required_before_normalization(self):
         spec={**self.spec,"facts":20,"writers":1}
+        def populate(spool):
+            for fact in range(spec["facts"]):
+                target=2*spec["facts"]+7 if check.scalar.cross(spec,fact) else 3
+                old=[7+2*fact,8+2*fact,1,target,2,target+1,5,5,4+fact]
+                current=[*old[:6],6,6,4+spec["facts"]+fact]
+                spool.insert(b"transfer/old",u64(fact),check.encoded(old));spool.insert(b"transfer/current",u64(fact),check.encoded(current))
+                spool.insert(b"transfer/updates",u64(fact),check.encoded({"before":old,"after":current}))
         with tempfile.TemporaryDirectory() as tmp:
             with Spool(tmp,Policy(4<<20,65536,4096,check.LINE)) as spool:
                 with self.assertRaises(ValueError):check.transfer_answers(spec,spool)
-                for fact in range(spec["facts"]):
-                    target=2*spec["facts"]+7 if check.scalar.cross(spec,fact) else 3
-                    old=[7+2*fact,8+2*fact,1,target,2,target+1,5,5,4+fact]
-                    current=[*old[:6],6,6,4+spec["facts"]+fact]
-                    spool.insert(b"transfer/old",u64(fact),check.encoded(old));spool.insert(b"transfer/current",u64(fact),check.encoded(current))
-                    spool.insert(b"transfer/updates",u64(fact),check.encoded({"before":old,"after":current}))
+            with Spool(tmp,Policy(4<<20,65536,4096,check.LINE)) as spool:
+                populate(spool)
                 with self.assertRaises(ValueError):check.transfer_answers(spec,spool)
+            with Spool(tmp,Policy(4<<20,65536,4096,check.LINE)) as spool:
+                populate(spool)
                 for fact in range(spec["facts"]):spool.insert(b"transfer/update-authority",u64(fact),b"inert-joined-original-ACK")
                 first,count=check.transfer_answers(spec,spool);self.assertEqual(count,40)
                 key=u64(0);prior=spool.lookup(b"transfer/current",key);changed=check.decoded(prior);changed[3]=999
@@ -109,7 +114,9 @@ class NativeTransferGuards(unittest.TestCase):
         prepare=q("move-prepare");prepare.update(Request=list(request),Range=1)
         run=q("move-run");run["Original"]=encoded(intent)
         def row(call,question,body,error=None):
-            reply={"Version":1 if body is not None else 0,"Action":question["Action"] if body is not None else "","Body":encoded(body) if body is not None else None,"Nanos":1}
+            # A decoded service error preserves its canonical wrapper even
+            # without a result body; an absent transport frame is distinct.
+            reply={"Version":1,"Action":question["Action"],"Body":encoded(body) if body is not None else None,"Nanos":1}
             value={"Stage":"move-1","Member":1,"Call":call,"Attempt":1,"Input":question,"Reply":reply,"AttemptNanos":1,"OperationNanos":1}
             if error:value["Error"]=error
             return value
