@@ -233,22 +233,73 @@ func TestCapabilitiesOf_MatchesServedCalls(t *testing.T) {
 	}
 }
 
-// TestCapabilitiesOf_BoundsConfigException pins the one stated exception of
-// the served-call flags: badger opened with DisablePlannerStats reports the
-// bounds door (the flag) and declines the call (ok=false, no error).
-func TestCapabilitiesOf_BoundsConfigException(t *testing.T) {
-	bs, err := badger.New(badger.Config{InMemory: true, DisablePlannerStats: true})
+// TestCapabilitiesOf_BoundsFollowConfiguration: a store whose configuration
+// switches the stated bounds off reports so (PropertyBoundsStatedCapability),
+// and the flags equal the calls: badger, sharded and tiered with
+// DisablePlannerStats state none; badger with PropertyIndexOnDisk reports the
+// relationship bounds only (its node bounds door declines on the disk index).
+func TestCapabilitiesOf_BoundsFollowConfiguration(t *testing.T) {
+	stores := map[string]func(t *testing.T) storecontract.Store{
+		"badger-no-stats": func(t *testing.T) storecontract.Store {
+			bs, err := badger.New(badger.Config{InMemory: true, DisablePlannerStats: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return bs
+		},
+		"sharded-no-stats": func(t *testing.T) storecontract.Store {
+			st, err := sharded.New(sharded.Config{InMemory: true, SlotCount: 2, DisablePlannerStats: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return st
+		},
+		"tiered-no-stats": func(t *testing.T) storecontract.Store {
+			ts, err := tiered.New(tiered.Config{InMemory: true, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1, DisablePlannerStats: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			reg := registrypkg.NewLabelRegistry()
+			ts.SetLabelRegistry(reg)
+			if _, err := reg.GetOrCreate("Case"); err != nil {
+				t.Fatal(err)
+			}
+			return ts
+		},
+	}
+	disk, err := badger.New(badger.Config{Dir: t.TempDir(), PropertyIndexOnDisk: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = bs.Close() })
-	if !storecontract.CapabilitiesOf(bs).IndexAcceleration.PropertyBounds {
-		t.Fatal("the bounds door is not reported")
+	if r := storecontract.CapabilitiesOf(disk).IndexAcceleration; r.PropertyBounds || !r.RelPropertyBounds {
+		t.Fatalf("PropertyIndexOnDisk: flags %v/%v, want false/true", r.PropertyBounds, r.RelPropertyBounds)
 	}
-	if err := bs.CreatePropertyIndex(1, "k"); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok, err := bs.NodePropertyBounds(1, "k"); err != nil || ok {
-		t.Fatalf("bounds with planner statistics off: ok %v err %v, want a decline", ok, err)
+	_ = disk.Close()
+	for name, mk := range stores {
+		t.Run(name, func(t *testing.T) {
+			s := mk(t)
+			t.Cleanup(func() { _ = s.Close() })
+			r := storecontract.CapabilitiesOf(s).IndexAcceleration
+			if err := s.(storecontract.PropertyIndexCapability).CreatePropertyIndex(1, "k"); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.(storecontract.RelPropertyIndexCapability).CreateRelPropertyIndex(1, "k"); err != nil {
+				t.Fatal(err)
+			}
+			_, nodeOK, err := s.(storecontract.NodePropertyBoundsCapability).NodePropertyBounds(1, "k")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, relOK, err := s.(storecontract.RelPropertyBoundsCapability).RelPropertyBounds(1, "k")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if r.PropertyBounds != nodeOK || r.RelPropertyBounds != relOK {
+				t.Fatalf("flags %v/%v, calls %v/%v", r.PropertyBounds, r.RelPropertyBounds, nodeOK, relOK)
+			}
+			if nodeOK {
+				t.Fatalf("node bounds stated under %s", name)
+			}
+		})
 	}
 }

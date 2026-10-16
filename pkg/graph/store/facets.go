@@ -132,13 +132,14 @@ type CapabilityReport struct {
 		// ...Prefix, the Rels() mirrors), PropertyBounds / RelPropertyBounds
 		// the stated bounds (Stats().PropertyBounds), RelPropertyTypeClassCounts
 		// the relationship class counts. Each equals "the call serves a plain,
-		// built index" on every in-tree backend opened with its default
-		// options (TestCapabilitiesOf_MatchesServedCalls). One stated
-		// exception: a badger store (and a sharded or tiered store of badger
-		// shards) opened with DisablePlannerStats or PropertyIndexOnDisk keeps
-		// no bounds, so PropertyBounds / RelPropertyBounds decline there
-		// (ok=false) while the flag reports the door; the configuration, not
-		// the backend, switches them off (pinned by the same test).
+		// built index" on every in-tree backend, its configuration included
+		// (a badger store, or one of badger shards, opened with
+		// DisablePlannerStats or, for nodes, PropertyIndexOnDisk states no
+		// bounds and reports so through PropertyBoundsStatedCapability;
+		// TestCapabilitiesOf_MatchesServedCalls,
+		// TestCapabilitiesOf_BoundsFollowConfiguration). Structural like every
+		// flag here: a wrapper that only inherits a door reports it although
+		// the graph routes around it (see CapabilitiesOf).
 		OrderedPropertyScan        bool
 		OrderedRelPropertyScan     bool
 		PropertyBounds             bool
@@ -218,6 +219,11 @@ func CapabilitiesOf(s MandatoryStore) CapabilityReport {
 	r.IndexAcceleration.OrderedRelPropertyScan = relRange && relPrefix
 	_, r.IndexAcceleration.PropertyBounds = s.(NodePropertyBoundsCapability)
 	_, r.IndexAcceleration.RelPropertyBounds = s.(RelPropertyBoundsCapability)
+	if stated, ok := s.(PropertyBoundsStatedCapability); ok {
+		nodes, rels := stated.StatesPropertyBounds()
+		r.IndexAcceleration.PropertyBounds = r.IndexAcceleration.PropertyBounds && nodes
+		r.IndexAcceleration.RelPropertyBounds = r.IndexAcceleration.RelPropertyBounds && rels
+	}
 	_, r.IndexAcceleration.RelPropertyTypeClassCounts = s.(RelPropertyTypeClassCountsCapability)
 
 	_, r.ChangeLog.Feed = s.(ChangeFeedCapability)

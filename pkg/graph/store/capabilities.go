@@ -938,6 +938,14 @@ func DocValuesColumnOf(counts PropertyTypeClassCounts, labelCount, maxRows int) 
 	}
 }
 
+// PropertyBoundsStatedCapability is OPTIONAL: a store whose configuration can
+// switch its stated bounds off (badger and the stores of badger shards:
+// DisablePlannerStats, PropertyIndexOnDisk for nodes) reports whether it states
+// them, so CapabilityReport's PropertyBounds / RelPropertyBounds equal the call.
+type PropertyBoundsStatedCapability interface {
+	StatesPropertyBounds() (nodes, rels bool)
+}
+
 // NodeOrderedRangeScanCapability is OPTIONAL: the label's nodes whose numeric
 // property value lies in [min, max] in the property index's order (the
 // ordered numeric view's float64 sort key, descending when desc, ties by node

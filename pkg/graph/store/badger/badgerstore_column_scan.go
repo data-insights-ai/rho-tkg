@@ -4,6 +4,7 @@ import (
 	"math"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -158,10 +159,10 @@ type validWindow struct {
 }
 
 // matches is the per-row predicate the zone map approximates per block: a row
-// [f, t) matches when f < to and (t == 0 || t > from). A validTo of 0 is
-// OPEN-ENDED, not "ends at 0".
+// [f, t) meets the window by the one overlap rule (storeutil.IntervalMeets: a
+// validTo of 0 is OPEN-ENDED, not "ends at 0").
 func (w validWindow) matches(f, t int64) bool {
-	return !w.filtered || f < w.to && (t == 0 || t > w.from)
+	return !w.filtered || storeutil.IntervalMeets(types.Instant(f), types.Instant(t), types.Instant(w.from), types.Instant(w.to))
 }
 
 // columnarValidTimeWindow normalises opts into the scan's validWindow with

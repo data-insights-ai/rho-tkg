@@ -191,6 +191,9 @@ func TestChunkConcatOrdinals(t *testing.T) {
 	if !ok {
 		t.Fatal("mixed ordinal and plain parts declined")
 	}
+	if !c.HasOrdinals() || plain.HasOrdinals() {
+		t.Fatalf("HasOrdinals: ordinal parts %v, with a plain part %v", c.HasOrdinals(), plain.HasOrdinals())
+	}
 	plain.ReadChunk(0, plain.Len(), &chunk)
 	if len(chunk.Ordinals) != 0 {
 		t.Fatalf("a plain part: %d ordinals handed out", len(chunk.Ordinals))

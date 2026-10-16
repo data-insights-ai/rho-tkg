@@ -101,3 +101,13 @@ func loadTypeClassCounts(c *typeClassCounters) storecontract.PropertyTypeClassCo
 		Other:   load(types.ClassOther),
 	}
 }
+
+// StatesPropertyBounds implements store.PropertyBoundsStatedCapability: the
+// configuration that switches the bounds off (planner statistics disabled;
+// for nodes also the on-disk property index).
+func (bs *Store) StatesPropertyBounds() (nodes, rels bool) {
+	if bs == nil {
+		return false, false
+	}
+	return !bs.disablePlannerStats && !bs.propIdxOnDisk, !bs.disablePlannerStats
+}

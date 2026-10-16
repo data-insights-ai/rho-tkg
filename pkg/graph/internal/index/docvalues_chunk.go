@@ -330,6 +330,11 @@ func NewChunkConcat(parts []types.NodeColumnReader) (*ChunkConcat, bool) {
 	return c, true
 }
 
+// HasOrdinals reports whether the chunks carry ordinals: every part is an
+// OrdinalSnapshot. A concatenation with a plain part hands out none, so an
+// ordinal door declines it instead of serving chunks without them.
+func (c *ChunkConcat) HasOrdinals() bool { return c.withOrds }
+
 // Len is the rows of every part.
 func (c *ChunkConcat) Len() int { return c.offsets[len(c.offsets)-1] }
 

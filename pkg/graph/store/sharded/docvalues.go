@@ -264,8 +264,9 @@ func (s *Store) DocValuesSnapshotMultiOrdinal(labelTokens []uint16, propKeys []s
 	})
 }
 
-// chunkSnapshotOver is snapshotOver for the doors that hand out chunks
-// only: ok=false where the slots' snapshots do not concatenate as chunks.
+// chunkSnapshotOver is snapshotOver for the ordinal doors: ok=false where
+// the slots' snapshots do not concatenate as chunks or a slot's snapshot
+// carries no ordinals (the chunks would hand out none).
 func (s *Store) chunkSnapshotOver(tokens []uint16, emptyServes bool,
 	read func(shard *badger.Store) (types.NodeColumnReader, bool, error)) (types.NodeColumnChunkReader, uint64, bool, error) {
 	snap, gen, ok, err := s.snapshotOver(tokens, emptyServes, read)
@@ -273,7 +274,7 @@ func (s *Store) chunkSnapshotOver(tokens []uint16, emptyServes bool,
 		return nil, gen, false, err
 	}
 	chunks, chunked := snap.(*chunkSnapshot)
-	if !chunked {
+	if !chunked || !chunks.chunks.HasOrdinals() {
 		return nil, gen, false, nil
 	}
 	return chunks, gen, true, nil

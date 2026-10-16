@@ -36,7 +36,7 @@ const (
 
 // anyVersionPinOpts are the opts of every row recorded at pin.
 func anyVersionPinOpts(pin types.Instant) storepkg.QueryOpts {
-	return storepkg.QueryOpts{ValidStart: anyValidStart, ValidEnd: anyValidEnd, TxAt: pin}
+	return storepkg.QueryOpts{ValidStart: anyValidStart, ValidEnd: anyValidEnd, ValidWindowSet: true, TxAt: pin, TxAtSet: true}
 }
 
 // anyVersionServes reports whether the sidecar range can serve the doors:

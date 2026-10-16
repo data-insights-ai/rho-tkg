@@ -126,3 +126,12 @@ func (s *Store) foldBounds(read func(*badgerShard) (storecontract.PropertyBounds
 	b, ok := indexpkg.FoldStatedBounds(parts, oks)
 	return b, ok, nil
 }
+
+// StatesPropertyBounds implements store.PropertyBoundsStatedCapability: every
+// slot is opened with the store's configuration, so the first slot answers.
+func (s *Store) StatesPropertyBounds() (nodes, rels bool) {
+	if s == nil || len(s.shards) == 0 {
+		return false, false
+	}
+	return s.shards[0].StatesPropertyBounds()
+}

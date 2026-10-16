@@ -274,3 +274,12 @@ func foldBounds(parts []boundsPart, err error) (storecontract.PropertyBounds, bo
 	b, ok := indexpkg.FoldStatedBounds(bounds, oks)
 	return b, ok, nil
 }
+
+// StatesPropertyBounds implements store.PropertyBoundsStatedCapability: the
+// shards are opened with the store's configuration (shardConfig).
+func (ts *Store) StatesPropertyBounds() (nodes, rels bool) {
+	if ts == nil {
+		return false, false
+	}
+	return !ts.disablePlannerStats && !ts.propertyIndexOnDisk, !ts.disablePlannerStats
+}

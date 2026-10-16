@@ -201,7 +201,7 @@ func (c *Core) relEffectiveByTypeBounded(typeName string, pin, validFrom types.I
 			cands, err = c.relValidEnds.RelValidEndCandidates(tok, pin, validFrom)
 			return err
 		}
-		ids, err := c.relTypeCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin})
+		ids, err := c.relTypeCandidateIDsAt(tok, storepkg.QueryOpts{TxPin: pin, TxPinSet: true})
 		cands = fallbackCands(ids)
 		return err
 	}); err != nil {
