@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scope": "Direct state-fixture regressions and one actual current-disk torn-WAL leaf. Other correctness schedules, race/coverage, matrix and release gates remain open.",
+  "source_commit": "3ebb46ac6effe5477e8f8eed529973a461c2d8f9",
+  "source_changes": {
+    "68bb4cfe": "Use existing bounded replacement-local At(C) source admission in three fault callbacks; native ledgers and oracles unchanged.",
+    "3ebb46ac": "Restore retained client context after proof; prepare actual pooled intent with finite2/8/8MiB grants; report early move invocation failure without renewing original deadline."
+  },
+  "toolchain": "Go 1.26.9",
+  "binary_sha256": "85855b0d7f9fc8a370dce1ba97b72e829b76f0f545d1109a777dadfba585b7df",
+  "root_results": {
+    "compile": "PASS; graphapply test binary, no test cases by compilation",
+    "direct_state_guards": "All three PASS; client lifetime, actual pooled factory/replay and early-error boundary wait.",
+    "wal_current_disk": "RED at659bdad5: replacement reused surviving remote service origin ledger; GREEN at3ebb46ac in4.44s with complete embedded independent checker and archived actual artifact.",
+    "wal_cleanup": "Seven incarnations reaped; six clean and one intentional SIGKILL. No watchdog forced cleanup.",
+    "wal_synced_image": "Author run RED before bootstrap; unauthenticated frame/transport resource-limit error, not evidence for a native quota increase. No qualification.",
+    "pooled_state_program": "Still unaccepted; publication fails before selected fault; separate diagnostic, no claimed fix."
+  },
+  "remaining": "Trace actual pooled feedInitialize application error and modeled child startup refusal; run remaining existing correctness inventories before measurements/engine choice/final gates.",
+  "files_sha256": {
+    "state-three-guards-3ebb46ac.log": "15d4e3cc7f4348f114dae62860ae2e4bae63531a458b2aced7be7c54c5591dc9",
+    "state-three-guards-3ebb46ac.json": "9808a28da4a979cea285df6416e0819a0a466748e4fd2d1d2d7e6738ff98e813",
+    "d-wal-current-red-659bdad5.log": "bd560a3f1abadfe585c575113816cd06b4ee59529c3f8ee699da42767365d36d",
+    "d-wal-current-red-659bdad5.json": "7d88880029a269363e962700b47c3094398dcb9026d307b0c9531c3b23b3c7f7",
+    "d-wal-current-green-3ebb46ac.log": "54f969437fc91ecc9bd341ade50f2f10307b7aced2ad8a511d52cd8afd32349d",
+    "d-wal-current-green-3ebb46ac.json": "1a408bf6d8ea90f3ff131a375ffb86831ba9006ba95518e0c794f45dffa7c480",
+    "d-wal-synced-startup-red.log": "c2315ee3cc53da9fda39469cafe43ef884af103b9ec3a0e87f2d27b96a5aa42c",
+    "d-wal-synced-startup-red.json": "52abe2bad72580c1b59ce6c6cc913567e6a919a4118a62b05276f28521c9f94a",
+    "d-wal-current-green-3ebb46ac.jsonl": "4eb36200323f1d8fbff15d725878451cd060a1dfd82aa112e650cffbc618b1f5"
+  }
+}

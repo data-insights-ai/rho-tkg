@@ -1,0 +1,25 @@
+=== RUN   TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage
+=== RUN   TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage/torn-wal-synced-image
+    native_graph_transition_conjunction_harness_test.go:389: child 47414 RPC op=1 index=0 entity=0 packet=0->0: graphapply: resource limit code=0 causes=0 detail=
+    paired_graph_fault_harness_test.go:420: paired current child cleanup 6 graphapply: resource limit
+        signal: broken pipe
+    paired_graph_fault_harness_test.go:420: paired current child cleanup 1 graphapply: resource limit
+        exit status 1
+    paired_graph_fault_harness_test.go:420: paired current child cleanup 2 graphapply: resource limit
+        signal: broken pipe
+    paired_graph_fault_harness_test.go:420: paired current child cleanup 3 graphapply: resource limit
+        exit status 1
+    paired_graph_fault_harness_test.go:420: paired current child cleanup 4 graphapply: resource limit
+        exit status 1
+    paired_graph_fault_harness_test.go:420: paired current child cleanup 5 graphapply: resource limit
+        exit status 1
+    paired_graph_fault_harness_test.go:434: unscheduled child failure 47414 exit status 1
+    paired_graph_fault_harness_test.go:434: unscheduled child failure 47416 signal: broken pipe
+    paired_graph_fault_harness_test.go:434: unscheduled child failure 47417 exit status 1
+    paired_graph_fault_harness_test.go:434: unscheduled child failure 47418 exit status 1
+    paired_graph_fault_harness_test.go:434: unscheduled child failure 47419 exit status 1
+    paired_graph_fault_harness_test.go:434: unscheduled child failure 47420 signal: broken pipe
+    paired_graph_fault_harness_test.go:445: paired cleanup: incarnations=6 all-reaped=true successful=0 intentional-kills=0 calls=1 bootstrapPackets=0 admitted=397312
+--- FAIL: TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage (0.01s)
+    --- FAIL: TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage/torn-wal-synced-image (0.01s)
+FAIL

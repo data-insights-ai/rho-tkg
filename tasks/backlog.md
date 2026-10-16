@@ -1208,10 +1208,9 @@ qualification checkpoint is recorded below.
 
 The finite source-closure audit found no additional package beyond these
 integrated state/sender changes and their final CI associations. Those final
-associations are integrated at `099c846c`, closing source expansion. Three Sol
-6.1/high lanes now own concrete failures from the first process runs: P06's
-old-cut source admission after a second replacement, state elected-layout
-bootstrap/delivery, and snapshot-sender refusal/election ordering. New campaigns
+associations are integrated at `099c846c`, closing source expansion. Focused runtime corrections address demonstrated compiler, ownership and
+source-admission failures. The selected P06 and sender cases now pass; pooled
+state publication remains under diagnosis. New campaigns
 are not required merely because other integrated source remains unexecuted.
 CI selection/dependency associations are source-integrated at `4c336669` for
 the integrated protocol core, leader/message program, Ready companion and
@@ -1233,9 +1232,12 @@ budget regressions pass. The pooled-state case still fails during feed
 publication: source-unavailable/pending at the elected remote leader persists
 until its original 300-second deadline, before the selected move interruption.
 All owned processes exit without forced cleanup; that state case nevertheless
-reports two nonclean child exits and is not accepted. Concrete shared-client
-context, pooled move-factory and error-wait defects are also under correction.
-No full process-family acceptance, measurement, engine selection or V2 closure
+reports two nonclean child exits and is not accepted. The [subsequent corrections](evidence/v2-integrated-checkpoint-20261016/corrections-3ebb46ac.json)
+restore shared-client context, prepare genuine pooled intents and expose early
+move errors; all three direct regression tests pass independently. A current-disk
+torn-WAL case also passes with the unchanged complete oracle after correcting
+replacement-local historical source admission. The synced-image counterpart
+fails before bootstrap and remains under diagnosis. No full process-family acceptance, measurement, engine selection or V2 closure
 follows from these focused checkpoints.
 FDB retains stable
 logical-home key namespaces while its catalog fences and transfers processing

@@ -1,0 +1,26 @@
+=== RUN   TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage
+=== RUN   TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage/torn-wal-current-disk
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=1 identity=42c30eeda10b47ed000000000000000a index=3 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=8 kind=1 identity=42c30eeda10b47ed0000000000000018 index=3 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=2 identity=42c30eeda10b47ed000000000000001d index=4 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=42c30eeda10b47ed000000000000002b index=5 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=42c30eeda10b47ed0000000000000039 index=6 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=42c30eeda10b47ed0000000000000047 index=7 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=42c30eeda10b47ed0000000000000055 index=8 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=4 identity=42c30eeda10b47ed000000000000006c index=9 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=5 identity=42c30eeda10b47ed0000000000000079 index=10 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=4 target=3 kind=2 identity=f7db571f8a0e5b970000000000000017 index=11 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=42c30eeda10b47ed0000000000000090 index=12 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=8 kind=3 identity=42c30eeda10b47ed000000000000009a index=4 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=4 target=3 kind=3 identity=f7db571f8a0e5b970000000000000025 index=13 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=3 identity=42c30eeda10b47ed00000000000000a8 index=14 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=8 kind=3 identity=42c30eeda10b47ed00000000000000b6 index=5 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=3 kind=4 identity=42c30eeda10b47ed00000000000000bf index=15 reason=0
+    native_graph_transition_conjunction_harness_test.go:452: actual certified child operation: actor=1 target=8 kind=5 identity=42c30eeda10b47ed00000000000000cc index=6 reason=0
+    native_graph_fault_family_test.go:107: paired elected actual leader2 round10 while1 down
+    native_graph_transition_conjunction_harness_test.go:375: child 21503 RPC op=40 index=0 entity=0 packet=0->0: graphapply: remote source operation refused code=1 causes=10 detail=graphstore: immutable source unavailable
+        graphapply: remote source operation refused
+    paired_graph_fault_harness_test.go:445: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=5570 bootstrapPackets=276 admitted=397312
+--- FAIL: TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage (4.21s)
+    --- FAIL: TestNativeFaultFamilyTornWALRecoversActualOriginalFromDiskAndSyncedImage/torn-wal-current-disk (4.21s)
+FAIL
