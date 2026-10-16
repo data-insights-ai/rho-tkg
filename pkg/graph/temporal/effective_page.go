@@ -19,10 +19,18 @@ const MaxPageLimit = 10_000
 // negative instant, types.UnboundedValidFrom included, is a real bound (since
 // v4.58.1). All valid fields zero: no valid-time filter (every segment).
 // ValidEnd without ValidStart is ErrInvalidTimeRange.
+//
+// Explicit presence (v4.59.0, as store.QueryOpts): ValidAtSet makes ValidAt
+// a point filter at any instant (0 included); ValidWindowSet makes
+// [ValidStart, ValidEnd) the window as given, either bound may be 0 (no
+// open-ended reading: an open end is math.MaxInt64). Point and window stay
+// exclusive. Tx has no flag: it is required and > 0.
 type Pin struct {
 	Tx                   types.Instant
 	ValidAt              types.Instant
 	ValidStart, ValidEnd types.Instant
+	ValidAtSet           bool
+	ValidWindowSet       bool
 }
 
 // Filter is the property equality of the paged effective doors: a segment

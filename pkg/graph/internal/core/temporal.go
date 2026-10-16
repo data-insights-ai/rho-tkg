@@ -1136,7 +1136,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 			}
 			var err error
 			if windowed {
-				err = c.relPropTxWindow.ForEachRelPropertyTxMemberDuring(tok, key, valueKey, start, end, opts.TxAt, member)
+				err = c.relPropTxWindow.ForEachRelPropertyTxMemberDuring(tok, key, valueKey, start, end, txAtOf(opts), member)
 			} else {
 				err = c.relPropTxMembers.ForEachRelPropertyTxMember(tok, key, valueKey, member)
 			}
@@ -1181,7 +1181,7 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 // no valid-time filter or the point has no representable successor.
 func validWindow(opts storepkg.QueryOpts) (start, end types.Instant, ok bool) {
 	switch {
-	case opts.ValidAt != 0:
+	case opts.HasValidAt():
 		if opts.ValidAt == math.MaxInt64 {
 			return 0, 0, false
 		}
@@ -1253,7 +1253,7 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 			}
 			var err error
 			if windowed {
-				err = c.nodePropTxWindow.ForEachNodePropertyTxMemberDuring(tok, key, vk, start, end, opts.TxAt, member)
+				err = c.nodePropTxWindow.ForEachNodePropertyTxMemberDuring(tok, key, vk, start, end, txAtOf(opts), member)
 			} else {
 				err = c.nodePropTxMembers.ForEachNodePropertyTxMember(tok, key, vk, member)
 			}

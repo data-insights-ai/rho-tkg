@@ -70,7 +70,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   compaction and retention gates, ordered / prefix / cardinality / equal-count declines, memory / badger push-down,
   temporal and HF index, column window, envelope prune, `ValidateQueryOpts`); core hands a present tx pin at 0 to the
   tx-time code as -1 (same rows: every `TxFrom` is positive). Every door agrees on memory, badger, sharded and tiered
-  (`TestTimeFilterExplicitPresence`, `TestStoreTimeFilterExplicitPresence`). `temporal.Pin` is unchanged.
+  (`TestTimeFilterExplicitPresence`, `TestStoreTimeFilterExplicitPresence`). `temporal.Pin` (the effective-page doors)
+  gets the same `ValidAtSet` / `ValidWindowSet` and is validated through the same methods (point and window stay
+  exclusive; an unflagged lone `ValidStart` stays `[start, inf)`; `Tx` stays required > 0). The windowed equality seek
+  (row 62) reads its window and pin through them too.
 
 ## [4.58.1] - 2026-10-16
 

@@ -15,6 +15,7 @@ import (
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -207,6 +208,31 @@ func tpRun(t *testing.T, g *graphpkg.Graph, indexed bool) {
 		c, err = g.Rels().CountByTypeAt("R", opts)
 		out["CountByTypeAt"] = answer{count: c, err: err}
 
+		// The paged effective doors take a temporal.Pin with the same flags
+		// (Tx required > 0; point and window exclusive, and unflagged shapes
+		// read differently from QueryOpts: checked below).
+		if opts.TxAt > 0 && (opts.ValidAtSet || opts.ValidWindowSet) && (!opts.HasValidAt() || !opts.HasValidBound()) {
+			p := temporal.Pin{Tx: opts.TxAt, ValidAt: opts.ValidAt, ValidStart: opts.ValidStart, ValidEnd: opts.ValidEnd,
+				ValidAtSet: opts.ValidAtSet, ValidWindowSet: opts.ValidWindowSet}
+			f := temporal.Filter{Prop: "k", Eq: "v"}
+			npage, _, err := g.Temporal().NodesEffectivePage(ctx, p, f, 0, 100)
+			s = nil
+			for _, sg := range npage {
+				if !slices.Contains(s, nodeName[sg.Node.ID()]) {
+					nn(sg.Node.ID(), &s)
+				}
+			}
+			list("NodesEffectivePage", s, err)
+			rpage, _, err := g.Temporal().RelsEffectivePage(ctx, p, f, 0, 100)
+			s = nil
+			for _, sg := range rpage {
+				if !slices.Contains(s, relName[sg.Rel.ID()]) {
+					rn(sg.Rel.ID(), &s)
+				}
+			}
+			list("RelsEffectivePage", s, err)
+		}
+
 		if !indexed {
 			return out
 		}
@@ -307,6 +333,37 @@ func tpRun(t *testing.T, g *graphpkg.Graph, indexed bool) {
 		{"TxPin 0 flagged with a window", storepkg.QueryOpts{TxPinSet: true, ValidWindowSet: true, ValidStart: -1}, nil, graphpkg.ErrConflictingTemporalOpts},
 	} {
 		t.Run("tx/"+c.name, func(t *testing.T) { check(t, c, doors(c.opts)) })
+	}
+
+	// A Pin's point and window are exclusive, flagged or not; an unflagged
+	// lone ValidStart stays the open window [start, inf).
+	f := temporal.Filter{Prop: "k", Eq: "v"}
+	for _, pc := range []struct {
+		name    string
+		p       temporal.Pin
+		want    []string
+		wantErr bool
+	}{
+		{"flagged point and window", temporal.Pin{Tx: pin, ValidAtSet: true, ValidWindowSet: true, ValidStart: -5, ValidEnd: 5}, nil, true},
+		{"flagged point and unflagged start", temporal.Pin{Tx: pin, ValidAtSet: true, ValidStart: -5}, nil, true},
+		{"unflagged lone end", temporal.Pin{Tx: pin, ValidEnd: -5}, nil, true},
+		{"unflagged open start", temporal.Pin{Tx: pin, ValidStart: -3000}, []string{"closed1", "pos", "zero"}, false},
+		{"unflagged ValidAt 0 is no filter", temporal.Pin{Tx: pin}, all, false},
+	} {
+		page, _, err := g.Temporal().NodesEffectivePage(ctx, pc.p, f, 0, 100)
+		var got []string
+		for _, sg := range page {
+			if !slices.Contains(got, nodeName[sg.Node.ID()]) {
+				nn(sg.Node.ID(), &got)
+			}
+		}
+		slices.Sort(got)
+		switch {
+		case pc.wantErr && !errors.Is(err, graphpkg.ErrInvalidTimeRange):
+			t.Errorf("NodesEffectivePage %s: err = %v, want ErrInvalidTimeRange", pc.name, err)
+		case !pc.wantErr && (err != nil || !slices.Equal(got, pc.want)):
+			t.Errorf("NodesEffectivePage %s = (%v, %v), want %v", pc.name, got, err, pc.want)
+		}
 	}
 
 	// The current-value index counts hold no time: a flagged filter at 0
