@@ -660,6 +660,34 @@ func nativeDecisionCall(t *testing.T, p *graphProcess, request nativeDecisionCon
 	return receipt, response
 }
 
+// Keep the original Run observable while its genuine candidate is awaited.
+// Cancellation retires the unused native control correlation through the
+// existing exchange cleanup; a pending/error Run is never a candidate.
+func nativeDecisionAwaitCandidate(ctx context.Context, p *graphProcess, request nativeDecisionControl, caller <-chan graphProcessAnswer) (processResponse, *graphProcessAnswer, error) {
+	body, err := json.Marshal(request)
+	if err != nil {
+		return processResponse{}, nil, err
+	}
+	waitCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan graphProcessAnswer, 1)
+	go func() {
+		response, err := p.exchange(waitCtx, processRequest{op: processNativeDecisionControl, data: body})
+		done <- graphProcessAnswer{response: response, err: err}
+	}()
+	select {
+	case answer := <-done:
+		return answer.response, nil, errors.Join(answer.err, processResponseError(answer.response), ctx.Err())
+	case original := <-caller:
+		cancel()
+		// exchange keeps its pending slot until the child ACKs cancellation or
+		// its original bounded cleanup closes the failed transport. Await that
+		// real retirement before returning the original caller's separate result.
+		retired := <-done
+		return retired.response, &original, errors.Join(retired.err, processResponseError(retired.response), ctx.Err())
+	}
+}
+
 func nativeDecisionRetire(t *testing.T, call <-chan graphProcessAnswer, cancel context.CancelFunc, tx [16]byte) []byte {
 	t.Helper()
 	cancel()
@@ -954,7 +982,31 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 	control(f.n.all[bOwner], nativeDecisionControl{Version: 1, Action: "arm", Cookie: owner.Cookie, Sequence: 1, Original: b.wire})
 	bCall, bCancel := f.beginRun(bOwner, b)
 	defer bCancel()
-	first, _ := control(f.n.all[bOwner], nativeDecisionControl{Version: 1, Action: "wait", Cookie: owner.Cookie, Sequence: 1, Mask: 1})
+	waitCandidate := func(mask uint8, pending <-chan graphProcessAnswer) (nativeDecisionReceipt, processResponse) {
+		request := nativeDecisionControl{Version: 1, Action: "wait", Cookie: owner.Cookie, Sequence: 1, Mask: mask}
+		if len(campaign) == 0 {
+			return control(f.n.all[bOwner], request)
+		}
+		waitCtx, cancel := f.operationContext(10 * time.Second)
+		defer cancel()
+		response, original, waitErr := nativeDecisionAwaitCandidate(waitCtx, f.n.all[bOwner], request, pending)
+		if original != nil {
+			captureMu.Lock()
+			charge := capacityCharge
+			captureMu.Unlock()
+			result, decodeErr := decodeGraphProcessCoordinatorResult(original.response)
+			t.Fatalf("P04 original B returned before native candidate: actor%d pid%d mask%d sequence%d incarnation%x applied%d code%d causes%x detail%q transport=%v native=%v resultDecode=%v resumeTx%x decisionPhase%d commit%t capacityCharge=%+v controlRetirement=%v", bOwner, f.n.all[bOwner].cmd.Process.Pid, mask, original.response.sequence, original.response.incarnation, original.response.applied, original.response.code, original.response.causeMask, original.response.detail[:min(len(original.response.detail), 4096)], original.err, processResponseError(original.response), decodeErr, result.resume.tx, result.decision.phase, result.decision.commit, charge, waitErr)
+		}
+		if waitErr != nil {
+			t.Fatal("P04 actual native candidate wait", mask, waitErr)
+		}
+		var receipt nativeDecisionReceipt
+		if err := json.Unmarshal(response.aux, &receipt); err != nil || receipt.Version != 1 || receipt.Profile != nativeDecisionProfile || receipt.Cookie != owner.Cookie || receipt.Sequence != 1 || receipt.Member != bOwner || receipt.PID != uint64(f.n.all[bOwner].cmd.Process.Pid) || receipt.Controls < 1 || receipt.Controls > nativeDecisionControls || receipt.PrepaidBytes < 1 || receipt.Mask&mask != mask {
+			t.Fatal("P04 actual native candidate owner receipt", err)
+		}
+		return receipt, response
+	}
+	first, _ := waitCandidate(1, bCall)
 	if first.Mask != 1 || len(first.Candidates[0]) == 0 || len(first.Candidates[1]) != 0 {
 		t.Fatal("missing actual capacity candidate")
 	}
@@ -981,7 +1033,7 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 	f.drain()
 	bCall, bCancel = f.beginRun(bOwner, b)
 	defer bCancel()
-	both, _ := control(f.n.all[bOwner], nativeDecisionControl{Version: 1, Action: "wait", Cookie: owner.Cookie, Sequence: 1, Mask: 3})
+	both, _ := waitCandidate(3, bCall)
 	if both.Mask != 3 || !bytes.Equal(first.Candidates[0], both.Candidates[0]) || !bytes.Equal(first.Manifest, both.Manifest) {
 		t.Fatal("retained private candidate changed")
 	}
