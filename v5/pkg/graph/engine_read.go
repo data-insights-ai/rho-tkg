@@ -27,11 +27,8 @@ type reader struct {
 }
 
 func (e *pebbleEngine) readerAt(ctx context.Context, index uint64) (*reader, error) {
-	e.mu.Lock()
-	err := e.check()
-	e.mu.Unlock()
-	if err != nil {
-		return nil, err
+	if e.closed.Load() {
+		return nil, ErrClosed
 	}
 	v, err := e.store.ApplicationView(index)
 	if err != nil {
@@ -200,7 +197,7 @@ func (r *reader) segments(id graphstate.EntityID, window temporal.Scope, revisio
 		return temporal.Span(ax, lo, hi, l)
 	}
 	if _, fin := wlo.Position(); !fin {
-		if pre, err := cuts[0].Predecessor(l); err == nil {
+		if pre, err := before(cuts[0], l); err == nil {
 			s, err := mk(temporal.NegativeInfinity(), mustBound(cuts[0], false))
 			if err != nil {
 				return nil, err
@@ -610,4 +607,22 @@ func (s *engineSnap) timelineRows(ctx context.Context, r TimelineRequest) ([]Ent
 		out = append(out, rows...)
 	}
 	return out, nil
+}
+
+// before returns a position strictly earlier than p: the immediate predecessor
+// where the axis has one, else p minus one unit on the dense rational axis.
+func before(p temporal.Position, l temporal.Limits) (temporal.Position, error) {
+	if q, ok := p.Rational(); ok {
+		n, nok := q.Numerator().Int64()
+		d, dok := q.Denominator().Int64()
+		if !nok || !dok {
+			return temporal.Position{}, ErrInvalidScope
+		}
+		r, err := temporal.Fraction(temporal.Int64(n-d), temporal.Int64(d), l)
+		if err != nil {
+			return temporal.Position{}, err
+		}
+		return temporal.RationalPosition(p.Axis(), r)
+	}
+	return p.Predecessor(l)
 }

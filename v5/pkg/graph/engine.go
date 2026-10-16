@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"go.etcd.io/raft/v3"
@@ -56,7 +57,7 @@ type pebbleEngine struct {
 	binding types.DefaultAxisBinding
 	node    map[string]graphstate.PropertyDefinition
 	rel     map[string]graphstate.PropertyDefinition
-	closed  bool
+	closed  atomic.Bool
 	broken  error
 	nonce   uint64
 }
@@ -244,7 +245,7 @@ func (e *pebbleEngine) install(index uint64, prevImageHash [32]byte, image []byt
 }
 
 func (e *pebbleEngine) check() error {
-	if e.closed {
+	if e.closed.Load() {
 		return ErrClosed
 	}
 	return e.broken
@@ -253,10 +254,9 @@ func (e *pebbleEngine) check() error {
 func (e *pebbleEngine) close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.closed {
+	if e.closed.Swap(true) {
 		return ErrClosed
 	}
-	e.closed = true
 	return e.store.Close()
 }
 
