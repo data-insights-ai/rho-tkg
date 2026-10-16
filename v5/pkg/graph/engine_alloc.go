@@ -70,3 +70,12 @@ func (a *allocState) next() (uint64, error) {
 	a.state = st
 	return a.offset + blk.First, nil
 }
+
+// minted is the ID range minted so far, [lo, hi]; lo > hi when none is.
+func (a allocState) minted() (lo, hi uint64, err error) {
+	v, err := idalloc.Inspect(&a.state)
+	if err != nil {
+		return 0, 0, err
+	}
+	return a.offset + 1, a.offset + v.LastSequence, nil
+}

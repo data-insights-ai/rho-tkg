@@ -233,12 +233,13 @@ func (p PageLimits) Validate() error {
 	return nil
 }
 
-// ScanRequest starts a scan (gap rows 9-10, 21-22).
-//
-// TODO(takeover plan, S2 wrapper vs engine): Labels and Equals need label and
-// property-equality index pages the engine does not have yet (ReadView offers
-// per-owner pages and unique candidates only; review MAJOR 7). The request is
-// final; the engine work (V4.2/V3.2) is not wrapper work.
+// ScanRequest starts a scan (gap rows 9-10, 21-22): the rows of every entity
+// matching Selector, in ID order, one row per segment of Valid where it is
+// active and matches (all Labels held, RelType, every Equals by the numeric
+// rule). Candidates come from the equality or label index; without Labels or
+// Equals the scan walks every entity. A Known scope other than All is
+// ErrNotImplemented (the evidence filter, WP-30). One scan's index candidates
+// must fit one read budget, else ErrInvalidRequest.
 type ScanRequest struct {
 	Selector   Selector
 	Projection Projection

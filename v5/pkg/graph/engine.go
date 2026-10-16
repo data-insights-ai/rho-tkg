@@ -48,19 +48,20 @@ func readBudget() graphstore.OwnershipBudget {
 }
 
 type pebbleEngine struct {
-	mu      sync.Mutex
-	cfg     Config
-	store   *raftlog.Store
-	decl    graphstore.OwnershipDeclaration
-	ns      graphstore.Namespace
-	conf    [32]byte
-	binding types.DefaultAxisBinding
-	node    map[string]graphstate.PropertyDefinition
-	rel     map[string]graphstate.PropertyDefinition
-	closed  atomic.Bool
-	broken  atomic.Pointer[error]
-	nonce   atomic.Uint64
-	alloc   allocState
+	mu                       sync.Mutex
+	scanCandidates, scanHits atomic.Uint64
+	cfg                      Config
+	store                    *raftlog.Store
+	decl                     graphstore.OwnershipDeclaration
+	ns                       graphstore.Namespace
+	conf                     [32]byte
+	binding                  types.DefaultAxisBinding
+	node                     map[string]graphstate.PropertyDefinition
+	rel                      map[string]graphstate.PropertyDefinition
+	closed                   atomic.Bool
+	broken                   atomic.Pointer[error]
+	nonce                    atomic.Uint64
+	alloc                    allocState
 }
 
 var _ engine = (*pebbleEngine)(nil)

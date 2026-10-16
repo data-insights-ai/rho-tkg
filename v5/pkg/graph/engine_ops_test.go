@@ -209,8 +209,8 @@ func TestRelationshipAndRefusals(t *testing.T) {
 	if _, err := kept.CreateNode(CreateNode{Scope: all}); !errors.Is(err, ErrTxDone) {
 		t.Errorf("kept Tx: %v", err)
 	}
-	// Scan stays not implemented.
-	if _, err := s.Scan(ctx, ScanRequest{Selector: Selector{View: ViewDeclared, Valid: all, Known: knownAll(t)}, Paging: PageLimits{Rows: 1, MaxBytes: 1}}); !errors.Is(err, ErrNotImplemented) {
+	// A row larger than the page byte limit is refused, also on Scan.
+	if _, err := s.Scan(ctx, ScanRequest{Selector: Selector{View: ViewDeclared, Valid: all, Known: knownAll(t)}, Paging: PageLimits{Rows: 1, MaxBytes: 1}}); !errors.Is(err, ErrInvalidRequest) {
 		t.Errorf("scan: %v", err)
 	}
 	// Closed snapshot and graph.

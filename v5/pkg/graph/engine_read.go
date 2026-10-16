@@ -55,6 +55,9 @@ func (r *reader) close() {
 
 var pageBudget = graphstate.ReadBudget{Rows: 256, Bytes: 1 << 20}
 
+// readsPerView bounds the entities one fill reads through one read view.
+const readsPerView = 128
+
 func (r *reader) pieces(key graphstate.ComponentKey, window temporal.Scope) ([]graphstate.ComponentPage, error) {
 	var out []graphstate.ComponentPage
 	var cur graphstate.Cursor
@@ -243,11 +246,14 @@ func visibility(v View) graphstate.Visibility {
 
 // rows projects entity id under sel at the reader's index: one Entity per
 // segment where it is active, adjacent equal rows merged.
-func (r *reader) rows(ref Ref, sel Selector, proj Projection) ([]Entity, error) {
+func (r *reader) rows(ref Ref, sel Selector, proj Projection, m *matcher) ([]Entity, error) {
 	id, wantNode := target(ref)
 	rec, found, err := r.record(id)
 	if err != nil || !found || (rec.Kind == graphstate.Node) != wantNode {
 		return nil, err
+	}
+	if m != nil && !m.entity(rec) {
+		return nil, nil
 	}
 	segs, err := r.segments(id, sel.Valid, nil)
 	if err != nil {
@@ -260,7 +266,7 @@ func (r *reader) rows(ref Ref, sel Selector, proj Projection) ([]Entity, error) 
 		if err != nil {
 			return nil, err
 		}
-		if !pr.Exists || !pr.Active {
+		if !pr.Exists || !pr.Active || m != nil && !m.state(pr) {
 			continue
 		}
 		adjacent := lastSeg == si-1
@@ -376,16 +382,21 @@ type pageKind uint8
 const (
 	pageLookup pageKind = iota + 1
 	pageTimeline
+	pageScan
 )
 
 type pageState struct {
-	kind pageKind
-	sel  Selector
-	proj Projection
-	refs []Ref
-	next int      // lookup: next ref
-	rows []Entity // timeline: all rows; lookup: carry-over
-	off  int
+	kind   pageKind
+	sel    Selector
+	proj   Projection
+	refs   []Ref
+	next   int                   // lookup: next ref; scan: next candidate
+	cands  []graphstate.EntityID // scan: index candidates, ascending
+	nextID uint64                // scan without an index: next ID of the range
+	lastID uint64                // scan without an index: last minted ID at the cut
+	match  *matcher
+	rows   []Entity // timeline: all rows; lookup: carry-over
+	off    int
 }
 
 type engineSnap struct {
@@ -416,8 +427,208 @@ func (s *engineSnap) close() error {
 	return nil
 }
 
-func (s *engineSnap) scan(context.Context, ScanRequest) (Page, error) {
-	return Page{}, fmt.Errorf("%w: Scan needs the label and equality index pages (WP-08)", ErrNotImplemented)
+// scan pages the entities matching r.Selector in ID order. Candidates come
+// from the equality index (first Equals) or the label index (first label);
+// without either it walks the minted ID range at the cut. The index lists
+// owners at the latest knowledge in any valid time, so every candidate is
+// rechecked per segment (labels, type and values at that position). A Known
+// bound other than All stays refused (requireKnownAll) until WP-30.
+func (s *engineSnap) scan(ctx context.Context, r ScanRequest) (Page, error) {
+	if err := s.live(); err != nil {
+		return Page{}, err
+	}
+	if err := requireKnownAll(r.Selector); err != nil {
+		return Page{}, err
+	}
+	if r.Projection.Provenance || r.Projection.Revisions {
+		return Page{}, fmt.Errorf("%w: provenance and revisions projections are not implemented for Scan", ErrNotImplemented)
+	}
+	m, err := newMatcher(r.Selector)
+	if err != nil {
+		return Page{}, err
+	}
+	st := &pageState{kind: pageScan, sel: r.Selector, proj: r.Projection, match: m}
+	if m.none {
+		return Page{}, nil
+	}
+	rd, err := s.e.readerAt(ctx, s.index)
+	if err != nil {
+		return Page{}, err
+	}
+	err = rd.candidates(r.Selector, m, st)
+	rd.close()
+	if err != nil {
+		return Page{}, err
+	}
+	return s.fill(ctx, st, r.Paging)
+}
+
+// candidates fills st from one index, or with the minted ID range at the cut.
+func (r *reader) candidates(sel Selector, m *matcher, st *pageState) error {
+	page := func(read func(graphstate.Cursor) (graphstate.EntityPage, error)) ([]graphstate.EntityID, error) {
+		var out []graphstate.EntityID
+		var cur graphstate.Cursor
+		for guard := 0; guard < 1<<16; guard++ {
+			pg, err := read(cur)
+			if err != nil {
+				if errors.Is(err, graphstore.ErrResourceLimit) {
+					return nil, fmt.Errorf("%w: the scan's index candidates exceed one read budget (narrow the selector)", ErrInvalidRequest)
+				}
+				return nil, err
+			}
+			out = append(out, pg.Entities...)
+			if pg.Complete || pg.Next == 0 {
+				return out, nil
+			}
+			cur = pg.Next
+		}
+		return nil, ErrInvalidRequest
+	}
+	switch {
+	case len(m.eq) > 0:
+		owners := []graphstate.EntityKind{graphstate.Node, graphstate.Relationship}
+		if len(sel.Labels) > 0 {
+			owners = owners[:1]
+		} else if sel.RelType != "" {
+			owners = owners[1:]
+		}
+		for _, o := range owners {
+			ids, err := page(func(c graphstate.Cursor) (graphstate.EntityPage, error) {
+				return r.rv.EqualityMembers(r.ctx, graphstate.EqualityPredicate{Owner: o, Name: m.eq[0].name, Value: m.eq[0].value, Visibility: visibility(sel.View)}, c, pageBudget)
+			})
+			if err != nil {
+				return err
+			}
+			st.cands = append(st.cands, ids...)
+		}
+		slices.Sort(st.cands)
+		st.cands = slices.Compact(st.cands)
+	case len(sel.Labels) > 0:
+		ids, err := page(func(c graphstate.Cursor) (graphstate.EntityPage, error) {
+			return r.rv.LabelMembers(r.ctx, sel.Labels[0], c, pageBudget)
+		})
+		if err != nil {
+			return err
+		}
+		st.cands = ids
+	default:
+		row, found, err := r.view.Get(r.ctx, allocName, 4096)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return nil
+		}
+		a, err := decodeAllocState(row.Value)
+		if err != nil {
+			return err
+		}
+		lo, hi, err := a.minted()
+		if err != nil {
+			return err
+		}
+		st.nextID, st.lastID = lo, hi
+	}
+	return nil
+}
+
+// candidate returns the next candidate ref, or ok=false when none is left.
+// Index candidates count toward the false-candidate statistics.
+func (st *pageState) candidate(rd *reader) (Ref, bool, error) {
+	for {
+		var id graphstate.EntityID
+		switch {
+		case st.next < len(st.cands):
+			id = st.cands[st.next]
+			st.next++
+			rd.e.scanCandidates.Add(1)
+		case st.nextID != 0 && st.nextID <= st.lastID:
+			id = graphstate.EntityID(st.nextID)
+			st.nextID++
+		default:
+			return Ref{}, false, nil
+		}
+		rec, found, err := rd.record(id)
+		if err != nil {
+			return Ref{}, false, err
+		}
+		if !found {
+			continue
+		}
+		if rec.Kind == graphstate.Node {
+			ref, err := NodeRef(types.NodeID(id))
+			return ref, err == nil, err
+		}
+		ref, err := RelRef(types.RelID(id))
+		return ref, err == nil, err
+	}
+}
+
+// matcher is a Selector's row predicate: kind, type, every label and every
+// equality, rechecked at each segment's position.
+type matcher struct {
+	labels  []string
+	relType string
+	eq      []eqKey
+	none    bool // a predicate no value can satisfy (Null)
+}
+
+type eqKey struct {
+	name  string
+	value graphstate.Scalar
+	key   string
+}
+
+func newMatcher(sel Selector) (*matcher, error) {
+	m := &matcher{labels: sel.Labels, relType: sel.RelType}
+	for _, e := range sel.Equals {
+		sc, err := valueToScalar(e.Value)
+		if err != nil {
+			return nil, err
+		}
+		if sc.Kind() == graphstate.ScalarNull {
+			m.none = true
+			continue
+		}
+		k, err := sc.EqualityKey(graphstate.Limits{})
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidValue, err)
+		}
+		m.eq = append(m.eq, eqKey{e.Key, sc, k})
+	}
+	return m, nil
+}
+
+func (m *matcher) entity(rec graphstate.EntityRecord) bool {
+	switch {
+	case len(m.labels) > 0:
+		return rec.Kind == graphstate.Node
+	case m.relType != "":
+		return rec.Kind == graphstate.Relationship && rec.Type == m.relType
+	}
+	return true
+}
+
+func (m *matcher) state(pr graphstate.Projection) bool {
+	for _, l := range m.labels {
+		if !slices.Contains(pr.Labels, l) {
+			return false
+		}
+	}
+	for _, e := range m.eq {
+		hit := false
+		for _, pv := range pr.Properties {
+			if pv.Name != e.name {
+				continue
+			}
+			k, err := pv.Scalar.EqualityKey(graphstate.Limits{})
+			hit = hit || err == nil && k == e.key
+		}
+		if !hit {
+			return false
+		}
+	}
+	return true
 }
 
 // requireKnownAll: the Known filter by recorded evidence is a later WP; a scope other
@@ -505,12 +716,26 @@ func (s *engineSnap) live() error {
 
 func (s *engineSnap) fill(ctx context.Context, st *pageState, p PageLimits) (Page, error) {
 	var rd *reader
-	if st.kind == pageLookup {
-		var err error
-		if rd, err = s.e.readerAt(ctx, s.index); err != nil {
-			return Page{}, err
+	defer func() {
+		if rd != nil {
+			rd.close()
 		}
-		defer rd.close()
+	}()
+	reads := 0
+	// open (re)opens the reader: one view's source budget covers a bounded run
+	// of entities, so a long scan of false candidates rotates views.
+	open := func() error {
+		if rd != nil && reads < readsPerView {
+			return nil
+		}
+		if rd != nil {
+			rd.close()
+			rd = nil
+		}
+		var err error
+		rd, err = s.e.readerAt(ctx, s.index)
+		reads = 0
+		return err
 	}
 	var page Page
 	bytesUsed := 0
@@ -538,14 +763,43 @@ func (s *engineSnap) fill(ctx context.Context, st *pageState, p PageLimits) (Pag
 			st.off++
 		}
 		st.rows, st.off = nil, 0
-		if st.kind != pageLookup || st.next >= len(st.refs) {
+		if st.kind == pageTimeline || st.kind == pageLookup && st.next >= len(st.refs) {
 			return page, nil
 		}
-		rows, err := rd.rows(st.refs[st.next], st.sel, st.proj)
+		if err := open(); err != nil {
+			return Page{}, err
+		}
+		reads++
+		var ref Ref
+		if st.kind == pageLookup {
+			ref = st.refs[st.next]
+			st.next++
+		} else {
+			fromIndex := st.next < len(st.cands)
+			var ok bool
+			var err error
+			if ref, ok, err = st.candidate(rd); err != nil {
+				return Page{}, err
+			} else if !ok {
+				return page, nil
+			}
+			rows, err := rd.rows(ref, st.sel, st.proj, st.match)
+			if err != nil {
+				return Page{}, err
+			}
+			if fromIndex && len(rows) > 0 {
+				s.e.scanHits.Add(1)
+			}
+			st.rows = rows
+			if err := ctx.Err(); err != nil {
+				return Page{}, err
+			}
+			continue
+		}
+		rows, err := rd.rows(ref, st.sel, st.proj, nil)
 		if err != nil {
 			return Page{}, err
 		}
-		st.next++
 		st.rows = rows
 		if err := ctx.Err(); err != nil {
 			return Page{}, err
@@ -628,7 +882,7 @@ func (s *engineSnap) timelineRows(ctx context.Context, r TimelineRequest) ([]Ent
 		if err != nil {
 			return nil, err
 		}
-		rows, err := rd.rows(r.Ref, r.Selector, r.Projection)
+		rows, err := rd.rows(r.Ref, r.Selector, r.Projection, nil)
 		if err == nil {
 			var known temporal.Scope
 			if known, err = rd.knownOf(id, rev, r.Selector.Known); err == nil {
@@ -698,4 +952,16 @@ func (r *reader) knownOf(id graphstate.EntityID, rev uint64, all temporal.Scope)
 		return temporal.Point(lo)
 	}
 	return temporal.Span(lo.Axis(), mustBound(lo, true), mustBound(hi, true), l)
+}
+
+// scanCounts counts index candidates and the candidates that produced a row;
+// tests read it to report the false-candidate ratio.
+type scanCounts struct{ candidates, hits uint64 }
+
+func (a scanCounts) minus(b scanCounts) scanCounts {
+	return scanCounts{a.candidates - b.candidates, a.hits - b.hits}
+}
+
+func (e *pebbleEngine) scanStats() scanCounts {
+	return scanCounts{e.scanCandidates.Load(), e.scanHits.Load()}
 }
