@@ -36,7 +36,7 @@ func TestControlInventoryFirstContract(t *testing.T) {
 	}
 	check := func(page ApplicationControlPage) {
 		t.Helper()
-		if !page.Complete || page.After != nil || len(page.Records) != 2 || cap(page.Records) != 2 || page.Work != (ApplicationControlReadWork{Rows: 2, Bytes: 727}) {
+		if !page.Complete || page.After != nil || len(page.Records) != 2 || cap(page.Records) != 2 || page.Work != (ReadBudget{Rows: 2, Bytes: 727}) {
 			t.Fatalf("independent complete-page contract: %+v", page)
 		}
 		want := []ApplicationControlRecord{
@@ -96,7 +96,7 @@ func TestControlInventorySelectedBudgetsAndContinuation(t *testing.T) {
 			inventoryZero(t, page, err, ErrLimit)
 			continue
 		}
-		if err != nil || len(page.Records) != tc.records || page.Complete != tc.complete || page.Work != (ApplicationControlReadWork{Rows: 2, Bytes: tc.work}) {
+		if err != nil || len(page.Records) != tc.records || page.Complete != tc.complete || page.Work != (ReadBudget{Rows: 2, Bytes: tc.work}) {
 			t.Fatalf("budget%d: %+v %v", tc.bytes, page, err)
 		}
 		if tc.complete && page.After != nil || !tc.complete && (!bytes.Equal(page.After, []byte{'A', 0}) || cap(page.After) != 2) {
@@ -110,7 +110,7 @@ func TestControlInventorySelectedBudgetsAndContinuation(t *testing.T) {
 			inventoryZero(t, page, err, ErrLimit)
 			continue
 		}
-		if err != nil || !page.Complete || page.After != nil || len(page.Records) != 1 || !bytes.Equal(page.Records[0].Key, []byte("z")) || page.Records[0].Index != 3 || len(page.Records[0].Value) != 0 || page.Work != (ApplicationControlReadWork{Rows: 1, Bytes: 377}) {
+		if err != nil || !page.Complete || page.After != nil || len(page.Records) != 1 || !bytes.Equal(page.Records[0].Key, []byte("z")) || page.Records[0].Index != 3 || len(page.Records[0].Value) != 0 || page.Work != (ReadBudget{Rows: 1, Bytes: 377}) {
 			t.Fatal(page, err)
 		}
 		after[0] = 'X'
@@ -119,7 +119,7 @@ func TestControlInventorySelectedBudgetsAndContinuation(t *testing.T) {
 		}
 	}
 	page, err := v.ControlPage(t.Context(), []byte("z"), ReadBudget{Rows: 1, Bytes: 144})
-	if err != nil || !page.Complete || page.Records != nil || page.After != nil || page.Work != (ApplicationControlReadWork{Bytes: 144}) {
+	if err != nil || !page.Complete || page.Records != nil || page.After != nil || page.Work != (ReadBudget{Bytes: 144}) {
 		t.Fatal(page, err)
 	}
 	page, err = v.ControlPage(t.Context(), nil, ReadBudget{Rows: 1, Bytes: 4096})
@@ -138,7 +138,7 @@ func TestControlInventoryFutureAndHistoricalCensus(t *testing.T) {
 			inventoryZero(t, page, err, ErrLimit)
 			continue
 		}
-		if err != nil || page.Records != nil || page.Complete != tc.complete || page.Work != (ApplicationControlReadWork{Rows: 2, Bytes: tc.work}) {
+		if err != nil || page.Records != nil || page.Complete != tc.complete || page.Work != (ReadBudget{Rows: 2, Bytes: tc.work}) {
 			t.Fatal(tc, page, err)
 		}
 		if tc.complete && page.After != nil || !tc.complete && !bytes.Equal(page.After, []byte{'A', 0}) {
@@ -292,7 +292,7 @@ func TestControlInventoryStockCorruptionNeverReturnsPartial(t *testing.T) {
 			}
 			page, err := v.ControlPage(t.Context(), nil, ReadBudget{Rows: 2, Bytes: budget})
 			inventoryZero(t, page, err, ErrCorrupt)
-			if kind == "duplicate" && page.Work != (ApplicationControlReadWork{Rows: 2, Bytes: 448}) {
+			if kind == "duplicate" && page.Work != (ReadBudget{Rows: 2, Bytes: 448}) {
 				t.Fatal(page.Work)
 			}
 			if _, err := s.ApplicationUsage(); !errors.Is(err, ErrPoisoned) || !errors.Is(err, ErrCorrupt) {
@@ -321,7 +321,7 @@ func TestControlInventoryRetainsCandidateCursorThroughGrowth(t *testing.T) {
 		_, v := inventoryFixture(t)
 		page, err := v.ControlPage(t.Context(), nil, ReadBudget{Rows: 2, Bytes: 499})
 		inventoryZero(t, page, err, ErrLimit)
-		if page.Work != (ApplicationControlReadWork{Rows: 2, Bytes: 434}) {
+		if page.Work != (ReadBudget{Rows: 2, Bytes: 434}) {
 			t.Fatalf("premature first backing growth: Work%+v, want Rows2/Bytes434", page.Work)
 		}
 	})
@@ -338,7 +338,7 @@ func TestControlInventoryRetainsCandidateCursorThroughGrowth(t *testing.T) {
 		// Work1253 plus candidate cursor100 must refuse growth192. Keep
 		// earlier A only and copy final AfterA2 once: reported Work1255.
 		page, err := v.ControlPage(t.Context(), nil, ReadBudget{Rows: 3, Bytes: 1447})
-		if err != nil || page.Complete || page.Work != (ApplicationControlReadWork{Rows: 3, Bytes: 1255}) || len(page.Records) != 1 || cap(page.Records) != 1 || !bytes.Equal(page.After, []byte{'A', 0}) || cap(page.After) != 2 {
+		if err != nil || page.Complete || page.Work != (ReadBudget{Rows: 3, Bytes: 1255}) || len(page.Records) != 1 || cap(page.Records) != 1 || !bytes.Equal(page.After, []byte{'A', 0}) || cap(page.After) != 2 {
 			t.Fatalf("candidate cursor lost prior safe page: %+v %v", page, err)
 		}
 		row := page.Records[0]

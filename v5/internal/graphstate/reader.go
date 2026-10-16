@@ -3,6 +3,7 @@ package graphstate
 import (
 	"cmp"
 	"context"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"reflect"
 	"slices"
 	"strings"
@@ -444,7 +445,7 @@ func (e *engine) keys(p KeyPredicate) ([]ComponentKey, error) {
 		if err := e.check(); err != nil {
 			return nil, err
 		}
-		page, err := e.view.ComponentKeys(e.ctx, p, t.cursor, ReadBudget{e.limits.MaxRows - e.rows, e.limits.MaxReadBytes - e.readBytes})
+		page, err := e.view.ComponentKeys(e.ctx, p, t.cursor, raftlog.ReadBudget{Rows: e.limits.MaxRows - e.rows, Bytes: e.limits.MaxReadBytes - e.readBytes})
 		if err != nil {
 			return nil, err
 		}

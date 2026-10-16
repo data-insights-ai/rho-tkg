@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"slices"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -150,7 +151,7 @@ func (q *pageReader) presenceAt(id graphstate.EntityID, at temporal.Position) (g
 // Pages contain a bounded local batch or advance empty after residual filtering;
 // their row/byte budget bounds output, with source bounded by GraphLimits.
 // Type and opposite-endpoint masks remain charged residuals, not index columns.
-func (v *ReadView) IncidentAt(ctx context.Context, query IncidentAtQuery, token graphstate.Cursor, budget graphstate.ReadBudget) (IncidentAtPage, error) {
+func (v *ReadView) IncidentAt(ctx context.Context, query IncidentAtQuery, token graphstate.Cursor, budget raftlog.ReadBudget) (IncidentAtPage, error) {
 	if v == nil {
 		return IncidentAtPage{}, ErrInvalid
 	}
@@ -165,7 +166,7 @@ func (v *ReadView) IncidentAt(ctx context.Context, query IncidentAtQuery, token 
 	if query.Endpoint == 0 || query.Visible != graphstate.Declared && query.Visible != graphstate.Effective || query.Mode != 0 && query.Mode != graphstate.LifeBound && query.Mode != graphstate.IdentityReference || query.Direction == 0 || query.Direction & ^IncidentBoth != 0 || query.Type != "" && !validName(query.Type, v.c.limits) || budget.Rows < 1 || budget.Bytes < fullPageOutputBytes {
 		return IncidentAtPage{}, ErrInvalid
 	}
-	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return IncidentAtPage{}, err
 	}
@@ -237,7 +238,7 @@ func (v *ReadView) IncidentAt(ctx context.Context, query IncidentAtQuery, token 
 			return IncidentAtPage{}, e
 		}
 		state.iterator = it
-		q, err = v.begin(ctx, graphstate.ReadBudget{})
+		q, err = v.begin(ctx, raftlog.ReadBudget{})
 		if err != nil {
 			_ = it.close()
 			return IncidentAtPage{}, err
@@ -282,7 +283,7 @@ func (v *ReadView) IncidentAt(ctx context.Context, query IncidentAtQuery, token 
 		// A native row is private scratch until its residuals succeed. Reuse
 		// the bounded one-row witness rather than retaining per-fact metadata.
 		it.outputBytes = 0
-		page, attemptErr := it.next(ctx, it.cursor, graphstate.ReadBudget{Rows: 1, Bytes: 4096})
+		page, attemptErr := it.next(ctx, it.cursor, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
 		v.currentWork = it.op.counters
 		include := false
 		var candidate currentPresenceCandidate

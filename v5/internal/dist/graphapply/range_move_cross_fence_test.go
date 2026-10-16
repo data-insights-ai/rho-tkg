@@ -53,7 +53,7 @@ func rangeMoveCrossFenceCells(t *testing.T, n *allocationTestNetwork, member int
 	var result [][]byte
 	for _, owner := range []graphstate.EntityID{1, 17} {
 		for _, key := range []graphstate.ComponentKey{{Owner: owner, Kind: graphstate.Presence}, {Owner: owner, Life: graphstate.LifeID(owner + 1), Kind: graphstate.Label, Name: label}} {
-			page, err := view.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: window}, 0, graphstate.ReadBudget{Rows: 64, Bytes: 64 << 10})
+			page, err := view.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: window}, 0, raftlog.ReadBudget{Rows: 64, Bytes: 64 << 10})
 			if err != nil || !page.Complete || page.Next != 0 {
 				t.Fatal("complete genuine cell state", err)
 			}

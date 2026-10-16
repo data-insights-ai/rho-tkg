@@ -165,7 +165,7 @@ func TestControlDuplicateKeyChargesSecondObservedKeyBeforeClassification(t *test
 				if !errors.Is(err, ErrLimit) || errors.Is(err, ErrCorrupt) || s.poison != nil || closeErr != nil || work.Bytes > budget || work.Rows > 2 {
 					t.Fatal("unbudgeted corruption examination", work, err, closeErr)
 				}
-			} else if !errors.Is(err, ErrCorrupt) || work != (ApplicationControlReadWork{2, 369}) || !errors.Is(closeErr, ErrPoisoned) || !errors.Is(closeErr, ErrCorrupt) {
+			} else if !errors.Is(err, ErrCorrupt) || work != (ReadBudget{2, 369}) || !errors.Is(closeErr, ErrPoisoned) || !errors.Is(closeErr, ErrCorrupt) {
 				t.Fatal("second examined key was not fully charged", work, err, closeErr)
 			}
 		})
@@ -179,18 +179,18 @@ func TestControlLargeKeyQuotaRefusalPrecedesPrefixAllocation(t *testing.T) {
 	// Every zero escapes to two bytes: physical key 1+2048+2+8=2059.
 	// Fixed admission is128+4*2059=8364, without any stored rows.
 	row, found, work, err := v.GetControl(t.Context(), key, ReadBudget{2, 8363})
-	if !errors.Is(err, ErrLimit) || found || row.Key != nil || row.Value != nil || row.Index != 0 || work != (ApplicationControlReadWork{}) || s.poison != nil {
+	if !errors.Is(err, ErrLimit) || found || row.Key != nil || row.Value != nil || row.Index != 0 || work != (ReadBudget{}) || s.poison != nil {
 		t.Fatal("one-short caller refusal", row, found, work, err)
 	}
 	ctx := t.Context()
 	allocations := testing.AllocsPerRun(3, func() {
 		row, found, work, err = v.GetControl(ctx, key, ReadBudget{2, 8363})
 	})
-	if allocations != 0 || !errors.Is(err, ErrLimit) || found || row.Key != nil || row.Value != nil || work != (ApplicationControlReadWork{}) || s.poison != nil {
+	if allocations != 0 || !errors.Is(err, ErrLimit) || found || row.Key != nil || row.Value != nil || work != (ReadBudget{}) || s.poison != nil {
 		t.Fatal("quota refusal allocated physical-prefix state", allocations, work, err)
 	}
 	row, found, work, err = v.GetControl(ctx, key, ReadBudget{2, 8364})
-	if err != nil || found || row.Key != nil || row.Value != nil || work != (ApplicationControlReadWork{0, 8364}) || s.poison != nil {
+	if err != nil || found || row.Key != nil || row.Value != nil || work != (ReadBudget{0, 8364}) || s.poison != nil {
 		t.Fatal("exact-fit bounded absence", row, found, work, err)
 	}
 }
@@ -286,7 +286,7 @@ func TestControlPublicReadAndUsageNilDisabledClosedErrors(t *testing.T) {
 		{t.Context(), make([]byte, 1025), ErrLimit},
 	} {
 		row, found, work, err := v.GetControl(tc.ctx, tc.key, ReadBudget{2, 4096})
-		if !errors.Is(err, tc.want) || found || row.Key != nil || row.Value != nil || work != (ApplicationControlReadWork{}) || s.poison != nil {
+		if !errors.Is(err, tc.want) || found || row.Key != nil || row.Value != nil || work != (ReadBudget{}) || s.poison != nil {
 			t.Fatal(row, found, work, err)
 		}
 	}
@@ -307,7 +307,7 @@ func TestControlPublicReadAndUsageNilDisabledClosedErrors(t *testing.T) {
 		t.Fatal(out, err)
 	}
 	row, found, work, err := viewApplication(t, legacy, 1).GetControl(t.Context(), []byte("r"), ReadBudget{2, 4096})
-	if !errors.Is(err, ErrInvalid) || found || row.Key != nil || row.Value != nil || work != (ApplicationControlReadWork{}) {
+	if !errors.Is(err, ErrInvalid) || found || row.Key != nil || row.Value != nil || work != (ReadBudget{}) {
 		t.Fatal(row, found, work, err)
 	}
 }

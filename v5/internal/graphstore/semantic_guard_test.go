@@ -467,15 +467,15 @@ func TestGuardedStageNegativePredicatesRetainExactHistoricalAbsence(t *testing.T
 		if err != nil || entity.Found {
 			t.Fatal(entity, err)
 		}
-		keys, err := view.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+		keys, err := view.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 		if err != nil || !keys.Complete || keys.Next != 0 || len(keys.Keys) != 0 {
 			t.Fatal(keys, err)
 		}
-		claims, err := view.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(7), Window: window}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+		claims, err := view.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(7), Window: window}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 		if err != nil || !claims.Complete || claims.Next != 0 || len(claims.Claims) != 0 {
 			t.Fatal(claims, err)
 		}
-		edges, err := view.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: 1, Life: 11, Window: window}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+		edges, err := view.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: 1, Life: 11, Window: window}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 		if err != nil || !edges.Complete || edges.Next != 0 || len(edges.Entities) != 0 {
 			t.Fatal(edges, err)
 		}
@@ -487,15 +487,15 @@ func TestGuardedStageNegativePredicatesRetainExactHistoricalAbsence(t *testing.T
 	current := f.view(t, f.index)
 	defer current.Close()
 	defer current.c.view.Close()
-	keys, err := current.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	keys, err := current.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || !keys.Complete || len(keys.Keys) != 2 {
 		t.Fatal(keys, err)
 	}
-	claims, err := current.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(7), Window: window}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	claims, err := current.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: fullSchemas()[0], Value: graphstate.I64(7), Window: window}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || !claims.Complete || len(claims.Claims) != 1 || claims.Claims[0].Owner != 1 {
 		t.Fatal(claims, err)
 	}
-	edges, err := current.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: 1, Life: 11, Window: window}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	edges, err := current.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: 1, Life: 11, Window: window}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || !edges.Complete || !reflect.DeepEqual(edges.Entities, []graphstate.EntityID{3}) {
 		t.Fatal(edges, err)
 	}

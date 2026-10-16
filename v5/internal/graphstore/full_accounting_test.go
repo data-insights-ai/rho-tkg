@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -165,7 +166,7 @@ func TestGuardExactComponentOutputBudgetPreservesInputs(t *testing.T) {
 	}
 	before := base.bytes
 	q := pageReader{q: base, limits: f.limits}
-	got, owned, err := q.exactComponentOutput(patch.State, w, graphstate.ReadBudget{Rows: 2, Bytes: 1 << 20})
+	got, owned, err := q.exactComponentOutput(patch.State, w, raftlog.ReadBudget{Rows: 2, Bytes: 1 << 20})
 	if !errors.Is(err, graphstate.ErrResourceLimit) || !reflect.DeepEqual(got, state.State{}) || !reflect.DeepEqual(owned, temporal.Scope{}) || base.bytes != before {
 		t.Fatal("shared budget refusal returned partial component", got, owned, err)
 	}
@@ -174,7 +175,7 @@ func TestGuardExactComponentOutputBudgetPreservesInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	q.q = base
-	got, owned, err = q.exactComponentOutput(patch.State, w, graphstate.ReadBudget{Rows: 2, Bytes: 1 << 20})
+	got, owned, err = q.exactComponentOutput(patch.State, w, raftlog.ReadBudget{Rows: 2, Bytes: 1 << 20})
 	if err != nil {
 		t.Fatal("funded component refused", err)
 	}

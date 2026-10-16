@@ -235,7 +235,7 @@ func testCrossPartitionPreparedSnapshot(t *testing.T, certified bool) {
 			owner graphstate.EntityID
 			life  graphstate.LifeID
 		}{{1, 2}, {17, 18}} {
-			page, err := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: endpoint.owner, Life: endpoint.life, Window: ops[0].Scope}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+			page, err := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: endpoint.owner, Life: endpoint.life, Window: ops[0].Scope}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 			if err != nil || len(page.Entities) != 1 || page.Entities[0] != 3 {
 				t.Fatal("snapshot/reopen lost complete endpoint effects", endpoint, page, err)
 			}

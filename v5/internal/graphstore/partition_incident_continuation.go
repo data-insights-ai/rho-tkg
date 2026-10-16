@@ -2,6 +2,7 @@ package graphstore
 
 import (
 	"context"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 )
@@ -73,7 +74,7 @@ func (v *PartitionTransactionView) ImportIncidentContinuation(ctx context.Contex
 
 // IncidentRelationshipsChunk separates output page size from ordinary source
 // work caps without adding a new candidate algorithm or remote RPC.
-func (v *PartitionTransactionView) IncidentRelationshipsChunk(ctx context.Context, p graphstate.IncidentPredicate, token graphstate.Cursor, budget graphstate.ReadBudget, rows int) (graphstate.EntityPage, error) {
+func (v *PartitionTransactionView) IncidentRelationshipsChunk(ctx context.Context, p graphstate.IncidentPredicate, token graphstate.Cursor, budget raftlog.ReadBudget, rows int) (graphstate.EntityPage, error) {
 	if v == nil {
 		return graphstate.EntityPage{}, ErrInvalid
 	}

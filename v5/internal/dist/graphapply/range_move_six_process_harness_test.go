@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"testing"
 	"time"
 
@@ -237,7 +238,7 @@ func graphE17NativeFact(ctx context.Context, h *allocationHost, v graphstate.Rea
 		keys = append(keys, graphstate.ComponentKey{Owner: graphstate.EntityID(id), Life: life.Record.Life, Kind: graphstate.ScalarProperty, Name: "p"})
 	}
 	for i, key := range keys {
-		page, e := v.ComponentPage(ctx, graphstate.ComponentQuery{Key: key, Window: window}, 0, graphstate.ReadBudget{Rows: 64, Bytes: 64 << 10})
+		page, e := v.ComponentPage(ctx, graphstate.ComponentQuery{Key: key, Window: window}, 0, raftlog.ReadBudget{Rows: 64, Bytes: 64 << 10})
 		if e != nil || !page.Complete || page.Next != 0 {
 			return f, errors.Join(errLimit, e)
 		}

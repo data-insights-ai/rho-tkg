@@ -2,6 +2,7 @@ package graphstate
 
 import (
 	"cmp"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"slices"
 
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
@@ -134,7 +135,7 @@ func (e *engine) incident(p IncidentPredicate) ([]EntityID, error) {
 		if err := e.check(); err != nil {
 			return nil, err
 		}
-		page, err := e.view.IncidentRelationships(e.ctx, p, t.cursor, ReadBudget{e.limits.MaxRows - e.rows, e.limits.MaxReadBytes - e.readBytes})
+		page, err := e.view.IncidentRelationships(e.ctx, p, t.cursor, raftlog.ReadBudget{Rows: e.limits.MaxRows - e.rows, Bytes: e.limits.MaxReadBytes - e.readBytes})
 		if err != nil {
 			return nil, err
 		}
@@ -197,7 +198,7 @@ func (e *engine) candidates(p UniquePredicate) ([]UniqueClaim, error) {
 		if err := e.check(); err != nil {
 			return nil, err
 		}
-		page, err := e.view.UniqueCandidates(e.ctx, p, t.cursor, ReadBudget{e.limits.MaxRows - e.rows, e.limits.MaxReadBytes - e.readBytes})
+		page, err := e.view.UniqueCandidates(e.ctx, p, t.cursor, raftlog.ReadBudget{Rows: e.limits.MaxRows - e.rows, Bytes: e.limits.MaxReadBytes - e.readBytes})
 		if err != nil {
 			return nil, err
 		}

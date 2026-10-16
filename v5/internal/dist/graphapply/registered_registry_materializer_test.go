@@ -818,7 +818,7 @@ func TestRegisteredRegistryLogicalFixedPhases(t *testing.T) {
 		Limit           int
 		Returned, Local raftlog.ApplicationControlRecord
 		Found           bool
-		Work            raftlog.ApplicationControlReadWork
+		Work            raftlog.ReadBudget
 		Err             error
 	}
 	type historyCaller struct {

@@ -309,7 +309,7 @@ func TestOpenedSharedReadViewComponentPageRefusesBeforeWideFingerprintAndProvide
 	var result graphstate.ComponentPage
 	var refused error
 	allocations := testing.AllocsPerRun(20, func() {
-		result, refused = v.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+		result, refused = v.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	})
 	if !errors.Is(refused, ErrResourceLimit) || !reflect.DeepEqual(result, graphstate.ComponentPage{}) || allocations > 4 || v.Work().Records != before.Records || len(v.pages.cursors) != 0 || len(v.cursors) != 0 {
 		t.Fatalf("opened reader bypassed parent before fingerprint/provider: allocations%.0f work%+v->%+v page%+v %v", allocations, before, v.Work(), result, refused)
@@ -331,7 +331,7 @@ func TestOpenedSharedReadViewComponentPageRefusesBeforeWideFingerprintAndProvide
 		t.Fatal(err)
 	}
 	bridgeBefore := bridge.Work()
-	page, err := bridge.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	page, err := bridge.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if !errors.Is(err, ErrResourceLimit) || !reflect.DeepEqual(page, graphstate.ComponentPage{}) || bridge.Work().Records != bridgeBefore.Records+1 || bridgeParent.Remaining() != 63 || len(bridge.pages.cursors) != 0 {
 		t.Fatal("provider reader escaped shared bridge allowance", bridge.Work(), bridgeBefore, bridgeParent.Remaining(), err)
 	}
@@ -341,7 +341,7 @@ func TestOpenedSharedReadViewComponentPageRefusesBeforeWideFingerprintAndProvide
 		t.Fatal(err)
 	}
 	defer positive.Close()
-	page, err = positive.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	page, err = positive.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || !page.Complete || page.Next != 0 || page.Data.Usage().Pieces() != 1 || positive.Work().Records <= 5 {
 		t.Fatal("fitting stored wide component", page, err)
 	}
@@ -543,7 +543,7 @@ func TestPartitionIdentityCorruptCurrentAuthorityNeverMasksRetainedCanonicalValu
 					if err != nil || !got.Found || got.ID != 3 {
 						t.Fatal("current authority corruption changed retained value", got, err)
 					}
-					q, err := v.begin(t.Context(), graphstate.ReadBudget{})
+					q, err := v.begin(t.Context(), raftlog.ReadBudget{})
 					if err != nil {
 						t.Fatal(err)
 					}

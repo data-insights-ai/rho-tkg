@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"io"
 	"os"
 	"path/filepath"
@@ -372,7 +373,7 @@ func nativeGraphCostIndexObserve(ctx context.Context, sessions *graphProcessCert
 		if e != nil {
 			return nil, e
 		}
-		actual, e := view.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: graphstate.EntityID(request.entity), Life: graphstate.LifeID(arg), Window: window}, graphstate.Cursor(cursor), graphstate.ReadBudget{Rows: 16, Bytes: 64 << 10})
+		actual, e := view.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: graphstate.EntityID(request.entity), Life: graphstate.LifeID(arg), Window: window}, graphstate.Cursor(cursor), raftlog.ReadBudget{Rows: 16, Bytes: 64 << 10})
 		if e != nil {
 			return nil, e
 		}

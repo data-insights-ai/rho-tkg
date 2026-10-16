@@ -111,7 +111,7 @@ func TestPersistedComponentCellsRejectBindingViolations(t *testing.T) {
 					}
 					w := installBindingPage(t, f, key, f.axis, value, layout, false)
 					p := f.reader(t, f.index, f.limits)
-					page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: w}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+					page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: w}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 					if !errors.Is(err, ErrCorrupt) || page.View != (graphstate.ViewID{}) || page.Data.Usage().Pieces() != 0 || page.Next != 0 {
 						t.Fatalf("persisted invalid cell returned: view=%x pieces=%d next=%d err=%v", page.View, page.Data.Usage().Pieces(), page.Next, err)
 					}
@@ -192,7 +192,7 @@ func TestPersistedComponentAddressabilityAlsoGovernsEmptyAndRetractedPages(t *te
 					}
 					w := installBindingPage(t, f, key, axis, value, layout, layout == "retracted")
 					p := f.reader(t, f.index, f.limits)
-					page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: w}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+					page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: w}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 					if !errors.Is(err, ErrCorrupt) || errors.Is(err, ErrInvalid) || page.View != (graphstate.ViewID{}) {
 						t.Fatalf("stored invalid address returned: view=%x err=%v", page.View, err)
 					}
@@ -293,7 +293,7 @@ func TestStoredBindingOperationalRefusalsDoNotBecomeCorruption(t *testing.T) {
 	f.commit(t, pagePatch(t, f.key, emptyPageState(t, f.axis), w, presentLife(t), 1, false))
 	for _, limits := range []PageLimits{{MaxWorkRecords: 3}, {MaxCheckpointBytes: 1024, MaxWorkBytes: 1152}} {
 		p := f.reader(t, f.index, limits)
-		page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: w}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+		page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: w}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 		if !errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrCorrupt) || page.View != (graphstate.ViewID{}) {
 			t.Fatal("bounded validation refusal changed identity", err)
 		}
@@ -303,7 +303,7 @@ func TestStoredBindingOperationalRefusalsDoNotBecomeCorruption(t *testing.T) {
 	}
 	p := f.reader(t, f.index, f.limits)
 	ctx := &cancelBindingContext{Context: t.Context(), err: context.Canceled}
-	if _, err := p.ComponentPage(ctx, graphstate.ComponentQuery{Key: f.key, Window: w}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, context.Canceled) || errors.Is(err, ErrCorrupt) {
+	if _, err := p.ComponentPage(ctx, graphstate.ComponentQuery{Key: f.key, Window: w}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, context.Canceled) || errors.Is(err, ErrCorrupt) {
 		t.Fatal("canceled nested binding read changed identity", err)
 	}
 	assertStoredBindingCallChain(t, ctx)
@@ -313,7 +313,7 @@ func TestStoredBindingOperationalRefusalsDoNotBecomeCorruption(t *testing.T) {
 	closed := f.reader(t, f.index, f.limits)
 	var closeErr error
 	ctx = &cancelBindingContext{Context: t.Context(), before: func() { closeErr = closed.c.view.Close() }}
-	if _, err := closed.ComponentPage(ctx, graphstate.ComponentQuery{Key: f.key, Window: w}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); closeErr != nil || !errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrCorrupt) {
+	if _, err := closed.ComponentPage(ctx, graphstate.ComponentQuery{Key: f.key, Window: w}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); closeErr != nil || !errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrCorrupt) {
 		t.Fatal("closed borrowed view inside binding changed error identity", closeErr, err)
 	}
 	assertStoredBindingCallChain(t, ctx)
@@ -336,7 +336,7 @@ func TestStoredReferenceReuseDoesNotIgnoreChangedPayloadBytes(t *testing.T) {
 	value, _ := state.NewValueRef(99, 9)
 	w := installBindingPage(t, f, key, f.axis, value, "checkpoint-alias-payload", false)
 	p := f.reader(t, f.index, f.limits)
-	page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: w}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+	page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: w}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 	if !errors.Is(err, ErrCorrupt) || page.View != (graphstate.ViewID{}) {
 		t.Fatal("ID-only reference cache accepted a different payload ledger", err)
 	}

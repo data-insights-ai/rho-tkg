@@ -146,16 +146,16 @@ func TestPartitionTransactionViewDirectInputBudgetAndLifetimeRefusals(t *testing
 		t.Fatal("nil fixed accessor")
 	}
 	for _, call := range []func() error{func() error { _, err := nilView.Entity(t.Context(), 1); return err }, func() error { _, err := nilView.Life(t.Context(), 1, 1); return err }, func() error { _, err := nilView.Property(t.Context(), graphstate.Node, "p"); return err }, func() error { _, err := nilView.Value(t.Context(), 1); return err }, func() error { _, err := nilView.ValueIdentity(t.Context(), graphstate.I64(1)); return err }, func() error {
-		_, err := nilView.ComponentPage(t.Context(), graphstate.ComponentQuery{}, 0, graphstate.ReadBudget{})
+		_, err := nilView.ComponentPage(t.Context(), graphstate.ComponentQuery{}, 0, raftlog.ReadBudget{})
 		return err
 	}, func() error {
-		_, err := nilView.ComponentKeys(t.Context(), graphstate.KeyPredicate{}, 0, graphstate.ReadBudget{})
+		_, err := nilView.ComponentKeys(t.Context(), graphstate.KeyPredicate{}, 0, raftlog.ReadBudget{})
 		return err
 	}, func() error {
-		_, err := nilView.UniqueCandidates(t.Context(), graphstate.UniquePredicate{}, 0, graphstate.ReadBudget{})
+		_, err := nilView.UniqueCandidates(t.Context(), graphstate.UniquePredicate{}, 0, raftlog.ReadBudget{})
 		return err
 	}, func() error {
-		_, err := nilView.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{}, 0, graphstate.ReadBudget{})
+		_, err := nilView.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{}, 0, raftlog.ReadBudget{})
 		return err
 	}} {
 		if err := call(); !errors.Is(err, ErrInvalid) {
@@ -192,16 +192,16 @@ func TestPartitionTransactionViewDirectInputBudgetAndLifetimeRefusals(t *testing
 		t.Fatal(err)
 	}
 	for _, call := range []func() error{func() error { _, err := v.Entity(t.Context(), 1); return err }, func() error { _, err := v.Life(t.Context(), 1, 1); return err }, func() error { _, err := v.Property(t.Context(), graphstate.Node, "p"); return err }, func() error { _, err := v.Value(t.Context(), 1); return err }, func() error { _, err := v.ValueIdentity(t.Context(), graphstate.I64(1)); return err }, func() error {
-		_, err := v.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 1, Kind: graphstate.Presence}, Window: all}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		_, err := v.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: graphstate.ComponentKey{Owner: 1, Kind: graphstate.Presence}, Window: all}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		return err
 	}, func() error {
-		_, err := v.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		_, err := v.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 1}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		return err
 	}, func() error {
-		_, err := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		_, err := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		return err
 	}, func() error {
-		_, err := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: 1, Window: all}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		_, err := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: 1, Window: all}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		return err
 	}} {
 		if err := call(); !errors.Is(err, ErrClosed) {

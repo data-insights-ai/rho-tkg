@@ -33,7 +33,7 @@ type incidentPilotMetric struct {
 	Refusal                     string
 	CatalogLimits               Limits
 	GraphLimits                 GraphLimits
-	CallerBudget                graphstate.ReadBudget
+	CallerBudget                raftlog.ReadBudget
 }
 
 func pilotFixture(t *testing.T, n int, masked bool) *currentIncidentFixture {
@@ -126,7 +126,7 @@ func pilotCurrentAt(t *testing.T, f *currentIncidentFixture, index uint64, at te
 	}
 	defer v.Close()
 	out.GraphLimits = pilotBudgetDescriptor(t, v.limits)
-	out.CallerBudget = graphstate.ReadBudget{Rows: 32, Bytes: 64 << 10}
+	out.CallerBudget = raftlog.ReadBudget{Rows: 32, Bytes: 64 << 10}
 	defer func() {
 		out.ElapsedNS = time.Since(started).Nanoseconds()
 		runtime.ReadMemStats(&after)
@@ -172,7 +172,7 @@ func pilotBaseline(t *testing.T, f *currentIncidentFixture, ended func(graphstat
 	}
 	defer v.Close()
 	out.GraphLimits = pilotBudgetDescriptor(t, v.limits)
-	out.CallerBudget = graphstate.ReadBudget{Rows: 256, Bytes: 4 << 20}
+	out.CallerBudget = raftlog.ReadBudget{Rows: 256, Bytes: 4 << 20}
 	p := &currentIncidentProbe{ReadView: v, Ended: ended}
 	query := currentIncidentQuery{Endpoint: 1, Life: 11, At: f.position(t, 75), Type: "R", Visible: graphstate.Effective}
 	ids, complete, err := currentIncidentObserve(t.Context(), p, query)
@@ -300,7 +300,7 @@ type pilotDiagnosticReader struct {
 	t *testing.T
 }
 
-func (p *pilotDiagnosticReader) IncidentRelationships(ctx context.Context, query graphstate.IncidentPredicate, cursor graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.EntityPage, error) {
+func (p *pilotDiagnosticReader) IncidentRelationships(ctx context.Context, query graphstate.IncidentPredicate, cursor graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.EntityPage, error) {
 	before := p.Work()
 	page, err := p.ReadView.IncidentRelationships(ctx, query, cursor, budget)
 	if err != nil {
@@ -308,7 +308,7 @@ func (p *pilotDiagnosticReader) IncidentRelationships(ctx context.Context, query
 	}
 	return page, err
 }
-func (p *pilotDiagnosticReader) ComponentKeys(ctx context.Context, query graphstate.KeyPredicate, cursor graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.KeyPage, error) {
+func (p *pilotDiagnosticReader) ComponentKeys(ctx context.Context, query graphstate.KeyPredicate, cursor graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.KeyPage, error) {
 	before := p.Work()
 	page, err := p.ReadView.ComponentKeys(ctx, query, cursor, budget)
 	if err != nil {
@@ -316,7 +316,7 @@ func (p *pilotDiagnosticReader) ComponentKeys(ctx context.Context, query graphst
 	}
 	return page, err
 }
-func (p *pilotDiagnosticReader) ComponentPage(ctx context.Context, query graphstate.ComponentQuery, cursor graphstate.Cursor, budget graphstate.ReadBudget) (graphstate.ComponentPage, error) {
+func (p *pilotDiagnosticReader) ComponentPage(ctx context.Context, query graphstate.ComponentQuery, cursor graphstate.Cursor, budget raftlog.ReadBudget) (graphstate.ComponentPage, error) {
 	before := p.Work()
 	page, err := p.ReadView.ComponentPage(ctx, query, cursor, budget)
 	if err != nil {

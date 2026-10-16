@@ -3,6 +3,7 @@ package graphapply
 import (
 	"context"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"slices"
 	"sync"
 	"testing"
@@ -206,7 +207,7 @@ func assertCertifiedProjection(t *testing.T, v graphstate.ReadView, id graphstat
 }
 func assertCertifiedIncident(t *testing.T, v graphstate.ReadView, scope temporal.Scope, owner graphstate.EntityID, life graphstate.LifeID, want []graphstate.EntityID) {
 	t.Helper()
-	p, e := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: owner, Life: life, Window: scope}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+	p, e := v.IncidentRelationships(t.Context(), graphstate.IncidentPredicate{Endpoint: owner, Life: life, Window: scope}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 	if e != nil || !p.Complete || !slices.Equal(p.Entities, want) {
 		t.Fatal("exact endpoint postings", owner, p, e)
 	}
@@ -570,7 +571,7 @@ func TestCertifiedGraphAfterLocalReceiptIncludesActualMappedMutation(t *testing.
 func assertCertifiedClaim(t *testing.T, v graphstate.ReadView, window temporal.Scope, value int64, want []graphstate.EntityID) {
 	t.Helper()
 	definition := partitionWriteSchemas()[1]
-	p, e := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: definition, Value: graphstate.I64(value), Window: window}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+	p, e := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: definition, Value: graphstate.I64(value), Window: window}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 	if e != nil || !p.Complete {
 		t.Fatal(p, e)
 	}
@@ -643,13 +644,13 @@ func TestCertifiedGraphE18OldCorrectionIndexAndEndpointLivesRemainExact(t *testi
 // the same retained cut rather than borrowing current component state.
 func assertCertifiedEffectiveClaim(t *testing.T, v graphstate.ReadView, window temporal.Scope, value int64, want []graphstate.EntityID) {
 	t.Helper()
-	p, e := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: partitionWriteSchemas()[1], Value: graphstate.I64(value), Window: window}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+	p, e := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: partitionWriteSchemas()[1], Value: graphstate.I64(value), Window: window}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 	if e != nil || !p.Complete {
 		t.Fatal(p, e)
 	}
 	var ids []graphstate.EntityID
 	for _, claim := range p.Claims {
-		page, e := v.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: claim.Key, Window: window}, 0, graphstate.ReadBudget{Rows: 100, Bytes: 1 << 20})
+		page, e := v.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: claim.Key, Window: window}, 0, raftlog.ReadBudget{Rows: 100, Bytes: 1 << 20})
 		if e != nil || !page.Complete {
 			t.Fatal(page, e)
 		}

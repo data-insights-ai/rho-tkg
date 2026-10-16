@@ -1836,7 +1836,7 @@ func certifiedProcessObservation(ctx context.Context, h *allocationHost, id uint
 			if e != nil {
 				return observation, e
 			}
-			page, e := v.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: graphstate.EntityID(id), Life: p.Life, Window: scope}, 0, graphstate.ReadBudget{Rows: 16, Bytes: 64 << 10})
+			page, e := v.IncidentRelationships(ctx, graphstate.IncidentPredicate{Endpoint: graphstate.EntityID(id), Life: p.Life, Window: scope}, 0, raftlog.ReadBudget{Rows: 16, Bytes: 64 << 10})
 			if e != nil {
 				return observation, e
 			}

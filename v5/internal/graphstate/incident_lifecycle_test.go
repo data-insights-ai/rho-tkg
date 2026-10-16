@@ -3,6 +3,7 @@ package graphstate
 import (
 	"context"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"reflect"
 	"testing"
 
@@ -131,7 +132,7 @@ type incidentFaultView struct {
 	failure error
 }
 
-func (v incidentFaultView) IncidentRelationships(_ context.Context, _ IncidentPredicate, _ Cursor, _ ReadBudget) (EntityPage, error) {
+func (v incidentFaultView) IncidentRelationships(_ context.Context, _ IncidentPredicate, _ Cursor, _ raftlog.ReadBudget) (EntityPage, error) {
 	return EntityPage{View: v.Identity(), Version: 1, Entities: []EntityID{3}, Complete: true}, nil
 }
 

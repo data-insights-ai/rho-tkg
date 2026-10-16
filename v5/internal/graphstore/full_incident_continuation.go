@@ -3,6 +3,7 @@ package graphstore
 import (
 	"context"
 	"crypto/sha256"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
@@ -43,7 +44,7 @@ func (v *ReadView) ExportIncidentContinuation(ctx context.Context, p graphstate.
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return IncidentContinuation{}, err
 	}
@@ -73,7 +74,7 @@ func (v *ReadView) ImportIncidentContinuation(ctx context.Context, p graphstate.
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
 	if err != nil {
 		return 0, err
 	}

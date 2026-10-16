@@ -13,7 +13,7 @@ type ApplicationControlPage struct {
 	Records  []ApplicationControlRecord
 	After    []byte
 	Complete bool
-	Work     ApplicationControlReadWork
+	Work     ReadBudget
 }
 
 // These intrusive owners are bounded by MaxViews. Identity is checked at
@@ -81,7 +81,7 @@ func (v *ApplicationView) ControlInventoryUsage(ctx context.Context) (Applicatio
 
 type controlPageBudget struct {
 	limit                                ReadBudget
-	work                                 ApplicationControlReadWork
+	work                                 ReadBudget
 	initial, currentScratch, nextScratch int
 	owned, pending, cursor               int
 }

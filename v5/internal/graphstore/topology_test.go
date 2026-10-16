@@ -465,7 +465,7 @@ func TestSinglePartitionHistoricalRootAndReadAccounting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	budget := graphstate.ReadBudget{Rows: 1, Bytes: 2*singlePartitionRootBytes + len(queryBytes) - 1}
+	budget := raftlog.ReadBudget{Rows: 1, Bytes: 2*singlePartitionRootBytes + len(queryBytes) - 1}
 	if _, err := current.Associations(t.Context(), query, nil, budget, AssociationLimits{}); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal(err)
 	}

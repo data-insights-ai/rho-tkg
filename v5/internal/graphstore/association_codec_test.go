@@ -214,7 +214,7 @@ func TestAssociationScansClampActualCustomApplicationPolicy(t *testing.T) {
 	_, index := commitStage(t, db, root, s)
 	c = openCatalog(t, db, index, Limits{})
 	query := AssociationQuery{Graph: testNamespace().Graph, Target: spec.Target}
-	page, err := c.Associations(t.Context(), query, nil, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}, AssociationLimits{})
+	page, err := c.Associations(t.Context(), query, nil, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}, AssociationLimits{})
 	if err != nil || !page.Complete || len(page.Records) != 1 {
 		t.Fatal("default/aggregate budget was not clamped to actual engine policy", err)
 	}

@@ -3,6 +3,7 @@ package graphstate
 import (
 	"context"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"reflect"
 	"testing"
 
@@ -46,25 +47,25 @@ func (v faultView) ValueIdentity(c context.Context, x Scalar) (ValueRead, error)
 	}
 	return v.ReadView.ValueIdentity(c, x)
 }
-func (v faultView) ComponentPage(c context.Context, q ComponentQuery, k Cursor, b ReadBudget) (ComponentPage, error) {
+func (v faultView) ComponentPage(c context.Context, q ComponentQuery, k Cursor, b raftlog.ReadBudget) (ComponentPage, error) {
 	if v.stage == "component" {
 		return ComponentPage{}, v.failure
 	}
 	return v.ReadView.ComponentPage(c, q, k, b)
 }
-func (v faultView) ComponentKeys(c context.Context, q KeyPredicate, k Cursor, b ReadBudget) (KeyPage, error) {
+func (v faultView) ComponentKeys(c context.Context, q KeyPredicate, k Cursor, b raftlog.ReadBudget) (KeyPage, error) {
 	if v.stage == "prefix" {
 		return KeyPage{}, v.failure
 	}
 	return v.ReadView.ComponentKeys(c, q, k, b)
 }
-func (v faultView) UniqueCandidates(c context.Context, q UniquePredicate, k Cursor, b ReadBudget) (ClaimPage, error) {
+func (v faultView) UniqueCandidates(c context.Context, q UniquePredicate, k Cursor, b raftlog.ReadBudget) (ClaimPage, error) {
 	if v.stage == "unique" {
 		return ClaimPage{}, v.failure
 	}
 	return v.ReadView.UniqueCandidates(c, q, k, b)
 }
-func (v faultView) IncidentRelationships(c context.Context, q IncidentPredicate, k Cursor, b ReadBudget) (EntityPage, error) {
+func (v faultView) IncidentRelationships(c context.Context, q IncidentPredicate, k Cursor, b raftlog.ReadBudget) (EntityPage, error) {
 	if v.stage == "incident" {
 		return EntityPage{}, v.failure
 	}

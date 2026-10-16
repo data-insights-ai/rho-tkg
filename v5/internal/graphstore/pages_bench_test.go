@@ -193,7 +193,7 @@ func BenchmarkComponentPointPaged(b *testing.B) {
 			current, old, query := history.current, history.old, history.query
 			for name, p := range map[string]*PageReader{"current": current, "old": old} {
 				b.Run(name, func(b *testing.B) {
-					budget := graphstate.ReadBudget{Rows: 2, Bytes: 8192}
+					budget := raftlog.ReadBudget{Rows: 2, Bytes: 8192}
 					var work PageWork
 					for b.Loop() {
 						page, err := p.ComponentPage(b.Context(), query, 0, budget)
@@ -350,7 +350,7 @@ func BenchmarkComponentTailDepth(b *testing.B) {
 	for _, depth := range []int{0, 1, 4, 8, 16, 31, 32} {
 		b.Run(fmt.Sprint(depth), func(b *testing.B) {
 			h := benchmarkTailHistory(b, depth)
-			budget := graphstate.ReadBudget{Rows: 2, Bytes: 8192}
+			budget := raftlog.ReadBudget{Rows: 2, Bytes: 8192}
 			b.Run("read", func(b *testing.B) {
 				var work PageWork
 				for b.Loop() {

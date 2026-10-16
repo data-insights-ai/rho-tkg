@@ -144,7 +144,7 @@ func TestMaterializerPhysicalFormats2And3PreserveLogicalInitializationAndWrites(
 				if err != nil || read.Found != (index == before) {
 					t.Fatal("retained image did not preserve historical graph state", index, read, err)
 				}
-				page, err := view.IncidentAt(t.Context(), graphstore.IncidentAtQuery{Endpoint: 11, At: at, Direction: graphstore.IncidentBoth, Visible: graphstate.Declared}, 0, graphstate.ReadBudget{Rows: 8, Bytes: 4096})
+				page, err := view.IncidentAt(t.Context(), graphstore.IncidentAtQuery{Endpoint: 11, At: at, Direction: graphstore.IncidentBoth, Visible: graphstate.Declared}, 0, raftlog.ReadBudget{Rows: 8, Bytes: 4096})
 				if format == 2 {
 					if !errors.Is(err, graphstore.ErrTopologyUnsupported) || page.Next != 0 || len(page.Candidates) != 0 {
 						t.Fatal("legacy absence silently advertised empty current coverage", page, err)

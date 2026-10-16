@@ -57,16 +57,12 @@ func (v *ApplicationView) ApplicationRecord(ctx context.Context, index uint64, o
 	return v.historyPayload(ctx, index, tag, limit, maxBytes, 3)
 }
 
-// ApplicationHistoryReadWork reports admitted native history lookup, checksum
-// and ownership work. On error it is diagnostic only; no payload is returned.
-type ApplicationHistoryReadWork struct{ Rows, Bytes int }
-
 // ApplicationRecordBounded reads the same retained envelope as ApplicationRecord,
 // with an explicit source-work grant independent of returned ownership. It funds
 // the lookup before access and the actual borrowed frame before hashing/copying;
 // a small record need not reserve its configured maximum payload size.
-func (v *ApplicationView) ApplicationRecordBounded(ctx context.Context, index uint64, outcome bool, maxBytes int, b ReadBudget) ([]byte, ApplicationHistoryReadWork, error) {
-	var work ApplicationHistoryReadWork
+func (v *ApplicationView) ApplicationRecordBounded(ctx context.Context, index uint64, outcome bool, maxBytes int, b ReadBudget) ([]byte, ReadBudget, error) {
+	var work ReadBudget
 	if ctx == nil || index == 0 || maxBytes < 0 || b.Rows < 1 || b.Bytes < 1 {
 		return nil, work, ErrInvalid
 	}
@@ -111,8 +107,8 @@ func (v *ApplicationView) retainedHistoryPayload(ctx context.Context, index uint
 	return data, err
 }
 
-func (v *ApplicationView) readRetainedHistoryPayload(ctx context.Context, index uint64, tag byte, policyMax, ownedMax, factor int, b *ReadBudget) ([]byte, ApplicationHistoryReadWork, error) {
-	var work ApplicationHistoryReadWork
+func (v *ApplicationView) readRetainedHistoryPayload(ctx context.Context, index uint64, tag byte, policyMax, ownedMax, factor int, b *ReadBudget) ([]byte, ReadBudget, error) {
+	var work ReadBudget
 	if policyMax < 0 || policyMax > (math.MaxInt-1082)/factor {
 		return nil, work, ErrLimit
 	}
@@ -125,7 +121,7 @@ func (v *ApplicationView) readRetainedHistoryPayload(ctx context.Context, index 
 		if b.Bytes < 1082 {
 			return nil, work, ErrLimit
 		}
-		work = ApplicationHistoryReadWork{Rows: 1, Bytes: 1082}
+		work = ReadBudget{Rows: 1, Bytes: 1082}
 	}
 	key := bankIndexKey(v.bank, tag, index)
 	raw, closer, err := v.s.db.Get(key)

@@ -103,7 +103,7 @@ func rangeMovePartialObserve(t *testing.T, read *certifiedGraphRead, changed boo
 		}
 		keys := []graphstate.ComponentKey{{Owner: id, Kind: graphstate.Presence}, {Owner: id, Life: graphstate.LifeID(id + 1), Kind: graphstate.Label, Name: "before-handoff"}, {Owner: id, Life: graphstate.LifeID(id + 1), Kind: graphstate.Label, Name: "after-handoff"}}
 		for j, key := range keys {
-			page, err := view.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: window}, 0, graphstate.ReadBudget{Rows: 64, Bytes: 64 << 10})
+			page, err := view.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: window}, 0, raftlog.ReadBudget{Rows: 64, Bytes: 64 << 10})
 			if err != nil || !page.Complete || page.Next != 0 {
 				t.Fatal("complete actual old/current cells", err)
 			}

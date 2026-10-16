@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
@@ -115,7 +116,7 @@ func graphE18IndexObserve(ctx context.Context, sessions *graphProcessCertifiedSe
 	if err != nil {
 		return nil, err
 	}
-	budget := graphstate.ReadBudget{Rows: 64, Bytes: 64 << 10}
+	budget := raftlog.ReadBudget{Rows: 64, Bytes: 64 << 10}
 	var claims []graphstate.UniqueClaim
 	if request.data[0] == 1 {
 		if request.entity != 0 || binary.BigEndian.Uint64(request.data[1:]) > 1000 {

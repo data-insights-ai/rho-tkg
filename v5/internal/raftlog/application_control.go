@@ -21,10 +21,6 @@ type ApplicationControlRecord struct {
 	Index      uint64
 }
 
-// ApplicationControlReadWork reports admitted rows and conservative byte work,
-// including examined duplicate keys. Error results retain diagnostic work only.
-type ApplicationControlReadWork struct{ Rows, Bytes int }
-
 // ApplicationControlUsage separates the active control subtotal from active
 // graph-plus-control totals. These logical ledgers do not measure physical memory.
 type ApplicationControlUsage struct{ Bytes, Records, TotalBytes, TotalRecords uint64 }
@@ -49,7 +45,7 @@ func (s *Store) ApplicationControlUsage() (ApplicationControlUsage, error) {
 
 // GetControl aligns the original insertion with this actual retained root/bank.
 // Returned index is local evidence, not a cut. Error output is empty; work remains diagnostic.
-func (v *ApplicationView) GetControl(ctx context.Context, key []byte, b ReadBudget) (out ApplicationControlRecord, found bool, work ApplicationControlReadWork, err error) {
+func (v *ApplicationView) GetControl(ctx context.Context, key []byte, b ReadBudget) (out ApplicationControlRecord, found bool, work ReadBudget, err error) {
 	if err = v.lock(ctx); err != nil {
 		return out, false, work, err
 	}

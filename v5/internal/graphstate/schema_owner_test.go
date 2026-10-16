@@ -3,6 +3,7 @@ package graphstate
 import (
 	"context"
 	"errors"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"maps"
 	"reflect"
 	"testing"
@@ -213,7 +214,7 @@ type malformedOwnerCandidates struct {
 	missingOwner bool
 }
 
-func (v malformedOwnerCandidates) UniqueCandidates(_ context.Context, p UniquePredicate, _ Cursor, _ ReadBudget) (ClaimPage, error) {
+func (v malformedOwnerCandidates) UniqueCandidates(_ context.Context, p UniquePredicate, _ Cursor, _ raftlog.ReadBudget) (ClaimPage, error) {
 	owner, kind, member := EntityID(1), SetMember, ValueID(1)
 	if p.Definition.Owner == Relationship {
 		owner, kind, member = 3, ScalarProperty, 0

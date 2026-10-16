@@ -969,7 +969,7 @@ func (s *nativeContentionSessions) freeze(ctx context.Context, q nativeContentio
 			value := int64(5)
 			if q.Job.Phase == "hot" {
 				key := graphstate.ComponentKey{Owner: graphstate.EntityID(owner), Life: graphstate.LifeID(life), Kind: graphstate.ScalarProperty, Name: "p"}
-				page, err := view.ComponentPage(ctx, graphstate.ComponentQuery{Key: key, Window: window}, 0, graphstate.ReadBudget{Rows: 16, Bytes: 32 << 10})
+				page, err := view.ComponentPage(ctx, graphstate.ComponentQuery{Key: key, Window: window}, 0, raftlog.ReadBudget{Rows: 16, Bytes: 32 << 10})
 				if err != nil || !page.Complete || page.Next != 0 {
 					return reply, errors.Join(errLimit, err)
 				}
@@ -988,7 +988,7 @@ func (s *nativeContentionSessions) freeze(ctx context.Context, q nativeContentio
 				value = capture.Cell.I64 + 1
 			} else {
 				capture.Range = graphstate.KeyPredicate{Owner: graphstate.EntityID(owner)}
-				keys, err := view.ComponentKeys(ctx, capture.Range, 0, graphstate.ReadBudget{Rows: 2, Bytes: 4096})
+				keys, err := view.ComponentKeys(ctx, capture.Range, 0, raftlog.ReadBudget{Rows: 2, Bytes: 4096})
 				if err != nil || !keys.Complete || keys.Next != 0 {
 					return reply, errors.Join(errLimit, err)
 				}

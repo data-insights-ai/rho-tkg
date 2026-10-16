@@ -172,7 +172,7 @@ func TestGuardedGraphStaleNegativeReadsABAAndOriginalRecovery(t *testing.T) {
 	if err != nil || missing.Found {
 		t.Fatal(missing, err)
 	}
-	keys, err := v.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 11}, 0, graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20})
+	keys, err := v.ComponentKeys(t.Context(), graphstate.KeyPredicate{Owner: 11}, 0, raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20})
 	if err != nil || !keys.Complete || len(keys.Keys) != 0 {
 		t.Fatal(keys, err)
 	}

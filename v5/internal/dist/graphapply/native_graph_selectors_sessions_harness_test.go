@@ -543,7 +543,7 @@ func (s *nativeSelectorsSessions) pagePredicate(ctx context.Context, owner *nati
 				return out, next, err
 			}
 		}
-		page, e := full.IncidentRelationshipsChunk(ctx, predicate, cursor, graphstate.ReadBudget{Rows: 512, Bytes: 1 << 20}, 16)
+		page, e := full.IncidentRelationshipsChunk(ctx, predicate, cursor, raftlog.ReadBudget{Rows: 512, Bytes: 1 << 20}, 16)
 		if e != nil || page.View != full.Identity() || len(page.Entities) > 16 || page.Complete && page.Next != 0 || !page.Complete && page.Next == 0 {
 			return out, next, errors.Join(errInvalid, e)
 		}

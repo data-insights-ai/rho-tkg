@@ -180,7 +180,7 @@ func assertPageState(t *testing.T, a, b state.State) {
 }
 func pointRead(t *testing.T, p *PageReader, k graphstate.ComponentKey, w temporal.Scope) graphstate.ComponentPage {
 	t.Helper()
-	page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: k, Window: w}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+	page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: k, Window: w}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestPagesSplitsNativeCoverageAndCursors(t *testing.T) {
 				if pages > 100 {
 					t.Fatal("no progress")
 				}
-				page, err := p.ComponentPage(t.Context(), query, token, graphstate.ReadBudget{Rows: 2, Bytes: 4096})
+				page, err := p.ComponentPage(t.Context(), query, token, raftlog.ReadBudget{Rows: 2, Bytes: 4096})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -374,36 +374,36 @@ func TestPagesCursorBindingCapacityAndClose(t *testing.T) {
 	}
 	all, _ := temporal.All(f.axis)
 	query := graphstate.ComponentQuery{Key: f.key, Window: all}
-	pa, err := a.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+	pa, err := a.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 	if err != nil || pa.Complete {
 		t.Fatalf("first cursor %v", err)
 	}
-	pb, err := b.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 3, Bytes: 8192})
+	pb, err := b.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 3, Bytes: 8192})
 	if err != nil || pb.Complete {
 		t.Fatalf("second cursor %v", err)
 	}
 	if pa.Next == pb.Next {
 		t.Fatal("issuing reader alias")
 	}
-	if _, err := b.ComponentPage(t.Context(), query, pa.Next, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrInvalid) {
+	if _, err := b.ComponentPage(t.Context(), query, pa.Next, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("cross-reader token %v", err)
 	}
 	wrong := query
 	wrong.MergeContext = true
-	if _, err := a.ComponentPage(t.Context(), wrong, pa.Next, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrInvalid) {
+	if _, err := a.ComponentPage(t.Context(), wrong, pa.Next, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
-	if _, err := a.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrResourceLimit) {
+	if _, err := a.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal(err)
 	}
-	if _, err := a.ComponentPage(t.Context(), query, pa.Next, graphstate.ReadBudget{Rows: 1, Bytes: 1}); !errors.Is(err, ErrResourceLimit) {
+	if _, err := a.ComponentPage(t.Context(), query, pa.Next, raftlog.ReadBudget{Rows: 1, Bytes: 1}); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal(err)
 	}
-	next, err := a.ComponentPage(t.Context(), query, pa.Next, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+	next, err := a.ComponentPage(t.Context(), query, pa.Next, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.ComponentPage(t.Context(), query, pa.Next, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrInvalid) {
+	if _, err := a.ComponentPage(t.Context(), query, pa.Next, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
 	if next.Next == 0 {
@@ -412,7 +412,7 @@ func TestPagesCursorBindingCapacityAndClose(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 4 {
 		wg.Go(func() {
-			_, err := a.ComponentPage(t.Context(), query, next.Next, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+			_, err := a.ComponentPage(t.Context(), query, next.Next, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 			if err != nil && !errors.Is(err, ErrClosed) && !errors.Is(err, ErrInvalid) {
 				t.Error(err)
 			}
@@ -430,7 +430,7 @@ func TestPagesCursorBindingCapacityAndClose(t *testing.T) {
 	if _, err := a.c.Root(); err != nil {
 		t.Fatal("reader closed borrowed catalog", err)
 	}
-	if _, err := a.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrClosed) {
+	if _, err := a.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrClosed) {
 		t.Fatal(err)
 	}
 }
@@ -490,7 +490,7 @@ func TestPagesTighterPoliciesAndNestedReadAdmission(t *testing.T) {
 	query := graphstate.ComponentQuery{Key: f.key, Window: pagePoint(t, f.axis, 21)}
 	for _, limits := range []PageLimits{{MaxLevels: 1}, {MaxChildren: 4}, {MaxCells: 1}, {MaxCheckpointBytes: 1}} {
 		p := f.reader(t, f.index, limits)
-		_, err := p.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 8, Bytes: 8192})
+		_, err := p.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 8, Bytes: 8192})
 		if !errors.Is(err, ErrResourceLimit) {
 			t.Fatalf("tighter %+v: %v", limits, err)
 		}
@@ -501,7 +501,7 @@ func TestPagesTighterPoliciesAndNestedReadAdmission(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := wide.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 8, Bytes: 8192}); err != nil {
+		if _, err := wide.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 8, Bytes: 8192}); err != nil {
 			t.Fatal(err)
 		}
 		if err := wide.Close(); err != nil {
@@ -509,7 +509,7 @@ func TestPagesTighterPoliciesAndNestedReadAdmission(t *testing.T) {
 		}
 	}
 	p := f.reader(t, f.index, PageLimits{MaxWorkRecords: 1})
-	if _, err := p.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 8, Bytes: 8192}); !errors.Is(err, ErrResourceLimit) {
+	if _, err := p.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 8, Bytes: 8192}); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal(err)
 	}
 	if p.LastWork().Records != 1 {
@@ -540,7 +540,7 @@ func TestPagesNilInvalidFiniteAndAbsent(t *testing.T) {
 	if (*PageReader)(nil).Identity() != (graphstate.ViewID{}) || (*PageReader)(nil).LastWork() != (PageWork{}) {
 		t.Fatal("nil output")
 	}
-	if _, err := (*PageReader)(nil).ComponentPage(t.Context(), graphstate.ComponentQuery{}, 0, graphstate.ReadBudget{}); !errors.Is(err, ErrInvalid) {
+	if _, err := (*PageReader)(nil).ComponentPage(t.Context(), graphstate.ComponentQuery{}, 0, raftlog.ReadBudget{}); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
 	if _, err := StageComponentPatches(t.Context(), nil, Root{}, nil, PageLimits{}); !errors.Is(err, ErrInvalid) {
@@ -561,7 +561,7 @@ func TestPagesNilInvalidFiniteAndAbsent(t *testing.T) {
 		t.Fatal("absent phantom")
 	}
 	//nolint:staticcheck // Deliberate invalid-context contract test.
-	if _, err := p.ComponentPage(nil, graphstate.ComponentQuery{Key: f.key, Window: w}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrInvalid) {
+	if _, err := p.ComponentPage(nil, graphstate.ComponentQuery{Key: f.key, Window: w}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
 	if _, err := NewPageReader(p.c, PageLimits{MaxCells: -1}); !errors.Is(err, ErrInvalid) {
@@ -618,12 +618,12 @@ func TestPagesDenseQComplementarySplits(t *testing.T) {
 			point := pointRead(t, f.reader(t, f.index, f.limits), f.key, zero)
 			assertPageState(t, point.Data, initial.State)
 			reader := f.reader(t, f.index, f.limits)
-			result, err := reader.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: tail}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+			result, err := reader.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: tail}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 			if err != nil || !result.Complete {
 				t.Fatalf("tail %v", err)
 			}
 			assertPageState(t, result.Data, next.State)
-			historical, err := f.reader(t, old, f.limits).ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: tail}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+			historical, err := f.reader(t, old, f.limits).ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: tail}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 			if err != nil || historical.Data.Usage().Pieces() != 0 {
 				t.Fatal("old tail phantom", err)
 			}
@@ -658,7 +658,7 @@ func TestPagesTighterTailPolicyNoPoison(t *testing.T) {
 	w := pagePoint(t, f.axis, 3)
 	for _, l := range []PageLimits{{MaxTailRecords: 1}, {MaxTailAtoms: 1}, {MaxTailBytes: 1}} {
 		p := f.reader(t, f.index, l)
-		if _, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: w}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrResourceLimit) {
+		if _, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: w}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrResourceLimit) {
 			t.Fatal(err)
 		}
 		wide, err := NewPageReader(p.c, f.limits)
@@ -755,7 +755,7 @@ func TestPagesCorruptReferencesAndTypeConfusionFailClosed(t *testing.T) {
 			}
 			f.root, f.index = commitRows(t, f.db, f.root, []raftlog.KV{{Key: key, Value: b}})
 			p := f.reader(t, f.index, f.limits)
-			page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: w}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+			page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: w}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 			if !errors.Is(err, ErrCorrupt) || page.View != (graphstate.ViewID{}) || page.Data.Usage().Pieces() != 0 {
 				t.Fatalf("corruption result %+v %v", page, err)
 			}
@@ -952,7 +952,7 @@ func TestPagesObservedHandlesBelowCounter(t *testing.T) {
 				t.Fatal(err)
 			}
 			reader := f.reader(t, f.index, f.limits)
-			if _, err := reader.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: w}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrCorrupt) {
+			if _, err := reader.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: w}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrCorrupt) {
 				t.Fatal(err)
 			}
 		})
@@ -973,7 +973,7 @@ func TestPagesAbsentOwnerNativeAxisAndCreateAbsence(t *testing.T) {
 		key := f.key
 		key.Owner = owner
 		for _, axis := range []temporal.Axis{foreign, rebound} {
-			page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: pagePoint(t, axis, 5)}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192})
+			page, err := p.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: key, Window: pagePoint(t, axis, 5)}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192})
 			if !errors.Is(err, ErrInvalid) || !errors.Is(err, temporal.ErrAxisMismatch) || page.View != (graphstate.ViewID{}) {
 				t.Fatal("foreign native axis", err)
 			}
@@ -994,7 +994,7 @@ func TestPagesAbsentOwnerNativeAxisAndCreateAbsence(t *testing.T) {
 	}
 	for _, limits := range []PageLimits{{MaxWorkRecords: 1}, {MaxWorkRecords: 2}} {
 		tight := f.reader(t, f.index, limits)
-		if _, err := tight.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: pagePoint(t, f.axis, 5)}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrResourceLimit) {
+		if _, err := tight.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: pagePoint(t, f.axis, 5)}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrResourceLimit) {
 			t.Fatal(err)
 		}
 		if tight.LastWork().Records > limits.MaxWorkRecords {
@@ -1006,7 +1006,7 @@ func TestPagesAbsentOwnerNativeAxisAndCreateAbsence(t *testing.T) {
 	}
 	f.commit(t, pagePatch(t, f.key, emptyPageState(t, f.axis), pagePoint(t, f.axis, 5), presentLife(t), 1, false))
 	current := f.reader(t, f.index, f.limits)
-	if _, err := current.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: pagePoint(t, foreign, 5)}, 0, graphstate.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrInvalid) || !errors.Is(err, temporal.ErrAxisMismatch) {
+	if _, err := current.ComponentPage(t.Context(), graphstate.ComponentQuery{Key: f.key, Window: pagePoint(t, foreign, 5)}, 0, raftlog.ReadBudget{Rows: 2, Bytes: 8192}); !errors.Is(err, ErrInvalid) || !errors.Is(err, temporal.ErrAxisMismatch) {
 		t.Fatal("present mismatch sentinel", err)
 	}
 }
@@ -1063,14 +1063,14 @@ func TestGuardPageUnboundedFirstPieceFitsAtomically(t *testing.T) {
 	p := f.reader(t, f.index, f.limits)
 	query := graphstate.ComponentQuery{Key: f.key, Window: all}
 	cursorBytes := p.cursorBytes
-	got, err := p.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 1, Bytes: 1 << 20})
+	got, err := p.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 1, Bytes: 1 << 20})
 	if !errors.Is(err, ErrResourceLimit) || !reflect.DeepEqual(got, graphstate.ComponentPage{}) || len(p.cursors) != 0 || p.cursorBytes != cursorBytes {
 		t.Fatal("unbounded prefix published partial coverage/cursor", got, err)
 	}
 	if _, err := p.c.Root(); err != nil {
 		t.Fatal("page quota poisoned catalog", err)
 	}
-	got, err = p.ComponentPage(t.Context(), query, 0, graphstate.ReadBudget{Rows: 2, Bytes: 1 << 20})
+	got, err = p.ComponentPage(t.Context(), query, 0, raftlog.ReadBudget{Rows: 2, Bytes: 1 << 20})
 	if err != nil || !got.Complete || got.Next != 0 || got.View != p.Identity() || got.Version != graphstate.ReadVersion(f.index) || got.MergeContext != nil || len(p.cursors) != 0 || p.cursorBytes != cursorBytes {
 		t.Fatal("two rows did not own complete unbounded support", got, err)
 	}

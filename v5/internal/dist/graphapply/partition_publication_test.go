@@ -329,7 +329,7 @@ func TestPartitionUniqueLocalMissCannotClaimAbsenceWithRemoteIdentityOwner(t *te
 		t.Fatal(err)
 	}
 	before := v.Work()
-	page, err := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: definition, Value: graphstate.I64(7), Window: scope}, 0, graphstate.ReadBudget{Rows: 16, Bytes: 1 << 20})
+	page, err := v.UniqueCandidates(t.Context(), graphstate.UniquePredicate{Definition: definition, Value: graphstate.I64(7), Window: scope}, 0, raftlog.ReadBudget{Rows: 16, Bytes: 1 << 20})
 	if !errors.Is(err, graphstore.ErrRemoteParticipant) || page.Complete || page.View != (graphstate.ViewID{}) || len(page.Claims) != 0 || v.Work().Bytes <= before.Bytes {
 		t.Fatalf("local dictionary miss manufactured global absence: %+v work%+v->%+v %v", page, before, v.Work(), err)
 	}

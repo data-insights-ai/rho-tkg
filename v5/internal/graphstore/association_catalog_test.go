@@ -228,7 +228,7 @@ func TestAssociationBoundQueriesAndCursorIsolation(t *testing.T) {
 	root, index := commitStage(t, db, root, s)
 	c = openCatalog(t, db, index, Limits{})
 	query := AssociationQuery{Graph: testNamespace().Graph, Target: target}
-	budget := graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}
+	budget := raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}
 	page, err := c.Associations(t.Context(), query, nil, budget, AssociationLimits{})
 	if err != nil || page.Complete || len(page.Next) == 0 || len(page.Records) != 1 || page.Records[0].Spec().Ref.ID != 10 || page.Visited < 6 || len(page.Next) != cap(page.Next) {
 		t.Fatal("first bounded association page", page, err)
@@ -362,14 +362,14 @@ func TestAssociationAdmissionRefusalsDoNotPoisonOrExposePartialOutput(t *testing
 		t.Fatal("primary resource refusal poisoned normal read", err)
 	}
 	query := AssociationQuery{Graph: testNamespace().Graph, Target: spec.Target}
-	if p, err := c.Associations(t.Context(), query, nil, graphstate.ReadBudget{Rows: 1, Bytes: 4096}, AssociationLimits{}); !errors.Is(err, ErrResourceLimit) || !reflect.DeepEqual(p, AssociationPage{}) {
+	if p, err := c.Associations(t.Context(), query, nil, raftlog.ReadBudget{Rows: 1, Bytes: 4096}, AssociationLimits{}); !errors.Is(err, ErrResourceLimit) || !reflect.DeepEqual(p, AssociationPage{}) {
 		t.Fatal("budget boundary labeled incomplete materialization complete", err)
 	}
 	foreign := query
 	foreign.Graph[0] = 2
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := c.Associations(ctx, foreign, nil, graphstate.ReadBudget{}, AssociationLimits{}); !errors.Is(err, ErrNamespace) {
+	if _, err := c.Associations(ctx, foreign, nil, raftlog.ReadBudget{}, AssociationLimits{}); !errors.Is(err, ErrNamespace) {
 		t.Fatal("foreign namespace did work before rejection", err)
 	}
 	if _, err := c.Association(ctx, assertion.Ref{Graph: foreign.Graph, ID: 10}, AssociationLimits{}); !errors.Is(err, ErrNamespace) {
@@ -392,7 +392,7 @@ func TestAssociationAdmissionRefusalsDoNotPoisonOrExposePartialOutput(t *testing
 			return err
 		},
 		func() error {
-			_, err := c.Associations(t.Context(), query, nil, graphstate.ReadBudget{}, AssociationLimits{})
+			_, err := c.Associations(t.Context(), query, nil, raftlog.ReadBudget{}, AssociationLimits{})
 			return err
 		},
 	} {
@@ -514,7 +514,7 @@ func TestAssociationQueryRefusalsDoNotClaimOccupancy(t *testing.T) {
 		t.Fatal("explicit knowledge predicate changed", err)
 	}
 	base := AssociationQuery{Graph: testNamespace().Graph, Target: spec.Target}
-	budget := graphstate.ReadBudget{Rows: 512, Bytes: 4 << 20}
+	budget := raftlog.ReadBudget{Rows: 512, Bytes: 4 << 20}
 	for _, tc := range []struct {
 		query AssociationQuery
 		want  error
