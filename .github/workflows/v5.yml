@@ -1,0 +1,48 @@
+name: v5
+
+# The v5.0 gate (WP-17): `make -C v5 check` (vet, build, non-dist -short tests,
+# including the docs/v5/API.md identifier test), then the three modules that
+# consume v5 through local replace directives. The distributed engine
+# (internal/dist) is the release gate (`make -C v5 check-dist`), not run here.
+# tools/v5-substrate, vendor-compare and graph-compare are evidence tooling
+# outside this gate (docs/v5/API.md).
+on:
+  push:
+    branches: [v5-takeover, v5]
+  pull_request:
+    branches: [v5-takeover, v5]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+  GOWORK: "off"
+
+jobs:
+  v5:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOFLAGS: "-p=2"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: v5/go.mod
+      - name: v5 check (vet, build, non-dist -short tests)
+        run: make -C v5 check
+      - name: Conformance tool (v5 native, v4 and v5compat adapters)
+        working-directory: tools/v5-conformance
+        run: go vet ./... && go test -short -count=1 ./...
+      - name: Import tool (v4 export to v5 op stream)
+        working-directory: tools/v5-import
+        run: go vet ./... && go test -short -count=1 ./...
+      - name: v5compat
+        working-directory: v5compat
+        run: go vet ./... && go test -short -count=1 ./...
