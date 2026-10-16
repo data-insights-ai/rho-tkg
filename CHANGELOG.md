@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.58.1] - 2026-10-16
+
 ### Fixed
 
 - **A negative valid-time bound is a real one; only 0 is unset** (PATCH v4.58.1; sigma-tkgd row 60, blocks sigma's tag).
@@ -30,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestNegativeValidStartIsARealIntervalStart` (every door, memory / badger / sharded / tiered, with and without
   indexes, cross-door agreement, 0 pinned as unset), `TestStoreNegativeValidIntervalIsAFilter`,
   `TestQueryOptsHasValidInterval`.
+  Consumers: a caller's own "any valid time" window built with `ValidStart: 1` (e.g. sigma-tkgd's `EverRecorded`)
+  still excludes rows valid only before 1; use `types.UnboundedValidFrom`. ai-soc is unaffected (empty `QueryOpts`,
+  positive pins).
 
 ### Changed
 

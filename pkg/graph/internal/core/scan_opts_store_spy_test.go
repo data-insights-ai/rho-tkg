@@ -34,7 +34,7 @@ type optsSpyStore struct {
 }
 
 func activeTemporal(o storepkg.QueryOpts) bool {
-	return o.ValidAt != 0 || (o.ValidStart > 0 && o.ValidEnd > 0) || o.TxAt != 0 || o.TxPin != 0
+	return o.HasValidTimeFilter() || o.TxAt != 0 || o.TxPin != 0
 }
 
 func (s *optsSpyStore) note(door string, o storepkg.QueryOpts) {

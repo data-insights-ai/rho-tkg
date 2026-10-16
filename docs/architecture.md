@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.58.0)
+# Architecture — tkg/v4 (v4.58.1)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -329,8 +329,8 @@ empty success.
 values return `ErrInvalidQueryLimit`. `After` accepts `0` for the first page or
 a non-negative entity cursor; negative values return `ErrInvalidQueryCursor`.
 `ValidAt != 0` activates point-in-time filtering. `ValidStart`/`ValidEnd`
-activate interval filtering only when both bounds are greater than zero; a
-non-positive bound is treated as no interval filter.
+activate interval filtering only when both bounds are non-zero; 0 is the only
+unset value, a negative bound is a real bound.
 
 `TxAt` and `TxPin` are different pins and are mutually exclusive. `TxAt` is the
 BITEMPORAL coordinate: it restricts the version chain to `TxFrom <= TxAt`, and
@@ -1217,7 +1217,7 @@ Import treats record streams as untrusted input. `ImportOptions.MaxStagedBytes =
 | v3.0.66 | `GraphTx.GetNode`, `GraphTx.AddRelationshipByID`, `GraphTx.AddRelationshipByIDIfAbsent` for transactional graph writes |
 | v3.0.67 | Cross-shard incoming relationship type filter fix — `inIdx` changed from `map[ID]struct{}` to `map[ID]uint16` (relID → typeToken; today `inEdge{startNodeID, typeToken}`) |
 
-The table records the v3.0 build-out only. Every later release (v3.0.68 – v4.58.0) is in `CHANGELOG.md`; the sections above describe the current code.
+The table records the v3.0 build-out only. Every later release (v3.0.68 – v4.58.1) is in `CHANGELOG.md`; the sections above describe the current code.
 
 ---
 
