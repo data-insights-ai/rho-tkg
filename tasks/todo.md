@@ -1,4 +1,4 @@
-# todo — the ONE plan for v4 + v5 (state 2026-10-16: latest tag v4.58.0 (`42db6281`, release commit `bc824ad8`, released 2026-10-16; v4.57.1 `dd5c684c`); release commit v4.58.1 SHA (tag pending); next patch v4.58.2, next minor v4.59.0; v5: branch `v5-takeover` (local) = origin/v5 `91426024` + WP-01, 03, 05, 06, 09, 13, 15, 26; first tag v5.0.0-alpha.1 at S2 exit; FOCUS: v5 becomes the public API, v4 stays live and unchanged)
+# todo — the ONE plan for v4 + v5 (state 2026-10-16: latest tag v4.58.0 (`42db6281`, release commit `bc824ad8`, released 2026-10-16; v4.57.1 `dd5c684c`); release commit v4.58.1 df9268c8 (tag pending); next patch v4.58.2, next minor v4.59.0; v5: branch `v5-takeover` (local) = origin/v5 `91426024` + WP-01, 03, 05, 06, 09, 13, 15, 26; first tag v5.0.0-alpha.1 at S2 exit; FOCUS: v5 becomes the public API, v4 stays live and unchanged)
 
 First read `HANDOVER.md` (next steps). This file is the only plan (René 2026-10-16: "i want one consistent todo.md plan"; lesson 84): user requests with state and proof, the rules for every builder, the work packages for v4 and v5 (one table set, waves), deferrals, release gates, one line per release, René's open decisions, the merge review log. What shipped is `CHANGELOG.md`; the rules are `tasks/lessons.md`; the parked v4 items are the open table of `tasks/backlog.md` (the v4 backlog is not repeated here); PLAN's phases and the V2 A-F queue in v5's `tasks/backlog.md` are the acceptance reference, not a todo. `tasks/todo.md` on `v5-takeover` is a pointer to this file. Older wave ledgers: `git log -p -- tasks/todo.md`. Review files behind the v5 rows: scratchpad `v5-review/fable-takeover.md` (phases, F1-F4, number issue §2), `fable-path-s1.md`, `fable-s2-api.md`; their verified facts are folded into the WP rows below.
 
@@ -248,7 +248,7 @@ Test proportionality: graphapply 120 k test LOC for 40.7 k src (709 `Test` funcs
 | v4.57.0 | 1d749a86 | sigma-tkgd round 9 doors (any-version ranges at a pin, count timelines, property value statistics, typed column chunks; row 56), `Config.UntimedValidStart` default for NEW stores `UntimedUnbounded` (73, row 57) |
 | v4.57.1 | dd5c684c | batch WithTx excise refuses the whole unit (row 52), one numeric equality rule across every equality door (row 54, WP-02), fast test tier (WP-14) |
 | v4.58.0 | 42db6281 (release commit bc824ad8) | tiered property indexes per shard with a truthful capability report (row 59, WP-31), one chain builder (WP-21), Elements backfill fix with open image format 3 |
-| v4.58.1 | SHA | a negative valid start is a real interval start in every door (row 60): one `HasValidInterval` rule, badger column window flag, any-version doors from `UnboundedValidFrom` |
+| v4.58.1 | df9268c8 | a negative valid start is a real interval start in every door (row 60): one `HasValidInterval` rule, badger column window flag, any-version doors from `UnboundedValidFrom` |
 
 ## Open decisions for René (my default in bold)
 
