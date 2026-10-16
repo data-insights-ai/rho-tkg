@@ -41,7 +41,14 @@ var (
 	contractID = sha256.Sum256([]byte("rho-tkg:v5/pkg/graph:single-partition:v1"))
 	lifeID     = graphstate.LifeID(1)
 	allocName  = []byte("rho-tkg:v5/pkg/graph:id-allocator:v1")
+	instantKey = []byte("rho-tkg:v5/pkg/graph:commit-instant:v1:")
 )
+
+// commitInstantKey is the row holding the knowledge instant (milliseconds) of
+// the commit at index.
+func commitInstantKey(index uint64) []byte {
+	return binary.BigEndian.AppendUint64(append([]byte(nil), instantKey...), index)
+}
 
 // endAt reads the entity's committed End position at index from its LifeEnd
 // cells: the lowest lower bound of the regions an End marked.
@@ -107,6 +114,10 @@ type pebbleEngine struct {
 	broken                   atomic.Pointer[error]
 	nonce                    atomic.Uint64
 	alloc                    allocState
+	now                      func() int64
+	last                     atomic.Int64 // knowledge instant of the newest commit
+	first                    uint64       // application index of the first commit (genesis); earlier indexes have no instant row
+	readers                  atomic.Uint64
 }
 
 var _ engine = (*pebbleEngine)(nil)
@@ -118,7 +129,7 @@ func openEngine(ctx context.Context, cfg Config) (*pebbleEngine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
-	e := &pebbleEngine{cfg: cfg, decl: decl, ns: graphstore.Namespace{Graph: gid, Partition: partitionID}, binding: cfg.DefaultAxis,
+	e := &pebbleEngine{cfg: cfg, now: func() int64 { return time.Now().UnixMilli() }, decl: decl, ns: graphstore.Namespace{Graph: gid, Partition: partitionID}, binding: cfg.DefaultAxis,
 		node: map[string]graphstate.PropertyDefinition{}, rel: map[string]graphstate.PropertyDefinition{}}
 	e.conf = sha256.Sum256(append([]byte("rho-tkg:v5/pkg/graph:configuration:v1"), cfg.GraphID[:]...))
 	for _, p := range cfg.NodeProperties {
@@ -225,6 +236,10 @@ func (e *pebbleEngine) genesis(ctx context.Context) error {
 	}
 	rows = append(rows, ar)
 	writes := append(slices.Clone(effects.Writes), rows...)
+	inst := e.nextInstant()
+	writes = append(writes, instantRow(idx+1, inst))
+	e.last.Store(inst)
+	e.first = idx + 1
 	slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
 	img, err := graphstore.EncodeRoot(root)
 	if err != nil {
@@ -283,6 +298,16 @@ func (e *pebbleEngine) recover(ctx context.Context) error {
 	if e.alloc, err = decodeAllocState(row.Value); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 	}
+	irow, found, err := view.Get(ctx, commitInstantKey(idx), 64)
+	if err != nil || !found || len(irow.Value) != 8 {
+		return fmt.Errorf("%w: stored graph has no commit knowledge instant", ErrInvalidConfig)
+	}
+	e.last.Store(int64(binary.BigEndian.Uint64(irow.Value))) // #nosec G115 -- written from an int64
+	lowest, err := view.Scan(ctx, instantKey, append(bytes.Clone(instantKey[:len(instantKey)-1]), instantKey[len(instantKey)-1]+1), nil, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
+	if err != nil || len(lowest.Rows) != 1 || len(lowest.Rows[0].Key) != len(instantKey)+8 {
+		return fmt.Errorf("%w: stored graph has no first commit instant", ErrInvalidConfig)
+	}
+	e.first = binary.BigEndian.Uint64(lowest.Rows[0].Key[len(instantKey):])
 	for _, defs := range []map[string]graphstate.PropertyDefinition{e.node, e.rel} {
 		for name, want := range defs {
 			got, found, err := c.Property(ctx, want.Owner, name)
@@ -307,21 +332,19 @@ func (e *pebbleEngine) install(index uint64, prevImageHash [32]byte, image []byt
 	return e.store.InstallApplication(index, b)
 }
 
-// ceiling is the commit instant on the knowledge axis: the local wall clock in
-// milliseconds at the time of the call (the engine has none of its own). A clock
-// that steps back lets an earlier Recorded pass and a later one fail; it never
-// orders commits, which the application index does. It is the zero Position when
-// the Config has no KnowledgeAxis.
-func (e *pebbleEngine) ceiling() temporal.Position {
-	ax := e.cfg.KnowledgeAxis.Axis()
-	if ax.DefinitionHash() == (temporal.Axis{}).DefinitionHash() {
-		return temporal.Position{}
-	}
-	p, err := types.InstantPosition(ax, types.Instant(time.Now().UnixMilli()), e.cfg.Limits)
-	if err != nil {
-		return temporal.Position{}
-	}
-	return p
+// nextInstant is the knowledge instant of the next commit: the local wall clock
+// in milliseconds, but never at or before the previous commit's, so instants
+// strictly increase with the application index (also across a restart or a
+// clock that steps back). Callers hold e.mu or are the genesis.
+func (e *pebbleEngine) nextInstant() int64 { return max(e.now(), e.last.Load()+1) }
+
+func instantRow(index uint64, inst int64) raftlog.KV {
+	return raftlog.KV{Key: commitInstantKey(index), Value: binary.BigEndian.AppendUint64(nil, uint64(inst))} // #nosec G115 -- instants are positive milliseconds
+}
+
+// instantPosition is inst on the knowledge axis.
+func (e *pebbleEngine) instantPosition(inst int64) (temporal.Position, error) {
+	return types.InstantPosition(e.cfg.KnowledgeAxis.Axis(), types.Instant(inst), e.cfg.Limits)
 }
 
 func (e *pebbleEngine) check() error {
@@ -356,7 +379,15 @@ func (e *pebbleEngine) token(kind byte, index uint64) []byte {
 	return binary.BigEndian.AppendUint64(b, index)
 }
 
+// receiptToken is a receipt token carrying the commit's knowledge instant.
+func (e *pebbleEngine) receiptToken(index uint64, inst int64) []byte {
+	return binary.BigEndian.AppendUint64(e.token(tokReceipt, index), uint64(inst)) // #nosec G115 -- positive milliseconds
+}
+
 func (e *pebbleEngine) parseToken(kind byte, b []byte) (uint64, bool) {
+	if kind == tokReceipt && len(b) == 5+16+8+8 {
+		b = b[:5+16+8]
+	}
 	if len(b) != 5+16+8 || !bytes.Equal(b[:5], []byte{'R', 'V', '5', kind, 1}) || !bytes.Equal(b[5:21], e.ns.Graph[:]) {
 		return 0, false
 	}
@@ -381,6 +412,10 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 	}
 	next := base + 1
 	tx := &engineTx{e: e, ctx: ctx, base: base, next: next, alloc: e.alloc}
+	inst := e.nextInstant()
+	if tx.ceiling, err = e.instantPosition(inst); err != nil {
+		return Receipt{}, fmt.Errorf("%w: commit instant: %v", ErrInvalidRequest, err)
+	}
 	fnErr := func() (err error) {
 		defer func() { tx.done = true }()
 		return fn(tx)
@@ -392,7 +427,7 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 		return Receipt{}, tx.err
 	}
 	if len(tx.ops) == 0 {
-		return Receipt{tok: e.token(tokReceipt, base)}, nil
+		return Receipt{tok: e.receiptToken(base, e.last.Load())}, nil
 	}
 	rev, err := state.NewRevision(next, 0)
 	if err != nil {
@@ -408,7 +443,7 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 		return Receipt{}, err
 	}
 	defer view.Close()
-	effects, _, err := graphstore.StagePartitionOperations(ctx, view, e.decl, e.binding, e.conf, tx.ops, rev, graphstore.Limits{MaxStageRecords: 4096, MaxReadRows: 65536, MaxReadBytes: 64 << 20}, graphstore.GraphLimits{MaxOutputBytes: 64 << 20, MaxSourceRows: 1 << 20, MaxSourceBytes: 64 << 20, RecordedCeiling: tx.ceil(), Pages: graphstore.PageLimits{MaxPatches: 4096, MaxTailAtoms: 4096, MaxWorkRecords: 65536, MaxWorkBytes: 32 << 20}}, readBudget(), tx.decls...)
+	effects, _, err := graphstore.StagePartitionOperations(ctx, view, e.decl, e.binding, e.conf, tx.ops, rev, graphstore.Limits{MaxStageRecords: 4096, MaxReadRows: 65536, MaxReadBytes: 64 << 20}, graphstore.GraphLimits{MaxOutputBytes: 64 << 20, MaxSourceRows: 1 << 20, MaxSourceBytes: 64 << 20, RecordedCeiling: tx.ceil(), RevisionRows: true, Pages: graphstore.PageLimits{MaxPatches: 4096, MaxTailAtoms: 4096, MaxWorkRecords: 65536, MaxWorkBytes: 32 << 20}}, readBudget(), tx.decls...)
 	if err != nil {
 		return Receipt{}, mapStageErr(err)
 	}
@@ -429,15 +464,17 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 		}
 		writes = append(writes, ar)
 	}
+	writes = append(writes, instantRow(next, inst))
 	slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
 	if err := e.commit(next, prev, img, writes); err != nil {
 		return Receipt{}, err
 	}
+	e.last.Store(inst)
 	e.alloc = tx.alloc
 	for _, d := range tx.decls {
 		e.defs(d.Owner)[d.Name] = d
 	}
-	return Receipt{tok: e.token(tokReceipt, next)}, nil
+	return Receipt{tok: e.receiptToken(next, inst)}, nil
 }
 
 // commit installs one batch at index over the image prev; a limit refusal leaves
@@ -527,6 +564,10 @@ func (e *pebbleEngine) openSnapshot(ctx context.Context, spec SnapshotSpec) (sna
 		if !ok || i > applied {
 			return nil, fmt.Errorf("%w: not a receipt of this graph", ErrInvalidReceipt)
 		}
+	case snapKnown:
+		if index, err = e.indexAtKnown(ctx, applied, int64(spec.at)); err != nil {
+			return nil, err
+		}
 	}
 	// Probe: the view must still be retained.
 	v, err := e.store.ApplicationView(index)
@@ -536,6 +577,57 @@ func (e *pebbleEngine) openSnapshot(ctx context.Context, spec SnapshotSpec) (sna
 		}
 		return nil, err
 	}
+	vInst := int64(-1)
+	if row, found, gerr := v.Get(ctx, commitInstantKey(index), 64); gerr == nil && found && len(row.Value) == 8 {
+		vInst = int64(binary.BigEndian.Uint64(row.Value)) // #nosec G115 -- written from an int64
+	}
 	_ = v.Close()
-	return &engineSnap{e: e, index: index, nonce: e.nonce.Add(1), cuts: Cut{tok: e.token(tokCut, index)}, pages: map[uint64]*pageState{}}, nil
+	return &engineSnap{e: e, index: index, vInst: vInst, nonce: e.nonce.Add(1), cuts: Cut{tok: e.token(tokCut, index)}, pages: map[uint64]*pageState{}}, nil
+}
+
+// indexAtKnown is the newest commit at or before applied whose knowledge
+// instant is at most inst (binary search: instants increase with the index).
+// An instant before the first commit pins the first commit, the empty graph.
+func (e *pebbleEngine) indexAtKnown(ctx context.Context, applied uint64, inst int64) (uint64, error) {
+	v, err := e.store.ApplicationView(applied)
+	if err != nil {
+		return 0, err
+	}
+	defer v.Close()
+	at := func(i uint64) (int64, bool, error) {
+		row, found, err := v.Get(ctx, commitInstantKey(i), 64)
+		if err != nil || !found {
+			return 0, false, err
+		}
+		if len(row.Value) != 8 {
+			return 0, false, fmt.Errorf("%w: commit instant row", ErrCommitNotDurable)
+		}
+		return int64(binary.BigEndian.Uint64(row.Value)), true, nil // #nosec G115 -- written from an int64
+	}
+	// Indexes before the first commit count as "at or before"; a missing row at
+	// or after it is a damaged store, never a pass.
+	lo, hi := uint64(0), applied
+	for lo < hi {
+		mid := lo + (hi-lo+1)/2
+		if mid < e.first {
+			lo = mid
+			continue
+		}
+		got, found, err := at(mid)
+		if err != nil {
+			return 0, err
+		}
+		if !found {
+			return 0, fmt.Errorf("%w: no commit instant for index %d", ErrCommitNotDurable, mid)
+		}
+		if got <= inst {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	if lo < e.first {
+		lo = e.first // before the first commit: the first one, the empty graph
+	}
+	return min(max(lo, 1), applied), nil
 }

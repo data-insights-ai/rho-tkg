@@ -1,6 +1,11 @@
 package graph
 
-import "fmt"
+import (
+	"encoding/binary"
+	"fmt"
+
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
+)
 
 // MaxTokenBytes bounds the encoded size of a Cut or Receipt.
 const MaxTokenBytes = 4096
@@ -62,4 +67,16 @@ func cloneTok(b []byte) []byte {
 		return nil
 	}
 	return append([]byte(nil), b...)
+}
+
+// KnowledgeInstant is the commit's knowledge instant on Config.KnowledgeAxis
+// (milliseconds; strictly increasing from commit to commit). ok is false for a
+// receipt that does not carry one (not minted by this engine). An empty Update reports the
+// newest commit's instant. Read it from a receipt this engine minted; it is not
+// checked here.
+func (r Receipt) KnowledgeInstant() (types.Instant, bool) {
+	if len(r.tok) != 5+16+8+8 || r.tok[3] != tokReceipt {
+		return 0, false
+	}
+	return types.Instant(binary.BigEndian.Uint64(r.tok[29:])), true // #nosec G115 -- minted from an int64
 }

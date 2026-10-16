@@ -237,22 +237,6 @@ func TestIDsComeFromTheAllocator(t *testing.T) {
 	}
 }
 
-func TestNonAllKnownScopeIsNotImplemented(t *testing.T) {
-	g := memBare(t, nil)
-	ids, _ := createN(t, g, 1)
-	s, _ := g.OpenSnapshot(context.Background(), Fresh())
-	p, _ := types.InstantPosition(knowledgeAxis(t), 5, temporal.Limits{})
-	pt, _ := temporal.Point(p)
-	sel := Selector{View: ViewDeclared, Valid: scopeAll(t), Known: pt}
-	ref, _ := NodeRef(ids[0])
-	if _, err := s.Lookup(context.Background(), LookupRequest{Selector: sel, Nodes: ids, Paging: PageLimits{Rows: 1, MaxBytes: 99}}); !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("lookup: %v", err)
-	}
-	if _, err := s.Timeline(context.Background(), TimelineRequest{Ref: ref, Selector: sel, Paging: PageLimits{Rows: 1, MaxBytes: 99}}); !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("timeline: %v", err)
-	}
-}
-
 func TestTimelineKnownIsTheRecordedEvidence(t *testing.T) {
 	g := memBare(t, nil)
 	all := scopeAll(t)

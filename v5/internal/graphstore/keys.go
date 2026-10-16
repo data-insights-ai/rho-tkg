@@ -21,6 +21,7 @@ const (
 
 const (
 	evidenceRecord          recordKind = 0x17
+	revisionRecord          recordKind = 0x1a
 	rangeMoveFragmentRecord recordKind = 0xf0
 )
 
@@ -32,7 +33,7 @@ var recordKinds = []recordKind{
 	componentRecord, directoryRecord, checkpointRecord, patchRecord,
 	componentKeyTreeRecord, componentIndexDescriptorRecord,
 	uniquePostingRecord, canonicalIncidentRecord, declaredIncidentRecord,
-	currentPresenceRecord, ownershipDeclarationRecord, evidenceRecord,
+	currentPresenceRecord, ownershipDeclarationRecord, evidenceRecord, revisionRecord,
 	labelPostingRecord, equalityPostingRecord,
 	associationHeadRecord, associationRevisionRecord, associationPostingRecord, associationPrimaryRecord,
 	rangeMoveFragmentRecord,
@@ -72,4 +73,11 @@ func memberKey(n Namespace, digest [32]byte, ordinal uint64) []byte {
 func evidenceKey(n Namespace, owner graphstate.EntityID, revision uint64) []byte {
 	b := binary.BigEndian.AppendUint64(keyPrefix(n, evidenceRecord), uint64(owner))
 	return binary.BigEndian.AppendUint64(b, revision)
+}
+
+func revisionPrefix(n Namespace, owner graphstate.EntityID) []byte {
+	return binary.BigEndian.AppendUint64(keyPrefix(n, revisionRecord), uint64(owner))
+}
+func revisionKey(n Namespace, owner graphstate.EntityID, revision uint64) []byte {
+	return binary.BigEndian.AppendUint64(revisionPrefix(n, owner), revision)
 }

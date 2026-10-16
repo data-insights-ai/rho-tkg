@@ -3,6 +3,7 @@ package graphstore
 import (
 	"cmp"
 	"context"
+	"encoding/binary"
 	"errors"
 	"strings"
 
@@ -715,6 +716,11 @@ func stageOpenedOperations(ctx context.Context, c *Catalog, v *ReadView, ops []g
 		if err := stageOperationEvidence(&p, owned, revision); err != nil {
 			return err
 		}
+		if v.limits.RevisionRows {
+			if err := stageOperationRevisions(&p, owned, revision, v.limits.RecordedCeiling); err != nil {
+				return err
+			}
+		}
 		if err := p.budget(); err != nil {
 			return err
 		}
@@ -1031,4 +1037,159 @@ func (v *ReadView) Evidence(ctx context.Context, owner graphstate.EntityID, revi
 		return nil, err
 	}
 	return out, nil
+}
+
+// RevisionMark is one revision of an owner and when it became known: the latest
+// Recorded instant its operations carried, else the commit's RecordedCeiling
+// (the zero Position when neither was supplied).
+type RevisionMark struct {
+	Revision uint64
+	Known    temporal.Position
+}
+
+// stageOperationRevisions writes one revision row per owner the operations touch.
+func stageOperationRevisions(p *pageStage, ops []graphstate.Operation, revision state.Revision, ceiling temporal.Position) error {
+	var owners []graphstate.EntityID
+	latest := map[graphstate.EntityID]temporal.Position{}
+	for _, op := range ops {
+		cur, seen := latest[op.Owner]
+		if !seen {
+			owners = append(owners, op.Owner)
+		}
+		if op.Recorded.Profile() != 0 {
+			if o, err := temporal.ComparePositions(op.Recorded, cur, p.q.c.limits.Temporal); cur.Profile() == 0 || err == nil && o == temporal.Greater {
+				cur = op.Recorded
+			}
+		}
+		latest[op.Owner] = cur
+	}
+	for _, owner := range owners {
+		known := latest[owner]
+		if known.Profile() == 0 {
+			known = ceiling
+		}
+		if err := p.withPrimary(owner, func(p *pageStage) error { return p.q.stageRevision(owner, revision.ID(), known) }); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (q *reader) stageRevision(owner graphstate.EntityID, revision uint64, known temporal.Position) error {
+	if t := q.transaction(); t != nil && t.installation != nil {
+		partition, err := t.owner(q, uint64(owner))
+		if err != nil {
+			return err
+		}
+		if partition != q.c.root.namespace.Partition {
+			return q.onPartition(partition, func() error { return q.stageRevision(owner, revision, known) })
+		}
+	}
+	if q.route != nil {
+		if err := q.route.owner(q, uint64(owner)); err != nil {
+			return err
+		}
+	}
+	n := q.c.root.namespace
+	if _, found, err := q.get(revisionKey(n, owner, revision)); err != nil {
+		return err
+	} else if found {
+		return callerError(graphstate.ErrAlreadyExists)
+	}
+	if known.Profile() != 0 {
+		if err := q.stageAxis(known.Axis()); err != nil {
+			return err
+		}
+	}
+	encoded, err := encodeRevision(n, owner, revision, known, q.c.limits)
+	if err != nil {
+		return err
+	}
+	return q.put(revisionKey(n, owner, revision), encoded)
+}
+
+// Revisions lists, ascending, up to limit revisions of owner greater than after
+// (zero starts at the beginning); complete is false when more follow. Only
+// graphs staged with GraphLimits.RevisionRows have rows.
+func (v *ReadView) Revisions(ctx context.Context, owner graphstate.EntityID, after uint64, limit int) (marks []RevisionMark, complete bool, err error) {
+	if v == nil || owner == 0 || limit < 1 {
+		return nil, false, ErrInvalid
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if err := v.check(ctx); err != nil {
+		return nil, false, err
+	}
+	q, err := v.begin(ctx, graphstate.ReadBudget{})
+	if err != nil {
+		return nil, false, err
+	}
+	n := v.c.root.namespace
+	lower := revisionPrefix(n, owner)
+	upper := prefixEnd(lower)
+	var cursor []byte
+	if after > 0 {
+		cursor = revisionKey(n, owner, after)
+	}
+	complete = true
+	err = func() error {
+		if v.route != nil {
+			if err := v.route.owner(q.q, uint64(owner)); err != nil {
+				return err
+			}
+		}
+		for {
+			rows := min(limit-len(marks)+1, q.q.maxRows-q.q.rows, v.c.source().ReadLimits().Rows)
+			bytesLeft := min(q.q.maxBytes-q.q.bytes, v.c.source().ReadLimits().Bytes)
+			if rows < 1 || bytesLeft < 1 {
+				return ErrResourceLimit
+			}
+			page, err := v.c.source().Scan(ctx, lower, upper, cursor, raftlog.ReadBudget{Rows: rows, Bytes: bytesLeft})
+			if err != nil {
+				if errors.Is(err, raftlog.ErrLimit) {
+					return ErrResourceLimit
+				}
+				return err
+			}
+			q.q.rows += page.Visited
+			if err := q.q.materialize(page.Bytes); err != nil {
+				return err
+			}
+			for _, row := range page.Rows {
+				if len(row.Key) != len(lower)+8 || row.Deleted {
+					return ErrCorrupt
+				}
+				if len(marks) == limit {
+					complete = false
+					return nil
+				}
+				rev := binary.BigEndian.Uint64(row.Key[len(lower):])
+				known, err := readRevisionRecord(row.Value, n, owner, rev, v.c.limits, func(id temporal.AxisID) (temporal.Axis, error) {
+					a, found, err := q.q.axis(id)
+					if err == nil && !found {
+						err = ErrCorrupt
+					}
+					return a, err
+				})
+				if err != nil {
+					return err
+				}
+				marks = append(marks, RevisionMark{Revision: rev, Known: known})
+			}
+			if page.Complete {
+				return nil
+			}
+			if len(page.Next) == 0 {
+				return ErrCorrupt
+			}
+			cursor = page.Next
+		}
+	}()
+	if err = v.finish(q, err); err != nil {
+		return nil, false, err
+	}
+	if err := v.output(64 + 64*len(marks)); err != nil {
+		return nil, false, err
+	}
+	return marks, complete, nil
 }

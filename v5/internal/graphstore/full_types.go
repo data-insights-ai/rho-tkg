@@ -21,6 +21,10 @@ type GraphLimits struct {
 	// The engine has no clock; the zero value sets no ceiling, and the caller
 	// that owns the commit clock supplies it for every staged revision.
 	RecordedCeiling temporal.Position
+	// RevisionRows stages one revision row per (owner, revision) so that
+	// ReadView.Revisions lists an owner's history without walking old views.
+	// Range moves refuse a source that holds them (they are not carried yet).
+	RevisionRows bool
 }
 
 // DefaultGraphLimits supplies finite local single-partition integration policy.

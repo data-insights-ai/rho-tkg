@@ -578,3 +578,59 @@ func readEvidenceRecord(src []byte, n Namespace, owner graphstate.EntityID, revi
 	}
 	return out, nil
 }
+
+// encodeRevision writes the row of one (owner, revision): when it became known
+// (zero Position: not recorded).
+func encodeRevision(n Namespace, owner graphstate.EntityID, revision uint64, known temporal.Position, l Limits) ([]byte, error) {
+	if owner == 0 || revision == 0 {
+		return nil, ErrInvalid
+	}
+	b := recordHeader(n, revisionRecord)
+	b = binary.BigEndian.AppendUint64(b, uint64(owner))
+	b = binary.BigEndian.AppendUint64(b, revision)
+	var wire []byte
+	if known.Profile() != 0 {
+		var err error
+		if wire, err = temporal.AppendPosition(nil, known, l.Temporal); err != nil {
+			return nil, callerError(err)
+		}
+	}
+	return checkRecord(appendField(b, wire), l)
+}
+
+// readRevisionRecord decodes a revision row and cross-checks the key identity.
+func readRevisionRecord(src []byte, n Namespace, owner graphstate.EntityID, revision uint64, l Limits, axisOf func(temporal.AxisID) (temporal.Axis, error)) (temporal.Position, error) {
+	c, err := inspectRecord(src, n, revisionRecord, l)
+	if err != nil {
+		return temporal.Position{}, err
+	}
+	o, err := c.number()
+	if err != nil {
+		return temporal.Position{}, err
+	}
+	r, err := c.number()
+	if err != nil {
+		return temporal.Position{}, err
+	}
+	wire, err := c.field(l.Temporal.MaxValueBytes)
+	if err != nil || o != uint64(owner) || r != revision || c.done() != nil {
+		return temporal.Position{}, ErrCorrupt
+	}
+	if len(wire) == 0 {
+		return temporal.Position{}, nil
+	}
+	if len(wire) < 20 {
+		return temporal.Position{}, ErrCorrupt
+	}
+	var id temporal.AxisID
+	copy(id[:], wire[4:20])
+	axis, err := axisOf(id)
+	if err != nil {
+		return temporal.Position{}, err
+	}
+	p, err := temporal.DecodePosition(wire, axis, l.Temporal)
+	if err != nil {
+		return temporal.Position{}, ErrCorrupt
+	}
+	return p, nil
+}

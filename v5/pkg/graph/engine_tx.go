@@ -52,9 +52,6 @@ func (t *engineTx) pre(op Op) error {
 	}
 	t.rec = op.recorded()
 	if !isZeroPosition(t.rec) {
-		if isZeroPosition(t.e.ceiling()) {
-			return t.fail(fmt.Errorf("%w: Recorded needs a KnowledgeAxis", ErrInvalidScope))
-		}
 		// The engine has no clock: the commit's own knowledge instant is the ceiling.
 		if o, err := temporal.ComparePositions(t.rec, t.ceil(), t.e.cfg.Limits); err != nil || o == temporal.Greater {
 			return t.fail(fmt.Errorf("%w: Recorded is after the commit", ErrInvalidScope))
@@ -85,13 +82,8 @@ func (t *engineTx) add(op graphstate.Operation) {
 	t.ops = append(t.ops, op)
 }
 
-// ceil is the commit instant on the knowledge axis, fixed for the Update.
-func (t *engineTx) ceil() temporal.Position {
-	if isZeroPosition(t.ceiling) {
-		t.ceiling = t.e.ceiling()
-	}
-	return t.ceiling
-}
+// ceil is the commit instant on the knowledge axis, fixed when the Update starts.
+func (t *engineTx) ceil() temporal.Position { return t.ceiling }
 
 // schema resolves the declared definition of key (seed, earlier declaration,
 // committed catalog) or declares it from the first value's kind, and returns the

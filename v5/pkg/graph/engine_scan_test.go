@@ -157,9 +157,7 @@ func TestScanRechecksIndexCandidates(t *testing.T) {
 	}
 }
 
-// TestScanRefusals: a Known bound other than All stays refused until WP-30
-// (index pages hold the latest knowledge only); a cursor of another snapshot is
-// not accepted.
+// TestScanRefusals: a cursor of another snapshot is not accepted.
 func TestScanRefusals(t *testing.T) {
 	x := newScanFixture(t)
 	ctx := context.Background()
@@ -169,10 +167,6 @@ func TestScanRefusals(t *testing.T) {
 	}
 	defer s.Close()
 	known := knownAll(t)
-	_, err = s.Scan(ctx, ScanRequest{Selector: Selector{View: ViewDeclared, Valid: scopeAll(t), Known: knownSpan(t), Labels: []string{"P"}}, Paging: PageLimits{Rows: 5, MaxBytes: 1 << 20}})
-	if !errors.Is(err, ErrNotImplemented) {
-		t.Fatalf("Known bound: %v", err)
-	}
 	p, err := s.Scan(ctx, ScanRequest{Selector: Selector{View: ViewDeclared, Valid: scopeAll(t), Known: known, Labels: []string{"P"}}, Paging: PageLimits{Rows: 1, MaxBytes: 1 << 20}})
 	if err != nil || p.Next.IsZero() {
 		t.Fatalf("first page: %v %v", p, err)
