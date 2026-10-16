@@ -156,6 +156,9 @@ func primeValidEndIndex(t *testing.T, g *Core, relTypes, labels []string) {
 // Retired by a valid-time close instead of a delete: the first call reads each
 // closed entity once (the store learns its exact end), later calls read K.
 func TestEffectiveByTypeValidFromCostFollowsResult(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	const live = 5
 	ctx := context.Background()
 	for _, be := range []string{"memory", "badger"} {
@@ -279,6 +282,9 @@ func TestEffectiveByTypeValidFromCostFollowsResult(t *testing.T) {
 // lifecycle reaches it through write maintenance; prime=false builds it after
 // them.
 func TestEffectiveValidFrom_SemanticsTable(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range txbBackends() {
@@ -464,6 +470,9 @@ func TestEffectiveValidFrom_SemanticsTable(t *testing.T) {
 // writes reach it through maintenance; the compaction and rollback reach it
 // through row removals.
 func TestEffectiveValidFrom_MatchesUnboundedOracle(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	x0 := etX0()
 	nSeeds := 3
@@ -592,6 +601,9 @@ func TestEffectiveValidFrom_Errors(t *testing.T) {
 // meaningful under -race): no scan fails, and once the writers stop the
 // bounded doors equal the oracle at a fresh pin for several validFrom.
 func TestEffectiveValidFrom_ConcurrentWrites(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range []string{"memory", "badger"} {

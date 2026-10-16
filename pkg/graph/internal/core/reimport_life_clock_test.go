@@ -22,6 +22,9 @@ import (
 // reopen the floor seed is refused as implausible and those rows are invisible
 // at a current pin — the lesson-71 anachronism).
 func TestReImportDoesNotAdvanceTheClock(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	const fifty = 50 * 365 * 24 * time.Hour
 	run := func(t *testing.T, g *Core, rel bool) (unrelated types.NodeID) {

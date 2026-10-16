@@ -17,6 +17,9 @@ import (
 // delete, void rows): an entry must equal the fold, and wherever the overlay
 // answers, its pieces must equal the fold of the grown chain.
 func TestHeadOverlay_MatchesFold(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {

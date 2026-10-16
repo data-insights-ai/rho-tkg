@@ -74,6 +74,9 @@ func rlSameChains(phase string, e, twin *ccEnt, pins, valids []types.Instant) {
 // Catches: a replica apply that renumbers a re-import record, and (red before
 // the fix) the overwritten first-life row on both sides.
 func TestReImportReplicaApply(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range pastDatedBackends() {
 		for _, rel := range []bool{false, true} {
@@ -100,6 +103,9 @@ func TestReImportReplicaApply(t *testing.T) {
 // fresh graph of the same backend keep every row, verify, and answer every
 // pin as the source.
 func TestReImportExportImportRoundTrip(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, rel := range []bool{false, true} {
@@ -176,6 +182,9 @@ func TestReImportCompactionAcrossLives(t *testing.T) {
 // versions (lifeStart from the stub). Before, it restarted at version 0 under
 // the stub and failed Verify*Chain ("a stub covering a genesis").
 func TestReImportRetentionPurge(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, rel := range []bool{false, true} {
@@ -265,6 +274,9 @@ func TestReImportRetentionPurge(t *testing.T) {
 // tombstone) answers the overwritten re-import row from the earlier life's
 // slot.
 func TestReImportOldChainReadsAsBefore(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)

@@ -58,6 +58,9 @@ func mallocs(fn func()) uint64 {
 }
 
 func TestR10HeadTimelineCostIndependentOfHistory(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	for _, be := range r10AllBackends(t) {
 		t.Run(be.name, func(t *testing.T) {

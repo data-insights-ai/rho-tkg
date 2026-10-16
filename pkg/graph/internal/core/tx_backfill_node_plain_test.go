@@ -23,6 +23,9 @@ import (
 //     only, handover §6.4);
 //   - lets the GraphTx or batch door diverge from the standalone door.
 func TestTxBackfillNode_PlainDoorsUnchanged(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	type door struct {
 		name string

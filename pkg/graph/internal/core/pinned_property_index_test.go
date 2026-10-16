@@ -388,6 +388,9 @@ func filterRelsTypeValue(rels []*types.Relationship, tok uint16, key string, val
 // write it follows when the clock does not move; H at hTx exactly), skipping
 // the backfilled row (H), and leaking another type's carriers (X).
 func TestPinnedByTypeAndPropertyEqualsPinnedScan(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	for _, be := range pinnedPropBackends() {
 		for _, withIndex := range []bool{true, false} {
 			if withIndex && !be.canIndex {
@@ -842,6 +845,9 @@ func declarePropertyIndexes(t *testing.T, be pinnedPropBackend, g *Core, mode in
 // label carried by another row than the value (n2 gains L after the value
 // changed back), and the pin prune applied to a pure valid-time read.
 func TestPinnedPropertyDoorsAgree(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	for _, be := range pinnedPropBackends() {
 		modes := []indexMode{indexNone, indexAll, indexSeatOnly}
@@ -1252,6 +1258,9 @@ func lifecycleBackends() []pinnedPropBackend {
 // buffer flushes missing rows, and a compacted pin answered instead of
 // failing closed.
 func TestPinnedPropertyLookupLifecycle(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	for _, be := range lifecycleBackends() {
 		t.Run(be.name+"/late-index-drop-recreate", func(t *testing.T) {

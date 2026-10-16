@@ -133,6 +133,9 @@ func TestHasProperty_Lifecycle(t *testing.T) {
 }
 
 func TestHasProperty_BadgerReopen(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	g, err := New(Config{BadgerDir: dir})
@@ -266,6 +269,9 @@ func TestHasTemporal_Lifecycle(t *testing.T) {
 }
 
 func TestVectorIndexInfo_Lifecycle(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	backends := introspectionBackends()
 	backends = append(backends, introspectionBackend{name: "tiered", newCore: newTieredTestCore})

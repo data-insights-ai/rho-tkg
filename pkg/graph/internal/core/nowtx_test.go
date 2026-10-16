@@ -143,6 +143,9 @@ func TestNowTx_PinSeparatesCommittedFromFuture_Rel(t *testing.T) {
 // writes, the exact anachronism NowTx exists to prevent. NowTx must instead
 // still cover the persisted write.
 func TestNowTx_ReopenSafe(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	ctx := context.Background()

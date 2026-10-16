@@ -23,6 +23,9 @@ import (
 // history rows after compaction is below the number before) where the
 // anchors allow it — a plain update chain trims to KeepVersions.
 func TestCompactionKeepsPrevHashAnchors(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	shapes := append([]ccShape{{"plain-updates", func(e *ccEnt, id int64) {
 		e.mustUpdate(id, map[string]any{"tkg_valid_from": types.Instant(1500), "x": int64(1)})

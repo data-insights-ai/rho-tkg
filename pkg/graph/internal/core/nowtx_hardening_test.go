@@ -32,6 +32,9 @@ import (
 // NowTx silently excludes already-committed entities: the exact anachronism the
 // pin exists to prevent. A frozen wall clock models the burst deterministically.
 func TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	ctx := context.Background()

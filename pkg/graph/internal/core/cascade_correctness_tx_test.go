@@ -20,6 +20,9 @@ import (
 // only a label that differs between the rows tells). Every backend; the
 // count arm is the core one on sharded and tiered.
 func TestAsOfLabelCountAfterCascadeBelowLabelChange(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -77,6 +80,9 @@ func TestAsOfLabelCountAfterCascadeBelowLabelChange(t *testing.T) {
 // (backlog 19). White-box: the snapshot set stays empty. Counterpart: an
 // accepted update does snapshot.
 func TestTxRefusedUpdateWithTxTakesNoSnapshot(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)

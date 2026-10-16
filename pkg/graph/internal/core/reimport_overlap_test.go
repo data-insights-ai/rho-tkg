@@ -22,6 +22,9 @@ import (
 // at version 0 — and tiled the first life's version 1 after it. Every backend,
 // node and rel, NodeAtTx at a pin and NodeAt.
 func TestAtTxReImportOverlapsEarlierLife(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)

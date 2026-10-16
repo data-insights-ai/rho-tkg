@@ -132,6 +132,9 @@ func assertCloseRefusal(t *testing.T, g *Core, id types.RelID, phase string, bef
 // order-violating t must still answer ErrTxBackfillDisabled: privilege is
 // decided before the entity lock is taken).
 func TestTxBackfillRel_GateOff(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -166,6 +169,9 @@ func TestTxBackfillRel_GateOff(t *testing.T) {
 // that smuggles the instant through a reserved property (tkg_tx_from /
 // tkg_tx_to stay rejected as user properties on UpdateWithTx).
 func TestTxBackfillRel_InvalidInstant(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, gate := range []bool{true, false} {
@@ -246,6 +252,9 @@ func TestTxBackfillRel_InvalidInstant(t *testing.T) {
 // refuse; t between the history TxFrom and TxTo catches a rule that reads
 // TxFrom but not TxTo.
 func TestTxBackfillRel_OrderEqualReversed(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name+"/current", func(t *testing.T) {
@@ -326,6 +335,9 @@ func TestTxBackfillRel_OrderEqualReversed(t *testing.T) {
 // (an in-place update moved UpdatedAt above TxFrom: a rule reading only TxFrom
 // stamps a version that starts before its predecessor's last change).
 func TestTxBackfillRel_OrderValidStart(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name+"/explicit_valid_from", func(t *testing.T) {
@@ -497,6 +509,9 @@ func TestTxBackfillRel_DeleteIgnoresT(t *testing.T) {
 // new TxFrom from the clock, and t leaking into the next plain write (the next
 // plain Update must stamp the clock, above t, and chain prev.TxTo to it).
 func TestTxBackfillRel_UpdateStamps(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -595,6 +610,9 @@ func TestTxBackfillRel_CloseCollision(t *testing.T) {
 // Catches: the close lost by the clamp (pin t-1 shows an open-ended row) and
 // a tombstone written before the refusal.
 func TestTxBackfillRel_ScheduledCloseAfterT(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -731,6 +749,9 @@ func assertTxChainMonotone(t *testing.T, phase string, chain []*types.Relationsh
 // PeekTx()+1 is not usable — within one millisecond it can lie above the
 // clock and is then rightly refused as future.
 func TestTxBackfillRel_RaceClock(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	const writers, rounds = 4, 40
 	for _, be := range txbBackends() {
@@ -814,6 +835,9 @@ func TestTxBackfillRel_RaceClock(t *testing.T) {
 // gen is the cache epoch). Catches: a new door that forgets the report, which
 // becomes a stale read the day a relationship-backed column is cached.
 func TestTxBackfillRel_DoorsReportPastDatedWrite(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, d := range txbDoors() {

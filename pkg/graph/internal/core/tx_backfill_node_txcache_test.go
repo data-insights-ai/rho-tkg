@@ -78,6 +78,9 @@ func txbPinSets(t *testing.T, g *Core, pins ...types.Instant) string {
 // fixture: a different instant on a cascaded rel, a missing tombstone, a
 // different version).
 func TestTxBackfillNode_TxRollbackEquiv(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, op := range txbNodeOps() {

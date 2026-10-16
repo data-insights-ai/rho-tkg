@@ -405,6 +405,9 @@ func TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardC
 // returning a pinned store. When the true owner is a cold fallback shard,
 // closeIdleShards must not be able to close that shard until checkin runs.
 func TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	g, ts := newDiskTieredGraph(t)
 
 	a, err := g.Nodes.Add(context.Background(), []string{"Signal"}, nil)

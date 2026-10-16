@@ -215,6 +215,9 @@ func TestOneTickSpanVisible_NodeDoors(t *testing.T) {
 // skipping a [t, t+1) edge while Rels().ByType(T, QueryOpts{}) finds it —
 // the two-doors disagreement the consumer reported.
 func TestOneTickSpanVisible_RelDoors(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -363,6 +366,9 @@ func TestOneTickSpanVisible_RelDoors(t *testing.T) {
 // phases (rule 15): a pin before the close still sees the open belief. The
 // width-2 control (close at vf+2) must behave the same way one tick later.
 func TestOneTickSpanVisible_CloseVersionAtVfPlusOne(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, width := range []types.Instant{1, 2} {
@@ -514,6 +520,9 @@ func otsNewestRelTx(t *testing.T, g *Core, id types.RelID) types.Instant {
 // (B32: history stays queryable after deletion). Two phases: a pin at vf (the
 // delete not yet recorded) sees the open belief at vf+500.
 func TestOneTickSpanVisible_DeleteAtVfPlusOne(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name+"/node", func(t *testing.T) {
@@ -608,6 +617,9 @@ func TestOneTickSpanVisible_DeleteAtVfPlusOne(t *testing.T) {
 // [t, t+2000) into [t, t+1) and [t+1, t+2000); the 1-wide first piece was lost,
 // so the patched key vanished at t.
 func TestOneTickSpanVisible_CascadeWidthOnePiece(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name+"/node", func(t *testing.T) {
@@ -791,6 +803,9 @@ func TestOneTickSpanVisible_CascadeWidthOnePiece(t *testing.T) {
 // cascade succeeded on the tombstoned chain with the newest history row as
 // template — until the refusal was decided).
 func TestCascadeTemplate_GapPieceUsesCurrentRow(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		t.Run(be.name+"/node", func(t *testing.T) {

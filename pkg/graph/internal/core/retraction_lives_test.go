@@ -18,6 +18,9 @@ import (
 // answers. A resolver that only caps L2's rows keeps L2's supersession of L1
 // and leaves a hole at valid times in [S, D1).
 func TestRetraction_RetractedLifeShapesNoOtherLife(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, be := range txbBackends() {

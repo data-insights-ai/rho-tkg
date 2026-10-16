@@ -143,6 +143,9 @@ func txbW4DeleteDoors() []txbDoor {
 // lie about when belief ended. Counterpart: close+1 stamps t exactly and keeps
 // the close.
 func TestTxBackfillRelW4_CloseCollision(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, d := range txbW4DeleteDoors() {
@@ -179,6 +182,9 @@ func TestTxBackfillRelW4_CloseCollision(t *testing.T) {
 // t-1 shows an open-ended row — a falsified past belief) and a tombstone
 // written before the refusal. Same decision as the standalone door (§6.11).
 func TestTxBackfillRelW4_ScheduledCloseAfterT(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, d := range txbW4DeleteDoors() {
@@ -264,6 +270,9 @@ func txbPins(t *testing.T, g *Core, id types.RelID, pins ...types.Instant) []txb
 // identical to before the transaction. Inside the transaction the row must
 // carry t (a twin that ignores t would pass the rollback half trivially).
 func TestTxBackfillRelW4_TxRollbackEquiv(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	type txOp struct {
 		name  string
@@ -349,6 +358,9 @@ func TestTxBackfillRelW4_TxRollbackEquiv(t *testing.T) {
 // door, B the door under test, both at t with the same properties; the exports
 // must then be byte-identical.
 func TestTxBackfillRelW4_DoorEquivalence(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	standalone := map[bool]func(g *Core, id types.RelID, at types.Instant) error{
 		true: func(g *Core, id types.RelID, at types.Instant) error {
@@ -441,6 +453,9 @@ func txbR16Fixture(t *testing.T, g *Core) txbR16Fix {
 // instant applies every op, A's new version and B's tombstone carry exactly
 // their t, P's plain update is stamped above them.
 func TestTxBackfillRelW4_BatchIngestDoors(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, m := range txbQueueModes() {

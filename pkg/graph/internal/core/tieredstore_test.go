@@ -73,6 +73,9 @@ func tieredNodeGen(t *testing.T) *snowflake.Node {
 // --- Registry round-trip via Graph ---
 
 func TestTieredStore_RegistryRoundTrip_ViaGraph(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	// Create graph with tiered.Store.

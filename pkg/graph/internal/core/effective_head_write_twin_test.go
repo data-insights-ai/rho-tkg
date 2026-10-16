@@ -41,6 +41,9 @@ import (
 // current row left in history by a rollback.
 
 func TestEffectiveHeadWrite_TwinDifferential(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	seeds, steps := 2, 60
 	if !testing.Short() {

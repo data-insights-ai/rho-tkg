@@ -38,6 +38,9 @@ func openTieredCoreAt(t *testing.T, dir string, coldAfter time.Duration, promote
 }
 
 func TestTieredRelTemporalPrune_DemotePromoteParityWithBadger(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	bc, bs := newBadgerCoreForIndexes(t)
 	tc, ts := openTieredCoreAt(t, dir, 0, false)

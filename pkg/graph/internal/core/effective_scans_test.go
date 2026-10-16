@@ -251,6 +251,9 @@ func esDoors(g *Core, nodes, rels []int64) []esDoor {
 // candidate's whole timeline instead of its seeded / typed / labelled
 // segments, ignores the direction, or ignores fn's stop.
 func TestEffectiveScans_MatchPerEntityTimeline(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	x0 := etX0()
 	nSeeds := 3

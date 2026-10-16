@@ -86,6 +86,9 @@ func (e *ccEnt) curTemporal(id int64) types.TemporalMetadata {
 // Delete the answers at earlier pins are unchanged, and after the delete the
 // entity is absent from every door.
 func TestOldChain_BoundedCascadeResumptionTookSlot(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)
@@ -134,6 +137,9 @@ func TestOldChain_BoundedCascadeResumptionTookSlot(t *testing.T) {
 // before the delete, and after it the entity is absent from the as-of and
 // valid-time doors alike; pins before the delete are unchanged.
 func TestOldChain_ResumptionWithCopiedTxToThenDelete(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)

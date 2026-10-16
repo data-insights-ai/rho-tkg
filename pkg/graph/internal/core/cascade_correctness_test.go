@@ -115,6 +115,9 @@ var ccValids = []types.Instant{500, 700, 999, 1000, 1500, 2000, 2100, 2300, 2500
 // then, at p3 T is absent; the bystander B is v0 throughout; the answers at p1
 // and p2 do not change when T is deleted.
 func TestAsOfBoundedCascadeThenDelete(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		for _, sh := range ccShapes() {
@@ -158,6 +161,9 @@ func TestAsOfBoundedCascadeThenDelete(t *testing.T) {
 // delete and the import T is absent; after it T is the imported row; no row of
 // the first life answers for the second.
 func TestAsOfBoundedCascadeThenDelete_ReImport(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		for _, sh := range ccShapes() {
@@ -208,6 +214,9 @@ func TestAsOfBoundedCascadeThenDelete_ReImport(t *testing.T) {
 // before the delete. Pins before the delete are unchanged. Catches a delete
 // that leaves the open genesis row of a cascaded chain valid forever.
 func TestValidTimeAfterDeleteBoundedCascade(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		for _, sh := range ccShapes() {
@@ -250,6 +259,9 @@ func TestValidTimeAfterDeleteBoundedCascade(t *testing.T) {
 // wrote: each pin answers its own belief at valid 1000 through every door, the
 // bystander is untouched, earlier pins are unchanged.
 func TestOneTickCascadeRows(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)
@@ -286,6 +298,9 @@ func TestOneTickCascadeRows(t *testing.T) {
 // an ID that never existed is ErrNodeNotFound / ErrRelNotFound and NOT
 // ErrEntityDeleted.
 func TestCascadeOnDeletedEntityRefused(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	type cascadeDoor struct {
 		name string
@@ -366,6 +381,9 @@ func TestCascadeOnDeletedEntityRefused(t *testing.T) {
 // later write supersedes it, and the as-of door answers the entity (present)
 // exactly as the TxPin door does.
 func TestCascadeAppendedRowsCarryNoRetraction(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		e := mk(t)
@@ -418,6 +436,9 @@ func TestCascadeAppendedRowsCarryNoRetraction(t *testing.T) {
 // the TxAt answer at an earlier pin) and the as-of door answering the current
 // row only until a later write supersedes it.
 func TestCascadeVersionsUniqueAndPastStable(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		for _, sh := range ccShapes() {
@@ -492,6 +513,9 @@ func TestCascadeVersionsUniqueAndPastStable(t *testing.T) {
 // trim from current.Version() that drops the higher-version cascade rows, and
 // a refused Update*WithTx that snapshots before it refuses.
 func TestTxRollbackKeepsCascadeRows(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	type txOp struct {
 		name string

@@ -21,6 +21,9 @@ import (
 const r10bHistoryLimit = 4
 
 func TestR10bCorrectionReadsBoundedHistory(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	for _, be := range r10AllBackends(t) {
 		t.Run(be.name, func(t *testing.T) {

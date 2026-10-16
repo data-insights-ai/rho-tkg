@@ -80,6 +80,9 @@ func TestTieredStore_BulkQueries_IncludeArchive(t *testing.T) {
 // archived entity without an explicit point lookup having triggered
 // ensureRefArchive first.
 func TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	mkStore := func() *tiered.Store {
 		ts, err := tiered.New(tiered.Config{

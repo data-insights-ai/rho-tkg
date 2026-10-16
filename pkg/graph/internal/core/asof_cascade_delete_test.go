@@ -164,6 +164,9 @@ func TestAsOfCascadeThenDeleteNode(t *testing.T) {
 }
 
 func TestAsOfCascadeThenDeleteRel(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, be := range asofCascadeBackends() {
 		be := be
