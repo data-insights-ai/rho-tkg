@@ -47,6 +47,8 @@ var (
 	ErrNotFound = errors.New("graph: not found")
 	// ErrConflict reports a serialization conflict; the Update may be retried.
 	ErrConflict = errors.New("graph: conflict")
+	// ErrAlreadyExists reports an explicit CreateNode/CreateRel ID that exists.
+	ErrAlreadyExists = errors.New("graph: already exists")
 	// ErrUniqueViolation reports a unique-claim violation (gap rows 6-7).
 	ErrUniqueViolation = errors.New("graph: unique violation")
 	// ErrCommitNotDurable reports a commit applied but not yet durable (gap row 20).

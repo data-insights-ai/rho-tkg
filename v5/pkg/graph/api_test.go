@@ -122,6 +122,7 @@ func (f fakeSnap) scan(context.Context, ScanRequest) (Page, error)          { re
 func (f fakeSnap) resume(context.Context, Cursor, PageLimits) (Page, error) { return Page{}, nil }
 func (f fakeSnap) lookup(context.Context, LookupRequest) (Page, error)      { return Page{}, nil }
 func (f fakeSnap) timeline(context.Context, TimelineRequest) (Page, error)  { return Page{}, nil }
+func (f fakeSnap) meta(context.Context, string) ([]byte, bool, error)       { return nil, false, nil }
 func (f fakeSnap) cut() Cut                                                 { return f.cutv }
 func (f fakeSnap) close() error                                             { return nil }
 

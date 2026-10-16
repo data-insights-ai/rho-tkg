@@ -82,7 +82,7 @@ func (r *reader) keys(id graphstate.EntityID) ([]graphstate.ComponentKey, error)
 	out := []graphstate.ComponentKey{{Owner: id, Kind: graphstate.Presence}}
 	var cur graphstate.Cursor
 	for guard := 0; guard < 1<<16; guard++ {
-		pg, err := r.rv.ComponentKeys(r.ctx, graphstate.KeyPredicate{Owner: id, Life: lifeID}, cur, pageBudget)
+		pg, err := r.rv.ComponentKeys(r.ctx, graphstate.KeyPredicate{Owner: id}, cur, pageBudget)
 		if err != nil {
 			return nil, err
 		}
@@ -115,7 +115,9 @@ type segment struct {
 
 // segments splits window at every piece boundary of the entity's components.
 // Segments are lower-inclusive, upper-exclusive; a Point window is one segment.
-func (r *reader) segments(id graphstate.EntityID, window temporal.Scope) ([]segment, error) {
+// ends are further entities whose presence also cuts the window (a relationship
+// under the Effective view changes where its endpoints appear and vanish).
+func (r *reader) segments(id graphstate.EntityID, window temporal.Scope, ends ...graphstate.EntityID) ([]segment, error) {
 	l := r.e.cfg.Limits
 	ax := window.Axis()
 	if window.Kind() == temporal.ScopeEmpty {
@@ -129,6 +131,9 @@ func (r *reader) segments(id graphstate.EntityID, window temporal.Scope) ([]segm
 	keys, err := r.keys(id)
 	if err != nil {
 		return nil, err
+	}
+	for _, x := range ends {
+		keys = append(keys, graphstate.ComponentKey{Owner: x, Kind: graphstate.Presence})
 	}
 	var cuts []temporal.Position
 	for _, k := range keys {
@@ -252,7 +257,15 @@ func (r *reader) rows(ref Ref, sel Selector, proj Projection, m *matcher) ([]Ent
 	if m != nil && !m.entity(rec) {
 		return nil, nil
 	}
-	segs, err := r.segments(id, sel.Valid)
+	// A relationship refers to its endpoints by identity: the Effective view
+	// shows it only where both endpoints are present (v4's rule), the Declared
+	// view over everything it was declared for.
+	masked := !wantNode && sel.View == ViewEffective
+	var ends []graphstate.EntityID
+	if masked {
+		ends = []graphstate.EntityID{rec.Source, rec.Target}
+	}
+	segs, err := r.segments(id, sel.Valid, ends...)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +277,9 @@ func (r *reader) rows(ref Ref, sel Selector, proj Projection, m *matcher) ([]Ent
 			return nil, err
 		}
 		if !pr.Exists || !pr.Active || m != nil && !m.state(pr) {
+			continue
+		}
+		if masked && (!pr.Endpoints[0].Active || !pr.Endpoints[1].Active) {
 			continue
 		}
 		adjacent := lastSeg == si-1
@@ -537,7 +553,8 @@ func (r *reader) mintedRange(st *pageState) error {
 	if err != nil {
 		return err
 	}
-	lo, hi, err := a.minted()
+	_, hi, err := a.minted()
+	lo := uint64(1) // imported entities live in the reserved range below the minted one
 	if err != nil {
 		return err
 	}
@@ -1097,4 +1114,23 @@ func (a scanCounts) minus(b scanCounts) scanCounts {
 
 func (e *pebbleEngine) scanStats() scanCounts {
 	return scanCounts{e.scanCandidates.Load(), e.scanHits.Load()}
+}
+
+func (s *engineSnap) meta(ctx context.Context, key string) ([]byte, bool, error) {
+	if err := s.live(); err != nil {
+		return nil, false, err
+	}
+	v, err := s.e.store.ApplicationView(s.index)
+	if err != nil {
+		if errors.Is(err, raftlog.ErrApplicationExpired) {
+			return nil, false, ErrSnapshotExpired
+		}
+		return nil, false, err
+	}
+	defer v.Close()
+	row, found, err := v.Get(ctx, metaKey(key), MaxMetaValueBytes+len(metaPrefix)+MaxMetaKeyBytes)
+	if err != nil || !found {
+		return nil, false, err
+	}
+	return bytes.Clone(row.Value), true, nil
 }

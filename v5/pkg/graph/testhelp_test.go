@@ -33,3 +33,7 @@ func (stubEngine) openSnapshot(context.Context, SnapshotSpec) (snapshotEngine, e
 	return nil, ErrNotImplemented
 }
 func (stubEngine) close() error { return nil }
+
+func (stubSnap) meta(context.Context, string) ([]byte, bool, error) {
+	return nil, false, ErrNotImplemented
+}

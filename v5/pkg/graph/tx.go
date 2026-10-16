@@ -45,7 +45,24 @@ type Tx interface {
 	// a holder of the value without Label is ErrUniqueViolation, so the same
 	// value under two labels needs two keys.
 	GetOrCreate(GetOrCreate) (id types.NodeID, created bool, err error)
+	// Reopen starts the next life of an existing node or relationship over
+	// Scope: the same ID, a new life (an import keeps v4's second life of an ID).
+	// Scope must lie outside every earlier life's presence (ErrInvalidScope).
+	// Later ops on the target resolve to the one life their Scope falls in; a
+	// Scope that spans two lives is ErrInvalidScope.
+	Reopen(Reopen) error
+	// SetMeta stores value under key in the engine's own KV space, in the same
+	// commit as the Update's ops: it rolls back with them and is read by
+	// Snapshot.Meta at any cut. A later SetMeta of the same key in one Update
+	// wins. Key is 1..MaxMetaKeyBytes bytes, value at most MaxMetaValueBytes.
+	SetMeta(key string, value []byte) error
 }
+
+// MaxMetaKeyBytes and MaxMetaValueBytes bound one Tx.SetMeta row.
+const (
+	MaxMetaKeyBytes   = 256
+	MaxMetaValueBytes = 64 << 10
+)
 
 // Op is a write operation. Validate checks it without an engine.
 // The set of ops is closed.
@@ -134,8 +151,13 @@ func nonEmpty(what, v string) error {
 	return nil
 }
 
-// CreateNode creates a node with labels and properties over Scope.
+// CreateNode creates a node with labels and properties over Scope. ID zero
+// takes the next ID from the allocator; a non-zero ID is an import's own ID and
+// must lie in the reserved range 1..Config.Allocation.Seed (above it, or
+// negative, is ErrInvalidID; an ID that exists, also earlier in the same Update,
+// is ErrAlreadyExists). Nodes and relationships share one ID space.
 type CreateNode struct {
+	ID       types.NodeID
 	Labels   []string
 	Props    map[string]Value
 	Scope    temporal.Scope
@@ -144,6 +166,9 @@ type CreateNode struct {
 
 // Validate implements Op.
 func (o CreateNode) Validate(l temporal.Limits) error {
+	if o.ID < 0 {
+		return fmt.Errorf("%w: node", ErrInvalidID)
+	}
 	for _, s := range o.Labels {
 		if err := nonEmpty("label", s); err != nil {
 			return err
@@ -155,8 +180,12 @@ func (o CreateNode) Validate(l temporal.Limits) error {
 	return checkWrite(o.Scope, o.Recorded, l)
 }
 
-// CreateRel creates a relationship From -> To over Scope.
+// CreateRel creates a relationship From -> To over Scope. ID follows
+// CreateNode.ID. The relationship refers to its endpoints by identity: Scope
+// may extend beyond the endpoints' lives. The Declared view shows it over all of
+// Scope, the Effective view only where both endpoints are present.
 type CreateRel struct {
+	ID       types.RelID
 	Type     string
 	From, To types.NodeID
 	Props    map[string]Value
@@ -166,6 +195,9 @@ type CreateRel struct {
 
 // Validate implements Op.
 func (o CreateRel) Validate(l temporal.Limits) error {
+	if o.ID < 0 {
+		return fmt.Errorf("%w: relationship", ErrInvalidID)
+	}
 	if err := nonEmpty("type", o.Type); err != nil {
 		return err
 	}
@@ -227,6 +259,21 @@ func (o End) Validate(l temporal.Limits) error {
 		return fmt.Errorf("%w: an unplaced scope has no upper bound", ErrInvalidScope)
 	}
 	return nil
+}
+
+// Reopen starts the next life of Target over Scope (see Tx.Reopen).
+type Reopen struct {
+	Target   Ref
+	Scope    temporal.Scope
+	Recorded temporal.Position
+}
+
+// Validate implements Op.
+func (o Reopen) Validate(l temporal.Limits) error {
+	if err := o.Target.Validate(); err != nil {
+		return err
+	}
+	return checkWrite(o.Scope, o.Recorded, l)
 }
 
 // AddLabel adds Label to a node over Scope.
@@ -364,6 +411,7 @@ func (o Set) writeScope() temporal.Scope         { return o.Scope }
 func (o Unset) writeScope() temporal.Scope       { return o.Scope }
 func (o Retract) writeScope() temporal.Scope     { return o.Scope }
 func (o GetOrCreate) writeScope() temporal.Scope { return o.Scope }
+func (o Reopen) writeScope() temporal.Scope      { return o.Scope }
 
 func (o CreateNode) recorded() temporal.Position  { return o.Recorded }
 func (o CreateRel) recorded() temporal.Position   { return o.Recorded }
@@ -375,3 +423,11 @@ func (o Set) recorded() temporal.Position         { return o.Recorded }
 func (o Unset) recorded() temporal.Position       { return o.Recorded }
 func (o Retract) recorded() temporal.Position     { return o.Recorded }
 func (o GetOrCreate) recorded() temporal.Position { return o.Recorded }
+func (o Reopen) recorded() temporal.Position      { return o.Recorded }
+
+func checkMetaKey(key string) error {
+	if n := len(key); n == 0 || n > MaxMetaKeyBytes {
+		return fmt.Errorf("%w: meta key must be 1..%d bytes", ErrInvalidRequest, MaxMetaKeyBytes)
+	}
+	return nil
+}
