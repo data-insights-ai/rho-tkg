@@ -34,6 +34,20 @@ func nativeTransitionScopeCaller(campaign bool, program *nativeProtocolProgramSp
 	return 2, nil
 }
 
+func nativeTransitionScopeCurrentCaller(reader, selected uint64) (uint64, error) {
+	if reader != 2 && reader != 3 || selected > 6 || selected != 0 && (selected == reader || selected == 2 || selected == 5) {
+		return 0, errInvalid
+	}
+	if selected == 6 {
+		// The restored target6 remains bound to its own follower-local source
+		// for the already completed pre-heal At(C) proof. Keep that route and
+		// its spent streams intact; this later Fresh diagnostic instead uses
+		// the SAME surviving scoped reader's genuine leader-routed sessions.
+		return reader, nil
+	}
+	return 6, nil
+}
+
 type nativeTransitionScopeObservation struct {
 	Request, Token, Facts []byte
 }
@@ -415,7 +429,15 @@ func nativeTransitionScopeCaseOwned(t *testing.T, mode graphReadMode, program *n
 	nativeTransitionScopeAssert(t, retained.Facts, false)
 	f.call(f.n.all[2], processRequest{op: processSourceCertifiedClose, index: oldHandle})
 	oldClosed = true
-	current := p06Observe(f, 6, graphReadFresh, graphCut{})
+	selected := uint64(0)
+	if gate != nil {
+		selected = gate.selector.Member
+	}
+	currentActor, err := nativeTransitionScopeCurrentCaller(reader, selected)
+	if err != nil {
+		t.Fatal("actual current diagnostic caller", err)
+	}
+	current := p06Observe(f, currentActor, graphReadFresh, graphCut{})
 	retryReply := f.call(f.n.all[5], processRequest{op: processSourceCoordinate, data: original.wire})
 	retry, err := decodeGraphProcessCoordinatorResult(retryReply)
 	if err != nil || retry != result {
