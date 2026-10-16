@@ -41,7 +41,32 @@ var (
 	contractID = sha256.Sum256([]byte("rho-tkg:v5/pkg/graph:single-partition:v1"))
 	lifeID     = graphstate.LifeID(1)
 	allocName  = []byte("rho-tkg:v5/pkg/graph:id-allocator:v1")
+	endPrefix  = []byte("rho-tkg:v5/pkg/graph:end:v1/")
 )
+
+// endKey names the engine row holding an entity's End position (End closes the
+// life; Retract does not, and the stored cells alone cannot tell them apart).
+func endKey(id graphstate.EntityID) []byte {
+	return binary.BigEndian.AppendUint64(slices.Clone(endPrefix), uint64(id))
+}
+
+// endAt reads the entity's committed End position at index.
+func (e *pebbleEngine) endAt(ctx context.Context, index uint64, id graphstate.EntityID) (temporal.Position, bool, error) {
+	view, err := e.store.ApplicationView(index)
+	if err != nil {
+		return temporal.Position{}, false, err
+	}
+	defer view.Close()
+	row, found, err := view.Get(ctx, endKey(id), 4096)
+	if err != nil || !found {
+		return temporal.Position{}, false, err
+	}
+	p, err := temporal.DecodePosition(row.Value, e.cfg.DefaultAxis.Axis(), e.cfg.Limits)
+	if err != nil {
+		return temporal.Position{}, false, fmt.Errorf("%w: stored End: %v", ErrCommitNotDurable, err)
+	}
+	return p, true, nil
+}
 
 func readBudget() graphstore.OwnershipBudget {
 	return graphstore.OwnershipBudget{SourceRows: 65536, SourceBytes: 64 << 20, OutputBytes: 64 << 20}
@@ -383,8 +408,15 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 			return Receipt{}, err
 		}
 		writes = append(writes, ar)
-		slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
 	}
+	for id, p := range tx.ends {
+		v, err := temporal.AppendPosition(nil, p, e.cfg.Limits)
+		if err != nil {
+			return Receipt{}, fmt.Errorf("%w: %v", ErrInvalidScope, err)
+		}
+		writes = append(writes, raftlog.KV{Key: endKey(id), Value: v})
+	}
+	slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
 	if err := e.commit(next, prev, img, writes); err != nil {
 		return Receipt{}, err
 	}

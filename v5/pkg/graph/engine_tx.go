@@ -30,7 +30,7 @@ type engineTx struct {
 	ceiling temporal.Position
 	claims  map[string]types.NodeID
 	created map[types.NodeID]bool
-	ended   map[graphstate.EntityID]temporal.Scope // union of this Update's Close scopes
+	ends    map[graphstate.EntityID]temporal.Position // earliest End per entity, set in this Update
 }
 
 var _ Tx = (*engineTx)(nil)
@@ -219,16 +219,16 @@ func target(r Ref) (graphstate.EntityID, bool) {
 	return graphstate.EntityID(r.Node()), true
 }
 
-// Correct re-asserts the target over Scope and sets Set there, but never where
-// the entity was ended or retracted (an explicit retraction in the committed
-// presence, or an End/Retract earlier in this Update); a scope wholly inside
-// such a region is ErrInvalidScope.
+// Correct re-asserts the target over Scope and sets Set there. A retracted
+// region is filled (a later assertion is new knowledge); nothing at or after
+// the entity's End (committed or earlier in this Update) is: the scope is
+// clipped there, and a scope wholly after the End is ErrInvalidScope.
 func (t *engineTx) Correct(o Correct) error {
 	if err := t.pre(o); err != nil {
 		return err
 	}
 	id, node := target(o.Target)
-	scope, err := t.unretracted(id, o.Scope)
+	scope, err := t.beforeEnd(id, o.Scope)
 	if err != nil {
 		return t.fail(err)
 	}
@@ -236,43 +236,37 @@ func (t *engineTx) Correct(o Correct) error {
 	return t.props(id, node, o.Set, scope)
 }
 
-func (t *engineTx) unretracted(id graphstate.EntityID, scope temporal.Scope) (temporal.Scope, error) {
-	r, err := t.e.readerAt(t.ctx, t.base)
-	if err != nil {
+// beforeEnd clips scope at the entity's End.
+func (t *engineTx) beforeEnd(id graphstate.EntityID, scope temporal.Scope) (temporal.Scope, error) {
+	p, ok, err := t.endOf(id)
+	if err != nil || !ok {
 		return scope, err
 	}
-	defer r.close()
 	l := t.e.cfg.Limits
-	gone, err := temporal.Empty(scope.Axis())
+	lo, err := temporal.FiniteBound(p, true)
 	if err != nil {
 		return scope, err
 	}
-	if closed, ok := t.ended[id]; ok {
-		if gone, err = gone.Union(closed, l); err != nil {
-			return scope, err
-		}
-	}
-	pages, err := r.pieces(graphstate.ComponentKey{Owner: id, Kind: graphstate.Presence}, scope)
+	gone, err := temporal.Span(scope.Axis(), lo, temporal.PositiveInfinity(), l)
 	if err != nil {
 		return scope, err
-	}
-	for _, pg := range pages {
-		for _, pc := range pg.Data.Pieces() {
-			if !pc.Cell().Present() && pc.Cell().Revision().ID() != 0 {
-				if gone, err = gone.Union(pc.Scope(), l); err != nil {
-					return scope, err
-				}
-			}
-		}
 	}
 	allowed, err := scope.Difference(gone, l)
 	if err != nil {
 		return scope, err
 	}
 	if allowed.Kind() == temporal.ScopeEmpty {
-		return scope, fmt.Errorf("%w: the whole scope lies in an ended or retracted region", ErrInvalidScope)
+		return scope, fmt.Errorf("%w: the whole scope lies at or after the entity's End", ErrInvalidScope)
 	}
 	return allowed, nil
+}
+
+// endOf is the entity's End position: this Update's, else the committed one.
+func (t *engineTx) endOf(id graphstate.EntityID) (temporal.Position, bool, error) {
+	if p, ok := t.ends[id]; ok {
+		return p, true, nil
+	}
+	return t.e.endAt(t.ctx, t.base, id)
 }
 
 // End closes the target from the upper bound of Scope to +infinity.
@@ -294,25 +288,22 @@ func (t *engineTx) End(o End) error {
 		return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
 	}
 	id, _ := target(o.Target)
-	return t.close(id, tail)
-}
-
-// close stages a Close and remembers its scope, so a later Correct in the same
-// Update cannot revive what this one ended or retracted.
-func (t *engineTx) close(id graphstate.EntityID, scope temporal.Scope) error {
-	prior, ok := t.ended[id]
-	if !ok {
-		prior = scope
-	}
-	union, err := prior.Union(scope, t.e.cfg.Limits)
+	prior, ok, err := t.endOf(id)
 	if err != nil {
+		return t.fail(err)
+	}
+	if !ok {
+		prior = p
+	} else if c, err := temporal.ComparePositions(p, prior, t.e.cfg.Limits); err != nil {
 		return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
+	} else if c == temporal.Less {
+		prior = p
 	}
-	if t.ended == nil {
-		t.ended = map[graphstate.EntityID]temporal.Scope{}
+	if t.ends == nil {
+		t.ends = map[graphstate.EntityID]temporal.Position{}
 	}
-	t.ended[id] = union
-	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: scope})
+	t.ends[id] = prior
+	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: tail})
 	return nil
 }
 
@@ -373,7 +364,8 @@ func (t *engineTx) Retract(o Retract) error {
 		return err
 	}
 	id, _ := target(o.Target)
-	return t.close(id, o.Scope)
+	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: o.Scope})
+	return nil
 }
 
 // GetOrCreate finds the live node holding the unique claim (Label, Key, Value)

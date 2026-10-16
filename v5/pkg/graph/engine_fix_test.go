@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
@@ -424,4 +425,89 @@ func TestEndAndCorrectInOneUpdateKeepsTheEnd(t *testing.T) {
 	if n, _ := r[len(r)-1].Props["n"].AsInt(); n != 9 {
 		t.Fatalf("live part not corrected: %+v", r)
 	}
+}
+
+// TestCorrectFillsRetractedHolesNeverPastAnEnd: Retract withdraws what was
+// asserted; a later Correct over that scope is new knowledge and fills it. End
+// closes the life: a Correct is clipped at the End and refused wholly after it.
+func TestCorrectFillsRetractedHolesNeverPastAnEnd(t *testing.T) {
+	ctx := context.Background()
+	all := scopeAll(t)
+	mk := func(g *Graph) (types.NodeID, Ref) {
+		var id types.NodeID
+		update(t, g, func(tx Tx) (err error) {
+			id, err = tx.CreateNode(CreateNode{Props: map[string]Value{"n": Int(1)}, Scope: all})
+			return
+		})
+		ref, _ := NodeRef(id)
+		return id, ref
+	}
+	n9 := map[string]Value{"n": Int(9)}
+	nAt := func(g *Graph, id types.NodeID, from, to int64) []int64 {
+		var out []int64
+		for _, r := range look(t, g, Fresh(), id, spanMS(t, from, to)) {
+			v, _ := r.Props["n"].AsInt()
+			out = append(out, v)
+		}
+		return out
+	}
+
+	t.Run("bounded hole", func(t *testing.T) {
+		g := memBare(t, nil)
+		id, ref := mk(g)
+		update(t, g, func(tx Tx) error { return tx.Retract(Retract{Target: ref, Scope: spanMS(t, 100, 200)}) })
+		update(t, g, func(tx Tx) error { return tx.Correct(Correct{Target: ref, Set: n9, Scope: spanMS(t, 120, 180)}) })
+		if got := nAt(g, id, 150, 151); !slices.Equal(got, []int64{9}) {
+			t.Fatalf("hole not filled: %v", got)
+		}
+		if got := nAt(g, id, 110, 111); len(got) != 0 {
+			t.Fatalf("the unfilled part of the hole came back: %v", got)
+		}
+	})
+	t.Run("whole life retracted", func(t *testing.T) {
+		g := memBare(t, nil)
+		id, ref := mk(g)
+		update(t, g, func(tx Tx) error { return tx.Retract(Retract{Target: ref, Scope: all}) })
+		update(t, g, func(tx Tx) error { return tx.Correct(Correct{Target: ref, Set: n9, Scope: spanMS(t, 0, 100)}) })
+		if got := nAt(g, id, 50, 51); !slices.Equal(got, []int64{9}) {
+			t.Fatalf("new assertion after a whole retraction: %v", got)
+		}
+	})
+	t.Run("retract and correct in one Update", func(t *testing.T) {
+		g := memBare(t, nil)
+		id, ref := mk(g)
+		update(t, g, func(tx Tx) error {
+			if err := tx.Retract(Retract{Target: ref, Scope: spanMS(t, 100, 200)}); err != nil {
+				return err
+			}
+			return tx.Correct(Correct{Target: ref, Set: n9, Scope: spanMS(t, 100, 200)})
+		})
+		if got := nAt(g, id, 150, 151); !slices.Equal(got, []int64{9}) {
+			t.Fatalf("hole not filled in the same Update: %v", got)
+		}
+	})
+	t.Run("hole touching the End is clipped there", func(t *testing.T) {
+		g := memBare(t, nil)
+		id, ref := mk(g)
+		update(t, g, func(tx Tx) error { return tx.End(End{Target: ref, Scope: spanMS(t, 0, 200)}) })
+		update(t, g, func(tx Tx) error { return tx.Retract(Retract{Target: ref, Scope: spanMS(t, 150, 200)}) })
+		update(t, g, func(tx Tx) error { return tx.Correct(Correct{Target: ref, Set: n9, Scope: spanMS(t, 100, 300)}) })
+		if got := nAt(g, id, 160, 161); !slices.Equal(got, []int64{9}) {
+			t.Fatalf("hole before the End not filled: %v", got)
+		}
+		if got := nAt(g, id, 200, 300); len(got) != 0 {
+			t.Fatalf("Correct extended past the End: %v", got)
+		}
+	})
+	t.Run("inside an End region", func(t *testing.T) {
+		g := memBare(t, nil)
+		_, ref := mk(g)
+		update(t, g, func(tx Tx) error { return tx.End(End{Target: ref, Scope: spanMS(t, 0, 200)}) })
+		update(t, g, func(tx Tx) error { return tx.Retract(Retract{Target: ref, Scope: spanMS(t, 100, 200)}) })
+		if _, err := g.Update(ctx, func(tx Tx) error {
+			return tx.Correct(Correct{Target: ref, Set: n9, Scope: spanMS(t, 250, 300)})
+		}); !errors.Is(err, ErrInvalidScope) {
+			t.Fatalf("Correct after the End: %v", err)
+		}
+	})
 }
