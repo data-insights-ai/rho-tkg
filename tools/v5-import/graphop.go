@@ -103,17 +103,7 @@ func (o Op) Graph(c graph.Config) (graph.Op, error) {
 }
 
 func (o Op) scopeOf(c graph.Config) (temporal.Scope, error) {
-	if len(o.region) < 2 {
-		return o.Scope.temporal(c)
-	}
-	parts := make([]temporal.Scope, len(o.region))
-	for i, p := range o.region {
-		var err error
-		if parts[i], err = p.temporal(c); err != nil {
-			return temporal.Scope{}, err
-		}
-	}
-	return temporal.Region(c.DefaultAxis.Axis(), parts, c.Limits)
+	return o.Scope.temporal(c)
 }
 
 func (s Scope) temporal(c graph.Config) (temporal.Scope, error) {

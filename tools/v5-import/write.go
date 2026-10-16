@@ -38,6 +38,9 @@ type Options struct {
 	DropKindConflicts bool
 }
 
+// ErrTooManyExisting stops an import whose list of pre-existing IDs no longer fits one Meta row.
+var ErrTooManyExisting = errors.New("importmap: too many pre-existing IDs, import into a fresh graph")
+
 // Report lists what the write path did not take as it was.
 type Report struct {
 	Ambiguities []Ambiguity
@@ -288,8 +291,9 @@ type progress struct {
 }
 
 type skipPair struct {
-	Kind string `json:"kind"`
-	ID   int64  `json:"id"`
+	Kind    string `json:"kind"`
+	ID      int64  `json:"id"`
+	Version uint32 `json:"version,omitempty"`
 }
 
 // Import applies the op stream to g in batches (each one Update, under the
@@ -330,7 +334,7 @@ func (r *Result) Import(ctx context.Context, g *graph.Graph, cfg graph.Config, o
 				// One create names an ID the graph holds: leave that entity as it is.
 				op := p.ops[w.applied]
 				w.skipped[ref{op.Entity, op.ID}] = true
-				w.skipOrder = append(w.skipOrder, ref{op.Entity, op.ID})
+				w.skipOrder = append(w.skipOrder, skipPair{op.Entity, op.ID, op.Version})
 				w.rep.Ambiguities = append(w.rep.Ambiguities, Ambiguity{Entity: op.Entity, ID: op.ID, Version: op.Version, Kind: KindAlreadyExists})
 				continue
 			}
@@ -354,7 +358,7 @@ type writer struct {
 	print     string
 	applied   int
 	skipped   map[ref]bool
-	skipOrder []ref
+	skipOrder []skipPair
 	rep       Report
 }
 
@@ -398,8 +402,8 @@ func (w *writer) resume() error {
 	for _, k := range pr.Skipped {
 		r := ref{k.Kind, k.ID}
 		w.skipped[r] = true
-		w.skipOrder = append(w.skipOrder, r)
-		w.rep.Ambiguities = append(w.rep.Ambiguities, Ambiguity{Entity: k.Kind, ID: k.ID, Kind: KindAlreadyExists})
+		w.skipOrder = append(w.skipOrder, k)
+		w.rep.Ambiguities = append(w.rep.Ambiguities, Ambiguity{Entity: k.Kind, ID: k.ID, Version: k.Version, Kind: KindAlreadyExists})
 	}
 	w.applied = pr.Applied
 	return nil
@@ -423,12 +427,13 @@ func (w *writer) batch(from, n int) error {
 			}
 		}
 		pr := progress{Applied: from + n, Fingerprint: w.print}
-		for _, k := range w.skipOrder {
-			pr.Skipped = append(pr.Skipped, skipPair{k.kind, k.id})
-		}
+		pr.Skipped = w.skipOrder
 		raw, err := json.Marshal(pr)
 		if err != nil {
 			return err
+		}
+		if len(raw) > graph.MaxMetaValueBytes {
+			return ErrTooManyExisting
 		}
 		return tx.SetMeta(metaKey, raw)
 	})

@@ -3,6 +3,7 @@ package importmap
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -898,7 +899,7 @@ func TestAlreadyExistsIsReported(t *testing.T) {
 	ctx := context.Background()
 	scope := Scope{From: At(1), To: PosInf}
 	node := func(id int64, l string) Op {
-		return Op{Op: "create_node", Entity: "node", ID: id, Life: 1, Labels: []string{l}, Scope: scope, Recorded: id}
+		return Op{Op: "create_node", Entity: "node", ID: id, Life: 1, Version: uint32(id), Labels: []string{l}, Scope: scope, Recorded: id}
 	}
 	res := &Result{Ops: []Op{node(11, "New"), node(12, "New"), {Op: "correct", Entity: "node", ID: 11, Life: 1, Props: map[string]PropValue{"x": {graph.Int(1)}}, Scope: scope, Recorded: 20}, node(13, "New")}}
 	g, cfg := openWith(t, res, Options{})
@@ -913,7 +914,7 @@ func TestAlreadyExistsIsReported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Ambiguity{{Entity: "node", ID: 11, Kind: KindAlreadyExists}}
+	want := []Ambiguity{{Entity: "node", ID: 11, Version: 11, Kind: KindAlreadyExists}}
 	if !slices.Equal(rep.Ambiguities, want) {
 		t.Fatalf("report %+v", rep.Ambiguities)
 	}
@@ -930,5 +931,25 @@ func TestAlreadyExistsIsReported(t *testing.T) {
 	rep, err = res.Import(ctx, g, cfg, Options{})
 	if err != nil || !slices.Equal(rep.Ambiguities, want) {
 		t.Fatalf("rerun: %v, report %+v", err, rep)
+	}
+}
+
+// Past what one Meta row holds the import stops with a named error, not a
+// futile bisect of the batch.
+func TestTooManyPreExistingIDsIsNamed(t *testing.T) {
+	scope := Scope{From: At(1), To: PosInf}
+	res := &Result{Ops: []Op{{Op: "create_node", Entity: "node", ID: 5, Life: 1, Scope: scope, Recorded: 1}}}
+	g, cfg := openWith(t, res, Options{})
+	p, err := res.plan(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &writer{ctx: context.Background(), g: g, cfg: cfg, p: p, skipped: map[ref]bool{}}
+	for i := int64(1); i <= 4000; i++ {
+		w.skipOrder = append(w.skipOrder, skipPair{Kind: "node", ID: i})
+	}
+	err = w.batch(0, 0)
+	if !errors.Is(err, ErrTooManyExisting) {
+		t.Fatalf("batch error %v, want ErrTooManyExisting", err)
 	}
 }
