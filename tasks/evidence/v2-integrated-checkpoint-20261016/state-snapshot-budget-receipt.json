@@ -1,0 +1,54 @@
+{
+  "commit": "7113427d42ba5fe7656d3a376da9b0816bad358b",
+  "parent": "d70da43470bd19426e5b1d758d0d2affe6c54947",
+  "tree": "/var/tmp/rho-v5-state-snapshot-limit-20261016",
+  "status": "",
+  "scope": "State-only passive bounded snapshot refusal diagnostics plus genuine same-held-source cumulative budget guard; NO production fix or cap/deadline/oracle change",
+  "source": {
+    "v5/internal/graphapply/native_graph_protocol_campaign_state_harness_test.go": {
+      "sha256": "89ce2b3b19a5cffe208cc7b8a5eeb4b7a5890c7a86cb7cdfcdfa1b3c6605edcf",
+      "blob": "f71fc173e00b8bb46d7b4eaca4b03f0fc9890b65",
+      "parent_blob": "b877268f2242e97411122938112f6499a66ed54e",
+      "parent_sha256": "bfe9b6af608a835fb20c2bcb030f61adda7f1efa337664851d8acdc1fb1cbc00"
+    },
+    "v5/internal/graphapply/native_graph_protocol_campaign_state_program_test.go": {
+      "sha256": "75af20e83edc06c80a5448e8dfa3eb62ec2da55b76e73ae573411ca024ef8e25",
+      "blob": "26da3cfb47dcf308ed0303898c1c4adc68939ab4",
+      "parent_blob": "21925c41be3cf5113e6bd2dc703c84a7f2661015",
+      "parent_sha256": "dad0ef3e87212fa22a8edd2649468388d53f236988f54d3ae1e5a3729fa3f0e8"
+    }
+  },
+  "tests": {
+    "parent": "TestNativeProtocolStateHeldSnapshotKeepsCumulativeProjectionBudget",
+    "normal": "PASS2.697s initial; final verbose PASS1.56s test-body",
+    "race": "PASS4.100s preliminary; frozen-race.log is final exact-source terminal",
+    "toolchain": "Go1.26.9 pinned darwin-arm64",
+    "env": "GOMAXPROCS2 GOWORKoff GOTOOLCHAINlocal -p1",
+    "os_cohorts": 0
+  },
+  "root_red": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/relay-replay-three-2d2ce031.log line92: snapshot remote tag2 resource limit after allocator transfer index63",
+  "diagnostic_bounds": "<=16 source descriptors; PageWork and locked existing budget counters only; no native RPC/reservation/renewal/ledger reset; original error wrapped with %w; existing NPS frame/work bounds unchanged",
+  "findings": [
+    "Failing caller is post-move snapshot projection after allocator transfer. Existing held snapshot is reused, not reopened or regranted.",
+    "Small genuine quorum fixture has calls161 then273/1024, output31.9 then31.3MiB and passes two full32-ID projections; it does not reproduce rich OS fixture exhaustion.",
+    "Root must rerun exact original case to identify exhausted client/source/view ledger from diagnostics. No guessed correctness fix."
+  ],
+  "evidence": {
+    "direct.log": {
+      "bytes": 6016,
+      "sha256": "a0490abaea47b85cfd16d778e14b00d0dc3dabd5024509f3bb1849c23c8488fb"
+    },
+    "frozen-race.log": {
+      "bytes": 71,
+      "sha256": "c38b767ba615f59e16c7231ccc3fef3bf0ddc252bdb29b9ebe0ec019412e9555"
+    },
+    "direct-final.log": {
+      "bytes": 7282,
+      "sha256": "4682f03aad55bf2f2bf041c4da9d500bac795b742155c81cc9bd5ec72640ebf8"
+    },
+    "direct-race.log": {
+      "bytes": 71,
+      "sha256": "72ba544024ddce71dd651e2ece62d94917d1df9c25066d0d7ea916d9a5a94ee9"
+    }
+  }
+}

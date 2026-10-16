@@ -1,0 +1,38 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p06-co8-committrue-first-live-B2-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_protocol_campaign_program_test.go:46: paired SIGKILL voter2 pid29767 reaped=true
+    native_graph_protocol_campaign_program_test.go:46: paired elected actual leader1 round10 while2 down
+    native_graph_protocol_campaign_program_test.go:46: paired elected actual leader4 round10 while6 down
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet1 4->5 typeMsgHeartbeat term4 logTerm0 index0 commit22 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet2 5->4 typeMsgHeartbeatResp term4 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet3 4->5 typeMsgHeartbeat term4 logTerm0 index0 commit22 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet4 5->4 typeMsgHeartbeatResp term4 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    native_graph_protocol_campaign_program_test.go:46: paired actual healthy quorum leader4 applied22
+    native_graph_protocol_campaign_program_test.go:46: paired actual AS5 snapshot sender1 receiver2 index32 cumulativePages10
+    native_graph_protocol_campaign_program_test.go:46: paired actual healthy quorum leader1 applied40
+    native_graph_protocol_campaign_program_test.go:46: actual live transition complete source artifact /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p03-p06-selected-owned/artifacts/rho-paired-graph-fault-482265941/p06-co8-committrue-first-live-B2-k2-after.jsonl
+    native_graph_protocol_campaign_program_test.go:46: independent protocol/storage/original/serial checker exit status 1 Traceback (most recent call last):
+          File "/private/var/tmp/rho-v5-history-clean-20261012/v5/internal/graphapply/../../../tools/v5-substrate/native_protocol_campaign_program_check.py", line 307, in <module>
+            main()
+            ~~~~^^
+          File "/private/var/tmp/rho-v5-history-clean-20261012/v5/internal/graphapply/../../../tools/v5-substrate/native_protocol_campaign_program_check.py", line 303, in main
+            print(json.dumps(check(H.load(args.artifact, program=True)), sort_keys=True))
+                             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          File "/private/var/tmp/rho-v5-history-clean-20261012/v5/internal/graphapply/../../../tools/v5-substrate/native_protocol_campaign_program_check.py", line 295, in check
+            result = H.check_scope(a, program_roles=roles) if "P01" in a["Evidence"] else H.check_live(a, program_roles=roles) if "Completion" in a["Evidence"] else H.check_coordinator(a, program_roles=roles) if "P03" in a["Evidence"] else H.check_partial(a, program_roles=roles) if "Partial" in a["Evidence"] else H.check_frozen(a, program_roles=roles) if "P04" in a["Evidence"] else H.check_conditional(a, program_roles=roles) if "P05" in a["Evidence"] else H.check_fence(a, program_roles=roles)
+                                                                                          ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+          File "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/native_protocol_campaign_check.py", line 1221, in check_live
+            selected = live_initial(e["InitialPhases"], scopes, actor, co, r["Phase"], manifest, tx, records, original["floors"], {3:first, 8:target})
+          File "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/native_protocol_campaign_check.py", line 284, in live_initial
+            require(decoded["proof_wires"] == [originals[key] for key in proof_keys], "actual prior immutable original authority bytes")
+                                               ~~~~~~~~~^^^^^
+        KeyError: (8, 1)
+        
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=8 all-reaped=true successful=6 intentional-kills=2 calls=6739 bootstrapPackets=440 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (5.35s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (5.35s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p06-co8-committrue-first-live-B2-k2-after (5.34s)
+FAIL

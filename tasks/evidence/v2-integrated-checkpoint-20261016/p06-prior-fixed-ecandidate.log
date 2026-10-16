@@ -1,0 +1,21 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p06-co8-committrue-first-live-B2-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_protocol_campaign_program_test.go:46: paired SIGKILL voter2 pid38876 reaped=true
+    native_graph_protocol_campaign_program_test.go:46: paired elected actual leader1 round10 while2 down
+    native_graph_protocol_campaign_program_test.go:46: paired elected actual leader4 round10 while6 down
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet1 4->5 typeMsgHeartbeat term4 logTerm0 index0 commit22 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet2 5->4 typeMsgHeartbeatResp term4 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet3 4->5 typeMsgHeartbeat term4 logTerm0 index0 commit22 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet4 5->4 typeMsgHeartbeatResp term4 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    native_graph_protocol_campaign_program_test.go:46: paired actual healthy quorum leader4 applied22
+    native_graph_protocol_campaign_program_test.go:46: paired actual AS5 snapshot sender1 receiver2 index32 cumulativePages10
+    native_graph_protocol_campaign_program_test.go:46: paired actual healthy quorum leader1 applied40
+    native_graph_protocol_campaign_program_test.go:46: actual live transition complete source artifact /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p06-prior-fixed-owned/artifacts/rho-paired-graph-fault-1785466859/p06-co8-committrue-first-live-B2-k2-after.jsonl
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=8 all-reaped=true successful=6 intentional-kills=2 calls=6740 bootstrapPackets=442 admitted=397312
+--- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms (7.40s)
+    --- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (7.40s)
+        --- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p06-co8-committrue-first-live-B2-k2-after (7.38s)
+PASS

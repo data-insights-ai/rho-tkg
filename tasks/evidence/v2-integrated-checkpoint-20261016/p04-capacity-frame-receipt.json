@@ -1,0 +1,23 @@
+{
+  "author": "ce81529375e8d198e2fd187c0e83f729c62b9bd6",
+  "parent": "40a545233eedbae9384cd7dacb77526486853e71",
+  "worktree": "/var/tmp/rho-v5-p04-capacity-frame-context-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_fault_decision_harness_test.go",
+      "parentBlob": "4ac3b9b9551a8f7222d2f5931dda27e835cee6c2",
+      "parentSHA256": "4d899742ece8d870bed5db879de6c3071ccd20d0a50a529b949bfca797f7262e",
+      "sourceBlob": "51ad76e8ae5a4586a4b6c4d1d46da30c6fdf90e3",
+      "sourceSHA256": "50e90bade3277ca9e7470577650b66bfeaa18fb4fd389cf9818d5604e03637a8"
+    }
+  ],
+  "actualRedLog": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p04-caller-diagnostic-two-0bf898b2.log",
+  "scope": "Failure-only metadata decode of already-owned and funded capacity pair; no new RPC/capture/grant or authority; no behavioral correction claimed",
+  "verification": {
+    "pinnedGofmt": true,
+    "gitWhitespace": true,
+    "compile": false,
+    "tests": false,
+    "nativeCohort": false
+  }
+}

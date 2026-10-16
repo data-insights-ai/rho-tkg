@@ -1,0 +1,1 @@
+{"case": "p06-co8-committrue-first-live-B2-k2-after", "program": {"Layout": "rotated", "Message": "reorder", "Version": 1}, "records": 25, "scope": "first-live P06 only; other protocol/state/leader/message compositions remain distinct", "serial_witness": ["edge", "close-a"]}

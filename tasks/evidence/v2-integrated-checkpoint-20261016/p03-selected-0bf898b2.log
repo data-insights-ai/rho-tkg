@@ -1,0 +1,17 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p03-co3-phase3-p3-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_protocol_campaign_program_test.go:55: native protocol occurrence unmatched/ambiguous/exhausted open /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p03-selected-owned/artifacts/rho-paired-graph-fault-1059500747/1/native-batch-dd3818ccf552ee3efcf2268fc1fcca40-0000000000000001.json: no such file or directory
+    paired_graph_fault_harness_test.go:421: paired current child cleanup 2 context canceled
+        signal: killed
+    paired_graph_fault_harness_test.go:421: paired current child cleanup 3 context canceled
+        signal: killed
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 31640 signal: killed
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 31641 signal: killed
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=6 all-reaped=true successful=4 intentional-kills=0 calls=6135 bootstrapPackets=322 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (4.75s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (4.75s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p03-co3-phase3-p3-k2-after (4.74s)
+FAIL

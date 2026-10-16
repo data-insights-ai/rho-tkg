@@ -1,0 +1,26 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p04-commit-first-B-phase3-p8-all-YES-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    native_graph_fault_decision_harness_test.go:998: P04 original B returned before native candidate: actor6 pid25241 mask1 sequence963 incarnationf67d934d4d08a4bb79ee5ce53d275467 applied22 code2 causes44 detail"graphapply: cross-process request pending; resume original identity\ngraphapply: cross-process request pending; resume original identity\ngraphapply: remote source operation refused\ngraphapply: remote source operation refused" transport=graphapply: remote source operation refused native=remote tag=2: graphapply: cross-process request pending; resume original identity
+        graphapply: cross-process request pending; resume original identity
+        graphapply: remote source operation refused
+        graphapply: remote source operation refused resultDecode=remote tag=2: graphapply: cross-process request pending; resume original identity
+        graphapply: cross-process request pending; resume original identity
+        graphapply: remote source operation refused
+        graphapply: remote source operation refused
+        graphapply: cross-process request pending; resume original identity resumeTxffd0915fdf5ce24cfe9e85624e52b747 decisionPhase0 commitfalse capacityCharge={Candidates:107 Work:3023776 Output:80872 Retained:9085} controlRetirement=context canceled
+        graphapply: remote source operation refused
+        remote tag=6: context canceled
+    paired_graph_fault_harness_test.go:421: paired current child cleanup 1 write |1: file already closed
+        signal: killed
+    paired_graph_fault_harness_test.go:421: paired current child cleanup 2 write |1: file already closed
+        signal: killed
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 25236 signal: killed
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 25237 signal: killed
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=6 all-reaped=true successful=4 intentional-kills=0 calls=3828 bootstrapPackets=322 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (3.95s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (3.95s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p04-commit-first-B-phase3-p8-all-YES-k2-after (3.94s)
+FAIL

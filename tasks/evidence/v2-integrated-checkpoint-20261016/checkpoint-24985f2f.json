@@ -1,0 +1,102 @@
+{
+  "source": "24985f2f",
+  "binarySource": "c120679f",
+  "scope": "Selected P06 fresh whole native+oracle PASS and independent full-artifact replay25records; P03 no selected batch, P04 native capacity resource refusal, state/P05 retained1024RPC exhaustion remain open.",
+  "files": [
+    {
+      "path": "p06-prior-fixed-ecandidate.log",
+      "bytes": 2531,
+      "sha256": "b57705b6b212e0e783d2011e287606ee54e912d9a81df589fd60a685352c7eb2"
+    },
+    {
+      "path": "p06-prior-fixed-ecandidate.json",
+      "bytes": 1763,
+      "sha256": "857a3357890125716b9c3b9d66582c937535ed500fba7cbd806f6d8d393ceca8"
+    },
+    {
+      "path": "p06-prior-root-guards.log",
+      "bytes": 118,
+      "sha256": "899892e2594934277080bcaa2a70a3db8deed5bef4650c715af411a66f20fd5f"
+    },
+    {
+      "path": "p06-prior-root-replay.json",
+      "bytes": 276,
+      "sha256": "fe0e51038730f5a8b9417c589f30f50cba19a21bd3a23cdcf40e21fdd87af8ef"
+    },
+    {
+      "path": "p06-fresh-root-replay.json",
+      "bytes": 276,
+      "sha256": "fe0e51038730f5a8b9417c589f30f50cba19a21bd3a23cdcf40e21fdd87af8ef"
+    },
+    {
+      "path": "p04-caller-diagnostic-two-0bf898b2.log",
+      "bytes": 2781,
+      "sha256": "bc07029aad74676838b64c49f29a9a7568a00ffd13429a6f20ddf3ea17dd4b37"
+    },
+    {
+      "path": "p04-caller-diagnostic-two-0bf898b2.json",
+      "bytes": 1540,
+      "sha256": "a7b3c1362df546b794d4e6cf9d6d6aa00a0a4716f2e8282ad88681bf0bbdc446"
+    },
+    {
+      "path": "p04-capacity-frame-c120679f.log",
+      "bytes": 3199,
+      "sha256": "f3a5f3b091e7b1b103a7ad8756a4c88449c9a76ccfcee9a988cf5535db6010ca"
+    },
+    {
+      "path": "p04-capacity-frame-c120679f.json",
+      "bytes": 1540,
+      "sha256": "14d530c9c2e48d5baa5556cbfda752394e9443a735714cdd971f737c6d31ae0d"
+    },
+    {
+      "path": "state-snapshot-diagnostic-0bf898b2.log",
+      "bytes": 6991,
+      "sha256": "73e8574175ca45a0e4dc693c9423dbcaf02b9826d21587a010cc3fc4d43e672d"
+    },
+    {
+      "path": "state-snapshot-diagnostic-0bf898b2.json",
+      "bytes": 1605,
+      "sha256": "f690b45e52970f34a5e76c81ab3932afeb560341755dbe7f13f18a0d86b6ae47"
+    },
+    {
+      "path": "p03-selected-0bf898b2.log",
+      "bytes": 1665,
+      "sha256": "c64a1a09afedf46ed71f3e07de8b2b223df7045bb3a8b16f5e9f67c8d76fe6e4"
+    },
+    {
+      "path": "p03-selected-0bf898b2.json",
+      "bytes": 1519,
+      "sha256": "a091fe9b95f12de25a1281674d0b31f7e8804a4d0c412f95e7fd92339923cbcf"
+    },
+    {
+      "path": "p03-p06-selected-0bf898b2.log",
+      "bytes": 4717,
+      "sha256": "99505d4f0f664b18978f7f67d47989ba3dc4bf722fe5ac5e4494c3af9c8e6071"
+    },
+    {
+      "path": "p03-p06-selected-0bf898b2.json",
+      "bytes": 1798,
+      "sha256": "2f57638ff5defb945f82de9352234522a179ec7f234b44506e364dc40043adf0"
+    },
+    {
+      "path": "p06-prior-original-receipt.json",
+      "bytes": 2278,
+      "sha256": "a3f3d2b3bb06de3d8ed985bb7de3fd575475e693c86ea99231ece5fa9bafb7b2"
+    },
+    {
+      "path": "state-snapshot-budget-receipt.json",
+      "bytes": 2973,
+      "sha256": "3f90f2811684bda35ac8855cfcfa584a029090cb0ec3ce76b0c2fd5a3f28849a"
+    },
+    {
+      "path": "p04-capacity-frame-receipt.json",
+      "bytes": 1019,
+      "sha256": "4f1155beffc94607a00e706d5479a4d195b47718c438b35e2b169781da44904d"
+    },
+    {
+      "path": "p06-rotated-reorder-complete-24985f2f.tar.gz",
+      "bytes": 30548,
+      "sha256": "e56e727ade3e1b49afd17b1cb2d6f9bee7a89d346850f1b9b75c14c20cd907d6"
+    }
+  ]
+}

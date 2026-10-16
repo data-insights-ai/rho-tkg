@@ -1,0 +1,40 @@
+{
+  "commit": "a605742b1c3d116cc3cda2081cca87e96adf6151",
+  "parent": "0bf898b21162d2ba7606595401245df9ae957d20",
+  "tree": "/var/tmp/rho-v5-state-snapshot-reuse-20261016",
+  "status": "",
+  "files": {
+    "tools/v5-substrate/native_protocol_campaign_check.py": {
+      "blob": "cbbcbfde0b5745c0f90a98a7ae3040b156f351ad",
+      "sha256": "5b6f8ba8f1d48b7e28360c2dbd8192cd58f2910fead973c86de32d32e367e302",
+      "parent_blob": "b4eab8a1856dee6441cbf54d6a3337c7930d5232",
+      "parent_sha256": "5fe4363ecbcaa1c25b76d916577ca48c8ebd378e06b1af680f0fcd63975bef11"
+    },
+    "tools/v5-substrate/native_protocol_campaign_check_test.py": {
+      "blob": "75faba33fbe070a103e5dd95e2bb8bafebd09267",
+      "sha256": "b4bb4bd04496d4529a27fa59f3e7ebc5baa17e688755b26b049b2e76da159f4f",
+      "parent_blob": "2e7728bc0a230fbe113485796cc09c28851d00f6",
+      "parent_sha256": "005ea178adc6cee69695cbfde17b58ce03155f37272fc2a6cc470645376b0992"
+    }
+  },
+  "actual_artifact": {
+    "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p03-p06-selected-owned/artifacts/rho-paired-graph-fault-482265941/p06-co8-committrue-first-live-B2-k2-after.jsonl",
+    "sha256": "e75607235958d6ed8fff230d307b9b8484aa8ebab8a6b91cc13a506fcbecb301"
+  },
+  "red": [
+    "actual-red.log",
+    "guard-red.log"
+  ],
+  "green": {
+    "guards": "19tests PASS0.023s guards-green.log",
+    "actual_full_oracle": "actual-green.log PASS25records serial_witness edge,close-a"
+  },
+  "audit": "All original maps audited: live_initial now stores(partition,phase), check_scope/fence_phases already use(partition,phase); fence_prefix uses(tx,part,phase). Phase-first command maps unchanged. Explicit missing native original raises ValueError. No wire identity/phase changes or authority invented.",
+  "qualifications": "Offline only, actual one P06 leaf; P03 did not run and has no passing artifact. No OS rerun or broad acceptance.",
+  "logs": {
+    "guards-green.log": "0b68510907f9ad579d241f21dd3bc6f4d64fe03da5eff6763e99122667bbc30a",
+    "actual-red.log": "c80e9c8d7e32a23effe5cb7254d19540dc4690e6e6f5f7c7ca35745e3a7d2055",
+    "guard-red.log": "bda92af5fa3b0ff320f1e3921dd09979fd3c4882671ac1f512b9fa0f33620e7c",
+    "actual-green.log": "fe0e51038730f5a8b9417c589f30f50cba19a21bd3a23cdcf40e21fdd87af8ef"
+  }
+}

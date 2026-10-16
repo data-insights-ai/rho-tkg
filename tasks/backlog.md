@@ -195,7 +195,7 @@ Every open requirement is assigned to a package below. Detailed existing accepta
 | V2.4 Certified read foundations | 8% | accepted | Accepted finite E15/E16 current/historical reads and E18 index-starting hydration with authenticated native sources and cuts. |
 | V2.5 Finite range handoff baseline | 4% | accepted | Accepted finite E17 handoff, retained history and certified source/target lineage; interruptions/GC and general rebalance remain open. |
 | V2.6 Selected recovery/storage components | 4% | accepted | Recorded P03/P06 and selected WAL/manifest/OPTIONS recovery components; evidence applies to its exact source/cases, not the full families. |
-| V2.7 Remaining transaction fault schedules | 10% | active | Complete P01–P06 requirement-to-case coverage: outside-scope coordinator; prepare/fence ordering; partial installation; frozen participants/digest/decision; absent keys/ranges, temporal predicates and endpoint-life ABA; conflicts through failover. Selected rotated/reordered P01 and P02 cases pass; P04/P05 and state recovery still have open qualification. |
+| V2.7 Remaining transaction fault schedules | 10% | active | Complete P01–P06 requirement-to-case coverage: outside-scope coordinator; prepare/fence ordering; partial installation; frozen participants/digest/decision; absent keys/ranges, temporal predicates and endpoint-life ABA; conflicts through failover. Selected rotated/reordered P01, P02 and P06 cases pass; P03/P04/P05 and state recovery still have open qualification. |
 | V2.8 Ownership, identities and reclamation | 10% | active | P07/P09 interruptions during transfer/publication, production identity reuse and stale fencing, retry-payload refusal, snapshot/feed lineage, expiration and application GC; preserve original results and expired/unavailable versus empty. |
 | V2.9 Composed network, scheduler and storage faults | 10% | open | Loss/duplication/reorder/asymmetry, isolated leaders/quorum/domain loss; pause/ticks/clock jumps; torn/short writes, EIO/ENOSPC/sync/rename/manifest/corrupt pages; bounded conflicting exploration followed by recorded-seed soak and independent oracles. |
 | V2.10 Equivalent FoundationDB fault/publication evidence | 8% | open | Actual role/domain loss, unknown commits, pins/GC and chunk/manifest failures; complete histories/index/CDC, owned cleanup and all-client/server accounting under equivalent declared fault/durability semantics. |
@@ -1365,7 +1365,8 @@ records the following finite scope:
   waits for its actual newly installed Resolve originals on all six voters,
   keeping the changed-K zero-effect assertion strict. Capture locks release
   before voter RPCs. The next repeated held snapshot projection reaches a
-  source resource limit; passive source-budget diagnostics are in progress.
+  source resource limit: the same retained endpoints reach their cumulative
+  1,024-call limit while row, byte and output budgets remain available.
   No full state-case pass is established. All eight owned processes exit without forced
   cleanup. Six focused import/replay parents also pass
   race checks; their partial coverage does not establish the full coverage gate.
@@ -1399,15 +1400,17 @@ records the following finite scope:
   The eight-writer KV tiny pair also passes the full comparator
   and independent root replay: 40 typed answers, all 13 native process identities
   exited, FDB 43 commits/51 aborted attempts and successful cleanup. Larger
-  runs and comparative cost remain open. Selected rotated/reordered P01 and
-  P02 cases now pass complete native execution and independent full-artifact
-  checks. P01 keeps the held source on surviving voter 2 with its original
+  runs and comparative cost remain open. Selected rotated/reordered P01,
+  P02 and first-live P06 cases now pass complete native execution and independent
+  full-artifact checks; P06 retains its exact prior native originals and the
+  edge/close-a serial witness. A newly executed P03 case does not reach its
+  selected native batch and remains unqualified. P01 keeps the held source on surviving voter 2 with its original
   grant; only an unrelated fresh caller moves off its two-worker source. The
   relay omits success payloads on actual transport errors, and strict checkers
   preserve actual caller roles, native GR3 root modes and P02 phase coordinates.
-  P04 preserves the original recipient owner but still waits for its first
-  authentic capacity candidate; a bounded original-caller diagnostic is
-  integrated. P05 reaches the selected real process kill and healthy quorum
+  P04 preserves the original recipient owner. Its real capacity request
+  returns authenticated graphstore/graphstate resource-limit causes before the
+  first candidate, reproduced by a genuine in-process native capacity read. P05 reaches the selected real process kill and healthy quorum
   apply, then exhausts the SAME held source's 1,024 cumulative calls during its
   second full observation; row, byte and output allowances remain available.
   All three remaining failures retain their original deadlines and quotas.
