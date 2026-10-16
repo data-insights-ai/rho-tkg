@@ -176,7 +176,24 @@ func (g *nativeConjunctionBatchGate) armProgram(command []byte) error {
 	return nil
 }
 
-func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partition uint64, request []byte) error {
+func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partition uint64, request []byte) (resultErr error) {
+	stage := "prior-before"
+	var observed crossCommand
+	var actualArm nativeBatchReceipt
+	defer func() {
+		if resultErr == nil || g.f.parent == nil {
+			return
+		}
+		g.mu.Lock()
+		candidates, encounters, selectedArm, refused := g.candidates, g.encounters, g.arm, g.refused
+		g.mu.Unlock()
+		kind := byte(0)
+		if len(request) >= 5 {
+			kind = request[4]
+		}
+		detail := resultErr.Error()
+		g.f.t.Logf("actual conjunction before-relay refusal: stage=%s origin=%d partition=%d kind=%d bytes=%d requestSHA256=%x selectorActor=%d selectorMember=%d selectorPhase=%d occurrence=%d candidates=%d encounters=%d refused=%t observedPhase=%d observedPartition=%d commandSHA256=%x expectedPID=%d expectedCookie=%x armSequence=%d actualArmState=%q actualArmPID=%d actualArmSequence=%d processMask=%04x graphMask=%04x detail=%q", stage, origin, partition, kind, len(request), sha256.Sum256(request), g.selector.Actor, g.selector.Member, g.selector.Phase, g.selector.Occurrence, candidates, encounters, refused, observed.phase, observed.ns.partition, selectedArm.Control.CommandSHA256, g.owner.PID, g.owner.Cookie, selectedArm.Sequence, actualArm.State, actualArm.PID, actualArm.Sequence, processCauseMask(resultErr), graphErrorMask(resultErr), detail[:min(len(detail), 4096)])
+	}()
 	if g.priorBefore != nil {
 		if err := g.priorBefore(ctx, origin, partition, request); err != nil {
 			return err
@@ -207,7 +224,9 @@ func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partiti
 	g.candidates++
 	g.decodeWork += 4096 + 32*processFrameBytes // Full bounded envelope traversal, before decode.
 	g.mu.Unlock()
+	stage = "cross-phase-decode"
 	command, cross, err := nativeFaultPhase(request)
+	observed = command
 	if err != nil || !cross || command.phase != g.selector.Phase {
 		return err
 	}
@@ -224,10 +243,12 @@ func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partiti
 	if g.encounters != occurrence {
 		return nil
 	}
+	stage = "source-envelope-decode"
 	q, err := decodeGraphSourceRequest(request)
 	if err != nil {
 		return err
 	}
+	stage = "source-proposal-decode"
 	proposal, err := decodeGraphSourceProposal(q.command)
 	if err != nil || len(proposal.wire) == 0 || len(proposal.wire) > nativeLogicalTransitionBodyBytes || command.ns.partition != partition {
 		return errors.Join(errInvalid, err)
@@ -237,7 +258,9 @@ func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partiti
 	callCtx, cancel := context.WithDeadline(ctx, deadline)
 	stop := context.AfterFunc(g.ctx, cancel)
 	defer func() { stop(); cancel() }()
+	stage = "native-arm"
 	actual, err := nativeBatchCall(callCtx, g.target, control)
+	actualArm = actual
 	if err != nil || actual.State != "armed" || actual.Control != control || actual.Run != g.owner.Run || actual.PID != g.owner.PID || actual.DeadlineUnixNanos != g.owner.DeadlineUnixNanos {
 		return errors.Join(errCorrupt, err)
 	}
@@ -246,6 +269,7 @@ func (g *nativeConjunctionBatchGate) before(ctx context.Context, origin, partiti
 	g.selected = make([]byte, len(proposal.wire))
 	copy(g.selected, proposal.wire)
 	g.arm = actual
+	stage = "program-arm"
 	if err := g.armProgram(proposal.wire); err != nil {
 		return err
 	}
