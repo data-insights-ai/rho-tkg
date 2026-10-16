@@ -914,9 +914,29 @@ A build or that smoke suite alone cannot establish semantic compatibility.
    `TxAt` no longer implies valid-at-now, other readers cannot observe a
    `GraphTx`'s private writes, and IDs no longer encode placement. Those changes are listed per consumer in V6.
 
-#### Current v4 compatibility delta (cutoff 2026-10-14)
+#### Current v4 compatibility delta v4.52.0 to v4.56.1 (cutoff 2026-10-16)
 
-The current rho source baseline for this acceptance record is main
+The current rho source baseline is release **v4.56.1** (`5d8b5917`, tree `bd982db7`), extending the v4.51.8 record below. Sigma-tkgd and ai-soc now pin v4.56.1. The v4.52.0 to v4.56.1 releases are folded into one record: [consumer contracts](reference/consumer-contracts.json) and [migration obligations](reference/consumer-migration.json) carry thirteen ids (`v4560-*`, `v4540-*`, `v4522-*`, `v4550-*`, `v4553-*`, `v4561-*`, `v4530-*`, `v4552-*`, `v4520-*`), the v4.51.8 record moved to `source_delta_history`. The records are source-only; the preflight reader is still pinned to v4.51.8 and no v5 door, importer or adapter has passed them.
+
+| Current v4 contract | Required v5 mapping / consumer obligation |
+|---|---|
+| `Config.UntimedValidStart` and store marker 7 (v4.56.0) | `UntimedFromTxFrom` (default) or `UntimedUnbounded`: the first untimed version starts at its `TxFrom` or at -inf, stored as the explicit row start `types.UnboundedValidFrom` (`MinInt64`; 0 stays unset), so readers need no mode. Persisted per store; the other mode refuses with `ErrUntimedModeMismatch`; `Admin().SetUntimedValidStart` converts once, one way, resumably; exports carry `uu`; a reader capped below marker 7 refuses the store. v5 keeps -inf distinct from the explicit zero coordinate and inherits neither default silently. The default for new v4 stores flips to `UntimedUnbounded` in the next v4 minor. |
+| Untimed start and `tkg_valid_to` close (v4.54.0) | An untimed row is valid from its `TxFrom` (`storeutil.EntityValidFrom`), not its mint instant; an `Update` carrying only `tkg_valid_to` closes the version (`ErrInvalidTimeRange` and no write for an end at or before the start). The importer reads starts through the rule; derived images (open image 2, temporal index v2, column blobs 2) rebuild and are not source truth. |
+| Integrity switch and binary hashes (v4.52.2, v4.54.0) | `Config.DisableIntegrityHashes` leaves `Hash`/`PrevHash`/`FromNodeHash`/`ToNodeHash` empty; verification returns `ErrIntegrityDisabled`, never valid; the setting is persisted and the other setting with rows fails `New` with `ErrIntegrityModeMismatch`. Stores written by v4.54.0+ carry 32-byte hashes (row fv 4, marker 4) read back as the same 64-hex strings. The v5 reader accepts both forms, fails closed on unknown markers, and reports an unhashed store as unverifiable history, never fabricating hashes; v5 assertion hashes are a separate chain. |
+| Valid-time excise and void rows (v4.54.0) | `ExciseNodeValidity`/`ExciseRelValidity` (+ `*WithTx`, GraphTx, Batch) end validity over `[from, to)` by appending void rows (`Void`, row fv 5, marker 6); void rows never hold the current slot or answer `NodeAsOf`, and raw `History()` must skip them. Refusals write nothing (`to==0`, `from<=0`, `from>=to`, no valid version, unknown, deleted). Older binaries refuse the store and fail void rows closed. A void piece is not a close; v5 records a successor or an explicit decline. |
+| Elements property indexes (v4.52.2) | `PropertyIndexOptions{Elements: true}` keys each scalar list element so equality doors mean containment at current, pin and interval coordinates; no ordered view (range, prefix, counts, bounds decline); refused combinations return `ErrElementsIndexUnsupported`; a persisted definition stamps marker 5 permanently. |
+| `RelsEffectivePage`/`NodesEffectivePage` (v4.55.0) | ID-keyset pages of the effective walk at `pin.Tx` with a property filter and optional valid instant, interval or open end; limit 1..10,000; an index on `(type, Prop)` accelerates, its absence only costs more. Pages equal the filtered full walk with writes between pages; declared relationship state; a per-call read, not a cut. v5 needs its own cursor and cut policy. |
+| Envelope pruning for effective pages (v4.56.1) | Types and labels with `CreateRelTemporal`/`CreateTemporal` drop candidates whose envelope cannot meet the valid filter before any timeline read; a sound superset, so pages are identical; uncovered or building envelopes never prune; re-created and re-typed relationship IDs fold their history first. Acceleration only. |
+| Head-pin effective timeline (v4.55.0) | `store.HistoryEpochCapability` per-entity tokens make the head answer exact in O(segments) while the token and current row are unchanged; corrections extend it, any other history write refolds. Point reads only, bounded cache. An accelerator for read-then-correct, never an isolation mechanism. |
+| Sorted equality postings and keyset paging (v4.55.3) | Property, rel-property and composite ID sets are sorted posting lists; pages seek past `After` in O(log n + page) with the same IDs, order and valid-time filter as before on memory, badger, sharded and tiered. Layout is not a contract; the keyset behaviour is. |
+| One-pass property sidecar build kept in the open image (v4.56.1) | The first lookup of a kind builds every declared unbuilt sidecar in one scan (badger, sharded); a clean `Close` writes them to the open image (sections 9/10) and a trusted reopen restores them; v4.56.0 and older rebuild once. Derived acceleration under the index trust rule, never completeness or cut proof; v5 keeps the first-page-after-open budget (V3.4/V3.5), and source timings are not v5 measurements. |
+| Round-7 doors (v4.53.0) | `LendByIDs` (ascending ID order, position index, no lock held, 4,096-ID chunks); `CountByLabelPropertyValue`/`CountByTypePropertyValue` exact equality counts where `exact=false` is a decline, never zero; `ForEachIDBy*PropertyRangeOrdered`/`Prefix` (ID, value) walks with `ErrIndexNotFound` for every unsupported case; opt-in `TrackRelTypeDegrees`. |
+| Round-8 doors (v4.55.2) | `PropertyBounds`/`RelPropertyBounds` (O(1), `ok=false` instead of a walk), `LabelTimeStats`/`RelTypeTimeStats` (`Eternal()` means a member valid from its `TxFrom`, so keep the valid-time filter), `RangeCardinalityAt` and temporal range reads from the membership sidecar, `ForEachByLabelOrdinals`/`ForEachByTypeOrdinals` ordinal-bitset scans (`ErrCapabilityNotSupported` without ordinals). v5 ordinals are per-cut positions, never carried from v4. |
+| Interval counts (v4.52.0) | `CountByLabelAt`/`CountByTypeAt` over a valid-time interval over-counted before v4.52.0 (a current-row shortcut); they now equal `len(ByLabel)`/`len(ByType)`. Every v5 count door equals its row door at every point and interval probe. |
+
+#### v4.51.8 compatibility delta (cutoff 2026-10-14, superseded as current by the record above)
+
+The rho source baseline of this earlier acceptance record is main
 `bf0050b2d62332867c8dc22946ed11eabdcd23ed`, **v4.51.8**, following qualified selected
 `9e9f0e0a`/v4.51.7, source-reconciled `a77b1301`/v4.51.6 and earlier integrated
 v4 records. This extends the
@@ -968,10 +988,12 @@ source-delta records and reader qualifications remain immutable history. Histori
 limits; v4.51.2 fixes those reader paths. A current reader cannot recover source
 bytes already lost by older writers, and source-history ambiguity remains explicit.
 
-The current v4.51.8 source contracts are recorded in
+The v4.52.0 to v4.56.1 source contracts above are the current record in
 [consumer contracts](reference/consumer-contracts.json) and
-[migration obligations](reference/consumer-migration.json). The selected
-v4.51.8 reader is source-only and unqualified. Preflight still uses unchanged
+[migration obligations](reference/consumer-migration.json); v4.51.8 is kept in
+their `source_delta_history`. The selected
+v4.51.8 reader is source-only and unqualified, and the preflight reader has not been
+requalified for the fv4/fv5 rows, markers 4 to 7, `-inf` starts or void rows. Preflight still uses unchanged
 per-entity timelines/entityReads; new batch/helper code is compiled and tiered
 routing affects its fixtures. At the approved final cutoff, the existing ten
 targets need a fresh receipt; no new preflight code/tests are needed. Batched
