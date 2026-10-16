@@ -226,6 +226,13 @@ func (n *allocationTestNetwork) crossResolve(decision crossProof) {
 
 func crossEdgeFixture(t *testing.T, n *allocationTestNetwork) ([]graphstate.Operation, []freshBinding) {
 	t.Helper()
+	return crossEdgeFixtureNodes(t, n, [][]graphstate.EntityID{{1}, {17}})
+}
+
+// crossEdgeFixtureNodes creates the listed nodes per group (entity N, life N+1,
+// ids inside the fixture's 1..16 / 17..32 grants) and returns the cross edge.
+func crossEdgeFixtureNodes(t *testing.T, n *allocationTestNetwork, owners [][]graphstate.EntityID) ([]graphstate.Operation, []freshBinding) {
+	t.Helper()
 	handles := []*allocationRecipientHandle{n.activate(0, [16]byte{1}), n.activate(1, [16]byte{2})}
 	for g, h := range handles {
 		n.acquire(g, h, 1, 16)
@@ -234,14 +241,16 @@ func crossEdgeFixture(t *testing.T, n *allocationTestNetwork) ([]graphstate.Oper
 	if err != nil {
 		t.Fatal(err)
 	}
-	for group, owner := range []graphstate.EntityID{1, 17} {
-		op := graphstate.Operation{Kind: graphstate.CreateNode, Owner: owner, Life: graphstate.LifeID(owner + 1), Scope: scope, Record: graphstate.EntityRecord{Interpretation: graphstate.InterpretationObservation, TemporalRole: graphstate.TemporalRoleValidity}}
-		claim := []freshBinding{{role: entityBinding, id: uint64(owner), grant: grantReference{session: handles[group].session, sequence: 1}}, {role: lifeBinding, owner: owner, id: uint64(owner + 1), grant: grantReference{session: handles[group].session, sequence: 1}}}
-		p, err := n.hosts[group][0].PreparePartitionGraphOperations(n.requestID(), []graphstate.Operation{op}, 23, claim)
-		if err != nil {
-			t.Fatal(err)
+	for group, groupOwners := range owners {
+		for _, owner := range groupOwners {
+			op := graphstate.Operation{Kind: graphstate.CreateNode, Owner: owner, Life: graphstate.LifeID(owner + 1), Scope: scope, Record: graphstate.EntityRecord{Interpretation: graphstate.InterpretationObservation, TemporalRole: graphstate.TemporalRoleValidity}}
+			claim := []freshBinding{{role: entityBinding, id: uint64(owner), grant: grantReference{session: handles[group].session, sequence: 1}}, {role: lifeBinding, owner: owner, id: uint64(owner + 1), grant: grantReference{session: handles[group].session, sequence: 1}}}
+			p, err := n.hosts[group][0].PreparePartitionGraphOperations(n.requestID(), []graphstate.Operation{op}, 23, claim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			n.submitPartitionGraph(group, p, reasonNone)
 		}
-		n.submitPartitionGraph(group, p, reasonNone)
 	}
 	op := graphstate.Operation{Kind: graphstate.CreateRelationship, Owner: 3, Life: 4, Scope: scope, Record: graphstate.EntityRecord{Type: "cross-edge", Source: 1, Target: 17, Mode: graphstate.LifeBound, Interpretation: graphstate.InterpretationAssertedRelation, TemporalRole: graphstate.TemporalRoleOccurrenceTime}, Binding: graphstate.LifeRecord{SourceLife: 2, TargetLife: 18}}
 	claims := []freshBinding{{role: entityBinding, id: 3, grant: grantReference{session: handles[0].session, sequence: 1}}, {role: lifeBinding, owner: 3, id: 4, grant: grantReference{session: handles[0].session, sequence: 1}}}
