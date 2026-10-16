@@ -561,18 +561,13 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 			if !found || valueKey == "" {
 				continue // unconstrained (missing key or unindexable value)
 			}
-			if unchangedConstrainedValue(prev, node, labelTok, key) {
-				// The write leaves the value alone: nothing to check or claim,
-				// so a legacy width twin (int(3) beside int64(3), stored before
-				// v4.57.1) keeps accepting writes to its other properties.
-				continue
-			}
 			if isFloatValueKey(valueKey) {
 				c.uniqueMu.RUnlock()
 				return noop, fmt.Errorf("%w: label %q key %q holds a float value", ErrUniqueUnsupportedType, c.labels.Resolve(labelTok), key)
 			}
 			raw, _ := node.GetProperty(key)
-			checks = append(checks, uniqueCheckTuple{labelTok: labelTok, key: key, raw: raw, valueKey: valueKey, scope: st.scope})
+			checks = append(checks, uniqueCheckTuple{labelTok: labelTok, key: key, raw: raw, valueKey: valueKey, scope: st.scope,
+				unchanged: unchangedConstrainedValue(prev, node, labelTok, key)})
 			stripes = append(stripes, uniqueValueStripe(labelTok, key, valueKey))
 			if prev != nil {
 				if oldKey, ok := uniqueValueKey(prev, key); ok && oldKey != "" && oldKey != valueKey {
@@ -599,6 +594,12 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 	// dry-run door (checkForeverOwnership); the held stripes keep these values
 	// unclaimable by others until Pass 2.
 	for _, ck := range checks {
+		if ck.unchanged {
+			// The write leaves the value alone: a legacy width twin (int(3)
+			// beside int64(3), stored before v4.57.1) keeps accepting writes
+			// to its other properties (lesson 58: strict CHANGE, lenient LOAD).
+			continue
+		}
 		matches, err := c.nodesByLabelAndProperty(ck.labelTok, ck.key, ck.raw, storepkg.QueryOpts{})
 		if err != nil {
 			hold.release()
@@ -627,6 +628,9 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 	for _, ck := range checks {
 		if ck.scope != constraintspkg.UniqueForever {
 			continue
+		}
+		if ck.unchanged && c.checkForeverOwnership(ck.labelTok, ck.key, ck.valueKey, selfID) != nil {
+			continue // a legacy twin another entity owns: kept, not claimed
 		}
 		if err := hold.claim(ck); err != nil {
 			err = hold.storeWriteFailed(err)

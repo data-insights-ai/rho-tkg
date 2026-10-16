@@ -703,9 +703,20 @@ func TestPropertyValueStatsMatchesIndex(t *testing.T) {
 			var distinct, sum, max int64
 			for _, v := range append(slices.Clone(round9Values), "hub", int64(99)) {
 				ns, err := g.Nodes().ByLabelAndProperty(label, "v", v, opts)
+				if f, ok := v.(float64); ok && math.IsNaN(f) {
+					// NaN equals nothing under the property equality; the
+					// statistic still keys the stored NaN: read it by scan.
+					ns, err = g.Nodes().ByLabel(label, opts)
+				}
 				if err != nil {
 					t.Fatal(err)
 				}
+				// The statistic keys values by stored width; the lookup finds
+				// every width of an equal number, so keep this key's rows.
+				ns = slices.DeleteFunc(ns, func(n *types.Node) bool {
+					sv, _ := n.GetProperty("v")
+					return types.IndexablePropertyValueKey(sv) != types.IndexablePropertyValueKey(v)
+				})
 				if len(ns) > 0 {
 					distinct++
 					sum += int64(len(ns))

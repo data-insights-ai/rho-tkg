@@ -84,6 +84,8 @@ type uniqueCheckTuple struct {
 	raw      any
 	valueKey string
 	scope    constraintspkg.UniqueScope
+	// unchanged: the write leaves this value as prev stored it (same width).
+	unchanged bool
 }
 
 func uniqueSeenKey(labelTok uint16, key, valueKey string) string {

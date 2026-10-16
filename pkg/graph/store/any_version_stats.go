@@ -34,8 +34,9 @@ type CountTimelineOpts struct {
 }
 
 // PropertyValueStats states the values of an indexed property: Distinct
-// values as the index keys them (types.IndexablePropertyValueKey: an int64
-// 3 and a float64 3.0 are two values, as ByLabelAndProperty seeks them),
+// values as the index keys them, by stored width (types.IndexablePropertyValueKey:
+// an int64 3 and a float64 3.0 are two keys although ByLabelAndProperty finds
+// both for 3; a diagnostics statistic, not an equality count),
 // Rows carrying an indexed value, the heaviest value's rows (MaxRows) and
 // that value (MaxValue; nil when Rows is 0).
 type PropertyValueStats struct {
