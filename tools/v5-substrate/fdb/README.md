@@ -2,7 +2,7 @@
 
 Optional, separate test-support module for the bounded V2 substrate comparison.
 It does not provide a public rho backend, allocator, graph planner or server.
-The implementation is independent of `v5/internal/txnproto`. Its bounded scalar
+The implementation is independent of `v5/internal/dist/txnproto`. Its bounded scalar
 spike is extended with a fixed two-node graph fixture and complete transaction
 change groups. The fixed graph/CDC slice has native unit, race and static validation.
 The evidence manifest keeps the earlier scalar and graph process-fault snapshots

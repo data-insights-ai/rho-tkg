@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-v test-race test-integration cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker check ci ci-docker clean
+.PHONY: build test test-dist test-v test-race test-integration cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker check check-dist ci ci-docker clean
 
 # CI opts into four exhaustive graphapply batches; local defaults remain unsplit.
 V5_RACE_GRAPHAPPLY_SHARDS ?= 1
@@ -11,14 +11,22 @@ GOLANGCI_LINT_VERSION ?= v2.13.2
 GOSEC_VERSION ?= v2.29.0
 GOVULNCHECK_VERSION ?= v1.7.0
 
+# v5.0 set: everything except the distributed engine under internal/dist
+# (graphapply, txnproto, replica), which is covered by check-dist at the release gate.
+V5_SET = $$(go list ./... | grep -v '/internal/dist/')
+V5_DIST = $$(go list ./internal/dist/...)
+
 build:
 	go build ./...
 
 test:
-	go test -short -count=1 ./...
+	go test -short -count=1 $(V5_SET)
+
+test-dist:
+	go test -short -count=1 -timeout 45m $(V5_DIST)
 
 test-v:
-	go test -short -count=1 -v ./...
+	go test -short -count=1 -v $(V5_SET)
 
 test-race:
 	$(SHELL) ../scripts/test-race.sh "$(V5_RACE_GRAPHAPPLY_SHARDS)" v5
@@ -73,6 +81,12 @@ vulncheck-docker:
 	$(DOCKER_GO) sh -c 'go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) && govulncheck ./...'
 
 check: vet build test
+
+# Release gate: the distributed engine (internal/dist/...), not run by `make check`.
+check-dist:
+	@echo "$(V5_DIST)" | tr ' ' '\n'
+	go vet ./internal/dist/...
+	$(MAKE) test-dist
 ci: fmt-check vet lint build test-race security vulncheck cover-gate
 ci-docker: fmt-check vet lint-docker build test-race security-docker vulncheck-docker cover-gate
 

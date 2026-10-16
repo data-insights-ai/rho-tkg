@@ -24,6 +24,11 @@ as a substitute for the planned public graph API. Existing v4 consumers should
 follow the [migration contract](../docs/v5/PLAN.md#8a-consumer-compatibility-revision-2026-10-09)
 and [v4-to-v5 mapping](../docs/v5-analysis.md#5-v4--v5-door-mapping).
 
+The distributed engine (`graphapply`, `txnproto`, `replica`) lives under
+`internal/dist/`; the single-partition v5.0 path (`pkg/graph` -> `graphstore` ->
+`raftlog`) does not import it. `make check` covers the v5.0 set; `make check-dist`
+covers `internal/dist/...` at the release gate.
+
 Use the toolchain specified in [`go.mod`](go.mod). From a repository checkout,
 `make -C v5 check` runs vet, build and short tests; `make -C v5 test-race` and
 `make -C v5 cover-gate` provide the race and coverage gates. These commands do

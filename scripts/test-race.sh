@@ -27,7 +27,7 @@ case "${2-root}" in
     isolated_names=(graph memory)
     isolated_paths=(./pkg/graph ./pkg/graph/store/memory)
     ;;
-  v5) gate="v5 race gate"; split_path=./internal/graphapply; split_name=graphapply ;;
+  v5) gate="v5 race gate"; split_path=./internal/dist/graphapply; split_name=graphapply ;;
   *) fail 'profile must be root or v5' ;;
 esac
 shards=${1-1}

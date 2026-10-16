@@ -92,11 +92,11 @@ process. Pointers into the code for anyone auditing this library:
     (`v5/pkg/temporal/`) — exact values, scopes and descriptors.
   - `FuzzStateCodec` (`v5/internal/state/codec_fuzz_test.go`) — canonical
     component-state/change-group decoding, recomputed ledgers and input ownership.
-  - `FuzzConsensusWirePreflight` (`v5/internal/replica/`) and
+  - `FuzzConsensusWirePreflight` (`v5/internal/dist/replica/`) and
     `FuzzDecodeCheckpoint` (`v5/internal/idalloc/`) — bounded
     consensus/checkpoint admission.
   - `FuzzGraphstateDeltaAndHistoryParity` (`v5/internal/graphstate/`) and
-    `FuzzStrictApplicationAndCheckpoint` (`v5/internal/txnproto/`) — bounded
+    `FuzzStrictApplicationAndCheckpoint` (`v5/internal/dist/txnproto/`) — bounded
     historical projection and transaction/application/checkpoint parity.
 
   - `FuzzRecordCanonicalRoundTrip` (`v5/internal/assertion/fuzz_test.go`) —

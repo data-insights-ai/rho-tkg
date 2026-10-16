@@ -751,3 +751,68 @@ func TestOwnershipExactRecordAndStagePolicyBoundary(t *testing.T) {
 		}
 	}
 }
+
+// Local fake apply path (ownershipInstallRaw) in place of dist/replica: the
+// graphstore-side half of the three-voter publication test in
+// dist/replica/ownership_declaration_driver_test.go, with private root fields.
+func TestOwnershipDeclarationPublicationRetainedOnceAndCrashReopen(t *testing.T) {
+	d := ownershipDecl(t, 4)
+	fs := vfs.NewCrashableMem()
+	local := Namespace{Graph: d.Graph(), Partition: 1}
+	s, cfg, seed := ownershipStore(t, fs, local, d, [16]byte{9})
+	old := ownershipView(t, s, 1)
+	base, err := old.RootBounded(t.Context(), ownershipRootBytes)
+	if err != nil || len(base.Image) != ownershipRootBytes {
+		t.Fatal("ownership seed root is not the constant ownership size", len(base.Image), err)
+	}
+	effects, index := ownershipPublish(t, s, d)
+	if image, err := EncodeRoot(effects.Root); err != nil || len(image) != ownershipRootBytes || cap(image) != len(image) {
+		t.Fatal("published root image size", len(image), err)
+	}
+	want := map[uint64]PartitionOwnership{1: {1, 10, [16]byte{9}}, 2: {2, 11, [16]byte{9}}, 3: {3, 12, [16]byte{9}}, 4: {4, 13, [16]byte{9}}}
+	read, _, err := ReadOwnershipDeclaration(t.Context(), ownershipView(t, s, index), Limits{}, ownershipBudget())
+	if err != nil || !read.Published() || read.Root().epoch != 0 || read.Root().next != 1 || read.Root().owner != seed.owner || read.Root().namespace != local || read.Binding().Identity.Partition != 1 || read.Declaration().Len() != len(want) {
+		t.Fatal(read, err)
+	}
+	for n := range read.Declaration().Len() {
+		entry, _ := read.Declaration().PartitionAt(n)
+		if entry != want[entry.Partition] {
+			t.Fatal("qualified declaration differs from independent map", entry)
+		}
+	}
+	if pending, _, err := ReadOwnershipDeclaration(t.Context(), old, Limits{}, ownershipBudget()); err != nil || pending.Published() || pending.Declaration().Len() != 0 {
+		t.Fatal("held pending view advanced with publication", pending, err)
+	}
+	if _, err := OpenCatalog(ownershipView(t, s, index), read.Root().namespace, read.Root().owner, Limits{}); !errors.Is(err, ErrTopologyUnsupported) {
+		t.Fatal("metadata enabled graph operations", err)
+	}
+	usage, err := s.ApplicationUsage()
+	if err != nil || usage.RetainedRecords != 3*index+1 {
+		t.Fatal("declaration not written exactly once", usage, err)
+	}
+	replay, _, err := StageOwnershipDeclaration(t.Context(), ownershipView(t, s, index), d, Limits{}, ownershipBudget())
+	if err != nil || len(replay.Writes) != 0 || replay.Root != effects.Root {
+		t.Fatal("identical retry restaged the declaration", replay, err)
+	}
+	image, err := EncodeRoot(replay.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry := ownershipInstallRaw(t, s, image, replay.Writes)
+	if usage, err := s.ApplicationUsage(); err != nil || usage.RetainedRecords != 3*retry+1 {
+		t.Fatal("identical retry wrote another declaration version", usage, err)
+	}
+	crash := fs.CrashClone(vfs.CrashCloneCfg{})
+	cfg.FS, cfg.Create = crash, false
+	reopened, err := raftlog.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	for _, at := range []uint64{index, retry} {
+		got, _, err := ReadOwnershipDeclaration(t.Context(), ownershipView(t, reopened, at), Limits{}, ownershipBudget())
+		if err != nil || !got.Published() || got.Declaration().Digest() != d.Digest() {
+			t.Fatal("crash reopen lost metadata declaration", at, got, err)
+		}
+	}
+}

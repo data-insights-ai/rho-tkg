@@ -425,20 +425,20 @@ PROTOCOL_CORE_INPUTS = {
         "graph-fault-local-v1.json", "fdb/compare-lifecycle.py",
         "check-p02-history.py", "check-p03-history.py", "check-p05-history.py", "check-p06-history.py")
 } | {"docs/v5/reference/independent/protocol/oracle.py"}
-PROTOCOL_CORE_INPUTS |= {"v5/internal/graphapply/"+name for name in (
+PROTOCOL_CORE_INPUTS |= {"v5/internal/dist/graphapply/"+name for name in (
     "native_graph_protocol_campaign_harness_test.go", "native_graph_protocol_campaign_adapters_test.go",
     "native_graph_protocol_campaign_test.go")}
 PROTOCOL_PROGRAM_INPUTS = PROTOCOL_CORE_INPUTS | {
     "tools/v5-substrate/native_protocol_campaign_program_check.py",
     "tools/v5-substrate/native_protocol_campaign_program_check_test.py",
-    "v5/internal/graphapply/native_graph_protocol_campaign_program_harness_test.go",
-    "v5/internal/graphapply/native_graph_protocol_campaign_program_test.go",
+    "v5/internal/dist/graphapply/native_graph_protocol_campaign_program_harness_test.go",
+    "v5/internal/dist/graphapply/native_graph_protocol_campaign_program_test.go",
 }
 PROTOCOL_PREDECESSOR_INPUTS = PROTOCOL_PROGRAM_INPUTS | {
     "tools/v5-substrate/native_protocol_campaign_predecessor_check.py",
     "tools/v5-substrate/native_protocol_campaign_predecessor_check_test.py",
-    "v5/internal/graphapply/native_graph_protocol_campaign_predecessor_harness_test.go",
-    "v5/internal/graphapply/native_graph_protocol_campaign_predecessor_test.go",
+    "v5/internal/dist/graphapply/native_graph_protocol_campaign_predecessor_harness_test.go",
+    "v5/internal/dist/graphapply/native_graph_protocol_campaign_predecessor_test.go",
 }
 PROTOCOL_STATE_INPUTS = {
     "tools/v5-substrate/"+name for name in (
@@ -451,25 +451,25 @@ PROTOCOL_STATE_INPUTS = {
         "check-p05-history.py", "check-p06-history.py")
 }
 PROTOCOL_STATE_INPUTS.add("docs/v5/reference/independent/protocol/oracle.py")
-PROTOCOL_CORE_INPUTS |= {"v5/internal/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
+PROTOCOL_CORE_INPUTS |= {"v5/internal/dist/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
                          if set(PROTOCOL_RECIPE_PARENTS + PROTOCOL_CASE_PARENTS).intersection(parents)}
-PROTOCOL_STATE_INPUTS |= {"v5/internal/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
+PROTOCOL_STATE_INPUTS |= {"v5/internal/dist/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
                           if set(PROTOCOL_STATE_PARENTS).intersection(parents)}
-PROTOCOL_PROGRAM_INPUTS |= {"v5/internal/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
+PROTOCOL_PROGRAM_INPUTS |= {"v5/internal/dist/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
                             if PROTOCOL_PROGRAM_PARENTS[0] in parents}
 PROTOCOL_PROGRAM_INPUTS |= PROTOCOL_CORE_INPUTS
-PROTOCOL_PREDECESSOR_INPUTS |= {"v5/internal/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
+PROTOCOL_PREDECESSOR_INPUTS |= {"v5/internal/dist/graphapply/"+name for name, parents in PROTOCOL_FIXTURE_COMPAT.items()
                                 if set(PROTOCOL_PREDECESSOR_PARENTS).intersection(parents)}
 PROTOCOL_PREDECESSOR_INPUTS |= PROTOCOL_PROGRAM_INPUTS
 P06_PROGRAM_INPUTS = PROTOCOL_PREDECESSOR_INPUTS | {
     "tools/v5-substrate/native_protocol_campaign_p06_check.py",
     "tools/v5-substrate/native_protocol_campaign_p06_check_test.py",
     "tools/v5-substrate/native_transition_first_prepare_check.py",
-} | {"v5/internal/graphapply/"+name for name in P06_PROGRAM_FIXTURES}
+} | {"v5/internal/dist/graphapply/"+name for name in P06_PROGRAM_FIXTURES}
 STATE_PROGRAM_INPUTS = PROTOCOL_STATE_INPUTS | PROTOCOL_PROGRAM_INPUTS | {
     "tools/v5-substrate/native_protocol_campaign_state_program_check.py",
     "tools/v5-substrate/native_protocol_campaign_state_program_check_test.py",
-} | {"v5/internal/graphapply/"+name for name in STATE_PROGRAM_FIXTURES}
+} | {"v5/internal/dist/graphapply/"+name for name in STATE_PROGRAM_FIXTURES}
 PAIR_INPUTS = {"tools/v5-substrate/paired_workload_check.py", "tools/v5-substrate/paired_workload_cell.py",
                "tools/v5-substrate/paired_workload_check_test.py", "tools/v5-substrate/fdb/fdb_contention_check.py",
                "tools/v5-substrate/fdb/fdb_contention_check_test.py", "tools/v5-substrate/workload_matrix.py",
@@ -487,7 +487,7 @@ PAIR_INPUTS = {"tools/v5-substrate/paired_workload_check.py", "tools/v5-substrat
                "tools/v5-substrate/fdb_selectors_check.py", "tools/v5-substrate/fdb_create_update_check.py",
                "tools/v5-substrate/fdb_columns_check.py", "tools/v5-substrate/fdb_correction_check.py"}
 PROCESS_INPUTS = {"tools/v5-substrate/process_watchdog.py", "tools/v5-substrate/process_watchdog_test.py"}
-SNAPSHOT_SENDER_INPUTS = {"v5/internal/graphapply/"+name for name in SNAPSHOT_SENDER_FIXTURES}
+SNAPSHOT_SENDER_INPUTS = {"v5/internal/dist/graphapply/"+name for name in SNAPSHOT_SENDER_FIXTURES}
 # The complete-CDC replay tests consume these two frozen FDB archives directly.
 # Keep this finite dependency list in sync with compare_cost_cdc_test.py.
 COST_CDC_INPUTS = {
@@ -660,14 +660,14 @@ def execute(module, paths, output, base):
             parent = Path(*path.parts[:path.parts.index("testdata")])
             seeds.add(prefix + ("/" + str(parent) if parent != Path(".") else ""))
     affected = affected_packages(packages, seeds, any(str(p) in ("go.mod", "go.sum") for p in local))
-    graph = prefix + "/internal/graphapply" if module == "v5" else None
+    graph = prefix + "/internal/dist/graphapply" if module == "v5" else None
     selections = []
     small = [p for p in affected if p != graph]
     if small:
         selections.append({"packages": small, "parents": None})
     if graph in affected:
-        directory = folder / "internal/graphapply"
-        changed = [folder / p for p in local if "internal/graphapply" in p.as_posix()]
+        directory = folder / "internal/dist/graphapply"
+        changed = [folder / p for p in local if "internal/dist/graphapply" in p.as_posix()]
         definitions = {p: changed_definitions(p, base) for p in changed if p.name.endswith("_test.go") and p.is_file()}
         names = graph_selection(directory, changed, definitions)
         inventory = command(["go", "test", "-short", "-list", "^(Test|Fuzz|Example)", graph], folder)
