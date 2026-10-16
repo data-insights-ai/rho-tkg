@@ -629,6 +629,9 @@ Recurred 2026-10-16 (same week as 0 vs 0.0): numeric equality had two rules (`Eq
 it. Documentation of two behaviours does not make them one contract.
 Detector: before any verdict "intended / documented / contract choice" on a disagreement between sibling doors, grep for the
 helpers that implement the concept (`func .*(Numeric|Widen|Equal|Key)`); two or more = consolidate (lesson 58 direction rule).
+One overview (René 2026-10-16: "do not again spawn and write different files where you then have no overview", "i want one consistent
+todo.md plan"): agents report in their final message; only `tasks/todo.md` on main plans (v4 + v5); review briefs name the full scope
+up front, so a second pass is not needed for a missed dimension.
 
 ## 85. Comment Trimming Is Editing, Not A Script
 
