@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -210,16 +211,53 @@ func decodeRetainedFeedObservation(wire []byte) (retainedFeedObservation, error)
 	return o, nil
 }
 
-func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRequest) ([]byte, error) {
+// Optional scalar failure telemetry is installed only during fixture startup,
+// before any dispatcher goroutine. Nil is the ordinary production path.
+type retainedFeedNativeFailureRecord struct {
+	stage                                        string
+	partition, voter, index                      uint64
+	kind                                         byte
+	rows, bytes, rowLimit, byteLimit, outputLeft int
+	offeredRows, offeredBytes, offeredOutput     int
+	actual                                       bool
+	cause                                        uint16
+}
+
+var retainedFeedNativeFailure func(retainedFeedNativeFailureRecord)
+
+func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRequest) (out []byte, err error) {
 	if s == nil || ctx == nil || !retainedFeedAgreement(s.host.machine.SemanticContractID()) {
 		return nil, errInvalid
 	}
+	observe := retainedFeedNativeFailure
+	stage := "decode"
+	var diagnosticReader *reader
+	var diagnosticQuestion retainedFeedQuestion
+	if observe != nil {
+		defer func() {
+			if err == nil {
+				return
+			}
+			d := retainedFeedNativeFailureRecord{stage: stage, partition: s.peer.scope.partition, voter: s.peer.voter, kind: diagnosticQuestion.kind, index: diagnosticQuestion.index, offeredRows: diagnosticQuestion.rows, offeredBytes: diagnosticQuestion.bytes, offeredOutput: diagnosticQuestion.output, cause: graphErrorMask(err)}
+			if diagnosticReader != nil {
+				q := diagnosticReader
+				d.actual = true
+				d.rows, d.bytes, d.rowLimit, d.byteLimit = q.rows, q.bytes, q.limits.readRows, q.limits.readBytes
+				if q.arena != nil {
+					d.outputLeft = q.arena.Remaining()
+				}
+			}
+			observe(d)
+		}()
+	}
 	question, err := decodeRetainedFeedQuestion(r.command)
+	diagnosticQuestion = question
 	if err != nil {
 		return nil, err
 	}
 	codecCost := 4096 + 8*len(r.command)
 	query := graphCutQuery{kind: 1, nonce: r.nonce, sourceRows: question.rows, sourceBytes: question.bytes, outputBytes: question.output - codecCost}
+	stage = "capture"
 	reply, err := s.pump.Cut(ctx, query)
 	if err != nil || reply.err != nil {
 		return nil, errors.Join(err, reply.err)
@@ -227,6 +265,7 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 	if reply.question != query || reply.id != reply.proof.id || reply.proof.owner != s.host {
 		return nil, errInvalid
 	}
+	stage = "proof"
 	if err = checkGraphCutProof(reply.proof, query); err != nil {
 		return nil, err
 	}
@@ -240,11 +279,11 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 	if captured.sourceRows >= question.rows || captured.sourceBytes >= question.bytes || captured.outputBytes >= question.output {
 		return nil, errLimit
 	}
+	stage = "view"
 	view, err := m.store.ApplicationView(captured.index)
 	if err != nil {
 		return nil, err
 	}
-	var out []byte
 	base, err := view.RootBounded(ctx, 172)
 	if err != nil {
 		return nil, errors.Join(err, view.Close())
@@ -260,11 +299,15 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 	q.limits.readRows = min(q.limits.readRows, question.rows)
 	q.limits.readBytes = min(q.limits.readBytes, question.bytes)
 	q.rows, q.bytes = captured.sourceRows, captured.sourceBytes+cap(base.Image)
+	if observe != nil {
+		diagnosticReader = &q
+	}
 	inspect := func() (retainedFeedObservation, error) {
 		d, e := decodeRetainedFeedDefinition(question.definition)
 		if e != nil {
 			return retainedFeedObservation{}, e
 		}
+		stage = "feed-live"
 		manifest, owner, status, e := m.feedLive(&q, d)
 		if e != nil {
 			return retainedFeedObservation{}, e
@@ -274,6 +317,7 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 		if status != feedApplied {
 			return o, nil
 		}
+		stage = "cursor"
 		cursor, found, e := readFeedCursor(&q, manifest.id())
 		if e != nil {
 			return o, e
@@ -286,6 +330,7 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 		if e != nil || !present || !bytes.Equal(stored.Value, question.definition) {
 			return o, errors.Join(errInvalid, e)
 		}
+		stage = "control"
 		if question.kind == feedReadCursor {
 			o.cursor, e = encodeRetainedFeedCursor(cursor)
 			if e != nil {
@@ -348,6 +393,7 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 			o.page = page.Value
 			return o, nil
 		}
+		stage = "certificate"
 		cert := question.boundary
 		if cert.scope != m.scope() || cert.round < manifest.parts[0].certificate.round {
 			return o, errInvalid
@@ -360,6 +406,7 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 		if e != nil || actual != cert {
 			return o, errors.Join(errInvalid, e)
 		}
+		stage = "tip"
 		if e = m.checkFeedTip(&q, question.tip, cert); e != nil {
 			return o, e
 		}
@@ -374,6 +421,7 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 				return o, errInvalid
 			}
 			if question.index <= question.tip.index {
+				stage = "frame-progress"
 				f, e := m.feedProgress(&q, question.index, question.index+min(question.tip.index-question.index, retainedFeedProgressBatch-1), d.policy.pageBytes, cursor.positions[local])
 				if e != nil {
 					return o, e
@@ -385,11 +433,13 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 		if question.round < manifest.parts[0].certificate.round || question.round > cert.round {
 			return o, errInvalid
 		}
+		stage = "payload-source"
 		_, index, image, e := m.feedPayloadSource(&q, manifest, cert.configuration, question.round)
 		if e != nil {
 			return o, e
 		}
 		payload := retainedFeedPayload{partition: m.ns.partition, index: index, root: image}
+		stage = "payload-lookup"
 		e = m.feedAt(&q, index, func(at *reader) error {
 			o.generation = at.base.Generation
 			lookup := question.lookup
@@ -457,6 +507,7 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 	observation.rows, observation.bytes = q.rows, q.bytes
 	observation.output = question.output - arena.Remaining()
 	if inspectErr == nil {
+		stage = "encode"
 		// Size the exact delivered response, then fund its ownership/codec on
 		// this SAME native residual before allocation. A small lookup/census is
 		// not charged as a configured-maximum page on every RPC.
@@ -489,6 +540,7 @@ func (e *graphAuthenticatedEndpoint) retainedFeedRead(ctx context.Context, q ret
 	q.rows = min(1<<20, b.maxRows-b.rows)
 	q.bytes = min(64<<20, b.maxBytes-b.bytes-(replyMax+len(q.definition)+4096))
 	q.output = min(64<<20, b.output.Remaining()-(4*(replyMax+len(q.definition)+4096)))
+	beforeCalls, beforeRows, beforeBytes, beforeOutput := b.calls, b.rows, b.bytes, b.output.Remaining()
 	b.mu.Unlock()
 	if codecErr != nil {
 		return out, outputBudgetFailure(codecErr)
@@ -503,14 +555,17 @@ func (e *graphAuthenticatedEndpoint) retainedFeedRead(ctx context.Context, q ret
 	if q.output < 32768+4096+8*len(wire) {
 		return out, errLimit
 	}
+	responseReceived := false
 	defer func() {
 		if err != nil {
+			origin, cause := fmt.Sprintf("%T", err), graphErrorMask(err)
 			b.mu.Lock()
 			b.rows += q.rows
 			b.bytes += q.bytes
 			charge := b.output.Reserve(q.output)
 			b.mu.Unlock()
 			err = errors.Join(err, outputBudgetFailure(charge))
+			err = fmt.Errorf("retained feed read kind=%d part=%d index=%d beforeCalls=%d beforeRows=%d beforeBytes=%d beforeOutput=%d offered=%d/%d/%d response=%t origin=%s cause=%04x: %w", q.kind, e.peer.scope.partition, q.index, beforeCalls, beforeRows, beforeBytes, beforeOutput, q.rows, q.bytes, q.output, responseReceived, origin, cause, err)
 			out = retainedFeedObservation{}
 		}
 	}()
@@ -518,6 +573,7 @@ func (e *graphAuthenticatedEndpoint) retainedFeedRead(ctx context.Context, q ret
 	if err != nil {
 		return out, err
 	}
+	responseReceived = true
 	if err = b.output.Reserve(4096 + 8*len(response.body)); err != nil {
 		return out, outputBudgetFailure(err)
 	}
