@@ -1372,3 +1372,125 @@ func TestRetainedFeedCursorOwnsBoundedParticipantDecode(t *testing.T) {
 		}
 	}
 }
+
+// The actual Page3 residual fits these native records, despite the configured
+// one-MiB change ceiling. No new reader, grant, or retained owner is created.
+func TestRetainedFeedHistoryUsesFundedResidualForActualFrames(t *testing.T) {
+	n := collectedGraphNetworkWithRecovery(t, nil, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4})
+	h := n.hosts[0][0]
+	m := h.machine
+	oldIndex := h.driver.Applied()
+	old, err := m.store.ApplicationView(oldIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := old.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	before, err := old.ApplicationRecord(t.Context(), oldIndex, false, 64<<10)
+	if err != nil || len(before) == 0 {
+		t.Fatal("actual first-install changes", err)
+	}
+	crossEdgeFixture(t, n)
+	currentIndex := h.driver.Applied()
+	if currentIndex <= oldIndex {
+		t.Fatal("fixture did not mutate")
+	}
+	current, err := m.store.ApplicationView(currentIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := current.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	latest, err := current.ApplicationRecord(t.Context(), currentIndex, false, 64<<10)
+	if err != nil || bytes.Equal(before, latest) {
+		t.Fatal("old/current history did not diverge", err)
+	}
+	for _, item := range []struct {
+		v     *raftlog.ApplicationView
+		index uint64
+	}{{old, oldIndex}, {current, currentIndex}} {
+		base, err := item.v.RootBounded(t.Context(), 172)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, outcome := range []bool{false, true} {
+			expected, err := item.v.ApplicationRecord(t.Context(), item.index, outcome, 64<<10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			arena, err := graphstate.NewOutputBudget(m.limits.outputBytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			q := feedReader(t.Context(), m, item.v, base, arena)
+			q.rows, q.bytes = 181, 1820348
+			start := arena.Remaining()
+			got, err := m.feedRecord(&q, item.index, outcome, 64<<10)
+			if err != nil || got == nil || !bytes.Equal(got, expected) {
+				t.Fatalf("funded actual record at%d outcome%v: %v", item.index, outcome, err)
+			}
+			if q.rows != 182 || q.bytes != 1820348+1082+3*len(expected) || start-arena.Remaining() != 2048+2*len(expected) {
+				t.Fatal("actual work/output accounting", q.rows, q.bytes, start-arena.Remaining())
+			}
+			if !outcome && item.index == oldIndex && !bytes.Equal(got, before) {
+				t.Fatal("retained cut returned current changes")
+			}
+		}
+	}
+	base, err := current.RootBounded(t.Context(), 172)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	for _, item := range []struct {
+		ctx     context.Context
+		bytes   int
+		maximum int
+		want    error
+	}{
+		{t.Context(), m.limits.allocation.readBytes - 1082, 64 << 10, raftlog.ErrLimit},
+		{t.Context(), 1820348, 0, raftlog.ErrLimit},
+		{canceled, 1820348, 64 << 10, context.Canceled},
+	} {
+		arena, err := graphstate.NewOutputBudget(m.limits.outputBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		q := feedReader(item.ctx, m, current, base, arena)
+		q.rows, q.bytes = 181, item.bytes
+		offer := min(1082+3*m.store.ApplicationLimits().MaxChangeBytes, q.limits.readBytes-q.bytes)
+		data, err := m.feedRecord(&q, currentIndex, false, item.maximum)
+		if !errors.Is(err, item.want) || data != nil || q.rows != 182 || q.bytes != item.bytes+offer || arena.Remaining() != m.limits.outputBytes-2048-2*item.maximum {
+			t.Fatal("failed read lost cause/full offered spend", item, q.rows, q.bytes, arena.Remaining(), err)
+		}
+	}
+	for _, kind := range []string{"negative-ownership", "rows", "lookup-bytes", "nil-output", "output"} {
+		arena, err := graphstate.NewOutputBudget(2047)
+		if err != nil {
+			t.Fatal(err)
+		}
+		q := feedReader(t.Context(), m, current, base, arena)
+		maximum := 0
+		switch kind {
+		case "negative-ownership":
+			maximum = -1
+		case "rows":
+			q.rows = q.limits.readRows
+		case "lookup-bytes":
+			q.bytes = q.limits.readBytes - 1081
+		case "nil-output":
+			q.arena = nil
+		}
+		rows, bytes := q.rows, q.bytes
+		if data, err := m.feedRecord(&q, currentIndex, false, maximum); !errors.Is(err, errLimit) || data != nil || q.rows != rows || q.bytes != bytes || arena.Remaining() != 2047 {
+			t.Fatal("unfunded lookup had effects", kind, q.rows, q.bytes, err)
+		}
+	}
+}

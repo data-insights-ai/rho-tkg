@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"math"
 	"reflect"
 	"sync"
 	"testing"
@@ -121,6 +122,10 @@ func historyCheck(t *testing.T, v *ApplicationView, at, generation uint64, image
 		data, err := v.ApplicationRecord(t.Context(), at, row.outcome, len(row.want))
 		if err != nil || data == nil || string(data) != row.want || len(data) != cap(data) {
 			t.Fatal(row, data, err)
+		}
+		bounded, work, err := v.ApplicationRecordBounded(t.Context(), at, row.outcome, len(row.want), ReadBudget{Rows: 1, Bytes: 1082 + 3*len(row.want)})
+		if err != nil || bounded == nil || !bytes.Equal(bounded, data) || work != (ApplicationHistoryReadWork{1, 1082 + 3*len(row.want)}) {
+			t.Fatal("bounded retained-bank history", row, bounded, work, err)
 		}
 	}
 	after, err := v.s.ApplicationTransferUsage()
@@ -396,6 +401,10 @@ func TestApplicationViewHistoryConcurrentStoreClose(t *testing.T) {
 			if err != nil && !errors.Is(err, ErrClosed) || err == nil && string(data) != "change:incoming" {
 				t.Error(data, err)
 			}
+			bounded, work, err := v.ApplicationRecordBounded(t.Context(), 2, false, 15, ReadBudget{1, 1127})
+			if err != nil && !errors.Is(err, ErrClosed) || err == nil && (string(bounded) != "change:incoming" || work != (ApplicationHistoryReadWork{1, 1127})) {
+				t.Error(bounded, work, err)
+			}
 		}
 	})
 	wg.Go(func() {
@@ -412,5 +421,135 @@ func TestApplicationViewHistoryConcurrentStoreClose(t *testing.T) {
 	}
 	if s.views != 0 || s.viewBytes != 0 {
 		t.Fatal(s.views, s.viewBytes)
+	}
+}
+
+func TestApplicationViewHistoryBoundedWorkPrecedesHashAndOwnership(t *testing.T) {
+	s := receiverStore(t, vfs.NewMem(), 1)
+	generationApply(t, s, "incoming")
+	v := viewApplication(t, s, 2)
+	defer func() {
+		if err := v.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if s.ApplicationLimits().MaxChangeBytes != 1<<20 {
+		t.Fatal("changed original policy")
+	}
+	for _, outcome := range []bool{false, true} {
+		want := []byte("change:incoming")
+		if outcome {
+			want = []byte("outcome:incoming")
+		}
+		cost := 1082 + 3*len(want)
+		for _, grant := range []int{1081, cost - 1, cost, 2373956, math.MaxInt} {
+			data, work, err := v.ApplicationRecordBounded(t.Context(), 2, outcome, len(want), ReadBudget{1, grant})
+			if grant < cost {
+				if !errors.Is(err, ErrLimit) || data != nil || work.Bytes > grant || work.Rows > 1 {
+					t.Fatal("unfunded read", grant, data, work, err)
+				}
+				continue
+			}
+			if err != nil || !bytes.Equal(data, want) || cap(data) != len(data) || work != (ApplicationHistoryReadWork{1, cost}) {
+				t.Fatal("funded original", data, work, err)
+			}
+			data[0] = 'X'
+			again, _, err := v.ApplicationRecordBounded(t.Context(), 2, outcome, len(want), ReadBudget{1, cost})
+			if err != nil || !bytes.Equal(again, want) {
+				t.Fatal("borrowed history escaped", again, err)
+			}
+		}
+		data, work, err := v.ApplicationRecordBounded(t.Context(), 2, outcome, len(want)-1, ReadBudget{1, cost})
+		if !errors.Is(err, ErrLimit) || data != nil || work != (ApplicationHistoryReadWork{1, cost}) || s.poison != nil {
+			t.Fatal("owned cap", data, work, err, s.poison)
+		}
+		data, work, err = v.ApplicationRecordBounded(t.Context(), 1, outcome, 0, ReadBudget{1, 1082})
+		if err != nil || data == nil || len(data) != 0 || cap(data) != 0 || work != (ApplicationHistoryReadWork{1, 1082}) {
+			t.Fatal("present empty", data, work, err)
+		}
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	for _, item := range []struct {
+		view    *ApplicationView
+		ctx     context.Context
+		index   uint64
+		maximum int
+		b       ReadBudget
+		want    error
+	}{
+		{nil, t.Context(), 1, 0, ReadBudget{1, 4096}, ErrInvalid},
+		{&ApplicationView{}, t.Context(), 1, 0, ReadBudget{1, 4096}, ErrInvalid},
+		{v, nil, 1, 0, ReadBudget{1, 4096}, ErrInvalid},
+		{v, canceled, 1, 0, ReadBudget{1, 4096}, context.Canceled},
+		{v, t.Context(), 0, 0, ReadBudget{1, 4096}, ErrInvalid},
+		{v, t.Context(), 3, 0, ReadBudget{1, 4096}, ErrInvalid},
+		{v, t.Context(), 1, -1, ReadBudget{1, 4096}, ErrInvalid},
+		{v, t.Context(), 1, 0, ReadBudget{}, ErrInvalid},
+		{v, t.Context(), 1, 0, ReadBudget{1, -1}, ErrInvalid},
+		{v, t.Context(), 1, s.ApplicationLimits().MaxPageBytes + 1, ReadBudget{1, 4096}, ErrLimit},
+	} {
+		data, work, err := item.view.ApplicationRecordBounded(item.ctx, item.index, false, item.maximum, item.b)
+		if !errors.Is(err, item.want) || data != nil || work != (ApplicationHistoryReadWork{}) {
+			t.Fatal(item, data, work, err)
+		}
+	}
+	if data, work, err := v.readRetainedHistoryPayload(t.Context(), 1, appChangeTag, math.MaxInt, 0, 3, &ReadBudget{1, 4096}); !errors.Is(err, ErrLimit) || data != nil || work != (ApplicationHistoryReadWork{}) {
+		t.Fatal("overflow", data, work, err)
+	}
+	if err := v.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if data, work, err := v.ApplicationRecordBounded(t.Context(), 1, false, 0, ReadBudget{1, 4096}); !errors.Is(err, ErrClosed) || data != nil || work != (ApplicationHistoryReadWork{}) {
+		t.Fatal("closed", data, work, err)
+	}
+}
+
+func TestApplicationViewHistoryBoundedDamagedFrames(t *testing.T) {
+	for _, kind := range []string{"oversized", "checksum", "short", "deleted", "missing"} {
+		t.Run(kind, func(t *testing.T) {
+			s := receiverStore(t, vfs.NewMem(), 1)
+			generationApply(t, s, "incoming")
+			v := viewApplication(t, s, 2)
+			key := bankIndexKey(v.bank, appChangeTag, 2)
+			raw := appFrame(key, []byte("change:incoming"), false)
+			switch kind {
+			case "oversized":
+				raw = make([]byte, appFrameBytes+s.ApplicationLimits().MaxChangeBytes+1)
+			case "checksum":
+				raw[len(raw)-1] ^= 1
+			case "short":
+				raw = []byte("damaged")
+			case "deleted":
+				raw = appFrame(key, nil, true)
+			}
+			var err error
+			if kind == "missing" {
+				err = s.db.Delete(key, pebble.Sync)
+			} else {
+				err = s.db.Set(key, raw, pebble.Sync)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Policy-valid checksum corruption is not examined under an unfunded
+			// hash grant. A sufficiently funded retry must still poison/refuse it.
+			if kind == "checksum" {
+				data, work, err := v.ApplicationRecordBounded(t.Context(), 2, false, 64<<10, ReadBudget{1, 1082})
+				if !errors.Is(err, ErrLimit) || data != nil || work != (ApplicationHistoryReadWork{1, 1082}) || s.poison != nil {
+					t.Fatal("unfunded hash", data, work, err, s.poison)
+				}
+			}
+			data, work, err := v.ApplicationRecordBounded(t.Context(), 2, false, 64<<10, ReadBudget{1, 2373956})
+			if !errors.Is(err, ErrCorrupt) || data != nil || work.Rows != 1 || work.Bytes < 1082 || work.Bytes > 2373956 {
+				t.Fatal("damaged history", data, work, err)
+			}
+			if data, _, err := v.ApplicationRecordBounded(t.Context(), 1, false, 0, ReadBudget{1, 4096}); !errors.Is(err, ErrPoisoned) || !errors.Is(err, ErrCorrupt) || data != nil {
+				t.Fatal("lost poison cause", data, err)
+			}
+			if err := v.Close(); !errors.Is(err, ErrPoisoned) || !errors.Is(err, ErrCorrupt) {
+				t.Fatal("close lost cause", err)
+			}
+		})
 	}
 }

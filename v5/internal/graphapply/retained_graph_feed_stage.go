@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"math"
 	"slices"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -255,9 +256,9 @@ func (m *declaredMaterializer) feedAt(q *reader, index uint64, fn func(*reader) 
 }
 
 // Native history APIs preflight complete delivered frames before copying. The
-// existing operation ledger first admits their documented worst source ceiling;
-// completed work is charged from actual delivered lengths, failure retires the
-// offered ceiling. The output reservation is never refunded on uncertainty.
+// existing operation ledger offers at most its remaining source grant. Native
+// length preflight funds the actual frame before hashing/copying; failure retires
+// the full offered grant. Output is never refunded on uncertainty.
 func (m *declaredMaterializer) feedRecord(q *reader, index uint64, outcome bool, maximum int) ([]byte, error) {
 	p := m.store.ApplicationLimits()
 	limit := p.MaxChangeBytes
@@ -265,20 +266,23 @@ func (m *declaredMaterializer) feedRecord(q *reader, index uint64, outcome bool,
 		limit = p.MaxOutcomeBytes
 	}
 	maximum = min(maximum, p.MaxPageBytes)
-	ceiling := 1082 + 3*limit
-	if maximum < 0 || q.rows >= q.limits.readRows || ceiling > q.limits.readBytes-q.bytes {
+	if maximum < 0 || limit < 0 || limit > (math.MaxInt-1082)/3 || q.rows >= q.limits.readRows {
+		return nil, errLimit
+	}
+	ceiling := min(1082+3*limit, q.limits.readBytes-q.bytes)
+	if ceiling < 1082 {
 		return nil, errLimit
 	}
 	if q.arena == nil || 2048+2*maximum > q.arena.Remaining() {
 		return nil, errLimit
 	}
 	q.rows++
-	wire, err := q.view.ApplicationRecord(q.ctx, index, outcome, maximum)
+	wire, work, err := q.view.ApplicationRecordBounded(q.ctx, index, outcome, maximum, raftlog.ReadBudget{Rows: 1, Bytes: ceiling})
 	if err != nil {
 		q.bytes += ceiling
 		return nil, errors.Join(err, reserveComposer(q, 2048+2*maximum))
 	}
-	q.bytes += 1082 + 3*len(wire)
+	q.bytes += work.Bytes
 	if err = reserveComposer(q, 2048+2*cap(wire)); err != nil {
 		return nil, err
 	}
