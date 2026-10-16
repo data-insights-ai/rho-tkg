@@ -1,28 +1,29 @@
 KILLED window meets off by one: round10_api_test.go:121: [{-10 0} {0 3}].Meets(0, 0) = false, want true
-KILLED window pick ignores the window: round10_doors_test.go:394: pin 1792173537688 window [{-100 0} {0 1} {1 1000}]: segment 817494018676391936/2/3499/1792173537785 streamed 1 times, want 0
-KILLED window candidates from the window end: round10_doors_test.go:395: rels pin 1792173542229 window [{-9223372036854775808 9223372036854775807}]: segment 817494164726547456/4/-2568/-2520 streamed 0 times, want 1
-KILLED adjacency window unfiltered: round10_doors_test.go:396: adjacency 1 [R] pin 1792173547167 window [{-100 0} {0 1} {1 1000}]: [817494329300583424/0/-9223372036854775808/0 817494329309398016/0/-4806/0 817494329309692928/0/-9223372036854775808/0 8174943
-KILLED typed rows keep ordinals: round10_doors_test.go:552: typed row 0: id 817494474612605952 817494474605101056->817494474610606080 [-9223372036854775808, 0) ords 1/0/0, segment 817494474612605952/0/-9223372036854775808/0
-KILLED typed rows stored interval: round10_doors_test.go:552: typed row 5: id 817494629676614656 817494629658624000->817494629676580864 [-9223372036854775808, 0) ords 0/0/0, segment 817494629676614656/1/-9223372036854775808/-3567
+KILLED window pick ignores the window: round10_doors_test.go:394: pin 1792174775534 window [{-100 0} {0 1} {1 1000}]: segment 817534580407107584/2/1792174775524/1792174775525 streamed 1 times, want 0
+KILLED window candidates from the window end: round10_doors_test.go:395: rels pin 1792174779971 window [{-9223372036854775808 9223372036854775807}]: segment 817534723073770496/4/-2568/-2520 streamed 0 times, want 1
+KILLED adjacency window unfiltered: round10_doors_test.go:396: adjacency 1 [R] pin 1792174784642 window [{-100 0} {0 1} {1 1000}]: [817534878863459328/0/-9223372036854775808/0 817534878872699904/0/-4806/0 817534878872994816/0/-9223372036854775808/0 8175348
+KILLED typed rows keep ordinals: round10_doors_test.go:552: typed row 0: id 817535023276688384 817535023269806080->817535023275114496 [-9223372036854775808, 0) ords 1/0/0, segment 817535023276688384/0/-9223372036854775808/0
+KILLED typed rows stored interval: round10_doors_test.go:552: typed row 5: id 817535172258137088 817535172240113664->817535172258070528 [-9223372036854775808, 0) ords 0/0/0, segment 817535172258137088/1/-9223372036854775808/-3567
 KILLED current rows: untimed rule dropped: round10_doors_test.go:867: memory-txfrom: rel-excise never succeeded, first refusal: graph: no version valid at the given time: excise [-2853, -2773): no version is valid there
 KILLED current rows: raw valid-from (0 unset as instant): round10_doors_test.go:867: memory-txfrom: rel-excise never succeeded, first refusal: graph: no version valid at the given time: excise [-2853, -2773): no version is valid there
 KILLED current rows: pin accepted: round10_doors_test.go:921: CurrentRows at a pin: <nil>
 KILLED hull open end lost: round10_doors_test.go:895: Ref current rows hull {Empty:false From:-9223372036854775808 To:0 OpenEnd:false}, oracle {Empty:false From:-9223372036854775808 To:0 OpenEnd:true}
-KILLED hull from the last segment: round10_doors_test.go:895: Ref current rows hull {Empty:false From:1792173579578 To:0 OpenEnd:true}, oracle {Empty:false From:-9223372036854775808 To:0 OpenEnd:true}
+KILLED hull from the last segment: round10_doors_test.go:895: Ref current rows hull {Empty:false From:1792174816328 To:0 OpenEnd:true}, oracle {Empty:false From:-9223372036854775808 To:0 OpenEnd:true}
 KILLED memo ignores the epoch: round10_doors_test.go:975: pin after a rewrite below it: hull {Empty:false From:-500 To:400 OpenEnd:false} true <nil>, want {Empty:false From:-900 To:400 OpenEnd:false}
-KILLED class counts at every belief: round10_doors_test.go:1024: pin 1792173587454: indexable classes 5 ({Numeric:5 NaN:0 String:0 Bool:0 Other:1 Missing:0}), value statistics rows 1
-KILLED class counts NaN as numeric: round10_doors_test.go:1064: pin 1792173592003: {Numeric:17 NaN:0 String:0 Bool:0 Other:4 Missing:0} below the effective scan's rows {Numeric:16 NaN:1 String:0 Bool:0 Other:4 Missing:0}
-KILLED class counts skip missing: FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph [build failed]
+KILLED class counts at every belief: round10_doors_test.go:1024: pin 1792174823986: indexable classes 5 ({Numeric:5 NaN:0 String:0 Bool:0 Other:1 Missing:0}), value statistics rows 1
+KILLED class counts NaN as numeric: round10_doors_test.go:1064: pin 1792174828454: {Numeric:17 NaN:0 String:0 Bool:0 Other:4 Missing:0} below the effective scan's rows {Numeric:16 NaN:1 String:0 Bool:0 Other:4 Missing:0}
+KILLED class counts skip missing: round10_doors_test.go:1150: counts {Numeric:3 NaN:1 String:2 Bool:1 Other:2 Missing:0}
 KILLED mixed tag swapped: round10_chunks_test.go:323: tiered mixed multi=false [0 200] row 101 col 0: chunk int64 0, RowAt float64 3.25
 KILLED mixed codes not remapped: docvalues_chunk_test.go:123: mixed row 5: string x, want string y
 KILLED ordinals off by one: round10_chunks_test.go:168: multi=false: ordinal snapshot rows/ordinals differ from the stream (180 rows, ordinals [3 4 5 7 8])
 KILLED plain snapshot keeps stale ordinals: round10_chunks_test.go:181: plain snapshot left 180 stale ordinals in a reused chunk
 KILLED excise refuses negative again: round10_doors_test.go:1188: negative excise: graph: invalid time range: excise range [-4500, -4200) is empty or inverted
-KILLED merge ignores desc: round10_composite_test.go:371: tiered created [-5, 0.1] incl true/false desc true nodes: row 817496834561835008 (0.1) after row 817496834559836160 (-5): out of order (desc true)
-KILLED merge ties by ID descending: round10_composite_test.go:371: tiered created [-5, 9.007199254740992e+15] incl true/true desc false nodes: row 817497036020350976 (-5) after row 817497036023201792 (-5): out of order (desc false)
-KILLED sharded walk reads one slot: round10_composite_test.go:371: sharded created [-5, 9.007199254740992e+15] incl true/true desc false rels: row 817497197438796800 holds float32 0.1 in [-5, 9.007199254740992e+15] but was not walked
-KILLED tiered fold drops event shards: round10_composite_test.go:371: tiered created [-5, 9.007199254740992e+15] incl true/true desc false nodes: row 817497363096764416 holds float64 -0 in [-5, 9.007199254740992e+15] but was not walked
+KILLED merge ignores desc: round10_composite_test.go:371: tiered created [-5, 0.1] incl true/false desc true nodes: row 817537460583530496 (0.1) after row 817537460578615296 (-5): out of order (desc true)
+KILLED merge ties by ID descending: round10_composite_test.go:371: tiered created [-5, 9.007199254740992e+15] incl true/true desc false nodes: row 817537652230520832 (-5) after row 817537652233273344 (-5): out of order (desc false)
+KILLED sharded walk reads one slot: round10_composite_test.go:371: sharded created [-5, 9.007199254740992e+15] incl true/true desc false rels: row 817537802589668352 holds float32 0.1 in [-5, 9.007199254740992e+15] but was not walked
+KILLED tiered fold drops event shards: round10_composite_test.go:371: tiered created [-5, 9.007199254740992e+15] incl true/true desc false nodes: row 817537957685395456 holds float64 -0 in [-5, 9.007199254740992e+15] but was not walked
 KILLED bounds fold prefers the later width: round10_composite_test.go:389: tiered moved rel bounds MinValue = float32 -5, want float64 -5
 KILLED class count fold drops Missing: property_bounds_test.go:270: created nodes classes = {Numeric:23 NaN:2 String:2 Bool:3 Other:2 Missing:0}, want {Numeric:23 NaN:2 String:2 Bool:3 Other:2 Missing:2}
-KILLED by-IDs rows at every belief: round10_doors_test.go:1305: pin 1792173657085: row of node 817497934491254784 written at 1792173657086
+KILLED by-IDs rows at every belief: round10_doors_test.go:1305: pin 1792174892657: row of node 817538421719138304 written at 1792174892658
+KILLED index serves while building: property_index_serves_test.go:22: RangeOrderedPage answered while building
 KILLED interval overlap rule inclusive: temporal_filter_test.go:270: EnvelopeOverlaps(100, 0, [1,100)) = true, want false
