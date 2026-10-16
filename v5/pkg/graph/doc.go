@@ -1,10 +1,10 @@
 // Package graph is the native public API of rho-tkg v5 (gap rows 1-15, 21-22).
 //
-// This is an API skeleton: types, request validation, godoc and sentinels
-// compile without an engine behind them. Open validates its Config and then
-// returns ErrNotImplemented; every other door validates its arguments first and
-// returns ErrNotImplemented when no engine is attached. Names are drafts for
-// API review (PLAN:370).
+// One partition is bound over the graphstore and raftlog seams: Open, Update,
+// OpenSnapshot (Fresh, Stable, At, After), Lookup, Timeline and Cut work; Scan
+// (label and equality pages) is ErrNotImplemented until the engine has those
+// index pages. Every door validates its arguments first; the zero Graph and
+// Snapshot are ErrClosed. Names are drafts for API review (PLAN:370).
 //
 // Rules the types enforce:
 //

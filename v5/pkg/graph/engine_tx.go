@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"math"
 	"slices"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -20,8 +21,9 @@ type engineTx struct {
 	base    uint64
 	next    uint64
 	ops     []graphstate.Operation
-	ids     uint64
+	alloc   allocState
 	vals    uint64
+	decls   []graphstate.PropertyDefinition
 	done    bool
 	err     error
 	rec     temporal.Position
@@ -60,16 +62,20 @@ func (t *engineTx) pre(op Op) error {
 }
 
 func (t *engineTx) newID() (graphstate.EntityID, error) {
-	t.ids++
-	if t.ids >= 1<<idSeqBits {
-		return 0, t.fail(fmt.Errorf("%w: more than %d creations in one Update", ErrInvalidRequest, 1<<idSeqBits-1))
+	id, err := t.alloc.next()
+	if err != nil {
+		return 0, t.fail(err)
 	}
-	return graphstate.EntityID(t.next<<idSeqBits | t.ids), nil
+	return graphstate.EntityID(id), nil
 }
 
+// newValueID is a per-Update sequence; the commit adds the commit index.
 func (t *engineTx) newValueID() graphstate.ValueID {
 	t.vals++
-	return graphstate.ValueID(t.next<<valSeqBits | t.vals)
+	if t.vals >= 1<<valSeqBits {
+		t.fail(fmt.Errorf("%w: too many property writes in one Update", ErrInvalidRequest))
+	}
+	return graphstate.ValueID(t.vals)
 }
 
 func (t *engineTx) add(op graphstate.Operation) {
@@ -85,23 +91,65 @@ func (t *engineTx) ceil() temporal.Position {
 	return t.ceiling
 }
 
+// schema resolves the declared definition of key (seed, earlier declaration,
+// committed catalog) or declares it from the first value's kind, and returns the
+// value coerced to the key's kind: an exact numeric converts, anything else of
+// another kind is ErrInvalidValue. A null cannot declare a key.
 func (t *engineTx) schema(node bool, key string, v Value) (graphstate.Scalar, error) {
-	defs := t.e.rel
-	if node {
-		defs = t.e.node
-	}
-	d, ok := defs[key]
-	if !ok {
-		return graphstate.Scalar{}, t.fail(fmt.Errorf("%w: property is not declared in the Config schema", ErrInvalidOp))
-	}
 	s, err := valueToScalar(v)
 	if err != nil {
 		return graphstate.Scalar{}, t.fail(err)
 	}
-	if s.Kind() != graphstate.ScalarNull && s.Kind() != d.Type {
-		return graphstate.Scalar{}, t.fail(fmt.Errorf("%w: value kind differs from the declared property kind", ErrInvalidValue))
+	owner := graphstate.Relationship
+	if node {
+		owner = graphstate.Node
 	}
-	return s, nil
+	d, ok := t.e.defs(owner)[key]
+	if !ok {
+		for _, p := range t.decls {
+			if p.Owner == owner && p.Name == key {
+				d, ok = p, true
+			}
+		}
+	}
+	if !ok {
+		var err error
+		if d, ok, err = t.e.definition(t.ctx, t.base, owner, key); err != nil {
+			return graphstate.Scalar{}, t.fail(err)
+		}
+	}
+	if !ok {
+		if s.Kind() == graphstate.ScalarNull {
+			return graphstate.Scalar{}, t.fail(fmt.Errorf("%w: a null cannot declare a property", ErrInvalidValue))
+		}
+		d = graphstate.PropertyDefinition{Name: key, Owner: owner, Type: s.Kind(), Cardinality: graphstate.ScalarCardinality}
+		t.decls = append(t.decls, d)
+	}
+	out, err := coerce(d.Type, s)
+	if err != nil {
+		return graphstate.Scalar{}, t.fail(err)
+	}
+	return out, nil
+}
+
+func coerce(to graphstate.ScalarKind, s graphstate.Scalar) (graphstate.Scalar, error) {
+	switch {
+	case s.Kind() == graphstate.ScalarNull || s.Kind() == to:
+		return s, nil
+	case to == graphstate.ScalarI64 && s.Kind() == graphstate.ScalarF64:
+		f, _ := s.Float64Value()
+		if f == math.Trunc(f) && f >= -(1<<63) && f < 1<<63 {
+			return graphstate.I64(int64(f)), nil
+		}
+	case to == graphstate.ScalarF64 && s.Kind() == graphstate.ScalarI64:
+		i, _ := s.Int64Value()
+		if f := float64(i); f >= -(1<<63) && f < 1<<63 && int64(f) == i {
+			if out, err := graphstate.F64(f); err == nil {
+				return out, nil
+			}
+		}
+	}
+	return graphstate.Scalar{}, fmt.Errorf("%w: value does not fit the declared property kind", ErrInvalidValue)
 }
 
 func sortedKeys(m map[string]Value) []string {
@@ -170,13 +218,54 @@ func target(r Ref) (graphstate.EntityID, bool) {
 	return graphstate.EntityID(r.Node()), true
 }
 
+// Correct re-asserts the target over Scope and sets Set there, but never where
+// the entity was ended or retracted (an explicit retraction in the committed
+// presence); a scope wholly inside such a region is ErrInvalidScope.
 func (t *engineTx) Correct(o Correct) error {
 	if err := t.pre(o); err != nil {
 		return err
 	}
 	id, node := target(o.Target)
-	t.add(graphstate.Operation{Kind: graphstate.Correct, Owner: id, Life: lifeID, Scope: o.Scope, Present: true})
-	return t.props(id, node, o.Set, o.Scope)
+	scope, err := t.unretracted(id, o.Scope)
+	if err != nil {
+		return t.fail(err)
+	}
+	t.add(graphstate.Operation{Kind: graphstate.Correct, Owner: id, Life: lifeID, Scope: scope, Present: true})
+	return t.props(id, node, o.Set, scope)
+}
+
+func (t *engineTx) unretracted(id graphstate.EntityID, scope temporal.Scope) (temporal.Scope, error) {
+	r, err := t.e.readerAt(t.ctx, t.base)
+	if err != nil {
+		return scope, err
+	}
+	defer r.close()
+	l := t.e.cfg.Limits
+	gone, err := temporal.Empty(scope.Axis())
+	if err != nil {
+		return scope, err
+	}
+	pages, err := r.pieces(graphstate.ComponentKey{Owner: id, Kind: graphstate.Presence}, scope)
+	if err != nil {
+		return scope, err
+	}
+	for _, pg := range pages {
+		for _, pc := range pg.Data.Pieces() {
+			if !pc.Cell().Present() && pc.Cell().Revision().ID() != 0 {
+				if gone, err = gone.Union(pc.Scope(), l); err != nil {
+					return scope, err
+				}
+			}
+		}
+	}
+	allowed, err := scope.Difference(gone, l)
+	if err != nil {
+		return scope, err
+	}
+	if allowed.Kind() == temporal.ScopeEmpty {
+		return scope, fmt.Errorf("%w: the whole scope lies in an ended or retracted region", ErrInvalidScope)
+	}
+	return allowed, nil
 }
 
 // End closes the target from the upper bound of Scope to +infinity.
@@ -236,12 +325,18 @@ func (t *engineTx) Unset(o Unset) error {
 		return err
 	}
 	id, node := target(o.Target)
-	defs := t.e.rel
+	owner := graphstate.Relationship
 	if node {
-		defs = t.e.node
+		owner = graphstate.Node
 	}
-	if _, ok := defs[o.Key]; !ok {
-		return t.fail(fmt.Errorf("%w: property is not declared in the Config schema", ErrInvalidOp))
+	declared := false
+	for _, p := range t.decls {
+		declared = declared || p.Owner == owner && p.Name == o.Key
+	}
+	if _, ok, err := t.e.definition(t.ctx, t.base, owner, o.Key); err != nil {
+		return t.fail(err)
+	} else if !ok && !declared {
+		return t.fail(fmt.Errorf("%w: property was never declared", ErrInvalidOp))
 	}
 	t.add(graphstate.Operation{Kind: graphstate.Unset, Owner: id, Life: lifeID, Scope: o.Scope, Name: o.Key})
 	return nil
@@ -265,7 +360,7 @@ func (t *engineTx) GetOrCreate(o GetOrCreate) (types.NodeID, bool, error) {
 		return 0, false, err
 	}
 	d, ok := t.e.node[o.Key]
-	if !ok || d.Unique != graphstate.UniqueScalar {
+	if !ok || d.Unique != graphstate.UniqueScalar { // only a Config seed can be unique
 		return 0, false, t.fail(fmt.Errorf("%w: key is not a declared unique node property", ErrInvalidOp))
 	}
 	sc, err := t.schema(true, o.Key, o.Value)

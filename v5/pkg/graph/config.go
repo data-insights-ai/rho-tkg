@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
@@ -15,8 +16,10 @@ type Durability uint8
 
 // Durability levels.
 const (
-	// DurabilityBuffered acknowledges before the log is synced. Memory graphs
-	// may only use this level.
+	// DurabilityBuffered is the level a memory graph must use. The engine syncs
+	// every commit of a directory graph either way (raftlog.Store.Persist and
+	// InstallApplication have no relaxed mode), so on a directory graph it
+	// behaves as DurabilityCommit; the two differ only in what Validate allows.
 	DurabilityBuffered Durability = iota + 1
 	// DurabilityCommit syncs before Update returns; failure is ErrCommitNotDurable.
 	DurabilityCommit
@@ -30,6 +33,11 @@ type PropertySchema struct {
 	Kind   ValueKind
 	Unique bool
 }
+
+// Allocation seeds the entity ID counter of a new graph: the first ID is Seed+1.
+// An importer sets it above the largest imported ID. It is read only when the
+// graph is created; a stored graph keeps its own counter.
+type Allocation struct{ Seed uint64 }
 
 // Config describes one graph. Exactly one of Dir and Memory is set.
 type Config struct {
@@ -54,6 +62,8 @@ type Config struct {
 	// and reopening with a different schema is ErrInvalidConfig.
 	NodeProperties []PropertySchema
 	RelProperties  []PropertySchema
+	// Allocation seeds the ID counter (see Allocation).
+	Allocation Allocation
 	// Durability is required.
 	Durability Durability
 	// Limits bounds temporal values; the zero value means temporal defaults.
@@ -86,6 +96,9 @@ func (c Config) Validate() error {
 	}
 	if sameAxis(c.KnowledgeAxis.Axis(), c.DefaultAxis.Axis()) {
 		return bad("KnowledgeAxis must differ from DefaultAxis")
+	}
+	if c.Allocation.Seed >= math.MaxInt64 {
+		return bad("Allocation.Seed must be below the largest public ID")
 	}
 	if err := checkSchema(c.NodeProperties, true); err != nil {
 		return err

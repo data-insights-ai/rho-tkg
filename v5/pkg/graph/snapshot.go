@@ -38,7 +38,8 @@ type SnapshotSpec struct {
 // Fresh reads the newest committed state.
 func Fresh() SnapshotSpec { return SnapshotSpec{kind: snapFresh} }
 
-// Stable reads the newest certified-stable state.
+// Stable reads the newest certified-stable state. One partition has no
+// certification lag, so it is the same cut as Fresh.
 func Stable() SnapshotSpec { return SnapshotSpec{kind: snapStable} }
 
 // At reads exactly at c.
@@ -146,9 +147,10 @@ func (s Selector) Validate(l temporal.Limits) error {
 
 // Projection chooses what a row carries.
 type Projection struct {
-	Properties []string // empty = none
-	Provenance bool     // gap row 26
-	Revisions  bool
+	Properties    []string // names of the properties to return; empty = none
+	AllProperties bool     // return every property of the row (keys are not known up front)
+	Provenance    bool     // gap row 26
+	Revisions     bool
 }
 
 func (p Projection) validate() error {

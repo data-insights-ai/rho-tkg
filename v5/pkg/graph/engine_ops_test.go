@@ -193,9 +193,6 @@ func TestRelationshipAndRefusals(t *testing.T) {
 		}
 	}
 	na, _ := NodeRef(a)
-	refuse("undeclared key", ErrInvalidOp, func(tx Tx) error {
-		return tx.Set(Set{Target: na, Key: "nope", Value: Int(1), Scope: all})
-	})
 	refuse("wrong kind", ErrInvalidValue, func(tx Tx) error {
 		return tx.Set(Set{Target: na, Key: "n", Value: String("x"), Scope: all})
 	})

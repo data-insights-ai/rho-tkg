@@ -33,16 +33,14 @@ import (
 const (
 	partitionID = 1
 	ownerEpoch  = 1
-	// commitSeqBits leaves 12 bits of per-commit sequence in an entity ID and 20
-	// in a value handle: IDs are index<<12|seq, so they are unique across reopen
-	// without a persisted counter (idalloc is a later binding).
-	idSeqBits  = 12
+	// A value dictionary handle is commitIndex<<valSeqBits | seq.
 	valSeqBits = 20
 )
 
 var (
 	contractID = sha256.Sum256([]byte("rho-tkg:v5/pkg/graph:single-partition:v1"))
 	lifeID     = graphstate.LifeID(1)
+	allocName  = []byte("rho-tkg:v5/pkg/graph:id-allocator:v1")
 )
 
 func readBudget() graphstore.OwnershipBudget {
@@ -62,6 +60,7 @@ type pebbleEngine struct {
 	closed  atomic.Bool
 	broken  atomic.Pointer[error]
 	nonce   atomic.Uint64
+	alloc   allocState
 }
 
 var _ engine = (*pebbleEngine)(nil)
@@ -170,6 +169,15 @@ func (e *pebbleEngine) genesis(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	e.alloc, err = newAllocState(e.cfg)
+	if err != nil {
+		return err
+	}
+	ar, err := e.alloc.row()
+	if err != nil {
+		return err
+	}
+	rows = append(rows, ar)
 	writes := append(slices.Clone(effects.Writes), rows...)
 	slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
 	img, err := graphstore.EncodeRoot(root)
@@ -222,6 +230,13 @@ func (e *pebbleEngine) recover(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("%w: stored graph does not match the config: %v", ErrInvalidConfig, err)
 	}
+	row, found, err := view.Get(ctx, allocName, 4096)
+	if err != nil || !found {
+		return fmt.Errorf("%w: stored graph has no ID allocator", ErrInvalidConfig)
+	}
+	if e.alloc, err = decodeAllocState(row.Value); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
 	for _, defs := range []map[string]graphstate.PropertyDefinition{e.node, e.rel} {
 		for name, want := range defs {
 			got, found, err := c.Property(ctx, want.Owner, name)
@@ -246,8 +261,11 @@ func (e *pebbleEngine) install(index uint64, prevImageHash [32]byte, image []byt
 	return e.store.InstallApplication(index, b)
 }
 
-// ceiling is the commit instant on the knowledge axis (the zero Position when
-// the Config has no KnowledgeAxis).
+// ceiling is the commit instant on the knowledge axis: the local wall clock in
+// milliseconds at the time of the call (the engine has none of its own). A clock
+// that steps back lets an earlier Recorded pass and a later one fail; it never
+// orders commits, which the application index does. It is the zero Position when
+// the Config has no KnowledgeAxis.
 func (e *pebbleEngine) ceiling() temporal.Position {
 	ax := e.cfg.KnowledgeAxis.Axis()
 	if ax.DefinitionHash() == (temporal.Axis{}).DefinitionHash() {
@@ -316,7 +334,7 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 		return Receipt{}, err
 	}
 	next := base + 1
-	tx := &engineTx{e: e, ctx: ctx, base: base, next: next}
+	tx := &engineTx{e: e, ctx: ctx, base: base, next: next, alloc: e.alloc}
 	fnErr := func() (err error) {
 		defer func() { tx.done = true }()
 		return fn(tx)
@@ -334,12 +352,17 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 	if err != nil {
 		return Receipt{}, err
 	}
+	for i := range tx.ops {
+		if tx.ops[i].ValueID != 0 {
+			tx.ops[i].ValueID = graphstate.ValueID(next<<valSeqBits | uint64(tx.ops[i].ValueID))
+		}
+	}
 	view, err := e.store.ApplicationView(base)
 	if err != nil {
 		return Receipt{}, err
 	}
 	defer view.Close()
-	effects, _, err := graphstore.StagePartitionOperations(ctx, view, e.decl, e.binding, e.conf, tx.ops, rev, graphstore.Limits{}, graphstore.GraphLimits{RecordedCeiling: tx.ceil()}, readBudget())
+	effects, _, err := graphstore.StagePartitionOperations(ctx, view, e.decl, e.binding, e.conf, tx.ops, rev, graphstore.Limits{MaxStageRecords: 4096, MaxReadRows: 65536, MaxReadBytes: 64 << 20}, graphstore.GraphLimits{MaxOutputBytes: 64 << 20, MaxSourceRows: 1 << 20, MaxSourceBytes: 64 << 20, RecordedCeiling: tx.ceil(), Pages: graphstore.PageLimits{MaxPatches: 4096, MaxTailAtoms: 4096, MaxWorkRecords: 65536, MaxWorkBytes: 32 << 20}}, readBudget(), tx.decls...)
 	if err != nil {
 		return Receipt{}, mapStageErr(err)
 	}
@@ -352,15 +375,66 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 	if err != nil {
 		return Receipt{}, err
 	}
-	if err := e.install(next, sha256.Sum256(prev), img, effects.Writes); err != nil {
+	writes := slices.Clone(effects.Writes)
+	if tx.alloc.dirty(e.alloc) {
+		ar, err := tx.alloc.row()
+		if err != nil {
+			return Receipt{}, err
+		}
+		writes = append(writes, ar)
+		slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
+	}
+	if err := e.commit(next, prev, img, writes); err != nil {
+		return Receipt{}, err
+	}
+	e.alloc = tx.alloc
+	for _, d := range tx.decls {
+		e.defs(d.Owner)[d.Name] = d
+	}
+	return Receipt{tok: e.token(tokReceipt, next)}, nil
+}
+
+// commit installs one batch at index over the image prev; a limit refusal leaves
+// the store usable, any other failure stops the engine.
+func (e *pebbleEngine) commit(index uint64, prev, image []byte, writes []raftlog.KV) error {
+	if err := e.install(index, sha256.Sum256(prev), image, writes); err != nil {
 		if errors.Is(err, raftlog.ErrLimit) {
-			return Receipt{}, fmt.Errorf("%w: commit exceeds the install limit: %v", ErrInvalidRequest, err)
+			return fmt.Errorf("%w: commit exceeds the install limit: %v", ErrInvalidRequest, err)
 		}
 		be := fmt.Errorf("%w: %v", ErrCommitNotDurable, err)
 		e.broken.Store(&be)
-		return Receipt{}, be
+		return be
 	}
-	return Receipt{tok: e.token(tokReceipt, next)}, nil
+	return nil
+}
+
+func (e *pebbleEngine) defs(owner graphstate.EntityKind) map[string]graphstate.PropertyDefinition {
+	if owner == graphstate.Node {
+		return e.node
+	}
+	return e.rel
+}
+
+// definition finds a declared property: seeds and earlier declarations are in
+// the maps, anything else is read from the committed catalog.
+func (e *pebbleEngine) definition(ctx context.Context, index uint64, owner graphstate.EntityKind, name string) (graphstate.PropertyDefinition, bool, error) {
+	if d, ok := e.defs(owner)[name]; ok {
+		return d, true, nil
+	}
+	view, err := e.store.ApplicationView(index)
+	if err != nil {
+		return graphstate.PropertyDefinition{}, false, err
+	}
+	defer view.Close()
+	c, _, err := graphstore.OpenPartitionCatalogWithDefaultAxis(ctx, view, e.ns, ownerEpoch, e.binding, graphstore.Limits{}, graphstore.GraphLimits{}, readBudget())
+	if err != nil {
+		return graphstate.PropertyDefinition{}, false, err
+	}
+	d, found, err := c.Property(ctx, owner, name)
+	if err == nil && found {
+		e.defs(owner)[name] = d
+	}
+	return d, found, err
 }
 
 func mapStageErr(err error) error {

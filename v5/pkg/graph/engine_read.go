@@ -40,6 +40,9 @@ func (e *pebbleEngine) readerAt(ctx context.Context, index uint64) (*reader, err
 	rv, _, err := graphstore.OpenPartitionGraphReadView(ctx, v, e.decl, e.binding, e.conf, graphstore.Limits{}, graphstore.GraphLimits{}, readBudget())
 	if err != nil {
 		_ = v.Close()
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("%w: open read view: %v", ErrInvalidRequest, err)
 	}
 	return &reader{e: e, ctx: ctx, view: v, rv: rv}, nil
@@ -266,10 +269,10 @@ func (r *reader) rows(ref Ref, sel Selector, proj Projection) ([]Entity, error) 
 		if !wantNode {
 			ent.RelType, ent.From, ent.To = rec.Type, types.NodeID(rec.Source), types.NodeID(rec.Target)
 		}
-		if len(proj.Properties) > 0 {
+		if len(proj.Properties) > 0 || proj.AllProperties {
 			ent.Props = map[string]Value{}
 			for _, pv := range pr.Properties {
-				if !slices.Contains(proj.Properties, pv.Name) {
+				if !proj.AllProperties && !slices.Contains(proj.Properties, pv.Name) {
 					continue
 				}
 				v, err := scalarToValue(pv.Scalar)
@@ -417,8 +420,20 @@ func (s *engineSnap) scan(context.Context, ScanRequest) (Page, error) {
 	return Page{}, fmt.Errorf("%w: Scan needs the label and equality index pages (WP-08)", ErrNotImplemented)
 }
 
+// requireKnownAll: the Known filter by recorded evidence is a later WP; a scope other
+// than All is refused rather than echoed as if it had been applied.
+func requireKnownAll(sel Selector) error {
+	if sel.Known.Kind() != temporal.ScopeAll {
+		return fmt.Errorf("%w: only Known = All is supported; the evidence filter is not built", ErrNotImplemented)
+	}
+	return nil
+}
+
 func (s *engineSnap) lookup(ctx context.Context, r LookupRequest) (Page, error) {
 	if err := s.live(); err != nil {
+		return Page{}, err
+	}
+	if err := requireKnownAll(r.Selector); err != nil {
 		return Page{}, err
 	}
 	if r.Projection.Provenance || r.Projection.Revisions {
@@ -440,6 +455,9 @@ func (s *engineSnap) timeline(ctx context.Context, r TimelineRequest) (Page, err
 	if err := s.live(); err != nil {
 		return Page{}, err
 	}
+	if err := requireKnownAll(r.Selector); err != nil {
+		return Page{}, err
+	}
 	if r.Projection.Provenance {
 		return Page{}, fmt.Errorf("%w: the provenance projection is not implemented", ErrNotImplemented)
 	}
@@ -459,13 +477,21 @@ func (s *engineSnap) resume(ctx context.Context, c Cursor, p PageLimits) (Page, 
 		return Page{}, fmt.Errorf("%w: not a cursor of this snapshot", ErrInvalidCursor)
 	}
 	s.mu.Lock()
-	st := s.pages[tok]
-	delete(s.pages, tok) // a cursor is used once; the next page mints a new one
+	orig := s.pages[tok]
 	s.mu.Unlock()
-	if st == nil {
+	if orig == nil {
 		return Page{}, fmt.Errorf("%w: cursor already used or unknown", ErrInvalidCursor)
 	}
-	return s.fill(ctx, st, p)
+	// The page is built on a copy; the cursor is spent only once the page exists.
+	st := *orig
+	page, err := s.fill(ctx, &st, p)
+	if err != nil {
+		return Page{}, err
+	}
+	s.mu.Lock()
+	delete(s.pages, tok)
+	s.mu.Unlock()
+	return page, nil
 }
 
 func (s *engineSnap) live() error {
@@ -603,6 +629,14 @@ func (s *engineSnap) timelineRows(ctx context.Context, r TimelineRequest) ([]Ent
 			return nil, err
 		}
 		rows, err := rd.rows(r.Ref, r.Selector, r.Projection)
+		if err == nil {
+			var known temporal.Scope
+			if known, err = rd.knownOf(id, rev, r.Selector.Known); err == nil {
+				for i := range rows {
+					rows[i].Known = known
+				}
+			}
+		}
 		rd.close()
 		if err != nil {
 			return nil, err
@@ -633,4 +667,35 @@ func before(p temporal.Position, l temporal.Limits) (temporal.Position, error) {
 		return temporal.RationalPosition(p.Axis(), r)
 	}
 	return p.Predecessor(l)
+}
+
+// knownOf is the knowledge support of one revision: All when the commit carried
+// no Recorded evidence for the entity, the instant (or the hull of the instants)
+// of its evidence otherwise.
+func (r *reader) knownOf(id graphstate.EntityID, rev uint64, all temporal.Scope) (temporal.Scope, error) {
+	ev, err := r.rv.Evidence(r.ctx, id, rev)
+	if err != nil {
+		return all, err
+	}
+	var lo, hi temporal.Position
+	l := r.e.cfg.Limits
+	for i, e := range ev {
+		if i == 0 {
+			lo, hi = e.Recorded, e.Recorded
+			continue
+		}
+		if o, err := temporal.ComparePositions(e.Recorded, lo, l); err == nil && o == temporal.Less {
+			lo = e.Recorded
+		}
+		if o, err := temporal.ComparePositions(e.Recorded, hi, l); err == nil && o == temporal.Greater {
+			hi = e.Recorded
+		}
+	}
+	if len(ev) == 0 {
+		return all, nil
+	}
+	if o, _ := temporal.ComparePositions(lo, hi, l); o == temporal.Equal {
+		return temporal.Point(lo)
+	}
+	return temporal.Span(lo.Axis(), mustBound(lo, true), mustBound(hi, true), l)
 }

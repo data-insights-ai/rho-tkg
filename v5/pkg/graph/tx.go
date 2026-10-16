@@ -27,7 +27,10 @@ type Tx interface {
 	Unset(Unset) error
 	Retract(Retract) error
 	// GetOrCreate finds the node holding the unique claim (Label, Key, Value)
-	// or creates it; created reports which (gap rows 6-7).
+	// or creates it; created reports which (gap rows 6-7). Key must be a
+	// Config seed marked Unique. The claim is unique per Key across all labels:
+	// a holder of the value without Label is ErrUniqueViolation, so the same
+	// value under two labels needs two keys.
 	GetOrCreate(GetOrCreate) (id types.NodeID, created bool, err error)
 }
 
