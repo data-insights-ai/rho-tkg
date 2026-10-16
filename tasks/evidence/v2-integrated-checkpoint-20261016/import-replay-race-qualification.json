@@ -1,0 +1,1364 @@
+{
+  "commit": "68acf027c0006a4a48289aa4ced01bc3919913bb",
+  "tree": "/private/var/tmp/rho-v5-span-stage-budget-fix-20261016",
+  "command": "GOMAXPROCS=2 GOWORK=off GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -race -covermode=atomic -coverprofile=/private/var/tmp/rho-v5-import-replay-race-evidence-20261016/coverage.out ./internal/graphapply -run '^(TestNativeProtocolPooledTailBackpressurePreservesMoveOwner|TestNativeCollectedRangeMoveImportZeroPrefixAndRetainedOldView|TestNativeMoveReplayBatchKeepsDeclarationBindingAndRecordCharges|TestRangeMoveReplayScopesInertStagesAndPhantomLookup|TestRangeMoveReplayDirectRefusalsPreserveZeroOutputs|TestRangeMoveSpanBatchFramingAndFragments)$' -count=1 -timeout=180s -v",
+  "exitCode": 0,
+  "goReportedPackageSeconds": 60.136,
+  "raceReport": false,
+  "packageStatementCoveragePercent": 35.1,
+  "functionCoverage": [
+    {
+      "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "line": 17,
+      "function": "rangeMoveCatalogBaseline",
+      "statementCoveragePercent": 66.2
+    },
+    {
+      "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "line": 148,
+      "function": "targetMoveManifestDigest",
+      "statementCoveragePercent": 85.7
+    },
+    {
+      "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "line": 160,
+      "function": "targetMoveManifestDigest",
+      "statementCoveragePercent": 94.1
+    },
+    {
+      "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "line": 405,
+      "function": "exportRangeMoveReplayPage",
+      "statementCoveragePercent": 83.3
+    },
+    {
+      "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "line": 418,
+      "function": "exportRangeMoveReplayPageDeclared",
+      "statementCoveragePercent": 51.5
+    },
+    {
+      "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "line": 571,
+      "function": "stageRangeMoveReplayPage",
+      "statementCoveragePercent": 75.0
+    },
+    {
+      "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "line": 587,
+      "function": "stageRangeMoveReplayPageDeclared",
+      "statementCoveragePercent": 48.6
+    },
+    {
+      "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "line": 320,
+      "function": "exportMoveReplayBatch",
+      "statementCoveragePercent": 78.1
+    },
+    {
+      "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "line": 370,
+      "function": "stageMoveReplayBatch",
+      "statementCoveragePercent": 81.2
+    },
+    {
+      "source": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "line": 22,
+      "function": "stageRangeMoveTarget",
+      "statementCoveragePercent": 73.8
+    }
+  ],
+  "uncoveredBlocksInAffectedFiles": [
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "18.21,20.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "26.187,28.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "30.82,32.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "34.116,36.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "44.16,46.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "47.20,50.82",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "50.82,52.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "55.28,57.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "59.75,61.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "64.16,66.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "67.661,69.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "71.36,72.120",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "72.120,74.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "80.6,82.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "83.126,85.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "87.28,89.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "91.215,93.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "94.49,96.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "97.89,99.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "100.49,102.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "103.30,107.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "109.8,111.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "112.16,114.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "116.126,118.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "122.39,124.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "126.14,128.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "133.23,135.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "154.16,156.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_baseline.go",
+      "range": "182.29,184.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "57.144,59.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "70.35,72.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "73.40,74.68",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "74.68,76.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "77.3,80.33",
+      "statements": 4
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "85.45,87.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "107.21,108.37",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "108.37,111.4",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "112.3,112.56",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "145.19,147.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "149.16,151.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "152.58,154.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "164.81,166.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "181.13,182.113",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "182.113,184.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "185.3,185.28",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "187.95,189.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "204.36,206.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "210.101,211.69",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "211.69,213.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "214.2,218.110",
+      "statements": 5
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "218.110,220.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "221.2,221.87",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "228.13,230.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "245.302,247.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "251.121,253.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "263.3,263.25",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "268.51,270.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "272.16,274.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "276.16,278.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "279.97,281.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "301.19,303.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "305.16,307.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "308.59,310.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "317.78,319.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "321.16,323.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "325.16,327.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "328.34,330.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "345.36,347.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "364.16,366.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "375.56,377.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "387.29,389.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "390.54,392.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "396.16,398.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "399.126,401.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "406.144,408.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "419.207,421.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "422.36,424.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "429.43,431.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "432.34,434.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "441.19,442.14",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "442.14,443.112",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "443.112,445.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "446.4,446.80",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "446.80,448.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "449.4,450.26",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "450.26,452.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "453.4,453.48",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "454.9,456.39",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "456.39,458.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "459.4,460.26",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "460.26,462.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "463.4,463.46",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "475.15,477.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "484.10,486.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "490.14,492.14",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "492.14,494.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "495.4,496.80",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "496.80,498.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "499.4,500.16",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "500.16,502.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "503.4,503.14",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "503.14,506.5",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "507.4,507.48",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "511.42,513.17",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "513.17,515.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "516.96,518.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "520.76,522.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "523.49,525.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "526.96,528.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "534.64,536.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "542.37,545.4",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "546.8,548.20",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "548.20,550.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "556.34,558.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "559.145,561.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "567.90,569.2",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "575.102,577.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "579.16,581.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "591.36,593.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "594.65,596.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "601.118,603.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "604.67,606.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "607.176,609.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "611.52,613.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "615.56,617.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "619.56,621.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "622.176,624.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "625.120,627.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "629.42,631.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "632.8,632.50",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "632.50,634.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "635.22,637.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "638.21,641.120",
+      "statements": 3
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "641.120,643.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "644.40,646.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "647.87,649.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "652.21,654.71",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "654.71,656.18",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "656.18,658.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "659.4,659.79",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "659.79,661.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "662.4,663.27",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "665.3,665.33",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "665.33,667.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "670.98,672.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "675.16,677.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "678.11,679.36",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "679.36,681.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "682.3,682.13",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "694.27,696.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "698.16,700.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "708.33,710.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "712.24,714.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "715.56,717.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "721.16,723.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_replay.go",
+      "range": "727.2,727.29",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "53.154,54.135",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "54.135,56.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "57.2,57.92",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "61.16,63.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "85.55,87.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "108.22,110.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "113.2,113.10",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "116.66,118.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "122.162,124.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "127.89,129.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "138.164,140.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "145.108,147.30",
+      "statements": 2
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "147.30,149.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "150.2,150.12",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "175.63,177.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "179.222,181.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "192.26,194.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "195.87,197.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "199.16,201.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "202.53,204.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "208.84,209.31",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "209.31,211.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "212.2,212.24",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "212.24,214.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "215.2,215.49",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "224.173,226.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "251.118,253.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "254.58,256.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "264.17,266.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "273.54,275.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "286.56,288.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "295.28,297.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "298.67,300.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "304.17,306.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "307.93,309.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "315.35,317.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "325.52,327.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "342.31,343.9",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "346.17,348.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "350.17,352.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "353.28,355.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "361.38,362.9",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "365.25,367.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "372.76,374.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "380.102,382.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "387.60,389.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "402.90,404.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "428.45,430.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "433.26,435.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "436.55,438.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "440.317,442.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "461.48,463.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "465.16,467.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "470.16,472.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_span.go",
+      "range": "473.111,475.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "19.2,19.33",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "23.47,25.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "27.16,29.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "33.40,35.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "38.541,40.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "47.27,49.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "51.163,53.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "55.58,57.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "58.17,60.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "64.115,66.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "68.16,70.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "77.51,79.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "81.18,83.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "88.29,90.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "92.45,94.4",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "98.136,100.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "108.17,110.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "114.128,116.7",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "120.17,122.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "125.64,127.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "129.17,131.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "140.64,142.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "144.17,146.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "147.59,149.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "157.10,159.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "160.59,162.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "163.18,165.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "166.39,168.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "170.41,172.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "173.53,175.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "188.18,190.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "196.17,198.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "200.17,202.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "204.17,206.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "207.113,209.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "212.17,214.6",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "217.18,219.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "220.83,222.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "225.169,227.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "229.59,231.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "232.18,234.5",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "237.11,238.49",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "242.16,244.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "245.81,247.3",
+      "statements": 1
+    },
+    {
+      "file": "github.com/data-insights-ai/rho-tkg/v5/internal/graphapply/range_move_target.go",
+      "range": "253.184,255.3",
+      "statements": 1
+    }
+  ],
+  "evidence": {
+    "terminalLog": "/private/var/tmp/rho-v5-import-replay-race-evidence-20261016/race.log",
+    "profile": "/private/var/tmp/rho-v5-import-replay-race-evidence-20261016/coverage.out",
+    "functions": "/private/var/tmp/rho-v5-import-replay-race-evidence-20261016/functions.txt"
+  },
+  "limitations": [
+    "Focused six-parent in-process qualification only; not full suite, OS, module coverage gate, or V2 acceptance.",
+    "No function>=80% claim for entire changed production surface: extracted replay reducer bodies remain48.6/51.5%; source/target batch drivers78.1/81.2%; catalog baseline66.2%; target phase reducer73.8%.",
+    "Uncovered paths include native budget/view error returns, fragment assembly and inherited-history paths, some target validation/error branches, and prepared incoming-bank baseline handling.",
+    "No source changes made for this qualification; frozen68acf027 tree remains clean."
+  ]
+}

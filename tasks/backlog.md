@@ -1220,7 +1220,7 @@ pass current/synced WAL recovery, WAL/manifest corruption and OPTIONS rename in 
 and explicit independent Python checks. This receipt corrects the earlier claim
 that Go automatically invoked the WAL checker; original logs remain unchanged.
 
-The [current query/recovery checkpoint](evidence/v2-integrated-checkpoint-20261016/qualification-372f74eb.json)
+The [current query/recovery checkpoint](evidence/v2-integrated-checkpoint-20261016/qualification-pair-372f74eb.json)
 records the following finite scope:
 
 - The 20-fact, 100%-cross, one-writer KV/local native workload completes all
@@ -1240,8 +1240,10 @@ records the following finite scope:
   old/current answers; batch reducers validate ownership once on the same
   captured view while retaining all per-record charges and original limits.
   The process case remains open: an actual replacement-follower reply reaches
-  the leader and fails Step with invalid input. All eight owned processes exit;
-  this is a correctness failure after 6.65 seconds, not a timeout.
+  the leader and fails inside source-event emission after Host Step succeeds.
+  All eight owned processes exit; the stage-diagnostic run fails after 7.48
+  seconds, not at its timeout. Six focused import/replay parents also pass
+  race checks; their partial coverage does not establish the full coverage gate.
 - FoundationDB's first actual prebuild exposed seven compiler diagnostics.
   Their fixes compile; the pinned tool build additionally needed `xz-utils`.
   Exact Docker capability spellings and inert kernel-default links now pass
@@ -1249,7 +1251,11 @@ records the following finite scope:
   43 commits with no aborts; its complete original/history/CDC/transport oracle
   passes an independent root replay with an identical proof. Terminal and
   cleanup exit zero, and the original receipt remains unchanged. This is one
-  standalone correctness component; paired and larger results remain open.
+  standalone correctness component. A fresh native controller using the same
+  run identity now also passes the complete existing pair comparator: 40 typed
+  answers agree, including retained history/original/CDC checks, with all 13
+  native process identities exited. Root independently replays the full pair
+  to the identical proof. The other layout, larger runs and cost remain open.
 
 These components do not close their full fault families, the process inventory,
 engine comparison, measurements or V2. Original deadlines, quotas, complete

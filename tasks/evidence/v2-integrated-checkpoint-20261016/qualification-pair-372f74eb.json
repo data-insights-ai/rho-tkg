@@ -1,0 +1,20 @@
+{
+  "source": "372f74eb",
+  "tinyPair": "PASS; independent root full replay exactly equals author proof",
+  "run": "b4846b009ef9e4ab27db04d463141c7c",
+  "typedAnswers": 40,
+  "logicalAnswersSHA256": "4ba4d27d341d14cefcfd1708e9b27efe3b1da99886dac812d38ae87b0f3410fe",
+  "native": "fresh genuine controller completedCell=true; 13 owned identities exited/no forced cleanup",
+  "foundationdb": "original success and cleanup receipt unchanged; all213 archive members independently SHA verified",
+  "race": "six focused parents PASS60.136s, no race report; partialpackage coverage35.1%, not fullgate",
+  "process": "actualStep1->2/98B failed7.48s inside sourceevent emission; nativeHost/snapshot/poll stages not the failure; all8owned exited",
+  "files": {
+    "pair-root-replay-372f74eb.json": "fac5fc7c31912f4fe55868fdbc3918fd1fc60e32d08c7a4b237658c6d85c003d",
+    "import-replay-race-qualification.json": "4c70618a538a06da6c4f8d7f8f9c3fbe5ae6b1ac9eb4e44fb8dfb02874fbb038",
+    "import-replay-race.log": "afa8772995d643dc94f49a978393c866e2a1e65dac6a336642bad7e3cf74fd57",
+    "import-replay-race-functions.txt": "7e245ec4e6fbb146052ad9b12451b75a00cd8b03e80f424511b8d2fdd2cb0078",
+    "state-step-stage-f41d846a.log": "237c65f7513b341419fc2cddd66526c7c1b0be4e66d333d52b135c75f75f036b",
+    "state-step-stage-f41d846a.json": "f8f7b2d38972919c4c706359c807108e57ec16e192e1571249646fc1ecadec27"
+  },
+  "scope": "tiny correctness plus finite race qualification; remaining correctness/fault inventory, bothlayouts/fullmatrix/cost/engine decision/final gates still open"
+}

@@ -1,0 +1,2141 @@
+{
+  "format": "owned-native-fdb-complete-pair-v1",
+  "spec": {
+    "version": 1,
+    "family": "partition-local-create-update",
+    "facts": 20,
+    "crossPercent": 100,
+    "writers": 1,
+    "layout": "kv"
+  },
+  "FDBSpec": {
+    "version": 2,
+    "family": "partition-local-create-update",
+    "facts": 20,
+    "crossPercent": 100,
+    "writers": 1,
+    "layout": "kv"
+  },
+  "run": "b4846b009ef9e4ab27db04d463141c7c",
+  "equal": true,
+  "typedAnswers": 40,
+  "logicalAnswersSHA256": "4ba4d27d341d14cefcfd1708e9b27efe3b1da99886dac812d38ae87b0f3410fe",
+  "transport": {
+    "configured": {
+      "kind": "local",
+      "targetRTTMillis": 0,
+      "jitterMillis": 0,
+      "seed": 20261009
+    },
+    "FDBPolicySHA256": "785266b2465b0392d18cf6b4d961bcbd42532b71c3498f204b66faf47ade4405",
+    "FDBOriginalDeadlineUnixNanos": 1792113882785407000,
+    "FDBPolicy": {
+      "Version": 2,
+      "Spec": {
+        "version": 2,
+        "family": "partition-local-create-update",
+        "facts": 20,
+        "crossPercent": 100,
+        "writers": 1,
+        "layout": "kv"
+      },
+      "Run": [
+        180,
+        132,
+        107,
+        0,
+        158,
+        249,
+        228,
+        171,
+        39,
+        219,
+        4,
+        212,
+        99,
+        20,
+        28,
+        124
+      ],
+      "Transport": {
+        "kind": "local",
+        "targetRTTMillis": 0,
+        "jitterMillis": 0,
+        "seed": 20261009
+      },
+      "BudgetSeconds": 180,
+      "CausalMinimumMillis": 0,
+      "AdmittedUnixNanos": 1792113702785407000,
+      "DeadlineUnixNanos": 1792113882785407000,
+      "QueuePackets": 64,
+      "SampleMillis": 1000,
+      "MaxSamples": 182,
+      "MaxArtifactBytes": 536870912,
+      "ProbeSamples": 9,
+      "ProbePayloadBytes": 64,
+      "ProbeTimeoutMillis": 3000,
+      "Tools": {
+        "Version": "iproute2-6.12.0",
+        "TC": [
+          232,
+          178,
+          141,
+          24,
+          114,
+          157,
+          81,
+          249,
+          85,
+          201,
+          30,
+          140,
+          139,
+          154,
+          185,
+          205,
+          232,
+          31,
+          230,
+          124,
+          206,
+          51,
+          187,
+          144,
+          63,
+          40,
+          165,
+          126,
+          67,
+          28,
+          80,
+          134
+        ],
+        "IP": [
+          210,
+          70,
+          230,
+          83,
+          88,
+          233,
+          73,
+          81,
+          140,
+          133,
+          1,
+          46,
+          197,
+          90,
+          68,
+          61,
+          72,
+          193,
+          195,
+          11,
+          0,
+          127,
+          177,
+          166,
+          207,
+          190,
+          62,
+          100,
+          221,
+          47,
+          36,
+          4
+        ],
+        "Probe": [
+          129,
+          201,
+          57,
+          28,
+          46,
+          250,
+          147,
+          178,
+          38,
+          255,
+          92,
+          174,
+          131,
+          76,
+          55,
+          104,
+          118,
+          81,
+          81,
+          245,
+          99,
+          213,
+          94,
+          146,
+          231,
+          123,
+          158,
+          51,
+          17,
+          93,
+          16,
+          10
+        ],
+        "Source": [
+          187,
+          209,
+          65,
+          239,
+          123,
+          93,
+          1,
+          39,
+          204,
+          33,
+          82,
+          132,
+          59,
+          166,
+          31,
+          39,
+          77,
+          195,
+          40,
+          20,
+          250,
+          62,
+          15,
+          19,
+          231,
+          208,
+          122,
+          8,
+          11,
+          239,
+          83,
+          217
+        ],
+        "Build": [
+          184,
+          183,
+          114,
+          127,
+          196,
+          47,
+          62,
+          251,
+          32,
+          139,
+          228,
+          57,
+          168,
+          158,
+          128,
+          209,
+          63,
+          82,
+          198,
+          208,
+          170,
+          147,
+          191,
+          153,
+          92,
+          164,
+          210,
+          76,
+          128,
+          48,
+          143,
+          102
+        ]
+      },
+      "Peers": [
+        {
+          "Role": "zone0",
+          "Container": "50f0ecac7d9f649322ce2fc792a92962cc05805163c1657b93ff3f74958ae62d",
+          "Image": "sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db",
+          "IP": "172.18.0.10",
+          "NetNS": "net:[4026532559]",
+          "Network": "4c7119ec92fcd76fd8de04efd037604feeb298a65fd483375c5fdb3f9c6cb372",
+          "PID": 3362
+        },
+        {
+          "Role": "zone1",
+          "Container": "fe408cf5c35d2f3273c232738f9ef9c86c1923bf2d95d97c927fe711739f1d1c",
+          "Image": "sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db",
+          "IP": "172.18.0.11",
+          "NetNS": "net:[4026532695]",
+          "Network": "4c7119ec92fcd76fd8de04efd037604feeb298a65fd483375c5fdb3f9c6cb372",
+          "PID": 3421
+        },
+        {
+          "Role": "zone2",
+          "Container": "df571260e40822540ce45dabb2c951f34e979c4dc485a192b5f5693457cac108",
+          "Image": "sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db",
+          "IP": "172.18.0.12",
+          "NetNS": "net:[4026532831]",
+          "Network": "4c7119ec92fcd76fd8de04efd037604feeb298a65fd483375c5fdb3f9c6cb372",
+          "PID": 3482
+        },
+        {
+          "Role": "zone3",
+          "Container": "adaf63bdfe2edc546435818b7a23893bce03366f37297db178a8946dd827df3a",
+          "Image": "sha256:c61744624e479d370a0120176e518bb569a2a18ee9abceaf7022c4367b54f1db",
+          "IP": "172.18.0.13",
+          "NetNS": "net:[4026532967]",
+          "Network": "4c7119ec92fcd76fd8de04efd037604feeb298a65fd483375c5fdb3f9c6cb372",
+          "PID": 3542
+        },
+        {
+          "Role": "client",
+          "Container": "be74f12ff12f208a584dcb67dd939eebb50336dde93c1bafd0dd2aa2780ae65f",
+          "Image": "sha256:35e68753a380675aa5b036739d70fd4c3a01e0f5f74259862ce1be6fc6715648",
+          "IP": "172.18.0.14",
+          "NetNS": "net:[4026533103]",
+          "Network": "4c7119ec92fcd76fd8de04efd037604feeb298a65fd483375c5fdb3f9c6cb372",
+          "PID": 4302
+        }
+      ],
+      "ArmedSHA256": [
+        18,
+        249,
+        120,
+        170,
+        182,
+        142,
+        73,
+        196,
+        228,
+        115,
+        211,
+        180,
+        38,
+        67,
+        116,
+        178,
+        179,
+        30,
+        24,
+        96,
+        10,
+        68,
+        160,
+        133,
+        26,
+        20,
+        78,
+        57,
+        238,
+        214,
+        68,
+        220
+      ]
+    },
+    "foundationdb": {
+      "policySHA256": "785266b2465b0392d18cf6b4d961bcbd42532b71c3498f204b66faf47ade4405",
+      "networkSamples": 4,
+      "rssSamples": 10,
+      "observedTCPConnectEchoNanos": {
+        "before": [
+          {
+            "source": 1,
+            "target": 0,
+            "min": 90792,
+            "p50": 183208,
+            "p95": 1191167,
+            "p99": 1191167,
+            "max": 1191167
+          },
+          {
+            "source": 2,
+            "target": 0,
+            "min": 95084,
+            "p50": 111167,
+            "p95": 279250,
+            "p99": 279250,
+            "max": 279250
+          },
+          {
+            "source": 3,
+            "target": 0,
+            "min": 104667,
+            "p50": 123250,
+            "p95": 266250,
+            "p99": 266250,
+            "max": 266250
+          },
+          {
+            "source": 4,
+            "target": 0,
+            "min": 113500,
+            "p50": 184875,
+            "p95": 318375,
+            "p99": 318375,
+            "max": 318375
+          },
+          {
+            "source": 0,
+            "target": 1,
+            "min": 93750,
+            "p50": 160667,
+            "p95": 431709,
+            "p99": 431709,
+            "max": 431709
+          },
+          {
+            "source": 2,
+            "target": 1,
+            "min": 100833,
+            "p50": 153084,
+            "p95": 267542,
+            "p99": 267542,
+            "max": 267542
+          },
+          {
+            "source": 3,
+            "target": 1,
+            "min": 91375,
+            "p50": 118125,
+            "p95": 268250,
+            "p99": 268250,
+            "max": 268250
+          },
+          {
+            "source": 4,
+            "target": 1,
+            "min": 181417,
+            "p50": 260417,
+            "p95": 551833,
+            "p99": 551833,
+            "max": 551833
+          },
+          {
+            "source": 0,
+            "target": 2,
+            "min": 117125,
+            "p50": 200125,
+            "p95": 539792,
+            "p99": 539792,
+            "max": 539792
+          },
+          {
+            "source": 1,
+            "target": 2,
+            "min": 109750,
+            "p50": 168875,
+            "p95": 328125,
+            "p99": 328125,
+            "max": 328125
+          },
+          {
+            "source": 3,
+            "target": 2,
+            "min": 224792,
+            "p50": 299542,
+            "p95": 626208,
+            "p99": 626208,
+            "max": 626208
+          },
+          {
+            "source": 4,
+            "target": 2,
+            "min": 150708,
+            "p50": 481041,
+            "p95": 775000,
+            "p99": 775000,
+            "max": 775000
+          },
+          {
+            "source": 0,
+            "target": 3,
+            "min": 207500,
+            "p50": 262625,
+            "p95": 506375,
+            "p99": 506375,
+            "max": 506375
+          },
+          {
+            "source": 1,
+            "target": 3,
+            "min": 130958,
+            "p50": 286042,
+            "p95": 744958,
+            "p99": 744958,
+            "max": 744958
+          },
+          {
+            "source": 2,
+            "target": 3,
+            "min": 156167,
+            "p50": 296708,
+            "p95": 597083,
+            "p99": 597083,
+            "max": 597083
+          },
+          {
+            "source": 4,
+            "target": 3,
+            "min": 85042,
+            "p50": 109417,
+            "p95": 218958,
+            "p99": 218958,
+            "max": 218958
+          },
+          {
+            "source": 0,
+            "target": 4,
+            "min": 203917,
+            "p50": 284416,
+            "p95": 417750,
+            "p99": 417750,
+            "max": 417750
+          },
+          {
+            "source": 1,
+            "target": 4,
+            "min": 129792,
+            "p50": 241958,
+            "p95": 434292,
+            "p99": 434292,
+            "max": 434292
+          },
+          {
+            "source": 2,
+            "target": 4,
+            "min": 214916,
+            "p50": 310000,
+            "p95": 396750,
+            "p99": 396750,
+            "max": 396750
+          },
+          {
+            "source": 3,
+            "target": 4,
+            "min": 203750,
+            "p50": 259667,
+            "p95": 318291,
+            "p99": 318291,
+            "max": 318291
+          }
+        ],
+        "armed": [
+          {
+            "source": 1,
+            "target": 0,
+            "min": 125750,
+            "p50": 175125,
+            "p95": 432916,
+            "p99": 432916,
+            "max": 432916
+          },
+          {
+            "source": 2,
+            "target": 0,
+            "min": 91708,
+            "p50": 132208,
+            "p95": 240250,
+            "p99": 240250,
+            "max": 240250
+          },
+          {
+            "source": 3,
+            "target": 0,
+            "min": 107458,
+            "p50": 148500,
+            "p95": 261625,
+            "p99": 261625,
+            "max": 261625
+          },
+          {
+            "source": 4,
+            "target": 0,
+            "min": 194417,
+            "p50": 282125,
+            "p95": 445583,
+            "p99": 445583,
+            "max": 445583
+          },
+          {
+            "source": 0,
+            "target": 1,
+            "min": 213875,
+            "p50": 259916,
+            "p95": 440125,
+            "p99": 440125,
+            "max": 440125
+          },
+          {
+            "source": 2,
+            "target": 1,
+            "min": 90666,
+            "p50": 247334,
+            "p95": 7685250,
+            "p99": 7685250,
+            "max": 7685250
+          },
+          {
+            "source": 3,
+            "target": 1,
+            "min": 150750,
+            "p50": 247334,
+            "p95": 411875,
+            "p99": 411875,
+            "max": 411875
+          },
+          {
+            "source": 4,
+            "target": 1,
+            "min": 116541,
+            "p50": 238750,
+            "p95": 1589125,
+            "p99": 1589125,
+            "max": 1589125
+          },
+          {
+            "source": 0,
+            "target": 2,
+            "min": 177584,
+            "p50": 244500,
+            "p95": 494375,
+            "p99": 494375,
+            "max": 494375
+          },
+          {
+            "source": 1,
+            "target": 2,
+            "min": 140375,
+            "p50": 282625,
+            "p95": 502917,
+            "p99": 502917,
+            "max": 502917
+          },
+          {
+            "source": 3,
+            "target": 2,
+            "min": 156666,
+            "p50": 211625,
+            "p95": 494708,
+            "p99": 494708,
+            "max": 494708
+          },
+          {
+            "source": 4,
+            "target": 2,
+            "min": 169625,
+            "p50": 348125,
+            "p95": 524958,
+            "p99": 524958,
+            "max": 524958
+          },
+          {
+            "source": 0,
+            "target": 3,
+            "min": 212542,
+            "p50": 287542,
+            "p95": 517458,
+            "p99": 517458,
+            "max": 517458
+          },
+          {
+            "source": 1,
+            "target": 3,
+            "min": 202209,
+            "p50": 237125,
+            "p95": 503084,
+            "p99": 503084,
+            "max": 503084
+          },
+          {
+            "source": 2,
+            "target": 3,
+            "min": 185541,
+            "p50": 272583,
+            "p95": 515333,
+            "p99": 515333,
+            "max": 515333
+          },
+          {
+            "source": 4,
+            "target": 3,
+            "min": 176958,
+            "p50": 264875,
+            "p95": 352041,
+            "p99": 352041,
+            "max": 352041
+          },
+          {
+            "source": 0,
+            "target": 4,
+            "min": 179500,
+            "p50": 263417,
+            "p95": 350208,
+            "p99": 350208,
+            "max": 350208
+          },
+          {
+            "source": 1,
+            "target": 4,
+            "min": 170333,
+            "p50": 325208,
+            "p95": 1102042,
+            "p99": 1102042,
+            "max": 1102042
+          },
+          {
+            "source": 2,
+            "target": 4,
+            "min": 197375,
+            "p50": 251625,
+            "p95": 410542,
+            "p99": 410542,
+            "max": 410542
+          },
+          {
+            "source": 3,
+            "target": 4,
+            "min": 276208,
+            "p50": 516542,
+            "p95": 903750,
+            "p99": 903750,
+            "max": 903750
+          }
+        ],
+        "after": [
+          {
+            "source": 1,
+            "target": 0,
+            "min": 98208,
+            "p50": 137000,
+            "p95": 264834,
+            "p99": 264834,
+            "max": 264834
+          },
+          {
+            "source": 2,
+            "target": 0,
+            "min": 88333,
+            "p50": 115459,
+            "p95": 268750,
+            "p99": 268750,
+            "max": 268750
+          },
+          {
+            "source": 3,
+            "target": 0,
+            "min": 106458,
+            "p50": 127375,
+            "p95": 315458,
+            "p99": 315458,
+            "max": 315458
+          },
+          {
+            "source": 4,
+            "target": 0,
+            "min": 148541,
+            "p50": 338000,
+            "p95": 1052125,
+            "p99": 1052125,
+            "max": 1052125
+          },
+          {
+            "source": 0,
+            "target": 1,
+            "min": 66542,
+            "p50": 134333,
+            "p95": 298208,
+            "p99": 298208,
+            "max": 298208
+          },
+          {
+            "source": 2,
+            "target": 1,
+            "min": 98500,
+            "p50": 119542,
+            "p95": 279000,
+            "p99": 279000,
+            "max": 279000
+          },
+          {
+            "source": 3,
+            "target": 1,
+            "min": 77417,
+            "p50": 108792,
+            "p95": 254208,
+            "p99": 254208,
+            "max": 254208
+          },
+          {
+            "source": 4,
+            "target": 1,
+            "min": 94667,
+            "p50": 171000,
+            "p95": 310875,
+            "p99": 310875,
+            "max": 310875
+          },
+          {
+            "source": 0,
+            "target": 2,
+            "min": 125917,
+            "p50": 311000,
+            "p95": 582125,
+            "p99": 582125,
+            "max": 582125
+          },
+          {
+            "source": 1,
+            "target": 2,
+            "min": 88584,
+            "p50": 139834,
+            "p95": 439375,
+            "p99": 439375,
+            "max": 439375
+          },
+          {
+            "source": 3,
+            "target": 2,
+            "min": 109333,
+            "p50": 176416,
+            "p95": 450166,
+            "p99": 450166,
+            "max": 450166
+          },
+          {
+            "source": 4,
+            "target": 2,
+            "min": 92584,
+            "p50": 133750,
+            "p95": 302667,
+            "p99": 302667,
+            "max": 302667
+          },
+          {
+            "source": 0,
+            "target": 3,
+            "min": 218792,
+            "p50": 301666,
+            "p95": 462125,
+            "p99": 462125,
+            "max": 462125
+          },
+          {
+            "source": 1,
+            "target": 3,
+            "min": 160041,
+            "p50": 241833,
+            "p95": 584875,
+            "p99": 584875,
+            "max": 584875
+          },
+          {
+            "source": 2,
+            "target": 3,
+            "min": 113625,
+            "p50": 317167,
+            "p95": 940750,
+            "p99": 940750,
+            "max": 940750
+          },
+          {
+            "source": 4,
+            "target": 3,
+            "min": 171042,
+            "p50": 328791,
+            "p95": 3224750,
+            "p99": 3224750,
+            "max": 3224750
+          },
+          {
+            "source": 0,
+            "target": 4,
+            "min": 114583,
+            "p50": 177292,
+            "p95": 617833,
+            "p99": 617833,
+            "max": 617833
+          },
+          {
+            "source": 1,
+            "target": 4,
+            "min": 130292,
+            "p50": 172458,
+            "p95": 386416,
+            "p99": 386416,
+            "max": 386416
+          },
+          {
+            "source": 2,
+            "target": 4,
+            "min": 184917,
+            "p50": 257750,
+            "p95": 354125,
+            "p99": 354125,
+            "max": 354125
+          },
+          {
+            "source": 3,
+            "target": 4,
+            "min": 183750,
+            "p50": 240041,
+            "p95": 763750,
+            "p99": 763750,
+            "max": 763750
+          }
+        ]
+      },
+      "configuredAddedOneWayMicros": 0,
+      "drops": 0,
+      "sampledAggregateRSSKiB": 491256,
+      "sameContainerCgroupPeakBytes": [
+        204038144,
+        75902976,
+        78581760,
+        73347072,
+        40337408
+      ],
+      "toolingArtifactFileBytes": 7171216,
+      "scope": "actual inter-namespace receiver ingress, one host; intra-namespace/co-resident traffic and native baseline unchanged; process/cgroup/tooling counters distinct, no equal-RTT/every-packet or capacity promise",
+      "nativeRetainedBindingBytes": 3073
+    },
+    "scope": "native queue/frame scheduler and FDB receiver-ingress netem are different mechanisms; real baseline/armed/after probes remain separate, no equal observed RTT or physical-host-loss claim"
+  },
+  "nativeOriginalDeadlineUnixNanos": 1792114337297750000,
+  "nativeBinarySHA256": "620cb10a4ea82f5991c8f2757a822b5323801c90292d476350098109276c52d7",
+  "nativeProcessTree": {
+    "version": 1,
+    "command": [
+      "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-batch-fixed.test",
+      "-test.run=^TestNativeGraphCreateUpdateWorkloadCell$",
+      "-test.count=1",
+      "-test.v",
+      "-test.timeout=210s"
+    ],
+    "wall_limit_s": 180,
+    "rss_limit_mib": 4096,
+    "deadline_unix_nanos": 1792114337297750000,
+    "reason": "completed",
+    "exit_code": 0,
+    "peak_tree_rss_mib": 283.6875,
+    "peak_engine_rss_mib": 257.96875,
+    "peak_monitor_rss_mib": 25.75,
+    "all_owned_exited": true,
+    "observed_processes": [
+      {
+        "pid": 62352,
+        "parent": 62350,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:17 2026"
+      },
+      {
+        "pid": 62355,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:17 2026"
+      },
+      {
+        "pid": 62356,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:17 2026"
+      },
+      {
+        "pid": 62357,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:17 2026"
+      },
+      {
+        "pid": 62358,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:17 2026"
+      },
+      {
+        "pid": 62359,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:17 2026"
+      },
+      {
+        "pid": 62360,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:17 2026"
+      },
+      {
+        "pid": 64241,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:55 2026"
+      },
+      {
+        "pid": 64242,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:55 2026"
+      },
+      {
+        "pid": 64243,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:55 2026"
+      },
+      {
+        "pid": 64245,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:55 2026"
+      },
+      {
+        "pid": 64246,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:55 2026"
+      },
+      {
+        "pid": 64247,
+        "parent": 62352,
+        "group": 62352,
+        "birth": "Fri Oct 16 03:29:55 2026"
+      }
+    ],
+    "samples": 325,
+    "output_bytes": 114,
+    "received_output_bytes": 114,
+    "disk": null,
+    "forced_cleanup": false,
+    "scope": "sampled aggregate native session plus watchdog/metadata reader RSS; trusted inherited-session children; bounded output/catalog; no exact RSS/disk high-water or independent-host claim",
+    "elapsed_nanos": 43737434000
+  },
+  "nativeTransportRecords": [
+    {
+      "Version": 1,
+      "Spec": {
+        "kind": "local",
+        "targetRTTMillis": 0,
+        "jitterMillis": 0,
+        "seed": 20261009
+      },
+      "Raft": {
+        "Admitted": 4728,
+        "Completed": 4728,
+        "Canceled": 0,
+        "Bytes": 4244398,
+        "ConfiguredNanos": 0,
+        "ObservedNanos": 52123685880,
+        "DeviationNanos": 52123685880,
+        "MinimumObservedNanos": 1833,
+        "MaximumObservedNanos": 302215875
+      },
+      "SourceRequest": {
+        "Admitted": 25882,
+        "Completed": 25882,
+        "Canceled": 0,
+        "Bytes": 6972574,
+        "ConfiguredNanos": 0,
+        "ObservedNanos": 1580482,
+        "DeviationNanos": 1580482,
+        "MinimumObservedNanos": 0,
+        "MaximumObservedNanos": 11958
+      },
+      "SourceReply": {
+        "Admitted": 25882,
+        "Completed": 25882,
+        "Canceled": 0,
+        "Bytes": 15772840,
+        "ConfiguredNanos": 0,
+        "ObservedNanos": 2202719,
+        "DeviationNanos": 2202719,
+        "MinimumObservedNanos": 0,
+        "MaximumObservedNanos": 48958
+      },
+      "MaximumHeldFrames": 4,
+      "MaximumHeldBytes": 68092,
+      "MetadataBytes": 32768,
+      "PipeWrites": {
+        "AttemptedFrames": 57904,
+        "CompleteFrames": 57904,
+        "FailedFrames": 0,
+        "PrepaidBytes": 31253318,
+        "ActualBytes": 31253318
+      },
+      "PipeReads": {
+        "AttemptedFrames": 84704,
+        "CompleteFrames": 84704,
+        "FailedFrames": 0,
+        "PrepaidBytes": 177637501824,
+        "ActualBytes": 54945091
+      },
+      "Scope": "owned six-child pipes; separate one-way Raft and half request/reply delays; Completed means delay elapsed, not native delivery/ACK; observed delay includes queueing; zero configured jitter does not imply zero observed jitter; Pipe ActualBytes counts actual framing/payload IO including partial failures/Close and overlaps native payload counters; no physical network claim"
+    },
+    {
+      "Version": 1,
+      "Spec": {
+        "kind": "local",
+        "targetRTTMillis": 0,
+        "jitterMillis": 0,
+        "seed": 20261009
+      },
+      "Raft": {
+        "Admitted": 976,
+        "Completed": 976,
+        "Canceled": 0,
+        "Bytes": 98992,
+        "ConfiguredNanos": 0,
+        "ObservedNanos": 722278038,
+        "DeviationNanos": 722278038,
+        "MinimumObservedNanos": 1750,
+        "MaximumObservedNanos": 34197875
+      },
+      "SourceRequest": {
+        "Admitted": 10208,
+        "Completed": 10208,
+        "Canceled": 0,
+        "Bytes": 2102136,
+        "ConfiguredNanos": 0,
+        "ObservedNanos": 515971,
+        "DeviationNanos": 515971,
+        "MinimumObservedNanos": 0,
+        "MaximumObservedNanos": 12792
+      },
+      "SourceReply": {
+        "Admitted": 10208,
+        "Completed": 10208,
+        "Canceled": 0,
+        "Bytes": 5918204,
+        "ConfiguredNanos": 0,
+        "ObservedNanos": 662245,
+        "DeviationNanos": 662245,
+        "MinimumObservedNanos": 0,
+        "MaximumObservedNanos": 8250
+      },
+      "MaximumHeldFrames": 4,
+      "MaximumHeldBytes": 34147,
+      "MetadataBytes": 32768,
+      "PipeWrites": {
+        "AttemptedFrames": 22338,
+        "CompleteFrames": 22338,
+        "FailedFrames": 0,
+        "PrepaidBytes": 9790808,
+        "ActualBytes": 9790808
+      },
+      "PipeReads": {
+        "AttemptedFrames": 32786,
+        "CompleteFrames": 32786,
+        "FailedFrames": 0,
+        "PrepaidBytes": 68757356616,
+        "ActualBytes": 20519175
+      },
+      "Scope": "owned six-child pipes; separate one-way Raft and half request/reply delays; Completed means delay elapsed, not native delivery/ACK; observed delay includes queueing; zero configured jitter does not imply zero observed jitter; Pipe ActualBytes counts actual framing/payload IO including partial failures/Close and overlaps native payload counters; no physical network claim"
+    }
+  ],
+  "nativeStoredCounters": {
+    "PersistedFileBytes": 1904773,
+    "AllocatedFileBytes": 1990656,
+    "SetupNanos": 2429335667,
+    "BusinessNanos": 27471197792,
+    "DiagnosticNanos": 13705843583,
+    "TotalNanos": 43606377042
+  },
+  "nativeAllInControllerNanos": 44179677875,
+  "native": {
+    "format": "native-create-update-workload-v1",
+    "family": "partition-local-create-update",
+    "spec": {
+      "version": 1,
+      "family": "partition-local-create-update",
+      "facts": 20,
+      "crossPercent": 100,
+      "writers": 1,
+      "layout": "kv"
+    },
+    "run": "b4846b009ef9e4ab27db04d463141c7c",
+    "logicalAnswersSHA256": "4ba4d27d341d14cefcfd1708e9b27efe3b1da99886dac812d38ae87b0f3410fe",
+    "retentionContract": "snapshot-C-retained-full-prefix-v1",
+    "transport": {
+      "kind": "local",
+      "targetRTTMillis": 0,
+      "jitterMillis": 0,
+      "seed": 20261009
+    },
+    "rowSemantics": "mixed-or-cross-partition-create-update",
+    "businessTiming": [
+      {
+        "Phase": "create",
+        "StartNanos": 2429335875,
+        "StopNanos": 14884417500,
+        "WallNanos": 12455081625,
+        "SingleParticipant": 0,
+        "MultiParticipant": 20,
+        "ReadParticipants": [
+          20,
+          20
+        ],
+        "WriteParticipants": [
+          20,
+          20
+        ],
+        "single": 0,
+        "multi": 20,
+        "attempts": 20,
+        "aborted": 0,
+        "protocolParticipantInstalls": 40,
+        "p50Nanos": 1771035583,
+        "p95Nanos": 2096266583,
+        "p99Nanos": 2283466083,
+        "usefulTransactionsPerSecond": 1.6057702873544997
+      },
+      {
+        "Phase": "update",
+        "StartNanos": 17406460292,
+        "StopNanos": 32422576459,
+        "WallNanos": 15016116167,
+        "SingleParticipant": 0,
+        "MultiParticipant": 20,
+        "ReadParticipants": [
+          20,
+          20
+        ],
+        "WriteParticipants": [
+          20,
+          0
+        ],
+        "single": 0,
+        "multi": 20,
+        "attempts": 20,
+        "aborted": 0,
+        "protocolParticipantInstalls": 40,
+        "p50Nanos": 2163165750,
+        "p95Nanos": 2556724958,
+        "p99Nanos": 2664865125,
+        "usefulTransactionsPerSecond": 1.3319023226493663
+      }
+    ],
+    "sourceTiming": {
+      "samples": [
+        {
+          "name": "old-fresh",
+          "OpenNanos": 662978041,
+          "ScanNanos": 1458147166,
+          "PointsNanos": 400458750,
+          "ScopeRefusalNanos": 0,
+          "Rows": 20
+        },
+        {
+          "name": "same-pin-old-after-update",
+          "OpenNanos": 89618500,
+          "ScanNanos": 1844918666,
+          "PointsNanos": 558201208,
+          "ScopeRefusalNanos": 0,
+          "Rows": 20
+        },
+        {
+          "name": "fresh-current",
+          "OpenNanos": 761268833,
+          "ScanNanos": 1919752375,
+          "PointsNanos": 341105000,
+          "ScopeRefusalNanos": 0,
+          "Rows": 20
+        },
+        {
+          "name": "reopened-old",
+          "OpenNanos": 30754000,
+          "ScanNanos": 1449659625,
+          "PointsNanos": 218347042,
+          "ScopeRefusalNanos": 0,
+          "Rows": 20
+        },
+        {
+          "name": "reopened-final",
+          "OpenNanos": 52068000,
+          "ScanNanos": 1981774875,
+          "PointsNanos": 270547958,
+          "ScopeRefusalNanos": 0,
+          "Rows": 20
+        }
+      ],
+      "nearestRank": [
+        {
+          "call": "Open",
+          "samples": 5,
+          "p50Nanos": 89618500,
+          "p95Nanos": 761268833,
+          "p99Nanos": 761268833
+        },
+        {
+          "call": "Scan",
+          "samples": 5,
+          "p50Nanos": 1844918666,
+          "p95Nanos": 1981774875,
+          "p99Nanos": 1981774875
+        },
+        {
+          "call": "Points",
+          "samples": 5,
+          "p50Nanos": 341105000,
+          "p95Nanos": 558201208,
+          "p99Nanos": 558201208
+        }
+      ],
+      "scope": "actual complete source operations through EOF/retry/wait; scan-based Points, no indexed/per-key claim"
+    },
+    "spool": {
+      "policy": {
+        "max_disk_bytes": 1073741824,
+        "cache_bytes": 8388608,
+        "max_key_bytes": 4096,
+        "max_value_bytes": 524288
+      },
+      "page_bytes": 4096,
+      "sqlite_version": "3.53.2",
+      "walk_plan": "SEARCH state USING PRIMARY KEY (namespace=? AND key>?)",
+      "journal_mode": "off",
+      "mmap_bytes": 0,
+      "temp_store": "memory; no SQL temp tables/sorts",
+      "cached_statements": 8,
+      "cache_is_process_rss_limit": false,
+      "peak_file_bytes": 5177344,
+      "peak_allocated_bytes": 5177344
+    },
+    "scope": "genuine native local Submit versus explicit mixed/cross variants, complete original/source/voter/old-current/column/cache/reopen joins; setup excluded; planned installed-grant IDs, not Recipient.Next; no efficiency/capacity/full-matrix or nonlocal engine-parity acceptance"
+  },
+  "foundationdb": {
+    "format": "fdb-create-update-v2",
+    "family": "partition-local-create-update",
+    "spec": {
+      "version": 2,
+      "family": "partition-local-create-update",
+      "facts": 20,
+      "crossPercent": 100,
+      "writers": 1,
+      "layout": "kv"
+    },
+    "runGraph": "graph-workload-create-update-v2-kv-b4846b009ef9e4ab27db04d463141c7c",
+    "attempts": 43,
+    "committed": 43,
+    "aborted": 0,
+    "spool": {
+      "policy": {
+        "max_disk_bytes": 1073741824,
+        "cache_bytes": 8388608,
+        "max_key_bytes": 4096,
+        "max_value_bytes": 524288
+      },
+      "page_bytes": 4096,
+      "sqlite_version": "3.53.2",
+      "walk_plan": "SEARCH state USING PRIMARY KEY (namespace=? AND key>?)",
+      "journal_mode": "off",
+      "mmap_bytes": 0,
+      "temp_store": "memory; no SQL temp tables/sorts",
+      "cached_statements": 8,
+      "cache_is_process_rss_limit": false,
+      "peak_file_bytes": 7487488,
+      "peak_allocated_bytes": 7487488
+    },
+    "columnTiming": [],
+    "sourceTiming": [
+      {
+        "Call": "SourceScan",
+        "Name": "old-fresh",
+        "Cut": {
+          "Graph": "graph-workload-create-update-v2-kv-b4846b009ef9e4ab27db04d463141c7c",
+          "Topology": 1,
+          "Epochs": [
+            7,
+            11
+          ],
+          "Scope": "AAE=",
+          "Round": 23,
+          "Groups": [
+            22,
+            1
+          ]
+        },
+        "Rows": [
+          42,
+          21
+        ],
+        "Nanos": 142165084
+      },
+      {
+        "Call": "SourceOpen",
+        "Name": "old-fresh",
+        "Cut": {
+          "Graph": "graph-workload-create-update-v2-kv-b4846b009ef9e4ab27db04d463141c7c",
+          "Topology": 1,
+          "Epochs": [
+            7,
+            11
+          ],
+          "Scope": "AAE=",
+          "Round": 23,
+          "Groups": [
+            22,
+            1
+          ]
+        },
+        "Rows": [
+          42,
+          21
+        ],
+        "Nanos": 11074208
+      },
+      {
+        "Call": "SourceScan",
+        "Name": "held-old-after-update",
+        "Cut": {
+          "Graph": "graph-workload-create-update-v2-kv-b4846b009ef9e4ab27db04d463141c7c",
+          "Topology": 1,
+          "Epochs": [
+            7,
+            11
+          ],
+          "Scope": "AAE=",
+          "Round": 23,
+          "Groups": [
+            22,
+            1
+          ]
+        },
+        "Rows": [
+          42,
+          21
+        ],
+        "Nanos": 722556000
+      },
+      {
+        "Call": "SourceScan",
+        "Name": "fresh-current",
+        "Cut": {
+          "Graph": "graph-workload-create-update-v2-kv-b4846b009ef9e4ab27db04d463141c7c",
+          "Topology": 1,
+          "Epochs": [
+            7,
+            11
+          ],
+          "Scope": "AAE=",
+          "Round": 43,
+          "Groups": [
+            42,
+            1
+          ]
+        },
+        "Rows": [
+          42,
+          21
+        ],
+        "Nanos": 817196042
+      },
+      {
+        "Call": "SourceOpen",
+        "Name": "fresh-current",
+        "Cut": {
+          "Graph": "graph-workload-create-update-v2-kv-b4846b009ef9e4ab27db04d463141c7c",
+          "Topology": 1,
+          "Epochs": [
+            7,
+            11
+          ],
+          "Scope": "AAE=",
+          "Round": 43,
+          "Groups": [
+            42,
+            1
+          ]
+        },
+        "Rows": [
+          42,
+          21
+        ],
+        "Nanos": 58070709
+      },
+      {
+        "Call": "SourceScanPoints",
+        "Name": "fresh-current",
+        "Cut": {
+          "Graph": "graph-workload-create-update-v2-kv-b4846b009ef9e4ab27db04d463141c7c",
+          "Topology": 1,
+          "Epochs": [
+            7,
+            11
+          ],
+          "Scope": "AAE=",
+          "Round": 43,
+          "Groups": [
+            42,
+            1
+          ]
+        },
+        "Probes": 3,
+        "Nanos": 737150834
+      }
+    ],
+    "nearestRankTiming": [
+      {
+        "call": "SourceOpen",
+        "samples": 2,
+        "p50Nanos": 11074208,
+        "p95Nanos": 58070709,
+        "p99Nanos": 58070709
+      },
+      {
+        "call": "SourceScan",
+        "samples": 3,
+        "p50Nanos": 722556000,
+        "p95Nanos": 817196042,
+        "p99Nanos": 817196042
+      },
+      {
+        "call": "SourceScanPoints",
+        "samples": 1,
+        "p50Nanos": 737150834,
+        "p95Nanos": 737150834,
+        "p99Nanos": 737150834
+      }
+    ],
+    "rowSemantics": "mixed-or-cross-partition-create-update",
+    "businessPhases": [
+      {
+        "Phase": "create",
+        "Attempts": 20,
+        "Aborted": 0,
+        "Committed": 20,
+        "SingleParticipant": 0,
+        "MultiParticipant": 20,
+        "ReadParticipants": [
+          20,
+          20
+        ],
+        "WriteParticipants": [
+          20,
+          20
+        ],
+        "StartedUnixNanos": 1792113709329592759,
+        "FinishedUnixNanos": 1792113709699980217,
+        "WallNanos": 370387375,
+        "usefulTransactionsPerSecond": 53.997520838824485,
+        "p50Nanos": 244005625,
+        "p95Nanos": 342848916,
+        "p99Nanos": 352894125
+      },
+      {
+        "Phase": "update",
+        "Attempts": 20,
+        "Aborted": 0,
+        "Committed": 20,
+        "SingleParticipant": 0,
+        "MultiParticipant": 20,
+        "ReadParticipants": [
+          20,
+          20
+        ],
+        "WriteParticipants": [
+          20,
+          20
+        ],
+        "StartedUnixNanos": 1792113709901578634,
+        "FinishedUnixNanos": 1792113710806772260,
+        "WallNanos": 905193667,
+        "usefulTransactionsPerSecond": 22.094719317120454,
+        "p50Nanos": 332289791,
+        "p95Nanos": 814648626,
+        "p99Nanos": 869770500
+      }
+    ],
+    "businessScope": "setup3 excluded; actual business read/write participants, one ordinary global FDB commit path; complete phase wall, never sum of parallel operation latencies",
+    "logicalAnswersSHA256": "4ba4d27d341d14cefcfd1708e9b27efe3b1da99886dac812d38ae87b0f3410fe",
+    "retentionContract": "snapshot-C-retained-full-prefix-v1",
+    "scope": "one actual source-scan reference or genuine immutable-column publication/native+cache scan lifecycle; source KV retain-all, derived GC only; no native parity/full matrix/capacity acceptance",
+    "transport": {
+      "policySHA256": "785266b2465b0392d18cf6b4d961bcbd42532b71c3498f204b66faf47ade4405",
+      "networkSamples": 4,
+      "rssSamples": 10,
+      "observedTCPConnectEchoNanos": {
+        "before": [
+          {
+            "source": 1,
+            "target": 0,
+            "min": 90792,
+            "p50": 183208,
+            "p95": 1191167,
+            "p99": 1191167,
+            "max": 1191167
+          },
+          {
+            "source": 2,
+            "target": 0,
+            "min": 95084,
+            "p50": 111167,
+            "p95": 279250,
+            "p99": 279250,
+            "max": 279250
+          },
+          {
+            "source": 3,
+            "target": 0,
+            "min": 104667,
+            "p50": 123250,
+            "p95": 266250,
+            "p99": 266250,
+            "max": 266250
+          },
+          {
+            "source": 4,
+            "target": 0,
+            "min": 113500,
+            "p50": 184875,
+            "p95": 318375,
+            "p99": 318375,
+            "max": 318375
+          },
+          {
+            "source": 0,
+            "target": 1,
+            "min": 93750,
+            "p50": 160667,
+            "p95": 431709,
+            "p99": 431709,
+            "max": 431709
+          },
+          {
+            "source": 2,
+            "target": 1,
+            "min": 100833,
+            "p50": 153084,
+            "p95": 267542,
+            "p99": 267542,
+            "max": 267542
+          },
+          {
+            "source": 3,
+            "target": 1,
+            "min": 91375,
+            "p50": 118125,
+            "p95": 268250,
+            "p99": 268250,
+            "max": 268250
+          },
+          {
+            "source": 4,
+            "target": 1,
+            "min": 181417,
+            "p50": 260417,
+            "p95": 551833,
+            "p99": 551833,
+            "max": 551833
+          },
+          {
+            "source": 0,
+            "target": 2,
+            "min": 117125,
+            "p50": 200125,
+            "p95": 539792,
+            "p99": 539792,
+            "max": 539792
+          },
+          {
+            "source": 1,
+            "target": 2,
+            "min": 109750,
+            "p50": 168875,
+            "p95": 328125,
+            "p99": 328125,
+            "max": 328125
+          },
+          {
+            "source": 3,
+            "target": 2,
+            "min": 224792,
+            "p50": 299542,
+            "p95": 626208,
+            "p99": 626208,
+            "max": 626208
+          },
+          {
+            "source": 4,
+            "target": 2,
+            "min": 150708,
+            "p50": 481041,
+            "p95": 775000,
+            "p99": 775000,
+            "max": 775000
+          },
+          {
+            "source": 0,
+            "target": 3,
+            "min": 207500,
+            "p50": 262625,
+            "p95": 506375,
+            "p99": 506375,
+            "max": 506375
+          },
+          {
+            "source": 1,
+            "target": 3,
+            "min": 130958,
+            "p50": 286042,
+            "p95": 744958,
+            "p99": 744958,
+            "max": 744958
+          },
+          {
+            "source": 2,
+            "target": 3,
+            "min": 156167,
+            "p50": 296708,
+            "p95": 597083,
+            "p99": 597083,
+            "max": 597083
+          },
+          {
+            "source": 4,
+            "target": 3,
+            "min": 85042,
+            "p50": 109417,
+            "p95": 218958,
+            "p99": 218958,
+            "max": 218958
+          },
+          {
+            "source": 0,
+            "target": 4,
+            "min": 203917,
+            "p50": 284416,
+            "p95": 417750,
+            "p99": 417750,
+            "max": 417750
+          },
+          {
+            "source": 1,
+            "target": 4,
+            "min": 129792,
+            "p50": 241958,
+            "p95": 434292,
+            "p99": 434292,
+            "max": 434292
+          },
+          {
+            "source": 2,
+            "target": 4,
+            "min": 214916,
+            "p50": 310000,
+            "p95": 396750,
+            "p99": 396750,
+            "max": 396750
+          },
+          {
+            "source": 3,
+            "target": 4,
+            "min": 203750,
+            "p50": 259667,
+            "p95": 318291,
+            "p99": 318291,
+            "max": 318291
+          }
+        ],
+        "armed": [
+          {
+            "source": 1,
+            "target": 0,
+            "min": 125750,
+            "p50": 175125,
+            "p95": 432916,
+            "p99": 432916,
+            "max": 432916
+          },
+          {
+            "source": 2,
+            "target": 0,
+            "min": 91708,
+            "p50": 132208,
+            "p95": 240250,
+            "p99": 240250,
+            "max": 240250
+          },
+          {
+            "source": 3,
+            "target": 0,
+            "min": 107458,
+            "p50": 148500,
+            "p95": 261625,
+            "p99": 261625,
+            "max": 261625
+          },
+          {
+            "source": 4,
+            "target": 0,
+            "min": 194417,
+            "p50": 282125,
+            "p95": 445583,
+            "p99": 445583,
+            "max": 445583
+          },
+          {
+            "source": 0,
+            "target": 1,
+            "min": 213875,
+            "p50": 259916,
+            "p95": 440125,
+            "p99": 440125,
+            "max": 440125
+          },
+          {
+            "source": 2,
+            "target": 1,
+            "min": 90666,
+            "p50": 247334,
+            "p95": 7685250,
+            "p99": 7685250,
+            "max": 7685250
+          },
+          {
+            "source": 3,
+            "target": 1,
+            "min": 150750,
+            "p50": 247334,
+            "p95": 411875,
+            "p99": 411875,
+            "max": 411875
+          },
+          {
+            "source": 4,
+            "target": 1,
+            "min": 116541,
+            "p50": 238750,
+            "p95": 1589125,
+            "p99": 1589125,
+            "max": 1589125
+          },
+          {
+            "source": 0,
+            "target": 2,
+            "min": 177584,
+            "p50": 244500,
+            "p95": 494375,
+            "p99": 494375,
+            "max": 494375
+          },
+          {
+            "source": 1,
+            "target": 2,
+            "min": 140375,
+            "p50": 282625,
+            "p95": 502917,
+            "p99": 502917,
+            "max": 502917
+          },
+          {
+            "source": 3,
+            "target": 2,
+            "min": 156666,
+            "p50": 211625,
+            "p95": 494708,
+            "p99": 494708,
+            "max": 494708
+          },
+          {
+            "source": 4,
+            "target": 2,
+            "min": 169625,
+            "p50": 348125,
+            "p95": 524958,
+            "p99": 524958,
+            "max": 524958
+          },
+          {
+            "source": 0,
+            "target": 3,
+            "min": 212542,
+            "p50": 287542,
+            "p95": 517458,
+            "p99": 517458,
+            "max": 517458
+          },
+          {
+            "source": 1,
+            "target": 3,
+            "min": 202209,
+            "p50": 237125,
+            "p95": 503084,
+            "p99": 503084,
+            "max": 503084
+          },
+          {
+            "source": 2,
+            "target": 3,
+            "min": 185541,
+            "p50": 272583,
+            "p95": 515333,
+            "p99": 515333,
+            "max": 515333
+          },
+          {
+            "source": 4,
+            "target": 3,
+            "min": 176958,
+            "p50": 264875,
+            "p95": 352041,
+            "p99": 352041,
+            "max": 352041
+          },
+          {
+            "source": 0,
+            "target": 4,
+            "min": 179500,
+            "p50": 263417,
+            "p95": 350208,
+            "p99": 350208,
+            "max": 350208
+          },
+          {
+            "source": 1,
+            "target": 4,
+            "min": 170333,
+            "p50": 325208,
+            "p95": 1102042,
+            "p99": 1102042,
+            "max": 1102042
+          },
+          {
+            "source": 2,
+            "target": 4,
+            "min": 197375,
+            "p50": 251625,
+            "p95": 410542,
+            "p99": 410542,
+            "max": 410542
+          },
+          {
+            "source": 3,
+            "target": 4,
+            "min": 276208,
+            "p50": 516542,
+            "p95": 903750,
+            "p99": 903750,
+            "max": 903750
+          }
+        ],
+        "after": [
+          {
+            "source": 1,
+            "target": 0,
+            "min": 98208,
+            "p50": 137000,
+            "p95": 264834,
+            "p99": 264834,
+            "max": 264834
+          },
+          {
+            "source": 2,
+            "target": 0,
+            "min": 88333,
+            "p50": 115459,
+            "p95": 268750,
+            "p99": 268750,
+            "max": 268750
+          },
+          {
+            "source": 3,
+            "target": 0,
+            "min": 106458,
+            "p50": 127375,
+            "p95": 315458,
+            "p99": 315458,
+            "max": 315458
+          },
+          {
+            "source": 4,
+            "target": 0,
+            "min": 148541,
+            "p50": 338000,
+            "p95": 1052125,
+            "p99": 1052125,
+            "max": 1052125
+          },
+          {
+            "source": 0,
+            "target": 1,
+            "min": 66542,
+            "p50": 134333,
+            "p95": 298208,
+            "p99": 298208,
+            "max": 298208
+          },
+          {
+            "source": 2,
+            "target": 1,
+            "min": 98500,
+            "p50": 119542,
+            "p95": 279000,
+            "p99": 279000,
+            "max": 279000
+          },
+          {
+            "source": 3,
+            "target": 1,
+            "min": 77417,
+            "p50": 108792,
+            "p95": 254208,
+            "p99": 254208,
+            "max": 254208
+          },
+          {
+            "source": 4,
+            "target": 1,
+            "min": 94667,
+            "p50": 171000,
+            "p95": 310875,
+            "p99": 310875,
+            "max": 310875
+          },
+          {
+            "source": 0,
+            "target": 2,
+            "min": 125917,
+            "p50": 311000,
+            "p95": 582125,
+            "p99": 582125,
+            "max": 582125
+          },
+          {
+            "source": 1,
+            "target": 2,
+            "min": 88584,
+            "p50": 139834,
+            "p95": 439375,
+            "p99": 439375,
+            "max": 439375
+          },
+          {
+            "source": 3,
+            "target": 2,
+            "min": 109333,
+            "p50": 176416,
+            "p95": 450166,
+            "p99": 450166,
+            "max": 450166
+          },
+          {
+            "source": 4,
+            "target": 2,
+            "min": 92584,
+            "p50": 133750,
+            "p95": 302667,
+            "p99": 302667,
+            "max": 302667
+          },
+          {
+            "source": 0,
+            "target": 3,
+            "min": 218792,
+            "p50": 301666,
+            "p95": 462125,
+            "p99": 462125,
+            "max": 462125
+          },
+          {
+            "source": 1,
+            "target": 3,
+            "min": 160041,
+            "p50": 241833,
+            "p95": 584875,
+            "p99": 584875,
+            "max": 584875
+          },
+          {
+            "source": 2,
+            "target": 3,
+            "min": 113625,
+            "p50": 317167,
+            "p95": 940750,
+            "p99": 940750,
+            "max": 940750
+          },
+          {
+            "source": 4,
+            "target": 3,
+            "min": 171042,
+            "p50": 328791,
+            "p95": 3224750,
+            "p99": 3224750,
+            "max": 3224750
+          },
+          {
+            "source": 0,
+            "target": 4,
+            "min": 114583,
+            "p50": 177292,
+            "p95": 617833,
+            "p99": 617833,
+            "max": 617833
+          },
+          {
+            "source": 1,
+            "target": 4,
+            "min": 130292,
+            "p50": 172458,
+            "p95": 386416,
+            "p99": 386416,
+            "max": 386416
+          },
+          {
+            "source": 2,
+            "target": 4,
+            "min": 184917,
+            "p50": 257750,
+            "p95": 354125,
+            "p99": 354125,
+            "max": 354125
+          },
+          {
+            "source": 3,
+            "target": 4,
+            "min": 183750,
+            "p50": 240041,
+            "p95": 763750,
+            "p99": 763750,
+            "max": 763750
+          }
+        ]
+      },
+      "configuredAddedOneWayMicros": 0,
+      "drops": 0,
+      "sampledAggregateRSSKiB": 491256,
+      "sameContainerCgroupPeakBytes": [
+        204038144,
+        75902976,
+        78581760,
+        73347072,
+        40337408
+      ],
+      "toolingArtifactFileBytes": 7171216,
+      "scope": "actual inter-namespace receiver ingress, one host; intra-namespace/co-resident traffic and native baseline unchanged; process/cgroup/tooling counters distinct, no equal-RTT/every-packet or capacity promise",
+      "nativeRetainedBindingBytes": 3073
+    }
+  },
+  "spool": {
+    "policy": {
+      "max_disk_bytes": 1073741824,
+      "cache_bytes": 8388608,
+      "max_key_bytes": 4096,
+      "max_value_bytes": 524288
+    },
+    "page_bytes": 4096,
+    "sqlite_version": "3.53.2",
+    "walk_plan": "SEARCH state USING PRIMARY KEY (namespace=? AND key>?)",
+    "journal_mode": "off",
+    "mmap_bytes": 0,
+    "temp_store": "memory; no SQL temp tables/sorts",
+    "cached_statements": 8,
+    "cache_is_process_rss_limit": false,
+    "peak_file_bytes": 7487488,
+    "peak_allocated_bytes": 7487488
+  },
+  "costBoundary": {
+    "sameConfiguredAddedRTT": true,
+    "equalObservedRTT": false,
+    "equalPhysicalRetention": false,
+    "allocator": "native installed-grant references versus FDB actual per-family issuance/fixed-ID APIs; each full source cost remains explicit",
+    "lifetime": "each engine retains its own immutable original absolute deadline and process/retry budgets under the SAME chosen seconds/run",
+    "physicalWinningIDs": "contention/unique winners may differ, both complete engine-specific original/index/absence proofs retained"
+  },
+  "scope": "complete source-implemented owned nonlocal pair; no measured efficiency, capacity, independent-host-loss or full V2 acceptance; native transfer pairing remains required after actual Cost12 driver integration"
+}
