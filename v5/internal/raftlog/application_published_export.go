@@ -16,7 +16,7 @@ import (
 // headers in a returned chunk and the retained handle/state/backend snapshot.
 const snapshotChunkV2WireHeaderBytes = 4 + 8 + 32 + 32 + 8 + 8 + 4 + 1
 const snapshotChunkV2FixedBytes = 160
-const publishedExportFixedBytes = 1024
+const publishedExportFixedBytes = 1280
 
 type publishedExportState struct {
 	expectedBytes, expectedRows uint64

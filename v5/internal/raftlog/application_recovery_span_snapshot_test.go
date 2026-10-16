@@ -40,6 +40,10 @@ func (v spanRecoveryVerifier) VerifyApplicationRecovery(_ context.Context, data 
 }
 func spanRecoveryStore(t *testing.T) (*Store, Config, spanRecoveryVerifier) {
 	t.Helper()
+	return spanRecoveryStoreWith(t, func(*ApplicationRecoveryReservation) {})
+}
+func spanRecoveryStoreWith(t *testing.T, shape func(*ApplicationRecoveryReservation)) (*Store, Config, spanRecoveryVerifier) {
+	t.Helper()
 	p, tc := transferConfig(1)
 	c, r, ret := ApplicationControlConfig{1}, ApplicationRecoveryConfig{3}, ApplicationRetentionConfig{1}
 	var err error
@@ -66,6 +70,7 @@ func spanRecoveryStore(t *testing.T) (*Store, Config, spanRecoveryVerifier) {
 		reservation.Spans[i].RetainedBytes = 8192
 		reservation.Spans[i].RetainedRecords = 16
 	}
+	shape(&reservation)
 	verifier := spanRecoveryVerifier{reserve: reservation, terminal: ApplicationRecoveryReservation{ID: [32]byte{8}, Digest: [32]byte{9}, Credits: []ApplicationRecoveryCredit{{1, 128, 8192, 16}}}}
 	if err := s.BindApplicationRecoveryVerifier(s.ApplicationBinding(), verifier); err != nil {
 		t.Fatal(err)
@@ -86,7 +91,8 @@ func spanRecoveryInstall(t *testing.T, s *Store, v spanRecoveryVerifier, data st
 	if err != nil {
 		t.Fatal(err)
 	}
-	persist(t, s, 2, base+1, ent(base+1, 2, data))
+	// A reopened receiver already holds the donor's later vote term; Ready may not regress it.
+	persist(t, s, max(uint64(2), s.meta.Hard.GetTerm()), base+1, ent(base+1, 2, data))
 	if err := s.InstallApplication(base+1, ApplicationBatch{BaseGeneration: s.ApplicationGeneration(), BaseIndex: base, BaseImageHash: sha256.Sum256(image), Image: image, RecoveryReserve: purpose.Reserve, RecoveryUse: purpose.Use, TerminalReserve: purpose.TerminalReserve, RecoveryAdmission: claim}); err != nil {
 		t.Fatal(err)
 	}

@@ -319,7 +319,7 @@ func TestControlLegalPublishedPinExactFitAndOneShort(t *testing.T) {
 		t.Run(fmt.Sprint(short), func(t *testing.T) {
 			s := boundedControlStore(t, func(c *Config) {
 				c.Transfer.Limits.MaxExports = 8
-				c.Transfer.Limits.MaxPinnedLogicalBytes = 76468 - short
+				c.Transfer.Limits.MaxPinnedLogicalBytes = 78260 - short
 			})
 			installControl(t, s, "seed", ApplicationControlPut{Key: []byte{'A', 0}, Value: []byte("reg")})
 			if err := s.PublishSnapshot(); err != nil {
@@ -329,8 +329,8 @@ func TestControlLegalPublishedPinExactFitAndOneShort(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Per handle333+4+4+1012+3+4+304+1024+4*2059=10924.
-			// Seven handles76468 exceeds legal admission minimum68608.
+			// Per handle333+4+4+1012+3+4+304+1280+4*2059=11180.
+			// Seven handles78260 exceeds legal admission minimum68608.
 			for n := range 7 {
 				before := readyMetadataFingerprint(t, s)
 				pins := s.pinnedApplicationBytes
@@ -345,7 +345,7 @@ func TestControlLegalPublishedPinExactFitAndOneShort(t *testing.T) {
 					t.Fatal("exact pin reservation", n, err)
 				}
 				defer e.Close()
-				if e.pinBytes != 10924 || s.pinnedApplicationBytes != uint64(n+1)*10924 {
+				if e.pinBytes != 11180 || s.pinnedApplicationBytes != uint64(n+1)*11180 {
 					t.Fatal("pin arithmetic", e.pinBytes, s.pinnedApplicationBytes)
 				}
 			}

@@ -220,10 +220,17 @@ func TestStableStateRetentionPagesBindInstalledPlanAndKeepProtectedOldData(t *te
 	if !complete || fs.overflow {
 		t.Fatal("finite genuine collection did not reach sealed complete cursor")
 	}
-	old := viewApplication(t, s, 2)
+	// Views below max(RootFloor, DataFloor) expire; the protected root stays
+	// reachable only as an exact image anchor of the installed plan, never as an old cut.
 	current := viewApplication(t, s, 4)
-	getApplication(t, old, "key", "old", true, false)
 	getApplication(t, current, "key", "new", true, false)
+	if _, err := s.ApplicationView(2); !errors.Is(err, ErrApplicationExpired) {
+		t.Fatal("protected root admitted an old cut", err)
+	}
+	anchor, err := current.RetentionAnchor(t.Context(), plan.ID, plan.InstalledIndex, 2, p.MaxImageBytes)
+	if err != nil || string(anchor.Image) != "old" || anchor.Index != 2 {
+		t.Fatal("protected old anchor lost", anchor, err)
+	}
 	if _, err := s.ApplicationView(1); !errors.Is(err, ErrApplicationExpired) {
 		t.Fatal("deleted unprotected history returned a substituted source", err)
 	}

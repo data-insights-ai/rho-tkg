@@ -157,7 +157,11 @@ func decodeTerminalBank(b []byte, p ApplicationPolicy, l Limits) (applicationTer
 	if n > maxApplicationTerminalOwners || n > uint64(len(b)/(4+recoveryRootFixedBytes+recoveryCreditBytes)) {
 		return nil, nil, ErrCorrupt
 	}
-	bank := make(applicationTerminalBank, int(n)) // #nosec G115 -- <=16 owners and delivered frame bound checked before allocation.
+	// An empty bank decodes to nil, the one canonical empty form (nil and empty differ under DeepEqual).
+	var bank applicationTerminalBank
+	if n > 0 {
+		bank = make(applicationTerminalBank, int(n)) // #nosec G115 -- <=16 owners and delivered frame bound checked before allocation.
+	}
 	for i := range bank {
 		if len(b) < 4 {
 			return nil, nil, ErrCorrupt
