@@ -533,10 +533,7 @@ func (c *Core) stampNodeFirstVersion(id types.NodeID) error {
 	} else if err != nil {
 		return err
 	}
-	chain := append([]*types.Node(nil), history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
+	chain := chainOf(history, current)
 	if len(chain) == 0 {
 		return nil
 	}
@@ -566,10 +563,7 @@ func (c *Core) stampRelFirstVersion(id types.RelID) error {
 	} else if err != nil {
 		return err
 	}
-	chain := append([]*types.Relationship(nil), history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
+	chain := chainOf(history, current)
 	if len(chain) == 0 {
 		return nil
 	}
