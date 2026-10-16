@@ -183,7 +183,9 @@ type epScenario struct {
 	// types (labels) 0 and 2: one source has both indexes, one the property
 	// index alone, one the envelope alone (declareTemporal).
 	temporal bool
-	deleted  []int64 // deleted IDs, re-imported by a later step
+	// plain makes an add write an open row carrying the property (prefix).
+	plain   bool
+	deleted []int64 // deleted IDs, re-imported by a later step
 }
 
 var (
@@ -228,7 +230,42 @@ func (sc *epScenario) declareTemporal(t *testing.T) {
 	}
 }
 
+// epPrefixOps are the op kinds the coverage check requires (step's switch
+// arms), in an order where each can succeed on its own fresh target.
+var epPrefixOps = []int{2, 5, 6, 7, 8, 4, 10}
+
+// prefix runs every op kind the coverage check requires once, each on its own
+// freshly added entity with a plain open row and the window [now, now+1000),
+// so even a short (race-sized) run covers every kind; the random steps follow.
+func (sc *epScenario) prefix(t *testing.T) {
+	t.Helper()
+	sc.plain = true
+	defer func() { sc.plain = false }()
+	targets := make([]int64, 0, len(epPrefixOps))
+	for range epPrefixOps {
+		sc.run(t, 0, 0)
+		targets = append(targets, sc.ids[len(sc.ids)-1])
+	}
+	for i, op := range epPrefixOps {
+		if op == 10 && !sc.temporal {
+			continue // reimport only runs (and is only required) with the envelope indexes
+		}
+		sc.run(t, op, targets[i])
+	}
+}
+
 func (sc *epScenario) step(t *testing.T) {
+	t.Helper()
+	op := sc.rng.IntN(13)
+	if len(sc.ids) < 3 || op >= 11 || op == 10 && (!sc.temporal || len(sc.deleted) == 0) {
+		op = 0 // about a third of the steps add
+	}
+	sc.run(t, op, 0)
+}
+
+// run performs op (step's switch arm) on target, or on a random entity when
+// target is 0; a reimport takes the newest deleted ID when target is set.
+func (sc *epScenario) run(t *testing.T, op int, target int64) {
 	t.Helper()
 	ctx := context.Background()
 	g := sc.g
@@ -245,18 +282,26 @@ func (sc *epScenario) step(t *testing.T) {
 	}
 	val := func() string { return sc.values[sc.rng.IntN(len(sc.values))] }
 	now := sc.tick()
-	pick := func() int64 { return sc.ids[sc.rng.IntN(len(sc.ids))] }
-	op := sc.rng.IntN(13)
-	if len(sc.ids) < 3 || op >= 11 || op == 10 && (!sc.temporal || len(sc.deleted) == 0) {
-		op = 0 // about a third of the steps add
+	pick := func() int64 {
+		if target != 0 {
+			return target
+		}
+		return sc.ids[sc.rng.IntN(len(sc.ids))]
+	}
+	window := func() (types.Instant, types.Instant) {
+		if target != 0 {
+			return now, now + 1000
+		}
+		a := sc.minX + types.Instant(sc.rng.IntN(int(now-sc.minX)+1))
+		return a, a + types.Instant(1+sc.rng.IntN(4000))
 	}
 	switch op {
 	case 0, 1:
 		props := map[string]any{epProp: val(), "n": int64(sc.rng.IntN(100))}
-		if sc.rng.IntN(4) == 0 {
+		if sc.rng.IntN(4) == 0 && !sc.plain {
 			delete(props, epProp)
 		}
-		if sc.rng.IntN(3) == 0 {
+		if sc.rng.IntN(3) == 0 && !sc.plain {
 			props["tkg_valid_from"] = now - types.Instant(sc.rng.IntN(5000))
 			if sc.rng.IntN(2) == 0 {
 				props["tkg_valid_to"] = now + types.Instant(1+sc.rng.IntN(5000))
@@ -305,6 +350,9 @@ func (sc *epScenario) step(t *testing.T) {
 		}
 	case 10: // re-import a deleted ID valid from far later (its old rows stay in history)
 		i := sc.rng.IntN(len(sc.deleted))
+		if target != 0 {
+			i = len(sc.deleted) - 1
+		}
 		id := sc.deleted[i]
 		sc.deleted = append(sc.deleted[:i], sc.deleted[i+1:]...)
 		props := map[string]any{epProp: val(), "tkg_valid_from": now + 1_000_000 + types.Instant(sc.rng.IntN(20_000))}
@@ -324,16 +372,14 @@ func (sc *epScenario) step(t *testing.T) {
 			must("close", g.Nodes.CloseVersion(ctx, types.NodeID(pick()), now+types.Instant(sc.rng.IntN(3000))))
 		}
 	case 6:
-		a := sc.minX + types.Instant(sc.rng.IntN(int(now-sc.minX)+1))
-		b := a + types.Instant(1+sc.rng.IntN(4000))
+		a, b := window()
 		if sc.rel {
 			must("excise", g.Temporal.ExciseRelValidity(ctx, types.RelID(pick()), a, b))
 		} else {
 			must("excise", g.Temporal.ExciseNodeValidity(ctx, types.NodeID(pick()), a, b))
 		}
 	case 7:
-		a := sc.minX + types.Instant(sc.rng.IntN(int(now-sc.minX)+1))
-		b := a + types.Instant(1+sc.rng.IntN(4000))
+		a, b := window()
 		var err error
 		if sc.rel {
 			_, err = g.Temporal.SetRelVersionInterval(ctx, types.RelID(pick()), a, b, map[string]any{epProp: val()})
@@ -419,6 +465,7 @@ func epDifferential(t *testing.T, be txbBackend, rel, early, temporalIdx bool, s
 		pin, _ := g.Temporal.NowTx()
 		epWalk(t, g, rel, temporal.Pin{Tx: pin}, "e0", 2, nil) // opens the ordered views
 	}
+	sc.prefix(t)
 	for i := 0; i < steps; i++ {
 		sc.step(t)
 		if !early && temporalIdx && i == steps/2 {
@@ -462,7 +509,7 @@ func epDifferential(t *testing.T, be txbBackend, rel, early, temporalIdx bool, s
 		}
 	}
 	for _, op := range []string{"add", "update", "delete", "close", "excise", "interval", "retract", "reimport"} {
-		if sc.ops[op] == 0 && !testing.Short() && (op != "reimport" || temporalIdx) {
+		if sc.ops[op] == 0 && (op != "reimport" || temporalIdx) {
 			t.Errorf("generator never ran %s (ops %v)", op, sc.ops)
 		}
 	}

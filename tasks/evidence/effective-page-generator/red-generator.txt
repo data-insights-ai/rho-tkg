@@ -1,0 +1,77 @@
+--- FAIL: TestEffectivePage_DifferentialRandom (0.00s)
+    --- FAIL: TestEffectivePage_DifferentialRandom/memory/rel=true/early=false/seed=0 (0.07s)
+        effective_page_test.go:390: generator never ran interval (ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5])
+        effective_page_test.go:390: 300 page walks, ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5]
+    --- FAIL: TestEffectivePage_DifferentialRandom/memory/rel=true/early=true/seed=0 (0.08s)
+        effective_page_test.go:390: generator never ran interval (ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5])
+        effective_page_test.go:390: 300 page walks, ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5]
+    --- FAIL: TestEffectivePage_DifferentialRandom/badger/rel=true/early=true/seed=0 (0.23s)
+        effective_page_test.go:390: generator never ran interval (ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5])
+        effective_page_test.go:390: 300 page walks, ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5]
+    --- FAIL: TestEffectivePage_DifferentialRandom/badger/rel=true/early=false/seed=0 (0.24s)
+        effective_page_test.go:390: generator never ran interval (ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5])
+        effective_page_test.go:390: 300 page walks, ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5]
+    --- FAIL: TestEffectivePage_DifferentialRandom/sharded/rel=true/early=false/seed=0 (0.80s)
+        effective_page_test.go:390: generator never ran interval (ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5])
+        effective_page_test.go:390: 300 page walks, ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5]
+    --- FAIL: TestEffectivePage_DifferentialRandom/tiered/rel=true/early=true/seed=0 (0.80s)
+        effective_page_test.go:390: generator never ran interval (ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5])
+        effective_page_test.go:390: 300 page walks, ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5]
+    --- FAIL: TestEffectivePage_DifferentialRandom/sharded/rel=true/early=true/seed=0 (0.81s)
+        effective_page_test.go:390: generator never ran interval (ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5])
+        effective_page_test.go:390: 300 page walks, ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5]
+    --- FAIL: TestEffectivePage_DifferentialRandom/tiered/rel=true/early=false/seed=0 (0.82s)
+        effective_page_test.go:390: generator never ran interval (ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5])
+        effective_page_test.go:390: 300 page walks, ops map[add:9 close:2 delete:1 excise:1 retract:2 touch:1 update:5]
+--- FAIL: TestEffectivePage_ValidPruneDifferential (0.01s)
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=true/seed=0 (0.06s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=2/memory/rel=true/early=true/seed=0 (0.07s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=1/memory/rel=true/early=false/seed=0 (0.07s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=2/memory/rel=true/early=false/seed=0 (0.06s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=false/seed=0 (0.26s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=2/badger/rel=true/early=false/seed=0 (0.26s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=2/badger/rel=true/early=true/seed=0 (0.26s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=1/badger/rel=true/early=true/seed=0 (0.33s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=true/seed=0 (0.81s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=false/seed=0 (0.85s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=1/sharded/rel=true/early=true/seed=0 (0.86s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=1/tiered/rel=true/early=false/seed=0 (0.86s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=2/sharded/rel=true/early=true/seed=0 (0.86s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=2/sharded/rel=true/early=false/seed=0 (0.80s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=2/tiered/rel=true/early=false/seed=0 (0.79s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+    --- FAIL: TestEffectivePage_ValidPruneDifferential/mode=2/tiered/rel=true/early=true/seed=0 (0.72s)
+        effective_page_valid_prune_test.go:178: generator never ran interval (ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6])
+        effective_page_valid_prune_test.go:178: 300 page walks, ops map[add:7 close:3 delete:1 excise:1 reimport:1 retract:3 touch:1 update:6]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.298s
+FAIL
