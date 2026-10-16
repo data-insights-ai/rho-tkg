@@ -129,14 +129,34 @@ func versionOrdered[T storeutil.TemporalRow](chain []T) []T {
 	return out
 }
 
-// preCorrectionChain is the chain a valid-time correction resolves against:
-// history then current (non-nil: a deleted entity is refused before), in
-// version order (versionOrdered, the resolver's input contract). The cascade
-// kernels and the caller-instant pre-flight build it here.
-func preCorrectionChain[T storeutil.TemporalRow](history []T, current T) []T {
+// chainRow is a stored entity row a chain holds (*types.Node,
+// *types.Relationship): comparable, so a nil current row is told apart.
+type chainRow interface {
+	comparable
+	storeutil.TemporalRow
+}
+
+// chainOf is THE "history ‖ current" chain builder (lesson 84): a fresh slice
+// of the history rows as stored, then the current row when there is one (a
+// deleted or unknown entity has none). It never reorders: the resolvers sort
+// themselves (versionOrdered), and the legacy ValidFrom migration and the
+// any-version doors read the stored order.
+func chainOf[T chainRow](history []T, current T) []T {
 	chain := make([]T, 0, len(history)+1)
 	chain = append(chain, history...)
-	return versionOrdered(append(chain, current))
+	var none T
+	if current != none {
+		chain = append(chain, current)
+	}
+	return chain
+}
+
+// preCorrectionChain is the chain a valid-time correction resolves against:
+// chainOf (current non-nil: a deleted entity is refused before) in version
+// order (versionOrdered, the resolver's input contract). The cascade kernels
+// and the caller-instant pre-flight build it here.
+func preCorrectionChain[T chainRow](history []T, current T) []T {
+	return versionOrdered(chainOf(history, current))
 }
 
 // chainWriteOrder is the comparator of a chain's write order: by life, then

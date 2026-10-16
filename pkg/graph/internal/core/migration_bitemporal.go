@@ -124,11 +124,7 @@ func (c *Core) migrateNodeHistoryClearInheritedValidFrom() error {
 			// Skip — entity may have been deleted; history alone is OK.
 			current = nil
 		}
-		chain := make([]*types.Node, 0, len(hist)+1)
-		chain = append(chain, hist...)
-		if current != nil {
-			chain = append(chain, current)
-		}
+		chain := chainOf(hist, current)
 		for i := 1; i < len(chain); i++ {
 			v := chain[i]
 			tm := v.Temporal()
@@ -187,11 +183,7 @@ func (c *Core) migrateRelHistoryClearInheritedValidFrom() error {
 		if err != nil {
 			current = nil
 		}
-		chain := make([]*types.Relationship, 0, len(hist)+1)
-		chain = append(chain, hist...)
-		if current != nil {
-			chain = append(chain, current)
-		}
+		chain := chainOf(hist, current)
 		for i := 1; i < len(chain); i++ {
 			v := chain[i]
 			tm := v.Temporal()
