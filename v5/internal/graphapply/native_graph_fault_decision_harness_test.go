@@ -865,8 +865,19 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 			return nativeProtocolDecisionRetire(f, ch, cancel, tx)
 		}
 	}
+	observe := func(stage string, actor uint64, mode graphReadMode, cut graphCut) p06Observation {
+		completed := false
+		defer func() {
+			if !completed && len(campaign) == 1 {
+				t.Logf("P04 certified observation interrupted: stage%q actor%d pid%d mode%d certificates%d readStarts%d", stage, actor, f.n.all[actor].cmd.Process.Pid, mode, len(cut.certificates), f.reads)
+			}
+		}()
+		result := p06Observe(f, actor, mode, cut)
+		completed = true
+		return result
+	}
 	nativeFaultSeed(t, f)
-	old := p06Observe(f, 6, graphReadFresh, graphCut{})
+	old := observe("initial-old", 6, graphReadFresh, graphCut{})
 	cut, err := pairedFaultCut(old.Cut)
 	if err != nil {
 		t.Fatal(err)
@@ -1115,9 +1126,9 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 	if result.decision.commit {
 		f.trace.OperationMapping = append(f.trace.OperationMapping, lifecycleOperationMap{Logical: "edge-create", Round: result.decision.round})
 	}
-	current := p06Observe(f, 6, graphReadFresh, graphCut{})
+	current := observe("after-first-decision-current", 6, graphReadFresh, graphCut{})
 	p06AssertView(t, current.View, result.decision.commit, false, false)
-	retained := p06Observe(f, 6, graphReadAt, cut)
+	retained := observe("after-first-decision-old", 6, graphReadAt, cut)
 	if !reflect.DeepEqual(old, retained) {
 		t.Fatal("decision race substituted current at old cut")
 	}
@@ -1148,7 +1159,7 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 	killed := f.kill(bOwner, "replica")
 	f.elect(bOwner, 5)
 	rejoined := f.replace(bOwner)
-	reopened := p06Observe(f, bOwner, graphReadAt, cut)
+	reopened := observe("after-coordinator-replacement-old", bOwner, graphReadAt, cut)
 	if !reflect.DeepEqual(old, reopened) {
 		t.Fatal("same-directory old cut changed")
 	}
@@ -1162,7 +1173,7 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 	} else {
 		nativeConjunctionReconnect(f, bOwner)
 	}
-	reopenedCurrent := p06Observe(f, bOwner, graphReadFresh, graphCut{})
+	reopenedCurrent := observe("after-coordinator-replacement-current", bOwner, graphReadFresh, graphCut{})
 	if !reflect.DeepEqual(current.Native, reopenedCurrent.Native) {
 		t.Fatal("replacement changed first-decision participant effects")
 	}

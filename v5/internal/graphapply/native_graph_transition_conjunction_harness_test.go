@@ -385,6 +385,7 @@ func (f *pairedGraphFaultNetwork) call(p *graphProcess, request processRequest) 
 	defer cancel()
 	response, transport := p.exchange(ctx, request)
 	if err := errors.Join(transport, processResponseError(response), ctx.Err()); err != nil {
+		f.t.Logf("fresh failed native RPC context: targetPID%d requestOp%d entity%d index%d sequence%d incarnation%x applied%d code%d causes%x detail%q", p.cmd.Process.Pid, request.op, request.entity, request.index, response.sequence, response.incarnation, response.applied, response.code, response.causeMask, response.detail[:min(len(response.detail), 4096)])
 		f.t.Fatal("fresh fixture actual native RPC", request.op, err)
 	}
 	return response
