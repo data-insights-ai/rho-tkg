@@ -40,7 +40,7 @@ type fullContinuation struct {
 	query        [32]byte
 	key          graphstate.ComponentKey
 	posting      postingKey
-	relationship graphstate.EntityID
+	relationship graphstate.EntityID // index pages: last owner emitted; posting.name: last source row key consumed
 	bytes        int
 	current      *fullCurrentCursor
 }

@@ -63,7 +63,13 @@ func rangeMoveInstallComponent(p *pageStage, d RangeMoveDescriptor, next *RangeM
 	componentWire := key[:len(key)-12]
 	fresh := !bytes.Equal(next.component, componentWire)
 	var meta componentMeta
+	// The first record of a component replaces the target's whole prior copy
+	// (a range that left and returns); index rows follow from both copies.
+	var replaced []state.Cell
 	if fresh {
+		if _, e := p.componentCells(component, func(c state.Cell) (bool, error) { replaced = append(replaced, c); return false, nil }); e != nil {
+			return e
+		}
 		id, e := p.reserve()
 		if e != nil {
 			return e
@@ -121,6 +127,13 @@ func rangeMoveInstallComponent(p *pageStage, d RangeMoveDescriptor, next *RangeM
 		return err
 	}
 	p.q.full.descriptor.keys = tree
+	written := make([]state.Cell, 0, len(snapshot.Pieces()))
+	for _, piece := range snapshot.Pieces() {
+		written = append(written, piece.Cell())
+	}
+	if err = p.stageIndexRows(component, replaced, written); err != nil {
+		return err
+	}
 	return p.budget()
 }
 

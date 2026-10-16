@@ -279,3 +279,122 @@ func TestRangeMoveExportRefusesRangeHoldingEvidence(t *testing.T) {
 		t.Fatal("range holding evidence was exported", err)
 	}
 }
+
+// Index rows are derived data: the destination re-derives them from the moved
+// components; the source keeps its rows exactly as it keeps the moved components.
+func TestRangeMoveCarriesIndexRows(t *testing.T) {
+	sources, d, binding, cfg, stores := transactionViewFixture(t)
+	all, err := temporal.All(binding.Axis())
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := func(views []*raftlog.ApplicationView, at uint64, ops ...graphstate.Operation) []*raftlog.ApplicationView {
+		t.Helper()
+		v, _, err := OpenPartitionTransactionView(t.Context(), views, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		revision, _ := state.NewRevision(at, 1)
+		template, _, err := PlanPartitionTransaction(t.Context(), v, ops, revision)
+		if err = errors.Join(err, v.Close()); err != nil {
+			t.Fatal(err)
+		}
+		next := transactionInstallTemplate(t, views, stores, template, revision)
+		for i := range next {
+			if next[i] == nil {
+				next[i] = views[i]
+			}
+		}
+		return next
+	}
+	op := func(kind graphstate.OperationKind, owner graphstate.EntityID, name string, value graphstate.Scalar, id graphstate.ValueID) graphstate.Operation {
+		return graphstate.Operation{Kind: kind, Owner: owner, Life: graphstate.LifeID(owner + 1), Scope: all, Name: name, Value: value, ValueID: id}
+	}
+	// Range [1,16] moves from partition 3 to 8; node 17 stays on 8. Node 1's
+	// value 20 lives on the destination; node 17's value 6 moves with the range.
+	views := apply(sources, 10,
+		op(graphstate.CreateNode, 1, "", graphstate.Scalar{}, 0), op(graphstate.CreateNode, 3, "", graphstate.Scalar{}, 0), op(graphstate.CreateNode, 9, "", graphstate.Scalar{}, 0), op(graphstate.CreateNode, 17, "", graphstate.Scalar{}, 0),
+		op(graphstate.AddLabel, 1, "L", graphstate.Scalar{}, 0), op(graphstate.AddLabel, 3, "L", graphstate.Scalar{}, 0), op(graphstate.AddLabel, 17, "L", graphstate.Scalar{}, 0),
+		op(graphstate.Set, 1, "p", graphstate.I64(3), 20), op(graphstate.Set, 3, "p", graphstate.I64(7), 7), op(graphstate.Set, 9, "p", graphstate.I64(4), 6), op(graphstate.Set, 17, "p", graphstate.I64(4), 6))
+	views = apply(views, 20, op(graphstate.RemoveLabel, 3, "L", graphstate.Scalar{}, 0), op(graphstate.Unset, 3, "p", graphstate.Scalar{}, 0))
+	f3, err := graphstate.F64(3.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(view *raftlog.ApplicationView) (label, three, four, seven []graphstate.EntityID) {
+		t.Helper()
+		v, _, err := OpenPartitionGraphReadView(t.Context(), view, d, binding, cfg, Limits{}, GraphLimits{}, transactionTestBudget())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer v.Close()
+		return labelIDs(t, v, "L", 1), eqIDs(t, v, graphstate.Node, "p", f3, graphstate.Declared, 1), eqIDs(t, v, graphstate.Node, "p", graphstate.I64(4), graphstate.Declared, 1), eqIDs(t, v, graphstate.Node, "p", graphstate.I64(7), graphstate.Declared, 1)
+	}
+	type rows struct{ label, three, four, seven []graphstate.EntityID }
+	check := func(name string, view *raftlog.ApplicationView, want rows) {
+		t.Helper()
+		var got rows
+		got.label, got.three, got.four, got.seven = read(view)
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s index rows: got %v want %v", name, got, want)
+		}
+	}
+	sourceRows := rows{ids(1), ids(1), ids(9), ids()}
+	check("source before", views[0], sourceRows)
+	check("destination before", views[1], rows{ids(17), ids(), ids(17), ids()})
+
+	descriptor := rangeMoveTestSeal(t, views[0], rangeMoveTestPlan(t, views, d, binding, cfg))
+	target := views[1]
+	progress, _, err := BeginRangeMoveImport(t.Context(), target, descriptor, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for step := 0; !progress.PreparationComplete; step++ {
+		if step > 64 {
+			t.Fatal("preparation did not finish")
+		}
+		e, _, err := AdvanceRangeMoveImportPreparation(t.Context(), target, descriptor, progress, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		next := rangeMoveTestCommit(t, stores[1], e)
+		if target != views[1] {
+			_ = target.Close()
+		}
+		target, progress = next, e.Next
+	}
+	var cursor RangeMoveCursor
+	for step := 0; !progress.Complete; step++ {
+		if step > 4096 {
+			t.Fatal("transfer did not terminate")
+		}
+		page, _, err := ExportRangeMovePage(t.Context(), views[0], descriptor, cursor, raftlog.ReadBudget{Rows: 1, Bytes: 4160}, Limits{}, GraphLimits{}, transactionTestOutput(t))
+		if err != nil {
+			t.Fatal("export", step, err)
+		}
+		e, _, err := StageRangeMovePage(t.Context(), target, descriptor, progress, page, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+		if err != nil {
+			t.Fatal("stage", step, page.Kind, err)
+		}
+		next := rangeMoveTestCommit(t, stores[1], e)
+		if target != views[1] {
+			_ = target.Close()
+		}
+		target, progress, cursor = next, e.Next, page.Next
+	}
+	sealed, _, err := FinishRangeMoveImport(t.Context(), target, descriptor, progress, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	effects, _, err := ActivateRangeMoveImport(t.Context(), target, descriptor, sealed, Limits{}, GraphLimits{}, transactionTestBudget(), transactionTestOutput(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := EncodeRoot(effects.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activated := ownershipView(t, stores[1], ownershipInstallRaw(t, stores[1], image, effects.Writes))
+	check("destination after", activated, rows{ids(1, 17), ids(1), ids(9, 17), ids()})
+	check("source after", views[0], sourceRows)
+}

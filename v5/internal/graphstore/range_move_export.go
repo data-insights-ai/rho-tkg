@@ -895,7 +895,8 @@ func ExportRangeMovePage(ctx context.Context, source ApplicationReadSource, d Ra
 	}()
 	if fresh {
 		// Recorded evidence is not carried by range moves yet: refuse rather than
-		// move the range and silently drop it.
+		// move the range and silently drop it. Index rows are derived data: the
+		// destination re-derives them from the moved components.
 		var probe RangeMoveCursor
 		if _, held, e := rangeMoveCatalogNext(q, d, &probe, evidenceRecord); e != nil {
 			return page, work, e

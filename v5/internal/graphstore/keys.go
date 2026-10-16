@@ -33,6 +33,7 @@ var recordKinds = []recordKind{
 	componentKeyTreeRecord, componentIndexDescriptorRecord,
 	uniquePostingRecord, canonicalIncidentRecord, declaredIncidentRecord,
 	currentPresenceRecord, ownershipDeclarationRecord, evidenceRecord,
+	labelPostingRecord, equalityPostingRecord,
 	associationHeadRecord, associationRevisionRecord, associationPostingRecord, associationPrimaryRecord,
 	rangeMoveFragmentRecord,
 }
