@@ -1231,7 +1231,14 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 	killed := f.kill(bOwner, "replica")
 	f.elect(bOwner, 5)
 	rejoined := f.replace(bOwner)
-	reopened := observe("after-coordinator-replacement-old", bOwner, graphReadAt, cut)
+	var reopened p06Observation
+	if program != nil {
+		// A replacement has a new client stream. Preserve its own local C
+		// source and select an actually unused remote service before At(C).
+		reopened = nativeP06InitialLocalOld(f, bOwner, cut)
+	} else {
+		reopened = observe("after-coordinator-replacement-old", bOwner, graphReadAt, cut)
+	}
 	if !reflect.DeepEqual(old, reopened) {
 		t.Fatal("same-directory old cut changed")
 	}
@@ -1240,20 +1247,56 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 	if localErr != nil || localStatus != result.decision || len(localDecision.changes) != 0 {
 		t.Fatal("replacement local retained first-D differs", localErr, localStatus)
 	}
-	if len(campaign) == 0 {
+	recoveryActor := bOwner
+	if program != nil {
+		// The replacement's lost client cursor cannot be reused against A's
+		// unchanged old service. The surviving elected successor owns its actual
+		// stream and resumes the identical business original, while the local C
+		// and D checks above separately prove the replacement's recovered state.
+		recoveryActor = 5
+		nativeConjunctionReconnect(f, recoveryActor)
+		configuration := call(f.n.all[recoveryActor], processRequest{op: processCertifiedRead, entity: uint64(observeConfiguration)})
+		f.n.group(recoveryActor).enqueue(t, configuration)
+		f.drainGroup(f.n.group(recoveryActor))
+		state := call(f.n.all[recoveryActor], processRequest{op: processStateOp})
+		if !state.ready || state.incarnation != configuration.incarnation || state.sequence <= configuration.sequence {
+			t.Fatal("actual successor leader-only native ReadIndex incomplete")
+		}
+		request, encodeErr := encodeProcessRequest(processRequest{incarnation: configuration.incarnation, sequence: configuration.sequence, op: processCertifiedRead, entity: uint64(observeConfiguration)})
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		proof, encodeErr := json.Marshal(struct {
+			Member, PID, EventID              uint64
+			Instance                          string
+			ReadRequest, Configuration, State []byte
+		}{recoveryActor, uint64(f.n.all[recoveryActor].cmd.Process.Pid), f.event(), pairedFaultInstance(recoveryActor, f.n.all[recoveryActor]), request, p06ProcessWire(t, configuration), p06ProcessWire(t, state)})
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(rejoined.Raw, &raw); err != nil {
+			t.Fatal(err)
+		}
+		raw["DecisionRecovery"] = proof
+		rejoined.Raw, err = json.Marshal(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else if len(campaign) == 0 {
 		p03Reconnect(f, bOwner) // Subsequent Fresh/Run require actual leader ReadIndex.
 	} else {
 		nativeConjunctionReconnect(f, bOwner)
 	}
-	reopenedCurrent := observe("after-coordinator-replacement-current", bOwner, graphReadFresh, graphCut{})
+	reopenedCurrent := observe("after-coordinator-replacement-current", recoveryActor, graphReadFresh, graphCut{})
 	if !reflect.DeepEqual(current.Native, reopenedCurrent.Native) {
 		t.Fatal("replacement changed first-decision participant effects")
 	}
 	start := f.indexes()
-	response = call(f.n.all[bOwner], processRequest{op: processSourceCoordinate, data: b.wire})
+	response = call(f.n.all[recoveryActor], processRequest{op: processSourceCoordinate, data: b.wire})
 	recoveredResult, replayErr := decodeGraphProcessCoordinatorResult(response)
 	if replayErr != nil || recoveredResult.decision != result.decision {
-		t.Fatal("replacement changed same original decision", replayErr, recoveredResult)
+		t.Fatal("recovery caller changed same original decision", replayErr, recoveredResult)
 	}
 	f.drain()
 	end := f.indexes()
@@ -1263,7 +1306,7 @@ func nativeDecisionCaseOwned(t *testing.T, order string, programSpec *nativeProt
 			t.Fatal("replacement original replay emitted CDC")
 		}
 	}
-	duplicates = append(duplicates, nativeDecisionRetry{Actor: bOwner, Original: b.wire, Response: p06ProcessWire(t, response), From: start, Through: end, Records: tail})
+	duplicates = append(duplicates, nativeDecisionRetry{Actor: recoveryActor, Original: b.wire, Response: p06ProcessWire(t, response), From: start, Through: end, Records: tail})
 	through := f.indexes()
 	captureMu.Lock()
 	actualCapacity := capacity

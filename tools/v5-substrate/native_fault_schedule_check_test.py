@@ -5,6 +5,7 @@ import base64
 import hashlib
 import importlib.util
 import json
+import struct
 from pathlib import Path
 import tempfile
 import unittest
@@ -15,6 +16,56 @@ SPEC.loader.exec_module(C)
 
 
 class NativeFaultGrammar(unittest.TestCase):
+    def test_program_decision_recovery_requires_actual_successor_request_and_same_original(self):
+        # Canonical process-codec guard only, never native election/history
+        # qualification. The full parent checks actual raw prefix and processes.
+        encoded = lambda wire: base64.b64encode(wire).decode()
+        field = lambda wire: struct.pack(">I", len(wire))+wire
+        def response(incarnation, sequence, *, ready=1, code=0, mask=0, applied=30):
+            stats = [0]*28
+            stats[1], stats[2], stats[3], stats[4] = applied, 3, 5, applied
+            return (incarnation+struct.pack(">28Q", *stats)+bytes(64)+struct.pack(">QI", 0, 0)+field(b"")
+                    +struct.pack(">BQQBH", ready, sequence, applied, code, mask)+field(b"")
+                    +bytes(8)+field(b"same-native-root")+field(b"")+field(b"")
+                    +struct.pack(">BQI", 0, 0, 0)+field(b""))
+        proof = dict(Member=5, PID=321, EventID=12, Instance="voter5/pid321/"+(b"s"*16).hex(),
+                     ReadRequest=encoded(b"s"*16+struct.pack(">QBQQIQQBI", 2, 29, 0, 1, 0, 0, 0, 0, 0)),
+                     Configuration=encoded(response(b"s"*16, 2, ready=0)), State=encoded(response(b"s"*16, 3)))
+        data = dict(OriginalB=encoded(b"same-business-original"),
+                    Processes=[{},dict(EventID=11, Volume="/owned/cohort/6", RecoveryRaw=encoded(response(b"r"*16, 8)),
+                                      Raw=encoded(json.dumps(dict(DecisionRecovery=proof)).encode()))],
+                    Duplicates=[{}, {}, dict(Actor=5, Original=encoded(b"same-business-original"), Response=encoded(response(b"s"*16, 20)))])
+        cohort=[]
+        for member in range(1,7):
+            pid=321 if member==5 else 400+member
+            instance=proof["Instance"] if member==5 else f"voter{member}/pid{pid}/"+bytes([member]*16).hex()
+            raw=dict(Member=member,PID=pid,Instance=instance,Volume=f"/owned/cohort/{member}",Reaped=True,Signaled=False,Signal="clean-exit",ExitCode=0,Success=True)
+            cohort.append(dict(Member=member,EventID=20+member,Action="stop",Instance=instance,Volume=raw["Volume"],Reaped=True,Signal="clean-exit",Raw=encoded(json.dumps(raw).encode())))
+        self.assertEqual(C.decision_recovery_actor(data,6,program_roles=dict(leaders=(2,6)),cohort=cohort),5)
+        for mutate in (lambda p,d:p.update(Member=6), lambda p,d:p.update(PID=0),
+                       lambda p,d:p.update(EventID=10), lambda p,d:p.update(Instance="voter5/pid321/"+(b"x"*16).hex()),
+                       lambda p,d:p.update(Configuration=encoded(response(b"s"*16,2,code=3,mask=128))),
+                       lambda p,d:p.update(State=encoded(response(b"s"*16,3,ready=0))),
+                       lambda p,d:p.update(ReadRequest=encoded(b"s"*16+struct.pack(">QBQQIQQBI",2,29,0,2,0,0,0,0,0))),
+                       lambda p,d:d["Duplicates"][2].update(Actor=6),
+                       lambda p,d:d["Duplicates"][2].update(Original=encoded(b"changed-original")),
+                       lambda p,d:d["Duplicates"][2].update(Response=encoded(response(b"x"*16,20))),
+                       lambda p,d:p.update(State=encoded(response(b"s"*16,3,applied=31)))):
+            bad, changed = copy.deepcopy(data), copy.deepcopy(proof)
+            mutate(changed,bad)
+            bad["Processes"][1]["Raw"]=encoded(json.dumps(dict(DecisionRecovery=changed)).encode())
+            with self.assertRaises(ValueError): C.decision_recovery_actor(bad,6,program_roles=dict(leaders=(2,6)),cohort=cohort)
+        for mutate in (lambda c:c.pop(), lambda c:c[4].update(Member=6), lambda c:c[4].update(Instance="voter5/pid999/"+(b"s"*16).hex()),
+                       lambda c:c[4].update(Volume="/foreign/5"), lambda c:c[4].update(EventID=10), lambda c:c[4].update(Reaped=False)):
+            bad=copy.deepcopy(cohort);mutate(bad)
+            with self.assertRaises(ValueError): C.decision_recovery_actor(data,6,program_roles=dict(leaders=(2,6)),cohort=bad)
+        literal=copy.deepcopy(data)
+        literal["Processes"][1]["Raw"]=encoded(b"{}")
+        self.assertEqual(C.decision_recovery_actor(literal,4),4)
+        with self.assertRaises(ValueError): C.decision_recovery_actor(data,4)
+        with self.assertRaises(ValueError): C.decision_recovery_actor(literal,6,program_roles=dict(leaders=(2,6)),cohort=cohort)
+        with self.assertRaises(ValueError): C.decision_recovery_actor(data,6,program_roles=dict(leaders=(2,6)))
+
     def receipt(self):
         return dict(Version=1,Profile=C.PROFILE,Cookie=[1]+[0]*15,Member=1,PID=321,Sequence=1,Arms=1,
                     Kind="short-write",Nth=1,Seen=1,Armed=False,Matched=True,

@@ -399,7 +399,58 @@ def decision_capacity(boundary, scopes, a, b, conflict, *, source_voter=1):
     return index, prepare["proof_wires"][0]
 
 
-def decision_check(data, *, program_roles=None):
+def decision_recovery_actor(data, owner, *, program_roles=None, cohort=None):
+    restored = json.loads(P.raw(data["Processes"][1]["Raw"]))
+    proof = restored.get("DecisionRecovery")
+    if program_roles is None:
+        require(proof is None and cohort is None, "literal decision retry cannot adopt program successor")
+        return owner
+    require(type(proof) is dict and set(proof) == {"Member", "PID", "EventID", "Instance", "ReadRequest", "Configuration", "State"}, "actual decision recovery successor proof")
+    require(program_leaders(program_roles)[1] == owner and type(proof["Member"]) is int and proof["Member"] == 5 and owner != 5 and
+            type(proof["PID"]) is int and proof["PID"] > 0 and type(proof["EventID"]) is int and proof["EventID"] > data["Processes"][1]["EventID"],
+            "actual separately elected surviving successor member/chronology")
+    # Lazy reuse avoids a module-import cycle: the owning D parser itself uses
+    # this shared full-history checker. No second process codec is introduced.
+    spec = importlib.util.spec_from_file_location("decision_recovery_process", Path(__file__).with_name("native_fault_family_check.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    configuration, state = (module.process(P.raw(proof[k])) for k in ("Configuration", "State"))
+    recovered = module.process(P.raw(data["Processes"][1]["RecoveryRaw"]))
+    q = P.Cursor(P.raw(proof["ReadRequest"]))
+    require(q.take(16) == configuration["incarnation"] and q.number() == configuration["sequence"] and q.number(1) == 29 and q.number() == 0 and q.number() == 1 and not q.field(),
+            "exact successor leader-only observeConfiguration request")
+    require(q.number() == q.number() == q.number(1) == 0 and not q.field(), "successor request invented native packet")
+    q.end()
+    require(configuration["code"] == configuration["mask"] == state["code"] == state["mask"] == 0 and
+            configuration["incarnation"] == state["incarnation"] and configuration["sequence"] < state["sequence"] and state["ready"] == 1 and
+            proof["Instance"] == f'voter5/pid{proof["PID"]}/{state["incarnation"].hex()}' and state["stats"][2] > 0 and
+            configuration["applied"] <= state["applied"] == state["stats"][1] <= state["stats"][4] and
+            recovered["applied"] == state["applied"] and recovered["image"] == state["image"],
+            "actual successor completed leader-only native ReadIndex/process binding")
+    retry = data["Duplicates"][2]
+    require(retry["Actor"] == 5 and P.raw(retry["Original"]) == P.raw(data["OriginalB"]), "successor must retain identical business original")
+    response = module.process(P.raw(retry["Response"]))
+    require(response["incarnation"] == state["incarnation"] and response["sequence"] > state["sequence"] and response["code"] == response["mask"] == 0,
+            "SAME original retry belongs to actual surviving successor incarnation")
+    require(type(cohort) is list and len(cohort) == 6, "complete actual successor terminal process cohort")
+    directory = Path(data["Processes"][1]["Volume"]).parent
+    for member, row in enumerate(cohort, 1):
+        raw = json.loads(P.raw(row["Raw"]))
+        require(type(row["Member"]) is int and row["Member"] == raw["Member"] == member and
+                type(raw["PID"]) is int and raw["PID"] > 0 and row["Action"] == "stop" and
+                row["Reaped"] is raw["Reaped"] is raw["Success"] is True and
+                row["Signal"] == raw["Signal"] == "clean-exit" and raw["Signaled"] is False and raw["ExitCode"] == 0 and
+                row["Instance"] == raw["Instance"] and row["Volume"] == raw["Volume"] == str(directory / str(member)) and
+                row["Instance"].startswith(f'voter{member}/pid{raw["PID"]}/') and
+                type(row["EventID"]) is int and row["EventID"] > proof["EventID"],
+                "actual successor complete clean-stop identity/volume/chronology")
+        if member == 5:
+            require(raw["PID"] == proof["PID"] and row["Instance"] == proof["Instance"],
+                    "successor ReadIndex/retry must join actual stopped OS process")
+    return 5
+
+
+def decision_check(data, *, program_roles=None, decision_recovery_cohort=None):
     order, queue = data["Case"], data["Queue"]
     a_voter, b_voter = (1, 4) if program_roles is None else program_leaders(program_roles)
     require(data["Version"] == 2 and data["Profile"] == DECISION_PROFILE, "fresh queued version")
@@ -469,7 +520,9 @@ def decision_check(data, *, program_roles=None):
     require(len(data["Pending"]) == 2, "queued pending caller census")
     for encoded in data["Pending"]:
         P.resumed(encoded, scopes, b["source"]["request"], b["tx"], P.business_hash(b["wire"], 8), 1, b"")
-    require(len(data["Duplicates"]) == 3 and [r["Actor"] for r in data["Duplicates"]] == [3, b_voter, b_voter], "same original/replacement retry census")
+    require(len(data["Duplicates"]) == 3, "same original/replacement retry count")
+    recovery_actor = decision_recovery_actor(data, b_voter, program_roles=program_roles, cohort=decision_recovery_cohort)
+    require([r["Actor"] for r in data["Duplicates"]] == [3, b_voter, recovery_actor], "same original/replacement retry census")
     for retry, original, decision_wire in zip(data["Duplicates"], (a, b, b), (decision_a, decision_b, decision_b)):
         require(P.raw(retry["Original"]) == original["wire"], "duplicate imported a replacement original")
         P.resumed(retry["Response"], scopes, original["source"]["request"], original["tx"], P.business_hash(original["wire"], original["coordinator"]), 0, decision_wire)

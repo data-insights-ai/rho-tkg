@@ -1163,7 +1163,7 @@ def check_frozen(a, *, program_roles=None):
         require(status["tx"] == manifest_fields(manifest)[0][0] and status["phase"] == r["Phase"] and
                 status["digest"] == hashlib.sha256(manifest).digest() and status["index"] <= event["Index"], "actual installed original/current replay joins native entry")
     T.semantic(e["TargetReopened"] == d["Before"], "P04-replacement-local-old-cut-data-index")
-    result = C.C.decision_check(d, program_roles=source_roles) # Full two-original/first-D/CDC/exact graph/index and serial checks.
+    result = C.C.decision_check(d, program_roles=source_roles, decision_recovery_cohort=e["ProgramCohort"] if program_roles is not None else None) # Full two-original/first-D/CDC/exact graph/index and serial checks.
     return dict(case=a["Case"], records=len(prefix), serial_witness=result["serial_witness"], scope="P04 actual OS-child frozen refusals and queue order plus selected native transition; source-only")
 
 
