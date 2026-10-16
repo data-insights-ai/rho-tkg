@@ -564,11 +564,7 @@ func (c *Core) nodeAtFullChain(rd entityReads, id types.NodeID, current *types.N
 		return nil, storepkg.ErrNodeNotFound
 	}
 
-	chain := make([]*types.Node, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
+	chain := chainOf(history, current)
 
 	return c.resolveNodeChain(chain, chainProbe{kind: probePoint, validAt: validAt, tx: txAt}, nil)
 }
@@ -727,11 +723,7 @@ func (c *Core) relAtFromCurrent(rd entityReads, id types.RelID, current *types.R
 		return nil, storepkg.ErrRelNotFound
 	}
 
-	chain := make([]*types.Relationship, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
+	chain := chainOf(history, current)
 
 	return c.resolveRelChain(chain, chainProbe{kind: probePoint, validAt: validAt, tx: txAt}, nil)
 }

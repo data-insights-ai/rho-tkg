@@ -451,11 +451,7 @@ func (c *Core) nodeEffectiveTimelineFrom(rd entityReads, id types.NodeID, pin ty
 	if current == nil && len(history) == 0 {
 		return nil, storepkg.ErrNodeNotFound
 	}
-	chain := make([]*types.Node, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
+	chain := chainOf(history, current)
 	var facts *headFacts
 	if epoch != 0 {
 		facts = &headFacts{}
@@ -519,11 +515,7 @@ func (c *Core) relEffectiveTimelineFrom(rd entityReads, id types.RelID, pin type
 	if current == nil && len(history) == 0 {
 		return nil, storepkg.ErrRelNotFound
 	}
-	chain := make([]*types.Relationship, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
+	chain := chainOf(history, current)
 	var facts *headFacts
 	if epoch != 0 {
 		facts = &headFacts{}

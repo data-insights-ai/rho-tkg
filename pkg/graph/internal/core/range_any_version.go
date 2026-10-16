@@ -132,12 +132,7 @@ func (c *Core) nodeChainOf(id types.NodeID) ([]*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	chain := make([]*types.Node, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
-	return chain, nil
+	return chainOf(history, current), nil
 }
 
 // relChainOf is nodeChainOf for a relationship.
@@ -151,12 +146,7 @@ func (c *Core) relChainOf(id types.RelID) ([]*types.Relationship, error) {
 	if err != nil {
 		return nil, err
 	}
-	chain := make([]*types.Relationship, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
-	return chain, nil
+	return chainOf(history, current), nil
 }
 
 // anyVersionArgs validates a door's arguments; scope is the retention scope

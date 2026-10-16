@@ -96,10 +96,7 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 	if err != nil {
 		return nil, err
 	}
-	chain := hist
-	if current != nil {
-		chain = append(append(make([]*types.Node, 0, len(hist)+1), hist...), current)
-	}
+	chain := chainOf(hist, current)
 	return c.resolveNodeChain(chain, chainProbe{kind: probeAsOf, tx: txTime, asOfCurrent: current != nil}, nil)
 }
 
@@ -175,10 +172,7 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 	if err != nil {
 		return nil, err
 	}
-	chain := hist
-	if current != nil {
-		chain = append(append(make([]*types.Relationship, 0, len(hist)+1), hist...), current)
-	}
+	chain := chainOf(hist, current)
 	return c.resolveRelChain(chain, chainProbe{kind: probeAsOf, tx: txTime, asOfCurrent: current != nil}, nil)
 }
 

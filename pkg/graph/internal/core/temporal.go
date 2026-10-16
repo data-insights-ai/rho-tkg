@@ -1399,11 +1399,7 @@ func (c *Core) findNodeVersionMatchingDuringTx(id types.NodeID, start, end, txAt
 		return nil, storepkg.ErrNodeNotFound
 	}
 
-	chain := make([]*types.Node, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
+	chain := chainOf(history, current)
 
 	return c.resolveNodeChain(chain, chainProbe{kind: probeInterval, validStart: start, validEnd: end, tx: txAt}, pred)
 }
@@ -1430,11 +1426,7 @@ func (c *Core) findRelVersionMatchingDuringTx(id types.RelID, start, end, txAt t
 		return nil, storepkg.ErrRelNotFound
 	}
 
-	chain := make([]*types.Relationship, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
+	chain := chainOf(history, current)
 
 	return c.resolveRelChain(chain, chainProbe{kind: probeInterval, validStart: start, validEnd: end, tx: txAt}, pred)
 }
@@ -1462,11 +1454,7 @@ func (c *Core) findNodeVersionRelating(id types.NodeID, qStart, qEnd types.Insta
 		return nil, storepkg.ErrNodeNotFound
 	}
 
-	chain := make([]*types.Node, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
+	chain := chainOf(history, current)
 
 	return c.resolveNodeChain(chain, chainProbe{kind: probeRelate, validStart: qStart, validEnd: qEnd, rels: rels}, pred)
 }
@@ -1488,11 +1476,7 @@ func (c *Core) findRelVersionRelating(id types.RelID, qStart, qEnd types.Instant
 		return nil, storepkg.ErrRelNotFound
 	}
 
-	chain := make([]*types.Relationship, 0, len(history)+1)
-	chain = append(chain, history...)
-	if current != nil {
-		chain = append(chain, current)
-	}
+	chain := chainOf(history, current)
 
 	return c.resolveRelChain(chain, chainProbe{kind: probeRelate, validStart: qStart, validEnd: qEnd, rels: rels}, pred)
 }
