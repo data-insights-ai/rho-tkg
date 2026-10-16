@@ -143,6 +143,60 @@ func TestNativeProtocolStateActionKeepsActualRetainedOwnership(t *testing.T) {
 	}
 }
 
+func TestNativeProtocolStateHeldSnapshotKeepsCumulativeProjectionBudget(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	n := collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
+		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 256<<20, 131072
+	}, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4})
+	_, publisher, _, _ := retainedPublisherFromNetwork(t, n)
+	owner, err := beginRetainedFeed(ctx, publisher, n.requestID(), graphReadRequest{mode: graphReadFresh}, 1, retainedFeedGuardPolicy(nativeProtocolStatePages))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := owner.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if _, err := owner.Publish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	read, err := owner.OpenSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := read.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	before, count := nativeProtocolStateSnapshotBudgets(read)
+	again, sameCount := nativeProtocolStateSnapshotBudgets(read)
+	if count != 2 || sameCount != count || before != again {
+		t.Fatal("passive diagnostic mutated actual source ledger", before, again, count, sameCount)
+	}
+	for i := range 2 {
+		work := read.Work()
+		if _, err := nativeTransitionPinProjectionFor(ctx, publisher.coordinator.host, read, true); err != nil {
+			budgets, count := nativeProtocolStateSnapshotBudgets(read)
+			t.Fatalf("projection%d workBefore=%+v workAfter=%+v sources=%+v: %v", i, work, read.Work(), budgets[:count], err)
+		}
+		after, afterCount := nativeProtocolStateSnapshotBudgets(read)
+		if afterCount != count {
+			t.Fatal("projection replaced actual retained sources", before, after)
+		}
+		for source := range count {
+			prior, actual := before[source], after[source]
+			if actual.Partition != prior.Partition || actual.Voter != prior.Voter || actual.CookieSequence != prior.CookieSequence || actual.Calls <= prior.Calls || actual.Rows <= prior.Rows || actual.Bytes <= prior.Bytes || actual.OutputLeft >= prior.OutputLeft || actual.MaxCalls != prior.MaxCalls || actual.MaxRows != prior.MaxRows || actual.MaxBytes != prior.MaxBytes || actual.PageRows != prior.PageRows || actual.PageBytes != prior.PageBytes {
+				t.Fatal("projection reset budget or replaced source", prior, actual)
+			}
+		}
+		t.Logf("genuine projection%d workBefore=%+v workAfter=%+v budgets=%+v", i, work, read.Work(), after[:afterCount])
+		before = after
+	}
+}
+
 func TestNativeProtocolStateReplayBarrierRequiresNewNativeInstallation(t *testing.T) {
 	n, coordinator, ops, claims, _ := coordinatorNativeFixture(t)
 	id := n.requestID()

@@ -413,11 +413,20 @@ func (o *nativeProtocolStateOwner) serve(caller context.Context, wire []byte) ([
 		case "publish":
 			o.token, err = o.feed.Publish(operation)
 		case "snapshot":
+			held := o.snapshot != nil
 			if o.snapshot == nil {
 				o.snapshot, err = o.feed.OpenSnapshot(o.ctx)
+				if err != nil {
+					err = fmt.Errorf("state snapshot open held=%t: %w", held, err)
+				}
 			}
 			if err == nil {
+				before := o.snapshot.Work()
 				r.Snapshot, err = nativeTransitionPinProjectionFor(operation, o.h, o.snapshot, true)
+				if err != nil {
+					budgets, count := nativeProtocolStateSnapshotBudgets(o.snapshot)
+					err = fmt.Errorf("state snapshot projection held=%t workBefore=%+v workAfter=%+v sources=%+v: %w", held, before, o.snapshot.Work(), budgets[:count], err)
+				}
 			}
 		case "snapshot-close":
 			if o.snapshot != nil {
@@ -481,6 +490,44 @@ func (o *nativeProtocolStateOwner) serve(caller context.Context, wire []byte) ([
 	o.reply, o.lastError, o.busy = bytes.Clone(body), err, false
 	o.mu.Unlock()
 	return body, err
+}
+
+// Passive, bounded diagnostics of the SAME held sources. No native RPC, quota
+// reservation, renewal or new read is performed. Every mutex is released before
+// the caller can issue another operation or format the failure.
+type nativeProtocolStateSnapshotBudget struct {
+	Partition, Voter, CookieSequence uint64
+	Calls, MaxCalls, Rows, MaxRows   int
+	Bytes, MaxBytes, OutputLeft      int
+	PageRows, PageBytes              int
+}
+
+func nativeProtocolStateSnapshotBudgets(read *certifiedGraphRead) (out [16]nativeProtocolStateSnapshotBudget, count int) {
+	if read == nil {
+		return out, 0
+	}
+	read.mu.Lock()
+	defer read.mu.Unlock()
+	for i := 0; i < len(read.sources) && i < len(out); i++ {
+		source := read.sources[i]
+		if wrapper, ok := source.(*retainedFeedSnapshotSource); ok {
+			source = wrapper.certifiedGraphSource
+		}
+		remote, ok := source.(*remoteGraphSource)
+		if !ok || remote == nil || remote.endpoint == nil || remote.endpoint.budget == nil || count == len(out) {
+			continue
+		}
+		e := remote.endpoint
+		b := e.budget
+		b.mu.Lock()
+		out[count] = nativeProtocolStateSnapshotBudget{Partition: e.peer.scope.partition, Voter: e.peer.voter, CookieSequence: remote.info.cookie.sequence, Calls: b.calls, MaxCalls: b.maxCalls, Rows: b.rows, MaxRows: b.maxRows, Bytes: b.bytes, MaxBytes: b.maxBytes, PageRows: remote.info.limits.Rows, PageBytes: remote.info.limits.Bytes}
+		if b.output != nil {
+			out[count].OutputLeft = b.output.Remaining()
+		}
+		b.mu.Unlock()
+		count++
+	}
+	return out, count
 }
 
 // Complete refers only to the SAME <=4 requested native keys, never a claimed
