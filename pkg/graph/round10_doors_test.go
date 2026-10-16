@@ -1171,7 +1171,7 @@ func TestRound10ClassCountsExact(t *testing.T) {
 }
 
 // TestRound10ExciseNegativeStart: an excise may start at a negative instant
-// and at types.UnboundedValidFrom (a real bound since v4.59.0, as on the read doors since v4.58.1); 0 stays
+// and at types.UnboundedValidFrom (a real bound since sigma round 10, as on the read doors since v4.58.1); 0 stays
 // refused (no stored piece can start at the unset valid-from).
 func TestRound10ExciseNegativeStart(t *testing.T) {
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {

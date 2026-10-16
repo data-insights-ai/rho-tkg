@@ -19,7 +19,7 @@ import (
 // without store.NodePropertyBoundsCapability or a wrapper that only inherits
 // it (nativeCapability), an unknown label, or a temporal QueryOpts (the index
 // holds current values). Sharded and tiered fold their parts' bounds (each
-// part read at its own moment; ok=false when any part declines; v4.59.0). Errors: a malformed label or key, ErrGraphClosed.
+// part read at its own moment; ok=false when any part declines; sigma round 10). Errors: a malformed label or key, ErrGraphClosed.
 func (s *StatOps) PropertyBounds(label, propKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error) {
 	c := s.c
 	var zero storepkg.PropertyBounds

@@ -105,7 +105,7 @@ func (n *NodeOps) RangeCardinality(label, propKey string, min, max float64, incl
 
 // relRangeCardinalityScanner is the OPTIONAL store capability behind
 // RelOps.RangeCardinality — the relationship mirror of nodeRangeCardinalityScanner
-// (memory, badger, sharded and, since v4.59.0, tiered).
+// (memory, badger, sharded and, since sigma round 10, tiered).
 type relRangeCardinalityScanner interface {
 	RelRangeCardinality(relTypeToken uint16, propKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error)
 }

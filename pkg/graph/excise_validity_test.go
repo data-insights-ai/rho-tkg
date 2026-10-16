@@ -266,7 +266,7 @@ func TestExciseNodeValidity(t *testing.T) {
 				{"empty", closed.ID(), k(20), k(20), graphpkg.ErrInvalidTimeRange},
 				{"open tail b=0", closed.ID(), k(20), 0, graphpkg.ErrInvalidTimeRange},
 				{"a=0", closed.ID(), 0, k(20), graphpkg.ErrInvalidTimeRange},
-				// A negative a is a real start since v4.59.0 (TestRound10ExciseNegativeStart).
+				// A negative a is a real start since sigma round 10 (TestRound10ExciseNegativeStart).
 				{"nothing valid", closed.ID(), k(60), k(70), graphpkg.ErrNoVersionValidAt},
 				{"before the first version", closed.ID(), k(1), k(10), graphpkg.ErrNoVersionValidAt},
 				{"the hole again", hole, k(21), k(29), graphpkg.ErrNoVersionValidAt},

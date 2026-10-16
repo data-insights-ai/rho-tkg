@@ -194,7 +194,7 @@ func (s *StatOps) PropertyTypeClassCounts(label, propertyKey string) (storepkg.P
 // r.prop LIMIT k push-down. Missing = RelCountByType − Present. Backends without
 // store.RelPropertyTypeClassCountsCapability return
 // storepkg.ErrCapabilityNotSupported (every in-tree backend has it since
-// v4.59.0; sharded and tiered sum their parts).
+// sigma round 10; sharded and tiered sum their parts).
 func (s *StatOps) RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
 	c := s.c
 	var zero storepkg.PropertyTypeClassCounts

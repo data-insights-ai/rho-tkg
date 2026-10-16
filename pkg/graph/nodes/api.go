@@ -503,7 +503,7 @@ func (a *API) ForEachByLabelPropertyRange(label, propKey string, min, max float6
 // Sharded merges its slots' walks lazily in the same order (a LIMIT reads
 // about k rows per slot), tiered reads each shard's rows in range and merges
 // them (a LIMIT bounds what fn gets, not what is read); a part without a
-// usable index fails the walk (since v4.59.0, sharded and tiered refused
+// usable index fails the walk (since sigma round 10, sharded and tiered refused
 // before).
 // A TEMPORAL QueryOpts combination is served by a sound full fold (values resolved
 // at the pin, sorted by value-at-t) — correct over a past belief/valid state,
@@ -530,7 +530,7 @@ func (a *API) ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max
 // Sharded merges its slots' walks lazily in the same order (a LIMIT reads
 // about k rows per slot), tiered reads each shard's rows in range and merges
 // them (a LIMIT bounds what fn gets, not what is read); a part without a
-// usable index fails the walk (since v4.59.0, sharded and tiered refused
+// usable index fails the walk (since sigma round 10, sharded and tiered refused
 // before).
 // A TEMPORAL QueryOpts combination is served by a sound full fold (values resolved
 // at the pin, sorted lexicographically) — correct over a past belief/valid state,

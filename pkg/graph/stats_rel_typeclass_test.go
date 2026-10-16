@@ -114,7 +114,7 @@ func TestRelPropertyTypeClassCounts_Reopen(t *testing.T) {
 }
 
 // TestRelPropertyTypeClassCounts_Tiered: tiered folds its shards' exact
-// counters (v4.59.0; it declined before): relationships between reference
+// counters (sigma round 10; it declined before): relationships between reference
 // and event nodes (a cross-shard relationship's row lives on one shard),
 // counted once each, follow an update and a delete.
 func TestRelPropertyTypeClassCounts_Tiered(t *testing.T) {

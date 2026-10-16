@@ -860,7 +860,7 @@ func (a *API) SetRelVersionIntervalWithTx(ctx context.Context, id types.RelID, v
 //
 // Refusals, nothing written: b == 0 (an open tail is CloseVersion's), a == 0
 // or a >= b (ErrInvalidTimeRange; a negative a, types.UnboundedValidFrom
-// included, is a real start since v4.59.0); no version valid anywhere in [a, b)
+// included, is a real start since sigma round 10); no version valid anywhere in [a, b)
 // (ErrNoVersionValidAt); an unknown node (ErrNodeNotFound); a hard-deleted one
 // (ErrEntityDeleted). Twins with the same rules: GraphTx.ExciseNodeValidity
 // and BatchBuilder.ExciseNodeValidity.

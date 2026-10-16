@@ -202,12 +202,12 @@ func relBoundsOracle(t *testing.T, g *graphpkg.Graph, typeName, key string) boun
 // current rows (bounds, the stored value at each, the class partition with
 // Missing) through creates, updates that move the minimum and maximum away,
 // deletes of the extreme rows, label changes, and an index built over
-// existing rows (tiered and sharded fold their shards' bounds since v4.59.0;
+// existing rows (tiered and sharded fold their shards' bounds since sigma round 10;
 // tiered's nodes here span the reference and an event shard).
 func TestPropertyBounds(t *testing.T) {
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
-		native := true // every in-tree backend states bounds (sharded and tiered fold their parts, v4.59.0)
+		native := true // every in-tree backend states bounds (sharded and tiered fold their parts, sigma round 10)
 		if err := g.Index().CreateProperty("Ref", "v"); err != nil {
 			t.Fatal(err)
 		}

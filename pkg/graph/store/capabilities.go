@@ -979,7 +979,7 @@ type NodePropertyTypeClassCountsCapability interface {
 
 // RelPropertyTypeClassCountsCapability is OPTIONAL: the relationship mirror, the
 // gate for the rel ORDER BY r.prop LIMIT k push-down. Memory, badger, sharded
-// (slot counters summed) and tiered (shard counters summed, v4.59.0) implement
+// (slot counters summed) and tiered (shard counters summed, sigma round 10) implement
 // it.
 type RelPropertyTypeClassCountsCapability interface {
 	RelPropertyTypeClassCounts(relTypeToken uint16, propertyKey string) (PropertyTypeClassCounts, error)

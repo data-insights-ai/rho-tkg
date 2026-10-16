@@ -226,7 +226,7 @@ func TestCapabilitiesOf_MatchesServedCalls(t *testing.T) {
 					t.Errorf("%s: CapabilitiesOf reports %v, the call serves %v", c.flag, c.report, c.call)
 				}
 				if !c.call {
-					t.Errorf("%s: not served on %s (every in-tree backend serves it since v4.59.0)", c.flag, name)
+					t.Errorf("%s: not served on %s (every in-tree backend serves it since sigma round 10)", c.flag, name)
 				}
 			}
 		})

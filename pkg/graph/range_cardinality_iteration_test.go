@@ -155,10 +155,10 @@ func rangeCardinalityMatchesIteration(t *testing.T, opts graphpkg.PropertyIndexO
 					}{
 						{"nodes", nodeVals, func() (int64, bool, error) {
 							return g.Nodes().RangeCardinality("P", "v", lo, hi, il, ih, graphpkg.QueryOpts{})
-						}, nodeErr == nil && b.name != "tiered"},
+						}, nodeErr == nil}, // tiered sums its shards since round 10
 						{"rels", relVals, func() (int64, bool, error) {
 							return g.Rels().RangeCardinality("R", "v", lo, hi, il, ih, graphpkg.QueryOpts{})
-						}, relIndexed && b.name != "tiered"},
+						}, relIndexed},
 					} {
 						got, exact, err := side.count()
 						if err != nil {

@@ -510,7 +510,7 @@ func (a *API) ForEachByTypePropertyRange(typeName, propKey string, min, max floa
 // Non-temporal opts use the index-backed fast path and return
 // store.ErrIndexNotFound when no usable rel property index exists for (type,
 // propKey). Sharded and tiered merge their parts' walks in the same order
-// (nodes.API.ForEachByLabelPropertyRangeOrdered, since v4.59.0). A TEMPORAL QueryOpts combination is served by a sound full fold
+// (nodes.API.ForEachByLabelPropertyRangeOrdered, since sigma round 10). A TEMPORAL QueryOpts combination is served by a sound full fold
 // (values resolved at the pin, sorted by value) — correct over a past
 // belief/valid state, needs no index. Same relaxed isolation and frozen-row
 // contract as ForEachByType.
@@ -527,7 +527,7 @@ func (a *API) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, m
 // index, NO rel scan: two prefix sums on an index created with
 // PropertyIndexOptions.RangeCounts (O(log chunks) plus at most 512 counts
 // each), else the walk over the range's distinct values (the default); sharded
-// and tiered sum their parts' counts (since v4.59.0 on tiered). exact=false
+// and tiered sum their parts' counts (since sigma round 10 on tiered). exact=false
 // declines (the caller scans-and-counts) when the fast path is unusable: no
 // store capability, no/poisoned index on a part, or a temporal filter in opts. The relationship mirror
 // of nodes.API.RangeCardinality (rule 2) and the rel ordering-soundness primitive
@@ -670,7 +670,7 @@ func (a *API) CountByTypePropertyValue(typeName, propKey string, value any, opts
 // Non-temporal opts use the index-backed fast path and return
 // store.ErrIndexNotFound when no usable rel property index exists for (type,
 // propKey). Sharded and tiered merge their parts' walks in the same order
-// (nodes.API.ForEachByLabelPropertyRangeOrdered, since v4.59.0). A TEMPORAL QueryOpts combination is served by a sound full fold
+// (nodes.API.ForEachByLabelPropertyRangeOrdered, since sigma round 10). A TEMPORAL QueryOpts combination is served by a sound full fold
 // (values resolved at the pin, sorted lexicographically) — correct over a past
 // belief/valid state, needs no index. Same relaxed isolation and frozen-row
 // contract as ForEachByType.
