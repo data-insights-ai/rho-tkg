@@ -89,19 +89,10 @@ func (bs *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 		bs.idxMu.Unlock()
 		return err
 	}
-	backfill.Range(func(vk string, ids []snowflake.ID) bool {
-		for _, id := range ids {
-			if _, mutated := liveIdx.Mutated[id]; mutated {
-				continue // concurrent write handled this ID during Phase 2
-			}
-			if _, alive := bs.relIDs[types.RelID(id)]; !alive {
-				continue // rel deleted during Phase 2
-			}
-			liveIdx.AddKey(id, vk)
-		}
-		return true
+	_ = liveIdx.FinishBuild(backfill, func(id snowflake.ID) (bool, error) {
+		_, alive := bs.relIDs[types.RelID(id)] // a rel deleted during Phase 2 is skipped
+		return alive, nil
 	})
-	liveIdx.Mutated = nil // stop tracking — index creation complete
 	bs.persistRelPropertyIndexDefs()
 	bs.idxMu.Unlock()
 	return bs.flushIfNeeded()

@@ -104,27 +104,9 @@ func (ms *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, property
 	if err := requireRelPropertyIndexCurrentForCreate(ms.relPropertyIndexes, key, liveIdx); err != nil {
 		return err
 	}
-	var mergeErr error
-	backfill.Range(func(vk string, ids []snowflake.ID) bool {
-		for _, id := range ids {
-			if _, mutated := liveIdx.Mutated[id]; mutated {
-				continue // concurrent write handled this ID during Phase 2
-			}
-			if alive, err := ms.relExistsLocked(types.RelID(id)); err != nil {
-				mergeErr = err
-				return false
-			} else if !alive {
-				continue // relationship deleted during Phase 2
-			}
-			liveIdx.AddKey(id, vk)
-		}
-		return true
+	return liveIdx.FinishBuild(backfill, func(id snowflake.ID) (bool, error) {
+		return ms.relExistsLocked(types.RelID(id)) // a rel deleted during Phase 2 is skipped
 	})
-	if mergeErr != nil {
-		return mergeErr
-	}
-	liveIdx.Mutated = nil // stop tracking — index creation complete
-	return nil
 }
 
 // requireRelPropertyIndexCurrentForCreate mirrors requirePropertyIndexCurrentForCreate

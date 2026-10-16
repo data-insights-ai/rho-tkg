@@ -124,21 +124,10 @@ func (bs *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 		bs.idxMu.Unlock()
 		return bs.flushIfNeeded()
 	}
-	backfill.Range(func(vk string, ids []snowflake.ID) bool {
-		for _, id := range ids {
-			if _, mutated := liveIdx.Mutated[id]; mutated {
-				continue // concurrent write handled this ID during Phase 2
-			}
-			if _, alive := bs.nodeIDs[types.NodeID(id)]; !alive {
-				continue // node deleted during Phase 2
-			}
-			// AddKey, not a direct Entries write — the index's ordered
-			// numeric view is maintained inside AddKey.
-			liveIdx.AddKey(id, vk)
-		}
-		return true
+	_ = liveIdx.FinishBuild(backfill, func(id snowflake.ID) (bool, error) {
+		_, alive := bs.nodeIDs[types.NodeID(id)] // a node deleted during Phase 2 is skipped
+		return alive, nil
 	})
-	liveIdx.Mutated = nil // stop tracking — index creation complete
 	bs.persistPropertyIndexDefs()
 	bs.idxMu.Unlock()
 	return bs.flushIfNeeded()

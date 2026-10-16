@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **An `Elements` index created over existing list values keyed only one element per row** (memory, badger, sharded;
+  found by WP-31). The build's merge skipped an entity's later keys because adding its first key marked the entity as
+  written concurrently, so `ByLabelAndProperty(label, key, x)` missed rows whose list held `x` at another position until
+  the row was rewritten (a row written after the create was always right). One merge, `PropertyIndex.FinishBuild`, now
+  serves the node and relationship builds of memory and badger and ends tracking before merging
+  (`TestElementsIndexBackfillIndexesEveryElement`). Nothing persisted changes. Existing stores: an Elements index created
+  over existing lists before this release can keep the missing keys (badger and sharded restore the index from the open
+  image of a clean close); drop and re-create it, or open once after an unclean close, which rebuilds it from the rows.
+
 ## [4.57.1] - 2026-10-16
 
 ### Changed

@@ -110,22 +110,10 @@ func (ms *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	if err := requirePropertyIndexCurrentForCreate(ms.propertyIndexes, key, liveIdx); err != nil {
 		return err
 	}
-	backfill.Range(func(vk string, ids []snowflake.ID) bool {
-		for _, id := range ids {
-			if _, mutated := liveIdx.Mutated[id]; mutated {
-				continue // concurrent write handled this ID during Phase 2
-			}
-			if _, alive := ms.nodes[types.NodeID(id)]; !alive {
-				continue // node deleted during Phase 2
-			}
-			// AddKey, not a direct Entries write — the index's ordered
-			// numeric view is maintained inside AddKey.
-			liveIdx.AddKey(id, vk)
-		}
-		return true
+	return liveIdx.FinishBuild(backfill, func(id snowflake.ID) (bool, error) {
+		_, alive := ms.nodes[types.NodeID(id)] // a node deleted during Phase 2 is skipped
+		return alive, nil
 	})
-	liveIdx.Mutated = nil // stop tracking — index creation complete
-	return nil
 }
 
 // labelNodeIDsSnapshotLocked returns a slice copy of the label's current node
