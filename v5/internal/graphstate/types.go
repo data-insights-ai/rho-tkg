@@ -258,6 +258,29 @@ type EntityPage struct {
 	Complete bool
 }
 
+// EqualityPredicate selects owners of one kind whose property Name holds a
+// value Cypher-equal to Value (I64(3) meets F64(3.0), see Scalar.EqualityKey).
+// Null never matches. Declared pages are raw index rows; Effective pages hide a
+// relationship whose life-bound endpoint life (or identity-referenced endpoint)
+// has no present Presence left. Neither takes a temporal position: callers
+// recheck at theirs. Nodes are never masked.
+type EqualityPredicate struct {
+	Owner      EntityKind
+	Name       string
+	Value      Scalar
+	Visibility Visibility
+}
+
+// IndexView is the index-page capability of a complete read view: entity IDs
+// in ascending order, each once, bounded by rows and bytes, with an opaque
+// cursor that is valid only on the view that issued it. It is separate from
+// ReadView because the planner never needs it.
+type IndexView interface {
+	// LabelMembers lists nodes holding label in any life (labels are node-only).
+	LabelMembers(context.Context, string, Cursor, ReadBudget) (EntityPage, error)
+	EqualityMembers(context.Context, EqualityPredicate, Cursor, ReadBudget) (EntityPage, error)
+}
+
 // ReadView must bind all records/pages to Identity and Graph. The embedding
 // storage provides immutable snapshot meaning and verifies dependencies at
 // commit; matching local counters alone never establish a database cut.
