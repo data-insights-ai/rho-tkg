@@ -130,6 +130,9 @@ func TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement(t *
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := source.generation([16]byte{1}); !errors.Is(err, errInvalid) {
+		t.Fatal("retained owner accepted a placeholder generation", err)
+	}
 	r, err := store.retentionRecord(id)
 	if err != nil {
 		t.Fatal(err)
@@ -145,7 +148,8 @@ func TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, found, err := actual.Get(t.Context(), declaredRequestKey(h.machine.ns, graphOperations, old.request.identity()), graphOutcomeBytes)
+	key := declaredRequestKey(h.machine.ns, graphOperations, old.request.identity())
+	raw, found, err := actual.Get(t.Context(), key, len(key)+graphOutcomeBytes)
 	err = errors.Join(err, actual.Close())
 	if err != nil || !found {
 		t.Fatal(err)

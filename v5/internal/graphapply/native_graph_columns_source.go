@@ -361,7 +361,11 @@ func (s *nativeColumnSource) page(ctx context.Context, positions [2]uint64) (fra
 				return nil, [2]uint64{}, e
 			}
 			candidate := append(frames, frame)
-			generation, e := s.generation([16]byte{1})
+			id := [16]byte{1}
+			if s.retention != nil {
+				id = s.retention.id // The same authenticated owner, not a placeholder generation.
+			}
+			generation, e := s.generation(id)
 			if e != nil {
 				return nil, [2]uint64{}, e
 			}
@@ -498,6 +502,9 @@ func (s *nativeColumnSource) frame(ctx context.Context, group int, index uint64)
 		if e != nil || o.index > index {
 			return out, errors.Join(errCorrupt, e)
 		}
+		if isAllocationProtocolCommand(o.kind) {
+			return s.allocationMetadataFrame(ctx, group, out, o)
+		}
 		if o.kind == graphOperations && o.index == index && o.reason == reasonNone && o.disposition == applied && len(out.CDC) == 0 {
 			return out, errCorrupt
 		}
@@ -605,6 +612,107 @@ func (s *nativeColumnSource) frame(ctx context.Context, group int, index uint64)
 		}
 	}
 	return out, nil
+}
+
+// Allocation CDC retains its genuine control/routing bytes with no business
+// rows. A routing publication changes the effect root; lean control CDC does
+// not. Neither form may be mistaken for a GCD business change or discarded.
+func (s *nativeColumnSource) allocationMetadataFrame(ctx context.Context, group int, out nativeColumnFrame, o outcome) (nativeColumnFrame, error) {
+	v, h := s.views[group], s.hosts[group]
+	if out.Index < 2 || out.Partition != h.machine.ns.partition || o.index == 0 || o.index > out.Index || !isAllocationProtocolCommand(o.kind) || o.ns != h.machine.ns || len(out.Rows) != 0 || len(out.Registration) != 0 || len(out.OriginalOutcome) != 0 || len(out.OriginalCDC) != 0 {
+		return out, errCorrupt
+	}
+	actual, err := decodeDeclaredOutcome(out.Outcome, h.machine.ns)
+	if err != nil || actual != o {
+		return out, errors.Join(errCorrupt, err)
+	}
+	if o.index < out.Index {
+		if o.disposition != requestReplay || len(out.CDC) != 0 {
+			return out, errCorrupt
+		}
+		if err := s.replay(ctx, group, &out, o.index); err != nil {
+			return out, err
+		}
+		original, err := decodeDeclaredOutcome(out.OriginalOutcome, h.machine.ns)
+		if err != nil || original.disposition == requestReplay {
+			return out, errors.Join(errCorrupt, err)
+		}
+		expected := original
+		expected.disposition = requestReplay
+		if expected != o {
+			return out, errCorrupt
+		}
+		root, err := v.RootAt(ctx, original.index, 172)
+		if err != nil {
+			return out, err
+		}
+		return out, s.checkAllocationMetadata(ctx, group, original, out.OriginalOutcome, out.OriginalCDC, root.Image)
+	}
+	if o.disposition == requestReplay {
+		return out, errCorrupt
+	}
+	return out, s.checkAllocationMetadata(ctx, group, o, out.Outcome, out.CDC, out.Root[:])
+}
+
+func (s *nativeColumnSource) checkAllocationMetadata(ctx context.Context, group int, o outcome, original, cdc, image []byte) error {
+	h, v := s.hosts[group], s.views[group]
+	if !isAllocationProtocolCommand(o.kind) || o.ns != h.machine.ns || o.index < 2 {
+		return errCorrupt
+	}
+	before, err := v.RootAt(ctx, o.index-1, 172)
+	if err != nil {
+		return err
+	}
+	if len(cdc) == 0 {
+		if !bytes.Equal(before.Image, image) {
+			return errCorrupt
+		}
+		return nil
+	}
+	if o.disposition != applied || o.reason != reasonNone {
+		return errCorrupt
+	}
+	if bytes.Equal(cdc, original) {
+		if !bytes.Equal(before.Image, image) {
+			return errCorrupt
+		}
+		return nil
+	}
+	if o.kind != reserveDeclaredGrant && o.kind != installDeclaredGrant {
+		return errCorrupt
+	}
+	logical, err := decodeChangeEnvelopeLogical(cdc, o, h.machine.limits)
+	if err != nil {
+		return err
+	}
+	body, err := graphBody(logical, "RCD\x01", h.machine.limits.changeBytes)
+	if err != nil {
+		return err
+	}
+	c := graphCursor{b: body}
+	graph, partition, configuration := c.array(), c.u64(), c.take(32)
+	bound := c.field(graphOutcomeBytes)
+	publication, pe := graphstore.DecodeRangePublication(c.field(h.machine.limits.changeBytes))
+	owner, oe := graphstore.DecodeRangeOwnership(c.field(h.machine.limits.changeBytes))
+	if c.err != nil || len(c.b) != 0 || pe != nil || oe != nil || graph != [16]byte(o.ns.graph) || partition != o.ns.partition || !bytes.Equal(configuration, s.final[group].configuration[:]) || !bytes.Equal(bound, original) || publication.Graph != graphstate.GraphID(o.ns.graph) || publication.Configuration != s.final[group].configuration || publication.SourcePartition != s.configurations[group].home || owner.Check(publication, owner.Partition, owner.Epoch) != nil {
+		return errors.Join(errCorrupt, c.err, pe, oe)
+	}
+	if o.kind == reserveDeclaredGrant && (o.ns.partition != publication.SourcePartition || o.index != publication.SourceIndex) || o.kind == installDeclaredGrant && o.ns.partition != owner.Partition {
+		return errCorrupt
+	}
+	root, err := graphstore.DecodeRoot(before.Image)
+	if err != nil {
+		return err
+	}
+	root, err = root.AdvanceEffects(graphEffectDigest(root.EffectDigest(), logical))
+	if err != nil {
+		return err
+	}
+	expected, err := graphstore.EncodeRoot(root)
+	if err != nil || !bytes.Equal(expected, image) {
+		return errors.Join(errCorrupt, err)
+	}
+	return nil
 }
 
 func (s *nativeColumnSource) replay(ctx context.Context, group int, out *nativeColumnFrame, index uint64) error {
@@ -895,7 +1003,16 @@ func (s *nativeColumnSource) authenticateCut(ctx context.Context, cut graphCut, 
 		if err != nil {
 			return err
 		}
-		peer, err := boundedEncoding(256, func(w *boundedWriter) { w.add([]byte("NCP1")); w.field(scope); w.u64(remote.endpoint.peer.voter) })
+		peer, err := boundedEncoding(256, func(w *boundedWriter) {
+			if s.binding.Version == 2 {
+				w.add([]byte("NCP2")) // Durable binding follows the authenticated logical keeper.
+				w.field(scope)
+			} else {
+				w.add([]byte("NCP1"))
+				w.field(scope)
+				w.u64(remote.endpoint.peer.voter)
+			}
+		})
 		if err != nil {
 			return err
 		}

@@ -281,6 +281,28 @@ func TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor(
 		}
 		n.submitPartitionGraph(0, p, reasonNone)
 	}
+	// Replay one actual stored allocation command unchanged. Its immutable
+	// native original is still present; a new request/proof is never fabricated.
+	allocationReplay := false
+	for index := initial.certificates[0].sourceIndex + 1; index <= n.hosts[0][0].driver.Applied(); index++ {
+		entries, err := n.hosts[0][0].machine.store.Entries(index, index+1, 1<<20)
+		if err != nil || len(entries) != 1 {
+			t.Fatal("retained original entry", err)
+		}
+		data := entries[0].GetData()
+		if len(data) > 4 && bytes.Equal(data[:4], []byte("AQP\x01")) && commandKind(data[4]) == beginDeclaredRecipient {
+			event, err := n.hosts[0][0].Submit(allocationProposal{target: n.hosts[0][0].machine.scope(), wire: data})
+			if err != nil {
+				t.Fatal(err)
+			}
+			n.pump(0, event)
+			allocationReplay = true
+			break
+		}
+	}
+	if !allocationReplay {
+		t.Fatal("genuine allocation replay not installed")
+	}
 	set(5, 5)
 	old := cut()
 	policy := nativeColumnGuardPolicy()
@@ -289,6 +311,7 @@ func TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor(
 	var stores [2]*nativeColumnStore
 	var bindings [2]nativeColumnBinding
 	var manifests [2]nativeColumnManifest
+	var lean, routing, replays int
 	for g := range 2 {
 		c := &crossProcessCoordinator{host: n.hosts[g][0], transports: remote.transports, streams: remote.streams}
 		source, err := newPartitionNativeColumnSource(t.Context(), c, initial, old, policy)
@@ -306,6 +329,96 @@ func TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor(
 		if source.binding.Coverage != 1<<g || source.views[1-g] != nil || source.hosts[1-g] != nil {
 			t.Fatal("invented omitted native Host/source")
 		}
+		for index := source.initial[g].sourceIndex + 1; index <= source.final[g].sourceIndex; index++ {
+			frame, err := source.frame(t.Context(), g, index)
+			if err != nil {
+				t.Fatal("complete genuine source frame", index, err)
+			}
+			o, err := decodeDeclaredOutcome(frame.Outcome, source.hosts[g].machine.ns)
+			if err != nil || !isAllocationProtocolCommand(o.kind) {
+				continue
+			}
+			if len(frame.Rows) != 0 {
+				t.Fatal("allocation metadata invented business rows")
+			}
+			if o.index < index {
+				replays++
+				original, err := decodeDeclaredOutcome(frame.OriginalOutcome, o.ns)
+				if err != nil || original.index != o.index || original.identity != o.identity || original.hash != o.hash || original.disposition == requestReplay || len(frame.OriginalCDC) == 0 {
+					t.Fatal("allocation replay lost its actual original", err)
+				}
+				if index, err := nativeColumnOriginalIndex(frame.OriginalOutcome, o.ns); err != nil || index != o.index {
+					t.Fatal("allocation replay cannot retain its genuine original", index, err)
+				}
+				foreign := o.ns
+				foreign.partition++
+				if index, err := nativeColumnOriginalIndex(frame.OriginalOutcome, foreign); index != 0 || !errors.Is(err, errCorrupt) {
+					t.Fatal("retention accepted an original from a foreign namespace", index, err)
+				}
+				if index, err := nativeColumnOriginalIndex(frame.OriginalOutcome[:len(frame.OriginalOutcome)-1], o.ns); index != 0 || !errors.Is(err, errCorrupt) {
+					t.Fatal("retention accepted a malformed original", index, err)
+				}
+				zero := bytes.Clone(frame.OriginalOutcome[:len(frame.OriginalOutcome)-32])
+				clear(zero[77:85]) // GRO2's applied-index field; resealed adversarial bytes.
+				if index, err := nativeColumnOriginalIndex(seal(zero), o.ns); index != 0 || !errors.Is(err, errCorrupt) {
+					t.Fatal("retention accepted a zero-index original", index, err)
+				}
+				continue
+			}
+			if len(frame.CDC) == 0 {
+				continue
+			}
+			if bytes.Equal(frame.Outcome, frame.CDC) {
+				lean++
+			} else {
+				routing++
+				logical, err := decodeChangeEnvelopeLogical(frame.CDC, o, source.hosts[g].machine.limits)
+				if err != nil {
+					t.Fatal(err)
+				}
+				body, err := graphBody(logical, "RCD\x01", source.hosts[g].machine.limits.changeBytes)
+				if err != nil {
+					t.Fatal(err)
+				}
+				foreign := bytes.Clone(body)
+				foreign[24] ^= 1 // Validly resealed, foreign configuration in RCD1.
+				bad := frame
+				bad.CDC, err = encodeChangeEnvelope(o, seal(append([]byte("RCD\x01"), foreign...)), source.hosts[g].machine.limits)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := source.allocationMetadataFrame(t.Context(), g, bad, o); !errors.Is(err, errCorrupt) {
+					t.Fatal("routing metadata accepted a resealed foreign configuration", err)
+				}
+			}
+			bad := frame
+			bad.Rows = []nativeColumnRow{{Owner: 999}}
+			if _, err := source.allocationMetadataFrame(t.Context(), g, bad, o); !errors.Is(err, errCorrupt) {
+				t.Fatal("metadata accepted fabricated business rows", err)
+			}
+			bad = frame
+			bad.CDC = append(bytes.Clone(frame.CDC), 0)
+			if _, err := source.allocationMetadataFrame(t.Context(), g, bad, o); !errors.Is(err, errCorrupt) {
+				t.Fatal("metadata accepted altered CDC", err)
+			}
+			foreign := o
+			foreign.ns.partition++
+			if _, err := source.allocationMetadataFrame(t.Context(), g, frame, foreign); !errors.Is(err, errCorrupt) {
+				t.Fatal("metadata accepted foreign namespace", err)
+			}
+			logical, err := encodeTypedGraphChanges(graphChanges{ns: o.ns}, source.hosts[g].machine.limits, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bad = frame
+			bad.CDC, err = encodeChangeEnvelope(o, logical, source.hosts[g].machine.limits)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := source.allocationMetadataFrame(t.Context(), g, bad, o); !errors.Is(err, errCorrupt) {
+				t.Fatal("metadata accepted a forged business envelope", err)
+			}
+		}
 		manifests[g], err = store.publish(t.Context(), id, source)
 		if err != nil {
 			t.Fatal(err)
@@ -314,6 +427,9 @@ func TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor(
 		if manifests[g].Positions[1-g] != source.initial[1-g].sourceIndex || manifests[g].Frames != source.final[g].sourceIndex-source.initial[g].sourceIndex {
 			t.Fatal("omitted source claimed EOF", manifests[g])
 		}
+	}
+	if lean == 0 || routing == 0 || replays == 0 {
+		t.Fatal("missing genuine allocation control/routing/replay evidence", lean, routing, replays)
 	}
 	if err := nativeColumnJoinBoundaries(bindings, manifests); err != nil {
 		t.Fatal(err)

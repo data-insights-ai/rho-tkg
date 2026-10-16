@@ -352,9 +352,19 @@ func decodeChangeEnvelope(b []byte, o outcome, l materializerLimits) (graphChang
 	return decodeTypedChangeEnvelope(b, o, l, false)
 }
 func decodeTypedChangeEnvelope(b []byte, o outcome, l materializerLimits, declarations bool) (graphChanges, error) {
-	body, err := graphBody(b, "GCE\x01", l.changeBytes)
+	logical, err := decodeChangeEnvelopeLogical(b, o, l)
 	if err != nil {
 		return graphChanges{}, err
+	}
+	return decodeTypedGraphChanges(logical, o.ns, l, declarations)
+}
+
+// The borrowed logical body keeps the exact original-envelope binding for
+// graph changes and routing metadata. Its caller still validates its own codec.
+func decodeChangeEnvelopeLogical(b []byte, o outcome, l materializerLimits) ([]byte, error) {
+	body, err := graphBody(b, "GCE\x01", l.changeBytes)
+	if err != nil {
+		return nil, err
 	}
 	c := graphCursor{b: body}
 	kind := commandKind(c.tag())
@@ -364,7 +374,7 @@ func decodeTypedChangeEnvelope(b []byte, o outcome, l materializerLimits, declar
 	index := c.u64()
 	logical := c.field(l.changeBytes)
 	if c.err != nil || len(c.b) != 0 || kind != o.kind || id != o.identity || hash != o.hash || index != o.index {
-		return graphChanges{}, errCorrupt
+		return nil, errCorrupt
 	}
-	return decodeTypedGraphChanges(logical, o.ns, l, declarations)
+	return logical, nil
 }

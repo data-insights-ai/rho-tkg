@@ -480,7 +480,7 @@ func nativeColumnOriginalIndex(wire []byte, ns namespace) (uint64, error) {
 		}
 		return r.index, nil
 	}
-	r, err := decodePartitionGraphOutcome(wire, ns)
+	r, err := decodePartitionMappedOutcome(wire, ns)
 	if err != nil {
 		return 0, err
 	}
