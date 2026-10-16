@@ -1,0 +1,8 @@
+[
+  {
+    "case": "directory-sync-during-reopen",
+    "records": 5,
+    "serial_witness": [],
+    "scope": "fixed actual-source bridge; source-only until real process qualification; no power-loss or capacity claim"
+  }
+]

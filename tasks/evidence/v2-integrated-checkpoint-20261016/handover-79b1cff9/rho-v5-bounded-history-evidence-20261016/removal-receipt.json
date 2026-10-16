@@ -1,0 +1,24 @@
+{
+  "commit": "9f7109c875bf0b01040807f456025e58f66f49cb",
+  "parent": "a912294781e93ea64568642e9c0f3c96c9ab1702",
+  "tree": "/private/var/tmp/rho-v5-feed-observer-removal-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_harness_test.go",
+      "parent_blob": "5a6dc365c44144d85ad2f02c5e3d08cfc38e3283",
+      "parent_sha256": "60176e57385e402c9d0f3715f4f8609d68b65aaf6088eb94b34fe229bebc8404",
+      "blob": "f71fc173e00b8bb46d7b4eaca4b03f0fc9890b65",
+      "sha256": "89ce2b3b19a5cffe208cc7b8a5eeb4b7a5890c7a86cb7cdfcdfa1b3c6605edcf"
+    },
+    {
+      "path": "v5/internal/graphapply/retained_graph_feed_source.go",
+      "parent_blob": "ec2baedebc88424254852391f5a1f8b741d57fdd",
+      "parent_sha256": "b315634d9abf77d69efc8cde1121c4d4eb091cbae01830fcebf26f4e3f12d35f",
+      "blob": "ba47f18d23569d4f9d7ced228bdacd16e856977d",
+      "sha256": "54bb1d983ae05a81f73bdc42e427b0be923f06d29b9bda97765625a5b6c65a06"
+    }
+  ],
+  "verification": "pinned formatter and git diff --check; same three feed direct parents normal PASS3.008s",
+  "evidence": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/observer-removal.log",
+  "preserved": "endpoint original-cause %w, before-burn fields and Page failure context unchanged"
+}

@@ -1,0 +1,6 @@
+2026/10/16 10:25:52 Found 0 WALs
+--- FAIL: TestApplicationRecoveryStepBudgetChargesActualNativeRoot (0.00s)
+    application_recovery_pool_test.go:358: small actual RS4 must fit its funded native work {{0 0 0 0} {0 0 0 0}} {1 1906} raftlog: resource limit
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/raftlog	2.212s
+FAIL

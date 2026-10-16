@@ -1,0 +1,81 @@
+{
+  "commit": "d5a1c03e4ca7462f37cc7997dd8642edc83fd59b",
+  "parent": "bda73328fd6ba0ae08c6e0f2e48f3161f29d54ae",
+  "tree": "/private/var/tmp/rho-v5-recovery-step-work-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/retained_graph_feed_test.go",
+      "parent_blob": "d7cce0a96380824a0e839db68cdad2819411f607",
+      "parent_sha256": "73e9a5a81a2914cb13058176f5784e3f628d86f1e4c48e6d963cbba38aec913b",
+      "blob": "69ac252e35a74c2d536692699d086f5a74322099",
+      "sha256": "019bd19ad5533f736502bf0c8e39685022bafe4cee76895c7d177379abe8c568"
+    },
+    {
+      "path": "v5/internal/raftlog/application_recovery_pool.go",
+      "parent_blob": "fb1751765217c4845377945349a6d66b3403ba89",
+      "parent_sha256": "7b1e77bdace5d13e2ab2f68eee1cf0d58c96daf020b8e21d6bdbe29b4beecdeb",
+      "blob": "9fc2363681817374b3ac5b71f3beb8778dd4ff42",
+      "sha256": "03cd39aac08052ec26f2f72095301eccb24e29853dd1d8951a1e4fafc1fcd19f"
+    },
+    {
+      "path": "v5/internal/raftlog/application_recovery_pool_test.go",
+      "parent_blob": "3ee624afa74966db20678cf39875598cd8fdacd6",
+      "parent_sha256": "bb4a0dcf282b8e7a7c908634b6b4bbc604bc78553af38d3e6e85e9524d7a909e",
+      "blob": "f16e6a5dc3c28470ac88206956697c7eb6d3237d",
+      "sha256": "cd937c6079e0364b59ddc2deb1d3395fdc171f4756849a5f913037bfb3e90f78"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/step-work-red.log",
+      "sha256": "2cf7b404a79cfbe40ebbdba79e6fbf64c7e0ecdfc06057e123630c1d42f58753"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/import-census-red.log",
+      "sha256": "c3472c6109b0120f22acd6ca487f97c3d05eea982b5fb5f26f13f2c25fdcc626"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/step-work-final-normal.log",
+      "sha256": "b072979b3fc7c76dd6ebf936137283a0b7b2f499b1c934633c43d273258bd6d8"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/step-work-race.log",
+      "sha256": "2bcf0943dd9a041132b994abeb5acdd9dd05fbcce52b98697a9f4ef3d203477b"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/import-census-race.log",
+      "sha256": "39e5670dbc3f75ebedd4accc00f325e70c0d7ba35eeb17d2476d33f75e52ddc6"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/step-work-functions.txt",
+      "sha256": "783f2a3a09db5f86abb83d4cc77b1a9b2b8cbbd7402b00030aa5a0331aa641fc"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/copied-native-frames.log",
+      "sha256": "e55be43c9e35a5df8d30e9d24e120b1e816f162e2f31ad4e1043ada23451b1f9"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/copied-native-frames-fixed.log",
+      "sha256": "051edbc62f7f284b2f1f5d9c6b4099db727a57b4165569513621591281e41d57"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/copied-native-diagnostic-test.go.saved",
+      "sha256": "3a30910396768e219a640a2afcbf3b93063d4fa7bae81f4afa6de9b48610b8ee"
+    },
+    {
+      "path": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/step-snapshot-baseline.log",
+      "sha256": "e601bc361dad46b96347eec084692e6d00c1fd762d1d60a526caf3579adc58ff"
+    }
+  ],
+  "coverage": {
+    "RecoveryStepBudget": 80.8,
+    "package_scope": "partial native36.3%/graph33.8%, not full gate"
+  },
+  "qualification": "normal/race focused3native+1graph parents; graph race additionally preceding residual-history guard; actual native6 copiedDB read-only evidence, no OS cohort",
+  "remaining": [
+    "Exact root state OS qualification pending",
+    "Existing pages-and-ACK later64page census RED queued",
+    "Existing AS9 lifecycle parent baseline RED at final done after reopen line243; unchanged source0.414s"
+  ],
+  "temporary_diagnostics": "Saved externally; diagnostic worktree restored clean; no diagnostic hooks in source patch"
+}

@@ -1,0 +1,17 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/original/literal
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/original/literal/p01-mode1-phase1-p8-k1-before
+    native_graph_transition_scope_harness_test.go:199: P01 actual held source voter1 issuer55ae89ef1baac16392297f1b3d950913 cookie-issuer55ae89ef1baac16392297f1b3d950913 cookie-sequence4 certificate-partition3 certificate-index19 source-index17 root-index17 limits{Rows:4096 Bytes:2097152}
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet1 4->5 typeMsgHeartbeat term2 logTerm0 index0 commit15 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet2 5->4 typeMsgHeartbeatResp term2 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet3 4->5 typeMsgHeartbeat term2 logTerm0 index0 commit15 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet4 5->4 typeMsgHeartbeatResp term2 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    native_graph_protocol_campaign_program_test.go:186: paired actual healthy quorum leader4 applied15
+    native_graph_transition_conjunction_harness_test.go:447: fresh failed native RPC context: targetPID72601 requestOp40 entity0 index0 sequence314 incarnationb5884d8fcc53fb90448911f202a21ecc applied16 code3 causes80 detail"graphapply: remote source operation refused"
+    native_graph_transition_conjunction_harness_test.go:448: fresh fixture actual native RPC 40 graphapply: remote source operation refused
+        remote tag=3: graphapply: remote source operation refused
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=2092 bootstrapPackets=264 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (5.71s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/original/literal (5.71s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/original/literal/p01-mode1-phase1-p8-k1-before (5.70s)
+FAIL

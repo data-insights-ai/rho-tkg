@@ -1,0 +1,25 @@
+F
+======================================================================
+FAIL: test_p03_program_recovery_keeps_surviving_original_caller (native_protocol_campaign_check_test.ActualVoteReadGuards.test_p03_program_recovery_keeps_surviving_original_caller)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-p03-surviving-caller-fix-20261016/tools/v5-substrate/native_protocol_campaign_check_test.py", line 353, in test_p03_program_recovery_keeps_surviving_original_caller
+    self.assertEqual(C.program_coordinator_roles(context, recipe), (initial, initial[group], caller, want, target))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Tuples differ: ((1, 4), 1, 2, 3, 3) != ((1, 4), 1, 2, 2, 3)
+
+First differing element 3:
+3
+2
+
+- ((1, 4), 1, 2, 3, 3)
+?                ^
+
++ ((1, 4), 1, 2, 2, 3)
+?                ^
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)

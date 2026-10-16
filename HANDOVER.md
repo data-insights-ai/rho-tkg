@@ -32,7 +32,7 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
 - MINOR for new features, else PATCH (79). Deprecation ritual for behaviour changes (`docs/stability.md`, 79); a changed
   default is announced by a CHANGELOG `Deprecated` entry plus a godoc note (no `// Deprecated:` marker on a field that stays).
 - Release authority: René's standing process (2026-10-10, lesson 79) is merge → gate → tag → push main and the tag → notify,
-  without asking each time. Never push to `origin/v5`; never force-push.
+  without asking each time. The v4 release workflow does not push to `origin/v5`; never force-push. Markus explicitly authorized the final v5 takeover push below.
 - Act, do not offer (81). Red break-the-code test first, clean root-cause fix (78).
 - Models (René's map, lesson 79, overrides ~/CLAUDE.md §3's "pick by difficulty"): builds Opus, code reviews Opus effort high,
   final Fable review of the merged batch before a tag, docs and ledger work Sonnet. One review round per branch; authors run
@@ -53,10 +53,24 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
 
 - Session scratchpad (7.0 GB) and the stale sigma copy (22 MB): René decided 2026-10-14 to keep both (todo row 29); delete only
   when he asks.
-- v5 façade waits for Markus; we do not raise it. Markus merges v5; never push to `origin/v5` (read only).
+- Markus requested a v5 handover to René on 2026-10-16, with one final push to `origin/v5`. Continue from section 7; this grants no main merge/tag/release authority for v5.
 - No posts on GitHub issue #11 (René tells Markus himself).
 
 ## 7. v5 pointer
+
+**René takeover, 2026-10-16:** Markus asked to finish only the bounded fixes already
+in flight, commit them, and make one final push to `origin/v5`. All three Sol
+agents are stopped; no owned native jobs remain. Pull `v5` and read
+[`tasks/evidence/v2-integrated-checkpoint-20261016/handover-79b1cff9/README.md`](tasks/evidence/v2-integrated-checkpoint-20261016/handover-79b1cff9/README.md)
+for exact source pins, portable evidence, reproductions and remaining failures.
+All fixes are integrated commits, not patches awaiting application. V2 remains
+unaccepted at 42 accepted planning points; its full A–F exits remain unchanged.
+The current P01 regression, directory-sync reopen and WAL short-write pass;
+state retained-feed recovery and WAL EIO classification still fail. Two earlier
+feed/AS9 failures also remain open; full current gates and the cost matrix have
+not run. Continue with those concrete failures before expanding campaigns.
+Latest main metadata through `97efa1c0` is merged at `e76b8b9b`; it changed no
+v5 implementation source. The tested implementation pin is `79b1cff9`.
 
 v5 is Markus Nissl's separate Go module `.../rho-tkg/v5` in `v5/` on branch `origin/v5`.
 **Consumers cannot switch yet:** the public surface remains value packages; graph construction,
@@ -71,8 +85,8 @@ V0/V1 are accepted and V2 remains open. Exact finite source/test receipts live u
 `docs/v5/HANDOVER.md` is external review, reconciled against PLAN, not permission to reduce those
 gates or push/merge main. `docs/v5-analysis.md` §5 keeps the 45-family consumer mapping; immutable
 sigma/ai-soc inventories and current v4 source deltas are in `docs/v5/reference/consumer-*.json`.
-The selected reader is now main release `a08c0d52`/v4.56.0, source-integrated
-and unqualified, including its later ledger commit `1b0a50a3`. The persisted
+The current integrated v4 source baseline is `0fa37786`/v4.56.1, unqualified
+for the current v5 reader/importer. Main metadata through `97efa1c0` is also merged. The persisted
 `Config.UntimedValidStart` policy, explicit conversion, store marker 7, replicated
 `ChangeMeta` and export `uu` header must be carried into V4/V6 mapping and
 reader/importer qualification; older receipts cover none of these additions.
@@ -92,7 +106,7 @@ qualification remain pending. Historical `9e805ddc`/v4.51.4 and earlier receipts
 are immutable; exact upstream CI/source equivalence and this mapping slice do
 not establish consumer adoption or V6 acceptance.
 **Markus integrates v5; this handover authorizes no main push/tag/release** (decision 5).
-The v4 author's `origin/v5` read-only boundary remains; authorized v5 maintenance keeps shared
+The v4 release workflow remains separate; this explicitly authorized v5 takeover keeps shared
 CHANGELOG/backlog/lessons/AGENTS/Makefile/CI changes when reconciling main.
 
 ## Appendix A — origin watch

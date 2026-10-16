@@ -1,0 +1,47 @@
+{
+  "commit": "a912294781e93ea64568642e9c0f3c96c9ab1702",
+  "parent": "1d58c9d02b49801aa223dfe9a7423d3919897946",
+  "tree": "/private/var/tmp/rho-v5-bounded-history-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/retained_graph_feed_stage.go",
+      "parent_blob": "93502cf3d2987b7144daee4d8a7814118ed94553",
+      "parent_sha256": "2eb9cae1c9d8f9143248739c52efcf3b33fd1fadb35f474978fe05ed90356c82",
+      "blob": "beac40cb95c1decdb3f21e3c2d2c617c23405ce7",
+      "sha256": "dce13799bfd1adfacd950234624f580fc6fec3b59c093a4f9664874520df19c7"
+    },
+    {
+      "path": "v5/internal/graphapply/retained_graph_feed_test.go",
+      "parent_blob": "b135eada328ac9a8926b956e5cb36da82248e248",
+      "parent_sha256": "f8a2fed11df271816e41876efb5dbfce26bfcefac3452fc405a0e400c290f682",
+      "blob": "03a4aa25481e8f82813c90b17379d558c059d7c5",
+      "sha256": "fcf864a5ca65a676e98e28dafcd08b83ddb669ad6dc0a85d2d9a1d91ee383abb"
+    },
+    {
+      "path": "v5/internal/raftlog/application_view_history.go",
+      "parent_blob": "889548c17a638b09ee2a2381f75c298a06a2cbbd",
+      "parent_sha256": "b6a5a214cd571b10006a72086d77a9a0f5b3b1cd87eeddcdf78f0a92f155b15f",
+      "blob": "a96ef87472c8300ed42112715352ecfe3340737e",
+      "sha256": "fbcbefa984250ed2657ae69e7f9bbe59ddba89fe741a0454d8164535f317c1a8"
+    },
+    {
+      "path": "v5/internal/raftlog/application_view_history_test.go",
+      "parent_blob": "b63a67d6a95d5585f7190d4a863fc000694fb191",
+      "parent_sha256": "5cf89c35c75bfb21892fd15e86faf907d77bb48aa9605e9fe0f91144de4951e4",
+      "blob": "d087bc3d29c65068cce2181e7f447841c6c9d1db",
+      "sha256": "ffd59ff972d2f12b315a082da3b7afb4de53e14789f16a2e03b535e0c0611523"
+    }
+  ],
+  "evidence": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016",
+  "normal": "final-normal.log",
+  "race": [
+    "history-race.log",
+    "feed-race.log"
+  ],
+  "coverage": {
+    "ApplicationRecordBounded": 94.1,
+    "readRetainedHistoryPayload": 97.8,
+    "feedRecord": 91.3
+  },
+  "qualification": "focused in-process only; no full package gate or OS case"
+}

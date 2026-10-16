@@ -1,0 +1,1 @@
+{"case": "p01-mode1-phase1-p8-k1-before", "coordinator": 8, "dataScope": [3], "mode": "Fresh", "program": {"Layout": "original", "Message": "literal", "Version": 1}, "records": 12, "scope": "finite genuine six-OS-child P01 source bridge; no full storage/network family or runtime acceptance", "serial_witness": ["create-A"]}

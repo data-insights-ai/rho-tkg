@@ -1,0 +1,18 @@
+=== RUN   TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReopen
+=== RUN   TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReopen/native-reopen
+2026/10/16 10:22:31 Found 0 WALs
+2026/10/16 10:22:31 Found 1 WALs
+2026/10/16 10:22:31   - 000002: {(/var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReop982796026/001/db,000)}
+2026/10/16 10:22:31 [JOB 1] WAL 000002: {(/var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReop982796026/001/db,000)} stopped reading at offset: (/var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReop982796026/001/db/000002.log: 656); replayed 6 keys in 2 batches
+    native_graph_fault_schedule_test.go:431: actual owned root Sync call=1 err=input/output error frames=[github.com/cockroachdb/pebble/v2/objstorage/objstorageprovider.(*provider).vfsSync:100 github.com/cockroachdb/pebble/v2/objstorage/objstorageprovider.(*provider).Sync:404 github.com/cockroachdb/pebble/v2.(*DB).compactAndWrite:3416 github.com/cockroachdb/pebble/v2.(*DB).runCompaction:3237 github.com/cockroachdb/pebble/v2.(*DB).flush1:1736 github.com/cockroachdb/pebble/v2.(*DB).flush.func1:1482 runtime/pprof.Do:57 github.com/cockroachdb/pebble/v2.(*DB).flush:1475 runtime.goexit:1447]
+2026/10/16 10:22:31 background error: input/output error
+    native_graph_fault_schedule_test.go:431: actual owned root Sync call=2 err=<nil> frames=[github.com/cockroachdb/pebble/v2/objstorage/objstorageprovider.(*provider).vfsSync:100 github.com/cockroachdb/pebble/v2/objstorage/objstorageprovider.(*provider).Sync:404 github.com/cockroachdb/pebble/v2.(*DB).compactAndWrite:3416 github.com/cockroachdb/pebble/v2.(*DB).runCompaction:3237 github.com/cockroachdb/pebble/v2.(*DB).flush1:1736 github.com/cockroachdb/pebble/v2.(*DB).flush.func1:1482 runtime/pprof.Do:57 github.com/cockroachdb/pebble/v2.(*DB).flush:1475 runtime.goexit:1447]
+    native_graph_fault_schedule_test.go:431: actual owned root Sync call=3 err=<nil> frames=[github.com/cockroachdb/pebble/v2/vfs/atomicfs.(*Marker).Move:227 github.com/cockroachdb/pebble/v2.(*versionSet).UpdateVersionLocked.func1:654 github.com/cockroachdb/pebble/v2.(*versionSet).UpdateVersionLocked:664 github.com/cockroachdb/pebble/v2.(*DB).flush1:1739 github.com/cockroachdb/pebble/v2.(*DB).flush.func1:1482 runtime/pprof.Do:57 github.com/cockroachdb/pebble/v2.(*DB).flush:1475 runtime.goexit:1447]
+    native_graph_fault_schedule_test.go:431: actual owned root Sync call=4 err=<nil> frames=[github.com/cockroachdb/pebble/v2/wal.(*StandaloneManager).Create:194 github.com/cockroachdb/pebble/v2.Open:541 github.com/data-insights-ai/rho-tkg/v5/internal/raftlog.Open:173 github.com/data-insights-ai/rho-tkg/v5/internal/graphapply.TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReopen.func1:460 testing.tRunner:2036 runtime.goexit:1447]
+    native_graph_fault_schedule_test.go:431: actual owned root Sync call=5 err=<nil> frames=[github.com/cockroachdb/pebble/v2.Open:601 github.com/data-insights-ai/rho-tkg/v5/internal/raftlog.Open:173 github.com/data-insights-ai/rho-tkg/v5/internal/graphapply.TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReopen.func1:460 testing.tRunner:2036 runtime.goexit:1447]
+    native_graph_fault_schedule_test.go:462: faulty native reopen acquired a store <nil>
+--- FAIL: TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReopen (0.35s)
+    --- FAIL: TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReopen/native-reopen (0.35s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	1.053s
+FAIL

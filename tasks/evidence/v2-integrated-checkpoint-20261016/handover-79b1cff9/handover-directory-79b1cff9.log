@@ -1,0 +1,29 @@
+=== RUN   TestNativeComposedFaultDirectorySyncFailsGenuineSameDirectoryReopen
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=3 kind=1 identity=238591068235bb05000000000000000a index=3 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=8 kind=1 identity=238591068235bb050000000000000018 index=3 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=3 kind=2 identity=238591068235bb05000000000000001d index=4 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=3 kind=3 identity=238591068235bb05000000000000002b index=5 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=3 kind=3 identity=238591068235bb050000000000000039 index=6 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=3 kind=3 identity=238591068235bb050000000000000047 index=7 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=3 kind=3 identity=238591068235bb050000000000000055 index=8 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=3 kind=4 identity=238591068235bb05000000000000006c index=9 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=3 kind=5 identity=238591068235bb050000000000000079 index=10 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=4 target=3 kind=2 identity=c3df0ce8844a5d000000000000000017 index=11 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=3 kind=3 identity=238591068235bb050000000000000090 index=12 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=8 kind=3 identity=238591068235bb05000000000000009a index=4 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=4 target=3 kind=3 identity=c3df0ce8844a5d000000000000000025 index=13 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=3 kind=3 identity=238591068235bb0500000000000000a8 index=14 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=8 kind=3 identity=238591068235bb0500000000000000b6 index=5 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=3 kind=4 identity=238591068235bb0500000000000000bf index=15 reason=0
+    native_graph_transition_conjunction_harness_test.go:520: actual certified child operation: actor=1 target=8 kind=5 identity=238591068235bb0500000000000000cc index=6 reason=0
+    native_graph_fault_schedule_test.go:769: paired SIGKILL voter1 pid82720 reaped=true
+    native_graph_fault_schedule_test.go:770: paired elected actual leader2 round10 while1 down
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet1 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet2 2->1 typeMsgApp term3 logTerm2 index29 commit30 rejectfalse hint0 entries1 decode<nil>
+    paired_graph_fault_harness_test.go:995: paired heal actual entry index30 term3 typeEntryNormal bytes0 prefix
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet3 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit30 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:818: paired actual healthy quorum leader2 applied30
+    native_graph_fault_schedule_test.go:786: native composed fault genuine source artifact /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/handover-directory-79b1cff9-owned/artifacts/rho-paired-graph-fault-3299745749/native-composed-fault-directory-sync-during-reopen.jsonl
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=4508 bootstrapPackets=286 admitted=397312
+--- PASS: TestNativeComposedFaultDirectorySyncFailsGenuineSameDirectoryReopen (4.20s)
+PASS

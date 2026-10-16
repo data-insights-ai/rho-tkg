@@ -1,0 +1,62 @@
+{
+  "commit": "db72569cb684c5f3a053ce332ef56d3529979475",
+  "parent": "0c2b5a5b46ed2dcf80c48af26e3f4dc75468a18b",
+  "worktree": "/private/var/tmp/rho-v5-d-directory-root-sync-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_fault_schedule_harness_test.go",
+      "parentBlob": "577b99eea01b172c3db75e4779832d698a6a16ef",
+      "parentSHA256": "1197f51abb523e67c0e21e2cecca45fba1a0dde6a3216ae374a231ff066e0d40",
+      "blob": "c2ec2393891192a797a63ec4c601ad443bb207b4",
+      "sha256": "36a849b3751d7c8498fc1b73cf7ff981bb615320bdd918debff4fd8ed7233f7b"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_fault_schedule_test.go",
+      "parentBlob": "c91ae6ca2e4d133c7938ad35f495135a36efe022",
+      "parentSHA256": "69aece920e535e3d13eb0e8931fc9345dda25e9a09c9ccfaba1e156d59815e2d",
+      "blob": "a51cfb0a0ddf3ee5c36784796161b5cc3005e068",
+      "sha256": "30a8454b91f4104aaa904e6fe987f7eae75ef72b4ed8cbb257f23cc6d2dd4844"
+    },
+    {
+      "path": "v5/internal/graphapply/replicated_process_test.go",
+      "parentBlob": "8751e01f4bc3e39b889f22adc8fd68c4d4ea8b2e",
+      "parentSHA256": "cb69d459415a3749b495edaa7578ec964a69fb7cfc6916a4a08bd274011faad0",
+      "blob": "b9e9641a24f109af3c7d7644ea709a9262bca550",
+      "sha256": "8fdd16afefbe18c267aae73a0d035405491b8f154a4881b268aaadfd01f4b0dc"
+    }
+  ],
+  "scope": "Explicit startup directory-sync only: eligible exact-root Sync after actual successful root WAL Create/ReuseForWrite. Parent/unrelated/pre-WAL background directory IO performs real Sync unchanged. Runtime arm/Nth, receipt wire/strict startup/error/exit predicates unchanged. One immutable admitted child pre-Open assignment.",
+  "originalOSRed": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/d-directory-47c1b636.log",
+  "red": {
+    "log": "red.log",
+    "exit": 1,
+    "seconds": 0.583,
+    "description": "Actual native Open/reopen refused on parent containment errLimit; Seen0 Armedtrue Matchedfalse, no actual root receipt."
+  },
+  "diagnostic": {
+    "log": "sync-trace.log",
+    "description": "Temporary bounded test-only actual IO caller trace: recoverable background root flush EIO, successful retry/manifest, then mandatory WAL-creation and OPTIONS root Sync. Temporary tracing removed entirely from frozen source. Live returned store was not claimed failed startup."
+  },
+  "verification": [
+    {
+      "command": "GOMAXPROCS=2 GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -vet=off -count=1 -timeout=60s -run '^TestNativeFault(DirectorySyncSelectsOnlyOwnedRootDuringNativeReopen|ChildFilesystemRecordsOnlyActualMatchedOperations)$' ./internal/graphapply",
+      "exit": 0,
+      "seconds": 0.61,
+      "log": "green.log"
+    },
+    {
+      "command": "GOMAXPROCS=2 GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -vet=off -race -count=1 -timeout=90s -run '^TestNativeFault(DirectorySyncSelectsOnlyOwnedRootDuringNativeReopen|ChildFilesystemRecordsOnlyActualMatchedOperations)$' ./internal/graphapply",
+      "exit": 0,
+      "seconds": 1.694,
+      "log": "race.log"
+    }
+  ],
+  "logs": {
+    "red.log": "c25f4938e502acdfa122bace154d8ec30ed0da4c1a46f5830821f0538cc377e6",
+    "green.log": "0a58102519cc994c7029db23c9c6226911aaab832fc1c1dfa473088bdcf3b680",
+    "race.log": "c0ec253611a0c4e1ca631817c59cef532acac649181a9aa89cca8fbc8c443919",
+    "sync-trace.log": "a9dd03ecefc98d1e463cccdef52f3bd03479fc7677c059eb9b5192c9baea0ce9"
+  },
+  "format": "Pinned Go1.26.9 gofmt and git diff --check passed",
+  "limits": "No six-process OS cohort/worker/grant/deadline/production change; root owns full real-process qualification. WAL4 d58327f6 changes shared Reap/EOF test hunks independently on same parent; this exact3 changes match/Create/Reuse and middle tests/child assignment only."
+}

@@ -1,0 +1,23 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/original/literal
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/original/literal/p01-mode1-phase1-p8-k1-before
+    native_graph_transition_scope_harness_test.go:213: P01 actual held source voter1 issuer7b9a3d4c356267002154d15a853163d2 cookie-issuer7b9a3d4c356267002154d15a853163d2 cookie-sequence4 certificate-partition3 certificate-index19 source-index17 root-index17 limits{Rows:4096 Bytes:2097152}
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet1 4->5 typeMsgHeartbeat term2 logTerm0 index0 commit15 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet2 5->4 typeMsgHeartbeatResp term2 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet3 4->5 typeMsgHeartbeat term2 logTerm0 index0 commit15 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet4 5->4 typeMsgHeartbeatResp term2 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    native_graph_protocol_campaign_program_test.go:186: paired actual healthy quorum leader4 applied15
+    native_graph_protocol_campaign_program_test.go:186: paired elected actual leader1 round1 while3 down
+    native_graph_protocol_campaign_program_test.go:186: paired elected actual leader4 round1 while6 down
+    native_graph_protocol_campaign_program_test.go:186: paired actual healthy quorum leader1 applied29
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet1 4->5 typeMsgHeartbeat term3 logTerm0 index0 commit20 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet2 5->4 typeMsgHeartbeatResp term3 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet3 4->5 typeMsgHeartbeat term3 logTerm0 index0 commit20 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:992: paired heal delivered packet4 5->4 typeMsgHeartbeatResp term3 logTerm0 index0 commit0 rejectfalse hint0 entries0 decode<nil>
+    native_graph_protocol_campaign_program_test.go:186: paired actual healthy quorum leader4 applied20
+    native_graph_protocol_campaign_program_test.go:186: actual live transition complete source artifact /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/handover-p01-79b1cff9-owned/artifacts/rho-paired-graph-fault-1002152126/p01-mode1-phase1-p8-k1-before.jsonl
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=13 all-reaped=true successful=12 intentional-kills=1 calls=2823 bootstrapPackets=312 admitted=397312
+--- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms (7.90s)
+    --- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms/original/literal (7.90s)
+        --- PASS: TestNativeProtocolCampaignLeaderAndMessagePrograms/original/literal/p01-mode1-phase1-p8-k1-before (7.89s)
+PASS

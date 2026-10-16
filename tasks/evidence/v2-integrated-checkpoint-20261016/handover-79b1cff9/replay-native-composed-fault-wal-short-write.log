@@ -1,0 +1,10 @@
+[
+  {
+    "case": "wal-short-write",
+    "records": 15,
+    "serial_witness": [
+      "edge"
+    ],
+    "scope": "fixed actual-source bridge; source-only until real process qualification; no power-loss or capacity claim"
+  }
+]

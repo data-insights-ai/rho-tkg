@@ -1,0 +1,124 @@
+{
+  "archive": "protocol-traces-with-sidecars-0c2b5a5b.tar.gz",
+  "sha256": "a029f78088ae5e3b6d0b86b1a591fe9619460842b455ab7c6bac42b091e38e1c",
+  "scope": "Portable raw P03/P05 traces with every required sibling history JSON, including original failed and selected passed runs. Loader validates size/hash/framing only; acceptance remains individual recorded native/oracle outcomes. Earlier JSONL-only bundles remain historical incomplete standalone replays.",
+  "traces": [
+    {
+      ".jsonl": {
+        "path": "p03-survivor-fixed-owned/artifacts/rho-paired-graph-fault-3463794144/p03-co3-phase3-p3-k2-after.jsonl",
+        "bytes": 139923,
+        "sha256": "2ebf8df287fa2a4f3a82af89515b25779a270e212898121ab7b102b19fe452bd"
+      },
+      ".json": {
+        "path": "p03-survivor-fixed-owned/artifacts/rho-paired-graph-fault-3463794144/p03-co3-phase3-p3-k2-after-history.json",
+        "bytes": 2106075,
+        "sha256": "4fe6cf35da7cca97dfebb510f519f202dfdc1680a012d96d6478dfde601a4418"
+      },
+      "case": "p03-co3-phase3-p3-k2-after"
+    },
+    {
+      ".jsonl": {
+        "path": "p05-control-fixed-owned/artifacts/rho-paired-graph-fault-1989275134/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after.jsonl",
+        "bytes": 72183,
+        "sha256": "ed3e192d236b09a2f3876c54d791ff1546a5faf2f4d697ceecbd150671989300"
+      },
+      ".json": {
+        "path": "p05-control-fixed-owned/artifacts/rho-paired-graph-fault-1989275134/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after-history.json",
+        "bytes": 788079,
+        "sha256": "22934cf3e41036f6fa5378219fada2c854da9fd59c7c20f6a65eff1bb8847bba"
+      },
+      "case": "p05-temporal-life-value-ABA-op4-phase2-p8-k2-after"
+    },
+    {
+      ".jsonl": {
+        "path": "p05-drain-fixed-owned/artifacts/rho-paired-graph-fault-2111201708/p05-temporal-life-value-ABA-op4-phase4-p8-k2-after.jsonl",
+        "bytes": 71715,
+        "sha256": "7a2bcc9de90505ee774780fa74849c26ad82dfcb3b5ea826c2fc4ae45052fb4b"
+      },
+      ".json": {
+        "path": "p05-drain-fixed-owned/artifacts/rho-paired-graph-fault-2111201708/p05-temporal-life-value-ABA-op4-phase4-p8-k2-after-history.json",
+        "bytes": 788079,
+        "sha256": "a0833e55627f48a06892672b1c6f431ffb2957fe5f7bb64feaba857681336aba"
+      },
+      "case": "p05-temporal-life-value-ABA-op4-phase4-p8-k2-after"
+    },
+    {
+      ".jsonl": {
+        "path": "p05-reuse-fixed-owned/artifacts/rho-paired-graph-fault-3387074770/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after.jsonl",
+        "bytes": 72084,
+        "sha256": "8cc6e420a9a86c6980196f059180ea524ae4e3a8d9c8eae9486e8b52c5e73ff2"
+      },
+      ".json": {
+        "path": "p05-reuse-fixed-owned/artifacts/rho-paired-graph-fault-3387074770/p05-temporal-life-value-ABA-op4-phase2-p8-k2-after-history.json",
+        "bytes": 788079,
+        "sha256": "b88aed81ebeefd5790c9cb951749fda32aa2104d96d98339b57783f245544ad1"
+      },
+      "case": "p05-temporal-life-value-ABA-op4-phase2-p8-k2-after"
+    },
+    {
+      ".jsonl": {
+        "path": "p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-3440544320/p05-temporal-life-value-ABA-op1-phase1-p3-k1-before.jsonl",
+        "bytes": 73200,
+        "sha256": "124711e15532b66a0fd0d955096d2bd3a5e098c8709956974bd7eab91425838e"
+      },
+      ".json": {
+        "path": "p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-3440544320/p05-temporal-life-value-ABA-op1-phase1-p3-k1-before-history.json",
+        "bytes": 788079,
+        "sha256": "0b8f0adc2fadaed9d9c0eeb6d0670bb7237c6df99deb7d3cfa8c18c78e98fee7"
+      },
+      "case": "p05-temporal-life-value-ABA-op1-phase1-p3-k1-before"
+    },
+    {
+      ".jsonl": {
+        "path": "p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-3822719440/p05-write-skew-A-first-op1-phase1-p3-k1-before.jsonl",
+        "bytes": 65740,
+        "sha256": "06eb466ece2f36356dec74a12f4dc12ac925a0a8520052dcf3153c8ed67d0f14"
+      },
+      ".json": {
+        "path": "p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-3822719440/p05-write-skew-A-first-op1-phase1-p3-k1-before-history.json",
+        "bytes": 416975,
+        "sha256": "30c57fea3b3a21a3e2c462d36a521837dd4b37055ff66ec427bcaa2c3530e083"
+      },
+      "case": "p05-write-skew-A-first-op1-phase1-p3-k1-before"
+    },
+    {
+      ".jsonl": {
+        "path": "p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-4199361493/p05-write-skew-B-first-op1-phase1-p8-k1-before.jsonl",
+        "bytes": 65183,
+        "sha256": "c7b41dbaf9439364312e401861e8ec8ff226bf908caa25c434db8cb2ae78210e"
+      },
+      ".json": {
+        "path": "p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-4199361493/p05-write-skew-B-first-op1-phase1-p8-k1-before-history.json",
+        "bytes": 403191,
+        "sha256": "9776694cf722e3d30f485bcb2262ac513d99f6a6db8c5aa3d87abc1c88eee248"
+      },
+      "case": "p05-write-skew-B-first-op1-phase1-p8-k1-before"
+    },
+    {
+      ".jsonl": {
+        "path": "p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-480338611/p05-empty-range-and-absent-key-insertion-op1-phase1-p3-k1-before.jsonl",
+        "bytes": 94692,
+        "sha256": "a289647c0b49e00785dff486c339cfd92a2b40a2b11a270970e805add05fadad"
+      },
+      ".json": {
+        "path": "p05-six-representatives-fixed-owned/artifacts/rho-paired-graph-fault-480338611/p05-empty-range-and-absent-key-insertion-op1-phase1-p3-k1-before-history.json",
+        "bytes": 562855,
+        "sha256": "f23823aa094b8d8501b4a350bc5fa19b5e3dbb7638a43fc0a60598f999bc1265"
+      },
+      "case": "p05-empty-range-and-absent-key-insertion-op1-phase1-p3-k1-before"
+    },
+    {
+      ".jsonl": {
+        "path": "p05-six-representatives-owned/artifacts/rho-paired-graph-fault-1024282722/p05-write-skew-A-first-op1-phase1-p3-k1-before.jsonl",
+        "bytes": 65750,
+        "sha256": "ebf28760624375b7c7f5e0a8cf126716643462c67bc3dc6b4d770de9054625c9"
+      },
+      ".json": {
+        "path": "p05-six-representatives-owned/artifacts/rho-paired-graph-fault-1024282722/p05-write-skew-A-first-op1-phase1-p3-k1-before-history.json",
+        "bytes": 416855,
+        "sha256": "0202debc3bdcdb650d60bfc2543f756869af0faa15c5c42b9ccbe411eaff5b12"
+      },
+      "case": "p05-write-skew-A-first-op1-phase1-p3-k1-before"
+    }
+  ]
+}

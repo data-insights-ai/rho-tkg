@@ -1,0 +1,19 @@
+E
+======================================================================
+ERROR: test_pinned_short_write_close_panic_is_not_arbitrary_panic_authority (__main__.NativeFaultGrammar.test_pinned_short_write_close_panic_is_not_arbitrary_panic_authority)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-native-wal-failstop-20261016/tools/v5-substrate/native_fault_schedule_check_test.py", line 32, in test_pinned_short_write_close_panic_is_not_arbitrary_panic_authority
+    C.processes([failed, reopened], receipt, "wal-short-write")
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-native-wal-failstop-20261016/tools/v5-substrate/native_fault_schedule_check.py", line 140, in processes
+    require(failed["Action"] == "native-io-failure" and failed["Reaped"] is True and failed["Member"] == actual["Member"] == receipt["Member"] and actual["PID"] == receipt["PID"] and actual["ExitCode"] == 1 and actual["Signaled"] is False and actual["Reaped"] is True and actual["Receipt"] == receipt and actual["Volume"] == failed["Volume"] and receipt["IO"]["Error"] in actual["Stderr"] + actual["Stdout"], "unreaped/unmatched native failure")
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-native-wal-failstop-20261016/tools/v5-substrate/native_fault_schedule_check.py", line 31, in require
+    raise ValueError("native fault refused: " + message)
+ValueError: native fault refused: unreaped/unmatched native failure
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (errors=1)

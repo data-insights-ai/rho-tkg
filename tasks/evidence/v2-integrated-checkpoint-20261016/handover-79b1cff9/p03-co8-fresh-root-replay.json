@@ -1,0 +1,1 @@
+{"case": "p03-co8-phase3-p8-k2-after", "program": {"Layout": "rotated", "Message": "reorder", "Version": 1}, "records": 147, "scope": "P03 actual D and applicable native occurrence only; broader D remains distinct", "serial_witness": ["node-a", "node-b", "edge-create", "precommit-update", "postcommit-update", "zone-loss-update"]}

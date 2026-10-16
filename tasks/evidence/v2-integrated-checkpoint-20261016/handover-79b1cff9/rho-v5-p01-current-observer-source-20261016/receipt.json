@@ -1,0 +1,40 @@
+{
+  "author": "47012756cc7887b435dc53f10754dfc7165598d0",
+  "parent": "002b2193d0bfd5b10df74862b22f79d5dff3dd38",
+  "tree": "/private/var/tmp/rho-v5-p01-current-observer-20261016",
+  "status": "",
+  "scope": [
+    {
+      "path": "v5/internal/graphapply/native_graph_transition_scope_harness_test.go",
+      "parentBlob": "3e198aca0d6fa76d3f9420f68524d36058b27aec",
+      "parentSHA256": "28ca2f677157926aa8264f59eb605b1d131275d67659a5d0bb95c5356e3c0a21",
+      "sourceBlob": "97d37f0e4c1b93b358b967d16d710e90ca0490c9",
+      "sourceSHA256": "cf35e01da739f4617f479325d5c0d1ae850e9abb2e2109d5542a2803f8a3293f"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_transition_scope_test.go",
+      "parentBlob": "ac113ef04991f67a7a497e30848641aefd4e58f1",
+      "parentSHA256": "d35f17b8e8d4554524e14606c2db3e861e0f0218d8a8ff0331b8b9324d6c6db7",
+      "sourceBlob": "9c136bf4af885404638362850079ffaeb291ab49",
+      "sourceSHA256": "e65a1613eef729caf0cfaa5a726505a6cca2219f765f9341a3a02d4ff5c29d79"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "direct-green.log",
+      "sha256": "56054575eacdf33086009c41685a19191373fbe299397f5af7f79ad189cfcfea"
+    },
+    {
+      "path": "direct-race-green.log",
+      "sha256": "163148b3d3cc454fb1237b85e8565aefd2d3badef6744e58f854835b195a8407"
+    },
+    {
+      "path": "direct-red.log",
+      "sha256": "adb860443313ced3ff441c19d0b557beb2b5de3b4abd6e24ff68f28659cc1590"
+    }
+  ],
+  "actualOSRed": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/b-p01-first8-002b2193/01-p01-mode1-phase1-p8-k1-before.log",
+  "statusSummary": "P01 original first8 batch remains1RED+7UNRUN. Narrow fixture2 authored. Genuine six-voter remote regression RED4.848s with old current-caller6, normal two guards GREEN6.418s and same scoped race GREEN5.053s. Pinned formatting and git whitespace PASS. No OS rerun or checker/production/quota/deadline/authority changes.",
+  "fix": "The target6 replacement remains deliberately routed to historical follower sources for pre-heal At(C). Native ReadIndex is leader-only. Only when actual selected target6, final full-current diagnostic now uses SAME surviving original scoped reader and its existing leader-routed sessions. No-target6/legacy current6 unchanged; local replacement At(C), held original read, original tx/decision/CDC/history/full oracle stay intact.",
+  "unresolved": "Owning original/literal firstP01 OS rerun and full independent oracle remain unexecuted for this patch; root owns them. Other7batch leaves are unrun, no B-wide acceptance. No AS9 triage or further B execution started. All author jobs terminal, tree frozen; handover STOP."
+}

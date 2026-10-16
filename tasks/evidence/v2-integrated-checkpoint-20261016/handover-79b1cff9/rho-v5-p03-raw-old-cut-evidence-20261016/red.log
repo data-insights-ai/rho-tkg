@@ -1,0 +1,19 @@
+E
+======================================================================
+ERROR: test_p03_actual_reopened_observation_joins_raw_original_cut (native_protocol_campaign_check_test.ActualVoteReadGuards.test_p03_actual_reopened_observation_joins_raw_original_cut)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/var/tmp/rho-v5-p03-raw-old-cut-check-20261016/tools/v5-substrate/native_protocol_campaign_check_test.py", line 372, in test_p03_actual_reopened_observation_joins_raw_original_cut
+    self.assertEqual(C.coordinator_reopened(evidence), old)
+                     ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-p03-raw-old-cut-check-20261016/tools/v5-substrate/native_protocol_campaign_check.py", line 793, in coordinator_reopened
+    T.semantic(e["TargetReopened"] == old, "P03-same-directory-old-data-index")
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/tmp/rho-v5-p03-raw-old-cut-check-20261016/tools/v5-substrate/native_transition_check.py", line 37, in semantic
+    raise SemanticFailure(code, label)
+native_exact_batch_common.SemanticFailure: P03-same-directory-old-data-index: P03-same-directory-old-data-index
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (errors=1)

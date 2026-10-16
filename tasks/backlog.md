@@ -154,12 +154,12 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 
 ### Weighted delivery packages (2026-10-16)
 
-Deadline priority: finish V2 on 2026-10-16. All three implementation agents now
-work only on V2; the authored V3 rational-block candidate is frozen and further
-V6 work is parked. The explicit source-validity preflight subset is integrated,
-but it does not close the current-reader migration package. The complete V2
-measurement matrix remains outstanding and is a material deadline risk.
-
+Takeover priority, 2026-10-16: Markus requested the current bounded fixes be
+finished, committed and pushed once for René. All agents are stopped. V2 is not
+finished; V3 and further V6 work remain parked. The explicit source-validity
+preflight subset does not qualify the current-reader migration package. The
+full V2 matrix remains outstanding. The final handover below records exact
+passing cases, current failures and unrun work.
 The original V0–V7 exits remain unchanged. The smaller packages below make completion visible; each is closed only with evidence for its stated scope. These are **new planning weights**, totaling 100 points per phase, not estimates of hours spent or time remaining. Only accepted packages earn points; partially authored or currently failing packages earn none. Historical receipts retain their exact source scope. There is no unweighted overall-project percentage.
 
 | Phase | Accepted points | Remaining points | Current focus |
@@ -197,7 +197,7 @@ Every open requirement is assigned to a package below. Detailed existing accepta
 | V2.4 Certified read foundations | 8% | accepted | Accepted finite E15/E16 current/historical reads and E18 index-starting hydration with authenticated native sources and cuts. |
 | V2.5 Finite range handoff baseline | 4% | accepted | Accepted finite E17 handoff, retained history and certified source/target lineage; interruptions/GC and general rebalance remain open. |
 | V2.6 Selected recovery/storage components | 4% | accepted | Recorded P03/P06 and selected WAL/manifest/OPTIONS recovery components; evidence applies to its exact source/cases, not the full families. |
-| V2.7 Remaining transaction fault schedules | 10% | active | Complete P01–P06 requirement-to-case coverage: outside-scope coordinator; prepare/fence ordering; partial installation; frozen participants/digest/decision; absent keys/ranges, temporal predicates and endpoint-life ABA; conflicts through failover. Selected rotated/reordered P01, P02, P04, P05 and P06 cases pass; P03, later P05 schedules and state recovery still have open qualification. |
+| V2.7 Remaining transaction fault schedules | 10% | active | Complete P01–P06 requirement-to-case coverage: outside-scope coordinator; prepare/fence ordering; partial installation; frozen participants/digest/decision; absent keys/ranges, temporal predicates and endpoint-life ABA; conflicts through failover. Selected P01–P06 cases, bilateral P03 loss and a later P05 Resolve case pass. The original/literal P01 first leaf now passes; full families and state recovery remain unqualified. |
 | V2.8 Ownership, identities and reclamation | 10% | active | P07/P09 interruptions during transfer/publication, production identity reuse and stale fencing, retry-payload refusal, snapshot/feed lineage, expiration and application GC; preserve original results and expired/unavailable versus empty. |
 | V2.9 Composed network, scheduler and storage faults | 10% | open | Loss/duplication/reorder/asymmetry, isolated leaders/quorum/domain loss; pause/ticks/clock jumps; torn/short writes, EIO/ENOSPC/sync/rename/manifest/corrupt pages; bounded conflicting exploration followed by recorded-seed soak and independent oracles. |
 | V2.10 Equivalent FoundationDB fault/publication evidence | 8% | open | Actual role/domain loss, unknown commits, pins/GC and chunk/manifest failures; complete histories/index/CDC, owned cleanup and all-client/server accounting under equivalent declared fault/durability semantics. |
@@ -1414,23 +1414,25 @@ records the following finite scope:
   B6 resumes it, all seven native incarnations are reaped, and the 66-record
   serial witness preserves all four ABA changes. The drain now samples live
   owners only after the retiring packet's authenticated loss classification.
-  P03 passes its authenticated receipt wait and both real kills, then still
-  refuses a replacement's attempt to reconnect to a spent pre-crash stream.
-  Seven D packet schedules pass native execution and independent 14-record
-  serial/cut checks: drop, duplicate, reorder, partition and injected 1/20/100ms.
-  D's actual WAL short-write remains RED: pinned Pebble panics in rotateWAL
-  and exits 2 while the strict fixture requires 1. The bounded failure output
-  is preserved; no exit predicate was relaxed. Directory-sync reopen also
-  remains RED because its startup arm does not match actual publication IO.
-  The state case now passes its held snapshot using bounded token-scoped exact
-  source-Get reuse, then fails a later feed Page. Failure-only native telemetry
-  locates that refusal in frame-progress at part 8/index 33: 181/1,024 rows,
-  1,820,348/4,194,304 bytes and 28,817,088 output bytes still available. Full
-  caller counters after failure reflect conservative charging of the unknown
-  spend; they do not prove aggregate exhaustion. The existing pages_and_ACK
-  guard also has a separately reproduced baseline preflight RED; it remains
-  required before the final gate. All original failed receipts are retained in
-  [the current checkpoint](evidence/v2-integrated-checkpoint-20261016/checkpoint-47c1b636.json).
+  P03's two fresh coordinator-loss cases now pass complete native execution
+  and independent raw-original/history/cut replay. Historical replacement reads
+  keep their genuine source; final P01 current reads use the surviving leader
+  route. Original/literal P01's first leaf now passes at `79b1cff9`; the other
+  seven leaves in its interrupted batch are unrun. Seven earlier D packet
+  schedules pass. Directory-sync same-directory reopen and WAL short-write now
+  pass actual native execution and independent checks. The startup Sync arm
+  selects the mandatory root sync after actual WAL creation. Pinned Pebble's
+  authenticated short-write Close fail-stop is classified precisely; arbitrary
+  panic/exit2 remains rejected. WAL's parent still fails at write-eio exit2;
+  later ENOSPC/fsync leaves are unrun after failfast. State recovery passes the
+  earlier budget failures after actual-byte history/RS4 accounting fixes, then
+  refuses a later retained frame at part3/index104 (`graphWireCauses=0004`).
+  The separate pages_and_ACK census remains RED after 64 pages, and AS9's
+  final done-after-reopen baseline remains RED. Neither has a proven fix.
+  All four final native cohorts exited without forced cleanup. Exact logs,
+  focused author normal/race/coverage receipts and portable traces with their
+  required sidecars are in the [final takeover handover](evidence/v2-integrated-checkpoint-20261016/handover-79b1cff9/README.md).
+  No full current CI/race/coverage/security gate or cost acceptance is claimed.
   No original deadline, quota, oracle or acceptance dimension was relaxed.
 
 These components do not close their full fault families, the process inventory,

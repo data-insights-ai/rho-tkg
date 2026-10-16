@@ -1,0 +1,78 @@
+=== RUN   TestRetainedFeedPooledImportCensusUsesActualRecoveryWork
+2026/10/16 10:26:52 Found 0 WALs
+raft2026/10/16 10:26:52 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/16 10:26:52 INFO: 1 became follower at term 1
+raft2026/10/16 10:26:52 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 10:26:52 Found 0 WALs
+raft2026/10/16 10:26:52 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/16 10:26:52 INFO: 2 became follower at term 1
+raft2026/10/16 10:26:52 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 10:26:52 Found 0 WALs
+raft2026/10/16 10:26:52 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/16 10:26:52 INFO: 3 became follower at term 1
+raft2026/10/16 10:26:52 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/16 10:26:52 INFO: 1 is starting a new election at term 1
+raft2026/10/16 10:26:52 INFO: 1 became pre-candidate at term 1
+raft2026/10/16 10:26:52 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/16 10:26:52 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/16 10:26:52 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/16 10:26:52 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 10:26:52 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 10:26:52 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 10:26:52 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/16 10:26:52 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 10:26:52 INFO: 1 became candidate at term 2
+raft2026/10/16 10:26:52 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/16 10:26:52 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/16 10:26:52 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/16 10:26:52 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 10:26:52 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 10:26:52 INFO: 2 became follower at term 2
+raft2026/10/16 10:26:52 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 10:26:52 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 10:26:52 INFO: 3 became follower at term 2
+raft2026/10/16 10:26:52 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 10:26:52 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/16 10:26:52 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 10:26:52 INFO: 1 became leader at term 2
+2026/10/16 10:26:53 Found 0 WALs
+raft2026/10/16 10:26:53 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/16 10:26:53 INFO: 1 became follower at term 1
+raft2026/10/16 10:26:53 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 10:26:53 Found 0 WALs
+raft2026/10/16 10:26:53 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/16 10:26:53 INFO: 2 became follower at term 1
+raft2026/10/16 10:26:53 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 10:26:53 Found 0 WALs
+raft2026/10/16 10:26:53 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/16 10:26:53 INFO: 3 became follower at term 1
+raft2026/10/16 10:26:53 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/16 10:26:53 INFO: 1 is starting a new election at term 1
+raft2026/10/16 10:26:53 INFO: 1 became pre-candidate at term 1
+raft2026/10/16 10:26:53 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/16 10:26:53 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/16 10:26:53 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/16 10:26:53 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 10:26:53 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 10:26:53 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 10:26:53 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/16 10:26:53 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 10:26:53 INFO: 1 became candidate at term 2
+raft2026/10/16 10:26:53 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/16 10:26:53 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/16 10:26:53 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/16 10:26:53 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 10:26:53 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 10:26:53 INFO: 2 became follower at term 2
+raft2026/10/16 10:26:53 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 10:26:53 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 10:26:53 INFO: 3 became follower at term 2
+raft2026/10/16 10:26:53 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 10:26:53 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/16 10:26:53 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 10:26:53 INFO: 1 became leader at term 2
+    retained_graph_feed_test.go:1548: genuine bounded partial import {{{[1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 3 [4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 2 9 [229 128 186 158 65 245 85 224 137 246 5 148 172 108 169 102 93 6 86 5 134 244 18 180 11 97 21 100 101 174 170 194] [147 106 40 122 225 126 164 33 223 254 62 8 218 243 11 230 203 73 181 63 254 242 201 121 188 236 231 231 44 76 31 249]} [36 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] [217 80 66 73 219 96 132 11 69 240 152 115 81 65 176 142] [44 19 20 114 192 51 180 199 224 18 38 63 186 180 220 219 115 183 94 80 232 182 223 52 245 186 239 7 206 38 247 214]} {3 {[1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 3} [217 80 66 73 219 96 132 11 69 240 152 115 81 65 176 142] [44 19 20 114 192 51 180 199 224 18 38 63 186 180 220 219 115 183 94 80 232 182 223 52 245 186 239 7 206 38 247 214] 8 32 3 4 0 20 5484 [8 86 192 117 172 52 157 5 249 148 76 96 9 106 207 64 17 219 16 119 240 9 122 170 197 25 168 91 234 148 138 234] 1 0 0 [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {3 {[1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 8} [217 80 66 73 219 96 132 11 69 240 152 115 81 65 176 142] [44 19 20 114 192 51 180 199 224 18 38 63 186 180 220 219 115 183 94 80 232 182 223 52 245 186 239 7 206 38 247 214] 8 23 3 4 0 20 5484 [8 86 192 117 172 52 157 5 249 148 76 96 9 106 207 64 17 219 16 119 240 9 122 170 197 25 168 91 234 148 138 234] 1 0 0 [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {3 {[1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] 3} [217 80 66 73 219 96 132 11 69 240 152 115 81 65 176 142] [44 19 20 114 192 51 180 199 224 18 38 63 186 180 220 219 115 183 94 80 232 182 223 52 245 186 239 7 206 38 247 214] 6 30 3 4 0 20 5484 [8 86 192 117 172 52 157 5 249 148 76 96 9 106 207 64 17 219 16 119 240 9 122 170 197 25 168 91 234 148 138 234] 1 0 0 [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} true} <nil>
+--- FAIL: TestRetainedFeedPooledImportCensusUsesActualRecoveryWork (2.60s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	3.219s
+FAIL

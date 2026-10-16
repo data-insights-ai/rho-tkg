@@ -1,0 +1,5 @@
+--- FAIL: TestNativeConjunctionFollowerReceiptWaitsForAuthenticatedLoss (0.00s)
+    native_graph_transition_conjunction_p06_test.go:736: selected follower became ready before its native receipt/loss <nil>
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	0.612s
+FAIL

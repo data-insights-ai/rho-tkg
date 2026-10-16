@@ -1,0 +1,87 @@
+{
+  "commit": "d36691157820c34d0b4835719841b2c2a30660a5",
+  "parent": "47c1b6368e1a6953fa4ebc9ef1471f6793639740",
+  "worktree": "/private/var/tmp/rho-v5-p03-surviving-caller-fix-20261016",
+  "paths": [
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_check.py",
+      "parentBlob": "8dc7b4b7be77e3a93a3a6171536f34357a578b7a",
+      "parentSHA256": "eeb091ec2ce5381c37b8163ba4a199334dcb66734c6a023051ffa730288ea13a",
+      "blob": "259d8c98b91ddf8ee4a1e3784a4c677c32c6c553",
+      "sha256": "c7f8d932d6c9a3396822ecfd84bc82bf9dee3860ccb652b44dbb5441d27fe9af"
+    },
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_check_test.py",
+      "parentBlob": "75faba33fbe070a103e5dd95e2bb8bafebd09267",
+      "parentSHA256": "b4bb4bd04496d4529a27fa59f3e7ebc5baa17e688755b26b049b2e76da159f4f",
+      "blob": "2823ba0f8bebed24d71def382bbc85d08623852b",
+      "sha256": "b610cb6979c8f7a42e26ec939882f2c99f56ac9cd210dc1c391018064393a331"
+    },
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_program_check_test.py",
+      "parentBlob": "0f41078b933c9be479246f48f959444c857c311c",
+      "parentSHA256": "da4ca790de729421f023513a9589c10deb7ae210b891b917c42f45d61b1bfdc1",
+      "blob": "cbf44cda9286eafc7b3a5f52809a115d569e5482",
+      "sha256": "b808edcb9de506721afab88c5af78ff15e2ce1b2d0fca3b5b02a4f339d1c802b"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_adapters_test.go",
+      "parentBlob": "0381fe12297456c421b6efe92657e7cd867e2f27",
+      "parentSHA256": "1c1adf77a9eccba751044ff9921a539341bbc71a73a35da680ed901829050bbc",
+      "blob": "8fdb0710fdbbc53d47bf5c24fcf4c0733e11cdd7",
+      "sha256": "b566d18726e3c6acc480124658fb8c68fcc5b8b3dd93d556e3ce4f8b8ed61dc2"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_transition_conjunction_reassociate_test.go",
+      "parentBlob": "74601d47b66a1f55b66f6ae4f170f8e3c2bff132",
+      "parentSHA256": "40a6f4e3586c7d0067b92a8866288bbc7b53e318a229b1682af051d75eb6b041",
+      "blob": "3595847f85177cd4731b2c3dc7520cbf3da7cec8",
+      "sha256": "92189bc9c7b3f6903b867f23e8d1bb85d37aba0f8f987e8e2f52727644903edf"
+    }
+  ],
+  "scope": "Fresh-program early selected target==planned recoverer: actual surviving original caller retains its private idle run, Host, unchanged peer stream and service replay ledger. Replacement exact local At(C) observation stays unchanged. Literal and recovery Resolve roles unchanged. Strict checker derives actor and joins original caller incarnation/sequence before unchanged original/business/D/CDC/history checks.",
+  "originalOSRed": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p03-receipt-fixed-8087c4c6.log",
+  "red": [
+    {
+      "log": "red.log",
+      "description": "New Go role guard before fix, old recoverer retained, expected surviving caller3 got1.",
+      "exit": 1,
+      "seconds": 1.166
+    },
+    {
+      "log": "python-red.log",
+      "description": "Direct existing parser role derivation rejects new intended same-original surviving caller.",
+      "exit": 1
+    }
+  ],
+  "verification": [
+    {
+      "command": "GOMAXPROCS=2 GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -vet=off -count=1 -timeout=60s -run '^TestNative(ProtocolCoordinatorRecoveryKeepsSurvivingCaller|ConjunctionSameCoordinatorRetainsGenuineUnknownRegisterAndStreams|ConjunctionChangedPeerReplacesOnlyItsStreamAfterValidation)$' ./internal/graphapply",
+      "exit": 0,
+      "seconds": 3.357,
+      "log": "green.log"
+    },
+    {
+      "command": "GOMAXPROCS=2 GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -vet=off -race -count=1 -timeout=90s -run '^TestNative(ProtocolCoordinatorRecoveryKeepsSurvivingCaller|ConjunctionSameCoordinatorRetainsGenuineUnknownRegisterAndStreams|ConjunctionChangedPeerReplacesOnlyItsStreamAfterValidation)$' ./internal/graphapply",
+      "exit": 0,
+      "seconds": 4.973,
+      "log": "race.log"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest native_protocol_campaign_check_test native_protocol_campaign_program_check_test",
+      "exit": 0,
+      "tests": 30,
+      "seconds": 0.01,
+      "log": "python-green.log"
+    }
+  ],
+  "format": "Pinned Go1.26.9 gofmt and git diff --check passed",
+  "logs": {
+    "red.log": "90c2657a3ce2cce439a9836690da43dba3f5791bfef19b13ef9f40df77d7f0aa",
+    "green.log": "6a6686307c6440699962d081d9f347d079ed98260b1636d8e4a0f7299e692f96",
+    "python-green.log": "c700d752368947d95b31acbc174d59c9c1149ddeefb848253a4a53ab205dce05",
+    "race.log": "7d28fdc7b8c7234fd9beb644cce265399295e81887db75fa9e37e9709b5700d6",
+    "python-red.log": "c8b33bb7375feccc815df855b167795d0e1cd32f5a4570ecf6ae2b9d2abb2570"
+  },
+  "limits": "No OS cohort, no cap/workers/deadline/production/child/CI change. Canonical role guards are inert; native original/stream ownership guards use genuine six-voter in-process Hosts. Real-process full oracle qualification remains root-owned."
+}

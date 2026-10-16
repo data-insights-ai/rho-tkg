@@ -1,0 +1,7 @@
+2026/10/16 10:18:32 Found 0 WALs
+--- FAIL: TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReopen (0.05s)
+    --- FAIL: TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReopen/native-reopen (0.05s)
+        native_graph_fault_schedule_test.go:438: native reopen did not reach its genuine root-directory Sync error opening database at "/var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestNativeFaultDirectorySyncSelectsOnlyOwnedRootDuringNativeReop2180670336/001/db": graphapply: resource limit {1 native-composed-graph-faults-v1 [87 150 87 198 171 100 96 23 185 42 58 244 193 124 203 120] 1 63843 1 1 directory-sync 1 0 true false {  false 0 0 [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]   0 <nil>   false}}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	0.583s
+FAIL

@@ -1,0 +1,5 @@
+{
+  "artifact": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p03-survivor-fixed-owned/artifacts/rho-paired-graph-fault-3463794144/p03-co3-phase3-p3-k2-after.jsonl",
+  "raw_old_observation_exact": true,
+  "scope": "Exact captured Cut/View/Native equality only; whole oracle still RED pending checker normalization correction."
+}

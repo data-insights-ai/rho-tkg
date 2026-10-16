@@ -1,0 +1,13 @@
+{
+  "commit": "bda73328fd6ba0ae08c6e0f2e48f3161f29d54ae",
+  "parent": "0c2b5a5b46ed2dcf80c48af26e3f4dc75468a18b",
+  "tree": "/private/var/tmp/rho-v5-feed-pages-preflight-20261016",
+  "path": "v5/internal/graphapply/retained_graph_feed_test.go",
+  "parent_blob": "03a4aa25481e8f82813c90b17379d558c059d7c5",
+  "parent_sha256": "fcf864a5ca65a676e98e28dafcd08b83ddb669ad6dc0a85d2d9a1d91ee383abb",
+  "blob": "d7cce0a96380824a0e839db68cdad2819411f607",
+  "sha256": "73e9a5a81a2914cb13058176f5784e3f628d86f1e4c48e6d963cbba38aec913b",
+  "baseline_red": "/private/var/tmp/rho-v5-state-snapshot-cache-evidence-20261016/page-diagnostic-baseline.log",
+  "followthrough": "/private/var/tmp/rho-v5-bounded-history-evidence-20261016/pages-framing-green.log",
+  "result": "all7 invalid identity/zero-effect probes pass; whole owning parent RED39.753s at later64-page census false/1/0; no whole parent acceptance"
+}

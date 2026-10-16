@@ -1,0 +1,28 @@
+=== RUN   TestStateCopiedNativeFrameDiagnostic
+2026/10/16 10:31:41 Found 3 WALs
+2026/10/16 10:31:41   - 000002: {(/var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestStateCopiedNativeFrameDiagnostic1416856510/001/db,000)}
+2026/10/16 10:31:41   - 000004: {(/var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestStateCopiedNativeFrameDiagnostic1416856510/001/db,000)}
+2026/10/16 10:31:41   - 000005: {(/var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestStateCopiedNativeFrameDiagnostic1416856510/001/db,000)}
+2026/10/16 10:31:41 [JOB 1] WAL 000005: {(/var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestStateCopiedNativeFrameDiagnostic1416856510/001/db,000)} stopped reading at offset: (/var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestStateCopiedNativeFrameDiagnostic1416856510/001/db/000005.log: 211663); replayed 171 keys in 42 batches
+    state_control_diagnostic_test.go:69: actual frame33 rows0->25 bytes172->35177 output33537706 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame34 rows25->50 bytes35177->70182 output33520980 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame35 rows50->96 bytes70182->142392 output33265152 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame36 rows96->145 bytes142392->225398 output33008437 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame37 rows145->194 bytes225398->308503 output32751029 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame38 rows194->243 bytes308503->391632 output32493453 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame39 rows243->292 bytes391632->474968 output32234428 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame40 rows292->341 bytes474968->558193 output31976180 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame41 rows341->390 bytes558193->641463 output31717617 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame42 rows390->439 bytes641463->724634 output31459747 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame43 rows439->488 bytes724634->807934 output31201232 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame44 rows488->537 bytes807934->891234 output30942717 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame45 rows537->586 bytes891234->974534 output30684202 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame46 rows586->635 bytes974534->1057834 output30425687 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame47 rows635->684 bytes1057834->1141134 output30167172 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame48 rows684->733 bytes1141134->1224566 output29907997 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame49 rows733->781 bytes1224566->1307291 output29650127 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame50 rows781->827 bytes1307291->1378830 output29392257 cause0000 error<nil>
+    state_control_diagnostic_test.go:69: actual frame51 rows827->853 bytes1378830->1414790 output29375793 cause0000 error<nil>
+--- PASS: TestStateCopiedNativeFrameDiagnostic (0.10s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	0.800s

@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "authorCommit": "111536066a80b1fdc6b3e5d77c42de71c1e5b16e",
+  "parent": "db72569cb684c5f3a053ce332ef56d3529979475",
+  "tree": "/var/tmp/rho-v5-d-replacement-old-source-fix-20261016",
+  "scope": "one existing test path; exactly two call replacements; no helper, producer, parser, quota, deadline, receipt, equality or wire change",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_fault_schedule_test.go",
+      "parentBlob": "a51cfb0a0ddf3ee5c36784796161b5cc3005e068",
+      "parentSHA256": "30a8454b91f4104aaa904e6fe987f7eae75ef72b4ed8cbb257f23cc6d2dd4844",
+      "blob": "a8875808f4dc56480abd61534c44b60e5cf7fea9",
+      "sha256": "5e55fc8413cbafdc81c4653d757e3d33337ed456cd57fc8f09f76fc5006d5f00"
+    }
+  ],
+  "changes": [
+    "WAL replacement1 At(original oldCut) uses nativeP06InitialLocalOld; all four existing fault kinds share this owning parent.",
+    "Directory replacement1 At(original cut) uses the same existing helper.",
+    "Exact observation equality, cookie refusal, fault receipt and full artifact writers remain unchanged."
+  ],
+  "redEvidence": {
+    "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/d-wal-classified-23efb53c.log",
+    "sha256": "3f6cb98596a0590678f812f3a6683a5928ee18f662d872851779a49944eb0129",
+    "scope": "Actual root short-write flow recovers same original decision, AS5 installs replacement1, then bare replacement At refuses Invalid/SourceUnavailable. No original evidence modified."
+  },
+  "verification": {
+    "command": "GOMAXPROCS=2 GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -vet=off -run '^TestNativeP06ReplacementUsesUnusedRemoteServiceForExactOldCut$' -count=1 -timeout=60s ./internal/graphapply",
+    "cwd": "/var/tmp/rho-v5-d-replacement-old-source-fix-20261016/v5",
+    "result": "PASS 4.208s",
+    "log": "/private/var/tmp/rho-v5-d-replacement-old-source-evidence-20261016/direct.log",
+    "logSHA256": "2bd03c704399997925438fda3c494fe2e7401d5868b5612ff38b436928620332",
+    "scope": "Existing genuine in-process native old-cut regression: spent service refusal, unused configured remote authenticates old root distinct from current, old service replay ledger unchanged. No OS cohort.",
+    "format": "Pinned Go1.26.9 gofmt -d produced no output; git diff --check PASS"
+  },
+  "unresolved": [
+    "Root integration and independent actual native/full-oracle rerun of TestNativeComposedFaultActualWALFailureRecoversOriginalDecision/short-write.",
+    "Actual native/full-oracle qualification of the existing write-eio, write-enospc and file-sync leaves remains required; this direct guard does not qualify them.",
+    "Actual native/full-oracle rerun of TestNativeComposedFaultDirectorySyncFailsGenuineSameDirectoryReopen remains required for mandatory startup root-Sync refusal, same-volume recovery and this replacement-old read.",
+    "This patch and its direct check do not close broader V2 correctness, measurement or engine-verdict gates; root owns the current canonical ledger."
+  ],
+  "stop": "Current bounded correction frozen; no further work or investigations started."
+}

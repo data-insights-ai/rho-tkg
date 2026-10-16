@@ -1,0 +1,54 @@
+{
+  "commit": "f2d2ef9230d82735ec4367226531c0a6f73b0f60",
+  "parent": "0c2b5a5b46ed2dcf80c48af26e3f4dc75468a18b",
+  "worktree": "/private/var/tmp/rho-v5-p03-raw-old-cut-check-20261016",
+  "paths": [
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_check.py",
+      "parentBlob": "259d8c98b91ddf8ee4a1e3784a4c677c32c6c553",
+      "parentSHA256": "c7f8d932d6c9a3396822ecfd84bc82bf9dee3860ccb652b44dbb5441d27fe9af",
+      "blob": "a7fda29df378bdc18504d0cda79fba9addb5b7ca",
+      "sha256": "f0ad823ede2ea312f3a424db7676a326d6d9bf4311f3f7963bb01a4dfd568bea"
+    },
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_check_test.py",
+      "parentBlob": "2823ba0f8bebed24d71def382bbc85d08623852b",
+      "parentSHA256": "b610cb6979c8f7a42e26ec939882f2c99f56ac9cd210dc1c391018064393a331",
+      "blob": "aebfecd92181ee5dd503796601da13e8a7782fbd",
+      "sha256": "0c2830181b000df7da8860bbb96bdbd0cea101dd8866cb281a2a0b50552e5ea7"
+    }
+  ],
+  "scope": "Authenticate replacement old observation by exact raw equality to same load/hash-authenticated P03 prior step after complete history validation; no asymmetric nil-label normalization. Full independent semantic normalization/oracle unchanged.",
+  "artifact": {
+    "path": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p03-survivor-fixed-owned/artifacts/rho-paired-graph-fault-3463794144/p03-co3-phase3-p3-k2-after.jsonl",
+    "sha256": "2ebf8df287fa2a4f3a82af89515b25779a270e212898121ab7b102b19fe452bd",
+    "historySHA256": "4fe6cf35da7cca97dfebb510f519f202dfdc1680a012d96d6478dfde601a4418"
+  },
+  "red": {
+    "log": "red.log",
+    "exit": 1,
+    "description": "Exact captured replacement/history observations fail prior asymmetrically normalized equality; only three View.Entities labels null vs[] differ."
+  },
+  "verification": [
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest native_protocol_campaign_check_test native_protocol_campaign_program_check_test",
+      "exit": 0,
+      "tests": 31,
+      "seconds": 0.012,
+      "log": "guards.log"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 native_protocol_campaign_program_check.py /private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p03-survivor-fixed-owned/artifacts/rho-paired-graph-fault-3463794144/p03-co3-phase3-p3-k2-after.jsonl",
+      "exit": 0,
+      "records": 147,
+      "log": "oracle.log"
+    }
+  ],
+  "logs": {
+    "red.log": "c4388c0abf424e9dceadbdd40a581b75db4f7f58141dd774dd6aa17eb48f6451",
+    "oracle.log": "174ea4aac861a7b42794e75347702b406c25da074e9cab21045865f29271dd8a",
+    "guards.log": "14e7c32530fccaad673f12e4c6cd1ede5709fa0cea924a936d1d22c4868a91de"
+  },
+  "format": "git diff --check passed",
+  "limits": "No OS/cohort/engine/artifact/receipt mutation; captured-codec guard inert, full immutable actual oracle replay is separate from fresh completed controller receipt."
+}

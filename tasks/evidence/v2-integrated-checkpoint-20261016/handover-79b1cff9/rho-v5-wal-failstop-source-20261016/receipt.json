@@ -1,0 +1,53 @@
+{
+  "author": "d58327f61327cb543c49eefee1830868511ca9e3",
+  "parent": "0c2b5a5b46ed2dcf80c48af26e3f4dc75468a18b",
+  "tree": "/private/var/tmp/rho-v5-native-wal-failstop-20261016",
+  "status": "",
+  "scope": [
+    {
+      "path": "tools/v5-substrate/native_fault_schedule_check.py",
+      "parentBlob": "23dc5fcdc362bb63dd46c53dcabc9b34346dc9f9",
+      "parentSHA256": "677a672b54731a9bed985653cc537c500e40908e68ab4bb1b05a4a037fe65b46",
+      "sourceBlob": "431769cc26800819263e5b546e0eee7334befa93",
+      "sourceSHA256": "4781a636151f6626519466d922cad85d09930881e129b48d84ca9571e314f60a"
+    },
+    {
+      "path": "tools/v5-substrate/native_fault_schedule_check_test.py",
+      "parentBlob": "501c5e488f4752445d9feb866f0082ff6950eac5",
+      "parentSHA256": "5a2d796abf06a74ba0e6f45b8df537788ee79a097de7e2e8bee88f5a84fcaad7",
+      "sourceBlob": "459418d286a748b6bca91cd2b4a2ec6cdf0850b7",
+      "sourceSHA256": "de33eef683f59fe034cd7e6012e4af753502ec11de6f8801d37874b3630d8042"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_fault_schedule_harness_test.go",
+      "parentBlob": "577b99eea01b172c3db75e4779832d698a6a16ef",
+      "parentSHA256": "1197f51abb523e67c0e21e2cecca45fba1a0dde6a3216ae374a231ff066e0d40",
+      "sourceBlob": "49c081c12da992ed82b9cd2bc15eb8492cc91361",
+      "sourceSHA256": "ecee8e508da1eb5b32e5645b549512221226c557b4ba66d94f40df31aa3489a4"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_fault_schedule_test.go",
+      "parentBlob": "c91ae6ca2e4d133c7938ad35f495135a36efe022",
+      "parentSHA256": "69aece920e535e3d13eb0e8931fc9345dda25e9a09c9ccfaba1e156d59815e2d",
+      "sourceBlob": "764531a2bff9c7b128dbf44e677ea2e7375f1f76",
+      "sourceSHA256": "b46d5c4f28e0f9ad24bf08ef50c648616fb3091329f2b2185603af0de8a71e51"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "checker-green.log",
+      "sha256": "35160c14f9433d6d2acf9dae282ef76cf7a4edbb5dddd4a61e369e0346a1e00f"
+    },
+    {
+      "path": "checker-red.log",
+      "sha256": "96716342acea597d1d5035e35eabc11014dd51d8be6fc283c7c992fa83214e98"
+    },
+    {
+      "path": "go-green.log",
+      "sha256": "c6b89ca3903672bdf840363f585b5ded23560390553c8d6d1aa7c3060530aae2"
+    }
+  ],
+  "actualRed": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/d-short-write-diagnostic-47c1b636.log",
+  "qualification": "Focused pure Go guard PASS0.258s; seven private Python guards PASS0.291s including actual bounded captured stderr/receipt positive and hostile mutations. Original real OS RED preserved. No author OS/fullsuite/dependency change; native reopen/prefix/whole-history still root rerun obligation.",
+  "semantics": "Actual matched short-write exit2 retained. Only pinned2.1.7 rotateWAL Close-error line2822 in FIRST running panic stack plus exact authenticated original IO/PID/cookie/WAL prefix may qualify. Arbitrary panic2, wrong signal/exit/receipt/stack/other goroutine/success output refuse. Legacy exit1 and all old recovery/oracle contracts unchanged."
+}

@@ -1,0 +1,5 @@
+--- FAIL: TestNativeProtocolCoordinatorRecoveryKeepsSurvivingCaller (0.00s)
+    native_graph_transition_conjunction_reassociate_test.go:360: recovery caller lost its actual surviving stream: row={program:true phase:3 caller:3 recoverer:1 target:1 want:3} got=1
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	1.166s
+FAIL
