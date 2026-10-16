@@ -861,7 +861,8 @@ func ExportRangeMovePage(ctx context.Context, source ApplicationReadSource, d Ra
 	if ctx == nil || output == nil || budget.Rows < 1 || budget.Bytes < rangeMoveFixedBytes || !d.valid() {
 		return page, work, ErrInvalid
 	}
-	if c.Family == 0 {
+	fresh := c.Family == 0
+	if fresh {
 		if !rangeMoveCursorEqual(c, RangeMoveCursor{}) {
 			return page, work, ErrInvalid
 		}
@@ -892,6 +893,16 @@ func ExportRangeMovePage(ctx context.Context, source ApplicationReadSource, d Ra
 			page = RangeMovePage{}
 		}
 	}()
+	if fresh {
+		// Recorded evidence is not carried by range moves yet: refuse rather than
+		// move the range and silently drop it.
+		var probe RangeMoveCursor
+		if _, held, e := rangeMoveCatalogNext(q, d, &probe, evidenceRecord); e != nil {
+			return page, work, e
+		} else if held {
+			return page, work, callerError(graphstate.ErrUnsupported)
+		}
+	}
 	key, payload, next, found, e := rangeMoveNextRow(q, d, c)
 	if e != nil {
 		return page, work, e

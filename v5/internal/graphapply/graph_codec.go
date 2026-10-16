@@ -612,6 +612,11 @@ func emitTypedGraphRequest(w *boundedWriter, r graphRequest, t axisTable, l mate
 	}
 	w.u32(len(r.operations))
 	for _, op := range r.operations {
+		if op.Recorded.Profile() != 0 {
+			// Recorded evidence is not carried by the distributed op log yet.
+			w.err = errors.Join(errInvalid, graphstate.ErrUnsupported)
+			return
+		}
 		w.tag(byte(op.Kind))
 		w.u64(uint64(op.Owner))
 		w.u64(uint64(op.Life))

@@ -594,3 +594,26 @@ func TestTypedDescriptorScalarOwnsValueAndRefusesInsufficientBudget(t *testing.T
 		t.Fatal("descriptor retained mutable input/accessor backing", decoded.Spec())
 	}
 }
+
+func TestGraphRequestRefusesRecordedEvidenceInsteadOfDropping(t *testing.T) {
+	l := defaultMaterializerLimits()
+	r := graphCodecRequest(t)
+	if _, err := encodeGraphRequest(r, l); err != nil {
+		t.Fatal(err)
+	}
+	for i := range r.operations {
+		axis, err := temporal.NewAxis(temporal.AxisDescriptor{ID: temporal.AxisID{77}, Profile: temporal.ProfileIntegerZ, Version: 1, Reference: "source/clock@v1", CanonicalUnit: "exact-unit"}, temporal.Limits{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := temporal.IntegerPosition(axis, temporal.Int64(0)) // coordinate 0 is still evidence
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := graphCodecRequest(t)
+		c.operations[i].Recorded = p
+		if wire, err := encodeGraphRequest(c, l); !errors.Is(err, graphstate.ErrUnsupported) || wire != nil {
+			t.Fatal("recorded evidence dropped silently at operation", i, err)
+		}
+	}
+}

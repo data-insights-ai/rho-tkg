@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
@@ -241,5 +242,27 @@ func TestStagePartitionOperationsRecordedEvidence(t *testing.T) {
 		if e, err := stage(c.l, c.rec); !errors.Is(err, graphstate.ErrInvalidInput) || !reflect.DeepEqual(e, GraphEffects{}) {
 			t.Fatal(name, err)
 		}
+	}
+}
+
+func TestRangeMoveExportRefusesRangeHoldingEvidence(t *testing.T) {
+	sources, d, binding, cfg, stores := transactionViewFixture(t)
+	actual, _ := sources[0].Root()
+	descriptor := rangeMoveTestPlan(t, sources, d, binding, cfg)
+	budget := raftlog.ReadBudget{Rows: 1, Bytes: 64 << 10}
+	if _, _, err := ExportRangeMovePage(t.Context(), sources[0], descriptor, RangeMoveCursor{}, budget, Limits{}, GraphLimits{}, transactionTestOutput(t)); err != nil {
+		t.Fatal("range without evidence must export", err)
+	}
+	root, err := DecodeRoot(actual.Image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := graphstate.EntityID(descriptor.Spec.Publication.First)
+	row := raftlog.KV{Key: evidenceKey(root.namespace, owner, 5), Value: []byte("evidence")}
+	held := ownershipView(t, stores[0], ownershipInstallRaw(t, stores[0], actual.Image, []raftlog.KV{row}))
+	sources[0] = held
+	descriptor = rangeMoveTestPlan(t, sources, d, binding, cfg)
+	if _, _, err := ExportRangeMovePage(t.Context(), held, descriptor, RangeMoveCursor{}, budget, Limits{}, GraphLimits{}, transactionTestOutput(t)); !errors.Is(err, graphstate.ErrUnsupported) {
+		t.Fatal("range holding evidence was exported", err)
 	}
 }

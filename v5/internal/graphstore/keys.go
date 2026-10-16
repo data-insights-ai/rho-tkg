@@ -17,8 +17,11 @@ const (
 	valueRecord
 	bucketRecord
 	bucketMemberRecord
-	evidenceRecord
 )
+
+// evidenceRecord is a distinct kind byte: 8..11 are component/directory/
+// checkpoint/patch pages, 0x10-0x15 index trees, 0x80-0x83 associations.
+const evidenceRecord recordKind = 0x16
 
 // Keys are provisional canonical lookup/routing keys, not temporal order keys.
 // Numeric fields are unsigned big-endian. Names are explicitly sized; schema
