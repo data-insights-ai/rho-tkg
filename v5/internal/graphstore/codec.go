@@ -634,3 +634,32 @@ func readRevisionRecord(src []byte, n Namespace, owner graphstate.EntityID, revi
 	}
 	return p, nil
 }
+
+func encodeBackdated(n Namespace, owner graphstate.EntityID, revision uint64, l Limits) ([]byte, error) {
+	if owner == 0 || revision == 0 {
+		return nil, ErrInvalid
+	}
+	b := recordHeader(n, backdatedRecord)
+	b = binary.BigEndian.AppendUint64(b, uint64(owner))
+	return checkRecord(binary.BigEndian.AppendUint64(b, revision), l)
+}
+
+// readBackdatedRecord decodes a backdated row and cross-checks the key identity.
+func readBackdatedRecord(src []byte, n Namespace, owner graphstate.EntityID, revision uint64, l Limits) error {
+	c, err := inspectRecord(src, n, backdatedRecord, l)
+	if err != nil {
+		return err
+	}
+	o, err := c.number()
+	if err != nil {
+		return err
+	}
+	r, err := c.number()
+	if err != nil {
+		return err
+	}
+	if o != uint64(owner) || r != revision || c.done() != nil {
+		return ErrCorrupt
+	}
+	return nil
+}
