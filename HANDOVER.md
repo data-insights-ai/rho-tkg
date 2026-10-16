@@ -59,7 +59,7 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
 ## 7. v5 pointer
 
 **Owner: René's session since 2026-10-16** (Markus handed v5 over after one final push, `origin/v5` `91426024`; all Sol agents
-stopped). The plan is `tasks/todo.md` on branch `v5-takeover` (user requests, work packages WP-01..WP-19, waves, release gate,
+stopped). The one plan for v4 and v5 is `tasks/todo.md` on main (user requests, work packages WP-01..WP-19, waves, release gate,
 open decisions); `tasks/backlog.md` keeps PLAN's phase/package definitions and the V2 A-F queue as the acceptance reference only.
 Goal: v5 becomes the public API consumers switch to (sigma first, then ai-soc root, then ai-soc `engine/`); v4 stays live and
 unchanged. No main push, tag or release for v5 without René; `origin/v5` is never force-pushed.
