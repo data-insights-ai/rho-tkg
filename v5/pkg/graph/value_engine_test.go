@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 
@@ -84,9 +85,10 @@ func TestBytesAndListEqualityScan(t *testing.T) {
 	}
 }
 
-// GetOrCreate on a unique List property finds the holder instead of creating a
-// second node or reporting a unique violation; a different list is a new claim.
-func TestUniqueListGetOrCreateFindsHolder(t *testing.T) {
+// A unique List claim follows the one equality rule (Value.Equal): GetOrCreate
+// of [3.0,4] returns the holder of [3,4], a second node with [3.0,4] under the
+// unique key is ErrUniqueViolation, and [3,5], [4,3] and [] stay separate claims.
+func TestUniqueListClaimUsesEquality(t *testing.T) {
 	cfg := bareConfig(t, t.TempDir())
 	cfg.NodeProperties = []PropertySchema{{Key: "l", Kind: KindList, Unique: true}}
 	g, err := Open(context.Background(), cfg)
@@ -95,6 +97,7 @@ func TestUniqueListGetOrCreateFindsHolder(t *testing.T) {
 	}
 	defer g.Close()
 	all := scopeAll(t)
+	f3 := mustFloat(t, 3)
 	get := func(v Value) (id types.NodeID, created bool) {
 		t.Helper()
 		update(t, g, func(tx Tx) (err error) {
@@ -107,13 +110,21 @@ func TestUniqueListGetOrCreateFindsHolder(t *testing.T) {
 	if !created {
 		t.Fatal("first claim not created")
 	}
-	if id, created := get(mustVList(t, Int(3), Int(4))); created || id != a {
-		t.Errorf("repeat: id %v created %t, want holder %v", id, created, a)
+	for _, v := range []Value{mustVList(t, Int(3), Int(4)), mustVList(t, f3, Int(4)), mustVList(t, f3, mustFloat(t, 4))} {
+		if id, created := get(v); created || id != a {
+			t.Errorf("%v: id %v created %t, want holder %v", v, id, created, a)
+		}
 	}
-	if id, created := get(mustVList(t, Int(4), Int(3))); !created || id == a {
-		t.Errorf("reversed list: id %v created %t", id, created)
+	_, err = g.Update(context.Background(), func(tx Tx) error {
+		_, err := tx.CreateNode(CreateNode{Labels: []string{"L"}, Props: map[string]Value{"l": mustVList(t, f3, Int(4))}, Scope: all})
+		return err
+	})
+	if !errors.Is(err, ErrUniqueViolation) {
+		t.Errorf("[3.0,4] next to [3,4]: %v", err)
 	}
-	if id, created := get(mustVList(t)); !created || id == a {
-		t.Errorf("empty list: id %v created %t", id, created)
+	for _, v := range []Value{mustVList(t, Int(3), Int(5)), mustVList(t, Int(4), Int(3)), mustVList(t), mustVList(t, mustFloat(t, 3.5), Int(4))} {
+		if id, created := get(v); !created || id == a {
+			t.Errorf("%v: id %v created %t, want a new claim", v, id, created)
+		}
 	}
 }

@@ -3,8 +3,10 @@ package graphstate
 import (
 	"bytes"
 	"errors"
+	"math"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
@@ -176,6 +178,52 @@ func TestScalarBytesAndListKeys(t *testing.T) {
 		}
 		if !c.equal && !c.ident && ka == kb {
 			t.Errorf("%s: unequal values share an EqualityKey", c.name)
+		}
+	}
+}
+
+// TestUniqueListClaimHoldsUniqueForm: UniqueForm maps a list to the member of
+// its equality class with integral floats as I64; a unique List property
+// accepts only that form, so identity-keyed claims follow Equal.
+func TestUniqueListClaimHoldsUniqueForm(t *testing.T) {
+	l := Limits{}
+	f3, f35 := mustF64(t, 3), mustF64(t, 3.5)
+	big := mustF64(t, 1<<63) // no int64 equals it
+	for _, c := range []struct {
+		name    string
+		in, out Scalar
+	}{
+		{"integral float element", mustList(t, f3, I64(4)), mustList(t, I64(3), I64(4))},
+		{"fraction stays", mustList(t, f35), mustList(t, f35)},
+		{"2^63 stays float", mustList(t, big), mustList(t, big)},
+		{"min int64", mustList(t, mustF64(t, -(1<<63))), mustList(t, I64(math.MinInt64))},
+		{"empty", mustList(t), mustList(t)},
+		{"scalar float unchanged", f3, f3},
+		{"strings", mustList(t, String("3")), mustList(t, String("3"))},
+	} {
+		got := c.in.UniqueForm()
+		if same, err := got.Identical(c.out, l); err != nil || !same {
+			t.Errorf("%s: %s want %s", c.name, got.Render(), c.out.Render())
+		}
+		if eq, _ := got.Equal(c.in, l); !eq {
+			t.Errorf("%s: UniqueForm left the equality class", c.name)
+		}
+	}
+	v := newFixtureView(t)
+	all, _ := temporal.All(v.axis)
+	v.defs[ownerSchemaKey{Node, "l"}] = PropertyDefinition{"l", Node, ScalarList, ScalarCardinality, UniqueScalar}
+	commitOps(t, v, 1, Operation{Kind: CreateNode, Owner: 1, Life: 1, Scope: all})
+	r, _ := state.NewRevision(2, 0)
+	set := func(val Scalar) error {
+		_, err := Plan(t.Context(), v, []Operation{{Kind: Set, Owner: 1, Life: 1, Scope: all, Name: "l", Value: val, ValueID: 9}}, r, Limits{})
+		return err
+	}
+	if err := set(mustList(t, f3, I64(4))); !errors.Is(err, ErrTypeMismatch) {
+		t.Errorf("[3.0,4] under a unique key: %v", err)
+	}
+	for _, ok := range []Scalar{mustList(t, I64(3), I64(4)), mustList(t, f35, I64(4))} {
+		if err := set(ok); err != nil {
+			t.Errorf("%s: %v", ok.Render(), err)
 		}
 	}
 }

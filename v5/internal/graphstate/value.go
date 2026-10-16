@@ -95,6 +95,32 @@ func List(elems []Scalar) (Scalar, error) {
 	return Scalar{kind: ScalarList, text: string(body)}, nil
 }
 
+// UniqueForm returns the member of v's equality class that a unique claim
+// stores: a list with every integral float element exact in int64 as I64, any
+// other value unchanged. Unique claims key by identity; within this form
+// IdentityKey and EqualityKey agree, so a claim follows Equal ([3.0,4] is the
+// claim [3,4]), as a typed scalar key does through its declared kind.
+func (v Scalar) UniqueForm() Scalar {
+	els, ok := v.ListValue()
+	if !ok {
+		return v
+	}
+	changed := false
+	for i, e := range els {
+		if e.kind == ScalarF64 && e.f64 == math.Trunc(e.f64) && e.f64 >= -(1<<63) && e.f64 < 1<<63 {
+			els[i], changed = I64(int64(e.f64)), true
+		}
+	}
+	if !changed {
+		return v
+	}
+	out, err := List(els)
+	if err != nil {
+		return v // unreachable: same elements, I64 for F64, same or smaller wire
+	}
+	return out
+}
+
 // maxWire is the largest wire Limits accept (Limits.resolve).
 const maxWire = 64 << 20
 
