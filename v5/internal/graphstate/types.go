@@ -317,7 +317,22 @@ const (
 	Unset
 	Add
 	Remove
+	// End closes the life's presence from Scope's lower bound onward, like Close,
+	// but the cells it writes carry EndProvenance so they never merge with, and
+	// stay distinguishable from, a Retract (Close) cell. Appended last: earlier
+	// tags are wire-stable.
+	End
 )
+
+// EndProvenance is the Revision provenance bit the planner sets on the
+// non-present Presence cells an End writes. A caller revision already carrying
+// it is refused when the batch contains an End.
+const EndProvenance uint64 = 1 << 63
+
+// IsEndCell reports whether a Presence cell was written by an End operation.
+func IsEndCell(c state.Cell) bool {
+	return !c.Present() && c.Revision().Provenance()&EndProvenance != 0
+}
 
 // Operation is a concrete typed union. Create/reopen supply a fresh Life; ValueID
 // is a supplied fresh dictionary handle used only if ValueIdentity is absent.

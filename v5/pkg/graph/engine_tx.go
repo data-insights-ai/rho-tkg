@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -292,18 +293,28 @@ func (t *engineTx) End(o End) error {
 	if err != nil {
 		return t.fail(err)
 	}
-	if !ok {
-		prior = p
-	} else if c, err := temporal.ComparePositions(p, prior, t.e.cfg.Limits); err != nil {
-		return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
-	} else if c == temporal.Less {
-		prior = p
+	earlier := !ok // this End is earlier than the standing one (or the first)
+	if ok {
+		c, err := temporal.ComparePositions(p, prior, t.e.cfg.Limits)
+		if err != nil {
+			return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
+		}
+		earlier = c == temporal.Less
+	}
+	if !earlier { // the standing End already closes this tail
+		return nil
 	}
 	if t.ends == nil {
 		t.ends = map[graphstate.EntityID]temporal.Position{}
 	}
-	t.ends[id] = prior
-	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: tail})
+	t.ends[id] = p
+	if t.rec.Profile() != 0 {
+		// graphstore's evidence codec does not know the End kind yet (not ours to
+		// edit): a Close over the same tail carries the evidence, End then
+		// overwrites its cells.
+		t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: tail})
+	}
+	t.ops = append(t.ops, graphstate.Operation{Kind: graphstate.End, Owner: id, Life: lifeID, Scope: tail}) // no Recorded: see above
 	return nil
 }
 
@@ -364,7 +375,14 @@ func (t *engineTx) Retract(o Retract) error {
 		return err
 	}
 	id, _ := target(o.Target)
-	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: o.Scope})
+	scope, err := t.beforeEnd(id, o.Scope)
+	if err != nil {
+		if errors.Is(err, ErrInvalidScope) { // already closed there by the End
+			return nil
+		}
+		return t.fail(err)
+	}
+	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: scope})
 	return nil
 }
 

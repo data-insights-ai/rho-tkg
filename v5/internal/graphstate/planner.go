@@ -77,7 +77,7 @@ func planWithOutputBudget(ctx context.Context, v ReadView, ops []Operation, revi
 		if err := scopeErr; err != nil {
 			return Delta{}, err
 		}
-		if op.Owner == 0 || op.Life == 0 || op.Kind < CreateNode || op.Kind > Remove {
+		if op.Owner == 0 || op.Life == 0 || op.Kind < CreateNode || op.Kind > End {
 			return Delta{}, ErrInvalidInput
 		}
 		if op.Kind == CreateNode || op.Kind == CreateRelationship {
@@ -87,7 +87,7 @@ func planWithOutputBudget(ctx context.Context, v ReadView, ops []Operation, revi
 		} else if op.Record.Interpretation != 0 || op.Record.TemporalRole != 0 {
 			return Delta{}, ErrInvalidInput
 		}
-		if op.Kind == AddLabel || op.Kind == RemoveLabel || op.Kind >= Set {
+		if op.Kind == AddLabel || op.Kind == RemoveLabel || op.Kind >= Set && op.Kind != End {
 			if !validName(op.Name, l) {
 				return Delta{}, ErrInvalidInput
 			}
@@ -98,6 +98,11 @@ func planWithOutputBudget(ctx context.Context, v ReadView, ops []Operation, revi
 	}
 	if revision.ID() == 0 {
 		return Delta{}, state.ErrInvalidRevision
+	}
+	for _, op := range ops {
+		if op.Kind == End && revision.Provenance()&EndProvenance != 0 {
+			return Delta{}, ErrInvalidInput
+		}
 	}
 	e, err := start(ctx, v, l, revision)
 	if err != nil {
@@ -141,7 +146,7 @@ func (e *engine) apply(op Operation) error {
 	if !found {
 		return ErrNotFound
 	}
-	if op.Kind == Close || op.Kind == Correct {
+	if op.Kind == Close || op.Kind == Correct || op.Kind == End {
 		if err := e.presence(op.Owner, op.Scope, op.Life, true); err != nil {
 			return err
 		}
@@ -151,6 +156,17 @@ func (e *engine) apply(op Operation) error {
 			}
 			ref, _ := state.NewValueRef(uint64(op.Life), 0)
 			return e.mutate(ComponentKey{Owner: op.Owner, Kind: Presence}, op.Scope, ref, true)
+		}
+		if op.Kind == End {
+			marked, err := state.NewRevision(e.revision.ID(), e.revision.Provenance()|EndProvenance)
+			if err != nil {
+				return err
+			}
+			plain := e.revision
+			e.revision = marked
+			err = e.mutate(ComponentKey{Owner: op.Owner, Kind: Presence}, op.Scope, state.ValueRef{}, false)
+			e.revision = plain
+			return err
 		}
 		return e.mutate(ComponentKey{Owner: op.Owner, Kind: Presence}, op.Scope, state.ValueRef{}, false)
 	}
