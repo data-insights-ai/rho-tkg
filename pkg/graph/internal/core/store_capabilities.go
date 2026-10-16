@@ -164,34 +164,37 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 
 // nodesByLabelAndProperties answers the (label-token, values map) composite
 // equality query with or without CompositePropertyIndexCapability; same shape as
-// nodesByLabelAndProperty: with a value of several forms the composite lookup
-// runs per combination of forms where a composite index serves it, else the
-// label scan filters every pair by its equal keys.
+// nodesByLabelAndProperty. A pair whose value has several forms (a number) is
+// never combined with the others' forms: the single-key lookup of the pair
+// with the fewest forms reads the candidates and every pair filters them.
 func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	forms, multi := equalForms(values)
 	if forms == nil {
 		return nil, nil
 	}
 	want := equalKeysOf(values)
-	perCombination := c.compositeQuery != nil && !multi
-	if c.compositeQuery != nil && multi {
-		indexed, err := c.compositeIndexed(tok, values)
+	if multi {
+		// Never combine forms (up to 12 per pair): read through the pair with
+		// the fewest forms and keep the rows carrying every other pair.
+		key := fewestForms(forms)
+		pageOpts := opts
+		pageOpts.Limit = 0
+		candidates, err := c.nodesByLabelAndProperty(tok, key, values[key], pageOpts)
 		if err != nil {
 			return nil, err
 		}
-		perCombination = indexed
-	}
-	if perCombination {
-		var nodes []*types.Node
-		if err := forEachFormCombination(forms, func(combo map[string]any) error {
-			found, err := c.compositeQuery.NodesByLabelAndProperties(tok, combo, opts)
-			nodes = append(nodes, found...)
-			return err
-		}); err != nil {
-			return nil, err
+		out := make([]*types.Node, 0, len(candidates))
+		for _, n := range candidates {
+			if nodeMatchesAllEqual(n, want) {
+				out = append(out, n)
+			}
 		}
-		if multi {
-			nodes = uniteNodes(nodes, opts)
+		return storeutil.PaginateNodes(out, opts.After, opts.Limit), nil
+	}
+	if c.compositeQuery != nil {
+		nodes, err := c.compositeQuery.NodesByLabelAndProperties(tok, values, opts)
+		if err != nil {
+			return nil, err
 		}
 		if !c.compositeQueryTrust {
 			if err := validateNodesByLabelAndProperties(tok, want, opts, nodes); err != nil {

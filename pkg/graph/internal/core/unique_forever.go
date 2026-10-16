@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/vmihailenco/msgpack/v5"
 
@@ -105,13 +107,11 @@ func (c *Core) loadUniqueForeverOwners() error {
 		if !ok {
 			return fmt.Errorf("graph: load unique-forever owners: %w: label %q not in registry", storepkg.ErrCorruptWire, r.Label)
 		}
-		// Owners recorded before v4.56.2 hold an integer under its width's key;
-		// two widths of one value (int(3), int64(3)) become one claim, kept by
-		// the smaller owner ID so every open decides alike.
-		key := foreverOwnerKey(tok, r.PropKey, types.CanonicalIndexKey(r.ValueKey))
-		if prev, ok := c.uniqueOwners[key]; !ok || types.NodeID(r.Owner) < prev {
-			c.uniqueOwners[key] = types.NodeID(r.Owner)
-		}
+		// Each record keeps the stored value's own width key (as v4.57.0
+		// writes it); two widths of one value (int(3), int64(3), recorded
+		// before v4.57.1) both load, and foreverOwnerLocked lets the smaller
+		// owner ID own the value.
+		c.uniqueOwners[foreverOwnerKey(tok, r.PropKey, r.ValueKey)] = types.NodeID(r.Owner)
 	}
 	return nil
 }
@@ -241,11 +241,11 @@ func (c *Core) reapUniqueForeverOwnersForReset() error {
 // pass, claimed=false; miss => claim (owner = selfID), persist, claimed=true.
 // Reporting whether THIS call made the claim lets a caller whose call then
 // fails withdraw exactly the claims it made (withdrawForeverClaims).
-func (c *Core) claimForever(labelTok uint16, propKey, valueKey string, selfID types.NodeID) (bool, error) {
-	key := foreverOwnerKey(labelTok, propKey, valueKey)
+func (c *Core) claimForever(labelTok uint16, propKey, valueKey, rawKey string, selfID types.NodeID) (bool, error) {
+	key := foreverOwnerKey(labelTok, propKey, rawKey)
 	c.uniqueMu.Lock()
 	defer c.uniqueMu.Unlock()
-	if owner, ok := c.uniqueOwners[key]; ok {
+	if owner, ok := c.foreverOwnerLocked(labelTok, propKey, valueKey); ok {
 		if owner == selfID {
 			return false, nil // same entity (any version) may keep the value
 		}
@@ -311,10 +311,9 @@ func (c *Core) withdrawForeverClaims(keys []string, selfID types.NodeID) error {
 // different entity => ErrUniqueViolation; same entity or a miss => nil (a miss
 // passes because a real assert would claim it). Takes only c.uniqueMu.RLock.
 func (c *Core) checkForeverOwnership(labelTok uint16, propKey, valueKey string, selfID types.NodeID) error {
-	key := foreverOwnerKey(labelTok, propKey, valueKey)
 	c.uniqueMu.RLock()
 	defer c.uniqueMu.RUnlock()
-	if owner, ok := c.uniqueOwners[key]; ok && owner != selfID {
+	if owner, ok := c.foreverOwnerLocked(labelTok, propKey, valueKey); ok && owner != selfID {
 		return fmt.Errorf("%w: label %q key %q value permanently owned by node %d (UniqueForever)",
 			ErrUniqueViolation, c.labels.Resolve(labelTok), propKey, owner)
 	}
@@ -334,19 +333,22 @@ func (c *Core) seedForeverOwnersFromCurrent(labelTok uint16, propKey string) err
 	if mk == nil {
 		return fmt.Errorf("graph: unique-forever seed: %w", storepkg.ErrCapabilityNotSupported)
 	}
-	var owners map[string]types.NodeID
+	type seed struct {
+		valueKey, rawKey string
+		id               types.NodeID
+	}
+	var owners []seed
 	scanErr := c.readUnderRLock(func() error {
 		nodes, e := c.store.NodesByLabel(labelTok, storepkg.QueryOpts{})
 		if e != nil {
 			return e
 		}
-		owners = make(map[string]types.NodeID)
 		for _, n := range nodes {
-			vk, found := uniqueValueKey(n, propKey)
-			if !found || vk == "" || isFloatValueKey(vk) {
+			rawKey, found := n.IndexablePropertyValueKey(propKey)
+			if !found || rawKey == "" || isFloatValueKey(rawKey) {
 				continue
 			}
-			owners[foreverOwnerKey(labelTok, propKey, vk)] = n.ID()
+			owners = append(owners, seed{valueKey: types.CanonicalIndexKey(rawKey), rawKey: rawKey, id: n.ID()})
 		}
 		return nil
 	})
@@ -358,9 +360,9 @@ func (c *Core) seedForeverOwnersFromCurrent(labelTok uint16, propKey string) err
 	}
 	c.uniqueMu.Lock()
 	defer c.uniqueMu.Unlock()
-	for k, id := range owners {
-		if _, exists := c.uniqueOwners[k]; !exists {
-			c.uniqueOwners[k] = id
+	for _, o := range owners {
+		if _, owned := c.foreverOwnerLocked(labelTok, propKey, o.valueKey); !owned {
+			c.uniqueOwners[foreverOwnerKey(labelTok, propKey, o.rawKey)] = o.id
 		}
 	}
 	return c.storeForeverOwnersLocked(mk)
@@ -423,13 +425,64 @@ func (c *Core) releaseOwnership(ctx context.Context, label, propKey string, valu
 	if !exists || st.scope != constraintspkg.UniqueForever {
 		return fmt.Errorf("%w: no UniqueForever constraint on label %q key %q", ErrUniqueConstraintNotFound, label, propKey)
 	}
-	key := foreverOwnerKey(labelTok, propKey, valueKey)
-	if _, owned := c.uniqueOwners[key]; !owned {
+	released := false
+	for _, k := range foreverWidthKeys(valueKey) {
+		key := foreverOwnerKey(labelTok, propKey, k)
+		if _, owned := c.uniqueOwners[key]; owned {
+			delete(c.uniqueOwners, key)
+			released = true
+		}
+	}
+	if !released {
 		return nil // idempotent — nothing to release
 	}
-	delete(c.uniqueOwners, key)
 	if err := c.storeForeverOwnersLocked(mk); err != nil {
 		return err
 	}
 	return nil
+}
+
+// foreverOwnerLocked returns the owner of the value whose canonical key is
+// valueKey (uniqueValueKey): the registry holds each claim under the stored
+// value's own width key, and a store written before v4.57.1 may hold two
+// widths of one value (int(3), int64(3)) for two owners; the smaller owner ID
+// owns it, so every open decides alike. Caller holds uniqueMu.
+func (c *Core) foreverOwnerLocked(labelTok uint16, propKey, valueKey string) (types.NodeID, bool) {
+	var owner types.NodeID
+	found := false
+	for _, k := range foreverWidthKeys(valueKey) {
+		if o, ok := c.uniqueOwners[foreverOwnerKey(labelTok, propKey, k)]; ok && (!found || o < owner) {
+			owner, found = o, true
+		}
+	}
+	return owner, found
+}
+
+// foreverWidthKeys are the registry keys a value with canonical key valueKey
+// can be claimed under: an integer's every integer width
+// (types.EqualIndexKeys without the refused float keys), any other key itself.
+func foreverWidthKeys(valueKey string) []string {
+	prefix, digits, _ := strings.Cut(valueKey, ":")
+	var v any
+	switch prefix {
+	case "i64":
+		if i, err := strconv.ParseInt(digits, 10, 64); err == nil {
+			v = i
+		}
+	case "u64":
+		if u, err := strconv.ParseUint(digits, 10, 64); err == nil {
+			v = u
+		}
+	}
+	if v == nil {
+		return []string{valueKey}
+	}
+	keys := types.EqualIndexKeys(v)
+	out := keys[:0]
+	for _, k := range keys {
+		if !isFloatValueKey(k) {
+			out = append(out, k)
+		}
+	}
+	return out
 }

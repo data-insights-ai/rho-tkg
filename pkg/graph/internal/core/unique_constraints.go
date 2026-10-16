@@ -561,6 +561,12 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 			if !found || valueKey == "" {
 				continue // unconstrained (missing key or unindexable value)
 			}
+			if unchangedConstrainedValue(prev, node, labelTok, key) {
+				// The write leaves the value alone: nothing to check or claim,
+				// so a legacy width twin (int(3) beside int64(3), stored before
+				// v4.57.1) keeps accepting writes to its other properties.
+				continue
+			}
 			if isFloatValueKey(valueKey) {
 				c.uniqueMu.RUnlock()
 				return noop, fmt.Errorf("%w: label %q key %q holds a float value", ErrUniqueUnsupportedType, c.labels.Resolve(labelTok), key)
@@ -684,4 +690,18 @@ func uniqueValueKey(e interface {
 }, key string) (string, bool) {
 	vk, found := e.IndexablePropertyValueKey(key)
 	return types.CanonicalIndexKey(vk), found
+}
+
+// unchangedConstrainedValue reports whether prev already carried the label
+// and node's key value in the same width (identical index key).
+func unchangedConstrainedValue(prev, node *types.Node, labelTok uint16, key string) bool {
+	if prev == nil || !prev.HasLabelTokenRaw(labelTok) {
+		return false
+	}
+	prevKey, ok := prev.IndexablePropertyValueKey(key)
+	if !ok || prevKey == "" {
+		return false
+	}
+	curKey, _ := node.IndexablePropertyValueKey(key)
+	return curKey == prevKey
 }

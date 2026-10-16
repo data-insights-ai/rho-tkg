@@ -1,6 +1,7 @@
 package graph_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"math"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -313,4 +315,59 @@ func TestPropertyEqualityWriteDoors(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestUniqueLegacyWidthTwins (lesson 58: tighten CREATE / CHANGE, keep LOAD
+// lenient): int(3) and int64(3) stored under a constraint before v4.57.1 load
+// (an import of them is accepted), an update that leaves the constrained value
+// alone passes, while a new value equal to them, or a change into one, is
+// refused.
+func TestUniqueLegacyWidthTwins(t *testing.T) {
+	ctx := context.Background()
+	src, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	for _, v := range []any{int(3), int64(3), int64(5)} {
+		if _, err := src.Nodes().Add(ctx, []string{"User"}, map[string]any{"k": v, "name": "n"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var buf bytes.Buffer
+	if err := src.IO().Export(&buf); err != nil {
+		t.Fatal(err)
+	}
+	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	if err := g.Constraints().CreateUnique(ctx, "User", "k"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.IO().Import(bytes.NewReader(buf.Bytes()), tkgio.ImportOptions{}); err != nil {
+		t.Fatalf("import of legacy width twins: %v, want accepted (lenient load)", err)
+	}
+	byValue := map[any]*types.Node{}
+	if err := g.Nodes().ForEachByLabel("User", storepkg.QueryOpts{}, func(n *types.Node) bool {
+		v, _ := n.GetProperty("k")
+		byValue[v] = n
+		return true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	twin, other := byValue[int64(3)], byValue[int64(5)]
+	if twin == nil || other == nil {
+		t.Fatalf("imported rows by value = %v", byValue)
+	}
+	if _, err := g.Nodes().Update(ctx, twin.ID(), map[string]any{"name": "renamed"}); err != nil {
+		t.Errorf("update of a twin not touching k: %v, want accepted", err)
+	}
+	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"k": int16(3)}); !errors.Is(err, graphpkg.ErrUniqueViolation) {
+		t.Errorf("new int16(3): %v, want ErrUniqueViolation", err)
+	}
+	if _, err := g.Nodes().Update(ctx, other.ID(), map[string]any{"k": int8(3)}); !errors.Is(err, graphpkg.ErrUniqueViolation) {
+		t.Errorf("change 5 -> int8(3): %v, want ErrUniqueViolation", err)
+	}
 }

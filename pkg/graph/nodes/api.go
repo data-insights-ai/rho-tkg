@@ -823,7 +823,7 @@ func (a *API) NodeLabelMutationEpoch(label string) uint64 {
 // ByLabelAndProperty returns nodes carrying the label whose property matches
 // value under the property equality (types.EqualIndexValues: a number matches
 // every stored width of the same exact value, 3 = int8(3) = 3.0 =
-// float32(3); NaN and nil match nothing; since v4.56.2, before which the
+// float32(3); NaN and nil match nothing; since v4.57.1, before which the
 // stored width had to match).
 func (a *API) ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	ops, err := a.ready()
@@ -902,7 +902,7 @@ func (a *API) DeleteProperty(ctx context.Context, id types.NodeID, key string) e
 
 // CompareAndSetProperty atomically updates a property honoring ctx. A numeric
 // expected matches under the property equality (int64(42) matches a stored
-// int(42), a NaN matches nothing; since v4.56.2), any other by
+// int(42), a NaN matches nothing; since v4.57.1), any other by
 // types.PropertyValueEqual.
 func (a *API) CompareAndSetProperty(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	ops, err := a.ready()

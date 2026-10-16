@@ -70,7 +70,7 @@ type UniqueOps interface {
 // installed and ErrUniqueViolationExisting is returned. Float-typed values are
 // rejected with ErrUniqueUnsupportedType. Values compare under the property
 // equality (types.EqualIndexValues): integers of every width are one value,
-// int(3) and int64(3) collide (since v4.56.2). Auto-ensures a property index on
+// int(3) and int64(3) collide (since v4.57.1). Auto-ensures a property index on
 // (label, propertyKey). Requires a backend with MetaKV; rejected on a
 // read-only replica.
 //

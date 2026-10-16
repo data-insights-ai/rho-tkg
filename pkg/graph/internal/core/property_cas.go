@@ -13,7 +13,10 @@ import (
 // CompareAndSetProperty atomically compares and swaps a single node property.
 // Returns (true, nil) on match+update, (false, nil) on mismatch, (false, error) on real error.
 // expected == nil means "property must not exist". newVal == nil means "delete the property".
-// Value comparison is exact-type property equality (int(42) != int64(42)); NaN property values match NaN.
+// A numeric expected compares under the property equality (types.PropertyEqual):
+// int64(42) matches a stored int(42), a scalar NaN matches nothing. Strings,
+// booleans, lists and maps compare by value identity (types.PropertyValueEqual):
+// exact types, and a NaN inside a list or map matches NaN.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) CompareAndSetProperty(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	c := n.c
@@ -215,7 +218,10 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 // CompareAndSetProperty atomically compares and swaps a single relationship property.
 // Returns (true, nil) on match+update, (false, nil) on mismatch, (false, error) on real error.
 // expected == nil means "property must not exist". newVal == nil means "delete the property".
-// Value comparison is exact-type property equality (int(42) != int64(42)); NaN property values match NaN.
+// A numeric expected compares under the property equality (types.PropertyEqual):
+// int64(42) matches a stored int(42), a scalar NaN matches nothing. Strings,
+// booleans, lists and maps compare by value identity (types.PropertyValueEqual):
+// exact types, and a NaN inside a list or map matches NaN.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) CompareAndSetProperty(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error) {
 	c := r.c

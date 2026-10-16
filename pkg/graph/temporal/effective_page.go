@@ -27,7 +27,7 @@ type Pin struct {
 // matches when its row carries property Prop with a value equal to Eq under
 // the property equality of every equality door (types.EqualIndexValues: 3
 // matches 3.0 and int8(3), NaN matches nothing; list membership does not
-// count; since v4.56.2). Eq must be a scalar with an index key: a list, map
+// count; since v4.57.1). Eq must be a scalar with an index key: a list, map
 // or nil is types.ErrUnsupportedValueType.
 type Filter struct {
 	Prop string

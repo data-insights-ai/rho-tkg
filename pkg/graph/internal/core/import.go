@@ -226,7 +226,11 @@ func (c *Core) validateUniqueAfterImportLocked() error {
 			return fmt.Errorf("graph: import unique validation: %w", err)
 		}
 		for _, n := range nodes {
-			vk, found := uniqueValueKey(n, ac.key)
+			// The LOAD door stays lenient (lesson 58): a stream may carry width
+			// twins (int(3) beside int64(3)) a pre-v4.57.1 constraint admitted,
+			// so the import compares the stored width keys; the write doors
+			// refuse a new twin.
+			vk, found := n.IndexablePropertyValueKey(ac.key)
 			if !found || vk == "" {
 				continue
 			}

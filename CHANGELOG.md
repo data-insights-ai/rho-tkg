@@ -19,13 +19,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   so `int64(2^53+1)` is not `float64(2^53)` and the counts no longer decline past 2^53); NaN and nil equal nothing; strings,
   booleans and temporal values equal themselves only. Stored values keep their width: index keys, the on-disk index, wire and
   hash tags are unchanged; a door unites the at most 12 keys an equal value can be stored under (one store lookup per key
-  where a property index serves it, else one scan). What callers see: lookups and page filters by a number return the
+  where a property index serves it, else one scan; `ByLabelAndProperties` reads through the pair with the fewest forms and
+  filters the others, never combining forms). What callers see: lookups and page filters by a number return the
   rows of every width (`ByLabelAndProperty(3)` finds a stored 3.0); a NaN lookup, filter or CAS `expected` matches nothing
   (was: NaN of the same float width); a numeric CAS `expected` matches across widths (`int64(42)` over a stored `int(42)`
   swaps), while the no-op check of a write stays exact (writing 3.0 over `int64(3)` stores the `float64`); a unique
-  constraint holds integers of every width as one value (a new `int64(3)` next to `int(3)` is `ErrUniqueViolation`;
-  `CreateUnique` over existing twins is `ErrUniqueViolationExisting`; `UniqueForever` owners recorded under two widths of one
-  value load as one claim, the smaller owner ID keeping it); `RangeCardinalityAt [3, 3]` counts what `= 3` finds (exact
+  constraint holds integers of every width as one value (a new `int64(3)` next to `int(3)`, or a change into it, is
+  `ErrUniqueViolation`; `CreateUnique` over existing twins is `ErrUniqueViolationExisting`). Width twins a constraint admitted
+  before stay readable (lesson 58: strict write doors, lenient load doors): an import accepts them, an update leaving the
+  constrained value alone passes, and a `UniqueForever` value recorded under two widths for two owners is owned by the
+  smaller owner ID, both records kept; the ownership blob still persists each claim under the stored value's own width key
+  (byte-identical to v4.57.0); `RangeCardinalityAt [3, 3]` counts what `= 3` finds (exact
   comparison above 2^53). Shipped as a fix of a door family (lessons 58, 84), not through the deprecation ritual: the doors
   now agree with the equality counts' documented rule. **sigma-tkgd**: `sharedexec` `forms()` (seeking the int and the float
   of a value, and -0.0) is now redundant (each seek already returns every width; the results are de-duplicated by ID) and
@@ -35,7 +39,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestPropertyEqualityDoorsAgree` (every equality door against an exact `math/big` oracle, count = `len(lookup)`, every
   width, NaN, ±Inf, -0.0, nil, 2^53 / 2^63 / 2^64 boundaries, with and without indexes; memory, badger, tiered, sharded;
   red: `tasks/evidence/numeric-equality/red.txt`), `TestPropertyEqualityWriteDoors` (CAS, unique and UniqueForever, exact
-  range count, width kept on update; red: `red-write.txt`), `pkg/types` `TestEqualIndexKeys` / `TestCompareNumber` /
+  range count, width kept on update; red: `red-write.txt`), `TestUniqueLegacyWidthTwins`,
+  `TestUniqueForever_PersistsStoredWidthKey` / `_LegacyWidthTwinsLoad`, `TestCompositeLookupDoesNotCombineForms` (red:
+  `red-fix.txt`), `pkg/types` `TestEqualIndexKeys` / `TestCompareNumber` /
   `TestCanonicalIndexKey`. Docs: api.md "Two equalities" rewritten, godoc of every door named above.
 
 ### Fixed

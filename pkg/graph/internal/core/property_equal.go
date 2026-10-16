@@ -88,29 +88,15 @@ func equalForms(values map[string]any) (map[string][]any, bool) {
 	return out, multi
 }
 
-// forEachFormCombination calls fn with every combination of one form per
-// pair (sorted keys, so the order is deterministic).
-func forEachFormCombination(forms map[string][]any, fn func(map[string]any) error) error {
-	keys := make([]string, 0, len(forms))
-	for k := range forms {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	combo := make(map[string]any, len(keys))
-	var walk func(i int) error
-	walk = func(i int) error {
-		if i == len(keys) {
-			return fn(combo)
+// fewestForms is the pair with the fewest forms (the smallest key on a tie).
+func fewestForms(forms map[string][]any) string {
+	best := ""
+	for k, f := range forms {
+		if best == "" || len(f) < len(forms[best]) || (len(f) == len(forms[best]) && k < best) {
+			best = k
 		}
-		for _, f := range forms[keys[i]] {
-			combo[keys[i]] = f
-			if err := walk(i + 1); err != nil {
-				return err
-			}
-		}
-		return nil
 	}
-	return walk(0)
+	return best
 }
 
 // nodePropertyIndexed reports whether a property index on (tok, key) serves
@@ -130,35 +116,6 @@ func (c *Core) relPropertyIndexed(tok uint16, key string) (bool, error) {
 		return false, nil
 	}
 	return cap.HasRelPropertyIndex(tok, key)
-}
-
-// compositeIndexed reports whether a composite index over exactly the keys
-// of values serves the store's composite lookup.
-func (c *Core) compositeIndexed(tok uint16, values map[string]any) (bool, error) {
-	cap, ok := c.store.(storepkg.CompositeIndexIntrospectionCapability)
-	if !ok {
-		return false, nil
-	}
-	defs, err := cap.ListCompositePropertyIndexes(tok)
-	if err != nil {
-		return false, err
-	}
-	for _, def := range defs {
-		if len(def) != len(values) {
-			continue
-		}
-		all := true
-		for _, k := range def {
-			if _, ok := values[k]; !ok {
-				all = false
-				break
-			}
-		}
-		if all {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 // uniteNodes sorts rows gathered from several form lookups by ID, drops
