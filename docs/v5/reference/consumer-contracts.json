@@ -1032,206 +1032,844 @@
     "Present": "PropertyTypeClassCounts value receiver; return sum of Numeric, NaN, String, Bool, Other (excluding Missing)"
   },
   "current_v4_source_delta": {
-    "captured_date": "2026-10-14",
+    "captured_date": "2026-10-16",
     "repository": "rho-tkg",
-    "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
-    "tree": "9842b13f11f12e93b832dc2784b97cee43970f49",
-    "release": "v4.51.8",
-    "previous_integrated_main": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
-    "extends_historical_source_delta": "All prior source objects, including qualified v4.51.7 and source-only v4.51.6, remain unchanged in source_delta_history; consumer pins and receipts stay historical.",
-    "evidence_level": "Source-only v4.51.8 reconciliation and dependency audit; no newer-reader runtime/scanner, batched consumer or phase acceptance.",
-    "qualification": "PENDING for v4.51.8. Historical v4.51.7 preflight is qualified at 0eb0a0ac by tools/v5-migrate/evidence/main4517-0eb0a0ac.json: ten targets,96.2% overall,100% both preflight functions. That frozen receipt does not extend to new sources. After an approved final reader cutoff the existing ten targets suffice for unchanged preflight mapping; no new preflight source/tests required. New batch consumer/selector/routing, retention and destination/V6 proofs remain separate.",
-    "dependencies": "Preflight code/tests/Makefile/go.sum and root/v5 dependencies unchanged; migration requires v4.51.8 with unchanged local replacements. Temporal Ops/new batch/shared point code is compiled; preflight calls byte-unchanged effective timelines/entityReads, not batched point reads. Tiered routing/depth filtering affect its fixtures. No Go/scanner/Docker executed for this newer source.",
+    "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+    "tree": "bd982db7528c85a2bd79609971bd8544d2cc01bf",
+    "release": "v4.56.1",
+    "previous_integrated_main": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+    "extends_historical_source_delta": "All prior source objects, including source-only v4.51.8, qualified v4.51.7 and source-only v4.51.6, remain unchanged in source_delta_history; the v4.52.0-v4.56.1 releases are folded into this one record. Consumer pins and receipts stay historical.",
+    "evidence_level": "Source-only v4.56.1 contract record (release tags v4.52.0 through v4.56.1, CHANGELOG, source and named tests read at the tag); no newer-reader runtime/scanner, consumer or phase acceptance, and no v5 behaviour executed.",
+    "qualification": "PENDING for v4.56.1. The preflight reader is pinned to v4.51.8 (tools/v5-migrate/go.mod) and is not qualified for row format versions 4 and 5, store markers 4 to 7, untimed -inf starts, void rows or the integrity switch; V6.2 must requalify it with nonempty fixtures for each. Historical v4.51.7 receipt tools/v5-migrate/evidence/main4517-0eb0a0ac.json does not extend to these sources.",
+    "dependencies": "Records contracts only: root and v5 dependencies, preflight code, tests and Makefile are unchanged by this record. Consumer pins on v4.56.1 (sigma-tkgd, ai-soc) are observations of the consumers, not v5 evidence.",
     "interfaces": {
-      "ExAdjacencyCapability": [
-        "ForEachExAdjacentRelID(nodeID types.NodeID, incoming bool, fn func(types.RelID) bool) error",
-        "NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error"
+      "EntityLendBatchCapability": [
+        "LendNodesSorted(ids []types.NodeID, out []*types.Node) error",
+        "LendRelationshipsSorted(ids []types.RelID, out []*types.Relationship) error"
       ],
-      "RelCreateUndoCapability": [
-        "UndoRelationshipCreate(id types.RelID) error"
+      "RelPropertyTxMemberPageCapability": [
+        "ForEachRelPropertyTxMemberAfter(relTypeToken uint16, propertyKey, valueKey string, after types.RelID, limit int, fn func(id types.RelID, firstTxFrom types.Instant) bool) error"
       ],
-      "ScopedRelCreateUndoCapability": [
-        "UndoRelationshipCreateScoped(id types.RelID, token uint64) error"
+      "NodePropertyTxMemberPageCapability": [
+        "ForEachNodePropertyTxMemberAfter(labelToken uint16, propertyKey, valueKey string, after types.NodeID, limit int, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error"
       ],
-      "MutationFlushHoldCapability": [
-        "FlushesEveryMutation() bool",
-        "HoldMutationFlushes()",
-        "ReleaseMutationFlushes()"
+      "HistoryEpochCapability": [
+        "NodeHistoryEpoch(id types.NodeID) (uint64, error)",
+        "RelHistoryEpoch(id types.RelID) (uint64, error)"
       ],
-      "ReadSnapshotCapability": [
-        "NewReadSnapshot() ReadSnapshot"
+      "MetaFormatMarkerCapability": [
+        "MetaSetDurableRaising(key string, value []byte, marker uint16) error"
       ],
-      "ReadSnapshot": [
-        "GetNode(id types.NodeID) (*types.Node, error)",
-        "GetRelationship(id types.RelID) (*types.Relationship, error)",
-        "HasNodeHistory(id types.NodeID) (bool, error)",
-        "HasRelHistory(id types.RelID) (bool, error)",
-        "NodeHistoryTemporalMeta(id types.NodeID) ([]VersionTemporalMeta, error)",
-        "RelHistoryTemporalMeta(id types.RelID) ([]VersionTemporalMeta, error)",
-        "GetNodeVersion(id types.NodeID, version uint32) (*types.Node, error)",
-        "GetRelVersion(id types.RelID, version uint32) (*types.Relationship, error)",
-        "GetNodeHistory(id types.NodeID) ([]*types.Node, error)",
-        "GetRelHistory(id types.RelID) ([]*types.Relationship, error)",
-        "Release()",
-        "Close()"
+      "RelTypeDegreeCountsCapability": [
+        "RelTypeDegreeCounts(typeToken uint16) (out, in map[types.NodeID]int64, rels int64, ok bool, err error)"
       ],
-      "RelValidEndCapability": [
-        "RelValidEndCandidates(typeToken uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)",
-        "RefineRelValidEnd(id types.RelID, gen uint64, end types.Instant)"
+      "OrdinalLookupCapability": [
+        "NodeOrdinalsOf(ids []types.NodeID, out []uint32) error",
+        "RelOrdinalsOf(ids []types.RelID, out []uint32) error"
       ],
-      "NodeValidEndCapability": [
-        "NodeValidEndCandidates(labelTokens []uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)",
-        "RefineNodeValidEnd(id types.NodeID, gen uint64, end types.Instant)"
+      "NodePropertyBoundsCapability": [
+        "NodePropertyBounds(labelToken uint16, propertyKey string) (PropertyBounds, bool, error)"
       ],
-      "CommitFloorCapability": [
-        "StoredCommitFloor() (types.Instant, error)"
+      "RelPropertyBoundsCapability": [
+        "RelPropertyBounds(relTypeToken uint16, propertyKey string) (PropertyBounds, bool, error)"
       ],
-      "RelRetentionPurgeCapability": [
-        "PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)"
+      "NodePropertyTxMemberRangeCapability": [
+        "ForEachNodePropertyTxMemberInRange(labelToken uint16, propertyKey string, lo, hi float64, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error"
       ],
-      "RelRangePurgeLogCapability": [
-        "LogRelRangePurge(typeToken uint16, before types.Instant, mode uint8) error"
-      ],
-      "NodeColumnSource": [
-        "Len() int",
-        "Row(i int) (id types.NodeID, validFrom, validTo int64)",
-        "Value(i, c int) (kind ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool)",
-        "Other(i, c int) bool"
+      "RelPropertyTxMemberRangeCapability": [
+        "ForEachRelPropertyTxMemberInRange(relTypeToken uint16, propertyKey string, lo, hi float64, fn func(id types.RelID, firstTxFrom types.Instant) bool) error"
       ]
     },
     "contract_extensions": [
       {
-        "id": "v4518-batched-bitemporal-point-reads",
+        "id": "v4560-untimed-valid-start",
         "contract": [
-          "temporal.API.NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error)",
-          "temporal.API.RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error)",
-          "temporal.Ops adds both methods as a wiring seam; external Ops implementation is not the stable consumer contract"
+          "graph.Config.UntimedValidStart (UntimedFromTxFrom default | UntimedUnbounded); types.UnboundedValidFrom (math.MinInt64)",
+          "Admin().SetUntimedValidStart(ctx, UntimedUnbounded) one-way conversion",
+          "ErrUntimedModeMismatch, ErrInvalidUntimedValidStart",
+          "Store format marker 7 for UntimedUnbounded stores (store.MetaFormatMarkerCapability.MetaSetDurableRaising); export header uu"
         ],
-        "required_v5_mapping": "Return per-ID state-point answers aligned to every input position and in input order, including repeated IDs. Unknown/no-valid-version becomes nil; all other member/source, retention, compaction, invalid-ID, closed/nil-graph and pin errors fail the whole call with no rows and errors.Is identity. Validate all IDs before reading. Positive knowledge pins are required: unlike the old per-ID door txAt zero refuses; above the commit clock refuses even empty IDs. Resolve distinct IDs once; repeated result positions may alias and require DeepCopy before mutation. Relationships retain DECLARED state without endpoint-life masking. Live store read snapshots and 256-distinct-ID graph lock chunks optimize cost; writes may land between chunks, so no call-level isolation or certified cut is implied. Release snapshots between chunks and close on all exits; preserve native/wrapper/fallback trust checks. O(input IDs) input/output allocation is not arbitrary-batch or physical memory acceptance. V5 admission/cut policy must be explicit; source performance does not qualify v5 or consumer adoption.",
+        "required_v5_mapping": "The first version written without a valid-from starts at its TxFrom (UntimedFromTxFrom, the v4.54.0 rule) or at -inf (UntimedUnbounded); a later untimed version starts at its TxFrom in both. The mode is decided once where the create writes the first version and is stored in the row as ValidFrom = MinInt64, an ordinary explicit start (0 stays unset), so a v5 reader must not special-case the mode. Preserve: mode persisted per store (MetaKV untimed_valid_start, kept across Reset), reopen under the other mode refuses with ErrUntimedModeMismatch, conversion is one way and resumable, exports carry uu and an import into a store of the other mode refuses, the mode replicates and any other replicated meta key fails closed, a cut-short conversion fails Export/Import/untimed creates closed. A reader capped below marker 7 must refuse the store (ErrWireFormatVersionUnsupported); upgrade replicas and importers before converting a primary. v5 explicit-zero rule (0 is a coordinate) is unaffected: -inf is a distinct explicit start, never a sentinel for 0. The default for new stores flips to UntimedUnbounded in the next v4 minor; v5 must not inherit either default silently.",
         "evidence": [
           {
             "repository": "rho-tkg",
-            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
-            "path": "pkg/graph/temporal/api.go",
-            "sha256": "dff0d93073572e2cc536fdd7a899e322ee4fed76c6558fb20a0cb02119ae7609",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/untimed_mode.go",
+            "sha256": "325e95656909c5935b58975f0b22f4727435b5dfecb3f8759ff063fd448ef45f",
             "matching_lines": [
-              467
+              29
             ],
-            "anchor": "func (a *API) NodesAtTxByIDs"
+            "anchor": "type UntimedValidStart uint8"
           },
           {
             "repository": "rho-tkg",
-            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
-            "path": "pkg/graph/temporal/api.go",
-            "sha256": "dff0d93073572e2cc536fdd7a899e322ee4fed76c6558fb20a0cb02119ae7609",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/core.go",
+            "sha256": "1ef601a1af87558abaff0c14e3a690d13729a5f3c93fc0317e44091150f4eb5e",
             "matching_lines": [
-              479
+              1073
             ],
-            "anchor": "func (a *API) RelsAtTxByIDs"
+            "anchor": "UntimedValidStart UntimedValidStart"
           },
           {
             "repository": "rho-tkg",
-            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
-            "path": "pkg/graph/internal/core/batched_attx.go",
-            "sha256": "007c3d24cbcbcc050afe159cabfcd1e4d8e8986a85b19ddc753c41f4b4eea86f",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/core.go",
+            "sha256": "1ef601a1af87558abaff0c14e3a690d13729a5f3c93fc0317e44091150f4eb5e",
             "matching_lines": [
-              108
+              679
             ],
-            "anchor": "func atTxByIDs"
+            "anchor": "ErrUntimedModeMismatch = errors.New"
           },
           {
             "repository": "rho-tkg",
-            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
-            "path": "pkg/graph/internal/core/temporal_queries.go",
-            "sha256": "e55e06aa66e8d505126eeabc6adb1a0a5cd16510f35229ee8ebaa0b48721a41e",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/admin/api.go",
+            "sha256": "30cf73be707ee5fd4e02965dcd102818b9020fdca6cdc438d6ff4e2fa5d5012a",
             "matching_lines": [
-              543
+              125
             ],
-            "anchor": "func (c *Core) nodeAtFromCurrent"
+            "anchor": "// SetUntimedValidStart converts the store"
           },
           {
             "repository": "rho-tkg",
-            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
-            "path": "pkg/graph/internal/core/batched_attx_chunk_test.go",
-            "sha256": "ae95b545055519cf85aeba7060dfb4add2e28651a0617cf5455d823b4b03c681",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/store/capabilities.go",
+            "sha256": "ae019c4d1010802988a4a7fe38203da57d869a55dd2d7bb36e705f04d262a028",
             "matching_lines": [
-              17
+              1165
             ],
-            "anchor": "func TestAtTxByIDsAcrossChunks"
+            "anchor": "type MetaFormatMarkerCapability interface"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/untimed_valid_start_test.go",
+            "sha256": "53d38c6b27f85c1e99e151c8a557d3e91ce4e528b8ae54d984dc94def07c4f3e",
+            "matching_lines": [
+              40
+            ],
+            "anchor": "func TestUntimedValidStartModes"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/untimed_marker_test.go",
+            "sha256": "f3c806c9e83a0e94a7e77791b4c87b4d1f1e11cfff91a43409ac98b10e551d33",
+            "matching_lines": [
+              25
+            ],
+            "anchor": "func TestUntimedUnboundedRaisesStoreFormatMarker"
           }
         ],
         "required_tests": [
-          "Node/rel per-ID equality across supported backends after mutations, deleted/reimported/late/unknown identities and historical knowledge/valid pins; exact aligned nils/duplicates and current-versus-history answers.",
-          "Cross256-ID chunks, wrapper/source faults, zero/negative/future pins, invalid-ID precedence, retention/compaction and nil/closed APIs; declared row aliasing and store snapshot reuse cannot imply global/call-level isolation."
+          "Create untimed under both modes through every create door (incl. GetOrCreateByKey, batch, ingest), then NodeAt/RelAt, ByLabel, interval, effective timelines and RelsEffectivePage agree with the per-entity fold on every backend; a later untimed version starts at its TxFrom.",
+          "Reopen under the other mode, interrupted conversion, export/import across modes, replica after primary conversion, marker-7 store opened by a reader capped at 6: each refuses with the typed error and writes nothing; explicit 0 and -inf starts stay distinct."
         ],
         "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
         "acceptance_status": "pending-v5"
       },
       {
-        "id": "v4518-tiered-window-routing",
+        "id": "v4540-untimed-start-and-valid-to-close",
         "contract": [
-          "Tiered timestamp-derived event-shard ownership and write-depth filtering (unchanged public signatures)",
-          "Sorted shardIndex over nonoverlapping event windows; same hot-shard fallback"
+          "storeutil.EntityValidFrom: explicit ValidFrom, else TxFrom, else UpdatedAt, else ID mint instant",
+          "Update with only tkg_valid_to closes the version (as CloseVersion; GraphTx/Batch/ingest/*WithTx twins)",
+          "CloseVersion stamps the version start on the closing row"
         ],
-        "required_v5_mapping": "Binary search chooses the nonempty half-open window containing source ID mint time; exact end routes to the next window, gaps/before/after retain hot fallback. Exclude zero-length duplicate starts. Open, rotation and purge unlink/re-link rebuild under the same owner lock; depth filtering uses ordered windows/tier snapshots. Preserve actual owner checkout, archive/reference probes, cold lifetime and historical/reimport state. Derived routing grants no ownership/cut authority; v5 opaque identity never derives current placement from source mint time. Upstream timings are not v5/consumer capacity measurements.",
+        "required_v5_mapping": "An untimed row is valid from its TxFrom (one burst reads consistently at one instant; AddWithTx backfill is valid from its backfilled TxFrom, before its mint). The v5 importer must read starts through this rule, not the ID mint instant, and a v5 consumer reading right after a create must read at the write TxFrom or NowTx, not wall clock. An Update carrying only tkg_valid_to is a close: the version keeps its start and ends at the value; an end at or before the start is ErrInvalidTimeRange and writes nothing; a closed untimed version now carries its start as a stored ValidFrom (raw shadow and column ValidFrom read the start instead of 0). Persisted derived data changed with it (open image format 2, temporal index marker v2, column blobs format 2): derived images from older binaries rebuild, they are not source truth.",
         "evidence": [
           {
             "repository": "rho-tkg",
-            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
-            "path": "pkg/graph/store/tiered/tieredstore_routing.go",
-            "sha256": "9f71720b66922700f9134bfc5f8dc36ce37ad30b7fd351c646d6fe643c1575a7",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/storeutil/temporal_filter.go",
+            "sha256": "1da9485d06c5ea27dd865d052a52a20073ccf04e70e13f274d736ba280fa9684",
             "matching_lines": [
-              77
+              18
             ],
-            "anchor": "func (ts *Store) reindexShardsLocked"
+            "anchor": "func EntityValidFrom"
           },
           {
             "repository": "rho-tkg",
-            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
-            "path": "pkg/graph/store/tiered/tieredstore_routing.go",
-            "sha256": "9f71720b66922700f9134bfc5f8dc36ce37ad30b7fd351c646d6fe643c1575a7",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/valid_from_txfrom_test.go",
+            "sha256": "62abc553a12d2c1f9017b72f3390f5766eb9b92dab66cd9678a1827acc116f6c",
             "matching_lines": [
-              94
+              23
             ],
-            "anchor": "func shardWindowFor"
+            "anchor": "func TestUntimedRowsStartAtTxFrom"
           },
           {
             "repository": "rho-tkg",
-            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
-            "path": "pkg/graph/store/tiered/tieredstore_write.go",
-            "sha256": "0899b91982c45ea54e7f273aa9bed4569a71a99652b78a4923be3e60ffffddc2",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/update_valid_to_test.go",
+            "sha256": "6d4942f516c3ff03a45ae4c40af3fa3f3679f69b485e8e982b37deb2ed6be14a",
             "matching_lines": [
-              1207
+              22
             ],
-            "anchor": "func (ts *Store) depthFilter"
-          },
-          {
-            "repository": "rho-tkg",
-            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
-            "path": "pkg/graph/store/tiered/retention_purge_drop.go",
-            "sha256": "91223a4351d75df6c5617c28c53b37e53a574993cee482fff051d4dc480166f5",
-            "matching_lines": [
-              132,
-              148,
-              175,
-              228
-            ],
-            "anchor": "ts.reindexShardsLocked()"
-          },
-          {
-            "repository": "rho-tkg",
-            "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
-            "path": "pkg/graph/store/tiered/tieredstore_routing_zero_test.go",
-            "sha256": "6e91418282987f0f13de92eb88aacc3eda2bf264e00257f70501dcd4eb3be503",
-            "matching_lines": [
-              11
-            ],
-            "anchor": "func TestTimestampToEventShardZeroLengthWindow"
+            "anchor": "func TestUpdateValidToClosesTheVersion"
           }
         ],
         "required_tests": [
-          "Exact linear-routing parity at starts/ends/gaps/outside windows and zero-length successive rotations; removed windows cannot remain reachable.",
-          "Open/rotation/purge unlink/re-link and depth filters preserve checkout and retained historical/reimport behavior; existing tiered reader fixtures do not qualify every topology/capacity."
+          "Untimed create then update then read at the create TxFrom, one tick before and after: named, generic, column and effective doors agree; an Update with a past tkg_valid_to refuses with nothing written.",
+          "CloseVersion(id, t) with t before the close instant ends the entity at t; a unit with one refused close in a Batch writes nothing."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4522-integrity-switch-and-binary-hashes",
+        "contract": [
+          "graph.Config.DisableIntegrityHashes (default false)",
+          "ErrIntegrityDisabled, ErrIntegrityModeMismatch",
+          "Hash().VerifyNodeChain/VerifyRelChain and Tier().VerifyShard return ErrIntegrityDisabled when off",
+          "Row format version 4 (32 raw hash bytes) written since v4.54.0; store marker 4; v4.52.2 readers accept both"
+        ],
+        "required_v5_mapping": "Hash, PrevHash, FromNodeHash and ToNodeHash are empty (resident and on disk) on a store with hashes off; verification answers ErrIntegrityDisabled, never valid. The setting is persisted (MetaKV integrity_hashes, kept across Reset); a reopen under the other setting with rows fails closed with ErrIntegrityModeMismatch and writes nothing; an on-graph refuses an off-graph export (ErrCorruptExport) and import/replica apply verify and drop carried hashes on an off graph. Binary hashes: every store written by v4.54.0 or later has rows at fv 4 and marker 4 with callers still receiving 64-hex strings; the v5 reader must accept fv<=5 hex and raw forms, hand out one canonical form, and fail closed on markers it does not know. v5 assertion hashes (internal/assertion IntegrityHash) are a separate chain: no mapping may infer one from the other, and an importer from an off store must report unverifiable history instead of fabricating hashes.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/core.go",
+            "sha256": "1ef601a1af87558abaff0c14e3a690d13729a5f3c93fc0317e44091150f4eb5e",
+            "matching_lines": [
+              1055
+            ],
+            "anchor": "DisableIntegrityHashes bool"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/errors.go",
+            "sha256": "13672a3b66e02ba0e1a910418c479de13a804a3585d5281acf5b09f14e53f003",
+            "matching_lines": [
+              168
+            ],
+            "anchor": "ErrIntegrityModeMismatch = core.ErrIntegrityModeMismatch"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/storeutil/wire.go",
+            "sha256": "b1b185094847c097be1ecfc529fa01c24440ec217ae30b47ec6c3503365dbd23",
+            "matching_lines": [
+              142
+            ],
+            "anchor": "const BinaryHashWireFormatVersion = 4"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/storeutil/wire.go",
+            "sha256": "b1b185094847c097be1ecfc529fa01c24440ec217ae30b47ec6c3503365dbd23",
+            "matching_lines": [
+              56
+            ],
+            "anchor": "const BinaryHashStoreFormatVersion = 4"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/integrity_switch_test.go",
+            "sha256": "b1115f76e50a9feda57197e2a17db0f679ccaf1a3a53e226da37a2fcde53e67c",
+            "matching_lines": [
+              210
+            ],
+            "anchor": "func TestIntegritySwitch"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/storeutil/wire_binary_hash_test.go",
+            "sha256": "926650823d8cc55fafb2e3671aec1f3fc7766e0eee69320522ea79325a167e7b",
+            "matching_lines": [
+              15
+            ],
+            "anchor": "func TestWireBinaryHashRoundTripAndLegacyHex"
+          }
+        ],
+        "required_tests": [
+          "Tamper a row on a hashed store: chain verification fails; on an off store verification returns ErrIntegrityDisabled and every row has empty hashes before and after reopen; reopen both ways refuses.",
+          "A store written with raw 32-byte hashes (fv 4) reads back the same 64-hex strings as the legacy hex row; an unknown marker or fv refuses with ErrWireFormatVersionUnsupported."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4540-valid-time-excise-and-void-rows",
+        "contract": [
+          "Temporal().ExciseNodeValidity/ExciseRelValidity(ctx, id, from, to) and *WithTx(..., txFrom), GraphTx and BatchBuilder twins",
+          "types.TemporalMetadata.Void; Temporal().Void; History() returns void rows marked",
+          "Row format version 5 (key vd), store marker 6 (VoidStoreFormatVersion), one monotonic marker tracker across 4/5/6/7"
+        ],
+        "required_v5_mapping": "Excise ends validity over [from, to) and keeps the entity outside it: reads with a valid instant inside answer ErrNoVersionValidAt (point, label, property, interval doors and effective timelines), reads outside and pins before the call keep their answers, a later SetNodeVersionInterval over the hole fills it. Append-only, one transaction instant, void pieces written over the parts of [from, to) where a version was valid plus the resumption from to. A void row never holds the current slot and never answers NodeAsOf/RelAsOf; a v5 importer or consumer reading raw History must skip rows with Void (sigma graphsource skips them). Refusals with nothing written: to == 0, from <= 0, from >= to (ErrInvalidTimeRange), no version valid in the range (ErrNoVersionValidAt), unknown or deleted entity; the batch *WithTx twin refuses the whole unit. An older binary refuses the store at open and fails void rows closed in export, feed and replica; a reader must not skip the vd key, it would read the piece as a valid version. v5 regions may express the hole, but there is no v5 operation: record a successor or an explicit decline, never map a void piece as a close.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/temporal/api.go",
+            "sha256": "e54baee6c7b33d97705b4fde6f25dbee3b5c7897e83ccfc9f1a02e3b2fbe4f0b",
+            "matching_lines": [
+              799
+            ],
+            "anchor": "func (a *API) ExciseNodeValidity("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/temporal/api.go",
+            "sha256": "e54baee6c7b33d97705b4fde6f25dbee3b5c7897e83ccfc9f1a02e3b2fbe4f0b",
+            "matching_lines": [
+              808
+            ],
+            "anchor": "func (a *API) ExciseRelValidity("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/storeutil/wire.go",
+            "sha256": "b1b185094847c097be1ecfc529fa01c24440ec217ae30b47ec6c3503365dbd23",
+            "matching_lines": [
+              152
+            ],
+            "anchor": "const VoidWireFormatVersion = 5"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/storeutil/wire.go",
+            "sha256": "b1b185094847c097be1ecfc529fa01c24440ec217ae30b47ec6c3503365dbd23",
+            "matching_lines": [
+              76
+            ],
+            "anchor": "const VoidStoreFormatVersion = 6"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/excise_validity_test.go",
+            "sha256": "998f42c8f13193600d0cfaeddc3de444da348bb873ee258059be7e7dad2ee08c",
+            "matching_lines": [
+              147
+            ],
+            "anchor": "func TestExciseNodeValidity("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/store/badger/badgerstore_void_format_test.go",
+            "sha256": "6b7a1b7cfd8b58f6a6766237287723fe87e5f9bdeb5b2ac365db7f4dbf79ca19",
+            "matching_lines": [
+              22
+            ],
+            "anchor": "func TestVoidRowRaisesStoreFormatMarker"
+          }
+        ],
+        "required_tests": [
+          "Create, excise [a,b), then point reads inside (ErrNoVersionValidAt), outside and at a pre-excise pin agree on memory, badger, tiered and sharded; History() marks void rows and NodeAsOf never returns one.",
+          "Refusals (b==0, a<=0, a>=b, no valid version, unknown, deleted) write nothing; a Batch *WithTx unit with one refused excise writes nothing; a reader capped below marker 6 refuses the store."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4522-elements-property-indexes",
+        "contract": [
+          "store.PropertyIndexOptions{Elements: true} through CreatePropertyWithOptions/CreateRelPropertyWithOptions",
+          "ByLabelAndProperty/ByTypeAndProperty on an Elements index mean \"the list contains x\"",
+          "types.ForEachIndexableElementKey; ErrElementsIndexUnsupported; store marker 5 (ElementsStoreFormatVersion)"
+        ],
+        "required_v5_mapping": "An Elements index keys each scalar element of a list value (scalar = one-element list, duplicates once, nil/empty/nested elements add nothing); the match test of every door is containment, at current, TxPin, TxAt+ValidAt and interval reads, so an element an update removed matches at an earlier pin and not after. The index keeps no ordered view: range, prefix, RangeCardinality, equality counts, bounds and ordered walks decline on it. Refused with ErrElementsIndexUnsupported: Elements with RangeCounts, on a unique-constrained key, CreateUnique/GetOrCreateByKey on an Elements key, ByLabelAndProperties and CreateComposite over one. Badger PropertyIndexOnDisk refuses it. A store that persisted an Elements definition carries marker 5 and stays closed to older binaries even after the index is dropped; a v5 reader must keep the marker explicit and fail closed on unknown ones. Plain indexes remain plain.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/store/capabilities.go",
+            "sha256": "ae019c4d1010802988a4a7fe38203da57d869a55dd2d7bb36e705f04d262a028",
+            "matching_lines": [
+              748
+            ],
+            "anchor": "type PropertyIndexOptionsCapability interface"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/errors.go",
+            "sha256": "13672a3b66e02ba0e1a910418c479de13a804a3585d5281acf5b09f14e53f003",
+            "matching_lines": [
+              68
+            ],
+            "anchor": "ErrElementsIndexUnsupported"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/storeutil/wire.go",
+            "sha256": "b1b185094847c097be1ecfc529fa01c24440ec217ae30b47ec6c3503365dbd23",
+            "matching_lines": [
+              66
+            ],
+            "anchor": "const ElementsStoreFormatVersion = 5"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/property_index_elements_test.go",
+            "sha256": "45e4c25be573c93b711bdb3cb458a73f8ebab3ec828ad68370bb4fd841673530",
+            "matching_lines": [
+              133
+            ],
+            "anchor": "func TestPropertyIndexElementsContains"
+          }
+        ],
+        "required_tests": [
+          "List values updated to remove then re-add an element: containment at pins before, between and after, across current, TxPin, TxAt+ValidAt and interval doors; duplicates and nested elements as specified.",
+          "Each refused combination returns ErrElementsIndexUnsupported with the index definition unchanged; a store with an Elements definition reopened by a reader capped at marker 4 refuses."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4550-paged-effective-scans",
+        "contract": [
+          "Temporal().RelsEffectivePage(ctx, pin, filter, after, limit) / NodesEffectivePage",
+          "temporal.MaxPageLimit = 10000",
+          "store.RelPropertyTxMemberPageCapability / NodePropertyTxMemberPageCapability (ForEach{Rel,Node}PropertyTxMemberAfter)"
+        ],
+        "required_v5_mapping": "One keyset page (ID > after, at most limit entities, next = last ID of a full page) of the effective walk at pin.Tx, keeping the segments whose row carries filter.Prop = filter.Eq under index-key equality (a list, map or nil Eq is ErrUnsupportedValueType) and meeting an optional valid instant, interval or open-ended [ValidStart, inf), over every relationship type (node label); limit is 1..10000. Candidates come from the transaction-time property membership sidecar of each type declared (type, Prop) index with an ordered view per value; a type without the index (and every type on tiered) falls back to its ever-members at the pin, so correctness never depends on the index, only cost. Declared relationship state, no endpoint masking. Pages must equal the filtered full effective walk at any pin with writes landing between pages; this is a per-call read, not a certified cut. A v5 door needs an explicit cursor and cut policy; the v4 ID-keyset cursor is not a v5 contract. Source timings are not v5 measurements.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/temporal/effective_page.go",
+            "sha256": "4a311b6ca2e04b1bc3ac89e1d0d055e1975f433d2931d47b1b9555f258866b34",
+            "matching_lines": [
+              78
+            ],
+            "anchor": "func (a *API) RelsEffectivePage("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/temporal/effective_page.go",
+            "sha256": "4a311b6ca2e04b1bc3ac89e1d0d055e1975f433d2931d47b1b9555f258866b34",
+            "matching_lines": [
+              94
+            ],
+            "anchor": "func (a *API) NodesEffectivePage("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/store/capabilities.go",
+            "sha256": "ae019c4d1010802988a4a7fe38203da57d869a55dd2d7bb36e705f04d262a028",
+            "matching_lines": [
+              338
+            ],
+            "anchor": "type RelPropertyTxMemberPageCapability interface"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/store/capabilities.go",
+            "sha256": "ae019c4d1010802988a4a7fe38203da57d869a55dd2d7bb36e705f04d262a028",
+            "matching_lines": [
+              344
+            ],
+            "anchor": "type NodePropertyTxMemberPageCapability interface"
+          }
+        ],
+        "required_tests": [
+          "Differential: concatenated pages equal the filtered ForEachRelEffective/ForEachNodeEffective walk at random pins, valid filters, value changes, deletes, closes, excise, corrections and retractions, with and without the declared index, on memory, badger, sharded and tiered; an empty page, a full last page and limit 1 give the exact next.",
+          "limit 0, negative and above MaxPageLimit, an unsupported Eq (list/map/nil), a future pin and a closed graph refuse with typed errors and no rows."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4561-envelope-pruning-for-effective-pages",
+        "contract": [
+          "Index().CreateRelTemporal / CreateTemporal envelope indexes consulted by RelsEffectivePage/NodesEffectivePage with ValidAt or an interval",
+          "one prune seam: pruneRelTypeCandidates / pruneNodeLabelCandidates",
+          "relationship envelopes cover every row of a re-created or re-typed ID"
+        ],
+        "required_v5_mapping": "A type or label with an envelope index drops each candidate whose envelope cannot meet the valid filter before any timeline is read; the envelope covers every row of the entity at every transaction time, so pages, next and cursor are identical to the unpruned walk. Types without the envelope index keep the unpruned path and an uncovered or building envelope never prunes. A relationship deleted before the index was declared and re-imported later, or re-created under another type, must not be pruned at a pin before its delete (memory create doors fold the ID history first; PutRelVersion extends covered or building IDs only). The index is declared by the consumer; nothing builds it automatically. For v5 this is pure acceleration: a v5 selector may prune only with a sound superset envelope and must fall back to exact resolution; it is no cut or completeness proof.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/queries.go",
+            "sha256": "4f756037d374b708b0292ffb58f2f2bc75e9e6159f209a1c1387058cb974b57c",
+            "matching_lines": [
+              626
+            ],
+            "anchor": "func (c *Core) pruneRelTypeCandidates("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/queries.go",
+            "sha256": "4f756037d374b708b0292ffb58f2f2bc75e9e6159f209a1c1387058cb974b57c",
+            "matching_lines": [
+              480
+            ],
+            "anchor": "func (c *Core) pruneNodeLabelCandidates("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/effective_page_valid_prune_test.go",
+            "sha256": "d906c3bf9651651b80b46cf61edfd713a5e71f8078d8811040fd4b734153ee85",
+            "matching_lines": [
+              25
+            ],
+            "anchor": "func TestEffectivePage_ValidPruneCost"
+          }
+        ],
+        "required_tests": [
+          "Pruned page equals the unpruned full walk for envelope indexes declared before or after the writes, for UntimedFromTxFrom and UntimedUnbounded stores, closed and open intervals.",
+          "A relationship deleted, then the envelope index declared, then the ID re-imported (same or another type): a pin before the delete still returns its version; timeline reads equal exactly the candidates whose envelope meets ValidAt."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4550-head-pin-effective-timeline",
+        "contract": [
+          "store.HistoryEpochCapability (NodeHistoryEpoch/RelHistoryEpoch) per-entity history token",
+          "NodeEffectiveTimeline/RelEffectiveTimeline at or above the entity newest TxFrom answers from a head cache in O(segments)"
+        ],
+        "required_v5_mapping": "The head answer is exact only while the entity history token and the current row version and temporal block are unchanged; SetNodeVersionInterval and excise extend it where older rows cannot change, any other history write forces a fold. Tokens are never reused and a shard-set change draws a new one. Answers must equal the fold at the head pin and at earlier pins after corrections, GraphTx commits and rollbacks, excise, in-place validity rewrites, CloseVersion, deletes, re-imports, compaction, Clear and retention purge. The cache serves point reads only and is bounded (1M pieces per graph, an answer above 512 pieces is not kept); a miss refolds. This is an accelerator for sigma read-then-correct cuts, not an isolation or cut mechanism; v5 budgets (V3.4/V3.5) are separate measurements.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/store/capabilities.go",
+            "sha256": "ae019c4d1010802988a4a7fe38203da57d869a55dd2d7bb36e705f04d262a028",
+            "matching_lines": [
+              415
+            ],
+            "anchor": "type HistoryEpochCapability interface"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/effective_head_test.go",
+            "sha256": "911eb4a77bc293d5eda1aabb25fc9ac64810cc71e280d58551538362dca2a064",
+            "matching_lines": [
+              37
+            ],
+            "anchor": "func TestEffectiveHead_DifferentialOracle"
+          }
+        ],
+        "required_tests": [
+          "Head-pin timeline equals the fold after each of: SetNodeVersionInterval, excise, Update, CloseVersion, delete, re-import, rolled-back GraphTx, compaction; a stale token never serves.",
+          "More than 512 pieces and a hot set above the token table bound refold and stay correct."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4553-sorted-equality-postings",
+        "contract": [
+          "Property, rel property and composite index ID sets kept as sorted posting lists (index.IDPostings)",
+          "NodesByLabelAndProperties / NodesByLabelAndProperty / RelationshipsByTypeAndProperty keyset pages (After, Limit) cost O(log n + page)",
+          "RangeOrderedPage/PrefixOrderedPage ties no longer sorted per call"
+        ],
+        "required_v5_mapping": "Same IDs, order, pagination and valid-time filter as the gather-sort-cut it replaces, on memory, badger, sharded (After/Limit passed to every shard and the merge cut) and tiered; ties in ordered views break by ID ascending. Open images written before are sorted on load. This is acceleration: a v5 equality or composite door must return the same keyset pages, but the posting layout is not a contract. Not changed: label and type scans and badger PropertyIndexOnDisk (nodes) still collect and sort; temporal property doors are unchanged. Source benchmarks (1,000,000-ID key 85 s to 0.5 s) are not v5 measurements.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/index/sorted_postings.go",
+            "sha256": "bb644d138f62a31b47e50709d10cfb992eae76de3a7950708695c44b7deaca69",
+            "matching_lines": [
+              25
+            ],
+            "anchor": "type IDPostings struct"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/store/sorted_postings_diff_test.go",
+            "sha256": "e45cec3f540a51c097e53f11d665e65ef44f84a04f79b2afa62a1686e47a9a71",
+            "matching_lines": [
+              56
+            ],
+            "anchor": "func TestSortedPostingsDifferential"
+          }
+        ],
+        "required_tests": [
+          "Random writes, replaces, label changes and deletes: every keyset page (After, Limit 1 and large) equals the sorted full result with and without a valid-time filter on every backend; After past the last ID and Limit 0 give empty or typed refusal as v4.",
+          "Ties of equal numeric values order by ID; a key with one member and a key with 1,025 members page identically."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4561-one-pass-sidecar-build",
+        "contract": [
+          "First lookup of a kind starts one build pass claiming every declared unbuilt property-membership sidecar of that kind (badger, sharded; memory builds per sidecar)",
+          "A clean badger Close writes the built sidecars into the open image (sections 9 and 10); trusted reopen restores them",
+          "PropertyTxMembershipStats().Builds counts passes"
+        ],
+        "required_v5_mapping": "Builds stay lazy; a lookup on a sidecar the running pass claimed waits for it, one on a built sidecar or an index declared after the pass started does not. Install only if the generation did not move, with write-buffer overlay captured before the view. The image is derived acceleration under the same trust rule as the indexes: a v4.56.0 or older binary rejects the new sections and rebuilds once, an incompatible, crashed or corrupt image falls back to the row rebuild, and an image is never completeness or cut proof. Answers must equal the per-key build. v5 obligation is the V3.4/V3.5 first-page-after-open budget (ai-soc first page waited about 3 minutes before); source numbers (open to first page 15.3 s to 0.38 s) are not v5 measurements, and the memory cost (about 10.5 MiB per 200,000 postings) must be budgeted.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/store/property_tx_members_one_pass_test.go",
+            "sha256": "36918e0be6c0b1fa9cde409390620038a52c42ab470d5d2d16263916fcd853a5",
+            "matching_lines": [
+              39
+            ],
+            "anchor": "func TestPropertyTxMembersOnePassBuildsEveryDeclaredIndex"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/store/badger/badgerstore_propertytxmembers_one_pass_test.go",
+            "sha256": "a28a8103cbb9391e673f9f21fc57cafd339d502a5e2ebed5f0e1d7b20ce29217",
+            "matching_lines": [
+              166
+            ],
+            "anchor": "func TestPropTxBuild_OnePassScanCount"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/store/badger/badgerstore_propertytxmembers_one_pass_test.go",
+            "sha256": "a28a8103cbb9391e673f9f21fc57cafd339d502a5e2ebed5f0e1d7b20ce29217",
+            "matching_lines": [
+              194
+            ],
+            "anchor": "func TestPropTxBuild_OnePassEqualsPerKeyBuild"
+          }
+        ],
+        "required_tests": [
+          "N declared indexes then lookups on all N: one scan; one-pass sidecars equal the per-key build; clean close then reopen answers the first page with no build; an open without the image rebuilds with one pass per kind.",
+          "A lookup on an index declared during a running pass does not wait; a corrupt image falls back to rebuild with the same answers."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4530-round7-read-doors",
+        "contract": [
+          "Nodes().LendByIDs / Rels().LendByIDs(ctx, ids, fn(i, row) bool) (store.EntityLendBatchCapability)",
+          "CountByLabelPropertyValue / CountByTypePropertyValue(…, opts) (count, exact, err)",
+          "ForEachIDByLabelPropertyRangeOrdered / ForEachIDByLabelPropertyPrefix and Rels() mirrors",
+          "Stats().TrackRelTypeDegrees (opt-in per-type degree counts, store.RelTypeDegreeCountsCapability)"
+        ],
+        "required_v5_mapping": "LendByIDs lends each current row under Lend's frozen contract, calls fn with the position in ids, skips absent IDs, in ascending ID order, with no lock held, false stops, chunks of 4,096 with the context checked per chunk. Equality counts return numbers by value across every stored width (float32 as its float64 widening, no string/number crossing, nil and NaN count 0) and exact=false is a decline, never zero: no index, tiered, badger PropertyIndexOnDisk, index building, Elements index, magnitude 2^53 or more, temporal value, list/map, unknown label/type, temporal opts. Ordered ID walks stream (ID, stored value) in value order, ties by ID ascending, from the index alone; every unsupported case is ErrIndexNotFound (temporal opts, tiered, sharded, external, Elements, building, integer past 2^53); fn runs with no lock held. Degree counts are opt-in and declined when untracked. v5 must keep the decline-versus-zero distinction and must not substitute a row scan when an exact door declines unless the caller asks.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/nodes/api.go",
+            "sha256": "563afa5fa5a3f220cd19e8deb8ad7eebeec35aa5608a81af30f234f6627e913c",
+            "matching_lines": [
+              185
+            ],
+            "anchor": "func (a *API) LendByIDs("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/rels/api.go",
+            "sha256": "32c2a8aec8f18640802e8d96ea07c088cb1e0d46623793cba34d0061872e8d3d",
+            "matching_lines": [
+              217
+            ],
+            "anchor": "func (a *API) LendByIDs("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/nodes/api.go",
+            "sha256": "563afa5fa5a3f220cd19e8deb8ad7eebeec35aa5608a81af30f234f6627e913c",
+            "matching_lines": [
+              598
+            ],
+            "anchor": "func (a *API) ForEachIDByLabelPropertyRangeOrdered("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/rel_degree_track.go",
+            "sha256": "bc1f32ec69803730e4eef5f00f1e8182a98376c123e839b946f3d2506993b4ad",
+            "matching_lines": [
+              95
+            ],
+            "anchor": "func (s *StatOps) TrackRelTypeDegrees("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/lend_by_ids_test.go",
+            "sha256": "74b07cbdb088b87470d3c6cea4abde6d4755f50be42a2f179c20bbc92f4f6b5c",
+            "matching_lines": [
+              48
+            ],
+            "anchor": "func TestLendByIDs("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/count_by_property_value_test.go",
+            "sha256": "f7308607528d51cf34cadf15797cc40ae36e22d6b89ac84f460ffaa03b1b4176",
+            "matching_lines": [
+              53
+            ],
+            "anchor": "func TestCountByPropertyValue("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/ordered_ids_test.go",
+            "sha256": "42fa15e189f3ebd6262f7e99176b47df3326fb6e83f2969e83395a89ef3328b9",
+            "matching_lines": [
+              79
+            ],
+            "anchor": "func TestForEachIDOrdered("
+          }
+        ],
+        "required_tests": [
+          "LendByIDs with duplicates, absent IDs, unsorted input, early stop and a cancelled context equals per-ID Lend; equality counts equal a brute-force Cypher-equality count after writes, updates and deletes, and each decline returns exact=false with count 0 and no error.",
+          "Ordered walks equal a sorted brute-force pass for both directions, exact bounds, empty prefix and early stop; temporal opts and tiered/sharded refuse with ErrIndexNotFound."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4552-round8-stats-ranges-and-ordinal-scans",
+        "contract": [
+          "Stats().PropertyBounds / RelPropertyBounds(label|type, key, opts) (store.PropertyBounds, ok, err)",
+          "Stats().LabelTimeStats / RelTypeTimeStats (store.MemberTimeStats{Members, ExplicitValid, LastEnded}, exact, err)",
+          "Nodes().RangeCardinalityAt / Rels().RangeCardinalityAt and temporal ForEachByLabelPropertyRange from the membership sidecar",
+          "Nodes().ForEachByLabelOrdinals / Rels().ForEachByTypeOrdinals(…, set []uint64, opts, fn) (store.OrdinalLookupCapability)",
+          "Nodes().ForEachDocValuesOrdinal / ForEachDocValuesMultiOrdinal"
+        ],
+        "required_v5_mapping": "PropertyBounds returns exact numeric Min/Max with MinValue/MaxValue and the type-class partition under one lock; ok=false (no error) wherever it cannot be exact (no index, building, Elements, integer past 2^53, PropertyIndexOnDisk, stats disabled, tiered, sharded, external, unknown label or type, temporal opts) and is never answered by a walk. MemberTimeStats: Eternal() means no explicit valid time, and a member starting at -inf without an end counts as none; HistoryAfter(pin) is LastEnded > pin; an Eternal member is valid from its TxFrom, so the consumer keeps the valid-time filter. RangeCardinalityAt counts versions within bounds with exact=true only where the sidecar serves and declines otherwise (no temporal filter, NaN bound, no index, tiered, sharded). Ordinal scans select entities whose current ordinal is in the bitset (bit k of set[k/64]) in ascending ID order with After/Limit; an entity with no current row has no ordinal; stores without ordinals answer ErrCapabilityNotSupported. v5 ordinals are dense per-cut positions assigned by the v5 cut, never the v4 current ordinal; an adapter must not carry v4 ordinals across.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/property_bounds.go",
+            "sha256": "f8c2cbb101420eeb52530f3daeca7f80445a9784f6a27552962b634bfb0d9c52",
+            "matching_lines": [
+              22
+            ],
+            "anchor": "func (s *StatOps) PropertyBounds("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/member_time_stats.go",
+            "sha256": "68dfb6a5e3815d0c420966e8f9a3d22b8bd22b7cc0507a19e6615b0a7905be48",
+            "matching_lines": [
+              154
+            ],
+            "anchor": "func (s *StatOps) LabelTimeStats("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/range_at.go",
+            "sha256": "c875dc1e3650452af6df8a28f9e02667fa09a8e011a3d5335c7e3bd3c59012d6",
+            "matching_lines": [
+              244
+            ],
+            "anchor": "func (n *NodeOps) RangeCardinalityAt("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/internal/core/ordinal_scan.go",
+            "sha256": "89a57f97434d330b7205ade77535007da14145f13b075ff787213ed89f4acb99",
+            "matching_lines": [
+              43
+            ],
+            "anchor": "func (n *NodeOps) ForEachByLabelOrdinals("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/store/ordinal_lookup.go",
+            "sha256": "a94dd55fc1b6be396d4157eb6685f0ea953604df6780892758ba0951023d52e5",
+            "matching_lines": [
+              11
+            ],
+            "anchor": "type OrdinalLookupCapability interface"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/property_bounds_test.go",
+            "sha256": "1f0c1526a376c2e3863f38ab6ea15f054511bfba065b17020f528a33edc11b52",
+            "matching_lines": [
+              206
+            ],
+            "anchor": "func TestPropertyBounds("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/range_at_test.go",
+            "sha256": "9caacc49fecdf6e6ee7644ce95dbf7d0225d1a2d3c70f10cf5d4930693d7b5e4",
+            "matching_lines": [
+              66
+            ],
+            "anchor": "func TestRangeAtFromSidecar"
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/ordinal_scan_test.go",
+            "sha256": "85d037e33e767fb35ea408d49a5dedb5bfb13552814b66bd9a7015c1db43690a",
+            "matching_lines": [
+              25
+            ],
+            "anchor": "func TestForEachByOrdinals"
+          }
+        ],
+        "required_tests": [
+          "Bounds, member time stats and range counts equal a brute-force pass through creates, updates and deletes of the extremes, label changes and backfilled indexes; every decline is ok=false/exact=false with no error and no walk.",
+          "Ordinal scans equal the filtered scan at current, After/Limit, TxPin, ValidAt and all-valid-time-at-a-pin coordinates through updates, deletes and label moves; an empty set, a set past the last ordinal and a tiered store behave as specified."
+        ],
+        "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+        "acceptance_status": "pending-v5"
+      },
+      {
+        "id": "v4520-interval-counts-and-ordinal-doc-values",
+        "contract": [
+          "CountByLabelAt / CountByTypeAt over a valid-time interval equal len(ByLabel) / len(ByType)",
+          "A label or type read at a valid-time coordinate answers entities without history from the row already read"
+        ],
+        "required_v5_mapping": "v4.51.8 and older over-counted interval counts (a current row answering the point query at the first instant of the interval was counted as a match, e.g. 5 against 4). Every v5 count door must equal the cardinality of its row door at every point and interval probe; a count cannot be derived from a current-row shortcut. Existing v4 stores need no repair: this was a read bug, but a consumer cache of old counts is wrong.",
+        "evidence": [
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/nodes/api.go",
+            "sha256": "563afa5fa5a3f220cd19e8deb8ad7eebeec35aa5608a81af30f234f6627e913c",
+            "matching_lines": [
+              809
+            ],
+            "anchor": "func (a *API) CountByLabelAt("
+          },
+          {
+            "repository": "rho-tkg",
+            "commit": "5d8b59175290be8723106d02ad142f6dfb3afd27",
+            "path": "pkg/graph/rels/api.go",
+            "sha256": "32c2a8aec8f18640802e8d96ea07c088cb1e0d46623793cba34d0061872e8d3d",
+            "matching_lines": [
+              643
+            ],
+            "anchor": "func (a *API) CountByTypeAt("
+          }
+        ],
+        "required_tests": [
+          "Mutation then historical probe: for every point and interval probe over a history with closes and corrections, CountByLabelAt/CountByTypeAt equals the number of rows ByLabel/ByType return."
         ],
         "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
         "acceptance_status": "pending-v5"
@@ -2791,6 +3429,212 @@
           "required_tests": [
             "History-only mutation during build retains the current disk row after image-suppressed reopen; label loss/re-add at a different valid-from yields one exact ID, not duplicates.",
             "Aborted/unpublished build rows do not contaminate a later create/reopen; writable cleanup/failure and unchanged read-only scope remain explicit. These selected upstream reopen tests do not imply physical-host/power-loss or whole-root acceptance."
+          ],
+          "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+          "acceptance_status": "pending-v5"
+        }
+      ]
+    },
+    {
+      "captured_date": "2026-10-14",
+      "repository": "rho-tkg",
+      "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+      "tree": "9842b13f11f12e93b832dc2784b97cee43970f49",
+      "release": "v4.51.8",
+      "previous_integrated_main": "9e9f0e0a8eb985f216948cbb6ce9556563a729db",
+      "evidence_level": "Source-only v4.51.8 reconciliation and dependency audit; no newer-reader runtime/scanner, batched consumer or phase acceptance.",
+      "qualification": "PENDING for v4.51.8. Historical v4.51.7 preflight is qualified at 0eb0a0ac by tools/v5-migrate/evidence/main4517-0eb0a0ac.json: ten targets,96.2% overall,100% both preflight functions. That frozen receipt does not extend to new sources. After an approved final reader cutoff the existing ten targets suffice for unchanged preflight mapping; no new preflight source/tests required. New batch consumer/selector/routing, retention and destination/V6 proofs remain separate.",
+      "dependencies": "Preflight code/tests/Makefile/go.sum and root/v5 dependencies unchanged; migration requires v4.51.8 with unchanged local replacements. Temporal Ops/new batch/shared point code is compiled; preflight calls byte-unchanged effective timelines/entityReads, not batched point reads. Tiered routing/depth filtering affect its fixtures. No Go/scanner/Docker executed for this newer source.",
+      "interfaces": {
+        "ExAdjacencyCapability": [
+          "ForEachExAdjacentRelID(nodeID types.NodeID, incoming bool, fn func(types.RelID) bool) error",
+          "NoteExAdjacentRel(id types.RelID, startID, endID types.NodeID) error"
+        ],
+        "RelCreateUndoCapability": [
+          "UndoRelationshipCreate(id types.RelID) error"
+        ],
+        "ScopedRelCreateUndoCapability": [
+          "UndoRelationshipCreateScoped(id types.RelID, token uint64) error"
+        ],
+        "MutationFlushHoldCapability": [
+          "FlushesEveryMutation() bool",
+          "HoldMutationFlushes()",
+          "ReleaseMutationFlushes()"
+        ],
+        "ReadSnapshotCapability": [
+          "NewReadSnapshot() ReadSnapshot"
+        ],
+        "ReadSnapshot": [
+          "GetNode(id types.NodeID) (*types.Node, error)",
+          "GetRelationship(id types.RelID) (*types.Relationship, error)",
+          "HasNodeHistory(id types.NodeID) (bool, error)",
+          "HasRelHistory(id types.RelID) (bool, error)",
+          "NodeHistoryTemporalMeta(id types.NodeID) ([]VersionTemporalMeta, error)",
+          "RelHistoryTemporalMeta(id types.RelID) ([]VersionTemporalMeta, error)",
+          "GetNodeVersion(id types.NodeID, version uint32) (*types.Node, error)",
+          "GetRelVersion(id types.RelID, version uint32) (*types.Relationship, error)",
+          "GetNodeHistory(id types.NodeID) ([]*types.Node, error)",
+          "GetRelHistory(id types.RelID) ([]*types.Relationship, error)",
+          "Release()",
+          "Close()"
+        ],
+        "RelValidEndCapability": [
+          "RelValidEndCandidates(typeToken uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)",
+          "RefineRelValidEnd(id types.RelID, gen uint64, end types.Instant)"
+        ],
+        "NodeValidEndCapability": [
+          "NodeValidEndCandidates(labelTokens []uint16, pin, validFrom types.Instant) ([]ValidEndCandidate, error)",
+          "RefineNodeValidEnd(id types.NodeID, gen uint64, end types.Instant)"
+        ],
+        "CommitFloorCapability": [
+          "StoredCommitFloor() (types.Instant, error)"
+        ],
+        "RelRetentionPurgeCapability": [
+          "PurgeRelsByTypeBefore(typeToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)"
+        ],
+        "RelRangePurgeLogCapability": [
+          "LogRelRangePurge(typeToken uint16, before types.Instant, mode uint8) error"
+        ],
+        "NodeColumnSource": [
+          "Len() int",
+          "Row(i int) (id types.NodeID, validFrom, validTo int64)",
+          "Value(i, c int) (kind ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool)",
+          "Other(i, c int) bool"
+        ]
+      },
+      "contract_extensions": [
+        {
+          "id": "v4518-batched-bitemporal-point-reads",
+          "contract": [
+            "temporal.API.NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error)",
+            "temporal.API.RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error)",
+            "temporal.Ops adds both methods as a wiring seam; external Ops implementation is not the stable consumer contract"
+          ],
+          "required_v5_mapping": "Return per-ID state-point answers aligned to every input position and in input order, including repeated IDs. Unknown/no-valid-version becomes nil; all other member/source, retention, compaction, invalid-ID, closed/nil-graph and pin errors fail the whole call with no rows and errors.Is identity. Validate all IDs before reading. Positive knowledge pins are required: unlike the old per-ID door txAt zero refuses; above the commit clock refuses even empty IDs. Resolve distinct IDs once; repeated result positions may alias and require DeepCopy before mutation. Relationships retain DECLARED state without endpoint-life masking. Live store read snapshots and 256-distinct-ID graph lock chunks optimize cost; writes may land between chunks, so no call-level isolation or certified cut is implied. Release snapshots between chunks and close on all exits; preserve native/wrapper/fallback trust checks. O(input IDs) input/output allocation is not arbitrary-batch or physical memory acceptance. V5 admission/cut policy must be explicit; source performance does not qualify v5 or consumer adoption.",
+          "evidence": [
+            {
+              "repository": "rho-tkg",
+              "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+              "path": "pkg/graph/temporal/api.go",
+              "sha256": "dff0d93073572e2cc536fdd7a899e322ee4fed76c6558fb20a0cb02119ae7609",
+              "matching_lines": [
+                467
+              ],
+              "anchor": "func (a *API) NodesAtTxByIDs"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+              "path": "pkg/graph/temporal/api.go",
+              "sha256": "dff0d93073572e2cc536fdd7a899e322ee4fed76c6558fb20a0cb02119ae7609",
+              "matching_lines": [
+                479
+              ],
+              "anchor": "func (a *API) RelsAtTxByIDs"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+              "path": "pkg/graph/internal/core/batched_attx.go",
+              "sha256": "007c3d24cbcbcc050afe159cabfcd1e4d8e8986a85b19ddc753c41f4b4eea86f",
+              "matching_lines": [
+                108
+              ],
+              "anchor": "func atTxByIDs"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+              "path": "pkg/graph/internal/core/temporal_queries.go",
+              "sha256": "e55e06aa66e8d505126eeabc6adb1a0a5cd16510f35229ee8ebaa0b48721a41e",
+              "matching_lines": [
+                543
+              ],
+              "anchor": "func (c *Core) nodeAtFromCurrent"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+              "path": "pkg/graph/internal/core/batched_attx_chunk_test.go",
+              "sha256": "ae95b545055519cf85aeba7060dfb4add2e28651a0617cf5455d823b4b03c681",
+              "matching_lines": [
+                17
+              ],
+              "anchor": "func TestAtTxByIDsAcrossChunks"
+            }
+          ],
+          "required_tests": [
+            "Node/rel per-ID equality across supported backends after mutations, deleted/reimported/late/unknown identities and historical knowledge/valid pins; exact aligned nils/duplicates and current-versus-history answers.",
+            "Cross256-ID chunks, wrapper/source faults, zero/negative/future pins, invalid-ID precedence, retention/compaction and nil/closed APIs; declared row aliasing and store snapshot reuse cannot imply global/call-level isolation."
+          ],
+          "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
+          "acceptance_status": "pending-v5"
+        },
+        {
+          "id": "v4518-tiered-window-routing",
+          "contract": [
+            "Tiered timestamp-derived event-shard ownership and write-depth filtering (unchanged public signatures)",
+            "Sorted shardIndex over nonoverlapping event windows; same hot-shard fallback"
+          ],
+          "required_v5_mapping": "Binary search chooses the nonempty half-open window containing source ID mint time; exact end routes to the next window, gaps/before/after retain hot fallback. Exclude zero-length duplicate starts. Open, rotation and purge unlink/re-link rebuild under the same owner lock; depth filtering uses ordered windows/tier snapshots. Preserve actual owner checkout, archive/reference probes, cold lifetime and historical/reimport state. Derived routing grants no ownership/cut authority; v5 opaque identity never derives current placement from source mint time. Upstream timings are not v5/consumer capacity measurements.",
+          "evidence": [
+            {
+              "repository": "rho-tkg",
+              "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+              "path": "pkg/graph/store/tiered/tieredstore_routing.go",
+              "sha256": "9f71720b66922700f9134bfc5f8dc36ce37ad30b7fd351c646d6fe643c1575a7",
+              "matching_lines": [
+                77
+              ],
+              "anchor": "func (ts *Store) reindexShardsLocked"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+              "path": "pkg/graph/store/tiered/tieredstore_routing.go",
+              "sha256": "9f71720b66922700f9134bfc5f8dc36ce37ad30b7fd351c646d6fe643c1575a7",
+              "matching_lines": [
+                94
+              ],
+              "anchor": "func shardWindowFor"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+              "path": "pkg/graph/store/tiered/tieredstore_write.go",
+              "sha256": "0899b91982c45ea54e7f273aa9bed4569a71a99652b78a4923be3e60ffffddc2",
+              "matching_lines": [
+                1207
+              ],
+              "anchor": "func (ts *Store) depthFilter"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+              "path": "pkg/graph/store/tiered/retention_purge_drop.go",
+              "sha256": "91223a4351d75df6c5617c28c53b37e53a574993cee482fff051d4dc480166f5",
+              "matching_lines": [
+                132,
+                148,
+                175,
+                228
+              ],
+              "anchor": "ts.reindexShardsLocked()"
+            },
+            {
+              "repository": "rho-tkg",
+              "commit": "bf0050b2d62332867c8dc22946ed11eabdcd23ed",
+              "path": "pkg/graph/store/tiered/tieredstore_routing_zero_test.go",
+              "sha256": "6e91418282987f0f13de92eb88aacc3eda2bf264e00257f70501dcd4eb3be503",
+              "matching_lines": [
+                11
+              ],
+              "anchor": "func TestTimestampToEventShardZeroLengthWindow"
+            }
+          ],
+          "required_tests": [
+            "Exact linear-routing parity at starts/ends/gaps/outside windows and zero-length successive rotations; removed windows cannot remain reachable.",
+            "Open/rotation/purge unlink/re-link and depth filters preserve checkout and retained historical/reimport behavior; existing tiered reader fixtures do not qualify every topology/capacity."
           ],
           "ownership": "rho storage/access/history preservation; sigma/ai-soc adapters in their repositories",
           "acceptance_status": "pending-v5"

@@ -2034,12 +2034,12 @@
     "temporal/test_reference_model.py": "73854402da1db870a2aa749d8263d4dc601a934b6c246039b451bcec433e48af"
   },
   "private_path_scrub": "all text artifacts checked; no developer absolute paths or recovery-directory references",
-  "python_version": "3.14.3",
+  "python_version": "3.10.12",
   "schema_version": 1,
   "scope": "independent finite mathematical/declarative reference validation; no production, performance, process-kill or full V0/V1/V2 claims",
   "source_contract_sha256": {
-    "../../PLAN.md": "8671d583fd76cafc7cd49a5c69460725dbabb8704774ef69ed9e9f1b8783f33f",
-    "../substrate-evaluation.json": "a3094c207ab31dc8d8d2807d3293f1c0762a5c8fdf0e21fbf4239d4ef8fb32f3",
+    "../../PLAN.md": "7de69b49e97d3c8dec727dea37cd026033691121482ae58161a48672d1ee68a0",
+    "../substrate-evaluation.json": "6e7bcb80a75d50ca912f03bc6fb4304cf2e97128543d9d245cf94fcc9170fcb5",
     "../temporal-fixtures.json": "0598d593bd39ccf95ea2737bb55b0358631cfc6009a03f35b8f39101a7a4f6f2"
   }
 }
