@@ -509,10 +509,83 @@ func (f *pairedGraphFaultNetwork) drain() {
 	f.requireActive()
 	ctx, cancel := f.operationContext(10 * time.Second)
 	defer cancel()
-	if err := drainGraphProcessMuxes(ctx, f.live()); err != nil {
+	var err error
+	if f.parent == nil {
+		err = drainGraphProcessMuxes(ctx, f.live())
+	} else {
+		err = f.drainLiveOwners(ctx)
+	}
+	if err != nil {
 		f.t.Fatal("paired live-owner drain", err)
 	}
 	f.requireActive()
+}
+
+func (f *pairedGraphFaultNetwork) drainLiveOwners(ctx context.Context) error {
+	if ctx == nil || f == nil || f.n == nil || f.n.all[1] == nil || f.n.all[1].mux == nil || f.n.all[1].mux.hub == nil {
+		return errInvalid
+	}
+	hub := f.n.all[1].mux.hub
+	if hub.ctx == nil {
+		return errInvalid
+	}
+	for {
+		if err := errors.Join(ctx.Err(), hub.ctx.Err()); err != nil {
+			return err
+		}
+		hub.mu.Lock()
+		packetIdle := hub.packetBytes == 0 && hub.inFlight == 0 && len(hub.packets) == 0
+		delivered := hub.delivered
+		hub.mu.Unlock()
+		if packetIdle {
+			// failedStep authenticates the real packet loss/receipt and updates
+			// down BEFORE packetLoop retires inFlight. Never infer that update
+			// from EOF or a file, or keep the earlier live-roster snapshot.
+			var owners [6]*graphProcess
+			f.mu.Lock()
+			for member := uint64(1); member <= 6; member++ {
+				if !f.down[member] {
+					owners[member-1] = f.n.all[member]
+				}
+			}
+			f.mu.Unlock()
+			idle, found := true, false
+			var liveError error
+			for _, p := range owners {
+				if p == nil {
+					continue
+				}
+				found = true
+				p.mux.mu.Lock()
+				liveError = errors.Join(liveError, p.mux.err)
+				idle = idle && len(p.mux.pending) == 0 && len(p.mux.relays) == 0
+				p.mux.mu.Unlock()
+			}
+			// An arriving/retiring packet may have changed the roster during
+			// those independent mux locks. Only a stable packet-idle sample
+			// can publish either successful quiescence or a live owner's error.
+			hub.mu.Lock()
+			stable := hub.delivered == delivered && hub.packetBytes == 0 && hub.inFlight == 0 && len(hub.packets) == 0
+			hub.mu.Unlock()
+			if stable {
+				if !found {
+					return errInvalid
+				}
+				if liveError != nil || idle {
+					return errors.Join(liveError, ctx.Err(), hub.ctx.Err())
+				}
+			} else {
+				continue // Genuine packet progress; no waiting deadline/grant resets.
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-hub.ctx.Done():
+			return hub.ctx.Err()
+		case <-hub.idle:
+		}
+	}
 }
 func (f *pairedGraphFaultNetwork) packetDrain() {
 	f.t.Helper()

@@ -3,6 +3,7 @@ package graphapply
 import (
 	"context"
 	"errors"
+	"io"
 	"strconv"
 	"testing"
 	"time"
@@ -10,6 +11,59 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
+
+func TestNativeProtocolDrainClassifiesRetiringPacketBeforeTakingLiveRoster(t *testing.T) {
+	// Ordering of the existing owner ledger only. This inert guard neither
+	// manufactures a native loss receipt nor classifies any real process kill.
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	h := &graphProcessHub{ctx: ctx, idle: make(chan struct{}, 1), packets: make(chan graphProcessPacketJob, processPacketCount), inFlight: 1}
+	live := &graphProcess{mux: &graphProcessMux{hub: h}}
+	lost := &graphProcess{mux: &graphProcessMux{hub: h, err: io.EOF}}
+	f := &pairedGraphFaultNetwork{parent: ctx, n: &certifiedProcessNetwork{all: map[uint64]*graphProcess{1: live, 5: lost}}, down: make(map[uint64]bool)}
+	done := make(chan error, 1)
+	go func() { done <- f.drainLiveOwners(ctx) }()
+	h.changed() // A stale signal cannot retire the actual in-flight packet.
+	select {
+	case err := <-done:
+		t.Fatal("live roster was inspected before its retiring packet classified loss", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	// The real failedStep callback changes down ONLY after exact native receipt
+	// and failed packet authentication. Model that completed ledger transition
+	// before the packet owner drops inFlight, preserving the original mux error.
+	f.mu.Lock()
+	f.down[5] = true
+	f.mu.Unlock()
+	h.mu.Lock()
+	h.inFlight--
+	h.mu.Unlock()
+	h.changed()
+	select {
+	case err := <-done:
+		if err != nil || !errors.Is(lost.mux.err, io.EOF) {
+			t.Fatal("fresh live roster reused stale dead owner or erased its error", err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	// An EOF not classified by that owning callback stays a genuine error;
+	// merely reaching packet-idle cannot manufacture an intentional kill.
+	f.mu.Lock()
+	delete(f.down, 5)
+	f.mu.Unlock()
+	if err := f.drainLiveOwners(ctx); !errors.Is(err, io.EOF) {
+		t.Fatal("unclassified process loss became successful drain", err)
+	}
+	h.mu.Lock()
+	h.inFlight = 1
+	h.mu.Unlock()
+	canceled, stop := context.WithCancel(ctx)
+	stop()
+	if err := f.drainLiveOwners(canceled); !errors.Is(err, context.Canceled) || h.inFlight != 1 {
+		t.Fatal("cancellation invented packet retirement or lost original error", err)
+	}
+}
 
 func TestNativeProtocolProgramAttachmentWaitsForOriginalPacketDrain(t *testing.T) {
 	// Resource-owner admission only: these queue counters are not a native
