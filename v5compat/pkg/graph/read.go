@@ -15,7 +15,7 @@ func (g *Graph) get(ctx context.Context, id int64, rel bool) (row, error) {
 	if err := g.alive(); err != nil {
 		return row{}, err
 	}
-	rows, err := g.rowsOf(ctx, v5.Fresh(), id, rel)
+	rows, err := g.rowsOf(ctx, g.ax.known(), id, rel)
 	if err != nil {
 		return row{}, err
 	}
@@ -41,8 +41,8 @@ func (g *Graph) asOf(ctx context.Context, id int64, rel bool, pin int64) (row, e
 	if pin <= 0 {
 		return row{}, fmt.Errorf("%w: pin %d", ErrNoVersionAsOf, pin)
 	}
-	spec, _ := g.pinSpec(pin)
-	rows, err := g.rowsOf(ctx, spec, id, rel)
+	known, _ := g.pinKnown(pin)
+	rows, err := g.rowsOf(ctx, known, id, rel)
 	if err != nil {
 		return row{}, err
 	}
@@ -64,14 +64,14 @@ func (g *Graph) at(ctx context.Context, id int64, rel bool, valid, pin int64, pi
 	if err := idErr(id); err != nil {
 		return row{}, err
 	}
-	spec := v5.Fresh()
+	known := g.ax.known()
 	if pinned {
 		if pin <= 0 {
 			return row{}, fmt.Errorf("%w: pin %d", ErrNoVersionAsOf, pin)
 		}
-		spec, _ = g.pinSpec(pin)
+		known, _ = g.pinKnown(pin)
 	}
-	rows, err := g.rowsOf(ctx, spec, id, rel)
+	rows, err := g.rowsOf(ctx, known, id, rel)
 	if err != nil {
 		return row{}, err
 	}
@@ -100,40 +100,28 @@ func (g *Graph) history(ctx context.Context, id int64, rel bool) ([]historyRow, 
 	if err := g.alive(); err != nil {
 		return nil, err
 	}
-	ref, err := g.ref(id, rel)
-	if err != nil {
-		return nil, err
-	}
-	s, err := g.g.OpenSnapshot(ctx, v5.Fresh())
-	if err != nil {
-		return nil, mapV5(err)
-	}
-	defer s.Close()
-	p, err := s.Timeline(ctx, v5.TimelineRequest{Ref: ref, Selector: g.selector(v5.ViewDeclared, fullSpan(), nil, nil, ""),
-		Projection: v5.Projection{AllProperties: true, Revisions: true}, Paging: paging})
-	es, err := drain(ctx, s, p, err)
+	h, err := g.readHist(ctx, g.ax.known(), id, rel)
 	if err != nil {
 		return nil, err
 	}
 	first := map[int64]row{}
 	var (
-		xl      string
-		dt      int64
+		xl      = h.xlMax
+		dt      = h.end
 		retract bool
 		lastRow row
 	)
-	for _, e := range es {
-		r := g.ax.decode(e)
-		if _, seen := first[r.ver]; !seen {
-			first[r.ver] = r
+	for _, rv := range h.revs {
+		for _, r := range rv.rows {
+			h.stamp(&r)
+			if _, seen := first[r.ver]; !seen {
+				first[r.ver] = r
+			}
+			if r.ended {
+				retract = r.dr
+			}
+			lastRow = r
 		}
-		if len(r.xl) > len(xl) {
-			xl = r.xl
-		}
-		if r.dt != 0 {
-			dt, retract = r.dt, r.dr
-		}
-		lastRow = r
 	}
 	if len(first) == 0 {
 		return nil, nil

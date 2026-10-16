@@ -48,4 +48,5 @@ var (
 	ErrUnsupportedValueType = types.ErrUnsupportedValueType
 	ErrEmptyPropertyKey     = types.ErrEmptyPropertyKey
 	ErrInvalidStoreMutation = store.ErrInvalidStoreMutation
+	ErrUniqueViolation      = store.ErrUniqueViolation
 )

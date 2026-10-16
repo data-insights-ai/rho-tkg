@@ -22,15 +22,15 @@ import (
 //     shadows; equality lookups probe the matching kinds (int and float together,
 //     one numeric rule). User keys must not contain '~'.
 //   - reserved "~" properties carry the v4 version record over the version scope:
-//     ~ver (dense version), ~tf (TxFrom), ~vf and ~vt (the version's own valid
-//     range, 0 = unset/open); entity-level: ~dt (delete or retract instant), ~dr
-//     (1 = retracted), ~xl (excise log "a,b,tx;...").
+//     ~ver (dense version), ~vf and ~vt (the version's own valid range, 0 =
+//     unset/open); entity-level: ~dr (present = deleted, 1 = retracted), ~xl
+//     (excise log "a,b,tx;..."). The transaction time (TxFrom of a version, the
+//     delete instant) is not stored as a property: every op carries it as
+//     Recorded evidence and readHist (readcore.go) reads it back per revision.
 const (
 	kVer = "~ver"
-	kTf  = "~tf"
 	kVf  = "~vf"
 	kVt  = "~vt"
-	kDt  = "~dt"
 	kDr  = "~dr"
 	kXl  = "~xl"
 )
@@ -146,10 +146,11 @@ type row struct {
 	from, to int64
 	vals     map[string]v5.Value // shadow name -> value (non-null)
 	ver      int64
-	tf       int64
+	tf       int64 // TxFrom of the version: set by the history read (readcore.go)
 	vf, vt   int64
-	dt       int64
-	dr       bool
+	dt       int64 // delete or retract instant: set by the history read
+	ended    bool  // deleted or retracted (~dr present)
+	dr       bool  // retracted
 	xl       string
 	sp       span
 	revision uint64
@@ -171,16 +172,12 @@ func (a axes) decode(e v5.Entity) row {
 		switch name {
 		case kVer:
 			r.ver = i
-		case kTf:
-			r.tf = i
 		case kVf:
 			r.vf = i
 		case kVt:
 			r.vt = i
-		case kDt:
-			r.dt = i
 		case kDr:
-			r.dr = i == 1
+			r.ended, r.dr = true, i == 1
 		case kXl:
 			r.xl, _ = v.AsString()
 		default:

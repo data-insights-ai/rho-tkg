@@ -46,16 +46,33 @@ func (e *ent) row() row {
 		ver: e.ver, tf: e.tf, vf: e.vf, vt: e.vt, dt: e.dt, dr: e.dr}
 }
 
-// wtx is one compat write transaction. Creates run on the live v5 Update (they
-// need the ID now); every other op is validated against the overlay at call time
-// and queued per caller instant, then flushed when the callback returns nil.
+// countTx counts the ops a compat transaction applies, so an empty one commits
+// nothing.
+type countTx struct {
+	v5.Tx
+	n int
+}
+
+func (c *countTx) CreateNode(o v5.CreateNode) (v5t.NodeID, error) { c.n++; return c.Tx.CreateNode(o) }
+func (c *countTx) CreateRel(o v5.CreateRel) (v5t.RelID, error)    { c.n++; return c.Tx.CreateRel(o) }
+func (c *countTx) Correct(o v5.Correct) error                     { c.n++; return c.Tx.Correct(o) }
+func (c *countTx) End(o v5.End) error                             { c.n++; return c.Tx.End(o) }
+func (c *countTx) AddLabel(o v5.AddLabel) error                   { c.n++; return c.Tx.AddLabel(o) }
+func (c *countTx) Set(o v5.Set) error                             { c.n++; return c.Tx.Set(o) }
+func (c *countTx) Retract(o v5.Retract) error                     { c.n++; return c.Tx.Retract(o) }
+
+// wtx is one compat write transaction: every door applies its op to the one live
+// v5 Update at call time (validated against the overlay of the entities it
+// touched), stamped with Recorded = the op's instant. The Update commits when the
+// callback returns nil, as one v5 commit.
 type wtx struct {
 	g        *Graph
 	ctx      context.Context
-	live     v5.Tx
+	live     *countTx
 	ents     map[entKey]*ent
-	groups   map[int64][]func(v5.Tx) error
-	plain    int64
+	used     map[int64]bool // instants of non-create ops
+	plain    int64          // the clock instant of this transaction, once a clock op asks
+	clock    int64          // the instant the commit takes at most (see Graph.next)
 	creates  int
 	createAt int64
 	claims   map[string]*ent
@@ -63,11 +80,11 @@ type wtx struct {
 	written  map[entKey]bool
 	newNodes []int64
 	newRels  []int64
-	late     []func(*wtx) error // Batch creates: committed last, at the clock instant
+	late     []func(*wtx) error // Batch creates: applied last, at the clock instant
 }
 
 func newWtx(g *Graph, ctx context.Context) *wtx {
-	return &wtx{g: g, ctx: ctx, ents: map[entKey]*ent{}, groups: map[int64][]func(v5.Tx) error{}, claims: map[string]*ent{}, written: map[entKey]bool{}}
+	return &wtx{g: g, ctx: ctx, ents: map[entKey]*ent{}, used: map[int64]bool{}, claims: map[string]*ent{}, written: map[entKey]bool{}}
 }
 
 // instant picks the commit instant of one write: the caller's stamp on the
@@ -75,7 +92,7 @@ func newWtx(g *Graph, ctx context.Context) *wtx {
 func (w *wtx) instant(caller int64, e *ent) (int64, error) {
 	if caller == 0 {
 		if w.plain == 0 {
-			w.plain = w.g.led.next()
+			w.plain = w.clock
 		}
 		if e != nil && w.plain < e.last {
 			return 0, fmt.Errorf("%w: instant %d below the entity's latest %d", ErrTxOrder, w.plain, e.last)
@@ -85,7 +102,7 @@ func (w *wtx) instant(caller int64, e *ent) (int64, error) {
 	if !w.g.cfg.AllowTxBackfill {
 		return 0, ErrTxBackfillDisabled
 	}
-	if caller < 0 || caller > nowMs()+maxSkewMs {
+	if caller < 0 || caller > w.clock {
 		return 0, fmt.Errorf("%w: %d", ErrInvalidTxFrom, caller)
 	}
 	if e != nil && caller <= e.last {
@@ -103,14 +120,6 @@ func (w *wtx) touch(e *ent) error {
 	return nil
 }
 
-func (w *wtx) queue(t int64, step func(v5.Tx) error) error {
-	if w.creates > 0 && t != w.createAt {
-		return fmt.Errorf("%w: a transaction that creates entities has one instant (%d), not %d", ErrTxOrder, w.createAt, t)
-	}
-	w.groups[t] = append(w.groups[t], step)
-	return nil
-}
-
 // ent loads (or returns the overlay of) an entity; an unknown ID is NotFound.
 func (w *wtx) ent(id int64, rel bool) (*ent, error) {
 	if err := idErr(id); err != nil {
@@ -120,7 +129,7 @@ func (w *wtx) ent(id int64, rel bool) (*ent, error) {
 	if e := w.ents[k]; e != nil {
 		return e, nil
 	}
-	rows, err := w.g.rowsOf(w.ctx, v5.Fresh(), id, rel)
+	rows, last, err := w.g.rowsOfLast(w.ctx, w.g.ax.known(), id, rel)
 	if err != nil {
 		return nil, err
 	}
@@ -137,17 +146,14 @@ func (w *wtx) ent(id int64, rel bool) (*ent, error) {
 		if r.ver == nw.ver {
 			newer = append(newer, r.sp)
 		}
-		e.last = max(e.last, r.tf, r.dt)
-		if r.dt != 0 {
+		if r.ended {
 			e.dt, e.dr = r.dt, r.dr
 		}
 		if len(r.xl) > len(formatXl(e.xl)) {
 			e.xl = parseXl(r.xl)
 		}
 	}
-	for _, v := range e.xl {
-		e.last = max(e.last, v.tx)
-	}
+	e.last = last
 	e.spans, e.nspans = normSpans(all), normSpans(newer)
 	w.ents[k] = e
 	return e, nil
@@ -198,16 +204,16 @@ func fromInstant(s spanSet, t int64) spanSet {
 	return s.intersect(span{t, posInf})
 }
 
-func reserved(ver, tf, vf, vt int64) map[string]v5.Value {
-	return map[string]v5.Value{kVer: v5.Int(ver), kTf: v5.Int(tf), kVf: v5.Int(vf), kVt: v5.Int(vt)}
+func reserved(ver, vf, vt int64) map[string]v5.Value {
+	return map[string]v5.Value{kVer: v5.Int(ver), kVf: v5.Int(vf), kVt: v5.Int(vt)}
 }
 
 // ---- creates ----
 
 func (w *wtx) registerCreate(t int64) error {
 	if w.creates == 0 {
-		for gt, steps := range w.groups {
-			if gt != t && len(steps) > 0 {
+		for u := range w.used {
+			if u != t {
 				return fmt.Errorf("%w: a transaction that creates entities has one instant", ErrTxOrder)
 			}
 		}
@@ -246,10 +252,10 @@ func (w *wtx) createNode(caller int64, labels []string, raw map[string]any) (*en
 		vf = 0
 	}
 	props := ps.vals
-	for k, v := range reserved(0, t, vf, vt) {
+	for k, v := range reserved(0, vf, vt) {
 		props[k] = v
 	}
-	id, err := w.live.CreateNode(v5.CreateNode{Labels: labels, Props: props, Scope: w.g.ax.scope(sp)})
+	id, err := w.live.CreateNode(v5.CreateNode{Labels: labels, Props: props, Scope: w.g.ax.scope(sp), Recorded: w.g.ax.recorded(t)})
 	if err != nil {
 		return nil, err
 	}
@@ -312,10 +318,10 @@ func (w *wtx) createRel(caller int64, typ string, from, to int64, raw map[string
 		vf = 0
 	}
 	props := maps(ps.vals)
-	for k, v := range reserved(0, t, vf, vt) {
+	for k, v := range reserved(0, vf, vt) {
 		props[k] = v
 	}
-	id, err := w.live.CreateRel(v5.CreateRel{Type: typ, From: v5t.NodeID(from), To: v5t.NodeID(to), Props: props, Scope: w.g.ax.scope(sp)})
+	id, err := w.live.CreateRel(v5.CreateRel{Type: typ, From: v5t.NodeID(from), To: v5t.NodeID(to), Props: props, Scope: w.g.ax.scope(sp), Recorded: w.g.ax.recorded(t)})
 	if err != nil {
 		return nil, err
 	}
@@ -371,61 +377,57 @@ func sortedNames(m map[string]v5.Value) []string {
 	return ks
 }
 
-// writeVersion queues a new version of e over pieces (an update) or, with
+// writeVersion applies a new version of e over pieces (an update) or, with
 // correction, a Correct over the one piece (it may extend the entity's valid time).
-func (w *wtx) writeVersion(e *ent, t int64, pieces spanSet, ps propSet, vf, vt int64, correction bool) {
+func (w *wtx) writeVersion(e *ent, t int64, pieces spanSet, ps propSet, vf, vt int64, correction bool) error {
 	ver := e.ver + 1
 	if e.tf == t && !correction {
 		ver = e.ver // same commit instant: one version
 	}
 	nulls := nullOthers(e.vals, ps.vals, ps.clear)
-	res := reserved(ver, t, vf, vt)
-	ref := e.ref
-	labels := slices.Clone(e.labels)
-	rel := e.rel
+	res := reserved(ver, vf, vt)
+	rec := w.g.ax.recorded(t)
 	vals := maps(ps.vals)
-	step := func(tx v5.Tx) error {
-		for _, p := range pieces {
-			sc := w.g.ax.scope(p)
-			if correction {
-				set := maps(vals)
-				for k, v := range res {
-					set[k] = v
-				}
-				for _, n := range nulls {
-					set[n] = v5.Null()
-				}
-				if err := tx.Correct(v5.Correct{Target: ref, Set: set, Scope: sc}); err != nil {
-					return err
-				}
-				if !rel {
-					for _, l := range labels {
-						if err := tx.AddLabel(v5.AddLabel{Target: ref.Node(), Label: l, Scope: sc}); err != nil {
-							return err
-						}
-					}
-				}
-				continue
-			}
-			for _, name := range sortedNames(vals) {
-				if err := tx.Set(v5.Set{Target: ref, Key: name, Value: vals[name], Scope: sc}); err != nil {
-					return err
-				}
+	w.used[t] = true
+	tx := w.live
+	for _, p := range pieces {
+		sc := w.g.ax.scope(p)
+		if correction {
+			set := maps(vals)
+			for k, v := range res {
+				set[k] = v
 			}
 			for _, n := range nulls {
-				if err := tx.Set(v5.Set{Target: ref, Key: n, Value: v5.Null(), Scope: sc}); err != nil {
-					return err
+				set[n] = v5.Null()
+			}
+			if err := tx.Correct(v5.Correct{Target: e.ref, Set: set, Scope: sc, Recorded: rec}); err != nil {
+				return err
+			}
+			if !e.rel {
+				for _, l := range e.labels {
+					if err := tx.AddLabel(v5.AddLabel{Target: e.ref.Node(), Label: l, Scope: sc, Recorded: rec}); err != nil {
+						return err
+					}
 				}
 			}
-			for _, name := range sortedNames(res) {
-				if err := tx.Set(v5.Set{Target: ref, Key: name, Value: res[name], Scope: sc}); err != nil {
-					return err
-				}
+			continue
+		}
+		for _, name := range sortedNames(vals) {
+			if err := tx.Set(v5.Set{Target: e.ref, Key: name, Value: vals[name], Scope: sc, Recorded: rec}); err != nil {
+				return err
 			}
 		}
-		return nil
+		for _, n := range nulls {
+			if err := tx.Set(v5.Set{Target: e.ref, Key: n, Value: v5.Null(), Scope: sc, Recorded: rec}); err != nil {
+				return err
+			}
+		}
+		for _, name := range sortedNames(res) {
+			if err := tx.Set(v5.Set{Target: e.ref, Key: name, Value: res[name], Scope: sc, Recorded: rec}); err != nil {
+				return err
+			}
+		}
 	}
-	w.groups[t] = append(w.groups[t], step)
 	for _, n := range nulls {
 		delete(e.vals, n)
 	}
@@ -437,6 +439,7 @@ func (w *wtx) writeVersion(e *ent, t int64, pieces spanSet, ps propSet, vf, vt i
 	if correction {
 		e.spans = e.spans.add(pieces[0])
 	}
+	return nil
 }
 
 func (w *wtx) update(caller int64, e *ent, raw map[string]any) error {
@@ -465,8 +468,7 @@ func (w *wtx) update(caller int64, e *ent, raw map[string]any) error {
 	if h := pieces.hull(); h.lo != negInf {
 		vf = h.lo
 	}
-	w.writeVersion(e, t, pieces, ps, vf, e.vt, false)
-	return nil
+	return w.writeVersion(e, t, pieces, ps, vf, e.vt, false)
 }
 
 func (w *wtx) correct(caller int64, e *ent, from, to int64, raw map[string]any) error {
@@ -494,8 +496,7 @@ func (w *wtx) correct(caller int64, e *ent, from, to int64, raw map[string]any) 
 	if to != 0 {
 		hi = to
 	}
-	w.writeVersion(e, t, spanSet{{from, hi}}, ps, from, to, true)
-	return nil
+	return w.writeVersion(e, t, spanSet{{from, hi}}, ps, from, to, true)
 }
 
 // end deletes (validity ends at the instant, the past stays readable) or
@@ -514,27 +515,22 @@ func (w *wtx) end(caller int64, e *ent, retract bool) error {
 	if w.creates > 0 && t != w.createAt {
 		return fmt.Errorf("%w: a transaction that creates entities has one instant", ErrTxOrder)
 	}
-	ref, spans := e.ref, slices.Clone(e.spans)
-	step := func(tx v5.Tx) error {
-		dr := int64(0)
-		if retract {
-			dr = 1
-		}
-		for _, p := range spans {
-			sc := w.g.ax.scope(p)
-			if err := tx.Set(v5.Set{Target: ref, Key: kDt, Value: v5.Int(t), Scope: sc}); err != nil {
-				return err
-			}
-			if err := tx.Set(v5.Set{Target: ref, Key: kDr, Value: v5.Int(dr), Scope: sc}); err != nil {
-				return err
-			}
-		}
-		if retract {
-			return nil
-		}
-		return tx.End(v5.End{Target: ref, Scope: w.g.ax.scope(span{negInf, t})})
+	dr := int64(0)
+	if retract {
+		dr = 1
 	}
-	w.groups[t] = append(w.groups[t], step)
+	rec := w.g.ax.recorded(t)
+	w.used[t] = true
+	for _, p := range e.spans {
+		if err := w.live.Set(v5.Set{Target: e.ref, Key: kDr, Value: v5.Int(dr), Scope: w.g.ax.scope(p), Recorded: rec}); err != nil {
+			return err
+		}
+	}
+	if !retract {
+		if err := w.live.End(v5.End{Target: e.ref, Scope: w.g.ax.scope(span{negInf, t}), Recorded: rec}); err != nil {
+			return err
+		}
+	}
 	e.dt, e.dr, e.last = t, retract, t
 	if !retract {
 		e.spans = e.spans.subtract(span{t, posInf})
@@ -565,16 +561,16 @@ func (w *wtx) excise(caller int64, e *ent, a, b int64) error {
 		return fmt.Errorf("%w: nothing valid in [%d,%d)", ErrNoVersionValidAt, a, b)
 	}
 	log := append(slices.Clone(e.xl), voidRec{a, b, t})
-	ref, spans := e.ref, slices.Clone(e.spans)
-	step := func(tx v5.Tx) error {
-		for _, p := range spans {
-			if err := tx.Set(v5.Set{Target: ref, Key: kXl, Value: v5.String(formatXl(log)), Scope: w.g.ax.scope(p)}); err != nil {
-				return err
-			}
+	rec := w.g.ax.recorded(t)
+	w.used[t] = true
+	for _, p := range e.spans {
+		if err := w.live.Set(v5.Set{Target: e.ref, Key: kXl, Value: v5.String(formatXl(log)), Scope: w.g.ax.scope(p), Recorded: rec}); err != nil {
+			return err
 		}
-		return tx.Retract(v5.Retract{Target: ref, Scope: w.g.ax.scope(hole)})
 	}
-	w.groups[t] = append(w.groups[t], step)
+	if err := w.live.Retract(v5.Retract{Target: e.ref, Scope: w.g.ax.scope(hole), Recorded: rec}); err != nil {
+		return err
+	}
 	e.xl, e.last = log, t
 	e.spans, e.nspans = e.spans.subtract(hole), e.nspans.subtract(hole)
 	return nil
@@ -601,11 +597,12 @@ func (w *wtx) closeVersion(e *ent, at int64) error {
 	if len(pieces) == 0 {
 		return fmt.Errorf("%w: close at %d", ErrInvalidTimeRange, at)
 	}
-	w.writeVersion(e, t, pieces, propSet{vals: map[string]v5.Value{}}, e.vf, at, false)
-	ref := e.ref
-	w.groups[t] = append(w.groups[t], func(tx v5.Tx) error {
-		return tx.End(v5.End{Target: ref, Scope: w.g.ax.scope(span{negInf, at})})
-	})
+	if err := w.writeVersion(e, t, pieces, propSet{vals: map[string]v5.Value{}}, e.vf, at, false); err != nil {
+		return err
+	}
+	if err := w.live.End(v5.End{Target: e.ref, Scope: w.g.ax.scope(span{negInf, at}), Recorded: w.g.ax.recorded(t)}); err != nil {
+		return err
+	}
 	e.spans = e.spans.subtract(span{at, posInf})
 	e.nspans = e.nspans.subtract(span{at, posInf})
 	return nil
@@ -666,10 +663,9 @@ func (w *wtx) getOrCreate(label, key string, value any, extra map[string]any) (*
 
 var errNothing = errors.New("graph: empty transaction")
 
-// run executes fn as one compat transaction: a live v5 Update for the first
-// instant (creates and the group at the creates' instant), then one further v5
-// commit per remaining caller instant, ascending. Every op is validated before
-// the first commit.
+// run executes fn as one compat transaction: one v5 Update, one commit. Every
+// door applies its op to the live Update; Batch creates run last, at the clock
+// instant. A callback error, an op error or a cancelled ctx rolls everything back.
 func (g *Graph) run(ctx context.Context, oneWrite bool, fn func(*wtx) error) (*wtx, error) {
 	if err := g.alive(); err != nil {
 		return nil, err
@@ -687,100 +683,36 @@ func (g *Graph) run(ctx context.Context, oneWrite bool, fn func(*wtx) error) (*w
 	}
 	w := newWtx(g, ctx)
 	w.oneWrite = oneWrite
-	var liveT int64
-	committed := true
+	w.clock = g.next() // read before the Update opens: never above the engine's own
 	rcpt, err := g.g.Update(ctx, func(tx v5.Tx) error {
-		w.live = tx
+		w.live = &countTx{Tx: tx}
 		if err := fn(w); err != nil {
 			return err
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		stamps := w.stamps()
-		switch {
-		case w.creates > 0:
-			liveT = w.createAt
-		case len(stamps) > 0:
-			liveT = stamps[0]
-		default:
-			return errNothing
-		}
-		return w.flush(tx, liveT)
-	})
-	if errors.Is(err, errNothing) {
-		committed, err = false, nil
-	}
-	if err != nil {
-		return nil, mapV5(err)
-	}
-	if committed {
-		if err := g.record(ctx, liveT, rcpt); err != nil {
-			return nil, err
-		}
-	}
-	for _, t := range w.stamps() {
-		rcpt, err := g.g.Update(ctx, func(tx v5.Tx) error { return w.flush(tx, t) })
-		if err != nil {
-			return nil, mapV5(err)
-		}
-		if err := g.record(ctx, t, rcpt); err != nil {
-			return nil, err
-		}
-	}
-	if len(w.late) > 0 {
-		w.creates, w.createAt = 0, 0
-		rcpt, err := g.g.Update(ctx, func(tx v5.Tx) error {
-			w.live = tx
+		if len(w.late) > 0 {
+			w.creates, w.createAt, w.used = 0, 0, map[int64]bool{}
 			for _, f := range w.late {
 				if err := f(w); err != nil {
 					return err
 				}
 			}
-			return w.flush(tx, w.createAt)
-		})
-		if err != nil {
-			return nil, mapV5(err)
 		}
-		if err := g.record(ctx, w.createAt, rcpt); err != nil {
-			return nil, err
+		if w.live.n == 0 {
+			return errNothing
 		}
+		return nil
+	})
+	if errors.Is(err, errNothing) {
+		return w, nil
 	}
-	return w, nil
-}
-
-// stamps are the instants still holding queued steps, ascending.
-func (w *wtx) stamps() []int64 {
-	var out []int64
-	for t, steps := range w.groups {
-		if len(steps) > 0 {
-			out = append(out, t)
-		}
-	}
-	slices.Sort(out)
-	return out
-}
-
-func (w *wtx) flush(tx v5.Tx, t int64) error {
-	steps := w.groups[t]
-	w.groups[t] = nil
-	for _, s := range steps {
-		if err := s(tx); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// record writes the commit's cut to the ledger.
-func (g *Graph) record(ctx context.Context, t int64, r v5.Receipt) error {
-	s, err := g.g.OpenSnapshot(ctx, v5.After(r))
 	if err != nil {
-		return mapV5(err)
+		return nil, mapV5(err)
 	}
-	cut := s.Cut()
-	_ = s.Close()
-	return g.led.add(t, cut)
+	g.clk.note(rcpt)
+	return w, nil
 }
 
 var _ = types.Instant(0)

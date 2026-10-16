@@ -6,8 +6,8 @@ import (
 )
 
 // TestCommittedTxMonotonic: CommittedTx is one strictly increasing millisecond
-// per commit, equal while nothing commits, persisted across a reopen and never
-// behind the wall clock stepping back or a caller stamp.
+// per commit (the v5 knowledge instant), equal while nothing commits, persisted
+// across a reopen and never behind the wall clock stepping back.
 func TestCommittedTxMonotonic(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -16,8 +16,8 @@ func TestCommittedTxMonotonic(t *testing.T) {
 		t.Fatal(err)
 	}
 	tx0, err := g.Temporal().CommittedTx()
-	if err != nil || tx0 != 0 {
-		t.Fatalf("empty graph CommittedTx = %d, %v; want 0", tx0, err)
+	if err != nil {
+		t.Fatal(err)
 	}
 	prev := tx0
 	for i := 0; i < 5; i++ {
@@ -46,13 +46,14 @@ func TestCommittedTxMonotonic(t *testing.T) {
 		t.Fatalf("clock stepped back: CommittedTx %d -> %d", prev, cur)
 	}
 	prev = cur
-	// A caller stamp ahead of the clock is a commit instant too (backfill door).
-	if _, err := g.Nodes().AddWithTx(ctx, []string{"M"}, nil, prev+500); err != nil {
+	// A backfill stamp in the past is evidence, not a commit instant: the commit
+	// still advances CommittedTx.
+	if _, err := g.Nodes().AddWithTx(ctx, []string{"M"}, nil, 5); err != nil {
 		t.Fatal(err)
 	}
 	cur, _ = g.Temporal().CommittedTx()
-	if cur != prev+500 {
-		t.Fatalf("caller stamp: CommittedTx = %d, want %d", cur, prev+500)
+	if cur <= prev {
+		t.Fatalf("backfill commit: CommittedTx %d -> %d", prev, cur)
 	}
 	prev = cur
 	if err := g.Close(); err != nil {

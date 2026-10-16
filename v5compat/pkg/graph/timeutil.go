@@ -87,8 +87,8 @@ func (s spanSet) hull() span {
 	return span{s[0].lo, s[len(s)-1].hi}
 }
 
-// axes are the compat graph's fixed axes (valid time = default axis, knowledge
-// axis unused until the evidence filter, WP-30).
+// axes are the compat graph's fixed axes (valid time = default axis; the v4
+// transaction time lives on the knowledge axis as Recorded evidence).
 type axes struct {
 	cfg v5.Config
 }
@@ -148,6 +148,50 @@ func (a axes) known() temporal.Scope {
 		panic(err)
 	}
 	return sc
+}
+
+// recorded is a caller or clock instant as the Recorded position of a write.
+func (a axes) recorded(ms int64) temporal.Position {
+	p, err := v5t.InstantPosition(a.cfg.KnowledgeAxis.Axis(), v5t.Instant(ms), a.cfg.Limits)
+	if err != nil {
+		panic(err) // every positive int64 ms fits the knowledge axis
+	}
+	return p
+}
+
+// knownTo is the Known scope "as known up to ms": everything recorded at or
+// before it (the v4 TxPin/TxAt read).
+func (a axes) knownTo(ms int64) temporal.Scope {
+	hi, err := temporal.FiniteBound(a.recorded(ms), true)
+	if err != nil {
+		panic(err)
+	}
+	sc, err := temporal.Span(a.cfg.KnowledgeAxis.Axis(), temporal.NegativeInfinity(), hi, a.cfg.Limits)
+	if err != nil {
+		panic(err)
+	}
+	return sc
+}
+
+// knownMs is the latest recorded instant of a revision's Known scope (0 for All:
+// the revision carries no Recorded evidence).
+func (a axes) knownMs(sc temporal.Scope) int64 {
+	if sc.Kind() == temporal.ScopeAll {
+		return 0
+	}
+	_, hi, ok := sc.Bounds()
+	if !ok {
+		return 0
+	}
+	p, fin := hi.Position()
+	if !fin {
+		return 0
+	}
+	i, err := v5t.InstantFromPosition(p, a.cfg.KnowledgeAxis.Axis(), a.cfg.Limits)
+	if err != nil {
+		return 0
+	}
+	return int64(i)
 }
 
 func (a axes) ms(b temporal.Bound, inf int64) int64 {

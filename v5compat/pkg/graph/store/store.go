@@ -69,3 +69,13 @@ type (
 	RegistrySnapshot        struct{}
 	IDSlotLeaseRecord       struct{}
 )
+
+// Unique-constraint sentinels (the v4 names, re-exported by graph).
+var (
+	// ErrUniqueViolation reports a write that would give two nodes one claim.
+	ErrUniqueViolation = errors.New("graph: unique constraint violation")
+	// ErrUniqueViolationExisting reports a CreateUnique over existing duplicates.
+	ErrUniqueViolationExisting = errors.New("graph: unique constraint violated by existing data")
+	// ErrUniqueConstraintExists reports a CreateUnique of a declared constraint.
+	ErrUniqueConstraintExists = errors.New("graph: unique constraint already exists")
+)

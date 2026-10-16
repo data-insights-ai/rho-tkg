@@ -109,9 +109,10 @@ func (a *NodesAPI) CloseVersion(ctx context.Context, id types.NodeID, t types.In
 }
 
 // GetOrCreateByKey returns the live node of label holding key = value, or creates
-// it with extra. Uniqueness is enforced by the compat write lock (one process);
-// the v5 genesis-seeded unique claims are not used (they cannot be added at
-// runtime).
+// it with extra. The read and the create run inside one v5 Update (the engine
+// serialises Updates, the directory lock keeps other processes out), so two
+// callers never both create; Constraints().CreateUnique adds the engine-enforced
+// claim on top.
 func (a *NodesAPI) GetOrCreateByKey(ctx context.Context, label, key string, value any, extra map[string]any) (*types.Node, bool, error) {
 	var e *ent
 	var created bool

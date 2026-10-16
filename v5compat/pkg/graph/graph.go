@@ -5,11 +5,11 @@
 //
 // Deliberate differences, all documented where they act: IDs are plain int64
 // (no snowflake clock or slot); caller instants (the *WithTx doors) are resolved
-// by a commit-instant ledger (clock.go) because v5 caller stamps are evidence,
-// never cuts; a property key holds one shadow property per value kind (codec.go);
-// a Tx that carries several distinct caller instants commits as one v5 commit per
-// instant (validated first, not crash-atomic across instants), and a Tx that
-// creates entities has exactly one instant. The X list (store backends, declined
+// by Recorded evidence on the knowledge axis (clock.go): a v4 pin is Fresh() with
+// Known <= pin; a property key holds one shadow property per value kind
+// (codec.go); a Tx is exactly one v5 commit, whatever caller instants its ops
+// carry (two versions of one entity at two stamps in one Tx collapse to the last),
+// and a Tx that creates entities has exactly one instant. The X list (store backends, declined
 // Config knobs, DecomposeNodeID, IDSlotLease, foreign rels, the async LSN
 // follower, UntimedFromTxFrom, runtime caller IDs, the v4 export format, tier
 // admin, the vector index, MintInstant) returns ErrNotSupportedInV5.
@@ -33,8 +33,8 @@ type Graph struct {
 	v5cfg  v5.Config
 	ax     axes
 	g      *v5.Graph
-	led    *ledger
-	mu     sync.Mutex // serialises writers (single process, as v4's tx lock)
+	clk    clock
+	mu     sync.Mutex // orders writers against the commit clock (the engine's Update lock serialises them anyway)
 	closed atomic.Bool
 }
 
@@ -52,17 +52,14 @@ func New(cfg Config) (*Graph, error) {
 	if err != nil {
 		return nil, mapV5(err)
 	}
-	led, err := openLedger(cfg.BadgerDir)
+	w := &Graph{cfg: cfg, v5cfg: v5cfg, ax: axes{v5cfg}, g: g}
+	// An empty Update commits nothing and reports the newest commit's instant.
+	rcpt, err := g.Update(ctx, func(v5.Tx) error { return nil })
 	if err != nil {
 		_ = g.Close()
-		return nil, err
+		return nil, mapV5(err)
 	}
-	w := &Graph{cfg: cfg, v5cfg: v5cfg, ax: axes{v5cfg}, g: g, led: led}
-	if err := w.syncLedger(ctx); err != nil {
-		_ = w.g.Close()
-		_ = led.close()
-		return nil, err
-	}
+	w.clk.note(rcpt)
 	return w, nil
 }
 
@@ -85,25 +82,6 @@ func v5Config(c Config) (v5.Config, error) {
 	return out, nil
 }
 
-// syncLedger gives a new graph its genesis entry and a reopened graph an entry
-// for any commit the ledger missed.
-func (g *Graph) syncLedger(ctx context.Context) error {
-	s, err := g.g.OpenSnapshot(ctx, v5.Fresh())
-	if err != nil {
-		return mapV5(err)
-	}
-	cut := s.Cut()
-	_ = s.Close()
-	last, have := g.led.lastCut()
-	switch {
-	case !have:
-		return g.led.add(0, cut)
-	case string(last.Bytes()) != string(cut.Bytes()):
-		return g.led.add(g.led.last()+1, cut)
-	}
-	return nil
-}
-
 // Close releases the graph; a second Close is ErrGraphClosed.
 func (g *Graph) Close() error {
 	if g == nil {
@@ -114,8 +92,7 @@ func (g *Graph) Close() error {
 	if g.closed.Swap(true) {
 		return ErrGraphClosed
 	}
-	err := g.g.Close()
-	return errors.Join(mapV5(err), g.led.close())
+	return mapV5(g.g.Close())
 }
 
 func (g *Graph) alive() error {
@@ -133,7 +110,7 @@ func mapV5(err error) error {
 	if err == nil {
 		return nil
 	}
-	pairs := []struct{ from, to error }{{v5.ErrClosed, ErrGraphClosed}}
+	pairs := []struct{ from, to error }{{v5.ErrClosed, ErrGraphClosed}, {v5.ErrUniqueViolation, ErrUniqueViolation}}
 	for _, p := range pairs {
 		if errors.Is(err, p.from) {
 			return fmt.Errorf("%w (%w)", p.to, err)
