@@ -429,7 +429,9 @@ func (f *pairedGraphFaultNetwork) drainGroup(group *tinyGraphTransport) {
 			if gate != nil && nativeBatchFailedStepAllowed(response, err) && gate.failed(graphProcessPacketJob{origin: packet.From, packet: packet}, err) {
 				continue
 			}
-			f.t.Fatal("fresh bounded native Step failed", err)
+			target := group.nodes[packet.To]
+			stderr, overflow := target.stderr.state()
+			f.t.Fatalf("fresh bounded native Step failed: op=%d packet=%d->%d snapshot=%t bytes=%d targetPID=%d code=%d causes=%x detail=%q stderr=%q stderrOverflow=%t: %v", processStep, packet.From, packet.To, packet.Snapshot, len(packet.Payload), target.cmd.Process.Pid, response.code, response.causeMask, response.detail, stderr, overflow, err)
 		}
 		group.enqueue(f.t, response)
 	}
