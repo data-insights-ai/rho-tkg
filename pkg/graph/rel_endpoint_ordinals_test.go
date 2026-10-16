@@ -228,6 +228,9 @@ func TestRelEndpointOrdinalsDisabled(t *testing.T) {
 // persisted). The sharded store's slots resolve each other's endpoints after
 // their reopen too.
 func TestRelEndpointOrdinalsAfterReopen(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	for _, tc := range []struct {
 		name string
 		cfg  func(t *testing.T, dir string) graphpkg.Config

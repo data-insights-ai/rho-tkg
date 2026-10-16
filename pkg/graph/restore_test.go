@@ -162,6 +162,9 @@ func TestRestoreInto_GapDetected(t *testing.T) {
 // rejected (wrapped ErrCursorUnknown) — never silently merged into the wrong
 // graph — naming the offending file.
 func TestRestoreInto_WrongEpochDeltaDetected(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 
 	src, err := graph.New(graph.Config{BadgerDir: t.TempDir(), ChangeLog: true})

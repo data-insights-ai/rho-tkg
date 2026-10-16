@@ -64,6 +64,9 @@ func rangeAtCount(v any, min, max float64, inclMin, inclMax bool) bool {
 // coordinate counts them exactly on memory and badger (served from the
 // declared index's membership sidecar) and declines on tiered and sharded.
 func TestRangeAtFromSidecar(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		label := "Ref" // tiered keeps property indexes on its reference labels

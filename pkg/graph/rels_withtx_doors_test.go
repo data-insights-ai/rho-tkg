@@ -20,6 +20,9 @@ import (
 // layer (a batch or ingest wrapper swallowing the sentinel), and a refusal
 // that still writes. Counterpart: TxFrom+1 is stamped exactly.
 func TestRelsWithTx_TxBatchIngestFacade(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	backends := allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true })

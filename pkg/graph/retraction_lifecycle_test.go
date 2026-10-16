@@ -251,6 +251,9 @@ func TestRetract_BatchAndIngestWholeUnitRefusal(t *testing.T) {
 // Delete) and keeps a UniqueForever claim (as a Delete). Catches a retraction
 // that leaks a current claim or drops a forever claim.
 func TestRetract_UniqueClaims(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, bc := range uniqueBackends(t) {
@@ -416,6 +419,9 @@ func TestRetract_RetentionPurgeNeverResurrects(t *testing.T) {
 // export or import record format that drops the marker (the import would
 // read the retraction as a Delete).
 func TestRetract_ExportImportKeepsTheMarker(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackends() {

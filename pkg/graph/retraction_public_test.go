@@ -334,6 +334,9 @@ func TestRetract_RefusesUnknownDeletedAndRetracted(t *testing.T) {
 // without AllowTxBackfill, a missing upper bound, an order check that skips
 // the history or the cascade, a refusal that writes.
 func TestRetractWithTx_GatesAndOrder(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, gate := range []bool{true, false} {

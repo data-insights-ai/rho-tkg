@@ -687,6 +687,9 @@ func (o *segOracle) segStats() store.RelSegmentStats {
 }
 
 func TestRelSegmentsDifferentialOracle(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	runSegOracle(t, func(t *testing.T) string { return "" })
 }
 

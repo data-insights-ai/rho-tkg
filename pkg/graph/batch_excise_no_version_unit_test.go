@@ -22,6 +22,9 @@ import (
 // ExciseRelValidityWithTx) queued first, in the middle and last beside an
 // AddNode and an UpdateNode of another node; memory, badger, tiered, sharded.
 func TestBatchExciseNoVersionRefusesUnit(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	type variant struct {
@@ -167,6 +170,9 @@ func TestBatchExciseNoVersionRefusesUnit(t *testing.T) {
 // [k(10), k(15)) only (the gap [k(5), k(10)) records nothing). Node and
 // relationship; memory, badger, tiered, sharded.
 func TestBatchExciseNoVersionPartialRange(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {

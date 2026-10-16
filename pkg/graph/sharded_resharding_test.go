@@ -279,6 +279,9 @@ func TestShardedResharding_HashChainIntegrityPostMigration(t *testing.T) {
 // Import's rollback undoing real partial work), and leaves both the target
 // EMPTY and the source untouched.
 func TestShardedResharding_UnsafeShrinkFailsClosed(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 
 	// Phase 1: SnowflakeNodeID 0 -> node slot 0 (covered by a future 2-slot

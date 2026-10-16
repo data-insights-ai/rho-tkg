@@ -208,6 +208,9 @@ func rawRelRow(t *testing.T, db *badgerv4.DB, id types.RelID) []byte {
 }
 
 func TestIntegritySwitch(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	for _, b := range isBackends {
 		t.Run(b.name+"/on", func(t *testing.T) {
 			g, st, err := isOpen(t, b, t.TempDir(), false)

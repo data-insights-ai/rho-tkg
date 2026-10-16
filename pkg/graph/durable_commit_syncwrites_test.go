@@ -146,6 +146,9 @@ func syncsOf(bs *badger.Store, fn func() error) (int64, error) {
 }
 
 func TestDurableCommitSyncWritesSyncsPerGroup(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	type door func(g *graphpkg.Graph, seq, ops int) error
 	commit := func(g *graphpkg.Graph, seq, ops int) error {
 		return g.Tx().Run(func(tx *graphpkg.GraphTx) error { return scGroup(tx, seq, ops) })

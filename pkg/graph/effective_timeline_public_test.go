@@ -19,6 +19,9 @@ import (
 // graph.ErrGraphClosed). Catches a façade that loses the error identity or a
 // door that reads the current state instead of the pinned one after reopen.
 func TestEffectiveTimeline_PublicFacade(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	ctx := context.Background()

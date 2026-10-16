@@ -74,6 +74,9 @@ func TestRelRetentionPurgeTxRollbackNoResurrection(t *testing.T) {
 // victim and the Rollback then failed on the purged node. It now waits for
 // the transaction like the relationship purge.
 func TestNodeRetentionPurgeTxRollback(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -167,6 +170,9 @@ func TestRetentionPurgeWaitHonoursCtx(t *testing.T) {
 // scan. Faulty implementations caught: a data race in the store purge or the
 // watermark advance, a purge that takes a relationship minted after Before.
 func TestRelRetentionPurgeConcurrent(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	ctx := context.Background()
 	for _, be := range relRetentionBackends() {
 		t.Run(be.name, func(t *testing.T) {

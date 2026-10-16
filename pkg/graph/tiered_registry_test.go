@@ -21,6 +21,9 @@ import (
 // rows" on open. After the fix: the canonical registry is injected into every
 // shard at open, so all rows decode and counts match.
 func TestTieredEventShardTokenizedReload(t *testing.T) {
+	if testing.Short() && !isRaceEnabled() {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	ctx := context.Background()
 
