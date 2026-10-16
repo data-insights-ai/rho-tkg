@@ -513,7 +513,7 @@ func TestNativeTransferColumnsJoinPooledOriginalsAndPreserveMoveCDC(t *testing.T
 		read, close := crossView(t, n, member, [2]uint64{})
 		assertCertifiedProjection(t, read, 1, true, nil)
 		assertCertifiedProjection(t, read, 17, true, nil)
-		assertCertifiedProjection(t, read, 999, false, nil)
+		assertUnroutedProjection(t, read, 999)
 		close()
 	}
 }

@@ -103,7 +103,7 @@ func TestRangeMoveGraphBatchFormatAndNativeUndo(t *testing.T) {
 					v, close := crossView(t, n, member, [2]uint64{})
 					assertCertifiedProjection(t, v, 1, true, nil)
 					assertCertifiedProjection(t, v, 17, true, nil)
-					assertCertifiedProjection(t, v, 999, false, nil)
+					assertUnroutedProjection(t, v, 999)
 					close()
 				}
 				moveSpanAudit(t, n, 1)
@@ -135,7 +135,7 @@ func TestRangeMoveGraphBatchFormatAndNativeUndo(t *testing.T) {
 				v, close := crossView(t, n, member, [2]uint64{})
 				assertCertifiedProjection(t, v, 1, true, nil)
 				assertCertifiedProjection(t, v, 17, true, nil)
-				assertCertifiedProjection(t, v, 999, false, nil)
+				assertUnroutedProjection(t, v, 999)
 				close()
 			}
 		})

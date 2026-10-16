@@ -555,7 +555,7 @@ func TestRangeMoveSpanNativeOriginalsReferencesAndUndo(t *testing.T) {
 			view, close := crossView(t, n, member, [2]uint64{})
 			assertCertifiedProjection(t, view, 1, true, []string{"after-feed-C"})
 			assertCertifiedProjection(t, view, 17, true, nil)
-			assertCertifiedProjection(t, view, 999, false, nil)
+			assertUnroutedProjection(t, view, 999)
 			close()
 		}
 	})
