@@ -133,6 +133,7 @@ type reader struct {
 	full              *fullStageState
 	fullView          *fullIndexDescriptor // borrowed immutable descriptor owned by the complete reader
 	indexes           *indexedStageState   // operation-local copy; published only after shared caps
+	hints             *indexHints          // plan-created entities/values for index-row maintenance
 	maxRows, maxBytes int                  // optional operation caps; zero preserves catalog policy
 }
 
@@ -1014,7 +1015,7 @@ func (s *Stage) Writes() ([]raftlog.KV, error) {
 	}
 	out := make([]raftlog.KV, 0, len(s.writes))
 	for _, row := range s.writes {
-		out = append(out, raftlog.KV{Key: exactCopy(row.Key), Value: exactCopy(row.Value)})
+		out = append(out, raftlog.KV{Key: exactCopy(row.Key), Value: exactCopy(row.Value), Deleted: row.Deleted})
 	}
 	slices.SortFunc(out, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
 	return out, nil

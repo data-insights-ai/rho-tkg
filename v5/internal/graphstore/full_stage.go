@@ -754,6 +754,7 @@ func selectedGraphOutputBudget(l GraphLimits, parent *graphstate.OutputBudget) (
 // callers supply internally planned effects, never caller Delta admission.
 func installFullPlan(p *pageStage, planned graphstate.Delta, l GraphLimits, arena *graphstate.OutputBudget) (graphstate.Delta, []ComponentChangeGroup, error) {
 	base, c := p.q, p.q.c
+	base.hints = newIndexHints(planned)
 	for _, entity := range planned.Entities {
 		ref := EntityRef{c.root.namespace.Graph, entity.ID}
 		if _, found, err := base.entity(ref); err != nil {
@@ -875,6 +876,9 @@ func installFullPlan(p *pageStage, planned graphstate.Delta, l GraphLimits, aren
 				return err
 			}
 			if err := p.installPatch(patch); err != nil {
+				return err
+			}
+			if err := p.stageIndexRows(patch); err != nil {
 				return err
 			}
 			if entity.Kind == graphstate.Relationship {
