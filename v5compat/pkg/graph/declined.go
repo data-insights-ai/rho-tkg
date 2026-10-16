@@ -1,34 +1,45 @@
 package graph
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/admin"
+	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/constraints"
+	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/events"
+	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/index"
+	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/ingest"
+	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/io"
+	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/replication"
+	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/stats"
+)
 
 // declined builds the ErrNotSupportedInV5 error of one door.
 func declined(door string) error { return fmt.Errorf("%w: %s", ErrNotSupportedInV5, door) }
 
-// The doors below keep the v4 names so a consumer compiles and fails at run time
-// with a typed error naming the door (the X list of WP-11).
+// The sub-APIs below keep the v4 accessors and method sets (their packages are in
+// pkg/graph/<name>) so a consumer compiles; each method reports
+// ErrNotSupportedInV5 naming the door (the X list, or not in the first batch).
 
-// Ingest is the v4 ingest sub-API (sessions, WaitApplied): declined.
-func (g *Graph) Ingest() error { return declined("Ingest()") }
+// Stats returns the statistics sub-API.
+func (g *Graph) Stats() *stats.API { return &stats.API{} }
 
-// Admin is the v4 admin sub-API (DecomposeNodeID, IDSlotLease, tier admin): declined.
-func (g *Graph) Admin() error { return declined("Admin()") }
+// Index returns the index DDL and vector sub-API.
+func (g *Graph) Index() *index.API { return &index.API{} }
 
-// Events is the v4 event sub-API (changefeed, watchers): declined.
-func (g *Graph) Events() error { return declined("Events()") }
+// Constraints returns the constraint sub-API.
+func (g *Graph) Constraints() *constraints.API { return &constraints.API{} }
 
-// IO is the v4 export/import format: declined (the importer maps v4 stores).
-func (g *Graph) IO() error { return declined("IO() v4 export format") }
+// Admin returns the admin sub-API (DecomposeNodeID, IDSlotLease, tier admin).
+func (g *Graph) Admin() *admin.API { return &admin.API{} }
 
-// Replication is the async LSN follower: declined.
-func (g *Graph) Replication() error { return declined("Replication()") }
+// Replication returns the change-feed and LSN-follower sub-API.
+func (g *Graph) Replication() *replication.API { return &replication.API{} }
 
-// Constraints are the v4 unique constraints (CreateUnique, DryRunValidate): not
-// in the first batch.
-func (g *Graph) Constraints() error { return declined("Constraints()") }
+// IO returns the v4 export/import sub-API.
+func (g *Graph) IO() *io.API { return &io.API{} }
 
-// Index is the v4 index DDL and the vector index: not in the first batch.
-func (g *Graph) Index() error { return declined("Index()") }
+// Events returns the event-bus sub-API.
+func (g *Graph) Events() *events.API { return &events.API{} }
 
-// Stats are the v4 counters: not in the first batch.
-func (g *Graph) Stats() error { return declined("Stats()") }
+// Ingest returns the ingest-session sub-API.
+func (g *Graph) Ingest() *ingest.API { return &ingest.API{} }

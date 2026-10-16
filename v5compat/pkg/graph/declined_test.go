@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph"
-	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/admin"
 	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v5compat/pkg/graph/store/sharded"
@@ -23,18 +22,22 @@ func TestDeclinedDoorsAreTyped(t *testing.T) {
 	if _, err := badger.New(badger.Config{Dir: "x"}); !errors.Is(err, graph.ErrNotSupportedInV5) {
 		t.Fatalf("badger.New: %v", err)
 	}
-	if _, _, _, err := admin.DecomposeNodeID(1); !errors.Is(err, graph.ErrNotSupportedInV5) {
-		t.Fatalf("DecomposeNodeID: %v", err)
-	}
 	for name, cfg := range map[string]graph.Config{
 		"UntimedFromTxFrom": {UntimedValidStart: graph.UntimedFromTxFrom},
-		"RetentionPurge":    {AllowRetentionPurge: true},
-		"Cache":             {CacheCapacity: 1},
+		"ReadOnlyReplica":   {ReadOnlyReplica: true},
 		"Store":             {Store: &tiered.Store{}},
 	} {
 		if g, err := graph.New(cfg); !errors.Is(err, graph.ErrNotSupportedInV5) || g != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
+	}
+	// Tuning knobs are accepted and ignored.
+	for _, cfg := range []graph.Config{{SyncWrites: true}, {CacheCapacity: 1, CacheBudgetBytes: 1, ResidentCache: true}, {AllowRetentionPurge: true}, {SnowflakeNodeID: 3}} {
+		g, err := graph.New(cfg)
+		if err != nil {
+			t.Fatalf("%+v: %v", cfg, err)
+		}
+		_ = g.Close()
 	}
 	// The accepted forms still open: memory.New, BadgerInMemory, SnowflakeNodeID.
 	for _, cfg := range []graph.Config{{Store: memory.New()}, {BadgerInMemory: true, SnowflakeNodeID: 7}, {}} {
@@ -45,9 +48,6 @@ func TestDeclinedDoorsAreTyped(t *testing.T) {
 		_ = g.Close()
 	}
 	g, _ := graph.New(graph.Config{})
-	if err := g.Ingest(); !errors.Is(err, graph.ErrNotSupportedInV5) {
-		t.Fatalf("Ingest: %v", err)
-	}
 	_ = g.Close()
 	if err := g.Close(); !errors.Is(err, graph.ErrGraphClosed) {
 		t.Fatalf("second Close: %v", err)

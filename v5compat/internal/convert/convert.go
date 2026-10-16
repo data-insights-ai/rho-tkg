@@ -19,8 +19,8 @@ var (
 	ErrOutOfRange = errors.New("v5compat: integer above MaxInt64")
 	// ErrNotFinite: NaN or an infinity.
 	ErrNotFinite = errors.New("v5compat: float is not finite")
-	// ErrListNotYetSupported: []byte and list values (v5 has no list Value yet).
-	ErrListNotYetSupported = errors.New("v5compat: list and []byte values are not supported until v5 lists land (WP-29)")
+	// ErrNilElement: a list element that is nil (v5 lists hold no null).
+	ErrNilElement = errors.New("v5compat: nil list element")
 	// ErrUnsupportedType: any other Go type.
 	ErrUnsupportedType = errors.New("v5compat: value type not supported")
 )
@@ -64,9 +64,24 @@ func AnyToValue(x any) (graph.Value, error) {
 		return float(float64(v))
 	case float64:
 		return float(v)
-	// TODO(WP-29): map []byte, []int64, []any lists once v5 has a list Value.
-	case []byte, []any, []int64, []int, []string, []float64, []bool, []int32, []float32:
-		return graph.Value{}, refuse(ErrListNotYetSupported, "%T", x)
+	case []byte:
+		return graph.Bytes(v), nil
+	case []any:
+		return list(v)
+	case []int64:
+		return listOf(v)
+	case []int:
+		return listOf(v)
+	case []int32:
+		return listOf(v)
+	case []string:
+		return listOf(v)
+	case []float64:
+		return listOf(v)
+	case []float32:
+		return listOf(v)
+	case []bool:
+		return listOf(v)
 	}
 	return graph.Value{}, refuse(ErrUnsupportedType, "%T", x)
 }
@@ -101,6 +116,47 @@ func ValueToAny(v graph.Value) any {
 	case graph.KindFloat:
 		f, _ := v.AsFloat()
 		return f
+	case graph.KindBytes:
+		b, _ := v.AsBytes()
+		return b
+	case graph.KindList:
+		l, _ := v.AsList()
+		out := make([]any, len(l))
+		for i, e := range l {
+			out[i] = ValueToAny(e)
+		}
+		return out
 	}
 	return nil
+}
+
+func listOf[T any](in []T) (graph.Value, error) {
+	xs := make([]any, len(in))
+	for i, x := range in {
+		xs[i] = x
+	}
+	return list(xs)
+}
+
+// list maps a flat list of scalars; nil, nested lists and other types are refused.
+func list(in []any) (graph.Value, error) {
+	out := make([]graph.Value, len(in))
+	for i, x := range in {
+		if x == nil {
+			return graph.Value{}, refuse(ErrNilElement, "element %d", i)
+		}
+		v, err := AnyToValue(x)
+		if err != nil {
+			return graph.Value{}, err
+		}
+		if v.Kind() == graph.KindList {
+			return graph.Value{}, refuse(ErrUnsupportedType, "nested list at element %d", i)
+		}
+		out[i] = v
+	}
+	v, err := graph.List(out)
+	if err != nil {
+		return graph.Value{}, refuse(ErrUnsupportedType, "%v", err)
+	}
+	return v, nil
 }

@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -42,18 +43,26 @@ func kindTag(k v5.ValueKind) string {
 		return "f"
 	case v5.KindBool:
 		return "b"
+	case v5.KindBytes:
+		return "y"
+	case v5.KindList:
+		return "l"
 	}
 	return "s"
 }
 
 func shadow(key string, v v5.Value) string { return key + "~" + kindTag(v.Kind()) }
 
+// ErrReservedKey reports a property key containing '~', which v5compat reserves
+// for its shadow-key layout.
+var ErrReservedKey = errors.New("graph: property key contains the reserved character '~'")
+
 func checkKey(k string) error {
 	if k == "" {
 		return ErrEmptyPropertyKey
 	}
 	if strings.Contains(k, "~") {
-		return fmt.Errorf("%w: property key %q contains '~' (reserved by v5compat)", ErrEmptyPropertyKey, k)
+		return fmt.Errorf("%w: %q", ErrReservedKey, k)
 	}
 	return nil
 }
@@ -195,8 +204,10 @@ func userMap(vals map[string]v5.Value) map[string]any {
 			return 1
 		case "b":
 			return 2
+		case "s":
+			return 3
 		}
-		return 3
+		return 4
 	}
 	best := map[string]int{}
 	for name, v := range vals {

@@ -632,8 +632,8 @@ func (w *wtx) getOrCreate(label, key string, value any, extra map[string]any) (*
 	for n, v := range ps.vals {
 		name, cv = n, v
 	}
-	if cv.Kind() == v5.KindFloat {
-		return nil, false, fmt.Errorf("%w: float claim value", ErrUniqueUnsupportedType)
+	if cv.Kind() == v5.KindFloat || cv.Kind() == v5.KindList || cv.Kind() == v5.KindBytes {
+		return nil, false, fmt.Errorf("%w: %v claim value", ErrUniqueUnsupportedType, cv.Kind())
 	}
 	ck := fmt.Sprintf("%s\x00%s\x00%s\x00%v", label, name, "", cv)
 	if e := w.claims[ck]; e != nil && !e.ended() {

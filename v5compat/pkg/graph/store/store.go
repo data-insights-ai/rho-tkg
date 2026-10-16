@@ -41,3 +41,31 @@ type QueryOpts struct {
 	TxAt  types.Instant
 	TxPin types.Instant
 }
+
+// DistanceMetric determines how similarity is measured between vectors.
+type DistanceMetric uint8
+
+// Distance metrics for vector indexes (declined: the vector index).
+const (
+	DistanceCosine DistanceMetric = iota + 1
+	DistanceEuclidean
+)
+
+// Placeholders for the v4 statistics, index-option and change-feed types so the
+// declined sub-APIs keep their v4 signatures. They carry no data.
+type (
+	PropertyTypeClassCounts struct{}
+	RelTypeDegreeStats      struct{}
+	ReadCosts               struct{}
+	HistoryCounts           struct{}
+	PropertyStats           struct{}
+	PropertyNDV             struct{}
+	PropertyBounds          struct{}
+	MemberTimeStats         struct{}
+	VectorIndexOptions      struct{}
+	VectorIndexInfo         struct{}
+	PropertyIndexOptions    struct{}
+	ChangeRecord            struct{}
+	RegistrySnapshot        struct{}
+	IDSlotLeaseRecord       struct{}
+)

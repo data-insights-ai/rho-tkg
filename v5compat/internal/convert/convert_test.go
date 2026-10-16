@@ -3,6 +3,7 @@ package convert
 import (
 	"errors"
 	"math"
+	"reflect"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/graph"
@@ -42,7 +43,7 @@ func TestAnyToValueEdge(t *testing.T) {
 			t.Fatalf("%s: %v", c.name, err)
 		}
 		got := ValueToAny(v)
-		if got != c.want {
+		if !reflect.DeepEqual(got, c.want) {
 			t.Fatalf("%s: read back %T(%v), want %T(%v)", c.name, got, got, c.want, c.want)
 		}
 	}
@@ -54,6 +55,29 @@ func TestAnyToValueEdge(t *testing.T) {
 	}
 	if v, _ := AnyToValue(float32(1)); v.Kind() != graph.KindFloat {
 		t.Fatalf("an integral float32 stays a Float, got kind %v", v.Kind())
+	}
+
+	// WP-29: bytes and flat lists map.
+	b, err := AnyToValue([]byte("ab"))
+	if err != nil || b.Kind() != graph.KindBytes {
+		t.Fatalf("[]byte: %v %v", b.Kind(), err)
+	}
+	if got := ValueToAny(b); string(got.([]byte)) != "ab" {
+		t.Fatalf("bytes read back %v", got)
+	}
+	for _, in := range []any{[]int64{1, 2}, []int{1}, []string{"a", "b"}, []any{1, "x", true, 1.5, []byte("z")}, []any{}, []float64{1.5}, []bool{true}} {
+		v, err := AnyToValue(in)
+		if err != nil || v.Kind() != graph.KindList {
+			t.Fatalf("%T: %v %v", in, v.Kind(), err)
+		}
+	}
+	lv, _ := AnyToValue([]any{uint8(3), "x", 2.5})
+	back := ValueToAny(lv).([]any)
+	if len(back) != 3 || back[0] != int64(3) || back[1] != "x" || back[2] != 2.5 {
+		t.Fatalf("list read back %#v", back)
+	}
+	if v, _ := AnyToValue([]byte(nil)); v.Kind() != graph.KindBytes {
+		t.Fatalf("nil []byte must be empty Bytes")
 	}
 
 	refused := []struct {
@@ -68,11 +92,11 @@ func TestAnyToValueEdge(t *testing.T) {
 		{"+Inf", math.Inf(1), ErrNotFinite},
 		{"-Inf", math.Inf(-1), ErrNotFinite},
 		{"float32 NaN", float32(math.NaN()), ErrNotFinite},
-		{"[]any", []any{1, 2}, ErrListNotYetSupported},
-		{"empty []any", []any{}, ErrListNotYetSupported},
-		{"[]int64", []int64{1}, ErrListNotYetSupported},
-		{"[]string", []string{"a"}, ErrListNotYetSupported},
-		{"[]byte", []byte("x"), ErrListNotYetSupported},
+		{"nil element", []any{1, nil}, ErrNilElement},
+		{"nested list", []any{[]any{1}}, ErrUnsupportedType},
+		{"map element", []any{map[string]any{}}, ErrUnsupportedType},
+		{"uint64 element above MaxInt64", []any{uint64(math.MaxUint64)}, ErrOutOfRange},
+		{"NaN element", []float64{math.NaN()}, ErrNotFinite},
 		{"map", map[string]any{"a": 1}, ErrUnsupportedType},
 		{"func", func() {}, ErrUnsupportedType},
 		{"struct", struct{}{}, ErrUnsupportedType},

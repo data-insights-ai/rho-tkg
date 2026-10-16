@@ -57,6 +57,15 @@ func (a *TxAPI) Begin() (*GraphTx, error) {
 	return nil, declined("Tx().Begin (use Run or RunContext)")
 }
 
+// Commit is declined: the transaction commits when the Run callback returns nil.
+func (t *GraphTx) Commit() error { return declined("GraphTx.Commit (Run commits)") }
+
+// Rollback is declined: the transaction rolls back when the Run callback errs.
+func (t *GraphTx) Rollback() error { return declined("GraphTx.Rollback (Run rolls back)") }
+
+// CommittedLSN is 0: v5 has no change-log LSN (RunWithLSN returns the commit instant).
+func (t *GraphTx) CommittedLSN() uint64 { return 0 }
+
 func (t *GraphTx) live() (*wtx, error) {
 	if t == nil || t.done {
 		return nil, store.ErrTxDone

@@ -30,3 +30,10 @@ type RelSegment struct {
 	ValidFrom, ValidTo types.Instant
 	Rel                *types.Relationship
 }
+
+// ConstraintSet and TemporalConstraint are placeholders for the v4 temporal
+// constraint types (the constraints sub-API is not in the first batch).
+type (
+	ConstraintSet      struct{}
+	TemporalConstraint struct{}
+)

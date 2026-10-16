@@ -27,9 +27,6 @@ import (
 	v5t "github.com/data-insights-ai/rho-tkg/v5/pkg/types"
 )
 
-// idSeed offsets the v5 ID counter of a new compat graph (first ID idSeed+1).
-const idSeed = 1 << 32
-
 // Graph is an open compat graph.
 type Graph struct {
 	cfg    Config
@@ -79,10 +76,7 @@ func v5Config(c Config) (v5.Config, error) {
 	if err != nil {
 		return v5.Config{}, err
 	}
-	// IDs start above small integers: v4 IDs were large snowflakes, so consumers
-	// (and the suite) treat a small literal such as a cursor of 1 as "before the
-	// first ID". The seed is read only when the graph is created.
-	out := v5.Config{GraphID: gid, DefaultAxis: b, KnowledgeAxis: k, Allocation: v5.Allocation{Seed: idSeed}}
+	out := v5.Config{GraphID: gid, DefaultAxis: b, KnowledgeAxis: k}
 	if c.memory() {
 		out.Memory, out.Durability = true, v5.DurabilityBuffered
 	} else {
@@ -139,9 +133,7 @@ func mapV5(err error) error {
 	if err == nil {
 		return nil
 	}
-	pairs := []struct{ from, to error }{
-		{v5.ErrClosed, ErrGraphClosed}, {v5.ErrUniqueViolation, ErrUniqueUnsupportedType},
-	}
+	pairs := []struct{ from, to error }{{v5.ErrClosed, ErrGraphClosed}}
 	for _, p := range pairs {
 		if errors.Is(err, p.from) {
 			return fmt.Errorf("%w (%w)", p.to, err)

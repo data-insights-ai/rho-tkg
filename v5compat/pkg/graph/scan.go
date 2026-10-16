@@ -224,6 +224,9 @@ func (g *Graph) effPage(ctx context.Context, pin temporal.Pin, f temporal.Filter
 	if f.Prop == "" || f.Eq == nil {
 		return nil, 0, fmt.Errorf("%w: the filter needs a property and a value", ErrEmptyName)
 	}
+	if scalarOnly(f.Eq) {
+		return nil, 0, fmt.Errorf("%w: %T filter value", convert.ErrUnsupportedValue, f.Eq)
+	}
 	eq, any, err := probes(f.Prop, f.Eq)
 	if err != nil {
 		return nil, 0, err
@@ -277,4 +280,11 @@ func (g *Graph) effPage(ctx context.Context, pin temporal.Pin, f temporal.Filter
 		return out, last, nil
 	}
 	return out, 0, nil
+}
+
+// scalarOnly reports a list or bytes value: the paged effective filter and the
+// unique claim take scalars only (v4 parity).
+func scalarOnly(x any) bool {
+	v, err := convert.AnyToValue(x)
+	return err == nil && (v.Kind() == v5.KindList || v.Kind() == v5.KindBytes)
 }
