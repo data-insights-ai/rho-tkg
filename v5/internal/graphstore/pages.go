@@ -123,7 +123,7 @@ func (q *pageReader) validateKey(k graphstate.ComponentKey, axis temporal.Axis) 
 	if k.Kind == graphstate.Label && entity.Kind != graphstate.Node {
 		return graphstate.PropertyDefinition{}, errors.Join(ErrInvalid, graphstate.ErrTypeMismatch)
 	}
-	if k.Kind != graphstate.Presence {
+	if k.Kind != graphstate.Presence && k.Kind != graphstate.LifeEnd {
 		_, found, err := q.q.life(LifeRef{q.q.c.root.namespace.Graph, k.Owner, k.Life})
 		if err != nil {
 			return graphstate.PropertyDefinition{}, err
@@ -163,7 +163,7 @@ func (q *pageReader) validateCell(k graphstate.ComponentKey, definition graphsta
 	}
 	value := cell.Value()
 	switch k.Kind {
-	case graphstate.Presence:
+	case graphstate.Presence, graphstate.LifeEnd:
 		if value.IsNull() || value.PayloadBytes() != 0 {
 			return ErrInvalid
 		}

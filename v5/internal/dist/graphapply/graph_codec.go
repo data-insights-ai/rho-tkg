@@ -741,6 +741,9 @@ func decodeTypedGraphRequestOwned(b []byte, l materializerLimits, declarations b
 			r.operations = make([]graphstate.Operation, n)
 			for i := range r.operations {
 				op := graphstate.Operation{Kind: graphstate.OperationKind(c.tag()), Owner: graphstate.EntityID(c.u64()), Life: graphstate.LifeID(c.u64()), Scope: readScope(&c, t, l), Record: readTypedEntity(&c, t, l, declarations), Binding: readLife(&c), Name: string(c.field(l.catalog.MaxNameBytes)), Value: readTypedScalar(&c, t, l, declarations), ValueID: graphstate.ValueID(c.u64())}
+				if op.Kind == graphstate.End { // End has no wire form until WP-28: fail closed, never drop
+					c.err = errCorrupt
+				}
 				present := c.tag()
 				if present > 1 {
 					c.err = errCorrupt

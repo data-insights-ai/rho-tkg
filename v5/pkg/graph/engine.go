@@ -41,31 +41,51 @@ var (
 	contractID = sha256.Sum256([]byte("rho-tkg:v5/pkg/graph:single-partition:v1"))
 	lifeID     = graphstate.LifeID(1)
 	allocName  = []byte("rho-tkg:v5/pkg/graph:id-allocator:v1")
-	endPrefix  = []byte("rho-tkg:v5/pkg/graph:end:v1/")
 )
 
-// endKey names the engine row holding an entity's End position (End closes the
-// life; Retract does not, and the stored cells alone cannot tell them apart).
-func endKey(id graphstate.EntityID) []byte {
-	return binary.BigEndian.AppendUint64(slices.Clone(endPrefix), uint64(id))
-}
-
-// endAt reads the entity's committed End position at index.
+// endAt reads the entity's committed End position at index from its LifeEnd
+// cells: the lowest lower bound of the regions an End marked.
 func (e *pebbleEngine) endAt(ctx context.Context, index uint64, id graphstate.EntityID) (temporal.Position, bool, error) {
-	view, err := e.store.ApplicationView(index)
+	r, err := e.readerAt(ctx, index)
 	if err != nil {
 		return temporal.Position{}, false, err
 	}
-	defer view.Close()
-	row, found, err := view.Get(ctx, endKey(id), 4096)
-	if err != nil || !found {
+	defer r.close()
+	window, err := temporal.All(e.cfg.DefaultAxis.Axis())
+	if err != nil {
 		return temporal.Position{}, false, err
 	}
-	p, err := temporal.DecodePosition(row.Value, e.cfg.DefaultAxis.Axis(), e.cfg.Limits)
+	pages, err := r.pieces(graphstate.ComponentKey{Owner: id, Kind: graphstate.LifeEnd}, window)
 	if err != nil {
-		return temporal.Position{}, false, fmt.Errorf("%w: stored End: %v", ErrCommitNotDurable, err)
+		return temporal.Position{}, false, err
 	}
-	return p, true, nil
+	var end temporal.Position
+	found := false
+	for _, pg := range pages {
+		for _, pc := range pg.Data.Pieces() {
+			if !pc.Cell().Present() {
+				continue
+			}
+			for _, part := range pc.Scope().Parts() {
+				lo, _, ok := part.Bounds()
+				if !ok {
+					continue
+				}
+				p, fin := lo.Position()
+				if !fin {
+					continue
+				}
+				if !found {
+					end, found = p, true
+				} else if c, err := temporal.ComparePositions(p, end, e.cfg.Limits); err != nil {
+					return temporal.Position{}, false, fmt.Errorf("%w: stored End: %v", ErrCommitNotDurable, err)
+				} else if c == temporal.Less {
+					end = p
+				}
+			}
+		}
+	}
+	return end, found, nil
 }
 
 func readBudget() graphstore.OwnershipBudget {
@@ -408,13 +428,6 @@ func (e *pebbleEngine) update(ctx context.Context, fn func(Tx) error) (Receipt, 
 			return Receipt{}, err
 		}
 		writes = append(writes, ar)
-	}
-	for id, p := range tx.ends {
-		v, err := temporal.AppendPosition(nil, p, e.cfg.Limits)
-		if err != nil {
-			return Receipt{}, fmt.Errorf("%w: %v", ErrInvalidScope, err)
-		}
-		writes = append(writes, raftlog.KV{Key: endKey(id), Value: v})
 	}
 	slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
 	if err := e.commit(next, prev, img, writes); err != nil {

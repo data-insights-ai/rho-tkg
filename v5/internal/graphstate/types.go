@@ -88,6 +88,9 @@ const (
 	Label
 	ScalarProperty
 	SetMember
+	// LifeEnd (Life=0, like Presence) holds a present cell with the life's
+	// handle over every region an End closed; Close/Retract never write it.
+	LifeEnd
 )
 
 // ComponentKey is comparable and contains no graph-wide implicit allocation.
@@ -317,6 +320,10 @@ const (
 	Unset
 	Add
 	Remove
+	// End retracts Presence like Close and also marks Scope as ended in the
+	// LifeEnd component, which a Retract never writes. Appended last: earlier
+	// tags are wire-stable.
+	End
 )
 
 // Operation is a concrete typed union. Create/reopen supply a fresh Life; ValueID

@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -292,18 +293,20 @@ func (t *engineTx) End(o End) error {
 	if err != nil {
 		return t.fail(err)
 	}
-	if !ok {
-		prior = p
-	} else if c, err := temporal.ComparePositions(p, prior, t.e.cfg.Limits); err != nil {
-		return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
-	} else if c == temporal.Less {
-		prior = p
+	if ok { // the standing End stays the earliest; a later one is still recorded (evidence)
+		c, err := temporal.ComparePositions(p, prior, t.e.cfg.Limits)
+		if err != nil {
+			return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
+		}
+		if c != temporal.Less {
+			p = prior
+		}
 	}
 	if t.ends == nil {
 		t.ends = map[graphstate.EntityID]temporal.Position{}
 	}
-	t.ends[id] = prior
-	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: tail})
+	t.ends[id] = p
+	t.add(graphstate.Operation{Kind: graphstate.End, Owner: id, Life: lifeID, Scope: tail})
 	return nil
 }
 
@@ -364,7 +367,14 @@ func (t *engineTx) Retract(o Retract) error {
 		return err
 	}
 	id, _ := target(o.Target)
-	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: o.Scope})
+	scope, err := t.beforeEnd(id, o.Scope)
+	if err != nil {
+		if errors.Is(err, ErrInvalidScope) { // already closed there by the End
+			return nil
+		}
+		return t.fail(err)
+	}
+	t.add(graphstate.Operation{Kind: graphstate.Close, Owner: id, Life: lifeID, Scope: scope})
 	return nil
 }
 
