@@ -12,6 +12,54 @@ def cut_result(index, round_=7, phase=2, status=1):
 
 
 class FirstCertificateGuards(unittest.TestCase):
+    def test_actual_p01_declared_root_and_complete_native_field_validation(self):
+        # Actual Old GSC from the complete rotated/reorder P01 process run
+        # p01-mode1-phase2-p3-k2-after (artifact SHA256 b594edb4296eb01beeded189
+        # b1215adde0bc00d5a6ef7111ac564c0b2dfa7723). This codec guard alone
+        # grants no stored-certificate/process authority; the full oracle does.
+        wire = base64.b64decode(
+            "R1NDAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAJ5YC6nkH1VeCJ9gWUrGypZl0GVgWG9BK0C2EVZGWuqsJBIlGt6z/F1VDg6BAEAJP0UI1Pgtd0/tLFH8VjXQSDxbmxsd6FADuA9DY875OJZY71rgP6GlHHOCs6i03bF9QoAAAAAAAAAAQAAAAAAAAAFAAAAAAAAAAEAAAAAAAAABJHUgMFAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAIAAAAAAAAABAAAAAAAAAAGzosFnQBbJLcl5Skqijat7fVTcJQU6gONy3MLKE0DDmAAAAAAAAAACQAAAAAAAAABAAAAAAAAAAPlgLqeQfVV4In2BZSsbKlmXQZWBYb0ErQLYRVkZa6qwmEwkX1V6CHgKjhSUn0xvu6OE1RIhE6Ah5+atOm0s+N3o9iwADwXo8+OlqfDZpw5H4Slclz8EXcnESAmOhh+C+g=",
+            validate=True)
+        encode = lambda value: base64.b64encode(value).decode()
+        actual = cert.certificate(encode(wire))
+        self.assertEqual((actual["partition"], actual["image"][:4]), (3, b"GR\3\5"))
+
+        def changed(offset, value, *, seal_root=True, seal_certificate=True):
+            body = bytearray(wire[:-32])
+            body[offset:offset+len(value)] = value
+            if seal_root:
+                body[-32:] = hashlib.sha256(body[188:-32]).digest()
+            return encode(bytes(body) + (hashlib.sha256(body).digest() if seal_certificate else wire[-32:]))
+
+        def root_changed(offset, value, **kwargs):
+            return changed(188+offset, value, **kwargs)
+
+        # Root.validate: declared pending/published have no graph index;
+        # initialized has index3. Primitive/single modes are different layouts.
+        for mode in (3, 4):
+            body = bytearray(wire[:-32])
+            body[191], body[288:296] = mode, bytes(8)
+            body[-32:] = hashlib.sha256(body[188:-32]).digest()
+            cert.certificate(encode(bytes(body)+hashlib.sha256(body).digest()))
+        invalid = [root_changed(3, bytes((mode,))) for mode in (0, 1, 2, 6, 255)]
+        invalid += [root_changed(0, b"GR\1"), root_changed(0, b"GR\2"),
+                    root_changed(4, b"\2"), root_changed(20, (8).to_bytes(8, "big")),
+                    root_changed(28, bytes(8)), root_changed(28, (3).to_bytes(8, "big")),
+                    root_changed(44, bytes(8)), root_changed(52, bytes(32)),
+                    root_changed(84, bytes(8)), root_changed(84, (10).to_bytes(8, "big")),
+                    root_changed(92, bytes(8)), root_changed(92, (2).to_bytes(8, "big")),
+                    root_changed(100, bytes(8)), root_changed(108, bytes(32)),
+                    root_changed(108, b"\1"*32), root_changed(3, b"\3"),
+                    root_changed(44, (7).to_bytes(8, "big"), seal_root=False),
+                    root_changed(44, (7).to_bytes(8, "big"), seal_certificate=False),
+                    encode(wire[:-1]), encode(wire+b"\0")]
+        # An otherwise valid root does not excuse a malformed native scope.
+        invalid += [changed(offset, bytes(size)) for offset, size in
+                    ((28, 16), (44, 8), (52, 8), (60, 32), (92, 32))]
+        for encoded in invalid:
+            with self.subTest(encoded=encoded), self.assertRaises(ValueError):
+                cert.certificate(encoded)
+
     def test_four_actual_first_certify_sides_exclude_fence_and_foreign_participant(self):
         accepted = {cert.recipe(dict(Version=1, Phase=2, Partition=p, Side=s))
                     for p in (3, 8) for s in ("before-submit", "after-applied")}

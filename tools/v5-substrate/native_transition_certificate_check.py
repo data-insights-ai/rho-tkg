@@ -66,10 +66,21 @@ def certificate(encoded):
     c.end()
     b, image = result["scope"], result["image"]
     partition = int.from_bytes(b[16:24], "big")
-    require(b[:16] == P.GRAPH and partition in (3, 8) and any(result["configuration"]) and 0 < result["round"] < (1 << 64)-1
+    require(b[:16] == P.GRAPH and partition in (3, 8) and any(b[24:40]) and int.from_bytes(b[40:48], "big") > 0
+            and int.from_bytes(b[48:56], "big") > 0 and any(b[56:88]) and any(b[88:120])
+            and any(result["configuration"]) and 0 < result["round"] < (1 << 64)-1
             and result["sourceRound"] <= result["round"] and 0 < result["sourceIndex"] < result["index"], "complete certificate/source coordinates")
-    require(image[:3] == b"GR\3" and image[3] in (1, 2, 3) and image[4:20] == P.GRAPH and int.from_bytes(image[20:28], "big") == partition
+    # graphstore.DecodeRoot/Root.validate: GR3 is the declared-ownership layout,
+    # with modes3 pending,4 published,5 initialized (not primitive GR1/single GR2).
+    # Its final32 bytes are SHA256, not a physical/certified-cut authority.
+    require(image[:3] == b"GR\3" and image[3] in (3, 4, 5) and image[4:20] == P.GRAPH and int.from_bytes(image[20:28], "big") == partition
             and hashlib.sha256(image[:-32]).digest() == image[-32:], "actual native root image codec/namespace")
+    owner, epoch, next_ = (int.from_bytes(image[offset:offset+8], "big") for offset in (28, 36, 44))
+    topology, schema, index = (int.from_bytes(image[offset:offset+8], "big") for offset in (84, 92, 100))
+    require(owner > 0 and next_ > 0 and any(image[52:84]) and topology > 0 and schema == 1 and any(image[108:140])
+            and index == (3 if image[3] == 5 else 0), "actual declared-root scalar/topology fields")
+    require(owner == int.from_bytes(b[40:48], "big") and topology == int.from_bytes(b[48:56], "big")
+            and image[108:140] == b[56:88], "native root exact certificate ownership/declaration binding")
     result["partition"] = partition
     return result
 
