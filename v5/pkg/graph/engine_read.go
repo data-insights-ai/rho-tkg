@@ -30,6 +30,7 @@ func (e *pebbleEngine) readerAt(ctx context.Context, index uint64) (*reader, err
 	if e.closed.Load() {
 		return nil, ErrClosed
 	}
+	e.readers.Add(1)
 	v, err := e.store.ApplicationView(index)
 	if err != nil {
 		if errors.Is(err, raftlog.ErrApplicationExpired) {
@@ -687,30 +688,12 @@ func (s *engineSnap) bound(sel Selector) (*knownBound, error) {
 	return kb, nil
 }
 
-// knowledge is when the owner's revision became known: the latest Recorded
-// instant it carried, else its commit's knowledge instant.
-func (r *reader) knowledge(id graphstate.EntityID, rev uint64) (temporal.Position, error) {
-	ev, err := r.rv.Evidence(r.ctx, id, rev)
-	if err != nil {
-		return temporal.Position{}, err
+// known is when the revision became known, from its revision row.
+func markKnown(m graphstore.RevisionMark) (temporal.Position, error) {
+	if m.Known.Profile() == 0 {
+		return temporal.Position{}, fmt.Errorf("%w: revision %d has no knowledge instant", ErrCommitNotDurable, m.Revision)
 	}
-	if len(ev) > 0 {
-		best := ev[0].Recorded
-		for _, e := range ev[1:] {
-			if o, err := temporal.ComparePositions(e.Recorded, best, r.e.cfg.Limits); err == nil && o == temporal.Greater {
-				best = e.Recorded
-			}
-		}
-		return best, nil
-	}
-	row, found, err := r.view.Get(r.ctx, commitInstantKey(rev), 64)
-	if err != nil {
-		return temporal.Position{}, err
-	}
-	if !found || len(row.Value) != 8 {
-		return temporal.Position{}, fmt.Errorf("%w: no commit instant for revision %d", ErrCommitNotDurable, rev)
-	}
-	return r.e.instantPosition(int64(binary.BigEndian.Uint64(row.Value))) // #nosec G115 -- written from an int64
+	return m.Known, nil
 }
 
 const revisionChunk = 64
@@ -727,25 +710,65 @@ func (rd *reader) knownIndex(id graphstate.EntityID, kb *knownBound) (uint64, er
 		if err != nil {
 			return 0, err
 		}
-		for _, rev := range revs {
-			k, err := rd.knowledge(id, rev)
+		for _, m := range revs {
+			k, err := markKnown(m)
 			if err != nil {
 				return 0, err
 			}
 			if !kb.allows(k) {
 				return eff, nil
 			}
-			eff = rev
+			eff = m.Revision
 		}
 		if complete || len(revs) == 0 {
 			return eff, nil
 		}
-		after = revs[len(revs)-1]
+		after = revs[len(revs)-1].Revision
+	}
+}
+
+// readerCache shares one reader per index across the entities of one fill,
+// rotating each after readsPerView uses (a view's source budget is bounded).
+type readerCache struct {
+	e    *pebbleEngine
+	ctx  context.Context
+	byAt map[uint64]*cachedReader
+}
+
+type cachedReader struct {
+	rd   *reader
+	uses int
+}
+
+func (c *readerCache) get(index uint64) (*reader, error) {
+	if cr := c.byAt[index]; cr != nil {
+		if cr.uses < readsPerView {
+			cr.uses++
+			return cr.rd, nil
+		}
+		cr.rd.close()
+		delete(c.byAt, index)
+	}
+	rd, err := c.e.readerAt(c.ctx, index)
+	if err != nil {
+		return nil, err
+	}
+	if c.byAt == nil {
+		c.byAt = map[uint64]*cachedReader{}
+	}
+	c.byAt[index] = &cachedReader{rd: rd, uses: 1}
+	return rd, nil
+}
+
+func (c *readerCache) closeAll() {
+	for i, cr := range c.byAt {
+		cr.rd.close()
+		delete(c.byAt, i)
 	}
 }
 
 // rowsFor is rd.rows, at the view that shows the entity as known under kb.
-func (s *engineSnap) rowsFor(ctx context.Context, rd *reader, ref Ref, st *pageState) ([]Entity, error) {
+func (s *engineSnap) rowsFor(ctx context.Context, rd *reader, ref Ref, st *pageState, cache *readerCache) ([]Entity, error) {
 	m := st.match
 	if st.kb == nil {
 		return rd.rows(ref, st.sel, st.proj, m)
@@ -755,11 +778,10 @@ func (s *engineSnap) rowsFor(ctx context.Context, rd *reader, ref Ref, st *pageS
 	if err != nil || eff == 0 {
 		return nil, err
 	}
-	at, err := s.e.readerAt(ctx, eff)
+	at, err := cache.get(eff)
 	if err != nil {
 		return nil, err
 	}
-	defer at.close()
 	return at.rows(ref, st.sel, st.proj, m)
 }
 
@@ -837,6 +859,8 @@ func (s *engineSnap) live() error {
 }
 
 func (s *engineSnap) fill(ctx context.Context, st *pageState, p PageLimits) (Page, error) {
+	cache := &readerCache{e: s.e, ctx: ctx}
+	defer cache.closeAll()
 	var rd *reader
 	defer func() {
 		if rd != nil {
@@ -914,7 +938,7 @@ func (s *engineSnap) fill(ctx context.Context, st *pageState, p PageLimits) (Pag
 			} else if !ok {
 				return page, nil
 			}
-			rows, err := s.rowsFor(ctx, rd, ref, st)
+			rows, err := s.rowsFor(ctx, rd, ref, st, cache)
 			if err != nil {
 				return Page{}, err
 			}
@@ -927,7 +951,7 @@ func (s *engineSnap) fill(ctx context.Context, st *pageState, p PageLimits) (Pag
 			}
 			continue
 		}
-		rows, err := s.rowsFor(ctx, rd, ref, st)
+		rows, err := s.rowsFor(ctx, rd, ref, st, cache)
 		if err != nil {
 			return Page{}, err
 		}
@@ -970,9 +994,9 @@ func (s *engineSnap) timelineChunk(ctx context.Context, st *pageState) error {
 	}
 	revs, complete, err := rd.rv.Revisions(ctx, st.tlID, st.tlAt, revisionChunk)
 	if err == nil && st.kb != nil {
-		for i, rev := range revs {
+		for i, m := range revs {
 			var k temporal.Position
-			if k, err = rd.knowledge(st.tlID, rev); err != nil {
+			if k, err = markKnown(m); err != nil {
 				break
 			}
 			if !st.kb.allows(k) {
@@ -985,7 +1009,8 @@ func (s *engineSnap) timelineChunk(ctx context.Context, st *pageState) error {
 	if err != nil {
 		return err
 	}
-	for _, rev := range revs {
+	for _, m := range revs {
+		rev := m.Revision
 		at, err := s.e.readerAt(ctx, rev)
 		if err != nil {
 			return err

@@ -116,6 +116,8 @@ type pebbleEngine struct {
 	alloc                    allocState
 	now                      func() int64
 	last                     atomic.Int64 // knowledge instant of the newest commit
+	first                    uint64       // application index of the first commit (genesis); earlier indexes have no instant row
+	readers                  atomic.Uint64
 }
 
 var _ engine = (*pebbleEngine)(nil)
@@ -237,6 +239,7 @@ func (e *pebbleEngine) genesis(ctx context.Context) error {
 	inst := e.nextInstant()
 	writes = append(writes, instantRow(idx+1, inst))
 	e.last.Store(inst)
+	e.first = idx + 1
 	slices.SortFunc(writes, func(a, b raftlog.KV) int { return bytes.Compare(a.Key, b.Key) })
 	img, err := graphstore.EncodeRoot(root)
 	if err != nil {
@@ -300,6 +303,11 @@ func (e *pebbleEngine) recover(ctx context.Context) error {
 		return fmt.Errorf("%w: stored graph has no commit knowledge instant", ErrInvalidConfig)
 	}
 	e.last.Store(int64(binary.BigEndian.Uint64(irow.Value))) // #nosec G115 -- written from an int64
+	lowest, err := view.Scan(ctx, instantKey, append(bytes.Clone(instantKey[:len(instantKey)-1]), instantKey[len(instantKey)-1]+1), nil, raftlog.ReadBudget{Rows: 1, Bytes: 4096})
+	if err != nil || len(lowest.Rows) != 1 || len(lowest.Rows[0].Key) != len(instantKey)+8 {
+		return fmt.Errorf("%w: stored graph has no first commit instant", ErrInvalidConfig)
+	}
+	e.first = binary.BigEndian.Uint64(lowest.Rows[0].Key[len(instantKey):])
 	for _, defs := range []map[string]graphstate.PropertyDefinition{e.node, e.rel} {
 		for name, want := range defs {
 			got, found, err := c.Property(ctx, want.Owner, name)
@@ -596,23 +604,30 @@ func (e *pebbleEngine) indexAtKnown(ctx context.Context, applied uint64, inst in
 		}
 		return int64(binary.BigEndian.Uint64(row.Value)), true, nil // #nosec G115 -- written from an int64
 	}
-	lo, hi := uint64(0), applied // largest i in [lo,hi] with instant(i) <= inst, rows before the first commit count as true
+	// Indexes before the first commit count as "at or before"; a missing row at
+	// or after it is a damaged store, never a pass.
+	lo, hi := uint64(0), applied
 	for lo < hi {
 		mid := lo + (hi-lo+1)/2
+		if mid < e.first {
+			lo = mid
+			continue
+		}
 		got, found, err := at(mid)
 		if err != nil {
 			return 0, err
 		}
-		if !found || got <= inst {
+		if !found {
+			return 0, fmt.Errorf("%w: no commit instant for index %d", ErrCommitNotDurable, mid)
+		}
+		if got <= inst {
 			lo = mid
 		} else {
 			hi = mid - 1
 		}
 	}
-	if _, found, err := at(lo); err != nil {
-		return 0, err
-	} else if !found {
-		lo++ // before the first commit: the first one
+	if lo < e.first {
+		lo = e.first // before the first commit: the first one, the empty graph
 	}
 	return min(max(lo, 1), applied), nil
 }

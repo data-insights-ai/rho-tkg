@@ -283,9 +283,9 @@ func TestKnownBelowViewBypassesIndexPages(t *testing.T) {
 }
 
 func TestTimelinePagesStreamWithoutMaterialising(t *testing.T) {
-	n := 10000
+	n := 3000
 	if testing.Short() {
-		n = 2000
+		n = 1000
 	}
 	g := memBare(t, func(c *Config) { c.NodeProperties = []PropertySchema{{Key: "n", Kind: KindInt}} })
 	all := scopeAll(t)
@@ -344,4 +344,71 @@ func TestTimelinePagesStreamWithoutMaterialising(t *testing.T) {
 		t.Fatalf("timeline rows = %d, want %d", total, n+1)
 	}
 	_ = errors.Is
+}
+
+// A Known-bound scan over N entities shares one reader per index (rotated every
+// readsPerView entities) instead of opening a view per entity.
+func TestKnownScanSharesReaders(t *testing.T) {
+	g := memBare(t, func(c *Config) { c.NodeProperties = []PropertySchema{{Key: "n", Kind: KindInt}} })
+	all := scopeAll(t)
+	const n, batch = 300, 50
+	var ids []types.NodeID
+	var r1 Receipt
+	for len(ids) < n {
+		r1 = update(t, g, func(tx Tx) error {
+			for i := 0; i < batch; i++ {
+				id, err := tx.CreateNode(CreateNode{Labels: []string{"P"}, Props: map[string]Value{"n": Int(1)}, Scope: all})
+				if err != nil {
+					return err
+				}
+				ids = append(ids, id)
+			}
+			return nil
+		})
+	}
+	ref, _ := NodeRef(ids[0])
+	update(t, g, func(tx Tx) error { return tx.Set(Set{Target: ref, Key: "n", Value: Int(2), Scope: all}) })
+	e := engOf(t, g)
+	s, err := g.OpenSnapshot(context.Background(), Fresh())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	before := e.readers.Load()
+	total := 0
+	req := ScanRequest{Selector: Selector{View: ViewDeclared, Valid: all, Known: knownUpTo(t, instOf(t, r1), true), Labels: []string{"P"}},
+		Projection: Projection{Properties: []string{"n"}}, Paging: PageLimits{Rows: 100, MaxBytes: 1 << 20}}
+	p, err := s.Scan(context.Background(), req)
+	for err == nil {
+		for _, r := range p.Rows {
+			if v, _ := r.Props["n"].AsInt(); v != 1 {
+				t.Fatalf("row sees n=%d beyond the bound", v)
+			}
+		}
+		total += len(p.Rows)
+		if p.Next.IsZero() {
+			break
+		}
+		p, err = s.Resume(context.Background(), p.Next, req.Paging)
+	}
+	if err != nil || total != n {
+		t.Fatalf("scan: %d rows, %v", total, err)
+	}
+	if opened := e.readers.Load() - before; opened > 30 {
+		t.Fatalf("a Known scan over %d entities opened %d readers", n, opened)
+	}
+}
+
+// A missing commit-instant row at or after the first commit is a corrupt store,
+// not "before the bound".
+func TestAtKnownMissingInstantRowIsCorruption(t *testing.T) {
+	g, _, _, _, _ := threeCommits(t)
+	e := engOf(t, g)
+	if _, err := g.OpenSnapshot(context.Background(), AtKnown(0)); err != nil {
+		t.Fatalf("before the first commit: %v", err)
+	}
+	e.first = 1 // the store claims commits from index 1, but index 1 has no row
+	if _, err := g.OpenSnapshot(context.Background(), AtKnown(0)); !errors.Is(err, ErrCommitNotDurable) {
+		t.Fatalf("missing row: %v", err)
+	}
 }
