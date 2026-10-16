@@ -201,7 +201,7 @@ func TestCatalogDurableQualifiedRecordsAndAliases(t *testing.T) {
 		if err != nil || !found || got.Ref != refValue(v.id) {
 			t.Fatal(got, found, err)
 		}
-		equal, err := got.Value.Equal(v.value, current.limits.valueLimits())
+		equal, err := got.Value.Identical(v.value, current.limits.valueLimits())
 		if err != nil || !equal {
 			t.Fatal("value changed", v.id, err)
 		}

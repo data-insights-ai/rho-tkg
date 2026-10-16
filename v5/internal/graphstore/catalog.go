@@ -927,7 +927,7 @@ func (q *reader) stageValue(ref ValueRef, value graphstate.Scalar, key string) e
 			return err
 		}
 	}
-	encoded, err := encodeValue(q.c.root.namespace, ref, value, key, count, q.c.limits)
+	encoded, err := encodeValue(q.c.root.namespace, ref, value, count, q.c.limits)
 	if err != nil {
 		return err
 	}

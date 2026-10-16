@@ -117,7 +117,11 @@ func (q *pageReader) ownScalar(value graphstate.Scalar) (graphstate.Scalar, erro
 			return graphstate.Scalar{}, err
 		}
 	}
-	return decodeScalar([]byte(key), axis, hasAxis, q.q.c.limits)
+	wire, err := value.AppendWire(nil, q.q.c.limits.valueLimits())
+	if err != nil {
+		return graphstate.Scalar{}, err
+	}
+	return decodeScalar(wire, axis, hasAxis, q.q.c.limits)
 }
 func (q *pageReader) ownDelta(delta graphstate.Delta, groups []ComponentChangeGroup, outputLimit int) (graphstate.Delta, []ComponentChangeGroup, error) {
 	fixed := 512 + 256*len(delta.Entities) + 64*len(delta.Lives) + 256*len(delta.Values) + fullPatchOutputBytes*len(delta.Patches) + fullDependencyOutputBytes*len(delta.Dependencies) + fullGroupOutputBytes*len(groups)

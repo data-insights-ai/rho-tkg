@@ -43,7 +43,7 @@ func TestCatalogCanonicalRecordBoundaries(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := encodeValue(n, refValue(1), v, key, 0, l)
+		wire, err := encodeValue(n, refValue(1), v, 0, l)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -51,7 +51,7 @@ func TestCatalogCanonicalRecordBoundaries(t *testing.T) {
 		if err != nil || ordinal != 0 || !bytes.Equal(stored, []byte(key)) {
 			t.Fatal(entry, ordinal, err)
 		}
-		equal, err := entry.Value.Equal(v, l.valueLimits())
+		equal, err := entry.Value.Identical(v, l.valueLimits())
 		if err != nil || !equal {
 			t.Fatal(err)
 		}
@@ -125,8 +125,7 @@ func FuzzCatalogDecoders(f *testing.F) {
 	finite, _ := graphstate.F64(1.25)
 	seeds := [][]byte{nil, []byte("GR\x01\x01"), root, axis, property, entity, life, encodeNumber(n, bucketRecord, 2), encodeNumber(n, bucketMemberRecord, 10)}
 	for _, v := range []graphstate.Scalar{graphstate.ScopeValue(point), finite, graphstate.String("exact\x00bytes"), graphstate.Bool(true), graphstate.I64(-7), graphstate.Null()} {
-		key, _ := v.EqualityKey(l.valueLimits())
-		wire, _ := encodeValue(n, refValue(10), v, key, 0, l)
+		wire, _ := encodeValue(n, refValue(10), v, 0, l)
 		seeds = append(seeds, wire)
 	}
 	for _, seed := range seeds {
@@ -171,7 +170,7 @@ func FuzzCatalogDecoders(f *testing.F) {
 			if e != nil || !bytes.Equal(key, []byte(canonical)) {
 				t.Fatal("value equality bytes changed", e)
 			}
-			encoded, e := encodeValue(n, entry.Ref, entry.Value, canonical, ordinal, l)
+			encoded, e := encodeValue(n, entry.Ref, entry.Value, ordinal, l)
 			if e != nil || !bytes.Equal(encoded, input) {
 				t.Fatal("value not canonical", e)
 			}

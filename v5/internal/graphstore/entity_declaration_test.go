@@ -63,8 +63,7 @@ func TestV1EntityDeclarationsUseOnlyVersionedEntityPayload(t *testing.T) {
 		{lifeRecord, func() []byte { b, _ := encodeLife(n, graphstate.LifeRecord{Owner: 1, Life: 1}, l); return b }, func(b []byte) error { _, e := readLife(b, n, l); return e }},
 		{valueRecord, func() []byte {
 			v := graphstate.String("x")
-			key, _ := v.EqualityKey(l.valueLimits())
-			b, _ := encodeValue(n, refValue(1), v, key, 0, l)
+			b, _ := encodeValue(n, refValue(1), v, 0, l)
 			return b
 		}, func(b []byte) error { _, _, _, e := readValue(b, n, l); return e }},
 	} {

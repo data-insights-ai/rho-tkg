@@ -206,7 +206,11 @@ func cloneOperations(ctx context.Context, v *ReadView, ops []graphstate.Operatio
 					}
 				}
 			}
-			op.Value, err = decodeScalar([]byte(key), valueAxis, hasAxis, v.c.limits)
+			wire, err := op.Value.AppendWire(nil, l)
+			if err != nil {
+				return nil, callerError(err)
+			}
+			op.Value, err = decodeScalar(wire, valueAxis, hasAxis, v.c.limits)
 			if err != nil {
 				return nil, callerError(err)
 			}

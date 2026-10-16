@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
-	"math"
 	"strings"
 	"unicode/utf8"
 
@@ -390,16 +389,19 @@ func readLife(src []byte, n Namespace, l Limits) (graphstate.LifeRecord, error) 
 	}
 	return r, nil
 }
-func encodeValue(n Namespace, ref ValueRef, v graphstate.Scalar, key string, ordinal uint64, l Limits) ([]byte, error) {
-	if ref.ID == 0 || len(key) > l.MaxValueBytes {
+func encodeValue(n Namespace, ref ValueRef, v graphstate.Scalar, ordinal uint64, l Limits) ([]byte, error) {
+	if ref.ID == 0 {
+		return nil, ErrInvalid
+	}
+	wire, err := v.AppendWire(nil, l.valueLimits())
+	if err != nil || len(wire) > l.MaxValueBytes {
 		return nil, ErrInvalid
 	}
 	b := binary.BigEndian.AppendUint64(recordHeader(n, valueRecord), uint64(ref.ID))
 	b = binary.BigEndian.AppendUint64(b, ordinal)
-	b = appendField(b, []byte(key))
+	b = appendField(b, wire)
 	if axis, ok := v.Scope(); ok {
 		b = append(b, 1)
-		var err error
 		b, err = appendAxis(b, axis.Axis(), l)
 		if err != nil {
 			return nil, callerError(err)
@@ -409,57 +411,21 @@ func encodeValue(n Namespace, ref ValueRef, v graphstate.Scalar, key string, ord
 	}
 	return checkRecord(b, l)
 }
-func decodeScalar(key []byte, axis temporal.Axis, hasAxis bool, l Limits) (graphstate.Scalar, error) {
-	if len(key) == 0 || len(key) > l.MaxValueBytes {
+
+// decodeScalar reads the kind-preserving stored wire (graphstate.DecodeWire).
+func decodeScalar(wire []byte, axis temporal.Axis, hasAxis bool, l Limits) (graphstate.Scalar, error) {
+	if len(wire) == 0 || len(wire) > l.MaxValueBytes {
 		return graphstate.Scalar{}, ErrCorrupt
 	}
-	kind := graphstate.ScalarKind(key[0])
-	if hasAxis != (kind == graphstate.ScalarScope) {
+	v, err := graphstate.DecodeWire(wire, axis, hasAxis, l.Temporal)
+	switch {
+	case err == nil:
+		return v, nil
+	case errors.Is(err, graphstate.ErrResourceLimit):
+		return graphstate.Scalar{}, errors.Join(ErrResourceLimit, err)
+	default:
 		return graphstate.Scalar{}, ErrCorrupt
 	}
-	switch kind {
-	case graphstate.ScalarNull:
-		if len(key) == 1 {
-			return graphstate.Null(), nil
-		}
-	case graphstate.ScalarString:
-		return graphstate.String(string(key[1:])), nil
-	case graphstate.ScalarBool:
-		if len(key) == 2 && key[1] <= 1 {
-			return graphstate.Bool(key[1] == 1), nil
-		}
-	case graphstate.ScalarI64:
-		if len(key) == 9 {
-			return graphstate.I64(int64(binary.BigEndian.Uint64(key[1:]))), nil
-		} // #nosec G115 -- exact two's-complement payload.
-	case graphstate.ScalarF64:
-		if len(key) == 9 {
-			bits := binary.BigEndian.Uint64(key[1:])
-			if bits != 1<<63 {
-				v, err := graphstate.F64(math.Float64frombits(bits))
-				if err == nil {
-					return v, nil
-				}
-			}
-		}
-	case graphstate.ScalarDescriptor:
-		d, err := temporal.DecodeOpaqueDescriptor(key[1:], l.Temporal)
-		if err == nil {
-			return graphstate.DescriptorValue(d)
-		}
-		if errors.Is(err, temporal.ErrResourceLimit) {
-			return graphstate.Scalar{}, errors.Join(ErrResourceLimit, err)
-		}
-	case graphstate.ScalarScope:
-		s, err := temporal.DecodeScope(key[1:], axis, l.Temporal)
-		if err == nil {
-			return graphstate.ScopeValue(s), nil
-		}
-		if errors.Is(err, temporal.ErrResourceLimit) {
-			return graphstate.Scalar{}, ErrResourceLimit
-		}
-	}
-	return graphstate.Scalar{}, ErrCorrupt
 }
 func readValue(src []byte, n Namespace, l Limits) (ValueEntry, []byte, uint64, error) {
 	c, err := inspectRecord(src, n, valueRecord, l)
@@ -492,6 +458,14 @@ func readValue(src []byte, n Namespace, l Limits) (ValueEntry, []byte, uint64, e
 	v, err := decodeScalar(key, axis, tag == 1, l)
 	if err != nil {
 		return ValueEntry{}, nil, 0, err
+	}
+	// The record stores the wire; identity is the numeric-canonical EqualityKey.
+	if k := v.Kind(); k == graphstate.ScalarI64 || k == graphstate.ScalarF64 {
+		ek, err := v.EqualityKey(l.valueLimits())
+		if err != nil {
+			return ValueEntry{}, nil, 0, ErrCorrupt
+		}
+		key = []byte(ek)
 	}
 	if c.done() != nil {
 		return ValueEntry{}, nil, 0, ErrCorrupt
