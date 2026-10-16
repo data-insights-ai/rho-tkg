@@ -59,11 +59,12 @@ func TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges(t *testing.T) {
 					t.Fatalf("%s: epoch %d -> %d, want unchanged", name, epoch, got)
 				}
 			}
-			unsupported := []error{graphpkg.ErrCapabilityNotSupported, storepkg.ErrRelPropertyIndexUnsupported, graphpkg.ErrEventPropertyIndex}
-			label := "P" // tiered: property indexes on reference labels only
+			unsupported := []error{graphpkg.ErrCapabilityNotSupported, storepkg.ErrRelPropertyIndexUnsupported}
+			label := "P"
 			if b.tiered {
 				label = "Ref"
-				step("CreateProperty on an event label", func() error { return ix.CreateProperty("P", "age") }, graphpkg.ErrEventPropertyIndex)
+				// Since v4.58.0 an event label's index is built on every shard.
+				step("CreateProperty on an event label", func() error { return ix.CreateProperty("P", "age") })
 			}
 
 			a, err := g.Nodes().Add(ctx, []string{label}, map[string]any{"age": int64(3), "v": []float32{1, 0}})
@@ -94,7 +95,7 @@ func TestIndexInventoryEpochAdvancesExactlyOnInventoryChanges(t *testing.T) {
 			}
 			still("a rejected reserved key")
 
-			// Relationship property (tiered refuses: unsupported).
+			// Relationship property (a backend may refuse: unsupported).
 			if step("CreateRelProperty", func() error { return ix.CreateRelProperty("R", "w") }, unsupported...) {
 				step("CreateRelProperty again", func() error { return ix.CreateRelProperty("R", "w") }, graphpkg.ErrIndexExists)
 				step("DeleteRelProperty", func() error { return ix.DeleteRelProperty("R", "w") })

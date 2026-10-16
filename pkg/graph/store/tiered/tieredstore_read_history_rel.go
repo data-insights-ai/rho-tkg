@@ -307,6 +307,7 @@ func (ts *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 }
 
 func (ts *Store) ForEachRelHistoryIDByDepth(depth ShardDepth, fn func(types.RelID) bool) error {
+	ts.noteTypeScan("ForEachRelHistoryIDByDepth")
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}

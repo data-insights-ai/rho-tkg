@@ -1739,12 +1739,12 @@ func TestTieredStoreSearchNearestFilteredReturnsClosedWhenFilterClosesStore(t *t
 	}
 }
 
-func TestTieredStoreDropPropertyIndexRejectsEventLabel(t *testing.T) {
+func TestTieredStoreDropPropertyIndexEventLabelNotFound(t *testing.T) {
 	t.Parallel()
 	ts, _, signalTok := setupBatchDelete(t)
 
-	if err := ts.DropPropertyIndex(signalTok, "status"); !errors.Is(err, ErrEventPropertyIndex) {
-		t.Fatalf("DropPropertyIndex(event label) = %v, want ErrEventPropertyIndex", err)
+	if err := ts.DropPropertyIndex(signalTok, "status"); !errors.Is(err, ErrIndexNotFound) {
+		t.Fatalf("DropPropertyIndex(event label, none) = %v, want ErrIndexNotFound", err)
 	}
 }
 

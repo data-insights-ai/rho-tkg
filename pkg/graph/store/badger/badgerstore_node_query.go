@@ -404,9 +404,10 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 }
 
 // NodesByLabelContainingProperty answers an Elements-index lookup (backlog 63) on a
-// store holding no copy of the index (tiered event shards and archive; the
-// reference shard owns it): the label's nodes whose propKey carries value's key as
-// a scalar or list element, filtered while the rows are fetched.
+// store holding no copy of the index: the label's nodes whose propKey carries
+// value's key as a scalar or list element, filtered while the rows are fetched.
+// No in-tree caller since v4.58.0 (tiered builds the index on every shard and
+// scans a shard lacking its copy itself); kept for API compatibility.
 func (bs *Store) NodesByLabelContainingProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err

@@ -10,14 +10,14 @@ import (
 // --- Relationship property indexes (K3b) ---
 //
 // Rel mirror of CreateProperty / DeleteProperty, keyed by rel type, backed by
-// store.RelPropertyIndexCapability. The tiered store declines creation with
-// store.ErrRelPropertyIndexUnsupported (rel values are scattered across
-// timestamp-routed shards); RelsByTypeAndProperty still works everywhere via the
-// graph-layer type scan.
+// store.RelPropertyIndexCapability (sharded and tiered build it on every shard);
+// RelsByTypeAndProperty works everywhere, without an index by the graph-layer
+// type scan.
 
 // CreateRelProperty creates a relationship property index on (rel type,
 // property key), resolving or creating the rel-type token. Returns
-// store.ErrIndexExists, or store.ErrRelPropertyIndexUnsupported on the tiered store.
+// store.ErrIndexExists, or store.ErrRelPropertyIndexUnsupported from a backend
+// that declines it.
 func (i *IndexOps) CreateRelProperty(typeName, propertyKey string) error {
 	return i.CreateRelPropertyWithOptions(typeName, propertyKey, storepkg.PropertyIndexOptions{})
 }

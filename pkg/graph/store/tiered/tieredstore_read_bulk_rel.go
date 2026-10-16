@@ -307,6 +307,7 @@ func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 }
 
 func (ts *Store) ForEachRelID(fn func(types.RelID) bool) error {
+	ts.noteTypeScan("ForEachRelID")
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}

@@ -119,18 +119,14 @@ type Config struct {
 	// governs.
 	CacheBudgetBytes int64
 	// PropertyIndexOnDisk is the tiered sibling of badger.Config's
-	// PropertyIndexOnDisk: it does NOT change WHERE property indexes live —
-	// property indexes remain reference-shard-only (CreatePropertyIndex still
-	// rejects event labels with ErrEventPropertyIndex; see CLAUDE.md "Property
-	// indexes on reference entities only"). It only changes HOW the reference
-	// shard answers them: false (default) keeps the reference shard's
-	// PropertyIndex.Entries/numBuckets maps in RAM; true answers
-	// equality/range reads from the reference shard's persisted 0x0A keyspace
-	// instead (see badgerstore_property_disk.go), surviving reopen without an
-	// in-memory rebuild. Passed through badgerCfg to EVERY shard (reference,
-	// hot, warm, lazy cold/archive, and rotation-created) for uniformity —
-	// event shards never build a property index, so the flag is a no-op
-	// there, harmless.
+	// PropertyIndexOnDisk: it does NOT change WHERE property indexes live
+	// (every shard, shard_index_fanout.go). It only changes HOW each shard
+	// answers them: false (default) keeps a shard's PropertyIndex.Entries /
+	// numBuckets maps in RAM; true answers equality/range reads from the
+	// shard's persisted 0x0A keyspace instead (see
+	// badgerstore_property_disk.go), surviving reopen without an in-memory
+	// rebuild. Passed through badgerCfg to EVERY shard (reference, hot, warm,
+	// lazy cold/archive, and rotation-created).
 	PropertyIndexOnDisk bool
 	// TemporalIndexOnDisk is the tiered sibling of badger.Config's
 	// TemporalIndexOnDisk: a rebuild-at-open accelerator, NOT a RAM-vs-disk
@@ -254,6 +250,7 @@ type Store struct {
 	migrateMu         sync.Mutex                                      // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)
 	moveMu            sync.RWMutex                                    // ArchiveNode/RestoreNode hold it; reads of the reference shard and the archive (and point routes) read-hold it (refAndArchive, lockMoveRead); writes do not, so a direct user must not write during a move (the graph fences with c.mu)
 	fanoutRefReadHook func()                                          // test-only: refArchiveGapHook runs it between a door's reference shard read and its archive read
+	typeScanHook      func(door string)                               // test-only: noteTypeScan reports every whole-label/type/history ID scan door (WP-31 "no type scan" proof)
 	archiveActiveReqs atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
 	eventShards       map[string]*EventShard                          // name -> event shard
 	shardIndex        []*EventShard                                   // eventShards sorted by timeStart; rebuilt by reindexShardsLocked on every insert/delete; guarded by mu

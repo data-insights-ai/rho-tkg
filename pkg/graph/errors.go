@@ -250,9 +250,9 @@ var (
 	// target entity is not a reference entity — event entities cannot be
 	// archived.
 	ErrNotReferenceEntity = tieredpkg.ErrNotReferenceEntity
-	// ErrEventPropertyIndex is returned by g.Index().CreatePropertyIndex
-	// when the target label classifies as an event label — property
-	// indexes are reference-entities-only on a tiered.Store.
+	// ErrEventPropertyIndex was returned by g.Index().CreateProperty on a
+	// tiered.Store for an event label. Deprecated: since v4.58.0 property
+	// indexes cover every label on every tiered shard and nothing returns it.
 	ErrEventPropertyIndex = tieredpkg.ErrEventPropertyIndex
 	// ErrPrimaryLabelClassMutation is returned by g.Nodes().AddLabelToken /
 	// RemoveLabelToken (and their WithHistory variants) when the mutation

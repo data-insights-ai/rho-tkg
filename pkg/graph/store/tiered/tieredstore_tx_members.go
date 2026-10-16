@@ -8,8 +8,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Transaction-time membership sidecars and valid-end indexes on the tiered
-// store (backlog 58). Each shard keeps its own over its own rows, so the
+// Transaction-time membership sidecars (label, type, and since WP-31 node and
+// relationship property) and valid-end indexes on the tiered store (backlog 58). Each shard keeps its own over its own rows, so the
 // store-wide answer fans out over the reference shard, the archive (if any)
 // and every event shard (closed cold shards are opened, as the DepthAll
 // history fold does); the core uses these for DepthAll reads only.
@@ -103,6 +103,14 @@ func (ts *Store) refArchiveGapHook() {
 	}
 }
 
+// noteTypeScan reports a whole-label, whole-type or whole-history scan door to
+// the test-only typeScanHook (a keyed read must never reach one).
+func (ts *Store) noteTypeScan(door string) {
+	if h := ts.typeScanHook; h != nil {
+		h(door)
+	}
+}
+
 // moveReadLock is a read hold on moveMu released by a door once its reference
 // and archive reads are done (unlock is idempotent). Lock order: moveMu before
 // ts.mu and archiveMu; a holder must not re-enter a door taking moveMu (a
@@ -190,6 +198,7 @@ func unionTxMembers[ID comparable](ts *Store, each func(*BadgerStore, func(ID, t
 // ForEachLabelTxMember implements store.LabelTxMembershipCapability: the
 // union of every shard's ever-members of token.
 func (ts *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	ts.noteTypeScan("ForEachLabelTxMember")
 	return unionTxMembers(ts, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
 		return bs.ForEachLabelTxMember(token, f)
 	}, fn)
@@ -197,6 +206,7 @@ func (ts *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, fir
 
 // ForEachRelTypeTxMember implements store.RelTypeTxMembershipCapability.
 func (ts *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	ts.noteTypeScan("ForEachRelTypeTxMember")
 	return unionTxMembers(ts, func(bs *BadgerStore, f func(types.RelID, types.Instant) bool) error {
 		return bs.ForEachRelTypeTxMember(token, f)
 	}, fn)
@@ -218,74 +228,92 @@ func (ts *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id 
 }
 
 // ForEachNodePropertyTxMember implements
-// store.NodePropertyTxMembershipCapability. A node property index lives on the
-// reference shard only, so it declines with store.ErrIndexNotFound, cheapest
-// test first: an event-class label, no declared index on the reference shard,
-// then any other shard that ever held a node with the label. The reference
-// sidecar is read in the same fan-out so no move falls between it and the
-// archive check. On decline the core takes the history fold.
+// store.NodePropertyTxMembershipCapability over every shard's sidecar (see
+// unionPropertyTxMembers). On decline the core takes the history fold.
 func (ts *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+		return bs.PropertyIndexOptions(labelToken, propertyKey)
+	}, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
+		return bs.ForEachNodePropertyTxMember(labelToken, propertyKey, valueKey, f)
+	}, fn)
+}
+
+// ForEachRelPropertyTxMember implements store.RelPropertyTxMembershipCapability
+// (see unionPropertyTxMembers).
+func (ts *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, valueKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+		return bs.RelPropertyIndexOptions(relTypeToken, propertyKey)
+	}, func(bs *BadgerStore, f func(types.RelID, types.Instant) bool) error {
+		return bs.ForEachRelPropertyTxMember(relTypeToken, propertyKey, valueKey, f)
+	}, fn)
+}
+
+// unionPropertyTxMembers serves a property membership sidecar (WP-31): every
+// shard keeps its own over its own rows, and an entity's rows can sit on
+// several shards, so the answer is the union of every shard's members
+// (txMemberUnion: each entity once, lowest first tx). It answers only when the
+// anchor (reference shard) declares the index and EVERY other shard carries a
+// finished copy with the anchor's options; otherwise store.ErrIndexNotFound
+// (cheapest test first: the anchor) and the core takes the history fold —
+// sound while a DDL, a repair or a backfill is in flight.
+func unionPropertyTxMembers[ID comparable](ts *Store, options func(*BadgerStore) (storecontract.PropertyIndexOptions, bool, error), each func(*BadgerStore, func(ID, types.Instant) bool) error, fn func(ID, types.Instant) bool) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	if ts.ontology.ClassifyByToken(labelToken) != ClassReference {
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return err
+	}
+	_, anchored, err := options(ref)
+	refCheckin()
+	if err != nil {
+		return err
+	}
+	if !anchored {
 		return storecontract.ErrIndexNotFound
 	}
-	if has, err := ts.HasPropertyIndex(labelToken, propertyKey); err != nil || !has {
-		if err != nil {
-			return err
-		}
-		return storecontract.ErrIndexNotFound
+	type answer struct {
+		opts    storecontract.PropertyIndexOptions
+		has     bool
+		members []txMember[ID]
 	}
-	// The reference shard returns its members, every other shard whether it
-	// ever held a node with the label.
-	type shardAnswer struct {
-		members []txMember[types.NodeID]
-		held    bool
-	}
-	ref, others, err := allShards(ts, func(bs *BadgerStore, isRef bool) (shardAnswer, error) {
-		var a shardAnswer
-		if isRef {
-			err := bs.ForEachNodePropertyTxMember(labelToken, propertyKey, valueKey, func(id types.NodeID, tx types.Instant) bool {
-				a.members = append(a.members, txMember[types.NodeID]{id, tx})
-				return true
-			})
+	refAnswer, others, err := allShards(ts, func(bs *BadgerStore, _ bool) (answer, error) {
+		var a answer
+		var err error
+		if a.opts, a.has, err = options(bs); err != nil || !a.has {
 			return a, err
 		}
-		err := bs.ForEachLabelTxMember(labelToken, func(types.NodeID, types.Instant) bool {
-			a.held = true
-			return false
+		err = each(bs, func(id ID, tx types.Instant) bool {
+			a.members = append(a.members, txMember[ID]{id, tx})
+			return true
 		})
+		if errors.Is(err, storecontract.ErrIndexNotFound) {
+			a.has = false // still building on this shard
+			return a, nil
+		}
 		return a, err
 	})
 	if err != nil {
 		return err
 	}
+	if !refAnswer.has {
+		return storecontract.ErrIndexNotFound
+	}
 	for _, a := range others {
-		if a.held {
+		if !a.has || a.opts != refAnswer.opts {
 			return storecontract.ErrIndexNotFound
 		}
 	}
-	var u txMemberUnion[types.NodeID]
-	u.add(ref.members)
+	var u txMemberUnion[ID]
+	u.add(refAnswer.members)
+	for _, a := range others {
+		u.add(a.members)
+	}
 	u.emit(fn)
 	return nil
-}
-
-// ForEachRelPropertyTxMember implements store.RelPropertyTxMembershipCapability.
-// Tiered never holds a relationship property index, so it always declines with
-// store.ErrIndexNotFound.
-func (ts *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, valueKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
-	if err := ts.checkOpen(); err != nil {
-		return err
-	}
-	if fn == nil {
-		return errNilIterationCallback()
-	}
-	return storecontract.ErrIndexNotFound
 }
 
 // mergeValidEndCandidates merges per-shard candidates: an entity listed by

@@ -10,19 +10,24 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship-type temporal indexes and composite node indexes (backlog 10):
-// each covered shard builds and maintains its own badger index over its own
-// rows and the tiered store folds the per-shard answers. Composites cover
-// every shard; the relationship temporal index covers the reference, hot and
-// warm shards only. Nothing moves on rotation. Definitions persist in the
-// shard; entries are RAM-resident and rebuilt when the shard opens.
+// Per-shard indexes (backlog 10, WP-31): relationship-type temporal indexes,
+// composite node indexes and single-key node and relationship property
+// indexes. Each covered shard builds and maintains its own badger index over
+// its own rows and the tiered store folds the per-shard answers. Composites
+// and property indexes cover every shard (the archive and cold shards too);
+// the relationship temporal index covers the reference, hot and warm shards
+// only. Nothing moves on rotation. Definitions persist in the shard; entries
+// are RAM-resident and rebuilt when the shard opens.
 //
 // The REFERENCE shard is the anchor: an index exists iff it holds the
-// definition. Create builds on every other shard first and the reference
-// last; drop removes from the others first and the reference last, so an
-// interrupted DDL never leaves an anchor that disagrees with what was fully
-// applied. syncAnchoredIndexes copies the anchor onto shards that open later
-// and repairs every open shard at store open.
+// definition (with its options). Create builds on every other shard first and
+// the reference last; drop removes from the others first and the reference
+// last, so an interrupted DDL never leaves an anchor that disagrees with what
+// was fully applied. syncAnchoredIndexes copies the anchor onto shards that
+// open later and repairs every open shard at store open. A read never trusts a
+// shard's copy blindly: a property lookup checks the shard's options against
+// the anchor's (shardPropertyDoor) and a membership sidecar declines unless
+// every shard carries the anchor's index (unionPropertyTxMembers).
 //
 // HOT + WARM BOUND: demoting a shard to cold frees its relationship temporal
 // index (freeColdRelTemporalIndexes), a cold shard opens with definitions
@@ -39,6 +44,8 @@ var (
 	_ storecontract.RelTypeTemporalCandidateCapability    = (*Store)(nil)
 	_ storecontract.CompositePropertyIndexCapability      = (*Store)(nil)
 	_ storecontract.CompositeIndexIntrospectionCapability = (*Store)(nil)
+	_ storecontract.RelPropertyIndexCapability            = (*Store)(nil)
+	_ storecontract.RelPropertyIndexOptionsCapability     = (*Store)(nil)
 )
 
 // anchoredIndex describes one per-shard index definition for the fan-out.
@@ -78,6 +85,60 @@ func compositeIndexDef(labelToken uint16, keys []string) anchoredIndex {
 		},
 		create:  func(s *BadgerStore) error { return s.CreateCompositePropertyIndex(labelToken, keys) },
 		drop:    func(s *BadgerStore) error { return s.DropCompositePropertyIndex(labelToken, keys) },
+		exists:  storecontract.ErrIndexExists,
+		missing: storecontract.ErrIndexNotFound,
+	}
+}
+
+// propertyIndexDef describes a node (rel=false) or relationship property
+// index on (tok, key) with opts. A shard already holding the definition with
+// OTHER options (an interrupted earlier create) is replaced, never tolerated
+// as done. fromAnchor (drop): opts are taken from the anchor when has reads it,
+// so a failed drop's undo rebuilds exactly what was dropped.
+func propertyIndexDef(rel bool, tok uint16, key string, opts storecontract.PropertyIndexOptions, fromAnchor bool) anchoredIndex {
+	what := "property index"
+	get := func(s *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+		return s.PropertyIndexOptions(tok, key)
+	}
+	create := func(s *BadgerStore, o storecontract.PropertyIndexOptions) error {
+		return s.CreatePropertyIndexWithOptions(tok, key, o)
+	}
+	drop := func(s *BadgerStore) error { return s.DropPropertyIndex(tok, key) }
+	if rel {
+		what = "relationship property index"
+		get = func(s *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+			return s.RelPropertyIndexOptions(tok, key)
+		}
+		create = func(s *BadgerStore, o storecontract.PropertyIndexOptions) error {
+			return s.CreateRelPropertyIndexWithOptions(tok, key, o)
+		}
+		drop = func(s *BadgerStore) error { return s.DropRelPropertyIndex(tok, key) }
+	}
+	return anchoredIndex{
+		what: what,
+		has: func(s *BadgerStore) (bool, error) {
+			o, ok, err := get(s)
+			if ok && fromAnchor {
+				opts = o
+			}
+			return ok, err
+		},
+		create: func(s *BadgerStore) error {
+			have, ok, err := get(s)
+			if err != nil {
+				return err
+			}
+			if ok && have == opts {
+				return storecontract.ErrIndexExists
+			}
+			if ok {
+				if err := drop(s); err != nil {
+					return err
+				}
+			}
+			return create(s, opts)
+		},
+		drop:    drop,
 		exists:  storecontract.ErrIndexExists,
 		missing: storecontract.ErrIndexNotFound,
 	}
@@ -177,8 +238,9 @@ func (ts *Store) fanOutAnchoredIndex(def anchoredIndex, create bool) error {
 }
 
 // syncAnchoredIndexes makes store carry exactly the reference shard's
-// composite definitions and, when relTemporal (hot/warm event shard), its
-// relationship temporal definitions; the archive carries none. It creates
+// composite and property index definitions and, when relTemporal (hot/warm
+// event shard), its relationship temporal definitions; the archive and cold
+// shards carry no relationship temporal one. It creates
 // missing and drops extra ones (left by interrupted DDL).
 func (ts *Store) syncAnchoredIndexes(store *BadgerStore, relTemporal bool) error {
 	ref := ts.refShard
@@ -242,6 +304,49 @@ func (ts *Store) syncAnchoredIndexes(store *BadgerStore, relTemporal bool) error
 			}
 		}
 	}
+	for _, rel := range []bool{false, true} {
+		if err := syncPropertyIndexDefs(ref, store, rel); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// syncPropertyIndexDefs makes store carry exactly ref's node (rel=false) or
+// relationship property index definitions, options included.
+func syncPropertyIndexDefs(ref, store *BadgerStore, rel bool) error {
+	defs := (*BadgerStore).PropertyIndexDefs
+	if rel {
+		defs = (*BadgerStore).RelPropertyIndexDefs
+	}
+	want, err := defs(ref)
+	if err != nil {
+		return fmt.Errorf("graph: read anchored property indexes: %w", err)
+	}
+	have, err := defs(store)
+	if err != nil {
+		return err
+	}
+	for tok, keys := range want {
+		for key, o := range keys {
+			if h, ok := have[tok][key]; ok && h == o {
+				continue
+			}
+			if err := propertyIndexDef(rel, tok, key, o, false).create(store); err != nil && !errors.Is(err, storecontract.ErrIndexExists) {
+				return fmt.Errorf("graph: create property index %d %q: %w", tok, key, err)
+			}
+		}
+	}
+	for tok, keys := range have {
+		for key, o := range keys {
+			if _, ok := want[tok][key]; ok {
+				continue
+			}
+			if err := propertyIndexDef(rel, tok, key, o, false).drop(store); err != nil && !errors.Is(err, storecontract.ErrIndexNotFound) {
+				return fmt.Errorf("graph: drop property index %d %q: %w", tok, key, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -266,7 +371,7 @@ func freeColdRelTemporalIndexes(store *BadgerStore, shard string) {
 }
 
 // syncColdShardIndexes syncs a lazily opened cold shard to the anchor
-// (composites only, no relationship temporal index). Best effort: a failure
+// (composites and property indexes, no relationship temporal index). Best effort: a failure
 // costs work but never changes an answer, so it is logged.
 //
 // Skipped while an anchored fan-out runs (shardIdxMu held): the anchor does

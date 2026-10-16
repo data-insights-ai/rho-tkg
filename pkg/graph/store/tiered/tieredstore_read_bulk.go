@@ -389,6 +389,7 @@ func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 // outside shard checkouts.
 
 func (ts *Store) ForEachNodeID(fn func(types.NodeID) bool) error {
+	ts.noteTypeScan("ForEachNodeID")
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}

@@ -7,13 +7,11 @@ import (
 
 // Relationship property indexes (RelPropertyIndexCapability) — ADR-0007.
 //
-// Rels are distributed by their start node's slot. UNLIKE tiered — whose event
-// rels route by timestamp across a DYNAMIC (cold/archive) shard set, so it
-// declines rel-index acceleration and returns ErrRelPropertyIndexUnsupported on
-// Create/Drop — the sharded store's shards are STATIC and all open, so it CAN
-// accelerate: fan the index DDL out to every shard (each maintains a rel-value
+// Rels are distributed by their start node's slot. The shards are STATIC and
+// all open: fan the index DDL out to every shard (each maintains a rel-value
 // index over its own local rels) and fold the per-shard accelerated matches on
-// read, mirroring RelationshipsByType. The fold order and pagination match the
+// read, mirroring RelationshipsByType (tiered does the same over its dynamic
+// shard set with an anchored fan-out, tiered/shard_index_fanout.go). The fold order and pagination match the
 // node property-index path.
 
 var _ storecontract.RelPropertyIndexCapability = (*Store)(nil)

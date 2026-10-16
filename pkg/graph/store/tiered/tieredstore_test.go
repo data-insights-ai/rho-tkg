@@ -3998,7 +3998,9 @@ func TestTieredStore_PropertyIndex_RefLabel(t *testing.T) {
 	}
 }
 
-func TestTieredStore_PropertyIndex_EventRejected(t *testing.T) {
+// Since v4.58.0 (WP-31) an event label's property index is built on every
+// shard; ErrEventPropertyIndex is no longer returned.
+func TestTieredStore_PropertyIndex_EventLabelAccepted(t *testing.T) {
 	ts := newTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
@@ -4007,13 +4009,11 @@ func TestTieredStore_PropertyIndex_EventRejected(t *testing.T) {
 	_, _ = reg.GetOrCreate("User")         // token 2 = ref
 	sigTok, _ := reg.GetOrCreate("Signal") // token 3 = event
 
-	// Creating a property index on an event label should fail.
-	err := ts.CreatePropertyIndex(sigTok, "severity")
-	if err == nil {
-		t.Fatal("expected error for event label property index")
+	if err := ts.CreatePropertyIndex(sigTok, "severity"); err != nil {
+		t.Fatalf("CreatePropertyIndex(event label): %v", err)
 	}
-	if !errors.Is(err, ErrEventPropertyIndex) {
-		t.Errorf("expected ErrEventPropertyIndex, got: %v", err)
+	if has, err := ts.HasPropertyIndex(sigTok, "severity"); err != nil || !has {
+		t.Fatalf("HasPropertyIndex(event label) = %v, %v; want true", has, err)
 	}
 }
 

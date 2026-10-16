@@ -3,6 +3,7 @@ package tiered
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -16,8 +17,10 @@ import (
 
 // --- Property indexes ---
 
-// ErrEventPropertyIndex is returned when attempting to create a property index
-// on an event label in a Store. Only reference entities support indexes.
+// ErrEventPropertyIndex was returned when creating or dropping a property
+// index on an event label. Deprecated: since v4.58.0 property indexes cover
+// every label on every shard (WP-31) and nothing returns it; kept so callers
+// matching it still compile.
 var ErrEventPropertyIndex = errors.New("graph: property indexes only supported for reference entities in Store")
 
 // ErrPrimaryLabelClassMutation is returned when a label mutation would change
@@ -115,17 +118,68 @@ func (ts *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 
 var _ storecontract.PropertyIndexOptionsCapability = (*Store)(nil)
 
-// CreatePropertyIndexWithOptions creates the index with its options
-// (RangeCounts, Elements) where tiered keeps property indexes: on the
-// reference shard, for a reference label (ErrEventPropertyIndex otherwise).
-// The shard persists the options with the definition. RangeCounts is refused
-// with ErrCapabilityNotSupported: tiered answers no range count.
+// CreatePropertyIndexWithOptions builds the node property index with its
+// options (Elements) on every shard — reference, archive and every event
+// shard, cold ones included — reference shard last (shard_index_fanout.go).
+// Every label: an event label's nodes spread over the event shards, and a
+// node with an event primary label carries a reference label on an event
+// shard. ErrIndexExists for a duplicate (labelToken, key), whatever the
+// options. RangeCounts is refused with ErrCapabilityNotSupported: tiered
+// answers no range count.
 func (ts *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
+	if err := ts.validatePropertyIndexDDL(storecontract.ValidateLabelToken(labelToken), propertyKey, opts); err != nil {
+		return err
+	}
+	return ts.fanOutAnchoredIndex(propertyIndexDef(false, labelToken, propertyKey, opts, false), true)
+}
+
+// DropPropertyIndex removes the node property index from every shard.
+// ErrIndexNotFound if the anchor holds none.
+func (ts *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error {
+	if err := ts.validatePropertyIndexDDL(storecontract.ValidateLabelToken(labelToken), propertyKey, storecontract.PropertyIndexOptions{}); err != nil {
+		return err
+	}
+	return ts.fanOutAnchoredIndex(propertyIndexDef(false, labelToken, propertyKey, storecontract.PropertyIndexOptions{}, true), false)
+}
+
+// --- Relationship property indexes (K3b, WP-31) ---
+
+// CreateRelPropertyIndex builds a relationship property index over
+// (relTypeToken, propertyKey) on every shard; see
+// CreateRelPropertyIndexWithOptions.
+func (ts *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
+	return ts.CreateRelPropertyIndexWithOptions(relTypeToken, propertyKey, storecontract.PropertyIndexOptions{})
+}
+
+// CreateRelPropertyIndexWithOptions builds the relationship property index
+// with its options on every shard, reference shard last: relationships are
+// spread over the reference shard, the archive and the time-routed event
+// shards, and each shard indexes its own. ErrIndexExists for a duplicate;
+// RangeCounts refused with ErrCapabilityNotSupported.
+func (ts *Store) CreateRelPropertyIndexWithOptions(relTypeToken uint16, propertyKey string, opts storecontract.PropertyIndexOptions) error {
+	if err := ts.validatePropertyIndexDDL(storecontract.ValidateRelTypeToken(relTypeToken), propertyKey, opts); err != nil {
+		return err
+	}
+	return ts.fanOutAnchoredIndex(propertyIndexDef(true, relTypeToken, propertyKey, opts, false), true)
+}
+
+// DropRelPropertyIndex removes the relationship property index from every
+// shard. ErrIndexNotFound if the anchor holds none.
+func (ts *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
+	if err := ts.validatePropertyIndexDDL(storecontract.ValidateRelTypeToken(relTypeToken), propertyKey, storecontract.PropertyIndexOptions{}); err != nil {
+		return err
+	}
+	return ts.fanOutAnchoredIndex(propertyIndexDef(true, relTypeToken, propertyKey, storecontract.PropertyIndexOptions{}, true), false)
+}
+
+// validatePropertyIndexDDL runs a property index DDL's checks in order:
+// closed store, the token check's result, key, options, no RangeCounts.
+func (ts *Store) validatePropertyIndexDDL(tokenErr error, propertyKey string, opts storecontract.PropertyIndexOptions) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
-	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
-		return err
+	if tokenErr != nil {
+		return tokenErr
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return err
@@ -136,79 +190,14 @@ func (ts *Store) CreatePropertyIndexWithOptions(labelToken uint16, propertyKey s
 	if opts.RangeCounts {
 		return fmt.Errorf("graph: create property index: no range counts on tiered: %w", storecontract.ErrCapabilityNotSupported)
 	}
-	if ts.ontology.ClassifyByToken(labelToken) != ClassReference {
-		return ErrEventPropertyIndex
-	}
-	ref, refCheckin, err := ts.checkoutRefShard()
-	if err != nil {
-		return err
-	}
-	defer refCheckin()
-	return ref.CreatePropertyIndexWithOptions(labelToken, propertyKey, opts)
+	return nil
 }
 
-func (ts *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error {
-	if err := ts.checkOpen(); err != nil {
-		return err
-	}
-	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
-		return err
-	}
-	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
-		return err
-	}
-	if ts.ontology.ClassifyByToken(labelToken) != ClassReference {
-		return ErrEventPropertyIndex
-	}
-	ref, refCheckin, err := ts.checkoutRefShard()
-	if err != nil {
-		return err
-	}
-	defer refCheckin()
-	return ref.DropPropertyIndex(labelToken, propertyKey)
-}
-
-// --- Relationship property indexes (K3b) ---
-//
-// The tiered store DECLINES relationship property indexes: rels are routed by
-// timestamp, so a shard-local index would see one shard only.
-// CreateRelPropertyIndex returns ErrRelPropertyIndexUnsupported;
-// DropRelPropertyIndex returns ErrIndexNotFound (keeps the graph-layer
-// create-rollback clean). Queries use RelationshipsByTypeAndProperty's
-// cross-shard scan+filter.
-
-// CreateRelPropertyIndex declines on the tiered store — see the note above.
-func (ts *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
-	if err := ts.checkOpen(); err != nil {
-		return err
-	}
-	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
-		return err
-	}
-	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
-		return err
-	}
-	return storecontract.ErrRelPropertyIndexUnsupported
-}
-
-// DropRelPropertyIndex declines on the tiered store — a rel property index can
-// never exist here, so there is nothing to drop.
-func (ts *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
-	if err := ts.checkOpen(); err != nil {
-		return err
-	}
-	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
-		return err
-	}
-	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
-		return err
-	}
-	return storecontract.ErrIndexNotFound
-}
-
-// RelationshipsByTypeAndProperty answers by a cross-shard type scan + property
-// filter (no index on tiered): correct, unaccelerated; folds reference,
-// archive and every event shard.
+// RelationshipsByTypeAndProperty folds every shard's matches — reference,
+// archive at DepthAll, event shards by opts.Depth — into one ID-sorted,
+// paginated result. Each shard answers under the anchor's index semantics
+// (shardPropertyDoor): its own index when it carries the anchor's, else a
+// scan with the anchor's match.
 func (ts *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string, value any, opts QueryOpts) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -229,29 +218,94 @@ func (ts *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string,
 	if targetKey == "" {
 		return nil, nil
 	}
+	shardOpts := stripDepth(opts)
+	read := func(store *BadgerStore, elements bool) ([]*types.Relationship, error) {
+		have, has, err := store.RelPropertyIndexOptions(relTypeToken, key)
+		if err != nil {
+			return nil, err
+		}
+		if shardPropertyDoor(have, has, elements) {
+			return store.RelationshipsByTypeAndProperty(relTypeToken, key, value, shardOpts)
+		}
+		rels, err := store.RelationshipsByType(relTypeToken, QueryOpts{After: shardOpts.After})
+		if err != nil {
+			return nil, err
+		}
+		return slices.DeleteFunc(rels, func(r *types.Relationship) bool {
+			return !r.HasPropertyIndexKey(key, elements, targetKey) ||
+				(storeutil.HasTemporalFilter(shardOpts) && !storeutil.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), shardOpts))
+		}), nil
+	}
 
-	// Scan the whole type at the requested depth: no limit (the predicate can drop
-	// anything); the temporal opt is applied to current rows below.
-	candidates, err := ts.RelationshipsByType(relTypeToken, QueryOpts{Depth: opts.Depth})
+	move := ts.lockMoveRead() // a rel moved mid-read would show twice or not at all
+	defer move.unlock()
+	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
 	}
-	hasTemporal := storeutil.HasTemporalFilter(opts)
-	out := make([]*types.Relationship, 0, len(candidates))
-	for _, r := range candidates {
-		valueKey, found := r.IndexablePropertyValueKey(key)
-		if !found || valueKey != targetKey {
-			continue
-		}
-		if hasTemporal && !storeutil.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts) {
-			continue
-		}
-		out = append(out, r)
+	anchor, _, err := ref.RelPropertyIndexOptions(relTypeToken, key)
+	var refRels []*types.Relationship
+	if err == nil {
+		refRels, err = read(ref, anchor.Elements)
 	}
-	if len(out) == 0 {
+	refCheckin()
+	if err != nil {
+		return nil, err
+	}
+	parts := [][]*types.Relationship{refRels}
+	if opts.Depth == DepthAll {
+		ts.refArchiveGapHook()
+		archive, archiveCheckin, err := ts.checkoutArchive()
+		if err != nil {
+			return nil, err
+		}
+		if archive != nil {
+			rels, err := read(archive, anchor.Elements)
+			archiveCheckin()
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, rels)
+		}
+	}
+	move.unlock()
+
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(opts.Depth)
+	ts.mu.RUnlock()
+	results := make([][]*types.Relationship, len(eventShards))
+	errs := make([]error, len(eventShards))
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			errs[i] = err
+			return
+		}
+		defer release()
+		results[i], errs[i] = read(store, anchor.Elements)
+	})
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
+	parts = append(parts, results...)
+	merged := mergeRelSlices(parts)
+	if len(merged) == 0 {
 		return nil, nil
 	}
-	return storeutil.PaginateRels(out, opts.After, opts.Limit), nil
+	return applyRelPagination(merged, opts), nil
+}
+
+// shardPropertyDoor reports whether a shard's own property lookup door
+// answers under the anchor's semantics (elements: the anchor's index is an
+// Elements index): the shard carries an index with the same Elements option,
+// or none while the anchor's is plain (the badger door then scans with
+// equality). Otherwise — no copy of an Elements index, a stale copy with other
+// options — the caller scans with the anchor's match.
+func shardPropertyDoor(have storecontract.PropertyIndexOptions, has, elements bool) bool {
+	if has {
+		return have.Elements == elements
+	}
+	return !elements
 }
 
 // --- Temporal indexes ---

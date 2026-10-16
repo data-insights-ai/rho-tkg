@@ -5,19 +5,20 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// Query-planner index introspection (BACKLOG 21b) for property indexes on reference
-// labels, temporal and vector indexes; composite introspection lives in
-// shard_index_fanout.go. Relationship property indexes are not implemented (tiered
-// declines them), so callers get store.ErrCapabilityNotSupported.
+// Query-planner index introspection (BACKLOG 21b) for node and relationship
+// property, temporal and vector indexes; composite introspection lives in
+// shard_index_fanout.go. Property index definitions are answered by the
+// anchoring reference shard (shard_index_fanout.go).
 
 var (
-	_ storecontract.PropertyIndexIntrospectionCapability = (*Store)(nil)
-	_ storecontract.TemporalIndexIntrospectionCapability = (*Store)(nil)
-	_ storecontract.VectorIndexIntrospectionCapability   = (*Store)(nil)
+	_ storecontract.PropertyIndexIntrospectionCapability    = (*Store)(nil)
+	_ storecontract.RelPropertyIndexIntrospectionCapability = (*Store)(nil)
+	_ storecontract.TemporalIndexIntrospectionCapability    = (*Store)(nil)
+	_ storecontract.VectorIndexIntrospectionCapability      = (*Store)(nil)
 )
 
 // HasPropertyIndex reports whether a property index exists on (labelToken,
-// propertyKey); property indexes live only on the reference shard.
+// propertyKey), from the anchoring reference shard.
 func (ts *Store) HasPropertyIndex(labelToken uint16, propertyKey string) (bool, error) {
 	if err := ts.checkOpen(); err != nil {
 		return false, err
@@ -48,6 +49,30 @@ func (ts *Store) PropertyIndexOptions(labelToken uint16, propertyKey string) (st
 	}
 	defer refCheckin()
 	return ref.PropertyIndexOptions(labelToken, propertyKey)
+}
+
+// HasRelPropertyIndex reports whether a relationship property index exists on
+// (relTypeToken, propertyKey), from the anchoring reference shard.
+func (ts *Store) HasRelPropertyIndex(relTypeToken uint16, propertyKey string) (bool, error) {
+	_, ok, err := ts.RelPropertyIndexOptions(relTypeToken, propertyKey)
+	return ok, err
+}
+
+// RelPropertyIndexOptions returns the options of the relationship property
+// index on (relTypeToken, propertyKey) from the anchoring reference shard.
+func (ts *Store) RelPropertyIndexOptions(relTypeToken uint16, propertyKey string) (storecontract.PropertyIndexOptions, bool, error) {
+	if err := ts.checkOpen(); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return storecontract.PropertyIndexOptions{}, false, err
+	}
+	defer refCheckin()
+	return ref.RelPropertyIndexOptions(relTypeToken, propertyKey)
 }
 
 // HasTemporalIndex reports whether a temporal interval index exists on labelToken,

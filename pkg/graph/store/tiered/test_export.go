@@ -23,6 +23,10 @@ import (
 // RefShardForTest returns the reference shard's BadgerStore.
 func (ts *Store) RefShardForTest() *BadgerStore { return ts.refShard }
 
+// SetTypeScanHookForTest installs fn as the whole-label/type/history scan
+// observer (nil removes it). Set it before the reads it observes.
+func (ts *Store) SetTypeScanHookForTest(fn func(door string)) { ts.typeScanHook = fn }
+
 // RefActiveReqsForTest returns the refcount on the reference shard.
 func (ts *Store) RefActiveReqsForTest() *atomic.Int64 { return &ts.refActiveReqs }
 
