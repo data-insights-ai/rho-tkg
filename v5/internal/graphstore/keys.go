@@ -22,6 +22,7 @@ const (
 const (
 	evidenceRecord          recordKind = 0x17
 	revisionRecord          recordKind = 0x1a
+	backdatedRecord         recordKind = 0x1b
 	rangeMoveFragmentRecord recordKind = 0xf0
 )
 
@@ -33,7 +34,7 @@ var recordKinds = []recordKind{
 	componentRecord, directoryRecord, checkpointRecord, patchRecord,
 	componentKeyTreeRecord, componentIndexDescriptorRecord,
 	uniquePostingRecord, canonicalIncidentRecord, declaredIncidentRecord,
-	currentPresenceRecord, ownershipDeclarationRecord, evidenceRecord, revisionRecord,
+	currentPresenceRecord, ownershipDeclarationRecord, evidenceRecord, revisionRecord, backdatedRecord,
 	labelPostingRecord, equalityPostingRecord,
 	associationHeadRecord, associationRevisionRecord, associationPostingRecord, associationPrimaryRecord,
 	rangeMoveFragmentRecord,
@@ -80,4 +81,12 @@ func revisionPrefix(n Namespace, owner graphstate.EntityID) []byte {
 }
 func revisionKey(n Namespace, owner graphstate.EntityID, revision uint64) []byte {
 	return binary.BigEndian.AppendUint64(revisionPrefix(n, owner), revision)
+}
+
+// backdatedKey marks (owner, revision) as an owner of an operation recorded
+// earlier than its commit instant. Rows exist only for such operations.
+func backdatedPrefix(n Namespace) []byte { return keyPrefix(n, backdatedRecord) }
+func backdatedKey(n Namespace, owner graphstate.EntityID, revision uint64) []byte {
+	b := binary.BigEndian.AppendUint64(backdatedPrefix(n), uint64(owner))
+	return binary.BigEndian.AppendUint64(b, revision)
 }

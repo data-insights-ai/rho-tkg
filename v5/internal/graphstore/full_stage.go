@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"math"
 	"strings"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
@@ -1072,7 +1073,132 @@ func stageOperationRevisions(p *pageStage, ops []graphstate.Operation, revision 
 			return err
 		}
 	}
+	// Backdated: an operation of the owner was recorded before the commit
+	// instant, so the owner may be known earlier than its index postings show.
+	if ceiling.Profile() == 0 {
+		return nil
+	}
+	backdated := map[graphstate.EntityID]bool{}
+	for _, op := range ops {
+		if op.Recorded.Profile() == 0 || backdated[op.Owner] {
+			continue
+		}
+		if o, err := temporal.ComparePositions(op.Recorded, ceiling, p.q.c.limits.Temporal); err == nil && o == temporal.Less {
+			backdated[op.Owner] = true
+			owner := op.Owner
+			if err := p.withPrimary(owner, func(p *pageStage) error { return p.q.stageBackdated(owner, revision.ID()) }); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+func (q *reader) stageBackdated(owner graphstate.EntityID, revision uint64) error {
+	if t := q.transaction(); t != nil && t.installation != nil {
+		partition, err := t.owner(q, uint64(owner))
+		if err != nil {
+			return err
+		}
+		if partition != q.c.root.namespace.Partition {
+			return q.onPartition(partition, func() error { return q.stageBackdated(owner, revision) })
+		}
+	}
+	if q.route != nil {
+		if err := q.route.owner(q, uint64(owner)); err != nil {
+			return err
+		}
+	}
+	n := q.c.root.namespace
+	if _, found, err := q.get(backdatedKey(n, owner, revision)); err != nil {
+		return err
+	} else if found {
+		return callerError(graphstate.ErrAlreadyExists)
+	}
+	encoded, err := encodeBackdated(n, owner, revision, q.c.limits)
+	if err != nil {
+		return err
+	}
+	return q.put(backdatedKey(n, owner, revision), encoded)
+}
+
+// BackdatedOwners lists, ascending, up to limit distinct owners greater than
+// after (zero starts at the beginning) that had an operation recorded earlier
+// than its commit instant; complete is false when more follow. Such owners may
+// be known earlier than the index postings (the latest knowledge) show.
+func (v *ReadView) BackdatedOwners(ctx context.Context, after graphstate.EntityID, limit int) (owners []graphstate.EntityID, complete bool, err error) {
+	if v == nil || limit < 1 {
+		return nil, false, ErrInvalid
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if err := v.check(ctx); err != nil {
+		return nil, false, err
+	}
+	q, err := v.begin(ctx, raftlog.ReadBudget{})
+	if err != nil {
+		return nil, false, err
+	}
+	n := v.c.root.namespace
+	lower := backdatedPrefix(n)
+	upper := prefixEnd(lower)
+	var cursor []byte
+	if after > 0 {
+		cursor = backdatedKey(n, after, math.MaxUint64)
+	}
+	complete = true
+	err = func() error {
+		for {
+			rows := min(limit-len(owners)+2, q.q.maxRows-q.q.rows, v.c.source().ReadLimits().Rows)
+			bytesLeft := min(q.q.maxBytes-q.q.bytes, v.c.source().ReadLimits().Bytes)
+			if rows < 1 || bytesLeft < 1 {
+				return ErrResourceLimit
+			}
+			page, err := v.c.source().Scan(ctx, lower, upper, cursor, raftlog.ReadBudget{Rows: rows, Bytes: bytesLeft})
+			if err != nil {
+				if errors.Is(err, raftlog.ErrLimit) {
+					return ErrResourceLimit
+				}
+				return err
+			}
+			q.q.rows += page.Visited
+			if err := q.q.materialize(page.Bytes); err != nil {
+				return err
+			}
+			for _, row := range page.Rows {
+				if len(row.Key) != len(lower)+16 || row.Deleted {
+					return ErrCorrupt
+				}
+				owner := graphstate.EntityID(binary.BigEndian.Uint64(row.Key[len(lower):]))
+				rev := binary.BigEndian.Uint64(row.Key[len(lower)+8:])
+				if err := readBackdatedRecord(row.Value, n, owner, rev, v.c.limits); err != nil {
+					return err
+				}
+				if len(owners) > 0 && owners[len(owners)-1] == owner {
+					continue
+				}
+				if len(owners) == limit {
+					complete = false
+					return nil
+				}
+				owners = append(owners, owner)
+			}
+			if page.Complete {
+				return nil
+			}
+			if len(page.Next) == 0 {
+				return ErrCorrupt
+			}
+			cursor = page.Next
+		}
+	}()
+	if err = v.finish(q, err); err != nil {
+		return nil, false, err
+	}
+	if err := v.output(64 + 8*len(owners)); err != nil {
+		return nil, false, err
+	}
+	return owners, complete, nil
 }
 
 func (q *reader) stageRevision(owner graphstate.EntityID, revision uint64, known temporal.Position) error {

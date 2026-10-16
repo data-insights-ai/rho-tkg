@@ -225,63 +225,6 @@ func nOf2(t testing.TB, s *Snapshot, id types.NodeID) int64 {
 	return n
 }
 
-func TestKnownBelowViewBypassesIndexPages(t *testing.T) {
-	g := memBare(t, func(c *Config) { c.NodeProperties = []PropertySchema{{Key: "n", Kind: KindInt}} })
-	all := scopeAll(t)
-	var a, b types.NodeID
-	r1 := update(t, g, func(tx Tx) (err error) {
-		a, err = tx.CreateNode(CreateNode{Labels: []string{"P"}, Props: map[string]Value{"n": Int(1)}, Scope: all})
-		return
-	})
-	bref := Ref{}
-	update(t, g, func(tx Tx) (err error) {
-		if b, err = tx.CreateNode(CreateNode{Labels: []string{"P"}, Props: map[string]Value{"n": Int(1)}, Scope: all}); err != nil {
-			return
-		}
-		bref, _ = NodeRef(b)
-		return
-	})
-	update(t, g, func(tx Tx) error { return tx.AddLabel(AddLabel{Target: a, Label: "Z", Scope: all}) })
-	_ = bref
-	e := engOf(t, g)
-	scan := func(known temporal.Scope, label string) []types.NodeID {
-		s, err := g.OpenSnapshot(context.Background(), Fresh())
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer s.Close()
-		p, err := s.Scan(context.Background(), ScanRequest{Selector: Selector{View: ViewDeclared, Valid: all, Known: known, Labels: []string{label}}, Paging: PageLimits{Rows: 50, MaxBytes: 1 << 20}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		var ids []types.NodeID
-		for _, r := range p.Rows {
-			ids = append(ids, r.Ref.Node())
-		}
-		return ids
-	}
-	before := e.scanStats()
-	if got := scan(knownUpTo(t, instOf(t, r1), true), "P"); len(got) != 1 || got[0] != a {
-		t.Fatalf("P known at commit 1: %v", got)
-	}
-	if got := scan(knownUpTo(t, instOf(t, r1), true), "Z"); len(got) != 0 {
-		t.Fatalf("Z (added at commit 3) known at commit 1: %v", got)
-	}
-	if d := e.scanStats().minus(before); d.candidates != 0 {
-		t.Fatalf("a Known bound below the view read %d index candidates", d.candidates)
-	}
-	before = e.scanStats()
-	if got := scan(knownAll(t), "P"); len(got) != 2 {
-		t.Fatalf("P known All: %v", got)
-	}
-	if got := scan(knownUpTo(t, 1<<60, true), "P"); len(got) != 2 {
-		t.Fatalf("P known far future: %v", got)
-	}
-	if d := e.scanStats().minus(before); d.candidates == 0 {
-		t.Fatal("a Known bound at or above the view must keep using index pages")
-	}
-}
-
 func TestTimelinePagesStreamWithoutMaterialising(t *testing.T) {
 	n := 3000
 	if testing.Short() {
@@ -410,5 +353,209 @@ func TestAtKnownMissingInstantRowIsCorruption(t *testing.T) {
 	e.first = 1 // the store claims commits from index 1, but index 1 has no row
 	if _, err := g.OpenSnapshot(context.Background(), AtKnown(0)); !errors.Is(err, ErrCommitNotDurable) {
 		t.Fatalf("missing row: %v", err)
+	}
+}
+
+func validPointMS(t testing.TB, ms int64) temporal.Scope {
+	t.Helper()
+	p, err := types.InstantPosition(axis(t), types.Instant(ms), temporal.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := temporal.Point(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// TestKnownBoundRelEndpointsMatchNodeLookup: under a Known bound the Effective
+// view reads each endpoint at the endpoint's own known prefix, so a node ended
+// by evidence known by t masks the relationship exactly as Lookup on the node shows.
+func TestKnownBoundRelEndpointsMatchNodeLookup(t *testing.T) {
+	g := memBare(t, nil)
+	ka := knowledgeAxis(t)
+	rec := func(ms int64) temporal.Position { return recAt(t, ka, ms) }
+	var n1, n2 types.NodeID
+	var rel types.RelID
+	life := spanMS(t, 0, 1000)
+	update(t, g, func(tx Tx) (err error) {
+		if n1, err = tx.CreateNode(CreateNode{Scope: life, Recorded: rec(1)}); err != nil {
+			return
+		}
+		if n2, err = tx.CreateNode(CreateNode{Scope: life, Recorded: rec(1)}); err != nil {
+			return
+		}
+		rel, err = tx.CreateRel(CreateRel{Type: "R", From: n1, To: n2, Scope: life, Recorded: rec(1)})
+		return
+	})
+	r1, _ := NodeRef(n1)
+	update(t, g, func(tx Tx) error { return tx.End(End{Target: r1, Scope: spanMS(t, 0, 5), Recorded: rec(8)}) })
+	read := func(known temporal.Scope) (nodeRows, relRows, scanRows int) {
+		s, err := g.OpenSnapshot(context.Background(), Fresh())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		sel := Selector{View: ViewEffective, Valid: validPointMS(t, 7), Known: known}
+		pg := PageLimits{Rows: 10, MaxBytes: 1 << 20}
+		p, err := s.Lookup(context.Background(), LookupRequest{Selector: sel, Nodes: []types.NodeID{n1}, Paging: pg})
+		if err != nil {
+			t.Fatal(err)
+		}
+		q, err := s.Lookup(context.Background(), LookupRequest{Selector: sel, Rels: []types.RelID{rel}, Paging: pg})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sc := sel
+		sc.RelType = "R"
+		w, err := s.Scan(context.Background(), ScanRequest{Selector: sc, Paging: pg})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(p.Rows), len(q.Rows), len(w.Rows)
+	}
+	// The End is known at 8: the node is absent and so is the relationship.
+	for _, c := range []struct {
+		name  string
+		known temporal.Scope
+	}{{"<=10", knownUpTo(t, 10, true)}, {"<=8", knownUpTo(t, 8, true)}} {
+		if nr, rr, sr := read(c.known); nr != 0 || rr != 0 || sr != 0 {
+			t.Errorf("known %s: node rows %d, rel rows %d, scan rows %d; want 0 0 0", c.name, nr, rr, sr)
+		}
+	}
+	// Before the End is known, both stand.
+	if nr, rr, sr := read(knownUpTo(t, 7, true)); nr != 1 || rr != 1 || sr != 1 {
+		t.Errorf("known <=7: node rows %d, rel rows %d, scan rows %d; want 1 1 1", nr, rr, sr)
+	}
+	if nr, rr, sr := read(knownAll(t)); nr != 0 || rr != 0 || sr != 0 {
+		t.Errorf("known All: node rows %d, rel rows %d, scan rows %d; want 0 0 0", nr, rr, sr)
+	}
+}
+
+// TestKnownBelowNewestUsesBackdatedPostings: a Fresh() read with Known below the
+// newest commit takes its candidates from the index pages at the newest commit
+// the bound admits, plus the owners of backdated operations (Recorded earlier
+// than their commit instant); it walks the stored entities only when the
+// selector has no index.
+func TestKnownBelowNewestUsesBackdatedPostings(t *testing.T) {
+	g := memBare(t, nil)
+	all := scopeAll(t)
+	ka := knowledgeAxis(t)
+	var a, b, x types.NodeID
+	r1 := update(t, g, func(tx Tx) (err error) {
+		a, err = tx.CreateNode(CreateNode{Labels: []string{"P"}, Scope: all})
+		return
+	})
+	r2 := update(t, g, func(tx Tx) (err error) {
+		b, err = tx.CreateNode(CreateNode{Labels: []string{"P"}, Scope: all})
+		return
+	})
+	t1, t2 := instOf(t, r1), instOf(t, r2)
+	e := engOf(t, g)
+	scan := func(known temporal.Scope, label string) []types.NodeID {
+		s, err := g.OpenSnapshot(context.Background(), Fresh())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		p, err := s.Scan(context.Background(), ScanRequest{Selector: Selector{View: ViewDeclared, Valid: all, Known: known, Labels: []string{label}}, Paging: PageLimits{Rows: 50, MaxBytes: 1 << 20}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ids []types.NodeID
+		for _, r := range p.Rows {
+			ids = append(ids, r.Ref.Node())
+		}
+		return ids
+	}
+	// A third commit, not backdated: below it, the index pages serve the scan.
+	update(t, g, func(tx Tx) error { return tx.AddLabel(AddLabel{Target: a, Label: "Z", Scope: all}) })
+	pages0, st0 := e.scanPages.Load(), e.scanStats()
+	if got := scan(knownUpTo(t, t1, true), "P"); len(got) != 1 || got[0] != a {
+		t.Fatalf("P known at commit 1: %v", got)
+	}
+	if got := scan(knownUpTo(t, t2, true), "P"); len(got) != 2 {
+		t.Fatalf("P known at commit 2: %v", got)
+	}
+	if got := scan(knownUpTo(t, t2, true), "Z"); len(got) != 0 {
+		t.Fatalf("Z (added at commit 3) known at commit 2: %v", got)
+	}
+	if n := e.scanPages.Load() - pages0; n != 0 {
+		t.Errorf("no backdated operation: %d entity pages walked, want 0", n)
+	}
+	if d := e.scanStats().minus(st0); d.candidates == 0 || d.candidates > 3 {
+		t.Errorf("no backdated operation: %d index candidates, want 1..3", d.candidates)
+	}
+	// A backdated creation in a later commit (Recorded = t2): its owner joins the candidates.
+	update(t, g, func(tx Tx) (err error) {
+		x, err = tx.CreateNode(CreateNode{Labels: []string{"P"}, Scope: all, Recorded: recAt(t, ka, int64(t2))})
+		return
+	})
+	pages0, st0 = e.scanPages.Load(), e.scanStats()
+	got := scan(knownUpTo(t, t2, true), "P")
+	if len(got) != 3 || got[0] != a || got[1] != b || got[2] != x {
+		t.Fatalf("P known at commit 2 with a backdated owner: %v", got)
+	}
+	if got := scan(knownUpTo(t, t1, true), "P"); len(got) != 1 || got[0] != a {
+		t.Fatalf("P known at commit 1 with a backdated owner: %v", got)
+	}
+	if n := e.scanPages.Load() - pages0; n != 0 {
+		t.Errorf("backdated owner: %d entity pages walked, want 0", n)
+	}
+	// A bound at or above the view keeps the plain index pages.
+	if got := scan(knownUpTo(t, 1<<60, true), "P"); len(got) != 3 {
+		t.Fatalf("P known far future: %v", got)
+	}
+	// A selector without an index still walks the stored entities.
+	pages0 = e.scanPages.Load()
+	sBare, _ := g.OpenSnapshot(context.Background(), Fresh())
+	defer sBare.Close()
+	if p, err := sBare.Scan(context.Background(), ScanRequest{Selector: Selector{View: ViewDeclared, Valid: all, Known: knownUpTo(t, t1, true)}, Paging: PageLimits{Rows: 50, MaxBytes: 1 << 20}}); err != nil || len(p.Rows) != 1 {
+		t.Fatalf("unindexed scan known at commit 1: %v %v", p.Rows, err)
+	}
+	if e.scanPages.Load() == pages0 {
+		t.Error("an unindexed scan must walk the stored entities")
+	}
+}
+
+// TestBackdatedOwnersPageThroughMany: more backdated owners than one posting page
+// all reach the candidates, each once, in several commits.
+func TestBackdatedOwnersPageThroughMany(t *testing.T) {
+	g := memBare(t, nil)
+	all := scopeAll(t)
+	r0 := update(t, g, func(tx Tx) error {
+		_, err := tx.CreateNode(CreateNode{Labels: []string{"P"}, Scope: all})
+		return err
+	})
+	t0 := instOf(t, r0)
+	const per, commits = 100, 3
+	want := 1
+	for c := 0; c < commits; c++ {
+		update(t, g, func(tx Tx) error {
+			for i := 0; i < per; i++ {
+				if _, err := tx.CreateNode(CreateNode{Labels: []string{"P"}, Scope: all, Recorded: recAt(t, knowledgeAxis(t), int64(t0))}); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		want += per
+	}
+	s, err := g.OpenSnapshot(context.Background(), Fresh())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	p, err := s.Scan(context.Background(), ScanRequest{Selector: Selector{View: ViewDeclared, Valid: all, Known: knownUpTo(t, t0, true), Labels: []string{"P"}}, Paging: PageLimits{Rows: 1000, MaxBytes: 4 << 20}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[types.NodeID]bool{}
+	for _, r := range p.Rows {
+		seen[r.Ref.Node()] = true
+	}
+	if len(p.Rows) != want || len(seen) != want {
+		t.Fatalf("rows %d distinct %d, want %d", len(p.Rows), len(seen), want)
 	}
 }

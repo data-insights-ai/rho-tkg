@@ -634,7 +634,7 @@ func (e *pebbleEngine) openSnapshot(ctx context.Context, spec SnapshotSpec) (sna
 			return nil, fmt.Errorf("%w: not a receipt of this graph", ErrInvalidReceipt)
 		}
 	case snapKnown:
-		if index, err = e.indexAtKnown(ctx, applied, int64(spec.at)); err != nil {
+		if index, err = e.indexWhere(ctx, applied, func(inst int64) bool { return inst <= int64(spec.at) }); err != nil {
 			return nil, err
 		}
 	}
@@ -654,10 +654,11 @@ func (e *pebbleEngine) openSnapshot(ctx context.Context, spec SnapshotSpec) (sna
 	return &engineSnap{e: e, index: index, vInst: vInst, nonce: e.nonce.Add(1), cuts: Cut{tok: e.token(tokCut, index)}, pages: map[uint64]*pageState{}}, nil
 }
 
-// indexAtKnown is the newest commit at or before applied whose knowledge
-// instant is at most inst (binary search: instants increase with the index).
-// An instant before the first commit pins the first commit, the empty graph.
-func (e *pebbleEngine) indexAtKnown(ctx context.Context, applied uint64, inst int64) (uint64, error) {
+// indexWhere is the newest commit at or before applied whose knowledge instant
+// satisfies ok, which must be true for a prefix of the instants (binary search:
+// instants increase with the index). When none does it pins the first commit,
+// the empty graph.
+func (e *pebbleEngine) indexWhere(ctx context.Context, applied uint64, ok func(inst int64) bool) (uint64, error) {
 	v, err := e.store.ApplicationView(applied)
 	if err != nil {
 		return 0, err
@@ -689,7 +690,7 @@ func (e *pebbleEngine) indexAtKnown(ctx context.Context, applied uint64, inst in
 		if !found {
 			return 0, fmt.Errorf("%w: no commit instant for index %d", ErrCommitNotDurable, mid)
 		}
-		if got <= inst {
+		if ok(got) {
 			lo = mid
 		} else {
 			hi = mid - 1
