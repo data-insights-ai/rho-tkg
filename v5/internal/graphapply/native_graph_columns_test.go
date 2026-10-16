@@ -495,3 +495,82 @@ func TestNativeColumnRequiredCostProfilesPrepayEveryFinitePass(t *testing.T) {
 		t.Fatal("pass product overflow", err)
 	}
 }
+
+func TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue(t *testing.T) {
+	n := collectedGraphNetworkWithAgreement(t, nil, durableColumnGraphSemanticContractID())
+	ops, claims := crossEdgeFixture(t, n)
+	remote := remoteCertifiedFixture(t, n)
+	c := &crossProcessCoordinator{host: n.hosts[0][0], transports: remote.transports, streams: remote.streams, runs: make(map[[16]byte]*crossProcessRun)}
+	cut := func() graphCut {
+		t.Helper()
+		r, err := c.OpenCertified(t.Context(), graphReadRequest{mode: graphReadFresh}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		at, err := r.Cut()
+		err = errors.Join(err, r.Close())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return at
+	}
+	initial := cut()
+	result, err := c.Run(t.Context(), n.requestID(), ops, 40, claims)
+	if err != nil || !result.decision.commit {
+		t.Fatal("genuine cross-participant mutation", err)
+	}
+	final := cut()
+	if initial.certificates[0].image == final.certificates[0].image {
+		t.Fatal("fixture did not distinguish old and current graph state")
+	}
+	policy := nativeColumnGuardPolicy()
+	policy.Version = 1
+	for _, local := range []bool{false, true} {
+		name := "partition"
+		if local {
+			name = "local"
+		}
+		t.Run(name, func(t *testing.T) {
+			var source *nativeColumnSource
+			var err error
+			if local {
+				source, err = newNativeColumnSource(t.Context(), [2]*allocationHost{n.hosts[0][0], n.hosts[1][0]}, initial, final, policy)
+			} else {
+				source, err = newPartitionNativeColumnSource(t.Context(), c, initial, final, policy)
+			}
+			if err != nil {
+				if failure, ok := errors.AsType[*nativeColumnSourceFailure](err); ok {
+					t.Fatalf("capture failed after %d actual RPCs: %v", failure.RPCs, failure.Cause)
+				}
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := source.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			if source.charged != source.openWork || source.binding.Policy != policy {
+				t.Fatal("capture changed or reset the original work admission")
+			}
+			for g, view := range source.views {
+				if view == nil {
+					continue
+				}
+				key := genesisConfigurationKey(source.hosts[g].machine.ns)
+				// Native Get's maximum owns the whole KV, not only the fixed
+				// config value. A value-only bound must still refuse directly.
+				if _, _, err := view.Get(t.Context(), key, partitionGenesisConfigBytes); !errors.Is(err, raftlog.ErrLimit) {
+					t.Fatal("native KV byte contract changed", err)
+				}
+				row, found, err := view.Get(t.Context(), key, len(key)+partitionGenesisConfigBytes)
+				if err != nil || !found || row.Deleted || !bytes.Equal(row.Value, source.binding.Configurations[g]) {
+					t.Fatal("capture omitted the exact native config", err)
+				}
+				old, err := view.RootAt(t.Context(), initial.certificates[g].sourceIndex, 172)
+				if err != nil || !bytes.Equal(old.Image, initial.certificates[g].image[:]) || bytes.Equal(old.Image, final.certificates[g].image[:]) {
+					t.Fatal("capture substituted current state for the retained old cut", err)
+				}
+			}
+		})
+	}
+}

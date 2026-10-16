@@ -227,7 +227,9 @@ func newNativeColumnSource(ctx context.Context, hosts [2]*allocationHost, initia
 		if err != nil {
 			return nil, err
 		}
-		stored, found, e := s.views[g].Get(owner, genesisConfigurationKey(h.machine.ns), partitionGenesisConfigBytes)
+		key := genesisConfigurationKey(h.machine.ns)
+		// Native Get bounds the complete KV; the config codec bounds its value.
+		stored, found, e := s.views[g].Get(owner, key, len(key)+partitionGenesisConfigBytes)
 		if e != nil || !found || stored.Deleted || !bytes.Equal(stored.Value, s.binding.Configurations[g]) {
 			return nil, errors.Join(errCorrupt, e)
 		}
@@ -1022,7 +1024,9 @@ func newPartitionNativeColumnSource(ctx context.Context, c *crossProcessCoordina
 	if err != nil || binding != h.machine.store.ApplicationBinding() || binding.SemanticContractID != last[group].scope.semantic {
 		return nil, errors.Join(errInvalid, err)
 	}
-	actual, found, err := s.views[group].Get(owner, genesisConfigurationKey(h.machine.ns), partitionGenesisConfigBytes)
+	key := genesisConfigurationKey(h.machine.ns)
+	// Match the native whole-KV bound without widening the config value codec.
+	actual, found, err := s.views[group].Get(owner, key, len(key)+partitionGenesisConfigBytes)
 	if err != nil || !found || actual.Deleted || !bytes.Equal(actual.Value, s.binding.Configurations[group]) {
 		return nil, errors.Join(errCorrupt, err)
 	}
