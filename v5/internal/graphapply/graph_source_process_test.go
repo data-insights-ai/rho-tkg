@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -2331,6 +2332,9 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 				event, e = h.Tick()
 			case processStep:
 				event, e = h.Step(r.packet)
+				if e != nil && protocolState != nil {
+					e = fmt.Errorf("D Step native Host event: %w", e)
+				}
 			case processPublish:
 				if o.family == nil || r.index != 0 || r.entity != 0 || len(r.data) != 0 || r.packet.From != 0 || r.packet.To != 0 || r.packet.Snapshot || len(r.packet.Payload) != 0 {
 					e = errInvalid
@@ -2651,16 +2655,25 @@ func graphSourceProcessChild(t *testing.T, h *allocationHost, o *certifiedProces
 			if e == nil {
 				var handles []uint64
 				handles, e = pairedSnapshotHandles(snapshots, event)
+				if e != nil && r.op == processStep && protocolState != nil {
+					e = fmt.Errorf("D Step snapshot ownership: owner=%t packets=%d sends=%d: %w", snapshots != nil, len(event.packets), len(event.snapshotSends), e)
+				}
 				if e == nil && len(handles) > 0 {
 					response.handles = handles
 				}
 				if e == nil {
 					e = emit(allocationEvent{readID: event.readID, replies: event.replies, crossReplies: event.crossReplies, requestReplies: event.requestReplies, capacityReplies: event.capacityReplies, cutReplies: event.cutReplies, moveReplies: event.moveReplies})
+					if e != nil && r.op == processStep && protocolState != nil {
+						e = fmt.Errorf("D Step source event emission: %w", e)
+					}
 				}
 			}
 			response.packets = event.packets
 			if e == nil {
 				e = pollSubmit()
+				if e != nil && r.op == processStep && protocolState != nil {
+					e = fmt.Errorf("D Step pending submission poll: %w", e)
+				}
 			}
 			if err := respond(r, response, e); err != nil {
 				t.Fatal(err)
