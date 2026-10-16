@@ -88,7 +88,11 @@ func TestNativeScalarQueryPagePreservesSharedSourceAllowance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer current.Close()
+	defer func() {
+		if err := current.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	view, err := current.ReadView()
 	if err != nil {
 		t.Fatal(err)
@@ -250,12 +254,13 @@ func nativeCreateUpdateGuard(t *testing.T) {
 	if remoteReads != [3]bool{true, true, true} {
 		t.Fatal("guard failed to capture actual remote entity/life/presence dependencies", remoteReads)
 	}
-	closeNative := func(group int, owner, life uint64) {
-		p, err := n.hosts[group][0].PreparePartitionGraphOperations(n.requestID(), []graphstate.Operation{{Kind: graphstate.Close, Owner: graphstate.EntityID(owner), Life: graphstate.LifeID(life), Scope: set.Scope}}, 50+owner, nil)
-		if err != nil {
-			t.Fatal(err)
+	closeNative := func(owner, life uint64) {
+		// Closing the relationship has real remote endpoint dependencies. Use
+		// the authentic planner/coordinator rather than submit it as local-only.
+		closed, err := c.Run(t.Context(), n.requestID(), []graphstate.Operation{{Kind: graphstate.Close, Owner: graphstate.EntityID(owner), Life: graphstate.LifeID(life), Scope: set.Scope}}, 50+owner, nil)
+		if err != nil || !closed.decision.commit {
+			t.Fatal("actual native closure", owner, err)
 		}
-		n.submitPartitionGraph(group, p, reasonNone)
 	}
 	checkRefusal := func(closedRelation bool) {
 		view, closeView := crossView(t, n, 0, [2]uint64{})
@@ -286,9 +291,9 @@ func nativeCreateUpdateGuard(t *testing.T) {
 			}
 		}
 	}
-	closeNative(1, 17, 18)
+	closeNative(17, 18)
 	checkRefusal(false)
-	closeNative(0, 3, 4)
+	closeNative(3, 4)
 	checkRefusal(true)
 	position, err := temporal.RationalPosition(graphGenesisBinding(t).Axis(), temporal.RationalInt64(0))
 	if err != nil {
