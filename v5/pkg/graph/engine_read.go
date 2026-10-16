@@ -108,6 +108,12 @@ func (r *reader) record(id graphstate.EntityID) (graphstate.EntityRecord, bool, 
 	return er.Record, er.Found, nil
 }
 
+// endView is a relationship endpoint and the reader that shows it.
+type endView struct {
+	id graphstate.EntityID
+	rd *reader
+}
+
 type segment struct {
 	at    temporal.Position
 	scope temporal.Scope
@@ -116,8 +122,9 @@ type segment struct {
 // segments splits window at every piece boundary of the entity's components.
 // Segments are lower-inclusive, upper-exclusive; a Point window is one segment.
 // ends are further entities whose presence also cuts the window (a relationship
-// under the Effective view changes where its endpoints appear and vanish).
-func (r *reader) segments(id graphstate.EntityID, window temporal.Scope, ends ...graphstate.EntityID) ([]segment, error) {
+// under the Effective view changes where its endpoints appear and vanish), each
+// read at its own reader.
+func (r *reader) segments(id graphstate.EntityID, window temporal.Scope, ends ...endView) ([]segment, error) {
 	l := r.e.cfg.Limits
 	ax := window.Axis()
 	if window.Kind() == temporal.ScopeEmpty {
@@ -132,12 +139,17 @@ func (r *reader) segments(id graphstate.EntityID, window temporal.Scope, ends ..
 	if err != nil {
 		return nil, err
 	}
+	readers := make([]*reader, len(keys), len(keys)+len(ends))
+	for i := range readers {
+		readers[i] = r
+	}
 	for _, x := range ends {
-		keys = append(keys, graphstate.ComponentKey{Owner: x, Kind: graphstate.Presence})
+		keys = append(keys, graphstate.ComponentKey{Owner: x.id, Kind: graphstate.Presence})
+		readers = append(readers, x.rd)
 	}
 	var cuts []temporal.Position
-	for _, k := range keys {
-		pages, err := r.pieces(k, window)
+	for i, k := range keys {
+		pages, err := readers[i].pieces(k, window)
 		if err != nil {
 			return nil, err
 		}
@@ -248,7 +260,10 @@ func visibility(v View) graphstate.Visibility {
 
 // rows projects entity id under sel at the reader's index: one Entity per
 // segment where it is active, adjacent equal rows merged.
-func (r *reader) rows(ref Ref, sel Selector, proj Projection, m *matcher) ([]Entity, error) {
+//
+// A relationship under the Effective view is masked where an endpoint is
+// absent; the endpoint is read at endRd (source, target) when given, else at r.
+func (r *reader) rows(ref Ref, sel Selector, proj Projection, m *matcher, endRd *[2]*reader) ([]Entity, error) {
 	id, wantNode := target(ref)
 	rec, found, err := r.record(id)
 	if err != nil || !found || (rec.Kind == graphstate.Node) != wantNode {
@@ -261,9 +276,12 @@ func (r *reader) rows(ref Ref, sel Selector, proj Projection, m *matcher) ([]Ent
 	// shows it only where both endpoints are present (v4's rule), the Declared
 	// view over everything it was declared for.
 	masked := !wantNode && sel.View == ViewEffective
-	var ends []graphstate.EntityID
+	var ends []endView
 	if masked {
-		ends = []graphstate.EntityID{rec.Source, rec.Target}
+		ends = []endView{{rec.Source, r}, {rec.Target, r}}
+		if endRd != nil {
+			ends[0].rd, ends[1].rd = endRd[0], endRd[1]
+		}
 	}
 	segs, err := r.segments(id, sel.Valid, ends...)
 	if err != nil {
@@ -279,7 +297,7 @@ func (r *reader) rows(ref Ref, sel Selector, proj Projection, m *matcher) ([]Ent
 		if !pr.Exists || !pr.Active || m != nil && !m.state(pr) {
 			continue
 		}
-		if masked && (!pr.Endpoints[0].Active || !pr.Endpoints[1].Active) {
+		if masked && !r.endsActive(pr, ends, sg.at) {
 			continue
 		}
 		adjacent := lastSeg == si-1
@@ -310,6 +328,24 @@ func (r *reader) rows(ref Ref, sel Selector, proj Projection, m *matcher) ([]Ent
 		out = append(out, ent)
 	}
 	return out, nil
+}
+
+// endsActive reports whether both endpoints are present at at: from the
+// relationship's own projection, or from the endpoint's own reader.
+func (r *reader) endsActive(pr graphstate.Projection, ends []endView, at temporal.Position) bool {
+	for i, x := range ends {
+		if x.rd == r {
+			if !pr.Endpoints[i].Active {
+				return false
+			}
+			continue
+		}
+		ep, err := graphstate.Project(x.rd.ctx, x.rd.rv, x.id, at, graphstate.Effective, graphstate.Limits{})
+		if err != nil || !ep.Exists || !ep.Active {
+			return false
+		}
+	}
+	return true
 }
 
 func sameContent(a, b Entity) bool {
@@ -474,19 +510,63 @@ func (s *engineSnap) scan(ctx context.Context, r ScanRequest) (Page, error) {
 	if m.none {
 		return Page{}, nil
 	}
-	rd, err := s.e.readerAt(ctx, s.index)
-	if err != nil {
-		return Page{}, err
-	}
-	err = rd.candidates(r.Selector, m, st)
-	rd.close()
-	if err != nil {
+	if err := s.candidates(ctx, r.Selector, m, st); err != nil {
 		return Page{}, err
 	}
 	return s.fill(ctx, st, r.Paging)
 }
 
-// candidates fills st from one index, or with the minted ID range at the cut.
+// candidates fills st from the view's index, or with the minted ID range. Under
+// a Known bound below the view the postings are read at the newest commit the
+// bound admits, plus the owners of backdated operations (recorded before their
+// commit instant) of the whole view: every other entity became known at its
+// commit instants, so the earlier postings list it as the bound sees it.
+func (s *engineSnap) candidates(ctx context.Context, sel Selector, m *matcher, st *pageState) error {
+	rd, err := s.e.readerAt(ctx, s.index)
+	if err != nil {
+		return err
+	}
+	defer rd.close()
+	if st.kb == nil || len(m.eq) == 0 && len(sel.Labels) == 0 {
+		return rd.candidates(sel, m, st)
+	}
+	var owners []graphstate.EntityID
+	var after graphstate.EntityID
+	for guard := 0; guard < 1<<16; guard++ {
+		page, complete, err := rd.rv.BackdatedOwners(ctx, after, 256)
+		if err != nil {
+			return err
+		}
+		owners = append(owners, page...)
+		if complete || len(page) == 0 {
+			break
+		}
+		after = page[len(page)-1]
+	}
+	idx, err := s.e.indexWhere(ctx, s.index, func(inst int64) bool {
+		p, err := s.e.instantPosition(inst)
+		return err == nil && st.kb.allows(p)
+	})
+	if err != nil {
+		return err
+	}
+	ird := rd
+	if idx != s.index {
+		if ird, err = s.e.readerAt(ctx, idx); err != nil {
+			return err
+		}
+		defer ird.close()
+	}
+	if err := ird.candidates(sel, m, st); err != nil {
+		return err
+	}
+	st.cands = append(st.cands, owners...)
+	slices.Sort(st.cands)
+	st.cands = slices.Compact(st.cands)
+	return nil
+}
+
+// candidates is the index read of one reader.
 func (r *reader) candidates(sel Selector, m *matcher, st *pageState) error {
 	page := func(read func(graphstate.Cursor) (graphstate.EntityPage, error)) ([]graphstate.EntityID, error) {
 		var out []graphstate.EntityID
@@ -508,9 +588,6 @@ func (r *reader) candidates(sel Selector, m *matcher, st *pageState) error {
 		return nil, ErrInvalidRequest
 	}
 	switch {
-	case st.kb != nil:
-		// Postings hold the latest knowledge: a bound below the view walks every entity.
-		return r.mintedRange(st)
 	case len(m.eq) > 0:
 		owners := []graphstate.EntityKind{graphstate.Node, graphstate.Relationship}
 		if len(sel.Labels) > 0 {
@@ -796,9 +873,9 @@ func (c *readerCache) closeAll() {
 func (s *engineSnap) rowsFor(ctx context.Context, rd *reader, ref Ref, st *pageState, cache *readerCache) ([]Entity, error) {
 	m := st.match
 	if st.kb == nil {
-		return rd.rows(ref, st.sel, st.proj, m)
+		return rd.rows(ref, st.sel, st.proj, m, nil)
 	}
-	id, _ := target(ref)
+	id, wantNode := target(ref)
 	eff, err := rd.knownIndex(id, st.kb)
 	if err != nil || eff == 0 {
 		return nil, err
@@ -807,7 +884,29 @@ func (s *engineSnap) rowsFor(ctx context.Context, rd *reader, ref Ref, st *pageS
 	if err != nil {
 		return nil, err
 	}
-	return at.rows(ref, st.sel, st.proj, m)
+	var ends *[2]*reader
+	if !wantNode && st.sel.View == ViewEffective {
+		// Each endpoint shows at its own known prefix, as Lookup on the node does.
+		rec, found, err := rd.record(id)
+		if err != nil || !found {
+			return nil, err
+		}
+		ends = &[2]*reader{}
+		held := map[uint64]*reader{eff: at}
+		for i, end := range []graphstate.EntityID{rec.Source, rec.Target} {
+			ei, err := rd.knownIndex(end, st.kb)
+			if err != nil || ei == 0 {
+				return nil, err // an endpoint nothing of which is known masks the relationship
+			}
+			if held[ei] == nil {
+				if held[ei], err = cache.get(ei); err != nil {
+					return nil, err
+				}
+			}
+			ends[i] = held[ei]
+		}
+	}
+	return at.rows(ref, st.sel, st.proj, m, ends)
 }
 
 func (s *engineSnap) lookup(ctx context.Context, r LookupRequest) (Page, error) {
@@ -1040,7 +1139,7 @@ func (s *engineSnap) timelineChunk(ctx context.Context, st *pageState) error {
 		if err != nil {
 			return err
 		}
-		rows, err := at.rows(st.tlRef, st.sel, st.proj, nil)
+		rows, err := at.rows(st.tlRef, st.sel, st.proj, nil, nil)
 		if err == nil {
 			var known temporal.Scope
 			if known, err = at.knownOf(st.tlID, rev, st.sel.Known); err == nil {
