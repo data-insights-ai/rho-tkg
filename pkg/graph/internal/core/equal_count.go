@@ -30,7 +30,7 @@ func (n *NodeOps) CountByLabelPropertyValue(label, propKey string, value any, op
 	if err := c.checkOpen(); err != nil {
 		return 0, false, err
 	}
-	if temporalOpts(opts) {
+	if opts.HasTimeCoordinate() {
 		return 0, false, nil
 	}
 	counter, native := c.store.(nodeEqualCounter)
@@ -58,7 +58,7 @@ func (r *RelOps) CountByTypePropertyValue(typeName, propKey string, value any, o
 	if err := c.checkOpen(); err != nil {
 		return 0, false, err
 	}
-	if temporalOpts(opts) {
+	if opts.HasTimeCoordinate() {
 		return 0, false, nil
 	}
 	counter, native := c.store.(relEqualCounter)
@@ -77,11 +77,4 @@ func (r *RelOps) CountByTypePropertyValue(typeName, propKey string, value any, o
 		return 0, false, nil
 	}
 	return counter.RelEqualCount(tok, propKey, value)
-}
-
-// temporalOpts reports whether opts carries any temporal coordinate (a valid
-// time, a valid-time window or a transaction pin), the set the index-backed
-// counts decline, as RangeCardinality does.
-func temporalOpts(opts storepkg.QueryOpts) bool {
-	return opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0
 }

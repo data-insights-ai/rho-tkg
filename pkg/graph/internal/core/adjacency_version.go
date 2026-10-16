@@ -113,7 +113,7 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		if next < len(rows) && rows[next].ID() == id {
 			cur = rows[next]
 		}
-		if cur != nil && opts.ValidAt != 0 && c.relCurrentAnswersAt(cur, opts.ValidAt, opts.TxAt) && pred(cur) {
+		if cur != nil && opts.HasValidAt() && c.relCurrentAnswersAt(cur, opts.ValidAt, txAtOf(opts)) && pred(cur) {
 			r = cur
 		} else if r1, decided, serr := single.resolve(cur, pred); serr != nil {
 			return serr
@@ -161,12 +161,12 @@ type singleVersionAdjacencyResolver struct {
 }
 
 func (c *Core) singleVersionAdjacency(opts storepkg.QueryOpts) singleVersionAdjacencyResolver {
-	if opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasTxAt() || opts.HasTxPin() {
 		return singleVersionAdjacencyResolver{}
 	}
 	var probe chainProbe
 	switch {
-	case opts.ValidAt != 0:
+	case opts.HasValidAt():
 		probe = chainProbe{kind: probePoint, validAt: opts.ValidAt}
 	case opts.HasValidInterval():
 		probe = chainProbe{kind: probeInterval, validStart: opts.ValidStart, validEnd: opts.ValidEnd}

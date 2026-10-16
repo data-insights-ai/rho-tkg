@@ -81,7 +81,7 @@ func SnowflakeInstant(id snowflake.ID) types.Instant {
 // a point (ValidAt) or interval (ValidStart/ValidEnd) filter constrains — with
 // neither, returns true (nothing to prune on).
 func EnvelopeOverlaps(from, to types.Instant, opts storepkg.QueryOpts) bool {
-	if opts.ValidAt != 0 {
+	if opts.HasValidAt() {
 		return from <= opts.ValidAt && (to == 0 || to > opts.ValidAt)
 	}
 	if opts.HasValidInterval() {
@@ -93,9 +93,9 @@ func EnvelopeOverlaps(from, to types.Instant, opts storepkg.QueryOpts) bool {
 // MatchesTemporalFilter evaluates whether an entity passes the temporal
 // filter in opts. Returns true when no filter is set (zero values).
 //
-// ValidAt takes precedence over interval (ValidStart/ValidEnd).
-// Both ValidStart AND ValidEnd must be set for interval filtering;
-// setting only one is treated as no filter (returns true).
+// Presence is QueryOpts.HasValidAt / HasValidInterval (0 is an ordinary
+// instant under a presence flag). ValidAt takes precedence over the interval;
+// an unflagged lone ValidStart or ValidEnd is no filter (returns true).
 //
 // Point-in-time: from <= t AND (to == 0 OR to > t)
 // Interval:      from < end AND (to == 0 OR to > start)
@@ -111,7 +111,7 @@ func MatchesTemporalFilterFrom(from types.Instant, tm *types.TemporalMetadata, o
 	if tm != nil {
 		to = tm.ValidTo
 	}
-	if opts.ValidAt != 0 {
+	if opts.HasValidAt() {
 		return from <= opts.ValidAt && (to == 0 || to > opts.ValidAt)
 	}
 	if opts.HasValidInterval() {

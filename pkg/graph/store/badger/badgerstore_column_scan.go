@@ -179,7 +179,7 @@ func (w validWindow) matches(f, t int64) bool {
 // and `to > t` is unchanged — so one predicate serves both shapes. ValidAt -1 is
 // the window [-1, 0), a real one (ledger row 60). t = MaxInt64 saturates.
 func columnarValidTimeWindow(opts storecontract.QueryOpts) (w validWindow, ok bool) {
-	if opts.ValidAt != 0 {
+	if opts.HasValidAt() {
 		at := int64(opts.ValidAt)
 		to := at + 1
 		if at == math.MaxInt64 {

@@ -205,11 +205,11 @@ func (c *Core) singleVersionNodes(opts storepkg.QueryOpts) singleVersionNodeReso
 
 // pureValidTimeProbe is the probe of a read whose only filter is valid time.
 func pureValidTimeProbe(opts storepkg.QueryOpts) (chainProbe, bool) {
-	if opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasTxAt() || opts.HasTxPin() {
 		return chainProbe{}, false
 	}
 	switch {
-	case opts.ValidAt != 0:
+	case opts.HasValidAt():
 		return chainProbe{kind: probePoint, validAt: opts.ValidAt}, true
 	case opts.HasValidInterval():
 		return chainProbe{kind: probeInterval, validStart: opts.ValidStart, validEnd: opts.ValidEnd}, true

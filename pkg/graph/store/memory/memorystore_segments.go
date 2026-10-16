@@ -1097,7 +1097,7 @@ func (ms *Store) relationshipsByTypeSegmentsLocked(token uint16, opts QueryOpts)
 	if ti, ok := ms.relTypeTemporalIndexes[token]; ok {
 		var rawIDs []snowflake.ID
 		temporalQuery := false
-		if opts.ValidAt != 0 {
+		if opts.HasValidAt() {
 			rawIDs = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
 		} else if opts.HasValidInterval() {

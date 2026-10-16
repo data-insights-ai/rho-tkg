@@ -200,17 +200,23 @@ func (c *Core) reapRetentionForReset() error {
 // the lock-free max over both families so the common (no retention ever)
 // path pays one atomic load.
 func (c *Core) checkScanRetention(opts storepkg.QueryOpts, scope retentionScope) error {
-	pin := opts.TxAt
-	if opts.TxPin != 0 {
-		pin = opts.TxPin
+	return c.checkScanRetentionAt(scanRetentionPin(opts), scope)
+}
+
+// scanRetentionPin is the instant checkScanRetention compares with the
+// watermarks: the transaction pin (effectiveTxPin), else the valid point,
+// else the interval start, else an unflagged lone ValidStart (as before
+// v4.59.0); 0 = no pin. A present instant 0 is -1 (pinInstant).
+func scanRetentionPin(opts storepkg.QueryOpts) types.Instant {
+	switch {
+	case effectiveTxPin(opts) != 0:
+		return effectiveTxPin(opts)
+	case opts.HasValidAt():
+		return pinInstant(opts.ValidAt, true)
+	case opts.HasValidInterval():
+		return pinInstant(opts.ValidStart, true)
 	}
-	if pin == 0 {
-		pin = opts.ValidAt
-	}
-	if pin == 0 {
-		pin = opts.ValidStart
-	}
-	return c.checkScanRetentionAt(pin, scope)
+	return opts.ValidStart
 }
 
 // checkScanRetentionAt is the pin-only scan gate (for the named txtime doors).

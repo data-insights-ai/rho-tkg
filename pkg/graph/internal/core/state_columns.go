@@ -268,14 +268,14 @@ func (r relRows) Row(i int) (types.RelID, types.NodeID, types.NodeID, int64, int
 // TxAt with a ValidAt (or none: the fold's normalizeTxAtOnlyOpts reads it at
 // readNow), no TxPin, no interval, every tier — and its valid instant and pin.
 func (c *Core) stateCutQuery(opts storepkg.QueryOpts) (v, pin types.Instant, ok bool) {
-	if opts.TxAt == 0 || opts.TxPin != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.Depth != storepkg.DepthAll {
+	if !opts.HasTxAt() || opts.HasTxPin() || opts.HasValidBound() || opts.Depth != storepkg.DepthAll {
 		return 0, 0, false
 	}
 	v = opts.ValidAt
-	if v == 0 {
+	if !opts.HasValidAt() {
 		v = c.readNow()
 	}
-	return v, opts.TxAt, true
+	return v, txAtOf(opts), true
 }
 
 // pinLanded reports whether every write stamped at or below pin has landed,

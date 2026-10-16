@@ -60,6 +60,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestPropertyTxMembersWindow*`, `TestRowScanEndsReplacedRows`; `TestPinnedPropertyLookupLoadsOnlyEverMembers` now
   expects 5 chains (the current members), not 10, under `ValidAt`. Evidence `tasks/evidence/windowed-equality/`.
 
+- **Explicit presence for the `QueryOpts` time filters** (MINOR v4.59.0; ledger row 63, Markus via sigma-tkgd). New
+  fields `ValidAtSet`, `ValidWindowSet`, `TxAtSet`, `TxPinSet`: a set flag makes its filter decide at any instant, so 0
+  and negative instants are ordinary instants (`{ValidAtSet: true}` = AT TIME 0; `{ValidWindowSet: true, ValidStart: x}`
+  = `[x, 0)`; `{TxAtSet: true}` / `{TxPinSet: true}` pin transaction time 0, where nothing is recorded yet). Unset flags
+  keep today's reading (0 = unset), precedence and the `TxPin` conflict rule. One rule, the `QueryOpts` methods
+  `HasValidAt` / `HasValidInterval` / `HasValidTimeFilter` / `HasTxAt` / `HasTxPin` / `HasValidBound` /
+  `HasTimeCoordinate`, replaces every inline time guard (core resolver and probes, count, adjacency, state cut,
+  compaction and retention gates, ordered / prefix / cardinality / equal-count declines, memory / badger push-down,
+  temporal and HF index, column window, envelope prune, `ValidateQueryOpts`); core hands a present tx pin at 0 to the
+  tx-time code as -1 (same rows: every `TxFrom` is positive). Every door agrees on memory, badger, sharded and tiered
+  (`TestTimeFilterExplicitPresence`, `TestStoreTimeFilterExplicitPresence`). `temporal.Pin` is unchanged.
+
 ## [4.58.1] - 2026-10-16
 
 ### Fixed

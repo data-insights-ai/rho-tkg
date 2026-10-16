@@ -29,7 +29,7 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	if ti, ok := bs.temporalIndexes[token]; ok && !ti.Building {
 		var ids []snowflake.ID
 		temporalQuery := false
-		if opts.ValidAt != 0 {
+		if opts.HasValidAt() {
 			ids = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
 		} else if opts.HasValidInterval() {
@@ -50,7 +50,7 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 	if hfi, ok := bs.hfIndexes[token]; ok && !hfi.IsBuilding() {
 		var nids []types.NodeID
 		temporalQuery := false
-		if opts.ValidAt != 0 {
+		if opts.HasValidAt() {
 			nids = hfi.CandidatesUpTo(opts.ValidAt)
 			temporalQuery = true
 		} else if opts.HasValidInterval() {

@@ -368,7 +368,7 @@ func ValidateQueryOpts(opts QueryOpts) error {
 	if err := ValidatePagination(opts.After, opts.Limit); err != nil {
 		return err
 	}
-	if opts.ValidAt == 0 && opts.HasValidInterval() && opts.ValidStart >= opts.ValidEnd {
+	if !opts.HasValidAt() && opts.HasValidInterval() && opts.ValidStart >= opts.ValidEnd {
 		return fmt.Errorf("%w: start %d >= end %d", ErrInvalidTimeRange, opts.ValidStart, opts.ValidEnd)
 	}
 	return nil

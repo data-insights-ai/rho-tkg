@@ -82,7 +82,7 @@ func (n *NodeOps) RangeCardinality(label, propKey string, min, max float64, incl
 	if err := c.checkOpen(); err != nil {
 		return 0, false, err
 	}
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasTimeCoordinate() {
 		return 0, false, nil // temporal — the BSI cannot answer; caller scans
 	}
 	scanner, native := c.store.(nodeRangeCardinalityScanner)
@@ -120,7 +120,7 @@ func (r *RelOps) RangeCardinality(typeName, propKey string, min, max float64, in
 	if err := c.checkOpen(); err != nil {
 		return 0, false, err
 	}
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasTimeCoordinate() {
 		return 0, false, nil // temporal — the index cannot answer; caller scans
 	}
 	scanner, native := c.store.(relRangeCardinalityScanner)
@@ -299,7 +299,7 @@ func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min,
 	}
 	// Temporal ordered scan (Stage B): value-at-t is not indexed, so fold every
 	// label member's version at the pin, keep in-range values, sort by value.
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasTimeCoordinate() {
 		if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 			return err
 		}
@@ -371,7 +371,7 @@ func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, de
 	}
 	// Temporal prefix scan (Stage B): value-at-t is not indexed, so fold every
 	// label member's version at the pin, keep matching strings, sort.
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasTimeCoordinate() {
 		if err := c.validateTemporalQueryOptsScan(opts, scopeNodes); err != nil {
 			return err
 		}
@@ -2235,7 +2235,7 @@ func (r *RelOps) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min
 	}
 	// Temporal ordered scan (Stage B): value-at-t is not indexed, so fold every
 	// rel's version at the pin, keep in-range values, sort by value.
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasTimeCoordinate() {
 		if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 			return err
 		}
@@ -2304,7 +2304,7 @@ func (r *RelOps) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, d
 	}
 	// Temporal prefix scan (Stage B): value-at-t is not indexed, so fold every
 	// rel's version at the pin, keep matching strings, sort.
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+	if opts.HasTimeCoordinate() {
 		if err := c.validateTemporalQueryOptsScan(opts, c.relTypeRetentionScope(typeName)); err != nil {
 			return err
 		}

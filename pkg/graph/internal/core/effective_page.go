@@ -294,7 +294,7 @@ func (c *Core) relPageSources(tok uint16, key string, keys equalKeys, opts store
 	if c.relPropTxPage != nil {
 		srcs := make([]*pageSource[types.RelID], 0, len(keys))
 		for _, vk := range keys {
-			src := sidecarSource(opts.TxPin, after, c.storeRowsTrust, storepkg.ValidateRelID,
+			src := sidecarSource(txPinOf(opts), after, c.storeRowsTrust, storepkg.ValidateRelID,
 				func(after types.RelID, n int, fn func(types.RelID, types.Instant) bool) error {
 					return c.relPropTxPage.ForEachRelPropertyTxMemberAfter(tok, key, vk, after, n, fn)
 				})
@@ -390,7 +390,7 @@ func (c *Core) nodePageSources(tok uint16, key string, keys equalKeys, opts stor
 	if c.nodePropTxPage != nil {
 		srcs := make([]*pageSource[types.NodeID], 0, len(keys))
 		for _, vk := range keys {
-			src := sidecarSource(opts.TxPin, after, c.storeRowsTrust, storepkg.ValidateNodeID,
+			src := sidecarSource(txPinOf(opts), after, c.storeRowsTrust, storepkg.ValidateNodeID,
 				func(after types.NodeID, n int, fn func(types.NodeID, types.Instant) bool) error {
 					return c.nodePropTxPage.ForEachNodePropertyTxMemberAfter(tok, key, vk, after, n, fn)
 				})
