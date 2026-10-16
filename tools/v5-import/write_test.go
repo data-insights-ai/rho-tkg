@@ -45,8 +45,22 @@ type imported struct {
 	res *Result
 	cfg graph.Config
 	g   *graph.Graph
-	ids *IDMap
 	exp fixtures.Expected
+}
+
+// nullOnly are the keys the import reports as KindNullOnlyKey: it writes no null for them.
+func (im *imported) nullOnly() map[string]bool {
+	p, err := im.res.plan(Options{})
+	out := map[string]bool{}
+	if err != nil {
+		return out
+	}
+	for _, a := range p.report {
+		if a.Kind == KindNullOnlyKey {
+			out[a.Key] = true
+		}
+	}
+	return out
 }
 
 func loadExpected(t testing.TB, name string) fixtures.Expected {
@@ -68,7 +82,7 @@ func importFixture(t *testing.T, name string, o Options) *imported {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := res.Config(baseConfig(t, ""))
+	cfg, err := res.Config(baseConfig(t, ""), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,14 +91,14 @@ func importFixture(t *testing.T, name string, o Options) *imported {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { g.Close() })
-	ids, err := res.Import(context.Background(), g, cfg, o)
-	if err != nil {
+	if _, err := res.Import(context.Background(), g, cfg, o); err != nil {
 		t.Fatalf("%s: import: %v", name, err)
 	}
-	return &imported{res, cfg, g, ids, loadExpected(t, name)}
+	return &imported{res, cfg, g, loadExpected(t, name)}
 }
 
-// reader reads the imported graph the way the oracle was asked.
+// reader reads the imported graph the way the oracle was asked. The v4 ID is
+// the v5 ID: the import keeps it.
 type reader struct {
 	t    *testing.T
 	im   *imported
@@ -112,6 +126,24 @@ func (r *reader) all() temporal.Scope {
 
 func (r *reader) known() temporal.Scope {
 	s, err := temporal.All(r.im.cfg.KnowledgeAxis.Axis())
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return s
+}
+
+// knownTo is what v4 had recorded by transaction tx: knowledge up to and including tx.
+func (r *reader) knownTo(tx int64) temporal.Scope {
+	ax := r.im.cfg.KnowledgeAxis.Axis()
+	p, err := types.InstantPosition(ax, types.Instant(tx+1), r.im.cfg.Limits)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	hi, err := temporal.FiniteBound(p, false)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	s, err := temporal.Span(ax, temporal.NegativeInfinity(), hi, r.im.cfg.Limits)
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -167,67 +199,57 @@ func (r *reader) drain(p graph.Page, err error) []graph.Entity {
 	}
 }
 
-func (r *reader) scan(valid temporal.Scope, labels []string, relType string, eq []graph.PropertyEq) []graph.Entity {
+func (r *reader) scanSel(sel graph.Selector, eq []graph.PropertyEq) []graph.Entity {
 	r.t.Helper()
-	sel := graph.Selector{View: graph.ViewDeclared, Valid: valid, Known: r.known(), Labels: labels, RelType: relType, Equals: eq}
+	sel.Equals = eq
 	p, err := r.snap.Scan(context.Background(), graph.ScanRequest{Selector: sel, Projection: graph.Projection{AllProperties: true}, Paging: page})
 	return r.drain(p, err)
 }
 
-// v4IDs maps v5 rows back to sorted, distinct v4 IDs.
-func (r *reader) v4IDs(rows []graph.Entity) []int64 {
+func (r *reader) scan(valid temporal.Scope, labels []string, relType string, eq []graph.PropertyEq) []graph.Entity {
+	r.t.Helper()
+	sel := graph.Selector{View: graph.ViewDeclared, Valid: valid, Known: r.known(), Labels: labels, RelType: relType}
+	return r.scanSel(sel, eq)
+}
+
+// ids are sorted, distinct v4 IDs (also the v5 IDs).
+func ids(rows []graph.Entity) []int64 {
 	seen := map[int64]bool{}
 	out := []int64{}
 	for _, e := range rows {
-		var id int64
-		var kind string
+		id := int64(e.Ref.Node())
 		if e.Ref.IsRel() {
-			id, kind = int64(e.Ref.Rel()), "rel"
-		} else {
-			id, kind = int64(e.Ref.Node()), "node"
+			id = int64(e.Ref.Rel())
 		}
-		v4, _, ok := r.im.ids.V4(kind, id)
-		if !ok && slices.Contains(e.Labels, markerLabel) {
-			continue // the import's own progress node
-		}
-		if !ok {
-			r.t.Fatalf("v5 %s %d has no v4 ID", kind, id)
-		}
-		if !seen[v4] {
-			seen[v4] = true
-			out = append(out, v4)
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
 		}
 	}
 	slices.Sort(out)
 	return out
 }
 
-// timeline returns the revisions of one v4 entity (every life), oldest first.
-func (r *reader) timeline(kind string, v4 int64, only int) []graph.Entity {
-	r.t.Helper()
-	var out []graph.Entity
-	for life := 1; ; life++ {
-		id, ok := r.im.ids.V5(kind, v4, life)
-		if !ok {
-			return out
-		}
-		if only > 0 && life != only {
-			continue
-		}
-		var ref graph.Ref
-		var err error
-		if kind == "rel" {
-			ref, err = graph.RelRef(types.RelID(id))
-		} else {
-			ref, err = graph.NodeRef(types.NodeID(id))
-		}
-		if err != nil {
-			r.t.Fatal(err)
-		}
-		sel := graph.Selector{View: graph.ViewDeclared, Valid: r.all(), Known: r.known()}
-		p, err := r.snap.Timeline(context.Background(), graph.TimelineRequest{Ref: ref, Selector: sel, Projection: graph.Projection{AllProperties: true, Revisions: true}, Paging: page})
-		out = append(out, r.drain(p, err)...)
+func (r *reader) ref(kind string, id int64) graph.Ref {
+	var ref graph.Ref
+	var err error
+	if kind == "rel" {
+		ref, err = graph.RelRef(types.RelID(id))
+	} else {
+		ref, err = graph.NodeRef(types.NodeID(id))
 	}
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return ref
+}
+
+// timeline returns the revisions of one v4 entity (every life), oldest first.
+func (r *reader) timeline(kind string, v4 int64) []graph.Entity {
+	r.t.Helper()
+	sel := graph.Selector{View: graph.ViewDeclared, Valid: r.all(), Known: r.known()}
+	p, err := r.snap.Timeline(context.Background(), graph.TimelineRequest{Ref: r.ref(kind, v4), Selector: sel, Projection: graph.Projection{AllProperties: true, Revisions: true}, Paging: page})
+	return r.drain(p, err)
 }
 
 func typedEq(want fixtures.Typed) (graph.Value, bool) {
@@ -241,9 +263,12 @@ func propJSON(v graph.Value) string {
 }
 
 // wantProps keeps what the importer maps (the rest is in the ambiguity report).
-func wantProps(row fixtures.Row) map[string]string {
+func wantProps(row fixtures.Row, skip map[string]bool) map[string]string {
 	out := map[string]string{}
 	for k, ty := range row.Props {
+		if skip[k] {
+			continue
+		}
 		if v, ok := typedEq(ty); ok {
 			out[k] = propJSON(v)
 		}
@@ -266,16 +291,18 @@ func sameLabels(a, b []string) bool {
 	return slices.Equal(x, y)
 }
 
-// TestImportParityFixtures: every Expected lookup, history and as-of answer of
-// the 4 fixtures comes back through Scan / Timeline on the imported graph.
+// TestImportParityFixtures: v4's declared answers (lookups, pins) come back
+// from the Declared view, v4's effective timelines from the Effective view,
+// with no mask, at the v4 IDs.
 func TestImportParityFixtures(t *testing.T) {
 	for _, n := range names {
 		t.Run(n, func(t *testing.T) {
 			im := importFixture(t, n, Options{})
 			rd := im.reader(t)
-			t.Run("lookups", func(t *testing.T) { rd.t = t; checkLookups(t, rd) })
-			t.Run("current", func(t *testing.T) { rd.t = t; checkCurrent(t, rd) })
-			t.Run("asof", func(t *testing.T) { rd.t = t; checkAsOf(t, rd) })
+			t.Run("declared lookups", func(t *testing.T) { rd.t = t; checkLookups(t, rd) })
+			t.Run("declared pins", func(t *testing.T) { rd.t = t; checkPins(t, rd) })
+			t.Run("effective now", func(t *testing.T) { rd.t = t; checkEffective(t, rd, false) })
+			t.Run("effective as-of", func(t *testing.T) { rd.t = t; checkEffective(t, rd, true) })
 		})
 	}
 }
@@ -315,48 +342,10 @@ func checkLookups(t *testing.T, rd *reader) {
 				rows = append(rows, e)
 			}
 		}
-		got := rd.v4IDs(rows)
+		got := ids(rows)
 		want := append([]int64{}, lk.IDs...)
 		if want == nil {
 			want = []int64{}
-		}
-		if strings.HasPrefix(lk.Kind, "rel") {
-			// v5 clips a rel to the valid time of its two nodes: a v4 rel that v5 lacks
-			// must be masked at every probe point of the query.
-			lo, hi := lk.Valid, lk.Valid+1
-			if lk.End != 0 {
-				hi = lk.End
-			}
-			probes := []int64{lo, hi - 1}
-			for _, tl := range rd.im.exp.Timelines[len(rd.im.exp.Timelines)-1:] {
-				for _, ents := range [][]fixtures.EntityTimeline{tl.Nodes, tl.Rels} {
-					for _, et := range ents {
-						for _, s := range et.Segments {
-							for _, b := range []int64{s.ValidFrom, s.ValidTo} {
-								if b > lo && b < hi {
-									probes = append(probes, b-1, b)
-								}
-							}
-						}
-					}
-				}
-			}
-			var kept []int64
-			for _, id := range want {
-				if slices.Contains(got, id) {
-					kept = append(kept, id)
-					continue
-				}
-				m := rd.relMask(id, 0, false)
-				visible := false
-				for _, v := range probes {
-					visible = visible || m(v)
-				}
-				if visible {
-					kept = append(kept, id)
-				}
-			}
-			want = kept
 		}
 		if !slices.Equal(got, want) {
 			t.Errorf("lookup %d %s %s.%s valid %d..%d: v4 %v, v5 %v", i, lk.Kind, lk.Label, lk.Key, lk.Valid, lk.End, want, got)
@@ -364,89 +353,119 @@ func checkLookups(t *testing.T, rd *reader) {
 	}
 }
 
-// checkCurrent: the effective timeline at the newest tx pin, read through Scan
-// with a Valid point at every boundary (Known = All is "now").
-func checkCurrent(t *testing.T, rd *reader) {
-	tl := rd.im.exp.Timelines
-	if len(tl) == 0 {
-		t.Fatal("no timelines")
-	}
-	last := tl[len(tl)-1]
-	for _, set := range []struct {
-		kind string
-		ents []fixtures.EntityTimeline
-	}{{"node", last.Nodes}, {"rel", last.Rels}} {
-		for _, et := range set.ents {
-			compareState(t, rd, set.kind, et, func(v int64) *graph.Entity { return rd.currentAt(set.kind, et.ID, v) }, last.Tx, false)
+// checkPins: NodesAtTx / RelsAtTx (declared, as known at tx) against the
+// Declared view with Known bounded at tx.
+func checkPins(t *testing.T, rd *reader) {
+	for _, p := range rd.im.exp.Pins {
+		sel := graph.Selector{View: graph.ViewDeclared, Valid: rd.point(p.Valid), Known: rd.knownTo(p.Tx)}
+		rows := rd.scanSel(sel, nil)
+		byRef := map[string]graph.Entity{}
+		for _, e := range rows {
+			kind := "node"
+			if e.Ref.IsRel() {
+				kind = "rel"
+			}
+			byRef[fmt.Sprint(kind, ids([]graph.Entity{e})[0])] = e
 		}
-	}
-}
-
-// currentAt is Lookup of the entity's lives at valid time v, newest knowledge.
-func (r *reader) currentAt(kind string, v4, v int64) *graph.Entity {
-	var found *graph.Entity
-	for life := 1; ; life++ {
-		id, ok := r.im.ids.V5(kind, v4, life)
-		if !ok {
-			return found
-		}
-		req := graph.LookupRequest{Selector: graph.Selector{View: graph.ViewDeclared, Valid: r.point(v), Known: r.known()}, Projection: graph.Projection{AllProperties: true}, Paging: page}
-		if kind == "rel" {
-			req.Rels = []types.RelID{types.RelID(id)}
-		} else {
-			req.Nodes = []types.NodeID{types.NodeID(id)}
-		}
-		p, err := r.snap.Lookup(context.Background(), req)
-		for _, e := range r.drain(p, err) {
-			e := e
-			found = &e
-		}
-	}
-}
-
-// relMask: v5 keeps a relationship inside the valid time of its two nodes (v4
-// masks it in the effective view only), so a rel is expected where v4 has it AND
-// both v5 nodes are present.
-func (r *reader) relMask(v4, tx int64, asof bool) func(v int64) bool {
-	revs := r.timeline("rel", v4, 0)
-	if len(revs) == 0 {
-		return func(int64) bool { return false }
-	}
-	from, to := revs[0].From, revs[0].To
-	return func(v int64) bool {
-		for _, n := range []types.NodeID{from, to} {
-			if asof {
-				nv4, _, _ := r.im.ids.V4("node", int64(n))
-				nv4, nlife, _ := r.im.ids.V4("node", int64(n))
-				rows, skip := r.asOf("node", nv4, nlife, tx)
-				if skip != "" {
-					// v5 cannot say without AtKnown: take v4's own answer for the node
-					if !r.oracleHas(nv4, tx, v) {
-						return false
-					}
+		for _, set := range []struct {
+			kind string
+			want []fixtures.Row
+		}{{"node", p.Nodes}, {"rel", p.Rels}} {
+			seen := map[string]bool{}
+			for _, w := range set.want {
+				k := fmt.Sprint(set.kind, w.ID)
+				seen[k] = true
+				g, ok := byRef[k]
+				if !ok {
+					t.Errorf("pin valid %d tx %d: v4 has %s, v5 lacks it", p.Valid, p.Tx, k)
 					continue
 				}
-				if rowAt(rows, r, v) == nil {
-					return false
+				if wp, gp := wantProps(w, rd.im.nullOnly()), gotProps(g); !sameMap(wp, gp) {
+					t.Errorf("pin valid %d tx %d: %s props v4 %v v5 %v", p.Valid, p.Tx, k, wp, gp)
 				}
-				continue
+				if set.kind == "node" && !sameLabels(w.Labels, g.Labels) {
+					t.Errorf("pin valid %d tx %d: %s labels v4 %v v5 %v", p.Valid, p.Tx, k, w.Labels, g.Labels)
+				}
+				if set.kind == "rel" && g.RelType != w.Type {
+					t.Errorf("pin valid %d tx %d: %s type v4 %q v5 %q", p.Valid, p.Tx, k, w.Type, g.RelType)
+				}
 			}
-			req := graph.LookupRequest{Selector: graph.Selector{View: graph.ViewDeclared, Valid: r.point(v), Known: r.known()}, Nodes: []types.NodeID{n}, Paging: page}
-			p, err := r.snap.Lookup(context.Background(), req)
-			if len(r.drain(p, err)) == 0 {
-				return false
+			for k := range byRef {
+				if strings.HasPrefix(k, set.kind) && !seen[k] {
+					t.Errorf("pin valid %d tx %d: v5 has %s, v4 lacks it", p.Valid, p.Tx, k)
+				}
 			}
 		}
-		return true
 	}
 }
 
-func compareState(t *testing.T, rd *reader, kind string, et fixtures.EntityTimeline, got func(int64) *graph.Entity, tx int64, asof bool) {
-	t.Helper()
-	var mask func(int64) bool
-	if kind == "rel" {
-		mask = rd.relMask(et.ID, tx, asof)
+// checkEffective: v4's timelines against the graph at a Valid point on every
+// boundary. Nodes: the Declared and the Effective view both answer v4's
+// effective timeline. Relationships: v4's RelEffectiveTimeline is a declared
+// view (not masked by the endpoints), so the Declared view answers it as it
+// is, and the Effective view answers it where both endpoints' oracle
+// timelines have state (v4's rule, taken from the oracle, not from the import).
+// asof bounds Known at the pin's tx; otherwise Known is everything, compared
+// with the newest pin.
+func checkEffective(t *testing.T, rd *reader, asof bool) {
+	tls := rd.im.exp.Timelines
+	if len(tls) == 0 {
+		t.Fatal("no timelines")
 	}
+	if !asof {
+		tls = tls[len(tls)-1:]
+	}
+	for _, tl := range tls {
+		known := rd.known()
+		if asof {
+			known = rd.knownTo(tl.Tx)
+		}
+		present := func(node, v int64) bool {
+			for _, et := range tl.Nodes {
+				for _, s := range et.Segments {
+					if et.ID == node && s.ValidFrom <= v && (s.ValidTo == 0 || v < s.ValidTo) {
+						return true
+					}
+				}
+			}
+			return false
+		}
+		for _, view := range []graph.View{graph.ViewDeclared, graph.ViewEffective} {
+			for _, set := range []struct {
+				kind string
+				ents []fixtures.EntityTimeline
+			}{{"node", tl.Nodes}, {"rel", tl.Rels}} {
+				for _, et := range set.ents {
+					got := func(v int64) *graph.Entity {
+						req := graph.LookupRequest{Selector: graph.Selector{View: view, Valid: rd.point(v), Known: known}, Projection: graph.Projection{AllProperties: true}, Paging: page}
+						if set.kind == "rel" {
+							req.Rels = []types.RelID{types.RelID(et.ID)}
+						} else {
+							req.Nodes = []types.NodeID{types.NodeID(et.ID)}
+						}
+						p, err := rd.snap.Lookup(context.Background(), req)
+						rows := rd.drain(p, err)
+						if len(rows) > 1 {
+							t.Errorf("%s %d valid %d: %d rows", set.kind, et.ID, v, len(rows))
+						}
+						if len(rows) == 0 {
+							return nil
+						}
+						return &rows[0]
+					}
+					var mask func(*fixtures.Row, int64) bool
+					if set.kind == "rel" && view == graph.ViewEffective {
+						mask = func(w *fixtures.Row, v int64) bool { return present(w.Start, v) && present(w.End, v) }
+					}
+					compareState(t, rd, set.kind, et, tl.Tx, got, mask)
+				}
+			}
+		}
+	}
+}
+
+func compareState(t *testing.T, rd *reader, kind string, et fixtures.EntityTimeline, tx int64, got func(int64) *graph.Entity, mask func(*fixtures.Row, int64) bool) {
+	t.Helper()
 	pts := map[int64]bool{0: true}
 	for _, s := range et.Segments {
 		for _, b := range []int64{s.ValidFrom, s.ValidTo} {
@@ -470,10 +489,10 @@ func compareState(t *testing.T, rd *reader, kind string, et fixtures.EntityTimel
 				want = &et.Segments[i].Row
 			}
 		}
-		g := got(v)
-		if want != nil && mask != nil && !mask(v) {
+		if want != nil && mask != nil && !mask(want, v) {
 			want = nil
 		}
+		g := got(v)
 		if (want == nil) != (g == nil) {
 			t.Errorf("%s %d tx %d valid %d: v4 has state %v, v5 has %v", kind, et.ID, tx, v, want != nil, g != nil)
 			continue
@@ -481,44 +500,16 @@ func compareState(t *testing.T, rd *reader, kind string, et fixtures.EntityTimel
 		if want == nil {
 			continue
 		}
-		if wp, gp := wantProps(*want), gotProps(*g); !sameMap(wp, gp) {
+		if wp, gp := wantProps(*want, rd.im.nullOnly()), gotProps(*g); !sameMap(wp, gp) {
 			t.Errorf("%s %d tx %d valid %d: props v4 %v v5 %v", kind, et.ID, tx, v, wp, gp)
 		}
 		if kind == "node" && !sameLabels(want.Labels, g.Labels) {
 			t.Errorf("node %d tx %d valid %d: labels v4 %v v5 %v", et.ID, tx, v, want.Labels, g.Labels)
 		}
-		if kind == "rel" && (g.RelType != want.Type || int64(g.From) != 0 && false) {
+		if kind == "rel" && g.RelType != want.Type {
 			t.Errorf("rel %d tx %d valid %d: type v4 %q v5 %q", et.ID, tx, v, want.Type, g.RelType)
 		}
 	}
-}
-
-// asOf derives the state of an entity as known at tx from the Timeline
-// revisions: the newest revision whose evidence is at or before tx. skip names
-// the reason when the Timeline alone cannot answer.
-func (r *reader) asOf(kind string, v4 int64, life int, tx int64) (rows []graph.Entity, skip string) {
-	revs := r.timeline(kind, v4, life)
-	var lastRev uint64
-	var lastKnown int64
-	for _, e := range revs {
-		k, ok := r.knownMS(e.Known)
-		if !ok {
-			return nil, "needs WP-30 AtKnown (revision without evidence)"
-		}
-		if k <= tx && e.Revision >= lastRev {
-			if e.Revision > lastRev {
-				rows = nil
-			}
-			lastRev, lastKnown = e.Revision, k
-			rows = append(rows, e)
-		}
-	}
-	for _, op := range r.im.res.Ops {
-		if op.Entity == kind && op.ID == v4 && op.Op == "retract" && op.Recorded <= tx && (lastRev == 0 || op.Recorded >= lastKnown) {
-			return nil, "needs WP-30 AtKnown (a retract leaves no revision row)"
-		}
-	}
-	return rows, ""
 }
 
 func (r *reader) knownMS(s temporal.Scope) (int64, bool) { return knownMS(r.im.cfg, s) }
@@ -533,37 +524,6 @@ func knownMS(cfg graph.Config, s temporal.Scope) (int64, bool) {
 	return int64(i), err == nil
 }
 
-func rowAt(rows []graph.Entity, rd *reader, v int64) *graph.Entity {
-	for i := range rows {
-		if ok, err := rows[i].Valid.Contains(rd.pos(v), rd.im.cfg.Limits); err == nil && ok {
-			return &rows[i]
-		}
-	}
-	return nil
-}
-
-func checkAsOf(t *testing.T, rd *reader) {
-	skipped, checked := 0, 0
-	for _, tl := range rd.im.exp.Timelines {
-		for _, set := range []struct {
-			kind string
-			ents []fixtures.EntityTimeline
-		}{{"node", tl.Nodes}, {"rel", tl.Rels}} {
-			for _, et := range set.ents {
-				rows, skip := rd.asOf(set.kind, et.ID, 0, tl.Tx)
-				if skip != "" {
-					skipped++
-					t.Logf("SKIP %s %d tx %d: %s", set.kind, et.ID, tl.Tx, skip)
-					continue
-				}
-				checked++
-				compareState(t, rd, set.kind, et, func(v int64) *graph.Entity { return rowAt(rows, rd, v) }, tl.Tx, true)
-			}
-		}
-	}
-	t.Logf("as-of: %d entity timelines checked, %d skipped", checked, skipped)
-}
-
 // TestImportRefusesIDZeroNegativeAndDuplicate: Config and Import refuse a
 // stream holding an ID that is zero, negative, a second create of one life, or
 // an op on an entity nothing created.
@@ -572,17 +532,19 @@ func TestImportRefusesIDZeroNegativeAndDuplicate(t *testing.T) {
 		return Op{Op: "create_node", Entity: "node", ID: id, Life: life, Labels: []string{"A"}, Scope: Scope{From: At(1), To: PosInf}, Recorded: 1}
 	}
 	cases := map[string][]Op{
-		"zero":           {create(0, 1)},
-		"negative":       {create(-5, 1)},
-		"duplicate":      {create(7, 1), create(7, 1)},
-		"unknown target": {create(7, 1), {Op: "end", Entity: "node", ID: 9, Life: 1, Scope: Scope{From: At(1), To: At(5)}, Recorded: 2}},
-		"rel to nowhere": {create(7, 1), {Op: "create_rel", Entity: "rel", ID: 3, Life: 1, Type: "R", Start: 7, End: 8, Scope: Scope{From: At(1), To: PosInf}, Recorded: 2}},
-		"bad entity":     {{Op: "create_node", Entity: "thing", ID: 1, Life: 1, Scope: Scope{From: At(1), To: PosInf}, Recorded: 1}},
+		"zero":                          {create(0, 1)},
+		"negative":                      {create(-5, 1)},
+		"duplicate":                     {create(7, 1), create(7, 1)},
+		"unknown target":                {create(7, 1), {Op: "end", Entity: "node", ID: 9, Life: 1, Scope: Scope{From: At(1), To: At(5)}, Recorded: 2}},
+		"rel to nowhere":                {create(7, 1), {Op: "create_rel", Entity: "rel", ID: 3, Life: 1, Type: "R", Start: 7, End: 8, Scope: Scope{From: At(1), To: PosInf}, Recorded: 2}},
+		"bad entity":                    {{Op: "create_node", Entity: "thing", ID: 1, Life: 1, Scope: Scope{From: At(1), To: PosInf}, Recorded: 1}},
+		"node and rel share an ID":      {create(7, 1), create(8, 1), {Op: "create_rel", Entity: "rel", ID: 7, Life: 1, Type: "R", Start: 7, End: 8, Scope: Scope{From: At(1), To: PosInf}, Recorded: 2}},
+		"life two before life one ends": {create(7, 1), create(7, 2)},
 	}
 	for name, ops := range cases {
 		t.Run(name, func(t *testing.T) {
 			res := &Result{Ops: ops}
-			if _, err := res.Config(baseConfig(t, "")); err == nil {
+			if _, err := res.Config(baseConfig(t, ""), Options{}); err == nil {
 				t.Error("Config accepted the stream")
 			}
 			cfg := baseConfig(t, "")
@@ -621,7 +583,7 @@ func TestAllocatorSeededAboveImport(t *testing.T) {
 		t.Fatalf("Seed %d, max v4 id %d", res.Seed(), maxID)
 	}
 	dir := t.TempDir()
-	cfg, err := res.Config(baseConfig(t, dir))
+	cfg, err := res.Config(baseConfig(t, dir), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -633,21 +595,8 @@ func TestAllocatorSeededAboveImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := res.Import(ctx, g, cfg, Options{})
-	if err != nil {
+	if _, err := res.Import(ctx, g, cfg, Options{}); err != nil {
 		t.Fatal(err)
-	}
-	var top int64
-	for _, e := range []string{"node", "rel"} {
-		for id := int64(1); id <= int64(maxID)+int64(len(res.Ops)); id++ {
-			if v4, _, ok := ids.V4(e, id); ok {
-				top = max(top, id)
-				_ = v4
-			}
-		}
-	}
-	if top <= maxID {
-		t.Fatalf("imported entities were minted at %d, not above max v4 id %d", top, maxID)
 	}
 	fresh := func(g *graph.Graph) int64 {
 		scope, _ := temporal.All(cfg.DefaultAxis.Axis())
@@ -663,8 +612,8 @@ func TestAllocatorSeededAboveImport(t *testing.T) {
 		return int64(id)
 	}
 	a := fresh(g)
-	if a <= top || a <= maxID {
-		t.Fatalf("new ID %d not above imported %d / v4 max %d", a, top, maxID)
+	if a <= maxID {
+		t.Fatalf("new ID %d not above v4 max %d", a, maxID)
 	}
 	if err := g.Close(); err != nil {
 		t.Fatal(err)
@@ -694,7 +643,7 @@ func revisionSignature(t *testing.T, im *imported) []string {
 		}
 		slices.Sort(ids)
 		for _, id := range ids {
-			for _, e := range rd.timeline(kind, id, 0) {
+			for _, e := range rd.timeline(kind, id) {
 				k, _ := rd.knownMS(e.Known)
 				sig = append(sig, fmt.Sprintf("%s %d rev-known %d valid-kind %d props %v labels %v", kind, id, k, e.Valid.Kind(), gotProps(e), sortedCopy(e.Labels)))
 			}
@@ -722,7 +671,7 @@ func TestInterruptedImportResumes(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir := t.TempDir()
-			cfg, err := res.Config(baseConfig(t, dir))
+			cfg, err := res.Config(baseConfig(t, dir), Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -749,11 +698,11 @@ func TestInterruptedImportResumes(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				ids, err := res.Import(ctx, g, cfg, Options{MaxOps: 3})
+				_, err = res.Import(ctx, g, cfg, Options{MaxOps: 3})
 				if err != nil {
 					t.Fatalf("stopAfter %d: resume: %v", stopAfter, err)
 				}
-				im := &imported{res: res, cfg: cfg, g: g, ids: ids, exp: whole.exp}
+				im := &imported{res: res, cfg: cfg, g: g, exp: whole.exp}
 				if got := revisionSignature(t, im); !slices.Equal(got, want) {
 					t.Errorf("stopAfter %d: revisions differ from an uninterrupted import\n got %d rows\nwant %d rows", stopAfter, len(got), len(want))
 				}
@@ -770,19 +719,216 @@ func TestInterruptedImportResumes(t *testing.T) {
 	}
 }
 
-// oracleHas: v4 says node id has state at valid time v in the timeline pinned at tx.
-func (r *reader) oracleHas(id, tx, v int64) bool {
-	for _, tl := range r.im.exp.Timelines {
-		if tl.Tx != tx {
-			continue
-		}
-		for _, et := range tl.Nodes {
-			for _, sg := range et.Segments {
-				if et.ID == id && sg.ValidFrom <= v && (sg.ValidTo == 0 || v < sg.ValidTo) {
-					return true
-				}
-			}
+// TestKindConflictRefused: a value of another kind than its key's first value
+// refuses the import with an error naming key and ID, and writes nothing;
+// DropKindConflicts drops the value and reports it.
+func TestKindConflictRefused(t *testing.T) {
+	scope := Scope{From: At(1), To: PosInf}
+	node := func(id int64, v graph.Value) Op {
+		return Op{Op: "create_node", Entity: "node", ID: id, Life: 1, Labels: []string{"A"}, Props: map[string]PropValue{"k": {v}}, Scope: scope, Recorded: id}
+	}
+	res := &Result{Ops: []Op{node(11, graph.Int(5)), node(12, graph.String("five")), node(13, graph.Int(6))}}
+	if _, err := res.Config(baseConfig(t, ""), Options{}); err == nil || !strings.Contains(err.Error(), `"k"`) || !strings.Contains(err.Error(), "12") {
+		t.Fatalf("Config error %v, want one naming key k and node 12", err)
+	}
+	drop := Options{DropKindConflicts: true}
+	cfg, err := res.Config(baseConfig(t, ""), drop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	g, err := graph.Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	if _, err := res.Import(ctx, g, cfg, Options{}); err == nil || !strings.Contains(err.Error(), `"k"`) || !strings.Contains(err.Error(), "12") {
+		t.Fatalf("Import error %v, want one naming key k and node 12", err)
+	}
+	rd := (&imported{res: res, cfg: cfg, g: g}).reader(t)
+	if rows := rd.scan(rd.all(), nil, "", nil); len(rows) != 0 {
+		t.Fatalf("a refused import wrote %d rows", len(rows))
+	}
+	if _, err := res.Import(ctx, g, cfg, drop); err != nil {
+		t.Fatal(err)
+	}
+	rd = (&imported{res: res, cfg: cfg, g: g}).reader(t)
+	rows := rd.scan(rd.all(), nil, "", nil)
+	if got := ids(rows); !slices.Equal(got, []int64{11, 12, 13}) {
+		t.Fatalf("nodes %v", got)
+	}
+	for _, e := range rows {
+		_, has := e.Props["k"]
+		if has == (int64(e.Ref.Node()) == 12) {
+			t.Errorf("node %d: k present = %v", e.Ref.Node(), has)
 		}
 	}
-	return false
+}
+
+// TestResumeViaMeta: progress lives in the engine's Meta row, not in a node.
+func TestResumeViaMeta(t *testing.T) {
+	ctx := context.Background()
+	res, err := Map(load(t, "txfrom_hashed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := res.Config(baseConfig(t, t.TempDir()), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range cfg.NodeProperties {
+		if strings.HasPrefix(p.Key, "rho.import") {
+			t.Errorf("the config declares the marker key %q", p.Key)
+		}
+	}
+	g, err := graph.Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopped := 0
+	_, err = res.Import(ctx, g, cfg, Options{MaxOps: 3, AfterBatch: func(applied int) error {
+		stopped = applied
+		if applied >= 6 {
+			return fmt.Errorf("interrupted")
+		}
+		return nil
+	}})
+	if err == nil || stopped < 6 {
+		t.Fatalf("no interruption (stopped %d, err %v)", stopped, err)
+	}
+	applied := func(g *graph.Graph) int {
+		s, err := g.OpenSnapshot(ctx, graph.Fresh())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		raw, ok, err := s.Meta(ctx, "rho.import")
+		if err != nil || !ok {
+			t.Fatalf("Meta rho.import: found %v, err %v", ok, err)
+		}
+		var m struct {
+			Applied int `json:"applied"`
+		}
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m.Applied
+	}
+	if n := applied(g); n != stopped {
+		t.Fatalf("Meta says %d ops applied, the import stopped after %d", n, stopped)
+	}
+	rd := (&imported{res: res, cfg: cfg, g: g}).reader(t)
+	for _, e := range rd.scan(rd.all(), []string{"rho.import"}, "", nil) {
+		t.Errorf("a marker node %d exists", e.Ref.Node())
+	}
+	g.Close()
+	if g, err = graph.Open(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	other := &Result{Ops: res.Ops[:len(res.Ops)-1]}
+	if _, err := other.Import(ctx, g, cfg, Options{}); err == nil {
+		t.Error("Import of another stream resumed this graph")
+	}
+	if _, err := res.Import(ctx, g, cfg, Options{MaxOps: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if n := applied(g); n != len(res.Ops) {
+		t.Errorf("Meta says %d ops applied of %d", n, len(res.Ops))
+	}
+}
+
+func openWith(t *testing.T, res *Result, o Options) (*graph.Graph, graph.Config) {
+	t.Helper()
+	cfg, err := res.Config(baseConfig(t, ""), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := graph.Open(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { g.Close() })
+	return g, cfg
+}
+
+// A key whose every value is null declares nothing: the nulls are not
+// written, the report names the key, and the key stays free for a later kind.
+func TestNullOnlyKeyDeclaresNothing(t *testing.T) {
+	ctx := context.Background()
+	scope := Scope{From: At(1), To: PosInf}
+	res := &Result{Ops: []Op{
+		{Op: "create_node", Entity: "node", ID: 11, Life: 1, Labels: []string{"A"}, Props: map[string]PropValue{"z": {graph.Null()}, "n": {graph.Int(1)}}, Scope: scope, Recorded: 1},
+		{Op: "correct", Entity: "node", ID: 11, Life: 1, Props: map[string]PropValue{"z": {graph.Null()}}, Scope: scope, Recorded: 2},
+	}}
+	g, cfg := openWith(t, res, Options{})
+	for _, p := range cfg.NodeProperties {
+		if p.Key == "z" {
+			t.Fatalf("the null-only key z is declared as %v", p.Kind)
+		}
+	}
+	rep, err := res.Import(ctx, g, cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Ambiguities) != 1 || rep.Ambiguities[0].Kind != KindNullOnlyKey || rep.Ambiguities[0].Key != "z" {
+		t.Fatalf("report %+v", rep.Ambiguities)
+	}
+	rd := (&imported{res: res, cfg: cfg, g: g}).reader(t)
+	rows := rd.scan(rd.all(), nil, "", nil)
+	if len(rows) != 1 || rows[0].Props["n"].Kind() != graph.KindInt || rows[0].Props["z"].Kind() == graph.KindString {
+		t.Fatalf("rows %+v", rows)
+	}
+	// z is still free: a later write may declare it with any kind.
+	if _, err := g.Update(ctx, func(tx graph.Tx) error {
+		ref, _ := graph.NodeRef(11)
+		sc, err := scope.temporal(cfg)
+		if err != nil {
+			return err
+		}
+		return tx.Set(graph.Set{Target: ref, Key: "z", Value: graph.Int(7), Scope: sc})
+	}); err != nil {
+		t.Fatalf("declaring z after the import: %v", err)
+	}
+}
+
+// An ID the graph already holds is left as it is and reported; the rest is
+// imported, and a rerun neither duplicates nor loses the report.
+func TestAlreadyExistsIsReported(t *testing.T) {
+	ctx := context.Background()
+	scope := Scope{From: At(1), To: PosInf}
+	node := func(id int64, l string) Op {
+		return Op{Op: "create_node", Entity: "node", ID: id, Life: 1, Labels: []string{l}, Scope: scope, Recorded: id}
+	}
+	res := &Result{Ops: []Op{node(11, "New"), node(12, "New"), {Op: "correct", Entity: "node", ID: 11, Life: 1, Props: map[string]PropValue{"x": {graph.Int(1)}}, Scope: scope, Recorded: 20}, node(13, "New")}}
+	g, cfg := openWith(t, res, Options{})
+	all, _ := temporal.All(cfg.DefaultAxis.Axis())
+	if _, err := g.Update(ctx, func(tx graph.Tx) error {
+		_, err := tx.CreateNode(graph.CreateNode{ID: 11, Labels: []string{"Old"}, Scope: all})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := res.Import(ctx, g, cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Ambiguity{{Entity: "node", ID: 11, Kind: KindAlreadyExists}}
+	if !slices.Equal(rep.Ambiguities, want) {
+		t.Fatalf("report %+v", rep.Ambiguities)
+	}
+	rd := (&imported{res: res, cfg: cfg, g: g}).reader(t)
+	rows := rd.scan(rd.all(), nil, "", nil)
+	if got := ids(rows); !slices.Equal(got, []int64{11, 12, 13}) {
+		t.Fatalf("nodes %v", got)
+	}
+	for _, e := range rows {
+		if e.Ref.Node() == 11 && (!sameLabels(e.Labels, []string{"Old"}) || len(e.Props) != 0) {
+			t.Errorf("node 11 was touched: %+v", e)
+		}
+	}
+	rep, err = res.Import(ctx, g, cfg, Options{})
+	if err != nil || !slices.Equal(rep.Ambiguities, want) {
+		t.Fatalf("rerun: %v, report %+v", err, rep)
+	}
 }
