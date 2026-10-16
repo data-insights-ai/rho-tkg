@@ -52,11 +52,13 @@ func TestImportBytesAndListShapesSurviveMapping(t *testing.T) {
 	}
 }
 
-// A list holding anything unmappable is reported once with the element's reason and dropped whole.
+// A list holding anything unmappable is reported once with the element's reason
+// (a null element: null_in_list) and dropped whole.
 func TestImportListWithUnmappableElementIsReportedWhole(t *testing.T) {
 	props := map[string]fixtures.Typed{
 		"l": {T: "[]interface {}", V: []fixtures.Typed{ty("int64", "1"), {T: "map", V: map[string]fixtures.Typed{}}}},
 		"n": {T: "[][]int64", V: []fixtures.Typed{{T: "[]int64", V: []fixtures.Typed{}}}},
+		"z": {T: "[]interface {}", V: []fixtures.Typed{ty("int64", "1"), {T: "nil"}}},
 	}
 	cur := row(1, 0, 0, 0, 5000, props)
 	r := one(t, src("tx_from", fixtures.Entity{ID: 1, Current: &cur}))
@@ -64,7 +66,7 @@ func TestImportListWithUnmappableElementIsReportedWhole(t *testing.T) {
 	for _, x := range r.Ambiguities {
 		kinds = append(kinds, x.Key+"/"+x.Kind)
 	}
-	if len(kinds) != 2 || kinds[0] != "l/map" || kinds[1] != "n/list" {
+	if len(kinds) != 3 || kinds[0] != "l/map" || kinds[1] != "n/list" || kinds[2] != "z/null_in_list" {
 		t.Fatalf("ambiguities %v", kinds)
 	}
 }

@@ -16,6 +16,7 @@ const (
 	KindNaN              = "nan"
 	KindInf              = "inf"
 	KindList             = "list"
+	KindNullInList       = "null_in_list"
 	KindMap              = "map"
 	KindBytes            = "bytes"
 	KindTime             = "time"
@@ -29,8 +30,8 @@ var uintBits = map[string]int{"uint": 64, "uint8": 8, "uint16": 16, "uint32": 32
 
 // mapList maps a flat v4 slice property (sigma's ov_support []int64, []string,
 // []any of scalars) to a graph.List. The first element that does not map names
-// the whole list's ambiguity (its own kind; a nested slice is "list"), and the
-// list is dropped whole. V is []Typed from a live export or []any after a
+// the whole list's ambiguity (its own kind; a nested slice is "list", a nil
+// element "null_in_list" since v5 lists hold no null), and the list is dropped whole. V is []Typed from a live export or []any after a
 // JSON round trip of expected.json; absent V is an empty list.
 func mapList(t fixtures.Typed) (graph.Value, string) {
 	var raw []any
@@ -61,8 +62,11 @@ func mapList(t fixtures.Typed) (graph.Value, string) {
 		if bad != "" {
 			return graph.Value{}, bad
 		}
-		if v.Kind() == graph.KindList {
+		switch v.Kind() {
+		case graph.KindList:
 			return graph.Value{}, KindList // lists do not nest
+		case graph.KindNull:
+			return graph.Value{}, KindNullInList
 		}
 		vals = append(vals, v)
 	}
