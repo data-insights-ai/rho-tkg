@@ -18,13 +18,14 @@ import (
 
 // Result is the classified outcome of one child process.
 type Result struct {
-	Output   []byte          // combined stdout and stderr
-	Err      error           // error from Run, nil on exit code 0
-	Exit     *exec.ExitError // non-nil when the child ran and ended non-zero or by signal
-	ExitCode int             // 0 clean, n for exit(n), -1 when ended by a signal or never ran
-	Signal   syscall.Signal  // terminating signal, 0 when the child exited normally
-	TimedOut bool            // the timeout expired (the child was killed by the supervisor)
-	Reaped   bool            // the child process was started and waited for
+	Output   []byte             // combined stdout and stderr
+	Err      error              // error from Run, nil on exit code 0
+	Exit     *exec.ExitError    // non-nil when the child ran and ended non-zero or by signal
+	ExitCode int                // 0 clean, n for exit(n), -1 when ended by a signal or never ran
+	Signal   syscall.Signal     // terminating signal, 0 when the child exited normally
+	Status   syscall.WaitStatus // raw wait status, zero when the child never ran
+	TimedOut bool               // the timeout expired (the child was killed by the supervisor)
+	Reaped   bool               // the child process was started and waited for
 	PID      int
 }
 
@@ -67,8 +68,11 @@ func run(ctx context.Context, cmd *exec.Cmd, env []string) Result {
 	}
 	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		r.Exit = exit
-		if ws, ok := exit.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-			r.Signal = ws.Signal()
+		if ws, ok := exit.Sys().(syscall.WaitStatus); ok {
+			r.Status = ws
+			if ws.Signaled() {
+				r.Signal = ws.Signal()
+			}
 		}
 	}
 	return r

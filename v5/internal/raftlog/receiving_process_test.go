@@ -1,19 +1,17 @@
 package raftlog
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/testutil"
 )
 
 func TestApplicationReceivingProcessCrashAndUncertainSync(t *testing.T) {
@@ -58,25 +56,17 @@ func TestApplicationReceivingProcessCrashAndUncertainSync(t *testing.T) {
 	for _, phase := range []string{"before-write", "after-return", "write", "sync"} {
 		t.Run(phase, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "db")
-			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-			defer cancel()
-			child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestApplicationReceivingProcessCrashAndUncertainSync$", "-test.count=1")
-			child.Env = append(os.Environ(), "RHO_RECEIVING_PHASE="+phase, "RHO_RECEIVING_DIR="+dir)
-			output, err := child.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || ctx.Err() != nil || child.ProcessState == nil {
-				t.Fatalf("receiving process seam not terminal/reaped: %v %s", err, output)
+			r := testutil.RunChild(t, "TestApplicationReceivingProcessCrashAndUncertainSync", []string{"RHO_RECEIVING_PHASE=" + phase, "RHO_RECEIVING_DIR=" + dir}, 30*time.Second, "-test.count=1")
+			if r.Exit == nil || r.TimedOut || !r.Reaped {
+				t.Fatalf("receiving process seam not terminal/reaped: %v %s", r.Err, r.Output)
 			}
-			returned := bytes.Contains(output, []byte("RECEIVING_TERM_SYNC_RETURNED"))
+			returned := r.Contains("RECEIVING_TERM_SYNC_RETURNED")
 			if phase == "write" || phase == "sync" {
-				if exit.ExitCode() != 1 || !bytes.Contains(output, []byte("fatal commit error")) || returned {
-					t.Fatalf("uncertain durable failure returned success: %v %s", err, output)
+				if r.ExitCode != 1 || !r.Contains("fatal commit error") || returned {
+					t.Fatalf("uncertain durable failure returned success: %v %s", r.Err, r.Output)
 				}
-			} else {
-				wait, ok := exit.Sys().(syscall.WaitStatus)
-				if !ok || !wait.Signaled() || wait.Signal() != syscall.SIGKILL || returned != (phase == "after-return") {
-					t.Fatalf("actual receiving kill/sync boundary absent: %v %s", err, output)
-				}
+			} else if !r.Killed() || returned != (phase == "after-return") {
+				t.Fatalf("actual receiving kill/sync boundary absent: %v %s", r.Err, r.Output)
 			}
 			cfg := receivingTestConfig(t, vfs.Default, false)
 			cfg.Dir, cfg.Create = dir, false

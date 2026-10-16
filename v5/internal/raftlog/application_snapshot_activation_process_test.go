@@ -1,14 +1,9 @@
 package raftlog
 
 import (
-	"bytes"
-	"context"
-	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"syscall"
 	"testing"
 	"time"
 
@@ -16,6 +11,8 @@ import (
 	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/testutil"
 )
 
 func TestApplicationSnapshotActivationProcessCrashAndSyncFault(t *testing.T) {
@@ -78,24 +75,16 @@ func TestApplicationSnapshotActivationProcessCrashAndSyncFault(t *testing.T) {
 	for _, phase := range []string{"prepared", "claimed", "before-sync", "after-sync", "root", "write", "sync"} {
 		t.Run(phase, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "db")
-			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-			defer cancel()
-			child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestApplicationSnapshotActivationProcessCrashAndSyncFault$")
-			child.Env = append(os.Environ(), "RHO_ACTIVATION_PHASE="+phase, "RHO_ACTIVATION_DIR="+dir)
-			output, err := child.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || ctx.Err() != nil {
-				t.Fatalf("seam incomplete: %v %s", err, output)
+			r := testutil.RunChild(t, "TestApplicationSnapshotActivationProcessCrashAndSyncFault", []string{"RHO_ACTIVATION_PHASE=" + phase, "RHO_ACTIVATION_DIR=" + dir}, 30*time.Second)
+			if r.Exit == nil || r.TimedOut {
+				t.Fatalf("seam incomplete: %v %s", r.Err, r.Output)
 			}
 			if phase == "write" || phase == "sync" {
-				if exit.ExitCode() != 1 || !bytes.Contains(output, []byte("fatal commit error")) || bytes.Contains(output, []byte("ACTIVATION_ROOT_RETURNED")) {
-					t.Fatalf("uncertain activation returned root: %v %s", err, output)
+				if r.ExitCode != 1 || !r.Contains("fatal commit error") || r.Contains("ACTIVATION_ROOT_RETURNED") {
+					t.Fatalf("uncertain activation returned root: %v %s", r.Err, r.Output)
 				}
-			} else {
-				status, ok := exit.Sys().(syscall.WaitStatus)
-				if !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
-					t.Fatalf("not SIGKILL: %v %s", err, output)
-				}
+			} else if !r.Killed() {
+				t.Fatalf("not SIGKILL: %v %s", r.Err, r.Output)
 			}
 			p, tc := transferConfig(1)
 			s, err := Open(Config{Dir: dir, Application: p, Transfer: tc, Generations: ApplicationGenerationLimits{2 << 30, 2000000}, PublishedCuts: ApplicationPublishedCutLimits{1000000}, Replication: ApplicationReplicationConfig{[3]uint64{1, 2, 3}}})

@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,6 +14,8 @@ import (
 	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/testutil"
 )
 
 // Privileged Store tests use synthetic Ready values, never purported RawNode,
@@ -259,15 +260,11 @@ func TestRecoveryDependencyWriteAndSyncFailureNeverReturnPrefix(t *testing.T) {
 	for _, phase := range []string{"write", "sync"} {
 		t.Run(phase, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "db")
-			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-			defer cancel()
-			child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestRecoveryDependencyWriteAndSyncFailureNeverReturnPrefix$", "-test.count=1")
-			child.Env = append(os.Environ(), "RHO_RECOVERY_DEPENDENCY_FAULT="+phase, "RHO_RECOVERY_DEPENDENCY_DIR="+dir)
-			output, err := child.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || ctx.Err() != nil || exit.ExitCode() != 1 || !bytes.Contains(output, []byte("fatal commit error")) || bytes.Contains(output, []byte("DEPENDENCY_PREFIX_RETURNED")) {
-				t.Fatalf("actual uncertain prefix failure/reap missing: %v %s", err, output)
+			r := testutil.RunChild(t, "TestRecoveryDependencyWriteAndSyncFailureNeverReturnPrefix", []string{"RHO_RECOVERY_DEPENDENCY_FAULT=" + phase, "RHO_RECOVERY_DEPENDENCY_DIR=" + dir}, 15*time.Second, "-test.count=1")
+			if r.Exit == nil || r.TimedOut || r.ExitCode != 1 || !r.Contains("fatal commit error") || r.Contains("DEPENDENCY_PREFIX_RETURNED") {
+				t.Fatalf("actual uncertain prefix failure/reap missing: %v %s", r.Err, r.Output)
 			}
+			var err error
 			p, transfer := transferConfig(1)
 			p.MaxInstallWrites, p.MaxInstallBytes = 1, 1664
 			controls, recovery := ApplicationControlConfig{Version: 1}, ApplicationRecoveryConfig{Version: 1}
