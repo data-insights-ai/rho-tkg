@@ -11,11 +11,12 @@
 //     End/Retract op, because the v4 record doors treat a deleted entity as
 //     absent while the valid-time doors still see its past.
 //
-// Doors that need label or equality index pages (Scan, WP-08) skip the running
-// case with that reason; they never pretend.
+// The list doors (ByLabel, ByType, ByLabelAndProperty, effective pages, count)
+// read through Snapshot.Scan over the label/equality index pages.
 package v5adapter
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -140,12 +141,6 @@ func (w *Graph) Reopen() error {
 	}
 	w.g = g
 	return nil
-}
-
-// skipScan ends the running case: the door needs index pages the engine lacks.
-func (w *Graph) skipScan(door string) {
-	w.t.Helper()
-	w.t.Skipf("door %s needs the label/equality index pages (WP-08): %v", door, graph.ErrNotImplemented)
 }
 
 // ---- errors ----
@@ -455,6 +450,12 @@ func liveRow(rows []graph.Entity) (graph.Entity, error) {
 }
 
 func (w *Graph) cutOf(pin int64) (graph.Cut, error) {
+	// A closed graph answers ErrClosed before any pin check.
+	s, err := w.g.OpenSnapshot(context.Background(), graph.Fresh())
+	if err != nil {
+		return graph.Cut{}, mapErr(err)
+	}
+	_ = s.Close()
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if pin < 1 || pin > int64(len(w.pins)) {
@@ -600,7 +601,7 @@ func (w *Graph) history(id int64, rel bool) ([]graph.Entity, error) {
 		}
 	}
 	if len(versions) == 0 {
-		return nil, conformance.ErrNotFound
+		return nil, nil // an unknown ID has an empty history
 	}
 	return versions[:len(versions)-1], nil
 }
@@ -859,11 +860,23 @@ func (w *Graph) correct(ctx context.Context, id int64, rel bool, from, to int64,
 	if to != 0 {
 		hi = w.bound(to, false)
 	}
+	scope := w.span(w.bound(from, true), hi)
 	err = w.update(ctx, func(tx graph.Tx) error {
-		if _, err := w.current(ctx, id, rel); err != nil {
+		cur, err := w.current(ctx, id, rel)
+		if err != nil {
 			return err
 		}
-		return tx.Correct(graph.Correct{Target: ref, Set: props, Scope: w.span(w.bound(from, true), hi)})
+		if err := tx.Correct(graph.Correct{Target: ref, Set: props, Scope: scope}); err != nil {
+			return err
+		}
+		// A v4 version is labels plus properties: the corrected interval keeps
+		// the current labels.
+		for _, l := range cur.Labels {
+			if err := tx.AddLabel(graph.AddLabel{Target: ref.Node(), Label: l, Scope: scope}); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return graph.Entity{}, err
@@ -1103,29 +1116,297 @@ func (b *batchWrap) SetNodeVersionIntervalWithTx(int64, int64, int64, map[string
 func (b *batchWrap) ExciseNodeValidityWithTx(int64, int64, int64, int64) error { return errStamp }
 func (b *batchWrap) UpdateRelWithTx(int64, map[string]any, int64) error        { return errStamp }
 
-// ---- doors that need the WP-08 index pages ----
+// ---- list doors over Scan ----
 
-func (w *Graph) NodesByLabel(string, conformance.Query) ([]conformance.Node, error) {
-	w.skipScan("NodesByLabel")
-	return nil, nil
+// scanQuery is a v4 list door's selection: one label or type, an optional
+// equality, the Query's pin, valid time and keyset.
+type scanQuery struct {
+	labels  []string
+	relType string
+	eq      []graph.PropertyEq
+	rel     bool
 }
-func (w *Graph) RelsByType(string, conformance.Query) ([]conformance.Rel, error) {
-	w.skipScan("RelsByType")
-	return nil, nil
+
+// scanDoor answers a v4 list door: Scan over the index pages at the pin, one
+// result per entity in ID order. Without a valid-time option the entity's
+// current row (the newest, as GetNode reads it) must still match; with one,
+// the row valid there (the first overlapping row for an interval).
+func (w *Graph) scanDoor(ctx context.Context, sq scanQuery, q conformance.Query) ([]graph.Entity, error) {
+	if q.Limit < 0 || q.After < 0 {
+		return nil, bad("negative limit or after")
+	}
+	if q.TxPin != 0 && (q.ValidAt != 0 || q.ValidStart != 0 || q.ValidEnd != 0 || q.TxAt != 0) {
+		return nil, fmt.Errorf("%w: TxPin with a valid-time or TxAt option", conformance.ErrConflictingOpts)
+	}
+	spec := graph.Fresh()
+	if pin := max(q.TxPin, q.TxAt); pin != 0 { // native TxAt is a pin of the graph clock
+		c, err := w.cutOf(pin)
+		if err != nil {
+			return nil, err
+		}
+		spec = graph.At(c)
+	}
+	valid, current, err := w.validSel(q.ValidAt, q.ValidStart, q.ValidEnd)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := w.scan(ctx, spec, graph.ViewDeclared, valid, sq)
+	if err != nil {
+		return nil, err
+	}
+	var out []graph.Entity
+	for i := 0; i < len(rows); {
+		j := i
+		for j < len(rows) && rows[j].Ref == rows[i].Ref {
+			j++
+		}
+		id := refID(rows[i].Ref)
+		e, keep := rows[i], true
+		if current {
+			all, err := w.lookup(ctx, id, sq.rel, spec, w.all())
+			if err != nil {
+				return nil, err
+			}
+			e, err = liveRow(all)
+			keep = err == nil && sq.matches(e)
+		}
+		if keep && id > q.After {
+			out = append(out, e)
+			if q.Limit > 0 && len(out) == int(q.Limit) {
+				break
+			}
+		}
+		i = j
+	}
+	return out, nil
 }
-func (w *Graph) NodesByLabelAndProperty(string, string, any, conformance.Query) ([]conformance.Node, error) {
-	w.skipScan("NodesByLabelAndProperty")
-	return nil, nil
+
+// validSel maps the v4 valid-time options: a point, an interval (0 = open on
+// that side), or none (current). ValidAt with an interval is refused.
+func (w *Graph) validSel(at, start, end int64) (temporal.Scope, bool, error) {
+	switch {
+	case at != 0 && (start != 0 || end != 0):
+		return temporal.Scope{}, false, fmt.Errorf("%w: ValidAt with an interval", conformance.ErrInvalidTimeRange)
+	case at != 0:
+		return w.point(at), false, nil
+	case start == 0 && end == 0:
+		return w.all(), true, nil
+	case start != 0 && end != 0 && end <= start:
+		return temporal.Scope{}, false, fmt.Errorf("%w: valid from %d to %d", conformance.ErrInvalidTimeRange, start, end)
+	}
+	lo, hi := temporal.NegativeInfinity(), temporal.PositiveInfinity()
+	if start != 0 {
+		lo = w.bound(start, true)
+	}
+	if end != 0 {
+		hi = w.bound(end, false)
+	}
+	return w.span(lo, hi), false, nil
 }
-func (w *Graph) RelsEffectivePage(context.Context, conformance.Pin, conformance.Filter, int64, int) ([]conformance.RelSegment, int64, error) {
-	w.skipScan("RelsEffectivePage")
-	return nil, 0, nil
+
+func refID(r graph.Ref) int64 {
+	if r.IsRel() {
+		return int64(r.Rel())
+	}
+	return int64(r.Node())
 }
-func (w *Graph) NodesEffectivePage(context.Context, conformance.Pin, conformance.Filter, int64, int) ([]conformance.NodeSegment, int64, error) {
-	w.skipScan("NodesEffectivePage")
-	return nil, 0, nil
+
+// matches rechecks a current row against the selection (the scan matched some
+// row of the entity, not necessarily the newest).
+func (sq scanQuery) matches(e graph.Entity) bool {
+	for _, l := range sq.labels {
+		if !slices.Contains(e.Labels, l) {
+			return false
+		}
+	}
+	if sq.relType != "" && e.RelType != sq.relType {
+		return false
+	}
+	for _, p := range sq.eq {
+		if v, ok := e.Props[p.Key]; !ok || !v.Equal(p.Value) {
+			return false
+		}
+	}
+	return true
 }
-func (w *Graph) CountByLabelPropertyValue(string, string, any) (int, error) {
-	w.skipScan("CountByLabelPropertyValue")
-	return 0, nil
+
+// scan drains one Scan of sq's kind (nodes or relationships).
+func (w *Graph) scan(ctx context.Context, spec graph.SnapshotSpec, view graph.View, valid temporal.Scope, sq scanQuery) ([]graph.Entity, error) {
+	s, err := w.g.OpenSnapshot(ctx, spec)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer s.Close()
+	sel := graph.Selector{View: view, Valid: valid, Known: w.known(), Labels: sq.labels, RelType: sq.relType, Equals: sq.eq}
+	rows, err := w.drain(s.Scan(ctx, graph.ScanRequest{Selector: sel, Projection: graph.Projection{AllProperties: true}, Paging: graph.PageLimits{Rows: graph.MaxPageRows, MaxBytes: 8 << 20}}))(s, ctx)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(rows, func(e graph.Entity) bool { return e.Ref.IsRel() != sq.rel }), nil
+}
+
+// equality maps a probe value; a value no stored value can equal (NaN, ±Inf)
+// selects nothing rather than failing the door.
+func equality(key string, value any) ([]graph.PropertyEq, bool, error) {
+	if f, ok := value.(float64); ok && (math.IsNaN(f) || math.IsInf(f, 0)) {
+		return nil, false, nil
+	}
+	if f, ok := value.(float32); ok && (math.IsNaN(float64(f)) || math.IsInf(float64(f), 0)) {
+		return nil, false, nil
+	}
+	v, err := toValue(value)
+	if err != nil {
+		return nil, false, err
+	}
+	return []graph.PropertyEq{{Key: key, Value: v}}, true, nil
+}
+
+func (w *Graph) NodesByLabel(label string, q conformance.Query) ([]conformance.Node, error) {
+	if label == "" {
+		return nil, bad("empty label")
+	}
+	es, err := w.scanDoor(context.Background(), scanQuery{labels: []string{label}}, q)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]conformance.Node, 0, len(es))
+	for _, e := range es {
+		out = append(out, w.node(e))
+	}
+	return out, nil
+}
+
+func (w *Graph) RelsByType(typ string, q conformance.Query) ([]conformance.Rel, error) {
+	if typ == "" {
+		return nil, bad("empty type")
+	}
+	es, err := w.scanDoor(context.Background(), scanQuery{relType: typ, rel: true}, q)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]conformance.Rel, 0, len(es))
+	for _, e := range es {
+		out = append(out, w.rel(e))
+	}
+	return out, nil
+}
+
+func (w *Graph) NodesByLabelAndProperty(label, key string, value any, q conformance.Query) ([]conformance.Node, error) {
+	if label == "" || key == "" {
+		return nil, bad("empty label or key")
+	}
+	eq, any, err := equality(key, value)
+	if err != nil || !any {
+		return nil, err
+	}
+	es, err := w.scanDoor(context.Background(), scanQuery{labels: []string{label}, eq: eq}, q)
+	if err != nil {
+		return nil, err
+	}
+	// A GetOrCreateByKey claim lives under its seeded name "key@label#kind".
+	v := eq[0].Value
+	if f, ok := v.AsFloat(); ok && f == math.Trunc(f) && math.Abs(f) < 1<<53 {
+		v = graph.Int(int64(f))
+	}
+	if slices.Contains(uniqueClaims, [3]string{label, key, kindTag(v)}) {
+		claims, err := w.scanDoor(context.Background(), scanQuery{labels: []string{label}, eq: []graph.PropertyEq{{Key: uniqueName(label, key, v), Value: v}}}, q)
+		if err != nil {
+			return nil, err
+		}
+		es = append(es, claims...)
+		slices.SortFunc(es, func(a, b graph.Entity) int { return cmp.Compare(refID(a.Ref), refID(b.Ref)) })
+		es = slices.CompactFunc(es, func(a, b graph.Entity) bool { return a.Ref == b.Ref })
+		if q.Limit > 0 && len(es) > int(q.Limit) {
+			es = es[:q.Limit]
+		}
+	}
+	out := make([]conformance.Node, 0, len(es))
+	for _, e := range es {
+		out = append(out, w.node(e))
+	}
+	return out, nil
+}
+
+func (w *Graph) CountByLabelPropertyValue(label, key string, value any) (int, error) {
+	ns, err := w.NodesByLabelAndProperty(label, key, value, conformance.Query{})
+	return len(ns), err
+}
+
+// effectivePage is one keyset page of effective segments: up to limit
+// entities after the given ID, each with its segments in valid-time order.
+func (w *Graph) effectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after int64, limit int, rel bool) ([]graph.Entity, int64, error) {
+	if limit < 1 || limit > 10000 || after < 0 {
+		return nil, 0, bad("limit %d after %d", limit, after)
+	}
+	spec := graph.Fresh()
+	if pin.Tx != 0 {
+		c, err := w.cutOf(pin.Tx)
+		if err != nil {
+			return nil, 0, err
+		}
+		spec = graph.At(c)
+	}
+	valid, _, err := w.validSel(pin.ValidAt, pin.ValidStart, pin.ValidEnd)
+	if err != nil {
+		return nil, 0, err
+	}
+	if f.Prop == "" || f.Eq == nil {
+		return nil, 0, bad("the filter needs a property and a value")
+	}
+	eq, any, err := equality(f.Prop, f.Eq)
+	if err != nil || !any {
+		return nil, 0, err
+	}
+	sq := scanQuery{rel: rel, eq: eq}
+	rows, err := w.scan(ctx, spec, graph.ViewEffective, valid, sq)
+	if err != nil {
+		return nil, 0, err
+	}
+	var out []graph.Entity
+	n, last := 0, int64(0)
+	for _, e := range rows {
+		id := refID(e.Ref)
+		if id <= after {
+			continue
+		}
+		if id != last {
+			if n == limit {
+				return out, last, nil
+			}
+			n, last = n+1, id
+		}
+		out = append(out, e)
+	}
+	return out, 0, nil
+}
+
+func (w *Graph) segment(e graph.Entity) (int64, int64) {
+	lo, hi, _ := e.Valid.Bounds()
+	return w.ms(lo), w.ms(hi)
+}
+
+func (w *Graph) RelsEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after int64, limit int) ([]conformance.RelSegment, int64, error) {
+	es, next, err := w.effectivePage(ctx, pin, f, after, limit, true)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]conformance.RelSegment, 0, len(es))
+	for _, e := range es {
+		from, to := w.segment(e)
+		out = append(out, conformance.RelSegment{ValidFrom: from, ValidTo: to, Rel: w.rel(e)})
+	}
+	return out, next, nil
+}
+
+func (w *Graph) NodesEffectivePage(ctx context.Context, pin conformance.Pin, f conformance.Filter, after int64, limit int) ([]conformance.NodeSegment, int64, error) {
+	es, next, err := w.effectivePage(ctx, pin, f, after, limit, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]conformance.NodeSegment, 0, len(es))
+	for _, e := range es {
+		from, to := w.segment(e)
+		out = append(out, conformance.NodeSegment{ValidFrom: from, ValidTo: to, Node: w.node(e)})
+	}
+	return out, next, nil
 }
