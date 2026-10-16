@@ -1301,3 +1301,70 @@ func retainedFeedSnapshotAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNativeProtocolPooledFeedPublicationStagesOnRealQuorum(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	n := collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
+		p.RetainedApplicationBytes, p.RetainedApplicationRecords = 256<<20, 131072
+	}, rangeMovePooledSemanticContractID(), raftlog.ApplicationRecoveryConfig{Version: 4})
+	_, publisher, _, _ := retainedPublisherFromNetwork(t, n)
+	l := publisher.coordinator.host.machine.limits
+	policy := retainedFeedPolicy{pageBytes: 64 << 10, pageRows: 256, maxPages: 64, maxAttempts: 512, operationRows: l.sourceRows, operationBytes: l.sourceBytes, operationOutput: l.outputBytes, deadlineUnixNanos: deadline.UnixNano()}
+	owner, err := beginRetainedFeed(ctx, publisher, n.requestID(), graphReadRequest{mode: graphReadFresh}, 1, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	token, err := owner.Publish(ctx)
+	if err != nil || len(token.definition) == 0 || len(token.pin.publications) != 2 {
+		t.Fatal("actual pooled publication and all-participant cursor initialization", err)
+	}
+}
+
+func TestRetainedFeedCursorOwnsBoundedParticipantDecode(t *testing.T) {
+	// Codec values are descriptive; genuine native installation is checked by
+	// TestNativeProtocolPooledFeedPublicationStagesOnRealQuorum.
+	for _, count := range []int{1, 2, maxGraphPins} {
+		cursor := retainedFeedCursor{original: [32]byte{1}, positions: make([]uint64, count), completed: graphCut{certificates: make([]graphCertificate, count)}, sequence: 7, admitted: 9, spentRows: 144, spentBytes: 294912, spentOutput: 294912, spentCalls: 9216}
+		for i := range count {
+			cursor.positions[i] = uint64(i + 3)
+			cursor.completed.certificates[i] = graphCertificate{scope: allocationScope{graph: [16]byte{1}, partition: uint64(i + 1), group: [16]byte{2}, ownership: 1, topology: 1, declaration: [32]byte{3}, semantic: rangeMovePooledSemanticContractID()}, configuration: [32]byte{4}, round: 5, index: 4, sourceIndex: 3}
+		}
+		wire, err := encodeRetainedFeedCursor(cursor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual, err := decodeRetainedFeedCursor(wire)
+		if err != nil {
+			t.Fatal("nonempty participant cursor", count, err)
+		}
+		canonical, err := encodeRetainedFeedCursor(actual)
+		if err != nil || !bytes.Equal(canonical, wire) || !feedCutEqual(actual.completed, cursor.completed) || !feedVectorEqual(actual.positions, cursor.positions) {
+			t.Fatal("cursor changed during decode", count, err)
+		}
+		body, err := graphBody(wire, "GFC\x01", graphPinManifestBytes+2048)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, kind := range []string{"vector-count", "cut-count", "zero-position", "truncated", "trailing"} {
+			bad := bytes.Clone(body)
+			switch kind {
+			case "vector-count":
+				binary.BigEndian.PutUint32(bad[40:44], maxGraphPins+1)
+			case "cut-count":
+				binary.BigEndian.PutUint32(bad[44+8*count:48+8*count], maxGraphPins+1)
+			case "zero-position":
+				clear(bad[44:52])
+			case "truncated":
+				bad = bad[:len(bad)-1]
+			case "trailing":
+				bad = append(bad, 0)
+			}
+			if _, err = decodeRetainedFeedCursor(seal(append([]byte("GFC\x01"), bad...))); !errors.Is(err, errCorrupt) {
+				t.Fatal("malformed cursor accepted", count, kind, err)
+			}
+		}
+	}
+}

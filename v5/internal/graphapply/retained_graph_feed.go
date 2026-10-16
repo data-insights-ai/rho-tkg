@@ -566,7 +566,10 @@ func decodeRetainedFeedCursor(wire []byte) (retainedFeedCursor, error) {
 	if err != nil {
 		return retainedFeedCursor{}, err
 	}
-	q := graphCursor{b: body}
+	// A position owns 8 bytes per encoded 8 bytes; a completed certificate
+	// owns at most 512 per encoded 396 bytes. The bounded delivered body thus
+	// funds both counted slices within twice its size, never a default arena.
+	q := graphCursor{b: body, maxOwnedBytes: 2 * len(body)}
 	c := retainedFeedCursor{}
 	copy(c.original[:], q.take(32))
 	c.sequence = q.u64()

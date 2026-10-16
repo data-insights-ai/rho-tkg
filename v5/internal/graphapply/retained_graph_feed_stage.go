@@ -741,6 +741,11 @@ func readFeedCursor(q *reader, id [32]byte) (retainedFeedCursor, bool, error) {
 	if err != nil || !found {
 		return retainedFeedCursor{}, found, err
 	}
+	// Fund the cursor slices and canonical encoding in this same invocation,
+	// in addition to the native row ownership already charged by getBounded.
+	if err = reserveComposer(q, 1024+4*len(wire)); err != nil {
+		return retainedFeedCursor{}, false, err
+	}
 	c, err := decodeRetainedFeedCursor(wire)
 	if err != nil || c.original != id {
 		return retainedFeedCursor{}, false, errors.Join(errCorrupt, err)
