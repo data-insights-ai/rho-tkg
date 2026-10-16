@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "format": "native-create-update-workload-v1",
+  "spec": {
+    "version": 1,
+    "family": "partition-local-create-update",
+    "facts": 20,
+    "crossPercent": 100,
+    "writers": 1,
+    "layout": "columns"
+  },
+  "run": "c991682d9c3de886d8e8f3f81ade0578",
+  "transport": {
+    "kind": "local",
+    "targetRTTMillis": 0,
+    "jitterMillis": 0,
+    "seed": 20261009
+  },
+  "seconds": 180,
+  "deadlineUnixNanos": 1792116613104679000,
+  "aggregateRSSMiB": 4096,
+  "command": [
+    "/opt/homebrew/opt/python@3.14/bin/python3.14",
+    "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/process_watchdog.py",
+    "--rss-mib",
+    "4096",
+    "--seconds",
+    "180",
+    "--deadline-unix-nanos",
+    "1792116613104679000",
+    "--report",
+    "/private/var/tmp/rho-v5-columns-repaired-fb405536-20261016.uhjxc46h/native/watchdog.json",
+    "--",
+    "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-columns-metadata.test",
+    "-test.run=^TestNativeGraphCreateUpdateWorkloadCell$",
+    "-test.count=1",
+    "-test.v",
+    "-test.timeout=210s"
+  ],
+  "binarySHA256": "edc6bf340a2c8470ca945779bc4224c09a3381378dbb83354f2612759daf309a",
+  "watchdogSHA256": "99d062f0f974d80f924912cedfb0a71f900f2a02eeb475288195d7bc0ed29989",
+  "retentionContract": "snapshot-C-retained-full-prefix-v1",
+  "spoolPolicy": {
+    "max_disk_bytes": 1073741824,
+    "cache_bytes": 8388608,
+    "max_key_bytes": 4096,
+    "max_value_bytes": 524288
+  }
+}

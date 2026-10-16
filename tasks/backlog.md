@@ -1220,7 +1220,7 @@ pass current/synced WAL recovery, WAL/manifest corruption and OPTIONS rename in 
 and explicit independent Python checks. This receipt corrects the earlier claim
 that Go automatically invoked the WAL checker; original logs remain unchanged.
 
-The [current query/recovery checkpoint](evidence/v2-integrated-checkpoint-20261016/qualification-ed2cab6b.json)
+The [current query/recovery checkpoint](evidence/v2-integrated-checkpoint-20261016/qualification-fb405536.json)
 records the following finite scope:
 
 - The 20-fact, 100%-cross, one-writer KV/local native workload completes all
@@ -1262,12 +1262,19 @@ records the following finite scope:
   successful cleanup. Native columns' original old-seal failure is preserved
   with all seven owned processes exited. Both constructors now account for the
   complete native key/value read while retaining the configuration value limit;
-  root's direct local/partition capture and old-cut guards pass. An existing
-  test now reaches a separate publication refusal, under investigation before
-  another OS run. The eight-writer KV tiny pair also passes the full comparator
+  root's five focused codec/publication/reopen/retirement and old-cut parents
+  pass. Allocation metadata preserves exact CDC and originals without business
+  rows; durable generation and peer binding retain their actual owner. The
+  corrected native columns workload completes in 61.65 seconds with all 13
+  owned process identities exited. Its complete checker rejects a pin-terminal
+  join; the original controller receipt remains failed, and columns pairing is
+  open. The eight-writer KV tiny pair also passes the full comparator
   and independent root replay: 40 typed answers, all 13 native process identities
   exited, FDB 43 commits/51 aborted attempts and successful cleanup. Columns
-  pairing, larger runs and comparative cost remain open.
+  pairing, larger runs and comparative cost remain open. A first previously
+  unexecuted rotated/reordered P01 scoped-read case fails with a native Limit
+  wrapped as immutable-source unavailable; fail-fast leaves the selected P02,
+  P04 and P05 cases unexecuted. Source attribution is under diagnosis.
 
 These components do not close their full fault families, the process inventory,
 engine comparison, measurements or V2. Original deadlines, quotas, complete

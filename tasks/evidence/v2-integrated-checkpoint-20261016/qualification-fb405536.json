@@ -1,0 +1,24 @@
+{
+  "source": "fb405536",
+  "nativeColumns": {
+    "engine": "PASS61.65s; completeactualworkload/all13processidentitiesexited/noforcedcleanup",
+    "oracle": "RED native_feed_check pin-terminal immutablejoin; originalcontrollerreceipt preserved completedCellfalse; no pairverdict",
+    "artifactDirectory": "/private/var/tmp/rho-v5-columns-repaired-fb405536-20261016.uhjxc46h/native/engine",
+    "originalReceiptSHA256": "9b4f02414618d8e899493fe67d313f411c65ba9007415bb7af639d76dea1a535"
+  },
+  "focusedGo": "rootSAME5metadata/codec/durablegeneration/old-current parentsPASS; policy unchanged",
+  "P01": "first4selectedleaves FAILFAST on scopedA-only read; other3notexecuted. Actualmask graph0402=Limit+SourceUnavailable. Actor2alive is not sourceendpoint proof. Exactrefusal underdiagnosis",
+  "files": {
+    "columns-metadata-receipt.json": "7e0e8fe9b2d02cc8467f9fc6be3414b1ec2a97bfa5ffb574c84706c645e2b35b",
+    "columns-metadata-columns-publish-red.log": "5e38dc185a7dd51745a2d97d2f0f4aa55ad2e673f061b1d3d20ccaf705eedbb3",
+    "columns-metadata-columns-retention-original-red.log": "b0114b360632805a5ac13823a7c51ac024e6ff644095bfe8daf30f9f3f992ef2",
+    "columns-metadata-columns-metadata-bound-green.log": "e70498fdab0939754bcb0da6a14ef834677df806d365c277852cb74ea42e7ed9",
+    "columns-metadata-guards-fb405536.log": "af12a98fc8b78680d34c52622d5a33df5da684542597d68b3592b3c89d95300c",
+    "columns-metadata-guards-fb405536.json": "040b9de9b98417b675968ce5982ee823f359d04af5dc521d122c3cb316a72441",
+    "protocol-four-ed2cab6b.log": "578ec040336376c50d62da175cc5d71d45d651e44bf6fbc67aa614746db323be",
+    "protocol-four-ed2cab6b.json": "99473146bc729f57cbaf06052e7cc2e7171a0f470bc70cca7427dce85c05766d",
+    "p01-diagnostic-8a7e8404.log": "98364d16771bd60040612ca2a94d11fea1b8a5529965914ab217267ae7b26c14",
+    "p01-diagnostic-8a7e8404.json": "0cffe25ad30ba701166ca251c4710a23a66b1ab38b902d74051323b661f77e1b"
+  },
+  "scope": "correctnesscheckpoint, not V2/fullmatrix/costacceptance"
+}

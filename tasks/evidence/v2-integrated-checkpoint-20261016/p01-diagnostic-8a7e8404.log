@@ -1,0 +1,14 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p01-mode1-phase2-p3-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:216: paired elected actual leader6 round10 while4 down
+    paired_graph_fault_harness_test.go:907: paired heal delivered packet1 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit23 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:907: paired heal delivered packet2 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit23 rejectfalse hint0 entries0 decode<nil>
+    native_graph_protocol_campaign_program_test.go:22: paired actual healthy quorum leader2 applied23
+    native_graph_protocol_campaign_program_test.go:22: actual A-only read actor2 pid51803 owner-incarnation79ee0c595359082a9e086eb9eb05675c operation41 handle1 response-sequence413 response-incarnation79ee0c595359082a9e086eb9eb05675c applied23 readytrue views1 code2 cause-mask0020 graph-mask0402 detail"graphstore: immutable source unavailable\ngraphapply: remote source operation refused": graphapply: remote source operation refused
+    paired_graph_fault_harness_test.go:445: paired cleanup: incarnations=7 all-reaped=true successful=6 intentional-kills=1 calls=2057 bootstrapPackets=330 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (3.20s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (3.20s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p01-mode1-phase2-p3-k2-after (3.18s)
+FAIL

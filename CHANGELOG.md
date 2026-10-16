@@ -453,6 +453,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Native v5 column captures now include the genesis key in the native read
   bound, preserving the existing configuration value limit. Local and
   partition captures retain the exact original configuration and historical cut.
+  Column publication preserves allocation metadata and routing CDC without
+  business rows, retains original replay dependencies, and uses the actual
+  durable generation and authenticated peer binding across reopen.
 
 - Partial v5 range imports now record installed lineage totals and retain the
   accepted source manifest proof separately from target progress. Reopen checks

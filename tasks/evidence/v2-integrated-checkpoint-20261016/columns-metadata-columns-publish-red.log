@@ -1,0 +1,81 @@
+=== RUN   TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor
+2026/10/16 03:46:42 Found 0 WALs
+raft2026/10/16 03:46:42 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:42 INFO: 1 became follower at term 1
+raft2026/10/16 03:46:42 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 03:46:42 Found 0 WALs
+raft2026/10/16 03:46:42 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:42 INFO: 2 became follower at term 1
+raft2026/10/16 03:46:42 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 03:46:42 Found 0 WALs
+raft2026/10/16 03:46:42 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:42 INFO: 3 became follower at term 1
+raft2026/10/16 03:46:42 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/16 03:46:42 INFO: 1 is starting a new election at term 1
+raft2026/10/16 03:46:42 INFO: 1 became pre-candidate at term 1
+raft2026/10/16 03:46:42 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/16 03:46:42 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/16 03:46:42 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/16 03:46:42 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:42 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 03:46:42 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 03:46:42 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/16 03:46:42 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:42 INFO: 1 became candidate at term 2
+raft2026/10/16 03:46:42 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/16 03:46:42 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/16 03:46:42 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/16 03:46:42 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:42 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 03:46:42 INFO: 2 became follower at term 2
+raft2026/10/16 03:46:42 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 03:46:42 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 03:46:42 INFO: 3 became follower at term 2
+raft2026/10/16 03:46:42 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 03:46:42 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/16 03:46:42 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:42 INFO: 1 became leader at term 2
+2026/10/16 03:46:42 Found 0 WALs
+raft2026/10/16 03:46:42 INFO: 1 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:42 INFO: 1 became follower at term 1
+raft2026/10/16 03:46:42 INFO: newRaft 1 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 03:46:42 Found 0 WALs
+raft2026/10/16 03:46:42 INFO: 2 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:42 INFO: 2 became follower at term 1
+raft2026/10/16 03:46:42 INFO: newRaft 2 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+2026/10/16 03:46:42 Found 0 WALs
+raft2026/10/16 03:46:42 INFO: 3 switched to configuration voters=(1 2 3)
+raft2026/10/16 03:46:42 INFO: 3 became follower at term 1
+raft2026/10/16 03:46:42 INFO: newRaft 3 [peers: [1,2,3], term: 1, commit: 1, applied: 1, lastindex: 1, lastterm: 1]
+raft2026/10/16 03:46:42 INFO: 1 is starting a new election at term 1
+raft2026/10/16 03:46:42 INFO: 1 became pre-candidate at term 1
+raft2026/10/16 03:46:42 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 2 at term 1
+raft2026/10/16 03:46:42 INFO: 1 [logterm: 1, index: 1] sent MsgPreVote request to 3 at term 1
+raft2026/10/16 03:46:42 INFO: 1 received MsgPreVoteResp from 1 at term 1
+raft2026/10/16 03:46:42 INFO: 1 has received 1 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:42 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 03:46:42 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgPreVote for 1 [logterm: 1, index: 1] at term 1
+raft2026/10/16 03:46:42 INFO: 1 received MsgPreVoteResp from 2 at term 1
+raft2026/10/16 03:46:42 INFO: 1 has received 2 MsgPreVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:42 INFO: 1 became candidate at term 2
+raft2026/10/16 03:46:42 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 2 at term 2
+raft2026/10/16 03:46:42 INFO: 1 [logterm: 1, index: 1] sent MsgVote request to 3 at term 2
+raft2026/10/16 03:46:42 INFO: 1 received MsgVoteResp from 1 at term 2
+raft2026/10/16 03:46:42 INFO: 1 has received 1 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:42 INFO: 2 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 03:46:42 INFO: 2 became follower at term 2
+raft2026/10/16 03:46:42 INFO: 2 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 03:46:42 INFO: 3 [term: 1] received a MsgVote message with higher term from 1 [term: 2]
+raft2026/10/16 03:46:42 INFO: 3 became follower at term 2
+raft2026/10/16 03:46:42 INFO: 3 [logterm: 1, index: 1, vote: 0] cast MsgVote for 1 [logterm: 1, index: 1] at term 2
+raft2026/10/16 03:46:42 INFO: 1 received MsgVoteResp from 2 at term 2
+raft2026/10/16 03:46:42 INFO: 1 has received 2 MsgVoteResp votes and 0 vote rejections
+raft2026/10/16 03:46:42 INFO: 1 became leader at term 2
+2026/10/16 03:46:44 Found 0 WALs
+    native_graph_columns_test.go:312: DIAG publish group=0 progress={Generation:{ID:[7 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] Coverage:1 Binding:[179 224 188 89 54 143 219 200 147 240 29 75 75 223 14 202 98 182 137 187 121 193 47 188 207 13 239 211 192 86 80 18] Sources:[{Initial:[71 83 67 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 0 0 0 0 0 0 0 9 229 128 186 158 65 245 85 224 137 246 5 148 172 108 169 102 93 6 86 5 134 244 18 180 11 97 21 100 101 174 170 194 65 34 81 173 235 63 197 213 80 224 232 16 4 0 147 244 80 141 79 130 215 116 254 210 197 31 197 99 93 4 131 197 154 244 16 174 240 213 233 128 252 245 113 182 237 91 52 60 176 46 142 199 131 238 121 141 149 174 78 170 234 39 187 201 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 5 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 71 82 3 5 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 2 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 6 230 28 50 238 107 205 112 212 231 54 98 44 187 27 153 128 27 240 110 59 164 253 153 143 131 43 43 157 214 22 130 38 0 0 0 0 0 0 0 9 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 3 229 128 186 158 65 245 85 224 137 246 5 148 172 108 169 102 93 6 86 5 134 244 18 180 11 97 21 100 101 174 170 194 49 232 251 228 162 226 78 104 110 26 253 162 159 40 255 203 8 232 213 178 191 124 215 177 60 67 140 59 165 147 205 20 220 48 145 255 59 50 234 11 100 246 217 149 139 2 132 209 125 196 154 119 19 150 101 23 157 131 63 64 219 93 142 47] Final:[71 83 67 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 0 0 0 0 0 0 0 9 229 128 186 158 65 245 85 224 137 246 5 148 172 108 169 102 93 6 86 5 134 244 18 180 11 97 21 100 101 174 170 194 65 34 81 173 235 63 197 213 80 224 232 16 4 0 147 244 80 141 79 130 215 116 254 210 197 31 197 99 93 4 131 197 154 244 16 174 240 213 233 128 252 245 113 182 237 91 52 60 176 46 142 199 131 238 121 141 149 174 78 170 234 39 187 201 0 0 0 0 0 0 0 7 0 0 0 0 0 0 0 25 0 0 0 0 0 0 0 7 0 0 0 0 0 0 0 23 71 82 3 5 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 2 0 0 0 0 0 0 0 6 0 0 0 0 0 0 0 12 28 54 175 195 39 243 155 176 249 96 73 188 105 125 21 243 203 225 73 205 105 115 142 221 94 69 117 124 48 117 127 89 0 0 0 0 0 0 0 9 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 3 229 128 186 158 65 245 85 224 137 246 5 148 172 108 169 102 93 6 86 5 134 244 18 180 11 97 21 100 101 174 170 194 108 13 183 71 66 54 50 77 28 249 115 209 45 54 78 126 202 137 94 77 224 177 157 33 150 56 23 80 165 233 223 182 117 250 154 45 46 108 97 88 120 222 147 127 44 197 147 244 33 47 111 35 10 79 161 210 157 232 50 109 255 255 18 219] Generation:1} {Initial:[71 83 67 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 8 8 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 9 229 128 186 158 65 245 85 224 137 246 5 148 172 108 169 102 93 6 86 5 134 244 18 180 11 97 21 100 101 174 170 194 65 34 81 173 235 63 197 213 80 224 232 16 4 0 147 244 80 141 79 130 215 116 254 210 197 31 197 99 93 4 131 197 154 244 16 174 240 213 233 128 252 245 113 182 237 91 52 60 176 46 142 199 131 238 121 141 149 174 78 170 234 39 187 201 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 5 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 71 82 3 5 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 8 0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 6 30 136 220 161 18 175 67 227 27 108 34 36 17 138 123 243 5 43 132 194 86 28 222 52 57 161 253 95 151 47 193 108 0 0 0 0 0 0 0 9 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 3 229 128 186 158 65 245 85 224 137 246 5 148 172 108 169 102 93 6 86 5 134 244 18 180 11 97 21 100 101 174 170 194 157 41 6 125 221 118 123 153 255 189 12 137 50 183 154 136 154 234 11 213 11 208 245 58 123 252 168 65 62 54 162 120 201 117 74 187 223 23 4 54 45 130 143 182 151 98 215 175 148 237 227 37 133 229 56 48 238 67 156 73 141 106 167 211] Final:[71 83 67 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 8 8 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 9 229 128 186 158 65 245 85 224 137 246 5 148 172 108 169 102 93 6 86 5 134 244 18 180 11 97 21 100 101 174 170 194 65 34 81 173 235 63 197 213 80 224 232 16 4 0 147 244 80 141 79 130 215 116 254 210 197 31 197 99 93 4 131 197 154 244 16 174 240 213 233 128 252 245 113 182 237 91 52 60 176 46 142 199 131 238 121 141 149 174 78 170 234 39 187 201 0 0 0 0 0 0 0 7 0 0 0 0 0 0 0 13 0 0 0 0 0 0 0 6 0 0 0 0 0 0 0 11 71 82 3 5 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 8 0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 4 0 0 0 0 0 0 0 8 205 121 28 147 195 106 81 254 203 156 4 106 8 39 40 34 20 106 235 5 90 203 0 31 54 69 245 147 55 40 2 193 0 0 0 0 0 0 0 9 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 3 229 128 186 158 65 245 85 224 137 246 5 148 172 108 169 102 93 6 86 5 134 244 18 180 11 97 21 100 101 174 170 194 132 181 19 76 74 11 243 134 38 236 130 78 156 194 246 124 20 57 24 141 217 198 245 207 34 28 122 34 171 36 183 12 201 164 107 74 21 115 81 123 207 154 115 153 74 199 128 62 167 202 93 115 144 142 22 222 151 113 34 15 118 127 11 201] Generation:1}] Pin:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} Owner:[238 35 75 114 73 57 129 218 111 235 7 92 167 39 61 128] Next:2 Frames:2 Rows:0 Bytes:888 Positions:[5 3] Chain:[21 230 173 103 126 156 84 185 45 228 155 66 21 196 125 45 63 26 15 14 116 89 55 182 148 135 96 250 149 120 224 78] Work:{Records:433376 Bytes:4665248576 DecodedRows:1587200 OutputBytes:1952514048 RPCs:2048 WireBytes:8589934592} EOF:false} error=<nil>
+    native_graph_columns_test.go:315: DIAG frame index=6 outcome=47524f020a0100000000000000000000000000000000000000000000030300000000000000000000000000000086d0c77cdfb00f1e6730b01c7b24843e677ac6e9393482f58cc4238dd1bf2a290000000000000006010000ef29dcb93a91f2e9ffbd9bcaef60bd81542e80480a74b1034616d54c80221355 cdc=47524f020a0100000000000000000000000000000000000000000000030300000000000000000000000000000086d0c77cdfb00f1e6730b01c7b24843e677ac6e9393482f58cc4238dd1bf2a290000000000000006010000ef29dcb93a91f2e9ffbd9bcaef60bd81542e80480a74b1034616d54c80221355 rows=0 error=graphapply: corrupt allocation/request record
+    native_graph_columns_test.go:317: graphapply: corrupt allocation/request record
+--- FAIL: TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor (2.19s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v5/internal/graphapply	2.619s
+FAIL

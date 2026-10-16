@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "format": "native-create-update-workload-v1",
+  "requestSHA256": "bccdee2ba7c7a7ac342cda325e8aea417305595622806a97522271a32ac44eb9",
+  "binarySHA256": "edc6bf340a2c8470ca945779bc4224c09a3381378dbb83354f2612759daf309a",
+  "spec": {
+    "version": 1,
+    "family": "partition-local-create-update",
+    "facts": 20,
+    "crossPercent": 100,
+    "writers": 1,
+    "layout": "columns"
+  },
+  "run": "c991682d9c3de886d8e8f3f81ade0578",
+  "exit": 0,
+  "completedCell": false,
+  "artifacts": {
+    "reads.jsonl": "23e02a750f337b65efba024477114b5de16d242244ce4629b44fe8771cda2a24",
+    "result.json": "21dbc3b3c09d2d2172a4d90e76eca4d70deefa727ea6e0b6f5b87bf33ab57161",
+    "processes.jsonl": "ca6c9ed5dc30cfe0f3d1721e6550502da99bd165ee4db4d040c51910cdfd6d09",
+    "sources.jsonl": "4ddb9fc5a9799804b1a4db4c088bd24a6676500a6802cde373642243ae623276",
+    "columns.jsonl": "b0b522fcc5b12c5cabdb777155451da3916f637da2e4c09118454a989745c7f1",
+    "operations.jsonl": "93a2db0357c3f3025cfbda8bec567644ee281b37c5a3e0a4b75a00aed4efe7c3",
+    "grants.jsonl": "057ead75603b726a38d45bb70f788eecda08406a352fea2f438bf1fb96c5c03a",
+    "attempts.jsonl": "cf538bf1755282f4db89c1d963619370136c0d442a060c19dcd0ac6fff6bf3e9"
+  },
+  "proof": null,
+  "processTree": {
+    "version": 1,
+    "command": [
+      "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/graphapply-columns-metadata.test",
+      "-test.run=^TestNativeGraphCreateUpdateWorkloadCell$",
+      "-test.count=1",
+      "-test.v",
+      "-test.timeout=210s"
+    ],
+    "wall_limit_s": 180,
+    "rss_limit_mib": 4096,
+    "deadline_unix_nanos": 1792116613104679000,
+    "reason": "completed",
+    "exit_code": 0,
+    "peak_tree_rss_mib": 294.015625,
+    "peak_engine_rss_mib": 268.25,
+    "peak_monitor_rss_mib": 25.796875,
+    "all_owned_exited": true,
+    "observed_processes": [
+      {
+        "pid": 87063,
+        "parent": 87061,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:07:13 2026"
+      },
+      {
+        "pid": 87065,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:07:13 2026"
+      },
+      {
+        "pid": 87066,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:07:13 2026"
+      },
+      {
+        "pid": 87067,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:07:13 2026"
+      },
+      {
+        "pid": 87068,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:07:13 2026"
+      },
+      {
+        "pid": 87069,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:07:13 2026"
+      },
+      {
+        "pid": 87070,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:07:13 2026"
+      },
+      {
+        "pid": 89042,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:08:01 2026"
+      },
+      {
+        "pid": 89043,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:08:01 2026"
+      },
+      {
+        "pid": 89044,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:08:01 2026"
+      },
+      {
+        "pid": 89045,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:08:01 2026"
+      },
+      {
+        "pid": 89046,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:08:01 2026"
+      },
+      {
+        "pid": 89047,
+        "parent": 87063,
+        "group": 87063,
+        "birth": "Fri Oct 16 04:08:01 2026"
+      }
+    ],
+    "samples": 469,
+    "output_bytes": 114,
+    "received_output_bytes": 114,
+    "disk": null,
+    "forced_cleanup": false,
+    "scope": "sampled aggregate native session plus watchdog/metadata reader RSS; trusted inherited-session children; bounded output/catalog; no exact RSS/disk high-water or independent-host claim",
+    "elapsed_nanos": 61781961333
+  },
+  "processTreeSHA256": "caede977ab4f3452d5b80f6dc927a9c8de999e9cbd9c1e0b96ad05a660026452",
+  "elapsedNanos": 62399926250
+}

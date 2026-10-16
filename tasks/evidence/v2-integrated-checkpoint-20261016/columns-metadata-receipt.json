@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "commit": "ff3ce0387914871ed590bd2bbd53effd3a9e9c93",
+  "parent": "e491c6c5f039b16537d9874f152c2bd855cd3875",
+  "tree": "/private/var/tmp/rho-v5-columns-publish-fix-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/graph_changes.go",
+      "parentBlob": "5e3c8f39153272f95e2051875b80d0dae06a6228",
+      "blob": "0e4e9b1ae31b4561d54e5b99d1b8f49d57ccca1f",
+      "sha256": "654cd4fe8009f98272a9ecc0fb5730ad75693732627386a59aa69dc20f752b81"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_columns_retention.go",
+      "parentBlob": "8bc36c949166fa7510d6a5c8fed4492723a796f8",
+      "blob": "be5166169f42b64cea185408ae3c0a07715d2e4f",
+      "sha256": "937c868c3051ce7efb96e68d011716dcd286054ccd571208ccd4b5ab68fbf103"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_columns_retention_test.go",
+      "parentBlob": "34017c7c3453efa5ac37218d0a0a1b1f8fe24cc2",
+      "blob": "6174c85971f963f18188cc77c0a72354408434be",
+      "sha256": "9ba40876f397cdce47ec22d820d022167f6d5bc2b2902e99c18aea8b2b90f093"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_columns_source.go",
+      "parentBlob": "315392dce094ef3bbc6a0199a818a405bd88200a",
+      "blob": "61d7687f1d832240734aeb5bb5cc4be43b7cdfe7",
+      "sha256": "6c407fe4228176c6f82b631235b8a7cabf4fced4497024b50a3b434674b3763a"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_columns_test.go",
+      "parentBlob": "8c6b488008bc159f1f6ec25ae4a8b23672148b83",
+      "blob": "4d46d62d12dd9d10067286e0c2ab4ffb368119d3",
+      "sha256": "828864bb24593ec47af4b80c41769321cb993a5191a1134d21cb20303d2d4079"
+    }
+  ],
+  "changes": [
+    "Reuse exact GCE original binding before producer-specific graph or routing decoding.",
+    "Preserve native allocation Outcome/CDC and genuine routing publication root effects with zero business rows; retain exact original replay sidecars.",
+    "Use mapped original decoder for allocation retention dependency, preserving namespace/framing/index refusal.",
+    "Use actual attached retained generation during chunk preflight, keeping foreign placeholder refusal.",
+    "Authenticate durable NCP2 logical-keeper binding after reopen while retaining all actual endpoint/certificate/config/root checks and literal NCP1 serialization.",
+    "Fix whole-KV bound in one existing retention test read."
+  ],
+  "redEvidence": {
+    "allocationMetadata": "columns-publish-red.log: first frame index6 GRO2 allocation CDC was misread as business CDC",
+    "retentionOriginal": "columns-retention-original-red.log: genuine original replay GRO2 failed index decoder",
+    "wholeKVTestCaller": "columns-publish-final-green.log: native retention test-only Get failed resource limit",
+    "generation": "columns-metadata-final-green.log: real publish rejected dummy generation1 versus authenticated201",
+    "durablePeerBinding": "columns-metadata-generation-green.log: exact retained walk after same-dir reopen rejected NCP1-versus-NCP2"
+  },
+  "green": {
+    "log": "columns-metadata-bound-green.log",
+    "exit": 0,
+    "packageSeconds": 10.667,
+    "tests": [
+      "TestTypedCDCBindingSchemasAndPhysicalIndependence",
+      "TestTypedLabelSetCDCAndRechecksummedSemanticCorruption",
+      "TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement",
+      "TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor",
+      "TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue"
+    ],
+    "command": "GOMAXPROCS=2 GOWORK=off GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -count=1 -v -run '^(TestNativeColumnCapturesBoundCompleteGenesisKeyAndValue|TestNativePartitionColumnsBindDisjointGenuinePrefixesAndRetainedReadCursor|TestNativeColumnsDurableGenerationOwnsExactPinAcrossReopenAndRetirement|TestTypedCDCBindingSchemasAndPhysicalIndependence|TestTypedLabelSetCDCAndRechecksummedSemanticCorruption)$' -timeout=120s ./internal/graphapply",
+    "cwd": "/private/var/tmp/rho-v5-columns-publish-fix-20261016/v5"
+  },
+  "checks": [
+    "pinned Go1.26.9 gofmt",
+    "git diff --check"
+  ],
+  "capsChanged": false,
+  "OSRun": false,
+  "remaining": "No OS workload qualification or full package/race/coverage acceptance claimed. Root owns combined compile/exact columns and Step reruns."
+}

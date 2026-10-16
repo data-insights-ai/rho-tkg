@@ -1,0 +1,3 @@
+=== RUN   TestNativeGraphCreateUpdateWorkloadCell
+--- PASS: TestNativeGraphCreateUpdateWorkloadCell (61.65s)
+PASS
