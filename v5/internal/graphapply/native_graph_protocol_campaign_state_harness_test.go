@@ -951,7 +951,8 @@ func nativeProtocolStateReplayBarrier(t *testing.T, f *pairedGraphFaultNetwork, 
 		return nil
 	}
 	hub.mu.Unlock()
-	defer func() { hub.mu.Lock(); hub.beforeRelay = prior; hub.mu.Unlock() }()
+	restore := sync.OnceFunc(func() { hub.mu.Lock(); hub.beforeRelay = prior; hub.mu.Unlock() })
+	defer restore()
 	reply := f.call(f.n.all[5], processRequest{op: processSourceCoordinate, data: original.wire})
 	result, err := decodeGraphProcessCoordinatorResult(reply)
 	if err != nil || result != expected {
@@ -960,8 +961,13 @@ func nativeProtocolStateReplayBarrier(t *testing.T, f *pairedGraphFaultNetwork, 
 	// All emitted packets and native worker/RPC work, not a sleep or a fresh
 	// graph cut. The per-voter checks below reject an early terminal reply.
 	f.drain()
+	// Drain includes every relay's tracked ownership, so no captured callback
+	// remains active. Retire our LIFO hook before any later voter RPC, then
+	// snapshot the two slice headers without adding another payload owner.
+	restore()
 	mu.Lock()
-	defer mu.Unlock()
+	installedCommands := commands
+	mu.Unlock()
 	for group, voters := range f.n.groups {
 		for id, p := range voters.nodes {
 			after := f.call(p, processRequest{op: processStateOp})
@@ -971,7 +977,7 @@ func nativeProtocolStateReplayBarrier(t *testing.T, f *pairedGraphFaultNetwork, 
 				t.Fatal("actual installed replay status", id, err)
 			}
 			retained := f.call(p, processRequest{op: processEntryRecord, index: status.index})
-			if err := nativeProtocolStateReplayInstalled(expected, before[id], after, commands[group], record, retained); err != nil {
+			if err := nativeProtocolStateReplayInstalled(expected, before[id], after, installedCommands[group], record, retained); err != nil {
 				t.Fatal("same original replay not completely installed on actual voter", id, before[id].applied, after.applied, err)
 			}
 		}
