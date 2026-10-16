@@ -174,6 +174,9 @@ func TestBadgerEncryptionKeyOnPlaintextDirFailsClearly(t *testing.T) {
 // Both were verified against the actual Badger v4.9.2 source and a live
 // reproduction, not assumed.
 func TestBadgerEncryptionValidation(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	cases := []struct {
 		name    string
 		mutate  func(*Config)

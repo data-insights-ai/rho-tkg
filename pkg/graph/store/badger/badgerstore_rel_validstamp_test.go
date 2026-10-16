@@ -113,6 +113,9 @@ func newTemporalRel(rid int64, start, end, vf, vt int64, nodeBase int64) *types.
 }
 
 func TestRelValidStamp_DivergenceVsDecode(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	const (
 		numNodes = 6

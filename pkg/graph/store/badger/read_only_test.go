@@ -84,6 +84,9 @@ func assertReadOnlySeedUnchanged(t *testing.T, bs *Store, seed readOnlySeed) {
 }
 
 func TestBadgerStoreReadOnlyRejectsMutatingMethods(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	labels := registrypkg.NewLabelRegistry()
 	relTypes := registrypkg.NewRelTypeRegistry()
 

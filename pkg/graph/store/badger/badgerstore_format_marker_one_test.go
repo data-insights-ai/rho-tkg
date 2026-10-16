@@ -17,6 +17,9 @@ import (
 // pending batch overwrote 6 with 5, so a release reading markers up to 5
 // opened a store with an excise), and a Clear that forgets a raise.
 func TestFormatMarkerOneTrackerAcrossFeatures(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	elements := storecontract.PropertyIndexOptions{Elements: true}
 	nid := types.NodeID(snowflake.ID(400))
 	void := func(bs *Store, version uint32) {

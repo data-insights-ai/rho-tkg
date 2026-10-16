@@ -91,6 +91,9 @@ func TestBadgerStore_NodesByLabel_ValidAt_Pagination(t *testing.T) {
 }
 
 func TestBadgerStore_NodesByLabel_ValidAtLimitColdCacheSkipsExpiredCandidate(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	bs := newReopenedBadgerTemporalStore(t, func(bs *Store) {
 		putBadgerNodeTemporal(t, bs, snowflake.ID(10), 1, 100, 200)
@@ -191,6 +194,9 @@ func TestBadgerStore_RelationshipsByType_ValidAt(t *testing.T) {
 }
 
 func TestBadgerStore_RelationshipsByType_ValidAtLimitColdCacheSkipsExpiredCandidate(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	bs := newReopenedBadgerTemporalStore(t, func(bs *Store) {
 		putBadgerNodeTemporal(t, bs, snowflake.ID(1), 1, 100, 0)
@@ -228,6 +234,9 @@ func TestBadgerStore_AllRelationships_ValidAt(t *testing.T) {
 }
 
 func TestBadgerStore_AllRelationships_ValidAtLimitColdCacheSkipsExpiredCandidate(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	bs := newReopenedBadgerTemporalStore(t, func(bs *Store) {
 		putBadgerNodeTemporal(t, bs, snowflake.ID(1), 1, 100, 0)

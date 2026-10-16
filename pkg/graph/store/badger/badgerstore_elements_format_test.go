@@ -12,6 +12,9 @@ import (
 // stamped ElementsStoreFormatVersion so an older reader refuses the open (it would
 // load the index plain); a store without Elements keeps StoreFormatVersion.
 func TestElementsIndexStampsFormatMarker(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	elements := storecontract.PropertyIndexOptions{Elements: true}
 	for _, c := range []struct {
 		name   string

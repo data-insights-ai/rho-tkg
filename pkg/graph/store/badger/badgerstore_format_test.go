@@ -72,6 +72,9 @@ func newDiskStoreWithNode(t *testing.T, dir string, id int64) {
 // Open stamps the marker; deleting it (a pre-versioning directory) must keep
 // the data readable and re-stamp on the next read-write open.
 func TestWireFormatMarkerStampAndLegacyDirReopen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -112,6 +115,9 @@ func TestWireFormatMarkerStampAndLegacyDirReopen(t *testing.T) {
 // sentinel — and restoring the marker must fully recover the store, proving
 // the refusal was the marker check and not collateral damage.
 func TestWireFormatMarkerFromNewerReleaseFailsOpen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -151,6 +157,9 @@ func TestWireFormatMarkerFromNewerReleaseFailsOpen(t *testing.T) {
 // A marker that exists but cannot be parsed is corruption: fail closed, do
 // not guess.
 func TestWireFormatMarkerCorruptFailsOpen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 
 	for name, val := range map[string][]byte{

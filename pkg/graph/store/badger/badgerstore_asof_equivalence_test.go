@@ -139,6 +139,9 @@ func TestBadgerNodeAsOfEquivalentToSelectAsOf(t *testing.T) {
 }
 
 func TestBadgerRelAsOfEquivalentToSelectAsOf(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	rng := rand.New(rand.NewPCG(0xB61E, 0x62DF))

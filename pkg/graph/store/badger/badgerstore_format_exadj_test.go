@@ -15,6 +15,9 @@ import (
 // a store this release opened — including one stamped 2 before — must carry a
 // higher marker.
 func TestStoreMarkerRefusedByReleasesWithoutExAdjacency(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	const lastMarkerWithoutExAdjacency = 2
 	dir := t.TempDir()

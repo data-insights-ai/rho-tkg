@@ -484,6 +484,9 @@ func TestHistoryPresence_ProbeOnly(t *testing.T) {
 // steps run unchecked, so several ops per ID (SETs and DELETEs of different
 // versions) sit in the buffer when the first call builds the set.
 func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, k := range idOverlayKinds() {
 		for seed := int64(1); seed <= 4; seed++ {
 			t.Run(fmt.Sprintf("%s/seed=%d", k.name, seed), func(t *testing.T) {

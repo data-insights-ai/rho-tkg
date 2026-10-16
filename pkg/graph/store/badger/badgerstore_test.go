@@ -287,6 +287,9 @@ func TestBadgerStoreLoadFreshDB(t *testing.T) {
 // This complements the per-registry SaveLabelRegistry/SaveRelTypeRegistry
 // methods which remain on the Store for backward compatibility.
 func TestBadgerStore_SaveRegistries(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -469,6 +472,9 @@ func TestBadgerStorePropertyTypeFidelityRoundTrip(t *testing.T) {
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 func TestBadgerStoreCloseAndReopen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -505,6 +511,9 @@ func TestBadgerStoreCloseAndReopen(t *testing.T) {
 }
 
 func TestBadgerStoreLoadIndexesRebuildsRelationshipIndexesFromEntityRow(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -572,6 +581,9 @@ func TestBadgerStoreLoadIndexesRebuildsRelationshipIndexesFromEntityRow(t *testi
 }
 
 func TestBadgerStoreLoadIndexesRebuildsNodeLabelsFromEntityRow(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -1089,6 +1101,9 @@ func TestBadgerStoreReadsRejectMismatchedWireIDs(t *testing.T) {
 // ─── LRU cache + flush tests ────────────────────────────────────────────────
 
 func TestBadgerStoreFlushPersistence(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -1693,6 +1708,9 @@ func TestBadgerStoreCountersPersistAtomicallyWithData(t *testing.T) {
 // ─── Gap 2: Background Processes ────────────────────────────────────────────
 
 func TestBadgerStoreFlushLoopAutoFlush(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -1740,6 +1758,9 @@ func TestBadgerStoreFlushLoopAutoFlush(t *testing.T) {
 }
 
 func TestBadgerStoreRapidWritesBetweenFlushes(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 

@@ -48,6 +48,9 @@ func TestBadgerStorePutGetNode(t *testing.T) {
 }
 
 func TestBadgerStorePutGetEntityPreservesTypedNilPropertiesAfterReopen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -693,6 +696,9 @@ func TestBadgerStoreDeleteNodeCleansLabelIndex(t *testing.T) {
 }
 
 func TestBadgerStoreDeleteNodeAfterReopen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -1056,6 +1062,9 @@ func TestBadgerStoreReplaceNode(t *testing.T) {
 }
 
 func TestBadgerStoreReplaceNodePersistsNodeRow(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 

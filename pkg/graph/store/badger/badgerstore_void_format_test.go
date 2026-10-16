@@ -20,6 +20,9 @@ import (
 // void flag dropped by the store's encode path.
 // Not parallel: it moves maxReadableStoreFormatVersion.
 func TestVoidRowRaisesStoreFormatMarker(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, kind := range []string{"node", "rel"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := t.TempDir()

@@ -125,6 +125,9 @@ func idOverlayKinds() []idOverlayKind {
 // the counter case, a DELETE of the same key after its SET, which must still
 // mask. Twenty fresh stores each (map iteration order varies).
 func TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	const id = 77
 	shapes := []struct {
 		name string

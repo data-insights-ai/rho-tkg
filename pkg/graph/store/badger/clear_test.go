@@ -182,6 +182,9 @@ func TestBadgerStoreClear_AcquiresFlushMu(t *testing.T) {
 // store. A deterministic version would require a flush hook in
 // production code, which we deliberately avoid.
 func TestBadgerStoreClear_NoResurrectionAfterReopen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 

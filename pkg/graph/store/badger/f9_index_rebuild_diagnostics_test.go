@@ -67,6 +67,9 @@ func overwriteIndexDefsForTest(t *testing.T, dir string, key []byte, defs any) {
 }
 
 func TestIndexRebuildStats_PropertyIndex_SkipsAreReportedAndLogged(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -115,6 +118,9 @@ func TestIndexRebuildStats_PropertyIndex_SkipsAreReportedAndLogged(t *testing.T)
 }
 
 func TestIndexRebuildStats_PropertyDuplicateDefinitionScansOnce(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -159,6 +165,9 @@ func TestIndexRebuildStats_PropertyDuplicateDefinitionScansOnce(t *testing.T) {
 }
 
 func TestIndexRebuildStats_TemporalIndex_SkipsAreReportedAndLogged(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -201,6 +210,9 @@ func TestIndexRebuildStats_TemporalIndex_SkipsAreReportedAndLogged(t *testing.T)
 }
 
 func TestIndexRebuildStats_TemporalDuplicateDefinitionScansOnce(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -279,6 +291,9 @@ func TestIndexRebuildStats_CleanReopen_ReportsZero(t *testing.T) {
 // Sanity: deleting a row that doesn't exist must not return an error from the
 // rebuild path — exercises the negative branch (no skip).
 func TestIndexRebuildStats_LoggerNil_NoPanic(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -317,6 +332,9 @@ func TestIndexRebuildStats_LoggerNil_NoPanic(t *testing.T) {
 // TestIndexRebuildStats_PropertyIndex_SkipsAreReportedAndLogged for K3c's
 // composite property index rebuild loop in loadIndexesScan.
 func TestIndexRebuildStats_CompositeIndex_SkipsAreReportedAndLogged(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 

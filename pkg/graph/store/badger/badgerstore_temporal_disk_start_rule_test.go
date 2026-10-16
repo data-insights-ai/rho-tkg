@@ -20,6 +20,9 @@ import (
 // case: an older release rebuilt the keyspace mint-keyed and wrote the old
 // marker, but left the new marker in place.
 func TestTemporalIndexOnDisk_MintKeyedKeyspaceIsRebuilt(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	for _, keepV2 := range []bool{false, true} {
 		t.Run(fmt.Sprintf("keepV2=%v", keepV2), func(t *testing.T) {

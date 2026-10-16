@@ -36,6 +36,9 @@ func mustNode(t *testing.T, id int, props map[string]any) *types.Node {
 // Badger constraints land as new rows (this shape is what discovered the 8MB
 // memtable floor in the ai-assisted-soc precedent).
 func TestBadgerTuningBoundaries(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	cases := []struct {
 		name    string
 		mutate  func(*Config)

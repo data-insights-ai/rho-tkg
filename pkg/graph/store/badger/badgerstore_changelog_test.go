@@ -684,6 +684,9 @@ func TestChangeLog_ConcurrentWritersGapFreeLSNs(t *testing.T) {
 // ─── Restart: the LSN allocator resumes monotonically (crash-consistent seed) ─
 
 func TestChangeLog_RestartSeedsLSN(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -1005,6 +1008,9 @@ func TestChangeLog_ClearReAnchors(t *testing.T) {
 // (2) the durable watermark (LastLSNKey) must survive Clear+Close+Reopen so the
 // LSN allocator resumes strictly above the pre-Clear watermark (lesson 52).
 func TestChangeLog_ClearOnDiskWipesAllAndKeepsWatermark(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})
@@ -1087,6 +1093,9 @@ func TestChangeLog_ClearOnDiskWipesAllAndKeepsWatermark(t *testing.T) {
 // LastLSNKey would be gone at this point and a reopen would reseed the LSN
 // allocator to 0, colliding with a consumer's pre-Clear watermark.
 func TestChangeLog_ClearCrashAfterDataDropKeepsWatermark(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})

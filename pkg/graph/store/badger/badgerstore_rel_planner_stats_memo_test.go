@@ -24,6 +24,9 @@ import (
 // the prefetch window); after each step every counter equals a full recount
 // of the current relationships.
 func TestRelPlannerStatsMemoBounded(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Run("heap", func(t *testing.T) {
 		small := storeRelStatsRetainedHeap(t, 10_000)
 		large := storeRelStatsRetainedHeap(t, 100_000)

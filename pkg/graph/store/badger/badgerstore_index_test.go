@@ -546,6 +546,9 @@ func TestBadgerStoreCountByLabel_BatchOps(t *testing.T) {
 }
 
 func TestBadgerStoreCountByLabel_PersistenceRoundTrip(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -605,6 +608,9 @@ func TestBadgerStoreCountByLabel_PersistenceRoundTrip(t *testing.T) {
 }
 
 func TestBadgerStorePropertyIndex_SurvivesRestart(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	dir := t.TempDir()
 

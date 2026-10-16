@@ -203,6 +203,9 @@ var statsReaders = map[string]func(bs *Store) string{
 // deferred, the raw state (counters, NDV, typed min/max, dirty flag) equal,
 // and the first read through any door decodes no row.
 func TestCleanReopenRestoresPlannerStats(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	held := statsStore(t, Config{Dir: dir}, true)
 	if !strings.Contains(held, "dirty=true") {
@@ -242,6 +245,9 @@ func TestCleanReopenRestoresPlannerStats(t *testing.T) {
 // without statistics (closed with DisablePlannerStats) with the full rebuild's
 // value, not the empty deferred state.
 func TestFirstStatsReadThroughEachDoorAfterDeferredOpen(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	statsStore(t, Config{Dir: dir, DisablePlannerStats: true}, true)
 	oracle := t.TempDir()
@@ -364,6 +370,9 @@ func TestFailedKeyRepairWritesNoImage(t *testing.T) {
 // image header: a header that is the newest commit vouches for an image
 // without that write.
 func TestCloseImageExcludesWriteRacingClose(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	dir := t.TempDir()
 	bs, err := New(Config{Dir: dir})
 	if err != nil {
@@ -432,6 +441,9 @@ func TestCloseImageExcludesWriteRacingClose(t *testing.T) {
 // graph-level oracle test cannot isolate, because a damaged chunk usually
 // also fails to decode).
 func TestOpenImageHeaderGuards(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	for _, tc := range []struct {
 		name   string
 		damage func(hdr []byte) []byte

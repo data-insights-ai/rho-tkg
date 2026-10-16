@@ -84,6 +84,9 @@ func cascadeAsofWant[T storeutil.TemporalRow](hist []T, cur T, hasCur bool, pin 
 }
 
 func TestBadgerAsOfCascadeShapesEquivalentToSelectAsOf(t *testing.T) {
+	if testing.Short() && !raceEnabled {
+		t.Skip("long tier: release gate")
+	}
 	t.Parallel()
 	bs := newTestBadgerStore(t)
 	rng := rand.New(rand.NewPCG(0xCA5C, 0xADE5))
