@@ -90,7 +90,7 @@ jobs:
 
       - name: FuzzConsensusWirePreflight (v5)
         working-directory: v5
-        run: go test -run '^$' -fuzz=FuzzConsensusWirePreflight -fuzztime="$FUZZTIME" ./internal/replica/
+        run: go test -run '^$' -fuzz=FuzzConsensusWirePreflight -fuzztime="$FUZZTIME" ./internal/dist/replica/
 
       - name: FuzzDecodeCheckpoint (v5)
         working-directory: v5
@@ -102,7 +102,7 @@ jobs:
 
       - name: FuzzStrictApplicationAndCheckpoint (v5)
         working-directory: v5
-        run: go test -run '^$' -fuzz=FuzzStrictApplicationAndCheckpoint -fuzztime="$FUZZTIME" ./internal/txnproto/
+        run: go test -run '^$' -fuzz=FuzzStrictApplicationAndCheckpoint -fuzztime="$FUZZTIME" ./internal/dist/txnproto/
 
       - name: FuzzRecordCanonicalRoundTrip (v5)
         working-directory: v5
@@ -139,10 +139,10 @@ jobs:
             v5/pkg/temporal/testdata/fuzz/**
             v5/internal/state/testdata/fuzz/**
             v5/internal/raftlog/testdata/fuzz/**
-            v5/internal/replica/testdata/fuzz/**
+            v5/internal/dist/replica/testdata/fuzz/**
             v5/internal/idalloc/testdata/fuzz/**
             v5/internal/graphstate/testdata/fuzz/**
-            v5/internal/txnproto/testdata/fuzz/**
+            v5/internal/dist/txnproto/testdata/fuzz/**
             v5/internal/assertion/testdata/fuzz/**
             v5/internal/graphstore/testdata/fuzz/**
           retention-days: 14

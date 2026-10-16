@@ -160,7 +160,7 @@ class Planning(unittest.TestCase):
         self.assertTrue(CI.PROTOCOL_PREDECESSOR_INPUTS <= CI.P06_PROGRAM_INPUTS)
         self.assertTrue(CI.PROTOCOL_STATE_INPUTS | CI.PROTOCOL_PROGRAM_INPUTS <= CI.STATE_PROGRAM_INPUTS)
         with patch.object(CI.subprocess, "run") as run:
-            CI.cdc(["tools/v5-substrate/README.md", "v5/internal/graphapply/unrelated_test.go"])
+            CI.cdc(["tools/v5-substrate/README.md", "v5/internal/dist/graphapply/unrelated_test.go"])
             run.assert_not_called()
 
     def test_owned_watchdog_selection_is_private_and_once(self):
@@ -259,7 +259,7 @@ class Planning(unittest.TestCase):
         self.assertFalse(p["comparison"] or p["migration"] or p["external"])
 
     def test_v5_only_and_root_reader_modules(self):
-        p = CI.plan(["v5/internal/replica/receiving.go"])
+        p = CI.plan(["v5/internal/dist/replica/receiving.go"])
         self.assertEqual([m["module"] for m in p["matrix"]["include"]], ["v5"])
         self.assertFalse(p["root_behavior"])
         self.assertFalse(p["migration"])
@@ -323,15 +323,15 @@ class Planning(unittest.TestCase):
             folder = Path(tmp) / "v5"
             folder.mkdir()
             (folder / "go.mod").write_text("module m\n")
-            packages = json.dumps({"ImportPath": "m/internal/replica"})
+            packages = json.dumps({"ImportPath": "m/internal/dist/replica"})
             with patch.object(CI, "command", return_value=packages), patch.object(CI.subprocess, "run") as run:
-                CI.execute("v5", ["v5/internal/replica/receiver.go"], Path(tmp) / "out", "HEAD")
+                CI.execute("v5", ["v5/internal/dist/replica/receiver.go"], Path(tmp) / "out", "HEAD")
             calls = [c.args[0] for c in run.call_args_list]
             self.assertEqual(len(calls), 3)
             for args in calls:
                 self.assertIn("-short", args)
                 self.assertIn("-count=1", args)
-                self.assertEqual(args[-1], "m/internal/replica")
+                self.assertEqual(args[-1], "m/internal/dist/replica")
             self.assertNotIn("-race", calls[0])
             self.assertIn("-race", calls[1])
             self.assertIn("-covermode=atomic", calls[2])
@@ -354,7 +354,7 @@ class RealGitSelection(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.patch = patch.object(CI, "ROOT", self.root)
         self.patch.start()
-        self.directory = self.root / "v5/internal/graphapply"
+        self.directory = self.root / "v5/internal/dist/graphapply"
         self.directory.mkdir(parents=True)
         self.git("init", "-q")
         self.git("config", "user.name", "CI fixture")
@@ -395,8 +395,8 @@ class RealGitSelection(unittest.TestCase):
         result = dispatch(base)
         self.assertEqual(result["base"], base)
         self.assertFalse(result["full"])
-        self.assertIn("v5/internal/graphapply/native_graph_cost_test.go", result["paths"])
-        self.assertNotIn("v5/internal/graphapply/native_graph_cost_test.go", dispatch("")["paths"])
+        self.assertIn("v5/internal/dist/graphapply/native_graph_cost_test.go", result["paths"])
+        self.assertNotIn("v5/internal/dist/graphapply/native_graph_cost_test.go", dispatch("")["paths"])
         for invalid, dispatched in [("HEAD^", head), (base[:8], head), ("x"*40, head), ("0"*40, head),
                                      (blob, head), (head, head), (foreign, head), (head, middle)]:
             with self.subTest(base=invalid, head=dispatched), self.assertRaises((ValueError, subprocess.CalledProcessError)):
@@ -406,11 +406,11 @@ class RealGitSelection(unittest.TestCase):
         path = self.directory / "old.go"
         path.write_text("package graphapply\n")
         base = self.commit()
-        target = self.root / "v5/internal/replica/new.go"
+        target = self.root / "v5/internal/dist/replica/new.go"
         target.parent.mkdir(parents=True)
         path.rename(target)
         head = self.commit()
-        self.assertEqual(CI.changed_paths(base, head), ["v5/internal/graphapply/old.go", "v5/internal/replica/new.go"])
+        self.assertEqual(CI.changed_paths(base, head), ["v5/internal/dist/graphapply/old.go", "v5/internal/dist/replica/new.go"])
 
     def test_actual_a_companion_always_selected_for_admission_source(self):
         source = self.directory / "graph_replacement_admission.go"
@@ -800,13 +800,13 @@ for a in args:
 
 class CurrentRepository(unittest.TestCase):
     def test_checked_compatibility_names_exist_in_current_sources(self):
-        directory = CI.ROOT / "v5/internal/graphapply"
+        directory = CI.ROOT / "v5/internal/dist/graphapply"
         names = set().union(*(CI.parent_names(p) for p in directory.glob("*_test.go")))
         self.assertTrue(set(CI.GRAPH_COMPAT) | set(CI.COST_PARENTS) | set(CI.FAULT_PARENTS) | set(CI.WORKLOAD_PARENTS) | set(CI.IMMUTABLE_PARENTS) | set(CI.CORRECTION_PARENTS) | set(CI.TRANSFER_PARENTS) | set(CI.PROTOCOL_PARENTS) | set(CI.SNAPSHOT_SENDER_PARENTS) | set(CI.P06_PROGRAM_PARENTS) | set(CI.STATE_PROGRAM_PARENTS) <= names)
         self.assertIn("TestGraphReplacementAdmissionNativeSurvivingQuorumAllAgreements", CI.GRAPH_COMPAT)
 
     def test_explicit_cost_cell_is_short_guarded_before_profile(self):
-        text = (CI.ROOT / "v5/internal/graphapply/native_graph_cost_test.go").read_text()
+        text = (CI.ROOT / "v5/internal/dist/graphapply/native_graph_cost_test.go").read_text()
         cell = text.split("func TestNativeGraphCostCell(t *testing.T) {", 1)[1].split("\nfunc ", 1)[0]
         self.assertLess(cell.index("testing.Short()"), cell.index("nativeGraphCostSpecFromEnv()"))
         self.assertIn('t.Skip("explicit cost cell is excluded from routine short CI")', cell)

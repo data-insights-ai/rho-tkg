@@ -21,8 +21,8 @@ set -euo pipefail
 if [[ "\$1" == list ]]; then
   if [[ "\${FAKE_GO_PROFILE-root}" == v5 ]]; then
     case "\${@: -1}" in
-      ./...) printf '%s\n' $mod/internal/a $mod/internal/graphapply $mod/internal/z ;;
-      ./internal/graphapply) echo $mod/internal/graphapply ;;
+      ./...) printf '%s\n' $mod/internal/a $mod/internal/dist/graphapply $mod/internal/z ;;
+      ./internal/dist/graphapply) echo $mod/internal/dist/graphapply ;;
       *) exit 1 ;;
     esac
     exit 0
@@ -39,7 +39,7 @@ fi
 if [[ " \$* " == *' -list '* ]]; then
   printf '%s\n' TestA TestB TestC TestD TestE TestF FuzzG ExampleH TestI
   if [[ "\${FAKE_GO_PROFILE-root}" == v5 ]]; then
-  echo "ok  	$mod/internal/graphapply	0.1s"
+  echo "ok  	$mod/internal/dist/graphapply	0.1s"
   else
   echo "ok  	$core	0.1s"
   fi
@@ -122,7 +122,7 @@ run '' 4 v5 || fail "v5 full sequence exited nonzero: $(cat "$work/out")"
 [[ $(log | wc -l) -eq 5 ]] || fail "v5 sequence ran: $(log)"
 grep -q 'all v5 packages and graphapply shards passed' "$work/out" || fail "v5 completion marker missing"
 run graphapply-4 4 v5 || fail "v5 graphapply-4 exited nonzero"
-[[ "$(log)" == "test -short -race -count=1 -run ^(TestB|TestF)\$ $mod/internal/graphapply" ]] || fail "v5 parent shard: $(log)"
+[[ "$(log)" == "test -short -race -count=1 -run ^(TestB|TestF)\$ $mod/internal/dist/graphapply" ]] || fail "v5 parent shard: $(log)"
 run core-1 4 v5 && fail "v5 accepted a root selector"
 [[ ! -s "$FAKE_GO_LOG" ]] || fail "v5 invalid selector ran tests"
 
