@@ -577,6 +577,7 @@ func (st *pageState) candidate(rd *reader) (Ref, bool, error) {
 				if st.idDone {
 					return Ref{}, false, nil
 				}
+				rd.e.scanPages.Add(1)
 				page, complete, err := rd.rv.EntityIDs(rd.ctx, st.idLast, entityChunk)
 				if err != nil {
 					return Ref{}, false, err

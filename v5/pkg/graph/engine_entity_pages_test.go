@@ -67,11 +67,15 @@ func TestUnindexedScanWithHugeSeedPagesStoredEntities(t *testing.T) {
 		}
 	}
 	sel := Selector{View: ViewDeclared, Valid: all, Known: knownAll(t)}
+	before := g.eng.(*pebbleEngine).scanPages.Load()
 	for _, rows := range []int{100, 2, 1} {
 		got, err := run(sel, rows)
 		if err != nil || !slices.Equal(got, want) {
 			t.Errorf("rows=%d: got %v err=%v, want %v", rows, got, err, want)
 		}
+	}
+	if n := g.eng.(*pebbleEngine).scanPages.Load() - before; n > 1+2+4 {
+		t.Errorf("entity page fetches: %d, want <= 7 (cost follows the stored entities)", n)
 	}
 }
 
@@ -103,6 +107,18 @@ func TestEndShortensEarlierLifeAfterReopen(t *testing.T) {
 	}
 	defer g2.Close()
 	all := scopeAll(t)
+	// The named scope must lie in one life; a scope ending where life 2 starts
+	// or spanning both lives is refused, and an End at life 1's own end is a no-op.
+	noCommit(t, g2, "End [0,200) names no life's end", ErrInvalidScope, func(tx Tx) error {
+		return tx.End(End{Target: ra, Scope: spanMS(t, 0, 200)})
+	})
+	noCommit(t, g2, "End [50,250) spans two lives", ErrInvalidScope, func(tx Tx) error {
+		return tx.End(End{Target: ra, Scope: spanMS(t, 50, 250)})
+	})
+	update(t, g2, func(tx Tx) error { return tx.End(End{Target: ra, Scope: spanMS(t, 0, 100)}) })
+	if got := rowsView(t, g2, ViewDeclared, []types.NodeID{a}, nil, scopeAll(t)); len(got) != 2 || !sameScope(t, got[0].Valid, spanMS(t, 0, 100)) || !sameScope(t, got[1].Valid, spanMS(t, 200, 300)) {
+		t.Fatalf("End at life 1's end must change nothing: %d rows", len(got))
+	}
 	// Life 1 ends at 50 although life 2 lies after it; life 2 is untouched.
 	update(t, g2, func(tx Tx) error { return tx.End(End{Target: ra, Scope: spanMS(t, 0, 50)}) })
 	got := rowsView(t, g2, ViewDeclared, []types.NodeID{a}, nil, all)

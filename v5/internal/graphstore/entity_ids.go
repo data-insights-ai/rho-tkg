@@ -19,6 +19,8 @@ type EntityKindID struct {
 // partition with an ID greater than after (zero starts at the beginning);
 // complete is false when more follow. It pages the entity record rows
 // themselves, so the cost follows the entities stored, never the ID range.
+// It reads this partition only (v5.0 has one); a multi-partition engine must
+// merge per-partition pages.
 func (v *ReadView) EntityIDs(ctx context.Context, after graphstate.EntityID, limit int) (ids []EntityKindID, complete bool, err error) {
 	if v == nil || limit < 1 {
 		return nil, false, ErrInvalid

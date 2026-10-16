@@ -485,7 +485,8 @@ func (t *engineTx) SetMeta(key string, value []byte) error {
 	return nil
 }
 
-// End closes the target from the upper bound of Scope to +infinity.
+// End closes the target from the upper bound of Scope to +infinity, or to the
+// next life's start when a later life stands (an empty tail is ErrInvalidScope).
 func (t *engineTx) End(o End) error {
 	if err := t.pre(o); err != nil {
 		return err
@@ -504,20 +505,10 @@ func (t *engineTx) End(o End) error {
 		return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
 	}
 	id, _ := target(o.Target)
-	// The life is the one holding the point p (the first instant the entity is
-	// gone); a p exactly at the life's end lies in none, so the scope before it names it.
-	at, err := temporal.Point(p)
+	// The named scope must lie in one life, as for every other op.
+	life, err := t.lifeFor(id, o.Scope)
 	if err != nil {
-		return t.fail(fmt.Errorf("%w: %v", ErrInvalidScope, err))
-	}
-	life, err := t.lifeFor(id, at)
-	if err != nil {
-		if !errors.Is(err, ErrInvalidScope) {
-			return t.fail(err)
-		}
-		if life, err = t.lifeFor(id, o.Scope); err != nil {
-			return t.fail(err)
-		}
+		return t.fail(err)
 	}
 	// A later life stands: the tail stops where it starts.
 	if next, ok, err := t.nextLifeStart(id, life, p); err != nil {
