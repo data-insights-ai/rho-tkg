@@ -114,6 +114,53 @@ def io_receipt(receipt, case):
         require(op["Written"] == 0, "failed IO claimed native write")
 
 
+def pinned_wal_close_failure(actual, receipt, case):
+    """Exact pinned native fail-stop signature, after full IO/owner binding."""
+    if case != "wal-short-write" or type(actual["ExitCode"]) is not int or actual["ExitCode"] != 2 or actual["Signaled"] is not False or actual["Stdout"] != "":
+        return False
+    stderr = actual["Stderr"]
+    if type(stderr) is not str or len(stderr.encode()) > 64 << 10 or stderr.count("panic: ") != 1:
+        return False
+    # Pebble2.1.7's panic value is opaque withStack, not the underlying error text.
+    # io_receipt already authenticates the exact short prefix/PID/cookie.
+    if receipt["Kind"] != "short-write":
+        return False
+    op = receipt["IO"]
+    if (Path(op["Path"]).name != op["Path"] or not any(op["InputSHA256"]) or not any(op["WrittenSHA256"])
+            or op["InputSHA256"] == op["WrittenSHA256"]):
+        return False
+    trace = stderr.split("panic: ", 1)[1]
+    if not trace.startswith("(*withstack.withStack) 0x") or "fatal error: sync: unlock of unlocked mutex\n" not in trace:
+        return False
+    stack = trace.split("\ngoroutine ", 1)
+    if len(stack) != 2:
+        return False
+    header, separator, trace = stack[1].partition("\n")
+    if not separator or not header.endswith(" [running]:"):
+        return False
+    trace = trace.split("\n\ngoroutine ", 1)[0]
+    first_native = trace.split("\ngithub.com/cockroachdb/pebble/v2.", 1)
+    if len(first_native) != 2 or not first_native[1].startswith("(*DB).rotateWAL("):
+        return False
+    for frame in (
+        "\ngithub.com/cockroachdb/pebble/v2.(*DB).rotateWAL(",
+        "/github.com/cockroachdb/pebble/v2@v2.1.7/db.go:2822 +",
+        "\ngithub.com/cockroachdb/pebble/v2.(*DB).makeRoomForWrite(",
+        "\ngithub.com/cockroachdb/pebble/v2.(*DB).commitWrite.func1(",
+        "\ngithub.com/cockroachdb/pebble/v2.(*DB).commitWrite(",
+        "\ngithub.com/cockroachdb/pebble/v2.(*commitPipeline).prepare(",
+        "\ngithub.com/cockroachdb/pebble/v2.(*commitPipeline).Commit(",
+        "\ngithub.com/cockroachdb/pebble/v2.(*DB).applyInternal(",
+        "\ngithub.com/cockroachdb/pebble/v2.(*Batch).Commit(",
+        "\ngithub.com/data-insights-ai/rho-tkg/v5/internal/raftlog.(*Store).commitStableBatch(",
+        "\ngithub.com/data-insights-ai/rho-tkg/v5/internal/raftlog.(*ApplicationReadyProgress).PersistFull(",
+    ):
+        if frame not in trace:
+            return False
+        trace = trace.split(frame, 1)[1]
+    return True
+
+
 def program_leaders(context):
     """Shape only; the fresh wrapper first authenticates actual native roles."""
     require(type(context) is dict and set(context) == {"leaders"} and type(context["leaders"]) is tuple and
@@ -137,7 +184,9 @@ def processes(rows, receipt, case, *, program_roles=None):
         require(len(rows) == (3 if case == "directory-sync-during-reopen" else 2), "native failure/reopen census")
         failed, reopened = rows[-2:]
         actual = json.loads(P.raw(failed["Raw"]))
-        require(failed["Action"] == "native-io-failure" and failed["Reaped"] is True and failed["Member"] == actual["Member"] == receipt["Member"] and actual["PID"] == receipt["PID"] and actual["ExitCode"] == 1 and actual["Signaled"] is False and actual["Reaped"] is True and actual["Receipt"] == receipt and actual["Volume"] == failed["Volume"] and receipt["IO"]["Error"] in actual["Stderr"] + actual["Stdout"], "unreaped/unmatched native failure")
+        fatal = actual["ExitCode"] == 1 and receipt["IO"]["Error"] in actual["Stderr"] + actual["Stdout"]
+        fatal = fatal or pinned_wal_close_failure(actual, receipt, case)
+        require(failed["Action"] == "native-io-failure" and failed["Reaped"] is True and failed["Member"] == actual["Member"] == receipt["Member"] and actual["PID"] == receipt["PID"] and fatal and actual["Signaled"] is False and actual["Reaped"] is True and actual["Receipt"] == receipt and actual["Volume"] == failed["Volume"], "unreaped/unmatched native failure")
         killed = rows[0]
         if case == "directory-sync-during-reopen":
             os_kill = json.loads(P.raw(killed["Raw"]))

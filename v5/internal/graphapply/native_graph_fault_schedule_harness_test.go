@@ -1112,6 +1112,57 @@ func nativeFaultCaptureManifest(h *graphProcessHub, actor uint64) (func() ([]byt
 	}, nil
 }
 
+// This is one pinned Pebble2.1.7 fail-stop path, not a general panic allowance.
+// rotateWAL drops DB.mu before Close; its Close-error panic then meets the
+// caller's deferred Unlock. The actual error is an opaque withStack in Go's
+// panic dump, so the separately authenticated matched IO receipt is essential.
+func nativeFaultPinnedWALCloseFailure(r nativeFaultReceipt, exit int, signaled bool, stderr, stdout string) bool {
+	if exit != 2 || signaled || stdout != "" || len(stderr) > processStderrBytes || r.Version != 1 || r.Profile != nativeFaultProfile || r.Cookie == ([16]byte{}) || r.Member != 1 || r.PID == 0 || r.Sequence != 1 || r.Arms != 1 || r.Nth != 1 || r.Seen != 1 || r.Armed || !r.Matched || r.Kind != "short-write" {
+		return false
+	}
+	op := r.IO
+	if op.Kind != "write" || op.Directory || filepath.Base(op.Path) != op.Path || !strings.HasSuffix(op.Path, ".log") || op.Requested == 0 || op.Requested > processFrameBytes || op.Written+1 != op.Requested || op.Error != io.ErrShortWrite.Error() || op.InputSHA256 == ([32]byte{}) || op.WrittenSHA256 == ([32]byte{}) || op.InputSHA256 == op.WrittenSHA256 {
+		return false
+	}
+	_, trace, found := strings.Cut(stderr, "panic: ")
+	if !found || strings.Count(stderr, "panic: ") != 1 || !strings.HasPrefix(trace, "(*withstack.withStack) 0x") || !strings.Contains(trace, "fatal error: sync: unlock of unlocked mutex\n") {
+		return false
+	}
+	// Only the first, actually running panic stack can explain the exit. A
+	// separate goroutine's innocent WAL frame is not causal failure evidence.
+	_, trace, found = strings.Cut(trace, "\ngoroutine ")
+	header, trace, stackFound := strings.Cut(trace, "\n")
+	if !found || !stackFound || !strings.HasSuffix(header, " [running]:") {
+		return false
+	}
+	trace, _, _ = strings.Cut(trace, "\n\ngoroutine ")
+	_, firstNative, found := strings.Cut(trace, "\ngithub.com/cockroachdb/pebble/v2.")
+	if !found || !strings.HasPrefix(firstNative, "(*DB).rotateWAL(") {
+		return false
+	}
+	// Ordered native frames bind the Close-error branch, not Create's distinct
+	// panic site or an unrelated fatal elsewhere in this dependency/process.
+	for _, frame := range []string{
+		"\ngithub.com/cockroachdb/pebble/v2.(*DB).rotateWAL(",
+		"/github.com/cockroachdb/pebble/v2@v2.1.7/db.go:2822 +",
+		"\ngithub.com/cockroachdb/pebble/v2.(*DB).makeRoomForWrite(",
+		"\ngithub.com/cockroachdb/pebble/v2.(*DB).commitWrite.func1(",
+		"\ngithub.com/cockroachdb/pebble/v2.(*DB).commitWrite(",
+		"\ngithub.com/cockroachdb/pebble/v2.(*commitPipeline).prepare(",
+		"\ngithub.com/cockroachdb/pebble/v2.(*commitPipeline).Commit(",
+		"\ngithub.com/cockroachdb/pebble/v2.(*DB).applyInternal(",
+		"\ngithub.com/cockroachdb/pebble/v2.(*Batch).Commit(",
+		"\ngithub.com/data-insights-ai/rho-tkg/v5/internal/raftlog.(*Store).commitStableBatch(",
+		"\ngithub.com/data-insights-ai/rho-tkg/v5/internal/raftlog.(*ApplicationReadyProgress).PersistFull(",
+	} {
+		_, trace, found = strings.Cut(trace, frame)
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
 // Wait for the actual native fatal exit before fallback kill. A scheduled IO
 // error is not qualified as a native failure if only our timeout/SIGKILL exits.
 // This also owns a candidate failing before its first Ready/IPC incarnation.
@@ -1179,13 +1230,14 @@ func nativeFaultReap(t *testing.T, p *graphProcess, member uint64, dir string, r
 	torn := receipt.Kind == "torn-wal-kill" || transition
 	stderr, overflow := p.stderr.state()
 	stdout, outputOverflow := output.state()
-	if !ok || torn && (!status.Signaled() || status.Signal() != syscall.SIGKILL) || !torn && (status.Signaled() || p.cmd.ProcessState.ExitCode() != 1) {
+	pinnedClose := nativeFaultPinnedWALCloseFailure(receipt, p.cmd.ProcessState.ExitCode(), status.Signaled(), stderr, stdout)
+	if !ok || torn && (!status.Signaled() || status.Signal() != syscall.SIGKILL) || !torn && (status.Signaled() || p.cmd.ProcessState.ExitCode() != 1 && !pinnedClose) {
 		t.Fatalf("native matched IO did not cause actual failure exit: member=%d pid=%d kind=%q exit=%d status=%v stderr=%q stderrOverflow=%t stdout=%q stdoutOverflow=%t: %v", member, p.cmd.Process.Pid, receipt.Kind, p.cmd.ProcessState.ExitCode(), status, stderr, overflow, stdout, outputOverflow, p.closeErr)
 	}
 	if overflow || outputOverflow {
 		t.Fatal("native failure diagnostic exceeded bound")
 	}
-	if !torn && !strings.Contains(stderr+stdout, receipt.IO.Error) {
+	if !torn && !pinnedClose && !strings.Contains(stderr+stdout, receipt.IO.Error) {
 		t.Fatal("native fatal diagnostic does not bind matched IO error", stderr, stdout, receipt.IO.Error)
 	}
 	signalNumber := 0
