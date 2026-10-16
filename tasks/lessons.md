@@ -7,14 +7,15 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
 ## Rules digest (standing rules; the number owns the detail)
 
 - Trace the cause before asking or adding; consolidate duplicate paths, notes and rules instead of layering, docs
-  rewritten in place (84).
+  rewritten in place; every md write consolidates the owner, never append-only (84).
 - Keep todo.md and HANDOVER current: `scripts/check-ledger.sh` after every merge and before every release (80).
 - Act, do not offer: open work with a clear next step (consumer request, review finding, patch batch) starts now; ask only for the
   irreversible or materially different (81). Tick the ledger and doc targets at every release (80, 41).
 - Red first: a failing break-the-code test before the fix, a clean root-cause fix at the shared seam, no "known limitation" in
   place of work (78, 27, 77).
 - Releases: MINOR for a really new feature, PATCH otherwise (René 2026-10-14; was patch-only since 10-10), batched, one gate; behaviour changes via the deprecation ritual, no new named exceptions (79); full
-  `make test-race` before a tag (66); a green workflow means its gates ran (75).
+  `make test-race` before a tag (66); a green workflow means its gates ran (75). Test tiers: new code gets `-short` tests of
+  seconds, commits grouped; long tests only at the final minor-release push (87).
 - Reviews: one round per branch, authors run lint + security first; models: builds Opus, code reviews Opus high, final Fable
   review before tagging, doc work Sonnet (79).
 - A contract over a family of doors lands in every door; test cross-door agreement (58, 59, 42, 57, 69).
@@ -25,6 +26,7 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
 - Locks: entity locks before Store writes, no reentrant RWMutex, bounded retries, swap pointers under every lock class (3, 9, 22,
   24, 66); overlays: capture before the snapshot, set-vs-delete per key (54, 57, 64).
 - Persistence: rebuild at open and fail closed; change-log in-backend; flush work before the watermark (10, 40, 49-53).
+- v5 is the new public API: converge on the v5 side, never change v4's API for it (86).
 - Tests: every public method, Node/Rel parity, production-shape perf, every codec kind at depth, scattered NDV inputs, oracles for
   accelerators (14, 15, 65, 68, 73, 76).
 
@@ -485,7 +487,7 @@ must scatter values. Evidence: `hyperloglog_sequential_test.go` (BACKLOG 16d).
 Rule: (1) a shared POINTER is swapped only while holding EVERY lock class its readers use (`restoreRegistries` swaps
 `c.labels`/`c.relTypes` under `c.mu.Lock` AND `registryMu`; `Close`'s persist takes `registryMu`); adding a reader on a new lock
 class means grepping every writer. (2) The pre-release race gate is the FULL `make test-race`, never a targeted `-run` subset
-(storm tests only run in the full suite; slower CI runners open windows a fast box never does).
+(storm tests only run in the full suite; slower CI runners open windows a fast box never does); when it runs: lesson 87.
 Detector: `grep -rn 'c\.labels = \|c\.relTypes = ' pkg/`.
 
 ## 67. A Raw-Byte Storage-Saving Estimate Is Not A Disk-Saving Estimate
@@ -620,8 +622,34 @@ current code (file:line, not an old note), look for a strategy that removes it (
 mechanism) and solve it if one works; ask only the remainder, naming the cause and each rejected strategy in one line.
 Consolidate, don't add: when two code paths, notes or rules do the same job, merge them into one and delete the rest instead of
 a fix, layer or note on top; check for duplication first, it is often the real bug. Docs too (lessons, backlog, HANDOVER):
-rewrite in place, delete outdated entries, never only append.
+rewrite in place, delete outdated entries, never only append. Every write of a lesson or new information into an md file (lessons,
+HANDOVER, todo, backlog, docs, memory) consolidates: merge into the owning entry, update the digest, fix pointers (René 2026-10-16).
+Recurred 2026-10-16 (same week as 0 vs 0.0): numeric equality had two rules (`EqualCount` cross-width vs width-typed
+`IndexablePropertyValueKey` lookups) and 4+ widening helpers; a probe verdict called it "INTENDED, documented" and the plan kept
+it. Documentation of two behaviours does not make them one contract.
+Detector: before any verdict "intended / documented / contract choice" on a disagreement between sibling doors, grep for the
+helpers that implement the concept (`func .*(Numeric|Widen|Equal|Key)`); two or more = consolidate (lesson 58 direction rule).
 
 ## 85. Comment Trimming Is Editing, Not A Script
 
 2026-10-14: a second comment pass cut 15,982 → 10,371 lines in 266 files with sentence-boundary scripts run by six Sonnet agents. The Opus check found ~260 passages to restore: sentences cut mid-word with a period added, and dropped `Concurrency:` / `Caller holds` / `Errors:` / `lesson N` / format-marker paragraphs, so exported godoc lost its contract and surviving comments pointed at deleted text. Rule: trim comments by hand, file by file. Never cut inside a sentence. Never drop lock-order, caller-holds, crash-ordering, re-entrancy, error/nil/ownership/concurrency contract or format-compatibility lines. Every comment pass gets an Opus check of the diff for lost invariants before merge. The pass was discarded, not patched.
+
+## 86. v5 Convergence Happens In v5, Not In v4
+
+Rule: when the goal is "v5 becomes the new public API", do not propose v4 API changes (deprecations, mirror doors, godoc notes)
+to converge on v5; v4 stays as it is for its live consumers, and the path is built on the v5 side (public v5 packages, v4→v5
+door map, compat façade, conformance suite). René 2026-10-16: "no, we do not want this in v4. we want a path for v5 to be the new
+public api".
+Trigger: a recommendation that touches the v4 public API for the sake of v5.
+Detector: a v5-related ledger row whose deliverable names a v4 file or a v4.x release.
+
+## 87. Fast Tests Per Commit, Long Tests Only Before The Release Push
+
+Rule: every newly developed code part gets fast tests that pass under `go test -short` in a couple of seconds per package;
+anything slow (large-scale oracles, long fuzz runs, production-size benches, full `-race` sweeps, `make ci-docker`) is guarded by
+`if testing.Short() { t.Skip(...) }` or lives in a bench/fuzz target, and runs only in the gate before pushing the final minor
+release. Commits are grouped (several related changes per commit), each group green on the short tests of the touched packages.
+René 2026-10-16: "make new fast tests for new developed code parts.. and long tests just for the push for the final minor
+version.. lets group commits then together with short tests (a couple of seconds)".
+Trigger: writing a new test, or choosing what to run before a commit.
+Detector: `go test -short` of a touched package takes more than ~5 s, or a commit's gate ran the long suite.

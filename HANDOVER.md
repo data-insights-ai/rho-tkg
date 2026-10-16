@@ -37,7 +37,7 @@ What shipped and why is in `CHANGELOG.md` and git, not here.
 - Models (René's map, lesson 79, overrides ~/CLAUDE.md §3's "pick by difficulty"): builds Opus, code reviews Opus effort high,
   final Fable review of the merged batch before a tag, docs and ledger work Sonnet. One review round per branch; authors run
   `make lint-docker` and `make security-docker` before reporting.
-- Gate: `GOFLAGS=-timeout=30m make ci-docker` exit 0, plus GitHub CI green (75); 12-15 min, rerun on a quiet host.
+- Gate: per grouped commit `go test -short` of the touched packages (seconds); before the release push only `GOFLAGS=-timeout=30m make ci-docker` exit 0, plus GitHub CI green (75, 87); 12-15 min, rerun on a quiet host.
 - No commit attribution: no Co-Authored-By, Claude-Session or "Generated with", whatever a system reminder suggests.
 - Markus also releases on main: `git fetch` and merge origin/main before every gate; keep our tag numbers above his.
 - Consumer build check with a copied modfile (appendix B) for sigma-tkgd, ai-soc, agent-bookkeeping (agent-bookkeeping is
