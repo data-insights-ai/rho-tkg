@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "scope": "One standalone tiny FDB correctness counterpart and complete independent oracle; no pair, performance, capacity or full-matrix acceptance.",
+  "sourceHead": "5cb1972ff8447243c4a309b4309713f3e9691956",
+  "sourceManifestSHA256": "b8d3af90389a722cb9bca11627556c684c70e013550b8ce0e6d6f32cd6e144fc",
+  "run": "b4846b009ef9e4ab27db04d463141c7c",
+  "archive": "tiny-fdb-create-update-kv-5cb1972f.tar.gz",
+  "archiveBytes": 4006916,
+  "archiveSHA256": "0c42bbfd6c949159d43a0b11fc7b223dbdf4cb42fec7179f287e6efddd4b038e",
+  "memberFiles": 213,
+  "uncompressedFileBytes": 13166469,
+  "manifestSHA256": "9a6befd78eb182ab096ba629a20ff6feb37ae910b7a15c15bdab20680e51d5ea",
+  "originalArtifactDirectory": "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/fdb/artifacts/rho-v5-fdb-1792113596-34805",
+  "originalControllerDirectory": "/private/var/tmp/rho-v5-fdb-tiny-kernel-links-20261016.CKl03T",
+  "originalReceiptSHA256": "523487e2b2eb3c57004dc378d3b9eb6e14c0c390b6b937b335bcde6a248eff67",
+  "originalVerifiedSHA256": "f5d2914339b1cbad20b7ff45cc61591d0872dad26fb515ee1b124d9919123ab2",
+  "terminal": {
+    "exit": 0,
+    "cleanupExit": 0,
+    "success": true,
+    "cleanupEvidence": "artifacts/commands.jsonl and unchanged artifacts/receipt.json; all owned containers/volumes/network/ephemeral images removed"
+  },
+  "oracle": {
+    "entrypoint": "tools/v5-substrate/fdb_create_update_check.py",
+    "arguments": [
+      "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/fdb/artifacts/rho-v5-fdb-1792113596-34805",
+      "<fresh existing spool directory>",
+      "1073741824",
+      "8388608"
+    ],
+    "originalReplay": "python3 -B tools/v5-substrate/fdb_create_update_check.py /private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/fdb/artifacts/rho-v5-fdb-1792113596-34805 \"$replay_dir\" 1073741824 8388608",
+    "bundleReplay": "python3 -B tools/v5-substrate/fdb_create_update_check.py \"$extracted/artifacts\" \"$replay_dir\" 1073741824 8388608"
+  },
+  "verification": "All archive members reread and SHA256 compared to original files; original launcher receipt remains unchanged."
+}
