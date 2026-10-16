@@ -45,7 +45,7 @@ func (ms *Store) ForEachRelByType(token uint16, opts QueryOpts, fn func(*types.R
 	}
 	ids = storepkg.PaginateRelIDs(ids, opts.After, 0)
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	emitted := 0
 	for _, id := range ids {
 		ms.mu.RLock()
@@ -162,7 +162,7 @@ func (ms *Store) forEachRelByTypeSegmentsRLocked(token uint16, opts QueryOpts, f
 	if err != nil {
 		return err
 	}
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	emitted := 0
 	for _, ref := range refs {
 		if opts.After != 0 && types.EntityID(ref.id) <= opts.After {

@@ -85,7 +85,7 @@ func (bs *Store) ForEachNodeByLabelPropertyRange(token uint16, propKey string, m
 	storepkg.SortNodeIDs(nids)
 	nids = storepkg.PaginateNodeIDs(nids, opts.After, 0)
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	emitted := 0
 	for _, nid := range nids {
 		n, err := bs.prefetchNodeScan(nid)

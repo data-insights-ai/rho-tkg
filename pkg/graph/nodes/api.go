@@ -573,9 +573,10 @@ func (a *API) RangeCardinalityAt(label, propKey string, min, max float64, inclMi
 // order, the nodes carrying label of which some row recorded at pin (every
 // valid-time version known at pin, those of nodes deleted before pin
 // included, retracted lives dropped: the rows ByLabelAndProperty(label, key,
-// v, opts) matches under opts = {ValidStart: 1, ValidEnd: MaxInt64, TxAt:
-// pin}) holds a numeric value of key within [min, max] per the flags (a
-// float32 widened, NaN never in range; sigma-tkgd round 9 R9-1). The visited
+// v, opts) matches under opts = {ValidStart: types.UnboundedValidFrom,
+// ValidEnd: MaxInt64, TxAt: pin}) holds a numeric value of key within
+// [min, max] per the flags (a float32 widened, NaN never in range;
+// sigma-tkgd round 9 R9-1). The visited
 // set is the union over every value v in range of ByLabelAndProperty's
 // matches at those opts. fn receives the newest such row of the node (the
 // caller resolves the node's effective timeline itself); false stops. pin <=

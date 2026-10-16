@@ -14,7 +14,7 @@ package graph_test
 //     before the update), a deleted entity (no live row), a node whose label was
 //     removed later (rule 16: the label held only on an earlier version), and
 //     yields the live value instead of the value at t.
-//   - "transaction-time pins ignored": storeutil.HasTemporalFilter checks valid
+//   - "transaction-time pins ignored": QueryOpts.HasValidTimeFilter checks valid
 //     time only, so a TxAt / TxPin scan takes the unfiltered current-row shortcut:
 //     it over-reports an entity created after the pin and misses one deleted after
 //     it.
@@ -493,7 +493,7 @@ func filterNamed(m map[string]int64, min, max float64) map[string]int64 {
 // TestScanDoorsAgreeWithByLabelOpts_NodeRange catches the current-row
 // push-down in Nodes().ForEachByLabelPropertyRange (badger
 // ForEachNodeByLabelPropertyRange filtering the live row through
-// storeutil.HasTemporalFilter, which ignores TxAt/TxPin) and the
+// QueryOpts.HasValidTimeFilter, which ignores TxAt/TxPin) and the
 // index-required decline under a temporal opt (memory, tiered, sharded). The
 // reference is ByLabel(opts) with the range applied to the resolved version's
 // value — the same value-at-t the ordered sibling sorts on.

@@ -53,7 +53,7 @@ func (bs *Store) ForEachRelByType(token uint16, opts QueryOpts, fn func(*types.R
 	rids = bs.filterRelIDsByTemporalPeek(rids, opts)
 	rids = storepkg.PaginateRelIDs(rids, opts.After, 0)
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	emitted := 0
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)

@@ -198,7 +198,7 @@ func (ms *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 				if !r.HasPropertyIndexKey(propKey, elements, targetKey) {
 					return false
 				}
-				return !storepkg.HasTemporalFilter(opts) || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
+				return !opts.HasValidTimeFilter() || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
 			})
 			if err != nil || len(rows) == 0 {
 				return nil, err
@@ -218,7 +218,7 @@ func (ms *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 			if !r.HasPropertyIndexKey(propKey, scanElements, targetKey) {
 				return false
 			}
-			return !storepkg.HasTemporalFilter(opts) || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
+			return !opts.HasValidTimeFilter() || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
 		})
 		if err != nil || len(rows) == 0 {
 			return nil, err
@@ -242,7 +242,7 @@ func (ms *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 
 // relsByTypePropertyFrom is the rel mirror of nodesByLabelPropertyFrom.
 func (ms *Store) relsByTypePropertyFrom(relTypeToken uint16, propKey, targetKey string, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Relationship {
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	result := make([]*types.Relationship, 0, resultCap(opts.Limit, n))
 	for raw := range ids {
 		id := types.RelID(raw)
@@ -320,7 +320,7 @@ func (ms *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey stri
 	storepkg.SortRelIDs(ids)
 	ids = storepkg.PaginateRelIDs(ids, opts.After, 0)
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	emitted := 0
 	for _, id := range ids {
 		ms.mu.RLock()

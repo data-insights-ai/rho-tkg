@@ -54,7 +54,7 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		if opts.ValidAt != 0 {
 			rawIDs = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidInterval() {
 			rawIDs = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -74,7 +74,7 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		if opts.ValidAt != 0 {
 			ids = hfi.CandidatesUpTo(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidInterval() {
 			ids = hfi.CandidatesUpTo(opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -109,7 +109,7 @@ func (ms *Store) nodesByLabelFromIDs(token uint16, ids []types.NodeID, opts Quer
 		return nil
 	}
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	capHint := len(ids)
 	if opts.Limit > 0 && opts.Limit < capHint {
 		capHint = opts.Limit
@@ -173,7 +173,7 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 		if opts.ValidAt != 0 {
 			rawIDs = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidInterval() {
 			rawIDs = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -202,7 +202,7 @@ func (ms *Store) relationshipsByTypeFromIDs(token uint16, ids []types.RelID, opt
 		return nil
 	}
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	capHint := len(ids)
 	if opts.Limit > 0 && opts.Limit < capHint {
 		capHint = opts.Limit
@@ -760,7 +760,7 @@ func (ms *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 // temporal filters before sorting so large temporal scans sort only candidates
 // that can appear in the page. Caller must hold ms.mu (read or write).
 func (ms *Store) collectNodeIDsByTemporalLocked(opts QueryOpts) []types.NodeID {
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	ids := make([]types.NodeID, 0, len(ms.nodes))
 	for id, n := range ms.nodes {
 		if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
@@ -777,7 +777,7 @@ func (ms *Store) collectNodeIDsByTemporalLocked(opts QueryOpts) []types.NodeID {
 // collectRelIDsByTemporalLocked is the relationship counterpart to
 // collectNodeIDsByTemporalLocked. Caller must hold ms.mu (read or write).
 func (ms *Store) collectRelIDsByTemporalLocked(opts QueryOpts) ([]types.RelID, error) {
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	ids := make([]types.RelID, 0, len(ms.rels))
 	for id, r := range ms.rels {
 		if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {

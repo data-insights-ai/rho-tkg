@@ -1036,29 +1036,13 @@ func (c *Core) forEachRelHistoryIDByDepthTrusted(depth storepkg.ShardDepth, fn f
 }
 
 // hasTemporalFilter reports whether opts carries a temporal filter that
-// requires history-aware resolution. Matches the Store-level storepkg.QueryOpts
-// contract: ValidStart/ValidEnd form an interval filter ONLY when both are
-// greater than zero; a single one-sided or non-positive bound is treated as "no
-// filter" so the call falls through to the non-temporal fast path. Without this
-// guard the interval predicate `vStart < end && (vEnd == 0 || vEnd > start)`
-// collapses (e.g. with end <= 0) and rejects every entity, which would break
-// AllNodes(storepkg.QueryOpts{ValidStart: t}) and similar non-active interval
-// callers.
-//
-// Implemented as a free function rather than a method on storepkg.QueryOpts
-// because storepkg.QueryOpts is a type alias and Go forbids defining methods on
-// a non-local aliased type.
+// requires history-aware resolution: a valid-time filter
+// (QueryOpts.HasValidTimeFilter — the one rule for ValidAt and the
+// [ValidStart, ValidEnd) interval, where only 0 is unset) or a transaction pin
+// (TxAt, TxPin). A lone ValidStart or ValidEnd is no filter, so
+// AllNodes(storepkg.QueryOpts{ValidStart: t}) takes the non-temporal path.
 func hasTemporalFilter(opts storepkg.QueryOpts) bool {
-	if opts.ValidAt != 0 {
-		return true
-	}
-	if opts.TxAt != 0 {
-		return true
-	}
-	if opts.TxPin != 0 {
-		return true
-	}
-	return opts.ValidStart > 0 && opts.ValidEnd > 0
+	return opts.HasValidTimeFilter() || opts.TxAt != 0 || opts.TxPin != 0
 }
 
 // effectiveTxPin returns the transaction-time pin a candidate must have been
@@ -1298,7 +1282,7 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 		}
 		return n, nil
 	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+	if opts.HasValidInterval() {
 		return c.findNodeVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, opts.TxAt, pred)
 	}
 	if opts.TxAt != 0 {
@@ -1346,7 +1330,7 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 		}
 		return r, nil
 	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+	if opts.HasValidInterval() {
 		return c.findRelVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, opts.TxAt, pred)
 	}
 	if opts.TxAt != 0 {

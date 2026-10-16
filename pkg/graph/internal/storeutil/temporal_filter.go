@@ -84,7 +84,7 @@ func EnvelopeOverlaps(from, to types.Instant, opts storepkg.QueryOpts) bool {
 	if opts.ValidAt != 0 {
 		return from <= opts.ValidAt && (to == 0 || to > opts.ValidAt)
 	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+	if opts.HasValidInterval() {
 		return from < opts.ValidEnd && (to == 0 || to > opts.ValidStart)
 	}
 	return true
@@ -114,25 +114,13 @@ func MatchesTemporalFilterFrom(from types.Instant, tm *types.TemporalMetadata, o
 	if opts.ValidAt != 0 {
 		return from <= opts.ValidAt && (to == 0 || to > opts.ValidAt)
 	}
-	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+	if opts.HasValidInterval() {
 		if opts.ValidStart >= opts.ValidEnd {
 			return false
 		}
 		return from < opts.ValidEnd && (to == 0 || to > opts.ValidStart)
 	}
 	return true // no filter
-}
-
-// HasTemporalFilter reports whether opts contains an active VALID-TIME filter
-// for the store's CURRENT-ROW push-down (MatchesTemporalFilter on the live row).
-// It deliberately ignores TxAt and TxPin: a store holds no answer for them in its
-// current rows. The graph layer therefore never forwards any temporal filter to
-// a store query method — its doors route ValidAt, ValidStart+ValidEnd, TxAt and
-// TxPin alike through the history-aware fold (core hasTemporalFilter), pinned by
-// TestScanDoorsNeverForwardTemporalOptsToStore. Do not use this predicate to
-// decide whether a graph-level read may take a current-row shortcut.
-func HasTemporalFilter(opts storepkg.QueryOpts) bool {
-	return opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
 }
 
 // MatchesPointInTime checks: from <= t AND (to == 0 OR to > t), with from

@@ -254,7 +254,7 @@ func (bs *Store) fetchNodesByLabelPropertiesIDs(labelToken uint16, values map[st
 		return nil, nil
 	}
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	var result []*types.Node
 	for _, nid := range nids {
 		n, err := bs.prefetchNodeScan(nid)

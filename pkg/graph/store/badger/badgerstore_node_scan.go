@@ -75,7 +75,7 @@ func (bs *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 	// IDs are snapshotted under idxMu ABOVE and released, so fn runs holding no idxMu
 	// (only a badger snapshot read txn) — the relaxed-isolation "fn may call back into
 	// the graph" contract of ForEachByLabel is preserved.
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	emitted := 0
 	return bs.forEachNodeBulk(nids, func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(token) {

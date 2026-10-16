@@ -234,7 +234,7 @@ func (ts *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string,
 		}
 		return slices.DeleteFunc(rels, func(r *types.Relationship) bool {
 			return !r.HasPropertyIndexKey(key, elements, targetKey) ||
-				(storeutil.HasTemporalFilter(shardOpts) && !storeutil.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), shardOpts))
+				(shardOpts.HasValidTimeFilter() && !storeutil.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), shardOpts))
 		}), nil
 	}
 
@@ -1133,7 +1133,7 @@ func (ts *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 		return nil, nil
 	}
 	// Fetch nodes in distance order — do NOT sort by ID (would destroy distance ranking).
-	hasTemporal := storeutil.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	result := make([]*types.Node, 0, len(ids))
 	for _, id := range ids {
 		n, err := ts.GetNode(types.NodeID(id))
@@ -1158,7 +1158,7 @@ func (ts *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 }
 
 func (ts *Store) vectorTemporalFilter(vi *indexpkg.VectorIndex, key indexpkg.VectorIndexKey, dims int, opts QueryOpts, preFilter func(snowflake.ID) bool) (func(snowflake.ID) bool, error) {
-	if !storeutil.HasTemporalFilter(opts) {
+	if !opts.HasValidTimeFilter() {
 		return nil, nil
 	}
 	eligible := make(map[snowflake.ID]struct{})

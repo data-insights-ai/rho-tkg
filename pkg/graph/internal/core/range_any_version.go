@@ -12,8 +12,8 @@ import (
 // Numeric range reads over ANY version recorded at a pin (sigma-tkgd round
 // 9 request R9-1, backlog 16 as a new door).
 //
-// ByLabelAndProperty(label, key, v, {ValidStart: 1, ValidEnd: MaxInt64,
-// TxAt: pin}) matches an entity when any row recorded at pin (every
+// ByLabelAndProperty(label, key, v, {ValidStart: types.UnboundedValidFrom,
+// ValidEnd: MaxInt64, TxAt: pin}) matches an entity when any row recorded at pin (every
 // valid-time version, those of an entity deleted before the pin included,
 // retracted lives dropped) carries the label and v. The range doors at a
 // coordinate test the ONE version the label read resolves (round 8, backlog
@@ -26,9 +26,17 @@ import (
 // entity's chain then tested row by row (eachNodeChainInterval, the
 // equality door's resolver as a visitor).
 
+// anyValidStart and anyValidEnd bound "any valid time":
+// [types.UnboundedValidFrom, math.MaxInt64), a real interval filter that also
+// reaches rows valid only before the epoch (ledger row 60).
+const (
+	anyValidStart = types.UnboundedValidFrom
+	anyValidEnd   = types.Instant(math.MaxInt64)
+)
+
 // anyVersionPinOpts are the opts of every row recorded at pin.
 func anyVersionPinOpts(pin types.Instant) storepkg.QueryOpts {
-	return storepkg.QueryOpts{ValidStart: 1, ValidEnd: math.MaxInt64, TxAt: pin}
+	return storepkg.QueryOpts{ValidStart: anyValidStart, ValidEnd: anyValidEnd, TxAt: pin}
 }
 
 // anyVersionServes reports whether the sidecar range can serve the doors:
@@ -76,7 +84,7 @@ func (c *Core) nodeRangeAnyVersionLocked(tok uint16, key string, min, max float6
 			return true, err
 		}
 		rows = rows[:0]
-		c.eachNodeChainInterval(chain, 1, math.MaxInt64, pin, pred, func(n *types.Node) bool {
+		c.eachNodeChainInterval(chain, anyValidStart, anyValidEnd, pin, pred, func(n *types.Node) bool {
 			rows = append(rows, n)
 			return true
 		})
@@ -109,7 +117,7 @@ func (c *Core) relRangeAnyVersionLocked(tok uint16, key string, min, max float64
 			return true, err
 		}
 		rows = rows[:0]
-		c.eachRelChainInterval(chain, 1, math.MaxInt64, pin, pred, func(r *types.Relationship) bool {
+		c.eachRelChainInterval(chain, anyValidStart, anyValidEnd, pin, pred, func(r *types.Relationship) bool {
 			rows = append(rows, r)
 			return true
 		})

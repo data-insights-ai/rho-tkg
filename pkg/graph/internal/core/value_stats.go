@@ -2,7 +2,6 @@ package core
 
 import (
 	"errors"
-	"math"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -288,7 +287,7 @@ func (c *Core) nodeValueTallyLocked(tok uint16, key string, pin types.Instant, t
 		if err != nil {
 			return true, err
 		}
-		c.eachNodeChainInterval(chain, 1, math.MaxInt64, pin, pred, func(n *types.Node) bool {
+		c.eachNodeChainInterval(chain, anyValidStart, anyValidEnd, pin, pred, func(n *types.Node) bool {
 			if v, ok := n.GetProperty(key); ok {
 				tally.add(v)
 			}
@@ -322,7 +321,7 @@ func (c *Core) relValueTallyLocked(tok uint16, key string, pin types.Instant, ta
 		if err != nil {
 			return true, err
 		}
-		c.eachRelChainInterval(chain, 1, math.MaxInt64, pin, pred, func(r *types.Relationship) bool {
+		c.eachRelChainInterval(chain, anyValidStart, anyValidEnd, pin, pred, func(r *types.Relationship) bool {
 			if v, ok := r.GetProperty(key); ok {
 				tally.add(v)
 			}

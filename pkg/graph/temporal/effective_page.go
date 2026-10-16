@@ -13,10 +13,12 @@ const MaxPageLimit = 10_000
 // Pin is the read coordinate of the paged effective doors
 // (API.RelsEffectivePage, API.NodesEffectivePage): the transaction-time pin Tx
 // (required, > 0) and at most one valid-time filter — a point ValidAt, or the
-// half-open interval [ValidStart, ValidEnd) with 0 < ValidStart < ValidEnd,
+// half-open interval [ValidStart, ValidEnd) with ValidStart < ValidEnd,
 // or the open-ended [ValidStart, inf) with ValidEnd = 0 (unlike QueryOpts,
-// where a lone ValidStart is no filter). All valid fields zero: no valid-time
-// filter (every segment). ValidEnd without ValidStart is ErrInvalidTimeRange.
+// where a lone ValidStart is no filter). 0 is the only unset value: a
+// negative instant, types.UnboundedValidFrom included, is a real bound (since
+// v4.58.1). All valid fields zero: no valid-time filter (every segment).
+// ValidEnd without ValidStart is ErrInvalidTimeRange.
 type Pin struct {
 	Tx                   types.Instant
 	ValidAt              types.Instant
@@ -71,7 +73,7 @@ type Filter struct {
 //
 // Errors: ForEachRelEffective's gates for pin.Tx (ErrInvalidTimeRange,
 // ErrTxPinTooNew, ErrHistoryCompacted, ErrRetentionExpired),
-// ErrInvalidTimeRange for a negative or conflicting valid filter, an invalid
+// ErrInvalidTimeRange for a conflicting or reversed valid filter, an invalid
 // property key or value, ErrInvalidQueryLimit (limit < 1 or above
 // MaxPageLimit),
 // ErrInvalidQueryCursor (after < 0), ctx's error, ErrGraphClosed.

@@ -32,9 +32,13 @@ type QueryOpts struct {
 
 	// Temporal filters — zero values = no filter (backward-compatible).
 	// ValidAt takes precedence if both ValidAt and ValidStart/ValidEnd are set.
+	// 0 is the only "unset" value: a negative instant is a real one (a row may
+	// be valid before the epoch, or from -inf: types.UnboundedValidFrom), so
+	// [types.UnboundedValidFrom, math.MaxInt64) is "any valid time" with a real
+	// interval filter. HasValidInterval / HasValidTimeFilter are the one rule.
 	ValidAt    types.Instant // Point-in-time filter (valid time). 0 = disabled.
-	ValidStart types.Instant // Interval filter start. Both must be > 0 for interval filter.
-	ValidEnd   types.Instant // Interval filter end. 0 = disabled.
+	ValidStart types.Instant // Interval filter start. Both must be non-zero for an interval filter.
+	ValidEnd   types.Instant // Interval filter end (exclusive). 0 = disabled.
 
 	// TxAt restricts the chain to versions recorded by the given transaction
 	// time: TxFrom <= TxAt only. 0 = no TX filter (current behaviour: any
@@ -98,4 +102,21 @@ type QueryOpts struct {
 	// After == 0: keyset pagination (After > 0) requires sorted order, so a
 	// paginated query keeps the sort regardless of this flag.
 	NoSort bool
+}
+
+// HasValidInterval reports whether ValidStart and ValidEnd form a valid-time
+// interval filter [ValidStart, ValidEnd): both are set (non-zero). A negative
+// bound, types.UnboundedValidFrom included, is a real bound; a lone bound is no
+// filter. It does not look at ValidAt, which takes precedence. Every door and
+// store decides "interval filter or not" here (ledger row 60, v4.58.1).
+func (o QueryOpts) HasValidInterval() bool {
+	return o.ValidStart != 0 && o.ValidEnd != 0
+}
+
+// HasValidTimeFilter reports whether opts carries a valid-time filter: a point
+// ValidAt (non-zero) or an interval (HasValidInterval). It ignores TxAt and
+// TxPin: a store's current-row push-down holds no answer for them; the graph
+// layer routes every temporal filter through its history-aware fold.
+func (o QueryOpts) HasValidTimeFilter() bool {
+	return o.ValidAt != 0 || o.HasValidInterval()
 }

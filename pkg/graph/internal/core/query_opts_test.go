@@ -451,7 +451,10 @@ func TestGraphQueryNamesValidateBeforeEmptyShortcuts(t *testing.T) {
 	}
 }
 
-func TestGraphQueryOptsNonPositiveIntervalBoundsDoNotActivateTemporalFilter(t *testing.T) {
+// A zero interval bound is unset: the opts carry no interval filter. A
+// negative bound is a real one (ledger row 60, v4.58.1), so a reversed
+// negative interval is ErrInvalidTimeRange (the old rule ignored it).
+func TestGraphQueryOptsZeroIntervalBoundDoesNotActivateTemporalFilter(t *testing.T) {
 	t.Parallel()
 	g, err := New(Config{})
 	if err != nil {
@@ -475,8 +478,20 @@ func TestGraphQueryOptsNonPositiveIntervalBoundsDoNotActivateTemporalFilter(t *t
 		name string
 		opts storepkg.QueryOpts
 	}{
-		{name: "negative start", opts: storepkg.QueryOpts{ValidStart: types.Instant(-1), ValidEnd: types.Instant(1)}},
-		{name: "negative end", opts: storepkg.QueryOpts{ValidStart: types.Instant(1), ValidEnd: types.Instant(-1)}},
+		{name: "zero start, negative end", opts: storepkg.QueryOpts{ValidEnd: types.Instant(-1)}},
+		{name: "negative start, zero end", opts: storepkg.QueryOpts{ValidStart: types.Instant(-1)}},
+		{name: "zero start, positive end", opts: storepkg.QueryOpts{ValidEnd: types.Instant(1)}},
+	}
+	for _, opts := range []storepkg.QueryOpts{
+		{ValidStart: types.Instant(1), ValidEnd: types.Instant(-1)},
+		{ValidStart: types.Instant(-1), ValidEnd: types.Instant(-2)},
+	} {
+		if _, err := g.Nodes.ByLabel("Case", opts); !errors.Is(err, storepkg.ErrInvalidTimeRange) {
+			t.Errorf("Nodes.ByLabel(%+v): err = %v, want ErrInvalidTimeRange", opts, err)
+		}
+		if _, err := g.Rels.ByType("LINK", opts); !errors.Is(err, storepkg.ErrInvalidTimeRange) {
+			t.Errorf("Rels.ByType(%+v): err = %v, want ErrInvalidTimeRange", opts, err)
+		}
 	}
 
 	for _, tc := range optsCases {

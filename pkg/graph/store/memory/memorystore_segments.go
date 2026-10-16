@@ -1090,7 +1090,7 @@ func (ms *Store) adjacentForNodesLocked(result map[types.NodeID][]*types.Relatio
 // sealed rows: the same temporal-index fast path, pagination and filter
 // order (After, then the temporal filter, then Limit) over the union.
 func (ms *Store) relationshipsByTypeSegmentsLocked(token uint16, opts QueryOpts) ([]*types.Relationship, error) {
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	keep := func(r *types.Relationship) bool {
 		return !hasTemporal || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
 	}
@@ -1100,7 +1100,7 @@ func (ms *Store) relationshipsByTypeSegmentsLocked(token uint16, opts QueryOpts)
 		if opts.ValidAt != 0 {
 			rawIDs = ti.QueryAt(opts.ValidAt)
 			temporalQuery = true
-		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		} else if opts.HasValidInterval() {
 			rawIDs = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
 			temporalQuery = true
 		}
@@ -1154,7 +1154,7 @@ func (ms *Store) relsFromSeqLocked(ids iter.Seq[snowflake.ID], limit int, keep f
 // current row (sealed ones decoded page by page), filtered, ID-sorted,
 // paginated.
 func (ms *Store) allRelationshipsSegmentsLocked(opts QueryOpts) ([]*types.Relationship, error) {
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	out := make([]*types.Relationship, 0, len(ms.rels)+ms.liveSealedLocked())
 	if err := ms.forEachCurrentRelLocked(func(r *types.Relationship) bool {
 		if !hasTemporal || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts) {
@@ -1678,7 +1678,7 @@ func (ms *Store) scanRelColumnsFromSegments(token uint16, props []string, opts Q
 	fn func(*storecontract.RelColumnBatch) bool) (bool, error) {
 	ms.mu.RLock()
 	if ms.checkOpenLocked() != nil || storecontract.ValidateRelTypeToken(token) != nil ||
-		storecontract.ValidateQueryOpts(opts) != nil || storepkg.HasTemporalFilter(opts) {
+		storecontract.ValidateQueryOpts(opts) != nil || opts.HasValidTimeFilter() {
 		ms.mu.RUnlock()
 		return false, nil
 	}

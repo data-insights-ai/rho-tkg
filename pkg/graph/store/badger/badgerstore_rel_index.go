@@ -190,7 +190,7 @@ func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey, target
 	if len(rids) == 0 {
 		return nil, nil
 	}
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	rels := make([]*types.Relationship, 0, capForLimit(opts.Limit))
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)
@@ -254,7 +254,7 @@ func (bs *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey stri
 	storepkg.SortRelIDs(rids)
 	rids = storepkg.PaginateRelIDs(rids, opts.After, 0)
 
-	hasTemporal := storepkg.HasTemporalFilter(opts)
+	hasTemporal := opts.HasValidTimeFilter()
 	emitted := 0
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)

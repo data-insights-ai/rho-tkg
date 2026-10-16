@@ -441,7 +441,7 @@ func (ts *Store) PruneRelTypeTemporalCandidates(relType uint16, ids []types.RelI
 	if ts == nil {
 		return ids, false
 	}
-	if opts.ValidAt == 0 && (opts.ValidStart <= 0 || opts.ValidEnd <= 0) {
+	if !opts.HasValidTimeFilter() {
 		return ids, false
 	}
 	if err := ts.checkOpen(); err != nil {
