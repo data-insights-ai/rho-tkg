@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -351,6 +352,7 @@ func TestNativeProtocolPooledTailBackpressurePreservesMoveOwner(t *testing.T) {
 		t.Fatal("actual source Fence before unknown target", pending, err)
 	}
 	protected := rangeMoveAdmissionOwner(t, h)
+	beforeDrain := rangeMoveImportGuardReader(t, h).base
 	var deliveries []replica.Packet
 	for i := range nativeProtocolStateTailEntries - 1 {
 		event, err := h.Submit(queued[i])
@@ -365,6 +367,108 @@ func TestNativeProtocolPooledTailBackpressurePreservesMoveOwner(t *testing.T) {
 	n.pump(0, allocationEvent{packets: deliveries})
 	if owner := rangeMoveAdmissionOwner(t, h); owner != protected {
 		t.Fatal("backpressure lost recovery owner", owner, protected)
+	}
+	afterDrain := rangeMoveImportGuardReader(t, h).base
+	if !bytes.Equal(beforeDrain.Image, afterDrain.Image) || beforeDrain.ImageHash != afterDrain.ImageHash {
+		t.Fatal("fenced queued writes changed graph image")
+	}
+	targetWire := publisher.coordinator.transports[8]
+	zeroGate := &rangeMoveImportGuardGate{graphPeerWireTransport: targetWire, mode: 2}
+	publisher.coordinator.transports[8] = zeroGate
+	rangeMoveImportGuardResumeToPause(t, move, pending.resume, zeroGate)
+	zeroCommand, err := decodeRangeMoveCommand(zeroGate.importZero.wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*rangeMoveStatus){
+		func(s *rangeMoveStatus) { s.sequence++ },
+	} {
+		bad := zeroCommand
+		bad.proofs = slices.Clone(zeroCommand.proofs)
+		for i := range bad.proofs {
+			if bad.proofs[i].ns.partition == intent.source.partition {
+				mutate(&bad.proofs[i])
+				break
+			}
+		}
+		if _, err := rangeMoveImportGuardStage(t, n.hosts[1][0], bad); !errors.Is(err, errInvalid) {
+			t.Fatal("unauthenticated source summary reached Import0 batch", err)
+		}
+	}
+	gate := &rangeMoveAdmissionImportGate{graphPeerWireTransport: targetWire, sequence: 1}
+	publisher.coordinator.transports[8] = gate
+	paused, pauseErr := runMovePoolResume(t, move, pending.resume)
+	if !gate.stopped || !errors.Is(pauseErr, io.EOF) || !errors.Is(pauseErr, errRangeMovePending) || paused.resume != pending.resume {
+		t.Fatal("genuine Import0 did not reach next-page boundary", pauseErr)
+	}
+	target := n.hosts[1][2]
+	q, cfg := rangeMoveBaselineGuardReader(t, target.machine, target.driver.Applied())
+	status, found, err := readRangeMoveStatus(q, pending.resume.move)
+	if err != nil || !found || status.phase != rangeMoveImport || status.sequence != 0 {
+		t.Fatal("actual installed Import0", status, err)
+	}
+	progressWire, found, err := q.getBounded(rangeMoveProgressKey(q.ns, status.move), rangeMoveSpanProgressBytes)
+	if err != nil || !found {
+		t.Fatal(err)
+	}
+	progress, err := decodeRangeMoveProgress(progressWire, q.arena)
+	if err != nil || progress.imported == nil || progress.replayPages != 0 || progress.retentionRows == 0 || status.rows != progress.imported.Rows+progress.retentionRows || status.size != progress.imported.Bytes+progress.retainedBytes() {
+		t.Fatal("Import0 published full manifest instead of installed prefix", status, err)
+	}
+	original, found, err := crossControl(q, rangeMoveControlKey(q.ns, status.move, 'M'), 256)
+	if err != nil || !found || original.Index != status.index {
+		t.Fatal("actual atomically installed manifest proof", err)
+	}
+	nativeProtocolAssertManifestProofRefusals(t, intent, status, progress, original)
+	baseline, err := target.machine.rangeMoveCatalogBaseline(q, cfg)
+	if err != nil || baseline == nil {
+		t.Fatal("genuine Import0 baseline", err)
+	}
+	if err := baseline.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.view.Close(); err != nil {
+		t.Fatal(err)
+	}
+	configuration := n.configs[1][2]
+	configuration.Create = false
+	if err := target.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := raftlog.Open(configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine, err := newRangeMovePooledMaterializer(store, target.machine.ns, n.d, target.machine.limits)
+	if err != nil {
+		t.Fatal("same-directory Import0 Restore", err)
+	}
+	reopened, err := openAllocationHost(machine, 3, replica.Config{Store: store, ApplicationSnapshotSends: replica.ApplicationSnapshotSendLimits{MaxOffers: 2, MaxOwnedBytes: 4 << 20}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.hosts[1][2] = reopened
+	t.Cleanup(func() {
+		if err := reopened.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	publisher.coordinator.transports[8] = targetWire
+	result, err := runMovePoolResume(t, move, pending.resume)
+	if err != nil || !result.committed || result.resume != pending.resume {
+		t.Fatal("same move did not complete after real tail drain", result.source, result.target, err)
+	}
+	completedQ := rangeMoveImportGuardReader(t, n.hosts[1][0])
+	completedWire, found, err := completedQ.getBounded(rangeMoveProgressKey(completedQ.ns, result.resume.move), rangeMoveSpanProgressBytes)
+	if err != nil || !found {
+		t.Fatal(err)
+	}
+	completed, err := decodeRangeMoveProgress(completedWire, completedQ.arena)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digest, err := targetMoveManifestDigest(intent, result.target, completed, raftlog.ApplicationControlRecord{}, false); err != nil || digest != result.target.digest {
+		t.Fatal("complete old image lost original full manifest binding", err)
 	}
 }
 
@@ -393,5 +497,144 @@ func TestNativeProtocolStateTailPolicyIsExplicitAndBounded(t *testing.T) {
 	p.MaxTailEntries = base.MaxTailEntries
 	if p != base {
 		t.Fatal("other budgets changed")
+	}
+}
+
+// These are malformed diagnostic records, never native proposals or authority.
+func nativeProtocolAssertManifestProofRefusals(t *testing.T, intent rangeMoveIntent, status rangeMoveStatus, progress rangeMoveProgress, original raftlog.ApplicationControlRecord) {
+	t.Helper()
+	if digest, err := targetMoveManifestDigest(intent, status, progress, original, true); err != nil || digest != status.digest || progress.replayPages != 0 {
+		t.Fatal("genuine manifest changed installed cursor", err)
+	}
+	if _, err := targetMoveManifestDigest(intent, status, progress, original, false); !errors.Is(err, errCorrupt) {
+		t.Fatal("missing original accepted incomplete replay", err)
+	}
+	for _, mutate := range []func(*rangeMoveStatus){
+		func(s *rangeMoveStatus) { s.ns.partition = intent.target.partition },
+		func(s *rangeMoveStatus) { s.move[0] ^= 1 },
+		func(s *rangeMoveStatus) { s.intent[0] ^= 1 },
+		func(s *rangeMoveStatus) { s.sequence++ },
+		func(s *rangeMoveStatus) { s.phase = rangeMoveCapture },
+		func(s *rangeMoveStatus) { s.result = rangeMoveLimit },
+		func(s *rangeMoveStatus) { s.rows++ },
+		func(s *rangeMoveStatus) { s.size++ },
+		func(s *rangeMoveStatus) { s.digest[0] ^= 1 },
+	} {
+		bad := original
+		proof, err := decodeRangeMoveStatus(original.Value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mutate(&proof)
+		bad.Value, err = encodeRangeMoveStatus(proof)
+		if err != nil {
+			t.Fatal("canonical adversarial proof", err)
+		}
+		if _, err := targetMoveManifestDigest(intent, status, progress, bad, true); !errors.Is(err, errCorrupt) {
+			t.Fatal("foreign or resealed original accepted", err)
+		}
+	}
+	for _, mutate := range []func(*raftlog.ApplicationControlRecord){
+		func(r *raftlog.ApplicationControlRecord) { r.Key = []byte("foreign") },
+		func(r *raftlog.ApplicationControlRecord) { r.Index = 0 },
+		func(r *raftlog.ApplicationControlRecord) {
+			r.Value = bytes.Clone(r.Value)
+			r.Value[len(r.Value)-1] ^= 1
+		},
+	} {
+		bad := original
+		mutate(&bad)
+		if _, err := targetMoveManifestDigest(intent, status, progress, bad, true); !errors.Is(err, errCorrupt) {
+			t.Fatal("foreign control envelope accepted", err)
+		}
+	}
+	for _, mutate := range []func(*rangeMoveProgress){
+		func(p *rangeMoveProgress) { p.descriptor.Digest[0] ^= 1 },
+		func(p *rangeMoveProgress) { p.reference.packet[0] ^= 1 },
+		func(p *rangeMoveProgress) { p.replayEnd.digest[0] ^= 1 },
+	} {
+		bad := progress
+		mutate(&bad)
+		wire, err := encodeRangeMoveProgress(bad, moveSpanOutput(t))
+		if err != nil {
+			t.Fatal("canonical adversarial progress", err)
+		}
+		bad, err = decodeRangeMoveProgress(wire, moveSpanOutput(t))
+		if err != nil {
+			t.Fatal("resealed diagnostic framing", err)
+		}
+		if _, err := targetMoveManifestDigest(intent, status, bad, original, true); !errors.Is(err, errCorrupt) {
+			t.Fatal("changed manifest accepted against original proof", err)
+		}
+	}
+	badStatus := status
+	badStatus.rows++
+	if _, err := targetMoveManifestDigest(intent, badStatus, progress, original, true); !errors.Is(err, errCorrupt) {
+		t.Fatal("changed installed prefix accepted", err)
+	}
+}
+
+func TestNativeCollectedRangeMoveImportZeroPrefixAndRetainedOldView(t *testing.T) {
+	for _, profile := range []struct {
+		name      string
+		agreement raftlog.ApplicationSemanticContractID
+		recovery  uint32
+	}{{"collected", collectedGraphSemanticContractID(), 2}} {
+		t.Run(profile.name, func(t *testing.T) {
+			n, publisher, ops, _ := retainedPublisherFromNetwork(t, collectedGraphNetworkWithRecovery(t, func(p *raftlog.ApplicationPolicy) {
+				p.RetainedApplicationBytes, p.RetainedApplicationRecords, p.MaxTailEntries = 256<<20, 131072, nativeProtocolStateTailEntries
+			}, profile.agreement, raftlog.ApplicationRecoveryConfig{Version: profile.recovery}))
+			view, closeOld := crossView(t, n, 0, [2]uint64{})
+			defer closeOld()
+			assertCertifiedProjection(t, view, 1, true, nil)
+			intent, err := n.hosts[0][0].PrepareRangeMove(t.Context(), n.requestID(), 1, 8, 32, 32, 16<<10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			move, err := newRangeMoveCoordinatorOn(publisher.coordinator)
+			if err != nil {
+				t.Fatal(err)
+			}
+			targetWire := publisher.coordinator.transports[8]
+			gate := &rangeMoveAdmissionImportGate{graphPeerWireTransport: targetWire, sequence: 1}
+			publisher.coordinator.transports[8] = gate
+			pending, err := runRangeMoveToCompletion(t, move, intent)
+			if !gate.stopped || !errors.Is(err, io.EOF) || !errors.Is(err, errRangeMovePending) {
+				t.Fatal("actual Import0 before page1", err)
+			}
+			h := n.hosts[1][2]
+			q, cfg := rangeMoveBaselineGuardReader(t, h.machine, h.driver.Applied())
+			status, found, err := readRangeMoveStatus(q, pending.resume.move)
+			if err != nil || !found || status.phase != rangeMoveImport || status.sequence != 0 || status.rows == 0 || status.size == 0 {
+				t.Fatal("actual retained prefix", status, err)
+			}
+			baseline, err := h.machine.rangeMoveCatalogBaseline(q, cfg)
+			if err != nil || baseline == nil {
+				t.Fatal("strict Import0 baseline", err)
+			}
+			if err := baseline.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.machine.Restore(q.base.Index, q.base.Image); err != nil {
+				t.Fatal("same native Import0 Restore", err)
+			}
+			if err := q.view.Close(); err != nil {
+				t.Fatal(err)
+			}
+			publisher.coordinator.transports[8] = targetWire
+			done, err := runMovePoolResume(t, move, pending.resume)
+			if err != nil || !done.committed || done.resume != pending.resume {
+				t.Fatal("same original completion", err)
+			}
+			proposal, err := n.hosts[1][0].PreparePartitionGraphOperations(n.requestID(), []graphstate.Operation{{Kind: graphstate.AddLabel, Owner: 1, Life: 2, Scope: ops[0].Scope, Name: "after-handoff"}}, 313, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			n.submitPartitionGraph(1, proposal, reasonNone)
+			current, closeCurrent := crossView(t, n, 0, [2]uint64{})
+			assertCertifiedProjection(t, current, 1, true, []string{"after-handoff"})
+			closeCurrent()
+			assertCertifiedProjection(t, view, 1, true, nil)
+		})
 	}
 }

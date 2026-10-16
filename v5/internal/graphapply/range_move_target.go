@@ -40,7 +40,7 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 		}
 		rows, size, digest := manifest.transferSummary()
 		source, found := rangeMoveFindProof(c.proofs, intent.source.partition)
-		if !found || source.phase != rangeMoveDescribe || source.intent != current.intent || source.rows != rows || source.size != size || source.digest != digest {
+		if !found || source.ns != (namespace{intent.source.graph, intent.source.partition}) || source.move != current.move || source.format != rangeMoveStatusFormat(m.SemanticContractID()) || source.result != rangeMoveApplied || source.phase != rangeMoveDescribe || source.intent != current.intent || source.sequence != manifest.graphPages+manifest.replayPageCount() || source.sequence > uint64(intent.maxPages) || source.index <= descriptor.Source.Index || source.rows != rows || source.size != size || source.digest != digest {
 			return raftlog.ApplicationBatch{}, errInvalid
 		}
 		capture, found, err := crossControl(q, rangeMoveControlKey(m.ns, current.move, 'C'), 1024)
@@ -70,6 +70,19 @@ func (m *declaredMaterializer) stageRangeMoveTarget(q *reader, c rangeMoveComman
 			}
 		}
 		status.floor, status.digest = max(source.floor, floor), digest
+		status.rows, status.size = state.Rows+progress.replay.rows+progress.retentionRows, state.Bytes+progress.replay.bytes+progress.retainedBytes()
+		if rangeMoveSpans(m.SemanticContractID()) {
+			// Preserve the already authenticated complete source manifest proof.
+			// Its sequence funds the immutable total, not installed target pages.
+			if err := reserveComposer(q, 1024); err != nil {
+				return raftlog.ApplicationBatch{}, err
+			}
+			original, err := encodeRangeMoveStatus(source)
+			if err != nil {
+				return raftlog.ApplicationBatch{}, err
+			}
+			lineageControls = append(lineageControls, raftlog.ApplicationControlPut{Key: rangeMoveControlKey(m.ns, current.move, 'M'), Value: original})
+		}
 	} else {
 		wire, present, err := q.getBounded(rangeMoveProgressKey(m.ns, current.move), 1<<20)
 		if err != nil || !present {

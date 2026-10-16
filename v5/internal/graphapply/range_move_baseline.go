@@ -60,7 +60,10 @@ func (m *declaredMaterializer) rangeMoveCatalogBaseline(q *reader, cfg genesisAl
 		return nil, errors.Join(errCorrupt, err)
 	}
 	d, s := progress.descriptor, progress.imported
-	_, _, manifestDigest := progress.transferSummary()
+	manifestDigest, err := m.targetMoveManifestDigest(q, intent, status, progress)
+	if err != nil {
+		return nil, err
+	}
 	if d.Spec.Publication != intent.publication || d.Spec.From.Partition != intent.source.partition || d.Spec.From.Epoch != intent.epoch || d.Spec.To.Partition != intent.target.partition || d.Spec.To.Epoch != intent.epoch+1 || d.Configuration != configuration || d.Declaration != m.declaration.Digest() || d.DefaultAxis != cfg.defaultAxis || d.Target.Binding != m.binding || s.FutureRoot.Namespace() != (graphstore.Namespace{Graph: intent.publication.Graph, Partition: m.ns.partition}) || s.Rows+progress.replay.rows+progress.retentionRows != status.rows || s.Bytes+progress.replay.bytes+progress.retainedBytes() != status.size || status.digest != manifestDigest {
 		return nil, errCorrupt
 	}
@@ -138,4 +141,46 @@ func moveBaselinePages(id raftlog.ApplicationSemanticContractID, p rangeMoveProg
 		graph = p.graphApplied
 	}
 	return graph + p.imported.PreparationSteps + replay
+}
+
+// A target's replayPages counts installed batches. The accepted source proof
+// independently fixes the complete manifest count; never replace that cursor.
+func (m *declaredMaterializer) targetMoveManifestDigest(q *reader, intent rangeMoveIntent, status rangeMoveStatus, progress rangeMoveProgress) ([32]byte, error) {
+	if !rangeMoveSpans(m.SemanticContractID()) {
+		_, _, digest := progress.transferSummary()
+		return digest, nil
+	}
+	original, present, err := crossControl(q, rangeMoveControlKey(q.ns, status.move, 'M'), 256)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return targetMoveManifestDigest(intent, status, progress, original, present)
+}
+
+func targetMoveManifestDigest(intent rangeMoveIntent, status rangeMoveStatus, progress rangeMoveProgress, original raftlog.ApplicationControlRecord, present bool) ([32]byte, error) {
+	if progress.imported == nil || progress.imported.Rows+progress.replay.rows+progress.retentionRows != status.rows || progress.imported.Bytes+progress.replay.bytes+progress.retainedBytes() != status.size {
+		return [32]byte{}, errCorrupt
+	}
+	manifest := progress
+	if !present {
+		// Old images without M are verifiable only at their complete replay.
+		if !rangeMoveReplaySame(progress.replay, progress.replayEnd) {
+			return [32]byte{}, errCorrupt
+		}
+	} else {
+		source, err := decodeRangeMoveStatus(original.Value)
+		if err != nil || source.ns != (namespace{intent.source.graph, intent.source.partition}) || source.move != status.move || source.intent != status.intent || source.format != rangeMoveStatusFormat(intent.source.semantic) || source.phase != rangeMoveDescribe || source.result != rangeMoveApplied || source.sequence < progress.graphPages || source.sequence > uint64(intent.maxPages) || source.index <= progress.descriptor.Source.Index || source.digest != status.digest || original.Index <= progress.descriptor.Target.Index || original.Index > status.index || source.floor > status.floor || !bytes.Equal(original.Key, rangeMoveControlKey(status.ns, status.move, 'M')) {
+			return [32]byte{}, errors.Join(errCorrupt, err)
+		}
+		manifest.replayPages = source.sequence - progress.graphPages
+		rows, size, digest := manifest.transferSummary()
+		if source.rows != rows || source.size != size || source.digest != digest || progress.replayPages > manifest.replayPages || manifest.replayPages > progress.replayEnd.sequence || progress.replayEnd.sequence > rangeMoveSpanBatchRows*manifest.replayPages {
+			return [32]byte{}, errCorrupt
+		}
+	}
+	_, _, digest := manifest.transferSummary()
+	if digest != status.digest {
+		return [32]byte{}, errCorrupt
+	}
+	return digest, nil
 }
