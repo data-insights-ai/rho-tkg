@@ -1,0 +1,9 @@
+# mutant: pkg/graph/internal/index/docvalues_chunk.go
+# - '\t\t\t\tcodes[i] = remap[code]'
+# + '\t\t\t\tcodes[i] = code'
+$ go test -run 'TestChunkConcat' ./pkg/graph/internal/index/
+--- FAIL: TestChunkConcatAcrossParts (0.00s)
+    docvalues_chunk_test.go:84: [0,4) row 3: 200 float64 2.5 a, want 200 float64 2.5 b
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	0.198s
+FAIL

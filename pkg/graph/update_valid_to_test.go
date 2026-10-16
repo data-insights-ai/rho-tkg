@@ -23,7 +23,7 @@ func TestUpdateValidToClosesTheVersion(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	early := map[string]any{"tkg_valid_to": types.Instant(5_000)}
-	for _, be := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true }) {
+	for _, be := range allStoreBackendsWith(func(c *graphpkg.Config) { c.AllowTxBackfill = true; txFromCfg(c) }) {
 		t.Run(be.name, func(t *testing.T) {
 			g := be.open(t)
 			a, err := g.Nodes().Add(ctx, []string{"D"}, map[string]any{"tkg_valid_from": types.Instant(10_000), "s": "v"})

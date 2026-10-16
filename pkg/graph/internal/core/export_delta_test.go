@@ -19,7 +19,7 @@ import (
 // ExportSince) with the given snowflake slot.
 func newDeltaGraph(t *testing.T, slot int64) *Core {
 	t.Helper()
-	g, err := New(Config{Store: memory.New(memory.WithChangeLog()), SnowflakeNodeID: slot})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New(memory.WithChangeLog()), SnowflakeNodeID: slot})
 	if err != nil {
 		t.Fatalf("New(slot=%d): %v", slot, err)
 	}
@@ -31,7 +31,7 @@ func newDeltaGraph(t *testing.T, slot int64) *Core {
 // (the merge applies through store doors; it needs no change-log of its own).
 func newPlainGraph(t *testing.T, slot int64) *Core {
 	t.Helper()
-	g, err := New(Config{Store: memory.New(), SnowflakeNodeID: slot})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New(), SnowflakeNodeID: slot})
 	if err != nil {
 		t.Fatalf("New(slot=%d): %v", slot, err)
 	}
@@ -530,7 +530,7 @@ func TestExportSince_BaseCursorFromHeader(t *testing.T) {
 // --- Cross-backend: badger source delta merged onto a memory base.
 func TestExportSince_BadgerSourceCrossBackend(t *testing.T) {
 	ctx := context.Background()
-	src, err := New(Config{BadgerInMemory: true, ChangeLog: true, SnowflakeNodeID: 0})
+	src, err := New(Config{UntimedValidStart: UntimedFromTxFrom, BadgerInMemory: true, ChangeLog: true, SnowflakeNodeID: 0})
 	if err != nil {
 		t.Fatalf("New badger: %v", err)
 	}
@@ -572,7 +572,7 @@ func TestExportSince_BadgerSourceCrossBackend(t *testing.T) {
 // plus a full badger->badger round-trip of a cascade-corrected graph.
 func TestExportSince_BadgerCascadePagedVerify(t *testing.T) {
 	ctx := context.Background()
-	src, err := New(Config{BadgerInMemory: true, ChangeLog: true, SnowflakeNodeID: 0})
+	src, err := New(Config{UntimedValidStart: UntimedFromTxFrom, BadgerInMemory: true, ChangeLog: true, SnowflakeNodeID: 0})
 	if err != nil {
 		t.Fatalf("New badger: %v", err)
 	}
@@ -595,7 +595,7 @@ func TestExportSince_BadgerCascadePagedVerify(t *testing.T) {
 	if err := src.IO.Export(&full); err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	dst, err := New(Config{BadgerInMemory: true, ChangeLog: true, SnowflakeNodeID: 1})
+	dst, err := New(Config{UntimedValidStart: UntimedFromTxFrom, BadgerInMemory: true, ChangeLog: true, SnowflakeNodeID: 1})
 	if err != nil {
 		t.Fatalf("New dst badger: %v", err)
 	}
@@ -809,7 +809,7 @@ func TestImportMerge_HistoryVersionCorruptionPreservesEdges(t *testing.T) {
 // NOTHING, never a silently-empty delta a backup pipeline would mistake for "no
 // changes". Existing ExportSince tests all run on enabled logs or memory.
 func TestExportSince_BadgerChangeLogDisabledFailsClosed(t *testing.T) {
-	g, err := New(Config{BadgerInMemory: true, ChangeLog: false, SnowflakeNodeID: 0})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, BadgerInMemory: true, ChangeLog: false, SnowflakeNodeID: 0})
 	if err != nil {
 		t.Fatalf("New badger: %v", err)
 	}

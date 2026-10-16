@@ -1,0 +1,5 @@
+# mutant: count_timeline.go, the epoch re-check after a build removed
+# Not caught by a deterministic test: it guards a history rewrite racing a build
+# (the cached entry is keyed by the epoch read before the build, so a lost
+# re-check can only answer one call with the pre-rewrite state). Kept as the
+# state cuts keep it (stateCutFor); no test claims it.

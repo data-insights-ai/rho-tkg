@@ -61,7 +61,7 @@ func txRelSpecs(nodes []*types.Node, n int) []graphpkg.RelCreate {
 // both adjacency directions and the type scan inside the transaction.
 // Relationships of another type are untouched.
 func TestGraphTxAddRelationships(t *testing.T) {
-	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
+	forAllStoreBackendsTxFrom(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		nodes := txRelEndpoints(t, b, g, 4)
 		other, err := g.Rels().AddByID(ctx, "OTHER", nodes[0].ID(), nodes[1].ID(), nil)

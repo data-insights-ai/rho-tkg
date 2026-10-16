@@ -22,7 +22,7 @@ import (
 // node never matches, with or without an active filter.
 func TestNodeMatchesValidTime_NilNode(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestNodeMatchesValidTime_NilNode(t *testing.T) {
 func TestNodeMatchesValidTime_ExplicitStamps(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestNodeMatchesValidTime_ExplicitStamps(t *testing.T) {
 func TestNodeMatchesValidTime_UnsetValidFromUsesSnowflakeFallback(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestNodeMatchesValidTime_UnsetValidFromUsesSnowflakeFallback(t *testing.T) 
 func TestNodeMatchesValidTime_DeletedNode(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestNodeMatchesValidTime_DeletedNode(t *testing.T) {
 func TestNodeMatchesValidTime_FrozenNode(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestNodeMatchesValidTime_FrozenNode(t *testing.T) {
 func TestNodeMatchesValidTime_ParityWithRelMatchesValidTime(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestNodeMatchesValidTime_ParityWithRelMatchesValidTime(t *testing.T) {
 // shadow-based mirror with this door must see the snowflake rule.
 func TestNodeMatchesValidTime_ExplicitCreatedAtDoesNotShiftEffectiveValidFrom(t *testing.T) {
 	t.Parallel()
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{UntimedValidStart: UntimedFromTxFrom, Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

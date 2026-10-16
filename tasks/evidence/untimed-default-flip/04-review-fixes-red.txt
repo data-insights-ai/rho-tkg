@@ -1,0 +1,15 @@
+review fixes reverted (HEAD 929e8abc code), new regression tests:
+--- FAIL: TestUntimedDefaultWithoutMetaKV (0.00s)
+    untimed_default_flip_test.go:211: session 0: a default create on a store without MetaKV is valid at far (unbounded), want the TxFrom start
+--- FAIL: TestUntimedDefaultAdoptLogsTxFrom (0.00s)
+    untimed_default_flip_test.go:254: ChangeMeta records = 1, want 2 (unbounded at the first open, TxFrom at the adopt)
+--- FAIL: TestPropertyValueStatsDeclineAfterIndexDrop (0.00s)
+        round9_doors_test.go:948: PropertyValueStats after the index was dropped: {Distinct:1 Rows:1 MaxRows:1 MaxValue:1} ok=true err=<nil>, want a decline
+        round9_doors_test.go:948: PropertyValueStats after the index was dropped: {Distinct:1 Rows:1 MaxRows:1 MaxValue:1} ok=true err=<nil>, want a decline
+--- FAIL: TestRound9RelDoorsHonourRetention (0.00s)
+    round9_doors_test.go:916: RangeCardinalityAnyVersion below the watermark: err = <nil>, want ErrRetentionExpired
+    round9_doors_test.go:919: ForEachByTypePropertyRangeAnyVersion below the watermark: err = <nil>, want ErrRetentionExpired
+    round9_doors_test.go:922: RelPropertyValueStats below the watermark: err = <nil>, want ErrRetentionExpired
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.764s
+FAIL

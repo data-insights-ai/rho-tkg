@@ -464,7 +464,7 @@ func TestImportCarriesUntimedMode(t *testing.T) {
 
 	// An empty TxFrom-configured badger store adopts the export's mode.
 	dir := t.TempDir()
-	g, err := graphpkg.New(graphpkg.Config{BadgerDir: dir})
+	g, err := graphpkg.New(graphpkg.Config{BadgerDir: dir, UntimedValidStart: graphpkg.UntimedFromTxFrom})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,9 +484,13 @@ func TestImportCarriesUntimedMode(t *testing.T) {
 	if err := g.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := graphpkg.New(graphpkg.Config{BadgerDir: dir}); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
+	if _, err := graphpkg.New(graphpkg.Config{BadgerDir: dir, UntimedValidStart: graphpkg.UntimedFromTxFrom}); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
 		t.Fatalf("reopen txfrom after adopting an unbounded export: err = %v, want ErrUntimedModeMismatch", err)
 	}
+	if g, err = graphpkg.New(graphpkg.Config{BadgerDir: dir}); err != nil {
+		t.Fatalf("reopen under the default after adopting an unbounded export: %v", err)
+	}
+	_ = g.Close()
 
 	// A target with rows under the other mode refuses, both directions.
 	cases := []uvsImportCase{
@@ -564,7 +568,7 @@ func TestImportMergeRefusesOtherUntimedMode(t *testing.T) {
 		t.Errorf("merged unbounded row at far: %v", err)
 	}
 
-	other, err := graphpkg.New(graphpkg.Config{})
+	other, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedFromTxFrom})
 	if err != nil {
 		t.Fatal(err)
 	}

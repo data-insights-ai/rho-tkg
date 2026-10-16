@@ -49,6 +49,9 @@ type Ops interface {
 	ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	RangeCardinalityAt(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	ForEachByTypePropertyRangeAnyVersion(typeName, key string, min, max float64, inclMin, inclMax bool, pin types.Instant, fn func(*types.Relationship) bool) error
+	RangeCardinalityAnyVersion(typeName, key string, min, max float64, inclMin, inclMax bool, pin types.Instant) (storepkg.RangeAnyVersionCount, bool, error)
+	CountTimelineByType(typeName string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error)
 	ForEachByTypeOrdinals(typeName string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ForEachIDByTypePropertyRangeOrdered(ctx context.Context, typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
 	ForEachIDByTypePropertyPrefix(ctx context.Context, typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.RelID, any) bool) error
@@ -554,6 +557,42 @@ func (a *API) ForEachByTypeOrdinals(typeName string, set []uint64, opts storepkg
 		return err
 	}
 	return ops.ForEachByTypeOrdinals(typeName, set, opts, fn)
+}
+
+// ForEachByTypePropertyRangeAnyVersion is the relationship mirror of
+// nodes.API.ForEachByLabelPropertyRangeAnyVersion over a type (round 9
+// R9-1): the relationships of which some row recorded at pin carries the
+// type and a numeric value of key in range, once each in ascending ID
+// order, fn given the newest such row. Same errors over the type's property
+// index.
+func (a *API) ForEachByTypePropertyRangeAnyVersion(typeName, key string, min, max float64, inclMin, inclMax bool, pin types.Instant, fn func(*types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByTypePropertyRangeAnyVersion(typeName, key, min, max, inclMin, inclMax, pin, fn)
+}
+
+// RangeCardinalityAnyVersion is the relationship mirror of
+// nodes.API.RangeCardinalityAnyVersion.
+func (a *API) RangeCardinalityAnyVersion(typeName, key string, min, max float64, inclMin, inclMax bool, pin types.Instant) (storepkg.RangeAnyVersionCount, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.RangeAnyVersionCount{}, false, err
+	}
+	return ops.RangeCardinalityAnyVersion(typeName, key, min, max, inclMin, inclMax, pin)
+}
+
+// CountTimelineByType is the relationship mirror of
+// nodes.API.CountTimelineByLabel (round 9 R9-2): the number of the type's
+// relationships holding at each valid instant as recorded at pin, equal to
+// CountByTypeAt(typeName, {ValidAt: t, TxAt: pin}) at every instant t.
+func (a *API) CountTimelineByType(typeName string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, false, err
+	}
+	return ops.CountTimelineByType(typeName, pin, opts)
 }
 
 // ForEachIDByTypePropertyRangeOrdered is the relationship mirror of

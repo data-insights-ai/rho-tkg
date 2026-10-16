@@ -35,7 +35,7 @@ func txAddNodesProps(n int) []map[string]any {
 // transaction time, a create event each after commit, the graph's add counter.
 // Nodes created before the call and a node of another label are untouched.
 func TestGraphTxAddNodes(t *testing.T) {
-	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
+	forAllStoreBackendsTxFrom(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
 		ctx := context.Background()
 		var mu sync.Mutex
 		var created []types.EntityID

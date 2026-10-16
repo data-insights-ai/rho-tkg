@@ -47,6 +47,9 @@ type Ops interface {
 	ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	RangeCardinalityAt(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	ForEachByLabelPropertyRangeAnyVersion(label, key string, min, max float64, inclMin, inclMax bool, pin types.Instant, fn func(*types.Node) bool) error
+	RangeCardinalityAnyVersion(label, key string, min, max float64, inclMin, inclMax bool, pin types.Instant) (storepkg.RangeAnyVersionCount, bool, error)
+	CountTimelineByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error)
 	ForEachByLabelOrdinals(label string, set []uint64, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachIDByLabelPropertyRangeOrdered(ctx context.Context, label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
 	ForEachIDByLabelPropertyPrefix(ctx context.Context, label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(types.NodeID, any) bool) error
@@ -564,6 +567,67 @@ func (a *API) RangeCardinalityAt(label, propKey string, min, max float64, inclMi
 		return 0, false, err
 	}
 	return ops.RangeCardinalityAt(label, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// ForEachByLabelPropertyRangeAnyVersion visits, once each and in ascending ID
+// order, the nodes carrying label of which some row recorded at pin (every
+// valid-time version known at pin, those of nodes deleted before pin
+// included, retracted lives dropped: the rows ByLabelAndProperty(label, key,
+// v, opts) matches under opts = {ValidStart: 1, ValidEnd: MaxInt64, TxAt:
+// pin}) holds a numeric value of key within [min, max] per the flags (a
+// float32 widened, NaN never in range; sigma-tkgd round 9 R9-1). The visited
+// set is the union over every value v in range of ByLabelAndProperty's
+// matches at those opts. fn receives the newest such row of the node (the
+// caller resolves the node's effective timeline itself); false stops. pin <=
+// 0 or a NaN bound visits nothing. Served from the declared property index's
+// membership sidecar (candidates pruned by the pin, each node's rows tested;
+// no label fold). Errors: ErrIndexNotFound without a property index on the
+// pair (or one being built), store.ErrCapabilityNotSupported where the
+// sidecar range cannot serve (tiered, sharded, external stores, an Elements
+// index), the label and key errors of the range doors, ErrNilCallback.
+func (a *API) ForEachByLabelPropertyRangeAnyVersion(label, key string, min, max float64, inclMin, inclMax bool, pin types.Instant, fn func(*types.Node) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByLabelPropertyRangeAnyVersion(label, key, min, max, inclMin, inclMax, pin, fn)
+}
+
+// RangeCardinalityAnyVersion counts what ForEachByLabelPropertyRangeAnyVersion
+// visits: Entities (the nodes) and Rows (their rows recorded at pin whose
+// value is in range). exact=false declines where the visit door would fail
+// (no index, an index being built, tiered, sharded, external stores, an
+// Elements index); it never walks the label. pin <= 0 or a NaN bound: zero,
+// exact.
+func (a *API) RangeCardinalityAnyVersion(label, key string, min, max float64, inclMin, inclMax bool, pin types.Instant) (storepkg.RangeAnyVersionCount, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.RangeAnyVersionCount{}, false, err
+	}
+	return ops.RangeCardinalityAnyVersion(label, key, min, max, inclMin, inclMax, pin)
+}
+
+// CountTimelineByLabel is the number of label's members holding at each
+// valid instant as recorded at pin (sigma-tkgd round 9 R9-2): maximal
+// segments [From, To) of constant Count > 0, ascending, adjacent segments of
+// equal Count merged, instants where no member holds left out. A member
+// holds over its effective timeline's segments carrying the label at pin
+// (NodeEffectiveTimeline), so it counts once at each instant: for every
+// valid instant t the count equals CountByLabelAt(label, {ValidAt: t, TxAt:
+// pin}). From == math.MinInt64 is an open start, To == 0 an open end. pin 0
+// reads the current state (the commit clock). opts.UntimedFromMinusInf
+// starts a member's untimed first segment at -inf (see
+// store.CountTimelineOpts). Built once per (label, pin, option) from the
+// label's effective scan and cached until a write changes the state at pin;
+// exact=false declines (opts.MaxSegments exceeded, writers moving the
+// label's state across three builds, a store whose history the scan cannot
+// read). An unknown label: empty, exact.
+func (a *API) CountTimelineByLabel(label string, pin types.Instant, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, false, err
+	}
+	return ops.CountTimelineByLabel(label, pin, opts)
 }
 
 // ForEachByLabelOrdinals streams the nodes ForEachByLabel(label, opts)

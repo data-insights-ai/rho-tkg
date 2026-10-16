@@ -672,7 +672,8 @@ var (
 	ErrIntegrityModeMismatch = errors.New("graph: store was written under the other integrity-hash setting (Config.DisableIntegrityHashes)")
 
 	// ErrUntimedModeMismatch is returned by New when the store's rows were
-	// written under the other Config.UntimedValidStart mode (a store with rows
+	// written under the other Config.UntimedValidStart mode, configured
+	// explicitly (UntimedDefault takes the store's mode; a store with rows
 	// and no persisted mode is an UntimedFromTxFrom store) or its conversion
 	// to UntimedUnbounded did not finish, and by Admin().SetUntimedValidStart
 	// for a conversion back to UntimedFromTxFrom (backlog 73).
@@ -680,7 +681,8 @@ var (
 
 	// ErrInvalidUntimedValidStart is returned by New and by
 	// Admin().SetUntimedValidStart for an UntimedValidStart value that names
-	// no mode (backlog 73).
+	// no mode, and by Admin().SetUntimedValidStart for UntimedDefault (a
+	// conversion names its target) (backlog 73).
 	ErrInvalidUntimedValidStart = errors.New("graph: invalid untimed valid-start mode (Config.UntimedValidStart)")
 
 	// ErrCommitNotDurable is returned by GraphTx.Commit, Batch.Execute and the
@@ -1055,21 +1057,22 @@ type Config struct {
 	DisableIntegrityHashes bool
 
 	// UntimedValidStart is where an entity's first version written without a
-	// valid-from starts in valid time (backlog 73). UntimedFromTxFrom (the
-	// default, zero value) starts it at its TxFrom (backlog 62);
-	// UntimedUnbounded at -inf: the create stores ValidFrom =
-	// types.UnboundedValidFrom, so the entity is valid at every instant
-	// before its first change. A later version without a valid-from starts at
-	// its TxFrom in both modes. The mode is persisted with the store at the
-	// first open; reopening under the other mode fails with
-	// ErrUntimedModeMismatch (a store holding rows from before this field
-	// existed is an UntimedFromTxFrom store). An existing store is converted
-	// once with Admin().SetUntimedValidStart(UntimedUnbounded).
+	// valid-from starts in valid time (backlog 73). UntimedFromTxFrom starts
+	// it at its TxFrom (backlog 62); UntimedUnbounded at -inf: the create
+	// stores ValidFrom = types.UnboundedValidFrom, so the entity is valid at
+	// every instant before its first change. A later version without a
+	// valid-from starts at its TxFrom in both modes. The mode is persisted
+	// with the store at the first open; reopening under the other explicit
+	// mode fails with ErrUntimedModeMismatch (a store holding rows from
+	// before this field existed is an UntimedFromTxFrom store). An existing
+	// store is converted once with Admin().SetUntimedValidStart(UntimedUnbounded).
 	//
-	// Announced default change (CHANGELOG "Deprecated"): the default for NEW
-	// stores becomes UntimedUnbounded in the next minor release; existing
-	// stores keep their persisted or legacy mode. Set UntimedValidStart
-	// explicitly to keep UntimedFromTxFrom for new stores.
+	// The zero value, UntimedDefault, opens an existing store under the mode
+	// it was written under and makes a new store an UntimedUnbounded store
+	// (v4.57.0; up to v4.56.x the zero value was UntimedFromTxFrom, so a
+	// store created under v4.56.x defaults stays an UntimedFromTxFrom store).
+	// Set UntimedFromTxFrom explicitly to keep the TxFrom start for new
+	// stores.
 	UntimedValidStart UntimedValidStart
 }
 
@@ -2185,7 +2188,7 @@ func New(config Config) (*Core, error) {
 	}
 	// Backlog 73: likewise the untimed valid-start mode (untimed_mode.go).
 	c.untimedUnbounded.Store(config.UntimedValidStart == UntimedUnbounded)
-	if err := c.resolveUntimedMode(); err != nil {
+	if err := c.resolveUntimedMode(config.UntimedValidStart == UntimedDefault); err != nil {
 		if config.Store == nil {
 			_ = store.Close()
 		}

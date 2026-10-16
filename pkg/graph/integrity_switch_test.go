@@ -52,7 +52,7 @@ var isBackends = []isBackend{
 func isOpen(t *testing.T, b isBackend, dir string, off bool) (*graphpkg.Graph, storepkg.MandatoryStore, error) {
 	t.Helper()
 	st := b.open(t, dir)
-	g, err := graphpkg.New(graphpkg.Config{Store: st, DisableIntegrityHashes: off})
+	g, err := graphpkg.New(graphpkg.Config{Store: st, DisableIntegrityHashes: off, UntimedValidStart: graphpkg.UntimedFromTxFrom}) // markers 3/4 under test; an unbounded store raises 7
 	if err != nil {
 		_ = st.Close()
 		return nil, nil, err
@@ -322,7 +322,7 @@ func TestIntegritySwitch(t *testing.T) {
 			t.Fatal(err)
 		}
 		syncs := ts.RefShardForTest().MetaSyncCountForTest()
-		g, err := graphpkg.New(graphpkg.Config{Store: ts, DisableIntegrityHashes: true})
+		g, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedFromTxFrom, Store: ts, DisableIntegrityHashes: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -339,7 +339,7 @@ func TestIntegritySwitch(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = graphpkg.New(graphpkg.Config{Store: bs, DisableIntegrityHashes: true,
+		_, err = graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedFromTxFrom, Store: bs, DisableIntegrityHashes: true,
 			RelSegments: []storepkg.RelSegmentSpec{{Type: "HOP"}}})
 		if !errors.Is(err, graphpkg.ErrIntegrityDisabled) {
 			t.Fatalf("off + RelSegments: err = %v, want ErrIntegrityDisabled", err)
@@ -365,7 +365,7 @@ func TestIntegritySwitch(t *testing.T) {
 			t.Fatal(err)
 		}
 		syncs := bs.MetaSyncCountForTest()
-		g, err := graphpkg.New(graphpkg.Config{Store: bs, DisableIntegrityHashes: true})
+		g, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedFromTxFrom, Store: bs, DisableIntegrityHashes: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -398,7 +398,7 @@ func TestIntegritySwitch(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		g, err := graphpkg.New(graphpkg.Config{Store: bs, DisableIntegrityHashes: true, AllowReset: true})
+		g, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedFromTxFrom, Store: bs, DisableIntegrityHashes: true, AllowReset: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -559,7 +559,7 @@ func TestIntegritySwitch(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			g, err := graphpkg.New(graphpkg.Config{Store: bs, DisableIntegrityHashes: off})
+			g, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedFromTxFrom, Store: bs, DisableIntegrityHashes: off})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -594,7 +594,7 @@ func TestIntegritySwitch(t *testing.T) {
 	})
 
 	t.Run("segments_off_refused", func(t *testing.T) {
-		_, err := graphpkg.New(graphpkg.Config{DisableIntegrityHashes: true,
+		_, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedFromTxFrom, DisableIntegrityHashes: true,
 			RelSegments: []storepkg.RelSegmentSpec{{Type: "HOP"}}})
 		if !errors.Is(err, graphpkg.ErrIntegrityDisabled) {
 			t.Fatalf("RelSegments with hashes off: err = %v, want ErrIntegrityDisabled", err)
@@ -606,7 +606,7 @@ func TestIntegritySwitch(t *testing.T) {
 	t.Run("import", func(t *testing.T) {
 		ctx := context.Background()
 		for _, srcOff := range []bool{false, true} {
-			src, err := graphpkg.New(graphpkg.Config{DisableIntegrityHashes: srcOff})
+			src, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedFromTxFrom, DisableIntegrityHashes: srcOff})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -616,7 +616,7 @@ func TestIntegritySwitch(t *testing.T) {
 				t.Fatal(err)
 			}
 			_ = src.Close()
-			dst, err := graphpkg.New(graphpkg.Config{DisableIntegrityHashes: !srcOff})
+			dst, err := graphpkg.New(graphpkg.Config{UntimedValidStart: graphpkg.UntimedFromTxFrom, DisableIntegrityHashes: !srcOff})
 			if err != nil {
 				t.Fatal(err)
 			}

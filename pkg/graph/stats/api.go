@@ -6,6 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // GraphStats holds operation counters and optional cache metrics for a Graph.
@@ -47,6 +48,8 @@ type Ops interface {
 	PropertyBounds(label, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error)
 	RelPropertyBounds(typeName, propertyKey string, opts storepkg.QueryOpts) (storepkg.PropertyBounds, bool, error)
 	LabelTimeStats(label string) (storepkg.MemberTimeStats, bool, error)
+	PropertyValueStats(label, key string, pin types.Instant) (storepkg.PropertyValueStats, bool, error)
+	RelPropertyValueStats(typeName, key string, pin types.Instant) (storepkg.PropertyValueStats, bool, error)
 	RelTypeTimeStats(typeName string) (storepkg.MemberTimeStats, bool, error)
 	RelCountByType(typeName string) (int, error)
 	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
@@ -328,6 +331,40 @@ func (a *API) RelPropertyBounds(typeName, propertyKey string, opts storepkg.Quer
 		return storepkg.PropertyBounds{}, false, err
 	}
 	return ops.RelPropertyBounds(typeName, propertyKey, opts)
+}
+
+// PropertyValueStats states the values of key over label's members from
+// the property index (sigma-tkgd round 9 R9-3): Distinct values as the
+// index keys them (an int64 3 and a float64 3.0 are two, as
+// ByLabelAndProperty seeks them), Rows carrying an indexed value, the
+// heaviest value's rows (MaxRows: what ByLabelAndProperty returns for it)
+// and that value (MaxValue; the smallest key among equals). pin 0: the
+// current state (Rows = NodeCountByLabelAndPropertyKey), from counts the
+// index keeps (a pass over its value keys at the first call after a write,
+// then cached until the next: the write path pays one pointer store). pin >
+// 0: the rows ByLabelAndProperty(label, key, v, {ValidStart 1, ValidEnd
+// MaxInt64, TxAt pin}) matches, per version (a member holding v on two
+// versions counts twice in Rows), from the index's membership sidecar,
+// cached per (label, key, pin) until a write changes the state at pin.
+// exact=false declines (no index, an index being built, an Elements index,
+// badger PropertyIndexOnDisk at pin 0, tiered, sharded, external stores, an
+// unknown label); it never walks the label. A negative pin is zero, exact.
+func (a *API) PropertyValueStats(label, key string, pin types.Instant) (storepkg.PropertyValueStats, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyValueStats{}, false, err
+	}
+	return ops.PropertyValueStats(label, key, pin)
+}
+
+// RelPropertyValueStats is PropertyValueStats over a relationship type's
+// property index.
+func (a *API) RelPropertyValueStats(typeName, key string, pin types.Instant) (storepkg.PropertyValueStats, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyValueStats{}, false, err
+	}
+	return ops.RelPropertyValueStats(typeName, key, pin)
 }
 
 // LabelTimeStats returns store.MemberTimeStats for label: current members,
