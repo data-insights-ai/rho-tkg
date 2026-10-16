@@ -1,0 +1,50 @@
+{
+  "commit": "68acf027c0006a4a48289aa4ced01bc3919913bb",
+  "parent": "fe7d4bb85f01983ada8f2d6188b50400c60bf7b7",
+  "tree": "/private/var/tmp/rho-v5-span-stage-budget-fix-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_program_test.go",
+      "sha256": "e3d3371024b8e39612b6717be568d34d072a6e5296a03520980dc53aac82db5c",
+      "blob": "9fea1eec9fcc9c562da2d9587115e37318fcd1b6",
+      "parentBlob": "bb4476db194674f29507426272b0d28cba8e6c69"
+    },
+    {
+      "path": "v5/internal/graphapply/range_move_replay.go",
+      "sha256": "3bf3c6d1206bae9653f1f78c3c4d1c98b8fd00c9e3c8c878056d757ba61dda8d",
+      "blob": "da9cb29b5124e213c091145a05e435672588e20e",
+      "parentBlob": "bc81da635f13440381806a0976dac20882d85bd0"
+    },
+    {
+      "path": "v5/internal/graphapply/range_move_span.go",
+      "sha256": "f5c3a795a47aa50acde726d73b4815f340e08fc749df0b69e8f862e01a96f073",
+      "blob": "8fca06cadfdeae1a9a507e2721b95593716b0e14",
+      "parentBlob": "8c0c82123881dc5e851c8001b79a8e53a50e5c41"
+    }
+  ],
+  "red": {
+    "spanAndBatched": "/private/var/tmp/rho-v5-span-stage-budget-evidence-20261016/red.log",
+    "sourceAttribution": "/private/var/tmp/rho-v5-span-stage-budget-evidence-20261016/arena.log",
+    "exactOldTargetCounterpart": "/private/var/tmp/rho-v5-span-stage-budget-evidence-20261016/batch16-target-red.log"
+  },
+  "green": "/private/var/tmp/rho-v5-span-stage-budget-evidence-20261016/final-green.log",
+  "tests": [
+    "TestNativeCollectedRangeMoveImportZeroPrefixAndRetainedOldView (collected/span/batched)",
+    "TestNativeMoveReplayBatchKeepsDeclarationBindingAndRecordCharges",
+    "TestRangeMoveReplayScopesInertStagesAndPhantomLookup",
+    "TestRangeMoveReplayDirectRefusalsPreserveZeroOutputs",
+    "TestRangeMoveSpanBatchFramingAndFragments"
+  ],
+  "result": "five focused parents PASS15.745s; same original moves finish and old-view/current divergence remains exact",
+  "invariants": [
+    "One actual ownership declaration read on SAME captured q/view per atomic batch; no cache/cross-batch/cross-cut sharing",
+    "Standalone page/read doors still validate declaration independently",
+    "All per-record native read/point/history/payload/key/output charges remain consumptive; no resets/refunds",
+    "Reducer outputs only ga20 inherited-original or GME fragment keys; no declaration mutations",
+    "No quota/page/deadline/worker/profile changes or native OS rerun"
+  ],
+  "limitations": [
+    "32 frames remains a maximum; aggregate per-record32MiB output budget may still refuse larger batches. Focused target16 frames isolates duplicate declaration charge; no maximum-capacity success claim.",
+    "Independent OS catch-up Step invalid-input investigation belongs agent1."
+  ]
+}

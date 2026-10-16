@@ -1,0 +1,49 @@
+{
+  "commit": "979d78f4a01801086a86e662480dc27028f9b6b1",
+  "parent": "42525a31b0a96b0ce28152379f7ebb580ca82bf4",
+  "tree": "/private/var/tmp/rho-v5-state-import-summary-fix-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_program_test.go",
+      "sha256": "938a585b45be559773e367feaa81381bdc4f22ff040b58d83bab555a5256f6de",
+      "blob": "bb4476db194674f29507426272b0d28cba8e6c69",
+      "parentBlob": "11d3dd7b32933dbec33b5d4821b6383653e5d1fe"
+    },
+    {
+      "path": "v5/internal/graphapply/range_move_baseline.go",
+      "sha256": "a3b2a64acb876822e9dee8398795b99a460cd455d497b2dc996c2af2d37b9f0b",
+      "blob": "0d7f6b0de0e85e1f410af59f1bf793533a073728",
+      "parentBlob": "a84661a400bc1a21494d0c1cbecb0eff6916ac8f"
+    },
+    {
+      "path": "v5/internal/graphapply/range_move_target.go",
+      "sha256": "9344d3235a751fe54607b41e803aeb671e7ec250c8405cde18eb1790886f8135",
+      "blob": "1cf7875b8ed9d335b4f5a0d321f050c4693c4b4a",
+      "parentBlob": "32e784648764319d049e87ebee590439aac0d600"
+    }
+  ],
+  "red": [
+    "/private/var/tmp/rho-v5-state-move-limit-evidence-20261016/direct-baseline-trace.log",
+    "/private/var/tmp/rho-v5-state-move-limit-evidence-20261016/import-summary-only-red.log"
+  ],
+  "green": "/private/var/tmp/rho-v5-state-move-limit-evidence-20261016/import-focused-freeze.log",
+  "tests": [
+    "TestNativeProtocolPooledTailBackpressurePreservesMoveOwner",
+    "TestNativeCollectedRangeMoveImportZeroPrefixAndRetainedOldView"
+  ],
+  "notes": [
+    "Final formatting applies idiomatic slices.Clone/bytes.Clone to identical test-only clone operations after passing focused run.",
+    "No native OS rerun; root owns next integrated independent case.",
+    "No format/hash/quota/deadline/worker increase; GM/M is genuine accepted source Describe proof co-committed with target Import0. Existing native reservation/preflight funds the additional bounded control.",
+    "Old missing-M fallback requires complete replay and independently recomputed existing full digest. Missing incomplete manifest refuses."
+  ],
+  "remaining": {
+    "profiles": [
+      "span",
+      "batched"
+    ],
+    "failure": "source partition3 native resourceLimit + graphstate resource limit before Import0; no GM/M applied",
+    "evidence": "/private/var/tmp/rho-v5-state-move-limit-evidence-20261016/import-formats-green-3.log",
+    "sourceReproducer": "/private/var/tmp/rho-v5-state-move-limit-evidence-20261016/pre-import-formats-reproducer.go.txt"
+  }
+}

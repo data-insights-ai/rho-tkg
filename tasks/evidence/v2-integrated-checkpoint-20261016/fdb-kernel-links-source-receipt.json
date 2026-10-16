@@ -1,0 +1,24 @@
+{
+  "revision": "c1a73299a8469d9aeb924e77c74140c1bee04bcb",
+  "parent": "fe7d4bb85f01983ada8f2d6188b50400c60bf7b7",
+  "tree": "/private/var/tmp/rho-v5-fdb-inert-kernel-links-20261016",
+  "clean": true,
+  "files": [
+    {
+      "path": "tools/v5-substrate/fdb/owned_transport.py",
+      "parentBlob": "f6a11d2252c1e6e8283694f2a887dbbeed8e1431",
+      "parentSHA256": "e5e17ec01fbd9682834d4c09846ab2aa08eeb31d85e72d775c6ad2cb71ef391e",
+      "sha256": "48684bde5bf59e59d93e20e4e92b46fbbb2a41f7eb6493355e3a07e66ade69fc"
+    },
+    {
+      "path": "tools/v5-substrate/fdb/owned_transport_test.py",
+      "parentBlob": "6602ff23201be02a82a4addc696902c9934714c9",
+      "parentSHA256": "bc52fa890f62d734457be35578b9101af30e08354c7b97cd24fde164920b7403",
+      "sha256": "ebca5e7ad7c17c9cf1fdde0ed7218ed1d766d21131407e7a562e3221231d5d17"
+    }
+  ],
+  "evidence": "/private/var/tmp/rho-v5-fdb-tiny-capability-20261016.J8XoJv",
+  "RED": "original actual five-native-namespace readback and kernel-links-guard-red.log",
+  "GREEN": "kernel-links-guard-green.log six guards PASS; kernel-links-actual-readback.log allfive original11link baseline readbacks PASS",
+  "scope": "Shared live/offline validator only. Nine exact optional kernel defaults; type/name, DOWN/exact noUP flags, noop, zero wildcard/link addresses, absent peer and empty optional addr_info, full zero native RX/TX. Required lo/eth0+ownedIFB set, exact qdisc/flower/mirred/drop and raw128KiB/frame768KiB/grants/deadline unchanged. Maximum2+9+4=15 links; unknown/duplicate/active/shaped/nonzero or malformed classes refuse. No deleting/adopting links and no workload/EOF/pair success inferred from baseline."
+}

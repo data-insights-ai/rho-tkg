@@ -1,0 +1,42 @@
+{
+  "source": "372f74eb",
+  "result": "selected-correctness-components-pass; actual-native-process-case-fails",
+  "files": {
+    "import-query-guards-fe7d4bb8.log": "922f9d73dd860e63f73b90f0c4686274629eac6b73c7896c9d4caeeb85365303",
+    "import-query-guards-fe7d4bb8.json": "4c820ad765c78b4ad2bcf5d9e46e67461c9d29dcc339b8e09c559f877fc0b4ad",
+    "batch-guards-372f74eb.log": "04b6d9e5f08d9559dd482b512e121fa68893ed1070120496d183b18a88312dbc",
+    "batch-guards-372f74eb.json": "8a954a14405c84564c1b637afbf530684dfe152f27c0c6ea29bd2ee2f70735e8",
+    "state-step-context-156f4d79.log": "8d34814ad08d95b2d3ee156cf71b9cbb6cf63ec0f8388c08b0c6d76f55dc5a93",
+    "state-step-context-156f4d79.json": "724ac68c332bb7cbf33bd7791204aff90eeafee3d297d779921d9f80a784e9a3",
+    "fdb-root-replay-156f4d79.json": "e3365ea51fbfeee59949f764cd932e4a51070c8b44920aad1f91f458a50340a7",
+    "fdb-root-review-156f4d79.json": "d93352560d6a44d5e725beea7ea4e138ce9b92d01a28cd8dca02e08d7e3d3032",
+    "import-prefix-source-receipt.json": "e1be3cc57b6adbe5d3f41d28972932162316aa9f9a84d424fd7de4f2db919c1b",
+    "import-prefix-red.log": "e5f74c68a502e1ead69e348df53bbdd8aa0d3857fc57dd0c2d980c3dbc76a679",
+    "import-prefix-green.log": "4dd37c450341ccb72459a2f0820e623f8d75ae31dccdaa5f3f8269760d834328",
+    "replay-batch-source-receipt.json": "98d51d4317102c31d784f21b8239444a07f2037f654a874e0faf66629fbd2681",
+    "replay-batch-source-red.log": "70e019be0a7da8d2f6fea3d8766f5e67d6a6b08b119c4d794b81a19b80d9e63d",
+    "replay-batch-target-red.log": "7f21542d6f5f7f1cdc058b03ee5cecef454af56b9f2f93bfbe3b2ca33d6e0ac3",
+    "replay-batch-green.log": "773d821322ced8e871282311a24fa3672d997f6a66f3baab9625e91bc0c1a7ed",
+    "fdb-kernel-links-source-receipt.json": "b10abf8dfec7bf29ad9d48919acf346e3e691128987c88ed72ce87db3830dc97",
+    "fdb-capability-guards-c9179090.log": "2d014bb427120fb1a5014d7499096989061fd0fdf40acb471c2e2667de60e71e",
+    "fdb-kernel-links-guards.log": "e11bbb630c1a6ea91f4322ac92d7ce2a6c043ad84d3e41ecf0d0f5a73e9c9fd0"
+  },
+  "native": {
+    "importAndQueryGuards": "eight parents PASS14.904s; completed/all owned exited/no forced cleanup",
+    "replayBatchGuards": "five parents PASS on integrated source; captured-batch declaration reused, remaining record charges unchanged",
+    "processCase": "rotated/reorder/move-phase1-p3-page0-kind1-before FAIL6.65s, actual Step packet1->2/98B, leader2 invalid input; no timeout; all8 owned identities exited",
+    "scope": "no full fault-family or phase acceptance"
+  },
+  "foundationdb": {
+    "source": "5cb1972f",
+    "tiny": "20facts/cross100/W1/KV/local,43commit/0abort, original terminal and cleanup0",
+    "oracle": "root independent full replay exactly equals original proof; hashed request and terminal receipt unchanged",
+    "scope": "standalone tiny correctness, no pair/performance/capacity/full matrix acceptance"
+  },
+  "remaining": [
+    "native follower catch-up Step failure",
+    "remaining declared correctness inventory and both FDB layouts/faults",
+    "full unchanged matrix and engine decision",
+    "coordinated final phase gates"
+  ]
+}

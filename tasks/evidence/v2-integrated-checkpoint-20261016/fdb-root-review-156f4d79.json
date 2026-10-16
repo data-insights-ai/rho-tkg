@@ -1,0 +1,15 @@
+{
+  "source": "156f4d79",
+  "result": "PASS",
+  "independentReplay": "fdb_create_update_check.verify over original raw artifacts with fresh 1GiB/8MiB private spool",
+  "exactAuthorProofMatch": true,
+  "originalReceiptPreserved": true,
+  "sourceRun": "5cb1972ff8447243c4a309b4309713f3e9691956",
+  "scope": "One standalone tiny correctness counterpart plus full independent source/original/history/CDC/owned-transport oracle; not pair/performance/capacity/matrix acceptance.",
+  "files": {
+    "/private/var/tmp/rho-v5-fdb-tiny-kernel-links-20261016.CKl03T/fdb/request.json": "806b66d0915125d5a836ff963e23d583310f19e6cb2527dc3f8b991cac2c6737",
+    "/private/var/tmp/rho-v5-fdb-tiny-kernel-links-20261016.CKl03T/fdb/verified.json": "f5d2914339b1cbad20b7ff45cc61591d0872dad26fb515ee1b124d9919123ab2",
+    "/private/var/tmp/rho-v5-history-clean-20261012/tools/v5-substrate/fdb/artifacts/rho-v5-fdb-1792113596-34805/receipt.json": "523487e2b2eb3c57004dc378d3b9eb6e14c0c390b6b937b335bcde6a248eff67",
+    "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/fdb-root-replay-156f4d79.json": "e3365ea51fbfeee59949f764cd932e4a51070c8b44920aad1f91f458a50340a7"
+  }
+}

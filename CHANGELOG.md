@@ -450,6 +450,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Partial v5 range imports now record installed lineage totals and retain the
+  accepted source manifest proof separately from target progress. Reopen checks
+  verify the complete manifest without treating its final page count as an
+  already installed prefix; retained old graph views remain unchanged.
+  Replay batches validate their immutable ownership declaration once per
+  captured view, avoiding repeated declaration allocations while retaining
+  every record's work and output charge under the existing limits.
+
 - Internal v5 retained-feed cursors now decode nonempty participant vectors
   within a bound derived from their validated bytes. Native reads fund decoded
   ownership and canonical scratch in the same output arena, preventing feed

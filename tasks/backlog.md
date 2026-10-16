@@ -1220,7 +1220,7 @@ pass current/synced WAL recovery, WAL/manifest corruption and OPTIONS rename in 
 and explicit independent Python checks. This receipt corrects the earlier claim
 that Go automatically invoked the WAL checker; original logs remain unchanged.
 
-The [current query/recovery checkpoint](evidence/v2-integrated-checkpoint-20261016/qualification-30a6ec66.json)
+The [current query/recovery checkpoint](evidence/v2-integrated-checkpoint-20261016/qualification-372f74eb.json)
 records the following finite scope:
 
 - The 20-fact, 100%-cross, one-writer KV/local native workload completes all
@@ -1234,15 +1234,22 @@ records the following finite scope:
   is captured before election, and initial/replacement snapshot roles agree.
   An explicit 19-entry D-only tail window admits the unchanged recovery pools
   within 256 MiB; native overflow backpressures and drain preserves the owner.
-  The full process case remains open: target Import0 must preserve actual
-  installed-prefix totals separately from its immutable source manifest proof.
-  That demonstrated production correction is under qualification.
+  Import0 now preserves actual installed-prefix totals separately from its
+  authenticated immutable source manifest. Focused import/reopen/tampering
+  checks pass. Collected, span and batched moves complete with exact retained
+  old/current answers; batch reducers validate ownership once on the same
+  captured view while retaining all per-record charges and original limits.
+  The process case remains open: an actual replacement-follower reply reaches
+  the leader and fails Step with invalid input. All eight owned processes exit;
+  this is a correctness failure after 6.65 seconds, not a timeout.
 - FoundationDB's first actual prebuild exposed seven compiler diagnostics.
   Their fixes compile; the pinned tool build additionally needed `xz-utils`.
-  The next run reaches four real zones, healthy triple replication and smoke,
-  then stops at the Docker capability-name check before business admission.
-  Early-failure receipts now preserve primary failures and absent stages;
-  actual cleanup is recorded. No FDB workload or paired result is accepted.
+  Exact Docker capability spellings and inert kernel-default links now pass
+  strict transport admission. The actual 20-fact KV/local counterpart completes
+  43 commits with no aborts; its complete original/history/CDC/transport oracle
+  passes an independent root replay with an identical proof. Terminal and
+  cleanup exit zero, and the original receipt remains unchanged. This is one
+  standalone correctness component; paired and larger results remain open.
 
 These components do not close their full fault families, the process inventory,
 engine comparison, measurements or V2. Original deadlines, quotas, complete
@@ -1270,7 +1277,8 @@ not qualify a successful cost cell, and an incomplete upper bound proves
 neither capacity nor infeasibility. The
 coordinator owns the inventory, source review, integration and acceptance
 decision. Keep one active source package per lane. Implement in parallel, but
-serialize heavy local fault/benchmark workloads under the shared resource lease.
+bound concurrent local correctness jobs by their combined CPU/RSS/disk grants;
+run comparative cost measurements on a quiet host under the shared resource lease.
 Finish the full remaining V2 implementation before execution: correctness tests,
 then measurements, then demonstrated improvements. Running CI is not a source
 integration gate. Do not rerun unchanged full suites per patch. Report integrated/accepted packages and remaining
