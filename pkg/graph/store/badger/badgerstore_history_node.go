@@ -128,7 +128,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
-	bs.recordNodeRowLocked(prevState)                              // backlog 8 — and its property values
+	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
@@ -266,7 +266,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
-	bs.recordNodeRowLocked(prevState)                              // backlog 8 — and its property values
+	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
@@ -388,7 +388,7 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current))   // BACKLOG 10c
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c — the demoted history row
-	bs.recordNodeRowLocked(prevState)                            // backlog 8 — and its property values
+	bs.recordNodeReplacedLocked(prevState, current)              // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(current)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(current, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, current, id)
@@ -503,10 +503,12 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 		return fatalErr
 	}
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(nodeTombstone)) // BACKLOG 10c
-	bs.recordNodeRowLocked(nodeTombstone)                            // backlog 8
+	bs.recordNodeRowLocked(nodeTombstone, false)                     // backlog 8
+	bs.forgetNodePropTxCurrentLocked(nodeTombstone)                  // ledger row 62: no current row any more
 	for _, rt := range relTombstones {
 		bs.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone)) // BACKLOG 10c
-		bs.recordRelRowLocked(rt.Tombstone)                             // backlog 8
+		bs.recordRelRowLocked(rt.Tombstone, false)                      // backlog 8
+		bs.forgetRelPropTxCurrentLocked(rt.Tombstone)                   // ledger row 62
 	}
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodeDelete, delPayload, token)
 	bs.idxMu.Unlock()
@@ -623,7 +625,7 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 		func() {
 			bs.recordNodeLabelMembersLocked(n)
 			bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
-			bs.recordNodeRowLocked(n)                 // backlog 8: tracking or built property sidecars
+			bs.recordNodeRowLocked(n, false)          // backlog 8: tracking or built property sidecars
 			bs.extendNodeVersionTemporalLocked(n, id) // backlog 56: a covered node's envelope holds every row
 		},
 		func() error {

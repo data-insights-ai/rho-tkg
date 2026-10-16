@@ -1,0 +1,6 @@
+BenchmarkWindowedEqualityWritePath/memory-32         	  286339	      4140 ns/op	    2460 B/op	      36 allocs/op
+BenchmarkWindowedEqualityWritePath/memory-32         	  270763	      4063 ns/op	    2463 B/op	      36 allocs/op
+BenchmarkWindowedEqualityWritePath/memory-32         	  271926	      3699 ns/op	    2463 B/op	      36 allocs/op
+BenchmarkWindowedEqualityWritePath/badger-32         	  154291	      9193 ns/op	    5014 B/op	      70 allocs/op
+BenchmarkWindowedEqualityWritePath/badger-32         	  166920	      9011 ns/op	    4996 B/op	      70 allocs/op
+BenchmarkWindowedEqualityWritePath/badger-32         	  156568	      9259 ns/op	    4997 B/op	      70 allocs/op

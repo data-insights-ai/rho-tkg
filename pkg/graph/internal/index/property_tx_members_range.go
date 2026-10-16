@@ -120,8 +120,8 @@ func (c *memberCollector[ID]) add(vk string) {
 		c.pos[id] = len(c.out)
 		c.out = append(c.out, TxMember[ID]{ID: id, FirstTx: tx})
 	}
-	one(p.id, p.tx)
-	for id, tx := range p.more {
-		one(id, tx)
+	one(p.id, p.p.tx)
+	for id, q := range p.more {
+		one(id, q.tx)
 	}
 }

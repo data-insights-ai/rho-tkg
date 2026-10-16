@@ -37,6 +37,9 @@ type PropertyTxMembers[ID cmp.Ordered] struct {
 	values   map[string]txPostings[ID]
 	postings int64
 	ordered  map[string]*sortedChunks[ID]
+	// windows, per value a valid-time view a windowed lookup opened (ledger
+	// row 62, property_tx_members_window.go); Record keeps each open one.
+	windows map[string]*windowView[ID]
 	// numeric, nil until OrderNumeric opens it (round 8 request 2): the
 	// value keys by numeric sort key, so MembersInRange visits the values of
 	// a range instead of every value. Record keeps it once open.
@@ -45,8 +48,8 @@ type PropertyTxMembers[ID cmp.Ordered] struct {
 
 type txPostings[ID cmp.Ordered] struct {
 	id   ID
-	tx   types.Instant
-	more map[ID]types.Instant
+	p    txPosting
+	more map[ID]txPosting
 }
 
 // TxMember is one enumerated member: the entity and the lower bound on the
@@ -74,40 +77,111 @@ func MergeFirstTx(prev, tx types.Instant) types.Instant {
 	return prev
 }
 
-// Record notes that a row of id carrying the value vk has TxFrom tx. An empty
-// vk (a value that is not indexable) is ignored.
+// Record notes that a row of id carrying the value vk has TxFrom tx, with an
+// unknown valid-time span (the member meets every window). An empty vk (a
+// value that is not indexable) is ignored.
 func (m *PropertyTxMembers[ID]) Record(vk string, id ID, tx types.Instant) {
+	m.update(vk, id, func(p *txPosting) {
+		p.noteTx(tx, tx)
+		p.flags |= spanWild
+	})
+}
+
+// RecordRow notes one stored row of id carrying vk (ledger row 62): its first
+// tx, its stamps and valid-time span (RowInfo), as the member's current row or
+// as a history row. The store records every row it keeps here; see
+// txPosting.recordCurrent / recordHistory.
+func (m *PropertyTxMembers[ID]) RecordRow(vk string, id ID, ri RowInfo, current bool) {
+	m.update(vk, id, func(p *txPosting) {
+		if current {
+			p.recordCurrent(ri)
+		} else {
+			p.recordHistory(ri)
+		}
+	})
+}
+
+// RecordReplaced notes old, the copy of id's current row an update door moved
+// to history, and next, the current row that replaced it (ledger row 62): old
+// joins the late envelope ended by next (RowInfo.endedBy) under every value
+// old carries, whatever next carries. The update doors call it for the
+// demoted row instead of RecordRow.
+func (m *PropertyTxMembers[ID]) RecordReplaced(vk string, id ID, old, next RowInfo) {
+	m.update(vk, id, func(p *txPosting) { p.recordReplaced(old, next) })
+}
+
+// ForgetCurrent notes that a delete door removed id's current row: the
+// member's late envelope keeps its history (the delete's tombstone is
+// recorded as a history row first). A no-op for an unknown member.
+func (m *PropertyTxMembers[ID]) ForgetCurrent(vk string, id ID) {
+	if m == nil {
+		return
+	}
+	ps, ok := m.values[vk]
+	if !ok {
+		return
+	}
+	if _, member := ps.lookup(id); !member {
+		return
+	}
+	m.update(vk, id, func(p *txPosting) { p.forgetCurrent() })
+}
+
+// Restore installs one posting as an open image held it (ForEachValueSpans),
+// uniting it with an existing one.
+func (m *PropertyTxMembers[ID]) Restore(vk string, mb SpanMember[ID]) {
+	add := postingOf(mb)
+	m.update(vk, mb.ID, func(p *txPosting) { p.unite(add) })
+}
+
+// update applies fn to vk's posting of id (newPosting when id is new) and
+// keeps the open views. An empty vk is ignored.
+func (m *PropertyTxMembers[ID]) update(vk string, id ID, fn func(*txPosting)) {
 	if m == nil || vk == "" {
 		return
 	}
-	p, ok := m.values[vk]
-	switch {
-	case !ok:
-		m.values[vk] = txPostings[ID]{id: id, tx: tx}
+	ps, ok := m.values[vk]
+	if !ok {
+		q := newPosting()
+		fn(&q)
+		m.values[vk] = txPostings[ID]{id: id, p: q}
 		m.postings++
 		m.orderNew(vk, id)
 		if m.numeric != nil {
 			m.numeric.add(vk)
 		}
+		m.windowSet(vk, id, q)
 		return
-	case p.id == id:
-		if merged := MergeFirstTx(p.tx, tx); merged != p.tx {
-			p.tx = merged
-			m.values[vk] = p
+	}
+	if ps.id == id {
+		q := ps.p
+		fn(&q)
+		if q != ps.p {
+			ps.p = q
+			m.values[vk] = ps
+			m.windowSet(vk, id, q)
 		}
 		return
 	}
-	if p.more == nil {
-		p.more = make(map[ID]types.Instant)
-		m.values[vk] = p
+	prev, member := ps.more[id]
+	if !member {
+		prev = newPosting()
 	}
-	if prev, ok := p.more[id]; ok {
-		p.more[id] = MergeFirstTx(prev, tx)
+	q := prev
+	fn(&q)
+	if member && q == prev {
 		return
 	}
-	p.more[id] = tx
-	m.postings++
-	m.orderNew(vk, id)
+	if ps.more == nil {
+		ps.more = make(map[ID]txPosting)
+		m.values[vk] = ps
+	}
+	ps.more[id] = q
+	if !member {
+		m.postings++
+		m.orderNew(vk, id)
+	}
+	m.windowSet(vk, id, q)
 }
 
 // orderNew adds a new member of vk to vk's ordered view, when one is open.
@@ -171,25 +245,25 @@ func (m *PropertyTxMembers[ID]) MembersAfter(vk string, after ID, limit int) (ou
 		if id == after {
 			return true
 		}
-		tx := p.tx
-		if id != p.id {
-			tx = p.more[id]
-		}
-		out = append(out, TxMember[ID]{ID: id, FirstTx: tx})
+		out = append(out, TxMember[ID]{ID: id, FirstTx: p.posting(id).tx})
 		return len(out) < limit
 	})
 	return out, true
 }
 
-// Merge folds every posting of other into m (other is left unchanged).
+// Merge folds every posting of other into m (other is left unchanged). A
+// current span merges as a union, not a replacement: a build scan and the
+// records of concurrent writes commute, at the cost of a stale current span
+// staying wide (sound, ledger row 62).
 func (m *PropertyTxMembers[ID]) Merge(other *PropertyTxMembers[ID]) {
 	if m == nil || other == nil {
 		return
 	}
 	for vk, p := range other.values {
-		m.Record(vk, p.id, p.tx)
-		for id, tx := range p.more {
-			m.Record(vk, id, tx)
+		add := p.p
+		m.update(vk, p.id, func(q *txPosting) { q.unite(add) })
+		for id, add := range p.more {
+			m.update(vk, id, func(q *txPosting) { q.unite(add) })
 		}
 	}
 }
@@ -203,9 +277,39 @@ func (m *PropertyTxMembers[ID]) ForEachValue(fn func(vk string, members []TxMemb
 	}
 	var buf []TxMember[ID]
 	for vk, p := range m.values {
-		buf = append(buf[:0], TxMember[ID]{ID: p.id, FirstTx: p.tx})
-		for id, tx := range p.more {
-			buf = append(buf, TxMember[ID]{ID: id, FirstTx: tx})
+		buf = append(buf[:0], TxMember[ID]{ID: p.id, FirstTx: p.p.tx})
+		for id, q := range p.more {
+			buf = append(buf, TxMember[ID]{ID: id, FirstTx: q.tx})
+		}
+		fn(vk, buf)
+	}
+}
+
+// SpanMember is one posting with its valid-time state (the open image's
+// encoder, ledger row 62): All / Late / Cur hold only when HasAll / HasLate /
+// HasCur; Wild marks a member recorded without a span (Record), which meets
+// every window. See txPosting for the fields.
+type SpanMember[ID comparable] struct {
+	ID                      ID
+	FirstTx, LastTx         types.Instant
+	All, Late, Cur          Span
+	CurVersion              uint32
+	HasAll, HasLate, HasCur bool
+	Wild                    bool
+}
+
+// ForEachValueSpans is ForEachValue with each posting's spans. members is
+// reused between calls: valid only during fn. The owner calls it under at
+// least its shared lock.
+func (m *PropertyTxMembers[ID]) ForEachValueSpans(fn func(vk string, members []SpanMember[ID])) {
+	if m == nil {
+		return
+	}
+	var buf []SpanMember[ID]
+	for vk, p := range m.values {
+		buf = append(buf[:0], spanMemberOf(p.id, p.p))
+		for id, q := range p.more {
+			buf = append(buf, spanMemberOf(id, q))
 		}
 		fn(vk, buf)
 	}
@@ -221,9 +325,9 @@ func (m *PropertyTxMembers[ID]) Members(vk string) []TxMember[ID] {
 		return nil
 	}
 	out := make([]TxMember[ID], 0, 1+len(p.more))
-	out = append(out, TxMember[ID]{ID: p.id, FirstTx: p.tx})
-	for id, tx := range p.more {
-		out = append(out, TxMember[ID]{ID: id, FirstTx: tx})
+	out = append(out, TxMember[ID]{ID: p.id, FirstTx: p.p.tx})
+	for id, q := range p.more {
+		out = append(out, TxMember[ID]{ID: id, FirstTx: q.tx})
 	}
 	return out
 }

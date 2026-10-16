@@ -206,7 +206,7 @@ func (ms *Store) accountSealedRowLocked(r *types.Relationship) {
 	id := r.ID()
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r))
 	ms.recordRelTypeMemberLocked(r)
-	ms.recordRelPropTxLocked(r)
+	ms.recordRelPropTxLocked(r, true)
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)

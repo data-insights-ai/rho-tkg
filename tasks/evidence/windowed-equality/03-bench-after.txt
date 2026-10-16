@@ -1,0 +1,24 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkWindowedEqualitySeek/memory-32  	  177206	      7168 ns/op	        10.00 chains/op	    7302 B/op	     128 allocs/op
+BenchmarkWindowedEqualitySeek/memory-32  	  170829	      6795 ns/op	        10.00 chains/op	    7302 B/op	     128 allocs/op
+BenchmarkWindowedEqualitySeek/memory-32  	  182763	      6583 ns/op	        10.00 chains/op	    7302 B/op	     128 allocs/op
+BenchmarkWindowedEqualitySeek/badger-32  	   59863	     19628 ns/op	        10.00 chains/op	   16328 B/op	     282 allocs/op
+BenchmarkWindowedEqualitySeek/badger-32  	   59180	     20428 ns/op	        10.00 chains/op	   16327 B/op	     282 allocs/op
+BenchmarkWindowedEqualitySeek/badger-32  	   64066	     19104 ns/op	        10.00 chains/op	   16327 B/op	     282 allocs/op
+BenchmarkWindowedEqualitySeek/sharded-32 	   54499	     22827 ns/op	        10.00 chains/op	   21338 B/op	     340 allocs/op
+BenchmarkWindowedEqualitySeek/sharded-32 	   53044	     22102 ns/op	        10.00 chains/op	   21338 B/op	     340 allocs/op
+BenchmarkWindowedEqualitySeek/sharded-32 	   51657	     22746 ns/op	        10.00 chains/op	   21338 B/op	     340 allocs/op
+BenchmarkWindowedEqualitySeek/tiered-32  	   44841	     25793 ns/op	        10.00 chains/op	   22345 B/op	     379 allocs/op
+BenchmarkWindowedEqualitySeek/tiered-32  	   46681	     25159 ns/op	        10.00 chains/op	   22344 B/op	     379 allocs/op
+BenchmarkWindowedEqualitySeek/tiered-32  	   46094	     25965 ns/op	        10.00 chains/op	   22344 B/op	     379 allocs/op
+BenchmarkWindowedEqualityWritePath/memory-32         	  269362	      4951 ns/op	    3274 B/op	      38 allocs/op
+BenchmarkWindowedEqualityWritePath/memory-32         	  227415	      5100 ns/op	    3286 B/op	      38 allocs/op
+BenchmarkWindowedEqualityWritePath/memory-32         	  229573	      5172 ns/op	    3286 B/op	      38 allocs/op
+BenchmarkWindowedEqualityWritePath/badger-32         	  131487	     10514 ns/op	    5867 B/op	      73 allocs/op
+BenchmarkWindowedEqualityWritePath/badger-32         	  118712	      9929 ns/op	    5846 B/op	      73 allocs/op
+BenchmarkWindowedEqualityWritePath/badger-32         	  129139	     10271 ns/op	    5849 B/op	      72 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	29.973s

@@ -73,8 +73,10 @@ const (
 	imgSecHF
 	imgSecVector
 	imgSecPlannerStats // badgerstore_planner_stats_deferred.go
-	imgSecRelPropTx    // built property membership sidecars (backlog 74)
+	imgSecRelPropTx    // v4.56.1-v4.58.1 sidecars without valid-time spans: skipped (rebuilt lazily)
 	imgSecNodePropTx
+	imgSecRelPropTxSpans // built property membership sidecars with spans (backlog 74, ledger row 62)
+	imgSecNodePropTxSpans
 )
 
 type imgValueIDs struct {
@@ -324,31 +326,65 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 		if sc.built && bs.relPropIndexUsableLocked(key) {
 			b := binary.BigEndian.AppendUint16(nil, key.RelTypeToken)
 			b = appendImgString(b, key.PropertyKey)
-			section(imgSecRelPropTx, appendImgPropTx(b, sc.members))
+			section(imgSecRelPropTxSpans, appendImgPropTx(b, sc.members))
 		}
 	}
 	for key, sc := range bs.nodePropTx {
 		if sc.built && bs.nodePropIndexUsableLocked(key) {
 			b := binary.BigEndian.AppendUint16(nil, key.LabelToken)
 			b = appendImgString(b, key.PropertyKey)
-			section(imgSecNodePropTx, appendImgPropTx(b, sc.members))
+			section(imgSecNodePropTxSpans, appendImgPropTx(b, sc.members))
 		}
 	}
 	return out
 }
 
+// Posting flags of an image sidecar member (ledger row 62).
+const (
+	imgPropTxAll  byte = 1 << iota // any-pin envelope follows (from, to)
+	imgPropTxLate                  // late history envelope follows (from, to)
+	imgPropTxCur                   // current row follows (from, to, version)
+	imgPropTxWild                  // unknown span: meets every window
+)
+
 // appendImgPropTx renders a sidecar: the value count, then per value its key,
-// member count and (ID, first transaction time) pairs.
+// member count and per member (ID, first transaction time, flags, last stamp,
+// the envelopes the flags name; indexpkg.SpanMember).
 func appendImgPropTx[ID ~int64](b []byte, m *indexpkg.PropertyTxMembers[ID]) []byte {
 	var n uint64
 	var body []byte
-	m.ForEachValue(func(vk string, members []indexpkg.TxMember[ID]) {
+	span := func(sp indexpkg.Span) {
+		body = binary.AppendVarint(body, int64(sp.From))
+		body = binary.AppendVarint(body, int64(sp.To))
+	}
+	m.ForEachValueSpans(func(vk string, members []indexpkg.SpanMember[ID]) {
 		n++
 		body = appendImgString(body, vk)
 		body = binary.AppendUvarint(body, uint64(len(members)))
 		for _, mb := range members {
 			body = binary.AppendUvarint(body, uint64(mb.ID)) // #nosec G115 -- positive snowflake ID
 			body = binary.AppendVarint(body, int64(mb.FirstTx))
+			var flags byte
+			for _, f := range []struct {
+				on  bool
+				bit byte
+			}{{mb.HasAll, imgPropTxAll}, {mb.HasLate, imgPropTxLate}, {mb.HasCur, imgPropTxCur}, {mb.Wild, imgPropTxWild}} {
+				if f.on {
+					flags |= f.bit
+				}
+			}
+			body = append(body, flags)
+			body = binary.AppendVarint(body, int64(mb.LastTx))
+			if mb.HasAll {
+				span(mb.All)
+			}
+			if mb.HasLate {
+				span(mb.Late)
+			}
+			if mb.HasCur {
+				span(mb.Cur)
+				body = binary.AppendUvarint(body, uint64(mb.CurVersion))
+			}
 		}
 	})
 	b = binary.AppendUvarint(b, n)
@@ -554,8 +590,39 @@ func imgPropTx[ID ~int64](r *imgReader) *indexpkg.PropertyTxMembers[ID] {
 			r.fail("value key") // Record ignores an empty key: never written
 		}
 		for n := r.count(len(r.b)); n > 0 && r.err == nil; n-- {
-			id := ID(r.id())
-			m.Record(vk, id, types.Instant(r.varint()))
+			mb := indexpkg.SpanMember[ID]{ID: ID(r.id()), FirstTx: types.Instant(r.varint())}
+			flags := r.bytes(1)
+			if r.err != nil {
+				break
+			}
+			if flags[0]&^(imgPropTxAll|imgPropTxLate|imgPropTxCur|imgPropTxWild) != 0 {
+				r.fail("posting flags")
+				break
+			}
+			mb.HasAll, mb.HasLate = flags[0]&imgPropTxAll != 0, flags[0]&imgPropTxLate != 0
+			mb.HasCur, mb.Wild = flags[0]&imgPropTxCur != 0, flags[0]&imgPropTxWild != 0
+			mb.LastTx = types.Instant(r.varint())
+			span := func() indexpkg.Span {
+				return indexpkg.Span{From: types.Instant(r.varint()), To: types.Instant(r.varint())}
+			}
+			if mb.HasAll {
+				mb.All = span()
+			}
+			if mb.HasLate {
+				mb.Late = span()
+			}
+			if mb.HasCur {
+				mb.Cur = span()
+				v := r.uvarint()
+				if v > math.MaxUint32 {
+					r.fail("current version")
+					break
+				}
+				mb.CurVersion = uint32(v) // #nosec G115 -- range checked
+			}
+			if r.err == nil {
+				m.Restore(vk, mb)
+			}
 		}
 	}
 	return m
@@ -625,10 +692,14 @@ func decodeOpenImage(blob []byte) (*openImage, error) {
 			img.vectors[key] = entries
 		case imgSecPlannerStats:
 			img.stats = decodePlannerStats(&r)
-		case imgSecRelPropTx:
+		case imgSecRelPropTx, imgSecNodePropTx:
+			// An older sidecar holds no valid-time spans (ledger row 62): skip
+			// it; the first lookup rebuilds the sidecar from the rows.
+			r.b = nil
+		case imgSecRelPropTxSpans:
 			key := indexpkg.RelPropertyIndexKey{RelTypeToken: r.u16(), PropertyKey: r.str()}
 			img.relPropTx[key] = imgPropTx[types.RelID](&r)
-		case imgSecNodePropTx:
+		case imgSecNodePropTxSpans:
 			key := indexpkg.PropertyIndexKey{LabelToken: r.u16(), PropertyKey: r.str()}
 			img.nodePropTx[key] = imgPropTx[types.NodeID](&r)
 		default:

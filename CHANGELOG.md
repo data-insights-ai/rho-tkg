@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **A valid-time equality lookup costs the members that meet the window, not the value's history** (MINOR: new optional
+  store capability; sigma-tkgd 2026-10-16, ledger row 62, the last piece of ai-soc's whole-BA proof). Sigma's late-row
+  refold reads `ByTypeAndProperty(type, prop, v, {TxAt: pin, ValidStart: a, ValidEnd: MaxInt64})` (and the node mirror
+  `ByLabelAndProperty`); with a declared property index it loaded the chain of every member the value ever had and read
+  every current row of the value (one estate value holds about 248,000 rows on ai-soc's BA). Same doors, same
+  `QueryOpts`, no new door: with `ValidAt` or `ValidStart`+`ValidEnd` (with or without `TxAt`) the candidates now come
+  from a per-value valid-time view of the property membership sidecar, O(log n + k + r): k the members whose rows can
+  meet the window at the pin, r the members written after the pin. Each sidecar posting keeps the valid-time state of
+  the member's rows that carry the value: the union of every row's span (a tombstone reopened, as a pre-delete pin
+  reads it) for pins before the member's last stamp, and for later pins the history rows' spans plus the current row's,
+  where a row replaced while open ends at its replacing row's start (update doors record it through
+  `RecordReplaced`; a build scan pairs a history row with the row recorded at its `TxTo`) and a deleted row ends at its
+  delete. Every later write only narrows what a row answers, so the view stays a sound superset and the chain resolver
+  decides: indexed and unindexed doors answer alike. The named `*PropertyAt` / `*PropertyDuring` doors take the same
+  path. `TxPin` and `TxAt` alone keep the ever-member path. New optional capabilities
+  `store.RelPropertyTxMemberWindowCapability.ForEachRelPropertyTxMemberDuring(tok, key, valueKey, validStart, validEnd,
+  txAt, fn)` and `NodePropertyTxMemberWindowCapability` on memory, badger, sharded and tiered (union of the shards).
+  Measured (`BenchmarkWindowedEqualitySeek`, one value with 50,000 members, every fifth created open and closed by an
+  update, a late window meeting 10 at the newest pin): 
+
+  | backend | main | this change | chains | allocs |
+  |---|---|---|---|---|
+  | memory | 36 ms | 6.8 µs | 50,000 to 10 | 510,167 to 128 |
+  | badger | 465 ms | 19.6 µs | 50,000 to 10 | 3.9 M to 282 |
+  | sharded | 510 ms | 22.6 µs | 50,000 to 10 | 4.4 M to 340 |
+  | tiered | 470 ms | 25.6 µs | 50,000 to 10 | 4.2 M to 379 |
+
+  (`03-bench-before.txt` / `03-bench-after.txt`).
+  Cost: sidecar RAM 25 to 110 B per posting at 200 members per value (117 to 250 B with one member per value;
+  `BenchmarkPropertyTxMembersBytesPerPosting`, `04-bytes-per-posting.txt`); a view per value a windowed lookup asked
+  for (built once, O(n log n), kept by every write, O(1) amortised plus a fold every ~2 sqrt(n) changes); an indexed
+  update with the view open 4.0 to 5.1 µs on memory and 9.2 to 10.2 µs on badger, +2-3 allocations
+  (`BenchmarkWindowedEqualityWritePath`). Open image: the sidecars are written as new sections with their spans; an image of v4.58.1 or
+  older restores no sidecar (the first lookup per kind rebuilds them in one scan, backlog 74), and v4.58.1 or older
+  rejects the new image and rebuilds from the rows. Tests: `TestWindowedEqualitySeekCost` (chain loads equal the 10
+  matches, allocations flat in the value's size; memory, badger, sharded, tiered; sidecar built before or after the
+  writes), `TestWindowedEqualitySeekAgrees` (random histories with revisions, closes, deletes, retractions, excisions,
+  untimed, `UntimedUnbounded` and negative starts, int 3 and float 3.0; every window shape incl. a = b, open end,
+  `UnboundedValidFrom`, points, TxAt before/after; against the unindexed fold), `TestPropTxWindow_WritePathImageScanAgree`,
+  `TestPropertyTxMembersWindow*`, `TestRowScanEndsReplacedRows`; `TestPinnedPropertyLookupLoadsOnlyEverMembers` now
+  expects 5 chains (the current members), not 10, under `ValidAt`. Evidence `tasks/evidence/windowed-equality/`.
+
 ## [4.58.1] - 2026-10-16
 
 ### Fixed

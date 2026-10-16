@@ -326,7 +326,7 @@ func (bs *Store) persistRelPropertyIndexDefs() {
 // caller). Add also records the row into the property membership sidecars (backlog 8).
 func (bs *Store) maintainRelPropertyIndexesAdd(r *types.Relationship, id snowflake.ID) {
 	indexpkg.AddRelToPropertyIndexes(bs.relPropertyIndexes, r, id)
-	bs.recordRelRowLocked(r)
+	bs.recordRelRowLocked(r, true)
 }
 
 func (bs *Store) maintainRelPropertyIndexesRemove(r *types.Relationship, id snowflake.ID) {

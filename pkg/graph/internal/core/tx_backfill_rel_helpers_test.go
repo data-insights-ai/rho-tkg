@@ -22,12 +22,12 @@ import (
 
 type txbBackend struct {
 	name string
-	open func(t *testing.T, allowBackfill bool) *Core
+	open func(t testing.TB, allowBackfill bool) *Core
 }
 
 // txbBackends lists the four backends; mods adjust every backend's Config.
 func txbBackends(mods ...func(*Config)) []txbBackend {
-	newCore := func(t *testing.T, cfg Config) *Core {
+	newCore := func(t testing.TB, cfg Config) *Core {
 		t.Helper()
 		// The TxFrom start of an untimed create is what these tests pin
 		// (backlog 62); the v4.57.0 default is covered by TestUntimedDefaultFlip.
@@ -43,20 +43,20 @@ func txbBackends(mods ...func(*Config)) []txbBackend {
 		return g
 	}
 	return []txbBackend{
-		{"memory", func(t *testing.T, allow bool) *Core {
+		{"memory", func(t testing.TB, allow bool) *Core {
 			return newCore(t, Config{AllowTxBackfill: allow})
 		}},
-		{"badger", func(t *testing.T, allow bool) *Core {
+		{"badger", func(t testing.TB, allow bool) *Core {
 			return newCore(t, Config{BadgerInMemory: true, AllowTxBackfill: allow})
 		}},
-		{"sharded", func(t *testing.T, allow bool) *Core {
+		{"sharded", func(t testing.TB, allow bool) *Core {
 			st, err := shardedpkg.New(shardedpkg.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 			if err != nil {
 				t.Fatalf("sharded.New: %v", err)
 			}
 			return newCore(t, Config{Store: st, AllowTxBackfill: allow})
 		}},
-		{"tiered", func(t *testing.T, allow bool) *Core {
+		{"tiered", func(t testing.TB, allow bool) *Core {
 			ts, err := tiered.New(tiered.Config{
 				InMemory:      true,
 				RefLabels:     []string{"Ref"},

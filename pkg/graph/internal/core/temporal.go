@@ -1072,51 +1072,103 @@ func (c *Core) membershipSidecarUsable(depth storepkg.ShardDepth) bool {
 // index the candidates are the value's ever-members, minus those whose
 // earliest row carrying the value was recorded strictly after the effective
 // transaction-time pin (TxPin, else TxAt; a pure valid-time filter prunes
-// nothing), united with currentIDs (the current index matches). Otherwise —
-// no sidecar, no declared index (store.ErrIndexNotFound), or a depth-scoped
-// read — the full-history fold. Both paths feed the same resolver and
-// predicate, so they answer the same; the sidecar path loads only chains that
-// can carry the value.
-func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys equalKeys, currentIDs []types.RelID, opts storepkg.QueryOpts, fn func(types.RelID) error) error {
-	if c.relPropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
-		return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, fn)
-	}
-	pinTx := effectiveTxPin(opts)
-	seen := make(map[types.RelID]struct{}, len(currentIDs))
-	for _, valueKey := range valueKeys {
-		var invalid error
-		err := c.relPropTxMembers.ForEachRelPropertyTxMember(tok, key, valueKey, func(id types.RelID, firstTx types.Instant) bool {
-			if !c.storeRowsTrust {
-				if verr := storepkg.ValidateRelID(id); verr != nil {
-					invalid = verr
-					return false
-				}
-			}
-			if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
-				return true // first carried the value after the pin: cannot match
-			}
-			seen[id] = struct{}{}
-			return true
-		})
-		if invalid != nil {
-			return invalid
-		}
-		if errors.Is(err, storepkg.ErrIndexNotFound) {
-			return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, fn)
-		}
+// nothing), united with the current index matches (current). With a
+// valid-time filter and the windowed capability (ledger row 62) they are only
+// the members whose rows carrying the value may meet the filter's window,
+// pruned the same way; the sidecar records every current and history row, so
+// current is not read. Otherwise — no sidecar, no declared index
+// (store.ErrIndexNotFound), or a depth-scoped read — the full-history fold.
+// Every path feeds the same resolver and predicate, so they answer the same;
+// the sidecar paths load only chains that can carry the value. current is
+// called at most once, only by the paths that need it.
+func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys equalKeys, current func() ([]types.RelID, error), opts storepkg.QueryOpts, fn func(types.RelID) error) error {
+	fold := func() error {
+		currentIDs, err := current()
 		if err != nil {
 			return err
 		}
+		return c.forEachRelHistoryCandidateOfType(tok, currentIDs, opts, fn)
 	}
-	for _, id := range currentIDs {
-		seen[id] = struct{}{}
+	if c.relPropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
+		return fold()
 	}
-	for id := range seen {
-		if err := fn(id); err != nil {
-			return err
+	pinTx := effectiveTxPin(opts)
+	start, end, windowed := validWindow(opts)
+	windowed = windowed && c.relPropTxWindow != nil
+	for {
+		seen := make(map[types.RelID]struct{})
+		declined := false
+		for _, valueKey := range valueKeys {
+			var invalid error
+			member := func(id types.RelID, firstTx types.Instant) bool {
+				if !c.storeRowsTrust {
+					if verr := storepkg.ValidateRelID(id); verr != nil {
+						invalid = verr
+						return false
+					}
+				}
+				if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
+					return true // first carried the value after the pin: cannot match
+				}
+				seen[id] = struct{}{}
+				return true
+			}
+			var err error
+			if windowed {
+				err = c.relPropTxWindow.ForEachRelPropertyTxMemberDuring(tok, key, valueKey, start, end, opts.TxAt, member)
+			} else {
+				err = c.relPropTxMembers.ForEachRelPropertyTxMember(tok, key, valueKey, member)
+			}
+			if invalid != nil {
+				return invalid
+			}
+			if errors.Is(err, storepkg.ErrIndexNotFound) {
+				declined = true
+				break
+			}
+			if err != nil {
+				return err
+			}
 		}
+		if declined {
+			if windowed {
+				windowed = false // the full enumeration decides (it may decline too)
+				continue
+			}
+			return fold()
+		}
+		if !windowed {
+			currentIDs, err := current()
+			if err != nil {
+				return err
+			}
+			for _, id := range currentIDs {
+				seen[id] = struct{}{}
+			}
+		}
+		for id := range seen {
+			if err := fn(id); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	return nil
+}
+
+// validWindow returns the valid-time window [start, end) a point or interval
+// filter in opts restricts to (ValidAt t is [t, t+1)), and false when opts has
+// no valid-time filter or the point has no representable successor.
+func validWindow(opts storepkg.QueryOpts) (start, end types.Instant, ok bool) {
+	switch {
+	case opts.ValidAt != 0:
+		if opts.ValidAt == math.MaxInt64 {
+			return 0, 0, false
+		}
+		return opts.ValidAt, opts.ValidAt + 1, true
+	case opts.HasValidInterval():
+		return opts.ValidStart, opts.ValidEnd, true
+	}
+	return 0, 0, false
 }
 
 // forEachNodePropertyCandidateID is the node twin of
@@ -1126,14 +1178,25 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 // it is an ever-member of each pair's (label, key) sidecar: the candidates are
 // the INTERSECTION of the sidecar sets of the pairs whose key has a declared
 // index (a pair without one, or with a non-indexable value, constrains
-// nothing), pruned by the pin per pair, united with currentIDs. No usable
-// pair at all: the history fold scoped to the label's ever-members
-// (forEachNodeHistoryCandidateOfLabel).
-func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]equalKeys, currentIDs []types.NodeID, opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
-	if c.nodePropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
+// nothing), pruned by the pin per pair, united with the current matches —
+// or, under a valid-time filter with the windowed capability (ledger row 62),
+// each pair's set narrowed to the members whose rows may meet the window and
+// no current read. No usable pair at all: the history fold scoped to the
+// label's ever-members (forEachNodeHistoryCandidateOfLabel).
+func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]equalKeys, current func() ([]types.NodeID, error), opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
+	fold := func() error {
+		currentIDs, err := current()
+		if err != nil {
+			return err
+		}
 		return c.forEachNodeHistoryCandidateOfLabel(tok, currentIDs, opts, fn)
 	}
+	if c.nodePropTxMembers == nil || !c.membershipSidecarUsable(opts.Depth) {
+		return fold()
+	}
 	pinTx := effectiveTxPin(opts)
+	start, end, windowed := validWindow(opts)
+	windowed = windowed && c.nodePropTxWindow != nil
 	keys := make([]string, 0, len(valueKeys))
 	for k := range valueKeys {
 		keys = append(keys, k)
@@ -1149,7 +1212,7 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 		indexed := true
 		for _, vk := range vks {
 			var invalid error
-			err := c.nodePropTxMembers.ForEachNodePropertyTxMember(tok, key, vk, func(id types.NodeID, firstTx types.Instant) bool {
+			member := func(id types.NodeID, firstTx types.Instant) bool {
 				if !c.storeRowsTrust {
 					if verr := storepkg.ValidateNodeID(id); verr != nil {
 						invalid = verr
@@ -1166,7 +1229,13 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 				}
 				set[id] = struct{}{}
 				return true
-			})
+			}
+			var err error
+			if windowed {
+				err = c.nodePropTxWindow.ForEachNodePropertyTxMemberDuring(tok, key, vk, start, end, opts.TxAt, member)
+			} else {
+				err = c.nodePropTxMembers.ForEachNodePropertyTxMember(tok, key, vk, member)
+			}
 			if invalid != nil {
 				return invalid
 			}
@@ -1184,10 +1253,16 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 		cands = set
 	}
 	if cands == nil {
-		return c.forEachNodeHistoryCandidateOfLabel(tok, currentIDs, opts, fn)
+		return fold()
 	}
-	for _, id := range currentIDs {
-		cands[id] = struct{}{}
+	if !windowed {
+		currentIDs, err := current()
+		if err != nil {
+			return err
+		}
+		for _, id := range currentIDs {
+			cands[id] = struct{}{}
+		}
 	}
 	for id := range cands {
 		if err := fn(id); err != nil {

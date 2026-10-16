@@ -328,6 +328,27 @@ type NodePropertyTxMembershipCapability interface {
 	ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 }
 
+// RelPropertyTxMemberWindowCapability is OPTIONAL (ledger row 62): the members
+// RelPropertyTxMembershipCapability enumerates for one value, narrowed to those
+// whose rows carrying the value may be valid somewhere in [validStart,
+// validEnd) as read at transaction time txAt (a TxAt pin; 0 = no pin, every
+// row) — a sound superset of the members a valid-time lookup at that pin can
+// match — in about O(log n + k) instead of the whole value. validStart >=
+// validEnd answers nothing. Same contract otherwise (append-only sound
+// superset, firstTxFrom 0 = unknown, store.ErrIndexNotFound before fn when no
+// index is declared, each member once, order unspecified); fn runs outside
+// store locks.
+type RelPropertyTxMemberWindowCapability interface {
+	ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+}
+
+// NodePropertyTxMemberWindowCapability is the node twin of
+// RelPropertyTxMemberWindowCapability, keyed (label, key) like
+// NodePropertyTxMembershipCapability.
+type NodePropertyTxMemberWindowCapability interface {
+	ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+}
+
 // RelPropertyTxMemberPageCapability is OPTIONAL (backlog 69): the members
 // RelPropertyTxMembershipCapability enumerates for one value, in ascending ID
 // order and resumed above a cursor — at most limit members with ID > after —

@@ -1,0 +1,198 @@
+=== RUN   TestPinnedPropertyLookupLoadsOnlyEverMembers
+=== RUN   TestPinnedPropertyLookupLoadsOnlyEverMembers/memory/rel
+=== RUN   TestPinnedPropertyLookupLoadsOnlyEverMembers/memory/node
+=== RUN   TestPinnedPropertyLookupLoadsOnlyEverMembers/badger/rel
+=== RUN   TestPinnedPropertyLookupLoadsOnlyEverMembers/badger/node
+=== RUN   TestPinnedPropertyLookupLoadsOnlyEverMembers/sharded/rel
+=== RUN   TestPinnedPropertyLookupLoadsOnlyEverMembers/sharded/node
+--- PASS: TestPinnedPropertyLookupLoadsOnlyEverMembers (0.09s)
+    --- PASS: TestPinnedPropertyLookupLoadsOnlyEverMembers/memory/rel (0.00s)
+    --- PASS: TestPinnedPropertyLookupLoadsOnlyEverMembers/memory/node (0.00s)
+    --- PASS: TestPinnedPropertyLookupLoadsOnlyEverMembers/badger/rel (0.01s)
+    --- PASS: TestPinnedPropertyLookupLoadsOnlyEverMembers/badger/node (0.01s)
+    --- PASS: TestPinnedPropertyLookupLoadsOnlyEverMembers/sharded/rel (0.05s)
+    --- PASS: TestPinnedPropertyLookupLoadsOnlyEverMembers/sharded/node (0.01s)
+=== RUN   TestWindowedEqualitySeekCost
+=== RUN   TestWindowedEqualitySeekCost/memory/rel=true/early=false
+    windowed_equality_seek_test.go:216: allocs: big 128 small 116
+=== RUN   TestWindowedEqualitySeekCost/memory/rel=true/early=true
+    windowed_equality_seek_test.go:216: allocs: big 128 small 116
+=== RUN   TestWindowedEqualitySeekCost/memory/rel=false/early=false
+    windowed_equality_seek_test.go:216: allocs: big 121 small 107
+=== RUN   TestWindowedEqualitySeekCost/memory/rel=false/early=true
+    windowed_equality_seek_test.go:216: allocs: big 121 small 107
+=== RUN   TestWindowedEqualitySeekCost/badger/rel=true/early=false
+    windowed_equality_seek_test.go:216: allocs: big 274 small 216
+=== RUN   TestWindowedEqualitySeekCost/badger/rel=true/early=true
+    windowed_equality_seek_test.go:216: allocs: big 274 small 216
+=== RUN   TestWindowedEqualitySeekCost/badger/rel=false/early=false
+    windowed_equality_seek_test.go:216: allocs: big 267 small 217
+=== RUN   TestWindowedEqualitySeekCost/badger/rel=false/early=true
+    windowed_equality_seek_test.go:216: allocs: big 267 small 217
+=== RUN   TestWindowedEqualitySeekCost/sharded/rel=true/early=false
+    windowed_equality_seek_test.go:216: allocs: big 332 small 264
+=== RUN   TestWindowedEqualitySeekCost/sharded/rel=true/early=true
+    windowed_equality_seek_test.go:216: allocs: big 332 small 264
+=== RUN   TestWindowedEqualitySeekCost/sharded/rel=false/early=false
+    windowed_equality_seek_test.go:216: allocs: big 325 small 265
+=== RUN   TestWindowedEqualitySeekCost/sharded/rel=false/early=true
+    windowed_equality_seek_test.go:216: allocs: big 325 small 265
+=== RUN   TestWindowedEqualitySeekCost/tiered/rel=true/early=false
+    windowed_equality_seek_test.go:216: allocs: big 371 small 311
+=== RUN   TestWindowedEqualitySeekCost/tiered/rel=true/early=true
+    windowed_equality_seek_test.go:216: allocs: big 371 small 311
+=== RUN   TestWindowedEqualitySeekCost/tiered/rel=false/early=false
+    windowed_equality_seek_test.go:216: allocs: big 382 small 332
+=== RUN   TestWindowedEqualitySeekCost/tiered/rel=false/early=true
+    windowed_equality_seek_test.go:216: allocs: big 382 small 332
+--- PASS: TestWindowedEqualitySeekCost (0.32s)
+    --- PASS: TestWindowedEqualitySeekCost/memory/rel=true/early=false (0.00s)
+    --- PASS: TestWindowedEqualitySeekCost/memory/rel=true/early=true (0.00s)
+    --- PASS: TestWindowedEqualitySeekCost/memory/rel=false/early=false (0.00s)
+    --- PASS: TestWindowedEqualitySeekCost/memory/rel=false/early=true (0.00s)
+    --- PASS: TestWindowedEqualitySeekCost/badger/rel=true/early=false (0.03s)
+    --- PASS: TestWindowedEqualitySeekCost/badger/rel=true/early=true (0.05s)
+    --- PASS: TestWindowedEqualitySeekCost/badger/rel=false/early=false (0.02s)
+    --- PASS: TestWindowedEqualitySeekCost/badger/rel=false/early=true (0.01s)
+    --- PASS: TestWindowedEqualitySeekCost/sharded/rel=true/early=false (0.02s)
+    --- PASS: TestWindowedEqualitySeekCost/sharded/rel=true/early=true (0.02s)
+    --- PASS: TestWindowedEqualitySeekCost/sharded/rel=false/early=false (0.02s)
+    --- PASS: TestWindowedEqualitySeekCost/sharded/rel=false/early=true (0.07s)
+    --- PASS: TestWindowedEqualitySeekCost/tiered/rel=true/early=false (0.02s)
+    --- PASS: TestWindowedEqualitySeekCost/tiered/rel=true/early=true (0.02s)
+    --- PASS: TestWindowedEqualitySeekCost/tiered/rel=false/early=false (0.02s)
+    --- PASS: TestWindowedEqualitySeekCost/tiered/rel=false/early=true (0.02s)
+=== RUN   TestWindowedEqualitySeekAgrees
+=== PAUSE TestWindowedEqualitySeekAgrees
+=== CONT  TestWindowedEqualitySeekAgrees
+=== RUN   TestWindowedEqualitySeekAgrees/memory/rel=true/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/memory/rel=true/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/memory/rel=true/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/memory/rel=true/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/memory/rel=false/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/memory/rel=false/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/memory/rel=false/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/memory/rel=false/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/badger/rel=true/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/badger/rel=true/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/badger/rel=true/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/badger/rel=true/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/badger/rel=false/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/badger/rel=false/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/badger/rel=false/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/badger/rel=false/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/sharded/rel=true/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/sharded/rel=true/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/sharded/rel=true/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/sharded/rel=true/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/sharded/rel=false/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/sharded/rel=false/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/sharded/rel=false/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/sharded/rel=false/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/tiered/rel=true/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/tiered/rel=true/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/tiered/rel=true/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/tiered/rel=true/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/tiered/rel=false/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/tiered/rel=false/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/tiered/rel=false/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/tiered/rel=false/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/memory-unbounded/rel=true/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/memory-unbounded/rel=true/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/memory-unbounded/rel=true/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/memory-unbounded/rel=true/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/memory-unbounded/rel=false/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/memory-unbounded/rel=false/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/memory-unbounded/rel=false/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/memory-unbounded/rel=false/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/badger-unbounded/rel=true/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/badger-unbounded/rel=true/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/badger-unbounded/rel=true/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/badger-unbounded/rel=true/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/badger-unbounded/rel=false/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/badger-unbounded/rel=false/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/badger-unbounded/rel=false/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/badger-unbounded/rel=false/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=true/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=true/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=true/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=true/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=false/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=false/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=false/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=false/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=true/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=true/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=true/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=true/seed=1
+=== RUN   TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=false/seed=0
+=== PAUSE TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=false/seed=0
+=== RUN   TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=false/seed=1
+=== PAUSE TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=false/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/memory/rel=true/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=false/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=true/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/tiered/rel=true/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/tiered/rel=false/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/memory-unbounded/rel=false/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/sharded/rel=false/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/badger/rel=true/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/sharded/rel=true/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/sharded/rel=true/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/tiered/rel=false/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/memory/rel=false/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=false/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=true/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/badger/rel=false/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/memory/rel=false/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/badger-unbounded/rel=false/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/badger-unbounded/rel=false/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=true/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/memory-unbounded/rel=false/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/badger/rel=false/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=false/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=false/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/badger-unbounded/rel=true/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/sharded/rel=false/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/tiered/rel=true/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/memory-unbounded/rel=true/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/badger-unbounded/rel=true/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/badger/rel=true/seed=1
+=== CONT  TestWindowedEqualitySeekAgrees/memory-unbounded/rel=true/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=true/seed=0
+=== CONT  TestWindowedEqualitySeekAgrees/memory/rel=true/seed=1
+--- PASS: TestWindowedEqualitySeekAgrees (0.00s)
+    --- PASS: TestWindowedEqualitySeekAgrees/memory-unbounded/rel=false/seed=0 (0.02s)
+    --- PASS: TestWindowedEqualitySeekAgrees/memory-unbounded/rel=true/seed=0 (0.02s)
+    --- PASS: TestWindowedEqualitySeekAgrees/memory/rel=false/seed=1 (0.02s)
+    --- PASS: TestWindowedEqualitySeekAgrees/memory/rel=true/seed=0 (0.02s)
+    --- PASS: TestWindowedEqualitySeekAgrees/memory/rel=false/seed=0 (0.02s)
+    --- PASS: TestWindowedEqualitySeekAgrees/memory-unbounded/rel=true/seed=1 (0.02s)
+    --- PASS: TestWindowedEqualitySeekAgrees/memory-unbounded/rel=false/seed=1 (0.03s)
+    --- PASS: TestWindowedEqualitySeekAgrees/memory/rel=true/seed=1 (0.02s)
+    --- PASS: TestWindowedEqualitySeekAgrees/badger/rel=true/seed=0 (0.05s)
+    --- PASS: TestWindowedEqualitySeekAgrees/badger/rel=false/seed=0 (0.05s)
+    --- PASS: TestWindowedEqualitySeekAgrees/badger-unbounded/rel=false/seed=0 (0.05s)
+    --- PASS: TestWindowedEqualitySeekAgrees/badger-unbounded/rel=true/seed=0 (0.04s)
+    --- PASS: TestWindowedEqualitySeekAgrees/badger/rel=false/seed=1 (0.05s)
+    --- PASS: TestWindowedEqualitySeekAgrees/badger-unbounded/rel=false/seed=1 (0.05s)
+    --- PASS: TestWindowedEqualitySeekAgrees/badger-unbounded/rel=true/seed=1 (0.06s)
+    --- PASS: TestWindowedEqualitySeekAgrees/badger/rel=true/seed=1 (0.05s)
+    --- PASS: TestWindowedEqualitySeekAgrees/sharded/rel=false/seed=0 (0.06s)
+    --- PASS: TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=false/seed=0 (0.06s)
+    --- PASS: TestWindowedEqualitySeekAgrees/sharded/rel=true/seed=0 (0.07s)
+    --- PASS: TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=false/seed=0 (0.07s)
+    --- PASS: TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=true/seed=0 (0.07s)
+    --- PASS: TestWindowedEqualitySeekAgrees/tiered/rel=true/seed=0 (0.07s)
+    --- PASS: TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=true/seed=0 (0.07s)
+    --- PASS: TestWindowedEqualitySeekAgrees/tiered/rel=false/seed=0 (0.07s)
+    --- PASS: TestWindowedEqualitySeekAgrees/sharded/rel=false/seed=1 (0.07s)
+    --- PASS: TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=false/seed=1 (0.07s)
+    --- PASS: TestWindowedEqualitySeekAgrees/tiered/rel=false/seed=1 (0.08s)
+    --- PASS: TestWindowedEqualitySeekAgrees/sharded-unbounded/rel=true/seed=1 (0.08s)
+    --- PASS: TestWindowedEqualitySeekAgrees/sharded/rel=true/seed=1 (0.08s)
+    --- PASS: TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=true/seed=1 (0.08s)
+    --- PASS: TestWindowedEqualitySeekAgrees/tiered-unbounded/rel=false/seed=1 (0.09s)
+    --- PASS: TestWindowedEqualitySeekAgrees/tiered/rel=true/seed=1 (0.08s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.582s

@@ -68,13 +68,12 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 	if keys == nil {
 		return nil, nil
 	}
-	currentMatching, err := c.relsByTypeAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
-	if err != nil {
-		return nil, err
-	}
-	currentIDs, err := c.relIDsFromTypeRows(tok, currentMatching)
-	if err != nil {
-		return nil, err
+	currentIDs := func() ([]types.RelID, error) {
+		currentMatching, err := c.relsByTypeAndProperty(tok, key, value, storepkg.QueryOpts{Depth: opts.Depth})
+		if err != nil {
+			return nil, err
+		}
+		return c.relIDsFromTypeRows(tok, currentMatching)
 	}
 
 	elements, err := c.relIndexElements(tok, key)

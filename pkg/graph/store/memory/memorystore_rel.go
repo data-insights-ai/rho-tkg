@@ -368,6 +368,7 @@ func (ms *Store) removeRelLocked(id types.RelID, exLeg bool) error {
 	}
 
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
+	ms.forgetRelPropTxCurrentLocked(r)                                                // ledger row 62
 	ms.adjustRelPropertyTypeClassCounts(r, -1)
 	ms.adjustRelPropertyKeyCounts(r, -1)
 	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c

@@ -92,7 +92,7 @@ func (ms *Store) relOrdinalLocked(id types.RelID, typeToken uint16) uint32 {
 // Every current node row the store keeps passes here, so the membership
 // sidecars (K1 and property, backlog 8) record it here.
 func (ms *Store) storedNode(n *types.Node) *types.Node {
-	ms.recordNodeRowLocked(n)
+	ms.recordNodeRowLocked(n, true)
 	return n.CompactFrozenCopyWithOrdinal(ms.nodeOrdinalLocked(n.ID()))
 }
 
@@ -106,7 +106,7 @@ func (ms *Store) storedNode(n *types.Node) *types.Node {
 // Every current relationship row the store keeps passes here, so the membership
 // sidecars (K1 and property, backlog 8) record it here.
 func (ms *Store) storedRel(r *types.Relationship) *types.Relationship {
-	ms.recordRelRowLocked(r)
+	ms.recordRelRowLocked(r, true)
 	ord := ms.relOrdinalLocked(r.ID(), r.TypeToken().Value())
 	var start, end uint32
 	if ms.segTypes[r.TypeToken().Value()] == nil {
@@ -116,16 +116,25 @@ func (ms *Store) storedRel(r *types.Relationship) *types.Relationship {
 }
 
 // historyNode is the history row the store keeps for a version of n.
-// Every history row passes here; see storedNode.
-func (ms *Store) historyNode(n *types.Node) *types.Node {
-	ms.recordNodeRowLocked(n)
+// Every history row passes here; see storedNode. by, when not nil, is the
+// current row that replaced n (an update door's demoted row, ledger row 62).
+func (ms *Store) historyNode(n, by *types.Node) *types.Node {
+	if by != nil {
+		ms.recordNodeReplacedLocked(n, by)
+	} else {
+		ms.recordNodeRowLocked(n, false)
+	}
 	return n.DeepCopyWithOrdinal(ms.nodeOrdinalLocked(n.ID()))
 }
 
 // historyRel is the history row the store keeps for a version of r.
-// Every history row passes here; see storedRel.
-func (ms *Store) historyRel(r *types.Relationship) *types.Relationship {
-	ms.recordRelRowLocked(r)
+// Every history row passes here; see storedRel and historyNode.
+func (ms *Store) historyRel(r, by *types.Relationship) *types.Relationship {
+	if by != nil {
+		ms.recordRelReplacedLocked(r, by)
+	} else {
+		ms.recordRelRowLocked(r, false)
+	}
 	return r.DeepCopyWithOrdinals(ms.relOrdinalLocked(r.ID(), r.TypeToken().Value()), 0, 0)
 }
 
