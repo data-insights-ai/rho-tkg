@@ -1408,11 +1408,20 @@ records the following finite scope:
   8.12 seconds with two genuine process kills, recovery through successor 5,
   exact original retry, retained-cut checks and all eight native incarnations
   reaped. Its independent replay retains 24 records and serial witness B.
-  P05 also has four additional complete short representatives; its later
-  Resolve schedule remains RED after scheduler attachment was corrected:
-  live-owner drain returns EOF before the parent classifies the selected kill;
-  the retained native receipt records voter 5 at Resolve-B application 31. P03 still
-  needs an authenticated native receipt-before-consumption join.
+  P05 also has four additional complete short representatives. Its later
+  Resolve schedule now passes native execution and independent full-artifact
+  replay in 7.17 seconds: target 5 is genuinely interrupted at application 31,
+  B6 resumes it, all seven native incarnations are reaped, and the 66-record
+  serial witness preserves all four ABA changes. The drain now samples live
+  owners only after the retiring packet's authenticated loss classification.
+  P03 passes its authenticated receipt wait and both real kills, then still
+  refuses a replacement's attempt to reconnect to a spent pre-crash stream.
+  Seven D packet schedules pass native execution and independent 14-record
+  serial/cut checks: drop, duplicate, reorder, partition and injected 1/20/100ms.
+  D's actual WAL short-write remains RED: pinned Pebble panics in rotateWAL
+  and exits 2 while the strict fixture requires 1. The bounded failure output
+  is preserved; no exit predicate was relaxed. Directory-sync reopen also
+  remains RED because its startup arm does not match actual publication IO.
   The state case now passes its held snapshot using bounded token-scoped exact
   source-Get reuse, then fails a later feed Page. Failure-only native telemetry
   locates that refusal in frame-progress at part 8/index 33: 181/1,024 rows,
@@ -1421,7 +1430,7 @@ records the following finite scope:
   spend; they do not prove aggregate exhaustion. The existing pages_and_ACK
   guard also has a separately reproduced baseline preflight RED; it remains
   required before the final gate. All original failed receipts are retained in
-  [the current checkpoint](evidence/v2-integrated-checkpoint-20261016/checkpoint-b9c37b37.json).
+  [the current checkpoint](evidence/v2-integrated-checkpoint-20261016/checkpoint-47c1b636.json).
   No original deadline, quota, oracle or acceptance dimension was relaxed.
 
 These components do not close their full fault families, the process inventory,

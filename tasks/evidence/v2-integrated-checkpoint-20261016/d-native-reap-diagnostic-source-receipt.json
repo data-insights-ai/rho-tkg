@@ -1,0 +1,19 @@
+{
+  "commit": "72c5095a1268df0befb59910920aca48fffd18cb",
+  "parent": "8087c4c60313f841382aaa055589f158e3f6ef33",
+  "worktree": "/private/var/tmp/rho-v5-d-native-reap-context-20261016",
+  "path": "v5/internal/graphapply/native_graph_fault_schedule_harness_test.go",
+  "parentBlob": "e6e82c56a228a062471104efe0717ea9ad83d9a9",
+  "parentSHA256": "cae56ec8ce33e3d0cb5edd89ad5ec659f2ecc4ead7b595eab64417e897b07054",
+  "blob": "577b99eea01b172c3db75e4779832d698a6a16ef",
+  "sha256": "1197f51abb523e67c0e21e2cecca45fba1a0dde6a3216ae374a231ff066e0d40",
+  "scope": "Failure-only context: existing bounded stderr/stdout snapshots moved before unchanged native exit predicate. No new reader/admission, no exit/error-binding/oracle change; no OS execution.",
+  "evidence": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/d-wal-four-1d58c9d0.log",
+  "test": {
+    "command": "GOMAXPROCS=2 GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -vet=off -count=1 -timeout=60s -run ^TestNativeFaultChildFilesystemRecordsOnlyActualMatchedOperations$ ./internal/graphapply",
+    "exit": 0,
+    "seconds": 0.613,
+    "logSHA256": "2bb6b09e4d32bc496a685f7aaca576d247b5fcaff4ea0364ec1548be6e37cbbc"
+  },
+  "format": "Pinned Go1.26.9 gofmt and git diff --check passed"
+}

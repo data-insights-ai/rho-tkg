@@ -1,0 +1,27 @@
+=== RUN   TestNativeComposedFaultActualWALFailureRecoversOriginalDecision
+=== RUN   TestNativeComposedFaultActualWALFailureRecoversOriginalDecision/short-write
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=3 kind=1 identity=1bc714ce4fa89540000000000000000a index=3 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=8 kind=1 identity=1bc714ce4fa895400000000000000018 index=3 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=3 kind=2 identity=1bc714ce4fa89540000000000000001d index=4 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=3 kind=3 identity=1bc714ce4fa89540000000000000002b index=5 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=3 kind=3 identity=1bc714ce4fa895400000000000000039 index=6 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=3 kind=3 identity=1bc714ce4fa895400000000000000047 index=7 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=3 kind=3 identity=1bc714ce4fa895400000000000000055 index=8 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=3 kind=4 identity=1bc714ce4fa89540000000000000006c index=9 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=3 kind=5 identity=1bc714ce4fa895400000000000000079 index=10 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=4 target=3 kind=2 identity=23d77812b2f9bec30000000000000017 index=11 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=3 kind=3 identity=1bc714ce4fa895400000000000000090 index=12 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=8 kind=3 identity=1bc714ce4fa89540000000000000009a index=4 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=4 target=3 kind=3 identity=23d77812b2f9bec30000000000000025 index=13 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=3 kind=3 identity=1bc714ce4fa8954000000000000000a8 index=14 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=8 kind=3 identity=1bc714ce4fa8954000000000000000b6 index=5 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=3 kind=4 identity=1bc714ce4fa8954000000000000000bf index=15 reason=0
+    native_graph_transition_conjunction_harness_test.go:493: actual certified child operation: actor=1 target=8 kind=5 identity=1bc714ce4fa8954000000000000000cc index=6 reason=0
+    native_graph_fault_schedule_test.go:558: native matched IO did not cause actual failure exit exit status 2
+        close |1: file already closed
+        close |0: file already closed 512
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 99760 exit status 2
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=6 all-reaped=true successful=5 intentional-kills=0 calls=3348 bootstrapPackets=244 admitted=397312
+--- FAIL: TestNativeComposedFaultActualWALFailureRecoversOriginalDecision (3.32s)
+    --- FAIL: TestNativeComposedFaultActualWALFailureRecoversOriginalDecision/short-write (3.32s)
+FAIL

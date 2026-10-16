@@ -1,0 +1,55 @@
+{
+  "commit": "ef4c41a5427b0bd55052afb907c39fb8d7e55696",
+  "parent": "c81d4a0075fdc4eb9eea8c09d9fe1a21c46b5bb7",
+  "worktree": "/var/tmp/rho-v5-p03-native-receipt-sync-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_adapters_test.go",
+      "parentBlob": "06cd0034f736f3f30ee9836a1d8f2ac858e02cc1",
+      "parentSHA256": "e6139e7ec98d7d05ec1abf50b71cee3536180c30393d088cf45d295370d95f3b",
+      "blob": "0381fe12297456c421b6efe92657e7cd867e2f27",
+      "sha256": "1c1adf77a9eccba751044ff9921a539341bbc71a73a35da680ed901829050bbc"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_transition_conjunction_harness_test.go",
+      "parentBlob": "b3e7895cd5b8b53f85915e4c4f88df852863e5b5",
+      "parentSHA256": "f4dd303e40798720542328435bc76cf7cd86e127a74014c9368576e86b3c2a08",
+      "blob": "a1337c5932a8458b4fd5c15bdd28cbd2bc5d0b90",
+      "sha256": "8680d5bd46cb73d6e7882e900966d8c56925b7e90de2ec0388e92c726c91e038"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_transition_conjunction_p06_test.go",
+      "parentBlob": "42b566e447ceb0ac71b2546a3ef00db60e97036f",
+      "parentSHA256": "5cc33ea7e5d1f69a87a213c246c743cc137d59d7f95cba4b0bb2af2fe4efc8fe",
+      "blob": "5cd37680c7636b8dafd894395baaa4ea38816cce",
+      "sha256": "1d99419ed18641d853d66fdb3b4beb97498d1655e8ff997e2e94b2ac72925b5c"
+    }
+  ],
+  "scope": "P03 selected follower receipt causal wait; original context, existing authenticated gate.lost then packet-only drain before unchanged evidence transfer. Existing diagnostic nil-fixture logging guard corrected without native behavior change. No OS execution.",
+  "red": {
+    "log": "red.log",
+    "exit": 1,
+    "description": "New deterministic causal guard with immediate-admission awaitLoss stub (equivalent pre-fix ordering), fails selected follower became ready before its native receipt/loss. Original OS missing-file RED remains authoritative external evidence; guard receipt is canonical inert fixture, not native Sync/self-kill qualification."
+  },
+  "originalFailureLog": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p03-selected-0bf898b2.log",
+  "verification": [
+    {
+      "command": "GOMAXPROCS=2 GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -vet=off -count=1 -timeout=60s -run '^TestNativeConjunction(FollowerReceiptWaitsForAuthenticatedLoss|FollowerReceiptWaitKeepsOriginalContext|RegistryDeadlineAndGateOwnership|GateReadTrafficPreservesFourthPrepareCandidate)$' ./internal/graphapply",
+      "log": "green.log",
+      "exit": 0,
+      "seconds": 1.667
+    },
+    {
+      "command": "GOMAXPROCS=2 GOTOOLCHAIN=local /Users/markusnissl/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.darwin-arm64/bin/go test -p=1 -vet=off -race -count=1 -timeout=90s -run '^TestNativeConjunction(FollowerReceiptWaitsForAuthenticatedLoss|FollowerReceiptWaitKeepsOriginalContext|RegistryDeadlineAndGateOwnership|GateReadTrafficPreservesFourthPrepareCandidate)$' ./internal/graphapply",
+      "log": "race.log",
+      "exit": 0,
+      "seconds": 3.197
+    }
+  ],
+  "format": "Pinned Go1.26.9 gofmt and git diff --check passed",
+  "logs": {
+    "red.log": "60b7e3032295c6292cf473f9a859080e9935aa1618c2ac359ccccfb3b27f123a",
+    "green.log": "34162663dc965f1a75ea50844523119921b2efecf83a37557172f15faf18376e",
+    "race.log": "226151db8d8d5bc1e14aad850b92f1272c0890de8cd24d0e31cea3c66d0b7e15"
+  }
+}

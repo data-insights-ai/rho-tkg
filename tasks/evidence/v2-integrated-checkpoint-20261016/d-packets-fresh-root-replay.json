@@ -1,0 +1,58 @@
+[
+  {
+    "case": "packet-reorder-0ms",
+    "records": 14,
+    "serial_witness": [
+      "edge"
+    ],
+    "scope": "fixed actual-source bridge; source-only until real process qualification; no power-loss or capacity claim"
+  },
+  {
+    "case": "packet-drop-0ms",
+    "records": 14,
+    "serial_witness": [
+      "edge"
+    ],
+    "scope": "fixed actual-source bridge; source-only until real process qualification; no power-loss or capacity claim"
+  },
+  {
+    "case": "packet-delay-20ms",
+    "records": 14,
+    "serial_witness": [
+      "edge"
+    ],
+    "scope": "fixed actual-source bridge; source-only until real process qualification; no power-loss or capacity claim"
+  },
+  {
+    "case": "packet-duplicate-0ms",
+    "records": 14,
+    "serial_witness": [
+      "edge"
+    ],
+    "scope": "fixed actual-source bridge; source-only until real process qualification; no power-loss or capacity claim"
+  },
+  {
+    "case": "packet-delay-100ms",
+    "records": 14,
+    "serial_witness": [
+      "edge"
+    ],
+    "scope": "fixed actual-source bridge; source-only until real process qualification; no power-loss or capacity claim"
+  },
+  {
+    "case": "packet-partition-0ms",
+    "records": 14,
+    "serial_witness": [
+      "edge"
+    ],
+    "scope": "fixed actual-source bridge; source-only until real process qualification; no power-loss or capacity claim"
+  },
+  {
+    "case": "packet-delay-1ms",
+    "records": 14,
+    "serial_witness": [
+      "edge"
+    ],
+    "scope": "fixed actual-source bridge; source-only until real process qualification; no power-loss or capacity claim"
+  }
+]

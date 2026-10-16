@@ -1,0 +1,124 @@
+{
+  "source": "47c1b636",
+  "binary_sha256": "1d65df710a82acdbbaa39cdb4099fb3271cb815de9dc33d1405ef63ab1cfc653",
+  "scope": "Late P05 full native+oracle pass and seven D packet cases native+independent oracle pass. P03 advances to genuine later coordinator loss then reconnect mismatch. D short-write and directory-sync fail. V2 and full families remain open.",
+  "host_context": {
+    "logical_cpus": 16,
+    "physical_cpus": 16,
+    "memory_bytes": 137438953472,
+    "load_average_1m_at_1006_vienna": 26.37,
+    "purpose": "correctness only; concurrent unrelated host activity, no latency/throughput capacity claim"
+  },
+  "files": [
+    {
+      "path": "p03-receipt-fixed-8087c4c6.log",
+      "bytes": 1673,
+      "sha256": "6fab4cdb459d96e25327a58eab8b3e8b379617e6485d353d60495c5de76f5eca"
+    },
+    {
+      "path": "p03-receipt-fixed-8087c4c6.json",
+      "bytes": 1571,
+      "sha256": "79b75438ea423a45446e7328fbc93404c6edad6559c035d7537d7f2f30e27ba4"
+    },
+    {
+      "path": "p05-drain-fixed-47c1b636.log",
+      "bytes": 1345,
+      "sha256": "957ad32f168a5a6ca094505aecf36cbdf76ed80baaffad0e928f8ad589e90b51"
+    },
+    {
+      "path": "p05-drain-fixed-47c1b636.json",
+      "bytes": 1696,
+      "sha256": "dece9c916da27d1a46a3eb7aa04f651cdc42268287112272e9c2afec5d07b71f"
+    },
+    {
+      "path": "d-wal-four-1d58c9d0.log",
+      "bytes": 3830,
+      "sha256": "2d71ab0ef4c51e07001727447db35cae4939a3b280f32809c410989c24675838"
+    },
+    {
+      "path": "d-wal-four-1d58c9d0.json",
+      "bytes": 1482,
+      "sha256": "3c89be6c7eab3c0a530d678d9c9ca67fdfb262806c65fca6911ff1a3addfe683"
+    },
+    {
+      "path": "d-short-write-diagnostic-47c1b636.log",
+      "bytes": 11315,
+      "sha256": "a58d1fd6a2ba87c68b91fbfc401c38ed5f974a6cda15cd2d6ed106811b1ba7ad"
+    },
+    {
+      "path": "d-short-write-diagnostic-47c1b636.json",
+      "bytes": 1499,
+      "sha256": "e168508cfead8ad1bf4f0ffa649446cadc20f3b2453e100c10648c7f603ab7fe"
+    },
+    {
+      "path": "d-directory-47c1b636.log",
+      "bytes": 3657,
+      "sha256": "e7c0577c801f8dffba6de7523155b28a29db08eca3a824a63b1c2293cf4d13b5"
+    },
+    {
+      "path": "d-directory-47c1b636.json",
+      "bytes": 1567,
+      "sha256": "e46cdc9e9e4f75994ab19f425845326c6a43396b06989755a98b550b5ba7b71e"
+    },
+    {
+      "path": "d-packets-47c1b636.log",
+      "bytes": 26355,
+      "sha256": "821bc7007512b1e4d0b96ce95e48146295bca68107b82846c919a4d489f60164"
+    },
+    {
+      "path": "d-packets-47c1b636.json",
+      "bytes": 4301,
+      "sha256": "4915d38aa80d4ddb9a5c33039d0d47d4894b6b917a0e64f0cd64724e196c1620"
+    },
+    {
+      "path": "p05-late-fresh-root-replay.json",
+      "bytes": 327,
+      "sha256": "dc579691c03e70dc998aeca7d42411f15a7f85ec27da6ba6d804a015cfd02abd"
+    },
+    {
+      "path": "d-packets-fresh-root-replay.json",
+      "bytes": 1590,
+      "sha256": "66962f0b195b2cc94d5dd4cb23d45b5c2180410c8ec819332ff72b6b40016c7a"
+    },
+    {
+      "path": "compile-p03-receipt-sync.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "compile-p05-drain-d-reap.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "p03-receipt-sync-source-receipt.json",
+      "bytes": 3472,
+      "sha256": "56acbd916dbb796faef43948ada2399c00ec9bef4d2f3c798b5e6874bd3067bd"
+    },
+    {
+      "path": "p05-classified-drain-source-receipt.json",
+      "bytes": 2112,
+      "sha256": "efccdb374b0c24b20fcedf25c42d16e2ec7a1f980813099587c431c7858be12d"
+    },
+    {
+      "path": "d-native-reap-diagnostic-source-receipt.json",
+      "bytes": 1315,
+      "sha256": "ee927e9b2fbd735c7287099214a4fe9ecbbcc97a8d4482109e9f054f674db102"
+    },
+    {
+      "path": "p05-late-complete-47c1b636.tar.gz",
+      "bytes": 14614,
+      "sha256": "e2dfdecd45b2e4827cea44d26c369f77928a3f4ddde2358b13442a4933f6a3f9"
+    },
+    {
+      "path": "d-seven-packets-complete-47c1b636.tar.gz",
+      "bytes": 44382,
+      "sha256": "756dcb28e32e759ae0c72d1eaaaf23b0fdb922c89937ec423f5ae430b7253808"
+    },
+    {
+      "path": "d-short-write-native-receipt-47c1b636.tar.gz",
+      "bytes": 670,
+      "sha256": "e137c697916cfdccf2fcb2a69e78524f376cab559f27195d85ed7f05e91656b7"
+    }
+  ]
+}

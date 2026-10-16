@@ -1,0 +1,1 @@
+{"case": "p05-temporal-life-value-ABA-op4-phase4-p8-k2-after", "program": {"Layout": "rotated", "Message": "reorder", "Version": 1}, "records": 66, "scope": "P05 five genuine dependency scenarios plus selected native transition; source-only", "serial_witness": ["native-ABA-4", "native-ABA-5", "native-ABA-6", "native-ABA-7"]}

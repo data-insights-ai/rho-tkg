@@ -1,0 +1,16 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p03-co3-phase3-p3-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:219: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:219: paired elected actual leader6 round10 while4 down
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet1 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit39 rejectfalse hint0 entries0 decode<nil>
+    paired_graph_fault_harness_test.go:919: paired heal delivered packet2 2->1 typeMsgHeartbeat term3 logTerm0 index0 commit39 rejectfalse hint0 entries0 decode<nil>
+    native_graph_protocol_campaign_program_test.go:165: paired actual healthy quorum leader2 applied39
+    native_graph_protocol_campaign_program_test.go:165: paired SIGKILL voter2 pid7597 reaped=true
+    native_graph_protocol_campaign_program_test.go:165: paired elected actual leader3 round10 while2 down
+    native_graph_transition_conjunction_harness_test.go:637: fresh reconnect target owns live work 1 6 <nil>
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=7 all-reaped=true successful=5 intentional-kills=2 calls=7226 bootstrapPackets=360 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (5.86s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (5.86s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p03-co3-phase3-p3-k2-after (5.85s)
+FAIL

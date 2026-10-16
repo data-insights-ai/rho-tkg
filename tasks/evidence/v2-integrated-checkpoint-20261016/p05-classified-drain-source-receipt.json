@@ -1,0 +1,39 @@
+{
+  "author": "a416341e25548223e66163ec19addd05df797df7",
+  "parent": "1d58c9d02b49801aa223dfe9a7423d3919897946",
+  "tree": "/private/var/tmp/rho-v5-p05-loss-drain-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/paired_graph_fault_harness_test.go",
+      "parentBlob": "3d0de7c114536c16a7a1ad539a760d7237350248",
+      "parentSHA256": "50fc28396a9e8c5c3b2b50314a592a8d7990e8346e8a222d0c6347358ea98774",
+      "sourceBlob": "32b1046db0ade0ec87b560ad5bd78932a22a5ab6",
+      "sourceSHA256": "e5f2771a5ca248fbf5245a401ad9394240202db9be45615fe453321fd2bd44b8"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_program_test.go",
+      "parentBlob": "5ab0fb361fabfae46382f42c40d8ff16ab75557d",
+      "parentSHA256": "e3b0930b04f96b7cc5b216438467c00db75ca909b1085c39b6c2f330640e40aa",
+      "sourceBlob": "cb7a0541eb5f42fd1b7cb89a4f519079d6b78a18",
+      "sourceSHA256": "6efca4ab7136a8d9d60cb36d8fb353bb4902b839d105bd8de2697a95fcb9e80c"
+    }
+  ],
+  "status": "",
+  "scope": "Fresh paired fixture drain: wait for actual packet retirement/classification before taking live roster; stable delivered/packet-idle sample across mux inspection. Legacy default unchanged. Same original10s context. No receipt inference/kill/reap/reset/error suppression.",
+  "checks": {
+    "red": "Static live-roster guard RED: EOF before retiring packet classification",
+    "normal": "PASS0.672s",
+    "race": "PASS1.862s",
+    "format": "Pinned Go1.26.9 gofmt",
+    "whitespace": "PASS"
+  },
+  "realEvidence": {
+    "log": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-quiescent-fixed-c81d4a00.log",
+    "nativeReceipt": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p05-quiescent-fixed-owned/artifacts/rho-paired-graph-fault-3451534082/5/native-batch-27881c6b28b26a3e48fe24b04b69a49e-0000000000000001.json",
+    "member": 5,
+    "pid": 70808,
+    "boundary": "ResolveB Application afterSync index31; actual self-SIGKILL",
+    "qualification": "whole case remains RED pending exact root rerun; original cleanup errors retained"
+  },
+  "runtime": "No author OS cohort"
+}
