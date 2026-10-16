@@ -483,3 +483,98 @@ func readNumber(src []byte, n Namespace, kind recordKind, l Limits) (uint64, err
 	}
 	return v, nil
 }
+
+// RecordedEvidence is one caller knowledge instant (graphstate.Operation.Recorded)
+// kept beside the revision that carried it. It is evidence, never a cut: no
+// visibility or order decision reads it. Name is empty for operations without one.
+type RecordedEvidence struct {
+	Kind     graphstate.OperationKind
+	Life     graphstate.LifeID
+	Name     string
+	Recorded temporal.Position
+}
+
+// encodeEvidence writes every evidence entry of one (owner, revision) in
+// operation order. An empty list is not a record: unset Recorded stores nothing.
+func encodeEvidence(n Namespace, owner graphstate.EntityID, revision uint64, entries []RecordedEvidence, l Limits) ([]byte, error) {
+	if owner == 0 || revision == 0 || len(entries) == 0 {
+		return nil, ErrInvalid
+	}
+	b := recordHeader(n, evidenceRecord)
+	b = binary.BigEndian.AppendUint64(b, uint64(owner))
+	b = binary.BigEndian.AppendUint64(b, revision)
+	b = binary.BigEndian.AppendUint64(b, uint64(len(entries)))
+	for _, e := range entries {
+		if e.Kind < graphstate.CreateNode || e.Kind > graphstate.Remove || len(e.Name) > l.MaxNameBytes || e.Recorded.Profile() == 0 {
+			return nil, ErrInvalid
+		}
+		wire, err := temporal.AppendPosition(nil, e.Recorded, l.Temporal)
+		if err != nil {
+			return nil, callerError(err)
+		}
+		b = append(b, byte(e.Kind))
+		b = binary.BigEndian.AppendUint64(b, uint64(e.Life))
+		b = appendField(b, []byte(e.Name))
+		b = appendField(b, wire)
+		if len(b) > l.MaxRecordBytes {
+			return nil, ErrResourceLimit
+		}
+	}
+	return checkRecord(b, l)
+}
+
+// readEvidenceRecord decodes and cross-checks the key identity; axisOf resolves
+// the stored axis a position names (positions carry the axis ID at bytes 4..20).
+func readEvidenceRecord(src []byte, n Namespace, owner graphstate.EntityID, revision uint64, l Limits, axisOf func(temporal.AxisID) (temporal.Axis, error)) ([]RecordedEvidence, error) {
+	c, err := inspectRecord(src, n, evidenceRecord, l)
+	if err != nil {
+		return nil, err
+	}
+	var head [3]uint64
+	for i := range head {
+		if head[i], err = c.number(); err != nil {
+			return nil, err
+		}
+	}
+	// Each entry needs at least 1+8+4+4 bytes, which bounds the allocation.
+	if head[0] != uint64(owner) || head[1] != revision || head[2] == 0 || head[2] > uint64(len(c.src)/17) {
+		return nil, ErrCorrupt
+	}
+	out := make([]RecordedEvidence, 0, int(head[2]))
+	for range head[2] {
+		kind, err := c.tag()
+		if err != nil {
+			return nil, err
+		}
+		life, err := c.number()
+		if err != nil {
+			return nil, err
+		}
+		name, err := c.field(l.MaxNameBytes)
+		if err != nil {
+			return nil, err
+		}
+		wire, err := c.field(l.Temporal.MaxValueBytes)
+		if err != nil {
+			return nil, err
+		}
+		if len(wire) < 20 || graphstate.OperationKind(kind) < graphstate.CreateNode || graphstate.OperationKind(kind) > graphstate.Remove {
+			return nil, ErrCorrupt
+		}
+		var id temporal.AxisID
+		copy(id[:], wire[4:20])
+		axis, err := axisOf(id)
+		if err != nil {
+			return nil, err
+		}
+		p, err := temporal.DecodePosition(wire, axis, l.Temporal)
+		if err != nil {
+			return nil, ErrCorrupt
+		}
+		out = append(out, RecordedEvidence{Kind: graphstate.OperationKind(kind), Life: graphstate.LifeID(life), Name: string(name), Recorded: p})
+	}
+	if err := c.done(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}

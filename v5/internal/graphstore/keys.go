@@ -17,6 +17,7 @@ const (
 	valueRecord
 	bucketRecord
 	bucketMemberRecord
+	evidenceRecord
 )
 
 // Keys are provisional canonical lookup/routing keys, not temporal order keys.
@@ -49,4 +50,8 @@ func bucketKey(n Namespace, digest [32]byte) []byte {
 }
 func memberKey(n Namespace, digest [32]byte, ordinal uint64) []byte {
 	return binary.BigEndian.AppendUint64(append(keyPrefix(n, bucketMemberRecord), digest[:]...), ordinal)
+}
+func evidenceKey(n Namespace, owner graphstate.EntityID, revision uint64) []byte {
+	b := binary.BigEndian.AppendUint64(keyPrefix(n, evidenceRecord), uint64(owner))
+	return binary.BigEndian.AppendUint64(b, revision)
 }

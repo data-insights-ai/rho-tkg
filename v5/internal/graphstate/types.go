@@ -296,6 +296,11 @@ const (
 
 // Operation is a concrete typed union. Create/reopen supply a fresh Life; ValueID
 // is a supplied fresh dictionary handle used only if ValueIdentity is absent.
+// Recorded is the caller's own knowledge instant: raw evidence kept beside the
+// revision, never a cut and never an ordering the engine trusts. The zero
+// Position means "at commit" and stores nothing; a non-zero Position (also at
+// coordinate 0) must lie on an axis other than Scope's and not beyond the
+// commit ceiling of the storage limits.
 type Operation struct {
 	Kind    OperationKind
 	Owner   EntityID
@@ -307,6 +312,8 @@ type Operation struct {
 	Value   Scalar
 	ValueID ValueID
 	Present bool
+
+	Recorded temporal.Position
 }
 
 // DependencyKind names keys/ranges/predicates that storage must validate/lock.
