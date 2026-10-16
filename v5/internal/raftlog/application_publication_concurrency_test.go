@@ -1,16 +1,15 @@
 package raftlog
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"os"
-	"os/exec"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/testutil"
 )
 
 const publicationTestWait = 5 * time.Second
@@ -105,14 +104,9 @@ func TestPublicationGateEarlyFailureCleanlyJoinsProcess(t *testing.T) {
 	}
 	for _, phase := range []string{"capture", "reclaim", "close", "export"} {
 		t.Run(phase, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-			defer cancel()
-			child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestPublicationGateEarlyFailureCleanlyJoinsProcess$")
-			child.Env = append(os.Environ(), "RHO_PUBLICATION_TEST_FAILURE="+phase)
-			output, err := child.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || exit.ExitCode() != 1 || ctx.Err() != nil || !bytes.Contains(output, []byte("intentional gated failure")) || !bytes.Contains(output, []byte("PUBLICATION_FAILURE_CLEANUP_COMPLETED")) || bytes.Contains(output, []byte("cleanup join timed out")) {
-				t.Fatalf("failure cleanup did not finish: %v %s", err, output)
+			r := testutil.RunChild(t, "TestPublicationGateEarlyFailureCleanlyJoinsProcess", []string{"RHO_PUBLICATION_TEST_FAILURE=" + phase}, 15*time.Second)
+			if r.Exit == nil || r.ExitCode != 1 || r.TimedOut || !r.Contains("intentional gated failure") || !r.Contains("PUBLICATION_FAILURE_CLEANUP_COMPLETED") || r.Contains("cleanup join timed out") {
+				t.Fatalf("failure cleanup did not finish: %v %s", r.Err, r.Output)
 			}
 		})
 	}

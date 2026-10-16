@@ -2,22 +2,23 @@ package replica
 
 import (
 	"bytes"
-	"context"
+
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+
 	"path/filepath"
 	"runtime"
 	"sync"
-	"syscall"
+
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/testutil"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -588,18 +589,12 @@ func TestRealProcessKillAndReopen(t *testing.T) {
 	for _, mode := range []string{"apply", "checkpoint", "snapshot"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "db")
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestRealProcessKillAndReopen$")
-			cmd.Env = append(os.Environ(), "RHO_RAFT_CRASH_MODE="+mode, "RHO_RAFT_CRASH_DIR="+dir)
-			output, err := cmd.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || ctx.Err() != nil {
-				t.Fatalf("kill seam did not complete: %v context=%v %s", err, ctx.Err(), output)
+			r := testutil.RunChild(t, "TestRealProcessKillAndReopen", []string{"RHO_RAFT_CRASH_MODE=" + mode, "RHO_RAFT_CRASH_DIR=" + dir}, 10*time.Second)
+			if r.Exit == nil || r.TimedOut {
+				t.Fatalf("kill seam did not complete: %v timedOut=%v %s", r.Err, r.TimedOut, r.Output)
 			}
-			status, isStatus := exit.Sys().(syscall.WaitStatus)
-			if !isStatus || !status.Signaled() || status.Signal() != syscall.SIGKILL {
-				t.Fatalf("expected SIGKILL at %s seam: %v %s", mode, err, output)
+			if !r.Killed() {
+				t.Fatalf("expected SIGKILL at %s seam: %v %s", mode, r.Err, r.Output)
 			}
 			s, err := raftlog.Open(raftlog.Config{Dir: dir})
 			if err != nil {

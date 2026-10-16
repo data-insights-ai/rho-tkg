@@ -1,20 +1,17 @@
 package raftlog
 
 import (
-	"bytes"
-	"context"
 	"crypto/sha256"
-	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/testutil"
 )
 
 func TestApplicationPublicationCrashAndFaultNeverExposeMixedBase(t *testing.T) {
@@ -66,24 +63,16 @@ func TestApplicationPublicationCrashAndFaultNeverExposeMixedBase(t *testing.T) {
 	for _, phase := range []string{"captured", "synced", "write", "sync"} {
 		t.Run(phase, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "db")
-			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-			defer cancel()
-			child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestApplicationPublicationCrashAndFaultNeverExposeMixedBase$")
-			child.Env = append(os.Environ(), "RHO_PUBLISHED_CUT_CRASH="+phase, "RHO_PUBLISHED_CUT_DIR="+dir)
-			output, err := child.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || ctx.Err() != nil {
-				t.Fatalf("crash seam incomplete: %v %s", err, output)
+			r := testutil.RunChild(t, "TestApplicationPublicationCrashAndFaultNeverExposeMixedBase", []string{"RHO_PUBLISHED_CUT_CRASH=" + phase, "RHO_PUBLISHED_CUT_DIR=" + dir}, 30*time.Second)
+			if r.Exit == nil || r.TimedOut {
+				t.Fatalf("crash seam incomplete: %v %s", r.Err, r.Output)
 			}
 			if phase == "write" || phase == "sync" {
-				if exit.ExitCode() != 1 || !bytes.Contains(output, []byte("fatal commit error")) || bytes.Contains(output, []byte("PUBLICATION_FAULT_RETURNED")) {
-					t.Fatalf("uncertain publication returned: %v %s", err, output)
+				if r.ExitCode != 1 || !r.Contains("fatal commit error") || r.Contains("PUBLICATION_FAULT_RETURNED") {
+					t.Fatalf("uncertain publication returned: %v %s", r.Err, r.Output)
 				}
-			} else {
-				status, ok := exit.Sys().(syscall.WaitStatus)
-				if !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
-					t.Fatalf("not SIGKILL: %v %s", err, output)
-				}
+			} else if !r.Killed() {
+				t.Fatalf("not SIGKILL: %v %s", r.Err, r.Output)
 			}
 			p, tc := transferConfig(1)
 			p.ReclaimEntries = 1

@@ -2,10 +2,7 @@ package raftlog
 
 import (
 	"bytes"
-	"context"
-	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -15,6 +12,8 @@ import (
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/testutil"
 )
 
 func snapshotKill() error {
@@ -112,24 +111,16 @@ func TestSnapshotProcessKillLeavesOnlyCompleteActiveHistory(t *testing.T) {
 	for _, phase := range []string{"begin", "page", "final", "verified", "abort", "fault-begin", "fault-page", "fault-verified", "fault-abort"} {
 		t.Run(phase, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "db")
-			ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
-			defer cancel()
-			child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSnapshotProcessKillLeavesOnlyCompleteActiveHistory$")
-			child.Env = append(os.Environ(), "RHO_APPLICATION_SNAPSHOT_KILL="+phase, "RHO_APPLICATION_SNAPSHOT_DIR="+dir)
-			out, err := child.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || ctx.Err() != nil {
-				t.Fatalf("not SIGKILL: %v %s", err, out)
+			r := testutil.RunChild(t, "TestSnapshotProcessKillLeavesOnlyCompleteActiveHistory", []string{"RHO_APPLICATION_SNAPSHOT_KILL=" + phase, "RHO_APPLICATION_SNAPSHOT_DIR=" + dir}, 45*time.Second)
+			if r.Exit == nil || r.TimedOut {
+				t.Fatalf("not SIGKILL: %v %s", r.Err, r.Output)
 			}
 			if strings.HasPrefix(phase, "fault-") {
-				if exit.ExitCode() != 1 || !bytes.Contains(out, []byte("fatal commit error")) {
-					t.Fatalf("storage fault returned: %v %s", err, out)
+				if r.ExitCode != 1 || !r.Contains("fatal commit error") {
+					t.Fatalf("storage fault returned: %v %s", r.Err, r.Output)
 				}
-			} else {
-				ws, ok := exit.Sys().(syscall.WaitStatus)
-				if !ok || !ws.Signaled() || ws.Signal() != syscall.SIGKILL {
-					t.Fatalf("not SIGKILL: %v %s", err, out)
-				}
+			} else if !r.Killed() {
+				t.Fatalf("not SIGKILL: %v %s", r.Err, r.Output)
 			}
 			p, tc := transferConfig(1)
 			s, err := Open(Config{Dir: dir, Application: p, Transfer: tc})

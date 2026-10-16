@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
+
 	"reflect"
 	"runtime"
 	"strings"
@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/testutil"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"go.etcd.io/raft/v3/tracker"
@@ -1000,14 +1001,9 @@ func TestSnapshotSendPhysicalChecksumCorruptionStopsBeforeSeal(t *testing.T) {
 		_, _ = os.Stdout.WriteString("CORRUPT_SENDER_BUILD_RETURNED\n")
 		t.Fatalf("default corruption fail-stop returned: %v %v", ready, err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSnapshotSendPhysicalChecksumCorruptionStopsBeforeSeal$")
-	cmd.Env = append(os.Environ(), "RHO_SENDER_CORRUPTION_CHILD=1")
-	output, err := cmd.CombinedOutput()
-	exit, ok := errors.AsType[*exec.ExitError](err)
-	if ctx.Err() != nil || !ok || exit.ExitCode() != 1 || !bytes.Contains(output, []byte("on-disk corruption")) || !bytes.Contains(output, []byte("crc32c checksum mismatch")) || bytes.Contains(output, []byte("CORRUPT_SENDER_BUILD_RETURNED")) {
-		t.Fatalf("physical checksum fail-stop: %v %s", err, output)
+	r := testutil.RunChild(t, "TestSnapshotSendPhysicalChecksumCorruptionStopsBeforeSeal", []string{"RHO_SENDER_CORRUPTION_CHILD=1"}, 5*time.Second)
+	if r.TimedOut || r.Exit == nil || r.ExitCode != 1 || !r.Contains("on-disk corruption") || !r.Contains("crc32c checksum mismatch") || r.Contains("CORRUPT_SENDER_BUILD_RETURNED") {
+		t.Fatalf("physical checksum fail-stop: %v %s", r.Err, r.Output)
 	}
 }
 

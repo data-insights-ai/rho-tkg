@@ -2,21 +2,22 @@ package replica
 
 import (
 	"bytes"
-	"context"
+
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"os"
-	"os/exec"
+
 	"path/filepath"
 	"runtime"
-	"syscall"
+
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/testutil"
 	"go.etcd.io/raft/v3"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -330,18 +331,12 @@ func TestApplicationDriverRealProcessKill(t *testing.T) {
 	for _, mode := range []string{"stage", "restore", "reclaim"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "db")
-			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestApplicationDriverRealProcessKill$")
-			cmd.Env = append(os.Environ(), "RHO_APP_CRASH_MODE="+mode, "RHO_APP_CRASH_DIR="+dir)
-			output, err := cmd.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || ctx.Err() != nil {
-				t.Fatalf("kill seam did not complete: %v context=%v %s", err, ctx.Err(), output)
+			r := testutil.RunChild(t, "TestApplicationDriverRealProcessKill", []string{"RHO_APP_CRASH_MODE=" + mode, "RHO_APP_CRASH_DIR=" + dir}, 15*time.Second)
+			if r.Exit == nil || r.TimedOut {
+				t.Fatalf("kill seam did not complete: %v timedOut=%v %s", r.Err, r.TimedOut, r.Output)
 			}
-			status, isStatus := exit.Sys().(syscall.WaitStatus)
-			if !isStatus || !status.Signaled() || status.Signal() != syscall.SIGKILL {
-				t.Fatalf("expected SIGKILL at %s seam: %v %s", mode, err, output)
+			if !r.Killed() {
+				t.Fatalf("expected SIGKILL at %s seam: %v %s", mode, r.Err, r.Output)
 			}
 			s, err := raftlog.Open(raftlog.Config{Dir: dir, Application: p})
 			if err != nil {
@@ -399,14 +394,9 @@ func TestApplicationInstallFatalIOStopsBeforeOutput(t *testing.T) {
 	for _, fault := range []string{"write", "sync"} {
 		t.Run(fault, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "db")
-			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestApplicationInstallFatalIOStopsBeforeOutput$")
-			cmd.Env = append(os.Environ(), "RHO_APP_INSTALL_FAULT="+fault, "RHO_APP_CRASH_DIR="+dir)
-			output, err := cmd.CombinedOutput()
-			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || exit.ExitCode() != 1 || !bytes.Contains(output, []byte("fatal commit error")) || bytes.Contains(output, []byte("APPLICATION_INSTALL_RETURNED_OUTPUT")) {
-				t.Fatalf("install fail-stop: %v %s", err, output)
+			r := testutil.RunChild(t, "TestApplicationInstallFatalIOStopsBeforeOutput", []string{"RHO_APP_INSTALL_FAULT=" + fault, "RHO_APP_CRASH_DIR=" + dir}, 15*time.Second)
+			if r.Exit == nil || r.ExitCode != 1 || !r.Contains("fatal commit error") || r.Contains("APPLICATION_INSTALL_RETURNED_OUTPUT") {
+				t.Fatalf("install fail-stop: %v %s", r.Err, r.Output)
 			}
 			s, err := raftlog.Open(raftlog.Config{Dir: dir, Application: p})
 			if err != nil {
