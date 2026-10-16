@@ -211,53 +211,16 @@ func decodeRetainedFeedObservation(wire []byte) (retainedFeedObservation, error)
 	return o, nil
 }
 
-// Optional scalar failure telemetry is installed only during fixture startup,
-// before any dispatcher goroutine. Nil is the ordinary production path.
-type retainedFeedNativeFailureRecord struct {
-	stage                                        string
-	partition, voter, index                      uint64
-	kind                                         byte
-	rows, bytes, rowLimit, byteLimit, outputLeft int
-	offeredRows, offeredBytes, offeredOutput     int
-	actual                                       bool
-	cause                                        uint16
-}
-
-var retainedFeedNativeFailure func(retainedFeedNativeFailureRecord)
-
-func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRequest) (out []byte, err error) {
+func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRequest) ([]byte, error) {
 	if s == nil || ctx == nil || !retainedFeedAgreement(s.host.machine.SemanticContractID()) {
 		return nil, errInvalid
 	}
-	observe := retainedFeedNativeFailure
-	stage := "decode"
-	var diagnosticReader *reader
-	var diagnosticQuestion retainedFeedQuestion
-	if observe != nil {
-		defer func() {
-			if err == nil {
-				return
-			}
-			d := retainedFeedNativeFailureRecord{stage: stage, partition: s.peer.scope.partition, voter: s.peer.voter, kind: diagnosticQuestion.kind, index: diagnosticQuestion.index, offeredRows: diagnosticQuestion.rows, offeredBytes: diagnosticQuestion.bytes, offeredOutput: diagnosticQuestion.output, cause: graphErrorMask(err)}
-			if diagnosticReader != nil {
-				q := diagnosticReader
-				d.actual = true
-				d.rows, d.bytes, d.rowLimit, d.byteLimit = q.rows, q.bytes, q.limits.readRows, q.limits.readBytes
-				if q.arena != nil {
-					d.outputLeft = q.arena.Remaining()
-				}
-			}
-			observe(d)
-		}()
-	}
 	question, err := decodeRetainedFeedQuestion(r.command)
-	diagnosticQuestion = question
 	if err != nil {
 		return nil, err
 	}
 	codecCost := 4096 + 8*len(r.command)
 	query := graphCutQuery{kind: 1, nonce: r.nonce, sourceRows: question.rows, sourceBytes: question.bytes, outputBytes: question.output - codecCost}
-	stage = "capture"
 	reply, err := s.pump.Cut(ctx, query)
 	if err != nil || reply.err != nil {
 		return nil, errors.Join(err, reply.err)
@@ -265,7 +228,6 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 	if reply.question != query || reply.id != reply.proof.id || reply.proof.owner != s.host {
 		return nil, errInvalid
 	}
-	stage = "proof"
 	if err = checkGraphCutProof(reply.proof, query); err != nil {
 		return nil, err
 	}
@@ -279,11 +241,11 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 	if captured.sourceRows >= question.rows || captured.sourceBytes >= question.bytes || captured.outputBytes >= question.output {
 		return nil, errLimit
 	}
-	stage = "view"
 	view, err := m.store.ApplicationView(captured.index)
 	if err != nil {
 		return nil, err
 	}
+	var out []byte
 	base, err := view.RootBounded(ctx, 172)
 	if err != nil {
 		return nil, errors.Join(err, view.Close())
@@ -299,15 +261,11 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 	q.limits.readRows = min(q.limits.readRows, question.rows)
 	q.limits.readBytes = min(q.limits.readBytes, question.bytes)
 	q.rows, q.bytes = captured.sourceRows, captured.sourceBytes+cap(base.Image)
-	if observe != nil {
-		diagnosticReader = &q
-	}
 	inspect := func() (retainedFeedObservation, error) {
 		d, e := decodeRetainedFeedDefinition(question.definition)
 		if e != nil {
 			return retainedFeedObservation{}, e
 		}
-		stage = "feed-live"
 		manifest, owner, status, e := m.feedLive(&q, d)
 		if e != nil {
 			return retainedFeedObservation{}, e
@@ -317,7 +275,6 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 		if status != feedApplied {
 			return o, nil
 		}
-		stage = "cursor"
 		cursor, found, e := readFeedCursor(&q, manifest.id())
 		if e != nil {
 			return o, e
@@ -330,7 +287,6 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 		if e != nil || !present || !bytes.Equal(stored.Value, question.definition) {
 			return o, errors.Join(errInvalid, e)
 		}
-		stage = "control"
 		if question.kind == feedReadCursor {
 			o.cursor, e = encodeRetainedFeedCursor(cursor)
 			if e != nil {
@@ -393,7 +349,6 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 			o.page = page.Value
 			return o, nil
 		}
-		stage = "certificate"
 		cert := question.boundary
 		if cert.scope != m.scope() || cert.round < manifest.parts[0].certificate.round {
 			return o, errInvalid
@@ -406,7 +361,6 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 		if e != nil || actual != cert {
 			return o, errors.Join(errInvalid, e)
 		}
-		stage = "tip"
 		if e = m.checkFeedTip(&q, question.tip, cert); e != nil {
 			return o, e
 		}
@@ -421,7 +375,6 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 				return o, errInvalid
 			}
 			if question.index <= question.tip.index {
-				stage = "frame-progress"
 				f, e := m.feedProgress(&q, question.index, question.index+min(question.tip.index-question.index, retainedFeedProgressBatch-1), d.policy.pageBytes, cursor.positions[local])
 				if e != nil {
 					return o, e
@@ -433,13 +386,11 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 		if question.round < manifest.parts[0].certificate.round || question.round > cert.round {
 			return o, errInvalid
 		}
-		stage = "payload-source"
 		_, index, image, e := m.feedPayloadSource(&q, manifest, cert.configuration, question.round)
 		if e != nil {
 			return o, e
 		}
 		payload := retainedFeedPayload{partition: m.ns.partition, index: index, root: image}
-		stage = "payload-lookup"
 		e = m.feedAt(&q, index, func(at *reader) error {
 			o.generation = at.base.Generation
 			lookup := question.lookup
@@ -507,7 +458,6 @@ func (s *graphPeerService) readRetainedFeed(ctx context.Context, r graphSourceRe
 	observation.rows, observation.bytes = q.rows, q.bytes
 	observation.output = question.output - arena.Remaining()
 	if inspectErr == nil {
-		stage = "encode"
 		// Size the exact delivered response, then fund its ownership/codec on
 		// this SAME native residual before allocation. A small lookup/census is
 		// not charged as a configured-maximum page on every RPC.

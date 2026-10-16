@@ -15,9 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -29,21 +27,6 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 )
-
-// Startup-only registration: ordinary parents and all non-state children keep
-// the production observer nil. Output is a fixed scalar line, never wire data.
-func init() {
-	if os.Getenv("RHO_GRAPH_PROTOCOL_STATE_PROCESS") != "1" {
-		return
-	}
-	var count atomic.Uint32
-	retainedFeedNativeFailure = func(d retainedFeedNativeFailureRecord) {
-		if count.Add(1) > 16 {
-			return
-		}
-		_, _ = fmt.Fprintf(os.Stderr, "native feed read failure stage=%s part=%d voter=%d index=%d kind=%d actual=%t rows=%d/%d bytes=%d/%d outputLeft=%d offered=%d/%d/%d cause=%04x\n", d.stage, d.partition, d.voter, d.index, d.kind, d.actual, d.rows, d.rowLimit, d.bytes, d.byteLimit, d.outputLeft, d.offeredRows, d.offeredBytes, d.offeredOutput, d.cause)
-	}
-}
 
 const nativeProtocolStateProfile = "native-protocol-owned-state-transition-v1"
 const nativeProtocolStateMarker = "NPS1"
@@ -806,19 +789,6 @@ func nativeProtocolStateNetwork(t *testing.T, p08 bool) (*certifiedProcessNetwor
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			err := p.shutdown(ctx, false)
 			cancel()
-			if t.Failed() {
-				text, overflow := p.stderr.state()
-				count := 0
-				for line := range strings.SplitSeq(text, "\n") {
-					if strings.HasPrefix(line, "native feed read failure ") && count < 16 {
-						t.Logf("state child%d %s", id, line)
-						count++
-					}
-				}
-				if overflow {
-					t.Log("state child diagnostic stderr overflow", id)
-				}
-			}
 			p.mux.mu.Lock()
 			calls += p.sequence
 			p.mux.mu.Unlock()
