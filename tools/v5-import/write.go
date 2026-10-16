@@ -28,7 +28,8 @@ const metaKey = "rho.import"
 // Options tunes Import. The zero value is fine.
 type Options struct {
 	// MaxOps caps the ops of one Update (default 256). A batch the store refuses as
-	// too large is halved until it fits.
+	// too large is retried at 3/4 of its weight until it fits, and later batches
+	// keep that weight (growing back by 1/16 per commit).
 	MaxOps int
 	// AfterBatch runs after each committed batch with the number of ops applied
 	// so far; an error stops the import (the graph keeps what is committed).
@@ -41,9 +42,13 @@ type Options struct {
 // ErrTooManyExisting stops an import whose list of pre-existing IDs no longer fits one Meta row.
 var ErrTooManyExisting = errors.New("importmap: too many pre-existing IDs, import into a fresh graph")
 
-// Report lists what the write path did not take as it was.
+// Report lists what the write path did not take as it was, and what the
+// batching cost: Commits Updates committed, Refused Updates the store refused
+// as too large (each one staged work that was thrown away).
 type Report struct {
 	Ambiguities []Ambiguity
+	Commits     int
+	Refused     int
 }
 
 type ref struct {
@@ -319,15 +324,25 @@ func (r *Result) Import(ctx context.Context, g *graph.Graph, cfg graph.Config, o
 	if err := w.resume(); err != nil {
 		return nil, err
 	}
+	// budget is the op weight one Update may carry, learnt from the store's
+	// refusals: a refused batch is staged work thrown away, so a size the store
+	// refused is not tried again batch after batch. It creeps back up by 1/16
+	// per commit, so a run of heavy entities does not cap the rest of the stream.
+	budget := math.MaxInt
 	for w.applied < len(p.ops) {
-		n := w.cut(min(o.MaxOps, len(p.ops)-w.applied))
+		n := w.take(o.MaxOps, budget)
 		for {
 			err := w.batch(w.applied, n)
 			if err == nil {
 				break
 			}
 			switch {
-			case errors.Is(err, graph.ErrInvalidRequest) && n > 1, errors.Is(err, graph.ErrAlreadyExists) && n > 1:
+			case errors.Is(err, graph.ErrInvalidRequest) && n > 1:
+				w.rep.Refused++
+				budget = w.weight(n) * 3 / 4
+				n = w.take(n-1, budget)
+				continue
+			case errors.Is(err, graph.ErrAlreadyExists) && n > 1:
 				n = w.cut((n + 1) / 2)
 				continue
 			case errors.Is(err, graph.ErrAlreadyExists) && isCreate(p.ops[w.applied].Op):
@@ -341,6 +356,10 @@ func (r *Result) Import(ctx context.Context, g *graph.Graph, cfg graph.Config, o
 			return nil, err
 		}
 		w.applied += n
+		w.rep.Commits++
+		if budget < math.MaxInt/2 {
+			budget += max(1, budget/16)
+		}
 		if o.AfterBatch != nil {
 			if err := o.AfterBatch(w.applied); err != nil {
 				return nil, fmt.Errorf("importmap: stopped after %d ops: %w", w.applied, err)
@@ -360,6 +379,31 @@ type writer struct {
 	skipped   map[ref]bool
 	skipOrder []skipPair
 	rep       Report
+}
+
+// weight is the stage records ops [applied, applied+n) cost, in units of one
+// component: the entity and each property and label it writes.
+func (w *writer) weight(n int) int {
+	sum := 0
+	for _, o := range w.p.ops[w.applied : w.applied+n] {
+		sum += 1 + len(o.Props) + len(o.Labels)
+	}
+	return sum
+}
+
+// take is the batch from applied: at most maxOps ops whose weight fits budget
+// (at least one op), cut so no entity has ops at two instants.
+func (w *writer) take(maxOps, budget int) int {
+	n, sum := 0, 0
+	for n < maxOps && w.applied+n < len(w.p.ops) {
+		o := w.p.ops[w.applied+n]
+		sum += 1 + len(o.Props) + len(o.Labels)
+		if n > 0 && sum > budget {
+			break
+		}
+		n++
+	}
+	return w.cut(n)
 }
 
 // cut shortens a batch of n ops from applied so that no entity gets ops
