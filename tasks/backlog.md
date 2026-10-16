@@ -131,6 +131,8 @@ All 26 affected v4 source/test blobs match upstream; no v5 source changed.
 Consumer source-delta mapping and reader qualification remain V4/V6 work, and
 the recorded upstream performance evidence is not v5 measurement or acceptance.
 No compile, test, measurement or CI run accompanies this merge.
+Main metadata-only `6f5084c5` is integrated at `b9c37b37`; the v5 ownership
+pointer is preserved. It changes no database source or qualification baseline.
 [Substrate evaluation](../docs/v5/reference/substrate-evaluation.json) is
 research/execution-plan evidence only; no engine selection or V2/V3 acceptance.
 The original five recovered `docs/v5/reference/` files are byte-verified and
@@ -195,7 +197,7 @@ Every open requirement is assigned to a package below. Detailed existing accepta
 | V2.4 Certified read foundations | 8% | accepted | Accepted finite E15/E16 current/historical reads and E18 index-starting hydration with authenticated native sources and cuts. |
 | V2.5 Finite range handoff baseline | 4% | accepted | Accepted finite E17 handoff, retained history and certified source/target lineage; interruptions/GC and general rebalance remain open. |
 | V2.6 Selected recovery/storage components | 4% | accepted | Recorded P03/P06 and selected WAL/manifest/OPTIONS recovery components; evidence applies to its exact source/cases, not the full families. |
-| V2.7 Remaining transaction fault schedules | 10% | active | Complete P01–P06 requirement-to-case coverage: outside-scope coordinator; prepare/fence ordering; partial installation; frozen participants/digest/decision; absent keys/ranges, temporal predicates and endpoint-life ABA; conflicts through failover. Selected rotated/reordered P01, P02 and P06 cases pass; P03/P04/P05 and state recovery still have open qualification. |
+| V2.7 Remaining transaction fault schedules | 10% | active | Complete P01–P06 requirement-to-case coverage: outside-scope coordinator; prepare/fence ordering; partial installation; frozen participants/digest/decision; absent keys/ranges, temporal predicates and endpoint-life ABA; conflicts through failover. Selected rotated/reordered P01, P02, P04, P05 and P06 cases pass; P03, later P05 schedules and state recovery still have open qualification. |
 | V2.8 Ownership, identities and reclamation | 10% | active | P07/P09 interruptions during transfer/publication, production identity reuse and stale fencing, retry-payload refusal, snapshot/feed lineage, expiration and application GC; preserve original results and expired/unavailable versus empty. |
 | V2.9 Composed network, scheduler and storage faults | 10% | open | Loss/duplication/reorder/asymmetry, isolated leaders/quorum/domain loss; pause/ticks/clock jumps; torn/short writes, EIO/ENOSPC/sync/rename/manifest/corrupt pages; bounded conflicting exploration followed by recorded-seed soak and independent oracles. |
 | V2.10 Equivalent FoundationDB fault/publication evidence | 8% | open | Actual role/domain loss, unknown commits, pins/GC and chunk/manifest failures; complete histories/index/CDC, owned cleanup and all-client/server accounting under equivalent declared fault/durability semantics. |
@@ -1401,32 +1403,26 @@ records the following finite scope:
   and independent root replay: 40 typed answers, all 13 native process identities
   exited, FDB 43 commits/51 aborted attempts and successful cleanup. Larger
   runs and comparative cost remain open. Selected rotated/reordered P01,
-  P02 and first-live P06 cases now pass complete native execution and independent
-  full-artifact checks; P06 retains its exact prior native originals and the
-  edge/close-a serial witness. A newly executed P03 case does not reach its
-  selected native batch and remains unqualified. P01 keeps the held source on surviving voter 2 with its original
-  grant; only an unrelated fresh caller moves off its two-worker source. The
-  relay omits success payloads on actual transport errors, and strict checkers
-  preserve actual caller roles, native GR3 root modes and P02 phase coordinates.
-  P04 preserves the original recipient owner. Its real capacity request
-  returns authenticated graphstore/graphstate resource-limit causes before the
-  first candidate, reproduced by a genuine in-process native capacity read.
-  Single canonical kernel inspection now removes the duplicate decode under the
-  same original grant, with 100% coverage of the combined inspector and scoped
-  race passes. The actual case advances through both candidates and the selected
-  kill; its next read remains unavailable. P05 reaches the selected real process kill and healthy quorum
-  apply, then exhausts the SAME held source's 1,024 cumulative calls during its
-  second full observation; row, byte and output allowances remain available.
-  Invocation-local scalar and complete-page reuse preserves the original
-  source/cut/lifetime and budgets. P05 now completes the native workflow but its
-  checker must validate captured GSQ/GSO controls alongside transactions; state
-  now passes that held projection using bounded token-scoped exact source-Get
-  reuse, then fails a later feed-page read. P05 GSQ/GSO and Register projection
-  joins now pass the full oracle; a fresh complete ABA case and four additional
-  short representatives pass, while a later Resolve recipe remains open.
-  The P04 observer now charges its unchanged candidate bound only to actual
-  capacity traffic, with its original-case rerun pending. All open failures retain their
-  original deadlines and quotas.
+  P02, P04, P05 and first-live P06 cases pass complete native execution and
+  independent full-artifact checks. P04's new source-owner recovery passes in
+  8.12 seconds with two genuine process kills, recovery through successor 5,
+  exact original retry, retained-cut checks and all eight native incarnations
+  reaped. Its independent replay retains 24 records and serial witness B.
+  P05 also has four additional complete short representatives; its later
+  Resolve schedule remains RED after scheduler attachment was corrected:
+  live-owner drain returns EOF before the parent classifies the selected kill;
+  the retained native receipt records voter 5 at Resolve-B application 31. P03 still
+  needs an authenticated native receipt-before-consumption join.
+  The state case now passes its held snapshot using bounded token-scoped exact
+  source-Get reuse, then fails a later feed Page. Failure-only native telemetry
+  locates that refusal in frame-progress at part 8/index 33: 181/1,024 rows,
+  1,820,348/4,194,304 bytes and 28,817,088 output bytes still available. Full
+  caller counters after failure reflect conservative charging of the unknown
+  spend; they do not prove aggregate exhaustion. The existing pages_and_ACK
+  guard also has a separately reproduced baseline preflight RED; it remains
+  required before the final gate. All original failed receipts are retained in
+  [the current checkpoint](evidence/v2-integrated-checkpoint-20261016/checkpoint-b9c37b37.json).
+  No original deadline, quota, oracle or acceptance dimension was relaxed.
 
 These components do not close their full fault families, the process inventory,
 engine comparison, measurements or V2. Original deadlines, quotas, complete

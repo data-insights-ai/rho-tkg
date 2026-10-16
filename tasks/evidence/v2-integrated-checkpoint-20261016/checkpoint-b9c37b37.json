@@ -1,0 +1,88 @@
+{
+  "source": "c81d4a00",
+  "diagnostic_source": "1d58c9d0",
+  "main_metadata_merge": "b9c37b37",
+  "scope": "Selected rotated/reorder P04 full native and independent checker pass; late P05 drain EOF and state feed frame-progress refusal remain RED. No family or phase acceptance.",
+  "files": [
+    {
+      "path": "p05-quiescent-fixed-c81d4a00.json",
+      "bytes": 1543,
+      "sha256": "2787454261b2676056555fd3e1c75efc10fdf3bcd3a7d73aa44673177cc67345"
+    },
+    {
+      "path": "p05-quiescent-fixed-c81d4a00.log",
+      "bytes": 1838,
+      "sha256": "e085b334e7bdf1130e66bc0a917191b603dfc7c78b26c3474f0beea7f5e4f09d"
+    },
+    {
+      "path": "p04-successor-fixed-c81d4a00.json",
+      "bytes": 1770,
+      "sha256": "438dcc4233aca3c64164816ba637f2130aa5561e505964dfaa7e81e441da0171"
+    },
+    {
+      "path": "p04-successor-fixed-c81d4a00.log",
+      "bytes": 1634,
+      "sha256": "20767bfebffba41e2539ce0d670d043849d0556a3b2497a8bc8b626be16f01b4"
+    },
+    {
+      "path": "state-native-feed-diagnostic-1d58c9d0.json",
+      "bytes": 1611,
+      "sha256": "12400ec1743d65ca3eebbec005640ff1cc3087b82fa7212ea827d9cf2f3f6a2f"
+    },
+    {
+      "path": "state-native-feed-diagnostic-1d58c9d0.log",
+      "bytes": 7058,
+      "sha256": "c9ff825b47f52a1923ba1e20701b938fe0a5dc7c9e8c071c7e7262f3951a8506"
+    },
+    {
+      "path": "state-feed-page-diagnostic-85ec4698.json",
+      "bytes": 1610,
+      "sha256": "94d82930933c8f70191655c5b6ae4a921477a01975ac72688c89d6583da697f4"
+    },
+    {
+      "path": "state-feed-page-diagnostic-85ec4698.log",
+      "bytes": 6352,
+      "sha256": "ef8e0d84480d15caab0a1dc458ea145a86cfd49f7f557aff300339250966dbde"
+    },
+    {
+      "path": "p04-fresh-root-replay.json",
+      "bytes": 277,
+      "sha256": "d1aeebc43e94bb3017d531b18003d6df333354ee843883ec9983e3fecf90cd60"
+    },
+    {
+      "path": "compile-current-quiescent-recovery.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "compile-feed-native-diagnostic-1d58c9d0.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "p04-replacement-source-receipt.json",
+      "bytes": 3045,
+      "sha256": "0c81d880ffbb18414eff34128814917c03d6c2b20f25fa64e25f1da2501c1b84"
+    },
+    {
+      "path": "program-quiescent-arm-source-receipt.json",
+      "bytes": 2596,
+      "sha256": "a29b242032ee3f92938d67797709a07cbde6441cbe339cfc380aa64d39ae4be3"
+    },
+    {
+      "path": "feed-native-diagnostic-source-receipt.json",
+      "bytes": 1809,
+      "sha256": "c5159f1ee6911ea74ab41dd568713690ee7aa8934c6e5e732e19b17cdc2835ea"
+    },
+    {
+      "path": "p04-successor-complete-c81d4a00.tar.gz",
+      "bytes": 30773,
+      "sha256": "e60d90421677c143fc35e8fe50ea1702c545560a4fe634639e03d30ae640c8c3"
+    },
+    {
+      "path": "p05-quiescent-native-receipt-c81d4a00.tar.gz",
+      "bytes": 917,
+      "sha256": "c03ff7308919b9713303dbc1cd917c0cf612164d9effa24ffba70856c134150a"
+    }
+  ]
+}

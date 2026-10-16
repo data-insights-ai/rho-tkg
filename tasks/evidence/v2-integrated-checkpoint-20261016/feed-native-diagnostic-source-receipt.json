@@ -1,0 +1,33 @@
+{
+  "commit": "43a7dc3065d436c28b7adb4fbbc3a84a02485563",
+  "parent": "85ec46985d8025a857e7ae4e9ccd3da8190ce232",
+  "tree": "/private/var/tmp/rho-v5-state-feed-source-diagnostic-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_state_harness_test.go",
+      "blob": "5a6dc365c44144d85ad2f02c5e3d08cfc38e3283",
+      "sha256": "60176e57385e402c9d0f3715f4f8609d68b65aaf6088eb94b34fe229bebc8404",
+      "parent_blob": "f71fc173e00b8bb46d7b4eaca4b03f0fc9890b65",
+      "parent_sha256": "89ce2b3b19a5cffe208cc7b8a5eeb4b7a5890c7a86cb7cdfcdfa1b3c6605edcf"
+    },
+    {
+      "path": "v5/internal/graphapply/retained_graph_feed_source.go",
+      "blob": "ec2baedebc88424254852391f5a1f8b741d57fdd",
+      "sha256": "b315634d9abf77d69efc8cde1121c4d4eb091cbae01830fcebf26f4e3f12d35f",
+      "parent_blob": "443d423c256ee4997b7bc27b4d4f2bc7fc16347f",
+      "parent_sha256": "d41b4df3100d9f59683b9fa9c92ced5a5c7ffc2795f2cd6571ee34404b718f35"
+    }
+  ],
+  "scope": "temporary failure-only private source-native scalar observer, single startup init assignment only statechild; <=16 scalar stderr lines forwarded from existing bounded stderr after teardown. Endpoint before-grant failure context preserves %w. No wire/data/RPC/admission/quota/reset changes; remove diagnostic-only hook after cause located.",
+  "checks": {
+    "pinnedfmt": "1.26.9 clean",
+    "git_whitespace": "clean",
+    "selected_guard": "TestRetainedFeedCursorOwnsBoundedParticipantDecode PASS0.671s (compile and existing bounded decoder guard only; observer ordinarynil)"
+  },
+  "evidence": [
+    {
+      "path": "/private/var/tmp/rho-v5-state-snapshot-cache-evidence-20261016/feed-source-diag-compile.log",
+      "sha256": "a95a413e4aff96170176e38a7d6258f71394880a0c6848a904bec4195c46657f"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder
+=== RUN   TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op4-phase4-p8-k2-after
+    native_graph_protocol_campaign_program_harness_test.go:219: paired elected actual leader2 round10 while1 down
+    native_graph_protocol_campaign_program_harness_test.go:219: paired elected actual leader6 round10 while4 down
+    native_graph_protocol_campaign_program_test.go:186: paired live-owner drain EOF
+    paired_graph_fault_harness_test.go:421: paired current child cleanup 1 exit status 1
+    paired_graph_fault_harness_test.go:421: paired current child cleanup 4 EOF
+        signal: broken pipe
+    paired_graph_fault_harness_test.go:421: paired current child cleanup 5 EOF
+        signal: killed
+    paired_graph_fault_harness_test.go:421: paired current child cleanup 6 EOF
+        signal: broken pipe
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 70804 exit status 1
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 70807 signal: broken pipe
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 70808 signal: killed
+    paired_graph_fault_harness_test.go:435: unscheduled child failure 70811 signal: broken pipe
+    paired_graph_fault_harness_test.go:446: paired cleanup: incarnations=6 all-reaped=true successful=2 intentional-kills=0 calls=7605 bootstrapPackets=320 admitted=397312
+--- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms (10.14s)
+    --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder (10.14s)
+        --- FAIL: TestNativeProtocolCampaignLeaderAndMessagePrograms/rotated/reorder/p05-temporal-life-value-ABA-op4-phase4-p8-k2-after (10.13s)
+FAIL

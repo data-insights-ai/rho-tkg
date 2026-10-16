@@ -1,0 +1,45 @@
+{
+  "commit": "f9400533c9c8a8e9c3801459fbb05eb4e88bd48d",
+  "parent": "87474aa61ab13fb507f3cc14a74e3e8959b91d3c",
+  "tree": "/private/var/tmp/rho-v5-p04-replacement-source-fix-20261016",
+  "paths": [
+    {
+      "path": "tools/v5-substrate/native_fault_schedule_check.py",
+      "parentBlob": "20b5a2d0a95996b8e4d2ff39b31030c93598157f",
+      "parentSHA256": "4cb72e0ceb3428756524a2f565bf5f9d83fa8390f659835fa17fccc06a43cf6e",
+      "blob": "23dc5fcdc362bb63dd46c53dcabc9b34346dc9f9",
+      "sha256": "677a672b54731a9bed985653cc537c500e40908e68ab4bb1b05a4a037fe65b46"
+    },
+    {
+      "path": "tools/v5-substrate/native_fault_schedule_check_test.py",
+      "parentBlob": "cb35f45605f8a765fc5cf241cdecb3246087cf04",
+      "parentSHA256": "949182410a4027127c5ab5ff711229728dac4fb2bb09de6847990e32a1bff897",
+      "blob": "501c5e488f4752445d9feb866f0082ff6950eac5",
+      "sha256": "5a2d796abf06a74ba0e6f45b8df537788ee79a097de7e2e8bee88f5a84fcaad7"
+    },
+    {
+      "path": "tools/v5-substrate/native_protocol_campaign_check.py",
+      "parentBlob": "cbbcbfde0b5745c0f90a98a7ae3040b156f351ad",
+      "parentSHA256": "5b6f8ba8f1d48b7e28360c2dbd8192cd58f2910fead973c86de32d32e367e302",
+      "blob": "8dc7b4b7be77e3a93a3a6171536f34357a578b7a",
+      "sha256": "eeb091ec2ce5381c37b8163ba4a199334dcb66734c6a023051ffa730288ea13a"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_fault_decision_harness_test.go",
+      "parentBlob": "9e59e81d0565b3bfc3e7f054fa02118e8868c2a6",
+      "parentSHA256": "db70700caa89791971cad21d14195ac22e6d8e4859e2aaaf8bb6905099aaf571",
+      "blob": "27fd17ddd10e6912d7d024ac25cd72271ba44e5c",
+      "sha256": "10f4118319bd13108f75c2c643ec79beb88c19cb118ed56d5be0cb8a8f35ee5d"
+    }
+  ],
+  "evidenceSHA256": {
+    "helper-guard.log": "8a69d173c33f36837362cd6ff9e652be3a3f37650b7dd5de0ceb7398cef1e903",
+    "python-guards.log": "3b276704f3e563f93455088f7ce46c6323f4b89f61012ff8ddd99bba729ec60f",
+    "campaign-guards.log": "4368fdb066ecbfcd64bff04903b6a5375c6cf07c9cabf3b88d0340d71238c5a9",
+    "program-guards.log": "643c7cfc3921e5830e047bed28578bc933677c101c9c5a9f6610b6207052d03c"
+  },
+  "cause": "Replacement child defaults1/4 sequence0 while parent retains2/6 and server2 retains origin6 cursor; successful true At uses replacement-local source and actualunused remote service. Lost client cursor is not reset; true surviving successor5 owns later Fresh+SAMEbusiness request.",
+  "scope": "Fresh program path only; legacy/default artifact keys and actor sequence unchanged. Optional nested DecisionRecovery raw proof joins actual leader-only ReadIndex+state+SAMEoriginal retry to complete terminal OS cohort5 PID/incarnation/volume/chronology.",
+  "verification": "Existing actual unused-remote-service guard PASS2.296s (proves stale-source refusal +genuinehistoricalreopen), owningPython6+campaign19+program guardsPASS; pinnedfmt+git diff --check. No OS rerun; root owns qualification.",
+  "redEvidence": "/private/var/tmp/rho-v5-checkpoint-20261016.RVj5NO/p04-observer-filter-fixed-87474aa6.log"
+}

@@ -1,0 +1,45 @@
+{
+  "author": "bfd50e433a31c55f161db3d69ede8ac46c1301a5",
+  "parent": "f37508416adfdab69a73f67dbba64e4bfb99552c",
+  "tree": "/private/var/tmp/rho-v5-program-quiescent-arm-20261016",
+  "paths": [
+    {
+      "path": "v5/internal/graphapply/native_graph_fault_schedule_harness_test.go",
+      "parentBlob": "cf2de3623e1b1fcfb7ddffa0b0df5eaa20a897f1",
+      "parentSHA256": "3bfc263f9d0fef9aec7e09aaf746463ea2baeab19158f824c4eb70c39e538f90",
+      "sourceBlob": "e6e82c56a228a062471104efe0717ea9ad83d9a9",
+      "sourceSHA256": "cae56ec8ce33e3d0cb5edd89ad5ec659f2ecc4ead7b595eab64417e897b07054"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_program_harness_test.go",
+      "parentBlob": "58c236edc721c916ac4552e74507e288b2d280bd",
+      "parentSHA256": "34cbb12d5e5d771459d9450a8150468edb570fa7b3dacc93617ff2a4bfd0a467",
+      "sourceBlob": "aaa98db8b20c08d86b7176dac15b07ffe09a8071",
+      "sourceSHA256": "066edae5b3680a8b00edd104f35f6aaecb7929ffd55a1a3ecad7924843ff909d"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_protocol_campaign_program_test.go",
+      "parentBlob": "ee4b8028766bf72c65df475fb04b7883fab5e5bc",
+      "parentSHA256": "f5fe2a8f346a9831fb39123efe2798f6f124bca53f08393576ed49bd0d05b548",
+      "sourceBlob": "5ab0fb361fabfae46382f42c40d8ff16ab75557d",
+      "sourceSHA256": "e3b0930b04f96b7cc5b216438467c00db75ca909b1085c39b6c2f330640e40aa"
+    },
+    {
+      "path": "v5/internal/graphapply/native_graph_transition_conjunction_harness_test.go",
+      "parentBlob": "f3d36e431aa3f338fb98bc90a2fff475d4d2092f",
+      "parentSHA256": "e470ed169a6a491c5a47cdd79592b31cde7ffe2f981bfac800c483e2ee1a6c01",
+      "sourceBlob": "b3e7895cd5b8b53f85915e4c4f88df852863e5b5",
+      "sourceSHA256": "f4dd303e40798720542328435bc76cf7cd86e127a74014c9368576e86b3c2a08"
+    }
+  ],
+  "status": "",
+  "scope": "Private selected-program scheduler attachment; bounded actual packet drain with atomic publication; one cancelable attaching owner; gate/program locks released while waiting. Legacy immediate admission unchanged. No production/child/limits/deadline/authority/oracle changes.",
+  "red": "Original real OS P05 op4/phase4/p8 native-arm then program-arm Invalid; direct original immediate policy also RED busy-retiring-packet admission.",
+  "checks": {
+    "normal": "PASS0.699s; exact two new parent guards plus existing held/duplicate owner guard",
+    "race": "PASS1.710s same selection",
+    "format": "pinned Go1.26.9 gofmt",
+    "whitespace": "PASS"
+  },
+  "runtime": "No author OS cohort; root owns exact original leaf rerun"
+}
