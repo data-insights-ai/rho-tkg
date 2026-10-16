@@ -91,7 +91,7 @@ The first read is `HANDOVER.md` (next steps). **Open work is ONE list: the open 
 | v4.55.3 | 2a72753d | sorted postings for property/composite indexes (72, ai-soc cost note), Eternal() doc fix |
 | v4.56.0 | a08c0d52 | Config.UntimedValidStart (73, René + sigma + ai-soc: Unbounded first version, explicit conversion, marker 7), endpoint constraint over the current life, Reset keeps schema_version |
 | v4.56.1 | 5d8b5917 | one-pass property sidecar build in the open image (74, ai-soc), effective pages pruned by the temporal envelope (75, ai-soc), envelope fold on re-create/re-type |
-| v4.57.0 | (tag) | sigma-tkgd round 9 doors (any-version ranges at a pin, count timelines, property value statistics, typed column chunks; row 45), `Config.UntimedValidStart` default for NEW stores `UntimedUnbounded` (73, row 46) |
+| v4.57.0 | 1d749a86 | sigma-tkgd round 9 doors (any-version ranges at a pin, count timelines, property value statistics, typed column chunks; row 45), `Config.UntimedValidStart` default for NEW stores `UntimedUnbounded` (73, row 46) |
 
 
 ## Open work
