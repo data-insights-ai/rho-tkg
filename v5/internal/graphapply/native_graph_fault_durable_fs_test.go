@@ -84,6 +84,7 @@ type nativeDurableFS struct {
 	mu             sync.Mutex
 	ctx            context.Context
 	dir, shadow    string
+	parentInfo     os.FileInfo
 	policy         nativeDurablePolicy
 	cookie         [16]byte
 	member, next   uint64
@@ -108,11 +109,18 @@ func newNativeDurableFS(ctx context.Context, dir, shadow string, member uint64, 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	f := &nativeDurableFS{FS: vfs.Default, ctx: ctx, dir: root, shadow: model, policy: policy, member: member, names: make(map[string]nativeDurableName), durable: make(map[string]nativeDurableName), files: make(map[uint64]*nativeDurableFileState)}
+	if err := f.admitLocked(4096); err != nil {
+		return nil, err
+	}
+	f.parentInfo, err = os.Lstat(filepath.Dir(root))
+	if err != nil || !f.parentInfo.IsDir() || f.parentInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.Join(errInvalid, err)
+	}
 	// Exclusive creation gives this actual process one private model namespace.
 	if err := os.Mkdir(model, 0700); err != nil {
 		return nil, err
 	}
-	f := &nativeDurableFS{FS: vfs.Default, ctx: ctx, dir: root, shadow: model, policy: policy, member: member, names: make(map[string]nativeDurableName), durable: make(map[string]nativeDurableName), files: make(map[uint64]*nativeDurableFileState)}
 	if _, err := io.ReadFull(rand.Reader, f.cookie[:]); err != nil {
 		return nil, err
 	}
@@ -252,6 +260,19 @@ func (f *nativeDurableFS) openOwned(path string, writable bool, category vfs.Dis
 func (f *nativeDurableFS) OpenDir(path string) (vfs.File, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if path == filepath.Dir(f.dir) {
+		if err := f.admitLocked(4096); err != nil {
+			return nil, err
+		}
+		if _, err := f.parentMetadataLocked(path); err != nil {
+			return nil, err
+		}
+		actual, err := f.FS.OpenDir(path)
+		if err != nil {
+			return nil, err
+		}
+		return &nativeDurableFile{File: actual, owner: f, directory: true, parent: true}, nil
+	}
 	name, err := f.path(path)
 	if err != nil {
 		return nil, err
@@ -417,6 +438,7 @@ type nativeDurableFile struct {
 	id        uint64
 	path      string
 	directory bool
+	parent    bool // Bootstrap ancestor Sync never publishes native catalog names.
 	closed    bool
 	closeErr  error
 }
@@ -487,11 +509,28 @@ func (f *nativeDurableFS) Lock(path string) (io.Closer, error) {
 func (f *nativeDurableFS) Stat(path string) (vfs.FileInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if path == filepath.Dir(f.dir) {
+		if err := f.admitLocked(4096); err != nil {
+			return nil, err
+		}
+		return f.parentMetadataLocked(path)
+	}
 	if _, err := f.path(path); err != nil {
 		return nil, err
 	}
 	if err := f.admitLocked(4096); err != nil {
 		return nil, err
+	}
+	return f.FS.Stat(path)
+}
+
+// Pinned Pebble checks and syncs the closest existing parent even for a fresh
+// database. This exact lexical path and original directory identity grant only
+// metadata access; no ancestor data or names enter the durable image.
+func (f *nativeDurableFS) parentMetadataLocked(path string) (vfs.FileInfo, error) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !os.SameFile(f.parentInfo, info) {
+		return nil, errors.Join(errInvalid, err)
 	}
 	return f.FS.Stat(path)
 }
@@ -599,6 +638,12 @@ func (file *nativeDurableFile) sync(kind uint8, prefix int64) (bool, error) {
 	defer f.mu.Unlock()
 	if err := f.admitLocked(4096); err != nil {
 		return false, err
+	}
+	if file.parent {
+		if file.closed || kind != 1 {
+			return false, errInvalid
+		}
+		return true, file.File.Sync()
 	}
 	if file.directory {
 		if kind == 3 {

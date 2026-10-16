@@ -11,6 +11,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
@@ -19,6 +20,116 @@ import (
 type nativeDurableQueuedFile struct{ vfs.File }
 
 func (nativeDurableQueuedFile) SyncTo(int64) (bool, error) { return false, nil }
+
+func TestNativeDurableBootstrapAllowsOnlyImmediateParentMetadata(t *testing.T) {
+	outer := t.TempDir()
+	parent := filepath.Join(outer, "owner")
+	if err := os.Mkdir(parent, 0700); err != nil {
+		t.Fatal(err)
+	}
+	dir, shadow := filepath.Join(parent, "native"), filepath.Join(parent, "shadow")
+	model, err := newNativeDurableFS(t.Context(), dir, shadow, 1, nativeDurableDefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := model.ledger
+	if info, err := model.Stat(parent); err != nil || !info.IsDir() {
+		t.Fatal("Pebble bootstrap needs the actual immediate parent Stat", err)
+	}
+	ancestor, err := model.OpenDir(parent)
+	if err != nil {
+		t.Fatal("Pebble bootstrap needs the actual immediate parent OpenDir", err)
+	}
+	if err := ancestor.SyncData(); !errors.Is(err, errInvalid) {
+		t.Fatal("parent data Sync admitted", err)
+	}
+	if full, err := ancestor.SyncTo(0); full || !errors.Is(err, errInvalid) {
+		t.Fatal("parent queued Sync admitted", full, err)
+	}
+	if err := errors.Join(ancestor.Sync(), ancestor.Close()); err != nil {
+		t.Fatal("actual parent directory Sync", err)
+	}
+	if model.ledger.Operations <= before.Operations || model.ledger.WorkBytes <= before.WorkBytes || len(model.names) != 0 || len(model.durable) != 0 || len(model.files) != 0 {
+		t.Fatal("ancestor metadata imported names or bypassed its work ledger")
+	}
+	if _, err := os.Lstat(filepath.Join(shadow, "CATALOG")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("parent Sync invented a native catalog", err)
+	}
+	if err := model.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	unsynced, err := model.Create(filepath.Join(dir, "unsynced"), vfs.WriteCategoryUnspecified)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unsynced.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ancestor, err = model.OpenDir(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := errors.Join(ancestor.Sync(), ancestor.Close()); err != nil || len(model.durable) != 0 {
+		t.Fatal("parent Sync published native child names", err)
+	}
+	if _, err := os.Lstat(filepath.Join(shadow, "CATALOG")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("parent Sync published native child catalog", err)
+	}
+	for _, path := range []string{filepath.Dir(parent), parent + string(os.PathSeparator) + ".", dir + string(os.PathSeparator) + ".."} {
+		if _, err := model.Stat(path); !errors.Is(err, errInvalid) {
+			t.Fatal("outside/traversal metadata admitted", path, err)
+		}
+		if file, err := model.OpenDir(path); !errors.Is(err, errInvalid) || file != nil {
+			t.Fatal("outside/traversal directory admitted", path, err)
+		}
+	}
+	foreign := filepath.Join(parent, "foreign")
+	if err := os.WriteFile(foreign, []byte("outside native catalog"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if file, err := model.Open(foreign); !errors.Is(err, errInvalid) || file != nil {
+		t.Fatal("ancestor data imported", err)
+	}
+	alias := filepath.Join(parent, "alias")
+	if err := os.Symlink(parent, alias); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := model.Stat(alias); !errors.Is(err, errInvalid) {
+		t.Fatal("ancestor symlink admitted", err)
+	}
+	if owner, err := newNativeDurableFS(t.Context(), filepath.Join(alias, "native2"), filepath.Join(outer, "shadow2"), 1, nativeDurableDefaultPolicy()); !errors.Is(err, errInvalid) || owner != nil {
+		t.Fatal("symlink parent constructor admitted", err)
+	}
+	db, err := pebble.Open(dir, &pebble.Options{FS: model, CacheSize: 2 << 20, MemTableSize: 1 << 20, MaxOpenFiles: 74, FormatMajorVersion: pebble.FormatMinSupported})
+	if err != nil {
+		t.Fatal("genuine Pebble bootstrap under synced-image model", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	saved := filepath.Join(outer, "saved")
+	if err := os.Rename(parent, saved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(saved, parent); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := model.Stat(parent); !errors.Is(err, errInvalid) {
+		t.Fatal("changed parent symlink admitted", err)
+	}
+	if file, err := model.OpenDir(parent); !errors.Is(err, errInvalid) || file != nil {
+		t.Fatal("changed parent directory admitted", err)
+	}
+	model.mu.Lock()
+	model.ledger.WorkBytes = model.policy.WorkBytes
+	model.mu.Unlock()
+	if _, err := model.Stat(parent); !errors.Is(err, errLimit) {
+		t.Fatal("parent metadata bypassed exhausted work", err)
+	}
+	if file, err := model.OpenDir(parent); !errors.Is(err, errLimit) || file != nil {
+		t.Fatal("parent directory bypassed exhausted work", err)
+	}
+}
 
 func TestNativeDurableImageUsesSyncedIdentityAndNamesInsteadOfCurrentDisk(t *testing.T) {
 	parent := t.TempDir()
