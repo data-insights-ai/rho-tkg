@@ -1,0 +1,17 @@
+# red: TestRound11ShardPoolCallerWorks with runShardPool as on v4.61.0 (every body on a fresh goroutine)
+--- FAIL: TestRound11ShardPoolCallerWorks (0.00s)
+    round11_pool_test.go:42: n=1: no shard body ran on the caller's goroutine
+    round11_pool_test.go:42: n=2: no shard body ran on the caller's goroutine
+    round11_pool_test.go:42: n=7: no shard body ran on the caller's goroutine
+    round11_pool_test.go:42: n=32: no shard body ran on the caller's goroutine
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.320s
+FAIL
+
+# the cost (1 CPU, shared bench slots, load ~38; 20000x; v4.61.0 / round 11 before the fix / after):
+sharded, 20000x, three alternating runs (ns/op, allocs): 
+  v4.61.0                 num 17440 17184 17203 (185)   str 2666 2261 2164 (42)   num-at 6294 5734 5718 (125)
+  round 11 before the fix num  4180  5037  4918 (70)    str 3185 3112 3225 (38)   num-at 5418 4804 5319 (107)
+  round 11 with the fix   num  2278  2624  2552 (69)    str 1905 1430 1668 (37)   num-at 4619 4868 5009 (107)
+CPU profile, 1.5M string seeks on sharded: runtime.copystack 7.7 % of samples on v4.61.0, 37.8 % on round 11
+before the fix (the keys door's shard body grew each fresh pool goroutine's stack one step further).

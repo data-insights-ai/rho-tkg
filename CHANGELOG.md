@@ -22,10 +22,12 @@ releaser's call). New store capabilities and write and read options, all additiv
   doors, the generic doors with a time filter, the composite lookup's driving pair and the unique checks all go
   through the one seam (`core.nodesByLabelAndProperty` / `relsByTypeAndProperty`, `forEach*PropTxMemberOfKeys`).
   The paged effective doors keep one sidecar cursor per key (no shard walk on any store; tiered has no page door).
-  One seek of 1000 (three matches, 1000 rows, 1 CPU, shared bench slots, load 32 to 38; v4.60.0 -> this): tiered
-  30.0 -> 4.9 us, 164 -> 55 allocations; sharded 16.5 -> 4.7 us, 182 -> 71; memory 2.1 -> 1.6 us, 53 -> 49; badger
-  1.5 -> 1.5 us, 50 -> 45; the pinned `NodesByLabelPropertyAt` on tiered 344 -> 141 allocations
-  (`BenchmarkRound11PointSeek`, `tasks/evidence/round11/`).
+  One seek of 1000 (three matches, 1000 rows, 1 CPU, shared bench slots, load 23 to 25; v4.61.0 -> this): tiered
+  23.4 -> 4.9 us, 164 -> 55 allocations; sharded 21.1 -> 3.8 us, 182 -> 69; memory 1.9 -> 1.8 us, 53 -> 49; badger
+  1.6 -> 1.4 us, 50 -> 45; the pinned `NodesByLabelPropertyAt` on tiered 344 -> 141 allocations, on memory 4.2 ->
+  2.6 us (`BenchmarkRound11PointSeek`, `tasks/evidence/round11/17-item1-bench-v4.61.0.txt`). The sharded store's
+  shard fan-out runs one shard body on the calling goroutine (its stack already grown): a fresh pool goroutine copied
+  its stack as the keys door's body grew it, which had made a sharded string seek slower (2.2 -> 3.2 us; now 1.7 us).
 - **The instant 0 as a valid start** (round 11 item 2). `tkg_valid_from = types.ExplicitInstant(0)` on a create
   claims the instant 0 (a plain 0 keeps meaning "no claim", unchanged). The row stores
   `types.TemporalMetadata.ValidFromZero`, read through `TemporalMetadata.HasValidFrom` and the allocation-free

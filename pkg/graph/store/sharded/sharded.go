@@ -588,7 +588,8 @@ func (s *Store) Flush() error {
 const maxShardWorkers = 8
 
 // runShardPool runs fn(idx) once for every idx in [0,n) using a worker pool of
-// at most maxShardWorkers goroutines, blocking until every index has run. Each
+// at most maxShardWorkers goroutines, the caller's among them, blocking until
+// every index has run. Each
 // task touches only its own idx, so callers passing shard-indexed fn bodies
 // (errs[idx] = ...) need no additional synchronization.
 func runShardPool(n int, fn func(idx int)) {
@@ -604,15 +605,22 @@ func runShardPool(n int, fn func(idx int)) {
 		tasks <- i
 	}
 	close(tasks)
+	// The caller is one of the workers: its stack is already grown, where a
+	// fresh goroutine starts small and copies its stack as a deep shard
+	// body grows it (round 11: one string seek on two shards spent a third
+	// of its time in copystack).
 	var wg sync.WaitGroup
-	wg.Add(workers)
-	for w := 0; w < workers; w++ {
+	wg.Add(workers - 1)
+	for w := 1; w < workers; w++ {
 		go func() {
 			defer wg.Done()
 			for idx := range tasks {
 				fn(idx)
 			}
 		}()
+	}
+	for idx := range tasks {
+		fn(idx)
 	}
 	wg.Wait()
 }

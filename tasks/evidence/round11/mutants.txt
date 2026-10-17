@@ -80,3 +80,4 @@ KILLED item1: node keys door not resolved (per-form lookups) [with the core pack
 KILLED item1: rel keys door not resolved (per-form lookups) [with the core package: deterministic]: round11_seek_internal_test.go:193: ByTypeAndProperty: 10 store lookups and 0 sidecar enumerations for one seek of 1000, want 1 and 0
 KILLED item1: node sidecar keys door not resolved (per-key enumerations) [with the core package: deterministic]: round11_seek_internal_test.go:193: ByLabelAndProperty TxPin: 1 store lookups and 10 sidecar enumerations for one seek of 1000, want 1 and 1
 KILLED item1: rel sidecar keys door not resolved [with the core package: deterministic]: round11_seek_internal_test.go:193: ByTypeAndProperty TxPin: 1 store lookups and 10 sidecar enumerations for one seek of 1000, want 1 and 1
+KILLED pool: the caller only waits (every body on a fresh goroutine): round11_pool_test.go:42: n=1: no shard body ran on the caller's goroutine
