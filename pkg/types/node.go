@@ -485,6 +485,30 @@ func (n *Node) TxStamps() (txFrom, txTo, deletedAt Instant) {
 	return n.temporal.TxFrom, n.temporal.TxTo, n.temporal.DeletedAt
 }
 
+// EffectiveValidFrom is the instant this row starts in valid time — the
+// start the effective timeline, the valid-time point doors and the as-of doors
+// give it (TemporalMetadata.EffectiveValidFrom): its ValidFrom when it carries
+// one, else its TxFrom. A version written by Update (or UpdateWithTx, or a
+// GraphTx / Batch twin) stores ValidFrom 0, "no caller claim", and starts at
+// its TxFrom; this returns that start without reading the timeline. Like
+// ValidRange it allocates nothing on a frozen row. 0 for a nil row.
+func (n *Node) EffectiveValidFrom() Instant {
+	if n == nil {
+		return 0
+	}
+	if vf, _, _ := n.ValidRange(); vf != 0 {
+		return vf
+	}
+	if tx, _, _ := n.TxStamps(); tx != 0 {
+		return tx
+	}
+	var tm *TemporalMetadata // a frozen row's meta carries no UpdatedAt
+	if n.meta == nil {
+		tm = n.temporal
+	}
+	return tm.UntimedValidFrom(n.ID().MintInstant())
+}
+
 // SetTemporal sets the node's temporal metadata.
 func (n *Node) SetTemporal(tm *TemporalMetadata) {
 	if n == nil {

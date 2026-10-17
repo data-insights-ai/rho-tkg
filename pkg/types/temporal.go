@@ -89,3 +89,39 @@ func (tm *TemporalMetadata) SetBaseEntityID(id EntityID) {
 	}
 	tm.baseEntityID = id
 }
+
+// EffectiveValidFrom is THE start rule for a row (backlog 62): the instant
+// every valid-time door (the chain resolver, the effective timeline, the
+// store push-downs, the index envelopes) starts it at. It is the stored
+// ValidFrom when the row carries one (a caller's tkg_valid_from, a
+// correction's piece start, or types.UnboundedValidFrom stored by the
+// UntimedUnbounded mode on a first version), else UntimedValidFrom. mint is
+// the instant the row's ID was minted (NodeID.MintInstant).
+//
+// A version written without a valid-from (Update and its twins) keeps
+// ValidFrom 0 in storage: 0 records "no caller claim", which the pre-migration
+// chain heuristic, the untimed-mode conversion and consumers read; this rule
+// resolves it to the row's TxFrom.
+func (tm *TemporalMetadata) EffectiveValidFrom(mint Instant) Instant {
+	if tm != nil && tm.ValidFrom != 0 {
+		return tm.ValidFrom
+	}
+	return tm.UntimedValidFrom(mint)
+}
+
+// UntimedValidFrom is the start of a row without a valid-from: its TxFrom (the
+// commit instant, or a backfilled tkg_tx_from), for a create and a later
+// version alike. A legacy row without a TxFrom falls back to its UpdatedAt
+// (a later version), then to mint. The chain resolver uses it directly where
+// it must ignore an inherited legacy ValidFrom.
+func (tm *TemporalMetadata) UntimedValidFrom(mint Instant) Instant {
+	if tm != nil {
+		if tm.TxFrom != 0 {
+			return tm.TxFrom
+		}
+		if tm.UpdatedAt != 0 {
+			return tm.UpdatedAt
+		}
+	}
+	return mint
+}

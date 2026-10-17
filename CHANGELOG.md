@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+sigma-tkgd 2026-10-17 (ledger row 67): rho's own write door appends a version without loading the chain.
+
+### Added
+
+- **`Node.EffectiveValidFrom()` / `Relationship.EffectiveValidFrom()`** (and
+  `TemporalMetadata.EffectiveValidFrom(mint)` / `UntimedValidFrom(mint)`, the one start rule `storeutil` now delegates
+  to): the instant the row starts in valid time, the start of its segment in the effective timeline, without reading
+  the timeline. A row written by `Update` (and `UpdateWithTx`, the GraphTx / Batch twins) keeps storing `ValidFrom 0`
+  ("no caller claim": read by the pre-migration chain heuristic, the untimed-mode conversion and consumers) and
+  starts at its `TxFrom`; this returns that start. Allocation-free on a frozen row; 0 for a nil row.
+
+### Changed
+
+- **Appends at the head in O(1)** (backlog 67). An open `SetNodeVersionInterval` / `SetRelVersionInterval` (also `*WithTx` and
+  through GraphTx, Batch and ingest; a Batch or ingest unit at a caller instant still reads the history in its
+  pre-flight) from a valid-from at or after the current row's start is planned from the
+  current row alone when that row is the chain's top version and newest belief, open and live: one probe above its
+  version and the store's history stamps, no history read. Allocations per append are flat in the chain length
+  (memory 30 → 30 → 30 at 1 / 100 / 1,000 versions, was 79 → 474 → 4,076; badger 48 → 46 → 46, was 234 → 2,030 →
+  23,480). A bounded or backdated correction, an excise, a closed current row, a history row above the current
+  version or stamped after it, a refused caller instant, a store without the stamps capability and an unmigrated chain
+  are planned from the head entry or the history as before; the written rows are byte-identical either way (twin test
+  on memory, badger, sharded, tiered).
+
 ## [4.60.0] - 2026-10-17
 
 sigma-tkgd round 10 (MINOR: new doors and store capabilities, all additive; ledger row 64; released by Markus because it

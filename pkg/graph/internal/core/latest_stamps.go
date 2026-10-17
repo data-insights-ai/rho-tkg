@@ -219,3 +219,21 @@ func memberIDsCapability(store storepkg.MandatoryStore) storepkg.MemberIDsCapabi
 	}
 	return cap
 }
+
+// nodeHistoryStampsFunc returns the history's newest stamps of node id from
+// the store's capability (c.historyStamps), nil without one: an append
+// planned from the current row (backlog 67) never reads the history for them.
+func (c *Core) nodeHistoryStampsFunc(id types.NodeID) func() (types.Instant, types.Instant, bool, error) {
+	if c.historyStamps == nil {
+		return nil
+	}
+	return func() (types.Instant, types.Instant, bool, error) { return c.historyStamps.NodeHistoryStamps(id) }
+}
+
+// relHistoryStampsFunc is nodeHistoryStampsFunc for relationships.
+func (c *Core) relHistoryStampsFunc(id types.RelID) func() (types.Instant, types.Instant, bool, error) {
+	if c.historyStamps == nil {
+		return nil
+	}
+	return func() (types.Instant, types.Instant, bool, error) { return c.historyStamps.RelHistoryStamps(id) }
+}

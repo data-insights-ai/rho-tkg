@@ -7,61 +7,33 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// EntityValidFrom is THE start rule for a row (backlog 62): its explicit
-// ValidFrom, else its UntimedValidFrom. Every valid-time door — the chain
-// resolver, the store push-down, the temporal index envelopes, the column
-// filters — takes a row's start from here, so a create and a later version
-// without a valid-from start on one clock. Config.UntimedValidStart needs no
-// branch here (backlog 73): under UntimedUnbounded the create stores an
-// untimed first version with ValidFrom = types.UnboundedValidFrom, an
+// EntityValidFrom is THE start rule for a row (backlog 62):
+// types.TemporalMetadata.EffectiveValidFrom with the ID's mint instant — its
+// explicit ValidFrom, else its UntimedValidFrom. Every valid-time door — the
+// chain resolver, the store push-down, the temporal index envelopes, the
+// column filters — takes a row's start from here, so a create and a later
+// version without a valid-from start on one clock. Config.UntimedValidStart
+// needs no branch here (backlog 73): under UntimedUnbounded the create stores
+// an untimed first version with ValidFrom = types.UnboundedValidFrom, an
 // explicit start this rule returns as is.
 func EntityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
-	if tm != nil && tm.ValidFrom != 0 {
-		return tm.ValidFrom
-	}
-	return UntimedValidFrom(id, tm)
+	return tm.EffectiveValidFrom(SnowflakeInstant(id))
 }
 
-// UntimedValidFrom is the start of a row without a valid-from: its TxFrom (the
-// commit instant, or a backfilled tkg_tx_from), for a create and a later
-// version alike. A legacy row without a TxFrom falls back to its UpdatedAt
-// (a later version), then to the ID's mint instant. The chain resolver uses it
-// directly where it must ignore an inherited legacy ValidFrom.
+// UntimedValidFrom is types.TemporalMetadata.UntimedValidFrom with the ID's
+// mint instant: the start of a row without a valid-from (its TxFrom, legacy
+// UpdatedAt, the mint). The chain resolver uses it directly where it must
+// ignore an inherited legacy ValidFrom.
 func UntimedValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
-	if tm != nil {
-		if tm.TxFrom != 0 {
-			return tm.TxFrom
-		}
-		if tm.UpdatedAt != 0 {
-			return tm.UpdatedAt
-		}
-	}
-	return types.Instant(idlayout.MintInstantMillis(id))
+	return tm.UntimedValidFrom(SnowflakeInstant(id))
 }
 
-// NodeValidFrom is EntityValidFrom for a materialized node without copying
-// its metadata (Temporal() copies on a frozen row): one allocation-free read
-// of ValidFrom and TxFrom, the metadata only for a legacy row without a TxFrom.
-func NodeValidFrom(n *types.Node) types.Instant {
-	if vf, _, _ := n.ValidRange(); vf != 0 {
-		return vf
-	}
-	if tx, _, _ := n.TxStamps(); tx != 0 {
-		return tx
-	}
-	return UntimedValidFrom(n.ID().SnowflakeID(), n.Temporal())
-}
+// NodeValidFrom is EntityValidFrom for a materialized node
+// (types.Node.EffectiveValidFrom): allocation-free on a frozen row.
+func NodeValidFrom(n *types.Node) types.Instant { return n.EffectiveValidFrom() }
 
 // RelValidFrom is NodeValidFrom for a relationship.
-func RelValidFrom(r *types.Relationship) types.Instant {
-	if vf, _, _ := r.ValidRange(); vf != 0 {
-		return vf
-	}
-	if tx, _, _ := r.TxStamps(); tx != 0 {
-		return tx
-	}
-	return UntimedValidFrom(r.ID().SnowflakeID(), r.Temporal())
-}
+func RelValidFrom(r *types.Relationship) types.Instant { return r.EffectiveValidFrom() }
 
 // SnowflakeInstant returns the IMMUTABLE mint-time of a snowflake ID as a
 // types.Instant (Unix ms). Unlike EntityValidFrom it never consults temporal
