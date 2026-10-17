@@ -81,3 +81,7 @@ KILLED item1: rel keys door not resolved (per-form lookups) [with the core packa
 KILLED item1: node sidecar keys door not resolved (per-key enumerations) [with the core package: deterministic]: round11_seek_internal_test.go:193: ByLabelAndProperty TxPin: 1 store lookups and 10 sidecar enumerations for one seek of 1000, want 1 and 1
 KILLED item1: rel sidecar keys door not resolved [with the core package: deterministic]: round11_seek_internal_test.go:193: ByTypeAndProperty TxPin: 1 store lookups and 10 sidecar enumerations for one seek of 1000, want 1 and 1
 KILLED pool: the caller only waits (every body on a fresh goroutine): round11_pool_test.go:42: n=1: no shard body ran on the caller's goroutine
+# Fable pass 2 nits
+SURVIVED pass 2: unique cascade reads a raw valid-from
+KILLED pass 2: the zero check before the deleted refusal: red at the committed tip, tasks/evidence/round11/18-pass2-red.txt (round11_review_test.go:521 ... want ErrEntityDeleted)
+EQUIVALENT pass 2: unique cascade reads a raw valid-from: every appended row's start is stamped as a claim (stampValidFrom(.., true)) and never the explicit 0 (a crossing is refused), so claimed && vf < newVT == vf != 0 && vf < newVT on every reachable row; kept for the one rule (pattern 1).

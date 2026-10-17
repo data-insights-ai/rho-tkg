@@ -97,8 +97,8 @@ func TestEffectiveTimeline_PublicFacade(t *testing.T) {
 	if _, err := g.Temporal().RelEffectiveTimeline(r.ID(), peek+3_600_000); !errors.Is(err, graphpkg.ErrTxPinTooNew) {
 		t.Fatalf("future pin: %v, want graph.ErrTxPinTooNew", err)
 	}
-	if _, err := g.Temporal().NodeEffectiveTimeline(a.ID(), 0); !errors.Is(err, graphpkg.ErrInvalidTimeRange) {
-		t.Fatalf("pin 0: %v, want graph.ErrInvalidTimeRange", err)
+	if segs, err := g.Temporal().NodeEffectiveTimeline(a.ID(), 0); err != nil || len(segs) != 0 {
+		t.Fatalf("pin 0: %v, %v; want the empty state (round 11: nothing was recorded by then)", segs, err)
 	}
 	if _, err := g.Temporal().RelEffectiveTimeline(r.ID()+1<<30, pin); !errors.Is(err, graphpkg.ErrRelNotFound) {
 		t.Fatalf("unknown rel: %v, want graph.ErrRelNotFound", err)

@@ -279,15 +279,11 @@ func TestEffectiveTimeline_Errors(t *testing.T) {
 			run  func() error
 			want error
 		}{
-			{"timeline pin 0", func() error { _, err := e.timeline(id, 0); return err }, ErrInvalidTimeRange},
-			{"timeline pin -1", func() error { _, err := e.timeline(id, -1); return err }, ErrInvalidTimeRange},
 			{"timeline future pin", func() error { _, err := e.timeline(id, future); return err }, ErrTxPinTooNew},
 			{"timeline unknown id", func() error { _, err := e.timeline(unknown, pin); return err }, e.notFound()},
 			{"timeline id 0", func() error { _, err := e.timeline(0, pin); return err }, storepkg.ErrInvalidStoreMutation},
 			{"timeline id -5", func() error { _, err := e.timeline(-5, pin); return err }, storepkg.ErrInvalidStoreMutation},
-			{"scan pin 0", func() error { return scan(map[bool]string{false: ccLabel, true: ccType}[e.rel], 0, never) }, ErrInvalidTimeRange},
 			{"scan future pin", func() error { return scan(map[bool]string{false: ccLabel, true: ccType}[e.rel], future, never) }, ErrTxPinTooNew},
-			{"scan unknown name, pin 0", func() error { return scan("NoSuchName", 0, never) }, ErrInvalidTimeRange},
 			{"scan unknown name, future pin", func() error { return scan("NoSuchName", future, never) }, ErrTxPinTooNew},
 			{"scan empty name", func() error { return scan("", pin, never) }, nil},
 		} {
@@ -300,6 +296,18 @@ func TestEffectiveTimeline_Errors(t *testing.T) {
 			}
 			if !errors.Is(err, c.want) {
 				t.Fatalf("%s: err = %v, want errors.Is %v", c.name, err, c.want)
+			}
+		}
+		// A pin at or below 0 is a pin before every write (round 11 item 4):
+		// the empty state, no error, no callback.
+		for _, p := range []types.Instant{0, -1} {
+			if got, err := e.timeline(id, p); err != nil || got != "" {
+				t.Fatalf("timeline pin %d: %q, %v; want the empty state", p, got, err)
+			}
+			for _, name := range []string{map[bool]string{false: ccLabel, true: ccType}[e.rel], "NoSuchName"} {
+				if err := scan(name, p, never); err != nil {
+					t.Fatalf("scan %q pin %d: %v, want the empty state", name, p, err)
+				}
 			}
 		}
 		// Nil callback.

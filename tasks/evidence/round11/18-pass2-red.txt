@@ -1,0 +1,13 @@
+# red: TestRound11DeletedBeforeZeroCheck at the committed tip (Fable pass 2 nit 3)
+--- FAIL: TestRound11DeletedBeforeZeroCheck (0.01s)
+    --- FAIL: TestRound11DeletedBeforeZeroCheck/memory (0.00s)
+        round11_review_test.go:521: correction crossing 0 on a deleted explicit-0 node: graph: no version can end at the instant 0 (graph: invalid time range): the span [-10, 10) crosses 0 on an entity valid from the explicit 0, want ErrEntityDeleted
+    --- FAIL: TestRound11DeletedBeforeZeroCheck/badger (0.00s)
+        round11_review_test.go:521: correction crossing 0 on a deleted explicit-0 node: graph: no version can end at the instant 0 (graph: invalid time range): the span [-10, 10) crosses 0 on an entity valid from the explicit 0, want ErrEntityDeleted
+    --- FAIL: TestRound11DeletedBeforeZeroCheck/tiered (0.00s)
+        round11_review_test.go:521: correction crossing 0 on a deleted explicit-0 node: graph: no version can end at the instant 0 (graph: invalid time range): the span [-10, 10) crosses 0 on an entity valid from the explicit 0, want ErrEntityDeleted
+    --- FAIL: TestRound11DeletedBeforeZeroCheck/sharded (0.00s)
+        round11_review_test.go:521: correction crossing 0 on a deleted explicit-0 node: graph: no version can end at the instant 0 (graph: invalid time range): the span [-10, 10) crosses 0 on an entity valid from the explicit 0, want ErrEntityDeleted
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.247s
+FAIL

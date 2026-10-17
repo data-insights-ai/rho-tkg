@@ -124,12 +124,12 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
-	// The head answer before any write (backlog 68, effective_head.go). A
-	// valid one stands in for the history read (backlog 68b,
-	// effective_head_write.go).
 	if err := checkCorrectionAtZero(newVF, newVT, current, func() (*types.Node, error) { return c.getNodeVersion(id, 0) }); err != nil {
 		return nil, err
 	}
+	// The head answer before any write (backlog 68, effective_head.go). A
+	// valid one stands in for the history read (backlog 68b,
+	// effective_head_write.go).
 	headBefore := c.nodeHeadBeforeWrite(id, current)
 	// An append at the head is planned from the current row alone (backlog
 	// 67, effective_head_write.go), else from a valid head entry.
@@ -767,10 +767,10 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
-	// The head answer before any write — see the node cascade.
 	if err := checkCorrectionAtZero(newVF, newVT, current, func() (*types.Relationship, error) { return c.getRelVersion(id, 0) }); err != nil {
 		return nil, err
 	}
+	// The head answer before any write — see the node cascade.
 	headBefore := c.relHeadBeforeWrite(id, current)
 	// From the current row or the head entry — see the node cascade.
 	hc, fromCurrent := chainFromCurrent(c, relKernel, current, func(v uint32) (bool, error) { return c.relHasHistoryAbove(id, v) },

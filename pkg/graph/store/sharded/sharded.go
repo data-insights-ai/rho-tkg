@@ -611,6 +611,9 @@ func runShardPool(n int, fn func(idx int)) {
 	// of its time in copystack).
 	var wg sync.WaitGroup
 	wg.Add(workers - 1)
+	// Deferred: a panic in the caller's own fn still waits for the other
+	// workers, which write into the caller's result slices.
+	defer wg.Wait()
 	for w := 1; w < workers; w++ {
 		go func() {
 			defer wg.Done()
@@ -622,7 +625,6 @@ func runShardPool(n int, fn func(idx int)) {
 	for idx := range tasks {
 		fn(idx)
 	}
-	wg.Wait()
 }
 
 // forEachShard runs fn against every shard through the bounded worker pool and

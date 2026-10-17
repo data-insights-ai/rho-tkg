@@ -498,3 +498,46 @@ func TestRound11RefusedAtZeroParity(t *testing.T) {
 		})
 	}
 }
+
+// TestRound11DeletedBeforeZeroCheck: a correction crossing 0 on a hard-deleted
+// entity that was valid from the explicit 0 answers the deleted refusal
+// (ErrEntityDeleted), as on any deleted entity, not ErrValidEndAtZero (Fable
+// pass 2: the zero check ran before the door's deleted refusal).
+func TestRound11DeletedBeforeZeroCheck(t *testing.T) {
+	ctx := context.Background()
+	for _, b := range allStoreBackends() {
+		t.Run(b.name, func(t *testing.T) {
+			g := b.open(t)
+			n, err := g.Nodes().Add(ctx, []string{"Z"}, map[string]any{types.ShadowValidFrom: types.ExplicitInstant(0)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Nodes().Delete(ctx, n.ID()); err != nil {
+				t.Fatal(err)
+			}
+			_, err = g.Temporal().SetNodeVersionInterval(ctx, n.ID(), -10, 10, map[string]any{"k": int64(1)})
+			if !errors.Is(err, graphpkg.ErrEntityDeleted) || errors.Is(err, graphpkg.ErrValidEndAtZero) {
+				t.Errorf("correction crossing 0 on a deleted explicit-0 node: %v, want ErrEntityDeleted", err)
+			}
+			hub, err := g.Nodes().Add(ctx, []string{"H"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			end, err := g.Nodes().Add(ctx, []string{"H"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := g.Rels().Add(ctx, "E", hub, end, map[string]any{types.ShadowValidFrom: types.ExplicitInstant(0)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Rels().Delete(ctx, r.ID()); err != nil {
+				t.Fatal(err)
+			}
+			_, err = g.Temporal().SetRelVersionInterval(ctx, r.ID(), -10, 10, nil)
+			if !errors.Is(err, graphpkg.ErrEntityDeleted) || errors.Is(err, graphpkg.ErrValidEndAtZero) {
+				t.Errorf("correction crossing 0 on a deleted explicit-0 relationship: %v, want ErrEntityDeleted", err)
+			}
+		})
+	}
+}

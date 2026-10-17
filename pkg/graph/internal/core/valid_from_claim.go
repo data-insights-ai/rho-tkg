@@ -72,14 +72,16 @@ func checkCorrectionAtZero[T interface {
 	Temporal() *types.TemporalMetadata
 	comparable
 }](vf, vt types.Instant, current T, first func() (T, error)) error {
-	if !crossesZero(vf, vt) {
+	var zero T
+	if !crossesZero(vf, vt) || current == zero {
+		// No current row: the entity is unknown or hard-deleted, and the
+		// door's own refusal (not found, ErrEntityDeleted) answers first.
 		return nil
 	}
-	var zero T
-	if current != zero && startsAtZero(current.Temporal()) {
+	if startsAtZero(current.Temporal()) {
 		return fmt.Errorf("%w: the span [%d, %d) crosses 0 on an entity valid from the explicit 0", ErrValidEndAtZero, vf, vt)
 	}
-	if current != zero && current.Version() == 0 {
+	if current.Version() == 0 {
 		return nil
 	}
 	v0, err := first()

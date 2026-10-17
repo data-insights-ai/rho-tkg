@@ -78,7 +78,8 @@ func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, app
 	}
 	for _, row := range appended {
 		isCurrent := curIsNew && row == newCurrent
-		isCorrection := newVT == 0 || (row.Temporal() != nil && row.Temporal().ValidFrom < newVT)
+		vf, claimed := row.ValidFromClaim()
+		isCorrection := newVT == 0 || (claimed && vf < newVT)
 		for li := 0; li < row.LabelTokenCount(); li++ {
 			labelTok := row.LabelTokenRawAt(li)
 			for key, scope := range constrained[labelTok] {
