@@ -1,7 +1,7 @@
-# HANDOVER — rho-tkg v4 line (2026-10-17, latest release v4.60.0, tag pending after v4.59.0; next patch v4.60.1, next minor v4.61.0)
+# HANDOVER — rho-tkg v4 line (2026-10-17, latest release v4.61.0 (tag pending) after Markus's v4.60.0; next patch v4.61.1, next minor v4.62.0)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). Latest release v4.60.0 (Markus, release commit on branch `release-4.60.0`; tag pending). Previous: v4.59.0 (tag at `027bf788`), v4.58.1 (tag at `df9268c8`), v4.58.0 (tag at `42db6281`, release commit `bc824ad8`; v4.57.1 `dd5c684c`, v4.57.0 Markus). The ONE plan for v4 and v5 is
+database). Latest release v4.61.0 (release commit on main; tag pending: badger RAM row 66, O(1) head append and EffectiveValidFrom row 67). Previous: v4.60.0 (Markus, tag at `13732e19`), v4.59.0 (tag at `027bf788`), v4.58.1 (tag at `df9268c8`), v4.58.0 (tag at `42db6281`, release commit `bc824ad8`; v4.57.1 `dd5c684c`, v4.57.0 Markus). The ONE plan for v4 and v5 is
 `tasks/todo.md`; v5 work lives on the local branch `v5-takeover`. Read in this order: this file, `tasks/lessons.md` (digest at the top), `tasks/todo.md` (user requests, releases table),
 `tasks/backlog.md` (open table, then specs), `CHANGELOG.md` top.
 What shipped and why is in `CHANGELOG.md` and git, not here.
@@ -24,9 +24,9 @@ is now `UntimedDefault` (new stores unbounded, existing stores keep their persis
 names). ai-soc: no change needed (sets `UntimedUnbounded` explicitly). sigma-tkgd: adopting with `UntimedFromTxFrom` set
 explicitly for now; its own decision on the new default follows. Details and migration notes: CHANGELOG `[4.57.0]`.
 
-1. **State (2026-10-17):** v4.60.0 released as a commit by Markus (minor: sigma round 10 doors and the sharded/tiered store gaps, row 64; CHANGELOG `[4.60.0]`); before it v4.59.0 released (tag `027bf788`) (minor: windowed equality seek, row 62; explicit-presence time filters, row 63; CHANGELOG `[4.59.0]`); before it v4.58.1 released (tag `df9268c8`) (patch: a negative valid start is a real interval start in every door, row 60; CHANGELOG `[4.58.1]`); before it v4.58.0 released (minor: tiered property indexes per shard with a truthful capability report, one chain
+1. **State (2026-10-17):** v4.61.0 released as a commit on main (minor: badger RAM, row 66; O(1) head append and `EffectiveValidFrom`, row 67; CHANGELOG `[4.61.0]`); before it v4.60.0 released as a commit by Markus (minor: sigma round 10 doors and the sharded/tiered store gaps, row 64; CHANGELOG `[4.60.0]`); before it v4.59.0 released (tag `027bf788`) (minor: windowed equality seek, row 62; explicit-presence time filters, row 63; CHANGELOG `[4.59.0]`); before it v4.58.1 released (tag `df9268c8`) (patch: a negative valid start is a real interval start in every door, row 60; CHANGELOG `[4.58.1]`); before it v4.58.0 released (minor: tiered property indexes per shard with a truthful capability report, one chain
    builder, Elements backfill fix with open image format 3; todo rows 59, WP-21, WP-31; CHANGELOG `[4.58.0]`); latest tag
-   v4.59.0 (v4.60.0 tag pending), next patch v4.60.1, next minor v4.61.0. Next: tag v4.60.0, CI, notify sigma-tkgd and ai-soc. Running beside it: v5 work
+   v4.60.0 (v4.61.0 tag pending), next patch v4.61.1, next minor v4.62.0. Next: tag v4.61.0, CI, notify sigma-tkgd and ai-soc. Running beside it: v5 work
    (rows 45, 47-51). Ledger check: `scripts/check-ledger.sh`.
 2. **Consumers:**
    - ai-soc: PIN17 (v4.55.1) equality runs; PIN18 = rho v4.56.1 + sigma v0.11.11. ai-soc declares `CreateRelTemporal` on its 29

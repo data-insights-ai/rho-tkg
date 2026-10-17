@@ -41,6 +41,7 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
 | 71 | FEATURE (sigma round 8, optional) | Valid-time hull per label / relationship type: earliest valid-from and latest valid-to of the current entities, exact and cheap | partly shipped in v4.60.0 (sigma round 10 request 2a): `ValidHullByLabel` / `ValidHullByType` read the hull off the count timeline, exact; at a pin O(1) from the cached timeline after its first build, of the current rows (`CountTimelineOpts.CurrentRows`) one pass over them per call. Open: the cheap hull of the current rows, which needs a per-label ordered multiset of valid-from and valid-to (a write cost on every node write: opt-in per label, as `TrackRelTypeDegrees`); no structure holds it today (a temporal index keeps per-ID envelopes that only widen). |
 | 76 | LOW (perf) | Property equality lookups of a number make one store call per width key (up to 12): ~0.4 -> 1.5-1.8 us memory, 3.4 -> 5.5 us badger for one match (v4.57.1, `tasks/evidence/numeric-equality/bench.txt`) | open; keep a per-(label, key) set of the stored widths in the property index and look up only those |
+| 77 | BUG (pre-existing, found by row 67) | Unpinned `NodeAt` answers an older version than the head timeline when a row is stamped ahead of the clock (an Update of a version that starts in the future); red test first | open |
 
 ---
 
