@@ -49,6 +49,19 @@ releaser's call). New store capabilities and write and read options, all additiv
   other filter or a page is `ErrConflictingTemporalOpts`. **sigma-tkgd**: `graphhost.PresentPin` (0 handed as -1) can
   give way to `NodeAtOpts` with the clause's opts.
 
+### Changed
+
+- **The as-of doors at a pin at or below 0** (round 11 item 4). Every recorded row has a positive `TxFrom`, so a
+  transaction-time pin at or below 0 is an ordinary pin before every write: the effective timelines and their scan,
+  window, `...From`, page, by-ID and adjacency forms (`ScanRelEffectiveColumnsAtNodes` included), `DocValuesSnapshotAsOf`
+  / `ForEachDocValuesAsOf`, `PropertyTypeClassCountsAt` / `RelPropertyTypeClassCountsAt` and `ForEachByIDsAnyVersion`
+  answer the empty state there (no segment, no row, zero counts), through their usual gates, where they returned
+  `ErrInvalidTimeRange`. `NodesAtTxByIDs` / `RelsAtTxByIDs` take a negative pin as `NodeAtTx` does (every answer nil);
+  their `txAt == 0` stays refused (it is `NodeAtTx`'s "no pin"; a pin at 0 is `NodesAtOptsByIDs`). One rule at one
+  seam (`core.recordedPin`, the `pinInstant` convention of the `QueryOpts` doors: 0 is handed on as -1). A refusal
+  became an answer, as the v4.58.1 and v4.60.0 sign fixes, so no deprecation period. The count timelines and hulls
+  keep their documented pin 0 = the commit clock (a pin at the instant 0 equals any negative pin there: empty).
+
 ## [4.63.0] - 2026-10-17
 
 ### Added

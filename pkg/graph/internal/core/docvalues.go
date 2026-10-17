@@ -212,7 +212,7 @@ func (n *NodeOps) DocValuesSnapshot(label string, propKeys []string) (snap types
 // numeric/string column at txAt (the consumer declines the whole query and falls
 // back to the row path). A pin before a relevant label's retention watermark
 // returns ErrRetentionExpired — inherited from the pinned scan's retention guard.
-// txAt must be positive.
+// A txAt at or below 0 reads no member: nothing was recorded by then (round 11).
 //
 // gen is the as-of history-rewrite epoch (NOT the current-state node-mutation
 // epoch): it is STABLE for a fixed past belief and advances only when a history
@@ -225,9 +225,7 @@ func (n *NodeOps) DocValuesSnapshotAsOf(label string, propKeys []string, txAt ty
 	if err := c.checkOpen(); err != nil {
 		return nil, 0, false, err
 	}
-	if txAt <= 0 {
-		return nil, 0, false, ErrInvalidTimeRange
-	}
+	txAt = recordedPin(txAt) // a pin <= 0: nothing recorded yet, no member (round 11)
 	col, rerr := c.buildAsOfColumns(label, propKeys, txAt)
 	if rerr != nil {
 		return nil, 0, false, rerr
@@ -251,15 +249,13 @@ func (n *NodeOps) DocValuesSnapshotAsOf(label string, propKeys []string, txAt ty
 // the as-of history-rewrite epoch (stable for a fixed past belief — see
 // DocValuesSnapshotAsOf). ok=false (not an error) when a requested property is not a
 // uniform numeric/string column at txAt — the consumer falls back to the row path.
-// txAt must be positive.
+// A txAt at or below 0 reads no member: nothing was recorded by then (round 11).
 func (n *NodeOps) ForEachDocValuesAsOf(label string, propKeys []string, txAt types.Instant, fn func(types.NodeID, []any, []bool) bool) (gen uint64, ok bool, err error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return 0, false, err
 	}
-	if txAt <= 0 {
-		return 0, false, ErrInvalidTimeRange
-	}
+	txAt = recordedPin(txAt) // a pin <= 0: nothing recorded yet, no member (round 11)
 	col, rerr := c.buildAsOfColumns(label, propKeys, txAt)
 	if rerr != nil {
 		return 0, false, rerr

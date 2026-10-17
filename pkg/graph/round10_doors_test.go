@@ -620,10 +620,12 @@ func TestRound10WindowDoorsRefuse(t *testing.T) {
 			t.Fatalf("door %d empty window: %v", i, err)
 		}
 	}
+	// A pin at or below 0 recorded nothing: no error (round 11; it was
+	// ErrInvalidTimeRange), and nothing streams (TestRound11PinsAtOrBelowZero).
 	for _, p := range []types.Instant{0, -1} {
 		for i, err := range doors(nil, p) {
-			if !errors.Is(err, graphpkg.ErrInvalidTimeRange) {
-				t.Fatalf("door %d pin %d: %v, want ErrInvalidTimeRange", i, p, err)
+			if err != nil {
+				t.Fatalf("door %d pin %d: %v, want none", i, p, err)
 			}
 		}
 	}
@@ -1090,12 +1092,14 @@ func TestRound10ClassCountsAtPin(t *testing.T) {
 						t.Fatalf("pin %d after later writes: %+v %v, want %+v", pin, got, err, want)
 					}
 				}
+				// A pin at or below 0 recorded nothing: zero counts, exact
+				// (round 11; it was ErrInvalidTimeRange).
 				for _, p := range []types.Instant{0, -1} {
-					if _, _, err := g.Stats().PropertyTypeClassCountsAt(w.label, "v", p); !errors.Is(err, graphpkg.ErrInvalidTimeRange) {
-						t.Fatalf("pin %d: %v, want ErrInvalidTimeRange", p, err)
+					if got, exact, err := g.Stats().PropertyTypeClassCountsAt(w.label, "v", p); err != nil || !exact || got != (storepkg.PropertyTypeClassCounts{}) {
+						t.Fatalf("pin %d: %+v %v %v, want zero counts, exact", p, got, exact, err)
 					}
-					if _, _, err := g.Stats().RelPropertyTypeClassCountsAt("R", "w", p); !errors.Is(err, graphpkg.ErrInvalidTimeRange) {
-						t.Fatalf("rel pin %d: %v, want ErrInvalidTimeRange", p, err)
+					if got, exact, err := g.Stats().RelPropertyTypeClassCountsAt("R", "w", p); err != nil || !exact || got != (storepkg.PropertyTypeClassCounts{}) {
+						t.Fatalf("rel pin %d: %+v %v %v, want zero counts, exact", p, got, exact, err)
 					}
 				}
 				if c, ok, err := g.Stats().PropertyTypeClassCountsAt("NoSuchLabel", "v", w.pins[0]); err != nil || !ok || c != (storepkg.PropertyTypeClassCounts{}) {
@@ -1392,8 +1396,10 @@ func TestRound10ByIDsAnyVersion(t *testing.T) {
 			}
 			g := b.open(t)
 			pin, _ := g.Temporal().NowTx()
+			// A pin at or below 0 recorded nothing: no row, no error (round 11;
+			// it was ErrInvalidTimeRange).
 			for _, p := range []types.Instant{0, -1} {
-				if err := g.Nodes().ForEachByIDsAnyVersion(nil, p, func(*types.Node) bool { return true }); !errors.Is(err, graphpkg.ErrInvalidTimeRange) {
+				if err := g.Nodes().ForEachByIDsAnyVersion(nil, p, func(*types.Node) bool { t.Fatal("row"); return true }); err != nil {
 					t.Fatalf("pin %d: %v", p, err)
 				}
 			}

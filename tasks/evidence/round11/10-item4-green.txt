@@ -1,0 +1,16 @@
+--- PASS: TestForEachDocValuesAsOf_ContractEdges (0.00s)
+--- PASS: TestDocValuesSnapshotAsOf_ContractEdges (0.00s)
+--- PASS: TestRound10WindowDoorsRefuse (0.00s)
+--- PASS: TestRound10ClassCountsAtPin (0.55s)
+--- PASS: TestRound10ByIDsAnyVersion (0.76s)
+--- PASS: TestRound11PinsAtOrBelowZero (0.02s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.764s
+--- PASS: TestEffectiveValidFrom_Errors (0.00s)
+--- PASS: TestEffectivePage_Errors (0.00s)
+--- PASS: TestAtTxByIDsGatesAsPerIDDoor (0.00s)
+--- PASS: TestAtTxByIDsStoreFaultFailsCall (0.00s)
+--- PASS: TestEffectiveScans_Errors (0.01s)
+--- PASS: TestRelsAtTxByIDsMatchesRelAtTx (0.01s)
+--- PASS: TestNodesAtTxByIDsMatchesNodeAtTx (0.00s)
+--- PASS: TestAtTxByIDsAcrossChunks (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.602s

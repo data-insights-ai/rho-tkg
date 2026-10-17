@@ -88,6 +88,7 @@ func firstOccurrences[T comparable](ids []T) []T {
 // Gates, isolation and errors are ForEachNodeEffectiveByLabel's (graph
 // compaction / retention watermarks fail the whole scan).
 func (t *TempOps) ForEachNodeEffective(pin types.Instant, fn func(temporal.NodeSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return err
@@ -121,6 +122,7 @@ func (t *TempOps) ForEachNodeEffective(pin types.Instant, fn func(temporal.NodeS
 // relationship's RelEffectiveTimeline). DECLARED view: not masked by endpoint
 // validity.
 func (t *TempOps) ForEachRelEffective(pin types.Instant, fn func(temporal.RelSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return err
@@ -158,6 +160,7 @@ func (t *TempOps) ForEachRelEffective(pin types.Instant, fn func(temporal.RelSeg
 // (ErrInvalidStoreMutation) refused before any segment, ErrInvalidTimeRange,
 // ErrTxPinTooNew, ErrNilCallback, ErrGraphClosed. fn runs without graph locks.
 func (t *TempOps) NodesEffectiveByIDs(ids []types.NodeID, pin types.Instant, fn func(temporal.NodeSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return err
@@ -179,6 +182,7 @@ func (t *TempOps) NodesEffectiveByIDs(ids []types.NodeID, pin types.Instant, fn 
 // RelsEffectiveByIDs is NodesEffectiveByIDs for relationships
 // (RelEffectiveTimeline per id).
 func (t *TempOps) RelsEffectiveByIDs(ids []types.RelID, pin types.Instant, fn func(temporal.RelSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return err
@@ -224,6 +228,7 @@ func (t *TempOps) RelsEffectiveByIDs(ids []types.RelID, pin types.Instant, fn fu
 // isolation and errors are ForEachRelEffectiveByType's plus an invalid seed
 // (ErrInvalidStoreMutation) and an invalid direction (ErrInvalidDirection).
 func (t *TempOps) ForEachRelEffectiveAtNodes(nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string, pin types.Instant, fn func(temporal.RelSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return err
@@ -411,6 +416,7 @@ func (c *Core) relEffectiveAdjacencyCandidates(seeds []types.NodeID, toks []uint
 // contribute nothing; an invalid label fails the call before the scan. Gates,
 // isolation and errors are ForEachNodeEffectiveByLabel's.
 func (t *TempOps) ForEachNodeEffectiveByLabels(labels []string, pin types.Instant, fn func(temporal.NodeSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	return t.c.forEachNodeEffectiveByLabels(labels, pin, fn)
 }
 

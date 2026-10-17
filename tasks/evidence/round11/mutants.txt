@@ -53,3 +53,12 @@ KILLED item3: batched pin above the clock accepted: round11_atopts_test.go:166: 
 KILLED item3: API forwards the wrong door: round11_api_test.go:61: NodesAtOptsByIDs: err ops failed, calls [NodesAtOptsByIDs], opts {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 ValidAtSet:false ValidWindowSet:false TxAtSet:false TxPinSet:false TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}
 KILLED item3: RelAtOpts drops the pin: round11_atopts_test.go:106: pin p1, valid now: RelAtOpts 2/<nil>, NodeAtOpts 1/<nil>
 KILLED item3: batched rel door drops the valid instant: round11_atopts_test.go:147: no pin, valid at -50: RelsAtOptsByIDs k=2, NodeAtOpts k=1
+# item 4 (the as-of doors at a pin at or below 0)
+KILLED item4: a pin of 0 handed on as no pin: round11_pins_test.go:133: pin 0: NodeEffectiveTimeline: graph: invalid time range: transaction-time pin 0 reached the effective body unmapped, want the empty state
+KILLED item4: negative pins refused again: round11_pins_test.go:133: pin 0: NodeEffectiveTimeline: graph: invalid time range: transaction-time pin 0 reached the effective body unmapped, want the empty state
+KILLED item4: as-of snapshot reads txAt 0 unpinned: round11_pins_test.go:137: pin 0: DocValuesSnapshotAsOf handed out 1 rows, want none (nothing was recorded by then)
+KILLED item4: as-of stream reads txAt 0 unpinned: round11_pins_test.go:137: pin 0: ForEachDocValuesAsOf handed out 1 rows, want none (nothing was recorded by then)
+KILLED item4: node page reads pin 0 unpinned: round11_pins_test.go:133: pin 0: NodesEffectivePage: graph: invalid time range: transaction-time pin 0 reached the effective body unmapped, want the empty state
+KILLED item4: value classes read pin 0 unpinned: round10_doors_test.go:1099: pin 0: {Numeric:5 NaN:0 String:0 Bool:0 Other:5 Missing:0} true <nil>, want zero counts, exact
+KILLED item4: rel timeline reads pin 0 unpinned: round11_pins_test.go:133: pin 0: RelEffectiveTimeline: graph: invalid time range: transaction-time pin 0 reached the effective body unmapped, want the empty state
+KILLED item4: batched rel door refuses negative pins: round11_pins_test.go:147: RelsAtTxByIDs at pin -5: [] graph: invalid time range: transaction-time pin 0 (a pin is required; a pin at the instant 0: RelsAtOptsByIDs with TxAtSet), want one nil

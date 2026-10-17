@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -19,7 +20,8 @@ import (
 // returns (nil for ErrNodeNotFound / ErrNoVersionValidAt; repeated ids answered
 // at each position, rows may alias). Call-level errors: ErrGraphClosed,
 // ErrInvalidStoreMutation (invalid id, checked first), ErrInvalidTimeRange
-// (txAt <= 0), ErrTxPinTooNew, and a member's ErrHistoryCompacted /
+// (txAt == 0; a negative pin recorded nothing, all nil, round 11),
+// ErrTxPinTooNew, and a member's ErrHistoryCompacted /
 // ErrRetentionExpired (fails the call). Empty ids returns an empty slice.
 func (t *TempOps) NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error) {
 	c := t.c
@@ -31,7 +33,12 @@ func (t *TempOps) NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant
 			return nil, err
 		}
 	}
-	if err := c.validateEffectivePin(txAt); err != nil {
+	if txAt == 0 {
+		// 0 is NodeAtTx's "no pin"; the batch needs a pin. A pin at the
+		// instant 0 is NodesAtOptsByIDs with TxAtSet (round 11).
+		return nil, fmt.Errorf("%w: transaction-time pin 0 (a pin is required; a pin at the instant 0: NodesAtOptsByIDs with TxAtSet)", ErrInvalidTimeRange)
+	}
+	if err := c.validateEffectivePin(txAt); err != nil { // a negative pin: nothing recorded yet (round 11)
 		return nil, err
 	}
 	return c.nodesAtTxByIDs(ids, validAt, txAt)
@@ -72,7 +79,12 @@ func (t *TempOps) RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) 
 			return nil, err
 		}
 	}
-	if err := c.validateEffectivePin(txAt); err != nil {
+	if txAt == 0 {
+		// 0 is NodeAtTx's "no pin"; the batch needs a pin. A pin at the
+		// instant 0 is RelsAtOptsByIDs with TxAtSet (round 11).
+		return nil, fmt.Errorf("%w: transaction-time pin 0 (a pin is required; a pin at the instant 0: RelsAtOptsByIDs with TxAtSet)", ErrInvalidTimeRange)
+	}
+	if err := c.validateEffectivePin(txAt); err != nil { // a negative pin: nothing recorded yet (round 11)
 		return nil, err
 	}
 	return c.relsAtTxByIDs(ids, validAt, txAt)

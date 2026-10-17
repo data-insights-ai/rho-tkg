@@ -381,9 +381,10 @@ func (a *API) RelPropertyValueStats(typeName, key string, pin types.Instant) (st
 // NaN + Other == 0 proves that a seek by any value through the equality door
 // finds every row the value matches. No property index needed; the first
 // call at a pin reads the label's members' chains, later calls are answered
-// from a cache until a write changes the state at pin. pin must be positive
-// (ErrInvalidTimeRange; the current state is PropertyTypeClassCounts); a
-// pin below a retention or compaction watermark fails as the equality door
+// from a cache until a write changes the state at pin. A pin at or below 0
+// recorded nothing: zero counts, exact (round 11; the current state is
+// PropertyTypeClassCounts); a pin below a retention or compaction watermark
+// fails as the equality door
 // does; exact=false when writers moved the state across three builds. An
 // unknown label: zero counts, exact.
 func (a *API) PropertyTypeClassCountsAt(label, key string, pin types.Instant) (storepkg.PropertyTypeClassCounts, bool, error) {

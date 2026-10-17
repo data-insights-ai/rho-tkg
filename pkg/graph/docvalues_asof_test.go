@@ -2,7 +2,6 @@ package graph_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
@@ -216,11 +215,15 @@ func TestForEachDocValuesAsOf_ContractEdges(t *testing.T) {
 		t.Fatalf("AdvanceClock: %v", err)
 	}
 
-	// txAt <= 0 → ErrInvalidTimeRange.
-	if _, _, err := g.Nodes().ForEachDocValuesAsOf("Metric", []string{"score"}, 0, func(types.NodeID, []any, []bool) bool {
-		return true
-	}); !errors.Is(err, graphpkg.ErrInvalidTimeRange) {
-		t.Fatalf("txAt=0 err=%v, want ErrInvalidTimeRange", err)
+	// txAt <= 0: nothing was recorded by then, no member streamed (round 11;
+	// it was ErrInvalidTimeRange).
+	for _, at := range []types.Instant{0, -1} {
+		if _, _, err := g.Nodes().ForEachDocValuesAsOf("Metric", []string{"score"}, at, func(types.NodeID, []any, []bool) bool {
+			t.Fatalf("txAt=%d streamed a member", at)
+			return true
+		}); err != nil {
+			t.Fatalf("txAt=%d err=%v, want none", at, err)
+		}
 	}
 
 	// Non-uniform column → ok=false, zero rows streamed.
@@ -264,9 +267,18 @@ func TestDocValuesSnapshotAsOf_ContractEdges(t *testing.T) {
 		t.Fatalf("AdvanceClock: %v", err)
 	}
 
-	// txAt <= 0 → ErrInvalidTimeRange.
-	if _, _, _, err := g.Nodes().DocValuesSnapshotAsOf("Metric", []string{"score"}, 0); !errors.Is(err, graphpkg.ErrInvalidTimeRange) {
-		t.Fatalf("txAt=0 err=%v, want ErrInvalidTimeRange", err)
+	// txAt <= 0: nothing was recorded by then, no member (round 11; it was
+	// ErrInvalidTimeRange).
+	for _, at := range []types.Instant{0, -1} {
+		snap, _, ok, err := g.Nodes().DocValuesSnapshotAsOf("Metric", []string{"score"}, at)
+		if err != nil {
+			t.Fatalf("txAt=%d err=%v, want none", at, err)
+		}
+		if ok && snap != nil {
+			if rr, isRows := snap.(types.NodeColumnRowReader); isRows && rr.Len() != 0 {
+				t.Fatalf("txAt=%d: %d members, want none", at, rr.Len())
+			}
+		}
 	}
 
 	// Non-uniform column → ok=false, nil snapshot.

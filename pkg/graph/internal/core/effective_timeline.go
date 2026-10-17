@@ -44,11 +44,22 @@ var ErrTxPinTooNew = errors.New("graph: transaction-time pin is ahead of the com
 // validateEffectivePin checks a timeline pin: positive, not ahead of the
 // commit clock.
 func (c *Core) validateEffectivePin(pin types.Instant) error {
-	if pin <= 0 {
-		return fmt.Errorf("%w: transaction-time pin %d must be positive", ErrInvalidTimeRange, pin)
+	if pin == 0 {
+		// The entry did not map the caller's pin (recordedPin): the body would
+		// read 0 as "no pin".
+		return fmt.Errorf("%w: transaction-time pin 0 reached the effective body unmapped", ErrInvalidTimeRange)
 	}
 	return c.checkPinNotTooNew(pin)
 }
+
+// recordedPin is the pin an as-of door's body reads for the transaction-time
+// pin its caller named (round 11 item 4). Every recorded row has a positive
+// TxFrom (a backfill at or below 0 is ErrInvalidTxFrom, the commit clock is
+// positive), so a pin at or below 0 is an ordinary pin at which nothing was
+// recorded yet: the door answers the empty state, as at a pin before the first
+// write, through its usual gates. 0 is handed on as -1 (pinInstant: the code
+// below reads 0 as "no pin"); both select no row.
+func recordedPin(pin types.Instant) types.Instant { return pinInstant(pin, true) }
 
 // effPiece is one resolved piece [from, to) (to == 0: open) of a timeline;
 // src is the index, in the chain handed to effectivePieces, of the row the
@@ -339,7 +350,8 @@ func (c *Core) relEffectivePieces(chain []*types.Relationship, pin types.Instant
 //
 // Rows are shared frozen pointers (DeepCopy to mutate). A node created after
 // the pin: nil, nil. Errors: ErrGraphClosed; an invalid ID
-// (ErrInvalidStoreMutation); pin <= 0 (ErrInvalidTimeRange); a pin above the
+// (ErrInvalidStoreMutation); a pin at or below 0 recorded nothing (nil, nil,
+// recordedPin, round 11); a pin above the
 // commit clock (ErrTxPinTooNew); a pin below compacted knowledge
 // (ErrHistoryCompacted) or a retention watermark (ErrRetentionExpired), as
 // NodeAtTx; an unknown ID (ErrNodeNotFound).
@@ -348,6 +360,7 @@ func (c *Core) relEffectivePieces(chain []*types.Relationship, pin types.Instant
 // presence bit; one with history reads per-version temporal skeletons where
 // the store offers them (badger) and decodes only the rows that answer.
 func (t *TempOps) NodeEffectiveTimeline(id types.NodeID, pin types.Instant) ([]temporal.NodeSegment, error) {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -375,6 +388,7 @@ func (t *TempOps) NodeEffectiveTimeline(id types.NodeID, pin types.Instant) ([]t
 // DECLARED view: the relationship's own validity, not masked by its
 // endpoints'.
 func (t *TempOps) RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]temporal.RelSegment, error) {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return nil, err
@@ -700,7 +714,7 @@ func relSegments(pieces []effPiece[*types.Relationship], out []temporal.RelSegme
 // Candidates are the ones ByLabel with a TxPin gathers (the label's
 // ever-members, or every node with history where the store keeps no
 // membership sidecar), so the same compaction and retention gates apply:
-// pin <= 0 (ErrInvalidTimeRange), a pin above the commit clock
+// a pin at or below 0 streams nothing (recordedPin), a pin above the commit clock
 // (ErrTxPinTooNew), below the graph's compaction or retention watermark
 // (ErrHistoryCompacted, ErrRetentionExpired) — checked before an unknown label
 // returns nothing. Isolation is relaxed like ForEachByLabel: the candidate set
@@ -709,6 +723,7 @@ func relSegments(pieces []effPiece[*types.Relationship], out []temporal.RelSegme
 // graph). A pinned answer is stable while writers commit above the pin.
 // Errors: ErrGraphClosed, ErrNilCallback, an invalid label.
 func (t *TempOps) ForEachNodeEffectiveByLabel(label string, pin types.Instant, fn func(temporal.NodeSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	return t.c.forEachNodeEffectiveByLabels([]string{label}, pin, fn)
 }
 
@@ -717,6 +732,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabel(label string, pin types.Instant, f
 // relationship's type never changes, so each listed relationship streams its
 // whole timeline). DECLARED view: not masked by endpoint validity.
 func (t *TempOps) ForEachRelEffectiveByType(typeName string, pin types.Instant, fn func(temporal.RelSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return err

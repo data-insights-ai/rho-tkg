@@ -1,0 +1,24 @@
+--- FAIL: TestRound11PinsAtOrBelowZero (0.02s)
+    --- FAIL: TestRound11PinsAtOrBelowZero/memory (0.00s)
+        round11_pins_test.go:133: pin 0: NodeEffectiveTimeline: graph: invalid time range: transaction-time pin 0 must be positive, want the empty state
+        round11_pins_test.go:133: pin -5: NodeEffectiveTimeline: graph: invalid time range: transaction-time pin -5 must be positive, want the empty state
+        round11_pins_test.go:143: NodesAtTxByIDs at pin -5: [] graph: invalid time range: transaction-time pin -5 must be positive, want one nil
+        round11_pins_test.go:147: RelsAtTxByIDs at pin -5: [] graph: invalid time range: transaction-time pin -5 must be positive, want one nil
+    --- FAIL: TestRound11PinsAtOrBelowZero/badger (0.00s)
+        round11_pins_test.go:133: pin 0: NodeEffectiveTimeline: graph: invalid time range: transaction-time pin 0 must be positive, want the empty state
+        round11_pins_test.go:133: pin -5: NodeEffectiveTimeline: graph: invalid time range: transaction-time pin -5 must be positive, want the empty state
+        round11_pins_test.go:143: NodesAtTxByIDs at pin -5: [] graph: invalid time range: transaction-time pin -5 must be positive, want one nil
+        round11_pins_test.go:147: RelsAtTxByIDs at pin -5: [] graph: invalid time range: transaction-time pin -5 must be positive, want one nil
+    --- FAIL: TestRound11PinsAtOrBelowZero/tiered (0.01s)
+        round11_pins_test.go:133: pin 0: NodeEffectiveTimeline: graph: invalid time range: transaction-time pin 0 must be positive, want the empty state
+        round11_pins_test.go:133: pin -5: NodeEffectiveTimeline: graph: invalid time range: transaction-time pin -5 must be positive, want the empty state
+        round11_pins_test.go:143: NodesAtTxByIDs at pin -5: [] graph: invalid time range: transaction-time pin -5 must be positive, want one nil
+        round11_pins_test.go:147: RelsAtTxByIDs at pin -5: [] graph: invalid time range: transaction-time pin -5 must be positive, want one nil
+    --- FAIL: TestRound11PinsAtOrBelowZero/sharded (0.00s)
+        round11_pins_test.go:133: pin 0: NodeEffectiveTimeline: graph: invalid time range: transaction-time pin 0 must be positive, want the empty state
+        round11_pins_test.go:133: pin -5: NodeEffectiveTimeline: graph: invalid time range: transaction-time pin -5 must be positive, want the empty state
+        round11_pins_test.go:143: NodesAtTxByIDs at pin -5: [] graph: invalid time range: transaction-time pin -5 must be positive, want one nil
+        round11_pins_test.go:147: RelsAtTxByIDs at pin -5: [] graph: invalid time range: transaction-time pin -5 must be positive, want one nil
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.366s
+FAIL

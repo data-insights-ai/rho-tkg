@@ -523,8 +523,10 @@ func (a *API) RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relat
 //
 // Errors (the call fails, no rows): ErrNilGraph, ErrGraphClosed,
 // ErrInvalidStoreMutation (an invalid id, before anything is read),
-// ErrInvalidTimeRange (txAt <= 0: a pin is required, unlike NodeAtTx's
-// txAt == 0), ErrTxPinTooNew (txAt above the commit clock), and a member's
+// ErrInvalidTimeRange (txAt == 0: a pin is required, unlike NodeAtTx's
+// txAt == 0; a pin at the instant 0 is NodesAtOptsByIDs; a negative pin is an
+// ordinary pin before every recorded row, all nil, round 11), ErrTxPinTooNew
+// (txAt above the commit clock), and a member's
 // ErrHistoryCompacted / ErrRetentionExpired (NodeAtTx's per-ID gates).
 func (a *API) NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error) {
 	ops, err := a.ready()
@@ -558,9 +560,11 @@ func (a *API) RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*
 // nil, nil. Segments may share a row pointer; DeepCopy before mutating.
 //
 // NodeAsOf is the record door (the newest row recorded by a pin); this is the
-// state door's interval form. Errors: ErrNilGraph, ErrGraphClosed,
-// ErrInvalidTimeRange (pin <= 0), ErrTxPinTooNew (pin above the commit
-// clock), ErrHistoryCompacted, ErrRetentionExpired, ErrNodeNotFound,
+// state door's interval form. A pin at or below 0 is an ordinary pin before
+// every recorded row (every TxFrom is positive): nil, nil, as for a node
+// created after the pin (round 11; it was ErrInvalidTimeRange). Errors:
+// ErrNilGraph, ErrGraphClosed, ErrTxPinTooNew (pin above the commit clock),
+// ErrHistoryCompacted, ErrRetentionExpired, ErrNodeNotFound,
 // ErrInvalidStoreMutation (invalid ID).
 func (a *API) NodeEffectiveTimeline(id types.NodeID, pin types.Instant) ([]NodeSegment, error) {
 	ops, err := a.ready()

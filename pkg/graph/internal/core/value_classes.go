@@ -1,8 +1,6 @@
 package core
 
 import (
-	"fmt"
-
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -52,9 +50,7 @@ func (c *Core) typeClassCountsAt(rel bool, name, key string, pin types.Instant) 
 	if err != nil {
 		return zero, false, err
 	}
-	if pin <= 0 {
-		return zero, false, fmt.Errorf("%w: transaction-time pin %d must be positive (the current state: PropertyTypeClassCounts)", ErrInvalidTimeRange, pin)
-	}
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet, every class 0 (round 11)
 	scope := scopeNodes
 	if rel {
 		scope = c.relTypeRetentionScope(name)

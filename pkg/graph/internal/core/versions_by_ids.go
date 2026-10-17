@@ -19,6 +19,7 @@ import (
 // ForEachByIDsAnyVersion streams every row recorded at pin of each node in
 // ids (see nodes.API.ForEachByIDsAnyVersion).
 func (n *NodeOps) ForEachByIDsAnyVersion(ids []types.NodeID, pin types.Instant, fn func(*types.Node) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	c := n.c
 	if err := c.checkOpen(); err != nil {
 		return err
@@ -70,6 +71,7 @@ func (n *NodeOps) ForEachByIDsAnyVersion(ids []types.NodeID, pin types.Instant, 
 // ForEachByIDsAnyVersion is NodeOps.ForEachByIDsAnyVersion for
 // relationships.
 func (r *RelOps) ForEachByIDsAnyVersion(ids []types.RelID, pin types.Instant, fn func(*types.Relationship) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	c := r.c
 	if err := c.checkOpen(); err != nil {
 		return err

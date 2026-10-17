@@ -231,6 +231,7 @@ func (c *Core) validatePage(ctx context.Context, pin temporal.Pin, f temporal.Fi
 
 // RelsEffectivePage implements temporal.API.RelsEffectivePage.
 func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after types.RelID, limit int) ([]temporal.RelSegment, types.RelID, error) {
+	pin.Tx = recordedPin(pin.Tx) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
 	keys, opts, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeAllRels)
 	if err != nil {
@@ -329,6 +330,7 @@ func (c *Core) relPageSources(tok uint16, key string, keys equalKeys, opts store
 
 // NodesEffectivePage implements temporal.API.NodesEffectivePage.
 func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f temporal.Filter, after types.NodeID, limit int) ([]temporal.NodeSegment, types.NodeID, error) {
+	pin.Tx = recordedPin(pin.Tx) // a pin <= 0: nothing recorded yet (round 11)
 	c := t.c
 	keys, opts, err := c.validatePage(ctx, pin, f, int64(after), limit, scopeNodes)
 	if err != nil {

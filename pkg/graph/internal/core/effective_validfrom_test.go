@@ -567,8 +567,8 @@ func TestEffectiveValidFrom_Errors(t *testing.T) {
 	}{
 		{"rel nil fn", grapherr.ErrNilCallback, func() error { return te.ForEachRelEffectiveByTypeFrom("T", pin, 0, nil) }},
 		{"node nil fn", grapherr.ErrNilCallback, func() error { return te.ForEachNodeEffectiveByLabelsFrom([]string{"L"}, pin, 0, nil) }},
-		{"rel pin 0", ErrInvalidTimeRange, func() error { return te.ForEachRelEffectiveByTypeFrom("T", 0, 0, relFn) }},
-		{"node pin 0", ErrInvalidTimeRange, func() error { return te.ForEachNodeEffectiveByLabelsFrom([]string{"L"}, 0, 0, nodeFn) }},
+		{"rel pin 0", nil, func() error { return te.ForEachRelEffectiveByTypeFrom("T", 0, 0, relFn) }}, // ordinary since round 11
+		{"node pin 0", nil, func() error { return te.ForEachNodeEffectiveByLabelsFrom([]string{"L"}, 0, 0, nodeFn) }},
 		{"rel pin too new", ErrTxPinTooNew, func() error { return te.ForEachRelEffectiveByTypeFrom("T", pin+1_000_000, 0, relFn) }},
 		{"node pin too new", ErrTxPinTooNew, func() error { return te.ForEachNodeEffectiveByLabelsFrom([]string{"L"}, pin+1_000_000, 0, nodeFn) }},
 		{"rel unknown type", nil, func() error { return te.ForEachRelEffectiveByTypeFrom("NoSuchType", pin, 0, relFn) }},

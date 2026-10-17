@@ -292,14 +292,14 @@ func batOracleGrid(t *testing.T, g *Core, clk *testClock, k batKit) {
 		pin  types.Instant
 		want error
 	}{
-		{"pin 0", ids, 0, ErrInvalidTimeRange},
-		{"pin -1", ids, -1, ErrInvalidTimeRange},
+		{"pin 0", ids, 0, ErrInvalidTimeRange}, // NodeAtTx's "no pin"; the batch needs a pin
+		{"pin -1", ids, -1, nil},               // ordinary: nothing recorded yet, every answer nil (round 11)
 		{"pin above clock", ids, peek + 3_600_000, ErrTxPinTooNew},
 		{"pin above clock, empty ids", nil, peek + 3_600_000, ErrTxPinTooNew},
 		{"id 0", []int64{updated, 0}, p4, storepkg.ErrInvalidStoreMutation},
 		{"id -5", []int64{-5}, p4, storepkg.ErrInvalidStoreMutation},
 	} {
-		if _, err := k.batch(c.ids, p4, c.pin); !errors.Is(err, c.want) {
+		if _, err := k.batch(c.ids, p4, c.pin); !errors.Is(err, c.want) || (c.want == nil && err != nil) {
 			t.Fatalf("%s: err = %v, want %v", c.name, err, c.want)
 		}
 	}

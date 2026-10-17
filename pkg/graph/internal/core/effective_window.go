@@ -21,6 +21,7 @@ import (
 // window that is not ascending and disjoint.
 func (t *TempOps) ForEachRelEffectiveAtNodesWindow(nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string,
 	pin types.Instant, window temporal.Window, fn func(temporal.RelSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	if err := t.c.checkOpen(); err != nil {
 		return err
 	}
@@ -57,6 +58,7 @@ func (t *TempOps) ForEachRelEffectiveAtNodesWindow(nodeIDs []types.NodeID, dir t
 // memory: read a high-degree seed set in parts. fn must not retain the batch.
 func (t *TempOps) ScanRelEffectiveColumnsAtNodes(nodeIDs []types.NodeID, dir temporal.Direction, relTypes []string,
 	pin types.Instant, window temporal.Window, props []string, fn func(*storepkg.RelColumnBatch) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	if err := t.c.checkOpen(); err != nil {
 		return err
 	}

@@ -585,8 +585,10 @@ func TestEffectiveScans_Errors(t *testing.T) {
 			want  error
 		}{
 			{"nil fn", pin, true, grapherr.ErrNilCallback},
-			{"pin 0", 0, false, ErrInvalidTimeRange},
-			{"pin -1", -1, false, ErrInvalidTimeRange},
+			// Ordinary pins since round 11 (nothing recorded yet), so this
+			// graph's compaction watermark decides, as for any pin below it.
+			{"pin 0", 0, false, ErrHistoryCompacted},
+			{"pin -1", -1, false, ErrHistoryCompacted},
 			{"future pin", future, false, ErrTxPinTooNew},
 			{"below compaction", p0, false, ErrHistoryCompacted},
 		} {

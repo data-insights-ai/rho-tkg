@@ -126,6 +126,7 @@ func segmentsEnd[S any](segs []S, to func(S) types.Instant) types.Instant {
 // type from its first call. Tiered does the same per shard (opening closed cold
 // shards) and never refines. Sharded reads every candidate of the unbounded door.
 func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom types.Instant, fn func(temporal.RelSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	if err := t.c.checkOpen(); err != nil {
 		return err
 	}
@@ -141,6 +142,7 @@ func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom 
 // segments that meet window (temporal.Window), candidates as
 // ForEachRelEffectiveByTypeFrom from the window's first start.
 func (t *TempOps) ForEachRelEffectiveByTypeWindow(typeName string, pin types.Instant, window temporal.Window, fn func(temporal.RelSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	if err := t.c.checkOpen(); err != nil {
 		return err
 	}
@@ -228,6 +230,7 @@ func (c *Core) relEffectiveByTypeBounded(typeName string, pin, validFrom types.I
 // index bounds a node by its whole timeline, so a node that once carried the label
 // is read and then skipped.
 func (t *TempOps) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFrom types.Instant, fn func(temporal.NodeSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	if err := t.c.checkOpen(); err != nil {
 		return err
 	}
@@ -243,6 +246,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFr
 // to the segments that meet window (temporal.Window), candidates as
 // ForEachNodeEffectiveByLabelsFrom from the window's first start.
 func (t *TempOps) ForEachNodeEffectiveByLabelsWindow(labels []string, pin types.Instant, window temporal.Window, fn func(temporal.NodeSegment) bool) error {
+	pin = recordedPin(pin) // a pin <= 0: nothing recorded yet (round 11)
 	if err := t.c.checkOpen(); err != nil {
 		return err
 	}
