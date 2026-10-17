@@ -3,7 +3,6 @@ package core
 import (
 	"math"
 
-	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -26,7 +25,7 @@ func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err err
 		start = c.nodeValidFrom(n)
 		// The row's own end as now believed: a delete that kept a believed
 		// ValidTo ends it at DeletedAt (types.TemporalMetadata.DeleteKeptValidTo).
-		end = storeutil.ValidToAtTxTime(n.Temporal(), math.MaxInt64)
+		end = n.Temporal().ValidToAtTxTime(math.MaxInt64)
 		if end == 0 {
 			return types.ErrOpenInterval
 		}
@@ -54,7 +53,7 @@ func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, 
 		start = c.relValidFrom(r)
 		// The row's own end as now believed: a delete that kept a believed
 		// ValidTo ends it at DeletedAt (types.TemporalMetadata.DeleteKeptValidTo).
-		end = storeutil.ValidToAtTxTime(r.Temporal(), math.MaxInt64)
+		end = r.Temporal().ValidToAtTxTime(math.MaxInt64)
 		if end == 0 {
 			return types.ErrOpenInterval
 		}

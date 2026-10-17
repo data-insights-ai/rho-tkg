@@ -162,41 +162,9 @@ func openInWrite[T TemporalRow](seq []T, i int, pin types.Instant) T {
 	return seq[i]
 }
 
-// DeleteWroteValidTo is THE rule "this tombstone's ValidTo was written by its
-// delete", which a pin before the delete reads as open (lesson 60): a
-// tombstone without types.TemporalMetadata.DeleteKeptValidTo whose ValidTo is
-// its DeletedAt. A tombstone stored before the marker existed reads by the
-// same value rule, so existing stores answer exactly as before.
-func DeleteWroteValidTo(tm *types.TemporalMetadata) bool {
-	return tm != nil && tm.DeletedAt != 0 && !tm.DeleteKeptValidTo && tm.ValidTo == tm.DeletedAt
-}
-
-// ValidToAtTxTime is a row's own valid end as believed at pin (0 = open): a
-// delete recorded after pin that wrote the ValidTo is undone (it reopens),
-// one recorded by pin that kept a believed ValidTo ends validity at its own
-// instant (types.TemporalMetadata.DeleteKeptValidTo); every other ValidTo
-// stands.
-func ValidToAtTxTime(tm *types.TemporalMetadata, pin types.Instant) types.Instant {
-	switch {
-	case tm == nil:
-		return 0
-	case tm.DeletedAt == 0:
-		return tm.ValidTo
-	case tm.DeletedAt > pin:
-		if DeleteWroteValidTo(tm) {
-			return 0
-		}
-		return tm.ValidTo
-	case tm.DeleteKeptValidTo:
-		return tm.DeletedAt
-	default:
-		return tm.ValidTo
-	}
-}
-
 // NormalizeTemporalVisibleAtTxTime rewinds tm in place to the belief state as
 // of txTime: a TxTo or a delete recorded after txTime is removed, with the
-// ValidTo the delete wrote (DeleteWroteValidTo) and its markers (a retraction,
+// ValidTo the delete wrote (types.TemporalMetadata.DeleteWroteValidTo) and its markers (a retraction,
 // backlog 43; a kept ValidTo). It is the one rewind of the core as-of and
 // pinned doors and the memory store's pinned reads.
 func NormalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) {
@@ -207,7 +175,7 @@ func NormalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.I
 		tm.TxTo = 0
 	}
 	if tm.DeletedAt > txTime {
-		if DeleteWroteValidTo(tm) {
+		if tm.DeleteWroteValidTo() {
 			tm.ValidTo = 0
 		}
 		tm.DeletedAt = 0
@@ -219,7 +187,7 @@ func NormalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.I
 // OwnOpenAtTxTime reports whether a row's own valid interval is open as
 // believed at pin (ValidToAtTxTime 0).
 func OwnOpenAtTxTime(tm *types.TemporalMetadata, pin types.Instant) bool {
-	return ValidToAtTxTime(tm, pin) == 0
+	return tm.ValidToAtTxTime(pin) == 0
 }
 
 // lifeEndedAtTxTime reports whether the row that held the current slot when

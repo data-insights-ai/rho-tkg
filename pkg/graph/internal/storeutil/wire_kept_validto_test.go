@@ -65,8 +65,8 @@ func TestKeptValidToRow_FormatVersion(t *testing.T) {
 				}
 				// The legacy tombstone reads as delete-written (ValidTo ==
 				// DeletedAt), the kept one never (partial slow decodes no ValidTo).
-				if got.ValidTo != 0 && DeleteWroteValidTo(got) == kept {
-					t.Fatalf("kept=%v %s %s: DeleteWroteValidTo = %v", kept, e.name, p.name, DeleteWroteValidTo(got))
+				if got.ValidTo != 0 && got.DeleteWroteValidTo() == kept {
+					t.Fatalf("kept=%v %s %s: DeleteWroteValidTo = %v", kept, e.name, p.name, got.DeleteWroteValidTo())
 				}
 				restore := SetMaxReadableWireFormatVersionForTest(KeptValidToWireFormatVersion - 1)
 				_, err = p.dec(e.n != nil, raw)

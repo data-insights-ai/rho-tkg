@@ -40,7 +40,7 @@ type wireTemporalMetaPartial struct {
 	Retracted     bool  `msgpack:"rx"`
 	Void          bool  `msgpack:"vd"`
 	// DeleteKeptValidTo decides what the row's ValidTo means at a pin
-	// (storeutil.ValidToAtTxTime), a selection input like Retracted.
+	// (types.TemporalMetadata.ValidToAtTxTime), a selection input like Retracted.
 	DeleteKeptValidTo bool `msgpack:"dk"`
 }
 

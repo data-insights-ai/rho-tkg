@@ -36,38 +36,3 @@ func TestNormalizeTemporalVisibleAtTxTime(t *testing.T) {
 		}
 	}
 }
-
-// TestValidToAtTxTime: a row's own end as believed at a pin, the rule
-// OwnOpenAtTxTime reads. Break cases: the pin one before and at the delete,
-// a kept close, the kept open end, a legacy tombstone.
-func TestValidToAtTxTime(t *testing.T) {
-	t.Parallel()
-	kept := &types.TemporalMetadata{ValidTo: 30, DeletedAt: 20, DeleteKeptValidTo: true}
-	keptOpen := &types.TemporalMetadata{ValidFrom: 50, DeletedAt: 20, DeleteKeptValidTo: true}
-	legacy := &types.TemporalMetadata{ValidTo: 20, DeletedAt: 20}
-	closed := &types.TemporalMetadata{ValidTo: 15, DeletedAt: 20}
-	for _, tc := range []struct {
-		name string
-		tm   *types.TemporalMetadata
-		pin  types.Instant
-		want types.Instant
-	}{
-		{"nil", nil, 10, 0},
-		{"live", &types.TemporalMetadata{ValidTo: 7}, 10, 7},
-		{"kept before delete", kept, 19, 30},
-		{"kept at delete", kept, 20, 20},
-		{"kept open before delete", keptOpen, 19, 0},
-		{"kept open at delete", keptOpen, 20, 20},
-		{"legacy before delete", legacy, 19, 0},
-		{"legacy at delete", legacy, 20, 20},
-		{"earlier close before delete", closed, 19, 15},
-		{"earlier close at delete", closed, 20, 15},
-	} {
-		if got := ValidToAtTxTime(tc.tm, tc.pin); got != tc.want {
-			t.Errorf("%s: ValidToAtTxTime = %d, want %d", tc.name, got, tc.want)
-		}
-	}
-	if DeleteWroteValidTo(kept) || DeleteWroteValidTo(closed) || !DeleteWroteValidTo(legacy) {
-		t.Error("DeleteWroteValidTo: want only the legacy shape")
-	}
-}

@@ -140,3 +140,35 @@ func (tm *TemporalMetadata) UntimedValidFrom(mint Instant) Instant {
 	}
 	return mint
 }
+
+// DeleteWroteValidTo is THE rule "this tombstone's ValidTo was written by its
+// delete", which a pin before the delete reads as open (lesson 60): a
+// tombstone without DeleteKeptValidTo whose ValidTo is its DeletedAt. A
+// tombstone stored before the marker existed reads by the same value rule, so
+// existing stores answer exactly as before.
+func (tm *TemporalMetadata) DeleteWroteValidTo() bool {
+	return tm != nil && tm.DeletedAt != 0 && !tm.DeleteKeptValidTo && tm.ValidTo == tm.DeletedAt
+}
+
+// ValidToAtTxTime is a row's own valid end as believed at pin (0 = open): a
+// delete recorded after pin that wrote the ValidTo is undone (it reopens), one
+// recorded by pin that kept a believed ValidTo (DeleteKeptValidTo) ends
+// validity at its own instant; every other ValidTo stands. Consumers reading
+// raw History() rows read the valid end through it, never the raw ValidTo.
+func (tm *TemporalMetadata) ValidToAtTxTime(pin Instant) Instant {
+	switch {
+	case tm == nil:
+		return 0
+	case tm.DeletedAt == 0:
+		return tm.ValidTo
+	case tm.DeletedAt > pin:
+		if tm.DeleteWroteValidTo() {
+			return 0
+		}
+		return tm.ValidTo
+	case tm.DeleteKeptValidTo:
+		return tm.DeletedAt
+	default:
+		return tm.ValidTo
+	}
+}

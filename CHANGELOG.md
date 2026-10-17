@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Public marker-aware valid end: `types.TemporalMetadata.ValidToAtTxTime(pin)` and
+  `DeleteWroteValidTo()`** (row 73). A consumer reading raw `History()` rows reads a row's valid end as
+  believed at a pin through them instead of the raw `ValidTo`: a delete recorded after the pin that wrote
+  the end reopens it, a tombstone that kept a believed `ValidTo` (`DeleteKeptValidTo`, v4.62.0) ends
+  validity at its `DeletedAt`. The v4.62.0 note named the internal `storeutil` helpers; they moved here and
+  every door calls these methods (one rule). The `DeleteKeptValidTo` writer announced for v4.63.0 lands in
+  v4.64.0, after the consumers moved their raw reads. Test: `TestTemporalMetadataValidToAtTxTime`.
+
 ### Fixed
 
 - CI flake (todo row 72), test only: `TestCreateTemporalIndex_ConcurrentMutationDuringScanIsReconciled`

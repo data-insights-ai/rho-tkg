@@ -114,7 +114,7 @@ func TestKeptValidToTombstoneRaisesStoreFormatMarker(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tm := legacy.Temporal(); tm.DeleteKeptValidTo || !storepkg.DeleteWroteValidTo(tm) {
+			if tm := legacy.Temporal(); tm.DeleteKeptValidTo || !tm.DeleteWroteValidTo() {
 				t.Fatalf("legacy tombstone read back as %+v", tm)
 			}
 		})

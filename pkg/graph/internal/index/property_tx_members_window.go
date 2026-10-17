@@ -17,7 +17,7 @@ import (
 //
 // A row's valid interval as the chain resolver derives it never reaches past
 // its stored span [effective valid-from, ValidTo) (open: +inf), except that a
-// delete tombstone read before its delete reopens (storeutil.DeleteWroteValidTo), so
+// delete tombstone read before its delete reopens (types.TemporalMetadata.DeleteWroteValidTo), so
 // a posting keeps:
 //
 //   - all: the union of every row's span, a tombstone's reopened: it bounds
@@ -58,7 +58,7 @@ type RowInfo struct {
 	TxFrom, TxTo, DeletedAt types.Instant
 	Span                    Span
 	// DeleteWrote: a tombstone whose ValidTo its delete wrote
-	// (storeutil.DeleteWroteValidTo).
+	// (types.TemporalMetadata.DeleteWroteValidTo).
 	DeleteWrote bool
 }
 
@@ -67,7 +67,7 @@ func RelRowInfo(r *types.Relationship) RowInfo {
 	_, to, _ := r.ValidRange()
 	f, t, d := r.TxStamps()
 	return RowInfo{Version: r.Version(), TxFrom: f, TxTo: t, DeletedAt: d,
-		Span: Span{From: storepkg.RelValidFrom(r), To: effTo(to)}, DeleteWrote: storepkg.DeleteWroteValidTo(r.Temporal())}
+		Span: Span{From: storepkg.RelValidFrom(r), To: effTo(to)}, DeleteWrote: r.Temporal().DeleteWroteValidTo()}
 }
 
 // NodeRowInfo returns n's RowInfo.
@@ -75,7 +75,7 @@ func NodeRowInfo(n *types.Node) RowInfo {
 	_, to, _ := n.ValidRange()
 	f, t, d := n.TxStamps()
 	return RowInfo{Version: n.Version(), TxFrom: f, TxTo: t, DeletedAt: d,
-		Span: Span{From: storepkg.NodeValidFrom(n), To: effTo(to)}, DeleteWrote: storepkg.DeleteWroteValidTo(n.Temporal())}
+		Span: Span{From: storepkg.NodeValidFrom(n), To: effTo(to)}, DeleteWrote: n.Temporal().DeleteWroteValidTo()}
 }
 
 // last is the row's newest stamp.
