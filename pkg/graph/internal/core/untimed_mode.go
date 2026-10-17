@@ -176,7 +176,7 @@ func (c *Core) resolveUntimedMode(defaultMode bool) error {
 	if defaultMode {
 		unbounded := true
 		if hasKey {
-			unbounded = v[0] != untimedByteTxFrom
+			unbounded = untimedModeOfByte(v[0]) == UntimedUnbounded
 		} else if df, ok := c.store.(storepkg.DurableFlushCapability); ok && df.DurableFlushSupported() {
 			// A store without stable storage was never written by an
 			// earlier session: it is new.
@@ -600,9 +600,15 @@ func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
 		return fmt.Errorf("graph: apply: untimed valid-start mode %x: %w", body.Value, storepkg.ErrCorruptWire)
 	}
 	v := body.Value[0]
-	c.untimedUnbounded.Store(v != untimedByteTxFrom)
 	c.asOfColumns.bump() // the conversion's rewritten history rows follow in the feed
-	return c.writeUntimedMode(v)
+	// The persisted key and the converting flag first: a lock-free reader
+	// (Admin().UntimedValidStart) may see a mode one moment stale, never a
+	// converting replica as complete.
+	if err := c.writeUntimedMode(v); err != nil {
+		return err
+	}
+	c.untimedUnbounded.Store(untimedModeOfByte(v) == UntimedUnbounded)
+	return nil
 }
 
 // UntimedValidStart answers the untimed valid-start mode the store's rows are
@@ -611,7 +617,11 @@ func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
 // which a Config resolves at open), and complete = false while a conversion
 // to UntimedUnbounded is unfinished (Admin().SetUntimedValidStart cut short:
 // the store holds untimed first versions of both rules, and mode is the
-// conversion's target). A replica answers the primary's mode as replicated.
+// conversion's target). A replica answers its own open-time mode until the
+// primary's mode record arrives in the feed (a conversion, or a mode an import
+// adopted); a TxFrom primary emits none, so open its replica with
+// UntimedFromTxFrom. After Admin().Reset() during an unfinished conversion the
+// empty store answers UntimedFromTxFrom, complete (the target is not kept).
 // ErrGraphClosed on a closed graph.
 func (a *AdminOps) UntimedValidStart() (mode UntimedValidStart, complete bool, err error) {
 	c := a.c

@@ -65,7 +65,8 @@ releaser's call). New store capabilities and write and read options, all additiv
   `g.Admin().UntimedValidStart() (mode, complete, err)` answers, on every backend, the mode the store's rows are
   written under: `UntimedFromTxFrom` or `UntimedUnbounded` as persisted (never `UntimedDefault`; a reopen under
   `UntimedDefault` answers the persisted mode), `complete = false` while a conversion to `UntimedUnbounded` is
-  unfinished, a replica the primary's mode as replicated. Added to `admin.Ops`.
+  unfinished. A replica answers its own open-time mode until the primary's mode record arrives (a `UntimedFromTxFrom`
+  primary emits none: open its replica with `UntimedFromTxFrom`). Added to `admin.Ops`.
 
 ### Changed
 

@@ -149,8 +149,10 @@ func (a *API) SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) 
 // written under (round 11): UntimedFromTxFrom or UntimedUnbounded, as
 // persisted in the store (never UntimedDefault), and complete = false while a
 // conversion to UntimedUnbounded is unfinished (rows of both rules; mode is
-// the target). A consumer whose answer depends on where an untimed entity
-// starts (-inf or its TxFrom) asks it by this call on every backend.
+// the target). A replica answers its own open-time mode until the primary's
+// mode record arrives (a TxFrom primary emits none: open its replica with
+// UntimedFromTxFrom). A consumer whose answer depends on where an untimed
+// entity starts (-inf or its TxFrom) asks it by this call on every backend.
 // ErrGraphClosed on a closed graph. See core.AdminOps.
 func (a *API) UntimedValidStart() (mode UntimedValidStart, complete bool, err error) {
 	ops, err := a.ready()
