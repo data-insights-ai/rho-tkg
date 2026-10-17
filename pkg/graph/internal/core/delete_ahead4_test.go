@@ -25,6 +25,7 @@ func TestDeleteAheadOfClock4(t *testing.T) {
 		name string
 		from func(clock types.Instant) types.Instant
 	}{
+		{"boundary now+1", func(c types.Instant) types.Instant { return c + 1 }},
 		{"boundary", func(c types.Instant) types.Instant { return c + 2 }},
 		{"far future", func(c types.Instant) types.Instant { return c + 1_000_000_000 }},
 		{"past", func(types.Instant) types.Instant { return 1000 }},

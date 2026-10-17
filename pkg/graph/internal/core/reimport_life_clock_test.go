@@ -9,18 +9,18 @@ import (
 )
 
 // TestReImportDoesNotAdvanceTheClock: a delete of an entity whose valid start
-// lies decades ahead is stamped after that start (validInstantAfter: caller
-// valid time turned into a transaction stamp). A plain re-import of the ID
-// must follow that stamp on its own row only; it must not move the graph's
-// commit clock (valid time must never pull the floor forward, context.go
-// maxCommitStamp). Afterwards an unrelated create is stamped at the wall
-// clock, NowTx stays at the wall clock, and — badger on disk, closed and
-// reopened — the unrelated row is visible at a pin taken after the reopen.
+// lies decades ahead is stamped at the wall clock (backlog 4: it used to be
+// stamped after that start, caller valid time turned into a transaction
+// stamp). A plain re-import of the ID follows the delete and must not move the
+// graph's commit clock (valid time must never pull the floor forward,
+// context.go maxCommitStamp). Afterwards an unrelated create is stamped at
+// the wall clock, NowTx stays at the wall clock, and — badger on disk, closed
+// and reopened — the unrelated row is visible at a pin taken after the reopen.
 //
-// Catches: a re-import that raises the commit-clock floor to the chain's
-// largest stamp (every later write of every entity stamped decades ahead; on
-// reopen the floor seed is refused as implausible and those rows are invisible
-// at a current pin — the lesson-71 anachronism).
+// Catches: a delete or a re-import that stamps from the valid start (every
+// later write of every entity stamped decades ahead; on reopen the floor seed
+// is refused as implausible and those rows are invisible at a current pin —
+// the lesson-71 anachronism).
 func TestReImportDoesNotAdvanceTheClock(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
@@ -34,6 +34,9 @@ func TestReImportDoesNotAdvanceTheClock(t *testing.T) {
 		id := e.add("T", wall+types.Instant(fifty.Milliseconds()), nil)
 		e.mustDel(id)
 		d := e.tombstoneAt(id)
+		if limit := types.Instant(time.Now().Add(time.Minute).UnixMilli()); d > limit {
+			t.Errorf("[%s] the delete is stamped %d, wall %d: ahead of the clock", e.kind(), d, limit)
+		}
 		e.mustReimport(id, map[string]any{"tkg_valid_from": types.Instant(5000), "x": int64(9)})
 		for _, r := range e.chain(id) {
 			if r.current && r.tm.TxFrom <= d {

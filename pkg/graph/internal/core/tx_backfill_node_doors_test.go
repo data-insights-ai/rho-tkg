@@ -179,14 +179,48 @@ func assertNodeTxOrderRefusal(t *testing.T, g *Core, id types.NodeID, phase stri
 	assertHoodUnchanged(t, g, phase, before, id)
 }
 
-func assertNodeCloseRefusal(t *testing.T, g *Core, id types.NodeID, phase string, before hoodSnap, err error, validTo, at types.Instant) {
-	t.Helper()
-	assertNodeTxOrderRefusal(t, g, id, phase, before, err, "recorded close at or after t")
-	for _, n := range []types.Instant{validTo, at} {
-		if !strings.Contains(err.Error(), fmt.Sprint(n)) {
-			t.Fatalf("[%s] err = %q; want both instants (ValidTo %d, t %d) named", phase, err, validTo, at)
+// nodeKeptClose returns assertKeptClose's tombstone and as-of readers for node id.
+func nodeKeptClose(t *testing.T, g *Core, id types.NodeID) (func() *types.TemporalMetadata, func(types.Instant) (*types.TemporalMetadata, error)) {
+	return func() *types.TemporalMetadata { return nodeTombstone(t, g, id) },
+		func(pin types.Instant) (*types.TemporalMetadata, error) {
+			n, err := g.Temporal.NodeAsOf(id, pin)
+			if err != nil {
+				return nil, err
+			}
+			return n.Temporal(), nil
 		}
+}
+
+// txbClosedNodeFix is txbBackfillNodeFix with the node (on == "node") or its
+// outgoing relationship closed at v = x+500 by a CloseVersion recorded at x
+// (an hour ahead of the wall), the clock then at x+1000; the readers are
+// assertKeptClose's for the closed row.
+func txbClosedNodeFix(t *testing.T, be txbBackend, on string) (*Core, txbNodeFix, types.Instant, func() *types.TemporalMetadata, func(types.Instant) (*types.TemporalMetadata, error)) {
+	t.Helper()
+	g := be.open(t, true)
+	clk := &switchableClock{}
+	g.SetClockForTest(t, clk.Now)
+	ctx := context.Background()
+	f := txbBackfillNodeFix(t, g)
+	x := txbWall() + txbHour
+	v := x + 500
+	clk.at.Store(int64(x))
+	var err error
+	if on == "node" {
+		err = g.Nodes.CloseVersion(ctx, f.id, v)
+	} else {
+		err = g.Rels.CloseVersion(ctx, f.out, v)
 	}
+	if err != nil {
+		t.Fatalf("CloseVersion: %v", err)
+	}
+	clk.at.Store(int64(x + 1000))
+	if on == "node" {
+		tomb, asOf := nodeKeptClose(t, g, f.id)
+		return g, f, v, tomb, asOf
+	}
+	tomb, asOf := relKeptClose(t, g, f.out)
+	return g, f, v, tomb, asOf
 }
 
 // R1 — gate off, every door.
@@ -394,10 +428,9 @@ func TestTxBackfillNode_OrderEqualReversed(t *testing.T) {
 
 // R4 — t at or below the node's current version start.
 //
-// Catches: an inverted valid interval (a delete at t <= ValidFrom clamps
-// ValidTo below ValidFrom: the store rejects it with ErrInvalidStoreMutation,
-// which must not leak; with a DERIVED valid-from the store accepts the
-// inverted row silently), and an update at t <= UpdatedAt (an in-place update
+// Catches: a delete at t <= ValidFrom that writes a ValidTo below ValidFrom
+// (the store rejects it with ErrInvalidStoreMutation) instead of keeping the
+// open end (DeleteKeptValidTo, backlog 4), and an update at t <= UpdatedAt (an in-place update
 // moved UpdatedAt above TxFrom; a rule reading only TxFrom stamps a version
 // that starts before its predecessor's last change).
 func TestTxBackfillNode_OrderValidStart(t *testing.T) {
@@ -413,6 +446,18 @@ func TestTxBackfillNode_OrderValidStart(t *testing.T) {
 				base := txbWall() - 2*txbHour
 				vf := base + 100
 				n := txbBackfillNodeAt(t, g, "Ref", base, map[string]any{"tkg_valid_from": vf, "w": int64(1)})
+				if strings.Contains(d.name, "Delete") {
+					// A delete before the start keeps the start and the open
+					// end (DeleteKeptValidTo, backlog 4); no start rule.
+					at := base + 50
+					if err := d.run(t, g, n.ID(), at); err != nil {
+						t.Fatalf("%s(t=%d before ValidFrom=%d): %v", d.name, at, vf, err)
+					}
+					if tm := nodeTombstone(t, g, n.ID()); tm.DeletedAt != at || tm.ValidFrom != vf || tm.ValidTo != 0 || !tm.DeleteKeptValidTo {
+						t.Fatalf("%s: tombstone %+v; want DeletedAt %d, ValidFrom %d, open end kept", d.name, *tm, at, vf)
+					}
+					continue
+				}
 				for _, at := range []types.Instant{base + 50, vf} {
 					phase := fmt.Sprintf("%s t=%d ValidFrom=%d", d.name, at, vf)
 					before := snapHood(t, g, n.ID())
@@ -635,114 +680,68 @@ func TestTxBackfillNode_UpdateStamps(t *testing.T) {
 
 // R7 — a recorded close exactly at t, on the node and on a cascaded rel.
 //
-// Catches: t moved silently past the close (the plain door's behaviour) on the
-// node, and the close check running on the node only (a cascaded rel's close
-// at t is moved or overwritten). Counterpart: t = close+1 keeps the close and
-// stamps t exactly on the node and the rel.
+// Catches: t moved silently past the close (the plain door's behaviour before
+// backlog 4) on the node or a cascaded rel, and a close at t read back at t-1
+// as delete-written (open). t == close keeps the close (DeleteKeptValidTo,
+// backlog 7); t = close+1 keeps it unmarked and writes the open row's ValidTo
+// = t, on the node and the rel.
 func TestTxBackfillNode_CloseCollision(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
 	t.Parallel()
+	ctx := context.Background()
 	for _, be := range txbBackends() {
 		for _, on := range []string{"node", "cascaded_rel"} {
-			t.Run(be.name+"/"+on, func(t *testing.T) {
-				g := be.open(t, true)
-				clk := &switchableClock{}
-				g.SetClockForTest(t, clk.Now)
-				ctx := context.Background()
-				f := txbBackfillNodeFix(t, g)
-				x := txbWall() + txbHour
-				v := x + 500
-				clk.at.Store(int64(x))
-				var err error
-				if on == "node" {
-					err = g.Nodes.CloseVersion(ctx, f.id, v)
-				} else {
-					err = g.Rels.CloseVersion(ctx, f.out, v)
-				}
-				if err != nil {
-					t.Fatalf("CloseVersion: %v", err)
-				}
-				clk.at.Store(int64(x + 1000))
-				before := snapHood(t, g, f.id, f.rels()...)
-				assertNodeCloseRefusal(t, g, f.id, "t == ValidTo", before, g.Nodes.DeleteWithTx(ctx, f.id, v), v, v)
-				if err := g.Nodes.DeleteWithTx(ctx, f.id, v+1); err != nil {
-					t.Fatalf("DeleteWithTx(close+1): %v", err)
-				}
-				closed, other := nodeTombstone(t, g, f.id), relTombstone(t, g, f.out)
-				if on != "node" {
-					closed, other = other, closed
-				}
-				if closed.ValidTo != v || closed.DeletedAt != v+1 || closed.TxTo != v+1 {
-					t.Fatalf("closed tombstone %+v; want ValidTo=%d DeletedAt = TxTo = %d", *closed, v, v+1)
-				}
-				if other.ValidTo != v+1 || other.DeletedAt != v+1 || other.TxTo != v+1 {
-					t.Fatalf("open tombstone %+v; want ValidTo = DeletedAt = TxTo = %d", *other, v+1)
-				}
-			})
+			for _, after := range []types.Instant{0, 1} {
+				t.Run(fmt.Sprintf("%s/%s/t=close+%d", be.name, on, after), func(t *testing.T) {
+					g, f, v, tomb, asOf := txbClosedNodeFix(t, be, on)
+					at := v + after
+					if after == 0 {
+						assertKeptClose(t, "t == ValidTo", g.Nodes.DeleteWithTx(ctx, f.id, at), tomb, asOf, v, at)
+						return
+					}
+					if err := g.Nodes.DeleteWithTx(ctx, f.id, at); err != nil {
+						t.Fatalf("DeleteWithTx(close+1): %v", err)
+					}
+					closed, other := nodeTombstone(t, g, f.id), relTombstone(t, g, f.out)
+					if on != "node" {
+						closed, other = other, closed
+					}
+					if closed.ValidTo != v || closed.DeletedAt != at || closed.TxTo != at || closed.DeleteKeptValidTo {
+						t.Fatalf("closed tombstone %+v; want ValidTo=%d DeletedAt = TxTo = %d, unmarked", *closed, v, at)
+					}
+					if other.ValidTo != at || other.DeletedAt != at || other.TxTo != at || other.DeleteKeptValidTo {
+						t.Fatalf("open tombstone %+v; want ValidTo = DeletedAt = TxTo = %d, unmarked", *other, at)
+					}
+				})
+			}
 		}
 	}
 }
 
 // R8 — a scheduled close after t, on the node and on a cascaded rel.
 //
-// Decision (W1, coordinator 2026-10-09): a caller-instant delete REFUSES a
-// recorded close at or after t, so a pin before t keeps the believed ValidTo
-// (one tombstone row cannot both clamp and keep it). Catches: the close lost by
-// the clamp (pin t-1 shows ValidTo = t, which the normalizer reopens) and a
-// tombstone written before the refusal — on the node and on every cascaded rel.
+// A pin before t keeps the believed ValidTo (decision W1, 2026-10-09). Until
+// backlog 7 the delete refused such a close (one tombstone row could not both
+// clamp and keep it); the tombstone now keeps it beside the delete. Catches:
+// the close lost by a clamp (pin t-1 shows ValidTo = t, which the normalizer
+// reopens) and a refusal left in place — on the node and on a cascaded rel.
 func TestTxBackfillNode_ScheduledCloseAfterT(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
 	t.Parallel()
+	ctx := context.Background()
 	for _, be := range txbBackends() {
 		for _, on := range []string{"node", "cascaded_rel"} {
-			t.Run(be.name+"/"+on, func(t *testing.T) {
-				g := be.open(t, true)
-				clk := &switchableClock{}
-				g.SetClockForTest(t, clk.Now)
-				ctx := context.Background()
-				f := txbBackfillNodeFix(t, g)
-				x := txbWall() + txbHour
-				v := x + 500
-				clk.at.Store(int64(x))
-				var err error
-				if on == "node" {
-					err = g.Nodes.CloseVersion(ctx, f.id, v)
-				} else {
-					err = g.Rels.CloseVersion(ctx, f.in, v)
-				}
-				if err != nil {
-					t.Fatalf("CloseVersion: %v", err)
-				}
-				clk.at.Store(int64(x + 1000))
-				for _, at := range []types.Instant{v - 1, x + 1} {
-					phase := fmt.Sprintf("t=%d close=%d", at, v)
-					before := snapHood(t, g, f.id, f.rels()...)
-					assertNodeCloseRefusal(t, g, f.id, phase, before, g.Nodes.DeleteWithTx(ctx, f.id, at), v, at)
-					for _, pin := range []types.Instant{at - 1, at} {
-						var tm *types.TemporalMetadata
-						if on == "node" {
-							n, err := g.Temporal.NodeAsOf(f.id, pin)
-							if err != nil {
-								t.Fatalf("[%s] NodeAsOf(%d): %v", phase, pin, err)
-							}
-							tm = n.Temporal()
-						} else {
-							r, err := g.Temporal.RelAsOf(f.in, pin)
-							if err != nil {
-								t.Fatalf("[%s] RelAsOf(%d): %v", phase, pin, err)
-							}
-							tm = r.Temporal()
-						}
-						if tm.ValidTo != v || tm.DeletedAt != 0 {
-							t.Fatalf("[%s] as-of %d temporal %+v; want the believed close %d", phase, pin, *tm, v)
-						}
-					}
-				}
-			})
+			for _, back := range []types.Instant{1, 499} { // t = v-1 and t = x+1
+				t.Run(fmt.Sprintf("%s/%s/t=close-%d", be.name, on, back), func(t *testing.T) {
+					g, f, v, tomb, asOf := txbClosedNodeFix(t, be, on)
+					at := v - back
+					assertKeptClose(t, fmt.Sprintf("t=%d close=%d", at, v), g.Nodes.DeleteWithTx(ctx, f.id, at), tomb, asOf, v, at)
+				})
+			}
 		}
 	}
 }
@@ -750,9 +749,9 @@ func TestTxBackfillNode_ScheduledCloseAfterT(t *testing.T) {
 // R9 — the cascade's order check runs on every cascaded relationship, before
 // anything is written, through every delete door.
 //
-// Catches: the order check run on the node only (a cascaded rel created,
-// updated or valid-from after t gets a tombstone that ends belief before it
-// began: an inverted TX or valid interval); a cascade that writes rels one at a
+// Catches: the order check run on the node only (a cascaded rel created or
+// updated after t gets a tombstone that ends belief before it began: an
+// inverted TX interval; a valid-from after t is kept, backlog 4); a cascade that writes rels one at a
 // time and fails midway (the other cascaded rel, or the cross-shard rel on
 // sharded/tiered, already tombstoned when the refusal comes); and a cascade
 // that stamps rels with the clock. Counterpart: an all-valid t stamps every
@@ -780,19 +779,6 @@ func TestTxBackfillNode_CascadeOrder(t *testing.T) {
 			}
 			clk.at.Store(int64(x + 1000))
 			return x - 10, fmt.Sprint(x)
-		}},
-		{"rel_valid_from_after_t", func(t *testing.T, g *Core, f txbNodeFix, _ *switchableClock) (types.Instant, string) {
-			txbBackfillRelBetween(t, g, f.id, f.ev2, f.base, map[string]any{"tkg_valid_from": f.base + 1500})
-			return f.base + 1000, fmt.Sprint(f.base + 1500)
-		}},
-		{"rel_close_at_or_after_t", func(t *testing.T, g *Core, f txbNodeFix, clk *switchableClock) (types.Instant, string) {
-			x := txbWall() + txbHour
-			clk.at.Store(int64(x))
-			if err := g.Rels.CloseVersion(context.Background(), f.out, x+500); err != nil {
-				t.Fatalf("Rels.CloseVersion: %v", err)
-			}
-			clk.at.Store(int64(x + 1000))
-			return x + 500, "recorded close at or after t"
 		}},
 	}
 	for _, be := range txbBackends() {

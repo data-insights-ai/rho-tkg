@@ -38,6 +38,30 @@ Next version: v4.62.0 (minor: a new tombstone marker, read side).
   at or after `t` stop refusing with `ErrTxOrder` and keep the close. Upgrade every reader (replicas,
   importers, a badger directory opened by another binary) to v4.62.0 before a v4.63.0 writer deletes.
 
+### Changed
+
+Ships in v4.63.0 (part B; announced by the v4.62.0 Deprecated entry; readers of `dk` ship in v4.62.0).
+
+- **A delete keeps a ValidTo it does not write, in a tombstone marked `DeleteKeptValidTo`** (backlogs 4, 7,
+  25; writer step of the format ritual). The plain delete instant is the commit clock (`deleteInstant`, the
+  rule of `supersede`, backlog 77; past a row's own `TxFrom` only for a row stamped ahead before v4.62.0).
+  `stampDeleteTombstone` writes `ValidTo = DeletedAt` only for an open row that starts before the delete; a
+  recorded close at or after the delete, or the open end of a row starting at or after it, is kept and marked.
+  Nodes, cascaded relationships and relationships, every door (standalone, GraphTx, Batch, ingest, retract).
+  Removed: the clamp of a scheduled close, `deleteInstantClearOfCloses` (the instant moved past a close it
+  landed on), the pinned-cache bump for a local clamp, and for the caller-instant doors the refusal of a
+  recorded close at or after `t` (`checkCallerDeleteCloses`) and the version-start rule for deletes
+  (`relTxDeleteStart` / `nodeTxDeleteStart`): `DeleteWithTx` / `RetractWithTx` at `t` follow every stamp of the
+  chain only. The first marked tombstone raises the badger store marker to 8 (v4.62.0 and later read it).
+  Answers that change: (4) a pin taken after a delete of a future-start row no longer answers the entity; (25)
+  after `CloseVersion(far-1)`, a pin, then `Delete`, the pin still answers `[1000, far-1)`; (7) a caller-instant
+  delete over a close or before the row's start succeeds instead of `ErrTxOrder`. **Changes for consumers:**
+  `History()` shows a marked tombstone's believed `ValidTo` (0 or the close); its validity ends at
+  `DeletedAt`. Tests `TestDeleteAheadOfClock4` (start at now+1, now+2, far ahead, in the past),
+  `TestDeleteKeepsScheduledClose25` (close far ahead and at now+1), `TestDeleteWithTxKeepsScheduledClose7`
+  (close after t and at t), node and rel; the long-tier `TestTxBackfill*`, `TestDeleteKeepsFutureScheduledClose`,
+  `TestDeleteAtExactCloseInstantKeepsClose` and `TestReImport*` now pin the kept close and the clock stamp.
+
 ### Fixed
 
 - **`NodeAt` / `RelAt` answered an older version than the head timeline after an `Update` of a version that
@@ -53,7 +77,7 @@ Next version: v4.62.0 (minor: a new tombstone marker, read side).
   whose own `TxFrom` was stamped ahead before this release is still superseded one instant after it.
   **Changes for consumers:** such a row now carries a non-zero `ValidFrom` (it stored 0) and a `TxFrom` at
   the clock; a pin taken after the write sees it. Rows already stored are not rewritten. The delete's
-  instant ahead of the clock is unchanged (backlog 4). Test: `TestPointDoorAheadOfClock77` (memory and badger,
+  instant follows the same rule from v4.63.0 (backlog 4, Changed below). Test: `TestPointDoorAheadOfClock77` (memory and badger,
   node and rel: no row stamped ahead of the clock, the point door, the at-tx door at the newest `TxFrom` and
   the head timeline agree after each door); the row-67 twin test checks the point door throughout.
 

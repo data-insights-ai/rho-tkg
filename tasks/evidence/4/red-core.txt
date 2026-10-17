@@ -1,0 +1,32 @@
+--- FAIL: TestDeleteAheadOfClock4 (0.00s)
+    --- FAIL: TestDeleteAheadOfClock4/boundary/rel=false (0.00s)
+        delete_ahead4_test.go:128: tombstone stamps ahead of the clock 1792238578886: DeletedAt 1792238578887 TxTo 1792238578887 TxFrom 1792238578884
+    --- FAIL: TestDeleteAheadOfClock4/far_future/rel=false (0.00s)
+        delete_ahead4_test.go:128: tombstone stamps ahead of the clock 1792238578886: DeletedAt 1793238578885 TxTo 1793238578885 TxFrom 1792238578884
+        delete_ahead4_test.go:152: NodeAtTx(1793238579884, post-delete pin) = version 0, want absent
+    --- FAIL: TestDeleteAheadOfClock4/far_future/rel=true (0.00s)
+        delete_ahead4_test.go:128: tombstone stamps ahead of the clock 1792238578889: DeletedAt 1793238578886 TxTo 1793238578886 TxFrom 1792238578886
+        delete_ahead4_test.go:149: RelAtTx(1793238579885, post-delete pin) = version 0, want absent
+--- FAIL: TestDeleteKeepsScheduledClose25 (0.00s)
+    --- FAIL: TestDeleteKeepsScheduledClose25/far/rel=false (0.00s)
+        delete_kept_validto_test.go:149: AsOf(pin) after the delete: ValidTo 0 DeletedAt 0, want 1792239578884 and 0
+        delete_kept_validto_test.go:152: answers at the pre-delete pin changed:
+            before 1000:true 1792239578883:true 1792239578884:false 1792239578885:false 
+            after  1000:true 1792239578883:true 1792239578884:true 1792239578885:true 
+    --- FAIL: TestDeleteKeepsScheduledClose25/far/rel=true (0.00s)
+        delete_kept_validto_test.go:149: AsOf(pin) after the delete: ValidTo 0 DeletedAt 0, want 1792239578886 and 0
+        delete_kept_validto_test.go:152: answers at the pre-delete pin changed:
+            before 1000:true 1792239578885:true 1792239578886:false 1792239578887:false 
+            after  1000:true 1792239578885:true 1792239578886:true 1792239578887:true 
+--- FAIL: TestDeleteWithTxKeepsScheduledClose7 (0.00s)
+    --- FAIL: TestDeleteWithTxKeepsScheduledClose7/close_after_t/rel=false (0.00s)
+        delete_kept_validto_test.go:210: DeleteWithTx(1792242177885): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): recorded close at or after t (ValidTo 1792242178384, t 1792242177885)
+    --- FAIL: TestDeleteWithTxKeepsScheduledClose7/close_after_t/rel=true (0.00s)
+        delete_kept_validto_test.go:210: DeleteWithTx(1792242177885): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): recorded close at or after t (ValidTo 1792242178384, t 1792242177885)
+    --- FAIL: TestDeleteWithTxKeepsScheduledClose7/close_at_t/rel=false (0.00s)
+        delete_kept_validto_test.go:210: DeleteWithTx(1792242178384): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): recorded close at or after t (ValidTo 1792242178384, t 1792242178384)
+    --- FAIL: TestDeleteWithTxKeepsScheduledClose7/close_at_t/rel=true (0.00s)
+        delete_kept_validto_test.go:210: DeleteWithTx(1792242178384): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): recorded close at or after t (ValidTo 1792242178384, t 1792242178384)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.026s
+FAIL

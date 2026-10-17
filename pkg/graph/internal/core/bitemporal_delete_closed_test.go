@@ -641,9 +641,13 @@ func TestDeleteOpenEntityStampsValidToAtDelete(t *testing.T) {
 	}
 }
 
-// --- 5: a close scheduled after the delete is clamped to the delete ----------
+// --- 5: a close scheduled after the delete is kept by the tombstone ---------
 
-func TestDeleteClampsFutureScheduledClose(t *testing.T) {
+// The delete ends validity at its own instant and keeps the scheduled close
+// for pins before it (types.TemporalMetadata.DeleteKeptValidTo, backlog 25):
+// the clamp it replaced overwrote the close, so a pin before the delete saw
+// an open-ended row.
+func TestDeleteKeepsFutureScheduledClose(t *testing.T) {
 	t.Parallel()
 	for _, be := range asofCascadeBackends() {
 		t.Run(be.name, func(t *testing.T) {
@@ -688,11 +692,7 @@ func TestDeleteClampsFutureScheduledClose(t *testing.T) {
 				assertRelAtTx(t, g, rid, dcY2025, pin, false, phase)
 			}
 			check("before delete")
-			// Before the delete the scheduled close is honoured at the pin. This
-			// is deliberately NOT re-asserted after the delete: the clamp
-			// overwrites the scheduled ValidTo in place, so a pin before the
-			// delete sees an open-ended row (a known v4 limitation — the
-			// scheduled instant is not stored anywhere once clamped).
+			// The scheduled close is honoured at the pin, before and after the delete.
 			assertNodeAtTx(t, g, n.ID(), future, pin, false, "before delete")
 			assertRelAtTx(t, g, r.ID(), future, pin, false, "before delete")
 			if err := g.Nodes.Delete(ctx, n.ID()); err != nil {
@@ -702,17 +702,17 @@ func TestDeleteClampsFutureScheduledClose(t *testing.T) {
 				t.Fatalf("Rels.Delete: %v", err)
 			}
 			check("after delete")
+			assertNodeAtTx(t, g, n.ID(), future, pin, false, "after delete")
+			assertRelAtTx(t, g, r.ID(), future, pin, false, "after delete")
 
-			// Current knowledge: the scheduled close is clamped to the delete.
+			// The tombstone keeps the scheduled close beside the delete instant.
 			nt := nodeTombstone(t, g, n.ID())
-			if nt.ValidTo != nt.DeletedAt || nt.DeletedAt >= future {
-				t.Fatalf("node tombstone ValidTo=%d DeletedAt=%d future=%d; want ValidTo == DeletedAt < future (clamped)",
-					nt.ValidTo, nt.DeletedAt, future)
+			if nt.ValidTo != future || nt.DeletedAt >= future || !nt.DeleteKeptValidTo {
+				t.Fatalf("node tombstone %+v future=%d; want the kept close (DeleteKeptValidTo), DeletedAt < future", *nt, future)
 			}
 			rt := relTombstone(t, g, r.ID())
-			if rt.ValidTo != rt.DeletedAt || rt.DeletedAt >= future {
-				t.Fatalf("rel tombstone ValidTo=%d DeletedAt=%d future=%d; want ValidTo == DeletedAt < future (clamped)",
-					rt.ValidTo, rt.DeletedAt, future)
+			if rt.ValidTo != future || rt.DeletedAt >= future || !rt.DeleteKeptValidTo {
+				t.Fatalf("rel tombstone %+v future=%d; want the kept close (DeleteKeptValidTo), DeletedAt < future", *rt, future)
 			}
 			assertNodeValidOnly(t, g, n.ID(), nt.DeletedAt, false, "after delete")
 			assertRelValidOnly(t, g, r.ID(), rt.DeletedAt, false, "after delete")
@@ -738,9 +738,9 @@ func (s *switchableClock) Now() time.Time {
 }
 
 // A recorded close X and a delete whose clock reads exactly X: the tombstone
-// must keep ValidTo = X, and the delete instant must not equal X, otherwise a
-// reader pinned before the delete cannot tell the recorded close from a
-// delete-stamped ValidTo and reopens the entity.
+// must keep ValidTo = X, and a delete instant equal to X marks it kept
+// (DeleteKeptValidTo), otherwise a reader pinned before the delete cannot tell
+// the recorded close from a delete-stamped ValidTo and reopens the entity.
 func TestDeleteAtExactCloseInstantKeepsClose(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
@@ -780,8 +780,8 @@ func TestDeleteAtExactCloseInstantKeepsClose(t *testing.T) {
 			}
 			check("after delete")
 			tomb := nodeTombstone(t, g, n.ID())
-			if tomb.ValidTo != closeAt || tomb.DeletedAt <= closeAt || tomb.TxTo != tomb.DeletedAt {
-				t.Fatalf("tombstone ValidTo=%d DeletedAt=%d TxTo=%d; want ValidTo == %d < DeletedAt == TxTo",
+			if tomb.ValidTo != closeAt || tomb.DeletedAt < closeAt || tomb.TxTo != tomb.DeletedAt || tomb.DeleteKeptValidTo != (tomb.DeletedAt == closeAt) {
+				t.Fatalf("tombstone ValidTo=%d DeletedAt=%d TxTo=%d; want ValidTo == %d <= DeletedAt == TxTo, kept iff equal",
 					tomb.ValidTo, tomb.DeletedAt, tomb.TxTo, closeAt)
 			}
 			assertNodeChainOK(t, g, n.ID())
@@ -824,8 +824,8 @@ func TestDeleteAtExactCloseInstantKeepsClose(t *testing.T) {
 			}
 			check("after delete")
 			tomb := relTombstone(t, g, r.ID())
-			if tomb.ValidTo != closeAt || tomb.DeletedAt <= closeAt || tomb.TxTo != tomb.DeletedAt {
-				t.Fatalf("tombstone ValidTo=%d DeletedAt=%d TxTo=%d; want ValidTo == %d < DeletedAt == TxTo",
+			if tomb.ValidTo != closeAt || tomb.DeletedAt < closeAt || tomb.TxTo != tomb.DeletedAt || tomb.DeleteKeptValidTo != (tomb.DeletedAt == closeAt) {
+				t.Fatalf("tombstone ValidTo=%d DeletedAt=%d TxTo=%d; want ValidTo == %d <= DeletedAt == TxTo, kept iff equal",
 					tomb.ValidTo, tomb.DeletedAt, tomb.TxTo, closeAt)
 			}
 			assertRelChainOK(t, g, r.ID())
@@ -868,8 +868,8 @@ func TestDeleteAtExactCloseInstantKeepsClose(t *testing.T) {
 			}
 			check("after delete")
 			tomb := relTombstone(t, g, r.ID())
-			if tomb.ValidTo != closeAt || tomb.DeletedAt <= closeAt {
-				t.Fatalf("cascaded tombstone ValidTo=%d DeletedAt=%d; want ValidTo == %d < DeletedAt",
+			if tomb.ValidTo != closeAt || tomb.DeletedAt < closeAt || tomb.DeleteKeptValidTo != (tomb.DeletedAt == closeAt) {
+				t.Fatalf("cascaded tombstone ValidTo=%d DeletedAt=%d; want ValidTo == %d <= DeletedAt, kept iff equal",
 					tomb.ValidTo, tomb.DeletedAt, closeAt)
 			}
 			if nt := nodeTombstone(t, g, start.ID()); nt.DeletedAt != tomb.DeletedAt || nt.ValidTo != nt.DeletedAt {

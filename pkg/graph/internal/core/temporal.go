@@ -63,14 +63,22 @@ func validInstantAfter(at, start types.Instant) types.Instant {
 	return at
 }
 
+// deleteInstant is THE instant of a plain delete door (backlog 4, the rule of
+// supersede): the clock, moved past a row's own TxFrom only when that row was
+// stamped ahead of the clock (a row stored before backlog 77), so no
+// tombstone's TxTo precedes its TxFrom. A row that starts at or after the
+// instant keeps its start; stampDeleteTombstone keeps its believed ValidTo.
+// Every row the delete tombstones (the node and its cascaded relationships)
+// shares the one instant.
+func (c *Core) deleteInstant(tms ...*types.TemporalMetadata) types.Instant {
+	at := c.now()
+	for _, tm := range tms {
+		at = validInstantAfter(at, beliefTx(tm))
+	}
+	return at
+}
+
 func (c *Core) deleteInstantForNodeCascade(current *types.Node, outRels, inRels []*types.Relationship) types.Instant {
-	at := validInstantAfter(c.now(), c.nodeValidFrom(current))
-	for _, r := range outRels {
-		at = validInstantAfter(at, c.relValidFrom(r))
-	}
-	for _, r := range inRels {
-		at = validInstantAfter(at, c.relValidFrom(r))
-	}
 	tms := make([]*types.TemporalMetadata, 0, 1+len(outRels)+len(inRels))
 	tms = append(tms, current.Temporal())
 	for _, r := range outRels {
@@ -79,39 +87,11 @@ func (c *Core) deleteInstantForNodeCascade(current *types.Node, outRels, inRels 
 	for _, r := range inRels {
 		tms = append(tms, r.Temporal())
 	}
-	return c.deleteInstantClearOfCloses(at, tms...)
+	return c.deleteInstant(tms...)
 }
 
 func (c *Core) deleteInstantForRelationship(current *types.Relationship) types.Instant {
-	return c.deleteInstantClearOfCloses(validInstantAfter(c.now(), c.relValidFrom(current)), current.Temporal())
-}
-
-// deleteInstantClearOfCloses moves a delete instant past any recorded close
-// (ValidTo) it would coincide with. The pinned-read normalizers
-// (normalizeTemporalVisibleAtTxTime, core and memory store) read
-// "ValidTo == DeletedAt" as "the delete wrote this ValidTo" and reopen the row
-// for a pin before the delete. stampDeleteTombstone keeps a close at or before
-// the delete instant, so a close landing exactly ON it would be indistinguishable
-// from a delete-stamped one; a later instant is not. Every row the delete
-// tombstones shares one instant, so the loop runs until no row collides.
-//
-// The replacement instant comes from c.now(), so it is reserved on the
-// transaction clock and no later write can be stamped with it. When `at` was
-// already pushed past the clock by validInstantAfter (an explicit future
-// valid-from), c.now() is below it and the candidate falls back to at+1: that
-// path hands out unreserved instants today regardless of this helper (see the
-// tasks/backlog.md "temporal semantics review 2026-09-24" section).
-func (c *Core) deleteInstantClearOfCloses(at types.Instant, tms ...*types.TemporalMetadata) types.Instant {
-	for moved := true; moved && at < math.MaxInt64; {
-		moved = false
-		for _, tm := range tms {
-			if tm != nil && tm.ValidTo == at {
-				at = max(at+1, c.now())
-				moved = true
-			}
-		}
-	}
-	return at
+	return c.deleteInstant(current.Temporal())
 }
 
 // tombstoneSpec is how a delete door ends an entity (backlog 43): at is a
@@ -125,34 +105,32 @@ type tombstoneSpec struct {
 }
 
 // stampDeleteTombstone turns tm (the final version of an entity being hard
-// deleted, already a private copy) into its delete tombstone at instant at.
-// It is the ONE place the tombstone temporal stamps are decided; every delete
-// door (standalone, tx, batch, ingest strong and concurrent mode, node cascade)
-// funnels through deleteNodeLocked / deleteRelationshipInternal, which call it.
+// deleted, already a private copy, starting at start) into its delete
+// tombstone at instant at. It is the ONE place the tombstone temporal stamps
+// are decided; every delete door (standalone, tx, batch, ingest strong and
+// concurrent mode, node cascade) funnels through deleteNodeLocked /
+// deleteRelationshipInternal, which call it.
 //
-// ValidTo is stamped only when the row is still open (0) or scheduled to close
-// after the delete (clamped to the delete). A close already recorded at or
-// before the delete is kept: overwriting it rewrote valid-time history, and a
-// reader pinned before the delete then reset the delete-stamped ValidTo to 0,
-// reporting the closed entity as open-ended (a later write changing a
-// historical answer). DeletedAt and TxTo are always the delete instant.
-//
-// clamped reports a close scheduled after the delete that the tombstone
-// clamped: a valid end earlier pins read changed (backlog 25), which the
-// caller reports to the pinned caches after its store write
-// (noteClampedClose).
-func stampDeleteTombstone(tm *types.TemporalMetadata, at types.Instant, retract bool) (clamped bool) {
+// DeletedAt and TxTo are always the delete instant. ValidTo is written (at)
+// only when the row is open and starts before the delete; a close recorded
+// before the delete is kept as it is. Any other ValidTo — a close at or after
+// the delete (backlogs 25, 7), or the open end of a row that starts at or
+// after it (backlog 4) — is the end pins before the delete believe: it is
+// kept and the tombstone marked DeleteKeptValidTo, so the delete changes no
+// answer at an earlier pin and ends validity at its own instant from then on.
+func stampDeleteTombstone(tm *types.TemporalMetadata, start, at types.Instant, retract bool) {
 	tm.DeletedAt = at
 	tm.Retracted = retract
-	clamped = tm.ValidTo > at
-	if tm.ValidTo == 0 || tm.ValidTo > at {
+	switch {
+	case tm.ValidTo == 0 && start < at:
 		tm.ValidTo = at
+	case tm.ValidTo == 0 || tm.ValidTo >= at:
+		tm.DeleteKeptValidTo = true
 	}
 	if tm.TxFrom == 0 {
 		tm.TxFrom = at
 	}
 	tm.TxTo = at
-	return clamped
 }
 
 // supersession is what a plain superseding door (Update, the label and CAS
@@ -487,7 +465,7 @@ func versionVisibleAtTx(tm *types.TemporalMetadata, txAt types.Instant) bool {
 //
 // Lesson 43 extended to DeletedAt (lesson 60): a hard Delete is a
 // TRANSACTION-TIME tombstone. Delete stamps DeletedAt/TxTo (and ValidTo when the
-// row was open or closed after the delete — stampDeleteTombstone) in place on
+// row was open and started before the delete — stampDeleteTombstone) in place on
 // the final version, so a row visible at an earlier txAt still carries
 // post-txAt delete stamps — and the delete-stamped ValidTo then fails
 // valid-time coverage in the resolver, silently rewriting history for every

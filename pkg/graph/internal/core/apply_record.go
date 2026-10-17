@@ -667,7 +667,8 @@ func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {
 
 // closeClamped reports whether tomb, the delete tombstone of a row whose
 // stored temporal metadata was prev, clamped a close prev scheduled after
-// the delete (stampDeleteTombstone's clamp, backlog 25). A tombstone that kept
+// the delete (a record of a primary before v4.63.0, whose delete clamped the
+// close; backlog 25). A tombstone that kept
 // the believed ValidTo (DeleteKeptValidTo) rewrote nothing an earlier pin reads.
 func closeClamped(prev, tomb *types.TemporalMetadata) bool {
 	end := tombstoneEnd(tomb)

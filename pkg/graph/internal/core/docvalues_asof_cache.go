@@ -177,11 +177,12 @@ func (c *Core) noteAppliedTxFrom(tm *types.TemporalMetadata) {
 	c.noteAppliedStamp(tm.TxFrom)
 }
 
-// noteClampedClose reports a delete that clamped a scheduled close (the row's
-// ValidTo lay after the delete instant, stampDeleteTombstone): the tombstone
-// rewrote a valid end every earlier pin reads (backlog 25), a history rewrite
-// for the cached pins whatever the delete's own stamp. Called after the
-// delete's store write.
+// noteClampedClose reports an applied delete record that clamped a scheduled
+// close (the row's ValidTo lay after the delete instant: a primary before
+// v4.62.0; stampDeleteTombstone now keeps the close, backlog 25): the
+// tombstone rewrote a valid end every earlier pin reads, a history rewrite for
+// the cached pins whatever the delete's own stamp. Called after the delete's
+// store write.
 func (c *Core) noteClampedClose(clamped bool) {
 	if clamped {
 		c.asOfColumns.bump()

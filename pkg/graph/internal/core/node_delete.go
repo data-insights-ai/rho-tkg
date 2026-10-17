@@ -89,14 +89,14 @@ func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
 
 // DeleteWithTx deletes a node and its relationships like Delete but stamps
 // every tombstone of the cascade — the node's and each relationship's — with
-// the caller's transaction instant: TxTo = DeletedAt = txTo, ValidTo clamped
-// to txTo when the row is open. Gates, in order: txTo must be a positive
-// instant not in the future (ErrInvalidTxFrom), then Config.AllowTxBackfill
-// (ErrTxBackfillDisabled); under the full entity lock txTo must follow every
-// TxFrom/TxTo recorded for the node and for each cascaded relationship and
-// their current versions' starts, and no recorded close may lie at or after
-// txTo on any of them (ErrTxOrder, wrapping ErrInvalidTxFrom). Any refusal
-// changes nothing. The commit clock is not moved by txTo.
+// the caller's transaction instant: TxTo = DeletedAt = txTo, ValidTo = txTo
+// when the row is open, a recorded close kept (stampDeleteTombstone). Gates,
+// in order: txTo must be a positive instant not in the future
+// (ErrInvalidTxFrom), then Config.AllowTxBackfill (ErrTxBackfillDisabled);
+// under the full entity lock txTo must follow every TxFrom/TxTo recorded for
+// the node and for each cascaded relationship and their current versions'
+// starts (ErrTxOrder, wrapping ErrInvalidTxFrom). Any refusal changes nothing.
+// The commit clock is not moved by txTo.
 func (n *NodeOps) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
 	return n.c.endNode(ctx, id, txTo, true, false)
 }
@@ -116,8 +116,8 @@ func (n *NodeOps) Retract(ctx context.Context, id types.NodeID) error {
 
 // RetractWithTx is Retract at the caller's transaction instant txTo, with
 // DeleteWithTx's gates and refusals on the node and on every cascaded
-// relationship (ErrInvalidTxFrom, ErrTxBackfillDisabled, ErrTxOrder, a
-// recorded close at or after txTo); any refusal changes nothing, and the
+// relationship (ErrInvalidTxFrom, ErrTxBackfillDisabled, ErrTxOrder); any
+// refusal changes nothing, and the
 // commit clock is not moved by txTo.
 func (n *NodeOps) RetractWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
 	return n.c.endNode(ctx, id, txTo, true, true)
@@ -388,7 +388,7 @@ func sameIDSet(a, b []snowflake.ID) bool {
 // atomic DeleteNodeWithHistory call (replaces PutRelVersion×N + PutNodeVersion +
 // DeleteNodeCascade with one compound store operation).
 //
-// spec.at != 0 is a caller instant: the order and close rules run on the node
+// spec.at != 0 is a caller instant: the order rule runs on the node
 // and on every cascaded relationship (the Phase-B rows) before the first
 // write, and spec.at is the one instant of every tombstone. spec.at == 0 is
 // the plain doors' deleteInstantForNodeCascade. spec.retract marks the node's
@@ -419,7 +419,6 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 	}
 
 	// Build relationship tombstones (dedup self-loops).
-	clamped := false
 	var relTombstones []storepkg.RelTombstone
 	var cascadeRelIDs []types.RelID
 	if len(outRels) != 0 || len(inRels) != 0 {
@@ -441,7 +440,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 				tmR = &types.TemporalMetadata{}
 				tombstone.SetTemporal(tmR)
 			}
-			clamped = stampDeleteTombstone(tmR, now, spec.retract) || clamped
+			stampDeleteTombstone(tmR, c.relValidFrom(r), now, spec.retract)
 			relTombstones = append(relTombstones, storepkg.RelTombstone{
 				ID:          types.RelID(rid),
 				PrevVersion: r.Version(),
@@ -457,7 +456,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 		tmN = &types.TemporalMetadata{}
 		current.SetTemporal(tmN)
 	}
-	clamped = stampDeleteTombstone(tmN, now, spec.retract) || clamped
+	stampDeleteTombstone(tmN, c.nodeValidFrom(current), now, spec.retract)
 
 	// Single atomic call: PutRelVersion×N + PutNodeVersion + DeleteNodeCascade.
 	// Routes through the BACKLOG 11f scoped sibling when ctx carries a scoped
@@ -473,7 +472,6 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 			if err := scoped.DeleteNodeWithHistoryScoped(id, current.Version(), current, relTombstones, token); err != nil {
 				return nil, err
 			}
-			c.noteClampedClose(clamped)
 			c.opNodeDeletes.Add(1)
 			if len(cascadeRelIDs) != 0 {
 				c.opRelDeletes.Add(int64(len(cascadeRelIDs)))
@@ -484,7 +482,6 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 	if err := c.store.DeleteNodeWithHistory(id, current.Version(), current, relTombstones); err != nil {
 		return nil, err
 	}
-	c.noteClampedClose(clamped)
 	c.opNodeDeletes.Add(1)
 	if len(cascadeRelIDs) != 0 {
 		c.opRelDeletes.Add(int64(len(cascadeRelIDs)))

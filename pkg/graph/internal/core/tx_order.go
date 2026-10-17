@@ -27,8 +27,9 @@ func (c *Core) resolveCallerTxInstant(t types.Instant) (types.Instant, error) {
 }
 
 // checkTxOrder reports whether a caller instant t can end or supersede the
-// current version of an entity: t must be after start (the current version's
-// effective start, see relTxDeleteStart / relValidFrom) and after
+// current version of an entity: t must be after start (an update's version
+// start; 0 for a delete, which may end a version before it starts: the
+// tombstone keeps its believed ValidTo, stampDeleteTombstone) and after
 // every TxFrom and TxTo recorded on the entity's chain — history AND current,
 // because TxFrom is not co-monotonic with version (lesson 62: a validInstantAfter
 // bump, or a backfilled re-import in a chain stored before backlog 38, can
@@ -55,23 +56,6 @@ func checkTxOrder(t, start types.Instant, chain ...*types.TemporalMetadata) erro
 	return nil
 }
 
-// checkCallerDeleteCloses refuses a caller-instant delete when a row it would
-// tombstone carries a recorded close (ValidTo) at or after t. A close exactly
-// at t would make ValidTo == DeletedAt, which the pinned-read normalizers read
-// as "the delete wrote this ValidTo" and reopen; a close after t would be
-// clamped to t and lost for every pin before t (the plain door's known
-// limitation). The plain door moves its own instant instead
-// (deleteInstantClearOfCloses); a caller's t is never moved. A close before t
-// is kept as recorded.
-func checkCallerDeleteCloses(t types.Instant, tms ...*types.TemporalMetadata) error {
-	for _, tm := range tms {
-		if tm != nil && tm.ValidTo != 0 && tm.ValidTo >= t {
-			return fmt.Errorf("%w: recorded close at or after t (ValidTo %d, t %d)", ErrTxOrder, tm.ValidTo, t)
-		}
-	}
-	return nil
-}
-
 // relChainTemporals returns the temporal metadata of every recorded version
 // of a relationship: its history plus current (when non-nil). Call under the
 // relationship's entity lock.
@@ -88,14 +72,6 @@ func (c *Core) relChainTemporals(id types.RelID, current *types.Relationship) ([
 		out = append(out, current.Temporal())
 	}
 	return out, nil
-}
-
-// relTxDeleteStart is the start a caller-instant delete must follow: the
-// current version's effective start (the tombstone clamps ValidTo to t, so
-// t <= the start inverts the valid interval). One start rule (relValidFrom,
-// backlog 62): an in-place write's UpdatedAt does not move it.
-func (c *Core) relTxDeleteStart(r *types.Relationship) types.Instant {
-	return c.relValidFrom(r)
 }
 
 // checkRelCallerTx runs the order rule for a caller instant on relationship
@@ -126,11 +102,6 @@ func (c *Core) nodeChainTemporals(id types.NodeID, current *types.Node) ([]*type
 	return out, nil
 }
 
-// nodeTxDeleteStart is the node twin of relTxDeleteStart.
-func (c *Core) nodeTxDeleteStart(n *types.Node) types.Instant {
-	return c.nodeValidFrom(n)
-}
-
 // checkNodeCallerTx runs the order rule for a caller instant on node current
 // (under its entity lock); start is the door's version start.
 func (c *Core) checkNodeCallerTx(id types.NodeID, current *types.Node, t, start types.Instant) error {
@@ -143,18 +114,15 @@ func (c *Core) checkNodeCallerTx(id types.NodeID, current *types.Node, t, start 
 
 // checkNodeCascadeCallerTx decides a caller-instant node delete before anything
 // is written: the order rule on the node and on every relationship the cascade
-// tombstones (each against its own chain and delete start), then the close
-// rule over all of them — one instant t ends every row, so one failure refuses
-// the whole delete. rels are the Phase-B rows, read under the full entity
+// tombstones (each against its own chain) — one instant t
+// ends every row, so one failure refuses the whole delete. rels are the Phase-B rows, read under the full entity
 // lock. A Model-A foreign incoming stub (ADR-0010) has no local chain (its slot
 // belongs to another machine; the store removes it without a tombstone), so
 // it is not checked.
 func (c *Core) checkNodeCascadeCallerTx(id types.NodeID, current *types.Node, rels []*types.Relationship, t types.Instant) error {
-	if err := c.checkNodeCallerTx(id, current, t, c.nodeTxDeleteStart(current)); err != nil {
+	if err := c.checkNodeCallerTx(id, current, t, 0); err != nil {
 		return err
 	}
-	tms := make([]*types.TemporalMetadata, 0, 1+len(rels))
-	tms = append(tms, current.Temporal())
 	for _, r := range rels {
 		chain, err := c.relChainTemporals(r.ID(), r)
 		if errors.Is(err, storepkg.ErrSlotNotLocal) {
@@ -163,25 +131,22 @@ func (c *Core) checkNodeCascadeCallerTx(id types.NodeID, current *types.Node, re
 		if err != nil {
 			return err
 		}
-		if err := checkTxOrder(t, c.relTxDeleteStart(r), chain...); err != nil {
+		if err := checkTxOrder(t, 0, chain...); err != nil {
 			return fmt.Errorf("cascaded relationship %d: %w", r.ID(), err)
 		}
-		tms = append(tms, r.Temporal())
 	}
-	return checkCallerDeleteCloses(t, tms...)
+	return nil
 }
 
 // checkRelCallerDelete is every refusal a caller-instant delete of current can
-// meet before it writes: the order rule (after the version start, which for a
-// delete includes the valid-from) and a recorded close at or after t. Shared
+// meet before it writes: the order rule (after every stamp of the chain; no
+// version start). A recorded close at or after t, or a start at or after it,
+// is kept by the tombstone (stampDeleteTombstone, backlogs 4, 7). Shared
 // by the delete seam (deleteRelationshipInternal) and the Batch/ingest
 // pre-flight (precheckCallerTxOps), so the two cannot disagree. Call under
 // the relationship's entity lock.
 func (c *Core) checkRelCallerDelete(id types.RelID, current *types.Relationship, at types.Instant) error {
-	if err := c.checkRelCallerTx(id, current, at, c.relTxDeleteStart(current)); err != nil {
-		return err
-	}
-	return checkCallerDeleteCloses(at, current.Temporal())
+	return c.checkRelCallerTx(id, current, at, 0)
 }
 
 // checkRelCallerUpdate is every refusal a caller-instant update (tmp.txAt) of

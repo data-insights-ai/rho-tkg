@@ -8,19 +8,17 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// R0 (nodes) — the plain node doors keep today's stamps after the
-// caller-instant seam lands in deleteNodeLocked / updateNodePreparedInternal.
+// R0 (nodes) — the plain node doors stamp from the clock (backlogs 77 and 4).
 //
-// Written and run green BEFORE the refactor (evidence r0-before-w3.txt). It
-// catches a refactor that:
-//   - stamps a plain update from anything but validInstantAfter(now, version
-//     start) — the exact F+1 / F+2 stamps;
-//   - gives the cascade more than one instant, or stops pushing that instant
-//     past a cascaded relationship's later valid-from (F+11 below);
-//   - stops clamping a scheduled close to the delete instant on the plain door;
-//   - stops MOVING the plain delete instant past a close it lands on, on the
-//     node or on a cascaded relationship (the refusal is for a caller instant
-//     only, handover §6.4);
+// Written before the caller-instant seam landed in deleteNodeLocked /
+// updateNodePreparedInternal (evidence r0-before-w3.txt); updated for the
+// supersede rule (backlog 77) and the tombstone rule (backlogs 4, 7, 25: the
+// delete instant is the clock, a ValidTo it does not write is kept and marked
+// DeleteKeptValidTo). It catches a door that:
+//   - stamps a plain update or delete from anything but the clock;
+//   - gives the cascade more than one instant;
+//   - clamps a scheduled close to the delete instant, or moves the instant
+//     past a close it lands on, on the node or on a cascaded relationship;
 //   - lets the GraphTx or batch door diverge from the standalone door.
 func TestTxBackfillNode_PlainDoorsUnchanged(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
@@ -57,30 +55,29 @@ func TestTxBackfillNode_PlainDoorsUnchanged(t *testing.T) {
 	for _, be := range txbBackends() {
 		for _, d := range doors {
 			t.Run(be.name+"/"+d.name+"/update_floor_future_start", func(t *testing.T) {
+				// A version start F ahead of the clock: each update is stamped
+				// from the clock and starts one past the previous start (F+1,
+				// then F+2), backlog 77.
 				g := be.open(t, false)
 				f := txbWall() + types.Instant(time.Hour.Milliseconds())
 				n := txbAddNode(t, g, "Ref", map[string]any{"tkg_valid_from": f, "w": int64(1)})
-				if err := d.upd(t, g, n.ID(), map[string]any{"w": int64(2)}); err != nil {
-					t.Fatalf("update 1: %v", err)
+				lo, _ := g.Temporal.NowTx()
+				for _, w := range []int64{2, 3} {
+					if err := d.upd(t, g, n.ID(), map[string]any{"w": w}); err != nil {
+						t.Fatalf("update %d: %v", w, err)
+					}
 				}
-				if err := d.upd(t, g, n.ID(), map[string]any{"w": int64(3)}); err != nil {
-					t.Fatalf("update 2: %v", err)
-				}
+				hi, _ := g.Temporal.PeekTx()
 				chain := txbNodeChain(t, g, n.ID())
 				if len(chain) != 3 {
 					t.Fatalf("chain length %d, want 3", len(chain))
 				}
-				want := []types.TemporalMetadata{
-					{ValidFrom: f, TxFrom: nodeTemporalCopy(chain[0]).TxFrom, TxTo: f + 1},
-					{TxFrom: f + 1, TxTo: f + 2, UpdatedAt: f + 1},
-					{TxFrom: f + 2, UpdatedAt: f + 2},
-				}
-				for i, w := range want {
+				for i := range chain {
 					got := nodeTemporalCopy(chain[i])
-					if got.ValidFrom != w.ValidFrom || got.ValidTo != 0 || got.TxFrom != w.TxFrom || got.TxTo != w.TxTo ||
-						got.UpdatedAt != w.UpdatedAt || got.DeletedAt != 0 {
-						t.Fatalf("v%d temporal %+v; want ValidFrom=%d TxFrom=%d TxTo=%d UpdatedAt=%d",
-							chain[i].Version(), got, w.ValidFrom, w.TxFrom, w.TxTo, w.UpdatedAt)
+					if got.ValidFrom != f+types.Instant(i) || got.ValidTo != 0 || got.DeletedAt != 0 ||
+						(i > 0 && (got.TxFrom <= lo || got.TxFrom > hi || got.UpdatedAt != got.TxFrom)) ||
+						(i < 2 && got.TxTo != nodeTemporalCopy(chain[i+1]).TxFrom) {
+						t.Fatalf("v%d temporal %+v; want ValidFrom=%d, a clock TxFrom in (%d, %d]", chain[i].Version(), got, f+types.Instant(i), lo, hi)
 					}
 				}
 			})
@@ -99,10 +96,11 @@ func TestTxBackfillNode_PlainDoorsUnchanged(t *testing.T) {
 					t.Fatalf("stamp %d (prev.TxTo=%d UpdatedAt=%d) outside clock window (%d, %d]", s, prev.TxTo, cur.UpdatedAt, lo, hi)
 				}
 			})
-			t.Run(be.name+"/"+d.name+"/cascade_one_instant_floor", func(t *testing.T) {
-				// Node start F, an outgoing rel (cross-shard on tiered) with
-				// valid-from F+10 and an incoming rel with valid-from F+5: the
-				// one cascade instant is F+11 on every tombstone.
+			t.Run(be.name+"/"+d.name+"/cascade_one_clock_instant", func(t *testing.T) {
+				// Node start F ahead of the clock, an outgoing rel (cross-shard
+				// on tiered) with valid-from F+10 and an incoming rel with
+				// valid-from F+5: the one cascade instant is the clock on every
+				// tombstone, each keeping its open end and start (backlog 4).
 				g := be.open(t, false)
 				f := txbWall() + types.Instant(time.Hour.Milliseconds())
 				n := txbAddNode(t, g, "Ref", map[string]any{"tkg_valid_from": f})
@@ -110,22 +108,24 @@ func TestTxBackfillNode_PlainDoorsUnchanged(t *testing.T) {
 				e2 := txbAddNode(t, g, "Ev", nil)
 				out := txbAddRelByID(t, g, n.ID(), e1.ID(), map[string]any{"tkg_valid_from": f + 10})
 				in := txbAddRelByID(t, g, e2.ID(), n.ID(), map[string]any{"tkg_valid_from": f + 5})
+				lo, _ := g.Temporal.NowTx()
 				if err := d.del(t, g, n.ID()); err != nil {
 					t.Fatalf("delete: %v", err)
 				}
-				want := f + 11
+				hi, _ := g.Temporal.PeekTx()
 				nt := nodeTombstone(t, g, n.ID())
-				if nt.TxTo != want || nt.DeletedAt != want || nt.ValidTo != want || nt.ValidFrom != f {
-					t.Fatalf("node tombstone %+v; want TxTo = DeletedAt = ValidTo = %d", *nt, want)
+				at := nt.DeletedAt
+				if nt.TxTo != at || at <= lo || at > hi || nt.ValidTo != 0 || nt.ValidFrom != f || !nt.DeleteKeptValidTo {
+					t.Fatalf("node tombstone %+v; want TxTo = DeletedAt in (%d, %d], ValidTo 0 kept", *nt, lo, hi)
 				}
 				for _, r := range []*types.Relationship{out, in} {
 					rt := relTombstone(t, g, r.ID())
-					if rt.TxTo != want || rt.DeletedAt != want || rt.ValidTo != want {
-						t.Fatalf("rel %d tombstone %+v; want TxTo = DeletedAt = ValidTo = %d", r.ID(), *rt, want)
+					if rt.TxTo != at || rt.DeletedAt != at || rt.ValidTo != 0 || !rt.DeleteKeptValidTo {
+						t.Fatalf("rel %d tombstone %+v; want TxTo = DeletedAt = %d, ValidTo 0 kept", r.ID(), *rt, at)
 					}
 				}
 			})
-			t.Run(be.name+"/"+d.name+"/delete_clamps_scheduled_close", func(t *testing.T) {
+			t.Run(be.name+"/"+d.name+"/delete_keeps_scheduled_close", func(t *testing.T) {
 				g := be.open(t, false)
 				n := txbAddNode(t, g, "Ref", map[string]any{"tkg_valid_from": dcY2020})
 				future := txbWall() + types.Instant(time.Hour.Milliseconds())
@@ -138,15 +138,16 @@ func TestTxBackfillNode_PlainDoorsUnchanged(t *testing.T) {
 				}
 				hi, _ := g.Temporal.PeekTx()
 				nt := nodeTombstone(t, g, n.ID())
-				if nt.ValidTo != nt.DeletedAt || nt.TxTo != nt.DeletedAt || nt.DeletedAt <= lo || nt.DeletedAt > hi {
-					t.Fatalf("tombstone %+v; want ValidTo = DeletedAt = TxTo in (%d, %d]", *nt, lo, hi)
+				if nt.ValidTo != future || nt.TxTo != nt.DeletedAt || nt.DeletedAt <= lo || nt.DeletedAt > hi || !nt.DeleteKeptValidTo {
+					t.Fatalf("tombstone %+v; want ValidTo %d kept, DeletedAt = TxTo in (%d, %d]", *nt, future, lo, hi)
 				}
 			})
 			for _, on := range []string{"node", "cascaded_rel"} {
-				t.Run(be.name+"/"+d.name+"/delete_moves_past_close_collision_on_"+on, func(t *testing.T) {
+				t.Run(be.name+"/"+d.name+"/delete_at_close_collision_on_"+on, func(t *testing.T) {
 					// The clock reads exactly the recorded close V of the node
-					// or of a cascaded rel: the one plain instant moves past V,
-					// V is kept, node and rel share the moved instant.
+					// or of a cascaded rel: the one plain instant is the clock,
+					// V is kept (marked when the instant is V), the open row's
+					// ValidTo is the instant.
 					g := be.open(t, false)
 					clk := &switchableClock{}
 					g.SetClockForTest(t, clk.Now)
@@ -173,11 +174,12 @@ func TestTxBackfillNode_PlainDoorsUnchanged(t *testing.T) {
 					if on != "node" {
 						closed, other = rt, nt
 					}
-					if closed.ValidTo != v || closed.DeletedAt <= v || closed.TxTo != closed.DeletedAt {
-						t.Fatalf("closed row tombstone %+v; want ValidTo == %d < DeletedAt == TxTo", *closed, v)
+					at := closed.DeletedAt
+					if closed.ValidTo != v || at < v || closed.TxTo != at || closed.DeleteKeptValidTo != (at == v) {
+						t.Fatalf("closed row tombstone %+v; want ValidTo == %d <= DeletedAt == TxTo, marked iff equal", *closed, v)
 					}
-					if other.DeletedAt != closed.DeletedAt || other.TxTo != closed.DeletedAt || other.ValidTo != closed.DeletedAt {
-						t.Fatalf("other row tombstone %+v; want the one moved instant %d", *other, closed.DeletedAt)
+					if other.DeletedAt != at || other.TxTo != at || other.ValidTo != at || other.DeleteKeptValidTo {
+						t.Fatalf("other row tombstone %+v; want the one instant %d written as its ValidTo", *other, at)
 					}
 				})
 			}

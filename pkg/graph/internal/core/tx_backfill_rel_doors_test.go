@@ -111,17 +111,38 @@ func assertTxOrderRefusal(t *testing.T, g *Core, id types.RelID, phase string, b
 	assertRelUnchanged(t, phase, before, snapRel(t, g, id))
 }
 
-// assertCloseRefusal: a caller-instant delete refused because a recorded close
-// lies at or after t. The message says so and names both instants, so a caller
-// can tell it from an ordering failure.
-func assertCloseRefusal(t *testing.T, g *Core, id types.RelID, phase string, before relSnap, err error, validTo, at types.Instant) {
+// assertKeptClose: a caller-instant delete at t of a row whose recorded close
+// v lies at or after t succeeded (backlog 7) and kept the close beside the
+// delete: the tombstone carries ValidTo v, DeletedAt = TxTo = t and
+// DeleteKeptValidTo; asOf(t-1), the row as believed just before t, carries the
+// close and no delete.
+func assertKeptClose(t *testing.T, phase string, err error, tomb func() *types.TemporalMetadata, asOf func(pin types.Instant) (*types.TemporalMetadata, error), v, at types.Instant) {
 	t.Helper()
-	assertTxOrderRefusal(t, g, id, phase, before, err, "recorded close at or after t")
-	for _, n := range []types.Instant{validTo, at} {
-		if !strings.Contains(err.Error(), fmt.Sprint(n)) {
-			t.Fatalf("[%s] err = %q; want both instants (ValidTo %d, t %d) named", phase, err, validTo, at)
-		}
+	if err != nil {
+		t.Fatalf("[%s] DeleteWithTx(%d): %v; want the close %d kept", phase, at, err, v)
 	}
+	if tm := tomb(); tm.ValidTo != v || tm.DeletedAt != at || tm.TxTo != at || !tm.DeleteKeptValidTo {
+		t.Fatalf("[%s] tombstone %+v; want ValidTo %d, DeletedAt = TxTo = %d, DeleteKeptValidTo", phase, *tm, v, at)
+	}
+	tm, err := asOf(at - 1)
+	if err != nil {
+		t.Fatalf("[%s] as-of %d: %v", phase, at-1, err)
+	}
+	if tm.ValidTo != v || tm.DeletedAt != 0 {
+		t.Fatalf("[%s] as-of %d temporal %+v; want the believed close %d, not deleted", phase, at-1, *tm, v)
+	}
+}
+
+// relKeptClose returns assertKeptClose's tombstone and as-of readers for rel id.
+func relKeptClose(t *testing.T, g *Core, id types.RelID) (func() *types.TemporalMetadata, func(types.Instant) (*types.TemporalMetadata, error)) {
+	return func() *types.TemporalMetadata { return relTombstone(t, g, id) },
+		func(pin types.Instant) (*types.TemporalMetadata, error) {
+			r, err := g.Temporal.RelAsOf(id, pin)
+			if err != nil {
+				return nil, err
+			}
+			return r.Temporal(), nil
+		}
 }
 
 // R1 — gate off.
@@ -328,10 +349,9 @@ func TestTxBackfillRel_OrderEqualReversed(t *testing.T) {
 
 // R4 — t at or below the current version's start.
 //
-// Catches: an inverted valid interval (a delete at t <= ValidFrom clamps
-// ValidTo below ValidFrom — the store then rejects it with
-// ErrInvalidStoreMutation, which must not leak; with a DERIVED valid-from the
-// store accepts the inverted row silently), and an update at t <= UpdatedAt
+// Catches: a delete at t <= ValidFrom that writes a ValidTo below ValidFrom
+// (the store rejects it with ErrInvalidStoreMutation) instead of keeping the
+// open end (DeleteKeptValidTo, backlog 4), and an update at t <= UpdatedAt
 // (an in-place update moved UpdatedAt above TxFrom: a rule reading only TxFrom
 // stamps a version that starts before its predecessor's last change).
 func TestTxBackfillRel_OrderValidStart(t *testing.T) {
@@ -346,6 +366,18 @@ func TestTxBackfillRel_OrderValidStart(t *testing.T) {
 				base := txbWall() - 2*txbHour
 				vf := base + 100
 				r := txbBackfillRelWith(t, g, base, map[string]any{"tkg_valid_from": vf, "w": int64(1)})
+				if strings.Contains(d.name, "Delete") {
+					// A delete before the start keeps the start and the open
+					// end (DeleteKeptValidTo, backlog 4); no start rule.
+					at := base + 50
+					if err := d.run(g, r.ID(), at); err != nil {
+						t.Fatalf("%s(t=%d before ValidFrom=%d): %v", d.name, at, vf, err)
+					}
+					if tm := relTombstone(t, g, r.ID()); tm.DeletedAt != at || tm.ValidFrom != vf || tm.ValidTo != 0 || !tm.DeleteKeptValidTo {
+						t.Fatalf("%s: tombstone %+v; want DeletedAt %d, ValidFrom %d, open end kept", d.name, *tm, at, vf)
+					}
+					continue
+				}
 				for _, at := range []types.Instant{base + 50, vf} {
 					phase := fmt.Sprintf("%s t=%d ValidFrom=%d", d.name, at, vf)
 					before := snapRel(t, g, r.ID())
@@ -551,98 +583,86 @@ func TestTxBackfillRel_UpdateStamps(t *testing.T) {
 	}
 }
 
-// R7 — a recorded close exactly at t.
+// R7 — a recorded close exactly at t, and just before it.
 //
-// Catches: t moved silently past the close (the plain door's behaviour — the
-// caller asked for t, a different instant is a lie about when belief ended).
-// Counterpart: t = close+1 keeps the close and stamps t exactly.
+// Catches: t moved silently past the close (the plain door's behaviour before
+// backlog 4 — the caller asked for t, a different instant is a lie about when
+// belief ended), and a close at t read back at t-1 as delete-written (open).
+// t == close is stamped exactly and keeps the close (DeleteKeptValidTo,
+// backlog 7); t = close+1 keeps it unmarked.
 func TestTxBackfillRel_CloseCollision(t *testing.T) {
 	t.Parallel()
 	for _, be := range txbBackends() {
-		t.Run(be.name, func(t *testing.T) {
-			g := be.open(t, true)
-			clk := &switchableClock{}
-			g.SetClockForTest(t, clk.Now)
-			ctx := context.Background()
-			f := txbBackfillRel(t, g)
-			x := txbWall() + txbHour
-			v := x + 500
-			clk.at.Store(int64(x))
-			if err := g.Rels.CloseVersion(ctx, f.id, v); err != nil {
-				t.Fatalf("CloseVersion: %v", err)
-			}
-			clk.at.Store(int64(x + 1000))
-			before := snapRel(t, g, f.id)
-			assertCloseRefusal(t, g, f.id, "t == ValidTo", before, g.Rels.DeleteWithTx(ctx, f.id, v), v, v)
-			if err := g.Rels.DeleteWithTx(ctx, f.id, v+1); err != nil {
-				t.Fatalf("DeleteWithTx(close+1): %v", err)
-			}
-			tomb := relTombstone(t, g, f.id)
-			if tomb.ValidTo != v || tomb.DeletedAt != v+1 || tomb.TxTo != v+1 {
-				t.Fatalf("tombstone %+v; want ValidTo=%d DeletedAt = TxTo = %d", *tomb, v, v+1)
-			}
-			r, err := g.Temporal.RelAsOf(f.id, v)
-			if err != nil {
-				t.Fatalf("RelAsOf(t-1): %v", err)
-			}
-			if tm := r.Temporal(); tm.ValidTo != v || tm.DeletedAt != 0 {
-				t.Fatalf("RelAsOf(t-1) temporal %+v; want the recorded close %d, not deleted", *tm, v)
-			}
-		})
+		for _, after := range []types.Instant{0, 1} {
+			t.Run(fmt.Sprintf("%s/t=close+%d", be.name, after), func(t *testing.T) {
+				g := be.open(t, true)
+				clk := &switchableClock{}
+				g.SetClockForTest(t, clk.Now)
+				ctx := context.Background()
+				f := txbBackfillRel(t, g)
+				x := txbWall() + txbHour
+				v := x + 500
+				clk.at.Store(int64(x))
+				if err := g.Rels.CloseVersion(ctx, f.id, v); err != nil {
+					t.Fatalf("CloseVersion: %v", err)
+				}
+				clk.at.Store(int64(x + 1000))
+				at := v + after
+				if err := g.Rels.DeleteWithTx(ctx, f.id, at); err != nil {
+					t.Fatalf("DeleteWithTx(%d): %v", at, err)
+				}
+				tomb := relTombstone(t, g, f.id)
+				if tomb.ValidTo != v || tomb.DeletedAt != at || tomb.TxTo != at || tomb.DeleteKeptValidTo != (after == 0) {
+					t.Fatalf("tombstone %+v; want ValidTo=%d DeletedAt = TxTo = %d, kept marker %v", *tomb, v, at, after == 0)
+				}
+				r, err := g.Temporal.RelAsOf(f.id, at-1)
+				if err != nil {
+					t.Fatalf("RelAsOf(t-1): %v", err)
+				}
+				if tm := r.Temporal(); tm.ValidTo != v || tm.DeletedAt != 0 {
+					t.Fatalf("RelAsOf(t-1) temporal %+v; want the recorded close %d, not deleted", *tm, v)
+				}
+			})
+		}
 	}
 }
 
 // R8 — a scheduled close after t.
 //
-// Decision (W1, confirmed by the coordinator 2026-10-09): a pin before t must
-// show the ValidTo believed
-// then. A delete tombstone is one row: clamping the scheduled close V to t
-// (the plain door's behaviour, R0) makes ValidTo == DeletedAt, which the
-// pinned-read normalizer reopens to 0 — the believed V is lost (the backlog's
-// "future-scheduled close, then delete" known limitation). Keeping V on the
-// tombstone instead would leave the deleted row valid until V for every
-// current valid-time read. So a caller-instant delete REFUSES a close at or
-// after t (ErrTxOrder, "recorded close at or after t", both instants named)
-// and the pin keeps V. It fails closed; relaxing it later is additive. A close
-// before t is kept untouched (R7's counterpart); the plain Delete keeps its
-// clamp (R0).
+// A pin before t must show the ValidTo believed then (decision W1,
+// 2026-10-09). Until backlog 7 a caller-instant delete refused a close at or
+// after t, because the one tombstone row clamped the close to t and the
+// pinned-read normalizer reopened it. The tombstone now keeps the close
+// beside the delete (DeleteKeptValidTo): the delete succeeds, a pin before t
+// keeps V, validity ends at t from t on.
 //
-// Catches: the close lost by the clamp (pin t-1 shows an open-ended row) and
-// a tombstone written before the refusal.
+// Catches: the close lost by a clamp (pin t-1 shows an open-ended row), a
+// refusal left in place, and t moved.
 func TestTxBackfillRel_ScheduledCloseAfterT(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
 	}
 	t.Parallel()
 	for _, be := range txbBackends() {
-		t.Run(be.name, func(t *testing.T) {
-			g := be.open(t, true)
-			clk := &switchableClock{}
-			g.SetClockForTest(t, clk.Now)
-			ctx := context.Background()
-			f := txbBackfillRel(t, g)
-			x := txbWall() + txbHour
-			v := x + 500
-			clk.at.Store(int64(x))
-			if err := g.Rels.CloseVersion(ctx, f.id, v); err != nil {
-				t.Fatalf("CloseVersion: %v", err)
-			}
-			clk.at.Store(int64(x + 1000))
-			for _, at := range []types.Instant{v - 1, x + 1} {
-				phase := fmt.Sprintf("t=%d close=%d", at, v)
-				before := snapRel(t, g, f.id)
-				assertCloseRefusal(t, g, f.id, phase, before, g.Rels.DeleteWithTx(ctx, f.id, at), v, at)
-				for _, pin := range []types.Instant{at - 1, at} {
-					r, err := g.Temporal.RelAsOf(f.id, pin)
-					if err != nil {
-						t.Fatalf("[%s] RelAsOf(%d): %v", phase, pin, err)
-					}
-					if tm := r.Temporal(); tm.ValidTo != v || tm.DeletedAt != 0 {
-						t.Fatalf("[%s] RelAsOf(%d) temporal %+v; want the believed close %d", phase, pin, *tm, v)
-					}
+		for _, back := range []types.Instant{1, 499} { // t = v-1 and t = x+1
+			t.Run(fmt.Sprintf("%s/t=close-%d", be.name, back), func(t *testing.T) {
+				g := be.open(t, true)
+				clk := &switchableClock{}
+				g.SetClockForTest(t, clk.Now)
+				ctx := context.Background()
+				f := txbBackfillRel(t, g)
+				x := txbWall() + txbHour
+				v := x + 500
+				clk.at.Store(int64(x))
+				if err := g.Rels.CloseVersion(ctx, f.id, v); err != nil {
+					t.Fatalf("CloseVersion: %v", err)
 				}
-			}
-		})
+				clk.at.Store(int64(x + 1000))
+				at := v - back
+				tomb, asOf := relKeptClose(t, g, f.id)
+				assertKeptClose(t, fmt.Sprintf("t=%d close=%d", at, v), g.Rels.DeleteWithTx(ctx, f.id, at), tomb, asOf, v, at)
+			})
+		}
 	}
 }
 

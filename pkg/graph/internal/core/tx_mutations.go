@@ -544,8 +544,7 @@ func (tx *GraphTx) deleteRelationshipAtLocked(id types.RelID, spec tombstoneSpec
 // and refusals of Rels().DeleteWithTx: txTo must be a positive instant not in
 // the future (ErrInvalidTxFrom), then Config.AllowTxBackfill
 // (ErrTxBackfillDisabled); under the entity lock it must follow every
-// recorded TxFrom/TxTo and the version start, and no recorded close may lie at
-// or after it (ErrTxOrder). Snapshot, rollback and commit behave exactly as
+// recorded TxFrom/TxTo and the version start (ErrTxOrder). Snapshot, rollback and commit behave exactly as
 // DeleteRelationship: Rollback restores the row and its history.
 func (tx *GraphTx) DeleteRelationshipWithTx(id types.RelID, txTo types.Instant) error {
 	if err := tx.lockActiveCoreWrite(); err != nil {

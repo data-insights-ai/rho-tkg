@@ -123,9 +123,8 @@ func TestReImportKeepsEveryLife(t *testing.T) {
 				})
 				// Close after the current version's start (its valid-from, else
 				// its TxFrom — backlog 62; a backfilled valid-from can put it
-				// ahead of the clock) and before the second delete (a close after
-				// a plain delete's instant is clamped to it — a separate,
-				// documented limit).
+				// ahead of the clock, and then the second delete, stamped at the
+				// clock, keeps it: DeleteKeptValidTo, backlog 25).
 				closeV := e.pin() + 1
 				for _, r := range e.chain(id) {
 					if r.current {
@@ -141,9 +140,6 @@ func TestReImportKeepsEveryLife(t *testing.T) {
 				})
 				step("second delete", func() { e.mustDel(id) })
 				d2 := e.tombstoneAt(id)
-				if d2 <= closeV {
-					t.Fatalf("fixture: second delete %d not after the close %d", d2, closeV)
-				}
 				valids = rlWith(valids, d2)
 				views = e.record(pins, valids)
 				step("second re-import", func() {
@@ -386,18 +382,16 @@ func TestReImportBackfillRefusalLeavesNoToken(t *testing.T) {
 }
 
 // TestReImportAfterDeleteAheadOfClock: a delete of an entity whose valid start
-// lies in the future is stamped after that start (ahead of the transaction
-// clock). A plain re-import is still recorded after the delete — its own row
-// is stamped one past the chain's stamps, like the delete's, without moving
-// the commit clock (TestReImportDoesNotAdvanceTheClock) — so it belongs to
-// the new life on every door.
+// lies in the future is stamped at the transaction clock, before that start
+// (backlog 4: it used to be stamped one past the start, ahead of the clock),
+// and keeps the open end (DeleteKeptValidTo): the first life is valid at no
+// instant once the delete is recorded. A plain re-import is recorded after
+// the delete, so it belongs to the new life on every door.
 //
-// Catches: a plain re-import stamped with the clock below the delete (it joins
-// the earlier life and reads absent from the delete on in the valid-time
-// doors). Not covered here: a later plain Update of the re-imported row is
-// stamped at the clock, below the re-import — the open "(HIGH?) Future
-// transaction time from validInstantAfter" item of the 2026-09-24 review
-// (every plain door stamps ahead of the clock without a floor).
+// Catches: a delete stamped ahead of the clock (a pin taken after it still
+// answers the first life), a re-import stamped below the delete (it joins the
+// earlier life), and the first life answering after the delete at its future
+// start in the unpinned doors.
 func TestReImportAfterDeleteAheadOfClock(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
@@ -407,13 +401,15 @@ func TestReImportAfterDeleteAheadOfClock(t *testing.T) {
 		e := mk(t)
 		future := e.pin() + types.Instant(time.Hour.Milliseconds())
 		id := e.add("T", future, nil)
+		pins := []types.Instant{e.pin()}
 		e.mustDel(id)
 		d := e.tombstoneAt(id)
-		if now := e.pin(); d <= now {
-			t.Fatalf("fixture: delete %d is not ahead of the clock %d", d, now)
+		if now := e.pin(); d > now || d >= future {
+			t.Fatalf("[%s] delete %d: want it at the clock %d, before the start %d", e.kind(), d, now, future)
 		}
-		pins := []types.Instant{e.pin()}
+		pins = append(pins, e.pin())
 		valids := rlWith(rlValids, d, future)
+		e.agree("after delete", pins, valids)
 		views := e.record(pins, valids)
 		rows := e.historyRows(id)
 		importV := e.mustReimport(id, map[string]any{"tkg_valid_from": types.Instant(5000), "x": int64(9)})
@@ -425,9 +421,6 @@ func TestReImportAfterDeleteAheadOfClock(t *testing.T) {
 				t.Fatalf("[%s] delete %d, re-import TxFrom %d: not after the delete:%s", e.kind(), d, r.tm.TxFrom, e.chainString(id))
 			}
 		}
-		// Both the delete and the re-import lie ahead of every pin the clock
-		// can hand out: the pinned doors still read the first life; the
-		// unpinned doors (every row) read the new life after D.
 		pins = append(pins, e.pin())
 		e.agree("after re-import", pins, valids)
 		want := ccVer("T", importV)

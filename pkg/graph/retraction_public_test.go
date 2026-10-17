@@ -327,7 +327,7 @@ func TestRetract_RefusesUnknownDeletedAndRetracted(t *testing.T) {
 // for a valid t (the value check wins for an invalid one); t = 0, -1, or in
 // the future: ErrInvalidTxFrom with the gate on and off; t at or below a
 // recorded stamp of the chain, or below the version start: ErrTxOrder (which
-// wraps ErrInvalidTxFrom); a recorded close at or after t: ErrTxOrder; a node
+// wraps ErrInvalidTxFrom); a recorded close after t is kept; a node
 // retraction whose cascaded relationship carries a TxFrom at or above t:
 // ErrTxOrder for the whole cascade. Every refusal writes nothing. The
 // counterpart (t one past every stamp) is stamped verbatim. Catches: WithTx
@@ -425,7 +425,7 @@ func TestRetractWithTx_GatesAndOrder(t *testing.T) {
 						t.Fatalf("%s: refused cascade removed the node: %v", d.name, err)
 					}
 
-					// A recorded close at or after t refuses.
+					// A recorded close after t is kept by the tombstone (backlog 7).
 					c, err := g2.Nodes().Add(ctx, []string{"Ev"}, map[string]any{"tkg_valid_from": f.vf})
 					if err != nil {
 						t.Fatal(err)
@@ -434,8 +434,8 @@ func TestRetractWithTx_GatesAndOrder(t *testing.T) {
 					if err := g2.Nodes().CloseVersion(ctx, c.ID(), closeAt); err != nil {
 						t.Fatalf("CloseVersion: %v", err)
 					}
-					if err := door2.node(c.ID(), nowTx(t, g2)); !errors.Is(err, graphpkg.ErrTxOrder) {
-						t.Fatalf("%s: recorded close after t: err = %v; want ErrTxOrder", d.name, err)
+					if err := door2.node(c.ID(), nowTx(t, g2)); err != nil {
+						t.Fatalf("%s: recorded close after t: err = %v; want the close kept", d.name, err)
 					}
 
 					// Counterpart: one past every stamp is accepted verbatim.

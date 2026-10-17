@@ -24,13 +24,11 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 3 | MEDIUM (perf, unmeasured) | Temporal adjacency scan cost (v4.35.0 follow-up) | open; measure first |
 | 4 | HIGH? / MEDIUM? (traced, not reproduced) | Temporal semantics review 2026-09-24: traced findings | open; each needs a failing two-phase test first; code unchanged at the cited sites (`resolveOpenEndInstant`, `validInstantAfter` in `core/temporal.go`) |
 | 5 | MEDIUM (perf) | P7 row compaction follow-ups | open; options (a)-(d) unbuilt (P7 itself shipped in v4.40.0) |
-| 7 | FEATURE (limitation) | Caller-instant delete of a row with a scheduled close | open; `DeleteWithTx` refuses `ValidTo >= t` with `ErrTxOrder` (R8, v4.44.0) |
 | 10 | FEATURE | Tiered store: remaining work after composite + rel temporal indexes | open: (b) rel property indexes (`CreateRelPropertyIndex` declines on tiered) and node `TemporalCandidateCapability`; (a) done v4.51.6 |
 | 13 | MEDIUM | Ingest applier attributes group errors by numeric entity id, not by kind | open; `groupApplyError` still keys `idToGroup` by `types.EntityID` (`core/ingest.go`) |
 | 16 | MEDIUM (contract) | Range folds under an interval: predicate-anywhere or value at the resolved version? | open; decision pending; behaviour documented in the v4.44.0 CHANGELOG. The predicate-anywhere range at a pin has its own door since round 9 (`ForEachByLabelPropertyRangeAnyVersion`, R9-1); the existing doors are unchanged |
 | 20 | LOW (TEST-GAP, perf) | Effective-read cost: RelAtTx benchmark targets unmeasured | fixes 1a (v4.44.1), 1b (v4.46.0), 1c (v4.47.0), 2a (v4.46.0) shipped; only the RelAtTx benchmarks remain |
 | 23 | LOW (perf, unmeasured) | `changeFeedPage` prefetches past its page | open; `PrefetchValues = true`, no `opts.Prefix` (`badgerstore_changelog.go:648-659`) |
-| 25 | MEDIUM | A future close followed by a delete changes the answer at an earlier pin | open; `stampDeleteTombstone` still clamps (`core/temporal.go:133-137`) |
 | 26 | LOW (known limit) | Old chains with collided versions keep answering in the old version order | open; schedule only if a consumer holds such chains |
 | 31 | LOW | Bulk and point as-of disagree with the cascade oracle on version gaps | open; fix when a consumer holds such chains |
 | 37 | LOW | Tiered error-rollback restore leaves a window with empty history | open; `restoreRelHistorySnapshot` still truncates then puts (`tieredstore_write_history.go:899`) |
@@ -179,21 +177,8 @@ test passes.
   (`c.resolveOpenEndInstant`, `temporal.go`; now = `c.readNow()` since 2026-09-24, so a
   version stamped ahead of the wall is no longer missed), so an entity valid only in the
   future is missed; `NodesRelating` keeps the open end as +inf.
-- **(HIGH?) Future transaction time from `validInstantAfter`.** Delete of a row whose explicit
-  ValidFrom is in the future stamps `DeletedAt/TxTo = ValidFrom + 1` without advancing the floor
-  (`TestReImportDoesNotAdvanceTheClock` pins the clock), contradicting "every committed entity has
-  TxFrom <= NowTx()" (`txtime.go` ~L182) for the re-import after it. The Update/CloseVersion half
-  is closed by item 77 (fixed on main, see Closed table). Delete half REPRODUCED 2026-10-17:
-  `TestDeleteAheadOfClock4` (parked as `tasks/evidence/4/delete_ahead4_test.go.txt`, branch worktree-agent-a0d52d5298e44faee, red output `tasks/evidence/4/red.txt`; a pin
-  taken after a far-future delete still answers the entity). The 77 mirror (tx instant = clock,
-  `txAfter`) is refused by the store: the tombstone's ValidTo is the delete instant, now below
-  ValidFrom (`store/invariants.go:292`, `tasks/evidence/4/clock-stamp-attempt.txt`); keeping ValidTo =
-  ValidFrom + 1 breaks the "ValidTo == DeletedAt" delete marker read by the pinned normalizers
-  (`core/txtime.go:502`, `memory/memorystore_history.go:1226`, `storeutil/asof_select.go:169`,
-  `index/property_tx_members_window.go:87`). The excise's void row cannot carry it either: the row
-  that ends the life must carry DeletedAt/TxTo, and a void row with deleted_at is rejected
-  (`storeutil/wire.go:172`, `types/temporal.go:71` "never a tombstone"; the excise refuses a deleted
-  entity, `core/excise.go:49`). Decision needed: tombstone shape for a delete before the start.
+- **(HIGH?) Future transaction time from `validInstantAfter`.** Closed: the Update/CloseVersion half by
+  item 77, the delete half by the tombstone marker `DeleteKeptValidTo` (reader v4.62.0, writer v4.63.0, see Closed table).
 - **(MEDIUM?) As-of vs point resolver order.** `SelectAsOf` picks the newest candidate by
   version; the point resolver breaks overlaps by (TxFrom, version). After a cascade whose rows
   carry a lower TxFrom than a later-version Update, `NodeAsOf` and `NodeAtTx` can pick
@@ -205,19 +190,12 @@ test passes.
   before the last update, where `NodeAt` returns the older version.
 - **(LOW) Snowflake ID horizon.** 48-bit microseconds from 2026-01-01 end on 2034-12-02
   (arithmetic). Needs a plan before v4 data outlives it; v5 drops clock bits from IDs.
-- **(KNOWN LIMITATION) Future-scheduled close, then delete** — tracked as item 25 (and item 7).
 
 ### 5. P7 row compaction follow-ups
 
 *MEDIUM (perf)* — open; options (a)-(d) unbuilt (P7 itself shipped in v4.40.0).
 
 **P7 row compaction — follow-ups** (MEDIUM, perf; P7 itself shipped in v4.40.0: 608 → 388 B per P6 HOP row, 531 → 401 B per node). Remaining measured terms per P6 HOP row: struct 80, compact metadata 96, properties 128, `rels` 22, `typeIdx` 21, adjacency ~35. Options, none built: (a) property keys as tokens in a frozen row's own representation (−32 B at 4 properties; every property accessor needs a second path, and a process-wide key table must be bounded); (b) compact form for updated / history versions (today only first versions compact; matters for update-heavy workloads — measure one first); (c) the badger entity cache could cache `CompactFrozenCopy` rows too (its budget uses `ApproxHeapBytes`, which already knows the compact size); (d) store-side interning of repeated string value boxes (legacy schema: ~16 B per `actor`; ai-soc P6 already shares boxes, so no consumer needs it now). (The 3.15 M `ByType` gap seen on a loaded host did not reproduce on a quiet one: median 9.07 → 9.56 M rows/s, CHANGELOG.) "Lazy adjacency" was not built: compact sets save always, and a lazy build would come back on the first adjacency read (sigma's hop scans).
-
-### 7. Caller-instant delete of a row with a scheduled close
-
-*FEATURE (limitation)* — open; `DeleteWithTx` refuses `ValidTo >= t` with `ErrTxOrder` (R8, v4.44.0).
-
-**Caller-instant delete of a row with a scheduled close** (FEATURE, follows item 6): `DeleteWithTx(id, t)` refuses when the recorded `ValidTo >= t`, because one tombstone row cannot end belief at `t` and keep the close that pins before `t` believed (decision 2026-10-09, tx-backfill handover §6.11 (removed, in git history); the refusal shipped in v4.44.0, `core/tx_order.go`). Lifting it needs a tombstone that keeps the believed `ValidTo` beside the deletion instant (no clamp for a caller instant), with the normalizer (`normalizeTemporalVisibleAtTxTime`, `core/txtime.go:495`) and the valid-time history reads agreeing. Write the two-phase red test first.
 
 ### 10. Tiered store: remaining work after composite + rel temporal indexes
 
@@ -246,12 +224,6 @@ Missing: `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}` with targets < 1 µs pla
 *LOW (perf, unmeasured)* — open; `PrefetchValues = true`, no `opts.Prefix` (`badgerstore_changelog.go:648-659`).
 
 **`changeFeedPage` prefetches past its page** (LOW, perf, found by the review of the history-prefix fix 2026-10-09; not measured): `store/badger/badgerstore_changelog.go:654-659` iterates with `PrefetchValues = true`, no `opts.Prefix`, `Seek(start)` then `ValidForPrefix(ChangeLogPrefix())`: a small-limit poll near the tail prefetches up to 100 values it never uses and may read past the change-log keyspace. Fix: `opts.Prefix = prefix` before `NewIterator`, and `PrefetchValues = limit == 0 || limit > 100`. Measure with a polling benchmark first (replica watchers poll it).
-
-### 25. A future close followed by a delete changes the answer at an earlier pin
-
-*MEDIUM* — open; `stampDeleteTombstone` still clamps (`core/temporal.go:133-137`).
-
-**A future close followed by a delete changes the answer at an earlier pin** (MEDIUM, pre-existing on main, found by the review of the cascade-correctness branch 2026-10-09): `CloseVersion(far-1)` → pin → `Delete`: `AsOf(pin)` changes from `[1000,far-1)` to `[1000,inf)` and `AtTx(far, pin)` from absent to present, because `stampDeleteTombstone` clamps the close to the delete instant (`core/temporal.go:136`) and the as-of rewind (`normalizeTemporalVisibleAtTxTime`, `core/txtime.go:495`) reopens it to 0 (the same "known limitation: future-scheduled close, then delete" of the 2026-09-24 review, now that the life-end cap exists the delete could keep a finite ValidTo). Red test first: two-phase on all four backends, node and rel; fix: the tombstone keeps the believed ValidTo beside the deletion instant (see item 7). (Seen again on a re-imported ID's earlier life, item L review 2026-10-09.)
 
 ### 26. Old chains with collided versions keep answering in the old version order
 
@@ -412,7 +384,10 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 73 (FEATURE, René, sigma-tkgd, ai-soc) — `Config.UntimedValidStart`: untimed first version from TxFrom (default) or -inf, `Admin().SetUntimedValidStart` one-way conversion, marker 7 | `[4.56.0]` Added + Deprecated; `[4.57.0]` Changed (default for new stores `UntimedUnbounded`, zero value `UntimedDefault`, existing stores keep their mode); evidence `tasks/evidence/untimed-mode/`, `tasks/evidence/untimed-default-flip/` |
 | Item 74 (PERF, ai-soc) — first page after an open waited ~3 min: one full store scan per declared rel property index (`buildRelPropTx`, 123 of 259 s CPU); now one scan per kind builds every declared sidecar, and the open image carries the built ones | `[4.56.1]` Changed; evidence `tasks/evidence/sidecar-one-scan/` |
 | Item 75 (PERF, ai-soc) — paged effective doors prune valid-filtered candidates by the envelope index (no automatic build: a full type scan plus RAM and a write cost per relationship forever; reopen if a consumer cannot declare `CreateRelTemporal`) | `[4.56.1]` Changed; evidence `tasks/evidence/page-valid-prune/` |
-| Item 77 (BUG, found by row 67) — a plain superseding write (Update, labels, CAS, CloseVersion) of a version starting in the future stamped that start + 1 as TxFrom, ahead of the clock, so `NodeAt` / `RelAt` answered an older version than the head timeline; the start is now the row's ValidFrom, TxFrom the clock (`supersede`, `core/temporal.go`) | fixed on main `80b09242`, ships in v4.61.1 (`[Unreleased]` Fixed); test `TestPointDoorAheadOfClock77` |
+| Item 77 (BUG, found by row 67) — a plain superseding write (Update, labels, CAS, CloseVersion) of a version starting in the future stamped that start + 1 as TxFrom, ahead of the clock, so `NodeAt` / `RelAt` answered an older version than the head timeline; the start is now the row's ValidFrom, TxFrom the clock (`supersede`, `core/temporal.go`) | fixed on main `80b09242`, ships in v4.62.0 (`[Unreleased]` Fixed); test `TestPointDoorAheadOfClock77` |
+| Item 4 delete half (HIGH, reproduced 2026-10-17) — a plain delete of a row starting in the future stamped `DeletedAt` / `TxTo` = start + 1, ahead of the clock; now the clock, the tombstone keeps its start and open end marked `DeleteKeptValidTo` | reader v4.62.0 (Added, Deprecated), writer v4.63.0 (`[Unreleased]` Changed); test `TestDeleteAheadOfClock4`; evidence `tasks/evidence/4/` |
+| Item 25 (MEDIUM) — a future close followed by a delete changed the answer at an earlier pin (the delete clamped the close) | v4.63.0 (`[Unreleased]` Changed, announced in v4.62.0); the tombstone keeps the close (`DeleteKeptValidTo`); test `TestDeleteKeepsScheduledClose25` |
+| Item 7 (FEATURE) — `DeleteWithTx` refused a row with a recorded close at or after t | v4.63.0 (`[Unreleased]` Changed, announced in v4.62.0); the tombstone keeps the close; test `TestDeleteWithTxKeepsScheduledClose7` |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 

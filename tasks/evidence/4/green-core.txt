@@ -1,0 +1,40 @@
+=== RUN   TestDeleteAheadOfClock4
+=== RUN   TestDeleteAheadOfClock4/boundary_now+1/rel=false
+=== RUN   TestDeleteAheadOfClock4/boundary_now+1/rel=true
+=== RUN   TestDeleteAheadOfClock4/boundary/rel=false
+=== RUN   TestDeleteAheadOfClock4/boundary/rel=true
+=== RUN   TestDeleteAheadOfClock4/far_future/rel=false
+=== RUN   TestDeleteAheadOfClock4/far_future/rel=true
+=== RUN   TestDeleteAheadOfClock4/past/rel=false
+=== RUN   TestDeleteAheadOfClock4/past/rel=true
+--- PASS: TestDeleteAheadOfClock4 (0.00s)
+    --- PASS: TestDeleteAheadOfClock4/boundary_now+1/rel=false (0.00s)
+    --- PASS: TestDeleteAheadOfClock4/boundary_now+1/rel=true (0.00s)
+    --- PASS: TestDeleteAheadOfClock4/boundary/rel=false (0.00s)
+    --- PASS: TestDeleteAheadOfClock4/boundary/rel=true (0.00s)
+    --- PASS: TestDeleteAheadOfClock4/far_future/rel=false (0.00s)
+    --- PASS: TestDeleteAheadOfClock4/far_future/rel=true (0.00s)
+    --- PASS: TestDeleteAheadOfClock4/past/rel=false (0.00s)
+    --- PASS: TestDeleteAheadOfClock4/past/rel=true (0.00s)
+=== RUN   TestDeleteKeepsScheduledClose25
+=== RUN   TestDeleteKeepsScheduledClose25/far/rel=false
+=== RUN   TestDeleteKeepsScheduledClose25/far/rel=true
+=== RUN   TestDeleteKeepsScheduledClose25/boundary_now+1/rel=false
+=== RUN   TestDeleteKeepsScheduledClose25/boundary_now+1/rel=true
+--- PASS: TestDeleteKeepsScheduledClose25 (0.00s)
+    --- PASS: TestDeleteKeepsScheduledClose25/far/rel=false (0.00s)
+    --- PASS: TestDeleteKeepsScheduledClose25/far/rel=true (0.00s)
+    --- PASS: TestDeleteKeepsScheduledClose25/boundary_now+1/rel=false (0.00s)
+    --- PASS: TestDeleteKeepsScheduledClose25/boundary_now+1/rel=true (0.00s)
+=== RUN   TestDeleteWithTxKeepsScheduledClose7
+=== RUN   TestDeleteWithTxKeepsScheduledClose7/close_after_t/rel=false
+=== RUN   TestDeleteWithTxKeepsScheduledClose7/close_after_t/rel=true
+=== RUN   TestDeleteWithTxKeepsScheduledClose7/close_at_t/rel=false
+=== RUN   TestDeleteWithTxKeepsScheduledClose7/close_at_t/rel=true
+--- PASS: TestDeleteWithTxKeepsScheduledClose7 (0.00s)
+    --- PASS: TestDeleteWithTxKeepsScheduledClose7/close_after_t/rel=false (0.00s)
+    --- PASS: TestDeleteWithTxKeepsScheduledClose7/close_after_t/rel=true (0.00s)
+    --- PASS: TestDeleteWithTxKeepsScheduledClose7/close_at_t/rel=false (0.00s)
+    --- PASS: TestDeleteWithTxKeepsScheduledClose7/close_at_t/rel=true (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.026s

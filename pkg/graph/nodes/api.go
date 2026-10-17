@@ -293,12 +293,6 @@ func (a *API) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[st
 }
 
 // Delete deletes the node honoring ctx.
-//
-// Changes in v4.63.0 (backlogs 4, 7, 25): the delete is stamped at the commit
-// clock also for a row whose start lies ahead, and a ValidTo it does not write
-// (a recorded close at or after the delete, the open end of a row starting at
-// or after it) is kept in a tombstone marked Temporal().DeleteKeptValidTo,
-// whose validity ends at DeletedAt.
 func (a *API) Delete(ctx context.Context, id types.NodeID) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -314,13 +308,10 @@ func (a *API) Delete(ctx context.Context, id types.NodeID) error {
 // does not. Requires Config.AllowTxBackfill (ErrTxBackfillDisabled); txTo must
 // be a positive instant not in the future (ErrInvalidTxFrom) and must follow
 // every stamp recorded for the node and for each cascaded relationship and
-// their current versions' starts; a recorded close (ValidTo) at or after txTo
-// on any of them refuses (ErrTxOrder, which wraps ErrInvalidTxFrom). A refusal
-// changes nothing. The commit clock is not moved.
-//
-// Changes in v4.63.0 (backlog 7): a recorded close at or after txTo no longer
-// refuses; the tombstone keeps it (Temporal().DeleteKeptValidTo) for reads
-// pinned before txTo.
+// their current versions' starts (ErrTxOrder, which wraps ErrInvalidTxFrom). A
+// recorded close (ValidTo) at or after txTo is kept for reads pinned before
+// txTo (Temporal().DeleteKeptValidTo). A refusal changes nothing. The commit
+// clock is not moved.
 func (a *API) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -352,8 +343,7 @@ func (a *API) Retract(ctx context.Context, id types.NodeID) error {
 // with DeleteWithTx's contract: Config.AllowTxBackfill (ErrTxBackfillDisabled);
 // txTo positive and not in the future (ErrInvalidTxFrom); after every stamp
 // recorded for the node and each cascaded relationship and their current
-// versions' starts, and no recorded close at or after txTo (ErrTxOrder, which
-// wraps ErrInvalidTxFrom). A refusal changes nothing; the commit clock is not
+// versions' starts (ErrTxOrder, which wraps ErrInvalidTxFrom). A refusal changes nothing; the commit clock is not
 // moved.
 func (a *API) RetractWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
 	ops, err := a.ready()

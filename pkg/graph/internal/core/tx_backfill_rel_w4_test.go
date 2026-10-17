@@ -137,11 +137,11 @@ func txbW4DeleteDoors() []txbDoor {
 
 // R7 — a recorded close exactly at t, through every W4 delete door.
 //
-// Catches: a GraphTx/Batch/ingest delete that hands t to the plain stamp path,
-// which moves the instant past the colliding close (deleteInstantClearOfCloses)
+// Catches: a GraphTx/Batch/ingest delete that hands t to the plain stamp path
 // or ignores t altogether — the caller asked for t; a different instant is a
-// lie about when belief ended. Counterpart: close+1 stamps t exactly and keeps
-// the close.
+// lie about when belief ended — and a close at t read back at t-1 as
+// delete-written (open). t == close keeps the close (DeleteKeptValidTo,
+// backlog 7); close+1 stamps t exactly and keeps the close unmarked.
 func TestTxBackfillRelW4_CloseCollision(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
@@ -149,38 +149,33 @@ func TestTxBackfillRelW4_CloseCollision(t *testing.T) {
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, d := range txbW4DeleteDoors() {
-			t.Run(be.name+"/"+d.name, func(t *testing.T) {
-				g := be.open(t, true)
-				clk := &switchableClock{}
-				g.SetClockForTest(t, clk.Now)
-				ctx := context.Background()
-				f := txbBackfillRel(t, g)
-				x := txbWall() + txbHour
-				v := x + 500
-				clk.at.Store(int64(x))
-				if err := g.Rels.CloseVersion(ctx, f.id, v); err != nil {
-					t.Fatalf("CloseVersion: %v", err)
-				}
-				clk.at.Store(int64(x + 1000))
-				before := snapRel(t, g, f.id)
-				assertCloseRefusal(t, g, f.id, "t == ValidTo", before, d.run(g, f.id, v), v, v)
-				if err := d.run(g, f.id, v+1); err != nil {
-					t.Fatalf("%s(close+1): %v", d.name, err)
-				}
-				tomb := relTombstone(t, g, f.id)
-				if tomb.ValidTo != v || tomb.DeletedAt != v+1 || tomb.TxTo != v+1 {
-					t.Fatalf("tombstone %+v; want ValidTo=%d DeletedAt = TxTo = %d", *tomb, v, v+1)
-				}
-			})
+			for _, after := range []types.Instant{0, 1} {
+				t.Run(fmt.Sprintf("%s/%s/t=close+%d", be.name, d.name, after), func(t *testing.T) {
+					g, f, v := txbW4ClosedRel(t, be)
+					at := v + after
+					if after == 0 {
+						tomb, asOf := relKeptClose(t, g, f.id)
+						assertKeptClose(t, "t == ValidTo", d.run(g, f.id, at), tomb, asOf, v, at)
+						return
+					}
+					if err := d.run(g, f.id, at); err != nil {
+						t.Fatalf("%s(close+1): %v", d.name, err)
+					}
+					tomb := relTombstone(t, g, f.id)
+					if tomb.ValidTo != v || tomb.DeletedAt != at || tomb.TxTo != at || tomb.DeleteKeptValidTo {
+						t.Fatalf("tombstone %+v; want ValidTo=%d DeletedAt = TxTo = %d, unmarked", *tomb, v, at)
+					}
+				})
+			}
 		}
 	}
 }
 
 // R8 — a scheduled close after t, through every W4 delete door.
 //
-// Catches: the close lost by the plain clamp (ValidTo clamped to t, so pin
-// t-1 shows an open-ended row — a falsified past belief) and a tombstone
-// written before the refusal. Same decision as the standalone door (§6.11).
+// Catches: the close lost by a clamp (ValidTo clamped to t, so pin t-1 shows
+// an open-ended row — a falsified past belief) and a refusal left in place.
+// Same rule as the standalone door (backlog 7).
 func TestTxBackfillRelW4_ScheduledCloseAfterT(t *testing.T) {
 	if testing.Short() && !isRaceEnabled() {
 		t.Skip("long tier: release gate")
@@ -188,34 +183,35 @@ func TestTxBackfillRelW4_ScheduledCloseAfterT(t *testing.T) {
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, d := range txbW4DeleteDoors() {
-			t.Run(be.name+"/"+d.name, func(t *testing.T) {
-				g := be.open(t, true)
-				clk := &switchableClock{}
-				g.SetClockForTest(t, clk.Now)
-				ctx := context.Background()
-				f := txbBackfillRel(t, g)
-				x := txbWall() + txbHour
-				v := x + 500
-				clk.at.Store(int64(x))
-				if err := g.Rels.CloseVersion(ctx, f.id, v); err != nil {
-					t.Fatalf("CloseVersion: %v", err)
-				}
-				clk.at.Store(int64(x + 1000))
-				for _, at := range []types.Instant{v - 1, x + 1} {
-					phase := fmt.Sprintf("t=%d close=%d", at, v)
-					before := snapRel(t, g, f.id)
-					assertCloseRefusal(t, g, f.id, phase, before, d.run(g, f.id, at), v, at)
-					r, err := g.Temporal.RelAsOf(f.id, at-1)
-					if err != nil {
-						t.Fatalf("[%s] RelAsOf(t-1): %v", phase, err)
-					}
-					if tm := r.Temporal(); tm.ValidTo != v || tm.DeletedAt != 0 {
-						t.Fatalf("[%s] RelAsOf(t-1) temporal %+v; want the believed close %d", phase, *tm, v)
-					}
-				}
-			})
+			for _, back := range []types.Instant{1, 499} { // t = v-1 and t = x+1
+				t.Run(fmt.Sprintf("%s/%s/t=close-%d", be.name, d.name, back), func(t *testing.T) {
+					g, f, v := txbW4ClosedRel(t, be)
+					at := v - back
+					tomb, asOf := relKeptClose(t, g, f.id)
+					assertKeptClose(t, fmt.Sprintf("t=%d close=%d", at, v), d.run(g, f.id, at), tomb, asOf, v, at)
+				})
+			}
 		}
 	}
+}
+
+// txbW4ClosedRel is a backfilled relationship closed at v = x+500 by a
+// CloseVersion recorded at x (an hour ahead of the wall), the clock then at
+// x+1000.
+func txbW4ClosedRel(t *testing.T, be txbBackend) (*Core, txbBackfillFix, types.Instant) {
+	t.Helper()
+	g := be.open(t, true)
+	clk := &switchableClock{}
+	g.SetClockForTest(t, clk.Now)
+	f := txbBackfillRel(t, g)
+	x := txbWall() + txbHour
+	v := x + 500
+	clk.at.Store(int64(x))
+	if err := g.Rels.CloseVersion(context.Background(), f.id, v); err != nil {
+		t.Fatalf("CloseVersion: %v", err)
+	}
+	clk.at.Store(int64(x + 1000))
+	return g, f, v
 }
 
 // txbExport returns the graph's export without its header record (the header
