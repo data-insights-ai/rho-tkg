@@ -26,6 +26,9 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 2. Standing rules (one line each; the lesson owns the detail)
 
+- **Just essential patches** (René 2026-10-17, row 74): only a consumer-blocking or wrong-answer/data bug gets work; no new features,
+  minors or backlog sweeps unless René asks. The v4.64.0 writer stays parked on `tombstone-writer-v4.63`.
+
 - Process, models, gates, deprecation ritual, release authority, notify consumers: lesson 79 (gate 75, 82, 87). "No Fable review
   for now" (René 2026-10-16) overrides the final-Fable-review step until he re-enables it.
 - Act, do not offer: 81. Red break-the-code test first, clean root-cause fix: 78. Fast tests, patches batched: 87.
