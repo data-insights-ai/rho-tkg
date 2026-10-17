@@ -15,9 +15,10 @@ const postingsBatchCap = 1 << 14
 // one twice the previous up to postingsBatchCap; visit returns how many more
 // rows the page still needs, and the walk stops at 0 or the list's end. A page
 // therefore reads its rows plus the candidates its filters drop, never the
-// whole key (backlog 72). p is the index's own list: a write between batches
-// is seen by the next batch, as a later read would see it; every row is
-// re-checked against the current row by visit, so a moved ID is dropped.
+// whole key (backlog 72). p is the index's own list (a composite single-ID key's
+// is a fresh one-ID list, row 66): a write between batches is seen by the next
+// batch, as a later read would see it; every row is re-checked against the
+// current row by visit, so a moved ID is dropped.
 // visit must not keep batch.
 func (bs *Store) walkPostings(p *indexpkg.IDPostings, after snowflake.ID, limit int, visit func(batch []snowflake.ID) (need int, err error)) error {
 	size := limit

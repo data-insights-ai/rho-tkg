@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Badger node RAM: −97 B per node, and −91 B per single-ID composite key** (PATCH v4.60.1; sigma-tkgd row 66, follows
+  the row 65 analysis). Measured as the live-heap slope between 40,000 and 200,000 nodes once badger's memtable flushes
+  finish (`TestBadgerHeapPerNodeSlope`, long tier; 6 properties per node): 185 → 88 B/node without an index, 388 → 200
+  B/node with a 3-key composite index whose keys are single-ID (sigma's harness, 100k → 400k nodes: 195 → 96 and
+  399 → 211).
+  (1) The badger store's per-node integrity-hash map is a lazy cache: no node write fills it (it held a 64-hex string
+  per live node), `NodeIntegrityHash` / `EndpointIntegrityHashes` fill it from the current row (cache, else disk), and
+  every node-row write drops the entry under the index lock (`bumpNodeRevLocked`, `deleteNodeRevLocked`). The fill is
+  kept only at the node revision read before the row, so a write racing the read never leaves an older hash cached;
+  the node revision counter no longer restarts at `Clear`. Relationship endpoint hashes, hash chains, deletes and
+  replication answer as before; the first relationship write against a node reads its row once.
+  (2) A composite property index keeps a value key held by one node as that ID inline instead of a posting list
+  (~80 B); the second ID promotes the key to a list, a removal down to one demotes it. `Postings` and `Range` are the
+  only readers (lookups, keyset pages, purge, open image, digest), so memory, badger, sharded and tiered answer as
+  before (`TestCompositeSingleIDKeysAllBackends`: 0, 1, 2, 1 after a delete, 1 after a value move, 2 after a move
+  back). Open image bytes are unchanged: a v4.60.0 image opens on v4.60.1 without a row decode, and a v4.60.1 image
+  opens on v4.60.0 the same way (same index digest both ways).
+
 ## [4.60.0] - 2026-10-17
 
 sigma-tkgd round 10 (MINOR: new doors and store capabilities, all additive; ledger row 64; released by Markus because it

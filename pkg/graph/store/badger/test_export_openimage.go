@@ -2,12 +2,15 @@ package badger
 
 import (
 	"fmt"
+	"iter"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -108,9 +111,10 @@ func (bs *Store) IndexStateDigestForTest() string {
 		}
 	}
 	for key, idx := range bs.compositeIndexes {
-		for vk, ids := range idx.Entries {
-			add("composite %d %q %q %v", key.LabelToken, key.Keys, vk, ids.AppendAfter(nil, 0, 0))
-		}
+		idx.Range(func(vk string, _ int, ids iter.Seq[snowflake.ID]) bool {
+			add("composite %d %q %q %v", key.LabelToken, key.Keys, vk, slices.Collect(ids))
+			return true
+		})
 	}
 	for tok, ti := range bs.temporalIndexes {
 		for _, e := range ti.Entries {

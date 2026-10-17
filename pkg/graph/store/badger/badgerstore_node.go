@@ -74,7 +74,6 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	// Update in-memory state.
 	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
 	bs.nodeIDs[nid] = struct{}{}
-	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 
@@ -233,6 +232,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	bs.idxMu.RLock()
 	_, exists := bs.nodeIDs[nid]
 	hash, hasHash := bs.nodeHashes[nid]
+	rev := bs.nodeRevs[nid]
 	bs.idxMu.RUnlock()
 	if !exists {
 		return "", ErrNodeNotFound
@@ -244,7 +244,11 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	v, status := bs.nodeCache.Get(id)
 	switch status {
 	case indexpkg.CacheHit:
-		return bs.fillNodeHash(nid, badgerNodeIntegrityHash(v))
+		hash = badgerNodeIntegrityHash(v)
+		if h := bs.nodeHashFillTestHook; h != nil {
+			h()
+		}
+		return bs.fillNodeHash(nid, rev, hash)
 	case indexpkg.CacheDeleted:
 		return "", ErrNodeNotFound
 	}
@@ -279,24 +283,31 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	hash = badgerNodeIntegrityHash(n)
 	n.Freeze() // shared between cache and caller
 	bs.nodeCache.LoadCleanAt(id, n, epoch)
-	return bs.fillNodeHash(nid, hash)
+	if h := bs.nodeHashFillTestHook; h != nil {
+		h()
+	}
+	return bs.fillNodeHash(nid, rev, hash)
 }
 
-// fillNodeHash records a hash computed from a row read without the lock. Every
-// node-row write sets the map under idxMu, so a hash already present is at least
-// as new as the row read here: keep it (backlog 54).
-func (bs *Store) fillNodeHash(nid types.NodeID, hash string) (string, error) {
+// fillNodeHash caches a hash computed from a row read without the lock, at
+// the node revision rev read before it. nodeHashes is filled only here (row
+// 66: no write fills it, ~99 B per node), and every node-row write drops the
+// entry under idxMu (bumpNodeRevLocked, deleteNodeRevLocked). A write between
+// the row read and this fill changed the revision: the hash answers the read,
+// which ran before that write, but is not cached over the newer row.
+func (bs *Store) fillNodeHash(nid types.NodeID, rev uint64, hash string) (string, error) {
 	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
 	if _, exists := bs.nodeIDs[nid]; !exists {
-		bs.idxMu.Unlock()
 		return "", ErrNodeNotFound
 	}
-	if cur, ok := bs.nodeHashes[nid]; ok {
-		hash = cur
-	} else {
-		bs.nodeHashes[nid] = hash
+	if bs.nodeRevs[nid] != rev {
+		return hash, nil
 	}
-	bs.idxMu.Unlock()
+	if cur, ok := bs.nodeHashes[nid]; ok {
+		return cur, nil // a concurrent read filled it at the same revision
+	}
+	bs.nodeHashes[nid] = hash
 	return hash, nil
 }
 
@@ -341,7 +352,8 @@ func (bs *Store) bumpNodeRevLocked(nid types.NodeID) {
 		bs.nextNodeRev = 1
 	}
 	bs.nodeRevs[nid] = bs.nextNodeRev
-	bs.nodeEpoch.Add(1) // every non-delete node write invalidates cached columns
+	delete(bs.nodeHashes, nid) // the row changed: the next NodeIntegrityHash refills
+	bs.nodeEpoch.Add(1)        // every non-delete node write invalidates cached columns
 	bs.sharedEpochs.node()
 }
 
@@ -367,6 +379,7 @@ func (bs *Store) bumpRelEpoch() {
 
 func (bs *Store) deleteNodeRevLocked(nid types.NodeID) {
 	delete(bs.nodeRevs, nid)
+	delete(bs.nodeHashes, nid)
 }
 
 func (bs *Store) prefetchNodeDeleteInfo(nid types.NodeID) (nodeDeleteInfo, error) {
@@ -479,7 +492,6 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, nid)
 	bs.ords.dropNode(nid)
-	delete(bs.nodeHashes, nid)
 	bs.deleteNodeRevLocked(nid)
 	bs.appendOps(ops...)
 	bs.logChangeRaw(storecontract.ChangeNodeDelete, delPayload)
@@ -570,7 +582,6 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 		return err
 	}
 	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
-	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(n)
@@ -681,7 +692,6 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 
 	// Update cache and property/temporal/vector indexes for the new node state.
 	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
-	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
@@ -795,7 +805,6 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
 	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
-	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
