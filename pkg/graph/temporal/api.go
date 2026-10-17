@@ -51,6 +51,10 @@ type Ops interface {
 	RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error)
 	NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error)
 	RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error)
+	NodeAtOpts(id types.NodeID, opts storepkg.QueryOpts) (*types.Node, error)
+	RelAtOpts(id types.RelID, opts storepkg.QueryOpts) (*types.Relationship, error)
+	NodesAtOptsByIDs(ids []types.NodeID, opts storepkg.QueryOpts) ([]*types.Node, error)
+	RelsAtOptsByIDs(ids []types.RelID, opts storepkg.QueryOpts) ([]*types.Relationship, error)
 	NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, error)
 	RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error)
 	NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, error)
@@ -437,8 +441,55 @@ func (a *API) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	return ops.RelsAsOf(txTime)
 }
 
+// NodeAtOpts is NodeAtTx with explicit presence (round 11): opts.ValidAt is
+// the valid instant (absent: now) and opts.TxAt the transaction-time pin, read
+// as every generic door reads them (store.QueryOpts.HasValidAt / HasTxAt): a
+// present pin at 0 is the instant 0, before every recorded row (so nothing is
+// valid: ErrNoVersionValidAt), an absent pin is none. For one entity it
+// answers what Nodes().ByLabel / All with the same opts answer. Only the point
+// form: a TxPin (use NodeAsOf), a window, a page, a depth or IncludeEclipsed
+// is ErrConflictingTemporalOpts.
+func (a *API) NodeAtOpts(id types.NodeID, opts storepkg.QueryOpts) (*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodeAtOpts(id, opts)
+}
+
+// RelAtOpts is NodeAtOpts for relationships (RelAtTx's gates; DECLARED view,
+// not masked by endpoint validity).
+func (a *API) RelAtOpts(id types.RelID, opts storepkg.QueryOpts) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RelAtOpts(id, opts)
+}
+
+// NodesAtOptsByIDs is NodeAtOpts for a set of IDs, laid out as NodesAtTxByIDs
+// (one answer per ID, aligned, nil where no version is valid); a pin above the
+// commit clock is ErrTxPinTooNew.
+func (a *API) NodesAtOptsByIDs(ids []types.NodeID, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodesAtOptsByIDs(ids, opts)
+}
+
+// RelsAtOptsByIDs is NodesAtOptsByIDs for relationships.
+func (a *API) RelsAtOptsByIDs(ids []types.RelID, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RelsAtOptsByIDs(ids, opts)
+}
+
 // NodeAtTx returns the node version valid at validAt as known at txAt
-// (bitemporal point query). txAt == 0 is equivalent to NodeAt(id, validAt).
+// (bitemporal point query). txAt == 0 is equivalent to NodeAt(id, validAt) (no
+// pin); a pin at the instant 0 is NodeAtOpts with TxAtSet.
 func (a *API) NodeAtTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {

@@ -1,0 +1,4 @@
+--- item 3 red (compile; the doors do not exist on the round11 tree after item 2):
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test]
+vet: pkg/graph/round11_atopts_test.go:90:34: g.Temporal().NodeAtOpts undefined (type *temporal.API has no field or method NodeAtOpts)

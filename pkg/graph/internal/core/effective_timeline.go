@@ -47,10 +47,7 @@ func (c *Core) validateEffectivePin(pin types.Instant) error {
 	if pin <= 0 {
 		return fmt.Errorf("%w: transaction-time pin %d must be positive", ErrInvalidTimeRange, pin)
 	}
-	if now := c.peekNow(); pin > now {
-		return fmt.Errorf("%w: pin %d, commit clock %d", ErrTxPinTooNew, pin, now)
-	}
-	return nil
+	return c.checkPinNotTooNew(pin)
 }
 
 // effPiece is one resolved piece [from, to) (to == 0: open) of a timeline;

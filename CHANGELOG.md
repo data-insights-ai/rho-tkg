@@ -41,6 +41,13 @@ releaser's call). New store capabilities and write and read options, all additiv
   `store.ColumnValidFromZeroSource`, `store.ForeignIncomingEdge.ValidFromZero`. Other reserved keys refuse an
   `ExplicitInstant`. The memory store's column segments keep such rows in the memtable. **sigma-tkgd**: `VALID FROM 0`
   on a create can pass `types.ExplicitInstant(0)`; on an update it declines on `ErrValidEndAtZero`.
+- **Per-entity point doors with explicit presence** (round 11 item 3). `Temporal().NodeAtOpts(id, opts)` /
+  `RelAtOpts(id, opts)` / `NodesAtOptsByIDs(ids, opts)` / `RelsAtOptsByIDs(ids, opts)` take the point form of
+  `store.QueryOpts` (`ValidAt` / `TxAt` with `ValidAtSet` / `TxAtSet`): a present pin at 0 is the instant 0 (nothing
+  recorded by then), an absent pin none, as every generic door reads them; `NodeAtTx`'s `txAt == 0` keeps meaning "no
+  pin". Same gates and bodies as `NodeAtTx` / `RelAtTx` / `NodesAtTxByIDs` / `RelsAtTxByIDs` (shared, not copied); any
+  other filter or a page is `ErrConflictingTemporalOpts`. **sigma-tkgd**: `graphhost.PresentPin` (0 handed as -1) can
+  give way to `NodeAtOpts` with the clause's opts.
 
 ## [4.63.0] - 2026-10-17
 

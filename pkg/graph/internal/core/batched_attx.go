@@ -34,6 +34,12 @@ func (t *TempOps) NodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant
 	if err := c.validateEffectivePin(txAt); err != nil {
 		return nil, err
 	}
+	return c.nodesAtTxByIDs(ids, validAt, txAt)
+}
+
+// nodesAtTxByIDs is NodesAtTxByIDs after its input checks (NodesAtOptsByIDs
+// shares it): per ID NodeAtTx's gates and body, txAt 0 no pin.
+func (c *Core) nodesAtTxByIDs(ids []types.NodeID, validAt, txAt types.Instant) ([]*types.Node, error) {
 	return atTxByIDs(c, ids, func(rd entityReads, id types.NodeID) (*types.Node, error) {
 		if err := c.checkNodePointCompaction(id, txAt); err != nil {
 			return nil, err
@@ -69,6 +75,12 @@ func (t *TempOps) RelsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) 
 	if err := c.validateEffectivePin(txAt); err != nil {
 		return nil, err
 	}
+	return c.relsAtTxByIDs(ids, validAt, txAt)
+}
+
+// relsAtTxByIDs is RelsAtTxByIDs after its input checks (RelsAtOptsByIDs
+// shares it).
+func (c *Core) relsAtTxByIDs(ids []types.RelID, validAt, txAt types.Instant) ([]*types.Relationship, error) {
 	return atTxByIDs(c, ids, func(rd entityReads, id types.RelID) (*types.Relationship, error) {
 		if err := c.checkRelTypePointRetention(id, txAt); err != nil {
 			return nil, err

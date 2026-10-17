@@ -45,3 +45,11 @@ KILLED item2: other reserved keys accept an ExplicitInstant: round11_validfrom_t
 # round-trip check (lesson 44) refuses a row whose marker it cannot carry, so the row stays in the memtable either
 # way; "count timeline untimed start ignores the claim" — the conjunct segFrom == txFrom already fails for a start
 # of 0 (every TxFrom is positive).
+# item 3 (per-entity point doors with explicit presence)
+KILLED item3: present pin read without presence: round11_atopts_test.go:96: pin 0 (present): NodeAtOpts = 2, <nil>; want ErrNoVersionValidAt
+KILLED item3: a valid instant of 0 read as absent: round11_atopts_test.go:99: no pin, valid at the instant 0: NodeAtOpts = 2, <nil>; want 1
+KILLED item3: other filters accepted: round11_atopts_test.go:158: NodeAtOpts({Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 ValidAtSet:false ValidWindowSet:false TxAtSet:false TxPinSet:true TxAt:0 TxPin:1792225802405 IncludeEclipsed:false Depth:0 NoSort:false}) = <nil>, want ErrConflictingTemporalOpts
+KILLED item3: batched pin above the clock accepted: round11_atopts_test.go:166: NodesAtOptsByIDs at a pin above the clock = <nil>, want ErrTxPinTooNew
+KILLED item3: API forwards the wrong door: round11_api_test.go:61: NodesAtOptsByIDs: err ops failed, calls [NodesAtOptsByIDs], opts {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 ValidAtSet:false ValidWindowSet:false TxAtSet:false TxPinSet:false TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false}
+KILLED item3: RelAtOpts drops the pin: round11_atopts_test.go:106: pin p1, valid now: RelAtOpts 2/<nil>, NodeAtOpts 1/<nil>
+KILLED item3: batched rel door drops the valid instant: round11_atopts_test.go:147: no pin, valid at -50: RelsAtOptsByIDs k=2, NodeAtOpts k=1
