@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- CI flake (todo row 72), test only: `TestCreateTemporalIndex_ConcurrentMutationDuringScanIsReconciled`
+  ran its writes on a free goroutine, so a `ReplaceNode` could land after Phase 3 published the index and
+  meet the grow-only envelope (old interval kept, by design). The writes now run inside the Phase 2 scan
+  hook; `TestCreateTemporalIndex_ReplaceAfterPublishKeepsEnvelope` pins the post-publish union. No product change.
+
 ## [4.62.0] - 2026-10-17
 
 Next version: v4.62.0 (minor: a new tombstone marker, read side).

@@ -1,0 +1,5 @@
+--- FAIL: TestRedRepro_ReplaceAfterPublish (0.00s)
+    zz_red_repro_test.go:31: updated node 2938 envelope from = 1000, want 5000 (its new ValidFrom, not the stale 1000)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.006s
+FAIL
