@@ -1,6 +1,9 @@
 package core
 
 import (
+	"math"
+
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -21,11 +24,12 @@ func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err err
 			return err
 		}
 		start = c.nodeValidFrom(n)
-		tm := n.Temporal()
-		if tm == nil || tm.ValidTo == 0 {
+		// The row's own end as now believed: a delete that kept a believed
+		// ValidTo ends it at DeletedAt (types.TemporalMetadata.DeleteKeptValidTo).
+		end = storeutil.ValidToAtTxTime(n.Temporal(), math.MaxInt64)
+		if end == 0 {
 			return types.ErrOpenInterval
 		}
-		end = tm.ValidTo
 		if start >= end {
 			return types.ErrInvalidInterval
 		}
@@ -48,11 +52,12 @@ func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, 
 			return err
 		}
 		start = c.relValidFrom(r)
-		tm := r.Temporal()
-		if tm == nil || tm.ValidTo == 0 {
+		// The row's own end as now believed: a delete that kept a believed
+		// ValidTo ends it at DeletedAt (types.TemporalMetadata.DeleteKeptValidTo).
+		end = storeutil.ValidToAtTxTime(r.Temporal(), math.MaxInt64)
+		if end == 0 {
 			return types.ErrOpenInterval
 		}
-		end = tm.ValidTo
 		if start >= end {
 			return types.ErrInvalidInterval
 		}

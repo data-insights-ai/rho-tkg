@@ -1,0 +1,30 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil.test]
+internal/storeutil/wire_kept_validto_test.go:25:105: unknown field DeleteKeptValidTo in struct literal of type types.TemporalMetadata
+internal/storeutil/wire_kept_validto_test.go:56:22: undefined: KeptValidToWireFormatVersion
+internal/storeutil/wire_kept_validto_test.go:57:65: undefined: KeptValidToWireFormatVersion
+internal/storeutil/wire_kept_validto_test.go:63:26: got.DeleteKeptValidTo undefined (type *types.TemporalMetadata has no field or method DeleteKeptValidTo)
+internal/storeutil/wire_kept_validto_test.go:68:32: got.DeleteWroteValidTo undefined (type *types.TemporalMetadata has no field or method DeleteWroteValidTo)
+internal/storeutil/wire_kept_validto_test.go:69:83: got.DeleteWroteValidTo undefined (type *types.TemporalMetadata has no field or method DeleteWroteValidTo)
+internal/storeutil/wire_kept_validto_test.go:71:55: undefined: KeptValidToWireFormatVersion
+internal/storeutil/wire_void_test.go:71:13: w.DeleteKeptValidTo undefined (type NodeWire has no field or method DeleteKeptValidTo)
+internal/storeutil/wire_void_test.go:75:13: w.DeleteKeptValidTo undefined (type RelWire has no field or method DeleteKeptValidTo)
+internal/storeutil/wire_void_test.go:96:70: w.DeleteKeptValidTo undefined (type wireTemporalMetaPartial has no field or method DeleteKeptValidTo)
+internal/storeutil/wire_void_test.go:96:70: too many errors
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil [build failed]
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.test]
+store/badger/badgerstore_kept_validto_format_test.go:47:107: unknown field DeleteKeptValidTo in struct literal of type types.TemporalMetadata
+store/badger/badgerstore_kept_validto_format_test.go:88:20: undefined: storepkg.KeptValidToStoreFormatVersion
+store/badger/badgerstore_kept_validto_format_test.go:91:45: undefined: storepkg.KeptValidToStoreFormatVersion
+store/badger/badgerstore_kept_validto_format_test.go:108:33: tm.DeleteKeptValidTo undefined (type *types.TemporalMetadata has no field or method DeleteKeptValidTo)
+store/badger/badgerstore_kept_validto_format_test.go:115:35: tm.DeleteKeptValidTo undefined (type *types.TemporalMetadata has no field or method DeleteKeptValidTo)
+store/badger/badgerstore_kept_validto_format_test.go:115:60: tm.DeleteWroteValidTo undefined (type *types.TemporalMetadata has no field or method DeleteWroteValidTo)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger [build failed]
+FAIL
+--- FAIL: TestKeptValidToTombstoneRaisesStoreFormatMarker (0.35s)
+    --- FAIL: TestKeptValidToTombstoneRaisesStoreFormatMarker/node (0.19s)
+        badgerstore_kept_validto_format_test.go:88: marker = (4, true); want 8
+    --- FAIL: TestKeptValidToTombstoneRaisesStoreFormatMarker/rel (0.16s)
+        badgerstore_kept_validto_format_test.go:88: marker = (4, true); want 8
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.370s
+FAIL

@@ -13,7 +13,7 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	// wire_temporal_tail.go.
 	var hb, pb [32]byte // integrity hashes as raw bytes (encodeHashField)
 	hBin, pBin := binaryHash(w.Hash, &hb), binaryHash(w.PrevHash, &pb)
-	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted, hBin || pBin, w.Void)
+	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted, hBin || pBin, w.Void, w.DeleteKeptValidTo)
 	v2 := fv >= 2
 	fields := 3 // id, pl, v
 	if fv != 0 {
@@ -57,6 +57,9 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 		fields++
 	}
 	if w.Void {
+		fields++
+	}
+	if w.DeleteKeptValidTo {
 		fields++
 	}
 	if w.CreatedBy != "" {
@@ -166,6 +169,11 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 			return err
 		}
 	}
+	if w.DeleteKeptValidTo {
+		if err := encodeStringBoolField(enc, "dk", w.DeleteKeptValidTo); err != nil {
+			return err
+		}
+	}
 	if w.CreatedBy != "" {
 		if err := encodeStringStringField(enc, "cb", w.CreatedBy); err != nil {
 			return err
@@ -230,7 +238,7 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	var hb, pb, fb, tb [32]byte // integrity hashes as raw bytes (encodeHashField)
 	hBin, pBin := binaryHash(w.Hash, &hb), binaryHash(w.PrevHash, &pb)
 	fBin, tBin := binaryHash(w.FromNodeHash, &fb), binaryHash(w.ToNodeHash, &tb)
-	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted, hBin || pBin || fBin || tBin, w.Void)
+	fv := emittedRowFormatVersion(w.FormatVersion, w.Retracted, hBin || pBin || fBin || tBin, w.Void, w.DeleteKeptValidTo)
 	v2 := fv >= 2
 	fields := 5 // id, rt, s, e, v
 	if fv != 0 {
@@ -271,6 +279,9 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 		fields++
 	}
 	if w.Void {
+		fields++
+	}
+	if w.DeleteKeptValidTo {
 		fields++
 	}
 	if w.CreatedBy != "" {
@@ -384,6 +395,11 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	}
 	if w.Void {
 		if err := encodeStringBoolField(enc, "vd", w.Void); err != nil {
+			return err
+		}
+	}
+	if w.DeleteKeptValidTo {
+		if err := encodeStringBoolField(enc, "dk", w.DeleteKeptValidTo); err != nil {
 			return err
 		}
 	}

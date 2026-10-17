@@ -35,102 +35,105 @@ func voidRelPiece(t *testing.T) *types.Relationship {
 	return r
 }
 
-// voidPath is one codec door: encode, decode back to the Void marker.
-type voidPath struct {
+// markerPath is one codec door: encode, decode back to the temporal block
+// (Void, DeleteKeptValidTo and the other temporal fields).
+type markerPath struct {
 	name string
 	enc  func(t *testing.T, n *types.Node, r *types.Relationship) []byte
-	dec  func(isNode bool, raw []byte) (bool, error)
+	dec  func(isNode bool, raw []byte) (*types.TemporalMetadata, error)
 }
 
-func checkedVoid(isNode bool, nw NodeWire, rw RelWire) (bool, error) {
+func checkedTemporal(isNode bool, nw NodeWire, rw RelWire) (*types.TemporalMetadata, error) {
 	if isNode {
 		n, err := WireToNodeChecked(nw)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
-		return n.Temporal().Void, nil
+		return n.Temporal(), nil
 	}
 	r, err := WireToRelChecked(rw)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	return r.Temporal().Void, nil
+	return r.Temporal(), nil
 }
 
-func voidPaths() []voidPath {
+// markerPaths are the codec doors a row marker must survive. The history
+// delta's base differs from the row in ValidTo and carries no marker.
+func markerPaths() []markerPath {
 	full := func(t *testing.T, n *types.Node, r *types.Relationship) []byte {
 		if n != nil {
 			return must(t)(MarshalNodeWire(n))
 		}
 		return must(t)(MarshalRelWire(r))
 	}
-	return []voidPath{
-		{"full checked", full, func(isNode bool, raw []byte) (bool, error) {
+	unmarkedNode := func(w NodeWire) NodeWire {
+		w.Void, w.DeleteKeptValidTo, w.ValidTo = false, false, w.ValidTo+1
+		return w
+	}
+	unmarkedRel := func(w RelWire) RelWire {
+		w.Void, w.DeleteKeptValidTo, w.ValidTo = false, false, w.ValidTo+1
+		return w
+	}
+	return []markerPath{
+		{"full checked", full, func(isNode bool, raw []byte) (*types.TemporalMetadata, error) {
 			var nw NodeWire
 			var rw RelWire
 			if err := SafeUnmarshal(raw, map[bool]any{true: &nw, false: &rw}[isNode]); err != nil {
-				return false, err
+				return nil, err
 			}
-			return checkedVoid(isNode, nw, rw)
+			return checkedTemporal(isNode, nw, rw)
 		}},
-		{"partial scanner", full, func(_ bool, raw []byte) (bool, error) {
+		{"partial scanner", full, func(_ bool, raw []byte) (*types.TemporalMetadata, error) {
 			_, tm, err := DecodeWireTemporalMeta(raw)
-			return err == nil && tm.Void, err
+			return tm, err
 		}},
-		{"partial slow", full, func(_ bool, raw []byte) (bool, error) {
+		{"partial slow", full, func(_ bool, raw []byte) (*types.TemporalMetadata, error) {
 			w, err := decodeWireTemporalMetaSlow(raw)
 			if err == nil {
 				err = checkRowFormatVersion("partial", w.FormatVersion)
 			}
-			return w.Void, err
+			return &types.TemporalMetadata{Void: w.Void, DeleteKeptValidTo: w.DeleteKeptValidTo, DeletedAt: types.Instant(w.DeletedAt)}, err
 		}},
 		{"change feed put", func(t *testing.T, n *types.Node, r *types.Relationship) []byte {
 			if n != nil {
 				return must(t)(NodePutPayload(n, true))
 			}
 			return must(t)(RelPutPayload(r, true))
-		}, func(isNode bool, raw []byte) (bool, error) {
+		}, func(isNode bool, raw []byte) (*types.TemporalMetadata, error) {
 			if isNode {
 				b, err := DecodeNodePut(raw)
 				if err != nil {
-					return false, err
+					return nil, err
 				}
-				return checkedVoid(true, b.Wire, RelWire{})
+				return checkedTemporal(true, b.Wire, RelWire{})
 			}
 			b, err := DecodeRelPut(raw)
 			if err != nil {
-				return false, err
+				return nil, err
 			}
-			return checkedVoid(false, NodeWire{}, b.Wire)
+			return checkedTemporal(false, NodeWire{}, b.Wire)
 		}},
 		{"history delta", func(t *testing.T, n *types.Node, r *types.Relationship) []byte {
 			if n != nil {
 				tw, _ := NodeToWireChecked(n)
-				an := tw
-				an.Void, an.ValidTo = false, 0
-				return must(t)(EncodeNodeHistoryDelta(DiffNodeHistory(an, tw)))
+				return must(t)(EncodeNodeHistoryDelta(DiffNodeHistory(unmarkedNode(tw), tw)))
 			}
 			tw, _ := RelToWireChecked(r)
-			ar := tw
-			ar.Void, ar.ValidTo = false, 0
-			return must(t)(EncodeRelHistoryDelta(DiffRelHistory(ar, tw)))
-		}, func(isNode bool, raw []byte) (bool, error) {
+			return must(t)(EncodeRelHistoryDelta(DiffRelHistory(unmarkedRel(tw), tw)))
+		}, func(isNode bool, raw []byte) (*types.TemporalMetadata, error) {
 			if isNode {
 				d, err := DecodeNodeHistoryDelta(raw)
 				if err != nil {
-					return false, err
+					return nil, err
 				}
-				an := d.Meta
-				an.Void = false
-				return checkedVoid(true, ApplyNodeHistory(an, d), RelWire{})
+				return checkedTemporal(true, ApplyNodeHistory(unmarkedNode(d.Meta), d), RelWire{})
 			}
 			d, err := DecodeRelHistoryDelta(raw)
 			if err != nil {
-				return false, err
+				return nil, err
 			}
-			ar := d.Meta
-			ar.Void = false
-			return checkedVoid(false, NodeWire{}, ApplyRelHistory(ar, d))
+			return checkedTemporal(false, NodeWire{}, ApplyRelHistory(unmarkedRel(d.Meta), d))
 		}},
 	}
 }
@@ -148,14 +151,14 @@ func TestVoidRow_FormatVersion5(t *testing.T) {
 	}
 	rows := []row{{"node", voidNodePiece(t), nil}, {"rel", nil, voidRelPiece(t)}}
 	for _, e := range rows {
-		for _, p := range voidPaths() {
+		for _, p := range markerPaths() {
 			raw := p.enc(t, e.n, e.r)
 			if _, fv := fvOf(t, raw); fv != VoidWireFormatVersion {
 				t.Fatalf("%s %s: fv %d; want %d", e.name, p.name, fv, VoidWireFormatVersion)
 			}
 			got, err := p.dec(e.n != nil, raw)
-			if err != nil || !got {
-				t.Fatalf("%s %s: decoded void=%v err=%v; want the marker", e.name, p.name, got, err)
+			if err != nil || !got.Void {
+				t.Fatalf("%s %s: decoded %+v err=%v; want the void marker", e.name, p.name, got, err)
 			}
 			restore := SetMaxReadableWireFormatVersionForTest(BinaryHashOrRetractedCap())
 			_, err = p.dec(e.n != nil, raw)

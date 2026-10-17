@@ -1165,53 +1165,11 @@ func TestTxTimeQueryCapabilityBulkErrorsPropagate(t *testing.T) {
 	}
 }
 
-func TestNormalizeTemporalVisibleAtTxTime(t *testing.T) {
-	normalizeTemporalVisibleAtTxTime(nil, 10)
-
+func TestVisibleAtTxTimeNil(t *testing.T) {
 	if got := nodeVisibleAtTxTime(nil, 10); got != nil {
 		t.Fatalf("nodeVisibleAtTxTime(nil) = %v, want nil", got)
 	}
 	if got := relVisibleAtTxTime(nil, 10); got != nil {
 		t.Fatalf("relVisibleAtTxTime(nil) = %v, want nil", got)
 	}
-
-	t.Run("future TxTo hidden", func(t *testing.T) {
-		tm := &types.TemporalMetadata{TxTo: 20}
-		normalizeTemporalVisibleAtTxTime(tm, 10)
-		if tm.TxTo != 0 {
-			t.Fatalf("TxTo = %d, want 0", tm.TxTo)
-		}
-	})
-
-	t.Run("past TxTo kept", func(t *testing.T) {
-		tm := &types.TemporalMetadata{TxTo: 10}
-		normalizeTemporalVisibleAtTxTime(tm, 10)
-		if tm.TxTo != 10 {
-			t.Fatalf("TxTo = %d, want 10", tm.TxTo)
-		}
-	})
-
-	t.Run("future delete hidden with matching valid to", func(t *testing.T) {
-		tm := &types.TemporalMetadata{ValidTo: 20, DeletedAt: 20}
-		normalizeTemporalVisibleAtTxTime(tm, 10)
-		if tm.DeletedAt != 0 || tm.ValidTo != 0 {
-			t.Fatalf("DeletedAt=%d ValidTo=%d, want both hidden", tm.DeletedAt, tm.ValidTo)
-		}
-	})
-
-	t.Run("future delete hidden without changing independent valid to", func(t *testing.T) {
-		tm := &types.TemporalMetadata{ValidTo: 15, DeletedAt: 20}
-		normalizeTemporalVisibleAtTxTime(tm, 10)
-		if tm.DeletedAt != 0 || tm.ValidTo != 15 {
-			t.Fatalf("DeletedAt=%d ValidTo=%d, want DeletedAt hidden and ValidTo kept", tm.DeletedAt, tm.ValidTo)
-		}
-	})
-
-	t.Run("past delete kept", func(t *testing.T) {
-		tm := &types.TemporalMetadata{ValidTo: 10, DeletedAt: 10}
-		normalizeTemporalVisibleAtTxTime(tm, 10)
-		if tm.DeletedAt != 10 || tm.ValidTo != 10 {
-			t.Fatalf("DeletedAt=%d ValidTo=%d, want both kept", tm.DeletedAt, tm.ValidTo)
-		}
-	})
 }

@@ -57,8 +57,8 @@ func (bs *Store) appendOpsRaising(marker uint16, ops ...writeOp) {
 // row — the row a pinned read needs in neither, so NodeAtTx / NodeAsOf at a
 // pin before the move answered "absent". Both halves stay inside one idxMu
 // section, so a flush (idxMu.RLock) still commits them in one WriteBatch.
-func (bs *Store) publishMoveLocked(ops []writeOp, publishCurrent func()) {
-	bs.appendOps(ops...)
+func (bs *Store) publishMoveLocked(marker uint16, ops []writeOp, publishCurrent func()) {
+	bs.appendOpsRaising(marker, ops...)
 	bs.moveHook()
 	publishCurrent()
 }

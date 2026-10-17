@@ -1196,7 +1196,7 @@ func nodeCopyVisibleAtTxTime(n *types.Node, txTime types.Instant) *types.Node {
 		return nil
 	}
 	out := n.DeepCopy()
-	normalizeTemporalVisibleAtTxTime(out.Temporal(), txTime)
+	storeutil.NormalizeTemporalVisibleAtTxTime(out.Temporal(), txTime)
 	return out
 }
 
@@ -1205,30 +1205,8 @@ func relCopyVisibleAtTxTime(r *types.Relationship, txTime types.Instant) *types.
 		return nil
 	}
 	out := r.DeepCopy()
-	normalizeTemporalVisibleAtTxTime(out.Temporal(), txTime)
+	storeutil.NormalizeTemporalVisibleAtTxTime(out.Temporal(), txTime)
 	return out
-}
-
-// normalizeTemporalVisibleAtTxTime rewinds tm to the belief state as of
-// txTime: a TxTo or delete recorded after txTime is removed. ValidTo ==
-// DeletedAt marks a ValidTo the delete itself wrote, so it reopens; any other
-// ValidTo is an earlier close and is kept (the delete doors keep the marker
-// unambiguous: stampDeleteTombstone / deleteInstantClearOfCloses in core;
-// backlog 43).
-func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) {
-	if tm == nil {
-		return
-	}
-	if tm.TxTo > txTime {
-		tm.TxTo = 0
-	}
-	if tm.DeletedAt > txTime {
-		if tm.ValidTo == tm.DeletedAt {
-			tm.ValidTo = 0
-		}
-		tm.DeletedAt = 0
-		tm.Retracted = false
-	}
 }
 
 // TrimNodeHistoryFrom removes all node history entries at or after minVersion.

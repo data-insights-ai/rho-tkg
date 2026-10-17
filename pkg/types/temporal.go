@@ -71,6 +71,19 @@ type TemporalMetadata struct {
 	// Always bounded (ValidTo != 0), never a tombstone; stores reject it
 	// otherwise.
 	Void bool
+	// DeleteKeptValidTo marks a delete tombstone that kept the ValidTo
+	// believed before the delete (0 = open) where that end does not lie
+	// before the delete (backlogs 4, 7, 25): the delete ends validity at
+	// DeletedAt, a pin before DeletedAt reads ValidTo as recorded. A tombstone
+	// without it ends at its ValidTo, which is at or before DeletedAt; equal
+	// to it, the delete wrote it (the row was open) and a pin before the
+	// delete reads the row open. A delete at or before the row's start keeps
+	// the believed ValidTo too (the row is valid at no instant after the
+	// delete), so the tombstone never needs an end before its start. Only
+	// meaningful together with DeletedAt != 0 and a ValidTo that is 0 or not
+	// before DeletedAt; stores reject it otherwise. Read since v4.62.0; the
+	// delete doors write it from v4.63.0.
+	DeleteKeptValidTo bool
 }
 
 // BaseEntityID returns the opaque ID linking to the original entity in a
