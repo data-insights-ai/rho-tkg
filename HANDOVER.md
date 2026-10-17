@@ -7,9 +7,10 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **Next minor v4.63.0:** branch `tombstone-writer-v4.63` (`37a1ff56`, row 71 part B) turns on the `DeleteKeptValidTo` writer (fixes
-   backlog 4 delete half, 25, 7); v4.62.0 shipped the readers + Deprecated note (docs/stability.md ritual). Merge it, rebase if main moved,
-   run its by-name long-tier tests, then gate + release as v4.63.0.
+1. **v4.63.0 (minor, row 73):** public `types.TemporalMetadata.ValidToAtTxTime` / `DeleteWroteValidTo` on main (`461d225b`); release it
+   after the gate. **v4.64.0:** branch `tombstone-writer-v4.63` (`37a1ff56`, row 71 part B) turns on the `DeleteKeptValidTo` writer
+   (backlog 4 delete half, 25, 7). Before tagging v4.64.0: sigma P24 and ai-soc's raw-ValidTo check confirmed, heads-up sent to both;
+   merge the branch (its CHANGELOG `Changed` block belongs in [Unreleased], rename "v4.63.0" to "v4.64.0"), by-name long-tier tests, gate.
 2. **v5 is PAUSED (René 2026-10-16, row 61).** Work lives on the local branch `v5-takeover` (not pushed; origin/v5 untouched). Do
    not resume without René. Reason: real ai-soc import showed ~92 records/op, 11x v4 disk, ~200 writes/s; options in tasks/todo.md.
    Gap analysis: `docs/v5-gap-to-main.md`.
