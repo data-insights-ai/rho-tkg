@@ -16,8 +16,8 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
 - Releases: MINOR for a really new feature, PATCH otherwise (René 2026-10-14; was patch-only since 10-10), batched, one gate; behaviour changes via the deprecation ritual, no new named exceptions (79); full
   `make test-race` before a tag (66); a green workflow means its gates ran (75). Test tiers: new code gets `-short` tests of
   seconds, commits grouped; long tests only at the final minor-release push (87).
-- Reviews: one round per branch, authors run lint + security first; models: builds Opus, code reviews Opus high, final Fable
-  review before tagging, doc work Sonnet (79).
+- Reviews: one round per branch, authors run lint + security first; models: builds Opus, code reviews Opus high, doc work
+  Sonnet; the final Fable review is off ("No fable review for now", René 2026-10-16) until he re-enables it (79).
 - A contract over a family of doors lands in every door; test cross-door agreement (58, 59, 42, 57, 69).
 - Trust boundary: validate IDs and decoded bytes at every entry, `SafeUnmarshal`, allocate by bytes delivered, verify imported
   hashes (1, 6, 44, 47, 48).
@@ -584,7 +584,9 @@ build, one message. (2) Behaviour changes go through the deprecation ritual (`do
 run `make lint-docker` and `make security-docker` before reporting. (4) One reviewer round per branch, fix round to the same agent, a
 second only for a blocker; doc/comment-only changes get the docs tests and a diff read. (5) Briefs name 5-8 files. (6) A backlog item
 needs a consumer request or a failing test. (7) Never stop a running agent unless asked. (8) Models: builds Opus, code reviews Opus
-effort high, final Fable review of the batch before tagging, doc work Sonnet (Opus after a second Sonnet fix round).
+effort high, doc work Sonnet (Opus after a second Sonnet fix round); the final Fable review of the batch before tagging is
+SUSPENDED (René 2026-10-16: "No fable review for now"). (9) Release authority (René 2026-10-10): merge, gate, tag, push main and the
+tag, notify the consumers, without asking each time; never push `origin/v5`, never force-push.
 Detector: a second review round, a lint finding after a merge, a minor tag for a release without a new feature, a brief with over ten file names.
 
 ## 80. Tick The User-Request Ledger At Every Release, Not Only The Work Queue
@@ -593,14 +595,14 @@ Rule: a release commit updates, in the same commit, the `tasks/todo.md` user-req
 HANDOVER open-request list; every new user or consumer request gets its row before the first action on it (René 2026-10-12:
 "Are you really working towards our originally defined goal?" after request 1 stayed "not built" two releases past its ship).
 Detector: `scripts/check-ledger.sh` (latest tag in the releases table, the todo header and HANDOVER; no request row "open/building/in progress" whose backlog item is Closed). It runs after every merge and before every release commit; a failure blocks the commit.
-Why it broke again (2026-10-14/15, René: "Why not always keep todo.md update? This is important to not lose focus"): the ledger was updated by `sed` one-liners whose patterns silently matched nothing (HANDOVER kept "v4.52.0" for six releases), rows set "building" were never revisited when the work merged, and Markus's releases were never recorded. Edits to todo/HANDOVER are checked by the script, not trusted.
+Recurrence (2026-10-14/15, René: "Why not always keep todo.md update?"): `sed` one-liners matched nothing (HANDOVER kept "v4.52.0" for six releases), "building" rows were never revisited, Markus's releases were never recorded. The script checks the edits; do not trust them.
 
 ## 81. Open Work With A Clear Next Step Is Started, Not Offered
 
 Rule (René 2026-10-12, on "build 52-55?": "yes, why is this a question?", then "Remove or rewrite this stupid rule"): consumer
 requests, review findings and the next patch batch are started right away (ledger lines first, red tests, one review, final Fable,
 tag). Ask only for what CLAUDE.md section 1 allows (irreversible or destructive, options that differ materially, not decided by
-chat or memory). The old "never start agents he did not ask for" rule is gone.
+chat or memory).
 Detector: a "Gewählt: not started ... Anders: sag fix N" line; four ai-soc blockers sat for hours as "waits for René's go".
 
 ## 82. A Release Is Not Green Until GitHub CI Is Green
@@ -617,7 +619,7 @@ Detector: evidence files named *mutant* or *probe*, or a test file longer than t
 
 ## 84. Trace The Cause, Then Consolidate: No Unreflected Questions, No Layers On Top
 
-René 2026-10-14 (standing rules, also in ~/CLAUDE.md). Before a design question to René: trace where it really comes from in the
+René 2026-10-14 (the text is also in ~/CLAUDE.md). Before a design question to René: trace where it really comes from in the
 current code (file:line, not an old note), look for a strategy that removes it (fix the cause upstream, a standard, an existing
 mechanism) and solve it if one works; ask only the remainder, naming the cause and each rejected strategy in one line.
 Consolidate, don't add: when two code paths, notes or rules do the same job, merge them into one and delete the rest instead of
@@ -629,9 +631,9 @@ Recurred 2026-10-16 (same week as 0 vs 0.0): numeric equality had two rules (`Eq
 it. Documentation of two behaviours does not make them one contract.
 Detector: before any verdict "intended / documented / contract choice" on a disagreement between sibling doors, grep for the
 helpers that implement the concept (`func .*(Numeric|Widen|Equal|Key)`); two or more = consolidate (lesson 58 direction rule).
-One overview (René 2026-10-16: "do not again spawn and write different files where you then have no overview", "i want one consistent
-todo.md plan"): agents report in their final message; only `tasks/todo.md` on main plans (v4 + v5); review briefs name the full scope
-up front, so a second pass is not needed for a missed dimension.
+One overview (René 2026-10-16): agents report in their final message; only `tasks/todo.md` on main plans (v4 + v5); one owner per
+fact: rules in this file, state and next steps in HANDOVER, ledger and releases in todo, open items in backlog; review briefs name
+the full scope up front.
 
 ## 85. Comment Trimming Is Editing, Not A Script
 

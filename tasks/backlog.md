@@ -14,7 +14,7 @@ concurrency edge / perf cliff / contract inconsistency. LOW = smell / doc drift.
 TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
-**Open work (verified at v4.55.3 (2026-10-15) and current at v4.56.1 (items 72-75 closed since)):** no reproduced CRITICAL item. This table is the ONE open-work list; `tasks/todo.md` points here. Items consumers asked for are built when they ask; the rest is parked. Closed items are one line in the Closed table below.
+**Open work (current at v4.61.0, 2026-10-17):** no reproduced CRITICAL item. This table is the ONE open-work list; `tasks/todo.md` points here. Items consumers asked for are built when they ask; the rest is parked. Closed items are one line in the Closed table below.
 
 | # | Type / severity | Item | Status |
 |---|---|---|---|
@@ -39,7 +39,7 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 45 | MEDIUM (API) | Internal sentinels reach callers but have no exported alias; `ErrMixedNumericColumn` is outside the errors inventory test | open; found by the doc review of `docs/errors.md` 2026-10-10 |
 | 46 | LOW (stale comments) | Code comments that cite ADRs no longer in `docs/adr/` or old lesson/B-numbers | open; still stale: `tieredstore_property_stats.go:19`, `bench/ingest_pipeline_test.go:13,101` (ADR-0005/0006), `badgerstore_property_stats.go:38` (lesson 62 vs 63), `store/store.go:30` and `docs/architecture.md` (B-numbers), `effective_timeline.go` header |
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
-| 71 | FEATURE (sigma round 8, optional) | Valid-time hull per label / relationship type: earliest valid-from and latest valid-to of the current entities, exact and cheap | partly shipped in v4.60.0 (sigma round 10 request 2a): `ValidHullByLabel` / `ValidHullByType` read the hull off the count timeline, exact; at a pin O(1) from the cached timeline after its first build, of the current rows (`CountTimelineOpts.CurrentRows`) one pass over them per call. Open: the cheap hull of the current rows, which needs a per-label ordered multiset of valid-from and valid-to (a write cost on every node write: opt-in per label, as `TrackRelTypeDegrees`); no structure holds it today (a temporal index keeps per-ID envelopes that only widen). |
+| 71 | FEATURE (sigma round 8, optional) | Valid-time hull per label / relationship type | mostly covered by v4.60.0 `ValidHullByLabel` / `ValidHullByType` (exact, off the count timeline); remainder O(1) for the current rows parked, no requester (spec below) |
 | 76 | LOW (perf) | Property equality lookups of a number make one store call per width key (up to 12): ~0.4 -> 1.5-1.8 us memory, 3.4 -> 5.5 us badger for one match (v4.57.1, `tasks/evidence/numeric-equality/bench.txt`) | open; keep a per-(label, key) set of the stored widths in the property index and look up only those |
 
 ---
@@ -183,7 +183,7 @@ test passes.
   ValidFrom is in the future stamps `DeletedAt/TxTo = ValidFrom + 1` without advancing the floor
   (`TestReImportDoesNotAdvanceTheClock` pins the clock), contradicting "every committed entity has
   TxFrom <= NowTx()" (`txtime.go` ~L182) for the re-import after it. The Update/CloseVersion half
-  is closed by item 77 (start in ValidFrom, TxFrom at the clock).
+  is closed by item 77 (fixed on main, see Closed table).
 - **(MEDIUM?) As-of vs point resolver order.** `SelectAsOf` picks the newest candidate by
   version; the point resolver breaks overlaps by (TxFrom, version). After a cascade whose rows
   carry a lower TxFrom than a later-version Update, `NodeAsOf` and `NodeAtTx` can pick
@@ -304,11 +304,11 @@ no budget; reopen only if a consumer reports memory pressure; then design a per-
 
 ### 71. Valid-time hull per label / relationship type (sigma round 8, optional)
 
-*FEATURE* — partly shipped in v4.60.0 (sigma round 10 request 2a): `ValidHullByLabel` / `ValidHullByType` (`store.ValidHull` with explicit `Empty` and `OpenEnd`) are the first start and last end of the count timeline, exact; at a pin O(1) from the cached timeline after its first build (one effective scan of the label), of the current rows (`CountTimelineOpts.CurrentRows`) one pass over the rows per call. Open: the hull of the current rows in O(1) or O(log n), which needs a per-label ordered multiset of valid-from and valid-to (a write cost on every node write: opt-in per label, as `TrackRelTypeDegrees`). No structure holds it today: a temporal index keeps per-ID envelopes that only widen (`Extend` unions, `Remove` is a no-op), so its hull is an upper bound over history and exists only where a temporal index exists. Reopen when a consumer measures the per-call pass as a cost.
+*FEATURE* — mostly covered by v4.60.0: `ValidHullByLabel` / `ValidHullByType` (`store.ValidHull` with explicit `Empty` and `OpenEnd`) are the first start and last end of the count timeline, exact; at a pin O(1) from the cached timeline after its first build, of the current rows (`CountTimelineOpts.CurrentRows`) one pass over the rows per call. Remainder, parked with no requester: the hull of the current rows in O(1) or O(log n) needs a per-label ordered multiset of valid-from and valid-to (a write cost on every node write: opt-in per label, as `TrackRelTypeDegrees`); no structure holds it today (a temporal index keeps per-ID envelopes that only widen). Reopen when a consumer measures the per-call pass as a cost.
 
 ## v5
 
-v5 is Markus Nissl's work on branch `origin/v5`, a separate Go module (`v5/`); the plan (`docs/v5/PLAN.md`, `RESEARCH-REVIEW.md`, `DISCUSSION.md`) lives on branch `v5`, not on main (our plan commit `b1193dc`, tag `v5-plan-20261009`). Do not push to `v5`; Markus merges v5 into main (René 2026-10-12), we do not; open questions for him are the rho-tkg GitHub issue #11. Maturity, merge analysis and the v4 to v5 door mapping: `docs/v5-analysis.md`; the Fable review of the branch: `docs/v5/HANDOVER.md` on branch `v5`. The older notes `tasks/review-v5-plan-vs-code-20261009.md` and `tasks/v4-changes-for-v5-importer-20261010.md` were removed from main (recover with `git log -- <path>`). v4 keeps taking consumer features (René 2026-10-09). **DECIDED 2026-09-25 (René): ADR-0011 S2 and S5 shipped on v4 as v4.39.0** (ADR-0011 §6 gate met: 24.0 / 24.8 / 25.7 B/HOP at 790 K / 3.15 M / 12.6 M); v5 carries the segments forward.
+v5 is Markus Nissl's work on branch `origin/v5`, a separate Go module (`v5/`); the plan (`docs/v5/PLAN.md`, `RESEARCH-REVIEW.md`, `DISCUSSION.md`) lives on branch `v5`, not on main (our plan commit `b1193dc`, tag `v5-plan-20261009`). Do not push to `v5`; Markus merges v5 into main (René 2026-10-12), we do not; open questions for him are the rho-tkg GitHub issue #11. Maturity, merge analysis and the v4 to v5 door mapping: `docs/v5-gap-to-main.md`; the Fable review of the branch: `docs/v5/HANDOVER.md` on branch `v5`. The older notes `tasks/review-v5-plan-vs-code-20261009.md` and `tasks/v4-changes-for-v5-importer-20261010.md` were removed from main (recover with `git log -- <path>`). v4 keeps taking consumer features (René 2026-10-09). **DECIDED 2026-09-25 (René): ADR-0011 S2 and S5 shipped on v4 as v4.39.0** (ADR-0011 §6 gate met: 24.0 / 24.8 / 25.7 B/HOP at 790 K / 3.15 M / 12.6 M); v5 carries the segments forward.
 
 ---
 
@@ -402,7 +402,7 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 73 (FEATURE, René, sigma-tkgd, ai-soc) — `Config.UntimedValidStart`: untimed first version from TxFrom (default) or -inf, `Admin().SetUntimedValidStart` one-way conversion, marker 7 | `[4.56.0]` Added + Deprecated; `[4.57.0]` Changed (default for new stores `UntimedUnbounded`, zero value `UntimedDefault`, existing stores keep their mode); evidence `tasks/evidence/untimed-mode/`, `tasks/evidence/untimed-default-flip/` |
 | Item 74 (PERF, ai-soc) — first page after an open waited ~3 min: one full store scan per declared rel property index (`buildRelPropTx`, 123 of 259 s CPU); now one scan per kind builds every declared sidecar, and the open image carries the built ones | `[4.56.1]` Changed; evidence `tasks/evidence/sidecar-one-scan/` |
 | Item 75 (PERF, ai-soc) — paged effective doors prune valid-filtered candidates by the envelope index (no automatic build: a full type scan plus RAM and a write cost per relationship forever; reopen if a consumer cannot declare `CreateRelTemporal`) | `[4.56.1]` Changed; evidence `tasks/evidence/page-valid-prune/` |
-| Item 77 (BUG, found by row 67) — a plain superseding write (Update, labels, CAS, CloseVersion) of a version starting in the future stamped that start + 1 as TxFrom, ahead of the clock, so `NodeAt` / `RelAt` answered an older version than the head timeline; the start is now the row's ValidFrom, TxFrom the clock (`supersede`, `core/temporal.go`) | `[Unreleased]` Fixed (v4.61.1); test `TestPointDoorAheadOfClock77` |
+| Item 77 (BUG, found by row 67) — a plain superseding write (Update, labels, CAS, CloseVersion) of a version starting in the future stamped that start + 1 as TxFrom, ahead of the clock, so `NodeAt` / `RelAt` answered an older version than the head timeline; the start is now the row's ValidFrom, TxFrom the clock (`supersede`, `core/temporal.go`) | fixed on main `80b09242`, ships in v4.61.1 (`[Unreleased]` Fixed); test `TestPointDoorAheadOfClock77` |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 

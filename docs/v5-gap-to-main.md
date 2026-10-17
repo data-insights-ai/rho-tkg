@@ -1,6 +1,6 @@
 # v5 gap to main (origin/v5 2d85dc1a vs main 97efa1c0 = v4.56.1), 2026-10-16
 
-Read-only analysis, step 1 of "bring v5 on par with our main". Extends and partly supersedes `docs/v5-analysis.md` (2026-10-11).
+Read-only analysis, step 1 of "bring v5 on par with our main". It replaces the retired `docs/v5-analysis.md` (2026-10-11; recover with `git log -- docs/v5-analysis.md`); the facts of that file that still hold are in "Merge and consumer notes" below.
 
 **Answer.** v5 has no public graph API: `v5/pkg` exports only `temporal` and `types` (3,871 LOC; `v5/pkg/types` holds `Instant`, `GraphID`, `DefaultAxisBinding`, `v5/pkg/types/instant.go:11`, `default_axis.go:12,34`; `v5/pkg` last changed 2026-10-11). Of the 59 rows below, **1 present, 31 partial, 27 absent**. "Partial" means one of two things: an internal engine analog exists that no consumer can call (`v5/internal/…`), or only a read-side preflight exists (`tools/v5-migrate`). Main's v4 *source* is integrated into origin/v5 up to `6f5084c5`/v4.56.1 (`tasks/backlog.md` on v5, "Main `0fa37786`/v4.56.1 is source-integrated at `dee0c7f2`"). The v5 *module* has none of it. Backlog weights (v5 `tasks/backlog.md:167-174`, 2026-10-16): V2 42 %, V3 10 %, V4 0 %, V5 10 %, V6 10 %, V7 0 %.
 
@@ -89,19 +89,14 @@ Totals over 59 rows (58a and 58b counted separately): 1 present (58b), 31 partia
 
 The build order is the work-package plan in `tasks/todo.md` on branch `v5-takeover` (owner: René's session since 2026-10-16, after Markus's final push `91426024`). The three items this section once listed (PLAN §8a delta v4.52.0-v4.56.1, `types.NodeID`/`RelID` as int64, door-level conformance suite) are WP-01 on that branch. Every V4.x/V5.x door waits for the public graph package (WP-04..WP-08, then `v5compat`, WP-11).
 
-## Stale claims in `docs/v5-analysis.md` this report supersedes
+## Merge and consumer notes (kept from the retired `docs/v5-analysis.md`)
 
-| Claim there | Now |
-|---|---|
-| Header and §1: origin/v5 is a strict descendant of main, "111 commits ahead, 0 behind (fast-forward)" | 707 ahead; main is **not** an ancestor (2 docs-only main commits missing). A merge is no longer a fast-forward |
-| §3 phase estimates V2 55 %, V3 15 %, V4 10 %, V5 2 %, V6 3 % | Markus's weighted packages (`backlog.md:167-174`, 2026-10-16): V2 42 %, V3 10 %, V4 0 %, V5 10 %, V6 10 % |
-| §3 "code 47,335 LOC"; "no importer and no v4 store reader" | `v5/internal` 89,404 LOC (non-test), `v5/pkg` 3,871. A read-side preflight exists (`tools/v5-migrate/preflight.go:178,217`, with `ValidStartPolicy` since `d70da434`); there is still no destination importer |
-| §2 "all v4.44-v4.50 contracts are in PLAN §8a rows (PLAN.md:905-911)" | Those rows are now at PLAN:973-980. §8a covers v4.50.0-v4.56.1 (PLAN:917-980); the v4.52.0-v4.56.1 rows come from the takeover branch |
-| §4/§5 consumer pins "sigma-tkgd HEAD 60539e1, pin v4.49.2" and "ai-soc pin v4.49.2" | sigma `1e557d43b` pins v4.56.1 (`go.mod:16`); `aisoc/go.mod:16` pins v4.56.1 |
-| §5 rows 13/14/24/25/33 and the closing "Used by" caveat: Retract, `Set*VersionInterval`, effective timelines, `LatestStamps`, v4.50 doors are "requested, no call at HEAD" | Now called: `SetNodeVersionInterval` (sigma `derived_retire.go:61`; aisoc `recovery.go:373`), `CloseVersion` (sigma `derived_read.go:239`), effective timelines (sigma `derived_read.go:80`), `LatestStamps` (sigma `session.go:439`), `InventoryEpoch` / `CreatePropertyWithOptions` (sigma `scans.go:327`, `index_maintenance.go:14`). Still no call: `Retract`, `HasHistory`, `MintInstant`, `*VersionIntervalWithTx` |
-| §5 row 27: ai-soc `RelSegments`/`SegmentDir` "not found in graphmgr" | Used in `engine/engine.go:224,229` |
-| §5 v5 line refs `raftlog/storage.go:100`, `:602`, `application_snapshot_export.go:44` | Now `:106`, `:676`, `:47`; the other cited v5 lines still match at `2d85dc1a` |
-| §5 sigma key paths (`gs/adapter.go:63` …) | Several call sites moved (e.g. `Nodes().Get` first site now `tyla/source/graph/values.go:63`); use the call sites in this table |
+- Merge: v5 edits files shared with v4 (`CHANGELOG.md` `[Unreleased]`, `tasks/backlog.md`, `tasks/lessons.md`, `AGENTS.md`, `SECURITY.md`, `Makefile`, `.github/workflows/ci.yml`), so every merge of main into v5 conflicts there. v4 source touched by v5: `pkg/graph/internal/core/ingest.go` (no behaviour change) and one memory-store test.
+- Root `make` dispatches build/test/vet/fmt/lint/security to `make -C v5` and `tools/graph-compare` (`V5_DISPATCH=1`, `COMPARE_DISPATCH=1`); off with `V5_DISPATCH=0 COMPARE_DISPATCH=0`.
+- `tools/v5-substrate/fdb`, `tools/graph-compare` and `tools/vendor-compare` are separate Go modules; the fdb one needs cgo and `foundationdb/fdb_c.h`, so its build fails on a host without the header (root and v5 builds are unaffected).
+- Consumers: neither sigma-tkgd nor ai-soc imports `rho-tkg/v5` (both pin v4.56.1); ai-soc reaches the graph through sigma's sessions, so sigma moves first and ai-soc needs René's go for a major-version pin (Decision 3 below).
+- Still not called at the consumers' HEAD: `Retract`, `HasHistory`, `MintInstant`, `*VersionIntervalWithTx`.
+- The old per-door table of that file (45 v4 doors) is the gap table and the door map below; its v5 line references were stale.
 
 Not verified: v5 build/test at `2d85dc1a` (not run; the task is read-only); call sites that reach rho only through interfaces (counted by method name, so method-name collisions are possible: `Retract` and `Elements` hits were checked by hand and excluded).
 
