@@ -661,7 +661,7 @@ Detector: `go test -short` of a touched package takes more than ~5 s, or a commi
 Recurred 2026-10-17 (backlog 77): my brief asked a one-bug fix for all backends, long -race sweeps, lint and security, and I
 started a full release gate for that single patch — René: "why so long … i want focused and quick tests", "again, read my
 briefs and md files!!!". Rule: build every brief FROM this digest (re-read it before writing the brief); a fix brief = one
-small red test, the fix, `-short` of the touched package; patches are batched (79), the long gate runs once per release.
+small red test, the fix, `-short` of the touched package; patches are batched (79), the long gate runs once per release. Recurred 2026-10-17 (v4.62.0 gate): the 77 brief skipped the by-name run of the long-tier tests that pin the old stamps, so `update_floor_future_start` broke on main unseen — "quick" still includes `grep` + `-run <name>` of those tests (seconds).
 Recurred 2026-10-16 (v4.58.0 gate): the race-aware long tier (`testing.Short() && !race`) hid two tests that still pinned the
 old tiered decline, so WP-31's builder and reviewer runs (`-short`) never saw them and only the release gate did. Rule: a
 contract change (a door that now succeeds, a sentinel no longer returned) greps every test pinning the old outcome and runs

@@ -47,32 +47,29 @@ func TestTxBackfillRel_PlainDoorsUnchanged(t *testing.T) {
 	for _, be := range txbBackends() {
 		for _, d := range doors {
 			t.Run(be.name+"/"+d.name+"/update_floor_future_start", func(t *testing.T) {
-				// A version start F ahead of the clock: today the stamp is
-				// exactly F+1, then F+2 (start = UpdatedAt).
+				// A version start F ahead of the clock: each update is stamped
+				// from the clock and starts one past the previous start (F+1,
+				// then F+2), backlog 77.
 				g := be.open(t, false)
 				f := txbWall() + types.Instant(time.Hour.Milliseconds())
 				r := txbPlainRel(t, g, map[string]any{"tkg_valid_from": f, "w": int64(1)})
-				if err := d.upd(t, g, r.ID(), map[string]any{"w": int64(2)}); err != nil {
-					t.Fatalf("update 1: %v", err)
+				lo, _ := g.Temporal.NowTx()
+				for _, w := range []int64{2, 3} {
+					if err := d.upd(t, g, r.ID(), map[string]any{"w": w}); err != nil {
+						t.Fatalf("update %d: %v", w, err)
+					}
 				}
-				if err := d.upd(t, g, r.ID(), map[string]any{"w": int64(3)}); err != nil {
-					t.Fatalf("update 2: %v", err)
-				}
+				hi, _ := g.Temporal.PeekTx()
 				chain := txbChain(t, g, r.ID())
 				if len(chain) != 3 {
 					t.Fatalf("chain length %d, want 3", len(chain))
 				}
-				want := []types.TemporalMetadata{
-					{ValidFrom: f, TxFrom: relTemporalCopy(chain[0]).TxFrom, TxTo: f + 1},
-					{TxFrom: f + 1, TxTo: f + 2, UpdatedAt: f + 1},
-					{TxFrom: f + 2, UpdatedAt: f + 2},
-				}
-				for i, w := range want {
+				for i := range chain {
 					got := relTemporalCopy(chain[i])
-					if got.ValidFrom != w.ValidFrom || got.ValidTo != 0 || got.TxFrom != w.TxFrom || got.TxTo != w.TxTo ||
-						got.UpdatedAt != w.UpdatedAt || got.DeletedAt != 0 {
-						t.Fatalf("v%d temporal %+v; want ValidFrom=%d TxFrom=%d TxTo=%d UpdatedAt=%d",
-							chain[i].Version(), got, w.ValidFrom, w.TxFrom, w.TxTo, w.UpdatedAt)
+					if got.ValidFrom != f+types.Instant(i) || got.ValidTo != 0 || got.DeletedAt != 0 ||
+						(i > 0 && (got.TxFrom <= lo || got.TxFrom > hi || got.UpdatedAt != got.TxFrom)) ||
+						(i < 2 && got.TxTo != relTemporalCopy(chain[i+1]).TxFrom) {
+						t.Fatalf("v%d temporal %+v; want ValidFrom=%d, a clock TxFrom in (%d, %d]", chain[i].Version(), got, f+types.Instant(i), lo, hi)
 					}
 				}
 				if got, _ := chain[2].GetProperty("w"); got != int64(3) {
