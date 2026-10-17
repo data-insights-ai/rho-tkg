@@ -28,6 +28,7 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 - **Just essential patches** (René 2026-10-17, row 74): only a consumer-blocking or wrong-answer/data bug gets work; no new features,
   minors or backlog sweeps unless René asks. The v4.64.0 writer stays parked on `tombstone-writer-v4.63`.
+  sigma (2026-10-17) stays on rho v4.61.0 under the same rule, does P24 only when it must move to v4.64.0+, and asks us not to hold v4.64.0 for it.
 
 - Process, models, gates, deprecation ritual, release authority, notify consumers: lesson 79 (gate 75, 82, 87). "No Fable review
   for now" (René 2026-10-16) overrides the final-Fable-review step until he re-enables it.
