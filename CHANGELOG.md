@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-sigma-tkgd round 10 (additive doors, ledger row 64; the version is René's call). Every door reuses the rule of the door it extends
+## [4.60.0] - 2026-10-17
+
+sigma-tkgd round 10 (MINOR: new doors and store capabilities, all additive; ledger row 64; released by Markus because it
+waited for a merge). Every door reuses the rule of the door it extends
 (one overlap rule, the equality door's rows, the count timeline, the shared column row path, the snapshot fold) and
 states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a time value.
 
