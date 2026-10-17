@@ -1,0 +1,19 @@
+# Round 11 mutants. One source edit each, the named tests run (-short), the file restored after (mutate.py, no git stash). KILLED lines give the first failing assertion.
+KILLED item1: union page keeps repeats: postings_union_test.go:48: After(0): 323 IDs, want 286 sorted distinct
+KILLED item1: union batch loop stops after the first batch: postings_union_test.go:48: After(0): 64 IDs, want 286 sorted distinct
+KILLED item1: union reads half a page per list: postings_union_test.go:84: skewed AppendAfter(0, 2) = [1 1001], want 1..2
+KILLED item1: PostingsOfKeys takes the first key only: postings_union_test.go:41: PostingsOfKeys: *index.IDPostings len 133, want a union of at least 286
+KILLED item1: row match checks the first key only: property_values_test.go:63: node: Elements list match or plain mismatch wrong
+KILLED item1: rel row match checks the first key only: property_values_test.go:69: rel: match wrong
+KILLED item1: seam passes one form's key to the keys door: round11_seek_test.go:78: nodes k=1000: 1 rows, <nil>
+KILLED item1: node keys door not resolved (per-form lookups): round11_seek_test.go:145: nodes on tiered: a numeric point seek costs 128 allocations over a string seek, memory 50: the store is walked once per numeric form
+KILLED item1: rel keys door not resolved (per-form lookups): round11_seek_test.go:145: rels on tiered: a numeric point seek costs 151 allocations over a string seek, memory 50: the store is walked once per numeric form
+KILLED item1: node sidecar keys door not resolved (per-key enumerations): round11_seek_test.go:145: nodes at on tiered: a numeric point seek costs 218 allocations over a string seek, memory 18: the store is walked once per numeric form
+KILLED item1: rel sidecar keys door not resolved: round11_seek_test.go:145: rels at on tiered: a numeric point seek costs 218 allocations over a string seek, memory 18: the store is walked once per numeric form
+KILLED item1: tiered sidecar enumerates the first key only: round11_seek_test.go:98: nodes at k=1000: 1 rows, <nil>
+KILLED item1: sharded sidecar enumerates the first key only: round11_seek_test.go:98: nodes at k=1000: 1 rows, <nil>
+KILLED item1: sharded sidecar keeps the last first-tx instead of the lowest: property_tx_members_test.go:66: union = map[360448:90 394240:60] after 2 calls, want {a:50 b:60} in 2 calls
+KILLED item1: tiered lookup asks each shard with the first key only: round11_seek_test.go:78: nodes k=1000: 1 rows, <nil>
+KILLED item1: badger lookup ignores the keys past the first: round11_seek_test.go:78: nodes k=1000: 1 rows, <nil>
+KILLED item1: memory rel lookup ignores the keys past the first: round11_seek_test.go:86: rels k=1000: 1 rows, <nil>
+KILLED item1: DistinctIndexKeys keeps repeats past the scan bound: property_values_test.go:35: many keys: [s:0 s:1 s:2 s:3 s:4 s:5 s:6 s:7 s:8 s:9 s:10 s:11 s:12 s:13 s:14 s:15 s:0 s:1 s:2 s:3 s:4 s:5 s:6 s:7 s:8 s:9 s:10 s:11 s:12 s:13 s:14 s:15 s:0 s:1 s:2 s:3 s:4 s:5 s:6 s:7 s:8 s:9 s:10 s:11 s:12 s:13 s:14 s:15], want [s:0 s:1 s:2 s:3 s:4 s:5 s:6 s:7 s:8 s:9 s:

@@ -349,6 +349,28 @@ type NodePropertyTxMemberWindowCapability interface {
 	ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 }
 
+// NodePropertyTxMemberKeysCapability is OPTIONAL, beside
+// NodePropertyTxMembershipCapability and NodePropertyTxMemberWindowCapability
+// (round 11): their enumerations over several value keys in one call. The
+// members are the union over valueKeys of the one-key door's members (same
+// arguments otherwise), each entity once with the lowest first transaction
+// time of its keys (0, unknown, wins), in no particular order;
+// ErrIndexNotFound where the one-key door declines. A store whose one-key
+// call reads every shard (tiered, sharded) answers a number's equal keys
+// (types.EqualIndexKeys) in one fan-out; without the capability the graph
+// asks the one-key doors once per key (same candidates).
+type NodePropertyTxMemberKeysCapability interface {
+	ForEachNodePropertyTxMemberKeys(labelToken uint16, propertyKey string, valueKeys []string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+	ForEachNodePropertyTxMemberKeysDuring(labelToken uint16, propertyKey string, valueKeys []string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+}
+
+// RelPropertyTxMemberKeysCapability is the relationship mirror of
+// NodePropertyTxMemberKeysCapability.
+type RelPropertyTxMemberKeysCapability interface {
+	ForEachRelPropertyTxMemberKeys(relTypeToken uint16, propertyKey string, valueKeys []string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+	ForEachRelPropertyTxMemberKeysDuring(relTypeToken uint16, propertyKey string, valueKeys []string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+}
+
 // RelPropertyTxMemberPageCapability is OPTIONAL (backlog 69): the members
 // RelPropertyTxMembershipCapability enumerates for one value, in ascending ID
 // order and resumed above a cursor — at most limit members with ID > after —
@@ -732,6 +754,28 @@ type PropertyIndexCapability interface {
 	CreatePropertyIndex(labelToken uint16, propertyKey string) error
 	DropPropertyIndex(labelToken uint16, propertyKey string) error
 	NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error)
+}
+
+// PropertyKeysLookupCapability is OPTIONAL, beside PropertyIndexCapability
+// (round 11): one equality lookup over several index keys. valueKeys are
+// index keys (types.IndexablePropertyValueKey, as the property tx-membership
+// capabilities take them); the rows are those NodesByLabelAndProperty(
+// labelToken, key, v, opts) returns for some v whose key is in valueKeys (an
+// Elements index matching a list's elements, opts' time filter), each row
+// once, in ID order, paged by opts.After / opts.Limit over the union. A key
+// no value has (the empty key included) matches nothing; repeats count once;
+// no keys, no rows. The graph's equality doors pass a value's equal keys
+// (types.EqualIndexKeys), so a seek of a number reads the index once instead
+// of once per numeric form; without the capability they ask
+// NodesByLabelAndProperty per form and unite (same rows).
+type PropertyKeysLookupCapability interface {
+	NodesByLabelAndPropertyKeys(labelToken uint16, key string, valueKeys []string, opts QueryOpts) ([]*types.Node, error)
+}
+
+// RelPropertyKeysLookupCapability is the relationship mirror of
+// PropertyKeysLookupCapability, beside RelPropertyIndexCapability.
+type RelPropertyKeysLookupCapability interface {
+	RelationshipsByTypeAndPropertyKeys(relTypeToken uint16, key string, valueKeys []string, opts QueryOpts) ([]*types.Relationship, error)
 }
 
 // PropertyIndexOptions configures a single-key property index (node or

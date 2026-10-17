@@ -8,7 +8,8 @@ import (
 // postingsBatchCap bounds one batch of walkPostings after the first.
 const postingsBatchCap = 1 << 14
 
-// walkPostings feeds visit the IDs of the sorted posting list p above after,
+// walkPostings feeds visit the IDs of the sorted posting list p (or union of
+// lists, index.PostingsUnion) above after,
 // ascending, in batches copied under idxMu's read lock and released before
 // visit runs (visit reads rows, which must not happen under idxMu). The first
 // batch holds limit IDs (every ID when limit <= 0, in one batch), each later
@@ -20,7 +21,7 @@ const postingsBatchCap = 1 << 14
 // batch, as a later read would see it; every row is re-checked against the
 // current row by visit, so a moved ID is dropped.
 // visit must not keep batch.
-func (bs *Store) walkPostings(p *indexpkg.IDPostings, after snowflake.ID, limit int, visit func(batch []snowflake.ID) (need int, err error)) error {
+func (bs *Store) walkPostings(p indexpkg.Postings, after snowflake.ID, limit int, visit func(batch []snowflake.ID) (need int, err error)) error {
 	size := limit
 	var batch []snowflake.ID
 	for {
@@ -44,7 +45,7 @@ func (bs *Store) walkPostings(p *indexpkg.IDPostings, after snowflake.ID, limit 
 // into the rows that pass the door's filters, at most page.Limit of them
 // (page is opts with After cleared and Limit the rows still needed). nil when
 // empty, as the doors return.
-func pagePostings[T any](bs *Store, p *indexpkg.IDPostings, opts QueryOpts, fetch func(batch []snowflake.ID, page QueryOpts) ([]T, error)) ([]T, error) {
+func pagePostings[T any](bs *Store, p indexpkg.Postings, opts QueryOpts, fetch func(batch []snowflake.ID, page QueryOpts) ([]T, error)) ([]T, error) {
 	var out []T
 	page := opts
 	page.After = 0

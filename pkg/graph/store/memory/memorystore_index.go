@@ -1104,6 +1104,24 @@ func (ms *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, qu
 // else label scan + filter. Sorted by snowflake.ID. Rows are the store's
 // shared FROZEN entries, as for every plural read.
 func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
+	return ms.nodesByLabelPropertyKeys(labelToken, propKey, opts, func() ([]string, error) {
+		return storepkg.ValueIndexKeys(value, "nodes by label and property")
+	})
+}
+
+var _ storecontract.PropertyKeysLookupCapability = (*Store)(nil)
+
+// NodesByLabelAndPropertyKeys implements
+// storecontract.PropertyKeysLookupCapability: one lookup over every key's
+// posting list (index.PostingsOfKeys), or one label scan matching any key,
+// under one read lock (round 11).
+func (ms *Store) NodesByLabelAndPropertyKeys(labelToken uint16, propKey string, valueKeys []string, opts QueryOpts) ([]*types.Node, error) {
+	return ms.nodesByLabelPropertyKeys(labelToken, propKey, opts, func() ([]string, error) { return valueKeys, nil })
+}
+
+// nodesByLabelPropertyKeys is the body of both doors; keysOf runs after the
+// store, token and option checks (a single value is validated there).
+func (ms *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opts QueryOpts, keysOf func() ([]string, error)) ([]*types.Node, error) {
 	if ms == nil {
 		return nil, ErrNilStore
 	}
@@ -1123,23 +1141,23 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
-	if err := types.ValidatePropertyValue(value); err != nil {
-		return nil, fmt.Errorf("graph: nodes by label and property value: %w", err)
+	targetKeys, err := keysOf()
+	if err != nil {
+		return nil, err
 	}
-	targetKey := indexpkg.PropertyValueKey(value)
-	if targetKey == "" {
+	if targetKeys = storepkg.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
 		return nil, nil
 	}
 
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propKey}
 	if idx, ok := ms.propertyIndexes[key]; ok && idx.Mutated == nil {
-		// Indexed path: the value's sorted posting list from opts.After on
+		// Indexed path: the keys' sorted posting lists from opts.After on
 		// (backlog 72), each row verified before the limit.
-		ids := idx.Postings(value)
+		ids := idx.PostingsOfKeys(targetKeys)
 		if ids.Len() == 0 {
 			return nil, nil
 		}
-		return ms.nodesByLabelPropertyFrom(labelToken, propKey, targetKey, idx.Elements(), ids.After(opts.After.SnowflakeID()), ids.Len(), opts), nil
+		return ms.nodesByLabelPropertyFrom(labelToken, propKey, targetKeys, idx.Elements(), ids.After(opts.After.SnowflakeID()), ids.Len(), opts), nil
 	}
 
 	// Fallback: label scan + property filter, also while the index is still
@@ -1162,11 +1180,12 @@ func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		return nil, nil
 	}
 	storepkg.SortNodeIDs(matchIDs)
-	return ms.nodesByLabelPropertyFrom(labelToken, propKey, targetKey, scanElements, idsAfter(matchIDs, opts.After), len(matchIDs), opts), nil
+	return ms.nodesByLabelPropertyFrom(labelToken, propKey, targetKeys, scanElements, idsAfter(matchIDs, opts.After), len(matchIDs), opts), nil
 }
 
-// nodesByLabelPropertyFrom is nodesByLabelPropertiesFrom for one key.
-func (ms *Store) nodesByLabelPropertyFrom(labelToken uint16, propKey, targetKey string, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Node {
+// nodesByLabelPropertyFrom is nodesByLabelPropertiesFrom for one key whose
+// value is one of targetKeys.
+func (ms *Store) nodesByLabelPropertyFrom(labelToken uint16, propKey string, targetKeys []string, elements bool, ids iter.Seq[snowflake.ID], n int, opts QueryOpts) []*types.Node {
 	hasTemporal := opts.HasValidTimeFilter()
 	result := make([]*types.Node, 0, resultCap(opts.Limit, n))
 	for raw := range ids {
@@ -1175,7 +1194,7 @@ func (ms *Store) nodesByLabelPropertyFrom(labelToken uint16, propKey, targetKey 
 			if !n.HasLabelTokenRaw(labelToken) {
 				continue
 			}
-			if !n.HasPropertyIndexKey(propKey, elements, targetKey) {
+			if !storepkg.NodeHasAnyIndexKey(n, propKey, elements, targetKeys) {
 				continue
 			}
 			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {

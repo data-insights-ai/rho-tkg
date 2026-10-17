@@ -200,6 +200,22 @@ func (ts *Store) validatePropertyIndexDDL(tokenErr error, propertyKey string, op
 // (shardPropertyDoor): its own index when it carries the anchor's, else a
 // scan with the anchor's match.
 func (ts *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string, value any, opts QueryOpts) ([]*types.Relationship, error) {
+	return ts.relsByTypePropertyKeys(relTypeToken, key, opts, func() ([]string, error) {
+		return storeutil.ValueIndexKeys(value, "relationships by type and property")
+	})
+}
+
+var _ storecontract.RelPropertyKeysLookupCapability = (*Store)(nil)
+
+// RelationshipsByTypeAndPropertyKeys implements
+// storecontract.RelPropertyKeysLookupCapability: one fold over the shards,
+// each shard asked once with every key (round 11).
+func (ts *Store) RelationshipsByTypeAndPropertyKeys(relTypeToken uint16, key string, valueKeys []string, opts QueryOpts) ([]*types.Relationship, error) {
+	return ts.relsByTypePropertyKeys(relTypeToken, key, opts, func() ([]string, error) { return valueKeys, nil })
+}
+
+// relsByTypePropertyKeys is nodesByLabelPropertyKeys for relationships.
+func (ts *Store) relsByTypePropertyKeys(relTypeToken uint16, key string, opts QueryOpts, keysOf func() ([]string, error)) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -212,11 +228,11 @@ func (ts *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string,
 	if err := validateQueryOpts(opts); err != nil {
 		return nil, err
 	}
-	if err := types.ValidatePropertyValue(value); err != nil {
-		return nil, fmt.Errorf("graph: relationships by type and property value: %w", err)
+	targetKeys, err := keysOf()
+	if err != nil {
+		return nil, err
 	}
-	targetKey := indexpkg.PropertyValueKey(value)
-	if targetKey == "" {
+	if targetKeys = storeutil.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
 		return nil, nil
 	}
 	shardOpts := stripDepth(opts)
@@ -226,14 +242,14 @@ func (ts *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string,
 			return nil, err
 		}
 		if shardPropertyDoor(have, has, elements) {
-			return store.RelationshipsByTypeAndProperty(relTypeToken, key, value, shardOpts)
+			return store.RelationshipsByTypeAndPropertyKeys(relTypeToken, key, targetKeys, shardOpts)
 		}
 		rels, err := store.RelationshipsByType(relTypeToken, QueryOpts{After: shardOpts.After})
 		if err != nil {
 			return nil, err
 		}
 		return slices.DeleteFunc(rels, func(r *types.Relationship) bool {
-			return !r.HasPropertyIndexKey(key, elements, targetKey) ||
+			return !storeutil.RelHasAnyIndexKey(r, key, elements, targetKeys) ||
 				(shardOpts.HasValidTimeFilter() && !storeutil.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), shardOpts))
 		}), nil
 	}

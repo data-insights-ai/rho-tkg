@@ -1,6 +1,7 @@
 package sharded
 
 import (
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -74,9 +75,31 @@ func (s *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string, 
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
+	keys, err := storeutil.ValueIndexKeys(value, "relationships by type and property")
+	if err != nil {
+		return nil, err
+	}
+	return s.RelationshipsByTypeAndPropertyKeys(relTypeToken, key, keys, opts)
+}
+
+var _ storecontract.RelPropertyKeysLookupCapability = (*Store)(nil)
+
+// RelationshipsByTypeAndPropertyKeys implements
+// storecontract.RelPropertyKeysLookupCapability: each shard asked once with
+// every key, folded as RelationshipsByTypeAndProperty (round 11).
+func (s *Store) RelationshipsByTypeAndPropertyKeys(relTypeToken uint16, key string, valueKeys []string, opts QueryOpts) ([]*types.Relationship, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 	per := make([][]*types.Relationship, len(s.shards))
 	err := s.forEachShardErr(func(idx int, shard *badgerShard) error {
-		rels, e := shard.RelationshipsByTypeAndProperty(relTypeToken, key, value, opts)
+		rels, e := shard.RelationshipsByTypeAndPropertyKeys(relTypeToken, key, valueKeys, opts)
 		per[idx] = rels
 		return e
 	})

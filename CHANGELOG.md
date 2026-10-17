@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+sigma-tkgd round 11 (ledger row 65; built by sigma under Markus's decision, not released: the version is the
+releaser's call). New store capabilities and write and read options, all additive.
+
+### Added
+
+- **One point seek is one index walk** (round 11 item 1; v4.57.1 (5c) asked the store once per numeric form). An
+  equality seek of a number reads every key an equal value can be stored under (`types.EqualIndexKeys`, up to 12) in
+  one store call: the new optional `store.PropertyKeysLookupCapability` / `RelPropertyKeysLookupCapability`
+  (`NodesByLabelAndPropertyKeys` / `RelationshipsByTypeAndPropertyKeys`: the rows holding any of the index keys,
+  each once, ID-ordered, paged over the union) on memory, badger, tiered and sharded, and one membership-sidecar
+  enumeration (`store.NodePropertyTxMemberKeysCapability` / `RelPropertyTxMemberKeysCapability`, plain and windowed)
+  on tiered and sharded, where the one-key call reads every shard. The equality is unchanged (5c: one numeric
+  equality, every equal value found). The plain doors, the current-row seed and sidecar of the temporal property
+  doors, the generic doors with a time filter, the composite lookup's driving pair and the unique checks all go
+  through the one seam (`core.nodesByLabelAndProperty` / `relsByTypeAndProperty`, `forEach*PropTxMemberOfKeys`).
+  The paged effective doors keep one sidecar cursor per key (no shard walk on any store; tiered has no page door).
+  One seek of 1000 (three matches, 1000 rows, 1 CPU, shared bench slots, load 32 to 38; v4.60.0 -> this): tiered
+  30.0 -> 4.9 us, 164 -> 55 allocations; sharded 16.5 -> 4.7 us, 182 -> 71; memory 2.1 -> 1.6 us, 53 -> 49; badger
+  1.5 -> 1.5 us, 50 -> 45; the pinned `NodesByLabelPropertyAt` on tiered 344 -> 141 allocations
+  (`BenchmarkRound11PointSeek`, `tasks/evidence/round11/`).
+
 ## [4.63.0] - 2026-10-17
 
 ### Added

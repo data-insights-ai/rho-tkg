@@ -72,13 +72,18 @@ type Core struct {
 	propertyQueryTrust    bool
 	relPropertyQuery      storepkg.RelPropertyIndexCapability
 	relPropertyQueryTrust bool
-	compositeQuery        storepkg.CompositePropertyIndexCapability
-	compositeQueryTrust   bool
-	filteredVector        storepkg.FilteredVectorSearchCapability
-	vectorIndexOptions    storepkg.VectorIndexOptionsCapability
-	depthHistory          storepkg.DepthHistoryIterationCapability
-	relCreateUndo         storepkg.RelCreateUndoCapability       // undoRelationshipCreate
-	scopedRelCreateUndo   storepkg.ScopedRelCreateUndoCapability // undoRelationshipCreate
+	// propertyKeysQuery / relPropertyKeysQuery: the one-walk equality
+	// lookup over a value's forms (round 11), resolved by nativeCapability;
+	// nil = one store lookup per form.
+	propertyKeysQuery    storepkg.PropertyKeysLookupCapability
+	relPropertyKeysQuery storepkg.RelPropertyKeysLookupCapability
+	compositeQuery       storepkg.CompositePropertyIndexCapability
+	compositeQueryTrust  bool
+	filteredVector       storepkg.FilteredVectorSearchCapability
+	vectorIndexOptions   storepkg.VectorIndexOptionsCapability
+	depthHistory         storepkg.DepthHistoryIterationCapability
+	relCreateUndo        storepkg.RelCreateUndoCapability       // undoRelationshipCreate
+	scopedRelCreateUndo  storepkg.ScopedRelCreateUndoCapability // undoRelationshipCreate
 	// exAdj is the store's ex-adjacency (backlog 50) once it covers every
 	// relationship (backfillExAdjacencyBestEffort); nil = the adjacency doors
 	// fold every relationship with history instead (forEachRelExAdjacentID).
@@ -113,6 +118,11 @@ type Core struct {
 	// the same discipline; nil = the whole value's members.
 	relPropTxWindow  storepkg.RelPropertyTxMemberWindowCapability
 	nodePropTxWindow storepkg.NodePropertyTxMemberWindowCapability
+	// relPropTxKeys / nodePropTxKeys enumerate those sidecars (plain and
+	// windowed) over a value's equal keys in one call (round 11: one fan-out
+	// on tiered and sharded); nil = one call per key, same candidates.
+	relPropTxKeys  storepkg.RelPropertyTxMemberKeysCapability
+	nodePropTxKeys storepkg.NodePropertyTxMemberKeysCapability
 	// chainLoadTestHook, when set (tests only), is called once per candidate a
 	// generic temporal door hands to the per-entity resolver
 	// (findNodeVersionForOpts / findRelVersionForOpts), and once per entity a
@@ -2177,6 +2187,8 @@ func New(config Config) (*Core, error) {
 	c.propertyQueryTrust = isExactNativeStore(store)
 	c.relPropertyQuery = relPropertyQueryCapability(store)
 	c.relPropertyQueryTrust = isExactNativeStore(store)
+	c.propertyKeysQuery = nativeCapability[storepkg.PropertyKeysLookupCapability](store, "NodesByLabelAndPropertyKeys")
+	c.relPropertyKeysQuery = nativeCapability[storepkg.RelPropertyKeysLookupCapability](store, "RelationshipsByTypeAndPropertyKeys")
 	c.compositeQuery = compositeQueryCapability(store)
 	c.compositeQueryTrust = isExactNativeStore(store)
 	c.filteredVector = filteredVectorSearchCapability(store)
@@ -2197,6 +2209,8 @@ func New(config Config) (*Core, error) {
 	c.nodePropTxPage = nodePropertyTxMemberPageCapability(store)
 	c.relPropTxWindow = nativeCapability[storepkg.RelPropertyTxMemberWindowCapability](store, "ForEachRelPropertyTxMemberDuring")
 	c.nodePropTxWindow = nativeCapability[storepkg.NodePropertyTxMemberWindowCapability](store, "ForEachNodePropertyTxMemberDuring")
+	c.relPropTxKeys = nativeCapability[storepkg.RelPropertyTxMemberKeysCapability](store, "ForEachRelPropertyTxMemberKeys", "ForEachRelPropertyTxMemberKeysDuring")
+	c.nodePropTxKeys = nativeCapability[storepkg.NodePropertyTxMemberKeysCapability](store, "ForEachNodePropertyTxMemberKeys", "ForEachNodePropertyTxMemberKeysDuring")
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)

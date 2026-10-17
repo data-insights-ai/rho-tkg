@@ -131,6 +131,22 @@ func (bs *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) e
 // property value, applying temporal/pagination options; uses the rel property
 // index if one exists, else a type scan + property filter.
 func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Relationship, error) {
+	return bs.relsByTypePropertyKeys(relTypeToken, propKey, opts, func() ([]string, error) {
+		return storepkg.ValueIndexKeys(value, "relationships by type and property")
+	})
+}
+
+var _ storecontract.RelPropertyKeysLookupCapability = (*Store)(nil)
+
+// RelationshipsByTypeAndPropertyKeys implements
+// storecontract.RelPropertyKeysLookupCapability: one paged walk over the
+// keys' posting lists, or one type scan matching any key (round 11).
+func (bs *Store) RelationshipsByTypeAndPropertyKeys(relTypeToken uint16, propKey string, valueKeys []string, opts QueryOpts) ([]*types.Relationship, error) {
+	return bs.relsByTypePropertyKeys(relTypeToken, propKey, opts, func() ([]string, error) { return valueKeys, nil })
+}
+
+// relsByTypePropertyKeys is nodesByLabelPropertyKeys for relationships.
+func (bs *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opts QueryOpts, keysOf func() ([]string, error)) ([]*types.Relationship, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -143,20 +159,20 @@ func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
-	if err := types.ValidatePropertyValue(value); err != nil {
+	targetKeys, err := keysOf()
+	if err != nil {
 		return nil, err
 	}
-	targetKey := indexpkg.PropertyValueKey(value)
-	if targetKey == "" {
+	if targetKeys = storepkg.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
 		return nil, nil
 	}
 
 	bs.idxMu.RLock()
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
 	if idx, ok := bs.relPropertyIndexes[key]; ok && idx.Mutated == nil {
-		// The value's sorted posting list, paged from opts.After in batches
+		// The keys' sorted posting lists, paged from opts.After in batches
 		// (backlog 72): no copy or sort of the whole key.
-		ids := idx.Postings(value)
+		ids := idx.PostingsOfKeys(targetKeys)
 		empty := ids.Len() == 0
 		elements := idx.Elements()
 		bs.idxMu.RUnlock()
@@ -165,7 +181,7 @@ func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 		}
 		return pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Relationship, error) {
 			rids := bs.filterRelIDsByTemporalPeek(storepkg.ToRelIDs(batch), page)
-			return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, elements, rids, page)
+			return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKeys, elements, rids, page)
 		})
 	}
 
@@ -182,10 +198,10 @@ func (bs *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 		return nil, nil
 	}
 	storepkg.SortRelIDs(rids)
-	return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKey, scanElements, rids, opts)
+	return bs.fetchRelsByTypePropertyIDs(relTypeToken, propKey, targetKeys, scanElements, rids, opts)
 }
 
-func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey, targetKey string, elements bool, rids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
+func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey string, targetKeys []string, elements bool, rids []types.RelID, opts QueryOpts) ([]*types.Relationship, error) {
 	rids = storepkg.PaginateRelIDs(rids, opts.After, 0)
 	if len(rids) == 0 {
 		return nil, nil
@@ -203,7 +219,7 @@ func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey, target
 		if !r.HasTypeTokenRaw(relTypeToken) {
 			continue
 		}
-		if !r.HasPropertyIndexKey(propKey, elements, targetKey) {
+		if !storepkg.RelHasAnyIndexKey(r, propKey, elements, targetKeys) {
 			continue
 		}
 		if hasTemporal && !storepkg.MatchesTemporalFilter(rid.SnowflakeID(), r.Temporal(), opts) {

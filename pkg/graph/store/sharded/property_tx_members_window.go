@@ -18,59 +18,27 @@ var (
 // ForEachRelPropertyTxMemberDuring implements
 // store.RelPropertyTxMemberWindowCapability.
 func (s *Store) ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
-	if err := s.checkOpen(); err != nil {
-		return err
-	}
-	if fn == nil {
-		return storecontract.ErrInvalidStoreMutation
-	}
-	union := make(map[types.RelID]types.Instant)
-	var order []types.RelID
-	for _, shard := range s.shards {
-		if err := shard.ForEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, valueKey, validStart, validEnd, txAt, func(id types.RelID, tx types.Instant) bool {
-			if _, seen := union[id]; !seen {
-				order = append(order, id)
-			}
-			unionFirstTx(union, id, tx)
-			return true
-		}); err != nil {
-			return err
-		}
-	}
-	for _, id := range order {
-		if !fn(id, union[id]) {
-			return nil
-		}
-	}
-	return nil
+	return s.ForEachRelPropertyTxMemberKeysDuring(relTypeToken, propertyKey, []string{valueKey}, validStart, validEnd, txAt, fn)
 }
 
 // ForEachNodePropertyTxMemberDuring implements
 // store.NodePropertyTxMemberWindowCapability.
 func (s *Store) ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
-	if err := s.checkOpen(); err != nil {
-		return err
-	}
-	if fn == nil {
-		return storecontract.ErrInvalidStoreMutation
-	}
-	union := make(map[types.NodeID]types.Instant)
-	var order []types.NodeID
-	for _, shard := range s.shards {
-		if err := shard.ForEachNodePropertyTxMemberDuring(labelToken, propertyKey, valueKey, validStart, validEnd, txAt, func(id types.NodeID, tx types.Instant) bool {
-			if _, seen := union[id]; !seen {
-				order = append(order, id)
-			}
-			unionFirstTx(union, id, tx)
-			return true
-		}); err != nil {
-			return err
-		}
-	}
-	for _, id := range order {
-		if !fn(id, union[id]) {
-			return nil
-		}
-	}
-	return nil
+	return s.ForEachNodePropertyTxMemberKeysDuring(labelToken, propertyKey, []string{valueKey}, validStart, validEnd, txAt, fn)
+}
+
+// ForEachRelPropertyTxMemberKeysDuring implements the windowed form of
+// store.RelPropertyTxMemberKeysCapability (round 11).
+func (s *Store) ForEachRelPropertyTxMemberKeysDuring(relTypeToken uint16, propertyKey string, valueKeys []string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return unionShardMembers(s, valueKeys, func(shard *badgerShard, vk string, f func(types.RelID, types.Instant) bool) error {
+		return shard.ForEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, vk, validStart, validEnd, txAt, f)
+	}, fn)
+}
+
+// ForEachNodePropertyTxMemberKeysDuring implements the windowed form of
+// store.NodePropertyTxMemberKeysCapability (round 11).
+func (s *Store) ForEachNodePropertyTxMemberKeysDuring(labelToken uint16, propertyKey string, valueKeys []string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return unionShardMembers(s, valueKeys, func(shard *badgerShard, vk string, f func(types.NodeID, types.Instant) bool) error {
+		return shard.ForEachNodePropertyTxMemberDuring(labelToken, propertyKey, vk, validStart, validEnd, txAt, f)
+	}, fn)
 }

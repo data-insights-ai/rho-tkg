@@ -1153,37 +1153,32 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 	for {
 		seen := make(map[types.RelID]struct{})
 		declined := false
-		for _, valueKey := range valueKeys {
-			var invalid error
-			member := func(id types.RelID, firstTx types.Instant) bool {
-				if !c.storeRowsTrust {
-					if verr := storepkg.ValidateRelID(id); verr != nil {
-						invalid = verr
-						return false
-					}
+		var invalid error
+		member := func(id types.RelID, firstTx types.Instant) bool {
+			if !c.storeRowsTrust {
+				if verr := storepkg.ValidateRelID(id); verr != nil {
+					invalid = verr
+					return false
 				}
-				if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
-					return true // first carried the value after the pin: cannot match
-				}
-				seen[id] = struct{}{}
-				return true
 			}
-			var err error
-			if windowed {
-				err = c.relPropTxWindow.ForEachRelPropertyTxMemberDuring(tok, key, valueKey, start, end, txAtOf(opts), member)
-			} else {
-				err = c.relPropTxMembers.ForEachRelPropertyTxMember(tok, key, valueKey, member)
+			if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
+				return true // first carried the value after the pin: cannot match
 			}
-			if invalid != nil {
-				return invalid
-			}
-			if errors.Is(err, storepkg.ErrIndexNotFound) {
-				declined = true
-				break
-			}
-			if err != nil {
-				return err
-			}
+			seen[id] = struct{}{}
+			return true
+		}
+		var window *memberWindow
+		if windowed {
+			window = &memberWindow{start, end, txAtOf(opts)}
+		}
+		err := c.forEachRelPropTxMemberOfKeys(tok, key, valueKeys, window, member)
+		if invalid != nil {
+			return invalid
+		}
+		if errors.Is(err, storepkg.ErrIndexNotFound) {
+			declined = true
+		} else if err != nil {
+			return err
 		}
 		if declined {
 			if windowed {
@@ -1208,6 +1203,64 @@ func (c *Core) forEachRelPropertyCandidateID(tok uint16, key string, valueKeys e
 		}
 		return nil
 	}
+}
+
+// memberWindow is the valid-time window and pin of a windowed membership
+// enumeration (store.NodePropertyTxMemberWindowCapability); nil = the whole
+// value's members.
+type memberWindow struct {
+	start, end, txAt types.Instant
+}
+
+// forEachRelPropTxMemberOfKeys enumerates the rel property membership sidecar
+// of (tok, key) over every key of valueKeys (a value's equal keys): one call
+// where the store has the several-key form (round 11; one fan-out on tiered
+// and sharded), else one call per key, stopping at the first error or
+// ErrIndexNotFound (fn may see an entity once per key; the keys form merges
+// them, the lowest first tx, which prunes alike). window selects the windowed
+// form.
+func (c *Core) forEachRelPropTxMemberOfKeys(tok uint16, key string, valueKeys []string, window *memberWindow, fn func(types.RelID, types.Instant) bool) error {
+	if c.relPropTxKeys != nil {
+		if window != nil {
+			return c.relPropTxKeys.ForEachRelPropertyTxMemberKeysDuring(tok, key, valueKeys, window.start, window.end, window.txAt, fn)
+		}
+		return c.relPropTxKeys.ForEachRelPropertyTxMemberKeys(tok, key, valueKeys, fn)
+	}
+	for _, vk := range valueKeys {
+		var err error
+		if window != nil {
+			err = c.relPropTxWindow.ForEachRelPropertyTxMemberDuring(tok, key, vk, window.start, window.end, window.txAt, fn)
+		} else {
+			err = c.relPropTxMembers.ForEachRelPropertyTxMember(tok, key, vk, fn)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// forEachNodePropTxMemberOfKeys is forEachRelPropTxMemberOfKeys for a node
+// (label, key) sidecar.
+func (c *Core) forEachNodePropTxMemberOfKeys(tok uint16, key string, valueKeys []string, window *memberWindow, fn func(types.NodeID, types.Instant) bool) error {
+	if c.nodePropTxKeys != nil {
+		if window != nil {
+			return c.nodePropTxKeys.ForEachNodePropertyTxMemberKeysDuring(tok, key, valueKeys, window.start, window.end, window.txAt, fn)
+		}
+		return c.nodePropTxKeys.ForEachNodePropertyTxMemberKeys(tok, key, valueKeys, fn)
+	}
+	for _, vk := range valueKeys {
+		var err error
+		if window != nil {
+			err = c.nodePropTxWindow.ForEachNodePropertyTxMemberDuring(tok, key, vk, window.start, window.end, window.txAt, fn)
+		} else {
+			err = c.nodePropTxMembers.ForEachNodePropertyTxMember(tok, key, vk, fn)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // validWindow returns the valid-time window [start, end) a point or interval
@@ -1264,46 +1317,38 @@ func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]e
 			continue
 		}
 		set := make(map[types.NodeID]struct{})
-		indexed := true
-		for _, vk := range vks {
-			var invalid error
-			member := func(id types.NodeID, firstTx types.Instant) bool {
-				if !c.storeRowsTrust {
-					if verr := storepkg.ValidateNodeID(id); verr != nil {
-						invalid = verr
-						return false
-					}
+		var invalid error
+		member := func(id types.NodeID, firstTx types.Instant) bool {
+			if !c.storeRowsTrust {
+				if verr := storepkg.ValidateNodeID(id); verr != nil {
+					invalid = verr
+					return false
 				}
-				if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
-					return true
-				}
-				if cands != nil {
-					if _, keep := cands[id]; !keep {
-						return true
-					}
-				}
-				set[id] = struct{}{}
+			}
+			if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
 				return true
 			}
-			var err error
-			if windowed {
-				err = c.nodePropTxWindow.ForEachNodePropertyTxMemberDuring(tok, key, vk, start, end, txAtOf(opts), member)
-			} else {
-				err = c.nodePropTxMembers.ForEachNodePropertyTxMember(tok, key, vk, member)
+			if cands != nil {
+				if _, keep := cands[id]; !keep {
+					return true
+				}
 			}
-			if invalid != nil {
-				return invalid
-			}
-			if errors.Is(err, storepkg.ErrIndexNotFound) {
-				indexed = false
-				break
-			}
-			if err != nil {
-				return err
-			}
+			set[id] = struct{}{}
+			return true
 		}
-		if !indexed {
-			continue
+		var window *memberWindow
+		if windowed {
+			window = &memberWindow{start, end, txAtOf(opts)}
+		}
+		err := c.forEachNodePropTxMemberOfKeys(tok, key, vks, window, member)
+		if invalid != nil {
+			return invalid
+		}
+		if errors.Is(err, storepkg.ErrIndexNotFound) {
+			continue // this pair constrains nothing
+		}
+		if err != nil {
+			return err
 		}
 		cands = set
 	}

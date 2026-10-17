@@ -1,0 +1,60 @@
+ 9:23  up 32 days,  2:45, 6 users, load averages: 37.75 38.21 37.65
+benchlock[rho11-item1-base shared]: acquired after 0 s, slots [2], load 37.8
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: Apple M4 Max
+BenchmarkRound11PointSeek/memory/num         	   20000	      2380 ns/op	    1400 B/op	      53 allocs/op
+BenchmarkRound11PointSeek/memory/str         	   20000	       571.8 ns/op	     280 B/op	      12 allocs/op
+BenchmarkRound11PointSeek/memory/num-at      	   20000	      4664 ns/op	    2922 B/op	      70 allocs/op
+BenchmarkRound11PointSeek/badger/num         	   20000	      1528 ns/op	     872 B/op	      50 allocs/op
+BenchmarkRound11PointSeek/badger/str         	   20000	       486.8 ns/op	     168 B/op	      13 allocs/op
+BenchmarkRound11PointSeek/badger/num-at      	   20000	      3930 ns/op	    3189 B/op	      74 allocs/op
+BenchmarkRound11PointSeek/tiered/num         	   20000	     30003 ns/op	    5600 B/op	     164 allocs/op
+BenchmarkRound11PointSeek/tiered/str         	   20000	      4144 ns/op	     648 B/op	      25 allocs/op
+BenchmarkRound11PointSeek/tiered/num-at      	   20000	    146114 ns/op	   13726 B/op	     344 allocs/op
+BenchmarkRound11PointSeek/sharded/num        	   20000	     16519 ns/op	    7366 B/op	     182 allocs/op
+BenchmarkRound11PointSeek/sharded/str        	   20000	      2211 ns/op	    1840 B/op	      42 allocs/op
+BenchmarkRound11PointSeek/sharded/num-at     	   20000	      5008 ns/op	    5815 B/op	     125 allocs/op
+PASS
+ 9:23  up 32 days,  2:45, 6 users, load averages: 35.77 37.79 37.51
+ 9:23  up 32 days,  2:45, 6 users, load averages: 35.77 37.79 37.51
+benchlock[rho11-item1-base shared]: acquired after 0 s, slots [2], load 35.8
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: Apple M4 Max
+BenchmarkRound11PointSeek/memory/num         	   20000	      1645 ns/op	    1400 B/op	      53 allocs/op
+BenchmarkRound11PointSeek/memory/str         	   20000	       692.5 ns/op	     280 B/op	      12 allocs/op
+BenchmarkRound11PointSeek/memory/num-at      	   20000	      2922 ns/op	    2922 B/op	      70 allocs/op
+BenchmarkRound11PointSeek/badger/num         	   20000	      1386 ns/op	     872 B/op	      50 allocs/op
+BenchmarkRound11PointSeek/badger/str         	   20000	       344.3 ns/op	     168 B/op	      13 allocs/op
+BenchmarkRound11PointSeek/badger/num-at      	   20000	      2070 ns/op	    3083 B/op	      71 allocs/op
+BenchmarkRound11PointSeek/tiered/num         	   20000	     20990 ns/op	    5600 B/op	     164 allocs/op
+BenchmarkRound11PointSeek/tiered/str         	   20000	      3080 ns/op	     648 B/op	      25 allocs/op
+BenchmarkRound11PointSeek/tiered/num-at      	   20000	    127022 ns/op	   13725 B/op	     344 allocs/op
+BenchmarkRound11PointSeek/sharded/num        	   20000	     15330 ns/op	    7366 B/op	     182 allocs/op
+BenchmarkRound11PointSeek/sharded/str        	   20000	      2005 ns/op	    1840 B/op	      42 allocs/op
+BenchmarkRound11PointSeek/sharded/num-at     	   20000	      4839 ns/op	    5815 B/op	     125 allocs/op
+PASS
+ 9:23  up 32 days,  2:45, 6 users, load averages: 33.63 37.32 37.34
+ 9:23  up 32 days,  2:45, 6 users, load averages: 31.89 36.90 37.19
+benchlock[rho11-item1-base shared]: acquired after 0 s, slots [2], load 31.9
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: Apple M4 Max
+BenchmarkRound11PointSeek/memory/num         	   20000	      2119 ns/op	    1400 B/op	      53 allocs/op
+BenchmarkRound11PointSeek/memory/str         	   20000	       589.4 ns/op	     280 B/op	      12 allocs/op
+BenchmarkRound11PointSeek/memory/num-at      	   20000	      6698 ns/op	    2922 B/op	      70 allocs/op
+BenchmarkRound11PointSeek/badger/num         	   20000	      3138 ns/op	     872 B/op	      50 allocs/op
+BenchmarkRound11PointSeek/badger/str         	   20000	       497.8 ns/op	     168 B/op	      13 allocs/op
+BenchmarkRound11PointSeek/badger/num-at      	   20000	      6486 ns/op	    6449 B/op	     121 allocs/op
+BenchmarkRound11PointSeek/tiered/num         	   20000	     36625 ns/op	    5601 B/op	     164 allocs/op
+BenchmarkRound11PointSeek/tiered/str         	   20000	      7574 ns/op	     648 B/op	      25 allocs/op
+BenchmarkRound11PointSeek/tiered/num-at      	   20000	    237547 ns/op	   13729 B/op	     344 allocs/op
+BenchmarkRound11PointSeek/sharded/num        	   20000	     22661 ns/op	    7367 B/op	     182 allocs/op
+BenchmarkRound11PointSeek/sharded/str        	   20000	      2750 ns/op	    1840 B/op	      42 allocs/op
+BenchmarkRound11PointSeek/sharded/num-at     	   20000	      6393 ns/op	    5815 B/op	     125 allocs/op
+PASS
+ 9:23  up 32 days,  2:45, 6 users, load averages: 32.78 37.00 37.22

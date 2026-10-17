@@ -1,10 +1,8 @@
 package tiered
 
 import (
-	"fmt"
 	"slices"
 
-	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -177,6 +175,25 @@ func (ts *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 // --- Property indexes ---
 
 func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+	return ts.nodesByLabelPropertyKeys(labelToken, key, opts, func() ([]string, error) {
+		return storeutil.ValueIndexKeys(value, "nodes by label and property")
+	})
+}
+
+var _ storecontract.PropertyKeysLookupCapability = (*Store)(nil)
+
+// NodesByLabelAndPropertyKeys implements
+// storecontract.PropertyKeysLookupCapability: one fold over the reference,
+// archive and event shards, each shard asked once with every key (round 11;
+// before, the graph asked once per numeric form and each ask walked every
+// shard).
+func (ts *Store) NodesByLabelAndPropertyKeys(labelToken uint16, key string, valueKeys []string, opts QueryOpts) ([]*types.Node, error) {
+	return ts.nodesByLabelPropertyKeys(labelToken, key, opts, func() ([]string, error) { return valueKeys, nil })
+}
+
+// nodesByLabelPropertyKeys is the body of both doors; keysOf runs after the
+// store, token and option checks (a single value is validated there).
+func (ts *Store) nodesByLabelPropertyKeys(labelToken uint16, key string, opts QueryOpts, keysOf func() ([]string, error)) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -189,8 +206,12 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 	if err := validateQueryOpts(opts); err != nil {
 		return nil, err
 	}
-	if err := types.ValidatePropertyValue(value); err != nil {
-		return nil, fmt.Errorf("graph: nodes by label and property value: %w", err)
+	targetKeys, err := keysOf()
+	if err != nil {
+		return nil, err
+	}
+	if targetKeys = storeutil.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
+		return nil, nil
 	}
 
 	move := ts.lockMoveRead() // a node moved mid-read would show twice or not at all
@@ -202,7 +223,7 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 	elemOpts, _, err := ref.PropertyIndexOptions(labelToken, key)
 	var refNodes []*types.Node
 	if err == nil {
-		refNodes, err = shardNodesByLabelAndProperty(ref, elemOpts.Elements, labelToken, key, value, stripDepth(opts))
+		refNodes, err = shardNodesByLabelAndProperty(ref, elemOpts.Elements, labelToken, key, targetKeys, stripDepth(opts))
 	}
 	refCheckin()
 	if err != nil {
@@ -217,7 +238,7 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 			return nil, archiveErr
 		}
 		if archive != nil {
-			archiveNodes, err = shardNodesByLabelAndProperty(archive, elemOpts.Elements, labelToken, key, value, stripDepth(opts))
+			archiveNodes, err = shardNodesByLabelAndProperty(archive, elemOpts.Elements, labelToken, key, targetKeys, stripDepth(opts))
 			archiveCheckin()
 			if err != nil {
 				return nil, err
@@ -242,7 +263,7 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 			return
 		}
 		defer release()
-		results[i].nodes, results[i].err = shardNodesByLabelAndProperty(store, elemOpts.Elements, labelToken, key, value, stripDepth(opts))
+		results[i].nodes, results[i].err = shardNodesByLabelAndProperty(store, elemOpts.Elements, labelToken, key, targetKeys, stripDepth(opts))
 	})
 
 	var slices [][]*types.Node
@@ -266,21 +287,18 @@ func (ts *Store) NodesByLabelAndProperty(labelToken uint16, key string, value an
 }
 
 // shardNodesByLabelAndProperty is one shard's part of a node property lookup
-// under the anchor's index semantics (elements: the anchor's index is an
-// Elements index, backlog 63): the shard's own door when shardPropertyDoor
-// says it answers the same, else a label scan with the anchor's match (a shard
-// without its copy of an Elements index, or with a stale copy).
-func shardNodesByLabelAndProperty(store *BadgerStore, elements bool, labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error) {
+// over the index keys targetKeys under the anchor's index
+// semantics (elements: the anchor's index is an Elements index, backlog 63):
+// the shard's own door when shardPropertyDoor says it answers the same, else
+// a label scan with the anchor's match (a shard without its copy of an
+// Elements index, or with a stale copy).
+func shardNodesByLabelAndProperty(store *BadgerStore, elements bool, labelToken uint16, key string, targetKeys []string, opts QueryOpts) ([]*types.Node, error) {
 	have, has, err := store.PropertyIndexOptions(labelToken, key)
 	if err != nil {
 		return nil, err
 	}
 	if shardPropertyDoor(have, has, elements) {
-		return store.NodesByLabelAndProperty(labelToken, key, value, opts)
-	}
-	targetKey := indexpkg.PropertyValueKey(value)
-	if targetKey == "" {
-		return nil, nil
+		return store.NodesByLabelAndPropertyKeys(labelToken, key, targetKeys, opts)
 	}
 	nodes, err := store.NodesByLabel(labelToken, QueryOpts{After: opts.After})
 	if err != nil {
@@ -288,7 +306,7 @@ func shardNodesByLabelAndProperty(store *BadgerStore, elements bool, labelToken 
 	}
 	temporal := opts.HasValidTimeFilter()
 	return slices.DeleteFunc(nodes, func(n *types.Node) bool {
-		return !n.HasPropertyIndexKey(key, elements, targetKey) ||
+		return !storeutil.NodeHasAnyIndexKey(n, key, elements, targetKeys) ||
 			(temporal && !storeutil.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts))
 	}), nil
 }

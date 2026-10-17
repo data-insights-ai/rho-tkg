@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -328,6 +329,24 @@ func uniqueNodeIDsPreserveOrder(ids []types.NodeID) []types.NodeID {
 // NodesByLabelAndProperty returns nodes with the label token and property value,
 // applying temporal/depth options before cursor pagination.
 func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
+	return bs.nodesByLabelPropertyKeys(labelToken, propKey, opts, func() ([]string, error) {
+		return storepkg.ValueIndexKeys(value, "nodes by label and property")
+	})
+}
+
+var _ storecontract.PropertyKeysLookupCapability = (*Store)(nil)
+
+// NodesByLabelAndPropertyKeys implements
+// storecontract.PropertyKeysLookupCapability: one paged walk over the keys'
+// posting lists (index.PostingsOfKeys; on disk, each key's prefix scan,
+// united), or one label scan matching any key (round 11).
+func (bs *Store) NodesByLabelAndPropertyKeys(labelToken uint16, propKey string, valueKeys []string, opts QueryOpts) ([]*types.Node, error) {
+	return bs.nodesByLabelPropertyKeys(labelToken, propKey, opts, func() ([]string, error) { return valueKeys, nil })
+}
+
+// nodesByLabelPropertyKeys is the body of both doors; keysOf runs after the
+// store, token and option checks (a single value is validated there).
+func (bs *Store) nodesByLabelPropertyKeys(labelToken uint16, propKey string, opts QueryOpts, keysOf func() ([]string, error)) ([]*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -340,11 +359,11 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
-	if err := types.ValidatePropertyValue(value); err != nil {
-		return nil, fmt.Errorf("graph: nodes by label and property value: %w", err)
+	targetKeys, err := keysOf()
+	if err != nil {
+		return nil, err
 	}
-	targetKey := indexpkg.PropertyValueKey(value)
-	if targetKey == "" {
+	if targetKeys = storepkg.DistinctIndexKeys(targetKeys); len(targetKeys) == 0 {
 		return nil, nil
 	}
 
@@ -356,9 +375,9 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 		// Indexed path.
 		elements := idx.Elements()
 		if !bs.propIdxOnDisk {
-			// The value's sorted posting list, paged from opts.After in
+			// The keys' sorted posting lists, paged from opts.After in
 			// batches (backlog 72): no copy or sort of the whole key.
-			ids := idx.Postings(value)
+			ids := idx.PostingsOfKeys(targetKeys)
 			empty := ids.Len() == 0
 			bs.idxMu.RUnlock()
 			if empty {
@@ -366,24 +385,30 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 			}
 			return pagePostings(bs, ids, opts, func(batch []snowflake.ID, page QueryOpts) ([]*types.Node, error) {
 				nids := bs.filterNodeIDsByTemporalPeek(storepkg.ToNodeIDs(batch), page)
-				return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, elements, nids, page)
+				return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKeys, elements, nids, page)
 			})
 		}
-		nids, dErr := bs.propertyIndexDiskLookupLocked(propKey, targetKey)
-		bs.idxMu.RUnlock()
-		if dErr != nil {
-			return nil, dErr
+		var nids []types.NodeID
+		for _, targetKey := range targetKeys {
+			found, dErr := bs.propertyIndexDiskLookupLocked(propKey, targetKey)
+			if dErr != nil {
+				bs.idxMu.RUnlock()
+				return nil, dErr
+			}
+			nids = append(nids, found...)
 		}
+		bs.idxMu.RUnlock()
 		if len(nids) == 0 {
 			return nil, nil
 		}
 
 		storepkg.SortNodeIDs(nids)
+		nids = slices.Compact(nids)
 
 		// Temporal pre-filter via Peek.
 		nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 
-		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, elements, nids, opts)
+		return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKeys, elements, nids, opts)
 	}
 
 	// Fallback: label scan + property filter, with the declared index's match
@@ -402,7 +427,7 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 
 	// Sorted scan for property matches.
 	storepkg.SortNodeIDs(nids)
-	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, scanElements, nids, opts)
+	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKeys, scanElements, nids, opts)
 }
 
 // NodesByLabelContainingProperty answers an Elements-index lookup (backlog 63) on a
@@ -434,10 +459,10 @@ func (bs *Store) NodesByLabelContainingProperty(labelToken uint16, propKey strin
 		return nil, err
 	}
 	storepkg.SortNodeIDs(nids)
-	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, targetKey, true, nids, opts)
+	return bs.fetchNodesByLabelPropertyIDs(labelToken, propKey, []string{targetKey}, true, nids, opts)
 }
 
-func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, targetKey string, elements bool, nids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
+func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey string, targetKeys []string, elements bool, nids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
 	nids = storepkg.PaginateNodeIDs(nids, opts.After, 0)
 	if len(nids) == 0 {
 		return nil, nil
@@ -456,7 +481,7 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, target
 		if !n.HasLabelTokenRaw(labelToken) {
 			continue
 		}
-		if n.HasPropertyIndexKey(propKey, elements, targetKey) {
+		if storepkg.NodeHasAnyIndexKey(n, propKey, elements, targetKeys) {
 			if hasTemporal && !storepkg.MatchesTemporalFilter(nid.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}

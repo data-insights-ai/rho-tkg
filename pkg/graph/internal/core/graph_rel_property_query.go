@@ -104,42 +104,53 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 }
 
 // relsByTypeAndProperty answers the (rel-type-token, property-key, value) query
-// with or without the accelerated index: RelationshipsByTypeAndProperty where
-// implemented, else type scan + filter. Exact in-tree stores use
-// RelationshipsByTypeAndProperty; wrappers and mandatory-only backends fall back to
-// a type scan + filter. Mirror of nodesByLabelAndProperty.
+// with or without the accelerated index: RelationshipsByTypeAndPropertyKeys
+// (every form in one lookup, round 11) or RelationshipsByTypeAndProperty per
+// form where implemented, else type scan + filter. Exact in-tree stores use
+// the store's door; wrappers and mandatory-only backends fall back to a type
+// scan + filter. Mirror of nodesByLabelAndProperty.
 func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	forms := types.EqualIndexValues(value)
 	if len(forms) == 0 {
 		// nil, NaN or a value without an index key: by contract, no matches.
 		return nil, nil
 	}
-	perForm := c.relPropertyQuery != nil && len(forms) == 1
-	if c.relPropertyQuery != nil && !perForm {
+	keys := keysOf(forms)
+	lookup := c.relPropertyKeysQuery != nil
+	perForm := !lookup && c.relPropertyQuery != nil && len(forms) == 1
+	if !lookup && c.relPropertyQuery != nil && !perForm {
 		indexed, err := c.relPropertyIndexed(tok, key)
 		if err != nil {
 			return nil, err
 		}
 		perForm = indexed
 	}
-	if perForm {
+	if lookup || perForm {
 		var rels []*types.Relationship
-		for _, form := range forms {
-			found, err := c.relPropertyQuery.RelationshipsByTypeAndProperty(tok, key, form, opts)
+		if lookup {
+			found, err := c.relPropertyKeysQuery.RelationshipsByTypeAndPropertyKeys(tok, key, keys, opts)
 			if err != nil {
 				return nil, err
 			}
-			rels = append(rels, found...)
-		}
-		if len(forms) > 1 {
-			rels = uniteRels(rels, opts)
+			rels = found
+		} else {
+			for _, form := range forms {
+				found, err := c.relPropertyQuery.RelationshipsByTypeAndProperty(tok, key, form, opts)
+				if err != nil {
+					return nil, err
+				}
+				rels = append(rels, found...)
+			}
+			if len(forms) > 1 {
+				rels = uniteRels(rels, opts)
+			}
 		}
 		if !c.relPropertyQueryTrust {
 			elements, err := c.relIndexElements(tok, key)
 			if err != nil {
 				return nil, err
 			}
-			if err := validateRelsByTypeAndProperty(tok, key, keysOf(forms), elements, opts, rels); err != nil {
+			if err := validateRelsByTypeAndProperty(tok, key, keys, elements, opts, rels); err != nil {
 				return nil, err
 			}
 			rels = copyRelationshipRows(rels)
@@ -163,7 +174,6 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 	if err != nil {
 		return nil, err
 	}
-	keys := keysOf(forms)
 	out := make([]*types.Relationship, 0, len(candidates))
 	for _, r := range candidates {
 		if keys.rel(r, key, elements) {

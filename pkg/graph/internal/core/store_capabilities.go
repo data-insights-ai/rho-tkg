@@ -87,44 +87,56 @@ func (c *Core) highFrequencyIndexCap() (storepkg.HighFrequencyIndexCapability, e
 
 // nodesByLabelAndProperty answers the (label-token, property-key, value) query
 // with or without the accelerated capability, under the property equality
-// (property_equal.go): the value's forms are looked up one exact key each and
-// united. Exact in-tree stores and direct external implementations use
-// NodesByLabelAndProperty (per form only where a property index serves it, so
-// a store's own scan runs once); concrete wrappers that inherit it fall back to
-// a label scan so their NodesByLabel overrides stay visible. The capability is
-// acceleration, not query correctness. A value without forms (nil, NaN, a
-// list, a map) matches nothing.
+// (property_equal.go): the rows holding one of the value's forms. A store with
+// PropertyKeysLookupCapability reads every form in one lookup (one index
+// walk, round 11); else exact in-tree stores and direct external
+// implementations use NodesByLabelAndProperty once per form and unite (per
+// form only where a property index serves it, so a store's own scan runs
+// once); concrete wrappers that inherit it fall back to a label scan so their
+// NodesByLabel overrides stay visible. The capability is acceleration, not
+// query correctness. A value without forms (nil, NaN, a list, a map) matches
+// nothing.
 func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	forms := types.EqualIndexValues(value)
 	if len(forms) == 0 {
 		return nil, nil
 	}
-	perForm := c.propertyQuery != nil && len(forms) == 1
-	if c.propertyQuery != nil && !perForm {
+	keys := keysOf(forms)
+	lookup := c.propertyKeysQuery != nil
+	perForm := !lookup && c.propertyQuery != nil && len(forms) == 1
+	if !lookup && c.propertyQuery != nil && !perForm {
 		indexed, err := c.nodePropertyIndexed(tok, key)
 		if err != nil {
 			return nil, err
 		}
 		perForm = indexed
 	}
-	if perForm {
+	if lookup || perForm {
 		var nodes []*types.Node
-		for _, form := range forms {
-			found, err := c.propertyQuery.NodesByLabelAndProperty(tok, key, form, opts)
+		if lookup {
+			found, err := c.propertyKeysQuery.NodesByLabelAndPropertyKeys(tok, key, keys, opts)
 			if err != nil {
 				return nil, err
 			}
-			nodes = append(nodes, found...)
-		}
-		if len(forms) > 1 {
-			nodes = uniteNodes(nodes, opts)
+			nodes = found
+		} else {
+			for _, form := range forms {
+				found, err := c.propertyQuery.NodesByLabelAndProperty(tok, key, form, opts)
+				if err != nil {
+					return nil, err
+				}
+				nodes = append(nodes, found...)
+			}
+			if len(forms) > 1 {
+				nodes = uniteNodes(nodes, opts)
+			}
 		}
 		if !c.propertyQueryTrust {
 			elements, err := c.nodeIndexElements(tok, key)
 			if err != nil {
 				return nil, err
 			}
-			if err := validateNodesByLabelAndProperty(tok, key, keysOf(forms), elements, opts, nodes); err != nil {
+			if err := validateNodesByLabelAndProperty(tok, key, keys, elements, opts, nodes); err != nil {
 				return nil, err
 			}
 			nodes = copyNodeRows(nodes)
@@ -148,7 +160,6 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 	if err != nil {
 		return nil, err
 	}
-	keys := keysOf(forms)
 	out := make([]*types.Node, 0, len(candidates))
 	for _, n := range candidates {
 		if keys.node(n, key, elements) {

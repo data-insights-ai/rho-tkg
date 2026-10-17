@@ -1,0 +1,60 @@
+--- FAIL: TestRound11PointSeekOneWalk (0.01s)
+    round11_seek_test.go:113: rels on tiered: a numeric point seek costs 171 allocations over a string seek, memory 41: the store is walked once per numeric form
+    round11_seek_test.go:113: rels on sharded: a numeric point seek costs 136 allocations over a string seek, memory 41: the store is walked once per numeric form
+    round11_seek_test.go:113: nodes on sharded: a numeric point seek costs 138 allocations over a string seek, memory 41: the store is walked once per numeric form
+    round11_seek_test.go:113: nodes on tiered: a numeric point seek costs 139 allocations over a string seek, memory 41: the store is walked once per numeric form
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.512s
+FAIL
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core.test]
+pkg/graph/internal/core/round11_seek_internal_test.go:28:17: s.Store.NodesByLabelAndPropertyKeys undefined (type *memory.Store has no field or method NodesByLabelAndPropertyKeys)
+pkg/graph/internal/core/round11_seek_internal_test.go:43:17: s.Store.RelationshipsByTypeAndPropertyKeys undefined (type *memory.Store has no field or method RelationshipsByTypeAndPropertyKeys)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core [build failed]
+FAIL
+--- core test on v4.60.0 (wrapper without the keys door, which v4.60.0 lacks):
+--- FAIL: TestRound11PointSeekAsksTheStoreOnce (0.00s)
+    round11_seek_internal_test.go:107: ByLabelAndProperty: 10 store lookups for one seek of 1000, want 1
+    round11_seek_internal_test.go:107: ByTypeAndProperty: 10 store lookups for one seek of 1000, want 1
+    round11_seek_internal_test.go:107: NodesByLabelPropertyAt: 10 store lookups for one seek of 1000, want 1
+    round11_seek_internal_test.go:107: RelsByTypePropertyAt: 10 store lookups for one seek of 1000, want 1
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.805s
+FAIL
+--- TestRound11PointSeekOneWalk with the pinned named doors (nodes at / rels at), on v4.60.0 (1ba2af86):
+    round11_seek_test.go:120: nodes: numeric seek 53 allocs, string seek 12 allocs
+    round11_seek_test.go:120: rels: numeric seek 53 allocs, string seek 12 allocs
+    round11_seek_test.go:120: nodes at: numeric seek 70 allocs, string seek 30 allocs
+    round11_seek_test.go:120: rels at: numeric seek 72 allocs, string seek 32 allocs
+    round11_seek_test.go:120: nodes: numeric seek 50 allocs, string seek 13 allocs
+    round11_seek_test.go:120: rels: numeric seek 50 allocs, string seek 15 allocs
+    round11_seek_test.go:120: nodes at: numeric seek 70 allocs, string seek 30 allocs
+    round11_seek_test.go:120: rels at: numeric seek 69 allocs, string seek 29 allocs
+    round11_seek_test.go:120: nodes: numeric seek 164 allocs, string seek 25 allocs
+    round11_seek_test.go:120: rels: numeric seek 201 allocs, string seek 30 allocs
+    round11_seek_test.go:120: nodes at: numeric seek 343 allocs, string seek 121 allocs
+    round11_seek_test.go:120: rels at: numeric seek 342 allocs, string seek 120 allocs
+    round11_seek_test.go:120: nodes: numeric seek 180 allocs, string seek 42 allocs
+    round11_seek_test.go:120: rels: numeric seek 180 allocs, string seek 44 allocs
+    round11_seek_test.go:120: nodes at: numeric seek 124 allocs, string seek 84 allocs
+    round11_seek_test.go:120: rels at: numeric seek 123 allocs, string seek 83 allocs
+    round11_seek_test.go:135: rels on tiered: a numeric point seek costs 171 allocations over a string seek, memory 41: the store is walked once per numeric form
+    round11_seek_test.go:135: rels on sharded: a numeric point seek costs 136 allocations over a string seek, memory 41: the store is walked once per numeric form
+    round11_seek_test.go:135: nodes at on tiered: a numeric point seek costs 222 allocations over a string seek, memory 40: the store is walked once per numeric form
+    round11_seek_test.go:135: rels at on tiered: a numeric point seek costs 222 allocations over a string seek, memory 40: the store is walked once per numeric form
+    round11_seek_test.go:135: nodes on sharded: a numeric point seek costs 138 allocations over a string seek, memory 41: the store is walked once per numeric form
+    round11_seek_test.go:135: nodes on tiered: a numeric point seek costs 139 allocations over a string seek, memory 41: the store is walked once per numeric form
+--- FAIL: TestRound11PointSeekOneWalk (0.03s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.382s
+FAIL
+--- core test (with sidecar counts) on v4.60.0; the wrapper lacks only the lookup keys door, which v4.60.0's memory store does not have:
+--- FAIL: TestRound11PointSeekAsksTheStoreOnce (0.00s)
+    round11_seek_internal_test.go:183: ByLabelAndProperty: 10 store lookups and 0 sidecar enumerations for one seek of 1000, want 1 and 0
+    round11_seek_internal_test.go:183: ByTypeAndProperty: 10 store lookups and 0 sidecar enumerations for one seek of 1000, want 1 and 0
+    round11_seek_internal_test.go:183: ByLabelAndProperty TxPin: 10 store lookups and 10 sidecar enumerations for one seek of 1000, want 1 and 1
+    round11_seek_internal_test.go:183: ByTypeAndProperty TxPin: 10 store lookups and 10 sidecar enumerations for one seek of 1000, want 1 and 1
+    round11_seek_internal_test.go:183: NodesByLabelPropertyAt: 0 store lookups and 10 sidecar enumerations for one seek of 1000, want 0 and 1
+    round11_seek_internal_test.go:183: RelsByTypePropertyAt: 0 store lookups and 10 sidecar enumerations for one seek of 1000, want 0 and 1
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.499s
+FAIL

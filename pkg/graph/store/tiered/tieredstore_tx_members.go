@@ -233,49 +233,95 @@ func (ts *Store) RelTypeTxMembersOf(token uint16, ids []types.RelID, fn func(id 
 // store.NodePropertyTxMembershipCapability over every shard's sidecar (see
 // unionPropertyTxMembers). On decline the core takes the history fold.
 func (ts *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
-	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
-		return bs.PropertyIndexOptions(labelToken, propertyKey)
-	}, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
-		return bs.ForEachNodePropertyTxMember(labelToken, propertyKey, valueKey, f)
-	}, fn)
+	return ts.ForEachNodePropertyTxMemberKeys(labelToken, propertyKey, []string{valueKey}, fn)
 }
 
 // ForEachRelPropertyTxMember implements store.RelPropertyTxMembershipCapability
 // (see unionPropertyTxMembers).
 func (ts *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, valueKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
-	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
-		return bs.RelPropertyIndexOptions(relTypeToken, propertyKey)
-	}, func(bs *BadgerStore, f func(types.RelID, types.Instant) bool) error {
-		return bs.ForEachRelPropertyTxMember(relTypeToken, propertyKey, valueKey, f)
-	}, fn)
+	return ts.ForEachRelPropertyTxMemberKeys(relTypeToken, propertyKey, []string{valueKey}, fn)
 }
 
 // ForEachNodePropertyTxMemberDuring implements
 // store.NodePropertyTxMemberWindowCapability (ledger row 62): every shard's
 // windowed answer, united like the full enumeration (unionPropertyTxMembers).
 func (ts *Store) ForEachNodePropertyTxMemberDuring(labelToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
-	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
-		return bs.PropertyIndexOptions(labelToken, propertyKey)
-	}, func(bs *BadgerStore, f func(types.NodeID, types.Instant) bool) error {
-		return bs.ForEachNodePropertyTxMemberDuring(labelToken, propertyKey, valueKey, validStart, validEnd, txAt, f)
-	}, fn)
+	return ts.ForEachNodePropertyTxMemberKeysDuring(labelToken, propertyKey, []string{valueKey}, validStart, validEnd, txAt, fn)
 }
 
 // ForEachRelPropertyTxMemberDuring implements
 // store.RelPropertyTxMemberWindowCapability (see
 // ForEachNodePropertyTxMemberDuring).
 func (ts *Store) ForEachRelPropertyTxMemberDuring(relTypeToken uint16, propertyKey, valueKey string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return ts.ForEachRelPropertyTxMemberKeysDuring(relTypeToken, propertyKey, []string{valueKey}, validStart, validEnd, txAt, fn)
+}
+
+var (
+	_ storecontract.NodePropertyTxMemberKeysCapability = (*Store)(nil) // round 11
+	_ storecontract.RelPropertyTxMemberKeysCapability  = (*Store)(nil)
+)
+
+// ForEachNodePropertyTxMemberKeys implements
+// store.NodePropertyTxMemberKeysCapability: one fan-out over the shards, each
+// shard enumerating every key (unionPropertyTxMembers unites across shards
+// and keys).
+func (ts *Store) ForEachNodePropertyTxMemberKeys(labelToken uint16, propertyKey string, valueKeys []string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+		return bs.PropertyIndexOptions(labelToken, propertyKey)
+	}, eachKey(valueKeys, func(bs *BadgerStore, vk string, f func(types.NodeID, types.Instant) bool) error {
+		return bs.ForEachNodePropertyTxMember(labelToken, propertyKey, vk, f)
+	}), fn)
+}
+
+// ForEachRelPropertyTxMemberKeys implements
+// store.RelPropertyTxMemberKeysCapability (see
+// ForEachNodePropertyTxMemberKeys).
+func (ts *Store) ForEachRelPropertyTxMemberKeys(relTypeToken uint16, propertyKey string, valueKeys []string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
 	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
 		return bs.RelPropertyIndexOptions(relTypeToken, propertyKey)
-	}, func(bs *BadgerStore, f func(types.RelID, types.Instant) bool) error {
-		return bs.ForEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, valueKey, validStart, validEnd, txAt, f)
-	}, fn)
+	}, eachKey(valueKeys, func(bs *BadgerStore, vk string, f func(types.RelID, types.Instant) bool) error {
+		return bs.ForEachRelPropertyTxMember(relTypeToken, propertyKey, vk, f)
+	}), fn)
+}
+
+// ForEachNodePropertyTxMemberKeysDuring implements
+// store.NodePropertyTxMemberKeysCapability's windowed form.
+func (ts *Store) ForEachNodePropertyTxMemberKeysDuring(labelToken uint16, propertyKey string, valueKeys []string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
+	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+		return bs.PropertyIndexOptions(labelToken, propertyKey)
+	}, eachKey(valueKeys, func(bs *BadgerStore, vk string, f func(types.NodeID, types.Instant) bool) error {
+		return bs.ForEachNodePropertyTxMemberDuring(labelToken, propertyKey, vk, validStart, validEnd, txAt, f)
+	}), fn)
+}
+
+// ForEachRelPropertyTxMemberKeysDuring implements
+// store.RelPropertyTxMemberKeysCapability's windowed form.
+func (ts *Store) ForEachRelPropertyTxMemberKeysDuring(relTypeToken uint16, propertyKey string, valueKeys []string, validStart, validEnd, txAt types.Instant, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
+	return unionPropertyTxMembers(ts, func(bs *BadgerStore) (storecontract.PropertyIndexOptions, bool, error) {
+		return bs.RelPropertyIndexOptions(relTypeToken, propertyKey)
+	}, eachKey(valueKeys, func(bs *BadgerStore, vk string, f func(types.RelID, types.Instant) bool) error {
+		return bs.ForEachRelPropertyTxMemberDuring(relTypeToken, propertyKey, vk, validStart, validEnd, txAt, f)
+	}), fn)
+}
+
+// eachKey is one shard's enumeration over every key of valueKeys (the union
+// is taken by unionPropertyTxMembers); the first error stops it.
+func eachKey[ID comparable](valueKeys []string, one func(*BadgerStore, string, func(ID, types.Instant) bool) error) func(*BadgerStore, func(ID, types.Instant) bool) error {
+	return func(bs *BadgerStore, f func(ID, types.Instant) bool) error {
+		for _, vk := range valueKeys {
+			if err := one(bs, vk, f); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }
 
 // unionPropertyTxMembers serves a property membership sidecar (WP-31): every
 // shard keeps its own over its own rows, and an entity's rows can sit on
 // several shards, so the answer is the union of every shard's members
-// (txMemberUnion: each entity once, lowest first tx). It answers only when the
+// (txMemberUnion: each entity once, lowest first tx; also across the keys of
+// a several-key enumeration, round 11). It answers only when the
 // anchor (reference shard) declares the index and EVERY other shard carries a
 // finished copy with the anchor's options; otherwise store.ErrIndexNotFound
 // (cheapest test first: the anchor) and the core takes the history fold —

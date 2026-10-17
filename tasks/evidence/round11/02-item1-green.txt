@@ -1,0 +1,26 @@
+=== RUN   TestRound11PointSeekOneWalk
+=== RUN   TestRound11PointSeekOneWalk/memory
+    round11_seek_test.go:98: nodes: numeric seek 49 allocs, string seek 13 allocs
+    round11_seek_test.go:98: rels: numeric seek 49 allocs, string seek 13 allocs
+=== RUN   TestRound11PointSeekOneWalk/badger
+    round11_seek_test.go:98: nodes: numeric seek 45 allocs, string seek 13 allocs
+    round11_seek_test.go:98: rels: numeric seek 47 allocs, string seek 15 allocs
+=== RUN   TestRound11PointSeekOneWalk/tiered
+    round11_seek_test.go:98: nodes: numeric seek 55 allocs, string seek 23 allocs
+    round11_seek_test.go:98: rels: numeric seek 59 allocs, string seek 27 allocs
+=== RUN   TestRound11PointSeekOneWalk/sharded
+    round11_seek_test.go:98: nodes: numeric seek 70 allocs, string seek 38 allocs
+    round11_seek_test.go:98: rels: numeric seek 72 allocs, string seek 40 allocs
+--- PASS: TestRound11PointSeekOneWalk (0.02s)
+=== RUN   TestRound11FormsSeekMatchesOracle
+=== RUN   TestRound11FormsSeekMatchesOracle/memory
+=== RUN   TestRound11FormsSeekMatchesOracle/badger
+=== RUN   TestRound11FormsSeekMatchesOracle/tiered
+=== RUN   TestRound11FormsSeekMatchesOracle/sharded
+--- PASS: TestRound11FormsSeekMatchesOracle (0.06s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.270s
+=== RUN   TestRound11PointSeekAsksTheStoreOnce
+--- PASS: TestRound11PointSeekAsksTheStoreOnce (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.261s

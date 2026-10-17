@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -84,9 +85,32 @@ func (s *Store) NodesByLabelAndProperty(labelToken uint16, key string, value any
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
 		return nil, err
 	}
+	keys, err := storeutil.ValueIndexKeys(value, "nodes by label and property")
+	if err != nil {
+		return nil, err
+	}
+	return s.NodesByLabelAndPropertyKeys(labelToken, key, keys, opts)
+}
+
+var _ storecontract.PropertyKeysLookupCapability = (*Store)(nil)
+
+// NodesByLabelAndPropertyKeys implements
+// storecontract.PropertyKeysLookupCapability: each shard asked once with
+// every key, the same page each, folded as NodesByLabelAndProperty (round
+// 11).
+func (s *Store) NodesByLabelAndPropertyKeys(labelToken uint16, key string, valueKeys []string, opts QueryOpts) ([]*types.Node, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
 	per := make([][]*types.Node, len(s.shards))
 	err := s.forEachShardErr(func(idx int, shard *badgerShard) error {
-		nodes, e := shard.NodesByLabelAndProperty(labelToken, key, value, opts)
+		nodes, e := shard.NodesByLabelAndPropertyKeys(labelToken, key, valueKeys, opts)
 		per[idx] = nodes
 		return e
 	})

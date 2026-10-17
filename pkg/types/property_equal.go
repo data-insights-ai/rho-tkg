@@ -100,6 +100,10 @@ func EqualIndexKeys(v any) []string {
 	return keys
 }
 
+// maxEqualForms is the most forms a number has (EqualIndexValues): five
+// signed and five unsigned integer widths and two float widths.
+const maxEqualForms = 12
+
 // twoTo63 and twoTo64 are 2^63 and 2^64 as float64 (exact).
 const (
 	twoTo63 = float64(1 << 63)
@@ -112,7 +116,7 @@ func equalInt(i int64) []any {
 	if i >= 0 {
 		return equalUint(uint64(i))
 	}
-	out := appendSignedWidths(nil, i)
+	out := appendSignedWidths(make([]any, 0, maxEqualForms), i)
 	if f := float64(i); f >= -twoTo63 && int64(f) == i {
 		out = appendFloatWidths(out, f)
 	}
@@ -121,7 +125,7 @@ func equalInt(i int64) []any {
 
 // equalUint is equalInt for a non-negative integer.
 func equalUint(u uint64) []any {
-	var out []any
+	out := make([]any, 0, maxEqualForms)
 	if u <= math.MaxInt64 {
 		out = appendSignedWidths(out, int64(u))
 	}
@@ -138,7 +142,7 @@ func equalFloat(f float64) []any {
 	if math.IsNaN(f) {
 		return nil
 	}
-	out := appendFloatWidths(nil, f)
+	out := appendFloatWidths(make([]any, 0, maxEqualForms), f)
 	if math.IsInf(f, 0) || f != math.Trunc(f) {
 		return out
 	}

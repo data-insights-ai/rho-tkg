@@ -160,3 +160,99 @@ func (p *IDPostings) AppendAfter(dst []snowflake.ID, after snowflake.ID, limit i
 	}
 	return dst
 }
+
+// Postings is a sorted ID set read in keyset pages: one posting list
+// (*IDPostings) or the union of several (PostingsUnion). Read under the
+// owning store's index lock, as IDPostings.
+type Postings interface {
+	// Len is the number of IDs held, an upper bound for a union (0 exactly
+	// when it is empty).
+	Len() int
+	// After yields the IDs above after ascending, each once.
+	After(after snowflake.ID) iter.Seq[snowflake.ID]
+	// AppendAfter appends at most limit IDs above after, ascending, each once
+	// (every one when limit <= 0).
+	AppendAfter(dst []snowflake.ID, after snowflake.ID, limit int) []snowflake.ID
+}
+
+// PostingsUnion is the union of several posting lists read as one sorted set,
+// each ID once: the IDs of an equality lookup over several index keys (a
+// number's forms, types.EqualIndexValues), so a point seek is one walk of
+// the index (round 11) instead of one lookup per key. A page reads at most
+// limit IDs of each list: the union's first limit IDs above a cursor are
+// among them.
+type PostingsUnion []*IDPostings
+
+// unionBatch is the first batch of PostingsUnion.After; later batches double
+// up to postingsUnionBatchCap.
+const (
+	unionBatch            = 64
+	postingsUnionBatchCap = 1 << 14
+)
+
+// Len implements Postings: the sum of the lists' lengths.
+func (u PostingsUnion) Len() int {
+	n := 0
+	for _, p := range u {
+		n += p.Len()
+	}
+	return n
+}
+
+// AppendAfter implements Postings.
+func (u PostingsUnion) AppendAfter(dst []snowflake.ID, after snowflake.ID, limit int) []snowflake.ID {
+	start := len(dst)
+	for _, p := range u {
+		dst = p.AppendAfter(dst, after, limit)
+	}
+	page := dst[start:]
+	slices.Sort(page)
+	page = slices.Compact(page)
+	if limit > 0 && len(page) > limit {
+		page = page[:limit]
+	}
+	return dst[:start+len(page)]
+}
+
+// After implements Postings, in batches of AppendAfter.
+func (u PostingsUnion) After(after snowflake.ID) iter.Seq[snowflake.ID] {
+	return func(yield func(snowflake.ID) bool) {
+		size := unionBatch
+		var batch []snowflake.ID
+		for {
+			batch = u.AppendAfter(batch[:0], after, size)
+			for _, id := range batch {
+				if !yield(id) {
+					return
+				}
+			}
+			if len(batch) < size {
+				return // every list ended: a list with size IDs left fills the batch
+			}
+			after = batch[len(batch)-1]
+			size = min(2*size, postingsUnionBatchCap)
+		}
+	}
+}
+
+// PostingsOfKeys returns the IDs holding one of the index keys (each key's
+// posting list in Entries; keys without holders add none): the list itself
+// for one, a PostingsUnion for several, an empty set for none. Caller holds
+// the store's index lock, as for Postings.
+func (pi *PropertyIndex) PostingsOfKeys(keys []string) Postings {
+	var lists PostingsUnion
+	if pi != nil {
+		for _, k := range keys {
+			if p := pi.Entries[k]; p.Len() > 0 && !slices.Contains(lists, p) {
+				lists = append(lists, p)
+			}
+		}
+	}
+	switch len(lists) {
+	case 0:
+		return (*IDPostings)(nil)
+	case 1:
+		return lists[0]
+	}
+	return lists
+}
