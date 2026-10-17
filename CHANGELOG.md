@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.62.0] - 2026-10-17
+
 Next version: v4.62.0 (minor: a new tombstone marker, read side).
 
 ### Added

@@ -1,14 +1,15 @@
-# HANDOVER — rho-tkg v4 line (2026-10-17, latest release v4.61.0; next patch v4.61.1, next minor v4.62.0)
+# HANDOVER — rho-tkg v4 line (2026-10-17, latest release v4.62.0; next patch v4.62.1, next minor v4.63.0)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). Latest tag v4.61.0 (`15619df1`, CI green, consumers notified). Tags and what shipped: `CHANGELOG.md`, git and the
+database). Latest tag v4.62.0 (2026-10-17). Tags and what shipped: `CHANGELOG.md`, git and the
 releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Read in this order: this file, `tasks/lessons.md`
 (digest at the top), `tasks/todo.md` (user requests, releases table), `tasks/backlog.md` (open table, then specs), `CHANGELOG.md` top.
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **Unreleased on main:** backlog 77 fix (`80b09242`, row 68; `[Unreleased]` in CHANGELOG) waits for the next patch v4.61.1,
-   batched with the next items, not released alone (lesson 87). Do not start a release gate for it alone.
+1. **Next minor v4.63.0:** branch `tombstone-writer-v4.63` (`37a1ff56`, row 71 part B) turns on the `DeleteKeptValidTo` writer (fixes
+   backlog 4 delete half, 25, 7); v4.62.0 shipped the readers + Deprecated note (docs/stability.md ritual). Merge it, rebase if main moved,
+   run its by-name long-tier tests, then gate + release as v4.63.0.
 2. **v5 is PAUSED (René 2026-10-16, row 61).** Work lives on the local branch `v5-takeover` (not pushed; origin/v5 untouched). Do
    not resume without René. Reason: real ai-soc import showed ~92 records/op, 11x v4 disk, ~200 writes/s; options in tasks/todo.md.
    Gap analysis: `docs/v5-gap-to-main.md`.
