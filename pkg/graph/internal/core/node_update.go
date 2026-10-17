@@ -217,10 +217,11 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 
 	// The plain doors stamp the clock floor; a caller instant (checked above,
 	// under the lock) is stamped verbatim.
-	now := tmp.txAt
-	if now == 0 {
-		now = c.nodeVersionUpdateInstant(current)
+	at := supersession{tx: tmp.txAt}
+	if at.tx == 0 {
+		at = c.nodeVersionUpdateInstant(current)
 	}
+	now := at.tx
 	tm := current.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
@@ -252,8 +253,9 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 		ptm.TxTo = now
 	}
 
-	// Set TxFrom on the new version (this is the commit time of the new version).
-	stampAppendedRow(tm, now)
+	// Set TxFrom on the new version (this is the commit time of the new
+	// version), and the valid start when it is not TxFrom (supersede).
+	at.stamp(tm)
 
 	nodeLabels := c.nodeLabelsUnlocked(current)
 	hash, err := c.nodeContentHash(current, nodeLabels)

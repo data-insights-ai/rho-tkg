@@ -138,7 +138,8 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	copy.SetIntegrity(nodeIntegrityWithHash(current.Integrity(), hash, prevHash))
 
 	// Set transaction/update time on both sides of the version boundary.
-	now := c.nodeVersionUpdateInstant(current)
+	at := c.nodeVersionUpdateInstant(current)
+	now := at.tx
 	if ptm := prevState.Temporal(); ptm == nil {
 		ptm2 := &types.TemporalMetadata{}
 		prevState.SetTemporal(ptm2)
@@ -159,7 +160,7 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	tm.ValidFrom = 0
 	tm.ValidTo = 0
 	tm.UpdatedAt = now
-	stampAppendedRow(tm, now)
+	at.stamp(tm)
 
 	// Unique-constraint enforcement (standalone label-add door — the door that
 	// binds a constraint without touching the property). The finalized node
@@ -271,7 +272,8 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 	copy.SetIntegrity(nodeIntegrityWithHash(current.Integrity(), hash, prevHash))
 
 	// Set transaction/update time on both sides of the version boundary.
-	now := c.nodeVersionUpdateInstant(current)
+	at := c.nodeVersionUpdateInstant(current)
+	now := at.tx
 	if ptm := prevState.Temporal(); ptm == nil {
 		ptm2 := &types.TemporalMetadata{}
 		prevState.SetTemporal(ptm2)
@@ -292,7 +294,7 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 	tm.ValidFrom = 0
 	tm.ValidTo = 0
 	tm.UpdatedAt = now
-	stampAppendedRow(tm, now)
+	at.stamp(tm)
 
 	// Atomic: write history entry + remove label index + persist updated node in one call.
 	if err := c.removeNodeLabelTokenWithHistory(ctx, id, tok, copy, prevVersion, prevState); err != nil {

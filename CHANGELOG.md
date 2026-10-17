@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`NodeAt` / `RelAt` answered an older version than the head timeline after an `Update` of a version that
+  starts in the future** (backlog 77, pre-existing, found by row 67). A plain superseding write (`Update`,
+  `AddLabel` / `RemoveLabel`, `CompareAndSetProperty`, `CloseVersion`; nodes and relationships, also through
+  GraphTx and Batch) of a version whose start lies at or after the commit clock stamped that start + 1 as the
+  new row's `TxFrom`, the superseded row's `TxTo` and `UpdatedAt`: a transaction instant ahead of the clock
+  that no pin taken now reaches, and every later write on the entity was stamped below it. The effective
+  timeline at the head did not see the row while the unpinned point door did, and after a later append the
+  two answered different versions (memory, badger, sharded, tiered). The start is now the new row's
+  `ValidFrom` (start + 1, as before) and its `TxFrom` the clock (`supersede`, `core/temporal.go`); the row
+  starts at the same valid instant, so `EffectiveValidFrom` and every valid-time answer are unchanged. A row
+  whose own `TxFrom` was stamped ahead before this release is still superseded one instant after it.
+  **Changes for consumers:** such a row now carries a non-zero `ValidFrom` (it stored 0) and a `TxFrom` at
+  the clock; a pin taken after the write sees it. Rows already stored are not rewritten. The delete's
+  instant ahead of the clock is unchanged (backlog 4). Test: `TestPointDoorAheadOfClock77` (memory and badger,
+  node and rel: no row stamped ahead of the clock, the point door, the at-tx door at the newest `TxFrom` and
+  the head timeline agree after each door); the row-67 twin test checks the point door throughout.
+
 ## [4.61.0] - 2026-10-17
 
 ### Added

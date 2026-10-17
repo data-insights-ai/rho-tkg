@@ -41,7 +41,6 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 | 47 | LOW (unverified claims) | `NodesByLabelAt` vs K1; a RAM budget for the property sidecars | open; each needs a real check before it becomes work |
 | 71 | FEATURE (sigma round 8, optional) | Valid-time hull per label / relationship type: earliest valid-from and latest valid-to of the current entities, exact and cheap | partly shipped in v4.60.0 (sigma round 10 request 2a): `ValidHullByLabel` / `ValidHullByType` read the hull off the count timeline, exact; at a pin O(1) from the cached timeline after its first build, of the current rows (`CountTimelineOpts.CurrentRows`) one pass over them per call. Open: the cheap hull of the current rows, which needs a per-label ordered multiset of valid-from and valid-to (a write cost on every node write: opt-in per label, as `TrackRelTypeDegrees`); no structure holds it today (a temporal index keeps per-ID envelopes that only widen). |
 | 76 | LOW (perf) | Property equality lookups of a number make one store call per width key (up to 12): ~0.4 -> 1.5-1.8 us memory, 3.4 -> 5.5 us badger for one match (v4.57.1, `tasks/evidence/numeric-equality/bench.txt`) | open; keep a per-(label, key) set of the stored widths in the property index and look up only those |
-| 77 | BUG (pre-existing, found by row 67) | Unpinned `NodeAt` answers an older version than the head timeline when a row is stamped ahead of the clock (an Update of a version that starts in the future); red test first | open |
 
 ---
 
@@ -180,10 +179,11 @@ test passes.
   (`c.resolveOpenEndInstant`, `temporal.go`; now = `c.readNow()` since 2026-09-24, so a
   version stamped ahead of the wall is no longer missed), so an entity valid only in the
   future is missed; `NodesRelating` keeps the open end as +inf.
-- **(HIGH?) Future transaction time from `validInstantAfter`.** Update/CloseVersion/Delete of a
-  row whose explicit ValidFrom is in the future stamps `TxFrom/TxTo = ValidFrom + 1` without
-  advancing the floor, contradicting "every committed entity has TxFrom <= NowTx()"
-  (`txtime.go` ~L159) and SPEC.md ~L439.
+- **(HIGH?) Future transaction time from `validInstantAfter`.** Delete of a row whose explicit
+  ValidFrom is in the future stamps `DeletedAt/TxTo = ValidFrom + 1` without advancing the floor
+  (`TestReImportDoesNotAdvanceTheClock` pins the clock), contradicting "every committed entity has
+  TxFrom <= NowTx()" (`txtime.go` ~L182) for the re-import after it. The Update/CloseVersion half
+  is closed by item 77 (start in ValidFrom, TxFrom at the clock).
 - **(MEDIUM?) As-of vs point resolver order.** `SelectAsOf` picks the newest candidate by
   version; the point resolver breaks overlaps by (TxFrom, version). After a cascade whose rows
   carry a lower TxFrom than a later-version Update, `NodeAsOf` and `NodeAtTx` can pick
@@ -402,6 +402,7 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Item 73 (FEATURE, René, sigma-tkgd, ai-soc) — `Config.UntimedValidStart`: untimed first version from TxFrom (default) or -inf, `Admin().SetUntimedValidStart` one-way conversion, marker 7 | `[4.56.0]` Added + Deprecated; `[4.57.0]` Changed (default for new stores `UntimedUnbounded`, zero value `UntimedDefault`, existing stores keep their mode); evidence `tasks/evidence/untimed-mode/`, `tasks/evidence/untimed-default-flip/` |
 | Item 74 (PERF, ai-soc) — first page after an open waited ~3 min: one full store scan per declared rel property index (`buildRelPropTx`, 123 of 259 s CPU); now one scan per kind builds every declared sidecar, and the open image carries the built ones | `[4.56.1]` Changed; evidence `tasks/evidence/sidecar-one-scan/` |
 | Item 75 (PERF, ai-soc) — paged effective doors prune valid-filtered candidates by the envelope index (no automatic build: a full type scan plus RAM and a write cost per relationship forever; reopen if a consumer cannot declare `CreateRelTemporal`) | `[4.56.1]` Changed; evidence `tasks/evidence/page-valid-prune/` |
+| Item 77 (BUG, found by row 67) — a plain superseding write (Update, labels, CAS, CloseVersion) of a version starting in the future stamped that start + 1 as TxFrom, ahead of the clock, so `NodeAt` / `RelAt` answered an older version than the head timeline; the start is now the row's ValidFrom, TxFrom the clock (`supersede`, `core/temporal.go`) | `[Unreleased]` Fixed (v4.61.1); test `TestPointDoorAheadOfClock77` |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 

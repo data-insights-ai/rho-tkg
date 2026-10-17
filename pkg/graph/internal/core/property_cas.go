@@ -161,7 +161,8 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 
 	current.SetVersion(nextVersion)
 
-	now := c.nodeVersionUpdateInstant(current)
+	at := c.nodeVersionUpdateInstant(current)
+	now := at.tx
 	tm := current.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
@@ -184,7 +185,7 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 	} else {
 		ptm.TxTo = now
 	}
-	stampAppendedRow(tm, now)
+	at.stamp(tm)
 
 	nodeLabels := c.nodeLabelsUnlocked(current)
 	hash, err := c.nodeContentHash(current, nodeLabels)
@@ -349,7 +350,8 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 
 	current.SetVersion(nextVersion)
 
-	now := c.relVersionUpdateInstant(current)
+	at := c.relVersionUpdateInstant(current)
+	now := at.tx
 	tm := current.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
@@ -370,7 +372,7 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 	} else {
 		ptm.TxTo = now
 	}
-	stampAppendedRow(tm, now)
+	at.stamp(tm)
 
 	relTypeName := c.relTypeUnlocked(current)
 	hash, err := c.relContentHash(current, relTypeName)

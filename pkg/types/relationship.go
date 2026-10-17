@@ -423,7 +423,9 @@ func (r *Relationship) TxStamps() (txFrom, txTo, deletedAt Instant) {
 // give it (TemporalMetadata.EffectiveValidFrom): its ValidFrom when it carries
 // one, else its TxFrom. A version written by Update (or UpdateWithTx, or a
 // GraphTx / Batch twin) stores ValidFrom 0, "no caller claim", and starts at
-// its TxFrom; this returns that start without reading the timeline. Like
+// its TxFrom (when the version it supersedes starts at or after the clock it
+// stores that start + 1 instead, backlog 77); this returns that start without
+// reading the timeline. Like
 // ValidRange it allocates nothing on a frozen row. 0 for a nil row.
 func (r *Relationship) EffectiveValidFrom() Instant {
 	if r == nil {

@@ -151,7 +151,8 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 		return err
 	}
 	prevState := current.DeepCopy()
-	now := c.nodeVersionUpdateInstant(current)
+	at := c.nodeVersionUpdateInstant(current)
+	now := at.tx
 	if ptm := prevState.Temporal(); ptm == nil {
 		ptm = &types.TemporalMetadata{}
 		prevState.SetTemporal(ptm)
@@ -168,7 +169,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	}
 	stampClose(tm, start, t)
 	tm.UpdatedAt = now
-	stampAppendedRow(tm, now)
+	at.stamp(tm)
 
 	// The closed row is a new chain entry superseding the open one — its
 	// PrevHash chains to the open row's own Hash, not to that row's PrevHash.
@@ -372,7 +373,8 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 		return err
 	}
 	prevState := current.DeepCopy()
-	now := c.relVersionUpdateInstant(current)
+	at := c.relVersionUpdateInstant(current)
+	now := at.tx
 	if ptm := prevState.Temporal(); ptm == nil {
 		ptm = &types.TemporalMetadata{}
 		prevState.SetTemporal(ptm)
@@ -389,7 +391,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	}
 	stampClose(tm, start, t)
 	tm.UpdatedAt = now
-	stampAppendedRow(tm, now)
+	at.stamp(tm)
 
 	// The closed row is a new chain entry superseding the open one — its
 	// PrevHash chains to the open row's own Hash, not to that row's PrevHash.
