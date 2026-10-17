@@ -130,8 +130,8 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
 	}
-	if atemporalUntimedUpdate(c, tmp) {
-		return c.atemporalUpdateRel(ctx, id, prov, tmp, updates)
+	if wholeAxisUntimedUpdate(c, tmp) {
+		return c.wholeAxisUpdateRel(ctx, id, prov, tmp, updates)
 	}
 
 	// Phase 2: acquire rel + endpoint locks together. The first read only
@@ -156,7 +156,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 		c.opRelReads.Add(1)
 		return current, false, nil
 	}
-	if err := rejectClosedRelMutation(current); err != nil {
+	if err := c.rejectClosedRelMutation(current); err != nil {
 		return nil, false, err
 	}
 	if tmp.validFromSet {
@@ -168,7 +168,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	// A tkg_valid_to without a tkg_valid_from closes the version as CloseVersion
 	// does: it keeps its start and ends there (backlog 65).
 	var closeStart types.Instant
-	if tmp.closesVersion() {
+	if tmp.closesVersion(c.axis()) {
 		if closeStart, err = c.checkRelClose(current, startID, endID, "tkg_valid_to", tmp.validTo); err != nil {
 			return nil, false, err
 		}
@@ -216,7 +216,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 
 	// The plain doors stamp the clock floor; a caller instant (checked above,
 	// under the lock) is stamped verbatim.
-	at := supersession{tx: tmp.txAt}
+	at := supersession{tx: tmp.txAt, axis: c.axis()}
 	if at.tx == 0 {
 		at = c.relVersionUpdateInstant(current)
 	}
@@ -227,12 +227,12 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 		current.SetTemporal(tm)
 	}
 	// Phase 1/2: stop inheriting valid-time; honour caller tkg_valid_from/to.
-	stampValidFrom(tm, tmp.validFrom, tmp.validFromSet)
-	tm.ValidTo = 0
+	stampValidFrom(c.axis(), tm, tmp.validFrom, tmp.validFromSet)
+	tm.ValidTo = c.axis().OpenEnd()
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo
 	}
-	if tmp.closesVersion() {
+	if tmp.closesVersion(c.axis()) {
 		stampClose(tm, closeStart, tmp.validTo)
 	}
 	tm.UpdatedAt = now
@@ -462,14 +462,11 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 
 	// Phase 1: Pre-validate before acquiring entity lock. Extract reserved
 	// temporal keys for direct rewrite of the row's TemporalMetadata.
-	tmp, updates, err := extractTemporalTracked(updates)
+	tmp, updates, err := extractTemporalTracked(c.axis(), updates)
 	if err != nil {
 		return nil, false, err
 	}
 	if err := c.validatePropertyUpdates(updates, "update relationship in place"); err != nil {
-		return nil, false, err
-	}
-	if err := checkClaimedUpdate(tmp); err != nil {
 		return nil, false, err
 	}
 
@@ -494,7 +491,7 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 		return current, false, nil
 	}
 
-	if err := rejectClosedRelMutation(current); err != nil {
+	if err := c.rejectClosedRelMutation(current); err != nil {
 		return nil, false, err
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("update relationship in place"); err != nil {
@@ -538,12 +535,12 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	}
 	tm.UpdatedAt = now
 	if tmp.hasValidFrom {
-		stampValidFrom(tm, tmp.validFrom, tmp.validFromSet)
+		stampValidFrom(c.axis(), tm, tmp.validFrom, tmp.validFromSet)
 	}
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo
 	}
-	if tm.ValidTo != 0 {
+	if !c.axis().Open(tm.ValidTo) {
 		// The close rule (backlog 65): the row keeps its start, the end must follow it.
 		if err := checkCloseAfterStart("tkg_valid_to", tm.ValidTo, c.relValidFrom(current), "relationship"); err != nil {
 			return nil, false, err

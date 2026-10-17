@@ -34,11 +34,15 @@ type EntityID snowflake.ID
 // TemporalMetadata holds temporal lifecycle fields for nodes and relationships.
 // Populated by the graph layer.
 type TemporalMetadata struct {
-	// ValidFrom is the start of the entity's validity period; 0 is "no
-	// world-time claim" (the untimed start applies) unless ValidFromZero is
-	// set. Read the presence through HasValidFrom, never by comparing with 0.
+	// ValidFrom is the start of the entity's validity period. How a stored
+	// value reads depends on the store's ValidAxis (round 11): on the legacy
+	// axis 0 makes no claim (the row starts at its TxFrom), on the literal
+	// axis every value is the instant it names. Read it through the axis
+	// (ValidAxis.Start), not by comparing with 0.
 	ValidFrom Instant
-	// ValidTo is the end of the entity's validity period. 0 = open-ended.
+	// ValidTo is the end of the entity's validity period: 0 = open-ended on
+	// the legacy ValidAxis, InfiniteValidTo on the literal axis, where 0 is
+	// the instant 0 (ValidAxis.Open / End).
 	ValidTo Instant
 	// TxFrom is the transaction time when this version was created.
 	TxFrom Instant
@@ -70,8 +74,8 @@ type TemporalMetadata struct {
 	// resolution the reads answer ErrNoVersionValidAt; it never holds the
 	// current slot, never answers an as-of read and carries no state of its
 	// own (its labels and properties are those of the version it voids).
-	// Always bounded (ValidTo != 0), never a tombstone; stores reject it
-	// otherwise.
+	// Always bounded (ValidTo not the open end of the store's ValidAxis),
+	// never a tombstone; stores reject it otherwise.
 	Void bool
 	// DeleteKeptValidTo marks a delete tombstone that kept the ValidTo
 	// believed before the delete (0 = open) where that end does not lie
@@ -86,44 +90,7 @@ type TemporalMetadata struct {
 	// before DeletedAt; stores reject it otherwise. Read since v4.62.0; the
 	// delete doors write it from v4.64.0.
 	DeleteKeptValidTo bool
-	// ValidFromZero marks a ValidFrom of 0 as the instant 0, a world-time
-	// claim (round 11: written with tkg_valid_from = ExplicitInstant(0)),
-	// rather than "no claim". Only meaningful with ValidFrom == 0; stores
-	// reject it otherwise, so a row has one representation.
-	ValidFromZero bool
 }
-
-// HasValidFrom reports whether the version makes a world-time claim of its
-// start: ValidFrom != 0, or ValidFrom == 0 with ValidFromZero. The one
-// presence rule of a stored valid-from (round 11); false on nil.
-func (tm *TemporalMetadata) HasValidFrom() bool {
-	return tm != nil && ValidFromClaimed(tm.ValidFrom, tm.ValidFromZero)
-}
-
-// StartsAtZero reports whether the version is valid from the explicit
-// instant 0 (StartsAtExplicitZero of its stored fields); false on nil.
-func (tm *TemporalMetadata) StartsAtZero() bool {
-	return tm != nil && StartsAtExplicitZero(tm.ValidFrom, tm.ValidFromZero)
-}
-
-// ValidFromClaimed is the presence rule of a stored valid-from over its two
-// stored fields (a row, a wire record, a column, a foreign edge): a non-zero
-// validFrom, or 0 with the explicit-zero marker. Every spelling of "does
-// this version claim a start" goes through it (round 11).
-func ValidFromClaimed(validFrom Instant, zero bool) bool { return validFrom != 0 || zero }
-
-// StartsAtExplicitZero reports whether the stored fields claim the instant 0
-// as the start: the marker with a valid-from of 0 (a marker with any other
-// valid-from is refused at every store and wire door).
-func StartsAtExplicitZero(validFrom Instant, zero bool) bool { return zero && validFrom == 0 }
-
-// ExplicitInstant is a tkg_valid_from value with explicit presence (round
-// 11): the version holds in the world from this instant, the instant 0
-// included. A plain number or Instant 0 keeps its meaning, "no world-time
-// claim" (the untimed start). Other reserved temporal keys refuse it
-// (ErrInvalidTimeRange): their 0 means unset or open, and no stored row can
-// end or be recorded at an explicit 0.
-type ExplicitInstant Instant
 
 // BaseEntityID returns the opaque ID linking to the original entity in a
 // version chain. Zero value means no base entity (this is the original).
@@ -145,10 +112,9 @@ func (tm *TemporalMetadata) SetBaseEntityID(id EntityID) {
 // EffectiveValidFrom is THE start rule for a row (backlog 62): the instant
 // every valid-time door (the chain resolver, the effective timeline, the
 // store push-downs, the index envelopes) starts it at. It is the stored
-// ValidFrom when the row claims one (HasValidFrom: a caller's tkg_valid_from,
-// a correction's piece start, types.UnboundedValidFrom stored by the
-// UntimedUnbounded mode on a first version, or the explicit instant 0 with
-// ValidFromZero, round 11), else UntimedValidFrom. mint is
+// ValidFrom when the row carries one (a caller's tkg_valid_from, a
+// correction's piece start, or types.UnboundedValidFrom stored by the
+// UntimedUnbounded mode on a first version), else UntimedValidFrom. mint is
 // the instant the row's ID was minted (NodeID.MintInstant).
 //
 // A version written without a valid-from (Update and its twins) keeps
@@ -157,12 +123,24 @@ func (tm *TemporalMetadata) SetBaseEntityID(id EntityID) {
 // resolves it to the row's TxFrom. When the version it supersedes starts at or
 // after the commit clock, the row stores that start + 1 as its ValidFrom
 // instead, and its TxFrom stays the clock (backlog 77).
+//
+// This is the rule on the legacy ValidAxis (LegacyValidAxis.Start). A row of
+// a store with the literal axis (UntimedWholeAxis, round 11) starts at its
+// stored ValidFrom, 0 included: read it through that store's axis
+// (graph Admin().ValidAxis()).
 func (tm *TemporalMetadata) EffectiveValidFrom(mint Instant) Instant {
-	if tm.HasValidFrom() { // the claim, the explicit instant 0 included (round 11)
-		return tm.ValidFrom
-	}
-	return tm.UntimedValidFrom(mint)
+	return LegacyValidAxis.Start(tm, mint)
 }
+
+// ExplicitInstant is a tkg_valid_from or tkg_valid_to value with explicit
+// presence (round 11): the claim of this instant, the instant 0 included. On
+// a store with the literal ValidAxis (UntimedWholeAxis) a plain number is the
+// same claim (0 is an instant there; omit the key to make no claim), so
+// ExplicitInstant is only needed to say "the instant 0" where a plain 0 means
+// "no claim": a store with the legacy axis, which refuses ExplicitInstant(0)
+// (graph ErrZeroInstantLegacyAxis) because its rows cannot store the instant
+// 0. Other reserved temporal keys refuse it (ErrInvalidTimeRange).
+type ExplicitInstant Instant
 
 // UntimedValidFrom is the start of a row without a valid-from: its TxFrom (the
 // commit instant, or a backfilled tkg_tx_from), for a create and a later
@@ -195,20 +173,8 @@ func (tm *TemporalMetadata) DeleteWroteValidTo() bool {
 // recorded by pin that kept a believed ValidTo (DeleteKeptValidTo) ends
 // validity at its own instant; every other ValidTo stands. Consumers reading
 // raw History() rows read the valid end through it, never the raw ValidTo.
+// This is the legacy ValidAxis's form (open = 0); a store with the literal
+// axis reads it through ValidAxis.ValidToAtTxTime (open = InfiniteValidTo).
 func (tm *TemporalMetadata) ValidToAtTxTime(pin Instant) Instant {
-	switch {
-	case tm == nil:
-		return 0
-	case tm.DeletedAt == 0:
-		return tm.ValidTo
-	case tm.DeletedAt > pin:
-		if tm.DeleteWroteValidTo() {
-			return 0
-		}
-		return tm.ValidTo
-	case tm.DeleteKeptValidTo:
-		return tm.DeletedAt
-	default:
-		return tm.ValidTo
-	}
+	return LegacyValidAxis.ValidToAtTxTime(tm, pin)
 }

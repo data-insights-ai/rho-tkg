@@ -58,7 +58,7 @@ func streamBounded[S any](c *Core, cands []validEndCand, pin types.Instant,
 		return read(rd, cd.ID)
 	}, func(cd validEndCand, segs []S) bool {
 		if refine != nil && pin >= cd.Stamp {
-			if end := segmentsEnd(segs, to); end < cd.Bound {
+			if end := segmentsEnd(c.axis(), segs, to); end < cd.Bound {
 				refine(cd.ID, cd.Gen, end)
 			}
 		}
@@ -67,12 +67,13 @@ func streamBounded[S any](c *Core, cands []validEndCand, pin types.Instant,
 }
 
 // pickFrom is the From doors' pick: the whole kept timeline of an entity
-// with a kept segment ending at or after validFrom, or open.
-func pickFrom[S any](validFrom types.Instant, to func(S) types.Instant, keep func(S) bool, fn func(S) bool) func(segs []S) bool {
+// with a kept segment ending at or after validFrom, or open (by the graph's
+// valid axis a).
+func pickFrom[S any](a types.ValidAxis, validFrom types.Instant, to func(S) types.Instant, keep func(S) bool, fn func(S) bool) func(segs []S) bool {
 	return func(segs []S) bool {
 		reaches := false
 		for _, s := range segs {
-			if keep(s) && (to(s) == 0 || to(s) >= validFrom) {
+			if keep(s) && (a.Open(to(s)) || to(s) >= validFrom) {
 				reaches = true
 				break
 			}
@@ -89,11 +90,12 @@ func pickFrom[S any](validFrom types.Instant, to func(S) types.Instant, keep fun
 	}
 }
 
-// pickWindow is the Window doors' pick: the kept segments that meet window.
-func pickWindow[S any](window temporal.Window, span func(S) (types.Instant, types.Instant), keep func(S) bool, fn func(S) bool) func(segs []S) bool {
+// pickWindow is the Window doors' pick: the kept segments that meet window
+// (their ends on the graph's valid axis a).
+func pickWindow[S any](a types.ValidAxis, window temporal.Window, span func(S) (types.Instant, types.Instant), keep func(S) bool, fn func(S) bool) func(segs []S) bool {
 	return func(segs []S) bool {
 		for _, s := range segs {
-			if from, to := span(s); keep(s) && window.Meets(from, to) && !fn(s) {
+			if from, to := span(s); keep(s) && window.MeetsOn(a, from, to) && !fn(s) {
 				return false
 			}
 		}
@@ -102,12 +104,13 @@ func pickWindow[S any](window temporal.Window, span func(S) (types.Instant, type
 }
 
 // segmentsEnd is the effective valid end of a timeline: store.ValidEndOpen when a
-// segment is open, store.ValidEndNone without segments.
-func segmentsEnd[S any](segs []S, to func(S) types.Instant) types.Instant {
+// segment is open (by the graph's valid axis a), store.ValidEndNone without
+// segments.
+func segmentsEnd[S any](a types.ValidAxis, segs []S, to func(S) types.Instant) types.Instant {
 	end := storepkg.ValidEndNone
 	for _, s := range segs {
 		t := to(s)
-		if t == 0 {
+		if a.Open(t) {
 			return storepkg.ValidEndOpen
 		}
 		end = max(end, t)
@@ -134,7 +137,7 @@ func (t *TempOps) ForEachRelEffectiveByTypeFrom(typeName string, pin, validFrom 
 		return grapherr.ErrNilCallback
 	}
 	return t.c.relEffectiveByTypeBounded(typeName, pin, validFrom, func(keep func(temporal.RelSegment) bool) func([]temporal.RelSegment) bool {
-		return pickFrom(validFrom, relSegTo, keep, fn)
+		return pickFrom(t.c.axis(), validFrom, relSegTo, keep, fn)
 	})
 }
 
@@ -156,7 +159,7 @@ func (t *TempOps) ForEachRelEffectiveByTypeWindow(typeName string, pin types.Ins
 		return t.c.relEffectiveByTypeGates(typeName, pin) // the empty window meets nothing
 	}
 	return t.c.relEffectiveByTypeBounded(typeName, pin, window[0].From, func(keep func(temporal.RelSegment) bool) func([]temporal.RelSegment) bool {
-		return pickWindow(window, relSegSpan, keep, fn)
+		return pickWindow(t.c.axis(), window, relSegSpan, keep, fn)
 	})
 }
 
@@ -238,7 +241,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabelsFrom(labels []string, pin, validFr
 		return grapherr.ErrNilCallback
 	}
 	return t.c.nodeEffectiveByLabelsBounded(labels, pin, validFrom, func(keep func(temporal.NodeSegment) bool) func([]temporal.NodeSegment) bool {
-		return pickFrom(validFrom, nodeSegTo, keep, fn)
+		return pickFrom(t.c.axis(), validFrom, nodeSegTo, keep, fn)
 	})
 }
 
@@ -260,7 +263,7 @@ func (t *TempOps) ForEachNodeEffectiveByLabelsWindow(labels []string, pin types.
 		return t.c.nodeEffectiveByLabelsGates(labels, pin) // the empty window meets nothing
 	}
 	return t.c.nodeEffectiveByLabelsBounded(labels, pin, window[0].From, func(keep func(temporal.NodeSegment) bool) func([]temporal.NodeSegment) bool {
-		return pickWindow(window, nodeSegSpan, keep, fn)
+		return pickWindow(t.c.axis(), window, nodeSegSpan, keep, fn)
 	})
 }
 

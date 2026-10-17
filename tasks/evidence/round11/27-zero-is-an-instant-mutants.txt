@@ -1,0 +1,35 @@
+== mutant: literal axis open end 0
+--- FAIL: TestRound11ZeroIsAnInstant (0.05s)
+--- FAIL: TestRound11ZeroCorrectionsAndExcise (0.02s)
+--- FAIL: TestRound11ZeroDryRun (0.00s)
+--- FAIL: TestRound11ZeroReopen (0.13s)
+--- FAIL: TestRound11ZeroExport (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.592s
+--- FAIL: TestRound11AxisReadsStoredValues (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.212s
+FAIL
+== mutant: store not told the axis (syncStoreAxis no-op)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.794s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.104s
+== mutant: badger ignores its persisted mode at open
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.635s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.105s
+== mutant: store not told the axis (syncStoreAxis no-op), with TestRound11ZeroStoreDoors
+--- FAIL: TestRound11ZeroStoreDoors (0.01s)
+    --- FAIL: TestRound11ZeroStoreDoors/memory (0.00s)
+    --- FAIL: TestRound11ZeroStoreDoors/badger (0.00s)
+    --- FAIL: TestRound11ZeroStoreDoors/tiered (0.00s)
+    --- FAIL: TestRound11ZeroStoreDoors/sharded (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.641s
+FAIL
+== mutant: badger ignores its persisted mode at open
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.738s
+== mutant: badger ignores its persisted mode at open, with TestRound11ZeroBadgerOpenRebuild
+--- FAIL: TestRound11ZeroBadgerOpenRebuild (0.07s)
+    round11_zero_test.go:702: badger opened on axis literal=false with 1 nodes
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	2.136s
+FAIL

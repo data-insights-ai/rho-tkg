@@ -62,10 +62,10 @@ func (ms *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant
 
 // PurgeNodesByLabelValidToBefore is the memory mirror of the badger ByValidTo purge
 // (ADR-0008 R5 / store.RetentionPurgeByValidToCapability): it removes nodes whose
-// current-version world-time validity ended before the boundary (ValidTo != 0 &&
-// ValidTo < before). Because the memory store selects and removes under ONE lock,
+// current-version world-time validity ended before the boundary (a closed ValidTo
+// before it; the open end per the store's valid axis). Because the memory store selects and removes under ONE lock,
 // there is no mutable-predicate race — the selection reads the same live node state
-// that is then removed. A node with an open interval (ValidTo == 0) is never purged.
+// that is then removed. A node with an open interval is never purged.
 func (ms *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
 	if before <= 0 {
 		return storecontract.RetentionPurgeResult{}, nil
@@ -76,7 +76,7 @@ func (ms *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.
 		// all leave it unset) — so this predicate must not dereference it
 		// unconditionally (BACKLOG 17c).
 		tm := n.Temporal()
-		return tm != nil && tm.ValidTo != 0 && tm.ValidTo < before
+		return tm != nil && !ms.validAxis.Get().Open(tm.ValidTo) && tm.ValidTo < before
 	})
 }
 
@@ -170,7 +170,7 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
 		ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 		indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
-		indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
+		indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
 		indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 		// BACKLOG 17f: same rationale as the rel-type reap above, for every
 		// label token the CURRENT version carries (a cheap, node-local

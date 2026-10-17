@@ -44,7 +44,7 @@ func (bs *Store) maintainTemporalIndexDiskAdd(n *types.Node, id snowflake.ID) []
 	if !bs.temporalIdxOnDisk || len(bs.temporalIndexes) == 0 {
 		return nil
 	}
-	from, to := indexpkg.NodeTemporalBounds(id, n.Temporal())
+	from, to := indexpkg.NodeTemporalBounds(bs.validAxis.Get(), id, n.Temporal())
 	var ops []writeOp
 	labelCount := n.LabelTokenCount()
 	for i := 0; i < labelCount; i++ {
@@ -81,7 +81,7 @@ func (bs *Store) maintainTemporalIndexDiskRemove(n *types.Node, id snowflake.ID)
 	if !bs.temporalIdxOnDisk || len(bs.temporalIndexes) == 0 {
 		return nil
 	}
-	from, _ := indexpkg.NodeTemporalBounds(id, n.Temporal())
+	from, _ := indexpkg.NodeTemporalBounds(bs.validAxis.Get(), id, n.Temporal())
 	var ops []writeOp
 	labelCount := n.LabelTokenCount()
 	for i := 0; i < labelCount; i++ {

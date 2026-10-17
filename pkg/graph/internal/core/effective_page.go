@@ -186,9 +186,9 @@ func pageQueryOpts(pin temporal.Pin) (storepkg.QueryOpts, error) {
 }
 
 // pageValidKeep returns the segment predicate of opts' valid-time filter: the
-// envelope predicate, applied to one segment.
-func pageValidKeep(opts storepkg.QueryOpts) func(from, to types.Instant) bool {
-	return func(from, to types.Instant) bool { return storeutil.EnvelopeOverlaps(from, to, opts) }
+// envelope predicate, applied to one segment (its end on the valid axis a).
+func pageValidKeep(a types.ValidAxis, opts storepkg.QueryOpts) func(from, to types.Instant) bool {
+	return func(from, to types.Instant) bool { return storeutil.EnvelopeOverlaps(a, from, to, opts) }
 }
 
 // validatePage checks the arguments both paged doors share and returns the
@@ -252,7 +252,7 @@ func (t *TempOps) RelsEffectivePage(ctx context.Context, pin temporal.Pin, f tem
 	}); err != nil {
 		return nil, 0, err
 	}
-	validOK := pageValidKeep(opts)
+	validOK := pageValidKeep(c.axis(), opts)
 	keepRow := func(r *types.Relationship) bool { return keys.rel(r, f.Prop, false) }
 	var (
 		out      []temporal.RelSegment
@@ -351,7 +351,7 @@ func (t *TempOps) NodesEffectivePage(ctx context.Context, pin temporal.Pin, f te
 	}); err != nil {
 		return nil, 0, err
 	}
-	validOK := pageValidKeep(opts)
+	validOK := pageValidKeep(c.axis(), opts)
 	keepRow := func(n *types.Node) bool { return keys.node(n, f.Prop, false) }
 	var (
 		out      []temporal.NodeSegment

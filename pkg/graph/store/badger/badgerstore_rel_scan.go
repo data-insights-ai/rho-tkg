@@ -66,7 +66,7 @@ func (bs *Store) ForEachRelByType(token uint16, opts QueryOpts, fn func(*types.R
 		if !r.HasTypeTokenRaw(token) {
 			continue
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(rid.SnowflakeID(), r.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), rid.SnowflakeID(), r.Temporal(), opts) {
 			continue
 		}
 		if !fn(r) {

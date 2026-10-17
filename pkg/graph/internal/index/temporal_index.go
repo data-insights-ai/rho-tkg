@@ -12,7 +12,17 @@ import (
 )
 
 // maxInstant is the effective upper bound for an open-ended interval (To == 0).
+//
+// The index's end convention is the legacy axis's (types.LegacyValidAxis):
+// 0 is open. A store with the literal axis stores its open end as
+// types.InfiniteValidTo, which is +inf here as well; its rare end at the
+// instant 0 widens to open, which keeps every envelope a sound superset.
+// EnvelopeAxis is the axis an envelope's bounds are read on.
 const maxInstant = types.Instant(math.MaxInt64)
+
+// EnvelopeAxis is the valid axis EnvelopeOf's bounds are read on (see
+// maxInstant): the legacy axis, whatever the store's.
+var EnvelopeAxis = types.LegacyValidAxis
 
 // effTo maps a stored upper bound to its effective value: open-ended (0) is +∞.
 func effTo(to types.Instant) types.Instant {
@@ -364,10 +374,14 @@ func (ti *TemporalIndex) Len() int {
 
 // --- Store-level helpers ---
 
-// NodeTemporalBounds returns the effective (from, to) for a node.
-// Used when adding a node to a temporal index.
-func NodeTemporalBounds(id snowflake.ID, tm *types.TemporalMetadata) (from, to types.Instant) {
-	from = storepkg.EntityValidFrom(id, tm)
+// NodeTemporalBounds returns the effective (from, to) for a node on the
+// store's valid axis a. Used when adding a node to a temporal index. from is
+// the axis's start (storeutil.EntityValidFrom); to is the stored ValidTo,
+// which the index reads in its own convention, 0 = open (effTo): on the
+// literal axis the open end InfiniteValidTo is +inf already, and an end at
+// the instant 0 widens to open, so the envelope stays a sound superset.
+func NodeTemporalBounds(a types.ValidAxis, id snowflake.ID, tm *types.TemporalMetadata) (from, to types.Instant) {
+	from = storepkg.EntityValidFrom(a, id, tm)
 	if tm != nil {
 		to = tm.ValidTo
 	}
@@ -378,18 +392,18 @@ func NodeTemporalBounds(id snowflake.ID, tm *types.TemporalMetadata) (from, to t
 // temporal index covering one of its labels. Since B4 the index is a per-node
 // valid-time ENVELOPE (sound superset), so this UNIONs; alias of
 // ExtendNodeInTemporalIndexes. Caller holds the write lock.
-func AddNodeToTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node, id snowflake.ID) {
-	ExtendNodeInTemporalIndexes(idxs, n, id)
+func AddNodeToTemporalIndexes(a types.ValidAxis, idxs map[uint16]*TemporalIndex, n *types.Node, id snowflake.ID) {
+	ExtendNodeInTemporalIndexes(a, idxs, n, id)
 }
 
 // ExtendNodeInTemporalIndexes UNIONs the node's effective [from,to) into the
 // envelope of every temporal index covering one of its labels, keeping past-version
 // intervals covered. Caller holds the write lock.
-func ExtendNodeInTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node, id snowflake.ID) {
+func ExtendNodeInTemporalIndexes(a types.ValidAxis, idxs map[uint16]*TemporalIndex, n *types.Node, id snowflake.ID) {
 	if len(idxs) == 0 {
 		return
 	}
-	from, to := NodeTemporalBounds(id, n.Temporal())
+	from, to := NodeTemporalBounds(a, id, n.Temporal())
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		if ti, ok := idxs[n.LabelTokenRawAt(i)]; ok {
 			ti.Extend(id, from, to)
@@ -424,26 +438,26 @@ func PurgeNodeFromAllTemporalIndexes(idxs map[uint16]*TemporalIndex, id snowflak
 
 // RelTemporalBounds returns the effective (from, to) for a relationship (same
 // computation as NodeTemporalBounds).
-func RelTemporalBounds(id snowflake.ID, tm *types.TemporalMetadata) (from, to types.Instant) {
-	return NodeTemporalBounds(id, tm)
+func RelTemporalBounds(a types.ValidAxis, id snowflake.ID, tm *types.TemporalMetadata) (from, to types.Instant) {
+	return NodeTemporalBounds(a, id, tm)
 }
 
 // AddRelToTemporalIndexes folds the relationship's effective [from,to) into the
 // temporal index covering its type, if any. Alias of ExtendRelInTemporalIndexes.
 // Caller holds the write lock.
-func AddRelToTemporalIndexes(idxs map[uint16]*TemporalIndex, r *types.Relationship, id snowflake.ID) {
-	ExtendRelInTemporalIndexes(idxs, r, id)
+func AddRelToTemporalIndexes(a types.ValidAxis, idxs map[uint16]*TemporalIndex, r *types.Relationship, id snowflake.ID) {
+	ExtendRelInTemporalIndexes(a, idxs, r, id)
 }
 
 // ExtendRelInTemporalIndexes UNIONs the relationship's effective [from,to) into
 // the envelope of the temporal index covering its type (one type, so at most one
 // index). Caller holds the write lock.
-func ExtendRelInTemporalIndexes(idxs map[uint16]*TemporalIndex, r *types.Relationship, id snowflake.ID) {
+func ExtendRelInTemporalIndexes(a types.ValidAxis, idxs map[uint16]*TemporalIndex, r *types.Relationship, id snowflake.ID) {
 	if len(idxs) == 0 {
 		return
 	}
 	if ti, ok := idxs[r.TypeToken().Value()]; ok {
-		from, to := RelTemporalBounds(id, r.Temporal())
+		from, to := RelTemporalBounds(a, id, r.Temporal())
 		ti.Extend(id, from, to)
 	}
 }

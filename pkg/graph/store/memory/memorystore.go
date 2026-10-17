@@ -57,6 +57,10 @@ type RelTombstone = storecontract.RelTombstone
 // usable empty store; maps are initialized lazily at the lifecycle gate.
 // Uses maps for O(1) entity lookup and nested hash-sets for O(1) index maintenance.
 type Store struct {
+	// validAxis is the axis the store reads its rows on (round 11,
+	// store.ValidAxisCapability): legacy until the graph sets it.
+	validAxis storeutil.ValidAxisCell
+
 	initOnce    sync.Once
 	initialized atomic.Bool
 	mu          sync.RWMutex
@@ -574,3 +578,10 @@ func (ms *Store) checkOpenLocked() error {
 	}
 	return nil
 }
+
+// ValidAxis implements store.ValidAxisCapability.
+func (ms *Store) ValidAxis() types.ValidAxis { return ms.validAxis.Get() }
+
+// SetValidAxis implements store.ValidAxisCapability. The memory store holds
+// no rows across sessions; the graph sets the axis before the first write.
+func (ms *Store) SetValidAxis(a types.ValidAxis) { ms.validAxis.Set(a) }

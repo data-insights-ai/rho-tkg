@@ -462,7 +462,7 @@ func (c *Core) nodeCurrentAnswersAt(current *types.Node, validAt, txAt types.Ins
 		return false
 	}
 	tm := current.Temporal()
-	if tm == nil || tm.ValidTo != 0 {
+	if tm == nil || !c.axis().Open(tm.ValidTo) {
 		return false
 	}
 	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
@@ -487,7 +487,7 @@ func (c *Core) relCurrentAnswersAt(current *types.Relationship, validAt, txAt ty
 		return false
 	}
 	tm := current.Temporal()
-	if tm == nil || tm.ValidTo != 0 {
+	if tm == nil || !c.axis().Open(tm.ValidTo) {
 		return false
 	}
 	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
@@ -633,7 +633,7 @@ func (c *Core) nodeAtViaTemporalMeta(rd entityReads, id types.NodeID, current *t
 	if txAt == 0 {
 		return full, true, nil
 	}
-	res, ok := nodeRowAtTx(full, txAt)
+	res, ok := nodeRowAtTx(c.axis(), full, txAt)
 	if !ok {
 		return nil, false, nil
 	}
@@ -773,7 +773,7 @@ func (c *Core) relAtViaTemporalMeta(rd entityReads, id types.RelID, current *typ
 	if txAt == 0 {
 		return full, true, nil
 	}
-	res, ok := relRowAtTx(full, txAt)
+	res, ok := relRowAtTx(c.axis(), full, txAt)
 	if !ok {
 		return nil, false, nil
 	}

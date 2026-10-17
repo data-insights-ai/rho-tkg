@@ -54,7 +54,7 @@ func (ms *Store) ForEachRelByType(token uint16, opts QueryOpts, fn func(*types.R
 		if !ok || !r.HasTypeTokenRaw(token) {
 			continue
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), r.Temporal(), opts) {
 			continue
 		}
 		if !fn(r) {
@@ -177,7 +177,7 @@ func (ms *Store) forEachRelByTypeSegmentsRLocked(token uint16, opts QueryOpts, f
 		if !ok || !r.HasTypeTokenRaw(token) {
 			continue
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(ref.id.SnowflakeID(), r.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), ref.id.SnowflakeID(), r.Temporal(), opts) {
 			continue
 		}
 		if !fn(r) {

@@ -28,11 +28,11 @@ func TestMintInstant_ResolverAndPublicDoorsAgreeForAllIDs(t *testing.T) {
 		if got := types.RelID(id).MintInstant(); got != pub {
 			t.Fatalf("id %d: RelID %d != NodeID %d", int64(id), got, pub)
 		}
-		if got := EntityValidFrom(id, nil); got != pub {
-			t.Fatalf("id %d: EntityValidFrom(nil) %d != MintInstant %d", int64(id), got, pub)
+		if got := EntityValidFrom(types.LegacyValidAxis, id, nil); got != pub {
+			t.Fatalf("id %d: EntityValidFrom(types.LegacyValidAxis, nil) %d != MintInstant %d", int64(id), got, pub)
 		}
-		if got := EntityValidFrom(id, &types.TemporalMetadata{}); got != pub {
-			t.Fatalf("id %d: EntityValidFrom(zero ValidFrom) %d != MintInstant %d", int64(id), got, pub)
+		if got := EntityValidFrom(types.LegacyValidAxis, id, &types.TemporalMetadata{}); got != pub {
+			t.Fatalf("id %d: EntityValidFrom(types.LegacyValidAxis, zero ValidFrom) %d != MintInstant %d", int64(id), got, pub)
 		}
 		if got := SnowflakeInstant(id); got != pub {
 			t.Fatalf("id %d: SnowflakeInstant %d != MintInstant %d", int64(id), got, pub)
@@ -59,8 +59,8 @@ func TestMintInstant_ResolverAndPublicDoorsAgreeForAllIDs(t *testing.T) {
 func TestMintInstant_NonPositiveIDsDeriveZero(t *testing.T) {
 	t.Parallel()
 	for _, id := range []snowflake.ID{0, -1, -(1 << 15), math.MinInt64} {
-		if got := EntityValidFrom(id, nil); got != 0 {
-			t.Fatalf("EntityValidFrom(%d, nil) = %d, want 0", int64(id), got)
+		if got := EntityValidFrom(types.LegacyValidAxis, id, nil); got != 0 {
+			t.Fatalf("EntityValidFrom(types.LegacyValidAxis, %d, nil) = %d, want 0", int64(id), got)
 		}
 		if got := SnowflakeInstant(id); got != 0 {
 			t.Fatalf("SnowflakeInstant(%d) = %d, want 0", int64(id), got)
@@ -73,7 +73,7 @@ func TestMintInstant_ExplicitValidFromStillWins(t *testing.T) {
 	t.Parallel()
 	id := snowflake.ID(5_000_000<<15 | 2<<10 | 1)
 	tm := &types.TemporalMetadata{ValidFrom: 42}
-	if got := EntityValidFrom(id, tm); got != 42 {
+	if got := EntityValidFrom(types.LegacyValidAxis, id, tm); got != 42 {
 		t.Fatalf("EntityValidFrom with explicit ValidFrom = %d, want 42", got)
 	}
 }
@@ -84,10 +84,10 @@ func TestMintInstant_PredicateStartsAtMintInstant(t *testing.T) {
 	t.Parallel()
 	id := snowflake.ID(86_400_000_000<<15 | 6<<10 | 3)
 	mint := types.NodeID(id).MintInstant()
-	if MatchesPointInTime(id, nil, mint-1) {
+	if MatchesPointInTime(types.LegacyValidAxis, id, nil, mint-1) {
 		t.Fatal("valid one ms before the mint instant")
 	}
-	if !MatchesPointInTime(id, nil, mint) {
+	if !MatchesPointInTime(types.LegacyValidAxis, id, nil, mint) {
 		t.Fatal("not valid at the mint instant")
 	}
 }

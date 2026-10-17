@@ -11,8 +11,9 @@ import (
 // row's explicit ValidFrom, else the start the chain resolver gives the row
 // (nodeValidFrom: its TxFrom — backlog 62).
 //
-// NodeInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid),
-// because Allen's algebra requires finite intervals.
+// NodeInterval types.ErrOpenInterval if the version is open-ended (still
+// valid: ValidTo is the open end of the graph's valid axis, 0 on the legacy
+// axis), because Allen's algebra requires finite intervals.
 func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err error) {
 	c := t.c
 	err = c.readUnderRLock(func() error {
@@ -25,8 +26,8 @@ func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err err
 		start = c.nodeValidFrom(n)
 		// The row's own end as now believed: a delete that kept a believed
 		// ValidTo ends it at DeletedAt (types.TemporalMetadata.DeleteKeptValidTo).
-		end = n.Temporal().ValidToAtTxTime(math.MaxInt64)
-		if end == 0 {
+		end = c.axis().ValidToAtTxTime(n.Temporal(), math.MaxInt64)
+		if c.axis().Open(end) {
 			return types.ErrOpenInterval
 		}
 		if start >= end {
@@ -40,7 +41,8 @@ func (t *TempOps) NodeInterval(n *types.Node) (start, end types.Instant, err err
 // RelInterval returns the effective [start, end) for a relationship; start
 // as NodeInterval's (relValidFrom).
 //
-// RelInterval types.ErrOpenInterval if ValidTo == 0 (open-ended / still valid).
+// RelInterval types.ErrOpenInterval if the version is open-ended (as
+// NodeInterval).
 func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, err error) {
 	c := t.c
 	err = c.readUnderRLock(func() error {
@@ -53,8 +55,8 @@ func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, 
 		start = c.relValidFrom(r)
 		// The row's own end as now believed: a delete that kept a believed
 		// ValidTo ends it at DeletedAt (types.TemporalMetadata.DeleteKeptValidTo).
-		end = r.Temporal().ValidToAtTxTime(math.MaxInt64)
-		if end == 0 {
+		end = c.axis().ValidToAtTxTime(r.Temporal(), math.MaxInt64)
+		if c.axis().Open(end) {
 			return types.ErrOpenInterval
 		}
 		if start >= end {
@@ -66,7 +68,7 @@ func (t *TempOps) RelInterval(r *types.Relationship) (start, end types.Instant, 
 }
 
 // RelateNodes classifies the Allen relation of node A's interval to node B's.
-// Both nodes must have finite intervals (ValidTo != 0); returns
+// Both nodes must have finite intervals (not open-ended); returns
 // types.ErrOpenInterval otherwise.
 func (t *TempOps) RelateNodes(a, b *types.Node) (types.AllenRelation, error) {
 	aStart, aEnd, err := t.NodeInterval(a)
@@ -77,7 +79,7 @@ func (t *TempOps) RelateNodes(a, b *types.Node) (types.AllenRelation, error) {
 	if err != nil {
 		return 0, err
 	}
-	return types.Relate(aStart, aEnd, bStart, bEnd)
+	return t.c.axis().Relate(aStart, aEnd, bStart, bEnd)
 }
 
 // RelateRels classifies the Allen relation of relationship A's interval
@@ -91,5 +93,5 @@ func (t *TempOps) RelateRels(a, b *types.Relationship) (types.AllenRelation, err
 	if err != nil {
 		return 0, err
 	}
-	return types.Relate(aStart, aEnd, bStart, bEnd)
+	return t.c.axis().Relate(aStart, aEnd, bStart, bEnd)
 }

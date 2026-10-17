@@ -178,7 +178,7 @@ func (bs *Store) bulkRelGetters(ids []types.RelID) (
 		// RAW, like the node side, plus the effective start the FILTER uses
 		// (storeutil.RelValidFrom) — see the long note in badgerstore_docvalues.go.
 		f, t, _ := r.ValidRange()
-		return int64(f), int64(t), int64(storepkg.RelValidFrom(r)), true
+		return int64(f), int64(t), int64(storepkg.RelValidFrom(bs.validAxis.Get(), r)), true
 	}
 	return getProp, getTemporal
 }

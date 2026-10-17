@@ -140,7 +140,7 @@ func (bs *Store) foldRelHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.I
 	}
 	for _, hv := range hist {
 		if hv != nil {
-			from, to := indexpkg.RelTemporalBounds(id, hv.Temporal())
+			from, to := indexpkg.RelTemporalBounds(bs.validAxis.Get(), id, hv.Temporal())
 			ti.Extend(id, from, to)
 		}
 	}
@@ -175,7 +175,7 @@ func (bs *Store) relTemporalRowsOf(ids []snowflake.ID) (*indexpkg.TemporalIndex,
 		r, err := bs.prefetchRelScan(rid)
 		switch {
 		case err == nil:
-			relBuildFold(ti, id, -1, r)
+			relBuildFold(bs.validAxis.Get(), ti, id, -1, r)
 		case !errors.Is(err, ErrRelNotFound):
 			return nil, err
 		}
@@ -185,7 +185,7 @@ func (bs *Store) relTemporalRowsOf(ids []snowflake.ID) (*indexpkg.TemporalIndex,
 		}
 		for _, hv := range hist {
 			if hv != nil {
-				relBuildFold(ti, id, int64(hv.Version()), hv)
+				relBuildFold(bs.validAxis.Get(), ti, id, int64(hv.Version()), hv)
 			}
 		}
 	}
@@ -233,7 +233,7 @@ func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.Tempor
 			continue // deleted between snapshot and fetch
 		}
 		kept[i] = true
-		relBuildFold(ti, id, -1, r)
+		relBuildFold(bs.validAxis.Get(), ti, id, -1, r)
 		if err := bs.foldRelBuildHistory(ti, snap, id, pending[id]); err != nil {
 			return nil, fmt.Errorf("history fold: %w", err)
 		}
@@ -251,15 +251,15 @@ func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.Tempor
 			if err != nil {
 				return nil, fmt.Errorf("history fold: %w", err)
 			}
-			relBuildFold(ti, id, int64(version), hv) // #nosec G115 -- history versions are uint32
+			relBuildFold(bs.validAxis.Get(), ti, id, int64(version), hv) // #nosec G115 -- history versions are uint32
 		}
 	}
 	return ti, nil
 }
 
 // relBuildFold extends id's envelope by one row.
-func relBuildFold(ti *indexpkg.TemporalIndex, id snowflake.ID, version int64, r *types.Relationship) {
-	from, to := indexpkg.RelTemporalBounds(id, r.Temporal())
+func relBuildFold(a types.ValidAxis, ti *indexpkg.TemporalIndex, id snowflake.ID, version int64, r *types.Relationship) {
+	from, to := indexpkg.RelTemporalBounds(a, id, r.Temporal())
 	ti.Extend(id, from, to)
 	if relTemporalBuildFoldHook != nil {
 		relTemporalBuildFoldHook(id, version)
@@ -421,7 +421,7 @@ func (bs *Store) foldRelBuildHistory(ti *indexpkg.TemporalIndex, snap *relBuildS
 		if err != nil {
 			return err
 		}
-		relBuildFold(ti, id, int64(version), hv) // #nosec G115 -- history versions are uint32
+		relBuildFold(bs.validAxis.Get(), ti, id, int64(version), hv) // #nosec G115 -- history versions are uint32
 		return nil
 	}
 	w := snap.current().hist
@@ -569,7 +569,7 @@ func (bs *Store) DropRelTemporalIndex(relType uint16) error {
 // rel-mutation door calls (like maintainRelPropertyIndexes*). RAM-only; caller
 // holds bs.idxMu.
 func (bs *Store) maintainRelTypeTemporalIndexesAdd(r *types.Relationship, id snowflake.ID) {
-	indexpkg.AddRelToTemporalIndexes(bs.relTypeTemporalIndexes, r, id)
+	indexpkg.AddRelToTemporalIndexes(bs.validAxis.Get(), bs.relTypeTemporalIndexes, r, id)
 }
 
 func (bs *Store) maintainRelTypeTemporalIndexesRemove(r *types.Relationship, id snowflake.ID) {
@@ -601,7 +601,7 @@ func (bs *Store) PruneRelTypeTemporalCandidates(relType uint16, ids []types.RelI
 	kept := make([]types.RelID, 0, len(ids))
 	for _, id := range ids {
 		from, to, ok := ti.EnvelopeOf(id.SnowflakeID())
-		if ok && !storepkg.EnvelopeOverlaps(from, to, opts) {
+		if ok && !storepkg.EnvelopeOverlaps(indexpkg.EnvelopeAxis, from, to, opts) {
 			continue
 		}
 		kept = append(kept, id)

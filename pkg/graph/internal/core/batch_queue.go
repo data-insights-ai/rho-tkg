@@ -64,7 +64,7 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 	}
 
 	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
-	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(b.g.axis(), props)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 			ValidTo:   validTo,
 			CreatedAt: createdAt,
 		}
-		stampValidFrom(temporal, validFrom, vfSet)
+		stampValidFrom(b.g.axis(), temporal, validFrom, vfSet)
 
 		var result *types.Node
 		if keepResults {
@@ -237,7 +237,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	}
 
 	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
-	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(b.g.axis(), props)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +315,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		ValidTo:   validTo,
 		CreatedAt: createdAt,
 	}
-	stampValidFrom(rtm, validFrom, vfSet)
+	stampValidFrom(b.g.axis(), rtm, validFrom, vfSet)
 
 	b.rels = append(b.rels, pendingRel{
 		rel:             r,
@@ -422,7 +422,7 @@ func (b *BatchBuilder) queueNodeCascade(id types.NodeID, validFrom, validTo type
 			return err
 		}
 	}
-	if err := validateQueuedInterval(validFrom, validTo, void); err != nil {
+	if err := validateQueuedInterval(b.g.axis(), validFrom, validTo, void); err != nil {
 		return err
 	}
 	b.nodeCascades = append(b.nodeCascades, pendingNodeCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at, void: void})
@@ -430,12 +430,13 @@ func (b *BatchBuilder) queueNodeCascade(id types.NodeID, validFrom, validTo type
 }
 
 // validateCascadeInterval is the queue-time interval check of the cascade
-// doors (the kernel repeats it).
-func validateCascadeInterval(validFrom, validTo types.Instant) error {
-	if validFrom == 0 {
+// doors (the kernel repeats it, checkCascadeInterval), on the graph's valid
+// axis a.
+func validateCascadeInterval(a types.ValidAxis, validFrom, validTo types.Instant) error {
+	if !a.Claimed(validFrom) {
 		return ErrInvalidTimeRange
 	}
-	if validTo != 0 && validFrom >= validTo {
+	if !a.Open(validTo) && validFrom >= validTo {
 		return ErrInvalidTimeRange
 	}
 	return nil
@@ -443,11 +444,11 @@ func validateCascadeInterval(validFrom, validTo types.Instant) error {
 
 // validateQueuedInterval is the queue-time interval check of a correction or
 // (void) an excise.
-func validateQueuedInterval(validFrom, validTo types.Instant, void bool) error {
+func validateQueuedInterval(a types.ValidAxis, validFrom, validTo types.Instant, void bool) error {
 	if void {
-		return validateExciseInterval(validFrom, validTo)
+		return validateExciseInterval(a, validFrom, validTo)
 	}
-	return validateCascadeInterval(validFrom, validTo)
+	return validateCascadeInterval(a, validFrom, validTo)
 }
 
 // copyCascadeProps is a defensive copy of a queued patch — the caller may
@@ -493,7 +494,7 @@ func (b *BatchBuilder) queueRelCascade(id types.RelID, validFrom, validTo types.
 			return err
 		}
 	}
-	if err := validateQueuedInterval(validFrom, validTo, void); err != nil {
+	if err := validateQueuedInterval(b.g.axis(), validFrom, validTo, void); err != nil {
 		return err
 	}
 	b.relCascades = append(b.relCascades, pendingRelCascade{id: id, validFrom: validFrom, validTo: validTo, props: copyCascadeProps(props), at: at, void: void})

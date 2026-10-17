@@ -33,24 +33,28 @@ type countTimelineKey struct {
 	untimed bool
 }
 
-// timelineSpan is one member segment's valid span.
+// timelineSpan is one member segment's valid span [from, to): two
+// instants, to types.InfiniteValidTo for an open span (timelineSpanSet.add
+// reads a segment's end on the graph's valid axis).
 type timelineSpan struct{ from, to types.Instant }
 
 // sweepCountTimeline turns member spans into maximal constant-count
 // segments of positive count; ok=false when more than max (> 0) segments
-// would result.
-func sweepCountTimeline(spans []timelineSpan, max int) ([]storepkg.CountSegment, bool) {
+// would result. The segment still open at the end (no span closes it) ends
+// at the valid axis a's open end (0 on the legacy axis); every other one at
+// the instant a span closed it, the instant 0 included.
+func sweepCountTimeline(a types.ValidAxis, spans []timelineSpan, max int) ([]storepkg.CountSegment, bool) {
 	type end struct {
 		at    types.Instant
 		delta int64
 	}
 	ends := make([]end, 0, 2*len(spans))
 	for _, s := range spans {
-		if s.to != 0 && s.to <= s.from {
+		if s.to <= s.from {
 			continue
 		}
 		ends = append(ends, end{s.from, 1})
-		if s.to != 0 {
+		if s.to != types.InfiniteValidTo {
 			ends = append(ends, end{s.to, -1})
 		}
 	}
@@ -67,7 +71,7 @@ func sweepCountTimeline(spans []timelineSpan, max int) ([]storepkg.CountSegment,
 			if out[open].Count == count {
 				continue // equal counts merge
 			}
-			out[open].To, out[open].ToZero, open = at, at == 0, -1
+			out[open].To, open = at, -1
 		}
 		if count > 0 {
 			if max > 0 && len(out) >= max {
@@ -77,12 +81,16 @@ func sweepCountTimeline(spans []timelineSpan, max int) ([]storepkg.CountSegment,
 			open = len(out) - 1
 		}
 	}
+	if open >= 0 {
+		out[open].To = a.OpenEnd()
+	}
 	return out, true
 }
 
 // untimedSegmentStart reports whether an entity's first segment of a stream,
 // starting at segFrom on a row of version version with valid-from rowFrom
-// and TxFrom txFrom, starts at an untimed create (store.CountTimelineOpts).
+// (rowClaimed: a claim on the graph's valid axis) and TxFrom txFrom, starts
+// at an untimed create (store.CountTimelineOpts).
 // The first version (0) without a valid-from starts at its TxFrom; a close
 // stamps that start on the closing row (version > 0, valid-from = segFrom),
 // untimed iff the genesis row has no valid-from and that TxFrom.
@@ -95,14 +103,14 @@ func untimedSegmentStart(segFrom, rowFrom types.Instant, rowClaimed bool, txFrom
 }
 
 // genesisUntimed reports whether chain's first version is untimed
-// (untimedFirst, the conversion's rule) with the TxFrom at.
+// (untimedFirst on the valid axis a, the conversion's rule) with the TxFrom at.
 func genesisUntimed[T interface {
 	Version() uint32
 	Temporal() *types.TemporalMetadata
-}](chain []T, at types.Instant) bool {
+}](a types.ValidAxis, chain []T, at types.Instant) bool {
 	for _, v := range chain {
 		if tm := v.Temporal(); v.Version() == 0 {
-			return untimedFirst(0, tm) && tm.TxFrom == at
+			return untimedFirst(a, 0, tm) && tm.TxFrom == at
 		}
 	}
 	return false
@@ -118,7 +126,7 @@ func (c *Core) countTimeline(key stateCutKey, opts storepkg.CountTimelineOpts) (
 		if err != nil {
 			return nil, false, err
 		}
-		segs, ok := sweepCountTimeline(spans, opts.MaxSegments)
+		segs, ok := sweepCountTimeline(c.axis(), spans, opts.MaxSegments)
 		return segs, ok, nil
 	})
 	if err != nil || !ok || (opts.MaxSegments > 0 && len(segs) > opts.MaxSegments) {
@@ -129,7 +137,7 @@ func (c *Core) countTimeline(key stateCutKey, opts storepkg.CountTimelineOpts) (
 
 // timelineRow is what the untimed rule reads of a row (Node, Relationship).
 type timelineRow interface {
-	ValidFromClaim() (from types.Instant, ok bool)
+	ValidRange() (from, to types.Instant, ok bool)
 	TxStamps() (txFrom, txTo, deletedAt types.Instant)
 	Version() uint32
 }
@@ -139,6 +147,7 @@ type timelineRow interface {
 // (store.CountTimelineOpts.UntimedFromMinusInf), the spans whose start the
 // genesis row decides listed for resolveGenesis.
 type timelineSpanSet struct {
+	axis       types.ValidAxis // the graph's: how a segment's end reads
 	untimed    bool
 	spans      []timelineSpan
 	genesis    []int // spans whose start the genesis row decides
@@ -148,13 +157,13 @@ type timelineSpanSet struct {
 // add appends the span [from, to) of entity id on row; first marks the
 // entity's first span of the stream.
 func (s *timelineSpanSet) add(id int64, first bool, from, to types.Instant, row timelineRow) {
-	s.spans = append(s.spans, timelineSpan{from, to})
+	s.spans = append(s.spans, timelineSpan{from, s.axis.End(to)})
 	if !s.untimed || !first {
 		return
 	}
-	vf, claimed := row.ValidFromClaim()
+	vf, _, _ := row.ValidRange()
 	tx, _, _ := row.TxStamps()
-	yes, ask := untimedSegmentStart(from, vf, claimed, tx, row.Version())
+	yes, ask := untimedSegmentStart(from, vf, s.axis.Claimed(vf), tx, row.Version())
 	if yes {
 		s.spans[len(s.spans)-1].from = math.MinInt64
 	} else if ask {
@@ -176,13 +185,13 @@ func (c *Core) resolveGenesis(rel bool, s *timelineSpanSet) error {
 				if err != nil {
 					return err
 				}
-				yes = genesisUntimed(h, s.spans[i].from)
+				yes = genesisUntimed(c.axis(), h, s.spans[i].from)
 			} else {
 				h, err := c.getNodeHistory(types.NodeID(s.genesisIDs[k]))
 				if err != nil {
 					return err
 				}
-				yes = genesisUntimed(h, s.spans[i].from)
+				yes = genesisUntimed(c.axis(), h, s.spans[i].from)
 			}
 			if yes {
 				s.spans[i].from = math.MinInt64
@@ -195,7 +204,7 @@ func (c *Core) resolveGenesis(rel bool, s *timelineSpanSet) error {
 // timelineSpans is every segment of key's effective scan at its pin, an
 // untimed first segment from -inf under untimed.
 func (c *Core) timelineSpans(key stateCutKey, untimed bool) ([]timelineSpan, error) {
-	set := timelineSpanSet{untimed: untimed}
+	set := timelineSpanSet{axis: c.axis(), untimed: untimed}
 	var last int64
 	first := func(id int64) bool {
 		f := id != last
@@ -251,18 +260,18 @@ func (c *Core) timelineSpans(key stateCutKey, untimed bool) ([]timelineSpan, err
 // at an untimed create (the pinned timeline's rule, timelineSpanSet). Not
 // memoised: every write of a member changes it.
 func (c *Core) currentRowsTimeline(rel bool, name string, opts storepkg.CountTimelineOpts) ([]storepkg.CountSegment, bool, error) {
-	set := timelineSpanSet{untimed: opts.UntimedFromMinusInf}
+	set := timelineSpanSet{axis: c.axis(), untimed: opts.UntimedFromMinusInf}
 	var err error
 	if rel {
 		err = c.Rels.ForEachByType(name, storepkg.QueryOpts{}, func(r *types.Relationship) bool {
 			_, to, _ := r.ValidRange()
-			set.add(int64(r.ID()), true, storeutil.RelValidFrom(r), to, r)
+			set.add(int64(r.ID()), true, storeutil.RelValidFrom(c.axis(), r), to, r)
 			return true
 		})
 	} else {
 		err = c.Nodes.ForEachByLabel(name, storepkg.QueryOpts{}, func(n *types.Node) bool {
 			_, to, _ := n.ValidRange()
-			set.add(int64(n.ID()), true, storeutil.NodeValidFrom(n), to, n)
+			set.add(int64(n.ID()), true, storeutil.NodeValidFrom(c.axis(), n), to, n)
 			return true
 		})
 	}
@@ -272,7 +281,7 @@ func (c *Core) currentRowsTimeline(rel bool, name string, opts storepkg.CountTim
 	if err != nil {
 		return nil, false, err
 	}
-	segs, ok := sweepCountTimeline(set.spans, opts.MaxSegments)
+	segs, ok := sweepCountTimeline(c.axis(), set.spans, opts.MaxSegments)
 	if !ok {
 		return nil, false, nil
 	}
@@ -366,18 +375,16 @@ func (c *Core) validHull(rel bool, name string, pin types.Instant, opts storepkg
 	if err != nil || !ok {
 		return storepkg.ValidHull{}, false, err
 	}
-	return hullOf(segs), true, nil
+	return hullOf(c.axis(), segs), true, nil
 }
 
-// hullOf is the hull of a count timeline (ascending, positive counts).
-func hullOf(segs []storepkg.CountSegment) storepkg.ValidHull {
+// hullOf is the hull of a count timeline (ascending, positive counts) on the
+// graph's valid axis a: the last segment ends at the latest member end, or
+// at the axis's open end (sweepCountTimeline).
+func hullOf(a types.ValidAxis, segs []storepkg.CountSegment) storepkg.ValidHull {
 	if len(segs) == 0 {
 		return storepkg.ValidHull{Empty: true}
 	}
 	last := segs[len(segs)-1]
-	// The last segment ends at the latest member end (no stored or derived
-	// end lies at the instant 0: ErrValidEndAtZero), or is open; only an
-	// inner segment can end at 0 (a member valid from the explicit 0,
-	// CountSegment.ToZero).
-	return storepkg.ValidHull{From: segs[0].From, To: last.To, OpenEnd: last.To == 0 && !last.ToZero}
+	return storepkg.ValidHull{From: segs[0].From, To: last.To, OpenEnd: a.Open(last.To)}
 }

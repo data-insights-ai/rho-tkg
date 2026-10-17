@@ -5,9 +5,12 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // NodeSegment is one piece of a node's effective timeline
 // (API.NodeEffectiveTimeline): over the half-open valid interval
 // [ValidFrom, ValidTo) the node's state, as recorded at the pin, is Node —
-// the row NodeAtTx(id, t, pin) returns for every t in it. ValidTo == 0 is
-// open-ended. ValidFrom is never 0: a row without a recorded valid-from starts
-// at its derived start (the row's TxFrom, backlog 62).
+// the row NodeAtTx(id, t, pin) returns for every t in it. ValidTo is
+// open-ended when it is the open end of the store's valid axis
+// (types.ValidAxis.Open: 0 on the legacy axis, types.InfiniteValidTo on the
+// literal axis of an UntimedWholeAxis store, where 0 is the instant 0). On
+// the legacy axis ValidFrom is never 0: a row without a recorded valid-from
+// starts at its derived start (the row's TxFrom, backlog 62).
 //
 // Node is a shared frozen row like the rows of the other plural reads: it
 // rejects mutation; call DeepCopy to get a mutable copy. Adjacent segments of

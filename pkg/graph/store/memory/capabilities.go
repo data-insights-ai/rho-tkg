@@ -31,5 +31,6 @@ var (
 	_ storecontract.HighFrequencyIndexCapability         = (*Store)(nil)
 	_ storecontract.RetentionPurgeCapability             = (*Store)(nil)
 	_ storecontract.RetentionPurgeByValidToCapability    = (*Store)(nil)
+	_ storecontract.ValidAxisCapability                  = (*Store)(nil)
 	_ storecontract.RangePurgeLogCapability              = (*Store)(nil)
 )

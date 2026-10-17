@@ -35,7 +35,7 @@ func (t *TempOps) ForEachRelEffectiveAtNodesWindow(nodeIDs []types.NodeID, dir t
 		return t.c.relEffectiveAtNodesGates(nodeIDs, dir, relTypes, pin) // the empty window meets nothing
 	}
 	return t.ForEachRelEffectiveAtNodes(nodeIDs, dir, relTypes, pin, func(s temporal.RelSegment) bool {
-		if !window.Meets(s.ValidFrom, s.ValidTo) {
+		if !window.MeetsOn(t.c.axis(), s.ValidFrom, s.ValidTo) {
 			return true
 		}
 		return fn(s)

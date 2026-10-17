@@ -54,12 +54,13 @@ func (bs *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant
 }
 
 // PurgeNodesByLabelValidToBefore hard-removes nodes of a label whose world-time
-// validity ENDED before the boundary (ADR-0008 R5, ByValidTo): current-version
-// ValidTo != 0 && ValidTo < before. A node with an open interval (ValidTo == 0) is
+// validity ENDED before the boundary (ADR-0008 R5, ByValidTo): the current
+// version's ValidTo is closed and before the boundary (the open end per the store's valid axis,
+// round 11; 0 on the legacy axis). A node with an open interval is
 // never purged by validity.
 //
 // No Phase-B re-confirm is needed even though selection reads a temporal field: a
-// node that qualifies is CLOSED (ValidTo != 0), and a closed node is FROZEN against
+// node that qualifies is CLOSED (its ValidTo not the open end), and a closed node is FROZEN against
 // every interactive mutation door (core rejectClosedNodeMutation on Update/label/
 // CAS/tx). So a selected victim's current-version ValidTo cannot change between the
 // Phase-A snapshot and the Phase-B cascade — the predicate is effectively immutable
@@ -78,7 +79,7 @@ func (bs *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.
 			return false, err
 		}
 		vt := n.Temporal().ValidTo
-		return vt != 0 && vt < before, nil
+		return !bs.validAxis.Get().Open(vt) && vt < before, nil
 	})
 }
 

@@ -61,7 +61,9 @@ func (c *Core) validateEffectivePin(pin types.Instant) error {
 // below reads 0 as "no pin"); both select no row.
 func recordedPin(pin types.Instant) types.Instant { return pinInstant(pin, true) }
 
-// effPiece is one resolved piece [from, to) (to == 0: open) of a timeline;
+// effPiece is one resolved piece [from, to) (to open by the graph's valid
+// axis: 0 on the legacy axis, types.InfiniteValidTo on the literal one) of a
+// timeline;
 // src is the index, in the chain handed to effectivePieces, of the row the
 // winner came from (the winner may be the resolver's normalized copy of it).
 type effPiece[T any] struct {
@@ -76,11 +78,11 @@ type chainKernel[T interface {
 	comparable
 	storeutil.TemporalRow
 }] struct {
-	rowAtTx   func(T, types.Instant) (T, bool)
+	rowAtTx   func(types.ValidAxis, T, types.Instant) (T, bool)
 	sortVF    func(*Core, T) types.Instant
 	sortChain func(*Core, []T) bool
 	ownBounds func(*Core, T) (types.Instant, types.Instant)
-	posBounds func(*Core, []T, int) (types.Instant, types.Instant, bool)
+	posBounds func(*Core, []T, int) (types.Instant, types.Instant)
 }
 
 // The node and relationship kernels (method expressions: no allocation).
@@ -101,7 +103,8 @@ var (
 	}
 )
 
-// effInterval is one row's covering interval [s, e) (e == 0: open) in the
+// effInterval is one row's covering interval [s, e) (e open by the valid
+// axis) in the
 // arm the resolver takes, with its selection priority (higher wins).
 type effInterval struct {
 	s, e types.Instant
@@ -112,7 +115,7 @@ type effInterval struct {
 // effectivePieces answers the point resolver for every valid instant at once:
 // nil when nothing was recorded by the pin.
 //
-// The resolver's input is dropRetractedLives(filterNodeChainByTxAt(
+// The resolver's input is dropRetractedLives(filterNodeChainByTxAt(a,
 // versionOrdered(chain), pin)) with its lifeEnds; built here row by row so
 // each kept row remembers where it came from. The resolver then classifies the chain once
 // (sortNodeChainForResolve) and, in either arm, answers at t the covering row
@@ -141,7 +144,7 @@ func effectivePiecesFacts[T interface {
 		// An entity without history: the sweep below on one row, without its
 		// allocations (one row is monotonic; its positional bounds, capped by
 		// its own life end, are its one piece).
-		r, ok := k.rowAtTx(chain[0], pin)
+		r, ok := k.rowAtTx(c.axis(), chain[0], pin)
 		if !ok {
 			return nil
 		}
@@ -152,9 +155,10 @@ func effectivePiecesFacts[T interface {
 		if r != chain[0] {
 			one = []T{r}
 		}
-		s, e, _ := k.posBounds(c, one, 0) // one row: no later version
-		e = chainLifeEnds(one).end(r, e)
-		if e != 0 && e <= s {
+		a := c.axis()
+		s, e := k.posBounds(c, one, 0)
+		e = chainLifeEnds(one).end(a, r, e)
+		if !a.Open(e) && e <= s {
 			return nil
 		}
 		return []effPiece[T]{{from: s, to: e, row: r}}
@@ -168,7 +172,7 @@ func effectivePiecesFacts[T interface {
 	filtered := make([]T, 0, len(chain))
 	origin := make(map[T]int, len(chain))
 	for _, i := range order {
-		if r, ok := k.rowAtTx(chain[i], pin); ok {
+		if r, ok := k.rowAtTx(c.axis(), chain[i], pin); ok {
 			filtered = append(filtered, r)
 			origin[r] = i
 		}
@@ -197,6 +201,7 @@ func effectiveSweep[T interface {
 	storeutil.TemporalRow
 }](c *Core, k *chainKernel[T], filtered []T, origin map[T]int, keepVoid bool) ([]effPiece[T], bool) {
 	caps := chainLifeEnds(filtered)
+	a := c.axis()
 
 	// The resolver's classification and order (it sorts its argument).
 	arr := slices.Clone(filtered)
@@ -213,17 +218,14 @@ func effectiveSweep[T interface {
 		if cascade {
 			s, e = k.ownBounds(c, r)
 			var empty bool
-			if e, empty = superseded.end(i, s, e); empty {
+			if e, empty = superseded.end(a, i, s, e); empty {
 				continue // covers nothing
 			}
 		} else {
-			var empty bool
-			if s, e, empty = k.posBounds(c, arr, i); empty {
-				continue // a later version starts at the explicit 0 at or before it
-			}
+			s, e = k.posBounds(c, arr, i)
 		}
-		e = caps.end(r, e)
-		if e != 0 && e <= s {
+		e = caps.end(a, r, e)
+		if !a.Open(e) && e <= s {
 			continue // covers nothing
 		}
 		ivs = append(ivs, effInterval{s: s, e: e, pos: i, prio: i})
@@ -253,7 +255,7 @@ func effectiveSweep[T interface {
 	cuts := make([]types.Instant, 0, 2*len(ivs))
 	for _, iv := range ivs {
 		cuts = append(cuts, iv.s)
-		if iv.e != 0 {
+		if !a.Open(iv.e) {
 			cuts = append(cuts, iv.e)
 		}
 	}
@@ -269,13 +271,13 @@ func effectiveSweep[T interface {
 			h.push(ivs[next])
 			next++
 		}
-		for len(h) > 0 && h[0].e != 0 && h[0].e <= from {
+		for len(h) > 0 && !a.Open(h[0].e) && h[0].e <= from {
 			h.pop()
 		}
 		if len(h) == 0 {
 			continue // a gap
 		}
-		var to types.Instant
+		to := a.OpenEnd()
 		if j+1 < len(cuts) {
 			to = cuts[j+1]
 		}
@@ -592,7 +594,7 @@ func (c *Core) nodeEffectiveViaTemporalMeta(rd entityReads, id types.NodeID, cur
 		if err != nil {
 			return nil, false
 		}
-		row, ok := nodeRowAtTx(full, pin)
+		row, ok := nodeRowAtTx(c.axis(), full, pin)
 		if !ok {
 			return nil, false
 		}
@@ -654,7 +656,7 @@ func (c *Core) relEffectiveViaTemporalMeta(rd entityReads, id types.RelID, curre
 		if err != nil {
 			return nil, false
 		}
-		row, ok := relRowAtTx(full, pin)
+		row, ok := relRowAtTx(c.axis(), full, pin)
 		if !ok {
 			return nil, false
 		}

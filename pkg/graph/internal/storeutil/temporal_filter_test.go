@@ -15,7 +15,7 @@ func TestEntityValidFrom_ExplicitValidFrom(t *testing.T) {
 	gen := newTestGen(t, 0)
 	id := gen.Generate()
 	tm := &types.TemporalMetadata{ValidFrom: 1000}
-	got := EntityValidFrom(id, tm)
+	got := EntityValidFrom(types.LegacyValidAxis, id, tm)
 	if got != 1000 {
 		t.Errorf("EntityValidFrom with explicit ValidFrom: got %d, want 1000", got)
 	}
@@ -25,7 +25,7 @@ func TestEntityValidFrom_DerivedFromSnowflake(t *testing.T) {
 	t.Parallel()
 	gen := newTestGen(t, 0)
 	id := gen.Generate()
-	got := EntityValidFrom(id, nil)
+	got := EntityValidFrom(types.LegacyValidAxis, id, nil)
 	want := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
 	if got != want {
 		t.Errorf("EntityValidFrom derived: got %d, want %d", got, want)
@@ -36,7 +36,7 @@ func TestEntityValidFrom_NilTemporal(t *testing.T) {
 	t.Parallel()
 	gen := newTestGen(t, 0)
 	id := gen.Generate()
-	got := EntityValidFrom(id, nil)
+	got := EntityValidFrom(types.LegacyValidAxis, id, nil)
 	want := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
 	if got != want {
 		t.Errorf("EntityValidFrom nil tm: got %d, want %d", got, want)
@@ -48,7 +48,7 @@ func TestEntityValidFrom_ZeroValidFrom(t *testing.T) {
 	gen := newTestGen(t, 0)
 	id := gen.Generate()
 	tm := &types.TemporalMetadata{ValidFrom: 0} // zero = derive from ID
-	got := EntityValidFrom(id, tm)
+	got := EntityValidFrom(types.LegacyValidAxis, id, tm)
 	want := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
 	if got != want {
 		t.Errorf("EntityValidFrom zero ValidFrom: got %d, want %d", got, want)
@@ -59,7 +59,7 @@ func TestMatchesTemporalFilter_NoFilter(t *testing.T) {
 	t.Parallel()
 	gen := newTestGen(t, 0)
 	id := gen.Generate()
-	if !MatchesTemporalFilter(id, nil, storepkg.QueryOpts{}) {
+	if !MatchesTemporalFilter(types.LegacyValidAxis, id, nil, storepkg.QueryOpts{}) {
 		t.Error("no filter should always match")
 	}
 }
@@ -69,7 +69,7 @@ func TestMatchesTemporalFilter_ValidAtMatch(t *testing.T) {
 	tm := &types.TemporalMetadata{ValidFrom: 100}
 	id := snowflake.ID(0) // derived time irrelevant because ValidFrom is explicit
 	opts := storepkg.QueryOpts{ValidAt: 150}
-	if !MatchesTemporalFilter(id, tm, opts) {
+	if !MatchesTemporalFilter(types.LegacyValidAxis, id, tm, opts) {
 		t.Error("ValidAt=150 should match entity valid from 100 with no expiry")
 	}
 }
@@ -79,7 +79,7 @@ func TestMatchesTemporalFilter_ValidAtTooEarly(t *testing.T) {
 	tm := &types.TemporalMetadata{ValidFrom: 200}
 	id := snowflake.ID(0)
 	opts := storepkg.QueryOpts{ValidAt: 150}
-	if MatchesTemporalFilter(id, tm, opts) {
+	if MatchesTemporalFilter(types.LegacyValidAxis, id, tm, opts) {
 		t.Error("ValidAt=150 should NOT match entity valid from 200")
 	}
 }
@@ -89,7 +89,7 @@ func TestMatchesTemporalFilter_ValidAtExpired(t *testing.T) {
 	tm := &types.TemporalMetadata{ValidFrom: 100, ValidTo: 200}
 	id := snowflake.ID(0)
 	opts := storepkg.QueryOpts{ValidAt: 250}
-	if MatchesTemporalFilter(id, tm, opts) {
+	if MatchesTemporalFilter(types.LegacyValidAxis, id, tm, opts) {
 		t.Error("ValidAt=250 should NOT match entity expired at 200")
 	}
 }
@@ -99,7 +99,7 @@ func TestMatchesTemporalFilter_ValidAtOpenEnded(t *testing.T) {
 	tm := &types.TemporalMetadata{ValidFrom: 100} // ValidTo == 0 = open-ended
 	id := snowflake.ID(0)
 	opts := storepkg.QueryOpts{ValidAt: 999999}
-	if !MatchesTemporalFilter(id, tm, opts) {
+	if !MatchesTemporalFilter(types.LegacyValidAxis, id, tm, opts) {
 		t.Error("open-ended entity should match any time after ValidFrom")
 	}
 }
@@ -109,7 +109,7 @@ func TestMatchesTemporalFilter_IntervalMatch(t *testing.T) {
 	tm := &types.TemporalMetadata{ValidFrom: 100, ValidTo: 300}
 	id := snowflake.ID(0)
 	opts := storepkg.QueryOpts{ValidStart: 200, ValidEnd: 400}
-	if !MatchesTemporalFilter(id, tm, opts) {
+	if !MatchesTemporalFilter(types.LegacyValidAxis, id, tm, opts) {
 		t.Error("entity [100,300) should overlap with query [200,400)")
 	}
 }
@@ -119,7 +119,7 @@ func TestMatchesTemporalFilter_IntervalNoOverlap(t *testing.T) {
 	tm := &types.TemporalMetadata{ValidFrom: 100, ValidTo: 200}
 	id := snowflake.ID(0)
 	opts := storepkg.QueryOpts{ValidStart: 300, ValidEnd: 400}
-	if MatchesTemporalFilter(id, tm, opts) {
+	if MatchesTemporalFilter(types.LegacyValidAxis, id, tm, opts) {
 		t.Error("entity [100,200) should NOT overlap with query [300,400)")
 	}
 }
@@ -132,7 +132,7 @@ func TestMatchesTemporalFilter_InvalidIntervalDoesNotMatchOpenEndedEntity(t *tes
 		{ValidStart: 300, ValidEnd: 300},
 		{ValidStart: 400, ValidEnd: 300},
 	} {
-		if MatchesTemporalFilter(id, tm, opts) {
+		if MatchesTemporalFilter(types.LegacyValidAxis, id, tm, opts) {
 			t.Fatalf("invalid interval %+v matched open-ended entity", opts)
 		}
 		if !opts.HasValidTimeFilter() {
@@ -148,7 +148,7 @@ func TestMatchesTemporalFilter_ValidAtPrecedence(t *testing.T) {
 	id := snowflake.ID(0)
 	// ValidAt=150 matches, interval [300,400) would not match.
 	opts := storepkg.QueryOpts{ValidAt: 150, ValidStart: 300, ValidEnd: 400}
-	if !MatchesTemporalFilter(id, tm, opts) {
+	if !MatchesTemporalFilter(types.LegacyValidAxis, id, tm, opts) {
 		t.Error("ValidAt should take precedence over interval — entity should match at t=150")
 	}
 }
@@ -172,8 +172,8 @@ func TestEnvelopeOverlaps_NoFilterAlwaysTrue(t *testing.T) {
 		{0, 0},
 	}
 	for _, c := range cases {
-		if !EnvelopeOverlaps(c.from, c.to, storepkg.QueryOpts{}) {
-			t.Errorf("EnvelopeOverlaps(%d, %d, no filter) = false, want true", c.from, c.to)
+		if !EnvelopeOverlaps(types.LegacyValidAxis, c.from, c.to, storepkg.QueryOpts{}) {
+			t.Errorf("EnvelopeOverlaps(types.LegacyValidAxis, %d, %d, no filter) = false, want true", c.from, c.to)
 		}
 	}
 }
@@ -194,9 +194,9 @@ func TestEnvelopeOverlaps_ValidAtClosedEnvelope(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := EnvelopeOverlaps(100, 200, storepkg.QueryOpts{ValidAt: c.validAt})
+			got := EnvelopeOverlaps(types.LegacyValidAxis, 100, 200, storepkg.QueryOpts{ValidAt: c.validAt})
 			if got != c.want {
-				t.Errorf("EnvelopeOverlaps(100, 200, ValidAt=%d) = %v, want %v", c.validAt, got, c.want)
+				t.Errorf("EnvelopeOverlaps(types.LegacyValidAxis, 100, 200, ValidAt=%d) = %v, want %v", c.validAt, got, c.want)
 			}
 		})
 	}
@@ -216,9 +216,9 @@ func TestEnvelopeOverlaps_ValidAtOpenEndedEnvelope(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := EnvelopeOverlaps(100, 0, storepkg.QueryOpts{ValidAt: c.validAt})
+			got := EnvelopeOverlaps(types.LegacyValidAxis, 100, 0, storepkg.QueryOpts{ValidAt: c.validAt})
 			if got != c.want {
-				t.Errorf("EnvelopeOverlaps(100, 0, ValidAt=%d) = %v, want %v", c.validAt, got, c.want)
+				t.Errorf("EnvelopeOverlaps(types.LegacyValidAxis, 100, 0, ValidAt=%d) = %v, want %v", c.validAt, got, c.want)
 			}
 		})
 	}
@@ -243,9 +243,9 @@ func TestEnvelopeOverlaps_IntervalClosedEnvelope(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := EnvelopeOverlaps(100, 200, storepkg.QueryOpts{ValidStart: c.start, ValidEnd: c.end})
+			got := EnvelopeOverlaps(types.LegacyValidAxis, 100, 200, storepkg.QueryOpts{ValidStart: c.start, ValidEnd: c.end})
 			if got != c.want {
-				t.Errorf("EnvelopeOverlaps(100, 200, [%d,%d)) = %v, want %v", c.start, c.end, got, c.want)
+				t.Errorf("EnvelopeOverlaps(types.LegacyValidAxis, 100, 200, [%d,%d)) = %v, want %v", c.start, c.end, got, c.want)
 			}
 		})
 	}
@@ -265,9 +265,9 @@ func TestEnvelopeOverlaps_IntervalOpenEndedEnvelope(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := EnvelopeOverlaps(100, 0, storepkg.QueryOpts{ValidStart: c.start, ValidEnd: c.end})
+			got := EnvelopeOverlaps(types.LegacyValidAxis, 100, 0, storepkg.QueryOpts{ValidStart: c.start, ValidEnd: c.end})
 			if got != c.want {
-				t.Errorf("EnvelopeOverlaps(100, 0, [%d,%d)) = %v, want %v", c.start, c.end, got, c.want)
+				t.Errorf("EnvelopeOverlaps(types.LegacyValidAxis, 100, 0, [%d,%d)) = %v, want %v", c.start, c.end, got, c.want)
 			}
 		})
 	}
@@ -284,8 +284,8 @@ func TestEnvelopeOverlaps_OnlyOneIntervalBoundSetIsNoFilter(t *testing.T) {
 		{ValidEnd: 500},   // ValidStart unset
 	}
 	for _, opts := range cases {
-		if !EnvelopeOverlaps(100, 200, opts) {
-			t.Errorf("EnvelopeOverlaps(100, 200, %+v) = false, want true (only one interval bound set)", opts)
+		if !EnvelopeOverlaps(types.LegacyValidAxis, 100, 200, opts) {
+			t.Errorf("EnvelopeOverlaps(types.LegacyValidAxis, 100, 200, %+v) = false, want true (only one interval bound set)", opts)
 		}
 	}
 }
@@ -295,7 +295,7 @@ func TestEnvelopeOverlaps_ValidAtTakesPrecedenceOverInterval(t *testing.T) {
 	// Envelope [100, 200). ValidAt=150 is inside; the interval [300,400)
 	// would not overlap at all — ValidAt must win.
 	opts := storepkg.QueryOpts{ValidAt: 150, ValidStart: 300, ValidEnd: 400}
-	if !EnvelopeOverlaps(100, 200, opts) {
+	if !EnvelopeOverlaps(types.LegacyValidAxis, 100, 200, opts) {
 		t.Error("EnvelopeOverlaps should prefer ValidAt over interval when both are set")
 	}
 }

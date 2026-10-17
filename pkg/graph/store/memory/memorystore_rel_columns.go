@@ -114,7 +114,7 @@ func (ms *Store) buildRelColumnsLocked(typeToken uint16, keys []string,
 		// would make a columnar reader disagree with every row-path valid-time
 		// filter on exactly those edges (Pattern 38).
 		_, t, _ := r.ValidRange()
-		f := int64(storeutil.RelValidFrom(r))
+		f := int64(storeutil.RelValidFrom(ms.validAxis.Get(), r))
 		return f, int64(t), f, true
 	}
 

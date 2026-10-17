@@ -362,14 +362,11 @@ func (c *Core) prepareUpdateProperties(updates map[string]any, operation string)
 	if err != nil {
 		return updateProvenance{}, updateTemporal{}, nil, err
 	}
-	tmp, filtered, err := extractTemporalTracked(filtered)
+	tmp, filtered, err := extractTemporalTracked(c.axis(), filtered)
 	if err != nil {
 		return updateProvenance{}, updateTemporal{}, nil, err
 	}
 	if err := c.validatePropertyUpdates(filtered, operation); err != nil {
-		return updateProvenance{}, updateTemporal{}, nil, err
-	}
-	if err := checkClaimedUpdate(tmp); err != nil {
 		return updateProvenance{}, updateTemporal{}, nil, err
 	}
 	return prov, tmp, filtered, nil

@@ -50,7 +50,7 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 	if err != nil {
 		return prep, err
 	}
-	validFrom, vfSet, validTo, createdAt, txFrom, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFrom, props, err := extractTemporal(c.axis(), props)
 	if err != nil {
 		return prep, err
 	}

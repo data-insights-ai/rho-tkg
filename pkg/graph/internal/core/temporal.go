@@ -48,12 +48,12 @@ func (c *Core) normalizeDuringRange(start, end types.Instant) (types.Instant, er
 // storeutil.EntityValidFrom) — one definition shared with the store push-down,
 // the temporal index envelopes and the column filters.
 func (c *Core) nodeValidFrom(n *types.Node) types.Instant {
-	return storeutil.NodeValidFrom(n)
+	return storeutil.NodeValidFrom(c.axis(), n)
 }
 
 // relValidFrom mirrors nodeValidFrom for relationships.
 func (c *Core) relValidFrom(r *types.Relationship) types.Instant {
-	return storeutil.RelValidFrom(r)
+	return storeutil.RelValidFrom(c.axis(), r)
 }
 
 func validInstantAfter(at, start types.Instant) types.Instant {
@@ -130,8 +130,9 @@ type tombstoneSpec struct {
 // door (standalone, tx, batch, ingest strong and concurrent mode, node cascade)
 // funnels through deleteNodeLocked / deleteRelationshipInternal, which call it.
 //
-// ValidTo is stamped only when the row is still open (0) or scheduled to close
-// after the delete (clamped to the delete). A close already recorded at or
+// ValidTo is stamped only when the row is still open (the open end of the
+// graph's valid axis a) or scheduled to close after the delete (clamped to
+// the delete). A close already recorded at or
 // before the delete is kept: overwriting it rewrote valid-time history, and a
 // reader pinned before the delete then reset the delete-stamped ValidTo to 0,
 // reporting the closed entity as open-ended (a later write changing a
@@ -141,11 +142,12 @@ type tombstoneSpec struct {
 // clamped: a valid end earlier pins read changed (backlog 25), which the
 // caller reports to the pinned caches after its store write
 // (noteClampedClose).
-func stampDeleteTombstone(tm *types.TemporalMetadata, at types.Instant, retract bool) (clamped bool) {
+func stampDeleteTombstone(a types.ValidAxis, tm *types.TemporalMetadata, at types.Instant, retract bool) (clamped bool) {
 	tm.DeletedAt = at
 	tm.Retracted = retract
-	clamped = tm.ValidTo > at
-	if tm.ValidTo == 0 || tm.ValidTo > at {
+	open := a.Open(tm.ValidTo)
+	clamped = !open && tm.ValidTo > at
+	if open || tm.ValidTo > at {
 		tm.ValidTo = at
 	}
 	if tm.TxFrom == 0 {
@@ -161,6 +163,7 @@ func stampDeleteTombstone(tm *types.TemporalMetadata, at types.Instant, retract 
 // row's valid start when it cannot start at tx (0: it starts at its TxFrom).
 type supersession struct {
 	tx, from types.Instant
+	axis     types.ValidAxis // the graph's: whether the door claimed a start
 }
 
 // supersede is THE instant rule of a plain superseding write. tx is the
@@ -175,7 +178,7 @@ type supersession struct {
 // taken now reaches and that every later write on the entity is stamped below,
 // so the unpinned point door and the head timeline answered different rows.
 func (c *Core) supersede(start, recorded types.Instant) supersession {
-	s := supersession{tx: validInstantAfter(c.now(), recorded)}
+	s := supersession{tx: validInstantAfter(c.now(), recorded), axis: c.axis()}
 	if s.tx <= start {
 		s.from = start + 1
 	}
@@ -191,11 +194,13 @@ func (c *Core) relVersionUpdateInstant(current *types.Relationship) supersession
 }
 
 // stamp stamps the new row tm (its ValidFrom already set by the door: a
-// caller's tkg_valid_from or a close's start, else 0) as appended at s.tx,
-// starting at s.from when the door set no start.
+// caller's tkg_valid_from or a close's start, else the legacy axis's
+// unclaimed 0) as appended at s.tx, starting at s.from when the door set no
+// start. On the literal valid axis (UntimedWholeAxis) every door claims a
+// start, so the stamp never derives one.
 func (s supersession) stamp(tm *types.TemporalMetadata) {
 	stampAppendedRow(tm, s.tx)
-	if tm.ValidFrom == 0 {
+	if !s.axis.Claimed(tm.ValidFrom) {
 		tm.ValidFrom = s.from
 	}
 }
@@ -218,7 +223,7 @@ func checkCloseAfterStart(what string, end, start types.Instant, entity string) 
 // temporal constraints must hold for the closed row. It returns the start the
 // closed row keeps (stampClose).
 func (c *Core) checkNodeClose(id types.NodeID, current *types.Node, what string, end types.Instant) (types.Instant, error) {
-	if tm := current.Temporal(); tm != nil && tm.ValidTo != 0 {
+	if tm := current.Temporal(); tm != nil && !c.axis().Open(tm.ValidTo) {
 		return 0, ErrAlreadyClosed
 	}
 	start := c.nodeValidFrom(current)
@@ -234,7 +239,7 @@ func (c *Core) checkNodeClose(id types.NodeID, current *types.Node, what string,
 // checkRelClose is checkNodeClose for a relationship (endpoints locked by the
 // caller).
 func (c *Core) checkRelClose(current *types.Relationship, startID, endID types.NodeID, what string, end types.Instant) (types.Instant, error) {
-	if tm := current.Temporal(); tm != nil && tm.ValidTo != 0 {
+	if tm := current.Temporal(); tm != nil && !c.axis().Open(tm.ValidTo) {
 		return 0, ErrAlreadyClosed
 	}
 	start := c.relValidFrom(current)
@@ -257,41 +262,42 @@ func (c *Core) checkRelClose(current *types.Relationship, startID, endID types.N
 // (stamped, since its own TxFrom is the close instant: a claim, the instant 0
 // included) and ends at end.
 func stampClose(tm *types.TemporalMetadata, start, end types.Instant) {
-	stampValidFrom(tm, start, true)
-	tm.ValidTo = end
+	tm.ValidFrom, tm.ValidTo = start, end
 }
 
 // closesVersion reports whether an update's temporal input is a close: a
-// tkg_valid_to without a claimed tkg_valid_from (a plain 0 is no claim; an
-// explicit instant 0 is one, round 11) — the version keeps its start
-// (backlog 65).
-func (tmp updateTemporal) closesVersion() bool {
-	return tmp.hasValidTo && tmp.validTo != 0 && !tmp.validFromSet
+// tkg_valid_to that is not the open end of the graph's valid axis a, without
+// a claimed tkg_valid_from (parseValidClaim: on the legacy axis a plain 0 is
+// no claim) — the version keeps its start (backlog 65).
+func (tmp updateTemporal) closesVersion(a types.ValidAxis) bool {
+	return tmp.hasValidTo && !a.Open(tmp.validTo) && !tmp.validFromSet
 }
 
-func isClosedTemporal(tm *types.TemporalMetadata) bool {
-	return tm != nil && tm.ValidTo != 0
+// isClosedTemporal reports whether tm's version has a valid end (not the
+// open end of the valid axis a).
+func isClosedTemporal(a types.ValidAxis, tm *types.TemporalMetadata) bool {
+	return tm != nil && !a.Open(tm.ValidTo)
 }
 
-func rejectClosedNodeMutation(n *types.Node) error {
-	if isClosedTemporal(n.Temporal()) {
+func (c *Core) rejectClosedNodeMutation(n *types.Node) error {
+	if isClosedTemporal(c.axis(), n.Temporal()) {
 		return ErrAlreadyClosed
 	}
 	return nil
 }
 
-func rejectClosedRelMutation(r *types.Relationship) error {
-	if isClosedTemporal(r.Temporal()) {
+func (c *Core) rejectClosedRelMutation(r *types.Relationship) error {
+	if isClosedTemporal(c.axis(), r.Temporal()) {
 		return ErrAlreadyClosed
 	}
 	return nil
 }
 
 // isNodeValidAt checks if a node is valid at the given instant.
-// Valid when: effectiveValidFrom <= t AND (ValidTo == 0 OR ValidTo > t).
+// Valid when: effectiveValidFrom <= t AND (ValidTo open OR ValidTo > t).
 // Delegates to the canonical predicate in storeutil — see nodeValidFrom.
 func (c *Core) isNodeValidAt(n *types.Node, t types.Instant) bool {
-	return storeutil.MatchesPointInTime(n.ID().SnowflakeID(), n.Temporal(), t)
+	return storeutil.MatchesPointInTime(c.axis(), n.ID().SnowflakeID(), n.Temporal(), t)
 }
 
 // NodeMatchesValidTime reports whether n passes the valid-time filter in opts
@@ -309,7 +315,7 @@ func (t *TempOps) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) b
 	if n == nil {
 		return false
 	}
-	return storeutil.MatchesTemporalFilterFrom(t.c.nodeValidFrom(n), n.Temporal(), opts)
+	return storeutil.MatchesTemporalFilterFrom(t.c.axis(), t.c.nodeValidFrom(n), n.Temporal(), opts)
 }
 
 // RelMatchesValidTime reports whether r passes the valid-time filter in opts
@@ -323,7 +329,7 @@ func (t *TempOps) RelMatchesValidTime(r *types.Relationship, opts storepkg.Query
 	if r == nil {
 		return false
 	}
-	return storeutil.MatchesTemporalFilterFrom(t.c.relValidFrom(r), r.Temporal(), opts)
+	return storeutil.MatchesTemporalFilterFrom(t.c.axis(), t.c.relValidFrom(r), r.Temporal(), opts)
 }
 
 // resolveNodeVersionAt finds the version valid at time t from a pre-built chain.
@@ -334,6 +340,7 @@ func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*type
 // resolveNodeVersionAtCapped is resolveNodeVersionAt with every row's valid end
 // capped at its life end (lifeEnds; nil caps nothing).
 func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, caps lifeEnds[*types.Node]) (*types.Node, error) {
+	ax := c.axis() // once per chain, not per row
 	// Monotonic histories (the overwhelming common case — Update rejects
 	// backdated valid-from) tile without overlap, so iterate newest-first and
 	// return the first covering version: O(1) for a current-state query, no
@@ -357,19 +364,16 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 			// t; every entry from idx onward provably cannot cover t, so
 			// the UNCHANGED backward scan below can start one before it.
 			idx := sort.Search(len(chain), func(i int) bool {
-				vStart, _, _ := c.nodeVersionBounds(chain, i)
+				vStart, _ := c.nodeVersionBounds(chain, i)
 				return vStart > t
 			})
 			start = idx - 1
 		}
 		for i := start; i >= 0; i-- {
 			entry := chain[i]
-			vStart, vEnd, empty := c.nodeVersionBounds(chain, i)
-			if empty {
-				continue // a later version starts at the explicit 0 at or before it
-			}
-			vEnd = caps.end(entry, vEnd)
-			if storeutil.IntervalCovers(vStart, vEnd, t) {
+			vStart, vEnd := c.nodeVersionBounds(chain, i)
+			vEnd = caps.end(ax, entry, vEnd)
+			if storeutil.IntervalCovers(ax, vStart, vEnd, t) {
 				if isVoidRow(entry) {
 					return nil, storepkg.ErrNoVersionValidAt // an excised piece wins: absent
 				}
@@ -396,16 +400,16 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 	var best *types.Node
 	for i := range chain {
 		entry := chain[i]
-		vStart, vEnd := starts[i], types.Instant(0) // nodeOwnBounds: own ValidTo, 0 = open
+		vStart, vEnd := starts[i], ax.OpenEnd() // nodeOwnBounds: own ValidTo, open by the axis
 		if tm := entry.Temporal(); tm != nil {
 			vEnd = tm.ValidTo
 		}
 		var empty bool
-		if vEnd, empty = superseded.end(i, vStart, vEnd); empty {
+		if vEnd, empty = superseded.end(ax, i, vStart, vEnd); empty {
 			continue // a newer belief replaced it from its start on
 		}
-		vEnd = caps.end(entry, vEnd)
-		if storeutil.IntervalCovers(vStart, vEnd, t) {
+		vEnd = caps.end(ax, entry, vEnd)
+		if storeutil.IntervalCovers(ax, vStart, vEnd, t) {
 			if best == nil || nodeBeliefNewerThan(entry, best) {
 				best = entry
 			}
@@ -444,11 +448,12 @@ func nodeBeliefNewerThan(a, b *types.Node) bool {
 // backdated valid-from). The common monotonic case is detected by an O(n) scan
 // and returns false without sorting, so callers can take their fast path.
 func (c *Core) sortNodeChainForResolve(chain []*types.Node) bool {
+	ax := c.axis() // once per chain, not per row
 	for i := 1; i < len(chain); i++ {
-		pa, pb := c.nodeValidFrom(chain[i-1]), c.nodeValidFrom(chain[i])
+		pa, pb := ax.NodeStart(chain[i-1]), ax.NodeStart(chain[i])
 		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
 			sort.SliceStable(chain, func(a, b int) bool {
-				va, vb := c.nodeValidFrom(chain[a]), c.nodeValidFrom(chain[b])
+				va, vb := ax.NodeStart(chain[a]), ax.NodeStart(chain[b])
 				if va != vb {
 					return va < vb
 				}
@@ -504,13 +509,13 @@ func versionVisibleAtTx(tm *types.TemporalMetadata, txAt types.Instant) bool {
 // mutate them) and normalized to the belief state as of txAt via the same
 // normalizeTemporalVisibleAtTxTime the named as-of door (NodeAsOf/NodesAsOf)
 // already applies, keeping the two doors consistent (testing rule 17).
-func filterNodeChainByTxAt(chain []*types.Node, txAt types.Instant) []*types.Node {
+func filterNodeChainByTxAt(a types.ValidAxis, chain []*types.Node, txAt types.Instant) []*types.Node {
 	if txAt == 0 {
 		return chain
 	}
 	out := make([]*types.Node, 0, len(chain))
 	for _, entry := range chain {
-		if row, ok := nodeRowAtTx(entry, txAt); ok {
+		if row, ok := nodeRowAtTx(a, entry, txAt); ok {
 			out = append(out, row)
 		}
 	}
@@ -520,27 +525,27 @@ func filterNodeChainByTxAt(chain []*types.Node, txAt types.Instant) []*types.Nod
 // nodeRowAtTx is filterNodeChainByTxAt for one row (txAt > 0): false when the
 // row was recorded after txAt; else the row, or a normalized deep copy when
 // its delete stamps post-date txAt.
-func nodeRowAtTx(entry *types.Node, txAt types.Instant) (*types.Node, bool) {
+func nodeRowAtTx(a types.ValidAxis, entry *types.Node, txAt types.Instant) (*types.Node, bool) {
 	tm := entry.Temporal()
 	if !versionVisibleAtTx(tm, txAt) {
 		return nil, false
 	}
 	if tm != nil && tm.DeletedAt > txAt {
 		entry = entry.DeepCopy()
-		storeutil.NormalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
+		storeutil.NormalizeTemporalVisibleAtTxTime(a, entry.Temporal(), txAt)
 	}
 	return entry, true
 }
 
 // filterRelChainByTxAt is the relationship counterpart of filterNodeChainByTxAt,
 // including the post-txAt delete-tombstone normalization (see there).
-func filterRelChainByTxAt(chain []*types.Relationship, txAt types.Instant) []*types.Relationship {
+func filterRelChainByTxAt(a types.ValidAxis, chain []*types.Relationship, txAt types.Instant) []*types.Relationship {
 	if txAt == 0 {
 		return chain
 	}
 	out := make([]*types.Relationship, 0, len(chain))
 	for _, entry := range chain {
-		if row, ok := relRowAtTx(entry, txAt); ok {
+		if row, ok := relRowAtTx(a, entry, txAt); ok {
 			out = append(out, row)
 		}
 	}
@@ -548,14 +553,14 @@ func filterRelChainByTxAt(chain []*types.Relationship, txAt types.Instant) []*ty
 }
 
 // relRowAtTx mirrors nodeRowAtTx.
-func relRowAtTx(entry *types.Relationship, txAt types.Instant) (*types.Relationship, bool) {
+func relRowAtTx(a types.ValidAxis, entry *types.Relationship, txAt types.Instant) (*types.Relationship, bool) {
 	tm := entry.Temporal()
 	if !versionVisibleAtTx(tm, txAt) {
 		return nil, false
 	}
 	if tm != nil && tm.DeletedAt > txAt {
 		entry = entry.DeepCopy()
-		storeutil.NormalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
+		storeutil.NormalizeTemporalVisibleAtTxTime(a, entry.Temporal(), txAt)
 	}
 	return entry, true
 }
@@ -582,50 +587,46 @@ func relRowAtTx(entry *types.Relationship, txAt types.Instant) (*types.Relations
 // ways; this helper's whole purpose is to avoid ever needing to).
 func (c *Core) nodeOwnBounds(n *types.Node) (types.Instant, types.Instant) {
 	vStart := c.nodeValidFrom(n)
-	var vEnd types.Instant // 0 == open (+inf)
-	if tm := n.Temporal(); tm != nil && tm.ValidTo != 0 {
+	vEnd := c.axis().OpenEnd() // open (+inf) by the graph's valid axis
+	if tm := n.Temporal(); tm != nil && !c.axis().Open(tm.ValidTo) {
 		vEnd = tm.ValidTo
 	}
 	return vStart, vEnd
 }
 
-// nodeVersionBounds computes the effective [vStart, vEnd) for chain[i] and
-// whether it is empty at the instant 0 (callers skip such a version).
+// nodeVersionBounds computes the effective [vStart, vEnd) for chain[i]: vEnd
+// on the graph's valid axis (its open end when no later version and no own
+// end bound it; ValidAxis.Open).
 //
 // vEnd is the NEXT version's effective valid-from (explicit ValidFrom, else
 // its TxFrom: TX-time-as-VT-time for callers without explicit valid-time), so
 // a chain tiles; an own ValidTo overrides it.
-func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, types.Instant, bool) {
+func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, types.Instant) {
 	entry := chain[i]
-	var vStart, vEnd types.Instant
+	a := c.axis()
+	vStart, vEnd := types.Instant(0), a.OpenEnd()
 
 	// Version start: the untimed start (TxFrom; legacy UpdatedAt / mint),
 	// replaced by an explicit ValidFrom below unless it is a legacy inherited
 	// one. Version end: the next version's start (backlog 62: one rule).
 	vStart = storeutil.UntimedValidFrom(entry.ID().SnowflakeID(), entry.Temporal())
-	derived := i+1 < len(chain)
-	if derived {
-		vEnd = c.nodeValidFrom(chain[i+1])
+	if i+1 < len(chain) {
+		vEnd = a.NodeStart(chain[i+1])
 	}
-	// vEnd == 0 means open-ended (no later version).
 
-	// Post-migration: every non-zero ValidFrom is caller-supplied. Pre-
+	// Post-migration: every claimed ValidFrom is caller-supplied. Pre-
 	// migration: keep the legacy inheritance heuristic for back-compat
 	// (stores without MetaKVCapability never migrate).
 	if tm := entry.Temporal(); tm != nil {
-		if tm.HasValidFrom() && (c.bitemporalMigrated || !nodeInheritedValidFrom(chain, i, tm)) {
+		if a.Claimed(tm.ValidFrom) && (c.bitemporalMigrated || !nodeInheritedValidFrom(chain, i, tm)) {
 			vStart = tm.ValidFrom
 		}
-		if tm.ValidTo != 0 {
-			vEnd, derived = tm.ValidTo, false
+		if !a.Open(tm.ValidTo) {
+			vEnd = tm.ValidTo
 		}
 	}
 
-	// empty: the next version starts at the explicit instant 0 (round 11) at
-	// or before this one's start, so it covers nothing; reported because an
-	// end of 0 reads as open (only this case: ErrValidEndAtZero keeps a
-	// non-empty version from ending at 0).
-	return vStart, vEnd, derived && vEnd == 0 && vStart >= 0
+	return vStart, vEnd
 }
 
 // nodeInheritedValidFrom is the pre-migration heuristic (bitemporalMigrated
@@ -638,7 +639,7 @@ func nodeInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetada
 		return false
 	}
 	prevTM := chain[i-1].Temporal()
-	return prevTM.HasValidFrom() && prevTM.ValidFrom != types.UnboundedValidFrom && prevTM.ValidFrom == tm.ValidFrom && prevTM.ValidFromZero == tm.ValidFromZero
+	return prevTM != nil && prevTM.ValidFrom != 0 && prevTM.ValidFrom != types.UnboundedValidFrom && prevTM.ValidFrom == tm.ValidFrom
 }
 
 // resolveRelVersionAt finds the version valid at time t from a pre-built chain.
@@ -650,25 +651,23 @@ func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant)
 
 // resolveRelVersionAtCapped mirrors resolveNodeVersionAtCapped.
 func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.Instant, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
+	ax := c.axis() // once per chain, not per row
 	if !c.sortRelChainForResolve(chain) {
 		// BACKLOG 10m: mirrors resolveNodeVersionAt's binary-search-assisted
 		// scan start — see there for the bitemporalMigrated-gating rationale.
 		start := len(chain) - 1
 		if c.bitemporalMigrated {
 			idx := sort.Search(len(chain), func(i int) bool {
-				vStart, _, _ := c.relVersionBounds(chain, i)
+				vStart, _ := c.relVersionBounds(chain, i)
 				return vStart > t
 			})
 			start = idx - 1
 		}
 		for i := start; i >= 0; i-- {
 			entry := chain[i]
-			vStart, vEnd, empty := c.relVersionBounds(chain, i)
-			if empty {
-				continue // a later version starts at the explicit 0 at or before it
-			}
-			vEnd = caps.end(entry, vEnd)
-			if storeutil.IntervalCovers(vStart, vEnd, t) {
+			vStart, vEnd := c.relVersionBounds(chain, i)
+			vEnd = caps.end(ax, entry, vEnd)
+			if storeutil.IntervalCovers(ax, vStart, vEnd, t) {
 				if isVoidRow(entry) {
 					return nil, storepkg.ErrNoVersionValidAt // an excised piece wins: absent
 				}
@@ -687,16 +686,16 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 	var best *types.Relationship
 	for i := range chain {
 		entry := chain[i]
-		vStart, vEnd := starts[i], types.Instant(0) // relOwnBounds: own ValidTo, 0 = open
+		vStart, vEnd := starts[i], ax.OpenEnd() // relOwnBounds: own ValidTo, open by the axis
 		if tm := entry.Temporal(); tm != nil {
 			vEnd = tm.ValidTo
 		}
 		var empty bool
-		if vEnd, empty = superseded.end(i, vStart, vEnd); empty {
+		if vEnd, empty = superseded.end(ax, i, vStart, vEnd); empty {
 			continue // a newer belief replaced it from its start on
 		}
-		vEnd = caps.end(entry, vEnd)
-		if storeutil.IntervalCovers(vStart, vEnd, t) {
+		vEnd = caps.end(ax, entry, vEnd)
+		if storeutil.IntervalCovers(ax, vStart, vEnd, t) {
 			if best == nil || relBeliefNewerThan(entry, best) {
 				best = entry
 			}
@@ -720,11 +719,12 @@ func relBeliefNewerThan(a, b *types.Relationship) bool {
 // sortRelChainForResolve mirrors sortNodeChainForResolve for relationships,
 // returning true iff it had to reorder (a cascade chain).
 func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
+	ax := c.axis() // once per chain, not per row
 	for i := 1; i < len(chain); i++ {
-		pa, pb := c.relValidFrom(chain[i-1]), c.relValidFrom(chain[i])
+		pa, pb := ax.RelStart(chain[i-1]), ax.RelStart(chain[i])
 		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
 			sort.SliceStable(chain, func(a, b int) bool {
-				va, vb := c.relValidFrom(chain[a]), c.relValidFrom(chain[b])
+				va, vb := ax.RelStart(chain[a]), ax.RelStart(chain[b])
 				if va != vb {
 					return va < vb
 				}
@@ -739,8 +739,8 @@ func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
 // relOwnBounds mirrors nodeOwnBounds for relationships. See there.
 func (c *Core) relOwnBounds(r *types.Relationship) (types.Instant, types.Instant) {
 	vStart := c.relValidFrom(r)
-	var vEnd types.Instant // 0 == open (+inf)
-	if tm := r.Temporal(); tm != nil && tm.ValidTo != 0 {
+	vEnd := c.axis().OpenEnd() // open (+inf) by the graph's valid axis
+	if tm := r.Temporal(); tm != nil && !c.axis().Open(tm.ValidTo) {
 		vEnd = tm.ValidTo
 	}
 	return vStart, vEnd
@@ -748,30 +748,26 @@ func (c *Core) relOwnBounds(r *types.Relationship) (types.Instant, types.Instant
 
 // relVersionBounds computes the effective [vStart, vEnd) for chain[i].
 // See nodeVersionBounds for the Phase 3 vEnd-from-next.ValidFrom rationale.
-func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Instant, types.Instant, bool) {
+func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Instant, types.Instant) {
 	entry := chain[i]
-	var vStart, vEnd types.Instant
+	a := c.axis()
+	vStart, vEnd := types.Instant(0), a.OpenEnd()
 
 	vStart = storeutil.UntimedValidFrom(entry.ID().SnowflakeID(), entry.Temporal())
-	derived := i+1 < len(chain)
-	if derived {
-		vEnd = c.relValidFrom(chain[i+1])
+	if i+1 < len(chain) {
+		vEnd = a.RelStart(chain[i+1])
 	}
 
 	if tm := entry.Temporal(); tm != nil {
-		if tm.HasValidFrom() && (c.bitemporalMigrated || !relInheritedValidFrom(chain, i, tm)) {
+		if a.Claimed(tm.ValidFrom) && (c.bitemporalMigrated || !relInheritedValidFrom(chain, i, tm)) {
 			vStart = tm.ValidFrom
 		}
-		if tm.ValidTo != 0 {
-			vEnd, derived = tm.ValidTo, false
+		if !a.Open(tm.ValidTo) {
+			vEnd = tm.ValidTo
 		}
 	}
 
-	// empty: the next version starts at the explicit instant 0 (round 11) at
-	// or before this one's start, so it covers nothing; reported because an
-	// end of 0 reads as open (only this case: ErrValidEndAtZero keeps a
-	// non-empty version from ending at 0).
-	return vStart, vEnd, derived && vEnd == 0 && vStart >= 0
+	return vStart, vEnd
 }
 
 func relInheritedValidFrom(chain []*types.Relationship, i int, tm *types.TemporalMetadata) bool {
@@ -779,7 +775,7 @@ func relInheritedValidFrom(chain []*types.Relationship, i int, tm *types.Tempora
 		return false
 	}
 	prevTM := chain[i-1].Temporal()
-	return prevTM.HasValidFrom() && prevTM.ValidFrom != types.UnboundedValidFrom && prevTM.ValidFrom == tm.ValidFrom && prevTM.ValidFromZero == tm.ValidFromZero
+	return prevTM != nil && prevTM.ValidFrom != 0 && prevTM.ValidFrom != types.UnboundedValidFrom && prevTM.ValidFrom == tm.ValidFrom
 }
 
 // --- Private helpers for history-aware queries ---

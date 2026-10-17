@@ -63,19 +63,20 @@ const (
 )
 
 // stateCut is one label's (type's) effective cut at a pin, as parallel
-// arrays: segment i is entity ids[i] over [from[i], to[i]) (to 0 = open),
+// arrays: segment i is entity ids[i] over [from[i], to[i]) (to open by the
+// graph's valid axis, axis),
 // IDs ascending and an entity's segments contiguous. vf / vt are the winning
 // row's own ValidRange (the column batches report them); start / end are a
 // relationship's endpoints (nil for nodes). tags[k][i] / bits[k][i] hold
 // keys[k] of segment i (int64 bits, float64 bits, bool 0/1 or a dict index).
 // Immutable once cached.
 type stateCut struct {
+	axis       types.ValidAxis
 	epoch      uint64
 	keys       []string
 	ids        []uint64
 	from, to   []types.Instant
 	vf, vt     []int64
-	zero       []bool // nil, or parallel to ids: vf 0 is the explicit 0 (round 11)
 	start, end []types.NodeID
 	tags       [][]uint8
 	bits       [][]uint64
@@ -85,8 +86,9 @@ type stateCut struct {
 
 // newStateCut sizes the arrays for n segments (one per candidate, the common
 // case), so the bytes the budget counts are the bytes held.
-func newStateCut(epoch uint64, keys []string, n int, rel bool) *stateCut {
+func newStateCut(axis types.ValidAxis, epoch uint64, keys []string, n int, rel bool) *stateCut {
 	cut := &stateCut{
+		axis:      axis,
 		epoch:     epoch,
 		keys:      keys,
 		ids:       make([]uint64, 0, n),
@@ -112,11 +114,9 @@ func newStateCut(epoch uint64, keys []string, n int, rel bool) *stateCut {
 // relationship).
 func (cut *stateCut) add(id uint64, from, to types.Instant, row interface {
 	ValidRange() (types.Instant, types.Instant, bool)
-	StartsAtZero() bool
 	GetProperty(string) (any, bool)
 }) {
 	vf, vt, _ := row.ValidRange()
-	cut.zero = storepkg.AppendValidFromZero(cut.zero, len(cut.ids), row.StartsAtZero())
 	cut.ids = append(cut.ids, id)
 	cut.from = append(cut.from, from)
 	cut.to = append(cut.to, to)
@@ -194,7 +194,7 @@ func (cut *stateCut) each(v types.Instant, after types.EntityID, limit int, fn f
 	n := 0
 	floor := after.SnowflakeID()
 	for i, id := range cut.ids {
-		if cut.from[i] > v || (cut.to[i] != 0 && v >= cut.to[i]) || (floor > 0 && id <= uint64(floor)) {
+		if cut.from[i] > v || (!cut.axis.Open(cut.to[i]) && v >= cut.to[i]) || (floor > 0 && id <= uint64(floor)) {
 			continue
 		}
 		fn(i)
@@ -253,12 +253,6 @@ func (r cutRows) Value(i, c int) (storepkg.ColumnKind, int64, float64, string, b
 	default:
 		return kind, 0, 0, "", bits == 1, true
 	}
-}
-
-// ValidFromZero implements store.ColumnValidFromZeroSource.
-func (r cutRows) ValidFromZero(i int) bool {
-	s := r.rows[i]
-	return s < len(r.cut.zero) && r.cut.zero[s]
 }
 
 func (r cutRows) Other(i, c int) bool {
@@ -414,7 +408,7 @@ func (c *Core) buildStateCut(key stateCutKey, keys []string, epoch uint64) (*sta
 		}); err != nil {
 			return nil, err
 		}
-		cut := newStateCut(epoch, keys, len(ids), true)
+		cut := newStateCut(c.axis(), epoch, keys, len(ids), true)
 		err := c.streamRelTimelines(ascending(ids), key.pin, func(r *types.Relationship) bool { return r.HasTypeTokenRaw(key.tok) },
 			func(s temporal.RelSegment) bool {
 				cut.add(uint64(s.Rel.ID()), s.ValidFrom, s.ValidTo, s.Rel) // #nosec G115 -- a snowflake ID
@@ -435,7 +429,7 @@ func (c *Core) buildStateCut(key stateCutKey, keys []string, epoch uint64) (*sta
 	}); err != nil {
 		return nil, err
 	}
-	cut := newStateCut(epoch, keys, len(ids), false)
+	cut := newStateCut(c.axis(), epoch, keys, len(ids), false)
 	err := c.streamNodeTimelines(ascending(ids), key.pin, func(n *types.Node) bool { return n.HasLabelTokenRaw(key.tok) },
 		func(s temporal.NodeSegment) bool {
 			cut.add(uint64(s.Node.ID()), s.ValidFrom, s.ValidTo, s.Node) // #nosec G115 -- a snowflake ID

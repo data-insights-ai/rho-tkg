@@ -125,8 +125,8 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
-	if t == 0 {
-		return fmt.Errorf("%w: close time must be non-zero", ErrInvalidTimeRange)
+	if c.axis().Open(t) {
+		return fmt.Errorf("%w: close time must not be the open end (0 on the legacy valid axis)", ErrInvalidTimeRange)
 	}
 	c.entityLocks.LockEntity(id.SnowflakeID())
 	defer c.entityLocks.UnlockEntity(id.SnowflakeID())
@@ -349,8 +349,8 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
-	if t == 0 {
-		return fmt.Errorf("%w: close time must be non-zero", ErrInvalidTimeRange)
+	if c.axis().Open(t) {
+		return fmt.Errorf("%w: close time must not be the open end (0 on the legacy valid axis)", ErrInvalidTimeRange)
 	}
 
 	current, startID, endID, err := c.lockRelationshipCurrentEndpoints(context.Background(), id)

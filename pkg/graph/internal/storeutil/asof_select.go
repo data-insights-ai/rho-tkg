@@ -21,9 +21,9 @@ type TemporalRow interface {
 
 // SelectAsOf is SelectAsOfWithCurrent for an entity without a live current
 // row in the candidate set (history rows only).
-func SelectAsOf[T TemporalRow](history []T, pin types.Instant) (T, bool) {
+func SelectAsOf[T TemporalRow](a types.ValidAxis, history []T, pin types.Instant) (T, bool) {
 	var zero T
-	return SelectAsOfWithCurrent(history, zero, false, pin)
+	return SelectAsOfWithCurrent(a, history, zero, false, pin)
 }
 
 // SelectAsOfWithCurrent implements THE canonical as-of (transaction-time
@@ -77,8 +77,9 @@ func SelectAsOf[T TemporalRow](history []T, pin types.Instant) (T, bool) {
 //
 // SelectAsOfWithCurrent is pure selection: it does NOT normalize the survivor
 // to its then-visible state (TxTo / DeletedAt rewinding) — that is the
-// caller's concern, applied to a copy where required.
-func SelectAsOfWithCurrent[T TemporalRow](history []T, current T, hasCurrent bool, pin types.Instant) (T, bool) {
+// caller's concern, applied to a copy where required. a is the store's valid
+// axis (an open end, openInWrite).
+func SelectAsOfWithCurrent[T TemporalRow](a types.ValidAxis, history []T, current T, hasCurrent bool, pin types.Instant) (T, bool) {
 	var zero T
 	// desc: history newest version first (the order the badger scan visits),
 	// without void rows: an excise's void piece records absence over a valid
@@ -116,7 +117,7 @@ func SelectAsOfWithCurrent[T TemporalRow](history []T, current T, hasCurrent boo
 				if tm == nil || tm.TxFrom < ctm.TxFrom || tm.TxFrom > pin {
 					continue
 				}
-				ans := openInWrite(seq, i, pin)
+				ans := openInWrite(a, seq, i, pin)
 				if retractedAtTxTime(ans.Temporal(), pin) {
 					return zero, false
 				}
@@ -131,7 +132,7 @@ func SelectAsOfWithCurrent[T TemporalRow](history []T, current T, hasCurrent boo
 		if tm == nil || tm.TxFrom == 0 || tm.TxFrom > pin {
 			continue
 		}
-		ans := openInWrite(desc, i, pin)
+		ans := openInWrite(a, desc, i, pin)
 		if retractedAtTxTime(ans.Temporal(), pin) || lifeEndedAtTxTime(desc, i, pin) {
 			return zero, false
 		}
@@ -148,14 +149,14 @@ func SelectAsOfWithCurrent[T TemporalRow](history []T, current T, hasCurrent boo
 // same write; this keeps answering that resumption (the current row, as Get
 // does) instead of a bounded piece. A cascade written since numbers the slot
 // row last, so the newest row of the write already is it.
-func openInWrite[T TemporalRow](seq []T, i int, pin types.Instant) T {
+func openInWrite[T TemporalRow](a types.ValidAxis, seq []T, i int, pin types.Instant) T {
 	tx := seq[i].Temporal().TxFrom
 	for _, r := range seq[i:] {
 		tm := r.Temporal()
 		if tm == nil || tm.TxFrom != tx {
 			break
 		}
-		if OwnOpenAtTxTime(tm, pin) {
+		if OwnOpenAtTxTime(a, tm, pin) {
 			return r
 		}
 	}
@@ -166,8 +167,9 @@ func openInWrite[T TemporalRow](seq []T, i int, pin types.Instant) T {
 // of txTime: a TxTo or a delete recorded after txTime is removed, with the
 // ValidTo the delete wrote (types.TemporalMetadata.DeleteWroteValidTo) and its markers (a retraction,
 // backlog 43; a kept ValidTo). It is the one rewind of the core as-of and
-// pinned doors and the memory store's pinned reads.
-func NormalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) {
+// pinned doors and the memory store's pinned reads. The reopened end is the
+// store's valid axis a's open end.
+func NormalizeTemporalVisibleAtTxTime(a types.ValidAxis, tm *types.TemporalMetadata, txTime types.Instant) {
 	if tm == nil {
 		return
 	}
@@ -176,7 +178,7 @@ func NormalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.I
 	}
 	if tm.DeletedAt > txTime {
 		if tm.DeleteWroteValidTo() {
-			tm.ValidTo = 0
+			tm.ValidTo = a.OpenEnd()
 		}
 		tm.DeletedAt = 0
 		tm.Retracted = false
@@ -185,9 +187,10 @@ func NormalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.I
 }
 
 // OwnOpenAtTxTime reports whether a row's own valid interval is open as
-// believed at pin (ValidToAtTxTime 0).
-func OwnOpenAtTxTime(tm *types.TemporalMetadata, pin types.Instant) bool {
-	return tm.ValidToAtTxTime(pin) == 0
+// believed at pin on the store's valid axis a (ValidAxis.ValidToAtTxTime is
+// its open end).
+func OwnOpenAtTxTime(a types.ValidAxis, tm *types.TemporalMetadata, pin types.Instant) bool {
+	return a.Open(a.ValidToAtTxTime(tm, pin))
 }
 
 // lifeEndedAtTxTime reports whether the row that held the current slot when

@@ -12,7 +12,7 @@ import (
 // or a close recorded before it stays; the markers go with their delete.
 func TestNormalizeTemporalVisibleAtTxTime(t *testing.T) {
 	t.Parallel()
-	NormalizeTemporalVisibleAtTxTime(nil, 10)
+	NormalizeTemporalVisibleAtTxTime(types.LegacyValidAxis, nil, 10)
 	for _, tc := range []struct {
 		name string
 		in   types.TemporalMetadata
@@ -30,7 +30,7 @@ func TestNormalizeTemporalVisibleAtTxTime(t *testing.T) {
 		{"past kept delete kept", types.TemporalMetadata{ValidTo: 30, DeletedAt: 10, DeleteKeptValidTo: true}, types.TemporalMetadata{ValidTo: 30, DeletedAt: 10, DeleteKeptValidTo: true}},
 	} {
 		tm := tc.in
-		NormalizeTemporalVisibleAtTxTime(&tm, 10)
+		NormalizeTemporalVisibleAtTxTime(types.LegacyValidAxis, &tm, 10)
 		if tm != tc.want {
 			t.Errorf("%s: got %+v, want %+v", tc.name, tm, tc.want)
 		}

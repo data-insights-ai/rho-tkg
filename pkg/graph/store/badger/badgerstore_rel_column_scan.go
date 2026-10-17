@@ -46,7 +46,7 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 	// Only the temporal shape of QueryOpts is answerable from the snapshot's own
 	// columns; anything else is the row path's job. Quietly ignoring an opt would
 	// return rows the caller did not ask for.
-	window, temporalOnly := columnarValidTimeWindow(opts)
+	window, temporalOnly := columnarValidTimeWindow(bs.validAxis.Get(), opts)
 	if !temporalOnly {
 		return false
 	}
@@ -107,9 +107,6 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 			batch.EndOrdinals = append(batch.EndOrdinals, endOrds[start:end]...)
 			batch.StartIDs = appendNodeIDs(batch.StartIDs, startView.Ints[start:end])
 			batch.EndIDs = appendNodeIDs(batch.EndIDs, endView.Ints[start:end])
-			for ord := start; ord < end; ord++ {
-				batch.ValidFromZero = storecontract.AppendValidFromZero(batch.ValidFromZero, len(batch.IDs)-(end-ord), validFromZeroAt(vf, eff, ord)) // rows before ord: the block's IDs are appended
-			}
 			batch.ValidFrom = append(batch.ValidFrom, vf[start:end]...)
 			batch.ValidTo = append(batch.ValidTo, vt[start:end]...)
 			for c, v := range views {
@@ -128,7 +125,6 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 				batch.EndOrdinals = append(batch.EndOrdinals, endOrds[ord])
 				batch.StartIDs = append(batch.StartIDs, types.NodeID(startView.Ints[ord]))
 				batch.EndIDs = append(batch.EndIDs, types.NodeID(endView.Ints[ord]))
-				batch.ValidFromZero = storecontract.AppendValidFromZero(batch.ValidFromZero, len(batch.ValidFrom), validFromZeroAt(vf, eff, ord))
 				batch.ValidFrom = append(batch.ValidFrom, vf[ord])
 				batch.ValidTo = append(batch.ValidTo, vt[ord])
 				for c, v := range views {
@@ -179,7 +175,6 @@ func resetRelColumnBatch(b *storecontract.RelColumnBatch, nCols int) {
 	b.EndIDs = b.EndIDs[:0]
 	b.ValidFrom = b.ValidFrom[:0]
 	b.ValidTo = b.ValidTo[:0]
-	b.ValidFromZero = b.ValidFromZero[:0]
 	for c := range nCols {
 		b.Ints[c] = b.Ints[c][:0]
 		b.Flts[c] = b.Flts[c][:0]

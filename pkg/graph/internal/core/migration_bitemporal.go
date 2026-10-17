@@ -53,6 +53,12 @@ func (c *Core) runBitemporalMigrationBestEffort() {
 	if meta == nil {
 		return
 	}
+	if c.axis().Literal() {
+		// A literal-axis store (UntimedWholeAxis, round 11) holds only
+		// current-format rows: the pre-migration heuristic never applies,
+		// whether or not the marker below is written.
+		defer func() { c.bitemporalMigrated = true }()
+	}
 	cur, err := meta.MetaGet(schemaVersionKey)
 	if err != nil {
 		return
@@ -70,11 +76,16 @@ func (c *Core) runBitemporalMigrationBestEffort() {
 }
 
 func (c *Core) runBitemporalMigration(meta storepkg.MetaKVCapability) error {
-	if err := c.migrateNodeHistoryClearInheritedValidFrom(); err != nil {
-		return err
-	}
-	if err := c.migrateRelHistoryClearInheritedValidFrom(); err != nil {
-		return err
+	// A store on the literal valid axis (UntimedWholeAxis, round 11) holds
+	// only current-format rows, and a stored 0 there is the instant 0, never
+	// "no claim": nothing to clear (the clearing writes the legacy axis's 0).
+	if !c.axis().Literal() {
+		if err := c.migrateNodeHistoryClearInheritedValidFrom(); err != nil {
+			return err
+		}
+		if err := c.migrateRelHistoryClearInheritedValidFrom(); err != nil {
+			return err
+		}
 	}
 	if err := meta.MetaSet(schemaVersionKey, []byte(bitemporalSchemaVersion)); err != nil {
 		return fmt.Errorf("write schema_version: %w", err)
@@ -128,7 +139,7 @@ func (c *Core) migrateNodeHistoryClearInheritedValidFrom() error {
 		for i := 1; i < len(chain); i++ {
 			v := chain[i]
 			tm := v.Temporal()
-			if !tm.HasValidFrom() || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
+			if tm == nil || tm.ValidFrom == 0 || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
 				continue // -inf is never an inherited legacy start (backlog 73): a close copies it
 			}
 			prev := chain[i-1]
@@ -136,15 +147,15 @@ func (c *Core) migrateNodeHistoryClearInheritedValidFrom() error {
 				continue // history truncation gap — chain[i-1] is not the true predecessor
 			}
 			prevTM := prev.Temporal()
-			if !prevTM.HasValidFrom() {
+			if prevTM == nil || prevTM.ValidFrom == 0 {
 				continue
 			}
-			if prevTM.ValidFrom != tm.ValidFrom || prevTM.ValidFromZero != tm.ValidFromZero {
+			if prevTM.ValidFrom != tm.ValidFrom {
 				continue
 			}
 			// Detected inherited ValidFrom — clear it.
 			modified := v.DeepCopy()
-			stampValidFrom(modified.Temporal(), 0, false)
+			modified.Temporal().ValidFrom = 0
 			// Distinguish current from history: current is the LAST entry.
 			if current != nil && i == len(chain)-1 {
 				if err := c.store.ReplaceNode(modified); err != nil {
@@ -187,7 +198,7 @@ func (c *Core) migrateRelHistoryClearInheritedValidFrom() error {
 		for i := 1; i < len(chain); i++ {
 			v := chain[i]
 			tm := v.Temporal()
-			if !tm.HasValidFrom() || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
+			if tm == nil || tm.ValidFrom == 0 || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
 				continue // -inf is never an inherited legacy start (backlog 73): a close copies it
 			}
 			prev := chain[i-1]
@@ -195,14 +206,14 @@ func (c *Core) migrateRelHistoryClearInheritedValidFrom() error {
 				continue // history truncation gap — chain[i-1] is not the true predecessor
 			}
 			prevTM := prev.Temporal()
-			if !prevTM.HasValidFrom() {
+			if prevTM == nil || prevTM.ValidFrom == 0 {
 				continue
 			}
-			if prevTM.ValidFrom != tm.ValidFrom || prevTM.ValidFromZero != tm.ValidFromZero {
+			if prevTM.ValidFrom != tm.ValidFrom {
 				continue
 			}
 			modified := v.DeepCopy()
-			stampValidFrom(modified.Temporal(), 0, false)
+			modified.Temporal().ValidFrom = 0
 			if current != nil && i == len(chain)-1 {
 				if err := c.store.ReplaceRelationship(modified); err != nil {
 					return fmt.Errorf("clear rel %d current ValidFrom: %w", id, err)

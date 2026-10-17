@@ -442,7 +442,7 @@ type asOfRow struct {
 // txTime (decoded per row, newest first), else its newest row. Equivalence
 // with SelectAsOfWithCurrent is pinned by the badger as-of equivalence tests
 // over generated chains.
-func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, error)) error, cur *types.TemporalMetadata, curVersion uint32, txTime types.Instant, window historyTxWindow, temporal historyTemporal, above func(v uint64) (bool, error)) (asOfPick, error) {
+func selectAsOfScan(a types.ValidAxis, scan func(consider func(version uint64, val []byte) (bool, error)) error, cur *types.TemporalMetadata, curVersion uint32, txTime types.Instant, window historyTxWindow, temporal historyTemporal, above func(v uint64) (bool, error)) (asOfPick, error) {
 	// answer picks within a run (newest first); withCur appends the current
 	// row as the run's last member.
 	answer := func(run []asOfRow, withCur bool) (asOfPick, *types.TemporalMetadata, error) {
@@ -451,11 +451,11 @@ func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, e
 			if err != nil {
 				return asOfPick{}, nil, err
 			}
-			if tm != nil && storepkg.OwnOpenAtTxTime(tm, txTime) {
+			if tm != nil && storepkg.OwnOpenAtTxTime(a, tm, txTime) {
 				return asOfPick{found: true, version: r.version, raw: r.raw}, tm, nil
 			}
 		}
-		if withCur && storepkg.OwnOpenAtTxTime(cur, txTime) {
+		if withCur && storepkg.OwnOpenAtTxTime(a, cur, txTime) {
 			return asOfPick{found: true, fromCurrent: true}, cur, nil
 		}
 		tm, err := temporal(run[0].version, run[0].raw)
@@ -644,7 +644,7 @@ func (bs *Store) nodeAsOfPick(id snowflake.ID, current *types.Node, txTime types
 	if current != nil {
 		cur, curVersion = current.Temporal(), current.Version()
 	}
-	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.nodeTxWindow(id), bs.nodeRowTemporal(id), above)
+	pick, err := selectAsOfScan(bs.validAxis.Get(), scan, cur, curVersion, txTime, bs.nodeTxWindow(id), bs.nodeRowTemporal(id), above)
 	if err != nil {
 		return nil, err
 	}
@@ -688,7 +688,7 @@ func (bs *Store) relAsOfPick(id snowflake.ID, current *types.Relationship, txTim
 	if current != nil {
 		cur, curVersion = current.Temporal(), current.Version()
 	}
-	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.relTxWindow(id), bs.relRowTemporal(id), above)
+	pick, err := selectAsOfScan(bs.validAxis.Get(), scan, cur, curVersion, txTime, bs.relTxWindow(id), bs.relRowTemporal(id), above)
 	if err != nil {
 		return nil, err
 	}

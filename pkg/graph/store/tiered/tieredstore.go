@@ -234,6 +234,11 @@ func (es *EventShard) currentTier() ShardTier {
 // Event entities (Signal, Alert) live in time-windowed event shards.
 // Phase 3a: exactly one hot event shard. Phases 3b-3e add warm/cold/archive.
 type Store struct {
+	// validAxis is the store's valid axis (round 11,
+	// store.ValidAxisCapability): the reference shard's, which holds the mode
+	// key; passed to every shard it opens.
+	validAxis storeutil.ValidAxisCell
+
 	// histTopoEpoch is a history token (storeutil.NextHistoryEpoch) drawn
 	// anew whenever the shard set changes (reindexShardsLocked, Clear): it is
 	// folded into every HistoryEpoch answer, so a shard leaving the history
@@ -558,6 +563,10 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: open reference shard: %w", err)
 	}
 	ts.refShard = refStore
+	// The reference shard holds the untimed mode key, so its axis is the
+	// store's (round 11); every shard opened from here on reads its rows on
+	// it (badgerCfg).
+	ts.validAxis.Set(refStore.ValidAxis())
 	// The reference shard holds the single canonical property-key registry
 	// (persisted only here). Capture it so every other shard — opened now,
 	// lazily (cold/archive), or after rotation — decodes tokenized rows with the
@@ -1402,6 +1411,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		TemporalIndexOnDisk:   ts.temporalIndexOnDisk,
 		DisablePlannerStats:   ts.disablePlannerStats,
 		HistoryDeltaEncoding:  ts.historyDeltaEncoding,
+		ValidAxis:             ts.validAxis.Get(),
 	}
 	if !ts.inMemory {
 		cfg.Dir = filepath.Join(ts.dataDir, name)

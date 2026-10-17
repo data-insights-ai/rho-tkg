@@ -120,7 +120,7 @@ func TestBadgerNodeAsOfEquivalentToSelectAsOf(t *testing.T) {
 		}
 
 		for pin := types.Instant(0); pin <= 210; pin += 7 {
-			wantV, wantOK := storeutil.SelectAsOf(full, pin)
+			wantV, wantOK := storeutil.SelectAsOf(types.LegacyValidAxis, full, pin)
 			got, err := bs.NodeAsOf(nid, pin)
 			if !wantOK {
 				if !errors.Is(err, ErrVersionNotFound) {
@@ -175,7 +175,7 @@ func TestBadgerRelAsOfEquivalentToSelectAsOf(t *testing.T) {
 		}
 
 		for pin := types.Instant(0); pin <= 210; pin += 7 {
-			wantV, wantOK := storeutil.SelectAsOf(full, pin)
+			wantV, wantOK := storeutil.SelectAsOf(types.LegacyValidAxis, full, pin)
 			got, err := bs.RelAsOf(rid, pin)
 			if !wantOK {
 				if !errors.Is(err, ErrVersionNotFound) {

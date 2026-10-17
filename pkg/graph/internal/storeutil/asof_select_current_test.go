@@ -225,16 +225,16 @@ func TestSelectAsOfWithCurrent_Table(t *testing.T) {
 			if tc.current != nil {
 				current = *tc.current
 			}
-			got, found := SelectAsOfWithCurrent(hist, current, tc.current != nil, tc.pin)
+			got, found := SelectAsOfWithCurrent(types.LegacyValidAxis, hist, current, tc.current != nil, tc.pin)
 			if found != tc.wantFound || (found && got.Version() != tc.wantVer) {
 				t.Errorf("%s (reversed=%v): found=%v version=%d; want found=%v version=%d",
 					tc.name, reversed, found, got.Version(), tc.wantFound, tc.wantVer)
 			}
 			if tc.current == nil {
 				// Without a current row SelectAsOf is the same rule.
-				g2, f2 := SelectAsOf(hist, tc.pin)
+				g2, f2 := SelectAsOf(types.LegacyValidAxis, hist, tc.pin)
 				if f2 != found || g2.Version() != got.Version() {
-					t.Errorf("%s: SelectAsOf disagrees with SelectAsOfWithCurrent(no current)", tc.name)
+					t.Errorf("%s: SelectAsOf disagrees with SelectAsOfWithCurrent(types.LegacyValidAxis, no current)", tc.name)
 				}
 			}
 		}

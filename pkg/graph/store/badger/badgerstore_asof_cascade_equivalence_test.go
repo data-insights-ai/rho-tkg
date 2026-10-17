@@ -76,7 +76,7 @@ func genCascadeAsofChain(rng, voidRng *rand.Rand) []asofVersion {
 }
 
 func cascadeAsofWant[T storeutil.TemporalRow](hist []T, cur T, hasCur bool, pin types.Instant) (uint32, bool) {
-	v, ok := storeutil.SelectAsOfWithCurrent(hist, cur, hasCur, pin)
+	v, ok := storeutil.SelectAsOfWithCurrent(types.LegacyValidAxis, hist, cur, hasCur, pin)
 	if !ok {
 		return 0, false
 	}

@@ -87,11 +87,6 @@ func (c *Core) checkNodeCallerCascade(id types.NodeID, validFrom, validTo, at ty
 	if err := checkTxOrder(at, 0, temporalsOf(history, current)...); err != nil {
 		return err
 	}
-	// The kernel's refusal of a span crossing 0 (round 11), here before any
-	// write of the unit (pattern: pre-flight equals apply).
-	if err := checkCorrectionAtZero(validFrom, validTo, current, func() (*types.Node, error) { return c.getNodeVersion(id, 0) }); err != nil {
-		return err
-	}
 	if !void {
 		return nil
 	}
@@ -119,11 +114,6 @@ func (c *Core) checkRelCallerCascade(id types.RelID, validFrom, validTo, at type
 		return err
 	}
 	if err := checkTxOrder(at, 0, temporalsOf(history, current)...); err != nil {
-		return err
-	}
-	// The kernel's refusal of a span crossing 0 (round 11), here before any
-	// write of the unit (pattern: pre-flight equals apply).
-	if err := checkCorrectionAtZero(validFrom, validTo, current, func() (*types.Relationship, error) { return c.getRelVersion(id, 0) }); err != nil {
 		return err
 	}
 	if !void {

@@ -68,7 +68,7 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	ms.addNodeToCompositeIndexesLocked(n, rawID)
 	ms.addNodeToTemporalIndexesLocked(n, rawID)
-	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, n, rawID)
+	indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func (ms *Store) DeleteNode(nid types.NodeID) error {
 	ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
 	ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
 	ms.nodeValidEnds.NoteCurrentDelete(int64(nid))
@@ -268,7 +268,7 @@ func (ms *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	ms.removeNodeFromCompositeIndexesLocked(old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.noteNodeCurrentLocked(updatedNode)
@@ -277,7 +277,7 @@ func (ms *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
 	ms.addNodeToTemporalIndexesLocked(updatedNode, rawID)
-	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, updatedNode, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
@@ -337,7 +337,7 @@ func (ms *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	ms.removeNodeFromCompositeIndexesLocked(old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.noteNodeCurrentLocked(updatedNode)
@@ -346,7 +346,7 @@ func (ms *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
 	ms.addNodeToTemporalIndexesLocked(updatedNode, rawID)
-	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, updatedNode, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
@@ -403,7 +403,7 @@ func (ms *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	ms.removeNodeFromCompositeIndexesLocked(old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(n)
 	ms.noteNodeCurrentLocked(n)
@@ -412,7 +412,7 @@ func (ms *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	ms.addNodeToCompositeIndexesLocked(n, rawID)
 	ms.addNodeToTemporalIndexesLocked(n, rawID)
-	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, n, rawID)
+	indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
@@ -498,7 +498,7 @@ func (ms *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 	ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
 	ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
 	ms.nodeValidEnds.NoteCurrentDelete(int64(nid))
@@ -565,7 +565,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 		ms.addNodeToCompositeIndexesLocked(n, rawID)
 		ms.addNodeToTemporalIndexesLocked(n, rawID)
-		indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, n, rawID)
+		indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
 		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], rawID); err != nil {
 			return err
 		}
@@ -632,7 +632,7 @@ func (ms *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
 		ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 		indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
-		indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
+		indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
 		indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 		delete(ms.nodes, id)
 		ms.nodeValidEnds.NoteCurrentDelete(int64(id))

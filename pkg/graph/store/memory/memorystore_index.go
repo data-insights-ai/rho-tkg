@@ -356,7 +356,7 @@ func (ms *Store) nodesByLabelPropertiesFrom(labelToken uint16, values map[string
 			if !indexpkg.NodeMatchesAllProperties(n, values) {
 				continue
 			}
-			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
+			if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}
 			result = append(result, n) // the frozen stored row, as every plural read
@@ -458,13 +458,13 @@ func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
 		if ok {
-			from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+			from, to := indexpkg.NodeTemporalBounds(ms.validAxis.Get(), rawID, n.Temporal())
 			entry = nodeEnvelope{id: rawID, intervals: []interval{{from, to}}}
 			for _, hv := range ms.nodeHistory[nid] {
 				if hv == nil {
 					continue
 				}
-				hf, ht := indexpkg.NodeTemporalBounds(rawID, hv.Temporal())
+				hf, ht := indexpkg.NodeTemporalBounds(ms.validAxis.Get(), rawID, hv.Temporal())
 				entry.intervals = append(entry.intervals, interval{hf, ht})
 			}
 		}
@@ -500,7 +500,7 @@ func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 	}
 	for id := range written {
 		if cur, alive := ms.nodes[types.NodeID(id)]; alive {
-			from, to := indexpkg.NodeTemporalBounds(id, cur.Temporal())
+			from, to := indexpkg.NodeTemporalBounds(ms.validAxis.Get(), id, cur.Temporal())
 			liveTI.Extend(id, from, to)
 		}
 		ms.foldNodeHistoryLocked(liveTI, id)
@@ -514,7 +514,7 @@ func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 func (ms *Store) foldNodeHistoryLocked(ti *indexpkg.TemporalIndex, id snowflake.ID) {
 	for _, hv := range ms.nodeHistory[types.NodeID(id)] {
 		if hv != nil {
-			from, to := indexpkg.NodeTemporalBounds(id, hv.Temporal())
+			from, to := indexpkg.NodeTemporalBounds(ms.validAxis.Get(), id, hv.Temporal())
 			ti.Extend(id, from, to)
 		}
 	}
@@ -534,7 +534,7 @@ func (ms *Store) addNodeToTemporalIndexesLocked(n *types.Node, id snowflake.ID) 
 			ms.foldNodeHistoryLocked(ti, id)
 		}
 	}
-	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, id)
+	indexpkg.AddNodeToTemporalIndexes(ms.validAxis.Get(), ms.temporalIndexes, n, id)
 }
 
 // extendNodeVersionTemporalLocked folds a PutNodeVersion row into the index of
@@ -542,7 +542,7 @@ func (ms *Store) addNodeToTemporalIndexesLocked(n *types.Node, id snowflake.ID) 
 // the history of every ID written meanwhile). An uncovered ID stays uncovered
 // and is never pruned. Caller holds ms.mu (write).
 func (ms *Store) extendNodeVersionTemporalLocked(n *types.Node, id snowflake.ID) {
-	from, to := indexpkg.NodeTemporalBounds(id, n.Temporal())
+	from, to := indexpkg.NodeTemporalBounds(ms.validAxis.Get(), id, n.Temporal())
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		ti := ms.temporalIndexes[n.LabelTokenRawAt(i)]
 		if ti == nil {
@@ -566,13 +566,13 @@ func (ms *Store) addRelToTemporalIndexesLocked(r *types.Relationship, id snowfla
 		if _, _, covered := ti.EnvelopeOf(id); !covered {
 			for _, hv := range ms.relHistory[types.RelID(id)] {
 				if hv != nil {
-					from, to := indexpkg.RelTemporalBounds(id, hv.Temporal())
+					from, to := indexpkg.RelTemporalBounds(ms.validAxis.Get(), id, hv.Temporal())
 					ti.Extend(id, from, to)
 				}
 			}
 		}
 	}
-	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id)
+	indexpkg.AddRelToTemporalIndexes(ms.validAxis.Get(), ms.relTypeTemporalIndexes, r, id)
 }
 
 // requireTemporalIndexCurrentForCreate mirrors requirePropertyIndexCurrentForCreate
@@ -639,13 +639,13 @@ func (ms *Store) CreateRelTemporalIndex(relType uint16) error {
 	if err := ms.forEachTypeRowLocked(relType, func(r *types.Relationship) bool {
 		relID := r.ID()
 		rawID := relID.SnowflakeID()
-		from, to := indexpkg.RelTemporalBounds(rawID, r.Temporal())
+		from, to := indexpkg.RelTemporalBounds(ms.validAxis.Get(), rawID, r.Temporal())
 		ti.Extend(rawID, from, to)
 		for _, hv := range ms.relHistory[relID] {
 			if hv == nil {
 				continue
 			}
-			hf, ht := indexpkg.RelTemporalBounds(rawID, hv.Temporal())
+			hf, ht := indexpkg.RelTemporalBounds(ms.validAxis.Get(), rawID, hv.Temporal())
 			ti.Extend(rawID, hf, ht)
 		}
 		return true
@@ -735,7 +735,7 @@ func (ms *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Dur
 			continue // deleted between snapshot and fetch
 		}
 		rawID := nid.SnowflakeID()
-		from, _ := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+		from, _ := indexpkg.NodeTemporalBounds(ms.validAxis.Get(), rawID, n.Temporal())
 		backfill = append(backfill, nodeEntry{id: rawID, from: from})
 	}
 
@@ -988,7 +988,7 @@ func (ms *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 			if !indexpkg.NodeMatchesVectorIndex(n, key, dims) {
 				continue
 			}
-			if hasTemporal && !storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
+			if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id, n.Temporal(), opts) {
 				continue
 			}
 			result = append(result, n) // the frozen stored row, as every plural read
@@ -1019,7 +1019,7 @@ func (ms *Store) vectorTemporalFilter(vi *indexpkg.VectorIndex, key indexpkg.Vec
 		if !indexpkg.NodeMatchesVectorIndex(n, key, dims) {
 			continue
 		}
-		if storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
+		if storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id, n.Temporal(), opts) {
 			eligible[id] = struct{}{}
 		}
 	}
@@ -1197,7 +1197,7 @@ func (ms *Store) nodesByLabelPropertyFrom(labelToken uint16, propKey string, tar
 			if !storepkg.NodeHasAnyIndexKey(n, propKey, elements, targetKeys) {
 				continue
 			}
-			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
+			if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}
 			result = append(result, n) // the frozen stored row, as every plural read

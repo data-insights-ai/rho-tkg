@@ -328,7 +328,7 @@ func (c *Core) buildAsOfColumns(label string, propKeys []string, txAt types.Inst
 			// columnar reader disagree with every row-path filter on exactly those
 			// nodes (Pattern 38).
 			_, t, _ := nd.ValidRange()
-			f := int64(storeutil.NodeValidFrom(nd))
+			f := int64(storeutil.NodeValidFrom(c.axis(), nd))
 			return f, int64(t), f, true
 		}
 		col = indexpkg.BuildLabelDocValues(epoch, ids, buildKeys, getProp, getTemporal)

@@ -36,18 +36,18 @@ func TestMatchesPointInTimeBoundaries(t *testing.T) {
 		{"open-before-from", open, 999, false},
 	}
 	for _, tc := range cases {
-		if got := MatchesPointInTime(id, tc.tm, tc.t); got != tc.want {
-			t.Errorf("%s: MatchesPointInTime(t=%d) = %v, want %v", tc.name, tc.t, got, tc.want)
+		if got := MatchesPointInTime(types.LegacyValidAxis, id, tc.tm, tc.t); got != tc.want {
+			t.Errorf("%s: MatchesPointInTime(types.LegacyValidAxis, t=%d) = %v, want %v", tc.name, tc.t, got, tc.want)
 		}
 	}
 
 	// Snowflake fallback: with no asserted ValidFrom the derived instant is
 	// the boundary — one millisecond earlier must NOT match.
 	derived := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
-	if MatchesPointInTime(id, nil, derived-1) {
+	if MatchesPointInTime(types.LegacyValidAxis, id, nil, derived-1) {
 		t.Errorf("nil tm: instant before snowflake-derived from must not match")
 	}
-	if !MatchesPointInTime(id, nil, derived) {
+	if !MatchesPointInTime(types.LegacyValidAxis, id, nil, derived) {
 		t.Errorf("nil tm: snowflake-derived from itself must match (inclusive)")
 	}
 }
@@ -79,16 +79,16 @@ func TestMatchesIntervalBoundaries(t *testing.T) {
 		{"open-meets-left", open, 0, 1000, false},
 	}
 	for _, tc := range cases {
-		if got := MatchesInterval(id, tc.tm, tc.start, tc.end); got != tc.want {
-			t.Errorf("%s: MatchesInterval([%d,%d)) = %v, want %v", tc.name, tc.start, tc.end, got, tc.want)
+		if got := MatchesInterval(types.LegacyValidAxis, id, tc.tm, tc.start, tc.end); got != tc.want {
+			t.Errorf("%s: MatchesInterval(types.LegacyValidAxis, [%d,%d)) = %v, want %v", tc.name, tc.start, tc.end, got, tc.want)
 		}
 	}
 
 	derived := types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
-	if MatchesInterval(id, nil, 0, derived) {
+	if MatchesInterval(types.LegacyValidAxis, id, nil, 0, derived) {
 		t.Errorf("nil tm: interval ending exactly at snowflake-derived from must not match")
 	}
-	if !MatchesInterval(id, nil, 0, derived+1) {
+	if !MatchesInterval(types.LegacyValidAxis, id, nil, 0, derived+1) {
 		t.Errorf("nil tm: interval ending one past snowflake-derived from must match")
 	}
 }

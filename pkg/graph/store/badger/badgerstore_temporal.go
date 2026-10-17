@@ -25,7 +25,7 @@ func (bs *Store) filterNodeIDsByTemporalPeek(ids []types.NodeID, opts QueryOpts)
 		v, status := bs.nodeCache.Peek(id)
 		switch status {
 		case indexpkg.CacheHit:
-			if storepkg.MatchesTemporalFilter(id, v.Temporal(), opts) {
+			if storepkg.MatchesTemporalFilter(bs.validAxis.Get(), id, v.Temporal(), opts) {
 				filtered = append(filtered, nid)
 			}
 		case indexpkg.CacheDeleted:
@@ -50,7 +50,7 @@ func (bs *Store) filterRelIDsByTemporalPeek(ids []types.RelID, opts QueryOpts) [
 		v, status := bs.relCache.Peek(id)
 		switch status {
 		case indexpkg.CacheHit:
-			if storepkg.MatchesTemporalFilter(id, v.Temporal(), opts) {
+			if storepkg.MatchesTemporalFilter(bs.validAxis.Get(), id, v.Temporal(), opts) {
 				filtered = append(filtered, rid)
 			}
 		case indexpkg.CacheDeleted:
@@ -78,7 +78,7 @@ func (bs *Store) fetchNodesWithTemporalFilter(ids []types.NodeID, opts QueryOpts
 		}
 		nodes := make([]*types.Node, 0, len(all))
 		for _, n := range all {
-			if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+			if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), n.ID().SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}
 			nodes = append(nodes, n)
@@ -88,7 +88,7 @@ func (bs *Store) fetchNodesWithTemporalFilter(ids []types.NodeID, opts QueryOpts
 
 	nodes := make([]*types.Node, 0, len(ids))
 	err := bs.forEachNodeBulk(ids, func(n *types.Node) bool {
-		if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), n.ID().SnowflakeID(), n.Temporal(), opts) {
 			return true
 		}
 		nodes = append(nodes, n)
@@ -112,7 +112,7 @@ func (bs *Store) fetchNodesWithTemporalFilterPage(ids []types.NodeID, opts Query
 	hasTemporal := opts.HasValidTimeFilter()
 	nodes := make([]*types.Node, 0, capForLimit(opts.Limit))
 	err := bs.forEachNodeBulk(ids, func(n *types.Node) bool {
-		if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), n.ID().SnowflakeID(), n.Temporal(), opts) {
 			return true
 		}
 		nodes = append(nodes, n)
@@ -141,7 +141,7 @@ func (bs *Store) filterNodeIDsByTemporalFetch(ids []types.NodeID, opts QueryOpts
 		v, status := bs.nodeCache.Peek(id)
 		switch status {
 		case indexpkg.CacheHit:
-			if storepkg.MatchesTemporalFilter(id, v.Temporal(), opts) {
+			if storepkg.MatchesTemporalFilter(bs.validAxis.Get(), id, v.Temporal(), opts) {
 				filtered = append(filtered, nid)
 			}
 		case indexpkg.CacheDeleted:
@@ -154,7 +154,7 @@ func (bs *Store) filterNodeIDsByTemporalFetch(ids []types.NodeID, opts QueryOpts
 				}
 				return nil, fmt.Errorf("graph: query node %d: %w", id, err)
 			}
-			if storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
+			if storepkg.MatchesTemporalFilter(bs.validAxis.Get(), id, n.Temporal(), opts) {
 				filtered = append(filtered, nid)
 			}
 		}
@@ -179,7 +179,7 @@ func (bs *Store) fetchRelsWithTemporalFilter(ids []types.RelID, opts QueryOpts) 
 			}
 			return nil, fmt.Errorf("graph: query relationship %d: %w", id, err)
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(id, r.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), id, r.Temporal(), opts) {
 			continue
 		}
 		rels = append(rels, r)
@@ -200,7 +200,7 @@ func (bs *Store) filterRelIDsByTemporalFetch(ids []types.RelID, opts QueryOpts) 
 		v, status := bs.relCache.Peek(id)
 		switch status {
 		case indexpkg.CacheHit:
-			if storepkg.MatchesTemporalFilter(id, v.Temporal(), opts) {
+			if storepkg.MatchesTemporalFilter(bs.validAxis.Get(), id, v.Temporal(), opts) {
 				filtered = append(filtered, rid)
 			}
 		case indexpkg.CacheDeleted:
@@ -213,7 +213,7 @@ func (bs *Store) filterRelIDsByTemporalFetch(ids []types.RelID, opts QueryOpts) 
 				}
 				return nil, fmt.Errorf("graph: query relationship %d: %w", id, err)
 			}
-			if storepkg.MatchesTemporalFilter(id, r.Temporal(), opts) {
+			if storepkg.MatchesTemporalFilter(bs.validAxis.Get(), id, r.Temporal(), opts) {
 				filtered = append(filtered, rid)
 			}
 		}
@@ -242,7 +242,7 @@ func (bs *Store) fetchRelsWithTemporalFilterPage(ids []types.RelID, opts QueryOp
 			}
 			return nil, fmt.Errorf("graph: query relationship %d: %w", id, err)
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(id, r.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), id, r.Temporal(), opts) {
 			continue
 		}
 		rels = append(rels, r)

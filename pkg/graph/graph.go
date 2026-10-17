@@ -237,13 +237,19 @@ type UntimedValidStart = core.UntimedValidStart
 // The untimed valid-start modes: UntimedFromTxFrom starts an entity's first
 // version without a valid-from at its TxFrom, UntimedUnbounded at -inf
 // (types.UnboundedValidFrom). A later version without a valid-from starts at
-// its TxFrom under both. UntimedDefault (the zero value) keeps an existing
-// store's mode and makes a new store UntimedUnbounded (v4.57.0).
+// its TxFrom under both. UntimedWholeAxis (round 11): a write without a valid
+// time claims the whole axis, and every stored instant is literal (0
+// included; types.LiteralValidAxis). UntimedDefault (the zero value) keeps an
+// existing store's mode and makes a new store UntimedUnbounded (v4.57.0).
+//
+// Deprecated default (announced in round 11): from the next minor release
+// UntimedDefault makes a new store an UntimedWholeAxis store; existing stores
+// keep their mode. Set UntimedUnbounded explicitly to keep today's default.
 const (
 	UntimedDefault    = core.UntimedDefault
 	UntimedFromTxFrom = core.UntimedFromTxFrom
 	UntimedUnbounded  = core.UntimedUnbounded
-	UntimedAtemporal  = core.UntimedAtemporal
+	UntimedWholeAxis  = core.UntimedWholeAxis
 )
 
 // ValidationLimits aliases core.ValidationLimits for the public API.

@@ -520,7 +520,7 @@ func (o *txbOracle) nodeCallerUpdate(fam int) {
 	if err != nil {
 		o.fail("Get(node %v): %v", id, err)
 	}
-	closed := isClosedTemporal(cur.Temporal())
+	closed := isClosedTemporal(types.LegacyValidAxis, cur.Temporal())
 	desc := fmt.Sprintf("%s/Nodes.UpdateWithTx(%v,t=%d) closed=%v", f.name, id, at, closed)
 	before := snapNode(o.t, o.g, id)
 	beforeR := o.render(id)
@@ -611,7 +611,7 @@ func (o *txbOracle) relCallerUpdate(fam int) {
 	if err != nil {
 		o.fail("Get(rel %v): %v", id, err)
 	}
-	closed := isClosedTemporal(cur.Temporal())
+	closed := isClosedTemporal(types.LegacyValidAxis, cur.Temporal())
 	desc := fmt.Sprintf("%s/Rels.UpdateWithTx(%v,t=%d) closed=%v", f.name, id, at, closed)
 	before := snapRel(o.t, o.g, id)
 	beforeR := o.render(0, id)

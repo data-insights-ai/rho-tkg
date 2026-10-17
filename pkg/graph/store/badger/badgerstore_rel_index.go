@@ -222,7 +222,7 @@ func (bs *Store) fetchRelsByTypePropertyIDs(relTypeToken uint16, propKey string,
 		if !storepkg.RelHasAnyIndexKey(r, propKey, elements, targetKeys) {
 			continue
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(rid.SnowflakeID(), r.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), rid.SnowflakeID(), r.Temporal(), opts) {
 			continue
 		}
 		rels = append(rels, r)
@@ -283,7 +283,7 @@ func (bs *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey stri
 		if !r.HasTypeTokenRaw(relTypeToken) {
 			continue
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(rid.SnowflakeID(), r.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), rid.SnowflakeID(), r.Temporal(), opts) {
 			continue
 		}
 		if !fn(r) {

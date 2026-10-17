@@ -120,7 +120,7 @@ func (ms *Store) nodesByLabelFromIDs(token uint16, ids []types.NodeID, opts Quer
 			if !n.HasLabelTokenRaw(token) {
 				continue
 			}
-			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
+			if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}
 			result = append(result, n)
@@ -213,7 +213,7 @@ func (ms *Store) relationshipsByTypeFromIDs(token uint16, ids []types.RelID, opt
 			if !r.HasTypeTokenRaw(token) {
 				continue
 			}
-			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
+			if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), r.Temporal(), opts) {
 				continue
 			}
 			result = append(result, r)
@@ -763,7 +763,7 @@ func (ms *Store) collectNodeIDsByTemporalLocked(opts QueryOpts) []types.NodeID {
 	hasTemporal := opts.HasValidTimeFilter()
 	ids := make([]types.NodeID, 0, len(ms.nodes))
 	for id, n := range ms.nodes {
-		if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), n.Temporal(), opts) {
 			continue
 		}
 		ids = append(ids, id)
@@ -780,7 +780,7 @@ func (ms *Store) collectRelIDsByTemporalLocked(opts QueryOpts) ([]types.RelID, e
 	hasTemporal := opts.HasValidTimeFilter()
 	ids := make([]types.RelID, 0, len(ms.rels))
 	for id, r := range ms.rels {
-		if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), r.Temporal(), opts) {
 			continue
 		}
 		ids = append(ids, id)
@@ -798,7 +798,7 @@ func (ms *Store) collectRelIDsByTemporalLocked(opts QueryOpts) ([]types.RelID, e
 				continue
 			}
 			if err := ms.forEachSealedRowLocked(st, func(r *types.Relationship) bool {
-				if storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts) {
+				if storepkg.MatchesTemporalFilter(ms.validAxis.Get(), r.ID().SnowflakeID(), r.Temporal(), opts) {
 					ids = append(ids, r.ID())
 				}
 				return true

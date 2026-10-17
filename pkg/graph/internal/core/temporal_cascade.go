@@ -98,7 +98,7 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 }
 
 // cascadeNodeMode is the node cascade kernel; mode selects a correction, an
-// excise (cascadeVoid) or an atemporal untimed write (cascadeExisting:
+// excise (cascadeVoid) or a whole-axis untimed write (cascadeExisting:
 // pieces only where a version is valid, unchanged pieces skipped; prov, when
 // set, is the update's provenance for every appended row).
 func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any, at types.Instant, mode cascadeMode, prov *updateProvenance) (*types.Node, error) {
@@ -106,14 +106,8 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
-	if newVF == 0 {
-		return nil, fmt.Errorf("%w: cascade requires non-zero validFrom", ErrInvalidTimeRange)
-	}
-	if void && newVT == 0 {
-		return nil, fmt.Errorf("%w: excise requires a bounded end", ErrInvalidTimeRange)
-	}
-	if newVT != 0 && newVF >= newVT {
-		return nil, fmt.Errorf("%w: validFrom %d >= validTo %d", ErrInvalidTimeRange, newVF, newVT)
+	if err := checkCascadeInterval(c.axis(), newVF, newVT, void); err != nil {
+		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -132,13 +126,6 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	current, err := c.getCurrentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
-	}
-	// An atemporal untimed write keeps every segment's boundaries, so no piece
-	// ends at 0 (no row ends at 0): the crossing check does not apply.
-	if !existing {
-		if err := checkCorrectionAtZero(newVF, newVT, current, func() (*types.Node, error) { return c.getNodeVersion(id, 0) }); err != nil {
-			return nil, err
-		}
 	}
 	// The head answer before any write (backlog 68, effective_head.go). A
 	// valid one stands in for the history read (backlog 68b,
@@ -236,7 +223,7 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	// (the version is hashed), see the allocation step below.
 	appended := make([]*types.Node, 0, 4)
 	prevHashes := make([]string, 0, 4)
-	if newVT != 0 && !fromHead {
+	if !c.axis().Open(newVT) && !fromHead {
 		if src, err := c.resolveNodeVersionAt(append([]*types.Node(nil), preChain...), newVT); err == nil && src != nil {
 			hc.src, hc.hasSrc, hc.srcEnd = src, true, nodeResumptionEnd(c, preChain, newVT)
 		} else if err != nil && !errors.Is(err, storepkg.ErrNoVersionValidAt) {
@@ -246,8 +233,8 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	if hc.hasSrc {
 		resumption := hc.src.DeepCopy()
 		ensureNodeTemporal(resumption)
-		stampValidFrom(resumption.Temporal(), newVT, true)
-		resumption.Temporal().ValidTo = hc.srcEnd // explicit; 0 == open (src was the pre-correction open tail)
+		stampValidFrom(c.axis(), resumption.Temporal(), newVT, true)
+		resumption.Temporal().ValidTo = hc.srcEnd // explicit; the axis's open end when src was the pre-correction open tail
 		stampAppendedRow(resumption.Temporal(), now)
 		appended = append(appended, resumption)
 		prevHashes = append(prevHashes, nodeHashOf(hc.src))
@@ -323,7 +310,7 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 		postChain = append(postChain, appended...)
 		for i := range postChain {
 			entry := postChain[i]
-			if _, vEnd := c.nodeOwnBounds(entry); vEnd != 0 || isVoidRow(entry) {
+			if _, vEnd := c.nodeOwnBounds(entry); !c.axis().Open(vEnd) || isVoidRow(entry) {
 				continue // only own-open rows can own the current slot
 			}
 			if newCurrent == nil || nodeBeliefNewerThan(entry, newCurrent) {
@@ -405,7 +392,7 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 
 // nodeResumptionEnd returns the smallest own-interval boundary (any row's own
 // vStart, or own vEnd when finite) in preChain that is STRICTLY AFTER newVT —
-// 0 (open) when no such boundary exists. BACKLOG 10b: own-interval bounds
+// the graph's valid axis's open end when no such boundary exists. BACKLOG 10b: own-interval bounds
 // make every row's [vStart, vEnd) a fixed, position-independent interval, so
 // the SET of rows covering any instant t is piecewise-constant between
 // consecutive own-boundary points across the WHOLE chain — therefore the
@@ -415,16 +402,17 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 // on an already-cascaded preChain, where src can be selected by belief
 // rather than position.
 func nodeResumptionEnd(c *Core, preChain []*types.Node, newVT types.Instant) types.Instant {
-	var end types.Instant
+	a := c.axis()
+	end := a.OpenEnd()
 	consider := func(b types.Instant) {
-		if b > newVT && (end == 0 || b < end) {
+		if b > newVT && (a.Open(end) || b < end) {
 			end = b
 		}
 	}
 	for _, row := range preChain {
 		vStart, vEnd := c.nodeOwnBounds(row)
 		consider(vStart)
-		if vEnd != 0 {
+		if !a.Open(vEnd) {
 			consider(vEnd)
 		}
 	}
@@ -433,16 +421,17 @@ func nodeResumptionEnd(c *Core, preChain []*types.Node, newVT types.Instant) typ
 
 // relResumptionEnd mirrors nodeResumptionEnd for relationships.
 func relResumptionEnd(c *Core, preChain []*types.Relationship, newVT types.Instant) types.Instant {
-	var end types.Instant
+	a := c.axis()
+	end := a.OpenEnd()
 	consider := func(b types.Instant) {
-		if b > newVT && (end == 0 || b < end) {
+		if b > newVT && (a.Open(end) || b < end) {
 			end = b
 		}
 	}
 	for _, row := range preChain {
 		vStart, vEnd := c.relOwnBounds(row)
 		consider(vStart)
-		if vEnd != 0 {
+		if !a.Open(vEnd) {
 			consider(vEnd)
 		}
 	}
@@ -467,7 +456,8 @@ func relResumptionEnd(c *Core, preChain []*types.Relationship, newVT types.Insta
 // =============================================================================
 
 // correctionSegment is one maximal piece [from, to) of a cascade target
-// interval (to == 0: open-ended) over which the patch base is one row.
+// interval (to open by the graph's valid axis) over which the patch base is
+// one row.
 type correctionSegment[T any] struct {
 	from, to types.Instant
 	base     T
@@ -482,11 +472,12 @@ type (
 )
 
 // correctionCuts returns the sorted, de-duplicated boundaries strictly inside
-// (newVF, newVT) — (newVF, +inf) when newVT == 0.
-func correctionCuts(bounds []types.Instant, newVF, newVT types.Instant) []types.Instant {
+// (newVF, newVT) — (newVF, +inf) when newVT is open by the valid axis a. An
+// open bound (a row's open end) is no boundary.
+func correctionCuts(a types.ValidAxis, bounds []types.Instant, newVF, newVT types.Instant) []types.Instant {
 	cuts := make([]types.Instant, 0, len(bounds))
 	for _, b := range bounds {
-		if b > newVF && (newVT == 0 || b < newVT) {
+		if !a.Open(b) && b > newVF && (a.Open(newVT) || b < newVT) {
 			cuts = append(cuts, b)
 		}
 	}
@@ -515,10 +506,10 @@ func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.No
 	bounds := make([]types.Instant, 0, 4*len(preChain))
 	for i, row := range preChain {
 		vStart, vEnd := c.nodeOwnBounds(row)
-		pStart, pEnd, _ := c.nodeVersionBounds(preChain, i) // cut points only
+		pStart, pEnd := c.nodeVersionBounds(preChain, i) // cut points only
 		bounds = append(bounds, vStart, vEnd, pStart, pEnd)
 	}
-	cuts := correctionCuts(bounds, newVF, newVT)
+	cuts := correctionCuts(c.axis(), bounds, newVF, newVT)
 
 	segs := make([]nodeCorrectionSegment, 0, len(cuts)+1)
 	from := newVF
@@ -550,10 +541,10 @@ func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *t
 	bounds := make([]types.Instant, 0, 4*len(preChain))
 	for i, row := range preChain {
 		vStart, vEnd := c.relOwnBounds(row)
-		pStart, pEnd, _ := c.relVersionBounds(preChain, i) // cut points only
+		pStart, pEnd := c.relVersionBounds(preChain, i) // cut points only
 		bounds = append(bounds, vStart, vEnd, pStart, pEnd)
 	}
-	cuts := correctionCuts(bounds, newVF, newVT)
+	cuts := correctionCuts(c.axis(), bounds, newVF, newVT)
 
 	segs := make([]relCorrectionSegment, 0, len(cuts)+1)
 	from := newVF
@@ -606,8 +597,7 @@ func correctionTemporal(template *types.TemporalMetadata, from, to, now types.In
 	if template != nil {
 		tm = *template
 	}
-	stampValidFrom(&tm, from, true) // a piece's start is always a claim, 0 included
-	tm.ValidTo = to
+	tm.ValidFrom, tm.ValidTo = from, to // a piece's bounds are claims (to: open by the graph's valid axis)
 	stampAppendedRow(&tm, now)
 	return &tm
 }
@@ -761,7 +751,7 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 }
 
 // cascadeRelMode is the rel cascade kernel; mode selects a correction, an
-// excise (cascadeVoid) or an atemporal untimed write (cascadeExisting:
+// excise (cascadeVoid) or a whole-axis untimed write (cascadeExisting:
 // pieces only where a version is valid, unchanged pieces skipped; prov, when
 // set, is the update's provenance for every appended row).
 func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT types.Instant, props map[string]any, at types.Instant, mode cascadeMode, prov *updateProvenance) (*types.Relationship, error) {
@@ -769,14 +759,8 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
-	if newVF == 0 {
-		return nil, fmt.Errorf("%w: cascade requires non-zero validFrom", ErrInvalidTimeRange)
-	}
-	if void && newVT == 0 {
-		return nil, fmt.Errorf("%w: excise requires a bounded end", ErrInvalidTimeRange)
-	}
-	if newVT != 0 && newVF >= newVT {
-		return nil, fmt.Errorf("%w: validFrom %d >= validTo %d", ErrInvalidTimeRange, newVF, newVT)
+	if err := checkCascadeInterval(c.axis(), newVF, newVT, void); err != nil {
+		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -795,11 +779,6 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	current, err := c.getCurrentRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
-	}
-	if !existing {
-		if err := checkCorrectionAtZero(newVF, newVT, current, func() (*types.Relationship, error) { return c.getRelVersion(id, 0) }); err != nil {
-			return nil, err
-		}
 	}
 	// The head answer before any write — see the node cascade.
 	headBefore := c.relHeadBeforeWrite(id, current)
@@ -861,7 +840,7 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	// not "positionally-next row after src").
 	appended := make([]*types.Relationship, 0, 4)
 	prevHashes := make([]string, 0, 4)
-	if newVT != 0 && !fromHead {
+	if !c.axis().Open(newVT) && !fromHead {
 		if src, err := c.resolveRelVersionAt(append([]*types.Relationship(nil), preChain...), newVT); err == nil && src != nil {
 			hc.src, hc.hasSrc, hc.srcEnd = src, true, relResumptionEnd(c, preChain, newVT)
 		} else if err != nil && !errors.Is(err, storepkg.ErrNoVersionValidAt) {
@@ -871,7 +850,7 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	if hc.hasSrc {
 		resumption := hc.src.DeepCopy()
 		ensureRelTemporal(resumption)
-		stampValidFrom(resumption.Temporal(), newVT, true)
+		stampValidFrom(c.axis(), resumption.Temporal(), newVT, true)
 		resumption.Temporal().ValidTo = hc.srcEnd
 		stampAppendedRow(resumption.Temporal(), now)
 		appended = append(appended, resumption)
@@ -937,7 +916,7 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 		postChain = append(postChain, appended...)
 		for i := range postChain {
 			entry := postChain[i]
-			if _, vEnd := c.relOwnBounds(entry); vEnd != 0 || isVoidRow(entry) {
+			if _, vEnd := c.relOwnBounds(entry); !c.axis().Open(vEnd) || isVoidRow(entry) {
 				continue
 			}
 			if newCurrent == nil || relBeliefNewerThan(entry, newCurrent) {
@@ -1032,7 +1011,7 @@ type cascadeMode uint8
 const (
 	cascadeCorrection cascadeMode = iota // SetVersionInterval: [newVF, newVT) holds props
 	cascadeVoid                          // excise: void pieces where a version is valid
-	cascadeExisting                      // atemporal untimed write: every valid segment patched (round 11)
+	cascadeExisting                      // whole-axis untimed write: every valid segment patched (round 11)
 )
 
 func cascadeModeOf(void bool) cascadeMode {
@@ -1086,4 +1065,21 @@ func applyRelProvenance(ig *types.RelIntegrity, prov *updateProvenance) {
 	if prov.hasAuthLevel {
 		ig.AuthorizationLevel = prov.authLevel
 	}
+}
+
+// checkCascadeInterval is the cascade kernels' interval check, on the
+// graph's valid axis a (round 11): newVF must be a claimed start (the legacy
+// axis's 0 is "unset"), an excise needs a bounded end, and a bounded end must
+// follow the start.
+func checkCascadeInterval(a types.ValidAxis, newVF, newVT types.Instant, void bool) error {
+	if !a.Claimed(newVF) {
+		return fmt.Errorf("%w: cascade requires a claimed validFrom (non-zero on the legacy valid axis)", ErrInvalidTimeRange)
+	}
+	if void && a.Open(newVT) {
+		return fmt.Errorf("%w: excise requires a bounded end", ErrInvalidTimeRange)
+	}
+	if !a.Open(newVT) && newVF >= newVT {
+		return fmt.Errorf("%w: validFrom %d >= validTo %d", ErrInvalidTimeRange, newVF, newVT)
+	}
+	return nil
 }

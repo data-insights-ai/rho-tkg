@@ -250,7 +250,7 @@ func (ts *Store) relsByTypePropertyKeys(relTypeToken uint16, key string, opts Qu
 		}
 		return slices.DeleteFunc(rels, func(r *types.Relationship) bool {
 			return !storeutil.RelHasAnyIndexKey(r, key, elements, targetKeys) ||
-				(shardOpts.HasValidTimeFilter() && !storeutil.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), shardOpts))
+				(shardOpts.HasValidTimeFilter() && !storeutil.MatchesTemporalFilter(ts.validAxis.Get(), r.ID().SnowflakeID(), r.Temporal(), shardOpts))
 		}), nil
 	}
 
@@ -1162,7 +1162,7 @@ func (ts *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 		if !indexpkg.NodeMatchesVectorIndex(n, key, dims) {
 			continue
 		}
-		if hasTemporal && !storeutil.MatchesTemporalFilter(id, n.Temporal(), opts) {
+		if hasTemporal && !storeutil.MatchesTemporalFilter(ts.validAxis.Get(), id, n.Temporal(), opts) {
 			continue
 		}
 		result = append(result, n)
@@ -1192,7 +1192,7 @@ func (ts *Store) vectorTemporalFilter(vi *indexpkg.VectorIndex, key indexpkg.Vec
 		if !indexpkg.NodeMatchesVectorIndex(n, key, dims) {
 			continue
 		}
-		if storeutil.MatchesTemporalFilter(id, n.Temporal(), opts) {
+		if storeutil.MatchesTemporalFilter(ts.validAxis.Get(), id, n.Temporal(), opts) {
 			eligible[id] = struct{}{}
 		}
 	}

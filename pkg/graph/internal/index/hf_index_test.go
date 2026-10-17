@@ -300,7 +300,7 @@ func TestHighFrequencyNodeHelpersUseAllLabels(t *testing.T) {
 		4: NewHighFrequencyIndex(time.Hour, 0),
 	}
 
-	AddNodeToHighFrequencyIndexes(idxs, node, id.SnowflakeID())
+	AddNodeToHighFrequencyIndexes(types.LegacyValidAxis, idxs, node, id.SnowflakeID())
 	for _, tok := range []uint16{1, 2, 3} {
 		got := idxs[tok].PointQuery(1000)
 		if !hfIDsContain(got, id) {
@@ -311,7 +311,7 @@ func TestHighFrequencyNodeHelpersUseAllLabels(t *testing.T) {
 		t.Fatalf("unmatched token PointQuery = %v, want no id %d", got, id)
 	}
 
-	RemoveNodeFromHighFrequencyIndexes(idxs, node, id.SnowflakeID())
+	RemoveNodeFromHighFrequencyIndexes(types.LegacyValidAxis, idxs, node, id.SnowflakeID())
 	for _, tok := range []uint16{1, 2, 3} {
 		if got := idxs[tok].PointQuery(1000); hfIDsContain(got, id) {
 			t.Fatalf("token %d still contains node after remove: %v", tok, got)

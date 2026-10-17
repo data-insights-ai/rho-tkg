@@ -292,27 +292,34 @@ func withBackfillTxFrom(props map[string]any, txFrom types.Instant) map[string]a
 // If none of the reserved keys are present, the original map is returned
 // unchanged (no allocation). The caller's original map is never mutated.
 //
+// The valid-time claims are read on the graph's valid axis a (parseValidClaim,
+// round 11): vfSet reports a start claim; validTo is the end as stored (the
+// axis's open end without a claim).
+//
 // tkg_tx_from is the transaction-time backfill override: extraction here is
-// pure (no gate check — extractTemporal has no Core handle). Each create door
-// funnels the returned txFrom through c.resolveBackfillTxFrom, which enforces
-// Config.AllowTxBackfill and rejects it in production. A returned txFrom of 0
-// means "unset — stamp the system clock" (§4.1).
-func extractTemporal(props map[string]any) (validFrom types.Instant, vfSet bool, validTo, createdAt, txFrom types.Instant, filtered map[string]any, err error) {
+// pure (no gate check). Each create door funnels the returned txFrom through
+// c.resolveBackfillTxFrom, which enforces Config.AllowTxBackfill and rejects
+// it in production. A returned txFrom of 0 means "unset — stamp the system
+// clock" (§4.1).
+func extractTemporal(a types.ValidAxis, props map[string]any) (validFrom types.Instant, vfSet bool, validTo, createdAt, txFrom types.Instant, filtered map[string]any, err error) {
 	_, hasVF := props["tkg_valid_from"]
 	_, hasVT := props["tkg_valid_to"]
 	_, hasCA := props["tkg_created_at"]
 	_, hasTF := props["tkg_tx_from"]
 	if !hasVF && !hasVT && !hasCA && !hasTF {
-		return 0, false, 0, 0, 0, props, nil
+		return 0, false, a.OpenEnd(), 0, 0, props, nil
 	}
 
-	validFrom, vfSet, err = parseValidFrom(props["tkg_valid_from"])
+	validFrom, vfSet, err = parseValidClaim(a, props["tkg_valid_from"], "tkg_valid_from")
 	if err != nil {
 		return 0, false, 0, 0, 0, nil, err
 	}
-	validTo, err = parseInstant(props["tkg_valid_to"], "tkg_valid_to")
+	validTo, vtSet, err := parseValidClaim(a, props["tkg_valid_to"], "tkg_valid_to")
 	if err != nil {
 		return 0, false, 0, 0, 0, nil, err
+	}
+	if !vtSet {
+		validTo = a.OpenEnd()
 	}
 	createdAt, err = parseInstant(props["tkg_created_at"], "tkg_created_at")
 	if err != nil {
@@ -322,7 +329,7 @@ func extractTemporal(props map[string]any) (validFrom types.Instant, vfSet bool,
 	if err != nil {
 		return 0, false, 0, 0, 0, nil, err
 	}
-	if vfSet && validTo != 0 && validFrom >= validTo {
+	if vfSet && !a.Open(validTo) && validFrom >= validTo {
 		return 0, false, 0, 0, 0, nil, fmt.Errorf("%w: tkg_valid_from %d must be before tkg_valid_to %d",
 			ErrInvalidTimeRange, validFrom, validTo)
 	}
@@ -340,34 +347,40 @@ func extractTemporal(props map[string]any) (validFrom types.Instant, vfSet bool,
 // per-field presence flags so update paths can distinguish "caller did not
 // supply" from "caller supplied 0". tkg_created_at is rejected on update paths
 // (it's per-entity, not per-version); only tkg_valid_from and tkg_valid_to are
-// accepted.
-func extractTemporalTracked(props map[string]any) (updateTemporal, map[string]any, error) {
+// accepted. The claims are read on the graph's valid axis a.
+func extractTemporalTracked(a types.ValidAxis, props map[string]any) (updateTemporal, map[string]any, error) {
 	_, hasVF := props["tkg_valid_from"]
 	_, hasVT := props["tkg_valid_to"]
 	if !hasVF && !hasVT {
-		return updateTemporal{}, props, nil
+		return updateTemporal{validTo: a.OpenEnd()}, props, nil
 	}
 
 	tmp := updateTemporal{
 		hasValidFrom: hasVF,
-		hasValidTo:   hasVT,
 		present:      true,
+		validTo:      a.OpenEnd(),
 	}
 	if hasVF {
-		v, set, err := parseValidFrom(props["tkg_valid_from"])
+		v, set, err := parseValidClaim(a, props["tkg_valid_from"], "tkg_valid_from")
 		if err != nil {
 			return updateTemporal{}, nil, err
 		}
 		tmp.validFrom, tmp.validFromSet = v, set
 	}
 	if hasVT {
-		v, err := parseInstant(props["tkg_valid_to"], "tkg_valid_to")
+		v, set, err := parseValidClaim(a, props["tkg_valid_to"], "tkg_valid_to")
 		if err != nil {
 			return updateTemporal{}, nil, err
 		}
-		tmp.validTo = v
+		// hasValidTo: the key was given. On the legacy axis 0 (no claim) is
+		// the open end, which an update writes as given (a reopen); on the
+		// literal axis it is the instant 0.
+		tmp.hasValidTo = true
+		if set {
+			tmp.validTo = v
+		}
 	}
-	if tmp.validFromSet && tmp.hasValidTo && tmp.validTo != 0 && tmp.validFrom >= tmp.validTo {
+	if tmp.validFromSet && tmp.hasValidTo && !a.Open(tmp.validTo) && tmp.validFrom >= tmp.validTo {
 		return updateTemporal{}, nil, fmt.Errorf("%w: tkg_valid_from %d must be before tkg_valid_to %d",
 			ErrInvalidTimeRange, tmp.validFrom, tmp.validTo)
 	}
@@ -381,28 +394,64 @@ func extractTemporalTracked(props map[string]any) (updateTemporal, map[string]an
 	return tmp, filtered, nil
 }
 
-// parseValidFrom converts a tkg_valid_from value and reports whether it is a
-// world-time claim (round 11): a types.ExplicitInstant always (the instant 0
-// included), any other value when non-zero; 0 or nil is "no claim".
-func parseValidFrom(v any) (types.Instant, bool, error) {
-	if e, ok := v.(types.ExplicitInstant); ok {
-		return types.Instant(e), true, nil
+// parseValidClaim converts a tkg_valid_from or tkg_valid_to value (key) and
+// reports whether it is a valid-time claim, on the graph's valid axis a
+// (round 11):
+//
+//   - the literal axis (UntimedWholeAxis): every value is the instant it
+//     names, the instant 0 included; a types.ExplicitInstant is the same
+//     claim. A nil value is no claim (as an absent key). The axis's ends
+//     cannot be claimed as instants: a start of +inf and an end of -inf are
+//     refused (ErrInvalidTimeRange); a start of types.UnboundedValidFrom and
+//     an end of types.InfiniteValidTo are the whole axis on that side.
+//   - the legacy axis: 0 or nil is no claim (an unset start, an open end), as
+//     before; a types.ExplicitInstant of 0 claims the instant 0, which this
+//     store's rows cannot record (they read a stored 0 as "unset" / "open"):
+//     refused with ErrZeroInstantLegacyAxis. A non-zero ExplicitInstant is the
+//     plain number's claim.
+func parseValidClaim(a types.ValidAxis, v any, key string) (types.Instant, bool, error) {
+	if v == nil {
+		return 0, false, nil
 	}
-	t, err := parseInstant(v, "tkg_valid_from")
-	return t, t != 0, err
+	explicit := false
+	if e, ok := v.(types.ExplicitInstant); ok {
+		v, explicit = types.Instant(e), true
+	}
+	t, err := parseInstant(v, key)
+	if err != nil {
+		return 0, false, err
+	}
+	if !a.Literal() {
+		if explicit && t == 0 {
+			return 0, false, fmt.Errorf("%w: %s = the explicit instant 0 on a store whose rows read a stored 0 as %s (Config.UntimedValidStart %s); only an UntimedWholeAxis store records the instant 0",
+				ErrZeroInstantLegacyAxis, key, legacyZeroMeaning(key), "UntimedFromTxFrom or UntimedUnbounded")
+		}
+		return t, t != 0, nil
+	}
+	if key == "tkg_valid_from" && t == types.InfiniteValidTo || key == "tkg_valid_to" && t == types.UnboundedValidFrom {
+		return 0, false, fmt.Errorf("%w: %s %d is an end of the valid axis, not an instant", ErrInvalidTimeRange, key, t)
+	}
+	return t, true, nil
+}
+
+// legacyZeroMeaning is what a stored 0 of key means on the legacy axis.
+func legacyZeroMeaning(key string) string {
+	if key == "tkg_valid_to" {
+		return "the open end"
+	}
+	return "no start claim"
 }
 
 // parseInstant converts a property value to types.Instant (Unix milliseconds).
 // A types.ExplicitInstant is refused (ErrInvalidTimeRange): it is a claim of a
-// valid start only (parseValidFrom), and 0 on the other keys means unset or
-// open.
+// valid time only (parseValidClaim: tkg_valid_from, tkg_valid_to).
 func parseInstant(v any, key string) (types.Instant, error) {
 	if v == nil {
 		return 0, nil
 	}
 	switch val := v.(type) {
 	case types.ExplicitInstant:
-		return 0, fmt.Errorf("%w: %s takes no types.ExplicitInstant (an explicit instant is a claim of tkg_valid_from only)", ErrInvalidTimeRange, key)
+		return 0, fmt.Errorf("%w: %s takes no types.ExplicitInstant (an explicit instant is a valid-time claim: tkg_valid_from, tkg_valid_to)", ErrInvalidTimeRange, key)
 	case types.Instant:
 		return val, nil
 	case int:

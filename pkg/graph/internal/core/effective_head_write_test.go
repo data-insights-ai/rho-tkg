@@ -382,7 +382,7 @@ func TestStoreAsOfAboveCompactionGap(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if want, ok := storeutil.SelectAsOfWithCurrent(h, cur, true, pin); !ok || want.Version() != 3 {
+			if want, ok := storeutil.SelectAsOfWithCurrent(types.LegacyValidAxis, h, cur, true, pin); !ok || want.Version() != 3 {
 				t.Fatalf("the as-of rule answers v%d (%v), the test expects v3", want.Version(), ok)
 			}
 			n, err := st.NodeAsOf(nid, pin)

@@ -1166,10 +1166,10 @@ func TestTxTimeQueryCapabilityBulkErrorsPropagate(t *testing.T) {
 }
 
 func TestVisibleAtTxTimeNil(t *testing.T) {
-	if got := nodeVisibleAtTxTime(nil, 10); got != nil {
-		t.Fatalf("nodeVisibleAtTxTime(nil) = %v, want nil", got)
+	if got := nodeVisibleAtTxTime(types.LegacyValidAxis, nil, 10); got != nil {
+		t.Fatalf("nodeVisibleAtTxTime(types.LegacyValidAxis, nil) = %v, want nil", got)
 	}
-	if got := relVisibleAtTxTime(nil, 10); got != nil {
-		t.Fatalf("relVisibleAtTxTime(nil) = %v, want nil", got)
+	if got := relVisibleAtTxTime(types.LegacyValidAxis, nil, 10); got != nil {
+		t.Fatalf("relVisibleAtTxTime(types.LegacyValidAxis, nil) = %v, want nil", got)
 	}
 }

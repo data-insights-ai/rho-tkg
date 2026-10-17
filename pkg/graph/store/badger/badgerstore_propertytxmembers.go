@@ -83,7 +83,7 @@ func (bs *Store) recordRelPropTxLocked(r *types.Relationship, current bool) {
 	}
 	tok := r.TypeToken().Value()
 	id := r.ID()
-	ri := indexpkg.RelRowInfo(r)
+	ri := indexpkg.RelRowInfo(bs.validAxis.Get(), r)
 	r.ForEachIndexKey(indexpkg.RelElementsOf(bs.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
 		if sc := bs.relPropTx[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; sc != nil {
 			sc.members.RecordRow(valueKey, id, ri, current)
@@ -99,7 +99,7 @@ func (bs *Store) recordNodePropTxLocked(n *types.Node, current bool) {
 		return
 	}
 	id := n.ID()
-	ri := indexpkg.NodeRowInfo(n)
+	ri := indexpkg.NodeRowInfo(bs.validAxis.Get(), n)
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		label := n.LabelTokenRawAt(i)
 		n.ForEachIndexKey(indexpkg.ElementsOf(bs.propertyIndexes, label), func(propertyKey, valueKey string) bool {
@@ -121,7 +121,7 @@ func (bs *Store) recordRelReplacedLocked(prev, next *types.Relationship) {
 	}
 	tok := prev.TypeToken().Value()
 	id := prev.ID()
-	old, nx := indexpkg.RelRowInfo(prev), indexpkg.RelRowInfo(next)
+	old, nx := indexpkg.RelRowInfo(bs.validAxis.Get(), prev), indexpkg.RelRowInfo(bs.validAxis.Get(), next)
 	prev.ForEachIndexKey(indexpkg.RelElementsOf(bs.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
 		if sc := bs.relPropTx[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; sc != nil {
 			sc.members.RecordReplaced(valueKey, id, old, nx)
@@ -137,7 +137,7 @@ func (bs *Store) recordNodeReplacedLocked(prev, next *types.Node) {
 		return
 	}
 	id := prev.ID()
-	old, nx := indexpkg.NodeRowInfo(prev), indexpkg.NodeRowInfo(next)
+	old, nx := indexpkg.NodeRowInfo(bs.validAxis.Get(), prev), indexpkg.NodeRowInfo(bs.validAxis.Get(), next)
 	for i := 0; i < prev.LabelTokenCount(); i++ {
 		label := prev.LabelTokenRawAt(i)
 		prev.ForEachIndexKey(indexpkg.ElementsOf(bs.propertyIndexes, label), func(propertyKey, valueKey string) bool {
@@ -495,7 +495,7 @@ func (bs *Store) recordRelRowPropTx(byType map[int][]*relPropTxTarget, id snowfl
 	if r.ID().SnowflakeID() != id {
 		return fmt.Errorf("%w: relationship wire id %d does not match key %d", ErrInvalidStoreMutation, r.ID().SnowflakeID(), id)
 	}
-	rid, ri := r.ID(), indexpkg.RelRowInfo(r)
+	rid, ri := r.ID(), indexpkg.RelRowInfo(bs.validAxis.Get(), r)
 	for _, t := range targets {
 		var vks []string
 		r.ForEachPropertyIndexKey(t.key.PropertyKey, t.elements, func(vk string) bool {
@@ -540,7 +540,7 @@ func (bs *Store) recordNodeRowPropTx(byLabel map[uint16][]*nodePropTxTarget, id 
 	if n.ID().SnowflakeID() != id {
 		return fmt.Errorf("%w: node wire id %d does not match key %d", ErrInvalidStoreMutation, n.ID().SnowflakeID(), id)
 	}
-	nid, ri := n.ID(), indexpkg.NodeRowInfo(n)
+	nid, ri := n.ID(), indexpkg.NodeRowInfo(bs.validAxis.Get(), n)
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		for _, t := range byLabel[n.LabelTokenRawAt(i)] {
 			var vks []string

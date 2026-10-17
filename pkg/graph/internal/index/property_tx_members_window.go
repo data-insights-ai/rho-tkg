@@ -51,8 +51,8 @@ func (s Span) meets(start, end types.Instant) bool {
 
 // RowInfo is what a sidecar records of one stored row: its version, its
 // transaction-time stamps and its valid-time span (the rule the envelope
-// indexes use: storeutil.RelValidFrom / NodeValidFrom, ValidTo open as
-// math.MaxInt64).
+// indexes use on the store's valid axis: storeutil.RelValidFrom /
+// NodeValidFrom, the end as ValidAxis.End, open as math.MaxInt64).
 type RowInfo struct {
 	Version                 uint32
 	TxFrom, TxTo, DeletedAt types.Instant
@@ -63,19 +63,25 @@ type RowInfo struct {
 }
 
 // RelRowInfo returns r's RowInfo.
-func RelRowInfo(r *types.Relationship) RowInfo {
-	_, to, _ := r.ValidRange()
+func RelRowInfo(a types.ValidAxis, r *types.Relationship) RowInfo {
+	_, to, ok := r.ValidRange()
+	if !ok {
+		to = a.OpenEnd()
+	}
 	f, t, d := r.TxStamps()
 	return RowInfo{Version: r.Version(), TxFrom: f, TxTo: t, DeletedAt: d,
-		Span: Span{From: storepkg.RelValidFrom(r), To: effTo(to)}, DeleteWrote: r.Temporal().DeleteWroteValidTo()}
+		Span: Span{From: storepkg.RelValidFrom(a, r), To: a.End(to)}, DeleteWrote: r.Temporal().DeleteWroteValidTo()}
 }
 
 // NodeRowInfo returns n's RowInfo.
-func NodeRowInfo(n *types.Node) RowInfo {
-	_, to, _ := n.ValidRange()
+func NodeRowInfo(a types.ValidAxis, n *types.Node) RowInfo {
+	_, to, ok := n.ValidRange()
+	if !ok {
+		to = a.OpenEnd()
+	}
 	f, t, d := n.TxStamps()
 	return RowInfo{Version: n.Version(), TxFrom: f, TxTo: t, DeletedAt: d,
-		Span: Span{From: storepkg.NodeValidFrom(n), To: effTo(to)}, DeleteWrote: n.Temporal().DeleteWroteValidTo()}
+		Span: Span{From: storepkg.NodeValidFrom(a, n), To: a.End(to)}, DeleteWrote: n.Temporal().DeleteWroteValidTo()}
 }
 
 // last is the row's newest stamp.

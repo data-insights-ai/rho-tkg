@@ -301,7 +301,7 @@ func TestNodeMatchesValidTime_ExplicitCreatedAtDoesNotShiftEffectiveValidFrom(t 
 		t.Fatal("probe at explicit tkg_created_at matched — the door is following the shadow CreatedAt rule instead of canonical EntityValidFrom (snowflake fallback)")
 	}
 	// A probe at/after the snowflake stamp must match (node alive now).
-	sfStamp := storeutil.EntityValidFrom(n.ID().SnowflakeID(), n.Temporal())
+	sfStamp := storeutil.EntityValidFrom(types.LegacyValidAxis, n.ID().SnowflakeID(), n.Temporal())
 	if !g.Temporal.NodeMatchesValidTime(n, storepkg.QueryOpts{ValidAt: sfStamp}) {
 		t.Fatal("probe at the snowflake-derived effective valid-from must match")
 	}

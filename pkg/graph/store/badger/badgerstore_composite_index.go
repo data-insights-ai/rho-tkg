@@ -270,7 +270,7 @@ func (bs *Store) fetchNodesByLabelPropertiesIDs(labelToken uint16, values map[st
 		if !indexpkg.NodeMatchesAllProperties(n, values) {
 			continue
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(nid.SnowflakeID(), n.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), nid.SnowflakeID(), n.Temporal(), opts) {
 			continue
 		}
 		result = append(result, n)

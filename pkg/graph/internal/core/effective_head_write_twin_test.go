@@ -56,7 +56,7 @@ func TestEffectiveHeadWrite_TwinDifferential(t *testing.T) {
 		seeds = n
 	}
 	var planned, rollbacks, demotes, gaps uint64
-	for _, be := range r10AllBackends(t) {
+	for _, be := range append(r10AllBackends(t), r10WholeAxisBackends(t)...) {
 		for s := range seeds {
 			seed := uint64(0x68b0 + s)
 			t.Run(fmt.Sprintf("%s/seed=%d", be.name, seed), func(t *testing.T) {
@@ -183,9 +183,22 @@ func (tw *headTwin) importRel(g *Core, id types.RelID, first int, p map[string]a
 }
 
 func (tw *headTwin) interval() (types.Instant, types.Instant) {
+	if tw.a.axis().Literal() && tw.rng.IntN(5) == 0 {
+		// The literal axis (round 11): spans that start or end at the
+		// instant 0 and cross it.
+		k := types.Instant(50 * (1 + tw.rng.IntN(4)))
+		switch tw.rng.IntN(3) {
+		case 0:
+			return -k, 0
+		case 1:
+			return 0, k
+		default:
+			return -k, k
+		}
+	}
 	a := types.Instant(50 * (1 + tw.rng.IntN(20)))
 	if tw.rng.IntN(4) == 0 {
-		return a, 0
+		return a, tw.a.axis().OpenEnd() // open (0 on the legacy axis)
 	}
 	return a, a + types.Instant(50*(1+tw.rng.IntN(6)))
 }
@@ -247,7 +260,7 @@ func (tw *headTwin) step(step int) {
 	case op < 58:
 		tw.gapStep(rel, nid, rid)
 	case op < 66:
-		if b == 0 {
+		if tw.a.axis().Open(b) {
 			b = a + 100
 		}
 		tw.last = fmt.Sprintf("Excise [%d,%d) rel=%v", a, b, rel)
@@ -366,7 +379,7 @@ func (tw *headTwin) txStep(rel bool, nid types.NodeID, rid types.RelID, appendsO
 				return err
 			}})
 		case k < 8:
-			if b == 0 {
+			if tw.a.axis().Open(b) {
 				b = a + 100
 			}
 			ops = append(ops, txOp{fmt.Sprintf("Excise [%d,%d)", a, b), func(tx *GraphTx) error {

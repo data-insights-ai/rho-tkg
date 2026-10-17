@@ -173,9 +173,6 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 	if err := edge.Validate(); err != nil {
 		return nil, err
 	}
-	if err := c.noteRowValidFromZero(edge.ValidFrom, edge.ValidFromZero); err != nil {
-		return nil, err
-	}
 	// edge.TxFrom is another machine's transaction stamp and is stored VERBATIM
 	// below, so this public door is an untrusted stamp boundary exactly like the
 	// import doors (BACKLOG 9h established the same for names and properties).
@@ -230,8 +227,9 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 		}
 		stub.SetIntegrity(ig)
 		// Temporal carried verbatim from the authoritative edge (edge.TxFrom is
-		// always non-zero, so it overrides the fresh-clock default).
-		c.applyRelCreateTemporal(stub, edge.ValidFrom, types.ValidFromClaimed(edge.ValidFrom, edge.ValidFromZero), edge.ValidTo, edge.CreatedAt, edge.TxFrom)
+		// always non-zero, so it overrides the fresh-clock default), read on
+		// this graph's valid axis (round 11: both machines share the mode).
+		c.applyRelCreateTemporal(stub, edge.ValidFrom, c.axis().Claimed(edge.ValidFrom), edge.ValidTo, edge.CreatedAt, edge.TxFrom)
 		stub.SetVersion(edge.Version)
 		if err := checkCtx(ctx); err != nil {
 			return nil, nil, err

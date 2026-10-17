@@ -573,7 +573,7 @@ func TestDecomposeID_ConsistentWithTemporalFilter(t *testing.T) {
 
 	// DecomposeID time should match EntityValidFrom derivation.
 	c := DecomposeID(id)
-	efrom := storeutil.EntityValidFrom(id, nil)
+	efrom := storeutil.EntityValidFrom(types.LegacyValidAxis, id, nil)
 	decomposedMs := c.CreatedAt.UnixMilli()
 	efromMs := int64(efrom)
 

@@ -64,7 +64,7 @@ func (bs *Store) fetchRelationshipsByTypeIDs(token uint16, ids []types.RelID, op
 		if !r.HasTypeTokenRaw(token) {
 			continue
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(id, r.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), id, r.Temporal(), opts) {
 			continue
 		}
 		rels = append(rels, r)

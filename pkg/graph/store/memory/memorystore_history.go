@@ -82,7 +82,7 @@ func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	ms.removeNodeFromCompositeIndexesLocked(old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.noteNodeCurrentLocked(updatedNode)
@@ -91,7 +91,7 @@ func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
 	ms.addNodeToTemporalIndexesLocked(updatedNode, rawID)
-	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, updatedNode, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
@@ -167,7 +167,7 @@ func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	ms.removeNodeFromCompositeIndexesLocked(old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.noteNodeCurrentLocked(updatedNode)
@@ -176,7 +176,7 @@ func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
 	ms.addNodeToTemporalIndexesLocked(updatedNode, rawID)
-	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
+	indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, updatedNode, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
@@ -357,7 +357,7 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 	ms.forgetNodePropTxCurrentLocked(n) // ledger row 62
 	ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, n, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
 	ms.nodeValidEnds.NoteCurrentDelete(int64(nid))
@@ -616,7 +616,7 @@ func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	// another type is live while its older rows' type index does not cover it
 	// (backlog 75 review).
 	if indexpkg.RelCoveredInTemporalIndexes(ms.relTypeTemporalIndexes, r, rid.SnowflakeID()) {
-		indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, rid.SnowflakeID())
+		indexpkg.AddRelToTemporalIndexes(ms.validAxis.Get(), ms.relTypeTemporalIndexes, r, rid.SnowflakeID())
 	}
 	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c — the cascade's bounded-correction append door
 	return ms.logRelHistoryVersionRoutedLocked(version, r, token)
@@ -855,7 +855,7 @@ func (ms *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	ms.removeNodeFromCompositeIndexesLocked(old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = ms.storedNode(current)
 	ms.noteNodeCurrentLocked(current)
@@ -864,7 +864,7 @@ func (ms *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
 	ms.addNodeToCompositeIndexesLocked(current, rawID)
 	ms.addNodeToTemporalIndexesLocked(current, rawID)
-	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, current, rawID)
+	indexpkg.AddNodeToHighFrequencyIndexes(ms.validAxis.Get(), ms.hfIndexes, current, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
@@ -964,11 +964,11 @@ func (ms *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return nil, err
 	}
-	best := nodeAsOfLocked(ms.nodes[nid], ms.nodeHistory[nid], ms.nodeHistTopOf(nid), txTime)
+	best := nodeAsOfLocked(ms.validAxis.Get(), ms.nodes[nid], ms.nodeHistory[nid], ms.nodeHistTopOf(nid), txTime)
 	if best == nil {
 		return nil, ErrVersionNotFound
 	}
-	return nodeCopyVisibleAtTxTime(best, txTime), nil
+	return nodeCopyVisibleAtTxTime(ms.validAxis.Get(), best, txTime), nil
 }
 
 // RelAsOf returns the relationship version visible at txTime without
@@ -990,11 +990,11 @@ func (ms *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	if err != nil {
 		return nil, err
 	}
-	best := relAsOfLocked(cur, ms.relHistory[rid], ms.relHistTopOf(rid), txTime)
+	best := relAsOfLocked(ms.validAxis.Get(), cur, ms.relHistory[rid], ms.relHistTopOf(rid), txTime)
 	if best == nil {
 		return nil, ErrVersionNotFound
 	}
-	return relCopyVisibleAtTxTime(best, txTime), nil
+	return relCopyVisibleAtTxTime(ms.validAxis.Get(), best, txTime), nil
 }
 
 // NodesAsOf returns all node versions visible at txTime. It inspects current
@@ -1013,16 +1013,16 @@ func (ms *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 
 	result := make([]*types.Node, 0, len(ms.nodes))
 	for id, current := range ms.nodes {
-		if best := nodeAsOfLocked(current, ms.nodeHistory[id], ms.nodeHistTopOf(id), txTime); best != nil {
-			result = append(result, nodeCopyVisibleAtTxTime(best, txTime))
+		if best := nodeAsOfLocked(ms.validAxis.Get(), current, ms.nodeHistory[id], ms.nodeHistTopOf(id), txTime); best != nil {
+			result = append(result, nodeCopyVisibleAtTxTime(ms.validAxis.Get(), best, txTime))
 		}
 	}
 	for id, history := range ms.nodeHistory {
 		if _, live := ms.nodes[id]; live {
 			continue
 		}
-		if best := nodeAsOfLocked(nil, history, math.MaxUint32, txTime); best != nil {
-			result = append(result, nodeCopyVisibleAtTxTime(best, txTime))
+		if best := nodeAsOfLocked(ms.validAxis.Get(), nil, history, math.MaxUint32, txTime); best != nil {
+			result = append(result, nodeCopyVisibleAtTxTime(ms.validAxis.Get(), best, txTime))
 		}
 	}
 	if len(result) == 0 {
@@ -1057,8 +1057,8 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 				sealedLive[id] = struct{}{}
 			}
 		}
-		if best := relAsOfLocked(current, ms.relHistory[id], ms.relHistTopOf(id), txTime); best != nil {
-			result = append(result, relCopyVisibleAtTxTime(best, txTime))
+		if best := relAsOfLocked(ms.validAxis.Get(), current, ms.relHistory[id], ms.relHistTopOf(id), txTime); best != nil {
+			result = append(result, relCopyVisibleAtTxTime(ms.validAxis.Get(), best, txTime))
 		}
 		return true
 	}); err != nil {
@@ -1071,8 +1071,8 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 		if _, live := sealedLive[id]; live {
 			continue
 		}
-		if best := relAsOfLocked(nil, history, math.MaxUint32, txTime); best != nil {
-			result = append(result, relCopyVisibleAtTxTime(best, txTime))
+		if best := relAsOfLocked(ms.validAxis.Get(), nil, history, math.MaxUint32, txTime); best != nil {
+			result = append(result, relCopyVisibleAtTxTime(ms.validAxis.Get(), best, txTime))
 		}
 	}
 	if len(result) == 0 {
@@ -1082,7 +1082,7 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	return result, nil
 }
 
-func nodeAsOfLocked(current *types.Node, history map[uint32]*types.Node, top uint32, txTime types.Instant) *types.Node {
+func nodeAsOfLocked(a types.ValidAxis, current *types.Node, history map[uint32]*types.Node, top uint32, txTime types.Instant) *types.Node {
 	// Fast path: the live current row answers when it is recorded by the pin
 	// and no history row sits above its version (the rule's current arm with
 	// nothing to outrank it — no slice is built).
@@ -1092,18 +1092,18 @@ func nodeAsOfLocked(current *types.Node, history map[uint32]*types.Node, top uin
 	// The shared as-of selection rule (storeutil.SelectAsOfWithCurrent: the
 	// newest row recorded by the pin, absent if it was retracted/deleted by
 	// the pin or its life ended in a tombstone — lessons 62, backlog 18/20).
-	best, ok := storeutil.SelectAsOfWithCurrent(nodeHistoryVersionSlice(history), current, current != nil, txTime)
+	best, ok := storeutil.SelectAsOfWithCurrent(a, nodeHistoryVersionSlice(history), current, current != nil, txTime)
 	if !ok {
 		return nil
 	}
 	return best
 }
 
-func relAsOfLocked(current *types.Relationship, history map[uint32]*types.Relationship, top uint32, txTime types.Instant) *types.Relationship {
+func relAsOfLocked(a types.ValidAxis, current *types.Relationship, history map[uint32]*types.Relationship, top uint32, txTime types.Instant) *types.Relationship {
 	if relMatchesTxTime(current, txTime) && !historyHasVersionAbove(history, current.Version(), top) {
 		return current
 	}
-	best, ok := storeutil.SelectAsOfWithCurrent(relHistoryVersionSlice(history), current, current != nil, txTime)
+	best, ok := storeutil.SelectAsOfWithCurrent(a, relHistoryVersionSlice(history), current, current != nil, txTime)
 	if !ok {
 		return nil
 	}
@@ -1191,21 +1191,21 @@ func relMatchesTxTime(r *types.Relationship, txTime types.Instant) bool {
 	return tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0
 }
 
-func nodeCopyVisibleAtTxTime(n *types.Node, txTime types.Instant) *types.Node {
+func nodeCopyVisibleAtTxTime(a types.ValidAxis, n *types.Node, txTime types.Instant) *types.Node {
 	if n == nil {
 		return nil
 	}
 	out := n.DeepCopy()
-	storeutil.NormalizeTemporalVisibleAtTxTime(out.Temporal(), txTime)
+	storeutil.NormalizeTemporalVisibleAtTxTime(a, out.Temporal(), txTime)
 	return out
 }
 
-func relCopyVisibleAtTxTime(r *types.Relationship, txTime types.Instant) *types.Relationship {
+func relCopyVisibleAtTxTime(a types.ValidAxis, r *types.Relationship, txTime types.Instant) *types.Relationship {
 	if r == nil {
 		return nil
 	}
 	out := r.DeepCopy()
-	storeutil.NormalizeTemporalVisibleAtTxTime(out.Temporal(), txTime)
+	storeutil.NormalizeTemporalVisibleAtTxTime(a, out.Temporal(), txTime)
 	return out
 }
 

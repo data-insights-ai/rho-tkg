@@ -299,9 +299,6 @@ func (a *AdminOps) Reset() error {
 // against data that was supposedly wiped. Caller must hold c.mu.Lock.
 func (c *Core) reapCoreStateForClear(leaseBytes []byte) error {
 	c.asOfColumns.bump() // whole state wiped — discard cached as-of columns
-	// Clear re-stamps the base format marker: the next row valid from the
-	// explicit 0 raises it again (noteValidFromZero, round 11).
-	c.validFromZeroMarked.Store(false)
 
 	// PRESERVE FIRST. store.Clear() has already destroyed both Preserve-
 	// classified MetaKV keys (BACKLOG 13l), so restoring them is the first

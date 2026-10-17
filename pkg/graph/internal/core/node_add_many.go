@@ -116,7 +116,7 @@ func (c *Core) addNodesInternal(ctx context.Context, labels []string, props []ma
 			AuthorizedBy:       pn.authorizedBy,
 			AuthorizationLevel: pn.authLevel,
 		})
-		pn.stampTemporal(n, c.now())
+		pn.stampTemporal(c.axis(), n, c.now())
 		nodes = append(nodes, n)
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -195,7 +195,7 @@ func (c *Core) prepareNodeCreate(props map[string]any, pn *preparedNodeCreate) e
 	if err != nil {
 		return err
 	}
-	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(c.axis(), props)
 	if err != nil {
 		return err
 	}
@@ -223,19 +223,23 @@ func (c *Core) prepareNodeCreate(props map[string]any, pn *preparedNodeCreate) e
 
 // stampTemporal sets the node's transaction time (now, or the backfilled
 // override) and the caller's temporal metadata, as addNodeInternal does after
-// the hash.
-func (pn *preparedNodeCreate) stampTemporal(n *types.Node, now types.Instant) {
+// the hash, on the graph's valid axis a.
+func (pn *preparedNodeCreate) stampTemporal(a types.ValidAxis, n *types.Node, now types.Instant) {
 	if pn.txFromOverride != 0 {
 		now = pn.txFromOverride
 	}
 	tm := n.Temporal()
-	if tm == nil {
+	fresh := tm == nil
+	if fresh {
 		tm = &types.TemporalMetadata{}
 		n.SetTemporal(tm)
 	}
 	tm.TxFrom = now
-	stampValidFrom(tm, pn.validFrom, pn.vfSet)
-	if pn.validTo != 0 {
+	stampValidFrom(a, tm, pn.validFrom, pn.vfSet)
+	// pn.validTo is the end as stored on the valid axis a (its open end
+	// without a claim): a fresh row takes it, an existing one keeps its end
+	// unless pn.validTo claims one.
+	if fresh || pn.validTo != a.OpenEnd() {
 		tm.ValidTo = pn.validTo
 	}
 	if pn.createdAt != 0 {

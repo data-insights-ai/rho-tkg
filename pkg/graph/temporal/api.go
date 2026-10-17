@@ -840,7 +840,9 @@ func (a *API) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship,
 }
 
 // SetNodeVersionInterval records a valid-time correction for node id over
-// [validFrom, validTo) (validTo == 0 means open-ended). props is a patch (a nil
+// [validFrom, validTo) (validTo open: 0 on the legacy valid axis,
+// types.InfiniteValidTo on the literal axis of an UntimedWholeAxis store,
+// where 0 is the instant 0; round 11). props is a patch (a nil
 // value deletes the key) applied to the state valid at each instant of the
 // interval as believed before the call — unnamed properties keep their
 // then-valid values, not the current ones. Append-only: reads pinned to an
@@ -848,7 +850,7 @@ func (a *API) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship,
 // appended version covering validFrom.
 //
 // Unique constraints judge the patch like an update: an open-ended call
-// (validTo == 0) replaces the current row, so a constrained value another
+// (validTo open) replaces the current row, so a constrained value another
 // current node holds is refused (UniqueCurrent and UniqueForever); a bounded
 // call leaves the current row's value, so only UniqueForever (a value owned by
 // another entity) refuses it. A refusal returns ErrUniqueViolation and appends

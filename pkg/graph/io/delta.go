@@ -216,9 +216,11 @@ func HeaderOf(r io.Reader) (DeltaHeader, error) {
 
 // exportFormatVersionMin / Max bound the versions HeaderOf accepts. They mirror
 // internal/core/export.go: v1 (pre-SnapshotLSN), v2 (full export with
-// SnapshotLSN), v3 (delta). Kept here so HeaderOf can route a stream without
+// SnapshotLSN), v3 (delta), v4 (a full or delta export of an
+// UntimedWholeAxis store, round 11: rows on the literal valid axis; IsDelta
+// tells the two apart). Kept here so HeaderOf can route a stream without
 // importing internal/core.
 const (
 	exportFormatVersionMin byte = 1
-	exportFormatVersionMax byte = 3
+	exportFormatVersionMax byte = 4
 )

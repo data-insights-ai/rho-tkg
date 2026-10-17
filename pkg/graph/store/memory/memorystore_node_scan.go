@@ -55,7 +55,7 @@ func (ms *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 		if !ok || !n.HasLabelTokenRaw(token) {
 			continue
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), n.Temporal(), opts) {
 			continue
 		}
 		if !fn(n) {

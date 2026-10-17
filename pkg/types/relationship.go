@@ -385,33 +385,9 @@ func (r *Relationship) Temporal() *TemporalMetadata {
 	return r.temporal
 }
 
-// ValidFromClaim returns the version's claimed valid start and whether it
-// makes one (TemporalMetadata.HasValidFrom: a non-zero ValidFrom, or 0 with
-// ValidFromZero), allocation-free like ValidRange. ok=false: no claim, the
-// untimed start applies.
-func (r *Relationship) ValidFromClaim() (from Instant, ok bool) {
-	if r == nil {
-		return 0, false
-	}
-	if r.meta != nil { // compact rows never carry ValidFromZero
-		return r.meta.validFrom, r.meta.validFrom != 0
-	}
-	if r.temporal == nil {
-		return 0, false
-	}
-	return r.temporal.ValidFrom, r.temporal.HasValidFrom()
-}
-
-// StartsAtZero reports whether the version is valid from the explicit
-// instant 0 (TemporalMetadata.StartsAtZero), allocation-free like
-// ValidFromClaim; false on nil.
-func (r *Relationship) StartsAtZero() bool {
-	vf, ok := r.ValidFromClaim()
-	return ok && vf == 0
-}
-
 // ValidRange returns the validity bounds and whether the relationship carries
-// temporal metadata at all (a zero ValidTo means open-ended). Prefer it over
+// temporal metadata at all (a zero ValidTo means open-ended on the legacy ValidAxis;
+// read the end through the store's axis, ValidAxis.Open / End). Prefer it over
 // Temporal() for bounds only: it allocates nothing on a frozen row.
 func (r *Relationship) ValidRange() (from, to Instant, ok bool) {
 	if r == nil {
@@ -451,22 +427,11 @@ func (r *Relationship) TxStamps() (txFrom, txTo, deletedAt Instant) {
 // its TxFrom (when the version it supersedes starts at or after the clock it
 // stores that start + 1 instead, backlog 77); this returns that start without
 // reading the timeline. Like
-// ValidRange it allocates nothing on a frozen row. 0 for a nil row.
+// ValidRange it allocates nothing on a frozen row. 0 for a nil row. This is
+// the legacy ValidAxis's rule; a row of a store with the literal axis
+// (UntimedWholeAxis) starts at its stored ValidFrom (ValidAxis.RelStart).
 func (r *Relationship) EffectiveValidFrom() Instant {
-	if r == nil {
-		return 0
-	}
-	if vf, ok := r.ValidFromClaim(); ok { // the claim, the explicit 0 included (round 11)
-		return vf
-	}
-	if tx, _, _ := r.TxStamps(); tx != 0 {
-		return tx
-	}
-	var tm *TemporalMetadata // a frozen row's meta carries no UpdatedAt
-	if r.meta == nil {
-		tm = r.temporal
-	}
-	return tm.UntimedValidFrom(r.ID().MintInstant())
+	return LegacyValidAxis.RelStart(r)
 }
 
 // SetTemporal sets the relationship's temporal metadata.

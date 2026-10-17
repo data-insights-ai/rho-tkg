@@ -102,7 +102,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector-index entries right after the old ones are purged,
 	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
@@ -130,9 +130,9 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
-	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
-	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
+	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
 
 	// Single appendOps call — node data + history + label index delete — atomic in the pending buffer.
 	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
@@ -243,7 +243,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector-index entries right after the old ones are purged,
 	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
@@ -267,9 +267,9 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	bs.recordNodeReplacedLocked(prevState, updatedNode)            // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
-	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
-	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
+	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
 
 	// Single appendOps call — node data + history + label index set — atomic in the pending buffer.
 	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
@@ -374,7 +374,7 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector-index entries right after the old ones are purged,
 	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
@@ -388,9 +388,9 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	bs.recordNodeReplacedLocked(prevState, current)              // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(current)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(current, id)...)
-	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, current, id)
+	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, current, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(current, id)...)
-	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, current, id)
+	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, current, id)
 
 	// Single appendOps call — atomic in the pending buffer — then the cache.
 	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))

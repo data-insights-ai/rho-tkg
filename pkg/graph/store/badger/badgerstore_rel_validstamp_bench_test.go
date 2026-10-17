@@ -68,7 +68,7 @@ func BenchmarkOutgoingRelsAt_Decode(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		count := 0
 		err := bs.ForEachOutgoingRel(hub, 0, func(r *types.Relationship) bool {
-			if storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts) {
+			if storepkg.MatchesTemporalFilter(types.LegacyValidAxis, r.ID().SnowflakeID(), r.Temporal(), opts) {
 				count++
 			}
 			return true

@@ -63,7 +63,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 	// columns. Anything else (property predicates, pagination, tx-time) is the row
 	// path's job — declining is correct, and quietly ignoring an opt would return
 	// rows the caller did not ask for.
-	window, temporalOnly := columnarValidTimeWindow(opts)
+	window, temporalOnly := columnarValidTimeWindow(bs.validAxis.Get(), opts)
 	if !temporalOnly {
 		return false
 	}
@@ -119,9 +119,6 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 		if !window.filtered {
 			batch.IDs = append(batch.IDs, ids[start:end]...)
 			batch.Ordinals = append(batch.Ordinals, ords[start:end]...)
-			for ord := start; ord < end; ord++ {
-				batch.ValidFromZero = storecontract.AppendValidFromZero(batch.ValidFromZero, len(batch.IDs)-(end-ord), validFromZeroAt(vf, eff, ord)) // rows before ord: the block's IDs are appended
-			}
 			batch.ValidFrom = append(batch.ValidFrom, vf[start:end]...)
 			batch.ValidTo = append(batch.ValidTo, vt[start:end]...)
 			for c, v := range views {
@@ -136,7 +133,6 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 				}
 				batch.IDs = append(batch.IDs, ids[ord])
 				batch.Ordinals = append(batch.Ordinals, ords[ord])
-				batch.ValidFromZero = storecontract.AppendValidFromZero(batch.ValidFromZero, len(batch.ValidFrom), validFromZeroAt(vf, eff, ord))
 				batch.ValidFrom = append(batch.ValidFrom, vf[ord])
 				batch.ValidTo = append(batch.ValidTo, vt[ord])
 				for c, v := range views {
@@ -160,13 +156,15 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 type validWindow struct {
 	from, to int64
 	filtered bool
+	axis     types.ValidAxis // the store's valid axis: how a row's validTo reads
 }
 
 // matches is the per-row predicate the zone map approximates per block: a row
 // [f, t) meets the window by the one overlap rule (storeutil.IntervalMeets: a
-// validTo of 0 is OPEN-ENDED, not "ends at 0").
+// validTo is open by the store's valid axis — 0 on the legacy axis, not "ends
+// at 0").
 func (w validWindow) matches(f, t int64) bool {
-	return !w.filtered || storeutil.IntervalMeets(types.Instant(f), types.Instant(t), types.Instant(w.from), types.Instant(w.to))
+	return !w.filtered || storeutil.IntervalMeets(w.axis, types.Instant(f), types.Instant(t), types.Instant(w.from), types.Instant(w.to))
 }
 
 // columnarValidTimeWindow normalises opts into the scan's validWindow with
@@ -183,20 +181,20 @@ func (w validWindow) matches(f, t int64) bool {
 // A point filter ValidAt=t is the interval [t, t+1): `from < t+1` is `from <= t`,
 // and `to > t` is unchanged — so one predicate serves both shapes. ValidAt -1 is
 // the window [-1, 0), a real one (ledger row 60). t = MaxInt64 saturates.
-func columnarValidTimeWindow(opts storecontract.QueryOpts) (w validWindow, ok bool) {
+func columnarValidTimeWindow(a types.ValidAxis, opts storecontract.QueryOpts) (w validWindow, ok bool) {
 	if opts.HasValidAt() {
 		at := int64(opts.ValidAt)
 		to := at + 1
 		if at == math.MaxInt64 {
 			to = at
 		}
-		return validWindow{from: at, to: to, filtered: true}, true
+		return validWindow{from: at, to: to, filtered: true, axis: a}, true
 	}
 	if opts.HasValidInterval() {
 		if opts.ValidStart >= opts.ValidEnd {
 			return validWindow{}, false // matches nothing — let the row path own the empty answer
 		}
-		return validWindow{from: int64(opts.ValidStart), to: int64(opts.ValidEnd), filtered: true}, true
+		return validWindow{from: int64(opts.ValidStart), to: int64(opts.ValidEnd), filtered: true, axis: a}, true
 	}
 	return validWindow{}, true // no active filter (a lone ValidStart or ValidEnd is not one)
 }
@@ -254,15 +252,6 @@ func appendFromView(b *storecontract.ColumnData, c int, v indexpkg.ColumnView, o
 	}
 }
 
-// validFromZeroAt reports that row ord of a column snapshot is valid from the
-// explicit instant 0 (round 11): its stored and its effective start are both
-// 0. An unset start (stored 0) resolves to a non-zero TxFrom, update or mint
-// instant, so a stored 0 with an effective 0 is the claim
-// (types.TemporalMetadata.ValidFromZero, which the snapshot does not carry).
-func validFromZeroAt(vf, eff []int64, ord int) bool {
-	return vf[ord] == 0 && eff[ord] == 0
-}
-
 func newColumnBatch(nCols int) *storecontract.ColumnBatch {
 	return &storecontract.ColumnBatch{
 		IDs:        make([]types.NodeID, 0, storecontract.ColumnScanBatchRows),
@@ -278,7 +267,6 @@ func resetColumnBatch(b *storecontract.ColumnBatch, nCols int) {
 	b.Ordinals = b.Ordinals[:0]
 	b.ValidFrom = b.ValidFrom[:0]
 	b.ValidTo = b.ValidTo[:0]
-	b.ValidFromZero = b.ValidFromZero[:0]
 	for c := range nCols {
 		b.Ints[c] = b.Ints[c][:0]
 		b.Flts[c] = b.Flts[c][:0]

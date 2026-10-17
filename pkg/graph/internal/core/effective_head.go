@@ -65,7 +65,8 @@ const (
 	headStripeMaxWeight = headCacheMaxPieces / headCacheStripes
 )
 
-// headPiece is one piece [from, to) (to 0: open) of a head answer; version
+// headPiece is one piece [from, to) (to open by the graph's valid axis) of a
+// head answer; version
 // names the winning row (versions are unique in a cached chain).
 type headPiece struct {
 	from, to types.Instant
@@ -82,7 +83,7 @@ type headEntry struct {
 	maxVer    uint32                 // highest version of the chain
 	cascade   bool                   // the resolver's own-bounds arm
 	lastStart types.Instant          // the newest row's start (resolver key)
-	lastEnd   types.Instant          // the newest row's own ValidTo (0: open)
+	lastEnd   types.Instant          // the newest row's own ValidTo (open by the axis)
 	pieces    []headPiece
 	// What a correction needs besides the pieces (backlog 68b,
 	// effective_head_write.go): every row's own valid bounds, sorted and
@@ -260,6 +261,7 @@ func gatherHeadFacts[T interface {
 	storeutil.TemporalRow
 }](f *headFacts, c *Core, k *chainKernel[T], filtered []T) {
 	bounds := make([]types.Instant, 0, 2*len(filtered))
+	a := c.axis()
 	for i, r := range filtered {
 		tm := r.Temporal()
 		if tm == nil || tm.DeletedAt != 0 || tm.Retracted || (i > 0 && filtered[i-1].Version() >= r.Version()) {
@@ -268,7 +270,7 @@ func gatherHeadFacts[T interface {
 		f.maxTx, f.maxTxTo = max(f.maxTx, tm.TxFrom), max(f.maxTxTo, tm.TxTo)
 		s, e := k.ownBounds(c, r)
 		bounds = append(bounds, s)
-		if e != 0 {
+		if !a.Open(e) {
 			bounds = append(bounds, e)
 		} else if !tm.Void {
 			f.open.note(tm.TxFrom, r.Version())
@@ -326,6 +328,7 @@ func headOverlay[T interface {
 	if e.bounds != nil {
 		bounds = slices.Clone(e.bounds)
 	}
+	a := c.axis()
 	for _, r := range appended {
 		tm := r.Temporal()
 		if tm == nil || tm.DeletedAt != 0 || tm.Retracted || tm.TxTo != 0 ||
@@ -333,26 +336,26 @@ func headOverlay[T interface {
 			return nil
 		}
 		s, end := k.sortVF(c, r), tm.ValidTo
-		if end != 0 && end <= s {
+		if !a.Open(end) && end <= s {
 			return nil
 		}
 		if !out.cascade {
 			// Monotonic arm: the resolver's positional start equals the
 			// classifier's key only once the store is migrated.
-			if !c.bitemporalMigrated || s < out.lastStart || (out.lastEnd == 0 && end != 0) {
+			if !c.bitemporalMigrated || s < out.lastStart || (a.Open(out.lastEnd) && !a.Open(end)) {
 				return nil
 			}
 		}
-		out.pieces = paintHead(out.pieces, s, end, r.Version(), isVoidRow(r))
+		out.pieces = paintHead(a, out.pieces, s, end, r.Version(), isVoidRow(r))
 		out.maxTx, out.maxVer = tm.TxFrom, r.Version()
 		out.lastStart, out.lastEnd = s, end
 		if bounds != nil {
 			bounds = append(bounds, s)
-			if end != 0 {
+			if !a.Open(end) {
 				bounds = append(bounds, end)
 			}
 		}
-		if end == 0 && !tm.Void {
+		if a.Open(end) && !tm.Void {
 			out.open.note(tm.TxFrom, r.Version())
 		}
 	}
@@ -363,20 +366,21 @@ func headOverlay[T interface {
 	return &out
 }
 
-// paintHead makes [s, end) (end 0: open) won by version (a gap when void).
-func paintHead(pieces []headPiece, s, end types.Instant, version uint32, void bool) []headPiece {
+// paintHead makes [s, end) (end open by the valid axis a) won by version (a
+// gap when void).
+func paintHead(a types.ValidAxis, pieces []headPiece, s, end types.Instant, version uint32, void bool) []headPiece {
 	out := make([]headPiece, 0, len(pieces)+2)
 	for _, p := range pieces {
 		// The part of p before s.
 		if p.from < s {
 			q := p
-			if q.to == 0 || q.to > s {
+			if a.Open(q.to) || q.to > s {
 				q.to = s
 			}
 			out = append(out, q)
 		}
 		// The part of p after end.
-		if end != 0 && (p.to == 0 || p.to > end) {
+		if !a.Open(end) && (a.Open(p.to) || p.to > end) {
 			q := p
 			if q.from < end {
 				q.from = end
@@ -417,7 +421,7 @@ func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.
 			}
 			row = full
 		}
-		row, ok := nodeRowAtTx(row, pin)
+		row, ok := nodeRowAtTx(c.axis(), row, pin)
 		if !ok {
 			return nil, false
 		}
@@ -443,7 +447,7 @@ func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Re
 			}
 			row = full
 		}
-		row, ok := relRowAtTx(row, pin)
+		row, ok := relRowAtTx(c.axis(), row, pin)
 		if !ok {
 			return nil, false
 		}

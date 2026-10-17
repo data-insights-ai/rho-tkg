@@ -976,7 +976,7 @@ func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string,
 			return err
 		}
 		for _, rel := range rels {
-			if !storeutil.MatchesTemporalFilter(rel.InternalID().SnowflakeID(), rel.Temporal(), opts) {
+			if !storeutil.MatchesTemporalFilter(c.axis(), rel.InternalID().SnowflakeID(), rel.Temporal(), opts) {
 				continue
 			}
 			other := rel.EndNodeID()
@@ -1061,7 +1061,7 @@ func (r *RelOps) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, inco
 			return err
 		}
 		for _, rel := range rels {
-			if !storeutil.MatchesTemporalFilter(rel.InternalID().SnowflakeID(), rel.Temporal(), opts) {
+			if !storeutil.MatchesTemporalFilter(c.axis(), rel.InternalID().SnowflakeID(), rel.Temporal(), opts) {
 				continue
 			}
 			if !fn(rel) {

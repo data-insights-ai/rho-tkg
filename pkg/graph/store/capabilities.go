@@ -1164,15 +1164,12 @@ type ColumnBatch struct {
 	// Ordinals is parallel to IDs: each node's dense ordinal (types.Node.Ordinal),
 	// 0 where the store numbers none (tiered, badger with DisableOrdinals).
 	Ordinals []uint32
-	// ValidFrom/ValidTo are parallel to IDs. Zero means no temporal metadata; ValidTo
-	// zero also means open-ended.
+	// ValidFrom/ValidTo are parallel to IDs, on the store's valid axis
+	// (types.ValidAxis, round 11). On the legacy axis zero means no temporal
+	// metadata and ValidTo zero also means open-ended; on the literal axis
+	// every value is an instant (the open end is types.InfiniteValidTo).
 	ValidFrom []int64
 	ValidTo   []int64
-	// ValidFromZero is nil, or parallel to IDs: true marks the row's
-	// ValidFrom 0 as the instant 0, a claim (types.TemporalMetadata
-	// .ValidFromZero, round 11), not "no temporal metadata". nil (or all
-	// false) when no row of the batch is valid from the explicit 0.
-	ValidFromZero []bool
 	ColumnData
 }
 
@@ -1213,11 +1210,10 @@ type RelColumnBatch struct {
 	// 0 where the store numbers none.
 	StartOrdinals []uint32
 	EndOrdinals   []uint32
-	// ValidFrom/ValidTo are parallel to IDs as on ColumnBatch; zero ValidTo = open-ended.
+	// ValidFrom/ValidTo are parallel to IDs as on ColumnBatch (the store's
+	// valid axis: ValidAxis.Open is the open end).
 	ValidFrom []int64
 	ValidTo   []int64
-	// ValidFromZero is ColumnBatch.ValidFromZero for these rows.
-	ValidFromZero []bool
 	ColumnData
 }
 

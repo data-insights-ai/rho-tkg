@@ -26,6 +26,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -75,9 +76,6 @@ type Core struct {
 	// propertyKeysQuery / relPropertyKeysQuery: the one-walk equality
 	// lookup over a value's forms (round 11), resolved by nativeCapability;
 	// nil = one store lookup per form.
-	// validFromZeroMarked: the store's format marker was raised for rows valid
-	// from the explicit 0 in this process (valid_from_claim.go).
-	validFromZeroMarked  atomic.Bool
 	propertyKeysQuery    storepkg.PropertyKeysLookupCapability
 	relPropertyKeysQuery storepkg.RelPropertyKeysLookupCapability
 	compositeQuery       storepkg.CompositePropertyIndexCapability
@@ -259,8 +257,12 @@ type Core struct {
 	// untimedIncomplete mirrors the persisted "converting" key: a conversion
 	// started and did not finish, so exports and untimed creates fail closed
 	// (checkUntimedComplete).
-	untimedUnbounded      atomic.Bool
-	untimedAtemporal      atomic.Bool // UntimedAtemporal (round 11); untimedUnbounded is set too
+	untimedUnbounded atomic.Bool
+	untimedWholeAxis atomic.Bool // UntimedWholeAxis (round 11); untimedUnbounded is set too
+	// validAxis is the valid axis the graph reads and writes rows on (round
+	// 11, types.ValidAxis): the literal axis under UntimedWholeAxis, else the
+	// legacy one; set with the mode (setUntimedMode), never per row.
+	validAxis             storeutil.ValidAxisCell
 	untimedIncomplete     atomic.Bool
 	untimedModeStamp      bool
 	untimedResume         bool
@@ -583,16 +585,16 @@ var (
 	// ErrInvalidTxFrom, so errors.Is matches both.
 	ErrTxOrder = fmt.Errorf("graph: caller transaction instant does not follow the entity's recorded history (%w)", ErrInvalidTxFrom)
 
-	// ErrValidEndAtZero (round 11) refuses a write whose valid-time claim
-	// would end another version at the instant 0: a tkg_valid_from of
-	// types.ExplicitInstant(0) on an update (the version before it would
-	// end at 0), on an import of an ID with an earlier life, or a correction
-	// or excise whose span crosses 0 on an entity with a version valid from
-	// the explicit 0. A valid end of 0 is "open" in every stored row, segment
-	// and timeline, so no version can end at the instant 0 yet; a create
-	// valid from the explicit 0 is accepted. It wraps ErrInvalidTimeRange, so
-	// errors.Is matches both.
-	ErrValidEndAtZero = fmt.Errorf("graph: no version can end at the instant 0 (%w)", ErrInvalidTimeRange)
+	// ErrZeroInstantLegacyAxis (round 11) refuses a valid-time claim of the
+	// instant 0 (types.ExplicitInstant(0) as tkg_valid_from or tkg_valid_to)
+	// on a graph whose store is on the legacy valid axis
+	// (Config.UntimedValidStart UntimedFromTxFrom or UntimedUnbounded): its
+	// rows read a stored valid-from of 0 as "no claim" and a stored valid-to
+	// of 0 as the open end, so they cannot record the instant 0. An
+	// UntimedWholeAxis store records it (every stored instant is literal).
+	// Nothing is written. It wraps ErrInvalidTimeRange, so errors.Is matches
+	// both.
+	ErrZeroInstantLegacyAxis = fmt.Errorf("graph: the instant 0 cannot be claimed on a store with the legacy valid axis (%w)", ErrInvalidTimeRange)
 
 	// ErrEntityDeleted is returned by Temporal().SetNodeVersionInterval /
 	// SetRelVersionInterval and their GraphTx, Batch and ingest Session twins
@@ -1115,7 +1117,7 @@ type Config struct {
 	// mode fails with ErrUntimedModeMismatch (a store holding rows from
 	// before this field existed is an UntimedFromTxFrom store). An existing
 	// store is converted once with Admin().SetUntimedValidStart(UntimedUnbounded).
-	// UntimedAtemporal (round 11, opt-in, fixed at store creation): a write
+	// UntimedWholeAxis (round 11, fixed at store creation): a write
 	// without a valid time makes no valid-time claim; an untimed update
 	// applies to every valid-time segment (SQL:2011 UPDATE without FOR
 	// PORTION OF) and an untimed delete is a retraction. See docs/api.md.
@@ -1126,6 +1128,12 @@ type Config struct {
 	// store created under v4.56.x defaults stays an UntimedFromTxFrom store).
 	// Set UntimedFromTxFrom explicitly to keep the TxFrom start for new
 	// stores.
+	//
+	// Deprecated default (announced in round 11): from the next minor
+	// release the zero value makes a new store an UntimedWholeAxis store
+	// (when its store implements store.ValidAxisCapability; memory, badger,
+	// tiered and sharded do). Existing stores keep their persisted mode. Set
+	// UntimedUnbounded explicitly to keep today's default for new stores.
 	UntimedValidStart UntimedValidStart
 }
 
@@ -1992,7 +2000,7 @@ func New(config Config) (*Core, error) {
 	if config.Store != nil && isNilInterfaceValue(config.Store) {
 		return nil, ErrNilStore
 	}
-	if config.UntimedValidStart > UntimedAtemporal {
+	if config.UntimedValidStart > UntimedWholeAxis {
 		return nil, fmt.Errorf("graph: Config.UntimedValidStart %d: %w", config.UntimedValidStart, ErrInvalidUntimedValidStart)
 	}
 	if config.DisableIntegrityHashes && len(config.RelSegments) > 0 {
@@ -2277,6 +2285,13 @@ func New(config Config) (*Core, error) {
 	// Backlog 73: likewise the untimed valid-start mode (untimed_mode.go).
 	c.setUntimedMode(config.UntimedValidStart)
 	if err := c.resolveUntimedMode(config.UntimedValidStart == UntimedDefault); err != nil {
+		if config.Store == nil {
+			_ = store.Close()
+		}
+		return nil, err
+	}
+	// Round 11: the store reads its rows on the graph's valid axis.
+	if err := c.syncStoreAxis(); err != nil {
 		if config.Store == nil {
 			_ = store.Close()
 		}

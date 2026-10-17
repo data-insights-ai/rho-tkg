@@ -83,7 +83,7 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 				return nil, err
 			}
 			if !above {
-				return nodeVisibleAtTxTime(current, txTime), nil
+				return nodeVisibleAtTxTime(c.axis(), current, txTime), nil
 			}
 		}
 	}
@@ -162,7 +162,7 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 				return nil, err
 			}
 			if !above {
-				return relVisibleAtTxTime(current, txTime), nil
+				return relVisibleAtTxTime(c.axis(), current, txTime), nil
 			}
 		}
 	}
@@ -322,7 +322,7 @@ func (c *Core) nodesAsOfLocked(txTime types.Instant) ([]*types.Node, error) {
 			if c.txTimeQueryCopy {
 				result = append(result, c.nodeCapabilityVisibleAtTxTime(n, txTime))
 			} else {
-				nodeVisibleAtTxTime(n, txTime)
+				nodeVisibleAtTxTime(c.axis(), n, txTime)
 			}
 		}
 		storeutil.SortNodesByID(result)
@@ -413,7 +413,7 @@ func (c *Core) relsAsOfLocked(txTime types.Instant) ([]*types.Relationship, erro
 			if c.txTimeQueryCopy {
 				result = append(result, c.relCapabilityVisibleAtTxTime(r, txTime))
 			} else {
-				relVisibleAtTxTime(r, txTime)
+				relVisibleAtTxTime(c.axis(), r, txTime)
 			}
 		}
 		storeutil.SortRelsByID(result)
@@ -453,19 +453,19 @@ func (c *Core) relsAsOfLocked(txTime types.Instant) ([]*types.Relationship, erro
 	return result, nil
 }
 
-func nodeVisibleAtTxTime(n *types.Node, txTime types.Instant) *types.Node {
+func nodeVisibleAtTxTime(a types.ValidAxis, n *types.Node, txTime types.Instant) *types.Node {
 	if n == nil {
 		return nil
 	}
-	storeutil.NormalizeTemporalVisibleAtTxTime(n.Temporal(), txTime)
+	storeutil.NormalizeTemporalVisibleAtTxTime(a, n.Temporal(), txTime)
 	return n
 }
 
-func relVisibleAtTxTime(r *types.Relationship, txTime types.Instant) *types.Relationship {
+func relVisibleAtTxTime(a types.ValidAxis, r *types.Relationship, txTime types.Instant) *types.Relationship {
 	if r == nil {
 		return nil
 	}
-	storeutil.NormalizeTemporalVisibleAtTxTime(r.Temporal(), txTime)
+	storeutil.NormalizeTemporalVisibleAtTxTime(a, r.Temporal(), txTime)
 	return r
 }
 
@@ -473,12 +473,12 @@ func (c *Core) nodeCapabilityVisibleAtTxTime(n *types.Node, txTime types.Instant
 	if c.txTimeQueryCopy {
 		n = n.DeepCopy()
 	}
-	return nodeVisibleAtTxTime(n, txTime)
+	return nodeVisibleAtTxTime(c.axis(), n, txTime)
 }
 
 func (c *Core) relCapabilityVisibleAtTxTime(r *types.Relationship, txTime types.Instant) *types.Relationship {
 	if c.txTimeQueryCopy {
 		r = r.DeepCopy()
 	}
-	return relVisibleAtTxTime(r, txTime)
+	return relVisibleAtTxTime(c.axis(), r, txTime)
 }

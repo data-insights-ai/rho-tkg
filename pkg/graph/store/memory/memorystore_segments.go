@@ -61,8 +61,7 @@ type segType struct {
 	maxID         types.RelID
 	// refused holds memtable rows (by pointer: a replaced row is a new
 	// pointer and becomes eligible again) that the codec refused to seal —
-	// no stored hash, a stored hash its content does not reproduce, or a row
-	// valid from the explicit 0 (round 11, no segment column for it). They
+	// no stored hash, or a stored hash its content does not reproduce. They
 	// stay in the memtable, answered exactly as before.
 	refused map[*types.Relationship]struct{}
 	// sealMu serializes seals of this type; it is taken without ms.mu held.
@@ -366,7 +365,7 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 		if _, dead := ms.segDead[id]; dead {
 			continue // a faulted-in ID stays in the memtable until S4
 		}
-		if _, bad := st.refused[r]; bad || !hasStoredHash(r) || validFromZeroRow(r) {
+		if _, bad := st.refused[r]; bad || !hasStoredHash(r) {
 			refused[r] = struct{}{}
 			continue
 		}
@@ -515,11 +514,6 @@ type sealRecord struct {
 
 // hasStoredHash mirrors the codec's precondition: a 64-character lowercase
 // hex integrity hash.
-// validFromZeroRow reports a row valid from the explicit 0 (round 11): the
-// segment codec has no column for that claim (its valid-from 0 is "unset"),
-// so the row stays in the memtable, answered as before.
-func validFromZeroRow(r *types.Relationship) bool { return r.StartsAtZero() }
-
 func hasStoredHash(r *types.Relationship) bool {
 	ig := r.Integrity()
 	if ig == nil || len(ig.Hash) != 64 {
@@ -1098,7 +1092,7 @@ func (ms *Store) adjacentForNodesLocked(result map[types.NodeID][]*types.Relatio
 func (ms *Store) relationshipsByTypeSegmentsLocked(token uint16, opts QueryOpts) ([]*types.Relationship, error) {
 	hasTemporal := opts.HasValidTimeFilter()
 	keep := func(r *types.Relationship) bool {
-		return !hasTemporal || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
+		return !hasTemporal || storepkg.MatchesTemporalFilter(ms.validAxis.Get(), r.ID().SnowflakeID(), r.Temporal(), opts)
 	}
 	if ti, ok := ms.relTypeTemporalIndexes[token]; ok {
 		var rawIDs []snowflake.ID
@@ -1163,7 +1157,7 @@ func (ms *Store) allRelationshipsSegmentsLocked(opts QueryOpts) ([]*types.Relati
 	hasTemporal := opts.HasValidTimeFilter()
 	out := make([]*types.Relationship, 0, len(ms.rels)+ms.liveSealedLocked())
 	if err := ms.forEachCurrentRelLocked(func(r *types.Relationship) bool {
-		if !hasTemporal || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts) {
+		if !hasTemporal || storepkg.MatchesTemporalFilter(ms.validAxis.Get(), r.ID().SnowflakeID(), r.Temporal(), opts) {
 			out = append(out, r)
 		}
 		return true
@@ -1579,7 +1573,6 @@ func (sc *segIDScan) emitMem(rows []*types.Relationship) {
 		b.Segment, b.Sorted = 0, false
 		b.IDs, b.StartIDs, b.EndIDs = sc.memBuf.ids[:0], sc.memBuf.start[:0], sc.memBuf.end[:0]
 		b.ValidFrom, b.ValidTo, b.TxFrom = sc.memBuf.vf[:0], sc.memBuf.vt[:0], sc.memBuf.tx[:0]
-		b.ValidFromZero = nil
 		b.Versions, b.HasTemporal = sc.memBuf.versions[:0], sc.memBuf.hasTemporal[:0]
 		for i := range b.Cols {
 			col := &b.Cols[i]
@@ -1591,12 +1584,9 @@ func (sc *segIDScan) emitMem(rows []*types.Relationship) {
 			b.StartIDs = append(b.StartIDs, r.StartNodeID())
 			b.EndIDs = append(b.EndIDs, r.EndNodeID())
 			var vf, vt, tx int64
-			zero := false
 			if tm := r.Temporal(); tm != nil {
 				vf, vt, tx = int64(tm.ValidFrom), int64(tm.ValidTo), int64(tm.TxFrom)
-				zero = tm.ValidFromZero
 			}
-			b.ValidFromZero = storecontract.AppendValidFromZero(b.ValidFromZero, len(b.ValidFrom), zero)
 			b.ValidFrom = append(b.ValidFrom, vf)
 			b.ValidTo = append(b.ValidTo, vt)
 			b.TxFrom = append(b.TxFrom, tx)
@@ -1771,9 +1761,6 @@ func (ms *Store) scanRelColumnsFromSegments(token uint16, props []string, opts Q
 	for _, r := range mem {
 		vf, vt, _ := r.ValidRange()
 		src.addRow(r.ID(), r.StartNodeID(), r.EndNodeID(), int64(vf), int64(vt))
-		if r.StartsAtZero() {
-			src.markValidFromZero()
-		}
 		for c := range props {
 			src.addAny(c, r, props[c])
 		}
@@ -1788,7 +1775,6 @@ type segColumnSource struct {
 	ids        []types.RelID
 	start, end []types.NodeID
 	vf, vt     []int64
-	zero       map[int]bool // rows valid from the explicit 0 (round 11; memtable rows only)
 	kind       [][]storecontract.ColumnKind
 	cls        [][]uint8  // cellAbsent, cellScalar or cellOther
 	num        [][]int64  // ColInt64 value, ColFloat64 bits, ColBool 0/1
@@ -1911,18 +1897,6 @@ func (s *segColumnSource) order(after types.EntityID, limit int) {
 }
 
 func (s *segColumnSource) Len() int { return len(s.perm) }
-
-// markValidFromZero marks the row added last as valid from the explicit 0
-// (sealed rows never are: sealing refuses them).
-func (s *segColumnSource) markValidFromZero() {
-	if s.zero == nil {
-		s.zero = make(map[int]bool)
-	}
-	s.zero[len(s.ids)-1] = true
-}
-
-// ValidFromZero implements store.ColumnValidFromZeroSource.
-func (s *segColumnSource) ValidFromZero(i int) bool { return s.zero[s.perm[i]] }
 
 func (s *segColumnSource) Row(i int) (types.RelID, types.NodeID, types.NodeID, int64, int64) {
 	p := s.perm[i]

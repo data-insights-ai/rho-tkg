@@ -42,7 +42,6 @@ type wireTemporalMetaPartial struct {
 	// DeleteKeptValidTo decides what the row's ValidTo means at a pin
 	// (types.TemporalMetadata.ValidToAtTxTime), a selection input like Retracted.
 	DeleteKeptValidTo bool `msgpack:"dk"`
-	ValidFromZero     bool `msgpack:"vz"`
 }
 
 // DecodeWireTemporalMeta partially decodes a FULL (non-delta) node or rel wire
@@ -53,7 +52,7 @@ type wireTemporalMetaPartial struct {
 //
 // Fast path: scanWireTemporalMeta — a single-pass, reflection-free,
 // non-recursive token walk (the guardMsgpackDepth machinery extended to
-// CAPTURE the selection fields while skipping everything else) — the
+// CAPTURE the ten selection fields while skipping everything else) — the
 // no-format-change answer to the valid-time depth ask's residual per-version
 // cost. On ANY structural surprise the scanner declines (ok=false) and the
 // audited SafeUnmarshal partial decode below remains the authority, so the
@@ -71,26 +70,26 @@ func DecodeWireTemporalMeta(raw []byte) (uint32, *types.TemporalMetadata, error)
 	if w.Version < 0 {
 		return 0, nil, fmt.Errorf("wire temporal meta: negative version %d: %w", w.Version, storepkg.ErrCorruptWire)
 	}
-	return uint32(w.Version), selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.Void, w.DeleteKeptValidTo, w.ValidFromZero), nil // #nosec G115 — non-negative checked above
+	return uint32(w.Version), selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.Void, w.DeleteKeptValidTo), nil // #nosec G115 — non-negative checked above
 }
 
 // SelectionTemporalMetaOfNodeWire builds the selection-scope temporal metadata
 // from an already-decoded NodeWire (a delta row's Meta carries the target
 // version's temporal verbatim, so no partial decode is needed there).
 func SelectionTemporalMetaOfNodeWire(w NodeWire) *types.TemporalMetadata {
-	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.Void, w.DeleteKeptValidTo, w.ValidFromZero)
+	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.Void, w.DeleteKeptValidTo)
 }
 
 // SelectionTemporalMetaOfRelWire mirrors SelectionTemporalMetaOfNodeWire.
 func SelectionTemporalMetaOfRelWire(w RelWire) *types.TemporalMetadata {
-	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.Void, w.DeleteKeptValidTo, w.ValidFromZero)
+	return selectionTemporalMeta(w.HasTemporal, w.ValidFrom, w.ValidTo, w.TxFrom, w.TxTo, w.CreatedAt, w.UpdatedAt, w.DeletedAt, w.Retracted, w.Void, w.DeleteKeptValidTo)
 }
 
 // selectionTemporalMeta mirrors applyNodeWireFields' temporal construction for
 // the numeric instants and the retraction marker (a selection input: it caps
 // its life, chainLifeEnds): a temporal block exists iff HasTemporal (the
 // checked decoders reject payload-without-ht, so ht is authoritative).
-func selectionTemporalMeta(ht bool, vf, vt, tf, tt, ca, ua, da int64, rx, vd, dk, vz bool) *types.TemporalMetadata {
+func selectionTemporalMeta(ht bool, vf, vt, tf, tt, ca, ua, da int64, rx, vd, dk bool) *types.TemporalMetadata {
 	if !ht {
 		return nil
 	}
@@ -106,8 +105,6 @@ func selectionTemporalMeta(ht bool, vf, vt, tf, tt, ca, ua, da int64, rx, vd, dk
 		Void:      vd,
 
 		DeleteKeptValidTo: dk,
-		// The valid-from presence (round 11): selection reads the start.
-		ValidFromZero: vz,
 	}
 }
 

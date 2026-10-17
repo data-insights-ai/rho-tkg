@@ -528,7 +528,7 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 				}
 				// RAW and effective — see the note on getTemporal below.
 				f, t, _ := nd.ValidRange()
-				return int64(f), int64(t), int64(storepkg.NodeValidFrom(nd)), true
+				return int64(f), int64(t), int64(storepkg.NodeValidFrom(bs.validAxis.Get(), nd)), true
 			}
 	}
 	// Both closures read the SAME materialised map, so the value columns and the
@@ -561,7 +561,7 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 			// third column (DocValues.EffectiveValidFrom) and read by the column
 			// scan's filter and the zone map. Separating them keeps the row-path
 			// predicate identical while letting the reported column mean what it says.
-			return int64(f), int64(t), int64(storepkg.NodeValidFrom(nd)), true
+			return int64(f), int64(t), int64(storepkg.NodeValidFrom(bs.validAxis.Get(), nd)), true
 		}
 }
 

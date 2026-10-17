@@ -129,7 +129,7 @@ func TestReImportKeepsEveryLife(t *testing.T) {
 				closeV := e.pin() + 1
 				for _, r := range e.chain(id) {
 					if r.current {
-						closeV = max(closeV, storeutil.EntityValidFrom(0, &r.tm)+1)
+						closeV = max(closeV, storeutil.EntityValidFrom(types.LegacyValidAxis, 0, &r.tm)+1)
 					}
 				}
 				valids = rlWith(valids, closeV)

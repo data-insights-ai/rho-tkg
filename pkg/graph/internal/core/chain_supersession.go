@@ -43,7 +43,8 @@ import (
 // supersessionCaps returns, for a chain the resolver sorted for its own-bounds
 // arm (ascending by start, ties by version — sortNodeChainForResolve), the end
 // of each row's belief: the smallest start S >= start(row) of a replacing row
-// newer than it (has false: none; a start of 0 is the instant 0, round 11),
+// newer than it (has false: none; a cap is an instant, the instant 0 included
+// on the literal valid axis, round 11),
 // aligned with chain; the zero superCaps when no row of the chain was
 // replaced. start is the resolver's start key (nodeValidFrom /
 // relValidFrom), so chain is sorted by it. The returned caps live in sc
@@ -205,14 +206,12 @@ type superCaps struct {
 	has []bool
 }
 
-// end caps row i's valid end vEnd (0 = open) at its belief end; empty reports
-// a row the cap ends at or before its start vStart (it covers nothing). The
-// emptiness is reported, not read from the returned end, because a cap can
-// be the instant 0 (a close row of a version valid from the explicit 0,
-// round 11) and an end of 0 reads as open. A cap of 0 above a negative start
-// would be an end at 0, which ErrValidEndAtZero keeps from being written (no
-// row of an entity valid from the explicit 0 spans 0).
-func (s superCaps) end(i int, vStart, vEnd types.Instant) (types.Instant, bool) {
+// end caps row i's valid end vEnd (open by the valid axis a) at its belief
+// end; empty reports a row the cap ends at or before its start vStart (it
+// covers nothing). The emptiness is reported, not read from the returned
+// end, so the caller skips the row on either axis (a cap is an instant, the
+// instant 0 included on the literal axis).
+func (s superCaps) end(a types.ValidAxis, i int, vStart, vEnd types.Instant) (types.Instant, bool) {
 	if s.has == nil || !s.has[i] {
 		return vEnd, false
 	}
@@ -220,7 +219,7 @@ func (s superCaps) end(i int, vStart, vEnd types.Instant) (types.Instant, bool) 
 	if c <= vStart {
 		return vEnd, true
 	}
-	if vEnd == 0 || vEnd > c {
+	if a.Open(vEnd) || vEnd > c {
 		return c, false
 	}
 	return vEnd, false

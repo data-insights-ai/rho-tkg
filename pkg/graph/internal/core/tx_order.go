@@ -63,9 +63,9 @@ func checkTxOrder(t, start types.Instant, chain ...*types.TemporalMetadata) erro
 // limitation). The plain door moves its own instant instead
 // (deleteInstantClearOfCloses); a caller's t is never moved. A close before t
 // is kept as recorded.
-func checkCallerDeleteCloses(t types.Instant, tms ...*types.TemporalMetadata) error {
+func checkCallerDeleteCloses(a types.ValidAxis, t types.Instant, tms ...*types.TemporalMetadata) error {
 	for _, tm := range tms {
-		if tm != nil && tm.ValidTo != 0 && tm.ValidTo >= t {
+		if tm != nil && !a.Open(tm.ValidTo) && tm.ValidTo >= t {
 			return fmt.Errorf("%w: recorded close at or after t (ValidTo %d, t %d)", ErrTxOrder, tm.ValidTo, t)
 		}
 	}
@@ -168,7 +168,7 @@ func (c *Core) checkNodeCascadeCallerTx(id types.NodeID, current *types.Node, re
 		}
 		tms = append(tms, r.Temporal())
 	}
-	return checkCallerDeleteCloses(t, tms...)
+	return checkCallerDeleteCloses(c.axis(), t, tms...)
 }
 
 // checkRelCallerDelete is every refusal a caller-instant delete of current can
@@ -181,7 +181,7 @@ func (c *Core) checkRelCallerDelete(id types.RelID, current *types.Relationship,
 	if err := c.checkRelCallerTx(id, current, at, c.relTxDeleteStart(current)); err != nil {
 		return err
 	}
-	return checkCallerDeleteCloses(at, current.Temporal())
+	return checkCallerDeleteCloses(c.axis(), at, current.Temporal())
 }
 
 // checkRelCallerUpdate is every refusal a caller-instant update (tmp.txAt) of
@@ -195,9 +195,9 @@ func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship,
 	if err := c.checkRelCallerTx(id, current, tmp.txAt, c.relValidFrom(current)); err != nil {
 		return err
 	}
-	if atemporalUntimedUpdate(c, tmp) {
-		// Under UntimedAtemporal the update applies to every segment and
-		// patches a closed entity's segments (atemporalUpdateRel): the
+	if wholeAxisUntimedUpdate(c, tmp) {
+		// Under UntimedWholeAxis the update applies to every segment and
+		// patches a closed entity's segments (wholeAxisUpdateRel): the
 		// pre-flight refuses what the kernel refuses, an update that changes
 		// no segment of the head state.
 		rows, err := c.relHeadSegmentRows(id, current)
@@ -214,7 +214,7 @@ func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship,
 	if !relPreparedUpdateMutates(current, prov, tmp, updates) {
 		return fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, tmp.txAt)
 	}
-	if err := rejectClosedRelMutation(current); err != nil {
+	if err := c.rejectClosedRelMutation(current); err != nil {
 		return err
 	}
 	if tmp.validFromSet {
@@ -222,7 +222,7 @@ func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship,
 			return fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
 		}
 	}
-	if tmp.closesVersion() {
+	if tmp.closesVersion(c.axis()) {
 		// The close check of every close door (backlog 65), so the pre-flight
 		// refuses the unit before any write.
 		if _, err := c.checkRelClose(current, current.StartNodeID(), current.EndNodeID(), "tkg_valid_to", tmp.validTo); err != nil {
@@ -242,9 +242,9 @@ func (c *Core) checkNodeCallerUpdate(id types.NodeID, current *types.Node, prov 
 	if err := c.checkNodeCallerTx(id, current, tmp.txAt, c.nodeValidFrom(current)); err != nil {
 		return err
 	}
-	if atemporalUntimedUpdate(c, tmp) {
-		// Under UntimedAtemporal the update applies to every segment and
-		// patches a closed entity's segments (atemporalUpdateNode): the
+	if wholeAxisUntimedUpdate(c, tmp) {
+		// Under UntimedWholeAxis the update applies to every segment and
+		// patches a closed entity's segments (wholeAxisUpdateNode): the
 		// pre-flight refuses what the kernel refuses, an update that changes
 		// no segment of the head state.
 		rows, err := c.nodeHeadSegmentRows(id, current)
@@ -261,7 +261,7 @@ func (c *Core) checkNodeCallerUpdate(id types.NodeID, current *types.Node, prov 
 	if !nodePreparedUpdateMutates(current, prov, tmp, updates) {
 		return fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, tmp.txAt)
 	}
-	if err := rejectClosedNodeMutation(current); err != nil {
+	if err := c.rejectClosedNodeMutation(current); err != nil {
 		return err
 	}
 	if tmp.validFromSet {
@@ -269,7 +269,7 @@ func (c *Core) checkNodeCallerUpdate(id types.NodeID, current *types.Node, prov 
 			return fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
 		}
 	}
-	if tmp.closesVersion() {
+	if tmp.closesVersion(c.axis()) {
 		// The close check of every close door (backlog 65), so the pre-flight
 		// refuses the unit before any write.
 		if _, err := c.checkNodeClose(id, current, "tkg_valid_to", tmp.validTo); err != nil {

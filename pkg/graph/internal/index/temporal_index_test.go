@@ -48,10 +48,10 @@ func TestTemporalIndexNilReceiverAndNilMapEntriesNoop(t *testing.T) {
 
 	idxs := map[uint16]*TemporalIndex{1: nil}
 	node := types.NewNode(types.NodeID(snowflake.ID(1)), 1, nil)
-	AddNodeToTemporalIndexes(idxs, node, snowflake.ID(1))
+	AddNodeToTemporalIndexes(types.LegacyValidAxis, idxs, node, snowflake.ID(1))
 	RemoveNodeFromTemporalIndexes(idxs, node, snowflake.ID(1))
 	PurgeNodeFromAllTemporalIndexes(idxs, snowflake.ID(1))
-	AddNodeToTemporalIndexes(idxs, nil, snowflake.ID(1))
+	AddNodeToTemporalIndexes(types.LegacyValidAxis, idxs, nil, snowflake.ID(1))
 	RemoveNodeFromTemporalIndexes(idxs, nil, snowflake.ID(1))
 }
 
@@ -101,7 +101,7 @@ func TestTemporalIndexNodeHelpersUseAllLabels(t *testing.T) {
 		4: NewTemporalIndex(),
 	}
 
-	AddNodeToTemporalIndexes(idxs, node, id)
+	AddNodeToTemporalIndexes(types.LegacyValidAxis, idxs, node, id)
 	for _, tok := range []uint16{1, 2, 3} {
 		got := idxs[tok].QueryAt(1000)
 		if len(got) != 1 || got[0] != id {
@@ -417,7 +417,7 @@ func TestTemporalIndex_MultipleEntries_Sorted(t *testing.T) {
 func TestNodeTemporalBounds_NilTemporal(t *testing.T) {
 	t.Parallel()
 	id := snowflake.ID(12345)
-	from, to := NodeTemporalBounds(id, nil)
+	from, to := NodeTemporalBounds(types.LegacyValidAxis, id, nil)
 
 	// from should be derived from snowflake ID, not zero.
 	if from == 0 {
@@ -432,7 +432,7 @@ func TestNodeTemporalBounds_WithExplicitDates(t *testing.T) {
 	t.Parallel()
 	id := snowflake.ID(12345)
 	tm := &types.TemporalMetadata{ValidFrom: 500, ValidTo: 1000}
-	from, to := NodeTemporalBounds(id, tm)
+	from, to := NodeTemporalBounds(types.LegacyValidAxis, id, tm)
 
 	if from != 500 {
 		t.Errorf("from = %d, want 500", from)

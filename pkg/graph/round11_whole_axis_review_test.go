@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Round 11, the final review of UntimedAtemporal: every door that writes
+// Round 11, the final review of UntimedWholeAxis: every door that writes
 // without a valid time follows the mode. (1) The GraphTx update doors decide
 // the no-op over every segment, not the current row. (2) Compare-and-set is a
 // one-version untimed door: whole-axis on a pure entity, refused
@@ -26,16 +26,16 @@ func r11Segmented(t *testing.T, g *graphpkg.Graph) types.NodeID {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.Temporal().SetNodeVersionInterval(ctx, n.ID(), 200, 0, map[string]any{"k": int64(2)}); err != nil {
+	if _, err := g.Temporal().SetNodeVersionInterval(ctx, n.ID(), 200, types.InfiniteValidTo, map[string]any{"k": int64(2)}); err != nil {
 		t.Fatal(err)
 	}
 	return n.ID()
 }
 
-func TestRound11AtemporalReviewDoors(t *testing.T) {
+func TestRound11WholeAxisReviewDoors(t *testing.T) {
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) {
-		c.UntimedValidStart = graphpkg.UntimedAtemporal
+		c.UntimedValidStart = graphpkg.UntimedWholeAxis
 		c.AllowTxBackfill = true
 	}) {
 		t.Run(b.name, func(t *testing.T) {
@@ -57,7 +57,7 @@ func TestRound11AtemporalReviewDoors(t *testing.T) {
 				t.Fatal(err)
 			}
 			if ok, err := g.Nodes().CompareAndSetProperty(ctx, pure.ID(), "k", int64(1), int64(2)); err != nil || !ok {
-				t.Fatalf("CAS on a pure atemporal node: %v, %v", ok, err)
+				t.Fatalf("CAS on a pure whole-axis node: %v, %v", ok, err)
 			}
 			r11Want(t, "CAS: AT -1e6", r11KAt(t, g, pure.ID(), "k", -1_000_000, 0), "2")
 			cur, err := g.Nodes().Get(ctx, pure.ID())
@@ -83,7 +83,7 @@ func TestRound11AtemporalReviewDoors(t *testing.T) {
 				t.Fatal(err)
 			}
 			if ok, err := g.Rels().CompareAndSetProperty(ctx, r.ID(), "k", int64(1), int64(2)); err != nil || !ok {
-				t.Fatalf("CAS on a pure atemporal relationship: %v, %v", ok, err)
+				t.Fatalf("CAS on a pure whole-axis relationship: %v, %v", ok, err)
 			}
 			r11Want(t, "rel CAS: AT -1e6", r11RelKAt(t, g, r.ID(), "k", -1_000_000, 0), "2")
 
@@ -122,7 +122,7 @@ func TestRound11AtemporalReviewDoors(t *testing.T) {
 			}
 			r11Want(t, "the refused unit's other op", r11KAt(t, g, other.ID(), "k", 0, 0), "1")
 
-			// (4) A closed atemporal node: the label door answers the mode.
+			// (4) A closed whole-axis node: the label door answers the mode.
 			closed, err := g.Nodes().Add(ctx, []string{"A"}, map[string]any{"k": int64(1), types.ShadowValidFrom: types.Instant(100)})
 			if err != nil {
 				t.Fatal(err)
@@ -131,10 +131,10 @@ func TestRound11AtemporalReviewDoors(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err := g.Nodes().AddLabel(ctx, closed.ID(), "B"); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
-				t.Errorf("label change of a closed atemporal node: %v, want ErrUntimedModeMismatch", err)
+				t.Errorf("label change of a closed whole-axis node: %v, want ErrUntimedModeMismatch", err)
 			}
 			if _, err := g.Nodes().Update(ctx, closed.ID(), map[string]any{"j": int64(5)}); err != nil {
-				t.Fatalf("untimed update of a closed atemporal node: %v", err)
+				t.Fatalf("untimed update of a closed whole-axis node: %v", err)
 			}
 			r11Want(t, "closed: j AT 150", r11KAt(t, g, closed.ID(), "j", 150, 0), "5")
 			r11Want(t, "closed: j AT 350", r11KAt(t, g, closed.ID(), "j", 350, 0), "none")
@@ -142,7 +142,7 @@ func TestRound11AtemporalReviewDoors(t *testing.T) {
 	}
 }
 
-// r11SegmentedRel creates a relationship between two pure atemporal nodes
+// r11SegmentedRel creates a relationship between two pure whole-axis nodes
 // with k=1 on [100,200) and k=2 on [200,open).
 func r11SegmentedRel(t *testing.T, g *graphpkg.Graph) types.RelID {
 	t.Helper()
@@ -159,7 +159,7 @@ func r11SegmentedRel(t *testing.T, g *graphpkg.Graph) types.RelID {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.Temporal().SetRelVersionInterval(ctx, r.ID(), 200, 0, map[string]any{"k": int64(2)}); err != nil {
+	if _, err := g.Temporal().SetRelVersionInterval(ctx, r.ID(), 200, types.InfiniteValidTo, map[string]any{"k": int64(2)}); err != nil {
 		t.Fatal(err)
 	}
 	return r.ID()
@@ -168,10 +168,10 @@ func r11SegmentedRel(t *testing.T, g *graphpkg.Graph) types.RelID {
 // The relationship halves of the final review's doors, and compare-and-set
 // refused before its compare: a CAS whose new value the current segment
 // already holds does not report success while an earlier segment differs.
-func TestRound11AtemporalReviewRelDoors(t *testing.T) {
+func TestRound11WholeAxisReviewRelDoors(t *testing.T) {
 	ctx := context.Background()
 	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) {
-		c.UntimedValidStart = graphpkg.UntimedAtemporal
+		c.UntimedValidStart = graphpkg.UntimedWholeAxis
 		c.AllowTxBackfill = true
 	}) {
 		t.Run(b.name, func(t *testing.T) {

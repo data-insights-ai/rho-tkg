@@ -158,7 +158,7 @@ func TestSelectAsOf_Table(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, found := SelectAsOf(tc.rows, tc.pin)
+			got, found := SelectAsOf(types.LegacyValidAxis, tc.rows, tc.pin)
 			if found != tc.wantFound {
 				t.Fatalf("found = %v, want %v", found, tc.wantFound)
 			}
@@ -185,12 +185,12 @@ func TestSelectAsOf_RealNodes(t *testing.T) {
 		mk(0, 10, 20),
 		mk(1, 20, 0),
 	}
-	got, found := SelectAsOf(chain, 100)
+	got, found := SelectAsOf(types.LegacyValidAxis, chain, 100)
 	if !found || got.Version() != 1 {
 		t.Fatalf("current belief: found=%v version=%d, want true/1", found, got.Version())
 	}
 
-	past, found := SelectAsOf(chain, 15)
+	past, found := SelectAsOf(types.LegacyValidAxis, chain, 15)
 	if !found || past.Version() != 0 {
 		t.Fatalf("past belief: found=%v version=%d, want true/0", found, past.Version())
 	}
@@ -212,7 +212,7 @@ func TestSelectAsOf_RealRels(t *testing.T) {
 		mk(0, 10, 20),
 		mk(1, 20, 0),
 	}
-	got, found := SelectAsOf(chain, 100)
+	got, found := SelectAsOf(types.LegacyValidAxis, chain, 100)
 	if !found || got.Version() != 1 {
 		t.Fatalf("current belief: found=%v version=%d, want true/1", found, got.Version())
 	}

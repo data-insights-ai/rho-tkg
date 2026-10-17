@@ -266,13 +266,14 @@ func (s singleVersionNodeResolver) firstVersionCovers(n *types.Node) (covered, o
 		return false, false
 	}
 	_, vEnd, _ := n.ValidRange()
-	vStart := storeutil.NodeValidFrom(n)
+	a := s.c.axis()
+	vStart := storeutil.NodeValidFrom(a, n)
 	switch s.probe.kind {
 	case probePoint:
 		t := s.probe.validAt
-		return storeutil.IntervalCovers(vStart, vEnd, t), true
+		return storeutil.IntervalCovers(a, vStart, vEnd, t), true
 	case probeInterval:
-		return storeutil.IntervalMeets(vStart, vEnd, s.probe.validStart, s.probe.validEnd), true
+		return storeutil.IntervalMeets(a, vStart, vEnd, s.probe.validStart, s.probe.validEnd), true
 	}
 	return false, false
 }

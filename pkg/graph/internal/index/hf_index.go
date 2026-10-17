@@ -243,11 +243,11 @@ func (hfi *HighFrequencyIndex) RangeQuery(start, end types.Instant) []types.Node
 
 // AddNodeToHighFrequencyIndexes adds a node to all high-frequency indexes that
 // cover any of the node's label tokens. Caller must hold the store's write lock.
-func AddNodeToHighFrequencyIndexes(idxs map[uint16]*HighFrequencyIndex, n *types.Node, id snowflake.ID) {
+func AddNodeToHighFrequencyIndexes(a types.ValidAxis, idxs map[uint16]*HighFrequencyIndex, n *types.Node, id snowflake.ID) {
 	if len(idxs) == 0 {
 		return
 	}
-	from, _ := NodeTemporalBounds(id, n.Temporal())
+	from, _ := NodeTemporalBounds(a, id, n.Temporal())
 	nid := types.NodeID(id)
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		if hfi, ok := idxs[n.LabelTokenRawAt(i)]; ok {
@@ -258,11 +258,11 @@ func AddNodeToHighFrequencyIndexes(idxs map[uint16]*HighFrequencyIndex, n *types
 
 // RemoveNodeFromHighFrequencyIndexes removes a node from all high-frequency indexes.
 // Caller must hold the store's write lock.
-func RemoveNodeFromHighFrequencyIndexes(idxs map[uint16]*HighFrequencyIndex, n *types.Node, id snowflake.ID) {
+func RemoveNodeFromHighFrequencyIndexes(a types.ValidAxis, idxs map[uint16]*HighFrequencyIndex, n *types.Node, id snowflake.ID) {
 	if len(idxs) == 0 {
 		return
 	}
-	from, _ := NodeTemporalBounds(id, n.Temporal())
+	from, _ := NodeTemporalBounds(a, id, n.Temporal())
 	nid := types.NodeID(id)
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		if hfi, ok := idxs[n.LabelTokenRawAt(i)]; ok {

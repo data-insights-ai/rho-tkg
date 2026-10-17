@@ -40,6 +40,9 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	if err := nilAPI.SetUntimedValidStart(context.Background(), UntimedUnbounded); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil SetUntimedValidStart = %v, want ErrNilGraph", err)
 	}
+	if _, err := nilAPI.ValidAxis(); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ValidAxis = %v, want ErrNilGraph", err)
+	}
 	if _, _, err := nilAPI.UntimedValidStart(); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil UntimedValidStart = %v, want ErrNilGraph", err)
 	}
@@ -92,6 +95,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	if err := api.SetUntimedValidStart(context.Background(), UntimedUnbounded); err != nil || ops.untimedMode != UntimedUnbounded {
 		t.Fatalf("SetUntimedValidStart: %v, spy got %v", err, ops.untimedMode)
 	}
+	if axis, err := api.ValidAxis(); err != nil || axis.Literal() {
+		t.Fatalf("ValidAxis through the API: %+v %v, want the legacy axis", axis, err)
+	}
 	if mode, complete, err := api.UntimedValidStart(); err != nil || mode != UntimedUnbounded || !complete {
 		t.Fatalf("UntimedValidStart through the API: %v %v %v, want the spy's UntimedUnbounded, true", mode, complete, err)
 	}
@@ -121,6 +127,13 @@ func (s *adminOpsSpy) SetUntimedValidStart(_ context.Context, mode UntimedValidS
 
 func (s *adminOpsSpy) UntimedValidStart() (UntimedValidStart, bool, error) {
 	return s.untimedMode, true, nil
+}
+
+func (s *adminOpsSpy) ValidAxis() (types.ValidAxis, error) {
+	if s.untimedMode == UntimedWholeAxis {
+		return types.LiteralValidAxis, nil
+	}
+	return types.LegacyValidAxis, nil
 }
 
 func (s *adminOpsSpy) SealRelSegments(relType string) error {

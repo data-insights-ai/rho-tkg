@@ -76,10 +76,10 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	if current.LabelTokenCount()+1 > c.validation.MaxLabelsPerNode {
 		return false, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, current.LabelTokenCount()+1, c.validation.MaxLabelsPerNode)
 	}
-	if err := c.checkAtemporalLabelChange(id, current); err != nil {
-		return false, err // first: under UntimedAtemporal a closed node is not whole-axis
+	if err := c.checkWholeAxisLabelChange(id, current); err != nil {
+		return false, err // first: under UntimedWholeAxis a closed node is not whole-axis
 	}
-	if err := rejectClosedNodeMutation(current); err != nil {
+	if err := c.rejectClosedNodeMutation(current); err != nil {
 		return false, err
 	}
 	if known {
@@ -160,8 +160,8 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	// caller-supplied valid time, and an inherited ValidFrom would let this
 	// version cover the previous version's interval in historical queries
 	// (hiding the at-t label state the history row exists to preserve).
-	stampValidFrom(tm, c.labelChangeStart(), c.untimedAtemporal.Load())
-	tm.ValidTo = 0
+	stampValidFrom(c.axis(), tm, 0, false) // the whole axis under UntimedWholeAxis (checkWholeAxis*), else no claim
+	tm.ValidTo = c.axis().OpenEnd()
 	tm.UpdatedAt = now
 	at.stamp(tm)
 
@@ -243,10 +243,10 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 	if current.LabelTokenCount() == 1 {
 		return ErrLastLabel
 	}
-	if err := c.checkAtemporalLabelChange(id, current); err != nil {
-		return err // first: under UntimedAtemporal a closed node is not whole-axis
+	if err := c.checkWholeAxisLabelChange(id, current); err != nil {
+		return err // first: under UntimedWholeAxis a closed node is not whole-axis
 	}
-	if err := rejectClosedNodeMutation(current); err != nil {
+	if err := c.rejectClosedNodeMutation(current); err != nil {
 		return err
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("remove label"); err != nil {
@@ -297,8 +297,8 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 	// caller-supplied valid time, and an inherited ValidFrom would let this
 	// version cover the previous version's interval in historical queries
 	// (hiding the at-t label state the history row exists to preserve).
-	stampValidFrom(tm, c.labelChangeStart(), c.untimedAtemporal.Load())
-	tm.ValidTo = 0
+	stampValidFrom(c.axis(), tm, 0, false) // the whole axis under UntimedWholeAxis (checkWholeAxis*), else no claim
+	tm.ValidTo = c.axis().OpenEnd()
 	tm.UpdatedAt = now
 	at.stamp(tm)
 

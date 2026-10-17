@@ -446,7 +446,7 @@ func TestConstraintRelWithinEndpoints_RelExceedsNodeValidity(t *testing.T) {
 
 	// Derive the rel's effective from time so we can set node ranges around it.
 	relID := g.Rels.NextID()
-	relFrom := storeutil.EntityValidFrom(relID.SnowflakeID(), nil)
+	relFrom := storeutil.EntityValidFrom(types.LegacyValidAxis, relID.SnowflakeID(), nil)
 
 	// Both endpoint nodes: valid from before rel, expires after rel.
 	a.SetTemporal(&types.TemporalMetadata{
@@ -732,7 +732,7 @@ func TestConstraintRelWithinEndpoints_RelExceedsEndNodeValidity(t *testing.T) {
 	}
 
 	relID := g.Rels.NextID()
-	relFrom := storeutil.EntityValidFrom(relID.SnowflakeID(), nil)
+	relFrom := storeutil.EntityValidFrom(types.LegacyValidAxis, relID.SnowflakeID(), nil)
 
 	// Start node open-ended, end node expires at relFrom+500.
 	// Start node: no ValidTo — checks (5) won't fire.

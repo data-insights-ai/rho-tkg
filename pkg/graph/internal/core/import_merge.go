@@ -142,13 +142,16 @@ func (c *Core) importMergeReplayRecordsLocked(readRecord func() (byte, []byte, e
 			if hdr.Version < exportFormatVersionMin || hdr.Version > exportFormatVersionMax {
 				return fmt.Errorf("%w: got %d, want %d..%d", ErrIncompatibleExport, hdr.Version, exportFormatVersionMin, exportFormatVersionMax)
 			}
+			if err := checkExportVersionMode(hdr); err != nil {
+				return err
+			}
 			if !hdr.IsDelta {
 				return fmt.Errorf("%w: not a delta stream — use Import for a full export", ErrIncompatibleExport)
 			}
 			if err := c.checkUntimedComplete("import merge"); err != nil {
 				return err
 			}
-			if src := untimedModeOfHeader(hdr.UntimedUnbounded, hdr.UntimedAtemporal); src != c.untimedMode() {
+			if src := untimedModeOfHeader(hdr.UntimedUnbounded, hdr.UntimedWholeAxis); src != c.untimedMode() {
 				return fmt.Errorf("import merge: the delta's source writes under %s, this graph under %s (re-bootstrap from a full export): %w",
 					untimedModeName(src), untimedModeName(c.untimedMode()), ErrUntimedModeMismatch)
 			}

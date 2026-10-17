@@ -163,6 +163,13 @@ func (co *ConstraintOps) DryRunValidate(ctx context.Context, facts constraintspk
 				violations = append(violations, constraintspkg.DryRunViolation{Ref: dr.Ref, Kind: "invalid", Err: err})
 				continue
 			}
+			// The interval as the create reads it (round 11): a claim the
+			// graph's valid axis cannot record is the create's refusal.
+			validFrom, vfSet, validTo, err := c.dryRunRelClaims(dr)
+			if err != nil {
+				violations = append(violations, constraintspkg.DryRunViolation{Ref: dr.Ref, Kind: "invalid", Err: err})
+				continue
+			}
 			if !hasTemporalConstraints {
 				continue
 			}
@@ -178,11 +185,11 @@ func (co *ConstraintOps) DryRunValidate(ctx context.Context, facts constraintspk
 					Err: fmt.Errorf("end node %d: %w", dr.EndID, err)})
 				continue
 			}
-			validFrom, vfSet := c.claimedStartMode(dr.ValidFrom, types.ValidFromClaimed(dr.ValidFrom, dr.ValidFromSet), true)
+			validFrom, vfSet = c.claimedStartMode(validFrom, vfSet, true)
 			if !vfSet {
 				validFrom, vfSet = c.now(), true // validate as if asserted now
 			}
-			probe := c.newRelConstraintProbe(dryRunProbeRelID, dr.StartID, dr.EndID, validFrom, vfSet, dr.ValidTo, 0)
+			probe := c.newRelConstraintProbe(dryRunProbeRelID, dr.StartID, dr.EndID, validFrom, vfSet, validTo, 0)
 			if err := c.checkTemporalConstraints(probe, startNode, endNode); err != nil {
 				violations = append(violations, constraintspkg.DryRunViolation{Ref: dr.Ref, Kind: "temporal", Err: err})
 			}
@@ -204,7 +211,7 @@ func (c *Core) buildDryRunEndpointNode(id types.NodeID, props map[string]any) (*
 	if err != nil {
 		return nil, err
 	}
-	validFrom, vfSet, validTo, createdAt, _, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, _, props, err := extractTemporal(c.axis(), props)
 	if err != nil {
 		return nil, err
 	}
@@ -220,9 +227,9 @@ func (c *Core) buildDryRunEndpointNode(id types.NodeID, props map[string]any) (*
 	if err := n.SetOwnedProperties(ps); err != nil {
 		return nil, fmt.Errorf("graph: dry-run endpoint properties: %w", err)
 	}
-	if vfSet || validTo != 0 || createdAt != 0 {
+	if vfSet || !c.axis().Open(validTo) || createdAt != 0 {
 		tm := &types.TemporalMetadata{ValidTo: validTo, CreatedAt: createdAt}
-		stampValidFrom(tm, validFrom, vfSet)
+		stampValidFrom(c.axis(), tm, validFrom, vfSet)
 		n.SetTemporal(tm)
 	}
 	return n, nil
@@ -238,7 +245,7 @@ func (c *Core) buildDryRunProbeNode(id types.NodeID, props map[string]any) (*typ
 	if err != nil {
 		return nil, err
 	}
-	_, _, _, _, _, props, err = extractTemporal(props)
+	_, _, _, _, _, props, err = extractTemporal(c.axis(), props)
 	if err != nil {
 		return nil, err
 	}
@@ -254,4 +261,36 @@ func (c *Core) buildDryRunProbeNode(id types.NodeID, props map[string]any) (*typ
 		return nil, fmt.Errorf("graph: dry-run node properties: %w", err)
 	}
 	return n, nil
+}
+
+// dryRunRelClaims reads a proposed relationship's interval as its create's
+// tkg_valid_from / tkg_valid_to on the graph's valid axis (parseValidClaim):
+// a field with its Set flag is an explicit instant, else a plain number, 0
+// making no claim. validTo is the end as stored (the axis's open end without
+// a claim).
+func (c *Core) dryRunRelClaims(dr constraintspkg.DryRunRel) (validFrom types.Instant, vfSet bool, validTo types.Instant, err error) {
+	claim := func(v types.Instant, set bool) any {
+		switch {
+		case set:
+			return types.ExplicitInstant(v)
+		case v == 0:
+			return nil
+		}
+		return v
+	}
+	a := c.axis()
+	if validFrom, vfSet, err = parseValidClaim(a, claim(dr.ValidFrom, dr.ValidFromSet), "tkg_valid_from"); err != nil {
+		return 0, false, 0, err
+	}
+	validTo, vtSet, err := parseValidClaim(a, claim(dr.ValidTo, dr.ValidToSet), "tkg_valid_to")
+	if err != nil {
+		return 0, false, 0, err
+	}
+	if !vtSet {
+		validTo = a.OpenEnd()
+	}
+	if vfSet && !a.Open(validTo) && validFrom >= validTo {
+		return 0, false, 0, fmt.Errorf("%w: tkg_valid_from %d must be before tkg_valid_to %d", ErrInvalidTimeRange, validFrom, validTo)
+	}
+	return validFrom, vfSet, validTo, nil
 }

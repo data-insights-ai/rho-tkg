@@ -10,11 +10,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Config.UntimedValidStart (backlog 73): where an entity's first version
-// without a valid-from starts in valid time.
+// Config.UntimedValidStart (backlog 73, round 11): what a write without a
+// valid time claims, and how the store's rows record valid time.
 //
-// The mode is decided once, when a first version is written (untimedStart):
-// under UntimedUnbounded the row is stored with ValidFrom =
+// The legacy modes decide once, when a first version is written
+// (untimedStart): under UntimedUnbounded the row is stored with ValidFrom =
 // types.UnboundedValidFrom, an ordinary explicit start. Every reader takes a
 // row's start from the row (storeutil.EntityValidFrom: explicit ValidFrom,
 // else TxFrom), so the resolver, the index envelopes (RAM, 0x0B keys, open
@@ -22,10 +22,17 @@ import (
 // candidates, the paged and counting doors and a replica or an export all see
 // the mode without being told it, and no persisted derived start depends on
 // the configuration. A later version without a valid-from starts at its
-// TxFrom in both modes (the update doors clear ValidFrom).
+// TxFrom in both legacy modes (the update doors clear ValidFrom).
+//
+// UntimedWholeAxis (round 11) is the clean semantics: no write derives a
+// valid time from its transaction time, and the store's rows are on the
+// literal valid axis (types.LiteralValidAxis): every stored ValidFrom and
+// ValidTo is the instant it names (0 included), an open end is
+// types.InfiniteValidTo. The axis is the store's, fixed when it opens from its
+// persisted mode (store.ValidAxisCapability), never a per-row flag.
 
-// UntimedValidStart selects the start of an entity's first version written
-// without a valid-from (backlog 73).
+// UntimedValidStart selects what a write without a valid time claims
+// (backlog 73, round 11).
 type UntimedValidStart uint8
 
 const (
@@ -34,40 +41,56 @@ const (
 	// store with rows and no persisted mode) and makes a new store an
 	// UntimedUnbounded store. It is a Config value only:
 	// Admin().SetUntimedValidStart names the target mode.
+	//
+	// Announced (round 11): from the next minor release a new store under
+	// UntimedDefault is an UntimedWholeAxis store (when its store implements
+	// store.ValidAxisCapability; memory, badger, tiered and sharded do).
+	// Existing stores keep their persisted mode. Set UntimedUnbounded
+	// explicitly to keep today's default for new stores.
 	UntimedDefault UntimedValidStart = iota
 	// UntimedFromTxFrom starts it at its TxFrom (backlog 62); the default
-	// for new stores up to v4.56.x.
+	// for new stores up to v4.56.x. Legacy valid axis.
 	UntimedFromTxFrom
 	// UntimedUnbounded starts it at -inf (types.UnboundedValidFrom): the
 	// entity is valid at every instant before its first change. A later
 	// version without a valid-from still starts at its TxFrom. The default
-	// for new stores from v4.57.0.
+	// for new stores from v4.57.0. Legacy valid axis.
 	UntimedUnbounded
-	// UntimedAtemporal (round 11, opt-in, fixed at store creation): a write
-	// without a valid time makes no valid-time claim. An untimed create
-	// holds over the whole axis (types.UnboundedValidFrom, open) as under
-	// UntimedUnbounded; an untimed update applies to
-	// every valid-time segment of the entity and keeps the segment
-	// boundaries (SQL:2011's UPDATE without FOR PORTION OF): each segment
-	// gets a new version in the new belief, the old versions end in
-	// transaction time only, existence does not change. An untimed delete
-	// ends the entity in transaction time only (a retraction). Writes with a
-	// valid time keep their rules.
-	UntimedAtemporal
+	// UntimedWholeAxis (round 11, fixed at store creation) is the clean
+	// semantics: a write without a valid time makes no valid-time claim, and
+	// no claim means the whole axis, (-inf, +inf). An untimed create holds
+	// over the whole axis (types.UnboundedValidFrom, types.InfiniteValidTo);
+	// an untimed update applies to every valid-time segment of the entity and
+	// keeps the segment boundaries (SQL:2011's UPDATE without FOR PORTION
+	// OF): each segment gets a new version in the new belief, the old
+	// versions end in transaction time only, existence does not change. An
+	// untimed delete ends the entity in transaction time only (a
+	// retraction). Writes with a valid time keep their rules. The store's
+	// rows are on the literal valid axis (types.LiteralValidAxis): 0 is an
+	// ordinary instant, claimable as a start and as an end.
+	//
+	// Named for what an untimed write claims (the whole axis), not for the
+	// entity, which is temporal like any other (round 11 called it
+	// UntimedAtemporal).
+	UntimedWholeAxis
 )
 
 // untimedValidStartMeta is the MetaKV key persisting the mode a store's rows
-// are written under: one byte, untimedByteTxFrom, untimedByteUnbounded or
+// are written under: one byte, untimedByteTxFrom, untimedByteUnbounded,
 // untimedConverting (a conversion to UntimedUnbounded started and did not
-// finish, Admin().SetUntimedValidStart). The bytes are the v4.56.0 encoding;
-// they are not the UntimedValidStart values (v4.57.0 put UntimedDefault at 0).
+// finish, Admin().SetUntimedValidStart) or untimedByteWholeAxis. The bytes 0
+// to 2 are the v4.56.0 encoding; they are not the UntimedValidStart values
+// (v4.57.0 put UntimedDefault at 0). A store reads it at open to fix its
+// valid axis (store.ValidAxisOfModeByte).
+// It equals store.UntimedValidStartMetaKey (TestUntimedModeKeyIsTheStores),
+// spelled here as a literal for the MetaKV reap-policy check.
 const untimedValidStartMeta = "untimed_valid_start"
 
 const (
 	untimedByteTxFrom    byte = 0
 	untimedByteUnbounded byte = 1
 	untimedConverting    byte = 2
-	untimedByteAtemporal byte = 3 // round 11
+	untimedByteWholeAxis      = storepkg.UntimedWholeAxisModeByte // round 11
 )
 
 // untimedModeOfByte is the mode a persisted key byte (not converting) names.
@@ -75,53 +98,91 @@ func untimedModeOfByte(b byte) UntimedValidStart {
 	switch b {
 	case untimedByteTxFrom:
 		return UntimedFromTxFrom
-	case untimedByteAtemporal:
-		return UntimedAtemporal
+	case untimedByteWholeAxis:
+		return UntimedWholeAxis
 	}
 	return UntimedUnbounded
 }
 
 // untimedByteValid reports whether b is a persisted mode byte this release
 // reads.
-func untimedByteValid(b byte) bool { return b <= untimedByteAtemporal }
+func untimedByteValid(b byte) bool { return b <= untimedByteWholeAxis }
 
 // untimedMode is the mode the graph writes under (UntimedFromTxFrom,
-// UntimedUnbounded or UntimedAtemporal), from the two flags; setUntimedMode
-// sets both together.
+// UntimedUnbounded or UntimedWholeAxis), from the two flags; setUntimedMode
+// sets both together with the valid axis.
 func (c *Core) untimedMode() UntimedValidStart {
-	if c.untimedAtemporal.Load() {
-		return UntimedAtemporal
+	if c.untimedWholeAxis.Load() {
+		return UntimedWholeAxis
 	}
 	return untimedModeOf(c.untimedUnbounded.Load())
 }
 
+// setUntimedMode sets the graph's mode and its valid axis (the literal axis
+// under UntimedWholeAxis). The store follows with syncStoreAxis once the mode
+// is decided.
 func (c *Core) setUntimedMode(mode UntimedValidStart) {
-	c.untimedAtemporal.Store(mode == UntimedAtemporal)
-	c.untimedUnbounded.Store(mode == UntimedUnbounded || mode == UntimedAtemporal)
+	c.untimedWholeAxis.Store(mode == UntimedWholeAxis)
+	c.untimedUnbounded.Store(mode == UntimedUnbounded || mode == UntimedWholeAxis)
+	if mode == UntimedWholeAxis {
+		c.validAxis.Set(types.LiteralValidAxis)
+	} else {
+		c.validAxis.Set(types.LegacyValidAxis)
+	}
 }
 
-// untimedStart is THE place the mode decides: the valid-from a create stores.
-// first reports that the row is the entity's first version (a generated ID,
-// or an imported ID without an earlier life). An explicit validFrom is kept.
-// While a conversion is unfinished (untimedIncomplete) an untimed first
-// version is refused: the store holds rows of both rules.
-func (c *Core) untimedStart(validFrom types.Instant, first bool) (types.Instant, error) {
-	if validFrom == 0 && first {
+// axis is the graph's valid axis (round 11): how its rows record valid time.
+func (c *Core) axis() types.ValidAxis { return c.validAxis.Get() }
+
+// syncStoreAxis hands the graph's valid axis to its store
+// (store.ValidAxisCapability), after the mode is decided at open or changed
+// on an empty store (an import adopting its source's mode, a replica
+// following its primary). A store without the capability reads every row on
+// the legacy axis, so it cannot hold an UntimedWholeAxis graph
+// (ErrCapabilityNotSupported).
+func (c *Core) syncStoreAxis() error {
+	if va, ok := c.store.(storepkg.ValidAxisCapability); ok {
+		va.SetValidAxis(c.axis())
+		// Read back (pattern: a capability is what the call does, not the
+		// method set): a store that does not keep the axis reads rows on
+		// another one.
+		if got := va.ValidAxis(); got != c.axis() {
+			return fmt.Errorf("graph: the store kept valid axis %+v, the graph's is %+v: %w", got, c.axis(), storepkg.ErrCapabilityNotSupported)
+		}
+		return nil
+	}
+	if c.axis().Literal() {
+		return fmt.Errorf("graph: Config.UntimedValidStart = UntimedWholeAxis needs a store that implements store.ValidAxisCapability: %w", storepkg.ErrCapabilityNotSupported)
+	}
+	return nil
+}
+
+// untimedStart is THE place the mode decides the valid-from of a create that
+// claims none: first reports that the row is the entity's first version (a
+// generated ID, or an imported ID without an earlier life). While a
+// conversion is unfinished (untimedIncomplete) an untimed first version is
+// refused: the store holds rows of both rules.
+func (c *Core) untimedStart(first bool) (types.Instant, error) {
+	if first {
 		if err := c.checkUntimedComplete("create an untimed first version"); err != nil {
 			return 0, err
 		}
 	}
-	return c.untimedStartMode(validFrom, first), nil
+	return c.untimedStartMode(first), nil
 }
 
 // untimedStartMode is untimedStart's mode rule without the
 // unfinished-conversion guard (a dry run; a commit-time restamp whose batch
-// passed precheckQueuedUntimedCreates).
-func (c *Core) untimedStartMode(validFrom types.Instant, first bool) types.Instant {
-	if validFrom == 0 && first && c.untimedUnbounded.Load() {
+// passed precheckQueuedUntimedCreates): types.UnboundedValidFrom for every
+// untimed create under UntimedWholeAxis (no claim is the whole axis, also for
+// an imported ID with an earlier life) and for a first version under
+// UntimedUnbounded, else 0 (the legacy axis's "no claim": the row starts at
+// its TxFrom).
+func (c *Core) untimedStartMode(first bool) types.Instant {
+	if c.untimedWholeAxis.Load() || first && c.untimedUnbounded.Load() {
 		return types.UnboundedValidFrom
 	}
-	return validFrom
+	return 0
 }
 
 // checkUntimedComplete fails closed with ErrUntimedModeMismatch while a
@@ -142,13 +203,14 @@ func (c *Core) precheckQueuedUntimedCreates(nodes []pendingNode, rels []pendingR
 	if !c.untimedIncomplete.Load() {
 		return nil
 	}
+	a := c.axis()
 	for i := range nodes {
-		if tm := nodes[i].temporal; tm != nil && !tm.HasValidFrom() {
+		if tm := nodes[i].temporal; tm != nil && !a.Claimed(tm.ValidFrom) {
 			return c.checkUntimedComplete("create an untimed first version")
 		}
 	}
 	for i := range rels {
-		if tm := rels[i].temporal; tm != nil && !tm.HasValidFrom() {
+		if tm := rels[i].temporal; tm != nil && !a.Claimed(tm.ValidFrom) {
 			return c.checkUntimedComplete("create an untimed first version")
 		}
 	}
@@ -159,12 +221,12 @@ func (c *Core) precheckQueuedUntimedCreates(nodes []pendingNode, rels []pendingR
 // at its commit, under the lock that excludes a conversion: a create queued
 // before Admin().SetUntimedValidStart converted the store is written under
 // the new mode. Reports whether it changed tm (its pre-encoded row is then
-// stale).
+// stale). Only a legacy-axis create can be unclaimed.
 func (c *Core) stampQueuedUntimedStart(tm *types.TemporalMetadata) bool {
-	if tm == nil || tm.HasValidFrom() {
+	if tm == nil || c.axis().Claimed(tm.ValidFrom) {
 		return false
 	}
-	vf := c.untimedStartMode(0, true)
+	vf := c.untimedStartMode(true)
 	tm.ValidFrom = vf
 	return vf != 0
 }
@@ -195,7 +257,12 @@ func (c *Core) resolveUntimedMode(defaultMode bool) error {
 		// stays UntimedFromTxFrom (the pre-v4.57.0 zero value) in every
 		// session, never a mix of both rules.
 		if defaultMode {
-			c.untimedUnbounded.Store(false)
+			c.setUntimedMode(UntimedFromTxFrom)
+		}
+		if c.untimedWholeAxis.Load() {
+			// A later session could not tell how the rows record valid
+			// time (the store's axis is read from the persisted mode).
+			return fmt.Errorf("graph: Config.UntimedValidStart = UntimedWholeAxis needs a store that persists the mode (store.MetaKVCapability): %w", storepkg.ErrCapabilityNotSupported)
 		}
 		return nil
 	}
@@ -262,8 +329,8 @@ func untimedModeName(m UntimedValidStart) string {
 	switch m {
 	case UntimedUnbounded:
 		return "UntimedUnbounded"
-	case UntimedAtemporal:
-		return "UntimedAtemporal"
+	case UntimedWholeAxis:
+		return "UntimedWholeAxis"
 	}
 	return "UntimedFromTxFrom"
 }
@@ -319,8 +386,8 @@ func untimedModeByteOf(mode UntimedValidStart) byte {
 	switch mode {
 	case UntimedUnbounded:
 		return untimedByteUnbounded
-	case UntimedAtemporal:
-		return untimedByteAtemporal
+	case UntimedWholeAxis:
+		return untimedByteWholeAxis
 	}
 	return untimedByteTxFrom
 }
@@ -411,7 +478,7 @@ func (c *Core) restoreUntimedModeAfterReset() error {
 func (a *AdminOps) SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) error {
 	c := a.c
 	if mode == UntimedDefault || mode > UntimedUnbounded {
-		// UntimedAtemporal is fixed at store creation: no conversion names it.
+		// UntimedWholeAxis is fixed at store creation: no conversion names it.
 		return ErrInvalidUntimedValidStart
 	}
 	if err := c.checkWritable(); err != nil {
@@ -422,8 +489,8 @@ func (a *AdminOps) SetUntimedValidStart(ctx context.Context, mode UntimedValidSt
 	if c.closed.Load() {
 		return ErrGraphClosed
 	}
-	if c.untimedAtemporal.Load() {
-		return fmt.Errorf("graph: an UntimedAtemporal store keeps its mode (fixed at creation): %w", ErrUntimedModeMismatch)
+	if c.untimedWholeAxis.Load() {
+		return fmt.Errorf("graph: an UntimedWholeAxis store keeps its mode (fixed at creation): %w", ErrUntimedModeMismatch)
 	}
 	if mode == UntimedFromTxFrom {
 		if c.untimedUnbounded.Load() {
@@ -526,7 +593,7 @@ func (c *Core) stampForeignIncomingStubs(ctx context.Context) error {
 	}
 	var stubs []*types.Relationship
 	if err := fs.ForEachForeignIncoming(func(r *types.Relationship) bool {
-		if untimedFirst(r.Version(), r.Temporal()) {
+		if untimedFirst(c.axis(), r.Version(), r.Temporal()) {
 			stubs = append(stubs, r)
 		}
 		return true
@@ -560,9 +627,10 @@ func dedupIDs[T ~int64](ids []T) []T {
 }
 
 // untimedFirst reports whether row, the first row of its chain in write
-// order, is a first version without a valid-from.
-func untimedFirst(version uint32, tm *types.TemporalMetadata) bool {
-	return version == 0 && tm != nil && !tm.HasValidFrom() && !tm.Void
+// order, is a first version without a valid-from (on the valid axis a: only
+// the legacy axis has unclaimed starts).
+func untimedFirst(a types.ValidAxis, version uint32, tm *types.TemporalMetadata) bool {
+	return version == 0 && tm != nil && !a.Claimed(tm.ValidFrom) && !tm.Void
 }
 
 func (c *Core) stampNodeFirstVersion(id types.NodeID) error {
@@ -581,7 +649,7 @@ func (c *Core) stampNodeFirstVersion(id types.NodeID) error {
 		return nil
 	}
 	first := versionOrdered(chain)[0]
-	if !untimedFirst(first.Version(), first.Temporal()) {
+	if !untimedFirst(c.axis(), first.Version(), first.Temporal()) {
 		return nil
 	}
 	row := first.DeepCopy()
@@ -611,7 +679,7 @@ func (c *Core) stampRelFirstVersion(id types.RelID) error {
 		return nil
 	}
 	first := versionOrdered(chain)[0]
-	if !untimedFirst(first.Version(), first.Temporal()) {
+	if !untimedFirst(c.axis(), first.Version(), first.Temporal()) {
 		return nil
 	}
 	row := first.DeepCopy()
@@ -623,19 +691,11 @@ func (c *Core) stampRelFirstVersion(id types.RelID) error {
 }
 
 // applyMetaLocked applies a replicated ChangeMeta record (a replica's apply,
-// caller holds c.mu.Lock). A primary replicates two meta entries: the untimed
-// valid-start mode (backlog 73), which the replica takes as its own and
-// persists like the primary (key, format marker 7), and the valid-from-zero
-// entry (round 11), which raises the replica's marker to 8 before the rows
-// valid from the explicit 0 that follow it in the feed. Any other key fails
-// closed: this release does not know what applying it means.
+// caller holds c.mu.Lock). A primary replicates the untimed valid-start mode
+// (backlog 73), which the replica takes as its own and persists like the
+// primary (key, format marker 7), with its valid axis (round 11). Any other
+// key fails closed: this release does not know what applying it means.
 func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
-	if body.Key == validFromZeroMeta {
-		if len(body.Value) != 1 || body.Value[0] != 1 {
-			return fmt.Errorf("graph: apply: valid-from-zero entry %x: %w", body.Value, storepkg.ErrCorruptWire)
-		}
-		return c.noteValidFromZero()
-	}
 	if body.Key != untimedValidStartMeta {
 		return fmt.Errorf("graph: apply: unknown replicated meta key %q: %w", body.Key, storepkg.ErrCorruptWire)
 	}
@@ -651,12 +711,12 @@ func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
 		return err
 	}
 	c.setUntimedMode(untimedModeOfByte(v))
-	return nil
+	return c.syncStoreAxis()
 }
 
 // UntimedValidStart answers the untimed valid-start mode the store's rows are
 // written under (round 11): the mode persisted in the store and in force for
-// this graph, UntimedFromTxFrom, UntimedUnbounded or UntimedAtemporal (never UntimedDefault,
+// this graph, UntimedFromTxFrom, UntimedUnbounded or UntimedWholeAxis (never UntimedDefault,
 // which a Config resolves at open), and complete = false while a conversion
 // to UntimedUnbounded is unfinished (Admin().SetUntimedValidStart cut short:
 // the store holds untimed first versions of both rules, and mode is the
@@ -675,6 +735,18 @@ func (a *AdminOps) UntimedValidStart() (mode UntimedValidStart, complete bool, e
 		return UntimedUnbounded, false, nil
 	}
 	return c.untimedMode(), true, nil
+}
+
+// ValidAxis answers the valid axis the graph's rows are on (round 11):
+// types.LiteralValidAxis under UntimedWholeAxis, else types.LegacyValidAxis.
+// Fixed at open (the store's persisted mode); it changes only when an empty
+// store adopts an import's or a primary's mode. ErrGraphClosed on a closed
+// graph.
+func (a *AdminOps) ValidAxis() (types.ValidAxis, error) {
+	if a.c.closed.Load() {
+		return types.ValidAxis{}, ErrGraphClosed
+	}
+	return a.c.axis(), nil
 }
 
 func untimedModeOf(unbounded bool) UntimedValidStart {
@@ -721,6 +793,9 @@ func (c *Core) adoptImportUntimedModeLocked(src UntimedValidStart) error {
 		return nil
 	}
 	c.setUntimedMode(src)
+	if err := c.syncStoreAxis(); err != nil {
+		return fmt.Errorf("import: adopt the source's untimed valid-start mode: %w", err)
+	}
 	if err := c.writeUntimedModeLogged(untimedModeByteOf(src), true); err != nil {
 		return fmt.Errorf("import: persist the adopted untimed valid-start mode: %w", err)
 	}
@@ -728,9 +803,9 @@ func (c *Core) adoptImportUntimedModeLocked(src UntimedValidStart) error {
 }
 
 // untimedModeOfHeader is the mode an export header names (uu, ua).
-func untimedModeOfHeader(unbounded, atemporal bool) UntimedValidStart {
-	if atemporal {
-		return UntimedAtemporal
+func untimedModeOfHeader(unbounded, wholeAxis bool) UntimedValidStart {
+	if wholeAxis {
+		return UntimedWholeAxis
 	}
 	return untimedModeOf(unbounded)
 }

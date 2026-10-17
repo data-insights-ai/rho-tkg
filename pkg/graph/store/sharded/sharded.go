@@ -31,6 +31,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	badger "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -198,6 +199,10 @@ type Config struct {
 // slot routing. All shards are open local badgers, so scans fold in parallel and
 // point ops route in O(1).
 type Store struct {
+	// validAxis is the store's valid axis (round 11,
+	// store.ValidAxisCapability): the anchor's, which holds the mode key.
+	validAxis storeutil.ValidAxisCell
+
 	mu       sync.RWMutex // guards closed
 	closed   bool
 	catalog  *slotCatalog
@@ -283,6 +288,7 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: sharded: open anchor shard: %w", err)
 	}
 	s.shards[0] = anchor
+	s.validAxis.Set(anchor.ValidAxis())
 
 	// Load or create the catalog on the anchor.
 	if err := s.loadOrCreateCatalog(cfg); err != nil {
@@ -373,6 +379,9 @@ func (s *Store) shardConfig(cfg Config, k uint8, reg *registrypkg.PropertyKeyReg
 		DisablePlannerStats:   cfg.DisablePlannerStats,
 		HistoryDeltaEncoding:  cfg.HistoryDeltaEncoding,
 		PropertyKeyRegistry:   reg,
+		// The anchor's axis (round 11): it holds the untimed mode key, and
+		// it is open before every other shard (zero while it opens itself).
+		ValidAxis: s.validAxis.Get(),
 	}
 	if cfg.ChangeLog {
 		// Every shard records to its own co-committed log but draws LSNs from the

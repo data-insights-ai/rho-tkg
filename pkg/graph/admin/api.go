@@ -72,7 +72,7 @@ type UntimedValidStart = core.UntimedValidStart
 const (
 	UntimedFromTxFrom = core.UntimedFromTxFrom
 	UntimedUnbounded  = core.UntimedUnbounded
-	UntimedAtemporal  = core.UntimedAtemporal
+	UntimedWholeAxis  = core.UntimedWholeAxis
 )
 
 // PurgeByAge purges nodes below Before by IMMUTABLE snowflake mint-time (v1).
@@ -97,6 +97,7 @@ type Ops interface {
 	RelSegmentStats(relType string) (RelSegmentStats, error)
 	SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) error
 	UntimedValidStart() (mode UntimedValidStart, complete bool, err error)
+	ValidAxis() (types.ValidAxis, error)
 }
 
 // API is the admin sub-API accessor.
@@ -147,7 +148,7 @@ func (a *API) SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) 
 }
 
 // UntimedValidStart answers the untimed valid-start mode the store's rows are
-// written under (round 11): UntimedFromTxFrom, UntimedUnbounded or UntimedAtemporal, as
+// written under (round 11): UntimedFromTxFrom, UntimedUnbounded or UntimedWholeAxis, as
 // persisted in the store (never UntimedDefault), and complete = false while a
 // conversion to UntimedUnbounded is unfinished (rows of both rules; mode is
 // the target). A replica answers its own open-time mode until the primary's
@@ -161,6 +162,20 @@ func (a *API) UntimedValidStart() (mode UntimedValidStart, complete bool, err er
 		return 0, false, err
 	}
 	return ops.UntimedValidStart()
+}
+
+// ValidAxis answers the valid axis the store's rows are on (round 11,
+// types.ValidAxis): types.LiteralValidAxis for an UntimedWholeAxis store,
+// types.LegacyValidAxis otherwise. A consumer reading raw rows (History(),
+// ValidRange(), column batches, timeline segments) reads a row's start and
+// end through it: axis.NodeStart / RelStart, axis.Open / End,
+// axis.ValidToAtTxTime. ErrGraphClosed on a closed graph. See core.AdminOps.
+func (a *API) ValidAxis() (types.ValidAxis, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return types.ValidAxis{}, err
+	}
+	return ops.ValidAxis()
 }
 
 // DecomposeNodeID extracts time/node/step from a node ID.

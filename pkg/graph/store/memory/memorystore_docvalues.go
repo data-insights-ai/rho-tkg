@@ -390,7 +390,7 @@ func (ms *Store) buildColumnsFromIDsLocked(ids []types.NodeID, requested []strin
 		}
 		// See core/docvalues.go: the effective start, one rule.
 		_, t, _ := n.ValidRange()
-		f := int64(storeutil.NodeValidFrom(n))
+		f := int64(storeutil.NodeValidFrom(ms.validAxis.Get(), n))
 		return f, int64(t), f, true
 	}
 	ms.columnRebuilds.Add(1)
@@ -423,7 +423,7 @@ func (ms *Store) refreshLabelColumnsLocked(token uint16, set map[types.NodeID]st
 						return 0, 0, 0, false
 					}
 					_, t, _ := n.ValidRange()
-					f := int64(storeutil.NodeValidFrom(n))
+					f := int64(storeutil.NodeValidFrom(ms.validAxis.Get(), n))
 					return f, int64(t), f, true
 				}
 				if ext := old.Extend(cur, added, getProp, getTemporal); ext != nil {

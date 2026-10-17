@@ -135,16 +135,10 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 		if err != nil {
 			return err
 		}
-		if err := c.noteRowValidFromZero(types.Instant(body.Wire.ValidFrom), body.Wire.ValidFromZero); err != nil {
-			return err
-		}
 		return c.applyNodePutLocked(body, rec)
 	case storepkg.ChangeRelPut:
 		body, err := storeutil.DecodeRelPut(rec.Payload)
 		if err != nil {
-			return err
-		}
-		if err := c.noteRowValidFromZero(types.Instant(body.Wire.ValidFrom), body.Wire.ValidFromZero); err != nil {
 			return err
 		}
 		return c.applyRelPutLocked(body, rec)
@@ -165,16 +159,10 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 		if err != nil {
 			return err
 		}
-		if err := c.noteRowValidFromZero(types.Instant(body.Wire.ValidFrom), body.Wire.ValidFromZero); err != nil {
-			return err
-		}
 		return c.applyNodeHistoryVersionLocked(body, rec)
 	case storepkg.ChangeRelHistoryVersion:
 		body, err := storeutil.DecodeHistoryVersionRel(rec.Payload)
 		if err != nil {
-			return err
-		}
-		if err := c.noteRowValidFromZero(types.Instant(body.Wire.ValidFrom), body.Wire.ValidFromZero); err != nil {
 			return err
 		}
 		return c.applyRelHistoryVersionLocked(body, rec)
@@ -193,9 +181,6 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 	case storepkg.ChangeForeignIncoming:
 		body, err := storeutil.DecodeRelPut(rec.Payload)
 		if err != nil {
-			return err
-		}
-		if err := c.noteRowValidFromZero(types.Instant(body.Wire.ValidFrom), body.Wire.ValidFromZero); err != nil {
 			return err
 		}
 		return c.applyForeignIncomingLocked(body, rec)
@@ -650,7 +635,7 @@ func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {
 	if err != nil {
 		return fmt.Errorf("graph: apply: node delete tombstone %d: %w: %v", body.ID, ErrCorruptExport, err)
 	}
-	clamped := closeClamped(local.Temporal(), nodeTomb.Temporal())
+	clamped := closeClamped(c.axis(), local.Temporal(), nodeTomb.Temporal())
 	relTombs := make([]storepkg.RelTombstone, 0, len(body.RelTombstones))
 	for i := range body.RelTombstones {
 		rw := body.RelTombstones[i]
@@ -662,7 +647,7 @@ func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {
 		if rerr != nil {
 			return fmt.Errorf("graph: apply: cascade tombstone rel %d: %w", rw.ID, rerr)
 		}
-		clamped = clamped || closeClamped(localRel.Temporal(), rt.Temporal())
+		clamped = clamped || closeClamped(c.axis(), localRel.Temporal(), rt.Temporal())
 		relTombs = append(relTombs, storepkg.RelTombstone{
 			ID:          types.RelID(rw.ID),
 			PrevVersion: localRel.Version(),
@@ -684,9 +669,9 @@ func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {
 // stored temporal metadata was prev, clamped a close prev scheduled after
 // the delete (stampDeleteTombstone's clamp, backlog 25). A tombstone that kept
 // the believed ValidTo (DeleteKeptValidTo) rewrote nothing an earlier pin reads.
-func closeClamped(prev, tomb *types.TemporalMetadata) bool {
+func closeClamped(a types.ValidAxis, prev, tomb *types.TemporalMetadata) bool {
 	end := tombstoneEnd(tomb)
-	return prev != nil && end > 0 && prev.ValidTo > end && !tomb.DeleteKeptValidTo
+	return prev != nil && end > 0 && !a.Open(prev.ValidTo) && prev.ValidTo > end && !tomb.DeleteKeptValidTo
 }
 
 // applyRelDeleteLocked feeds a with-history tombstone's end (min(TxTo,
@@ -719,7 +704,7 @@ func (c *Core) applyRelDeleteLocked(body storeutil.RelDeleteBody) error {
 	if err != nil {
 		return fmt.Errorf("graph: apply: rel delete tombstone %d: %w: %v", body.ID, ErrCorruptExport, err)
 	}
-	clamped := closeClamped(local.Temporal(), tomb.Temporal())
+	clamped := closeClamped(c.axis(), local.Temporal(), tomb.Temporal())
 	if err := c.store.DeleteRelWithHistory(id, local.Version(), tomb); err != nil {
 		return err
 	}

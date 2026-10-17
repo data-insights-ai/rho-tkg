@@ -22,16 +22,18 @@ import (
 // excise's one transaction instant). A later correction over the hole is a
 // newer belief and fills it again.
 
-// validateExciseInterval is the interval check of the excise doors: a
-// non-empty bounded range (b = 0, an open tail, is CloseVersion's job). A
-// negative bound is a real one (types.UnboundedValidFrom included, the rows
-// of an UntimedUnbounded store start there); only 0 is refused, the instant
-// no stored row can start a piece at (ValidFrom 0 is unset).
-func validateExciseInterval(a, b types.Instant) error {
-	if b == 0 {
+// validateExciseInterval is the interval check of the excise doors, on the
+// graph's valid axis ax: a non-empty bounded range (b open, an open tail, is
+// CloseVersion's job). A negative bound is a real one
+// (types.UnboundedValidFrom included, the rows of an UntimedUnbounded store
+// start there); on the legacy axis 0 is refused, the instant no stored row
+// can start a piece at (ValidFrom 0 is unset), on the literal axis
+// (UntimedWholeAxis, round 11) it is an ordinary bound.
+func validateExciseInterval(ax types.ValidAxis, a, b types.Instant) error {
+	if ax.Open(b) {
 		return fmt.Errorf("%w: excise needs a bounded end (use CloseVersion for an open tail)", ErrInvalidTimeRange)
 	}
-	if a == 0 || a >= b {
+	if !ax.Claimed(a) || a >= b {
 		return fmt.Errorf("%w: excise range [%d, %d) is empty or inverted", ErrInvalidTimeRange, a, b)
 	}
 	return nil
@@ -124,7 +126,7 @@ func (c *Core) exciseNode(ctx context.Context, id types.NodeID, a, b, at types.I
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
-	if err := validateExciseInterval(a, b); err != nil {
+	if err := validateExciseInterval(c.axis(), a, b); err != nil {
 		return err
 	}
 	_, err := c.cascadeNode(ctx, id, a, b, nil, at, true)
@@ -136,7 +138,7 @@ func (c *Core) exciseRel(ctx context.Context, id types.RelID, a, b, at types.Ins
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
-	if err := validateExciseInterval(a, b); err != nil {
+	if err := validateExciseInterval(c.axis(), a, b); err != nil {
 		return err
 	}
 	_, err := c.cascadeRel(ctx, id, a, b, nil, at, true)
@@ -175,7 +177,7 @@ func (tx *GraphTx) exciseNodeLocked(id types.NodeID, a, b, at types.Instant) err
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
-	if err := validateExciseInterval(a, b); err != nil {
+	if err := validateExciseInterval(tx.g.axis(), a, b); err != nil {
 		return err
 	}
 	if err := tx.snapshotNodeLocked(id.SnowflakeID()); err != nil {
@@ -220,7 +222,7 @@ func (tx *GraphTx) exciseRelLocked(id types.RelID, a, b, at types.Instant) error
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return err
 	}
-	if err := validateExciseInterval(a, b); err != nil {
+	if err := validateExciseInterval(tx.g.axis(), a, b); err != nil {
 		return err
 	}
 	if err := tx.snapshotRelLocked(id.SnowflakeID()); err != nil {

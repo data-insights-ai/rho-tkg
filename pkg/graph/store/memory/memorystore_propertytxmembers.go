@@ -46,7 +46,7 @@ func (ms *Store) recordRelPropTxLocked(r *types.Relationship, current bool) {
 	}
 	tok := r.TypeToken().Value()
 	id := r.ID()
-	ri := indexpkg.RelRowInfo(r)
+	ri := indexpkg.RelRowInfo(ms.validAxis.Get(), r)
 	r.ForEachIndexKey(indexpkg.RelElementsOf(ms.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
 		if m := ms.relPropTxMembers[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; m != nil {
 			m.RecordRow(valueKey, id, ri, current)
@@ -62,7 +62,7 @@ func (ms *Store) recordNodePropTxLocked(n *types.Node, current bool) {
 		return
 	}
 	id := n.ID()
-	ri := indexpkg.NodeRowInfo(n)
+	ri := indexpkg.NodeRowInfo(ms.validAxis.Get(), n)
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		label := n.LabelTokenRawAt(i)
 		n.ForEachIndexKey(indexpkg.ElementsOf(ms.propertyIndexes, label), func(propertyKey, valueKey string) bool {
@@ -84,7 +84,7 @@ func (ms *Store) recordRelReplacedLocked(prev, next *types.Relationship) {
 	}
 	tok := prev.TypeToken().Value()
 	id := prev.ID()
-	old, nx := indexpkg.RelRowInfo(prev), indexpkg.RelRowInfo(next)
+	old, nx := indexpkg.RelRowInfo(ms.validAxis.Get(), prev), indexpkg.RelRowInfo(ms.validAxis.Get(), next)
 	prev.ForEachIndexKey(indexpkg.RelElementsOf(ms.relPropertyIndexes, tok), func(propertyKey, valueKey string) bool {
 		if sc := ms.relPropTxMembers[indexpkg.RelPropertyIndexKey{RelTypeToken: tok, PropertyKey: propertyKey}]; sc != nil {
 			sc.RecordReplaced(valueKey, id, old, nx)
@@ -100,7 +100,7 @@ func (ms *Store) recordNodeReplacedLocked(prev, next *types.Node) {
 		return
 	}
 	id := prev.ID()
-	old, nx := indexpkg.NodeRowInfo(prev), indexpkg.NodeRowInfo(next)
+	old, nx := indexpkg.NodeRowInfo(ms.validAxis.Get(), prev), indexpkg.NodeRowInfo(ms.validAxis.Get(), next)
 	for i := 0; i < prev.LabelTokenCount(); i++ {
 		label := prev.LabelTokenRawAt(i)
 		prev.ForEachIndexKey(indexpkg.ElementsOf(ms.propertyIndexes, label), func(propertyKey, valueKey string) bool {
@@ -179,7 +179,7 @@ func (ms *Store) relPropTxSidecarLocked(key indexpkg.RelPropertyIndexKey) (*inde
 			vks = append(vks, vk)
 			return true
 		})
-		scan.Add(r.ID(), indexpkg.RelRowInfo(r), current, vks)
+		scan.Add(r.ID(), indexpkg.RelRowInfo(ms.validAxis.Get(), r), current, vks)
 	}
 	// ADR-0011: every current row, sealed included; a decode error leaves the
 	// sidecar unbuilt (it must be a superset).
@@ -226,7 +226,7 @@ func (ms *Store) nodePropTxSidecarLocked(key indexpkg.PropertyIndexKey) *indexpk
 			vks = append(vks, vk)
 			return true
 		})
-		scan.Add(n.ID(), indexpkg.NodeRowInfo(n), current, vks)
+		scan.Add(n.ID(), indexpkg.NodeRowInfo(ms.validAxis.Get(), n), current, vks)
 	}
 	for _, n := range ms.nodes {
 		record(n, true)

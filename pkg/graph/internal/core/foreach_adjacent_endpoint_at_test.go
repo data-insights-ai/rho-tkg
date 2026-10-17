@@ -141,7 +141,7 @@ func TestForEachAdjacentEndpointAt_ParityBothBackends(t *testing.T) {
 				}
 				oracle := map[types.RelID]types.NodeID{}
 				for _, r := range rels {
-					if storeutil.MatchesTemporalFilter(r.InternalID().SnowflakeID(), r.Temporal(), opts) {
+					if storeutil.MatchesTemporalFilter(types.LegacyValidAxis, r.InternalID().SnowflakeID(), r.Temporal(), opts) {
 						oracle[r.InternalID()] = r.EndNodeID()
 					}
 				}

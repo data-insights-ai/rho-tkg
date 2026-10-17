@@ -109,7 +109,7 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 		return nil, err
 	}
 
-	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(c.axis(), props)
 	if err != nil {
 		return nil, err
 	}
@@ -208,13 +208,14 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 			txNow = txFromOverride
 		}
 		ntm := n.Temporal()
-		if ntm == nil {
+		fresh := ntm == nil
+		if fresh {
 			ntm = &types.TemporalMetadata{}
 			n.SetTemporal(ntm)
 		}
 		ntm.TxFrom = txNow
-		stampValidFrom(ntm, validFrom, vfSet)
-		if validTo != 0 {
+		stampValidFrom(c.axis(), ntm, validFrom, vfSet)
+		if fresh || validTo != c.axis().OpenEnd() { // validTo: the end as stored on the axis
 			ntm.ValidTo = validTo
 		}
 		if createdAt != 0 {
@@ -379,7 +380,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err != nil {
 		return nil, err
 	}
-	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(c.axis(), props)
 	if err != nil {
 		return nil, err
 	}
@@ -503,13 +504,14 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		txNow = life.txFrom(c.now())
 	}
 	tm := n.Temporal()
-	if tm == nil {
+	fresh := tm == nil
+	if fresh {
 		tm = &types.TemporalMetadata{}
 		n.SetTemporal(tm)
 	}
 	tm.TxFrom = txNow
-	stampValidFrom(tm, validFrom, vfSet)
-	if validTo != 0 {
+	stampValidFrom(c.axis(), tm, validFrom, vfSet)
+	if fresh || validTo != c.axis().OpenEnd() { // validTo: the end as stored on the axis
 		tm.ValidTo = validTo
 	}
 	if createdAt != 0 {

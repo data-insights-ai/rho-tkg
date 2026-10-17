@@ -490,6 +490,9 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 			if hdr.Version < exportFormatVersionMin || hdr.Version > exportFormatVersionMax {
 				return fmt.Errorf("%w: got %d, want %d..%d", ErrIncompatibleExport, hdr.Version, exportFormatVersionMin, exportFormatVersionMax)
 			}
+			if err := checkExportVersionMode(hdr); err != nil {
+				return err
+			}
 			if hdr.IsDelta {
 				// A delta stream carries change records that the full-import
 				// replay does not apply; it must go through ImportMerge.
@@ -501,7 +504,7 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 			if hdr.RelCount < 0 {
 				return fmt.Errorf("%w: negative relationship count %d", ErrCorruptExport, hdr.RelCount)
 			}
-			if err := c.checkImportUntimedModeLocked(untimedModeOfHeader(hdr.UntimedUnbounded, hdr.UntimedAtemporal), rollback); err != nil {
+			if err := c.checkImportUntimedModeLocked(untimedModeOfHeader(hdr.UntimedUnbounded, hdr.UntimedWholeAxis), rollback); err != nil {
 				return err
 			}
 			header = hdr
@@ -655,7 +658,7 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 			return err
 		}
 	}
-	if err := c.adoptImportUntimedModeLocked(untimedModeOfHeader(header.UntimedUnbounded, header.UntimedAtemporal)); err != nil {
+	if err := c.adoptImportUntimedModeLocked(untimedModeOfHeader(header.UntimedUnbounded, header.UntimedWholeAxis)); err != nil {
 		return err
 	}
 	if header.SnapshotLSN > 0 {
@@ -767,9 +770,6 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := c.checkImportedStamp(nodeWireCommitStamp(wn)); err != nil {
 			return err
 		}
-		if err := c.noteRowValidFromZero(types.Instant(wn.ValidFrom), wn.ValidFromZero); err != nil {
-			return err
-		}
 		n, err := storeutil.WireToNodeChecked(wn)
 		if err != nil {
 			return fmt.Errorf("import: node %d: %w: %v", wn.ID, ErrCorruptExport, err)
@@ -817,9 +817,6 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 			return fmt.Errorf("%w: unmarshal node history: %v", ErrCorruptExport, err)
 		}
 		if err := c.checkImportedStamp(nodeWireCommitStamp(wn)); err != nil {
-			return err
-		}
-		if err := c.noteRowValidFromZero(types.Instant(wn.ValidFrom), wn.ValidFromZero); err != nil {
 			return err
 		}
 		n, err := storeutil.WireToNodeChecked(wn)
@@ -872,9 +869,6 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := c.checkImportedStamp(relWireCommitStamp(wr)); err != nil {
 			return err
 		}
-		if err := c.noteRowValidFromZero(types.Instant(wr.ValidFrom), wr.ValidFromZero); err != nil {
-			return err
-		}
 		rel, err := storeutil.WireToRelChecked(wr)
 		if err != nil {
 			return fmt.Errorf("import: rel %d: %w: %v", wr.ID, ErrCorruptExport, err)
@@ -915,9 +909,6 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 			return fmt.Errorf("%w: unmarshal rel history: %v", ErrCorruptExport, err)
 		}
 		if err := c.checkImportedStamp(relWireCommitStamp(wr)); err != nil {
-			return err
-		}
-		if err := c.noteRowValidFromZero(types.Instant(wr.ValidFrom), wr.ValidFromZero); err != nil {
 			return err
 		}
 		rel, err := storeutil.WireToRelChecked(wr)

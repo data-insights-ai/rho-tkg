@@ -270,7 +270,7 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 	ops = append(ops, bs.maintainPropertyIndexesRemove(n, id)...)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(n, id)...)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 
 	// Update in-memory state.
@@ -649,9 +649,9 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		bs.recordNodeLabelMembersLocked(n) // transaction-time label membership
 		bs.addNodePropertyKeyCounts(n)
 		ops = append(ops, bs.maintainPropertyIndexesAdd(n, nd.id)...)
-		indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)
+		indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, n, nd.id)
 		ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, nd.id)...)
-		indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, nd.id)
+		indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, nd.id)
 	}
 
 	bs.appendOps(ops...)
@@ -782,7 +782,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		ops = append(ops, bs.maintainPropertyIndexesRemove(n, id)...)
 		indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
 		ops = append(ops, bs.maintainTemporalIndexDiskRemove(n, id)...)
-		indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
+		indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, id)
 		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)

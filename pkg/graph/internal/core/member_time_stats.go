@@ -137,13 +137,14 @@ func (c *Core) nodeLabelEpoch(tok uint16) (uint64, bool) {
 	return 0, false
 }
 
-// explicitValid reports whether a row carries a valid-from (claimed: from
-// with fromSet, the instant 0 included since round 11) or valid-to of its
-// own. A start at -inf (types.UnboundedValidFrom, the untimed first version
-// under Config.UntimedValidStart = UntimedUnbounded, backlog 73) bounds
-// nothing and does not count.
-func explicitValid(from types.Instant, fromSet bool, to types.Instant) bool {
-	return (fromSet && from != types.UnboundedValidFrom) || to != 0
+// explicitValid reports whether a row carries a valid-from or valid-to of
+// its own, read on the graph's valid axis a (round 11: on the literal axis
+// the instant 0 is a claim). A start at -inf (types.UnboundedValidFrom, the
+// untimed first version under Config.UntimedValidStart = UntimedUnbounded,
+// backlog 73, and every untimed write under UntimedWholeAxis) and the open
+// end bound nothing and do not count.
+func explicitValid(a types.ValidAxis, from, to types.Instant) bool {
+	return (a.Claimed(from) && from != types.UnboundedValidFrom) || !a.Open(to)
 }
 
 // LabelTimeStats returns store.MemberTimeStats for label: current members,
@@ -207,10 +208,10 @@ func (s *StatOps) LabelTimeStats(label string) (storepkg.MemberTimeStats, bool, 
 // countLabelExplicitValid streams the label's current rows once.
 func (c *Core) countLabelExplicitValid(tok uint16) (memberTimeEntry, error) {
 	var e memberTimeEntry
+	a := c.axis()
 	visit := func(n *types.Node) bool {
 		e.members++
-		from, fromSet := n.ValidFromClaim()
-		if _, to, _ := n.ValidRange(); explicitValid(from, fromSet, to) {
+		if from, to, _ := n.ValidRange(); explicitValid(a, from, to) {
 			e.explicit++
 		}
 		return true
@@ -348,10 +349,10 @@ func (s *StatOps) RelTypeTimeStats(typeName string) (storepkg.MemberTimeStats, b
 // countTypeExplicitValid streams the type's current relationships once.
 func (c *Core) countTypeExplicitValid(tok uint16) (memberTimeEntry, error) {
 	var e memberTimeEntry
+	a := c.axis()
 	visit := func(r *types.Relationship) bool {
 		e.members++
-		from, fromSet := r.ValidFromClaim()
-		if _, to, _ := r.ValidRange(); explicitValid(from, fromSet, to) {
+		if from, to, _ := r.ValidRange(); explicitValid(a, from, to) {
 			e.explicit++
 		}
 		return true

@@ -125,7 +125,7 @@ func (c *Core) exportSinceLocked(w io.Writer, since tkgio.Cursor, to, epoch uint
 		return err
 	}
 	hdr := exportHeader{
-		Version:    exportFormatVersionDelta,
+		Version:    c.exportVersion(exportFormatVersionDelta),
 		ExportedAt: time.Now().UnixMilli(),
 		IsDelta:    true,
 		FromLSN:    since.LSN,
@@ -134,7 +134,7 @@ func (c *Core) exportSinceLocked(w io.Writer, since tkgio.Cursor, to, epoch uint
 		ToEpoch:    epoch,
 
 		UntimedUnbounded: c.untimedUnbounded.Load(),
-		UntimedAtemporal: c.untimedAtemporal.Load(),
+		UntimedWholeAxis: c.untimedWholeAxis.Load(),
 	}
 	if err := marshalAndWrite(w, exportTagHeader, &hdr); err != nil {
 		return fmt.Errorf("export since: header: %w", err)

@@ -220,9 +220,9 @@ func (tx *GraphTx) updateNodeAt(id types.NodeID, updates map[string]any, at type
 			return nil, err
 		}
 	}
-	// Under UntimedAtemporal the current row is one segment of several: the
-	// seam decides the no-op over every segment (atemporalUpdateNode).
-	if at == 0 && preparedUpdateCanBeReadOnlyNoOp(prov, tmp) && !atemporalUntimedUpdate(tx.g, tmp) {
+	// Under UntimedWholeAxis the current row is one segment of several: the
+	// seam decides the no-op over every segment (wholeAxisUpdateNode).
+	if at == 0 && preparedUpdateCanBeReadOnlyNoOp(prov, tmp) && !wholeAxisUntimedUpdate(tx.g, tmp) {
 		current, err := tx.g.getCurrentNode(id)
 		if err != nil {
 			return nil, err
@@ -274,7 +274,7 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 	if err != nil {
 		return nil, err
 	}
-	if preparedUpdateCanBeReadOnlyNoOp(prov, tmp) && !atemporalUntimedUpdate(tx.g, tmp) {
+	if preparedUpdateCanBeReadOnlyNoOp(prov, tmp) && !wholeAxisUntimedUpdate(tx.g, tmp) {
 		current, err := tx.g.getCurrentRelationship(id)
 		if err != nil {
 			return nil, err
@@ -853,7 +853,7 @@ func (tx *GraphTx) preflightAddNodeLabelLocked(id types.NodeID, label string) (*
 	if current.LabelTokenCount()+1 > tx.g.validation.MaxLabelsPerNode {
 		return nil, false, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, current.LabelTokenCount()+1, tx.g.validation.MaxLabelsPerNode)
 	}
-	if err := rejectClosedNodeMutation(current); err != nil {
+	if err := tx.g.rejectClosedNodeMutation(current); err != nil {
 		return nil, false, err
 	}
 	return current, false, nil
@@ -874,7 +874,7 @@ func (tx *GraphTx) preflightRemoveNodeLabelLocked(id types.NodeID, label string)
 	if current.LabelTokenCount() == 1 {
 		return nil, ErrLastLabel
 	}
-	if err := rejectClosedNodeMutation(current); err != nil {
+	if err := tx.g.rejectClosedNodeMutation(current); err != nil {
 		return nil, err
 	}
 	return current, nil

@@ -4,7 +4,7 @@ import "encoding/binary"
 
 // scanWireTemporalMeta is the reflection-free fast path behind
 // DecodeWireTemporalMeta: a SINGLE non-recursive pass over the wire bytes that
-// captures the selection fields (fv, v, ht, vf, vt, tf, tt, ca, ua, da, rx, vd, vz) from
+// captures the selection fields (fv, v, ht, vf, vt, tf, tt, ca, ua, da, rx) from
 // the TOP-LEVEL map and skips every other value with the same
 // explicit-stack/cursor-alignment machinery guardMsgpackDepth uses. It exists
 // because the SafeUnmarshal partial decode walks the buffer twice (depth guard
@@ -330,10 +330,6 @@ func scanWireTemporalMeta(data []byte) (wireTemporalMetaPartial, bool) {
 			}
 		case "dk":
 			if !captureBool(&out.DeleteKeptValidTo) {
-				return out, false
-			}
-		case "vz":
-			if !captureBool(&out.ValidFromZero) {
 				return out, false
 			}
 		case "vf":

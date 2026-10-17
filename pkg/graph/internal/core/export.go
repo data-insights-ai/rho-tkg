@@ -36,9 +36,37 @@ const exportFormatVersion byte = 2
 // rather than mis-applying.
 const exportFormatVersionDelta byte = 3
 
+// exportFormatVersionLiteral is the version a full Export and ExportSince of
+// an UntimedWholeAxis store stamp (round 11; IsDelta tells the two apart): its
+// rows are on the literal valid axis (types.LiteralValidAxis), where a stored
+// 0 is the instant 0 and an open end types.InfiniteValidTo. A reader before
+// it fails closed (ErrIncompatibleExport) instead of reading those rows on the
+// legacy axis. Every other export keeps its version and bytes. The version
+// and the header's UntimedWholeAxis must agree (ErrCorruptExport).
+const exportFormatVersionLiteral byte = 4
+
 // exportFormatVersionMin / Max bound the versions Import / ImportMerge accept.
 const exportFormatVersionMin byte = 1
-const exportFormatVersionMax byte = 3
+const exportFormatVersionMax byte = exportFormatVersionLiteral
+
+// exportVersion is the header version of an export of this graph: v (the
+// full or delta version), or exportFormatVersionLiteral for an
+// UntimedWholeAxis graph.
+func (c *Core) exportVersion(v byte) byte {
+	if c.axis().Literal() {
+		return exportFormatVersionLiteral
+	}
+	return v
+}
+
+// checkExportVersionMode refuses a header whose version and untimed mode
+// disagree: a literal-axis version without UntimedWholeAxis, or the reverse.
+func checkExportVersionMode(hdr exportHeader) error {
+	if (hdr.Version == exportFormatVersionLiteral) != hdr.UntimedWholeAxis {
+		return fmt.Errorf("%w: export version %d with UntimedWholeAxis %v", ErrCorruptExport, hdr.Version, hdr.UntimedWholeAxis)
+	}
+	return nil
+}
 
 // exportBatchSize is the page size for paginated entity queries during export.
 // Caps per-page allocations to ~80-100 KB for nodes, preventing the OOM
@@ -111,12 +139,13 @@ type exportHeader struct {
 	// the rule, and an import must not mix them with the other one. Omitted
 	// (false) for a UntimedFromTxFrom source, so a default export is unchanged.
 	UntimedUnbounded bool `msgpack:"uu,omitempty"`
-	// UntimedAtemporal says the source is an UntimedAtemporal store (round
-	// 11; uu is set too: its untimed creates start at -inf). An import into a
-	// store of another mode with rows is ErrUntimedModeMismatch; an empty
-	// target adopts it. A release before it ignores the key and imports the
-	// rows as an UntimedUnbounded store (the rows carry their starts).
-	UntimedAtemporal bool `msgpack:"ua,omitempty"`
+	// UntimedWholeAxis says the source is an UntimedWholeAxis store (round
+	// 11; uu is set too: its untimed creates start at -inf), whose rows are on
+	// the literal valid axis; the header then carries
+	// exportFormatVersionLiteral, which a release before it refuses. An import
+	// into a store of another mode with rows is ErrUntimedModeMismatch; an
+	// empty target adopts it.
+	UntimedWholeAxis bool `msgpack:"ua,omitempty"`
 }
 
 // IO sentinels — canonical declarations live in pkg/graph/io so external
@@ -195,12 +224,12 @@ func (c *Core) exportLocked(w io.Writer) error {
 		return fmt.Errorf("export: rel count: %w", err)
 	}
 	hdr := exportHeader{
-		Version:          exportFormatVersion,
+		Version:          c.exportVersion(exportFormatVersion),
 		ExportedAt:       time.Now().UnixMilli(),
 		NodeCount:        int64(nc),
 		RelCount:         int64(rc),
 		UntimedUnbounded: c.untimedUnbounded.Load(),
-		UntimedAtemporal: c.untimedAtemporal.Load(),
+		UntimedWholeAxis: c.untimedWholeAxis.Load(),
 	}
 	// Capture the change-log LSN UNDER the held c.mu.Lock, atomically with the
 	// entity snapshot above — so the SnapshotLSN exactly bounds what this export

@@ -257,13 +257,14 @@ func (s singleVersionAdjacencyResolver) firstVersionCovers(r *types.Relationship
 		return false, false
 	}
 	_, vEnd, _ := r.ValidRange()
-	vStart := storeutil.RelValidFrom(r)
+	a := s.c.axis()
+	vStart := storeutil.RelValidFrom(a, r)
 	switch s.probe.kind {
 	case probePoint:
 		t := s.probe.validAt
-		return storeutil.IntervalCovers(vStart, vEnd, t), true
+		return storeutil.IntervalCovers(a, vStart, vEnd, t), true
 	case probeInterval:
-		return storeutil.IntervalMeets(vStart, vEnd, s.probe.validStart, s.probe.validEnd), true
+		return storeutil.IntervalMeets(a, vStart, vEnd, s.probe.validStart, s.probe.validEnd), true
 	}
 	return false, false
 }

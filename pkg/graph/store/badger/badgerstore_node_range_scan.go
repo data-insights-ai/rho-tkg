@@ -98,7 +98,7 @@ func (bs *Store) ForEachNodeByLabelPropertyRange(token uint16, propKey string, m
 		if !n.HasLabelTokenRaw(token) {
 			continue
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(nid.SnowflakeID(), n.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), nid.SnowflakeID(), n.Temporal(), opts) {
 			continue
 		}
 		if !fn(n) {

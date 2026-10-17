@@ -25,12 +25,13 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // ops commit, as an UpdateNode violation does.
 
 // SetNodeVersionInterval accumulates a valid-time correction for node id over
-// [validFrom, validTo) (validTo == 0 means open-ended). props is a PATCH over
+// [validFrom, validTo) (validTo open by the graph's valid axis: 0 on the
+// legacy axis, types.InfiniteValidTo on the literal one). props is a PATCH over
 // the state believed valid at each instant of the interval (nil keeps every
 // property; a nil value deletes a key); see TempOps.SetNodeVersionInterval for
 // the full semantics. The map is copied at queue time. Queue-time refusals,
-// with nothing queued: ErrInvalidTimeRange (validFrom == 0, or validTo != 0
-// and validFrom >= validTo) and an ErrInvalidStoreMutation-family id error
+// with nothing queued: ErrInvalidTimeRange (an unclaimed validFrom — 0 on the
+// legacy axis —, or a bounded validTo at or before validFrom) and an ErrInvalidStoreMutation-family id error
 // (zero or negative id). An unknown id surfaces at apply (ErrNodeNotFound).
 // Note that Get keeps returning the head row: the appended correction rows
 // appear in History and in *AtTx reads.

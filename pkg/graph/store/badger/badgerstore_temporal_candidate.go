@@ -27,7 +27,7 @@ func (bs *Store) PruneTemporalCandidates(labelToken uint16, ids []types.NodeID, 
 	kept := make([]types.NodeID, 0, len(ids))
 	for _, id := range ids {
 		from, to, ok := ti.EnvelopeOf(id.SnowflakeID())
-		if ok && !storepkg.EnvelopeOverlaps(from, to, opts) {
+		if ok && !storepkg.EnvelopeOverlaps(types.LegacyValidAxis, from, to, opts) { // an envelope's convention (index.EnvelopeAxis)
 			continue // index vouches: no version of this node can overlap → prune
 		}
 		kept = append(kept, id)

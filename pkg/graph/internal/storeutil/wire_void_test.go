@@ -223,18 +223,18 @@ func TestSelectAsOf_SkipsVoidRows(t *testing.T) {
 	}
 	cur := row(0, 10, 50, 100, false)
 	piece := row(1, 20, 30, 200, true)
-	if got, ok := SelectAsOfWithCurrent([]*types.Node{piece}, cur, true, 300); !ok || got != cur {
+	if got, ok := SelectAsOfWithCurrent(types.LegacyValidAxis, []*types.Node{piece}, cur, true, 300); !ok || got != cur {
 		t.Fatalf("current arm with a void piece above: %v %v; want the current row", got, ok)
 	}
 	resumption := row(1, 30, 50, 200, false)
 	piece2 := row(2, 20, 30, 200, true)
-	if got, ok := SelectAsOfWithCurrent([]*types.Node{resumption, piece2}, cur, true, 300); !ok || got != resumption {
+	if got, ok := SelectAsOfWithCurrent(types.LegacyValidAxis, []*types.Node{resumption, piece2}, cur, true, 300); !ok || got != resumption {
 		t.Fatalf("current arm with resumption + piece: %v %v; want the resumption", got, ok)
 	}
-	if got, ok := SelectAsOf([]*types.Node{cur, piece}, 300); !ok || got != cur {
+	if got, ok := SelectAsOf(types.LegacyValidAxis, []*types.Node{cur, piece}, 300); !ok || got != cur {
 		t.Fatalf("history arm, newest row void: %v %v; want the row below", got, ok)
 	}
-	if _, ok := SelectAsOf([]*types.Node{piece}, 300); ok {
+	if _, ok := SelectAsOf(types.LegacyValidAxis, []*types.Node{piece}, 300); ok {
 		t.Fatal("a chain of only a void piece answered")
 	}
 }

@@ -55,7 +55,8 @@ func (c *Core) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Inst
 		nodeFrom = c.nodeCurrentLifeStart(node, nodeFrom)
 	}
 
-	var nodeTo types.Instant
+	a := c.axis()
+	nodeTo := a.OpenEnd()
 	if tm := node.Temporal(); tm != nil {
 		nodeTo = tm.ValidTo
 	}
@@ -69,7 +70,7 @@ func (c *Core) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Inst
 	}
 
 	// (3)/(4): rel must not start after the node has already expired.
-	if nodeTo != 0 && relFrom >= nodeTo {
+	if !a.Open(nodeTo) && relFrom >= nodeTo {
 		if isStart {
 			return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelAfterStartNode)
 		}
@@ -78,12 +79,12 @@ func (c *Core) checkRelAgainstEndpoint(r *types.Relationship, relFrom types.Inst
 
 	// (5)/(6): if the node has a finite ValidTo, the relationship must also
 	// have a finite ValidTo that does not outlive the node.
-	if nodeTo != 0 {
-		var relTo types.Instant
+	if !a.Open(nodeTo) {
+		relTo := a.OpenEnd()
 		if tm := r.Temporal(); tm != nil {
 			relTo = tm.ValidTo
 		}
-		if relTo == 0 || relTo > nodeTo {
+		if a.Open(relTo) || relTo > nodeTo {
 			if isStart {
 				return fmt.Errorf("%w: %w", temporalpkg.ErrTemporalConstraint, temporalpkg.ErrRelExceedsStartNodeValidity)
 			}
@@ -172,7 +173,7 @@ func (c *Core) nodeCurrentLifeStart(node *types.Node, current types.Instant) typ
 	if first == nil {
 		return current
 	}
-	return min(storeutil.EntityValidFrom(first.ID().SnowflakeID(), firstTM), current)
+	return min(storeutil.EntityValidFrom(c.axis(), first.ID().SnowflakeID(), firstTM), current)
 }
 
 func nodeWithValidTo(n *types.Node, validTo types.Instant) *types.Node {

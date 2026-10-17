@@ -94,12 +94,12 @@ func TestExtendNodeInTemporalIndexes(t *testing.T) {
 
 	n := types.NewNode(types.NodeID(snowflake.ID(42)), label, nil)
 	n.SetTemporal(&types.TemporalMetadata{ValidFrom: 100, ValidTo: 200})
-	ExtendNodeInTemporalIndexes(idxs, n, snowflake.ID(42))
+	ExtendNodeInTemporalIndexes(types.LegacyValidAxis, idxs, n, snowflake.ID(42))
 
 	// Simulate an update: the node's current version moves to [300,400).
 	n2 := types.NewNode(types.NodeID(snowflake.ID(42)), label, nil)
 	n2.SetTemporal(&types.TemporalMetadata{ValidFrom: 300, ValidTo: 400})
-	ExtendNodeInTemporalIndexes(idxs, n2, snowflake.ID(42))
+	ExtendNodeInTemporalIndexes(types.LegacyValidAxis, idxs, n2, snowflake.ID(42))
 
 	ti := idxs[label]
 	if got := ti.QueryOverlap(100, 200); !containsID(got, snowflake.ID(42)) {
@@ -118,7 +118,7 @@ func TestTemporalIndexExtend_NilSafe(t *testing.T) {
 	t.Parallel()
 	var ti *TemporalIndex
 	ti.Extend(snowflake.ID(1), 1, 2) // must not panic
-	ExtendNodeInTemporalIndexes(nil, nil, snowflake.ID(1))
+	ExtendNodeInTemporalIndexes(types.LegacyValidAxis, nil, nil, snowflake.ID(1))
 	if _, _, ok := ti.EnvelopeOf(snowflake.ID(1)); ok {
 		t.Fatal("nil index EnvelopeOf must return ok=false")
 	}

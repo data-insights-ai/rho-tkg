@@ -155,7 +155,7 @@ func oracleNodeVersionSet(t *testing.T, chains map[types.NodeID][]*types.Node, p
 	t.Helper()
 	m := make(map[snowflake.ID]uint32)
 	for nid, full := range chains {
-		wantV, wantOK := storeutil.SelectAsOf(full, pin)
+		wantV, wantOK := storeutil.SelectAsOf(types.LegacyValidAxis, full, pin)
 		if wantOK {
 			m[nid.SnowflakeID()] = wantV.Version()
 		}
@@ -167,7 +167,7 @@ func oracleRelVersionSet(t *testing.T, chains map[types.RelID][]*types.Relations
 	t.Helper()
 	m := make(map[snowflake.ID]uint32)
 	for rid, full := range chains {
-		wantV, wantOK := storeutil.SelectAsOf(full, pin)
+		wantV, wantOK := storeutil.SelectAsOf(types.LegacyValidAxis, full, pin)
 		if wantOK {
 			m[rid.SnowflakeID()] = wantV.Version()
 		}

@@ -15,15 +15,13 @@ type RangeAnyVersionCount struct {
 
 // CountSegment is one segment of a count timeline: Count members hold over
 // the valid instants [From, To). From == math.MinInt64 is an open start
-// (types.UnboundedValidFrom), To == 0 an open end unless ToZero.
+// (types.UnboundedValidFrom); To is an open end when it is the store's
+// valid axis's open end (types.ValidAxis.Open: 0 on the legacy axis,
+// types.InfiniteValidTo on the literal axis, where a To of 0 is the instant
+// 0). Only the last segment can be open.
 type CountSegment struct {
 	From, To types.Instant
 	Count    int64
-	// ToZero marks To == 0 as the instant 0 (round 11): a member valid from
-	// the explicit 0 (types.TemporalMetadata.ValidFromZero) starts there
-	// while others hold, so a segment can end at 0. Only the last segment
-	// can be open.
-	ToZero bool
 }
 
 // CountTimelineOpts tunes CountTimelineByLabel / CountTimelineByType.
@@ -59,7 +57,8 @@ type ValidHull struct {
 	// types.UnboundedValidFrom (math.MinInt64) when one holds from -inf.
 	From types.Instant
 	// To ends the hull when OpenEnd is false: no member holds at To or
-	// after; 0 when OpenEnd.
+	// after; the valid axis's open end when OpenEnd (0 on the legacy axis,
+	// types.InfiniteValidTo on the literal axis).
 	To types.Instant
 	// OpenEnd: some member holds with no end (+inf).
 	OpenEnd bool

@@ -81,7 +81,7 @@ func (bs *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 		if !n.HasLabelTokenRaw(token) {
 			return true // orphaned label-index entry — skip
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), n.ID().SnowflakeID(), n.Temporal(), opts) {
 			return true
 		}
 		if !fn(n) {

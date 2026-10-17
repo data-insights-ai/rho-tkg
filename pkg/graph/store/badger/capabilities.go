@@ -21,6 +21,7 @@ var (
 	_ storecontract.HistoryRollbackTrimCapability     = (*Store)(nil)
 	_ storecontract.RetentionPurgeCapability          = (*Store)(nil)
 	_ storecontract.RetentionPurgeByValidToCapability = (*Store)(nil)
+	_ storecontract.ValidAxisCapability               = (*Store)(nil)
 	_ storecontract.RangePurgeLogCapability           = (*Store)(nil)
 	_ storecontract.StatsCapability                   = (*Store)(nil)
 	_ storecontract.IterationCapability               = (*Store)(nil)

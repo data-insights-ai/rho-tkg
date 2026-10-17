@@ -356,7 +356,7 @@ func pdOracleNodes(nodes []*types.Node, f storepkg.QueryOpts, values map[string]
 				ok = false
 			}
 		}
-		if ok && storeutil.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), f) {
+		if ok && storeutil.MatchesTemporalFilter(types.LegacyValidAxis, n.ID().SnowflakeID(), n.Temporal(), f) {
 			out = append(out, n.ID().SnowflakeID())
 		}
 	}
@@ -368,7 +368,7 @@ func pdOracleRels(rels []*types.Relationship, f storepkg.QueryOpts, k int64) []s
 	var out []snowflake.ID
 	for _, r := range rels {
 		got, found := r.IndexablePropertyValueKey("k")
-		if found && got == types.IndexablePropertyValueKey(k) && storeutil.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), f) {
+		if found && got == types.IndexablePropertyValueKey(k) && storeutil.MatchesTemporalFilter(types.LegacyValidAxis, r.ID().SnowflakeID(), r.Temporal(), f) {
 			out = append(out, r.ID().SnowflakeID())
 		}
 	}

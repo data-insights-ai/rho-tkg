@@ -452,33 +452,9 @@ func (n *Node) Temporal() *TemporalMetadata {
 	return n.temporal
 }
 
-// ValidFromClaim returns the version's claimed valid start and whether it
-// makes one (TemporalMetadata.HasValidFrom: a non-zero ValidFrom, or 0 with
-// ValidFromZero), allocation-free like ValidRange. ok=false: no claim, the
-// untimed start applies.
-func (n *Node) ValidFromClaim() (from Instant, ok bool) {
-	if n == nil {
-		return 0, false
-	}
-	if n.meta != nil { // compact rows never carry ValidFromZero
-		return n.meta.validFrom, n.meta.validFrom != 0
-	}
-	if n.temporal == nil {
-		return 0, false
-	}
-	return n.temporal.ValidFrom, n.temporal.HasValidFrom()
-}
-
-// StartsAtZero reports whether the version is valid from the explicit
-// instant 0 (TemporalMetadata.StartsAtZero), allocation-free like
-// ValidFromClaim; false on nil.
-func (n *Node) StartsAtZero() bool {
-	vf, ok := n.ValidFromClaim()
-	return ok && vf == 0
-}
-
 // ValidRange returns the node's validity bounds and whether it carries temporal
-// metadata at all (a zero ValidTo means open-ended). Prefer it over Temporal()
+// metadata at all (a zero ValidTo means open-ended on the legacy ValidAxis;
+// read the end through the store's axis, ValidAxis.Open / End). Prefer it over Temporal()
 // for bounds only: it returns values, so it allocates nothing on a frozen row,
 // where Temporal() copies.
 func (n *Node) ValidRange() (from, to Instant, ok bool) {
@@ -518,22 +494,11 @@ func (n *Node) TxStamps() (txFrom, txTo, deletedAt Instant) {
 // its TxFrom (when the version it supersedes starts at or after the clock it
 // stores that start + 1 instead, backlog 77); this returns that start without
 // reading the timeline. Like
-// ValidRange it allocates nothing on a frozen row. 0 for a nil row.
+// ValidRange it allocates nothing on a frozen row. 0 for a nil row. This is
+// the legacy ValidAxis's rule; a row of a store with the literal axis
+// (UntimedWholeAxis) starts at its stored ValidFrom (ValidAxis.NodeStart).
 func (n *Node) EffectiveValidFrom() Instant {
-	if n == nil {
-		return 0
-	}
-	if vf, ok := n.ValidFromClaim(); ok { // the claim, the explicit 0 included (round 11)
-		return vf
-	}
-	if tx, _, _ := n.TxStamps(); tx != 0 {
-		return tx
-	}
-	var tm *TemporalMetadata // a frozen row's meta carries no UpdatedAt
-	if n.meta == nil {
-		tm = n.temporal
-	}
-	return tm.UntimedValidFrom(n.ID().MintInstant())
+	return LegacyValidAxis.NodeStart(n)
 }
 
 // SetTemporal sets the node's temporal metadata.

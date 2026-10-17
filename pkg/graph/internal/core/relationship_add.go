@@ -315,7 +315,8 @@ func (c *Core) newRelConstraintProbe(id types.RelID, startID, endID types.NodeID
 // prepareRelCreate) — mirrors the node create doors (§4.1).
 func (c *Core) applyRelCreateTemporal(r *types.Relationship, validFrom types.Instant, vfSet bool, validTo, createdAt, txFrom types.Instant) {
 	rtm := r.Temporal()
-	if rtm == nil {
+	fresh := rtm == nil
+	if fresh {
 		rtm = &types.TemporalMetadata{}
 		r.SetTemporal(rtm)
 	}
@@ -323,8 +324,11 @@ func (c *Core) applyRelCreateTemporal(r *types.Relationship, validFrom types.Ins
 	if txFrom != 0 {
 		rtm.TxFrom = txFrom
 	}
-	stampValidFrom(rtm, validFrom, vfSet)
-	if validTo != 0 {
+	stampValidFrom(c.axis(), rtm, validFrom, vfSet)
+	// validTo is the end as stored on the graph's valid axis (its open end
+	// without a claim): a fresh row takes it, an existing one keeps its end
+	// unless validTo claims one.
+	if fresh || validTo != c.axis().OpenEnd() {
 		rtm.ValidTo = validTo
 	}
 	if createdAt != 0 {

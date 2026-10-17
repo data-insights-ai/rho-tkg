@@ -93,6 +93,11 @@ const (
 type Config struct {
 	// Dir is the Badger data directory. Required unless InMemory is true.
 	Dir string
+	// ValidAxis is the valid axis (round 11) of a store that holds no
+	// persisted untimed mode of its own: a tiered or sharded shard, whose
+	// composite keeps the mode on its reference or anchor shard. A store
+	// whose MetaKV holds the mode reads its axis from it. Zero: legacy.
+	ValidAxis types.ValidAxis
 	// InMemory enables memory-only mode (no disk I/O). Useful for testing.
 	InMemory bool
 	// Logger is the Badger logger. Nil uses Badger's default logger.
@@ -317,6 +322,10 @@ type pendingLogRecord struct {
 // the flush WriteBatch. See docs/architecture.md (badger.Store).
 type Store struct {
 	db *badgerv4.DB
+
+	// validAxis is the axis the store reads its rows on (round 11,
+	// store.ValidAxisCapability), fixed at open (openValidAxis).
+	validAxis storepkg.ValidAxisCell
 
 	// In-memory indexes (source of truth while running).
 	// Protected by idxMu for concurrent read/write access.
@@ -1003,6 +1012,14 @@ func New(cfg Config) (*Store, error) {
 			}
 			return nil
 		}
+	}
+
+	// The valid axis (round 11) is fixed before any row is read: the store's
+	// own persisted untimed mode decides it, else the composite's axis (a
+	// tiered or sharded shard without the key), else the legacy axis.
+	if err := bs.openValidAxis(cfg.ValidAxis); err != nil {
+		_ = db.Close() // best-effort cleanup
+		return nil, err
 	}
 
 	// A cleanly closed store opens from its keys and the persisted open image
@@ -1734,7 +1751,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							}
 							continue
 						}
-						from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+						from, to := indexpkg.NodeTemporalBounds(bs.validAxis.Get(), rawID, n.Temporal())
 						ti.AddKnownAbsent(rawID, from, to)
 						if bs.temporalIdxOnDisk && temporalIdxNeedsBuild {
 							// Rebuild-on-enable: collect the one-time 0x0B backfill row (committed after the
@@ -1800,7 +1817,7 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 							}
 							continue
 						}
-						from, _ := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+						from, _ := indexpkg.NodeTemporalBounds(bs.validAxis.Get(), rawID, n.Temporal())
 						hfi.Add(types.NodeID(rawID), from)
 					}
 				}

@@ -109,7 +109,7 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 			if !n.HasLabelTokenRaw(token) {
 				continue
 			}
-			if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+			if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), n.ID().SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}
 			nodes = append(nodes, n)
@@ -125,7 +125,7 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 		if !n.HasLabelTokenRaw(token) {
 			return true // continue
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), n.ID().SnowflakeID(), n.Temporal(), opts) {
 			return true
 		}
 		nodes = append(nodes, n)
@@ -482,7 +482,7 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey string,
 			continue
 		}
 		if storepkg.NodeHasAnyIndexKey(n, propKey, elements, targetKeys) {
-			if hasTemporal && !storepkg.MatchesTemporalFilter(nid.SnowflakeID(), n.Temporal(), opts) {
+			if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), nid.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}
 			result = append(result, n)

@@ -93,9 +93,9 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 
 	bs.addNodePropertyKeyCounts(n)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
-	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
+	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, n, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, id)...)
-	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
+	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, id)
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(1)
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
@@ -485,7 +485,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	ops = append(ops, bs.maintainPropertyIndexesRemove(n, id)...)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(n, id)...)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 
 	// Update in-memory state.
@@ -572,7 +572,7 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector entries right after the old ones are purged, before other
 	// index state commits (lesson 4, BACKLOG 18e), so a failure never leaves the
@@ -586,9 +586,9 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(n)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
-	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
+	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, n, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, id)...)
-	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
+	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, n, id)
 	ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
 	bs.appendOps(ops...)
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
@@ -670,7 +670,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector-index entries right after the old ones are purged,
 	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
@@ -696,9 +696,9 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
-	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
-	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
+	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
 
 	// Queue: set node data + delete label index entry.
 	ops = append(ops,
@@ -789,7 +789,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
-	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
+	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	// Apply the new vector-index entries right after the old ones are purged,
 	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
@@ -809,9 +809,9 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
-	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	indexpkg.AddNodeToTemporalIndexes(bs.validAxis.Get(), bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
-	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
+	indexpkg.AddNodeToHighFrequencyIndexes(bs.validAxis.Get(), bs.hfIndexes, updatedNode, id)
 
 	ops = append(ops,
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},

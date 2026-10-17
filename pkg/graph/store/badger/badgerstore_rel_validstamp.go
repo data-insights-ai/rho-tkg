@@ -47,8 +47,8 @@ import (
 
 // relValidStamp is one relationship's inline valid-time interval. vf is the
 // EFFECTIVE valid-from: EntityValidFrom has already resolved the snowflake-ID
-// fallback, so vf is always > 0 for a real relationship. vt is valid-to with 0
-// meaning open-ended. Storing the resolved vf lets the fast path reuse the
+// fallback, so vf is the start on the store's valid axis. vt is the stored valid-to,
+// open-ended by the axis (0 on the legacy axis). Storing the resolved vf lets the fast path reuse the
 // canonical MatchesTemporalFilter via a synthetic TemporalMetadata, so the
 // inline decision can never drift from the decode path's semantics.
 type relValidStamp struct {
@@ -67,15 +67,16 @@ func (bs *Store) setRelValidStampLocked(rid types.RelID, r *types.Relationship) 
 	if bs.relValidIdx == nil {
 		return // not built yet — temporal traversal will build it on first use
 	}
-	bs.relValidIdx[rid] = relValidStampFor(rid, r)
+	bs.relValidIdx[rid] = relValidStampFor(bs.validAxis.Get(), rid, r)
 }
 
-// relValidStampFor computes a rel's effective valid interval (EntityValidFrom
-// resolves an unset ValidFrom to the row's TxFrom; vt==0 is open-ended).
-func relValidStampFor(rid types.RelID, r *types.Relationship) relValidStamp {
+// relValidStampFor computes a rel's effective valid interval on the store's
+// valid axis a (EntityValidFrom resolves a legacy unset ValidFrom to the row's
+// TxFrom; vt is the stored end, open by a.Open).
+func relValidStampFor(a types.ValidAxis, rid types.RelID, r *types.Relationship) relValidStamp {
 	tm := r.Temporal()
-	vf := storepkg.EntityValidFrom(rid.SnowflakeID(), tm)
-	var vt types.Instant
+	vf := storepkg.EntityValidFrom(a, rid.SnowflakeID(), tm)
+	vt := a.OpenEnd()
 	if tm != nil {
 		vt = tm.ValidTo
 	}
@@ -103,7 +104,7 @@ func (bs *Store) ensureRelValidIdxBuilt() {
 		if err != nil {
 			continue // gone since the snapshot — a miss falls back to a decode
 		}
-		idx[rid] = relValidStampFor(rid, r)
+		idx[rid] = relValidStampFor(bs.validAxis.Get(), rid, r)
 	}
 	bs.relValidIdx = idx
 	bs.relValidIdxBuilt.Store(true)
@@ -169,7 +170,7 @@ func (bs *Store) ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, i
 			// The resolved start s.vf goes in as is (it may be the instant
 			// 0 of an explicit claim, round 11): no second resolution.
 			tm := types.TemporalMetadata{ValidTo: types.Instant(s.vt)}
-			if storepkg.MatchesTemporalFilterFrom(types.Instant(s.vf), &tm, opts) {
+			if storepkg.MatchesTemporalFilterFrom(bs.validAxis.Get(), types.Instant(s.vf), &tm, opts) {
 				survivors = append(survivors, m)
 			}
 		}
@@ -188,7 +189,7 @@ func (bs *Store) ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, i
 			}
 			return fmt.Errorf("graph: scan relationship %d: %w", m.rel.SnowflakeID(), err)
 		}
-		if storepkg.MatchesTemporalFilter(m.rel.SnowflakeID(), r.Temporal(), opts) {
+		if storepkg.MatchesTemporalFilter(bs.validAxis.Get(), m.rel.SnowflakeID(), r.Temporal(), opts) {
 			survivors = append(survivors, m)
 		}
 	}
@@ -242,7 +243,7 @@ func (bs *Store) ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incomi
 		for _, rid := range rids {
 			if s, ok := bs.relValidIdx[rid]; ok {
 				tm := types.TemporalMetadata{ValidTo: types.Instant(s.vt)}
-				if !storepkg.MatchesTemporalFilterFrom(types.Instant(s.vf), &tm, opts) {
+				if !storepkg.MatchesTemporalFilterFrom(bs.validAxis.Get(), types.Instant(s.vf), &tm, opts) {
 					if skipDecode == nil {
 						skipDecode = make(map[types.RelID]struct{})
 					}
@@ -281,7 +282,7 @@ func (bs *Store) ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incomi
 		}
 		// Valid-stamped edges always pass this re-check (cheap int compares on the
 		// already-decoded row); it is the ONLY temporal check for a stampless edge.
-		if hasTemporal && !storepkg.MatchesTemporalFilter(rid.SnowflakeID(), r.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(bs.validAxis.Get(), rid.SnowflakeID(), r.Temporal(), opts) {
 			continue
 		}
 		if !fn(r) {

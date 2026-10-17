@@ -100,9 +100,9 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 		return false, false, err
 	}
 
-	// Under UntimedAtemporal first: the compare reads the current row, one
+	// Under UntimedWholeAxis first: the compare reads the current row, one
 	// segment of a segmented node (a per-segment compare needs a store door).
-	if err := c.checkAtemporalVersionedNode(id, current, "compare-and-set"); err != nil {
+	if err := c.checkWholeAxisVersionedNode(id, current, "compare-and-set"); err != nil {
 		return false, false, err
 	}
 
@@ -130,7 +130,7 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 			return true, false, nil
 		}
 	}
-	if err := rejectClosedNodeMutation(current); err != nil {
+	if err := c.rejectClosedNodeMutation(current); err != nil {
 		return false, false, err
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("compare-and-set node property"); err != nil {
@@ -179,8 +179,8 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 	// current row. Clear it — property mutations accept no caller-supplied
 	// valid time, and an inherited ValidFrom would let this version cover
 	// the previous version's interval in historical queries.
-	stampValidFrom(tm, c.labelChangeStart(), c.untimedAtemporal.Load())
-	tm.ValidTo = 0
+	stampValidFrom(c.axis(), tm, 0, false) // the whole axis under UntimedWholeAxis (checkWholeAxis*), else no claim
+	tm.ValidTo = c.axis().OpenEnd()
 	tm.UpdatedAt = now
 
 	// TxTo on previous version.
@@ -304,8 +304,8 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 		return false, false, err
 	}
 
-	// Under UntimedAtemporal first, as the node door.
-	if err := c.checkAtemporalVersionedRel(id, current, "compare-and-set"); err != nil {
+	// Under UntimedWholeAxis first, as the node door.
+	if err := c.checkWholeAxisVersionedRel(id, current, "compare-and-set"); err != nil {
 		return false, false, err
 	}
 
@@ -327,7 +327,7 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 			return true, false, nil
 		}
 	}
-	if err := rejectClosedRelMutation(current); err != nil {
+	if err := c.rejectClosedRelMutation(current); err != nil {
 		return false, false, err
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("compare-and-set relationship property"); err != nil {
@@ -373,8 +373,8 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 	// current row. Clear it — property mutations accept no caller-supplied
 	// valid time, and an inherited ValidFrom would let this version cover
 	// the previous version's interval in historical queries.
-	stampValidFrom(tm, c.labelChangeStart(), c.untimedAtemporal.Load())
-	tm.ValidTo = 0
+	stampValidFrom(c.axis(), tm, 0, false) // the whole axis under UntimedWholeAxis (checkWholeAxis*), else no claim
+	tm.ValidTo = c.axis().OpenEnd()
 	tm.UpdatedAt = now
 	if ptm := prevState.Temporal(); ptm == nil {
 		ptm2 := &types.TemporalMetadata{}

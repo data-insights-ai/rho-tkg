@@ -27,7 +27,7 @@ func buildRelTypeTemporalIndexPerRel(bs *Store, rids []types.RelID, fold func(sn
 			return nil, err
 		}
 		rawID := rid.SnowflakeID()
-		from, to := index.RelTemporalBounds(rawID, r.Temporal())
+		from, to := index.RelTemporalBounds(types.LegacyValidAxis, rawID, r.Temporal())
 		ti.Extend(rawID, from, to)
 		fold(rawID, -1)
 		hist, err := bs.GetRelHistory(rid)
@@ -41,7 +41,7 @@ func buildRelTypeTemporalIndexPerRel(bs *Store, rids []types.RelID, fold func(sn
 			if hv == nil {
 				continue
 			}
-			hf, ht := index.RelTemporalBounds(rawID, hv.Temporal())
+			hf, ht := index.RelTemporalBounds(types.LegacyValidAxis, rawID, hv.Temporal())
 			ti.Extend(rawID, hf, ht)
 			fold(rawID, int64(hv.Version()))
 		}

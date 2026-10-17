@@ -44,7 +44,7 @@ type headChain[T any] struct {
 	maxVersion uint32
 	src        T // the row valid at newVT (the resumption's source)
 	hasSrc     bool
-	srcEnd     types.Instant // the resumption's end: the first own bound after newVT (0: open)
+	srcEnd     types.Instant // the resumption's end: the first own bound after newVT (open by the graph's valid axis)
 	segments   []correctionSegment[T]
 	open       openBelief
 }
@@ -85,16 +85,17 @@ func chainFromHead[T interface {
 		readV, readRows = append(readV, v), append(readRows, r)
 		return r, true
 	}
-	if newVT != 0 {
-		if v, ok := e.winnerAt(newVT); ok {
+	a := c.axis()
+	if !a.Open(newVT) {
+		if v, ok := e.winnerAt(a, newVT); ok {
 			src, ok := row(v)
 			if !ok {
 				return hc, false
 			}
-			hc.src, hc.hasSrc, hc.srcEnd = src, true, e.boundAfter(newVT)
+			hc.src, hc.hasSrc, hc.srcEnd = src, true, e.boundAfter(a, newVT)
 		}
 	}
-	runs := e.correctionRuns(newVF, newVT, current.Version(), splitGaps)
+	runs := e.correctionRuns(a, newVF, newVT, current.Version(), splitGaps)
 	hc.segments = make([]correctionSegment[T], len(runs))
 	for i, run := range runs {
 		base, ok := row(run.version)
@@ -148,11 +149,12 @@ func chainFromCurrent[T interface {
 	stamps func() (types.Instant, types.Instant, bool, error), newVF, newVT, at types.Instant, void bool) (headChain[T], bool) {
 	var hc, zero headChain[T]
 	var none T
-	if c.headWriteOff || !c.bitemporalMigrated || newVT != 0 || void || current == none || stamps == nil {
+	a := c.axis()
+	if c.headWriteOff || !c.bitemporalMigrated || !a.Open(newVT) || void || current == none || stamps == nil {
 		return zero, false
 	}
 	tm := current.Temporal()
-	if tm == nil || tm.ValidTo != 0 || tm.Void || tm.Retracted || tm.DeletedAt != 0 || tm.TxTo != 0 || tm.TxFrom == 0 {
+	if tm == nil || !a.Open(tm.ValidTo) || tm.Void || tm.Retracted || tm.DeletedAt != 0 || tm.TxTo != 0 || tm.TxFrom == 0 {
 		return zero, false
 	}
 	if start, _ := k.ownBounds(c, current); newVF < start {
@@ -169,7 +171,7 @@ func chainFromCurrent[T interface {
 		return zero, false // the order rule refuses at
 	}
 	hc.maxVersion = current.Version()
-	hc.segments = []correctionSegment[T]{{from: newVF, base: current}}
+	hc.segments = []correctionSegment[T]{{from: newVF, to: a.OpenEnd(), base: current}}
 	hc.open.note(beliefTx(tm), current.Version())
 	return hc, true
 }
@@ -182,11 +184,11 @@ type headRun struct {
 	gap      bool
 }
 
-// correctionRuns cuts [newVF, newVT) (newVT 0: open) where the winner
-// changes, as nodeCorrectionSegments does on the chain: maximal runs of one
-// base, a gap's base being the template; with splitGaps a gap never merges
-// with a piece the template wins.
-func (e *headEntry) correctionRuns(newVF, newVT types.Instant, template uint32, splitGaps bool) []headRun {
+// correctionRuns cuts [newVF, newVT) (newVT open by the valid axis a) where
+// the winner changes, as nodeCorrectionSegments does on the chain: maximal
+// runs of one base, a gap's base being the template; with splitGaps a gap
+// never merges with a piece the template wins.
+func (e *headEntry) correctionRuns(a types.ValidAxis, newVF, newVT types.Instant, template uint32, splitGaps bool) []headRun {
 	runs := make([]headRun, 0, 2)
 	add := func(from, to types.Instant, version uint32, gap bool) {
 		if n := len(runs); n > 0 && runs[n-1].version == version && (!splitGaps || runs[n-1].gap == gap) {
@@ -197,10 +199,10 @@ func (e *headEntry) correctionRuns(newVF, newVT types.Instant, template uint32, 
 	}
 	at := newVF
 	for _, p := range e.pieces {
-		if p.to != 0 && p.to <= at {
+		if !a.Open(p.to) && p.to <= at {
 			continue
 		}
-		if newVT != 0 && p.from >= newVT {
+		if !a.Open(newVT) && p.from >= newVT {
 			break
 		}
 		if p.from > at {
@@ -208,11 +210,11 @@ func (e *headEntry) correctionRuns(newVF, newVT types.Instant, template uint32, 
 			at = p.from
 		}
 		end := p.to
-		if newVT != 0 && (end == 0 || end > newVT) {
+		if !a.Open(newVT) && (a.Open(end) || end > newVT) {
 			end = newVT
 		}
 		add(at, end, p.version, false)
-		if end == 0 || end == newVT {
+		if a.Open(end) || end == newVT {
 			return runs
 		}
 		at = end
@@ -221,24 +223,25 @@ func (e *headEntry) correctionRuns(newVF, newVT types.Instant, template uint32, 
 	return runs
 }
 
-// winnerAt returns the version that wins t, ok false in a gap.
-func (e *headEntry) winnerAt(t types.Instant) (uint32, bool) {
+// winnerAt returns the version that wins t, ok false in a gap (piece ends
+// open by the valid axis a).
+func (e *headEntry) winnerAt(a types.ValidAxis, t types.Instant) (uint32, bool) {
 	i := sort.Search(len(e.pieces), func(i int) bool { return e.pieces[i].from > t }) - 1
 	if i < 0 {
 		return 0, false
 	}
-	if p := e.pieces[i]; p.to == 0 || p.to > t {
+	if p := e.pieces[i]; a.Open(p.to) || p.to > t {
 		return p.version, true
 	}
 	return 0, false
 }
 
-// boundAfter returns the smallest own bound strictly after t (0: none), as
-// nodeResumptionEnd does on the chain.
-func (e *headEntry) boundAfter(t types.Instant) types.Instant {
+// boundAfter returns the smallest own bound strictly after t (the valid
+// axis a's open end: none), as nodeResumptionEnd does on the chain.
+func (e *headEntry) boundAfter(a types.ValidAxis, t types.Instant) types.Instant {
 	i := sort.Search(len(e.bounds), func(i int) bool { return e.bounds[i] > t })
 	if i == len(e.bounds) {
-		return 0
+		return a.OpenEnd()
 	}
 	return e.bounds[i]
 }
@@ -278,7 +281,7 @@ func headNewCurrent[T interface {
 }](c *Core, k *chainKernel[T], open openBelief, appended []T) T {
 	var cur T
 	for _, r := range appended {
-		if _, end := k.ownBounds(c, r); end != 0 || isVoidRow(r) {
+		if _, end := k.ownBounds(c, r); !c.axis().Open(end) || isVoidRow(r) {
 			continue
 		}
 		before := open

@@ -215,7 +215,7 @@ func (ms *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 				if !storepkg.RelHasAnyIndexKey(r, propKey, elements, targetKeys) {
 					return false
 				}
-				return !opts.HasValidTimeFilter() || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
+				return !opts.HasValidTimeFilter() || storepkg.MatchesTemporalFilter(ms.validAxis.Get(), r.ID().SnowflakeID(), r.Temporal(), opts)
 			})
 			if err != nil || len(rows) == 0 {
 				return nil, err
@@ -235,7 +235,7 @@ func (ms *Store) relsByTypePropertyKeys(relTypeToken uint16, propKey string, opt
 			if !storepkg.RelHasAnyIndexKey(r, propKey, scanElements, targetKeys) {
 				return false
 			}
-			return !opts.HasValidTimeFilter() || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
+			return !opts.HasValidTimeFilter() || storepkg.MatchesTemporalFilter(ms.validAxis.Get(), r.ID().SnowflakeID(), r.Temporal(), opts)
 		})
 		if err != nil || len(rows) == 0 {
 			return nil, err
@@ -270,7 +270,7 @@ func (ms *Store) relsByTypePropertyFrom(relTypeToken uint16, propKey string, tar
 			if !storepkg.RelHasAnyIndexKey(r, propKey, elements, targetKeys) {
 				continue
 			}
-			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
+			if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), r.Temporal(), opts) {
 				continue
 			}
 			result = append(result, r)
@@ -352,7 +352,7 @@ func (ms *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey stri
 		if !r.HasTypeTokenRaw(relTypeToken) {
 			continue
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(ms.validAxis.Get(), id.SnowflakeID(), r.Temporal(), opts) {
 			continue
 		}
 		if !fn(r) {

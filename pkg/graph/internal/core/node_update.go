@@ -131,8 +131,8 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
 	}
-	if atemporalUntimedUpdate(c, tmp) {
-		return c.atemporalUpdateNode(ctx, id, prov, tmp, updates)
+	if wholeAxisUntimedUpdate(c, tmp) {
+		return c.wholeAxisUpdateNode(ctx, id, prov, tmp, updates)
 	}
 
 	// Phase 2: Entity lock → read-modify-write under serialization.
@@ -156,7 +156,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 		c.opNodeReads.Add(1)
 		return current, false, nil
 	}
-	if err := rejectClosedNodeMutation(current); err != nil {
+	if err := c.rejectClosedNodeMutation(current); err != nil {
 		return nil, false, err
 	}
 	// Phase 2: validate caller-supplied ValidFrom against the previous version's
@@ -172,7 +172,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	// A tkg_valid_to without a tkg_valid_from closes the version as CloseVersion
 	// does: it keeps its start and ends there (backlog 65).
 	var closeStart types.Instant
-	if tmp.closesVersion() {
+	if tmp.closesVersion(c.axis()) {
 		if closeStart, err = c.checkNodeClose(id, current, "tkg_valid_to", tmp.validTo); err != nil {
 			return nil, false, err
 		}
@@ -220,7 +220,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 
 	// The plain doors stamp the clock floor; a caller instant (checked above,
 	// under the lock) is stamped verbatim.
-	at := supersession{tx: tmp.txAt}
+	at := supersession{tx: tmp.txAt, axis: c.axis()}
 	if at.tx == 0 {
 		at = c.nodeVersionUpdateInstant(current)
 	}
@@ -233,12 +233,12 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	// Phase 1: stop inheriting ValidFrom/ValidTo from the previous version
 	// (clear to 0 so non-genesis resolver bounds use UpdatedAt). Phase 2:
 	// honour caller-supplied tkg_valid_from / tkg_valid_to from `tmp`.
-	stampValidFrom(tm, tmp.validFrom, tmp.validFromSet)
-	tm.ValidTo = 0
+	stampValidFrom(c.axis(), tm, tmp.validFrom, tmp.validFromSet)
+	tm.ValidTo = c.axis().OpenEnd()
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo
 	}
-	if tmp.closesVersion() {
+	if tmp.closesVersion(c.axis()) {
 		stampClose(tm, closeStart, tmp.validTo)
 	}
 	tm.UpdatedAt = now
@@ -377,14 +377,11 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	// temporal keys (tkg_valid_from / tkg_valid_to) into `tmp` so they pass
 	// validation; UpdateInPlace honours them as direct rewrites of the
 	// current row's TemporalMetadata (no version chain entry).
-	tmp, updates, err := extractTemporalTracked(updates)
+	tmp, updates, err := extractTemporalTracked(c.axis(), updates)
 	if err != nil {
 		return nil, false, err
 	}
 	if err := c.validatePropertyUpdates(updates, "update node in place"); err != nil {
-		return nil, false, err
-	}
-	if err := checkClaimedUpdate(tmp); err != nil {
 		return nil, false, err
 	}
 
@@ -408,7 +405,7 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 		c.opNodeReads.Add(1)
 		return current, false, nil
 	}
-	if err := rejectClosedNodeMutation(current); err != nil {
+	if err := c.rejectClosedNodeMutation(current); err != nil {
 		return nil, false, err
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("update node in place"); err != nil {
@@ -462,12 +459,12 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	}
 	tm.UpdatedAt = now
 	if tmp.hasValidFrom {
-		stampValidFrom(tm, tmp.validFrom, tmp.validFromSet)
+		stampValidFrom(c.axis(), tm, tmp.validFrom, tmp.validFromSet)
 	}
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo
 	}
-	if tm.ValidTo != 0 {
+	if !c.axis().Open(tm.ValidTo) {
 		// The close rule (backlog 65): the row keeps its start, the end must follow it.
 		if err := checkCloseAfterStart("tkg_valid_to", tm.ValidTo, c.nodeValidFrom(current), "node"); err != nil {
 			return nil, false, err

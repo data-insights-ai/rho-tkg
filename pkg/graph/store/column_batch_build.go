@@ -48,7 +48,6 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 		batch.Ordinals = batch.Ordinals[:0]
 		batch.ValidFrom = batch.ValidFrom[:0]
 		batch.ValidTo = batch.ValidTo[:0]
-		batch.ValidFromZero = resetFlags(batch.ValidFromZero)
 		batch.reset(len(props))
 	}
 
@@ -59,7 +58,6 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 		// entity, and every entity a store scan hands back is frozen — one
 		// allocation per row across the whole scan.
 		vf, vt, _ := n.ValidRange()
-		batch.ValidFromZero = AppendValidFromZero(batch.ValidFromZero, len(batch.ValidFrom), n.StartsAtZero())
 		batch.ValidFrom = append(batch.ValidFrom, int64(vf))
 		batch.ValidTo = append(batch.ValidTo, int64(vt))
 		for c, key := range props {
@@ -133,9 +131,9 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 // up.
 func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 	fn func(*RelColumnBatch) bool) error {
-	return scanColumnsFromRels(rels, func(_ int, r *types.Relationship) (int64, int64, bool) {
+	return scanColumnsFromRels(rels, func(_ int, r *types.Relationship) (int64, int64) {
 		vf, vt, _ := r.ValidRange()
-		return int64(vf), int64(vt), r.StartsAtZero()
+		return int64(vf), int64(vt)
 	}, props, fn)
 }
 
@@ -150,16 +148,14 @@ func ScanColumnsFromRelSegments(rels []*types.Relationship, validFrom, validTo [
 	if len(validFrom) != len(rels) || len(validTo) != len(rels) {
 		return fmt.Errorf("graph: column rows from segments: %d rows, %d valid-from, %d valid-to (lengths must match)", len(rels), len(validFrom), len(validTo))
 	}
-	// A segment's start is resolved: 0 is the instant 0 (an untimed start
-	// resolves to its TxFrom or -inf), so it is always the explicit 0.
-	return scanColumnsFromRels(rels, func(i int, _ *types.Relationship) (int64, int64, bool) {
-		return int64(validFrom[i]), int64(validTo[i]), validFrom[i] == 0
+	return scanColumnsFromRels(rels, func(i int, _ *types.Relationship) (int64, int64) {
+		return int64(validFrom[i]), int64(validTo[i])
 	}, props, fn)
 }
 
 // scanColumnsFromRels is the relationship row path; span gives row i's
 // valid interval.
-func scanColumnsFromRels(rels []*types.Relationship, span func(i int, r *types.Relationship) (vf, vt int64, zero bool), props []string,
+func scanColumnsFromRels(rels []*types.Relationship, span func(i int, r *types.Relationship) (int64, int64), props []string,
 	fn func(*RelColumnBatch) bool) error {
 
 	if len(rels) == 0 {
@@ -188,7 +184,6 @@ func scanColumnsFromRels(rels []*types.Relationship, span func(i int, r *types.R
 		batch.EndIDs = batch.EndIDs[:0]
 		batch.ValidFrom = batch.ValidFrom[:0]
 		batch.ValidTo = batch.ValidTo[:0]
-		batch.ValidFromZero = resetFlags(batch.ValidFromZero)
 		batch.reset(len(props))
 	}
 
@@ -199,8 +194,7 @@ func scanColumnsFromRels(rels []*types.Relationship, span func(i int, r *types.R
 		batch.EndOrdinals = append(batch.EndOrdinals, r.EndOrdinal())
 		batch.StartIDs = append(batch.StartIDs, r.StartNodeID())
 		batch.EndIDs = append(batch.EndIDs, r.EndNodeID())
-		vf, vt, zero := span(i, r)
-		batch.ValidFromZero = AppendValidFromZero(batch.ValidFromZero, len(batch.ValidFrom), zero)
+		vf, vt := span(i, r)
 		batch.ValidFrom = append(batch.ValidFrom, vf)
 		batch.ValidTo = append(batch.ValidTo, vt)
 		for c, key := range props {
@@ -450,34 +444,6 @@ type RelColumnSource interface {
 	Value(i, c int) (kind ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool)
 }
 
-// ColumnValidFromZeroSource is the OPTIONAL half of a NodeColumnSource or
-// RelColumnSource whose rows can be valid from the explicit 0 (round 11):
-// ValidFromZero(i) reports that row i's validFrom 0 is the instant 0
-// (ColumnBatch.ValidFromZero). A source without it reports none.
-type ColumnValidFromZeroSource interface {
-	ValidFromZero(i int) bool
-}
-
-// AppendValidFromZero appends row n's flag (n rows before it) to a batch's
-// ValidFromZero column: nil until the first true, then parallel to the rows.
-func AppendValidFromZero(flags []bool, n int, zero bool) []bool {
-	if flags == nil {
-		if !zero {
-			return nil
-		}
-		flags = make([]bool, n, max(n+1, ColumnScanBatchRows))
-	}
-	return append(flags, zero)
-}
-
-// resetFlags empties a batch's ValidFromZero column for its next rows.
-func resetFlags(flags []bool) []bool {
-	if flags == nil {
-		return nil
-	}
-	return flags[:0]
-}
-
 // RelColumnOtherSource is the OPTIONAL half of a RelColumnSource that fills
 // ColumnData.Other: Other(i, c) reports whether row i holds property c all the
 // same (a list, a map, a struct) — asked only where Value reported ok=false.
@@ -518,7 +484,6 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 	kindKnown := make([]bool, nProps)
 	cd := &batch.ColumnData
 	otherSrc, hasOther := src.(RelColumnOtherSource)
-	zeroSrc, hasZero := src.(ColumnValidFromZeroSource)
 	reset := func() {
 		batch.IDs = batch.IDs[:0]
 		batch.Ordinals = batch.Ordinals[:0]
@@ -528,12 +493,10 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 		batch.EndIDs = batch.EndIDs[:0]
 		batch.ValidFrom = batch.ValidFrom[:0]
 		batch.ValidTo = batch.ValidTo[:0]
-		batch.ValidFromZero = resetFlags(batch.ValidFromZero)
 		batch.reset(nProps)
 	}
 	for i := 0; i < n; i++ {
 		id, start, end, vf, vt := src.Row(i)
-		batch.ValidFromZero = AppendValidFromZero(batch.ValidFromZero, len(batch.ValidFrom), hasZero && zeroSrc.ValidFromZero(i))
 		batch.IDs = append(batch.IDs, id)
 		batch.Ordinals = append(batch.Ordinals, 0) // a declared segment type's rows carry none
 		batch.StartOrdinals = append(batch.StartOrdinals, 0)
@@ -624,18 +587,15 @@ func ScanColumnsFromNodeSource(src NodeColumnSource, nProps int, fn func(*Column
 	}
 	kindKnown := make([]bool, nProps)
 	cd := &batch.ColumnData
-	zeroSrc, hasZero := src.(ColumnValidFromZeroSource)
 	reset := func() {
 		batch.IDs = batch.IDs[:0]
 		batch.Ordinals = batch.Ordinals[:0]
 		batch.ValidFrom = batch.ValidFrom[:0]
 		batch.ValidTo = batch.ValidTo[:0]
-		batch.ValidFromZero = resetFlags(batch.ValidFromZero)
 		batch.reset(nProps)
 	}
 	for i := 0; i < n; i++ {
 		id, vf, vt := src.Row(i)
-		batch.ValidFromZero = AppendValidFromZero(batch.ValidFromZero, len(batch.ValidFrom), hasZero && zeroSrc.ValidFromZero(i))
 		batch.IDs = append(batch.IDs, id)
 		batch.Ordinals = append(batch.Ordinals, 0)
 		batch.ValidFrom = append(batch.ValidFrom, vf)

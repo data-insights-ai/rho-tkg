@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-sigma-tkgd round 11 (ledger row 68; built by sigma under Markus's decision, not released: the version is the
+sigma-tkgd round 11 (ledger row 75; built by sigma under Markus's decision, not released: the version is the
 releaser's call). New store capabilities and write and read options, all additive.
 
 ### Added
@@ -28,34 +28,6 @@ releaser's call). New store capabilities and write and read options, all additiv
   2.6 us (`BenchmarkRound11PointSeek`, `tasks/evidence/round11/17-item1-bench-v4.61.0.txt`). The sharded store's
   shard fan-out runs one shard body on the calling goroutine (its stack already grown): a fresh pool goroutine copied
   its stack as the keys door's body grew it, which had made a sharded string seek slower (2.2 -> 3.2 us; now 1.7 us).
-- **The instant 0 as a valid start** (round 11 item 2). `tkg_valid_from = types.ExplicitInstant(0)` on a create
-  claims the instant 0 (a plain 0 keeps meaning "no claim", unchanged). The row stores
-  `types.TemporalMetadata.ValidFromZero`, read through `TemporalMetadata.HasValidFrom` and the allocation-free
-  `Node.ValidFromClaim` / `Relationship.ValidFromClaim` by every door, v4.61.0's one start rule included
-  (`TemporalMetadata.EffectiveValidFrom`, `Node` / `Relationship.EffectiveValidFrom()` answer 0 for such a row; a
-  plain 0 keeps its untimed start); an open append at the head of such an entity is planned from the current row
-  (v4.61.0's O(1) path, allocations flat in the chain) and writes the rows the history read writes (twin test on
-  memory, badger, sharded, tiered) (the start rule `EntityValidFrom`, the version
-  bounds, the untimed mode, the count timeline, the store push-down, the column scans). Wire key `vz` at row format 7
-  (`storeutil.ValidFromZeroWireFormatVersion`), store marker 9 (`ValidFromZeroStoreFormatVersion`, raised before the
-  first such row: a release before it refuses the store). A valid END of 0 still means open everywhere, so only an
-  entity's first version may start at the explicit 0: a write that would end a version at 0 (an update claiming it,
-  a re-import of an ID with an earlier life, a correction or excise crossing 0 on such an entity) is refused with the
-  new `ErrValidEndAtZero` (wraps `ErrInvalidTimeRange`), in the batch and caller-instant pre-flights too. Ends at 0
-  need their own presence (stored and derived), a later step. Additive: `store.CountSegment.ToZero` (an inner count
-  segment ending at 0), `ColumnBatch` / `RelColumnBatch` / `RelSegmentBatch.ValidFromZero`,
-  `store.ColumnValidFromZeroSource`, `store.ForeignIncomingEdge.ValidFromZero`, `constraints.DryRunRel.ValidFromSet`
-  (the dry-run form of the claim), the one presence rule over stored fields `types.ValidFromClaimed` /
-  `types.StartsAtExplicitZero` with `TemporalMetadata` / `Node` / `Relationship.StartsAtZero`. Every door that writes
-  such a row raises the marker: a create, `IO().Import` / `ImportMerge`, a replica's apply (the primary's
-  `valid_from_zero` meta entry or the row; an older replica fails closed on the entry), a foreign stub; after
-  `Admin().Reset()` the next such row raises it again. The shadow resolver answers `types.ExplicitInstant(0)` for
-  `tkg_valid_from` of such a row. Other reserved keys refuse an `ExplicitInstant`. The memory store's column segments
-  keep such rows in the memtable. **sigma-tkgd**: `VALID FROM 0`
-  on a create can pass `types.ExplicitInstant(0)`; on an update it declines on `ErrValidEndAtZero`. Only explicit
-  presence changed: no new path derives a valid start from `TxFrom`, and the start of an untimed later version
-  (its `TxFrom`, both modes) is unchanged, an open design question (transaction time is not valid time; sigma
-  `tasks/note-rene-20261017-untimed-later-versions.md`).
 - **Per-entity point doors with explicit presence** (round 11 item 3). `Temporal().NodeAtOpts(id, opts)` /
   `RelAtOpts(id, opts)` / `NodesAtOptsByIDs(ids, opts)` / `RelsAtOptsByIDs(ids, opts)` take the point form of
   `store.QueryOpts` (`ValidAt` / `TxAt` with `ValidAtSet` / `TxAtSet`): a present pin at 0 is the instant 0 (nothing
@@ -66,24 +38,76 @@ releaser's call). New store capabilities and write and read options, all additiv
 
 - **Asking the untimed mode** (round 11, sigma-tkgd: the v4.60.0 window doors could not be adopted without it).
   `g.Admin().UntimedValidStart() (mode, complete, err)` answers, on every backend, the mode the store's rows are
-  written under: `UntimedFromTxFrom` or `UntimedUnbounded` as persisted (never `UntimedDefault`; a reopen under
+  written under: `UntimedFromTxFrom`, `UntimedUnbounded` or `UntimedWholeAxis` as persisted (never `UntimedDefault`; a reopen under
   `UntimedDefault` answers the persisted mode), `complete = false` while a conversion to `UntimedUnbounded` is
   unfinished. A replica answers its own open-time mode until the primary's mode record arrives (a `UntimedFromTxFrom`
   primary emits none: open its replica with `UntimedFromTxFrom`). Added to `admin.Ops`.
 
-- **`Config.UntimedValidStart = UntimedAtemporal`** (round 11; René and Markus: "atemporal is just a flag";
-  transaction time is not valid time). Opt-in, fixed at store creation (persisted, key byte 3, marker 7;
-  `ErrUntimedModeMismatch` on a reopen under another explicit mode; `UntimedDefault` reopens it; export header `ua`,
-  adopted by an empty importer); the default is unchanged. A write without a valid time makes no valid-time claim,
-  by SQL:2011's rule for an UPDATE without `FOR PORTION OF`: an untimed create holds over the whole axis; an untimed
-  update (every update door) applies to every valid-time segment of the entity and keeps its boundaries (each
-  segment a new version in the new belief, named properties changed, the others kept per segment; old versions end
-  in transaction time only; existence unchanged). A pure atemporal entity's update is one whole-axis version planned
-  in O(1) (backlog 67, allocations flat from 1 to 1,000 versions); an entity with explicit segments costs
-  O(segments). An untimed delete is a retraction (ends the entity in transaction time only). A label change and
-  `CompareAndSetProperty` apply to a whole-axis entity; on one with explicit segments they are refused with
-  `ErrUntimedModeMismatch` (open item: per-segment labels and compares need a store door). Timed writes keep their rules (a timed write splits the whole-axis segment).
-  `Admin().UntimedValidStart()` reports it. Twin tests on memory, badger, sharded, tiered.
+- **`Config.UntimedValidStart = UntimedWholeAxis`: zero is an instant** (round 11; Markus's design 2026-10-17;
+  René and Markus: transaction time is not valid time). Opt-in for now and fixed at store creation (persisted,
+  key byte 3, marker 7; `ErrUntimedModeMismatch` on a reopen under another explicit mode; `UntimedDefault` reopens
+  it; the default for new stores flips in the next minor, see Deprecated). Round 11 called it `UntimedAtemporal`;
+  the name says what an untimed write claims, the whole axis.
+  - **The literal valid axis.** The store's rows are on `types.LiteralValidAxis`: every stored `ValidFrom` and
+    `ValidTo` is the instant it names, the instant 0 included; no claim means the whole axis, stored as
+    `types.UnboundedValidFrom` and the new `types.InfiniteValidTo` (`math.MaxInt64`, the open end). Nothing in the
+    mode writes a 0 that means "unset", so a stored 0 is literal: a create, an update, a close, a correction or an
+    excise may start or end at 0 (`tkg_valid_from` / `tkg_valid_to` 0, or `types.ExplicitInstant(0)`, the same
+    claim; positional bounds are literal too: `SetNodeVersionInterval(id, -10, 0, …)` ends at 0, the open end is
+    `types.InfiniteValidTo`). `UnboundedValidFrom` and `InfiniteValidTo` are the axis's ends and cannot be claimed
+    as instants (`ErrInvalidTimeRange`). Timelines, count timelines, hulls, column batches and the shadow resolver
+    report the stored values (an open end is `InfiniteValidTo`).
+  - **One axis per store, decided at open.** `types.ValidAxis` (legacy: 0 = no start claim, 0 = open end; literal:
+    every value an instant) is fixed per store from its persisted mode: the store reads it itself at open
+    (`store.ValidAxisOfModeByte`; tiered and sharded from the reference / anchor shard, handed to every shard), and
+    the graph hands it to a new or empty store (`store.ValidAxisCapability`, implemented by memory, badger, tiered,
+    sharded; an `UntimedWholeAxis` graph on a store without it, or without MetaKV, is `ErrCapabilityNotSupported`).
+    Every valid-time door reads rows through the axis (`ValidAxis.Start` / `NodeStart` / `RelStart`, `Open`, `End`,
+    `ValidToAtTxTime`, `Relate`, `RelateVersion`): the resolver, the effective timelines and head entries, the
+    cascade kernel, the store push-downs, the temporal index envelopes, the column scans and zone maps, the as-of
+    selection and rewind, the count timelines and the purge by valid end. No row carries a flag, a field or a
+    format version for it: rows are byte-identical to v4.62.0's for the same stored values
+    (`TestRound11RowBytesUnchanged`); an open end costs the `vt` key (12 bytes) a legacy open row omits.
+    `Admin().ValidAxis()` answers the axis; a consumer reading raw rows reads them through it.
+  - **Untimed writes.** An untimed create holds over the whole axis; an untimed update (every update door) applies
+    to every valid-time segment and keeps its boundaries (SQL:2011's UPDATE without `FOR PORTION OF`: each segment a
+    new version in the new belief, named properties changed, the others kept per segment; old versions end in
+    transaction time only; existence unchanged); a pure whole-axis entity's update is one version planned in O(1)
+    (backlog 67). An update with only `tkg_valid_to` closes the version (as before). An untimed delete is a
+    retraction. A label change and `CompareAndSetProperty` apply to a whole-axis entity; on one with explicit
+    segments they are refused with `ErrUntimedModeMismatch` (open item). No write derives a valid time from its
+    `TxFrom` (backlog 77's supersede derives no start under the mode: every door claims one).
+  - **Exports.** A full export or `ExportSince` of the mode carries export format version 4 and the header field
+    `ua`: a release before it refuses the stream (`ErrIncompatibleExport`) instead of reading its rows on the
+    legacy axis; an empty importer adopts the mode and axis, one with rows of another mode refuses it.
+  - **Legacy stores unchanged.** `UntimedFromTxFrom` and `UntimedUnbounded` stores keep the legacy axis and every
+    answer: a plain 0 is no claim / the open end. A claim of the instant 0 (`types.ExplicitInstant(0)` as
+    `tkg_valid_from` or `tkg_valid_to`, `constraints.DryRunRel.ValidFromSet` / `ValidToSet` at 0) is refused with
+    the new `ErrZeroInstantLegacyAxis` (wraps `ErrInvalidTimeRange`): those rows cannot record it.
+  Removed before release (round 11's first cut): the per-row `TemporalMetadata.ValidFromZero` (wire key `vz`, row
+  format and store marker), `HasValidFrom` / `ValidFromClaim` / `StartsAtZero`, `ErrValidEndAtZero`,
+  `CountSegment.ToZero` and the `ValidFromZero` columns. Tests: `TestRound11ZeroIsAnInstant`,
+  `TestRound11ZeroStoreDoors`, `TestRound11ZeroCorrectionsAndExcise`, `TestRound11ZeroLegacyRefusal`,
+  `TestRound11ZeroReopen`, `TestRound11ZeroBadgerOpenRebuild`, `TestRound11ZeroExport` (memory, badger, tiered,
+  sharded), `TestRound11ZeroAppendTwin` / `TestRound11ZeroAppendAllocsFlat`, the head-write twin differential on
+  the literal axis with spans at and across 0, and every `TestRound11WholeAxis*` test.
+
+### Deprecated
+
+- **The default `Config.UntimedValidStart` for NEW stores becomes `UntimedWholeAxis` in the next minor release**
+  (round 11; the ritual of the v4.56.0/v4.57.0 flip). Today a new store under `UntimedDefault` is an
+  `UntimedUnbounded` store; from the next minor it is an `UntimedWholeAxis` store (on a store implementing
+  `store.ValidAxisCapability` with MetaKV; memory, badger, tiered and sharded do). Existing stores keep their
+  persisted mode and answers; set `UntimedUnbounded` explicitly to keep today's default for new stores.
+  **Changes for consumers of new stores (sigma-tkgd, ai-soc):** data written without a valid time is valid at every
+  instant ("no claim" means always, not "from creation"); an untimed update applies to every segment, an untimed
+  delete is a retraction; a stored or passed 0 is the instant 0, not "unset" or "open" (`tkg_valid_to: 0` and a
+  positional `validTo` of 0 end at the instant 0; pass `types.InfiniteValidTo` or omit the key for an open end);
+  open ends read back as `types.InfiniteValidTo` (timelines, count timelines, hulls, `ValidRange`, column batches);
+  read raw rows through `g.Admin().ValidAxis()` (`types.Node.EffectiveValidFrom()` and
+  `TemporalMetadata.ValidToAtTxTime` are the legacy axis's rules). A replica or importer of such a store must run
+  this release or later (export format version 4, mode byte 3). Each open row of such a store is 12 bytes larger
+  (the open end `math.MaxInt64` under the key `vt`, which a legacy open row omits; docs/persistence.md).
 
 ### Changed
 
