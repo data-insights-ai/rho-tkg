@@ -155,15 +155,49 @@ func stampDeleteTombstone(tm *types.TemporalMetadata, at types.Instant, retract 
 	return clamped
 }
 
-// nodeVersionUpdateInstant is the instant a superseding write stamps: the clock,
-// moved past the current version's start (the one start rule, nodeValidFrom —
-// backlog 62) so the new version never starts before the one it supersedes.
-func (c *Core) nodeVersionUpdateInstant(current *types.Node) types.Instant {
-	return validInstantAfter(c.now(), c.nodeValidFrom(current))
+// supersession is what a plain superseding door (Update, the label and CAS
+// doors, CloseVersion) stamps: tx, the transaction instant (TxFrom and
+// UpdatedAt of the new row, TxTo of the superseded one), and from, the new
+// row's valid start when it cannot start at tx (0: it starts at its TxFrom).
+type supersession struct {
+	tx, from types.Instant
 }
 
-func (c *Core) relVersionUpdateInstant(current *types.Relationship) types.Instant {
-	return validInstantAfter(c.now(), c.relValidFrom(current))
+// supersede is THE instant rule of a plain superseding write. tx is the
+// clock, moved past the current row's own TxFrom only when that row was
+// stamped ahead of the clock (a row stored before backlog 77, a re-import
+// after a delete ahead of it), so the superseded row's TxTo never precedes its
+// TxFrom. The new version must start after the current version's start (the
+// one start rule, nodeValidFrom — backlog 62); when the clock is not past it
+// (the current version starts in the future) that start is recorded as the
+// row's ValidFrom, never as its TxFrom. Backlog 77: the start used to be
+// stamped as TxFrom, a transaction instant ahead of the clock that no pin
+// taken now reaches and that every later write on the entity is stamped below,
+// so the unpinned point door and the head timeline answered different rows.
+func (c *Core) supersede(start, recorded types.Instant) supersession {
+	s := supersession{tx: validInstantAfter(c.now(), recorded)}
+	if s.tx <= start {
+		s.from = start + 1
+	}
+	return s
+}
+
+func (c *Core) nodeVersionUpdateInstant(current *types.Node) supersession {
+	return c.supersede(c.nodeValidFrom(current), beliefTx(current.Temporal()))
+}
+
+func (c *Core) relVersionUpdateInstant(current *types.Relationship) supersession {
+	return c.supersede(c.relValidFrom(current), beliefTx(current.Temporal()))
+}
+
+// stamp stamps the new row tm (its ValidFrom already set by the door: a
+// caller's tkg_valid_from or a close's start, else 0) as appended at s.tx,
+// starting at s.from when the door set no start.
+func (s supersession) stamp(tm *types.TemporalMetadata) {
+	stampAppendedRow(tm, s.tx)
+	if tm.ValidFrom == 0 {
+		tm.ValidFrom = s.from
+	}
 }
 
 // checkCloseAfterStart is the one valid-time close rule (backlog 65), shared by

@@ -141,7 +141,6 @@ func TestCascadeAppend67_Twin(t *testing.T) {
 			ctx := context.Background()
 			nid, rid := tw.nodes[1], tw.rels[0] // open, valid from 100 and 50
 			var p map[string]any                // one patch per step, for both twins
-			pointDoor := true                   // the unpinned point door is checked too
 			run := func(name string, fn func(g *Core, rel bool) error) {
 				t.Helper()
 				for _, rel := range []bool{false, true} {
@@ -150,7 +149,7 @@ func TestCascadeAppend67_Twin(t *testing.T) {
 					_ = tw.both(func(g *Core) error { return fn(g, rel) })
 					tw.pins = append(tw.pins, tw.a.peekNow())
 					tw.check(tw.last)
-					appendCrossDoor(t, tw.a, nid, rid, tw.pins, tw.last, pointDoor)
+					appendCrossDoor(t, tw.a, nid, rid, tw.pins, tw.last)
 				}
 			}
 			set := func(from, to types.Instant) func(g *Core, rel bool) error {
@@ -262,17 +261,11 @@ func TestCascadeAppend67_Twin(t *testing.T) {
 				}
 				return tx.Commit()
 			})
-			// A current row stamped ahead of the clock (an Update of a version
-			// that starts in the future: validInstantAfter), then a gap
-			// correction before the genesis: its row lies above the current
-			// row's version with an older TxFrom, so only the version probe
-			// sees it; the append after it must not plan from the current row.
-			// The unpinned point door (NodeAt / RelAt) is not compared from
-			// here on: with a row stamped ahead of the clock it answers an
-			// older version than the head timeline on main too (the rows are
-			// graph B's, planned from the history; not backlog 67).
+			// An Update of a version that starts in the future (its start is
+			// the row's ValidFrom, its TxFrom the clock: backlog 77), then a
+			// gap correction before the genesis and an append above it; the
+			// unpinned point door answers the head timeline throughout.
 			future := tw.a.peekNow() + 1_000_000
-			pointDoor = false
 			run("append in the future", set(future, 0))
 			run("Update of a future version", func(g *Core, rel bool) error {
 				if rel {
@@ -304,11 +297,11 @@ func latest(g *Core, rel bool, nid types.NodeID, rid types.RelID) (types.Instant
 }
 
 // appendCrossDoor checks that the at-tx door (NodesAtTxByIDs /
-// RelsAtTxByIDs) and, with pointDoor, the unpinned point door (NodeAt /
+// RelsAtTxByIDs) and the unpinned point door (NodeAt /
 // RelAt, at the head) answer, at every segment
 // start of the effective timeline at the head and the last three pins, the
 // segment's row.
-func appendCrossDoor(t *testing.T, g *Core, nid types.NodeID, rid types.RelID, pins []types.Instant, when string, pointDoor bool) {
+func appendCrossDoor(t *testing.T, g *Core, nid types.NodeID, rid types.RelID, pins []types.Instant, when string) {
 	t.Helper()
 	head := g.peekNow()
 	pins = pins[max(0, len(pins)-3):]
@@ -322,7 +315,7 @@ func appendCrossDoor(t *testing.T, g *Core, nid types.NodeID, rid types.RelID, p
 			if err != nil || len(got) != 1 || got[0] == nil || got[0].Version() != s.Node.Version() {
 				t.Fatalf("%s: node at-tx (%d, %d): %v %v, timeline version %d", when, s.ValidFrom, pin, got, err, s.Node.Version())
 			}
-			if pin == head && pointDoor {
+			if pin == head {
 				at, err := g.Temporal.NodeAt(nid, s.ValidFrom)
 				if err != nil || at.Version() != s.Node.Version() {
 					t.Fatalf("%s: NodeAt(%d): %v %v, timeline version %d", when, s.ValidFrom, at, err, s.Node.Version())
@@ -338,7 +331,7 @@ func appendCrossDoor(t *testing.T, g *Core, nid types.NodeID, rid types.RelID, p
 			if err != nil || len(got) != 1 || got[0] == nil || got[0].Version() != s.Rel.Version() {
 				t.Fatalf("%s: rel at-tx (%d, %d): %v %v, timeline version %d", when, s.ValidFrom, pin, got, err, s.Rel.Version())
 			}
-			if pin == head && pointDoor {
+			if pin == head {
 				at, err := g.Temporal.RelAt(rid, s.ValidFrom)
 				if err != nil || at.Version() != s.Rel.Version() {
 					t.Fatalf("%s: RelAt(%d): %v %v, timeline version %d", when, s.ValidFrom, at, err, s.Rel.Version())

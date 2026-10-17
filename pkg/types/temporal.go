@@ -101,7 +101,9 @@ func (tm *TemporalMetadata) SetBaseEntityID(id EntityID) {
 // A version written without a valid-from (Update and its twins) keeps
 // ValidFrom 0 in storage: 0 records "no caller claim", which the pre-migration
 // chain heuristic, the untimed-mode conversion and consumers read; this rule
-// resolves it to the row's TxFrom.
+// resolves it to the row's TxFrom. When the version it supersedes starts at or
+// after the commit clock, the row stores that start + 1 as its ValidFrom
+// instead, and its TxFrom stays the clock (backlog 77).
 func (tm *TemporalMetadata) EffectiveValidFrom(mint Instant) Instant {
 	if tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
