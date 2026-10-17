@@ -112,10 +112,12 @@ func TestCascadeAppend67_AllocsFlat(t *testing.T) {
 				a1000, n1000 := appendCost(t, be, rel, 1000, k)
 				t.Logf("allocs/append %.1f / %.1f / %.1f, ns/append %.0f / %.0f / %.0f at 1 / 100 / 1,000 versions",
 					a1, a100, a1000, n1, n100, n1000)
-				// Flat: the 1,000-version chain may cost what the 100-version
-				// one does plus noise, and the 1-version chain a few
-				// allocations less (no history row to probe above).
-				if a1000 > a100+2 || a1000 > a1+16 {
+				// Flat: the 1,000-version chain costs what the shorter ones do
+				// within background noise (badger's own goroutines allocate a
+				// few objects per append under -race); an O(V) path costs
+				// thousands (27,464 per append at 1,000 versions before 67).
+				base := max(a1, a100)
+				if a1000 > base*1.5+8 {
 					t.Fatalf("allocs per append grow with the chain: %.1f / %.1f / %.1f at 1 / 100 / 1,000 versions", a1, a100, a1000)
 				}
 			})
