@@ -108,7 +108,7 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 			batch.StartIDs = appendNodeIDs(batch.StartIDs, startView.Ints[start:end])
 			batch.EndIDs = appendNodeIDs(batch.EndIDs, endView.Ints[start:end])
 			for ord := start; ord < end; ord++ {
-				batch.ValidFromZero = storecontract.AppendValidFromZero(batch.ValidFromZero, ord-start, validFromZeroAt(vf, eff, ord))
+				batch.ValidFromZero = storecontract.AppendValidFromZero(batch.ValidFromZero, len(batch.IDs)-(end-ord), validFromZeroAt(vf, eff, ord)) // rows before ord: the block's IDs are appended
 			}
 			batch.ValidFrom = append(batch.ValidFrom, vf[start:end]...)
 			batch.ValidTo = append(batch.ValidTo, vt[start:end]...)

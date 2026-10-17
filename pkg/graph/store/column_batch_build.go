@@ -59,8 +59,7 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 		// entity, and every entity a store scan hands back is frozen — one
 		// allocation per row across the whole scan.
 		vf, vt, _ := n.ValidRange()
-		_, claimed := n.ValidFromClaim()
-		batch.ValidFromZero = AppendValidFromZero(batch.ValidFromZero, len(batch.ValidFrom), claimed && vf == 0)
+		batch.ValidFromZero = AppendValidFromZero(batch.ValidFromZero, len(batch.ValidFrom), n.StartsAtZero())
 		batch.ValidFrom = append(batch.ValidFrom, int64(vf))
 		batch.ValidTo = append(batch.ValidTo, int64(vt))
 		for c, key := range props {
@@ -136,8 +135,7 @@ func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 	fn func(*RelColumnBatch) bool) error {
 	return scanColumnsFromRels(rels, func(_ int, r *types.Relationship) (int64, int64, bool) {
 		vf, vt, _ := r.ValidRange()
-		_, claimed := r.ValidFromClaim()
-		return int64(vf), int64(vt), claimed && vf == 0
+		return int64(vf), int64(vt), r.StartsAtZero()
 	}, props, fn)
 }
 

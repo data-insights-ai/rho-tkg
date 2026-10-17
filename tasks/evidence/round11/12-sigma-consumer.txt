@@ -1,0 +1,14 @@
+sigma-tkgd consumer check (scratch worktree ~/.cache/sigma-scratch/rho11/sigma at sigma d0877b51f, go.mod replace -> this branch; not committed to sigma)
+go build ./...: exit 0
+go vet ./internal/cypher/...: exit 0
+twodriver (watchdog 24 GiB / 30 min; built separately under 16 GiB): exit 1, one failure:
+--- FAIL: TestStoreAnswersArePinned (0.01s)
+    backends_test.go:164: tiered answers {relIndex:true walkable:true nodeOrdinals:false relOrdinals:false nodeRanges:true relRanges:true nodeBounds:true relBounds:true rangeCountsOption:false uniqueOnEvents:false columnsPriced:false}, pinned {relIndex:true walkable:false nodeOrdinals:false relOrdinals:false nodeRanges:false relRanges:false nodeBounds:false relBounds:false rangeCountsOption:false 
+    backends_test.go:164: sharded answers {relIndex:true walkable:true nodeOrdinals:true relOrdinals:true nodeRanges:true relRanges:true nodeBounds:true relBounds:true rangeCountsOption:true uniqueOnEvents:true columnsPriced:false}, pinned {relIndex:true walkable:false nodeOrdinals:true relOrdinals:true nodeRanges:true relRanges:true nodeBounds:false relBounds:false rangeCountsOption:true uniqueOn
+FAIL
+Against v4.60.0 (same sigma, replace -> v4.60.0 worktree) the same test answers identically:
+--- FAIL: TestStoreAnswersArePinned (0.02s)
+    backends_test.go:164: tiered answers {relIndex:true walkable:true nodeOrdinals:false relOrdinals:false nodeRanges:true relRanges:true nodeBounds:true relBounds:true rangeCountsOption:false uniqueOnEvents:false columnsPriced:false}, pinned {relIndex:true walkable:false nodeOrdinals:false relOrdinals:false nodeRanges:false relRanges:false nodeBounds:false relBounds:false rangeCountsOption:false 
+    backends_test.go:164: sharded answers {relIndex:true walkable:true nodeOrdinals:true relOrdinals:true nodeRanges:true relRanges:true nodeBounds:true relBounds:true rangeCountsOption:true uniqueOnEvents:true columnsPriced:false}, pinned {relIndex:true walkable:false nodeOrdinals:true relOrdinals:true nodeRanges:true relRanges:true nodeBounds:false relBounds:false rangeCountsOption:true uniqueOn
+FAIL
+=> the delta is round 10's eight store-gap cells (sigma still pins v4.59.0), round 11 adds none.

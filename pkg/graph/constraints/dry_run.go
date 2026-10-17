@@ -34,9 +34,14 @@ type DryRunRel struct {
 	EndID      types.NodeID
 	Properties map[string]any
 	// ValidFrom / ValidTo are the proposed relationship valid interval. ValidFrom
-	// 0 means "validate as if asserted now".
+	// 0 means "validate as if asserted now", unless ValidFromSet.
 	ValidFrom types.Instant
 	ValidTo   types.Instant
+	// ValidFromSet makes ValidFrom a claim at that instant, the instant 0
+	// included: the dry-run form of a create with tkg_valid_from =
+	// types.ExplicitInstant(ValidFrom) (round 11). Without it a ValidFrom of 0
+	// keeps its meaning above.
+	ValidFromSet bool
 }
 
 // DryRunFacts is a proposed fact set to validate. Nodes are checked against

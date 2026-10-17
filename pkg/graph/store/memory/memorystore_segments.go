@@ -518,10 +518,7 @@ type sealRecord struct {
 // validFromZeroRow reports a row valid from the explicit 0 (round 11): the
 // segment codec has no column for that claim (its valid-from 0 is "unset"),
 // so the row stays in the memtable, answered as before.
-func validFromZeroRow(r *types.Relationship) bool {
-	vf, ok := r.ValidFromClaim()
-	return ok && vf == 0
-}
+func validFromZeroRow(r *types.Relationship) bool { return r.StartsAtZero() }
 
 func hasStoredHash(r *types.Relationship) bool {
 	ig := r.Integrity()
@@ -1774,7 +1771,7 @@ func (ms *Store) scanRelColumnsFromSegments(token uint16, props []string, opts Q
 	for _, r := range mem {
 		vf, vt, _ := r.ValidRange()
 		src.addRow(r.ID(), r.StartNodeID(), r.EndNodeID(), int64(vf), int64(vt))
-		if _, claimed := r.ValidFromClaim(); claimed && vf == 0 {
+		if r.StartsAtZero() {
 			src.markValidFromZero()
 		}
 		for c := range props {

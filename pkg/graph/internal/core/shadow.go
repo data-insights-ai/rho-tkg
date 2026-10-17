@@ -43,7 +43,7 @@ func (c *Core) nodePropertyUnlocked(n *types.Node, key string) (any, bool) {
 	// Temporal
 	case types.ShadowValidFrom:
 		if tm := n.Temporal(); tm != nil {
-			return tm.ValidFrom, true
+			return shadowValidFrom(tm), true
 		}
 		return nil, false
 	case types.ShadowValidTo:
@@ -173,7 +173,7 @@ func (c *Core) relPropertyUnlocked(rel *types.Relationship, key string) (any, bo
 	// Temporal
 	case types.ShadowValidFrom:
 		if tm := rel.Temporal(); tm != nil {
-			return tm.ValidFrom, true
+			return shadowValidFrom(tm), true
 		}
 		return nil, false
 	case types.ShadowValidTo:
@@ -273,4 +273,15 @@ func (c *Core) relPropertyUnlocked(rel *types.Relationship, key string) (any, bo
 	default:
 		return nil, false
 	}
+}
+
+// shadowValidFrom is the raw asserted tkg_valid_from of a row: its stored
+// ValidFrom, or types.ExplicitInstant(0) for a row valid from the explicit
+// instant 0 (round 11), so the claim stays distinguishable from an unset 0
+// and writing the value read back makes the same claim.
+func shadowValidFrom(tm *types.TemporalMetadata) any {
+	if tm.StartsAtZero() {
+		return types.ExplicitInstant(0)
+	}
+	return tm.ValidFrom
 }

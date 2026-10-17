@@ -135,10 +135,16 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 		if err != nil {
 			return err
 		}
+		if err := c.noteRowValidFromZero(types.Instant(body.Wire.ValidFrom), body.Wire.ValidFromZero); err != nil {
+			return err
+		}
 		return c.applyNodePutLocked(body, rec)
 	case storepkg.ChangeRelPut:
 		body, err := storeutil.DecodeRelPut(rec.Payload)
 		if err != nil {
+			return err
+		}
+		if err := c.noteRowValidFromZero(types.Instant(body.Wire.ValidFrom), body.Wire.ValidFromZero); err != nil {
 			return err
 		}
 		return c.applyRelPutLocked(body, rec)
@@ -159,10 +165,16 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 		if err != nil {
 			return err
 		}
+		if err := c.noteRowValidFromZero(types.Instant(body.Wire.ValidFrom), body.Wire.ValidFromZero); err != nil {
+			return err
+		}
 		return c.applyNodeHistoryVersionLocked(body, rec)
 	case storepkg.ChangeRelHistoryVersion:
 		body, err := storeutil.DecodeHistoryVersionRel(rec.Payload)
 		if err != nil {
+			return err
+		}
+		if err := c.noteRowValidFromZero(types.Instant(body.Wire.ValidFrom), body.Wire.ValidFromZero); err != nil {
 			return err
 		}
 		return c.applyRelHistoryVersionLocked(body, rec)
@@ -181,6 +193,9 @@ func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 	case storepkg.ChangeForeignIncoming:
 		body, err := storeutil.DecodeRelPut(rec.Payload)
 		if err != nil {
+			return err
+		}
+		if err := c.noteRowValidFromZero(types.Instant(body.Wire.ValidFrom), body.Wire.ValidFromZero); err != nil {
 			return err
 		}
 		return c.applyForeignIncomingLocked(body, rec)

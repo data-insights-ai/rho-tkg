@@ -97,8 +97,25 @@ type TemporalMetadata struct {
 // start: ValidFrom != 0, or ValidFrom == 0 with ValidFromZero. The one
 // presence rule of a stored valid-from (round 11); false on nil.
 func (tm *TemporalMetadata) HasValidFrom() bool {
-	return tm != nil && (tm.ValidFrom != 0 || tm.ValidFromZero)
+	return tm != nil && ValidFromClaimed(tm.ValidFrom, tm.ValidFromZero)
 }
+
+// StartsAtZero reports whether the version is valid from the explicit
+// instant 0 (StartsAtExplicitZero of its stored fields); false on nil.
+func (tm *TemporalMetadata) StartsAtZero() bool {
+	return tm != nil && StartsAtExplicitZero(tm.ValidFrom, tm.ValidFromZero)
+}
+
+// ValidFromClaimed is the presence rule of a stored valid-from over its two
+// stored fields (a row, a wire record, a column, a foreign edge): a non-zero
+// validFrom, or 0 with the explicit-zero marker. Every spelling of "does
+// this version claim a start" goes through it (round 11).
+func ValidFromClaimed(validFrom Instant, zero bool) bool { return validFrom != 0 || zero }
+
+// StartsAtExplicitZero reports whether the stored fields claim the instant 0
+// as the start: the marker with a valid-from of 0 (a marker with any other
+// valid-from is refused at every store and wire door).
+func StartsAtExplicitZero(validFrom Instant, zero bool) bool { return zero && validFrom == 0 }
 
 // ExplicitInstant is a tkg_valid_from value with explicit presence (round
 // 11): the version holds in the world from this instant, the instant 0

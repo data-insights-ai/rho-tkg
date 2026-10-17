@@ -1,0 +1,16 @@
+# red: Fable's probes (review/zz_review_probe_test.go) at 5eb54fc0 (round 11 items 1-4, before the review fixes)
+--- FAIL: TestReviewProbe_ReplicaAppliesValidFromZeroMeta (0.00s)
+    zz_review_probe_test.go:55: feed tags: [Meta Meta NodePut]
+    zz_review_probe_test.go:57: replica apply of the feed after an ExplicitInstant(0) create: graph: apply change LSN 2: graph: apply: unknown replicated meta key "valid_from_zero": graph: corrupt wire data
+--- FAIL: TestReviewProbe_MarkerAfterReset (0.09s)
+    zz_review_probe_test.go:144: after Reset + a new explicit-0 row, a reader of markers up to 7 opened the store: <nil>, want ErrWireFormatVersionUnsupported
+--- FAIL: TestReviewProbe_ImportTargetMarker (0.07s)
+    zz_review_probe_test.go:191: import target holding an explicit-0 row: a reader of markers up to 7 opened it: <nil>, want ErrWireFormatVersionUnsupported
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.884s
+FAIL
+
+# red: round11_review_test.go at 5eb54fc0 does not compile (new API it pins):
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test]
+vet: pkg/graph/round11_review_test.go:71:12: got.StartsAtZero undefined (type *types.Node has no field or method StartsAtZero)

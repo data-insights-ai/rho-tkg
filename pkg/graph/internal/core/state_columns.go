@@ -112,12 +112,11 @@ func newStateCut(epoch uint64, keys []string, n int, rel bool) *stateCut {
 // relationship).
 func (cut *stateCut) add(id uint64, from, to types.Instant, row interface {
 	ValidRange() (types.Instant, types.Instant, bool)
-	ValidFromClaim() (types.Instant, bool)
+	StartsAtZero() bool
 	GetProperty(string) (any, bool)
 }) {
 	vf, vt, _ := row.ValidRange()
-	_, claimed := row.ValidFromClaim()
-	cut.zero = storepkg.AppendValidFromZero(cut.zero, len(cut.ids), claimed && vf == 0)
+	cut.zero = storepkg.AppendValidFromZero(cut.zero, len(cut.ids), row.StartsAtZero())
 	cut.ids = append(cut.ids, id)
 	cut.from = append(cut.from, from)
 	cut.to = append(cut.to, to)

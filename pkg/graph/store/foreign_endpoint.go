@@ -121,5 +121,8 @@ func (e ForeignIncomingEdge) Validate() error {
 	if e.AttestTx == 0 {
 		return fmt.Errorf("%w: missing attest-time provenance", ErrInvalidForeignIncoming)
 	}
+	if e.ValidFromZero && e.ValidFrom != 0 {
+		return fmt.Errorf("%w: the valid-from-zero marker with valid_from %d", ErrInvalidForeignIncoming, e.ValidFrom)
+	}
 	return nil
 }

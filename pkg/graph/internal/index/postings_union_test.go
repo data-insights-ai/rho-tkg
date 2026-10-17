@@ -16,11 +16,11 @@ func TestPostingsUnion(t *testing.T) {
 	want := map[snowflake.ID]bool{}
 	for i := 1; i <= 400; i++ {
 		id := snowflake.ID(i)
-		switch {
-		case i%3 == 0:
+		switch i % 3 {
+		case 0:
 			pi.AddKey(id, "i64:5")
 			want[id] = true
-		case i%3 == 1:
+		case 1:
 			pi.AddKey(id, "f64:5")
 			want[id] = true
 		default:

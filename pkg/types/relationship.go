@@ -385,9 +385,6 @@ func (r *Relationship) Temporal() *TemporalMetadata {
 	return r.temporal
 }
 
-// ValidRange returns the validity bounds and whether the relationship carries
-// temporal metadata at all (a zero ValidTo means open-ended). Prefer it over
-// Temporal() for bounds only: it allocates nothing on a frozen row.
 // ValidFromClaim returns the version's claimed valid start and whether it
 // makes one (TemporalMetadata.HasValidFrom: a non-zero ValidFrom, or 0 with
 // ValidFromZero), allocation-free like ValidRange. ok=false: no claim, the
@@ -405,6 +402,17 @@ func (r *Relationship) ValidFromClaim() (from Instant, ok bool) {
 	return r.temporal.ValidFrom, r.temporal.HasValidFrom()
 }
 
+// StartsAtZero reports whether the version is valid from the explicit
+// instant 0 (TemporalMetadata.StartsAtZero), allocation-free like
+// ValidFromClaim; false on nil.
+func (r *Relationship) StartsAtZero() bool {
+	vf, ok := r.ValidFromClaim()
+	return ok && vf == 0
+}
+
+// ValidRange returns the validity bounds and whether the relationship carries
+// temporal metadata at all (a zero ValidTo means open-ended). Prefer it over
+// Temporal() for bounds only: it allocates nothing on a frozen row.
 func (r *Relationship) ValidRange() (from, to Instant, ok bool) {
 	if r == nil {
 		return 0, 0, false

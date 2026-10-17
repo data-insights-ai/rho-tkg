@@ -60,9 +60,7 @@ func crossesZero(vf, vt types.Instant) bool {
 }
 
 // startsAtZero reports whether tm is a row valid from the explicit 0.
-func startsAtZero(tm *types.TemporalMetadata) bool {
-	return tm != nil && tm.ValidFrom == 0 && tm.ValidFromZero
-}
+func startsAtZero(tm *types.TemporalMetadata) bool { return tm.StartsAtZero() }
 
 // checkCorrectionAtZero refuses a correction or excise over [vf, vt) that
 // crosses 0 on an entity with a version valid from the explicit 0: its pieces
@@ -127,20 +125,34 @@ func (c *Core) claimedStartMode(vf types.Instant, set, first bool) (types.Instan
 	return vf, vf != 0
 }
 
-// noteValidFromZero raises the store's format marker once per process before
-// the first row valid from the explicit 0 is written (a raise is idempotent,
-// so a reopen raises again on its first such write). A store without a format
-// marker needs none: the rows' format version fails an older reader closed.
+// noteValidFromZero raises the store's format marker before the first row
+// valid from the explicit 0 is written. Every door that writes such a row
+// raises it, whatever wrote the row: a create (claimedStart), an import or a
+// merge of a row carrying the marker, a replica's apply of the primary's
+// ChangeMeta or of the row itself, a foreign-incoming stub
+// (noteRowValidFromZero). The flag only skips repeat raises in one process
+// and is cleared with the store (reapCoreStateForClear: a Clear re-stamps the
+// base marker). A store without a format marker needs none: the rows'
+// format version fails an older reader closed.
 func (c *Core) noteValidFromZero() error {
 	if c.validFromZeroMarked.Load() {
 		return nil
 	}
-	fm, ok := c.store.(storepkg.MetaFormatMarkerCapability)
-	if ok {
+	if fm, ok := c.metaKV.(storepkg.MetaFormatMarkerCapability); ok {
 		if err := fm.MetaSetDurableRaising(validFromZeroMeta, []byte{1}, storeutil.ValidFromZeroStoreFormatVersion); err != nil {
 			return fmt.Errorf("graph: raise the format marker for a row valid from the explicit 0: %w", err)
 		}
 	}
 	c.validFromZeroMarked.Store(true)
 	return nil
+}
+
+// noteRowValidFromZero is noteValidFromZero for a row about to be written
+// that carries its stored fields (a wire record, an imported row, a foreign
+// edge): it raises only when the row starts at the explicit 0.
+func (c *Core) noteRowValidFromZero(validFrom types.Instant, zero bool) error {
+	if !types.StartsAtExplicitZero(validFrom, zero) {
+		return nil
+	}
+	return c.noteValidFromZero()
 }

@@ -855,7 +855,7 @@ func validateNodeWireFields(w NodeWire) error {
 	if !w.HasTemporal && nodeWireHasTemporalPayload(w) {
 		return fmt.Errorf("node wire: temporal fields set while has_temporal is false")
 	}
-	if (w.ValidFrom != 0 || w.ValidFromZero) && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
+	if types.ValidFromClaimed(types.Instant(w.ValidFrom), w.ValidFromZero) && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
 		return fmt.Errorf("node wire: valid_from %d must be before valid_to %d", w.ValidFrom, w.ValidTo)
 	}
 	if w.ValidFromZero && w.ValidFrom != 0 {
@@ -933,7 +933,7 @@ func validateRelWireFields(w RelWire) error {
 	if !w.HasTemporal && relWireHasTemporalPayload(w) {
 		return fmt.Errorf("relationship wire: temporal fields set while has_temporal is false")
 	}
-	if (w.ValidFrom != 0 || w.ValidFromZero) && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
+	if types.ValidFromClaimed(types.Instant(w.ValidFrom), w.ValidFromZero) && w.ValidTo != 0 && w.ValidFrom >= w.ValidTo {
 		return fmt.Errorf("relationship wire: valid_from %d must be before valid_to %d", w.ValidFrom, w.ValidTo)
 	}
 	if w.ValidFromZero && w.ValidFrom != 0 {

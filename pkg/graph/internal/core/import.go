@@ -767,6 +767,9 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := c.checkImportedStamp(nodeWireCommitStamp(wn)); err != nil {
 			return err
 		}
+		if err := c.noteRowValidFromZero(types.Instant(wn.ValidFrom), wn.ValidFromZero); err != nil {
+			return err
+		}
 		n, err := storeutil.WireToNodeChecked(wn)
 		if err != nil {
 			return fmt.Errorf("import: node %d: %w: %v", wn.ID, ErrCorruptExport, err)
@@ -814,6 +817,9 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 			return fmt.Errorf("%w: unmarshal node history: %v", ErrCorruptExport, err)
 		}
 		if err := c.checkImportedStamp(nodeWireCommitStamp(wn)); err != nil {
+			return err
+		}
+		if err := c.noteRowValidFromZero(types.Instant(wn.ValidFrom), wn.ValidFromZero); err != nil {
 			return err
 		}
 		n, err := storeutil.WireToNodeChecked(wn)
@@ -866,6 +872,9 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := c.checkImportedStamp(relWireCommitStamp(wr)); err != nil {
 			return err
 		}
+		if err := c.noteRowValidFromZero(types.Instant(wr.ValidFrom), wr.ValidFromZero); err != nil {
+			return err
+		}
 		rel, err := storeutil.WireToRelChecked(wr)
 		if err != nil {
 			return fmt.Errorf("import: rel %d: %w: %v", wr.ID, ErrCorruptExport, err)
@@ -906,6 +915,9 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 			return fmt.Errorf("%w: unmarshal rel history: %v", ErrCorruptExport, err)
 		}
 		if err := c.checkImportedStamp(relWireCommitStamp(wr)); err != nil {
+			return err
+		}
+		if err := c.noteRowValidFromZero(types.Instant(wr.ValidFrom), wr.ValidFromZero); err != nil {
 			return err
 		}
 		rel, err := storeutil.WireToRelChecked(wr)

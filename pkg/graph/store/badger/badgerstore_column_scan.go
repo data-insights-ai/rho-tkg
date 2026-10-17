@@ -120,7 +120,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 			batch.IDs = append(batch.IDs, ids[start:end]...)
 			batch.Ordinals = append(batch.Ordinals, ords[start:end]...)
 			for ord := start; ord < end; ord++ {
-				batch.ValidFromZero = storecontract.AppendValidFromZero(batch.ValidFromZero, ord-start, validFromZeroAt(vf, eff, ord))
+				batch.ValidFromZero = storecontract.AppendValidFromZero(batch.ValidFromZero, len(batch.IDs)-(end-ord), validFromZeroAt(vf, eff, ord)) // rows before ord: the block's IDs are appended
 			}
 			batch.ValidFrom = append(batch.ValidFrom, vf[start:end]...)
 			batch.ValidTo = append(batch.ValidTo, vt[start:end]...)

@@ -1,0 +1,72 @@
+10:50  up 32 days,  4:12, 6 users, load averages: 44.40 31.01 29.65
+benchlock[rho11-sigma-ssbb-r11 shared]: acquired after 0 s, slots [0], load 44.4
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/sigma-tkgd/internal/cypher/testing/suites/contracts/twodriver
+cpu: Apple M4 Max
+BenchmarkSharedStatementsByBackend/memory/s1/shared         	     500	     82512 ns/op	    1973 B/op	      40 allocs/op
+BenchmarkSharedStatementsByBackend/memory/s2/shared         	     500	      5536 ns/op	    2507 B/op	      38 allocs/op
+BenchmarkSharedStatementsByBackend/memory/s3/shared         	     500	   1397530 ns/op	  581559 B/op	    2043 allocs/op
+BenchmarkSharedStatementsByBackend/memory/s4/shared         	     500	     41075 ns/op	    7321 B/op	      43 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s1/shared         	     500	     77799 ns/op	   18542 B/op	     471 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s2/shared         	     500	      5048 ns/op	    2192 B/op	      36 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s3/shared         	     500	    768828 ns/op	  581736 B/op	    2043 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s4/shared         	     500	     37147 ns/op	    7321 B/op	      43 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s1/shared         	     500	    101541 ns/op	    7111 B/op	      69 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s2/shared         	     500	    100046 ns/op	    3583 B/op	      52 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s3/shared         	     500	   1321781 ns/op	  582283 B/op	    2056 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s4/shared         	     500	    174071 ns/op	   86096 B/op	     170 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s1/shared        	     500	     40770 ns/op	    4253 B/op	      77 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s2/shared        	     500	    135431 ns/op	   27059 B/op	     316 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s3/shared        	     500	    570054 ns/op	  584029 B/op	    2080 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s4/shared        	     500	     14448 ns/op	   10213 B/op	      98 allocs/op
+PASS
+limit: {"command": ["/Users/markusnissl/.cache/sigma-scratch/rho11/twodriver.test", "-test.run", "^$", "-test.bench", "BenchmarkSharedStatementsByBackend", "-test.benchtime", "500x", "-test.cpu", "1", "-test.count", "1"], "rss_limit_mib": 16384.0, "wall_limit_s": 900.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 587.969, "elapsed_s": 23.466, "exit_code": 0, "reason": "completed"}
+10:51  up 32 days,  4:13, 6 users, load averages: 44.21 32.65 30.31
+benchlock[rho11-sigma-ssbb-r11 shared]: acquired after 0 s, slots [0], load 44.2
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/sigma-tkgd/internal/cypher/testing/suites/contracts/twodriver
+cpu: Apple M4 Max
+BenchmarkSharedStatementsByBackend/memory/s1/shared         	     500	      3004 ns/op	    1973 B/op	      40 allocs/op
+BenchmarkSharedStatementsByBackend/memory/s2/shared         	     500	      6738 ns/op	    2507 B/op	      38 allocs/op
+BenchmarkSharedStatementsByBackend/memory/s3/shared         	     500	    837139 ns/op	  581558 B/op	    2043 allocs/op
+BenchmarkSharedStatementsByBackend/memory/s4/shared         	     500	     39826 ns/op	    7320 B/op	      43 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s1/shared         	     500	      2893 ns/op	    1756 B/op	      38 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s2/shared         	     500	      8410 ns/op	    2192 B/op	      36 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s3/shared         	     500	    479672 ns/op	  581733 B/op	    2043 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s4/shared         	     500	     10343 ns/op	    7321 B/op	      43 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s1/shared         	     500	      5028 ns/op	    2550 B/op	      49 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s2/shared         	     500	      7232 ns/op	    3580 B/op	      52 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s3/shared         	     500	    388331 ns/op	  599032 B/op	    2488 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s4/shared         	     500	    111894 ns/op	   86095 B/op	     170 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s1/shared        	     500	      5865 ns/op	    2641 B/op	      54 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s2/shared        	     500	     28625 ns/op	   26968 B/op	     313 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s3/shared        	     500	    341260 ns/op	  583999 B/op	    2080 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s4/shared        	     500	     13645 ns/op	   10213 B/op	      98 allocs/op
+PASS
+limit: {"command": ["/Users/markusnissl/.cache/sigma-scratch/rho11/twodriver.test", "-test.run", "^$", "-test.bench", "BenchmarkSharedStatementsByBackend", "-test.benchtime", "500x", "-test.cpu", "1", "-test.count", "1"], "rss_limit_mib": 16384.0, "wall_limit_s": 900.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 586.438, "elapsed_s": 12.017, "exit_code": 0, "reason": "completed"}
+10:51  up 32 days,  4:13, 6 users, load averages: 38.71 32.19 30.21
+benchlock[rho11-sigma-ssbb-r11 shared]: acquired after 0 s, slots [0], load 38.7
+goos: darwin
+goarch: arm64
+pkg: github.com/data-insights-ai/sigma-tkgd/internal/cypher/testing/suites/contracts/twodriver
+cpu: Apple M4 Max
+BenchmarkSharedStatementsByBackend/memory/s1/shared         	     500	      2794 ns/op	    1973 B/op	      40 allocs/op
+BenchmarkSharedStatementsByBackend/memory/s2/shared         	     500	      4713 ns/op	    2507 B/op	      38 allocs/op
+BenchmarkSharedStatementsByBackend/memory/s3/shared         	     500	    457750 ns/op	  581558 B/op	    2043 allocs/op
+BenchmarkSharedStatementsByBackend/memory/s4/shared         	     500	     11307 ns/op	    7321 B/op	      43 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s1/shared         	     500	      2905 ns/op	    1756 B/op	      38 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s2/shared         	     500	      3831 ns/op	    2192 B/op	      36 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s3/shared         	     500	    391769 ns/op	  598800 B/op	    2475 allocs/op
+BenchmarkSharedStatementsByBackend/badger/s4/shared         	     500	      9878 ns/op	    7320 B/op	      43 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s1/shared         	     500	      5678 ns/op	    2550 B/op	      49 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s2/shared         	     500	      7331 ns/op	    3580 B/op	      52 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s3/shared         	     500	    764602 ns/op	  582262 B/op	    2056 allocs/op
+BenchmarkSharedStatementsByBackend/tiered/s4/shared         	     500	    100161 ns/op	   86095 B/op	     170 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s1/shared        	     500	     12040 ns/op	    4251 B/op	      77 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s2/shared        	     500	     56700 ns/op	   26982 B/op	     313 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s3/shared        	     500	    666306 ns/op	  584019 B/op	    2080 allocs/op
+BenchmarkSharedStatementsByBackend/sharded/s4/shared        	     500	     14796 ns/op	   10214 B/op	      98 allocs/op
+PASS
+limit: {"command": ["/Users/markusnissl/.cache/sigma-scratch/rho11/twodriver.test", "-test.run", "^$", "-test.bench", "BenchmarkSharedStatementsByBackend", "-test.benchtime", "500x", "-test.cpu", "1", "-test.count", "1"], "rss_limit_mib": 16384.0, "wall_limit_s": 900.0, "sample_interval_s": 0.05, "peak_tree_rss_mib": 583.375, "elapsed_s": 10.154, "exit_code": 0, "reason": "completed"}

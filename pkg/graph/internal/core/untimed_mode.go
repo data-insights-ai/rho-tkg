@@ -580,11 +580,19 @@ func (c *Core) stampRelFirstVersion(id types.RelID) error {
 }
 
 // applyMetaLocked applies a replicated ChangeMeta record (a replica's apply,
-// caller holds c.mu.Lock). The only meta entry a primary replicates is the
-// untimed valid-start mode (backlog 73): the replica takes it as its own and
-// persists it like the primary (key, format marker 7). Any other key fails
+// caller holds c.mu.Lock). A primary replicates two meta entries: the untimed
+// valid-start mode (backlog 73), which the replica takes as its own and
+// persists like the primary (key, format marker 7), and the valid-from-zero
+// entry (round 11), which raises the replica's marker to 8 before the rows
+// valid from the explicit 0 that follow it in the feed. Any other key fails
 // closed: this release does not know what applying it means.
 func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
+	if body.Key == validFromZeroMeta {
+		if len(body.Value) != 1 || body.Value[0] != 1 {
+			return fmt.Errorf("graph: apply: valid-from-zero entry %x: %w", body.Value, storepkg.ErrCorruptWire)
+		}
+		return c.noteValidFromZero()
+	}
 	if body.Key != untimedValidStartMeta {
 		return fmt.Errorf("graph: apply: unknown replicated meta key %q: %w", body.Key, storepkg.ErrCorruptWire)
 	}

@@ -156,7 +156,7 @@ func TestRound11FormsSeekMatchesOracle(t *testing.T) {
 	stored := []any{
 		int64(3), 3.0, float32(3), int8(3), uint64(3), uint16(3), int32(3), "3", true,
 		int64(-7), -7.0, float32(-7), int64(1<<53 + 1), float64(1 << 53), math.NaN(), uint64(math.MaxUint64),
-		math.Inf(1), float32(math.Inf(1)), -0.0, int64(0), float32(0.1), 0.1,
+		math.Inf(1), float32(math.Inf(1)), math.Copysign(0, -1), int64(0), float32(0.1), 0.1,
 	}
 	probes := []any{
 		int64(3), 3.0, float32(3), uint8(3), int64(-7), float32(-7), int64(1<<53 + 1), float64(1 << 53),

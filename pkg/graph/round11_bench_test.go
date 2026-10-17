@@ -13,7 +13,7 @@ import (
 // store once per form.
 func BenchmarkRound11PointSeek(b *testing.B) {
 	for _, sb := range allStoreBackends() {
-		t := &testing.T{}
+		t := &testing.T{} // the helpers' t: its cleanups never run, so the graph is closed below
 		g := sb.open(t)
 		r11SeekWorld(t, g, 1000)
 		now, err := g.Temporal().NowTx()
@@ -45,6 +45,9 @@ func BenchmarkRound11PointSeek(b *testing.B) {
 					}
 				}
 			})
+		}
+		if err := g.Close(); err != nil {
+			b.Fatal(err)
 		}
 	}
 }

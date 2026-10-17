@@ -358,7 +358,10 @@ type NodePropertyTxMemberWindowCapability interface {
 // ErrIndexNotFound where the one-key door declines. A store whose one-key
 // call reads every shard (tiered, sharded) answers a number's equal keys
 // (types.EqualIndexKeys) in one fan-out; without the capability the graph
-// asks the one-key doors once per key (same candidates).
+// asks the one-key doors once per key (same candidates). valueKeys is not
+// bounded by the store: tiered and sharded enumerate each distinct key on
+// every shard in that one fan-out; the graph passes at most 12
+// (types.EqualIndexKeys).
 type NodePropertyTxMemberKeysCapability interface {
 	ForEachNodePropertyTxMemberKeys(labelToken uint16, propertyKey string, valueKeys []string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
 	ForEachNodePropertyTxMemberKeysDuring(labelToken uint16, propertyKey string, valueKeys []string, validStart, validEnd, txAt types.Instant, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
@@ -767,7 +770,10 @@ type PropertyIndexCapability interface {
 // no keys, no rows. The graph's equality doors pass a value's equal keys
 // (types.EqualIndexKeys), so a seek of a number reads the index once instead
 // of once per numeric form; without the capability they ask
-// NodesByLabelAndProperty per form and unite (same rows).
+// NodesByLabelAndProperty per form and unite (same rows). valueKeys is not
+// bounded by the store: the work grows with its distinct keys (one posting
+// list each, the union held in RAM as one cursor per key); the graph passes
+// at most 12 (types.EqualIndexKeys).
 type PropertyKeysLookupCapability interface {
 	NodesByLabelAndPropertyKeys(labelToken uint16, key string, valueKeys []string, opts QueryOpts) ([]*types.Node, error)
 }

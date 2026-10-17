@@ -178,7 +178,7 @@ func (co *ConstraintOps) DryRunValidate(ctx context.Context, facts constraintspk
 					Err: fmt.Errorf("end node %d: %w", dr.EndID, err)})
 				continue
 			}
-			validFrom, vfSet := c.claimedStartMode(dr.ValidFrom, dr.ValidFrom != 0, true)
+			validFrom, vfSet := c.claimedStartMode(dr.ValidFrom, types.ValidFromClaimed(dr.ValidFrom, dr.ValidFromSet), true)
 			if !vfSet {
 				validFrom, vfSet = c.now(), true // validate as if asserted now
 			}

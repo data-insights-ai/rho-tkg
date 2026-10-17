@@ -38,8 +38,14 @@ releaser's call). New store capabilities and write and read options, all additiv
   new `ErrValidEndAtZero` (wraps `ErrInvalidTimeRange`), in the batch and caller-instant pre-flights too. Ends at 0
   need their own presence (stored and derived), a later step. Additive: `store.CountSegment.ToZero` (an inner count
   segment ending at 0), `ColumnBatch` / `RelColumnBatch` / `RelSegmentBatch.ValidFromZero`,
-  `store.ColumnValidFromZeroSource`, `store.ForeignIncomingEdge.ValidFromZero`. Other reserved keys refuse an
-  `ExplicitInstant`. The memory store's column segments keep such rows in the memtable. **sigma-tkgd**: `VALID FROM 0`
+  `store.ColumnValidFromZeroSource`, `store.ForeignIncomingEdge.ValidFromZero`, `constraints.DryRunRel.ValidFromSet`
+  (the dry-run form of the claim), the one presence rule over stored fields `types.ValidFromClaimed` /
+  `types.StartsAtExplicitZero` with `TemporalMetadata` / `Node` / `Relationship.StartsAtZero`. Every door that writes
+  such a row raises the marker: a create, `IO().Import` / `ImportMerge`, a replica's apply (the primary's
+  `valid_from_zero` meta entry or the row; an older replica fails closed on the entry), a foreign stub; after
+  `Admin().Reset()` the next such row raises it again. The shadow resolver answers `types.ExplicitInstant(0)` for
+  `tkg_valid_from` of such a row. Other reserved keys refuse an `ExplicitInstant`. The memory store's column segments
+  keep such rows in the memtable. **sigma-tkgd**: `VALID FROM 0`
   on a create can pass `types.ExplicitInstant(0)`; on an update it declines on `ErrValidEndAtZero`.
 - **Per-entity point doors with explicit presence** (round 11 item 3). `Temporal().NodeAtOpts(id, opts)` /
   `RelAtOpts(id, opts)` / `NodesAtOptsByIDs(ids, opts)` / `RelsAtOptsByIDs(ids, opts)` take the point form of
