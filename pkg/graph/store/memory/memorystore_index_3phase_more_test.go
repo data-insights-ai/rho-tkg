@@ -216,10 +216,19 @@ func TestCreateTemporalIndex_ConcurrentMutationDuringScanIsReconciled(t *testing
 		}
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	// The writes run ON the scanning goroutine at the scan midpoint, so they
+	// provably land inside Phase 2 (about half of nodes 1..4000 already read
+	// stale). A free goroutine could lose the race to Phase 3, and a write after
+	// publish meets the grow-only envelope (..._ReplaceAfterPublishKeepsEnvelope):
+	// CI run 39035363652, todo row 72.
+	var scanned int
+	mutated := false
+	phase2ScanHook = func() {
+		scanned++
+		if scanned != n/2 {
+			return
+		}
+		mutated = true
 		for i := int64(1); i <= 2_000; i++ {
 			if err := ms.DeleteNode(types.NodeID(i)); err != nil {
 				t.Errorf("DeleteNode(%d): %v", i, err)
@@ -234,12 +243,16 @@ func TestCreateTemporalIndex_ConcurrentMutationDuringScanIsReconciled(t *testing
 				return
 			}
 		}
-	}()
+	}
+	t.Cleanup(func() { phase2ScanHook = nil })
 
 	if err := ms.CreateTemporalIndex(10); err != nil {
 		t.Fatalf("CreateTemporalIndex: %v", err)
 	}
-	wg.Wait()
+	phase2ScanHook = nil
+	if !mutated {
+		t.Fatalf("the writes never ran (scanned %d of %d): this test proved nothing", scanned, n)
+	}
 
 	ms.mu.RLock()
 	ti := ms.temporalIndexes[10]
