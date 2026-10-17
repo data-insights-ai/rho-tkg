@@ -157,7 +157,7 @@ func TestPostingsBuildSortedDistinctExactChunks(t *testing.T) {
 	if keys != 1 {
 		t.Fatalf("%d keys, want 1 (empty key recorded)", keys)
 	}
-	for i, c := range ci.Entries["k"].s.chunks {
+	for i, c := range ci.many["k"].s.chunks {
 		if len(c) != orderedKeyChunk || cap(c) != orderedKeyChunk {
 			t.Fatalf("chunk %d: len %d cap %d, want exact %d", i, len(c), cap(c), orderedKeyChunk)
 		}

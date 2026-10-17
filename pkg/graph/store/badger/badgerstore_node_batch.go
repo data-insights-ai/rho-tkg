@@ -236,7 +236,6 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
 		bs.ords.dropNode(nid)
-		delete(bs.nodeHashes, nid)
 		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)
 		bs.nodeCount.Add(-1)
@@ -277,7 +276,6 @@ func (bs *Store) cascadeDeleteApply(nid types.NodeID, prefetched cascadeDeletePr
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, nid)
 	bs.ords.dropNode(nid)
-	delete(bs.nodeHashes, nid)
 	bs.deleteNodeRevLocked(nid)
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(-1)
@@ -634,7 +632,6 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 
 		bs.nodeCache.Put(nd.id, nd.frozen)
 		bs.nodeIDs[nd.nid] = struct{}{}
-		bs.nodeHashes[nd.nid] = badgerNodeIntegrityHash(n)
 		bs.bumpNodeRevLocked(nd.nid)
 		bs.bumpNodeBeliefWatermarkLocked(nd.nid, nodeTxFrom(n)) // BACKLOG 10c, as PutNode
 
@@ -789,7 +786,6 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
 		bs.ords.dropNode(nid)
-		delete(bs.nodeHashes, nid)
 		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)
 		bs.logChangeRaw(storecontract.ChangeNodeDelete, delPayloads[i])

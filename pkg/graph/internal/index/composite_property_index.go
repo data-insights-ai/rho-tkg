@@ -2,6 +2,7 @@ package index
 
 import (
 	"encoding/binary"
+	"iter"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -22,12 +23,19 @@ type CompositeIndexKey struct {
 // sorted posting list (backlog 72) of the node IDs whose current row carries
 // an indexable value for EVERY declared key. v1 is EQUALITY-only: no partial-prefix or range lookup — see
 // docs/query-planners.md "Composite property indexes".
+//
+// A value key held by exactly one node keeps that ID inline (one), a key held
+// by two or more a posting list (many); a key is in at most one of the two
+// maps. The second ID promotes a key to a list, a removal down to one ID
+// demotes it (row 66: a list costs ~80 B more, and identity-style tuples are
+// almost all single-ID). Readers see one shape: Postings and Range.
 type CompositePropertyIndex struct {
 	// Keys is the declared, ordered component property-key list — every
 	// value key below (and every query key) is built in this same order.
 	Keys []string
 
-	Entries map[string]*IDPostings
+	one  map[string]snowflake.ID
+	many map[string]*IDPostings
 
 	// Mutated tracks IDs touched by a concurrent write during 3-phase
 	// creation (see badger's CreateCompositePropertyIndex). Non-nil only
@@ -42,8 +50,9 @@ func NewCompositePropertyIndex(keys []string) *CompositePropertyIndex {
 	declared := make([]string, len(keys))
 	copy(declared, keys)
 	return &CompositePropertyIndex{
-		Keys:    declared,
-		Entries: make(map[string]*IDPostings),
+		Keys: declared,
+		one:  make(map[string]snowflake.ID),
+		many: make(map[string]*IDPostings),
 	}
 }
 
@@ -145,17 +154,29 @@ func (ci *CompositePropertyIndex) AddKey(id snowflake.ID, vk string) {
 	if ci == nil || vk == "" {
 		return
 	}
-	if ci.Entries == nil {
-		ci.Entries = make(map[string]*IDPostings)
-	}
-	set := ci.Entries[vk]
-	if set == nil {
-		set = &IDPostings{}
-		ci.Entries[vk] = set
-	}
-	set.add(id)
 	if ci.Mutated != nil {
 		ci.Mutated[id] = struct{}{}
+	}
+	if set := ci.many[vk]; set != nil {
+		set.add(id)
+		return
+	}
+	cur, held := ci.one[vk]
+	switch {
+	case !held:
+		if ci.one == nil {
+			ci.one = make(map[string]snowflake.ID)
+		}
+		ci.one[vk] = id
+	case cur != id: // the second ID: promote to a posting list
+		set := &IDPostings{}
+		set.add(min(cur, id))
+		set.add(max(cur, id))
+		if ci.many == nil {
+			ci.many = make(map[string]*IDPostings)
+		}
+		ci.many[vk] = set
+		delete(ci.one, vk)
 	}
 }
 
@@ -164,25 +185,82 @@ func (ci *CompositePropertyIndex) removeKey(id snowflake.ID, vk string) {
 	if ci == nil || vk == "" {
 		return
 	}
-	if set, ok := ci.Entries[vk]; ok {
-		set.remove(id)
-		if set.Len() == 0 {
-			delete(ci.Entries, vk)
-		}
-	}
 	if ci.Mutated != nil {
 		ci.Mutated[id] = struct{}{}
+	}
+	if cur, held := ci.one[vk]; held {
+		if cur == id {
+			delete(ci.one, vk)
+		}
+		return
+	}
+	if set := ci.many[vk]; set != nil && set.remove(id) {
+		ci.settle(vk, set)
+	}
+}
+
+// settle demotes vk's posting list after a removal: none left drops the key,
+// one left moves that ID inline.
+func (ci *CompositePropertyIndex) settle(vk string, set *IDPostings) {
+	switch set.Len() {
+	case 0:
+		delete(ci.many, vk)
+	case 1:
+		if ci.one == nil {
+			ci.one = make(map[string]snowflake.ID)
+		}
+		for id := range set.All() {
+			ci.one[vk] = id
+		}
+		delete(ci.many, vk)
 	}
 }
 
 // Postings returns the sorted posting list of a precomputed composite value
-// key vk (nil when no node holds it). The list is the index's own: the caller
-// reads it under the store's index lock and does not change it.
+// key vk (nil when no node holds it). A key held by two or more nodes answers
+// the index's own list, a single-ID key a fresh one-ID list: either way the
+// caller reads it under the store's index lock and does not change it, and a
+// write after the call may not show through it (the doors re-check each row).
 func (ci *CompositePropertyIndex) Postings(vk string) *IDPostings {
 	if ci == nil || vk == "" {
 		return nil
 	}
-	return ci.Entries[vk]
+	if set := ci.many[vk]; set != nil {
+		return set
+	}
+	if id, held := ci.one[vk]; held {
+		set := &IDPostings{}
+		set.add(id)
+		return set
+	}
+	return nil
+}
+
+// KeyCount returns the number of value keys held.
+func (ci *CompositePropertyIndex) KeyCount() int {
+	if ci == nil {
+		return 0
+	}
+	return len(ci.one) + len(ci.many)
+}
+
+// Range calls fn with each value key, its ID count and its IDs ascending, in
+// map order, until fn returns false. Caller holds the store's index lock for
+// the whole walk.
+func (ci *CompositePropertyIndex) Range(fn func(vk string, n int, ids iter.Seq[snowflake.ID]) bool) {
+	if ci == nil {
+		return
+	}
+	for vk, id := range ci.one {
+		if !fn(vk, 1, func(yield func(snowflake.ID) bool) { yield(id) }) {
+			return
+		}
+	}
+	for vk, set := range ci.many {
+		if !fn(vk, set.Len(), set.All()) {
+			return
+		}
+	}
 }
 
 // RegisterCompositeIndex installs key/idx into both indexes and the
@@ -310,9 +388,14 @@ func PurgeNodeFromAllCompositeIndexes(indexes map[CompositeIndexKey]*CompositePr
 		if idx == nil {
 			continue
 		}
-		for vk, set := range idx.Entries {
-			if set.remove(id) && set.Len() == 0 {
-				delete(idx.Entries, vk)
+		for vk, held := range idx.one {
+			if held == id {
+				delete(idx.one, vk)
+			}
+		}
+		for vk, set := range idx.many {
+			if set.remove(id) {
+				idx.settle(vk, set)
 			}
 		}
 		if idx.Mutated != nil {

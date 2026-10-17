@@ -1,6 +1,7 @@
 package index
 
 import (
+	"iter"
 	"math"
 	"testing"
 
@@ -417,11 +418,14 @@ func TestPartialKeyRemovalViaMutationDoorPattern(t *testing.T) {
 	if got := compositeIDs(idx, vk); len(got) != 0 {
 		t.Fatalf("deleting one component property must remove the composite entry entirely, got %v", got)
 	}
-	for _, set := range idx.Entries {
-		if set.Has(rawID) {
-			t.Fatalf("node %d must not appear under any composite entry after losing a required key", rawID)
+	idx.Range(func(_ string, _ int, ids iter.Seq[snowflake.ID]) bool {
+		for id := range ids {
+			if id == rawID {
+				t.Fatalf("node %d must not appear under any composite entry after losing a required key", rawID)
+			}
 		}
-	}
+		return true
+	})
 }
 
 // --- FindCompositeIndexForQuery: key-SET match, order-independent ---
@@ -508,13 +512,13 @@ func TestPurgeNodeFromAllCompositeIndexes(t *testing.T) {
 
 	PurgeNodeFromAllCompositeIndexes(indexes, snowflake.ID(1))
 
-	if idx1.Entries["vk1"].Len() != 0 {
+	if idx1.Postings("vk1").Len() != 0 {
 		t.Fatal("expected node 1 purged from idx1's vk1 bucket")
 	}
 	if got := compositeIDs(idx1, "vk2"); len(got) != 1 {
 		t.Fatalf("node 2 must survive the purge of node 1, got %v", got)
 	}
-	if idx2.Entries["vk3"].Len() != 0 {
+	if idx2.Postings("vk3").Len() != 0 {
 		t.Fatal("expected node 1 purged from idx2 too — purge sweeps EVERY composite index")
 	}
 }

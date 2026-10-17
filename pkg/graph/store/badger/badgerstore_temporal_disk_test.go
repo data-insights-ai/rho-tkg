@@ -707,7 +707,7 @@ func TestTemporalIndexOnDisk_ConcurrentMutationAndRead(t *testing.T) {
 // 100k entities each carrying ~6 properties). Note WHY the ratio is ~1.8x
 // and not 10-50x: loadIndexesScan's FIRST pass (KeyNode prefix iteration,
 // unconditional, shared by every store regardless of this feature) already
-// decodes every node row once to rebuild nodeIDs/nodeHashes/labelIdx/property
+// decodes every node row once to rebuild nodeIDs/labelIdx/property
 // counts. The temporal-index rebuild is a SEPARATE, ADDITIONAL pass on top of
 // that unavoidable baseline — the slow path re-fetches and re-decodes the
 // SAME rows a second time (one Badger point-get + full msgpack decode per

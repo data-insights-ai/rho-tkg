@@ -322,7 +322,7 @@ type Store struct {
 	// Protected by idxMu for concurrent read/write access.
 	idxMu                 sync.RWMutex
 	nodeIDs               map[types.NodeID]struct{} // O(1) node existence check
-	nodeHashes            map[types.NodeID]string   // current node integrity hash for live endpoint validation
+	nodeHashes            map[types.NodeID]string   // lazy cache of current node integrity hashes (NodeIntegrityHash fills, every node-row write drops; row 66)
 	nodeRevs              map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
 	nextNodeRev           uint64
 	relIDs                map[types.RelID]struct{} // O(1) rel existence check
@@ -619,6 +619,11 @@ type Store struct {
 	// tests can prove lock-free point readers never see a half move (backlog 32).
 	// Test-only.
 	moveTestHook func()
+
+	// nodeHashFillTestHook runs in NodeIntegrityHash after the row read and
+	// before the lazy cache fill, so a test can land a write between them
+	// (row 66). Test-only.
+	nodeHashFillTestHook func()
 
 	// asOfAfterCurrentTestHook runs in NodeAsOf / RelAsOf between the current-row read
 	// and the history scan, whose order must be current first (backlog 32). Test-only.
@@ -1185,7 +1190,6 @@ func (bs *Store) loadIndexesScan(img *openImage) error {
 			}
 			bs.nodeIDs[nid] = struct{}{}
 			bs.ords.node(nid, true) // ID order: the open numbers the stored nodes 1..N
-			bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 			bs.bumpNodeRevLocked(nid)
 			labels := bs.addNodeIndexesFromRow(nid, collectNodeLabelTokens(n))
 			bs.addNodePropertyKeyCounts(n)
@@ -2000,7 +2004,8 @@ func (bs *Store) Clear() (err error) {
 	bs.nodeIDs = make(map[types.NodeID]struct{})
 	bs.nodeHashes = make(map[types.NodeID]string)
 	bs.nodeRevs = make(map[types.NodeID]uint64)
-	bs.nextNodeRev = 0
+	// nextNodeRev keeps counting: a lazy hash read that started before Clear
+	// must not match a re-created node's revision (fillNodeHash).
 	bs.nodeEpoch.Add(1) // invalidate cached columns built before Clear
 	bs.sharedEpochs.node()
 	bs.nodeEpochSalt.Add(1) // label-less event: invalidate every per-label column too (BACKLOG 4b)

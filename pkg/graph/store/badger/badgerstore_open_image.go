@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"iter"
 	"math"
 	"slices"
 	"strconv"
@@ -224,15 +225,20 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 		out = binary.AppendUvarint(out, uint64(len(payload)))
 		out = append(out, payload...)
 	}
+	// appendKeyIDs is one value key with its IDs, ascending so the reload's
+	// AddKey fills exact chunks.
+	appendKeyIDs := func(b []byte, vk string, n int, ids iter.Seq[snowflake.ID]) []byte {
+		b = appendImgString(b, vk)
+		b = binary.AppendUvarint(b, uint64(n)) // #nosec G115 -- a length
+		for id := range ids {
+			b = binary.AppendUvarint(b, uint64(id)) // #nosec G115 -- positive snowflake ID
+		}
+		return b
+	}
 	appendValueIDs := func(b []byte, entries map[string]*indexpkg.IDPostings) []byte {
 		b = binary.AppendUvarint(b, uint64(len(entries)))
 		for vk, ids := range entries {
-			b = appendImgString(b, vk)
-			b = binary.AppendUvarint(b, uint64(ids.Len())) // #nosec G115 -- a length
-			// Ascending, so the reload's AddKey fills exact chunks.
-			for id := range ids.All() {
-				b = binary.AppendUvarint(b, uint64(id)) // #nosec G115 -- positive snowflake ID
-			}
+			b = appendKeyIDs(b, vk, ids.Len(), ids.All())
 		}
 		return b
 	}
@@ -260,7 +266,14 @@ func (bs *Store) encodeOpenImageLocked() []byte {
 		}
 		b := binary.BigEndian.AppendUint16(nil, key.LabelToken)
 		b = appendImgString(b, key.Keys)
-		section(imgSecComposite, appendValueIDs(b, idx.Entries))
+		// The same section bytes as a map of posting lists (row 66 keeps
+		// single-ID keys inline in RAM only): v4.60.0 images read unchanged.
+		b = binary.AppendUvarint(b, uint64(idx.KeyCount())) // #nosec G115 -- a length
+		idx.Range(func(vk string, n int, ids iter.Seq[snowflake.ID]) bool {
+			b = appendKeyIDs(b, vk, n, ids)
+			return true
+		})
+		section(imgSecComposite, b)
 	}
 	appendTemporal := func(kind byte, indexes map[uint16]*indexpkg.TemporalIndex) {
 		for tok, ti := range indexes {
