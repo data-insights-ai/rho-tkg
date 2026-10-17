@@ -82,7 +82,7 @@ type TemporalMetadata struct {
 	// delete), so the tombstone never needs an end before its start. Only
 	// meaningful together with DeletedAt != 0 and a ValidTo that is 0 or not
 	// before DeletedAt; stores reject it otherwise. Read since v4.62.0; the
-	// delete doors write it from v4.63.0.
+	// delete doors write it from v4.64.0.
 	DeleteKeptValidTo bool
 }
 
