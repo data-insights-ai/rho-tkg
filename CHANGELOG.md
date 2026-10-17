@@ -52,7 +52,10 @@ releaser's call). New store capabilities and write and read options, all additiv
   `Admin().Reset()` the next such row raises it again. The shadow resolver answers `types.ExplicitInstant(0)` for
   `tkg_valid_from` of such a row. Other reserved keys refuse an `ExplicitInstant`. The memory store's column segments
   keep such rows in the memtable. **sigma-tkgd**: `VALID FROM 0`
-  on a create can pass `types.ExplicitInstant(0)`; on an update it declines on `ErrValidEndAtZero`.
+  on a create can pass `types.ExplicitInstant(0)`; on an update it declines on `ErrValidEndAtZero`. Only explicit
+  presence changed: no new path derives a valid start from `TxFrom`, and the start of an untimed later version
+  (its `TxFrom`, both modes) is unchanged, an open design question (transaction time is not valid time; sigma
+  `tasks/note-rene-20261017-untimed-later-versions.md`).
 - **Per-entity point doors with explicit presence** (round 11 item 3). `Temporal().NodeAtOpts(id, opts)` /
   `RelAtOpts(id, opts)` / `NodesAtOptsByIDs(ids, opts)` / `RelsAtOptsByIDs(ids, opts)` take the point form of
   `store.QueryOpts` (`ValidAt` / `TxAt` with `ValidAtSet` / `TxAtSet`): a present pin at 0 is the instant 0 (nothing
