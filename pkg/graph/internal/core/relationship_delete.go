@@ -181,7 +181,7 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID, s
 		tmR = &types.TemporalMetadata{}
 		current.SetTemporal(tmR)
 	}
-	clamped := stampDeleteTombstone(tmR, now, spec.retract)
+	clamped := stampDeleteTombstone(tmR, now, c.deleteRetracts(spec))
 
 	// Single atomic call: PutRelVersion + DeleteRelationship. Routes through
 	// the BACKLOG 11f scoped sibling when ctx carries a scoped change-log

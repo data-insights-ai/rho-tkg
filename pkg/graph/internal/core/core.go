@@ -260,6 +260,7 @@ type Core struct {
 	// started and did not finish, so exports and untimed creates fail closed
 	// (checkUntimedComplete).
 	untimedUnbounded      atomic.Bool
+	untimedAtemporal      atomic.Bool // UntimedAtemporal (round 11); untimedUnbounded is set too
 	untimedIncomplete     atomic.Bool
 	untimedModeStamp      bool
 	untimedResume         bool
@@ -1114,6 +1115,10 @@ type Config struct {
 	// mode fails with ErrUntimedModeMismatch (a store holding rows from
 	// before this field existed is an UntimedFromTxFrom store). An existing
 	// store is converted once with Admin().SetUntimedValidStart(UntimedUnbounded).
+	// UntimedAtemporal (round 11, opt-in, fixed at store creation): a write
+	// without a valid time makes no valid-time claim; an untimed update
+	// applies to every valid-time segment (SQL:2011 UPDATE without FOR
+	// PORTION OF) and an untimed delete is a retraction. See docs/api.md.
 	//
 	// The zero value, UntimedDefault, opens an existing store under the mode
 	// it was written under and makes a new store an UntimedUnbounded store
@@ -1987,7 +1992,7 @@ func New(config Config) (*Core, error) {
 	if config.Store != nil && isNilInterfaceValue(config.Store) {
 		return nil, ErrNilStore
 	}
-	if config.UntimedValidStart > UntimedUnbounded {
+	if config.UntimedValidStart > UntimedAtemporal {
 		return nil, fmt.Errorf("graph: Config.UntimedValidStart %d: %w", config.UntimedValidStart, ErrInvalidUntimedValidStart)
 	}
 	if config.DisableIntegrityHashes && len(config.RelSegments) > 0 {
@@ -2270,7 +2275,7 @@ func New(config Config) (*Core, error) {
 		return nil, err
 	}
 	// Backlog 73: likewise the untimed valid-start mode (untimed_mode.go).
-	c.untimedUnbounded.Store(config.UntimedValidStart == UntimedUnbounded)
+	c.setUntimedMode(config.UntimedValidStart)
 	if err := c.resolveUntimedMode(config.UntimedValidStart == UntimedDefault); err != nil {
 		if config.Store == nil {
 			_ = store.Close()

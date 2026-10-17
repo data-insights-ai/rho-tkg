@@ -243,6 +243,7 @@ const (
 	UntimedDefault    = core.UntimedDefault
 	UntimedFromTxFrom = core.UntimedFromTxFrom
 	UntimedUnbounded  = core.UntimedUnbounded
+	UntimedAtemporal  = core.UntimedAtemporal
 )
 
 // ValidationLimits aliases core.ValidationLimits for the public API.

@@ -43,6 +43,17 @@ const (
 	// version without a valid-from still starts at its TxFrom. The default
 	// for new stores from v4.57.0.
 	UntimedUnbounded
+	// UntimedAtemporal (round 11, opt-in, fixed at store creation): a write
+	// without a valid time makes no valid-time claim. An untimed create
+	// holds over the whole axis (types.UnboundedValidFrom, open) as under
+	// UntimedUnbounded; an untimed update, label change or merge applies to
+	// every valid-time segment of the entity and keeps the segment
+	// boundaries (SQL:2011's UPDATE without FOR PORTION OF): each segment
+	// gets a new version in the new belief, the old versions end in
+	// transaction time only, existence does not change. An untimed delete
+	// ends the entity in transaction time only (a retraction). Writes with a
+	// valid time keep their rules.
+	UntimedAtemporal
 )
 
 // untimedValidStartMeta is the MetaKV key persisting the mode a store's rows
@@ -56,14 +67,37 @@ const (
 	untimedByteTxFrom    byte = 0
 	untimedByteUnbounded byte = 1
 	untimedConverting    byte = 2
+	untimedByteAtemporal byte = 3 // round 11
 )
 
 // untimedModeOfByte is the mode a persisted key byte (not converting) names.
 func untimedModeOfByte(b byte) UntimedValidStart {
-	if b == untimedByteTxFrom {
+	switch b {
+	case untimedByteTxFrom:
 		return UntimedFromTxFrom
+	case untimedByteAtemporal:
+		return UntimedAtemporal
 	}
 	return UntimedUnbounded
+}
+
+// untimedByteValid reports whether b is a persisted mode byte this release
+// reads.
+func untimedByteValid(b byte) bool { return b <= untimedByteAtemporal }
+
+// untimedMode is the mode the graph writes under (UntimedFromTxFrom,
+// UntimedUnbounded or UntimedAtemporal), from the two flags; setUntimedMode
+// sets both together.
+func (c *Core) untimedMode() UntimedValidStart {
+	if c.untimedAtemporal.Load() {
+		return UntimedAtemporal
+	}
+	return untimedModeOf(c.untimedUnbounded.Load())
+}
+
+func (c *Core) setUntimedMode(mode UntimedValidStart) {
+	c.untimedAtemporal.Store(mode == UntimedAtemporal)
+	c.untimedUnbounded.Store(mode == UntimedUnbounded || mode == UntimedAtemporal)
 }
 
 // untimedStart is THE place the mode decides: the valid-from a create stores.
@@ -170,13 +204,13 @@ func (c *Core) resolveUntimedMode(defaultMode bool) error {
 		return fmt.Errorf("graph: read untimed valid-start mode: %w", err)
 	}
 	hasKey := len(v) == 1
-	if len(v) > 1 || (hasKey && v[0] > untimedConverting) {
+	if len(v) > 1 || (hasKey && !untimedByteValid(v[0])) {
 		return fmt.Errorf("graph: untimed valid-start mode %x: %w", v, storepkg.ErrCorruptWire)
 	}
 	if defaultMode {
-		unbounded := true
+		mode := UntimedUnbounded
 		if hasKey {
-			unbounded = untimedModeOfByte(v[0]) == UntimedUnbounded
+			mode = untimedModeOfByte(v[0])
 		} else if df, ok := c.store.(storepkg.DurableFlushCapability); ok && df.DurableFlushSupported() {
 			// A store without stable storage was never written by an
 			// earlier session: it is new.
@@ -184,14 +218,13 @@ func (c *Core) resolveUntimedMode(defaultMode bool) error {
 			if err != nil {
 				return fmt.Errorf("graph: untimed valid-start mode: %w", err)
 			}
-			unbounded = !found
+			if found {
+				mode = UntimedFromTxFrom
+			}
 		}
-		c.untimedUnbounded.Store(unbounded)
+		c.setUntimedMode(mode)
 	}
-	want := UntimedFromTxFrom
-	if c.untimedUnbounded.Load() {
-		want = UntimedUnbounded
-	}
+	want := c.untimedMode()
 	if hasKey && v[0] == untimedModeByteOf(want) {
 		return nil
 	}
@@ -226,8 +259,11 @@ func (c *Core) resolveUntimedMode(defaultMode bool) error {
 }
 
 func untimedModeName(m UntimedValidStart) string {
-	if m == UntimedUnbounded {
+	switch m {
+	case UntimedUnbounded:
 		return "UntimedUnbounded"
+	case UntimedAtemporal:
+		return "UntimedAtemporal"
 	}
 	return "UntimedFromTxFrom"
 }
@@ -274,14 +310,17 @@ func (c *Core) persistUntimedMode() error {
 }
 
 func (c *Core) untimedModeByte() byte {
-	return untimedModeByteOf(untimedModeOf(c.untimedUnbounded.Load()))
+	return untimedModeByteOf(c.untimedMode())
 }
 
 // untimedModeByteOf is the persisted key byte of mode (UntimedFromTxFrom or
 // UntimedUnbounded).
 func untimedModeByteOf(mode UntimedValidStart) byte {
-	if mode == UntimedUnbounded {
+	switch mode {
+	case UntimedUnbounded:
 		return untimedByteUnbounded
+	case UntimedAtemporal:
+		return untimedByteAtemporal
 	}
 	return untimedByteTxFrom
 }
@@ -372,6 +411,7 @@ func (c *Core) restoreUntimedModeAfterReset() error {
 func (a *AdminOps) SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) error {
 	c := a.c
 	if mode == UntimedDefault || mode > UntimedUnbounded {
+		// UntimedAtemporal is fixed at store creation: no conversion names it.
 		return ErrInvalidUntimedValidStart
 	}
 	if err := c.checkWritable(); err != nil {
@@ -381,6 +421,9 @@ func (a *AdminOps) SetUntimedValidStart(ctx context.Context, mode UntimedValidSt
 	defer c.mu.Unlock()
 	if c.closed.Load() {
 		return ErrGraphClosed
+	}
+	if c.untimedAtemporal.Load() {
+		return fmt.Errorf("graph: an UntimedAtemporal store keeps its mode (fixed at creation): %w", ErrUntimedModeMismatch)
 	}
 	if mode == UntimedFromTxFrom {
 		if c.untimedUnbounded.Load() {
@@ -596,7 +639,7 @@ func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
 	if body.Key != untimedValidStartMeta {
 		return fmt.Errorf("graph: apply: unknown replicated meta key %q: %w", body.Key, storepkg.ErrCorruptWire)
 	}
-	if len(body.Value) != 1 || body.Value[0] > untimedConverting {
+	if len(body.Value) != 1 || !untimedByteValid(body.Value[0]) {
 		return fmt.Errorf("graph: apply: untimed valid-start mode %x: %w", body.Value, storepkg.ErrCorruptWire)
 	}
 	v := body.Value[0]
@@ -607,13 +650,13 @@ func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
 	if err := c.writeUntimedMode(v); err != nil {
 		return err
 	}
-	c.untimedUnbounded.Store(untimedModeOfByte(v) == UntimedUnbounded)
+	c.setUntimedMode(untimedModeOfByte(v))
 	return nil
 }
 
 // UntimedValidStart answers the untimed valid-start mode the store's rows are
 // written under (round 11): the mode persisted in the store and in force for
-// this graph, UntimedFromTxFrom or UntimedUnbounded (never UntimedDefault,
+// this graph, UntimedFromTxFrom, UntimedUnbounded or UntimedAtemporal (never UntimedDefault,
 // which a Config resolves at open), and complete = false while a conversion
 // to UntimedUnbounded is unfinished (Admin().SetUntimedValidStart cut short:
 // the store holds untimed first versions of both rules, and mode is the
@@ -631,7 +674,7 @@ func (a *AdminOps) UntimedValidStart() (mode UntimedValidStart, complete bool, e
 	if c.untimedIncomplete.Load() {
 		return UntimedUnbounded, false, nil
 	}
-	return untimedModeOf(c.untimedUnbounded.Load()), true, nil
+	return c.untimedMode(), true, nil
 }
 
 func untimedModeOf(unbounded bool) UntimedValidStart {
@@ -648,11 +691,11 @@ func untimedModeOf(unbounded bool) UntimedValidStart {
 // the import (adoptImportUntimedModeLocked). An export without the header
 // field (a UntimedFromTxFrom source, or one written before backlog 73) is a
 // TxFrom export. Caller holds c.mu.Lock.
-func (c *Core) checkImportUntimedModeLocked(srcUnbounded bool, rollback *importRollback) error {
+func (c *Core) checkImportUntimedModeLocked(src UntimedValidStart, rollback *importRollback) error {
 	if err := c.checkUntimedComplete("import"); err != nil {
 		return err
 	}
-	if srcUnbounded == c.untimedUnbounded.Load() {
+	if src == c.untimedMode() {
 		return nil
 	}
 	empty := rollback != nil && rollback.emptyTarget
@@ -666,20 +709,28 @@ func (c *Core) checkImportUntimedModeLocked(srcUnbounded bool, rollback *importR
 		return nil
 	}
 	return fmt.Errorf("import: the export's rows are written under %s, this store's under %s: %w",
-		untimedModeName(untimedModeOf(srcUnbounded)), untimedModeName(untimedModeOf(c.untimedUnbounded.Load())), ErrUntimedModeMismatch)
+		untimedModeName(src), untimedModeName(c.untimedMode()), ErrUntimedModeMismatch)
 }
 
 // adoptImportUntimedModeLocked makes an empty import target take the source's
 // mode (checkImportUntimedModeLocked admitted it) and persists it: later
 // creates follow the imported rows' rule, and a reopen needs the adopted mode.
 // Caller holds c.mu.Lock.
-func (c *Core) adoptImportUntimedModeLocked(srcUnbounded bool) error {
-	if srcUnbounded == c.untimedUnbounded.Load() {
+func (c *Core) adoptImportUntimedModeLocked(src UntimedValidStart) error {
+	if src == c.untimedMode() {
 		return nil
 	}
-	c.untimedUnbounded.Store(srcUnbounded)
-	if err := c.writeUntimedModeLogged(untimedModeByteOf(untimedModeOf(srcUnbounded)), true); err != nil {
+	c.setUntimedMode(src)
+	if err := c.writeUntimedModeLogged(untimedModeByteOf(src), true); err != nil {
 		return fmt.Errorf("import: persist the adopted untimed valid-start mode: %w", err)
 	}
 	return nil
+}
+
+// untimedModeOfHeader is the mode an export header names (uu, ua).
+func untimedModeOfHeader(unbounded, atemporal bool) UntimedValidStart {
+	if atemporal {
+		return UntimedAtemporal
+	}
+	return untimedModeOf(unbounded)
 }

@@ -89,3 +89,16 @@ EQUIVALENT pass 2: unique cascade reads a raw valid-from: every appended row's s
 KILLED mode door: incomplete reads as complete: round11_untimed_mode_test.go:96: cut short: 1, true, <nil>; want UntimedUnbounded, false
 KILLED mode door: always UntimedUnbounded: round11_untimed_mode_test.go:40: config 1: UntimedValidStart = 2, true, <nil>; want 1, true
 KILLED mode door: closed graph answers: round11_untimed_mode_test.go:63: closed graph: <nil>, want ErrGraphClosed
+# UntimedAtemporal (round 11, René and Markus)
+KILLED atemporal: untimed updates take the old path: round11_atemporal_test.go:140: node AT -9223372036854775807 now: 1, want 2
+KILLED atemporal: deletes end validity: round11_atemporal_test.go:290: deleted node AT -1000000 now: unset, want none
+KILLED atemporal: label change starts at TxFrom: round11_atemporal_test.go:173: AT -1000000: label B missing after an untimed label change
+KILLED atemporal: label change on segments admitted: round11_atemporal_test.go:453: label change of a node with valid-time segments: <nil>, want ErrUntimedModeMismatch
+KILLED atemporal: gaps patched (existence extended): round11_atemporal_test.go:230: node k AT 50: 2, want none
+SURVIVED atemporal: unchanged segments rewritten
+KILLED atemporal: head path does not split gaps: effective_head_write_twin_test.go:611: GraphTx untimed update: the twins' rows differ (A, B):
+KILLED atemporal: persisted byte read as unbounded: round11_atemporal_test.go:347: open /var/folders/gq/r_pxwc6j53vf36s085hdj7740000gn/T/TestRound11AtemporalReopenAndMismatchbadger2334910102/001 under default: graph: the store's rows are written under UntimedUnbounded, Config.UntimedValidStart is UntimedUnbounded: graph: store was written under the o
+KILLED atemporal: export header without ua: round11_atemporal_test.go:496: after importing an atemporal export: 2, <nil>; want UntimedAtemporal
+KILLED atemporal: conversion away admitted: round11_atemporal_test.go:334: converting an atemporal store: <nil>, want ErrUntimedModeMismatch
+KILLED atemporal: mode door reports unbounded: round11_atemporal_test.go:114: UntimedValidStart = 2, true, <nil>; want UntimedAtemporal
+KILLED atemporal: unchanged segments rewritten (rerun with the no-op pin): round11_atemporal_test.go:260: the unchanged segment [200,open) got a new version 5 (was 3)

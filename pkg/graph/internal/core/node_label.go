@@ -79,6 +79,9 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	if err := rejectClosedNodeMutation(current); err != nil {
 		return false, err
 	}
+	if err := c.checkAtemporalLabelChange(id, current); err != nil {
+		return false, err
+	}
 	if known {
 		if err := c.checkpointDirtyRegistriesBeforeMutation("add label"); err != nil {
 			return false, err
@@ -157,7 +160,7 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	// caller-supplied valid time, and an inherited ValidFrom would let this
 	// version cover the previous version's interval in historical queries
 	// (hiding the at-t label state the history row exists to preserve).
-	stampValidFrom(tm, 0, false)
+	stampValidFrom(tm, c.labelChangeStart(), c.untimedAtemporal.Load())
 	tm.ValidTo = 0
 	tm.UpdatedAt = now
 	at.stamp(tm)
@@ -243,6 +246,9 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 	if err := rejectClosedNodeMutation(current); err != nil {
 		return err
 	}
+	if err := c.checkAtemporalLabelChange(id, current); err != nil {
+		return err
+	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("remove label"); err != nil {
 		return err
 	}
@@ -291,7 +297,7 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 	// caller-supplied valid time, and an inherited ValidFrom would let this
 	// version cover the previous version's interval in historical queries
 	// (hiding the at-t label state the history row exists to preserve).
-	stampValidFrom(tm, 0, false)
+	stampValidFrom(tm, c.labelChangeStart(), c.untimedAtemporal.Load())
 	tm.ValidTo = 0
 	tm.UpdatedAt = now
 	at.stamp(tm)

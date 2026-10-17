@@ -148,9 +148,9 @@ func (c *Core) importMergeReplayRecordsLocked(readRecord func() (byte, []byte, e
 			if err := c.checkUntimedComplete("import merge"); err != nil {
 				return err
 			}
-			if hdr.UntimedUnbounded != c.untimedUnbounded.Load() {
+			if src := untimedModeOfHeader(hdr.UntimedUnbounded, hdr.UntimedAtemporal); src != c.untimedMode() {
 				return fmt.Errorf("import merge: the delta's source writes under %s, this graph under %s (re-bootstrap from a full export): %w",
-					untimedModeName(untimedModeOf(hdr.UntimedUnbounded)), untimedModeName(untimedModeOf(c.untimedUnbounded.Load())), ErrUntimedModeMismatch)
+					untimedModeName(src), untimedModeName(c.untimedMode()), ErrUntimedModeMismatch)
 			}
 			if !opts.ExpectBase.IsZero() {
 				if hdr.FromLSN != opts.ExpectBase.LSN || hdr.FromEpoch != opts.ExpectBase.Epoch {

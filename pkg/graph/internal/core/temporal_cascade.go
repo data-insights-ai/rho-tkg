@@ -94,6 +94,15 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 // pieces over [newVF, newVT) are void rows and cover only the parts where a
 // version is valid as believed before the call (none: ErrNoVersionValidAt).
 func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any, at types.Instant, void bool) (*types.Node, error) {
+	return c.cascadeNodeMode(ctx, id, newVF, newVT, props, at, cascadeModeOf(void), nil)
+}
+
+// cascadeNodeMode is the node cascade kernel; mode selects a correction, an
+// excise (cascadeVoid) or an atemporal untimed write (cascadeExisting:
+// pieces only where a version is valid, unchanged pieces skipped; prov, when
+// set, is the update's provenance for every appended row).
+func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any, at types.Instant, mode cascadeMode, prov *updateProvenance) (*types.Node, error) {
+	void, existing := mode == cascadeVoid, mode == cascadeExisting
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
@@ -124,8 +133,12 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
-	if err := checkCorrectionAtZero(newVF, newVT, current, func() (*types.Node, error) { return c.getNodeVersion(id, 0) }); err != nil {
-		return nil, err
+	// An atemporal untimed write keeps every segment's boundaries, so no piece
+	// ends at 0 (no row ends at 0): the crossing check does not apply.
+	if !existing {
+		if err := checkCorrectionAtZero(newVF, newVT, current, func() (*types.Node, error) { return c.getNodeVersion(id, 0) }); err != nil {
+			return nil, err
+		}
 	}
 	// The head answer before any write (backlog 68, effective_head.go). A
 	// valid one stands in for the history read (backlog 68b,
@@ -138,7 +151,7 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 	fromHead := fromCurrent
 	if !fromCurrent {
 		hc, fromHead = chainFromHead(c, headBefore, current, func(v uint32) (*types.Node, error) { return c.getNodeVersion(id, v) },
-			newVF, newVT, at, void)
+			newVF, newVT, at, void || existing)
 	}
 	var history []*types.Node
 	if !fromHead {
@@ -249,7 +262,7 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 	// before any write — preflight, then apply.
 	segments := hc.segments
 	if !fromHead {
-		if segments, err = c.nodeCorrectionSegments(preChain, template, newVF, newVT, void); err != nil {
+		if segments, err = c.nodeCorrectionSegments(preChain, template, newVF, newVT, void || existing); err != nil {
 			return nil, err
 		}
 	}
@@ -260,8 +273,11 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 	}
 	var newVer *types.Node // the appended row covering newVF — the return value
 	for _, seg := range segments {
-		if void && seg.gap {
-			continue // nothing valid there: no absence to record
+		if (void || existing) && seg.gap {
+			continue // nothing valid there: no absence to record, no existence to add
+		}
+		if existing && !nodePreparedUpdateMutates(seg.base, provOrZero(prov), updateTemporal{}, props) {
+			continue // the segment's version already holds the change
 		}
 		row, err := c.buildNodeCorrectionRow(seg, template, now, props)
 		if err != nil {
@@ -275,6 +291,9 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 		}
 		appended = append(appended, row)
 		prevHashes = append(prevHashes, nodeHashOf(seg.base))
+	}
+	if existing && len(appended) == 0 {
+		return nil, nil // no segment changes: the update is a no-op
 	}
 	// Provisional versions in build order, all above every stored version, so
 	// the newest-belief comparison below ranks appended rows above existing
@@ -323,6 +342,7 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 		if err := c.hashAppendedNodeRow(r, prevHashes[i]); err != nil {
 			return nil, err
 		}
+		applyNodeProvenance(r.Integrity(), prov)
 	}
 
 	// Write: append the new rows, never touching existing ones. The store keeps
@@ -737,6 +757,15 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 
 // cascadeRel mirrors cascadeNode for relationships.
 func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT types.Instant, props map[string]any, at types.Instant, void bool) (*types.Relationship, error) {
+	return c.cascadeRelMode(ctx, id, newVF, newVT, props, at, cascadeModeOf(void), nil)
+}
+
+// cascadeRelMode is the rel cascade kernel; mode selects a correction, an
+// excise (cascadeVoid) or an atemporal untimed write (cascadeExisting:
+// pieces only where a version is valid, unchanged pieces skipped; prov, when
+// set, is the update's provenance for every appended row).
+func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT types.Instant, props map[string]any, at types.Instant, mode cascadeMode, prov *updateProvenance) (*types.Relationship, error) {
+	void, existing := mode == cascadeVoid, mode == cascadeExisting
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
@@ -767,8 +796,10 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
-	if err := checkCorrectionAtZero(newVF, newVT, current, func() (*types.Relationship, error) { return c.getRelVersion(id, 0) }); err != nil {
-		return nil, err
+	if !existing {
+		if err := checkCorrectionAtZero(newVF, newVT, current, func() (*types.Relationship, error) { return c.getRelVersion(id, 0) }); err != nil {
+			return nil, err
+		}
 	}
 	// The head answer before any write — see the node cascade.
 	headBefore := c.relHeadBeforeWrite(id, current)
@@ -778,7 +809,7 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 	fromHead := fromCurrent
 	if !fromCurrent {
 		hc, fromHead = chainFromHead(c, headBefore, current, func(v uint32) (*types.Relationship, error) { return c.getRelVersion(id, v) },
-			newVF, newVT, at, void)
+			newVF, newVT, at, void || existing)
 	}
 	var history []*types.Relationship
 	if !fromHead {
@@ -852,7 +883,7 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 	// so every base row carries the same ones; only properties differ.
 	segments := hc.segments
 	if !fromHead {
-		if segments, err = c.relCorrectionSegments(preChain, template, newVF, newVT, void); err != nil {
+		if segments, err = c.relCorrectionSegments(preChain, template, newVF, newVT, void || existing); err != nil {
 			return nil, err
 		}
 	}
@@ -863,8 +894,11 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 	}
 	var newVer *types.Relationship // the appended row covering newVF — the return value
 	for _, seg := range segments {
-		if void && seg.gap {
-			continue // nothing valid there: no absence to record
+		if (void || existing) && seg.gap {
+			continue // nothing valid there: no absence to record, no existence to add
+		}
+		if existing && !relPreparedUpdateMutates(seg.base, provOrZero(prov), updateTemporal{}, props) {
+			continue // the segment's version already holds the change
 		}
 		row, err := c.buildRelCorrectionRow(seg, template, now, props)
 		if err != nil {
@@ -878,6 +912,9 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 		}
 		appended = append(appended, row)
 		prevHashes = append(prevHashes, relHashOf(seg.base))
+	}
+	if existing && len(appended) == 0 {
+		return nil, nil // no segment changes: the update is a no-op
 	}
 	// Provisional versions — see the node cascade.
 	firstVersion := nextVersion
@@ -917,6 +954,7 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 		if err := c.hashAppendedRelRow(r, prevHashes[i]); err != nil {
 			return nil, err
 		}
+		applyRelProvenance(r.Integrity(), prov)
 	}
 	for _, r := range appended {
 		if r == newCurrent {
@@ -986,4 +1024,66 @@ func (c *Core) cascadeMissingRelErr(id types.RelID) error {
 		return storepkg.ErrRelNotFound
 	}
 	return relDeletedErr(id)
+}
+
+// cascadeMode selects what the cascade kernel writes.
+type cascadeMode uint8
+
+const (
+	cascadeCorrection cascadeMode = iota // SetVersionInterval: [newVF, newVT) holds props
+	cascadeVoid                          // excise: void pieces where a version is valid
+	cascadeExisting                      // atemporal untimed write: every valid segment patched (round 11)
+)
+
+func cascadeModeOf(void bool) cascadeMode {
+	if void {
+		return cascadeVoid
+	}
+	return cascadeCorrection
+}
+
+func provOrZero(prov *updateProvenance) updateProvenance {
+	if prov == nil {
+		return updateProvenance{}
+	}
+	return *prov
+}
+
+// applyNodeProvenance sets an update's caller provenance on an appended row's
+// integrity, as the update door does (the fields are not hashed).
+func applyNodeProvenance(ig *types.NodeIntegrity, prov *updateProvenance) {
+	if ig == nil || prov == nil {
+		return
+	}
+	if prov.hasAuthorID {
+		ig.AuthorID = prov.authorID
+	}
+	if prov.hasSignature {
+		ig.Signature = prov.signature
+	}
+	if prov.hasAuthorizedBy {
+		ig.AuthorizedBy = prov.authorizedBy
+	}
+	if prov.hasAuthLevel {
+		ig.AuthorizationLevel = prov.authLevel
+	}
+}
+
+// applyRelProvenance mirrors applyNodeProvenance for relationships.
+func applyRelProvenance(ig *types.RelIntegrity, prov *updateProvenance) {
+	if ig == nil || prov == nil {
+		return
+	}
+	if prov.hasAuthorID {
+		ig.AuthorID = prov.authorID
+	}
+	if prov.hasSignature {
+		ig.Signature = prov.signature
+	}
+	if prov.hasAuthorizedBy {
+		ig.AuthorizedBy = prov.authorizedBy
+	}
+	if prov.hasAuthLevel {
+		ig.AuthorizationLevel = prov.authLevel
+	}
 }

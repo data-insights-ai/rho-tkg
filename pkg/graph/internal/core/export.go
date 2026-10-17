@@ -111,6 +111,12 @@ type exportHeader struct {
 	// the rule, and an import must not mix them with the other one. Omitted
 	// (false) for a UntimedFromTxFrom source, so a default export is unchanged.
 	UntimedUnbounded bool `msgpack:"uu,omitempty"`
+	// UntimedAtemporal says the source is an UntimedAtemporal store (round
+	// 11; uu is set too: its untimed creates start at -inf). An import into a
+	// store of another mode with rows is ErrUntimedModeMismatch; an empty
+	// target adopts it. A release before it ignores the key and imports the
+	// rows as an UntimedUnbounded store (the rows carry their starts).
+	UntimedAtemporal bool `msgpack:"ua,omitempty"`
 }
 
 // IO sentinels — canonical declarations live in pkg/graph/io so external
@@ -194,6 +200,7 @@ func (c *Core) exportLocked(w io.Writer) error {
 		NodeCount:        int64(nc),
 		RelCount:         int64(rc),
 		UntimedUnbounded: c.untimedUnbounded.Load(),
+		UntimedAtemporal: c.untimedAtemporal.Load(),
 	}
 	// Capture the change-log LSN UNDER the held c.mu.Lock, atomically with the
 	// entity snapshot above — so the SnapshotLSN exactly bounds what this export

@@ -71,6 +71,20 @@ releaser's call). New store capabilities and write and read options, all additiv
   unfinished. A replica answers its own open-time mode until the primary's mode record arrives (a `UntimedFromTxFrom`
   primary emits none: open its replica with `UntimedFromTxFrom`). Added to `admin.Ops`.
 
+- **`Config.UntimedValidStart = UntimedAtemporal`** (round 11; René and Markus: "atemporal is just a flag";
+  transaction time is not valid time). Opt-in, fixed at store creation (persisted, key byte 3, marker 7;
+  `ErrUntimedModeMismatch` on a reopen under another explicit mode; `UntimedDefault` reopens it; export header `ua`,
+  adopted by an empty importer); the default is unchanged. A write without a valid time makes no valid-time claim,
+  by SQL:2011's rule for an UPDATE without `FOR PORTION OF`: an untimed create holds over the whole axis; an untimed
+  update (every update door) applies to every valid-time segment of the entity and keeps its boundaries (each
+  segment a new version in the new belief, named properties changed, the others kept per segment; old versions end
+  in transaction time only; existence unchanged). A pure atemporal entity's update is one whole-axis version planned
+  in O(1) (backlog 67, allocations flat from 1 to 1,000 versions); an entity with explicit segments costs
+  O(segments). An untimed delete is a retraction (ends the entity in transaction time only). A label change applies
+  to a whole-axis entity; on one with explicit segments it is refused with `ErrUntimedModeMismatch` (open item:
+  per-segment labels need a store door). Timed writes keep their rules (a timed write splits the whole-axis segment).
+  `Admin().UntimedValidStart()` reports it. Twin tests on memory, badger, sharded, tiered.
+
 ### Changed
 
 - **The as-of doors at a pin at or below 0** (round 11 item 4). Every recorded row has a positive `TxFrom`, so a

@@ -134,6 +134,7 @@ func (c *Core) exportSinceLocked(w io.Writer, since tkgio.Cursor, to, epoch uint
 		ToEpoch:    epoch,
 
 		UntimedUnbounded: c.untimedUnbounded.Load(),
+		UntimedAtemporal: c.untimedAtemporal.Load(),
 	}
 	if err := marshalAndWrite(w, exportTagHeader, &hdr); err != nil {
 		return fmt.Errorf("export since: header: %w", err)

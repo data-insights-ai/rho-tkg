@@ -130,6 +130,9 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
 	}
+	if atemporalUntimedUpdate(c, tmp) {
+		return c.atemporalUpdateRel(ctx, id, prov, tmp, updates)
+	}
 
 	// Phase 2: acquire rel + endpoint locks together. The first read only
 	// discovers which endpoint locks to take. Caller-supplied relationship IDs

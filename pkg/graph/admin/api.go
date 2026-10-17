@@ -72,6 +72,7 @@ type UntimedValidStart = core.UntimedValidStart
 const (
 	UntimedFromTxFrom = core.UntimedFromTxFrom
 	UntimedUnbounded  = core.UntimedUnbounded
+	UntimedAtemporal  = core.UntimedAtemporal
 )
 
 // PurgeByAge purges nodes below Before by IMMUTABLE snowflake mint-time (v1).
@@ -146,7 +147,7 @@ func (a *API) SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) 
 }
 
 // UntimedValidStart answers the untimed valid-start mode the store's rows are
-// written under (round 11): UntimedFromTxFrom or UntimedUnbounded, as
+// written under (round 11): UntimedFromTxFrom, UntimedUnbounded or UntimedAtemporal, as
 // persisted in the store (never UntimedDefault), and complete = false while a
 // conversion to UntimedUnbounded is unfinished (rows of both rules; mode is
 // the target). A replica answers its own open-time mode until the primary's

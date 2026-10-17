@@ -1,0 +1,4 @@
+# red: Config.UntimedValidStart has no atemporal value (round 11 on v4.61.0, before the atemporal item)
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test]
+vet: pkg/graph/round11_atemporal_test.go:29:72: undefined: graphpkg.UntimedAtemporal

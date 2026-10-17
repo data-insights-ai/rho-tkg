@@ -131,6 +131,9 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
 	}
+	if atemporalUntimedUpdate(c, tmp) {
+		return c.atemporalUpdateNode(ctx, id, prov, tmp, updates)
+	}
 
 	// Phase 2: Entity lock → read-modify-write under serialization.
 	c.entityLocks.LockEntity(id.SnowflakeID())
