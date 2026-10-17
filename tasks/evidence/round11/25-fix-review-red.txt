@@ -1,0 +1,8 @@
+# red: the quick review of 816f001a (TestRound11AtemporalReviewRelDoors, TestRound11AtemporalPreflightWholeAxisNoHistoryRead at 816f001a)
+round11_atemporal_review_test.go:184: no-op CAS on a segmented node: <nil>, want ErrUntimedModeMismatch
+round11_atemporal_review_test.go:187: mismatching CAS on a segmented node: <nil>, want ErrUntimedModeMismatch
+round11_atemporal_review_test.go:196: no-op CAS on a segmented relationship: <nil>, want ErrUntimedModeMismatch
+(memory, badger, sharded, tiered)
+round11_atemporal_test.go:215: the atemporal pre-flight reads the chain of a whole-axis node: 8137.7 / 8118.1 (memory)
+round11_atemporal_test.go:215: the atemporal pre-flight reads the chain of a whole-axis node: 39497.0 / 39477.9 (badger)
+at 7c06d2c7 the same batch cost 4084.6 / 19773.1: 816f001a's per-segment pre-flight read the chain a second time

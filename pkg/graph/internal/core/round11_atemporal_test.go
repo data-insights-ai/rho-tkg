@@ -161,3 +161,59 @@ func TestRound11AtemporalAllocsFlat(t *testing.T) {
 		})
 	}
 }
+
+// The caller-instant pre-flight of a batch under UntimedAtemporal decides a
+// whole-axis node from its current row (nodeHeadSegmentRows): no history read
+// beyond what every mode's pre-flight does. Measured against the same batch
+// under UntimedDefault at 1,000 versions (that pre-flight's own order rule
+// reads the chain; the final review's per-segment check doubled it).
+func TestRound11AtemporalPreflightWholeAxisNoHistoryRead(t *testing.T) {
+	if testing.Short() {
+		t.Skip("1,000-version chains")
+	}
+	ctx := context.Background()
+	const k, versions = 20, 1000
+	cost := func(be r10Backend, mode UntimedValidStart) float64 {
+		cfg := be.cfg()
+		cfg.UntimedValidStart = mode
+		cfg.AllowTxBackfill = true
+		g, err := New(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = g.Close() }()
+		n, err := g.Nodes.Add(ctx, []string{"A"}, map[string]any{"w": int64(0)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 1; i < versions; i++ {
+			if _, err := g.Nodes.Update(ctx, n.ID(), map[string]any{"w": int64(i)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		m := mallocs(func() {
+			for i := range k {
+				b, err := NewBatchBuilder(g)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := b.UpdateNodeWithTx(n.ID(), map[string]any{"w": int64(versions + i)}, g.now()); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := b.Execute(); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+		return float64(m) / k
+	}
+	for _, be := range r10Backends() {
+		t.Run(be.name, func(t *testing.T) {
+			atemporal, def := cost(be, UntimedAtemporal), cost(be, UntimedDefault)
+			t.Logf("allocs per caller-instant batch update at %d versions: %.1f atemporal, %.1f default", versions, atemporal, def)
+			if atemporal > def*0.75 {
+				t.Fatalf("the atemporal pre-flight reads the chain of a whole-axis node: %.1f / %.1f", atemporal, def)
+			}
+		})
+	}
+}

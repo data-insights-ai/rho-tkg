@@ -141,3 +141,92 @@ func TestRound11AtemporalReviewDoors(t *testing.T) {
 		})
 	}
 }
+
+// r11SegmentedRel creates a relationship between two pure atemporal nodes
+// with k=1 on [100,200) and k=2 on [200,open).
+func r11SegmentedRel(t *testing.T, g *graphpkg.Graph) types.RelID {
+	t.Helper()
+	ctx := context.Background()
+	a, err := g.Nodes().Add(ctx, []string{"H"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.Nodes().Add(ctx, []string{"H"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.Rels().Add(ctx, "E", a, b, map[string]any{"k": int64(1), types.ShadowValidFrom: types.Instant(100)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.Temporal().SetRelVersionInterval(ctx, r.ID(), 200, 0, map[string]any{"k": int64(2)}); err != nil {
+		t.Fatal(err)
+	}
+	return r.ID()
+}
+
+// The relationship halves of the final review's doors, and compare-and-set
+// refused before its compare: a CAS whose new value the current segment
+// already holds does not report success while an earlier segment differs.
+func TestRound11AtemporalReviewRelDoors(t *testing.T) {
+	ctx := context.Background()
+	for _, b := range allStoreBackendsWith(func(c *graphpkg.Config) {
+		c.UntimedValidStart = graphpkg.UntimedAtemporal
+		c.AllowTxBackfill = true
+	}) {
+		t.Run(b.name, func(t *testing.T) {
+			g := b.open(t)
+
+			// Compare-and-set on a segmented node: refused before the compare,
+			// also when the current segment already holds the new value.
+			seg := r11Segmented(t, g)
+			if _, err := g.Nodes().CompareAndSetProperty(ctx, seg, "k", int64(2), int64(2)); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
+				t.Errorf("no-op CAS on a segmented node: %v, want ErrUntimedModeMismatch", err)
+			}
+			if _, err := g.Nodes().CompareAndSetProperty(ctx, seg, "k", int64(9), int64(3)); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
+				t.Errorf("mismatching CAS on a segmented node: %v, want ErrUntimedModeMismatch", err)
+			}
+
+			// Compare-and-set on a segmented relationship: refused.
+			rs := r11SegmentedRel(t, g)
+			if _, err := g.Rels().CompareAndSetProperty(ctx, rs, "k", int64(2), int64(3)); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
+				t.Errorf("CAS on a segmented relationship: %v, want ErrUntimedModeMismatch", err)
+			}
+			if _, err := g.Rels().CompareAndSetProperty(ctx, rs, "k", int64(2), int64(2)); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
+				t.Errorf("no-op CAS on a segmented relationship: %v, want ErrUntimedModeMismatch", err)
+			}
+			r11Want(t, "refused rel CAS: AT 250", r11RelKAt(t, g, rs, "k", 250, 0), "2")
+
+			// GraphTx UpdateRelationship: k=2 already holds on the current segment only.
+			if err := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+				_, err := tx.UpdateRelationship(rs, map[string]any{"k": int64(2)})
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			r11Want(t, "GraphTx rel k=2: AT 150", r11RelKAt(t, g, rs, "k", 150, 0), "2")
+
+			// GraphTx UpdateRelationshipWithTx (the rel pre-flight): k=5 at a
+			// caller instant changes both segments; a second k=5 changes none.
+			rs2 := r11SegmentedRel(t, g)
+			if _, err := g.Temporal().SetRelVersionInterval(ctx, rs2, 100, 200, map[string]any{"k": int64(5)}); err != nil {
+				t.Fatal(err)
+			}
+			now := r11NowAfter(t, g)
+			if err := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+				_, err := tx.UpdateRelationshipWithTx(rs2, map[string]any{"k": int64(2)}, now)
+				return err
+			}); err != nil {
+				t.Fatalf("caller-instant rel update changing an earlier segment: %v", err)
+			}
+			r11Want(t, "rel caller-instant k=2: AT 150", r11RelKAt(t, g, rs2, "k", 150, 0), "2")
+			now = r11NowAfter(t, g)
+			if err := g.Tx().Run(func(tx *graphpkg.GraphTx) error {
+				_, err := tx.UpdateRelationshipWithTx(rs2, map[string]any{"k": int64(2)}, now)
+				return err
+			}); !errors.Is(err, graphpkg.ErrTxOrder) {
+				t.Errorf("caller-instant rel update changing no segment: %v, want ErrTxOrder", err)
+			}
+		})
+	}
+}

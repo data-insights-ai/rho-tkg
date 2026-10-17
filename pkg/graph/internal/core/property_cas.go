@@ -100,6 +100,12 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 		return false, false, err
 	}
 
+	// Under UntimedAtemporal first: the compare reads the current row, one
+	// segment of a segmented node (a per-segment compare needs a store door).
+	if err := c.checkAtemporalVersionedNode(id, current, "compare-and-set"); err != nil {
+		return false, false, err
+	}
+
 	// --- Compare gate ---
 	found, equal := casGate(current.GetProperty, current.PropertyValueEqual, key, expected)
 	if expected == nil {
@@ -123,9 +129,6 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 		if equalNew {
 			return true, false, nil
 		}
-	}
-	if err := c.checkAtemporalVersionedNode(id, current, "compare-and-set"); err != nil {
-		return false, false, err
 	}
 	if err := rejectClosedNodeMutation(current); err != nil {
 		return false, false, err
@@ -301,6 +304,11 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 		return false, false, err
 	}
 
+	// Under UntimedAtemporal first, as the node door.
+	if err := c.checkAtemporalVersionedRel(id, current, "compare-and-set"); err != nil {
+		return false, false, err
+	}
+
 	found, equal := casGate(current.GetProperty, current.PropertyValueEqual, key, expected)
 	if expected == nil {
 		if found {
@@ -318,9 +326,6 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 		if equalNew {
 			return true, false, nil
 		}
-	}
-	if err := c.checkAtemporalVersionedRel(id, current, "compare-and-set"); err != nil {
-		return false, false, err
 	}
 	if err := rejectClosedRelMutation(current); err != nil {
 		return false, false, err

@@ -237,8 +237,13 @@ func (c *Core) nodeWholeAxis(id types.NodeID, current *types.Node) (bool, error)
 
 // nodeHeadSegmentRows returns the rows of node id's effective timeline at the
 // clock (one per segment), folded from its chain without the entity lock: a
-// caller-instant pre-flight holds it already (checkNodeCallerUpdate).
+// caller-instant pre-flight holds it already (checkNodeCallerUpdate). A
+// whole-axis node is its current row alone, decided without the history
+// read (O(1), as the kernel plans it, backlog 67).
 func (c *Core) nodeHeadSegmentRows(id types.NodeID, current *types.Node) ([]*types.Node, error) {
+	if whole, err := c.nodeWholeAxis(id, current); err != nil || whole {
+		return []*types.Node{current}, err
+	}
 	history, err := c.getNodeHistory(id)
 	if err != nil {
 		return nil, err
@@ -253,6 +258,9 @@ func (c *Core) nodeHeadSegmentRows(id types.NodeID, current *types.Node) ([]*typ
 
 // relHeadSegmentRows mirrors nodeHeadSegmentRows.
 func (c *Core) relHeadSegmentRows(id types.RelID, current *types.Relationship) ([]*types.Relationship, error) {
+	if whole, err := c.relWholeAxis(id, current); err != nil || whole {
+		return []*types.Relationship{current}, err
+	}
 	history, err := c.getRelHistory(id)
 	if err != nil {
 		return nil, err
