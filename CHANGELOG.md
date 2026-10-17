@@ -6,14 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
-
-- **badger / sharded `Stats().HistoryCounts()` could stay one short for good under concurrent writers** (since v4.51.0):
-  a count read in the window where a history key was in the write buffer but not yet in the presence set was cached
-  under that key's own history epoch, so every later call returned it until the next history write. The epoch now
-  advances after the presence, stamps and per-ID epoch notes (`noteHistoryKey`), which also keeps
-  `HistoryGeneration` from moving ahead of what a fold can see.
-
 ## [4.61.0] - 2026-10-17
 
 ### Added
@@ -56,6 +48,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   before (`TestCompositeSingleIDKeysAllBackends`: 0, 1, 2, 1 after a delete, 1 after a value move, 2 after a move
   back). Open image bytes are unchanged: a v4.60.0 image opens on v4.60.1 without a row decode, and a v4.60.1 image
   opens on v4.60.0 the same way (same index digest both ways).
+
+### Fixed
+
+- **badger / sharded `Stats().HistoryCounts()` could stay one short for good under concurrent writers** (since v4.51.0):
+  a count read in the window where a history key was in the write buffer but not yet in the presence set was cached
+  under that key's own history epoch, so every later call returned it until the next history write. The epoch now
+  advances after the presence, stamps and per-ID epoch notes (`noteHistoryKey`), which also keeps
+  `HistoryGeneration` from moving ahead of what a fold can see.
 
 ## [4.60.0] - 2026-10-17
 
