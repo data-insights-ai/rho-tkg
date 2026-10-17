@@ -30,6 +30,12 @@ import (
 //     (cascadeExisting): a pure atemporal entity is one whole-axis segment,
 //     planned from its current row in O(1) (backlog 67); an entity with
 //     explicit valid-time segments costs O(segments) plus its history read.
+//     A relationship's cascade takes the relationship's entity lock only
+//     (as SetRelVersionInterval); deletes serialize on it too.
+//   - The one-version doors (a label change, compare-and-set) apply to a
+//     whole-axis entity (stamped UnboundedValidFrom); on an entity whose
+//     valid time is not one whole-axis segment they are refused with
+//     ErrUntimedModeMismatch (an open item).
 //   - An untimed delete ends the entity in transaction time only: its
 //     tombstones are retractions (stampDeleteTombstone).
 //   - A write with a valid time (tkg_valid_from / tkg_valid_to on an update,
@@ -96,9 +102,11 @@ func (c *Core) deleteRetracts(spec tombstoneSpec) bool {
 }
 
 // labelChangeStart is the valid-from a label change stamps on its new
-// version: none (0, the version starts at its TxFrom) in the other modes;
-// under UntimedAtemporal types.UnboundedValidFrom, the whole axis of the
-// entity it applies to (checkAtemporalLabelChange admitted it).
+// version (and compare-and-set, the other one-version untimed door): none
+// (0, the version starts at its TxFrom) in the other modes; under
+// UntimedAtemporal types.UnboundedValidFrom, the whole axis of the entity it
+// applies to (checkAtemporalLabelChange / checkAtemporalVersioned* admitted
+// it).
 func (c *Core) labelChangeStart() types.Instant {
 	if c.untimedAtemporal.Load() {
 		return types.UnboundedValidFrom
@@ -123,9 +131,73 @@ func (c *Core) checkAtemporalLabelChange(id types.NodeID, current *types.Node) e
 		return err
 	}
 	if !whole {
-		return fmt.Errorf("graph: an untimed label change of node %v, which has explicit valid-time segments, is not supported under UntimedAtemporal: %w", id, ErrUntimedModeMismatch)
+		return fmt.Errorf("graph: an untimed label change of node %v, whose valid time is not one whole-axis segment, is not supported under UntimedAtemporal: %w", id, ErrUntimedModeMismatch)
 	}
 	return nil
+}
+
+// checkAtemporalVersionedNode is checkAtemporalLabelChange for another door
+// that writes one new version from the current row without a valid time
+// (compare-and-set): under UntimedAtemporal it is admitted on a whole-axis
+// node only (its version is stamped UnboundedValidFrom, labelChangeStart).
+func (c *Core) checkAtemporalVersionedNode(id types.NodeID, current *types.Node, door string) error {
+	if !c.untimedAtemporal.Load() {
+		return nil
+	}
+	whole, err := c.nodeWholeAxis(id, current)
+	if err != nil {
+		return err
+	}
+	if !whole {
+		return fmt.Errorf("graph: an untimed %s of node %v, whose valid time is not one whole-axis segment, is not supported under UntimedAtemporal: %w", door, id, ErrUntimedModeMismatch)
+	}
+	return nil
+}
+
+// checkAtemporalVersionedRel mirrors checkAtemporalVersionedNode.
+func (c *Core) checkAtemporalVersionedRel(id types.RelID, current *types.Relationship, door string) error {
+	if !c.untimedAtemporal.Load() {
+		return nil
+	}
+	whole, err := c.relWholeAxis(id, current)
+	if err != nil {
+		return err
+	}
+	if !whole {
+		return fmt.Errorf("graph: an untimed %s of relationship %v, whose valid time is not one whole-axis segment, is not supported under UntimedAtemporal: %w", door, id, ErrUntimedModeMismatch)
+	}
+	return nil
+}
+
+// relWholeAxis mirrors nodeWholeAxis for relationships.
+func (c *Core) relWholeAxis(id types.RelID, current *types.Relationship) (bool, error) {
+	vf, claimed := current.ValidFromClaim()
+	tm := current.Temporal()
+	if !claimed || vf != types.UnboundedValidFrom || tm == nil || tm.ValidTo != 0 || tm.Void || tm.Retracted || tm.DeletedAt != 0 || tm.TxTo != 0 {
+		return false, nil
+	}
+	if above, err := c.relHasHistoryAbove(id, current.Version()); err != nil || above {
+		return false, err
+	}
+	var newest types.Instant
+	if stamps := c.relHistoryStampsFunc(id); stamps != nil {
+		f, t, _, err := stamps()
+		if err != nil {
+			return false, err
+		}
+		newest = max(f, t)
+	} else {
+		history, err := c.getRelHistory(id)
+		if err != nil {
+			return false, err
+		}
+		for _, h := range history {
+			if htm := h.Temporal(); htm != nil {
+				newest = max(newest, htm.TxFrom, htm.TxTo, htm.DeletedAt)
+			}
+		}
+	}
+	return newest <= tm.TxFrom, nil
 }
 
 // nodeWholeAxis reports whether node id's valid time is one whole-axis
@@ -161,4 +233,34 @@ func (c *Core) nodeWholeAxis(id types.NodeID, current *types.Node) (bool, error)
 		}
 	}
 	return newest <= tm.TxFrom, nil
+}
+
+// nodeHeadSegmentRows returns the rows of node id's effective timeline at the
+// clock (one per segment), folded from its chain without the entity lock: a
+// caller-instant pre-flight holds it already (checkNodeCallerUpdate).
+func (c *Core) nodeHeadSegmentRows(id types.NodeID, current *types.Node) ([]*types.Node, error) {
+	history, err := c.getNodeHistory(id)
+	if err != nil {
+		return nil, err
+	}
+	pieces := c.nodeEffectivePieces(chainOf(history, current), c.peekNow())
+	rows := make([]*types.Node, 0, len(pieces))
+	for _, p := range pieces {
+		rows = append(rows, p.row)
+	}
+	return rows, nil
+}
+
+// relHeadSegmentRows mirrors nodeHeadSegmentRows.
+func (c *Core) relHeadSegmentRows(id types.RelID, current *types.Relationship) ([]*types.Relationship, error) {
+	history, err := c.getRelHistory(id)
+	if err != nil {
+		return nil, err
+	}
+	pieces := c.relEffectivePieces(chainOf(history, current), c.peekNow())
+	rows := make([]*types.Relationship, 0, len(pieces))
+	for _, p := range pieces {
+		rows = append(rows, p.row)
+	}
+	return rows, nil
 }

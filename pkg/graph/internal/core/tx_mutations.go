@@ -220,7 +220,9 @@ func (tx *GraphTx) updateNodeAt(id types.NodeID, updates map[string]any, at type
 			return nil, err
 		}
 	}
-	if at == 0 && preparedUpdateCanBeReadOnlyNoOp(prov, tmp) {
+	// Under UntimedAtemporal the current row is one segment of several: the
+	// seam decides the no-op over every segment (atemporalUpdateNode).
+	if at == 0 && preparedUpdateCanBeReadOnlyNoOp(prov, tmp) && !atemporalUntimedUpdate(tx.g, tmp) {
 		current, err := tx.g.getCurrentNode(id)
 		if err != nil {
 			return nil, err
@@ -272,7 +274,7 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 	if err != nil {
 		return nil, err
 	}
-	if preparedUpdateCanBeReadOnlyNoOp(prov, tmp) {
+	if preparedUpdateCanBeReadOnlyNoOp(prov, tmp) && !atemporalUntimedUpdate(tx.g, tmp) {
 		current, err := tx.g.getCurrentRelationship(id)
 		if err != nil {
 			return nil, err

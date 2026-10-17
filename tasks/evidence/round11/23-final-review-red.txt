@@ -1,0 +1,37 @@
+# red: TestRound11AtemporalReviewDoors at 7c06d2c7 (the final review's findings 1 to 4)
+--- FAIL: TestRound11AtemporalReviewDoors (0.04s)
+    --- FAIL: TestRound11AtemporalReviewDoors/memory (0.01s)
+        round11_atemporal_review_test.go:52: GraphTx k=2: AT 150: 1, want 2
+        round11_atemporal_review_test.go:62: CAS: AT -1e6: 1, want 2
+        round11_atemporal_review_test.go:68: CAS version starts at 1792243413304, want -inf
+        round11_atemporal_review_test.go:71: label change after a CAS of a pure node: graph: an untimed label change of node 819783706242482176, which has explicit valid-time segments, is not supported under UntimedAtemporal: graph: store was written under the other untimed valid-start mode (Config.UntimedValidStart)
+        round11_atemporal_review_test.go:75: CAS on a segmented node: <nil>, want ErrUntimedModeMismatch
+        round11_atemporal_review_test.go:88: rel CAS: AT -1e6: 1, want 2
+        round11_atemporal_review_test.go:101: batch caller-instant update changing an earlier segment: graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 819783706248806400): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): an update at t 1792243413316 with no changes records nothing
+    --- FAIL: TestRound11AtemporalReviewDoors/badger (0.01s)
+        round11_atemporal_review_test.go:52: GraphTx k=2: AT 150: 1, want 2
+        round11_atemporal_review_test.go:62: CAS: AT -1e6: 1, want 2
+        round11_atemporal_review_test.go:68: CAS version starts at 1792243413314, want -inf
+        round11_atemporal_review_test.go:71: label change after a CAS of a pure node: graph: an untimed label change of node 819783706571046912, which has explicit valid-time segments, is not supported under UntimedAtemporal: graph: store was written under the other untimed valid-start mode (Config.UntimedValidStart)
+        round11_atemporal_review_test.go:75: CAS on a segmented node: <nil>, want ErrUntimedModeMismatch
+        round11_atemporal_review_test.go:88: rel CAS: AT -1e6: 1, want 2
+        round11_atemporal_review_test.go:101: batch caller-instant update changing an earlier segment: graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 819783706575831040): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): an update at t 1792243413326 with no changes records nothing
+    --- FAIL: TestRound11AtemporalReviewDoors/tiered (0.01s)
+        round11_atemporal_review_test.go:52: GraphTx k=2: AT 150: 1, want 2
+        round11_atemporal_review_test.go:62: CAS: AT -1e6: 1, want 2
+        round11_atemporal_review_test.go:68: CAS version starts at 1792243413324, want -inf
+        round11_atemporal_review_test.go:71: label change after a CAS of a pure node: graph: an untimed label change of node 819783706895876096, which has explicit valid-time segments, is not supported under UntimedAtemporal: graph: store was written under the other untimed valid-start mode (Config.UntimedValidStart)
+        round11_atemporal_review_test.go:75: CAS on a segmented node: <nil>, want ErrUntimedModeMismatch
+        round11_atemporal_review_test.go:88: rel CAS: AT -1e6: 1, want 2
+        round11_atemporal_review_test.go:101: batch caller-instant update changing an earlier segment: graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 819783706900135936): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): an update at t 1792243413336 with no changes records nothing
+    --- FAIL: TestRound11AtemporalReviewDoors/sharded (0.01s)
+        round11_atemporal_review_test.go:52: GraphTx k=2: AT 150: 1, want 2
+        round11_atemporal_review_test.go:62: CAS: AT -1e6: 1, want 2
+        round11_atemporal_review_test.go:68: CAS version starts at 1792243413334, want -inf
+        round11_atemporal_review_test.go:71: label change after a CAS of a pure node: graph: an untimed label change of node 819783707229290496, which has explicit valid-time segments, is not supported under UntimedAtemporal: graph: store was written under the other untimed valid-start mode (Config.UntimedValidStart)
+        round11_atemporal_review_test.go:75: CAS on a segmented node: <nil>, want ErrUntimedModeMismatch
+        round11_atemporal_review_test.go:88: rel CAS: AT -1e6: 1, want 2
+        round11_atemporal_review_test.go:101: batch caller-instant update changing an earlier segment: graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 819783707233583104): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): an update at t 1792243413346 with no changes records nothing
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.378s
+FAIL

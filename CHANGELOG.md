@@ -80,9 +80,9 @@ releaser's call). New store capabilities and write and read options, all additiv
   segment a new version in the new belief, named properties changed, the others kept per segment; old versions end
   in transaction time only; existence unchanged). A pure atemporal entity's update is one whole-axis version planned
   in O(1) (backlog 67, allocations flat from 1 to 1,000 versions); an entity with explicit segments costs
-  O(segments). An untimed delete is a retraction (ends the entity in transaction time only). A label change applies
-  to a whole-axis entity; on one with explicit segments it is refused with `ErrUntimedModeMismatch` (open item:
-  per-segment labels need a store door). Timed writes keep their rules (a timed write splits the whole-axis segment).
+  O(segments). An untimed delete is a retraction (ends the entity in transaction time only). A label change and
+  `CompareAndSetProperty` apply to a whole-axis entity; on one with explicit segments they are refused with
+  `ErrUntimedModeMismatch` (open item: per-segment labels and compares need a store door). Timed writes keep their rules (a timed write splits the whole-axis segment).
   `Admin().UntimedValidStart()` reports it. Twin tests on memory, badger, sharded, tiered.
 
 ### Changed

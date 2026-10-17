@@ -195,6 +195,22 @@ func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship,
 	if err := c.checkRelCallerTx(id, current, tmp.txAt, c.relValidFrom(current)); err != nil {
 		return err
 	}
+	if atemporalUntimedUpdate(c, tmp) {
+		// Under UntimedAtemporal the update applies to every segment and
+		// patches a closed entity's segments (atemporalUpdateRel): the
+		// pre-flight refuses what the kernel refuses, an update that changes
+		// no segment of the head state.
+		rows, err := c.relHeadSegmentRows(id, current)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			if relPreparedUpdateMutates(row, prov, updateTemporal{}, updates) { // the kernel's rule
+				return nil
+			}
+		}
+		return fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, tmp.txAt)
+	}
 	if !relPreparedUpdateMutates(current, prov, tmp, updates) {
 		return fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, tmp.txAt)
 	}
@@ -225,6 +241,22 @@ func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship,
 func (c *Core) checkNodeCallerUpdate(id types.NodeID, current *types.Node, prov updateProvenance, tmp updateTemporal, updates map[string]any) error {
 	if err := c.checkNodeCallerTx(id, current, tmp.txAt, c.nodeValidFrom(current)); err != nil {
 		return err
+	}
+	if atemporalUntimedUpdate(c, tmp) {
+		// Under UntimedAtemporal the update applies to every segment and
+		// patches a closed entity's segments (atemporalUpdateNode): the
+		// pre-flight refuses what the kernel refuses, an update that changes
+		// no segment of the head state.
+		rows, err := c.nodeHeadSegmentRows(id, current)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			if nodePreparedUpdateMutates(row, prov, updateTemporal{}, updates) { // the kernel's rule
+				return nil
+			}
+		}
+		return fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, tmp.txAt)
 	}
 	if !nodePreparedUpdateMutates(current, prov, tmp, updates) {
 		return fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, tmp.txAt)

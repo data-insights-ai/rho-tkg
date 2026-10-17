@@ -1,0 +1,13 @@
+# green: final review fixes
+--- PASS: TestRound11AtemporalReviewDoors (0.10s)
+--- PASS: TestRound11AtemporalPure (0.13s)
+--- PASS: TestRound11AtemporalMixed (0.12s)
+--- PASS: TestRound11AtemporalTimedSplitAndDelete (0.07s)
+--- PASS: TestRound11AtemporalReopenAndMismatch (0.93s)
+--- PASS: TestRound11AtemporalOtherModesUnchanged (0.00s)
+--- PASS: TestRound11AtemporalDoors (0.04s)
+--- PASS: TestRound11AtemporalExportImport (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.866s
+--- PASS: TestRound11AtemporalTwin (0.04s)
+--- PASS: TestRound11AtemporalAllocsFlat (0.05s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.435s

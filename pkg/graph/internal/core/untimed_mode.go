@@ -46,7 +46,7 @@ const (
 	// UntimedAtemporal (round 11, opt-in, fixed at store creation): a write
 	// without a valid time makes no valid-time claim. An untimed create
 	// holds over the whole axis (types.UnboundedValidFrom, open) as under
-	// UntimedUnbounded; an untimed update, label change or merge applies to
+	// UntimedUnbounded; an untimed update applies to
 	// every valid-time segment of the entity and keeps the segment
 	// boundaries (SQL:2011's UPDATE without FOR PORTION OF): each segment
 	// gets a new version in the new belief, the old versions end in

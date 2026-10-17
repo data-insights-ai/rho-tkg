@@ -102,3 +102,9 @@ KILLED atemporal: export header without ua: round11_atemporal_test.go:496: after
 KILLED atemporal: conversion away admitted: round11_atemporal_test.go:334: converting an atemporal store: <nil>, want ErrUntimedModeMismatch
 KILLED atemporal: mode door reports unbounded: round11_atemporal_test.go:114: UntimedValidStart = 2, true, <nil>; want UntimedAtemporal
 KILLED atemporal: unchanged segments rewritten (rerun with the no-op pin): round11_atemporal_test.go:260: the unchanged segment [200,open) got a new version 5 (was 3)
+# final review fixes (UntimedAtemporal)
+KILLED final review: GraphTx no-op on the current row: round11_atemporal_review_test.go:52: GraphTx k=2: AT 150: 1, want 2
+KILLED final review: CAS admitted on segments: round11_atemporal_review_test.go:75: CAS on a segmented node: <nil>, want ErrUntimedModeMismatch
+KILLED final review: CAS starts at TxFrom: round11_atemporal_review_test.go:62: CAS: AT -1e6: 1, want 2
+KILLED final review: pre-flight no-op on the current row: round11_atemporal_review_test.go:101: batch caller-instant update changing an earlier segment: graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 819784583976288256): graph: caller transaction instant does not follow the entity's recorded history (grap
+KILLED final review: label door closed check first: round11_atemporal_review_test.go:134: label change of a closed atemporal node: graph: entity already closed, want ErrUntimedModeMismatch

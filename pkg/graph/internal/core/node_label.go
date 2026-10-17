@@ -76,10 +76,10 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	if current.LabelTokenCount()+1 > c.validation.MaxLabelsPerNode {
 		return false, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, current.LabelTokenCount()+1, c.validation.MaxLabelsPerNode)
 	}
-	if err := rejectClosedNodeMutation(current); err != nil {
-		return false, err
-	}
 	if err := c.checkAtemporalLabelChange(id, current); err != nil {
+		return false, err // first: under UntimedAtemporal a closed node is not whole-axis
+	}
+	if err := rejectClosedNodeMutation(current); err != nil {
 		return false, err
 	}
 	if known {
@@ -243,10 +243,10 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 	if current.LabelTokenCount() == 1 {
 		return ErrLastLabel
 	}
-	if err := rejectClosedNodeMutation(current); err != nil {
-		return err
-	}
 	if err := c.checkAtemporalLabelChange(id, current); err != nil {
+		return err // first: under UntimedAtemporal a closed node is not whole-axis
+	}
+	if err := rejectClosedNodeMutation(current); err != nil {
 		return err
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("remove label"); err != nil {
