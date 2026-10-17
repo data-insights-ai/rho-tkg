@@ -137,12 +137,13 @@ func (c *Core) nodeLabelEpoch(tok uint16) (uint64, bool) {
 	return 0, false
 }
 
-// explicitValid reports whether a row carries a valid-from or valid-to of
-// its own. A start at -inf (types.UnboundedValidFrom, the untimed first
-// version under Config.UntimedValidStart = UntimedUnbounded, backlog 73)
-// bounds nothing and does not count.
-func explicitValid(from, to types.Instant) bool {
-	return (from != 0 && from != types.UnboundedValidFrom) || to != 0
+// explicitValid reports whether a row carries a valid-from (claimed: from
+// with fromSet, the instant 0 included since round 11) or valid-to of its
+// own. A start at -inf (types.UnboundedValidFrom, the untimed first version
+// under Config.UntimedValidStart = UntimedUnbounded, backlog 73) bounds
+// nothing and does not count.
+func explicitValid(from types.Instant, fromSet bool, to types.Instant) bool {
+	return (fromSet && from != types.UnboundedValidFrom) || to != 0
 }
 
 // LabelTimeStats returns store.MemberTimeStats for label: current members,
@@ -208,7 +209,8 @@ func (c *Core) countLabelExplicitValid(tok uint16) (memberTimeEntry, error) {
 	var e memberTimeEntry
 	visit := func(n *types.Node) bool {
 		e.members++
-		if from, to, _ := n.ValidRange(); explicitValid(from, to) {
+		from, fromSet := n.ValidFromClaim()
+		if _, to, _ := n.ValidRange(); explicitValid(from, fromSet, to) {
 			e.explicit++
 		}
 		return true
@@ -348,7 +350,8 @@ func (c *Core) countTypeExplicitValid(tok uint16) (memberTimeEntry, error) {
 	var e memberTimeEntry
 	visit := func(r *types.Relationship) bool {
 		e.members++
-		if from, to, _ := r.ValidRange(); explicitValid(from, to) {
+		from, fromSet := r.ValidFromClaim()
+		if _, to, _ := r.ValidRange(); explicitValid(from, fromSet, to) {
 			e.explicit++
 		}
 		return true

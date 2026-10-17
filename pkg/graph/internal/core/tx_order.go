@@ -201,7 +201,7 @@ func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship,
 	if err := rejectClosedRelMutation(current); err != nil {
 		return err
 	}
-	if tmp.hasValidFrom && tmp.validFrom != 0 {
+	if tmp.validFromSet {
 		if prevEff := c.relValidFrom(current); tmp.validFrom <= prevEff {
 			return fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
 		}
@@ -232,7 +232,7 @@ func (c *Core) checkNodeCallerUpdate(id types.NodeID, current *types.Node, prov 
 	if err := rejectClosedNodeMutation(current); err != nil {
 		return err
 	}
-	if tmp.hasValidFrom && tmp.validFrom != 0 {
+	if tmp.validFromSet {
 		if prevEff := c.nodeValidFrom(current); tmp.validFrom <= prevEff {
 			return fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
 		}

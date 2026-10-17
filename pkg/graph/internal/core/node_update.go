@@ -160,7 +160,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	// effective ValidFrom. New ValidFrom must be strictly greater — otherwise
 	// the prev tile's implicit ValidTo would land before its own ValidFrom,
 	// corrupting the timeline. Bitemporal backdating uses Phase 3's cascade.
-	if tmp.hasValidFrom && tmp.validFrom != 0 {
+	if tmp.validFromSet {
 		prevEff := c.nodeValidFrom(current)
 		if tmp.validFrom <= prevEff {
 			return nil, false, fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
@@ -230,11 +230,8 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	// Phase 1: stop inheriting ValidFrom/ValidTo from the previous version
 	// (clear to 0 so non-genesis resolver bounds use UpdatedAt). Phase 2:
 	// honour caller-supplied tkg_valid_from / tkg_valid_to from `tmp`.
-	tm.ValidFrom = 0
+	stampValidFrom(tm, tmp.validFrom, tmp.validFromSet)
 	tm.ValidTo = 0
-	if tmp.hasValidFrom {
-		tm.ValidFrom = tmp.validFrom
-	}
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo
 	}
@@ -384,6 +381,9 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	if err := c.validatePropertyUpdates(updates, "update node in place"); err != nil {
 		return nil, false, err
 	}
+	if err := checkClaimedUpdate(tmp); err != nil {
+		return nil, false, err
+	}
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
@@ -459,7 +459,7 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	}
 	tm.UpdatedAt = now
 	if tmp.hasValidFrom {
-		tm.ValidFrom = tmp.validFrom
+		stampValidFrom(tm, tmp.validFrom, tmp.validFromSet)
 	}
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo

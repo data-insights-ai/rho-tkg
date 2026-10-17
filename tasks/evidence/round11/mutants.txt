@@ -17,3 +17,31 @@ KILLED item1: tiered lookup asks each shard with the first key only: round11_see
 KILLED item1: badger lookup ignores the keys past the first: round11_seek_test.go:78: nodes k=1000: 1 rows, <nil>
 KILLED item1: memory rel lookup ignores the keys past the first: round11_seek_test.go:86: rels k=1000: 1 rows, <nil>
 KILLED item1: DistinctIndexKeys keeps repeats past the scan bound: property_values_test.go:35: many keys: [s:0 s:1 s:2 s:3 s:4 s:5 s:6 s:7 s:8 s:9 s:10 s:11 s:12 s:13 s:14 s:15 s:0 s:1 s:2 s:3 s:4 s:5 s:6 s:7 s:8 s:9 s:10 s:11 s:12 s:13 s:14 s:15 s:0 s:1 s:2 s:3 s:4 s:5 s:6 s:7 s:8 s:9 s:10 s:11 s:12 s:13 s:14 s:15], want [s:0 s:1 s:2 s:3 s:4 s:5 s:6 s:7 s:8 s:9 s:
+# item 2 (the explicit instant 0 as a valid start)
+KILLED item2: HasValidFrom ignores the zero marker: round11_validfrom_test.go:224: memory: a node valid from the explicit 0 at 0: k=0 ok=false, want 1
+KILLED item2: ValidFromClaim reads a 0 as no claim: round11_validfrom_test.go:224: memory: ByLabel(Z, ValidAt 0) lists 819183536823697408 = false, want true
+KILLED item2: EntityValidFrom back to ValidFrom != 0: round11_validfrom_test.go:587: UntimedFromTxFrom: ByLabel at 0 lists 819183710194925568 = false, want true
+KILLED item2: stampValidFrom never sets the marker: round11_validfrom_test.go:224: memory: a node valid from the explicit 0 at 0: k=0 ok=false, want 1
+KILLED item2: ExplicitInstant parsed as a plain number: round11_validfrom_test.go:224: memory: a node valid from the explicit 0 is valid at -1
+KILLED item2: re-import of an earlier life may claim 0: round11_validfrom_test.go:225: memory: re-import of a deleted ID: <nil>, want ErrValidEndAtZero (wrapping ErrInvalidTimeRange)
+KILLED item2: updates may claim 0: round11_validfrom_test.go:225: memory: node update: <nil>, want ErrValidEndAtZero (wrapping ErrInvalidTimeRange)
+KILLED item2: corrections never cross 0: round11_validfrom_test.go:225: memory: correction crossing 0: <nil>, want ErrValidEndAtZero (wrapping ErrInvalidTimeRange)
+KILLED item2: crossing check reads the current row only: round11_validfrom_test.go:225: memory: correction crossing 0 after the current slot moved: <nil>, want ErrValidEndAtZero (wrapping ErrInvalidTimeRange)
+KILLED item2: caller-instant pre-flight skips the crossing check: round11_validfrom_test.go:225: memory: batched caller-instant correction crossing 0: graph: batch execution had failed operations: 1 failed operation(s), want ErrValidEndAtZero (wrapping ErrInvalidTimeRange)
+KILLED item2: wire drops the vz key: round11_validfrom_test.go:225: badger: correction crossing 0 after the current slot moved: graph: unmarshal node version: graph: corrupt wire data: truncated msgpack while measuring depth, want ErrValidEndAtZero (wrapping ErrInvalidTimeRange)
+KILLED item2: row format not raised for vz: round11_wire_test.go:30: decoded wire: fv 2 vz true vf 0
+KILLED item2: store marker not raised: round11_validfrom_test.go:432: a reader of markers up to 7 opened the store: <nil>, want ErrWireFormatVersionUnsupported
+KILLED item2: count segment ToZero never set: round11_validfrom_test.go:224: memory: current-rows timeline with the untimed option: the explicit-0 member does not start at 0 ([{From:-9223372036854775808 To:-100 Count:1 ToZero:false} {From:-100 To:0 Count:2 ToZero:false} {From:0 To:0 Count:3 ToZero:false}])
+KILLED item2: badger column snapshot never marks zero: round11_validfrom_test.go:489: current: row 0 (id 819185455300378624, ValidFrom 0): ValidFromZero false
+KILLED item2: row-path column batch never marks zero: round11_validfrom_test.go:489: current: row 0 (id 819185599601508352, ValidFrom 0): ValidFromZero false
+SURVIVED item2: segments seal explicit-0 rows
+KILLED item2: store accepts the marker with a non-zero valid-from: round11_invariants_test.go:20: node with the marker and valid-from 5: <nil>, want ErrInvalidStoreMutation
+KILLED item2: supersession cap of 0 read as no cap: round11_validfrom_test.go:225: memory: explicit-0 node corrected before 0 and closed, at 100: <nil>, want valid=false
+KILLED item2: positional empty-at-0 not reported: round11_validfrom_test.go:225: memory: the closed explicit-0 version at 100: <nil>, want ErrNoVersionValidAt
+KILLED item2: untimed first-version rule ignores the claim: round11_validfrom_test.go:589: conversion: node 819186051845816320: graph: invalid store mutation: node 819186051845816320 carries the valid-from-zero marker with valid_from -9223372036854775808
+SURVIVED item2: count timeline untimed start ignores the claim
+KILLED item2: other reserved keys accept an ExplicitInstant: round11_validfrom_test.go:386: tkg_valid_to = ExplicitInstant(5): <nil>, want ErrInvalidTimeRange
+# Equivalent (kept as stated intent, not test gaps): "segments seal explicit-0 rows" — the segment codec's own
+# round-trip check (lesson 44) refuses a row whose marker it cannot carry, so the row stays in the memtable either
+# way; "count timeline untimed start ignores the claim" — the conjunct segFrom == txFrom already fails for a start
+# of 0 (every TxFrom is positive).

@@ -228,7 +228,7 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 		stub.SetIntegrity(ig)
 		// Temporal carried verbatim from the authoritative edge (edge.TxFrom is
 		// always non-zero, so it overrides the fresh-clock default).
-		c.applyRelCreateTemporal(stub, edge.ValidFrom, edge.ValidTo, edge.CreatedAt, edge.TxFrom)
+		c.applyRelCreateTemporal(stub, edge.ValidFrom, edge.ValidFrom != 0 || edge.ValidFromZero, edge.ValidTo, edge.CreatedAt, edge.TxFrom)
 		stub.SetVersion(edge.Version)
 		if err := checkCtx(ctx); err != nil {
 			return nil, nil, err

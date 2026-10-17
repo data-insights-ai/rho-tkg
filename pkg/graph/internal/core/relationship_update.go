@@ -156,7 +156,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	if err := rejectClosedRelMutation(current); err != nil {
 		return nil, false, err
 	}
-	if tmp.hasValidFrom && tmp.validFrom != 0 {
+	if tmp.validFromSet {
 		prevEff := c.relValidFrom(current)
 		if tmp.validFrom <= prevEff {
 			return nil, false, fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
@@ -224,11 +224,8 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 		current.SetTemporal(tm)
 	}
 	// Phase 1/2: stop inheriting valid-time; honour caller tkg_valid_from/to.
-	tm.ValidFrom = 0
+	stampValidFrom(tm, tmp.validFrom, tmp.validFromSet)
 	tm.ValidTo = 0
-	if tmp.hasValidFrom {
-		tm.ValidFrom = tmp.validFrom
-	}
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo
 	}
@@ -469,6 +466,9 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	if err := c.validatePropertyUpdates(updates, "update relationship in place"); err != nil {
 		return nil, false, err
 	}
+	if err := checkClaimedUpdate(tmp); err != nil {
+		return nil, false, err
+	}
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
@@ -535,7 +535,7 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	}
 	tm.UpdatedAt = now
 	if tmp.hasValidFrom {
-		tm.ValidFrom = tmp.validFrom
+		stampValidFrom(tm, tmp.validFrom, tmp.validFromSet)
 	}
 	if tmp.hasValidTo {
 		tm.ValidTo = tmp.validTo

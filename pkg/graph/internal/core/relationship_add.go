@@ -169,7 +169,7 @@ func (c *Core) createRelationshipLocked(ctx context.Context, typeName string, st
 		return nil, err
 	}
 
-	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(c.nextRelID, startID, endID, prep.validFrom, prep.validTo, prep.createdAt)
+	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(c.nextRelID, startID, endID, prep.validFrom, prep.vfSet, prep.validTo, prep.createdAt)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +283,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		}
 	}
 
-	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(c.nextRelID, startID, endID, prep.validFrom, prep.validTo, prep.createdAt)
+	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(c.nextRelID, startID, endID, prep.validFrom, prep.vfSet, prep.validTo, prep.createdAt)
 	if err != nil {
 		return nil, false, err
 	}
@@ -302,18 +302,18 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 	return nil, false, err
 }
 
-func (c *Core) newRelConstraintProbe(id types.RelID, startID, endID types.NodeID, validFrom, validTo, createdAt types.Instant) *types.Relationship {
+func (c *Core) newRelConstraintProbe(id types.RelID, startID, endID types.NodeID, validFrom types.Instant, vfSet bool, validTo, createdAt types.Instant) *types.Relationship {
 	r := types.NewRelationship(id, nonZeroRelTypeProbeToken, startID, endID)
 	// The probe is a throwaway used only for temporal-constraint checking, so
 	// its transaction time is irrelevant — pass no backfill override.
-	c.applyRelCreateTemporal(r, validFrom, validTo, createdAt, 0)
+	c.applyRelCreateTemporal(r, validFrom, vfSet, validTo, createdAt, 0)
 	return r
 }
 
 // applyRelCreateTemporal stamps a NEW relationship's temporal metadata. TxFrom
 // is the system clock unless txFrom != 0 (a privileged backfill, gated in
 // prepareRelCreate) — mirrors the node create doors (§4.1).
-func (c *Core) applyRelCreateTemporal(r *types.Relationship, validFrom, validTo, createdAt, txFrom types.Instant) {
+func (c *Core) applyRelCreateTemporal(r *types.Relationship, validFrom types.Instant, vfSet bool, validTo, createdAt, txFrom types.Instant) {
 	rtm := r.Temporal()
 	if rtm == nil {
 		rtm = &types.TemporalMetadata{}
@@ -323,9 +323,7 @@ func (c *Core) applyRelCreateTemporal(r *types.Relationship, validFrom, validTo,
 	if txFrom != 0 {
 		rtm.TxFrom = txFrom
 	}
-	if validFrom != 0 {
-		rtm.ValidFrom = validFrom
-	}
+	stampValidFrom(rtm, validFrom, vfSet)
 	if validTo != 0 {
 		rtm.ValidTo = validTo
 	}

@@ -133,6 +133,7 @@ var backfillSentinels = []string{
 	"ErrTxBackfillDisabled",
 	"ErrInvalidTxFrom",
 	"ErrTxOrder",
+	"ErrValidEndAtZero",
 }
 
 // Named as-of tags sentinels (§4.2)

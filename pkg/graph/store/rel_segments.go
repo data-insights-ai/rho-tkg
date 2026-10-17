@@ -210,7 +210,10 @@ type RelSegmentBatch struct {
 	// unset: a row without temporal metadata has all three 0), Versions the
 	// row versions — what Relationship.Temporal() / Version() hold.
 	ValidFrom, ValidTo, TxFrom []int64
-	Versions                   []uint32
+	// ValidFromZero is nil, or parallel to IDs: true marks ValidFrom 0 as the
+	// instant 0 (types.TemporalMetadata.ValidFromZero, round 11).
+	ValidFromZero []bool
+	Versions      []uint32
 	// HasTemporal is false for a row without temporal metadata (its
 	// temporal fields read 0 and its temporal shadow properties are absent).
 	HasTemporal []bool

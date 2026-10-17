@@ -15,10 +15,15 @@ type RangeAnyVersionCount struct {
 
 // CountSegment is one segment of a count timeline: Count members hold over
 // the valid instants [From, To). From == math.MinInt64 is an open start
-// (types.UnboundedValidFrom), To == 0 an open end.
+// (types.UnboundedValidFrom), To == 0 an open end unless ToZero.
 type CountSegment struct {
 	From, To types.Instant
 	Count    int64
+	// ToZero marks To == 0 as the instant 0 (round 11): a member valid from
+	// the explicit 0 (types.TemporalMetadata.ValidFromZero) starts there
+	// while others hold, so a segment can end at 0. Only the last segment
+	// can be open.
+	ToZero bool
 }
 
 // CountTimelineOpts tunes CountTimelineByLabel / CountTimelineByType.

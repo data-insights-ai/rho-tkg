@@ -63,7 +63,7 @@ func TestRelEndpointHashLadder_DoesNotMintIDWhenEndpointMissing(t *testing.T) {
 		return types.RelID(12345)
 	}
 
-	_, _, _, _, err = g.relEndpointHashLadder(mint, start.ID(), missingEnd, 0, 0, 0)
+	_, _, _, _, err = g.relEndpointHashLadder(mint, start.ID(), missingEnd, 0, false, 0, 0)
 	if err == nil {
 		t.Fatal("relEndpointHashLadder with a missing endpoint = nil error, want a fetch error")
 	}
@@ -92,7 +92,7 @@ func TestRelEndpointHashLadder_MintsIDAfterValidationPasses(t *testing.T) {
 		return wantID
 	}
 
-	id, _, _, _, err := g.relEndpointHashLadder(mint, start.ID(), end.ID(), 0, 0, 0)
+	id, _, _, _, err := g.relEndpointHashLadder(mint, start.ID(), end.ID(), 0, false, 0, 0)
 	if err != nil {
 		t.Fatalf("relEndpointHashLadder with valid endpoints: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestRelEndpointHashLadder_ConstraintsBranch_DoesNotMintIDWhenEndpointMissin
 		return types.RelID(1)
 	}
 
-	_, _, _, _, err = g.relEndpointHashLadder(mint, start.ID(), missingEnd, 0, 0, 0)
+	_, _, _, _, err = g.relEndpointHashLadder(mint, start.ID(), missingEnd, 0, false, 0, 0)
 	if err == nil {
 		t.Fatal("relEndpointHashLadder (constraints branch) with a missing endpoint = nil error, want a fetch error")
 	}

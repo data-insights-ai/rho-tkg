@@ -135,6 +135,8 @@ var (
 	ErrTxBackfillDisabled = core.ErrTxBackfillDisabled
 	ErrInvalidTxFrom      = core.ErrInvalidTxFrom
 	ErrTxOrder            = core.ErrTxOrder
+	// A valid-time claim that would end a version at the instant 0 (round 11).
+	ErrValidEndAtZero = core.ErrValidEndAtZero
 	// Named as-of (Erkenntniszeit) tags.
 	ErrInvalidAsOfTag  = core.ErrInvalidAsOfTag
 	ErrTooManyAsOfTags = core.ErrTooManyAsOfTags

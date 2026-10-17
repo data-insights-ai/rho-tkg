@@ -128,7 +128,7 @@ func (c *Core) migrateNodeHistoryClearInheritedValidFrom() error {
 		for i := 1; i < len(chain); i++ {
 			v := chain[i]
 			tm := v.Temporal()
-			if tm == nil || tm.ValidFrom == 0 || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
+			if !tm.HasValidFrom() || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
 				continue // -inf is never an inherited legacy start (backlog 73): a close copies it
 			}
 			prev := chain[i-1]
@@ -136,15 +136,15 @@ func (c *Core) migrateNodeHistoryClearInheritedValidFrom() error {
 				continue // history truncation gap — chain[i-1] is not the true predecessor
 			}
 			prevTM := prev.Temporal()
-			if prevTM == nil || prevTM.ValidFrom == 0 {
+			if !prevTM.HasValidFrom() {
 				continue
 			}
-			if prevTM.ValidFrom != tm.ValidFrom {
+			if prevTM.ValidFrom != tm.ValidFrom || prevTM.ValidFromZero != tm.ValidFromZero {
 				continue
 			}
 			// Detected inherited ValidFrom — clear it.
 			modified := v.DeepCopy()
-			modified.Temporal().ValidFrom = 0
+			stampValidFrom(modified.Temporal(), 0, false)
 			// Distinguish current from history: current is the LAST entry.
 			if current != nil && i == len(chain)-1 {
 				if err := c.store.ReplaceNode(modified); err != nil {
@@ -187,7 +187,7 @@ func (c *Core) migrateRelHistoryClearInheritedValidFrom() error {
 		for i := 1; i < len(chain); i++ {
 			v := chain[i]
 			tm := v.Temporal()
-			if tm == nil || tm.ValidFrom == 0 || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
+			if !tm.HasValidFrom() || tm.ValidFrom == types.UnboundedValidFrom || tm.UpdatedAt == 0 {
 				continue // -inf is never an inherited legacy start (backlog 73): a close copies it
 			}
 			prev := chain[i-1]
@@ -195,14 +195,14 @@ func (c *Core) migrateRelHistoryClearInheritedValidFrom() error {
 				continue // history truncation gap — chain[i-1] is not the true predecessor
 			}
 			prevTM := prev.Temporal()
-			if prevTM == nil || prevTM.ValidFrom == 0 {
+			if !prevTM.HasValidFrom() {
 				continue
 			}
-			if prevTM.ValidFrom != tm.ValidFrom {
+			if prevTM.ValidFrom != tm.ValidFrom || prevTM.ValidFromZero != tm.ValidFromZero {
 				continue
 			}
 			modified := v.DeepCopy()
-			modified.Temporal().ValidFrom = 0
+			stampValidFrom(modified.Temporal(), 0, false)
 			if current != nil && i == len(chain)-1 {
 				if err := c.store.ReplaceRelationship(modified); err != nil {
 					return fmt.Errorf("clear rel %d current ValidFrom: %w", id, err)

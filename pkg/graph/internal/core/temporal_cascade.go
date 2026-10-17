@@ -127,6 +127,9 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 	// The head answer before any write (backlog 68, effective_head.go). A
 	// valid one stands in for the history read (backlog 68b,
 	// effective_head_write.go).
+	if err := checkCorrectionAtZero(newVF, newVT, current, func() (*types.Node, error) { return c.getNodeVersion(id, 0) }); err != nil {
+		return nil, err
+	}
 	headBefore := c.nodeHeadBeforeWrite(id, current)
 	// An append at the head is planned from the current row alone (backlog
 	// 67, effective_head_write.go), else from a valid head entry.
@@ -230,7 +233,7 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 	if hc.hasSrc {
 		resumption := hc.src.DeepCopy()
 		ensureNodeTemporal(resumption)
-		resumption.Temporal().ValidFrom = newVT
+		stampValidFrom(resumption.Temporal(), newVT, true)
 		resumption.Temporal().ValidTo = hc.srcEnd // explicit; 0 == open (src was the pre-correction open tail)
 		stampAppendedRow(resumption.Temporal(), now)
 		appended = append(appended, resumption)
@@ -492,7 +495,7 @@ func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.No
 	bounds := make([]types.Instant, 0, 4*len(preChain))
 	for i, row := range preChain {
 		vStart, vEnd := c.nodeOwnBounds(row)
-		pStart, pEnd := c.nodeVersionBounds(preChain, i)
+		pStart, pEnd, _ := c.nodeVersionBounds(preChain, i) // cut points only
 		bounds = append(bounds, vStart, vEnd, pStart, pEnd)
 	}
 	cuts := correctionCuts(bounds, newVF, newVT)
@@ -527,7 +530,7 @@ func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *t
 	bounds := make([]types.Instant, 0, 4*len(preChain))
 	for i, row := range preChain {
 		vStart, vEnd := c.relOwnBounds(row)
-		pStart, pEnd := c.relVersionBounds(preChain, i)
+		pStart, pEnd, _ := c.relVersionBounds(preChain, i) // cut points only
 		bounds = append(bounds, vStart, vEnd, pStart, pEnd)
 	}
 	cuts := correctionCuts(bounds, newVF, newVT)
@@ -583,7 +586,7 @@ func correctionTemporal(template *types.TemporalMetadata, from, to, now types.In
 	if template != nil {
 		tm = *template
 	}
-	tm.ValidFrom = from
+	stampValidFrom(&tm, from, true) // a piece's start is always a claim, 0 included
 	tm.ValidTo = to
 	stampAppendedRow(&tm, now)
 	return &tm
@@ -765,6 +768,9 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 		return nil, err
 	}
 	// The head answer before any write — see the node cascade.
+	if err := checkCorrectionAtZero(newVF, newVT, current, func() (*types.Relationship, error) { return c.getRelVersion(id, 0) }); err != nil {
+		return nil, err
+	}
 	headBefore := c.relHeadBeforeWrite(id, current)
 	// From the current row or the head entry — see the node cascade.
 	hc, fromCurrent := chainFromCurrent(c, relKernel, current, func(v uint32) (bool, error) { return c.relHasHistoryAbove(id, v) },
@@ -834,7 +840,7 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 	if hc.hasSrc {
 		resumption := hc.src.DeepCopy()
 		ensureRelTemporal(resumption)
-		resumption.Temporal().ValidFrom = newVT
+		stampValidFrom(resumption.Temporal(), newVT, true)
 		resumption.Temporal().ValidTo = hc.srcEnd
 		stampAppendedRow(resumption.Temporal(), now)
 		appended = append(appended, resumption)

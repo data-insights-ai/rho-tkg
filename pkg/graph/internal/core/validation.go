@@ -339,9 +339,12 @@ type updateProvenance struct {
 // order check and the stamps; txAt does not count toward `present` (it is not
 // a change by itself — an update at txAt that changes nothing is refused).
 type updateTemporal struct {
-	validFrom    types.Instant
-	validTo      types.Instant
-	txAt         types.Instant
+	validFrom types.Instant
+	validTo   types.Instant
+	txAt      types.Instant
+	// validFromSet: tkg_valid_from is a world-time claim (non-zero, or a
+	// types.ExplicitInstant 0; round 11). hasValidFrom: the key was given.
+	validFromSet bool
 	hasValidFrom bool
 	hasValidTo   bool
 	present      bool
@@ -364,6 +367,9 @@ func (c *Core) prepareUpdateProperties(updates map[string]any, operation string)
 		return updateProvenance{}, updateTemporal{}, nil, err
 	}
 	if err := c.validatePropertyUpdates(filtered, operation); err != nil {
+		return updateProvenance{}, updateTemporal{}, nil, err
+	}
+	if err := checkClaimedUpdate(tmp); err != nil {
 		return updateProvenance{}, updateTemporal{}, nil, err
 	}
 	return prov, tmp, filtered, nil

@@ -159,6 +159,8 @@ func (w *NodeWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 			w.Void, err = dec.DecodeBool()
 		case "dk":
 			w.DeleteKeptValidTo, err = dec.DecodeBool()
+		case "vz":
+			w.ValidFromZero, err = dec.DecodeBool()
 		case "cb":
 			w.CreatedBy, err = dec.DecodeString()
 		case "ub":
@@ -238,6 +240,8 @@ func (w *RelWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 			w.Void, err = dec.DecodeBool()
 		case "dk":
 			w.DeleteKeptValidTo, err = dec.DecodeBool()
+		case "vz":
+			w.ValidFromZero, err = dec.DecodeBool()
 		case "cb":
 			w.CreatedBy, err = dec.DecodeString()
 		case "ub":

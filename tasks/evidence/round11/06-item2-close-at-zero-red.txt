@@ -1,0 +1,20 @@
+Found while building item 2 (before the empty-at-0 handling in the version bounds and the supersession caps):
+a CloseVersion(100) of a node valid from the explicit 0 did not end it. Probe (pkg/graph, memory), same shape
+of rows, only the start differs:
+
+  vf -5: NodeAt(100) err=graph: no version valid at the given time; current &{ValidFrom:-5 ValidTo:100 ...}
+         history v0 &{ValidFrom:-5 ValidTo:0 ... TxTo:<close tx>}
+  vf 0:  NodeAt(100) err=<nil>; current &{ValidFrom:0 ValidTo:100 ... ValidFromZero:true}
+         history v0 &{ValidFrom:0 ValidTo:0 ... TxTo:<close tx> ValidFromZero:true}
+
+Cause: the close row starts where its version started. For a start of 0, version 0's positional end (the next
+version's start) is 0, and the read-time supersession cap of the close row is 0; both read as "open" / "no cap",
+so version 0 stayed valid after the close. Fix: nodeVersionBounds / relVersionBounds report an interval emptied
+at the instant 0 (callers skip it), and supersessionCaps carries an explicit presence slice with an explicit
+"empty" result (superCaps.end). Pinned by r11RefusedAtZero (close of an explicit-0 version, and close after a
+correction before 0: the cascade-chain cap); mutants "positional empty-at-0 not reported" and "supersession cap
+of 0 read as no cap" are killed.
+
+Note on 04-item2-red.txt: that runtime red ran an earlier draft of TestRound11ExplicitValidFromZero (it also
+asserted an update valid from the explicit 0, since narrowed to a refusal); the red it shows, a create with
+tkg_valid_from 0 reading as untimed (valid at -1, from -inf), is the claim the final test pins.

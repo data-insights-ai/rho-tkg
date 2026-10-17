@@ -26,6 +26,21 @@ releaser's call). New store capabilities and write and read options, all additiv
   30.0 -> 4.9 us, 164 -> 55 allocations; sharded 16.5 -> 4.7 us, 182 -> 71; memory 2.1 -> 1.6 us, 53 -> 49; badger
   1.5 -> 1.5 us, 50 -> 45; the pinned `NodesByLabelPropertyAt` on tiered 344 -> 141 allocations
   (`BenchmarkRound11PointSeek`, `tasks/evidence/round11/`).
+- **The instant 0 as a valid start** (round 11 item 2). `tkg_valid_from = types.ExplicitInstant(0)` on a create
+  claims the instant 0 (a plain 0 keeps meaning "no claim", unchanged). The row stores
+  `types.TemporalMetadata.ValidFromZero`, read through `TemporalMetadata.HasValidFrom` and the allocation-free
+  `Node.ValidFromClaim` / `Relationship.ValidFromClaim` by every door (the start rule `EntityValidFrom`, the version
+  bounds, the untimed mode, the count timeline, the store push-down, the column scans). Wire key `vz` at row format 7
+  (`storeutil.ValidFromZeroWireFormatVersion`), store marker 9 (`ValidFromZeroStoreFormatVersion`, raised before the
+  first such row: a release before it refuses the store). A valid END of 0 still means open everywhere, so only an
+  entity's first version may start at the explicit 0: a write that would end a version at 0 (an update claiming it,
+  a re-import of an ID with an earlier life, a correction or excise crossing 0 on such an entity) is refused with the
+  new `ErrValidEndAtZero` (wraps `ErrInvalidTimeRange`), in the batch and caller-instant pre-flights too. Ends at 0
+  need their own presence (stored and derived), a later step. Additive: `store.CountSegment.ToZero` (an inner count
+  segment ending at 0), `ColumnBatch` / `RelColumnBatch` / `RelSegmentBatch.ValidFromZero`,
+  `store.ColumnValidFromZeroSource`, `store.ForeignIncomingEdge.ValidFromZero`. Other reserved keys refuse an
+  `ExplicitInstant`. The memory store's column segments keep such rows in the memtable. **sigma-tkgd**: `VALID FROM 0`
+  on a create can pass `types.ExplicitInstant(0)`; on an update it declines on `ErrValidEndAtZero`.
 
 ## [4.63.0] - 2026-10-17
 

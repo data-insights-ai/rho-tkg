@@ -75,6 +75,7 @@ type stateCut struct {
 	ids        []uint64
 	from, to   []types.Instant
 	vf, vt     []int64
+	zero       []bool // nil, or parallel to ids: vf 0 is the explicit 0 (round 11)
 	start, end []types.NodeID
 	tags       [][]uint8
 	bits       [][]uint64
@@ -111,9 +112,12 @@ func newStateCut(epoch uint64, keys []string, n int, rel bool) *stateCut {
 // relationship).
 func (cut *stateCut) add(id uint64, from, to types.Instant, row interface {
 	ValidRange() (types.Instant, types.Instant, bool)
+	ValidFromClaim() (types.Instant, bool)
 	GetProperty(string) (any, bool)
 }) {
 	vf, vt, _ := row.ValidRange()
+	_, claimed := row.ValidFromClaim()
+	cut.zero = storepkg.AppendValidFromZero(cut.zero, len(cut.ids), claimed && vf == 0)
 	cut.ids = append(cut.ids, id)
 	cut.from = append(cut.from, from)
 	cut.to = append(cut.to, to)
@@ -250,6 +254,12 @@ func (r cutRows) Value(i, c int) (storepkg.ColumnKind, int64, float64, string, b
 	default:
 		return kind, 0, 0, "", bits == 1, true
 	}
+}
+
+// ValidFromZero implements store.ColumnValidFromZeroSource.
+func (r cutRows) ValidFromZero(i int) bool {
+	s := r.rows[i]
+	return s < len(r.cut.zero) && r.cut.zero[s]
 }
 
 func (r cutRows) Other(i, c int) bool {

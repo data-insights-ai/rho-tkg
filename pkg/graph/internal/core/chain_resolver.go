@@ -351,9 +351,9 @@ func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.
 	}
 	c.sortNodeChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		vStart, vEnd := c.nodeVersionBounds(chain, i)
+		vStart, vEnd, empty := c.nodeVersionBounds(chain, i)
 		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone || isVoidRow(chain[i]) {
+		if empty || gone || isVoidRow(chain[i]) {
 			continue
 		}
 		for _, iv := range unmasked(mask, vStart, vEnd) {
@@ -392,9 +392,9 @@ func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Inst
 func (c *Core) eachNodeChainDuring(chain []*types.Node, start, end types.Instant, pred func(*types.Node) bool, caps lifeEnds[*types.Node], mask []voidSpan, fn func(*types.Node) bool) {
 	c.sortNodeChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		vStart, vEnd := c.nodeVersionBounds(chain, i)
+		vStart, vEnd, empty := c.nodeVersionBounds(chain, i)
 		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone || isVoidRow(chain[i]) {
+		if empty || gone || isVoidRow(chain[i]) {
 			continue
 		}
 		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start), outside
@@ -469,9 +469,9 @@ func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd
 	}
 	c.sortRelChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		vStart, vEnd := c.relVersionBounds(chain, i)
+		vStart, vEnd, empty := c.relVersionBounds(chain, i)
 		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone || isVoidRow(chain[i]) {
+		if empty || gone || isVoidRow(chain[i]) {
 			continue
 		}
 		for _, iv := range unmasked(mask, vStart, vEnd) {
@@ -507,9 +507,9 @@ func (c *Core) resolveRelChainDuring(chain []*types.Relationship, start, end typ
 func (c *Core) eachRelChainDuring(chain []*types.Relationship, start, end types.Instant, pred func(*types.Relationship) bool, caps lifeEnds[*types.Relationship], mask []voidSpan, fn func(*types.Relationship) bool) {
 	c.sortRelChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
-		vStart, vEnd := c.relVersionBounds(chain, i)
+		vStart, vEnd, empty := c.relVersionBounds(chain, i)
 		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
-		if gone || isVoidRow(chain[i]) {
+		if empty || gone || isVoidRow(chain[i]) {
 			continue
 		}
 		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start), outside

@@ -72,7 +72,7 @@ type chainKernel[T interface {
 	sortVF    func(*Core, T) types.Instant
 	sortChain func(*Core, []T) bool
 	ownBounds func(*Core, T) (types.Instant, types.Instant)
-	posBounds func(*Core, []T, int) (types.Instant, types.Instant)
+	posBounds func(*Core, []T, int) (types.Instant, types.Instant, bool)
 }
 
 // The node and relationship kernels (method expressions: no allocation).
@@ -144,7 +144,7 @@ func effectivePiecesFacts[T interface {
 		if r != chain[0] {
 			one = []T{r}
 		}
-		s, e := k.posBounds(c, one, 0)
+		s, e, _ := k.posBounds(c, one, 0) // one row: no later version
 		e = chainLifeEnds(one).end(r, e)
 		if e != 0 && e <= s {
 			return nil
@@ -193,7 +193,7 @@ func effectiveSweep[T interface {
 	// The resolver's classification and order (it sorts its argument).
 	arr := slices.Clone(filtered)
 	cascade := k.sortChain(c, arr)
-	var superseded []types.Instant
+	var superseded superCaps
 	if cascade {
 		sc := getSupersessionScratch()
 		defer putSupersessionScratch(sc)
@@ -204,11 +204,15 @@ func effectiveSweep[T interface {
 		var s, e types.Instant
 		if cascade {
 			s, e = k.ownBounds(c, r)
-			if superseded != nil {
-				e = capEnd(e, superseded[i])
+			var empty bool
+			if e, empty = superseded.end(i, s, e); empty {
+				continue // covers nothing
 			}
 		} else {
-			s, e = k.posBounds(c, arr, i)
+			var empty bool
+			if s, e, empty = k.posBounds(c, arr, i); empty {
+				continue // a later version starts at the explicit 0 at or before it
+			}
 		}
 		e = caps.end(r, e)
 		if e != 0 && e <= s {

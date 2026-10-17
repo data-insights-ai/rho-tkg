@@ -166,11 +166,10 @@ func (bs *Store) ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, i
 				deferred = append(deferred, m)
 				continue
 			}
-			// Synthetic metadata with the resolved vf (>0) so
-			// MatchesTemporalFilter uses it directly; the snowflake-ID arg is
-			// therefore irrelevant.
-			tm := types.TemporalMetadata{ValidFrom: types.Instant(s.vf), ValidTo: types.Instant(s.vt)}
-			if storepkg.MatchesTemporalFilter(m.rel.SnowflakeID(), &tm, opts) {
+			// The resolved start s.vf goes in as is (it may be the instant
+			// 0 of an explicit claim, round 11): no second resolution.
+			tm := types.TemporalMetadata{ValidTo: types.Instant(s.vt)}
+			if storepkg.MatchesTemporalFilterFrom(types.Instant(s.vf), &tm, opts) {
 				survivors = append(survivors, m)
 			}
 		}
@@ -242,8 +241,8 @@ func (bs *Store) ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incomi
 	if snapErr == nil && hasTemporal {
 		for _, rid := range rids {
 			if s, ok := bs.relValidIdx[rid]; ok {
-				tm := types.TemporalMetadata{ValidFrom: types.Instant(s.vf), ValidTo: types.Instant(s.vt)}
-				if !storepkg.MatchesTemporalFilter(rid.SnowflakeID(), &tm, opts) {
+				tm := types.TemporalMetadata{ValidTo: types.Instant(s.vt)}
+				if !storepkg.MatchesTemporalFilterFrom(types.Instant(s.vf), &tm, opts) {
 					if skipDecode == nil {
 						skipDecode = make(map[types.RelID]struct{})
 					}

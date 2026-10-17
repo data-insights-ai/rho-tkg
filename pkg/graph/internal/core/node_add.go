@@ -109,11 +109,11 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 		return nil, err
 	}
 
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}
-	if validFrom, err = c.untimedStart(validFrom, true); err != nil { // a generated ID: a first version
+	if validFrom, vfSet, err = c.claimedStart(validFrom, vfSet, true); err != nil { // a generated ID: a first version
 		return nil, err
 	}
 	txFromOverride, err = c.resolveBackfillTxFrom(txFromOverride)
@@ -213,9 +213,7 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 			n.SetTemporal(ntm)
 		}
 		ntm.TxFrom = txNow
-		if validFrom != 0 {
-			ntm.ValidFrom = validFrom
-		}
+		stampValidFrom(ntm, validFrom, vfSet)
 		if validTo != 0 {
 			ntm.ValidTo = validTo
 		}
@@ -381,7 +379,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err != nil {
 		return nil, err
 	}
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +430,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err := life.checkCallerTx(txFromOverride); err != nil {
 		return nil, err
 	}
-	if validFrom, err = c.untimedStart(validFrom, life.version == 0); err != nil {
+	if validFrom, vfSet, err = c.claimedStart(validFrom, vfSet, life.version == 0); err != nil {
 		return nil, err
 	}
 
@@ -510,9 +508,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		n.SetTemporal(tm)
 	}
 	tm.TxFrom = txNow
-	if validFrom != 0 {
-		tm.ValidFrom = validFrom
-	}
+	stampValidFrom(tm, validFrom, vfSet)
 	if validTo != 0 {
 		tm.ValidTo = validTo
 	}

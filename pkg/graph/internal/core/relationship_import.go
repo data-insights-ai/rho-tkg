@@ -67,7 +67,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	if err != nil {
 		return nil, err
 	}
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	if err := life.checkCallerTx(txFromOverride); err != nil {
 		return nil, err
 	}
-	if validFrom, err = c.untimedStart(validFrom, life.version == 0); err != nil {
+	if validFrom, vfSet, err = c.claimedStart(validFrom, vfSet, life.version == 0); err != nil {
 		return nil, err
 	}
 
@@ -150,7 +150,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		if err != nil {
 			return nil, err
 		}
-		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
+		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, vfSet, validTo, createdAt)
 		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
 			return nil, err
 		}
@@ -198,7 +198,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		ig.FromNodeHash = fromHash
 		ig.ToNodeHash = toHash
 		r.SetIntegrity(ig)
-		c.applyRelCreateTemporal(r, validFrom, validTo, createdAt, txFromOverride)
+		c.applyRelCreateTemporal(r, validFrom, vfSet, validTo, createdAt, txFromOverride)
 		if txFromOverride == 0 {
 			// The plain door follows the earlier lives' stamps on this row
 			// only (lifeStart.txFrom); a caller instant was checked above.

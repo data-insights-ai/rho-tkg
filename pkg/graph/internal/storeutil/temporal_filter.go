@@ -9,7 +9,8 @@ import (
 
 // EntityValidFrom is THE start rule for a row (backlog 62):
 // types.TemporalMetadata.EffectiveValidFrom with the ID's mint instant — its
-// explicit ValidFrom, else its UntimedValidFrom. Every valid-time door — the
+// explicit ValidFrom (HasValidFrom: non-zero, or the instant 0 with
+// ValidFromZero, round 11), else its UntimedValidFrom. Every valid-time door — the
 // chain resolver, the store push-down, the temporal index envelopes, the
 // column filters — takes a row's start from here, so a create and a later
 // version without a valid-from start on one clock. Config.UntimedValidStart

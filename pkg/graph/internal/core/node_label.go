@@ -157,7 +157,7 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	// caller-supplied valid time, and an inherited ValidFrom would let this
 	// version cover the previous version's interval in historical queries
 	// (hiding the at-t label state the history row exists to preserve).
-	tm.ValidFrom = 0
+	stampValidFrom(tm, 0, false)
 	tm.ValidTo = 0
 	tm.UpdatedAt = now
 	at.stamp(tm)
@@ -291,7 +291,7 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 	// caller-supplied valid time, and an inherited ValidFrom would let this
 	// version cover the previous version's interval in historical queries
 	// (hiding the at-t label state the history row exists to preserve).
-	tm.ValidFrom = 0
+	stampValidFrom(tm, 0, false)
 	tm.ValidTo = 0
 	tm.UpdatedAt = now
 	at.stamp(tm)

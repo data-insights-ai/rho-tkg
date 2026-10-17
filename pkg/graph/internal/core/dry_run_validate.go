@@ -178,11 +178,11 @@ func (co *ConstraintOps) DryRunValidate(ctx context.Context, facts constraintspk
 					Err: fmt.Errorf("end node %d: %w", dr.EndID, err)})
 				continue
 			}
-			validFrom := c.untimedStartMode(dr.ValidFrom, true)
-			if validFrom == 0 {
-				validFrom = c.now() // validate as if asserted now
+			validFrom, vfSet := c.claimedStartMode(dr.ValidFrom, dr.ValidFrom != 0, true)
+			if !vfSet {
+				validFrom, vfSet = c.now(), true // validate as if asserted now
 			}
-			probe := c.newRelConstraintProbe(dryRunProbeRelID, dr.StartID, dr.EndID, validFrom, dr.ValidTo, 0)
+			probe := c.newRelConstraintProbe(dryRunProbeRelID, dr.StartID, dr.EndID, validFrom, vfSet, dr.ValidTo, 0)
 			if err := c.checkTemporalConstraints(probe, startNode, endNode); err != nil {
 				violations = append(violations, constraintspkg.DryRunViolation{Ref: dr.Ref, Kind: "temporal", Err: err})
 			}
@@ -204,11 +204,11 @@ func (c *Core) buildDryRunEndpointNode(id types.NodeID, props map[string]any) (*
 	if err != nil {
 		return nil, err
 	}
-	validFrom, validTo, createdAt, _, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, _, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}
-	validFrom = c.untimedStartMode(validFrom, true)
+	validFrom, vfSet = c.claimedStartMode(validFrom, vfSet, true)
 	if err := c.validateProperties(props); err != nil {
 		return nil, err
 	}
@@ -220,8 +220,10 @@ func (c *Core) buildDryRunEndpointNode(id types.NodeID, props map[string]any) (*
 	if err := n.SetOwnedProperties(ps); err != nil {
 		return nil, fmt.Errorf("graph: dry-run endpoint properties: %w", err)
 	}
-	if validFrom != 0 || validTo != 0 || createdAt != 0 {
-		n.SetTemporal(&types.TemporalMetadata{ValidFrom: validFrom, ValidTo: validTo, CreatedAt: createdAt})
+	if vfSet || validTo != 0 || createdAt != 0 {
+		tm := &types.TemporalMetadata{ValidTo: validTo, CreatedAt: createdAt}
+		stampValidFrom(tm, validFrom, vfSet)
+		n.SetTemporal(tm)
 	}
 	return n, nil
 }
@@ -236,7 +238,7 @@ func (c *Core) buildDryRunProbeNode(id types.NodeID, props map[string]any) (*typ
 	if err != nil {
 		return nil, err
 	}
-	_, _, _, _, props, err = extractTemporal(props)
+	_, _, _, _, _, props, err = extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}

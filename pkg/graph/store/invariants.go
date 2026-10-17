@@ -288,8 +288,11 @@ func validateNodeExplicitTemporalRange(id types.NodeID, tm *types.TemporalMetada
 	if tm == nil {
 		return nil
 	}
-	if tm.ValidFrom != 0 && tm.ValidTo != 0 && tm.ValidFrom >= tm.ValidTo {
+	if tm.HasValidFrom() && tm.ValidTo != 0 && tm.ValidFrom >= tm.ValidTo {
 		return fmt.Errorf("%w: node %d valid_from %d must be before valid_to %d", ErrInvalidStoreMutation, id, tm.ValidFrom, tm.ValidTo)
+	}
+	if tm.ValidFromZero && tm.ValidFrom != 0 {
+		return fmt.Errorf("%w: node %d carries the valid-from-zero marker with valid_from %d", ErrInvalidStoreMutation, id, tm.ValidFrom)
 	}
 	if tm.Retracted && tm.DeletedAt == 0 {
 		return fmt.Errorf("%w: node %d carries the retraction marker without deleted_at", ErrInvalidStoreMutation, id)
@@ -307,8 +310,11 @@ func validateRelExplicitTemporalRange(id types.RelID, tm *types.TemporalMetadata
 	if tm == nil {
 		return nil
 	}
-	if tm.ValidFrom != 0 && tm.ValidTo != 0 && tm.ValidFrom >= tm.ValidTo {
+	if tm.HasValidFrom() && tm.ValidTo != 0 && tm.ValidFrom >= tm.ValidTo {
 		return fmt.Errorf("%w: relationship %d valid_from %d must be before valid_to %d", ErrInvalidStoreMutation, id, tm.ValidFrom, tm.ValidTo)
+	}
+	if tm.ValidFromZero && tm.ValidFrom != 0 {
+		return fmt.Errorf("%w: relationship %d carries the valid-from-zero marker with valid_from %d", ErrInvalidStoreMutation, id, tm.ValidFrom)
 	}
 	if tm.Retracted && tm.DeletedAt == 0 {
 		return fmt.Errorf("%w: relationship %d carries the retraction marker without deleted_at", ErrInvalidStoreMutation, id)

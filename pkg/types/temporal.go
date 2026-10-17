@@ -34,7 +34,9 @@ type EntityID snowflake.ID
 // TemporalMetadata holds temporal lifecycle fields for nodes and relationships.
 // Populated by the graph layer.
 type TemporalMetadata struct {
-	// ValidFrom is the start of the entity's validity period.
+	// ValidFrom is the start of the entity's validity period; 0 is "no
+	// world-time claim" (the untimed start applies) unless ValidFromZero is
+	// set. Read the presence through HasValidFrom, never by comparing with 0.
 	ValidFrom Instant
 	// ValidTo is the end of the entity's validity period. 0 = open-ended.
 	ValidTo Instant
@@ -84,7 +86,27 @@ type TemporalMetadata struct {
 	// before DeletedAt; stores reject it otherwise. Read since v4.62.0; the
 	// delete doors write it from v4.64.0.
 	DeleteKeptValidTo bool
+	// ValidFromZero marks a ValidFrom of 0 as the instant 0, a world-time
+	// claim (round 11: written with tkg_valid_from = ExplicitInstant(0)),
+	// rather than "no claim". Only meaningful with ValidFrom == 0; stores
+	// reject it otherwise, so a row has one representation.
+	ValidFromZero bool
 }
+
+// HasValidFrom reports whether the version makes a world-time claim of its
+// start: ValidFrom != 0, or ValidFrom == 0 with ValidFromZero. The one
+// presence rule of a stored valid-from (round 11); false on nil.
+func (tm *TemporalMetadata) HasValidFrom() bool {
+	return tm != nil && (tm.ValidFrom != 0 || tm.ValidFromZero)
+}
+
+// ExplicitInstant is a tkg_valid_from value with explicit presence (round
+// 11): the version holds in the world from this instant, the instant 0
+// included. A plain number or Instant 0 keeps its meaning, "no world-time
+// claim" (the untimed start). Other reserved temporal keys refuse it
+// (ErrInvalidTimeRange): their 0 means unset or open, and no stored row can
+// end or be recorded at an explicit 0.
+type ExplicitInstant Instant
 
 // BaseEntityID returns the opaque ID linking to the original entity in a
 // version chain. Zero value means no base entity (this is the original).
@@ -106,9 +128,10 @@ func (tm *TemporalMetadata) SetBaseEntityID(id EntityID) {
 // EffectiveValidFrom is THE start rule for a row (backlog 62): the instant
 // every valid-time door (the chain resolver, the effective timeline, the
 // store push-downs, the index envelopes) starts it at. It is the stored
-// ValidFrom when the row carries one (a caller's tkg_valid_from, a
-// correction's piece start, or types.UnboundedValidFrom stored by the
-// UntimedUnbounded mode on a first version), else UntimedValidFrom. mint is
+// ValidFrom when the row claims one (HasValidFrom: a caller's tkg_valid_from,
+// a correction's piece start, types.UnboundedValidFrom stored by the
+// UntimedUnbounded mode on a first version, or the explicit instant 0 with
+// ValidFromZero, round 11), else UntimedValidFrom. mint is
 // the instant the row's ID was minted (NodeID.MintInstant).
 //
 // A version written without a valid-from (Update and its twins) keeps
@@ -118,7 +141,7 @@ func (tm *TemporalMetadata) SetBaseEntityID(id EntityID) {
 // after the commit clock, the row stores that start + 1 as its ValidFrom
 // instead, and its TxFrom stays the clock (backlog 77).
 func (tm *TemporalMetadata) EffectiveValidFrom(mint Instant) Instant {
-	if tm != nil && tm.ValidFrom != 0 {
+	if tm.HasValidFrom() { // the claim, the explicit instant 0 included (round 11)
 		return tm.ValidFrom
 	}
 	return tm.UntimedValidFrom(mint)

@@ -30,6 +30,7 @@ type relCreatePrep struct {
 	authorizedBy string
 	authLevel    uint8
 	validFrom    types.Instant
+	vfSet        bool // validFrom is a claim (round 11; may be the instant 0)
 	validTo      types.Instant
 	createdAt    types.Instant
 	txFrom       types.Instant // privileged transaction-time backfill (0 = system clock)
@@ -49,11 +50,11 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 	if err != nil {
 		return prep, err
 	}
-	validFrom, validTo, createdAt, txFrom, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFrom, props, err := extractTemporal(props)
 	if err != nil {
 		return prep, err
 	}
-	if validFrom, err = c.untimedStart(validFrom, true); err != nil { // a generated ID: a first version
+	if validFrom, vfSet, err = c.claimedStart(validFrom, vfSet, true); err != nil { // a generated ID: a first version
 		return prep, err
 	}
 	txFrom, err = c.resolveBackfillTxFrom(txFrom)
@@ -84,6 +85,7 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 		authorizedBy: authorizedBy,
 		authLevel:    authLevel,
 		validFrom:    validFrom,
+		vfSet:        vfSet,
 		validTo:      validTo,
 		createdAt:    createdAt,
 		txFrom:       txFrom,
@@ -107,7 +109,7 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 // delegated to the store write (endpointHashWrite capability available and
 // no constraints configured) — in that case the returned hashes are empty
 // and the kernel refreshes them from the store's reply.
-func (c *Core) relEndpointHashLadder(mintID func() types.RelID, startID, endID types.NodeID, validFrom, validTo, createdAt types.Instant) (id types.RelID, fromHash, toHash string, useEndpointHashWrite bool, err error) {
+func (c *Core) relEndpointHashLadder(mintID func() types.RelID, startID, endID types.NodeID, validFrom types.Instant, vfSet bool, validTo, createdAt types.Instant) (id types.RelID, fromHash, toHash string, useEndpointHashWrite bool, err error) {
 	if c.constraints.Len() > 0 {
 		// Fetch live endpoints from the store under the endpoint locks so
 		// hash refresh and temporal-constraint checks see the current state.
@@ -116,7 +118,7 @@ func (c *Core) relEndpointHashLadder(mintID func() types.RelID, startID, endID t
 			return 0, "", "", false, err
 		}
 		id = mintID()
-		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
+		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, vfSet, validTo, createdAt)
 		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
 			return 0, "", "", false, err
 		}
@@ -170,7 +172,7 @@ func (c *Core) buildRelFromSpec(ctx context.Context, spec relCreateSpec) func(ty
 		ig.FromNodeHash = spec.fromHash
 		ig.ToNodeHash = spec.toHash
 		r.SetIntegrity(ig)
-		c.applyRelCreateTemporal(r, spec.validFrom, spec.validTo, spec.createdAt, spec.txFrom)
+		c.applyRelCreateTemporal(r, spec.validFrom, spec.vfSet, spec.validTo, spec.createdAt, spec.txFrom)
 		if err := checkCtx(ctx); err != nil {
 			return nil, nil, err
 		}

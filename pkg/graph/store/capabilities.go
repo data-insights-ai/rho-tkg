@@ -1162,6 +1162,11 @@ type ColumnBatch struct {
 	// zero also means open-ended.
 	ValidFrom []int64
 	ValidTo   []int64
+	// ValidFromZero is nil, or parallel to IDs: true marks the row's
+	// ValidFrom 0 as the instant 0, a claim (types.TemporalMetadata
+	// .ValidFromZero, round 11), not "no temporal metadata". nil (or all
+	// false) when no row of the batch is valid from the explicit 0.
+	ValidFromZero []bool
 	ColumnData
 }
 
@@ -1205,6 +1210,8 @@ type RelColumnBatch struct {
 	// ValidFrom/ValidTo are parallel to IDs as on ColumnBatch; zero ValidTo = open-ended.
 	ValidFrom []int64
 	ValidTo   []int64
+	// ValidFromZero is ColumnBatch.ValidFromZero for these rows.
+	ValidFromZero []bool
 	ColumnData
 }
 

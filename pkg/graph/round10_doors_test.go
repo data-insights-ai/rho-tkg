@@ -36,7 +36,7 @@ var r10Values = []any{
 
 // r10Ops are the write kinds the generator must reach on every run.
 var r10Ops = []string{
-	"create-untimed", "create-unbounded", "create-negative", "create-positive", "create-closed-negative",
+	"create-untimed", "create-unbounded", "create-negative", "create-positive", "create-closed-negative", "create-explicit-zero",
 	"update-timed", "update-untimed", "close", "delete", "retract", "relabel", "reimport", "excise", "excise-negative",
 	"set-interval", "rel-update", "rel-close", "rel-delete", "rel-retract", "rel-excise", "rel-set-interval",
 }
@@ -110,6 +110,10 @@ func r10History(t *testing.T, b storeBackend, g *graphpkg.Graph, seed uint64) *r
 		if from != 0 {
 			props["tkg_valid_from"] = from
 		}
+		explicitZero := i%10 == 5 // round 11: valid from the explicit instant 0
+		if explicitZero {
+			props["tkg_valid_from"], op = types.ExplicitInstant(0), "create-explicit-zero"
+		}
 		n, err := g.Nodes().Add(ctx, []string{w.label}, props)
 		if err != nil {
 			t.Fatal(err)
@@ -121,6 +125,9 @@ func r10History(t *testing.T, b storeBackend, g *graphpkg.Graph, seed uint64) *r
 		if from != 0 && i%5 != 4 {
 			rp["tkg_valid_from"] = from
 			lastRelFrom[i] = from
+		}
+		if explicitZero {
+			rp["tkg_valid_from"] = types.ExplicitInstant(0)
 		}
 		var r *types.Relationship
 		if i%2 == 0 {
@@ -703,12 +710,12 @@ func r10Hull(spans []r10Span) storepkg.ValidHull {
 func r10CurrentSpans(t *testing.T, g *graphpkg.Graph, rel bool, name string, untimed bool) []r10Span {
 	t.Helper()
 	var spans []r10Span
-	add := func(vf, vt, tx types.Instant, version uint32, genesis func() (types.Instant, types.Instant, bool)) {
+	add := func(vf types.Instant, claimed bool, vt, tx types.Instant, version uint32, genesis func() (types.Instant, types.Instant, bool, bool)) {
 		from := vf
-		if from == 0 {
+		if !claimed { // no claim (round 11: the explicit 0 is one)
 			from = tx
 		}
-		if untimed && round9Untimed(from, vf, tx, version, genesis) {
+		if untimed && round9Untimed(from, vf, claimed, tx, version, genesis) {
 			from = math.MinInt64
 		}
 		spans = append(spans, r10Span{from, vt})
@@ -717,36 +724,38 @@ func r10CurrentSpans(t *testing.T, g *graphpkg.Graph, rel bool, name string, unt
 	if rel {
 		err = g.Rels().ForEachByType(name, storepkg.QueryOpts{}, func(r *types.Relationship) bool {
 			vf, vt, _ := r.ValidRange()
+			_, claimed := r.ValidFromClaim()
 			tx, _, _ := r.TxStamps()
-			add(vf, vt, tx, r.Version(), func() (types.Instant, types.Instant, bool) {
+			add(vf, claimed, vt, tx, r.Version(), func() (types.Instant, types.Instant, bool, bool) {
 				h, err := g.Rels().History(r.ID())
 				if err != nil {
-					return 0, 0, false
+					return 0, 0, false, false
 				}
 				for _, v := range h {
-					if v.Version() == 0 && v.Temporal() != nil {
-						return v.Temporal().ValidFrom, v.Temporal().TxFrom, true
+					if tm := v.Temporal(); v.Version() == 0 && tm != nil {
+						return tm.ValidFrom, tm.TxFrom, tm.HasValidFrom(), true
 					}
 				}
-				return 0, 0, false
+				return 0, 0, false, false
 			})
 			return true
 		})
 	} else {
 		err = g.Nodes().ForEachByLabel(name, storepkg.QueryOpts{}, func(n *types.Node) bool {
 			vf, vt, _ := n.ValidRange()
+			_, claimed := n.ValidFromClaim()
 			tx, _, _ := n.TxStamps()
-			add(vf, vt, tx, n.Version(), func() (types.Instant, types.Instant, bool) {
+			add(vf, claimed, vt, tx, n.Version(), func() (types.Instant, types.Instant, bool, bool) {
 				h, err := g.Nodes().History(n.ID())
 				if err != nil {
-					return 0, 0, false
+					return 0, 0, false, false
 				}
 				for _, v := range h {
-					if v.Version() == 0 && v.Temporal() != nil {
-						return v.Temporal().ValidFrom, v.Temporal().TxFrom, true
+					if tm := v.Temporal(); v.Version() == 0 && tm != nil {
+						return tm.ValidFrom, tm.TxFrom, tm.HasValidFrom(), true
 					}
 				}
-				return 0, 0, false
+				return 0, 0, false, false
 			})
 			return true
 		})
@@ -763,11 +772,11 @@ func r10PinnedSpans(t *testing.T, g *graphpkg.Graph, rel bool, name string, pin 
 	t.Helper()
 	var spans []r10Span
 	var last int64
-	add := func(id int64, segFrom, segTo, vf, tx types.Instant, version uint32, genesis func() (types.Instant, types.Instant, bool)) {
+	add := func(id int64, segFrom, segTo, vf types.Instant, claimed bool, tx types.Instant, version uint32, genesis func() (types.Instant, types.Instant, bool, bool)) {
 		from := segFrom
 		if id != last {
 			last = id
-			if untimed && round9Untimed(segFrom, vf, tx, version, genesis) {
+			if untimed && round9Untimed(segFrom, vf, claimed, tx, version, genesis) {
 				from = math.MinInt64
 			}
 		}
@@ -776,37 +785,37 @@ func r10PinnedSpans(t *testing.T, g *graphpkg.Graph, rel bool, name string, pin 
 	var err error
 	if rel {
 		err = g.Temporal().ForEachRelEffectiveByType(name, pin, func(s temporal.RelSegment) bool {
-			vf, _, _ := s.Rel.ValidRange()
+			vf, claimed := s.Rel.ValidFromClaim()
 			tx, _, _ := s.Rel.TxStamps()
-			add(int64(s.Rel.ID()), s.ValidFrom, s.ValidTo, vf, tx, s.Rel.Version(), func() (types.Instant, types.Instant, bool) {
+			add(int64(s.Rel.ID()), s.ValidFrom, s.ValidTo, vf, claimed, tx, s.Rel.Version(), func() (types.Instant, types.Instant, bool, bool) {
 				h, err := g.Rels().History(s.Rel.ID())
 				if err != nil {
-					return 0, 0, false
+					return 0, 0, false, false
 				}
 				for _, v := range h {
-					if v.Version() == 0 && v.Temporal() != nil {
-						return v.Temporal().ValidFrom, v.Temporal().TxFrom, true
+					if tm := v.Temporal(); v.Version() == 0 && tm != nil {
+						return tm.ValidFrom, tm.TxFrom, tm.HasValidFrom(), true
 					}
 				}
-				return 0, 0, false
+				return 0, 0, false, false
 			})
 			return true
 		})
 	} else {
 		err = g.Temporal().ForEachNodeEffectiveByLabel(name, pin, func(s temporal.NodeSegment) bool {
-			vf, _, _ := s.Node.ValidRange()
+			vf, claimed := s.Node.ValidFromClaim()
 			tx, _, _ := s.Node.TxStamps()
-			add(int64(s.Node.ID()), s.ValidFrom, s.ValidTo, vf, tx, s.Node.Version(), func() (types.Instant, types.Instant, bool) {
+			add(int64(s.Node.ID()), s.ValidFrom, s.ValidTo, vf, claimed, tx, s.Node.Version(), func() (types.Instant, types.Instant, bool, bool) {
 				h, err := g.Nodes().History(s.Node.ID())
 				if err != nil {
-					return 0, 0, false
+					return 0, 0, false, false
 				}
 				for _, v := range h {
-					if v.Version() == 0 && v.Temporal() != nil {
-						return v.Temporal().ValidFrom, v.Temporal().TxFrom, true
+					if tm := v.Temporal(); v.Version() == 0 && tm != nil {
+						return tm.ValidFrom, tm.TxFrom, tm.HasValidFrom(), true
 					}
 				}
-				return 0, 0, false
+				return 0, 0, false, false
 			})
 			return true
 		})

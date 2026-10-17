@@ -1,0 +1,29 @@
+--- compile red on the round11 tree before the item 2 code:
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test]
+vet: pkg/graph/round11_validfrom_test.go:38:108: undefined: types.ExplicitInstant
+--- runtime red on v4.60.0 (1ba2af86): the same test with types.ExplicitInstant(0) replaced by types.Instant(0), the only way to pass a 0 there, and the claim checks (new API) left out:
+--- FAIL: TestRound11ExplicitValidFromZero (0.04s)
+    --- FAIL: TestRound11ExplicitValidFromZero/memory (0.00s)
+        round11_validfrom_test.go:163: memory: a node valid from the explicit 0 is valid at -1
+        round11_validfrom_test.go:163: memory: the updated node at 0: k=3 ok=true, want the version valid from the explicit 0 (4)
+        round11_validfrom_test.go:163: memory: ByLabel(Z, ValidAt -1) lists 819083953780523008 = true, want false
+        round11_validfrom_test.go:163: memory: a relationship valid from the explicit 0 is valid at -1
+        round11_validfrom_test.go:163: graph: invalid time range: transaction-time pin 0 must be positive
+    --- FAIL: TestRound11ExplicitValidFromZero/badger (0.00s)
+        round11_validfrom_test.go:163: badger: a node valid from the explicit 0 is valid at -1
+        round11_validfrom_test.go:163: badger: the updated node at 0: k=3 ok=true, want the version valid from the explicit 0 (4)
+        round11_validfrom_test.go:163: badger: ByLabel(Z, ValidAt -1) lists 819083953880039424 = true, want false
+        round11_validfrom_test.go:163: badger: a relationship valid from the explicit 0 is valid at -1
+        round11_validfrom_test.go:163: graph: invalid time range: transaction-time pin 0 must be positive
+    --- FAIL: TestRound11ExplicitValidFromZero/tiered (0.01s)
+        round11_validfrom_test.go:163: tiered: a node valid from the explicit 0 is valid at -1
+        round11_validfrom_test.go:163: tiered: the updated node at 0: k=3 ok=true, want the version valid from the explicit 0 (4)
+        round11_validfrom_test.go:163: tiered: ByLabel(Z, ValidAt -1) lists 819083954171576320 = true, want false
+        round11_validfrom_test.go:163: tiered: a relationship valid from the explicit 0 is valid at -1
+        round11_validfrom_test.go:163: graph: invalid time range: transaction-time pin 0 must be positive
+    --- FAIL: TestRound11ExplicitValidFromZero/sharded (0.00s)
+        round11_validfrom_test.go:163: sharded: a node valid from the explicit 0 is valid at -1
+        round11_validfrom_test.go:163: sharded: the updated node at 0: k=3 ok=true, want the version valid from the explicit 0 (4)
+        round11_validfrom_test.go:163: sharded: ByLabel(Z, ValidAt -1) lists 819083954261524480 = true, want false
+        round11_validfrom_test.go:163: sharded: a relationship valid from the explicit 0 is valid at -1

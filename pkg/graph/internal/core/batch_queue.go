@@ -64,13 +64,13 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 	}
 
 	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}
 	// A generated ID: a first version. Re-checked at commit
 	// (stampQueuedUntimedStart) for a conversion in between.
-	if validFrom, err = b.g.untimedStart(validFrom, true); err != nil {
+	if validFrom, vfSet, err = b.g.claimedStart(validFrom, vfSet, true); err != nil {
 		return nil, err
 	}
 	txFromOverride, err = b.g.resolveBackfillTxFrom(txFromOverride)
@@ -132,10 +132,10 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 		// Execute so the recorded transaction time reflects when the batch
 		// actually commits, not when the node was queued).
 		temporal := &types.TemporalMetadata{
-			ValidFrom: validFrom,
 			ValidTo:   validTo,
 			CreatedAt: createdAt,
 		}
+		stampValidFrom(temporal, validFrom, vfSet)
 
 		var result *types.Node
 		if keepResults {
@@ -237,13 +237,13 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	}
 
 	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
 	if err != nil {
 		return nil, err
 	}
 	// A generated ID: a first version. Re-checked at commit
 	// (stampQueuedUntimedStart) for a conversion in between.
-	if validFrom, err = b.g.untimedStart(validFrom, true); err != nil {
+	if validFrom, vfSet, err = b.g.claimedStart(validFrom, vfSet, true); err != nil {
 		return nil, err
 	}
 	txFromOverride, err = b.g.resolveBackfillTxFrom(txFromOverride)
@@ -312,10 +312,10 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	// Build caller-provided temporal metadata (TxFrom is stamped in Execute
 	// — same reasoning as AddNode: TxFrom must reflect commit time).
 	rtm := &types.TemporalMetadata{
-		ValidFrom: validFrom,
 		ValidTo:   validTo,
 		CreatedAt: createdAt,
 	}
+	stampValidFrom(rtm, validFrom, vfSet)
 
 	b.rels = append(b.rels, pendingRel{
 		rel:             r,

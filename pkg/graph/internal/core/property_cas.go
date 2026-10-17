@@ -173,7 +173,7 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 	// current row. Clear it — property mutations accept no caller-supplied
 	// valid time, and an inherited ValidFrom would let this version cover
 	// the previous version's interval in historical queries.
-	tm.ValidFrom = 0
+	stampValidFrom(tm, 0, false)
 	tm.ValidTo = 0
 	tm.UpdatedAt = now
 
@@ -362,7 +362,7 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 	// current row. Clear it — property mutations accept no caller-supplied
 	// valid time, and an inherited ValidFrom would let this version cover
 	// the previous version's interval in historical queries.
-	tm.ValidFrom = 0
+	stampValidFrom(tm, 0, false)
 	tm.ValidTo = 0
 	tm.UpdatedAt = now
 	if ptm := prevState.Temporal(); ptm == nil {

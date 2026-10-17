@@ -456,6 +456,23 @@ func (n *Node) Temporal() *TemporalMetadata {
 // metadata at all (a zero ValidTo means open-ended). Prefer it over Temporal()
 // for bounds only: it returns values, so it allocates nothing on a frozen row,
 // where Temporal() copies.
+// ValidFromClaim returns the version's claimed valid start and whether it
+// makes one (TemporalMetadata.HasValidFrom: a non-zero ValidFrom, or 0 with
+// ValidFromZero), allocation-free like ValidRange. ok=false: no claim, the
+// untimed start applies.
+func (n *Node) ValidFromClaim() (from Instant, ok bool) {
+	if n == nil {
+		return 0, false
+	}
+	if n.meta != nil { // compact rows never carry ValidFromZero
+		return n.meta.validFrom, n.meta.validFrom != 0
+	}
+	if n.temporal == nil {
+		return 0, false
+	}
+	return n.temporal.ValidFrom, n.temporal.HasValidFrom()
+}
+
 func (n *Node) ValidRange() (from, to Instant, ok bool) {
 	if n == nil {
 		return 0, 0, false
@@ -498,7 +515,7 @@ func (n *Node) EffectiveValidFrom() Instant {
 	if n == nil {
 		return 0
 	}
-	if vf, _, _ := n.ValidRange(); vf != 0 {
+	if vf, ok := n.ValidFromClaim(); ok { // the claim, the explicit 0 included (round 11)
 		return vf
 	}
 	if tx, _, _ := n.TxStamps(); tx != 0 {

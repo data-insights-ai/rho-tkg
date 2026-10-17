@@ -75,6 +75,9 @@ type Core struct {
 	// propertyKeysQuery / relPropertyKeysQuery: the one-walk equality
 	// lookup over a value's forms (round 11), resolved by nativeCapability;
 	// nil = one store lookup per form.
+	// validFromZeroMarked: the store's format marker was raised for rows valid
+	// from the explicit 0 in this process (valid_from_claim.go).
+	validFromZeroMarked  atomic.Bool
 	propertyKeysQuery    storepkg.PropertyKeysLookupCapability
 	relPropertyKeysQuery storepkg.RelPropertyKeysLookupCapability
 	compositeQuery       storepkg.CompositePropertyIndexCapability
@@ -578,6 +581,17 @@ var (
 	// no change. The wrapped error names the conflicting stamp. It wraps
 	// ErrInvalidTxFrom, so errors.Is matches both.
 	ErrTxOrder = fmt.Errorf("graph: caller transaction instant does not follow the entity's recorded history (%w)", ErrInvalidTxFrom)
+
+	// ErrValidEndAtZero (round 11) refuses a write whose valid-time claim
+	// would end another version at the instant 0: a tkg_valid_from of
+	// types.ExplicitInstant(0) on an update (the version before it would
+	// end at 0), on an import of an ID with an earlier life, or a correction
+	// or excise whose span crosses 0 on an entity with a version valid from
+	// the explicit 0. A valid end of 0 is "open" in every stored row, segment
+	// and timeline, so no version can end at the instant 0 yet; a create
+	// valid from the explicit 0 is accepted. It wraps ErrInvalidTimeRange, so
+	// errors.Is matches both.
+	ErrValidEndAtZero = fmt.Errorf("graph: no version can end at the instant 0 (%w)", ErrInvalidTimeRange)
 
 	// ErrEntityDeleted is returned by Temporal().SetNodeVersionInterval /
 	// SetRelVersionInterval and their GraphTx, Batch and ingest Session twins

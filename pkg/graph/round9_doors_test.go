@@ -370,15 +370,15 @@ func TestRangeAnyVersionEarlierVersion(t *testing.T) {
 // round9Untimed is sigma-tkgd's untimed rule over an effective stream (the
 // oracle of UntimedFromMinusInf): an entity's first segment starts at -inf
 // where it starts at an untimed create.
-func round9Untimed(segFrom, rowFrom, txFrom types.Instant, version uint32, genesis func() (types.Instant, types.Instant, bool)) bool {
+func round9Untimed(segFrom, rowFrom types.Instant, rowClaimed bool, txFrom types.Instant, version uint32, genesis func() (vf, tx types.Instant, claimed, ok bool)) bool {
 	if version == 0 {
-		return rowFrom == 0 && segFrom == txFrom
+		return !rowClaimed && segFrom == txFrom
 	}
 	if rowFrom != segFrom {
 		return false
 	}
-	gvf, gtx, ok := genesis()
-	return ok && gvf == 0 && gtx == segFrom
+	_, gtx, gclaimed, ok := genesis()
+	return ok && !gclaimed && gtx == segFrom
 }
 
 // TestCountTimelineMatchesCountByLabelAt (R9-2): over random histories on
@@ -423,17 +423,18 @@ func TestCountTimelineMatchesCountByLabelAt(t *testing.T) {
 							last = s.Node.ID()
 							vf, _, _ := s.Node.ValidRange()
 							tx, _, _ := s.Node.TxStamps()
-							if round9Untimed(s.ValidFrom, vf, tx, s.Node.Version(), func() (types.Instant, types.Instant, bool) {
+							_, claimed := s.Node.ValidFromClaim()
+							if round9Untimed(s.ValidFrom, vf, claimed, tx, s.Node.Version(), func() (types.Instant, types.Instant, bool, bool) {
 								h, err := g.Nodes().History(s.Node.ID())
 								if err != nil {
-									return 0, 0, false
+									return 0, 0, false, false
 								}
 								for _, v := range h {
-									if v.Version() == 0 && v.Temporal() != nil {
-										return v.Temporal().ValidFrom, v.Temporal().TxFrom, true
+									if tm := v.Temporal(); v.Version() == 0 && tm != nil {
+										return tm.ValidFrom, tm.TxFrom, tm.HasValidFrom(), true
 									}
 								}
-								return 0, 0, false
+								return 0, 0, false, false
 							}) {
 								from = math.MinInt64
 							}
@@ -507,9 +508,12 @@ func TestCountTimelineMatchesCountByLabelAt(t *testing.T) {
 	})
 }
 
+// segOpen reports an open count segment (To 0 without ToZero, round 11).
+func segOpen(s storepkg.CountSegment) bool { return s.To == 0 && !s.ToZero }
+
 func timelineAt(segs []storepkg.CountSegment, v types.Instant) int64 {
 	for _, s := range segs {
-		if s.From <= v && (s.To == 0 || v < s.To) {
+		if s.From <= v && (segOpen(s) || v < s.To) {
 			return s.Count
 		}
 	}
@@ -519,12 +523,12 @@ func timelineAt(segs []storepkg.CountSegment, v types.Instant) int64 {
 func checkSegments(t *testing.T, segs []storepkg.CountSegment) {
 	t.Helper()
 	for i, s := range segs {
-		if s.Count <= 0 || (s.To != 0 && s.To <= s.From) {
+		if s.Count <= 0 || (!segOpen(s) && s.To <= s.From) {
 			t.Fatalf("segment %d %+v", i, s)
 		}
 		if i > 0 {
 			p := segs[i-1]
-			if p.To == 0 || p.To > s.From {
+			if segOpen(p) || p.To > s.From {
 				t.Fatalf("segments %d, %d overlap: %+v %+v", i-1, i, p, s)
 			}
 			if p.To == s.From && p.Count == s.Count {

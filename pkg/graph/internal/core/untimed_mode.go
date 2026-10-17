@@ -109,12 +109,12 @@ func (c *Core) precheckQueuedUntimedCreates(nodes []pendingNode, rels []pendingR
 		return nil
 	}
 	for i := range nodes {
-		if tm := nodes[i].temporal; tm != nil && tm.ValidFrom == 0 {
+		if tm := nodes[i].temporal; tm != nil && !tm.HasValidFrom() {
 			return c.checkUntimedComplete("create an untimed first version")
 		}
 	}
 	for i := range rels {
-		if tm := rels[i].temporal; tm != nil && tm.ValidFrom == 0 {
+		if tm := rels[i].temporal; tm != nil && !tm.HasValidFrom() {
 			return c.checkUntimedComplete("create an untimed first version")
 		}
 	}
@@ -127,7 +127,7 @@ func (c *Core) precheckQueuedUntimedCreates(nodes []pendingNode, rels []pendingR
 // the new mode. Reports whether it changed tm (its pre-encoded row is then
 // stale).
 func (c *Core) stampQueuedUntimedStart(tm *types.TemporalMetadata) bool {
-	if tm == nil || tm.ValidFrom != 0 {
+	if tm == nil || tm.HasValidFrom() {
 		return false
 	}
 	vf := c.untimedStartMode(0, true)
@@ -519,7 +519,7 @@ func dedupIDs[T ~int64](ids []T) []T {
 // untimedFirst reports whether row, the first row of its chain in write
 // order, is a first version without a valid-from.
 func untimedFirst(version uint32, tm *types.TemporalMetadata) bool {
-	return version == 0 && tm != nil && tm.ValidFrom == 0 && !tm.Void
+	return version == 0 && tm != nil && !tm.HasValidFrom() && !tm.Void
 }
 
 func (c *Core) stampNodeFirstVersion(id types.NodeID) error {

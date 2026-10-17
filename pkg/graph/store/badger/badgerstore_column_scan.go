@@ -119,6 +119,9 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 		if !window.filtered {
 			batch.IDs = append(batch.IDs, ids[start:end]...)
 			batch.Ordinals = append(batch.Ordinals, ords[start:end]...)
+			for ord := start; ord < end; ord++ {
+				batch.ValidFromZero = storecontract.AppendValidFromZero(batch.ValidFromZero, ord-start, validFromZeroAt(vf, eff, ord))
+			}
 			batch.ValidFrom = append(batch.ValidFrom, vf[start:end]...)
 			batch.ValidTo = append(batch.ValidTo, vt[start:end]...)
 			for c, v := range views {
@@ -133,6 +136,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 				}
 				batch.IDs = append(batch.IDs, ids[ord])
 				batch.Ordinals = append(batch.Ordinals, ords[ord])
+				batch.ValidFromZero = storecontract.AppendValidFromZero(batch.ValidFromZero, len(batch.ValidFrom), validFromZeroAt(vf, eff, ord))
 				batch.ValidFrom = append(batch.ValidFrom, vf[ord])
 				batch.ValidTo = append(batch.ValidTo, vt[ord])
 				for c, v := range views {
@@ -250,6 +254,15 @@ func appendFromView(b *storecontract.ColumnData, c int, v indexpkg.ColumnView, o
 	}
 }
 
+// validFromZeroAt reports that row ord of a column snapshot is valid from the
+// explicit instant 0 (round 11): its stored and its effective start are both
+// 0. An unset start (stored 0) resolves to a non-zero TxFrom, update or mint
+// instant, so a stored 0 with an effective 0 is the claim
+// (types.TemporalMetadata.ValidFromZero, which the snapshot does not carry).
+func validFromZeroAt(vf, eff []int64, ord int) bool {
+	return vf[ord] == 0 && eff[ord] == 0
+}
+
 func newColumnBatch(nCols int) *storecontract.ColumnBatch {
 	return &storecontract.ColumnBatch{
 		IDs:        make([]types.NodeID, 0, storecontract.ColumnScanBatchRows),
@@ -265,6 +278,7 @@ func resetColumnBatch(b *storecontract.ColumnBatch, nCols int) {
 	b.Ordinals = b.Ordinals[:0]
 	b.ValidFrom = b.ValidFrom[:0]
 	b.ValidTo = b.ValidTo[:0]
+	b.ValidFromZero = b.ValidFromZero[:0]
 	for c := range nCols {
 		b.Ints[c] = b.Ints[c][:0]
 		b.Flts[c] = b.Flts[c][:0]

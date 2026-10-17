@@ -67,7 +67,7 @@ func sweepCountTimeline(spans []timelineSpan, max int) ([]storepkg.CountSegment,
 			if out[open].Count == count {
 				continue // equal counts merge
 			}
-			out[open].To, open = at, -1
+			out[open].To, out[open].ToZero, open = at, at == 0, -1
 		}
 		if count > 0 {
 			if max > 0 && len(out) >= max {
@@ -87,9 +87,9 @@ func sweepCountTimeline(spans []timelineSpan, max int) ([]storepkg.CountSegment,
 // stamps that start on the closing row (version > 0, valid-from = segFrom),
 // untimed iff the genesis row has no valid-from and that TxFrom.
 // needGenesis reports that the genesis row decides.
-func untimedSegmentStart(segFrom, rowFrom, txFrom types.Instant, version uint32) (untimed, needGenesis bool) {
+func untimedSegmentStart(segFrom, rowFrom types.Instant, rowClaimed bool, txFrom types.Instant, version uint32) (untimed, needGenesis bool) {
 	if version == 0 {
-		return rowFrom == 0 && segFrom == txFrom, false
+		return !rowClaimed && segFrom == txFrom, false
 	}
 	return false, rowFrom == segFrom
 }
@@ -129,7 +129,7 @@ func (c *Core) countTimeline(key stateCutKey, opts storepkg.CountTimelineOpts) (
 
 // timelineRow is what the untimed rule reads of a row (Node, Relationship).
 type timelineRow interface {
-	ValidRange() (from, to types.Instant, ok bool)
+	ValidFromClaim() (from types.Instant, ok bool)
 	TxStamps() (txFrom, txTo, deletedAt types.Instant)
 	Version() uint32
 }
@@ -152,9 +152,9 @@ func (s *timelineSpanSet) add(id int64, first bool, from, to types.Instant, row 
 	if !s.untimed || !first {
 		return
 	}
-	vf, _, _ := row.ValidRange()
+	vf, claimed := row.ValidFromClaim()
 	tx, _, _ := row.TxStamps()
-	yes, ask := untimedSegmentStart(from, vf, tx, row.Version())
+	yes, ask := untimedSegmentStart(from, vf, claimed, tx, row.Version())
 	if yes {
 		s.spans[len(s.spans)-1].from = math.MinInt64
 	} else if ask {
@@ -375,8 +375,9 @@ func hullOf(segs []storepkg.CountSegment) storepkg.ValidHull {
 		return storepkg.ValidHull{Empty: true}
 	}
 	last := segs[len(segs)-1]
-	// A segment's To == 0 is an open end: no stored row starts or ends at
-	// the instant 0 (ValidFrom 0 is unset, ValidTo 0 open), so no member
-	// span, hence no sweep boundary, lies at 0.
-	return storepkg.ValidHull{From: segs[0].From, To: last.To, OpenEnd: last.To == 0}
+	// The last segment ends at the latest member end (no stored or derived
+	// end lies at the instant 0: ErrValidEndAtZero), or is open; only an
+	// inner segment can end at 0 (a member valid from the explicit 0,
+	// CountSegment.ToZero).
+	return storepkg.ValidHull{From: segs[0].From, To: last.To, OpenEnd: last.To == 0 && !last.ToZero}
 }

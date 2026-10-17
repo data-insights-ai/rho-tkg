@@ -297,33 +297,33 @@ func withBackfillTxFrom(props map[string]any, txFrom types.Instant) map[string]a
 // funnels the returned txFrom through c.resolveBackfillTxFrom, which enforces
 // Config.AllowTxBackfill and rejects it in production. A returned txFrom of 0
 // means "unset — stamp the system clock" (§4.1).
-func extractTemporal(props map[string]any) (validFrom, validTo, createdAt, txFrom types.Instant, filtered map[string]any, err error) {
+func extractTemporal(props map[string]any) (validFrom types.Instant, vfSet bool, validTo, createdAt, txFrom types.Instant, filtered map[string]any, err error) {
 	_, hasVF := props["tkg_valid_from"]
 	_, hasVT := props["tkg_valid_to"]
 	_, hasCA := props["tkg_created_at"]
 	_, hasTF := props["tkg_tx_from"]
 	if !hasVF && !hasVT && !hasCA && !hasTF {
-		return 0, 0, 0, 0, props, nil
+		return 0, false, 0, 0, 0, props, nil
 	}
 
-	validFrom, err = parseInstant(props["tkg_valid_from"], "tkg_valid_from")
+	validFrom, vfSet, err = parseValidFrom(props["tkg_valid_from"])
 	if err != nil {
-		return 0, 0, 0, 0, nil, err
+		return 0, false, 0, 0, 0, nil, err
 	}
 	validTo, err = parseInstant(props["tkg_valid_to"], "tkg_valid_to")
 	if err != nil {
-		return 0, 0, 0, 0, nil, err
+		return 0, false, 0, 0, 0, nil, err
 	}
 	createdAt, err = parseInstant(props["tkg_created_at"], "tkg_created_at")
 	if err != nil {
-		return 0, 0, 0, 0, nil, err
+		return 0, false, 0, 0, 0, nil, err
 	}
 	txFrom, err = parseInstant(props["tkg_tx_from"], "tkg_tx_from")
 	if err != nil {
-		return 0, 0, 0, 0, nil, err
+		return 0, false, 0, 0, 0, nil, err
 	}
-	if validFrom != 0 && validTo != 0 && validFrom >= validTo {
-		return 0, 0, 0, 0, nil, fmt.Errorf("%w: tkg_valid_from %d must be before tkg_valid_to %d",
+	if vfSet && validTo != 0 && validFrom >= validTo {
+		return 0, false, 0, 0, 0, nil, fmt.Errorf("%w: tkg_valid_from %d must be before tkg_valid_to %d",
 			ErrInvalidTimeRange, validFrom, validTo)
 	}
 
@@ -333,7 +333,7 @@ func extractTemporal(props map[string]any) (validFrom, validTo, createdAt, txFro
 			filtered[k] = v
 		}
 	}
-	return validFrom, validTo, createdAt, txFrom, filtered, nil
+	return validFrom, vfSet, validTo, createdAt, txFrom, filtered, nil
 }
 
 // extractTemporalTracked is the update-path mirror of extractTemporal. Returns
@@ -354,11 +354,11 @@ func extractTemporalTracked(props map[string]any) (updateTemporal, map[string]an
 		present:      true,
 	}
 	if hasVF {
-		v, err := parseInstant(props["tkg_valid_from"], "tkg_valid_from")
+		v, set, err := parseValidFrom(props["tkg_valid_from"])
 		if err != nil {
 			return updateTemporal{}, nil, err
 		}
-		tmp.validFrom = v
+		tmp.validFrom, tmp.validFromSet = v, set
 	}
 	if hasVT {
 		v, err := parseInstant(props["tkg_valid_to"], "tkg_valid_to")
@@ -367,7 +367,7 @@ func extractTemporalTracked(props map[string]any) (updateTemporal, map[string]an
 		}
 		tmp.validTo = v
 	}
-	if tmp.hasValidFrom && tmp.hasValidTo && tmp.validFrom != 0 && tmp.validTo != 0 && tmp.validFrom >= tmp.validTo {
+	if tmp.validFromSet && tmp.hasValidTo && tmp.validTo != 0 && tmp.validFrom >= tmp.validTo {
 		return updateTemporal{}, nil, fmt.Errorf("%w: tkg_valid_from %d must be before tkg_valid_to %d",
 			ErrInvalidTimeRange, tmp.validFrom, tmp.validTo)
 	}
@@ -381,12 +381,28 @@ func extractTemporalTracked(props map[string]any) (updateTemporal, map[string]an
 	return tmp, filtered, nil
 }
 
+// parseValidFrom converts a tkg_valid_from value and reports whether it is a
+// world-time claim (round 11): a types.ExplicitInstant always (the instant 0
+// included), any other value when non-zero; 0 or nil is "no claim".
+func parseValidFrom(v any) (types.Instant, bool, error) {
+	if e, ok := v.(types.ExplicitInstant); ok {
+		return types.Instant(e), true, nil
+	}
+	t, err := parseInstant(v, "tkg_valid_from")
+	return t, t != 0, err
+}
+
 // parseInstant converts a property value to types.Instant (Unix milliseconds).
+// A types.ExplicitInstant is refused (ErrInvalidTimeRange): it is a claim of a
+// valid start only (parseValidFrom), and 0 on the other keys means unset or
+// open.
 func parseInstant(v any, key string) (types.Instant, error) {
 	if v == nil {
 		return 0, nil
 	}
 	switch val := v.(type) {
+	case types.ExplicitInstant:
+		return 0, fmt.Errorf("%w: %s takes no types.ExplicitInstant (an explicit instant is a claim of tkg_valid_from only)", ErrInvalidTimeRange, key)
 	case types.Instant:
 		return val, nil
 	case int:

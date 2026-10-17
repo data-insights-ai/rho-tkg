@@ -182,6 +182,7 @@ type preparedNodeCreate struct {
 	signature                     []byte
 	authLevel                     uint8
 	validFrom, validTo, createdAt types.Instant
+	vfSet                         bool // validFrom is a claim (round 11)
 	txFromOverride                types.Instant
 	props                         types.OwnedPropertySlice
 }
@@ -194,11 +195,11 @@ func (c *Core) prepareNodeCreate(props map[string]any, pn *preparedNodeCreate) e
 	if err != nil {
 		return err
 	}
-	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	validFrom, vfSet, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
 	if err != nil {
 		return err
 	}
-	if validFrom, err = c.untimedStart(validFrom, true); err != nil { // a generated ID: a first version
+	if validFrom, vfSet, err = c.claimedStart(validFrom, vfSet, true); err != nil { // a generated ID: a first version
 		return err
 	}
 	txFromOverride, err = c.resolveBackfillTxFrom(txFromOverride)
@@ -214,7 +215,7 @@ func (c *Core) prepareNodeCreate(props map[string]any, pn *preparedNodeCreate) e
 	}
 	*pn = preparedNodeCreate{
 		authorID: authorID, signature: sig, authorizedBy: authorizedBy, authLevel: authLevel,
-		validFrom: validFrom, validTo: validTo, createdAt: createdAt,
+		validFrom: validFrom, vfSet: vfSet, validTo: validTo, createdAt: createdAt,
 		txFromOverride: txFromOverride, props: ps,
 	}
 	return nil
@@ -233,9 +234,7 @@ func (pn *preparedNodeCreate) stampTemporal(n *types.Node, now types.Instant) {
 		n.SetTemporal(tm)
 	}
 	tm.TxFrom = now
-	if pn.validFrom != 0 {
-		tm.ValidFrom = pn.validFrom
-	}
+	stampValidFrom(tm, pn.validFrom, pn.vfSet)
 	if pn.validTo != 0 {
 		tm.ValidTo = pn.validTo
 	}

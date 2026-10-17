@@ -90,10 +90,14 @@ type ForeignIncomingEdge struct {
 	ToHash     string // tkg_to_hash of the authoritative edge (verbatim)
 	PrevHash   string
 	ValidFrom  types.Instant
-	ValidTo    types.Instant
-	CreatedAt  types.Instant
-	TxFrom     types.Instant
-	Version    uint32
+	// ValidFromZero is the authoritative edge's
+	// types.TemporalMetadata.ValidFromZero (round 11): ValidFrom 0 is the
+	// instant 0, not "no claim". Only with ValidFrom == 0.
+	ValidFromZero bool
+	ValidTo       types.Instant
+	CreatedAt     types.Instant
+	TxFrom        types.Instant
+	Version       uint32
 	// AttestTx is required non-zero provenance (§4.1) for the attest-time-vs-
 	// commit-time gap. Like ForeignEndpoint.AttestTx, rho-tkg enforces NO
 	// staleness bound on it — any positive value passes Validate; bounding

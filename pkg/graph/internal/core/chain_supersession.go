@@ -43,8 +43,9 @@ import (
 // supersessionCaps returns, for a chain the resolver sorted for its own-bounds
 // arm (ascending by start, ties by version — sortNodeChainForResolve), the end
 // of each row's belief: the smallest start S >= start(row) of a replacing row
-// newer than it (0: none), aligned with chain; nil when no row of the chain
-// was replaced. start is the resolver's start key (nodeValidFrom /
+// newer than it (has false: none; a start of 0 is the instant 0, round 11),
+// aligned with chain; the zero superCaps when no row of the chain was
+// replaced. start is the resolver's start key (nodeValidFrom /
 // relValidFrom), so chain is sorted by it. The returned caps live in sc
 // (supersessionScratchPool): the caller reads them before releasing sc.
 //
@@ -56,7 +57,7 @@ import (
 // beliefs age, so the replacing rows newer than a row are a bottom run of the
 // stack, and the top of that run (found by binary search) has the smallest
 // start among them.
-func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.Instant, sc *supersessionScratch) []types.Instant {
+func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.Instant, sc *supersessionScratch) superCaps {
 	n := len(chain)
 	if cap(sc.inst) < 3*n {
 		sc.inst = make([]types.Instant, 3*n)
@@ -79,7 +80,7 @@ func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.In
 	}
 	sc.replaced = replaced
 	if len(replaced) == 0 {
-		return nil
+		return superCaps{}
 	}
 	byTx := func(a, b replacedRow) int {
 		if c := cmp.Compare(a.tx, b.tx); c != 0 {
@@ -90,7 +91,11 @@ func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.In
 	if !slices.IsSortedFunc(replaced, byTx) {
 		slices.SortFunc(replaced, byTx)
 	}
-	clear(caps)
+	if cap(sc.has) < n {
+		sc.has = make([]bool, n)
+	}
+	has := sc.has[:n]
+	clear(has)
 	// replacing: a row recorded at the TxTo of a lower version it replaced
 	// (replaced is sorted by TxTo, then version: the first match is the
 	// lowest version replaced at that instant).
@@ -180,7 +185,7 @@ func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.In
 			}
 			m := lo
 			if m > 0 {
-				caps[p] = starts[stack[m-1]]
+				caps[p], has[p] = starts[stack[m-1]], true
 				capped = true
 			}
 		}
@@ -188,9 +193,37 @@ func supersessionCaps[T storeutil.TemporalRow](chain []T, start func(T) types.In
 	}
 	sc.ints = stack
 	if !capped {
-		return nil
+		return superCaps{}
 	}
-	return caps
+	return superCaps{at: caps, has: has}
+}
+
+// superCaps are supersessionCaps' belief ends: at[i] where has[i]. The zero
+// value caps nothing.
+type superCaps struct {
+	at  []types.Instant
+	has []bool
+}
+
+// end caps row i's valid end vEnd (0 = open) at its belief end; empty reports
+// a row the cap ends at or before its start vStart (it covers nothing). The
+// emptiness is reported, not read from the returned end, because a cap can
+// be the instant 0 (a close row of a version valid from the explicit 0,
+// round 11) and an end of 0 reads as open. A cap of 0 above a negative start
+// would be an end at 0, which ErrValidEndAtZero keeps from being written (no
+// row of an entity valid from the explicit 0 spans 0).
+func (s superCaps) end(i int, vStart, vEnd types.Instant) (types.Instant, bool) {
+	if s.has == nil || !s.has[i] {
+		return vEnd, false
+	}
+	c := s.at[i]
+	if c <= vStart {
+		return vEnd, true
+	}
+	if vEnd == 0 || vEnd > c {
+		return c, false
+	}
+	return vEnd, false
 }
 
 // startsOf returns the starts supersessionCaps computed for its last chain of
@@ -204,6 +237,7 @@ type supersessionScratch struct {
 	ints     []int
 	versions []uint32
 	inst     []types.Instant
+	has      []bool
 }
 
 var supersessionScratchPool = sync.Pool{New: func() any { return new(supersessionScratch) }}
@@ -228,12 +262,4 @@ func putSupersessionScratch(sc *supersessionScratch) {
 type replacedRow struct {
 	tx      types.Instant
 	version uint32
-}
-
-// capEnd caps a valid end (0 = open) at cap (0 = none).
-func capEnd(vEnd, cap types.Instant) types.Instant {
-	if cap != 0 && (vEnd == 0 || vEnd > cap) {
-		return cap
-	}
-	return vEnd
 }
