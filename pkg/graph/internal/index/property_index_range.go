@@ -237,9 +237,10 @@ func (pi *PropertyIndex) purgeOrdered(id snowflake.ID) {
 // RangeNodeIDs returns the candidate node IDs whose numeric sort key lies
 // within [min, max] as a caller-owned slice. Bounds are widened by one ulp, so
 // callers must post-filter exactly (inclusivity is theirs too).
-// supported=false only when the index is nil or an Elements index.
+// supported=false where the index does not serve (serves): nil, Elements,
+// or being built.
 func (pi *PropertyIndex) RangeNodeIDs(min, max float64, inclMin, inclMax bool) (ids []types.NodeID, supported bool) {
-	if pi == nil || pi.elements {
+	if !pi.serves() {
 		return nil, false
 	}
 	if pi.numKeys.n == 0 {

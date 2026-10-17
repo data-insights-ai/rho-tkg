@@ -14,10 +14,10 @@ type RelPropertyIndexKey struct {
 }
 
 // RangeRelIDs is the rel mirror of RangeNodeIDs: over-selecting candidates, so
-// callers must post-filter exactly. supported=false only when the index is nil
-// or an Elements index.
+// callers must post-filter exactly. supported=false where the index does not
+// serve (serves): nil, Elements, or being built.
 func (pi *PropertyIndex) RangeRelIDs(min, max float64, inclMin, inclMax bool) (ids []types.RelID, supported bool) {
-	if pi == nil || pi.elements {
+	if !pi.serves() {
 		return nil, false
 	}
 	if pi.numKeys.n == 0 {

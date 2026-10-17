@@ -91,9 +91,11 @@ states absence by a flag (`ValidHull.Empty` / `OpenEnd`, `Present`), never by a 
   range and prefix walks (`Nodes().ForEachByLabelPropertyRangeOrdered` / `...Prefix`, the `Rels()` mirrors) and
   `RangeCardinality` answered from the entries a build had merged so far (a partial top-k, an `exact=true` count too
   short) on memory and badger, and through them on sharded and tiered; the equality counts, bounds, value pages and
-  value statistics already declined. One rule now, `index.PropertyIndex.serves` (a plain, built index): during a
-  build the walks return `ErrIndexNotFound` and the count declines, as documented. Test
-  `TestPropertyIndexDeclinesWhileBuilding`.
+  value statistics already declined. The unordered range doors (`Nodes().ForEachByLabelPropertyRange` on badger with
+  the index in RAM, `Rels().ForEachByTypePropertyRange` on memory) also read a partial index (found by the final
+  release review). One rule now, `index.PropertyIndex.serves` (a plain, built index), also in the range and prefix
+  candidate reads (`RangeNodeIDs`, `RangeRelIDs`, `PrefixNodeIDs`): during a build the walks and range doors return
+  `ErrIndexNotFound` and the count declines, as documented. Test `TestPropertyIndexDeclinesWhileBuilding`.
 
 ### Changed
 

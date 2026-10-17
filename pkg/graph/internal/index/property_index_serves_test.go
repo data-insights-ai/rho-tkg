@@ -42,12 +42,30 @@ func TestPropertyIndexDeclinesWhileBuilding(t *testing.T) {
 		if _, ok := pi.ValueStats(); ok {
 			t.Fatal("ValueStats answered while building")
 		}
+		if _, ok := pi.RangeNodeIDs(0, 10, true, true); ok {
+			t.Fatal("RangeNodeIDs answered while building")
+		}
+		if _, ok := pi.RangeRelIDs(0, 10, true, true); ok {
+			t.Fatal("RangeRelIDs answered while building")
+		}
+		if _, ok := pi.PrefixNodeIDs("a"); ok {
+			t.Fatal("PrefixNodeIDs answered while building")
+		}
 		pi.Mutated = nil
 		if ids, _, _, ok := pi.RangeOrderedPage(math.Inf(-1), math.Inf(1), false, RangeOrderedCursor{}, 10); !ok || len(ids) != 1 {
 			t.Fatalf("built: RangeOrderedPage %v %v", ids, ok)
 		}
 		if ids, _, _, ok := pi.PrefixOrderedPage("a", false, StrOrderedCursor{}, 10); !ok || len(ids) != 1 {
 			t.Fatalf("built: PrefixOrderedPage %v %v", ids, ok)
+		}
+		if ids, ok := pi.RangeNodeIDs(0, 10, true, true); !ok || len(ids) != 1 {
+			t.Fatalf("built: RangeNodeIDs %v %v", ids, ok)
+		}
+		if ids, ok := pi.RangeRelIDs(0, 10, true, true); !ok || len(ids) != 1 {
+			t.Fatalf("built: RangeRelIDs %v %v", ids, ok)
+		}
+		if ids, ok := pi.PrefixNodeIDs("a"); !ok || len(ids) != 1 {
+			t.Fatalf("built: PrefixNodeIDs %v %v", ids, ok)
 		}
 		if n, ok := pi.RangeCardinality(0, 10, true, true); !ok || n != 1 {
 			t.Fatalf("built: RangeCardinality %d %v", n, ok)

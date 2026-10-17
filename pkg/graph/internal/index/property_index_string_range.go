@@ -66,9 +66,10 @@ func (pi *PropertyIndex) strPostings(buf *[]byte, s string) *IDPostings {
 
 // PrefixNodeIDs returns the node IDs whose string value begins with prefix, as
 // a caller-owned unordered slice (empty prefix matches all strings).
-// supported=false only when the index is nil or an Elements index.
+// supported=false where the index does not serve (serves): nil, Elements,
+// or being built.
 func (pi *PropertyIndex) PrefixNodeIDs(prefix string) (ids []types.NodeID, supported bool) {
-	if pi == nil || pi.elements {
+	if !pi.serves() {
 		return nil, false
 	}
 	if pi.strKeys.n == 0 {
