@@ -1,0 +1,12 @@
+--- FAIL: TestDeleteAheadOfClock4 (0.00s)
+    --- FAIL: TestDeleteAheadOfClock4/boundary/rel=false (0.00s)
+        delete_ahead4_test.go:127: tombstone stamps ahead of the clock 1792233393684: DeletedAt 1792233393685 TxTo 1792233393685 TxFrom 1792233393682
+    --- FAIL: TestDeleteAheadOfClock4/far_future/rel=false (0.00s)
+        delete_ahead4_test.go:127: tombstone stamps ahead of the clock 1792233393684: DeletedAt 1793233393683 TxTo 1793233393683 TxFrom 1792233393682
+        delete_ahead4_test.go:151: NodeAtTx(1793233394682, post-delete pin) = version 0, want absent
+    --- FAIL: TestDeleteAheadOfClock4/far_future/rel=true (0.00s)
+        delete_ahead4_test.go:127: tombstone stamps ahead of the clock 1792233393687: DeletedAt 1793233393684 TxTo 1793233393684 TxFrom 1792233393684
+        delete_ahead4_test.go:148: RelAtTx(1793233394683, post-delete pin) = version 0, want absent
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.004s
+FAIL

@@ -183,7 +183,17 @@ test passes.
   ValidFrom is in the future stamps `DeletedAt/TxTo = ValidFrom + 1` without advancing the floor
   (`TestReImportDoesNotAdvanceTheClock` pins the clock), contradicting "every committed entity has
   TxFrom <= NowTx()" (`txtime.go` ~L182) for the re-import after it. The Update/CloseVersion half
-  is closed by item 77 (fixed on main, see Closed table).
+  is closed by item 77 (fixed on main, see Closed table). Delete half REPRODUCED 2026-10-17:
+  `TestDeleteAheadOfClock4` (parked as `tasks/evidence/4/delete_ahead4_test.go.txt`, branch worktree-agent-a0d52d5298e44faee, red output `tasks/evidence/4/red.txt`; a pin
+  taken after a far-future delete still answers the entity). The 77 mirror (tx instant = clock,
+  `txAfter`) is refused by the store: the tombstone's ValidTo is the delete instant, now below
+  ValidFrom (`store/invariants.go:292`, `tasks/evidence/4/clock-stamp-attempt.txt`); keeping ValidTo =
+  ValidFrom + 1 breaks the "ValidTo == DeletedAt" delete marker read by the pinned normalizers
+  (`core/txtime.go:502`, `memory/memorystore_history.go:1226`, `storeutil/asof_select.go:169`,
+  `index/property_tx_members_window.go:87`). The excise's void row cannot carry it either: the row
+  that ends the life must carry DeletedAt/TxTo, and a void row with deleted_at is rejected
+  (`storeutil/wire.go:172`, `types/temporal.go:71` "never a tombstone"; the excise refuses a deleted
+  entity, `core/excise.go:49`). Decision needed: tombstone shape for a delete before the start.
 - **(MEDIUM?) As-of vs point resolver order.** `SelectAsOf` picks the newest candidate by
   version; the point resolver breaks overlaps by (TxFrom, version). After a cascade whose rows
   carry a lower TxFrom than a later-version Update, `NodeAsOf` and `NodeAtTx` can pick

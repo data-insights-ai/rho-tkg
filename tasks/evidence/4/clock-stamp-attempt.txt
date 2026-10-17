@@ -1,0 +1,10 @@
+--- FAIL: TestDeleteAheadOfClock4 (0.00s)
+    --- FAIL: TestDeleteAheadOfClock4/boundary/rel=false (0.00s)
+        delete_ahead4_test.go:100: Delete: graph: invalid store mutation: node 819462302647877632 valid_from 1792233605843 must be before valid_to 1792233605843
+    --- FAIL: TestDeleteAheadOfClock4/far_future/rel=false (0.00s)
+        delete_ahead4_test.go:100: Delete: graph: invalid store mutation: node 819462302654005248 valid_from 1793233605841 must be before valid_to 1792233605843
+    --- FAIL: TestDeleteAheadOfClock4/far_future/rel=true (0.00s)
+        delete_ahead4_test.go:100: Delete: graph: invalid store mutation: relationship 819462302655874048 valid_from 1793233605842 must be before valid_to 1792233605845
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.005s
+FAIL

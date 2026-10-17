@@ -1,0 +1,173 @@
+package core
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// Backlog 4 (delete half of "future transaction time from validInstantAfter"):
+// a plain Delete of a row whose explicit ValidFrom lies in the future stamped
+// DeletedAt / TxTo = ValidFrom + 1, ahead of the commit clock, against "every
+// committed entity has TxFrom <= NowTx()" (txtime.go). The tombstone's
+// transaction stamps now come from the clock; the future start stays the row's
+// ValidFrom. Memory backend, node and relationship, frozen wall clock: the
+// start just past the clock (boundary), far in the future, and in the past
+// (unchanged behaviour). The answers of NodeAtTx / RelAtTx and NodeAsOf /
+// RelAsOf at a pin taken before the delete must not change by the delete, and
+// a pin after it sees the entity nowhere.
+func TestDeleteAheadOfClock4(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name string
+		from func(clock types.Instant) types.Instant
+	}{
+		{"boundary", func(c types.Instant) types.Instant { return c + 2 }},
+		{"far future", func(c types.Instant) types.Instant { return c + 1_000_000_000 }},
+		{"past", func(types.Instant) types.Instant { return 1000 }},
+	} {
+		for _, rel := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/rel=%v", tc.name, rel), func(t *testing.T) {
+				g, err := New(Config{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = g.Close() }()
+				wall := time.Now().Add(time.Second)
+				g.SetClockForTest(t, func() time.Time { return wall })
+
+				var nid types.NodeID
+				var rid types.RelID
+				if rel {
+					s, err := g.Nodes.Add(ctx, []string{"A"}, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					d, err := g.Nodes.Add(ctx, []string{"A"}, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					r, err := g.Rels.Add(ctx, "R", s, d, map[string]any{"tkg_valid_from": int64(tc.from(g.peekNow()))})
+					if err != nil {
+						t.Fatal(err)
+					}
+					rid = r.ID()
+				} else {
+					n, err := g.Nodes.Add(ctx, []string{"A"}, map[string]any{"tkg_valid_from": int64(tc.from(g.peekNow()))})
+					if err != nil {
+						t.Fatal(err)
+					}
+					nid = n.ID()
+				}
+				f := validFromOf(t, g, rel, nid, rid)
+
+				pin, err := g.Temporal.NowTx()
+				if err != nil {
+					t.Fatal(err)
+				}
+				probes := []types.Instant{f - 1, f, f + 1, f + 1000}
+				answers := func(at types.Instant) []string {
+					var out []string
+					for _, v := range probes {
+						if rel {
+							r, err := g.Temporal.RelAtTx(rid, v, at)
+							out = append(out, fmt.Sprintf("AtTx(%d)=%v,%v", v, ver(r), err != nil))
+						} else {
+							n, err := g.Temporal.NodeAtTx(nid, v, at)
+							out = append(out, fmt.Sprintf("AtTx(%d)=%v,%v", v, ver(n), err != nil))
+						}
+					}
+					if rel {
+						r, err := g.Temporal.RelAsOf(rid, at)
+						out = append(out, fmt.Sprintf("AsOf=%v,%v", ver(r), err != nil))
+					} else {
+						n, err := g.Temporal.NodeAsOf(nid, at)
+						out = append(out, fmt.Sprintf("AsOf=%v,%v", ver(n), err != nil))
+					}
+					return out
+				}
+				before := answers(pin)
+
+				if rel {
+					err = g.Rels.Delete(ctx, rid)
+				} else {
+					err = g.Nodes.Delete(ctx, nid)
+				}
+				if err != nil {
+					t.Fatalf("Delete: %v", err)
+				}
+
+				clock := g.peekNow()
+				var hist []*types.TemporalMetadata
+				if rel {
+					h, err := g.Rels.History(rid)
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, r := range h {
+						hist = append(hist, r.Temporal())
+					}
+				} else {
+					h, err := g.Nodes.History(nid)
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, n := range h {
+						hist = append(hist, n.Temporal())
+					}
+				}
+				if len(hist) == 0 {
+					t.Fatal("no tombstone row")
+				}
+				tomb := hist[len(hist)-1]
+				if tomb.DeletedAt > clock || tomb.TxTo > clock || tomb.TxFrom > clock {
+					t.Errorf("tombstone stamps ahead of the clock %d: DeletedAt %d TxTo %d TxFrom %d",
+						clock, tomb.DeletedAt, tomb.TxTo, tomb.TxFrom)
+				}
+				if tomb.TxTo < tomb.TxFrom {
+					t.Errorf("tombstone TxTo %d before TxFrom %d", tomb.TxTo, tomb.TxFrom)
+				}
+				if tomb.ValidFrom != f {
+					t.Errorf("tombstone ValidFrom = %d, want the recorded start %d", tomb.ValidFrom, f)
+				}
+				if after := answers(pin); fmt.Sprint(after) != fmt.Sprint(before) {
+					t.Errorf("answers at the pre-delete pin changed:\nbefore %v\nafter  %v", before, after)
+				}
+				post, err := g.Temporal.NowTx()
+				if err != nil {
+					t.Fatal(err)
+				}
+				// After the delete is recorded, no valid instant past both the
+				// start and the delete answers the entity.
+				late := max(f, post) + 1000
+				if rel {
+					if r, err := g.Temporal.RelAtTx(rid, late, post); err == nil {
+						t.Errorf("RelAtTx(%d, post-delete pin) = version %d, want absent", late, r.Version())
+					}
+				} else if n, err := g.Temporal.NodeAtTx(nid, late, post); err == nil {
+					t.Errorf("NodeAtTx(%d, post-delete pin) = version %d, want absent", late, n.Version())
+				}
+			})
+		}
+	}
+}
+
+// validFromOf is the stored ValidFrom of the entity's current row.
+func validFromOf(t *testing.T, g *Core, rel bool, nid types.NodeID, rid types.RelID) types.Instant {
+	t.Helper()
+	if rel {
+		r, err := g.getCurrentRelationship(rid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Temporal().ValidFrom
+	}
+	n, err := g.getCurrentNode(nid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n.Temporal().ValidFrom
+}
