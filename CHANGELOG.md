@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-sigma-tkgd round 11 (ledger row 65; built by sigma under Markus's decision, not released: the version is the
+sigma-tkgd round 11 (ledger row 68; built by sigma under Markus's decision, not released: the version is the
 releaser's call). New store capabilities and write and read options, all additive.
 
 ### Added
@@ -29,7 +29,11 @@ releaser's call). New store capabilities and write and read options, all additiv
 - **The instant 0 as a valid start** (round 11 item 2). `tkg_valid_from = types.ExplicitInstant(0)` on a create
   claims the instant 0 (a plain 0 keeps meaning "no claim", unchanged). The row stores
   `types.TemporalMetadata.ValidFromZero`, read through `TemporalMetadata.HasValidFrom` and the allocation-free
-  `Node.ValidFromClaim` / `Relationship.ValidFromClaim` by every door (the start rule `EntityValidFrom`, the version
+  `Node.ValidFromClaim` / `Relationship.ValidFromClaim` by every door, v4.61.0's one start rule included
+  (`TemporalMetadata.EffectiveValidFrom`, `Node` / `Relationship.EffectiveValidFrom()` answer 0 for such a row; a
+  plain 0 keeps its untimed start); an open append at the head of such an entity is planned from the current row
+  (v4.61.0's O(1) path, allocations flat in the chain) and writes the rows the history read writes (twin test on
+  memory, badger, sharded, tiered) (the start rule `EntityValidFrom`, the version
   bounds, the untimed mode, the count timeline, the store push-down, the column scans). Wire key `vz` at row format 7
   (`storeutil.ValidFromZeroWireFormatVersion`), store marker 9 (`ValidFromZeroStoreFormatVersion`, raised before the
   first such row: a release before it refuses the store). A valid END of 0 still means open everywhere, so only an

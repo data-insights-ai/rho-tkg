@@ -62,3 +62,21 @@ KILLED item4: node page reads pin 0 unpinned: round11_pins_test.go:133: pin 0: N
 KILLED item4: value classes read pin 0 unpinned: round10_doors_test.go:1099: pin 0: {Numeric:5 NaN:0 String:0 Bool:0 Other:5 Missing:0} true <nil>, want zero counts, exact
 KILLED item4: rel timeline reads pin 0 unpinned: round11_pins_test.go:133: pin 0: RelEffectiveTimeline: graph: invalid time range: transaction-time pin 0 reached the effective body unmapped, want the empty state
 KILLED item4: batched rel door refuses negative pins: round11_pins_test.go:147: RelsAtTxByIDs at pin -5: [] graph: invalid time range: transaction-time pin 0 (a pin is required; a pin at the instant 0: RelsAtOptsByIDs with TxAtSet), want one nil
+# review fixes (Fable pass 1) and round 11 on v4.61.0's start rule
+KILLED review: replica refuses the valid_from_zero entry: round11_review_test.go:67: replica apply after an ExplicitInstant(0) create: graph: apply change LSN 2: graph: apply: unknown replicated meta key "valid_from_zero": graph: corrupt wire data
+KILLED review: Reset keeps the marker flag: round11_review_test.go:129: after Reset and a new explicit-0 row: a reader of markers up to 7 opening the store: <nil>, want refused=true
+KILLED review: import does not raise: round11_review_test.go:161: import target holding an explicit-0 row: a reader of markers up to 7 opening the store: <nil>, want refused=true
+KILLED review: apply of a row does not raise (merge): round11_review_test.go:228: merge target holding an explicit-0 row: a reader of markers up to 7 opening the store: <nil>, want refused=true
+KILLED review: foreign stub does not raise: round11_review_test.go:254: a store holding a foreign stub valid from the explicit 0: a reader of markers up to 7 opened the store: <nil>, want ErrWireFormatVersionUnsupported
+KILLED review: foreign Validate accepts the marker with a non-zero valid-from: round11_review_test.go:412: foreign edge with the marker and valid_from 5: <nil>, want ErrInvalidForeignIncoming
+KILLED review: dry run ignores ValidFromSet: round11_review_test.go:353: dry run of the claim at 0: [] (<nil>), want the create's ErrRelBeforeStartNode
+KILLED review: shadow answers the raw 0: round11_review_test.go:386: shadow tkg_valid_from of the claim: 0 true, want ExplicitInstant(0)
+KILLED review: ValidFromClaimed reads the marker away: round11_review_test.go:74: replica row: StartsAtZero = false, want the claim
+KILLED review: Node.StartsAtZero any claim: round11_review_test.go:496: AddNodes: claims true / true, want true / false
+KILLED v4.61: TemporalMetadata.EffectiveValidFrom drops the claim at 0: round11_append_test.go:91: explicit 0: node TemporalMetadata.EffectiveValidFrom 1792229233170, want 0
+KILLED v4.61: Node.EffectiveValidFrom drops the claim at 0: round11_append_test.go:91: explicit 0: node EffectiveValidFrom 1792229244080, want 0 (timeline starts at 0)
+KILLED v4.61: Relationship.EffectiveValidFrom drops the claim at 0: round11_append_test.go:91: explicit 0: rel EffectiveValidFrom 1792229255284, want 0 (timeline starts at 0)
+KILLED item1: node keys door not resolved (per-form lookups) [with the core package: deterministic]: round11_seek_internal_test.go:193: ByLabelAndProperty: 10 store lookups and 0 sidecar enumerations for one seek of 1000, want 1 and 0
+KILLED item1: rel keys door not resolved (per-form lookups) [with the core package: deterministic]: round11_seek_internal_test.go:193: ByTypeAndProperty: 10 store lookups and 0 sidecar enumerations for one seek of 1000, want 1 and 0
+KILLED item1: node sidecar keys door not resolved (per-key enumerations) [with the core package: deterministic]: round11_seek_internal_test.go:193: ByLabelAndProperty TxPin: 1 store lookups and 10 sidecar enumerations for one seek of 1000, want 1 and 1
+KILLED item1: rel sidecar keys door not resolved [with the core package: deterministic]: round11_seek_internal_test.go:193: ByTypeAndProperty TxPin: 1 store lookups and 10 sidecar enumerations for one seek of 1000, want 1 and 1

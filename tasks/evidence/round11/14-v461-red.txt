@@ -1,0 +1,43 @@
+# red: the rebased tree (round 11 on v4.61.0) with v4.61.0's start rule as released (ValidFrom != 0, ValidRange) in TemporalMetadata/Node/Relationship.EffectiveValidFrom
+--- FAIL: TestRound11EffectiveValidFromAtZero (0.03s)
+    --- FAIL: TestRound11EffectiveValidFromAtZero/memory/mode=1 (0.00s)
+        round11_append_test.go:91: explicit 0: node EffectiveValidFrom 1792229067087, want 0 (timeline starts at 0)
+        round11_append_test.go:91: explicit 0: node TemporalMetadata.EffectiveValidFrom 1792229067087, want 0
+        round11_append_test.go:91: explicit 0: rel EffectiveValidFrom 1792229067089, want 0 (timeline starts at 0)
+        round11_append_test.go:94: graph: invalid time range: tkg_valid_to 100 must be after node valid-from 1792229067087
+    --- FAIL: TestRound11EffectiveValidFromAtZero/memory/mode=2 (0.00s)
+        round11_append_test.go:91: explicit 0: node EffectiveValidFrom 1792229067087, want 0 (timeline starts at 0)
+        round11_append_test.go:91: explicit 0: node TemporalMetadata.EffectiveValidFrom 1792229067087, want 0
+        round11_append_test.go:91: explicit 0: rel EffectiveValidFrom 1792229067089, want 0 (timeline starts at 0)
+        round11_append_test.go:94: graph: invalid time range: tkg_valid_to 100 must be after node valid-from 1792229067087
+    --- FAIL: TestRound11EffectiveValidFromAtZero/badger/mode=1 (0.00s)
+        round11_append_test.go:91: explicit 0: node EffectiveValidFrom 1792229067089, want 0 (timeline starts at 0)
+        round11_append_test.go:91: explicit 0: node TemporalMetadata.EffectiveValidFrom 1792229067089, want 0
+        round11_append_test.go:91: explicit 0: rel EffectiveValidFrom 1792229067091, want 0 (timeline starts at 0)
+        round11_append_test.go:94: graph: invalid time range: tkg_valid_to 100 must be after node valid-from 1792229067089
+    --- FAIL: TestRound11EffectiveValidFromAtZero/badger/mode=2 (0.00s)
+        round11_append_test.go:91: explicit 0: node EffectiveValidFrom 1792229067090, want 0 (timeline starts at 0)
+        round11_append_test.go:91: explicit 0: node TemporalMetadata.EffectiveValidFrom 1792229067090, want 0
+        round11_append_test.go:91: explicit 0: rel EffectiveValidFrom 1792229067092, want 0 (timeline starts at 0)
+        round11_append_test.go:94: graph: invalid time range: tkg_valid_to 100 must be after node valid-from 1792229067090
+    --- FAIL: TestRound11EffectiveValidFromAtZero/sharded/mode=1 (0.01s)
+        round11_append_test.go:91: explicit 0: node EffectiveValidFrom 1792229067096, want 0 (timeline starts at 0)
+        round11_append_test.go:91: explicit 0: node TemporalMetadata.EffectiveValidFrom 1792229067096, want 0
+        round11_append_test.go:91: explicit 0: rel EffectiveValidFrom 1792229067098, want 0 (timeline starts at 0)
+        round11_append_test.go:94: graph: invalid time range: tkg_valid_to 100 must be after node valid-from 1792229067096
+    --- FAIL: TestRound11EffectiveValidFromAtZero/sharded/mode=2 (0.00s)
+        round11_append_test.go:91: explicit 0: node EffectiveValidFrom 1792229067098, want 0 (timeline starts at 0)
+        round11_append_test.go:91: explicit 0: node TemporalMetadata.EffectiveValidFrom 1792229067098, want 0
+        round11_append_test.go:91: explicit 0: rel EffectiveValidFrom 1792229067100, want 0 (timeline starts at 0)
+--- FAIL: TestRound11ExplicitValidFromZero (0.06s)
+    --- FAIL: TestRound11ExplicitValidFromZero/memory (0.01s)
+        round11_validfrom_test.go:224: memory: ByLabel(Z, ValidAt 0) lists 819313761699889152 = false, want true
+        round11_validfrom_test.go:224: memory: current-rows timeline with the untimed option: the explicit-0 member does not start at 0 ([{From:-9223372036854775808 To:-100 Count:1 ToZero:false} {From:-100 To:1792229071732 Count:2 ToZero:false} {From:1792229071732 To:0 Count:3 ToZero:false}])
+        round11_validfrom_test.go:225: memory: close after a correction: graph: invalid time range: close time 100 must be after node valid-from 1792229071746
+    --- FAIL: TestRound11ExplicitValidFromZero/badger (0.01s)
+        round11_validfrom_test.go:224: badger: ByLabel(Z, ValidAt 0) lists 819313762012758016 = false, want true
+        round11_validfrom_test.go:224: badger: current-rows timeline with the untimed option: the explicit-0 member does not start at 0 ([{From:-9223372036854775808 To:-100 Count:1 ToZero:false} {From:-100 To:1792229071741 Count:2 ToZero:false} {From:1792229071741 To:0 Count:3 ToZero:false}])
+        round11_validfrom_test.go:225: badger: close after a correction: graph: invalid time range: close time 100 must be after node valid-from 1792229071755
+    --- FAIL: TestRound11ExplicitValidFromZero/tiered (0.01s)
+        round11_validfrom_test.go:224: tiered: ByLabel(Z, ValidAt 0) lists 819313762360360960 = false, want true
+        round11_validfrom_test.go:224: tiered: current-rows timeline with the untimed option: the explicit-0 member does not start at 0 ([{From:-9223372036854775808 To:-100 Count:1 ToZero:false} {From:-100 To:1792229071752 Count:2 ToZero:false} {From:1792229071752 To:0 Count:3 ToZero:false}])

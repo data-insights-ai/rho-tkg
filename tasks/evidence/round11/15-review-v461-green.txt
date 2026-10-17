@@ -1,0 +1,23 @@
+# green: round 11 on v4.61.0 (review fixes, start rule, O(1) append)
+--- PASS: TestRound11ReplicaAppliesValidFromZero (0.00s)
+--- PASS: TestRound11MarkerAfterResetAndImport (0.26s)
+--- PASS: TestRound11CloseAtZeroTimelines (0.02s)
+--- PASS: TestRound11DryRunClaimAtZero (0.01s)
+--- PASS: TestRound11ShadowAndForeignPresence (0.00s)
+--- PASS: TestRound11RefusedAtZeroParity (0.01s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.717s
+    cascade_append_test.go:113: allocs/append 30.1 / 29.4 / 30.1, ns/append 25081 / 6329 / 8794 at 1 / 100 / 1,000 versions
+    cascade_append_test.go:113: allocs/append 28.2 / 27.4 / 28.2, ns/append 11892 / 5748 / 4542 at 1 / 100 / 1,000 versions
+    cascade_append_test.go:113: allocs/append 48.4 / 45.5 / 46.6, ns/append 18477 / 12673 / 11369 at 1 / 100 / 1,000 versions
+    cascade_append_test.go:113: allocs/append 49.4 / 46.9 / 47.6, ns/append 14135 / 13815 / 6577 at 1 / 100 / 1,000 versions
+--- PASS: TestCascadeAppend67_AllocsFlat (0.05s)
+--- PASS: TestCascadeAppend67_Twin (2.30s)
+--- PASS: TestCurrentRowEffectiveValidFrom67 (0.03s)
+--- PASS: TestRound11EffectiveValidFromAtZero (0.02s)
+--- PASS: TestRound11AppendTwinAtZero (0.08s)
+    round11_append_test.go:261: allocs/append plain 30.1 / 30.2, explicit 0 25.1 / 25.1 at 1 / 1,000 versions
+    round11_append_test.go:261: allocs/append plain 28.1 / 28.2, explicit 0 23.1 / 23.2 at 1 / 1,000 versions
+    round11_append_test.go:261: allocs/append plain 48.4 / 46.6, explicit 0 48.4 / 46.3 at 1 / 1,000 versions
+    round11_append_test.go:261: allocs/append plain 49.4 / 47.6, explicit 0 49.1 / 47.3 at 1 / 1,000 versions
+--- PASS: TestRound11AppendAllocsFlatAtZero (0.12s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	3.425s

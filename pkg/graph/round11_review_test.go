@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"testing"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	constraintspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -81,8 +83,8 @@ func TestRound11ReplicaAppliesValidFromZero(t *testing.T) {
 // TestRound11MarkerAfterResetAndImport: marker 8 is raised by every door that
 // writes such a row, not once per process: after Admin().Reset() the next
 // explicit-0 create raises it again, and an import of an export holding such
-// a row raises it on the target (a reader of markers up to 7 refuses both
-// stores). Positive control: a store that never held such a row opens.
+// a row raises it on the target, as do a delta merge and a foreign stub (a
+// reader of markers up to 7 refuses each store). Positive control: a store that never held such a row opens.
 func TestRound11MarkerAfterResetAndImport(t *testing.T) {
 	ctx := context.Background()
 	zero := map[string]any{types.ShadowValidFrom: types.ExplicitInstant(0)}
@@ -157,6 +159,99 @@ func TestRound11MarkerAfterResetAndImport(t *testing.T) {
 			t.Fatal(err)
 		}
 		refusedBy7(t, dir, "import target holding an explicit-0 row", true)
+	})
+
+	openSharded := func(t *testing.T, dir string) *graphpkg.Graph {
+		t.Helper()
+		st, err := sharded.New(sharded.Config{Dir: dir, BaseSlot: 0, SlotCount: 2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 0, Store: st})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return g
+	}
+	refusedBy7Sharded := func(t *testing.T, dir, what string) {
+		t.Helper()
+		restore := badger.SetMaxReadableStoreFormatVersionForTest(7)
+		defer restore()
+		if err := r11OpenDurable("sharded", dir); !errors.Is(err, storepkg.ErrWireFormatVersionUnsupported) {
+			t.Errorf("%s: a reader of markers up to 7 opened the store: %v, want ErrWireFormatVersionUnsupported", what, err)
+		}
+	}
+
+	t.Run("merge", func(t *testing.T) {
+		src, err := graphpkg.New(graphpkg.Config{Store: memory.New(memory.WithChangeLog()), ChangeLog: true, SnowflakeNodeID: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer src.Close()
+		if _, err := src.Nodes().Add(ctx, []string{"Ref"}, nil); err != nil {
+			t.Fatal(err)
+		}
+		var full bytes.Buffer
+		if err := src.IO().Export(&full); err != nil {
+			t.Fatal(err)
+		}
+		base, err := tkgio.HeaderOf(bytes.NewReader(full.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := t.TempDir()
+		target := openBadger(t, dir, graphpkg.Config{SnowflakeNodeID: 2})
+		if err := target.IO().Import(bytes.NewReader(full.Bytes()), tkgio.ImportOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		n, err := src.Nodes().Add(ctx, []string{"Ref"}, zero)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var delta bytes.Buffer
+		if err := src.IO().ExportSince(&delta, base.To); err != nil {
+			t.Fatal(err)
+		}
+		if err := target.IO().ImportMerge(bytes.NewReader(delta.Bytes()), tkgio.MergeOptions{ExpectBase: base.To}); err != nil {
+			t.Fatalf("merge of a delta holding an explicit-0 row: %v", err)
+		}
+		got, err := target.Nodes().Get(ctx, n.ID())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.StartsAtZero() {
+			t.Errorf("merged row lost the claim")
+		}
+		if err := target.Close(); err != nil {
+			t.Fatal(err)
+		}
+		refusedBy7(t, dir, "merge target holding an explicit-0 row", true)
+	})
+
+	t.Run("foreign stub", func(t *testing.T) {
+		dir := t.TempDir()
+		g := openSharded(t, dir)
+		end, err := g.Nodes().Add(ctx, []string{"Person"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		edge := storepkg.ForeignIncomingEdge{
+			RelID: types.RelID(snowflake.ID(700003)), TypeName: "KNOWS",
+			StartID: types.NodeID(snowflake.ID(700001)), EndID: end.ID(),
+			FromHash: "aa11", ToHash: "bb22", TxFrom: 1234, Version: 0, AttestTx: 1,
+			ValidFromZero: true,
+		}
+		if err := g.Rels().RecordForeignIncoming(ctx, edge); err != nil {
+			t.Fatal(err)
+		}
+		in, err := g.Rels().Incoming(end.ID(), "KNOWS")
+		if err != nil || len(in) != 1 || !in[0].StartsAtZero() {
+			t.Fatalf("stub: %v %v, want one row valid from the explicit 0", in, err)
+		}
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+		refusedBy7Sharded(t, dir, "a store holding a foreign stub valid from the explicit 0")
 	})
 
 	t.Run("control", func(t *testing.T) {
