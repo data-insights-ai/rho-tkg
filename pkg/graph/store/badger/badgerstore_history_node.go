@@ -141,7 +141,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
-	bs.publishMoveLocked(ops, func() { bs.putMovedNodeLocked(id, updatedNode) })
+	bs.publishMoveLocked(0, ops, func() { bs.putMovedNodeLocked(id, updatedNode) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
@@ -278,7 +278,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
-	bs.publishMoveLocked(ops, func() { bs.putMovedNodeLocked(id, updatedNode) })
+	bs.publishMoveLocked(0, ops, func() { bs.putMovedNodeLocked(id, updatedNode) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
@@ -398,7 +398,7 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
-	bs.publishMoveLocked(ops, func() { bs.putMovedNodeLocked(id, current) })
+	bs.publishMoveLocked(0, ops, func() { bs.putMovedNodeLocked(id, current) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
@@ -494,7 +494,11 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 	for _, e := range relEntries {
 		ops = append(ops, writeOp{opType: writeOpSet, key: e.key, value: e.data})
 	}
-	_, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched, ops)
+	marker := historyRowMarker(nodeTombstone.Temporal())
+	for _, rt := range relTombstones {
+		marker = max(marker, historyRowMarker(rt.Tombstone.Temporal()))
+	}
+	_, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched, ops, marker)
 	if fatalErr != nil {
 		bs.idxMu.Unlock()
 		return fatalErr
@@ -626,7 +630,7 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 			bs.extendNodeVersionTemporalLocked(n, id) // backlog 56: a covered node's envelope holds every row
 		},
 		func() error {
-			return bs.appendOpsLoggedRoutedRaising(voidRowMarker(n.Temporal()), storecontract.ChangeNodeHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})
+			return bs.appendOpsLoggedRoutedRaising(historyRowMarker(n.Temporal()), storecontract.ChangeNodeHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})
 		},
 	)
 	if err != nil {

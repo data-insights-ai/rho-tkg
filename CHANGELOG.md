@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Next version: v4.62.0 (minor: a new tombstone marker, read side).
+
+### Added
+
+- **Reader for `types.TemporalMetadata.DeleteKeptValidTo`** (backlogs 4, 7, 25; step 1 of the format ritual,
+  the writer follows in v4.63.0, see Deprecated). The marker flags a delete tombstone that kept the `ValidTo`
+  believed before the delete (0 = open, else not before `DeletedAt`): validity ends at `DeletedAt`, a pin
+  before `DeletedAt` reads `ValidTo` as recorded. A tombstone without it reads exactly as before (`ValidTo ==
+  DeletedAt` means the delete wrote it, and a pin before the delete reads the row open). One rule decides that
+  (`storeutil.DeleteWroteValidTo`) for the as-of rewind, now one function for core and the memory store
+  (`storeutil.NormalizeTemporalVisibleAtTxTime`), the as-of own-end test (`storeutil.ValidToAtTxTime`), the
+  property-window sidecar and `NodeInterval` / `RelInterval`; a replica applying such a tombstone does not
+  count it as a clamped close. Format: every decoder reads row format version 6 (`KeptValidToWireFormatVersion`,
+  key `dk`) and opens store marker 8 (`KeptValidToStoreFormatVersion`); the encoders carry the key and the
+  badger store raises marker 8 in the batch that would write such a row, but no v4.62.0 door writes one.
+  Checked decodes and store writes refuse the marker without `DeletedAt` or on a close before it. Tests
+  `TestKeptValidToRow_FormatVersion` (every codec door, an older reader refused, a legacy tombstone
+  unchanged), `TestKeptValidToRow_ValidationRejects`, `TestKeptValidToTombstoneRaisesStoreFormatMarker`,
+  `TestNormalizeTemporalVisibleAtTxTime`, `TestValidToAtTxTime` (hand-built rows).
+
+### Deprecated
+
+- **Delete tombstones over a scheduled close or before the row's start** (incompatible change in v4.63.0,
+  backlogs 4, 7, 25). From v4.63.0 a plain `Delete` (and every twin) is stamped at the commit clock also for a
+  row whose valid start lies ahead (today: start + 1, ahead of the clock), and a `ValidTo` the delete does not
+  write — a recorded close at or after the delete, or the open end of a row starting at or after it — is kept
+  in a tombstone marked `DeleteKeptValidTo` instead of being clamped to the delete (today a pin before the
+  delete then reads the close reopened). Consumers reading `History()` intervals end a marked tombstone's
+  validity at `DeletedAt` (the cut every door applies). `DeleteWithTx` / `RetractWithTx` over a recorded close
+  at or after `t` stop refusing with `ErrTxOrder` and keep the close. Upgrade every reader (replicas,
+  importers, a badger directory opened by another binary) to v4.62.0 before a v4.63.0 writer deletes.
+
 ### Fixed
 
 - **`NodeAt` / `RelAt` answered an older version than the head timeline after an `Update` of a version that

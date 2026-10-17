@@ -294,6 +294,12 @@ func validateNodeExplicitTemporalRange(id types.NodeID, tm *types.TemporalMetada
 	if tm.Retracted && tm.DeletedAt == 0 {
 		return fmt.Errorf("%w: node %d carries the retraction marker without deleted_at", ErrInvalidStoreMutation, id)
 	}
+	if tm.DeleteKeptValidTo && tm.DeletedAt == 0 {
+		return fmt.Errorf("%w: node %d carries the kept-valid-to marker without deleted_at", ErrInvalidStoreMutation, id)
+	}
+	if tm.DeleteKeptValidTo && tm.ValidTo != 0 && tm.ValidTo < tm.DeletedAt {
+		return fmt.Errorf("%w: node %d carries the kept-valid-to marker on a close %d before deleted_at %d", ErrInvalidStoreMutation, id, tm.ValidTo, tm.DeletedAt)
+	}
 	return nil
 }
 
@@ -306,6 +312,12 @@ func validateRelExplicitTemporalRange(id types.RelID, tm *types.TemporalMetadata
 	}
 	if tm.Retracted && tm.DeletedAt == 0 {
 		return fmt.Errorf("%w: relationship %d carries the retraction marker without deleted_at", ErrInvalidStoreMutation, id)
+	}
+	if tm.DeleteKeptValidTo && tm.DeletedAt == 0 {
+		return fmt.Errorf("%w: relationship %d carries the kept-valid-to marker without deleted_at", ErrInvalidStoreMutation, id)
+	}
+	if tm.DeleteKeptValidTo && tm.ValidTo != 0 && tm.ValidTo < tm.DeletedAt {
+		return fmt.Errorf("%w: relationship %d carries the kept-valid-to marker on a close %d before deleted_at %d", ErrInvalidStoreMutation, id, tm.ValidTo, tm.DeletedAt)
 	}
 	return nil
 }

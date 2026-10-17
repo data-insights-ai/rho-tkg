@@ -86,9 +86,17 @@ const VoidStoreFormatVersion = 6
 // (binary hashes, Elements definitions, void rows), so this is 7.
 const UntimedUnboundedStoreFormatVersion = 7
 
+// KeptValidToStoreFormatVersion is the store-level marker of a directory that
+// holds a delete tombstone that kept its believed ValidTo
+// (KeptValidToWireFormatVersion rows, backlogs 4, 7, 25). A binary that
+// predates it must refuse the store at open rather than fail on the first
+// such row mid-operation. The marker is raised only when such a tombstone is
+// written; every other store keeps its marker. 4 to 7 are taken, so this is 8.
+const KeptValidToStoreFormatVersion = 8
+
 // MaxReadableStoreFormatVersion is the highest store-level marker this binary
 // opens (the max of every marker it knows how to read).
-const MaxReadableStoreFormatVersion = UntimedUnboundedStoreFormatVersion
+const MaxReadableStoreFormatVersion = KeptValidToStoreFormatVersion
 
 // writesBinaryHashes selects the writer's hash form (backlog 61, a two-step
 // rollout under the deprecation ritual). Step 1 (the release before): every
@@ -151,9 +159,19 @@ const BinaryHashWireFormatVersion = 4
 // (backlog 61), so this is 5.
 const VoidWireFormatVersion = 5
 
+// KeptValidToWireFormatVersion is the per-row format version of a delete
+// tombstone that kept the ValidTo believed before the delete
+// (types.TemporalMetadata.DeleteKeptValidTo, map key "dk", backlogs 4, 7,
+// 25). The layout is v2's; the bump exists so a binary that predates it —
+// whose decoder skips "dk" and would read the kept close (or open end) as the
+// delete's end — fails the row closed with
+// store.ErrWireFormatVersionUnsupported, also in an export, a change feed or
+// a replica. Only such tombstones carry it; 5 is taken by void rows.
+const KeptValidToWireFormatVersion = 6
+
 // maxReadableWireFormatVersion is the highest per-row format version every
 // decoder accepts. A variable only so a test can play an older reader.
-var maxReadableWireFormatVersion uint8 = VoidWireFormatVersion
+var maxReadableWireFormatVersion uint8 = KeptValidToWireFormatVersion
 
 // SetMaxReadableWireFormatVersionForTest plays a reader that accepts row
 // format versions up to v and returns the restore. Test seam only.
@@ -185,11 +203,15 @@ func checkRowFormatVersion(what string, fv uint8) error {
 }
 
 // emittedRowFormatVersion is the fv an encoder writes: the highest version
-// a feature of the row needs — a void piece VoidWireFormatVersion, a row with
+// a feature of the row needs — a tombstone that kept its ValidTo
+// KeptValidToWireFormatVersion, a void piece VoidWireFormatVersion, a row with
 // a binary integrity hash BinaryHashWireFormatVersion, a retraction tombstone
 // RetractedWireFormatVersion (all v2 layout) — else the version it carries,
 // so its bytes are unchanged.
-func emittedRowFormatVersion(fv uint8, retracted, binaryHash, void bool) uint8 {
+func emittedRowFormatVersion(fv uint8, retracted, binaryHash, void, keptValidTo bool) uint8 {
+	if keptValidTo {
+		fv = max(fv, KeptValidToWireFormatVersion)
+	}
 	if void {
 		fv = max(fv, VoidWireFormatVersion)
 	}
@@ -237,7 +259,11 @@ type NodeWire struct {
 	Retracted bool `msgpack:"rx,omitempty"`
 	// Void is types.TemporalMetadata.Void (backlog 64): emitted only on an
 	// excise's void piece, which carries VoidWireFormatVersion.
-	Void               bool   `msgpack:"vd,omitempty"`
+	Void bool `msgpack:"vd,omitempty"`
+	// DeleteKeptValidTo is types.TemporalMetadata.DeleteKeptValidTo (backlogs
+	// 4, 7, 25): emitted only on a tombstone that kept its believed ValidTo,
+	// which carries KeptValidToWireFormatVersion.
+	DeleteKeptValidTo  bool   `msgpack:"dk,omitempty"`
 	CreatedBy          string `msgpack:"cb,omitempty"`
 	UpdatedBy          string `msgpack:"ub,omitempty"`
 	BaseEntityID       int64  `msgpack:"be,omitempty"`
@@ -276,7 +302,11 @@ type RelWire struct {
 	Retracted bool `msgpack:"rx,omitempty"`
 	// Void is types.TemporalMetadata.Void (backlog 64): emitted only on an
 	// excise's void piece, which carries VoidWireFormatVersion.
-	Void               bool   `msgpack:"vd,omitempty"`
+	Void bool `msgpack:"vd,omitempty"`
+	// DeleteKeptValidTo is types.TemporalMetadata.DeleteKeptValidTo (backlogs
+	// 4, 7, 25): emitted only on a tombstone that kept its believed ValidTo,
+	// which carries KeptValidToWireFormatVersion.
+	DeleteKeptValidTo  bool   `msgpack:"dk,omitempty"`
 	CreatedBy          string `msgpack:"cb,omitempty"`
 	UpdatedBy          string `msgpack:"ub,omitempty"`
 	BaseEntityID       int64  `msgpack:"be,omitempty"`
@@ -358,6 +388,7 @@ func NodeToWireChecked(n *types.Node) (NodeWire, error) {
 		w.DeletedAt = int64(tm.DeletedAt)
 		w.Retracted = tm.Retracted
 		w.Void = tm.Void
+		w.DeleteKeptValidTo = tm.DeleteKeptValidTo
 		w.CreatedBy = tm.CreatedBy
 		w.UpdatedBy = tm.UpdatedBy
 		w.BaseEntityID = int64(tm.BaseEntityID().SnowflakeID())
@@ -425,8 +456,10 @@ func applyNodeWireFields(n *types.Node, w NodeWire, props types.PropertySlice) e
 			DeletedAt: types.Instant(w.DeletedAt),
 			Retracted: w.Retracted,
 			Void:      w.Void,
-			CreatedBy: w.CreatedBy,
-			UpdatedBy: w.UpdatedBy,
+
+			DeleteKeptValidTo: w.DeleteKeptValidTo,
+			CreatedBy:         w.CreatedBy,
+			UpdatedBy:         w.UpdatedBy,
 		}
 		if w.BaseEntityID != 0 {
 			tm.SetBaseEntityID(types.EntityID(w.BaseEntityID))
@@ -509,6 +542,7 @@ func RelToWireChecked(r *types.Relationship) (RelWire, error) {
 		w.DeletedAt = int64(tm.DeletedAt)
 		w.Retracted = tm.Retracted
 		w.Void = tm.Void
+		w.DeleteKeptValidTo = tm.DeleteKeptValidTo
 		w.CreatedBy = tm.CreatedBy
 		w.UpdatedBy = tm.UpdatedBy
 		w.BaseEntityID = int64(tm.BaseEntityID().SnowflakeID())
@@ -569,8 +603,10 @@ func applyRelWireFields(r *types.Relationship, w RelWire, props types.PropertySl
 			DeletedAt: types.Instant(w.DeletedAt),
 			Retracted: w.Retracted,
 			Void:      w.Void,
-			CreatedBy: w.CreatedBy,
-			UpdatedBy: w.UpdatedBy,
+
+			DeleteKeptValidTo: w.DeleteKeptValidTo,
+			CreatedBy:         w.CreatedBy,
+			UpdatedBy:         w.UpdatedBy,
 		}
 		if w.BaseEntityID != 0 {
 			tm.SetBaseEntityID(types.EntityID(w.BaseEntityID))
@@ -791,6 +827,12 @@ func validateNodeWireFields(w NodeWire) error {
 	if w.Retracted && w.DeletedAt == 0 {
 		return fmt.Errorf("node wire: retraction marker on a row without deleted_at")
 	}
+	if w.DeleteKeptValidTo && w.DeletedAt == 0 {
+		return fmt.Errorf("node wire: kept-valid-to marker on a row without deleted_at")
+	}
+	if w.DeleteKeptValidTo && w.ValidTo != 0 && w.ValidTo < w.DeletedAt {
+		return fmt.Errorf("node wire: kept-valid-to marker on a close %d before deleted_at %d", w.ValidTo, w.DeletedAt)
+	}
 	if err := checkVoidWire("node wire", w.Void, w.ValidFrom, w.ValidTo, w.DeletedAt, w.Retracted); err != nil {
 		return err
 	}
@@ -807,6 +849,7 @@ func nodeWireHasTemporalPayload(w NodeWire) bool {
 		w.DeletedAt != 0 ||
 		w.Retracted ||
 		w.Void ||
+		w.DeleteKeptValidTo ||
 		w.CreatedBy != "" ||
 		w.UpdatedBy != "" ||
 		w.BaseEntityID != 0
@@ -858,6 +901,12 @@ func validateRelWireFields(w RelWire) error {
 	if w.Retracted && w.DeletedAt == 0 {
 		return fmt.Errorf("relationship wire: retraction marker on a row without deleted_at")
 	}
+	if w.DeleteKeptValidTo && w.DeletedAt == 0 {
+		return fmt.Errorf("relationship wire: kept-valid-to marker on a row without deleted_at")
+	}
+	if w.DeleteKeptValidTo && w.ValidTo != 0 && w.ValidTo < w.DeletedAt {
+		return fmt.Errorf("relationship wire: kept-valid-to marker on a close %d before deleted_at %d", w.ValidTo, w.DeletedAt)
+	}
 	if err := checkVoidWire("rel wire", w.Void, w.ValidFrom, w.ValidTo, w.DeletedAt, w.Retracted); err != nil {
 		return err
 	}
@@ -874,6 +923,7 @@ func relWireHasTemporalPayload(w RelWire) bool {
 		w.DeletedAt != 0 ||
 		w.Retracted ||
 		w.Void ||
+		w.DeleteKeptValidTo ||
 		w.CreatedBy != "" ||
 		w.UpdatedBy != "" ||
 		w.BaseEntityID != 0

@@ -457,7 +457,7 @@ func nodeVisibleAtTxTime(n *types.Node, txTime types.Instant) *types.Node {
 	if n == nil {
 		return nil
 	}
-	normalizeTemporalVisibleAtTxTime(n.Temporal(), txTime)
+	storeutil.NormalizeTemporalVisibleAtTxTime(n.Temporal(), txTime)
 	return n
 }
 
@@ -465,7 +465,7 @@ func relVisibleAtTxTime(r *types.Relationship, txTime types.Instant) *types.Rela
 	if r == nil {
 		return nil
 	}
-	normalizeTemporalVisibleAtTxTime(r.Temporal(), txTime)
+	storeutil.NormalizeTemporalVisibleAtTxTime(r.Temporal(), txTime)
 	return r
 }
 
@@ -481,28 +481,4 @@ func (c *Core) relCapabilityVisibleAtTxTime(r *types.Relationship, txTime types.
 		r = r.DeepCopy()
 	}
 	return relVisibleAtTxTime(r, txTime)
-}
-
-// normalizeTemporalVisibleAtTxTime rewinds tm to the belief state as of txTime:
-// a TxTo or delete recorded after txTime is removed. "ValidTo == DeletedAt"
-// marks a ValidTo the delete itself wrote (the row was open, or its scheduled
-// close was clamped to the delete), so it reopens; any other ValidTo is a close
-// recorded before the delete and is kept. The delete doors guarantee the marker
-// is unambiguous (stampDeleteTombstone / deleteInstantClearOfCloses in core).
-// A retraction recorded after txTime is removed with its delete (backlog 43):
-// the row reads as it was believed then.
-func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) {
-	if tm == nil {
-		return
-	}
-	if tm.TxTo > txTime {
-		tm.TxTo = 0
-	}
-	if tm.DeletedAt > txTime {
-		if tm.ValidTo == tm.DeletedAt {
-			tm.ValidTo = 0
-		}
-		tm.DeletedAt = 0
-		tm.Retracted = false
-	}
 }

@@ -108,7 +108,7 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 
 	// Single appendOps call — atomic in the pending buffer — then the cache.
 	histKey := storepkg.HistRelKey(id, uint64(prevVersion))
-	bs.publishMoveLocked([]writeOp{
+	bs.publishMoveLocked(0, []writeOp{
 		{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
 		{opType: writeOpSet, key: histKey, value: histData},
 	}, func() { bs.putMovedRelLocked(id, current) })
@@ -178,7 +178,7 @@ func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 	bs.forgetRelPropTxCurrentLocked(r)                         // ledger row 62: no current row any more
 	// The tombstone first, then the removal (appends its delete ops to pending
 	// under the lock; no record — emitted here).
-	bs.publishMoveLocked([]writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, func() { bs.deleteRelByInfo(info, r) })
+	bs.publishMoveLocked(historyRowMarker(tombstone.Temporal()), []writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, func() { bs.deleteRelByInfo(info, r) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, delPayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
@@ -254,7 +254,7 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 			}
 		},
 		func() error {
-			return bs.appendOpsLoggedRoutedRaising(voidRowMarker(r.Temporal()), storecontract.ChangeRelHistoryVersion, logPayload, token, ops...)
+			return bs.appendOpsLoggedRoutedRaising(historyRowMarker(r.Temporal()), storecontract.ChangeRelHistoryVersion, logPayload, token, ops...)
 		},
 	)
 	if err != nil {

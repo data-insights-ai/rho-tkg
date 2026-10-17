@@ -104,12 +104,13 @@ func (bs *Store) prefetchCascadeDeleteRows(nid types.NodeID) (cascadeDeletePrefe
 // bs.idxMu.Lock; all ops are appended under it. history is the with-history
 // delete's tombstone batch (nil for a plain cascade), published via
 // publishMoveLocked BEFORE Phase 2 removes the entities from the cache, so a
-// lock-free reader never sees an entity in neither slot (backlog 32).
+// lock-free reader never sees an entity in neither slot (backlog 32), raising
+// the store format marker to marker (0: none) in the same batch.
 // Returns (toDelete, corruptErr, fatalErr):
 //   - fatalErr != nil: aborted with no mutations applied.
 //   - corruptErr != nil: cleanup completed but node data was unreadable (indexes brute-force purged).
 //   - otherwise: clean success.
-func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePrefetch, history []writeOp) ([]RelDeleteInfo, error, error) {
+func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePrefetch, history []writeOp, marker uint16) ([]RelDeleteInfo, error, error) {
 	if _, exists := bs.nodeIDs[nid]; !exists {
 		return nil, nil, ErrNodeNotFound
 	}
@@ -174,7 +175,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 	if history == nil {
 		apply()
 	} else {
-		bs.publishMoveLocked(history, apply)
+		bs.publishMoveLocked(marker, history, apply)
 	}
 	return toDelete, corruptErr, nil
 }
@@ -294,7 +295,7 @@ func (bs *Store) cascadeDeleteLocked(nid types.NodeID, prefetched cascadeDeleteP
 func (bs *Store) cascadeDeleteRouted(nid types.NodeID, prefetched cascadeDeletePrefetch, token uint64) ([]RelDeleteInfo, error, error) {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
-	deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched, nil)
+	deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched, nil, 0)
 	// Emit the single ChangeNodeDelete under the same lock as the cascade ops
 	// (cascadeDeleteInner / deleteRelByInfo emit nothing). Skipped on fatalErr.
 	if fatalErr == nil {

@@ -520,7 +520,7 @@ func nodeRowAtTx(entry *types.Node, txAt types.Instant) (*types.Node, bool) {
 	}
 	if tm != nil && tm.DeletedAt > txAt {
 		entry = entry.DeepCopy()
-		normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
+		storeutil.NormalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
 	}
 	return entry, true
 }
@@ -548,7 +548,7 @@ func relRowAtTx(entry *types.Relationship, txAt types.Instant) (*types.Relations
 	}
 	if tm != nil && tm.DeletedAt > txAt {
 		entry = entry.DeepCopy()
-		normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
+		storeutil.NormalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
 	}
 	return entry, true
 }

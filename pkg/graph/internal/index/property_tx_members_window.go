@@ -17,7 +17,7 @@ import (
 //
 // A row's valid interval as the chain resolver derives it never reaches past
 // its stored span [effective valid-from, ValidTo) (open: +inf), except that a
-// delete tombstone read before its delete reopens (ValidTo == DeletedAt), so
+// delete tombstone read before its delete reopens (storeutil.DeleteWroteValidTo), so
 // a posting keeps:
 //
 //   - all: the union of every row's span, a tombstone's reopened: it bounds
@@ -57,6 +57,9 @@ type RowInfo struct {
 	Version                 uint32
 	TxFrom, TxTo, DeletedAt types.Instant
 	Span                    Span
+	// DeleteWrote: a tombstone whose ValidTo its delete wrote
+	// (storeutil.DeleteWroteValidTo).
+	DeleteWrote bool
 }
 
 // RelRowInfo returns r's RowInfo.
@@ -64,7 +67,7 @@ func RelRowInfo(r *types.Relationship) RowInfo {
 	_, to, _ := r.ValidRange()
 	f, t, d := r.TxStamps()
 	return RowInfo{Version: r.Version(), TxFrom: f, TxTo: t, DeletedAt: d,
-		Span: Span{From: storepkg.RelValidFrom(r), To: effTo(to)}}
+		Span: Span{From: storepkg.RelValidFrom(r), To: effTo(to)}, DeleteWrote: storepkg.DeleteWroteValidTo(r.Temporal())}
 }
 
 // NodeRowInfo returns n's RowInfo.
@@ -72,7 +75,7 @@ func NodeRowInfo(n *types.Node) RowInfo {
 	_, to, _ := n.ValidRange()
 	f, t, d := n.TxStamps()
 	return RowInfo{Version: n.Version(), TxFrom: f, TxTo: t, DeletedAt: d,
-		Span: Span{From: storepkg.NodeValidFrom(n), To: effTo(to)}}
+		Span: Span{From: storepkg.NodeValidFrom(n), To: effTo(to)}, DeleteWrote: storepkg.DeleteWroteValidTo(n.Temporal())}
 }
 
 // last is the row's newest stamp.
@@ -81,10 +84,10 @@ func (ri RowInfo) last() types.Instant {
 }
 
 // anyPinSpan is the row's span as read at any pin: a delete that wrote the
-// ValidTo (ValidTo == DeletedAt) reopens before the delete
-// (normalizeTemporalVisibleAtTxTime).
+// ValidTo reopens before the delete (storeutil.NormalizeTemporalVisibleAtTxTime);
+// a ValidTo a delete kept already bounds the row at every pin.
 func (ri RowInfo) anyPinSpan() Span {
-	if ri.DeletedAt != 0 && ri.Span.To == ri.DeletedAt {
+	if ri.DeleteWrote {
 		return Span{From: ri.Span.From, To: math.MaxInt64}
 	}
 	return ri.Span
