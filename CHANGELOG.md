@@ -6,8 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-sigma-tkgd round 11 (ledger row 75; built by sigma under Markus's decision, not released: the version is the
-releaser's call). New store capabilities and write and read options, all additive.
+## [4.65.0] - 2026-10-17
+
+sigma-tkgd round 11 (ledger row 75; built by sigma under Markus's decision, released by Markus). New store capabilities and write and read options, all additive.
 
 ### Added
 

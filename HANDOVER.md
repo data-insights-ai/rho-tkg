@@ -1,7 +1,7 @@
-# HANDOVER — rho-tkg v4 line (2026-10-17, latest release v4.63.0; next patch v4.63.1, next minor v4.64.0)
+# HANDOVER — rho-tkg v4 line (2026-10-17, latest release v4.65.0 (round 11, row 75); next patch v4.65.1; v4.64.0 reserved for the parked tombstone writer)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). Latest tag v4.63.0 (2026-10-17). Tags and what shipped: `CHANGELOG.md`, git and the
+database). Latest tag v4.65.0 (2026-10-17, round 11; the default flip is held for the next minor). Tags and what shipped: `CHANGELOG.md`, git and the
 releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Read in this order: this file, `tasks/lessons.md`
 (digest at the top), `tasks/todo.md` (user requests, releases table), `tasks/backlog.md` (open table, then specs), `CHANGELOG.md` top.
 
