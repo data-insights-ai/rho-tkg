@@ -1,0 +1,4 @@
+# red: the untimed-mode door does not exist on v4.61.0 + round 11 (a consumer cannot ask)
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test]
+vet: pkg/graph/round11_untimed_mode_test.go:32:37: g.Admin().UntimedValidStart undefined (type *admin.API has no field or method UntimedValidStart)

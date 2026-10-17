@@ -95,6 +95,7 @@ type Ops interface {
 	SealRelSegments(relType string) error
 	RelSegmentStats(relType string) (RelSegmentStats, error)
 	SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) error
+	UntimedValidStart() (mode UntimedValidStart, complete bool, err error)
 }
 
 // API is the admin sub-API accessor.
@@ -142,6 +143,21 @@ func (a *API) SetUntimedValidStart(ctx context.Context, mode UntimedValidStart) 
 		return err
 	}
 	return ops.SetUntimedValidStart(ctx, mode)
+}
+
+// UntimedValidStart answers the untimed valid-start mode the store's rows are
+// written under (round 11): UntimedFromTxFrom or UntimedUnbounded, as
+// persisted in the store (never UntimedDefault), and complete = false while a
+// conversion to UntimedUnbounded is unfinished (rows of both rules; mode is
+// the target). A consumer whose answer depends on where an untimed entity
+// starts (-inf or its TxFrom) asks it by this call on every backend.
+// ErrGraphClosed on a closed graph. See core.AdminOps.
+func (a *API) UntimedValidStart() (mode UntimedValidStart, complete bool, err error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.UntimedValidStart()
 }
 
 // DecomposeNodeID extracts time/node/step from a node ID.

@@ -85,3 +85,7 @@ KILLED pool: the caller only waits (every body on a fresh goroutine): round11_po
 SURVIVED pass 2: unique cascade reads a raw valid-from
 KILLED pass 2: the zero check before the deleted refusal: red at the committed tip, tasks/evidence/round11/18-pass2-red.txt (round11_review_test.go:521 ... want ErrEntityDeleted)
 EQUIVALENT pass 2: unique cascade reads a raw valid-from: every appended row's start is stamped as a claim (stampValidFrom(.., true)) and never the explicit 0 (a crossing is refused), so claimed && vf < newVT == vf != 0 && vf < newVT on every reachable row; kept for the one rule (pattern 1).
+# untimed-mode door (coordinator request, round 11)
+KILLED mode door: incomplete reads as complete: round11_untimed_mode_test.go:96: cut short: 1, true, <nil>; want UntimedUnbounded, false
+KILLED mode door: always UntimedUnbounded: round11_untimed_mode_test.go:40: config 1: UntimedValidStart = 2, true, <nil>; want 1, true
+KILLED mode door: closed graph answers: round11_untimed_mode_test.go:63: closed graph: <nil>, want ErrGraphClosed

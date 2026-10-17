@@ -61,6 +61,12 @@ releaser's call). New store capabilities and write and read options, all additiv
   other filter or a page is `ErrConflictingTemporalOpts`. **sigma-tkgd**: `graphhost.PresentPin` (0 handed as -1) can
   give way to `NodeAtOpts` with the clause's opts.
 
+- **Asking the untimed mode** (round 11, sigma-tkgd: the v4.60.0 window doors could not be adopted without it).
+  `g.Admin().UntimedValidStart() (mode, complete, err)` answers, on every backend, the mode the store's rows are
+  written under: `UntimedFromTxFrom` or `UntimedUnbounded` as persisted (never `UntimedDefault`; a reopen under
+  `UntimedDefault` answers the persisted mode), `complete = false` while a conversion to `UntimedUnbounded` is
+  unfinished, a replica the primary's mode as replicated. Added to `admin.Ops`.
+
 ### Changed
 
 - **The as-of doors at a pin at or below 0** (round 11 item 4). Every recorded row has a positive `TxFrom`, so a

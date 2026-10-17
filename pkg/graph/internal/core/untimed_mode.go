@@ -605,6 +605,25 @@ func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
 	return c.writeUntimedMode(v)
 }
 
+// UntimedValidStart answers the untimed valid-start mode the store's rows are
+// written under (round 11): the mode persisted in the store and in force for
+// this graph, UntimedFromTxFrom or UntimedUnbounded (never UntimedDefault,
+// which a Config resolves at open), and complete = false while a conversion
+// to UntimedUnbounded is unfinished (Admin().SetUntimedValidStart cut short:
+// the store holds untimed first versions of both rules, and mode is the
+// conversion's target). A replica answers the primary's mode as replicated.
+// ErrGraphClosed on a closed graph.
+func (a *AdminOps) UntimedValidStart() (mode UntimedValidStart, complete bool, err error) {
+	c := a.c
+	if c.closed.Load() {
+		return 0, false, ErrGraphClosed
+	}
+	if c.untimedIncomplete.Load() {
+		return UntimedUnbounded, false, nil
+	}
+	return untimedModeOf(c.untimedUnbounded.Load()), true, nil
+}
+
 func untimedModeOf(unbounded bool) UntimedValidStart {
 	if unbounded {
 		return UntimedUnbounded
