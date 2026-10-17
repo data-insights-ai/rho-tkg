@@ -656,6 +656,10 @@ René 2026-10-16: "make new fast tests for new developed code parts.. and long t
 version.. lets group commits then together with short tests (a couple of seconds)".
 Trigger: writing a new test, or choosing what to run before a commit.
 Detector: `go test -short` of a touched package takes more than ~5 s, or a commit's gate ran the long suite.
+Recurred 2026-10-17 (backlog 77): my brief asked a one-bug fix for all backends, long -race sweeps, lint and security, and I
+started a full release gate for that single patch — René: "why so long … i want focused and quick tests", "again, read my
+briefs and md files!!!". Rule: build every brief FROM this digest (re-read it before writing the brief); a fix brief = one
+small red test, the fix, `-short` of the touched package; patches are batched (79), the long gate runs once per release.
 Recurred 2026-10-16 (v4.58.0 gate): the race-aware long tier (`testing.Short() && !race`) hid two tests that still pinned the
 old tiered decline, so WP-31's builder and reviewer runs (`-short`) never saw them and only the release gate did. Rule: a
 contract change (a door that now succeeds, a sentinel no longer returned) greps every test pinning the old outcome and runs
