@@ -403,6 +403,10 @@ type Store struct {
 	// historyPresenceProbeHook, when non-nil, runs after a per-ID probe and
 	// before it installs its answer. Set only from the owning test.
 	historyPresenceProbeHook func()
+	// historyNoteTestHook, when non-nil, runs in noteHistoryKey under wbMu
+	// with the op in the write buffer, before the presence note. Set only
+	// from the owning test.
+	historyNoteTestHook func()
 	// History stamps (store.HistoryStampsCapability, badgerstore_history_stamps.go):
 	// per kind, a RAM sidecar of the newest TxFrom / TxTo-or-DeletedAt over each ID's
 	// history rows, built once on the first NodeHistoryStamps / RelHistoryStamps call

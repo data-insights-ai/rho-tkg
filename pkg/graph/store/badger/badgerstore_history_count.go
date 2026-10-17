@@ -50,6 +50,12 @@ func (h *historyCount) get(epoch uint64, count func() (int, error)) (int, error)
 // (badgerstore_history_stamps.go). Every history row write and
 // delete enters the write buffer through appendOps / appendOpsLoggedRouted,
 // which call this under wbMu with the op.
+//
+// The kind's epoch advances LAST, after the presence set has the op: the
+// HistoryCounts cache (historyCount.get) and HistoryGeneration readers load the
+// epoch without wbMu and then read the presence set, so an epoch that moved
+// first let a count that missed the op be cached under the op's own epoch, and
+// every later count returned it.
 func (bs *Store) noteHistoryKey(op writeOp) {
 	key := op.key
 	if len(key) == 0 {
@@ -57,25 +63,31 @@ func (bs *Store) noteHistoryKey(op writeOp) {
 	}
 	switch key[0] {
 	case storepkg.KeyHistNode:
-		bs.histNodeEpoch.Add(1)
 		if len(key) == storepkg.SizeHistKey {
 			id, version := storepkg.ParseIDFromKey(key, 1), historyVersionFromKey(key)
+			if h := bs.historyNoteTestHook; h != nil {
+				h()
+			}
 			bs.histNodePresence.note(id, version, op.opType == writeOpDelete)
 			bs.histNodeStamps.note(id, version, op, true)
 			bs.histNodeEpochs.Note(id, -1)
 		} else {
 			bs.histNodeEpochs.NoteAll()
 		}
+		bs.histNodeEpoch.Add(1) // last (doc comment)
 	case storepkg.KeyHistRel:
-		bs.histRelEpoch.Add(1)
 		if len(key) == storepkg.SizeHistKey {
 			id, version := storepkg.ParseIDFromKey(key, 1), historyVersionFromKey(key)
+			if h := bs.historyNoteTestHook; h != nil {
+				h()
+			}
 			bs.histRelPresence.note(id, version, op.opType == writeOpDelete)
 			bs.histRelStamps.note(id, version, op, false)
 			bs.histRelEpochs.Note(id, -1)
 		} else {
 			bs.histRelEpochs.NoteAll()
 		}
+		bs.histRelEpoch.Add(1) // last (doc comment)
 	}
 }
 
