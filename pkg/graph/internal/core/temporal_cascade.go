@@ -128,8 +128,15 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 	// valid one stands in for the history read (backlog 68b,
 	// effective_head_write.go).
 	headBefore := c.nodeHeadBeforeWrite(id, current)
-	hc, fromHead := chainFromHead(c, headBefore, current, func(v uint32) (*types.Node, error) { return c.getNodeVersion(id, v) },
-		newVF, newVT, at, void)
+	// An append at the head is planned from the current row alone (backlog
+	// 67, effective_head_write.go), else from a valid head entry.
+	hc, fromCurrent := chainFromCurrent(c, nodeKernel, current, func(v uint32) (bool, error) { return c.nodeHasHistoryAbove(id, v) },
+		c.nodeHistoryStampsFunc(id), newVF, newVT, at, void)
+	fromHead := fromCurrent
+	if !fromCurrent {
+		hc, fromHead = chainFromHead(c, headBefore, current, func(v uint32) (*types.Node, error) { return c.getNodeVersion(id, v) },
+			newVF, newVT, at, void)
+	}
 	var history []*types.Node
 	if !fromHead {
 		if history, err = c.getNodeHistory(id); err != nil {
@@ -363,7 +370,10 @@ func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT ty
 		headCur = newCurrent
 	}
 	c.nodeHeadAfterWrite(id, headBefore, appended, headCur)
-	if fromHead {
+	switch {
+	case fromCurrent:
+		c.appendWrites.Add(1)
+	case fromHead:
 		c.headWrites.Add(1)
 	}
 	c.opNodeUpdates.Add(1)
@@ -756,8 +766,14 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 	}
 	// The head answer before any write — see the node cascade.
 	headBefore := c.relHeadBeforeWrite(id, current)
-	hc, fromHead := chainFromHead(c, headBefore, current, func(v uint32) (*types.Relationship, error) { return c.getRelVersion(id, v) },
-		newVF, newVT, at, void)
+	// From the current row or the head entry — see the node cascade.
+	hc, fromCurrent := chainFromCurrent(c, relKernel, current, func(v uint32) (bool, error) { return c.relHasHistoryAbove(id, v) },
+		c.relHistoryStampsFunc(id), newVF, newVT, at, void)
+	fromHead := fromCurrent
+	if !fromCurrent {
+		hc, fromHead = chainFromHead(c, headBefore, current, func(v uint32) (*types.Relationship, error) { return c.getRelVersion(id, v) },
+			newVF, newVT, at, void)
+	}
 	var history []*types.Relationship
 	if !fromHead {
 		if history, err = c.getRelHistory(id); err != nil {
@@ -918,7 +934,10 @@ func (c *Core) cascadeRel(ctx context.Context, id types.RelID, newVF, newVT type
 		headCur = newCurrent
 	}
 	c.relHeadAfterWrite(id, headBefore, appended, headCur)
-	if fromHead {
+	switch {
+	case fromCurrent:
+		c.appendWrites.Add(1)
+	case fromHead:
 		c.headWrites.Add(1)
 	}
 	c.opRelUpdates.Add(1)

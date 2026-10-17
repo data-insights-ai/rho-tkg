@@ -151,6 +151,7 @@ type Core struct {
 	headOverlays  atomic.Uint64  // corrections that extended an entry
 	headWriteOff  bool           // tests: corrections and tx snapshots read the whole history (backlog 68b twin)
 	headWrites    atomic.Uint64  // corrections planned from an entry (backlog 68b)
+	appendWrites  atomic.Uint64  // open appends planned from the current row alone (backlog 67)
 	historyRead   func(rows int) // tests: called with the rows each history read returns
 	// readSnapshots — effective scans read their timelines through one store
 	// read snapshot (backlog 55, effective_scan_reads.go). nil = per-entity reads.
@@ -160,6 +161,11 @@ type Core struct {
 	// miss). nil = store declines or a wrapper only inherits it, so
 	// LatestStamps reads the current row (currentStampsCapability).
 	currentStamps storepkg.CurrentStampsCapability
+	// historyStamps — the history's newest stamps without its rows (backlog
+	// 30), for an append planned from the current row (backlog 67). nil =
+	// store declines or a wrapper only inherits it (its own history writes
+	// would not be noted): the append is planned from the history.
+	historyStamps storepkg.HistoryStampsCapability
 	// memberIDs — a label's / type's current members from the store's index
 	// without their rows (backlog 33): the candidate gather of the effective
 	// scans. nil = store declines or a wrapper only inherits it, so the gather
@@ -2197,6 +2203,7 @@ func New(config Config) (*Core, error) {
 	c.historyEpochs = historyEpochCapability(store)
 	c.readSnapshots = readSnapshotCapability(store)
 	c.currentStamps = currentStampsCapability(store)
+	c.historyStamps = nativeCapability[storepkg.HistoryStampsCapability](store, "NodeHistoryStamps", "RelHistoryStamps")
 	c.memberIDs = memberIDsCapability(store)
 	c.relValidEnds, c.nodeValidEnds = validEndCapabilities(store)
 	c.nodeOrderedRange = nativeCapability[storepkg.NodeOrderedRangeScanCapability](store, "ForEachNodeByLabelPropertyRangeOrdered")

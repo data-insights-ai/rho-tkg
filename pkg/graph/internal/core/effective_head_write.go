@@ -108,6 +108,72 @@ func chainFromHead[T interface {
 	return hc, true
 }
 
+// =============================================================================
+// Appends from the current row (backlog 67, sigma-tkgd 2026-10-17)
+//
+// An open correction [newVF, +inf) at or after the current row's own start —
+// a new version, no backdating — needs nothing of the chain but the current
+// row once that row is the chain's top version and newest belief, open and
+// live: then no other row wins any instant from the current row's start on
+// (the cascade arm keeps the newest covering belief, and no row is newer; the
+// monotonic arm tiles by version, and the top version starts last and is
+// open), so the one piece is [newVF, +inf) on the current row, there is no
+// resumption, the top version is the current row's, and the newest open
+// belief is the current row. Each fact is read in O(1): the version probe
+// above the current row (nodeHasHistoryAbove, exact, backlog 70) and the
+// history's newest stamps (store.HistoryStampsCapability, backlog 30). The
+// cascade then builds byte-for-byte the rows the history read builds (the
+// twin tests, cascade_append_test.go and effective_head_write_twin_test.go).
+//
+// Everything else is planned from the head entry or the history as before: a
+// bounded correction (its resumption ends at the chain's next own bound,
+// which only the chain knows), a backdated one (it cuts earlier versions), an
+// excise, a closed, void or deleted current row, a history row at or above
+// the current row's version or with a stamp after its TxFrom, a caller
+// instant the order rule refuses (the history read names the stamp), a store
+// without the stamps capability, and a chain stored before the bitemporal
+// migration (its starts can be inherited).
+// =============================================================================
+
+// chainFromCurrent returns the chain facts of an open correction from newVF
+// at at (0: the clock) on an entity whose current row is current, or ok
+// false when the conditions above do not hold. above probes for a history row
+// above a version; stamps returns the history's newest TxFrom and TxTo (or
+// DeletedAt), nil when the store does not keep them. A probe that fails falls
+// back: the history read meets the error.
+func chainFromCurrent[T interface {
+	comparable
+	storeutil.TemporalRow
+}](c *Core, k *chainKernel[T], current T, above func(uint32) (bool, error),
+	stamps func() (types.Instant, types.Instant, bool, error), newVF, newVT, at types.Instant, void bool) (headChain[T], bool) {
+	var hc, zero headChain[T]
+	var none T
+	if c.headWriteOff || !c.bitemporalMigrated || newVT != 0 || void || current == none || stamps == nil {
+		return zero, false
+	}
+	tm := current.Temporal()
+	if tm == nil || tm.ValidTo != 0 || tm.Void || tm.Retracted || tm.DeletedAt != 0 || tm.TxTo != 0 || tm.TxFrom == 0 {
+		return zero, false
+	}
+	if start, _ := k.ownBounds(c, current); newVF < start {
+		return zero, false // backdated: an earlier version is cut
+	}
+	if up, err := above(current.Version()); err != nil || up {
+		return zero, false
+	}
+	hf, ht, _, err := stamps()
+	if err != nil || max(hf, ht) > tm.TxFrom {
+		return zero, false
+	}
+	if at != 0 && at <= tm.TxFrom {
+		return zero, false // the order rule refuses at
+	}
+	hc.maxVersion = current.Version()
+	hc.segments = []correctionSegment[T]{{from: newVF, base: current}}
+	hc.open.note(beliefTx(tm), current.Version())
+	return hc, true
+}
+
 // headRun is one correction piece by version (gap: no row valid there, the
 // template's version).
 type headRun struct {

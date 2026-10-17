@@ -418,6 +418,30 @@ func (r *Relationship) TxStamps() (txFrom, txTo, deletedAt Instant) {
 	return r.temporal.TxFrom, r.temporal.TxTo, r.temporal.DeletedAt
 }
 
+// EffectiveValidFrom is the instant this row starts in valid time — the
+// start the effective timeline, the valid-time point doors and the as-of doors
+// give it (TemporalMetadata.EffectiveValidFrom): its ValidFrom when it carries
+// one, else its TxFrom. A version written by Update (or UpdateWithTx, or a
+// GraphTx / Batch twin) stores ValidFrom 0, "no caller claim", and starts at
+// its TxFrom; this returns that start without reading the timeline. Like
+// ValidRange it allocates nothing on a frozen row. 0 for a nil row.
+func (r *Relationship) EffectiveValidFrom() Instant {
+	if r == nil {
+		return 0
+	}
+	if vf, _, _ := r.ValidRange(); vf != 0 {
+		return vf
+	}
+	if tx, _, _ := r.TxStamps(); tx != 0 {
+		return tx
+	}
+	var tm *TemporalMetadata // a frozen row's meta carries no UpdatedAt
+	if r.meta == nil {
+		tm = r.temporal
+	}
+	return tm.UntimedValidFrom(r.ID().MintInstant())
+}
+
 // SetTemporal sets the relationship's temporal metadata.
 func (r *Relationship) SetTemporal(tm *TemporalMetadata) {
 	if r == nil {
