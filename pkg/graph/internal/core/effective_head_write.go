@@ -47,6 +47,11 @@ type headChain[T any] struct {
 	srcEnd     types.Instant // the resumption's end: the first own bound after newVT (open by the graph's valid axis)
 	segments   []correctionSegment[T]
 	open       openBelief
+	// voidFree: the chain holds no void row (wholeAxisSupersession), known
+	// from the head entry. From the current row it stays false: that plan
+	// has one changed segment and no gap after it, where voidFree is not
+	// asked.
+	voidFree bool
 }
 
 // chainFromHead returns the chain facts of a correction of [newVF, newVT) at
@@ -106,6 +111,7 @@ func chainFromHead[T interface {
 	}
 	hc.maxVersion = max(e.maxVer, current.Version())
 	hc.open = e.open
+	hc.voidFree = !e.void
 	return hc, true
 }
 

@@ -261,7 +261,10 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 		}
 	}
 	var newVer *types.Node // the appended row covering newVF — the return value
-	sup := wholeAxisSupersession{voidFree: !fromHead && !slices.ContainsFunc(preChain, isVoidRow[*types.Node])}
+	sup := wholeAxisSupersession{voidFree: hc.voidFree}
+	if !fromHead {
+		sup.voidFree = !slices.ContainsFunc(preChain, isVoidRow[*types.Node])
+	}
 	for _, seg := range segments {
 		if (void || existing) && seg.gap {
 			sup.note(true, false)
@@ -900,7 +903,10 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 		}
 	}
 	var newVer *types.Relationship // the appended row covering newVF — the return value
-	sup := wholeAxisSupersession{voidFree: !fromHead && !slices.ContainsFunc(preChain, isVoidRow[*types.Relationship])}
+	sup := wholeAxisSupersession{voidFree: hc.voidFree}
+	if !fromHead {
+		sup.voidFree = !slices.ContainsFunc(preChain, isVoidRow[*types.Relationship])
+	}
 	for _, seg := range segments {
 		if (void || existing) && seg.gap {
 			sup.note(true, false)

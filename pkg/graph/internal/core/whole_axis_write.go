@@ -112,8 +112,10 @@ func (c *Core) wholeAxisUpdateRel(ctx context.Context, id types.RelID, prov upda
 //     segment;
 //   - a gap after the first changed segment on a chain that may hold void
 //     rows (an excise): a void row that wins there would end, and an older
-//     row below it would answer again. A chain planned from the current row
-//     or the head entry (no history read) counts as one that may.
+//     row below it would answer again. The history read and the head entry
+//     (headEntry.void) both know whether the chain holds one, so the two
+//     plans stamp alike (effective_head_write_twin_test.go); a plan from the
+//     current row has no gap after its one segment.
 //
 // Segments are fed in ascending valid order (note); replaces is asked after.
 type wholeAxisSupersession struct {

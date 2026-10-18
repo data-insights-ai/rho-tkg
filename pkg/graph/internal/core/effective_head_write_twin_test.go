@@ -584,19 +584,27 @@ func (tw *headTwin) dump(g *Core) string {
 		}
 		return hex.EncodeToString(b)
 	}
+	// tms leads each row with its temporal stamps, so a differing field
+	// shows before dumpDiff truncates the wire bytes.
+	tms := func(tm *types.TemporalMetadata) string {
+		if tm == nil {
+			return "tm=nil"
+		}
+		return fmt.Sprintf("vf=%d vt=%d tf=%d tt=%d del=%d void=%v retr=%v", tm.ValidFrom, tm.ValidTo, tm.TxFrom, tm.TxTo, tm.DeletedAt, tm.Void, tm.Retracted)
+	}
 	for _, id := range tw.nodes {
 		fmt.Fprintf(&sb, "\nnode %v:", id)
 		if n, err := g.store.GetNode(id); err != nil {
 			fmt.Fprintf(&sb, " current %v", err)
 		} else {
-			fmt.Fprintf(&sb, " current v%d %s", n.Version(), enc(storeutil.MarshalNodeWire(n)))
+			fmt.Fprintf(&sb, " current v%d %s %s", n.Version(), tms(n.Temporal()), enc(storeutil.MarshalNodeWire(n)))
 		}
 		hist, err := g.store.GetNodeHistory(id)
 		if err != nil {
 			fmt.Fprintf(&sb, " history %v", err)
 		}
 		for _, h := range hist {
-			fmt.Fprintf(&sb, "\n  v%d %s", h.Version(), enc(storeutil.MarshalNodeWire(h)))
+			fmt.Fprintf(&sb, "\n  v%d %s %s", h.Version(), tms(h.Temporal()), enc(storeutil.MarshalNodeWire(h)))
 		}
 	}
 	for _, id := range tw.rels {
@@ -604,14 +612,14 @@ func (tw *headTwin) dump(g *Core) string {
 		if r, err := g.store.GetRelationship(id); err != nil {
 			fmt.Fprintf(&sb, " current %v", err)
 		} else {
-			fmt.Fprintf(&sb, " current v%d %s", r.Version(), enc(storeutil.MarshalRelWire(r)))
+			fmt.Fprintf(&sb, " current v%d %s %s", r.Version(), tms(r.Temporal()), enc(storeutil.MarshalRelWire(r)))
 		}
 		hist, err := g.store.GetRelHistory(id)
 		if err != nil {
 			fmt.Fprintf(&sb, " history %v", err)
 		}
 		for _, h := range hist {
-			fmt.Fprintf(&sb, "\n  v%d %s", h.Version(), enc(storeutil.MarshalRelWire(h)))
+			fmt.Fprintf(&sb, "\n  v%d %s %s", h.Version(), tms(h.Temporal()), enc(storeutil.MarshalRelWire(h)))
 		}
 	}
 	return sb.String()

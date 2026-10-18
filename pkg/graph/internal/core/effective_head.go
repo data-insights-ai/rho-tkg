@@ -92,6 +92,10 @@ type headEntry struct {
 	// interval is open and not void.
 	bounds []types.Instant
 	open   openBelief
+	// void: some row of the chain is void (an excise). A whole-axis update
+	// planned from the entry asks it as one planned from the history asks
+	// the chain (wholeAxisSupersession.voidFree), so both stamp alike.
+	void bool
 }
 
 // openBelief is the newest belief (nodeBeliefNewerThan: higher TxFrom, then
@@ -248,6 +252,7 @@ type headFacts struct {
 	cascade   bool // set from the sweep
 	bounds    []types.Instant
 	open      openBelief
+	void      bool // some row is void
 }
 
 // gatherHeadFacts fills f from filtered, the fold's chain in write order when every
@@ -268,6 +273,7 @@ func gatherHeadFacts[T interface {
 			return
 		}
 		f.maxTx, f.maxTxTo = max(f.maxTx, tm.TxFrom), max(f.maxTxTo, tm.TxTo)
+		f.void = f.void || tm.Void
 		s, e := k.ownBounds(c, r)
 		bounds = append(bounds, s)
 		if !a.Open(e) {
@@ -306,7 +312,7 @@ func headFromFold[T interface {
 	e := &headEntry{epoch: epoch, curVer: current.Version(), curTM: temporalOf(current),
 		maxTx: f.maxTx, maxTxTo: f.maxTxTo, maxVer: f.maxVer, cascade: f.cascade,
 		lastStart: f.lastStart, lastEnd: f.lastEnd, pieces: make([]headPiece, len(pieces)),
-		bounds: f.bounds, open: f.open}
+		bounds: f.bounds, open: f.open, void: f.void}
 	for i, p := range pieces {
 		e.pieces[i] = headPiece{from: p.from, to: p.to, version: p.row.Version()}
 	}
@@ -347,6 +353,7 @@ func headOverlay[T interface {
 			}
 		}
 		out.pieces = paintHead(a, out.pieces, s, end, r.Version(), isVoidRow(r))
+		out.void = out.void || isVoidRow(r)
 		out.maxTx, out.maxVer = tm.TxFrom, r.Version()
 		out.lastStart, out.lastEnd = s, end
 		if bounds != nil {
