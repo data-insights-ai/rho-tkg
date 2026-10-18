@@ -6,10 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.66.0] - 2026-10-18
+
+sigma-tkgd 2026-10-18 (released by Markus): one fix and two additions for `UntimedWholeAxis` stores (`EndValidity` works on every axis), all additive.
+
 ### Added
 
-- **`EndValidity`: the delete that keeps the valid past, on every valid axis** (sigma-tkgd 2026-10-18, for the
-  retirement of the legacy axis). `Nodes().EndValidity(ctx, id)`, `Rels().EndValidity(ctx, id)` and the GraphTx twins
+- **`EndValidity`: the delete that keeps the valid past, on every valid axis** (sigma-tkgd 2026-10-18).
+  `Nodes().EndValidity(ctx, id)`, `Rels().EndValidity(ctx, id)` and the GraphTx twins
   `EndNodeValidity(id)` / `EndRelValidity(id)` write the tombstone the legacy axis's `Delete` writes: `DeletedAt =
   TxTo` = the delete instant `T`, `ValidTo = T` where the row was open, `Retracted == false`
   (`DeleteWroteValidTo()`); the node door cascades it to every relationship of the node in one store call. After it
