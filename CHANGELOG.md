@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`EndValidity`: the delete that keeps the valid past, on every valid axis** (sigma-tkgd 2026-10-18, for the
+  retirement of the legacy axis). `Nodes().EndValidity(ctx, id)`, `Rels().EndValidity(ctx, id)` and the GraphTx twins
+  `EndNodeValidity(id)` / `EndRelValidity(id)` write the tombstone the legacy axis's `Delete` writes: `DeletedAt =
+  TxTo` = the delete instant `T`, `ValidTo = T` where the row was open, `Retracted == false`
+  (`DeleteWroteValidTo()`); the node door cascades it to every relationship of the node in one store call. After it
+  current-state reads (`Get`, label and type scans, property lookups, counts) lose the entity, state doors at a valid
+  instant before `T` keep answering it at pins at or after `T`, reads pinned before `T` answer as before, and the
+  effective timeline ends at `T`. On a legacy-axis graph it writes exactly `Delete`'s rows; on an `UntimedWholeAxis`
+  graph, whose `Delete` is a retraction, it is the delete that keeps the past (one seam: `tombstoneSpec.keepPast`,
+  which `deleteRetracts` never turns into a retraction). Every whole-axis read door checked with these tombstones
+  answers as the legacy axis does (`TestEndValidityKeepsThePast`: point, generic, property, interval, record,
+  effective-scan and adjacency doors, three modes, four backends). No `*WithTx`, batch or ingest twin yet
+  (backlog 78).
+
 ### Fixed
 
 - **An untimed update of an `UntimedWholeAxis` entity ends the replaced row in transaction time** (sigma-tkgd

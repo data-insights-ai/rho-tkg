@@ -60,6 +60,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "DeleteWithTx", run: func() error { return nilAPI.DeleteWithTx(ctx, relID, 1000) }},
 		{name: "Retract", run: func() error { return nilAPI.Retract(ctx, relID) }},
 		{name: "RetractWithTx", run: func() error { return nilAPI.RetractWithTx(ctx, relID, 1000) }},
+		{name: "EndValidity", run: func() error { return nilAPI.EndValidity(ctx, relID) }},
 		{name: "UpdateWithTx", run: func() error { _, err := nilAPI.UpdateWithTx(ctx, relID, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, relID, "KNOWS", nil, nil, nil); return err }},
 		{name: "All", run: func() error { _, err := nilAPI.All(opts); return err }},
@@ -205,6 +206,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "DeleteWithTx", run: func() error { return api.DeleteWithTx(ctx, relID, 1000) }},
 		{name: "Retract", run: func() error { return api.Retract(ctx, relID) }},
 		{name: "RetractWithTx", run: func() error { return api.RetractWithTx(ctx, relID, 1000) }},
+		{name: "EndValidity", run: func() error { return api.EndValidity(ctx, relID) }},
 		{name: "UpdateWithTx", run: func() error { _, err := api.UpdateWithTx(ctx, relID, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := api.Import(ctx, relID, "KNOWS", nil, nil, nil); return err }},
 		{name: "All", run: func() error { _, err := api.All(opts); return err }},
@@ -287,7 +289,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"Add", "Add", "AddWithTx", "AddByID", "AddByID",
 		"AddByIDIfAbsent", "AddByIDIfAbsent", "AddByIDForeignEnd", "RecordForeignIncoming", "Get", "Get", "Lend", "LendByIDs", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "UpdateWithTx", "Import", "All",
+		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "EndValidity", "UpdateWithTx", "Import", "All",
 		"ForEach", "ForEach", "ForEachOutgoing", "ForEachIncoming", "ByType",
 		"ForEachByType", "ForEachOutgoing", "ForEachIncoming", "ForEachAdjacentEndpoint", "Count", "CountByType",
 		"Outgoing", "Incoming", "OutgoingForNodes", "IncomingForNodes",
@@ -468,6 +470,12 @@ func (s *relOpsSpy) DeleteWithTx(ctx context.Context, id types.RelID, txTo types
 
 func (s *relOpsSpy) Retract(ctx context.Context, id types.RelID) error {
 	s.record("Retract")
+	s.lastRelID = id
+	return s.err
+}
+
+func (s *relOpsSpy) EndValidity(ctx context.Context, id types.RelID) error {
+	s.record("EndValidity")
 	s.lastRelID = id
 	return s.err
 }

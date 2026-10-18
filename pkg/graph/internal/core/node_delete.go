@@ -84,7 +84,7 @@ func (n *NodeOps) Get(ctx context.Context, id types.NodeID) (*types.Node, error)
 // Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
-	return n.c.endNode(ctx, id, 0, false, false)
+	return n.c.endNode(ctx, id, 0, false, tombstoneSpec{})
 }
 
 // DeleteWithTx deletes a node and its relationships like Delete but stamps
@@ -98,7 +98,7 @@ func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
 // txTo on any of them (ErrTxOrder, wrapping ErrInvalidTxFrom). Any refusal
 // changes nothing. The commit clock is not moved by txTo.
 func (n *NodeOps) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
-	return n.c.endNode(ctx, id, txTo, true, false)
+	return n.c.endNode(ctx, id, txTo, true, tombstoneSpec{})
 }
 
 // Retract ends belief in the node and in every relationship it has (backlog
@@ -111,7 +111,19 @@ func (n *NodeOps) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.
 // retracted is refused with an error matching both ErrEntityDeleted and
 // ErrNodeNotFound.
 func (n *NodeOps) Retract(ctx context.Context, id types.NodeID) error {
-	return n.c.endNode(ctx, id, 0, false, true)
+	return n.c.endNode(ctx, id, 0, false, tombstoneSpec{retract: true})
+}
+
+// EndValidity ends the node's validity at the delete instant T and keeps its
+// valid past, on every valid axis: the tombstone the legacy axis's Delete
+// writes (DeletedAt = TxTo = T, ValidTo = T when the row was open, not
+// Retracted), cascaded to every relationship of the node in the same store
+// call. On a legacy-axis graph it is Delete; on an UntimedWholeAxis graph,
+// whose Delete is a retraction, it is the delete that keeps the past: reads
+// at a valid instant before T at a pin at or after T still find the node.
+// Errors as Delete.
+func (n *NodeOps) EndValidity(ctx context.Context, id types.NodeID) error {
+	return n.c.endNode(ctx, id, 0, false, tombstoneSpec{keepPast: true})
 }
 
 // RetractWithTx is Retract at the caller's transaction instant txTo, with
@@ -120,20 +132,20 @@ func (n *NodeOps) Retract(ctx context.Context, id types.NodeID) error {
 // recorded close at or after txTo); any refusal changes nothing, and the
 // commit clock is not moved by txTo.
 func (n *NodeOps) RetractWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
-	return n.c.endNode(ctx, id, txTo, true, true)
+	return n.c.endNode(ctx, id, txTo, true, tombstoneSpec{retract: true})
 }
 
-// endNode is the body of the four node end doors (Delete, DeleteWithTx,
-// Retract, RetractWithTx): withTx gates txTo as a caller instant and reports
-// the past-dated write after the store write.
-func (c *Core) endNode(ctx context.Context, id types.NodeID, txTo types.Instant, withTx, retract bool) error {
+// endNode is the body of the node end doors (Delete, DeleteWithTx, Retract,
+// RetractWithTx, EndValidity): spec carries the door's tombstone kind; withTx
+// gates txTo as a caller instant (spec.at) and reports the past-dated write
+// after the store write.
+func (c *Core) endNode(ctx context.Context, id types.NodeID, txTo types.Instant, withTx bool, spec tombstoneSpec) error {
 	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
-	spec := tombstoneSpec{retract: retract}
 	if withTx {
 		at, err := c.resolveCallerTxInstant(txTo)
 		if err != nil {

@@ -575,6 +575,18 @@ func (tx *GraphTx) RetractRelationship(id types.RelID) error {
 	return tx.deleteRelationshipAtLocked(id, tombstoneSpec{retract: true})
 }
 
+// EndRelValidity is DeleteRelationship writing the tombstone of
+// Rels().EndValidity: validity ends at the delete instant and the valid past
+// is kept, on every valid axis (never a retraction). Snapshot, rollback and
+// commit behave exactly as DeleteRelationship.
+func (tx *GraphTx) EndRelValidity(id types.RelID) error {
+	if err := tx.lockActiveCoreWrite(); err != nil {
+		return err
+	}
+	defer tx.unlockActiveCoreWrite()
+	return tx.deleteRelationshipAtLocked(id, tombstoneSpec{keepPast: true})
+}
+
 // RetractRelationshipWithTx is RetractRelationship at the caller's
 // transaction instant txTo, with DeleteRelationshipWithTx's gates and
 // refusals (ErrInvalidTxFrom, ErrTxBackfillDisabled, ErrTxOrder).

@@ -45,7 +45,7 @@ func (r *RelOps) Get(ctx context.Context, id types.RelID) (*types.Relationship, 
 // Delete removes a relationship from the store.
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) Delete(ctx context.Context, id types.RelID) error {
-	return r.c.endRelationship(ctx, id, 0, false, false)
+	return r.c.endRelationship(ctx, id, 0, false, tombstoneSpec{})
 }
 
 // DeleteWithTx deletes a relationship like Delete but stamps the tombstone
@@ -57,7 +57,7 @@ func (r *RelOps) Delete(ctx context.Context, id types.RelID) error {
 // version's start, and no recorded close may lie at or after txTo (ErrTxOrder,
 // wrapping ErrInvalidTxFrom). The commit clock is not moved by txTo.
 func (r *RelOps) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
-	return r.c.endRelationship(ctx, id, txTo, true, false)
+	return r.c.endRelationship(ctx, id, txTo, true, tombstoneSpec{})
 }
 
 // Retract ends belief in the relationship (backlog 43): its tombstone is
@@ -69,7 +69,17 @@ func (r *RelOps) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.In
 // retracted is refused with an error matching both ErrEntityDeleted and
 // ErrRelNotFound.
 func (r *RelOps) Retract(ctx context.Context, id types.RelID) error {
-	return r.c.endRelationship(ctx, id, 0, false, true)
+	return r.c.endRelationship(ctx, id, 0, false, tombstoneSpec{retract: true})
+}
+
+// EndValidity ends the relationship's validity at the delete instant T and
+// keeps its valid past, on every valid axis: the tombstone the legacy axis's
+// Delete writes (DeletedAt = TxTo = T, ValidTo = T when the row was open, not
+// Retracted). On a legacy-axis graph it is Delete; on an UntimedWholeAxis
+// graph, whose Delete is a retraction, it is the delete that keeps the past.
+// Errors as Delete.
+func (r *RelOps) EndValidity(ctx context.Context, id types.RelID) error {
+	return r.c.endRelationship(ctx, id, 0, false, tombstoneSpec{keepPast: true})
 }
 
 // RetractWithTx is Retract at the caller's transaction instant txTo, with
@@ -77,20 +87,19 @@ func (r *RelOps) Retract(ctx context.Context, id types.RelID) error {
 // ErrTxOrder against the whole chain, a recorded close at or after txTo); the
 // commit clock is not moved by txTo.
 func (r *RelOps) RetractWithTx(ctx context.Context, id types.RelID, txTo types.Instant) error {
-	return r.c.endRelationship(ctx, id, txTo, true, true)
+	return r.c.endRelationship(ctx, id, txTo, true, tombstoneSpec{retract: true})
 }
 
 // endRelationship is the body of the four relationship end doors (Delete,
 // DeleteWithTx, Retract, RetractWithTx): withTx gates txTo as a caller
 // instant and reports the past-dated write after the store write.
-func (c *Core) endRelationship(ctx context.Context, id types.RelID, txTo types.Instant, withTx, retract bool) error {
+func (c *Core) endRelationship(ctx context.Context, id types.RelID, txTo types.Instant, withTx bool, spec tombstoneSpec) error {
 	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	if err := checkCtx(ctx); err != nil {
 		return err
 	}
-	spec := tombstoneSpec{retract: retract}
 	if withTx {
 		at, err := c.resolveCallerTxInstant(txTo)
 		if err != nil {

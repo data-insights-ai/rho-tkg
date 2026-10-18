@@ -42,6 +42,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "DeleteWithTx", run: func() error { return nilAPI.DeleteWithTx(ctx, id, 1000) }},
 		{name: "Retract", run: func() error { return nilAPI.Retract(ctx, id) }},
 		{name: "RetractWithTx", run: func() error { return nilAPI.RetractWithTx(ctx, id, 1000) }},
+		{name: "EndValidity", run: func() error { return nilAPI.EndValidity(ctx, id) }},
 		{name: "UpdateWithTx", run: func() error { _, err := nilAPI.UpdateWithTx(ctx, id, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := nilAPI.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
@@ -151,6 +152,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "DeleteWithTx", run: func() error { return api.DeleteWithTx(ctx, id, 1000) }},
 		{name: "Retract", run: func() error { return api.Retract(ctx, id) }},
 		{name: "RetractWithTx", run: func() error { return api.RetractWithTx(ctx, id, 1000) }},
+		{name: "EndValidity", run: func() error { return api.EndValidity(ctx, id) }},
 		{name: "UpdateWithTx", run: func() error { _, err := api.UpdateWithTx(ctx, id, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := api.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := api.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
@@ -215,7 +217,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "LendByIDs", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
+		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "EndValidity", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"AddLabel", "RemoveLabel", "CloseVersion", "History", "HasHistory", "VersionAfter", "VersionBefore",
@@ -355,6 +357,12 @@ func (s *nodeOpsSpy) DeleteWithTx(ctx context.Context, id types.NodeID, txTo typ
 
 func (s *nodeOpsSpy) Retract(ctx context.Context, id types.NodeID) error {
 	s.record("Retract")
+	s.lastID = id
+	return s.err
+}
+
+func (s *nodeOpsSpy) EndValidity(ctx context.Context, id types.NodeID) error {
+	s.record("EndValidity")
 	s.lastID = id
 	return s.err
 }

@@ -118,10 +118,14 @@ func (c *Core) deleteInstantClearOfCloses(at types.Instant, tms ...*types.Tempor
 // caller transaction instant already gated by resolveCallerTxInstant (0 = the
 // plain doors' clock instant), retract marks every tombstone the door writes
 // as a retraction (types.TemporalMetadata.Retracted): belief in the life it
-// ends ends at the tombstone's instant for every valid time.
+// ends ends at the tombstone's instant for every valid time. keepPast is the
+// EndValidity doors' delete: the tombstone ends validity at its instant and
+// keeps the valid past on every valid axis (the legacy axis's Delete), so it
+// is never a retraction, also on an UntimedWholeAxis graph (deleteRetracts).
 type tombstoneSpec struct {
-	at      types.Instant
-	retract bool
+	at       types.Instant
+	retract  bool
+	keepPast bool
 }
 
 // stampDeleteTombstone turns tm (the final version of an entity being hard

@@ -33,6 +33,7 @@ type Ops interface {
 	Delete(ctx context.Context, id types.NodeID) error
 	DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error
 	Retract(ctx context.Context, id types.NodeID) error
+	EndValidity(ctx context.Context, id types.NodeID) error
 	RetractWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error
 	Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error)
 	AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error)
@@ -346,6 +347,26 @@ func (a *API) Retract(ctx context.Context, id types.NodeID) error {
 		return err
 	}
 	return ops.Retract(ctx, id)
+}
+
+// EndValidity says "this node holds no more from now on; its past stays": it
+// removes the node and its relationships like Delete, with the tombstone the
+// legacy valid axis's Delete writes on EVERY valid axis: DeletedAt = TxTo =
+// the delete instant T, ValidTo = T where the row was open, Retracted false
+// (Temporal().DeleteWroteValidTo() holds). Current-state reads lose the node
+// and its relationships; a read at a valid instant before T stays answered
+// at pins at or after T (the valid past is kept), and a read pinned before T
+// answers exactly as before. On a legacy-axis graph (UntimedFromTxFrom,
+// UntimedUnbounded) it writes exactly Delete's rows. On an UntimedWholeAxis
+// graph, where Delete is a retraction (the untimed delete makes no
+// valid-time claim), EndValidity is the delete that keeps the past. Errors as
+// Delete (ErrNodeNotFound).
+func (a *API) EndValidity(ctx context.Context, id types.NodeID) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.EndValidity(ctx, id)
 }
 
 // RetractWithTx is Retract at the caller-supplied transaction instant txTo,

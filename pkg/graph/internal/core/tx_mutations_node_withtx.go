@@ -36,6 +36,14 @@ func (tx *GraphTx) RetractNode(id types.NodeID) error {
 	return tx.deleteNodeAt(id, tombstoneSpec{retract: true})
 }
 
+// EndNodeValidity removes a node and all connected relationships within the
+// transaction like DeleteNode, writing the tombstones of Nodes().EndValidity:
+// validity ends at the delete instant and the valid past is kept, on every
+// valid axis (never a retraction). Snapshot and rollback are DeleteNode's.
+func (tx *GraphTx) EndNodeValidity(id types.NodeID) error {
+	return tx.deleteNodeAt(id, tombstoneSpec{keepPast: true})
+}
+
 // RetractNodeWithTx is RetractNode at the caller's transaction instant txTo,
 // with DeleteNodeWithTx's gates and refusals. A refusal (ErrTxOrder) changes
 // nothing and leaves the transaction open.

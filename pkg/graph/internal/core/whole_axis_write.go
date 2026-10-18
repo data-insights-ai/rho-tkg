@@ -141,11 +141,13 @@ func (s *wholeAxisSupersession) replaces(tm *types.TemporalMetadata, now types.I
 }
 
 // deleteRetracts reports whether a delete's tombstones are retractions: a
-// Retract door, or any delete of an UntimedWholeAxis graph (an untimed delete
+// Retract door, or a Delete of an UntimedWholeAxis graph (an untimed delete
 // ends the entity in transaction time only: belief in its life ends at the
-// tombstone's instant for every valid time).
+// tombstone's instant for every valid time). An EndValidity door
+// (spec.keepPast) never retracts: its tombstone is the legacy axis's Delete
+// tombstone on every axis.
 func (c *Core) deleteRetracts(spec tombstoneSpec) bool {
-	return spec.retract || c.untimedWholeAxis.Load()
+	return spec.retract || !spec.keepPast && c.untimedWholeAxis.Load()
 }
 
 // checkWholeAxisLabelChange admits a label change of an UntimedWholeAxis
