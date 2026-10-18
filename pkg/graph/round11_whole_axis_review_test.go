@@ -122,7 +122,8 @@ func TestRound11WholeAxisReviewDoors(t *testing.T) {
 			}
 			r11Want(t, "the refused unit's other op", r11KAt(t, g, other.ID(), "k", 0, 0), "1")
 
-			// (4) A closed whole-axis node: the label door answers the mode.
+			// (4) A closed whole-axis node: the label change applies to its
+			// one segment (whole_axis_label.go), not refused as a closed row.
 			closed, err := g.Nodes().Add(ctx, []string{"A"}, map[string]any{"k": int64(1), types.ShadowValidFrom: types.Instant(100)})
 			if err != nil {
 				t.Fatal(err)
@@ -130,8 +131,11 @@ func TestRound11WholeAxisReviewDoors(t *testing.T) {
 			if err := g.Nodes().CloseVersion(ctx, closed.ID(), 300); err != nil {
 				t.Fatal(err)
 			}
-			if err := g.Nodes().AddLabel(ctx, closed.ID(), "B"); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
-				t.Errorf("label change of a closed whole-axis node: %v, want ErrUntimedModeMismatch", err)
+			if err := g.Nodes().AddLabel(ctx, closed.ID(), "B"); err != nil {
+				t.Errorf("label change of a closed whole-axis node: %v", err)
+			}
+			if at, err := g.Temporal().NodeAt(closed.ID(), 150); err != nil || !g.Nodes().HasLabel(at, "B") {
+				t.Errorf("closed node AT 150 after AddLabel: %v, %v; want label B", at, err)
 			}
 			if _, err := g.Nodes().Update(ctx, closed.ID(), map[string]any{"j": int64(5)}); err != nil {
 				t.Fatalf("untimed update of a closed whole-axis node: %v", err)

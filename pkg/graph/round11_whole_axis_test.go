@@ -472,8 +472,9 @@ func TestRound11WholeAxisDoors(t *testing.T) {
 			}
 			r11Want(t, "ingest: j AT 150", r11KAt(t, g, n.ID(), "j", 150, 0), "8")
 			r11Want(t, "ingest: j AT 250", r11KAt(t, g, n.ID(), "j", 250, 0), "8")
-			if err := g.Nodes().AddLabel(ctx, n.ID(), "B"); !errors.Is(err, graphpkg.ErrUntimedModeMismatch) {
-				t.Errorf("label change of a node with valid-time segments: %v, want ErrUntimedModeMismatch", err)
+			// A label change applies per segment (whole_axis_label.go).
+			if err := g.Nodes().AddLabel(ctx, n.ID(), "B"); err != nil {
+				t.Errorf("label change of a node with valid-time segments: %v", err)
 			}
 			m, err := g.Nodes().Add(ctx, []string{"A"}, map[string]any{"k": int64(1)})
 			if err != nil {

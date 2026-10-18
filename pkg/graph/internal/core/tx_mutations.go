@@ -858,6 +858,9 @@ func (tx *GraphTx) preflightAddNodeLabelLocked(id types.NodeID, label string) (*
 	if err != nil {
 		return nil, false, err
 	}
+	if per, err := tx.g.labelChangePerSegment(id, current); err != nil || per {
+		return current, false, err // per segment: the kernel decides (whole_axis_label.go)
+	}
 	tok, known := tx.g.labels.Lookup(label)
 	if known && current.HasLabelTokenRaw(tok) {
 		return current, true, nil
@@ -879,6 +882,9 @@ func (tx *GraphTx) preflightRemoveNodeLabelLocked(id types.NodeID, label string)
 	current, err := tx.g.getCurrentNode(id)
 	if err != nil {
 		return nil, err
+	}
+	if per, err := tx.g.labelChangePerSegment(id, current); err != nil || per {
+		return current, err // per segment: the kernel decides (whole_axis_label.go)
 	}
 	if !current.HasLabelTokenRaw(tok) {
 		return nil, ErrLabelNotFound

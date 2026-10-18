@@ -21,6 +21,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   answers as the legacy axis does (`TestEndValidityKeepsThePast`: point, generic, property, interval, record,
   effective-scan and adjacency doors, three modes, four backends). No `*WithTx`, batch or ingest twin yet
   (backlog 78).
+- **Untimed label changes of `UntimedWholeAxis` nodes with valid-time segments** (sigma-tkgd 2026-10-18; round 11
+  refused them with `ErrUntimedModeMismatch`, "an open item"). `Nodes().AddLabel` / `RemoveLabel` and the GraphTx
+  `AddNodeLabel` / `RemoveNodeLabel` on a node whose valid time is not one whole-axis segment (explicit segments, a
+  close) follow the untimed property update's rule (SQL:2011, UPDATE without FOR PORTION OF): every segment that does
+  not already hold the change gets a new version in the new belief with the label added or removed and every property
+  kept, the boundaries stay, the old versions end in transaction time only. Reads at any valid instant in any segment
+  see the new label set at pins after the change and the old one before it; the current label index follows the
+  current row (written through the store's label door, so replicas apply the same records). Refusals are per segment:
+  `ErrTooManyLabels`, `ErrLastLabel` (a segment would lose its last label), `ErrLabelNotFound` (no segment carries
+  the label); a change every segment holds writes nothing. One kernel: the cascade's `cascadeExisting` mode with a
+  label op in place of the property patch (`whole_axis_label.go`); a whole-axis node keeps the one-version door, which
+  writes the same rows. A label added under a unique constraint is judged on every row it binds. `CompareAndSetProperty`
+  on such an entity stays refused (`ErrUntimedModeMismatch`): a per-segment compare has no one value to compare.
+  Pinned by `TestWholeAxisLabelChangePerSegment` (two-phase, label scans at instants in each segment, the current
+  index, both doors) and `TestWholeAxisLabelChangeRollback`.
 
 ### Fixed
 

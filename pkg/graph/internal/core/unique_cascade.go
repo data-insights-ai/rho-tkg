@@ -55,7 +55,12 @@ import (
 // open), else it is the resumption. On success the caller defers the
 // hold's release and calls hold.writeFailed when a store write fails; on
 // error nothing is held and nothing is claimed.
-func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, appended []*types.Node, newCurrent *types.Node, curIsNew bool, newVT types.Instant, props map[string]any) (*uniqueHold, error) {
+//
+// addedLabel (0: none) is the label token a whole-axis label change adds to
+// every row: a constrained value bound under it is judged as a value the
+// write introduces (on the current row when the replaced row lacked the
+// label, and for UniqueForever on every row).
+func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, appended []*types.Node, newCurrent *types.Node, curIsNew bool, newVT types.Instant, props map[string]any, addedLabel uint16) (*uniqueHold, error) {
 	noop := &uniqueHold{}
 	if len(appended) == 0 || !c.hasUniqueConstraints.Load() {
 		return noop, nil
@@ -94,7 +99,11 @@ func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, app
 				if v, ok := props[key]; ok && v != nil && isCorrection {
 					patched = true
 				}
-				changesCurrent := isCurrent && valueKey != oldKey
+				newBinding := addedLabel != 0 && labelTok == addedLabel
+				if newBinding && isCorrection {
+					patched = true
+				}
+				changesCurrent := isCurrent && (valueKey != oldKey || newBinding && (current == nil || !current.HasLabelTokenRaw(addedLabel)))
 				if !changesCurrent && !patched {
 					continue // carried from a row written before: not re-judged
 				}

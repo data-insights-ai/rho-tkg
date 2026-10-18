@@ -32,10 +32,11 @@ import (
 //     explicit valid-time segments costs O(segments) plus its history read.
 //     A relationship's cascade takes the relationship's entity lock only
 //     (as SetRelVersionInterval); deletes serialize on it too.
-//   - The one-version doors (a label change, compare-and-set) apply to a
-//     whole-axis entity (stamped UnboundedValidFrom); on an entity whose
-//     valid time is not one whole-axis segment they are refused with
-//     ErrUntimedModeMismatch (an open item).
+//   - A label change applies to every valid-time segment like an untimed
+//     update (whole_axis_label.go; a whole-axis node keeps the one-version
+//     label door, which writes the same rows). Compare-and-set applies to a
+//     whole-axis entity (stamped UnboundedValidFrom) and is refused with
+//     ErrUntimedModeMismatch on one with explicit valid-time segments.
 //   - An untimed delete ends the entity in transaction time only: its
 //     tombstones are retractions (stampDeleteTombstone).
 //   - A write with a valid time (tkg_valid_from / tkg_valid_to on an update,
@@ -58,7 +59,7 @@ func wholeAxisUntimedUpdate(c *Core, tmp updateTemporal) bool {
 // and whether anything changed (no segment changed: a no-op, as Update; at a
 // caller instant that is ErrTxOrder, as Update).
 func (c *Core) wholeAxisUpdateNode(ctx context.Context, id types.NodeID, prov updateProvenance, tmp updateTemporal, updates map[string]any) (*types.Node, bool, error) {
-	written, err := c.cascadeNodeMode(ctx, id, types.UnboundedValidFrom, c.axis().OpenEnd(), updates, tmp.txAt, cascadeExisting, &prov)
+	written, err := c.cascadeNodeMode(ctx, id, types.UnboundedValidFrom, c.axis().OpenEnd(), updates, tmp.txAt, cascadeExisting, &prov, nil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -150,32 +151,14 @@ func (c *Core) deleteRetracts(spec tombstoneSpec) bool {
 	return spec.retract || !spec.keepPast && c.untimedWholeAxis.Load()
 }
 
-// checkWholeAxisLabelChange admits a label change of an UntimedWholeAxis
-// graph on a node whose valid time is one whole-axis segment (its current row
-// starts at -inf, is open, live, its top version and newest belief): the new
-// version replaces it everywhere in the new belief, SQL:2011's rule for that
-// one segment. A node with explicit valid-time segments is refused with
-// ErrUntimedModeMismatch: the label index follows the current row only, so a
-// per-segment label change needs a store door this release does not have
-// (an open item; a property update applies per segment).
-func (c *Core) checkWholeAxisLabelChange(id types.NodeID, current *types.Node) error {
-	if !c.untimedWholeAxis.Load() {
-		return nil
-	}
-	whole, err := c.nodeWholeAxis(id, current)
-	if err != nil {
-		return err
-	}
-	if !whole {
-		return fmt.Errorf("graph: an untimed label change of node %v, whose valid time is not one whole-axis segment, is not supported under UntimedWholeAxis: %w", id, ErrUntimedModeMismatch)
-	}
-	return nil
-}
-
-// checkWholeAxisVersionedNode is checkWholeAxisLabelChange for another door
-// that writes one new version from the current row without a valid time
-// (compare-and-set): under UntimedWholeAxis it is admitted on a whole-axis
-// node only (its version is stamped UnboundedValidFrom: stampValidFrom with no claim on the literal axis).
+// checkWholeAxisVersionedNode admits a door that writes one new version from
+// the current row without a valid time (compare-and-set) under
+// UntimedWholeAxis on a whole-axis node only (its current row starts at -inf,
+// is open, live, its top version and newest belief); a node with explicit
+// valid-time segments is refused with ErrUntimedModeMismatch: a per-segment
+// compare has no one value to compare (a property update and a label change
+// apply per segment). Admitted, its version is stamped UnboundedValidFrom
+// (stampValidFrom with no claim on the literal axis).
 func (c *Core) checkWholeAxisVersionedNode(id types.NodeID, current *types.Node, door string) error {
 	if !c.untimedWholeAxis.Load() {
 		return nil

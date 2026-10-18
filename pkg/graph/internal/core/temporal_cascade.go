@@ -94,14 +94,16 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 // pieces over [newVF, newVT) are void rows and cover only the parts where a
 // version is valid as believed before the call (none: ErrNoVersionValidAt).
 func (c *Core) cascadeNode(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any, at types.Instant, void bool) (*types.Node, error) {
-	return c.cascadeNodeMode(ctx, id, newVF, newVT, props, at, cascadeModeOf(void), nil)
+	return c.cascadeNodeMode(ctx, id, newVF, newVT, props, at, cascadeModeOf(void), nil, nil)
 }
 
 // cascadeNodeMode is the node cascade kernel; mode selects a correction, an
 // excise (cascadeVoid) or a whole-axis untimed write (cascadeExisting:
 // pieces only where a version is valid, unchanged pieces skipped; prov, when
-// set, is the update's provenance for every appended row).
-func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any, at types.Instant, mode cascadeMode, prov *updateProvenance) (*types.Node, error) {
+// set, is the update's provenance for every appended row). lop, set only with
+// cascadeExisting, is a whole-axis label change applied to every segment in
+// place of props (whole_axis_label.go).
+func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newVT types.Instant, props map[string]any, at types.Instant, mode cascadeMode, prov *updateProvenance, lop *nodeLabelOp) (*types.Node, error) {
 	void, existing := mode == cascadeVoid, mode == cascadeExisting
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
@@ -265,13 +267,16 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 			sup.note(true, false)
 			continue // nothing valid there: no absence to record, no existence to add
 		}
-		if existing && !nodePreparedUpdateMutates(seg.base, provOrZero(prov), updateTemporal{}, props) {
+		if existing && !lop.segmentMutates(seg.base, func() bool { return nodePreparedUpdateMutates(seg.base, provOrZero(prov), updateTemporal{}, props) }) {
 			sup.note(false, false)
 			continue // the segment's version already holds the change
 		}
 		sup.note(false, true)
 		row, err := c.buildNodeCorrectionRow(seg, template, now, props)
 		if err != nil {
+			return nil, err
+		}
+		if err := c.applyNodeLabelOp(row, lop); err != nil {
 			return nil, err
 		}
 		if void {
@@ -339,22 +344,31 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	// Write: append the new rows, never touching existing ones. The store keeps
 	// one "current" KV slot; place newCurrent there (demoting the prior current
 	// to a history row — its bytes are unchanged, only its slot moves).
+	labelSlot := false // the current slot changes by lop's one token (whole_axis_label.go)
 	if curIsNew {
 		// The store's current slot cannot change label tokens (ReplaceNode
 		// rejects it). A correction row's labels come from its base row, and
 		// the only row that can take the slot is the open tail, whose base is
 		// the pre-correction current itself (or the template, for a gap) — so
-		// this holds by construction. Checked here, BEFORE any write, so a
-		// violation surfaces as an error instead of a half-applied cascade.
-		if err := storepkg.ValidateNodeReplacement(current, newCurrent); err != nil {
+		// this holds by construction. A whole-axis label change (lop) changes
+		// them by exactly its token, through the store's label door below.
+		// Checked here, BEFORE any write, so a violation surfaces as an error
+		// instead of a half-applied cascade.
+		var err error
+		if labelSlot, err = lop.slotChanges(current, newCurrent); err != nil {
 			return nil, fmt.Errorf("graph: cascade new current row: %w", err)
+		}
+		if !labelSlot {
+			if err := storepkg.ValidateNodeReplacement(current, newCurrent); err != nil {
+				return nil, fmt.Errorf("graph: cascade new current row: %w", err)
+			}
 		}
 	}
 	// Unique constraints (unique_cascade.go): the built rows are judged after
 	// every kernel check and before the first write; the value stripes stay
 	// held across every write below.
 	// A failed write withdraws the UniqueForever claims no written row carries.
-	uniqueHold, err := c.enforceUniqueForCascade(id, current, appended, newCurrent, curIsNew, newVT, props)
+	uniqueHold, err := c.enforceUniqueForCascade(id, current, appended, newCurrent, curIsNew, newVT, props, lop.added())
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +394,11 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 			return nil, uniqueHold.writeFailed(written, fmt.Errorf("graph: cascade demote current to history: %w", err))
 		}
 		written = append(written, demoted)
-		if err := c.replaceNodeScopedAware(ctx, newCurrent); err != nil {
+		if labelSlot {
+			if err := lop.writeSlot(c, id, newCurrent); err != nil {
+				return nil, uniqueHold.writeFailed(written, fmt.Errorf("graph: cascade replace current: %w", err))
+			}
+		} else if err := c.replaceNodeScopedAware(ctx, newCurrent); err != nil {
 			return nil, uniqueHold.writeFailed(written, fmt.Errorf("graph: cascade replace current: %w", err))
 		}
 	}

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
@@ -49,6 +50,22 @@ func (n *NodeOps) AddLabel(ctx context.Context, id types.NodeID, label string) e
 // currently always a no-op. Callers with no naturally-available ctx pass
 // context.Background(), exactly like createRelWithTypeRollback.
 func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label string) (bool, error) {
+	mutated, err := c.addNodeLabelOneVersion(ctx, id, label)
+	if errors.Is(err, errLabelPerSegment) {
+		return c.wholeAxisLabelChange(ctx, id, label, true)
+	}
+	return mutated, err
+}
+
+// errLabelPerSegment is the one-version label doors' signal that the change
+// applies per valid-time segment (whole_axis_label.go): returned under the
+// entity lock, acted on after it is released.
+var errLabelPerSegment = errors.New("graph: label change per valid-time segment")
+
+// addNodeLabelOneVersion is the one-version label add: one new version from
+// the current row. Under UntimedWholeAxis, on a node whose valid time is not
+// one whole-axis segment, it returns errLabelPerSegment before any check.
+func (c *Core) addNodeLabelOneVersion(ctx context.Context, id types.NodeID, label string) (bool, error) {
 	if err := c.validateName(label); err != nil {
 		return false, err
 	}
@@ -63,6 +80,9 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	if err != nil {
 		return false, err
 	}
+	if per, err := c.labelChangePerSegment(id, current); err != nil || per {
+		return false, cmpOr(err, errLabelPerSegment, per)
+	}
 
 	tok, known := c.lookupLabelLocked(label)
 	if known {
@@ -75,9 +95,6 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	// Enforce MaxLabelsPerNode against the post-addition count.
 	if current.LabelTokenCount()+1 > c.validation.MaxLabelsPerNode {
 		return false, fmt.Errorf("%w: %d > %d", ErrTooManyLabels, current.LabelTokenCount()+1, c.validation.MaxLabelsPerNode)
-	}
-	if err := c.checkWholeAxisLabelChange(id, current); err != nil {
-		return false, err // first: under UntimedWholeAxis a closed node is not whole-axis
 	}
 	if err := c.rejectClosedNodeMutation(current); err != nil {
 		return false, err
@@ -217,6 +234,16 @@ func (n *NodeOps) RemoveLabel(ctx context.Context, id types.NodeID, label string
 // scopeTokenFrom) when persisting via store.RemoveNodeLabelTokenWithHistory —
 // see addNodeLabelInternal's doc comment for the same foundation-only rule.
 func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, label string) error {
+	err := c.removeNodeLabelOneVersion(ctx, id, label)
+	if errors.Is(err, errLabelPerSegment) {
+		_, err = c.wholeAxisLabelChange(ctx, id, label, false)
+	}
+	return err
+}
+
+// removeNodeLabelOneVersion is the one-version label removal (see
+// addNodeLabelOneVersion).
+func (c *Core) removeNodeLabelOneVersion(ctx context.Context, id types.NodeID, label string) error {
 	if err := c.validateName(label); err != nil {
 		return err
 	}
@@ -236,15 +263,15 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 	if err != nil {
 		return err
 	}
+	if per, err := c.labelChangePerSegment(id, current); err != nil || per {
+		return cmpOr(err, errLabelPerSegment, per)
+	}
 
 	if !current.HasLabelTokenRaw(tok) {
 		return ErrLabelNotFound
 	}
 	if current.LabelTokenCount() == 1 {
 		return ErrLastLabel
-	}
-	if err := c.checkWholeAxisLabelChange(id, current); err != nil {
-		return err // first: under UntimedWholeAxis a closed node is not whole-axis
 	}
 	if err := c.rejectClosedNodeMutation(current); err != nil {
 		return err
@@ -350,4 +377,12 @@ func (c *Core) nodeLabelsWithoutTokenUnlocked(node *types.Node, tok uint16) []st
 		}
 	}
 	return labels
+}
+
+// cmpOr returns err when set, else signal when on (nil otherwise).
+func cmpOr(err, signal error, on bool) error {
+	if err != nil || !on {
+		return err
+	}
+	return signal
 }
