@@ -1,0 +1,24 @@
+--- FAIL: TestWholeAxisUpdateStampsSupersededTxTo (0.26s)
+    --- FAIL: TestWholeAxisUpdateStampsSupersededTxTo/memory (0.04s)
+        whole_axis_supersede_test.go:78: node: replaced row tx[1792332533429, 0), want TxTo = the new row's TxFrom 1792332533437
+        whole_axis_supersede_test.go:86: rel: replaced row tx[1792332533431, 0), want TxTo = the new row's TxFrom 1792332533439
+        whole_axis_supersede_test.go:144: segmented rel=false: replaced current row TxTo 0, want 1792332533453
+        whole_axis_supersede_test.go:144: segmented rel=true: replaced current row TxTo 0, want 1792332533466
+    --- FAIL: TestWholeAxisUpdateStampsSupersededTxTo/badger (0.06s)
+        whole_axis_supersede_test.go:78: node: replaced row tx[1792332533480, 0), want TxTo = the new row's TxFrom 1792332533487
+        whole_axis_supersede_test.go:86: rel: replaced row tx[1792332533482, 0), want TxTo = the new row's TxFrom 1792332533489
+        whole_axis_supersede_test.go:144: segmented rel=false: replaced current row TxTo 0, want 1792332533500
+        whole_axis_supersede_test.go:144: segmented rel=true: replaced current row TxTo 0, want 1792332533518
+    --- FAIL: TestWholeAxisUpdateStampsSupersededTxTo/tiered (0.12s)
+        whole_axis_supersede_test.go:78: node: replaced row tx[1792332533603, 0), want TxTo = the new row's TxFrom 1792332533610
+        whole_axis_supersede_test.go:86: rel: replaced row tx[1792332533605, 0), want TxTo = the new row's TxFrom 1792332533612
+        whole_axis_supersede_test.go:144: segmented rel=false: replaced current row TxTo 0, want 1792332533623
+        whole_axis_supersede_test.go:144: segmented rel=true: replaced current row TxTo 0, want 1792332533636
+    --- FAIL: TestWholeAxisUpdateStampsSupersededTxTo/sharded (0.04s)
+        whole_axis_supersede_test.go:78: node: replaced row tx[1792332533652, 0), want TxTo = the new row's TxFrom 1792332533659
+        whole_axis_supersede_test.go:86: rel: replaced row tx[1792332533654, 0), want TxTo = the new row's TxFrom 1792332533661
+        whole_axis_supersede_test.go:144: segmented rel=false: replaced current row TxTo 0, want 1792332533672
+        whole_axis_supersede_test.go:144: segmented rel=true: replaced current row TxTo 0, want 1792332533685
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.526s
+FAIL

@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **An untimed update of an `UntimedWholeAxis` entity ends the replaced row in transaction time** (sigma-tkgd
+  2026-10-18). The whole-axis update is the cascade kernel (`cascadeExisting`), which moved the current row to history
+  with its bytes unchanged, so `Nodes()/Rels().History` showed the replaced version as `tx[T, _)` (`TxTo == 0`)
+  where `Update` on the legacy axis writes `tx[T, T')`. The kernel now stamps the replaced current row `TxTo` = the
+  update's instant, nodes and relationships, every backend and door (plain, `UpdateWithTx`, GraphTx, batch, ingest).
+  Reads do not change: the stamp makes the update's rows replacing rows for the read-time supersession rule, which
+  is the update's meaning wherever it appended a row. It is left out (as before) in the two shapes where that rule
+  could end a row the update kept: a segment the update left unchanged after a changed one, and a gap after a
+  changed one on a chain that may hold void rows (`wholeAxisSupersession`, `whole_axis_write.go`). Pinned by
+  `TestWholeAxisUpdateStampsSupersededTxTo` and `TestWholeAxisUpdatePartialKeepsReads` (`tasks/evidence/zi3/`).
+
 ## [4.65.0] - 2026-10-17
 
 sigma-tkgd round 11 (ledger row 75; built by sigma under Markus's decision, released by Markus). New store capabilities and write and read options, all additive.

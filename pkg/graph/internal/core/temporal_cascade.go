@@ -259,13 +259,17 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 		}
 	}
 	var newVer *types.Node // the appended row covering newVF — the return value
+	sup := wholeAxisSupersession{voidFree: !fromHead && !slices.ContainsFunc(preChain, isVoidRow[*types.Node])}
 	for _, seg := range segments {
 		if (void || existing) && seg.gap {
+			sup.note(true, false)
 			continue // nothing valid there: no absence to record, no existence to add
 		}
 		if existing && !nodePreparedUpdateMutates(seg.base, provOrZero(prov), updateTemporal{}, props) {
+			sup.note(false, false)
 			continue // the segment's version already holds the change
 		}
+		sup.note(false, true)
 		row, err := c.buildNodeCorrectionRow(seg, template, now, props)
 		if err != nil {
 			return nil, err
@@ -366,10 +370,16 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 		written = append(written, r)
 	}
 	if curIsNew {
-		if err := c.putNodeVersionScopedAware(ctx, id, current.Version(), current); err != nil {
+		demoted := current
+		if existing && sup.replaces(current.Temporal(), now) {
+			demoted = current.DeepCopy()
+			ensureNodeTemporal(demoted)
+			demoted.Temporal().TxTo = now
+		}
+		if err := c.putNodeVersionScopedAware(ctx, id, demoted.Version(), demoted); err != nil {
 			return nil, uniqueHold.writeFailed(written, fmt.Errorf("graph: cascade demote current to history: %w", err))
 		}
-		written = append(written, current)
+		written = append(written, demoted)
 		if err := c.replaceNodeScopedAware(ctx, newCurrent); err != nil {
 			return nil, uniqueHold.writeFailed(written, fmt.Errorf("graph: cascade replace current: %w", err))
 		}
@@ -872,13 +882,17 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 		}
 	}
 	var newVer *types.Relationship // the appended row covering newVF — the return value
+	sup := wholeAxisSupersession{voidFree: !fromHead && !slices.ContainsFunc(preChain, isVoidRow[*types.Relationship])}
 	for _, seg := range segments {
 		if (void || existing) && seg.gap {
+			sup.note(true, false)
 			continue // nothing valid there: no absence to record, no existence to add
 		}
 		if existing && !relPreparedUpdateMutates(seg.base, provOrZero(prov), updateTemporal{}, props) {
+			sup.note(false, false)
 			continue // the segment's version already holds the change
 		}
+		sup.note(false, true)
 		row, err := c.buildRelCorrectionRow(seg, template, now, props)
 		if err != nil {
 			return nil, err
@@ -944,7 +958,13 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 		}
 	}
 	if curIsNew {
-		if err := c.putRelVersionScopedAware(ctx, id, current.Version(), current); err != nil {
+		demoted := current
+		if existing && sup.replaces(current.Temporal(), now) {
+			demoted = current.DeepCopy()
+			ensureRelTemporal(demoted)
+			demoted.Temporal().TxTo = now
+		}
+		if err := c.putRelVersionScopedAware(ctx, id, demoted.Version(), demoted); err != nil {
 			return nil, fmt.Errorf("graph: cascade demote rel current: %w", err)
 		}
 		if err := c.replaceRelationshipScopedAware(ctx, newCurrent); err != nil {

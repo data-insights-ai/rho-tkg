@@ -94,6 +94,52 @@ func (c *Core) wholeAxisUpdateRel(ctx context.Context, id types.RelID, prov upda
 	return current, written != nil, nil
 }
 
+// wholeAxisSupersession decides whether a whole-axis untimed update
+// (cascadeExisting) stamps the current row it moves to history with TxTo =
+// the update's instant, as Update does on the legacy axis (sigma-tkgd
+// 2026-10-18: History showed the replaced row as tx[T, _)).
+//
+// A stamped TxTo makes the row a replaced row for the read-time supersession
+// rule (chain_supersession.go): every row the update appends then ends, at
+// its start S, every older belief that started at or before S. That is the
+// update's meaning wherever an appended row covers, and changes nothing where
+// no version was valid. It would be wrong in two shapes, so neither stamps:
+//
+//   - a segment the update left unchanged (it already held the values) after
+//     the first changed one: its row, older than an appended row starting at
+//     or after the row's own start, would end there and lose its later
+//     segment;
+//   - a gap after the first changed segment on a chain that may hold void
+//     rows (an excise): a void row that wins there would end, and an older
+//     row below it would answer again. A chain planned from the current row
+//     or the head entry (no history read) counts as one that may.
+//
+// Segments are fed in ascending valid order (note); replaces is asked after.
+type wholeAxisSupersession struct {
+	voidFree bool // the pre-update chain holds no void row (known only from a history read)
+	seen     bool // a changed segment was fed
+	unsafe   bool // a shape above was fed
+}
+
+// note feeds one segment: gap (no version valid there) or changed (the
+// update appends a row for it).
+func (s *wholeAxisSupersession) note(gap, changed bool) {
+	if changed {
+		s.seen = true
+		return
+	}
+	if s.seen && (!gap || !s.voidFree) {
+		s.unsafe = true
+	}
+}
+
+// replaces reports whether the current row with stamps tm is stamped TxTo =
+// now when the update moves it to history: no unsafe shape was fed and now
+// follows the row's TxFrom (a replaced row has its TxTo after its TxFrom).
+func (s *wholeAxisSupersession) replaces(tm *types.TemporalMetadata, now types.Instant) bool {
+	return s.seen && !s.unsafe && (tm == nil || now > tm.TxFrom)
+}
+
 // deleteRetracts reports whether a delete's tombstones are retractions: a
 // Retract door, or any delete of an UntimedWholeAxis graph (an untimed delete
 // ends the entity in transaction time only: belief in its life ends at the

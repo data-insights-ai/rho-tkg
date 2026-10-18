@@ -14,7 +14,9 @@ import (
 // Two kinds of write append a row. A cascade (SetVersionInterval) asserts its
 // rows over their own [ValidFrom, ValidTo) and leaves every row it overlays
 // untouched — including the row it moves out of the current slot (its TxTo
-// stays 0). Every other appending write (Update, CloseVersion, a label change,
+// stays 0; a whole-axis untimed update, which replaces every segment it
+// changes, stamps it as Update does: wholeAxisSupersession). Every other
+// appending write (Update, CloseVersion, a label change,
 // a property CAS, UpdateWithTx, a replica's apply of one of them) REPLACES the
 // entity's state from the new row's valid start S on: it stamps the row it
 // replaced with TxTo = the new row's TxFrom, and its row ends where its own
