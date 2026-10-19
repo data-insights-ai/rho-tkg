@@ -27,7 +27,8 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 ## 2. Standing rules (one line each; the lesson owns the detail)
 
 - **Just essential patches** (René 2026-10-17, row 74): only a consumer-blocking or wrong-answer/data bug gets work; no new features,
-  minors or backlog sweeps unless René asks. The v4.64.0 writer stays parked on `tombstone-writer-v4.63`.
+  minors or backlog sweeps unless René asks. The tombstone writer stays parked on `tombstone-writer-v4.63` (René via sigma 2026-10-19: "not now"; it no longer
+  cherry-picks onto v4.66.0: Markus's axis-aware `stampDeleteTombstone` and `EndValidity` need a rebuild, minor v4.67.0, ~half a day).
   sigma (2026-10-17) stays on rho v4.61.0 under the same rule, does P24 only when it must move to v4.64.0+, and asks us not to hold v4.64.0 for it.
 
 - Process, models, gates, deprecation ritual, release authority, notify consumers: lesson 79 (gate 75, 82, 87). "No Fable review
