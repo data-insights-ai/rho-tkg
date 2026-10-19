@@ -17,8 +17,8 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
    - ai-soc: PIN18 = rho v4.56.1 + sigma v0.11.11; declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets
      `UntimedValidStart: UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data
      day; `/bars`, `/tkg/asof` = its HTTP read doors.)
-   - sigma-tkgd: v0.11.11 with rho v4.56.1; on adopting v4.56.0+ it maps `types.UnboundedValidFrom` to -inf and drops its
-     `untimedStart` rule; its own decision on the v4.57.0 untimed default is its own.
+   - sigma-tkgd: v0.11.22 (2026-10-19); library on rho v4.61.0, scratchpad/xbench on v4.66.0; needs no new rho API; P24
+     (marker-aware ValidTo reads) parked with the tombstone writer.
 4. **Open work:** the open table of `tasks/backlog.md` (old items, no requester; nothing blocking). No scheduled change left.
 5. **Watch origin:** `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background (Appendix A). When Markus releases on
    main: merge origin/main, check his code against our rules (one valid start, Void rows, Elements, format markers, head cache,
