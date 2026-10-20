@@ -1,0 +1,10 @@
+--- FAIL: TestTieredStore_ColdShardClose_KeepsRows (2.40s)
+    --- FAIL: TestTieredStore_ColdShardClose_KeepsRows/in-memory/idle (0.05s)
+        in_memory_cold_close_test.go:69: a cold shard closed = true, want false
+        in_memory_cold_close_test.go:73: GetNode(827899804701851648) after the idle sweep: graph: node not found
+    --- FAIL: TestTieredStore_ColdShardClose_KeepsRows/in-memory/cap (0.38s)
+        in_memory_cold_close_test.go:69: a cold shard closed = true, want false
+        in_memory_cold_close_test.go:73: GetNode(827899805939695616) after the cap sweep: graph: node not found
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	2.498s
+FAIL

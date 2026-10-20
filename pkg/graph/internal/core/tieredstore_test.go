@@ -793,8 +793,18 @@ func TestGraph_DecomposeID(t *testing.T) {
 
 func TestTieredStore_ColdShard_IdleCloseBlockedByActiveRequest(t *testing.T) {
 	// Checkout a cold shard store. Verify closeIdleShards skips it while
-	// activeReqs > 0, then succeeds after checkin.
-	ts := newTestTieredStore(t)
+	// activeReqs > 0, then succeeds after checkin. On disk: an in-memory
+	// cold shard is never closed (its store is the only copy of its rows).
+	ts, err := tiered.New(tiered.Config{
+		DataDir:       t.TempDir(),
+		RefLabels:     []string{"Case", "User"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatalf("tiered.New: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")

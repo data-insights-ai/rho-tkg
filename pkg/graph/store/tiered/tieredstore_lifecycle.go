@@ -383,8 +383,18 @@ func (ts *Store) idleCloseLoop() {
 	}
 }
 
+// coldShardsClosable reports whether closing a cold shard's store keeps its
+// rows. An InMemory shard's BadgerStore is the only copy of them: a lazy open
+// of the same path after a close starts empty, so the idle sweep and the
+// open-handle cap leave in-memory shards open (their bound is memory, which a
+// close would only free by dropping the data).
+func (ts *Store) coldShardsClosable() bool { return !ts.inMemory }
+
 // closeIdleShards closes cold shards that have been idle longer than idleTimeout.
 func (ts *Store) closeIdleShards() {
+	if !ts.coldShardsClosable() {
+		return
+	}
 	nowMs := time.Now().UnixMilli()
 	thresholdMs := ts.idleTimeout.Milliseconds()
 

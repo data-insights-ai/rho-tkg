@@ -76,6 +76,7 @@ type Config struct {
 	// count grows without bound.
 	MaxOpenColdShards int
 	// IdleTimeout closes idle cold shards after this duration. 0 = never close.
+	// InMemory stores never close a cold shard (its store is the only copy).
 	// Default: 5 minutes when ColdAfter > 0. If set, must be at least 1ms.
 	IdleTimeout time.Duration
 	// Compression sets the SSTable compression algorithm for all shards.
