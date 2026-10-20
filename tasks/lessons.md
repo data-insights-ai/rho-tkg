@@ -17,7 +17,7 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
   `make test-race` before a tag (66); a green workflow means its gates ran (75). Test tiers: new code gets `-short` tests of
   seconds, commits grouped; long tests only at the final minor-release push (87).
 - Reviews: one round per branch, authors run lint + security first; models: builds Opus, code reviews Opus high, doc work
-  Sonnet; the final Fable review is off ("No fable review for now", René 2026-10-16) until he re-enables it (79).
+  Sonnet; reviews on Fable, and a build Opus cannot finish goes to Fable (René 2026-10-20: "If opus is not smart enough use a fable Agent .. use Fabel as reviewer"; was off since 10-16) (79).
 - A contract over a family of doors lands in every door; test cross-door agreement (58, 59, 42, 57, 69).
 - Trust boundary: validate IDs and decoded bytes at every entry, `SafeUnmarshal`, allocate by bytes delivered, verify imported
   hashes (1, 6, 44, 47, 48).
@@ -584,8 +584,8 @@ build, one message. (2) Behaviour changes go through the deprecation ritual (`do
 run `make lint-docker` and `make security-docker` before reporting. (4) One reviewer round per branch, fix round to the same agent, a
 second only for a blocker; doc/comment-only changes get the docs tests and a diff read. (5) Briefs name 5-8 files. (6) A backlog item
 needs a consumer request or a failing test. (7) Never stop a running agent unless asked. (8) Models: builds Opus, code reviews Opus
-effort high, doc work Sonnet (Opus after a second Sonnet fix round); the final Fable review of the batch before tagging is
-SUSPENDED (René 2026-10-16: "No fable review for now"). (9) Release authority (René 2026-10-10): merge, gate, tag, push main and the
+effort high, doc work Sonnet (Opus after a second Sonnet fix round); the review of a branch and of the batch before tagging
+runs on Fable, and a build Opus cannot finish goes to a Fable agent (René 2026-10-20: "If opus is not smart enough use a fable Agent .. use Fabel as reviewer"; suspended 10-16 to 10-20). (9) Release authority (René 2026-10-10): merge, gate, tag, push main and the
 tag, notify the consumers, without asking each time; never push `origin/v5`, never force-push.
 Detector: a second review round, a lint finding after a merge, a minor tag for a release without a new feature, a brief with over ten file names.
 
