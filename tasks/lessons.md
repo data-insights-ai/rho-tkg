@@ -666,3 +666,10 @@ Recurred 2026-10-16 (v4.58.0 gate): the race-aware long tier (`testing.Short() &
 old tiered decline, so WP-31's builder and reviewer runs (`-short`) never saw them and only the release gate did. Rule: a
 contract change (a door that now succeeds, a sentinel no longer returned) greps every test pinning the old outcome and runs
 those by name with `-race` before the branch is reported done.
+
+## 88. Build briefs: analyse, then code
+
+Rule: a build agent's brief is "analyse, red test, code, green": no review phase, no reconstruction study or benchmark tables
+before the fix; the main session reviews afterwards (René 2026-10-20: "Fable should just analyse and then write the code").
+Trigger: writing an Agent brief for a fix. Detector: the brief lists more than one phase before "fix".
+
