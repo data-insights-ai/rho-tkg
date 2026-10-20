@@ -74,23 +74,25 @@ func chainFromHead[T interface {
 		// the error (cascadeInstant).
 		return hc, false
 	}
-	var readV []uint32
-	var readRows []T
+	// One point read per base row: a correction from the chain's start has
+	// one per piece (row 87), so the rows read are kept by version.
+	var readRows map[uint32]T
 	row := func(v uint32) (T, bool) {
 		if v == current.Version() {
 			return current, true
 		}
-		for i, w := range readV {
-			if w == v {
-				return readRows[i], true
-			}
+		if r, ok := readRows[v]; ok {
+			return r, true
 		}
 		r, err := read(v)
 		if err != nil {
 			var zero T
 			return zero, false
 		}
-		readV, readRows = append(readV, v), append(readRows, r)
+		if readRows == nil {
+			readRows = make(map[uint32]T, 4)
+		}
+		readRows[v] = r
 		return r, true
 	}
 	a := c.axis()
