@@ -9,8 +9,8 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 1. **No open request from René.** v4.66.2 (row 85, René "Go was okay"): a write to a long version chain no longer reads, copies and
    sorts the whole chain; ai-soc's TestDerivedWriteCostFlatInVersionChain 13.0x → 5.1x, the rest is sigma's whole-timeline reads
-   (sigma cuts its ~19% next, René's order: rho first, then sigma). Tag CI run 39450059246 failed only on the alloc-test flake row 86
-   (fixed on main after the tag); its failed job was rerun. ai-soc + sigma notified once CI is green.
+   (sigma cuts its ~19% next, René's order: rho first, then sigma). Tag CI run 39450059246 green after a rerun of the alloc-test flake
+   (row 86, fixed on main after the tag); ai-soc + sigma notified 2026-10-20.
    - Next patch candidate (review finding, not essential unless a consumer holds such rows): whole-axis entities patched while
      closed under v4.66.0 keep a stale current row (core/temporal_cascade.go:702-712 matches only PrevHash == current's hash).
    - Review findings NOT taken (wait for René): tests review #5-#10, code review #4-#7, docs #9-#10 rest (details in todo rows 77-82).
