@@ -87,8 +87,8 @@ type TemporalMetadata struct {
 	// the believed ValidTo too (the row is valid at no instant after the
 	// delete), so the tombstone never needs an end before its start. Only
 	// meaningful together with DeletedAt != 0 and a ValidTo that is 0 or not
-	// before DeletedAt; stores reject it otherwise. Read since v4.62.0; the
-	// delete doors write it from v4.64.0.
+	// before DeletedAt; stores reject it otherwise. Read since v4.62.0; planned
+	// (writer parked, backlog 4/7/25): no release writes it yet.
 	DeleteKeptValidTo bool
 }
 

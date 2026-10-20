@@ -210,7 +210,7 @@ Purpose: an older binary must refuse data it cannot read, instead of misdecoding
 | 5 | v4.52.2 on, only with an Elements definition | an Elements property index is persisted (backlog 63) | as 3 |
 | 6 | v4.54.0 on, only after a first excise | the store holds a void row (backlog 64) | 5 for the void row |
 | 7 | v4.56.0 on, only for an `UntimedUnbounded` or `UntimedWholeAxis` store | the store's untimed valid-start mode is `UntimedUnbounded` or (round 11, key byte 3) `UntimedWholeAxis`, or a conversion to `UntimedUnbounded` started (backlog 73; an earlier v4.56.0 or later reader refuses byte 3 at open, `ErrCorruptWire`); raised on the shard holding the MetaKV key (badger; tiered reference shard; sharded anchor) in one transaction with the key `untimed_valid_start` (`MetaSetDurableRaising`) | unchanged (an untimed start is an ordinary `ValidFrom`; an `UntimedWholeAxis` row stores literal instants, the open end `math.MaxInt64`) |
-| 8 | v4.63.0 on, only after a first such delete (v4.62.0 reads it and writes no `dk` row) | the store holds a delete tombstone that kept its believed `ValidTo` (`DeleteKeptValidTo`, key `dk`; backlogs 4, 7, 25): a close at or after the delete, or the open end of a row starting at or after it | 6 for that tombstone |
+| 8 | read since v4.62.0; written by no release yet | the store holds a delete tombstone that kept its believed `ValidTo` (`DeleteKeptValidTo`, key `dk`; backlogs 4, 7, 25): a close at or after the delete, or the open end of a row starting at or after it | 6 for that tombstone |
 
 One tracker serves all markers: `bs.formatMarker`, raised by `raiseFormatMarkerPendingLocked` under `wbMu` in the same section that appends the row or definition needing it (`appendOpsRaising`, `appendOpsLoggedRoutedRaising`) or writes the meta entry needing it (`MetaSetDurableRaising`, marker 7). The marker never lags its cause, a later raise for a lower feature never lowers a higher pending marker, and it is never lowered (dropping an Elements index or never again excising keeps the store closed to older binaries; so does an emptied unbounded store later opened under `UntimedFromTxFrom`). A store with none of the features keeps its marker (3 or 4), a `UntimedFromTxFrom` store included; `Clear` resets the tracker and re-stamps the writer's base marker. Bump protocol: encoders (lesson 39), decode path and marker logic move together. Row layout: SPEC section 9.1a; the retraction key `rx`, the void key `vd` and the kept-valid-to key `dk` are keys an older reader must not skip, which is why they raise `fv`.
 
@@ -237,10 +237,10 @@ A store is opened by a release that reads its marker (the table above). Opening 
 | 4 | v4.52.2 and later | v4.52.1 and earlier |
 | 5 | v4.52.2 and later | v4.52.1 and earlier |
 | 6 | v4.54.0 and later | v4.53.0 and earlier |
-| 7 | v4.56.0 and later | v4.55.3 and earlier (a release that ignores `untimed_valid_start` would write `TxFrom`-start creates into an `UntimedUnbounded` store) |
+| 7 | v4.56.0 and later (mode byte 3, UntimedWholeAxis: v4.65.0 and later) | v4.55.3 and earlier (a release that ignores `untimed_valid_start` would write `TxFrom`-start creates into an `UntimedUnbounded` store) |
 | 8 | v4.62.0 and later | v4.61.x and earlier (a release that skips `dk` would read a kept close as the delete's end) |
 
-Rows and feeds behave alike: an `fv` above what a release reads fails that row closed in an export, a change feed or a replica (fv 3 retraction: v4.49.2 and later; fv 4 binary hashes: v4.52.2 and later; fv 5 void row: v4.54.0 and later; fv 6 kept-valid-to tombstone: read by v4.62.0 and later, written from v4.63.0). Upgrade readers, replicas and importers before the writer.
+Rows and feeds behave alike: an `fv` above what a release reads fails that row closed in an export, a change feed or a replica (fv 3 retraction: v4.49.2 and later; fv 4 binary hashes: v4.52.2 and later; fv 5 void row: v4.54.0 and later; fv 6 kept-valid-to tombstone: read since v4.62.0; written by no release yet). Upgrade readers, replicas and importers before the writer.
 
 First writable open on v4.54.0 (one-time work, no action needed):
 

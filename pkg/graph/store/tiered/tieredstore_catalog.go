@@ -235,7 +235,8 @@ func (ts *Store) SaveRegistries(labelReg *registrypkg.LabelRegistry, relTypeReg 
 }
 
 // SaveLabelRegistry persists the label registry to the registry file.
-// Deprecated: use SaveRegistries to avoid read-modify-write race.
+//
+// Deprecated: use SaveRegistries to avoid read-modify-write race; removed in v5.0.0.
 func (ts *Store) SaveLabelRegistry(reg *registrypkg.LabelRegistry) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -281,7 +282,8 @@ func (ts *Store) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (int, error) 
 }
 
 // SaveRelTypeRegistry persists the reltype registry to the registry file.
-// Deprecated: use SaveRegistries to avoid read-modify-write race.
+//
+// Deprecated: use SaveRegistries to avoid read-modify-write race; removed in v5.0.0.
 func (ts *Store) SaveRelTypeRegistry(reg *registrypkg.RelTypeRegistry) error {
 	if err := ts.checkOpen(); err != nil {
 		return err

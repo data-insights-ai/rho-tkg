@@ -295,7 +295,7 @@ func (a *API) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[st
 
 // Delete deletes the node honoring ctx.
 //
-// Changes in v4.64.0 (backlogs 4, 7, 25): the delete is stamped at the commit
+// Planned (writer parked, backlog 4/7/25; no release writes it yet): the delete is stamped at the commit
 // clock also for a row whose start lies ahead, and a ValidTo it does not write
 // (a recorded close at or after the delete, the open end of a row starting at
 // or after it) is kept in a tombstone marked Temporal().DeleteKeptValidTo,
@@ -319,7 +319,7 @@ func (a *API) Delete(ctx context.Context, id types.NodeID) error {
 // on any of them refuses (ErrTxOrder, which wraps ErrInvalidTxFrom). A refusal
 // changes nothing. The commit clock is not moved.
 //
-// Changes in v4.64.0 (backlog 7): a recorded close at or after txTo no longer
+// Planned (writer parked, backlog 7; no release writes it yet): a recorded close at or after txTo no longer
 // refuses; the tombstone keeps it (Temporal().DeleteKeptValidTo) for reads
 // pinned before txTo.
 func (a *API) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {

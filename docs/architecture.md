@@ -426,7 +426,7 @@ Persistent Store using Badger v4 with async batch persistence.
 
 ### On-Disk Format Versioning
 
-Two layers, per row (`fv`) and per store (the `wire_format_version` marker, verified at open before any row is decoded; tiered shards check it per shard). One tracker raises the marker (3, 4 binary hashes, 5 Elements, 6 void rows); a newer row or marker fails closed with `store.ErrWireFormatVersionUnsupported`. Home: `docs/persistence.md` "Format versions and markers", upgrade path "Upgrading a store"; row layout SPEC 9.1a.
+Two layers, per row (`fv`) and per store (the `wire_format_version` marker, verified at open before any row is decoded; tiered shards check it per shard). One tracker raises the marker; a newer row or marker fails closed with `store.ErrWireFormatVersionUnsupported`. Home: `docs/persistence.md` "Format versions and markers", upgrade path "Upgrading a store"; row layout SPEC 9.1a.
 
 - `loadIndexes` still tolerates corrupt rows (skip + warn + counter
   reconcile), but a FUTURE per-row version is not damage — it fails the open
@@ -1217,7 +1217,7 @@ Import treats record streams as untrusted input. `ImportOptions.MaxStagedBytes =
 | v3.0.66 | `GraphTx.GetNode`, `GraphTx.AddRelationshipByID`, `GraphTx.AddRelationshipByIDIfAbsent` for transactional graph writes |
 | v3.0.67 | Cross-shard incoming relationship type filter fix — `inIdx` changed from `map[ID]struct{}` to `map[ID]uint16` (relID → typeToken; today `inEdge{startNodeID, typeToken}`) |
 
-The table records the v3.0 build-out only. Every later release (v3.0.68 – v4.63.0) is in `CHANGELOG.md`; the sections above describe the current code.
+The table records the v3.0 build-out only. Every later release is in `CHANGELOG.md`; the sections above describe the current code.
 
 ---
 

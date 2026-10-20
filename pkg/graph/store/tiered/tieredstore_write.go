@@ -21,7 +21,7 @@ import (
 // index on an event label.
 //
 // Deprecated: since v4.58.0 property indexes cover every label on every shard
-// (WP-31) and nothing returns it; kept so callers matching it still compile.
+// (WP-31) and nothing returns it; kept so callers matching it still compile; removed in v5.0.0.
 var ErrEventPropertyIndex = errors.New("graph: property indexes only supported for reference entities in Store")
 
 // ErrPrimaryLabelClassMutation is returned when a label mutation would change

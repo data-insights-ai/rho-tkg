@@ -112,8 +112,8 @@ type DeltaHeader struct {
 	// From is the ExportSince `since` cursor (zero for a full Export).
 	From Cursor
 	// To is the point the stream is consistent at — the `since` for the NEXT
-	// delta in the chain. For a full Export, To.LSN is the snapshot's change-log
-	// LSN (To.Epoch is not carried in a full-export header; use Watermark()).
+	// delta in the chain. For a full Export, To = {SnapshotLSN, Epoch}: both are zero
+	// without a change-log.
 	To Cursor
 	// ExportedAt is the Unix-millisecond wall-clock time the stream was written
 	// (informational; not part of any content digest).
