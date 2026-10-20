@@ -15,6 +15,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`RecurrencePattern.Expand` span guard overflowed (v4.66.1).** `to-from > maxExpandSpan` wrapped to a negative value for
   `UnboundedValidFrom`..`InfiniteValidTo`, passed, and expansion died with a fatal out of memory. The guard now uses
   unsigned subtraction and returns `ErrRecurrenceSpanTooLarge`.
+- **An empty default-mode graph that imports an `UntimedWholeAxis` export answers its rows at valid instants**
+  (review 2026-10-20, row 81). The import adopted the source's mode and valid axis after it had written the rows,
+  and the stores rebuild nothing when the axis changes, so the temporal-index envelopes, history buckets and
+  tx-member spans were built on the legacy axis (badger persisted them): after importing a node valid `[0, 10)`
+  into a target with `CreateTemporal("L")`, `NodesByLabelAt("L", 5)`, `NodesByLabelPropertyDuring` and `ByLabel`
+  at valid 5 answered 0 rows. The import now adopts the mode at the header, before the first row, with its
+  change-logged mode record, so a replica tailing the feed switches before the rows too (it had the same 0 rows);
+  an import that fails after the header (a unique violation, a corrupt record) restores the target's mode and
+  persisted key with its rows. One seam, `switchUntimedModeLocked`, changes the mode for the import, the
+  replica's `ChangeMeta` apply and the rollback, and refuses an axis change on a store that holds rows
+  (`ErrUntimedModeMismatch`). `TestImportAdoptsAxisBeforeRows` (memory, badger, tiered, sharded, replica,
+  rollback).
 
 ## [4.66.0] - 2026-10-18
 
