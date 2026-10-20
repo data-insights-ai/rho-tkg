@@ -1,0 +1,126 @@
+package graph
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"sort"
+	"testing"
+	"time"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
+)
+
+func keyClass(k []byte) string {
+	n := len(k)
+	if n > 12 {
+		n = 12
+	}
+	out := ""
+	for _, c := range k[:n] {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == ':' || c == '-' {
+			out += string(c)
+		} else {
+			out += fmt.Sprintf("\\x%02x", c)
+		}
+	}
+	return out
+}
+
+func TestScaleProbe(t *testing.T) {
+	c := engineConfig(t, "")
+	c.Dir, c.Memory, c.Durability = "", true, DurabilityBuffered
+	for _, k := range []string{"a", "b", "c"} {
+		c.NodeProperties = append(c.NodeProperties, PropertySchema{Key: k, Kind: KindString})
+	}
+	for i := 0; i < 18; i++ {
+		c.RelProperties = append(c.RelProperties, PropertySchema{Key: fmt.Sprintf("r%d", i), Kind: KindString})
+	}
+	g, err := Open(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	all := scopeAll(t)
+	hist := map[string]int{}
+	hb := map[string]int{}
+	var cur []int
+	dump := os.Getenv("DUMP") != ""
+	debugWrites = func(w []raftlog.KV) {
+		cur = append(cur, len(w))
+		if len(cur)%500 == 0 {
+			mx, n10 := 0, 0
+			for _, kv := range w {
+				if kv.Key[0] == 0x10 {
+					n10++
+					mx = max(mx, len(kv.Value))
+				}
+			}
+			fmt.Printf("commit %d: writes=%d keytree n=%d maxB=%d t=%s\n", len(cur), len(w), n10, mx, time.Now().Format("15:04:05.000"))
+		}
+		for _, kv := range w {
+			hist[keyClass(kv.Key)]++
+			hb[keyClass(kv.Key)] += len(kv.Key) + len(kv.Value)
+			if dump {
+				fmt.Printf("%q %d\n", kv.Key, len(kv.Value))
+			}
+		}
+	}
+	var nodes []types.NodeID
+	batch := 1
+	if os.Getenv("BATCH") != "" {
+		fmt.Sscan(os.Getenv("BATCH"), &batch)
+	}
+	nops := 400
+	if os.Getenv("NOPS") != "" {
+		fmt.Sscan(os.Getenv("NOPS"), &nops)
+	}
+	if dump {
+		nops = 6
+	}
+	for i := 0; i < nops; i += batch {
+		_, err := g.Update(context.Background(), func(tx Tx) error {
+			for j := 0; j < batch; j++ {
+				k := i + j
+				if k%5 < 3 || len(nodes) < 2 {
+					id, err := tx.CreateNode(CreateNode{Labels: []string{"L"}, Props: map[string]Value{"a": String(fmt.Sprint("a", k)), "b": String("bb"), "c": String("cc")}, Scope: all})
+					if err != nil {
+						return err
+					}
+					nodes = append(nodes, id)
+				} else {
+					p := map[string]Value{}
+					for r := 0; r < 18; r++ {
+						p[fmt.Sprintf("r%d", r)] = String(fmt.Sprint("v", k, r))
+					}
+					if _, err := tx.CreateRel(CreateRel{Type: "T", From: nodes[(k*7)%len(nodes)], To: nodes[(k*13)%len(nodes)], Props: p, Scope: all}); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("op %d: %v", i, err)
+		}
+	}
+	u, _ := g.eng.(*pebbleEngine).store.ApplicationUsage()
+	tot := 0
+	for _, n := range cur {
+		tot += n
+	}
+	fmt.Printf("batch=%d ops=%d commits=%d writes=%d writes/op=%.1f usage=%+v\n", batch, nops, len(cur), tot, float64(tot)/float64(nops), u)
+	type kv struct {
+		k string
+		n int
+	}
+	var hs []kv
+	for k, n := range hist {
+		hs = append(hs, kv{k, n})
+	}
+	sort.Slice(hs, func(i, j int) bool { return hs[i].n > hs[j].n })
+	for _, h := range hs {
+		fmt.Printf("%8d %6.1f/op %7.0f B/op %s\n", h.n, float64(h.n)/float64(nops), float64(hb[h.k])/float64(nops), h.k)
+	}
+}

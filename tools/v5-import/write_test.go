@@ -47,10 +47,14 @@ type imported struct {
 	cfg graph.Config
 	g   *graph.Graph
 	exp fixtures.Expected
+	nullCache map[string]bool
 }
 
 // nullOnly are the keys the import reports as KindNullOnlyKey: it writes no null for them.
 func (im *imported) nullOnly() map[string]bool {
+	if im.nullCache != nil {
+		return im.nullCache
+	}
 	p, err := im.res.plan(Options{})
 	out := map[string]bool{}
 	if err != nil {
@@ -61,6 +65,7 @@ func (im *imported) nullOnly() map[string]bool {
 			out[a.Key] = true
 		}
 	}
+	im.nullCache = out
 	return out
 }
 
@@ -95,7 +100,7 @@ func importFixture(t *testing.T, name string, o Options) *imported {
 	if _, err := res.Import(context.Background(), g, cfg, o); err != nil {
 		t.Fatalf("%s: import: %v", name, err)
 	}
-	return &imported{res, cfg, g, loadExpected(t, name)}
+	return &imported{res: res, cfg: cfg, g: g, exp: loadExpected(t, name)}
 }
 
 // reader reads the imported graph the way the oracle was asked. The v4 ID is
