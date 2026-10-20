@@ -8,18 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **A valid-time correction no longer costs one chain sort per cut** (ai-soc 2026-10-20, Flux run at 80 % CPU there;
-  row 85). `SetNodeVersionInterval` / `SetRelVersionInterval`, their `WithTx`, `GraphTx`, `Batch` and `Session`
-  twins, excises and whole-axis untimed updates cut the target interval at every bound of the chain inside it and
-  asked the point resolver once per cut on a fresh copy of the chain (copy, sort, supersession caps, a scan of
-  every row): cuts × V log V per write, so a write spanning the chain grew with its square (memory, 1,000 rows:
-  6.3 ms per write; an extending write at 2,000 rows 21.8 ms). The kernel now prepares the chain once per
-  correction (`correctionChain`: the resolver's classification, order and capped intervals) and answers every cut
-  and the resumption source from it, by one sweep when there are many cuts: V log V + cuts (0.36 ms and 2.1 ms).
-  Answers are unchanged; bounded appends at the chain's end cut nothing and keep their cost (the history read).
-  `TestCascadeCorrection85_CostFlat` (red before: bytes per write x32 to x62 from 100 to 1,000 rows),
-  `TestCascadeCorrection85_Oracle` (twin graphs against the per-cut resolver on three untimed modes, memory and
-  badger), `TestCascadeCorrection85_EmptyAndSingle`, `TestCascadeCorrection85_Shapes`.
+- **A write to a long version chain no longer reads, copies and sorts the whole chain** (ai-soc 2026-10-20: René's
+  Flux whole-BA run fell to 0.02-0.05 cuts/s, 80 % of CPU in sigma's Derived write-back; row 85).
+  `SetNodeVersionInterval` / `SetRelVersionInterval` (and their `WithTx`, `GraphTx`, `Batch` and `Session` twins,
+  excises and whole-axis untimed updates) read the whole history, deep-copied every row and, for every cut of the
+  target interval, asked the point resolver on a fresh sorted copy: cuts × V log V per write. Two changes, answers
+  unchanged: (1) a correction prepares the chain once (`correctionChain`) and answers every cut and the resumption
+  source from it; (2) a correction that had to read the history leaves the head entry behind, and an entry over
+  its caps keeps the NEWEST pieces and bounds with watermarks (`headEntry.trim`, `plans`), so the next bounded or
+  void write at the head is planned from the entry without a history read; reads still need a whole entry.
+  ai-soc's `TestDerivedWriteCostFlatInVersionChain` (one more Derived version onto 640 vs 40): 13.0x to 5.1x
+  allocations; the rest is sigma's whole-timeline reads (`NodeEffectiveTimeline` / `RelEffectiveTimeline`).
+  Tests: `TestCascadeHead85_ConsumerShapeFlat` (sigma's write shape, 48 vs 640 cuts: x10-x14 before, x1.0-x1.1
+  after), `TestCascadeCorrection85_CostFlat`, `TestCascadeCorrection85_Oracle` (twin graphs against the per-cut
+  resolver, three untimed modes, memory and badger), `_EmptyAndSingle`, `_Shapes`.
 
 ## [4.66.1] - 2026-10-20
 

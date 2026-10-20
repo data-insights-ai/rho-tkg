@@ -163,7 +163,7 @@ func cutCost(tb testing.TB, be r10Backend, sh cutShape, rel, reads bool, cuts, k
 	}
 	run(cuts)
 	allocs, ns = math.Inf(1), math.Inf(1)
-	for range 3 {
+	for range 5 { // min of five: badger's goroutines allocate in bursts (row 84)
 		var dur time.Duration
 		m := mallocs(func() {
 			start := time.Now()
