@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -25,7 +26,7 @@ import (
 //
 //   - correction pieces covering [newVF, newVT), cut wherever the
 //     pre-correction belief-winner changes; each piece is its base row's
-//     content plus the patch (nodeCorrectionSegments);
+//     content plus the patch (correctionChain.segments);
 //   - a resumption row [newVT, next own boundary) re-asserting the value that
 //     held at newVT, so the timeline after the target is unchanged (none when
 //     newVT is open).
@@ -57,7 +58,7 @@ import (
 // that row's piece, whose labels/properties the row carries (patched); for a
 // gap piece (no version valid there) the base is the "template", the most
 // recent version (BACKLOG 10e). The base is selected by the READ-time resolver
-// (resolveNodeVersionAt on a pristine copy of the pre-correction chain) — the
+// (its answer on the pristine pre-correction chain, correctionChain) — the
 // cascade never derives a VT-axis predecessor from nodeVersionBounds/
 // relVersionBounds' positional derivation at write time (BACKLOG 10b).
 // PrevHash never affects resolution: verifyChainLinkage (integrity.go) only
@@ -138,8 +139,11 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	headBefore := c.nodeHeadBeforeWrite(id, current)
 	// An append at the head is planned from the current row alone (backlog
 	// 67, effective_head_write.go), else from a valid head entry.
-	hc, fromCurrent := chainFromCurrent(c, nodeKernel, current, func(v uint32) (bool, error) { return c.nodeHasHistoryAbove(id, v) },
-		c.nodeHistoryStampsFunc(id), newVF, newVT, at, void)
+	above, stamps := func(v uint32) (bool, error) { return c.nodeHasHistoryAbove(id, v) }, c.nodeHistoryStampsFunc(id)
+	if headBefore != nil {
+		above, stamps = headBefore.above, headBefore.stamps // exact for the chain, no store probe (row 85)
+	}
+	hc, fromCurrent := chainFromCurrent(c, nodeKernel, current, above, stamps, newVF, newVT, at, void)
 	fromHead := fromCurrent
 	if !fromCurrent {
 		hc, fromHead = chainFromHead(c, headBefore, current, func(v uint32) (*types.Node, error) { return c.getNodeVersion(id, v) },
@@ -161,13 +165,13 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	}
 
 	maxVersion := hc.maxVersion
-	var stamps []*types.TemporalMetadata // from the head: the order rule was checked
+	var chainStamps []*types.TemporalMetadata // from the head: the order rule was checked
 	if !fromHead {
 		maxVersion = current.Version()
 		for _, h := range history {
 			maxVersion = max(maxVersion, h.Version())
 		}
-		stamps = temporalsOf(history, current)
+		chainStamps = temporalsOf(history, current)
 	}
 	nextVersion, err := nextEntityVersion(maxVersion)
 	if err != nil {
@@ -175,14 +179,14 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	}
 	// The clock, or the caller instant at once the order rule holds for the
 	// whole chain (interval_withtx.go). Every appended row is stamped with it.
-	now, err := c.cascadeInstant(at, stamps)
+	now, err := c.cascadeInstant(at, chainStamps)
 	if err != nil {
 		return nil, err
 	}
 
 	// The template — the current row, the most recent version — is the
 	// content of a gap piece, where no version is valid to patch (see
-	// nodeCorrectionSegments).
+	// correctionChain.segments).
 	template := current
 
 	// APPEND-ONLY (audited correction). The cascade records, AT `now`, a new
@@ -228,11 +232,16 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	// (the version is hashed), see the allocation step below.
 	appended := make([]*types.Node, 0, 4)
 	prevHashes := make([]string, 0, 4)
-	if !c.axis().Open(newVT) && !fromHead {
-		if src, err := c.resolveNodeVersionAt(append([]*types.Node(nil), preChain...), newVT); err == nil && src != nil {
-			hc.src, hc.hasSrc, hc.srcEnd = src, true, nodeResumptionEnd(c, preChain, newVT)
-		} else if err != nil && !errors.Is(err, storepkg.ErrNoVersionValidAt) {
-			return nil, fmt.Errorf("graph: cascade resolve resumption source: %w", err)
+	var prep *correctionChain[*types.Node] // the chain prepared once: every cut and the source (row 85)
+	if !fromHead {
+		prep = prepareCorrection(c, nodeKernel, preChain)
+		if headBefore == nil {
+			headBefore = prep.head(c.nodeHistoryEpoch(id), current) // the head answer this read paid for
+		}
+		if !c.axis().Open(newVT) {
+			if src, ok := prep.winnerAt(newVT); ok {
+				hc.src, hc.hasSrc, hc.srcEnd = src, true, nodeResumptionEnd(c, preChain, newVT)
+			}
 		}
 	}
 	if hc.hasSrc {
@@ -250,13 +259,11 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	// correction — at each instant of the interval, never to today's row: the
 	// interval is split wherever the pre-correction belief-winner changes, and
 	// each piece is the winner's content plus the patch (see
-	// nodeCorrectionSegments). Rows are fully built (patched, bounded, hashed)
+	// correctionChain.segments). Rows are fully built (patched, bounded, hashed)
 	// before any write — preflight, then apply.
 	segments := hc.segments
 	if !fromHead {
-		if segments, err = c.nodeCorrectionSegments(preChain, template, newVF, newVT, void || existing); err != nil {
-			return nil, err
-		}
+		segments = prep.segments(template, newVF, newVT, void || existing)
 	}
 	if void {
 		if err := exciseNoVersionErr(segments, newVF, newVT); err != nil {
@@ -499,90 +506,200 @@ func correctionCuts(a types.ValidAxis, bounds []types.Instant, newVF, newVT type
 	return slices.Compact(cuts)
 }
 
-// nodeCorrectionSegments splits [newVF, newVT) at every boundary where the
-// pre-correction belief-winner can change and pairs each piece with its base.
-//
-// Cut points are every row's OWN vStart/vEnd (the cascade-arm
-// bounds, as in nodeResumptionEnd) plus its positional bounds (the monotonic
-// arm's tiling, which on a legacy pre-migration chain can start a row at
-// UpdatedAt rather than ValidFrom). Extra cuts are harmless — pieces with the
-// same base are merged — while a missing cut would patch the wrong base.
-//
-// The base of a piece is resolveNodeVersionAt on a fresh copy of the pristine
-// ascending-version preChain (the resolver sorts in place and classifies by
-// input order — lesson 73). Where NO version is valid (a gap: before the
-// entity's first valid-from, after a close, …) there is no then-valid state
-// to patch, so the piece's base is the template (the most
-// recent version). That is a choice, not a derivation — a gap piece asserts a
-// state the entity was never believed to have, and the most recent state is
-// the least surprising content for it.
-func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.Node, newVF, newVT types.Instant, splitGaps bool) ([]nodeCorrectionSegment, error) {
-	bounds := make([]types.Instant, 0, 4*len(preChain))
-	for i, row := range preChain {
-		vStart, vEnd := c.nodeOwnBounds(row)
-		pStart, pEnd := c.nodeVersionBounds(preChain, i) // cut points only
-		bounds = append(bounds, vStart, vEnd, pStart, pEnd)
-	}
-	cuts := correctionCuts(c.axis(), bounds, newVF, newVT)
-
-	segs := make([]nodeCorrectionSegment, 0, len(cuts)+1)
-	from := newVF
-	for i := 0; i <= len(cuts); i++ {
-		to := newVT
-		if i < len(cuts) {
-			to = cuts[i]
-		}
-		base, err := c.resolveNodeVersionAt(append([]*types.Node(nil), preChain...), from)
-		gap := errors.Is(err, storepkg.ErrNoVersionValidAt)
-		if gap {
-			base, err = template, nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("graph: cascade resolve correction base at %d: %w", from, err)
-		}
-		if n := len(segs); n > 0 && segs[n-1].base == base && (!splitGaps || segs[n-1].gap == gap) {
-			segs[n-1].to = to
-		} else {
-			segs = append(segs, nodeCorrectionSegment{from: from, to: to, base: base, gap: gap})
-		}
-		from = to
-	}
-	return segs, nil
+// correctionChain is a pre-correction chain prepared once per correction
+// (row 85): the point resolver's classification, order and every row's
+// covering interval with its supersession cap (sweepIntervals over the
+// pristine ascending-version chain, which it copies — lesson 73), so every
+// cut point and the resumption source are answered from it instead of a
+// resolver run each (a copy, sort, supersession caps and full scan per cut
+// made a write cuts × V log V). The cascade's resolver caps no life end
+// (resolveNodeVersionAt), and a void winner is no version (a gap), as the
+// resolver answers.
+type correctionChain[T interface {
+	comparable
+	storeutil.TemporalRow
+}] struct {
+	c       *Core
+	k       *chainKernel[T]
+	chain   []T // pristine, ascending version
+	arr     []T // the resolver's order
+	ivs     []effInterval
+	cascade bool
 }
 
-// relCorrectionSegments mirrors nodeCorrectionSegments for relationships.
-func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *types.Relationship, newVF, newVT types.Instant, splitGaps bool) ([]relCorrectionSegment, error) {
-	bounds := make([]types.Instant, 0, 4*len(preChain))
-	for i, row := range preChain {
-		vStart, vEnd := c.relOwnBounds(row)
-		pStart, pEnd := c.relVersionBounds(preChain, i) // cut points only
+// correctionScanMax is the most instants a correction answers by a scan of
+// the intervals each; more are answered in one sweep (correctionChain.sweep).
+const correctionScanMax = 8
+
+// prepareCorrection prepares preChain (ascending version, not modified).
+func prepareCorrection[T interface {
+	comparable
+	storeutil.TemporalRow
+}](c *Core, k *chainKernel[T], preChain []T) *correctionChain[T] {
+	p := &correctionChain[T]{c: c, k: k, chain: preChain}
+	if !c.correctionPerCut {
+		p.arr, p.ivs, p.cascade = sweepIntervals(c, k, preChain, nil)
+	}
+	return p
+}
+
+// beats reports whether interval x wins over y where both cover an instant.
+func (p *correctionChain[T]) beats(x, y effInterval) bool {
+	if p.cascade {
+		return newerBelief(p.arr, x, y) > 0
+	}
+	return x.pos > y.pos // the monotonic arm: the highest position
+}
+
+// winner is the row interval i wins with (ok false: none, or a void row).
+func (p *correctionChain[T]) winner(i int) (T, bool) {
+	var zero T
+	if i < 0 {
+		return zero, false
+	}
+	r := p.arr[p.ivs[i].pos]
+	if isVoidRow(r) {
+		return zero, false // an excised piece wins: absent
+	}
+	return r, true
+}
+
+// winnerAt is the pre-correction belief-winner at t: the resolver's answer
+// on the chain; ok false where no version is valid. One scan of the
+// intervals.
+func (p *correctionChain[T]) winnerAt(t types.Instant) (T, bool) {
+	if p.c.correctionPerCut {
+		// Tests (row 85 twin): the resolver on a fresh copy, per instant.
+		r, err := p.k.resolve(p.c, slices.Clone(p.chain), t, nil)
+		return r, err == nil
+	}
+	a := p.c.axis()
+	best := -1
+	for i, iv := range p.ivs {
+		if storeutil.IntervalCovers(a, iv.s, iv.e, t) && (best < 0 || p.beats(iv, p.ivs[best])) {
+			best = i
+		}
+	}
+	return p.winner(best)
+}
+
+// sweep answers winnerAt at every instant of ts (ascending) in one pass:
+// the intervals by start enter a max-heap by priority as the instants pass
+// their start, and leave it once their end is passed. O((V + len(ts)) log V).
+func (p *correctionChain[T]) sweep(ts []types.Instant) ([]T, []bool) {
+	a := p.c.axis()
+	ivs := slices.Clone(p.ivs)
+	if p.cascade {
+		rankBeliefs(p.arr, ivs)
+	}
+	slices.SortStableFunc(ivs, func(x, y effInterval) int { return cmp.Compare(x.s, y.s) })
+	rows, oks := make([]T, len(ts)), make([]bool, len(ts))
+	h := effHeap{}
+	next := 0
+	for j, t := range ts {
+		for next < len(ivs) && ivs[next].s <= t {
+			h.push(ivs[next])
+			next++
+		}
+		for len(h) > 0 && !a.Open(h[0].e) && h[0].e <= t {
+			h.pop()
+		}
+		if len(h) == 0 {
+			continue // a gap
+		}
+		r := p.arr[h[0].pos]
+		if !isVoidRow(r) {
+			rows[j], oks[j] = r, true
+		}
+	}
+	return rows, oks
+}
+
+// head is the head entry of the prepared chain under the history token
+// epoch (effective_head.go), built from the intervals already classified:
+// nil when the graph keeps no entries, the chain does not qualify
+// (gatherHeadFacts: a delete, a shared version) or the cascade twin reads
+// the history (headWriteOff). The pristine chain is in write order (no
+// delete: ascending version), and with no delete the fold's life caps are
+// empty, so its intervals are these (sweepIntervals with no caps).
+func (p *correctionChain[T]) head(epoch uint64, current T) *headEntry {
+	c := p.c
+	if c.historyEpochs == nil || c.headCacheOff || c.headWriteOff || c.correctionPerCut || epoch == 0 || len(p.chain) == 0 {
+		return nil
+	}
+	var facts headFacts
+	gatherHeadFacts(&facts, c, p.k, p.chain)
+	if !facts.ok {
+		return nil
+	}
+	facts.cascade = p.cascade
+	pieces := sweepPieces(c, p.arr, p.ivs, p.cascade, nil, false)
+	return headFromFold(c, epoch, current, pieces, &facts)
+}
+
+// segments splits [newVF, newVT) at every boundary where the pre-correction
+// belief-winner can change and pairs each piece with its base.
+//
+// Cut points are every row's OWN vStart/vEnd (the cascade-arm bounds, as in
+// nodeResumptionEnd) plus its positional bounds (the monotonic arm's tiling,
+// which on a legacy pre-migration chain can start a row at UpdatedAt rather
+// than ValidFrom). Extra cuts are harmless — pieces with the same base are
+// merged — while a missing cut would patch the wrong base.
+//
+// The base of a piece is the winner at its start (winnerAt; one sweep for
+// more than correctionScanMax pieces). Where NO version
+// is valid (a gap: before the entity's first valid-from, after a close, …)
+// there is no then-valid state to patch, so the piece's base is the template
+// (the most recent version). That is a choice, not a derivation — a gap piece
+// asserts a state the entity was never believed to have, and the most recent
+// state is the least surprising content for it. splitGaps keeps a gap piece
+// apart from a neighbour with the template as its base.
+func (p *correctionChain[T]) segments(template T, newVF, newVT types.Instant, splitGaps bool) []correctionSegment[T] {
+	c, k := p.c, p.k
+	bounds := make([]types.Instant, 0, 4*len(p.chain))
+	for i, row := range p.chain {
+		vStart, vEnd := k.ownBounds(c, row)
+		pStart, pEnd := k.posBounds(c, p.chain, i) // cut points only
 		bounds = append(bounds, vStart, vEnd, pStart, pEnd)
 	}
 	cuts := correctionCuts(c.axis(), bounds, newVF, newVT)
+	return p.segmentsAt(template, newVF, newVT, cuts, splitGaps, len(cuts)+1 > correctionScanMax)
+}
 
-	segs := make([]relCorrectionSegment, 0, len(cuts)+1)
+// segmentsAt is segments over the given cuts: the winner at each piece start
+// by one sweep, or by a scan each.
+func (p *correctionChain[T]) segmentsAt(template T, newVF, newVT types.Instant, cuts []types.Instant, splitGaps, sweep bool) []correctionSegment[T] {
+	var rows []T
+	var oks []bool
+	if sweep && !p.c.correctionPerCut {
+		rows, oks = p.sweep(append([]types.Instant{newVF}, cuts...))
+	}
+	segs := make([]correctionSegment[T], 0, len(cuts)+1)
 	from := newVF
 	for i := 0; i <= len(cuts); i++ {
 		to := newVT
 		if i < len(cuts) {
 			to = cuts[i]
 		}
-		base, err := c.resolveRelVersionAt(append([]*types.Relationship(nil), preChain...), from)
-		gap := errors.Is(err, storepkg.ErrNoVersionValidAt)
-		if gap {
-			base, err = template, nil
+		var base T
+		var ok bool
+		if rows != nil {
+			base, ok = rows[i], oks[i]
+		} else {
+			base, ok = p.winnerAt(from)
 		}
-		if err != nil {
-			return nil, fmt.Errorf("graph: cascade resolve rel correction base at %d: %w", from, err)
+		gap := !ok
+		if gap {
+			base = template
 		}
 		if n := len(segs); n > 0 && segs[n-1].base == base && (!splitGaps || segs[n-1].gap == gap) {
 			segs[n-1].to = to
 		} else {
-			segs = append(segs, relCorrectionSegment{from: from, to: to, base: base, gap: gap})
+			segs = append(segs, correctionSegment[T]{from: from, to: to, base: base, gap: gap})
 		}
 		from = to
 	}
-	return segs, nil
+	return segs
 }
 
 // exciseNoVersionErr is the excise's refusal when no version is valid in
@@ -853,8 +970,11 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	// The head answer before any write — see the node cascade.
 	headBefore := c.relHeadBeforeWrite(id, current)
 	// From the current row or the head entry — see the node cascade.
-	hc, fromCurrent := chainFromCurrent(c, relKernel, current, func(v uint32) (bool, error) { return c.relHasHistoryAbove(id, v) },
-		c.relHistoryStampsFunc(id), newVF, newVT, at, void)
+	above, stamps := func(v uint32) (bool, error) { return c.relHasHistoryAbove(id, v) }, c.relHistoryStampsFunc(id)
+	if headBefore != nil {
+		above, stamps = headBefore.above, headBefore.stamps // see the node cascade
+	}
+	hc, fromCurrent := chainFromCurrent(c, relKernel, current, above, stamps, newVF, newVT, at, void)
 	fromHead := fromCurrent
 	if !fromCurrent {
 		hc, fromHead = chainFromHead(c, headBefore, current, func(v uint32) (*types.Relationship, error) { return c.getRelVersion(id, v) },
@@ -875,20 +995,20 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	}
 
 	maxVersion := hc.maxVersion
-	var stamps []*types.TemporalMetadata // from the head: the order rule was checked
+	var chainStamps []*types.TemporalMetadata // from the head: the order rule was checked
 	if !fromHead {
 		maxVersion = current.Version()
 		for _, h := range history {
 			maxVersion = max(maxVersion, h.Version())
 		}
-		stamps = temporalsOf(history, current)
+		chainStamps = temporalsOf(history, current)
 	}
 	nextVersion, err := nextEntityVersion(maxVersion)
 	if err != nil {
 		return nil, err
 	}
 	// The clock or the checked caller instant — see the node cascade.
-	now, err := c.cascadeInstant(at, stamps)
+	now, err := c.cascadeInstant(at, chainStamps)
 	if err != nil {
 		return nil, err
 	}
@@ -910,11 +1030,16 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	// not "positionally-next row after src").
 	appended := make([]*types.Relationship, 0, 4)
 	prevHashes := make([]string, 0, 4)
-	if !c.axis().Open(newVT) && !fromHead {
-		if src, err := c.resolveRelVersionAt(append([]*types.Relationship(nil), preChain...), newVT); err == nil && src != nil {
-			hc.src, hc.hasSrc, hc.srcEnd = src, true, relResumptionEnd(c, preChain, newVT)
-		} else if err != nil && !errors.Is(err, storepkg.ErrNoVersionValidAt) {
-			return nil, fmt.Errorf("graph: cascade resolve rel resumption source: %w", err)
+	var prep *correctionChain[*types.Relationship] // see the node cascade (row 85)
+	if !fromHead {
+		prep = prepareCorrection(c, relKernel, preChain)
+		if headBefore == nil {
+			headBefore = prep.head(c.relHistoryEpoch(id), current)
+		}
+		if !c.axis().Open(newVT) {
+			if src, ok := prep.winnerAt(newVT); ok {
+				hc.src, hc.hasSrc, hc.srcEnd = src, true, relResumptionEnd(c, preChain, newVT)
+			}
 		}
 	}
 	if hc.hasSrc {
@@ -928,13 +1053,11 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	}
 
 	// Patch over the then-valid state, piece by piece — mirror of the node
-	// cascade (see nodeCorrectionSegments). Endpoints and type are immutable,
+	// cascade (see correctionChain.segments). Endpoints and type are immutable,
 	// so every base row carries the same ones; only properties differ.
 	segments := hc.segments
 	if !fromHead {
-		if segments, err = c.relCorrectionSegments(preChain, template, newVF, newVT, void || existing); err != nil {
-			return nil, err
-		}
+		segments = prep.segments(template, newVF, newVT, void || existing)
 	}
 	if void {
 		if err := exciseNoVersionErr(segments, newVF, newVT); err != nil {

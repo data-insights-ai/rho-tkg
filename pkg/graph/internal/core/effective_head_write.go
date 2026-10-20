@@ -33,9 +33,12 @@ import (
 // history at its own version, which a valid entry proves was no history key
 // before (its chain's versions are unique).
 //
-// Without a valid entry (none kept, a stale one, more than headMaxEntryBounds
-// bounds, a caller instant the order rule refuses, a base row gone) the
-// correction reads the history as before.
+// Without a valid entry (none kept, a stale one, a correction below a
+// trimmed entry's watermarks, a caller instant the order rule refuses, a
+// base row gone) the correction reads the history as before — and leaves
+// the head answer behind (correctionChain.head, row 85), so the next
+// correction at the head is planned from it: a consumer appending versions
+// to a chain of thousands pays the history read once, not per write.
 // =============================================================================
 
 // headChain is what a correction reads of the pre-correction chain, taken
@@ -63,7 +66,7 @@ func chainFromHead[T interface {
 	storeutil.TemporalRow
 }](c *Core, e *headEntry, current T, read func(uint32) (T, error), newVF, newVT, at types.Instant, splitGaps bool) (headChain[T], bool) {
 	var hc headChain[T]
-	if e == nil || e.bounds == nil || c.headWriteOff {
+	if e == nil || len(e.bounds) == 0 || c.headWriteOff || !e.plans(c.axis(), newVF, newVT) {
 		return hc, false
 	}
 	if at != 0 && at <= max(e.maxTx, e.maxTxTo) {
@@ -191,7 +194,7 @@ type headRun struct {
 }
 
 // correctionRuns cuts [newVF, newVT) (newVT open by the valid axis a) where
-// the winner changes, as nodeCorrectionSegments does on the chain: maximal
+// the winner changes, as correctionChain.segments does on the chain: maximal
 // runs of one base, a gap's base being the template; with splitGaps a gap
 // never merges with a piece the template wins.
 func (e *headEntry) correctionRuns(a types.ValidAxis, newVF, newVT types.Instant, template uint32, splitGaps bool) []headRun {

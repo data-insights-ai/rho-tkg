@@ -67,7 +67,7 @@ func temporalsOf[T interface {
 // over [validFrom, validTo) can meet before the kernel builds rows: a missing
 // or hard-deleted node (cascadeMissingNodeErr: ErrNodeNotFound, or
 // ErrEntityDeleted), the order rule and, for an excise (void), no version
-// valid there (exciseNoVersionErr over nodeCorrectionSegments: ErrNoVersionValidAt).
+// valid there (exciseNoVersionErr over the correction pieces: ErrNoVersionValidAt).
 // The Batch/ingest pre-flight runs it; the kernel runs the same checks in the
 // same order. Takes the node's entity lock.
 func (c *Core) checkNodeCallerCascade(id types.NodeID, validFrom, validTo, at types.Instant, void bool) error {
@@ -91,10 +91,7 @@ func (c *Core) checkNodeCallerCascade(id types.NodeID, validFrom, validTo, at ty
 		return nil
 	}
 	preChain := preCorrectionChain(history, current)
-	segments, err := c.nodeCorrectionSegments(preChain, current, validFrom, validTo, true)
-	if err != nil {
-		return err
-	}
+	segments := prepareCorrection(c, nodeKernel, preChain).segments(current, validFrom, validTo, true)
 	return exciseNoVersionErr(segments, validFrom, validTo)
 }
 
@@ -120,10 +117,7 @@ func (c *Core) checkRelCallerCascade(id types.RelID, validFrom, validTo, at type
 		return nil
 	}
 	preChain := preCorrectionChain(history, current)
-	segments, err := c.relCorrectionSegments(preChain, current, validFrom, validTo, true)
-	if err != nil {
-		return err
-	}
+	segments := prepareCorrection(c, relKernel, preChain).segments(current, validFrom, validTo, true)
 	return exciseNoVersionErr(segments, validFrom, validTo)
 }
 

@@ -1,0 +1,12 @@
+    zz_probe85_test.go:71: open       V=100   before        3 µs  after        3 µs
+    zz_probe85_test.go:71: open       V=1000  before        2 µs  after        2 µs
+    zz_probe85_test.go:71: open       V=2000  before        2 µs  after        2 µs
+    zz_probe85_test.go:71: bounded    V=100   before       28 µs  after       25 µs
+    zz_probe85_test.go:71: bounded    V=1000  before      226 µs  after      237 µs
+    zz_probe85_test.go:71: bounded    V=2000  before      510 µs  after      509 µs
+    zz_probe85_test.go:71: bounded-nm V=100   before       37 µs  after       27 µs
+    zz_probe85_test.go:71: bounded-nm V=1000  before      291 µs  after      273 µs
+    zz_probe85_test.go:71: bounded-nm V=2000  before      596 µs  after      583 µs
+    zz_probe85_test.go:71: extend     V=100   before      133 µs  after      151 µs
+    zz_probe85_test.go:71: extend     V=1000  before     6173 µs  after      970 µs
+    zz_probe85_test.go:71: extend     V=2000  before    21783 µs  after     2059 µs
