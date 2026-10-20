@@ -127,8 +127,8 @@ func (p RecurrencePattern) Expand(from, to Instant) ([]Interval, error) {
 	if from >= to {
 		return nil, fmt.Errorf("%w: from must be before to", ErrInvalidTimeRange)
 	}
-	if to-from > maxExpandSpan {
-		return nil, fmt.Errorf("%w: span %dms exceeds maximum %dms", ErrRecurrenceSpanTooLarge, to-from, maxExpandSpan)
+	if spanExceedsMax(from, to) {
+		return nil, fmt.Errorf("%w: span %dms exceeds maximum %dms", ErrRecurrenceSpanTooLarge, uint64(to)-uint64(from), maxExpandSpan)
 	}
 	if err := p.Validate(); err != nil {
 		return nil, err
@@ -277,4 +277,9 @@ func truncateDay(t Instant) Instant {
 func addDays(t Instant, days int) Instant {
 	tm := time.UnixMilli(int64(t)).UTC()
 	return Instant(tm.AddDate(0, 0, days).UnixMilli())
+}
+
+// spanExceedsMax reports whether to-from > maxExpandSpan for from < to.
+func spanExceedsMax(from, to Instant) bool {
+	return uint64(to)-uint64(from) > uint64(maxExpandSpan) // wraparound-safe for from < to
 }
