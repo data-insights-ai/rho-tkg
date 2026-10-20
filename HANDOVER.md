@@ -11,7 +11,14 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
    "full opus code, tests, documentation and README.md run with separate agents" (row 77). State:
    - On main (local, push before the gate): README fixes (`20953507`), docs-review fixes (`74e83c6f`), row 82 recurrence span
      guard (`4bf41957`). CHANGELOG [Unreleased] holds the Fixed/Changed lines.
-   - All fixes merged on main (rows 79-82 + flakes + docs + README). Next: one Opus-high review of the merged 79-81 code, then the gate.
+   - All fixes merged and pushed; Opus-high batch review: "release OK", its 3 caveats documented (CHANGELOG + tiered
+     `MaxOpenColdShards` doc). **Release gate running** (started ~13:25 2026-10-20, background `make ci-docker`, log + status.txt in
+     `<session scratchpad>/release-4.66.1/`; if the session is gone, rerun `GOFLAGS=-timeout=30m make ci-docker`). On exit 0:
+     consumer build (Appendix B), release commit (CHANGELOG `[4.66.1] - <date>`, README.md:311, AGENTS.md:65,
+     docs/architecture.md:1), tag v4.66.1, push main + tag, wait CI green, notify sigma-tkgd-c3 + ai-soc-main-e7, releases row.
+     On a failure: one Opus agent per failing test (red first), merge with `&&`, rerun the gate.
+   - Next patch candidate (review finding): whole-axis entities patched while closed under v4.66.0 keep a stale current row
+     (core/temporal_cascade.go:702-712 matches only PrevHash == current's hash); essential only if a consumer holds such rows.
    - Merged: row 79 (tiered InMemory cold shards never closed; rows were lost), row 80 (`cascadeNewCurrent`: a whole-axis
      untimed write on a closed entity moves the current slot), row 81 (import/replica/rollback adopt the axis before rows, one seam `switchUntimedModeLocked`);
      test timing flakes removed (adjacency_at_tx, watch, import, tx_bulk_reads; `-count=50` + `-race -count=5`).
