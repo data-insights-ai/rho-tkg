@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -128,7 +129,7 @@ func (p RecurrencePattern) Expand(from, to Instant) ([]Interval, error) {
 		return nil, fmt.Errorf("%w: from must be before to", ErrInvalidTimeRange)
 	}
 	if spanExceedsMax(from, to) {
-		return nil, fmt.Errorf("%w: span %dms exceeds maximum %dms", ErrRecurrenceSpanTooLarge, uint64(to)-uint64(from), maxExpandSpan)
+		return nil, fmt.Errorf("%w: [%d, %d) exceeds maximum span %dms", ErrRecurrenceSpanTooLarge, from, to, maxExpandSpan)
 	}
 	if err := p.Validate(); err != nil {
 		return nil, err
@@ -280,6 +281,11 @@ func addDays(t Instant, days int) Instant {
 }
 
 // spanExceedsMax reports whether to-from > maxExpandSpan for from < to.
+// from+maxExpandSpan overflows only when from > MaxInt64-maxExpandSpan; then
+// to-from <= MaxInt64-from < maxExpandSpan.
 func spanExceedsMax(from, to Instant) bool {
-	return uint64(to)-uint64(from) > uint64(maxExpandSpan) // wraparound-safe for from < to
+	if from > math.MaxInt64-maxExpandSpan {
+		return false
+	}
+	return to > from+maxExpandSpan
 }

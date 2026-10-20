@@ -20,6 +20,11 @@ func TestSpanExceedsMax(t *testing.T) {
 		{"negative from exactly max", -5, maxExpandSpan - 5, false},
 		{"negative from max plus one", -5, maxExpandSpan - 4, true},
 		{"small", 0, 1, false},
+		{"from near maxint", math.MaxInt64 - 10, math.MaxInt64, false},
+		{"from at maxint minus max", math.MaxInt64 - maxExpandSpan, math.MaxInt64, false},
+		{"from below maxint minus max", math.MaxInt64 - maxExpandSpan - 1, math.MaxInt64, true},
+		{"minint to minint plus max", math.MinInt64, math.MinInt64 + maxExpandSpan, false},
+		{"minint to minint plus max plus one", math.MinInt64, math.MinInt64 + maxExpandSpan + 1, true},
 	}
 	for _, c := range cases {
 		if got := spanExceedsMax(c.from, c.to); got != c.want {
