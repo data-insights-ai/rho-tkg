@@ -1,37 +1,20 @@
-# HANDOVER — rho-tkg v4 line (2026-10-20, latest release v4.66.0 (Markus); v4.66.1 patch in preparation; v4.64.0 never cut, writer parked)
+# HANDOVER — rho-tkg v4 line (2026-10-20, latest release v4.66.1; v4.64.0 never cut, writer parked)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). Latest tag v4.66.0 (2026-10-18, Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
+database). Latest tag v4.66.1 (2026-10-20; v4.66.0 2026-10-18 Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
 releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Read in this order: this file, `tasks/lessons.md`
 (digest at the top), `tasks/todo.md` (user requests, releases table), `tasks/backlog.md` (open table, then specs), `CHANGELOG.md` top.
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **René's last open request (2026-10-20): "then prepare a patch version release" (row 78) — v4.66.1.** Inputs come from his
-   "full opus code, tests, documentation and README.md run with separate agents" (row 77). State:
-   - On main (local, push before the gate): README fixes (`20953507`), docs-review fixes (`74e83c6f`), row 82 recurrence span
-     guard (`4bf41957`). CHANGELOG [Unreleased] holds the Fixed/Changed lines.
-   - All fixes merged and pushed; Opus-high batch review: "release OK", its 3 caveats documented (CHANGELOG + tiered
-     `MaxOpenColdShards` doc). **Release gate running** (started ~13:25 2026-10-20, background `make ci-docker`, log + status.txt in
-     `<session scratchpad>/release-4.66.1/`; if the session is gone, rerun `GOFLAGS=-timeout=30m make ci-docker`). On exit 0:
-     consumer build (Appendix B), release commit (CHANGELOG `[4.66.1] - <date>`, README.md:311, AGENTS.md:65,
-     docs/architecture.md:1), tag v4.66.1, push main + tag, wait CI green, notify sigma-tkgd-c3 + ai-soc-main-e7, releases row.
-     On a failure: one Opus agent per failing test (red first), merge with `&&`, rerun the gate.
-   - Next patch candidate (review finding): whole-axis entities patched while closed under v4.66.0 keep a stale current row
-     (core/temporal_cascade.go:702-712 matches only PrevHash == current's hash); essential only if a consumer holds such rows.
-   - Merged: row 79 (tiered InMemory cold shards never closed; rows were lost), row 80 (`cascadeNewCurrent`: a whole-axis
-     untimed write on a closed entity moves the current slot), row 81 (import/replica/rollback adopt the axis before rows, one seam `switchUntimedModeLocked`);
-     test timing flakes removed (adjacency_at_tx, watch, import, tx_bulk_reads; `-count=50` + `-race -count=5`).
-   - Then per branch: read the report, merge with `&&` (never `;` after a merge), resolve CHANGELOG [Unreleased] conflicts by
-     keeping both entries, `-short` of touched packages, tick the row, remove the worktree; one Opus-high review of 79-81 code
-     (Markus's whole-axis area); then lesson 79's release: `git fetch` + merge origin/main, `GOFLAGS=-timeout=30m make ci-docker`
-     with status.txt + ETA, consumer build (Appendix B), release commit (CHANGELOG `[4.66.1]`, README.md:311, AGENTS.md:65,
-     docs/architecture.md:1), tag, push, CI green, notify sigma-tkgd-c3 and ai-soc-main-e7.
-   - Review findings NOT taken (not essential, wait for René): tests review #5-#10 (slow -short packages, missing break cases for
-     EndValidity / per-segment labels / whole-axis replica), code review #4-#7 (axis-unaware wire/invariant checks on crafted bytes,
-     void vt=0 decode, EndValidity ahead of the clock = backlog 4, NodeAtOpts skips the pin-too-new check), docs #9-#10 rest.
-   - v4.63.0 shipped `ValidToAtTxTime` / `DeleteWroteValidTo`; the `DeleteKeptValidTo` writer (backlog 4/25/7, branch
-     `tombstone-writer-v4.63`) is parked ("not now", René 2026-10-19); it needs a rebuild on the v4.66 axis code as a minor.
+1. **No open request from René.** His last (2026-10-20, row 78: "then prepare a patch version release") is done: v4.66.1
+   tagged `f35cff84`, CI run 39410470150 green, consumers build + vet, sigma-tkgd-c3 + ai-soc-main-e7 notified. On main after the
+   tag: rows 83/84 (`449c87cc`: shard pool caller always runs index 0; append-allocs test takes the cheapest of three batches), CI green.
+   - Next patch candidate (review finding, not essential unless a consumer holds such rows): whole-axis entities patched while
+     closed under v4.66.0 keep a stale current row (core/temporal_cascade.go:702-712 matches only PrevHash == current's hash).
+   - Review findings NOT taken (wait for René): tests review #5-#10, code review #4-#7, docs #9-#10 rest (details in todo rows 77-82).
+   - The `DeleteKeptValidTo` writer (branch `tombstone-writer-v4.63`) stays parked ("not now", René 2026-10-19); needs a rebuild on
+     the v4.66 axis code as minor v4.67.0.
 2. **v5 is PAUSED (René 2026-10-16, row 61).** Work lives on the local branch `v5-takeover` (not pushed; origin/v5 untouched). Do
    not resume without René. Reason: real ai-soc import showed ~92 records/op, 11x v4 disk, ~200 writes/s; options in tasks/todo.md.
    Gap analysis: `docs/v5-gap-to-main.md`. Real-store harness + scale notes: local branches `v5-realstore-harness` (`af75a982`,
@@ -42,7 +25,7 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
      day; `/bars`, `/tkg/asof` = its HTTP read doors.)
    - sigma-tkgd: v0.11.30 (2026-10-20); library on rho v4.61.0, scratchpad/xbench on v4.66.0; needs no new rho API; P24
      (marker-aware ValidTo reads) parked with the tombstone writer.
-4. **Open work:** v4.66.1 (item 1); otherwise the open table of `tasks/backlog.md` (no requester; backlog 79 = sigma's multi-pin
+4. **Open work:** the open table of `tasks/backlog.md` (no requester; backlog 79 = sigma's multi-pin
    timeline, cost only, parked).
 5. **Watch origin:** `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background (Appendix A). When Markus releases on
    main: merge origin/main, check his code against our rules (one valid start, Void rows, Elements, format markers, head cache,
