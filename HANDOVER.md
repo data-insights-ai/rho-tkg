@@ -14,8 +14,10 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
    - Agents running in worktrees `.claude/worktrees/agent-*` (each commits on its `worktree-agent-*` branch, no merge): row 79 tiered
      whole-axis node lost after demote (`TestEffectiveHeadWrite_TwinDifferential/tiered/whole-axis/seed=26800` under -race),
      row 80 whole-axis untimed write on an all-closed entity leaves the stale row current (core/temporal_cascade.go:322-338),
-     row 81 whole-axis import adopts the axis after indexing (core/import.go:661), and test-only timing flakes
-     (adjacency_at_tx_test.go:979, replication/watch_test.go:268, import_test.go:498, tx_bulk_reads_test.go:349-411).
+     row 81 whole-axis import adopts the axis after indexing (core/import.go:661). Branches: row 79 `worktree-agent-afd25f4259c712f9f`, row 80
+     `worktree-agent-abd54d65b3b031990`, row 81 `worktree-agent-a84dffc117a03bea9` (if an agent died, its report is missing:
+     read `git log main..<branch>`, then re-brief one Opus agent per row).
+   - Already merged: test timing flakes removed (adjacency_at_tx, watch, import, tx_bulk_reads; `-count=50` + `-race -count=5`).
    - Then per branch: read the report, merge with `&&` (never `;` after a merge), resolve CHANGELOG [Unreleased] conflicts by
      keeping both entries, `-short` of touched packages, tick the row, remove the worktree; one Opus-high review of 79-81 code
      (Markus's whole-axis area); then lesson 79's release: `git fetch` + merge origin/main, `GOFLAGS=-timeout=30m make ci-docker`
@@ -63,7 +65,7 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 3. René's open decisions (my default)
 
-- Session scratchpad (7.0 GB) and the stale sigma copy (22 MB): kept (René 2026-10-14, todo row 29); delete only when he asks.
+- Session scratchpad: emptied 2026-10-20 (row 76, René); Go build cache cleaned. Deletions stay René's call (`rm -rf` is denied to agents).
 - v5 façade waits for Markus; we do not raise it. No posts on GitHub issue #11 (René tells Markus himself).
 
 ## Appendix A — origin watch
