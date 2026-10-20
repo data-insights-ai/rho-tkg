@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Derived row whose bounded end grows every write no longer slows down past 512 versions** (sigma R19, rows 87
+  and 88). sigma rewrites `[start, newEnd)` on every cut; rho patches each overlapped piece against its own base
+  row, so the chain grows quadratically (ai-soc's whole BA: one node 153,182 rows). Past 512 pieces the head entry
+  was trimmed: every read folded the whole chain and every write read and sorted the history (sigma's probe:
+  232 ms per 40 writes at 480, 45 s at 600). Now the entry's caps derive from the cache stripe (2,048 pieces,
+  4,096 bounds; the cache bound is unchanged), an overlay paints all appended rows in one pass, and a monotonic
+  chain of bounded rows keeps its entry when a correction inverts it, so reads and writes at the head are planned
+  from the entry (probe: 249 ms per 40 writes at 1,200). Answers are unchanged. `TestHeadGrow87_NoCliffPastFormerCap`
+  (timed out after 20 min on v4.66.2), `TestHeadGrow87_EntrySurvivesFirstCuts`; oracle `TestHeadOverlay_MatchesFold`
+  and the twin tests.
+
 ## [4.66.2] - 2026-10-20
 
 ### Fixed
