@@ -2,8 +2,8 @@
 
 [![CI](https://github.com/data-insights-ai/rho-tkg/actions/workflows/ci.yml/badge.svg)](https://github.com/data-insights-ai/rho-tkg/actions/workflows/ci.yml)
 
-**Temporal Knowledge Graph v4** is an embeddable, pure-Go graph engine for
-**bitemporal knowledge graphs** with audit-grade integrity:
+**Temporal Knowledge Graph v4** is an embeddable, pure-Go **knowledge-graph library** (not a
+database), optimised for memory footprint and **bitemporality**, with audit-grade integrity:
 
 - **Append-only, hash-chained version history** — nothing is ever overwritten;
   every update or delete appends a new version, and every version is
@@ -22,6 +22,9 @@
 It is a **library, not a server**: no main binary, no network protocol, no
 query language. Embed it in a Go process for graph storage, temporal history,
 and integrity guarantees; layer your own query language or API on top.
+
+The v4 API is stable per [docs/stability.md](docs/stability.md); surfaces marked experimental there
+(Replication Phase-1 helpers such as `Watch`, tiering, the sharded store) may still change in a minor.
 
 ## Install
 
@@ -117,10 +120,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func main() {
@@ -132,7 +133,7 @@ func main() {
 	defer g.Close()
 
 	acct, _ := g.Nodes().Add(ctx, []string{"Account"}, map[string]any{"balance": 100})
-	t0 := types.Instant(time.Now().UnixMilli())
+	t0, _ := g.Temporal().NowTx() // the transaction instant of the Add
 
 	_, _ = g.Nodes().Update(ctx, acct.ID(), map[string]any{"balance": 250})
 	_, _ = g.Nodes().Update(ctx, acct.ID(), map[string]any{"balance": 400})
@@ -144,9 +145,9 @@ func main() {
 		log.Fatal("hash chain broken")
 	}
 
-	// Time travel: read the balance exactly as it stood at t0 — before
-	// either update — with no special "history" API required.
-	asOfT0, _ := g.Temporal().NodeAt(acct.ID(), t0)
+	// Time travel: read the balance as recorded at t0 — before either
+	// update — with no special "history" API required.
+	asOfT0, _ := g.Temporal().NodeAsOf(acct.ID(), t0)
 	fmt.Println(asOfT0.PropertiesMap()["balance"]) // 100
 }
 ```
@@ -181,6 +182,8 @@ func main() {
 	_, _ = g.Nodes().Add(ctx, []string{"Order"}, map[string]any{"status": "shipped"})
 
 	// Resume from the last durable checkpoint (0 on first run).
+	// AppliedLSN / SetAppliedLSN (and Watch below) are experimental
+	// (docs/stability.md); ForEachChange is stable.
 	resumeLSN, _ := g.Replication().AppliedLSN()
 
 	_ = g.Replication().ForEachChange(resumeLSN, func(rec store.ChangeRecord) bool {
@@ -211,8 +214,8 @@ runnable example.
 | Bitemporal queries | Valid-time × transaction-time point/interval queries (`NodeAtTx`, `NodesAsOf`, `NodeAt`, `RelsDuring`, …) and an entity's whole valid-time state at a pin in one call (`NodeEffectiveTimeline`, `ForEachRelEffectiveByType`) |
 | Append-only version history | Every update/delete keeps prior versions; stored rows are never mutated |
 | Hash-chained integrity | SHA-256 chain per entity; `g.Hash().VerifyNodeChain`/`VerifyRelChain` detect tampering or corruption |
-| Named as-of marks | `TagAsOf`/`ResolveAsOf` give a durable name to a transaction-time pin (§4.2) |
-| Transaction-time backfill | `AddWithTx`, `UpdateWithTx` and `DeleteWithTx` record a create, supersession or ending at a caller's transaction instant (re-ingest of a documented historical knowledge state), gated by `Config.AllowTxBackfill` and refused with `ErrTxOrder` when the instant does not follow the entity's chain (§4.1) |
+| Named as-of marks | `TagAsOf`/`ResolveAsOf` give a durable name to a transaction-time pin |
+| Transaction-time backfill | `AddWithTx`, `UpdateWithTx` and `DeleteWithTx` record a create, supersession or ending at a caller's transaction instant (re-ingest of a documented historical knowledge state), gated by `Config.AllowTxBackfill` and refused with `ErrTxOrder` when the instant does not follow the entity's chain |
 | CDC change-log | Durable ordered op-log (`Config.ChangeLog`) with monotonic LSNs; tail via `g.Replication().ForEachChange` |
 | Byte-exact read replicas | `Config.ReadOnlyReplica` + `ApplyChange`/`ApplyChanges` reproduce a primary's rows verbatim (Phase 1: log-shipped bootstrap + tail; orchestration/failover automation is external) |
 | Delta backups | `g.IO().ExportSince`/`ImportMerge` ship and replay only what changed since a cursor |
