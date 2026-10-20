@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Docs only: two announcements in released sections are held, with no target release. The v4.65.0 Deprecated note's `UntimedDefault` flip to `UntimedWholeAxis` "in the next minor" did not happen in v4.66.0, and the v4.63.0 note's delete-tombstone writer (`DeleteKeptValidTo`, "v4.64.0") is parked (backlog 4/7/25); no release writes it, readers exist since v4.62.0.
+
 ## [4.66.0] - 2026-10-18
 
 sigma-tkgd 2026-10-18 (released by Markus): one fix and two additions for `UntimedWholeAxis` stores (`EndValidity` works on every axis), all additive.

@@ -1129,8 +1129,8 @@ type Config struct {
 	// Set UntimedFromTxFrom explicitly to keep the TxFrom start for new
 	// stores.
 	//
-	// Deprecated default (announced in round 11): from the next minor
-	// release the zero value makes a new store an UntimedWholeAxis store
+	// Deprecated default (announced in round 11): in a later minor (held after
+	// v4.66.0, no target release) the zero value makes a new store an UntimedWholeAxis store
 	// (when its store implements store.ValidAxisCapability; memory, badger,
 	// tiered and sharded do). Existing stores keep their persisted mode. Set
 	// UntimedUnbounded explicitly to keep today's default for new stores.

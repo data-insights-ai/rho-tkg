@@ -42,7 +42,8 @@ const (
 	// UntimedUnbounded store. It is a Config value only:
 	// Admin().SetUntimedValidStart names the target mode.
 	//
-	// Announced (round 11): from the next minor release a new store under
+	// Announced (round 11): in a later minor (held after v4.66.0, no
+	// target release) a new store under
 	// UntimedDefault is an UntimedWholeAxis store (when its store implements
 	// store.ValidAxisCapability; memory, badger, tiered and sharded do).
 	// Existing stores keep their persisted mode. Set UntimedUnbounded

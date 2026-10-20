@@ -256,7 +256,7 @@ var (
 	// tiered.Store for an event label.
 	//
 	// Deprecated: since v4.58.0 property indexes cover every label on every
-	// tiered shard and nothing returns it.
+	// tiered shard and nothing returns it; removed in v5.0.0.
 	ErrEventPropertyIndex = tieredpkg.ErrEventPropertyIndex //nolint:staticcheck // SA1019: the deprecated re-export keeps errors.Is matches compiling
 	// ErrPrimaryLabelClassMutation is returned by g.Nodes().AddLabelToken /
 	// RemoveLabelToken (and their WithHistory variants) when the mutation
