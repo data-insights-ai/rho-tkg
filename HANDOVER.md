@@ -1,16 +1,15 @@
-# HANDOVER — rho-tkg v4 line (2026-10-20, latest release v4.66.2; v4.64.0 never cut, writer parked)
+# HANDOVER — rho-tkg v4 line (2026-10-20, latest release v4.66.3; v4.64.0 never cut, writer parked)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). Latest tag v4.66.2 (2026-10-20, row 85 write cost; v4.66.1 2026-10-20; v4.66.0 2026-10-18 Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
+database). Latest tag v4.66.3 (2026-10-20, rows 87/88 grow cliff; v4.66.2 row 85 write cost; v4.66.1 2026-10-20; v4.66.0 2026-10-18 Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
 releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Read in this order: this file, `tasks/lessons.md`
 (digest at the top), `tasks/todo.md` (user requests, releases table), `tasks/backlog.md` (open table, then specs), `CHANGELOG.md` top.
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **No open request from René.** v4.66.2 (row 85, René "Go was okay"): a write to a long version chain no longer reads, copies and
-   sorts the whole chain; ai-soc's TestDerivedWriteCostFlatInVersionChain 13.0x → 5.1x, the rest is sigma's whole-timeline reads
-   (sigma cuts its ~19% next, René's order: rho first, then sigma). Tag CI run 39450059246 green after a rerun of the alloc-test flake
-   (row 86, fixed on main after the tag); ai-soc + sigma notified 2026-10-20.
+1. **No open request from René.** v4.66.3 (rows 87/88, sigma R19 b+c): no cliff past 512 head pieces, head entry survives a
+   growing bounded end. R19 (a) segment iterator: no-go (row 89, ai-soc BA counts: deep chains are grow). Quadratic grow rows:
+   René "1" (row 90) = sigma writes only [old To, new To); rho keeps its per-base split. v4.66.2 (row 85) before it.
    - Next patch candidate (review finding, not essential unless a consumer holds such rows): whole-axis entities patched while
      closed under v4.66.0 keep a stale current row (core/temporal_cascade.go:702-712 matches only PrevHash == current's hash).
    - Review findings NOT taken (wait for René): tests review #5-#10, code review #4-#7, docs #9-#10 rest (details in todo rows 77-82).

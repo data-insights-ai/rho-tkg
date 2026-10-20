@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.66.3] - 2026-10-20
+
 ### Fixed
 
 - **A Derived row whose bounded end grows every write no longer slows down past 512 versions** (sigma R19, rows 87

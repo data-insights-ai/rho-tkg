@@ -164,7 +164,7 @@ type headCache struct {
 type headStripe struct {
 	mu     sync.RWMutex
 	m      map[headKey]*headEntry
-	weight int // pieces + entries held
+	weight int // pieces + bounds + entries held
 	_      [32]byte
 }
 
