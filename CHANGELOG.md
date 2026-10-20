@@ -34,6 +34,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestEffectiveHeadWrite_TwinDifferential/tiered/whole-axis/seed=26800` (CI race run 39403137717: one twin's
   sweep came a millisecond later and closed the shard the other kept); pinned by
   `TestTieredStore_ColdShardClose_KeepsRows`.
+- **v4.66.1: an untimed write to a closed `UntimedWholeAxis` entity now moves the current row** (todo row 80, review
+  finding). On an entity with no open valid-time row (closed by `tkg_valid_to`, or every segment closed by an excise)
+  an untimed `Update` or `AddLabel` / `RemoveLabel` patched every segment, but the store's current slot kept the stale
+  closed row: `Get` and the update's return value showed the old values, `ByLabel` / `CountByLabel` /
+  `ByLabelAndProperty` and `UniqueCurrent` judged the old state, while `NodeAt` showed the new one. The cascade kernel
+  now gives the slot to the write's patch of the current row, for nodes and relationships alike (one helper,
+  `cascadeNewCurrent`, replaces the two copies of the slot choice). Timed writes and entities with an open tail are
+  unchanged (`TestWholeAxisClosedCurrentFollowsNewestBelief`, `...Rel`).
 
 ## [4.66.0] - 2026-10-18
 
