@@ -93,7 +93,10 @@ func TestR10HeadTimelineCostIndependentOfHistory(t *testing.T) {
 			// column-scan alloc tests).
 			nodeAllocs := func(id any) uint64 {
 				best := uint64(math.MaxUint64)
-				for range 5 {
+				for i := range 5 {
+					if i > 0 {
+						time.Sleep(5 * time.Millisecond) // a burst after a commit (badger, -race) outlasts back-to-back samples
+					}
 					best = min(best, nodeAllocsOnce(t, g, id))
 				}
 				return best
