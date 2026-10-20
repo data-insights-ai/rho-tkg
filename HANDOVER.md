@@ -38,7 +38,7 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
   cherry-picks onto v4.66.0: Markus's axis-aware `stampDeleteTombstone` and `EndValidity` need a rebuild, minor v4.67.0, ~half a day).
   sigma (2026-10-17) stays on rho v4.61.0 under the same rule, does P24 only when it must move to v4.64.0+, and asks us not to hold v4.64.0 for it.
 
-- Process, models, gates, deprecation ritual, release authority, notify consumers: lesson 79 (gate 75, 82, 87). Build briefs: analyse, red test, code; no review or study phases first (88). Reviews on Fable
+- Process, models, gates, deprecation ritual, release authority, notify consumers: lesson 79 (gate 75, 82, 87). Builders write code only; gates, lint, security and docs are the main session's (79). Reviews on Fable
   again; a build Opus cannot finish goes to a Fable agent (René 2026-10-20: "If opus is not smart enough use a fable Agent .. use Fabel as reviewer").
 - Act, do not offer: 81. Red break-the-code test first, clean root-cause fix: 78. Fast tests, patches batched: 87.
 - Ledger: `scripts/check-ledger.sh` after every merge and before every release commit (80). Markdown: consolidate in place (84).

@@ -16,7 +16,7 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
 - Releases: MINOR for a really new feature, PATCH otherwise (René 2026-10-14; was patch-only since 10-10), batched, one gate; behaviour changes via the deprecation ritual, no new named exceptions (79); full
   `make test-race` before a tag (66); a green workflow means its gates ran (75). Test tiers: new code gets `-short` tests of
   seconds, commits grouped; long tests only at the final minor-release push (87).
-- Reviews: one round per branch, authors run lint + security first; models: builds Opus, code reviews Opus high, doc work
+- Reviews: one round per branch; builders only write code (red, code, green), the main session runs gates, lint, security, docs; models: builds Opus, code reviews Opus high, doc work
   Sonnet; reviews on Fable, and a build Opus cannot finish goes to Fable (René 2026-10-20: "If opus is not smart enough use a fable Agent .. use Fabel as reviewer"; was off since 10-16) (79).
 - A contract over a family of doors lands in every door; test cross-door agreement (58, 59, 42, 57, 69).
 - Trust boundary: validate IDs and decoded bytes at every entry, `SafeUnmarshal`, allocate by bytes delivered, verify imported
@@ -572,7 +572,9 @@ its file-changes section and run red before the first line of code.
 
 Rule (René 2026-10-09: "Always clean solutions to new items.. no hacks or shortcuts .. always write a no-happy-path test before the
 code"; absorbs 27 and 77): the test naming the faulty implementation and its breaking input is written and run RED (output kept under
-`tasks/evidence/<item>/`) before the fix; a test that already passes is a labelled guard; mutants prove the tests catch it. The fix
+`tasks/evidence/<item>/`) before the fix; a test that already passes is a labelled guard. One compact red test per item (the key break cases), then the code;
+no mutation runs, probe tests, oversized tables or benchmarks unless the item is about speed or RAM (René 2026-10-13: "I think
+you're testing too much"; absorbs 83). The fix
 lands at the root and the shared seam (58-60), not behind a flag, skip or consumer heuristic; a documented limit only after the sound
 solution was tried and shown impossible (say why; backlog it with its red test). Delegated prompts carry these rules; my own edits too.
 Detector: `grep -rn 't.Skip' pkg | grep -v 'sharded does not support'`; evidence without a red run; "unaffected" without a test.
@@ -580,14 +582,15 @@ Detector: `grep -rn 't.Skip' pkg | grep -v 'sharded does not support'`; evidence
 ## 79. Release And Review Process: Minor For Features Else Patch, Author-Run Gates, One Review Round, Models
 
 Rule (René 2026-10-10, 2026-10-12): (1) MINOR for a really new feature, PATCH otherwise (René 2026-10-14; patch-only from 2026-10-10 to 10-14), batched: one `make ci-docker`, one consumer
-build, one message. (2) Behaviour changes go through the deprecation ritual (`docs/stability.md`); no new named exceptions. (3) Authors
-run `make lint-docker` and `make security-docker` before reporting. (4) One reviewer round per branch, fix round to the same agent, a
+build, one message. (2) Behaviour changes go through the deprecation ritual (`docs/stability.md`); no new named exceptions. (3) A build agent
+(Opus, Fable) only analyses and writes the code: red test, code, green; the main session runs lint, security, race and the gate,
+writes CHANGELOG and the ledger, and reviews (René 2026-10-20: "Fable should just analyse and then write the code"). (4) One reviewer round per branch, fix round to the same agent, a
 second only for a blocker; doc/comment-only changes get the docs tests and a diff read. (5) Briefs name 5-8 files. (6) A backlog item
 needs a consumer request or a failing test. (7) Never stop a running agent unless asked. (8) Models: builds Opus, code reviews Opus
 effort high, doc work Sonnet (Opus after a second Sonnet fix round); the review of a branch and of the batch before tagging
 runs on Fable, and a build Opus cannot finish goes to a Fable agent (René 2026-10-20: "If opus is not smart enough use a fable Agent .. use Fabel as reviewer"; suspended 10-16 to 10-20). (9) Release authority (René 2026-10-10): merge, gate, tag, push main and the
 tag, notify the consumers, without asking each time; never push `origin/v5`, never force-push.
-Detector: a second review round, a lint finding after a merge, a minor tag for a release without a new feature, a brief with over ten file names.
+Detector: a second review round, a build brief with phases before the fix or gates/docs in it, a minor tag for a release without a new feature, a brief with over ten file names.
 
 ## 80. Tick The User-Request Ledger At Every Release, Not Only The Work Queue
 
@@ -613,9 +616,7 @@ Detector: a tag whose CI run is not `success`.
 
 ## 83. Test Enough To Prove The Item, Then Build
 
-Rule: one compact red test per item (the key break cases), then the code. No mutation runs, probe tests, oversized tables or benchmarks unless the item is about speed or RAM; reviewers read and reason instead of writing tests. Supersedes the mutant/probe parts of 78 and 79.
-Trigger: René 2026-10-13 "I think you're testing too much. Focus on more development work."
-Detector: evidence files named *mutant* or *probe*, or a test file longer than the code it tests.
+→ merged into 78.
 
 ## 84. Trace The Cause, Then Consolidate: No Unreflected Questions, No Layers On Top
 
@@ -667,9 +668,6 @@ old tiered decline, so WP-31's builder and reviewer runs (`-short`) never saw th
 contract change (a door that now succeeds, a sentinel no longer returned) greps every test pinning the old outcome and runs
 those by name with `-race` before the branch is reported done.
 
-## 88. Build briefs: analyse, then code
+## 88. Build Briefs: Analyse, Then Code
 
-Rule: a build agent (Fable or Opus) only analyses and writes the code: red test, code, green. Gates (race, lint, security),
-CHANGELOG, ledger, reviews and benchmark tables are the main session's (or a Sonnet agent's) job, never the builder's (René 2026-10-20: "Fable should just analyse and then write the code").
-Trigger: writing an Agent brief for a fix. Detector: the brief lists more than one phase before "fix".
-
+→ merged into 79 (3).
