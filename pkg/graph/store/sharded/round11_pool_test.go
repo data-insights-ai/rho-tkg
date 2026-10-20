@@ -21,6 +21,7 @@ func goid() string {
 // index still runs once, at most maxShardWorkers at a time.
 func TestRound11ShardPoolCallerWorks(t *testing.T) {
 	caller := goid()
+	runShardPool(0, func(i int) { t.Fatalf("n=0: fn(%d) ran", i) })
 	for _, n := range []int{1, 2, 7, 32} {
 		var mu sync.Mutex
 		ran := make([]int, n)

@@ -610,14 +610,14 @@ func runShardPool(n int, fn func(idx int)) {
 		return
 	}
 	tasks := make(chan int, n)
-	for i := 0; i < n; i++ {
+	for i := 1; i < n; i++ {
 		tasks <- i
 	}
 	close(tasks)
-	// The caller is one of the workers: its stack is already grown, where a
-	// fresh goroutine starts small and copies its stack as a deep shard
-	// body grows it (round 11: one string seek on two shards spent a third
-	// of its time in copystack).
+	// The caller is one of the workers and always runs index 0 itself: its
+	// stack is already grown, where a fresh goroutine starts small and copies
+	// its stack as a deep shard body grows it (round 11: one string seek on
+	// two shards spent a third of its time in copystack).
 	var wg sync.WaitGroup
 	wg.Add(workers - 1)
 	// Deferred: a panic in the caller's own fn still waits for the other
@@ -631,6 +631,7 @@ func runShardPool(n int, fn func(idx int)) {
 			}
 		}()
 	}
+	fn(0)
 	for idx := range tasks {
 		fn(idx)
 	}

@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -79,7 +80,9 @@ func (e appendEntity) grow(tb testing.TB, g *Core, from, versions int) {
 }
 
 // appendCost is the mean heap allocations and time of k open appends on a
-// chain of versions rows.
+// chain of versions rows, the cheapest of three batches: mallocs counts the
+// whole process, and badger's own goroutines (a memtable flush) now and then
+// add hundreds per append to one batch; that noise only ever adds.
 func appendCost(tb testing.TB, be r10Backend, rel bool, versions, k int) (allocs float64, ns float64) {
 	tb.Helper()
 	g, err := New(be.cfg())
@@ -89,13 +92,19 @@ func appendCost(tb testing.TB, be r10Backend, rel bool, versions, k int) (allocs
 	defer func() { _ = g.Close() }()
 	e := newAppendEntity(tb, g, rel)
 	e.grow(tb, g, 1, versions)
-	var dur time.Duration
-	m := mallocs(func() {
-		start := time.Now()
-		e.grow(tb, g, versions, versions+k)
-		dur = time.Since(start)
-	})
-	return float64(m) / float64(k), float64(dur.Nanoseconds()) / float64(k)
+	allocs, ns = math.Inf(1), math.Inf(1)
+	for batch := range 3 {
+		from := versions + batch*k
+		var dur time.Duration
+		m := mallocs(func() {
+			start := time.Now()
+			e.grow(tb, g, from, from+k)
+			dur = time.Since(start)
+		})
+		allocs = min(allocs, float64(m)/float64(k))
+		ns = min(ns, float64(dur.Nanoseconds())/float64(k))
+	}
+	return allocs, ns
 }
 
 // TestCascadeAppend67_AllocsFlat: the allocations of an open append at the
