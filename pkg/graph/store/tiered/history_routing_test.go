@@ -172,7 +172,8 @@ func TestTieredStore_CheckedRoutersReturnStableArchivePlacement(t *testing.T) {
 // stores, closeIdleShards must skip every cold shard (activeReqs > 0).
 // After the release callback is invoked, idle close is unblocked.
 func TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards(t *testing.T) {
-	ts := newTestTieredStore(t)
+	// On disk: an in-memory cold shard is never closed (coldShardsClosable).
+	ts := newDiskTestTieredStore(t)
 	reg := registrypkg.NewLabelRegistry()
 	ts.SetLabelRegistry(reg)
 	_, _ = reg.GetOrCreate("Case")

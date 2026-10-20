@@ -27,6 +27,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   replica's `ChangeMeta` apply and the rollback, and refuses an axis change on a store that holds rows
   (`ErrUntimedModeMismatch`). `TestImportAdoptsAxisBeforeRows` (memory, badger, tiered, sharded, replica,
   rollback).
+- **Tiered `InMemory` stores no longer lose a cold shard's rows when it is closed** (v4.66.1 target). The idle sweep
+  and the `MaxOpenColdShards` cap closed demoted cold shards on `InMemory` stores too, and a lazy reopen of an
+  in-memory path starts empty, so every row of that shard vanished (`GetNode`: node not found). Both sweeps now
+  leave in-memory cold shards open (`coldShardsClosable`); disk stores close and reopen as before. Found by
+  `TestEffectiveHeadWrite_TwinDifferential/tiered/whole-axis/seed=26800` (CI race run 39403137717: one twin's
+  sweep came a millisecond later and closed the shard the other kept); pinned by
+  `TestTieredStore_ColdShardClose_KeepsRows`.
 
 ## [4.66.0] - 2026-10-18
 

@@ -125,7 +125,7 @@ var _ = atomic.Pointer[shardCounts]{}
 // before closing so a shard evicted here can still be counted without reopening.
 func (ts *Store) enforceColdShardCap() {
 	cap := ts.maxOpenColdShards
-	if cap <= 0 {
+	if cap <= 0 || !ts.coldShardsClosable() {
 		return
 	}
 
