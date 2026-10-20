@@ -12,7 +12,8 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
    merge the branch (its CHANGELOG `Changed` block belongs in [Unreleased], rename "v4.63.0" to "v4.64.0"), by-name long-tier tests, gate.
 2. **v5 is PAUSED (René 2026-10-16, row 61).** Work lives on the local branch `v5-takeover` (not pushed; origin/v5 untouched). Do
    not resume without René. Reason: real ai-soc import showed ~92 records/op, 11x v4 disk, ~200 writes/s; options in tasks/todo.md.
-   Gap analysis: `docs/v5-gap-to-main.md`.
+   Gap analysis: `docs/v5-gap-to-main.md`. Real-store harness + scale notes: local branches `v5-realstore-harness` (`af75a982`,
+   `tasks/evidence/v5-scale/notes.md`) and `wp-37-import-throughput` (`392f88e2`); not pushed.
 3. **Consumers** (no open request from either; answer new requests the same day: ledger row first, then lesson 79's process):
    - ai-soc: PIN18 = rho v4.56.1 + sigma v0.11.11; declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets
      `UntimedValidStart: UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data
