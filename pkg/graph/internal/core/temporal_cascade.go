@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -68,8 +69,10 @@ import (
 //
 // "Current" slot: the newest belief among rows whose OWN interval is open
 // (ValidTo == 0) takes the store's current slot; the prior current moves to
-// history with its bytes unchanged. If no appended row takes the slot, the
-// current row keeps it, below the appended rows' versions.
+// history with its bytes unchanged. A whole-axis untimed write onto a closed
+// entity moves the slot to its patch of the current row (cascadeNewCurrent).
+// If no appended row takes the slot, the current row keeps it, below the
+// appended rows' versions.
 //
 // Versions (backlog 18): appended rows take versions above every stored row;
 // the row that takes the current slot gets the highest, so after the common
@@ -307,29 +310,9 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 		r.SetVersion(nextVersion)
 	}
 
-	// The new "current" row is the NEWEST BELIEF among rows whose OWN interval
-	// is open-ended (the value at "now" — resolving the point query at +inf).
-	// BACKLOG 10b: this is deliberately NOT "the last positionally-open row in
-	// valid-from order" — a row's own-open status must never be decided by its
-	// neighbors, or an untouched older open row can wrongly keep the "current"
-	// slot from a newer, wider-reaching open correction. See nodeOwnBounds.
-	var newCurrent *types.Node
-	if fromHead {
-		newCurrent = headNewCurrent(c, nodeKernel, hc.open, appended)
-	} else {
-		postChain := make([]*types.Node, 0, len(preChain)+len(appended))
-		postChain = append(postChain, preChain...)
-		postChain = append(postChain, appended...)
-		for i := range postChain {
-			entry := postChain[i]
-			if _, vEnd := c.nodeOwnBounds(entry); !c.axis().Open(vEnd) || isVoidRow(entry) {
-				continue // only own-open rows can own the current slot
-			}
-			if newCurrent == nil || nodeBeliefNewerThan(entry, newCurrent) {
-				newCurrent = entry
-			}
-		}
-	}
+	// The new "current" row: the newest own-open belief, or a whole-axis
+	// write's patch of a closed current row (cascadeNewCurrent).
+	newCurrent := cascadeNewCurrent(c, nodeKernel, nodeBeliefNewerThan, nodeHashOf, fromHead, hc.open, preChain, appended, prevHashes, current, existing)
 
 	// Final versions (backlog 18): the row taking the current slot gets the
 	// highest version of the cascade, so the newest row recorded at `now` is
@@ -672,6 +655,62 @@ func relHashOf(r *types.Relationship) string {
 	return ""
 }
 
+// cascadeNewCurrent picks the row that takes the store's current slot after a
+// cascade (node and relationship alike). A row that is not appended (or the
+// zero T) means the current row keeps the slot.
+//
+// The newest belief among rows whose OWN interval is open-ended takes it (the
+// value at "now" — resolving the point query at +inf). BACKLOG 10b: this is
+// deliberately NOT "the last positionally-open row in valid-from order" — a
+// row's own-open status must never be decided by its neighbors, or an
+// untouched older open row can wrongly keep the slot from a newer,
+// wider-reaching open correction. From a head plan only appended rows can
+// win (headNewCurrent); else every row of the post-correction chain competes.
+//
+// A whole-axis untimed write (existing) onto an entity with no own-open row
+// (todo row 80: every segment closed, by a tkg_valid_to close or an excise)
+// patches the current row's segments and is the newer belief about them: the
+// newest appended row built from the current row (PrevHash = its hash)
+// takes the slot, so Get, the write's return value and the current indexes
+// follow the patch (tx_order.go: a closed entity's segments are patched).
+// Its labels are the current row's plus the write's label change, so the
+// slot checks below hold. No such row (the current row's segments were
+// unchanged): the current row keeps the slot. An own-open row of the
+// pre-correction chain other than the current row (an older belief the close
+// or excise superseded) never takes the slot: only an appended row can.
+func cascadeNewCurrent[T interface {
+	comparable
+	storeutil.TemporalRow
+}](c *Core, k *chainKernel[T], newer func(a, b T) bool, hashOf func(T) string, fromHead bool, open openBelief,
+	preChain, appended []T, prevHashes []string, current T, existing bool) T {
+	ownOpen := func(r T) bool {
+		_, end := k.ownBounds(c, r)
+		return c.axis().Open(end) && !isVoidRow(r)
+	}
+	var cur, zero T
+	if fromHead {
+		cur = headNewCurrent(c, k, open, appended)
+	} else {
+		for _, chain := range [][]T{preChain, appended} {
+			for _, r := range chain {
+				if ownOpen(r) && (cur == zero || newer(r, cur)) {
+					cur = r
+				}
+			}
+		}
+	}
+	if !existing || slices.Contains(appended, cur) || current == zero || ownOpen(current) {
+		return cur
+	}
+	currentHash := hashOf(current)
+	for i := len(appended) - 1; i >= 0; i-- { // build order: the last is the newest belief
+		if prevHashes[i] == currentHash && !isVoidRow(appended[i]) {
+			return appended[i]
+		}
+	}
+	return cur
+}
+
 // moveToEnd moves target (when present) to the end of rows, shifting the rows
 // after it down by one, and moves the matching entry of hashes with it. It
 // reports whether target was found.
@@ -944,24 +983,8 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 		r.SetVersion(nextVersion)
 	}
 
-	// BACKLOG 10b: newest-belief-among-own-open — see the node cascade above.
-	var newCurrent *types.Relationship
-	if fromHead {
-		newCurrent = headNewCurrent(c, relKernel, hc.open, appended)
-	} else {
-		postChain := make([]*types.Relationship, 0, len(preChain)+len(appended))
-		postChain = append(postChain, preChain...)
-		postChain = append(postChain, appended...)
-		for i := range postChain {
-			entry := postChain[i]
-			if _, vEnd := c.relOwnBounds(entry); !c.axis().Open(vEnd) || isVoidRow(entry) {
-				continue
-			}
-			if newCurrent == nil || relBeliefNewerThan(entry, newCurrent) {
-				newCurrent = entry
-			}
-		}
-	}
+	// The new "current" row: see the node cascade (cascadeNewCurrent).
+	newCurrent := cascadeNewCurrent(c, relKernel, relBeliefNewerThan, relHashOf, fromHead, hc.open, preChain, appended, prevHashes, current, existing)
 
 	// Final versions: the row taking the current slot is the highest — see the
 	// node cascade (backlog 18).

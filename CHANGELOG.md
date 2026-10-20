@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **v4.66.1: an untimed write to a closed `UntimedWholeAxis` entity now moves the current row** (todo row 80, review
+  finding). On an entity with no open valid-time row (closed by `tkg_valid_to`, or every segment closed by an excise)
+  an untimed `Update` or `AddLabel` / `RemoveLabel` patched every segment, but the store's current slot kept the stale
+  closed row: `Get` and the update's return value showed the old values, `ByLabel` / `CountByLabel` /
+  `ByLabelAndProperty` and `UniqueCurrent` judged the old state, while `NodeAt` showed the new one. The cascade kernel
+  now gives the slot to the write's patch of the current row, for nodes and relationships alike (one helper,
+  `cascadeNewCurrent`, replaces the two copies of the slot choice). Timed writes and entities with an open tail are
+  unchanged (`TestWholeAxisClosedCurrentFollowsNewestBelief`, `...Rel`).
+
 ## [4.66.0] - 2026-10-18
 
 sigma-tkgd 2026-10-18 (released by Markus): one fix and two additions for `UntimedWholeAxis` stores (`EndValidity` works on every axis), all additive.

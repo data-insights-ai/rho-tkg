@@ -1,0 +1,27 @@
+--- FAIL: TestWholeAxisClosedCurrentFollowsNewestBelief (0.00s)
+    --- FAIL: TestWholeAxisClosedCurrentFollowsNewestBelief/memory/validto (0.00s)
+        whole_axis_closed_current_test.go:66: Update returned k=1, want 5
+        whole_axis_closed_current_test.go:75: Get: k=1 labels [A], want k=5 [A B]
+        whole_axis_closed_current_test.go:85: ByLabel(B) = 0, <nil>; want 1
+        whole_axis_closed_current_test.go:88: CountByLabel(B) = 0, <nil>; want 1
+        whole_axis_closed_current_test.go:91: ByLabelAndProperty(A,k,5) = 0, <nil>; want 1
+        whole_axis_closed_current_test.go:94: ByLabelAndProperty(A,k,1) = 1, <nil>; want 0
+        whole_axis_closed_current_test.go:98: Add k=1 after the update: graph: unique constraint violation: label "A" key "k" already held by node 827889927872118784, want nil
+        whole_axis_closed_current_test.go:101: Add k=5 after the update: <nil>, want ErrUniqueViolation
+    --- FAIL: TestWholeAxisClosedCurrentFollowsNewestBelief/memory/twoclosed (0.00s)
+        whole_axis_closed_current_test.go:66: Update returned k=1, want 5
+        whole_axis_closed_current_test.go:75: Get: k=1 labels [A], want k=5 [A B]
+        whole_axis_closed_current_test.go:85: ByLabel(B) = 0, <nil>; want 1
+        whole_axis_closed_current_test.go:88: CountByLabel(B) = 0, <nil>; want 1
+        whole_axis_closed_current_test.go:91: ByLabelAndProperty(A,k,5) = 0, <nil>; want 1
+        whole_axis_closed_current_test.go:94: ByLabelAndProperty(A,k,1) = 1, <nil>; want 0
+        whole_axis_closed_current_test.go:98: Add k=1 after the update: graph: unique constraint violation: label "A" key "k" already held by node 827889927892598784, want nil
+        whole_axis_closed_current_test.go:101: Add k=5 after the update: <nil>, want ErrUniqueViolation
+--- FAIL: TestWholeAxisClosedCurrentFollowsNewestBeliefRel (0.00s)
+    --- FAIL: TestWholeAxisClosedCurrentFollowsNewestBeliefRel/memory/validto (0.00s)
+        whole_axis_closed_current_test.go:147: Update returned k=1, want 5
+        whole_axis_closed_current_test.go:154: Get k=1, want 5
+        whole_axis_closed_current_test.go:157: ByTypeAndProperty(R,k,5) = 0, <nil>; want 1
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.010s
+FAIL
