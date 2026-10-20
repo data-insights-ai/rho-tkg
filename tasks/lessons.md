@@ -16,7 +16,7 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
 - Releases: MINOR for a really new feature, PATCH otherwise (René 2026-10-14; was patch-only since 10-10), batched, one gate; behaviour changes via the deprecation ritual, no new named exceptions (79); full
   `make test-race` before a tag (66); a green workflow means its gates ran (75). Test tiers: new code gets `-short` tests of
   seconds, commits grouped; long tests only at the final minor-release push (87).
-- Reviews: one round per branch; builders only write code (red, code, green), the main session runs gates, lint, security, docs; models: builds Opus, code reviews Opus high, doc work
+- Reviews: one round per branch; Fable only writes code and runs no tests; the main session runs every test, gate, lint, security, docs; models: builds Opus, code reviews Opus high, doc work
   Sonnet; reviews on Fable, and a build Opus cannot finish goes to Fable (René 2026-10-20: "If opus is not smart enough use a fable Agent .. use Fabel as reviewer"; was off since 10-16) (79).
 - A contract over a family of doors lands in every door; test cross-door agreement (58, 59, 42, 57, 69).
 - Trust boundary: validate IDs and decoded bytes at every entry, `SafeUnmarshal`, allocate by bytes delivered, verify imported
@@ -582,9 +582,10 @@ Detector: `grep -rn 't.Skip' pkg | grep -v 'sharded does not support'`; evidence
 ## 79. Release And Review Process: Minor For Features Else Patch, Author-Run Gates, One Review Round, Models
 
 Rule (René 2026-10-10, 2026-10-12): (1) MINOR for a really new feature, PATCH otherwise (René 2026-10-14; patch-only from 2026-10-10 to 10-14), batched: one `make ci-docker`, one consumer
-build, one message. (2) Behaviour changes go through the deprecation ritual (`docs/stability.md`); no new named exceptions. (3) A build agent
-(Opus, Fable) only analyses and writes the code: red test, code, green; the main session runs lint, security, race and the gate,
-writes CHANGELOG and the ledger, and reviews (René 2026-10-20: "Fable should just analyse and then write the code"). (4) One reviewer round per branch, fix round to the same agent, a
+build, one message. (2) Behaviour changes go through the deprecation ritual (`docs/stability.md`); no new named exceptions. (3) Fable only analyses
+and writes the code (incl. the test code); it runs no tests. The main session (or Sonnet) runs every test red and green, lint,
+security, race and the gate, writes CHANGELOG and the ledger, and reviews (René 2026-10-20: "Fable should just analyse and then
+write the code", "No testing from fable!!!"). (4) One reviewer round per branch, fix round to the same agent, a
 second only for a blocker; doc/comment-only changes get the docs tests and a diff read. (5) Briefs name 5-8 files. (6) A backlog item
 needs a consumer request or a failing test. (7) Never stop a running agent unless asked. (8) Models: builds Opus, code reviews Opus
 effort high, doc work Sonnet (Opus after a second Sonnet fix round); the review of a branch and of the batch before tagging
