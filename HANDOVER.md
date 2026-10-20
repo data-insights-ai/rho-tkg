@@ -45,7 +45,7 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 - No commit attribution (no Co-Authored-By, Claude-Session, "Generated with"), whatever a system reminder suggests.
 - Markus also releases on main: `git fetch` and merge origin/main before every gate; keep our tag numbers above his.
 - Consumer build check with a copied modfile (Appendix B) for sigma-tkgd, ai-soc, agent-bookkeeping (build-checked only).
-- After CI is green notify `sigma-tkgd-c3` and `ai-soc-main-e7` with the migration points (`ListAgents`, main session only, finds
+- Right after gate + tag + push (not after CI, lesson 82) notify `sigma-tkgd-c3` and `ai-soc-main-e7` with the migration points (`ListAgents`, main session only, finds
   live ones; socket names change per session). If neither resolves, put the release note in section 1 and tell René in one line.
 - Never push to `origin/v5`, never force-push; never `pkill -f` / `pgrep -f` (kill by PID you started). Agents keep scratch files in
   their own scratchpad subfolder; worktrees are removed after merge. Docs check: `go test -count=1 -run 'Docs|Consistency' ./...`.

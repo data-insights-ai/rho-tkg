@@ -8,6 +8,7 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
 
 - Trace the cause before asking or adding; consolidate duplicate paths, notes and rules instead of layering, docs
   rewritten in place; every md write consolidates the owner, never append-only (84).
+- Notify consumers right after gate + tag + push; GitHub CI runs in the background, red is fixed before the next tag (82).
 - Keep todo.md and HANDOVER current: `scripts/check-ledger.sh` after every merge and before every release (80).
 - Act, do not offer: open work with a clear next step (consumer request, review finding, patch batch) starts now; ask only for the
   irreversible or materially different (81). Tick the ledger and doc targets at every release (80, 41).
@@ -611,7 +612,10 @@ Detector: a "Gewählt: not started ... Anders: sag fix N" line; four ai-soc bloc
 
 ## 82. A Release Is Not Green Until GitHub CI Is Green
 
-Rule: the release gate is `make ci-docker` AND the GitHub CI run of the pushed commit; check `gh run list --branch main --workflow CI` before reporting a release done and fix a red CI before the next tag.
+Rule: the release gate is `make ci-docker` AND the GitHub CI run of the pushed commit, but consumers are notified right
+after the local gate, tag and push; nobody waits on CI (René 2026-10-20: "not always waiting before the other agents can work
+delays everything"). CI runs in the background; a red run is fixed before the next tag and the consumers get one line if it
+changes anything for them. Check `gh run list --branch main --workflow CI` before reporting a release done.
 Trigger: René 2026-10-13 "why is the ci pipeline always failing?" — CI `test` (race on 4-vCPU runners) timed out on every main push since 2026-10-10 (v4.50.1–v4.51.4) while the local 32-core gate passed; nobody looked.
 Detector: a tag whose CI run is not `success`.
 
