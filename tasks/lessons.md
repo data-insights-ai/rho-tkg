@@ -615,7 +615,7 @@ Detector: a "Gewählt: not started ... Anders: sag fix N" line; four ai-soc bloc
 Rule: the release gate is `make ci-docker` AND the GitHub CI run of the pushed commit, but consumers are notified right
 after the local gate, tag and push; nobody waits on CI (René 2026-10-20: "not always waiting before the other agents can work
 delays everything"). CI runs in the background; a red run is fixed before the next tag and the consumers get one line if it
-changes anything for them. Check `gh run list --branch main --workflow CI` before reporting a release done.
+changes anything for them. Check `gh run list --branch main --workflow CI` before reporting a release done. A tag's red CI is fixed on main and shipped as a NEW patch tag right away; never rerun the old tag's run, it re-tests the old commit and fails the same way (René 2026-10-20: "New tag next time (this is so stupid)").
 Trigger: René 2026-10-13 "why is the ci pipeline always failing?" — CI `test` (race on 4-vCPU runners) timed out on every main push since 2026-10-10 (v4.50.1–v4.51.4) while the local 32-core gate passed; nobody looked.
 Detector: a tag whose CI run is not `success`.
 
