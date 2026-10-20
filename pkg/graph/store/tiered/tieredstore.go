@@ -74,6 +74,10 @@ type Config struct {
 	// that scans historical data and does not re-read it wants the handles
 	// back immediately, and that is the safer default for a store whose shard
 	// count grows without bound.
+	//
+	// Ignored for InMemory stores (v4.66.1): an in-memory cold shard cannot be
+	// reopened with its rows, so it stays open and memory grows with the shard
+	// count (one in-memory Badger per shard, MemTableSize arena plus caches).
 	MaxOpenColdShards int
 	// IdleTimeout closes idle cold shards after this duration. 0 = never close.
 	// InMemory stores never close a cold shard (its store is the only copy).

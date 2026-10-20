@@ -27,6 +27,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   replica's `ChangeMeta` apply and the rollback, and refuses an axis change on a store that holds rows
   (`ErrUntimedModeMismatch`). `TestImportAdoptsAxisBeforeRows` (memory, badger, tiered, sharded, replica,
   rollback).
+  A replica that already holds rows on the other axis now stops at the mode record with `ErrUntimedModeMismatch`
+  (v4.66.0 switched the axis silently over them); bootstrap it again.
 - **Tiered `InMemory` stores no longer lose a cold shard's rows when it is closed** (v4.66.1 target). The idle sweep
   and the `MaxOpenColdShards` cap closed demoted cold shards on `InMemory` stores too, and a lazy reopen of an
   in-memory path starts empty, so every row of that shard vanished (`GetNode`: node not found). Both sweeps now
@@ -34,6 +36,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestEffectiveHeadWrite_TwinDifferential/tiered/whole-axis/seed=26800` (CI race run 39403137717: one twin's
   sweep came a millisecond later and closed the shard the other kept); pinned by
   `TestTieredStore_ColdShardClose_KeepsRows`.
+  Trade-off: an `InMemory` tiered store now keeps every cold shard open (`MaxOpenColdShards` and `IdleTimeout` are
+  ignored there), so memory grows with the shard count, about one in-memory Badger arena per shard.
 - **v4.66.1: an untimed write to a closed `UntimedWholeAxis` entity now moves the current row** (todo row 80, review
   finding). On an entity with no open valid-time row (closed by `tkg_valid_to`, or every segment closed by an excise)
   an untimed `Update` or `AddLabel` / `RemoveLabel` patched every segment, but the store's current slot kept the stale
@@ -42,6 +46,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   now gives the slot to the write's patch of the current row, for nodes and relationships alike (one helper,
   `cascadeNewCurrent`, replaces the two copies of the slot choice). Timed writes and entities with an open tail are
   unchanged (`TestWholeAxisClosedCurrentFollowsNewestBelief`, `...Rel`).
+  Limit: an entity patched while closed under v4.66.0 keeps its stale current row (the patch row is not a
+  descendant of the current row); only entities first patched under v4.66.1 move it.
 
 ## [4.66.0] - 2026-10-18
 
