@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -186,10 +187,7 @@ func checkHeadCorrection(t *testing.T, g *Core, rng *rand.Rand, e *headEntry, ch
 					got += fmt.Sprintf(" src v%d end %d", hc.src.Version(), hc.srcEnd)
 				}
 			}
-			segs, err := g.nodeCorrectionSegments(pre, cur, vf, vt, void)
-			if err != nil {
-				t.Fatal(err)
-			}
+			segs := perCutSegments(g, nodeKernel, pre, cur, vf, vt, void)
 			for _, s := range segs {
 				want += fmt.Sprintf(" [%d,%d) v%d gap=%v", s.from, s.to, s.base.Version(), s.gap)
 			}
@@ -224,7 +222,7 @@ func checkHeadCorrection(t *testing.T, g *Core, rng *rand.Rand, e *headEntry, ch
 	return checked
 }
 
-func headRows(rows []*types.Node) string {
+func headRows[T storeutil.TemporalRow](rows []T) string {
 	s := ""
 	for _, r := range rows {
 		tm := r.Temporal()

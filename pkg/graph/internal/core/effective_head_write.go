@@ -191,7 +191,7 @@ type headRun struct {
 }
 
 // correctionRuns cuts [newVF, newVT) (newVT open by the valid axis a) where
-// the winner changes, as nodeCorrectionSegments does on the chain: maximal
+// the winner changes, as correctionChain.segments does on the chain: maximal
 // runs of one base, a gap's base being the template; with splitGaps a gap
 // never merges with a piece the template wins.
 func (e *headEntry) correctionRuns(a types.ValidAxis, newVF, newVT types.Instant, template uint32, splitGaps bool) []headRun {

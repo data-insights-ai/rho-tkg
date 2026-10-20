@@ -1,0 +1,23 @@
+=== RUN   TestCascadeCorrection85_CostFlat
+=== RUN   TestCascadeCorrection85_CostFlat/memory/rel=false
+    cascade_cuts85_test.go:113: per write: 139768 / 8687384 bytes, 120 / 6261 µs at 100 / 1,000 rows (x62.2 bytes, x52.3 time)
+    cascade_cuts85_test.go:118: bytes per write grow with cuts × chain: 139768 -> 8687384 (x62.2)
+    cascade_cuts85_test.go:121: time per write grows with cuts × chain: 120 -> 6261 µs (x52.3)
+=== RUN   TestCascadeCorrection85_CostFlat/memory/rel=true
+    cascade_cuts85_test.go:113: per write: 143000 / 8719416 bytes, 87 / 5002 µs at 100 / 1,000 rows (x61.0 bytes, x57.5 time)
+    cascade_cuts85_test.go:118: bytes per write grow with cuts × chain: 143000 -> 8719416 (x61.0)
+    cascade_cuts85_test.go:121: time per write grows with cuts × chain: 87 -> 5002 µs (x57.5)
+=== RUN   TestCascadeCorrection85_CostFlat/badger/rel=false
+    cascade_cuts85_test.go:113: per write: 302014 / 10461728 bytes, 205 / 5940 µs at 100 / 1,000 rows (x34.6 bytes, x28.9 time)
+    cascade_cuts85_test.go:118: bytes per write grow with cuts × chain: 302014 -> 10461728 (x34.6)
+=== RUN   TestCascadeCorrection85_CostFlat/badger/rel=true
+    cascade_cuts85_test.go:113: per write: 340094 / 10884394 bytes, 227 / 6557 µs at 100 / 1,000 rows (x32.0 bytes, x28.8 time)
+    cascade_cuts85_test.go:118: bytes per write grow with cuts × chain: 340094 -> 10884394 (x32.0)
+--- FAIL: TestCascadeCorrection85_CostFlat (1.76s)
+    --- FAIL: TestCascadeCorrection85_CostFlat/memory/rel=false (0.21s)
+    --- FAIL: TestCascadeCorrection85_CostFlat/memory/rel=true (0.16s)
+    --- FAIL: TestCascadeCorrection85_CostFlat/badger/rel=false (0.65s)
+    --- FAIL: TestCascadeCorrection85_CostFlat/badger/rel=true (0.74s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.770s
+FAIL

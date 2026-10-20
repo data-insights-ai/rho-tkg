@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A valid-time correction no longer costs one chain sort per cut** (ai-soc 2026-10-20, Flux run at 80 % CPU there;
+  row 85). `SetNodeVersionInterval` / `SetRelVersionInterval`, their `WithTx`, `GraphTx`, `Batch` and `Session`
+  twins, excises and whole-axis untimed updates cut the target interval at every bound of the chain inside it and
+  asked the point resolver once per cut on a fresh copy of the chain (copy, sort, supersession caps, a scan of
+  every row): cuts × V log V per write, so a write spanning the chain grew with its square (memory, 1,000 rows:
+  6.3 ms per write; an extending write at 2,000 rows 21.8 ms). The kernel now prepares the chain once per
+  correction (`correctionChain`: the resolver's classification, order and capped intervals) and answers every cut
+  and the resumption source from it, by one sweep when there are many cuts: V log V + cuts (0.36 ms and 2.1 ms).
+  Answers are unchanged; bounded appends at the chain's end cut nothing and keep their cost (the history read).
+  `TestCascadeCorrection85_CostFlat` (red before: bytes per write x32 to x62 from 100 to 1,000 rows),
+  `TestCascadeCorrection85_Oracle` (twin graphs against the per-cut resolver on three untimed modes, memory and
+  badger), `TestCascadeCorrection85_EmptyAndSingle`, `TestCascadeCorrection85_Shapes`.
+
 ## [4.66.1] - 2026-10-20
 
 ### Changed

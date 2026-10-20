@@ -13,7 +13,7 @@ import (
 // Unique constraints on the cascade doors (tasks/backlog.md item 12).
 //
 // SetNodeVersionInterval appends rows built from a props PATCH over the state
-// valid at each instant of [validFrom, validTo) (nodeCorrectionSegments). The
+// valid at each instant of [validFrom, validTo) (correctionChain.segments). The
 // kernel judges its BUILT rows the way the update doors judge a finalized
 // write:
 //

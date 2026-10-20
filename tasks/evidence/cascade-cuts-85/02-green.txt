@@ -1,0 +1,9 @@
+    cascade_cuts85_test.go:116: per write: 73560 / 723960 bytes, 51 / 361 µs at 100 / 1,000 rows (x9.8 bytes, x7.1 time)
+    cascade_cuts85_test.go:116: per write: 76792 / 755992 bytes, 57 / 352 µs at 100 / 1,000 rows (x9.8 bytes, x6.2 time)
+    cascade_cuts85_test.go:116: per write: 235816 / 2498043 bytes, 169 / 2017 µs at 100 / 1,000 rows (x10.6 bytes, x11.9 time)
+    cascade_cuts85_test.go:116: per write: 273886 / 2920698 bytes, 212 / 2275 µs at 100 / 1,000 rows (x10.7 bytes, x10.7 time)
+--- PASS: TestCascadeCorrection85_CostFlat (1.39s)
+    cascade_cuts85_test.go:351: 39796 piece lists compared; 276 void chains, 706 own-bounds chains
+--- PASS: TestCascadeCorrection85_Oracle (1.59s)
+--- PASS: TestCascadeCorrection85_EmptyAndSingle (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	3.006s

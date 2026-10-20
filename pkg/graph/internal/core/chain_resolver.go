@@ -565,7 +565,7 @@ func voidMask[T interface {
 		return nil
 	}
 	var mask []voidSpan
-	pieces, _ := effectiveSweep(c, k, chain, nil, true)
+	pieces, _ := effectiveSweep(c, k, chain, nil, chainLifeEnds(chain), true)
 	for _, p := range pieces {
 		if !isVoidRow(p.row) {
 			continue

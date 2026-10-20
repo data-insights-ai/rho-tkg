@@ -646,14 +646,9 @@ func nodeInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetada
 	return prevTM != nil && prevTM.ValidFrom != 0 && prevTM.ValidFrom != types.UnboundedValidFrom && prevTM.ValidFrom == tm.ValidFrom
 }
 
-// resolveRelVersionAt finds the version valid at time t from a pre-built chain.
-// See resolveNodeVersionAt: chain is ordered by effective valid-from and, on an
-// overlap, the newer belief (higher TxFrom, then version) wins.
-func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant) (*types.Relationship, error) {
-	return c.resolveRelVersionAtCapped(chain, t, nil)
-}
-
-// resolveRelVersionAtCapped mirrors resolveNodeVersionAtCapped.
+// resolveRelVersionAtCapped mirrors resolveNodeVersionAtCapped: chain is
+// ordered by effective valid-from and, on an overlap, the newer belief
+// (higher TxFrom, then version) wins.
 func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.Instant, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
 	ax := c.axis() // once per chain, not per row
 	if !c.sortRelChainForResolve(chain) {

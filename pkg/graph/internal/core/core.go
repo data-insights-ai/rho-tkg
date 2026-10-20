@@ -155,15 +155,16 @@ type Core struct {
 	// historyEpochs — per-entity history tokens (backlog 68): the head-pin
 	// effective timeline is kept per entity while its token holds
 	// (effective_head.go). nil = store declines: every head read folds.
-	historyEpochs storepkg.HistoryEpochCapability
-	heads         headCache
-	headCacheOff  bool           // tests: fold every read (the differential oracle)
-	headHits      atomic.Uint64  // head reads answered from an entry
-	headOverlays  atomic.Uint64  // corrections that extended an entry
-	headWriteOff  bool           // tests: corrections and tx snapshots read the whole history (backlog 68b twin)
-	headWrites    atomic.Uint64  // corrections planned from an entry (backlog 68b)
-	appendWrites  atomic.Uint64  // open appends planned from the current row alone (backlog 67)
-	historyRead   func(rows int) // tests: called with the rows each history read returns
+	historyEpochs    storepkg.HistoryEpochCapability
+	heads            headCache
+	headCacheOff     bool           // tests: fold every read (the differential oracle)
+	headHits         atomic.Uint64  // head reads answered from an entry
+	headOverlays     atomic.Uint64  // corrections that extended an entry
+	headWriteOff     bool           // tests: corrections and tx snapshots read the whole history (backlog 68b twin)
+	correctionPerCut bool           // tests: a correction resolves every cut on a fresh chain copy (row 85 twin)
+	headWrites       atomic.Uint64  // corrections planned from an entry (backlog 68b)
+	appendWrites     atomic.Uint64  // open appends planned from the current row alone (backlog 67)
+	historyRead      func(rows int) // tests: called with the rows each history read returns
 	// readSnapshots — effective scans read their timelines through one store
 	// read snapshot (backlog 55, effective_scan_reads.go). nil = per-entity reads.
 	readSnapshots storepkg.ReadSnapshotCapability

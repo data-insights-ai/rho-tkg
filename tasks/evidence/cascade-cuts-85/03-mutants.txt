@@ -1,0 +1,11 @@
+killed:   life-end caps (read doors' caps)
+killed:   scan: void winner kept
+killed:   sweep: void winner kept
+killed:   sweep: end inclusive
+killed:   sweep: start exclusive
+SURVIVED: scan: equal beliefs keep the later
+killed:   scan: monotonic lowest position
+killed:   sweep: no belief rank
+killed:   sorted input (lesson 73)
+killed:   gap pieces merged with template
+(scan: equal beliefs keep the later — equivalent mutant: newerBelief is 0 only for the same interval, positions are unique)
