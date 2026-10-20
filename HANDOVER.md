@@ -11,13 +11,9 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
    "full opus code, tests, documentation and README.md run with separate agents" (row 77). State:
    - On main (local, push before the gate): README fixes (`20953507`), docs-review fixes (`74e83c6f`), row 82 recurrence span
      guard (`4bf41957`). CHANGELOG [Unreleased] holds the Fixed/Changed lines.
-   - Agents running in worktrees `.claude/worktrees/agent-*` (each commits on its `worktree-agent-*` branch, no merge): row 79 tiered
-     whole-axis node lost after demote (`TestEffectiveHeadWrite_TwinDifferential/tiered/whole-axis/seed=26800` under -race),
-     row 80 whole-axis untimed write on an all-closed entity leaves the stale row current (core/temporal_cascade.go:322-338),
-     row 81 whole-axis import adopts the axis after indexing (core/import.go:661). Branches: row 79 `worktree-agent-afd25f4259c712f9f`, row 80
-     `worktree-agent-abd54d65b3b031990` (if an agent died, its report is missing:
-     read `git log main..<branch>`, then re-brief one Opus agent per row).
-   - Already merged: row 81 (import/replica/rollback adopt the axis before rows, one seam `switchUntimedModeLocked`);
+   - All fixes merged on main (rows 79-82 + flakes + docs + README). Next: one Opus-high review of the merged 79-81 code, then the gate.
+   - Merged: row 79 (tiered InMemory cold shards never closed; rows were lost), row 80 (`cascadeNewCurrent`: a whole-axis
+     untimed write on a closed entity moves the current slot), row 81 (import/replica/rollback adopt the axis before rows, one seam `switchUntimedModeLocked`);
      test timing flakes removed (adjacency_at_tx, watch, import, tx_bulk_reads; `-count=50` + `-race -count=5`).
    - Then per branch: read the report, merge with `&&` (never `;` after a merge), resolve CHANGELOG [Unreleased] conflicts by
      keeping both entries, `-short` of touched packages, tick the row, remove the worktree; one Opus-high review of 79-81 code
