@@ -205,8 +205,19 @@ func effectiveSweep[T interface {
 	comparable
 	storeutil.TemporalRow
 }](c *Core, k *chainKernel[T], filtered []T, origin map[T]int, caps lifeEnds[T], keepVoid bool) ([]effPiece[T], bool) {
-	a := c.axis()
 	arr, ivs, cascade := sweepIntervals(c, k, filtered, caps)
+	return sweepPieces(c, arr, ivs, cascade, origin, keepVoid), cascade
+}
+
+// sweepPieces is effectiveSweep over classified intervals (sweepIntervals:
+// arr the resolver-ordered rows, ivs their covering intervals, cascade the
+// arm): one sweep over the bounds with a max-heap by priority yields every
+// piece. ivs is not kept in order.
+func sweepPieces[T interface {
+	comparable
+	storeutil.TemporalRow
+}](c *Core, arr []T, ivs []effInterval, cascade bool, origin map[T]int, keepVoid bool) []effPiece[T] {
+	a := c.axis()
 	if cascade {
 		rankBeliefs(arr, ivs)
 	}
@@ -250,7 +261,7 @@ func effectiveSweep[T interface {
 		}
 		out = append(out, effPiece[T]{from: from, to: to, row: w, src: origin[w]})
 	}
-	return out, cascade
+	return out
 }
 
 // sweepIntervals is the point resolver's classification of filtered (its

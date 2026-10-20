@@ -139,8 +139,11 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	headBefore := c.nodeHeadBeforeWrite(id, current)
 	// An append at the head is planned from the current row alone (backlog
 	// 67, effective_head_write.go), else from a valid head entry.
-	hc, fromCurrent := chainFromCurrent(c, nodeKernel, current, func(v uint32) (bool, error) { return c.nodeHasHistoryAbove(id, v) },
-		c.nodeHistoryStampsFunc(id), newVF, newVT, at, void)
+	above, stamps := func(v uint32) (bool, error) { return c.nodeHasHistoryAbove(id, v) }, c.nodeHistoryStampsFunc(id)
+	if headBefore != nil {
+		above, stamps = headBefore.above, headBefore.stamps // exact for the chain, no store probe (row 85)
+	}
+	hc, fromCurrent := chainFromCurrent(c, nodeKernel, current, above, stamps, newVF, newVT, at, void)
 	fromHead := fromCurrent
 	if !fromCurrent {
 		hc, fromHead = chainFromHead(c, headBefore, current, func(v uint32) (*types.Node, error) { return c.getNodeVersion(id, v) },
@@ -162,13 +165,13 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	}
 
 	maxVersion := hc.maxVersion
-	var stamps []*types.TemporalMetadata // from the head: the order rule was checked
+	var chainStamps []*types.TemporalMetadata // from the head: the order rule was checked
 	if !fromHead {
 		maxVersion = current.Version()
 		for _, h := range history {
 			maxVersion = max(maxVersion, h.Version())
 		}
-		stamps = temporalsOf(history, current)
+		chainStamps = temporalsOf(history, current)
 	}
 	nextVersion, err := nextEntityVersion(maxVersion)
 	if err != nil {
@@ -176,7 +179,7 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	}
 	// The clock, or the caller instant at once the order rule holds for the
 	// whole chain (interval_withtx.go). Every appended row is stamped with it.
-	now, err := c.cascadeInstant(at, stamps)
+	now, err := c.cascadeInstant(at, chainStamps)
 	if err != nil {
 		return nil, err
 	}
@@ -232,6 +235,9 @@ func (c *Core) cascadeNodeMode(ctx context.Context, id types.NodeID, newVF, newV
 	var prep *correctionChain[*types.Node] // the chain prepared once: every cut and the source (row 85)
 	if !fromHead {
 		prep = prepareCorrection(c, nodeKernel, preChain)
+		if headBefore == nil {
+			headBefore = prep.head(c.nodeHistoryEpoch(id), current) // the head answer this read paid for
+		}
 		if !c.axis().Open(newVT) {
 			if src, ok := prep.winnerAt(newVT); ok {
 				hc.src, hc.hasSrc, hc.srcEnd = src, true, nodeResumptionEnd(c, preChain, newVT)
@@ -609,6 +615,28 @@ func (p *correctionChain[T]) sweep(ts []types.Instant) ([]T, []bool) {
 	return rows, oks
 }
 
+// head is the head entry of the prepared chain under the history token
+// epoch (effective_head.go), built from the intervals already classified:
+// nil when the graph keeps no entries, the chain does not qualify
+// (gatherHeadFacts: a delete, a shared version) or the cascade twin reads
+// the history (headWriteOff). The pristine chain is in write order (no
+// delete: ascending version), and with no delete the fold's life caps are
+// empty, so its intervals are these (sweepIntervals with no caps).
+func (p *correctionChain[T]) head(epoch uint64, current T) *headEntry {
+	c := p.c
+	if c.historyEpochs == nil || c.headCacheOff || c.headWriteOff || c.correctionPerCut || epoch == 0 || len(p.chain) == 0 {
+		return nil
+	}
+	var facts headFacts
+	gatherHeadFacts(&facts, c, p.k, p.chain)
+	if !facts.ok {
+		return nil
+	}
+	facts.cascade = p.cascade
+	pieces := sweepPieces(c, p.arr, p.ivs, p.cascade, nil, false)
+	return headFromFold(c, epoch, current, pieces, &facts)
+}
+
 // segments splits [newVF, newVT) at every boundary where the pre-correction
 // belief-winner can change and pairs each piece with its base.
 //
@@ -942,8 +970,11 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	// The head answer before any write — see the node cascade.
 	headBefore := c.relHeadBeforeWrite(id, current)
 	// From the current row or the head entry — see the node cascade.
-	hc, fromCurrent := chainFromCurrent(c, relKernel, current, func(v uint32) (bool, error) { return c.relHasHistoryAbove(id, v) },
-		c.relHistoryStampsFunc(id), newVF, newVT, at, void)
+	above, stamps := func(v uint32) (bool, error) { return c.relHasHistoryAbove(id, v) }, c.relHistoryStampsFunc(id)
+	if headBefore != nil {
+		above, stamps = headBefore.above, headBefore.stamps // see the node cascade
+	}
+	hc, fromCurrent := chainFromCurrent(c, relKernel, current, above, stamps, newVF, newVT, at, void)
 	fromHead := fromCurrent
 	if !fromCurrent {
 		hc, fromHead = chainFromHead(c, headBefore, current, func(v uint32) (*types.Relationship, error) { return c.getRelVersion(id, v) },
@@ -964,20 +995,20 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	}
 
 	maxVersion := hc.maxVersion
-	var stamps []*types.TemporalMetadata // from the head: the order rule was checked
+	var chainStamps []*types.TemporalMetadata // from the head: the order rule was checked
 	if !fromHead {
 		maxVersion = current.Version()
 		for _, h := range history {
 			maxVersion = max(maxVersion, h.Version())
 		}
-		stamps = temporalsOf(history, current)
+		chainStamps = temporalsOf(history, current)
 	}
 	nextVersion, err := nextEntityVersion(maxVersion)
 	if err != nil {
 		return nil, err
 	}
 	// The clock or the checked caller instant — see the node cascade.
-	now, err := c.cascadeInstant(at, stamps)
+	now, err := c.cascadeInstant(at, chainStamps)
 	if err != nil {
 		return nil, err
 	}
@@ -1002,6 +1033,9 @@ func (c *Core) cascadeRelMode(ctx context.Context, id types.RelID, newVF, newVT 
 	var prep *correctionChain[*types.Relationship] // see the node cascade (row 85)
 	if !fromHead {
 		prep = prepareCorrection(c, relKernel, preChain)
+		if headBefore == nil {
+			headBefore = prep.head(c.relHistoryEpoch(id), current)
+		}
 		if !c.axis().Open(newVT) {
 			if src, ok := prep.winnerAt(newVT); ok {
 				hc.src, hc.hasSrc, hc.srcEnd = src, true, relResumptionEnd(c, preChain, newVT)

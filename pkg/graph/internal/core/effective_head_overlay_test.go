@@ -87,7 +87,7 @@ func TestHeadOverlay_MatchesFold(t *testing.T) {
 		cur := chain[len(chain)-1]
 		var facts headFacts
 		fold := effectivePiecesFacts(g, nodeKernel, chain, pin, &facts)
-		e := headFromFold(1, cur, fold, &facts)
+		e := headFromFold(g, 1, cur, fold, &facts)
 		if e == nil {
 			continue
 		}

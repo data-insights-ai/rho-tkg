@@ -55,8 +55,13 @@ import (
 // The cache is bounded by pieces, not entries (an entry weighs its pieces
 // plus one): at most headCacheMaxPieces over the graph, split evenly over
 // headCacheStripes stripes, each dropped whole when a put would pass its
-// share. An answer of more than headMaxEntryPieces pieces is not kept (its
-// reads fold, as before backlog 68).
+// share. An entry keeps at most headMaxEntryPieces pieces and
+// headMaxEntryBounds bounds: the NEWEST ones, a suffix of the head answer
+// (row 85). A whole entry answers reads and every correction; a suffix
+// answers the corrections at or above its watermarks (pieceFrom, boundFrom),
+// which is where a consumer that appends versions at the head writes
+// (sigma's Derived rows: one piece per version, so a chain of thousands of
+// versions has as many pieces); reads of such a chain fold, as before.
 const (
 	headCacheStripes    = 64
 	headCacheMaxPieces  = 1 << 20
@@ -64,6 +69,21 @@ const (
 	headMaxEntryBounds  = 2 * headMaxEntryPieces
 	headStripeMaxWeight = headCacheMaxPieces / headCacheStripes
 )
+
+// headWhole is the watermark of an entry that dropped nothing.
+const headWhole = types.Instant(math.MinInt64)
+
+// headCaps returns the entry caps (tests lower them).
+func (c *Core) headCaps() (pieces, bounds int) {
+	pieces, bounds = headMaxEntryPieces, headMaxEntryBounds
+	if c.headPieceCap > 0 {
+		pieces = c.headPieceCap
+	}
+	if c.headBoundCap > 0 {
+		bounds = c.headBoundCap
+	}
+	return pieces, bounds
+}
 
 // headPiece is one piece [from, to) (to open by the graph's valid axis) of a
 // head answer; version
@@ -87,11 +107,15 @@ type headEntry struct {
 	pieces    []headPiece
 	// What a correction needs besides the pieces (backlog 68b,
 	// effective_head_write.go): every row's own valid bounds, sorted and
-	// distinct (nil: more than headMaxEntryBounds, not kept: corrections
-	// read the chain), and the newest belief among the rows whose own
-	// interval is open and not void.
+	// distinct, and the newest belief among the rows whose own interval is
+	// open and not void.
 	bounds []types.Instant
 	open   openBelief
+	// pieceFrom / boundFrom: the pieces and the bounds are exact from these
+	// instants on (headWhole: nothing dropped). An entry over the caps keeps
+	// the newest pieces and bounds (trim); a correction at or above both
+	// watermarks is planned from it, a read needs a whole entry.
+	pieceFrom, boundFrom types.Instant
 	// void: some row of the chain is void (an excise). A whole-axis update
 	// planned from the entry asks it as one planned from the history asks
 	// the chain (wholeAxisSupersession.voidFree), so both stamp alike.
@@ -150,8 +174,9 @@ func (h *headCache) get(k headKey) *headEntry {
 	return e
 }
 
-// put keeps e under k (nil drops k's entry). An entry above
-// headMaxEntryPieces is not kept: k's entry is dropped instead.
+// put keeps e under k (nil drops k's entry). An entry above the caps
+// (headFromFold and headOverlay trim theirs) is not kept: k's entry is
+// dropped instead.
 func (h *headCache) put(k headKey, e *headEntry) {
 	s := h.stripe(k)
 	s.mu.Lock()
@@ -160,7 +185,7 @@ func (h *headCache) put(k headKey, e *headEntry) {
 		s.weight -= headWeight(old)
 		delete(s.m, k)
 	}
-	if e == nil || len(e.pieces) > headMaxEntryPieces {
+	if e == nil || len(e.pieces) > headMaxEntryPieces || len(e.bounds) > headMaxEntryBounds {
 		return
 	}
 	w := headWeight(e)
@@ -289,34 +314,65 @@ func gatherHeadFacts[T interface {
 	f.ok = true
 }
 
-// sortedBounds sorts and de-duplicates b in place; nil when more than
-// headMaxEntryBounds remain.
+// sortedBounds sorts and de-duplicates b in place.
 func sortedBounds(b []types.Instant) []types.Instant {
 	slices.Sort(b)
-	b = slices.Compact(b)
-	if len(b) > headMaxEntryBounds {
-		return nil
-	}
-	return slices.Clip(b)
+	return slices.Clip(slices.Compact(b))
 }
 
-// headFromFold builds the entry for a fold's pieces and facts, or nil when
-// the chain did not qualify or the answer is too large to keep.
+// headFromFold builds the entry for a fold's pieces and facts (trimmed to
+// c's caps), or nil when the chain did not qualify.
 func headFromFold[T interface {
 	comparable
 	storeutil.TemporalRow
-}](epoch uint64, current T, pieces []effPiece[T], f *headFacts) *headEntry {
-	if epoch == 0 || !f.ok || len(pieces) > headMaxEntryPieces {
+}](c *Core, epoch uint64, current T, pieces []effPiece[T], f *headFacts) *headEntry {
+	if epoch == 0 || !f.ok {
 		return nil
 	}
 	e := &headEntry{epoch: epoch, curVer: current.Version(), curTM: temporalOf(current),
 		maxTx: f.maxTx, maxTxTo: f.maxTxTo, maxVer: f.maxVer, cascade: f.cascade,
 		lastStart: f.lastStart, lastEnd: f.lastEnd, pieces: make([]headPiece, len(pieces)),
-		bounds: f.bounds, open: f.open, void: f.void}
+		bounds: f.bounds, open: f.open, void: f.void, pieceFrom: headWhole, boundFrom: headWhole}
 	for i, p := range pieces {
 		e.pieces[i] = headPiece{from: p.from, to: p.to, version: p.row.Version()}
 	}
+	e.trim(c.headCaps())
 	return e
+}
+
+// trim keeps the newest pieces and bounds within the caps and raises the
+// watermarks to the first kept: the pieces are disjoint and ascending, so
+// every dropped piece ends at or before the first kept one, and every
+// dropped bound lies below the first kept one.
+func (e *headEntry) trim(pieces, bounds int) {
+	if n := len(e.pieces) - pieces; n > 0 {
+		e.pieces = slices.Clone(e.pieces[n:])
+		e.pieceFrom = max(e.pieceFrom, e.pieces[0].from)
+	}
+	if n := len(e.bounds) - bounds; n > 0 {
+		e.bounds = slices.Clone(e.bounds[n:])
+		e.boundFrom = max(e.boundFrom, e.bounds[0])
+	}
+}
+
+// above and stamps answer, from the entry, what an append planned from the
+// current row probes the store for (chainFromCurrent): a history row above
+// a version, and the chain's newest TxFrom and TxTo (the current row's own
+// are among them; it is checked apart).
+func (e *headEntry) above(v uint32) (bool, error) { return e.maxVer > v, nil }
+
+func (e *headEntry) stamps() (types.Instant, types.Instant, bool, error) {
+	return e.maxTx, e.maxTxTo, true, nil
+}
+
+// whole reports an entry that dropped no piece: it answers reads.
+func (e *headEntry) whole() bool { return e.pieceFrom == headWhole }
+
+// plans reports whether a correction of [newVF, newVT) (newVT open by the
+// valid axis a) lies at or above the entry's watermarks: its pieces and the
+// resumption's bound are exact there.
+func (e *headEntry) plans(a types.ValidAxis, newVF, newVT types.Instant) bool {
+	return newVF >= e.pieceFrom && (a.Open(newVT) || newVT >= e.boundFrom)
 }
 
 // headOverlay is e extended by a correction's appended rows (ascending by
@@ -330,10 +386,7 @@ func headOverlay[T interface {
 	}
 	out := *e
 	out.pieces = slices.Clone(e.pieces)
-	var bounds []types.Instant
-	if e.bounds != nil {
-		bounds = slices.Clone(e.bounds)
-	}
+	bounds := slices.Clone(e.bounds)
 	a := c.axis()
 	for _, r := range appended {
 		tm := r.Temporal()
@@ -342,8 +395,8 @@ func headOverlay[T interface {
 			return nil
 		}
 		s, end := k.sortVF(c, r), tm.ValidTo
-		if !a.Open(end) && end <= s {
-			return nil
+		if (!a.Open(end) && end <= s) || s < out.pieceFrom {
+			return nil // empty, or below the watermark: what it paints over is unknown
 		}
 		if !out.cascade {
 			// Monotonic arm: the resolver's positional start equals the
@@ -356,20 +409,16 @@ func headOverlay[T interface {
 		out.void = out.void || isVoidRow(r)
 		out.maxTx, out.maxVer = tm.TxFrom, r.Version()
 		out.lastStart, out.lastEnd = s, end
-		if bounds != nil {
-			bounds = append(bounds, s)
-			if !a.Open(end) {
-				bounds = append(bounds, end)
-			}
+		bounds = append(bounds, s)
+		if !a.Open(end) {
+			bounds = append(bounds, end)
 		}
 		if a.Open(end) && !tm.Void {
 			out.open.note(tm.TxFrom, r.Version())
 		}
 	}
-	if bounds != nil {
-		bounds = sortedBounds(bounds)
-	}
-	out.bounds = bounds
+	out.bounds = sortedBounds(bounds)
+	out.trim(c.headCaps())
 	return &out
 }
 
@@ -415,7 +464,7 @@ func paintHead(a types.ValidAxis, pieces []headPiece, s, end types.Instant, vers
 // back to the fold (no entry, a stale one, or a winner gone).
 func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.Node, pin types.Instant, epoch uint64) ([]temporal.NodeSegment, bool) {
 	e := c.headValid(headKey{id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), pin)
-	if e == nil {
+	if e == nil || !e.whole() {
 		return nil, false
 	}
 	segs := make([]temporal.NodeSegment, 0, len(e.pieces))
@@ -441,7 +490,7 @@ func (c *Core) nodeHeadSegments(rd entityReads, id types.NodeID, current *types.
 // relHeadSegments mirrors nodeHeadSegments.
 func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Relationship, pin types.Instant, epoch uint64) ([]temporal.RelSegment, bool) {
 	e := c.headValid(headKey{rel: true, id: id.SnowflakeID()}, epoch, current.Version(), temporalOf(current), pin)
-	if e == nil {
+	if e == nil || !e.whole() {
 		return nil, false
 	}
 	segs := make([]temporal.RelSegment, 0, len(e.pieces))
@@ -466,13 +515,13 @@ func (c *Core) relHeadSegments(rd entityReads, id types.RelID, current *types.Re
 
 // noteNodeHead keeps the head answer a fold produced (no-op unless it qualifies).
 func (c *Core) noteNodeHead(id types.NodeID, epoch uint64, current *types.Node, pieces []effPiece[*types.Node], f *headFacts) {
-	if e := headFromFold(epoch, current, pieces, f); e != nil {
+	if e := headFromFold(c, epoch, current, pieces, f); e != nil {
 		c.heads.put(headKey{id: id.SnowflakeID()}, e)
 	}
 }
 
 func (c *Core) noteRelHead(id types.RelID, epoch uint64, current *types.Relationship, pieces []effPiece[*types.Relationship], f *headFacts) {
-	if e := headFromFold(epoch, current, pieces, f); e != nil {
+	if e := headFromFold(c, epoch, current, pieces, f); e != nil {
 		c.heads.put(headKey{rel: true, id: id.SnowflakeID()}, e)
 	}
 }

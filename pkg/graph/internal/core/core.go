@@ -162,6 +162,8 @@ type Core struct {
 	headOverlays     atomic.Uint64  // corrections that extended an entry
 	headWriteOff     bool           // tests: corrections and tx snapshots read the whole history (backlog 68b twin)
 	correctionPerCut bool           // tests: a correction resolves every cut on a fresh chain copy (row 85 twin)
+	headPieceCap     int            // tests: entry caps below headMaxEntryPieces / headMaxEntryBounds (0: the defaults)
+	headBoundCap     int            //
 	headWrites       atomic.Uint64  // corrections planned from an entry (backlog 68b)
 	appendWrites     atomic.Uint64  // open appends planned from the current row alone (backlog 67)
 	historyRead      func(rows int) // tests: called with the rows each history read returns

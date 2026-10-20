@@ -322,6 +322,7 @@ func TestCascadeCorrection85_Oracle(t *testing.T) {
 					tw := newHeadTwin(t, be, seed)
 					tw.a.headWriteOff, tw.b.headWriteOff = true, true
 					tw.b.correctionPerCut = true
+					tw.a.headPieceCap, tw.a.headBoundCap = 3, 4 // trimmed entries on the read side (row 85)
 					for step := range steps {
 						when := fmt.Sprintf("step %d (after %s)", step, tw.last)
 						for _, id := range tw.nodes {

@@ -61,6 +61,11 @@ func TestEffectiveHeadWrite_TwinDifferential(t *testing.T) {
 			seed := uint64(0x68b0 + s)
 			t.Run(fmt.Sprintf("%s/seed=%d", be.name, seed), func(t *testing.T) {
 				tw := newHeadTwin(t, be, seed)
+				if s%2 == 1 {
+					// Trimmed entries (row 85): A plans most corrections from a
+					// suffix of the head answer and reads fold.
+					tw.a.headPieceCap, tw.a.headBoundCap = 3, 4
+				}
 				for step := range steps {
 					tw.step(step)
 					if os.Getenv("HEAD_TWIN_DEBUG") != "" {
