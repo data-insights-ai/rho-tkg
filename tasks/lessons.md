@@ -669,7 +669,7 @@ those by name with `-race` before the branch is reported done.
 
 ## 88. Build briefs: analyse, then code
 
-Rule: a build agent's brief is "analyse, red test, code, green": no review phase, no reconstruction study or benchmark tables
-before the fix; the main session reviews afterwards (René 2026-10-20: "Fable should just analyse and then write the code").
+Rule: a build agent (Fable or Opus) only analyses and writes the code: red test, code, green. Gates (race, lint, security),
+CHANGELOG, ledger, reviews and benchmark tables are the main session's (or a Sonnet agent's) job, never the builder's (René 2026-10-20: "Fable should just analyse and then write the code").
 Trigger: writing an Agent brief for a fix. Detector: the brief lists more than one phase before "fix".
 
