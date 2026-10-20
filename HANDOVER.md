@@ -1,26 +1,43 @@
-# HANDOVER — rho-tkg v4 line (2026-10-18, latest release v4.66.0 (whole-axis History fix, EndValidity, per-segment label change); next patch v4.66.1; v4.64.0 reserved for the parked tombstone writer)
+# HANDOVER — rho-tkg v4 line (2026-10-20, latest release v4.66.0 (Markus); v4.66.1 patch in preparation; v4.64.0 never cut, writer parked)
 
 Repo `/home/renework2023/Work/2026/datainsights/rho-tkg` (module `github.com/data-insights-ai/rho-tkg/v4`, Go library, not a
-database). Latest tag v4.66.0 (2026-10-18; v4.65.0 was round 11; the default flip is held for the next minor). Tags and what shipped: `CHANGELOG.md`, git and the
+database). Latest tag v4.66.0 (2026-10-18, Markus; v4.65.0 was round 11; the `UntimedWholeAxis` default flip is held, no target). Tags and what shipped: `CHANGELOG.md`, git and the
 releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Read in this order: this file, `tasks/lessons.md`
 (digest at the top), `tasks/todo.md` (user requests, releases table), `tasks/backlog.md` (open table, then specs), `CHANGELOG.md` top.
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **v4.63.0 (minor, row 73):** public `types.TemporalMetadata.ValidToAtTxTime` / `DeleteWroteValidTo` released (`461d225b`). **v4.64.0:** branch `tombstone-writer-v4.63` (`37a1ff56`, row 71 part B) turns on the `DeleteKeptValidTo` writer
-   (backlog 4 delete half, 25, 7). Before tagging v4.64.0: sigma P24 and ai-soc's raw-ValidTo check confirmed, heads-up sent to both;
-   merge the branch (its CHANGELOG `Changed` block belongs in [Unreleased], rename "v4.63.0" to "v4.64.0"), by-name long-tier tests, gate.
+1. **René's last open request (2026-10-20): "then prepare a patch version release" (row 78) — v4.66.1.** Inputs come from his
+   "full opus code, tests, documentation and README.md run with separate agents" (row 77). State:
+   - On main (local, push before the gate): README fixes (`20953507`), docs-review fixes (`74e83c6f`), row 82 recurrence span
+     guard (`4bf41957`). CHANGELOG [Unreleased] holds the Fixed/Changed lines.
+   - Agents running in worktrees `.claude/worktrees/agent-*` (each commits on its `worktree-agent-*` branch, no merge): row 79 tiered
+     whole-axis node lost after demote (`TestEffectiveHeadWrite_TwinDifferential/tiered/whole-axis/seed=26800` under -race),
+     row 80 whole-axis untimed write on an all-closed entity leaves the stale row current (core/temporal_cascade.go:322-338),
+     row 81 whole-axis import adopts the axis after indexing (core/import.go:661), and test-only timing flakes
+     (adjacency_at_tx_test.go:979, replication/watch_test.go:268, import_test.go:498, tx_bulk_reads_test.go:349-411).
+   - Then per branch: read the report, merge with `&&` (never `;` after a merge), resolve CHANGELOG [Unreleased] conflicts by
+     keeping both entries, `-short` of touched packages, tick the row, remove the worktree; one Opus-high review of 79-81 code
+     (Markus's whole-axis area); then lesson 79's release: `git fetch` + merge origin/main, `GOFLAGS=-timeout=30m make ci-docker`
+     with status.txt + ETA, consumer build (Appendix B), release commit (CHANGELOG `[4.66.1]`, README.md:311, AGENTS.md:65,
+     docs/architecture.md:1), tag, push, CI green, notify sigma-tkgd-c3 and ai-soc-main-e7.
+   - Review findings NOT taken (not essential, wait for René): tests review #5-#10 (slow -short packages, missing break cases for
+     EndValidity / per-segment labels / whole-axis replica), code review #4-#7 (axis-unaware wire/invariant checks on crafted bytes,
+     void vt=0 decode, EndValidity ahead of the clock = backlog 4, NodeAtOpts skips the pin-too-new check), docs #9-#10 rest.
+   - v4.63.0 shipped `ValidToAtTxTime` / `DeleteWroteValidTo`; the `DeleteKeptValidTo` writer (backlog 4/25/7, branch
+     `tombstone-writer-v4.63`) is parked ("not now", René 2026-10-19); it needs a rebuild on the v4.66 axis code as a minor.
 2. **v5 is PAUSED (René 2026-10-16, row 61).** Work lives on the local branch `v5-takeover` (not pushed; origin/v5 untouched). Do
    not resume without René. Reason: real ai-soc import showed ~92 records/op, 11x v4 disk, ~200 writes/s; options in tasks/todo.md.
    Gap analysis: `docs/v5-gap-to-main.md`. Real-store harness + scale notes: local branches `v5-realstore-harness` (`af75a982`,
    `tasks/evidence/v5-scale/notes.md`) and `wp-37-import-throughput` (`392f88e2`); not pushed.
 3. **Consumers** (no open request from either; answer new requests the same day: ledger row first, then lesson 79's process):
-   - ai-soc: PIN18 = rho v4.56.1 + sigma v0.11.11; declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets
+   - ai-soc: PIN21 = rho v4.61.0 + sigma v0.11.21 (RAM numbers in row 73 area: VmHWM ~63-65 GB whole BA); earlier PIN18 = rho v4.56.1 + sigma v0.11.11; declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets
      `UntimedValidStart: UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data
      day; `/bars`, `/tkg/asof` = its HTTP read doors.)
-   - sigma-tkgd: v0.11.22 (2026-10-19); library on rho v4.61.0, scratchpad/xbench on v4.66.0; needs no new rho API; P24
+   - sigma-tkgd: v0.11.30 (2026-10-20); library on rho v4.61.0, scratchpad/xbench on v4.66.0; needs no new rho API; P24
      (marker-aware ValidTo reads) parked with the tombstone writer.
-4. **Open work:** the open table of `tasks/backlog.md` (old items, no requester; nothing blocking). No scheduled change left.
+4. **Open work:** v4.66.1 (item 1); otherwise the open table of `tasks/backlog.md` (no requester; backlog 79 = sigma's multi-pin
+   timeline, cost only, parked).
 5. **Watch origin:** `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background (Appendix A). When Markus releases on
    main: merge origin/main, check his code against our rules (one valid start, Void rows, Elements, format markers, head cache,
    version allocation), fix his CHANGELOG heading if he left entries under [Unreleased].
