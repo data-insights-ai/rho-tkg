@@ -30,9 +30,10 @@ import (
 // in the chain.
 
 const (
-	growSmall = 400  // cuts: below the former cap of 512 pieces
-	growLarge = 1200 // cuts: past it
-	growK     = 3    // cuts per sample
+	growCap   = 128 // the entry's piece cap in this test (headPieceCap; bounds twice that), standing in for the real one
+	growSmall = 24  // cuts: below the cap
+	growLarge = 72  // cuts: past it, the shape that hit the former 512-piece cliff
+	growK     = 3   // cuts per sample
 )
 
 // growCut runs cut k of the grow shape on the node and the relationship in
@@ -67,6 +68,7 @@ func growGraph(tb testing.TB, be r10Backend, cuts int) (*Core, appendEntity, app
 		tb.Fatal(err)
 	}
 	tb.Cleanup(func() { _ = g.Close() })
+	g.headPieceCap, g.headBoundCap = growCap, 2*growCap // a short chain crosses the cap
 	n := newCutEntity(tb, g, false, true)
 	r := newCutEntity(tb, g, true, true)
 	for k := 1; k <= cuts; k++ {
@@ -141,13 +143,18 @@ func growSegments(tb testing.TB, g *Core, e appendEntity, fold bool) []string {
 }
 
 // TestHeadGrow87_NoCliffPastFormerCap: on memory and badger, the grow shape
-// at growLarge cuts (past the former cap of 512 pieces) costs per appended
+// at growLarge cuts (past growSmall, on the head entry under growCap) costs per appended
 // row what it costs at growSmall cuts — a cut appends one row per piece, so
 // the cost per cut is linear in the cut and the cost per row flat — and no
 // cut of either sample reads the history (row 88: reads and writes after a
 // grow write are planned from the entry). Before the fix the large sample
 // folded and copied a chain of growLarge²/2 rows per read and per write.
 func TestHeadGrow87_NoCliffPastFormerCap(t *testing.T) {
+	// The real cap covers ai-soc's deepest grow chain (553 cuts, whole BA
+	// 2026-10-20); the test runs the same path under growCap.
+	if headMaxEntryPieces < 1024 || headMaxEntryBounds < 2*headMaxEntryPieces {
+		t.Fatalf("head entry caps %d pieces / %d bounds: below a 1,024-cut grow chain", headMaxEntryPieces, headMaxEntryBounds)
+	}
 	for _, be := range r10Backends() {
 		t.Run(be.name, func(t *testing.T) {
 			g, n, r := growGraph(t, be, growSmall)
