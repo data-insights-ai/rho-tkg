@@ -707,11 +707,7 @@ func (c *Core) applyMetaLocked(body storeutil.MetaBody) error {
 	// The persisted key and the converting flag first: a lock-free reader
 	// (Admin().UntimedValidStart) may see a mode one moment stale, never a
 	// converting replica as complete.
-	if err := c.writeUntimedMode(v); err != nil {
-		return err
-	}
-	c.setUntimedMode(untimedModeOfByte(v))
-	return c.syncStoreAxis()
+	return c.switchUntimedModeLocked(untimedModeOfByte(v), func() error { return c.writeUntimedMode(v) })
 }
 
 // UntimedValidStart answers the untimed valid-start mode the store's rows are
@@ -756,18 +752,21 @@ func untimedModeOf(unbounded bool) UntimedValidStart {
 	return UntimedFromTxFrom
 }
 
-// checkImportUntimedModeLocked refuses a full import whose source wrote its
-// untimed rows under the other mode into a target that holds rows
-// (ErrUntimedModeMismatch, before any record is written): a store never
-// mixes the two rules. An empty target takes the source's mode at the end of
-// the import (adoptImportUntimedModeLocked). An export without the header
+// adoptImportUntimedModeLocked admits a full import's untimed mode src at
+// its header, before the first row is written. A target that holds rows
+// refuses a source of another mode (ErrUntimedModeMismatch): a store never
+// mixes the two rules. An empty target takes src through
+// switchUntimedModeLocked, persisted with a change-logged key so a replica
+// tailing the feed switches before the rows too, and rollback restores the
+// target's mode when the import fails later. An export without the header
 // field (a UntimedFromTxFrom source, or one written before backlog 73) is a
 // TxFrom export. Caller holds c.mu.Lock.
-func (c *Core) checkImportUntimedModeLocked(src UntimedValidStart, rollback *importRollback) error {
+func (c *Core) adoptImportUntimedModeLocked(src UntimedValidStart, rollback *importRollback) error {
 	if err := c.checkUntimedComplete("import"); err != nil {
 		return err
 	}
-	if src == c.untimedMode() {
+	prior := c.untimedMode()
+	if src == prior {
 		return nil
 	}
 	empty := rollback != nil && rollback.emptyTarget
@@ -777,27 +776,53 @@ func (c *Core) checkImportUntimedModeLocked(src UntimedValidStart, rollback *imp
 			return err
 		}
 	}
-	if empty {
-		return nil
+	if !empty {
+		return fmt.Errorf("import: the export's rows are written under %s, this store's under %s: %w",
+			untimedModeName(src), untimedModeName(prior), ErrUntimedModeMismatch)
 	}
-	return fmt.Errorf("import: the export's rows are written under %s, this store's under %s: %w",
-		untimedModeName(src), untimedModeName(c.untimedMode()), ErrUntimedModeMismatch)
-}
-
-// adoptImportUntimedModeLocked makes an empty import target take the source's
-// mode (checkImportUntimedModeLocked admitted it) and persists it: later
-// creates follow the imported rows' rule, and a reopen needs the adopted mode.
-// Caller holds c.mu.Lock.
-func (c *Core) adoptImportUntimedModeLocked(src UntimedValidStart) error {
-	if src == c.untimedMode() {
-		return nil
+	if rollback != nil {
+		rollback.priorMode, rollback.modeAdopted = prior, true
 	}
-	c.setUntimedMode(src)
-	if err := c.syncStoreAxis(); err != nil {
+	if err := c.switchUntimedModeLocked(src, func() error {
+		return c.writeUntimedModeLogged(untimedModeByteOf(src), true)
+	}); err != nil {
 		return fmt.Errorf("import: adopt the source's untimed valid-start mode: %w", err)
 	}
-	if err := c.writeUntimedModeLogged(untimedModeByteOf(src), true); err != nil {
-		return fmt.Errorf("import: persist the adopted untimed valid-start mode: %w", err)
+	return nil
+}
+
+// switchUntimedModeLocked is THE place the mode, and with it the valid axis,
+// changes after open: an import adopting its source's mode, a replica
+// applying its primary's ChangeMeta record, an import rollback restoring the
+// target's mode. The stores build valid-time envelopes, history buckets and
+// tx-member spans on their axis as each row is written and rebuild nothing in
+// SetValidAxis, so an axis change needs an empty store: the switch runs
+// before the first row, and a store with rows refuses it
+// (ErrUntimedModeMismatch) before persist runs. persist (nil = none) writes
+// the mode key; then the graph and its store take the mode. A store that
+// does not keep the axis gets the previous mode back. Caller holds c.mu.Lock.
+func (c *Core) switchUntimedModeLocked(mode UntimedValidStart, persist func() error) error {
+	prior := c.untimedMode()
+	if (mode == UntimedWholeAxis) != (prior == UntimedWholeAxis) {
+		empty, err := c.importTargetEmptyLocked()
+		if err != nil {
+			return err
+		}
+		if !empty {
+			return fmt.Errorf("graph: the store holds rows on the valid axis of %s, it cannot switch to %s: %w",
+				untimedModeName(prior), untimedModeName(mode), ErrUntimedModeMismatch)
+		}
+	}
+	if persist != nil {
+		if err := persist(); err != nil {
+			return err
+		}
+	}
+	c.setUntimedMode(mode)
+	if err := c.syncStoreAxis(); err != nil {
+		c.setUntimedMode(prior)
+		_ = c.syncStoreAxis()
+		return err
 	}
 	return nil
 }

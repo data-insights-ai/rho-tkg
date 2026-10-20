@@ -504,7 +504,7 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 			if hdr.RelCount < 0 {
 				return fmt.Errorf("%w: negative relationship count %d", ErrCorruptExport, hdr.RelCount)
 			}
-			if err := c.checkImportUntimedModeLocked(untimedModeOfHeader(hdr.UntimedUnbounded, hdr.UntimedWholeAxis), rollback); err != nil {
+			if err := c.adoptImportUntimedModeLocked(untimedModeOfHeader(hdr.UntimedUnbounded, hdr.UntimedWholeAxis), rollback); err != nil {
 				return err
 			}
 			header = hdr
@@ -657,9 +657,6 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 		if err := c.importNodeRetentionLocked(header.NodeRetention); err != nil {
 			return err
 		}
-	}
-	if err := c.adoptImportUntimedModeLocked(untimedModeOfHeader(header.UntimedUnbounded, header.UntimedWholeAxis)); err != nil {
-		return err
 	}
 	if header.SnapshotLSN > 0 {
 		current, err := c.appliedLSNLocked()
@@ -967,6 +964,11 @@ type importRollback struct {
 
 	// applyNodeRetention is ImportOptions.ApplyNodeRetention (backlog 21).
 	applyNodeRetention bool
+
+	// priorMode is the target's untimed mode before the header adopted the
+	// source's (modeAdopted); rollback restores it after the rows.
+	priorMode   UntimedValidStart
+	modeAdopted bool
 }
 
 type importNodeSnapshot struct {
@@ -1199,6 +1201,12 @@ func (rb *importRollback) rollback() error {
 	}
 
 	capture(rb.restoreRegistries())
+	if rb.modeAdopted {
+		prior := rb.priorMode
+		capture(rb.c.switchUntimedModeLocked(prior, func() error {
+			return rb.c.writeUntimedModeLogged(untimedModeByteOf(prior), true)
+		}))
+	}
 	return firstErr
 }
 
