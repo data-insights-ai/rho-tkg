@@ -254,6 +254,7 @@ func TestWatch_CtxCancelBounded(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			var got []store.ChangeRecord
+			first := make(chan struct{}, 1)
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
@@ -262,10 +263,18 @@ func TestWatch_CtxCancelBounded(t *testing.T) {
 						return
 					}
 					got = append(got, rec)
+					select {
+					case first <- struct{}{}:
+					default:
+					}
 				}
 			}()
 
-			time.Sleep(50 * time.Millisecond) // drain the 1 record, enter idle poll
+			select { // wait for the 1 record, then cancel while idling
+			case <-first:
+			case <-time.After(5 * time.Second):
+				t.Fatalf("Watch never delivered the pre-existing record")
+			}
 			cancel()
 
 			select {

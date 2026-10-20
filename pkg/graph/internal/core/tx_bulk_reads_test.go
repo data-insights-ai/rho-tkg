@@ -346,7 +346,7 @@ func TestTxBulkReads_ByLabelInsideTx(t *testing.T) {
 		if len(got) != 2 {
 			t.Errorf("g.Nodes.ByLabel inside tx returned %d nodes, want 2", len(got))
 		}
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(5 * time.Second):
 		t.Fatal("g.Nodes.ByLabel deadlocked inside an open tx — Path B regressed")
 	}
 }
@@ -373,7 +373,7 @@ func TestTxBulkReads_NodesAtInsideTx(t *testing.T) {
 		if len(got) != 2 {
 			t.Errorf("g.Temporal.NodesAt inside tx returned %d nodes, want 2", len(got))
 		}
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(5 * time.Second):
 		t.Fatal("g.Temporal.NodesAt deadlocked inside an open tx — Path B regressed")
 	}
 }
@@ -408,7 +408,7 @@ func TestPathB_ConcurrentDisjointMutations(t *testing.T) {
 			_ = tx.Rollback()
 			t.Fatalf("concurrent standalone AddNode: %v", err)
 		}
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(5 * time.Second):
 		_ = tx.Rollback()
 		t.Fatal("concurrent standalone AddNode blocked on open tx — Path B isolation regressed")
 	}

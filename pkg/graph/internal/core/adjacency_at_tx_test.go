@@ -955,6 +955,7 @@ func TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick(t *t
 		t.Fatalf("New: %v", err)
 	}
 	defer g.Close()
+	clk := useTestClock(t, g)
 	ctx := context.Background()
 
 	a, err := g.Nodes.Add(ctx, []string{"P"}, nil)
@@ -976,7 +977,7 @@ func TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick(t *t
 	// run ahead of wall-clock under rapid calls — the exact two-clock hazard
 	// documented on c.now()/waitWallPast — and would make a delete-based
 	// ValidTo unpredictably far from nowInstant()'s raw wall-clock reads).
-	validTo := nowInstant() + 30
+	validTo := clk.PeekInstant() + 30000
 	if _, err := g.Rels.Update(ctx, r.ID(), map[string]any{"tkg_valid_to": validTo}); err != nil {
 		t.Fatalf("set tkg_valid_to: %v", err)
 	}
@@ -1006,7 +1007,7 @@ func TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick(t *t
 	// Sleep past validTo — guarantees the wall clock has genuinely crossed
 	// the boundary before the next call, making the crossing deterministic
 	// instead of racing real execution speed.
-	time.Sleep(60 * time.Millisecond)
+	clk.Advance(60 * time.Second)
 
 	// Step 4: the RAW call re-resolves "now" fresh — its probe now lands
 	// after validTo (the sleep guarantees the wall clock has passed it), so
