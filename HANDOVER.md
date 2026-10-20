@@ -23,7 +23,7 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
    - ai-soc: release/v5.0.0 pinned at rho v4.66.0 (v4.66.1 after René's Flux run of v5.0.2; ai-soc 2026-10-20); PIN21 = rho v4.61.0 + sigma v0.11.21 (RAM numbers in row 73 area: VmHWM ~63-65 GB whole BA); earlier PIN18 = rho v4.56.1 + sigma v0.11.11; declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets
      `UntimedValidStart: UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data
      day; `/bars`, `/tkg/asof` = its HTTP read doors.)
-   - sigma-tkgd: main on rho v4.66.1 (21d0dbbc4, ships in v0.11.32 after the S1b review); v0.11.31 still on v4.66.0; needs no new rho API; P24
+   - sigma-tkgd: v0.11.32 (2026-10-20) on rho v4.66.1; needs no new rho API; P24
      (marker-aware ValidTo reads) parked with the tombstone writer.
 4. **Open work:** the open table of `tasks/backlog.md` (no requester; backlog 79 = sigma's multi-pin
    timeline, cost only, parked).
