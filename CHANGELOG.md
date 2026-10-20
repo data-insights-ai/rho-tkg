@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.66.2] - 2026-10-20
+
 ### Fixed
 
 - **A write to a long version chain no longer reads, copies and sorts the whole chain** (ai-soc 2026-10-20: René's
