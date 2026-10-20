@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.66.1] - 2026-10-20
+
 ### Changed
 
 - Docs only: two announcements in released sections are held, with no target release. The v4.65.0 Deprecated note's `UntimedDefault` flip to `UntimedWholeAxis` "in the next minor" did not happen in v4.66.0, and the v4.63.0 note's delete-tombstone writer (`DeleteKeptValidTo`, "v4.64.0") is parked (backlog 4/7/25); no release writes it, readers exist since v4.62.0.
@@ -13,8 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **`RecurrencePattern.Expand` span guard overflowed (v4.66.1).** `to-from > maxExpandSpan` wrapped to a negative value for
-  `UnboundedValidFrom`..`InfiniteValidTo`, passed, and expansion died with a fatal out of memory. The guard now uses
-  unsigned subtraction and returns `ErrRecurrenceSpanTooLarge`.
+  `UnboundedValidFrom`..`InfiniteValidTo`, passed, and expansion died with a fatal out of memory. The guard now compares
+  without overflow and returns `ErrRecurrenceSpanTooLarge`.
 - **An empty default-mode graph that imports an `UntimedWholeAxis` export answers its rows at valid instants**
   (review 2026-10-20, row 81). The import adopted the source's mode and valid axis after it had written the rows,
   and the stores rebuild nothing when the axis changes, so the temporal-index envelopes, history buckets and
