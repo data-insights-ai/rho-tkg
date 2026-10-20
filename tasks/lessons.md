@@ -659,7 +659,12 @@ release. Commits are grouped (several related changes per commit), each group gr
 René 2026-10-16: "make new fast tests for new developed code parts.. and long tests just for the push for the final minor
 version.. lets group commits then together with short tests (a couple of seconds)".
 Trigger: writing a new test, or choosing what to run before a commit.
-Detector: `go test -short` of a touched package takes more than ~5 s, or a commit's gate ran the long suite.
+A growth, cap or scale property is tested short too: lower the cap through the test switch (headPieceCap and kin) and
+grow past it in tens of steps, and pin the real constant with one assertion; never grow to production size (René 2026-10-20:
+"Short test again !!!", "We can test a growth also with a short test"; the 1,200-cut grow test took 163 s under -race and timed
+out a CI shard).
+Detector: `go test -short` of a touched package takes more than ~5 s, a single new test over ~2 s, or a commit's gate ran the
+long suite.
 Recurred 2026-10-17 (backlog 77): my brief asked a one-bug fix for all backends, long -race sweeps, lint and security, and I
 started a full release gate for that single patch — René: "why so long … i want focused and quick tests", "again, read my
 briefs and md files!!!". Rule: build every brief FROM this digest (re-read it before writing the brief); a fix brief = one
