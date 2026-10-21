@@ -594,6 +594,7 @@ runs on Fable, and a build Opus cannot finish goes to a Fable agent (René 2026-
 tag, notify the consumers, without asking each time; never push `origin/v5`, never force-push.
 Detector: a second review round, a build brief with phases before the fix or gates/docs in it, a minor tag for a release without a new feature, a brief with over ten file names.
 Recurrence 2026-10-21 (v4.67.0): four parallel build agents reported green without `make security-docker`; the release gate failed on gosec G115 in a test export. Every build brief names `make lint-docker security-docker` as the last step before the report.
+Versioning (René 2026-10-21, "why a minor version again?", "a fix/patch is clearly a patch version increment"): a fix never rides in a minor and a door never in a patch; new doors from one round of consumer requests batch into one minor, fixes into one patch; three minors in a day came from releasing each request alone.
 
 ## 80. Keep todo.md And HANDOVER Current At Every Event, Not Only At Releases
 
