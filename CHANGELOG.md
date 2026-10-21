@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`GetOrCreateByKeyOpts`: a get-or-create whose lookup is bounded by `QueryOpts.Depth`** (ai-soc, row 96). On
+  `g.Nodes()` and `GraphTx`. On tiered, an event label's key dedupes within the window: at `DepthWarm` the lookup
+  reads the reference shard, its archive and the hot and warm event shards, so a key that lives only on a cold shard
+  does not open it and a new copy is minted on the hot shard; a `DepthAll` `ByLabelAndProperty` returns every
+  per-shard copy. `GetOrCreateByKey` keeps its `DepthAll` lookup; the zero `QueryOpts` is the same call. Any other
+  `QueryOpts` field is refused with `ErrConflictingTemporalOpts`, an undefined depth with `ErrInvalidShardDepth`,
+  before anything is written. Unique constraints on an event label stay refused (`ErrUniqueEventLabelUnsupported`).
+  `TestGetOrCreateByKeyOpts_DepthBound`, `TestByLabelAndProperty_DepthAllReturnsEveryShardCopy`.
 - **`tiered.Config.SyncWrites`: power-loss durability on the tiered store** (ai-soc R2, row 93). Every writable shard
   (reference, archive, hot, warm, lazy cold, rotation-created) opens with Badger `SyncWrites`; read-only opens never
   do. Under graph `Config.DurableCommit` the tiered store implements `store.MutationFlushHoldCapability`: one hold

@@ -21,16 +21,31 @@ func (tx *GraphTx) GetOrCreateByKey(label, propertyKey string, value any, extraP
 		return nil, false, err
 	}
 	defer tx.unlockActiveCoreWrite()
-	return tx.getOrCreateByKeyLocked(tx.doorCtx(), label, propertyKey, value, extraProps)
+	return tx.getOrCreateByKeyLocked(tx.doorCtx(), label, propertyKey, value, extraProps, storepkg.QueryOpts{})
+}
+
+// GetOrCreateByKeyOpts is the transaction-scoped sibling of
+// NodeOps.GetOrCreateByKeyOpts: GetOrCreateByKey with the lookup bounded by
+// opts.Depth, the same option rules (Depth only, a defined depth).
+func (tx *GraphTx) GetOrCreateByKeyOpts(label, propertyKey string, value any, extraProps map[string]any, opts storepkg.QueryOpts) (*types.Node, bool, error) {
+	if err := tx.lockActiveCoreWrite(); err != nil {
+		return nil, false, err
+	}
+	defer tx.unlockActiveCoreWrite()
+	return tx.getOrCreateByKeyLocked(tx.doorCtx(), label, propertyKey, value, extraProps, opts)
 }
 
 // getOrCreateByKeyLocked is the lock-free body: the caller holds tx.mu AND c.mu
 // (via lockActiveCoreWrite), so it must NOT re-enter runUnderRLock (deadlock under
 // the exclusive log-scope path); it uses the *Internal store doors and routes event
 // + rollback bookkeeping through noteNodeCreateResultLocked.
-func (tx *GraphTx) getOrCreateByKeyLocked(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error) {
+func (tx *GraphTx) getOrCreateByKeyLocked(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any, opts storepkg.QueryOpts) (*types.Node, bool, error) {
 	c := tx.g
 	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
+	lookupOpts, err := getOrCreateLookupOpts(opts)
+	if err != nil {
 		return nil, false, err
 	}
 	if err := c.validateName(label); err != nil {
@@ -65,7 +80,7 @@ func (tx *GraphTx) getOrCreateByKeyLocked(ctx context.Context, label, propertyKe
 	ordered := c.valueLocks.LockStripes([]uint8{stripe})
 	defer c.valueLocks.UnlockStripes(ordered)
 
-	matches, err := c.nodesByLabelAndProperty(labelTok, propertyKey, value, storepkg.QueryOpts{})
+	matches, err := c.nodesByLabelAndProperty(labelTok, propertyKey, value, lookupOpts)
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: get-or-create lookup: %w", err)
 	}

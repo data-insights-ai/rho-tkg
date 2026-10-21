@@ -38,6 +38,7 @@ type Ops interface {
 	Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error)
 	AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error)
 	GetOrCreateByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error)
+	GetOrCreateByKeyOpts(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any, opts storepkg.QueryOpts) (*types.Node, bool, error)
 
 	All(opts storepkg.QueryOpts) ([]*types.Node, error)
 	ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) error
@@ -153,6 +154,21 @@ func (a *API) GetOrCreateByKey(ctx context.Context, label, propertyKey string, v
 		return nil, false, err
 	}
 	return ops.GetOrCreateByKey(ctx, label, propertyKey, value, extraProps)
+}
+
+// GetOrCreateByKeyOpts is GetOrCreateByKey with the lookup bounded by
+// opts.Depth: on tiered, DepthWarm reads the reference shard, its archive and
+// the hot and warm event shards only, so an event label's key that lives only
+// on a cold shard does not open it and a new copy is minted on the hot shard
+// (dedupe within the window). The zero QueryOpts (DepthAll) is
+// GetOrCreateByKey. Any other QueryOpts field is refused with
+// ErrConflictingTemporalOpts, an undefined depth with ErrInvalidShardDepth.
+func (a *API) GetOrCreateByKeyOpts(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any, opts storepkg.QueryOpts) (*types.Node, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, false, err
+	}
+	return ops.GetOrCreateByKeyOpts(ctx, label, propertyKey, value, extraProps, opts)
 }
 
 // Get returns the node with the given ID, honoring ctx.

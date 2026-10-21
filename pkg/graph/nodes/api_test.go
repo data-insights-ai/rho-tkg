@@ -47,6 +47,10 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := nilAPI.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "GetOrCreateByKey", run: func() error { _, _, err := nilAPI.GetOrCreateByKey(ctx, "Node", "name", "Ada", nil); return err }},
+		{name: "GetOrCreateByKeyOpts", run: func() error {
+			_, _, err := nilAPI.GetOrCreateByKeyOpts(ctx, "Node", "name", "Ada", nil, opts)
+			return err
+		}},
 		{name: "All", run: func() error { _, err := nilAPI.All(opts); return err }},
 		{name: "ForEach", run: func() error { return nilAPI.ForEach(opts, func(*types.Node) bool { return true }) }},
 		{name: "Iter", run: func() error { return drainNodeIter(nilAPI.Iter(ctx, opts)) }},
@@ -157,6 +161,10 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Import", run: func() error { _, err := api.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := api.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "GetOrCreateByKey", run: func() error { _, _, err := api.GetOrCreateByKey(ctx, "Node", "name", "Ada", nil); return err }},
+		{name: "GetOrCreateByKeyOpts", run: func() error {
+			_, _, err := api.GetOrCreateByKeyOpts(ctx, "Node", "name", "Ada", nil, opts)
+			return err
+		}},
 		{name: "All", run: func() error { _, err := api.All(opts); return err }},
 		{name: "ForEach", run: func() error { return api.ForEach(opts, func(*types.Node) bool { return true }) }},
 		{name: "Iter", run: func() error { return drainNodeIter(api.Iter(ctx, opts)) }},
@@ -217,7 +225,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "LendByIDs", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "EndValidity", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
+		"Delete", "Delete", "DeleteWithTx", "Retract", "RetractWithTx", "EndValidity", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "GetOrCreateByKeyOpts", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"AddLabel", "RemoveLabel", "CloseVersion", "History", "HasHistory", "VersionAfter", "VersionBefore",
@@ -402,6 +410,12 @@ func (s *nodeOpsSpy) AddByIDIfAbsent(ctx context.Context, id types.NodeID, label
 
 func (s *nodeOpsSpy) GetOrCreateByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error) {
 	s.record("GetOrCreateByKey")
+	return nil, false, s.err
+}
+
+func (s *nodeOpsSpy) GetOrCreateByKeyOpts(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any, opts storepkg.QueryOpts) (*types.Node, bool, error) {
+	s.record("GetOrCreateByKeyOpts")
+	s.lastOpts = opts
 	return nil, false, s.err
 }
 

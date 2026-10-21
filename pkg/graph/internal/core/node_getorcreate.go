@@ -26,14 +26,44 @@ import (
 // created node (the keyed property wins) and ignored on a hit. The returned node
 // is a mutable, independent copy (Get semantics).
 func (n *NodeOps) GetOrCreateByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error) {
-	return n.c.getOrCreateNodeByKey(ctx, label, propertyKey, value, extraProps)
+	return n.c.getOrCreateNodeByKey(ctx, label, propertyKey, value, extraProps, storepkg.QueryOpts{})
 }
 
-func (c *Core) getOrCreateNodeByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error) {
+// GetOrCreateByKeyOpts is GetOrCreateByKey with the lookup bounded by
+// opts.Depth (row 96): on tiered, DepthWarm reads the reference shard, its
+// archive and the hot and warm event shards only, so a key that lives only on
+// a cold shard does not open it and a new copy is minted on the hot shard (the
+// per-window dedupe of an event label). DepthAll (the zero QueryOpts) is
+// GetOrCreateByKey. Every other QueryOpts field is refused with
+// ErrConflictingTemporalOpts and an undefined depth with
+// store.ErrInvalidShardDepth, before anything is written.
+func (n *NodeOps) GetOrCreateByKeyOpts(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any, opts storepkg.QueryOpts) (*types.Node, bool, error) {
+	return n.c.getOrCreateNodeByKey(ctx, label, propertyKey, value, extraProps, opts)
+}
+
+// getOrCreateLookupOpts checks GetOrCreateByKeyOpts' options: a defined depth
+// and nothing else. The lookup reads the current state at that depth.
+func getOrCreateLookupOpts(opts storepkg.QueryOpts) (storepkg.QueryOpts, error) {
+	if err := storepkg.ValidateShardDepth(opts.Depth); err != nil {
+		return storepkg.QueryOpts{}, err
+	}
+	rest := opts
+	rest.Depth = storepkg.DepthAll
+	if rest != (storepkg.QueryOpts{}) {
+		return storepkg.QueryOpts{}, fmt.Errorf("%w: GetOrCreateByKeyOpts takes Depth only", ErrConflictingTemporalOpts)
+	}
+	return storepkg.QueryOpts{Depth: opts.Depth}, nil
+}
+
+func (c *Core) getOrCreateNodeByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any, opts storepkg.QueryOpts) (*types.Node, bool, error) {
 	if err := c.checkWritable(); err != nil {
 		return nil, false, err
 	}
 	if err := checkCtx(ctx); err != nil {
+		return nil, false, err
+	}
+	lookupOpts, err := getOrCreateLookupOpts(opts)
+	if err != nil {
 		return nil, false, err
 	}
 	if err := c.validateName(label); err != nil {
@@ -72,7 +102,7 @@ func (c *Core) getOrCreateNodeByKey(ctx context.Context, label, propertyKey stri
 		ordered := c.valueLocks.LockStripes([]uint8{stripe})
 		defer c.valueLocks.UnlockStripes(ordered)
 
-		matches, err := c.nodesByLabelAndProperty(labelTok, propertyKey, value, storepkg.QueryOpts{})
+		matches, err := c.nodesByLabelAndProperty(labelTok, propertyKey, value, lookupOpts)
 		if err != nil {
 			opErr = fmt.Errorf("graph: get-or-create lookup: %w", err)
 			return
