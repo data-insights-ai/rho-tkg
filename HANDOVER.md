@@ -7,14 +7,12 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
 
 ## 1. Focus and next steps (René 2026-10-14: "STABILIZE AND FULLY UNDERSTAND AI-SOC")
 
-1. **No open request from René.** v4.68.0 = row 98 (`NodeEffectiveTimelines(id, pins)` + Rel twin, one chain walk per call; ai-soc restart path, 511 pins = 524 k rows today). Before: v4.67.0 (2026-10-21, René "go" relayed by ai-soc, then "go v4.67.0" here): ai-soc runs rho
-   tiered as its main store (René: "Tiered storage is not for scaling only. This is the main architecture point").
-   `SyncWrites` + shared flush hold (row 93), `RelsByMint` (rel + both legs on its mint shard; adjacency honours
-   `QueryOpts.Depth`; `RelsByMintFallbacks()`, row 94), `AdjacencyIndexOnDisk` (row 95; 22 M rels: heap 770 → 240 B/rel, rel
-   maps 52 B/rel, rest node maps 77 B/node; cut C out), `GetOrCreateByKeyOpts` (row 96), Fable review fixes (row 97).
-   ai-soc pins it with the three flags on and DepthWarm on windowed reads, then measures RSS on its slice gate.
-   Open from it: deep pending on the hot shard has no ai-soc case (no demotion fallback built); a sharded rel row with local
-   start and remote end gets no in-key repair at open (pre-existing).
+1. **No open request from René.** Shipped 2026-10-21 for ai-soc (tiered = main store; René's standing go for ai-soc runtime items):
+   v4.69.0 `g.Admin().IsReferenceLabel` (row 99); v4.68.0 `NodeEffectiveTimelines(id, pins)` + Rel twin (row 98, 511 pins
+   520,711 → 1,020 rows); v4.67.0 tiered `SyncWrites` (93), `RelsByMint` + Depth on adjacency + `RelsByMintFallbacks()` (94),
+   `AdjacencyIndexOnDisk` (95; 22 M rels heap 770 → 240 B/rel, rel maps 52 B/rel, node maps 77 B/node), `GetOrCreateByKeyOpts`
+   (96), review fixes (97). Open from it: deep hot-shard pending has no ai-soc case (no demotion fallback built); a sharded rel
+   row with local start and remote end gets no in-key repair at open (pre-existing).
    Done before: v4.66.3 (rows 87/88, sigma R19 b+c): no cliff past 512 head pieces, head entry survives a
    growing bounded end. R19 (a) segment iterator: no-go (row 89, ai-soc BA counts: deep chains are grow). Quadratic grow rows:
    René "1" (row 90) = sigma writes only [old To, new To); rho keeps its per-base split. v4.66.2 (row 85) before it.
@@ -27,14 +25,13 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
    not resume without René. Reason: real ai-soc import showed ~92 records/op, 11x v4 disk, ~200 writes/s; options in tasks/todo.md.
    Gap analysis: `docs/v5-gap-to-main.md`. Real-store harness + scale notes: local branches `v5-realstore-harness` (`af75a982`,
    `tasks/evidence/v5-scale/notes.md`) and `wp-37-import-throughput` (`392f88e2`); not pushed.
-3. **Consumers** (open: ai-soc R1/R2 above; sigma FYI row 92: ai-soc reopen `ReadHistory` 526 s vs 57 s, rho's readUnderRLock unchanged since v4.66.0, waits for ai-soc; answer new requests the same day: ledger row first, then lesson 79's process):
-   - ai-soc: release/v5.0.0 pinned at rho v4.66.0 (v4.66.1 after René's Flux run of v5.0.2; ai-soc 2026-10-20); PIN21 = rho v4.61.0 + sigma v0.11.21 (RAM numbers in row 73 area: VmHWM ~63-65 GB whole BA); earlier PIN18 = rho v4.56.1 + sigma v0.11.11; declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets
+3. **Consumers** (open: sigma FYI row 92: ai-soc reopen `ReadHistory` 526 s vs 57 s, rho's readUnderRLock unchanged since v4.66.0, waits for ai-soc; answer new requests the same day: ledger row first, then lesson 79's process):
+   - ai-soc: pins v4.67.0+ with AdjacencyIndexOnDisk, RelsByMint, SyncWrites on and DepthWarm on windowed reads (2026-10-21); release/v5.0.0 was on rho v4.66.0; PIN21 = rho v4.61.0 + sigma v0.11.21 (RAM numbers in row 73 area: VmHWM ~63-65 GB whole BA); earlier PIN18 = rho v4.56.1 + sigma v0.11.11; declares `CreateRelTemporal` on its 29 estate-indexed rel types and sets
      `UntimedValidStart: UntimedUnbounded` for new stores. (PINnn = ai-soc's numbered dependency pin; BA/BO = one customer data
      day; `/bars`, `/tkg/asof` = its HTTP read doors.)
-   - sigma-tkgd: v0.11.41 (2026-10-21) on rho v4.68.0: plural NodeEffectiveTimelines in ReadDerivedAt, DepthHot on Derived/Session lookups; row 99 IsReferenceLabel shipped in v4.69.0 (sigma moves its check into session/writer open, F0b); if ai-soc's history read still grows with marks, the rest is NodeEffectiveTimeline per class = backlog 79 (sigma sends numbers); v0.11.35 R20; v0.11.34 brought the R19 delta write (a grown Derived version writes one row per cut); needs no new rho API; P24
+   - sigma-tkgd: v0.11.41 (2026-10-21) on rho v4.68.0: plural NodeEffectiveTimelines in ReadDerivedAt, DepthHot on Derived/Session lookups; row 99 IsReferenceLabel shipped in v4.69.0 (sigma moves its check into session/writer open, F0b); P24
      (marker-aware ValidTo reads) parked with the tombstone writer.
-4. **Open work:** the open table of `tasks/backlog.md` (no requester; backlog 79 = sigma's multi-pin
-   timeline, cost only, parked).
+4. **Open work:** the open table of `tasks/backlog.md` (no requester).
 5. **Watch origin:** `WATCH_LOG_DIR=<scratchpad> scripts/watch-origin.sh` in the background (Appendix A). When Markus releases on
    main: merge origin/main, check his code against our rules (one valid start, Void rows, Elements, format markers, head cache,
    version allocation), fix his CHANGELOG heading if he left entries under [Unreleased].

@@ -9,7 +9,7 @@ N"): never renumber or reuse. "merged into N" / "superseded by N" stubs keep a n
 - Trace the cause before asking or adding; consolidate duplicate paths, notes and rules instead of layering, docs
   rewritten in place; every md write consolidates the owner, never append-only (84).
 - Notify consumers right after gate + tag + push; GitHub CI runs in the background, red is fixed before the next tag (82).
-- Keep todo.md and HANDOVER current: `scripts/check-ledger.sh` after every merge and before every release (80).
+- Keep todo.md and HANDOVER current at every event (request, message, decision, merge, release), consolidated in place; `scripts/check-ledger.sh` after every merge and before every release (80).
 - Act, do not offer: open work with a clear next step (consumer request, review finding, patch batch) starts now; ask only for the
   irreversible or materially different (81). Tick the ledger and doc targets at every release (80, 41).
 - Red first: a failing break-the-code test before the fix, a clean root-cause fix at the shared seam, no "known limitation" in
@@ -595,13 +595,19 @@ tag, notify the consumers, without asking each time; never push `origin/v5`, nev
 Detector: a second review round, a build brief with phases before the fix or gates/docs in it, a minor tag for a release without a new feature, a brief with over ten file names.
 Recurrence 2026-10-21 (v4.67.0): four parallel build agents reported green without `make security-docker`; the release gate failed on gosec G115 in a test export. Every build brief names `make lint-docker security-docker` as the last step before the report.
 
-## 80. Tick The User-Request Ledger At Every Release, Not Only The Work Queue
+## 80. Keep todo.md And HANDOVER Current At Every Event, Not Only At Releases
 
-Rule: a release commit updates, in the same commit, the `tasks/todo.md` user-request rows it closes, the releases table and the
-HANDOVER open-request list; every new user or consumer request gets its row before the first action on it (René 2026-10-12:
-"Are you really working towards our originally defined goal?" after request 1 stayed "not built" two releases past its ship).
-Detector: `scripts/check-ledger.sh` (latest tag in the releases table, the todo header and HANDOVER; no request row "open/building/in progress" whose backlog item is Closed). It runs after every merge and before every release commit; a failure blocks the commit.
-Recurrence (2026-10-14/15, René: "Why not always keep todo.md update?"): `sed` one-liners matched nothing (HANDOVER kept "v4.52.0" for six releases), "building" rows were never revisited, Markus's releases were never recorded. The script checks the edits; do not trust them. 2026-10-21 (René: "Always keep todo.md and handover.md updated MD consolidated"): every consumer message, decision or state change updates todo.md (row, header, decisions) AND HANDOVER (next steps, consumers, decisions) in place in the same commit, not only at releases. A go René types into a consumer session and that session relays verbatim is his go; do not ask him to repeat it here (René 2026-10-21: "Why can you not tell it rho?").
+Rule: every user or consumer request gets its `tasks/todo.md` row before the first action on it; every consumer message,
+decision, merge or release updates in the same commit, in place: the todo row, header, decisions and releases table AND
+HANDOVER (next steps, consumers, decisions). Shipped sizing/review sections fold into their rows (git keeps them). A go René
+types into a consumer session and that session relays verbatim is his go; do not ask him to repeat it here.
+Detector: `scripts/check-ledger.sh` (latest tag in the releases table, the todo header and HANDOVER; no request row
+"open/building/in progress" whose backlog item is Closed), after every merge and before every release commit; a failure
+blocks the commit. The script checks the edits; do not trust `sed` one-liners.
+History: René 2026-10-12 "Are you really working towards our originally defined goal?" (request 1 "not built" two releases
+past its ship); 2026-10-14/15 "Why not always keep todo.md update?" (HANDOVER kept v4.52.0 for six releases); 2026-10-21
+"Always keep todo.md and handover.md updated MD consolidated", "Why can you not tell it rho?", "todo.md and other md files
+are consolidated?" (four shipped sizing/review sections left in todo.md).
 
 ## 81. Open Work With A Clear Next Step Is Started, Not Offered
 
