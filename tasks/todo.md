@@ -398,6 +398,28 @@ Positive: `relLegsColocated` (`entity != start`) holds for every placement I cou
 moves with its start node, tieredstore_write_archive.go:269-340); the repair door's two mint rules (tieredstore_repair.go:97-108, :171-175)
 agree with it; lazy relRevs are safe (rev 0 always reports stale and re-reads, badgerstore_rel.go:564, :595).
 
+## v4.68.0 review (Fable 2026-10-21)
+
+Scope: row 98, `git diff 2c032190~1..a968c2fc -- pkg docs AGENTS.md` (effective_timelines.go, temporal/api.go, tests, docs). Read end to end
+against the singular door (effective_timeline.go:400-712). 0 blockers, 1 should-fix, 3 nits.
+
+Verified correct (no finding): per pin the plural body is the singular fold on the same chain: the same gates, `effectivePieces` at the pin
+(effective_timelines.go:273-298), the same skeleton hydration (`nodeRowAtTx(full, pin)` per pin from one `rd.nodeVersion` per winner,
+:157-171, vs :620-638 singular), the same vanished-winner fallback to the full chain (:173-176), the same one-row and no-history branches,
+`recordedPin` for pins at or below 0 (-1 at the gates in both doors). Gates are monotone in the pin: compaction `pin < LastTrimmedTxTo`
+(compaction.go:306-326), node retention `pin < wm` per label (retention.go:254-275), rel `checkScanRetentionAt` (retention.go:223-245),
+rel type `pin < relMax && (unknown type || pin < wm)` (retention_rel.go:210-226); pin 0 never reaches them (mapped to -1), so the lowest
+pin refusing is exactly "some pin refused", and no pin refused means none of them is. Locking: `readUnderRLock` + the entity's exclusive
+lock for the whole walk (:120-121), the singular door's snapshot; compaction takes `c.mu.Lock` (compaction.go:642/693/772), so no winner can
+vanish under a held RLock except through a store-level trim, which the fallback covers. No partial result on error (nil, err at every exit).
+
+| # | Sev | Where | Finding and failure scenario |
+|---|---|---|---|
+| 1 | should-fix | effective_timelines_test.go:152-262 (`ccRun`, cascade_correctness_helpers_test.go:523) | The oracle `sameAsSingular` runs cascades, updates and a delete on `UntimedFromTxFrom` only (tx_backfill_rel_helpers_test.go:34). Not exercised against the singular door: a retraction (`dropRetractedLives` at a pin between the retraction and a later re-create: nil at one pin, segments at another in one call), an eclipsed / non-monotonic chain (`SetNodeVersionInterval` over an older row, the own-bounds arm), `UntimedWholeAxis` (`types.InfiniteValidTo` ends, `UnboundedValidFrom` starts) and the rel-type watermark gate `checkRelTypePointRetention` (the rel case at :258 trips the node max through `checkRelPointRetention`, not the type watermark). The code paths are shared with the singular door, so I expect equality; a regression in `effectiveTimelinesOver` or the hydrate on those chains would pass today's suite. Add one `sameAsSingular` per case (retract via `Nodes().Retract`, an interval correction, a `UntimedWholeAxis` run, `advanceRelRetentionWatermark` on the rel type). |
+| 2 | nit | docs/api.md:217 | The cost sentence names "memory, sharded, tiered"; the test also runs badger (txbBackends: memory, badger, sharded, tiered), and badger is the store with the skeleton path this door was written for. Name it or give its row count. |
+| 3 | nit | temporal/api.go:66-67 | Two methods added to the exported `temporal.Ops` interface: an external implementer (mock, decorator) stops compiling at this minor. Consistent with earlier additions to `Ops`; a CHANGELOG line "Ops grows" suffices. |
+| 4 | nit | effective_timelines.go:48-52, :77-81 | Empty `pins` answers `[]` before `ErrNodeNotFound` / the gates for an unknown ID; documented (docs/api.md:217 "reads nothing"), the singular door has no such case. Note only. |
+
 ## Release gates (long tests only here)
 
 | Gate | Content | Checks |
