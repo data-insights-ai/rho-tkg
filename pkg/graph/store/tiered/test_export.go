@@ -135,6 +135,11 @@ func (es *EventShard) Tier() ShardTier { return es.currentTier() }
 // simulate demote-to-cold without shipping bytes between shards.
 func (es *EventShard) SetTierForTest(t ShardTier) { es.setTier(t) }
 
+// ShardConfigForTest returns the badger config badgerCfg builds for shard name.
+func (ts *Store) ShardConfigForTest(name string, readOnly bool) BadgerStoreConfig {
+	return ts.badgerCfg(name, readOnly)
+}
+
 // ReadOnlyForTest reports whether the shard is marked read-only.
 func (es *EventShard) ReadOnlyForTest() bool { return es.readOnly }
 
