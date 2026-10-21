@@ -100,7 +100,7 @@ func (bs *Store) RelMapBytesForTest() float64 {
 	runtime.KeepAlive(typ)
 	runtime.KeepAlive(out)
 	runtime.KeepAlive(in)
-	return float64(int64(m1.HeapAlloc) - int64(m0.HeapAlloc))
+	return float64(m1.HeapAlloc) - float64(m0.HeapAlloc)
 }
 
 // TemporalIndexOnDiskForTest reports whether this shard was opened with
