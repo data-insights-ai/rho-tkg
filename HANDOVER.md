@@ -12,6 +12,8 @@ releases table of `tasks/todo.md`, not here. The ONE plan is `tasks/todo.md`. Re
    R2 = tiered `Config.SyncWrites` + flush hold under DurableCommit (row 93, small). R1 = rels between reference endpoints
    placed with entity + both legs on the rel's mint shard, adjacency honours `QueryOpts.Depth`, fallback counter (row 94,
    ~300 + 450 LOC, todo "R1 sizing"). ai-soc agreed every semantic; no further questions. Build only on René's own word.
+   New 2026-10-21 (real BA tier data): R3 bound warm-shard per-rel RAM maps (row 95) and event-class labels with a per-shard
+   unique key (row 96); Fable sizes both (todo "R3 sizing"); ai-soc asks René whether R3 joins v4.67.0.
    Done before: v4.66.3 (rows 87/88, sigma R19 b+c): no cliff past 512 head pieces, head entry survives a
    growing bounded end. R19 (a) segment iterator: no-go (row 89, ai-soc BA counts: deep chains are grow). Quadratic grow rows:
    René "1" (row 90) = sigma writes only [old To, new To); rho keeps its per-base split. v4.66.2 (row 85) before it.
