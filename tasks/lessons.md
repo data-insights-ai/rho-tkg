@@ -593,6 +593,7 @@ effort high, doc work Sonnet (Opus after a second Sonnet fix round); the review 
 runs on Fable, and a build Opus cannot finish goes to a Fable agent (René 2026-10-20: "If opus is not smart enough use a fable Agent .. use Fabel as reviewer"; suspended 10-16 to 10-20). (9) Release authority (René 2026-10-10): merge, gate, tag, push main and the
 tag, notify the consumers, without asking each time; never push `origin/v5`, never force-push.
 Detector: a second review round, a build brief with phases before the fix or gates/docs in it, a minor tag for a release without a new feature, a brief with over ten file names.
+Recurrence 2026-10-21 (v4.67.0): four parallel build agents reported green without `make security-docker`; the release gate failed on gosec G115 in a test export. Every build brief names `make lint-docker security-docker` as the last step before the report.
 
 ## 80. Tick The User-Request Ledger At Every Release, Not Only The Work Queue
 
